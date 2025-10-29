@@ -178,7 +178,6 @@
     <ClInclude Include="..\StratEngine\SquareHelper.h" />
     <ClInclude Include="..\StratEngine\StdAfx.h" />
     <ClInclude Include="..\StratEngine\TranspositionTable.h" />
-    <ClInclude Include="..\StratEngine\typedef.h" />
     <ClInclude Include="..\StratEngine\Utils\BitTools.h" />
     <ClInclude Include="..\StratEngine\Utils\StrHelper.h" />
     <ClInclude Include="..\StratEngine\Utils\Subscriber.h" />
