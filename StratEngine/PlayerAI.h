@@ -190,11 +190,11 @@ protected:
 
 	std::chrono::time_point<std::chrono::high_resolution_clock> _startingTime;
 
-#ifdef PRINT_STATS
+//#ifdef PRINT_STATS
 
 	// Samlet tid og antal nodes for begge computerspillere - TODO: Separer evt til per spiller. Human burde ogsaa have en klokke
 	static std::chrono::milliseconds m_TotalTime;
 	static size_t m_TotalCount;
 
-#endif	// PRINT_STATS
+//#endif	// PRINT_STATS
 };

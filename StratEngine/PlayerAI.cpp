@@ -52,7 +52,7 @@ int PlayerAiBase::Quiescent( size_t ply, int alpha, int beta )
 	}
 
 	MoveList moveList;
-	moveList.reserve(MAX_PLY*8);
+	moveList.reserve(static_cast<size_t>(MAX_PLY)*8);
 
 	// Only work on the captures in Quiescent
 	MoveGenerator::ComputeCaptures( info, moveList );
@@ -138,7 +138,7 @@ void PlayerAiBase::StopTimer() const
 	m_TotalTime += elapsedMs;
 	m_TotalCount += m_SearchCount;
 	
-#ifdef PRINT_STATS
+//#ifdef PRINT_STATS
 	// TODO: Move this out of Player area and into the UI
 
 	outFile2  << std::setw(10) << m_SearchCount << std::setw(13) << elapsedMs.count() //-V128
@@ -148,7 +148,7 @@ void PlayerAiBase::StopTimer() const
 		<< std::setw(13) << (m_TotalCount/m_TotalTime.count()) //-V104
 		<< std::endl;
 
-#endif // PRINT_STATS
+//#endif // PRINT_STATS
 }
 
 // ************************************

@@ -380,7 +380,7 @@ protected:
 	//	config().setString(name, value);
 	//}
 
-	int main(const std::vector<std::string>& args)
+	int main(const std::vector<std::string>& /*args*/)
 	{
 //#ifdef _DEBUG
 //		if (!_helpRequested)
@@ -403,7 +403,7 @@ protected:
 		return 0;
 	}
 
-	void printProperties(const std::string& base) const
+	void printProperties(const std::string& /*base*/) const
 	{
 		/*AbstractConfiguration::Keys keys;
 		config().keys(base, keys);
@@ -437,7 +437,7 @@ private:
 	bool _helpRequested{ false };
 };
 
-int main(int argc, char** argv)
+int main(int /*argc*/, char** /*argv*/)
 {
 	std::cout << "Hello World!\n";
 
