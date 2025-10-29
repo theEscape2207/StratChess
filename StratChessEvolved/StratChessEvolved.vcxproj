@@ -70,6 +70,9 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ManagedAssembly>false</ManagedAssembly>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -98,10 +101,14 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <WarningLevel>Level3</WarningLevel>
+      <WarningLevel>Level4</WarningLevel>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>..\..\json\include;..\..\spdlog\include;..\StratEngine</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard_C>stdc11</LanguageStandard_C>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -123,7 +130,61 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\StratEngine\ABIterative.cpp" />
+    <ClCompile Include="..\StratEngine\ABIterTrans.cpp" />
+    <ClCompile Include="..\StratEngine\AIAgent.cpp" />
+    <ClCompile Include="..\StratEngine\AIBasic.cpp" />
+    <ClCompile Include="..\StratEngine\AITrans.cpp" />
+    <ClCompile Include="..\StratEngine\Board.cpp" />
+    <ClCompile Include="..\StratEngine\Config.cpp" />
+    <ClCompile Include="..\StratEngine\Eval.cpp" />
+    <ClCompile Include="..\StratEngine\Game.cpp" />
+    <ClCompile Include="..\StratEngine\Move.cpp" />
+    <ClCompile Include="..\StratEngine\MoveGenerator.cpp" />
+    <ClCompile Include="..\StratEngine\PlayerAI.cpp" />
+    <ClCompile Include="..\StratEngine\PlayerBase.cpp" />
+    <ClCompile Include="..\StratEngine\PlayerHuman.cpp" />
+    <ClCompile Include="..\StratEngine\skak.cpp" />
+    <ClCompile Include="..\StratEngine\Sort.cpp" />
+    <ClCompile Include="..\StratEngine\StdAfx.cpp" />
+    <ClCompile Include="..\StratEngine\TranspositionTable.cpp" />
     <ClCompile Include="StratChessEvolved.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\StratEngine\ABIterative.h" />
+    <ClInclude Include="..\StratEngine\ABIterTrans.h" />
+    <ClInclude Include="..\StratEngine\AIAgent.h" />
+    <ClInclude Include="..\StratEngine\AIBasic.h" />
+    <ClInclude Include="..\StratEngine\AITrans.h" />
+    <ClInclude Include="..\StratEngine\BitBoardHelper.h" />
+    <ClInclude Include="..\StratEngine\Board.h" />
+    <ClInclude Include="..\StratEngine\Config.h" />
+    <ClInclude Include="..\StratEngine\defines.h" />
+    <ClInclude Include="..\StratEngine\Eval.h" />
+    <ClInclude Include="..\StratEngine\Game.h" />
+    <ClInclude Include="..\StratEngine\globals.h" />
+    <ClInclude Include="..\StratEngine\HashElement.h" />
+    <ClInclude Include="..\StratEngine\IPlayer.h" />
+    <ClInclude Include="..\StratEngine\Move.h" />
+    <ClInclude Include="..\StratEngine\MoveGenerator.h" />
+    <ClInclude Include="..\StratEngine\MoveHelper.h" />
+    <ClInclude Include="..\StratEngine\outfile.h" />
+    <ClInclude Include="..\StratEngine\PieceHelper.h" />
+    <ClInclude Include="..\StratEngine\PlayerAI.h" />
+    <ClInclude Include="..\StratEngine\PlayerAiIterBase.h" />
+    <ClInclude Include="..\StratEngine\PlayerBase.h" />
+    <ClInclude Include="..\StratEngine\PlayerHuman.h" />
+    <ClInclude Include="..\StratEngine\Sort.h" />
+    <ClInclude Include="..\StratEngine\SquareHelper.h" />
+    <ClInclude Include="..\StratEngine\StdAfx.h" />
+    <ClInclude Include="..\StratEngine\TranspositionTable.h" />
+    <ClInclude Include="..\StratEngine\typedef.h" />
+    <ClInclude Include="..\StratEngine\Utils\BitTools.h" />
+    <ClInclude Include="..\StratEngine\Utils\StrHelper.h" />
+    <ClInclude Include="..\StratEngine\Utils\Subscriber.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="game_settings.json" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

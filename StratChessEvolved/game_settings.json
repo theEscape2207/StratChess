@@ -1,0 +1,95 @@
+{
+  "game": {
+    /* PlayerTypes:
+     HUMAN = 0,
+     ALPHABETA = 1,
+     ABITERATING = 2,
+     AIAGENT = 3,
+     AITRANS = 4 (Not working correctly atm),
+     ABITERATIVE_TRANS = 5 (Not working atm)
+    */
+    "players": {
+      "white": {
+        "type": 3,
+        "depth": 6,
+        /* Eval:
+           0 - None (Human)
+           1 - Simple Eval
+           2 - More Complex Eval
+        */
+        "eval": 2
+      },
+      "black": {
+        "type": 2,
+        "depth": 5,
+        /* Eval:
+           0 - None (Human)
+           1 - Simple Eval
+           2 - More Complex Eval
+        */
+        "eval": 1
+      }
+    },
+
+    /* Possible setup options:
+       'default': normal chessboard setup
+       'custom': board setup described under "placement"
+       'FEN': Forsyth–Edwards Notation for board setup
+    */
+    "setup": "FEN",
+
+    /* Custom piece description:
+       0:  white pawn
+       2:  white knight
+       4:  white bishop
+       6:  white rook
+       8:  white queen
+       10: white king
+       1:  black pawn
+       3:  black knight
+       5:  black bishop
+       7:  black rook
+       9:  black queen
+       11: black king
+    */
+
+    /* FEN character meaning:
+       P:  white pawn
+       N:  white knight
+       B:  white bishop
+       R:  white rook
+       Q:  white queen
+       K:  white king
+       p:  black pawn
+       n:  black knight
+       b:  black bishop
+       r:  black rook
+       q:  black queen
+       k:  black king
+    */
+
+    /* Example test setups:
+       White setting mate in 3 (avoiding stalemate possibilities)
+    */
+    "placement_example": {
+      "a7": 0,
+      "b7": 11,
+      "h7": 0,
+      "c6": 1,
+      "f6": 10,
+      "g6": 0,
+      "c5": 4,
+      "d5": 5,
+      "b4": 0
+    },
+
+    /* Default FEN board setup */
+    "FEN": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+
+    /* Alternative FEN positions:
+       "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"
+       "5k2/ppp5/4P3/3R3p/6P1/1K2Nr2/PP3P2/8 b - - 1 32"
+       "4k3/8/8/8/8/8/4P3/4K3 w - - 5 39"
+    */
+  }
+}
