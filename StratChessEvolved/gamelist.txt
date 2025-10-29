@@ -1,0 +1,511 @@
+
+*********************************
+*      Escapes Chess game       *
+*      Version: 0.6             *
+*********************************
+Time: Wed, 29 Oct 2025 11:24:03 Romance Standard Time
+
+----------------------------------------------
+White:
+	Engine type:	AI Agent
+	Depth:		6
+	Evaluation:	Complex
+
+Black:
+	Engine type:	Iterative AlphaBeta
+	Depth:		5
+	Evaluation:	Simple
+
+----------------------------------------------
+Move 1
+Last move: Pd2-d4
+Verbose  : White pawn moves d2-d4
+
+Move 2
+Last move: pd7-d5
+Verbose  : Black pawn moves d7-d5
+
+Move 3
+Last move: Pe2-e3
+Verbose  : White pawn moves e2-e3
+
+Move 4
+Last move: pe7-e6
+Verbose  : Black pawn moves e7-e6
+
+Move 5
+Last move: Ng1-f3
+Verbose  : White knight moves g1-f3
+
+Move 6
+Last move: nb8-c6
+Verbose  : Black knight moves b8-c6
+
+Move 7
+Last move: Bf1-b5
+Verbose  : White bishop moves f1-b5
+
+Move 8
+Last move: ng8-f6
+Verbose  : Black knight moves g8-f6
+
+Move 9
+Last move: Bb5xc6+
+Verbose  : White bishop moves b5-c6 and kills a Black knight and checks!
+
+Move 10
+Last move: pb7xc6
+Verbose  : Black pawn moves b7-c6 and kills a White bishop
+
+Move 11
+Last move: Nb1-c3
+Verbose  : White knight moves b1-c3
+
+Move 12
+Last move: bc8-b7
+Verbose  : Black bishop moves c8-b7
+
+Move 13
+Last move: Qd1-d3
+Verbose  : White queen moves d1-d3
+
+Move 14
+Last move: bf8-b4
+Verbose  : Black bishop moves f8-b4
+
+Move 15
+Last move: Bc1-d2
+Verbose  : White bishop moves c1-d2
+
+Move 16
+Last move: pa7-a5
+Verbose  : Black pawn moves a7-a5
+
+Move 17
+Last move: Qd3-e2
+Verbose  : White queen moves d3-e2
+
+Move 18
+Last move: nf6-e4
+Verbose  : Black knight moves f6-e4
+
+Move 19
+Last move: Nc3xe4
+Verbose  : White knight moves c3-e4 and kills a Black knight
+
+Move 20
+Last move: pd5xe4
+Verbose  : Black pawn moves d5-e4 and kills a White knight
+
+Move 21
+Last move: Nf3-e5
+Verbose  : White knight moves f3-e5
+
+Move 22
+Last move: bb4xd2+
+Verbose  : Black bishop moves b4-d2 and kills a White bishop and checks!
+
+Move 23
+Last move: Qe2xd2
+Verbose  : White queen moves e2-d2 and kills a Black bishop
+
+Move 24
+Last move: pf7-f6
+Verbose  : Black pawn moves f7-f6
+
+Move 25
+Last move: Ne5-c4
+Verbose  : White knight moves e5-c4
+
+Move 26
+Last move: qd8-d5
+Verbose  : Black queen moves d8-d5
+
+Move 27
+Last move: Pb2-b3
+Verbose  : White pawn moves b2-b3
+
+Move 28
+Last move: pg7-g5
+Verbose  : Black pawn moves g7-g5
+
+Move 29
+Last move: Pa2-a4
+Verbose  : White pawn moves a2-a4
+
+Move 30
+Last move: ph7-h5
+Verbose  : Black pawn moves h7-h5
+
+Move 31
+Last move: Rh1-f1
+Verbose  : White rook moves h1-f1
+
+Move 32
+Last move: pg5-g4
+Verbose  : Black pawn moves g5-g4
+
+Move 33
+Last move: Rf1-h1
+Verbose  : White rook moves f1-h1
+
+Move 34
+Last move: rh8-h7
+Verbose  : Black rook moves h8-h7
+
+Move 35
+Last move: Ph2-h3
+Verbose  : White pawn moves h2-h3
+
+Move 36
+Last move: rh7-f7
+Verbose  : Black rook moves h7-f7
+
+Move 37
+Last move: Pg2-g3
+Verbose  : White pawn moves g2-g3
+
+Move 38
+Last move: pg4xh3
+Verbose  : Black pawn moves g4-h3 and kills a White pawn
+
+Move 39
+Last move: Rh1xh3
+Verbose  : White rook moves h1-h3 and kills a Black pawn
+
+Move 40
+Last move: rf7-g7
+Verbose  : Black rook moves f7-g7
+
+Move 41
+Last move: Rh3-h4
+Verbose  : White rook moves h3-h4
+
+Move 42
+Last move: rg7-g4
+Verbose  : Black rook moves g7-g4
+
+Move 43
+Last move: 0-0-0
+Verbose  : White makes a long castling
+
+Move 44
+Last move: ke8-f8
+Verbose  : Black king moves e8-f8
+
+Move 45
+Last move: Rd1-h1
+Verbose  : White rook moves d1-h1
+
+Move 46
+Last move: rg4xh4
+Verbose  : Black rook moves g4-h4 and kills a White rook
+
+Move 47
+Last move: Rh1xh4
+Verbose  : White rook moves h1-h4 and kills a Black rook
+
+Move 48
+Last move: kf8-g8
+Verbose  : Black king moves f8-g8
+
+Move 49
+Last move: Qd2-e2
+Verbose  : White queen moves d2-e2
+
+Move 50
+Last move: pc6-c5
+Verbose  : Black pawn moves c6-c5
+
+Move 51
+Last move: Qe2xh5
+Verbose  : White queen moves e2-h5 and kills a Black pawn
+
+Move 52
+Last move: qd5xh5
+Verbose  : Black queen moves d5-h5 and kills a White queen
+
+Move 53
+Last move: Rh4xh5
+Verbose  : White rook moves h4-h5 and kills a Black queen
+
+Move 54
+Last move: pc5xd4
+Verbose  : Black pawn moves c5-d4 and kills a White pawn
+
+Move 55
+Last move: Pe3xd4
+Verbose  : White pawn moves e3-d4 and kills a Black pawn
+
+Move 56
+Last move: bb7-d5
+Verbose  : Black bishop moves b7-d5
+
+Move 57
+Last move: Nc4-e3
+Verbose  : White knight moves c4-e3
+
+Move 58
+Last move: ra8-d8
+Verbose  : Black rook moves a8-d8
+
+Move 59
+Last move: Pc2-c4
+Verbose  : White pawn moves c2-c4
+
+Move 60
+Last move: bd5-c6
+Verbose  : Black bishop moves d5-c6
+
+Move 61
+Last move: Rh5-c5
+Verbose  : White rook moves h5-c5
+
+Move 62
+Last move: rd8-d6
+Verbose  : Black rook moves d8-d6
+
+Move 63
+Last move: Pd4-d5
+Verbose  : White pawn moves d4-d5
+
+Move 64
+Last move: bc6-e8
+Verbose  : Black bishop moves c6-e8
+
+Move 65
+Last move: Pd5xe6
+Verbose  : White pawn moves d5-e6 and kills a Black pawn
+
+Move 66
+Last move: rd6xe6
+Verbose  : Black rook moves d6-e6 and kills a White pawn
+
+Move 67
+Last move: Rc5xc7
+Verbose  : White rook moves c5-c7 and kills a Black pawn
+
+Move 68
+Last move: re6-c6
+Verbose  : Black rook moves e6-c6
+
+Move 69
+Last move: Rc7-a7
+Verbose  : White rook moves c7-a7
+
+Move 70
+Last move: rc6-c5
+Verbose  : Black rook moves c6-c5
+
+Move 71
+Last move: Ne3-d5
+Verbose  : White knight moves e3-d5
+
+Move 72
+Last move: pf6-f5
+Verbose  : Black pawn moves f6-f5
+
+Move 73
+Last move: Nd5-f6+
+Verbose  : White knight moves d5-f6 and checks!
+
+Move 74
+Last move: kg8-f8
+Verbose  : Black king moves g8-f8
+
+Move 75
+Last move: Ra7-a8
+Verbose  : White rook moves a7-a8
+
+Move 76
+Last move: rc5-c6
+Verbose  : Black rook moves c5-c6
+
+Move 77
+Last move: Nf6xe8
+Verbose  : White knight moves f6-e8 and kills a Black bishop
+
+Move 78
+Last move: kf8-f7
+Verbose  : Black king moves f8-f7
+
+Move 79
+Last move: Kc1-d2
+Verbose  : White king moves c1-d2
+
+Move 80
+Last move: kf7-e7
+Verbose  : Black king moves f7-e7
+
+Move 81
+Last move: Ne8-g7
+Verbose  : White knight moves e8-g7
+
+Move 82
+Last move: ke7-f6
+Verbose  : Black king moves e7-f6
+
+Move 83
+Last move: Ng7-h5+
+Verbose  : White knight moves g7-h5 and checks!
+
+Move 84
+Last move: kf6-g6
+Verbose  : Black king moves f6-g6
+
+Move 85
+Last move: Nh5-f4+
+Verbose  : White knight moves h5-f4 and checks!
+
+Move 86
+Last move: kg6-f7
+Verbose  : Black king moves g6-f7
+
+Move 87
+Last move: Ra8xa5
+Verbose  : White rook moves a8-a5 and kills a Black pawn
+
+Move 88
+Last move: rc6-f6
+Verbose  : Black rook moves c6-f6
+
+Move 89
+Last move: Kd2-e3
+Verbose  : White king moves d2-e3
+
+Move 90
+Last move: kf7-g8
+Verbose  : Black king moves f7-g8
+
+Move 91
+Last move: Nf4-e2
+Verbose  : White knight moves f4-e2
+
+Move 92
+Last move: kg8-f7
+Verbose  : Black king moves g8-f7
+
+Move 93
+Last move: Ra5-d5
+Verbose  : White rook moves a5-d5
+
+Move 94
+Last move: kf7-e8
+Verbose  : Black king moves f7-e8
+
+Move 95
+Last move: Ne2-d4
+Verbose  : White knight moves e2-d4
+
+Move 96
+Last move: ke8-f8
+Verbose  : Black king moves e8-f8
+
+Move 97
+Last move: Rd5xf5
+Verbose  : White rook moves d5-f5 and kills a Black pawn
+
+Move 98
+Last move: rf6xf5
+Verbose  : Black rook moves f6-f5 and kills a White rook
+
+Move 99
+Last move: Nd4xf5
+Verbose  : White knight moves d4-f5 and kills a Black rook
+
+Move 100
+Last move: kf8-e8
+Verbose  : Black king moves f8-e8
+
+Move 101
+Last move: Pc4-c5
+Verbose  : White pawn moves c4-c5
+
+Move 102
+Last move: ke8-d7
+Verbose  : Black king moves e8-d7
+
+Move 103
+Last move: Nf5-d4
+Verbose  : White knight moves f5-d4
+
+Move 104
+Last move: kd7-d8
+Verbose  : Black king moves d7-d8
+
+Move 105
+Last move: Ke3xe4
+Verbose  : White king moves e3-e4 and kills a Black pawn
+
+Move 106
+Last move: kd8-c7
+Verbose  : Black king moves d8-c7
+
+Move 107
+Last move: Pc5-c6
+Verbose  : White pawn moves c5-c6
+
+Move 108
+Last move: kc7-b6
+Verbose  : Black king moves c7-b6
+
+Move 109
+Last move: Ke4-d5
+Verbose  : White king moves e4-d5
+
+Move 110
+Last move: kb6-c7
+Verbose  : Black king moves b6-c7
+
+Move 111
+Last move: Nd4-e6+
+Verbose  : White knight moves d4-e6 and checks!
+
+Move 112
+Last move: kc7-c8
+Verbose  : Black king moves c7-c8
+
+Move 113
+Last move: Kd5-d6
+Verbose  : White king moves d5-d6
+
+Move 114
+Last move: kc8-b8
+Verbose  : Black king moves c8-b8
+
+Move 115
+Last move: Kd6-d7
+Verbose  : White king moves d6-d7
+
+Move 116
+Last move: kb8-a7
+Verbose  : Black king moves b8-a7
+
+Move 117
+Last move: Pc6-c7
+Verbose  : White pawn moves c6-c7
+
+Move 118
+Last move: ka7-b7
+Verbose  : Black king moves a7-b7
+
+Move 119
+Last move: Pc7-c8Q+
+Verbose  : White pawn moves c7-c8 and gets promoted to a White queen and checks!
+
+Move 120
+Last move: kb7-b6
+Verbose  : Black king moves b7-b6
+
+Move 121
+Last move: Qc8-c7+
+Verbose  : White queen moves c8-c7 and checks!
+
+Move 122
+Last move: kb6-a6
+Verbose  : Black king moves b6-a6
+
+Move 123
+Last move: Ne6-c5+
+Verbose  : White knight moves e6-c5 and checks!
+
