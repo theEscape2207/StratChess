@@ -155,9 +155,6 @@
     <ClInclude Include="..\StratEngine\StdAfx.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\StratEngine\typedef.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\StratEngine\Utils\BitTools.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>
