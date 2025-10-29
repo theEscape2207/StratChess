@@ -662,13 +662,13 @@ constexpr Array2D<BITBOARD, ALL_SQUARES, 256> makeMovesa1h8() {
 				if (j & (1 << x))
 					break;
 			}
-			for (int x = (iFile - iDiagonalStartFile) + 1; x < iDiagonalLength; ++x) {
+			for (unsigned int x = (iFile - iDiagonalStartFile) + 1; x < iDiagonalLength; ++x) {
 				bbMask += (UNIT << x);
 				if (j & (1 << x))
 					break;
 			}
 
-			for (int x = 0; x < iDiagonalLength; ++x) {
+			for (unsigned int x = 0; x < iDiagonalLength; ++x) {
 				bbMask2 += (((bbMask >> x) & 1) << (iDiagonalStart - (7 * x)));
 			}
 
@@ -700,13 +700,13 @@ constexpr Array2D<BITBOARD, ALL_SQUARES, 256> makeMovesa8h1() {
 				if (j & (1 << x))
 					break;
 			}
-			for (int x = (iFile - iDiagonalStartFile) + 1; x < iDiagonalLength; ++x) {
+			for (unsigned int x = (iFile - iDiagonalStartFile) + 1; x < iDiagonalLength; ++x) {
 				bbMask += (UNIT << x);
 				if (j & (1 << x))
 					break;
 			}
 
-			for (int x = 0; x < iDiagonalLength; ++x) {
+			for (unsigned int x = 0; x < iDiagonalLength; ++x) {
 				bbMask2 += (((bbMask >> x) & 1) << (iDiagonalStart + (9 * x)));
 			}
 
