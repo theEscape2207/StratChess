@@ -71,7 +71,7 @@ int AITrans::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta)
 	m_SearchCount++;
 
 	MoveList moveList;
-	moveList.reserve(MAX_PLY*8);
+	moveList.reserve(static_cast<size_t>(MAX_PLY)*8);
 
 	// Henter de lovlige traek
 	MoveGenerator::ComputeLegalMoves(info, moveList);

@@ -90,7 +90,7 @@ int ABIterative::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta, _Inout_ 
 	m_SearchCount++;
 
 	MoveList moveList;
-	moveList.reserve(MAX_PLY*8);
+	moveList.reserve(static_cast<size_t>(MAX_PLY)*8);
 	MoveGenerator::ComputeLegalMoves(info, moveList);
 	// Sorterer traekkene - iterativt
 	MoveSorter::SortMovesIter(moveList, GetParentMove(ply), GetIterMove(ply));
