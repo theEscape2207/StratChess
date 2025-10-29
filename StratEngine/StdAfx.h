@@ -5,7 +5,6 @@
 #endif
 
 #include "defines.h"
-#include "globals.h"
 
 #pragma warning (push)
 #pragma warning (disable :4505 4530)
