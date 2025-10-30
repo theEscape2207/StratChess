@@ -55,12 +55,12 @@ namespace PieceHelper
 		return (piece == ePiece::NO_PIECE);
 	}
 
-	static std::string FullName(_In_ enum ePiece piece)
+	static constexpr std::string FullName(_In_ enum ePiece piece)
 	{
 		return g_cPieceNamesVerbose[piece];
 	}
 
-	static char	ShortName(_In_ ePiece piece) noexcept
+	static constexpr char ShortName(_In_ ePiece piece) noexcept
 	{
 		return g_cPieceNames[piece];
 	}
@@ -75,7 +75,7 @@ namespace PieceHelper
 		return static_cast<ePiece>(piece & 1);
 	}
 
-	static std::string FullPawnName(_In_ ePiece piece)
+	static constexpr std::string FullPawnName(_In_ ePiece piece)
 	{
 		return g_cPieceNamesVerbose[AsPawn(piece)];
 	}
@@ -85,7 +85,7 @@ namespace PieceHelper
 		return piece != ePiece::NO_PIECE;
 	}
 
-	static unsigned int Value(_In_ ePiece piece) noexcept
+	static constexpr unsigned int Value(_In_ ePiece piece) noexcept
 	{
 		return (g_iPieceValues[piece >> 1]);
 	}
