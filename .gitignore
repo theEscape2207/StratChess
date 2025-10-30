@@ -363,3 +363,4 @@ MigrationBackup/
 FodyWeavers.xsd
 #And finally my own ignorable files
 /StratEngine/typedef.h
+/StratChessEvolved/gamelist.txt
