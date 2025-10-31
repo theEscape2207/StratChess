@@ -24,7 +24,7 @@ std::ostream& operator<<(std::ostream& os, _In_ const Move& m)
 		assert(PieceHelper::IsActual(m.MovPiece));
 		
 		// Print out in short notation
-		os << "Last move: " << m.Output().c_str() << std::endl;
+		os << "Last move: " << m.Output().c_str() << '\n';
 
 		const std::string strFrom = GetBoardCoord(m.From);
 		const std::string strTo	 = GetBoardCoord(m.To);
@@ -67,7 +67,7 @@ std::ostream& operator<<(std::ostream& os, _In_ const Move& m)
 	// is this a Checking move?
 	if ( m.IsCheck )
 		os << " and checks!";
-	os << std::endl;
+	os << '\n';
 	return os;
 }
 

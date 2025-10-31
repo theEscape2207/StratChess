@@ -82,7 +82,7 @@ std::ostream& operator<<(std::ostream& os, const Game& game)
 {
 	for (const auto& m : game.m_GameMoves)
 	{
-		os << m << std::endl;
+		os << m << '\n';
 	}
 	return os;
 }
@@ -140,7 +140,7 @@ void Game::Init()
 	}
 	catch (const spdlog::spdlog_ex& ex)
 	{
-		std::cout << "Log initialization failed: " << ex.what() << std::endl;
+		std::cout << "Log initialization failed: " << ex.what() << '\n';
 	}
 
 }
@@ -312,9 +312,9 @@ void Game::PrintStateMessage() const
 		// FIXME: Export the Max depth from the AIs
 		if (score >= GameValues::Mate - 10 || (-score >= GameValues::Mate - 10))
 			// Antal ply: GameValues::Mate-Lastscore. Antal traek: Ply+1/2 => (MATE-Last)/2
-			sstream << "Skakmat i " << ((GameValues::Mate - abs(score) + 1) / 2) << " traek" << std::endl;
+			sstream << "Skakmat i " << ((GameValues::Mate - abs(score) + 1) / 2) << " traek\n";
 		else
-			sstream << "Score: " << score << std::endl;
+			sstream << "Score: " << score << '\n';
 
 		spdlog::default_logger()->warn(sstream.str());
 	}
@@ -359,13 +359,13 @@ void Game::PrintBoardAndMove(const Move& move) const
 	const Board& board = Board::Instance();
 	// Print to various places
 	std::stringstream sstream;
-	sstream << "\nBoard " << GetBoardCount() << std::endl << std::endl;
+	sstream << "\nBoard " << GetBoardCount() << "\n\n";
 	sstream << board << move;
 	spdlog::default_logger()->warn(sstream.str());
 
 #ifdef PRINT_MOVES
-	outLegalMoves << "===============================================================" << std::endl << std::endl;
-	outLegalMoves << "\nBoard " << GetBoardCount() << std::endl << std::endl; //-V128
+	outLegalMoves << "===============================================================" << "\n\n";
+	outLegalMoves << "\nBoard " << GetBoardCount() << "\n\n"; //-V128
 	outLegalMoves << board;
 
 #endif // PRINT_MOVES
@@ -380,8 +380,8 @@ void Game::PrintBoardAndMove(const Move& move) const
 //***************************************
 void Game::PrintGameMoves()
 {
-	movesFile << "Move " << m_GameMoves.size() << std::endl; //-V128
-	movesFile << m_GameMoves.back() << std::endl;
+	movesFile << "Move " << m_GameMoves.size() << '\n'; //-V128
+	movesFile << m_GameMoves.back() << '\n';
 }
 
 //***************************************
@@ -419,8 +419,8 @@ void Game::AddFileHeader(std::ostream& file)const
 		file << "Time: " << std::put_time(&timeinfo, "%a, %d %b %Y %H:%M:%S %Z") << "\n\n";
 	}
 
-	file << "----------------------------------------------" << std::endl;
-	file << "White:" << m_pPlayers[WHITE]->getDescription() << std::endl;
-	file << "Black:" << m_pPlayers[BLACK]->getDescription() << std::endl;
-	file << "----------------------------------------------" << std::endl;
+	file << "----------------------------------------------\n";
+	file << "White:" << m_pPlayers[WHITE]->getDescription() << '\n';
+	file << "Black:" << m_pPlayers[BLACK]->getDescription() << '\n';
+	file << "----------------------------------------------\n";
 }

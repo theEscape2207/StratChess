@@ -507,10 +507,10 @@ std::ostream& operator<<(std::ostream& os, _In_ const Board& board )
 			// Udskriver brikken
 			os << " " << g_cPieceNames[piece];
 		}
-		os << std::endl;
+		os << '\n';
 	}
 
-	os << "\n   A B C D E F G H" << std::endl << std::endl;
+	os << "\n   A B C D E F G H\n\n";
 
 	return os;
 }

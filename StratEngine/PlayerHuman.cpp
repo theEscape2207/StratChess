@@ -48,7 +48,7 @@ Move PlayerHuman::GetMove(_Inout_ GameInfo& info)
 	{
 		std::stringstream moveMsg;
 		if (bInCheck)
-			moveMsg << "Du er skak!!" << std::endl;
+			moveMsg << "Du er skak!!\n";
 		moveMsg << "Dit traek: (format: e2e4, a7-e3, D7-D8Q)\nTraek> ";
 		spdlog::default_logger()->warn(moveMsg.str());
 		std::cin >> strOrg;
@@ -67,7 +67,7 @@ Move PlayerHuman::GetMove(_Inout_ GameInfo& info)
 		if (!ValidateInput(strMove))
 		{
 			std::stringstream sstream;
-			sstream << "Ugyldigt input: " << strOrg << "\nProev igen" << std::endl;
+			sstream << "Ugyldigt input: " << strOrg << "\nProev igen\n";
 			spdlog::default_logger()->info(sstream.str());
 			continue;
 		}
@@ -81,7 +81,7 @@ Move PlayerHuman::GetMove(_Inout_ GameInfo& info)
 		{
 			// Traekket blev ikke fundet af computeren, saa deeet...
 			std::stringstream sstream;
-			sstream << "Traekket: " << strOrg << " er ikke lovligt!" << std::endl;
+			sstream << "Traekket: " << strOrg << " er ikke lovligt!\n";
 			spdlog::default_logger()->warn(sstream.str());
 			continue;
 		}
