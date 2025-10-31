@@ -29,7 +29,7 @@ void MoveGenerator::ComputeLegalMoves(_In_ const GameInfo& info, _Inout_ MoveLis
 {
 	assert(moveList.empty());		// Check our preconditions ;-)
 
-	const eColor color = Board::Instance().GetCurrentColor();
+	const auto color = Board::Instance().GetCurrentColor();
 
 	const auto boards = Board::Instance().GetBitBoards();
 
@@ -247,7 +247,7 @@ void MoveGenerator::AddPawnPromoteMoves(const BITBOARD* bbBitBoards, MoveList &m
 	BITBOARD bbAttack = 0;
 
 	// Henter braetinformation fra Board-klassen
-	const eColor color = Board::Instance().GetCurrentColor();
+	const auto color = Board::Instance().GetCurrentColor();
 
 	if (color == BLACK)
 	{

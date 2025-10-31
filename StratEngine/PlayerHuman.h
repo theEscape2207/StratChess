@@ -18,7 +18,7 @@ public:
 	std::string getDescription() const	override
 	{	
 		std::stringstream sstream;
-		sstream << "\n\tPlayer type:\t" << GetType() << std::endl;
+		sstream << "\n\tPlayer type:\t" << GetType() << '\n';
 		return sstream.str();
 	}
 

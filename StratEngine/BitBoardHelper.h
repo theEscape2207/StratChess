@@ -30,10 +30,10 @@ namespace BitBoardHelper
 		{
 			stream << ((bb >> i) & UNIT);
 			if ((i & 7) == 7) {
-				stream << std::endl;
+				stream << '\n';
 			}
 		}
-		stream << std::endl;
+		stream << '\n';
 	}
 
 	// Clears the bits at the board specified by the mask

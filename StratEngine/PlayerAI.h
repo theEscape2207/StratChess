@@ -18,7 +18,7 @@ public:
 		std::stringstream str;
 		str << "\n\tEngine type:\t" << GetType() << 
 			"\n\tDepth:\t\t" << m_MaxDepth <<
-			"\n\tEvaluation:\t" << Eval->GetType() << std::endl;
+			"\n\tEvaluation:\t" << Eval->GetType() << '\n';
 		return str.str();
 	}
 	const char* GetType() const noexcept override		{ return "AI";	}
@@ -79,12 +79,12 @@ protected:
 	static void PrintMovesAndScore(std::ostream& stream, size_t numMove, size_t TotalCount, const Move& move, int score )
 	{
 		// Udskriver traekkene til fil
-		stream << "Move " << numMove+1 << " of " << TotalCount << std::endl //-V128
+		stream << "Move " << numMove + 1 << " of " << TotalCount << '\n' //-V128
 			<< move;
 		if (score != (-GameValues::Search_Init -1))
-			stream << "Score: " << score << std::endl << std::endl;
+			stream << "Score: " << score << "\n\n";
 		else
-			stream << "Invalid move!" << std::endl << std::endl;
+			stream << "Invalid move!" << "\n\n";
 	}
 
 	// ************************************

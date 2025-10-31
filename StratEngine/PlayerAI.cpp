@@ -146,7 +146,7 @@ void PlayerAiBase::StopTimer() const
 		<< std::setw(19) << m_TotalCount
 		<< std::setw(13) << m_TotalTime.count()
 		<< std::setw(13) << (m_TotalCount/m_TotalTime.count()) //-V104
-		<< std::endl;
+		<< '\n';
 
 //#endif // PRINT_STATS
 }
