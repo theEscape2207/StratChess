@@ -286,7 +286,7 @@ void MoveGenerator::AddPawnPromoteMoves(const BITBOARD* bbBitBoards, MoveList &m
 // Computes all possible moves, filters so only all captures, en passants and promotes remains and returns unsorted
 void MoveGenerator::ComputeCaptures(_In_ const GameInfo& info, _Inout_ MoveList& moveList)
 {
-	const eColor iColor = Board::Instance().GetCurrentColor();
+	const auto color = Board::Instance().GetCurrentColor();
 
 	const auto boards = Board::Instance().GetBitBoards();
 
@@ -294,7 +294,7 @@ void MoveGenerator::ComputeCaptures(_In_ const GameInfo& info, _Inout_ MoveList&
 	---------------------*/
 
 	//Captures (including en-passant and promotion-captures)
-	GeneratePawnCaptures(boards.data(), info, moveList, iColor);
+	GeneratePawnCaptures(boards.data(), info, moveList, color);
 
 	//Then normal Promotes
 	AddPawnPromoteMoves(boards.data(), moveList);
@@ -341,7 +341,7 @@ void MoveGenerator::AddOfficerMoves(MoveList& moveList, BITBOARD bbAttack, Move&
 // i stedet kunne man flytte det til DoMove() 
 void MoveGenerator::AddCastleMoves(MoveList& moveList, eColor color, const BITBOARD* bbBitBoards, const GameInfo &info)
 {
-	const eSquare sqFrom = Board::GetFirstPiece(bbBitBoards[static_cast<ePiece>(KING + color)]);	// There is only one king!!
+	const auto sqFrom = Board::GetFirstPiece(bbBitBoards[static_cast<ePiece>(KING + color)]);	// There is only one king!!
 	const Board& board = Board::Instance();
 
 	if (WHITE == color)
@@ -439,17 +439,17 @@ void MoveGenerator::AddCastleMoves(MoveList& moveList, eColor color, const BITBO
 // Bemaerk: color er for bonden i traekket
 void MoveGenerator::AddPawnCaptures(MoveList& moveList, const BITBOARD* bbBitBoards, Move& peasantMove)
 {
-	const eColor color = PieceHelper::Color(peasantMove.MovPiece);
+	const auto color = PieceHelper::Color(peasantMove.MovPiece);
 
 	// Forventer kun slag, hvor vi rent faktisk har en bonde paa fra-feltet!
 	assert(Bits::isAnyBitSet(bbBitBoards[color], g_bbMask[peasantMove.From]));
 
-	const Board& pBoard = Board::Instance();
+	const Board& board = Board::Instance();
 
 	// Almindeligt slag af brik ? 
 	if (IsCapture(bbBitBoards, color, peasantMove))
 	{
-		peasantMove.Content = pBoard.GetPiece(peasantMove.To);
+		peasantMove.Content = board.GetPiece(peasantMove.To);
 		assert(PieceHelper::IsActual(peasantMove.Content));
 		assert(PieceHelper::Color(peasantMove.Content) != PieceHelper::Color(peasantMove.MovPiece));
 
@@ -479,7 +479,7 @@ void MoveGenerator::AddPawnCaptures(MoveList& moveList, const BITBOARD* bbBitBoa
 	else
 	{
 		const eSquare epWhere = SquareHelper::PreviousRow(peasantMove.To, color);
-		peasantMove.Content = pBoard.GetPiece(epWhere);
+		peasantMove.Content = board.GetPiece(epWhere);
 		assert(peasantMove.Content == (BLACK_PAWN - color));
 		peasantMove.MovPiece = static_cast<ePiece>(PAWN + color);
 		peasantMove.Type = MoveType::En_Passant;
@@ -600,7 +600,7 @@ BITBOARD MoveGenerator::GetAttackBoard(eColor attackByColor) noexcept
 
 	/* Kongen */
 
-	eSquare iFrom = Board::GetFirstPiece(boards[KING + attackByColor]);
+	auto iFrom = Board::GetFirstPiece(boards[KING + attackByColor]);
 	bbAttackBoard |= g_bbKingMoves[iFrom] & ~(boards[ALL_FROM_COLOR + attackByColor]);
 
 

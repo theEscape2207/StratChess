@@ -716,22 +716,6 @@ constexpr Array2D<BITBOARD, ALL_SQUARES, 256> makeMovesa8h1() {
 	return result;
 }
 
-// ============= First Piece Lookup Table =============
-//constexpr std::array<int, 65536> makeFirstPiece() {
-//	std::array<int, 65536> result{};
-//
-//	for (int i = 0; i < 65536; ++i) {
-//		result[i] = -1;  // Default: no piece found
-//		for (int j = 0; j < 16; ++j) {
-//			if (i & (1 << j)) {
-//				result[i] = j;
-//				break;
-//			}
-//		}
-//	}
-//	return result;
-//}
-
 // ============= Inline Global Variables =============
 inline constexpr auto g_bbKnightMoves = makeKnightMoves();
 inline constexpr auto g_bbKingMoves = makeKingMoves();
@@ -739,7 +723,6 @@ inline constexpr auto g_bbMovesRank = makeMovesRank();
 inline constexpr auto g_bbMovesFile = makeMovesFile();
 inline constexpr auto g_bbMovesa1h8 = makeMovesa1h8();
 inline constexpr auto g_bbMovesa8h1 = makeMovesa8h1();
-//inline constexpr auto g_iFirstPiece = makeFirstPiece();
 
 #define PRINT_STATS							1;
 

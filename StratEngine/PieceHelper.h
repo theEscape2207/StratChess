@@ -25,42 +25,42 @@ namespace PieceHelper
 	*	methods
 	*/
 
-	static constexpr bool IsOfType(_In_ ePiece piece, _In_ ePieceType type) noexcept
+	static inline constexpr bool IsOfType(_In_ ePiece piece, _In_ ePieceType type) noexcept
 	{
 		return ((piece >> 1) == (type >> 1));
 	}
 
-	static constexpr bool IsOfPiece(_In_ ePiece piece, _In_ ePiece type) noexcept
+	static inline constexpr bool IsOfPiece(_In_ ePiece piece, _In_ ePiece type) noexcept
 	{
 		return (piece == type);
 	}
 
-	static constexpr bool IsActual(_In_ ePiece piece) noexcept
+	static inline constexpr bool IsActual(_In_ ePiece piece) noexcept
 	{
 		return (ePiece::WHITE_PAWN <= piece) && (piece <= ePiece::BLACK_KING);
 	}
 
-	static constexpr bool IsPawn(_In_ ePiece piece) noexcept
+	static inline constexpr bool IsPawn(_In_ ePiece piece) noexcept
 	{
 		return IsOfType(piece, PAWN);
 	}
 
-	static constexpr bool IsKing(_In_ ePiece piece) noexcept
+	static inline constexpr bool IsKing(_In_ ePiece piece) noexcept
 	{
 		return IsOfType(piece, KING);
 	}
 
-	static constexpr bool IsNoPiece(_In_ ePiece piece) noexcept
+	static inline constexpr bool IsNoPiece(_In_ ePiece piece) noexcept
 	{
 		return (piece == ePiece::NO_PIECE);
 	}
 
-	static constexpr std::string FullName(_In_ enum ePiece piece)
+	static inline constexpr std::string FullName(_In_ enum ePiece piece)
 	{
 		return g_cPieceNamesVerbose[piece];
 	}
 
-	static constexpr char ShortName(_In_ ePiece piece) noexcept
+	static inline constexpr char ShortName(_In_ ePiece piece) noexcept
 	{
 		return g_cPieceNames[piece];
 	}
@@ -70,27 +70,27 @@ namespace PieceHelper
 	/// </summary>
 	/// <param name="piece">The Piece</param>
 	/// <returns>The corresponding Pawn of same color</returns>
-	static constexpr ePiece AsPawn(_In_ ePiece piece) noexcept
+	static inline constexpr ePiece AsPawn(_In_ ePiece piece) noexcept
 	{
 		return static_cast<ePiece>(piece & 1);
 	}
 
-	static constexpr std::string FullPawnName(_In_ ePiece piece)
+	static inline constexpr std::string FullPawnName(_In_ ePiece piece)
 	{
 		return g_cPieceNamesVerbose[AsPawn(piece)];
 	}
 
-	static constexpr bool IsNotEmpty(_In_ ePiece piece) noexcept
+	static inline constexpr bool IsNotEmpty(_In_ ePiece piece) noexcept
 	{
 		return piece != ePiece::NO_PIECE;
 	}
 
-	static constexpr unsigned int Value(_In_ ePiece piece) noexcept
+	static inline constexpr unsigned int Value(_In_ ePiece piece) noexcept
 	{
 		return (g_iPieceValues[piece >> 1]);
 	}
 
-	static constexpr eColor Color(_In_ ePiece piece) noexcept
+	static inline constexpr eColor Color(_In_ ePiece piece) noexcept
 	{
 		return static_cast<eColor>(piece & 1);
 	}

@@ -2,7 +2,6 @@
 
 #include <functional>
 #include <unordered_map>
-#include <iostream>
 
 template<typename T>
 class Event {
@@ -41,10 +40,3 @@ public:
         theEvent.fire(this, n);
     }
 };
-
-//class Target {
-//public:
-//    void onEvent(const void* sender, int& arg) {
-//        std::cout << "onEvent: " << arg << std::endl;
-//    }
-//};
