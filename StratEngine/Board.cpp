@@ -491,19 +491,26 @@ void Board::PrintAllBitboards(_In_ const TBitboards& boards, std::ostream& strea
 // Printer boardet til streamen
 std::ostream& operator<<(std::ostream& os, _In_ const Board& board )
 {
-	for(unsigned int iRank=0; iRank<8; iRank++)
-	{
-		os << ONE_ROW-iRank << " ";
+	constexpr std::size_t numRanks = 8;
+	constexpr std::size_t numFiles = 8;
 
-		for(unsigned int iFile=0; iFile<8; iFile++)
+	for(unsigned int rank=0; rank < numRanks; ++rank)
+	{
+		os << ONE_ROW-rank << " ";
+
+		for(unsigned int file=0; file < numFiles; ++file)
 		{
-			const BITBOARD mask = g_bbMask[(iRank << 3) + iFile];
+			const BITBOARD squareMask = g_bbMask[(rank << 3) + file];
 			
 			// Skanner bitboards for at finde om der staar en brik paa feltet
-			unsigned int piece = 0;
-			while ((piece < ALL_PIECETYPES) && ((mask & board.m_bitboards[piece]) == 0))
-				piece++;
+			std::size_t piece = 0;
+			while ((piece < ALL_PIECETYPES) && ((squareMask & board.m_bitboards[piece]) == 0))
+				++piece;
 			
+			// Hvis ingen brik fundet, sæt piece til tom-felt indeks
+			if (piece >= ALL_PIECETYPES) {
+				piece = ALL_PIECETYPES;
+			}
 			// Udskriver brikken
 			os << " " << g_cPieceNames[piece];
 		}

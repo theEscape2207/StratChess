@@ -599,7 +599,7 @@ constexpr Array2D<BITBOARD, ALL_SQUARES, 256> makeMovesRank() {
 				if (j & (1 << x))
 					break;
 			}
-			for (int x = iFile + 1; x < 8; ++x) {
+			for (unsigned int x = iFile + 1; x < 8; ++x) {
 				bbMask += (UNIT << x);
 				if (j & (1 << x))
 					break;
