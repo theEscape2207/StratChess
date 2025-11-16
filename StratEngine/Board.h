@@ -99,18 +99,6 @@ public:
 		return static_cast<eSquare>(index);
 	}
 
-	// Return the first square a piece is residing
-	//static eSquare FirstPiece(_In_ const BITBOARD& BB)
-	//{
-	//	if (BitTools::isAnyBitSet(BB, FIRST_TWO_RANKS_MASK)) 
-	//		return static_cast<eSquare>(g_iFirstPiece[BB & FIRST_TWO_RANKS_MASK]);
-	//	if (BitTools::isAnyBitSet(BB, SECOND_TWO_RANKS_MASK)) 
-	//		return static_cast<eSquare>(g_iFirstPiece[(BB >> 16) & FIRST_TWO_RANKS_MASK] + 16);
-	//	if (BitTools::isAnyBitSet(BB, THIRD_TWO_RANKS_MASK)) 
-	//		return static_cast<eSquare>(g_iFirstPiece[(BB >> 32) & FIRST_TWO_RANKS_MASK] + 32);
-	//	return static_cast<eSquare>(g_iFirstPiece[BB >> 48] + 48);
-	//}
-
 	Board& operator=(const Board&) = delete;
 	Board(const Board&) = delete;
 	Board(Board&&) = delete;
