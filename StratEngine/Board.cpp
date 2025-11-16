@@ -666,23 +666,12 @@ void Board::ClearHashTable()
 //	too many hash collisions.
 void Board::InitHashkey()
 {
-
-	//Poco::Random random;	// 32-bit random generator
-	//random.seed();
-	//for (int piece = ePiece::WHITE_PAWN; piece <= ePiece::BLACK_KING; ++piece)
-	//	for (int square = 0; square < ALL_SQUARES; ++square)
-	//		allHashKeys[piece][square] = random.next();
-
-
 	// Create random device and seed mt19937 engine
 	std::random_device rd;
 	std::mt19937 rng(rd());  // non-deterministic seed
 
 	// Distribution to fill with 64-bit keys
 	std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
-
-	// Array to store hash keys for each piece-square
-	//std::array<std::array<uint64_t, ALL_SQUARES>, ALL_PIECETYPES> allHashKeys;
 
 	// Fill hash keys
 	for (int piece = ePiece::WHITE_PAWN; piece < ALL_PIECETYPES; ++piece) {

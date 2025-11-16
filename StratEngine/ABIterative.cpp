@@ -39,15 +39,15 @@ Move ABIterative::GetMove(_Inout_ GameInfo& info)
 		//Kald vores iterative soegerutine (resetting alpha and beta)
 		const int score = Search(0, alpha, beta, m_Line);
 
-		if (score != GetBestScore())
-			spdlog::default_logger()->debug("ABIterative: iScore != GetBestScore - when does this happen?");
+		/*if (score != GetBestScore())
+			spdlog::default_logger()->debug("ABIterative: iScore != GetBestScore - when does this happen?");*/
 
 		// Spillet er slut (mat, remis) - ingen grund til at soege videre!!
 		if (m_Line.size() != m_Depth)
 			break;
 
-		if (m_Line.front() != m_BestMove)
-			spdlog::default_logger()->debug("ABIterative: iScore != GetBestScore - when does this happen?");
+		/*if (m_Line.front() != m_BestMove)
+			spdlog::default_logger()->debug("ABIterative: iScore != GetBestScore - when does this happen?");*/
 
 		// We've gotten a new move in the PVLine
 		ENewPVLineMove.fire(this, m_Line);
