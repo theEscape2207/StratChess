@@ -78,6 +78,7 @@ constexpr auto MAX_PLY = 32;
 enum GameValues
 {
 	Draw = 0,								// 
+	Mate_Threshold = 29900,					// Above this - we've found a mate
 	Mate = 30000,							// Arbitraer _hoej_ vaerdi for mat
 	Search_Init = 50000,					// Start-vaerdier for alpha-beta soegningen
 	Unknown_Hash = 65000					// Bruges i Transposition tables

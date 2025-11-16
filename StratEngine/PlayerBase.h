@@ -16,6 +16,7 @@ public:
 						AIAGENT,				// 3
 						AITRANS,				// 4
 						ABITERATIVE_TRANS,		// 5
+						AI_PERPLEX,				// 6
 						};
 	// Non-virtual
 	
