@@ -28,7 +28,7 @@ Move AITrans::GetMove(_Inout_ GameInfo& info)
 	//Kalder den Almindelige rekursive alphabeta soegning
 	Search(0, -GameValues::Search_Init, GameValues::Search_Init);
 
-	StopTimer();
+	StopTimerAndAdjustVars();
 
 	CheckGameOver(info);
 
@@ -43,7 +43,7 @@ int AITrans::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta)
 	const GameInfo& info = GetLastBoardInfo(ply);
 
 	// Test for 50 moves rule
-	if (IsFiftyMoves(info))
+	if (checkDraws(info, ply))
 		return GameValues::Draw;
 
 	if (ply)	// Det her behoever naturligvis ikke vaere det bedste traek i denne hoejde, men vi kan altid bruge det i traeksorteringen
