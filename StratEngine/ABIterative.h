@@ -22,5 +22,5 @@ public:
 	ABIterative(ABIterative&&) = delete;
 	ABIterative& operator=(ABIterative&&) = delete;
 private:
-	int Search( _In_ size_t ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& pline);
+	int Search(int ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& pline);
 };

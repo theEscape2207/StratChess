@@ -53,7 +53,7 @@ Move ABIterative::GetMove(_Inout_ GameInfo& info)
 		ENewPVLineMove.fire(this, m_Line);
 	}
 
-	StopTimer();
+	StopTimerAndAdjustVars();
 
 	CheckGameOver(info);
 
@@ -70,12 +70,12 @@ Move ABIterative::GetMove(_Inout_ GameInfo& info)
 ///			 :  int iBeta - 
 // Parameter:  PVLine& pline - 
 // ************************************
-int ABIterative::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& pline)
+int ABIterative::Search(int ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& pline)
 {
 	const GameInfo& info = GetLastBoardInfo(ply);
 
 	// Test for 50 moves rule
-	if (IsFiftyMoves(info))
+	if (checkDraws(info, ply))
 		return GameValues::Draw;
 
 	// Er vi naaet til bunden af traeet - leaf nodes?

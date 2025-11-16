@@ -83,7 +83,7 @@ Move ABIterTrans::GetMove(_Inout_ GameInfo& info)
 		++m_Depth;	// _Skal_ opdateres her, da "continue" bliver brugt ovenover
 	}
 
-	StopTimer();
+	StopTimerAndAdjustVars();
 
 	CheckGameOver(info);
 
@@ -98,7 +98,7 @@ int ABIterTrans::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta, _Inout_ 
 	const GameInfo& info = GetLastBoardInfo(ply);
 
 	// Test for 50 moves rule
-	if (IsFiftyMoves(info))
+	if (checkDraws(info, ply))
 		return GameValues::Draw;
 
 	if (ply)

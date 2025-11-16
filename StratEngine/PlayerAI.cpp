@@ -128,7 +128,7 @@ Move PlayerAiBase::GetBestMove(_In_ GameInfo& info ) noexcept
 // Returns:     void - 
 // Remark:      
 // ************************************
-void PlayerAiBase::StopTimer() const 
+std::chrono::milliseconds PlayerAiBase::StopTimerAndAdjustVars() const 
 {
 	auto end = std::chrono::high_resolution_clock::now();
 	auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(end - _startingTime);
@@ -149,6 +149,7 @@ void PlayerAiBase::StopTimer() const
 		<< '\n';
 
 //#endif // PRINT_STATS
+	return elapsedMs;
 }
 
 // ************************************

@@ -54,7 +54,7 @@ protected:
 	int Quiescent(size_t, int, int );
 
 	// Registers the amount of used time and prints out if PRINT_STATS is set
-	void StopTimer() const;
+	std::chrono::milliseconds StopTimerAndAdjustVars() const;
 
 	// Tilfoejer dette traek til nuvaerende traekfoelge	
 	// Sletter eksisterende traek fra listen fra denne ply og ned
@@ -159,7 +159,7 @@ protected:
 	// Parameter:   const BoardInfo& info - 
 	// Remark:		
 	// ************************************
-	static bool IsFiftyMoves( const GameInfo& info) noexcept
+	bool checkDraws(const GameInfo& info, int ply) const noexcept
 	{
 		if ( info.fiftyCount >= 50 )
 		{
