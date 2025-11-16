@@ -236,6 +236,7 @@ public:
 	// Resets all memory in the HashTable
 	void ClearHashTable();
 
+	unsigned int GetCurBoardHKey() const noexcept { return curBoardHashKey; }
 private:
 
 	//-----------------------------------------------
@@ -246,5 +247,4 @@ private:
 	void InitHashkey();
 	
 	void SetCurBoardHKey(_In_ unsigned int newkey) noexcept {	curBoardHashKey = newkey;	}
-	unsigned int GetCurBoardHKey() const noexcept {	return curBoardHashKey;		}
 };

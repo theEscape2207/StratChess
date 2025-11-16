@@ -75,6 +75,9 @@
     <ClCompile Include="..\StratEngine\TranspositionTable.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\StratEngine\AIPerplex.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\StratEngine\ABIterative.h">
@@ -165,6 +168,9 @@
       <Filter>Header Files\Util</Filter>
     </ClInclude>
     <ClInclude Include="..\StratEngine\TranspositionTable.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\StratEngine\AIPerplex.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

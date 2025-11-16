@@ -134,6 +134,7 @@
     <ClCompile Include="..\StratEngine\ABIterTrans.cpp" />
     <ClCompile Include="..\StratEngine\AIAgent.cpp" />
     <ClCompile Include="..\StratEngine\AIBasic.cpp" />
+    <ClCompile Include="..\StratEngine\AIPerplex.cpp" />
     <ClCompile Include="..\StratEngine\AITrans.cpp" />
     <ClCompile Include="..\StratEngine\Board.cpp" />
     <ClCompile Include="..\StratEngine\Config.cpp" />
@@ -155,6 +156,7 @@
     <ClInclude Include="..\StratEngine\ABIterTrans.h" />
     <ClInclude Include="..\StratEngine\AIAgent.h" />
     <ClInclude Include="..\StratEngine\AIBasic.h" />
+    <ClInclude Include="..\StratEngine\AIPerplex.h" />
     <ClInclude Include="..\StratEngine\AITrans.h" />
     <ClInclude Include="..\StratEngine\BitBoardHelper.h" />
     <ClInclude Include="..\StratEngine\Board.h" />
