@@ -172,5 +172,8 @@
     <None Include="game_settings.json">
       <Filter>Resource Files</Filter>
     </None>
+    <None Include="Developer Guidelines.md" />
+    <None Include="Improving Chess Engine ELO rating.md" />
+    <None Include="Position_Class_Documentation.md" />
   </ItemGroup>
 </Project>
