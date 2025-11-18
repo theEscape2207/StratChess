@@ -37,7 +37,7 @@ Move ABIterative::GetMove(_Inout_ GameInfo& info)
 		//	break;
 
 		//Kald vores iterative soegerutine (resetting alpha and beta)
-		const int score = Search(0, alpha, beta, m_Line);
+		/*const int score =*/ Search(0, alpha, beta, m_Line);
 
 		/*if (score != GetBestScore())
 			spdlog::default_logger()->debug("ABIterative: iScore != GetBestScore - when does this happen?");*/
