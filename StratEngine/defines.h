@@ -406,7 +406,7 @@ inline constexpr auto g_cPieceNames = initPieceNames();
 
 // Setup verbose piece names
 inline constexpr auto initLongPieceNames() {
-	std::array<const char*, ALL_PIECETYPES + 1> names{};
+	std::array<const char*, ALL_PIECETYPES> names{};
 	names[WHITE_PAWN] = "White pawn";
 	names[BLACK_PAWN] = "Black pawn";
 	names[WHITE_KNIGHT] = "White knight";
