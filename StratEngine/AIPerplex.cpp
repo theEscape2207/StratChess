@@ -7,9 +7,53 @@
 #include "MoveGenerator.h"
 
 #include "TranspositionTable.h"
+#include "Utils/Logger.h"
+#include <spdlog/async.h>
+#include <spdlog/async_logger.h>
+#include <spdlog/common.h>
+#include <spdlog/logger.h>
+#include <spdlog/sinks/basic_file_sink.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
 
 extern std::ofstream outLegalMoves;
 
+static std::shared_ptr<spdlog::logger> s_logger = nullptr;
+static void ensure_logger_initialized()
+{
+	// ensure the general default logger is initialized first (no-op if already)
+	Engine::Logger::InitDefault();
+	if (s_logger) return;
+	
+	// create AIPerplex specific logger if desired
+	// Use spdlog directly via Engine::Logger utilities
+	if (!Engine::Logger::GetLogger("AIPerplex")) {
+		try {
+			// create an async logger specifically for AIPerplex diagnostics - small thread pool (queue size 8192, 1 backing thread)
+			spdlog::init_thread_pool(8192, 1);
+			auto tp = spdlog::thread_pool();
+
+			// add both console and file sinks (file sink keeps a record for diagnostics)
+			auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+			console_sink->set_level(spdlog::level::info);
+			console_sink->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
+			auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("aiperplex.log", true);
+			file_sink->set_level(spdlog::level::debug);
+
+			s_logger = std::make_shared<spdlog::async_logger>(
+				"AIPerplex",
+				spdlog::sinks_init_list{ console_sink, file_sink },
+				tp,
+				spdlog::async_overflow_policy::block);
+
+			spdlog::register_logger(s_logger);
+			s_logger->set_level(spdlog::level::info);
+			s_logger->flush_on(spdlog::level::info);
+		}
+		catch (...) {
+			// best-effort; leave it empty if creation fails
+		}
+	}
+}
 // PVS Iterative transpositional alpha beta search
 // Transposition tables
 Move AIPerplex::GetMove(_Inout_ GameInfo& info)
@@ -25,10 +69,13 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info)
 	int score = iterative_deepening(m_MaxDepth, tt, pv_table);
 
 	auto elapsed = StopTimerAndAdjustVars();
-	std::cout << "\nFinal score: " << score << "\n";
-	std::cout << "Elapsed time (ms): "
-		<< elapsed << "\n";
-
+	if (IsVerboseLoggingEnabled()) {
+		ensure_logger_initialized();
+		if (s_logger) {
+			s_logger->info("Final score: {}", score);
+			s_logger->info("Elapsed time (ms): {}", elapsed.count());
+		}
+	}
 	CheckGameOver(info);
 
 	Move bestMove = pv_table.get_pv_move(0);
@@ -87,10 +134,23 @@ int AIPerplex::iterative_deepening(int max_depth, TranspositionTable& tt, PVTabl
 		// We've gotten a new move in the PVLine - send it to listeners
 		//ENewPVLineMove.fire(this, m_Line);
 		// FIXME - re-migrate to Subscriber pattern
-		std::cout << "Depth " << depth << ": Best value = " << best_value << "\tPV:";
-		for (int i = 0; i < pv_table.get_length(0) && i < 10; ++i) {
-			auto move = pv_table.get_line(0)[i];
-			std::cout << move.Output().c_str() << ", ";
+		
+		// Verbose per-depth output is expensive; gate it behind the runtime flag
+		if (IsVerboseLoggingEnabled())
+		{
+			ensure_logger_initialized();
+			if (s_logger) {
+				// Build PV string efficiently
+				std::string pv_line;
+				pv_line.reserve(64);
+				int len = std::min(pv_table.get_length(0), 10);
+				for (int i = 0; i < len; ++i) {
+					if (i) pv_line += ", ";
+					pv_line += pv_table.get_line(0)[i].Output();
+				}
+				s_logger->info("Depth {:>2}: Score: {:>5} Best: {}",
+					depth, best_value, pv_line/*, tt.count_entries(), tt.count_pv_nodes()*/);
+			}
 		}
 		std::cout << " (TT: " << tt.count_entries() << ", PV nodes: " << tt.count_pv_nodes() << ")\n";
 	}
@@ -430,11 +490,12 @@ void AIPerplex::debug_tt_cache_misses(unsigned int key, int ply)
 	tt_misses.emplace(key, ply);
 	if (tt_misses.size() % 2000 == 0)
 	{
-		std::cout << "Total inserts: " << tt_misses.size() << "\n\n";
+		ensure_logger_initialized();
+		if (!s_logger) return;
 
-		// Single bulk query: Find all keys with count > 1
-		std::cout << "Zobrist hash collisions (count > 1):\n";
-		std::cout << "===================================\n";
+		s_logger->info("Total inserts: {}", tt_misses.size());
+		s_logger->info("Zobrist hash collisions (count > 1):");
+		s_logger->info("===================================");
 
 		int duplicateKeyCount = 0;
 		size_t totalDuplicateEntries = 0;
@@ -447,27 +508,21 @@ void AIPerplex::debug_tt_cache_misses(unsigned int key, int ply)
 				duplicateKeyCount++;
 				totalDuplicateEntries += count;
 
-				std::cout << "Hash: " << miss_key << " (collisions: " << count << ")\n";
-
-				// Get all entries for this key
-				/*auto range = tt_misses.equal_range(miss_key);
-				for (auto it2 = range.first; it2 != range.second; ++it2) {
-				std::cout << "  -> " << it2->second << "\n";
-				}*/
+				s_logger->info("Hash: {} (collisions: {})", miss_key, count);
 			}
 
 			// Skip to next unique key
 			it = tt_misses.upper_bound(miss_key);
 		}
 
-		std::cout << "\nAnalysis Summary:\n";
-		std::cout << "  Total cache misses: " << tt_misses.size() << "\n";
-		std::cout << "  Unique zobrist hashes: " << std::distance(tt_misses.begin(), tt_misses.end()) << "\n";
-		std::cout << "  Collision groups (count > 1): " << duplicateKeyCount << "\n";
-		std::cout << "  Total entries in collisions: " << totalDuplicateEntries << "\n";
-		std::cout << "  Collision rate: "
-			<< (totalDuplicateEntries * 100.0 / tt_misses.size())
-			<< "%\n";
+		s_logger->info("\nAnalysis Summary:");
+		s_logger->info("  Total cache misses: {}", tt_misses.size());
+		s_logger->info("  Unique zobrist hashes: {}", std::distance(tt_misses.begin(), tt_misses.end()));
+		s_logger->info("  Collision groups (count > 1): {}", duplicateKeyCount);
+		s_logger->info("  Total entries in collisions: {}", totalDuplicateEntries);
+		double rate = 0.0;
+		if (!tt_misses.empty()) rate = (totalDuplicateEntries * 100.0 / tt_misses.size());
+		s_logger->info("  Collision rate: {}%", rate);
 	}
 }
 

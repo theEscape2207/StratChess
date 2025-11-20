@@ -35,7 +35,13 @@ private:
 	int quiescence(int alpha, int beta, int depth_q, int ply, TranspositionTable& tt);
 
 
-	int _searchCount;
+	// logging control: enable detailed logging when needed (default: false)
+	static inline bool s_verbose_logging = false;
+
+public:
+	// Configure logger verbosity at runtime (call before heavy runs if needed)
+	static void SetVerboseLogging(bool enabled) noexcept { s_verbose_logging = enabled; }
+	static bool IsVerboseLoggingEnabled() noexcept { return s_verbose_logging; }
 
 	// for debugging
 	void debug_tt_cache_misses(unsigned int key, int ply);

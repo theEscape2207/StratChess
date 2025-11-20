@@ -149,6 +149,7 @@
     <ClCompile Include="..\StratEngine\Sort.cpp" />
     <ClCompile Include="..\StratEngine\StdAfx.cpp" />
     <ClCompile Include="..\StratEngine\TranspositionTable.cpp" />
+    <ClCompile Include="..\StratEngine\Utils\Logger.cpp" />
     <ClCompile Include="StratChessEvolved.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -181,6 +182,7 @@
     <ClInclude Include="..\StratEngine\StdAfx.h" />
     <ClInclude Include="..\StratEngine\TranspositionTable.h" />
     <ClInclude Include="..\StratEngine\Utils\BitTools.h" />
+    <ClInclude Include="..\StratEngine\Utils\Logger.h" />
     <ClInclude Include="..\StratEngine\Utils\StrHelper.h" />
     <ClInclude Include="..\StratEngine\Utils\Subscriber.h" />
   </ItemGroup>
