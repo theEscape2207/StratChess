@@ -1,6 +1,8 @@
 #pragma once
 
 #include "PieceHelper.h"
+#include <memory>
+#include "defines.h"
 
 class EvalManager
 {

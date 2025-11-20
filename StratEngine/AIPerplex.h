@@ -1,9 +1,10 @@
 #pragma once
-#include <map>
-
 #include "PlayerAiIterBase.h"
-
 #include "TranspositionTable.h"
+#include <map>
+#include <memory>
+#include <cstdint>
+//#include "Move.h"
 
 class Move;
 

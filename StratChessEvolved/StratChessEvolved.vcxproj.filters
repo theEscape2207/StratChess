@@ -16,6 +16,9 @@
     <Filter Include="Header Files\Util">
       <UniqueIdentifier>{74fbe0de-f915-4f24-a91d-747114916b67}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\Utils">
+      <UniqueIdentifier>{2b793dc4-93cd-4f50-804e-b9eae965c60e}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="StratChessEvolved.cpp">

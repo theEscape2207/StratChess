@@ -20,6 +20,8 @@
 
 #include "Utils/BitTools.h"
 #include <cassert>
+#include <iostream>
+#include <ostream>
 
 namespace BitBoardHelper
 {

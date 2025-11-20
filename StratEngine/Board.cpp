@@ -547,7 +547,7 @@ std::pair<int, Move> Board::ProbeHash(_In_ size_t ply, _In_ int alpha, _In_ int 
 	if (cit != hashTable_.end())
 	{
 		const HashElement& elem = cit->second;
-		assert(elem.key == GetCurBoardHKey());
+		assert(elem.hkey == GetCurBoardHKey());
 		assert(ply > 0);	// <- Should be removed, just to test size_t -> unsigned int conversion
 		if( elem.iDepth >= ply )
 		{
@@ -615,7 +615,7 @@ void Board::RecordHash(_In_ size_t ply, _In_ int score, _In_ eHashFlags flags, _
 	 */
 
 	HashElement newElem; 
-	newElem.key = GetCurBoardHKey();
+	newElem.hkey = GetCurBoardHKey();
 	newElem.iValue = score;
 	newElem.iDepth = static_cast<unsigned short>(ply);
 	newElem.hashflag = flags;

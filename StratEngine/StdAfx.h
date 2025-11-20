@@ -22,4 +22,3 @@
 #include <spdlog/spdlog.h>
 
 using BitSpan = std::span<BITBOARD>;
-using BitArray = std::array<BITBOARD, ALL_BITBOARDS>;
