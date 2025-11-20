@@ -1,10 +1,4 @@
-// StratChessEvolved.cpp : This file contains the 'main' function. Program execution begins and ends there.
-//
-
-#include <iostream>
-#include <memory>
-
-// This is an independent project of an individual developer. Dear PVS-Studio, please check it.
+﻿// This is an independent project of an individual developer. Dear PVS-Studio, please check it.
 
 // PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 #include "StdAfx.h"
@@ -21,7 +15,7 @@ public:
 	Chess() = default;
 
 protected:
-
+	
 	//void defineOptions(OptionSet& options) override
 	//{
 	//	Application::defineOptions(options);
