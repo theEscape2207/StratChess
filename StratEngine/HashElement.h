@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Move.h"
+#include "defines.h"
 
 enum class eHashFlags 
 { 
@@ -12,7 +13,7 @@ enum class eHashFlags
 
 struct HashElement
 {
-	UINT64 key{ 0 };		// TODO: This key is unused
+	__int64 hkey{ 0 };		// TODO: This key is unused
 	
 	eHashFlags hashflag{ eHashFlags::hashfNoValue };
 	int iValue{ GameValues::Unknown_Hash };
@@ -23,7 +24,7 @@ struct HashElement
 	
 	void Clear() noexcept
 	{
-		key = 0;
+		hkey = 0;
 		iDepth = 0;
 		iValue = GameValues::Unknown_Hash;
 		hashflag = eHashFlags::hashfNoValue;

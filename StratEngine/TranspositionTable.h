@@ -1,6 +1,4 @@
 #pragma once
-
-#include <iostream>
 #include <vector>
 #include <limits>
 #include <chrono>
@@ -11,7 +9,6 @@
 #include <array>
 
 #include <cassert>
-
 #include "Move.h"
 
 enum class BoundType : uint8_t {

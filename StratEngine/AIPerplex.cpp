@@ -3,17 +3,28 @@
 // PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 #include "StdAfx.h"
 #include "AIPerplex.h"
-#include "Sort.h"
 #include "MoveGenerator.h"
-
+#include "Sort.h"
 #include "TranspositionTable.h"
 #include "Utils/Logger.h"
+#include "defines.h"
+#include "Move.h"
+#include "PlayerAiIterBase.h"
+#include <algorithm>
+#include <cassert>
+#include <cstdint>
+#include <fstream>
+#include <iterator>
+#include <memory>
 #include <spdlog/async.h>
 #include <spdlog/async_logger.h>
 #include <spdlog/common.h>
 #include <spdlog/logger.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <string>
+#include <utility>
+#include <vector>
 
 extern std::ofstream outLegalMoves;
 

@@ -7,7 +7,7 @@
 #include "PieceHelper.h"
 
 #include <unordered_map>
-
+#include <span>
 #include <tuple>
 
 #include <intrin.h>	// For _BitScanForward64
@@ -121,12 +121,12 @@ public:
 	}
 
 	// Thin helper around ClearBit - Only for normal Bitboards
-	bool ClearBitboardSquare( _In_ BitArray::size_type iBoard, _In_ eSquare square ) {
+	bool ClearBitboardSquare( _In_ TBitboards::size_type iBoard, _In_ eSquare square ) {
 		return BitBoardHelper::ClearBitboardMask(m_bitboards[iBoard], g_bbMask[square]);
 	}
 
 	// Thin helper around SetBit - Only for normal Bitboards
-	void SetBitboardSquare( _In_ BitArray::size_type iPiece, _In_  eSquare square ) noexcept {
+	void SetBitboardSquare( _In_ TBitboards::size_type iPiece, _In_  eSquare square ) noexcept {
 		BitBoardHelper::SetBitboardMask(m_bitboards[iPiece], g_bbMask[square] );
 	}
 
