@@ -14,6 +14,7 @@ This project focuses on developing a modern chess engine using C++20. The aim is
 - Keep code clear, modular, and consistent in style.
 - Document non-trivial logic, performance-critical paths, and design decisions.
 - Favor modern C++ idioms (RAII, strong types, move semantics, constexpr) to minimize complexity and unintended side effects.
+- Language in naming and commenting should be precise, unambiguous and in English.
 
 ### Quality Assurance
 - Verify all changes through testing, benchmarking, or controlled match comparisons.
@@ -39,7 +40,7 @@ This project focuses on developing a modern chess engine using C++20. The aim is
 
 ## Development Constraints
 - Must maintain or improve search accuracy and ELO; any regression must be explicitly justified.
-- No new external dependencies without approval.
+- No new external dependencies without approval. Ask for exceptions with a clear rationale.
 - All changes must be thread-safe, especially those touching shared data paths or transposition tables.
 - Integrate changes cleanly within the existing codebase and established architecture.
 - Prioritize clarity over low-level micro-optimizations unless significantly justified by measurable results.
