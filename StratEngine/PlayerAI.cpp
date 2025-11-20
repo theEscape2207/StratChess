@@ -6,7 +6,9 @@
 #include "PlayerAI.h"
 #include "Sort.h"		// Different Move sorting heuristics
 #include "MoveGenerator.h"
-
+#include "Utils/Logger.h"
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/basic_file_sink.h>
 #include <iomanip>		// setw() osv.
 
 // Used in StopTimer()
@@ -132,21 +134,47 @@ std::chrono::milliseconds PlayerAiBase::StopTimerAndAdjustVars() const
 {
 	auto end = std::chrono::high_resolution_clock::now();
 	auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(end - _startingTime);
-
 	if( elapsedMs == std::chrono::milliseconds(0))
 		elapsedMs = std::chrono::milliseconds(1);
 	m_TotalTime += elapsedMs;
 	m_TotalCount += m_SearchCount;
 	
 //#ifdef PRINT_STATS
-	// TODO: Move this out of Player area and into the UI
+	auto perf = Engine::Logger::GetPerfLogger();
+	if (!perf) {
+		// attempt to create if not present
+		perf = Engine::Logger::EnsurePerfLogger("SimplePerfStats.txt");
+	}
+	
+	if (perf) {
+		// preserve column layout using fmt width specifiers and spaces between columns
+		// Columns: m_SearchCount | elapsedMs.count() | nodes/ms | m_TotalCount | m_TotalTime.count() | total nodes/ms
+		// Use integer arithmetic for nodes per ms (same as original)
+		long nodes_per_ms = 0;
+		if (elapsedMs.count() != 0)
+			nodes_per_ms = static_cast<long>(m_SearchCount / elapsedMs.count());
+		long total_nodes_per_ms = 0;
+		if (m_TotalTime.count() != 0)
+			total_nodes_per_ms = static_cast<long>(m_TotalCount / m_TotalTime.count());
 
-	outFile2  << std::setw(10) << m_SearchCount << std::setw(13) << elapsedMs.count() //-V128
-		<< std::setw(13) << m_SearchCount / elapsedMs.count()
+		// Format with right-aligned columns similar to setw in original code
+		perf->info("{:>10} {:>13} {:>13} {:>19} {:>13} {:>13}",
+			m_SearchCount,
+			elapsedMs.count(),
+			nodes_per_ms,
+			m_TotalCount,
+			m_TotalTime.count(),
+			total_nodes_per_ms);
+	}
+	else {
+		// last-resort fallback to console (very slow; only when logger creation failed)
+		std::cout << std::setw(10) << m_SearchCount << std::setw(13) << elapsedMs.count()
+			<< std::setw(13) << (m_SearchCount / elapsedMs.count())
 		<< std::setw(19) << m_TotalCount
 		<< std::setw(13) << m_TotalTime.count()
-		<< std::setw(13) << (m_TotalCount/m_TotalTime.count()) //-V104
+			<< std::setw(13) << (m_TotalCount / m_TotalTime.count())
 		<< '\n';
+	}
 
 //#endif // PRINT_STATS
 	return elapsedMs;

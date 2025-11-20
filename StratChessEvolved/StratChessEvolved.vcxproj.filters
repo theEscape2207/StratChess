@@ -78,6 +78,9 @@
     <ClCompile Include="..\StratEngine\AIPerplex.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\StratEngine\Utils\Logger.cpp">
+      <Filter>Source Files\Utils</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\StratEngine\ABIterative.h">
@@ -172,6 +175,9 @@
     </ClInclude>
     <ClInclude Include="..\StratEngine\AIPerplex.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\StratEngine\Utils\Logger.h">
+      <Filter>Header Files\Util</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

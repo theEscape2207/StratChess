@@ -6,6 +6,7 @@
 #include "Game.h"
 #include "Board.h"
 #include "PlayerBase.h"		// For factory create
+#include "Utils\Logger.h"
 
 #include "spdlog/sinks/stdout_color_sinks.h" // or "../stdout_sinks.h" if no colors needed
 #include "spdlog/sinks/basic_file_sink.h"
@@ -110,30 +111,29 @@ void Game::Init()
 {
 	try
 	{
-		auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-		console_sink->set_level(spdlog::level::info);
-		console_sink->set_pattern("[multi_sink_example] [%^%l%$] %v");
+		// Initialize engine default logger
+		Engine::Logger::InitDefault();
+		auto& logger = *spdlog::get("multi_sink");
 
-		auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("logs/multisink.txt", true);
-		file_sink->set_level(spdlog::level::trace);
+		// Create performance logger
+		Engine::Logger::EnsurePerfLogger("SimplePerfStats.txt");
+		auto perf = Engine::Logger::GetPerfLogger();
+		if (perf) {
+			perf->info("No. of nodes  |  Ms used  |  Nodes pr. ms  |  Total nodes  |  Total time  |  Total nodes pr. ms");
+			perf->info("-----------------------------------------------------------------------------------------------------");
+		}
+		else {
+			std::cout << "No. of nodes  |  Ms used  |  Nodes pr. ms  |  Total nodes  |  Total time  |  Total nodes pr. ms\n";
+			std::cout << "-----------------------------------------------------------------------------------------------------\n";
+		}
 
-		spdlog::sinks_init_list sink_list = { file_sink, console_sink };
-
-		spdlog::logger logger("multi_sink", sink_list.begin(), sink_list.end());
-		logger.set_level(spdlog::level::debug);
-		logger.warn("this should appear in both console and file");
-		logger.debug("this message should not appear in the console, only in the file");
-
-		// or you can even set multi_sink logger as default logger
-		spdlog::set_default_logger(std::make_shared<spdlog::logger>("multi_sink", spdlog::sinks_init_list({ console_sink, file_sink })));
-
-		// Existing stuff...
+		// Existing startup code
 		LoadConfigFileSettings();
 
-		logger.info("Config File Loaded");
 		CreateGameMoveFile();
 
 		std::stringstream sstream;
+		logger.info(sstream.str());
 		AddFileHeader(sstream);
 		logger.warn(sstream.str());
 
