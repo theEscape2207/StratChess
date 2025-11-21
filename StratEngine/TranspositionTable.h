@@ -1,13 +1,12 @@
 #pragma once
 #include <vector>
+#include <atomic>
+#include <mutex>
+#include <shared_mutex>
 #include <limits>
-#include <chrono>
 #include <optional>
 #include <cstdint>
-#include <mutex>
-#include <atomic>
-#include <array>
-
+#include <memory>
 #include <cassert>
 #include "Move.h"
 
@@ -81,7 +80,8 @@ public:
 
 class TranspositionTable {
 private:
-    std::mutex tt_mutex;
+    // keep a global shared mutex for infrequent global ops (resize/clear)
+    std::shared_mutex tt_mutex;
 
     static constexpr size_t BUCKET_SIZE = 4;
 
@@ -90,22 +90,47 @@ private:
     };
 
     std::vector<Bucket> table;
+    // per-bucket shared mutexes to allow concurrent probes
+    std::unique_ptr<std::shared_mutex[]> bucket_locks;
+    size_t index_mask{ 0 };
+
     std::atomic<uint8_t> current_age{ 0 };
     size_t size_mb;
+
+    // atomic counters for O(1) diagnostics (avoid scanning entire table)
+    std::atomic<size_t> entry_count{ 0 };
+    std::atomic<size_t> pv_count{ 0 };
+
+    // helper: round down to nearest power of two >=1
+    static size_t floor_pow2(size_t v) {
+        if (v == 0) return 1;
+        size_t p = 1;
+        while ((p << 1) <= v) p <<= 1;
+        return p;
+    }
 
 public:
     explicit TranspositionTable(size_t mb = 256) : size_mb(mb) {
         size_t num_buckets = (mb * 1024 * 1024) / sizeof(Bucket);
-        table.resize(num_buckets);
+        if (num_buckets == 0) num_buckets = 1;
+		
+        // use power-of-two bucket count for fast mask indexing
+        size_t buckets = floor_pow2(num_buckets);
+        table.resize(buckets);
+        bucket_locks = std::make_unique<std::shared_mutex[]>(buckets);
+        index_mask = buckets - 1;
+
+        entry_count.store(0, std::memory_order_relaxed);
+        pv_count.store(0, std::memory_order_relaxed);
     }
     // Helper to check if value is a mate score
     bool is_mate_score(int value) const {
-        assert(value < GameValues::Mate+100);
+        assert(value < GameValues::Mate + 100);
         return std::abs(value) >= (GameValues::Mate_Threshold);
     }
 
     // Storage: normalize mate scores
-    int16_t normalize_for_storage(int16_t value, int ply) {
+    int16_t normalize_for_storage(int16_t value, int ply) const noexcept {
         if (value >= GameValues::Mate_Threshold) {
             // Winning mate: add ply to "push back" the mate distance
             return value + static_cast<int16_t>(ply);
@@ -118,7 +143,7 @@ public:
     }
 
     // Retrieval: denormalize mate scores
-    int16_t denormalize_from_storage(int16_t stored_value, int ply) const {
+    int16_t denormalize_from_storage(int16_t stored_value, int ply) const noexcept {
         if (stored_value >= GameValues::Mate_Threshold) {
             // Store mate-in-N rather than absolute mate value
             return stored_value - static_cast<int16_t>(ply);
@@ -135,8 +160,11 @@ public:
     }
 
     std::optional<TTEntry> probe(std::uint64_t key, int current_ply) const {
-        size_t index = key % table.size();
+        size_t index = static_cast<size_t>(key) & index_mask;
         const auto& bucket = table[index];
+
+        // shared lock permits many concurrent probes
+        std::shared_lock lock(bucket_locks[index]);
 
         for (const auto& entry : bucket.entries) {
             if (entry.key == key) {
@@ -154,14 +182,15 @@ public:
     void store(std::uint64_t key, int16_t value, int16_t depth, int16_t ply,
         Move best_move, BoundType bound, NodeType node_type, SearchPhase phase)
     {
-        std::scoped_lock lock(tt_mutex);
-
-        size_t index = key % table.size();
+        size_t index = static_cast<size_t>(key) & index_mask;
         auto& bucket = table[index];
-        uint8_t age = current_age.load(std::memory_order_relaxed);
 
-        size_t replaceIndex = 0;
-        int worst_score = std::numeric_limits<int>::max();
+        // exclusive lock per-bucket
+        std::unique_lock lock(bucket_locks[index]);
+
+		uint8_t age = current_age.load(std::memory_order_relaxed);
+		size_t replaceIndex = 0;
+		int worst_score = std::numeric_limits<int>::max();
 
         for (size_t i = 0; i < BUCKET_SIZE; ++i) {
             auto& entry = bucket.entries[i];
@@ -178,8 +207,12 @@ public:
                 replaceIndex = i;
             }
         }
-
         auto& entry = bucket.entries[replaceIndex];
+
+        // Track counts: was entry empty? was it PV before?
+        bool was_empty = (entry.key == 0);
+        NodeType old_node = entry.node_type;
+
         entry.key = key;
         entry.value = normalize_for_storage(value, ply);
         entry.depth = depth;
@@ -188,10 +221,25 @@ public:
         entry.node_type = node_type;
         entry.age = age;
         entry.phase = phase;   
+
+        // update atomic counters (relaxed is sufficient under bucket lock)
+        if (was_empty) {
+            entry_count.fetch_add(1, std::memory_order_relaxed);
+            if (node_type == NodeType::PV_NODE) pv_count.fetch_add(1, std::memory_order_relaxed);
+        }
+        else {
+            // not empty: adjust pv_count if node_type changed
+            if (old_node == NodeType::PV_NODE && node_type != NodeType::PV_NODE) {
+                pv_count.fetch_sub(1, std::memory_order_relaxed);
+            }
+            else if (old_node != NodeType::PV_NODE && node_type == NodeType::PV_NODE) {
+                pv_count.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
     }
 
     // Scale quiescence depth down to equivalent main search scale (tunable)
-    int quiescenceEquivalentDepth(int quiescencePly) const {
+    int quiescenceEquivalentDepth(int quiescencePly) const noexcept {
         constexpr double scale = 0.5;  // tuned constant
         return static_cast<int>(quiescencePly * scale);
     }
@@ -199,7 +247,7 @@ public:
     // Compute entry score balancing depth, age, node type, and search phase
     // Scoring used for replacement decisions. Higher is better.
     // Provides a bonus for PV entries and a penalty for quiescence entries
-    int replacementScore(const TTEntry& entry, int age) const
+    int replacementScore(const TTEntry& entry, int age) const noexcept
     {
         int age_diff = (age - entry.age) & 0xFF;
         
@@ -214,10 +262,12 @@ public:
         return adjusted_depth * 256 + pv_bonus + phase_bonus - age_diff * 512;
     }
 
-    size_t count_entries() const {
+    /*size_t count_entries() const {
         size_t count = 0;
-        for (const auto& bucket : table) {
-            for (const auto& entry : bucket.entries) {
+        size_t buckets = table.size();
+        for (size_t idx = 0; idx < buckets; ++idx) {
+            std::shared_lock lock(bucket_locks[idx]);
+            for (const auto& entry : table[idx].entries) {
                 if (entry.key != 0)
                     ++count;
             }
@@ -227,13 +277,50 @@ public:
 
     size_t count_pv_nodes() const {
         size_t count = 0;
-        for (const auto& bucket : table) {
-            for (const auto& entry : bucket.entries) {
+        size_t buckets = table.size();
+        for (size_t idx = 0; idx < buckets; ++idx) {
+            std::shared_lock lock(bucket_locks[idx]);
+            for (const auto& entry : table[idx].entries) {
                 if (entry.key != 0 && entry.node_type == NodeType::PV_NODE) {
                     ++count;
                 }
             }
         }
         return count;
+    }*/
+
+    // O(1) diagnostics using atomics: cheap to call from hot paths
+    size_t count_entries() const noexcept {
+        return entry_count.load(std::memory_order_relaxed);
     }
+
+    size_t count_pv_nodes() const noexcept {
+        return pv_count.load(std::memory_order_relaxed);
+    }
+
+    // clear table: take global lock to avoid races with concurrent resizes or other global ops
+    void clear() {
+        std::scoped_lock g(tt_mutex);
+        size_t buckets = table.size();
+        for (size_t idx = 0; idx < buckets; ++idx) {
+            std::unique_lock lock(bucket_locks[idx]);
+            for (auto& entry : table[idx].entries) {
+                entry.key = 0;
+                entry.value = 0;
+                entry.depth = 0;
+                entry.best_move = Move::EmptyMove();
+                entry.bound = BoundType::EXACT;
+                entry.node_type = NodeType::ALL_NODE;
+                entry.age = 0;
+                entry.phase = SearchPhase::MAIN;
+            }
+        }
+        current_age.store(0, std::memory_order_relaxed);
+        entry_count.store(0, std::memory_order_relaxed);
+        pv_count.store(0, std::memory_order_relaxed);
+    }
+
+    // diagnostics
+    size_t bucket_count() const noexcept { return table.size(); }
+    size_t memory_mb() const noexcept { return size_mb; }
 };
