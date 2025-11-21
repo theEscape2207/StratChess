@@ -8,7 +8,7 @@
 #include "PieceHelper.h"
 #include <random>
 
-extern std::ofstream outFile2;
+extern std::ofstream outLegalMoves;
 
 Board::Board()
 {
@@ -64,7 +64,7 @@ void Board::_AddPiece(_In_ eSquare square, _In_ ePiece piece )
 	// Her tilfoejes brikken til bitboardet, der indeholder alle brikker i farven
 	// Der goeres brug af, at hvide brikker har lige indeks og omvendt
 	// Dvs 12, der er ALL_WHITE eller 13, der er ALL_BLACK
-	SetBitboardSquare(ALL_FROM_COLOR + PieceHelper::Color(piece), square);
+	SetBitboardSquare(GetBitboard(ALL_FROM_COLOR, PieceHelper::Color(piece)), square);
 	
 	// Tilfoejer brikken paa ALLE_BRIKKER bitboardet
 	SetBitboardSquare(ALL_PIECES, square);
@@ -81,7 +81,7 @@ void Board::_AddPiece(_In_ eSquare square, _In_ ePiece piece )
 	SetSquare(square, piece);
 
 	// Test af bitboard-konsistens 
-	assert(TestBitBoards(outFile2));
+	assert(TestBitBoards(outLegalMoves));
 }
 
 
@@ -98,7 +98,7 @@ void Board::_RemovePiece(_In_ eSquare square, _In_ ePiece piece)
 	// Fjerner brikken paa farvens eget samlede bitboard
 	// Der goeres brug af, at hvide brikker har lige indeks og omvendt
 	// Dvs 12, der er ALL_WHITE eller 13, der er ALL_BLACK
-	ClearBitboardSquare(ALL_FROM_COLOR + PieceHelper::Color(piece), square);
+	ClearBitboardSquare(GetBitboard(ALL_FROM_COLOR, PieceHelper::Color(piece)), square);
 	
 	// Fjerner brikken paa ALLE_BRIKKER bitboardet
 	ClearBitboardSquare(ALL_PIECES, square);
@@ -114,7 +114,7 @@ void Board::_RemovePiece(_In_ eSquare square, _In_ ePiece piece)
 	ClearSquare(square);
 
 	// Ekstra Test af bitboard-konsistens 
-	assert(TestBitBoards(outFile2));
+	assert(TestBitBoards(outLegalMoves));
 }
 
 
@@ -240,7 +240,7 @@ bool Board::DoMove(_In_ const Move& m)
 		assert(MoveHelper::IsCapture(m));
 		RemovePieceFromBoard(m.Content, m.To);	// Capture - remove then captured piece
 		// Promote - Remote Pawn from the From field
-		RemovePieceFromBoard(static_cast<ePiece>(PAWN + m_iColor), m.From);
+		RemovePieceFromBoard( PieceHelper::AsPiece(PAWN, m_iColor), m.From);
 		// Den valgte brik saettes paa det nye felt
 		AddPieceToBoard(m.MovPiece, m.To);	// Promote: Add the new Piece
 		break;
@@ -248,7 +248,7 @@ bool Board::DoMove(_In_ const Move& m)
 		assert(!MoveHelper::IsPawnMove(m));	// Its written as the new piece is moving
 		assert(!MoveHelper::IsCapture(m));
 		// Fjerner bonden fra det gamle felt
-		RemovePieceFromBoard( static_cast<ePiece>(PAWN+m_iColor), m.From );
+		RemovePieceFromBoard( PieceHelper::AsPiece(PAWN, m_iColor ), m.From );
 		// Den valgte brik saettes paa det nye felt
 		AddPieceToBoard( m.MovPiece, m.To );
 		break;
@@ -264,8 +264,8 @@ bool Board::DoMove(_In_ const Move& m)
 			// Move Rook at h1|h8 to f1|f8
 			assert(PieceHelper::IsNoPiece(GetPiece(m.From + 1)));
 			assert(PieceHelper::IsNoPiece(GetPiece(m.From + 2)));
-			assert(PieceHelper::IsOfPiece(GetPiece(m.From + 3), static_cast<ePiece>(ROOK + m_iColor)));
-			MovePiece( static_cast<ePiece>(ROOK + m_iColor), 
+			assert(PieceHelper::IsOfPiece(GetPiece(m.From + 3), PieceHelper::AsPiece(ROOK, m_iColor)));
+			MovePiece( PieceHelper::AsPiece(ROOK, m_iColor),
 				SquareHelper::Calc(m.To, +1), 
 				SquareHelper::Calc(m.To, - 1));
 			break;
@@ -274,9 +274,9 @@ bool Board::DoMove(_In_ const Move& m)
 			assert(PieceHelper::IsNoPiece(GetPiece(m.From - 1)));
 			assert(PieceHelper::IsNoPiece(GetPiece(m.From - 2)));
 			assert(PieceHelper::IsNoPiece(GetPiece(m.From - 3)));
-			assert(PieceHelper::IsOfPiece(GetPiece(m.From - 4), static_cast<ePiece>(ROOK + m_iColor)));
+			assert(PieceHelper::IsOfPiece(GetPiece(m.From - 4), PieceHelper::AsPiece(ROOK, m_iColor)));
 			// Move Rook at a1|a8 to d1|d8
-			MovePiece( static_cast<ePiece>(ROOK + m_iColor), 
+			MovePiece( PieceHelper::AsPiece(ROOK, m_iColor),
 				SquareHelper::Calc(m.To, -2), 
 				SquareHelper::Calc(m.To, +1 ));
 			break;
@@ -352,13 +352,13 @@ void Board::UndoMove(_In_ const Move& m)
 		RemovePieceFromBoard(m.MovPiece, m.To);	// Remove the Piece just promoted
 		assert(MoveHelper::IsCapture(m));
 		AddPieceToBoard(m.Content, m.To);	// Readd the captured Piece
-		AddPieceToBoard(static_cast<ePiece>(PAWN + m_iColor), m.From);	// Adds the Pawn again
+		AddPieceToBoard( PieceHelper::AsPiece(PAWN, m_iColor), m.From);	// Adds the Pawn again
 		break;
 	case MoveType::Promote:
 		assert(!MoveHelper::IsPawnMove(m));	// The Pawn is implicit
 		RemovePieceFromBoard( m.MovPiece, m.To );	// Remove the Piece just promoted
 		assert(!MoveHelper::IsCapture(m));	// Not a capture
-		AddPieceToBoard( static_cast<ePiece>(PAWN+m_iColor), m.From );	// Adds the Pawn again
+		AddPieceToBoard( PieceHelper::AsPiece(PAWN, m_iColor), m.From );	// Adds the Pawn again
 		break;	
 	case MoveType::Castling:
 		// Castling also involves moving two pieces, the King and a Rook
@@ -374,7 +374,7 @@ void Board::UndoMove(_In_ const Move& m)
 			assert(PieceHelper::IsNoPiece(GetPiece(m.To + 1)));
 
 			// Move Rook now at f1|f8 back to h1|h8
-			MovePiece( static_cast<ePiece>(ROOK + m_iColor), 
+			MovePiece( PieceHelper::AsPiece(ROOK, m_iColor),
 				SquareHelper::Calc(m.To, -1), 
 				SquareHelper::Calc(m.To, +1 ));
 			break;
@@ -385,7 +385,7 @@ void Board::UndoMove(_In_ const Move& m)
 			assert(PieceHelper::IsNoPiece(GetPiece(m.To - 1)));
 
 			// Move Rook now at d1|d8 back to a1|a8
-			MovePiece( static_cast<ePiece>(ROOK + m_iColor), 
+			MovePiece(PieceHelper::AsPiece(ROOK, m_iColor),
 				SquareHelper::Calc(m.To, +1),
 				SquareHelper::Calc(m.To, -2 ));
 			break;

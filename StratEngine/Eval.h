@@ -41,23 +41,6 @@ private:
 	static const int MAXSQUARES = ALL_SQUARES - 1;
 };
 
-//class NoEval final
-//	: public EvalManager
-//{
-//public:
-//	int Evaluate() const override { return 0; }
-//	const char* GetType() const	override { return "No eval"; }
-//
-//private:
-//	// Force use of factory by
-//	// preventing constructor, copy-construction & operator=
-//	NoEval() {}
-//	NoEval(NoEval&);
-//	NoEval& operator=(NoEval&) = delete;
-//	// We only need the factory
-//	friend EvalManager* EvalManager::Create(EvalTypes);
-//};
-
 class EvalSimple final
 	: public EvalManager
 {

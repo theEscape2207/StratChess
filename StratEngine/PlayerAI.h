@@ -163,7 +163,7 @@ protected:
 	{
 		if ( info.fiftyCount >= 50 )
 		{
-			assert( info.gameState == GameStates::DRAW_50_MOVES );
+			assert(info.gameState == GameStates::DRAW_50_MOVES);
 			return true;
 		}
 		return false;

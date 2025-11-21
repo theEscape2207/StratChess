@@ -95,6 +95,17 @@ namespace PieceHelper
 		return static_cast<eColor>(piece & 1);
 	}
 
+	// It is always possible to go from PieceType to Piece
+	static inline constexpr ePiece AsPiece(_In_ ePieceType pieceType, _In_ eColor color) noexcept
+	{
+		return static_cast<ePiece>(pieceType + static_cast<size_t>(color));
+	}
+
+	static inline constexpr ePiece AsPiece(_In_ ePiece piece, _In_ eColor color) noexcept
+	{
+		return static_cast<ePiece>(piece + static_cast<size_t>(color));
+	}
+
 } // namespace PieceHelper
 
 #pragma warning (pop)

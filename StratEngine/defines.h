@@ -725,8 +725,6 @@ inline constexpr auto g_bbMovesFile = makeMovesFile();
 inline constexpr auto g_bbMovesa1h8 = makeMovesa1h8();
 inline constexpr auto g_bbMovesa8h1 = makeMovesa8h1();
 
-#define PRINT_STATS							1;
+//constexpr inline auto PRINT_STATS = 1;
 
-#ifdef PRINT_STATS
 #define PRINT_MOVES						1;
-#endif

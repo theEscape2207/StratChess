@@ -174,9 +174,7 @@ int AIPerplex::iterative_deepening(int max_depth, TranspositionTable& tt, PVTabl
 					depth, best_value, pv_line/*, tt.count_entries(), tt.count_pv_nodes()*/);
 			}
 		}
-		std::cout << " (TT: " << tt.count_entries() << ", PV nodes: " << tt.count_pv_nodes() << ")\n";
 	}
-
 	return best_value;
 }
 
@@ -344,7 +342,7 @@ int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, Tra
 		static_cast<int16_t>(depth), static_cast<int16_t>(ply), best_move, bound, node_type, SearchPhase::MAIN);
 
 	// Verify immediately
-	verify_tt_store(tt, key, ply, best_value, depth, best_move, bound, node_type, SearchPhase::MAIN);
+	//assert_tt_store(tt, key, ply, best_value, depth, best_move, bound, node_type, SearchPhase::MAIN);
 
 	return adjustScoreForGameState(moveFound, ply, best_value);
 }
@@ -543,9 +541,9 @@ void AIPerplex::debug_tt_cache_misses(unsigned int key, int ply)
 	}
 }
 
-void AIPerplex::verify_tt_store(const TranspositionTable& tt, std::uint64_t key, int16_t ply,
-	int16_t value, int16_t depth, Move best_move,
-	BoundType bound, NodeType node_type, SearchPhase phase)
+void AIPerplex::assert_tt_store(const TranspositionTable& tt, std::uint64_t key, int16_t ply,
+	int16_t value, int16_t depth, Move /*best_move*/,
+	BoundType bound, NodeType /*node_type*/, SearchPhase phase)
 {
 	auto verify = tt.probe(key, ply);
 
