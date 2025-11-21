@@ -65,6 +65,16 @@ static void ensure_logger_initialized()
 		}
 	}
 }
+
+AIPerplex::AIPerplex(_In_ unsigned md)
+	: PlayerAiIterBase(md)
+{
+	// allocate TT once per AIPerplex instance; size can be tuned or read from config
+	_tt = std::make_unique<TranspositionTable>(256);
+
+	SetVerboseLogging(true);
+}
+
 // PVS Iterative transpositional alpha beta search
 // Transposition tables
 Move AIPerplex::GetMove(_Inout_ GameInfo& info)
@@ -72,12 +82,13 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info)
 	InitMoveVariables(info);
 	_searchCount = 0;
 
-	// Adding new Transposition table and PV Table
-	TranspositionTable tt(256);
+	// reuse the persistent TranspositionTable
+	_tt->clear();
+
 	PVTable pv_table;
 
 	StartTimer();
-	int score = iterative_deepening(m_MaxDepth, tt, pv_table);
+	int score = iterative_deepening(m_MaxDepth, *_tt, pv_table);
 
 	auto elapsed = StopTimerAndAdjustVars();
 	if (IsVerboseLoggingEnabled()) {
@@ -338,8 +349,6 @@ int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, Tra
 	return adjustScoreForGameState(moveFound, ply, best_value);
 }
 
-
-
 int AIPerplex::adjustScoreForGameState(bool moveFound, int ply, int score)
 {
 	// Any legal moves found?
@@ -387,8 +396,6 @@ int AIPerplex::quiescence(int alpha, int beta, int qsearch_depth, int ply, Trans
 		// Only use TT cutoff if QUIESCENCE entry AND depth stored is sufficient
 		if (entry->phase == SearchPhase::QUIESCENCE && entry->depth >= qsearch_depth) {
 			// Scale quiescence depth for comparison
-			//int adjusted_depth = entry->depth / 2;
-			//if (adjusted_depth >= depth) {
 			if (entry->bound == BoundType::EXACT) {
 				return entry->value;
 			}
@@ -451,7 +458,6 @@ int AIPerplex::quiescence(int alpha, int beta, int qsearch_depth, int ply, Trans
 		}
 		if (score > best_value) {
 			best_value = score;
-			//alpha = score;
 			alpha = std::max(alpha, score);
 			best_move = move;
 		}
