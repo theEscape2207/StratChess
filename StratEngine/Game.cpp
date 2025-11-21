@@ -135,7 +135,6 @@ void Game::Init()
 		std::stringstream sstream;
 		logger.info(sstream.str());
 		AddFileHeader(sstream);
-		logger.warn(sstream.str());
 
 	}
 	catch (const spdlog::spdlog_ex& ex)

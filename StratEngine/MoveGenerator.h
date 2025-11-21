@@ -37,7 +37,7 @@ private:
 
 	static bool IsCapture(const BITBOARD* bbBitBoards, eColor color, const Move &peasantMove) noexcept	//FIXME: THis method is crap and should be reverted
 	{
-		return Bits::isAnyBitSet(bbBitBoards[ePiece::ALL_BLACK_PIECES - color], g_bbMask[peasantMove.To]);
+		return Bits::isAnyBitSet(bbBitBoards[ePiece::ALL_BLACK_PIECES - static_cast<bool>(color)], g_bbMask[peasantMove.To]);
 	}
 
 	static BITBOARD GetOfficerAttackBoard(const BITBOARD* bbBitBoards, const Move& move ) noexcept;

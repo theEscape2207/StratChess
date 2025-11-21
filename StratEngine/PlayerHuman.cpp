@@ -92,12 +92,12 @@ Move PlayerHuman::GetMove(_Inout_ GameInfo& info)
 			// There are four different moves. We only want one!
 			if (userPromote) {
 				// User specified a piece selection - is this it?
-				if (moveIt->MovPiece != (userMove.MovPiece + PieceHelper::Color(moveIt->MovPiece)))
+				if (moveIt->MovPiece != PieceHelper::AsPiece(userMove.MovPiece, PieceHelper::Color(moveIt->MovPiece)))
 					continue;	//Nope - not this one
 			}
 			else {
 				// User did not specify a selection. Then give him a queen!
-				if (moveIt->MovPiece != (QUEEN + PieceHelper::Color(moveIt->MovPiece)))
+				if (moveIt->MovPiece != PieceHelper::AsPiece(QUEEN, PieceHelper::Color(moveIt->MovPiece)))
 					continue;	//Nope - not this one
 			}
 		}

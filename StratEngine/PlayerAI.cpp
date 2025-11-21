@@ -11,9 +11,6 @@
 #include <spdlog/sinks/basic_file_sink.h>
 #include <iomanip>		// setw() osv.
 
-// Used in StopTimer()
-extern std::ofstream outFile2;
-
 // static variables
 std::chrono::milliseconds PlayerAiBase::m_TotalTime = std::chrono::milliseconds(0);
 size_t PlayerAiBase::m_TotalCount = 0;

@@ -145,6 +145,11 @@ public:
 		HashkSwitch();
 	}
 	
+	constexpr size_t GetBitboard(ePieceType piece, eColor color)
+	{
+		return static_cast<size_t>(piece) + static_cast<size_t>(color);
+	}
+	
 	void _RemovePiece(_In_ eSquare square, _In_ ePiece piece );
 	void _AddPiece(_In_ eSquare square, _In_ ePiece piece);
 
@@ -223,7 +228,6 @@ private:
 	TMoveHashTable hashTable_;
 	
 	std::array<std::array<uint64_t, ALL_SQUARES>, ALL_PIECETYPES> allHashKeys;	// Piece Hash key table
-	//unsigned int allHashKeys[ALL_PIECETYPES][ALL_SQUARES]{ 0 };  // Piece Hash key table
 
 	unsigned int curBoardHashKey{ 0 };
 public:
