@@ -28,11 +28,11 @@ Move AIAgent::GetMove(_Inout_ GameInfo& info )
 	// iterativ search
 	for (m_Depth = 1; m_Depth <= m_MaxDepth; )	// m_Depth maa ikke opdateres her med aspiration search 
 	{
+		if (ShouldStopSearch()) {
+			break;
+		}
 		//Kald vores iterative soegerutine
 		const int score = Search( 0, alpha, beta, m_Line );
-
-		//if (TimedOut())	// Tillader break efter maksimal tid forbrugt
-		//	break;
 
 		if (IsOutsideWindow(score, alpha, beta)) 
 		{
@@ -73,6 +73,10 @@ Move AIAgent::GetMove(_Inout_ GameInfo& info )
 // En iterativ alpha-beta with PVL and PVS
 int AIAgent::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& pline)
 {
+	// Check time and stop signal
+	if (ShouldStopSearch()) {
+		return GameValues::Draw;
+	}
 	const GameInfo& info = GetLastBoardInfo( ply );
 
 	// Test for 50 moves rule

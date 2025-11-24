@@ -43,8 +43,8 @@ Move ABIterTrans::GetMove(_Inout_ GameInfo& info)
 	// iterative search - aspiration edition
 	for (m_Depth = 1; m_Depth <= m_MaxDepth; )	// m_Depth maa ikke opdateres her med aspiration search
 	{
-		//if (TimedOut())
-		//	break;
+		if (ShouldStopSearch())
+			break;
 
 		//Kald vores iterative soegerutine
 		const int score = Search(0, alpha, beta, m_Line);
@@ -95,6 +95,10 @@ Move ABIterTrans::GetMove(_Inout_ GameInfo& info)
 // - ABIterTrans doesn't assert, but does not generate the same moves as the non-trans search algos
 int ABIterTrans::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& pline)
 {
+	// Check time and stop signal
+	if (ShouldStopSearch()) {
+		return GameValues::Draw;
+	}
 	const GameInfo& info = GetLastBoardInfo(ply);
 
 	// Test for 50 moves rule

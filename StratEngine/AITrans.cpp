@@ -37,9 +37,13 @@ Move AITrans::GetMove(_Inout_ GameInfo& info)
 
 // An alpha-beta with transposition table
 // FIXME: Transposition tables still doesn't work correctly
-// - AITrans simply asserts atm - and not every time at that :( :(
+// - AITrans simply asserts atm - and not every time at that :( :( Most likely some bug in the hash probing / storing code around mate positions
 int AITrans::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta)
 {
+	// Check time and stop signal
+	if (ShouldStopSearch()) {
+		return GameValues::Draw;
+	}
 	const GameInfo& info = GetLastBoardInfo(ply);
 
 	// Test for 50 moves rule

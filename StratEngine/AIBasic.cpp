@@ -37,6 +37,10 @@ Move AIBasic::GetMove(_Inout_ GameInfo& info)
 // p.t. ogsaa med anti-horisont-effekt og simpel sortering
 int AIBasic::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta)
 {
+	// Check time and stop signal
+	if (ShouldStopSearch()) {
+		return GameValues::Draw;
+	}
 	const GameInfo& info = GetLastBoardInfo(ply);
 
 	// Test for 50 moves rule
