@@ -1,6 +1,7 @@
 #pragma once
 #include "PlayerAiIterBase.h"
 #include "TranspositionTable.h"
+#include "PVTable.h"
 #include <map>
 #include <memory>
 #include <cstdint>

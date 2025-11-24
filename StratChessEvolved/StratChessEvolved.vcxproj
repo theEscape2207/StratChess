@@ -177,6 +177,7 @@
     <ClInclude Include="..\StratEngine\PlayerAiIterBase.h" />
     <ClInclude Include="..\StratEngine\PlayerBase.h" />
     <ClInclude Include="..\StratEngine\PlayerHuman.h" />
+    <ClInclude Include="..\StratEngine\PVTable.h" />
     <ClInclude Include="..\StratEngine\Sort.h" />
     <ClInclude Include="..\StratEngine\SquareHelper.h" />
     <ClInclude Include="..\StratEngine\StdAfx.h" />
@@ -185,6 +186,7 @@
     <ClInclude Include="..\StratEngine\Utils\Logger.h" />
     <ClInclude Include="..\StratEngine\Utils\StrHelper.h" />
     <ClInclude Include="..\StratEngine\Utils\Subscriber.h" />
+    <ClInclude Include="..\StratEngine\Utils\TimeManager.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Developer Guidelines.md">

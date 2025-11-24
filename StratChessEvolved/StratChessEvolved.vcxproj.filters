@@ -181,6 +181,11 @@
     </ClInclude>
     <ClInclude Include="..\StratEngine\Utils\Logger.h">
       <Filter>Header Files\Util</Filter>
+    <ClInclude Include="..\StratEngine\Utils\TimeManager.h">
+      <Filter>Header Files\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\StratEngine\PVTable.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
