@@ -52,5 +52,12 @@ private:
 		int16_t value, int16_t depth, Move best_move,
 		BoundType bound, NodeType node_type, SearchPhase phase);
 	std::multimap<std::uint64_t, int> tt_misses;
-};
 
+	// Time control
+	//std::atomic<bool> stop_search_{ false };
+	//chess::TimeManager time_manager_;
+
+	// Search configuration
+	//unsigned max_depth_{ 10 };	// Todo: not used yet
+	//std::chrono::milliseconds time_limit_{ std::chrono::seconds(15) };
+};

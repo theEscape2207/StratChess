@@ -2,12 +2,10 @@
 #include "PlayerBase.h"
 #include "Board.h"		// includes Move
 #include "Eval.h"
-
+#include "Utils\TimeManager.h"
 #include <vector>
 #include <sstream>
 #include <chrono>
-
-//#include <Poco/Stopwatch.h>
 
 class PlayerAiBase : public PlayerBase
 {
@@ -69,7 +67,18 @@ protected:
 	*/
 
 	// StartTimer
-	void StartTimer()							{	_startingTime = std::chrono::high_resolution_clock::now();	}
+	void StartTimer()
+	{
+		_startingTime = std::chrono::high_resolution_clock::now();
+		// Start time manager
+		time_manager_.start(time_limit_);
+		stop_search_.store(false, std::memory_order_relaxed);
+	}
+
+	bool ShouldStopSearch() const noexcept
+	{
+		return time_manager_.should_stop_search();
+	}
 
 	void SetEvalEngine(EvalManager::EvalTypes type) override
 	{
@@ -190,11 +199,18 @@ protected:
 
 	std::chrono::time_point<std::chrono::high_resolution_clock> _startingTime;
 
+	// Time control
+	std::atomic<bool> stop_search_{ false };
+	chess::TimeManager time_manager_;
+
+	// Search configuration
+	unsigned max_depth_{ 10 };
+	std::chrono::milliseconds time_limit_{ std::chrono::seconds(15) };
+
 //#ifdef PRINT_STATS
 
 	// Samlet tid og antal nodes for begge computerspillere - TODO: Separer evt til per spiller. Human burde ogsaa have en klokke
 	static std::chrono::milliseconds m_TotalTime;
 	static size_t m_TotalCount;
-
 //#endif	// PRINT_STATS
 };

@@ -88,14 +88,14 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info)
 	PVTable pv_table;
 
 	StartTimer();
+	
 	int score = iterative_deepening(m_MaxDepth, *_tt, pv_table);
 
 	auto elapsed = StopTimerAndAdjustVars();
 	if (IsVerboseLoggingEnabled()) {
 		ensure_logger_initialized();
 		if (s_logger) {
-			s_logger->info("Final score: {}", score);
-			s_logger->info("Elapsed time (ms): {}", elapsed.count());
+			s_logger->info("Final score: {}, Time: {}ms", score, elapsed.count());
 		}
 	}
 	CheckGameOver(info);
@@ -141,6 +141,11 @@ int AIPerplex::iterative_deepening(int max_depth, TranspositionTable& tt, PVTabl
 	int best_value = 0;
 
 	for (int depth = 1; depth <= max_depth; ++depth) {
+		// Check time
+		if (ShouldStopSearch()) {
+			break;
+		}
+
 		tt.newSearchIteration();
 		pv_table.clear_ply(0);
 
@@ -178,7 +183,12 @@ int AIPerplex::iterative_deepening(int max_depth, TranspositionTable& tt, PVTabl
 	return best_value;
 }
 
-int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt, PVTable& pv_table) {
+int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt, PVTable& pv_table)
+{
+	// Check time and stop signal
+	if (ShouldStopSearch()) {
+		return GameValues::Draw;
+	}
 
 	pv_table.clear_ply(ply);
 

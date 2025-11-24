@@ -33,8 +33,8 @@ Move ABIterative::GetMove(_Inout_ GameInfo& info)
 	// almindelig iterativ soegning
 	for (m_Depth = 1; m_Depth <= m_MaxDepth; ++m_Depth)
 	{
-		//if (TimedOut())
-		//	break;
+		if (ShouldStopSearch())
+			break;
 
 		//Kald vores iterative soegerutine (resetting alpha and beta)
 		/*const int score =*/ Search(0, alpha, beta, m_Line);
@@ -72,6 +72,10 @@ Move ABIterative::GetMove(_Inout_ GameInfo& info)
 // ************************************
 int ABIterative::Search(int ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& pline)
 {
+	// Check time and stop signal
+	if (ShouldStopSearch()) {
+		return GameValues::Draw;
+	}
 	const GameInfo& info = GetLastBoardInfo(ply);
 
 	// Test for 50 moves rule
