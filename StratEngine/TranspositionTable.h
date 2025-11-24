@@ -39,45 +39,6 @@ struct TTEntry {
     }
 };
 
-// Triangular PV Table for principal variation caching
-class PVTable {
-private:
-    std::array<std::array<Move, MAX_PLY>, MAX_PLY> table;
-    std::array<int, MAX_PLY> length;
-
-public:
-    PVTable() {
-        for (int i = 0; i < MAX_PLY; ++i) {
-            length[i] = 0;
-        }
-    }
-
-    void update(int ply, Move move) {
-        table[ply][0] = move;
-        // Copy rest from next ply (triangular structure)
-        for (int i = 0; i < length[ply + 1]; ++i) {
-            table[ply][i + 1] = table[ply + 1][i];
-        }
-        length[ply] = length[ply + 1] + 1;
-    }
-
-    void clear_ply(int ply) {
-        length[ply] = 0;
-    }
-
-    Move get_pv_move(int ply) const {
-        return (length[ply] > 0) ? table[ply][0] : Move();
-    }
-
-    const Move* get_line(int ply) const {
-        return table[ply].data();
-    }
-
-    int get_length(int ply) const {
-        return length[ply];
-    }
-};
-
 class TranspositionTable {
 private:
     // keep a global shared mutex for infrequent global ops (resize/clear)

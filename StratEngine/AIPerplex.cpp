@@ -5,7 +5,6 @@
 #include "AIPerplex.h"
 #include "MoveGenerator.h"
 #include "Sort.h"
-#include "TranspositionTable.h"
 #include "Utils/Logger.h"
 #include "defines.h"
 #include "Move.h"
