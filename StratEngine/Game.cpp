@@ -7,10 +7,6 @@
 #include "Board.h"
 #include "PlayerBase.h"		// For factory create
 #include "Utils\Logger.h"
-
-#include "spdlog/sinks/stdout_color_sinks.h" // or "../stdout_sinks.h" if no colors needed
-#include "spdlog/sinks/basic_file_sink.h"
-
 extern std::ofstream outLegalMoves;
 
 // ***************************************
@@ -24,25 +20,6 @@ Game::Game()
 {
 	Init();
 }
-
-// ************************************
-// Method:      LogMessage
-// Description: 
-// FullName:    private Game::LogMessage const
-// Returns:     void - 
-// Parameter:   const std::string &text - 
-// Parameter:   Poco::Message::Priority prio - 
-// Remark:      FIXME: Hardcoded number of loggers
-// ************************************
-//void Game::LogMessage(const std::string &text, Poco::Message::Priority prio )
-//{
-//	//FIXME: The root and consoleLogger is the same in Release mode for some reason
-//	spdlog::default_logger()->info(text);
-//	/*Poco::Message msg("Game", text, prio);
-//	Logger::root().log( msg );
-//	Logger::get( "consoleLogger" ).log( msg );*/
-//}
-
 
 //***************************************
 // Method:      ~Game
@@ -315,7 +292,7 @@ void Game::PrintStateMessage() const
 		else
 			sstream << "Score: " << score << '\n';
 
-		spdlog::default_logger()->warn(sstream.str());
+		spdlog::default_logger()->info(sstream.str());
 	}
 	else	// TODO: This should be moved to the OnGameStateChanged event method
 	{
@@ -360,7 +337,7 @@ void Game::PrintBoardAndMove(const Move& move) const
 	std::stringstream sstream;
 	sstream << "\nBoard " << GetBoardCount() << "\n\n";
 	sstream << board << move;
-	spdlog::default_logger()->warn(sstream.str());
+	spdlog::default_logger()->info(sstream.str());
 
 #ifdef PRINT_MOVES
 	outLegalMoves << "===============================================================" << "\n\n";
