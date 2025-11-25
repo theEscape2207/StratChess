@@ -17,8 +17,14 @@ inline constexpr auto ALL_PIECETYPES = 12;
 enum eColor { NO_COLOR = -1, WHITE = 0, BLACK = 1 };
 
 enum ePieceType {
-	NO_TYPE = -1, PAWN = 0, KNIGHT = 2, BISHOP = 4,
-	ROOK = 6, QUEEN = 8, KING = 10, ALL_FROM_COLOR = 12
+	NO_TYPE = -1, 
+	PAWN = 0, 
+	KNIGHT = 2, 
+	BISHOP = 4,
+	ROOK = 6,
+	QUEEN = 8,
+	KING = 10,
+	ALL_FROM_COLOR = 12
 };
 
 // enum ePiece benyttes til indexere de enkelte brikkers bitboards
