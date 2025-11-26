@@ -173,9 +173,6 @@ int ABIterTrans::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta, _Inout_ 
 	m_SearchCount++;
 
 	MoveList moveList;
-	moveList.reserve(MAX_PLY*8);
-
-	// Henter de lovlige traek
 	MoveGenerator::ComputeLegalMoves(info, moveList);
 
 	// Sorterer traekkene

@@ -49,7 +49,7 @@ private:
 	{
 		if(first == second)	// no need to swap anything here :-)
 			return;
-		std::swap(moveList.at(first), moveList.at(second));
+		std::swap(moveList[first], moveList[second]);
 	}
 
 	static constexpr bool IsAnyBackRow(eSquare field) noexcept

@@ -244,10 +244,8 @@ int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, Tra
 	}
 
 	MoveList moveList;
-	moveList.reserve(MAX_PLY * 8);
-
-	// Henter de lovlige traek
 	MoveGenerator::ComputeLegalMoves(info, moveList);
+	
 	bool first_child = true;
 	int best_value = -GameValues::Search_Init;
 	Move best_move;
@@ -436,7 +434,6 @@ int AIPerplex::quiescence(int alpha, int beta, int qsearch_depth, int ply, Trans
 		alpha = stand_pat;
 
 	MoveList moveList;
-	moveList.reserve(MAX_PLY * 8);
 	// Generate only capture moves and promotions
 	MoveGenerator::ComputeCaptures(info, moveList);
 	// Sort the found captures

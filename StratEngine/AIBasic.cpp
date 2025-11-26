@@ -61,7 +61,6 @@ int AIBasic::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta)
 	m_SearchCount++;
 
 	MoveList moveList;
-	moveList.reserve(MAX_PLY * 8);
 	MoveGenerator::ComputeLegalMoves(info, moveList);
 	size_t numMoves = moveList.size();
 
