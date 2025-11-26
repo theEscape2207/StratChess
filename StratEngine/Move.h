@@ -184,7 +184,47 @@ struct GameInfo
 	GameInfo() noexcept = default;
 };
 
-using MoveList = std::vector<Move>;
+// Move list with small buffer optimization
+class MoveList {
+public:
+	static constexpr size_t MAX_MOVES = 218; // Maximum legal moves in any position
+
+	MoveList() noexcept : size_(0) {}
+
+	void push(Move move) noexcept {
+		if (size_ < MAX_MOVES) {
+			moves_[size_++] = move;
+		}
+	}
+	
+	[[nodiscard]] size_t size() const noexcept { return size_; }
+	[[nodiscard]] bool empty() const noexcept { return size_ == 0; }
+	void clear() noexcept { size_ = 0; }
+
+	[[nodiscard]] Move* begin() noexcept { return moves_.data(); }
+	[[nodiscard]] Move* end() noexcept { return moves_.data() + size_; }
+	[[nodiscard]] const Move* begin() const noexcept { return moves_.data(); }
+	[[nodiscard]] const Move* end() const noexcept { return moves_.data() + size_; }
+
+	[[nodiscard]] Move& operator[](size_t idx) noexcept { return moves_[idx]; }
+	[[nodiscard]] const Move& operator[](size_t idx) const noexcept { return moves_[idx]; }
+
+	// Added for compatibility with old MoveList using vector
+	const Move& at(size_t idx) const noexcept {
+		return moves_[idx];
+	}
+
+	const Move& front() const noexcept {
+		return moves_[0];
+	}
+	const Move& back() const noexcept {
+		return moves_[size_ - 1];
+	}
+
+private:
+	std::array<Move, MAX_MOVES> moves_;
+	size_t size_;
+};
 
 // Principal variation line
 // Keeps the best variant in the vector

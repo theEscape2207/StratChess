@@ -20,9 +20,7 @@
 Move PlayerHuman::GetMove(_Inout_ GameInfo& info)
 {
 	Board& board = Board::Instance();
-
 	MoveList moveList;
-	moveList.reserve(MAX_PLY * 8);
 
 	if (!IsAnyLegalMoves(info, moveList))
 	{

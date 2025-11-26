@@ -176,7 +176,7 @@ void MoveGenerator::GeneratePawnNormalMoves(_In_ const BITBOARD* const bbBitBoar
 			normalMove.Type = MoveType::PawnTwoForward;
 		}
 		// Putter traekket i traeklisten
-		moveList.emplace_back(normalMove);
+		moveList.push(normalMove);
 		// Now clear it from our attack board
 		Bits::clearBitsRef(bbMoveOne, g_bbMask[to]);
 	}
@@ -270,13 +270,13 @@ void MoveGenerator::AddPawnPromoteMoves(const BITBOARD* bbBitBoards, MoveList &m
 
 		// Add the four selections
 		promoteMove.MovPiece = PieceHelper::AsPiece(QUEEN, color);
-		moveList.emplace_back(promoteMove);
+		moveList.push(promoteMove);
 		promoteMove.MovPiece = PieceHelper::AsPiece(ROOK, color);	// FIXME: Use after move!
-		moveList.emplace_back(promoteMove);
+		moveList.push(promoteMove);
 		promoteMove.MovPiece = PieceHelper::AsPiece(BISHOP, color); // FIXME: Use after move!
-		moveList.emplace_back(promoteMove);
+		moveList.push(promoteMove);
 		promoteMove.MovPiece = PieceHelper::AsPiece(KNIGHT, color);	// FIXME: Use after move
-		moveList.emplace_back(promoteMove);
+		moveList.push(promoteMove);
 
 		Bits::clearBitsRef(bbAttack, g_bbMask[promoteMove.To]);	// FIXME: Use after move
 	}
@@ -322,7 +322,7 @@ void MoveGenerator::AddOfficerMoves(MoveList& moveList, BITBOARD bbAttack, Move&
 		move.Content = Board::Instance().GetPiece(move.To);
 		move.Type = (PieceHelper::IsActual(move.Content) ? MoveType::Capture : MoveType::Normal);
 
-		moveList.emplace_back(move);
+		moveList.push(move);
 		Bits::clearBitsRef(bbAttack, g_bbMask[move.To]);	// Fjern fra attack bitboardet	// FIXME: Use after move
 	}
 }
@@ -371,7 +371,7 @@ void MoveGenerator::AddCastleMoves(MoveList& moveList, eColor color, const BITBO
 			{
 				castlingMove.To = g1;
 				// Accepted - Add the move to the list
-				moveList.emplace_back(castlingMove);
+				moveList.push(castlingMove);
 			}
 		}
 		static const BITBOARD bbMask_d1c1b1 = g_bbMask[d1] | g_bbMask[c1] | g_bbMask[b1];
@@ -385,7 +385,7 @@ void MoveGenerator::AddCastleMoves(MoveList& moveList, eColor color, const BITBO
 			{
 				// Accepted - Add the move to the list
 				castlingMove.To = c1;		// FIXME: Use after move
-				moveList.emplace_back(castlingMove);
+				moveList.push(castlingMove);
 			}
 		}
 	}
@@ -416,7 +416,7 @@ void MoveGenerator::AddCastleMoves(MoveList& moveList, eColor color, const BITBO
 			{
 				// Accepted - Add the move to the list
 				castlingMove.To = g8;
-				moveList.emplace_back(castlingMove);
+				moveList.push(castlingMove);
 			}
 		}
 		// Are the needed squares available?
@@ -430,7 +430,7 @@ void MoveGenerator::AddCastleMoves(MoveList& moveList, eColor color, const BITBO
 			{
 				// Accepted - Add the move to the list
 				castlingMove.To = c8;
-				moveList.emplace_back(castlingMove);
+				moveList.push(castlingMove);
 			}
 		}
 	}
@@ -459,20 +459,20 @@ void MoveGenerator::AddPawnCaptures(MoveList& moveList, const BITBOARD* bbBitBoa
 			// Set it to be a peasant
 			peasantMove.MovPiece = PieceHelper::AsPiece(PAWN, color);
 			peasantMove.Type = MoveType::Capture;
-			moveList.emplace_back(std::move(peasantMove));
+			moveList.push(std::move(peasantMove));
 		}
 		else
 		{		// Jeps, det er en bondeforvandling
 			peasantMove.Type = MoveType::PromoteCapture;
 			// Add the 4 different selections - now moving piece is changed!
 			peasantMove.MovPiece = PieceHelper::AsPiece(QUEEN, color);
-			moveList.emplace_back(peasantMove);	// Add Queen selection
+			moveList.push(peasantMove);	// Add Queen selection
 			peasantMove.MovPiece = PieceHelper::AsPiece(ROOK, color);
-			moveList.emplace_back(peasantMove);	// Add Rook selection
+			moveList.push(peasantMove);	// Add Rook selection
 			peasantMove.MovPiece = PieceHelper::AsPiece(BISHOP, color);
-			moveList.emplace_back(peasantMove);	// Add Bishop selection
+			moveList.push(peasantMove);	// Add Bishop selection
 			peasantMove.MovPiece = PieceHelper::AsPiece(KNIGHT, color);
-			moveList.emplace_back(peasantMove);	// Add Knight selection		
+			moveList.push(peasantMove);	// Add Knight selection		
 		}
 	}
 	// Hvis der ikke er en brik paa til-feltet er det et en-passant traek
@@ -483,7 +483,7 @@ void MoveGenerator::AddPawnCaptures(MoveList& moveList, const BITBOARD* bbBitBoa
 		assert(peasantMove.Content == (BLACK_PAWN - color));
 		peasantMove.MovPiece = PieceHelper::AsPiece(PAWN, color);
 		peasantMove.Type = MoveType::En_Passant;
-		moveList.emplace_back(std::move(peasantMove));
+		moveList.push(std::move(peasantMove));
 	}
 }
 

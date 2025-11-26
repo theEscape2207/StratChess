@@ -51,8 +51,6 @@ int PlayerAiBase::Quiescent( size_t ply, int alpha, int beta )
 	}
 
 	MoveList moveList;
-	moveList.reserve(static_cast<size_t>(MAX_PLY)*8);
-
 	// Only work on the captures in Quiescent
 	MoveGenerator::ComputeCaptures( info, moveList );
 	// Sort the found captures
