@@ -11,7 +11,7 @@
     "players": {
       "white": {
         "type": 3,
-        "depth": 6,
+        "depth": 10,
         /* Eval:
            0 - None (Human)
            1 - Simple Eval
@@ -20,8 +20,8 @@
         "eval": 2
       },
       "black": {
-        "type": 2,
-        "depth": 5,
+        "type": 3,
+        "depth": 10,
         /* Eval:
            0 - None (Human)
            1 - Simple Eval
