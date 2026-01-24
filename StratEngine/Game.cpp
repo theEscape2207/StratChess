@@ -135,7 +135,7 @@ void Game::CreateGameMoveFile()
 // Description: 
 // FullName:    private Game::LoadConfigFileSettings 
 // Returns:     void - 
-// Remark:      FIXME: Validate input ranges - all over!!
+// Remark:      FIXME: Validate input ranges - depth, eval engine type, player type
 //***************************************
 void Game::LoadConfigFileSettings()
 {
@@ -284,7 +284,7 @@ void Game::PrintStateMessage() const
 		// AIs
 		const int score = GetCurrentPlayer().GetBestScore();
 
-		// Can we see a mate? // TODO: This is a poor way of measuring the distance
+		// Can we see a mate?
 		// FIXME: Export the Max depth from the AIs
 		if (score >= GameValues::Mate - 10 || (-score >= GameValues::Mate - 10))
 			// Antal ply: GameValues::Mate-Lastscore. Antal traek: Ply+1/2 => (MATE-Last)/2

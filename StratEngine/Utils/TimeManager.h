@@ -32,7 +32,7 @@ namespace chess {
 
     private:
         std::chrono::steady_clock::time_point start_time_;
-        std::chrono::milliseconds allocated_time_;
+        std::chrono::milliseconds allocated_time_{ 1000 };
         std::atomic<bool> should_stop_{ false };
     };
 

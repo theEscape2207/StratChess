@@ -290,12 +290,15 @@ int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, Tra
 			int value;
 
 			if (first_child) {
+				// Full window search for first move
 				value = -pvs(depth - 1, -beta, -alpha, ply + 1, is_pv_node, tt, pv_table);
 				first_child = false;
 			}
 			else {
+				// Null window search
 				value = -pvs(depth - 1, -alpha - 1, -alpha, ply + 1, false, tt, pv_table);
 
+				// Re-search if it fails high in PV node
 				if (value > alpha && is_pv_node) {
 					value = -pvs(depth - 1, -beta, -alpha, ply + 1, true, tt, pv_table);
 				}
@@ -368,9 +371,8 @@ int AIPerplex::adjustScoreForGameState(bool moveFound, int ply, int score)
 			{
 				_bestScore = -GameValues::Mate;
 			}
-			// We are not saving anything in the hash as we have no move here
-
-			return -GameValues::Mate + static_cast<int>(ply);		// return mate value minus distance to it
+			// Checkmate - prefer shorter mates
+			return -GameValues::Mate + ply;
 		}
 		// Else No move and not in check - Pat!
 		UpdateGameState(ply, GameStates::DRAW_PAT);
