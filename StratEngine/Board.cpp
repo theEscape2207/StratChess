@@ -91,7 +91,8 @@ void Board::_AddPiece(_In_ eSquare square, _In_ ePiece piece )
 // Med tjek paa om der rent faktisk staar en brik paa paagaeldende felt 
 void Board::_RemovePiece(_In_ eSquare square, _In_ ePiece piece)
 {
-	// Fjerner brikken paa dens eget bitboard
+	assert(GetPiece(square) == piece);	// Consistency check
+	// Removes the piece from its own bitboard
 	if( !ClearBitboardSquare(piece, square) )
 		TestBitBoards(std::cout );
 	

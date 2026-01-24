@@ -24,35 +24,35 @@ namespace MoveHelper
 	*	MovPiece methods
 	*/
 
-	static inline bool IsMoveType(_In_ const Move& move, ePieceType type) noexcept
+	[[nodiscard]] static inline bool IsMoveType(_In_ const Move& move, ePieceType type) noexcept
 	{
 		return PieceHelper::IsOfType(move.MovPiece, type);
 	}
 
-	static inline bool IsMovingPiece(_In_ const Move& move, ePiece type) noexcept
+	[[nodiscard]] static inline bool IsMovingPiece(_In_ const Move& move, ePiece type) noexcept
 	{
 		return PieceHelper::IsOfPiece(move.MovPiece, type); 
 	}
 
 	// Is this piece moving from this square?
-	static inline bool IsPieceMovingFrom(_In_ const Move& move, ePiece type, eSquare square) noexcept
+	[[nodiscard]] static inline bool IsPieceMovingFrom(_In_ const Move& move, ePiece type, eSquare square) noexcept
 	{
 		return (PieceHelper::IsOfPiece(move.MovPiece, type) && (move.From == square));
 	}
 
 	// Is this piece capture from this square?
-	static inline bool IsPieceCapturedAt(_In_ const Move& move, ePiece type, eSquare square) noexcept
+	[[nodiscard]] static inline bool IsPieceCapturedAt(_In_ const Move& move, ePiece type, eSquare square) noexcept
 	{
 		return (PieceHelper::IsOfPiece(move.Content, type) && (move.To == square));
 	}
 
 	// Is the moving piece a pawn
-	static inline bool IsPawnMove(_In_ const Move& move ) noexcept
+	[[nodiscard]] static inline bool IsPawnMove(_In_ const Move& move ) noexcept
 	{
 		return PieceHelper::IsPawn(move.MovPiece);
 	}
 
-	static inline bool IsKingMove(_In_ const Move& move ) noexcept
+	[[nodiscard]] static inline bool IsKingMove(_In_ const Move& move ) noexcept
 	{
 		return PieceHelper::IsKing(move.MovPiece);
 	}
@@ -69,8 +69,9 @@ namespace MoveHelper
 	// Returns:     bool - returns true if the move is a Capture (also through En Passant and Promotes) and false otherwise
 	// Parameter:   const Move& move - The Move 
 	// Remark:      Code is duplicated due to asserts being added 
+	//				TODO: Should refactor later to avoid code-duplication
 	//************************************
-	static bool IsCapture(_In_ const Move& move ) noexcept
+	[[nodiscard]] static bool IsCapture(_In_ const Move& move ) noexcept
 	{
 		switch( move.Type )
 		{
@@ -88,7 +89,7 @@ namespace MoveHelper
 		}
 	}
 
-	static bool IsCapture(_In_ MoveType type) noexcept
+	[[nodiscard]] static bool IsCapture(_In_ MoveType type) noexcept
 	{
 		switch (type)
 		{
@@ -103,23 +104,23 @@ namespace MoveHelper
 		}
 	}
 
-	static inline bool IsPromote(_In_ const Move& move ) noexcept
+	[[nodiscard]] static inline bool IsPromote(_In_ const Move& move ) noexcept
 	{
 		return (move.Type == MoveType::Promote) || 
 			(move.Type == MoveType::PromoteCapture);
 	}
 
-	static inline bool IsEnPassant(_In_ const Move& move) noexcept
+	[[nodiscard]] static inline bool IsEnPassant(_In_ const Move& move) noexcept
 	{
 		return move.Type == MoveType::En_Passant;
 	}
 
-	static inline bool IsCastling(_In_ const Move& move) noexcept
+	[[nodiscard]] static inline bool IsCastling(_In_ const Move& move) noexcept
 	{
 		return move.Type == MoveType::Castling;
 	}
 
-	static eSquare GetEnPassantSquare(_In_ const Move& move ) noexcept
+	[[nodiscard]] static eSquare GetEnPassantSquare(_In_ const Move& move ) noexcept
 	{
 		if(move.Type != MoveType::PawnTwoForward)
 			return NO_SQUARE;
@@ -128,12 +129,12 @@ namespace MoveHelper
 			SquareHelper::Calc(move.To, -ONE_ROW));
 	}
 
-	static inline bool IsEmpty(_In_ const Move& move ) noexcept
+	[[nodiscard]] static inline bool IsEmpty(_In_ const Move& move ) noexcept
 	{
 		return (move.To == NO_SQUARE) || (move.From == NO_SQUARE);
 	}
 
-	static bool IsValid(_In_ const Move& move ) noexcept
+	[[nodiscard]] static bool IsValid(_In_ const Move& move ) noexcept
 	{
 		if( IsEmpty( move ) )
 			return false;

@@ -7,9 +7,6 @@
 #include "Board.h"
 #include "Game.h"
 
-// For regular expression: Validating user input
-//#include <Poco/RegularExpression.h>
-
 using json = nlohmann::json;
 
 //***************************************
@@ -23,7 +20,7 @@ using json = nlohmann::json;
 
 void Config::ReadBoardSetup(const json& config) const
 {
-	// The Board is ready - set it up
+	// Time to set up the board
 	// if nothing is found - use default setup
 	const std::string setupType = config["game"].value("setup", "default");
 	//const std::string setupType = config->getString("setup", std::string("default"));

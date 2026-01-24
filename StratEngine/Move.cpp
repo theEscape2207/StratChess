@@ -38,7 +38,7 @@ std::ostream& operator<<(std::ostream& os, _In_ const Move& m)
 		case MoveType::Capture:
 			assert(PieceHelper::Color(m.MovPiece) != PieceHelper::Color(m.Content));
 			os << "Verbose  : " << PieceHelper::FullName(m.MovPiece) << " moves " 
-				<< strFrom.c_str() << "-" << strTo.c_str() << " and kills a " 
+				<< strFrom.c_str() << "-" << strTo.c_str() << " and takes a " 
 				<< PieceHelper::FullName(m.Content);
 			break;
 		case MoveType::Promote:
@@ -65,7 +65,7 @@ std::ostream& operator<<(std::ostream& os, _In_ const Move& m)
 		}
 	}
 	// is this a Checking move?
-	if ( m.IsCheck )
+		if (m.IsCheck)
 		os << " and checks!";
 	os << '\n';
 	return os;
