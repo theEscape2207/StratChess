@@ -16,29 +16,52 @@ enum class BoundType : uint8_t {
     UPPER = 2
 };
 
+// Node types
+// PV_NODE: principal variation node
+// CUT_NODE: beta cutoff expected
+// ALL_NODE: all moves must be searched
 enum class NodeType : uint8_t {
     PV_NODE = 0,      // Principal variation node
     CUT_NODE = 1,     // Beta cutoff expected
     ALL_NODE = 2      // All moves must be searched
 };
 
-enum class SearchPhase { MAIN, QUIESCENCE };
+// Search phases
+// MAIN: regular search
+// QUIESCENCE: quiescence search
+enum class SearchPhase : uint8_t {
+    MAIN, 
+    QUIESCENCE
+};
 
+// Transposotion Table Entries
+// Stores key, value, depth, best move, bound type, node type, age
+// Uses 64-bit keys and 16-bit values/depths for compactness
+// Age is used for replacement strategy
+// NodeType is stored to improve replacement decisions
+// Best move is stored for move ordering
 struct TTEntry {
     std::uint64_t key;
     int16_t value;
     int16_t depth;  // Search depth or equivalent
     SearchPhase phase;
-    Move best_move;
     BoundType bound;
     NodeType node_type;  // Track node type for better replacement
     uint8_t age;
+    Move best_move;
 
     TTEntry() : key(0), value(0), depth(0), best_move(),
         bound(BoundType::EXACT), node_type(NodeType::ALL_NODE), age(0), phase(SearchPhase::MAIN) {
     }
 };
 
+// Transposition Table class
+// Thread-safe with per-bucket locks for concurrent access
+// Uses a simple replacement strategy based on depth and age
+// Supports normalization of mate scores for correct distance handling
+// Provides O(1) diagnostics via atomic counters
+// Resize and clear operations are protected by a global mutex
+// Probes use shared locks for concurrent reads
 class TranspositionTable {
 private:
     // keep a global shared mutex for infrequent global ops (resize/clear)
