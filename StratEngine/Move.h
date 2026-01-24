@@ -10,9 +10,9 @@ class Move final
 	friend std::ostream& operator<<(std::ostream&, _In_ const Move& move);
 public:
 	// Copy constructor
-	Move(_In_ const Move& rhs) noexcept = default;
+	constexpr Move(const Move& rhs) noexcept = default;
 
-	explicit Move( _In_  ePiece movPiece ) noexcept
+	constexpr explicit Move(_In_  ePiece movPiece) noexcept
 		: MovPiece(movPiece)
 	{
 	}
@@ -20,13 +20,12 @@ public:
 	Move() noexcept = default;	// default constructor
 
 	// Move constructor
-	Move(Move&& other) noexcept
-	{
+	Move(_In_ Move&& other) noexcept {
 		*this = std::move(other);
 	}
 
 	// Move assignment constructor
-	Move& operator=(Move&& other) noexcept
+	Move& operator=(_In_ Move&& other) noexcept
 	{
 		if (this != &other)
 		{
@@ -51,9 +50,9 @@ public:
 	~Move() noexcept = default;
 
 	// Copy assignment operator
-	Move& operator= (_In_ const Move &rhs) noexcept = default;
+	Move& operator= (_In_ const Move& rhs) noexcept = default;
 		
-	bool operator!() const noexcept {
+	constexpr bool operator!() const noexcept {
 		return IsEmpty();
 	}
 
@@ -62,7 +61,7 @@ public:
 	}
 
 	// IsGreater operator: Bruges til at sortere slagene
-	friend bool operator> (_In_ const Move& lhs, _In_ const Move &rhs) noexcept
+	friend bool operator> (_In_ const Move& lhs, _In_ const Move& rhs) noexcept
 	{
 		return Value(lhs) > Value(rhs);
 	}
@@ -104,24 +103,25 @@ public:
 			captureScore = PieceHelper::Value(move.MovPiece) - PieceHelper::Value(ePiece::WHITE_PAWN);
 			return captureScore - static_cast<int>(g_iPieceValues[PAWN] >> 4); // Promote is encoded differently. Subtract the known moving piece value
 		/*default:
-			assert(!"missing a Move state"); */
+			assert(!"missing a Move type"); */
 		}
 		return 0;
 	}
 
-	bool operator==(_In_ const Move &rhs) const noexcept
+	bool operator==(_In_ const Move& rhs) const noexcept
 	{
 		return IsSameAs(rhs);
 	}
 
-	bool operator!=(_In_ const Move &rhs ) const noexcept
+	bool operator!=(_In_ const Move& rhs) const noexcept
 	{
 		return !IsSameAs(rhs);
 	}
 
-	bool IsSameAs(_In_ const Move &rhs) const noexcept
+	bool IsSameAs(_In_ const Move& rhs) const noexcept
 	{
-		return ((To == rhs.To) && (From == rhs.From));
+		return ((to() == rhs.to())
+			&& (from() == rhs.from()));
 	}
 
 	void Clear() noexcept
@@ -174,7 +174,7 @@ struct GameInfo
 {
 	GameStates gameState{ GameStates::STILL_PLAYING };
 	eSquare epSquare{ NO_SQUARE };
-	bool whiteLongCastle {true};
+	bool whiteLongCastle{ true };
 	bool whiteShortCastle{ true };
 	bool blackLongCastle{ true };
 	bool blackShortCastle{ true };
