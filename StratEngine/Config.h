@@ -50,13 +50,7 @@ private:
 	void ReadBoardSetup(const nlohmann::json& config) const;
 
 	// For FEN support
-	void GetCastlingRights(const std::string& str, GameConfig& info) const noexcept;
 	void ReadFEN(const std::string& fen) const;
-
-	static eSquare GetSquare(const std::string & input);
-
-	bool ParseRankFENstring(const std::string& rankFEN) const;
-
 
 	Game* pGame_;
 
