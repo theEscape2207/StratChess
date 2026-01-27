@@ -5,6 +5,7 @@
 
 #include "Move.h"
 #include "Config.h"
+#include "Utils\Logger.h"
 
 class IPlayer;
 
@@ -79,6 +80,8 @@ class Game final
 public:
 	Game();
 	~Game();
+
+	void unsubscribePlayerEvents();
 		
 	//static void LogMessage(const std::string &text, Poco::Message::Priority );
 	void SetCustomGame(const Config::GameConfig& config) noexcept

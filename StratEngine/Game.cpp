@@ -6,7 +6,6 @@
 #include "Game.h"
 #include "Board.h"
 #include "PlayerBase.h"		// For factory create
-#include "Utils\Logger.h"
 extern std::ofstream outLegalMoves;
 
 // ***************************************
@@ -30,13 +29,9 @@ Game::Game()
 //***************************************
 Game::~Game()
 {
-	try {
-		// Deregister our delegates
-		m_pPlayers[WHITE]->ENewPVLineMove.subscribe([this](const void* s, const PVLine& pvl) { onNewPVLineMove(s, pvl); });
-		m_pPlayers[BLACK]->ENewPVLineMove.subscribe([this](const void* s, const PVLine& pvl) { onNewPVLineMove(s, pvl); });
-
-		m_pPlayers[WHITE]->EGameStateChanged.subscribe([this](const void* s, const GameStates& gs) { OnGameStateChanged(s, gs); });
-		m_pPlayers[BLACK]->EGameStateChanged.subscribe([this](const void* s, const GameStates& gs) { OnGameStateChanged(s, gs); });
+	try
+	{
+		unsubscribePlayerEvents();
 
 		// Under VisualStudio, this must be called before main finishes to workaround a known VS issue
 		spdlog::drop_all();
@@ -45,6 +40,25 @@ Game::~Game()
 	{
 		// Don't care if any deregistration fails, we're closing here
 	}
+}
+
+//***************************************
+// Method:      unsubscribePlayerEvents
+// Description: Unsubscribes from all player events. Calling this in destructor to avoid dangling references.
+// FullName:    private Game::unsubscribePlayerEvents
+// Returns:     void -
+// Remark:
+//***************************************
+void Game::unsubscribePlayerEvents()
+{
+	// TODO: Potential issue if players were not created. This function assumes both players exist.
+	// TODO: Calling clear() where unsubscribe() should be used, but we have no handles to unsubscribe with here.
+	// Deregister our delegates
+	m_pPlayers[WHITE]->ENewPVLineMove.clear();
+	m_pPlayers[BLACK]->ENewPVLineMove.clear();
+
+	m_pPlayers[WHITE]->EGameStateChanged.clear();
+	m_pPlayers[BLACK]->EGameStateChanged.clear();
 }
 
 //***************************************
@@ -191,7 +205,6 @@ void Game::SetGameParams(const Config::GameConfig& config) noexcept
 	gameInfo_.fiftyCount = config.num50moves;
 	// Fullmove number
 	gameInfo_.fullMoveCount = config.fullMoveCounter;
-
 }
 
 //***************************************
