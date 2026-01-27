@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <array>
 
@@ -542,34 +542,36 @@ template <typename T, std::size_t Rows, std::size_t Cols>
 using Array2D = std::array<std::array<T, Cols>, Rows>;
 
 // ============= Knight Moves =============
+inline constexpr std::array<std::array<int, 2>, 8> knightOffsets{ {
+	{{  2,  1 }}, {{  1,  2 }}, {{ -1,  2 }}, {{ -2,  1 }},
+	{{ -2, -1 }}, {{ -1, -2 }}, {{  1, -2 }}, {{  2, -1 }}
+} };
+
+/**
+ * Genererer knight-move bitboards for alle felter på skakbrættet.
+ *
+ * @return constexpr std::array<BITBOARD, 64> hvor hvert element indeholder
+ *         et bitboard med alle mulige destinationer for en springer på det
+ *         pågældende felt (standard 8x8 skakbræt).
+ *
+ * Array-indeks: 0-63 = destination field
+ */
 constexpr std::array<BITBOARD, ALL_SQUARES> makeKnightMoves() {
 	std::array<BITBOARD, ALL_SQUARES> result{};
+	
 	for (unsigned int i = 0; i < ALL_SQUARES; ++i) {
-		result[i] = 0;
-		if (Rank(i) > 0) {
-			if (Rank(i) > 1) {
-				if (File(i) > 0)
-					result[i] += (UNIT << (i - 17));
-				if (File(i) < 7)
-					result[i] += (UNIT << (i - 15));
-			}
-			if (File(i) > 1)
-				result[i] += (UNIT << (i - 10));
-			if (File(i) < 6)
-				result[i] += (UNIT << (i - 6));
+		auto rank = static_cast<int>(Rank(i));
+		auto file = static_cast<int>(File(i));
+		BITBOARD moves = 0;
+		// Liste af alle potensielle afvigelser (rankΔ, fileΔ)
+		
+		for (const auto& offset : knightOffsets) {
+			int r = rank + offset[0];
+			int f = file + offset[1];
+			if (r >= 0 && r < 8 && f >= 0 && f < 8)
+				moves |= (UNIT << static_cast<unsigned int>(r * 8 + f));
 		}
-		if (Rank(i) < 7) {
-			if (Rank(i) < 6) {
-				if (File(i) > 0)
-					result[i] += (UNIT << (i + 15));
-				if (File(i) < 7)
-					result[i] += (UNIT << (i + 17));
-			}
-			if (File(i) > 1)
-				result[i] += (UNIT << (i + 6));
-			if (File(i) < 6)
-				result[i] += (UNIT << (i + 10));
-		}
+		result[i] = moves;
 	}
 	return result;
 }
