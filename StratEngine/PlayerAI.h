@@ -189,7 +189,7 @@ protected:
 	// The embedded Eval object for per-player evaluation
 	std::unique_ptr<EvalManager> Eval;
 
-	// Gemmer en sequence af BoardInfo for Do/Undo
+	// Store GameInfo sequence for Do/Undo
 	std::vector< GameInfo > m_infoSeq;
 
 	// Det bedste traek indtil nu
@@ -204,8 +204,8 @@ protected:
 	chess::TimeManager time_manager_;
 
 	// Search configuration
-	unsigned max_depth_{ 10 };
-	std::chrono::milliseconds time_limit_{ std::chrono::seconds(15) };
+	unsigned max_depth_{ 15 };											// TODO: Make configurable
+	std::chrono::milliseconds time_limit_{ std::chrono::seconds(15) };	// TODO: Make configurable
 
 //#ifdef PRINT_STATS
 

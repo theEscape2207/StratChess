@@ -14,10 +14,15 @@ inline constexpr auto ALL_BITBOARDS = 18;
 inline constexpr auto ALL_SQUARES = 64;
 inline constexpr auto ALL_PIECETYPES = 12;
 
-enum eColor { NO_COLOR = -1, WHITE = 0, BLACK = 1 };
+enum eColor : uint8_t 
+{ 
+	//NO_COLOR = -1, 
+	WHITE = 0, 
+	BLACK = 1 
+};
 
-enum ePieceType {
-	NO_TYPE = -1, 
+enum ePieceType : uint8_t {
+	//NO_TYPE = -1, 
 	PAWN = 0, 
 	KNIGHT = 2, 
 	BISHOP = 4,
@@ -28,9 +33,8 @@ enum ePieceType {
 };
 
 // enum ePiece benyttes til indexere de enkelte brikkers bitboards
-enum ePiece {
-	NO_PIECE = -1,
-	WHITE_PAWN,
+enum ePiece : uint8_t {
+	WHITE_PAWN = 0,
 	BLACK_PAWN,
 	WHITE_KNIGHT,
 	BLACK_KNIGHT,
@@ -43,30 +47,34 @@ enum ePiece {
 	WHITE_KING,
 	BLACK_KING,
 	ALL_WHITE_PIECES,
-	ALL_BLACK_PIECES
-}; // = 13
-
-// Special moves
-enum class MoveType {
-	Normal = 0x0,
-	Capture = 0x01,
-	Promote = 0x02,
-	PromoteCapture = 0x03,	// Both a Promote and a capture
-	En_Passant = 0x04,
-	PawnTwoForward = 0x08,
-	Castling = 0x10
+	ALL_BLACK_PIECES,	// = 13
+	NO_PIECE = 15,
 };
 
-enum eRowNames {
+// Special moves
+enum class MoveType : uint8_t {
+	QUIET = 0,
+	DOUBLE_PAWN_PUSH = 1,
+	KING_CASTLE = 2,
+	QUEEN_CASTLE = 3,
+	CAPTURE = 4,
+	EP_CAPTURE = 5,
+	PROMOTION_KNIGHT = 8,
+	PROMOTION_BISHOP = 9,
+	PROMOTION_ROOK = 10,
+	PROMOTION_QUEEN = 11,
+	//PromoteCapture = 0x03,	// Both a Promote and a capture - handled as PROMOTION_* with Content set
+};
+
+enum eRowNames /*: uint8_t*/ {
 	NO_ROW = -1, BLACK_BACK_ROW = 0, WHITE_7TH_ROW = 1,	// TODO: Confusing names
 	BLACK_7TH_ROW = 6, WHITE_BACK_ROW = 7
 };	// Cannot easily be converted to enum class
 
-enum eFileNames { LEFT_FILE = 0, RIGHT_FILE = 7 };
+enum eFileNames : uint8_t { LEFT_FILE = 0, RIGHT_FILE = 7 };
 
 // Feltbetegnelser
-enum eSquare {
-	NO_SQUARE = -1,
+enum eSquare /*: uint8_t*/ {
 	a8 = 0, b8, c8, d8, e8, f8, g8, h8,
 	a7, b7, c7, d7, e7, f7, g7, h7,
 	a6, b6, c6, d6, e6, f6, g6, h6,
@@ -75,7 +83,7 @@ enum eSquare {
 	a3, b3, c3, d3, e3, f3, g3, h3,
 	a2, b2, c2, d2, e2, f2, g2, h2,
 	a1, b1, c1, d1, e1, f1, g1, h1 = 63,
-	NUM_SQUARES
+	NUM_SQUARES, NO_SQUARE = 255
 };
 
 // Bestemmer den maksimale soegedybde for Quiescent(?)

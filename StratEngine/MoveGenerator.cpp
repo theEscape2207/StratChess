@@ -33,7 +33,7 @@ void MoveGenerator::ComputeLegalMoves(_In_ const GameInfo& info, _Inout_ MoveLis
 
 	const auto boards = Board::Instance().GetBitBoards();
 
-	/* Peasant moves
+	/* Pawn moves
 	---------------------*/
 
 	//Captures (including en-passant and promotion-captures)
@@ -54,7 +54,7 @@ void MoveGenerator::ComputeLegalMoves(_In_ const GameInfo& info, _Inout_ MoveLis
 
 	/* King moves
 	-------------------*/
-	// Maa selvfoelgelig ikke spille uden konge
+	// Need to have kings on the board
 	assert(boards[ePiece::BLACK_KING] && boards[ePiece::WHITE_KING]);
 
 	GenerateOfficerMoves(boards.data(), moveList, KING, false);
@@ -293,7 +293,7 @@ void MoveGenerator::ComputeCaptures(_In_ const GameInfo& info, _Inout_ MoveList&
 
 	const auto boards = Board::Instance().GetBitBoards();
 
-	/* Peasant moves
+	/* Pawn moves
 	---------------------*/
 
 	//Captures (including en-passant and promotion-captures)
@@ -449,14 +449,14 @@ void MoveGenerator::AddPawnCaptures(MoveList& moveList, const BITBOARD* bbBitBoa
 
 	const Board& board = Board::Instance();
 
-	// Almindeligt slag af brik ? 
+	// Normal capture? 
 	if (IsCapture(bbBitBoards, color, peasantMove))
 	{
 		peasantMove.Content = board.GetPiece(peasantMove.To);
 		assert(PieceHelper::IsActual(peasantMove.Content));
 		assert(PieceHelper::Color(peasantMove.Content) != PieceHelper::Color(peasantMove.MovPiece));
 
-		// Er det ogsaa en promotion?
+		// Promotion capture, too?
 		if (!IsAnyBackRow(peasantMove.To))		// Nope, normalt slag
 		{
 			// Set it to be a peasant
@@ -465,7 +465,7 @@ void MoveGenerator::AddPawnCaptures(MoveList& moveList, const BITBOARD* bbBitBoa
 			moveList.push(std::move(peasantMove));
 		}
 		else
-		{		// Jeps, det er en bondeforvandling
+		{	// Promotion Captures
 			peasantMove.Type = MoveType::PromoteCapture;
 			// Add the 4 different selections - now moving piece is changed!
 			peasantMove.MovPiece = PieceHelper::AsPiece(QUEEN, color);
@@ -478,7 +478,7 @@ void MoveGenerator::AddPawnCaptures(MoveList& moveList, const BITBOARD* bbBitBoa
 			moveList.push(peasantMove);	// Add Knight selection		
 		}
 	}
-	// Hvis der ikke er en brik paa til-feltet er det et en-passant traek
+	// Otherwise it must be an en-passant capture
 	else
 	{
 		const eSquare epWhere = SquareHelper::PreviousRow(peasantMove.To, color);
@@ -566,7 +566,6 @@ bool MoveGenerator::IsAttacked(BITBOARD squares, eColor attackByColor) noexcept
 //***************************************
 BITBOARD MoveGenerator::GetAttackBoard(eColor attackByColor) noexcept
 {
-	// Henter braetinformation fra Board-klassen
 	const auto boards = Board::Instance().GetBitBoards();
 	
 	BITBOARD bbAttackBoard = 0;	// Vil indeholde alle modstanderens slutpositioner efter et CAPTURE move

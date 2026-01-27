@@ -11,8 +11,8 @@
 #include "PieceHelper.h"
 
 static std::string GetBoardCoord(_In_ eSquare square) {
-	std::string tmp( 1, static_cast<char>( (File( square ) ) + 'a' ));				// File: i.e. 'g'
-	return tmp.append( 1, static_cast<char>( (8 - ( Rank( square ) )) + '0' ));	// Rank: i.e. '8' => "g8"
+	std::string tmp(1, static_cast<char>((File(square)) + 'a'));				// File: i.e. 'g'
+	return tmp.append(1, static_cast<char>((8 - (Rank(square))) + '0'));	// Rank: i.e. '8' => "g8"
 }
 
 // Printer indholdet af move til streamen
@@ -79,7 +79,7 @@ std::ostream& operator<<(std::ostream& os, _In_ const PVLine& line)
 
 	os << "Depth " << line.size() << ": ";		// TODO: Ekstra check her ? //-V128
 
-	for (const auto &move : line)
+	for (const auto& move : line)
 	{
 		os << move.Output().c_str();		// write out short notation string
 		
