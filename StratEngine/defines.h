@@ -86,7 +86,7 @@ enum eSquare /*: uint8_t*/ {
 };
 
 // Bestemmer den maksimale soegedybde for Quiescent(?)
-constexpr auto MAX_PLY = 32;
+constexpr auto MAX_PLY = 64;
 
 enum GameValues
 {
