@@ -76,13 +76,13 @@ void MoveSorter::SortMoves(MoveList& moveList,		// traeklisten
 	// Slag af sidst flyttet brik hvis den eksisterer
 	if (!lastMove.IsEmpty()) {
 		//Vi loeber traekkene igennem og sorterer videre
-		const eSquare lastTo = lastMove.To;
+		const eSquare lastTo = lastMove.to();
 		for (loop = curIndex; loop < numMoves; ++loop)
 		{
 			// Slag af sidst flyttet brik
-			if (lastTo == moveList[loop].To)	// Det sidste af modstanderens traek!!
+			if (lastTo == moveList[loop].to())	// Det sidste af modstanderens traek!!
 			{
-				assert(moveList[loop].Type == MoveType::Capture || moveList[loop].Type == MoveType::PromoteCapture);
+				assert(MoveHelper::AsType(moveList[loop]) == MoveType::CAPTURE || MoveHelper::IsPromote(moveList[loop]));
 				// Flytter det fundne traek frem
 				SwapMoves(moveList, loop, curIndex++);
 			}
@@ -95,9 +95,9 @@ void MoveSorter::SortMoves(MoveList& moveList,		// traeklisten
 	// Vi koerer videre fra hvor vi slap
 	for ( loop=curIndex; loop<numMoves; ++loop )
 	{
-		const MoveType type = moveList[loop].Type;
+		const MoveType type = MoveHelper::AsType(moveList[loop]);
 		// Other captures (regular Capture, PromoteCapture and En passant moves) or Promotes?
-		if (MoveHelper::IsCapture(type) || type == MoveType::Promote)
+		if (MoveHelper::IsCapture(moveList[loop]) || MoveHelper::IsPromote(moveList[loop]))
 			// Flytter det fundne traek frem
 			SwapMoves(moveList, loop, curIndex++);
 	}

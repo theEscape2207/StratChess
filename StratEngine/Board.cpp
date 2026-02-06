@@ -36,7 +36,8 @@ void Board::ClearBoard()
 {
 	m_bitboards.fill(0);
 
-	m_iColor = WHITE;
+	// reset game state
+	sideToMove_ = WHITE;
 
 	// TODO: clear game history
 	
@@ -145,6 +146,7 @@ void Board::SetupBoard(_In_ const squareCol& col )
 	// FIXME: We should do some further validation on the newly created setup
 
 }
+
 // Setup the default board
 void Board::SetDefaultBoard()
 {
@@ -206,72 +208,96 @@ bool Board::DoMove(_In_ const Move& m)
 	assert( MoveHelper::IsValid( m ));
 	assert(GetCurrentColor() == PieceHelper::Color(m.MovPiece) );
 
+	eSquare from = m.from();
+	eSquare to = m.to();
+	
+	const MoveType type = MoveHelper::AsType(m);
 	// Hvilken type slag er det ?
-	switch ( m.Type )
+	switch ( type )
 	{
-	case MoveType::Normal:
+	case MoveType::QUIET:
 		assert(!PieceHelper::IsActual(m.Content));
 		MovePiece( m );
 		break;
-	case MoveType::Capture:
+	case MoveType::CAPTURE:
 		assert( MoveHelper::IsCapture( m ));
 		// Fjerner brikken, der bliver slaaet. 
-		RemovePieceFromBoard( m.Content, m.To );
+		RemovePieceFromBoard( m.Content, to );
 		MovePiece(m);
 		break;
-	case MoveType::PawnTwoForward:
+	case MoveType::DOUBLE_PAWN_PUSH:
 		// Kun boender
 		assert(!PieceHelper::IsActual(m.Content));	// ingen slag
 		assert(MoveHelper::IsPawnMove(m));
 		MovePiece(m);
 		break;
-	case MoveType::En_Passant:
+	case MoveType::EP_CAPTURE:
 		// Det er et en-passant slag
 		assert(MoveHelper::IsPawnMove(m));
 		assert(MoveHelper::IsCapture(m) && PieceHelper::IsPawn(m.Content));	// slaar altid en bonde
 		// Saa skal modstanderens bonde fjernes fra det rigtige felt
-		if (m_iColor == WHITE)
+		if (sideToMove_ == WHITE)
 			// Fjerner den sorte brik paa feltet nedenunder
-			RemovePieceFromBoard(ePiece::BLACK_PAWN, SquareHelper::Calc(m.To, + ONE_ROW));
+			RemovePieceFromBoard(ePiece::BLACK_PAWN, SquareHelper::Calc(to, +ONE_ROW));
 		else
 			// Fjerner den hvide brik paa feltet ovenover
-			RemovePieceFromBoard( ePiece::WHITE_PAWN, SquareHelper::Calc(m.To, -ONE_ROW ));
+			RemovePieceFromBoard( ePiece::WHITE_PAWN, SquareHelper::Calc(to, -ONE_ROW));
 
 		MovePiece(m);
 		break;
-	case MoveType::PromoteCapture:
+	case MoveType::PROMOTION_KNIGHT:
+	case MoveType::PROMOTION_BISHOP:
+	case MoveType::PROMOTION_ROOK:
+	case MoveType::PROMOTION_QUEEN:
 		assert(!MoveHelper::IsPawnMove(m));	// Its written as the new piece is moving
-		assert(MoveHelper::IsCapture(m));
-		RemovePieceFromBoard(m.Content, m.To);	// Capture - remove then captured piece
-		// Promote - Remote Pawn from the From field
-		RemovePieceFromBoard( PieceHelper::AsPiece(PAWN, m_iColor), m.From);
-		// Den valgte brik saettes paa det nye felt
-		AddPieceToBoard(m.MovPiece, m.To);	// Promote: Add the new Piece
-		break;
-	case MoveType::Promote:
-		assert(!MoveHelper::IsPawnMove(m));	// Its written as the new piece is moving
-		assert(!MoveHelper::IsCapture(m));
+		if (MoveHelper::IsCapture(m))
+		{
+			RemovePieceFromBoard( m.Content, to );	// Capture - remove the captured piece
+		}
 		// Fjerner bonden fra det gamle felt
-		RemovePieceFromBoard( PieceHelper::AsPiece(PAWN, m_iColor ), m.From );
+		RemovePieceFromBoard( PieceHelper::AsPiece(PAWN, sideToMove_ ), from );
 		// Den valgte brik saettes paa det nye felt
-		AddPieceToBoard( m.MovPiece, m.To );
+		AddPieceToBoard( m.MovPiece, to );
 		break;
-	case MoveType::Castling:
-		assert(m.From == e1 || m.From == e8);	// must be in starting position
-		assert(PieceHelper::IsKing(GetPiece(m.From)));
+	case MoveType::QUEEN_CASTLE:
+		assert(from == e1 || from == e8);	// must be in starting position
+		assert(PieceHelper::IsKing(GetPiece(from)));
+		assert(MoveHelper::IsKingMove(m));
+		switch( to )
+		{
+		case c1:	// Long castling
+		case c8:
+			assert(PieceHelper::IsNoPiece(GetPiece(from - 1)));
+			assert(PieceHelper::IsNoPiece(GetPiece(from - 2)));
+			assert(PieceHelper::IsNoPiece(GetPiece(from - 3)));
+			assert(PieceHelper::IsOfPiece(GetPiece(from - 4), PieceHelper::AsPiece(ROOK, sideToMove_)));
+			// Move Rook at a1|a8 to d1|d8
+			MovePiece( PieceHelper::AsPiece(ROOK, sideToMove_),
+				SquareHelper::Calc(to, -2),
+				SquareHelper::Calc(to, +1 ));
+			break;
+		default:	// Unknown castling ? ;-)
+			assert( !"Invalid castling 'to'-field" );
+			break;
+		}
+		MovePiece( m );	// Moves the King
+		break;
+	case MoveType::KING_CASTLE:
+		assert(from == e1 || from == e8);	// must be in starting position
+		assert(PieceHelper::IsKing(GetPiece(from)));
 		assert(MoveHelper::IsKingMove(m));
 
-		switch( m.To )
+		switch(to)
 		{
 		case g1:	// Short castling
 		case g8:	
 			// Move Rook at h1|h8 to f1|f8
-			assert(PieceHelper::IsNoPiece(GetPiece(m.From + 1)));
-			assert(PieceHelper::IsNoPiece(GetPiece(m.From + 2)));
-			assert(PieceHelper::IsOfPiece(GetPiece(m.From + 3), PieceHelper::AsPiece(ROOK, m_iColor)));
-			MovePiece( PieceHelper::AsPiece(ROOK, m_iColor),
-				SquareHelper::Calc(m.To, +1), 
-				SquareHelper::Calc(m.To, - 1));
+			assert(PieceHelper::IsNoPiece(GetPiece(from + 1)));
+			assert(PieceHelper::IsNoPiece(GetPiece(from + 2)));
+			assert(PieceHelper::IsOfPiece(GetPiece(from + 3), PieceHelper::AsPiece(ROOK, sideToMove_)));
+			MovePiece( PieceHelper::AsPiece(ROOK, sideToMove_),
+				SquareHelper::Calc(to, +1),
+				SquareHelper::Calc(to, - 1));
 			break;
 		case c1:	// Long castling
 		case c8:
@@ -330,82 +356,97 @@ void Board::UndoMove(_In_ const Move& m)
 	ChangePlayer();
 
 	switch (m.Type)
+	const MoveType type = MoveHelper::AsType(m);
+
+	switch (type)
 	{
-	case MoveType::Normal:
+	case MoveType::QUIET:
 		assert(!PieceHelper::IsActual( m.Content));
-		MovePiece( m.MovPiece, m.To, m.From );	// Moves the Piece back
+		MovePiece( m.MovPiece, m.to(), m.from());	// Moves the Piece back
 		break;
-	case MoveType::Capture:
+	case MoveType::CAPTURE:
 		assert( MoveHelper::IsCapture( m ));
-		MovePiece(m.MovPiece, m.To, m.From);	// Moves the Piece back
-		AddPieceToBoard( m.Content, m.To );		// Re-adds the captured piece
+		MovePiece(m.MovPiece, m.to(), m.from());	// Moves the Piece back
+		AddPieceToBoard( m.Content, m.to());		// Re-adds the captured piece
 		break;
-	case MoveType::PawnTwoForward:
-		assert(m_iColor == PieceHelper::Color( m.MovPiece));
+	case MoveType::DOUBLE_PAWN_PUSH:
+		assert(sideToMove_ == PieceHelper::Color( m.MovPiece));
 		assert(!PieceHelper::IsActual(m.Content));	// No capture on this type
 		assert(MoveHelper::IsPawnMove(m));
-		MovePiece(m.MovPiece, m.To, m.From);	// Moves the Piece back
+		MovePiece(m.MovPiece, m.to(), m.from());	// Moves the Piece back
 		break;
-	case MoveType::En_Passant:
+	case MoveType::EP_CAPTURE:
 		assert(MoveHelper::IsPawnMove(m));
 		assert(MoveHelper::IsCapture(m) && PieceHelper::IsPawn(m.Content));	// slaar altid en bonde
-		MovePiece(m.MovPiece, m.To, m.From);	// Moves the Piece back
+		MovePiece(m.MovPiece, m.to(), m.from());	// Moves the Piece back
 		// Er det et en-passant slag, skal modstanderens bonde fjernes fra det rigtige felt
-		if (m_iColor == WHITE)
+		if (sideToMove_ == WHITE)
 			// Tilfoejer den sorte bonde paa feltet nedenunder
-			AddPieceToBoard( ePiece::BLACK_PAWN, SquareHelper::Calc(m.To, +ONE_ROW ));
+			AddPieceToBoard( ePiece::BLACK_PAWN, SquareHelper::Calc(m.to(), +ONE_ROW ));
 		else
 			// Tilfoejer den hvide bonde paa feltet ovenover
-			AddPieceToBoard( ePiece::WHITE_PAWN, SquareHelper::Calc(m.To, -ONE_ROW ));
+			AddPieceToBoard( ePiece::WHITE_PAWN, SquareHelper::Calc(m.to(), -ONE_ROW ));
 		break;
-	case MoveType::PromoteCapture:
+	case MoveType::PROMOTION_KNIGHT:
+	case MoveType::PROMOTION_BISHOP:
+	case MoveType::PROMOTION_ROOK:
+	case MoveType::PROMOTION_QUEEN:
 		assert(!MoveHelper::IsPawnMove(m));	// The Pawn is implicit
-		RemovePieceFromBoard(m.MovPiece, m.To);	// Remove the Piece just promoted
-		assert(MoveHelper::IsCapture(m));
-		AddPieceToBoard(m.Content, m.To);	// Readd the captured Piece
-		AddPieceToBoard( PieceHelper::AsPiece(PAWN, m_iColor), m.From);	// Adds the Pawn again
+		RemovePieceFromBoard( m.MovPiece, m.to());	// Remove the Piece just promoted
+		if(MoveHelper::IsCapture(m))
+		{
+			assert( PieceHelper::IsActual( m.Content ));
+			AddPieceToBoard( m.Content, m.to());	// Readd the captured Piece
+		}
+		AddPieceToBoard( PieceHelper::AsPiece(PAWN, sideToMove_), m.from());	// Adds the Pawn again
 		break;
-	case MoveType::Promote:
-		assert(!MoveHelper::IsPawnMove(m));	// The Pawn is implicit
-		RemovePieceFromBoard( m.MovPiece, m.To );	// Remove the Piece just promoted
-		assert(!MoveHelper::IsCapture(m));	// Not a capture
-		AddPieceToBoard( PieceHelper::AsPiece(PAWN, m_iColor), m.From );	// Adds the Pawn again
+	case MoveType::QUEEN_CASTLE:
+		assert( m.from() == e1 || m.from() == e8);	// must be in starting position
+		assert(PieceHelper::IsKing(GetPiece(m.to())));
+		assert(MoveHelper::IsKingMove(m));
+		switch( m.to())
+		{
+		case c1:	// Long castling
+		case c8:
+			assert(PieceHelper::IsNoPiece(GetPiece(m.from())));	// nothing on e1+h1 now, they are on f1+g1
+			assert(PieceHelper::IsNoPiece(GetPiece(m.to() - 1)));
+			assert(PieceHelper::IsNoPiece(GetPiece(m.to() - 2)));
+			// Move Rook now at d1|d8 back to a1|a8
+			MovePiece( PieceHelper::AsPiece(ROOK, sideToMove_),
+				SquareHelper::Calc(m.to(), +1),
+				SquareHelper::Calc(m.to(), -2 ));
 		break;	
-	case MoveType::Castling:
+		default:	// Unknown castling ? ;-)
+			assert( !"Invalid castling 'to'-field" );
+			break;
+		}
+		// Readding the King to the starting position
+		MovePiece(m.MovPiece, m.to(), m.from());
+		break;
+	case MoveType::KING_CASTLE:
 		// Castling also involves moving two pieces, the King and a Rook
-		assert( m.From == e1 || m.From == e8);	// must be in starting position
-		assert(PieceHelper::IsKing(GetPiece(m.To)));
+		assert( m.from() == e1 || m.from() == e8);	// must be in starting position
+		assert(PieceHelper::IsKing(GetPiece(m.to())));
 		assert(MoveHelper::IsKingMove(m));
 
-		switch( m.To)
+		switch( m.to())
 		{
 		case g1:	// Short castling
 		case g8:	
-			assert(PieceHelper::IsNoPiece(GetPiece(m.From)));	// nothing on e1+h1 now, they are on f1+g1
-			assert(PieceHelper::IsNoPiece(GetPiece(m.To + 1)));
+			assert(PieceHelper::IsNoPiece(GetPiece(m.from())));	// nothing on e1+h1 now, they are on f1+g1
+			assert(PieceHelper::IsNoPiece(GetPiece(m.to() + 1)));
 
 			// Move Rook now at f1|f8 back to h1|h8
-			MovePiece( PieceHelper::AsPiece(ROOK, m_iColor),
-				SquareHelper::Calc(m.To, -1), 
-				SquareHelper::Calc(m.To, +1 ));
-			break;
-		case c1:	// Long castling
-		case c8:
-			assert(PieceHelper::IsNoPiece(GetPiece(m.From)));	// nothing on e1+a1+b1 now, they are on c1+d1
-			assert(PieceHelper::IsNoPiece(GetPiece(m.To - 2)));
-			assert(PieceHelper::IsNoPiece(GetPiece(m.To - 1)));
-
-			// Move Rook now at d1|d8 back to a1|a8
-			MovePiece(PieceHelper::AsPiece(ROOK, m_iColor),
-				SquareHelper::Calc(m.To, +1),
-				SquareHelper::Calc(m.To, -2 ));
+			MovePiece( PieceHelper::AsPiece(ROOK, sideToMove_),
+				SquareHelper::Calc(m.to(), -1),
+				SquareHelper::Calc(m.to(), +1 ));
 			break;
 		default:	// Unknown castling ? ;-)
 			assert( !"Invalid castling 'to'-field" );
 			break;
 		}
 		// Readding the King to the starting position
-		MovePiece(m.MovPiece, m.To, m.From);
+		MovePiece(m.MovPiece, m.to(), m.from());
 		break;
 	default:
 		assert(!"Unsupported move type");
@@ -414,16 +455,16 @@ void Board::UndoMove(_In_ const Move& m)
 
 // Tester om kongen staar i skak efter det lige foretagne traek!
 // Med denne rutine er det ikke muligt at se _hvilken_ brik der truer 'pos'
-// Uses private variables m_iColor and m_bitboards
+// Uses private variables sideToMove_ and m_bitboards
 bool Board::InCheck() const noexcept
 {
 	// Inverterer farven, da vi vil generere traek for modstanderen
-	const eColor byColor = ( m_iColor == WHITE ? BLACK : WHITE );
+	const eColor byColor = ( sideToMove_ == WHITE ? BLACK : WHITE );
 
 	const BITBOARD bb = MoveGenerator::GetAttackBoard( byColor );
 	
 	// Hvis angrebsbitboardet indeholder vores konges placering returneres true
-	return Bits::isAnyBitSet(bb, m_bitboards.at(static_cast<BITBOARD>(KING) + m_iColor));
+	return Bits::isAnyBitSet(bb, m_bitboards.at(static_cast<BITBOARD>(KING) + sideToMove_));
 }
 
 //////////////////////////////////////////////////

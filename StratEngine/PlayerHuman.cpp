@@ -11,6 +11,7 @@
 #include "PlayerHuman.h"
 #include "Board.h"
 #include "MoveGenerator.h"
+#include <MoveHelper.h>
 
 
 // TODO: Add support for official input of castling moves (e.g. "0-0" or "0-0-0") 
@@ -83,7 +84,7 @@ Move PlayerHuman::GetMove(_Inout_ GameInfo& info)
 		}
 
 		// Special: Er det en Promotion? Saa er der 4 valgmuligheder!
-		if (moveIt->Type == MoveType::Promote)
+		if (MoveHelper::IsPromote(*moveIt))
 		{
 			// There are four different moves. We only want one!
 			if (userPromote) {
@@ -130,8 +131,9 @@ bool PlayerHuman::ParseInput(_In_ const std::string& input,
 {
 	auto curIt = input.begin();
 	const auto end = input.end();
-	move.From = GetSquare(curIt, end);
-	move.To = GetSquare(curIt, end);
+	eSquare from = GetSquare(curIt, end);
+	eSquare to = GetSquare(curIt, end);
+	move.SetMove(from, to, MoveType::QUIET);	// Generic type for now
 
 	// No promotion this time?
 	if (curIt == end)

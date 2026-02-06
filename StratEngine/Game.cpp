@@ -183,16 +183,13 @@ std::unique_ptr<IPlayer> Game::SetPlayerParams(const Config::PlayerConfig& confi
 void Game::SetGameParams(const Config::GameConfig& config) noexcept
 {
 	// Set active color
-	Board::Instance().SetInitialColor(config.color);
+	Board::Instance().SetInitialColor(config.sideToMove);
 	// Set ep square
 	gameInfo_.epSquare = config.epSquare;
 	if (config.epSquare != NO_SQUARE)
 	{
-		gameInfo_.lastMove.To = NO_SQUARE;
-		gameInfo_.lastMove.From = NO_SQUARE;
-		gameInfo_.lastMove.Type = MoveType::PawnTwoForward;
-		gameInfo_.lastMove.MovPiece = ((config.color == WHITE) ? BLACK_PAWN : WHITE_PAWN);
-		gameInfo_.lastMove.Content = NO_PIECE;
+		const auto movPiece = (config.sideToMove == WHITE) ? BLACK_PAWN : WHITE_PAWN;
+		gameInfo_.lastMove.SetMove(NO_SQUARE, NO_SQUARE, MoveType::DOUBLE_PAWN_PUSH, movPiece, NO_PIECE );
 	}
 
 	// Castling availability

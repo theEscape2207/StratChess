@@ -53,11 +53,8 @@ public:
 	//---------------------
 
 	// Returnerer farven paa aktive spiller
-	eColor GetCurrentColor() const noexcept {	return m_iColor;	}
-	void SetInitialColor(eColor color) noexcept
-	{
-		m_iColor = color;
-	}
+	eColor GetCurrentColor() const noexcept			{	return sideToMove_;		}
+	void SetInitialColor(eColor color) noexcept		{	sideToMove_ = color;	}
 
 	// Returnerer brikken paa paagaeldende felt
 	ePiece GetPiece(_In_ eSquare square) const noexcept {
@@ -139,8 +136,7 @@ public:
 		Bits::toogleBits(curBoardHashKey, 0x21D420B884CD6731U);
 	}
 	void ChangePlayer() noexcept {
-		// After change to enum
-		(m_iColor = (m_iColor == eColor::WHITE) ? eColor::BLACK : eColor::WHITE);
+		(sideToMove_ = (sideToMove_ == eColor::WHITE) ? eColor::BLACK : eColor::WHITE);
 		HashkSwitch();
 	}
 	
@@ -194,7 +190,9 @@ public:
 	//***************************************
 	void MovePiece(_In_ const Move& move)
 	{
-		MovePiece(move.MovPiece, move.From, move.To);
+		//MovePiece(move.MovPiece, move.From, move.To);
+		_RemovePiece(move.from(), move.MovPiece);
+		_AddPiece(move.to(), move.MovPiece);
 	}
 
 	//***************************************
@@ -214,10 +212,13 @@ public:
 	
 
 private:
-	eColor m_iColor{ eColor::WHITE };				// Hvis tur er det ?
+	// ========================================================================
+	// Member Variables
+	// ========================================================================
 
 	using TBoardSquares = std::array<ePiece, ALL_SQUARES>;
 	TBoardSquares m_iBoard {};	// Array af alle pieces paa boardet - et paa hver square
+	eColor sideToMove_{ eColor::WHITE };				// Hvis tur er det ?
 
 	TBitboards m_bitboards{ { 0 } };
 

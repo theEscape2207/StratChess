@@ -21,7 +21,7 @@ public:
 	struct GameConfig
 	{
 		// Set Side to move
-		eColor color{ eColor::WHITE };
+		eColor sideToMove{ eColor::WHITE };
 		// Set ep square
 		eSquare epSquare{ NO_SQUARE };
 		// Castling availability

@@ -27,8 +27,6 @@ class Game final
 
 	void AddFileHeader(std::ostream& file) const;
 
-	//void ReadBoardSetup(const const AutoPtr<XMLConfiguration>& );
-
 	IPlayer& GetCurrentPlayer() const noexcept;
 		
 	void PrintStateMessage( ) const;
