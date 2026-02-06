@@ -73,6 +73,13 @@ namespace Bits
 	}
 
 	// Returns value with the mask bits cleared. Defined as: value & ~mask
+	// Both parameters can be of different types
+	// This is useful when working with enums as masks
+	// (e.g. enum class MyEnum : uint32_t { ... }; )
+	// Then you can call: clearBits<uint32_t, MyEnum>( value, mask );
+	// without having to cast the mask to uint32_t first
+	// which would create an unnecessary temporary variable
+	// See also setBits() above
 	template<class T, class U>
 	static inline T clearBits(const T& value, const U& mask) noexcept
 	{

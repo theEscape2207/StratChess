@@ -3,7 +3,6 @@
 // PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 #include "StdAfx.h"
 #include "PlayerBase.h"
-
 // For factory constructor
 #include "AIBasic.h"
 #include "AIAgent.h"

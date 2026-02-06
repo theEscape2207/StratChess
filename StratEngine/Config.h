@@ -20,7 +20,7 @@ public:
 
 	struct GameConfig
 	{
-		// Set active color
+		// Set Side to move
 		eColor color{ eColor::WHITE };
 		// Set ep square
 		eSquare epSquare{ NO_SQUARE };

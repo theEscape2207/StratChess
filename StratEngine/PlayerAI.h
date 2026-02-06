@@ -19,7 +19,7 @@ public:
 			"\n\tEvaluation:\t" << Eval->GetType() << '\n';
 		return str.str();
 	}
-	const char* GetType() const noexcept override		{ return "AI";	}
+	const char* GetType() const noexcept override { return "AI"; }
 
 	PlayerAiBase(const PlayerAiBase&) = delete;
 	PlayerAiBase& operator=(const PlayerAiBase&) = delete;
@@ -29,7 +29,7 @@ public:
 protected:
 	// Force use of factory by
 	// Preventing constructor, copy-construction & operator=
-	explicit PlayerAiBase(unsigned md):
+	explicit PlayerAiBase(unsigned md) :
 			m_Board(Board::Instance()), 
 			m_MaxDepth(md)
 		 {
@@ -37,7 +37,7 @@ protected:
 		 }
 
 		 // default constructor - not used but needs to be there
-		 PlayerAiBase() noexcept:
+	PlayerAiBase() noexcept :
 			 m_Board(Board::Instance()),
 			 m_MaxDepth(5) // some default
 		 {
@@ -49,7 +49,7 @@ protected:
 	/* AI helper methods */
 
 	// Quiescent soegning modvirker horisont-effekten
-	int Quiescent(size_t, int, int );
+	int Quiescent(size_t, int, int);
 
 	// Registers the amount of used time and prints out if PRINT_STATS is set
 	std::chrono::milliseconds StopTimerAndAdjustVars() const;
@@ -57,7 +57,7 @@ protected:
 	// Tilfoejer dette traek til nuvaerende traekfoelge	
 	// Sletter eksisterende traek fra listen fra denne ply og ned
 	// Benyttes til Last Move sorting - Saetter parent node
-	void AddMoveToSeq( const Move& move, size_t ply );
+	void AddMoveToSeq(const Move& move, size_t ply);
 
 	// Returns the best first move currently found
 	virtual Move GetBestMove(_In_ GameInfo& info) noexcept;
@@ -85,12 +85,12 @@ protected:
 		Eval = EvalManager::Create(type);	// create new eval
 	}
 
-	static void PrintMovesAndScore(std::ostream& stream, size_t numMove, size_t TotalCount, const Move& move, int score )
+	static void PrintMovesAndScore(std::ostream& stream, size_t numMove, size_t TotalCount, const Move& move, int score)
 	{
 		// Udskriver traekkene til fil
 		stream << "Move " << numMove + 1 << " of " << TotalCount << '\n' //-V128
 			<< move;
-		if (score != (-GameValues::Search_Init -1))
+		if (score != (-GameValues::Search_Init - 1))
 			stream << "Score: " << score << "\n\n";
 		else
 			stream << "Invalid move!" << "\n\n";
@@ -105,14 +105,14 @@ protected:
 	// Remark:      TODO: Burde flyttes ned som en template metode DoInit efter m_MoveSeq
 	//	  		    Non Iter edition
 	// ************************************
-	virtual void InitMoveVariables(_In_ const GameInfo& info )
+	virtual void InitMoveVariables(_In_ const GameInfo& info)
 	{
 		m_SearchCount = 0;
 
 		// nulstiller parent boardInfo-sekvensen
 		// Store boardInfo from after last move
 		m_infoSeq.clear();
-		m_infoSeq.emplace_back( info );
+		m_infoSeq.emplace_back(info);
 
 		// Nulstiller best move
 		m_BestMove.Clear();
@@ -124,10 +124,10 @@ protected:
 		return GetLastBoardInfo(currentPly).lastMove; 
 	}
 
-	const GameInfo& GetLastBoardInfo( size_t currentPly ) const
+	const GameInfo& GetLastBoardInfo(size_t currentPly) const
 	{
 		// This must always contain the last move, hence the one extra info 
-		return m_infoSeq.at( currentPly );
+		return m_infoSeq.at(currentPly);
 	}
 
 	// ************************************
@@ -139,11 +139,11 @@ protected:
 	// Parameter:   const GameStates& newState - The new state
 	// Remark:      
 	// ************************************
-	void UpdateGameState( size_t currentPly, GameStates newState )
+	void UpdateGameState(size_t currentPly, GameStates newState)
 	{
-		if ( currentPly == 0 )
+		if (currentPly == 0)
 		{
-			GameInfo& info = m_infoSeq.at( currentPly );
+			GameInfo& info = m_infoSeq.at(currentPly);
 			if (newState != info.gameState)
 			{
 				info.gameState = newState;
@@ -151,8 +151,10 @@ protected:
 		}
 	}
 
-	void CheckGameOver( GameInfo &info )
+	// TODO: rename to FireStateChanged. Also, investigate if refreshInfo is needed for old AI structure
+	void CheckGameOver(GameInfo& info, bool refreshInfo = true)
 	{
+		if (refreshInfo)
 		info = GetLastBoardInfo(0);
 		if (info.gameState != GameStates::STILL_PLAYING)
 		{

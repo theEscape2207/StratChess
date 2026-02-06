@@ -38,6 +38,9 @@ void Board::ClearBoard()
 
 	m_iColor = WHITE;
 
+	// TODO: clear game history
+	
+
 	m_MaterialScore[WHITE] = m_MaterialScore[BLACK] = 0;
 	//m_PlaceScore[WHITE] = m_PlaceScore[BLACK] = 0;
 	
@@ -293,7 +296,7 @@ bool Board::DoMove(_In_ const Move& m)
 	}
 
 	//
-	//	Check for check
+	//	Check whether we are in check
 	//	This can possibly be done smarter, but it's easy and it works!
 	//	TODO: Move this into the algoritms - it calls GetAttackBoard() from MoveGen
 	//
@@ -307,11 +310,18 @@ bool Board::DoMove(_In_ const Move& m)
 	}
 	// Nu er det den andens tur
 	ChangePlayer();
+	
 	return true;
 }
 
-// Undoer et traek - 
-// Ren spejling af DoMove()
+// Undoes a Move 
+// Mirror of DoMove()
+// Assumes that the current player is the one who did NOT make the move
+// i.e. we are undoing the last move made by the opponent
+// Note: We do NOT restore any game state other than the pieces on the board and the current player
+// 	 e.g. we do NOT restore castling rights, en-passant rights, 50-move counter, etc.
+// These must be handled separately if needed
+// Note2: MovePiece is reversed, i.e. we move from 'to' back to 'from'
 void Board::UndoMove(_In_ const Move& m)
 {
 	assert( MoveHelper::IsValid( m ));

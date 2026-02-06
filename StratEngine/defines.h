@@ -63,7 +63,6 @@ enum class MoveType : uint8_t {
 	PROMOTION_BISHOP = 9,
 	PROMOTION_ROOK = 10,
 	PROMOTION_QUEEN = 11,
-	//PromoteCapture = 0x03,	// Both a Promote and a capture - handled as PROMOTION_* with Content set
 };
 
 enum eRowNames /*: uint8_t*/ {
