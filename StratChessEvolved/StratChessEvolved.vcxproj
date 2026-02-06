@@ -149,6 +149,7 @@
     <ClCompile Include="..\StratEngine\Sort.cpp" />
     <ClCompile Include="..\StratEngine\StdAfx.cpp" />
     <ClCompile Include="..\StratEngine\TranspositionTable.cpp" />
+    <ClCompile Include="..\StratEngine\Utils\FENParser.cpp" />
     <ClCompile Include="..\StratEngine\Utils\Logger.cpp" />
     <ClCompile Include="StratChessEvolved.cpp" />
   </ItemGroup>
@@ -169,6 +170,7 @@
     <ClInclude Include="..\StratEngine\HashElement.h" />
     <ClInclude Include="..\StratEngine\IPlayer.h" />
     <ClInclude Include="..\StratEngine\Move.h" />
+    <ClInclude Include="..\StratEngine\MoveFactory.h" />
     <ClInclude Include="..\StratEngine\MoveGenerator.h" />
     <ClInclude Include="..\StratEngine\MoveHelper.h" />
     <ClInclude Include="..\StratEngine\outfile.h" />

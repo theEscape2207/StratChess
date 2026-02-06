@@ -106,6 +106,11 @@ namespace PieceHelper
 		return static_cast<ePiece>(piece + static_cast<size_t>(color));
 	}
 
+	static inline constexpr ePieceType AsPieceType(_In_ ePiece piece) noexcept
+	{
+		return static_cast<ePieceType>(piece >> 1);
+	}
+
 } // namespace PieceHelper
 
 #pragma warning (pop)

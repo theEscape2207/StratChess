@@ -17,9 +17,14 @@
 #include "Move.h"
 #include "PieceHelper.h"
 #include "SquareHelper.h"
+#include <cassert>
 
 namespace MoveHelper
 {
+	[[nodiscard]] static inline MoveType AsType(_In_ const Move& move) noexcept
+	{
+		return static_cast<MoveType>(move.flags());
+	}
 	/*
 	*	MovPiece methods
 	*/
@@ -37,13 +42,13 @@ namespace MoveHelper
 	// Is this piece moving from this square?
 	[[nodiscard]] static inline bool IsPieceMovingFrom(_In_ const Move& move, ePiece type, eSquare square) noexcept
 	{
-		return (PieceHelper::IsOfPiece(move.MovPiece, type) && (move.From == square));
+		return (PieceHelper::IsOfPiece(move.MovPiece, type) && (move.from() == square));
 	}
 
 	// Is this piece capture from this square?
 	[[nodiscard]] static inline bool IsPieceCapturedAt(_In_ const Move& move, ePiece type, eSquare square) noexcept
 	{
-		return (PieceHelper::IsOfPiece(move.Content, type) && (move.To == square));
+		return (PieceHelper::IsOfPiece(move.Content, type) && (move.to() == square));
 	}
 
 	// Is the moving piece a pawn
@@ -73,95 +78,100 @@ namespace MoveHelper
 	//************************************
 	[[nodiscard]] static bool IsCapture(_In_ const Move& move ) noexcept
 	{
-		switch( move.Type )
+		switch(AsType(move))
 		{
-		case MoveType::Capture:
-		case MoveType::En_Passant:
-		case MoveType::PromoteCapture:
+		case MoveType::CAPTURE:
+		case MoveType::EP_CAPTURE:
 			assert( PieceHelper::IsActual(move.Content) );
 			return true;
-		case MoveType::Promote:
+		case MoveType::QUIET:
+		case MoveType::DOUBLE_PAWN_PUSH:
+		case MoveType::KING_CASTLE:
+		case MoveType::QUEEN_CASTLE:
 			assert(!PieceHelper::IsActual(move.Content));
 			return false;
+		case MoveType::PROMOTION_KNIGHT:
+		case MoveType::PROMOTION_BISHOP:
+		case MoveType::PROMOTION_ROOK:
+		case MoveType::PROMOTION_QUEEN:
+			// Promotion can be both a capture and a non-capture
+			return PieceHelper::IsActual(move.Content);
 		default: 
 			assert(!PieceHelper::IsActual(move.Content));
 			return false;
 		}
 	}
 
-	[[nodiscard]] static bool IsCapture(_In_ MoveType type) noexcept
-	{
-		switch (type)
-		{
-		case MoveType::Capture:
-		case MoveType::En_Passant:
-		case MoveType::PromoteCapture:
-			return true;
-		case MoveType::Promote:
-			return false;
-		default:
-			return false;
-		}
-	}
-
 	[[nodiscard]] static inline bool IsPromote(_In_ const Move& move ) noexcept
 	{
-		return (move.Type == MoveType::Promote) || 
-			(move.Type == MoveType::PromoteCapture);
+		return (AsType(move) >= MoveType::PROMOTION_KNIGHT);	// All promotion types are >= PROMOTION_KNIGHT
 	}
 
 	[[nodiscard]] static inline bool IsEnPassant(_In_ const Move& move) noexcept
 	{
-		return move.Type == MoveType::En_Passant;
+		return AsType(move) == MoveType::EP_CAPTURE;
 	}
 
 	[[nodiscard]] static inline bool IsCastling(_In_ const Move& move) noexcept
 	{
-		return move.Type == MoveType::Castling;
+		MoveType type = AsType(move);
+		return (type == MoveType::QUEEN_CASTLE) 
+			|| (type == MoveType::KING_CASTLE);
 	}
 
-	[[nodiscard]] static eSquare GetEnPassantSquare(_In_ const Move& move ) noexcept
+	[[nodiscard]] static inline eSquare GetEnPassantSquare(_In_ const Move& move ) noexcept
 	{
-		if(move.Type != MoveType::PawnTwoForward)
+		if(AsType(move) != MoveType::DOUBLE_PAWN_PUSH)
 			return NO_SQUARE;
 		return ( PieceHelper::Color( move.MovPiece) == WHITE ? 
-			SquareHelper::Calc(move.To, +ONE_ROW) : 
-			SquareHelper::Calc(move.To, -ONE_ROW));
+			SquareHelper::Calc(move.to(), +ONE_ROW) :
+			SquareHelper::Calc(move.to(), -ONE_ROW));
 	}
 
 	[[nodiscard]] static inline bool IsEmpty(_In_ const Move& move ) noexcept
 	{
-		return (move.To == NO_SQUARE) || (move.From == NO_SQUARE);
+		return (move.to() == NO_SQUARE)
+			|| (move.from() == NO_SQUARE);
 	}
 
 	[[nodiscard]] static bool IsValid(_In_ const Move& move ) noexcept
 	{
 		if( IsEmpty( move ) )
 			return false;
-		if( move.To == move.From )
+		if( move.to() == move.from())
 			return false;
-		if( PieceHelper::IsActual( move.Content) && (PieceHelper::Color(move.MovPiece) == PieceHelper::Color(move.Content) ) )
-			return false;
+		if ((PieceHelper::IsActual(move.Content)) && (PieceHelper::Color(move.MovPiece) == PieceHelper::Color(move.Content)))
+			return false;	// Cannot capture own piece
 		if( PieceHelper::IsKing(move.Content))	// Cannot take a King
 			return false;
-		if( ((move.Type == MoveType::En_Passant) || (move.Type == MoveType::PawnTwoForward)) && !IsPawnMove(move))
+		MoveType type = AsType(move);
+		if( ((type == MoveType::EP_CAPTURE) || (type == MoveType::DOUBLE_PAWN_PUSH)) && !IsPawnMove(move))
 			return false;
-		switch (move.Type)
+		switch (type)
 		{
-		case MoveType::PawnTwoForward:
+		case MoveType::DOUBLE_PAWN_PUSH:
 			assert(!PieceHelper::IsActual( move.Content));	// ingen slag
 			assert(IsPawnMove(move));
 			break;
-		case MoveType::En_Passant:
+		case MoveType::EP_CAPTURE:
 			assert(IsPawnMove(move));
 			break;
-		case MoveType::Castling:
-			assert(move.From == e1 || move.From == e8);	// must be in starting position
-			switch (move.To)
+		case MoveType::KING_CASTLE:
+			assert(move.from() == e1 || move.from() == e8);	// must be in starting position
+			switch (move.to())
 			{
 			case g1:	// Short castling
 			case g8:
 				break;
+			default:	// Unknown castling ? ;-)
+				assert(!"Invalid castling 'to'-field");
+				break;
+			}
+			break;
+		case MoveType::QUEEN_CASTLE:
+			assert(move.from() == e1 || move.from() == e8);	// must be in starting position
+			switch (move.to())
+			{
 			case c1:	// Long castling
 			case c8:
 				break;
@@ -170,10 +180,12 @@ namespace MoveHelper
 				break;
 			}
 			break;
-		case MoveType::Normal:	// Default case
-		case MoveType::Capture:
-		case MoveType::Promote:
-		case MoveType::PromoteCapture:
+		case MoveType::QUIET:	// Default case
+		case MoveType::CAPTURE:
+		case MoveType::PROMOTION_KNIGHT:
+		case MoveType::PROMOTION_BISHOP:
+		case MoveType::PROMOTION_ROOK:
+		case MoveType::PROMOTION_QUEEN:
 			break;
 		}
 		return true;

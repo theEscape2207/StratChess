@@ -28,19 +28,19 @@ private:
 
 	static void GeneratePawnNormalMoves(_In_ const BITBOARD * const bbBitBoards, _In_ eColor color, _Inout_ MoveList& moveList);
 
-	static void GenerateOfficerMoves(const BITBOARD * const bbBitBoards, MoveList& moveList, ePieceType piece, bool onlyCaptures );
+	static void GenerateOfficerMoves(const BITBOARD * const bbBitBoards, MoveList& moveList, ePieceType piece, eColor color, bool onlyCaptures );
 	
-	static void AddOfficerMoves(MoveList& moveList, BITBOARD, Move& move);
-	static void AddPawnPromoteMoves( const BITBOARD* bbBitBoards, MoveList& moveList );
-	static void AddPawnCaptures(MoveList& moveList, const BITBOARD* , Move& peasantMove);
+	static void AddOfficerMoves(MoveList& moveList, BITBOARD, ePiece piece, eSquare from);
+	static void AddPawnPromoteMoves( const BITBOARD* bbBitBoards, eColor color, MoveList& moveList );
+	static void AddPawnCaptures(MoveList& moveList, const BITBOARD* , Move pawnMove);
 	static void AddCastleMoves(MoveList& moveList, eColor color, const BITBOARD* bbBitBoards, const GameInfo &info);
 
 	static bool IsCapture(const BITBOARD* bbBitBoards, eColor color, const Move &peasantMove) noexcept	//FIXME: THis method is crap and should be reverted
 	{
-		return Bits::isAnyBitSet(bbBitBoards[ePiece::ALL_BLACK_PIECES - static_cast<bool>(color)], g_bbMask[peasantMove.To]);
+		return Bits::isAnyBitSet(bbBitBoards[ePiece::ALL_BLACK_PIECES - static_cast<bool>(color)], g_bbMask[peasantMove.to()]);
 	}
 
-	static BITBOARD GetOfficerAttackBoard(const BITBOARD* bbBitBoards, const Move& move ) noexcept;
+	static BITBOARD GetOfficerAttackBoard(const BITBOARD* bbBitBoards, eSquare from, ePiece piece) noexcept;
 	static BITBOARD GetTowerBitboard(const BITBOARD* bbBitBoards, eSquare from, eColor color) noexcept;
 	static BITBOARD GetBishopBitboard(const BITBOARD* bbBitBoards, eSquare from, eColor color) noexcept;
 
