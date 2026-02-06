@@ -139,8 +139,8 @@ void Game::CreateGameMoveFile()
 {
 	auto logger = spdlog::default_logger();
 	logger->debug("Creating Moves Log File: 'gamelist.txt'");
-	movesFile.open("gamelist.txt", std::ios::trunc | std::ios::out);
-	AddFileHeader(movesFile);
+	movesFile_.open("gamelist.txt", std::ios::trunc | std::ios::out);
+	AddFileHeader(movesFile_);
 	logger->debug("Created Moves Log File: 'gamelist.txt'");
 }
 
@@ -350,6 +350,7 @@ void Game::PrintBoardAndMove(const Move& move) const
 	std::stringstream sstream;
 	sstream << "\nBoard " << GetBoardCount() << "\n\n";
 	sstream << board << move;
+	// TODO: Add InCheck info here instead of in Move's operator<<
 	spdlog::default_logger()->info(sstream.str());
 
 #ifdef PRINT_MOVES
@@ -369,8 +370,8 @@ void Game::PrintBoardAndMove(const Move& move) const
 //***************************************
 void Game::PrintGameMoves()
 {
-	movesFile << "Move " << m_GameMoves.size() << '\n'; //-V128
-	movesFile << m_GameMoves.back() << '\n';
+	movesFile_ << "Move " << m_GameMoves.size() << '\n'; //-V128
+	movesFile_ << m_GameMoves.back() << '\n';
 }
 
 //***************************************
@@ -398,7 +399,7 @@ void Game::AddFileHeader(std::ostream& file)const
 	file << R"(
 *********************************
 *      Escapes Chess game       *
-*      Version: 0.6             *
+*      Version: 0.7             *
 *********************************
 )";
 	errno_t err = localtime_s(&timeinfo, &now_c);	// MSVC complains about localtime() usage

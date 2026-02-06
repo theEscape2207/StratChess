@@ -133,7 +133,7 @@ std::string Move::Output() const
 			break;
 	}
 	// is this a Checking move?
-	if ( IsCheck )
+	if (IsCheck)
 		output << "+";
 	return output.str();
 }

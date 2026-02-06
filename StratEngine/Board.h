@@ -5,7 +5,6 @@
 #include "Move.h"
 #include "SquareHelper.h"
 #include "PieceHelper.h"
-
 #include <unordered_map>
 #include <span>
 #include <tuple>
@@ -224,12 +223,18 @@ private:
 
 	int m_MaterialScore[2]{ 0 };		// Den materielle score for de to spillere
 
+	// ------------------------------------------------
+	// Transposition Table stuff
+	// -----------------------------------------------
+	// Hash Table for Transposition Table (Note: not used for AI Perplex)
 	using TMoveHashTable = std::unordered_map<unsigned int, HashElement>;
 	TMoveHashTable hashTable_;
 	
+	// Zobrist Hash keys
 	std::array<std::array<uint64_t, ALL_SQUARES>, ALL_PIECETYPES> allHashKeys;	// Piece Hash key table
-
+	// Current board hash key
 	unsigned int curBoardHashKey{ 0 };
+
 public:
 	//---------------------------
 	// For Transposition tables

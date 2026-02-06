@@ -98,13 +98,12 @@ public:
 	Game& operator=(Game&&) = delete;
 private:
 	std::unique_ptr<IPlayer> m_pPlayers[2];
-	//unsigned m_iBoardCount;
 
 	// Data structure for keeping 
 	std::vector<Move> m_GameMoves;
 
 	// For printing Game Moves to File
-	std::ofstream movesFile;
+	std::ofstream movesFile_;
 	GameInfo gameInfo_;
 	bool customGame_{ false };
 };

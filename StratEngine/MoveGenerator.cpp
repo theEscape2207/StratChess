@@ -3,12 +3,9 @@
 // PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 
 #include "StdAfx.h"
-
 #include <cassert>
-
 #include "MoveGenerator.h"
 #include "Board.h"
-
 #include "MoveHelper.h"
 #include "PieceHelper.h"
 
@@ -501,7 +498,7 @@ void MoveGenerator::AddPawnCaptures(MoveList& moveList, const BITBOARD* bbBitBoa
 //***************************************
 BITBOARD MoveGenerator::GetTowerBitboard(const BITBOARD* bbBitBoards, eSquare from, eColor color) noexcept
 {
-	// Henholdsvis vandrette og lodrette muligheder
+	// File and Rank moves
 	auto iOccupied = static_cast<int>((bbBitBoards[ALL_PIECES] >> (Rank(from) << 3)) & 255);
 	BITBOARD bbAttack = Bits::clearBits(g_bbMovesRank[from][iOccupied], bbBitBoards[ALL_FROM_COLOR + static_cast<int>(color)]);
 
@@ -568,14 +565,14 @@ BITBOARD MoveGenerator::GetAttackBoard(eColor attackByColor) noexcept
 {
 	const auto boards = Board::Instance().GetBitBoards();
 	
-	BITBOARD bbAttackBoard = 0;	// Vil indeholde alle modstanderens slutpositioner efter et CAPTURE move
+	BITBOARD bbAttackBoard = 0;	// Attacked squares bitboard
 
 	/* Boenderne */
 
 	// De hvide foerst
 	if (attackByColor == WHITE)
 	{
-		// Laver i foerste omgang et maalfelt-bitboard med alle skraa traek for boenderne
+		// Target bitboard with normal CAPTURES for pawns
 		bbAttackBoard = (((boards[ePiece::WHITE_PAWN] & ~(g_bbFileMask[eFileNames::RIGHT_FILE])) >> 7) |
 			((boards[ePiece::WHITE_PAWN] & ~(g_bbFileMask[eFileNames::LEFT_FILE])) >> 9));
 

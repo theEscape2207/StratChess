@@ -7,8 +7,6 @@
 #include <map>
 #include <regex>
 #include <algorithm>
-#include <ranges>
-#include <cctype>
 #include "Utils\StrHelper.h"
 #include "PlayerHuman.h"
 #include "Board.h"

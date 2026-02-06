@@ -9,13 +9,8 @@
 #include <algorithm>
 
 /*
-FEN specifies the piece placement, the active color, the castling availability, the en passant target square, the halfmove clock, and the fullmove number.
-These can all fit on a single text line in an easily read format.
-The length of a FEN position description varies somewhat according to the position.
-In some cases, the description could be eighty or more characters in length and so may not fit conveniently on some displays.
-However, these positions aren't too common.
-A FEN description has six fields. Each field is composed only of non-blank printing ASCII characters.
-Adjacent fields are separated by a single ASCII space character.
+FEN specifies the piece placement, the active color, the castling availability, 
+the en passant target square, the halfmove clock, and the fullmove number.
 
 <FEN> ::=  <Piece Placement>
 ' ' <Side to move>
@@ -24,19 +19,11 @@ Adjacent fields are separated by a single ASCII space character.
 ' ' <Halfmove clock>
 ' ' <Fullmove counter>
 
-Here's the FEN for the starting position:
-
+Starting position:
 rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
 
-And after the move 1. e4:
-
+After 1. e4:
 rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1
-
---- Other strings
-5k2/ppp5/4P3/3R3p/6P1/1K2Nr2/PP3P2/8 b - - 1 32
-
-Regex validation
-\s*([rnbqkpRNBQKP1-8]+\/){7}([rnbqkpRNBQKP1-8]+)\s[bw-]\s(([a-hkqA-HKQ]{1,4})|(-))\s(([a-h][36])|(-))\s\d+\s\d+\s*
 */
 std::optional<std::string> FENParser::ParseFEN(const std::string& fen, Config::GameConfig& outConfig, std::vector<std::tuple<ePiece, eSquare>>& outPieces) noexcept
 {
@@ -45,7 +32,7 @@ std::optional<std::string> FENParser::ParseFEN(const std::string& fen, Config::G
 	while (!s.empty() && isspace((unsigned char)s.front())) s.erase(s.begin());
 	while (!s.empty() && isspace((unsigned char)s.back())) s.pop_back();
 
-	// Quick overall format check with regex: piece placement, side, castling, ep, halfmove, fullmove
+	// Quick overall format check with regex
 	static const std::regex fenRx(R"(^\s*([rnbqkpRNBQKP1-8]+\/){7}([rnbqkpRNBQKP1-8]+)\s+[wb]\s+(-|[KQkq]+)\s+(-|[a-h][36])\s+\d+\s+\d+\s*$)");
 	if (!std::regex_match(s, fenRx))
 	{
@@ -80,7 +67,8 @@ std::optional<std::string> FENParser::ParseFEN(const std::string& fen, Config::G
 				else files += 1;
 			}
 			if (files != 8) {
-				return std::string("rank ") + std::to_string(i) + " expands to " + std::to_string(files) + " files (expected 8)";
+				return std::string("rank ") + std::to_string(i) + 
+					" expands to " + std::to_string(files) + " files (expected 8)";
 			}
 		}
 	}
@@ -103,7 +91,7 @@ std::optional<std::string> FENParser::ParseFEN(const std::string& fen, Config::G
 		return err;
 	}
 
-	// En-passant
+	// En-passant - verifies format as well
 	const std::string& ep = parts[3];
 	if (ep != "-") {
 		if (ep.size() != 2 || ep[0] < 'a' || ep[0] > 'h' || (ep[1] != '3' && ep[1] != '6')) {
@@ -231,8 +219,9 @@ std::optional<std::string> FENParser::ParsePiecePlacementField(const std::string
 					return std::string("invalid piece character in placement");
 				}
 
-				// Pawns cannot appear on first or last rank (rank indices 0==8th, 7==1st)
-				if ((piece == ePiece::WHITE_PAWN || piece == ePiece::BLACK_PAWN) && (rank == 0 || rank == 7)) {
+				// Pawns cannot appear on first or last rank
+				if ((piece == ePiece::WHITE_PAWN || piece == ePiece::BLACK_PAWN) && 
+					(rank == 0 || rank == 7)) {
 					return std::string("pawn on invalid rank");
 				}
 
@@ -264,13 +253,13 @@ std::optional<std::string> FENParser::ParsePiecePlacementField(const std::string
 	return std::nullopt;
 }
 
-// Converting the field referrrer in string format "e3" to the corresponding eSquare
 eSquare FENParser::SquareFromString(const std::string& s) noexcept
 {
 	if (s.size() != 2) return NO_SQUARE;
 	const char file = s[0];
 	const char rankChar = s[1];
-	if (file < 'a' || file > 'h' || rankChar < '1' || rankChar > '8') return NO_SQUARE;
+	if (file < 'a' || file > 'h' || rankChar < '1' || rankChar > '8') 
+		return NO_SQUARE;
 	const unsigned int row = file - 'a';
 	const unsigned int col = ((8 - (rankChar - '0')) << 3);
 	return static_cast<eSquare>(col + row);
@@ -342,11 +331,11 @@ bool FENParser::ValidatePositionAgainstFENMetadata(Config::GameConfig& outConfig
 				outConfig.epSquare = NO_SQUARE;
 			}
 			else {
-				pawnRankIndex = 4; // pawn that moved would be on rank index 4
+				pawnRankIndex = 4;
 			}
 		}
 		else { // lastMover == BLACK
-			if (epRankIndex != 2) {
+			if (epRankIndex != 2) { // rank 6 (index 2)
 				spdlog::default_logger()->warn("Clearing en-passant: ep square rank inconsistent with side to move");
 				outConfig.epSquare = NO_SQUARE;
 			}
