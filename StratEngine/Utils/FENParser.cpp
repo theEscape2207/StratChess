@@ -2,6 +2,7 @@
 #include "FENParser.h"
 #include "Board.h"
 #include "PieceHelper.h"
+#include "Formatters.h"		// For logging of pieces and squares
 #include <regex>
 #include <sstream>
 #include <array>
@@ -25,7 +26,12 @@ rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
 After 1. e4:
 rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1
 */
-std::optional<std::string> FENParser::ParseFEN(const std::string& fen, Config::GameConfig& outConfig, std::vector<std::tuple<ePiece, eSquare>>& outPieces) noexcept
+
+// Primary interface using FENGameState
+std::optional<std::string> FENParser::ParseFEN(
+	const std::string& fen, 
+	FENGameState& outState, 
+	std::vector<std::tuple<ePiece, eSquare>>& outPieces) noexcept
 {
 	// Trim input
 	std::string s = fen;
@@ -83,10 +89,10 @@ std::optional<std::string> FENParser::ParseFEN(const std::string& fen, Config::G
 	if (side.size() != 1 || (side[0] != 'w' && side[0] != 'b')) {
 		return std::string("invalid side to move field");
 	}
-	outConfig.color = (side[0] == 'b') ? eColor::BLACK : eColor::WHITE;
+	outState.sideToMove = (side[0] == 'b') ? eColor::BLACK : eColor::WHITE;
 
 	// Castling rights
-	if (auto err = populateCastlingFlags(parts[2], outConfig))
+	if (auto err = PopulateCastlingFlags(parts[2], outState.castlingRights))
 	{
 		return err;
 	}
@@ -94,17 +100,18 @@ std::optional<std::string> FENParser::ParseFEN(const std::string& fen, Config::G
 	// En-passant - verifies format as well
 	const std::string& ep = parts[3];
 	if (ep != "-") {
-		if (ep.size() != 2 || ep[0] < 'a' || ep[0] > 'h' || (ep[1] != '3' && ep[1] != '6')) {
+		if (ep.size() != 2 || ep[0] < 'a' || ep[0] > 'h' || 
+			(ep[1] != '3' && ep[1] != '6')) {
 			return std::string("invalid en-passant square");
 		}
-		outConfig.epSquare = SquareFromString(ep);
+		outState.epSquare = SquareFromString(ep);
 	}
 
 	// Halfmove clock (optional)
 	if (parts.size() >= 5) {
 		try {
 			int half = std::stoi(parts[4]);
-			outConfig.num50moves = std::max(0, half);
+			outState.halfMoveClock = std::max(0, half);
 		}
 		catch (...) {
 			return std::string("invalid halfmove clock");
@@ -115,7 +122,7 @@ std::optional<std::string> FENParser::ParseFEN(const std::string& fen, Config::G
 	if (parts.size() >= 6) {
 		try {
 			int full = std::stoi(parts[5]);
-			outConfig.fullMoveCounter = std::max(1, full);
+			outState.fullMoveCounter = std::max(1, full);
 		}
 		catch (...) {
 			return std::string("invalid fullmove counter");
@@ -125,41 +132,50 @@ std::optional<std::string> FENParser::ParseFEN(const std::string& fen, Config::G
 	return std::nullopt; // success
 }
 
-std::optional<std::string> FENParser::populateCastlingFlags(const std::string& castling, Config::GameConfig& outConfig) noexcept
+
+std::optional<std::string> FENParser::PopulateCastlingFlags(
+	const std::string& castling, 
+	uint8_t& outRights) noexcept
 {
-	// Castling rights - ensure only KQkq and no duplicates then populate outConfig
-	if (castling != "-")	// no more castling rights left
-	{	
-		std::array<bool, 256> seen = {};
-		for (char c : castling) {
-			if (c != 'K' && c != 'Q' && c != 'k' && c != 'q') {
-				return std::string("invalid castling character encountered");
-			}
-			if (seen[static_cast<unsigned char>(c)]) {
-				return std::string("duplicate castling character encountered");
-			}
-			seen[static_cast<unsigned char>(c)] = true;
-		}
-		// Populate outConfig flags
-		outConfig.whitekingcastle = (castling.find('K') != std::string::npos);
-		outConfig.whitequeencastle = (castling.find('Q') != std::string::npos);
-		outConfig.blackkingcastle = (castling.find('k') != std::string::npos);
-		outConfig.blackqueencastle = (castling.find('q') != std::string::npos);
+	if (castling == "-")
+	{
+		outRights = CastlingRights::NONE;
+		return std::nullopt;
 	}
-	return std::nullopt; // success
+	
+	static constexpr std::array<std::pair<char, uint8_t>, 4> charToRight = { {
+		{ 'K', CastlingRights::WHITE_KINGSIDE  },
+		{ 'Q', CastlingRights::WHITE_QUEENSIDE },
+		{ 'k', CastlingRights::BLACK_KINGSIDE  },
+		{ 'q', CastlingRights::BLACK_QUEENSIDE }
+	} };
+	
+	uint8_t rights = CastlingRights::NONE;
+	
+	for (char c : castling)
+	{
+		uint8_t bit = CastlingRights::NONE;
+		for (const auto& [ch, flag] : charToRight)
+		{
+			if (c == ch) { bit = flag; break; }
+		}
+		
+		if (bit == CastlingRights::NONE)
+			return std::string("invalid castling character encountered");
+		
+		if (rights & bit)  // bit already set → duplicate
+			return std::string("duplicate castling character encountered");
+		
+		rights |= bit;
+	}
+
+	outRights = rights;
+	return std::nullopt;
 }
 
-/*
-The first field represents the placement of the pieces on the board.
-The board contents are specified starting with the eighth rank and ending with the first rank.
-For each rank, the squares are specified from file a to file h.
-White pieces are identified by uppercase SAN piece letters ("PNBRQK") and
-black pieces are identified by lowercase SAN piece letters ("pnbrqk").
-Empty squares are represented by the digits one through eight,
-the digit used represents the count of contiguous empty squares along a rank.
-A solidus character "/" is used to separate data of adjacent ranks.
-*/
-std::optional<std::string> FENParser::ParsePiecePlacementField(const std::string& placement, std::vector<std::tuple<ePiece, eSquare>>& outVec) noexcept
+std::optional<std::string> FENParser::ParsePiecePlacementField(
+	const std::string& placement, 
+	std::vector<std::tuple<ePiece, eSquare>>& outVec) noexcept
 {
 	outVec.clear();
 
@@ -225,7 +241,6 @@ std::optional<std::string> FENParser::ParsePiecePlacementField(const std::string
 					return std::string("pawn on invalid rank");
 				}
 
-				// Compute square index consistent with existing code: rank 0 == 8th rank
 				const eSquare sq = static_cast<eSquare>((rank << 3) + fileIndex);
 				outVec.emplace_back(std::make_tuple(piece, sq));
 
@@ -265,70 +280,78 @@ eSquare FENParser::SquareFromString(const std::string& s) noexcept
 	return static_cast<eSquare>(col + row);
 }
 
-// TODO: This function interacts with Board state, so it may be better suited elsewhere.
-bool FENParser::ValidatePositionAgainstFENMetadata(Config::GameConfig& outConfig) noexcept
+// Validate against explicit Board reference
+bool FENParser::ValidatePositionAgainstFENMetadata(
+	const Board& board,
+	FENGameState& state) noexcept
 {
-	Board& board = Board::Instance();
+	// Each entry defines one side's castling validation requirements
+	static constexpr std::array<std::tuple<eSquare, eColor, uint8_t, uint8_t, eSquare, eSquare>, 2> sides = { {
+		{ e1, WHITE, CastlingRights::WHITE_KINGSIDE, CastlingRights::WHITE_QUEENSIDE, h1, a1 },
+		{ e8, BLACK, CastlingRights::BLACK_KINGSIDE, CastlingRights::BLACK_QUEENSIDE, h8, a8 }
+	} };
 
-	// Validate white castling rights: king must be on e1 and rooks on a1/h1
-	if (outConfig.whitekingcastle || outConfig.whitequeencastle) {
-		if (!PieceHelper::IsKing(board.GetPiece(e1)) || PieceHelper::Color(board.GetPiece(e1)) != WHITE) {
-			spdlog::default_logger()->warn("Clearing white castling rights: king not on e1");
-			outConfig.whitekingcastle = outConfig.whitequeencastle = false;
+	for (const auto& [kingSq, color, kingsideFlag, queensideFlag, rookKingSq, rookQueenSq] : sides)
+	{
+		uint8_t sideMask = kingsideFlag | queensideFlag;
+
+		// Skip if neither right is claimed for this side
+		if (!(state.castlingRights & sideMask))
+			continue;
+
+		// King must be present and correct color
+		if (!PieceHelper::IsKing(board.GetPiece(kingSq)) ||
+			PieceHelper::Color(board.GetPiece(kingSq)) != color)
+		{
+			spdlog::default_logger()->warn(
+				"Clearing {} castling rights: king not on {}", color, kingSq);
+			state.castlingRights &= ~sideMask;
+			continue;
 		}
-		else {
-			if (outConfig.whitekingcastle) {
-				if (!PieceHelper::IsOfPiece(board.GetPiece(h1), PieceHelper::AsPiece(ROOK, WHITE))) {
-					spdlog::default_logger()->warn("Clearing white king-side castling right: rook not on h1");
-					outConfig.whitekingcastle = false;
-				}
+
+		// Check kingside rook
+		if (state.castlingRights & kingsideFlag)
+		{
+			if (!PieceHelper::IsOfPiece(
+				board.GetPiece(rookKingSq), 
+				PieceHelper::AsPiece(ROOK, color)))
+			{
+				spdlog::default_logger()->warn(
+					"Clearing {} king-side castling right: rook not on {}", 
+					color, rookKingSq);
+				state.castlingRights &= ~kingsideFlag;
 			}
-			if (outConfig.whitequeencastle) {
-				if (!PieceHelper::IsOfPiece(board.GetPiece(a1), PieceHelper::AsPiece(ROOK, WHITE))) {
-					spdlog::default_logger()->warn("Clearing white queen-side castling right: rook not on a1");
-					outConfig.whitequeencastle = false;
-				}
+		}
+
+		// Check queenside rook
+		if (state.castlingRights & queensideFlag)
+		{
+			if (!PieceHelper::IsOfPiece(
+				board.GetPiece(rookQueenSq), 
+				PieceHelper::AsPiece(ROOK, color)))
+			{
+				spdlog::default_logger()->warn(
+					"Clearing {} queen-side castling right: rook not on {}", 
+					color, rookQueenSq);
+				state.castlingRights &= ~queensideFlag;
 			}
 		}
 	}
 
-	// Validate black castling rights: king must be on e8 and rooks on a8/h8
-	if (outConfig.blackkingcastle || outConfig.blackqueencastle) {
-		if (!PieceHelper::IsKing(board.GetPiece(e8)) || PieceHelper::Color(board.GetPiece(e8)) != BLACK) {
-			spdlog::default_logger()->warn("Clearing black castling rights: king not on e8");
-			outConfig.blackkingcastle = outConfig.blackqueencastle = false;
-		}
-		else {
-			if (outConfig.blackkingcastle) {
-				if (!PieceHelper::IsOfPiece(board.GetPiece(h8), PieceHelper::AsPiece(ROOK, BLACK))) {
-					spdlog::default_logger()->warn("Clearing black king-side castling right: rook not on h8");
-					outConfig.blackkingcastle = false;
-				}
-			}
-			if (outConfig.blackqueencastle) {
-				if (!PieceHelper::IsOfPiece(board.GetPiece(a8), PieceHelper::AsPiece(ROOK, BLACK))) {
-					spdlog::default_logger()->warn("Clearing black queen-side castling right: rook not on a8");
-					outConfig.blackqueencastle = false;
-				}
-			}
-		}
-	}
-
-	// Validate en-passant: must be consistent with a pawn that moved two squares last move
-	if (outConfig.epSquare != NO_SQUARE) {
-		const int epIndex = static_cast<int>(outConfig.epSquare);
+	// Validate en-passant
+	if (state.epSquare != NO_SQUARE) {
+		const int epIndex = static_cast<int>(state.epSquare);
 		const int file = epIndex % 8;
-		const int epRankIndex = epIndex / 8; // 0 == rank 8, 7 == rank 1
+		const int epRankIndex = epIndex / 8;
 
-		// Determine last mover
-		eColor lastMover = (outConfig.color == WHITE) ? BLACK : WHITE;
+		eColor lastMover = (state.sideToMove == WHITE) ? BLACK : WHITE;
 		int pawnRankIndex = -1;
+		
 		if (lastMover == WHITE) {
-			// white double-step leaves ep target on rank 6? (FEN uses human ranks: white double-step sets ep on rank 6? Wait: standard: if white moves pawn from rank 2 to 4, ep target is rank 3)
-			// Here we follow earlier logic: en-passant squares allowed are ranks 3 or 6. if last mover was white, ep must be rank 3 (index 5)
-			if (epRankIndex != 5) {
-				spdlog::default_logger()->warn("Clearing en-passant: ep square rank inconsistent with side to move");
-				outConfig.epSquare = NO_SQUARE;
+			if (epRankIndex != 5) { // rank 3 (index 5)
+				spdlog::default_logger()->warn(
+					"Clearing en-passant: ep square rank inconsistent with side to move");
+				state.epSquare = NO_SQUARE;
 			}
 			else {
 				pawnRankIndex = 4;
@@ -336,24 +359,49 @@ bool FENParser::ValidatePositionAgainstFENMetadata(Config::GameConfig& outConfig
 		}
 		else { // lastMover == BLACK
 			if (epRankIndex != 2) { // rank 6 (index 2)
-				spdlog::default_logger()->warn("Clearing en-passant: ep square rank inconsistent with side to move");
-				outConfig.epSquare = NO_SQUARE;
+				spdlog::default_logger()->warn(
+					"Clearing en-passant: ep square rank inconsistent with side to move");
+				state.epSquare = NO_SQUARE;
 			}
 			else {
 				pawnRankIndex = 3;
 			}
 		}
 
-		if (pawnRankIndex != -1 && outConfig.epSquare != NO_SQUARE) {
+		if (pawnRankIndex != -1 && state.epSquare != NO_SQUARE) {
 			const eSquare pawnSq = static_cast<eSquare>((pawnRankIndex << 3) + file);
 			const ePiece p = board.GetPiece(pawnSq);
 			if (!PieceHelper::IsPawn(p) || PieceHelper::Color(p) != lastMover) {
-				spdlog::default_logger()->warn("Clearing en-passant: no pawn of expected color on square for ep capture");
-				outConfig.epSquare = NO_SQUARE;
+				spdlog::default_logger()->warn(
+					"Clearing en-passant: no pawn of expected color on square for ep capture");
+				state.epSquare = NO_SQUARE;
 			}
 		}
 	}
 
-	// Always return true: metadata was validated and adjusted if needed.
 	return true;
+}
+
+// Conversion utilities
+void FENParser::ToGameConfig(
+	const FENGameState& state, 
+	Config::GameConfig& outConfig) noexcept
+{
+	outConfig.sideToMove = state.sideToMove;
+	outConfig.epSquare = state.epSquare;
+	outConfig.castlingRights = state.castlingRights;
+	outConfig.num50moves = state.halfMoveClock;
+	outConfig.fullMoveCounter = state.fullMoveCounter;
+}
+
+FENParser::FENGameState FENParser::FromGameConfig(
+	const Config::GameConfig& config) noexcept
+{
+	FENGameState state;
+	state.sideToMove = config.sideToMove;
+	state.epSquare = config.epSquare;
+	state.castlingRights = config.castlingRights;
+	state.halfMoveClock = config.num50moves;
+	state.fullMoveCounter = config.fullMoveCounter;
+	return state;
 }

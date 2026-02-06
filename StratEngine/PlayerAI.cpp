@@ -109,7 +109,7 @@ Move PlayerAiBase::GetBestMove(_In_ GameInfo& info ) noexcept
 	// Returner det bedste traek - hvis der er noget
 	if ( !m_BestMove.IsEmpty() )
 	{
-		UpdateBoardInfo( m_BestMove, info );
+		info.UpdateBoardInfo( m_BestMove);
 		return m_BestMove;
 	}
 	// No moves found!
@@ -189,7 +189,7 @@ void PlayerAiBase::AddMoveToSeq(const Move& move, size_t ply)
 {
 	GameInfo info = GetLastBoardInfo( ply );
 
-	UpdateBoardInfo( move, info );
+	info.UpdateBoardInfo( move );
 	
 	// where to add it? size er 2 efter foerste traek ved ply 0
 	const size_t infoSize = m_infoSeq.size();

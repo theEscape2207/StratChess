@@ -6,6 +6,7 @@
 #include "MoveGenerator.h"
 #include "MoveHelper.h"
 #include "PieceHelper.h"
+#include "Utils\FENParser.h"
 #include <random>
 
 extern std::ofstream outLegalMoves;
@@ -38,6 +39,7 @@ void Board::ClearBoard()
 
 	// reset game state
 	sideToMove_ = WHITE;
+	gameInfo_.Reset();
 
 	// TODO: clear game history
 	
@@ -145,6 +147,119 @@ void Board::SetupBoard(_In_ const squareCol& col )
 
 	// FIXME: We should do some further validation on the newly created setup
 
+}
+
+void Board::SetupBoardFromFEN(_In_ const std::string& fen)
+{
+	// Parse the FEN string
+	FENParser::FENGameState state;
+	std::vector<std::tuple<ePiece, eSquare>> pieces;
+
+	auto parseError = FENParser::ParseFEN(fen, state, pieces);
+	if (parseError) {
+		spdlog::default_logger()->error("FEN parse error: {}", *parseError);
+		return;
+	}
+
+	// Clear the board first
+	ClearBoard();
+
+	// Set up pieces from FEN
+	SetupBoard(pieces);
+
+	// Apply game state from FEN
+	sideToMove_ = state.sideToMove;
+	gameInfo_.epSquare = state.epSquare;
+	gameInfo_.castlingRights = state.castlingRights;
+	gameInfo_.fiftyCount = state.halfMoveClock;
+	gameInfo_.fullMoveCount = state.fullMoveCounter;
+
+	// Validate the parsed metadata against actual board state
+	// This will adjust castling rights and ep square if inconsistent
+	FENParser::ValidatePositionAgainstFENMetadata(*this, state);
+
+	// Re-apply potentially adjusted state
+	gameInfo_.epSquare = state.epSquare;
+	gameInfo_.castlingRights = state.castlingRights;
+
+	spdlog::default_logger()->info("Board set up from FEN: {}", fen);
+}
+
+std::string Board::ExtractFENFromBoard() const
+{
+	std::string fen;
+
+	// 1. Piece placement (from rank 8 to rank 1)
+	for (int rank = 0; rank < 8; ++rank) {
+		int emptyCount = 0;
+
+		for (int file = 0; file < 8; ++file) {
+			eSquare square = static_cast<eSquare>((rank << 3) + file);
+			ePiece piece = GetPiece(square);
+
+			if (piece == ePiece::NO_PIECE) {
+				emptyCount++;
+			}
+			else {
+				// Output empty square count if any
+				if (emptyCount > 0) {
+					fen += std::to_string(emptyCount);
+					emptyCount = 0;
+				}
+				// Output piece character
+				fen += g_cPieceNames[piece];
+			}
+		}
+
+		// Output remaining empty squares
+		if (emptyCount > 0) {
+			fen += std::to_string(emptyCount);
+		}
+
+		// Add rank separator (except after last rank)
+		if (rank < 7) {
+			fen += '/';
+		}
+	}
+
+	// 2. Active color
+	fen += ' ';
+	fen += (sideToMove_ == WHITE) ? 'w' : 'b';
+
+	// 3. Castling availability
+	fen += ' ';
+	if (gameInfo_.castlingRights == CastlingRights::NONE) {
+		fen += '-';
+	}
+	else {
+		if (gameInfo_.castlingRights & CastlingRights::WHITE_KINGSIDE)  fen += 'K';
+		if (gameInfo_.castlingRights & CastlingRights::WHITE_QUEENSIDE) fen += 'Q';
+		if (gameInfo_.castlingRights & CastlingRights::BLACK_KINGSIDE)  fen += 'k';
+		if (gameInfo_.castlingRights & CastlingRights::BLACK_QUEENSIDE) fen += 'q';
+	}
+
+	// 4. En passant target square
+	fen += ' ';
+	if (gameInfo_.epSquare == NO_SQUARE) {
+		fen += '-';
+	}
+	else {
+		// Convert square to algebraic notation (e.g., "e3")
+		int file = File(gameInfo_.epSquare);
+		int rank = 7 - Rank(gameInfo_.epSquare); // Flip for human-readable rank
+		fen += static_cast<char>('a' + file);
+		fen += static_cast<char>('1' + rank);
+	}
+
+	// 5. Halfmove clock
+	fen += ' ';
+	fen += std::to_string(gameInfo_.fiftyCount);
+
+	// 6. Fullmove number
+	fen += ' ';
+	fen += std::to_string(gameInfo_.fullMoveCount);
+
+	return fen;
 }
 
 // Setup the default board
@@ -298,17 +413,6 @@ bool Board::DoMove(_In_ const Move& m)
 			MovePiece( PieceHelper::AsPiece(ROOK, sideToMove_),
 				SquareHelper::Calc(to, +1),
 				SquareHelper::Calc(to, - 1));
-			break;
-		case c1:	// Long castling
-		case c8:
-			assert(PieceHelper::IsNoPiece(GetPiece(m.From - 1)));
-			assert(PieceHelper::IsNoPiece(GetPiece(m.From - 2)));
-			assert(PieceHelper::IsNoPiece(GetPiece(m.From - 3)));
-			assert(PieceHelper::IsOfPiece(GetPiece(m.From - 4), PieceHelper::AsPiece(ROOK, m_iColor)));
-			// Move Rook at a1|a8 to d1|d8
-			MovePiece( PieceHelper::AsPiece(ROOK, m_iColor),
-				SquareHelper::Calc(m.To, -2), 
-				SquareHelper::Calc(m.To, +1 ));
 			break;
 		default:	// Unknown castling ? ;-)
 			assert( !"Invalid castling 'to'-field" );

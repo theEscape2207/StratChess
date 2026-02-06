@@ -1,33 +1,65 @@
 #pragma once
 
+#include "defines.h"
+#include "GameState.h"
 #include "Config.h"
 #include <string>
 #include <vector>
 #include <tuple>
+#include <optional>
 
+class Board;
+
+// < FEN > :: = < Piece Placement>
+// ' ' < Side to move >
+// ' ' < Castling ability >
+// ' ' < En passant target square >
+// ' ' < Halfmove clock >
+// ' ' < Fullmove counter >
 class FENParser final
 {
 public:
-	// Parse a full FEN string into piece placement and metadata.
-	// On success returns std::nullopt. On failure returns an error message.
-	// - outPieces is filled with tuples (ePiece, eSquare) suitable for Board::SetupBoard.
-	// - outConfig is filled with parsed GameConfig metadata (color, castling flags, ep square, counters).
-	static std::optional<std::string> ParseFEN(const std::string& fen, Config::GameConfig& outConfig, std::vector<std::tuple<ePiece, eSquare>>& outPieces) noexcept;
+	// Standalone structure for FEN game state
+	struct FENGameState
+	{
+		eColor sideToMove{ eColor::WHITE };
+		eSquare epSquare{ NO_SQUARE };
+		uint8_t castlingRights{ CastlingRights::ALL };
+		int halfMoveClock{ 0 };
+		int fullMoveCounter{ 1 };
+	};
 
-	// Validate board state (after Board::SetupBoard has been applied) against the parsed FEN metadata.
-	// Adjusts outConfig to remove inconsistent castling rights and invalid en-passant squares.
-	// Returns true if metadata was adjusted/validated successfully (position usable).
-	static bool ValidatePositionAgainstFENMetadata(Config::GameConfig& outConfig) noexcept;
+	// Primary interface - parse FEN into standalone structures
+	// This is what Board::SetupFromFEN() should call
+	static std::optional<std::string> ParseFEN(
+		const std::string& fen, 
+		FENGameState& outState, 
+		std::vector<std::tuple<ePiece, eSquare>>& outPieces) noexcept;
+
+	// Validate FEN metadata against actual board state
+	static bool ValidatePositionAgainstFENMetadata(
+		const Board& board,
+		FENGameState& state) noexcept;
+
+	// Utility: Convert FENGameState to Config::GameConfig (for backward compatibility)
+	static void ToGameConfig(const FENGameState& state, Config::GameConfig& outConfig) noexcept;
+	
+	// Utility: Convert Config::GameConfig to FENGameState
+	static FENGameState FromGameConfig(const Config::GameConfig& config) noexcept;
 
 private:
 	// Parse only the piece placement field (the part before the first space).
 	// Fills outVec with (piece, square) tuples in the same square-indexing used in Board.
 	// On success returns std::nullopt. On failure returns an error message.
-	static std::optional<std::string> ParsePiecePlacementField(const std::string& placement, std::vector<std::tuple<ePiece, eSquare>>& outVec) noexcept;
+	static std::optional<std::string> ParsePiecePlacementField(
+		const std::string& placement, 
+		std::vector<std::tuple<ePiece, eSquare>>& outVec) noexcept;
 
 	// Convert a 2-char square like "e3" to eSquare. Returns NO_SQUARE on invalid input.
 	static eSquare SquareFromString(const std::string& s) noexcept;
 
-	// Parse FEN castling string format either "KQkq" or "-" if no more available. Returns false on invalid format.
-	static std::optional<std::string> populateCastlingFlags(const std::string& castling, Config::GameConfig& outConfig) noexcept;
+	// Parse FEN castling string format either "KQkq" or "-" if no more available.
+	static std::optional<std::string> PopulateCastlingFlags(
+		const std::string& castling, 
+		uint8_t& outRights) noexcept;
 };

@@ -50,20 +50,20 @@ void Config::ReadFEN(const std::string& fen) const
 {
 	// Delegate all parsing and validation to FENParser.
 	Board::squareCol vec;
-	Config::GameConfig gameConfig;
-	if (auto err = FENParser::ParseFEN(fen, gameConfig, vec)) {
+	FENParser::FENGameState fenState;
+	if (auto err = FENParser::ParseFEN(fen, fenState, vec)) {
 		spdlog::default_logger()->warn("FEN parse failed: {}", *err);
 		return;
 	}
-
+	Board& board = Board::Instance();
 	// Install the pieces on the board
-	Board::Instance().SetupBoard(vec);
+	board.SetupBoard(vec);
 
 	// Validate/adjust the metadata against the installed position (castling/ep)
-	FENParser::ValidatePositionAgainstFENMetadata(gameConfig);
+	FENParser::ValidatePositionAgainstFENMetadata(board, fenState);
 
 	// Done: hand off to game with validated config
-	pGame_->SetCustomGame(gameConfig);
+	pGame_->SetCustomGame(fenState);
 }
 
 //***************************************

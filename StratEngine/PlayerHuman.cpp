@@ -20,7 +20,7 @@ Move PlayerHuman::GetMove(_Inout_ GameInfo& info)
 {
 	Board& board = Board::Instance();
 	MoveList moveList;
-
+	
 	if (!IsAnyLegalMoves(info, moveList))
 	{
 		// No legal moves left, bye!
@@ -103,7 +103,7 @@ Move PlayerHuman::GetMove(_Inout_ GameInfo& info)
 		// TODO: IsLegalMove bliver kaldt i IsAnyLegalMoves(), men illegale traek bliver ikke fjernet
 		if (board.IsLegalMove(*moveIt))
 		{
-			UpdateBoardInfo(*moveIt, info);
+			info.UpdateBoardInfo(*moveIt );
 			return *moveIt;
 		}
 	}
@@ -134,7 +134,7 @@ bool PlayerHuman::ParseInput(_In_ const std::string& input,
 	eSquare from = GetSquare(curIt, end);
 	eSquare to = GetSquare(curIt, end);
 	move.SetMove(from, to, MoveType::QUIET);	// Generic type for now
-
+	
 	// No promotion this time?
 	if (curIt == end)
 	{
