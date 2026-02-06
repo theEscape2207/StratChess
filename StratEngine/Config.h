@@ -1,6 +1,7 @@
 #pragma once
 
 #include <nlohmann/json.hpp>
+#include "GameState.h"	// For CastlingRights, eColor, eSquare
 
 class Game;
 
@@ -25,10 +26,7 @@ public:
 		// Set ep square
 		eSquare epSquare{ NO_SQUARE };
 		// Castling availability
-		bool whitekingcastle{ false };
-		bool whitequeencastle{ false };
-		bool blackkingcastle{ false };
-		bool blackqueencastle{ false };
+		uint8_t castlingRights{ CastlingRights::ALL };
 		// Halfmove clock - moves since pawn moves or capture
 		int num50moves{ 0 };
 		// Fullmove number - number of moves done by both black and white

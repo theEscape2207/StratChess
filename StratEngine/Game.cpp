@@ -193,10 +193,7 @@ void Game::SetGameParams(const Config::GameConfig& config) noexcept
 	}
 
 	// Castling availability
-	gameInfo_.blackLongCastle = config.blackqueencastle;
-	gameInfo_.blackShortCastle = config.blackkingcastle;
-	gameInfo_.whiteLongCastle = config.whitequeencastle;
-	gameInfo_.whiteShortCastle = config.whitekingcastle;
+	gameInfo_.castlingRights = config.castlingRights;
 
 	// Halfmove clock
 	gameInfo_.fiftyCount = config.num50moves;

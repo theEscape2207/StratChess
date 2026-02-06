@@ -55,7 +55,7 @@ protected:
 		// Returner det bedste traek - hvis der er noget
 		if( !m_Line.empty() )
 		{
-			UpdateBoardInfo( m_Line.front(), info );
+			info.UpdateBoardInfo( m_Line.front() );
 			return m_Line.front();		// Henter det foerste traek fra PVL
 		}
 		

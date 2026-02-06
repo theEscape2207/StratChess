@@ -4,8 +4,10 @@
 #include <fstream>
 
 #include "Move.h"
+#include "GameState.h"
 #include "Config.h"
-#include "Utils\Logger.h"
+#include "Utils/FENParser.h"
+#include "Utils/Logger.h"
 
 class IPlayer;
 
@@ -81,10 +83,11 @@ public:
 
 	void unsubscribePlayerEvents();
 		
-	//static void LogMessage(const std::string &text, Poco::Message::Priority );
-	void SetCustomGame(const Config::GameConfig& config) noexcept
+	void SetCustomGame(const FENParser::FENGameState& gameState) noexcept
 	{
 		customGame_ = true;
+		Config::GameConfig config;
+		FENParser::ToGameConfig(gameState, config);
 		SetGameParams(config);
 	}
 

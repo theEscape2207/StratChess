@@ -3,6 +3,7 @@
 #include "BitBoardHelper.h"
 #include "HashElement.h"
 #include "Move.h"
+#include "GameState.h"
 #include "SquareHelper.h"
 #include "PieceHelper.h"
 #include <unordered_map>
@@ -41,6 +42,8 @@ public:
 
 	void SetDefaultBoard();
 	void SetupBoard(_In_ const squareCol&);
+	void SetupBoardFromFEN(_In_ const std::string& fen);
+	std::string ExtractFENFromBoard() const;
 	bool DoMove(_In_ const Move&);
 	void UndoMove(_In_ const Move&);
 
@@ -219,6 +222,7 @@ private:
 	using TBoardSquares = std::array<ePiece, ALL_SQUARES>;
 	TBoardSquares m_iBoard {};	// Array af alle pieces paa boardet - et paa hver square
 	eColor sideToMove_{ eColor::WHITE };				// Hvis tur er det ?
+	GameInfo gameInfo_;
 
 	TBitboards m_bitboards{ { 0 } };
 

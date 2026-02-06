@@ -3,6 +3,7 @@
 #include "Utils/Subscriber.h"
 #include "Move.h"
 #include "Eval.h"
+#include "GameState.h"
 
 class IPlayer
 {

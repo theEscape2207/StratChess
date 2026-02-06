@@ -2,10 +2,11 @@
 
 #include "defines.h"
 #include "IPlayer.h"
+#include "GameState.h"
 
 // Forward declare
 class Move;
-struct GameInfo;
+//struct GameInfo;
 
 class PlayerBase : public IPlayer
 {
@@ -48,16 +49,8 @@ public:
 	PlayerBase& operator=(const PlayerBase&) = delete;
 	PlayerBase(PlayerBase&&) = delete;
 	PlayerBase& operator=(PlayerBase&&) = delete;
-protected:
-	static void UpdateBoardInfo( const Move &move, GameInfo& info ) noexcept;
-private:
-	// Helpers
-	static void UpdateCastlingState(const Move &move, GameInfo &info) noexcept;
-
-	static void UpdateFiftyMovesState(const Move & move, GameInfo &info) noexcept;
 
 protected:
-
 	/*
 	 * Protected variables
 	 */
