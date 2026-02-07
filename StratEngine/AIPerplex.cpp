@@ -97,10 +97,11 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info)
 			s_logger->info("Final score: {}, Time: {}ms", score, elapsed.count());
 		}
 	}
-	CheckGameOver(info);
+	info = m_Board.GetGameInfo();
+	CheckGameOver(info, false);
 
 	Move bestMove = pv_table.get_pv_move(0);
-	UpdateBoardInfo(bestMove, info);
+	info.UpdateBoardInfo(bestMove );
 
 	return bestMove;
 }
