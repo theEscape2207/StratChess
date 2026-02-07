@@ -58,11 +58,11 @@ public:
 
 	// Returnerer brikken paa paagaeldende felt
 	ePiece GetPiece(_In_ eSquare square) const noexcept {
-		return m_iBoard.at(square);
+		return mailbox_.at(square);
 	}
 	// Helper
 	ePiece GetPiece(_In_ int square) const noexcept {
-		return m_iBoard.at(static_cast<eSquare>(square));
+		return mailbox_.at(static_cast<eSquare>(square));
 	}
 
 	int GetMaterialScore(_In_ eColor color) const noexcept {	return m_MaterialScore[color];	}
@@ -111,13 +111,13 @@ public:
 	void ClearSquare( _In_ eSquare squareType ) noexcept
 	{
 		assert(PieceHelper::IsNotEmpty( GetPiece(squareType)));
-		m_iBoard[squareType] = ePiece::NO_PIECE;
+		mailbox_[squareType] = ePiece::NO_PIECE;
 	}
 
 	void SetSquare( _In_ eSquare squareType, _In_ ePiece piece) noexcept
 	{
 		assert(PieceHelper::IsNoPiece( GetPiece(squareType)));
-		m_iBoard[squareType] = piece;
+		mailbox_[squareType] = piece;
 	}
 
 	// Thin helper around ClearBit - Only for normal Bitboards
@@ -214,20 +214,37 @@ public:
 		_AddPiece( to, piece );
 	}
 	
+	GameInfo GetGameInfo() const noexcept { return gameInfo_; }
 
 private:
 	// ========================================================================
 	// Member Variables
 	// ========================================================================
 
-	using TBoardSquares = std::array<ePiece, ALL_SQUARES>;
-	TBoardSquares m_iBoard {};	// Array af alle pieces paa boardet - et paa hver square
+	// Game state variables
+	
 	eColor sideToMove_{ eColor::WHITE };				// Hvis tur er det ?
 	GameInfo gameInfo_;
 
+	std::array<ePiece, ALL_SQUARES> mailbox_ {};	// Array of all pieces on the board
 	TBitboards m_bitboards{ { 0 } };
 
-	int m_MaterialScore[2]{ 0 };		// Den materielle score for de to spillere
+	// Current ply (search depth from root)
+	size_t currentPly_{ 0 };
+
+	// Threefold repetition tracking
+	std::vector<uint64_t> position_history_;	// Full game position history hash keys
+	size_t last_irreversible_ply_{ 0 }; // Ply at last irreversible move (pawn move or capture)
+
+	// Material score
+	int m_MaterialScore[2]{ 0 };
+
+	// Ply-indexed state preservation arrays (pre-allocated to MAX_PLY)
+	// These store irreversible state before each move for O(1) unmake
+	std::array<uint64_t, MAX_PLY> hashKeyHistory_{ 0 };
+	std::array<size_t, MAX_PLY> irreversiblePlyHistory_{ 0 };
+	std::array<GameInfo, MAX_PLY> gameInfoHistory_{};
+
 
 	// ------------------------------------------------
 	// Transposition Table stuff

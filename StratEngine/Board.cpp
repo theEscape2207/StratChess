@@ -16,7 +16,7 @@ Board::Board()
 	// Fylder Keys med rand64 
 	InitHashkey();
 
-	m_iBoard.fill(ePiece::NO_PIECE);	// Default: no piece on all square. Board setup comes later
+	mailbox_.fill(ePiece::NO_PIECE);	// Default: no piece on all square. Board setup comes later
 }
 
 Board::~Board() 
@@ -36,10 +36,12 @@ Board::~Board()
 void Board::ClearBoard()
 {
 	m_bitboards.fill(0);
+	mailbox_.fill(ePiece::NO_PIECE);	// Default: no piece on all square. Board setup comes later
 
 	// reset game state
 	sideToMove_ = WHITE;
 	gameInfo_.Reset();
+	currentPly_ = 0;
 
 	// TODO: clear game history
 	
@@ -323,6 +325,10 @@ bool Board::DoMove(_In_ const Move& m)
 	assert( MoveHelper::IsValid( m ));
 	assert(GetCurrentColor() == PieceHelper::Color(m.MovPiece) );
 
+	// Storing the current game state before making the move
+	gameInfoHistory_[currentPly_] = gameInfo_;
+	irreversiblePlyHistory_[currentPly_] = last_irreversible_ply_;
+
 	eSquare from = m.from();
 	eSquare to = m.to();
 	
@@ -424,6 +430,53 @@ bool Board::DoMove(_In_ const Move& m)
 		assert(!"Unsupported move type");
 		break;
 	}
+	// Update castling rights
+	//uint16_t oldCastlingRights = gameInfo_.castlingRights_;
+	// King move removes all castling rights for that side
+	if (MoveHelper::IsKingMove(m)) {
+		if (sideToMove_ == eColor::WHITE) {
+			gameInfo_.castlingRights &= ~CastlingRights::WHITE_BOTH;
+		}
+		else {
+			gameInfo_.castlingRights &= ~CastlingRights::BLACK_BOTH;
+		}
+	}
+
+	// Rook move removes castling rights for that rook
+	if (MoveHelper::IsMoveType(m, ROOK)) {
+		if (from == a1) gameInfo_.castlingRights &= ~CastlingRights::WHITE_QUEENSIDE;
+		else if (from == h1) gameInfo_.castlingRights &= ~CastlingRights::WHITE_KINGSIDE;
+		else if (from == a8) gameInfo_.castlingRights &= ~CastlingRights::BLACK_QUEENSIDE;
+		else if (from == h8) gameInfo_.castlingRights &= ~CastlingRights::BLACK_KINGSIDE;
+	}
+
+	// Rook capture removes castling rights
+	if (to == a1)
+		gameInfo_.castlingRights &= ~CastlingRights::WHITE_QUEENSIDE;
+	else if (to == h1)
+		gameInfo_.castlingRights &= ~CastlingRights::WHITE_KINGSIDE;
+	else if (to == a8)
+		gameInfo_.castlingRights &= ~CastlingRights::BLACK_QUEENSIDE;
+	else if (to == h8)
+		gameInfo_.castlingRights &= ~CastlingRights::BLACK_KINGSIDE;
+
+	// Update Zobrist hash for castling change upon change
+	/*if (oldCastlingRights != gameInfo_.castlingRights_) {
+		update_zobrist_castling(oldCastlingRights, gameInfo_.castlingRights_);
+	}*/
+	// Update en-passant square
+	//eSquare oldEpSquare = gameInfo_.epSquare;
+	gameInfo_.epSquare = MoveHelper::GetEnPassantSquare(m);
+	// Update Zobrist hash for en passant change - either add new or remove old
+	/*if (oldEpSquare != gameInfo_.epSquare) {
+		update_zobrist_ep(oldEpSquare, gameInfo_.epSquare);
+	}*/
+
+	// Update fullmove number - after black's move that is almost complete now
+	if (sideToMove_ == eColor::BLACK) {
+		gameInfo_.fullMoveCount++;
+	}
+	currentPly_++;
 
 	//
 	//	Check whether we are in check
@@ -457,9 +510,20 @@ void Board::UndoMove(_In_ const Move& m)
 	assert( MoveHelper::IsValid( m ));
 	assert(GetCurrentColor() != PieceHelper::Color(m.MovPiece));
 
+	// Decrement ply first
+	currentPly_--;
+
+	// Restore game state
+	gameInfo_ = gameInfoHistory_[currentPly_];
+	last_irreversible_ply_ = irreversiblePlyHistory_[currentPly_];
+
 	ChangePlayer();
 
-	switch (m.Type)
+	// Update fullmove number
+	if (sideToMove_ == eColor::BLACK) {
+		gameInfo_.fullMoveCount--;
+	}
+
 	const MoveType type = MoveHelper::AsType(m);
 
 	switch (type)
