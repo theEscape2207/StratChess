@@ -10,9 +10,6 @@
 #include <span>
 #include <tuple>
 
-#include <intrin.h>	// For _BitScanForward64
-#pragma intrinsic(_BitScanForward64)
-
 class Board final
 {
 	friend std::ostream& operator<<(std::ostream&, _In_ const Board&);
@@ -87,15 +84,19 @@ public:
 	}
 
 	// We are always assuming that we have at least one bit left in the mask
-	static eSquare GetFirstPiece(BITBOARD mask) noexcept
+    // Use register-returning TZCNT/CTZ intrinsics to avoid pointer-based BSF
+    static __forceinline eSquare GetFirstPiece(BITBOARD mask) noexcept
 	{
-		unsigned long index;
-
-		const unsigned char isNonzero = _BitScanForward64(&index, mask);
-		assert(isNonzero);
-		// Found first bit, directly translatable to Square :)
-		// Example: 00001100 - first bit is 2
+        assert(mask != 0);
+#if defined(_MSC_VER)
+        // _tzcnt_u64 returns the index of the least-significant 1-bit
+        const unsigned long index = static_cast<unsigned long>(_tzcnt_u64(mask));
+        return static_cast<eSquare>(index);
+#else
+        // GCC/Clang: __builtin_ctzll returns the number of trailing zeros
+        const unsigned long index = static_cast<unsigned long>(__builtin_ctzll(mask));
 		return static_cast<eSquare>(index);
+#endif
 	}
 
 	Board& operator=(const Board&) = delete;
