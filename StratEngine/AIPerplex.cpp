@@ -79,7 +79,6 @@ AIPerplex::AIPerplex(_In_ unsigned md)
 Move AIPerplex::GetMove(_Inout_ GameInfo& info)
 {
 	InitMoveVariables(info);
-	_searchCount = 0;
 
 	// reuse the persistent TranspositionTable
 	_tt->clear();
@@ -109,8 +108,6 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info)
 // - ABIterTrans doesn't assert, but does not generate the same moves as the non-trans search algos
 //int AIPerplex::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& pline)
 //{
-	// Increment counter - we are not returning early
-//	m_SearchCount++;
 //
 //	// Sorterer traekkene
 //	MoveSorter::SortMovesIter(moveList, GetParentMove(ply), // Last move
@@ -121,8 +118,6 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info)
 //
 //	for (const auto& curMove : moveList)
 //	{
-//		counter++;
-//
 //#ifdef PRINT_MOVES
 //			// Udskriver traekkene til fil
 //			if (ply == 0 && m_Depth == m_MaxDepth)	// for iterativ udskriv kun i roden af traeet
@@ -282,7 +277,7 @@ int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, Tra
 		if (tt_hit && move == hash_move && !first_child) continue;
 		if (is_pv_node && move == pv_move && !first_child) continue;
 
-		_searchCount++;
+		m_SearchCount++;
 
 		if (m_Board.DoMove(move))
 		{
