@@ -334,100 +334,85 @@ void MoveGenerator::AddOfficerMoves(MoveList& moveList, BITBOARD bbAttack, ePiec
 // i stedet kunne man flytte det til DoMove() 
 void MoveGenerator::AddCastleMoves(MoveList& moveList, eColor color, const BITBOARD* bbBitBoards, const GameInfo& info)
 {
-	const auto sqFrom = Board::GetFirstPiece(bbBitBoards[static_cast<ePiece>(KING + static_cast<int>(color))]);	// There is only one king!!
+
+	// Per-side castling layout:
+	//   kingPiece, kingSq, enemyColor,
+	//   kingsideFlag,  kingsideTarget, kingsideTransitMask,  kingsideAttackMask,
+	//   queensideFlag, queensideTarget, queensideTransitMask, queensideAttackMask
+	struct CastlingSide {
+		ePiece   kingPiece;
+		eSquare  kingSq;
+		eColor   enemyColor;
+
+		uint8_t  kingsideFlag;
+		eSquare  kingsideTarget;
+		BITBOARD kingsideTransitMask;   // must be empty  (f, g)
+		BITBOARD kingsideAttackMask;    // must not be attacked (e, f, g)
+
+		uint8_t  queensideFlag;
+		eSquare  queensideTarget;
+		BITBOARD queensideTransitMask;  // must be empty  (d, c, b)
+		BITBOARD queensideAttackMask;   // must not be attacked (e, d, c)
+	};
+
+	static constexpr std::array<CastlingSide, 2> sides = { {
+		{
+			ePiece::WHITE_KING, e1, eColor::BLACK,
+			CastlingRights::WHITE_KINGSIDE,  g1,
+				g_bbMask[f1] | g_bbMask[g1],
+				g_bbMask[e1] | g_bbMask[f1] | g_bbMask[g1],
+			CastlingRights::WHITE_QUEENSIDE, c1,
+				g_bbMask[d1] | g_bbMask[c1] | g_bbMask[b1],
+				g_bbMask[e1] | g_bbMask[d1] | g_bbMask[c1]
+		},
+			{
+			ePiece::BLACK_KING, e8, eColor::WHITE,
+			CastlingRights::BLACK_KINGSIDE,  g8,
+				g_bbMask[f8] | g_bbMask[g8],
+				g_bbMask[e8] | g_bbMask[f8] | g_bbMask[g8],
+			CastlingRights::BLACK_QUEENSIDE, c8,
+				g_bbMask[d8] | g_bbMask[c8] | g_bbMask[b8],
+				g_bbMask[e8] | g_bbMask[d8] | g_bbMask[c8]
+			}
+	} };
+
+	const auto& side = sides[static_cast<int>(color)];
+	
+	// Early exit if neither right is available for this side
+	if (!(info.castlingRights & (side.kingsideFlag | side.queensideFlag)))
+			return;
+
 	const Board& board = Board::Instance();
+	const eSquare sqFrom = Board::GetFirstPiece(bbBitBoards[static_cast<ePiece>(KING + static_cast<int>(color))]);	// There is only one king!!
 
-	if (WHITE == color)
-	{
-		if (!(info.whiteLongCastle || info.whiteShortCastle))	// no need to look further
-			return;
-		// We already know which squares are involved in the castlings
-		assert(sqFrom == e1);	// king must be in starting position
-		assert(board.GetPiece(e1) == ePiece::WHITE_KING);
+	// Debug: king must be on its starting square if any castling right is still set
+	assert(sqFrom == side.kingSq);
+	assert(board.GetPiece(side.kingSq) == side.kingPiece);
 
-		if (info.whiteShortCastle)
-			assert(board.GetPiece(h1) == ePiece::WHITE_ROOK);
-		if (info.whiteLongCastle)
-			assert(board.GetPiece(a1) == ePiece::WHITE_ROOK);
+	const auto attackColor = (color == eColor::WHITE ? eColor::BLACK : eColor::WHITE);
+	const BITBOARD attackBoard = MoveGenerator::GetAttackBoard(attackColor);
 
-		Move castlingMove(NO_SQUARE, sqFrom, MoveType::Castling, ePiece::WHITE_KING, ePiece::NO_PIECE);
-
-		// First handle short castling - 
-		// Are the needed squares available?
-		static const BITBOARD bbMask_f1g1 = g_bbMask[f1] | g_bbMask[g1];
-		if (info.whiteShortCastle &&
-			!board.IsOccupied(bbMask_f1g1))
+	// Kingside
+	if (info.castlingRights & side.kingsideFlag)
 		{
 			// Are these squares being attacked ? The king must not move away from, pass or move into a check!
-			static const BITBOARD bbMask_e1f1g1 = g_bbMask[e1] | g_bbMask[f1] | g_bbMask[g1];
-			if (!IsAttacked(bbMask_e1f1g1, BLACK))
+		if (!Bits::isAnyBitSet(attackBoard, side.kingsideAttackMask) &&
+			!board.IsOccupied(side.kingsideTransitMask))
 			{
-				castlingMove.To = g1;
-				// Accepted - Add the move to the list
-				moveList.push(castlingMove);
+			moveList.push(MoveFactory::MakeMove(sqFrom, side.kingsideTarget, side.kingPiece, MoveType::KING_CASTLE));
 			}
 		}
-		static const BITBOARD bbMask_d1c1b1 = g_bbMask[d1] | g_bbMask[c1] | g_bbMask[b1];
-		// Are the needed squares available for long castling?
-		if (info.whiteLongCastle &&
-			!board.IsOccupied(bbMask_d1c1b1))
+
+	// Queenside
+	if (info.castlingRights & side.queensideFlag)
 		{
-			// Are these squares being attacked ? The king must not move away from, pass or move into a check!
-			static const BITBOARD bbMask_e1d1c1 = g_bbMask[e1] | g_bbMask[d1] | g_bbMask[c1];
-			if (!IsAttacked(bbMask_e1d1c1, BLACK))
+		if (!Bits::isAnyBitSet(attackBoard, side.queensideAttackMask) &&
+			!board.IsOccupied(side.queensideTransitMask))
 			{
-				// Accepted - Add the move to the list
-				castlingMove.To = c1;		// FIXME: Use after move
-				moveList.push(castlingMove);
+			moveList.push(MoveFactory::MakeMove(sqFrom, side.queensideTarget, side.kingPiece, MoveType::QUEEN_CASTLE));
 			}
 		}
 	}
-	else	// BLACK
-	{
-		if (!(info.blackLongCastle || info.blackShortCastle))	// no need to look further
-			return;
-		// We already know which squares are involved in the castlings
-		assert(sqFrom == e8);	// king must be in starting position
-		assert(board.GetPiece(e8) == ePiece::BLACK_KING);
-
-		if (info.blackShortCastle && (info.lastMove.To != h8))
-			assert(board.GetPiece(h8) == ePiece::BLACK_ROOK);
-		if (info.blackLongCastle && (info.lastMove.To != a8))
-			assert(board.GetPiece(a8) == ePiece::BLACK_ROOK);
-
-		Move castlingMove(NO_SQUARE, sqFrom, MoveType::Castling, ePiece::BLACK_KING, ePiece::NO_PIECE);
-
-		// First handle short castling - 
-		// Are the needed squares available?
-		static const BITBOARD bbMask_f8g8 = g_bbMask[f8] | g_bbMask[g8];
-		if (info.blackShortCastle &&
-			!board.IsOccupied(bbMask_f8g8))
-		{
-			// Are these squares being attacked ? The king must not move away from, pass or move into a check!
-			static const BITBOARD bbMask_e8f8g8 = g_bbMask[e8] | g_bbMask[f8] | g_bbMask[g8];
-			if (!IsAttacked(bbMask_e8f8g8, WHITE))
-			{
-				// Accepted - Add the move to the list
-				castlingMove.To = g8;
-				moveList.push(castlingMove);
-			}
-		}
-		// Are the needed squares available?
-		static const BITBOARD bbMask_d8c8b8 = g_bbMask[d8] | g_bbMask[c8] | g_bbMask[b8];
-		if (info.blackLongCastle &&
-			!board.IsOccupied(bbMask_d8c8b8))
-		{
-			// Are these squares being attacked ? The king must not move away from, pass or move into a check!
-			static const BITBOARD bbMask_e8d8c8 = g_bbMask[e8] | g_bbMask[d8] | g_bbMask[c8];
-			if (!IsAttacked(bbMask_e8d8c8, WHITE))
-			{
-				// Accepted - Add the move to the list
-				castlingMove.To = c8;
-				moveList.push(castlingMove);
-			}
-		}
-	}
-}
 
 // Bemaerk: color er for bonden i traekket
 // Remarks: Move must be a pawn capture move (including en-passant).
@@ -563,6 +548,7 @@ BITBOARD MoveGenerator::GetAttackBoard(eColor attackByColor) noexcept
 	const auto boards = Board::Instance().GetBitBoards();
 	
 	BITBOARD bbAttackBoard = 0;	// Attacked squares bitboard
+	const BITBOARD bbOwnPieces = boards[ALL_FROM_COLOR + static_cast<int>(attackByColor)];	// Current position of own pieces - used to mask out illegal moves
 
 	/* Boenderne */
 
@@ -597,8 +583,7 @@ BITBOARD MoveGenerator::GetAttackBoard(eColor attackByColor) noexcept
 	/* Kongen */
 
 	auto iFrom = Board::GetFirstPiece(boards[KING + static_cast<int>(attackByColor)]);
-	bbAttackBoard |= g_bbKingMoves[iFrom] & ~(boards[ALL_FROM_COLOR + static_cast<int>(attackByColor)]);
-
+	bbAttackBoard |= g_bbKingMoves[iFrom] & ~bbOwnPieces;
 
 	/* Springerne */
 
@@ -607,7 +592,7 @@ BITBOARD MoveGenerator::GetAttackBoard(eColor attackByColor) noexcept
 	while (bbPiecesToMove)
 	{
 		iFrom = Board::GetFirstPiece(bbPiecesToMove);
-		bbAttackBoard |= g_bbKnightMoves[iFrom] & ~(boards[ALL_FROM_COLOR + static_cast<int>(attackByColor)]);
+		bbAttackBoard |= g_bbKnightMoves[iFrom] & ~bbOwnPieces;
 		Bits::clearBitsRef(bbPiecesToMove, g_bbMask[iFrom]);
 	}
 
