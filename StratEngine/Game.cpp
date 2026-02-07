@@ -117,7 +117,7 @@ void Game::Init()
 			std::cout << "No. of nodes  |  Ms used  |  Nodes pr. ms  |  Total nodes  |  Total time  |  Total nodes pr. ms\n";
 			std::cout << "-----------------------------------------------------------------------------------------------------\n";
 		}
-
+		
 		// Existing startup code
 		LoadConfigFileSettings();
 
@@ -293,7 +293,7 @@ void Game::PrintStateMessage() const
 
 		// Can we see a mate?
 		// FIXME: Export the Max depth from the AIs
-		if (score >= GameValues::Mate - 10 || (-score >= GameValues::Mate - 10))
+		if (score >= GameValues::Mate_Threshold || (-score >= GameValues::Mate_Threshold))
 			// Antal ply: GameValues::Mate-Lastscore. Antal traek: Ply+1/2 => (MATE-Last)/2
 			sstream << "Skakmat i " << ((GameValues::Mate - abs(score) + 1) / 2) << " traek\n";
 		else
