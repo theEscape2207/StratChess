@@ -105,33 +105,6 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info)
 	return bestMove;
 }
 
-// - ABIterTrans doesn't assert, but does not generate the same moves as the non-trans search algos
-//int AIPerplex::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& pline)
-//{
-//
-//	// Sorterer traekkene
-//	MoveSorter::SortMovesIter(moveList, GetParentMove(ply), // Last move
-//		GetIterMove(ply));
-//
-//	Move goodMove;
-//	size_t counter = 0;
-//
-//	for (const auto& curMove : moveList)
-//	{
-//#ifdef PRINT_MOVES
-//			// Udskriver traekkene til fil
-//			if (ply == 0 && m_Depth == m_MaxDepth)	// for iterativ udskriv kun i roden af traeet
-//				PrintMovesAndScore(outLegalMoves, counter, moveList.size(), curMove, value);
-//		{
-//			// Udskriver traekkene til fil
-//			if (ply == 0 && m_Depth == m_MaxDepth)	// for iterativ kun udskriv i roden
-//				// Ulovligt traek!!														// Magic value: illegal move
-//				PrintMovesAndScore(outLegalMoves, counter, moveList.size(), curMove, -GameValues::Search_Init - 1);
-//		}
-//#endif // PRINT_MOVES
-//	}
-//}
-
 int AIPerplex::iterative_deepening(int max_depth, TranspositionTable& tt, PVTable& pv_table) {
 	int best_value = 0;
 

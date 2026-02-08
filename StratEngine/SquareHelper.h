@@ -18,19 +18,18 @@ namespace SquareHelper
 	*	methods
 	*/
 	// Calculate the new eSquare position 
-	static constexpr eSquare Calc(_In_ eSquare square, _In_ int adjustment) noexcept
+	static inline constexpr eSquare Calc(_In_ eSquare square, _In_ int offset) noexcept
 	{
-		return static_cast<eSquare>(square + adjustment);
+		return static_cast<eSquare>(square + offset);
 	}
 
 	// Helper for finding the previous row eSquare position depending on color
-	static constexpr eSquare PreviousRow(eSquare To, eColor color) noexcept
+	static inline constexpr eSquare PreviousRow(eSquare To, eColor color) noexcept
 	{
 		return (color == eColor::WHITE ?
 			SquareHelper::Calc(To, +ONE_ROW) :
 			SquareHelper::Calc(To, -ONE_ROW));
 	}
-
 } // namespace SquareHelper
 
 #pragma warning (pop)
