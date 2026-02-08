@@ -110,7 +110,17 @@ namespace PieceHelper
 	{
 		return static_cast<ePieceType>(piece >> 1);
 	}
+	// Returns the Pawn of the opposite color. E.g. color=WHITE_ -> BLACK_PAWN
+	static inline constexpr ePiece AsPawn(_In_ eColor color) noexcept
+	{
+		return static_cast<ePiece>(color);
+	}
 
+	// Returns the Pawn of the opposite color. E.g. color=WHITE_ -> BLACK_PAWN
+	static inline constexpr ePiece OppositePawn(_In_ eColor color) noexcept
+	{
+		return static_cast<ePiece>(BLACK_PAWN - static_cast<size_t>(color));
+	}
 } // namespace PieceHelper
 
 #pragma warning (pop)

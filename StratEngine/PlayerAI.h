@@ -197,7 +197,7 @@ protected:
 	// Det bedste traek indtil nu
 	Move m_BestMove;
 
-	size_t m_MaxDepth{ 0 };	// Max seeking depth for this algorithm
+	size_t m_MaxDepth{ 0 };	// Max seeking depth for this algorithm TODO: Make configurable
 
 	std::chrono::time_point<std::chrono::high_resolution_clock> _startingTime;
 
