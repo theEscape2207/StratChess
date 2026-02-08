@@ -19,24 +19,15 @@
     <Filter Include="Source Files\Utils">
       <UniqueIdentifier>{2b793dc4-93cd-4f50-804e-b9eae965c60e}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\Algos">
+      <UniqueIdentifier>{2c0bd2aa-6c38-4a21-999d-8a99c773ba33}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Algos">
+      <UniqueIdentifier>{89b15c6c-26dd-4abe-a570-f2bd9f0f0a36}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="StratChessEvolved.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\StratEngine\ABIterative.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\StratEngine\ABIterTrans.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\StratEngine\AIAgent.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\StratEngine\AIBasic.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\StratEngine\AITrans.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\StratEngine\Board.cpp">
@@ -78,29 +69,33 @@
     <ClCompile Include="..\StratEngine\TranspositionTable.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\StratEngine\AIPerplex.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="..\StratEngine\Utils\Logger.cpp">
+      <Filter>Source Files\Utils</Filter>
+    </ClCompile>
+    <ClCompile Include="..\StratEngine\ABIterative.cpp">
+      <Filter>Source Files\Algos</Filter>
+    </ClCompile>
+    <ClCompile Include="..\StratEngine\ABIterTrans.cpp">
+      <Filter>Source Files\Algos</Filter>
+    </ClCompile>
+    <ClCompile Include="..\StratEngine\AIAgent.cpp">
+      <Filter>Source Files\Algos</Filter>
+    </ClCompile>
+    <ClCompile Include="..\StratEngine\AIBasic.cpp">
+      <Filter>Source Files\Algos</Filter>
+    </ClCompile>
+    <ClCompile Include="..\StratEngine\AIPerplex.cpp">
+      <Filter>Source Files\Algos</Filter>
+    </ClCompile>
+    </ClCompile>
+    <ClCompile Include="..\StratEngine\AITrans.cpp">
+      <Filter>Source Files\Algos</Filter>
+    </ClCompile>
+    <ClCompile Include="..\StratEngine\Utils\FENParser.cpp">
       <Filter>Source Files\Utils</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\StratEngine\ABIterative.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\StratEngine\ABIterTrans.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\StratEngine\AIAgent.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\StratEngine\AIBasic.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\StratEngine\AITrans.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\StratEngine\BitBoardHelper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -176,16 +171,44 @@
     <ClInclude Include="..\StratEngine\TranspositionTable.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\StratEngine\AIPerplex.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\StratEngine\Utils\Logger.h">
       <Filter>Header Files\Util</Filter>
+    </ClInclude>
     <ClInclude Include="..\StratEngine\Utils\TimeManager.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>
     <ClInclude Include="..\StratEngine\PVTable.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\StratEngine\Utils\FENParser.h">
+      <Filter>Header Files\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\StratEngine\MoveFactory.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\StratEngine\ABIterative.h">
+      <Filter>Header Files\Algos</Filter>
+    </ClInclude>
+    <ClInclude Include="..\StratEngine\ABIterTrans.h">
+      <Filter>Header Files\Algos</Filter>
+    </ClInclude>
+    <ClInclude Include="..\StratEngine\AIAgent.h">
+      <Filter>Header Files\Algos</Filter>
+    </ClInclude>
+    <ClInclude Include="..\StratEngine\AIBasic.h">
+      <Filter>Header Files\Algos</Filter>
+    </ClInclude>
+    <ClInclude Include="..\StratEngine\AIPerplex.h">
+      <Filter>Header Files\Algos</Filter>
+    </ClInclude>
+    <ClInclude Include="..\StratEngine\AITrans.h">
+      <Filter>Header Files\Algos</Filter>
+    </ClInclude>
+    <ClInclude Include="..\StratEngine\GameState.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\StratEngine\Utils\Formatters.h">
+      <Filter>Header Files\Util</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -117,12 +117,15 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <WarningLevel>Level3</WarningLevel>
+      <WarningLevel>Level4</WarningLevel>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard_C>stdc11</LanguageStandard_C>
+      <AdditionalIncludeDirectories>..\..\json\include;..\..\spdlog\include;..\StratEngine</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -166,6 +169,7 @@
     <ClInclude Include="..\StratEngine\defines.h" />
     <ClInclude Include="..\StratEngine\Eval.h" />
     <ClInclude Include="..\StratEngine\Game.h" />
+    <ClInclude Include="..\StratEngine\GameState.h" />
     <ClInclude Include="..\StratEngine\globals.h" />
     <ClInclude Include="..\StratEngine\HashElement.h" />
     <ClInclude Include="..\StratEngine\IPlayer.h" />
@@ -185,6 +189,8 @@
     <ClInclude Include="..\StratEngine\StdAfx.h" />
     <ClInclude Include="..\StratEngine\TranspositionTable.h" />
     <ClInclude Include="..\StratEngine\Utils\BitTools.h" />
+    <ClInclude Include="..\StratEngine\Utils\FENParser.h" />
+    <ClInclude Include="..\StratEngine\Utils\Formatters.h" />
     <ClInclude Include="..\StratEngine\Utils\Logger.h" />
     <ClInclude Include="..\StratEngine\Utils\StrHelper.h" />
     <ClInclude Include="..\StratEngine\Utils\Subscriber.h" />
