@@ -1,16 +1,16 @@
 #pragma once
-#include "PlayerAiIterBase.h"
+#include "PlayerAi.h"
 #include "TranspositionTable.h"
 #include "PVTable.h"
 #include <map>
 #include <memory>
 #include <cstdint>
-//#include "Move.h"
 
 class Move;
 
-class AIPerplex final
-	: public PlayerAiIterBase
+
+
+class AIPerplex final : public PlayerAiBase
 {
 public:
 	Move GetMove(_Inout_ GameInfo& info) override;
@@ -28,6 +28,7 @@ public:
 	AIPerplex& operator=(const AIPerplex&) = delete;
 	AIPerplex(AIPerplex&&) = delete;
 	AIPerplex& operator=(AIPerplex&&) = delete;
+
 private:
 	// Perplex specific helper
 	int iterative_deepening(int max_depth, TranspositionTable& tt, PVTable& pv_table);
@@ -47,18 +48,10 @@ public:
 	static bool IsVerboseLoggingEnabled() noexcept { return s_verbose_logging; }
 
 private:
-	// test / debug helpers
+	// Debug helpers
 	void debug_tt_cache_misses(unsigned int key, int ply);
 	void assert_tt_store(const TranspositionTable& tt, std::uint64_t key, int16_t ply,
 		int16_t value, int16_t depth, Move best_move,
 		BoundType bound, NodeType node_type, SearchPhase phase);
 	std::multimap<std::uint64_t, int> tt_misses;
-
-	// Time control
-	//std::atomic<bool> stop_search_{ false };
-	//chess::TimeManager time_manager_;
-
-	// Search configuration
-	//unsigned max_depth_{ 10 };	// Todo: not used yet
-	//std::chrono::milliseconds time_limit_{ std::chrono::seconds(15) };
 };
