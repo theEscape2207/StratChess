@@ -201,12 +201,20 @@
       <SubType>
       </SubType>
     </None>
+    <None Include="Devlog.md">
+      <SubType>
+      </SubType>
+    </None>
     <None Include="Improving Chess Engine ELO rating.md">
       <SubType>
       </SubType>
     </None>
     <None Include="game_settings.json" />
     <None Include="Position_Class_Documentation.md" />
+    <None Include="Roadmap.md">
+      <SubType>
+      </SubType>
+    </None>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
