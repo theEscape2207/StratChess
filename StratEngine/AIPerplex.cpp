@@ -66,7 +66,7 @@ static void ensure_logger_initialized()
 }
 
 AIPerplex::AIPerplex(_In_ unsigned md)
-	: PlayerAiIterBase(md)
+	: PlayerAiBase(md)
 {
 	// allocate TT once per AIPerplex instance; size can be tuned or read from config
 	_tt = std::make_unique<TranspositionTable>(256);
