@@ -39,25 +39,26 @@ static void ensure_logger_initialized()
 	if (!Engine::Logger::GetLogger("AIPerplex")) {
 		try {
 			// create an async logger specifically for AIPerplex diagnostics - small thread pool (queue size 8192, 1 backing thread)
-			spdlog::init_thread_pool(8192, 1);
-			auto tp = spdlog::thread_pool();
+			//spdlog::init_thread_pool(8192, 1);
+			//auto tp = spdlog::thread_pool();
 
 			// add both console and file sinks (file sink keeps a record for diagnostics)
 			auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
 			console_sink->set_level(spdlog::level::info);
-			console_sink->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
+			console_sink->set_pattern(("%T.%e %^%l%$: %v"));
 			auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("aiperplex.log", true);
 			file_sink->set_level(spdlog::level::debug);
+			file_sink->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
 
-			s_logger = std::make_shared<spdlog::async_logger>(
+			s_logger = std::make_shared<spdlog::logger>(		// was spdlog:async_logger
 				"AIPerplex",
-				spdlog::sinks_init_list{ console_sink, file_sink },
-				tp,
-				spdlog::async_overflow_policy::block);
+				spdlog::sinks_init_list{ console_sink, file_sink });
+				//tp,
+				//spdlog::async_overflow_policy::block);
 
 			spdlog::register_logger(s_logger);
-			s_logger->set_level(spdlog::level::info);
-			s_logger->flush_on(spdlog::level::info);
+			s_logger->set_level(spdlog::level::debug);
+			s_logger->flush_on(spdlog::level::debug);
 		}
 		catch (...) {
 			// best-effort; leave it empty if creation fails

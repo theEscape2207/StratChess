@@ -292,10 +292,9 @@ void Game::PrintStateMessage() const
 		const int score = GetCurrentPlayer().GetBestScore();
 
 		// Can we see a mate?
-		// FIXME: Export the Max depth from the AIs
 		if (score >= GameValues::Mate_Threshold || (-score >= GameValues::Mate_Threshold))
 			// Antal ply: GameValues::Mate-Lastscore. Antal traek: Ply+1/2 => (MATE-Last)/2
-			sstream << "Skakmat i " << ((GameValues::Mate - abs(score) + 1) / 2) << " traek\n";
+			sstream << "Check mate in " << ((GameValues::Mate - abs(score) + 1) / 2) << " moves\n";
 		else
 			sstream << "Score: " << score << '\n';
 
@@ -306,19 +305,19 @@ void Game::PrintStateMessage() const
 		switch (gameInfo_.gameState)
 		{
 		case GameStates::WHITE_WON:
-			spdlog::default_logger()->warn("\nCHECK MATE !\nWhite is the Winner!");
+			spdlog::default_logger()->info("CHECK MATE ! White is the Winner!");
 			break;
 		case GameStates::BLACK_WON:
-			spdlog::default_logger()->warn("\nCHECK MATE !\nBlack is the Winner!");
+			spdlog::default_logger()->info("CHECK MATE ! Black is the Winner!");
 			break;
 		case GameStates::DRAW_PAT:
-			spdlog::default_logger()->warn("\nIts a Draw !\nNo more legal moves - but not in check!");
+			spdlog::default_logger()->info("Its a Draw ! No more legal moves - but not in check!");
 			break;
 		case GameStates::DRAW_50_MOVES:
-			spdlog::default_logger()->warn("\nIts a Draw !\n50 moves has passed since last Capture or peasant move!");
+			spdlog::default_logger()->info("Its a Draw ! 50 moves has passed since last Capture or peasant move!");
 			break;
 		case GameStates::HUMAN_EXITED:
-			spdlog::default_logger()->warn("\nHuman player exited game. \nOpponent is the Winner!");
+			spdlog::default_logger()->info("Human player exited game. Opponent is the Winner!");
 			break;
 		case GameStates::STILL_PLAYING:
 		default:
