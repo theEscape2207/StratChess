@@ -51,7 +51,7 @@ void Board::ClearBoard()
 	
 	SetCurBoardHKey(0);
 	
-	spdlog::default_logger()->info("Board cleared" );
+	spdlog::default_logger()->debug("Board cleared" );
 }
 
 // ************************************
@@ -163,10 +163,7 @@ void Board::SetupBoardFromFEN(_In_ const std::string& fen)
 		return;
 	}
 
-	// Clear the board first
-	ClearBoard();
-
-	// Set up pieces from FEN
+	// Clear board and set up pieces from FEN
 	SetupBoard(pieces);
 
 	// Apply game state from FEN

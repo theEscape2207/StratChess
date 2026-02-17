@@ -18,7 +18,7 @@ void Engine::Logger::InitDefault()
             // create console sink
             auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
             console_sink->set_level(spdlog::level::info);
-            console_sink->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
+            console_sink->set_pattern(("%T.%e %^%l%$: %v"));
 
             // create file sink for general logs
             auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("logs/multisink.txt", true);
