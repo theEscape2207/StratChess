@@ -25,6 +25,9 @@
     <Filter Include="Header Files\Algos">
       <UniqueIdentifier>{89b15c6c-26dd-4abe-a570-f2bd9f0f0a36}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Docs">
+      <UniqueIdentifier>{d55337e5-92e6-4a2c-933a-2c921d302f7b}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="StratChessEvolved.cpp">
@@ -215,8 +218,23 @@
     <None Include="game_settings.json">
       <Filter>Resource Files</Filter>
     </None>
-    <None Include="Developer Guidelines.md" />
-    <None Include="Improving Chess Engine ELO rating.md" />
-    <None Include="Position_Class_Documentation.md" />
+    <None Include="..\StratEngine\Tests\CHECKLIST.md">
+      <Filter>Tests</Filter>
+    </None>
+    <None Include="Developer Guidelines.md">
+      <Filter>Docs</Filter>
+    </None>
+    <None Include="Devlog.md">
+      <Filter>Docs</Filter>
+    </None>
+    <None Include="Improving Chess Engine ELO rating.md">
+      <Filter>Docs</Filter>
+    </None>
+    <None Include="Position_Class_Documentation.md">
+      <Filter>Docs</Filter>
+    </None>
+    <None Include="Roadmap.md">
+      <Filter>Docs</Filter>
+    </None>
   </ItemGroup>
 </Project>

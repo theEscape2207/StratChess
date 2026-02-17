@@ -48,8 +48,8 @@ This project focuses on developing a modern chess engine using C++20. The aim is
 - Favor compile-time computation (constexpr), move semantics, and zero-cost abstractions to reduce runtime overhead.
 
 ## Best Practices
-- Keep pull requests small, logically scoped, and well-documented.
-- Include motivation, design reasoning, and expected impact for major changes.
+- Keep pull requests small, logically scoped, and well-documented (if moving to a Github-like setup)
+- Include motivation, design reasoning, and expected impact for major changes PRs or when checking in.
 - Benchmark search speed and strength before and after optimizations.
 - Maintain consistency in formatting, naming, and file structure.
 - Seek review for any changes impacting evaluation, move ordering, or search algorithms.
