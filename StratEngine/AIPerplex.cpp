@@ -80,12 +80,11 @@ AIPerplex::AIPerplex(_In_ unsigned md)
 Move AIPerplex::GetMove(_Inout_ GameInfo& info)
 {
 	InitMoveVariables(info);
-
-	// reuse the persistent TranspositionTable
+	// Only clear TT if new game (preserve across moves for better performance)
+	if (info.fullMoveCount == 1) {
 	_tt->clear();
-
+	}
 	PVTable pv_table;
-
 	StartTimer();
 	
 	int score = iterative_deepening(m_MaxDepth, *_tt, pv_table);
