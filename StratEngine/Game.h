@@ -18,7 +18,7 @@ class Game final
 	void Init();
 	void LoadConfigFileSettings();
 	std::unique_ptr<IPlayer> SetPlayerParams(const Config::PlayerConfig &config);
-	void SetGameParams(const Config::GameConfig& config) noexcept;
+	void SetGameParams(const GameInfo& info) noexcept;
 	void CreateGameMoveFile();
 	
 	
@@ -83,12 +83,10 @@ public:
 
 	void unsubscribePlayerEvents();
 		
-	void SetCustomGame(const FENParser::FENGameState& gameState) noexcept
+	void SetCustomGame(const GameInfo& info) noexcept
 	{
 		customGame_ = true;
-		Config::GameConfig config;
-		FENParser::ToGameConfig(gameState, config);
-		SetGameParams(config);
+		SetGameParams(info);
 	}
 
 	void Run();

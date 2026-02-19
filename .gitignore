@@ -366,3 +366,4 @@ FodyWeavers.xsd
 /StratChessEvolved/gamelist.txt
 /StratChessEvolved/legalmoves.txt
 /StratChessEvolved/SimplePerfStats.txt
+/PredictedInputCache_StratChessEvolved_Debug_x64.dat

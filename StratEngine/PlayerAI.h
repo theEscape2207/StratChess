@@ -146,6 +146,7 @@ protected:
 			GameInfo& info = m_infoSeq.at(currentPly);
 			if (newState != info.gameState)
 			{
+				m_Board.SetGameState(newState);	// AIPerplex uses board version
 				info.gameState = newState;
 			}
 		}
@@ -156,6 +157,8 @@ protected:
 	{
 		if (refreshInfo)
 		info = GetLastBoardInfo(0);
+		else
+			info = m_Board.GetGameInfo();
 		if (info.gameState != GameStates::STILL_PLAYING)
 		{
 			EGameStateChanged.fire(this, info.gameState);
@@ -191,7 +194,7 @@ protected:
 	// The embedded Eval object for per-player evaluation
 	std::unique_ptr<EvalManager> Eval;
 
-	// Store GameInfo sequence for Do/Undo
+	// Store GameInfo sequence for Do/Undo TODO: Board is now handling those for AIPerplex - other algos needs to be moved
 	std::vector< GameInfo > m_infoSeq;
 
 	// Det bedste traek indtil nu
