@@ -349,20 +349,16 @@ bool Board::DoMove(_In_ const Move& m)
 		assert(MoveHelper::IsPawnMove(m));
 		MovePiece(m);
 		break;
-	case MoveType::EP_CAPTURE:
+	case MoveType::EP_CAPTURE: {
 		// Det er et en-passant slag
 		assert(MoveHelper::IsPawnMove(m));
 		assert(MoveHelper::IsCapture(m) && PieceHelper::IsPawn(m.Content));	// slaar altid en bonde
-		// Saa skal modstanderens bonde fjernes fra det rigtige felt
-		if (sideToMove_ == WHITE)
-			// Fjerner den sorte brik paa feltet nedenunder
-			RemovePieceFromBoard(ePiece::BLACK_PAWN, SquareHelper::Calc(to, +ONE_ROW));
-		else
-			// Fjerner den hvide brik paa feltet ovenover
-			RemovePieceFromBoard( ePiece::WHITE_PAWN, SquareHelper::Calc(to, -ONE_ROW));
-
+		// remove the captured pawn (which is not on the 'to' square but one rank behind)
+		const eSquare epCapturedPawnSquare = SquareHelper::PreviousRow(to, sideToMove_);
+		RemovePieceFromBoard(PieceHelper::OppositePawn(sideToMove_), epCapturedPawnSquare);
 		MovePiece(m);
 		break;
+	}
 	case MoveType::PROMOTION_KNIGHT:
 	case MoveType::PROMOTION_BISHOP:
 	case MoveType::PROMOTION_ROOK:
@@ -373,7 +369,7 @@ bool Board::DoMove(_In_ const Move& m)
 			RemovePieceFromBoard( m.Content, to );	// Capture - remove the captured piece
 		}
 		// Fjerner bonden fra det gamle felt
-		RemovePieceFromBoard( PieceHelper::AsPiece(PAWN, sideToMove_ ), from );
+		RemovePieceFromBoard(PieceHelper::AsPawn(m.MovPiece), from);
 		// Den valgte brik saettes paa det nye felt
 		AddPieceToBoard( m.MovPiece, to );
 		break;
@@ -563,7 +559,7 @@ void Board::UndoMove(_In_ const Move& m)
 			assert( PieceHelper::IsActual( m.Content ));
 			AddPieceToBoard( m.Content, m.to());	// Readd the captured Piece
 		}
-		AddPieceToBoard( PieceHelper::AsPiece(PAWN, sideToMove_), m.from());	// Adds the Pawn again
+		AddPieceToBoard( PieceHelper::AsPawn(m.MovPiece), m.from());	// Adds the Pawn again
 		break;
 	case MoveType::QUEEN_CASTLE:
 		assert( m.from() == e1 || m.from() == e8);	// must be in starting position
