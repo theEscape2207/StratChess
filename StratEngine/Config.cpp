@@ -21,22 +21,20 @@ using json = nlohmann::json;
 
 void Config::ReadBoardSetup(const json& config) const
 {
-	// Time to set up the board
 	// if nothing is found - use default setup
 	const std::string setupType = config["game"].value("setup", "default");
-	if (0 == _strnicmp(setupType.c_str(), "FEN", 3))
+	const std::string FENKey = "FEN";
+	if (0 == _strnicmp(setupType.c_str(), FENKey.c_str(), 3))
 	{
-		spdlog::default_logger()->info("FEN string detected");
+		spdlog::default_logger()->info("FEN configuration");
 
-		const std::string FENKey = "FEN";
-		const std::string FENstring = config["game"].value("FEN", "");
+		const std::string FENstring = config["game"].value(FENKey, "");
 		if (FENstring.empty())
 		{
-			spdlog::default_logger()->warn("No FEN string found - selecting default board");
+			spdlog::default_logger()->warn("FEN key found, but no string - selecting default board");
 			Board::Instance().SetDefaultBoard();
 			return;
 		}
-
 		ReadFEN(FENstring);
 	}
 	else
@@ -48,22 +46,13 @@ void Config::ReadBoardSetup(const json& config) const
 
 void Config::ReadFEN(const std::string& fen) const
 {
-	// Delegate all parsing and validation to FENParser.
-	Board::squareCol vec;
-	FENParser::FENGameState fenState;
-	if (auto err = FENParser::ParseFEN(fen, fenState, vec)) {
-		spdlog::default_logger()->warn("FEN parse failed: {}", *err);
-		return;
-	}
 	Board& board = Board::Instance();
-	// Install the pieces on the board
-	board.SetupBoard(vec);
+	board.SetupBoardFromFEN(fen);
 
-	// Validate/adjust the metadata against the installed position (castling/ep)
-	FENParser::ValidatePositionAgainstFENMetadata(board, fenState);
-
+	GameInfo info = board.GetGameInfo(); // Get the final gameInfo from board
+	
 	// Done: hand off to game with validated config
-	pGame_->SetCustomGame(fenState);
+	pGame_->SetCustomGame(info);
 }
 
 //***************************************

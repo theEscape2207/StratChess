@@ -180,25 +180,23 @@ std::unique_ptr<IPlayer> Game::SetPlayerParams(const Config::PlayerConfig& confi
 	return player;
 }
 
-void Game::SetGameParams(const Config::GameConfig& config) noexcept
+void Game::SetGameParams(const GameInfo& info) noexcept
 {
-	// Set active color
-	Board::Instance().SetInitialColor(config.sideToMove);
 	// Set ep square
-	gameInfo_.epSquare = config.epSquare;
-	if (config.epSquare != NO_SQUARE)
+	gameInfo_.epSquare = info.epSquare;
+	/*if (info.epSquare != NO_SQUARE)
 	{
 		const auto movPiece = (config.sideToMove == WHITE) ? BLACK_PAWN : WHITE_PAWN;
 		gameInfo_.lastMove.SetMove(NO_SQUARE, NO_SQUARE, MoveType::DOUBLE_PAWN_PUSH, movPiece, NO_PIECE );
-	}
+	}*/
 
 	// Castling availability
-	gameInfo_.castlingRights = config.castlingRights;
+	gameInfo_.castlingRights = info.castlingRights;
 
 	// Halfmove clock
-	gameInfo_.fiftyCount = config.num50moves;
+	gameInfo_.fiftyCount = info.fiftyCount;
 	// Fullmove number
-	gameInfo_.fullMoveCount = config.fullMoveCounter;
+	gameInfo_.fullMoveCount = info.fullMoveCount;
 }
 
 //***************************************
