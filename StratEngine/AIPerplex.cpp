@@ -87,37 +87,56 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info)
 	PVTable pv_table;
 	StartTimer();
 	
-	int score = iterative_deepening(m_MaxDepth, *_tt, pv_table);
+	SearchResult result = iterative_deepening(m_MaxDepth, *_tt, pv_table);
 
 	auto elapsed = StopTimerAndAdjustVars();
+
+	Move bestMove = result.best_move;
+
+	// Defensive check for game-over scenario
+	if ( bestMove.IsEmpty()) {
+		info = m_Board.GetGameInfo();
+		//if ( !info.GameEnded())
+		/*ensure_logger_initialized();
+		if (s_logger) {
+			s_logger->error("No move from search - game is over (score={})", result.best_score);
+		}*/
+		_bestScore = result.best_score;
+		return Move::EmptyMove();
+	}
+
+	// Success logging
 	if (IsVerboseLoggingEnabled()) {
 		ensure_logger_initialized();
 		if (s_logger) {
-			s_logger->info("Final score: {}, Time: {}ms", score, elapsed.count());
+			s_logger->info(
+				"GetMove complete: move={}, score={}, depth={}, time={}ms, nodes={}, stable={}",
+				bestMove.Output(),
+				result.best_score,
+				result.depth_completed,
+				elapsed.count(),
+				m_SearchCount,
+				result.search_was_stable ? "yes" : "NO");
 		}
 	}
 	info = m_Board.GetGameInfo();
 	CheckGameOver(info, false);
-
-	Move bestMove = pv_table.get_pv_move(0);
-	info.UpdateBoardInfo(bestMove );
+	info.UpdateBoardInfo(bestMove);
 
 	return bestMove;
 }
 
-int AIPerplex::iterative_deepening(int max_depth, TranspositionTable& tt, PVTable& pv_table) {
-	int best_value = 0;
+SearchResult  AIPerplex::iterative_deepening(int max_depth, TranspositionTable& tt, PVTable& pv_table) {
+	SearchState state;
 
 	for (int depth = 1; depth <= max_depth; ++depth) {
-		// Check time
-		if (ShouldStopSearch()) {
-			break;
-		}
 
+		// BEFORE ITERATION: Prepare for this depth's search
 		tt.newSearchIteration();
-		pv_table.clear_ply(0);
+		const int64_t nodes_at_start = m_SearchCount;
 
-		best_value = pvs(
+		// EXECUTE SEARCH: This might get interrupted by timeout
+		int currentBestScore = pvs(
 			depth,
 			-GameValues::Search_Init,
 			GameValues::Search_Init,
@@ -126,29 +145,102 @@ int AIPerplex::iterative_deepening(int max_depth, TranspositionTable& tt, PVTabl
 			tt,
 			pv_table);
 
-		// We've gotten a new move in the PVLine - send it to listeners
-		//ENewPVLineMove.fire(this, m_Line);
-		// FIXME - re-migrate to Subscriber pattern
+		// Gather metrics
+		IterationMetrics metrics;
+		metrics.depth = depth;
+		metrics.current_move = pv_table.get_pv_move(0);
+		metrics.current_score = currentBestScore;
+		metrics.nodes_searched = m_SearchCount - nodes_at_start;
+		metrics.pv_length = pv_table.get_length(0);
+		metrics.interrupted = ShouldStopSearch();	// Check on time expiry
+		metrics.move_changed = (metrics.current_move != state.last_iteration_move);
+		metrics.score_delta = currentBestScore - state.best_score;
+		metrics.completion_ratio = (state.nodes_at_completed_depth > 0)
+			? static_cast<double>(metrics.nodes_searched) / state.nodes_at_completed_depth
+			: 1.0;
 		
-		// Verbose per-depth output is expensive; gate it behind the runtime flag
-		if (IsVerboseLoggingEnabled())
-		{
-			ensure_logger_initialized();
-			if (s_logger) {
-				// Build PV string efficiently
-				std::string pv_line;
-				pv_line.reserve(64);
-				int len = std::min(pv_table.get_length(0), 10);
-				for (int i = 0; i < len; ++i) {
-					if (i) pv_line += ", ";
-					pv_line += pv_table.get_line(0)[i].Output();
+		// Debug logging (detailed diagnostics)
+		log_iteration_eval(metrics, pv_table);
+
+		// Decide what to do
+		IterationDecision decision;
+		RejectionReason rejection_reason = RejectionReason::NONE;
+
+		if (!metrics.interrupted) {
+			decision = IterationDecision::ACCEPT_AND_CONTINUE;	// Depth completed
 				}
-				s_logger->info("Depth {:>2}: Score: {:>5} Best: {}",
-					depth, best_value, pv_line/*, tt.count_entries(), tt.count_pv_nodes()*/);
+		else {
+			// Interrupted - assess quality
+			rejection_reason = assess_iteration_quality(metrics, state);
+			decision = (rejection_reason != RejectionReason::NONE)
+				? IterationDecision::REJECT_AND_STOP
+				: IterationDecision::ACCEPT_AND_STOP;
 			}
+
+		// Execute decision
+		bool continue_iteration = false;
+
+		switch (decision) {
+		case IterationDecision::ACCEPT_AND_CONTINUE:
+			state.best_move = metrics.current_move;
+			state.best_score = metrics.current_score;
+			state.depth_completed = depth;
+			state.nodes_at_completed_depth = metrics.nodes_searched;
+			state.last_iteration_move = metrics.current_move;
+			state.search_was_stable = !metrics.move_changed;
+
+			log_completed_iteration(metrics, pv_table);
+
+			continue_iteration = !should_stop_early(depth, metrics.current_score, metrics.pv_length);
+			break;
+
+		case IterationDecision::ACCEPT_AND_STOP:
+			state.best_move = metrics.current_move;
+			state.best_score = metrics.current_score;
+			state.depth_completed = depth;
+			state.nodes_at_completed_depth = metrics.nodes_searched;
+			state.search_was_stable = !metrics.move_changed;
+
+			log_acceptance(metrics);
+			continue_iteration = false;
+			break;
+
+		case IterationDecision::REJECT_AND_STOP:
+			log_rejection(depth, rejection_reason, metrics, state);
+			continue_iteration = false;
+			break;
+		}
+
+		if (!continue_iteration) {
+			break;	// Exit iteration_deepening
+	}
+}
+
+	// Handle empty move emergency
+	if (state.best_move.IsEmpty()) {
+		if (!handle_empty_move_emergency(state, pv_table)) {
+			// Game over - return what we have
+			return SearchResult{
+				state.best_move,
+				state.best_score,
+				state.depth_completed,
+				state.nodes_at_completed_depth,
+				state.search_was_stable
+			};
 		}
 	}
-	return best_value;
+
+	// Final logging
+	if (IsVerboseLoggingEnabled() && state.depth_completed > 0) {
+		log_search_complete(state, pv_table);
+	}
+	return SearchResult{
+		state.best_move,
+		state.best_score,
+		state.depth_completed,
+		state.nodes_at_completed_depth,
+		state.search_was_stable
+	};
 }
 
 int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt, PVTable& pv_table)
@@ -475,6 +567,304 @@ int AIPerplex::quiescence(int alpha, int beta, int qsearch_depth, int ply, Trans
 	tt.store(key, static_cast<int16_t>(best_value), static_cast<int16_t>(qsearch_depth), static_cast<int16_t>(ply),
 		best_move, bound, node_type, SearchPhase::QUIESCENCE);
 	return best_value;
+}
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+AIPerplex::RejectionReason AIPerplex::assess_iteration_quality(
+	const IterationMetrics& metrics,
+	const SearchState& state) const
+{
+	// CASE 1: Obviously incomplete
+	if (metrics.current_move.IsEmpty() || metrics.nodes_searched < tuning_.min_nodes_threshold) {
+		return RejectionReason::INCOMPLETE;
+	}
+
+	// CASE 2: Too few nodes compared to previous depth
+	if (state.depth_completed > 0 &&
+		state.nodes_at_completed_depth > 0 &&
+		metrics.completion_ratio < tuning_.min_completion_ratio) {
+		return RejectionReason::TOO_FEW_NODES;
+	}
+
+	// CASE 3: PV too short
+	if (metrics.pv_length < std::max(1, static_cast<int>(metrics.depth * tuning_.min_pv_ratio)) &&
+		state.depth_completed > 0) {
+		return RejectionReason::SHORT_PV;
+	}
+
+	// CASE 4: Score dropped to 0 suspiciously
+	if (metrics.current_score == 0 &&
+		state.depth_completed > 0 &&
+		std::abs(state.best_score) > tuning_.score_draw_threshold) {
+		return RejectionReason::SCORE_DROP;
+	}
+
+	// CASE 5: Move changed on interrupt
+	if (metrics.move_changed && state.depth_completed > 0) {
+		return RejectionReason::MOVE_CHANGED;
+	}
+
+	// All checks passed
+	return RejectionReason::NONE;
+}
+
+void AIPerplex::log_iteration_eval(
+	const IterationMetrics& metrics,
+	const PVTable& pv_table) const
+{
+	if (!IsVerboseLoggingEnabled()) return;
+	ensure_logger_initialized();
+	if (!s_logger) return;
+
+	// Build PV string
+	std::string pv_line;
+	pv_line.reserve(80);
+	const int display_length = std::min(metrics.pv_length, 6);
+	for (int i = 0; i < display_length; ++i) {
+		if (i) pv_line += ", ";
+		pv_line += pv_table.get_line(0)[i].Output();
+	}
+	if (metrics.pv_length > display_length) {
+		pv_line += " ...";
+	}
+
+	s_logger->debug(
+		"D{:>2} EVAL: move={:<8} score={:>6} (Δ{:>+5}) nodes={:>8} ({:>3}%) "
+		"pv={:>2} int={} chg={} PV:[{}]",
+		metrics.depth,
+		metrics.current_move.IsEmpty() ? "EMPTY" : metrics.current_move.Output(),
+		metrics.current_score,
+		metrics.score_delta,
+		metrics.nodes_searched,
+		static_cast<int>(metrics.completion_ratio * 100),
+		metrics.pv_length,
+		metrics.interrupted ? "Y" : "N",
+		metrics.move_changed ? "Y" : "N",
+		pv_line
+	);
+}
+
+void AIPerplex::log_rejection(
+	int depth,
+	RejectionReason reason,
+	const IterationMetrics& metrics,
+	const SearchState& state) const
+{
+	if (!IsVerboseLoggingEnabled()) return;
+	ensure_logger_initialized();
+	if (!s_logger) return;
+
+	switch (reason) {
+	case RejectionReason::INCOMPLETE:
+		s_logger->debug(
+			"Depth {:>2}: REJECTED[R1:INCOMPLETE] (nodes={}, move={}) - Using depth {}",
+			depth, metrics.nodes_searched,
+			metrics.current_move.IsEmpty() ? "EMPTY" : "ok",
+			state.depth_completed);
+		break;
+
+	case RejectionReason::TOO_FEW_NODES:
+		s_logger->debug(
+			"Depth {:>2}: REJECTED[R2:TOO_FEW_NODES] ({} = {:.0f}% of D{}) - using depth {}",
+			depth, metrics.nodes_searched,
+			metrics.completion_ratio * 100,
+			state.depth_completed,
+			state.depth_completed);
+		break;
+
+	case RejectionReason::SHORT_PV:
+		s_logger->debug(
+			"Depth {:>2}: REJECTED[R3:SHORT_PV] (pv={} vs depth={}) - using depth {}",
+			depth, metrics.pv_length, depth, state.depth_completed);
+		break;
+
+	case RejectionReason::SCORE_DROP:
+		s_logger->debug(
+			"Depth {:>2}: REJECTED[R4:SCORE_DROP] ({} → 0) - Using depth {}",
+			depth, state.best_score, state.depth_completed);
+		break;
+
+	case RejectionReason::MOVE_CHANGED:
+		s_logger->debug(
+			"Depth {:>2}: REJECTED[R5:MOVE_CHANGED] ({} → {}) - Using depth {}",
+			depth, state.last_iteration_move.Output(),
+			metrics.current_move.Output(), state.depth_completed);
+		break;
+
+	default:
+		break;
+	}
+}
+
+void AIPerplex::log_acceptance(const IterationMetrics& metrics) const {
+	if (!IsVerboseLoggingEnabled()) return;
+	ensure_logger_initialized();
+	if (!s_logger) return;
+
+	// Noteworthy so Info
+	s_logger->info(
+		"Depth {:>2}: ACCEPTED[INTERRUPTED] (nodes={}, score={}, pv={})",
+		metrics.depth, metrics.nodes_searched,
+		metrics.current_score, metrics.pv_length);
+}
+
+bool AIPerplex::should_stop_early(int depth, int score, int pv_length) const {
+	// Mate found
+	if (std::abs(score) >= GameValues::Mate_Threshold) {
+		if (IsVerboseLoggingEnabled()) {
+			ensure_logger_initialized();
+			if (s_logger) {
+				s_logger->info("Mate found at depth {}, stopping iteration", depth);
+			}
+		}
+		return true;
+	}
+
+	// Forced line (PV much shorter than depth)
+	if (depth > 1 && pv_length > 0 && pv_length < (depth - depth / 2)) {
+		if (IsVerboseLoggingEnabled()) {
+			ensure_logger_initialized();
+			if (s_logger) {
+				s_logger->info(
+					"Short PV ({} vs depth {}) indicates forced line, stopping",
+					pv_length, depth);
+			}
+		}
+		return true;
+	}
+
+	return false;
+}
+
+bool AIPerplex::handle_empty_move_emergency(
+	SearchState& state,
+	PVTable& pv_table)
+{
+	ensure_logger_initialized();
+
+	// Check if mate/stalemate
+	if (std::abs(state.best_score) >= GameValues::Mate_Threshold) {
+		if (s_logger) {
+			s_logger->info("No move needed - mate detected (score={})", state.best_score);
+		}
+		return false;
+	}
+
+	// Check game state
+	const GameInfo& current_info = m_Board.GetGameInfo();
+	if (current_info.gameState != GameStates::STILL_PLAYING) {
+		if (s_logger) {
+			s_logger->info("No move needed - game over (state={})",
+				static_cast<int>(current_info.gameState));
+		}
+		return false;
+	}
+
+	// True emergency - generate any legal move
+	if (s_logger) {
+		s_logger->critical("EMERGENCY: No best move found (max_depth={}, last_completed={})",
+			m_MaxDepth, state.depth_completed);
+	}
+
+	MoveList emergency_moves;
+	MoveGenerator::ComputeLegalMoves(current_info, emergency_moves);
+
+	if (emergency_moves.empty()) {
+		if (s_logger) {
+			s_logger->critical("No legal moves - game is over");
+		}
+		return false;
+	}
+
+	// Verify first move is legal
+	if (!m_Board.DoMove(emergency_moves[0])) {
+		if (s_logger) {
+			s_logger->critical("First pseudolegal move {} is illegal!",
+				emergency_moves[0].Output());
+		}
+
+		// Try others
+		for (const auto& move : emergency_moves) {
+			if (m_Board.DoMove(move)) {
+				m_Board.UndoMove(move);
+				state.best_move = move;
+				state.best_score = 0;
+				pv_table.update(0, move);
+
+				if (s_logger) {
+					s_logger->critical("Using legal emergency move: {}",
+						move.Output());
+				}
+				return true;
+			}
+		}
+
+		if (s_logger) {
+			s_logger->critical("No legal moves found - ComputeLegalMoves is broken!");
+		}
+		return false;
+	}
+
+	// First move is legal
+	m_Board.UndoMove(emergency_moves[0]);
+	state.best_move = emergency_moves[0];
+	state.best_score = 0;
+	pv_table.update(0, emergency_moves[0]);
+
+	if (s_logger) {
+		s_logger->critical("Using emergency move: {}", emergency_moves[0].Output());
+	}
+	return true;
+}
+
+void AIPerplex::log_search_complete(
+	const SearchState& state,
+	const PVTable& pv_table) const
+{
+	if (!IsVerboseLoggingEnabled()) return;
+	ensure_logger_initialized();
+	if (!s_logger) return;
+
+	if (state.best_move.IsEmpty() || pv_table.get_length(0) == 0) {
+		return;
+	}
+
+	s_logger->info(
+		"Search complete: depth={}, score={}, move={}, nodes={}, stable={}",
+		state.depth_completed,
+		state.best_score,
+		state.best_move.Output(),
+		state.nodes_at_completed_depth,
+		state.search_was_stable ? "yes" : "NO");
+}
+
+void AIPerplex::log_completed_iteration(
+	const IterationMetrics& metrics,
+	const PVTable& pv_table) const
+{
+	if (!IsVerboseLoggingEnabled()) return;
+	ensure_logger_initialized();
+	if (!s_logger) return;
+
+	std::string pv_line;
+	pv_line.reserve(128);
+	const int display_length = std::min(metrics.pv_length, 10);
+	for (int i = 0; i < display_length; ++i) {
+		if (i) pv_line += ", ";
+		pv_line += pv_table.get_line(0)[i].Output();
+	}
+
+	s_logger->info(
+		"Depth {:>2}: Score: {:>6} Nodes: {:>8} PV[{}]: {} {}",
+		metrics.depth,
+		metrics.current_score,
+		metrics.nodes_searched,
+		metrics.pv_length,
+		pv_line,
+		(metrics.move_changed && metrics.depth > 1) ? "(!)" : "");
 }
 
 void AIPerplex::debug_tt_cache_misses(unsigned int key, int ply)

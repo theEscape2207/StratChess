@@ -8,7 +8,14 @@
 
 class Move;
 
-
+// Search result structure - returned from iterative_deepening
+struct SearchResult {
+	Move best_move = Move::EmptyMove();
+	int best_score = 0;
+	int depth_completed = 0;
+	int64_t nodes_searched = 0;
+	bool search_was_stable = true;
+};
 
 class AIPerplex final : public PlayerAiBase
 {
@@ -30,15 +37,87 @@ public:
 	AIPerplex& operator=(AIPerplex&&) = delete;
 
 private:
-	// Perplex specific helper
-	int iterative_deepening(int max_depth, TranspositionTable& tt, PVTable& pv_table);
+	// TUNABLE SEARCH PARAMETERS
+	struct SearchTuning {
+		int64_t min_nodes_threshold = 1000;        // Minimum nodes for valid search
+		double min_completion_ratio = 0.10;        // Must search 10% of previous depth
+		double min_pv_ratio = 0.33;                // PV must be at least 1/3 of depth
+		int score_draw_threshold = 20;             // Score delta to detect suspicious 0
+
+		// Future: Add aspiration window size, LMR thresholds, etc.
+	} tuning_;
+
+	// INTERNAL STRUCTURES
+	struct IterationMetrics {
+		int depth;
+		Move current_move;
+		int current_score;
+		int64_t nodes_searched;
+		int pv_length;
+		bool interrupted;
+		bool move_changed;
+
+		// Computed values
+		int score_delta;
+		double completion_ratio;
+	};
+
+	struct SearchState {
+		Move best_move;
+		int best_score;
+		int depth_completed;
+		int64_t nodes_at_completed_depth;
+		Move last_iteration_move;
+		bool search_was_stable;
+
+		SearchState()
+			: best_move(Move::EmptyMove())
+			, best_score(0)
+			, depth_completed(0)
+			, nodes_at_completed_depth(0)
+			, last_iteration_move(Move::EmptyMove())
+			, search_was_stable(true)
+		{}
+	};
+
+	enum class IterationDecision {
+		ACCEPT_AND_CONTINUE,    // Use this depth, keep going
+		ACCEPT_AND_STOP,        // Use this depth, stop iteration
+		REJECT_AND_STOP         // Reject this depth, use previous
+	};
+
+	enum class RejectionReason {
+		NONE,
+		INCOMPLETE,
+		TOO_FEW_NODES,
+		SHORT_PV,
+		SCORE_DROP,
+		MOVE_CHANGED
+	};
+
+	// SEARCH METHODS
+	// --------------
+	SearchResult iterative_deepening(int max_depth, TranspositionTable& tt, PVTable& pv_table);
 	int pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt, PVTable& pv_table);
 	int adjustScoreForGameState(bool moveFound, int ply, int best_value);
 	int quiescence(int alpha, int beta, int depth_q, int ply, TranspositionTable& tt);
 
-	// persistent transposition table reused across calls to GetMove
-	std::unique_ptr<TranspositionTable> _tt;
-
+	// HELPER METHODS
+	// --------------
+	// Quality assessment
+	RejectionReason assess_iteration_quality(const IterationMetrics& metrics, const SearchState& state) const;
+	bool should_stop_early(int depth, int score, int pv_length) const;			// Early termination checks
+	bool handle_empty_move_emergency(SearchState& state, PVTable& pv_table);	// Emergency handling
+	
+	// Logging helpers
+	void log_iteration_eval(const IterationMetrics& metrics, const PVTable& pv_table) const;
+	void log_rejection(int depth, RejectionReason reason, const IterationMetrics& metrics, const SearchState& state) const;
+	void log_acceptance(const IterationMetrics& metrics) const;
+	void log_search_complete(const AIPerplex::SearchState& state, const PVTable& pv_table) const;
+	void log_completed_iteration(const AIPerplex::IterationMetrics& metrics, const PVTable& pv_table) const;
+	
+	// MEMBER VARIABLES
+	std::unique_ptr<TranspositionTable> _tt;	// persistent transposition table
 	// logging control: enable detailed logging when needed (default: false)
 	static inline bool s_verbose_logging = false;
 
@@ -46,6 +125,10 @@ public:
 	// Configure logger verbosity at runtime (call before heavy runs if needed)
 	static void SetVerboseLogging(bool enabled) noexcept { s_verbose_logging = enabled; }
 	static bool IsVerboseLoggingEnabled() noexcept { return s_verbose_logging; }
+
+	// Access to tuning parameters
+	SearchTuning& tuning() { return tuning_; }
+	const SearchTuning& tuning() const { return tuning_; }
 
 private:
 	// Debug helpers
