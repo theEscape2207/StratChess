@@ -22,6 +22,9 @@
     <Filter Include="Source Files\Algos">
       <UniqueIdentifier>{2c0bd2aa-6c38-4a21-999d-8a99c773ba33}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Tests">
+      <UniqueIdentifier>{68ad53fe-e48c-4d10-93bc-ed6876f49d05}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Header Files\Algos">
       <UniqueIdentifier>{89b15c6c-26dd-4abe-a570-f2bd9f0f0a36}</UniqueIdentifier>
     </Filter>
@@ -96,6 +99,15 @@
     </ClCompile>
     <ClCompile Include="..\StratEngine\Utils\FENParser.cpp">
       <Filter>Source Files\Utils</Filter>
+    </ClCompile>
+    <ClCompile Include="..\StratEngine\Tests\Perft.cpp">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="..\StratEngine\Tests\PerftRunner.cpp">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="..\StratEngine\Tests\UnitTests.cpp">
+      <Filter>Tests</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -186,6 +198,12 @@
     <ClInclude Include="..\StratEngine\Utils\FENParser.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>
+    <ClInclude Include="..\StratEngine\Tests\Perft.h">
+      <Filter>Tests</Filter>
+    </ClInclude>
+    <ClInclude Include="..\StratEngine\Tests\TestFramework.h">
+      <Filter>Tests</Filter>
+    </ClInclude>
     <ClInclude Include="..\StratEngine\MoveFactory.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -220,6 +238,18 @@
     </None>
     <None Include="..\StratEngine\Tests\CHECKLIST.md">
       <Filter>Tests</Filter>
+    </None>
+    <None Include="..\StratEngine\Tests\INTEGRATION.md">
+      <Filter>Tests</Filter>
+    </None>
+    <None Include="..\StratEngine\Tests\README.md">
+      <Filter>Tests</Filter>
+    </None>
+    <None Include="..\StratEngine\Tests\SUMMARY.md">
+      <Filter>Tests</Filter>
+    </None>
+    <None Include="..\Tests\perft_test_cases.json">
+      <Filter>Resource Files</Filter>
     </None>
     <None Include="Developer Guidelines.md">
       <Filter>Docs</Filter>
