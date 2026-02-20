@@ -1,12 +1,12 @@
 #pragma once
+#include "defines.h"
+#include "Move.h"
 #include "PlayerAi.h"
 #include "TranspositionTable.h"
 #include "PVTable.h"
 #include <map>
 #include <memory>
 #include <cstdint>
-
-class Move;
 
 // Search result structure - returned from iterative_deepening
 struct SearchResult {
@@ -104,6 +104,14 @@ private:
 
 	// HELPER METHODS
 	// --------------
+	// Move ordering heuristics
+	void clear_killers() noexcept;
+	void store_killer(int ply, const Move& move) noexcept;
+
+	void clear_history() noexcept;
+	void age_history() noexcept;
+	void update_history(eColor side, const Move& move, int depth) noexcept;
+
 	// Quality assessment
 	RejectionReason assess_iteration_quality(const IterationMetrics& metrics, const SearchState& state) const;
 	bool should_stop_early(int depth, int score, int pv_length) const;			// Early termination checks
@@ -118,6 +126,17 @@ private:
 	
 	// MEMBER VARIABLES
 	std::unique_ptr<TranspositionTable> _tt;	// persistent transposition table
+
+	// Killer move heuristic: two quiet moves per ply that caused a beta cutoff
+	static constexpr int MAX_KILLERS = 2;
+	Move killers_[MAX_PLY][MAX_KILLERS];
+
+	// History heuristic: accumulated score for quiet moves that caused beta cutoffs,
+	// indexed by [side-to-move][from-square][to-square].
+	// int32 gives plenty of headroom before the depth^2 increments overflow.
+	static constexpr int HISTORY_MAX = 16'384;
+	int32_t history_[2][64][64];
+
 	// logging control: enable detailed logging when needed (default: false)
 	static inline bool s_verbose_logging = false;
 
