@@ -180,7 +180,6 @@
     <ClInclude Include="..\StratEngine\Eval.h" />
     <ClInclude Include="..\StratEngine\Game.h" />
     <ClInclude Include="..\StratEngine\GameState.h" />
-    <ClInclude Include="..\StratEngine\globals.h" />
     <ClInclude Include="..\StratEngine\HashElement.h" />
     <ClInclude Include="..\StratEngine\IPlayer.h" />
     <ClInclude Include="..\StratEngine\Move.h" />
