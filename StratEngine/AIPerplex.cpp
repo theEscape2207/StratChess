@@ -8,15 +8,12 @@
 #include "Utils/Logger.h"
 #include "defines.h"
 #include "Move.h"
-#include "PlayerAiIterBase.h"
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <fstream>
 #include <iterator>
 #include <memory>
-#include <spdlog/async.h>
-#include <spdlog/async_logger.h>
 #include <spdlog/common.h>
 #include <spdlog/logger.h>
 #include <spdlog/sinks/basic_file_sink.h>
