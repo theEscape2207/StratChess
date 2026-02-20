@@ -121,8 +121,6 @@ ipch/
 # Visual Studio Trace Files
 *.e2e
 
-# TFS 2012 Local Workspace
-$tf/
 
 # Guidance Automation Toolkit
 *.gpState
@@ -367,3 +365,5 @@ FodyWeavers.xsd
 /StratChessEvolved/legalmoves.txt
 /StratChessEvolved/SimplePerfStats.txt
 /PredictedInputCache_StratChessEvolved_Debug_x64.dat
+/.claude/*
+/.github/*
