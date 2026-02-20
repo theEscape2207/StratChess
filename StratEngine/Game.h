@@ -36,7 +36,7 @@ class Game final
 	// Inline stuff
 	size_t GetBoardCount() const noexcept { return m_GameMoves.size();	}
 
-	bool IsStillPlaying() const noexcept {	return gameInfo_.gameState == GameStates::STILL_PLAYING; 	}
+	bool IsStillPlaying() const noexcept {	return !gameInfo_.GameEnded(); 	}
 
 	static bool HasHumanExited(const Move& move) noexcept {	return move.IsEmpty();	}
 
