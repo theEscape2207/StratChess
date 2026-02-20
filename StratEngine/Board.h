@@ -215,6 +215,8 @@ public:
 	}
 	
 	GameInfo GetGameInfo() const noexcept { return gameInfo_; }
+	// Allow setting the game state from the Algos
+	void SetGameState(GameStates state) noexcept { gameInfo_.gameState = state; }
 
 private:
 	// ========================================================================

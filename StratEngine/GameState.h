@@ -48,6 +48,9 @@ struct GameInfo
 		fiftyCount = 0;
 		fullMoveCount = 1;
 	}
+	bool GameEnded() const noexcept {
+		return gameState != GameStates::STILL_PLAYING;
+	}
 
 	// Updates the BoardInfo with information about En Passant and castling possibilities
 	// For each move done, update as done above according to input move
