@@ -63,9 +63,6 @@
     <ClCompile Include="..\StratEngine\PlayerHuman.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\StratEngine\skak.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="..\StratEngine\Sort.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
