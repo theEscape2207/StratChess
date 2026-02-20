@@ -7,9 +7,10 @@
 #include "Sort.h"
 #include "Utils/Logger.h"
 #include "defines.h"
-#include "Move.h"
+#include "MoveHelper.h"
 #include <algorithm>
 #include <cassert>
+#include <cstring>
 #include <cstdint>
 #include <fstream>
 #include <iterator>
@@ -20,7 +21,6 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <string>
 #include <utility>
-#include <vector>
 
 extern std::ofstream outLegalMoves;
 
@@ -69,6 +69,8 @@ AIPerplex::AIPerplex(_In_ unsigned md)
 	// allocate TT once per AIPerplex instance; size can be tuned or read from config
 	_tt = std::make_unique<TranspositionTable>(256);
 
+	clear_killers();
+	clear_history();
 	SetVerboseLogging(true);
 }
 
@@ -126,10 +128,13 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info)
 SearchResult  AIPerplex::iterative_deepening(int max_depth, TranspositionTable& tt, PVTable& pv_table) {
 	SearchState state;
 
+	clear_killers();	// Clear killer moves at the start of the search
+
 	for (int depth = 1; depth <= max_depth; ++depth) {
 
 		// BEFORE ITERATION: Prepare for this depth's search
 		tt.newSearchIteration();
+		age_history();
 		const int64_t nodes_at_start = m_SearchCount;
 
 		// EXECUTE SEARCH: This might get interrupted by timeout
@@ -266,13 +271,10 @@ int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, Tra
 	Move hash_move;
 	Move pv_move;
 
-	bool tt_hit = false;
-
 	// TT probe
 	if (auto entry = tt.probe(key, ply))
 	{
 		if (entry->phase == SearchPhase::MAIN) { // Avoid the Quiescence nodes to affect main search - just to make sure
-			tt_hit = true;
 			hash_move = entry->best_move;
 
 			// Critical: Don't use TT cutoffs at PV nodes
@@ -308,36 +310,46 @@ int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, Tra
 	int best_value = -GameValues::Search_Init;
 	Move best_move;
 
+
+	// Stack-allocated scored index array — zero heap allocation -- static thread_local 
+	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
+	const int n = static_cast<int>(moveList.size());
+	const eColor side = m_Board.GetCurrentColor();
+
+	for (int i = 0; i < n; ++i) {
+		const Move& mv = moveList[i];
+		int s = 0;
+
+		if (mv == pv_move) { s = 2'000'000; }
+		else if (mv == hash_move) { s = 1'900'000; }
+		else {
+			const bool isCapture = MoveHelper::IsCapture(mv);
+			// Guard captures: store_killer() filters them, but defensive check here too
+			const bool isKiller0 = !isCapture && (mv == killers_[ply][0]);
+			const bool isKiller1 = !isCapture && (mv == killers_[ply][1]);
+			const int  mvv_lva = Move::Value(mv);
+
+			if (isKiller0)						s = 900'000;
+			else if (isKiller1)					s = 800'000;
+			else if (isCapture && mvv_lva > 0)	s = 1'000'000 + mvv_lva;  // winning capture
+			else if (isCapture && mvv_lva == 0)	s = 700'000 + mvv_lva;  // equal capture
+			else if (isCapture)					s = -100'000 + mvv_lva;  // losing capture
+			else								s = history_[side][mv.from()][mv.to()]; // quiet
+		}
+		scored_idx[i] = { s, i };
+	}
+
+	std::sort(scored_idx.begin(), scored_idx.begin() + n,
+		[](const auto& a, const auto& b) { return a.first > b.first; });
+
+
 	// TODO: Relocate MoveSorting to MoveSorter class
-	// Move ordering: PV move first, then hash move, then rest
-	auto order_moves = [&](const Move& a, const Move& b) {
-		if (a == pv_move && b == pv_move) return false;        // Equal
-		if (a == pv_move) return true;                         // a before b
-		if (b == pv_move) return false;                        // b before a
-
-		if (a == hash_move && b == hash_move) return false;    // Equal
-		if (a == hash_move) return true;
-		if (b == hash_move) return false;
-
-		// Apply MVV-LVA for captures
-		auto scoreA = Move::Value(a);
-		auto scoreB = Move::Value(b);
-		if (scoreA != scoreB)
-			return scoreA > scoreB;
-
-		// Tie-break by lex order
-		if (a.From != b.From)
-			return a.From < b.From;
-		return a.To < b.To;
-		};
 
 	bool moveFound = false;
 
-	std::sort(moveList.begin(), moveList.end(), order_moves);
-
-	for (const auto& move : moveList) {
-		if (tt_hit && move == hash_move && !first_child) continue;
-		if (is_pv_node && move == pv_move && !first_child) continue;
+	// Iterate by sorted index — no rebuild of moveList needed
+	for (int si = 0; si < n; ++si) {
+		const Move& move = moveList[scored_idx[si].second];
 
 		m_SearchCount++;
 
@@ -376,11 +388,19 @@ int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, Tra
 					if (is_pv_node) {
 						pv_table.update(ply, move);
 					}
+					// Update history for non-capture moves
+					//if (!move.is_capture()) {
+					//	data.move_ordering.update_history(move, depth, false);
 				}
 			}
 
-			if (beta <= alpha) break;
+			if (beta <= alpha)
+			{
+				store_killer(ply, move);
+				update_history(side, move, depth);
+				break;
 		}
+	}
 	}
 
 	// Classify node and store
@@ -569,6 +589,56 @@ int AIPerplex::quiescence(int alpha, int beta, int qsearch_depth, int ply, Trans
 // ============================================================================
 // HELPERS
 // ============================================================================
+void AIPerplex::clear_killers() noexcept
+{
+	for (auto& ply_killers : killers_)
+		for (auto& k : ply_killers)
+			k = Move::EmptyMove();
+}
+
+void AIPerplex::store_killer(int ply, const Move& move) noexcept
+{
+	// Only quiet moves are stored as killers
+	if (MoveHelper::IsCapture(move))
+		return;
+	// Avoid storing the same move twice in slot 0
+	if (killers_[ply][0] == move)
+		return;
+	// Shift slot 0 to slot 1, then store new killer in slot 0
+	killers_[ply][1] = killers_[ply][0];
+	killers_[ply][0] = move;
+}
+
+void AIPerplex::clear_history() noexcept
+{
+	std::memset(history_, 0, sizeof(history_));
+}
+
+void AIPerplex::age_history() noexcept
+{
+	// Halve all scores between iterative-deepening depths so that older
+	// cutoff information fades rather than being discarded entirely.
+	// Scores from deeper searches stay proportionally larger.
+	for (auto& side : history_)
+		for (auto& from : side)
+			for (auto& score : from)
+				score >>= 1;
+}
+
+void AIPerplex::update_history(eColor side, const Move& move, int depth) noexcept
+{
+	// Only quiet moves contribute to the history table
+	if (MoveHelper::IsCapture(move))
+		return;
+	// Bonus scales with depth^2 so deep cutoffs outweigh shallow ones
+	int32_t& entry = history_[side][move.from()][move.to()];
+	entry += depth * depth;
+	// Cap to avoid int32 overflow after many iterations
+	if (entry > HISTORY_MAX)
+		entry = HISTORY_MAX;
+}
+
+
 
 AIPerplex::RejectionReason AIPerplex::assess_iteration_quality(
 	const IterationMetrics& metrics,
