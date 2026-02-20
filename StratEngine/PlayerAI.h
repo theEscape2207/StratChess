@@ -153,12 +153,12 @@ protected:
 	}
 
 	// TODO: rename to FireStateChanged. Also, investigate if refreshInfo is needed for old AI structure
-	void CheckGameOver(GameInfo& info, bool refreshInfo = true)
+	void CheckGameOver(GameInfo& info, bool fromBoard = true)
 	{
-		if (refreshInfo)
-		info = GetLastBoardInfo(0);
-		else
+		if (fromBoard)
 			info = m_Board.GetGameInfo();
+		else
+		info = GetLastBoardInfo(0);
 		if (info.gameState != GameStates::STILL_PLAYING)
 		{
 			EGameStateChanged.fire(this, info.gameState);
