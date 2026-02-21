@@ -41,6 +41,7 @@ void Board::ClearBoard()
 	// reset game state
 	sideToMove_ = WHITE;
 	gameInfo_.Reset();
+	reset_repetition_history();
 	currentPly_ = 0;
 
 	// TODO: clear game history
@@ -465,6 +466,8 @@ bool Board::DoMove(_In_ const Move& m)
 		update_zobrist_ep(oldEpSquare, gameInfo_.epSquare);
 	}*/
 
+	updateThreefoldRep(m);
+	
 	// Update fullmove number - after black's move that is almost complete now
 	if (sideToMove_ == eColor::BLACK) {
 		gameInfo_.fullMoveCount++;
@@ -516,6 +519,8 @@ void Board::UndoMove(_In_ const Move& m)
 	if (sideToMove_ == eColor::BLACK) {
 		gameInfo_.fullMoveCount--;
 	}
+
+	pop_position(); // update Threefold repetition history
 
 	const MoveType type = MoveHelper::AsType(m);
 
@@ -632,6 +637,20 @@ bool Board::InCheck() const noexcept
 //
 //	Utility methods
 //
+// Update Threefold repetition tracking vars
+void Board::updateThreefoldRep(const Move& m)
+{
+	// Check if move is irreversible (pawn move or capture)
+	if (MoveHelper::IsPawnMove(m) || MoveHelper::IsCapture(m)) {
+		//assert(position_history_.size() == currentPly_ + 1); // +1 because we are making the move now
+		last_irreversible_ply_ = position_history_.size();	// mark this ply as irreversible
+		gameInfo_.fiftyCount = 0;
+	}
+	else {
+		gameInfo_.fiftyCount++;
+	}
+	push_position();
+}
 
 // ************************************
 // Method:      TestBitBoards
@@ -892,4 +911,99 @@ void Board::InitHashkey()
 			allHashKeys[piece][square] = dist(rng);
 		}
 	}
+}
+
+/**
+ * Check if current position is a repetition that should be scored as draw.
+ *
+ * @param ply Current search ply (0 = root)
+ * @return true if position should be considered a draw by repetition
+ *
+ * Implementation notes:
+ * - Twofold repetition (position repeated once) is draw if both occurrences
+ *   are in search tree (not in game history)
+ * - Threefold repetition (repeated twice) is always draw
+ * - Only checks positions where same side has move (every 2nd position)
+ * - Stops at last irreversible move (pawn move or capture)
+ */
+bool Board::is_repetition(int ply) const {
+	// Current position counts as first occurrence
+	int repetitions = 0;
+
+	const size_t history_size = position_history_.size();
+
+	// Edge case: not enough history
+	if (history_size < 4) {
+		return false;
+	}
+
+	// Scan backwards through history, stepping by 2 (same side to move)
+	// Start from position before last move (history_size - 2 is last move we made,
+	// history_size - 4 is first position where same side had move)
+	for (size_t i = history_size - 4;
+		i >= last_irreversible_ply_ && i < history_size; // i < history_size handles underflow
+		i -= 2) {
+
+		if (position_history_[i] == curBoardHashKey) {
+			repetitions++;
+
+			// Determine if this is a draw:
+			// - If repetition is entirely within search tree (ply >= 2), 
+			//   then twofold (1 repetition) is sufficient
+			// - If any occurrence is from game history (ply < 2),
+			//   then we need threefold (2 repetitions)
+
+			const size_t history_ply = i; // ply when that position occurred
+			const size_t root_ply = history_size - 1; // current root position
+			const size_t current_ply = root_ply + ply;
+
+			// Both occurrences in search tree?
+			if (history_ply >= root_ply && repetitions >= 1) {
+				return true; // Twofold in search = draw
+			}
+
+			// At least one in game history - need threefold
+			if (repetitions >= 2) {
+				return true; // Threefold = draw
+			}
+	}
+	}
+
+	return false;
+}
+
+/**
+ * Push current position onto history stack.
+ * Call this after making a move.
+ */
+void Board::push_position() {
+	position_history_.push_back(curBoardHashKey);
+}
+
+/**
+ * Pop position from history stack.
+ * Call this when unmaking a move.
+ */
+void Board::pop_position() {
+	if (!position_history_.empty()) {
+		position_history_.pop_back();
+	}
+}
+
+/**
+ * Mark current position as irreversible boundary.
+ * Call after pawn moves and captures.
+ */
+void Board::mark_irreversible() {
+	assert(position_history_.size() >= last_irreversible_ply_);
+	assert(position_history_.size() == currentPly_ + 1); // +1 because we are making the move now
+	last_irreversible_ply_ = position_history_.size();
+}
+
+/**
+ * Reset repetition history at start of new game.
+ */
+void Board::reset_repetition_history() {
+	position_history_.clear();
+	last_irreversible_ply_ = 0;
 }
