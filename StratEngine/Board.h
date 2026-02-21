@@ -42,6 +42,7 @@ public:
 	void SetupBoardFromFEN(_In_ const std::string& fen);
 	std::string ExtractFENFromBoard() const;
 	bool DoMove(_In_ const Move&);
+	void updateThreefoldRep(const Move& m);
 	void UndoMove(_In_ const Move&);
 
 	bool InCheck() const noexcept;
@@ -217,6 +218,14 @@ public:
 	GameInfo GetGameInfo() const noexcept { return gameInfo_; }
 	// Allow setting the game state from the Algos
 	void SetGameState(GameStates state) noexcept { gameInfo_.gameState = state; }
+
+	// Threefold repetition rule implementation
+	bool is_repetition(int ply) const;
+	void push_position();
+	void pop_position();
+	void reset_repetition_history();
+	void mark_irreversible();
+	
 
 private:
 	// ========================================================================

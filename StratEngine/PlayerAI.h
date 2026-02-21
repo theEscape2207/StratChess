@@ -14,7 +14,7 @@ public:
 
 	std::string getDescription() const override {
 		std::stringstream str;
-		str << "\n\tEngine type:\t" << GetType() << 
+		str << "\n\tEngine type:\t" << GetType() <<
 			"\n\tDepth:\t\t" << m_MaxDepth <<
 			"\n\tEvaluation:\t" << Eval->GetType() << '\n';
 		return str.str();
@@ -30,19 +30,19 @@ protected:
 	// Force use of factory by
 	// Preventing constructor, copy-construction & operator=
 	explicit PlayerAiBase(unsigned md) :
-			m_Board(Board::Instance()), 
-			m_MaxDepth(md)
-		 {
-			 // Create the Evaluation strategy - Right now only possible to select two: SIMPLE and COMPLEX ;-)
-		 }
+		m_Board(Board::Instance()),
+		m_MaxDepth(md)
+	{
+		// Create the Evaluation strategy - Right now only possible to select two: SIMPLE and COMPLEX ;-)
+	}
 
-		 // default constructor - not used but needs to be there
+	// default constructor - not used but needs to be there
 	PlayerAiBase() noexcept :
-			 m_Board(Board::Instance()),
-			 m_MaxDepth(5) // some default
-		 {
+		m_Board(Board::Instance()),
+		m_MaxDepth(5) // some default
+	{
 
-		 }
+	}
 
 	//virtual Move GetMove(_Inout_ GameInfo& info) = 0;
 
@@ -119,9 +119,9 @@ protected:
 	}
 
 	// Returns the Current Move's predecessor in the current move sequence tree
-	const Move& GetParentMove(size_t currentPly) const	
+	const Move& GetParentMove(size_t currentPly) const
 	{
-		return GetLastBoardInfo(currentPly).lastMove; 
+		return GetLastBoardInfo(currentPly).lastMove;
 	}
 
 	const GameInfo& GetLastBoardInfo(size_t currentPly) const
@@ -158,7 +158,7 @@ protected:
 		if (fromBoard)
 			info = m_Board.GetGameInfo();
 		else
-		info = GetLastBoardInfo(0);
+			info = GetLastBoardInfo(0);
 		if (info.gameState != GameStates::STILL_PLAYING)
 		{
 			EGameStateChanged.fire(this, info.gameState);
@@ -175,7 +175,11 @@ protected:
 	// ************************************
 	bool checkDraws(const GameInfo& info, int ply) const noexcept
 	{
-		if ( info.fiftyCount >= 50 )
+		if (ply > 0 && m_Board.is_repetition(ply))
+		{
+			return true;
+		}
+		if (info.fiftyCount >= 50)
 		{
 			assert(info.gameState == GameStates::DRAW_50_MOVES);
 			return true;
@@ -212,10 +216,10 @@ protected:
 	unsigned max_depth_{ 15 };											// TODO: Make configurable
 	std::chrono::milliseconds time_limit_{ std::chrono::seconds(15) };	// TODO: Make configurable
 
-//#ifdef PRINT_STATS
+	//#ifdef PRINT_STATS
 
-	// Samlet tid og antal nodes for begge computerspillere - TODO: Separer evt til per spiller. Human burde ogsaa have en klokke
+		// Samlet tid og antal nodes for begge computerspillere - TODO: Separer evt til per spiller. Human burde ogsaa have en klokke
 	static std::chrono::milliseconds m_TotalTime;
 	static size_t m_TotalCount;
-//#endif	// PRINT_STATS
+	//#endif	// PRINT_STATS
 };
