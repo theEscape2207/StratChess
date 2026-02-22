@@ -42,7 +42,6 @@ public:
 	void SetupFromFEN(_In_ const std::string& fen);
 	std::string ExtractFEN() const;
 	bool DoMove(_In_ const Move&);
-	void updateThreefoldRep(const Move& m);
 	void UndoMove(_In_ const Move&);
 
 	bool InCheck() const noexcept;
@@ -135,14 +134,17 @@ public:
 	bool TestBitBoards(std::ostream& stream = std::cout) const;
 	void PrintAllBitboards(_In_ const TBitboards& bbBitBoards, std::ostream& = std::cout) const;
 	
+	// Zobrist hash update helpers
+	void update_zobrist_castling(uint8_t old_rights, uint8_t new_rights) noexcept;
+	void update_zobrist_ep(eSquare old_ep, eSquare new_ep) noexcept;
+
 	// These is to be called with the side to move changes, or if in the first
 	// position, it is black to move.
-	void HashkSwitch() noexcept {
-		Bits::toogleBits(curBoardHashKey, 0x21D420B884CD6731U);
-	}
+	void update_zobrist_side() noexcept; //{ zobrist_hash_ ^= 0x21D420B884CD6731U; }
+
 	void ChangePlayer() noexcept {
 		(sideToMove_ = (sideToMove_ == eColor::WHITE) ? eColor::BLACK : eColor::WHITE);
-		HashkSwitch();
+		update_zobrist_side();
 	}
 	
 	constexpr size_t GetBitboard(ePieceType piece, eColor color)
@@ -220,11 +222,11 @@ public:
 	void SetGameState(GameStates state) noexcept { gameInfo_.gameState = state; }
 
 	// Threefold repetition rule implementation
+	void update_threefold_rep(const Move& m);
 	bool is_repetition(int ply) const;
 	void push_position();
 	void pop_position();
 	void reset_repetition_history();
-	void mark_irreversible();
 	
 
 private:
@@ -292,3 +294,19 @@ private:
 	// TODO: Not used - should be removed and all code should use the update methods instead to maintain consistency
 	void set_zobrist_hash(_In_ unsigned int newkey) noexcept { zobrist_hash_ = newkey; }
 };
+
+// ============================================================================
+	// Zobrist Hashing (Static Initialization)
+	// ============================================================================
+
+	// Zobrist random number table (initialized once at startup)
+	// Declared extern here, defined in Position.cpp
+namespace zobrist {
+	extern std::array<std::array<std::array<uint64_t, NUM_SQUARES>, NUM_COLORS>, 6> piece_keys; // [type][color][square]
+	extern std::array<uint64_t, 16> castling_keys; // [castling_rights]
+	extern std::array<uint64_t, NUM_SQUARES> ep_keys; // [square]
+	extern uint64_t side_key; // side to move
+
+	// Initialize Zobrist keys (called once at program start)
+	void initialize() noexcept;
+}
