@@ -1,6 +1,6 @@
 # StratChess Engine Roadmap
 
-**Last Updated**: February 11, 2026  
+**Last Updated**: February 22, 2026
 **Timeframe**: Next 6 months (through parallel search implementation)  
 **Current Version**: AIPerplex 2.0
 
@@ -316,6 +316,17 @@ This roadmap organizes development tasks by priority and category. Items are dra
 
 ### Infrastructure
 
+#### 🟢 Migrate to Google Test or Catch2
+- **Estimate**: 2-3 days
+- **Impact**: Proper test isolation, fixtures, parameterised tests, IDE integration
+- **Current State**: Custom `TestFramework.h` with hand-rolled `TEST_ASSERT` macros and global counters; no test isolation between test functions (shared singleton Board)
+- **Target**:
+  - Replace `TestFramework.h` macros with Google Test (`TEST`, `TEST_F`) or Catch2 (`TEST_CASE`, `SECTION`)
+  - Wrap `Board::Instance()` setup/teardown in a test fixture so every test starts with a clean board
+  - Integrate with Visual Studio Test Explorer or CTest for CI
+- **Files**: `StratEngine/Tests/TestFramework.h`, all `*Tests.h` files
+- **Note**: Deliberately deferred — larger undertaking than individual test additions
+
 #### 🟢 Add Performance Profiling Scripts
 - **Estimate**: 1 day
 - **Tools**:
@@ -474,6 +485,17 @@ This roadmap organizes development tasks by priority and category. Items are dra
 - Improved method organization (80-line main loop)
 - Documented all helper methods
 - Added detailed inline comments
+
+### ✅ Correctness Fixes (Feb 22, 2026)
+- **Threefold / Twofold Repetition Rule** — implemented and fully debugged:
+  - BUG-1: `push_position()` now called after `ChangePlayer()` in both `DoMove()` branches (hash ordering)
+  - BUG-2: `is_repetition()` loop start corrected from `history_size-4` to `history_size-3` (parity)
+  - BUG-3: Twofold-in-search branch was unreachable; replaced dead `history_ply >= root_ply` condition with `i >= history_size - ply`
+  - BUG-4: Castling rights and en-passant square changes now included in Zobrist hash (`update_zobrist_castling`, `update_zobrist_ep`)
+  - `zobrist_hash_` widened from `unsigned int` (32-bit) to `uint64_t`
+  - `updateThreefoldRep` made private and renamed to `update_threefold_rep`
+  - Dead `mark_irreversible()` method removed
+  - 8 regression tests in `StratEngine/Tests/RepetitionTests.h` (TC1–TC7, TC9) — all passing
 
 ### ✅ Infrastructure
 - **Transposition Table Thread-Safety**: Per-bucket `shared_mutex` locks for concurrent access

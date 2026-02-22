@@ -1,5 +1,8 @@
+#pragma once
+
 #include "TestFramework.h"
 #include "Perft.h"
+#include "UnitTests.h"
 #include "../Board.h"
 #include "../MoveGenerator.h"
 #include "../Move.h"
@@ -65,13 +68,13 @@ void test_move_unmove_consistency() {
 
     for (const auto& move : moves) {
         // Capture initial state
-        auto initial_hash = board.GetCurBoardHKey();
+        auto initial_hash = board.get_zobrist_hash();
 
         if (board.DoMove(move)) {
             board.UndoMove(move);
 
             // Check hash is restored
-            auto final_hash = board.GetCurBoardHKey();
+            auto final_hash = board.get_zobrist_hash();
             TEST_ASSERT_EQUAL(initial_hash, final_hash);
         }
     }

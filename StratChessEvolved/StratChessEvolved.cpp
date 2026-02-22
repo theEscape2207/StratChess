@@ -5,6 +5,7 @@
 #include "Game.h"
 #include "Board.h"
 #include <Tests/Perft.h>
+#include <Tests/Unittests.h>
 
 std::ofstream outLegalMoves("legalmoves.txt", std::ios::trunc | std::ios::out);
 
@@ -173,6 +174,11 @@ int main(int argc, char** argv)
         test_fen_integration();
         return 0;
         
+    }
+    if (argc > 1 && std::string(argv[1]) == "unittest") {
+		// Hack: Run unittests if "unittest" is passed as the first argument
+        bool all_passed = run_all_tests();
+        return all_passed ? 0 : 1;
     }
         
 	// Check for perft commands
