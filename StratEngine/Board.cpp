@@ -46,11 +46,10 @@ void Board::ClearBoard()
 
 	// TODO: clear game history
 	
-
-	m_MaterialScore[WHITE] = m_MaterialScore[BLACK] = 0;
+	material_score_[WHITE] = material_score_[BLACK] = 0;
 	//m_PlaceScore[WHITE] = m_PlaceScore[BLACK] = 0;
 	
-	SetCurBoardHKey(0);
+	zobrist_hash_ = 0;
 	
 	spdlog::default_logger()->debug("Board cleared" );
 }
@@ -84,7 +83,7 @@ void Board::_AddPiece(_In_ eSquare square, _In_ ePiece piece )
 	BitBoardHelper::SetBitboardMask(m_bitboards[ROTATED45L], g_bbMaskRotated45L[square]);
 
 	// Tilfoejer brikkens vaerdi fra Board hash table
-	curBoardHashKey		^= allHashKeys[piece][square];
+	zobrist_hash_		^= allHashKeys[piece][square];
 
 	// Et almindelige array opdateres ogsaa
 	SetSquare(square, piece);
@@ -119,7 +118,7 @@ void Board::_RemovePiece(_In_ eSquare square, _In_ ePiece piece)
 	BitBoardHelper::ClearBitboardMask(m_bitboards[ROTATED45L], g_bbMaskRotated45L[square]);
 
 	// Fjerner brikkens vaerdi fra Board hash table
-	curBoardHashKey		^= allHashKeys[piece][square];
+	zobrist_hash_		^= allHashKeys[piece][square];
 	
 	ClearSquare(square);
 
@@ -152,7 +151,7 @@ void Board::SetupBoard(_In_ const squareCol& col )
 
 }
 
-void Board::SetupBoardFromFEN(_In_ const std::string& fen)
+void Board::SetupFromFEN(_In_ const std::string& fen)
 {
 	// Parse the FEN string
 	FENParser::FENGameState state;
@@ -185,7 +184,7 @@ void Board::SetupBoardFromFEN(_In_ const std::string& fen)
 	spdlog::default_logger()->info("Board set up from FEN: {}", fen);
 }
 
-std::string Board::ExtractFENFromBoard() const
+std::string Board::ExtractFEN() const
 {
 	std::string fen;
 
@@ -327,7 +326,7 @@ bool Board::DoMove(_In_ const Move& m)
 	gameInfoHistory_[currentPly_] = gameInfo_;
 	irreversiblePlyHistory_[currentPly_] = last_irreversible_ply_;
 
-	eSquare from = m.from();
+	const eSquare from = m.from();
 	eSquare to = m.to();
 	
 	const MoveType type = MoveHelper::AsType(m);
@@ -466,7 +465,7 @@ bool Board::DoMove(_In_ const Move& m)
 		update_zobrist_ep(oldEpSquare, gameInfo_.epSquare);
 	}*/
 
-	updateThreefoldRep(m);
+	update_threefold_rep(m);
 	
 	// Update fullmove number - after black's move that is almost complete now
 	if (sideToMove_ == eColor::BLACK) {
@@ -497,10 +496,7 @@ bool Board::DoMove(_In_ const Move& m)
 // Mirror of DoMove()
 // Assumes that the current player is the one who did NOT make the move
 // i.e. we are undoing the last move made by the opponent
-// Note: We do NOT restore any game state other than the pieces on the board and the current player
-// 	 e.g. we do NOT restore castling rights, en-passant rights, 50-move counter, etc.
-// These must be handled separately if needed
-// Note2: MovePiece is reversed, i.e. we move from 'to' back to 'from'
+// Note: MovePiece is reversed, i.e. we move from 'to' back to 'from'
 void Board::UndoMove(_In_ const Move& m)
 {
 	assert( MoveHelper::IsValid( m ));
@@ -638,7 +634,7 @@ bool Board::InCheck() const noexcept
 //	Utility methods
 //
 // Update Threefold repetition tracking vars
-void Board::updateThreefoldRep(const Move& m)
+void Board::update_threefold_rep(const Move& m)
 {
 	// Check if move is irreversible (pawn move or capture)
 	if (MoveHelper::IsPawnMove(m) || MoveHelper::IsCapture(m)) {
@@ -775,11 +771,11 @@ std::pair<int, Move> Board::ProbeHash(_In_ size_t ply, _In_ int alpha, _In_ int 
 	int returnScore = GameValues::Unknown_Hash;
 	auto returnPair = std::make_pair(returnScore, Move::EmptyMove());
 	
-	TMoveHashTable::const_iterator cit = hashTable_.find( GetCurBoardHKey() );
+	TMoveHashTable::const_iterator cit = hashTable_.find( get_zobrist_hash() );
 	if (cit != hashTable_.end())
 	{
 		const HashElement& elem = cit->second;
-		assert(elem.hkey == GetCurBoardHKey());
+		assert(elem.hkey == get_zobrist_hash());
 		assert(ply > 0);	// <- Should be removed, just to test size_t -> unsigned int conversion
 		if( elem.iDepth >= ply )
 		{
@@ -847,14 +843,14 @@ void Board::RecordHash(_In_ size_t ply, _In_ int score, _In_ eHashFlags flags, _
 	 */
 
 	HashElement newElem; 
-	newElem.hkey = GetCurBoardHKey();
+	newElem.hkey = get_zobrist_hash();
 	newElem.iValue = score;
 	newElem.iDepth = static_cast<unsigned short>(ply);
 	newElem.hashflag = flags;
 	//		assert( MoveHelper::IsValid( m ));	// only makes sense for PVLine based algoritms
 	newElem.BestMove = m;
 
-	auto pair = hashTable_.insert( std::make_pair(GetCurBoardHKey(), newElem) );	// Insert move
+	auto pair = hashTable_.insert( std::make_pair(get_zobrist_hash(), newElem) );	// Insert move
 	if( pair.second == false) // -> Move already existing
 	{
 		// Match - The Move has already been stored. Update the move if we are deeper now
@@ -944,7 +940,7 @@ bool Board::is_repetition(int ply) const {
 		i >= last_irreversible_ply_ && i < history_size; // i < history_size handles underflow
 		i -= 2) {
 
-		if (position_history_[i] == curBoardHashKey) {
+		if (position_history_[i] == zobrist_hash_) {
 			repetitions++;
 
 			// Determine if this is a draw:
@@ -977,7 +973,7 @@ bool Board::is_repetition(int ply) const {
  * Call this after making a move.
  */
 void Board::push_position() {
-	position_history_.push_back(curBoardHashKey);
+	position_history_.push_back(zobrist_hash_);
 }
 
 /**

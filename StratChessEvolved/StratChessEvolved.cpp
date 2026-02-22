@@ -35,7 +35,7 @@ void test_fen_integration() {
         eColor expectedSide;
     };
 
-    std::vector<TestCase> tests = {
+    std::vector<TestCase> quick_tests = {
         {
             "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
             "Starting position",
@@ -59,12 +59,12 @@ void test_fen_integration() {
     int passed = 0;
     int failed = 0;
 
-    for (const auto& test : tests) {
+    for (const auto& test : quick_tests) {
         std::cout << "Testing: " << test.description << "\n";
         std::cout << "FEN: " << test.fen << "\n";
 
         // Load FEN
-        board.SetupBoardFromFEN(test.fen);
+        board.SetupFromFEN(test.fen);
 
         // Verify side to move
         if (board.GetCurrentColor() != test.expectedSide) {
@@ -74,7 +74,7 @@ void test_fen_integration() {
         }
 
         // Extract FEN back
-        std::string extracted = board.ExtractFENFromBoard();
+        std::string extracted = board.ExtractFEN();
         std::cout << " Extracted: " << extracted << "\n";
 
         // Round-trip test (piece placement should match)
