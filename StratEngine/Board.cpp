@@ -11,6 +11,41 @@
 
 extern std::ofstream outLegalMoves;
 
+// Zobrist key tables (defined)
+namespace zobrist {
+	std::array<std::array<std::array<uint64_t, 64>, 2>, 6> piece_keys;
+	std::array<uint64_t, 16> castling_keys;
+	std::array<uint64_t, 64> ep_keys;
+	uint64_t side_key;
+
+	void initialize() noexcept {
+		// Use deterministic random generator for reproducibility
+		std::mt19937_64 rng(0x123456789ABCDEF0ULL);
+
+		// Generate piece keys
+		for (size_t type = 0; type < 6; ++type) {
+			for (size_t color = 0; color < 2; ++color) {
+				for (size_t sq = 0; sq < 64; ++sq) {
+					piece_keys[type][color][sq] = rng();
+				}
+			}
+		}
+
+		// Generate castling keys
+		for (size_t i = 0; i < 16; ++i) {
+			castling_keys[i] = rng();
+		}
+
+		// Generate en passant keys
+		for (size_t sq = 0; sq < 64; ++sq) {
+			ep_keys[sq] = rng();
+		}
+
+		// Generate side to move key
+		side_key = rng();
+	}
+}
+
 Board::Board()
 {
 	// Fylder Keys med rand64 
@@ -987,19 +1022,27 @@ void Board::pop_position() {
 }
 
 /**
- * Mark current position as irreversible boundary.
- * Call after pawn moves and captures.
- */
-void Board::mark_irreversible() {
-	assert(position_history_.size() >= last_irreversible_ply_);
-	assert(position_history_.size() == currentPly_ + 1); // +1 because we are making the move now
-	last_irreversible_ply_ = position_history_.size();
-}
-
-/**
  * Reset repetition history at start of new game.
  */
 void Board::reset_repetition_history() {
 	position_history_.clear();
 	last_irreversible_ply_ = 0;
+}
+
+void Board::update_zobrist_castling(uint8_t old_rights, uint8_t new_rights) noexcept {
+	zobrist_hash_ ^= zobrist::castling_keys[old_rights];
+	zobrist_hash_ ^= zobrist::castling_keys[new_rights];
+}
+
+void Board::update_zobrist_ep(eSquare old_ep, eSquare new_ep) noexcept {
+	if (old_ep != NO_SQUARE) {
+		zobrist_hash_ ^= zobrist::ep_keys[old_ep];
+	}
+	if (new_ep != NO_SQUARE) {
+		zobrist_hash_ ^= zobrist::ep_keys[new_ep];
+	}
+}
+
+void Board::update_zobrist_side() noexcept {
+	zobrist_hash_ ^= zobrist::side_key;
 }
