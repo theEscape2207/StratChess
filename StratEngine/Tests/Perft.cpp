@@ -398,8 +398,7 @@ namespace Testing {
 			// Set up board from FEN
 			Board& board = Board::Instance();  // TODO: Update when Board is no longer singleton
 
-			// Load position from FEN
-			board.SetupBoardFromFEN(pos.fen);
+			board.SetupFromFEN(pos.fen);
 
 			// Test each depth (limit to reasonable depths for speed)
 			int max_test_depth = std::min(5, static_cast<int>(pos.expected_nodes.size()) - 1);

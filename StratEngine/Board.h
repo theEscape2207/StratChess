@@ -39,8 +39,8 @@ public:
 
 	void SetDefaultBoard();
 	void SetupBoard(_In_ const squareCol&);
-	void SetupBoardFromFEN(_In_ const std::string& fen);
-	std::string ExtractFENFromBoard() const;
+	void SetupFromFEN(_In_ const std::string& fen);
+	std::string ExtractFEN() const;
 	bool DoMove(_In_ const Move&);
 	void updateThreefoldRep(const Move& m);
 	void UndoMove(_In_ const Move&);
@@ -66,7 +66,7 @@ public:
 		return mailbox_.at(static_cast<eSquare>(square));
 	}
 
-	int GetMaterialScore(_In_ eColor color) const noexcept {	return m_MaterialScore[color];	}
+	int GetMaterialScore(_In_ eColor color) const noexcept {	return material_score_[color];	}
 
 	// Returns whether the squares contained in the bit-mask is occupied by a piece
 	bool IsOccupied(_In_ BITBOARD mask) const noexcept
@@ -165,7 +165,7 @@ public:
 	void AddPieceToBoard(_In_ ePiece piece, _In_ eSquare sq )
 	{
 		_AddPiece( sq, piece );
-		m_MaterialScore[ PieceHelper::Color(piece) ] += PieceHelper::Value(piece);
+		material_score_[ PieceHelper::Color(piece) ] += PieceHelper::Value(piece);
 	}
 
 	
@@ -181,7 +181,7 @@ public:
 	void RemovePieceFromBoard(_In_ ePiece piece, _In_ eSquare sq )
 	{
 		_RemovePiece( sq, piece );
-		m_MaterialScore[ PieceHelper::Color(piece) ] -= PieceHelper::Value(piece);
+		material_score_[ PieceHelper::Color(piece) ] -= PieceHelper::Value(piece);
 	}
 
 	//***************************************
@@ -248,11 +248,11 @@ private:
 	size_t last_irreversible_ply_{ 0 }; // Ply at last irreversible move (pawn move or capture)
 
 	// Material score
-	int m_MaterialScore[2]{ 0 };
+	int material_score_[2]{ 0 };
 
 	// Ply-indexed state preservation arrays (pre-allocated to MAX_PLY)
 	// These store irreversible state before each move for O(1) unmake
-	std::array<uint64_t, MAX_PLY> hashKeyHistory_{ 0 };
+	std::array<uint64_t, MAX_PLY> zobrist_history_{ 0 };
 	std::array<size_t, MAX_PLY> irreversiblePlyHistory_{ 0 };
 	std::array<GameInfo, MAX_PLY> gameInfoHistory_{};
 
@@ -267,7 +267,7 @@ private:
 	// Zobrist Hash keys
 	std::array<std::array<uint64_t, ALL_SQUARES>, ALL_PIECETYPES> allHashKeys;	// Piece Hash key table
 	// Current board hash key
-	unsigned int curBoardHashKey{ 0 };
+	uint64_t zobrist_hash_{ 0 };
 
 public:
 	//---------------------------
@@ -279,7 +279,7 @@ public:
 	// Resets all memory in the HashTable
 	void ClearHashTable();
 
-	unsigned int GetCurBoardHKey() const noexcept { return curBoardHashKey; }
+	unsigned int get_zobrist_hash() const noexcept { return zobrist_hash_; }
 private:
 
 	//-----------------------------------------------
@@ -289,5 +289,6 @@ private:
 	// Initialiserer alle enkelte hashkey-vaerdier
 	void InitHashkey();
 	
-	void SetCurBoardHKey(_In_ unsigned int newkey) noexcept {	curBoardHashKey = newkey;	}
+	// TODO: Not used - should be removed and all code should use the update methods instead to maintain consistency
+	void set_zobrist_hash(_In_ unsigned int newkey) noexcept { zobrist_hash_ = newkey; }
 };
