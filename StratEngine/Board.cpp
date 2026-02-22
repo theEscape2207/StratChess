@@ -44,7 +44,7 @@ void Board::ClearBoard()
 	reset_repetition_history();
 	currentPly_ = 0;
 
-	// TODO: clear game history
+	gameInfoHistory_.fill(GameInfo{});
 	
 	material_score_[WHITE] = material_score_[BLACK] = 0;
 	//m_PlaceScore[WHITE] = m_PlaceScore[BLACK] = 0;
