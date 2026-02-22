@@ -360,6 +360,7 @@ bool Board::DoMove(_In_ const Move& m)
 	// Storing the current game state before making the move
 	gameInfoHistory_[currentPly_] = gameInfo_;
 	irreversiblePlyHistory_[currentPly_] = last_irreversible_ply_;
+	zobrist_history_[currentPly_] = zobrist_hash_;
 
 	const eSquare from = m.from();
 	eSquare to = m.to();
@@ -459,7 +460,7 @@ bool Board::DoMove(_In_ const Move& m)
 		break;
 	}
 	// Update castling rights
-	//uint16_t oldCastlingRights = gameInfo_.castlingRights_;
+	const uint8_t oldCastlingRights = gameInfo_.castlingRights;
 	// King move removes all castling rights for that side
 	if (MoveHelper::IsKingMove(m)) {
 		if (sideToMove_ == eColor::WHITE) {
@@ -489,16 +490,16 @@ bool Board::DoMove(_In_ const Move& m)
 		gameInfo_.castlingRights &= ~CastlingRights::BLACK_KINGSIDE;
 
 	// Update Zobrist hash for castling change upon change
-	/*if (oldCastlingRights != gameInfo_.castlingRights_) {
-		update_zobrist_castling(oldCastlingRights, gameInfo_.castlingRights_);
-	}*/
+	if (oldCastlingRights != gameInfo_.castlingRights) {
+		update_zobrist_castling(oldCastlingRights, gameInfo_.castlingRights);
+	}
 	// Update en-passant square
-	//eSquare oldEpSquare = gameInfo_.epSquare;
+	const eSquare oldEpSquare = gameInfo_.epSquare;
 	gameInfo_.epSquare = MoveHelper::GetEnPassantSquare(m);
 	// Update Zobrist hash for en passant change - either add new or remove old
-	/*if (oldEpSquare != gameInfo_.epSquare) {
+	if (oldEpSquare != gameInfo_.epSquare) {
 		update_zobrist_ep(oldEpSquare, gameInfo_.epSquare);
-	}*/
+	}
 
 	update_threefold_rep(m);
 	
@@ -517,12 +518,14 @@ bool Board::DoMove(_In_ const Move& m)
 	{
 		// assert(m.IsCheck == true);   //TODO: We are not setting the IsCheck flag on the Move until we are printing it out to the screen
 		ChangePlayer();
+		push_position();
 
 		UndoMove(m);
 		return false;
 	}
 	// Nu er det den andens tur
 	ChangePlayer();
+	push_position();
 	
 	return true;
 }
@@ -543,8 +546,9 @@ void Board::UndoMove(_In_ const Move& m)
 	// Restore game state
 	gameInfo_ = gameInfoHistory_[currentPly_];
 	last_irreversible_ply_ = irreversiblePlyHistory_[currentPly_];
+	zobrist_hash_ = zobrist_history_[currentPly_];
 
-	ChangePlayer();
+	sideToMove_ = (sideToMove_ == eColor::WHITE) ? eColor::BLACK : eColor::WHITE;
 
 	// Update fullmove number
 	if (sideToMove_ == eColor::BLACK) {
@@ -680,7 +684,6 @@ void Board::update_threefold_rep(const Move& m)
 	else {
 		gameInfo_.fiftyCount++;
 	}
-	push_position();
 }
 
 // ************************************
@@ -971,33 +974,29 @@ bool Board::is_repetition(int ply) const {
 	// Scan backwards through history, stepping by 2 (same side to move)
 	// Start from position before last move (history_size - 2 is last move we made,
 	// history_size - 4 is first position where same side had move)
-	for (size_t i = history_size - 4;
+	for (size_t i = history_size - 3;
 		i >= last_irreversible_ply_ && i < history_size; // i < history_size handles underflow
 		i -= 2) {
 
 		if (position_history_[i] == zobrist_hash_) {
 			repetitions++;
 
-			// Determine if this is a draw:
-			// - If repetition is entirely within search tree (ply >= 2), 
-			//   then twofold (1 repetition) is sufficient
-			// - If any occurrence is from game history (ply < 2),
-			//   then we need threefold (2 repetitions)
+			// An entry at index i was added during the current search iff
+			// i >= history_size - ply. Each search half-move pushes one entry,
+			// so (history_size - ply) is the history size at the search root.
+			const bool both_in_search = (ply > 0) &&
+				(i >= history_size - static_cast<size_t>(ply));
 
-			const size_t history_ply = i; // ply when that position occurred
-			const size_t root_ply = history_size - 1; // current root position
-			const size_t current_ply = root_ply + ply;
-
-			// Both occurrences in search tree?
-			if (history_ply >= root_ply && repetitions >= 1) {
-				return true; // Twofold in search = draw
+			// Twofold within the search tree is sufficient for a draw.
+			if (both_in_search && repetitions >= 1) {
+				return true;
 			}
 
-			// At least one in game history - need threefold
+			// At least one occurrence is in game history: need threefold.
 			if (repetitions >= 2) {
-				return true; // Threefold = draw
+				return true;
 			}
-	}
+		}
 	}
 
 	return false;
