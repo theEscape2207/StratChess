@@ -7,7 +7,6 @@ class MoveSorter final
 public:
 	static void SortMoves(MoveList& moveList, const Move& lastMove, size_t startIndex = 0 );
 	static void SortMovesIter(MoveList& moveList, const Move& lastMove, const Move* pIterMove);
-	static void SortMovesHash(MoveList& moveList, const Move& lastMove, const Move* pHashMove);
 	static void SortMovesByValue(MoveList& moveList, size_t captures, size_t start=0);
 	~MoveSorter() = default;
 private:

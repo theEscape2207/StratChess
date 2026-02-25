@@ -2,13 +2,13 @@
 
 // PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 #include "StdAfx.h"
-
+#include "defines.h"
+#include "PlayerHuman.h"
 #include <string>
 #include <map>
 #include <regex>
 #include <algorithm>
 #include "Utils\StrHelper.h"
-#include "PlayerHuman.h"
 #include "Board.h"
 #include "MoveGenerator.h"
 #include <MoveHelper.h>

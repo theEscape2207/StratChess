@@ -128,12 +128,10 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\StratEngine\ABIterative.cpp" />
-    <ClCompile Include="..\StratEngine\ABIterTrans.cpp" />
     <ClCompile Include="..\StratEngine\AIAgent.cpp" />
     <ClCompile Include="..\StratEngine\AIBasic.cpp" />
     <ClCompile Include="..\StratEngine\AIPerplex.cpp" />
     <ClCompile Include="..\StratEngine\AIPerplexParallel.cpp" />
-    <ClCompile Include="..\StratEngine\AITrans.cpp" />
     <ClCompile Include="..\StratEngine\Board.cpp" />
     <ClCompile Include="..\StratEngine\Config.cpp" />
     <ClCompile Include="..\StratEngine\Eval.cpp" />

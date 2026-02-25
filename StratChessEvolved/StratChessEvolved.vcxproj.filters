@@ -78,9 +78,6 @@
     <ClCompile Include="..\StratEngine\ABIterative.cpp">
       <Filter>Source Files\Algos</Filter>
     </ClCompile>
-    <ClCompile Include="..\StratEngine\ABIterTrans.cpp">
-      <Filter>Source Files\Algos</Filter>
-    </ClCompile>
     <ClCompile Include="..\StratEngine\AIAgent.cpp">
       <Filter>Source Files\Algos</Filter>
     </ClCompile>
@@ -88,10 +85,6 @@
       <Filter>Source Files\Algos</Filter>
     </ClCompile>
     <ClCompile Include="..\StratEngine\AIPerplex.cpp">
-      <Filter>Source Files\Algos</Filter>
-    </ClCompile>
-    </ClCompile>
-    <ClCompile Include="..\StratEngine\AITrans.cpp">
       <Filter>Source Files\Algos</Filter>
     </ClCompile>
     <ClCompile Include="..\StratEngine\Utils\FENParser.cpp">
@@ -124,9 +117,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\StratEngine\Game.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\StratEngine\HashElement.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\StratEngine\IPlayer.h">
@@ -201,9 +191,6 @@
     <ClInclude Include="..\StratEngine\ABIterative.h">
       <Filter>Header Files\Algos</Filter>
     </ClInclude>
-    <ClInclude Include="..\StratEngine\ABIterTrans.h">
-      <Filter>Header Files\Algos</Filter>
-    </ClInclude>
     <ClInclude Include="..\StratEngine\AIAgent.h">
       <Filter>Header Files\Algos</Filter>
     </ClInclude>
@@ -211,9 +198,6 @@
       <Filter>Header Files\Algos</Filter>
     </ClInclude>
     <ClInclude Include="..\StratEngine\AIPerplex.h">
-      <Filter>Header Files\Algos</Filter>
-    </ClInclude>
-    <ClInclude Include="..\StratEngine\AITrans.h">
       <Filter>Header Files\Algos</Filter>
     </ClInclude>
     <ClInclude Include="..\StratEngine\GameState.h">
