@@ -15,8 +15,8 @@ public:
 						ALPHABETA,				// 1
 						ABITERATING,			// 2
 						AIAGENT,				// 3
-						AITRANS,				// 4
-						ABITERATIVE_TRANS,		// 5
+						AITRANS,				// 4 — ARCHIVED (TT bugs, use AI_PERPLEX)
+						ABITERATIVE_TRANS,		// 5 — ARCHIVED (TT bugs, use AI_PERPLEX)
 						AI_PERPLEX,				// 6
 						};
 	// Non-virtual

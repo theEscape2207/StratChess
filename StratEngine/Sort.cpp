@@ -36,32 +36,6 @@ void MoveSorter::SortMovesIter(MoveList& moveList,			// traeklisten
 	SortMoves(moveList, lastMove, foundMove);
 }
 
-// TODO: Incomplete and unused: Intention is that we want to find the best move from the hashtable and move it forward - hmm.. is this thought through?
-void MoveSorter::SortMovesHash(MoveList& moveList,			// traeklisten
-							   const Move& lastMove,	// modstanderens traek foer dette
-							   const Move* pHashMove
-							   )
-{
-	size_t foundMove = 0;
-	if (pHashMove != nullptr)	// Har vi et traek at kigge paa?
-	{
-		//Vi loeber traekkene igennem og sorterer
-		for (size_t i=0; i<moveList.size(); ++i)
-		{
-			// Iterative deepening - bedste traek paa samme dybde fra sidste traek
-			if (*pHashMove == moveList[i])
-			{
-				// Bytter om paa de 2 moves
-				SwapMoves(moveList, i, foundMove++);
-				break; // only one move
-			}
-		}
-	}
-
-	// Sort the rest of the moves
-	SortMoves(moveList, lastMove, foundMove);
-}
-
 // TODO: Convert to use standard value based sorting - it's way faster - 
 // additionally we are now sorting captures before Promotions even if they are usually a lot faster
 // Her foretages en sortering af de lovlige traek 

@@ -5,8 +5,8 @@
      ALPHABETA = 1,
      ABITERATING = 2,
      AIAGENT = 3,
-     AITRANS = 4 (Not working correctly atm),
-     ABITERATIVE_TRANS = 5 (Not working atm)
+     AITRANS = 4 (ARCHIVED - had TT bugs, use AI_PERPLEX),
+     ABITERATIVE_TRANS = 5 (ARCHIVED - had TT bugs, use AI_PERPLEX)
     */
     "players": {
       "white": {
