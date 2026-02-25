@@ -266,7 +266,7 @@ int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, Tra
 	if (depth <= 0)
 		return quiescence(alpha, beta, 0, ply, tt);
 
-	auto key = m_Board.GetCurBoardHKey();
+	auto key = m_Board.get_zobrist_hash();
 	int original_alpha = alpha;
 	Move hash_move;
 	Move pv_move;
@@ -474,7 +474,7 @@ int AIPerplex::quiescence(int alpha, int beta, int qsearch_depth, int ply, Trans
 
 	int original_alpha = alpha;
 
-	auto key = m_Board.GetCurBoardHKey();
+	auto key = m_Board.get_zobrist_hash();
 
 	// Probe TT for cached info
 	if (auto entry = tt.probe(key, ply)) {

@@ -390,7 +390,7 @@ void Game::AddFileHeader(std::ostream& file)const
 	file << R"(
 *********************************
 *      Escapes Chess game       *
-*      Version: 0.7             *
+*      Version: 0.8             *
 *********************************
 )";
 	errno_t err = localtime_s(&timeinfo, &now_c);	// MSVC complains about localtime() usage
