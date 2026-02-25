@@ -3,8 +3,6 @@
 // PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 #include "StdAfx.h"
 #include "Config.h"
-#include <Utils\FENParser.h>
-
 #include "Board.h"
 #include "Game.h"
 
