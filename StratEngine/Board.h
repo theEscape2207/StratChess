@@ -1,12 +1,10 @@
 #pragma once
 
 #include "BitBoardHelper.h"
-#include "HashElement.h"
 #include "Move.h"
 #include "GameState.h"
 #include "SquareHelper.h"
 #include "PieceHelper.h"
-#include <unordered_map>
 #include <span>
 #include <tuple>
 
@@ -259,28 +257,12 @@ private:
 	std::array<GameInfo, MAX_PLY> gameInfoHistory_{};
 
 
-	// ------------------------------------------------
-	// Transposition Table stuff
-	// -----------------------------------------------
-	// Hash Table for Transposition Table (Note: not used for AI Perplex)
-	using TMoveHashTable = std::unordered_map<unsigned int, HashElement>;
-	TMoveHashTable hashTable_;
-	
 	// Zobrist Hash keys
 	std::array<std::array<uint64_t, ALL_SQUARES>, ALL_PIECETYPES> allHashKeys;	// Piece Hash key table
 	// Current board hash key
 	uint64_t zobrist_hash_{ 0 };
 
 public:
-	//---------------------------
-	// For Transposition tables
-	//
-	std::pair<int, Move> ProbeHash(_In_ size_t ply, _In_ int alpha, _In_ int beta) const;
-	void RecordHash(_In_ size_t ply, _In_ int score, _In_ eHashFlags flags, _In_ const Move& m);
-
-	// Resets all memory in the HashTable
-	void ClearHashTable();
-
 	unsigned int get_zobrist_hash() const noexcept { return zobrist_hash_; }
 private:
 

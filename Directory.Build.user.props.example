@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <!--
+    INSTRUCTIONS
+    ============
+    Copy this file to "Directory.Build.user.props" in the same directory and
+    fill in the correct path for your machine.  The file is gitignored, so it
+    will never be committed.
+
+    When is this needed?
+    - Your json/ and spdlog/ directories are NOT siblings of the StratChessEvolved
+      repo (non-standard layout).
+    - You are building from a git worktree and the default path computed by
+      Directory.Build.props points to the wrong location.
+
+    Set DepsRoot to the folder that CONTAINS json/ and spdlog/, with a
+    trailing backslash.
+
+    Example:
+      json  lives at  C:\libs\json\include
+      spdlog lives at C:\libs\spdlog\include
+      → set DepsRoot to C:\libs\
+  -->
+  <PropertyGroup>
+    <DepsRoot>C:\your\path\to\deps\parent\</DepsRoot>
+  </PropertyGroup>
+</Project>
