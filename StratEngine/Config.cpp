@@ -47,7 +47,7 @@ void Config::ReadBoardSetup(const json& config) const
 void Config::ReadFEN(const std::string& fen) const
 {
 	Board& board = Board::Instance();
-	board.SetupBoardFromFEN(fen);
+	board.SetupFromFEN(fen);
 
 	GameInfo info = board.GetGameInfo(); // Get the final gameInfo from board
 	

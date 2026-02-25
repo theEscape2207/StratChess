@@ -39,8 +39,8 @@ public:
 
 	void SetDefaultBoard();
 	void SetupBoard(_In_ const squareCol&);
-	void SetupBoardFromFEN(_In_ const std::string& fen);
-	std::string ExtractFENFromBoard() const;
+	void SetupFromFEN(_In_ const std::string& fen);
+	std::string ExtractFEN() const;
 	bool DoMove(_In_ const Move&);
 	void UndoMove(_In_ const Move&);
 
@@ -65,7 +65,7 @@ public:
 		return mailbox_.at(static_cast<eSquare>(square));
 	}
 
-	int GetMaterialScore(_In_ eColor color) const noexcept {	return m_MaterialScore[color];	}
+	int GetMaterialScore(_In_ eColor color) const noexcept {	return material_score_[color];	}
 
 	// Returns whether the squares contained in the bit-mask is occupied by a piece
 	bool IsOccupied(_In_ BITBOARD mask) const noexcept
@@ -134,14 +134,17 @@ public:
 	bool TestBitBoards(std::ostream& stream = std::cout) const;
 	void PrintAllBitboards(_In_ const TBitboards& bbBitBoards, std::ostream& = std::cout) const;
 	
+	// Zobrist hash update helpers
+	void update_zobrist_castling(uint8_t old_rights, uint8_t new_rights) noexcept;
+	void update_zobrist_ep(eSquare old_ep, eSquare new_ep) noexcept;
+
 	// These is to be called with the side to move changes, or if in the first
 	// position, it is black to move.
-	void HashkSwitch() noexcept {
-		Bits::toogleBits(curBoardHashKey, 0x21D420B884CD6731U);
-	}
+	void update_zobrist_side() noexcept; //{ zobrist_hash_ ^= 0x21D420B884CD6731U; }
+
 	void ChangePlayer() noexcept {
 		(sideToMove_ = (sideToMove_ == eColor::WHITE) ? eColor::BLACK : eColor::WHITE);
-		HashkSwitch();
+		update_zobrist_side();
 	}
 	
 	constexpr size_t GetBitboard(ePieceType piece, eColor color)
@@ -164,7 +167,7 @@ public:
 	void AddPieceToBoard(_In_ ePiece piece, _In_ eSquare sq )
 	{
 		_AddPiece( sq, piece );
-		m_MaterialScore[ PieceHelper::Color(piece) ] += PieceHelper::Value(piece);
+		material_score_[ PieceHelper::Color(piece) ] += PieceHelper::Value(piece);
 	}
 
 	
@@ -180,7 +183,7 @@ public:
 	void RemovePieceFromBoard(_In_ ePiece piece, _In_ eSquare sq )
 	{
 		_RemovePiece( sq, piece );
-		m_MaterialScore[ PieceHelper::Color(piece) ] -= PieceHelper::Value(piece);
+		material_score_[ PieceHelper::Color(piece) ] -= PieceHelper::Value(piece);
 	}
 
 	//***************************************
@@ -218,6 +221,14 @@ public:
 	// Allow setting the game state from the Algos
 	void SetGameState(GameStates state) noexcept { gameInfo_.gameState = state; }
 
+	// Threefold repetition rule implementation
+	void update_threefold_rep(const Move& m);
+	bool is_repetition(int ply) const;
+	void push_position();
+	void pop_position();
+	void reset_repetition_history();
+	
+
 private:
 	// ========================================================================
 	// Member Variables
@@ -239,11 +250,11 @@ private:
 	size_t last_irreversible_ply_{ 0 }; // Ply at last irreversible move (pawn move or capture)
 
 	// Material score
-	int m_MaterialScore[2]{ 0 };
+	int material_score_[2]{ 0 };
 
 	// Ply-indexed state preservation arrays (pre-allocated to MAX_PLY)
 	// These store irreversible state before each move for O(1) unmake
-	std::array<uint64_t, MAX_PLY> hashKeyHistory_{ 0 };
+	std::array<uint64_t, MAX_PLY> zobrist_history_{ 0 };
 	std::array<size_t, MAX_PLY> irreversiblePlyHistory_{ 0 };
 	std::array<GameInfo, MAX_PLY> gameInfoHistory_{};
 
@@ -258,7 +269,7 @@ private:
 	// Zobrist Hash keys
 	std::array<std::array<uint64_t, ALL_SQUARES>, ALL_PIECETYPES> allHashKeys;	// Piece Hash key table
 	// Current board hash key
-	unsigned int curBoardHashKey{ 0 };
+	uint64_t zobrist_hash_{ 0 };
 
 public:
 	//---------------------------
@@ -270,7 +281,7 @@ public:
 	// Resets all memory in the HashTable
 	void ClearHashTable();
 
-	unsigned int GetCurBoardHKey() const noexcept { return curBoardHashKey; }
+	unsigned int get_zobrist_hash() const noexcept { return zobrist_hash_; }
 private:
 
 	//-----------------------------------------------
@@ -280,5 +291,22 @@ private:
 	// Initialiserer alle enkelte hashkey-vaerdier
 	void InitHashkey();
 	
-	void SetCurBoardHKey(_In_ unsigned int newkey) noexcept {	curBoardHashKey = newkey;	}
+	// TODO: Not used - should be removed and all code should use the update methods instead to maintain consistency
+	void set_zobrist_hash(_In_ unsigned int newkey) noexcept { zobrist_hash_ = newkey; }
 };
+
+// ============================================================================
+	// Zobrist Hashing (Static Initialization)
+	// ============================================================================
+
+	// Zobrist random number table (initialized once at startup)
+	// Declared extern here, defined in Position.cpp
+namespace zobrist {
+	extern std::array<std::array<std::array<uint64_t, NUM_SQUARES>, NUM_COLORS>, 6> piece_keys; // [type][color][square]
+	extern std::array<uint64_t, 16> castling_keys; // [castling_rights]
+	extern std::array<uint64_t, NUM_SQUARES> ep_keys; // [square]
+	extern uint64_t side_key; // side to move
+
+	// Initialize Zobrist keys (called once at program start)
+	void initialize() noexcept;
+}

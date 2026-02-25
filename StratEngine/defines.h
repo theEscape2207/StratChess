@@ -18,7 +18,8 @@ enum eColor : uint8_t
 { 
 	//NO_COLOR = -1, 
 	WHITE = 0, 
-	BLACK = 1 
+	BLACK = 1,
+	NUM_COLORS = 2
 };
 
 enum ePieceType : uint8_t {
@@ -48,7 +49,7 @@ enum ePiece : uint8_t {
 	BLACK_KING,
 	ALL_WHITE_PIECES,
 	ALL_BLACK_PIECES,	// = 13
-	NO_PIECE = 15,
+	NO_PIECE = 15
 };
 
 // Special moves

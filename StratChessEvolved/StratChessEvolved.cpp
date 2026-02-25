@@ -5,6 +5,7 @@
 #include "Game.h"
 #include "Board.h"
 #include <Tests/Perft.h>
+#include <Tests/Unittests.h>
 
 std::ofstream outLegalMoves("legalmoves.txt", std::ios::trunc | std::ios::out);
 
@@ -35,7 +36,7 @@ void test_fen_integration() {
         eColor expectedSide;
     };
 
-    std::vector<TestCase> tests = {
+    std::vector<TestCase> quick_tests = {
         {
             "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
             "Starting position",
@@ -59,12 +60,12 @@ void test_fen_integration() {
     int passed = 0;
     int failed = 0;
 
-    for (const auto& test : tests) {
+    for (const auto& test : quick_tests) {
         std::cout << "Testing: " << test.description << "\n";
         std::cout << "FEN: " << test.fen << "\n";
 
         // Load FEN
-        board.SetupBoardFromFEN(test.fen);
+        board.SetupFromFEN(test.fen);
 
         // Verify side to move
         if (board.GetCurrentColor() != test.expectedSide) {
@@ -74,7 +75,7 @@ void test_fen_integration() {
         }
 
         // Extract FEN back
-        std::string extracted = board.ExtractFENFromBoard();
+        std::string extracted = board.ExtractFEN();
         std::cout << " Extracted: " << extracted << "\n";
 
         // Round-trip test (piece placement should match)
@@ -136,7 +137,7 @@ int perftrunner(int argc, char** argv) {
             // Custom fen: Kiwipete
             //const std::string fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
 			std::cout << "Running perft with custom board setup from FEN at depth " << depth << "\nFEN: " << fen << "\n\n";
-            board.SetupBoardFromFEN(fen);
+            board.SetupFromFEN(fen);
         }
         else {
             // Set up starting position
@@ -173,6 +174,11 @@ int main(int argc, char** argv)
         test_fen_integration();
         return 0;
         
+    }
+    if (argc > 1 && std::string(argv[1]) == "unittest") {
+		// Hack: Run unittests if "unittest" is passed as the first argument
+        bool all_passed = run_all_tests();
+        return all_passed ? 0 : 1;
     }
         
 	// Check for perft commands
