@@ -367,3 +367,6 @@ FodyWeavers.xsd
 /PredictedInputCache_StratChessEvolved_Debug_x64.dat
 /.github/*
 /sync-from-main.ps1
+# Per-machine MSBuild dependency path overrides — not committed
+Directory.Build.user.props
+Directory.Build_renamed.props_old

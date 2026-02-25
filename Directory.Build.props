@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <!--
+    Automatically imported by MSBuild for every project in this repository,
+    including projects built from git worktrees (MSBuild walks up the directory
+    tree to find this file, so $(MSBuildThisFileDirectory) always resolves to
+    the real repository root regardless of build origin).
+
+    $(DepsRoot) — folder that CONTAINS the json/ and spdlog/ dependency
+                  directories.  Default: the parent of this repo, which assumes
+                  json/ and spdlog/ are checked out as siblings of
+                  StratChessEvolved/.  Override in Directory.Build.user.props
+                  for non-standard layouts (see Directory.Build.user.props.example).
+  -->
+
+  <!-- Per-machine overrides — not committed to git -->
+  <Import Project="$(MSBuildThisFileDirectory)Directory.Build.user.props"
+          Condition="Exists('$(MSBuildThisFileDirectory)Directory.Build.user.props')" />
+
+  <PropertyGroup>
+    <DepsRoot Condition="'$(DepsRoot)' == ''">$(MSBuildThisFileDirectory)..\</DepsRoot>
+  </PropertyGroup>
+</Project>
