@@ -25,7 +25,7 @@ namespace zobrist {
 		// Generate piece keys
 		for (size_t type = 0; type < 6; ++type) {
 			for (size_t color = 0; color < 2; ++color) {
-				for (size_t sq = 0; sq < 64; ++sq) {
+				for (size_t sq = 0; sq < NUM_SQUARES; ++sq) {
 					piece_keys[type][color][sq] = rng();
 				}
 			}
@@ -37,7 +37,7 @@ namespace zobrist {
 		}
 
 		// Generate en passant keys
-		for (size_t sq = 0; sq < 64; ++sq) {
+		for (size_t sq = 0; sq < NUM_SQUARES; ++sq) {
 			ep_keys[sq] = rng();
 		}
 
