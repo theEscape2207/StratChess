@@ -219,15 +219,15 @@ public:
 	// Allow setting the game state from the Algos
 	void SetGameState(GameStates state) noexcept { gameInfo_.gameState = state; }
 
+	// Checks for threefold repetition by comparing the current position's hash key to the history of position hash keys
+	bool is_repetition(int ply) const;
+
+private:
 	// Threefold repetition rule implementation
 	void update_threefold_rep(const Move& m);
-	bool is_repetition(int ply) const;
 	void push_position();
 	void pop_position();
 	void reset_repetition_history();
-	
-
-private:
 	// ========================================================================
 	// Member Variables
 	// ========================================================================
@@ -263,7 +263,7 @@ private:
 	uint64_t zobrist_hash_{ 0 };
 
 public:
-	unsigned int get_zobrist_hash() const noexcept { return zobrist_hash_; }
+	uint64_t get_zobrist_hash() const noexcept { return zobrist_hash_; }
 private:
 
 	//-----------------------------------------------
