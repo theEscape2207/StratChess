@@ -44,6 +44,8 @@ private:
 		double min_pv_ratio = 0.33;                // PV must be at least 1/3 of depth
 		int score_draw_threshold = 20;             // Score delta to detect suspicious 0
 
+		int delta_pruning_margin = 200;  // centipawns — added to stand_pat + capture_value before comparing to alpha in quiescence
+
 		// Future: Add aspiration window size, LMR thresholds, etc.
 	} tuning_;
 
