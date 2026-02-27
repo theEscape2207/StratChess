@@ -77,7 +77,7 @@ int EvalSimple::Evaluate() const noexcept
 //
 int EvalComplex::Evaluate() const noexcept
 {
-	const Board& board = Board::Instance();
+	Board& board = Board::Instance();
 
 	const int matScoreBlack = board.GetMaterialScore(BLACK);
 	const int matScoreWhite = board.GetMaterialScore(WHITE);
@@ -92,12 +92,17 @@ int EvalComplex::Evaluate() const noexcept
 
 	int bonusScore[2] = { 0 };
 
-	const auto boards = Board::Instance().GetBitBoards();
+	const auto boards = board.GetBitBoards();
+	const BITBOARD all_pieces = boards[ALL_PIECES];
+	const BITBOARD white_pawns = boards[ePiece::WHITE_PAWN];
+	const BITBOARD black_pawns = boards[ePiece::BLACK_PAWN];
+	const BITBOARD all_white = boards[ePiece::ALL_WHITE_PIECES];
+	const BITBOARD all_black = boards[ePiece::ALL_BLACK_PIECES];
 
-	BITBOARD all_pieces = boards[ALL_PIECES];	// copy the board with all pieces on
-	while (all_pieces)
+	auto remaining = all_pieces;
+	while (remaining)
 	{
-		const eSquare square = Board::GetFirstPiece(all_pieces);	// First square with a piece on
+		const eSquare square = Board::GetFirstPiece(remaining);	// First square with a piece on
 		const ePiece piece = board.GetPiece(square);		// get the actual piece
 
 		const int rank = Rank(square);
@@ -121,13 +126,13 @@ int EvalComplex::Evaluate() const noexcept
 			// TODO: Add bonus for passed pawn - bonus should be dependant on game stage
 
 			// Hvis der er en hvid bonde over denne i samme kolonne gives en straf
-			if (boards[ePiece::WHITE_PAWN] & g_bbFileUpMask[square])
+			if (white_pawns & g_bbFileUpMask[square])
 				bonusScore[WHITE] -= DOUBLED_PAWN_PENALTY;
 
 			// Hvis der ikke er en hvid bonde i en af raekkerne ved siden af
 			// gives en straf
-			if ((file == eFileNames::LEFT_FILE || !(boards[ePiece::WHITE_PAWN] & g_bbFileMask[file - 1])) &&
-				(file == eFileNames::RIGHT_FILE || !(boards[ePiece::WHITE_PAWN] & g_bbFileMask[file + 1])))
+			if ((file == eFileNames::LEFT_FILE || !(white_pawns & g_bbFileMask[file - 1])) &&
+				(file == eFileNames::RIGHT_FILE || !(white_pawns & g_bbFileMask[file + 1])))
 				bonusScore[WHITE] -= ISOLATED_PAWN_PENALTY;
 
 			break;
@@ -135,13 +140,13 @@ int EvalComplex::Evaluate() const noexcept
 		case ePiece::BLACK_PAWN:
 
 			// Hvis der er en sort bonde under denne i samme kolonne gives en straf
-			if (Bits::isAnyBitSet(boards[ePiece::BLACK_PAWN], g_bbFileDownMask[square]))
+			if (Bits::isAnyBitSet(black_pawns, g_bbFileDownMask[square]))
 				bonusScore[BLACK] -= DOUBLED_PAWN_PENALTY;
 
 			// Hvis der ikke er en sort bonde i en af raekkerne ved siden af
 			// gives en straf
-			if ((file == eFileNames::LEFT_FILE || !(boards[ePiece::BLACK_PAWN] & g_bbFileMask[file - 1])) &&
-				(file == eFileNames::RIGHT_FILE || !(boards[ePiece::BLACK_PAWN] & g_bbFileMask[file + 1])))
+			if ((file == eFileNames::LEFT_FILE || !(black_pawns & g_bbFileMask[file - 1])) &&
+				(file == eFileNames::RIGHT_FILE || !(black_pawns & g_bbFileMask[file + 1])))
 				bonusScore[BLACK] -= ISOLATED_PAWN_PENALTY;
 			break;
 
@@ -152,11 +157,11 @@ int EvalComplex::Evaluate() const noexcept
 				bonusScore[WHITE] += ROOK_ON_7TH_BONUS;
 
 			// Bonus hvis der er aabne raekker til taarnet
-			if (!(boards[ePiece::WHITE_PAWN] & g_bbFileUpMask[square]))
+			if (!(white_pawns & g_bbFileUpMask[square]))
 			{
 				bonusScore[WHITE] += HALF_OPEN_FILE;
 
-				if (!(g_bbFileMask[file] & boards[ePiece::ALL_BLACK_PIECES]))
+				if (!(g_bbFileMask[file] & all_black))
 					bonusScore[WHITE] += OPEN_FILE - HALF_OPEN_FILE;
 				//else if (!(g_bbFileMask[file] & 
 				//		  (pBitBoards[ePiece::BLACK_QUEEN] | pBitBoards[ePiece::BLACK_ROOK])))
@@ -171,11 +176,11 @@ int EvalComplex::Evaluate() const noexcept
 				bonusScore[BLACK] += ROOK_ON_7TH_BONUS;
 
 			// Bonus hvis der er aabne raekker til taarnet
-			if (!(boards[ePiece::BLACK_PAWN] & g_bbFileDownMask[square]))
+			if (!(black_pawns & g_bbFileDownMask[square]))
 			{
 				bonusScore[BLACK] += HALF_OPEN_FILE;
 
-				if (!(g_bbFileMask[file] & boards[ePiece::ALL_WHITE_PIECES]))
+				if (!(g_bbFileMask[file] & all_white))
 					bonusScore[BLACK] += OPEN_FILE - HALF_OPEN_FILE;
 				//else if (!(g_bbFileMask[file] & 
 				//		  (pBitBoards[ePiece::WHITE_QUEEN] | pBitBoards[ePiece::WHITE_ROOK])))
@@ -206,7 +211,7 @@ int EvalComplex::Evaluate() const noexcept
 			break;
 		}
 		// We're done! Remove the bit and continue
-		Bits::clearBitsRef(all_pieces, g_bbMask[square]);
+		Bits::clearBitsRef(remaining, g_bbMask[square]);
 	}
 
 	const eColor color = board.GetCurrentColor();
