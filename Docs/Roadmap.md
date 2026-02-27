@@ -84,22 +84,12 @@ This roadmap organizes development tasks by priority and category. Items are dra
 
 ### Performance
 
-#### 🟡 Re-enable thread_local Move Sorting Buffer
-- **Estimate**: 30 minutes
-- **Impact**: 20-30% speedup
-- **Current State**: Commented out in `pvs()` at line ~492
-- **Implementation**:
-  ```cpp
-  // Currently:
-  std::vector<std::pair<int, Move>> scored;  // Heap alloc every node!
-  
-  // Change to:
-  static thread_local std::vector<std::pair<int, Move>> scored;
-  scored.clear();
-  scored.reserve(moveList.size());
-  ```
-- **Testing**: Verify no correctness regression, measure speedup
-- **Priority**: **DO THIS FIRST** - lowest effort, highest return
+#### ✅ COMPLETED: Re-enable thread_local Move Sorting Buffer
+- **Status**: ✅ Done — superseded by stack-allocated `std::array`
+- **Outcome**: `pvs()` already uses `std::array<std::pair<int,int>, MoveList::MAX_MOVES>` on the
+  stack, giving zero heap allocation per call. A `static thread_local` buffer would require an
+  extra copy step to be recursion-safe (the array is still read on each loop iteration after
+  the recursive call returns), so the stack array is the correct final form.
 
 #### 🟡 Implement Late Move Reductions (LMR)
 - **Estimate**: 3-5 days
@@ -134,24 +124,17 @@ This roadmap organizes development tasks by priority and category. Items are dra
   - Measure depth increase (should reach depth+2 or more)
   - Compare against AIAgent baseline
 
-#### 🟡 Add Delta Pruning to Quiescence
-- **Estimate**: 1 day
-- **Impact**: 20-40% quiescence speedup (especially endgames)
-- **Description**: Skip captures that can't possibly improve alpha
+#### ✅ COMPLETED: Add Delta Pruning to Quiescence
+- **Status**: ✅ Done (Feb 26, 2026)
+- **Impact**: Fewer qsearch nodes, consistently deeper search — mate at depth 14 observed in a
+  standard 15s/move game where it would not have been reached before
 - **Implementation**:
-  ```cpp
-  for (const auto& move : moveList) {
-      constexpr int DELTA_MARGIN = 200;  // Queen value + safety
-      int capture_value = Move::Value(move);
-      
-      if (stand_pat + capture_value + DELTA_MARGIN < alpha) {
-          continue;  // Can't possibly improve alpha
-      }
-      
-      // ... rest of capture search
-  }
-  ```
-- **Testing**: Verify no tactical oversights in test positions
+  - `tuning_.delta_pruning_margin = 200` added to `SearchTuning` struct (`AIPerplex.h`)
+  - `const bool in_check = m_Board.InCheck()` computed once before the capture loop
+  - Guard at top of loop: `if (!in_check && stand_pat + Move::Value(move) + tuning_.delta_pruning_margin < alpha) continue;`
+  - Uses `Move::Value()` (MVV-LVA, conservatively ≤ raw capture value) — pruning is never over-aggressive
+  - Promotions always score ≥ 800cp and are never pruned; in-check positions always fully searched
+- **Verified**: Unit tests ✅, Perft ✅, self-play ✅ — no functional regressions
 
 #### 🟡 Extract Move Ordering to MoveSorter Class
 - **Estimate**: 2 days

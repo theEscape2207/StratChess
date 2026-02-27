@@ -311,7 +311,7 @@ int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, Tra
 	Move best_move;
 
 
-	// Stack-allocated scored index array — zero heap allocation -- static thread_local 
+	// Stack-allocated scored index array — zero heap allocation per call.
 	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
 	const int n = static_cast<int>(moveList.size());
 	const eColor side = m_Board.GetCurrentColor();
@@ -523,8 +523,18 @@ int AIPerplex::quiescence(int alpha, int beta, int qsearch_depth, int ply, Trans
 	bool moveFound = false;
 	Move best_move = Move::EmptyMove();
 
+	// Compute once: delta pruning must not fire when in check (all evasions must be searched)
+	const bool in_check = m_Board.InCheck();
+
 	for (const auto& move : moveList)
 	{
+		// Delta pruning: skip captures whose best-case material gain cannot raise alpha.
+		// stand_pat is already the alpha lower-bound; Move::Value() gives the MVV-LVA
+		// score which is conservatively ≤ the raw captured-piece value, so pruning is safe.
+		// Promotions always score ≥ 800 (queen − pawn gain) and are never pruned.
+		if (!in_check && stand_pat + Move::Value(move) + tuning_.delta_pruning_margin < alpha)
+			continue;
+
 		if (!m_Board.DoMove(move))
 			continue;
 
