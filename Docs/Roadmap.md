@@ -1,6 +1,6 @@
 # StratChess Engine Roadmap
 
-**Last Updated**: February 22, 2026
+**Last Updated**: February 28, 2026
 **Timeframe**: Next 6 months (through parallel search implementation)  
 **Current Version**: AIPerplex 2.0
 
@@ -250,6 +250,46 @@ This roadmap organizes development tasks by priority and category. Items are dra
 
 ### Refactoring
 
+#### 🟢 Introduce MoveFormatter — centralise move presentation
+- **Status**: Not started
+- **Motivation**: Removing `Move::IsCheck` (Phase 1 of the 16-bit layout work) exposed a
+  deeper structural problem: display logic is scattered across three locations, none of which
+  have the board context needed to produce correct output:
+  - `Move::Output()` — informal short notation (`e4`); no `+`, no `#`, no disambiguation
+  - `Move::operator<<` — verbose description; no board access; check currently requires
+    string surgery in `PrintBoardAndMove` (searching for `\n` offsets to inject `+` /
+    ` and checks!`) — fragile, breaks silently if the format changes
+  - `Game::PrintBoardAndMove` / `PrintGameMoves` — ad-hoc annotation at the call site;
+    **`gamelist.txt` currently receives no check annotation at all** because `PrintGameMoves`
+    calls `operator<<` on a stored `Move` without access to the board state at that moment
+- **Design**: Introduce a stateless `MoveFormatter` class (static methods, no instance):
+  ```cpp
+  // Informal short notation with +/# — replaces Move::Output() + manual injection
+  static std::string ToShort(const Move&, const Board&);
+
+  // Verbose / Long Algebraic Notation — replaces operator<< + manual injection
+  static std::string ToVerbose(const Move&, const Board&);
+
+  // UCI wire format (e.g. "e2e4", "e7e8q") — prerequisite for UCI protocol
+  static std::string ToUCI(const Move&);
+  static Move        FromUCI(std::string_view, const Board&); // inverse, for UCI input
+
+  // Standard Algebraic Notation (e.g. "Nf3+", "exd5#", "O-O")
+  // Requires board for piece disambiguation and checkmate detection
+  static std::string ToSAN(const Move&, const Board&);
+  ```
+  `Game::PrintBoardAndMove` and `PrintGameMoves` delegate to `ToVerbose`/`ToShort`,
+  receiving `board.InCheck()` context naturally. `Move::Output()` and `operator<<`
+  become thin context-free wrappers or are deprecated in favour of the formatter.
+- **Gaps this directly fixes**:
+  - `+` and `#` missing from `gamelist.txt`
+  - Fragile `\n`-offset injection hack in `PrintBoardAndMove` removed
+  - Single authoritative place for disambiguation, promotion suffix (`=Q`), and `#`
+- **Enables**: UCI protocol (`ToUCI` / `FromUCI`), PGN export (`ToSAN`), any future GUI
+  or web integration
+- **Suggested order**: after Move layout Phases 3 & 4 (so piece type is obtained via
+  `Board::GetEffectiveMovPiece()` rather than `Move::MovPiece` directly); before UCI
+
 #### 🟢 Move class → 16-bit layout (Phases 3 & 4 deferred)
 - **Status**: Phases 1 (IsCheck) and 2 ([from|to]IsNoSquare) complete — see commit history
 - **Design document**: `.claude/plans/prancy-prancing-trinket.md`
@@ -446,6 +486,8 @@ This roadmap organizes development tasks by priority and category. Items are dra
 
 #### ⚪ UCI Protocol Support
 - **Estimate**: 1-2 weeks
+- **Prerequisite**: MoveFormatter (`ToUCI` serialisation + `FromUCI` parsing for the
+  `position ... moves` command)
 - **Description**: Universal Chess Interface for GUI compatibility
 - **GUIs**: Arena, ChessBase, Fritz
 - **Commands**: `uci`, `isready`, `position`, `go`, `stop`
