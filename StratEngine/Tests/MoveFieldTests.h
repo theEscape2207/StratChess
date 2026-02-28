@@ -33,9 +33,39 @@ inline void test_is_check_output_post()
         "POST Phase1: Output() must NOT contain '+'");
 }
 
+// ---------------------------------------------------------------------------
+// Phase 2: fromIsNoSquare / toIsNoSquare
+// (replaced by unified EMPTY_MOVE = 0xFFFF sentinel in Move::data)
+// ---------------------------------------------------------------------------
+
+inline void test_is_empty_and_null_behavior()
+{
+    // Default-constructed Move must be empty and null.
+    Move def;
+    TEST_ASSERT(def.IsEmpty(),  "Default Move must be empty");
+    TEST_ASSERT(def.is_null(),  "Default Move must be null");
+    TEST_ASSERT(!def,           "operator! must be true for empty Move");
+
+    // A real Move must be neither empty nor null.
+    Move real(e2, e4);
+    TEST_ASSERT(!real.IsEmpty(), "Real move must not be empty");
+    TEST_ASSERT(!real.is_null(), "Real move must not be null");
+
+    // Clear() must make the Move empty again.
+    real.Clear();
+    TEST_ASSERT(real.IsEmpty(), "Cleared Move must be empty");
+
+    // EmptyMove() must be empty.
+    TEST_ASSERT(Move::EmptyMove().IsEmpty(), "EmptyMove() must be empty");
+
+    // MoveHelper::IsEmpty must agree with Move::IsEmpty.
+    TEST_ASSERT(MoveHelper::IsEmpty(def),           "MoveHelper::IsEmpty on default Move");
+    TEST_ASSERT(!MoveHelper::IsEmpty(Move(e2, e4)), "MoveHelper::IsEmpty must be false for real move");
+}
+
 inline void run_move_field_tests()
 {
     test_is_check_equality();
     test_is_check_output_post();
-    // Phase 2 tests will be appended below after Phase 1 is committed.
+    test_is_empty_and_null_behavior();
 }
