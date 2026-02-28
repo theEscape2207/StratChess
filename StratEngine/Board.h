@@ -10,278 +10,192 @@
 
 class Board final
 {
-	friend std::ostream& operator<<(std::ostream&, _In_ const Board&);
-
-	Board();
-	~Board() {};
-
-	using TBitboards = std::array<BITBOARD, ALL_BITBOARDS>;
+	friend std::ostream& operator<<(std::ostream&, const Board&);
 
 public:
-	//***************************************
-	// Method:      Instance
-	// Description: Singleton stuff
-	// FullName:    public static Board::Instance 
-	// Returns:     Board& - 
-	// Remark:      
-	//***************************************
+	// Singleton accessor
 	static inline Board& Instance() noexcept
 	{
 		static Board _instance;
 		return _instance;
 	}
 
-	using sqPieces = std::tuple<ePiece, eSquare>;	// prime candidate for a struct instead of tuple, but we can live with this for now
-
-	using squareCol = std::vector< sqPieces >;		// Collection of square-piece tuples, used for custom board setup
-
+	// --- Position setup ---
 	void SetDefaultBoard();
-	void SetupBoard(_In_ const squareCol&);		// private
-	void SetupFromFEN(_In_ const std::string& fen);
+	void SetupFromFEN(const std::string& fen);
 	std::string ExtractFEN() const;
-	bool DoMove(_In_ const Move&);
-	void UndoMove(_In_ const Move&);
 
+	// --- Move execution ---
+	bool DoMove(const Move&);
+	void UndoMove(const Move&);
+
+	// --- Position queries ---
 	bool InCheck() const noexcept;
 
-	// Returnerer et view af bitboards arrayet
-	std::span<BITBOARD> GetBitBoards() noexcept;
-
-	// Inline funktioner
-	//---------------------
-
-	// Returnerer farven paa aktive spiller
-	eColor GetCurrentColor() const noexcept { return sideToMove_; }
-	void SetInitialColor(eColor color) noexcept { sideToMove_ = color; }	// Test helper - Should only be used for setting up the initial position
-
-	// Returnerer brikken paa paagaeldende felt
-	ePiece GetPiece(_In_ eSquare square) const noexcept {
-		return mailbox_.at(square);
-	}
-	// Helper
-	ePiece GetPiece(_In_ int square) const noexcept {
-		return mailbox_.at(static_cast<eSquare>(square));
-	}
-
-	int GetMaterialScore(_In_ eColor color) const noexcept { return material_score_[color]; }
-
-	// Returns whether the squares contained in the bit-mask is occupied by a piece
-	bool IsOccupied(_In_ BITBOARD mask) const noexcept
+	// Returns true if any square covered by mask is occupied
+	bool IsOccupied(BITBOARD mask) const noexcept
 	{
-		return Bits::isAnyBitSet(m_bitboards.at(ALL_PIECES), mask);
+		return Bits::isAnyBitSet(bitboards_.at(ALL_PIECES), mask);
 	}
 
-	// Helper: Is the parameter move legal on the current board
-	bool IsLegalMove(_In_ const Move& move)
+	bool IsLegalMove(const Move& move)
 	{
-		if (!DoMove(move)) { // Move will get rolled back if false
-			return false;
-		}
+		if (!DoMove(move)) return false;
 		UndoMove(move);
 		return true;
 	}
 
-	// We are always assuming that we have at least one bit left in the mask
-	// Use register-returning TZCNT/CTZ intrinsics to avoid pointer-based BSF
+	bool is_repetition(int ply) const;
+
+	// --- State accessors ---
+	eColor GetCurrentColor() const noexcept { return sideToMove_; }
+
+	ePiece GetPiece(eSquare square) const noexcept { return mailbox_.at(square); }
+	ePiece GetPiece(int square) const noexcept     { return mailbox_.at(static_cast<eSquare>(square)); }
+
+	int GetMaterialScore(eColor color) const noexcept { return material_score_[color]; }
+
+	GameInfo GetGameInfo() const noexcept          { return gameInfo_; }
+	void SetGameState(GameStates state) noexcept   { gameInfo_.gameState = state; }
+
+	uint64_t get_zobrist_hash() const noexcept     { return zobrist_hash_; }
+
+	std::span<BITBOARD> GetBitBoards() noexcept;
+
+	// Returns the index of the least-significant set bit (square of first piece).
+	// Precondition: mask != 0. Uses TZCNT/CTZ intrinsic for register-returning result.
 	static __forceinline eSquare GetFirstPiece(BITBOARD mask) noexcept
 	{
 		assert(mask != 0);
 #if defined(_MSC_VER)
-		// _tzcnt_u64 returns the index of the least-significant 1-bit
 		const unsigned long index = static_cast<unsigned long>(_tzcnt_u64(mask));
 		return static_cast<eSquare>(index);
 #else
-		// GCC/Clang: __builtin_ctzll returns the number of trailing zeros
 		const unsigned long index = static_cast<unsigned long>(__builtin_ctzll(mask));
 		return static_cast<eSquare>(index);
 #endif
 	}
 
+	// --- Test setup helpers (prefer SetupFromFEN for new tests) ---
+	void ClearBoard();
+	void SetInitialColor(eColor color) noexcept    { sideToMove_ = color; }
+	void AddPieceToBoard(ePiece piece, eSquare sq);
+
+	// Non-copyable / non-movable (singleton)
 	Board& operator=(const Board&) = delete;
 	Board(const Board&) = delete;
 	Board(Board&&) = delete;
 	Board& operator=(Board&&) = delete;
 
+private:
+	Board();
+	~Board() = default;
 
-	// Hjaelpefunktioner
-	void ClearBoard();		// Really clears the board!	// Test helper: Used for setting up custom positions, but also for resetting the board to the default position
+	using TBitboards = std::array<BITBOARD, ALL_BITBOARDS>;
+	using sqPieces   = std::tuple<ePiece, eSquare>;
+	using squareCol  = std::vector<sqPieces>;
 
-	void ClearSquare(_In_ eSquare squareType) noexcept		// Private
+	// --- Internal position setup ---
+	void SetupBoard(const squareCol&);
+
+	// --- Low-level piece manipulation (bitboard + mailbox, no material update) ---
+	void add_piece(eSquare square, ePiece piece);
+	void remove_piece(eSquare square, ePiece piece);
+	void MovePiece(const Move& move);
+	void MovePiece(ePiece piece, eSquare from, eSquare to);
+
+	// --- Material-tracking piece operations ---
+	void RemovePieceFromBoard(ePiece piece, eSquare sq);
+
+	// --- Mailbox helpers ---
+	void ClearSquare(eSquare square) noexcept
 	{
-		assert(PieceHelper::IsNotEmpty(GetPiece(squareType)));
-		mailbox_[squareType] = ePiece::NO_PIECE;
+		assert(PieceHelper::IsNotEmpty(GetPiece(square)));
+		mailbox_[square] = ePiece::NO_PIECE;
 	}
 
-	void SetSquare(_In_ eSquare squareType, _In_ ePiece piece) noexcept	// Private
+	void SetSquare(eSquare square, ePiece piece) noexcept
 	{
-		assert(PieceHelper::IsNoPiece(GetPiece(squareType)));
-		mailbox_[squareType] = piece;
+		assert(PieceHelper::IsNoPiece(GetPiece(square)));
+		mailbox_[square] = piece;
 	}
 
-	// Thin helper around ClearBit - Only for normal Bitboards
-	bool ClearBitboardSquare(_In_ TBitboards::size_type iBoard, _In_ eSquare square) {	// Private
-		return BitBoardHelper::ClearBitboardMask(m_bitboards[iBoard], g_bbMask[square]);
+	// --- Bitboard helpers ---
+	bool ClearBitboardSquare(TBitboards::size_type iBoard, eSquare square)
+	{
+		return BitBoardHelper::ClearBitboardMask(bitboards_[iBoard], g_bbMask[square]);
 	}
 
-	// Thin helper around SetBit - Only for normal Bitboards
-	void SetBitboardSquare(_In_ TBitboards::size_type iPiece, _In_  eSquare square) noexcept {	// Private
-		BitBoardHelper::SetBitboardMask(m_bitboards[iPiece], g_bbMask[square]);
+	void SetBitboardSquare(TBitboards::size_type iPiece, eSquare square) noexcept
+	{
+		BitBoardHelper::SetBitboardMask(bitboards_[iPiece], g_bbMask[square]);
 	}
 
-	// Debugfunktion: tester bitboardene for konsistens
-	bool TestBitBoards(std::ostream& stream = std::cout) const;		// Private
-	void PrintAllBitboards(_In_ const TBitboards& bbBitBoards, std::ostream & = std::cout) const;	// Private
-
-	// Zobrist hash update helpers
-	void update_zobrist_castling(uint8_t old_rights, uint8_t new_rights) noexcept;	// Private
-	void update_zobrist_ep(eSquare old_ep, eSquare new_ep) noexcept;	// Private
-
-	// These is to be called with the side to move changes, or if in the first
-	// position, it is black to move.
-	void update_zobrist_side() noexcept; //{ zobrist_hash_ ^= 0x21D420B884CD6731U; }	// Private
-
-	void ChangePlayer() noexcept {		// Private
-		(sideToMove_ = (sideToMove_ == eColor::WHITE) ? eColor::BLACK : eColor::WHITE);
-		update_zobrist_side();
-	}
-
-	constexpr size_t GetBitboard(ePieceType piece, eColor color)	// Private
+	// Returns the bitboard array index for a piece type + color combination
+	static constexpr size_t BitboardIndex(ePieceType piece, eColor color) noexcept
 	{
 		return static_cast<size_t>(piece) + static_cast<size_t>(color);
 	}
 
-	void _RemovePiece(_In_ eSquare square, _In_ ePiece piece);		// Private
-	void _AddPiece(_In_ eSquare square, _In_ ePiece piece);			// Private
-
-	//***************************************
-	// Method:      AddPieceToBoard
-	// Description: Adds a new piece on the board. Used during startup and promotion.
-	//				Adjusts material score
-	// FullName:    private Board::AddPieceToBoard 
-	// Returns:     void
-	// Parameter:   ePiece piece - The piece to add
-	// Parameter:   eSquare sq - The square to add it on
-	//***************************************
-	void AddPieceToBoard(_In_ ePiece piece, _In_ eSquare sq)		// Test helper: Used for setting up custom positions. Should really push for FEN-based setup instead, but this is more flexible for testing purposes
+	// --- Zobrist hash helpers ---
+	void update_zobrist_castling(uint8_t old_rights, uint8_t new_rights) noexcept;
+	void update_zobrist_ep(eSquare old_ep, eSquare new_ep) noexcept;
+	void update_zobrist_side() noexcept;
+	void ChangePlayer() noexcept
 	{
-		_AddPiece(sq, piece);
-		material_score_[PieceHelper::Color(piece)] += PieceHelper::Value(piece);
+		sideToMove_ = (sideToMove_ == eColor::WHITE) ? eColor::BLACK : eColor::WHITE;
+		update_zobrist_side();
 	}
+	void InitHashkey();
 
-
-	//************************************
-	// Method:      RemovePieceFromBoard
-	// Description: Remove a slain piece from the board. Also used during promotion.
-	//				Maintains material score
-	// FullName:    private Board::RemovePieceFromBoard 
-	// Returns:     void
-	// Parameter:   const Piece& piece - The piece to remove
-	// Parameter:   const Square& sq - The square to move it from
-	//************************************
-	void RemovePieceFromBoard(_In_ ePiece piece, _In_ eSquare sq)	// Private/ _very_ low level Test helper: Used for setting up custom positions. Use with care, as it does not check for the presence of the piece on the square, and will adjust material score regardless
-	{
-		_RemovePiece(sq, piece);
-		material_score_[PieceHelper::Color(piece)] -= PieceHelper::Value(piece);
-	}
-
-	//***************************************
-	// Method:      MovePiece
-	// Description: Helper to move a piece on the board
-	// FullName:    private Board::MovePiece 
-	// Returns:     void
-	// Parameter:   const Piece& piece - The piece to be moved
-	// Parameter:   const Square& from - The square to move from
-	// Parameter:   const Square& to - The square to move to
-	//***************************************
-	void MovePiece(_In_ const Move& move)		// Private/ Test helper: Used for setting up custom positions. Use with care, as it does not check for the presence of the piece on the from square, and will not adjust material score if a piece is captured on the to square
-	{
-		_RemovePiece(move.from(), move.MovPiece);
-		_AddPiece(move.to(), move.MovPiece);
-	}
-
-	//***************************************
-	// Method:      MovePiece
-	// Description: Helper to move a piece on the board
-	// FullName:    private Board::MovePiece 
-	// Returns:     void
-	// Parameter:   const Piece& piece - The piece to be moved
-	// Parameter:   const Square& from - The square to move from
-	// Parameter:   const Square& to - The square to move to
-	//***************************************
-	void MovePiece(_In_ ePiece piece, _In_ eSquare from, _In_ eSquare to)	// Private/ Test helper: Used for setting up custom positions. Use with care, as it does not check for the presence of the piece on the from square, and will not adjust material score if a piece is captured on the to square
-	{
-		_RemovePiece(from, piece);
-		_AddPiece(to, piece);
-	}
-
-	// Returns the current game state information (castling rights, en passant square, etc.)
-	GameInfo GetGameInfo() const noexcept { return gameInfo_; }
-	// Allow setting the game state from the Algos
-	void SetGameState(GameStates state) noexcept { gameInfo_.gameState = state; }
-
-	// Checks for threefold repetition by comparing the current position's hash key to the history of position hash keys
-	bool is_repetition(int ply) const;
-
-	// Returns the current position's Zobrist hash key
-	uint64_t get_zobrist_hash() const noexcept { return zobrist_hash_; }
-
-private:
-	// Threefold repetition rule implementation
-	void update_threefold_rep(const Move& m);
+	// --- Repetition tracking ---
+	void update_threefold_rep(const Move&);
 	void push_position();
 	void pop_position();
 	void reset_repetition_history();
 
-	// Initialiserer alle enkelte hashkey-vaerdier
-	void InitHashkey();
+	// --- Debug ---
+	bool TestBitBoards(std::ostream& stream = std::cout) const;
+	void PrintAllBitboards(const TBitboards& boards, std::ostream& = std::cout) const;
 
-	// ========================================================================
-	// Member Variables
-	// ========================================================================
+	// ---- Member variables ----
 
-	// Game state variables
-
-	eColor sideToMove_{ eColor::WHITE };				// Hvis tur er det ?
+	eColor   sideToMove_{ eColor::WHITE };
 	GameInfo gameInfo_;
 
-	std::array<ePiece, ALL_SQUARES> mailbox_{};	// Array of all pieces on the board
-	TBitboards m_bitboards{ { 0 } };
+	std::array<ePiece, ALL_SQUARES> mailbox_{};
+	TBitboards bitboards_{ { 0 } };
 
-	// Current ply (search depth from root)
 	size_t currentPly_{ 0 };
 
-	// Threefold repetition tracking
-	std::vector<uint64_t> position_history_;	// Full game position history hash keys
-	size_t last_irreversible_ply_{ 0 }; // Ply at last irreversible move (pawn move or capture)
+	// Repetition tracking
+	std::vector<uint64_t> position_history_;
+	size_t last_irreversible_ply_{ 0 };
 
-	// Material score
 	int material_score_[2]{ 0 };
 
-	// Ply-indexed state preservation arrays (pre-allocated to MAX_PLY)
-	// These store irreversible state before each move for O(1) unmake
-	std::array<uint64_t, MAX_PLY> zobrist_history_{ 0 };
-	std::array<size_t, MAX_PLY> irreversiblePlyHistory_{ 0 };
-	std::array<GameInfo, MAX_PLY> gameInfoHistory_{};
+	// Ply-indexed undo state (pre-allocated to MAX_PLY for O(1) unmake)
+	std::array<uint64_t, MAX_PLY>  zobrist_history_{ 0 };
+	std::array<size_t,   MAX_PLY>  irreversiblePlyHistory_{ 0 };
+	std::array<GameInfo, MAX_PLY>  gameInfoHistory_{};
 
-
-	// Zobrist Hash keys
-	std::array<std::array<uint64_t, ALL_SQUARES>, ALL_PIECETYPES> allHashKeys;	// Piece Hash key table
-	// Current board hash key
+	// Per-piece Zobrist keys (non-deterministic seed, set once at construction)
+	std::array<std::array<uint64_t, ALL_SQUARES>, ALL_PIECETYPES> allHashKeys;
 	uint64_t zobrist_hash_{ 0 };
 };
 
 // ============================================================================
-	// Zobrist Hashing (Static Initialization)
-	// ============================================================================
-
-	// Zobrist random number table (initialized once at startup)
-	// Declared extern here, defined in Position.cpp
+// Zobrist key tables for castling, en-passant and side-to-move
+// Declared here, defined in Board.cpp.
+// NOTE: zobrist::initialize() must be called at program start before any Board
+// is used. Currently NOT called — castling/EP/side keys are zero (inert).
+// See Roadmap: "Fix zobrist::initialize() never called".
+// ============================================================================
 namespace zobrist {
-	extern std::array<std::array<std::array<uint64_t, NUM_SQUARES>, NUM_COLORS>, 6> piece_keys; // [type][color][square]
-	extern std::array<uint64_t, 16> castling_keys; // [castling_rights]
-	extern std::array<uint64_t, NUM_SQUARES> ep_keys; // [square]
-	extern uint64_t side_key; // side to move
+	extern std::array<std::array<std::array<uint64_t, NUM_SQUARES>, NUM_COLORS>, 6> piece_keys;
+	extern std::array<uint64_t, 16> castling_keys;
+	extern std::array<uint64_t, NUM_SQUARES> ep_keys;
+	extern uint64_t side_key;
 
-	// Initialize Zobrist keys (called once at program start)
 	void initialize() noexcept;
 }
