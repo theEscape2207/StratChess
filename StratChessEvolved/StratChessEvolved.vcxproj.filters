@@ -179,9 +179,6 @@
     <ClInclude Include="..\StratEngine\Tests\Perft.h">
       <Filter>Tests</Filter>
     </ClInclude>
-    <ClInclude Include="..\StratEngine\Tests\TestFramework.h">
-      <Filter>Tests</Filter>
-    </ClInclude>
     <ClInclude Include="..\StratEngine\MoveFactory.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -203,19 +200,7 @@
     <ClInclude Include="..\StratEngine\Utils\Formatters.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>
-    <ClInclude Include="..\StratEngine\Tests\Unittests.h">
-      <Filter>Tests</Filter>
-    </ClInclude>
     <ClInclude Include="..\StratEngine\Tests\MoveGeneratorPromotionTests.h">
-      <Filter>Tests</Filter>
-    </ClInclude>
-    <ClInclude Include="..\StratEngine\Tests\Perft_unittests.h">
-      <Filter>Tests</Filter>
-    </ClInclude>
-    <ClInclude Include="..\StratEngine\Tests\RepetitionTests.h">
-      <Filter>Tests</Filter>
-    </ClInclude>
-    <ClInclude Include="..\StratEngine\Tests\MoveFieldTests.h">
       <Filter>Tests</Filter>
     </ClInclude>
   </ItemGroup>

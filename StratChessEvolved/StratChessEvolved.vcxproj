@@ -185,13 +185,8 @@
     <ClInclude Include="..\StratEngine\Sort.h" />
     <ClInclude Include="..\StratEngine\SquareHelper.h" />
     <ClInclude Include="..\StratEngine\StdAfx.h" />
-    <ClInclude Include="..\StratEngine\Tests\MoveFieldTests.h" />
     <ClInclude Include="..\StratEngine\Tests\MoveGeneratorPromotionTests.h" />
     <ClInclude Include="..\StratEngine\Tests\Perft.h" />
-    <ClInclude Include="..\StratEngine\Tests\Perft_unittests.h" />
-    <ClInclude Include="..\StratEngine\Tests\RepetitionTests.h" />
-    <ClInclude Include="..\StratEngine\Tests\TestFramework.h" />
-    <ClInclude Include="..\StratEngine\Tests\Unittests.h" />
     <ClInclude Include="..\StratEngine\TranspositionTable.h" />
     <ClInclude Include="..\StratEngine\Utils\BitTools.h" />
     <ClInclude Include="..\StratEngine\Utils\FENParser.h" />

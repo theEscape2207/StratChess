@@ -1,4 +1,7 @@
 #pragma once
+// MIGRATED — Safe to delete after review.
+// Replaced by Catch2 v3 in StratChessTests/ (RepetitionTests.cpp, MoveFieldTests.cpp).
+// No longer compiled by any project.
 
 #include "TestFramework.h"
 #include "RepetitionTests.h"
