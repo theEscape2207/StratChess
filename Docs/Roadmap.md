@@ -255,8 +255,10 @@ This roadmap organizes development tasks by priority and category. Items are dra
 - **Motivation**: Removing `Move::IsCheck` (Phase 1 of the 16-bit layout work) exposed a
   deeper structural problem: display logic is scattered across three locations, none of which
   have the board context needed to produce correct output:
-  - `Move::Output()` — informal short notation (`e4`); no `+`, no `#`, no disambiguation
-  - `Move::operator<<` — verbose description; no board access; check currently requires
+  - `Move::Output()` — pseudo-LAN notation (`Pe2-e3`, uppercase = White / lowercase = Black);
+    no `+`, no `#`, no disambiguation; used for PV logging and the "Last move:" console line
+  - `Move::operator<<` — verbose English description (`White pawn moves e2-e3`); no board
+    access; check currently requires
     string surgery in `PrintBoardAndMove` (searching for `\n` offsets to inject `+` /
     ` and checks!`) — fragile, breaks silently if the format changes
   - `Game::PrintBoardAndMove` / `PrintGameMoves` — ad-hoc annotation at the call site;
