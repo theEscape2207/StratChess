@@ -370,3 +370,4 @@ FodyWeavers.xsd
 # Per-machine MSBuild dependency path overrides — not committed
 Directory.Build.user.props
 Directory.Build_renamed.props_old
+/StratChessEvolved/logs - Copy/multisink.txt

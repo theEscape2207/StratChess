@@ -157,8 +157,13 @@
     <None Include="..\StratEngine\Tests\SUMMARY.md" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\StratEngine\Tests\MoveFieldTests.h" />
+    <ClInclude Include="..\StratEngine\Tests\MoveGeneratorPromotionTests.h" />
     <ClInclude Include="..\StratEngine\Tests\Perft.h" />
+    <ClInclude Include="..\StratEngine\Tests\Perft_unittests.h" />
+    <ClInclude Include="..\StratEngine\Tests\RepetitionTests.h" />
     <ClInclude Include="..\StratEngine\Tests\TestFramework.h" />
+    <ClInclude Include="..\StratEngine\Tests\Unittests.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

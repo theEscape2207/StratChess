@@ -507,7 +507,6 @@ bool Board::DoMove(_In_ const Move& m)
 	//
 	if (InCheck())
 	{
-		// assert(m.IsCheck == true);   //TODO: We are not setting the IsCheck flag on the Move until we are printing it out to the screen
 		ChangePlayer();
 		push_position();
 

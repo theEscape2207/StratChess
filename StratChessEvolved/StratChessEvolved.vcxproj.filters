@@ -96,9 +96,6 @@
     <ClCompile Include="..\StratEngine\Tests\PerftRunner.cpp">
       <Filter>Tests</Filter>
     </ClCompile>
-    <ClCompile Include="..\StratEngine\Tests\UnitTests.cpp">
-      <Filter>Tests</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\StratEngine\BitBoardHelper.h">
@@ -216,6 +213,9 @@
       <Filter>Tests</Filter>
     </ClInclude>
     <ClInclude Include="..\StratEngine\Tests\RepetitionTests.h">
+      <Filter>Tests</Filter>
+    </ClInclude>
+    <ClInclude Include="..\StratEngine\Tests\MoveFieldTests.h">
       <Filter>Tests</Filter>
     </ClInclude>
   </ItemGroup>
