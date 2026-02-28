@@ -3,10 +3,9 @@
 #include "BitBoardHelper.h"
 #include "Move.h"
 #include "GameState.h"
-#include "SquareHelper.h"
 #include "PieceHelper.h"
 #include <span>
-#include <tuple>
+#include <vector>
 
 class Board final
 {
@@ -96,43 +95,43 @@ private:
 	using squareCol  = std::vector<sqPieces>;
 
 	// --- Internal position setup ---
-	void SetupBoard(const squareCol&);
+	void setup_board(const squareCol&);
 
 	// --- Low-level piece manipulation (bitboard + mailbox, no material update) ---
 	void add_piece(eSquare square, ePiece piece);
 	void remove_piece(eSquare square, ePiece piece);
-	void MovePiece(const Move& move);
-	void MovePiece(ePiece piece, eSquare from, eSquare to);
+	void move_piece(const Move& move);
+	void move_piece(ePiece piece, eSquare from, eSquare to);
 
 	// --- Material-tracking piece operations ---
-	void RemovePieceFromBoard(ePiece piece, eSquare sq);
+	void remove_piece_from_board(ePiece piece, eSquare sq);
 
 	// --- Mailbox helpers ---
-	void ClearSquare(eSquare square) noexcept
+	void clear_square(eSquare square) noexcept
 	{
 		assert(PieceHelper::IsNotEmpty(GetPiece(square)));
 		mailbox_[square] = ePiece::NO_PIECE;
 	}
 
-	void SetSquare(eSquare square, ePiece piece) noexcept
+	void set_square(eSquare square, ePiece piece) noexcept
 	{
 		assert(PieceHelper::IsNoPiece(GetPiece(square)));
 		mailbox_[square] = piece;
 	}
 
 	// --- Bitboard helpers ---
-	bool ClearBitboardSquare(TBitboards::size_type iBoard, eSquare square)
+	bool clear_bitboard_square(TBitboards::size_type iBoard, eSquare square)
 	{
 		return BitBoardHelper::ClearBitboardMask(bitboards_[iBoard], g_bbMask[square]);
 	}
 
-	void SetBitboardSquare(TBitboards::size_type iPiece, eSquare square) noexcept
+	void set_bitboard_square(TBitboards::size_type iPiece, eSquare square) noexcept
 	{
 		BitBoardHelper::SetBitboardMask(bitboards_[iPiece], g_bbMask[square]);
 	}
 
 	// Returns the bitboard array index for a piece type + color combination
-	static constexpr size_t BitboardIndex(ePieceType piece, eColor color) noexcept
+	static constexpr size_t bitboard_index(ePieceType piece, eColor color) noexcept
 	{
 		return static_cast<size_t>(piece) + static_cast<size_t>(color);
 	}
@@ -141,12 +140,12 @@ private:
 	void update_zobrist_castling(uint8_t old_rights, uint8_t new_rights) noexcept;
 	void update_zobrist_ep(eSquare old_ep, eSquare new_ep) noexcept;
 	void update_zobrist_side() noexcept;
-	void ChangePlayer() noexcept
+	void change_player() noexcept
 	{
 		sideToMove_ = (sideToMove_ == eColor::WHITE) ? eColor::BLACK : eColor::WHITE;
 		update_zobrist_side();
 	}
-	void InitHashkey();
+	void init_hashkey();
 
 	// --- Repetition tracking ---
 	void update_threefold_rep(const Move&);
@@ -155,8 +154,8 @@ private:
 	void reset_repetition_history();
 
 	// --- Debug ---
-	bool TestBitBoards(std::ostream& stream = std::cout) const;
-	void PrintAllBitboards(const TBitboards& boards, std::ostream& = std::cout) const;
+	bool test_bitboards(std::ostream& stream = std::cout) const;
+	void print_all_bitboards(const TBitboards& boards, std::ostream& = std::cout) const;
 
 	// ---- Member variables ----
 
@@ -180,7 +179,7 @@ private:
 	std::array<GameInfo, MAX_PLY>  gameInfoHistory_{};
 
 	// Per-piece Zobrist keys (non-deterministic seed, set once at construction)
-	std::array<std::array<uint64_t, ALL_SQUARES>, ALL_PIECETYPES> allHashKeys;
+	std::array<std::array<uint64_t, ALL_SQUARES>, ALL_PIECETYPES> allHashKeys_;
 	uint64_t zobrist_hash_{ 0 };
 };
 

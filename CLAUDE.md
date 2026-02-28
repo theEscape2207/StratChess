@@ -14,7 +14,7 @@ A modern C++20 chess engine focused on improving playing strength (ELO) while ma
 
 ## Build
 - Visual Studio solution (`.sln`) targeting C++20
-- Supports both Debug and Release builds; prefer Release for performance benchmarking
+- Supports both Debug and Release builds; prefer Release for performance benchmarking, especially for deeper Perft tests and self-play validation
 - `Directory.Build.props` at repo root defines `$(DepsRoot)` for spdlog/nlohmann includes;
   copy `Directory.Build.user.props.example` → `Directory.Build.user.props` if your dependency
   layout differs from the default (sibling directories next to the repo)
@@ -79,7 +79,7 @@ Sources: `StratEngine/Tests/Perft.h/cpp` + `Tests/perft_test_cases.json`
 
 ### Self-play validation
 - Run AIPerplex self-play (`"type": 6` for both sides in `game_settings.json`) to verify search behaviour
-- For changes to base classes PlayerAI/PlayerBase, verify through AIAgent self-play (`"type": 3`) and check for expected changes in move choice and search depth
+- For changes to base classes PlayerAI/PlayerBase, verify through AIAgent self-play (`"type": 3`) as well
 
 ### General
 - Maintain deterministic behavior for reproducibility

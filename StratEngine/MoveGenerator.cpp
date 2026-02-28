@@ -6,7 +6,7 @@
 #include <cassert>
 #include "MoveGenerator.h"
 #include "Board.h"
-#include "MoveHelper.h"
+#include "SquareHelper.h"
 #include "PieceHelper.h"
 #include "MoveFactory.h" // Internal factory helpers
 

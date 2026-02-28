@@ -4,7 +4,7 @@
 #include "PieceHelper.h"
 
 // Move representation (16-bit encoding)
-// Actually just below 32 bits with extra info that could be taken from Board/Position if needed
+// Note: Currently 32 bits with additional info. Roadmap item available to reduce this when we have a better understanding of the performance implications and memory usage of Move objects in practice.
 // // Encoding:
 // Bits 0-5: From square (0-63)
 // Bits 6-11: To square (0-63)
@@ -55,11 +55,11 @@ public:
 
     // Move constructor - use compiler-generated/defaulted implementation so the
     // object can be copied as a whole (avoids repeated bitfield RMW ops).
-    Move(_In_ Move&& other) noexcept = default;
+    Move(Move&& other) noexcept = default;
 
     // Move assignment operator - defaulted to enable efficient copy of the
     // underlying storage instead of per-field assignments.
-    Move& operator=(_In_ Move&& other) noexcept = default;
+    Move& operator=(Move&& other) noexcept = default;
 
     Move(eSquare from, eSquare to, MoveType type, ePiece movPiece, ePiece content) noexcept
         : data(static_cast<uint16_t>(from | (to << 6) | static_cast<uint8_t>(type) << 12)), MovPiece(movPiece), Content(content)
