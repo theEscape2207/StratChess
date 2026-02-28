@@ -50,8 +50,8 @@ struct TTEntry {
     uint8_t age;
     Move best_move;
 
-    TTEntry() : key(0), value(0), depth(0), best_move(),
-        bound(BoundType::EXACT), node_type(NodeType::ALL_NODE), age(0), phase(SearchPhase::MAIN) {
+    TTEntry() : key(0), value(0), depth(0), phase(SearchPhase::MAIN), 
+        bound(BoundType::EXACT), node_type(NodeType::ALL_NODE), age(0), best_move() {
     }
 };
 

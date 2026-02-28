@@ -26,7 +26,7 @@ template<> struct fmt::formatter<eSquare> {
             "A2","B2","C2","D2","E2","F2","G2","H2",
             "A1","B1","C1","D1","E1","F1","G1","H1"
         };
-        if (s >= a1 && s <= h8)
+        if (s >= a8 && s <= h1)
             return fmt::format_to(ctx.out(), "{}", names[s]);
         return fmt::format_to(ctx.out(), "??");
     }
