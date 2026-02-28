@@ -238,19 +238,19 @@
     <None Include="..\Tests\perft_test_cases.json">
       <Filter>Resource Files</Filter>
     </None>
-    <None Include="Developer Guidelines.md">
+    <None Include="..\Docs\Developer Guidelines.md">
       <Filter>Docs</Filter>
     </None>
-    <None Include="Devlog.md">
+    <None Include="..\Docs\Devlog.md">
       <Filter>Docs</Filter>
     </None>
-    <None Include="Improving Chess Engine ELO rating.md">
+    <None Include="..\Docs\Engine-Readme.md">
       <Filter>Docs</Filter>
     </None>
-    <None Include="Position_Class_Documentation.md">
+    <None Include="..\Docs\Improving Chess Engine ELO rating.md">
       <Filter>Docs</Filter>
     </None>
-    <None Include="Roadmap.md">
+    <None Include="..\Docs\Roadmap.md">
       <Filter>Docs</Filter>
     </None>
   </ItemGroup>
