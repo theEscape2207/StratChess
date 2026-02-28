@@ -8,7 +8,6 @@
 #include "MoveGenerator.h"
 #include "Utils/Logger.h"
 #include <spdlog/spdlog.h>
-#include <spdlog/sinks/basic_file_sink.h>
 #include <iomanip>		// setw() osv.
 
 // static variables

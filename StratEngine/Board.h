@@ -3,10 +3,9 @@
 #include "BitBoardHelper.h"
 #include "Move.h"
 #include "GameState.h"
-#include "SquareHelper.h"
 #include "PieceHelper.h"
 #include <span>
-#include <tuple>
+#include <vector>
 
 class Board final
 {
