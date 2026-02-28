@@ -250,6 +250,19 @@ This roadmap organizes development tasks by priority and category. Items are dra
 
 ### Refactoring
 
+#### 🟢 Move class → 16-bit layout (Phases 3 & 4 deferred)
+- **Status**: Phases 1 (IsCheck) and 2 ([from|to]IsNoSquare) complete — see commit history
+- **Design document**: `.claude/plans/prancy-prancing-trinket.md`
+- **Remaining work**:
+  - **Phase 3 — Remove `MovPiece`**: Add `Board::GetEffectiveMovPiece()`, thread `ePiece movPiece`
+    param through `MoveHelper`, `GameState`, `Sort`, `AIPerplex`, factory callers.
+    See plan §Phase 3 for full file list and code sketches.
+  - **Phase 4 — Remove `Content`**: Add `Board::captured_history_[]` undo stack;
+    update `DoMove`/`UndoMove`; update `Move::Value(move, movPiece, content)` signature;
+    strip `captured` param from `MoveFactory`; add `static_assert(sizeof(Move) == 2)`.
+- **Prerequisite**: Phase 3 must complete before Phase 4
+- **Final validation**: perft suite + repetition tests + self-play with AIPerplex & AIAgent
+
 #### Architecture Refactor - State Management
 
 **Current Issue:** GameInfo history is in Player, but Board/Position need it
