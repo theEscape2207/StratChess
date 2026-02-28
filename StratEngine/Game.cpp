@@ -241,10 +241,6 @@ void Game::Run()
 
 		// Traekket er godkendt! Vi spiller videre!!
 
-		// Set whether the move is Checking
-		// TODO: This should be set elsewhere, but we at least need to print it to the player...
-		newMove.IsCheck = rBoard.InCheck();
-
 		// Tilfoej traekket til traeklisten og opdater spil-variable
 		AddGameMove(newMove);
 
@@ -341,7 +337,8 @@ void Game::PrintBoardAndMove(const Move& move) const
 	std::stringstream sstream;
 	sstream << "\nBoard " << GetBoardCount() << "\n\n";
 	sstream << board << move;
-	// TODO: Add InCheck info here instead of in Move's operator<<
+	if (!move.IsEmpty() && board.InCheck())
+		sstream << "and checks!\n";
 	spdlog::default_logger()->info(sstream.str());
 
 #ifdef PRINT_MOVES

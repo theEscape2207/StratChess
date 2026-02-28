@@ -12,7 +12,6 @@
 // Additional info:
 // MovPiece: The piece that is moving
 // Content: The piece that is being captured (if any, else NO_PIECE)
-// IsCheck: Whether the move gives check (set during move generation / search)
 // fromIsNoSquare, toIsNoSquare: Debugging aids for NO_SQUARE issues
 // Note: We could save some space by encoding the moving piece and content into the flags if needed
 // but that would complicate the code and reduce readability quite a bit
@@ -35,8 +34,8 @@ public:
     constexpr Move() noexcept : data(NULL_MOVE) {}
     constexpr explicit Move(uint16_t d) noexcept : data(d) {}
     constexpr Move(eSquare from, eSquare to, uint8_t flags = 0) noexcept
-        : data(static_cast<uint16_t>(from | (to << 6) | (flags << 12))), MovPiece(ePiece::NO_PIECE), Content(ePiece::NO_PIECE), 
-        IsCheck(false), fromIsNoSquare(from == NO_SQUARE ? true : false), toIsNoSquare(to == NO_SQUARE ? true : false)
+        : data(static_cast<uint16_t>(from | (to << 6) | (flags << 12))), MovPiece(ePiece::NO_PIECE), Content(ePiece::NO_PIECE),
+        fromIsNoSquare(from == NO_SQUARE ? true : false), toIsNoSquare(to == NO_SQUARE ? true : false)
     {
     }
 
@@ -65,8 +64,8 @@ public:
     Move& operator=(_In_ Move&& other) noexcept = default;
 
     Move(eSquare from, eSquare to, MoveType type, ePiece movPiece, ePiece content) noexcept
-        : data(static_cast<uint16_t>(from | (to << 6) | static_cast<uint8_t>(type) << 12)), MovPiece(movPiece), Content(content), 
-        IsCheck(false), fromIsNoSquare(from == NO_SQUARE ? true : false), toIsNoSquare(to == NO_SQUARE ? true : false)
+        : data(static_cast<uint16_t>(from | (to << 6) | static_cast<uint8_t>(type) << 12)), MovPiece(movPiece), Content(content),
+        fromIsNoSquare(from == NO_SQUARE ? true : false), toIsNoSquare(to == NO_SQUARE ? true : false)
     {
     }
 
@@ -193,10 +192,8 @@ private:
     // operations observed in hot paths. This preserves functionality while improving access speed.
     uint8_t fromIsNoSquare{ true };
     uint8_t toIsNoSquare{ true };
-    // Public Variable
-public:
-	bool IsCheck 	{ false };		// Is this move a Checking move? TODO: Shouldn't really be in the Move itself (unless we add a flags field with extra metadata)
 
+public:
     static const Move& EmptyMove() noexcept
     {
         static const Move move;

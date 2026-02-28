@@ -65,9 +65,6 @@ std::ostream& operator<<(std::ostream& os, _In_ const Move& m)
 			os << "Verbose  : " << ((PieceHelper::Color(m.MovPiece) == BLACK) ? "Black" : "White") << " makes a long castling";
 			break;
 		}
-		// is this a Checking move?
-		if (m.IsCheck)
-			os << " and checks!";
 		os << '\n';
 	}
 	return os;
@@ -134,8 +131,5 @@ std::string Move::Output() const
 		output << "0-0-0";
 		break;
 	}
-	// is this a Checking move?
-	if (IsCheck)
-		output << "+";
 	return output.str();
 }
