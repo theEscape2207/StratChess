@@ -241,10 +241,6 @@ void Game::Run()
 
 		// Traekket er godkendt! Vi spiller videre!!
 
-		// Set whether the move is Checking
-		// TODO: This should be set elsewhere, but we at least need to print it to the player...
-		newMove.IsCheck = rBoard.InCheck();
-
 		// Tilfoej traekket til traeklisten og opdater spil-variable
 		AddGameMove(newMove);
 
@@ -340,8 +336,34 @@ void Game::PrintBoardAndMove(const Move& move) const
 	// Print to various places
 	std::stringstream sstream;
 	sstream << "\nBoard " << GetBoardCount() << "\n\n";
-	sstream << board << move;
-	// TODO: Add InCheck info here instead of in Move's operator<<
+	sstream << board;
+
+	if (!move.IsEmpty())
+	{
+		// Capture the two-line move output ("Last move: e4\nVerbose  : ...\n") and
+		// annotate both lines inline when the move gives check, so the output reads:
+		//   Last move: e4+
+		//   Verbose  : White moves Pawn from e2 to e4 and checks!
+		std::ostringstream moveOut;
+		moveOut << move;
+		std::string moveStr = moveOut.str();
+
+		if (board.InCheck())
+		{
+			// Insert '+' at the end of the short-notation line (before its '\n')
+			const auto firstNL = moveStr.find('\n');
+			if (firstNL != std::string::npos)
+				moveStr.insert(firstNL, "+");
+
+			// Insert ' and checks!' at the end of the verbose line (before its '\n')
+			const auto lastNL = moveStr.rfind('\n');
+			if (lastNL != std::string::npos && lastNL > 0)
+				moveStr.insert(lastNL, " and checks!");
+		}
+
+		sstream << moveStr;
+	}
+
 	spdlog::default_logger()->info(sstream.str());
 
 #ifdef PRINT_MOVES

@@ -150,7 +150,6 @@
     <ClCompile Include="..\StratEngine\PlayerAI.cpp" />
     <ClCompile Include="..\StratEngine\PlayerBase.cpp" />
     <ClCompile Include="..\StratEngine\PlayerHuman.cpp" />
-    <ClCompile Include="..\StratEngine\skak.cpp" />
     <ClCompile Include="..\StratEngine\Sort.cpp" />
     <ClCompile Include="..\StratEngine\StdAfx.cpp" />
     <ClCompile Include="..\StratEngine\Tests\Perft.cpp" />
@@ -177,7 +176,6 @@
     <ClInclude Include="..\StratEngine\MoveFactory.h" />
     <ClInclude Include="..\StratEngine\MoveGenerator.h" />
     <ClInclude Include="..\StratEngine\MoveHelper.h" />
-    <ClInclude Include="..\StratEngine\outfile.h" />
     <ClInclude Include="..\StratEngine\PieceHelper.h" />
     <ClInclude Include="..\StratEngine\PlayerAI.h" />
     <ClInclude Include="..\StratEngine\PlayerAiIterBase.h" />
@@ -187,6 +185,7 @@
     <ClInclude Include="..\StratEngine\Sort.h" />
     <ClInclude Include="..\StratEngine\SquareHelper.h" />
     <ClInclude Include="..\StratEngine\StdAfx.h" />
+    <ClInclude Include="..\StratEngine\Tests\MoveFieldTests.h" />
     <ClInclude Include="..\StratEngine\Tests\MoveGeneratorPromotionTests.h" />
     <ClInclude Include="..\StratEngine\Tests\Perft.h" />
     <ClInclude Include="..\StratEngine\Tests\Perft_unittests.h" />

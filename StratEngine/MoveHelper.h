@@ -130,8 +130,7 @@ namespace MoveHelper
 
 	[[nodiscard]] static inline bool IsEmpty(_In_ const Move& move ) noexcept
 	{
-		return (move.to() == NO_SQUARE)
-			|| (move.from() == NO_SQUARE);
+		return move.IsEmpty();
 	}
 
 	[[nodiscard]] static bool IsValid(_In_ const Move& move ) noexcept
