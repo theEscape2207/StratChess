@@ -84,7 +84,7 @@
     },
 
     /* Default FEN board setup */
-    "FEN": "5B2/8/8/4RPpk/4pK1N/6P1/4qP2/8 w - g6 0 0"
+    "FEN": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
     /* Alternative FEN positions:
     "FEN": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"

@@ -10,8 +10,12 @@
     When is this needed?
     - Your json/ and spdlog/ directories are NOT siblings of the StratChessEvolved
       repo (non-standard layout).
-    - You are building from a git worktree and the default path computed by
-      Directory.Build.props points to the wrong location.
+
+    Where to put it?
+    - At the repo root (next to Directory.Build.props): covers direct builds AND
+      is automatically inherited by all git worktrees on the same machine.
+    - Inside a specific worktree root: overrides the repo-root file for that
+      worktree only (rarely needed).
 
     Set DepsRoot to the folder that CONTAINS json/ and spdlog/, with a
     trailing backslash.
