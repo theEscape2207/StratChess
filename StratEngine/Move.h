@@ -12,13 +12,12 @@
 // Additional info:
 // MovPiece: The piece that is moving
 // Content: The piece that is being captured (if any, else NO_PIECE)
-// fromIsNoSquare, toIsNoSquare: Debugging aids for NO_SQUARE issues
 // Note: We could save some space by encoding the moving piece and content into the flags if needed
 // but that would complicate the code and reduce readability quite a bit
 // 	 Given that Move objects are not stored in large arrays most of the time, this is acceptable
 class Move final    
 {
-    static constexpr uint16_t NULL_MOVE = 255;
+    static constexpr uint16_t EMPTY_MOVE = 0xFFFF;
 
     // Prints content to stream - Implemented in .cpp
     friend std::ostream& operator<<(std::ostream&, _In_ const Move& move);
@@ -31,11 +30,10 @@ public:
     {
     }
 
-    constexpr Move() noexcept : data(NULL_MOVE) {}
+    constexpr Move() noexcept : data(EMPTY_MOVE) {}
     constexpr explicit Move(uint16_t d) noexcept : data(d) {}
     constexpr Move(eSquare from, eSquare to, uint8_t flags = 0) noexcept
-        : data(static_cast<uint16_t>(from | (to << 6) | (flags << 12))), MovPiece(ePiece::NO_PIECE), Content(ePiece::NO_PIECE),
-        fromIsNoSquare(from == NO_SQUARE ? true : false), toIsNoSquare(to == NO_SQUARE ? true : false)
+        : data(static_cast<uint16_t>(from | (to << 6) | (flags << 12))), MovPiece(ePiece::NO_PIECE), Content(ePiece::NO_PIECE)
     {
     }
 
@@ -52,7 +50,7 @@ public:
     }
 
     [[nodiscard]] constexpr bool is_null() const noexcept {
-        return data == NULL_MOVE;
+        return data == EMPTY_MOVE;
     }
 
     // Move constructor - use compiler-generated/defaulted implementation so the
@@ -64,8 +62,7 @@ public:
     Move& operator=(_In_ Move&& other) noexcept = default;
 
     Move(eSquare from, eSquare to, MoveType type, ePiece movPiece, ePiece content) noexcept
-        : data(static_cast<uint16_t>(from | (to << 6) | static_cast<uint8_t>(type) << 12)), MovPiece(movPiece), Content(content),
-        fromIsNoSquare(from == NO_SQUARE ? true : false), toIsNoSquare(to == NO_SQUARE ? true : false)
+        : data(static_cast<uint16_t>(from | (to << 6) | static_cast<uint8_t>(type) << 12)), MovPiece(movPiece), Content(content)
     {
     }
 
@@ -79,7 +76,7 @@ public:
     }
 
     constexpr bool IsEmpty() const noexcept {
-        return fromIsNoSquare || toIsNoSquare;
+        return data == EMPTY_MOVE;
     }
 
     // Sets the move data fields 
@@ -91,17 +88,11 @@ public:
     }
     constexpr void SetMove(eSquare from, eSquare to, MoveType moveType) noexcept
     {
-        (from == NO_SQUARE) ? fromIsNoSquare = true : fromIsNoSquare = false;
-        (to == NO_SQUARE) ? toIsNoSquare = true : toIsNoSquare = false;
-
         data = static_cast<uint16_t>(from | (to << 6) | static_cast<uint8_t>(moveType) << 12);
     }
 
     constexpr void SetMove(eSquare from, eSquare to, MoveType moveType, ePiece movPiece, ePiece takenPiece) noexcept
     {
-        (from == NO_SQUARE) ? fromIsNoSquare = true : fromIsNoSquare = false;
-        (to == NO_SQUARE) ? toIsNoSquare = true : toIsNoSquare = false;
-
         data = static_cast<uint16_t>(from | (to << 6) | static_cast<uint8_t>(moveType) << 12);
         MovPiece = movPiece;
         Content = takenPiece;
@@ -177,21 +168,18 @@ public:
 
     void Clear() noexcept
     {
-        SetMove(NO_SQUARE, NO_SQUARE, MoveType::QUIET, ePiece::NO_PIECE, ePiece::NO_PIECE);
+        data = EMPTY_MOVE;
+        MovPiece = ePiece::NO_PIECE;
+        Content = ePiece::NO_PIECE;
     }
 
     std::string Output() const;
 
 private:
-    uint16_t data{ NULL_MOVE }; // bits 0-5: from, 6-11: to, 12-15: flags
+    uint16_t data{ EMPTY_MOVE }; // bits 0-5: from, 6-11: to, 12-15: flags
 public:
-	ePiece MovPiece  { NO_PIECE };		// Type and color 
-    ePiece Content   { NO_PIECE };		// The taken piece	
-private:
-    // Replaced bitfield bools with byte-sized flags to avoid expensive bitfield read-modify-write
-    // operations observed in hot paths. This preserves functionality while improving access speed.
-    uint8_t fromIsNoSquare{ true };
-    uint8_t toIsNoSquare{ true };
+	ePiece MovPiece  { NO_PIECE };		// Type and color
+    ePiece Content   { NO_PIECE };		// The taken piece
 
 public:
     static const Move& EmptyMove() noexcept
