@@ -354,6 +354,26 @@ This roadmap organizes development tasks by priority and category. Items are dra
 
 ### Infrastructure
 
+#### 🟢 Migrate test board setup from piece-by-piece API to FEN
+- **Estimate**: 1-2 hours
+- **Impact**: Allows `ClearBoard`, `SetInitialColor`, `AddPieceToBoard` to become private, shrinking the public interface further
+- **Motivation**: `MoveGeneratorPromotionTests.h` still uses the low-level triple-call pattern (`ClearBoard` + `SetInitialColor` + `AddPieceToBoard`) rather than `SetupFromFEN`, which is already used in `RepetitionTests.h` and is easier to read and maintain
+- **Actions**:
+  1. Convert each test case in `StratEngine/Tests/MoveGeneratorPromotionTests.h` to use `SetupFromFEN`
+  2. Remove `SetInitialColor` from the public interface (no other callers)
+  3. Move `ClearBoard` and `AddPieceToBoard` to `private:` in `Board.h`
+- **Files**: `StratEngine/Tests/MoveGeneratorPromotionTests.h`, `StratEngine/Board.h`
+
+#### 🟢 Fix `zobrist::initialize()` never called
+- **Estimate**: 2-3 hours
+- **Impact**: Correctness — castling rights, en-passant square, and side-to-move changes currently contribute zero to the Zobrist hash (XOR with 0 is a no-op)
+- **Root cause**: `zobrist::initialize()` is defined in `Board.cpp` and declared in `Board.h` but is never called. The keys in `zobrist::castling_keys`, `zobrist::ep_keys`, and `zobrist::side_key` remain zero.
+- **Note**: The board still hashes correctly for piece placement (handled by `allHashKeys` / `InitHashkey()`), so this is not causing visible incorrectness today; repetition detection works because the same-state hash collisions cancel out. But it is a latent bug.
+- **Actions**:
+  1. Call `zobrist::initialize()` early in program startup (e.g., in `main()` or `Config` initialisation)
+  2. Evaluate whether `allHashKeys` (the `Board`-internal, non-deterministic table) should be unified with `zobrist::piece_keys` for a single consistent Zobrist scheme
+- **Files**: `StratChessEvolved/StratChessEvolved.cpp` or `StratEngine/Config.cpp`, `StratEngine/Board.h`, `StratEngine/Board.cpp`
+
 #### 🟢 Migrate to Google Test or Catch2
 - **Estimate**: 2-3 days
 - **Impact**: Proper test isolation, fixtures, parameterised tests, IDE integration
