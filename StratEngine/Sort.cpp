@@ -69,7 +69,6 @@ void MoveSorter::SortMoves(MoveList& moveList,		// traeklisten
 	// Vi koerer videre fra hvor vi slap
 	for ( loop=curIndex; loop<numMoves; ++loop )
 	{
-		const MoveType type = MoveHelper::AsType(moveList[loop]);
 		// Other captures (regular Capture, PromoteCapture and En passant moves) or Promotes?
 		if (MoveHelper::IsCapture(moveList[loop]) || MoveHelper::IsPromote(moveList[loop]))
 			// Flytter det fundne traek frem

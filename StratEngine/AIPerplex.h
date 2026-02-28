@@ -1,7 +1,7 @@
 #pragma once
 #include "defines.h"
 #include "Move.h"
-#include "PlayerAi.h"
+#include "PlayerAI.h"
 #include "TranspositionTable.h"
 #include "PVTable.h"
 #include <map>

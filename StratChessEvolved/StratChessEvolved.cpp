@@ -21,7 +21,7 @@ static void print_usage() {
     std::cout << "Depth must be between 0 and 10.\n";
 }
 
-void test_fen_integration() {
+static void test_fen_integration() {
     std::cout << "\n========================================\n";
     std::cout << "FEN Integration Test\n";
     std::cout << "========================================\n\n";
@@ -102,7 +102,7 @@ void test_fen_integration() {
     std::cout << "========================================\n\n";
 }
 
-int perftrunner(int argc, char** argv) {
+static int perftrunner(int argc, char** argv) {
     if (argc < 2) {
         print_usage();
         return 1;
