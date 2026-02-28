@@ -54,10 +54,6 @@ Board::Board()
 	mailbox_.fill(ePiece::NO_PIECE);	// Default: no piece on all square. Board setup comes later
 }
 
-Board::~Board()
-{
-}
-
 // Toemmer de forskellige boards
 void Board::ClearBoard()
 {
