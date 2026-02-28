@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include="Source Files">
@@ -16,24 +16,34 @@
     <Filter Include="Source Files\Engine">
       <UniqueIdentifier>{104bef7f-63b7-4bb1-bdb2-00249cc0d360}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\Tests">
+      <UniqueIdentifier>{a1b2c3d4-e5f6-7890-abcd-ef1234567890}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
+    <!-- Catch2 framework -->
+    <ClCompile Include="$(DepsRoot)Catch2\catch_amalgamated.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <!-- Project entry point -->
     <ClCompile Include="StratChessTests.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\StratEngine\Tests\Perft.cpp">
-      <Filter>Source Files</Filter>
+    <!-- Catch2 test suites -->
+    <ClCompile Include="RepetitionTests.cpp">
+      <Filter>Source Files\Tests</Filter>
     </ClCompile>
-    <ClCompile Include="..\StratEngine\Tests\PerftRunner.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="MoveFieldTests.cpp">
+      <Filter>Source Files\Tests</Filter>
     </ClCompile>
-    <ClCompile Include="..\StratEngine\Tests\UnitTests.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="PerftTests.cpp">
+      <Filter>Source Files\Tests</Filter>
     </ClCompile>
-    <ClCompile Include="..\StratEngine\ABIterative.cpp">
+    <!-- Engine sources -->
+    <ClCompile Include="..\StratEngine\StdAfx.cpp">
       <Filter>Source Files\Engine</Filter>
     </ClCompile>
-    <ClCompile Include="..\StratEngine\ABIterTrans.cpp">
+    <ClCompile Include="..\StratEngine\ABIterative.cpp">
       <Filter>Source Files\Engine</Filter>
     </ClCompile>
     <ClCompile Include="..\StratEngine\AIAgent.cpp">
@@ -43,12 +53,6 @@
       <Filter>Source Files\Engine</Filter>
     </ClCompile>
     <ClCompile Include="..\StratEngine\AIPerplex.cpp">
-      <Filter>Source Files\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="..\StratEngine\AIPerplexParallel.cpp">
-      <Filter>Source Files\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="..\StratEngine\AITrans.cpp">
       <Filter>Source Files\Engine</Filter>
     </ClCompile>
     <ClCompile Include="..\StratEngine\Board.cpp">
@@ -69,9 +73,6 @@
     <ClCompile Include="..\StratEngine\MoveGenerator.cpp">
       <Filter>Source Files\Engine</Filter>
     </ClCompile>
-    <ClCompile Include="..\StratEngine\MoveOrdering.cpp">
-      <Filter>Source Files\Engine</Filter>
-    </ClCompile>
     <ClCompile Include="..\StratEngine\PlayerAI.cpp">
       <Filter>Source Files\Engine</Filter>
     </ClCompile>
@@ -81,13 +82,19 @@
     <ClCompile Include="..\StratEngine\PlayerHuman.cpp">
       <Filter>Source Files\Engine</Filter>
     </ClCompile>
-    <ClCompile Include="..\StratEngine\Position.cpp">
-      <Filter>Source Files\Engine</Filter>
-    </ClCompile>
     <ClCompile Include="..\StratEngine\Sort.cpp">
       <Filter>Source Files\Engine</Filter>
     </ClCompile>
     <ClCompile Include="..\StratEngine\TranspositionTable.cpp">
+      <Filter>Source Files\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\StratEngine\Utils\FENParser.cpp">
+      <Filter>Source Files\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\StratEngine\Utils\Logger.cpp">
+      <Filter>Source Files\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\StratEngine\Tests\Perft.cpp">
       <Filter>Source Files\Engine</Filter>
     </ClCompile>
   </ItemGroup>
@@ -99,9 +106,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\StratEngine\Tests\Perft.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\StratEngine\Tests\TestFramework.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

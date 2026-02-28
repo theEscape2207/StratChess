@@ -1,6 +1,10 @@
 #pragma once
 
-// Simple assertion macros for testing
+// MIGRATED — Safe to delete after review.
+// Replaced by Catch2 v3 in StratChessTests/ (RepetitionTests.cpp, MoveFieldTests.cpp, PerftTests.cpp).
+// No longer compiled by any project.
+//
+// Simple assertion macros for testing (legacy)
 // Replace with Google Test or Catch2 later
 
 #include <iostream>

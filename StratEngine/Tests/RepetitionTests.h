@@ -1,5 +1,9 @@
 #pragma once
 
+// MIGRATED — Safe to delete after review.
+// Tests live in StratChessTests/RepetitionTests.cpp (Catch2 v3).
+// No longer compiled by any project.
+//
 // RepetitionTests.h – Tests for the threefold repetition rule (Board::is_repetition)
 //
 // Historical bugs (all now fixed):
