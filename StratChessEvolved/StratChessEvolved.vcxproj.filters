@@ -208,18 +208,6 @@
     <None Include="game_settings.json">
       <Filter>Resource Files</Filter>
     </None>
-    <None Include="..\StratEngine\Tests\CHECKLIST.md">
-      <Filter>Tests</Filter>
-    </None>
-    <None Include="..\StratEngine\Tests\INTEGRATION.md">
-      <Filter>Tests</Filter>
-    </None>
-    <None Include="..\StratEngine\Tests\README.md">
-      <Filter>Tests</Filter>
-    </None>
-    <None Include="..\StratEngine\Tests\SUMMARY.md">
-      <Filter>Tests</Filter>
-    </None>
     <None Include="..\Tests\perft_test_cases.json">
       <Filter>Resource Files</Filter>
     </None>

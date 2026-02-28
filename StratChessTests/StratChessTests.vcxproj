@@ -161,12 +161,6 @@
     <ClCompile Include="PerftTests.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\StratEngine\Tests\CHECKLIST.md" />
-    <None Include="..\StratEngine\Tests\INTEGRATION.md" />
-    <None Include="..\StratEngine\Tests\README.md" />
-    <None Include="..\StratEngine\Tests\SUMMARY.md" />
-  </ItemGroup>
-  <ItemGroup>
     <ClInclude Include="..\StratEngine\Tests\Perft.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
