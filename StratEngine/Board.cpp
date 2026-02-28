@@ -23,7 +23,7 @@ namespace zobrist {
 		std::mt19937_64 rng(0x123456789ABCDEF0ULL);
 
 		for (size_t type = 0; type < 6; ++type)
-			for (size_t color = 0; color < 2; ++color)
+			for (size_t color = 0; color < NUM_COLORS; ++color)
 				for (size_t sq = 0; sq < NUM_SQUARES; ++sq)
 					piece_keys[type][color][sq] = rng();
 
@@ -39,7 +39,7 @@ namespace zobrist {
 
 Board::Board()
 {
-	InitHashkey();
+	init_hashkey();
 	mailbox_.fill(ePiece::NO_PIECE);
 }
 
@@ -64,48 +64,48 @@ void Board::ClearBoard()
 // Does NOT update material score — call AddPieceToBoard for that.
 void Board::add_piece(eSquare square, ePiece piece)
 {
-	SetBitboardSquare(piece, square);
-	SetBitboardSquare(BitboardIndex(ALL_FROM_COLOR, PieceHelper::Color(piece)), square);
-	SetBitboardSquare(ALL_PIECES, square);
+	set_bitboard_square(piece, square);
+	set_bitboard_square(bitboard_index(ALL_FROM_COLOR, PieceHelper::Color(piece)), square);
+	set_bitboard_square(ALL_PIECES, square);
 
 	// Rotated bitboards for sliding piece attack generation
 	BitBoardHelper::SetBitboardMask(bitboards_[ROTATED90],  g_bbMaskRotated90[square]);
 	BitBoardHelper::SetBitboardMask(bitboards_[ROTATED45R], g_bbMaskRotated45R[square]);
 	BitBoardHelper::SetBitboardMask(bitboards_[ROTATED45L], g_bbMaskRotated45L[square]);
 
-	zobrist_hash_ ^= allHashKeys[piece][square];
+	zobrist_hash_ ^= allHashKeys_[piece][square];
 
-	SetSquare(square, piece);
+	set_square(square, piece);
 
-	assert(TestBitBoards(outLegalMoves));
+	assert(test_bitboards(outLegalMoves));
 }
 
 // Removes a piece from all relevant bitboards and the mailbox. Updates the Zobrist hash.
-// Does NOT update material score — call RemovePieceFromBoard for that.
+// Does NOT update material score — call remove_piece_from_board for that.
 void Board::remove_piece(eSquare square, ePiece piece)
 {
 	assert(GetPiece(square) == piece);
 
-	if (!ClearBitboardSquare(piece, square))
-		TestBitBoards(std::cout);
+	if (!clear_bitboard_square(piece, square))
+		test_bitboards(std::cout);
 
-	ClearBitboardSquare(BitboardIndex(ALL_FROM_COLOR, PieceHelper::Color(piece)), square);
-	ClearBitboardSquare(ALL_PIECES, square);
+	clear_bitboard_square(bitboard_index(ALL_FROM_COLOR, PieceHelper::Color(piece)), square);
+	clear_bitboard_square(ALL_PIECES, square);
 
 	BitBoardHelper::ClearBitboardMask(bitboards_[ROTATED90],  g_bbMaskRotated90[square]);
 	BitBoardHelper::ClearBitboardMask(bitboards_[ROTATED45R], g_bbMaskRotated45R[square]);
 	BitBoardHelper::ClearBitboardMask(bitboards_[ROTATED45L], g_bbMaskRotated45L[square]);
 
-	zobrist_hash_ ^= allHashKeys[piece][square];
+	zobrist_hash_ ^= allHashKeys_[piece][square];
 
-	ClearSquare(square);
+	clear_square(square);
 
-	assert(TestBitBoards(outLegalMoves));
+	assert(test_bitboards(outLegalMoves));
 }
 
 // Sets up the board from a collection of (piece, square) pairs.
 // Clears the board first; does not set castling rights or en-passant (use SetupFromFEN).
-void Board::SetupBoard(const squareCol& col)
+void Board::setup_board(const squareCol& col)
 {
 	ClearBoard();
 
@@ -126,7 +126,7 @@ void Board::SetupFromFEN(const std::string& fen)
 		return;
 	}
 
-	SetupBoard(pieces);
+	setup_board(pieces);
 
 	sideToMove_              = state.sideToMove;
 	gameInfo_.epSquare       = state.epSquare;
@@ -268,19 +268,19 @@ bool Board::DoMove(const Move& m)
 	{
 	case MoveType::QUIET:
 		assert(!PieceHelper::IsActual(m.Content));
-		MovePiece(m);
+		move_piece(m);
 		break;
 
 	case MoveType::CAPTURE:
 		assert(MoveHelper::IsCapture(m));
-		RemovePieceFromBoard(m.Content, to);
-		MovePiece(m);
+		remove_piece_from_board(m.Content, to);
+		move_piece(m);
 		break;
 
 	case MoveType::DOUBLE_PAWN_PUSH:
 		assert(!PieceHelper::IsActual(m.Content));
 		assert(MoveHelper::IsPawnMove(m));
-		MovePiece(m);
+		move_piece(m);
 		break;
 
 	case MoveType::EP_CAPTURE: {
@@ -288,8 +288,8 @@ bool Board::DoMove(const Move& m)
 		assert(MoveHelper::IsCapture(m) && PieceHelper::IsPawn(m.Content));
 		// Captured pawn sits one rank behind the destination square
 		const eSquare epCapturedPawnSquare = SquareHelper::PreviousRow(to, sideToMove_);
-		RemovePieceFromBoard(PieceHelper::OppositePawn(sideToMove_), epCapturedPawnSquare);
-		MovePiece(m);
+		remove_piece_from_board(PieceHelper::OppositePawn(sideToMove_), epCapturedPawnSquare);
+		move_piece(m);
 		break;
 	}
 
@@ -299,8 +299,8 @@ bool Board::DoMove(const Move& m)
 	case MoveType::PROMOTION_QUEEN:
 		assert(!MoveHelper::IsPawnMove(m));  // move is recorded with the promoted piece type
 		if (MoveHelper::IsCapture(m))
-			RemovePieceFromBoard(m.Content, to);
-		RemovePieceFromBoard(PieceHelper::AsPawn(m.MovPiece), from);  // remove the pawn
+			remove_piece_from_board(m.Content, to);
+		remove_piece_from_board(PieceHelper::AsPawn(m.MovPiece), from);  // remove the pawn
 		AddPieceToBoard(m.MovPiece, to);                               // place promoted piece
 		break;
 
@@ -316,14 +316,14 @@ bool Board::DoMove(const Move& m)
 			assert(PieceHelper::IsNoPiece(GetPiece(from - 2)));
 			assert(PieceHelper::IsNoPiece(GetPiece(from - 3)));
 			assert(PieceHelper::IsOfPiece(GetPiece(from - 4), PieceHelper::AsPiece(ROOK, sideToMove_)));
-			MovePiece(PieceHelper::AsPiece(ROOK, sideToMove_),
+			move_piece(PieceHelper::AsPiece(ROOK, sideToMove_),
 				SquareHelper::Calc(to, -2), SquareHelper::Calc(to, +1));
 			break;
 		default:
 			assert(!"Invalid castling 'to' square");
 			break;
 		}
-		MovePiece(m);  // move the king
+		move_piece(m);  // move the king
 		break;
 
 	case MoveType::KING_CASTLE:
@@ -337,14 +337,14 @@ bool Board::DoMove(const Move& m)
 			assert(PieceHelper::IsNoPiece(GetPiece(from + 1)));
 			assert(PieceHelper::IsNoPiece(GetPiece(from + 2)));
 			assert(PieceHelper::IsOfPiece(GetPiece(from + 3), PieceHelper::AsPiece(ROOK, sideToMove_)));
-			MovePiece(PieceHelper::AsPiece(ROOK, sideToMove_),
+			move_piece(PieceHelper::AsPiece(ROOK, sideToMove_),
 				SquareHelper::Calc(to, +1), SquareHelper::Calc(to, -1));
 			break;
 		default:
 			assert(!"Invalid castling 'to' square");
 			break;
 		}
-		MovePiece(m);  // move the king
+		move_piece(m);  // move the king
 		break;
 
 	default:
@@ -393,13 +393,13 @@ bool Board::DoMove(const Move& m)
 
 	// Roll back if the move leaves our own king in check
 	if (InCheck()) {
-		ChangePlayer();
+		change_player();
 		push_position();
 		UndoMove(m);
 		return false;
 	}
 
-	ChangePlayer();
+	change_player();
 	push_position();
 	return true;
 }
@@ -428,12 +428,12 @@ void Board::UndoMove(const Move& m)
 	{
 	case MoveType::QUIET:
 		assert(!PieceHelper::IsActual(m.Content));
-		MovePiece(m.MovPiece, m.to(), m.from());
+		move_piece(m.MovPiece, m.to(), m.from());
 		break;
 
 	case MoveType::CAPTURE:
 		assert(MoveHelper::IsCapture(m));
-		MovePiece(m.MovPiece, m.to(), m.from());
+		move_piece(m.MovPiece, m.to(), m.from());
 		AddPieceToBoard(m.Content, m.to());
 		break;
 
@@ -441,13 +441,13 @@ void Board::UndoMove(const Move& m)
 		assert(sideToMove_ == PieceHelper::Color(m.MovPiece));
 		assert(!PieceHelper::IsActual(m.Content));
 		assert(MoveHelper::IsPawnMove(m));
-		MovePiece(m.MovPiece, m.to(), m.from());
+		move_piece(m.MovPiece, m.to(), m.from());
 		break;
 
 	case MoveType::EP_CAPTURE:
 		assert(MoveHelper::IsPawnMove(m));
 		assert(MoveHelper::IsCapture(m) && PieceHelper::IsPawn(m.Content));
-		MovePiece(m.MovPiece, m.to(), m.from());
+		move_piece(m.MovPiece, m.to(), m.from());
 		// Restore captured pawn on the square it was taken from (behind the destination)
 		if (sideToMove_ == WHITE)
 			AddPieceToBoard(ePiece::BLACK_PAWN, SquareHelper::Calc(m.to(), +ONE_ROW));
@@ -460,7 +460,7 @@ void Board::UndoMove(const Move& m)
 	case MoveType::PROMOTION_ROOK:
 	case MoveType::PROMOTION_QUEEN:
 		assert(!MoveHelper::IsPawnMove(m));
-		RemovePieceFromBoard(m.MovPiece, m.to());    // remove promoted piece
+		remove_piece_from_board(m.MovPiece, m.to());    // remove promoted piece
 		if (MoveHelper::IsCapture(m)) {
 			assert(PieceHelper::IsActual(m.Content));
 			AddPieceToBoard(m.Content, m.to());      // restore captured piece
@@ -479,14 +479,14 @@ void Board::UndoMove(const Move& m)
 			assert(PieceHelper::IsNoPiece(GetPiece(m.from())));
 			assert(PieceHelper::IsNoPiece(GetPiece(m.to() - 1)));
 			assert(PieceHelper::IsNoPiece(GetPiece(m.to() - 2)));
-			MovePiece(PieceHelper::AsPiece(ROOK, sideToMove_),
+			move_piece(PieceHelper::AsPiece(ROOK, sideToMove_),
 				SquareHelper::Calc(m.to(), +1), SquareHelper::Calc(m.to(), -2));
 			break;
 		default:
 			assert(!"Invalid castling 'to' square");
 			break;
 		}
-		MovePiece(m.MovPiece, m.to(), m.from());  // restore king
+		move_piece(m.MovPiece, m.to(), m.from());  // restore king
 		break;
 
 	case MoveType::KING_CASTLE:
@@ -499,14 +499,14 @@ void Board::UndoMove(const Move& m)
 		case g8:
 			assert(PieceHelper::IsNoPiece(GetPiece(m.from())));
 			assert(PieceHelper::IsNoPiece(GetPiece(m.to() + 1)));
-			MovePiece(PieceHelper::AsPiece(ROOK, sideToMove_),
+			move_piece(PieceHelper::AsPiece(ROOK, sideToMove_),
 				SquareHelper::Calc(m.to(), -1), SquareHelper::Calc(m.to(), +1));
 			break;
 		default:
 			assert(!"Invalid castling 'to' square");
 			break;
 		}
-		MovePiece(m.MovPiece, m.to(), m.from());  // restore king
+		move_piece(m.MovPiece, m.to(), m.from());  // restore king
 		break;
 
 	default:
@@ -531,20 +531,20 @@ void Board::AddPieceToBoard(ePiece piece, eSquare sq)
 }
 
 // Removes a piece and maintains material score.
-void Board::RemovePieceFromBoard(ePiece piece, eSquare sq)
+void Board::remove_piece_from_board(ePiece piece, eSquare sq)
 {
 	remove_piece(sq, piece);
 	material_score_[PieceHelper::Color(piece)] -= PieceHelper::Value(piece);
 }
 
 // Moves a piece without updating material score (for quiet moves, castling rook moves).
-void Board::MovePiece(const Move& move)
+void Board::move_piece(const Move& move)
 {
 	remove_piece(move.from(), move.MovPiece);
 	add_piece(move.to(), move.MovPiece);
 }
 
-void Board::MovePiece(ePiece piece, eSquare from, eSquare to)
+void Board::move_piece(ePiece piece, eSquare from, eSquare to)
 {
 	remove_piece(from, piece);
 	add_piece(to, piece);
@@ -567,7 +567,7 @@ void Board::update_threefold_rep(const Move& m)
 }
 
 // Verifies that bitboards_.at(ALL_PIECES) equals the OR of all individual piece bitboards.
-bool Board::TestBitBoards(std::ostream& stream) const
+bool Board::test_bitboards(std::ostream& stream) const
 {
 	BITBOARD bbOR = 0;
 
@@ -577,13 +577,13 @@ bool Board::TestBitBoards(std::ostream& stream) const
 	if (bbOR != bitboards_.at(ALL_PIECES)) {
 		stream << "Individual boards OR'd together:\n";
 		BitBoardHelper::PrintBitboardBinary(bbOR, stream);
-		PrintAllBitboards(bitboards_, stream);
+		print_all_bitboards(bitboards_, stream);
 		return false;
 	}
 	return true;
 }
 
-void Board::PrintAllBitboards(const TBitboards& boards, std::ostream& stream) const
+void Board::print_all_bitboards(const TBitboards& boards, std::ostream& stream) const
 {
 	stream << *this;
 
@@ -647,10 +647,10 @@ std::ostream& operator<<(std::ostream& os, const Board& board)
 	return os;
 }
 
-// Fills allHashKeys with random 64-bit values for piece-placement Zobrist hashing.
+// Fills allHashKeys_ with random 64-bit values for piece-placement Zobrist hashing.
 // Uses a non-deterministic seed so keys differ across runs — this is intentional for
 // collision avoidance, but means the hash is not reproducible across process restarts.
-void Board::InitHashkey()
+void Board::init_hashkey()
 {
 	std::random_device rd;
 	std::mt19937 rng(rd());
@@ -658,7 +658,7 @@ void Board::InitHashkey()
 
 	for (int piece = ePiece::WHITE_PAWN; piece < ALL_PIECETYPES; ++piece)
 		for (int square = 0; square < ALL_SQUARES; ++square)
-			allHashKeys[piece][square] = dist(rng);
+			allHashKeys_[piece][square] = dist(rng);
 }
 
 /**

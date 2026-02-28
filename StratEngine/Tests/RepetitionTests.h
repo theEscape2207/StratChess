@@ -5,10 +5,10 @@
 // Historical bugs (all now fixed):
 //
 //   BUG-1 [Hash ordering] ✅ FIXED
-//     push_position() was called before ChangePlayer() in DoMove(). Pushed hashes
+//     push_position() was called before change_player() in DoMove(). Pushed hashes
 //     carried the mover's side-to-move bit instead of the next player's, so the
 //     stored hash could never match the hash present at is_repetition() call time.
-//     Fix: push_position() now runs after ChangePlayer() in both DoMove() branches.
+//     Fix: push_position() now runs after change_player() in both DoMove() branches.
 //
 //   BUG-2 [Loop start offset] ✅ FIXED
 //     is_repetition() scanned from history_size-4, giving the wrong same-side parity.
