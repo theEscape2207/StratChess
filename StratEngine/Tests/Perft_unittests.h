@@ -1,4 +1,7 @@
 #pragma once
+// MIGRATED — Safe to delete after review.
+// Lightweight perft tests now live in StratChessTests/PerftTests.cpp (Catch2 v3).
+// No longer compiled by any project.
 
 #include "TestFramework.h"
 #include "Perft.h"

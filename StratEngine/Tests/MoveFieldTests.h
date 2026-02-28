@@ -1,5 +1,9 @@
 #pragma once
 
+// MIGRATED — Safe to delete after review.
+// Tests live in StratChessTests/MoveFieldTests.cpp (Catch2 v3).
+// No longer compiled by any project.
+//
 // MoveFieldTests.h — Unit tests for Move class field retirement
 //
 // Structure: one suite per removed field, run in sequence.

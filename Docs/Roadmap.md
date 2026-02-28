@@ -374,16 +374,17 @@ This roadmap organizes development tasks by priority and category. Items are dra
   2. Evaluate whether `allHashKeys` (the `Board`-internal, non-deterministic table) should be unified with `zobrist::piece_keys` for a single consistent Zobrist scheme
 - **Files**: `StratChessEvolved/StratChessEvolved.cpp` or `StratEngine/Config.cpp`, `StratEngine/Board.h`, `StratEngine/Board.cpp`
 
-#### 🟢 Migrate to Google Test or Catch2
-- **Estimate**: 2-3 days
-- **Impact**: Proper test isolation, fixtures, parameterised tests, IDE integration
-- **Current State**: Custom `TestFramework.h` with hand-rolled `TEST_ASSERT` macros and global counters; no test isolation between test functions (shared singleton Board)
-- **Target**:
-  - Replace `TestFramework.h` macros with Google Test (`TEST`, `TEST_F`) or Catch2 (`TEST_CASE`, `SECTION`)
-  - Wrap `Board::Instance()` setup/teardown in a test fixture so every test starts with a clean board
-  - Integrate with Visual Studio Test Explorer or CTest for CI
-- **Files**: `StratEngine/Tests/TestFramework.h`, all `*Tests.h` files
-- **Note**: Deliberately deferred — larger undertaking than individual test additions
+#### ✅ COMPLETED: Migrate to Catch2 v3
+- **Status**: ✅ Done (March 2026)
+- **Framework**: Catch2 v3 amalgamated (2-file drop-in, no pre-build step required)
+- **Test project**: `StratChessTests/StratChessTests.vcxproj` (rebuilt from empty placeholder)
+- **Test files**:
+  - `StratChessTests/RepetitionTests.cpp` — TC1-TC7, TC9 (migrated from `RepetitionTests.h`)
+  - `StratChessTests/MoveFieldTests.cpp` — Phase 1 & 2 move field tests
+  - `StratChessTests/PerftTests.cpp` — starting position d1-d4, Kiwipete d1-d3
+- **Test isolation**: Every test calls `SetupFromFEN()` at entry; Board singleton reset per test case
+- **Retired**: `TestFramework.h`, `Unittests.h`, `Perft_unittests.h` (annotated, safe to delete)
+- **Run**: `x64/Release/StratChessTests.exe [tag]` — tags: `[repetition]`, `[moves]`, `[perft]`
 
 #### 🟢 Add Performance Profiling Scripts
 - **Estimate**: 1 day
