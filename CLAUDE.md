@@ -18,6 +18,7 @@ A modern C++20 chess engine focused on improving playing strength (ELO) while ma
 - `Directory.Build.props` at repo root defines `$(DepsRoot)` for spdlog/nlohmann includes;
   copy `Directory.Build.user.props.example` → `Directory.Build.user.props` if your dependency
   layout differs from the default (sibling directories next to the repo)
+- Adding a header to `.vcxproj` (`ClInclude`) makes it build-visible; also add a matching `<Filter>` entry in the `.vcxproj.filters` file to place it in the correct Solution Explorer folder
 
 ## Engine Features
 - Iterative Deepening Search (IDS)
@@ -30,6 +31,7 @@ A modern C++20 chess engine focused on improving playing strength (ELO) while ma
 - Threefold / twofold repetition detection (Zobrist hashing)
 
 ## Key Source Files
+- `Move::Output()` produces pseudo-LAN (`Pe2-e3`): piece prefix (uppercase=White, lowercase=Black) + from + `-` + to — not short algebraic notation
 - `StratEngine/Board.cpp` / `Board.h` – Board state and move application
 - `StratEngine/MoveGenerator.cpp` / `MoveGenerator.h` – Legal move generation
 - `StratEngine/Eval.cpp` / `Eval.h` – Position evaluation
@@ -50,13 +52,14 @@ A modern C++20 chess engine focused on improving playing strength (ELO) while ma
 ## Testing & Validation
 - Perft tests: `StratEngine/Tests/Perft.h/cpp` + `Tests/perft_test_cases.json`; run via `main()`
 - Repetition tests: `StratEngine/Tests/RepetitionTests.h` (TC1–TC7, TC9); run via `main()`
-- Run self-play (`"type": 6` for both sides in `game_settings.json`) to verify search behaviour
+- Unit tests: run `StratChessTests` executable with `unittest` on the command line via `main()`; run after every change to catch low-level regressions early
+- Run AIPerplex self-play (`"type": 6` for both sides in `game_settings.json`) to verify search behaviour. For changes to base classes PlayerAI/PlayerBase, verify through AIAgent self-play (`"type": 3`) and check for expected changes in move choice and search depth.
 - Maintain deterministic behavior for reproducibility
+- `game_settings.json`: verify FEN is set to the starting position before committing — test sessions often leave a custom FEN in place
 
 ## Commit & PR Conventions
 - Development happens on `master`; PRs target `main`
 - Keep PRs small and logically scoped
 - Include motivation, design reasoning, and expected impact for non-trivial changes
 - Seek review for changes affecting evaluation, move ordering, or search algorithms
-- Claude worktrees live under `.claude/worktrees/` — build from a worktree works out of the
-  box via `Directory.Build.props`
+- Claude worktrees live under `.claude/worktrees/` — build from a worktree works out of the box via `Directory.Build.props`
