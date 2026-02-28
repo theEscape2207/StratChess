@@ -105,6 +105,8 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalIncludeDirectories>$(DepsRoot)Catch2;$(DepsRoot)json\include;$(DepsRoot)spdlog\include;..\StratEngine;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -120,6 +122,8 @@
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalIncludeDirectories>$(DepsRoot)Catch2;$(DepsRoot)json\include;$(DepsRoot)spdlog\include;..\StratEngine;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -127,28 +131,34 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <!-- Catch2 v3 amalgamated framework — provides main() -->
+    <ClCompile Include="$(DepsRoot)Catch2\catch_amalgamated.cpp" />
+    <!-- Engine sources (mirrors StratChessEvolved.vcxproj, minus PerftRunner.cpp) -->
+    <ClCompile Include="..\StratEngine\StdAfx.cpp" />
     <ClCompile Include="..\StratEngine\ABIterative.cpp" />
     <ClCompile Include="..\StratEngine\AIAgent.cpp" />
     <ClCompile Include="..\StratEngine\AIBasic.cpp" />
     <ClCompile Include="..\StratEngine\AIPerplex.cpp" />
-    <ClCompile Include="..\StratEngine\AIPerplexParallel.cpp" />
     <ClCompile Include="..\StratEngine\Board.cpp" />
     <ClCompile Include="..\StratEngine\Config.cpp" />
     <ClCompile Include="..\StratEngine\Eval.cpp" />
     <ClCompile Include="..\StratEngine\Game.cpp" />
     <ClCompile Include="..\StratEngine\Move.cpp" />
     <ClCompile Include="..\StratEngine\MoveGenerator.cpp" />
-    <ClCompile Include="..\StratEngine\MoveOrdering.cpp" />
     <ClCompile Include="..\StratEngine\PlayerAI.cpp" />
     <ClCompile Include="..\StratEngine\PlayerBase.cpp" />
     <ClCompile Include="..\StratEngine\PlayerHuman.cpp" />
-    <ClCompile Include="..\StratEngine\Position.cpp" />
     <ClCompile Include="..\StratEngine\Sort.cpp" />
-    <ClCompile Include="..\StratEngine\Tests\Perft.cpp" />
-    <ClCompile Include="..\StratEngine\Tests\PerftRunner.cpp" />
-    <ClCompile Include="..\StratEngine\Tests\UnitTests.cpp" />
     <ClCompile Include="..\StratEngine\TranspositionTable.cpp" />
+    <ClCompile Include="..\StratEngine\Utils\FENParser.cpp" />
+    <ClCompile Include="..\StratEngine\Utils\Logger.cpp" />
+    <ClCompile Include="..\StratEngine\Tests\Perft.cpp" />
+    <!-- Project entry point — main() is provided by catch_amalgamated.cpp -->
     <ClCompile Include="StratChessTests.cpp" />
+    <!-- Catch2 test suites -->
+    <ClCompile Include="RepetitionTests.cpp" />
+    <ClCompile Include="MoveFieldTests.cpp" />
+    <ClCompile Include="PerftTests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\StratEngine\Tests\CHECKLIST.md" />
@@ -157,13 +167,7 @@
     <None Include="..\StratEngine\Tests\SUMMARY.md" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\StratEngine\Tests\MoveFieldTests.h" />
-    <ClInclude Include="..\StratEngine\Tests\MoveGeneratorPromotionTests.h" />
     <ClInclude Include="..\StratEngine\Tests\Perft.h" />
-    <ClInclude Include="..\StratEngine\Tests\Perft_unittests.h" />
-    <ClInclude Include="..\StratEngine\Tests\RepetitionTests.h" />
-    <ClInclude Include="..\StratEngine\Tests\TestFramework.h" />
-    <ClInclude Include="..\StratEngine\Tests\Unittests.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

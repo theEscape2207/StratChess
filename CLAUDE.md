@@ -60,16 +60,18 @@ The `//m` flag enables parallel builds. Use `//v:minimal` to suppress noise; cha
 
 ## Testing & Validation
 
-All tests run through `StratChessEvolved.exe` (built in `x64/Release/` or `x64/Debug/`).
-
-### Unit tests (includes repetition tests TC1–TC7, TC9)
+### Unit tests (Catch2 v3 — repetition, move field, lightweight perft)
 Run from any directory:
 ```bash
-x64/Release/StratChessEvolved.exe unittest
+x64/Release/StratChessTests.exe              # all tests
+x64/Release/StratChessTests.exe [repetition] # TC1-TC7, TC9 only
+x64/Release/StratChessTests.exe [moves]      # move field tests only
+x64/Release/StratChessTests.exe [perft]      # perft depth 1-4 only
 ```
-Sources: `StratEngine/Tests/Unittests.h`, `RepetitionTests.h`, `MoveFieldTests.h`
+Sources: `StratChessTests/RepetitionTests.cpp`, `MoveFieldTests.cpp`, `PerftTests.cpp`
+Framework: Catch2 v3 amalgamated — `$(DepsRoot)Catch2/` (sibling of repo)
 
-### Perft tests
+### Deep perft tests
 **Must be run from the `Tests/` directory** — the executable looks for `perft_test_cases.json` in the working directory:
 ```bash
 cd Tests
