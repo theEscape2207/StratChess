@@ -371,3 +371,5 @@ FodyWeavers.xsd
 Directory.Build.user.props
 Directory.Build_renamed.props_old
 /StratChessEvolved/logs - Copy/multisink.txt
+/.claude/settings.local.json
+/StratChessTests/SimplePerfStats.txt
