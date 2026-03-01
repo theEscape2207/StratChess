@@ -142,6 +142,14 @@ private:
 	// logging control: enable detailed logging when needed (default: false)
 	static inline bool s_verbose_logging = false;
 
+#ifdef STRAT_ENABLE_TEST_ACCESS
+	// Enable fine-grained unit tests for private search helpers.
+	// Activated by defining STRAT_ENABLE_TEST_ACCESS in the test project
+	// preprocessor settings (StratChessTests.vcxproj) — never in production.
+	// See Docs/TestDesign.md §"AIPerplex Test Access" and §Phase 1 [search] tests.
+	friend class AIPerlexTestFixture;
+#endif
+
 public:
 	// Configure logger verbosity at runtime (call before heavy runs if needed)
 	static void SetVerboseLogging(bool enabled) noexcept { s_verbose_logging = enabled; }
