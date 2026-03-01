@@ -159,6 +159,9 @@
     <ClCompile Include="RepetitionTests.cpp" />
     <ClCompile Include="MoveFieldTests.cpp" />
     <ClCompile Include="PerftTests.cpp" />
+    <ClCompile Include="TTTests.cpp" />
+    <ClCompile Include="EvalTests.cpp" />
+    <ClCompile Include="TacticalTests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\StratEngine\Tests\Perft.h" />

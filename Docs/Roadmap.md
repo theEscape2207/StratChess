@@ -28,6 +28,21 @@ This roadmap organizes development tasks by priority and category. Items are dra
 
 ### Refactoring
 
+#### 🔴 De-Singleton Board
+- **Estimate**: 3-4 days
+- **Blocking**: ThreadData extraction, parallel search (Lazy SMP), and clean unit testing of Eval/MoveGenerator
+- **Rationale**: `Board::Instance()` is a global singleton referenced by `MoveGenerator`, `EvalManager`, and `AIPerplex`. This prevents:
+  - Thread-local board copies required by Lazy SMP
+  - Isolated unit testing of Eval and MoveGenerator without global state side-effects
+  - The `ThreadData` struct (`Board board` member per thread)
+- **Approach**:
+  1. Remove `static` from `Board::Instance()`; make Board constructable directly (from FEN or default)
+  2. Pass `Board&` through `MoveGenerator`, `EvalManager`, and `AIPerplex` call sites
+  3. `ThreadData` holds its own `Board` copy (natural fit — see ThreadData item below)
+  4. Update all test fixtures to construct `Board` directly (see `Docs/TestDesign.md` Phase 2)
+- **Testing**: Existing perft + repetition tests serve as regression baseline; update fixtures to non-singleton pattern as part of this task
+- **Test design note**: Tracked as Phase 2 in `Docs/TestDesign.md`
+
 #### ✅ COMPLETED: Refactor iterative_deepening
 - **Status**: ✅ Done (Feb 11, 2026)
 - **Impact**: Fixed timeout bugs, improved maintainability
@@ -374,6 +389,15 @@ This roadmap organizes development tasks by priority and category. Items are dra
   2. Evaluate whether `allHashKeys` (the `Board`-internal, non-deterministic table) should be unified with `zobrist::piece_keys` for a single consistent Zobrist scheme
 - **Files**: `StratChessEvolved/StratChessEvolved.cpp` or `StratEngine/Config.cpp`, `StratEngine/Board.h`, `StratEngine/Board.cpp`
 
+#### ✅ COMPLETED: Phase 0 Test Infrastructure
+- **Status**: ✅ Done (March 2026)
+- **See**: `Docs/TestDesign.md` for full design and coverage map
+- **Added tests**:
+  - `[tt]` — TranspositionTable unit tests (store/probe, mate normalization, replacement, counters)
+  - `[eval]` — Evaluation position tests (symmetry, material advantage, doubled pawns, rook bonus)
+  - `[tactical]` — Fast search regression tests (mate-in-1, hanging piece capture via AIPerplex depth 4)
+- **Stubbed**: `#ifdef STRAT_ENABLE_TEST_ACCESS friend class AIPerlexTestFixture;` in `AIPerplex.h` — activate when `SearchTests.cpp` is written (Phase 1)
+
 #### ✅ COMPLETED: Migrate to Catch2 v3
 - **Status**: ✅ Done (March 2026)
 - **Framework**: Catch2 v3 amalgamated (2-file drop-in, no pre-build step required)
@@ -385,6 +409,15 @@ This roadmap organizes development tasks by priority and category. Items are dra
 - **Test isolation**: Every test calls `SetupFromFEN()` at entry; Board singleton reset per test case
 - **Retired**: `TestFramework.h`, `Unittests.h`, `Perft_unittests.h` (annotated, safe to delete)
 - **Run**: `x64/Release/StratChessTests.exe [tag]` — tags: `[repetition]`, `[moves]`, `[perft]`
+
+#### 🟢 Phase 1 Test Infrastructure (add per-feature, see TestDesign.md)
+- **Estimate**: Varies — add when touching the relevant component
+- **Components** (details in `Docs/TestDesign.md`):
+  - `[search]` — AIPerplex helper tests (`assess_iteration_quality`, `should_stop_early`, `handle_empty_move_emergency`) — add when LMR/aspiration windows lands
+  - `[sort]` — Move ordering tests — add when `MoveSorter` class is extracted
+  - `[board]` — `DoMove`/`UndoMove` completeness — add when Move layout Phases 3 & 4 land
+  - `[bitboard]` — bitboard helper tests — add opportunistically
+  - Full tactical suite (`StratChessEvolved.exe tactical test`) — add when evaluation is extended
 
 #### 🟢 Add Performance Profiling Scripts
 - **Estimate**: 1 day
