@@ -372,10 +372,10 @@ This roadmap organizes development tasks by priority and category. Items are dra
 #### 🟢 Restrict Board's piece-by-piece setup API to private
 - **Estimate**: 1-2 hours
 - **Impact**: Shrinks the public interface of `Board`; `SetupFromFEN` is already the canonical way to set up positions (used by all Catch2 tests and the main entry points)
-- **Motivation**: `ClearBoard`, `SetInitialColor`, and `AddPieceToBoard` are still public but no longer needed by any test code (`MoveGeneratorPromotionTests.h` was retired; all tests use FEN). Keeping them public invites misuse and complicates the Board contract.
+- **Motivation**: `ClearBoard`, `SetInitialColor`, and `AddPieceToBoard` are still public but no longer needed by any test code (`MoveGeneratorPromotionTests.h` was retired in favour of FEN-based perft coverage). Keeping them public invites misuse and makes the Board harder to reason about.
 - **Actions**:
-  1. Verify no external callers remain for `SetInitialColor`, `ClearBoard`, `AddPieceToBoard`
-  2. Move all three to `private:` in `Board.h`
+  1. Remove `SetInitialColor` from the public interface (verify no callers remain)
+  2. Move `ClearBoard` and `AddPieceToBoard` to `private:` in `Board.h`
 - **Files**: `StratEngine/Board.h`
 
 #### 🟢 Fix `zobrist::initialize()` never called
