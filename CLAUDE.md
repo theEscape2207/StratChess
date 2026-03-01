@@ -18,7 +18,7 @@ A modern C++20 chess engine focused on improving playing strength (ELO) while ma
 - `Directory.Build.props` at repo root defines `$(DepsRoot)` for spdlog/nlohmann includes;
   copy `Directory.Build.user.props.example` → `Directory.Build.user.props` if your dependency
   layout differs from the default (sibling directories next to the repo)
-- Adding a header to `.vcxproj` (`ClInclude`) makes it build-visible; also add a matching `<Filter>` entry in the `.vcxproj.filters` file to place it in the correct Solution Explorer folder
+- Adding files to Solution Explorer: headers use `ClInclude`, non-code files (`.md`, `.json`) use `None` — in both cases also add a matching `<Filter>` entry in `.vcxproj.filters`. Forgetting the filter entry leaves the file visible but unfiled (no folder).
 - **Only `x64` builds work** — the x86/Win32 configuration is not maintained for C++20
 
 ### MSBuild invocation (from bash / Git Bash)
@@ -49,6 +49,7 @@ The `//m` flag enables parallel builds. Use `//v:minimal` to suppress noise; cha
 - `StratEngine/Sort.cpp` / `Sort.h` – Move ordering
 - `StratChessEvolved/game_settings.json` – Runtime player/AI configuration
 - `Docs/Roadmap.md` – Living development plan; check before starting any new work
+- `Docs/TestDesign.md` – Test coverage map and phase plan; check before adding tests
 
 ## Development Guidelines
 - Language: C++20; favor `constexpr`, RAII, move semantics, strong types
@@ -60,16 +61,34 @@ The `//m` flag enables parallel builds. Use `//v:minimal` to suppress noise; cha
 
 ## Testing & Validation
 
-### Unit tests (Catch2 v3 — repetition, move field, lightweight perft)
-Run from any directory:
+### Unit tests (Catch2 v3)
+The test binary lives under `StratChessTests/x64/Release/` (not `x64/Release/`). Run from any directory:
 ```bash
-x64/Release/StratChessTests.exe              # all tests
-x64/Release/StratChessTests.exe [repetition] # TC1-TC7, TC9 only
-x64/Release/StratChessTests.exe [moves]      # move field tests only
-x64/Release/StratChessTests.exe [perft]      # perft depth 1-4 only
+StratChessTests/x64/Release/StratChessTests.exe                    # all tests
+StratChessTests/x64/Release/StratChessTests.exe [repetition]       # repetition detection
+StratChessTests/x64/Release/StratChessTests.exe [moves]            # move field tests
+StratChessTests/x64/Release/StratChessTests.exe [perft]            # perft depth 1-4
+StratChessTests/x64/Release/StratChessTests.exe [tt]               # TranspositionTable unit tests
+StratChessTests/x64/Release/StratChessTests.exe [eval]             # evaluation position tests
+StratChessTests/x64/Release/StratChessTests.exe [tactical]         # search regression tests
 ```
-Sources: `StratChessTests/RepetitionTests.cpp`, `MoveFieldTests.cpp`, `PerftTests.cpp`
-Framework: Catch2 v3 amalgamated — `$(DepsRoot)Catch2/` (sibling of repo)
+Building the `.sln` does not always rebuild the test project. To build it explicitly:
+```bash
+"/c/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/Bin/MSBuild.exe" \
+  "StratChessTests/StratChessTests.vcxproj" //p:Configuration=Release //p:Platform=x64 //m //v:minimal
+```
+Sources: `StratChessTests/*.cpp` — Framework: Catch2 v3 amalgamated — `$(DepsRoot)Catch2/` (sibling of repo)
+
+### AIPerplex in tests
+Constructor re-enables verbose logging and leaves `Eval` null; follow this setup order:
+```cpp
+auto ai = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, depth);
+AIPerplex::SetVerboseLogging(false);             // must be AFTER Create()
+ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX); // must be before GetMove()
+Board::Instance().SetupFromFEN(fen);             // must be before GetGameInfo()
+GameInfo info = Board::Instance().GetGameInfo();
+Move m = ai->GetMove(info);
+```
 
 ### Deep perft tests
 **Must be run from the `Tests/` directory** — the executable looks for `perft_test_cases.json` in the working directory:
