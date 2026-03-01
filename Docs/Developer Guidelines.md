@@ -1,6 +1,7 @@
 ﻿# Developer Guidelines – Modern C++ Chess Engine
 ## Context
-This project focuses on developing a modern chess engine using C++20. The aim is to improve playing strength (ELO) while maintaining clarity, efficiency, and robustness in design and implementation.
+This project focuses on developing a modern chess engine using C++20. The aim is to improve playing strength (ELO) 
+while maintaining clarity, efficiency, and robustness in design and implementation.
 
 ## Objectives
 ### Performance
@@ -27,6 +28,7 @@ This project focuses on developing a modern chess engine using C++20. The aim is
 - Use only approved header-only dependencies for non-chess domains:
   * spdlog (logging)
   * nlohmann/json (configuration, serialization)
+  * Catch2 (unit testing)
 - Do not introduce new dependencies unless justified and reviewed through design documentation.
 
 ## Current Engine Features
@@ -34,9 +36,15 @@ This project focuses on developing a modern chess engine using C++20. The aim is
 - Principal Variation Search (PVS)
 - Quiescence Search
 - Transposition Tables
+- Killer Move Heuristic
+- History Heuristic
+- Threefold / Twofold Repetition Detection
 ### Key Data Structures
 - Bitboards
 - Zobrist Hashing
+- Move Representation (currently 32-bit, with plans to optimize to 16-bit for better cache performance)
+- Transposition Table Entries (fixed size, optimized layout)
+- Search Stack (for move ordering and pruning heuristics)
 
 ## Development Constraints
 - Must maintain or improve search accuracy and ELO; any regression must be explicitly justified.
@@ -48,7 +56,7 @@ This project focuses on developing a modern chess engine using C++20. The aim is
 - Favor compile-time computation (constexpr), move semantics, and zero-cost abstractions to reduce runtime overhead.
 
 ## Best Practices
-- Keep pull requests small, logically scoped, and well-documented (if moving to a Github-like setup)
+- Keep pull requests small, logically scoped, and well-documented
 - Include motivation, design reasoning, and expected impact for major changes PRs or when checking in.
 - Benchmark search speed and strength before and after optimizations.
 - Maintain consistency in formatting, naming, and file structure.
