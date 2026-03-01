@@ -39,6 +39,15 @@
     <ClCompile Include="PerftTests.cpp">
       <Filter>Source Files\Tests</Filter>
     </ClCompile>
+    <ClCompile Include="TTTests.cpp">
+      <Filter>Source Files\Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="EvalTests.cpp">
+      <Filter>Source Files\Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="TacticalTests.cpp">
+      <Filter>Source Files\Tests</Filter>
+    </ClCompile>
     <!-- Engine sources -->
     <ClCompile Include="..\StratEngine\StdAfx.cpp">
       <Filter>Source Files\Engine</Filter>
