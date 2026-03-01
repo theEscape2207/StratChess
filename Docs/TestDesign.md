@@ -146,7 +146,8 @@ Verify ordering priority: PV move → hash move → captures (MVV-LVA) → kille
 
 - En passant DoMove/UndoMove: captured pawn restored correctly
 - Castling DoMove/UndoMove: rook and king both moved and restored
-- Promotion: pawn replaced by promoted piece, restored on undo
+- Promotion move generation: white pawn b7→b8 generates `MoveType::PROMOTION_QUEEN`; capture-promotion c7xb8 generates queen promo with `PieceHelper::IsActual(m.Content)` true (these Move-field checks were in the retired `MoveGeneratorPromotionTests.h` and are not covered by perft)
+- Promotion DoMove/UndoMove: pawn replaced by promoted piece, restored on undo
 - Zobrist hash: `get_zobrist_hash()` identical before and after a DoMove/UndoMove cycle
 
 ### `[bitboard]` — Bitboard helper tests

@@ -223,5 +223,8 @@
     <None Include="..\Docs\Roadmap.md">
       <Filter>Docs</Filter>
     </None>
+    <None Include="..\Docs\TestDesign.md">
+      <Filter>Docs</Filter>
+    </None>
   </ItemGroup>
 </Project>

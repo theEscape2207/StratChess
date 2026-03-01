@@ -201,10 +201,7 @@
     <None Include="..\Docs\Engine-Readme.md" />
     <None Include="..\Docs\Improving Chess Engine ELO rating.md" />
     <None Include="..\Docs\Roadmap.md" />
-    <None Include="..\StratEngine\Tests\CHECKLIST.md" />
-    <None Include="..\StratEngine\Tests\INTEGRATION.md" />
-    <None Include="..\StratEngine\Tests\README.md" />
-    <None Include="..\StratEngine\Tests\SUMMARY.md" />
+    <None Include="..\Docs\TestDesign.md" />
     <None Include="..\Tests\perft_test_cases.json" />
     <None Include="game_settings.json" />
   </ItemGroup>
