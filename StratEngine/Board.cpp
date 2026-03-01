@@ -43,7 +43,7 @@ Board::Board()
 	mailbox_.fill(ePiece::NO_PIECE);
 }
 
-void Board::ClearBoard()
+void Board::clear_board()
 {
 	bitboards_.fill(0);
 	mailbox_.fill(ePiece::NO_PIECE);
@@ -61,7 +61,7 @@ void Board::ClearBoard()
 }
 
 // Adds a piece to all relevant bitboards and the mailbox. Updates the Zobrist hash.
-// Does NOT update material score — call AddPieceToBoard for that.
+// Does NOT update material score — call add_piece_to_board for that.
 void Board::add_piece(eSquare square, ePiece piece)
 {
 	set_bitboard_square(piece, square);
@@ -107,10 +107,10 @@ void Board::remove_piece(eSquare square, ePiece piece)
 // Clears the board first; does not set castling rights or en-passant (use SetupFromFEN).
 void Board::setup_board(const squareCol& col)
 {
-	ClearBoard();
+	clear_board();
 
 	for (const auto& sqPiece : col)
-		AddPieceToBoard(std::get<0>(sqPiece), std::get<1>(sqPiece));
+		add_piece_to_board(std::get<0>(sqPiece), std::get<1>(sqPiece));
 
 	spdlog::default_logger()->info("Custom board set up");
 }
@@ -215,33 +215,33 @@ std::string Board::ExtractFEN() const
 
 void Board::SetDefaultBoard()
 {
-	ClearBoard();
+	clear_board();
 
 	// Black pieces
-	AddPieceToBoard(ePiece::BLACK_ROOK,   a8);
-	AddPieceToBoard(ePiece::BLACK_KNIGHT, b8);
-	AddPieceToBoard(ePiece::BLACK_BISHOP, c8);
-	AddPieceToBoard(ePiece::BLACK_QUEEN,  d8);
-	AddPieceToBoard(ePiece::BLACK_KING,   e8);
-	AddPieceToBoard(ePiece::BLACK_BISHOP, f8);
-	AddPieceToBoard(ePiece::BLACK_KNIGHT, g8);
-	AddPieceToBoard(ePiece::BLACK_ROOK,   h8);
+	add_piece_to_board(ePiece::BLACK_ROOK,   a8);
+	add_piece_to_board(ePiece::BLACK_KNIGHT, b8);
+	add_piece_to_board(ePiece::BLACK_BISHOP, c8);
+	add_piece_to_board(ePiece::BLACK_QUEEN,  d8);
+	add_piece_to_board(ePiece::BLACK_KING,   e8);
+	add_piece_to_board(ePiece::BLACK_BISHOP, f8);
+	add_piece_to_board(ePiece::BLACK_KNIGHT, g8);
+	add_piece_to_board(ePiece::BLACK_ROOK,   h8);
 
 	for (int i = a7; i <= h7; i++)
-		AddPieceToBoard(ePiece::BLACK_PAWN, static_cast<eSquare>(i));
+		add_piece_to_board(ePiece::BLACK_PAWN, static_cast<eSquare>(i));
 
 	// White pieces
 	for (int i = a2; i <= h2; i++)
-		AddPieceToBoard(ePiece::WHITE_PAWN, static_cast<eSquare>(i));
+		add_piece_to_board(ePiece::WHITE_PAWN, static_cast<eSquare>(i));
 
-	AddPieceToBoard(ePiece::WHITE_ROOK,   a1);
-	AddPieceToBoard(ePiece::WHITE_KNIGHT, b1);
-	AddPieceToBoard(ePiece::WHITE_BISHOP, c1);
-	AddPieceToBoard(ePiece::WHITE_QUEEN,  d1);
-	AddPieceToBoard(ePiece::WHITE_KING,   e1);
-	AddPieceToBoard(ePiece::WHITE_BISHOP, f1);
-	AddPieceToBoard(ePiece::WHITE_KNIGHT, g1);
-	AddPieceToBoard(ePiece::WHITE_ROOK,   h1);
+	add_piece_to_board(ePiece::WHITE_ROOK,   a1);
+	add_piece_to_board(ePiece::WHITE_KNIGHT, b1);
+	add_piece_to_board(ePiece::WHITE_BISHOP, c1);
+	add_piece_to_board(ePiece::WHITE_QUEEN,  d1);
+	add_piece_to_board(ePiece::WHITE_KING,   e1);
+	add_piece_to_board(ePiece::WHITE_BISHOP, f1);
+	add_piece_to_board(ePiece::WHITE_KNIGHT, g1);
+	add_piece_to_board(ePiece::WHITE_ROOK,   h1);
 
 	spdlog::default_logger()->info("Default board set up");
 }
@@ -301,7 +301,7 @@ bool Board::DoMove(const Move& m)
 		if (MoveHelper::IsCapture(m))
 			remove_piece_from_board(m.Content, to);
 		remove_piece_from_board(PieceHelper::AsPawn(m.MovPiece), from);  // remove the pawn
-		AddPieceToBoard(m.MovPiece, to);                               // place promoted piece
+		add_piece_to_board(m.MovPiece, to);                               // place promoted piece
 		break;
 
 	case MoveType::QUEEN_CASTLE:
@@ -434,7 +434,7 @@ void Board::UndoMove(const Move& m)
 	case MoveType::CAPTURE:
 		assert(MoveHelper::IsCapture(m));
 		move_piece(m.MovPiece, m.to(), m.from());
-		AddPieceToBoard(m.Content, m.to());
+		add_piece_to_board(m.Content, m.to());
 		break;
 
 	case MoveType::DOUBLE_PAWN_PUSH:
@@ -450,9 +450,9 @@ void Board::UndoMove(const Move& m)
 		move_piece(m.MovPiece, m.to(), m.from());
 		// Restore captured pawn on the square it was taken from (behind the destination)
 		if (sideToMove_ == WHITE)
-			AddPieceToBoard(ePiece::BLACK_PAWN, SquareHelper::Calc(m.to(), +ONE_ROW));
+			add_piece_to_board(ePiece::BLACK_PAWN, SquareHelper::Calc(m.to(), +ONE_ROW));
 		else
-			AddPieceToBoard(ePiece::WHITE_PAWN, SquareHelper::Calc(m.to(), -ONE_ROW));
+			add_piece_to_board(ePiece::WHITE_PAWN, SquareHelper::Calc(m.to(), -ONE_ROW));
 		break;
 
 	case MoveType::PROMOTION_KNIGHT:
@@ -463,9 +463,9 @@ void Board::UndoMove(const Move& m)
 		remove_piece_from_board(m.MovPiece, m.to());    // remove promoted piece
 		if (MoveHelper::IsCapture(m)) {
 			assert(PieceHelper::IsActual(m.Content));
-			AddPieceToBoard(m.Content, m.to());      // restore captured piece
+			add_piece_to_board(m.Content, m.to());      // restore captured piece
 		}
-		AddPieceToBoard(PieceHelper::AsPawn(m.MovPiece), m.from());  // restore pawn
+		add_piece_to_board(PieceHelper::AsPawn(m.MovPiece), m.from());  // restore pawn
 		break;
 
 	case MoveType::QUEEN_CASTLE:
@@ -524,7 +524,7 @@ bool Board::InCheck() const noexcept
 }
 
 // Adds a piece and maintains material score.
-void Board::AddPieceToBoard(ePiece piece, eSquare sq)
+void Board::add_piece_to_board(ePiece piece, eSquare sq)
 {
 	add_piece(sq, piece);
 	material_score_[PieceHelper::Color(piece)] += PieceHelper::Value(piece);
