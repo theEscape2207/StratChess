@@ -200,9 +200,6 @@
     <ClInclude Include="..\StratEngine\Utils\Formatters.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>
-    <ClInclude Include="..\StratEngine\Tests\MoveGeneratorPromotionTests.h">
-      <Filter>Tests</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="game_settings.json">
