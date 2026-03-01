@@ -76,9 +76,6 @@ public:
 	}
 
 	// --- Test setup helpers (prefer SetupFromFEN for new tests) ---
-	void ClearBoard();
-	void SetInitialColor(eColor color) noexcept    { sideToMove_ = color; }
-	void AddPieceToBoard(ePiece piece, eSquare sq);
 
 	// Non-copyable / non-movable (singleton)
 	Board& operator=(const Board&) = delete;
@@ -96,7 +93,8 @@ private:
 
 	// --- Internal position setup ---
 	void setup_board(const squareCol&);
-
+	void clear_board();
+	
 	// --- Low-level piece manipulation (bitboard + mailbox, no material update) ---
 	void add_piece(eSquare square, ePiece piece);
 	void remove_piece(eSquare square, ePiece piece);
@@ -104,6 +102,7 @@ private:
 	void move_piece(ePiece piece, eSquare from, eSquare to);
 
 	// --- Material-tracking piece operations ---
+	void add_piece_to_board(ePiece piece, eSquare sq);
 	void remove_piece_from_board(ePiece piece, eSquare sq);
 
 	// --- Mailbox helpers ---
