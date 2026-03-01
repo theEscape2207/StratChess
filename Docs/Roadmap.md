@@ -369,15 +369,14 @@ This roadmap organizes development tasks by priority and category. Items are dra
 
 ### Infrastructure
 
-#### 🟢 Migrate test board setup from piece-by-piece API to FEN
+#### 🟢 Restrict Board's piece-by-piece setup API to private
 - **Estimate**: 1-2 hours
-- **Impact**: Allows `ClearBoard`, `SetInitialColor`, `AddPieceToBoard` to become private, shrinking the public interface further
-- **Motivation**: `MoveGeneratorPromotionTests.h` still uses the low-level triple-call pattern (`ClearBoard` + `SetInitialColor` + `AddPieceToBoard`) rather than `SetupFromFEN`, which is already used in `RepetitionTests.h` and is easier to read and maintain
+- **Impact**: Shrinks the public interface of `Board`; `SetupFromFEN` is already the canonical way to set up positions (used by all Catch2 tests and the main entry points)
+- **Motivation**: `ClearBoard`, `SetInitialColor`, and `AddPieceToBoard` are still public but no longer needed by any test code (`MoveGeneratorPromotionTests.h` was retired; all tests use FEN). Keeping them public invites misuse and complicates the Board contract.
 - **Actions**:
-  1. Convert each test case in `StratEngine/Tests/MoveGeneratorPromotionTests.h` to use `SetupFromFEN`
-  2. Remove `SetInitialColor` from the public interface (no other callers)
-  3. Move `ClearBoard` and `AddPieceToBoard` to `private:` in `Board.h`
-- **Files**: `StratEngine/Tests/MoveGeneratorPromotionTests.h`, `StratEngine/Board.h`
+  1. Verify no external callers remain for `SetInitialColor`, `ClearBoard`, `AddPieceToBoard`
+  2. Move all three to `private:` in `Board.h`
+- **Files**: `StratEngine/Board.h`
 
 #### 🟢 Fix `zobrist::initialize()` never called
 - **Estimate**: 2-3 hours
