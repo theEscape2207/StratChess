@@ -157,7 +157,7 @@ void Game::LoadConfigFileSettings()
 	reader.ReadConfigFile("game_settings.json");
 
 	// TODO: Setup board explicitly here
-	spdlog::default_logger()->info("Creating players from Config File");
+	spdlog::default_logger()->debug("Creating players from Config File");
 	//TODO: We are creating stuff we do not need (e.g. eval engine as human and NewPVLineMove event as non-iterative AI)
 	const Config::PlayerConfig whiteConfig = reader.GetPlayerFromConfig(true);
 	m_pPlayers[WHITE] = SetPlayerParams(whiteConfig);

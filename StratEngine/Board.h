@@ -118,6 +118,15 @@ private:
 		mailbox_[square] = piece;
 	}
 
+	ePiece get_captured_piece(const Move& move) const noexcept
+	{
+		if (!MoveHelper::IsCapture(move))
+			return ePiece::NO_PIECE;
+		return (move.flags() == MoveFlags::EP_CAPTURE) ? 
+			PieceHelper::OppositePawn(sideToMove_) : // EP capture is a pawn, but the captured piece is not on the destination square
+			mailbox_[move.to()];
+	}
+
 	// --- Bitboard helpers ---
 	bool clear_bitboard_square(TBitboards::size_type iBoard, eSquare square)
 	{
@@ -144,7 +153,6 @@ private:
 		sideToMove_ = (sideToMove_ == eColor::WHITE) ? eColor::BLACK : eColor::WHITE;
 		update_zobrist_side();
 	}
-	void init_hashkey();
 
 	// --- Repetition tracking ---
 	void update_threefold_rep(const Move&);
@@ -170,15 +178,14 @@ private:
 	std::vector<uint64_t> position_history_;
 	size_t last_irreversible_ply_{ 0 };
 
-	int material_score_[2]{ 0 };
+	int material_score_[NUM_COLORS]{ 0 };
 
 	// Ply-indexed undo state (pre-allocated to MAX_PLY for O(1) unmake)
 	std::array<uint64_t, MAX_PLY>  zobrist_history_{ 0 };
 	std::array<size_t,   MAX_PLY>  irreversiblePlyHistory_{ 0 };
 	std::array<GameInfo, MAX_PLY>  gameInfoHistory_{};
+	std::array<ePiece,   MAX_PLY>  capturedHistory_{ ePiece::NO_PIECE };
 
-	// Per-piece Zobrist keys (non-deterministic seed, set once at construction)
-	std::array<std::array<uint64_t, ALL_SQUARES>, ALL_PIECETYPES> allHashKeys_;
 	uint64_t zobrist_hash_{ 0 };
 };
 
@@ -190,7 +197,7 @@ private:
 // See Roadmap: "Fix zobrist::initialize() never called".
 // ============================================================================
 namespace zobrist {
-	extern std::array<std::array<std::array<uint64_t, NUM_SQUARES>, NUM_COLORS>, 6> piece_keys;
+	extern std::array<std::array<uint64_t, NUM_SQUARES>, ALL_PIECETYPES> piece_keys;
 	extern std::array<uint64_t, 16> castling_keys;
 	extern std::array<uint64_t, NUM_SQUARES> ep_keys;
 	extern uint64_t side_key;
