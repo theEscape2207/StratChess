@@ -24,7 +24,7 @@ void Config::ReadBoardSetup(const json& config) const
 	const std::string FENKey = "FEN";
 	if (0 == _strnicmp(setupType.c_str(), FENKey.c_str(), 3))
 	{
-		spdlog::default_logger()->info("FEN configuration");
+		spdlog::default_logger()->debug("FEN configuration");
 
 		const std::string FENstring = config["game"].value(FENKey, "");
 		if (FENstring.empty())
@@ -37,7 +37,7 @@ void Config::ReadBoardSetup(const json& config) const
 	}
 	else
 	{
-		spdlog::default_logger()->info("Default board selected");
+		spdlog::default_logger()->debug("Default board selected");
 		Board::Instance().SetDefaultBoard();
 	}
 }
@@ -79,7 +79,7 @@ bool Config::CheckBoardSetupData(const std::string& /*strPiece*/, const std::str
 }
 void Config::ReadConfigFile(const std::string& filename)
 {
-	spdlog::default_logger()->info("Reading Config File");
+	spdlog::default_logger()->debug("Reading Config File");
 
 	std::ifstream configFile(filename);
 	if (!configFile) {

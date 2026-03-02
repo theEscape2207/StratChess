@@ -13,19 +13,26 @@ extern std::ofstream outLegalMoves;
 
 // Zobrist key tables (defined here, declared in Board.h)
 namespace zobrist {
-	std::array<std::array<std::array<uint64_t, 64>, 2>, 6> piece_keys;
+	std::array<std::array<uint64_t, NUM_SQUARES>, ALL_PIECETYPES> piece_keys;
 	std::array<uint64_t, 16> castling_keys;
-	std::array<uint64_t, 64> ep_keys;
+	std::array<uint64_t, NUM_SQUARES> ep_keys;
 	uint64_t side_key;
 
 	void initialize() noexcept {
+		
+		// non-deterministic seed for production use (uncomment for true randomness, but beware non-reproducible hashes across runs)
+		// std::random_device rd;
+		// std::mt19937 rng(rd());
 		// Deterministic seed for reproducibility
 		std::mt19937_64 rng(0x123456789ABCDEF0ULL);
 
-		for (size_t type = 0; type < 6; ++type)
-			for (size_t color = 0; color < NUM_COLORS; ++color)
-				for (size_t sq = 0; sq < NUM_SQUARES; ++sq)
-					piece_keys[type][color][sq] = rng();
+		//std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
+		// Fills piece_keys with random 64-bit values for piece-placement Zobrist hashing.
+		for (int piece = ePiece::WHITE_PAWN; piece < ALL_PIECETYPES; ++piece) {
+			for (int square = 0; square < ALL_SQUARES; ++square) {
+				piece_keys[piece][square] = rng();
+			}
+		}
 
 		for (size_t i = 0; i < 16; ++i)
 			castling_keys[i] = rng();
@@ -39,8 +46,8 @@ namespace zobrist {
 
 Board::Board()
 {
-	init_hashkey();
 	mailbox_.fill(ePiece::NO_PIECE);
+	zobrist::initialize();
 }
 
 void Board::clear_board()
@@ -56,8 +63,6 @@ void Board::clear_board()
 	gameInfoHistory_.fill(GameInfo{});
 	material_score_[WHITE] = material_score_[BLACK] = 0;
 	zobrist_hash_ = 0;
-
-	spdlog::default_logger()->debug("Board cleared");
 }
 
 // Adds a piece to all relevant bitboards and the mailbox. Updates the Zobrist hash.
@@ -73,7 +78,7 @@ void Board::add_piece(eSquare square, ePiece piece)
 	BitBoardHelper::SetBitboardMask(bitboards_[ROTATED45R], g_bbMaskRotated45R[square]);
 	BitBoardHelper::SetBitboardMask(bitboards_[ROTATED45L], g_bbMaskRotated45L[square]);
 
-	zobrist_hash_ ^= allHashKeys_[piece][square];
+	zobrist_hash_ ^= zobrist::piece_keys[piece][square];
 
 	set_square(square, piece);
 
@@ -96,7 +101,7 @@ void Board::remove_piece(eSquare square, ePiece piece)
 	BitBoardHelper::ClearBitboardMask(bitboards_[ROTATED45R], g_bbMaskRotated45R[square]);
 	BitBoardHelper::ClearBitboardMask(bitboards_[ROTATED45L], g_bbMaskRotated45L[square]);
 
-	zobrist_hash_ ^= allHashKeys_[piece][square];
+	zobrist_hash_ ^= zobrist::piece_keys[piece][square];
 
 	clear_square(square);
 
@@ -112,7 +117,7 @@ void Board::setup_board(const squareCol& col)
 	for (const auto& sqPiece : col)
 		add_piece_to_board(std::get<0>(sqPiece), std::get<1>(sqPiece));
 
-	spdlog::default_logger()->info("Custom board set up");
+	spdlog::default_logger()->debug("Custom board set up");
 }
 
 void Board::SetupFromFEN(const std::string& fen)
@@ -140,7 +145,7 @@ void Board::SetupFromFEN(const std::string& fen)
 	gameInfo_.epSquare       = state.epSquare;
 	gameInfo_.castlingRights = state.castlingRights;
 
-	spdlog::default_logger()->info("Board set up from FEN: {}", fen);
+	spdlog::default_logger()->debug("Board set up from FEN: {}", fen);
 }
 
 std::string Board::ExtractFEN() const
@@ -243,7 +248,7 @@ void Board::SetDefaultBoard()
 	add_piece_to_board(ePiece::WHITE_KNIGHT, g1);
 	add_piece_to_board(ePiece::WHITE_ROOK,   h1);
 
-	spdlog::default_logger()->info("Default board set up");
+	spdlog::default_logger()->debug("Default board set up");
 }
 
 std::span<BITBOARD> Board::GetBitBoards() noexcept
@@ -262,7 +267,13 @@ bool Board::DoMove(const Move& m)
 	zobrist_history_[currentPly_]        = zobrist_hash_;
 
 	const eSquare from = m.from();
-	eSquare       to   = m.to();
+	const eSquare to   = m.to();
+
+	// Correct except for EP captures (NO_PIECE on to). Will be adjusted below
+
+	const auto capturedPiece = get_captured_piece(m);
+	capturedHistory_[currentPly_] = capturedPiece;
+	assert(capturedPiece == m.Content);	// Validates captured piece matches move content
 
 	switch (MoveHelper::AsType(m))
 	{
@@ -288,7 +299,7 @@ bool Board::DoMove(const Move& m)
 		assert(MoveHelper::IsCapture(m) && PieceHelper::IsPawn(m.Content));
 		// Captured pawn sits one rank behind the destination square
 		const eSquare epCapturedPawnSquare = SquareHelper::PreviousRow(to, sideToMove_);
-		remove_piece_from_board(PieceHelper::OppositePawn(sideToMove_), epCapturedPawnSquare);
+		remove_piece_from_board(capturedPiece, epCapturedPawnSquare);
 		move_piece(m);
 		break;
 	}
@@ -413,9 +424,13 @@ void Board::UndoMove(const Move& m)
 	currentPly_--;
 
 	// Restore saved state
-	gameInfo_              = gameInfoHistory_[currentPly_];
-	last_irreversible_ply_ = irreversiblePlyHistory_[currentPly_];
-	zobrist_hash_          = zobrist_history_[currentPly_];
+	gameInfo_                = gameInfoHistory_[currentPly_];
+	last_irreversible_ply_   = irreversiblePlyHistory_[currentPly_];
+	zobrist_hash_            = zobrist_history_[currentPly_];
+	const auto capturedPiece = capturedHistory_[currentPly_];
+	const auto from			 = m.from();
+	const auto to			 = m.to();
+	const auto movingPiece	 = m.MovPiece;
 
 	sideToMove_ = (sideToMove_ == eColor::WHITE) ? eColor::BLACK : eColor::WHITE;
 
@@ -427,32 +442,32 @@ void Board::UndoMove(const Move& m)
 	switch (MoveHelper::AsType(m))
 	{
 	case MoveType::QUIET:
-		assert(!PieceHelper::IsActual(m.Content));
-		move_piece(m.MovPiece, m.to(), m.from());
+		assert(!PieceHelper::IsActual(capturedPiece));
+		move_piece(movingPiece, to, from);
 		break;
 
 	case MoveType::CAPTURE:
 		assert(MoveHelper::IsCapture(m));
-		move_piece(m.MovPiece, m.to(), m.from());
-		add_piece_to_board(m.Content, m.to());
+		move_piece(movingPiece, to, from);
+		add_piece_to_board(capturedPiece, to);
 		break;
 
 	case MoveType::DOUBLE_PAWN_PUSH:
-		assert(sideToMove_ == PieceHelper::Color(m.MovPiece));
-		assert(!PieceHelper::IsActual(m.Content));
+		assert(sideToMove_ == PieceHelper::Color(movingPiece));
+		assert(!PieceHelper::IsActual(capturedPiece));
 		assert(MoveHelper::IsPawnMove(m));
-		move_piece(m.MovPiece, m.to(), m.from());
+		move_piece(movingPiece, to, from);
 		break;
 
 	case MoveType::EP_CAPTURE:
 		assert(MoveHelper::IsPawnMove(m));
-		assert(MoveHelper::IsCapture(m) && PieceHelper::IsPawn(m.Content));
-		move_piece(m.MovPiece, m.to(), m.from());
+		assert(MoveHelper::IsCapture(m) && PieceHelper::IsPawn(capturedPiece));
+		move_piece(movingPiece, to, from);
 		// Restore captured pawn on the square it was taken from (behind the destination)
 		if (sideToMove_ == WHITE)
-			add_piece_to_board(ePiece::BLACK_PAWN, SquareHelper::Calc(m.to(), +ONE_ROW));
+			add_piece_to_board(ePiece::BLACK_PAWN, SquareHelper::Calc(to, +ONE_ROW));
 		else
-			add_piece_to_board(ePiece::WHITE_PAWN, SquareHelper::Calc(m.to(), -ONE_ROW));
+			add_piece_to_board(ePiece::WHITE_PAWN, SquareHelper::Calc(to, -ONE_ROW));
 		break;
 
 	case MoveType::PROMOTION_KNIGHT:
@@ -460,53 +475,53 @@ void Board::UndoMove(const Move& m)
 	case MoveType::PROMOTION_ROOK:
 	case MoveType::PROMOTION_QUEEN:
 		assert(!MoveHelper::IsPawnMove(m));
-		remove_piece_from_board(m.MovPiece, m.to());    // remove promoted piece
+		remove_piece_from_board(movingPiece, to);    // remove promoted piece
 		if (MoveHelper::IsCapture(m)) {
-			assert(PieceHelper::IsActual(m.Content));
-			add_piece_to_board(m.Content, m.to());      // restore captured piece
+			assert(PieceHelper::IsActual(capturedPiece));
+			add_piece_to_board(capturedPiece, to);      // restore captured piece
 		}
-		add_piece_to_board(PieceHelper::AsPawn(m.MovPiece), m.from());  // restore pawn
+		add_piece_to_board(PieceHelper::AsPawn(movingPiece), from);  // restore pawn
 		break;
 
 	case MoveType::QUEEN_CASTLE:
-		assert(m.from() == e1 || m.from() == e8);
-		assert(PieceHelper::IsKing(GetPiece(m.to())));
+		assert(from == e1 || from == e8);
+		assert(PieceHelper::IsKing(GetPiece(to)));
 		assert(MoveHelper::IsKingMove(m));
-		switch (m.to())
+		switch (to)
 		{
 		case c1:  // Move rook back from d1|d8 to a1|a8
 		case c8:
-			assert(PieceHelper::IsNoPiece(GetPiece(m.from())));
-			assert(PieceHelper::IsNoPiece(GetPiece(m.to() - 1)));
-			assert(PieceHelper::IsNoPiece(GetPiece(m.to() - 2)));
+			assert(PieceHelper::IsNoPiece(GetPiece(from)));
+			assert(PieceHelper::IsNoPiece(GetPiece(to - 1)));
+			assert(PieceHelper::IsNoPiece(GetPiece(to - 2)));
 			move_piece(PieceHelper::AsPiece(ROOK, sideToMove_),
-				SquareHelper::Calc(m.to(), +1), SquareHelper::Calc(m.to(), -2));
+				SquareHelper::Calc(to, +1), SquareHelper::Calc(to, -2));
 			break;
 		default:
 			assert(!"Invalid castling 'to' square");
 			break;
 		}
-		move_piece(m.MovPiece, m.to(), m.from());  // restore king
+		move_piece(movingPiece, to, from);  // restore king
 		break;
 
 	case MoveType::KING_CASTLE:
-		assert(m.from() == e1 || m.from() == e8);
-		assert(PieceHelper::IsKing(GetPiece(m.to())));
+		assert(from == e1 || from == e8);
+		assert(PieceHelper::IsKing(GetPiece(to)));
 		assert(MoveHelper::IsKingMove(m));
-		switch (m.to())
+		switch (to)
 		{
 		case g1:  // Move rook back from f1|f8 to h1|h8
 		case g8:
-			assert(PieceHelper::IsNoPiece(GetPiece(m.from())));
-			assert(PieceHelper::IsNoPiece(GetPiece(m.to() + 1)));
+			assert(PieceHelper::IsNoPiece(GetPiece(from)));
+			assert(PieceHelper::IsNoPiece(GetPiece(to + 1)));
 			move_piece(PieceHelper::AsPiece(ROOK, sideToMove_),
-				SquareHelper::Calc(m.to(), -1), SquareHelper::Calc(m.to(), +1));
+				SquareHelper::Calc(to, -1), SquareHelper::Calc(to, +1));
 			break;
 		default:
 			assert(!"Invalid castling 'to' square");
 			break;
 		}
-		move_piece(m.MovPiece, m.to(), m.from());  // restore king
+		move_piece(movingPiece, to, from);  // restore king
 		break;
 
 	default:
@@ -645,20 +660,6 @@ std::ostream& operator<<(std::ostream& os, const Board& board)
 
 	os << "\n   A B C D E F G H\n\n";
 	return os;
-}
-
-// Fills allHashKeys_ with random 64-bit values for piece-placement Zobrist hashing.
-// Uses a non-deterministic seed so keys differ across runs — this is intentional for
-// collision avoidance, but means the hash is not reproducible across process restarts.
-void Board::init_hashkey()
-{
-	std::random_device rd;
-	std::mt19937 rng(rd());
-	std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
-
-	for (int piece = ePiece::WHITE_PAWN; piece < ALL_PIECETYPES; ++piece)
-		for (int square = 0; square < ALL_SQUARES; ++square)
-			allHashKeys_[piece][square] = dist(rng);
 }
 
 /**
