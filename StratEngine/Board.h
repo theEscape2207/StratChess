@@ -144,7 +144,6 @@ private:
 		sideToMove_ = (sideToMove_ == eColor::WHITE) ? eColor::BLACK : eColor::WHITE;
 		update_zobrist_side();
 	}
-	void init_hashkey();
 
 	// --- Repetition tracking ---
 	void update_threefold_rep(const Move&);
@@ -177,8 +176,6 @@ private:
 	std::array<size_t,   MAX_PLY>  irreversiblePlyHistory_{ 0 };
 	std::array<GameInfo, MAX_PLY>  gameInfoHistory_{};
 
-	// Per-piece Zobrist keys (non-deterministic seed, set once at construction)
-	std::array<std::array<uint64_t, ALL_SQUARES>, ALL_PIECETYPES> allHashKeys_;
 	uint64_t zobrist_hash_{ 0 };
 };
 

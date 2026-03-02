@@ -13,19 +13,26 @@ extern std::ofstream outLegalMoves;
 
 // Zobrist key tables (defined here, declared in Board.h)
 namespace zobrist {
-	std::array<std::array<std::array<uint64_t, 64>, 2>, 6> piece_keys;
+	std::array<std::array<uint64_t, NUM_SQUARES>, ALL_PIECETYPES> piece_keys;
 	std::array<uint64_t, 16> castling_keys;
-	std::array<uint64_t, 64> ep_keys;
+	std::array<uint64_t, NUM_SQUARES> ep_keys;
 	uint64_t side_key;
 
 	void initialize() noexcept {
+		
+		// non-deterministic seed for production use (uncomment for true randomness, but beware non-reproducible hashes across runs)
+		// std::random_device rd;
+		// std::mt19937 rng(rd());
 		// Deterministic seed for reproducibility
 		std::mt19937_64 rng(0x123456789ABCDEF0ULL);
 
-		for (size_t type = 0; type < 6; ++type)
-			for (size_t color = 0; color < NUM_COLORS; ++color)
-				for (size_t sq = 0; sq < NUM_SQUARES; ++sq)
-					piece_keys[type][color][sq] = rng();
+		//std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
+		// Fills piece_keys with random 64-bit values for piece-placement Zobrist hashing.
+		for (int piece = ePiece::WHITE_PAWN; piece < ALL_PIECETYPES; ++piece) {
+			for (int square = 0; square < ALL_SQUARES; ++square) {
+				piece_keys[piece][square] = rng();
+			}
+		}
 
 		for (size_t i = 0; i < 16; ++i)
 			castling_keys[i] = rng();
@@ -39,8 +46,8 @@ namespace zobrist {
 
 Board::Board()
 {
-	init_hashkey();
 	mailbox_.fill(ePiece::NO_PIECE);
+	zobrist::initialize();
 }
 
 void Board::clear_board()
@@ -73,7 +80,7 @@ void Board::add_piece(eSquare square, ePiece piece)
 	BitBoardHelper::SetBitboardMask(bitboards_[ROTATED45R], g_bbMaskRotated45R[square]);
 	BitBoardHelper::SetBitboardMask(bitboards_[ROTATED45L], g_bbMaskRotated45L[square]);
 
-	zobrist_hash_ ^= allHashKeys_[piece][square];
+	zobrist_hash_ ^= zobrist::piece_keys[piece][square];
 
 	set_square(square, piece);
 
@@ -96,7 +103,7 @@ void Board::remove_piece(eSquare square, ePiece piece)
 	BitBoardHelper::ClearBitboardMask(bitboards_[ROTATED45R], g_bbMaskRotated45R[square]);
 	BitBoardHelper::ClearBitboardMask(bitboards_[ROTATED45L], g_bbMaskRotated45L[square]);
 
-	zobrist_hash_ ^= allHashKeys_[piece][square];
+	zobrist_hash_ ^= zobrist::piece_keys[piece][square];
 
 	clear_square(square);
 
@@ -645,20 +652,6 @@ std::ostream& operator<<(std::ostream& os, const Board& board)
 
 	os << "\n   A B C D E F G H\n\n";
 	return os;
-}
-
-// Fills allHashKeys_ with random 64-bit values for piece-placement Zobrist hashing.
-// Uses a non-deterministic seed so keys differ across runs — this is intentional for
-// collision avoidance, but means the hash is not reproducible across process restarts.
-void Board::init_hashkey()
-{
-	std::random_device rd;
-	std::mt19937 rng(rd());
-	std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
-
-	for (int piece = ePiece::WHITE_PAWN; piece < ALL_PIECETYPES; ++piece)
-		for (int square = 0; square < ALL_SQUARES; ++square)
-			allHashKeys_[piece][square] = dist(rng);
 }
 
 /**
