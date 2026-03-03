@@ -32,7 +32,6 @@ static constexpr const char* FEN_CASTLING =
 
 namespace {
 
-// Phase 3: MakeQuiet no longer stores the moving piece; just pass from/to.
 void apply_quiet(Board& board, eSquare from, eSquare to)
 {
     auto m = MoveFactory::MakeQuiet(from, to);

@@ -69,7 +69,7 @@ struct GameInfo
 	void UpdateCastlingState(const Move& m, ePiece movPiece) noexcept
 	{
 		auto sideToMove = PieceHelper::Color(movPiece);
-		if (MoveHelper::IsKingMove(m, movPiece)) {
+		if (PieceHelper::IsKing(movPiece)) {
 			castlingRights &= ~(sideToMove == eColor::WHITE
 				? CastlingRights::WHITE_BOTH
 				: CastlingRights::BLACK_BOTH);
@@ -92,7 +92,7 @@ struct GameInfo
 
 	void UpdateFiftyMovesState(const Move& move, ePiece movPiece) noexcept
 	{
-		if (MoveHelper::IsCapture(move) || MoveHelper::IsPawnMove(move, movPiece))
+		if (MoveHelper::IsCapture(move) || MoveHelper::IsPawnMove(movPiece))
 		{
 			fiftyCount = 0;	// if so, then reset counter
 			assert(gameState == GameStates::STILL_PLAYING);

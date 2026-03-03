@@ -327,7 +327,7 @@ int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, Tra
 			// Guard captures: store_killer() filters them, but defensive check here too
 			const bool isKiller0 = !isCapture && (mv == killers_[ply][0]);
 			const bool isKiller1 = !isCapture && (mv == killers_[ply][1]);
-			const int  mvv_lva = Move::Value(mv, m_Board.GetEffectiveMovPiece(mv), m_Board.GetCapturedPiece(mv));
+			const int  mvv_lva = MoveHelper::Value(mv, m_Board.GetEffectiveMovPiece(mv), m_Board.GetCapturedPiece(mv));
 
 			if (isKiller0)						s = 900'000;
 			else if (isKiller1)					s = 800'000;
@@ -529,10 +529,10 @@ int AIPerplex::quiescence(int alpha, int beta, int qsearch_depth, int ply, Trans
 	for (const auto& move : moveList)
 	{
 		// Delta pruning: skip captures whose best-case material gain cannot raise alpha.
-		// stand_pat is already the alpha lower-bound; Move::Value() gives the MVV-LVA
+		// stand_pat is already the alpha lower-bound; MoveHelper::Value() gives the MVV-LVA
 		// score which is conservatively ≤ the raw captured-piece value, so pruning is safe.
 		// Promotions always score ≥ 800 (queen − pawn gain) and are never pruned.
-		if (!in_check && stand_pat + Move::Value(move, m_Board.GetEffectiveMovPiece(move), m_Board.GetCapturedPiece(move)) + tuning_.delta_pruning_margin < alpha)
+		if (!in_check && stand_pat + MoveHelper::Value(move, m_Board.GetEffectiveMovPiece(move), m_Board.GetCapturedPiece(move)) + tuning_.delta_pruning_margin < alpha)
 			continue;
 
 		if (!m_Board.DoMove(move))

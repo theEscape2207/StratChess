@@ -9,11 +9,11 @@
 // Bits  6-11: To square (0-63)
 // Bits 12-15: Move flags (MoveType, 0-15)
 //   Flag bit layout: bit3 = promotion, bit2 = capture
-// The captured piece (Content) has been removed from the struct (Phase 4).
-//   Board::capturedHistory_[] stores it during DoMove/UndoMove for undo.
-//   For MVV-LVA sorting, callers use Board::GetCapturedPiece(move).
-// The moving piece (MovPiece) was removed in Phase 3.
-//   Callers obtain it via Board::GetEffectiveMovPiece() before DoMove.
+//
+// Neither the moving piece nor the captured piece is stored in the move:
+//   Moving piece  — obtain via Board::GetEffectiveMovPiece() before DoMove.
+//   Captured piece — Board::capturedHistory_[] stores it during DoMove for undo support;
+//                    obtain via Board::GetCapturedPiece(move) for MVV-LVA scoring.
 class Move final
 {
     static constexpr uint16_t EMPTY_MOVE = 0xFFFF;
@@ -73,67 +73,9 @@ public:
         return data == EMPTY_MOVE;
     }
 
-    // Sets the move data fields
-    // Note: Used for performance reasons to avoid constructing new Move objects all the time
-    // Remark: Type is defaulted to QUIET
-    constexpr void SetMove(eSquare from, eSquare to) noexcept
-    {
-        SetMove(from, to, MoveType::QUIET);
-    }
     constexpr void SetMove(eSquare from, eSquare to, MoveType moveType) noexcept
     {
         data = static_cast<uint16_t>(from | (to << 6) | static_cast<uint8_t>(moveType) << 12);
-    }
-
-    // Return an evaluation of the material value consequences of the Move.
-    // movPiece: the effective moving piece (obtain via Board::GetEffectiveMovPiece before DoMove).
-    // content:  the captured piece (obtain via Board::GetCapturedPiece before DoMove; NO_PIECE if quiet).
-    // Note: Currently only used for capture move sorting.
-    static int Value(_In_ const Move& move, _In_ ePiece movPiece, _In_ ePiece content) noexcept
-    {
-        // Algorithm:
-        // ----------
-        // Primarily: return material value of any captured piece minus the value of the moving piece
-        // That way we can rank the interesting captures and get the pawn-takes-bishop before queen-takes-bishop
-        // Note: We are dividing the move value by 16 (first binary value over Queen factor) to reflect that
-        // 1) queen-takes-queen is way more interesting avenue than bishop takes pawn
-        // 2) queen-takes-pawn (900 and 100) is more interesting than pawn-moves-normally (100) and
-        // 3) queen-takes-queen (900-900) is more interest than pawn-takes-pawn (100-100), but also
-        // 4) Pawn move (0-100/16) is more interesting than Rook move (0 - 500/16)
-        // Formula: Captured piece value + (Promotion value diff) - Moving piece/16
-        // Example: Queen takes Pawn: 100 - 900/16 ~= +43.75, Pawn move: 0 - 100/16 ~= -6.6
-        // Best move is then pawn-takes-queen and gets promoted to a Queen: 900 + (900 - 100) - 100/16 = ~1693
-
-        int captureScore = 0;
-        const auto movingPieceScore = PieceHelper::Value(movPiece) >> 4;
-        const auto type = static_cast<MoveType>(move.flags());
-        switch (type)
-        {
-        case MoveType::QUIET:
-        case MoveType::DOUBLE_PAWN_PUSH:
-        case MoveType::QUEEN_CASTLE:
-        case MoveType::KING_CASTLE:
-			return (movingPieceScore * -1);	// TODO: Check what value this provides castling? Not used atm
-        case MoveType::CAPTURE:
-        case MoveType::EP_CAPTURE:
-            captureScore = PieceHelper::Value(content);
-            return captureScore - movingPieceScore;
-        case MoveType::PROMOTION_KNIGHT:
-        case MoveType::PROMOTION_BISHOP:
-        case MoveType::PROMOTION_ROOK:
-        case MoveType::PROMOTION_QUEEN:
-        case MoveType::PROMOTION_KNIGHT_CAPTURE:
-        case MoveType::PROMOTION_BISHOP_CAPTURE:
-        case MoveType::PROMOTION_ROOK_CAPTURE:
-		case MoveType::PROMOTION_QUEEN_CAPTURE:	// +: Queen (etc) and any Capture piece value; -: Pawn value
-            captureScore = PieceHelper::Value(movPiece) - PieceHelper::Value(ePiece::WHITE_PAWN);
-			if (PieceHelper::IsActual(content))
-            {
-                captureScore += PieceHelper::Value(content);
-            }
-            return captureScore - static_cast<int>(g_iPieceValues[PAWN] >> 4); // Promote is encoded differently. Subtract the known moving piece value
-        }
-        return 0;
     }
 
     bool operator==(_In_ const Move& rhs) const noexcept
@@ -174,8 +116,8 @@ public:
 };
 // End Class Move
 
-// Phase 4: Move is now a pure 16-bit value — no ePiece Content field.
-static_assert(sizeof(Move) == 2, "Move must be exactly 2 bytes after Phase 4 refactoring");
+// Move is a pure 16-bit value: bits 0-5 = from, 6-11 = to, 12-15 = flags.
+static_assert(sizeof(Move) == 2, "Move must be exactly 2 bytes");
 
 // Move flags — mirror of MoveType enum for constexpr use in get_captured_piece and factory helpers.
 namespace MoveFlags {

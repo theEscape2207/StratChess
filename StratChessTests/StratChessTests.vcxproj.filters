@@ -33,9 +33,6 @@
     <ClCompile Include="RepetitionTests.cpp">
       <Filter>Source Files\Tests</Filter>
     </ClCompile>
-    <ClCompile Include="MoveFieldTests.cpp">
-      <Filter>Source Files\Tests</Filter>
-    </ClCompile>
     <ClCompile Include="PerftTests.cpp">
       <Filter>Source Files\Tests</Filter>
     </ClCompile>

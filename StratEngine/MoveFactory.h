@@ -4,10 +4,9 @@
 #include "PieceHelper.h"
 
 // Small collection of helpers to construct Moves in a clear, centralized way.
-// Phase 3: MovPiece has been removed from the Move struct.
-// Phase 4: Content (captured piece) has been removed from the Move struct.
+// Neither the moving piece nor the captured piece is stored in the Move struct.
 //   Captured-piece information is tracked in Board::capturedHistory_[] during DoMove/UndoMove.
-//   Whether a move captures is now encoded in the MoveType flag (CAPTURE_BIT, bit 2).
+//   Whether a move captures is encoded in the MoveType flag (CAPTURE_BIT, bit 2).
 namespace MoveFactory {
 
 	// General make-move helper. Only the move type matters now — no captured piece stored.
