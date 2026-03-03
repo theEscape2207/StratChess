@@ -77,7 +77,7 @@ std::string Move::Output() const
 	case MoveType::PROMOTION_ROOK_CAPTURE:
 	case MoveType::PROMOTION_QUEEN_CAPTURE:
 	{
-		// Capture bit (bit 2) encodes whether the promotion also captures (Phase 4: no Content field).
+		// Capture bit (bit 2) encodes whether the promotion also captures.
 		char isCapture = (flags() & MoveFlags::CAPTURE_BIT) ? 'x' : '-';
 		output << strFrom << isCapture << strTo;
 	}
@@ -125,7 +125,7 @@ std::string Move::Output(ePiece movPiece) const
 	case MoveType::PROMOTION_ROOK_CAPTURE:
 	case MoveType::PROMOTION_QUEEN_CAPTURE:
 	{
-		// Capture bit (bit 2) encodes whether the promotion also captures (Phase 4: no Content field).
+		// Capture bit (bit 2) encodes whether the promotion also captures.
 		char isCapture = (flags() & MoveFlags::CAPTURE_BIT) ? 'x' : '-';
 		// Piece prefix is the pawn (lower-case = black, upper-case = white via ShortName)
 		output << g_cPieceNames[PieceHelper::AsPawn(movPiece)] << strFrom <<

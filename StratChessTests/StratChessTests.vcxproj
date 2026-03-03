@@ -157,7 +157,6 @@
     <ClCompile Include="StratChessTests.cpp" />
     <!-- Catch2 test suites -->
     <ClCompile Include="RepetitionTests.cpp" />
-    <ClCompile Include="MoveFieldTests.cpp" />
     <ClCompile Include="PerftTests.cpp" />
     <ClCompile Include="TTTests.cpp" />
     <ClCompile Include="EvalTests.cpp" />

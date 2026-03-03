@@ -1,10 +1,8 @@
 // BoardTests.cpp — Catch2 test suite for Board DoMove/UndoMove completeness
 //
-// Phase 1 board tests covering en passant, castling, promotion, and Zobrist
-// hash invariants. These verify Move struct Phase 3 correctness (MovPiece
-// removed from Move; piece information flows through Board::GetEffectiveMovPiece).
-//
-// Added as part of Phase 3 of the Move layout refactoring (March 2026).
+// Covers en passant, castling, promotion, and Zobrist hash invariants.
+// Piece information flows through Board::GetEffectiveMovPiece / GetCapturedPiece
+// rather than being stored in the Move struct.
 
 #include <catch_amalgamated.hpp>
 #include "Board.h"
@@ -117,7 +115,7 @@ TEST_CASE("Board - Capture-promotion yields PROMOTION_QUEEN_CAPTURE type", "[boa
     MoveGenerator::ComputeLegalMoves(info, moveList);
 
     // Capture-promotion: c7 captures rook on b8, promotes to queen.
-    // Phase 4: encoded as PROMOTION_QUEEN_CAPTURE (bits 3+2 both set); no Content field.
+    // Encoded as PROMOTION_QUEEN_CAPTURE (capture bit 2 + promotion bit 3 both set).
     const auto it = std::find_if(moveList.begin(), moveList.end(), [](const Move& m) {
         return m.from() == c7 && m.to() == b8
             && MoveHelper::AsType(m) == MoveType::PROMOTION_QUEEN_CAPTURE;

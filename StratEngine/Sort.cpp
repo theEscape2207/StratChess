@@ -96,7 +96,7 @@ void MoveSorter::SortMovesByValue(MoveList& moveList, size_t captures, const Boa
 		std::sort(moveList.begin() + static_cast<int>(start),
 			moveList.begin() + static_cast<int>(start + captures),
 			[&board](const Move& a, const Move& b) {
-				return Move::Value(a, board.GetEffectiveMovPiece(a), board.GetCapturedPiece(a))
-					 > Move::Value(b, board.GetEffectiveMovPiece(b), board.GetCapturedPiece(b));
+				return MoveHelper::Value(a, board.GetEffectiveMovPiece(a), board.GetCapturedPiece(a))
+					 > MoveHelper::Value(b, board.GetEffectiveMovPiece(b), board.GetCapturedPiece(b));
 			});
 }

@@ -40,7 +40,6 @@ public:
 	// For CAPTURE / PROMOTION_*_CAPTURE: the piece on move.to().
 	// For EP_CAPTURE: the opposite-side pawn (not on move.to()).
 	// For all other move types: NO_PIECE.
-	// Phase 4: replaces move.Content (removed from Move struct).
 	ePiece GetCapturedPiece(const Move& m) const noexcept;
 
 	// Returns true if any square covered by mask is occupied
@@ -108,6 +107,7 @@ private:
 	void clear_board();
 	
 	// --- Low-level piece manipulation (bitboard + mailbox, no material update) ---
+	// Note: these also update zobrist_hash_ as a side-effect.
 	void add_piece(eSquare square, ePiece piece);
 	void remove_piece(eSquare square, ePiece piece);
 	void move_piece(ePiece piece, eSquare from, eSquare to);

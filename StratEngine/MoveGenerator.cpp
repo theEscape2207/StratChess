@@ -301,7 +301,7 @@ void MoveGenerator::AddOfficerMoves(MoveList& moveList, BITBOARD bbAttack, eSqua
 		const auto to = Board::GetFirstPiece(bbAttack);
 		const bool isCapture = PieceHelper::IsActual(Board::Instance().GetPiece(to));
 		const MoveType moveType = isCapture ? MoveType::CAPTURE : MoveType::QUIET;
-		// Phase 4: captured piece is no longer stored in Move; MoveType flag encodes whether it's a capture.
+		// MoveType flag encodes whether it's a capture; captured piece is retrieved from the board when needed.
 		moveList.push(MoveFactory::MakeMove(from, to, moveType));
 
 		Bits::clearBitsRef(bbAttack, g_bbMask[to]);	// Done, clear this square
@@ -405,7 +405,7 @@ void MoveGenerator::AddCastleMoves(MoveList& moveList, eColor color, const BITBO
 // Bemaerk: color er for bonden i traekket
 // Remarks: Move must be a pawn capture move (including en-passant).
 // Also handles promotion captures.
-// color: the color of the moving pawn (passed explicitly — Phase 3: MovPiece removed from Move).
+// color: the color of the moving pawn (passed explicitly; the moving piece is not stored in Move).
 void MoveGenerator::AddPawnCaptures(MoveList& moveList, const BITBOARD* bbBitBoards, Move move, eColor color)
 {
 	// Prerequisites: Move must be a pawn capture move (including en-passant).
