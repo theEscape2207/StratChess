@@ -228,9 +228,14 @@ namespace Testing {
 				case MoveType::PROMOTION_ROOK:
 				case MoveType::PROMOTION_QUEEN:
 					result.promotions++;
-					if (move.Content != NO_PIECE) {
-						result.captures++;
-					}
+					break;
+				case MoveType::PROMOTION_KNIGHT_CAPTURE:
+				case MoveType::PROMOTION_BISHOP_CAPTURE:
+				case MoveType::PROMOTION_ROOK_CAPTURE:
+				case MoveType::PROMOTION_QUEEN_CAPTURE:
+					// Phase 4: capture-promotions have their own MoveType (CAPTURE_BIT + PROMOTION_BIT).
+					result.promotions++;
+					result.captures++;
 					break;
 				default:
 					break;

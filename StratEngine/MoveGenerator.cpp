@@ -299,13 +299,11 @@ void MoveGenerator::AddOfficerMoves(MoveList& moveList, BITBOARD bbAttack, eSqua
 	while (bbAttack)
 	{
 		const auto to = Board::GetFirstPiece(bbAttack);
-		const ePiece captured = Board::Instance().GetPiece(to);
-		auto moveType = (PieceHelper::IsActual(captured) ? MoveType::CAPTURE : MoveType::QUIET);
-		if(moveType == MoveType::QUIET)
-			assert(captured == ePiece::NO_PIECE);
-		// Use factory to build and push
-		moveList.push(MoveFactory::MakeMove(from, to, moveType, captured));
-		
+		const bool isCapture = PieceHelper::IsActual(Board::Instance().GetPiece(to));
+		const MoveType moveType = isCapture ? MoveType::CAPTURE : MoveType::QUIET;
+		// Phase 4: captured piece is no longer stored in Move; MoveType flag encodes whether it's a capture.
+		moveList.push(MoveFactory::MakeMove(from, to, moveType));
+
 		Bits::clearBitsRef(bbAttack, g_bbMask[to]);	// Done, clear this square
 	}
 }
@@ -421,35 +419,33 @@ void MoveGenerator::AddPawnCaptures(MoveList& moveList, const BITBOARD* bbBitBoa
 	// The moving pawn must be on the bitboard square
 	assert(Bits::isAnyBitSet(bbBitBoards[color], g_bbMask[from]));
 
-	const Board& board = Board::Instance();
+	[[maybe_unused]] const Board& board = Board::Instance();
 
 	// Normal capture?
 	if (IsCapture(bbBitBoards, color, move))
 	{
-		const ePiece taken = board.GetPiece(to);
-		assert(PieceHelper::IsActual(taken));
-		assert(PieceHelper::Color(taken) != color);
+		assert(PieceHelper::IsActual(board.GetPiece(to)));
+		assert(PieceHelper::Color(board.GetPiece(to)) != color);
 
 		// Promotion capture, too?
 		if (!IsAnyBackRow(to))		// Nope, normal capture - all done
 		{
-			moveList.push(MoveFactory::MakeCapture(from, to, taken));
+			moveList.push(MoveFactory::MakeCapture(from, to));
 		}
 		else
-		{	// Promotion Captures — add each of the 4 promotions via factory
-			moveList.push(MoveFactory::MakePromotion(from, to, PieceHelper::AsPiece(QUEEN,  color), taken));
-			moveList.push(MoveFactory::MakePromotion(from, to, PieceHelper::AsPiece(ROOK,   color), taken));
-			moveList.push(MoveFactory::MakePromotion(from, to, PieceHelper::AsPiece(BISHOP, color), taken));
-			moveList.push(MoveFactory::MakePromotion(from, to, PieceHelper::AsPiece(KNIGHT, color), taken));
+		{	// Promotion Captures — add each of the 4 promotions (isCapture=true selects PROMOTION_*_CAPTURE type)
+			moveList.push(MoveFactory::MakePromotion(from, to, PieceHelper::AsPiece(QUEEN,  color), true));
+			moveList.push(MoveFactory::MakePromotion(from, to, PieceHelper::AsPiece(ROOK,   color), true));
+			moveList.push(MoveFactory::MakePromotion(from, to, PieceHelper::AsPiece(BISHOP, color), true));
+			moveList.push(MoveFactory::MakePromotion(from, to, PieceHelper::AsPiece(KNIGHT, color), true));
 		}
 	}
 	// Otherwise it must be an en-passant capture
 	else
 	{
-		const eSquare epWhere = SquareHelper::PreviousRow(to, color);
+		[[maybe_unused]] const eSquare epWhere = SquareHelper::PreviousRow(to, color);
 		assert(Bits::isAnyBitSet(bbBitBoards[BLACK - color], g_bbMask[epWhere]));	// There must be an opponent pawn here
-		const ePiece captured = board.GetPiece(epWhere);
-		moveList.push(MoveFactory::MakeEnPassant(from, to, captured));
+		moveList.push(MoveFactory::MakeEnPassant(from, to));
 	}
 }
 

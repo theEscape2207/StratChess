@@ -45,10 +45,11 @@ namespace MoveHelper
 		return (PieceHelper::IsOfPiece(movPiece, type) && (move.from() == square));
 	}
 
-	// Is this piece capture from this square?
-	[[nodiscard]] static inline bool IsPieceCapturedAt(_In_ const Move& move, ePiece type, eSquare square) noexcept
+	// Is this piece captured at this square?
+	// content: the captured piece (obtain via Board::GetCapturedPiece before DoMove; Phase 4: no Content field).
+	[[nodiscard]] static inline bool IsPieceCapturedAt(_In_ const Move& move, _In_ ePiece content, ePiece type, eSquare square) noexcept
 	{
-		return (PieceHelper::IsOfPiece(move.Content, type) && (move.to() == square));
+		return (PieceHelper::IsOfPiece(content, type) && (move.to() == square));
 	}
 
 	// Is the moving piece a pawn
@@ -66,45 +67,23 @@ namespace MoveHelper
 	*	Move type methods
 	*/
 
-
 	//************************************
 	// Method:      IsCapture
-	// Description: A move can be a capture upon
-	// FullName:    public MoveHelper::IsCapture
-	// Returns:     bool - returns true if the move is a Capture (also through En Passant and Promotes) and false otherwise
-	// Parameter:   const Move& move - The Move
-	// Remark:      Code is duplicated due to asserts being added
-	//				TODO: Should refactor later to avoid code-duplication
+	// Returns:     true if the move captures a piece (CAPTURE, EP_CAPTURE, or any PROMOTION_*_CAPTURE).
+	// Phase 4: determined purely from flag bit 2 (CAPTURE_BIT); no Content field needed.
 	//************************************
-	[[nodiscard]] static bool IsCapture(_In_ const Move& move ) noexcept
+	[[nodiscard]] static inline bool IsCapture(_In_ const Move& move) noexcept
 	{
-		switch(AsType(move))
-		{
-		case MoveType::CAPTURE:
-		case MoveType::EP_CAPTURE:
-			assert( PieceHelper::IsActual(move.Content) );
-			return true;
-		case MoveType::QUIET:
-		case MoveType::DOUBLE_PAWN_PUSH:
-		case MoveType::KING_CASTLE:
-		case MoveType::QUEEN_CASTLE:
-			assert(!PieceHelper::IsActual(move.Content));
-			return false;
-		case MoveType::PROMOTION_KNIGHT:
-		case MoveType::PROMOTION_BISHOP:
-		case MoveType::PROMOTION_ROOK:
-		case MoveType::PROMOTION_QUEEN:
-			// Promotion can be both a capture and a non-capture
-			return PieceHelper::IsActual(move.Content);
-		default:
-			assert(!PieceHelper::IsActual(move.Content));
-			return false;
-		}
+		return (move.flags() & MoveFlags::CAPTURE_BIT) != 0;
 	}
 
-	[[nodiscard]] static inline bool IsPromote(_In_ const Move& move ) noexcept
+	//************************************
+	// Method:      IsPromote
+	// Returns:     true for all promotion types (quiet and capture), i.e. flag bit 3 set.
+	//************************************
+	[[nodiscard]] static inline bool IsPromote(_In_ const Move& move) noexcept
 	{
-		return (AsType(move) >= MoveType::PROMOTION_KNIGHT);	// All promotion types are >= PROMOTION_KNIGHT
+		return (move.flags() & MoveFlags::PROMOTION_BIT) != 0;
 	}
 
 	[[nodiscard]] static inline bool IsEnPassant(_In_ const Move& move) noexcept
@@ -133,15 +112,16 @@ namespace MoveHelper
 		return move.IsEmpty();
 	}
 
-	[[nodiscard]] static bool IsValid(_In_ const Move& move, _In_ ePiece movPiece) noexcept
+	// content: the captured piece (obtain via Board::GetCapturedPiece; Phase 4: no Content field).
+	[[nodiscard]] static bool IsValid(_In_ const Move& move, _In_ ePiece movPiece, _In_ ePiece content) noexcept
 	{
 		if( IsEmpty( move ) )
 			return false;
 		if( move.to() == move.from())
 			return false;
-		if ((PieceHelper::IsActual(move.Content)) && (PieceHelper::Color(movPiece) == PieceHelper::Color(move.Content)))
+		if ((PieceHelper::IsActual(content)) && (PieceHelper::Color(movPiece) == PieceHelper::Color(content)))
 			return false;	// Cannot capture own piece
-		if( PieceHelper::IsKing(move.Content))	// Cannot take a King
+		if( PieceHelper::IsKing(content))	// Cannot take a King
 			return false;
 		MoveType type = AsType(move);
 		if( ((type == MoveType::EP_CAPTURE) || (type == MoveType::DOUBLE_PAWN_PUSH)) && !IsPawnMove(move, movPiece))
@@ -149,7 +129,7 @@ namespace MoveHelper
 		switch (type)
 		{
 		case MoveType::DOUBLE_PAWN_PUSH:
-			assert(!PieceHelper::IsActual( move.Content));	// ingen slag
+			assert(!PieceHelper::IsActual(content));	// ingen slag
 			assert(IsPawnMove(move, movPiece));
 			break;
 		case MoveType::EP_CAPTURE:
@@ -185,6 +165,10 @@ namespace MoveHelper
 		case MoveType::PROMOTION_BISHOP:
 		case MoveType::PROMOTION_ROOK:
 		case MoveType::PROMOTION_QUEEN:
+		case MoveType::PROMOTION_KNIGHT_CAPTURE:
+		case MoveType::PROMOTION_BISHOP_CAPTURE:
+		case MoveType::PROMOTION_ROOK_CAPTURE:
+		case MoveType::PROMOTION_QUEEN_CAPTURE:
 			break;
 		}
 		return true;

@@ -5,14 +5,15 @@
 
 // Move representation (16-bit encoding)
 // Encoding:
-// Bits 0-5:  From square (0-63)
-// Bits 6-11: To square (0-63)
-// Bits 12-15: Move flags (0-15)
-// Additional info:
-// Content: The piece that is being captured (if any, else NO_PIECE)
-// Note: The moving piece (MovPiece) has been removed from the Move struct (Phase 3).
-//       Callers obtain it via Board::GetEffectiveMovPiece() before DoMove, or
-//       Board::GetPiece(move.to()) immediately after DoMove.
+// Bits  0- 5: From square (0-63)
+// Bits  6-11: To square (0-63)
+// Bits 12-15: Move flags (MoveType, 0-15)
+//   Flag bit layout: bit3 = promotion, bit2 = capture
+// The captured piece (Content) has been removed from the struct (Phase 4).
+//   Board::capturedHistory_[] stores it during DoMove/UndoMove for undo.
+//   For MVV-LVA sorting, callers use Board::GetCapturedPiece(move).
+// The moving piece (MovPiece) was removed in Phase 3.
+//   Callers obtain it via Board::GetEffectiveMovPiece() before DoMove.
 class Move final
 {
     static constexpr uint16_t EMPTY_MOVE = 0xFFFF;
@@ -26,7 +27,7 @@ public:
     constexpr Move() noexcept : data(EMPTY_MOVE) {}
     constexpr explicit Move(uint16_t d) noexcept : data(d) {}
     constexpr Move(eSquare from, eSquare to, uint8_t flags = 0) noexcept
-        : data(static_cast<uint16_t>(from | (to << 6) | (flags << 12))), Content(ePiece::NO_PIECE)
+        : data(static_cast<uint16_t>(from | (to << 6) | (flags << 12)))
     {
     }
 
@@ -54,8 +55,8 @@ public:
     // underlying storage instead of per-field assignments.
     Move& operator=(Move&& other) noexcept = default;
 
-    Move(eSquare from, eSquare to, MoveType type, ePiece content = ePiece::NO_PIECE) noexcept
-        : data(static_cast<uint16_t>(from | (to << 6) | static_cast<uint8_t>(type) << 12)), Content(content)
+    Move(eSquare from, eSquare to, MoveType type) noexcept
+        : data(static_cast<uint16_t>(from | (to << 6) | static_cast<uint8_t>(type) << 12))
     {
     }
 
@@ -86,8 +87,9 @@ public:
 
     // Return an evaluation of the material value consequences of the Move.
     // movPiece: the effective moving piece (obtain via Board::GetEffectiveMovPiece before DoMove).
-    // Note: Currently only used for capture move sorting, i.e. Normal, PawnTwoForward and Castling are not being used!
-    static int Value(_In_ const Move& move, _In_ ePiece movPiece) noexcept
+    // content:  the captured piece (obtain via Board::GetCapturedPiece before DoMove; NO_PIECE if quiet).
+    // Note: Currently only used for capture move sorting.
+    static int Value(_In_ const Move& move, _In_ ePiece movPiece, _In_ ePiece content) noexcept
     {
         // Algorithm:
         // ----------
@@ -114,16 +116,20 @@ public:
 			return (movingPieceScore * -1);	// TODO: Check what value this provides castling? Not used atm
         case MoveType::CAPTURE:
         case MoveType::EP_CAPTURE:
-            captureScore = PieceHelper::Value(move.Content);
+            captureScore = PieceHelper::Value(content);
             return captureScore - movingPieceScore;
         case MoveType::PROMOTION_KNIGHT:
         case MoveType::PROMOTION_BISHOP:
         case MoveType::PROMOTION_ROOK:
-		case MoveType::PROMOTION_QUEEN:	// +: Queen (etc) and any Capture piece value; -: Pawn value
+        case MoveType::PROMOTION_QUEEN:
+        case MoveType::PROMOTION_KNIGHT_CAPTURE:
+        case MoveType::PROMOTION_BISHOP_CAPTURE:
+        case MoveType::PROMOTION_ROOK_CAPTURE:
+		case MoveType::PROMOTION_QUEEN_CAPTURE:	// +: Queen (etc) and any Capture piece value; -: Pawn value
             captureScore = PieceHelper::Value(movPiece) - PieceHelper::Value(ePiece::WHITE_PAWN);
-			if (PieceHelper::IsActual(move.Content))
+			if (PieceHelper::IsActual(content))
             {
-                captureScore += PieceHelper::Value(move.Content);
+                captureScore += PieceHelper::Value(content);
             }
             return captureScore - static_cast<int>(g_iPieceValues[PAWN] >> 4); // Promote is encoded differently. Subtract the known moving piece value
         }
@@ -149,7 +155,6 @@ public:
     void Clear() noexcept
     {
         data = EMPTY_MOVE;
-        Content = ePiece::NO_PIECE;
     }
 
     // Coordinate-only output (no piece prefix). Suitable for PV lines and stream consumers.
@@ -159,8 +164,6 @@ public:
 
 private:
     uint16_t data{ EMPTY_MOVE }; // bits 0-5: from, 6-11: to, 12-15: flags
-public:
-    ePiece Content   { NO_PIECE };		// The taken piece
 
 public:
     static const Move& EmptyMove() noexcept
@@ -171,7 +174,10 @@ public:
 };
 // End Class Move
 
-// Move flags
+// Phase 4: Move is now a pure 16-bit value — no ePiece Content field.
+static_assert(sizeof(Move) == 2, "Move must be exactly 2 bytes after Phase 4 refactoring");
+
+// Move flags — mirror of MoveType enum for constexpr use in get_captured_piece and factory helpers.
 namespace MoveFlags {
     constexpr uint8_t QUIET = 0;
     constexpr uint8_t DOUBLE_PAWN_PUSH = 1;
@@ -183,6 +189,13 @@ namespace MoveFlags {
     constexpr uint8_t PROMOTION_BISHOP = 9;
     constexpr uint8_t PROMOTION_ROOK = 10;
     constexpr uint8_t PROMOTION_QUEEN = 11;
+    constexpr uint8_t PROMOTION_KNIGHT_CAPTURE = 12;
+    constexpr uint8_t PROMOTION_BISHOP_CAPTURE = 13;
+    constexpr uint8_t PROMOTION_ROOK_CAPTURE = 14;
+    constexpr uint8_t PROMOTION_QUEEN_CAPTURE = 15;
+    // Bit masks
+    constexpr uint8_t CAPTURE_BIT    = 0x4; // bit 2: move involves a capture
+    constexpr uint8_t PROMOTION_BIT  = 0x8; // bit 3: move is a promotion
 }
 
 // Move list with small buffer optimization

@@ -91,12 +91,12 @@ void MoveSorter::SortMoves(MoveList& moveList,		// traeklisten
 void MoveSorter::SortMovesByValue(MoveList& moveList, size_t captures, const Board& board, size_t start)
 {
 	// Sort captures by MVV-LVA: captured piece value minus (moving piece value / 16).
-	// board is used to obtain the moving piece for each move (Phase 3: MovPiece removed from Move).
+	// board supplies the moving piece (Phase 3) and captured piece (Phase 4) for each move.
 	if (captures >= 2)	// Mindst 2 for at sortere
 		std::sort(moveList.begin() + static_cast<int>(start),
 			moveList.begin() + static_cast<int>(start + captures),
 			[&board](const Move& a, const Move& b) {
-				return Move::Value(a, board.GetEffectiveMovPiece(a))
-					 > Move::Value(b, board.GetEffectiveMovPiece(b));
+				return Move::Value(a, board.GetEffectiveMovPiece(a), board.GetCapturedPiece(a))
+					 > Move::Value(b, board.GetEffectiveMovPiece(b), board.GetCapturedPiece(b));
 			});
 }
