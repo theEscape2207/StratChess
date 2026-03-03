@@ -24,7 +24,7 @@ A modern C++20 chess engine focused on improving playing strength (ELO) while ma
 ### MSBuild invocation (from bash / Git Bash)
 Use double-slash flags (`//p:`) — bash converts single `/` to a path separator and breaks MSBuild switches:
 ```bash
-"/c/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/Bin/MSBuild.exe" \
+"/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" \
   "StratChessEvolved.sln" //p:Configuration=Release //p:Platform=x64 //m //v:minimal
 ```
 The `//m` flag enables parallel builds. Use `//v:minimal` to suppress noise; change to `//v:normal` when diagnosing build errors.
@@ -41,6 +41,8 @@ The `//m` flag enables parallel builds. Use `//v:minimal` to suppress noise; cha
 
 ## Key Source Files
 - `Move::Output()` produces pseudo-LAN (`Pe2-e3`): piece prefix (uppercase=White, lowercase=Black) + from + `-` + to — not short algebraic notation
+- `Move` is a pure 2-byte value (from/to/flags only); moving piece and captured piece are NOT stored — retrieve via `Board::GetEffectiveMovPiece(m)` (pre-move only) and `Board::GetCapturedPiece(m)`. After `DoMove`, use `board.GetPiece(m.to())` to identify the moved piece.
+- `MoveHelper::Value(move, movPiece, content)` — material scoring for move ordering (not `Move::Value`). `IsMoveType`/`IsPawnMove`/`IsKingMove` take only an `ePiece` — no `Move&` parameter.
 - `StratEngine/Board.cpp` / `Board.h` – Board state and move application
 - `StratEngine/MoveGenerator.cpp` / `MoveGenerator.h` – Legal move generation
 - `StratEngine/Eval.cpp` / `Eval.h` – Position evaluation
@@ -66,7 +68,6 @@ The test binary lives under `StratChessTests/x64/Release/` (not `x64/Release/`).
 ```bash
 StratChessTests/x64/Release/StratChessTests.exe                    # all tests
 StratChessTests/x64/Release/StratChessTests.exe [repetition]       # repetition detection
-StratChessTests/x64/Release/StratChessTests.exe [moves]            # move field tests
 StratChessTests/x64/Release/StratChessTests.exe [perft]            # perft depth 1-4
 StratChessTests/x64/Release/StratChessTests.exe [tt]               # TranspositionTable unit tests
 StratChessTests/x64/Release/StratChessTests.exe [eval]             # evaluation position tests
@@ -74,9 +75,10 @@ StratChessTests/x64/Release/StratChessTests.exe [tactical]         # search regr
 ```
 Building the `.sln` does not always rebuild the test project. To build it explicitly:
 ```bash
-"/c/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/Bin/MSBuild.exe" \
-  "StratChessTests/StratChessTests.vcxproj" //p:Configuration=Release //p:Platform=x64 //m //v:minimal
+"/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" \
+  "StratChessTests/StratChessTests.vcxproj" //p:Configuration=Release //p:Platform=x64 //p:CL_MPCount=1 //v:minimal
 ```
+The test project links engine sources directly; using `//m` causes PDB contention across CL invocations. Use `//p:CL_MPCount=1` (no `//m`) instead.
 Sources: `StratChessTests/*.cpp` — Framework: Catch2 v3 amalgamated — `$(DepsRoot)Catch2/` (sibling of repo)
 
 ### AIPerplex in tests
