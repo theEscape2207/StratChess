@@ -55,7 +55,7 @@ protected:
 		// Returner det bedste traek - hvis der er noget
 		if (!m_Line.empty())
 		{
-			info.UpdateBoardInfo(m_Line.front());
+			info.UpdateBoardInfo(m_Line.front(), m_Board.GetEffectiveMovPiece(m_Line.front()));
 			return m_Line.front();		// Henter det foerste traek fra PVL
 		}
 

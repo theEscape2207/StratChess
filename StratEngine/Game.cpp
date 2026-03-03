@@ -340,13 +340,11 @@ void Game::PrintBoardAndMove(const Move& move) const
 
 	if (!move.IsEmpty())
 	{
-		// Capture the two-line move output ("Last move: e4\nVerbose  : ...\n") and
-		// annotate both lines inline when the move gives check, so the output reads:
-		//   Last move: e4+
-		//   Verbose  : White moves Pawn from e2 to e4 and checks!
-		std::ostringstream moveOut;
-		moveOut << move;
-		std::string moveStr = moveOut.str();
+		// Build the piece-prefixed move string and annotate with '+' when the move gives check.
+		// GetPiece(to) is valid here because DoMove has already been applied: the piece
+		// now sits on the destination square (promoted piece for promotions, king for castling).
+		const ePiece movPiece = board.GetPiece(move.to());
+		std::string moveStr = "Last move: " + move.Output(movPiece) + '\n';
 
 		if (board.InCheck())
 		{
@@ -383,8 +381,10 @@ void Game::PrintBoardAndMove(const Move& move) const
 //***************************************
 void Game::PrintGameMoves()
 {
+	const Move& move = m_GameMoves.back();
+	const ePiece movPiece = Board::Instance().GetPiece(move.to());
 	movesFile_ << "Move " << m_GameMoves.size() << '\n'; //-V128
-	movesFile_ << m_GameMoves.back() << '\n';
+	movesFile_ << "Last move: " << move.Output(movPiece) << '\n';
 }
 
 //***************************************
