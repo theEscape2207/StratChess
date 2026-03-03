@@ -200,19 +200,6 @@ This roadmap organizes development tasks by priority and category. Items are dra
 - **Enables**: UCI protocol (`ToUCI` / `FromUCI`), PGN export (`ToSAN`), any future GUI or web integration
 - **Suggested order**: after Move layout Phases 3 & 4; before UCI
 
-#### 🟢 Move class → 16-bit layout (Phases 3 & 4)
-- **Status**: Phases 1 (IsCheck) and 2 ([from|to]IsNoSquare) complete — see commit history
-- **Design document**: `.claude/plans/prancy-prancing-trinket.md`
-- **Remaining work**:
-  - **Phase 3 — Remove `MovPiece`**: Add `Board::GetEffectiveMovPiece()`, thread `ePiece movPiece`
-    param through `MoveHelper`, `GameState`, `Sort`, `AIPerplex`, factory callers.
-  - **Phase 4 — Remove `Content`**: Add `Board::captured_history_[]` undo stack;
-    update `DoMove`/`UndoMove`; update `Move::Value(move, movPiece, content)` signature;
-    strip `captured` param from `MoveFactory`; add `static_assert(sizeof(Move) == 2)`.
-- **Prerequisite**: Phase 3 must complete before Phase 4
-- **Final validation**: perft suite + repetition tests + self-play with AIPerplex & AIAgent
-
-
 #### 🟢 Extract Magic Numbers to Constants
 - **Estimate**: 2 hours
 - **Impact**: Better maintainability
@@ -488,9 +475,12 @@ Avoid these traps:
 - `GameInfo` history moved from Player into `Board`; `Position.h/cpp` created
 - Clean separation of concerns; prerequisite data for De-Singleton Board work
 
-### Move class → 16-bit layout (Phases 1 & 2)
+### Move class → 16-bit layout — all phases complete (March 2026)
 - **Phase 1**: Removed `Move::IsCheck` field
 - **Phase 2**: Removed `[from|to]IsNoSquare` fields
+- **Phase 3**: Removed `MovPiece`; added `Board::GetEffectiveMovPiece()`; piece info flows through `Board`, not `Move`
+- **Phase 4**: Removed `Content`; added `Board::captured_history_[]`; `sizeof(Move) == 2`; `Move::Value` relocated to `MoveHelper::Value`
+- Validated: 149 unit assertions, 640 perft cases, AIPerplex self-play — no regressions (PR #24)
 
 ### Move sorting: Stack-allocated sort buffer
 - `pvs()` uses `std::array<std::pair<int,int>, MoveList::MAX_MOVES>` on the stack
