@@ -102,6 +102,17 @@ Sources: `StratEngine/Tests/Perft.h/cpp` + `Tests/perft_test_cases.json`
 - Maintain deterministic behavior for reproducibility
 - `game_settings.json`: verify FEN is set to the starting position before committing — test sessions often leave a custom FEN in place
 
+## Design Documents
+For any non-trivial multi-file task, create `.claude/plans/<kebab-name>.md` before starting implementation. Include:
+- **Goal** — what the task achieves and its scope limits
+- **Design Decisions** — key choices and the reasoning behind them
+- **Files Changed** — complete list
+- **Step-by-Step Changes** — detailed enough to resume mid-task or review later
+- **Validation Plan** — build command, test tags, self-play check
+- **Key Correctness Properties** — invariants that must hold after the change
+
+Commit the plan file — it lives under `.claude/plans/` (tracked by git) and serves as permanent reference even after the worktree is retired.
+
 ## Commit & PR Conventions
 - Development happens on `master`; PRs target `main`
 - Keep PRs small and logically scoped
