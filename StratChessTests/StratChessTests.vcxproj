@@ -157,11 +157,11 @@
     <ClCompile Include="StratChessTests.cpp" />
     <!-- Catch2 test suites -->
     <ClCompile Include="RepetitionTests.cpp" />
-    <ClCompile Include="MoveFieldTests.cpp" />
     <ClCompile Include="PerftTests.cpp" />
     <ClCompile Include="TTTests.cpp" />
     <ClCompile Include="EvalTests.cpp" />
     <ClCompile Include="TacticalTests.cpp" />
+    <ClCompile Include="BoardTests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\StratEngine\Tests\Perft.h" />

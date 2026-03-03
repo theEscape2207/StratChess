@@ -33,9 +33,6 @@
     <ClCompile Include="RepetitionTests.cpp">
       <Filter>Source Files\Tests</Filter>
     </ClCompile>
-    <ClCompile Include="MoveFieldTests.cpp">
-      <Filter>Source Files\Tests</Filter>
-    </ClCompile>
     <ClCompile Include="PerftTests.cpp">
       <Filter>Source Files\Tests</Filter>
     </ClCompile>
@@ -46,6 +43,9 @@
       <Filter>Source Files\Tests</Filter>
     </ClCompile>
     <ClCompile Include="TacticalTests.cpp">
+      <Filter>Source Files\Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="BoardTests.cpp">
       <Filter>Source Files\Tests</Filter>
     </ClCompile>
     <!-- Engine sources -->

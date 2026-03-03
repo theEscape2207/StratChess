@@ -53,17 +53,23 @@ enum ePiece : uint8_t {
 };
 
 // Special moves
+// Flag bit layout: bit3 = promotion, bit2 = capture
+// Values 0-5 and 8-11 are existing types; 12-15 are promotion-captures (bits 3+2 both set).
 enum class MoveType : uint8_t {
 	QUIET = 0,
 	DOUBLE_PAWN_PUSH = 1,
 	KING_CASTLE = 2,
 	QUEEN_CASTLE = 3,
-	CAPTURE = 4,
-	EP_CAPTURE = 5,
-	PROMOTION_KNIGHT = 8,
+	CAPTURE = 4,          // bit2 set
+	EP_CAPTURE = 5,       // bit2 set
+	PROMOTION_KNIGHT = 8, // bit3 set
 	PROMOTION_BISHOP = 9,
 	PROMOTION_ROOK = 10,
 	PROMOTION_QUEEN = 11,
+	PROMOTION_KNIGHT_CAPTURE = 12, // bits 3+2 set — promotion that also captures
+	PROMOTION_BISHOP_CAPTURE = 13,
+	PROMOTION_ROOK_CAPTURE = 14,
+	PROMOTION_QUEEN_CAPTURE = 15,
 };
 
 enum eRowNames /*: uint8_t*/ {

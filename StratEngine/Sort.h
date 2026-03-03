@@ -1,13 +1,15 @@
 #pragma once
 #include "Move.h"
 
+class Board;
+
 class MoveSorter final
 
 {
 public:
-	static void SortMoves(MoveList& moveList, const Move& lastMove, size_t startIndex = 0 );
-	static void SortMovesIter(MoveList& moveList, const Move& lastMove, const Move* pIterMove);
-	static void SortMovesByValue(MoveList& moveList, size_t captures, size_t start=0);
+	static void SortMoves(MoveList& moveList, const Move& lastMove, const Board& board, size_t startIndex = 0);
+	static void SortMovesIter(MoveList& moveList, const Move& lastMove, const Move* pIterMove, const Board& board);
+	static void SortMovesByValue(MoveList& moveList, size_t captures, const Board& board, size_t start = 0);
 	~MoveSorter() = default;
 private:
 	MoveSorter() = default;		// Enforce static method calls

@@ -53,7 +53,7 @@ int PlayerAiBase::Quiescent( size_t ply, int alpha, int beta )
 	// Only work on the captures in Quiescent
 	MoveGenerator::ComputeCaptures( info, moveList );
 	// Sort the found captures
-	MoveSorter::SortMovesByValue( moveList, moveList.size() );
+	MoveSorter::SortMovesByValue( moveList, moveList.size(), m_Board );
 
 	// Tjek om der er lovlige brugbare traek her
 	bool moveFound = false;
@@ -108,7 +108,7 @@ Move PlayerAiBase::GetBestMove(_In_ GameInfo& info ) noexcept
 	// Returner det bedste traek - hvis der er noget
 	if ( !m_BestMove.IsEmpty() )
 	{
-		info.UpdateBoardInfo( m_BestMove);
+		info.UpdateBoardInfo( m_BestMove, m_Board.GetEffectiveMovPiece(m_BestMove));
 		return m_BestMove;
 	}
 	// No moves found!
@@ -188,7 +188,8 @@ void PlayerAiBase::AddMoveToSeq(const Move& move, size_t ply)
 {
 	GameInfo info = GetLastBoardInfo( ply );
 
-	info.UpdateBoardInfo( move );
+	// After DoMove the piece sits on move.to(); read it to obtain the moving piece.
+	info.UpdateBoardInfo( move, m_Board.GetPiece(move.to()) );
 	
 	// where to add it? size er 2 efter foerste traek ved ply 0
 	const size_t infoSize = m_infoSeq.size();

@@ -88,8 +88,6 @@ void MoveGenerator::GeneratePawnCaptures(const BITBOARD* const bbBitBoards, cons
 		Bits::clearBitsExceptRef(bbAttackRight, bbBitBoards[ePiece::ALL_BLACK_PIECES - static_cast<int>(color)]);
 	}
 
-	ePiece movPiece = PieceHelper::AsPiece(PAWN, color);
-
 	// Foerst tager vi slagene to the left
 	while (bbAttackLeft)
 	{
@@ -99,8 +97,8 @@ void MoveGenerator::GeneratePawnCaptures(const BITBOARD* const bbBitBoards, cons
 		eSquare from = static_cast<eSquare>(to + (color == eColor::BLACK ? -7 : 9));	//FIXME: Add defines, constants whatever
 
 		// Construct a call-owned move and forward to AddPawnCaptures
-		Move temp = MoveFactory::MakeMove(from, to, movPiece, MoveType::CAPTURE);
-		AddPawnCaptures(moveList, bbBitBoards, std::move(temp));
+		Move temp = MoveFactory::MakeMove(from, to, MoveType::CAPTURE);
+		AddPawnCaptures(moveList, bbBitBoards, std::move(temp), color);
 
 		Bits::clearBitsRef(bbAttackLeft, g_bbMask[to]);
 	}
@@ -113,9 +111,9 @@ void MoveGenerator::GeneratePawnCaptures(const BITBOARD* const bbBitBoards, cons
 
 		// Bonden kom fra op-og-til-venstre
 		auto from = static_cast<eSquare>(to + (color == eColor::BLACK ? -9 : 7));	//FIXME: Add defines, constants whatever
-		
-		Move temp = MoveFactory::MakeMove(from, to, movPiece, MoveType::CAPTURE);
-		AddPawnCaptures(moveList, bbBitBoards, std::move(temp));
+
+		Move temp = MoveFactory::MakeMove(from, to, MoveType::CAPTURE);
+		AddPawnCaptures(moveList, bbBitBoards, std::move(temp), color);
 		Bits::clearBitsRef(bbAttackRight, g_bbMask[to]);
 	}
 }
@@ -149,14 +147,8 @@ void MoveGenerator::GeneratePawnNormalMoves(_In_ const BITBOARD* const bbBitBoar
 	// Combine the two bitboards
 	Bits::setBitsRef(bbMoveOne, bbMoveTwo);
 
-	ePiece movPiece = ePiece::WHITE_PAWN;
-	int direction = 1;
-
-	if (color == eColor::BLACK)
-	{
-		movPiece = ePiece::BLACK_PAWN;
-		direction = -1;
-	}
+	const ePiece movPiece = (color == eColor::BLACK) ? ePiece::BLACK_PAWN : ePiece::WHITE_PAWN;
+	const int direction = (color == eColor::BLACK) ? -1 : 1;
 
 	// Looper indtil der ikke er flere maal-felter tilbage
 	while (bbMoveOne)
@@ -175,7 +167,7 @@ void MoveGenerator::GeneratePawnNormalMoves(_In_ const BITBOARD* const bbBitBoar
 			moveType = MoveType::DOUBLE_PAWN_PUSH;
 		}
 
-		moveList.push(MoveFactory::MakeMove(from, to, movPiece, moveType));
+		moveList.push(MoveFactory::MakeMove(from, to, moveType));
 
 		// Now clear it from our attack board
 		Bits::clearBitsRef(bbMoveOne, g_bbMask[to]);
@@ -199,7 +191,7 @@ void MoveGenerator::GenerateOfficerMoves(const BITBOARD* const bbBitBoards, Move
 		}
 
 		// Add all legal moves found above
-		AddOfficerMoves(moveList, bbAttack, movPiece, from);
+		AddOfficerMoves(moveList, bbAttack, from);
 
 		Bits::clearBitsRef(bbPiecesToMove, g_bbMask[from]);
 	}
@@ -300,20 +292,18 @@ void MoveGenerator::ComputeCaptures(_In_ const GameInfo& info, _Inout_ MoveList&
 }
 
 // Adds all moves in the given attack bitboard to the move list
-void MoveGenerator::AddOfficerMoves(MoveList& moveList, BITBOARD bbAttack, ePiece piece, eSquare from)
+void MoveGenerator::AddOfficerMoves(MoveList& moveList, BITBOARD bbAttack, eSquare from)
 {
 	assert(from != NO_SQUARE);
 
 	while (bbAttack)
 	{
 		const auto to = Board::GetFirstPiece(bbAttack);
-		const ePiece captured = Board::Instance().GetPiece(to);
-		auto moveType = (PieceHelper::IsActual(captured) ? MoveType::CAPTURE : MoveType::QUIET);
-		if(moveType == MoveType::QUIET)
-			assert(captured == ePiece::NO_PIECE);
-		// Use factory to build and push
-		moveList.push(MoveFactory::MakeMove(from, to, piece, moveType, captured));
-		
+		const bool isCapture = PieceHelper::IsActual(Board::Instance().GetPiece(to));
+		const MoveType moveType = isCapture ? MoveType::CAPTURE : MoveType::QUIET;
+		// MoveType flag encodes whether it's a capture; captured piece is retrieved from the board when needed.
+		moveList.push(MoveFactory::MakeMove(from, to, moveType));
+
 		Bits::clearBitsRef(bbAttack, g_bbMask[to]);	// Done, clear this square
 	}
 }
@@ -397,7 +387,7 @@ void MoveGenerator::AddCastleMoves(MoveList& moveList, eColor color, const BITBO
 		if (!Bits::isAnyBitSet(attackBoard, side.kingsideAttackMask) &&
 			!board.IsOccupied(side.kingsideTransitMask))
 		{
-			moveList.push(MoveFactory::MakeMove(sqFrom, side.kingsideTarget, side.kingPiece, MoveType::KING_CASTLE));
+			moveList.push(MoveFactory::MakeMove(sqFrom, side.kingsideTarget, MoveType::KING_CASTLE));
 		}
 	}
 
@@ -407,62 +397,55 @@ void MoveGenerator::AddCastleMoves(MoveList& moveList, eColor color, const BITBO
 		if (!Bits::isAnyBitSet(attackBoard, side.queensideAttackMask) &&
 			!board.IsOccupied(side.queensideTransitMask))
 		{
-			moveList.push(MoveFactory::MakeMove(sqFrom, side.queensideTarget, side.kingPiece, MoveType::QUEEN_CASTLE));
+			moveList.push(MoveFactory::MakeMove(sqFrom, side.queensideTarget, MoveType::QUEEN_CASTLE));
 		}
 	}
 }
 
 // Bemaerk: color er for bonden i traekket
 // Remarks: Move must be a pawn capture move (including en-passant).
-// Also handles promotion captures
-// Move must have From, To and MovPiece set
-void MoveGenerator::AddPawnCaptures(MoveList& moveList, const BITBOARD* bbBitBoards, Move move)
+// Also handles promotion captures.
+// color: the color of the moving pawn (passed explicitly; the moving piece is not stored in Move).
+void MoveGenerator::AddPawnCaptures(MoveList& moveList, const BITBOARD* bbBitBoards, Move move, eColor color)
 {
-	// Prerequisites: Move must be a pawn capture move (including en-passant). 
-	// MovPiece must be set to the moving pawn color
-	// From and To must be set
-	assert(PieceHelper::IsPawn(move.MovPiece));
+	// Prerequisites: Move must be a pawn capture move (including en-passant).
+	// From and To must be set; the pawn of 'color' must be on from.
+	assert(PieceHelper::IsPawn(Board::Instance().GetPiece(move.from())));
 	assert(!move.IsEmpty());
 
 	const eSquare from = move.from();
 	const eSquare to = move.to();
-		
-	const auto color = PieceHelper::Color(move.MovPiece);
 
 	// The moving pawn must be on the bitboard square
 	assert(Bits::isAnyBitSet(bbBitBoards[color], g_bbMask[from]));
 
-	const Board& board = Board::Instance();
+	[[maybe_unused]] const Board& board = Board::Instance();
 
-	// Normal capture? 
+	// Normal capture?
 	if (IsCapture(bbBitBoards, color, move))
 	{
-		const ePiece taken = board.GetPiece(to);
-		assert(PieceHelper::IsActual(taken));
-		assert(PieceHelper::Color(taken) != PieceHelper::Color(move.MovPiece));
+		assert(PieceHelper::IsActual(board.GetPiece(to)));
+		assert(PieceHelper::Color(board.GetPiece(to)) != color);
 
 		// Promotion capture, too?
 		if (!IsAnyBackRow(to))		// Nope, normal capture - all done
 		{
-			moveList.push(MoveFactory::MakeCapture(from, to, move.MovPiece, taken));
+			moveList.push(MoveFactory::MakeCapture(from, to));
 		}
 		else
-		{	// Promotion Captures
-			// Add the 4 different selections - now moving piece is changed!
-			// Add each promotion selection via factory
-			moveList.push(MoveFactory::MakePromotion(from, to, PieceHelper::AsPiece(QUEEN, color), taken));
-			moveList.push(MoveFactory::MakePromotion(from, to, PieceHelper::AsPiece(ROOK, color), taken));
-			moveList.push(MoveFactory::MakePromotion(from, to, PieceHelper::AsPiece(BISHOP, color), taken));
-			moveList.push(MoveFactory::MakePromotion(from, to, PieceHelper::AsPiece(KNIGHT, color), taken));
+		{	// Promotion Captures — add each of the 4 promotions (isCapture=true selects PROMOTION_*_CAPTURE type)
+			moveList.push(MoveFactory::MakePromotion(from, to, PieceHelper::AsPiece(QUEEN,  color), true));
+			moveList.push(MoveFactory::MakePromotion(from, to, PieceHelper::AsPiece(ROOK,   color), true));
+			moveList.push(MoveFactory::MakePromotion(from, to, PieceHelper::AsPiece(BISHOP, color), true));
+			moveList.push(MoveFactory::MakePromotion(from, to, PieceHelper::AsPiece(KNIGHT, color), true));
 		}
 	}
 	// Otherwise it must be an en-passant capture
 	else
 	{
-		const eSquare epWhere = SquareHelper::PreviousRow(to, color);
+		[[maybe_unused]] const eSquare epWhere = SquareHelper::PreviousRow(to, color);
 		assert(Bits::isAnyBitSet(bbBitBoards[BLACK - color], g_bbMask[epWhere]));	// There must be an opponent pawn here
-		const ePiece captured = board.GetPiece(epWhere);
-		moveList.push(MoveFactory::MakeEnPassant(from, to, move.MovPiece, captured));
+		moveList.push(MoveFactory::MakeEnPassant(from, to));
 	}
 }
 

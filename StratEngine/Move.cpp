@@ -9,64 +9,16 @@
 #include "MoveHelper.h"
 
 static std::string GetBoardCoord(_In_ eSquare square) {
-	std::string tmp(1, static_cast<char>((File(square)) + 'a'));				// File: i.e. 'g'
+	std::string tmp(1, static_cast<char>((File(square)) + 'a'));			// File: i.e. 'g'
 	return tmp.append(1, static_cast<char>((8 - (Rank(square))) + '0'));	// Rank: i.e. '8' => "g8"
 }
 
-// Printer indholdet af move til streamen
+// Prints a Move to a stream in coordinate-only form (e.g. "Last move: e2-e4").
+// The moving piece is not available here; use Output(ePiece) for piece-prefixed notation.
 std::ostream& operator<<(std::ostream& os, _In_ const Move& m)
 {
-	// FIXME: Test shouldn't be needed
 	if (!m.IsEmpty())	// Empty moves are allowed, but ignored
-	{
-		assert(PieceHelper::IsActual(m.MovPiece));
-
-		// Print out in short notation
 		os << "Last move: " << m.Output().c_str() << '\n';
-
-		const std::string strFrom = GetBoardCoord(m.from());
-		const std::string strTo = GetBoardCoord(m.to());
-
-		const auto type = static_cast<MoveType>(m.flags());
-		switch (type) {
-		case MoveType::QUIET:
-		case MoveType::DOUBLE_PAWN_PUSH:
-			os << "Verbose  : " << PieceHelper::FullName(m.MovPiece) << " moves "
-				<< strFrom.c_str() << "-" << strTo.c_str();
-			break;
-		case MoveType::CAPTURE:
-			assert(PieceHelper::Color(m.MovPiece) != PieceHelper::Color(m.Content));
-			os << "Verbose  : " << PieceHelper::FullName(m.MovPiece) << " moves "
-				<< strFrom.c_str() << "-" << strTo.c_str() << " and takes a "
-				<< PieceHelper::FullName(m.Content);
-			break;
-		case MoveType::PROMOTION_KNIGHT:
-		case MoveType::PROMOTION_BISHOP:
-		case MoveType::PROMOTION_ROOK:
-		case MoveType::PROMOTION_QUEEN:
-			// MovPiece is the new piece, but we know it previously was a Pawn
-			os << "Verbose  : " << PieceHelper::FullPawnName(m.MovPiece) << " moves "
-				<< strFrom.c_str() << "-" << strTo.c_str() << " and gets promoted to a "
-				<< PieceHelper::FullName(m.MovPiece);
-			if (MoveHelper::IsCapture(m)) {
-				assert(PieceHelper::Color(m.MovPiece) != PieceHelper::Color(m.Content));
-				os << " while taking a " << PieceHelper::FullName(m.Content);
-			}
-			break;
-		case MoveType::EP_CAPTURE:
-			os << "Verbose  : " << PieceHelper::FullName(m.MovPiece) << " moves "
-				<< strFrom.c_str() << "-" << strTo.c_str() << " and en passants "
-				<< PieceHelper::FullName(m.Content);
-			break;
-		case MoveType::KING_CASTLE:
-			os << "Verbose  : " << ((PieceHelper::Color(m.MovPiece) == BLACK) ? "Black" : "White") << " makes a short castling";
-			break;
-		case MoveType::QUEEN_CASTLE:
-			os << "Verbose  : " << ((PieceHelper::Color(m.MovPiece) == BLACK) ? "Black" : "White") << " makes a long castling";
-			break;
-		}
-		os << '\n';
-	}
 	return os;
 }
 
@@ -80,21 +32,23 @@ std::ostream& operator<<(std::ostream& os, _In_ const PVLine& line)
 
 	for (const auto& move : line)
 	{
-		os << move.Output().c_str();		// write out short notation string
+		os << move.Output().c_str();		// write out coordinate notation
 
 		if (move != *(line.rbegin()))	// last real Move
-			os << ", ";					// Add seperation marker
+			os << ", ";					// Add separation marker
 	}
 	return os;
 }
 
 /////////////////////////////////
 //
-//	Move members 
+//	Move members
 //
+
+// Coordinate-only output (no piece prefix). Suitable for PV lines and stream consumers
+// that do not have board context. Examples: "e2-e4", "c5xe6", "0-0", "b7-b8"
 std::string Move::Output() const
 {
-	assert(PieceHelper::IsActual(MovPiece));
 	assert(to() != NO_SQUARE);
 
 	const std::string strFrom = GetBoardCoord(from());
@@ -106,22 +60,76 @@ std::string Move::Output() const
 	switch (type) {
 	case MoveType::QUIET:
 	case MoveType::DOUBLE_PAWN_PUSH:
-		output << PieceHelper::ShortName(MovPiece) << strFrom << "-" << strTo;
+		output << strFrom << "-" << strTo;
 		break;
 	case MoveType::CAPTURE:
-		output << PieceHelper::ShortName(MovPiece) << strFrom << "x" << strTo;
+		output << strFrom << "x" << strTo;
 		break;
 	case MoveType::EP_CAPTURE:
-		output << PieceHelper::ShortName(MovPiece) << strFrom << "-" << strTo << "ep";
+		output << strFrom << "-" << strTo << "ep";
 		break;
-	case MoveType::PROMOTION_KNIGHT:	//pB7-B8q
+	case MoveType::PROMOTION_KNIGHT:
 	case MoveType::PROMOTION_BISHOP:
 	case MoveType::PROMOTION_ROOK:
 	case MoveType::PROMOTION_QUEEN:
+	case MoveType::PROMOTION_KNIGHT_CAPTURE:
+	case MoveType::PROMOTION_BISHOP_CAPTURE:
+	case MoveType::PROMOTION_ROOK_CAPTURE:
+	case MoveType::PROMOTION_QUEEN_CAPTURE:
 	{
-		char isCapture = PieceHelper::IsActual(Content) ? 'x' : '-';
-		output << g_cPieceNames[PieceHelper::AsPawn(MovPiece)] << strFrom <<
-			isCapture << strTo << PieceHelper::ShortName(MovPiece);
+		// Capture bit (bit 2) encodes whether the promotion also captures.
+		char isCapture = (flags() & MoveFlags::CAPTURE_BIT) ? 'x' : '-';
+		output << strFrom << isCapture << strTo;
+	}
+		break;
+	case MoveType::KING_CASTLE:
+		output << "0-0";
+		break;
+	case MoveType::QUEEN_CASTLE:
+		output << "0-0-0";
+		break;
+	}
+	return output.str();
+}
+
+// Piece-prefixed output (pseudo-LAN). Requires the moving piece explicitly.
+// Examples: "Pe2-e4", "Rc1xc7", "0-0", "pb7-b8Q"
+std::string Move::Output(ePiece movPiece) const
+{
+	assert(PieceHelper::IsActual(movPiece));
+	assert(to() != NO_SQUARE);
+
+	const std::string strFrom = GetBoardCoord(from());
+	const std::string strTo = GetBoardCoord(to());
+
+	std::stringstream output;
+
+	MoveType type = static_cast<MoveType>(flags());
+	switch (type) {
+	case MoveType::QUIET:
+	case MoveType::DOUBLE_PAWN_PUSH:
+		output << PieceHelper::ShortName(movPiece) << strFrom << "-" << strTo;
+		break;
+	case MoveType::CAPTURE:
+		output << PieceHelper::ShortName(movPiece) << strFrom << "x" << strTo;
+		break;
+	case MoveType::EP_CAPTURE:
+		output << PieceHelper::ShortName(movPiece) << strFrom << "-" << strTo << "ep";
+		break;
+	case MoveType::PROMOTION_KNIGHT:
+	case MoveType::PROMOTION_BISHOP:
+	case MoveType::PROMOTION_ROOK:
+	case MoveType::PROMOTION_QUEEN:
+	case MoveType::PROMOTION_KNIGHT_CAPTURE:
+	case MoveType::PROMOTION_BISHOP_CAPTURE:
+	case MoveType::PROMOTION_ROOK_CAPTURE:
+	case MoveType::PROMOTION_QUEEN_CAPTURE:
+	{
+		// Capture bit (bit 2) encodes whether the promotion also captures.
+		char isCapture = (flags() & MoveFlags::CAPTURE_BIT) ? 'x' : '-';
+		// Piece prefix is the pawn (lower-case = black, upper-case = white via ShortName)
+		output << g_cPieceNames[PieceHelper::AsPawn(movPiece)] << strFrom <<
+			isCapture << strTo << PieceHelper::ShortName(movPiece);
 	}
 		break;
 	case MoveType::KING_CASTLE:
