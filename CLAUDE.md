@@ -29,15 +29,8 @@ Use double-slash flags (`//p:`) — bash converts single `/` to a path separator
 ```
 The `//m` flag enables parallel builds. Use `//v:minimal` to suppress noise; change to `//v:normal` when diagnosing build errors.
 
-## Engine Features
-- Iterative Deepening Search (IDS)
-- Principal Variation Search (PVS)
-- Quiescence Search with delta pruning
-- Transposition Tables (Zobrist hashing)
-- Bitboard-based board representation
-- Killer move heuristic (2 killers per ply)
-- History heuristic (indexed by side, from-square, to-square)
-- Threefold / twofold repetition detection (Zobrist hashing)
+## Engine Algorithm Summary
+IDS + PVS + quiescence search; Zobrist-hashed transposition table; bitboard representation; killer moves (2/ply) + history heuristic; threefold/twofold repetition detection. See `Docs/Roadmap.md` for current priorities and planned enhancements.
 
 ## Key Source Files
 - `Move::Output()` produces pseudo-LAN (`Pe2-e3`): piece prefix (uppercase=White, lowercase=Black) + from + `-` + to — not short algebraic notation
@@ -48,6 +41,7 @@ The `//m` flag enables parallel builds. Use `//v:minimal` to suppress noise; cha
 - `StratEngine/Eval.cpp` / `Eval.h` – Position evaluation
 - `StratEngine/AIPerplex.cpp` / `AIPerplex.h` – Primary AI agent; `AIPerplex.h` holds `SearchTuning` and internal structs
 - `StratEngine/TranspositionTable.cpp` / `TranspositionTable.h` – TT implementation
+- `StratEngine/MoveHelper.h` – Move query utilities (`IsCapture`, `IsPawnMove`, `IsKingMove`, `Value`, etc.) — all take `ePiece`, no `Move&`
 - `StratEngine/Sort.cpp` / `Sort.h` – Move ordering
 - `StratChessEvolved/game_settings.json` – Runtime player/AI configuration
 - `Docs/Roadmap.md` – Living development plan; check before starting any new work
