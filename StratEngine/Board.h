@@ -31,6 +31,11 @@ public:
 	// --- Position queries ---
 	bool InCheck() const noexcept;
 
+	// Returns the effective moving piece for a move that has NOT yet been applied.
+	// For non-promotion moves: the piece currently on m.from().
+	// For promotion moves: the promoted piece (derived from MoveType flags + pawn color).
+	ePiece GetEffectiveMovPiece(const Move& m) const noexcept;
+
 	// Returns true if any square covered by mask is occupied
 	bool IsOccupied(BITBOARD mask) const noexcept
 	{
@@ -98,7 +103,6 @@ private:
 	// --- Low-level piece manipulation (bitboard + mailbox, no material update) ---
 	void add_piece(eSquare square, ePiece piece);
 	void remove_piece(eSquare square, ePiece piece);
-	void move_piece(const Move& move);
 	void move_piece(ePiece piece, eSquare from, eSquare to);
 
 	// --- Material-tracking piece operations ---
@@ -155,7 +159,7 @@ private:
 	}
 
 	// --- Repetition tracking ---
-	void update_threefold_rep(const Move&);
+	void update_threefold_rep(const Move&, ePiece movPiece);
 	void push_position();
 	void pop_position();
 	void reset_repetition_history();

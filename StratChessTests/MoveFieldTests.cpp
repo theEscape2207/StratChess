@@ -1,8 +1,8 @@
 // MoveFieldTests.cpp — Catch2 test suite for Move class field refactoring
 //
 // Migrated from StratEngine/Tests/MoveFieldTests.h.
-// Verifies post-refactor invariants for Phase 1 (IsCheck removal)
-// and Phase 2 (unified EMPTY_MOVE sentinel).
+// Verifies post-refactor invariants for Phase 1 (IsCheck removal),
+// Phase 2 (unified EMPTY_MOVE sentinel), and Phase 3 (MovPiece removal).
 
 #include <catch_amalgamated.hpp>
 #include "Move.h"
@@ -11,8 +11,8 @@
 
 TEST_CASE("Phase 1 - Move equality is based on from/to squares only", "[moves]")
 {
-    Move m(e2, e4, MoveType::DOUBLE_PAWN_PUSH, WHITE_PAWN, NO_PIECE);
-    Move m2(e2, e4, MoveType::DOUBLE_PAWN_PUSH, WHITE_PAWN, NO_PIECE);
+    Move m(e2, e4, MoveType::DOUBLE_PAWN_PUSH);
+    Move m2(e2, e4, MoveType::DOUBLE_PAWN_PUSH);
 
     REQUIRE(m == m2);
     REQUIRE(m.IsSameAs(m2));
@@ -20,7 +20,7 @@ TEST_CASE("Phase 1 - Move equality is based on from/to squares only", "[moves]")
 
 TEST_CASE("Phase 1 - Output() must not contain '+' (check annotation moved to caller)", "[moves]")
 {
-    Move m(e2, e4, MoveType::DOUBLE_PAWN_PUSH, WHITE_PAWN, NO_PIECE);
+    Move m(e2, e4, MoveType::DOUBLE_PAWN_PUSH);
     REQUIRE(m.Output().find('+') == std::string::npos);
 }
 
