@@ -1,6 +1,6 @@
 # StratChess Engine Roadmap
 
-**Last Updated**: March 1, 2026
+**Last Updated**: March 3, 2026
 **Timeframe**: Next 6 months (through parallel search implementation)
 **Current Version**: AIPerplex 2.0
 
@@ -200,17 +200,7 @@ This roadmap organizes development tasks by priority and category. Items are dra
 - **Enables**: UCI protocol (`ToUCI` / `FromUCI`), PGN export (`ToSAN`), any future GUI or web integration
 - **Suggested order**: after Move layout Phases 3 & 4; before UCI
 
-#### 🟢 Move class → 16-bit layout (Phases 3 & 4)
-- **Status**: Phases 1 (IsCheck) and 2 ([from|to]IsNoSquare) complete — see commit history
-- **Design document**: `.claude/plans/prancy-prancing-trinket.md`
-- **Remaining work**:
-  - **Phase 3 — Remove `MovPiece`**: Add `Board::GetEffectiveMovPiece()`, thread `ePiece movPiece`
-    param through `MoveHelper`, `GameState`, `Sort`, `AIPerplex`, factory callers.
-  - **Phase 4 — Remove `Content`**: Add `Board::captured_history_[]` undo stack;
-    update `DoMove`/`UndoMove`; update `Move::Value(move, movPiece, content)` signature;
-    strip `captured` param from `MoveFactory`; add `static_assert(sizeof(Move) == 2)`.
-- **Prerequisite**: Phase 3 must complete before Phase 4
-- **Final validation**: perft suite + repetition tests + self-play with AIPerplex & AIAgent
+#### ✅ Move class → 16-bit layout — COMPLETE (all 4 phases done)
 
 
 #### 🟢 Extract Magic Numbers to Constants
@@ -488,9 +478,17 @@ Avoid these traps:
 - `GameInfo` history moved from Player into `Board`; `Position.h/cpp` created
 - Clean separation of concerns; prerequisite data for De-Singleton Board work
 
-### Move class → 16-bit layout (Phases 1 & 2)
+### Move class → 16-bit layout (Phases 1–4, March 2026)
 - **Phase 1**: Removed `Move::IsCheck` field
 - **Phase 2**: Removed `[from|to]IsNoSquare` fields
+- **Phase 3**: Removed `MovPiece` field — `Board::GetEffectiveMovPiece()` added; `MoveFactory`
+  drops movPiece param; `MoveHelper`/`GameState`/`Sort` thread explicit movPiece; Zobrist hash
+  corruption in `UndoMove` fixed; `BoardTests.cpp` added (6 `[board]` test cases; all 47 tests pass)
+- **Phase 4**: Removed `Content` (captured-piece) field — `sizeof(Move) == 2` enforced via
+  `static_assert`; 4 `PROMOTION_*_CAPTURE` MoveType variants added (capture bit 2 + promotion bit 3);
+  `Board::GetCapturedPiece()` public API added; `MoveFactory` drops captured param;
+  `Move::Value` / `MoveHelper::IsValid` / `IsPieceCapturedAt` gain explicit `content` param;
+  `IsCapture` / `IsPromote` simplified to pure flag-bit tests; all 47 tests pass
 
 ### Move sorting: Stack-allocated sort buffer
 - `pvs()` uses `std::array<std::pair<int,int>, MoveList::MAX_MOVES>` on the stack

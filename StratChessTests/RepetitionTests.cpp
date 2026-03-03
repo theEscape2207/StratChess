@@ -117,7 +117,7 @@ TEST_CASE("TC5 - Post-capture threefold is detected; capture resets scan boundar
     Board& board = Board::Instance();
     board.SetupFromFEN(FEN_ROOK_CAPTURE);
 
-    auto capture = MoveFactory::MakeCapture(a1, a5, BLACK_PAWN);
+    auto capture = MoveFactory::MakeCapture(a1, a5);
     REQUIRE(board.DoMove(capture)); // irreversible — black to move next
 
     for (int i = 0; i < 3; ++i)

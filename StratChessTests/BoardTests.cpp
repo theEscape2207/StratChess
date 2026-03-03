@@ -46,7 +46,7 @@ TEST_CASE("Board - En passant DoMove removes captured pawn; UndoMove restores it
     REQUIRE(board.GetPiece(e6) == NO_PIECE);
 
     // DoMove: white d5 captures en passant to e6
-    auto ep = MoveFactory::MakeEnPassant(d5, e6, BLACK_PAWN);
+    auto ep = MoveFactory::MakeEnPassant(d5, e6);
     REQUIRE(board.DoMove(ep));
 
     // White pawn on e6, origin and captured-pawn square empty
@@ -107,7 +107,7 @@ TEST_CASE("Board - Promotion move generation: quiet promotion yields PROMOTION_Q
     REQUIRE(it != moveList.end());
 }
 
-TEST_CASE("Board - Capture-promotion yields PROMOTION_QUEEN with an actual captured piece", "[board]")
+TEST_CASE("Board - Capture-promotion yields PROMOTION_QUEEN_CAPTURE type", "[board]")
 {
     Board& board = Board::Instance();
     board.SetupFromFEN(FEN_PROMOTION);
@@ -116,11 +116,11 @@ TEST_CASE("Board - Capture-promotion yields PROMOTION_QUEEN with an actual captu
     MoveList moveList;
     MoveGenerator::ComputeLegalMoves(info, moveList);
 
-    // Capture-promotion: c7 captures rook on b8, promotes to queen
+    // Capture-promotion: c7 captures rook on b8, promotes to queen.
+    // Phase 4: encoded as PROMOTION_QUEEN_CAPTURE (bits 3+2 both set); no Content field.
     const auto it = std::find_if(moveList.begin(), moveList.end(), [](const Move& m) {
         return m.from() == c7 && m.to() == b8
-            && MoveHelper::AsType(m) == MoveType::PROMOTION_QUEEN
-            && PieceHelper::IsActual(m.Content);
+            && MoveHelper::AsType(m) == MoveType::PROMOTION_QUEEN_CAPTURE;
     });
     REQUIRE(it != moveList.end());
 }

@@ -36,6 +36,13 @@ public:
 	// For promotion moves: the promoted piece (derived from MoveType flags + pawn color).
 	ePiece GetEffectiveMovPiece(const Move& m) const noexcept;
 
+	// Returns the piece captured by this move (before it is applied to the board).
+	// For CAPTURE / PROMOTION_*_CAPTURE: the piece on move.to().
+	// For EP_CAPTURE: the opposite-side pawn (not on move.to()).
+	// For all other move types: NO_PIECE.
+	// Phase 4: replaces move.Content (removed from Move struct).
+	ePiece GetCapturedPiece(const Move& m) const noexcept;
+
 	// Returns true if any square covered by mask is occupied
 	bool IsOccupied(BITBOARD mask) const noexcept
 	{

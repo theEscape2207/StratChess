@@ -62,11 +62,15 @@ template<> struct fmt::formatter<MoveType> {
             case MoveType::QUEEN_CASTLE:     return "Queen-side Castle";
             case MoveType::CAPTURE:          return "Capture";
             case MoveType::EP_CAPTURE:       return "En Passant";
-            case MoveType::PROMOTION_KNIGHT: return "Promotion (Knight)";
-            case MoveType::PROMOTION_BISHOP: return "Promotion (Bishop)";
-            case MoveType::PROMOTION_ROOK:   return "Promotion (Rook)";
-            case MoveType::PROMOTION_QUEEN:  return "Promotion (Queen)";
-            default:                         return "??";
+            case MoveType::PROMOTION_KNIGHT:         return "Promotion (Knight)";
+            case MoveType::PROMOTION_BISHOP:         return "Promotion (Bishop)";
+            case MoveType::PROMOTION_ROOK:           return "Promotion (Rook)";
+            case MoveType::PROMOTION_QUEEN:          return "Promotion (Queen)";
+            case MoveType::PROMOTION_KNIGHT_CAPTURE: return "Promotion+Capture (Knight)";
+            case MoveType::PROMOTION_BISHOP_CAPTURE: return "Promotion+Capture (Bishop)";
+            case MoveType::PROMOTION_ROOK_CAPTURE:   return "Promotion+Capture (Rook)";
+            case MoveType::PROMOTION_QUEEN_CAPTURE:  return "Promotion+Capture (Queen)";
+            default:                                 return "??";
             }
             }(m);
         return fmt::format_to(ctx.out(), "{}", name);
