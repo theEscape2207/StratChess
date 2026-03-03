@@ -57,8 +57,8 @@ private:
 
 	// Validates the user input using regex
 	static bool ValidateInput(_In_ const std::string& strInput);
-	// Returns true if we are trying a promotion
-	static bool ParseInput(_In_ const std::string& input, _Inout_ Move& move);
+	// Returns true if we are trying a promotion; in that case sets promotedType.
+	static bool ParseInput(_In_ const std::string& input, _Inout_ Move& move, _Out_ ePieceType& promotedType);
 
 	// We know a lot - ignoring the optional '-' and promote chars
 	static eSquare GetSquare(std::string::const_iterator& begin, _In_ const std::string::const_iterator& end)
