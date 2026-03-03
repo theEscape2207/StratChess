@@ -125,6 +125,34 @@ This roadmap organizes development tasks by priority and category. Items are dra
 - **Tuning**: Start with 50cp window, measure fail rate
 - **Note**: AIAgent already has this - can reference implementation
 
+### Refactoring
+
+#### 🟡 Introduce MoveFormatter — centralise move presentation
+- **Motivation**: The `Move` struct no longer stores the moving or captured piece, which means no
+  single print site can produce full-context output on its own. A quick fix restores the piece
+  prefix (`Pe2-e4`) at `PrintBoardAndMove` / `PrintGameMoves` by reading `GetPiece(move.to())`
+  after DoMove, but the following gaps remain:
+  - Verbose English line ("White Pawn moves e2 to e4") is gone entirely
+  - `+` / `#` missing from `gamelist.txt` (check written to console only)
+  - Fragile `\n`-offset injection still lives in `PrintBoardAndMove`
+  - Promotion suffix (`=Q`) not yet appended to coordinate output
+  - `operator<<(Move)` has no board context and cannot be improved further
+- **Design**: Introduce a stateless `MoveFormatter` class (static methods, no instance):
+  ```cpp
+  static std::string ToShort(const Move&, const Board&);    // replaces Output() + manual injection
+  static std::string ToVerbose(const Move&, const Board&);  // restores verbose English line
+  static std::string ToUCI(const Move&);                    // UCI wire format
+  static Move        FromUCI(std::string_view, const Board&);
+  static std::string ToSAN(const Move&, const Board&);      // Standard Algebraic Notation
+  ```
+- **Gaps this directly fixes**:
+  - Verbose description restored: "White Pawn moves e2 to e4 and captures!"
+  - `+` and `#` in both console and `gamelist.txt`
+  - Fragile offset-surgery hack in `PrintBoardAndMove` removed
+  - Promotion suffix (`=Q`) in short and verbose forms
+- **Enables**: UCI protocol, PGN export, any future GUI or web integration
+- **Suggested order**: before UCI; quick fix already applied as stopgap
+
 ### Features
 
 #### 🟡 Migrate Inline Move Scoring into MoveSorter
@@ -179,26 +207,6 @@ This roadmap organizes development tasks by priority and category. Items are dra
   3. **Extended Futility Pruning**: Multiple plies from leaf
 
 ### Refactoring
-
-#### 🟢 Introduce MoveFormatter — centralise move presentation
-- **Motivation**: Display logic is scattered across three locations, none of which have the board context needed to produce correct output:
-  - `Move::Output()` — pseudo-LAN notation (`Pe2-e3`); no `+`, no `#`, no disambiguation
-  - `Move::operator<<` — verbose English description; check annotation injected via fragile `\n`-offset surgery in `PrintBoardAndMove`
-  - `Game::PrintBoardAndMove` / `PrintGameMoves` — ad-hoc annotation at call site; `gamelist.txt` receives no check annotation because `PrintGameMoves` calls `operator<<` on a stored `Move` without board access
-- **Design**: Introduce a stateless `MoveFormatter` class (static methods, no instance):
-  ```cpp
-  static std::string ToShort(const Move&, const Board&);    // replaces Move::Output() + manual injection
-  static std::string ToVerbose(const Move&, const Board&);  // replaces operator<< + manual injection
-  static std::string ToUCI(const Move&);                    // UCI wire format
-  static Move        FromUCI(std::string_view, const Board&);
-  static std::string ToSAN(const Move&, const Board&);      // Standard Algebraic Notation
-  ```
-- **Gaps this directly fixes**:
-  - `+` and `#` missing from `gamelist.txt`
-  - Fragile `\n`-offset injection hack in `PrintBoardAndMove` removed
-  - Single authoritative place for disambiguation, promotion suffix (`=Q`), and `#`
-- **Enables**: UCI protocol (`ToUCI` / `FromUCI`), PGN export (`ToSAN`), any future GUI or web integration
-- **Suggested order**: after Move layout Phases 3 & 4; before UCI
 
 #### ✅ Move class → 16-bit layout — COMPLETE (all 4 phases done)
 
