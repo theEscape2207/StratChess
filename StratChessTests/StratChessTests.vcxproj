@@ -162,6 +162,7 @@
     <ClCompile Include="TTTests.cpp" />
     <ClCompile Include="EvalTests.cpp" />
     <ClCompile Include="TacticalTests.cpp" />
+    <ClCompile Include="BoardTests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\StratEngine\Tests\Perft.h" />

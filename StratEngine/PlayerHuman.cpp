@@ -71,7 +71,8 @@ Move PlayerHuman::GetMove(_Inout_ GameInfo& info)
 
 		// User input is validated. Now Parse user input
 		Move userMove;
-		const bool userPromote = ParseInput(strMove, userMove);
+		ePieceType userPieceType = QUEEN;	// default if not specified
+		const bool userPromote = ParseInput(strMove, userMove, userPieceType);
 
 		auto moveIt = std::find(moveList.begin(), moveList.end(), userMove);
 		if (moveIt == moveList.end())
@@ -86,24 +87,28 @@ Move PlayerHuman::GetMove(_Inout_ GameInfo& info)
 		// Special: Er det en Promotion? Saa er der 4 valgmuligheder!
 		if (MoveHelper::IsPromote(*moveIt))
 		{
-			// There are four different moves. We only want one!
-			if (userPromote) {
-				// User specified a piece selection - is this it?
-				if (moveIt->MovPiece != PieceHelper::AsPiece(userMove.MovPiece, PieceHelper::Color(moveIt->MovPiece)))
-					continue;	//Nope - not this one
-			}
-			else {
-				// User did not specify a selection. Then give him a queen!
-				if (moveIt->MovPiece != PieceHelper::AsPiece(QUEEN, PieceHelper::Color(moveIt->MovPiece)))
-					continue;	//Nope - not this one
-			}
+			// Map a ePieceType to the corresponding promotion MoveType flag
+			auto toPromotionType = [](ePieceType pt) -> MoveType {
+				switch (pt) {
+				case QUEEN:  return MoveType::PROMOTION_QUEEN;
+				case ROOK:   return MoveType::PROMOTION_ROOK;
+				case BISHOP: return MoveType::PROMOTION_BISHOP;
+				case KNIGHT: return MoveType::PROMOTION_KNIGHT;
+				default:     return MoveType::PROMOTION_QUEEN;
+				}
+			};
+			const MoveType targetType = userPromote
+				? toPromotionType(userPieceType)
+				: MoveType::PROMOTION_QUEEN;
+			if (MoveHelper::AsType(*moveIt) != targetType)
+				continue;	// Not the requested promotion piece — try next
 		}
 
 		// Tjekker traekket for lovlighed(dvs ikke skak osv). Returnerer hvis OK
 		// TODO: IsLegalMove bliver kaldt i IsAnyLegalMoves(), men illegale traek bliver ikke fjernet
 		if (board.IsLegalMove(*moveIt))
 		{
-			info.UpdateBoardInfo(*moveIt );
+			info.UpdateBoardInfo(*moveIt, Board::Instance().GetEffectiveMovPiece(*moveIt));
 			return *moveIt;
 		}
 	}
@@ -124,27 +129,24 @@ bool PlayerHuman::ValidateInput(_In_ const std::string& strInput)
 // Returns true if we are trying a promotion
 // Expects parameter input to be lower case
 // The returned Move has a generic type
-// Returns true if the user specified an allowed promotional character
+// Returns true if the user specified an allowed promotional character; sets promotedType in that case
 bool PlayerHuman::ParseInput(_In_ const std::string& input,
-	_Inout_ Move& move
-)
+	_Inout_ Move& move,
+	_Out_ ePieceType& promotedType)
 {
 	auto curIt = input.begin();
 	const auto end = input.end();
 	eSquare from = GetSquare(curIt, end);
 	eSquare to = GetSquare(curIt, end);
 	move.SetMove(from, to, MoveType::QUIET);	// Generic type for now
-	
+
 	// No promotion this time?
 	if (curIt == end)
-	{
-		move.MovPiece = ePiece::NO_PIECE;
 		return false;
-	}
 
 	// What did he ask for? We must have it in our map! Otherwise should be stopped by regex earlier
 	MapPieces::const_iterator cit = PlayerHuman::GetPromoteMap().find(*curIt);
-	move.MovPiece = static_cast<ePiece>(cit->second);
+	promotedType = cit->second;
 	return true;
 }
 

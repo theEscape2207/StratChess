@@ -6,14 +6,14 @@
 
 #include <cassert>
 #include <algorithm>
-#include <functional>      // For greater<Move>( )
+#include "Board.h"
 #include "MoveHelper.h"
 
 // Her foretages en findes traekket fra PVLine og rykkes forrest
-void MoveSorter::SortMovesIter(MoveList& moveList,			// traeklisten
+void MoveSorter::SortMovesIter(MoveList& moveList,		// traeklisten
 							   const Move& lastMove,	// modstanderens traek foer dette
-							   const Move* pIterMove
-							   )
+							   const Move* pIterMove,
+							   const Board& board)
 {
 	size_t foundMove = 0;
 	if (pIterMove != nullptr)	// Har vi et traek at kigge paa?
@@ -33,14 +33,15 @@ void MoveSorter::SortMovesIter(MoveList& moveList,			// traeklisten
 	}
 
 	// Sort the rest of the moves
-	SortMoves(moveList, lastMove, foundMove);
+	SortMoves(moveList, lastMove, board, foundMove);
 }
 
-// TODO: Convert to use standard value based sorting - it's way faster - 
+// TODO: Convert to use standard value based sorting - it's way faster -
 // additionally we are now sorting captures before Promotions even if they are usually a lot faster
-// Her foretages en sortering af de lovlige traek 
+// Her foretages en sortering af de lovlige traek
 void MoveSorter::SortMoves(MoveList& moveList,		// traeklisten
 						   const Move& lastMove,	// modstanderens traek foer dette
+						   const Board& board,
 						   size_t curIndex			// hvorfra sorteringen skal starte
 						   )
 {
@@ -76,21 +77,26 @@ void MoveSorter::SortMoves(MoveList& moveList,		// traeklisten
 	}
 
 	// Sorterer moves - diff is number of found interesting moves
-	SortMovesByValue(moveList, curIndex-lastMoveEndIndex, lastMoveEndIndex);
+	SortMovesByValue(moveList, curIndex-lastMoveEndIndex, board, lastMoveEndIndex);
 
-	// Resten af traekkene er saaledes usorterede, da de ikke falder ind under 
+	// Resten af traekkene er saaledes usorterede, da de ikke falder ind under
 	// nogen regel endnu
 	// Her kunne der f.eks. vaere skak og andre
 }
 
-// Her sorteres de gode slag frem for de mindre gode 
+// Her sorteres de gode slag frem for de mindre gode
 // Dvs ikke at ofre sin dronning for at faa den #%&!! bonde ;-)
 // Bemaerk: start er default 0
 // TODO: Why dont the callers supply iterators instead?
-void MoveSorter::SortMovesByValue(MoveList& moveList, size_t captures, size_t start)
+void MoveSorter::SortMovesByValue(MoveList& moveList, size_t captures, const Board& board, size_t start)
 {
-	// Sorter slagene efter vaerdien af forskellen mellem slagne brik og brikken der slaar
-	// Benytter sig af den generiske quicksort og class Move's operator>
+	// Sort captures by MVV-LVA: captured piece value minus (moving piece value / 16).
+	// board is used to obtain the moving piece for each move (Phase 3: MovPiece removed from Move).
 	if (captures >= 2)	// Mindst 2 for at sortere
-		std::sort(moveList.begin()+ static_cast<int>(start), moveList.begin() + static_cast<int>(start+captures), std::greater<>());
+		std::sort(moveList.begin() + static_cast<int>(start),
+			moveList.begin() + static_cast<int>(start + captures),
+			[&board](const Move& a, const Move& b) {
+				return Move::Value(a, board.GetEffectiveMovPiece(a))
+					 > Move::Value(b, board.GetEffectiveMovPiece(b));
+			});
 }

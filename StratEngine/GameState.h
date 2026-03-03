@@ -18,12 +18,12 @@ namespace CastlingRights {
 
 // Possible game states
 enum class GameStates {
-	STILL_PLAYING,			// 0
-	WHITE_WON,				// 1
-	BLACK_WON,				// 2
-	DRAW_PAT,				// 3
-	DRAW_50_MOVES,			// 4
-	HUMAN_EXITED			// 5
+	STILL_PLAYING,		// 0
+	WHITE_WON,			// 1
+	BLACK_WON,			// 2
+	DRAW_PAT,			// 3
+	DRAW_50_MOVES,		// 4
+	HUMAN_EXITED		// 5
 };
 
 // Contains information about the board situation
@@ -53,22 +53,23 @@ struct GameInfo
 	}
 
 	// Updates the BoardInfo with information about En Passant and castling possibilities
-	// For each move done, update as done above according to input move
-	void UpdateBoardInfo(const Move& move) noexcept
+	// For each move done, update as done above according to input move.
+	// movPiece: the effective moving piece (Board::GetEffectiveMovPiece or GetPiece(to) after DoMove)
+	void UpdateBoardInfo(const Move& move, ePiece movPiece) noexcept
 	{
 		// Set the En Passant square
-		epSquare = MoveHelper::GetEnPassantSquare(move);
+		epSquare = MoveHelper::GetEnPassantSquare(move, movPiece);
 		lastMove = move;
 
-		UpdateCastlingState(move);
+		UpdateCastlingState(move, movPiece);
 
-		UpdateFiftyMovesState(move);
+		UpdateFiftyMovesState(move, movPiece);
 	}
 
-	void UpdateCastlingState(const Move& m) noexcept
+	void UpdateCastlingState(const Move& m, ePiece movPiece) noexcept
 	{
-		auto sideToMove = PieceHelper::Color(m.MovPiece);
-		if (MoveHelper::IsKingMove(m)) {
+		auto sideToMove = PieceHelper::Color(movPiece);
+		if (MoveHelper::IsKingMove(m, movPiece)) {
 			castlingRights &= ~(sideToMove == eColor::WHITE
 				? CastlingRights::WHITE_BOTH
 				: CastlingRights::BLACK_BOTH);
@@ -89,11 +90,11 @@ struct GameInfo
 		}
 	}
 
-	void UpdateFiftyMovesState(const Move& move) noexcept
+	void UpdateFiftyMovesState(const Move& move, ePiece movPiece) noexcept
 	{
-		if (MoveHelper::IsCapture(move) || MoveHelper::IsPawnMove(move))
+		if (MoveHelper::IsCapture(move) || MoveHelper::IsPawnMove(move, movPiece))
 		{
-			fiftyCount = 0;	// if so, then reset counter 
+			fiftyCount = 0;	// if so, then reset counter
 			assert(gameState == GameStates::STILL_PLAYING);
 		}
 		else

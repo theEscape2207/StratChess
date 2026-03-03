@@ -99,7 +99,7 @@ int AIAgent::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta, _Inout_ PVLi
 	
 	// Sorterer traekkene
 	MoveSorter::SortMovesIter( moveList, GetParentMove( ply ), // Last move
-														GetIterMove( ply ) );
+														GetIterMove( ply ), m_Board );
 	int score = 0;
 
 	// Tjek om der er lovlige brugbare traek her

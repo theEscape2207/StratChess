@@ -4,18 +4,16 @@
 #include "PieceHelper.h"
 
 // Move representation (16-bit encoding)
-// Note: Currently 32 bits with additional info. Roadmap item available to reduce this when we have a better understanding of the performance implications and memory usage of Move objects in practice.
-// // Encoding:
-// Bits 0-5: From square (0-63)
+// Encoding:
+// Bits 0-5:  From square (0-63)
 // Bits 6-11: To square (0-63)
 // Bits 12-15: Move flags (0-15)
 // Additional info:
-// MovPiece: The piece that is moving
 // Content: The piece that is being captured (if any, else NO_PIECE)
-// Note: We could save some space by encoding the moving piece and content into the flags if needed
-// but that would complicate the code and reduce readability quite a bit
-// 	 Given that Move objects are not stored in large arrays most of the time, this is acceptable
-class Move final    
+// Note: The moving piece (MovPiece) has been removed from the Move struct (Phase 3).
+//       Callers obtain it via Board::GetEffectiveMovPiece() before DoMove, or
+//       Board::GetPiece(move.to()) immediately after DoMove.
+class Move final
 {
     static constexpr uint16_t EMPTY_MOVE = 0xFFFF;
 
@@ -25,15 +23,10 @@ public:
     // Copy constructor
     constexpr Move(const Move& rhs) noexcept = default;
 
-    constexpr explicit Move(_In_  ePiece movPiece) noexcept
-        : MovPiece(movPiece)
-    {
-    }
-
     constexpr Move() noexcept : data(EMPTY_MOVE) {}
     constexpr explicit Move(uint16_t d) noexcept : data(d) {}
     constexpr Move(eSquare from, eSquare to, uint8_t flags = 0) noexcept
-        : data(static_cast<uint16_t>(from | (to << 6) | (flags << 12))), MovPiece(ePiece::NO_PIECE), Content(ePiece::NO_PIECE)
+        : data(static_cast<uint16_t>(from | (to << 6) | (flags << 12))), Content(ePiece::NO_PIECE)
     {
     }
 
@@ -61,8 +54,8 @@ public:
     // underlying storage instead of per-field assignments.
     Move& operator=(Move&& other) noexcept = default;
 
-    Move(eSquare from, eSquare to, MoveType type, ePiece movPiece, ePiece content) noexcept
-        : data(static_cast<uint16_t>(from | (to << 6) | static_cast<uint8_t>(type) << 12)), MovPiece(movPiece), Content(content)
+    Move(eSquare from, eSquare to, MoveType type, ePiece content = ePiece::NO_PIECE) noexcept
+        : data(static_cast<uint16_t>(from | (to << 6) | static_cast<uint8_t>(type) << 12)), Content(content)
     {
     }
 
@@ -79,7 +72,7 @@ public:
         return data == EMPTY_MOVE;
     }
 
-    // Sets the move data fields 
+    // Sets the move data fields
     // Note: Used for performance reasons to avoid constructing new Move objects all the time
     // Remark: Type is defaulted to QUIET
     constexpr void SetMove(eSquare from, eSquare to) noexcept
@@ -91,22 +84,10 @@ public:
         data = static_cast<uint16_t>(from | (to << 6) | static_cast<uint8_t>(moveType) << 12);
     }
 
-    constexpr void SetMove(eSquare from, eSquare to, MoveType moveType, ePiece movPiece, ePiece takenPiece) noexcept
-    {
-        data = static_cast<uint16_t>(from | (to << 6) | static_cast<uint8_t>(moveType) << 12);
-        MovPiece = movPiece;
-        Content = takenPiece;
-    }
-
-    // IsGreater operator: Bruges til at sortere slagene
-    friend bool operator> (_In_ const Move& lhs, _In_ const Move& rhs) noexcept
-    {
-        return Value(lhs) > Value(rhs);
-    }
-
-    // Return an evaluation of the material value consequences of the Move
+    // Return an evaluation of the material value consequences of the Move.
+    // movPiece: the effective moving piece (obtain via Board::GetEffectiveMovPiece before DoMove).
     // Note: Currently only used for capture move sorting, i.e. Normal, PawnTwoForward and Castling are not being used!
-    static int Value(_In_ const Move& move) noexcept
+    static int Value(_In_ const Move& move, _In_ ePiece movPiece) noexcept
     {
         // Algorithm:
         // ----------
@@ -114,7 +95,7 @@ public:
         // That way we can rank the interesting captures and get the pawn-takes-bishop before queen-takes-bishop
         // Note: We are dividing the move value by 16 (first binary value over Queen factor) to reflect that
         // 1) queen-takes-queen is way more interesting avenue than bishop takes pawn
-        // 2) queen-takes-pawn (900 and 100) is more interesting than pawn-moves-normally (100) and 
+        // 2) queen-takes-pawn (900 and 100) is more interesting than pawn-moves-normally (100) and
         // 3) queen-takes-queen (900-900) is more interest than pawn-takes-pawn (100-100), but also
         // 4) Pawn move (0-100/16) is more interesting than Rook move (0 - 500/16)
         // Formula: Captured piece value + (Promotion value diff) - Moving piece/16
@@ -122,7 +103,7 @@ public:
         // Best move is then pawn-takes-queen and gets promoted to a Queen: 900 + (900 - 100) - 100/16 = ~1693
 
         int captureScore = 0;
-        const auto movingPieceScore = PieceHelper::Value(move.MovPiece) >> 4;
+        const auto movingPieceScore = PieceHelper::Value(movPiece) >> 4;
         const auto type = static_cast<MoveType>(move.flags());
         switch (type)
         {
@@ -134,13 +115,12 @@ public:
         case MoveType::CAPTURE:
         case MoveType::EP_CAPTURE:
             captureScore = PieceHelper::Value(move.Content);
-            //std::assert(captureScore == PieceHelper::Value(ePiece::WHITE_PAWN));
             return captureScore - movingPieceScore;
         case MoveType::PROMOTION_KNIGHT:
         case MoveType::PROMOTION_BISHOP:
         case MoveType::PROMOTION_ROOK:
 		case MoveType::PROMOTION_QUEEN:	// +: Queen (etc) and any Capture piece value; -: Pawn value
-            captureScore = PieceHelper::Value(move.MovPiece) - PieceHelper::Value(ePiece::WHITE_PAWN);
+            captureScore = PieceHelper::Value(movPiece) - PieceHelper::Value(ePiece::WHITE_PAWN);
 			if (PieceHelper::IsActual(move.Content))
             {
                 captureScore += PieceHelper::Value(move.Content);
@@ -169,16 +149,17 @@ public:
     void Clear() noexcept
     {
         data = EMPTY_MOVE;
-        MovPiece = ePiece::NO_PIECE;
         Content = ePiece::NO_PIECE;
     }
 
+    // Coordinate-only output (no piece prefix). Suitable for PV lines and stream consumers.
     std::string Output() const;
+    // Piece-prefixed output (e.g. "Pe2-e4"). Requires the moving piece explicitly.
+    std::string Output(ePiece movPiece) const;
 
 private:
     uint16_t data{ EMPTY_MOVE }; // bits 0-5: from, 6-11: to, 12-15: flags
 public:
-	ePiece MovPiece  { NO_PIECE };		// Type and color
     ePiece Content   { NO_PIECE };		// The taken piece
 
 public:
