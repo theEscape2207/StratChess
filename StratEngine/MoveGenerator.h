@@ -31,9 +31,9 @@ private:
 
 	static void GenerateOfficerMoves(const BITBOARD * const bbBitBoards, MoveList& moveList, ePieceType piece, eColor color, bool onlyCaptures );
 	
-	static void AddOfficerMoves(MoveList& moveList, BITBOARD, ePiece piece, eSquare from);
+	static void AddOfficerMoves(MoveList& moveList, BITBOARD bbAttack, eSquare from);
 	static void AddPawnPromoteMoves( const BITBOARD* bbBitBoards, eColor color, MoveList& moveList );
-	static void AddPawnCaptures(MoveList& moveList, const BITBOARD* , Move pawnMove);
+	static void AddPawnCaptures(MoveList& moveList, const BITBOARD*, Move pawnMove, eColor color);
 	static void AddCastleMoves(MoveList& moveList, eColor color, const BITBOARD* bbBitBoards, const GameInfo &info);
 
 	static BITBOARD GetAnyEnPassantAttackingPawns(eColor attackByColor, eSquare epSquare) noexcept;

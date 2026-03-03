@@ -32,28 +32,28 @@ static constexpr const char* FEN_CASTLING =
 
 namespace {
 
-void apply_quiet(Board& board, eSquare from, eSquare to, ePiece piece)
+void apply_quiet(Board& board, eSquare from, eSquare to)
 {
-    auto m = MoveFactory::MakeQuiet(from, to, piece);
+    auto m = MoveFactory::MakeQuiet(from, to);
     REQUIRE(board.DoMove(m)); // fail fast on bad setup move
 }
 
 // One oscillation cycle starting with WHITE. Ra1<->h1, Kd6<->e6.
 void oscillate_cycle(Board& board)
 {
-    apply_quiet(board, a1, h1, WHITE_ROOK);
-    apply_quiet(board, d6, e6, BLACK_KING);
-    apply_quiet(board, h1, a1, WHITE_ROOK);
-    apply_quiet(board, e6, d6, BLACK_KING);
+    apply_quiet(board, a1, h1);
+    apply_quiet(board, d6, e6);
+    apply_quiet(board, h1, a1);
+    apply_quiet(board, e6, d6);
 }
 
 // One oscillation cycle starting with BLACK (used after an irreversible white move).
 void oscillate_cycle_black_first(Board& board)
 {
-    apply_quiet(board, d6, e6, BLACK_KING);
-    apply_quiet(board, a1, h1, WHITE_ROOK);
-    apply_quiet(board, e6, d6, BLACK_KING);
-    apply_quiet(board, h1, a1, WHITE_ROOK);
+    apply_quiet(board, d6, e6);
+    apply_quiet(board, a1, h1);
+    apply_quiet(board, e6, d6);
+    apply_quiet(board, h1, a1);
 }
 
 } // anonymous namespace
@@ -65,13 +65,13 @@ TEST_CASE("TC1 - Small history: history_size < 4 always returns false", "[repeti
     Board& board = Board::Instance();
     board.SetupFromFEN(FEN_ROOK);
 
-    apply_quiet(board, a1, h1, WHITE_ROOK);
+    apply_quiet(board, a1, h1);
     REQUIRE_FALSE(board.is_repetition(1));
 
-    apply_quiet(board, d6, e6, BLACK_KING);
+    apply_quiet(board, d6, e6);
     REQUIRE_FALSE(board.is_repetition(1));
 
-    apply_quiet(board, h1, a1, WHITE_ROOK);
+    apply_quiet(board, h1, a1);
     REQUIRE_FALSE(board.is_repetition(1));
 }
 
@@ -102,7 +102,7 @@ TEST_CASE("TC4 - Post-pawn threefold is detected; pawn move resets scan boundary
     Board& board = Board::Instance();
     board.SetupFromFEN(FEN_ROOK_PAWN);
 
-    apply_quiet(board, a2, a3, WHITE_PAWN); // irreversible — black to move next
+    apply_quiet(board, a2, a3); // irreversible — black to move next
 
     oscillate_cycle_black_first(board); // 1st copy of post-pawn position in history
     oscillate_cycle_black_first(board); // 2nd copy
@@ -116,15 +116,15 @@ TEST_CASE("TC5 - Post-capture threefold is detected; capture resets scan boundar
     Board& board = Board::Instance();
     board.SetupFromFEN(FEN_ROOK_CAPTURE);
 
-    auto capture = MoveFactory::MakeCapture(a1, a5, WHITE_ROOK, BLACK_PAWN);
+    auto capture = MoveFactory::MakeCapture(a1, a5);
     REQUIRE(board.DoMove(capture)); // irreversible — black to move next
 
     for (int i = 0; i < 3; ++i)
     {
-        apply_quiet(board, f6, e6, BLACK_KING);
-        apply_quiet(board, a5, h5, WHITE_ROOK);
-        apply_quiet(board, e6, f6, BLACK_KING);
-        apply_quiet(board, h5, a5, WHITE_ROOK);
+        apply_quiet(board, f6, e6);
+        apply_quiet(board, a5, h5);
+        apply_quiet(board, e6, f6);
+        apply_quiet(board, h5, a5);
     }
 
     REQUIRE(board.is_repetition(1));
@@ -136,16 +136,16 @@ TEST_CASE("TC6 - Castling rights change prevents false positive", "[repetition]"
     board.SetupFromFEN(FEN_CASTLING);
 
     // Move a-rooks off home squares — both sides lose queenside castling rights.
-    apply_quiet(board, a1, a2, WHITE_ROOK);
-    apply_quiet(board, a8, a7, BLACK_ROOK);
-    apply_quiet(board, a2, a1, WHITE_ROOK); // pieces return, rights permanently gone
-    apply_quiet(board, a7, a8, BLACK_ROOK);
+    apply_quiet(board, a1, a2);
+    apply_quiet(board, a8, a7);
+    apply_quiet(board, a2, a1); // pieces return, rights permanently gone
+    apply_quiet(board, a7, a8);
 
     // Second cycle: post-rights-loss position repeats (twofold only, not threefold).
-    apply_quiet(board, a1, a2, WHITE_ROOK);
-    apply_quiet(board, a8, a7, BLACK_ROOK);
-    apply_quiet(board, a2, a1, WHITE_ROOK);
-    apply_quiet(board, a7, a8, BLACK_ROOK);
+    apply_quiet(board, a1, a2);
+    apply_quiet(board, a8, a7);
+    apply_quiet(board, a2, a1);
+    apply_quiet(board, a7, a8);
 
     REQUIRE_FALSE(board.is_repetition(1)); // no false positive
 }
@@ -155,10 +155,10 @@ TEST_CASE("TC7 - UndoMove fully restores repetition state", "[repetition]")
     Board& board = Board::Instance();
     board.SetupFromFEN(FEN_ROOK);
 
-    auto m1 = MoveFactory::MakeQuiet(a1, h1, WHITE_ROOK);
-    auto m2 = MoveFactory::MakeQuiet(d6, e6, BLACK_KING);
-    auto m3 = MoveFactory::MakeQuiet(h1, a1, WHITE_ROOK);
-    auto m4 = MoveFactory::MakeQuiet(e6, d6, BLACK_KING);
+    auto m1 = MoveFactory::MakeQuiet(a1, h1);
+    auto m2 = MoveFactory::MakeQuiet(d6, e6);
+    auto m3 = MoveFactory::MakeQuiet(h1, a1);
+    auto m4 = MoveFactory::MakeQuiet(e6, d6);
 
     board.DoMove(m1); board.DoMove(m2); board.DoMove(m3); board.DoMove(m4);
     board.UndoMove(m4); board.UndoMove(m3); board.UndoMove(m2); board.UndoMove(m1);
@@ -172,11 +172,11 @@ TEST_CASE("TC9 - Twofold repetition within search tree is a draw", "[repetition]
     board.SetupFromFEN(FEN_ROOK);
 
     // All 5 moves are search moves (no game history).
-    apply_quiet(board, a1, h1, WHITE_ROOK); // ply 1 — hash stored at index 0
-    apply_quiet(board, d6, e6, BLACK_KING); // ply 2
-    apply_quiet(board, h1, a1, WHITE_ROOK); // ply 3
-    apply_quiet(board, e6, d6, BLACK_KING); // ply 4 — back to root position
-    apply_quiet(board, a1, h1, WHITE_ROOK); // ply 5 — same hash as ply 1
+    apply_quiet(board, a1, h1); // ply 1 — hash stored at index 0
+    apply_quiet(board, d6, e6); // ply 2
+    apply_quiet(board, h1, a1); // ply 3
+    apply_quiet(board, e6, d6); // ply 4 — back to root position
+    apply_quiet(board, a1, h1); // ply 5 — same hash as ply 1
 
     // ply=5: search_root_index = history_size(5) - ply(5) = 0.
     // Index 0 satisfies i >= 0 (in-search), repetitions==1 → returns true.

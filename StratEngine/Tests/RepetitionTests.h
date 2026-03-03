@@ -193,7 +193,7 @@ void test_rep_reset_by_capture()
     board.SetupFromFEN(FEN_ROOK_CAPTURE);
 
     // White captures Ra1xa5 (irreversible). It is now black's turn.
-    auto capture = MoveFactory::MakeCapture(a1, a5, WHITE_ROOK, BLACK_PAWN);
+    auto capture = MoveFactory::MakeCapture(a1, a5);
     if (!board.DoMove(capture))
     {
         std::cerr << "SETUP ERROR: capture Ra1xa5 rejected\n";

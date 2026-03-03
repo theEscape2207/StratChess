@@ -65,8 +65,8 @@ void Board::clear_board()
 	zobrist_hash_ = 0;
 }
 
-// Adds a piece to all relevant bitboards and the mailbox. Updates the Zobrist hash.
-// Does NOT update material score — call add_piece_to_board for that.
+// Adds a piece to all relevant bitboards, the mailbox, and the Zobrist hash.
+// Does NOT update material score — use add_piece_to_board for that.
 void Board::add_piece(eSquare square, ePiece piece)
 {
 	set_bitboard_square(piece, square);
@@ -78,15 +78,14 @@ void Board::add_piece(eSquare square, ePiece piece)
 	BitBoardHelper::SetBitboardMask(bitboards_[ROTATED45R], g_bbMaskRotated45R[square]);
 	BitBoardHelper::SetBitboardMask(bitboards_[ROTATED45L], g_bbMaskRotated45L[square]);
 
-	zobrist_hash_ ^= zobrist::piece_keys[piece][square];
-
 	set_square(square, piece);
+	zobrist_hash_ ^= zobrist::piece_keys[piece][square];
 
 	assert(test_bitboards(outLegalMoves));
 }
 
-// Removes a piece from all relevant bitboards and the mailbox. Updates the Zobrist hash.
-// Does NOT update material score — call remove_piece_from_board for that.
+// Removes a piece from all relevant bitboards, the mailbox, and the Zobrist hash.
+// Does NOT update material score — use remove_piece_from_board for that.
 void Board::remove_piece(eSquare square, ePiece piece)
 {
 	assert(GetPiece(square) == piece);
@@ -101,9 +100,8 @@ void Board::remove_piece(eSquare square, ePiece piece)
 	BitBoardHelper::ClearBitboardMask(bitboards_[ROTATED45R], g_bbMaskRotated45R[square]);
 	BitBoardHelper::ClearBitboardMask(bitboards_[ROTATED45L], g_bbMaskRotated45L[square]);
 
-	zobrist_hash_ ^= zobrist::piece_keys[piece][square];
-
 	clear_square(square);
+	zobrist_hash_ ^= zobrist::piece_keys[piece][square];
 
 	assert(test_bitboards(outLegalMoves));
 }
@@ -258,8 +256,13 @@ std::span<BITBOARD> Board::GetBitBoards() noexcept
 
 bool Board::DoMove(const Move& m)
 {
-	assert(MoveHelper::IsValid(m));
-	assert(GetCurrentColor() == PieceHelper::Color(m.MovPiece));
+	// capturedPiece must be computed before IsValid (which uses it) and before any board changes.
+	const auto capturedPiece = get_captured_piece(m);
+	capturedHistory_[currentPly_] = capturedPiece;
+
+	const ePiece movPiece = GetEffectiveMovPiece(m);
+	assert(MoveHelper::IsValid(m, movPiece, capturedPiece));
+	assert(GetCurrentColor() == PieceHelper::Color(movPiece));
 
 	// Save state for UndoMove
 	gameInfoHistory_[currentPly_]        = gameInfo_;
@@ -269,38 +272,32 @@ bool Board::DoMove(const Move& m)
 	const eSquare from = m.from();
 	const eSquare to   = m.to();
 
-	// Correct except for EP captures (NO_PIECE on to). Will be adjusted below
-
-	const auto capturedPiece = get_captured_piece(m);
-	capturedHistory_[currentPly_] = capturedPiece;
-	assert(capturedPiece == m.Content);	// Validates captured piece matches move content
-
 	switch (MoveHelper::AsType(m))
 	{
 	case MoveType::QUIET:
-		assert(!PieceHelper::IsActual(m.Content));
-		move_piece(m);
+		assert(!PieceHelper::IsActual(capturedPiece));
+		move_piece(movPiece, from, to);
 		break;
 
 	case MoveType::CAPTURE:
 		assert(MoveHelper::IsCapture(m));
-		remove_piece_from_board(m.Content, to);
-		move_piece(m);
+		remove_piece_from_board(capturedPiece, to);
+		move_piece(movPiece, from, to);
 		break;
 
 	case MoveType::DOUBLE_PAWN_PUSH:
-		assert(!PieceHelper::IsActual(m.Content));
-		assert(MoveHelper::IsPawnMove(m));
-		move_piece(m);
+		assert(!PieceHelper::IsActual(capturedPiece));
+		assert(MoveHelper::IsPawnMove(movPiece));
+		move_piece(movPiece, from, to);
 		break;
 
 	case MoveType::EP_CAPTURE: {
-		assert(MoveHelper::IsPawnMove(m));
-		assert(MoveHelper::IsCapture(m) && PieceHelper::IsPawn(m.Content));
+		assert(MoveHelper::IsPawnMove(movPiece));
+		assert(MoveHelper::IsCapture(m) && PieceHelper::IsPawn(capturedPiece));
 		// Captured pawn sits one rank behind the destination square
 		const eSquare epCapturedPawnSquare = SquareHelper::PreviousRow(to, sideToMove_);
 		remove_piece_from_board(capturedPiece, epCapturedPawnSquare);
-		move_piece(m);
+		move_piece(movPiece, from, to);
 		break;
 	}
 
@@ -308,17 +305,21 @@ bool Board::DoMove(const Move& m)
 	case MoveType::PROMOTION_BISHOP:
 	case MoveType::PROMOTION_ROOK:
 	case MoveType::PROMOTION_QUEEN:
-		assert(!MoveHelper::IsPawnMove(m));  // move is recorded with the promoted piece type
+	case MoveType::PROMOTION_KNIGHT_CAPTURE:
+	case MoveType::PROMOTION_BISHOP_CAPTURE:
+	case MoveType::PROMOTION_ROOK_CAPTURE:
+	case MoveType::PROMOTION_QUEEN_CAPTURE:
+		assert(!MoveHelper::IsPawnMove(movPiece));  // movPiece is the promoted piece type
 		if (MoveHelper::IsCapture(m))
-			remove_piece_from_board(m.Content, to);
-		remove_piece_from_board(PieceHelper::AsPawn(m.MovPiece), from);  // remove the pawn
-		add_piece_to_board(m.MovPiece, to);                               // place promoted piece
+			remove_piece_from_board(capturedPiece, to);
+		remove_piece_from_board(PieceHelper::AsPawn(movPiece), from);  // remove the pawn
+		add_piece_to_board(movPiece, to);                               // place promoted piece
 		break;
 
 	case MoveType::QUEEN_CASTLE:
 		assert(from == e1 || from == e8);
 		assert(PieceHelper::IsKing(GetPiece(from)));
-		assert(MoveHelper::IsKingMove(m));
+		assert(PieceHelper::IsKing(movPiece));
 		switch (to)
 		{
 		case c1:  // Long castling — move rook from a1|a8 to d1|d8
@@ -334,13 +335,13 @@ bool Board::DoMove(const Move& m)
 			assert(!"Invalid castling 'to' square");
 			break;
 		}
-		move_piece(m);  // move the king
+		move_piece(movPiece, from, to);  // move the king
 		break;
 
 	case MoveType::KING_CASTLE:
 		assert(from == e1 || from == e8);
 		assert(PieceHelper::IsKing(GetPiece(from)));
-		assert(MoveHelper::IsKingMove(m));
+		assert(PieceHelper::IsKing(movPiece));
 		switch (to)
 		{
 		case g1:  // Short castling — move rook from h1|h8 to f1|f8
@@ -355,7 +356,7 @@ bool Board::DoMove(const Move& m)
 			assert(!"Invalid castling 'to' square");
 			break;
 		}
-		move_piece(m);  // move the king
+		move_piece(movPiece, from, to);  // move the king
 		break;
 
 	default:
@@ -366,14 +367,14 @@ bool Board::DoMove(const Move& m)
 	// Update castling rights
 	const uint8_t oldCastlingRights = gameInfo_.castlingRights;
 
-	if (MoveHelper::IsKingMove(m)) {
+	if (PieceHelper::IsKing(movPiece)) {
 		if (sideToMove_ == eColor::WHITE)
 			gameInfo_.castlingRights &= ~CastlingRights::WHITE_BOTH;
 		else
 			gameInfo_.castlingRights &= ~CastlingRights::BLACK_BOTH;
 	}
 
-	if (MoveHelper::IsMoveType(m, ROOK)) {
+	if (PieceHelper::IsOfType(movPiece, ROOK)) {
 		if      (from == a1) gameInfo_.castlingRights &= ~CastlingRights::WHITE_QUEENSIDE;
 		else if (from == h1) gameInfo_.castlingRights &= ~CastlingRights::WHITE_KINGSIDE;
 		else if (from == a8) gameInfo_.castlingRights &= ~CastlingRights::BLACK_QUEENSIDE;
@@ -391,11 +392,11 @@ bool Board::DoMove(const Move& m)
 
 	// Update en-passant square
 	const eSquare oldEpSquare = gameInfo_.epSquare;
-	gameInfo_.epSquare = MoveHelper::GetEnPassantSquare(m);
+	gameInfo_.epSquare = MoveHelper::GetEnPassantSquare(m, movPiece);
 	if (oldEpSquare != gameInfo_.epSquare)
 		update_zobrist_ep(oldEpSquare, gameInfo_.epSquare);
 
-	update_threefold_rep(m);
+	update_threefold_rep(m, movPiece);
 
 	if (sideToMove_ == eColor::BLACK)
 		gameInfo_.fullMoveCount++;
@@ -418,19 +419,20 @@ bool Board::DoMove(const Move& m)
 // Mirror of DoMove(). Assumes the current player is the one who did NOT make the move.
 void Board::UndoMove(const Move& m)
 {
-	assert(MoveHelper::IsValid(m));
-	assert(GetCurrentColor() != PieceHelper::Color(m.MovPiece));
-
 	currentPly_--;
+
+	// The moving piece is currently on m.to() (placed there by DoMove); read before any state changes.
+	const ePiece movingPiece = GetPiece(m.to());
+	// capturedPiece is needed for IsValid and for restoring the board; read from history now.
+	const auto capturedPiece = capturedHistory_[currentPly_];
+	assert(MoveHelper::IsValid(m, movingPiece, capturedPiece));
+	assert(GetCurrentColor() != PieceHelper::Color(movingPiece));
 
 	// Restore saved state
 	gameInfo_                = gameInfoHistory_[currentPly_];
 	last_irreversible_ply_   = irreversiblePlyHistory_[currentPly_];
-	zobrist_hash_            = zobrist_history_[currentPly_];
-	const auto capturedPiece = capturedHistory_[currentPly_];
 	const auto from			 = m.from();
 	const auto to			 = m.to();
-	const auto movingPiece	 = m.MovPiece;
 
 	sideToMove_ = (sideToMove_ == eColor::WHITE) ? eColor::BLACK : eColor::WHITE;
 
@@ -455,12 +457,12 @@ void Board::UndoMove(const Move& m)
 	case MoveType::DOUBLE_PAWN_PUSH:
 		assert(sideToMove_ == PieceHelper::Color(movingPiece));
 		assert(!PieceHelper::IsActual(capturedPiece));
-		assert(MoveHelper::IsPawnMove(m));
+		assert(MoveHelper::IsPawnMove(movingPiece));
 		move_piece(movingPiece, to, from);
 		break;
 
 	case MoveType::EP_CAPTURE:
-		assert(MoveHelper::IsPawnMove(m));
+		assert(MoveHelper::IsPawnMove(movingPiece));
 		assert(MoveHelper::IsCapture(m) && PieceHelper::IsPawn(capturedPiece));
 		move_piece(movingPiece, to, from);
 		// Restore captured pawn on the square it was taken from (behind the destination)
@@ -474,7 +476,11 @@ void Board::UndoMove(const Move& m)
 	case MoveType::PROMOTION_BISHOP:
 	case MoveType::PROMOTION_ROOK:
 	case MoveType::PROMOTION_QUEEN:
-		assert(!MoveHelper::IsPawnMove(m));
+	case MoveType::PROMOTION_KNIGHT_CAPTURE:
+	case MoveType::PROMOTION_BISHOP_CAPTURE:
+	case MoveType::PROMOTION_ROOK_CAPTURE:
+	case MoveType::PROMOTION_QUEEN_CAPTURE:
+		assert(!MoveHelper::IsPawnMove(movingPiece));
 		remove_piece_from_board(movingPiece, to);    // remove promoted piece
 		if (MoveHelper::IsCapture(m)) {
 			assert(PieceHelper::IsActual(capturedPiece));
@@ -486,7 +492,7 @@ void Board::UndoMove(const Move& m)
 	case MoveType::QUEEN_CASTLE:
 		assert(from == e1 || from == e8);
 		assert(PieceHelper::IsKing(GetPiece(to)));
-		assert(MoveHelper::IsKingMove(m));
+		assert(PieceHelper::IsKing(movingPiece));
 		switch (to)
 		{
 		case c1:  // Move rook back from d1|d8 to a1|a8
@@ -507,7 +513,7 @@ void Board::UndoMove(const Move& m)
 	case MoveType::KING_CASTLE:
 		assert(from == e1 || from == e8);
 		assert(PieceHelper::IsKing(GetPiece(to)));
-		assert(MoveHelper::IsKingMove(m));
+		assert(PieceHelper::IsKing(movingPiece));
 		switch (to)
 		{
 		case g1:  // Move rook back from f1|f8 to h1|h8
@@ -527,6 +533,39 @@ void Board::UndoMove(const Move& m)
 	default:
 		assert(!"Unsupported move type");
 	}
+
+	// Restore hash last: move_piece/add_piece_to_board/remove_piece_from_board all XOR into
+	// zobrist_hash_ as a side-effect, so overwrite with the pre-move snapshot to get the
+	// correct hash back.
+	zobrist_hash_ = zobrist_history_[currentPly_];
+}
+
+// Returns the effective moving piece for a move that has NOT yet been applied.
+// For non-promotion moves: the piece currently on m.from() (mailbox lookup).
+// For promotion moves: the promoted piece derived from MoveType flags and pawn color.
+ePiece Board::GetEffectiveMovPiece(const Move& m) const noexcept
+{
+	const ePiece onBoard = GetPiece(m.from());
+	if (!MoveHelper::IsPromote(m))
+		return onBoard;
+	const eColor color = PieceHelper::Color(onBoard);
+	switch (static_cast<MoveType>(m.flags())) {
+	case MoveType::PROMOTION_QUEEN:
+	case MoveType::PROMOTION_QUEEN_CAPTURE:  return PieceHelper::AsPiece(QUEEN,  color);
+	case MoveType::PROMOTION_ROOK:
+	case MoveType::PROMOTION_ROOK_CAPTURE:   return PieceHelper::AsPiece(ROOK,   color);
+	case MoveType::PROMOTION_BISHOP:
+	case MoveType::PROMOTION_BISHOP_CAPTURE: return PieceHelper::AsPiece(BISHOP, color);
+	case MoveType::PROMOTION_KNIGHT:
+	case MoveType::PROMOTION_KNIGHT_CAPTURE: return PieceHelper::AsPiece(KNIGHT, color);
+	default: return onBoard;
+	}
+}
+
+// Public wrapper around get_captured_piece — used by Sort and external callers.
+ePiece Board::GetCapturedPiece(const Move& m) const noexcept
+{
+	return get_captured_piece(m);
 }
 
 // Returns true if the side that just moved left their own king in check.
@@ -553,12 +592,6 @@ void Board::remove_piece_from_board(ePiece piece, eSquare sq)
 }
 
 // Moves a piece without updating material score (for quiet moves, castling rook moves).
-void Board::move_piece(const Move& move)
-{
-	remove_piece(move.from(), move.MovPiece);
-	add_piece(move.to(), move.MovPiece);
-}
-
 void Board::move_piece(ePiece piece, eSquare from, eSquare to)
 {
 	remove_piece(from, piece);
@@ -570,9 +603,9 @@ void Board::move_piece(ePiece piece, eSquare from, eSquare to)
 // ============================================================================
 
 // Marks a move as irreversible (pawn move or capture) and updates the fifty-move counter.
-void Board::update_threefold_rep(const Move& m)
+void Board::update_threefold_rep(const Move& m, ePiece movPiece)
 {
-	if (MoveHelper::IsPawnMove(m) || MoveHelper::IsCapture(m)) {
+	if (MoveHelper::IsPawnMove(movPiece) || MoveHelper::IsCapture(m)) {
 		last_irreversible_ply_ = position_history_.size();
 		gameInfo_.fiftyCount   = 0;
 	}
