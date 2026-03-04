@@ -127,32 +127,6 @@ This roadmap organizes development tasks by priority and category. Items are dra
 
 ### Refactoring
 
-#### 🟡 Introduce MoveFormatter — centralise move presentation
-- **Motivation**: The `Move` struct no longer stores the moving or captured piece, which means no
-  single print site can produce full-context output on its own. A quick fix restores the piece
-  prefix (`Pe2-e4`) at `PrintBoardAndMove` / `PrintGameMoves` by reading `GetPiece(move.to())`
-  after DoMove, but the following gaps remain:
-  - Verbose English line ("White Pawn moves e2 to e4") is gone entirely
-  - `+` / `#` missing from `gamelist.txt` (check written to console only)
-  - Fragile `\n`-offset injection still lives in `PrintBoardAndMove`
-  - Promotion suffix (`=Q`) not yet appended to coordinate output
-  - `operator<<(Move)` has no board context and cannot be improved further
-- **Design**: Introduce a stateless `MoveFormatter` class (static methods, no instance):
-  ```cpp
-  static std::string ToShort(const Move&, const Board&);    // replaces Output() + manual injection
-  static std::string ToVerbose(const Move&, const Board&);  // restores verbose English line
-  static std::string ToUCI(const Move&);                    // UCI wire format
-  static Move        FromUCI(std::string_view, const Board&);
-  static std::string ToSAN(const Move&, const Board&);      // Standard Algebraic Notation
-  ```
-- **Gaps this directly fixes**:
-  - Verbose description restored: "White Pawn moves e2 to e4 and captures!"
-  - `+` and `#` in both console and `gamelist.txt`
-  - Fragile offset-surgery hack in `PrintBoardAndMove` removed
-  - Promotion suffix (`=Q`) in short and verbose forms
-- **Enables**: UCI protocol, PGN export, any future GUI or web integration
-- **Suggested order**: before UCI; quick fix already applied as stopgap
-
 ### Features
 
 #### 🟡 Migrate Inline Move Scoring into MoveSorter
@@ -210,6 +184,17 @@ This roadmap organizes development tasks by priority and category. Items are dra
 
 #### ✅ Move class → 16-bit layout — COMPLETE (all 4 phases done)
 
+
+#### 🟢 Migrate `Move::Output()` callers to `MoveFormatter`
+- **Estimate**: 1 hour
+- **Impact**: Removes the last direct uses of `Move::Output()` / `Move::Output(ePiece)`,
+  enabling those methods to be deleted
+- **Remaining callers**: `Move::operator<<` (Move.cpp), `PVLine::operator<<` (Move.cpp),
+  and ~10 `move.Output()` calls in `AIPerplex.cpp` (search diagnostic logging)
+- **Note**: AIPerplex logging is coordinate-only (`Output()` no-arg) — acceptable today
+  but inconsistent once ToUCI/ToShort are the canonical APIs
+- **When**: when AIPerplex logging is refactored, or when `Move::Output` starts causing
+  maintenance friction
 
 #### 🟢 Extract Magic Numbers to Constants
 - **Estimate**: 2 hours
@@ -485,6 +470,20 @@ Avoid these traps:
 ### Refactoring: State Management — GameInfo History in Board
 - `GameInfo` history moved from Player into `Board`; `Position.h/cpp` created
 - Clean separation of concerns; prerequisite data for De-Singleton Board work
+
+### Refactoring: Introduce MoveFormatter — centralise move presentation (March 2026)
+- **Stateless class** with four static methods in `StratEngine/MoveFormatter.h/cpp`:
+  - `ToShort(Move, Board)` — pseudo-LAN + `+` check annotation (e.g. `"Rc1xc7+"`)
+  - `ToVerbose(Move, Board)` — verbose English (e.g. `"White rook captures on c7 and checks!"`)
+  - `ToUCI(Move)` — UCI wire format (e.g. `"e2e4"`, `"b7b8q"`) — no board context needed
+  - `FromUCI(string_view, Board)` — parse UCI move from board pre-DoMove state
+- **Gaps fixed**: verbose line restored; `+` now in `gamelist.txt`; fragile `\n`-surgery
+  in `PrintBoardAndMove` removed; promotion-captures now get suffix in perft divide output
+- **`Move::Output()` / `Move::Output(ePiece)`**: kept as-is (12 callers in AIPerplex
+  use coordinate-only output for search logging; migration deferred — see `Migrate Move::Output()` item)
+- **`ToSAN`** (Standard Algebraic Notation): omitted — deferred until PGN export is needed
+- **Tests**: `StratChessTests/MoveFormatterTests.cpp` tag `[formatter]` — 65 assertions, 6 test cases
+- **Plan**: `.claude/plans/move-formatter.md`
 
 ### Move class → 16-bit layout (Phases 1–4, March 2026)
 - **Phase 1**: Removed `Move::IsCheck` field
