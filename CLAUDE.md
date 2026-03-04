@@ -21,13 +21,29 @@ A modern C++20 chess engine focused on improving playing strength (ELO) while ma
 - Adding files to Solution Explorer: headers use `ClInclude`, non-code files (`.md`, `.json`) use `None` — in both cases also add a matching `<Filter>` entry in `.vcxproj.filters`. Forgetting the filter entry leaves the file visible but unfiled (no folder).
 - **Only `x64` builds work** — the x86/Win32 configuration is not maintained for C++20
 
-### MSBuild invocation (from bash / Git Bash)
-Use double-slash flags (`//p:`) — bash converts single `/` to a path separator and breaks MSBuild switches:
-```bash
-"/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" \
-  "StratChessEvolved.sln" //p:Configuration=Release //p:Platform=x64 //m //v:minimal
+### Build script (preferred)
+`build.ps1` at the repo root wraps MSBuild and discovers the correct executable automatically via `vswhere.exe` — no hard-coded VS paths:
+```powershell
+.\build.ps1               # build main solution + test project (Release|x64)
+.\build.ps1 main          # main solution only
+.\build.ps1 tests         # test project only
+.\build.ps1 run-tests     # build tests then run all of them
+.\build.ps1 run-tests "[formatter]"  # build tests then run a single tag
+.\build.ps1 all -Config Debug        # debug build of both
 ```
-The `//m` flag enables parallel builds. Use `//v:minimal` to suppress noise; change to `//v:normal` when diagnosing build errors.
+
+### MSBuild invocation (fallback / raw)
+When calling MSBuild directly from a **Task (Bash subagent)** using `cmd.exe /c "…"`, use Windows backslash paths and single-slash flags:
+```
+cmd.exe /c "\"<MSBuild>\" \"StratChessEvolved.sln\" /p:Configuration=Release /p:Platform=x64 /m /v:minimal"
+```
+To discover `<MSBuild>` dynamically:
+```
+cmd.exe /c "\"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe\" -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe"
+```
+**Shell notes**: The MSBuild install folder changes with every VS release (`2022`, `18`, …); never hard-code it. In **Git Bash** use `//p:` flags (double-slash) and the `/c/Program Files/…` path form. Direct `Bash` tool invocations are unreliable for Windows paths — prefer the Task (Bash subagent) + `cmd.exe` pattern.
+
+Use `/v:normal` instead of `/v:minimal` when diagnosing build errors.
 
 ## Engine Algorithm Summary
 IDS + PVS + quiescence search; Zobrist-hashed transposition table; bitboard representation; killer moves (2/ply) + history heuristic; threefold/twofold repetition detection. See `Docs/Roadmap.md` for current priorities and planned enhancements.
@@ -68,11 +84,10 @@ StratChessTests/x64/Release/StratChessTests.exe [eval]             # evaluation 
 StratChessTests/x64/Release/StratChessTests.exe [tactical]         # search regression tests
 ```
 Building the `.sln` does not always rebuild the test project. To build it explicitly:
-```bash
-"/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe" \
-  "StratChessTests/StratChessTests.vcxproj" //p:Configuration=Release //p:Platform=x64 //p:CL_MPCount=1 //v:minimal
+```powershell
+.\build.ps1 tests
 ```
-The test project links engine sources directly; using `//m` causes PDB contention across CL invocations. Use `//p:CL_MPCount=1` (no `//m`) instead.
+The test project uses `/Z7` debug format (debug info embedded in `.obj` files) so parallel `//m` compilation works without PDB write contention.
 Sources: `StratChessTests/*.cpp` — Framework: Catch2 v3 amalgamated — `$(DepsRoot)Catch2/` (sibling of repo)
 
 ### AIPerplex in tests

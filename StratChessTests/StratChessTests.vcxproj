@@ -49,7 +49,8 @@
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v145</PlatformToolset>
-    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <!-- WholeProgramOptimization (LTCG) intentionally omitted: test binary performance
+         is irrelevant and LTCG forces a single-threaded link that dominates build time. -->
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
@@ -124,6 +125,9 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalIncludeDirectories>$(DepsRoot)Catch2;$(DepsRoot)json\include;$(DepsRoot)spdlog\include;..\StratEngine;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <!-- /Z7: embed debug info in .obj files rather than a shared .pdb.
+           Eliminates PDB write contention so MSBuild //m parallel compilation works. -->
+      <DebugInformationFormat>OldStyle</DebugInformationFormat>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
