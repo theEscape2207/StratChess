@@ -2,6 +2,7 @@
 #include "../Board.h"
 #include "../Move.h"
 #include "../MoveHelper.h"
+#include "../MoveFormatter.h"
 #include "../MoveGenerator.h"
 #include "../GameState.h"
 #include <iostream>
@@ -304,42 +305,6 @@ namespace Testing {
 		return result;
 	}
 
-	// Helper to convert move to string (simple coordinate notation)
-	std::string Perft::move_to_string(const Move& move) {
-		if (move.IsEmpty()) return "null";
-
-		// Convert square enum to string (e.g., e2e4)
-		auto square_to_str = [](eSquare sq) -> std::string {
-			if (sq == NO_SQUARE) return "??";
-			int file = File(sq);
-			int rank = 7 - Rank(sq);  // Flip rank for display
-			return std::string(1, 'a' + static_cast<char>(file)) + std::to_string(rank + 1);
-			};
-
-		std::string result = square_to_str(move.from()) + square_to_str(move.to());
-
-		const auto type = MoveHelper::AsType(move);
-		// Add promotion piece
-		switch (type) {
-		case MoveType::PROMOTION_QUEEN:
-			result += "q";
-			break;
-		case MoveType::PROMOTION_ROOK:
-			result += "r";
-			break;
-		case MoveType::PROMOTION_BISHOP:
-			result += "b";
-			break;
-		case MoveType::PROMOTION_KNIGHT:
-			result += "n";
-			break;
-		default:
-			break;
-		}
-
-		return result;
-	}
-
 	// Divide mode - shows node count for each root move
 	void Perft::divide(Board& board, int depth) {
 		if (depth == 0) {
@@ -361,7 +326,7 @@ namespace Testing {
 			uint64_t nodes = perft_recursive(board, depth - 1);
 			total_nodes += nodes;
 
-			std::cout << move_to_string(move) << ": " << nodes << "\n";
+			std::cout << MoveFormatter::ToUCI(move) << ": " << nodes << "\n";
 
 			board.UndoMove(move);
 		}

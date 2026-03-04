@@ -50,6 +50,7 @@ x64/Release/StratChessTests.exe [perft]
 | Repetition detection | `[repetition]` | ✅ done | `RepetitionTests.cpp` |
 | Move generation (perft d1–d4) | `[perft]` | ✅ done | `PerftTests.cpp` |
 | Move generation (deep perft d5+) | — | ✅ done | `StratChessEvolved.exe perft test` |
+| **MoveFormatter** | `[formatter]` | ✅ Phase 0 | `MoveFormatterTests.cpp` |
 | **TranspositionTable** | `[tt]` | ✅ Phase 0 | `TTTests.cpp` |
 | **Evaluation (EvalSimple/Complex)** | `[eval]` | ✅ Phase 0 | `EvalTests.cpp` |
 | **Search regression (tactical)** | `[tactical]` | ✅ Phase 0 | `TacticalTests.cpp` |
