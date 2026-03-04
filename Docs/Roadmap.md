@@ -150,6 +150,13 @@ This roadmap organizes development tasks by priority and category. Items are dra
 
 ### Performance
 
+#### 🟢 Expand PCH Coverage in StdAfx.h
+- **Estimate**: 1 hour
+- **Impact**: 10–20% reduction in per-TU parse time on clean builds
+- **Current state**: `StratEngine/StdAfx.h` covers only ~40% of STL usage; `<algorithm>`, `<cassert>`, `<memory>`, `<string>`, `<random>`, and `<utility>` are parsed per translation unit
+- **Headers to add**: `<algorithm>`, `<array>`, `<cassert>`, `<cstdint>`, `<functional>`, `<memory>`, `<string>`, `<utility>`
+- **Note**: Changing the PCH invalidates all `.obj` files — one full clean rebuild is required. No effect on generated code quality; the optimizer sees identical IR before and after.
+
 #### 🟢 Add SEE (Static Exchange Evaluation) to Quiescence
 - **Estimate**: 4-5 days
 - **Impact**: 10-15% quiescence speedup
@@ -347,11 +354,24 @@ This roadmap organizes development tasks by priority and category. Items are dra
 - **GUIs**: Arena, ChessBase, Fritz
 - **Commands**: `uci`, `isready`, `position`, `go`, `stop`
 
+#### ⚪ Extract StratEngine Static Library
+- **Estimate**: 1–2 days
+- **Impact**: Engine compiled once instead of twice on clean builds (~50% reduction in compilation work)
+- **Risk**: LTCG across a `.lib` boundary requires `/GL` on the library and `/LTCG` on the consuming linker; misconfiguration silently drops cross-TU inlining (5–15% NPS regression). Must be verified with a NPS benchmark.
+- **Better fit**: Natural as a CMake `add_library(StratEngine STATIC …)` — combine with CMake migration rather than doing it in isolation
+
+#### ⚪ Add sccache Compilation Caching
+- **Estimate**: Half a day
+- **Impact**: Near-instant subsequent clean builds when source is unchanged (branch-switch and switch-back). Zero benefit on first clean build.
+- **Approach**: Install `sccache`; set `<CLToolExe>` in vcxproj or CMake `CMAKE_C_COMPILER_LAUNCHER`
+- **Best fit**: Combined with a CI pipeline (GitHub Actions); less useful without CI
+
 #### ⚪ Cross-Platform Build System
 - **Estimate**: 3-5 days
-- **Current**: MSVC on Windows
-- **Target**: CMake for Windows/Linux/Mac
+- **Current**: MSVC on Windows; MSBuild `.vcxproj` / `.sln`; `build.ps1` script wraps invocation
+- **Target**: CMake for Windows/Linux/Mac; Ninja back-end; `cmake --build . --target StratChessTests -j8`
 - **CI**: GitHub Actions for automated builds
+- **Note**: When migrating, preserve `INTERPROCEDURAL_OPTIMIZATION` (`/GL` + `/LTCG` equivalent) on the main Release target to avoid NPS regression; verify with a before/after NPS benchmark
 
 ---
 
