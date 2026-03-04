@@ -6,9 +6,6 @@ MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "StratChessEvolved", "StratChessEvolved\StratChessEvolved.vcxproj", "{FC4E6946-E992-4B3B-9C5E-53DC1E57015C}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "StratChessTests", "StratChessTests\StratChessTests.vcxproj", "{47B42C1F-821D-4F89-9695-A38F08FA9F4B}"
-	ProjectSection(ProjectDependencies) = postProject
-		{FC4E6946-E992-4B3B-9C5E-53DC1E57015C} = {FC4E6946-E992-4B3B-9C5E-53DC1E57015C}
-	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
