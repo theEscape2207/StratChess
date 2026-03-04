@@ -5,6 +5,7 @@
 #include "StdAfx.h"
 #include "Game.h"
 #include "Board.h"
+#include "MoveFormatter.h"
 #include "PlayerBase.h"		// For factory create
 extern std::ofstream outLegalMoves;
 
@@ -340,26 +341,10 @@ void Game::PrintBoardAndMove(const Move& move) const
 
 	if (!move.IsEmpty())
 	{
-		// Build the piece-prefixed move string and annotate with '+' when the move gives check.
-		// GetPiece(to) is valid here because DoMove has already been applied: the piece
-		// now sits on the destination square (promoted piece for promotions, king for castling).
-		const ePiece movPiece = board.GetPiece(move.to());
-		std::string moveStr = "Last move: " + move.Output(movPiece) + '\n';
-
-		if (board.InCheck())
-		{
-			// Insert '+' at the end of the short-notation line (before its '\n')
-			const auto firstNL = moveStr.find('\n');
-			if (firstNL != std::string::npos)
-				moveStr.insert(firstNL, "+");
-
-			// Insert ' and checks!' at the end of the verbose line (before its '\n')
-			const auto lastNL = moveStr.rfind('\n');
-			if (lastNL != std::string::npos && lastNL > 0)
-				moveStr.insert(lastNL, " and checks!");
-		}
-
-		sstream << moveStr;
+		// MoveFormatter requires the board to be in the post-DoMove state, which it is
+		// at this call site. GetPiece(to) returns the moved (or promoted) piece.
+		sstream << "Last move: " << MoveFormatter::ToShort(move, board) << '\n';
+		sstream << MoveFormatter::ToVerbose(move, board) << '\n';
 	}
 
 	spdlog::default_logger()->info(sstream.str());
@@ -381,10 +366,11 @@ void Game::PrintBoardAndMove(const Move& move) const
 //***************************************
 void Game::PrintGameMoves()
 {
+	// Called from AddGameMove(), which is called after DoMove() in Run().
+	// MoveFormatter requires the board to be in the post-DoMove state, which it is here.
 	const Move& move = m_GameMoves.back();
-	const ePiece movPiece = Board::Instance().GetPiece(move.to());
 	movesFile_ << "Move " << m_GameMoves.size() << '\n'; //-V128
-	movesFile_ << "Last move: " << move.Output(movPiece) << '\n';
+	movesFile_ << "Last move: " << MoveFormatter::ToShort(move, Board::Instance()) << '\n';
 }
 
 //***************************************

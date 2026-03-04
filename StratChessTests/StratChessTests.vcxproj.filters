@@ -48,6 +48,9 @@
     <ClCompile Include="BoardTests.cpp">
       <Filter>Source Files\Tests</Filter>
     </ClCompile>
+    <ClCompile Include="MoveFormatterTests.cpp">
+      <Filter>Source Files\Tests</Filter>
+    </ClCompile>
     <!-- Engine sources -->
     <ClCompile Include="..\StratEngine\StdAfx.cpp">
       <Filter>Source Files\Engine</Filter>
@@ -77,6 +80,9 @@
       <Filter>Source Files\Engine</Filter>
     </ClCompile>
     <ClCompile Include="..\StratEngine\Move.cpp">
+      <Filter>Source Files\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\StratEngine\MoveFormatter.cpp">
       <Filter>Source Files\Engine</Filter>
     </ClCompile>
     <ClCompile Include="..\StratEngine\MoveGenerator.cpp">

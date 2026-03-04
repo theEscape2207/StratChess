@@ -144,6 +144,7 @@
     <ClCompile Include="..\StratEngine\Eval.cpp" />
     <ClCompile Include="..\StratEngine\Game.cpp" />
     <ClCompile Include="..\StratEngine\Move.cpp" />
+    <ClCompile Include="..\StratEngine\MoveFormatter.cpp" />
     <ClCompile Include="..\StratEngine\MoveGenerator.cpp" />
     <ClCompile Include="..\StratEngine\PlayerAI.cpp" />
     <ClCompile Include="..\StratEngine\PlayerBase.cpp" />
@@ -162,6 +163,7 @@
     <ClCompile Include="EvalTests.cpp" />
     <ClCompile Include="TacticalTests.cpp" />
     <ClCompile Include="BoardTests.cpp" />
+    <ClCompile Include="MoveFormatterTests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\StratEngine\Tests\Perft.h" />

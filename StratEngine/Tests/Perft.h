@@ -66,8 +66,7 @@ private:
     // Internal detailed perft
     static void perft_detailed_recursive(Board& board, int depth, PerftResult& result);
 
-    // Helper to print move in algebraic notation
-    static std::string move_to_string(const Move& move);
+    // (move_to_string removed — use MoveFormatter::ToUCI instead)
 };
 
 } // namespace Testing
