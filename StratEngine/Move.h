@@ -65,14 +65,6 @@ public:
     // Copy assignment operator
     Move& operator= (_In_ const Move& rhs) noexcept = default;
 
-    constexpr bool operator!() const noexcept {
-        return IsEmpty();
-    }
-
-    constexpr bool IsEmpty() const noexcept {
-        return data == EMPTY_MOVE;
-    }
-
     constexpr void SetMove(eSquare from, eSquare to, MoveType moveType) noexcept
     {
         data = static_cast<uint16_t>(from | (to << 6) | static_cast<uint8_t>(moveType) << 12);
@@ -164,11 +156,6 @@ public:
 
     [[nodiscard]] Move& operator[](size_t idx) noexcept { return moves_[idx]; }
     [[nodiscard]] const Move& operator[](size_t idx) const noexcept { return moves_[idx]; }
-
-    // Added for compatibility with old MoveList using vector
-    const Move& at(size_t idx) const noexcept {
-        return moves_[idx];
-    }
 
     const Move& front() const noexcept {
         return moves_[0];

@@ -17,8 +17,8 @@ static std::string GetBoardCoord(_In_ eSquare square) {
 // The moving piece is not available here; use Output(ePiece) for piece-prefixed notation.
 std::ostream& operator<<(std::ostream& os, _In_ const Move& m)
 {
-	if (!m.IsEmpty())	// Empty moves are allowed, but ignored
-		os << "Last move: " << m.Output().c_str() << '\n';
+	if (!m.is_null())	// Empty moves are allowed, but ignored
+		os << "Move: " << m.Output().c_str() << '\n';
 	return os;
 }
 

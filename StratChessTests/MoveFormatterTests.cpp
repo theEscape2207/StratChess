@@ -317,14 +317,14 @@ TEST_CASE("MoveFormatter::FromUCI - basic moves", "[formatter]")
     {
         board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
         Move m = MoveFormatter::FromUCI("e2", board);  // too short
-        CHECK(m.IsEmpty());
+        CHECK(m.is_null());
     }
     SECTION("Malformed input returns empty move — invalid promotion suffix")
     {
         // White pawn on b7; 5-char string but unrecognised suffix 'x'.
         board.SetupFromFEN("8/1P6/8/8/8/8/8/4K2k w - - 0 1");
         Move m = MoveFormatter::FromUCI("b7b8x", board);  // invalid suffix
-        CHECK(m.IsEmpty());
+        CHECK(m.is_null());
     }
 }
 

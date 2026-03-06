@@ -49,7 +49,7 @@ void MoveSorter::SortMoves(MoveList& moveList,		// traeklisten
 
 	const size_t numMoves = moveList.size();
 	// Slag af sidst flyttet brik hvis den eksisterer
-	if (!lastMove.IsEmpty()) {
+	if (!lastMove.is_null()) {
 		//Vi loeber traekkene igennem og sorterer videre
 		const eSquare lastTo = lastMove.to();
 		for (loop = curIndex; loop < numMoves; ++loop)
