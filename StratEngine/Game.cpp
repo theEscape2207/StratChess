@@ -339,7 +339,7 @@ void Game::PrintBoardAndMove(const Move& move) const
 	sstream << "\nBoard " << GetBoardCount() << "\n\n";
 	sstream << board;
 
-	if (!move.IsEmpty())
+	if (!move.is_null())
 	{
 		// MoveFormatter requires the board to be in the post-DoMove state, which it is
 		// at this call site. GetPiece(to) returns the moved (or promoted) piece.

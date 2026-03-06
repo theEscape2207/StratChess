@@ -106,7 +106,7 @@ int PlayerAiBase::Quiescent( size_t ply, int alpha, int beta )
 Move PlayerAiBase::GetBestMove(_In_ GameInfo& info ) noexcept
 {
 	// Returner det bedste traek - hvis der er noget
-	if ( !m_BestMove.IsEmpty() )
+	if ( !m_BestMove.is_null() )
 	{
 		info.UpdateBoardInfo( m_BestMove, m_Board.GetEffectiveMovPiece(m_BestMove));
 		return m_BestMove;

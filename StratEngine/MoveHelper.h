@@ -94,15 +94,15 @@ namespace MoveHelper
 			SquareHelper::Calc(move.to(), -ONE_ROW));
 	}
 
-	[[nodiscard]] static inline bool IsEmpty(_In_ const Move& move ) noexcept
+	[[nodiscard]] static inline bool is_null(_In_ const Move& move ) noexcept
 	{
-		return move.IsEmpty();
+		return move.is_null();
 	}
 
 	// content: the captured piece (obtain via Board::GetCapturedPiece before DoMove).
 	[[nodiscard]] static bool IsValid(_In_ const Move& move, _In_ ePiece movPiece, _In_ ePiece content) noexcept
 	{
-		if( IsEmpty( move ) )
+		if( is_null( move ) )
 			return false;
 		if( move.to() == move.from())
 			return false;

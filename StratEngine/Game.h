@@ -38,7 +38,7 @@ class Game final
 
 	bool IsStillPlaying() const noexcept {	return !gameInfo_.GameEnded(); 	}
 
-	static bool HasHumanExited(const Move& move) noexcept {	return move.IsEmpty();	}
+	static bool HasHumanExited(const Move& move) noexcept {	return move.is_null();	}
 
 
 	/*
