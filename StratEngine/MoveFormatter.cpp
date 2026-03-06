@@ -43,7 +43,7 @@ namespace {
 // when board.InCheck() reports the moving side gave check.
 std::string MoveFormatter::ToShort(const Move& move, const Board& board)
 {
-    assert(!move.IsEmpty());
+    assert(!move.is_null());
     const ePiece movPiece = board.GetPiece(move.to());
     std::string result = move.Output(movPiece);
     if (board.InCheck())
@@ -63,7 +63,7 @@ std::string MoveFormatter::ToShort(const Move& move, const Board& board)
 //   "Black pawn captures and promotes to rook on a1"
 std::string MoveFormatter::ToVerbose(const Move& move, const Board& board)
 {
-    assert(!move.IsEmpty());
+    assert(!move.is_null());
     const ePiece movPiece = board.GetPiece(move.to());
     const MoveType type   = MoveHelper::AsType(move);
 
@@ -146,7 +146,7 @@ std::string MoveFormatter::ToVerbose(const Move& move, const Board& board)
 // capture-promotions that the old Perft::move_to_string omitted).
 std::string MoveFormatter::ToUCI(const Move& move)
 {
-    assert(!move.IsEmpty());
+    assert(!move.is_null());
 
     std::string result = SquareToCoord(move.from()) + SquareToCoord(move.to());
 
@@ -172,7 +172,7 @@ std::string MoveFormatter::ToUCI(const Move& move)
 // Parses a 4- or 5-character UCI string and infers MoveType from board state.
 // Board must be in the state BEFORE DoMove (piece on move.from() is the moving
 // piece; move.to() may or may not have an opponent piece).
-// Returns Move{} (IsEmpty() == true) for malformed input.
+// Returns Move{} (is_null() == true) for malformed input.
 Move MoveFormatter::FromUCI(std::string_view uci, const Board& board)
 {
     if (uci.size() < 4)

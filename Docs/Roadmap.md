@@ -125,8 +125,6 @@ This roadmap organizes development tasks by priority and category. Items are dra
 - **Tuning**: Start with 50cp window, measure fail rate
 - **Note**: AIAgent already has this - can reference implementation
 
-### Refactoring
-
 ### Features
 
 #### 🟡 Migrate Inline Move Scoring into MoveSorter

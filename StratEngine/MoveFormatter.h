@@ -39,6 +39,6 @@ public:
 
     // Parse a UCI string to a Move. Board context is used to detect
     // capture, en-passant, castling, and double-pawn-push flags.
-    // Returns Move{} (IsEmpty() == true) for malformed input.
+    // Returns Move{} (is_null() == true) for malformed input.
     [[nodiscard]] static Move FromUCI(std::string_view uci, const Board& board);
 };
