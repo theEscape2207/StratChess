@@ -93,7 +93,7 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info)
 	Move bestMove = result.best_move;
 
 	// Defensive check for game-over scenario
-	if ( bestMove.IsEmpty()) {
+	if ( bestMove.is_null()) {
 		info = m_Board.GetGameInfo();
 		//if ( !info.GameEnded())
 		/*ensure_logger_initialized();
@@ -219,7 +219,7 @@ SearchResult  AIPerplex::iterative_deepening(int max_depth, TranspositionTable& 
 }
 
 	// Handle empty move emergency
-	if (state.best_move.IsEmpty()) {
+	if (state.best_move.is_null()) {
 		if (!handle_empty_move_emergency(state, pv_table)) {
 			// Game over - return what we have
 			return SearchResult{
@@ -655,7 +655,7 @@ AIPerplex::RejectionReason AIPerplex::assess_iteration_quality(
 	const SearchState& state) const
 {
 	// CASE 1: Obviously incomplete
-	if (metrics.current_move.IsEmpty() || metrics.nodes_searched < tuning_.min_nodes_threshold) {
+	if (metrics.current_move.is_null() || metrics.nodes_searched < tuning_.min_nodes_threshold) {
 		return RejectionReason::INCOMPLETE;
 	}
 
@@ -712,7 +712,7 @@ void AIPerplex::log_iteration_eval(
 		"D{:>2} EVAL: move={:<8} score={:>6} (Δ{:>+5}) nodes={:>8} ({:>3}%) "
 		"pv={:>2} int={} chg={} PV:[{}]",
 		metrics.depth,
-		metrics.current_move.IsEmpty() ? "EMPTY" : metrics.current_move.Output(),
+		metrics.current_move.is_null() ? "EMPTY" : metrics.current_move.Output(),
 		metrics.current_score,
 		metrics.score_delta,
 		metrics.nodes_searched,
@@ -739,7 +739,7 @@ void AIPerplex::log_rejection(
 		s_logger->debug(
 			"Depth {:>2}: REJECTED[R1:INCOMPLETE] (nodes={}, move={}) - Using depth {}",
 			depth, metrics.nodes_searched,
-			metrics.current_move.IsEmpty() ? "EMPTY" : "ok",
+			metrics.current_move.is_null() ? "EMPTY" : "ok",
 			state.depth_completed);
 		break;
 
@@ -905,7 +905,7 @@ void AIPerplex::log_search_complete(
 	ensure_logger_initialized();
 	if (!s_logger) return;
 
-	if (state.best_move.IsEmpty() || pv_table.get_length(0) == 0) {
+	if (state.best_move.is_null() || pv_table.get_length(0) == 0) {
 		return;
 	}
 

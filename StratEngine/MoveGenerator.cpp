@@ -411,7 +411,7 @@ void MoveGenerator::AddPawnCaptures(MoveList& moveList, const BITBOARD* bbBitBoa
 	// Prerequisites: Move must be a pawn capture move (including en-passant).
 	// From and To must be set; the pawn of 'color' must be on from.
 	assert(PieceHelper::IsPawn(Board::Instance().GetPiece(move.from())));
-	assert(!move.IsEmpty());
+	assert(!move.is_null());
 
 	const eSquare from = move.from();
 	const eSquare to = move.to();
