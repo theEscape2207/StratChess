@@ -46,7 +46,11 @@ private:
 
 		int delta_pruning_margin = 200;  // centipawns — added to stand_pat + capture_value before comparing to alpha in quiescence
 
-		// Future: Add aspiration window size, LMR thresholds, etc.
+		int aspiration_initial_delta = 50;  // centipawns; initial half-width on each side
+		int aspiration_max_retries   = 4;   // widen iterations before opening full window
+		bool aspiration_enabled      = true; // runtime kill-switch for regression testing
+
+		// Future: Add LMR thresholds, etc.
 	} tuning_;
 
 	// INTERNAL STRUCTURES
@@ -100,6 +104,7 @@ private:
 	// SEARCH METHODS
 	// --------------
 	SearchResult iterative_deepening(int max_depth, TranspositionTable& tt, PVTable& pv_table);
+	int search_with_aspiration(int depth, int seed_score, TranspositionTable& tt, PVTable& pv_table);
 	int pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt, PVTable& pv_table);
 	int adjustScoreForGameState(bool moveFound, int ply, int best_value);
 	int quiescence(int alpha, int beta, int depth_q, int ply, TranspositionTable& tt);
@@ -125,6 +130,8 @@ private:
 	void log_acceptance(const IterationMetrics& metrics) const;
 	void log_search_complete(const AIPerplex::SearchState& state, const PVTable& pv_table) const;
 	void log_completed_iteration(const AIPerplex::IterationMetrics& metrics, const PVTable& pv_table) const;
+	void log_aspiration_retry(int depth, int retry, int score, int alpha, int beta, bool fail_low) const;
+	void log_aspiration_full_window(int depth, int max_retries) const;
 	
 	// MEMBER VARIABLES
 	std::unique_ptr<TranspositionTable> _tt;	// persistent transposition table

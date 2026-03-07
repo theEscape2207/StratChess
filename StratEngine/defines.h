@@ -95,7 +95,7 @@ enum eSquare /*: uint8_t*/ {
 // Bestemmer den maksimale soegedybde for Quiescent(?)
 constexpr auto MAX_PLY = 256;
 
-enum GameValues
+enum GameValues : int
 {
 	Draw = 0,								// 
 	Mate_Threshold = 29900,					// Above this - we've found a mate
