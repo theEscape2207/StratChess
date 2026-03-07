@@ -31,7 +31,7 @@ Move ABIterative::GetMove(_Inout_ GameInfo& info)
 	StartTimer();
 
 	// almindelig iterativ soegning
-	for (m_Depth = 1; m_Depth <= m_MaxDepth; ++m_Depth)
+	for (m_Depth = 1; m_Depth <= max_depth_; ++m_Depth)
 	{
 		if (ShouldStopSearch())
 			break;
@@ -122,7 +122,7 @@ int ABIterative::Search(int ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& 
 
 #ifdef PRINT_MOVES
 			// Udskriver traekkene til fil
-			if (ply == 0 && m_Depth == m_MaxDepth)	// for iterativ udskriv kun i roden af traeet
+			if (ply == 0 && m_Depth == max_depth_)	// for iterativ udskriv kun i roden af traeet
 				PrintMovesAndScore(outLegalMoves, counter, moveList.size(), curMove, value);
 #endif // PRINT_MOVES
 
@@ -173,7 +173,7 @@ int ABIterative::Search(int ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& 
 		else
 		{
 			// Udskriver traekkene til fil
-			if (ply == 0 && m_Depth == m_MaxDepth)	// for iterativ kun udskriv nederste dybde
+			if (ply == 0 && m_Depth == max_depth_)	// for iterativ kun udskriv nederste dybde
 				// Ulovligt traek!!														// Magic value: illegal move
 				PrintMovesAndScore(outLegalMoves, counter, moveList.size(), curMove, -GameValues::Search_Init - 1);
 		}
