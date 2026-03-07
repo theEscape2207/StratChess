@@ -203,9 +203,6 @@ private:
 // ============================================================================
 // Zobrist key tables for castling, en-passant and side-to-move
 // Declared here, defined in Board.cpp.
-// NOTE: zobrist::initialize() must be called at program start before any Board
-// is used. Currently NOT called — castling/EP/side keys are zero (inert).
-// See Roadmap: "Fix zobrist::initialize() never called".
 // ============================================================================
 namespace zobrist {
 	extern std::array<std::array<uint64_t, NUM_SQUARES>, ALL_PIECETYPES> piece_keys;

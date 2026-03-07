@@ -131,14 +131,14 @@ SearchResult  AIPerplex::iterative_deepening(int max_depth, TranspositionTable& 
 		const int64_t nodes_at_start = m_SearchCount;
 
 		// EXECUTE SEARCH: This might get interrupted by timeout
-		int currentBestScore = pvs(
-			depth,
-			-GameValues::Search_Init,
-			GameValues::Search_Init,
-			0,
-			true,
-			tt,
-			pv_table);
+		int currentBestScore;
+		if (state.depth_completed == 0 || !tuning_.aspiration_enabled) {
+			// Depth 1 or kill-switch: always full window (no reliable seed yet)
+			currentBestScore = pvs(depth, -GameValues::Search_Init, GameValues::Search_Init,
+				0, true, tt, pv_table);
+		} else {
+			currentBestScore = search_with_aspiration(depth, state.best_score, tt, pv_table);
+		}
 
 		// Gather metrics
 		IterationMetrics metrics;
@@ -590,6 +590,54 @@ int AIPerplex::quiescence(int alpha, int beta, int qsearch_depth, int ply, Trans
 }
 
 // ============================================================================
+// ASPIRATION WINDOW SEARCH
+// ============================================================================
+int AIPerplex::search_with_aspiration(int depth, int seed_score, TranspositionTable& tt, PVTable& pv_table)
+{
+	int delta = tuning_.aspiration_initial_delta;
+	int alpha = std::max(seed_score - delta, -GameValues::Search_Init);
+	int beta  = std::min(seed_score + delta, static_cast<int>(GameValues::Search_Init));
+	int score = seed_score;  // safe fallback if interrupted before the first pvs() call
+
+	for (int retry = 0; ; ++retry) {
+		if (ShouldStopSearch()) {
+			// Interrupt before entering pvs(): clear PV so iterative_deepening sees EmptyMove
+			// and triggers INCOMPLETE rejection rather than accepting a stale PV as valid.
+			pv_table.clear_ply(0);
+			return score;
+		}
+
+		score = pvs(depth, alpha, beta, 0, true, tt, pv_table);
+
+		if (ShouldStopSearch())
+			return score;
+
+		// In-window: accept the score
+		if (score > alpha && score < beta)
+			return score;
+
+		// Safety fallback: open full window after max retries
+		if (retry >= tuning_.aspiration_max_retries) {
+			log_aspiration_full_window(depth, tuning_.aspiration_max_retries);
+			if (!ShouldStopSearch())
+				score = pvs(depth, -GameValues::Search_Init, GameValues::Search_Init, 0, true, tt, pv_table);
+			return score;
+		}
+
+		// Widen on the failing side; double delta for the next potential miss.
+		// Log after updating so the message shows the new window being tried.
+		delta *= 2;
+		if (score <= alpha) {
+			alpha = std::max(seed_score - delta, -static_cast<int>(GameValues::Search_Init));
+			log_aspiration_retry(depth, retry + 1, score, alpha, beta, true);
+		} else {
+			beta  = std::min(seed_score + delta,  static_cast<int>(GameValues::Search_Init));
+			log_aspiration_retry(depth, retry + 1, score, alpha, beta, false);
+		}
+	}
+}
+
+// ============================================================================
 // HELPERS
 // ============================================================================
 void AIPerplex::clear_killers() noexcept
@@ -935,6 +983,33 @@ void AIPerplex::log_completed_iteration(
 		metrics.pv_length,
 		pv_line,
 		(metrics.move_changed && metrics.depth > 1) ? "(!)" : "");
+}
+
+void AIPerplex::log_aspiration_retry(int depth, int retry, int score, int alpha, int beta, bool fail_low) const
+{
+	if (!IsVerboseLoggingEnabled()) return;
+	ensure_logger_initialized();
+	if (!s_logger) return;
+
+	s_logger->debug(
+		"D{:>2} ASPIRATION: {} retry {} score={:>6} new window=[{:>7},{:>7}]",
+		depth,
+		fail_low ? "FAIL-LOW " : "FAIL-HIGH",
+		retry,
+		score,
+		alpha,
+		beta);
+}
+
+void AIPerplex::log_aspiration_full_window(int depth, int max_retries) const
+{
+	if (!IsVerboseLoggingEnabled()) return;
+	ensure_logger_initialized();
+	if (!s_logger) return;
+
+	s_logger->debug(
+		"D{:>2} ASPIRATION: max retries ({}) reached, opening full window",
+		depth, max_retries);
 }
 
 void AIPerplex::debug_tt_cache_misses(unsigned int key, int ply)
