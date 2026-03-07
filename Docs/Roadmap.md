@@ -150,12 +150,10 @@ This roadmap organizes development tasks by priority and category. Items are dra
 
 ### Performance
 
-#### 🟢 Expand PCH Coverage in StdAfx.h
-- **Estimate**: 1 hour
-- **Impact**: 10–20% reduction in per-TU parse time on clean builds
-- **Current state**: `StratEngine/StdAfx.h` covers only ~40% of STL usage; `<algorithm>`, `<cassert>`, `<memory>`, `<string>`, `<random>`, and `<utility>` are parsed per translation unit
-- **Headers to add**: `<algorithm>`, `<array>`, `<cassert>`, `<cstdint>`, `<functional>`, `<memory>`, `<string>`, `<utility>`
-- **Note**: Changing the PCH invalidates all `.obj` files — one full clean rebuild is required. No effect on generated code quality; the optimizer sees identical IR before and after.
+#### ✅ Expand PCH Coverage in StdAfx.h — COMPLETE
+- **Added**: `<algorithm>`, `<array>`, `<cassert>`, `<cstdint>`, `<functional>`, `<memory>`, `<sstream>`, `<string>`, `<utility>` (9 headers)
+- **Cleaned**: redundant per-TU includes removed from `AIPerplex.cpp`, `Sort.cpp`, `MoveGenerator.cpp`, `Move.cpp`, `MoveFormatter.cpp`, `PlayerHuman.cpp`, `Utils/FENParser.cpp`
+- **Verified**: full rebuild + all 214 test assertions pass
 
 #### 🟢 Add SEE (Static Exchange Evaluation) to Quiescence
 - **Estimate**: 4-5 days

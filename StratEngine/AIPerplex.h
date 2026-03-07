@@ -163,7 +163,7 @@ private:
 	// Debug helpers
 	void debug_tt_cache_misses(unsigned int key, int ply);
 	void assert_tt_store(const TranspositionTable& tt, std::uint64_t key, int16_t ply,
-		int16_t value, int16_t depth, Move best_move,
-		BoundType bound, NodeType node_type, SearchPhase phase);
+		[[maybe_unused]] int16_t value, [[maybe_unused]] int16_t depth, Move best_move,
+		[[maybe_unused]] BoundType bound, NodeType node_type, [[maybe_unused]] SearchPhase phase);
 	std::multimap<std::uint64_t, int> tt_misses;
 };
