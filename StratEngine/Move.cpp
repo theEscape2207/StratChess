@@ -50,22 +50,16 @@ std::string Move::Output() const
 	assert(to() != NO_SQUARE);
 
 	const std::string strFrom = GetBoardCoord(from());
-	const std::string strTo = GetBoardCoord(to());
+	const std::string strTo   = GetBoardCoord(to());
 
-	std::stringstream output;
-
-	MoveType type = static_cast<MoveType>(flags());
-	switch (type) {
+	switch (static_cast<MoveType>(flags())) {
 	case MoveType::QUIET:
 	case MoveType::DOUBLE_PAWN_PUSH:
-		output << strFrom << "-" << strTo;
-		break;
+		return std::format("{}-{}", strFrom, strTo);
 	case MoveType::CAPTURE:
-		output << strFrom << "x" << strTo;
-		break;
+		return std::format("{}x{}", strFrom, strTo);
 	case MoveType::EP_CAPTURE:
-		output << strFrom << "-" << strTo << "ep";
-		break;
+		return std::format("{}-{}ep", strFrom, strTo);
 	case MoveType::PROMOTION_KNIGHT:
 	case MoveType::PROMOTION_BISHOP:
 	case MoveType::PROMOTION_ROOK:
@@ -74,20 +68,17 @@ std::string Move::Output() const
 	case MoveType::PROMOTION_BISHOP_CAPTURE:
 	case MoveType::PROMOTION_ROOK_CAPTURE:
 	case MoveType::PROMOTION_QUEEN_CAPTURE:
-	{
 		// Capture bit (bit 2) encodes whether the promotion also captures.
-		char isCapture = (flags() & MoveFlags::CAPTURE_BIT) ? 'x' : '-';
-		output << strFrom << isCapture << strTo;
-	}
-		break;
+		return std::format("{}{}{}",
+			strFrom,
+			(flags() & MoveFlags::CAPTURE_BIT) ? 'x' : '-',
+			strTo);
 	case MoveType::KING_CASTLE:
-		output << "0-0";
-		break;
+		return "0-0";
 	case MoveType::QUEEN_CASTLE:
-		output << "0-0-0";
-		break;
+		return "0-0-0";
 	}
-	return output.str();
+	return {};
 }
 
 // Piece-prefixed output (pseudo-LAN). Requires the moving piece explicitly.
@@ -98,22 +89,17 @@ std::string Move::Output(ePiece movPiece) const
 	assert(to() != NO_SQUARE);
 
 	const std::string strFrom = GetBoardCoord(from());
-	const std::string strTo = GetBoardCoord(to());
+	const std::string strTo   = GetBoardCoord(to());
+	const char        piece   = PieceHelper::ShortName(movPiece);
 
-	std::stringstream output;
-
-	MoveType type = static_cast<MoveType>(flags());
-	switch (type) {
+	switch (static_cast<MoveType>(flags())) {
 	case MoveType::QUIET:
 	case MoveType::DOUBLE_PAWN_PUSH:
-		output << PieceHelper::ShortName(movPiece) << strFrom << "-" << strTo;
-		break;
+		return std::format("{}{}-{}", piece, strFrom, strTo);
 	case MoveType::CAPTURE:
-		output << PieceHelper::ShortName(movPiece) << strFrom << "x" << strTo;
-		break;
+		return std::format("{}{}x{}", piece, strFrom, strTo);
 	case MoveType::EP_CAPTURE:
-		output << PieceHelper::ShortName(movPiece) << strFrom << "-" << strTo << "ep";
-		break;
+		return std::format("{}{}-{}ep", piece, strFrom, strTo);
 	case MoveType::PROMOTION_KNIGHT:
 	case MoveType::PROMOTION_BISHOP:
 	case MoveType::PROMOTION_ROOK:
@@ -122,20 +108,18 @@ std::string Move::Output(ePiece movPiece) const
 	case MoveType::PROMOTION_BISHOP_CAPTURE:
 	case MoveType::PROMOTION_ROOK_CAPTURE:
 	case MoveType::PROMOTION_QUEEN_CAPTURE:
-	{
 		// Capture bit (bit 2) encodes whether the promotion also captures.
-		char isCapture = (flags() & MoveFlags::CAPTURE_BIT) ? 'x' : '-';
 		// Piece prefix is the pawn (lower-case = black, upper-case = white via ShortName)
-		output << g_cPieceNames[PieceHelper::AsPawn(movPiece)] << strFrom <<
-			isCapture << strTo << PieceHelper::ShortName(movPiece);
-	}
-		break;
+		return std::format("{}{}{}{}{}",
+			g_cPieceNames[PieceHelper::AsPawn(movPiece)],
+			strFrom,
+			(flags() & MoveFlags::CAPTURE_BIT) ? 'x' : '-',
+			strTo,
+			piece);
 	case MoveType::KING_CASTLE:
-		output << "0-0";
-		break;
+		return "0-0";
 	case MoveType::QUEEN_CASTLE:
-		output << "0-0-0";
-		break;
+		return "0-0-0";
 	}
-	return output.str();
+	return {};
 }
