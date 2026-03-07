@@ -7,6 +7,8 @@
 #include "Board.h"
 #include "MoveFormatter.h"
 #include "PlayerBase.h"		// For factory create
+#include "PlayerAI.h"		// For PlayerAiBase setters
+#include "AIPerplex.h"		// For SearchTuning application
 extern std::ofstream outLegalMoves;
 
 // ***************************************
@@ -174,6 +176,31 @@ std::unique_ptr<IPlayer> Game::SetPlayerParams(const Config::PlayerConfig& confi
 {
 	auto player = PlayerBase::Create(static_cast<PlayerBase::ePlayerTypes>(config.type), config.depth);
 	player->SetEvalEngine(static_cast<EvalManager::EvalTypes>(config.eval));
+
+	// Apply shared AI config (time_limit) to any AI type
+	if (auto* ai = dynamic_cast<PlayerAiBase*>(player.get())) {
+		ai->SetTimeLimit(std::chrono::milliseconds(config.time_limit_ms));
+	}
+
+	// Apply SearchTuning — only valid for AI_PERPLEX (type 6)
+	if (config.search_tuning.has_value()) {
+		constexpr unsigned kAiPerplex = static_cast<unsigned>(PlayerBase::ePlayerTypes::AI_PERPLEX);
+		if (config.type != kAiPerplex) {
+			spdlog::warn("search_tuning in game_settings.json is ignored for player type {} "
+			             "(only supported by AI_PERPLEX)", config.type);
+		} else if (auto* perplex = dynamic_cast<AIPerplex*>(player.get())) {
+			const auto& st = *config.search_tuning;
+			auto& t = perplex->tuning();
+			t.min_nodes_threshold    = st.min_nodes_threshold;
+			t.min_completion_ratio   = st.min_completion_ratio;
+			t.min_pv_ratio           = st.min_pv_ratio;
+			t.score_draw_threshold   = st.score_draw_threshold;
+			t.delta_pruning_margin   = st.delta_pruning_margin;
+			t.aspiration_initial_delta = st.aspiration_initial_delta;
+			t.aspiration_max_retries   = st.aspiration_max_retries;
+			t.aspiration_enabled       = st.aspiration_enabled;
+		}
+	}
 
 	//Register events
 	player->ENewPVLineMove.subscribe([this](const void* s, const PVLine& pvl) { onNewPVLineMove(s, pvl); });
