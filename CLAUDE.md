@@ -20,6 +20,7 @@ A modern C++20 chess engine focused on improving playing strength (ELO) while ma
   layout differs from the default (sibling directories next to the repo)
 - Adding files to Solution Explorer: headers use `ClInclude`, non-code files (`.md`, `.json`) use `None` — in both cases also add a matching `<Filter>` entry in `.vcxproj.filters`. Forgetting the filter entry leaves the file visible but unfiled (no folder).
 - **Only `x64` builds work** — the x86/Win32 configuration is not maintained for C++20
+- `StratEngine/StdAfx.h` is the PCH — 14 STL headers covered (alphabetical order within the `#pragma warning push/pop` block). Add new frequently-used headers there, not in individual `.cpp` files. Note: measuring PCH benefit via wall-clock is misleading (LTCG dominates); use `/Bt` or `/d1reportTime` for per-TU parse timing.
 
 ### Build script (preferred)
 `build.ps1` at the repo root wraps MSBuild and discovers the correct executable automatically via `vswhere.exe` — no hard-coded VS paths:
@@ -43,6 +44,8 @@ cmd.exe /c "\"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.e
 ```
 **Shell notes**: The MSBuild install folder changes with every VS release (`2022`, `18`, …); never hard-code it. In **Git Bash** use `//p:` flags (double-slash) and the `/c/Program Files/…` path form. Direct `Bash` tool invocations are unreliable for Windows paths — prefer the Task (Bash subagent) + `cmd.exe` pattern.
 
+**PowerShell piping**: Cmdlets like `Where-Object`, `Select-String`, and `Sort-Object` silently fail when piped inside the `Bash` tool. To filter build output, use `powershell -ExecutionPolicy Bypass -File .\script.ps1` (invoke a script file) or redirect output to a temp file and grep it.
+
 Use `/v:normal` instead of `/v:minimal` when diagnosing build errors.
 
 ## Engine Algorithm Summary
@@ -65,6 +68,7 @@ IDS + PVS + quiescence search; Zobrist-hashed transposition table; bitboard repr
 
 ## Development Guidelines
 - Language: C++20; favor `constexpr`, RAII, move semantics, strong types
+- **Compiler: Level4 + `/WX` enforced** on `x64` Debug and Release (both projects) — any new warning is a build error. Approved suppressions: `[[maybe_unused]]` for params only used in `assert()` macros; `static_cast<>` for intentional narrowing. Never use `#pragma warning(disable)` in source files.
 - Naming and comments must be in English and unambiguous
 - Approved external dependencies only: `spdlog` (logging), `nlohmann/json` (config/serialization)
 - All changes must be thread-safe, especially around transposition tables
