@@ -80,7 +80,7 @@ int AIAgent::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta, _Inout_ PVLi
 	const GameInfo& info = GetLastBoardInfo( ply );
 
 	// Test for 50 moves rule
-	if ( checkDraws( info, ply) )
+	if ( checkDraws( info, static_cast<int>(ply)) )
 		return GameValues::Draw;
 
 	// Er vi naaet til bunden af traeet - leaf nodes?
