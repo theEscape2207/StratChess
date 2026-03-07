@@ -12,8 +12,10 @@
 // STL — keep sorted alphabetically when adding new entries
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cassert>
 #include <cstdint>
+#include <format>
 #include <fstream>		// For udskrivning til fil
 #include <functional>
 #include <iostream>		// cout

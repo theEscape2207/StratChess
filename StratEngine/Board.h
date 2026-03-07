@@ -73,17 +73,11 @@ public:
 	std::span<BITBOARD> GetBitBoards() noexcept;
 
 	// Returns the index of the least-significant set bit (square of first piece).
-	// Precondition: mask != 0. Uses TZCNT/CTZ intrinsic for register-returning result.
+	// Precondition: mask != 0. std::countr_zero compiles to TZCNT on x64.
 	static __forceinline eSquare GetFirstPiece(BITBOARD mask) noexcept
 	{
 		assert(mask != 0);
-#if defined(_MSC_VER)
-		const unsigned long index = static_cast<unsigned long>(_tzcnt_u64(mask));
-		return static_cast<eSquare>(index);
-#else
-		const unsigned long index = static_cast<unsigned long>(__builtin_ctzll(mask));
-		return static_cast<eSquare>(index);
-#endif
+		return static_cast<eSquare>(std::countr_zero(mask));
 	}
 
 	// --- Test setup helpers (prefer SetupFromFEN for new tests) ---

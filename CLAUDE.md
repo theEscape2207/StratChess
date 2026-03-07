@@ -44,7 +44,7 @@ cmd.exe /c "\"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.e
 ```
 **Shell notes**: The MSBuild install folder changes with every VS release (`2022`, `18`, …); never hard-code it. In **Git Bash** use `//p:` flags (double-slash) and the `/c/Program Files/…` path form. Direct `Bash` tool invocations are unreliable for Windows paths — prefer the Task (Bash subagent) + `cmd.exe` pattern.
 
-**PowerShell piping**: Cmdlets like `Where-Object`, `Select-String`, and `Sort-Object` silently fail when piped inside the `Bash` tool. To filter build output, use `powershell -ExecutionPolicy Bypass -File .\script.ps1` (invoke a script file) or redirect output to a temp file and grep it.
+**PowerShell from Bash tool**: Variable expansion (`$var`), backtick escapes, piped cmdlets (`Where-Object`, `Select-String`, `Sort-Object`), and multi-line strings all silently fail or corrupt when PowerShell code is inlined in the Bash tool. Rule: write any non-trivial PS logic to a `.ps1` file first, then invoke with `powershell -ExecutionPolicy Bypass -File .\script.ps1`.
 
 Use `/v:normal` instead of `/v:minimal` when diagnosing build errors.
 
@@ -114,8 +114,14 @@ cd Tests
 Sources: `StratEngine/Tests/Perft.h/cpp` + `Tests/perft_test_cases.json`
 
 ### Self-play validation
+- Run exe from `StratChessEvolved/` directory — reads `game_settings.json` from working directory
+- AI vs AI is fully headless: `Game::Run()` terminates automatically on checkmate/stalemate; no stdin needed
+- AIPerplex verbose logging is **on** by default in game mode; each move logs `GetMove complete: move=..., depth=..., time=...ms, nodes=..., stable=...` to stdout; default spdlog also writes `logs/multisink.txt` (relative to working dir)
+- For subprocess validation: `Start-Process ..\x64\Release\StratChessEvolved.exe -PassThru -NoNewWindow -RedirectStandardOutput out.txt` then `$proc.Kill()` after N seconds for timed tests; `$proc.WaitForExit(msTimeout)` for games expected to complete naturally
+- **Claude is expected to execute all validation plan steps autonomously** — explicitly flag any step that requires user assistance (e.g. interactive GUI, manual input) before skipping it
 - Run AIPerplex self-play (`"type": 6` for both sides in `game_settings.json`) to verify search behaviour
 - For changes to base classes PlayerAI/PlayerBase, verify through AIAgent self-play (`"type": 3`) as well
+- `game_settings.json` uses C-style `/* */` comments (handled by nlohmann); when writing test configs programmatically use plain JSON strings (PowerShell `ConvertFrom-Json` rejects comments)
 
 ### General
 - Maintain deterministic behavior for reproducibility
