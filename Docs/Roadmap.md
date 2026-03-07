@@ -231,6 +231,19 @@ This roadmap organizes development tasks by priority and category. Items are dra
   - `[bitboard]` — bitboard helper tests — add opportunistically
   - Full tactical suite (`StratChessEvolved.exe tactical test`) — add when evaluation is extended
 
+#### 🟢 Upgrade to C++23
+- **Estimate**: 4-6 hours total
+- **Dependency**: Extract ThreadData Structure (primary motivator — `std::mdspan` for history table)
+- **Secondary dependency**: De-Singleton Board (for `std::expected` in FENParser)
+- **Plan**: `.claude/plans/cpp23-upgrade.md`
+- **Language Standard Change**: `stdcpp20` → `stdcpplatest` in both `.vcxproj` files (x64 configurations)
+- **Items** (in dependency order):
+  1. **With ThreadData extraction**: `stdcpplatest` bump + `std::mdspan<int32_t, std::extents<int,2,64,64>>` for `history_[2][64][64]`; `std::flat_multimap` for TT diagnostics
+  2. **With De-Singleton Board**: `std::expected<ParsedFEN, std::string>` for `FENParser::ParseFEN`
+  3. **With MoveOrdering refactor**: `std::views::enumerate` in `pvs()` move scoring loop
+- **Already done** (March 2026): C++20 items `std::countr_zero` (replaces `_tzcnt_u64` #ifdef in `GetFirstPiece`) and `std::format` (replaces `stringstream` in `Move::Output()`) — see plan for details
+- **Note**: MSVC VS 2022 17.8+ already satisfies all C++23 library requirements; no toolchain upgrade needed for this item
+
 #### 🟢 Add Performance Profiling Scripts
 - **Estimate**: 1 day
 - **Tools**:
@@ -364,6 +377,17 @@ This roadmap organizes development tasks by priority and category. Items are dra
 - **Target**: CMake for Windows/Linux/Mac; Ninja back-end; `cmake --build . --target StratChessTests -j8`
 - **CI**: GitHub Actions for automated builds
 - **Note**: When migrating, preserve `INTERPROCEDURAL_OPTIMIZATION` (`/GL` + `/LTCG` equivalent) on the main Release target to avoid NPS regression; verify with a before/after NPS benchmark
+
+#### ⚪ Migrate to Clang/LLVM Compiler
+- **Estimate**: 1-2 days (on top of CMake migration effort)
+- **Prerequisite**: Cross-Platform Build System (CMake) — **do both together**; migrating MSBuild + Clang in isolation is high cost, low reward
+- **Plan**: `.claude/plans/cpp23-upgrade.md` (toolchain section)
+- **Rationale**:
+  - `clang-tidy` and `clang-format` enforce code quality in CI
+  - Leading-edge C++23/26 language conformance (Clang typically ahead of MSVC on proposals)
+  - Linux/Mac builds for free once on CMake
+  - `std::countr_zero` still compiles to `TZCNT` — no NPS regression expected; verify with before/after benchmark
+- **Note**: MSVC's C++23 standard **library** support is already complete for all features on this roadmap, so Clang is not needed to unlock C++23. This item is purely about toolchain quality and portability.
 
 ---
 
