@@ -4,8 +4,6 @@
 #include "StdAfx.h"
 #include "Sort.h"
 
-#include <cassert>
-#include <algorithm>
 #include "Board.h"
 #include "MoveHelper.h"
 

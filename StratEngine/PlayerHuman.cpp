@@ -4,10 +4,8 @@
 #include "StdAfx.h"
 #include "defines.h"
 #include "PlayerHuman.h"
-#include <string>
 #include <map>
 #include <regex>
-#include <algorithm>
 #include "Utils\StrHelper.h"
 #include "Board.h"
 #include "MoveGenerator.h"

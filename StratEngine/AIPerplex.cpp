@@ -8,19 +8,12 @@
 #include "Utils/Logger.h"
 #include "defines.h"
 #include "MoveHelper.h"
-#include <algorithm>
-#include <cassert>
 #include <cstring>
-#include <cstdint>
-#include <fstream>
 #include <iterator>
-#include <memory>
 #include <spdlog/common.h>
 #include <spdlog/logger.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
-#include <string>
-#include <utility>
 
 extern std::ofstream outLegalMoves;
 
@@ -86,7 +79,7 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info)
 	PVTable pv_table;
 	StartTimer();
 	
-	SearchResult result = iterative_deepening(m_MaxDepth, *_tt, pv_table);
+	SearchResult result = iterative_deepening(static_cast<int>(m_MaxDepth), *_tt, pv_table);
 
 	auto elapsed = StopTimerAndAdjustVars();
 
@@ -986,8 +979,8 @@ void AIPerplex::debug_tt_cache_misses(unsigned int key, int ply)
 }
 
 void AIPerplex::assert_tt_store(const TranspositionTable& tt, std::uint64_t key, int16_t ply,
-	int16_t value, int16_t depth, Move /*best_move*/,
-	BoundType bound, NodeType /*node_type*/, SearchPhase phase)
+	[[maybe_unused]] int16_t value, [[maybe_unused]] int16_t depth, Move /*best_move*/,
+	[[maybe_unused]] BoundType bound, NodeType /*node_type*/, [[maybe_unused]] SearchPhase phase)
 {
 	auto verify = tt.probe(key, ply);
 
