@@ -79,7 +79,7 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info)
 	PVTable pv_table;
 	StartTimer();
 	
-	SearchResult result = iterative_deepening(static_cast<int>(m_MaxDepth), *_tt, pv_table);
+	SearchResult result = iterative_deepening(static_cast<int>(max_depth_), *_tt, pv_table);
 
 	auto elapsed = StopTimerAndAdjustVars();
 
@@ -884,7 +884,7 @@ bool AIPerplex::handle_empty_move_emergency(
 	// True emergency - generate any legal move
 	if (s_logger) {
 		s_logger->critical("EMERGENCY: No best move found (max_depth={}, last_completed={})",
-			m_MaxDepth, state.depth_completed);
+			max_depth_, state.depth_completed);
 	}
 
 	MoveList emergency_moves;

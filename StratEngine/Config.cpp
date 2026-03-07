@@ -96,16 +96,42 @@ void Config::ReadConfigFile(const std::string& filename)
 	ReadBoardSetup(config);
 }
 
+namespace {
+	Config::PlayerConfig ParsePlayerConfig(const json& p, int defaultDepth, int defaultEval)
+	{
+		Config::PlayerConfig cfg;
+		cfg.type = p.value("type", defaultEval);
+		cfg.eval = p.value("eval", 0);
+		cfg.time_limit_ms = p.value("time_limit", 15000u);
+
+		// Prefer "max_depth"; fall back to legacy "depth" key
+		if (p.contains("max_depth"))
+			cfg.depth = p["max_depth"].get<unsigned>();
+		else
+			cfg.depth = p.value("depth", static_cast<unsigned>(defaultDepth));
+
+		// Parse SearchTuning if present (only meaningful for AI_PERPLEX)
+		if (p.contains("search_tuning")) {
+			const auto& st = p["search_tuning"];
+			Config::SearchTuningConfig t;
+			t.min_nodes_threshold    = st.value("min_nodes_threshold",    static_cast<int64_t>(1000));
+			t.min_completion_ratio   = st.value("min_completion_ratio",   0.10);
+			t.min_pv_ratio           = st.value("min_pv_ratio",           0.33);
+			t.score_draw_threshold   = st.value("score_draw_threshold",   20);
+			t.delta_pruning_margin   = st.value("delta_pruning_margin",   200);
+			t.aspiration_initial_delta = st.value("aspiration_initial_delta", 50);
+			t.aspiration_max_retries   = st.value("aspiration_max_retries",   4);
+			t.aspiration_enabled       = st.value("aspiration_enabled",       true);
+			cfg.search_tuning = t;
+		}
+		return cfg;
+	}
+} // anonymous namespace
+
 void Config::SetupPlayerConfig(const json& config)
 {
-	// Read white player - with default settings
-	white_.depth = config["game"]["players"]["white"].value("depth", DEFAULT_DEPTH);
-	white_.type = config["game"]["players"]["white"].value("type", DEFAULT_EVAL);	// default aiagent
-	white_.eval = config["game"]["players"]["white"].value("eval", 0);	// default SIMPLE
-
-	black_.depth = config["game"]["players"]["black"].value("depth", DEFAULT_DEPTH);
-	black_.type = config["game"]["players"]["black"].value("type", DEFAULT_EVAL);	// default aiagent
-	black_.eval = config["game"]["players"]["black"].value("eval", 0);	// default SIMPLE
+	white_ = ParsePlayerConfig(config["game"]["players"]["white"], DEFAULT_DEPTH, DEFAULT_EVAL);
+	black_ = ParsePlayerConfig(config["game"]["players"]["black"], DEFAULT_DEPTH, DEFAULT_EVAL);
 }
 
 Config::PlayerConfig Config::GetPlayerFromConfig(bool bWhite) const noexcept
