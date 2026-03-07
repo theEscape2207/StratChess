@@ -218,15 +218,9 @@ This roadmap organizes development tasks by priority and category. Items are dra
 
 ### Infrastructure
 
-#### 🟢 Fix `zobrist::initialize()` never called
-- **Estimate**: 2-3 hours
-- **Impact**: Correctness — castling rights, en-passant square, and side-to-move changes currently contribute zero to the Zobrist hash (XOR with 0 is a no-op)
-- **Root cause**: `zobrist::initialize()` is defined in `Board.cpp` and declared in `Board.h` but is never called. The keys in `zobrist::castling_keys`, `zobrist::ep_keys`, and `zobrist::side_key` remain zero.
-- **Note**: Not causing visible incorrectness today (same-state hash collisions cancel out), but is a latent bug
-- **Actions**:
-  1. Call `zobrist::initialize()` early in program startup (e.g., in `main()` or `Config` initialisation)
-  2. Evaluate whether `allHashKeys` should be unified with `zobrist::piece_keys` for a single consistent Zobrist scheme
-- **Files**: `StratChessEvolved/StratChessEvolved.cpp` or `StratEngine/Config.cpp`, `StratEngine/Board.h/cpp`
+#### ✅ Fix `zobrist::initialize()` never called — COMPLETE
+- `zobrist::initialize()` is called in the `Board` constructor (`Board.cpp` line 50); all castling, en-passant, and side-to-move keys are initialised before any Board method runs.
+- Stale "never called" comment in `Board.h` removed.
 
 #### 🟢 Phase 1 Test Infrastructure (add per-feature, see TestDesign.md)
 - **Estimate**: Varies — add when touching the relevant component
