@@ -9,11 +9,19 @@
 #pragma warning (push)
 #pragma warning (disable :4505 4530)
 
+// STL — keep sorted alphabetically when adding new entries
+#include <algorithm>
+#include <array>
+#include <cassert>
+#include <cstdint>
 #include <fstream>		// For udskrivning til fil
+#include <functional>
 #include <iostream>		// cout
-
+#include <memory>
 #include <span>
-
+#include <sstream>
+#include <string>
+#include <utility>
 #include <vector>
 
 #pragma warning (pop)

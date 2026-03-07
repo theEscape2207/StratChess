@@ -6,8 +6,6 @@
 #include "Board.h"
 #include "MoveHelper.h"
 #include "PieceHelper.h"
-#include <array>
-#include <cassert>
 
 namespace {
 
