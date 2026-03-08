@@ -15,8 +15,6 @@
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 
-extern std::ofstream outLegalMoves;
-
 static std::shared_ptr<spdlog::logger> s_logger = nullptr;
 static void ensure_logger_initialized()
 {
@@ -36,7 +34,7 @@ static void ensure_logger_initialized()
 			auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
 			console_sink->set_level(spdlog::level::info);
 			console_sink->set_pattern(("%T.%e %^%l%$: %v"));
-			auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("aiperplex.log", true);
+			auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("logs/aiperplex.log", true);
 			file_sink->set_level(spdlog::level::debug);
 			file_sink->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
 
@@ -53,6 +51,16 @@ static void ensure_logger_initialized()
 		catch (...) {
 			// best-effort; leave it empty if creation fails
 		}
+	}
+}
+
+void AIPerplex::SetVerboseLogging(bool enabled) noexcept {
+	s_verbose_logging = enabled;
+	if (enabled) {
+		ensure_logger_initialized();
+		if (s_logger) s_logger->set_level(spdlog::level::debug);
+	} else if (s_logger) {
+		s_logger->set_level(spdlog::level::off);
 	}
 }
 
@@ -98,18 +106,15 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info)
 	}
 
 	// Success logging
-	if (IsVerboseLoggingEnabled()) {
-		ensure_logger_initialized();
-		if (s_logger) {
-			s_logger->info(
-				"GetMove complete: move={}, score={}, depth={}, time={}ms, nodes={}, stable={}",
-				bestMove.Output(),
-				result.best_score,
-				result.depth_completed,
-				elapsed.count(),
-				m_SearchCount,
-				result.search_was_stable ? "yes" : "NO");
-		}
+	if (s_logger) {
+		s_logger->info(
+			"GetMove complete: move={}, score={}, depth={}, time={}ms, nodes={}, stable={}",
+			bestMove.Output(),
+			result.best_score,
+			result.depth_completed,
+			elapsed.count(),
+			m_SearchCount,
+			result.search_was_stable ? "yes" : "NO");
 	}
 	info = m_Board.GetGameInfo();
 	CheckGameOver(info, false);
@@ -226,7 +231,7 @@ SearchResult  AIPerplex::iterative_deepening(int max_depth, TranspositionTable& 
 	}
 
 	// Final logging
-	if (IsVerboseLoggingEnabled() && state.depth_completed > 0) {
+	if (state.depth_completed > 0) {
 		log_search_complete(state, pv_table);
 	}
 	return SearchResult{
@@ -733,9 +738,8 @@ void AIPerplex::log_iteration_eval(
 	const IterationMetrics& metrics,
 	const PVTable& pv_table) const
 {
-	if (!IsVerboseLoggingEnabled()) return;
-	ensure_logger_initialized();
 	if (!s_logger) return;
+	if (!s_logger->should_log(spdlog::level::debug)) return;
 
 	// Build PV string
 	std::string pv_line;
@@ -771,8 +775,6 @@ void AIPerplex::log_rejection(
 	const IterationMetrics& metrics,
 	const SearchState& state) const
 {
-	if (!IsVerboseLoggingEnabled()) return;
-	ensure_logger_initialized();
 	if (!s_logger) return;
 
 	switch (reason) {
@@ -818,8 +820,6 @@ void AIPerplex::log_rejection(
 }
 
 void AIPerplex::log_acceptance(const IterationMetrics& metrics) const {
-	if (!IsVerboseLoggingEnabled()) return;
-	ensure_logger_initialized();
 	if (!s_logger) return;
 
 	// Noteworthy so Info
@@ -832,24 +832,18 @@ void AIPerplex::log_acceptance(const IterationMetrics& metrics) const {
 bool AIPerplex::should_stop_early(int depth, int score, int pv_length) const {
 	// Mate found
 	if (std::abs(score) >= GameValues::Mate_Threshold) {
-		if (IsVerboseLoggingEnabled()) {
-			ensure_logger_initialized();
-			if (s_logger) {
-				s_logger->info("Mate found at depth {}, stopping iteration", depth);
-			}
+		if (s_logger) {
+			s_logger->info("Mate found at depth {}, stopping iteration", depth);
 		}
 		return true;
 	}
 
 	// Forced line (PV much shorter than depth)
 	if (depth > 1 && pv_length > 0 && pv_length < (depth - depth / 2)) {
-		if (IsVerboseLoggingEnabled()) {
-			ensure_logger_initialized();
-			if (s_logger) {
-				s_logger->info(
-					"Short PV ({} vs depth {}) indicates forced line, stopping",
-					pv_length, depth);
-			}
+		if (s_logger) {
+			s_logger->info(
+				"Short PV ({} vs depth {}) indicates forced line, stopping",
+				pv_length, depth);
 		}
 		return true;
 	}
@@ -861,48 +855,38 @@ bool AIPerplex::handle_empty_move_emergency(
 	SearchState& state,
 	PVTable& pv_table)
 {
-	ensure_logger_initialized();
+	auto& log = *spdlog::default_logger();
 
 	// Check if mate/stalemate
 	if (std::abs(state.best_score) >= GameValues::Mate_Threshold) {
-		if (s_logger) {
-			s_logger->info("No move needed - mate detected (score={})", state.best_score);
-		}
+		log.info("No move needed - mate detected (score={})", state.best_score);
 		return false;
 	}
 
 	// Check game state
 	const GameInfo& current_info = m_Board.GetGameInfo();
 	if (current_info.gameState != GameStates::STILL_PLAYING) {
-		if (s_logger) {
-			s_logger->info("No move needed - game over (state={})",
-				static_cast<int>(current_info.gameState));
-		}
+		log.info("No move needed - game over (state={})",
+			static_cast<int>(current_info.gameState));
 		return false;
 	}
 
 	// True emergency - generate any legal move
-	if (s_logger) {
-		s_logger->critical("EMERGENCY: No best move found (max_depth={}, last_completed={})",
-			max_depth_, state.depth_completed);
-	}
+	log.critical("EMERGENCY: No best move found (max_depth={}, last_completed={})",
+		m_MaxDepth, state.depth_completed);
 
 	MoveList emergency_moves;
 	MoveGenerator::ComputeLegalMoves(current_info, emergency_moves);
 
 	if (emergency_moves.empty()) {
-		if (s_logger) {
-			s_logger->critical("No legal moves - game is over");
-		}
+		log.critical("No legal moves - game is over");
 		return false;
 	}
 
 	// Verify first move is legal
 	if (!m_Board.DoMove(emergency_moves[0])) {
-		if (s_logger) {
-			s_logger->critical("First pseudolegal move {} is illegal!",
-				emergency_moves[0].Output());
-		}
+		log.critical("First pseudolegal move {} is illegal!",
+			emergency_moves[0].Output());
 
 		// Try others
 		for (const auto& move : emergency_moves) {
@@ -912,17 +896,12 @@ bool AIPerplex::handle_empty_move_emergency(
 				state.best_score = 0;
 				pv_table.update(0, move);
 
-				if (s_logger) {
-					s_logger->critical("Using legal emergency move: {}",
-						move.Output());
-				}
+				log.critical("Using legal emergency move: {}", move.Output());
 				return true;
 			}
 		}
 
-		if (s_logger) {
-			s_logger->critical("No legal moves found - ComputeLegalMoves is broken!");
-		}
+		log.critical("No legal moves found - ComputeLegalMoves is broken!");
 		return false;
 	}
 
@@ -932,9 +911,7 @@ bool AIPerplex::handle_empty_move_emergency(
 	state.best_score = 0;
 	pv_table.update(0, emergency_moves[0]);
 
-	if (s_logger) {
-		s_logger->critical("Using emergency move: {}", emergency_moves[0].Output());
-	}
+	log.critical("Using emergency move: {}", emergency_moves[0].Output());
 	return true;
 }
 
@@ -942,8 +919,6 @@ void AIPerplex::log_search_complete(
 	const SearchState& state,
 	const PVTable& pv_table) const
 {
-	if (!IsVerboseLoggingEnabled()) return;
-	ensure_logger_initialized();
 	if (!s_logger) return;
 
 	if (state.best_move.is_null() || pv_table.get_length(0) == 0) {
@@ -963,9 +938,8 @@ void AIPerplex::log_completed_iteration(
 	const IterationMetrics& metrics,
 	const PVTable& pv_table) const
 {
-	if (!IsVerboseLoggingEnabled()) return;
-	ensure_logger_initialized();
 	if (!s_logger) return;
+	if (!s_logger->should_log(spdlog::level::info)) return;
 
 	std::string pv_line;
 	pv_line.reserve(128);
@@ -987,8 +961,6 @@ void AIPerplex::log_completed_iteration(
 
 void AIPerplex::log_aspiration_retry(int depth, int retry, int score, int alpha, int beta, bool fail_low) const
 {
-	if (!IsVerboseLoggingEnabled()) return;
-	ensure_logger_initialized();
 	if (!s_logger) return;
 
 	s_logger->debug(
@@ -1003,8 +975,6 @@ void AIPerplex::log_aspiration_retry(int depth, int retry, int score, int alpha,
 
 void AIPerplex::log_aspiration_full_window(int depth, int max_retries) const
 {
-	if (!IsVerboseLoggingEnabled()) return;
-	ensure_logger_initialized();
 	if (!s_logger) return;
 
 	s_logger->debug(

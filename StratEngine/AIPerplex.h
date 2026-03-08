@@ -158,8 +158,10 @@ private:
 #endif
 
 public:
-	// Configure logger verbosity at runtime (call before heavy runs if needed)
-	static void SetVerboseLogging(bool enabled) noexcept { s_verbose_logging = enabled; }
+	// Configure logger verbosity at runtime (call before heavy runs if needed).
+	// When enabled, ensures the AIPerplex logger is initialized and sets its level to debug.
+	// When disabled, silences the logger via spdlog::level::off (log helpers need only a null-check).
+	static void SetVerboseLogging(bool enabled) noexcept;
 	static bool IsVerboseLoggingEnabled() noexcept { return s_verbose_logging; }
 
 	// Access to tuning parameters

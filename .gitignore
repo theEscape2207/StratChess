@@ -361,9 +361,10 @@ MigrationBackup/
 FodyWeavers.xsd
 #And finally my own ignorable files
 /StratEngine/typedef.h
-/StratChessEvolved/gamelist.txt
-/StratChessEvolved/legalmoves.txt
-/StratChessEvolved/SimplePerfStats.txt
+/StratChessEvolved/logs/gamelist.txt
+/StratChessEvolved/logs/SimplePerfStats.txt
+/StratChessEvolved/logs/aiperplex.log
+logs/aiperplex.log
 /PredictedInputCache_StratChessEvolved_Debug_x64.dat
 /.github/*
 /sync-from-main.ps1
@@ -372,5 +373,4 @@ Directory.Build.user.props
 Directory.Build_renamed.props_old
 /StratChessEvolved/logs - Copy/multisink.txt
 /.claude/settings.local.json
-/StratChessTests/SimplePerfStats.txt
-/SimplePerfStats.txt
+/StratChessTests/logs/SimplePerfStats.txt

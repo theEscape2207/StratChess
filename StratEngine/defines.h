@@ -749,4 +749,3 @@ inline constexpr auto g_bbMovesa8h1 = makeMovesa8h1();
 
 //constexpr inline auto PRINT_STATS = 1;
 
-#define PRINT_MOVES						1;
