@@ -12,9 +12,6 @@
 #include "Sort.h"
 #include "MoveGenerator.h"
 
-#ifdef PRINT_MOVES
-extern std::ofstream outLegalMoves;
-#endif // PRINT_MOVES
 
 // Fetches the next move
 Move AIBasic::GetMove(_Inout_ GameInfo& info)
@@ -87,11 +84,9 @@ int AIBasic::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta)
 
 			moveFound = true;	// Har fundet et gyldigt traek
 
-#ifdef PRINT_MOVES
-			// Udskriver traekkene til fil
 			if (ply == 0)
-				PrintMovesAndScore(outLegalMoves, counter, moveList.size(), curMove, value);
-#endif // PRINT_MOVES
+				spdlog::default_logger()->debug("Root move {}/{}: {} score={}",
+					counter, moveList.size(), curMove.Output(), value);
 
 			//	We got a value back.  We unmade the move.  We're not dead.  Let's
 			//	see how good this move was.  If it was >= "beta", it was so good
@@ -117,15 +112,12 @@ int AIBasic::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta)
 				}
 			}
 		}
-#ifdef PRINT_MOVES
 		else
 		{
-			// Udskriver traekkene til fil
 			if (ply == 0)
-				// Ulovligt traek!!														// Magic value: illegal move
-				PrintMovesAndScore(outLegalMoves, counter, moveList.size(), curMove, -GameValues::Search_Init - 1);
+				spdlog::default_logger()->debug("Root move {}/{}: {} ILLEGAL",
+					counter, moveList.size(), curMove.Output());
 		}
-#endif // PRINT_MOVES
 	}
 	if (moveFound) {
 		UpdateGameState(ply, GameStates::STILL_PLAYING);

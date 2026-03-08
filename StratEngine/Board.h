@@ -166,7 +166,7 @@ private:
 	void reset_repetition_history();
 
 	// --- Debug ---
-	bool test_bitboards(std::ostream& stream = std::cout) const;
+	bool test_bitboards() const;
 	void print_all_bitboards(const TBitboards& boards, std::ostream& = std::cout) const;
 
 	// ---- Member variables ----

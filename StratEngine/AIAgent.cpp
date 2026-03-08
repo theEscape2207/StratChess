@@ -7,7 +7,6 @@
 #include "Sort.h"
 #include "MoveGenerator.h"
 
-extern std::ofstream outLegalMoves;
 
 // Fetches the next move
 Move AIAgent::GetMove(_Inout_ GameInfo& info )
@@ -141,12 +140,9 @@ int AIAgent::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta, _Inout_ PVLi
 
 			moveFound = true;
 			
-#ifdef PRINT_MOVES
-
-			// Udskriver traekkene til fil
-			if (ply == 0 && m_Depth == max_depth_)	// for iterativ kun udskriv i roden af traeet
-				PrintMovesAndScore(outLegalMoves, counter, moveList.size(), curMove, score);
-#endif // PRINT_MOVES
+			if (ply == 0 && m_Depth == max_depth_)
+				spdlog::default_logger()->debug("Root move {}/{}: {} score={}",
+					counter, moveList.size(), curMove.Output(), score);
 
 			//	We got a value back.  We unmade the move.  We're not dead.  Let's
 			//	see how good this move was.  If it was >= "beta", it was so good
@@ -182,15 +178,12 @@ int AIAgent::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta, _Inout_ PVLi
 					this->_bestScore = score;
 			}
 		}
-#ifdef PRINT_MOVES
 		else
-		{	
-			// Udskriver traekkene til fil
-			if (ply == 0 && m_Depth == max_depth_)	// for iterativ kun udskriv nederste dybde
-				// Ulovligt traek!!														// Magic value: illegal move
-				PrintMovesAndScore(outLegalMoves, counter, moveList.size(), curMove, -GameValues::Search_Init -1);
+		{
+			if (ply == 0 && m_Depth == max_depth_)
+				spdlog::default_logger()->debug("Root move {}/{}: {} ILLEGAL",
+					counter, moveList.size(), curMove.Output());
 		}
-#endif // PRINT_MOVES
 	} 
 	
 	// Fandt vi nogen lovlige traek?

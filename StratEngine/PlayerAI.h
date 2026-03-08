@@ -88,17 +88,6 @@ protected:
 		Eval = EvalManager::Create(type);	// create new eval
 	}
 
-	static void PrintMovesAndScore(std::ostream& stream, size_t numMove, size_t TotalCount, const Move& move, int score)
-	{
-		// Udskriver traekkene til fil
-		stream << "Move " << numMove + 1 << " of " << TotalCount << '\n' //-V128
-			<< move;
-		if (score != (-GameValues::Search_Init - 1))
-			stream << "Score: " << score << "\n\n";
-		else
-			stream << "Invalid move!" << "\n\n";
-	}
-
 	// ************************************
 	// Method:      InitMoveVariables
 	// Description: 
