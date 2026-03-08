@@ -123,6 +123,21 @@ Sources: `StratEngine/Tests/Perft.h/cpp` + `Tests/perft_test_cases.json`
 - For changes to base classes PlayerAI/PlayerBase, verify through AIAgent self-play (`"type": 3`) as well
 - `game_settings.json` uses C-style `/* */` comments (handled by nlohmann); when writing test configs programmatically use plain JSON strings (PowerShell `ConvertFrom-Json` rejects comments)
 
+### Log and output files
+
+Files written to disk at runtime; all paths are relative to the **working directory** (not the exe location):
+
+| File | Created by | Build/runtime context | Level/gate | Notes |
+|---|---|---|---|---|
+| `logs/multisink.txt` | `Engine::Logger::InitDefault()` (`Logger.cpp`) | Game mode only; **not** in tests | Always — trace→file, info→console | All four files require `logs/` to pre-exist; spdlog silently swallows failures |
+| `logs/aiperplex.log` | `AIPerplex::SetVerboseLogging(true)` → `ensure_logger_initialized()` (`AIPerplex.cpp`) | Created whenever AIPerplex is constructed; level=off (file stays empty) when `SetVerboseLogging(false)` is called afterward | debug level on `s_logger`; silenced via `spdlog::level::off` when verbose is disabled | gitignored; in tests the file is created but empty because ctor enables then test disables |
+| `logs/SimplePerfStats.txt` | `Engine::Logger::EnsurePerfLogger()` (`Game.cpp`, `PlayerAI.cpp`) | Game mode only — created eagerly in `Game::Init()` | Always in game mode; written per AI move by `StopTimerAndAdjustVars()` | gitignored |
+| `logs/gamelist.txt` | `Game::CreateGameMoveFile()` (`Game.cpp`) | Game mode only — created eagerly in `Game::Init()` | Always in game mode; one line per move via `MoveFormatter::ToShort` | gitignored |
+
+All four files are gitignored and all land under `logs/`. The `logs/` subdirectory must pre-exist — spdlog silently swallows the `basic_file_sink` constructor failure, so missing the directory means no file output (no error message). Deprecated file `legalmoves.txt` (pre-spdlog global `std::ofstream`) was removed — board and root-move diagnostics now flow through the default spdlog logger at `debug` level.
+
+**Working directory**: must run exe from `StratChessEvolved/` — both for `game_settings.json` resolution and so all log output lands in `StratChessEvolved/logs/`.
+
 ### General
 - Maintain deterministic behavior for reproducibility
 - `game_settings.json`: verify FEN is set to the starting position before committing — test sessions often leave a custom FEN in place
