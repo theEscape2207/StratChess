@@ -9,7 +9,6 @@
 #include "Utils\FENParser.h"
 #include <random>
 
-extern std::ofstream outLegalMoves;
 
 // Zobrist key tables (defined here, declared in Board.h)
 namespace zobrist {
@@ -81,7 +80,7 @@ void Board::add_piece(eSquare square, ePiece piece)
 	set_square(square, piece);
 	zobrist_hash_ ^= zobrist::piece_keys[piece][square];
 
-	assert(test_bitboards(outLegalMoves));
+	assert(test_bitboards());
 }
 
 // Removes a piece from all relevant bitboards, the mailbox, and the Zobrist hash.
@@ -91,7 +90,7 @@ void Board::remove_piece(eSquare square, ePiece piece)
 	assert(GetPiece(square) == piece);
 
 	if (!clear_bitboard_square(piece, square))
-		test_bitboards(std::cout);
+		test_bitboards();
 
 	clear_bitboard_square(bitboard_index(ALL_FROM_COLOR, PieceHelper::Color(piece)), square);
 	clear_bitboard_square(ALL_PIECES, square);
@@ -103,7 +102,7 @@ void Board::remove_piece(eSquare square, ePiece piece)
 	clear_square(square);
 	zobrist_hash_ ^= zobrist::piece_keys[piece][square];
 
-	assert(test_bitboards(outLegalMoves));
+	assert(test_bitboards());
 }
 
 // Sets up the board from a collection of (piece, square) pairs.
@@ -615,7 +614,8 @@ void Board::update_threefold_rep(const Move& m, ePiece movPiece)
 }
 
 // Verifies that bitboards_.at(ALL_PIECES) equals the OR of all individual piece bitboards.
-bool Board::test_bitboards(std::ostream& stream) const
+// On failure, emits a detailed diagnostic via the default spdlog logger (error level).
+bool Board::test_bitboards() const
 {
 	BITBOARD bbOR = 0;
 
@@ -623,9 +623,11 @@ bool Board::test_bitboards(std::ostream& stream) const
 		bbOR |= bitboards_.at(i);
 
 	if (bbOR != bitboards_.at(ALL_PIECES)) {
-		stream << "Individual boards OR'd together:\n";
-		BitBoardHelper::PrintBitboardBinary(bbOR, stream);
-		print_all_bitboards(bitboards_, stream);
+		std::ostringstream oss;
+		oss << "Individual boards OR'd together:\n";
+		BitBoardHelper::PrintBitboardBinary(bbOR, oss);
+		print_all_bitboards(bitboards_, oss);
+		spdlog::default_logger()->error("Bitboard corruption detected:\n{}", oss.str());
 		return false;
 	}
 	return true;
