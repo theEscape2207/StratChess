@@ -15,11 +15,14 @@ public:
 	std::string getDescription() const override {
 		std::stringstream str;
 		str << "\n\tEngine type:\t" << GetType() <<
-			"\n\tDepth:\t\t" << m_MaxDepth <<
+			"\n\tDepth:\t\t" << max_depth_ <<
 			"\n\tEvaluation:\t" << Eval->GetType() << '\n';
 		return str.str();
 	}
 	const char* GetType() const noexcept override { return "AI"; }
+
+	void SetMaxDepth(unsigned depth) noexcept { max_depth_ = depth; }
+	void SetTimeLimit(std::chrono::milliseconds ms) noexcept { time_limit_ = ms; }
 
 	PlayerAiBase(const PlayerAiBase&) = delete;
 	PlayerAiBase& operator=(const PlayerAiBase&) = delete;
@@ -31,7 +34,7 @@ protected:
 	// Preventing constructor, copy-construction & operator=
 	explicit PlayerAiBase(unsigned md) :
 		m_Board(Board::Instance()),
-		m_MaxDepth(md)
+		max_depth_(md)
 	{
 		// Create the Evaluation strategy - Right now only possible to select two: SIMPLE and COMPLEX ;-)
 	}
@@ -39,7 +42,7 @@ protected:
 	// default constructor - not used but needs to be there
 	PlayerAiBase() noexcept :
 		m_Board(Board::Instance()),
-		m_MaxDepth(5) // some default
+		max_depth_(5) // some default
 	{
 
 	}
@@ -193,17 +196,15 @@ protected:
 	// Det bedste traek indtil nu
 	Move m_BestMove;
 
-	size_t m_MaxDepth{ 0 };	// Max seeking depth for this algorithm TODO: Make configurable
-
 	std::chrono::time_point<std::chrono::high_resolution_clock> _startingTime;
 
 	// Time control
 	std::atomic<bool> stop_search_{ false };
 	chess::TimeManager time_manager_;
 
-	// Search configuration
-	unsigned max_depth_{ 15 };											// TODO: Make configurable
-	std::chrono::milliseconds time_limit_{ std::chrono::seconds(15) };	// TODO: Make configurable
+	// Search configuration — set from game_settings.json via SetMaxDepth / SetTimeLimit
+	unsigned max_depth_{ 15 };
+	std::chrono::milliseconds time_limit_{ std::chrono::seconds(15) };
 
 	//#ifdef PRINT_STATS
 

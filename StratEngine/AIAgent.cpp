@@ -25,7 +25,7 @@ Move AIAgent::GetMove(_Inout_ GameInfo& info )
 	StartTimer();
 		
 	// iterativ search
-	for (m_Depth = 1; m_Depth <= m_MaxDepth; )	// m_Depth maa ikke opdateres her med aspiration search 
+	for (m_Depth = 1; m_Depth <= max_depth_; )	// m_Depth maa ikke opdateres her med aspiration search 
 	{
 		if (ShouldStopSearch()) {
 			break;
@@ -140,7 +140,7 @@ int AIAgent::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta, _Inout_ PVLi
 
 			moveFound = true;
 			
-			if (ply == 0 && m_Depth == m_MaxDepth)
+			if (ply == 0 && m_Depth == max_depth_)
 				spdlog::default_logger()->debug("Root move {}/{}: {} score={}",
 					counter, moveList.size(), curMove.Output(), score);
 
@@ -180,7 +180,7 @@ int AIAgent::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta, _Inout_ PVLi
 		}
 		else
 		{
-			if (ply == 0 && m_Depth == m_MaxDepth)
+			if (ply == 0 && m_Depth == max_depth_)
 				spdlog::default_logger()->debug("Root move {}/{}: {} ILLEGAL",
 					counter, moveList.size(), curMove.Output());
 		}

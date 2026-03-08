@@ -20,6 +20,7 @@
 #include <functional>
 #include <iostream>		// cout
 #include <memory>
+#include <optional>
 #include <span>
 #include <sstream>
 #include <string>
