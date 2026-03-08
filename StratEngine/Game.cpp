@@ -7,6 +7,8 @@
 #include "Board.h"
 #include "MoveFormatter.h"
 #include "PlayerBase.h"		// For factory create
+#include "PlayerAI.h"		// For PlayerAiBase setters
+#include "AIPerplex.h"		// For SearchTuning application
 
 // ***************************************
 // Method:      Game
