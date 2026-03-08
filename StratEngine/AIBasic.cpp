@@ -48,7 +48,7 @@ int AIBasic::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta)
 	// Modvirkning af Horisont effekt: singular extensions
 	// hvis der i bunden af traeet er slaaet en brik, saa fortsaettes soegningen 
 	// indtil der ikke bliver slaaet en brik
-	if (ply == m_MaxDepth)
+	if (ply == max_depth_)
 	{
 		// Quiescent seach
 		return Quiescent(ply, alpha, beta);

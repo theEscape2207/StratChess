@@ -57,15 +57,6 @@
     <ClCompile Include="..\StratEngine\MoveGenerator.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\StratEngine\PlayerAI.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\StratEngine\PlayerBase.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\StratEngine\PlayerHuman.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="..\StratEngine\Sort.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -111,6 +102,15 @@
     <ClCompile Include="..\StratEngine\Position.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\StratEngine\PlayerAI.cpp">
+      <Filter>Source Files\Algos</Filter>
+    </ClCompile>
+    <ClCompile Include="..\StratEngine\PlayerBase.cpp">
+      <Filter>Source Files\Algos</Filter>
+    </ClCompile>
+    <ClCompile Include="..\StratEngine\PlayerHuman.cpp">
+      <Filter>Source Files\Algos</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\StratEngine\BitBoardHelper.h">
@@ -131,9 +131,6 @@
     <ClInclude Include="..\StratEngine\Game.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\StratEngine\IPlayer.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\StratEngine\Move.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -147,12 +144,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\StratEngine\PieceHelper.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\StratEngine\PlayerAI.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\StratEngine\PlayerAiIterBase.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\StratEngine\PlayerBase.h">
@@ -229,6 +220,15 @@
     </ClInclude>
     <ClInclude Include="..\StratEngine\Utils\Formatters.h">
       <Filter>Header Files\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\StratEngine\IPlayer.h">
+      <Filter>Header Files\Algos</Filter>
+    </ClInclude>
+    <ClInclude Include="..\StratEngine\PlayerAI.h">
+      <Filter>Header Files\Algos</Filter>
+    </ClInclude>
+    <ClInclude Include="..\StratEngine\PlayerAiIterBase.h">
+      <Filter>Header Files\Algos</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -30,7 +30,7 @@ Move ABIterative::GetMove(_Inout_ GameInfo& info)
 	StartTimer();
 
 	// almindelig iterativ soegning
-	for (m_Depth = 1; m_Depth <= m_MaxDepth; ++m_Depth)
+	for (m_Depth = 1; m_Depth <= max_depth_; ++m_Depth)
 	{
 		if (ShouldStopSearch())
 			break;
@@ -119,7 +119,7 @@ int ABIterative::Search(int ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& 
 
 			moveFound = true;
 
-			if (ply == 0 && m_Depth == m_MaxDepth)
+			if (ply == 0 && m_Depth == max_depth_)
 				spdlog::default_logger()->debug("Root move {}/{}: {} score={}",
 					counter, moveList.size(), curMove.Output(), value);
 
@@ -168,7 +168,7 @@ int ABIterative::Search(int ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& 
 		}
 		else
 		{
-			if (ply == 0 && m_Depth == m_MaxDepth)
+			if (ply == 0 && m_Depth == max_depth_)
 				spdlog::default_logger()->debug("Root move {}/{}: {} ILLEGAL",
 					counter, moveList.size(), curMove.Output());
 		}

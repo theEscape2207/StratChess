@@ -11,23 +11,43 @@
     "players": {
       "white": {
         "type": 6,
-        "depth": 15,
+        /* max_depth: maximum iterative-deepening depth (replaces legacy "depth" key) */
+        "max_depth": 15,
+        /* time_limit: search time budget in milliseconds */
+        "time_limit": 15000,
         /* Eval:
            0 - None (Human)
            1 - Simple Eval
            2 - More Complex Eval
         */
-        "eval": 2
+        "eval": 2,
+        /* search_tuning: AIPerplex-specific parameters (ignored for other player types) */
+        "search_tuning": {
+          "min_nodes_threshold": 1000,
+          "min_completion_ratio": 0.10,
+          "min_pv_ratio": 0.33,
+          "score_draw_threshold": 20,
+          "delta_pruning_margin": 200,
+          "aspiration_initial_delta": 50,
+          "aspiration_max_retries": 4,
+          "aspiration_enabled": true
+        }
       },
       "black": {
         "type": 6,
-        "depth": 15,
-        /* Eval:
-           0 - None (Human)
-           1 - Simple Eval
-           2 - More Complex Eval
-        */
-        "eval": 2
+        "max_depth": 15,
+        "time_limit": 15000,
+        "eval": 2,
+        "search_tuning": {
+          "min_nodes_threshold": 1000,
+          "min_completion_ratio": 0.10,
+          "min_pv_ratio": 0.33,
+          "score_draw_threshold": 20,
+          "delta_pruning_margin": 200,
+          "aspiration_initial_delta": 50,
+          "aspiration_max_retries": 4,
+          "aspiration_enabled": true
+        }
       }
     },
 
