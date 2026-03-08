@@ -136,7 +136,7 @@ For any non-trivial multi-file task, create `.claude/plans/<kebab-name>.md` befo
 - **Validation Plan** — build command, test tags, self-play check
 - **Key Correctness Properties** — invariants that must hold after the change
 
-Commit the plan file — it lives under `.claude/plans/` (tracked by git) and serves as permanent reference even after the worktree is retired.
+Commit the plan file — it lives under `.claude/plans/` (tracked by git) and serves as permanent reference even after the worktree is retired. **Name it after the content**, not an auto-generated string — e.g. `logging-spdlog-gate-and-outlegalmoves-removal.md`, not `ticklish-rolling-ripple.md`.
 
 ## Commit & PR Conventions
 - Development happens on `master`; PRs target `main`
@@ -144,3 +144,4 @@ Commit the plan file — it lives under `.claude/plans/` (tracked by git) and se
 - Include motivation, design reasoning, and expected impact for non-trivial changes
 - Seek review for changes affecting evaluation, move ordering, or search algorithms
 - Claude worktrees live under `.claude/worktrees/` — build from a worktree works out of the box via `Directory.Build.props`
+- **Worktree PR workflow**: if the worktree branch is ahead of `main` due to un-merged WIP commits, do NOT PR the worktree branch directly. Cherry-pick the relevant commit(s) onto a fresh branch from `origin/main` to avoid pulling in unintended changes.
