@@ -1,6 +1,6 @@
 # StratChess Engine Roadmap
 
-**Last Updated**: March 3, 2026
+**Last Updated**: March 9, 2026
 **Timeframe**: Next 6 months (through parallel search implementation)
 **Current Version**: AIPerplex 2.0
 
@@ -105,26 +105,6 @@ This roadmap organizes development tasks by priority and category. Items are dra
   - Measure depth increase (should reach depth+2 or more)
   - Compare against AIAgent baseline
 
-#### 🟡 Implement Aspiration Windows
-- **Estimate**: 2 days
-- **Impact**: 10-15% speedup
-- **Description**: Use narrow window around previous iteration's score
-- **Implementation**:
-  ```cpp
-  int aspiration_window = 50;  // centipawns
-  int alpha = state.best_score - aspiration_window;
-  int beta = state.best_score + aspiration_window;
-
-  int score = pvs(depth, alpha, beta, 0, true, tt, pv_table);
-
-  // Re-search if outside window
-  if (score <= alpha || score >= beta) {
-      score = pvs(depth, -INF, +INF, 0, true, tt, pv_table);
-  }
-  ```
-- **Tuning**: Start with 50cp window, measure fail rate
-- **Note**: AIAgent already has this - can reference implementation
-
 ### Features
 
 #### 🟡 Migrate Inline Move Scoring into MoveSorter
@@ -149,11 +129,6 @@ This roadmap organizes development tasks by priority and category. Items are dra
 ## 🟢 Medium Priority (Nice-to-Have)
 
 ### Performance
-
-#### ✅ Expand PCH Coverage in StdAfx.h — COMPLETE
-- **Added**: `<algorithm>`, `<array>`, `<cassert>`, `<cstdint>`, `<functional>`, `<memory>`, `<sstream>`, `<string>`, `<utility>` (9 headers)
-- **Cleaned**: redundant per-TU includes removed from `AIPerplex.cpp`, `Sort.cpp`, `MoveGenerator.cpp`, `Move.cpp`, `MoveFormatter.cpp`, `PlayerHuman.cpp`, `Utils/FENParser.cpp`
-- **Verified**: full rebuild + all 214 test assertions pass
 
 #### 🟢 Add SEE (Static Exchange Evaluation) to Quiescence
 - **Estimate**: 4-5 days
@@ -185,9 +160,6 @@ This roadmap organizes development tasks by priority and category. Items are dra
 
 ### Refactoring
 
-#### ✅ Move class → 16-bit layout — COMPLETE (all 4 phases done)
-
-
 #### 🟢 Migrate `Move::Output()` callers to `MoveFormatter`
 - **Estimate**: 1 hour
 - **Impact**: Removes the last direct uses of `Move::Output()` / `Move::Output(ePiece)`,
@@ -199,33 +171,12 @@ This roadmap organizes development tasks by priority and category. Items are dra
 - **When**: when AIPerplex logging is refactored, or when `Move::Output` starts causing
   maintenance friction
 
-#### 🟢 Extract Magic Numbers to Constants
-- **Estimate**: 2 hours
-- **Impact**: Better maintainability
-- **Files**: `AIPerplex.cpp`, `quiescence()`
-- **Current Issues**:
-  ```cpp
-  const bool barelySearched = (nodes < 1000);          // Magic!
-  const bool probablyIncomplete = (ratio < 0.10);      // Magic!
-  const bool pvTooShort = (pv_len < depth / 3);        // Magic!
-  ```
-- **Solution**: Move remaining magic numbers into `SearchTuning`
-
-#### 🟢 Remove Dead Code
-- **Estimate**: 1 hour
-- **Files**: `AIPerplex.cpp` lines 114-142 (commented old Search method)
-- **Check**: Search for `// TODO` comments and evaluate each
-
 ### Infrastructure
-
-#### ✅ Fix `zobrist::initialize()` never called — COMPLETE
-- `zobrist::initialize()` is called in the `Board` constructor (`Board.cpp` line 50); all castling, en-passant, and side-to-move keys are initialised before any Board method runs.
-- Stale "never called" comment in `Board.h` removed.
 
 #### 🟢 Phase 1 Test Infrastructure (add per-feature, see TestDesign.md)
 - **Estimate**: Varies — add when touching the relevant component
 - **Components** (details in `Docs/TestDesign.md`):
-  - `[search]` — AIPerplex helper tests (`assess_iteration_quality`, `should_stop_early`, `handle_empty_move_emergency`) — add when LMR/aspiration windows lands
+  - `[search]` — AIPerplex helper tests (`assess_iteration_quality`, `should_stop_early`, `handle_empty_move_emergency`) — add when LMR lands
   - `[sort]` — Move ordering tests — add when `MoveOrdering` class is committed
   - `[board]` — `DoMove`/`UndoMove` completeness — add when Move layout Phases 3 & 4 land
   - `[bitboard]` — bitboard helper tests — add opportunistically
@@ -416,7 +367,7 @@ This roadmap organizes development tasks by priority and category. Items are dra
 Consider this order:
 1. **Bug fixes** - Always first
 2. **Blocking items** - Required for parallel search (De-Singleton Board, ThreadData)
-3. **High-impact perf** - LMR, killer moves, aspiration windows
+3. **High-impact perf** - LMR, killer moves
 4. **Infrastructure** - Testing, profiling (enables confidence)
 5. **Advanced features** - NNUE, tablebases (after solid baseline)
 
@@ -535,8 +486,47 @@ Avoid these traps:
 - `pvs()` uses `std::array<std::pair<int,int>, MoveList::MAX_MOVES>` on the stack
 - Zero heap allocation per call; `thread_local` buffer approach ruled out (extra copy required for recursion safety)
 
+### Performance: Aspiration Windows in Iterative Deepening (PR #30, March 2026)
+- Narrow alpha/beta window around previous depth's score; gradual widening (25cp → 75cp → full) on fail-high/fail-low
+- Kill-switch: `tuning_.aspiration_enabled` — depth 1 always uses full window regardless
+- `search_with_aspiration()` extracted into its own method in `AIPerplex.cpp`
+- Verified: no search regressions; self-play shows stable score progression across iterations
+
+### Infrastructure: Expand PCH Coverage in StdAfx.h (March 2026)
+- Added 9 STL headers: `<algorithm>`, `<array>`, `<cassert>`, `<cstdint>`, `<functional>`, `<memory>`, `<sstream>`, `<string>`, `<utility>`
+- Removed redundant per-TU includes from `AIPerplex.cpp`, `Sort.cpp`, `MoveGenerator.cpp`, `Move.cpp`, `MoveFormatter.cpp`, `PlayerHuman.cpp`, `Utils/FENParser.cpp`
+- Verified: full rebuild + all 214 test assertions pass
+
+### Refactoring: Extract Magic Numbers into SearchTuning (March 2026)
+- `barelySearched` threshold → `tuning_.min_nodes_threshold = 1000`
+- `probablyIncomplete` threshold → `tuning_.min_completion_ratio = 0.10`
+- `pvTooShort` threshold → `tuning_.min_pv_ratio = 0.33`
+- All three values exposed via `game_settings.json` for runtime tuning
+
+### Refactoring: Remove Dead Code (March 2026)
+- Commented-out old `Search()` method body removed from `AIPerplex.cpp`
+- Remaining `// TODO: Relocate MoveSorting to MoveSorter class` is a live tracked item (see "Migrate Inline Move Scoring" in active section)
+
+### Infrastructure: Fix zobrist::initialize() Never Called (March 2026)
+- `zobrist::initialize()` now called in `Board` constructor (`Board.cpp` line 50)
+- All castling, en-passant, and side-to-move Zobrist keys initialised before any Board method runs
+- Stale "never called" comment in `Board.h` removed
+
+### Logging: spdlog Level Gate + outLegalMoves Removal (PR #34, March 2026)
+- 3-line per-call logging boilerplate in `AIPerplex` replaced with spdlog level gate (`s_logger->set_level(...)`)
+- Global `outLegalMoves` stream removed; board/root-move diagnostics now flow through default spdlog logger at `debug` level
+- `Board::test_bitboards` signature simplified
+- All four runtime log files documented in `CLAUDE.md`
+- Plan: `.claude/plans/logging-spdlog-gate-and-outlegalmoves-removal.md`
+
+### Refactoring: C++20 Adoption — `<bit>` and `<format>` (PR #32, March 2026)
+- `std::countr_zero` replaces `_tzcnt_u64` `#ifdef` block in `Board::GetFirstPiece`
+- `std::format` replaces `std::stringstream` in `Move::Output()`
+- `<bit>` and `<format>` added to `StdAfx.h` PCH
+- C++23 upgrade path documented in `.claude/plans/cpp23-upgrade.md`
+
 ---
 
-**Document Version**: 1.1
+**Document Version**: 1.2
 **Next Review**: June 2026
 **Owner**: Thees
