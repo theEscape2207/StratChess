@@ -7,9 +7,6 @@
 #include "Board.h"
 #include "MoveFormatter.h"
 #include "PlayerBase.h"		// For factory create
-#include "PlayerAI.h"		// For PlayerAiBase setters
-#include "AIPerplex.h"		// For SearchTuning application
-extern std::ofstream outLegalMoves;
 
 // ***************************************
 // Method:      Game
@@ -110,7 +107,7 @@ void Game::Init()
 		auto& logger = *spdlog::get("multi_sink");
 
 		// Create performance logger
-		Engine::Logger::EnsurePerfLogger("SimplePerfStats.txt");
+		Engine::Logger::EnsurePerfLogger("logs/SimplePerfStats.txt");
 		auto perf = Engine::Logger::GetPerfLogger();
 		if (perf) {
 			perf->info("No. of nodes  |  Ms used  |  Nodes pr. ms  |  Total nodes  |  Total time  |  Total nodes pr. ms");
@@ -141,10 +138,10 @@ void Game::Init()
 void Game::CreateGameMoveFile()
 {
 	auto logger = spdlog::default_logger();
-	logger->debug("Creating Moves Log File: 'gamelist.txt'");
-	movesFile_.open("gamelist.txt", std::ios::trunc | std::ios::out);
+	logger->debug("Creating Moves Log File: 'logs/gamelist.txt'");
+	movesFile_.open("logs/gamelist.txt", std::ios::trunc | std::ios::out);
 	AddFileHeader(movesFile_);
-	logger->debug("Created Moves Log File: 'gamelist.txt'");
+	logger->debug("Created Moves Log File: 'logs/gamelist.txt'");
 }
 
 //***************************************
@@ -375,13 +372,6 @@ void Game::PrintBoardAndMove(const Move& move) const
 	}
 
 	spdlog::default_logger()->info(sstream.str());
-
-#ifdef PRINT_MOVES
-	outLegalMoves << "===============================================================" << "\n\n";
-	outLegalMoves << "\nBoard " << GetBoardCount() << "\n\n"; //-V128
-	outLegalMoves << board;
-
-#endif // PRINT_MOVES
 }
 
 //***************************************

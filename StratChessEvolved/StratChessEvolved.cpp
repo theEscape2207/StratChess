@@ -6,8 +6,6 @@
 #include "Board.h"
 #include <Tests/Perft.h>
 
-std::ofstream outLegalMoves("legalmoves.txt", std::ios::trunc | std::ios::out);
-
 static void print_usage() {
     std::cout << "Perft Test Runner\n";
     std::cout << "=================\n\n";
