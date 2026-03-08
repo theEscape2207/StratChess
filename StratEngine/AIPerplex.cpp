@@ -873,7 +873,7 @@ bool AIPerplex::handle_empty_move_emergency(
 
 	// True emergency - generate any legal move
 	log.critical("EMERGENCY: No best move found (max_depth={}, last_completed={})",
-		m_MaxDepth, state.depth_completed);
+		max_depth_, state.depth_completed);
 
 	MoveList emergency_moves;
 	MoveGenerator::ComputeLegalMoves(current_info, emergency_moves);
