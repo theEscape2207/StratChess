@@ -48,6 +48,9 @@
     <ClCompile Include="BoardTests.cpp">
       <Filter>Source Files\Tests</Filter>
     </ClCompile>
+    <ClCompile Include="SortTests.cpp">
+      <Filter>Source Files\Tests</Filter>
+    </ClCompile>
     <ClCompile Include="MoveFormatterTests.cpp">
       <Filter>Source Files\Tests</Filter>
     </ClCompile>

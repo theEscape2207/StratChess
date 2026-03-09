@@ -55,7 +55,7 @@ x64/Release/StratChessTests.exe [perft]
 | **Evaluation (EvalSimple/Complex)** | `[eval]` | ✅ Phase 0 | `EvalTests.cpp` |
 | **Search regression (tactical)** | `[tactical]` | ✅ Phase 0 | `TacticalTests.cpp` |
 | Search helpers (assess_quality etc.) | `[search]` | ⏳ Phase 1 | `SearchTests.cpp` (future) |
-| Move ordering (Sort) | `[sort]` | ⏳ Phase 1 | `SortTests.cpp` (future) |
+| Move ordering (Sort) | `[sort]` | ✅ Phase 1 | `SortTests.cpp` |
 | Board DoMove/UndoMove completeness | `[board]` | ⏳ Phase 1 | `BoardTests.cpp` (future) |
 | Bitboard helpers | `[bitboard]` | ⏳ Phase 1 | `BitboardTests.cpp` (future) |
 | Full tactical suite (WAC/mate-in-N) | — | ⏳ Phase 1 | `StratChessEvolved.exe tactical test` |
@@ -135,7 +135,7 @@ Enable: add `STRAT_ENABLE_TEST_ACCESS` to StratChessTests preprocessor definitio
 
 ### `[sort]` — Move ordering tests
 
-**When**: when `MoveSorter` class is extracted from `pvs()`
+**Status**: ✅ **Done.** ScoreMoves extracted from pvs() inline loop; 5 test cases, 14 assertions, all passing.
 **File**: `StratChessTests/SortTests.cpp`
 
 Verify ordering priority: PV move → hash move → captures (MVV-LVA) → killers → history scores.

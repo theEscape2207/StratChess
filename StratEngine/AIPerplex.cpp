@@ -314,34 +314,10 @@ int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, Tra
 	const int n = static_cast<int>(moveList.size());
 	const eColor side = m_Board.GetCurrentColor();
 
-	for (int i = 0; i < n; ++i) {
-		const Move& mv = moveList[i];
-		int s = 0;
-
-		if (mv == pv_move) { s = 2'000'000; }
-		else if (mv == hash_move) { s = 1'900'000; }
-		else {
-			const bool isCapture = MoveHelper::IsCapture(mv);
-			// Guard captures: store_killer() filters them, but defensive check here too
-			const bool isKiller0 = !isCapture && (mv == killers_[ply][0]);
-			const bool isKiller1 = !isCapture && (mv == killers_[ply][1]);
-			const int  mvv_lva = MoveHelper::Value(mv, m_Board.GetEffectiveMovPiece(mv), m_Board.GetCapturedPiece(mv));
-
-			if (isKiller0)						s = 900'000;
-			else if (isKiller1)					s = 800'000;
-			else if (isCapture && mvv_lva > 0)	s = 1'000'000 + mvv_lva;  // winning capture
-			else if (isCapture && mvv_lva == 0)	s = 700'000 + mvv_lva;  // equal capture
-			else if (isCapture)					s = -100'000 + mvv_lva;  // losing capture
-			else								s = history_[side][mv.from()][mv.to()]; // quiet
-		}
-		scored_idx[i] = { s, i };
-	}
-
-	std::sort(scored_idx.begin(), scored_idx.begin() + n,
-		[](const auto& a, const auto& b) { return a.first > b.first; });
-
-
-	// TODO: Relocate MoveSorting to MoveSorter class
+	MoveSorter::ScoreMoves(moveList, n, m_Board, side,
+		pv_move, hash_move,
+		killers_[ply][0], killers_[ply][1],
+		history_, scored_idx);
 
 	bool moveFound = false;
 
