@@ -169,6 +169,7 @@
     <ClCompile Include="EvalTests.cpp" />
     <ClCompile Include="TacticalTests.cpp" />
     <ClCompile Include="BoardTests.cpp" />
+    <ClCompile Include="SortTests.cpp" />
     <ClCompile Include="MoveFormatterTests.cpp" />
   </ItemGroup>
   <ItemGroup>
