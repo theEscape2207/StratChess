@@ -143,7 +143,7 @@ Verify ordering priority: PV move → hash move → captures (MVV-LVA) → kille
 
 ### `[board]` — DoMove/UndoMove completeness
 
-**When**: when Move layout Phases 3 & 4 land (removing `MovPiece` and `Content` from Move)
+**Status**: ✅ **Done.** Move layout Phases 3 & 4 landed in March 2026; all 5 cases (en passant, castling, promotion generation, promotion round-trip, Zobrist hash cycle) implemented and passing (6 test cases, 33 assertions).
 **File**: `StratChessTests/BoardTests.cpp`
 
 - En passant DoMove/UndoMove: captured pawn restored correctly
@@ -161,7 +161,7 @@ Basic operations from `defines.h`: set bit, clear bit, popcount, LSB extraction.
 
 ### Full tactical suite in main executable
 
-**When**: when evaluation is extended (King Safety, Mobility, Tapered Eval)
+**When**: before UCI — needed to assess engine readiness before first public play. Does not need to wait for King Safety / Mobility evaluation extension.
 **Files**: `StratEngine/Tests/TacticalTestRunner.h/cpp`, `Tests/tactical_test_cases.json`
 **Invocation**: `StratChessEvolved.exe tactical test`
 **Acceptance**: 90%+ pass rate on included positions
