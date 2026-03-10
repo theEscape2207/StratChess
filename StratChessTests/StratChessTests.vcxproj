@@ -104,7 +104,7 @@
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>true</TreatWarningAsError>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>STRAT_ENABLE_TEST_ACCESS;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalIncludeDirectories>$(DepsRoot)Catch2;$(DepsRoot)json\include;$(DepsRoot)spdlog\include;..\StratEngine;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
@@ -122,7 +122,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>STRAT_ENABLE_TEST_ACCESS;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalIncludeDirectories>$(DepsRoot)Catch2;$(DepsRoot)json\include;$(DepsRoot)spdlog\include;..\StratEngine;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
@@ -169,6 +169,7 @@
     <ClCompile Include="EvalTests.cpp" />
     <ClCompile Include="TacticalTests.cpp" />
     <ClCompile Include="BoardTests.cpp" />
+    <ClCompile Include="SearchTests.cpp" />
     <ClCompile Include="SortTests.cpp" />
     <ClCompile Include="MoveFormatterTests.cpp" />
   </ItemGroup>

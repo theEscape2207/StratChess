@@ -38,6 +38,8 @@ x64/Release/StratChessTests.exe [tactical]
 x64/Release/StratChessTests.exe [repetition]
 x64/Release/StratChessTests.exe [moves]
 x64/Release/StratChessTests.exe [perft]
+x64/Release/StratChessTests.exe [search]
+x64/Release/StratChessTests.exe [sort]
 ```
 
 ---
@@ -54,7 +56,7 @@ x64/Release/StratChessTests.exe [perft]
 | **TranspositionTable** | `[tt]` | ✅ Phase 0 | `TTTests.cpp` |
 | **Evaluation (EvalSimple/Complex)** | `[eval]` | ✅ Phase 0 | `EvalTests.cpp` |
 | **Search regression (tactical)** | `[tactical]` | ✅ Phase 0 | `TacticalTests.cpp` |
-| Search helpers (assess_quality etc.) | `[search]` | ⏳ Phase 1 | `SearchTests.cpp` (future) |
+| Search helpers (assess_quality etc.) | `[search]` | ✅ Phase 1 | `SearchTests.cpp` |
 | Move ordering (Sort) | `[sort]` | ✅ Phase 1 | `SortTests.cpp` |
 | Board DoMove/UndoMove completeness | `[board]` | ⏳ Phase 1 | `BoardTests.cpp` (future) |
 | Bitboard helpers | `[bitboard]` | ⏳ Phase 1 | `BitboardTests.cpp` (future) |
@@ -122,16 +124,15 @@ Each item below is a standalone task. Do it when the corresponding feature is be
 
 ### `[search]` — AIPerplex helper unit tests
 
-**Prerequisite**: AIPerplex test-friend access (see `AIPerplex.h` `#ifdef STRAT_ENABLE_TEST_ACCESS`)
-**When**: when LMR or aspiration windows lands
+**Status**: ✅ **Done.** LMR landed in March 2026; all 10 cases passing.
 **File**: `StratChessTests/SearchTests.cpp`
+**Activation**: `STRAT_ENABLE_TEST_ACCESS` in x64 Debug + Release preprocessor definitions in `StratChessTests.vcxproj`.
 
-Tests for private helper methods exposed via `AIPerlexTestFixture`:
-- `assess_iteration_quality()`: mock `IterationMetrics` and `SearchState`, verify all `RejectionReason` branches
-- `should_stop_early()`: mate score, forced-line short-circuit
-- `handle_empty_move_emergency()`: mate vs. non-mate fallback
+Tests for private helper methods exposed via `AIPerlexTestFixture` (friend class):
 
-Enable: add `STRAT_ENABLE_TEST_ACCESS` to StratChessTests preprocessor definitions in vcxproj.
+- `assess_iteration_quality()`: 6 cases — one per `RejectionReason` branch (INCOMPLETE×2, TOO_FEW_NODES, SHORT_PV, SCORE_DROP, MOVE_CHANGED)
+- `should_stop_early()`: 2 cases — mate score path; short-PV forced-line path
+- `handle_empty_move_emergency()`: 2 cases — mate-detected path (returns false); true-emergency path on a real starting-position board (returns true, sets legal move)
 
 ### `[sort]` — Move ordering tests
 
