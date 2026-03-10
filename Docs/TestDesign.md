@@ -58,7 +58,7 @@ x64/Release/StratChessTests.exe [sort]
 | **Search regression (tactical)** | `[tactical]` | ✅ Phase 0 | `TacticalTests.cpp` |
 | Search helpers (assess_quality etc.) | `[search]` | ✅ Phase 1 | `SearchTests.cpp` |
 | Move ordering (Sort) | `[sort]` | ✅ Phase 1 | `SortTests.cpp` |
-| Board DoMove/UndoMove completeness | `[board]` | ⏳ Phase 1 | `BoardTests.cpp` (future) |
+| Board DoMove/UndoMove completeness | `[board]` | ✅ Phase 1 | `BoardTests.cpp` |
 | Bitboard helpers | `[bitboard]` | ⏳ Phase 1 | `BitboardTests.cpp` (future) |
 | Full tactical suite (WAC/mate-in-N) | — | ⏳ Phase 1 | `StratChessEvolved.exe tactical test` |
 | Position class (after Board refactor) | `[position]` | ⏳ Phase 2 | — |
