@@ -1,4 +1,4 @@
-﻿// This is an independent project of an individual developer. Dear PVS-Studio, please check it.
+// This is an independent project of an individual developer. Dear PVS-Studio, please check it.
 
 // PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 #include "StdAfx.h"
@@ -314,35 +314,12 @@ int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, Tra
 	const int n = static_cast<int>(moveList.size());
 	const eColor side = m_Board.GetCurrentColor();
 
-	for (int i = 0; i < n; ++i) {
-		const Move& mv = moveList[i];
-		int s = 0;
+	MoveSorter::ScoreMoves(moveList, n, m_Board, side,
+		pv_move, hash_move,
+		killers_[ply][0], killers_[ply][1],
+		history_, scored_idx);
 
-		if (mv == pv_move) { s = 2'000'000; }
-		else if (mv == hash_move) { s = 1'900'000; }
-		else {
-			const bool isCapture = MoveHelper::IsCapture(mv);
-			// Guard captures: store_killer() filters them, but defensive check here too
-			const bool isKiller0 = !isCapture && (mv == killers_[ply][0]);
-			const bool isKiller1 = !isCapture && (mv == killers_[ply][1]);
-			const int  mvv_lva = MoveHelper::Value(mv, m_Board.GetEffectiveMovPiece(mv), m_Board.GetCapturedPiece(mv));
-
-			if (isKiller0)						s = 900'000;
-			else if (isKiller1)					s = 800'000;
-			else if (isCapture && mvv_lva > 0)	s = 1'000'000 + mvv_lva;  // winning capture
-			else if (isCapture && mvv_lva == 0)	s = 700'000 + mvv_lva;  // equal capture
-			else if (isCapture)					s = -100'000 + mvv_lva;  // losing capture
-			else								s = history_[side][mv.from()][mv.to()]; // quiet
-		}
-		scored_idx[i] = { s, i };
-	}
-
-	std::sort(scored_idx.begin(), scored_idx.begin() + n,
-		[](const auto& a, const auto& b) { return a.first > b.first; });
-
-
-	// TODO: Relocate MoveSorting to MoveSorter class
-
+	const bool in_check = m_Board.InCheck();
 	bool moveFound = false;
 
 	// Iterate by sorted index — no rebuild of moveList needed
@@ -363,13 +340,49 @@ int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, Tra
 				first_child = false;
 			}
 			else {
-				// Null window search
-				value = -pvs(depth - 1, -alpha - 1, -alpha, ply + 1, false, tt, pv_table);
+				const bool isCapture   = MoveHelper::IsCapture(move);
+				const bool isPromotion = MoveHelper::IsPromote(move);
+				const bool isKiller    = (move == killers_[ply][0] || move == killers_[ply][1]);
 
-				// Re-search if it fails high in PV node
-				if (value > alpha && is_pv_node) {
-					value = -pvs(depth - 1, -beta, -alpha, ply + 1, true, tt, pv_table);
+				// Late Move Reductions: reduce quiet, non-killer, non-evasion moves
+				// that appear late in the sorted order. Skip conditions are conservative:
+				// captures, promotions, killers, evasions (in_check), PV nodes, and early
+				// moves are always searched at full depth.
+				// Future skip candidates: passed pawn pushes, moves giving check.
+				const bool applyLMR = tuning_.lmr_enabled
+					&& !is_pv_node
+					&& !in_check
+					&& !isCapture
+					&& !isPromotion
+					&& !isKiller
+					&& si >= tuning_.lmr_min_move_index
+					&& depth >= tuning_.lmr_min_depth;
+
+				if (applyLMR) {
+					// sqrt formula: scales naturally with depth and move index.
+					// Clamped to [1, depth-1]; when R == depth-1 the recursive call is
+					// at depth 0 (falls into quiescence). The re-search below restores
+					// full depth if alpha is beaten.
+					const int R = std::min(
+						std::max(1, static_cast<int>(
+							std::sqrt(static_cast<double>(depth - 1)) *
+							std::sqrt(static_cast<double>(si - 1)))),
+						depth - 1);
+
+					// Reduced-depth null-window search
+					value = -pvs(depth - 1 - R, -alpha - 1, -alpha, ply + 1, false, tt, pv_table);
+
+					// Re-search at full depth-1 null window if the reduced result beats alpha
+					if (value > alpha && !ShouldStopSearch())
+						value = -pvs(depth - 1, -alpha - 1, -alpha, ply + 1, false, tt, pv_table);
+				} else {
+					// Normal null-window search (unchanged)
+					value = -pvs(depth - 1, -alpha - 1, -alpha, ply + 1, false, tt, pv_table);
 				}
+
+				// Re-search with full window at PV node (unchanged from original)
+				if (value > alpha && is_pv_node)
+					value = -pvs(depth - 1, -beta, -alpha, ply + 1, true, tt, pv_table);
 			}
 
 			m_Board.UndoMove(move);
