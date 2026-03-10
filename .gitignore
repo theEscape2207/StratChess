@@ -370,7 +370,6 @@ logs/aiperplex.log
 /sync-from-main.ps1
 # Per-machine MSBuild dependency path overrides — not committed
 Directory.Build.user.props
-Directory.Build_renamed.props_old
-/StratChessEvolved/logs - Copy/multisink.txt
+/StratChessEvolved/logs/*
 /.claude/settings.local.json
-/StratChessTests/logs/SimplePerfStats.txt
+/StratChessTests/logs/*
