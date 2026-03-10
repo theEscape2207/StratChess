@@ -1,6 +1,6 @@
 # StratChess Engine Roadmap
 
-**Last Updated**: March 9, 2026
+**Last Updated**: March 10, 2026
 **Timeframe**: Next 6 months (through parallel search implementation)
 **Current Version**: AIPerplex 2.0
 
@@ -72,57 +72,6 @@ This roadmap organizes development tasks by priority and category. Items are dra
 
 ### Performance
 
-#### 🟡 Implement Late Move Reductions (LMR)
-- **Estimate**: 3-5 days
-- **Impact**: 2-3x speedup (most important optimization!)
-- **Description**: Reduce search depth for late moves, re-search if they raise alpha
-- **Algorithm**:
-  ```cpp
-  if (move_number > 3 && depth > 2 && !is_tactical(move)) {
-      reduction = 1 + (move_number / 6);
-
-      // Search at reduced depth
-      score = -pvs(depth - 1 - reduction, -alpha-1, -alpha, ...);
-
-      // Re-search at full depth if needed
-      if (score > alpha && reduction > 0) {
-          score = -pvs(depth - 1, -alpha-1, -alpha, ...);
-      }
-
-      // Final re-search with full window
-      if (score > alpha && is_pv_node) {
-          score = -pvs(depth - 1, -beta, -alpha, ...);
-      }
-  }
-  ```
-- **Tuning Parameters**:
-  - Base reduction: 1 ply
-  - Progressive factor: move_number / 6
-  - Minimum move number: 4
-  - Minimum depth: 3
-- **Testing**:
-  - Verify tactical positions aren't hurt
-  - Measure depth increase (should reach depth+2 or more)
-  - Compare against AIAgent baseline
-
-### Features
-
-#### 🟡 Migrate Inline Move Scoring into MoveSorter
-- **Estimate**: 2 days
-- **Status**: In progress — `MoveOrdering.h/cpp` created as a redesign (not yet committed)
-- **Impact**: Cleaner `pvs()` method; move ordering testable in isolation
-- **Current State**: `MoveSorter` exists in `Sort.h/cpp` but only handles capture prioritization (recapture + MVV-LVA). The full scoring loop — PV move, hash move, killer slots, history table, MVV-LVA — is inline in `pvs()` with a `// TODO: Relocate MoveSorting to MoveSorter class` comment (AIPerplex.cpp line 346)
-- **Remaining Work**: Move the scoring logic out of `pvs()` and into `MoveSorter` (or its redesigned successor `MoveOrdering`), passing killers and history as parameters
-- **Move Ordering Priority** (already implemented inline, just needs relocation):
-  1. PV move (2,000,000)
-  2. Hash move (1,900,000)
-  3. Winning captures — MVV-LVA > 0 (1,000,000 + value)
-  4. Killer slot 0 (900,000)
-  5. Killer slot 1 (800,000)
-  6. Equal captures (700,000)
-  7. History score (quiet moves)
-  8. Losing captures (-100,000 + value)
-- **Files**: `StratEngine/Sort.h/cpp` (extend or replace with `MoveOrdering.h/cpp`)
 
 ---
 
@@ -176,11 +125,11 @@ This roadmap organizes development tasks by priority and category. Items are dra
 #### 🟢 Phase 1 Test Infrastructure (add per-feature, see TestDesign.md)
 - **Estimate**: Varies — add when touching the relevant component
 - **Components** (details in `Docs/TestDesign.md`):
-  - `[search]` — AIPerplex helper tests (`assess_iteration_quality`, `should_stop_early`, `handle_empty_move_emergency`) — add when LMR lands
-  - `[sort]` — Move ordering tests — add when `MoveOrdering` class is committed
-  - `[board]` — `DoMove`/`UndoMove` completeness — add when Move layout Phases 3 & 4 land
+  - `[board]` — `DoMove`/`UndoMove` completeness — ⚠️ **overdue**: Move layout Phases 3 & 4 already landed; do now, before De-Singleton
+  - `[sort]` — ✅ done — `MoveSorter::ScoreMoves()` extraction + 5 test cases (PR #38)
+  - `[search]` — ✅ done — 10 test cases via `AIPerlexTestFixture`; landed with LMR (PR #38)
+  - Full tactical suite (`StratChessEvolved.exe tactical test`) — add **before UCI** (engine readiness check; does not need to wait for evaluation extension)
   - `[bitboard]` — bitboard helper tests — add opportunistically
-  - Full tactical suite (`StratChessEvolved.exe tactical test`) — add when evaluation is extended
 
 #### 🟢 Upgrade to C++23
 - **Estimate**: 4-6 hours total
@@ -346,7 +295,7 @@ This roadmap organizes development tasks by priority and category. Items are dra
 
 ### Performance Metrics
 - **Nodes per second**: Track baseline, target +20% with optimizations
-- **Depth reached**: 15 seconds should reach depth 10-12
+- **Depth reached**: 15 seconds reaches depth 13-15 (with LMR; was 8-9 before)
 - **Win rate**: Maintain or improve vs AIAgent baseline
 
 ### Code Quality Metrics
@@ -518,6 +467,20 @@ Avoid these traps:
 - `Board::test_bitboards` signature simplified
 - All four runtime log files documented in `CLAUDE.md`
 - Plan: `.claude/plans/logging-spdlog-gate-and-outlegalmoves-removal.md`
+
+### Move Sorting: Extract ScoreMoves + [sort] Tests (PR #38, March 2026)
+- Inline move scoring loop extracted from `pvs()` into `MoveSorter::ScoreMoves()` static method
+- Precondition asserts + `isKiller1` short-circuit for fast killer detection
+- 5 `[sort]` test cases, 14 assertions — full priority order locked in
+- Plan: `.claude/plans/move-scoring-extraction-and-sort-tests.md`
+
+### Performance: Late Move Reductions (PR #38, March 2026)
+- sqrt formula: `R = min(max(1, sqrt(depth-1) * sqrt(si-1)), depth-1)`
+- Applied to quiet, non-killer, non-evasion, non-PV-node moves (si≥3, depth≥3); 2-step re-search
+- Kill-switch: `tuning_.lmr_enabled` (parallels `aspiration_enabled`)
+- Observed: depth 13-15 vs 8-9 (without LMR) in same 15-second budget; ~31M vs ~36M nodes/move
+- 10 `[search]` test cases via `AIPerlexTestFixture` friend class; `STRAT_ENABLE_TEST_ACCESS` gate
+- Plan: `.claude/plans/lmr-and-search-tests.md`
 
 ### Refactoring: C++20 Adoption — `<bit>` and `<format>` (PR #32, March 2026)
 - `std::countr_zero` replaces `_tzcnt_u64` `#ifdef` block in `Board::GetFirstPiece`
