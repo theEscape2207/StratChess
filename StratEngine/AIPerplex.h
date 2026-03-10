@@ -50,7 +50,9 @@ private:
 		int aspiration_max_retries   = 4;   // widen iterations before opening full window
 		bool aspiration_enabled      = true; // runtime kill-switch for regression testing
 
-		// Future: Add LMR thresholds, etc.
+		int  lmr_min_depth      = 3;    // don't reduce at depth < 3
+		int  lmr_min_move_index = 3;    // don't reduce the first 3 moves (si 0, 1, 2)
+		bool lmr_enabled        = true; // kill-switch: set false to measure LMR impact via SimplePerfStats.txt
 	} tuning_;
 
 	// INTERNAL STRUCTURES

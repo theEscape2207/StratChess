@@ -98,3 +98,48 @@ void MoveSorter::SortMovesByValue(MoveList& moveList, size_t captures, const Boa
 					 > MoveHelper::Value(b, board.GetEffectiveMovPiece(b), board.GetCapturedPiece(b));
 			});
 }
+
+void MoveSorter::ScoreMoves(
+    const MoveList&                                         moveList,
+    int                                                     n,
+    const Board&                                            board,
+    eColor                                                  side,
+    const Move&                                             pv_move,
+    const Move&                                             hash_move,
+    const Move&                                             killer0,
+    const Move&                                             killer1,
+    const int32_t                                           (&history)[2][64][64],
+    std::array<std::pair<int, int>, MoveList::MAX_MOVES>&   out_scored_idx)
+{
+	assert(n >= 0 && n <= static_cast<int>(MoveList::MAX_MOVES));
+
+	for (int i = 0; i < n; ++i) {
+		const Move& mv = moveList[i];
+		int s = 0;
+
+		if (mv == pv_move) { s = 2'000'000; }
+		else if (mv == hash_move) { s = 1'900'000; }
+		else {
+			const bool isCapture = MoveHelper::IsCapture(mv);
+			const bool isKiller0 = !isCapture && (mv == killer0);
+			const bool isKiller1 = !isKiller0 && !isCapture && (mv == killer1);
+			const int  mvv_lva   = MoveHelper::Value(mv,
+			                           board.GetEffectiveMovPiece(mv),
+			                           board.GetCapturedPiece(mv));
+
+			if      (isKiller0)                 s = 900'000;
+			else if (isKiller1)                 s = 800'000;
+			else if (isCapture && mvv_lva > 0)  s = 1'000'000 + mvv_lva;
+			else if (isCapture && mvv_lva == 0) s = 700'000   + mvv_lva;
+			else if (isCapture)                 s = -100'000  + mvv_lva;
+			else {
+				assert(static_cast<int>(side) >= 0 && static_cast<int>(side) < 2);
+				s = history[static_cast<int>(side)][mv.from()][mv.to()];
+			}
+		}
+		out_scored_idx[i] = { s, i };
+	}
+
+	std::sort(out_scored_idx.begin(), out_scored_idx.begin() + n,
+		[](const auto& a, const auto& b) { return a.first > b.first; });
+}
