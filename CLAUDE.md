@@ -159,4 +159,4 @@ Commit the plan file — it lives under `.claude/plans/` (tracked by git) and se
 - Include motivation, design reasoning, and expected impact for non-trivial changes
 - Seek review for changes affecting evaluation, move ordering, or search algorithms
 - Claude worktrees live under `.claude/worktrees/` — build from a worktree works out of the box via `Directory.Build.props`
-- **Worktree PR workflow**: if the worktree branch is ahead of `main` due to un-merged WIP commits, do NOT PR the worktree branch directly. Cherry-pick the relevant commit(s) onto a fresh branch from `origin/main` to avoid pulling in unintended changes.
+- **Worktree PR workflow**: if the worktree branch contains commits unrelated to the current task (e.g. personal WIP from `master` that bled into the worktree), do NOT PR the branch directly — cherry-pick only the relevant commit(s) onto a fresh branch from `origin/main`. If all commits in the worktree are intentional, reviewed, and part of the same plan, PR the branch directly.
