@@ -99,6 +99,9 @@
     <ClCompile Include="..\StratEngine\Tests\PerftRunner.cpp">
       <Filter>Tests</Filter>
     </ClCompile>
+    <ClCompile Include="..\StratEngine\Tests\TacticalTestRunner.cpp">
+      <Filter>Tests</Filter>
+    </ClCompile>
     <ClCompile Include="..\StratEngine\Position.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -192,6 +195,9 @@
       <Filter>Header Files\Util</Filter>
     </ClInclude>
     <ClInclude Include="..\StratEngine\Tests\Perft.h">
+      <Filter>Tests</Filter>
+    </ClInclude>
+    <ClInclude Include="..\StratEngine\Tests\TacticalTestRunner.h">
       <Filter>Tests</Filter>
     </ClInclude>
     <ClInclude Include="..\StratEngine\MoveFactory.h">
