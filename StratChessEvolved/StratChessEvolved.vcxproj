@@ -176,6 +176,7 @@
     <ClCompile Include="..\StratEngine\StdAfx.cpp" />
     <ClCompile Include="..\StratEngine\Tests\Perft.cpp" />
     <ClCompile Include="..\StratEngine\Tests\PerftRunner.cpp" />
+    <ClCompile Include="..\StratEngine\Tests\TacticalTestRunner.cpp" />
     <ClCompile Include="..\StratEngine\TranspositionTable.cpp" />
     <ClCompile Include="..\StratEngine\Utils\FENParser.cpp" />
     <ClCompile Include="..\StratEngine\Utils\Logger.cpp" />
@@ -225,6 +226,7 @@
     <ClInclude Include="..\StratEngine\SquareHelper.h" />
     <ClInclude Include="..\StratEngine\StdAfx.h" />
     <ClInclude Include="..\StratEngine\Tests\Perft.h" />
+    <ClInclude Include="..\StratEngine\Tests\TacticalTestRunner.h" />
     <ClInclude Include="..\StratEngine\TranspositionTable.h" />
     <ClInclude Include="..\StratEngine\Utils\BitTools.h" />
     <ClInclude Include="..\StratEngine\Utils\FENParser.h" />

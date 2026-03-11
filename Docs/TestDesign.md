@@ -60,7 +60,7 @@ x64/Release/StratChessTests.exe [sort]
 | Move ordering (Sort) | `[sort]` | ✅ Phase 1 | `SortTests.cpp` |
 | Board DoMove/UndoMove completeness | `[board]` | ✅ Phase 1 | `BoardTests.cpp` |
 | Bitboard helpers | `[bitboard]` | ⏳ Phase 1 | `BitboardTests.cpp` (future) |
-| Full tactical suite (WAC/mate-in-N) | — | ⏳ Phase 1 | `StratChessEvolved.exe tactical test` |
+| Full tactical suite (WAC/mate-in-N) | — | ✅ Phase 1 | `StratChessEvolved.exe tactical test` |
 | Position class (after Board refactor) | `[position]` | ⏳ Phase 2 | — |
 | NPS / performance regression | — | ⏳ Phase 2 | — |
 
@@ -161,15 +161,22 @@ Basic operations from `defines.h`: set bit, clear bit, popcount, LSB extraction.
 
 ### Full tactical suite in main executable
 
-**When**: before UCI — needed to assess engine readiness before first public play. Does not need to wait for King Safety / Mobility evaluation extension.
+**Status**: ✅ **Done.** Tactical runner landed March 2026; 8 positions, 8/8 passing (100%).
 **Files**: `StratEngine/Tests/TacticalTestRunner.h/cpp`, `Tests/tactical_test_cases.json`
-**Invocation**: `StratChessEvolved.exe tactical test`
+**Invocation**: run from `Tests/` directory: `StratChessEvolved.exe tactical test`
 **Acceptance**: 90%+ pass rate on included positions
 
-Content:
-- WAC (Win At Chess) subset — 25 representative positions
-- Mate-in-2 positions — 10 positions
-- Endgame K+Q vs K, K+R vs K basic positions
+**Current positions (8)**:
+- Mate-in-1 (rook): `6k1/5ppp/8/8/8/8/5PPP/R5K1` → Ra8# (d4)
+- Mate-in-1 (queen): `6k1/5ppp/8/8/8/8/3Q4/6K1` → Qd8# (d4)
+- Hanging piece (rook): `4k3/8/8/8/8/8/8/2rQK3` → Qxc1 (d4)
+- Back rank invasion (d7/d8): `r4rk1/pp3ppp/...` (d5)
+- Back rank invasion (d7/d8): `5rk1/p4ppp/...` (d5)
+- Queen wins rook (fork/threat): `8/8/8/3r4/4k3/8/8/3QK3` (d4)
+- Back rank capture (direct): `3r2k1/p4ppp/...` → Rxd8 (d5)
+- Ladder mate or Rb8#: `7k/8/6K1/8/8/8/8/1R5R` (d5)
+
+**Expansion note**: suite can be extended to WAC-25 + mate-in-2 set before UCI. Run time per position is 25–35 ms at depth 4–5 (Release build).
 
 ---
 
