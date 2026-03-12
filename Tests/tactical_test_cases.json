@@ -1,0 +1,68 @@
+{
+  "tactical_test_cases": [
+    {
+      "id": "M1-001",
+      "category": "mate_in_1",
+      "description": "Rook delivers back-rank checkmate",
+      "fen": "6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1",
+      "best_moves": ["a1a8"],
+      "depth": 4
+    },
+    {
+      "id": "M1-002",
+      "category": "mate_in_1",
+      "description": "Queen delivers back-rank checkmate along d-file",
+      "fen": "6k1/5ppp/8/8/8/8/3Q4/6K1 w - - 0 1",
+      "best_moves": ["d2d8"],
+      "depth": 4
+    },
+    {
+      "id": "HANG-001",
+      "category": "hanging_piece",
+      "description": "Queen captures undefended rook on c1",
+      "fen": "4k3/8/8/8/8/8/8/2rQK3 w - - 0 1",
+      "best_moves": ["d1c1"],
+      "depth": 4
+    },
+    {
+      "id": "BACK-001",
+      "category": "back_rank",
+      "description": "White rook invades rank 7 or 8 to win material",
+      "fen": "r4rk1/pp3ppp/8/8/8/8/PP3PPP/3RR1K1 w - - 0 1",
+      "best_moves": ["d1d8", "d1d7", "e1e8", "e1e7"],
+      "depth": 5
+    },
+    {
+      "id": "BACK-002",
+      "category": "back_rank",
+      "description": "White rook invades rank 7 or 8 to win material",
+      "fen": "5rk1/p4ppp/8/8/8/8/P4PPP/3RR1K1 w - - 0 1",
+      "best_moves": ["d1d8", "d1d7", "e1e8", "e1e7"],
+      "depth": 5
+    },
+    {
+      "id": "QFORK-001",
+      "category": "queen_fork",
+      "description": "Queen wins rook: Qa4+ forks king and Rd5; Qb3 threatens Qxd5",
+      "fen": "8/8/8/3r4/4k3/8/8/3QK3 w - - 0 1",
+      "best_moves": ["d1a4", "d1b3"],
+      "depth": 4
+    },
+    {
+      "id": "BACK-003",
+      "category": "back_rank",
+      "description": "White rook captures black back-rank rook with check",
+      "fen": "3r2k1/p4ppp/8/8/8/8/PPP3PP/3R1RK1 w - - 0 1",
+      "best_moves": ["d1d8"],
+      "depth": 5
+    },
+    {
+      "id": "M2-001",
+      "category": "mate_in_2",
+      "description": "Rh7+ Kg8 Rb8# (or Rb8# immediately if Rh1 covers h7)",
+      "fen": "7k/8/6K1/8/8/8/8/1R5R w - - 0 1",
+      "best_moves": ["h1h7", "b1b8"],
+      "depth": 5
+    }
+  ]
+}

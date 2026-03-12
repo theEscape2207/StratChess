@@ -5,6 +5,7 @@
 #include "Game.h"
 #include "Board.h"
 #include <Tests/Perft.h>
+#include <Tests/TacticalTestRunner.h>
 
 static void print_usage() {
     std::cout << "Perft Test Runner\n";
@@ -99,6 +100,21 @@ static void test_fen_integration() {
     std::cout << "========================================\n\n";
 }
 
+static int tacticalrunner(int argc, char** argv) {
+    if (argc < 2) {
+        std::cout << "Usage: tactical test\n";
+        return 1;
+    }
+    const std::string command = argv[1];
+    if (command == "test") {
+        const bool ok = Testing::TacticalTestRunner::run_test_suite(0.90, true);
+        return ok ? 0 : 1;
+    }
+    std::cerr << "Error: unknown tactical command '" << command << "'\n";
+    std::cout << "Usage: tactical test\n";
+    return 1;
+}
+
 static int perftrunner(int argc, char** argv) {
     if (argc < 2) {
         print_usage();
@@ -183,6 +199,10 @@ int main(int argc, char** argv)
 	// Check for perft commands
 	if (argc > 2 && std::string(argv[1]) == "perft") {
 		return perftrunner(argc - 1, &argv[1]);
+	}
+	// Check for tactical commands
+	if (argc > 1 && std::string(argv[1]) == "tactical") {
+		return tacticalrunner(argc - 1, &argv[1]);
 	}
 	// No Perft - Normal game execution
 	Game game;
