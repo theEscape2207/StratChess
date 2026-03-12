@@ -3,6 +3,7 @@
 #include "Board.h"		// includes Move
 #include "Eval.h"
 #include "Utils\TimeManager.h"
+#include "Utils/TimeUtils.h"
 #include <vector>
 #include <sstream>
 #include <chrono>
@@ -23,6 +24,16 @@ public:
 
 	void SetMaxDepth(unsigned depth) noexcept { max_depth_ = depth; }
 	void SetTimeLimit(std::chrono::milliseconds ms) noexcept { time_limit_ = ms; }
+
+	/// Call once per move when clock information is available (e.g. from UCI 'go' command).
+	/// Computes soft and hard budgets via Engine::compute_budget() and arms the timer.
+	/// StartTimer() inside GetMove() will honour the pre-armed budgets without overwriting them.
+	/// @param remaining    Time remaining on the clock for this side.
+	/// @param increment    Per-move increment.
+	/// @param moves_to_go  Moves remaining in time control, or 0 if unknown.
+	void SetClockInfo(std::chrono::milliseconds remaining,
+	                  std::chrono::milliseconds increment,
+	                  int moves_to_go = 0) noexcept;
 
 	PlayerAiBase(const PlayerAiBase&) = delete;
 	PlayerAiBase& operator=(const PlayerAiBase&) = delete;
@@ -73,8 +84,14 @@ protected:
 	void StartTimer()
 	{
 		_startingTime = std::chrono::high_resolution_clock::now();
-		// Start time manager
-		time_manager_.start(time_limit_);
+		nodes_since_check_ = 0;
+		if (clock_info_set_) {
+			// SetClockInfo() was called — time_manager_ already armed with soft/hard budgets.
+			// Do NOT call time_manager_.start() again, or we'd overwrite the clock-aware budgets.
+			clock_info_set_ = false;   // reset for next move
+		} else {
+			time_manager_.start(time_limit_);
+		}
 		stop_search_.store(false, std::memory_order_relaxed);
 	}
 
@@ -200,6 +217,9 @@ protected:
 
 	// Time control
 	std::atomic<bool> stop_search_{ false };
+	// Node-based time-check counter — reset at the start of each search; incremented in pvs().
+	// Checking time every 1024 nodes amortises the cost of chrono::now() calls.
+	int64_t nodes_since_check_{ 0 };
 	chess::TimeManager time_manager_;
 
 	// Search configuration — set from game_settings.json via SetMaxDepth / SetTimeLimit
@@ -212,4 +232,8 @@ protected:
 	static std::chrono::milliseconds m_TotalTime;
 	static size_t m_TotalCount;
 	//#endif	// PRINT_STATS
+
+private:
+	// Set by SetClockInfo() to prevent StartTimer() from overwriting clock-aware budgets.
+	bool clock_info_set_{ false };
 };
