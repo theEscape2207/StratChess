@@ -125,6 +125,7 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info)
 
 SearchResult  AIPerplex::iterative_deepening(int max_depth, TranspositionTable& tt, PVTable& pv_table) {
 	SearchState state;
+	nodes_since_check_ = 0;   // reset node counter for this search
 
 	clear_killers();	// Clear killer moves at the start of the search
 
@@ -191,6 +192,14 @@ SearchResult  AIPerplex::iterative_deepening(int max_depth, TranspositionTable& 
 
 			log_completed_iteration(metrics, pv_table);
 
+			// Soft limit gate: stop after this depth if the allocated time budget
+			// is consumed.  Exception: if the best move just changed, allow one
+			// more depth to verify the new move (the hard limit will cut it off).
+			if (time_manager_.should_stop_iteration() && !metrics.move_changed) {
+				continue_iteration = false;
+				break;
+			}
+
 			continue_iteration = !should_stop_early(depth, metrics.current_score, metrics.pv_length);
 			break;
 
@@ -245,9 +254,10 @@ SearchResult  AIPerplex::iterative_deepening(int max_depth, TranspositionTable& 
 
 int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt, PVTable& pv_table)
 {
-	// Check time and stop signal
-	if (ShouldStopSearch()) {
-		return GameValues::Draw;
+	// Node-based time polling: check every 1024 nodes to amortise chrono::now() cost.
+	if ((++nodes_since_check_ & 1023) == 0) {
+		if (ShouldStopSearch())
+			return GameValues::Draw;
 	}
 
 	pv_table.clear_ply(ply);
