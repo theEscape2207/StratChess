@@ -4,6 +4,7 @@
 
 #include "StdAfx.h"
 #include "PlayerAI.h"
+#include "Utils/TimeUtils.h"
 #include "Sort.h"		// Different Move sorting heuristics
 #include "MoveGenerator.h"
 #include "Utils/Logger.h"
@@ -172,6 +173,16 @@ std::chrono::milliseconds PlayerAiBase::StopTimerAndAdjustVars() const
 
 //#endif // PRINT_STATS
 	return elapsedMs;
+}
+
+void PlayerAiBase::SetClockInfo(std::chrono::milliseconds remaining,
+                                std::chrono::milliseconds increment,
+                                int moves_to_go) noexcept
+{
+	auto [soft, hard] = Engine::compute_budget(remaining, increment, moves_to_go);
+	time_limit_ = hard;               // keep in sync for log output
+	time_manager_.start(soft, hard);  // arm now; StartTimer() will skip re-arming
+	clock_info_set_ = true;
 }
 
 // ************************************

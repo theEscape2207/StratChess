@@ -159,6 +159,7 @@
     <ClCompile Include="..\StratEngine\TranspositionTable.cpp" />
     <ClCompile Include="..\StratEngine\Utils\FENParser.cpp" />
     <ClCompile Include="..\StratEngine\Utils\Logger.cpp" />
+    <ClCompile Include="..\StratEngine\Utils\TimeUtils.cpp" />
     <ClCompile Include="..\StratEngine\Tests\Perft.cpp" />
     <!-- Project entry point — main() is provided by catch_amalgamated.cpp -->
     <ClCompile Include="StratChessTests.cpp" />
@@ -172,6 +173,7 @@
     <ClCompile Include="SearchTests.cpp" />
     <ClCompile Include="SortTests.cpp" />
     <ClCompile Include="MoveFormatterTests.cpp" />
+    <ClCompile Include="TimeManagerTests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\StratEngine\Tests\Perft.h" />

@@ -180,6 +180,7 @@
     <ClCompile Include="..\StratEngine\TranspositionTable.cpp" />
     <ClCompile Include="..\StratEngine\Utils\FENParser.cpp" />
     <ClCompile Include="..\StratEngine\Utils\Logger.cpp" />
+    <ClCompile Include="..\StratEngine\Utils\TimeUtils.cpp" />
     <ClCompile Include="StratChessEvolved.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -235,6 +236,7 @@
     <ClInclude Include="..\StratEngine\Utils\StrHelper.h" />
     <ClInclude Include="..\StratEngine\Utils\Subscriber.h" />
     <ClInclude Include="..\StratEngine\Utils\TimeManager.h" />
+    <ClInclude Include="..\StratEngine\Utils\TimeUtils.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\Docs\Developer Guidelines.md" />
