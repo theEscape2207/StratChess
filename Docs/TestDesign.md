@@ -40,6 +40,7 @@ x64/Release/StratChessTests.exe [moves]
 x64/Release/StratChessTests.exe [perft]
 x64/Release/StratChessTests.exe [search]
 x64/Release/StratChessTests.exe [sort]
+x64/Release/StratChessTests.exe [time_mgr]
 ```
 
 ---
@@ -59,6 +60,7 @@ x64/Release/StratChessTests.exe [sort]
 | Search helpers (assess_quality etc.) | `[search]` | ✅ Phase 1 | `SearchTests.cpp` |
 | Move ordering (Sort) | `[sort]` | ✅ Phase 1 | `SortTests.cpp` |
 | Board DoMove/UndoMove completeness | `[board]` | ✅ Phase 1 | `BoardTests.cpp` |
+| Time management (TimeManager + compute_budget) | `[time_mgr]` | ✅ Phase 1 | `TimeManagerTests.cpp` |
 | Bitboard helpers | `[bitboard]` | ⏳ Phase 1 | `BitboardTests.cpp` (future) |
 | Full tactical suite (WAC/mate-in-N) | — | ✅ Phase 1 | `StratChessEvolved.exe tactical test` |
 | Position class (after Board refactor) | `[position]` | ⏳ Phase 2 | — |
@@ -151,6 +153,25 @@ Verify ordering priority: PV move → hash move → captures (MVV-LVA) → kille
 - Promotion move generation: white pawn b7→b8 generates `MoveType::PROMOTION_QUEEN`; capture-promotion c7xb8 generates queen promo with `PieceHelper::IsActual(m.Content)` true (these Move-field checks were in the retired `MoveGeneratorPromotionTests.h` and are not covered by perft)
 - Promotion DoMove/UndoMove: pawn replaced by promoted piece, restored on undo
 - Zobrist hash: `get_zobrist_hash()` identical before and after a DoMove/UndoMove cycle
+
+### `[time_mgr]` — Time management unit tests
+
+**Status**: ✅ **Done.** Clock-aware time management landed March 2026.
+**File**: `StratChessTests/TimeManagerTests.cpp`
+
+**Formula tests (6 cases, no sleep):**
+- Blitz midgame: `compute_budget(150000ms, 2000ms, 0)` → soft ≈ 6.6 s, hard ≈ 19.8 s
+- Classical with movestogo: `compute_budget(3600000ms, 0ms, 20)` → soft = 3 min, hard = 9 min
+- Increment-heavy time trouble: soft ≥ 100 ms (floor clamp enforced)
+- Time trouble (remaining < overhead): no crash, soft ≥ 100 ms
+- Zero increment, no movestogo: soft ≈ 2 s
+- Invariant: `hard >= soft >= 100 ms` across 4 input combinations
+
+**TimeManager timing tests (4 cases, short sleeps ≤ 60 ms each):**
+- Two-arg `start(soft=20ms, hard=60ms)`: `should_stop_iteration()` fires after 25 ms, `should_stop_search()` still false; then true after 65 ms
+- One-arg `start(20ms)`: both methods fire together (backward compat)
+- `stop()` fires `should_stop_search()` immediately
+- `elapsed()` increases monotonically
 
 ### `[bitboard]` — Bitboard helper tests
 

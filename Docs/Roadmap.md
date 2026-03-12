@@ -268,7 +268,7 @@ This roadmap organizes development tasks by priority and category. Items are dra
 
 #### ⚪ Time Management — Phase 2 (complexity-aware)
 - **Estimate**: 1-2 days
-- **Dependency**: Time Management Phase 1 (soft/hard limits, PR #5) must land first
+- **Dependency**: Time Management Phase 1 (soft/hard limits, PR #5) ✅ done — do after UCI
 - **Description**: Extend allocation formula with position-complexity signals
 - **Factors**: Search instability (move changed last N iterations), material imbalance,
   number of legal moves (few moves → spend more time), score variance across depths
@@ -492,6 +492,19 @@ Avoid these traps:
 - `Board::test_bitboards` signature simplified
 - All four runtime log files documented in `CLAUDE.md`
 - Plan: `.claude/plans/logging-spdlog-gate-and-outlegalmoves-removal.md`
+
+### Time Management: Clock-Aware Soft/Hard Limits (PR #5, March 2026)
+- `Engine::compute_budget(remaining, increment, moves_to_go)` free function in `TimeUtils.h/cpp`
+  — pure math, independently testable; formula: `soft = usable/horizon + inc*80%`, `hard = min(soft*3, usable/2)`
+- `TimeManager` gains two-arg `start(soft, hard)` + `should_stop_iteration()` (soft limit check)
+- `PlayerAiBase::SetClockInfo()` public method: computes budget and arms timer; `clock_info_set_`
+  flag prevents `StartTimer()` from overwriting the clock-aware budgets
+- `AIPerplex::iterative_deepening()` soft-limit gate: stop after depth if `should_stop_iteration()`
+  and best move was stable; allow one extra depth if best move just changed (verify the new move)
+- Node-based time polling in `pvs()`: check every 1,024 nodes instead of every call
+  (amortises `chrono::now()` overhead on deep searches)
+- `[time_mgr]` test tag: 10 assertions (6 formula, 4 timing), total < 300 ms
+- Plan: `.claude/plans/time-management-clock-aware.md`
 
 ### Move Sorting: Extract ScoreMoves + [sort] Tests (PR #38, March 2026)
 - Inline move scoring loop extracted from `pvs()` into `MoveSorter::ScoreMoves()` static method
