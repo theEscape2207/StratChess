@@ -35,6 +35,10 @@ public:
 	                  std::chrono::milliseconds increment,
 	                  int moves_to_go = 0) noexcept;
 
+	/// Signal the search to stop immediately (e.g. from UCI 'stop').
+	/// Thread-safe: may be called from any thread.
+	void StopSearch() noexcept;
+
 	PlayerAiBase(const PlayerAiBase&) = delete;
 	PlayerAiBase& operator=(const PlayerAiBase&) = delete;
 	PlayerAiBase(PlayerAiBase&&) = delete;

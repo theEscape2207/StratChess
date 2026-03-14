@@ -4,8 +4,10 @@
 #include "StdAfx.h"
 #include "Game.h"
 #include "Board.h"
+#include "UCIHandler.h"
 #include <Tests/Perft.h>
 #include <Tests/TacticalTestRunner.h>
+#include <spdlog/spdlog.h>
 
 static void print_usage() {
     std::cout << "Perft Test Runner\n";
@@ -196,6 +198,13 @@ int main(int argc, char** argv)
         return 0;
     }
         
+	// UCI mode: StratChessEvolved.exe uci
+	if (argc > 1 && std::string(argv[1]) == "uci") {
+		spdlog::set_level(spdlog::level::off);
+		UciHandler handler;
+		handler.run();
+		return 0;
+	}
 	// Check for perft commands
 	if (argc > 2 && std::string(argv[1]) == "perft") {
 		return perftrunner(argc - 1, &argv[1]);

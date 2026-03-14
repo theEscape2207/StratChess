@@ -88,6 +88,7 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info)
 	StartTimer();
 	
 	SearchResult result = iterative_deepening(static_cast<int>(max_depth_), *_tt, pv_table);
+	last_result_ = result;   // expose via GetLastResult()
 
 	auto elapsed = StopTimerAndAdjustVars();
 
