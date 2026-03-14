@@ -177,4 +177,10 @@ private:
 		[[maybe_unused]] int16_t value, [[maybe_unused]] int16_t depth, Move best_move,
 		[[maybe_unused]] BoundType bound, NodeType node_type, [[maybe_unused]] SearchPhase phase);
 	std::multimap<std::uint64_t, int> tt_misses;
+
+	SearchResult last_result_{};
+
+public:
+	/// Returns the result of the most recent search (valid after GetMove() returns).
+	[[nodiscard]] SearchResult GetLastResult() const noexcept { return last_result_; }
 };

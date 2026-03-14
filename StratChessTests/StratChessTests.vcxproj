@@ -161,6 +161,7 @@
     <ClCompile Include="..\StratEngine\Utils\Logger.cpp" />
     <ClCompile Include="..\StratEngine\Utils\TimeUtils.cpp" />
     <ClCompile Include="..\StratEngine\Tests\Perft.cpp" />
+    <ClCompile Include="..\StratEngine\UCIHandler.cpp" />
     <!-- Project entry point — main() is provided by catch_amalgamated.cpp -->
     <ClCompile Include="StratChessTests.cpp" />
     <!-- Catch2 test suites -->
@@ -174,6 +175,7 @@
     <ClCompile Include="SortTests.cpp" />
     <ClCompile Include="MoveFormatterTests.cpp" />
     <ClCompile Include="TimeManagerTests.cpp" />
+    <ClCompile Include="UCITests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\StratEngine\Tests\Perft.h" />

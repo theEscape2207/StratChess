@@ -40,13 +40,25 @@ namespace chess {
             should_stop_.store(true, std::memory_order_relaxed);
         }
 
+        /// Fast check: reads only the latched atomic — no clock call.
+        /// Returns true once should_stop_search() has fired at least once, or after stop().
+        /// Use this for per-node early-exit guards where chrono::now() overhead matters.
+        [[nodiscard]] bool is_aborted() const noexcept {
+            return should_stop_.load(std::memory_order_relaxed);
+        }
+
         /// Hard limit check — abort the search immediately.
-        /// Semantics UNCHANGED from the original single-budget implementation.
+        /// On first expiry, latches should_stop_ so that subsequent is_aborted() calls
+        /// use the fast atomic path (single load, no clock) for O(depth) stack collapse.
         [[nodiscard]] bool should_stop_search() const noexcept {
             if (should_stop_.load(std::memory_order_relaxed))
                 return true;
             auto el = std::chrono::steady_clock::now() - start_time_;
-            return el >= allocated_time_;
+            if (el >= allocated_time_) {
+                should_stop_.store(true, std::memory_order_relaxed);   // latch
+                return true;
+            }
+            return false;
         }
 
         /// Soft limit check — stop after the current depth completes.
@@ -67,7 +79,7 @@ namespace chess {
         std::chrono::steady_clock::time_point start_time_;
         std::chrono::milliseconds soft_limit_{ 1000 };
         std::chrono::milliseconds allocated_time_{ 1000 };
-        std::atomic<bool> should_stop_{ false };
+        mutable std::atomic<bool> should_stop_{ false };   // mutable: latched in should_stop_search() const
     };
 
 } // namespace chess
