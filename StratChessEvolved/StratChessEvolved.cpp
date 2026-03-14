@@ -198,8 +198,9 @@ int main(int argc, char** argv)
         return 0;
     }
         
-	// UCI mode: StratChessEvolved.exe uci
-	if (argc > 1 && std::string(argv[1]) == "uci") {
+	// UCI mode: default (no args) or explicit "uci" — this is what GUIs expect
+	// Game mode: StratChessEvolved.exe game
+	if (argc == 1 || std::string(argv[1]) == "uci") {
 		spdlog::set_level(spdlog::level::off);
 		UciHandler handler;
 		handler.run();
@@ -213,7 +214,7 @@ int main(int argc, char** argv)
 	if (argc > 1 && std::string(argv[1]) == "tactical") {
 		return tacticalrunner(argc - 1, &argv[1]);
 	}
-	// No Perft - Normal game execution
+	// Explicit game mode or unknown arg — normal game execution
 	Game game;
 	game.Run();
 	return 0;
