@@ -200,8 +200,6 @@ UciHandler::GoParams UciHandler::parse_go(std::string_view line)
 void UciHandler::run()
 {
     init_ai();
-    send("info string StratChess UCI ready");
-
     std::string line;
     while (std::getline(std::cin, line)) {
         if (line == "uci")                        { cmd_uci(); }
