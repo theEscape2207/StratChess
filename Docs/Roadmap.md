@@ -277,13 +277,6 @@ This roadmap organizes development tasks by priority and category. Items are dra
 
 ### Infrastructure
 
-#### ⚪ UCI Protocol Support
-- **Estimate**: 1-2 weeks
-- **Prerequisite**: MoveFormatter (`ToUCI` / `FromUCI`)
-- **Description**: Universal Chess Interface for GUI compatibility
-- **GUIs**: Arena, ChessBase, Fritz
-- **Commands**: `uci`, `isready`, `position`, `go`, `stop`
-
 #### ⚪ Extract StratEngine Static Library
 - **Estimate**: 1–2 days
 - **Impact**: Engine compiled once instead of twice on clean builds (~50% reduction in compilation work)
@@ -525,6 +518,16 @@ Avoid these traps:
 - `std::format` replaces `std::stringstream` in `Move::Output()`
 - `<bit>` and `<format>` added to `StdAfx.h` PCH
 - C++23 upgrade path documented in `.claude/plans/cpp23-upgrade.md`
+
+### Infrastructure: UCI Protocol (March 2026)
+- `UCIHandler` class: synchronous command loop with search on `std::thread`
+- Commands: `uci`, `isready`, `ucinewgame`, `position` (startpos + fen + moves), `go`, `stop`, `quit`
+- Time control: `movetime`, `wtime`/`btime`/`winc`/`binc`/`movestogo`, `depth`, `infinite`
+- `AIPerplex::GetLastResult()` exposes `SearchResult` for post-search `info` line
+- `PlayerAiBase::StopSearch()` public API calls `time_manager_.stop()` (thread-safe)
+- All spdlog output silenced via `spdlog::set_level(off)` — stdout is UCI protocol only
+- Invoked via: `StratChessEvolved.exe uci`; game mode unchanged (no args)
+- Validated: pipe-based functional smoke test (uci → isready → position → go movetime → quit)
 
 ---
 

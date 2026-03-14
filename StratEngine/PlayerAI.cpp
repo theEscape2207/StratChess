@@ -175,6 +175,11 @@ std::chrono::milliseconds PlayerAiBase::StopTimerAndAdjustVars() const
 	return elapsedMs;
 }
 
+void PlayerAiBase::StopSearch() noexcept
+{
+	time_manager_.stop();
+}
+
 void PlayerAiBase::SetClockInfo(std::chrono::milliseconds remaining,
                                 std::chrono::milliseconds increment,
                                 int moves_to_go) noexcept

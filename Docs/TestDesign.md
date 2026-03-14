@@ -62,6 +62,7 @@ x64/Release/StratChessTests.exe [time_mgr]
 | Board DoMove/UndoMove completeness | `[board]` | ✅ Phase 1 | `BoardTests.cpp` |
 | Time management (TimeManager + compute_budget) | `[time_mgr]` | ✅ Phase 1 | `TimeManagerTests.cpp` |
 | Bitboard helpers | `[bitboard]` | ⏳ Phase 1 | `BitboardTests.cpp` (future) |
+| UCI command loop | `[uci]` | ✅ validated via pipe test | `StratChessEvolved.exe uci` (pipe smoke test) |
 | Full tactical suite (WAC/mate-in-N) | — | ✅ Phase 1 | `StratChessEvolved.exe tactical test` |
 | Position class (after Board refactor) | `[position]` | ⏳ Phase 2 | — |
 | NPS / performance regression | — | ⏳ Phase 2 | — |
