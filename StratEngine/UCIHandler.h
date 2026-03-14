@@ -13,7 +13,8 @@ public:
     ~UciHandler();
     void run();   // blocking command loop; reads from stdin
 
-private:
+    /// Parameters parsed from a UCI 'go' command line.
+    /// Public so unit tests can call parse_go() directly without a running handler.
     struct GoParams {
         int wtime     = 0;
         int btime     = 0;
@@ -25,6 +26,11 @@ private:
         bool infinite = false;
     };
 
+    /// Parse a UCI 'go' line into a GoParams struct.
+    /// Pure function — no side effects; public for unit testing.
+    static GoParams parse_go(std::string_view line);
+
+private:
     void cmd_uci();
     void cmd_isready();
     void cmd_ucinewgame();
@@ -35,8 +41,7 @@ private:
     void stop_and_join();   // signal + join search thread
     void init_ai();         // (re)create AIPerplex instance
 
-    static GoParams parse_go(std::string_view line);
-    static void     send(std::string_view msg);   // writes line to stdout + flush
+    static void send(std::string_view msg);   // writes line to stdout + flush
 
     std::unique_ptr<PlayerAiBase> ai_;
     std::thread search_thread_;

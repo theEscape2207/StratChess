@@ -72,7 +72,11 @@ AIPerplex::AIPerplex(_In_ unsigned md)
 
 	clear_killers();
 	clear_history();
-	SetVerboseLogging(true);
+	// Verbose logging is opt-in per call site:
+	//   game mode  → Game::SetPlayerParams() calls SetVerboseLogging(true)
+	//   UCI mode   → UciHandler::init_ai()   calls SetVerboseLogging(false)
+	//   test mode  → test setup              calls SetVerboseLogging(false)
+	// Do NOT enable it here — constructors must not have stdout side-effects.
 }
 
 // PVS Iterative transpositional alpha beta search
