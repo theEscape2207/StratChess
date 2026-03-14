@@ -259,7 +259,15 @@ SearchResult  AIPerplex::iterative_deepening(int max_depth, TranspositionTable& 
 
 int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt, PVTable& pv_table)
 {
+	// Fast early exit: IsAborted() reads only the latched atomic (no clock call).
+	// After the first ShouldStopSearch() fires and latches the flag, this collapses
+	// the entire call stack in O(depth) steps instead of O(tree_size).
+	if (IsAborted())
+		return GameValues::Draw;
+
 	// Node-based time polling: check every 1024 nodes to amortise chrono::now() cost.
+	// On first expiry, ShouldStopSearch() latches should_stop_; all future IsAborted()
+	// calls above then return true for free.
 	if ((++nodes_since_check_ & 1023) == 0) {
 		if (ShouldStopSearch())
 			return GameValues::Draw;
@@ -490,6 +498,16 @@ int AIPerplex::adjustScoreForGameState(bool moveFound, int ply, int score)
 
 int AIPerplex::quiescence(int alpha, int beta, int qsearch_depth, int ply, TranspositionTable& tt)
 {
+	// Fast early exit: IsAborted() reads only the latched atomic (no clock call).
+	// Mirrors pvs() — collapses quiescence chains in O(depth) after latch fires.
+	if (IsAborted())
+		return GameValues::Draw;
+
+	if ((++nodes_since_check_ & 1023) == 0) {
+		if (ShouldStopSearch())
+			return GameValues::Draw;
+	}
+
 	constexpr int MAX_QSEARCH_DEPTH = 15;  // Lets keep it real
 
 	// Limit quiescence extension by qsearch

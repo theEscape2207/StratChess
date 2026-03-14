@@ -27,8 +27,11 @@ TimeBudget compute_budget(
 
     const ms soft = std::max(base, floor_time);
 
-    // Hard limit: never burn more than half the remaining clock in one move
-    const ms hard_candidate{ static_cast<ms::rep>(soft.count() * 3) };
+    // Hard limit: cap at 1.5× soft so one move can never dominate the clock.
+    // A 3× factor caused the engine to spend the full hard budget on every opening
+    // move (because early depths complete well inside soft, depth N+1 then runs
+    // until hard fires), leading to time forfeits in sudden-death time controls.
+    const ms hard_candidate{ static_cast<ms::rep>(soft.count() * 3 / 2) };
     const ms hard_cap{ static_cast<ms::rep>(usable.count() / 2) };
     const ms hard = std::max(std::min(hard_candidate, hard_cap), soft);
 

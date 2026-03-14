@@ -14,7 +14,7 @@ TEST_CASE("compute_budget: blitz midgame (3+2, 150 s remaining)", "[time_mgr]")
     auto b = Engine::compute_budget(150'000ms, 2'000ms, 0);
     REQUIRE(b.soft.count() >= 6'000);
     REQUIRE(b.soft.count() <= 7'500);
-    // hard = min(base*3, usable*0.5) ≈ 19800
+    // hard = min(base*1.5, usable*0.5) ≈ 9900
     REQUIRE(b.hard.count() >= b.soft.count());
     REQUIRE(b.hard.count() <= 75'000);
 }
@@ -25,9 +25,9 @@ TEST_CASE("compute_budget: classical with moves_to_go (60 min, 20 moves left)", 
     auto b = Engine::compute_budget(3'600'000ms, 0ms, 20);
     REQUIRE(b.soft.count() >= 179'000);
     REQUIRE(b.soft.count() <= 181'000);
-    // hard = min(180000*3, 3599950*0.5) = 540000 ms
-    REQUIRE(b.hard.count() >= 539'000);
-    REQUIRE(b.hard.count() <= 541'000);
+    // hard = min(180000*1.5, 3599950*0.5) = 270000 ms
+    REQUIRE(b.hard.count() >= 269'000);
+    REQUIRE(b.hard.count() <= 271'000);
 }
 
 TEST_CASE("compute_budget: increment-heavy time trouble (200 ms remaining, 5 s increment)", "[time_mgr]")
