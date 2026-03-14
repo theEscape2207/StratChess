@@ -176,6 +176,11 @@ std::unique_ptr<IPlayer> Game::SetPlayerParams(const Config::PlayerConfig& confi
 	auto player = PlayerBase::Create(static_cast<PlayerBase::ePlayerTypes>(config.type), config.depth);
 	player->SetEvalEngine(static_cast<EvalManager::EvalTypes>(config.eval));
 
+	// Enable AIPerplex verbose logging in game mode (opt-in here; UCI/test modes disable it).
+	if (dynamic_cast<AIPerplex*>(player.get())) {
+		AIPerplex::SetVerboseLogging(true);
+	}
+
 	// Apply shared AI config (time_limit) to any AI type
 	if (auto* ai = dynamic_cast<PlayerAiBase*>(player.get())) {
 		ai->SetTimeLimit(std::chrono::milliseconds(config.time_limit_ms));

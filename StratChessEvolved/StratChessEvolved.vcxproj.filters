@@ -36,7 +36,7 @@
     <ClCompile Include="StratChessEvolved.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="UCIHandler.cpp">
+    <ClCompile Include="..\StratEngine\UCIHandler.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\StratEngine\Board.cpp">
@@ -245,7 +245,7 @@
     <ClInclude Include="..\StratEngine\PlayerAiIterBase.h">
       <Filter>Header Files\Algos</Filter>
     </ClInclude>
-    <ClInclude Include="UCIHandler.h">
+    <ClInclude Include="..\StratEngine\UCIHandler.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
