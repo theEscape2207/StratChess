@@ -127,6 +127,7 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info)
 SearchResult  AIPerplex::iterative_deepening(int max_depth, TranspositionTable& tt, PVTable& pv_table) {
 	SearchState state;
 	nodes_since_check_ = 0;   // reset node counter for this search
+	bool extra_depth_used = false;   // soft-limit extension granted at most once per search
 
 	clear_killers();	// Clear killer moves at the start of the search
 
@@ -196,9 +197,12 @@ SearchResult  AIPerplex::iterative_deepening(int max_depth, TranspositionTable& 
 			// Soft limit gate: stop after this depth if the allocated time budget
 			// is consumed.  Exception: if the best move just changed, allow one
 			// more depth to verify the new move (the hard limit will cut it off).
-			if (time_manager_.should_stop_iteration() && !metrics.move_changed) {
-				continue_iteration = false;
-				break;
+			if (time_manager_.should_stop_iteration()) {
+				if (!metrics.move_changed || extra_depth_used) {
+					continue_iteration = false;
+					break;
+				}
+				extra_depth_used = true;   // grant extension exactly once
 			}
 
 			continue_iteration = !should_stop_early(depth, metrics.current_score, metrics.pv_length);
