@@ -72,7 +72,11 @@ AIPerplex::AIPerplex(_In_ unsigned md)
 
 	clear_killers();
 	clear_history();
-	SetVerboseLogging(true);
+	// Verbose logging is opt-in per call site:
+	//   game mode  → Game::SetPlayerParams() calls SetVerboseLogging(true)
+	//   UCI mode   → UciHandler::init_ai()   calls SetVerboseLogging(false)
+	//   test mode  → test setup              calls SetVerboseLogging(false)
+	// Do NOT enable it here — constructors must not have stdout side-effects.
 }
 
 // PVS Iterative transpositional alpha beta search
@@ -88,6 +92,7 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info)
 	StartTimer();
 	
 	SearchResult result = iterative_deepening(static_cast<int>(max_depth_), *_tt, pv_table);
+	last_result_ = result;   // expose via GetLastResult()
 
 	auto elapsed = StopTimerAndAdjustVars();
 
@@ -126,6 +131,7 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info)
 SearchResult  AIPerplex::iterative_deepening(int max_depth, TranspositionTable& tt, PVTable& pv_table) {
 	SearchState state;
 	nodes_since_check_ = 0;   // reset node counter for this search
+	bool extra_depth_used = false;   // soft-limit extension granted at most once per search
 
 	clear_killers();	// Clear killer moves at the start of the search
 
@@ -195,9 +201,12 @@ SearchResult  AIPerplex::iterative_deepening(int max_depth, TranspositionTable& 
 			// Soft limit gate: stop after this depth if the allocated time budget
 			// is consumed.  Exception: if the best move just changed, allow one
 			// more depth to verify the new move (the hard limit will cut it off).
-			if (time_manager_.should_stop_iteration() && !metrics.move_changed) {
-				continue_iteration = false;
-				break;
+			if (time_manager_.should_stop_iteration()) {
+				if (!metrics.move_changed || extra_depth_used) {
+					continue_iteration = false;
+					break;
+				}
+				extra_depth_used = true;   // grant extension exactly once
 			}
 
 			continue_iteration = !should_stop_early(depth, metrics.current_score, metrics.pv_length);
@@ -254,7 +263,15 @@ SearchResult  AIPerplex::iterative_deepening(int max_depth, TranspositionTable& 
 
 int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt, PVTable& pv_table)
 {
+	// Fast early exit: IsAborted() reads only the latched atomic (no clock call).
+	// After the first ShouldStopSearch() fires and latches the flag, this collapses
+	// the entire call stack in O(depth) steps instead of O(tree_size).
+	if (IsAborted())
+		return GameValues::Draw;
+
 	// Node-based time polling: check every 1024 nodes to amortise chrono::now() cost.
+	// On first expiry, ShouldStopSearch() latches should_stop_; all future IsAborted()
+	// calls above then return true for free.
 	if ((++nodes_since_check_ & 1023) == 0) {
 		if (ShouldStopSearch())
 			return GameValues::Draw;
@@ -485,6 +502,16 @@ int AIPerplex::adjustScoreForGameState(bool moveFound, int ply, int score)
 
 int AIPerplex::quiescence(int alpha, int beta, int qsearch_depth, int ply, TranspositionTable& tt)
 {
+	// Fast early exit: IsAborted() reads only the latched atomic (no clock call).
+	// Mirrors pvs() — collapses quiescence chains in O(depth) after latch fires.
+	if (IsAborted())
+		return GameValues::Draw;
+
+	if ((++nodes_since_check_ & 1023) == 0) {
+		if (ShouldStopSearch())
+			return GameValues::Draw;
+	}
+
 	constexpr int MAX_QSEARCH_DEPTH = 15;  // Lets keep it real
 
 	// Limit quiescence extension by qsearch

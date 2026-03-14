@@ -161,18 +161,16 @@ std::chrono::milliseconds PlayerAiBase::StopTimerAndAdjustVars() const
 			m_TotalTime.count(),
 			total_nodes_per_ms);
 	}
-	else {
-		// last-resort fallback to console (very slow; only when logger creation failed)
-		std::cout << std::setw(10) << m_SearchCount << std::setw(13) << elapsedMs.count()
-			<< std::setw(13) << (m_SearchCount / elapsedMs.count())
-		<< std::setw(19) << m_TotalCount
-		<< std::setw(13) << m_TotalTime.count()
-			<< std::setw(13) << (m_TotalCount / m_TotalTime.count())
-		<< '\n';
-	}
+	// If perf logger is unavailable (e.g. logs/ absent in UCI mode), skip silently.
+	// Writing to std::cout here would corrupt the UCI output stream.
 
 //#endif // PRINT_STATS
 	return elapsedMs;
+}
+
+void PlayerAiBase::StopSearch() noexcept
+{
+	time_manager_.stop();
 }
 
 void PlayerAiBase::SetClockInfo(std::chrono::milliseconds remaining,

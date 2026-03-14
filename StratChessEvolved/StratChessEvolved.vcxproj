@@ -182,6 +182,7 @@
     <ClCompile Include="..\StratEngine\Utils\Logger.cpp" />
     <ClCompile Include="..\StratEngine\Utils\TimeUtils.cpp" />
     <ClCompile Include="StratChessEvolved.cpp" />
+    <ClCompile Include="..\StratEngine\UCIHandler.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\StratEngine\ABIterative.h" />
@@ -237,6 +238,7 @@
     <ClInclude Include="..\StratEngine\Utils\Subscriber.h" />
     <ClInclude Include="..\StratEngine\Utils\TimeManager.h" />
     <ClInclude Include="..\StratEngine\Utils\TimeUtils.h" />
+    <ClInclude Include="..\StratEngine\UCIHandler.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\Docs\Developer Guidelines.md" />

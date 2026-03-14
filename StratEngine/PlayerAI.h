@@ -35,6 +35,10 @@ public:
 	                  std::chrono::milliseconds increment,
 	                  int moves_to_go = 0) noexcept;
 
+	/// Signal the search to stop immediately (e.g. from UCI 'stop').
+	/// Thread-safe: may be called from any thread.
+	void StopSearch() noexcept;
+
 	PlayerAiBase(const PlayerAiBase&) = delete;
 	PlayerAiBase& operator=(const PlayerAiBase&) = delete;
 	PlayerAiBase(PlayerAiBase&&) = delete;
@@ -98,6 +102,14 @@ protected:
 	bool ShouldStopSearch() const noexcept
 	{
 		return time_manager_.should_stop_search();
+	}
+
+	/// Cheap per-node guard: only reads the latched atomic, no clock call.
+	/// Use at the top of pvs()/quiescence() so the call stack collapses in O(depth)
+	/// steps after the first ShouldStopSearch() fires and latches the flag.
+	bool IsAborted() const noexcept
+	{
+		return time_manager_.is_aborted();
 	}
 
 	void SetEvalEngine(EvalManager::EvalTypes type) override
