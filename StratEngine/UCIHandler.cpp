@@ -115,7 +115,14 @@ void UciHandler::cmd_go(std::string_view line)
         auto remaining = std::chrono::milliseconds(white ? p.wtime : p.btime);
         auto inc       = std::chrono::milliseconds(white ? p.winc  : p.binc);
         ai_->SetClockInfo(remaining, inc, p.movestogo);
-    } else if (!p.infinite) {
+    } else if (p.infinite || p.depth > 0) {
+        // Pure depth constraint or infinite: give the engine a large time budget.
+        // The depth cap in iterative_deepening() is the sole stopping criterion.
+        // For go infinite, the UCI 'stop' command is the intended termination.
+        // hours(1) avoids potential overflow from milliseconds::max() in comparisons.
+        ai_->SetTimeLimit(std::chrono::hours(1));
+    } else {
+        // No constraints at all — apply a safe fallback.
         ai_->SetTimeLimit(std::chrono::seconds(10));
     }
 
@@ -172,6 +179,7 @@ void UciHandler::stop_and_join()
     if (ai_) ai_->StopSearch();
     if (search_thread_.joinable()) search_thread_.join();
     if (ai_) ai_->SetMaxDepth(UCI_DEFAULT_DEPTH);
+    if (ai_) ai_->SetTimeLimit(std::chrono::seconds(15));
 }
 
 UciHandler::GoParams UciHandler::parse_go(std::string_view line)
