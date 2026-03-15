@@ -170,6 +170,7 @@
     <ClCompile Include="TTTests.cpp" />
     <ClCompile Include="EvalTests.cpp" />
     <ClCompile Include="TacticalTests.cpp" />
+    <ClCompile Include="TacticalFullTests.cpp" />
     <ClCompile Include="BoardTests.cpp" />
     <ClCompile Include="SearchTests.cpp" />
     <ClCompile Include="SortTests.cpp" />
@@ -179,6 +180,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\StratEngine\Tests\Perft.h" />
+    <ClInclude Include="TacticalTestHelpers.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
