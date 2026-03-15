@@ -1,105 +1,61 @@
-// TacticalTests.cpp — Catch2 search regression tests
+// TacticalTests.cpp — fast tactical suite [tactical]
 //
-// Each test verifies that AIPerplex (depth 4) finds the correct move in a
-// forced tactical position. Tests run in < 1 second each (Release build):
-// mate-in-1 positions are resolved at depth 1; depth 4 is used so that any
-// future depth-reduction heuristic (LMR, futility) still reaches the answer.
+// Runs ~10 positions at depth 4 (< 5 s total in Release).
+// Each position has a single forced best move verified against the engine.
 //
-// Pattern:
-//   1. Board::Instance().SetupFromFEN(fen)
-//   2. Create AIPerplex via factory; set eval engine and suppress logging
-//   3. Call GetMove(info) with GameInfo from the board
-//   4. Check m.from() and m.to() against the expected move
-//
-// When a search regression is found in production, add a new TEST_CASE here
-// with a comment explaining the bug (see RepetitionTests.cpp for the pattern).
+// Selection invariant: every position in kFastCases must have a unique best move
+// at depth 4. Verify with: go depth 4 on each FEN before committing new positions.
 //
 // See Docs/TestDesign.md §Phase 0 for rationale.
 
 #include <catch_amalgamated.hpp>
+#include "TacticalTestHelpers.h"
 #include "Board.h"
-#include "AIPerplex.h"
-#include "PlayerBase.h"
-#include "Eval.h"
-#include "defines.h"
 
-// ── Search depth used for all tactical tests ──────────────────────────────────
-// Depth 4: fast on sparse positions (< 100 ms), deep enough to find forced
-// results reliably even after future reductions (LMR, aspiration windows).
-static constexpr unsigned TACTICAL_DEPTH = 4;
+// ---------------------------------------------------------------------------
+// Position table — fast tier (depth 4, ~10 positions)
+// ---------------------------------------------------------------------------
 
-// ── Helper ────────────────────────────────────────────────────────────────────
+static constexpr TacticalCase kFastCases[] = {
+    // — Mate-in-1 ————————————————————————————————————————————————————————
+    { "M1: rook back rank",
+      "6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1",   a1, a8, 4 },
+    { "M1: queen back rank",
+      "6k1/5ppp/8/8/8/8/3Q4/6K1 w - - 0 1",     d2, d8, 4 },
+    { "M1: rook d-file (Rd8#)",
+      "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1",   d1, d8, 4 },
+    { "M1: rook e-file (Re8#)",
+      "6k1/5ppp/8/8/8/8/5PPP/4R1K1 w - - 0 1",   e1, e8, 4 },
+    // — Winning captures ——————————————————————————————————————————————————
+    { "capture: hanging rook (Qxc1)",
+      "4k3/8/8/8/8/8/8/2rQK3 w - - 0 1",         d1, c1, 4 },
+    { "capture: hanging queen (Qxd5)",
+      "4k3/8/8/3q4/8/8/8/3QK3 w - - 0 1",        d1, d5, 4 },
+    { "capture: hanging knight (Bxf3)",
+      "4k3/8/8/8/8/5n2/8/3BK3 w - - 0 1",        d1, f3, 4 },
+    // — Simple 2-ply tactics ——————————————————————————————————————————————
+    { "fork: Nc7+ wins Ra8",
+      "r3k3/8/8/3N4/8/8/8/4K3 w - - 0 1",        d5, c7, 4 },
+    { "skewer: Re8+ wins Ra8",
+      "r3k3/8/8/8/8/8/8/4RK2 w - - 0 1",         e1, e8, 4 },
+    { "skewer: Qc8+ wins Rg8",
+      "4k1r1/5p2/8/8/2Q5/8/8/4K3 w - - 0 1",     c4, c8, 4 },
+};
 
-// Create a fresh AIPerplex at the given depth, configured for test use.
-// Must be called AFTER Board::Instance().SetupFromFEN() because the board
-// state is read during search.
-static std::unique_ptr<PlayerBase> make_engine(unsigned depth = TACTICAL_DEPTH)
+// ---------------------------------------------------------------------------
+// Test
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Tactical - fast suite", "[tactical]")
 {
-    auto ai = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, depth);
-    AIPerplex::SetVerboseLogging(false);  // suppress after ctor re-enables it
-    ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
-    return ai;
-}
+    auto tc = GENERATE(from_range(kFastCases));
 
-// ── FEN constants ─────────────────────────────────────────────────────────────
-
-// White: Ra1, Kg1. Black: Kg8, Pf7, Pg7, Ph7.
-// Ra8 is the only mating move (back-rank mate). White to move.
-static constexpr const char* FEN_MATE_IN_1_ROOK =
-    "6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1";
-
-// White: Qd2, Kg1. Black: Kg8, Pf7, Pg7, Ph7.
-// Qd8# is the only mating move: queen slides d2→d8 along the open d-file.
-// On d8, queen covers all of rank 8; king is 3 squares away and cannot capture.
-// f7/g7/h7 seal every rank-7 escape square. White to move.
-static constexpr const char* FEN_MATE_IN_1_QUEEN =
-    "6k1/5ppp/8/8/8/8/3Q4/6K1 w - - 0 1";
-
-// White: Qd1, Ke1. Black: Ke8, Rc1 (unprotected rook on c1).
-// Qd1xc1 wins a free rook. White to move.
-static constexpr const char* FEN_CAPTURE_HANGING_ROOK =
-    "4k3/8/8/8/8/8/8/2rQK3 w - - 0 1";
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
-TEST_CASE("Tactical - mate in 1: rook delivers back-rank checkmate", "[tactical]")
-{
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_MATE_IN_1_ROOK);
-
-    auto ai = make_engine();
-    GameInfo info = board.GetGameInfo();
+    INFO(tc.label);
+    Board::Instance().SetupFromFEN(tc.fen);
+    auto ai = make_tactical_engine(tc.depth);
+    GameInfo info = Board::Instance().GetGameInfo();
     Move m = ai->GetMove(info);
 
-    // Ra1-a8#
-    REQUIRE(m.from() == a1);
-    REQUIRE(m.to()   == a8);
-}
-
-TEST_CASE("Tactical - mate in 1: queen delivers back-rank checkmate", "[tactical]")
-{
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_MATE_IN_1_QUEEN);
-
-    auto ai = make_engine();
-    GameInfo info = board.GetGameInfo();
-    Move m = ai->GetMove(info);
-
-    // Qd2-d8#
-    REQUIRE(m.from() == d2);
-    REQUIRE(m.to()   == d8);
-}
-
-TEST_CASE("Tactical - engine captures hanging rook", "[tactical]")
-{
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_CAPTURE_HANGING_ROOK);
-
-    auto ai = make_engine();
-    GameInfo info = board.GetGameInfo();
-    Move m = ai->GetMove(info);
-
-    // Qd1xc1 — only move that wins material
-    REQUIRE(m.from() == d1);
-    REQUIRE(m.to()   == c1);
+    REQUIRE(m.from() == tc.expected_from);
+    REQUIRE(m.to()   == tc.expected_to);
 }
