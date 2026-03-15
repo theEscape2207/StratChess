@@ -45,6 +45,9 @@
     <ClCompile Include="TacticalTests.cpp">
       <Filter>Source Files\Tests</Filter>
     </ClCompile>
+    <ClCompile Include="TacticalFullTests.cpp">
+      <Filter>Source Files\Tests</Filter>
+    </ClCompile>
     <ClCompile Include="BoardTests.cpp">
       <Filter>Source Files\Tests</Filter>
     </ClCompile>
@@ -133,6 +136,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\StratEngine\Tests\Perft.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="TacticalTestHelpers.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
