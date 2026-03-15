@@ -7,10 +7,11 @@
     Defaults to Release|x64.
 
 .PARAMETER Verb
-    main       Build the main solution (StratChessEvolved.sln)
-    tests      Build the test project (StratChessTests.vcxproj)
-    all        Build main then tests (default)
-    run-tests  Build tests then execute the test binary
+    main            Build the main solution (StratChessEvolved.sln)
+    tests           Build the test project (StratChessTests.vcxproj)
+    all             Build main then tests (default)
+    run-tests       Build tests then run fast tier only (excludes [slow])
+    extended-tests  Build tests then run all tiers including [slow]
 
 .PARAMETER Tag
     Optional Catch2 tag filter for run-tests, e.g. "[formatter]" or "[perft]".
@@ -23,11 +24,12 @@
     .\build.ps1 tests
     .\build.ps1 run-tests
     .\build.ps1 run-tests "[formatter]"
+    .\build.ps1 extended-tests
     .\build.ps1 all -Config Debug
 #>
 param(
     [Parameter(Position=0)]
-    [ValidateSet('main', 'tests', 'all', 'run-tests')]
+    [ValidateSet('main', 'tests', 'all', 'run-tests', 'extended-tests')]
     [string]$Verb = 'all',
 
     [Parameter(Position=1)]
@@ -104,13 +106,17 @@ switch ($Verb) {
     'run-tests' {
         Invoke-MSBuild $TestProj -Parallel
         Write-Host ""
-        $tagLabel = if ($Tag) { " ($Tag)" } else { '' }
-        Write-Host "==> Running tests$tagLabel" -ForegroundColor Cyan
-        if ($Tag) {
-            & $TestExe $Tag
-        } else {
-            & $TestExe
-        }
+        # Default: exclude [slow] tests; pass an explicit tag to override.
+        $effectiveTag = if ($Tag) { $Tag } else { '~[slow]' }
+        Write-Host "==> Running tests ($effectiveTag)" -ForegroundColor Cyan
+        & $TestExe $effectiveTag
+        exit $LASTEXITCODE
+    }
+    'extended-tests' {
+        Invoke-MSBuild $TestProj -Parallel
+        Write-Host ""
+        Write-Host "==> Running all tests including [slow]" -ForegroundColor Cyan
+        & $TestExe
         exit $LASTEXITCODE
     }
 }
