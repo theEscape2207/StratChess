@@ -78,7 +78,7 @@ static constexpr TacticalCase kSlowCases[] = {
 // Test
 // ---------------------------------------------------------------------------
 
-TEST_CASE("Tactical - extended suite", "[tactical_full][slow]")
+TEST_CASE("Tactical - slow suite", "[tactical_full][slow]")
 {
     auto tc = GENERATE(from_range(kSlowCases));
 

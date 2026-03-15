@@ -43,6 +43,12 @@ x64/Release/StratChessTests.exe [sort]
 x64/Release/StratChessTests.exe [time_mgr]
 ```
 
+The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[slow]` run. Use `extended-tests` to include it:
+```powershell
+.\build.ps1 extended-tests          # all tests including [slow]
+.\build.ps1 run-tests "[tactical_full]"  # slow tier only
+```
+
 ---
 
 ## Coverage Map
@@ -57,6 +63,7 @@ x64/Release/StratChessTests.exe [time_mgr]
 | **TranspositionTable** | `[tt]` | ✅ Phase 0 | `TTTests.cpp` |
 | **Evaluation (EvalSimple/Complex)** | `[eval]` | ✅ Phase 0 | `EvalTests.cpp` |
 | **Search regression (tactical)** | `[tactical]` | ✅ Phase 0 | `TacticalTests.cpp` |
+| **Search regression (slow tier)** | `[tactical_full][slow]` | ✅ Phase 0 | `TacticalFullTests.cpp` |
 | Search helpers (assess_quality etc.) | `[search]` | ✅ Phase 1 | `SearchTests.cpp` |
 | Move ordering (Sort) | `[sort]` | ✅ Phase 1 | `SortTests.cpp` |
 | Board DoMove/UndoMove completeness | `[board]` | ✅ Phase 1 | `BoardTests.cpp` |
@@ -118,6 +125,17 @@ x64/Release/StratChessTests.exe [time_mgr]
 - Mate in 1 (queen delivers back-rank mate): engine plays Qd8# (`6k1/5ppp/8/8/8/8/3Q4/6K1`)
   — queen slides along the d-file; lands 3 squares from king (cannot be captured)
 - Capture hanging rook: engine captures undefended piece (`4k3/8/8/8/8/8/8/2rQK3`)
+
+### Slow Tactical Tier (`[tactical_full][slow]`)
+
+**File**: `StratChessTests/TacticalFullTests.cpp`
+**Rationale**: Deeper regression coverage at depth 6 (~1.8 s total). Excluded from the default `run-tests` loop (`~[slow]`) to keep the fast feedback cycle under 5 s. Run via `.\build.ps1 extended-tests` or `run-tests "[tactical_full]"` before merging search changes.
+
+**Approach**: Same `GENERATE(from_range(...))` / `TacticalTestHelpers.h` pattern as the fast tier, depth 6.
+
+**Current positions (25)**: 2 mate-in-1 back-rank mates + 23 winning captures across diverse piece types (queen, rook, bishop, knight) and board regions. Every position was individually verified against the engine at depth 6 before committing.
+
+**⚠ Technical debt — position diversity**: the initial 25 positions are dominated by simple hanging captures. Multi-move tactics (mate-in-2, forks, pins, discovered attacks) proved hard to construct with a *unique* best move at depth 6 for this engine's current tactical strength. As the engine improves, replace simpler captures with positions from the WAC-25 set or crafted M2 suites. The selection invariant (unique best move at the target depth, verified before committing) must be maintained.
 
 ---
 

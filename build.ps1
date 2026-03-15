@@ -115,6 +115,9 @@ switch ($Verb) {
     'extended-tests' {
         Invoke-MSBuild $TestProj -Parallel
         Write-Host ""
+        if ($Tag) {
+            Write-Warning "extended-tests ignores the Tag parameter ('$Tag'). Use run-tests to filter by tag."
+        }
         Write-Host "==> Running all tests including [slow]" -ForegroundColor Cyan
         & $TestExe
         exit $LASTEXITCODE
