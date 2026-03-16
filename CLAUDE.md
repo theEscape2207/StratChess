@@ -28,7 +28,8 @@ A modern C++20 chess engine focused on improving playing strength (ELO) while ma
 .\build.ps1               # build main solution + test project (Release|x64)
 .\build.ps1 main          # main solution only
 .\build.ps1 tests         # test project only
-.\build.ps1 run-tests     # build tests then run all of them
+.\build.ps1 run-tests     # build tests then run fast tier only (~[slow])
+.\build.ps1 extended-tests           # build tests then run ALL tiers including [slow]
 .\build.ps1 run-tests "[formatter]"  # build tests then run a single tag
 .\build.ps1 all -Config Debug        # debug build of both
 ```
@@ -85,14 +86,25 @@ StratChessTests/x64/Release/StratChessTests.exe [repetition]       # repetition 
 StratChessTests/x64/Release/StratChessTests.exe [perft]            # perft depth 1-4
 StratChessTests/x64/Release/StratChessTests.exe [tt]               # TranspositionTable unit tests
 StratChessTests/x64/Release/StratChessTests.exe [eval]             # evaluation position tests
-StratChessTests/x64/Release/StratChessTests.exe [tactical]         # search regression tests
+StratChessTests/x64/Release/StratChessTests.exe [tactical]         # search regression tests (fast, depth 4)
+StratChessTests/x64/Release/StratChessTests.exe [tactical_full]   # slow tactical tier (depth 6, ~2 s)
 ```
+`run-tests` excludes `[slow]` tests by default; `extended-tests` includes them.
 Building the `.sln` does not always rebuild the test project. To build it explicitly:
 ```powershell
 .\build.ps1 tests
 ```
 The test project uses `/Z7` debug format (debug info embedded in `.obj` files) so parallel `//m` compilation works without PDB write contention.
 Sources: `StratChessTests/*.cpp` — Framework: Catch2 v3 amalgamated — `$(DepsRoot)Catch2/` (sibling of repo)
+
+### Tactical test positions
+`StratChessTests/TacticalTestHelpers.h` — shared `TacticalCase` struct + `make_tactical_engine()` factory used by all tactical test files. Use `GENERATE(from_range(kCases))` pattern (see `TacticalTests.cpp`).
+
+When constructing FEN positions for tactical tests:
+- **Always append ` w - - 0 1`** — omitting the side-to-move field silently makes the engine play as Black (bug #46)
+- **Verify no White piece attacks the Black King** before adding a position — engine silently accepts illegal FENs and returns king-capture moves (bug #45)
+- **Verify uniqueness against the engine**, not manually: `(printf "uci\nisready\nposition fen FEN w - - 0 1\ngo depth N\n" | ./x64/Release/StratChessEvolved.exe 2>/dev/null | grep "^bestmove")`
+- Use parentheses `(cmd; cmd) | pipe` for multi-command UCI pipes in Git Bash — braces `{ }` fail
 
 ### AIPerplex in tests
 Constructor re-enables verbose logging and leaves `Eval` null; follow this setup order:
@@ -152,6 +164,12 @@ For any non-trivial multi-file task, create `.claude/plans/<kebab-name>.md` befo
 - **Key Correctness Properties** — invariants that must hold after the change
 
 Commit the plan file — it lives under `.claude/plans/` (tracked by git) and serves as permanent reference even after the worktree is retired. **Name it after the content**, not an auto-generated string — e.g. `logging-spdlog-gate-and-outlegalmoves-removal.md`, not `ticklish-rolling-ripple.md`.
+
+## Subagent Dispatch Guidelines
+- **Do exploratory/verification work in the controller session first**, not inside the implementer subagent. Open-ended tasks (e.g. verifying 25 engine positions) should be completed by the controller and the results handed to the implementer as a closed list — not delegated as an exploration task.
+- **Always provide the explicit worktree-relative binary path** in implementer prompts. Never use `..` relative paths pointing outside the worktree — the main repo's stale binary may silently satisfy the path check while producing wrong results. Correct pattern: `StratChessTests/x64/Release/StratChessEvolved.exe` from the worktree root, or build first with `.\build.ps1 main` and pass the explicit absolute path.
+- **NEEDS_CONTEXT safety valves only catch "file not found"** — they don't detect a stale or wrong binary. If verification relies on binary output, ensure the binary was built from current worktree sources before the subagent is dispatched.
+- **Background Bash tasks piping to long-running processes on Windows are unreliable** — they may be killed mid-stream. Use foreground calls for anything that pipes stdin to the engine and reads stdout.
 
 ## Commit & PR Conventions
 - Development happens on `master`; PRs target `main`
