@@ -75,7 +75,7 @@ try {
     # GetMove complete: is written to logs/aiperplex.log by s_logger (file sink).
     # RedirectStandardOutput does not capture spdlog's stdout_color_sink on Windows
     # (spdlog uses WriteConsoleW which bypasses the C-runtime stdout redirect).
-    $logOutput = if (Test-Path $aiLogFile) { [string](Get-Content $aiLogFile -Raw) } else { '' }
+    $logOutput = (Test-Path $aiLogFile) ? [string](Get-Content $aiLogFile -Raw) : ''
     $moveCount = ([regex]::Matches($logOutput, 'GetMove complete:')).Count
 
     # Require at least 2 completed moves (one per side) — confirms the search engine
@@ -102,7 +102,7 @@ Write-Host "`n--- Pre-PR Validation Summary ---" -ForegroundColor Cyan
 $anyFailed = $false
 foreach ($check in $checkResults.Keys) {
     $status = $checkResults[$check]
-    $color  = if ($status -eq 'PASS') { 'Green' } else { 'Red' }
+    $color  = ($status -eq 'PASS') ? 'Green' : 'Red'
     Write-Host ("  {0,-22} {1}" -f $check, $status) -ForegroundColor $color
     if ($status -ne 'PASS') { $anyFailed = $true }
 }
