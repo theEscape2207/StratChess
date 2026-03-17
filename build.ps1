@@ -9,7 +9,7 @@
 .PARAMETER Verb
     main            Build the main solution (StratChessEvolved.sln)
     tests           Build the test project (StratChessTests.vcxproj)
-    all             Build main then tests (default)
+    all             Build main and tests in parallel (default)
     run-tests       Build tests then run fast tier only (excludes [slow])
     extended-tests  Build tests then run all tiers including [slow]
 
@@ -100,8 +100,26 @@ switch ($Verb) {
         Invoke-MSBuild $TestProj -Parallel
     }
     'all' {
-        Invoke-MSBuild $Sln -Parallel
-        Invoke-MSBuild $TestProj -Parallel
+        Write-Host "`n==> Building main + tests in parallel" -ForegroundColor Cyan
+        $jobMain  = Start-Job { param($msbuild,$sln,$cfg,$plat)
+            & $msbuild $sln /p:Configuration=$cfg /p:Platform=$plat /m /v:minimal
+            $LASTEXITCODE
+        } -ArgumentList $MSBuild,$Sln,$Config,$Platform
+
+        $jobTests = Start-Job { param($msbuild,$proj,$cfg,$plat)
+            & $msbuild $proj /p:Configuration=$cfg /p:Platform=$plat /m /v:minimal
+            $LASTEXITCODE
+        } -ArgumentList $MSBuild,$TestProj,$Config,$Platform
+
+        Wait-Job $jobMain,$jobTests | Out-Null
+        $exitMain  = Receive-Job $jobMain  | Select-Object -Last 1
+        $exitTests = Receive-Job $jobTests | Select-Object -Last 1
+        Remove-Job $jobMain,$jobTests
+
+        if ($exitMain -ne 0 -or $exitTests -ne 0) {
+            Write-Error "Parallel build failed (main=$exitMain tests=$exitTests)."
+            exit 1
+        }
     }
     'run-tests' {
         Invoke-MSBuild $TestProj -Parallel
