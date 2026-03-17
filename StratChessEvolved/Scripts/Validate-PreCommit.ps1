@@ -12,7 +12,7 @@
     Before every git commit. Always run this before Validate-PrePR.ps1.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
-    cmd.exe /c "powershell -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Validate-PreCommit.ps1"
+    cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Validate-PreCommit.ps1"
 
 .NOTES
     Must be invoked with -File, not dot-sourced. $PSScriptRoot is $null under dot-source,
