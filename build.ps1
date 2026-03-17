@@ -136,7 +136,7 @@ switch ($Verb) {
         Invoke-MSBuild $TestProj -Parallel
         Write-Host ""
         # Default: exclude [slow] tests; pass an explicit tag to override.
-        $effectiveTag = if ($Tag) { $Tag } else { '~[slow]' }
+        $effectiveTag = $Tag ? $Tag : '~[slow]'
         Write-Host "==> Running tests ($effectiveTag)" -ForegroundColor Cyan
         & $TestExe $effectiveTag
         exit $LASTEXITCODE

@@ -39,7 +39,7 @@ A modern C++20 chess engine focused on improving playing strength (ELO) while ma
 Scripts in `StratChessEvolved/Scripts/` handle working-directory and MSBuild path resolution
 internally. Invoke via the canonical pattern from any shell (bash, cmd, PowerShell):
 ```
-cmd.exe /c "powershell -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\<name>.ps1"
+cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\<name>.ps1"
 ```
 
 | Script | When to use |
@@ -61,7 +61,7 @@ cmd.exe /c "\"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.e
 ```
 **Shell notes**: The MSBuild install folder changes with every VS release (`2022`, `18`, …); never hard-code it. In **Git Bash** use `//p:` flags (double-slash) and the `/c/Program Files/…` path form. Direct `Bash` tool invocations are unreliable for Windows paths — prefer the Task (Bash subagent) + `cmd.exe` pattern.
 
-**PowerShell from Bash tool**: Variable expansion (`$var`), backtick escapes, piped cmdlets (`Where-Object`, `Select-String`, `Sort-Object`), and multi-line strings all silently fail or corrupt when PowerShell code is inlined in the Bash tool. Rule: write any non-trivial PS logic to a `.ps1` file first, then invoke with `powershell -ExecutionPolicy Bypass -File .\script.ps1`.
+**PowerShell from Bash tool**: The Bash tool runs Git Bash (bash), not PS7. PS7 syntax (`$var`, backtick escapes, piped cmdlets like `Where-Object`/`Select-String`/`Sort-Object`, and multi-line strings) all fail silently when inlined in bash. Rule: write any non-trivial PS logic to a `.ps1` file first, then invoke with `pwsh -ExecutionPolicy Bypass -File .\script.ps1`.
 
 Use `/v:normal` instead of `/v:minimal` when diagnosing build errors.
 

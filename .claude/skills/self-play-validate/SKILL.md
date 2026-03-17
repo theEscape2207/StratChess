@@ -9,7 +9,7 @@ Run full pre-PR validation: parallel build, extended tests, and AIPerplex vs AIP
 ## Canonical invocation (works from bash, cmd, or PowerShell)
 
 ```
-cmd.exe /c "powershell -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Validate-PrePR.ps1"
+cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Validate-PrePR.ps1"
 ```
 
 ## What it checks
