@@ -25,13 +25,29 @@ A modern C++20 chess engine focused on improving playing strength (ELO) while ma
 ### Build script (preferred)
 `build.ps1` at the repo root wraps MSBuild and discovers the correct executable automatically via `vswhere.exe` — no hard-coded VS paths:
 ```powershell
-.\build.ps1               # build main solution + test project (Release|x64)
+.\build.ps1               # build main + tests in parallel (Release|x64)
 .\build.ps1 main          # main solution only
 .\build.ps1 tests         # test project only
 .\build.ps1 run-tests     # build tests then run all of them
 .\build.ps1 run-tests "[formatter]"  # build tests then run a single tag
-.\build.ps1 all -Config Debug        # debug build of both
+.\build.ps1 all                      # build main + tests in parallel (Release|x64)
+.\build.ps1 all -Config Debug        # parallel debug build of both
 ```
+
+### Validation scripts
+Scripts in `StratChessEvolved/Scripts/` handle working-directory and MSBuild path resolution
+internally. Invoke via the canonical pattern from any shell (bash, cmd, PowerShell):
+```
+cmd.exe /c "powershell -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\<name>.ps1"
+```
+
+| Script | When to use |
+|---|---|
+| `Scripts\Run-Tests.ps1 [tag]` | Any test verification — optional tag filter |
+| `Scripts\Validate-PreCommit.ps1` | Before every commit — FEN check + fast tests |
+| `Scripts\Validate-PrePR.ps1` | Before opening a PR — full build + extended tests + self-play |
+
+Scripts must be invoked with `-File`, not dot-sourced (`$PSScriptRoot` is `$null` under dot-source).
 
 ### MSBuild invocation (fallback / raw)
 When calling MSBuild directly from a **Task (Bash subagent)** using `cmd.exe /c "…"`, use Windows backslash paths and single-slash flags:
