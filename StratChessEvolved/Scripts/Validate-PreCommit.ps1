@@ -33,8 +33,10 @@ $failed       = $false
 # --- Step 1: FEN check ---
 Write-Host "`n==> Checking FEN in game_settings.json" -ForegroundColor Cyan
 $content = Get-Content $settingsFile -Raw
-if ($content -notmatch [regex]::Escape($startingFen)) {
-    Write-Host "FAIL: game_settings.json does not contain the starting FEN." -ForegroundColor Red
+# Match only the active "FEN": field, not comment blocks that also contain the starting FEN
+$fenPattern = '"FEN"\s*:\s*"' + [regex]::Escape($startingFen) + '"'
+if ($content -notmatch $fenPattern) {
+    Write-Host "FAIL: game_settings.json active FEN is not the starting position." -ForegroundColor Red
     Write-Host "      Reset the FEN to: $startingFen" -ForegroundColor Yellow
     $failed = $true
 } else {
