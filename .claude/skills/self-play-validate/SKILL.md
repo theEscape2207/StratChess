@@ -6,10 +6,10 @@ description: Run an AI vs AI self-play game to validate search behavior after ch
 
 Run full pre-PR validation: parallel build, extended tests, and AIPerplex vs AIPerplex self-play.
 
-## Canonical invocation (pwsh shell)
+## Canonical invocation (works from bash, cmd, or PowerShell)
 
-```powershell
-.\StratChessEvolved\Scripts\Validate-PrePR.ps1
+```
+cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Validate-PrePR.ps1"
 ```
 
 ## What it checks

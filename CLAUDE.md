@@ -37,9 +37,9 @@ A modern C++20 chess engine focused on improving playing strength (ELO) while ma
 
 ### Validation scripts
 Scripts in `StratChessEvolved/Scripts/` handle working-directory and MSBuild path resolution
-internally. Invoke from a pwsh shell (Claude Code's default shell):
-```powershell
-.\StratChessEvolved\Scripts\<name>.ps1
+internally. Invoke via the canonical pattern from any shell (bash, cmd, PowerShell):
+```
+cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\<name>.ps1"
 ```
 
 | Script | When to use |
@@ -59,9 +59,9 @@ To discover `<MSBuild>` dynamically:
 ```
 cmd.exe /c "\"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe\" -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe"
 ```
-**Shell notes**: The MSBuild install folder changes with every VS release (`2022`, `18`, …); never hard-code it. In **Git Bash** use `//p:` flags (double-slash) and the `/c/Program Files/…` path form. The Bash tool now runs in PS7 (`"shell": "pwsh"` in `~/.claude/settings.json`), so Windows paths work natively. The `cmd.exe /c "pwsh..."` wrapper pattern is no longer needed for Claude-generated commands.
+**Shell notes**: The MSBuild install folder changes with every VS release (`2022`, `18`, …); never hard-code it. In **Git Bash** use `//p:` flags (double-slash) and the `/c/Program Files/…` path form. Direct `Bash` tool invocations are unreliable for Windows paths — prefer the Task (Bash subagent) + `cmd.exe` pattern.
 
-**PowerShell 7 is the Bash tool shell**: `"shell": "pwsh"` is set in `~/.claude/settings.json`, so the Bash tool runs in PS7 natively. PS7 syntax (`$var`, `|`, `Select-String`, `Where-Object`, `??=`, ternary `? :`, multi-line strings) all work directly. Use Windows-style paths — Unix-style paths (`/c/Users/...`) are not valid in pwsh. For non-trivial logic, prefer writing a `.ps1` file and invoking with `pwsh -ExecutionPolicy Bypass -File .\script.ps1` to keep commands auditable.
+**PowerShell from Bash tool**: The Bash tool runs Git Bash (bash), not PS7. PS7 syntax (`$var`, backtick escapes, piped cmdlets like `Where-Object`/`Select-String`/`Sort-Object`, and multi-line strings) all fail silently when inlined in bash. Rule: write any non-trivial PS logic to a `.ps1` file first, then invoke with `pwsh -ExecutionPolicy Bypass -File .\script.ps1`.
 
 Use `/v:normal` instead of `/v:minimal` when diagnosing build errors.
 
