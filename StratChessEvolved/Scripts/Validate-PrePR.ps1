@@ -13,7 +13,7 @@
     Before opening a pull request.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
-    .\StratChessEvolved\Scripts\Validate-PrePR.ps1
+    cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Validate-PrePR.ps1"
 
 .NOTES
     Prerequisite: game_settings.json must have "type": 6 for both players (AIPerplex vs AIPerplex).

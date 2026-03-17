@@ -10,8 +10,8 @@
     Any time you want to build and run tests — with or without a tag filter.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
-    .\StratChessEvolved\Scripts\Run-Tests.ps1
-    .\StratChessEvolved\Scripts\Run-Tests.ps1 [tactical]
+    cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Run-Tests.ps1"
+    cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Run-Tests.ps1 [tactical]"
 
 .PARAMETER Tag
     Optional Catch2 tag filter, e.g. "[tactical]" or "[eval]". Omit for full fast suite (~[slow]).
