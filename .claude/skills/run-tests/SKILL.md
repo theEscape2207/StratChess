@@ -4,29 +4,22 @@ description: Build and run StratChessTests with optional Catch2 tag filter. Use 
   user asks to run tests, verify a change, or check test results.
 ---
 
-Build the test project, then run with an optional tag filter.
+Build the test project and run with an optional Catch2 tag filter.
 
-## Steps
+## Canonical invocation (works from bash, cmd, or PowerShell)
 
-1. Build tests:
-   ```
-   .\build.ps1 tests
-   ```
+No tag — full fast suite (excludes [slow]):
+```
+cmd.exe /c "powershell -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Run-Tests.ps1"
+```
 
-2. Run all tests (no filter):
-   ```
-   StratChessTests\x64\Release\StratChessTests.exe
-   ```
-   Or with a tag filter (e.g. [sort], [search], [tactical], [perft], [tt], [eval],
-   [repetition], [formatter], [board], [time_mgr]):
-   ```
-   StratChessTests\x64\Release\StratChessTests.exe [tag]
-   ```
-
-3. Report: pass/fail count, any assertion failures, total assertions.
+With tag filter:
+```
+cmd.exe /c "powershell -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Run-Tests.ps1 [tactical]"
+```
 
 ## Notes
-- Run from worktree root (not StratChessTests/ subdirectory)
-- Binary is under `StratChessTests\x64\Release\` (not `x64\Release\`)
-- Build with `/v:normal` instead of `/v:minimal` when diagnosing build errors
-- Only x64 builds work — Win32/x86 not maintained
+- Run from worktree root (not a subdirectory)
+- Available tags: [sort] [search] [tactical] [perft] [tt] [eval] [repetition] [formatter] [board] [time_mgr]
+- Binary is under `StratChessTests\x64\Release\` (not `x64\Release\`) — the script handles this
+- Fallback if Scripts/ unavailable: `cmd.exe /c "powershell -ExecutionPolicy Bypass -File build.ps1 run-tests"`
