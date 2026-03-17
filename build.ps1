@@ -112,9 +112,20 @@ switch ($Verb) {
         } -ArgumentList $MSBuild,$TestProj,$Config,$Platform
 
         Wait-Job $jobMain,$jobTests | Out-Null
-        $exitMain  = Receive-Job $jobMain  | Select-Object -Last 1
-        $exitTests = Receive-Job $jobTests | Select-Object -Last 1
+        $outMain   = @(Receive-Job $jobMain)
+        $outTests  = @(Receive-Job $jobTests)
         Remove-Job $jobMain,$jobTests
+
+        # Print MSBuild output (all lines except the last, which is the exit code)
+        $outMain  | Select-Object -SkipLast 1 | ForEach-Object { Write-Host $_ }
+        $outTests | Select-Object -SkipLast 1 | ForEach-Object { Write-Host $_ }
+
+        $exitMain  = $outMain  | Select-Object -Last 1
+        $exitTests = $outTests | Select-Object -Last 1
+
+        # Guard against $null (job threw exception before emitting exit code)
+        if ($null -eq $exitMain)  { $exitMain  = 1 }
+        if ($null -eq $exitTests) { $exitTests = 1 }
 
         if ($exitMain -ne 0 -or $exitTests -ne 0) {
             Write-Error "Parallel build failed (main=$exitMain tests=$exitTests)."
