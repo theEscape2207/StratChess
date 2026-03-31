@@ -51,6 +51,15 @@
     <ClCompile Include="BoardTests.cpp">
       <Filter>Source Files\Tests</Filter>
     </ClCompile>
+    <ClCompile Include="BoardMoveTests.cpp">
+      <Filter>Source Files\Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="BoardStateTests.cpp">
+      <Filter>Source Files\Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="BoardApiTests.cpp">
+      <Filter>Source Files\Tests</Filter>
+    </ClCompile>
     <ClCompile Include="SearchTests.cpp">
       <Filter>Source Files\Tests</Filter>
     </ClCompile>

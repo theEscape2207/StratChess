@@ -172,6 +172,9 @@
     <ClCompile Include="TacticalTests.cpp" />
     <ClCompile Include="TacticalFullTests.cpp" />
     <ClCompile Include="BoardTests.cpp" />
+    <ClCompile Include="BoardMoveTests.cpp" />
+    <ClCompile Include="BoardStateTests.cpp" />
+    <ClCompile Include="BoardApiTests.cpp" />
     <ClCompile Include="SearchTests.cpp" />
     <ClCompile Include="SortTests.cpp" />
     <ClCompile Include="MoveFormatterTests.cpp" />

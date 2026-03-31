@@ -146,7 +146,7 @@ This roadmap organizes development tasks by priority and category. Items are dra
 #### 🟢 Phase 1 Test Infrastructure (add per-feature, see TestDesign.md)
 - **Estimate**: Varies — add when touching the relevant component
 - **Components** (details in `Docs/TestDesign.md`):
-  - `[board]` — `DoMove`/`UndoMove` completeness — ⚠️ **overdue**: Move layout Phases 3 & 4 already landed; do now, before De-Singleton
+  - `[board]` / `[board_moves]` / `[board_state]` / `[board_api]` — DoMove/UndoMove completeness + full move-type, GameInfo state, and API coverage — ✅ done (`BoardTests.cpp`, `BoardMoveTests.cpp`, `BoardStateTests.cpp`, `BoardApiTests.cpp`)
   - `[sort]` — ✅ done — `MoveSorter::ScoreMoves()` extraction + 5 test cases (PR #38)
   - `[search]` — ✅ done — 10 test cases via `AIPerlexTestFixture`; landed with LMR (PR #38)
   - Full tactical suite (`StratChessEvolved.exe tactical test`) — add **before UCI** (engine readiness check; does not need to wait for evaluation extension)

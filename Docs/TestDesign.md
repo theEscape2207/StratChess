@@ -41,6 +41,10 @@ x64/Release/StratChessTests.exe [perft]
 x64/Release/StratChessTests.exe [search]
 x64/Release/StratChessTests.exe [sort]
 x64/Release/StratChessTests.exe [time_mgr]
+x64/Release/StratChessTests.exe [board]
+x64/Release/StratChessTests.exe [board_moves]
+x64/Release/StratChessTests.exe [board_state]
+x64/Release/StratChessTests.exe [board_api]
 ```
 
 The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[slow]` run. Use `extended-tests` to include it:
@@ -67,6 +71,9 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | Search helpers (assess_quality etc.) | `[search]` | ✅ Phase 1 | `SearchTests.cpp` |
 | Move ordering (Sort) | `[sort]` | ✅ Phase 1 | `SortTests.cpp` |
 | Board DoMove/UndoMove completeness | `[board]` | ✅ Phase 1 | `BoardTests.cpp` |
+| Board move-type round-trips (all types) | `[board_moves]` | ✅ Phase 1 | `BoardMoveTests.cpp` |
+| Board GameInfo state lifecycle | `[board_state]` | ✅ Phase 1 | `BoardStateTests.cpp` |
+| Board public query APIs + FEN round-trip | `[board_api]` | ✅ Phase 1 | `BoardApiTests.cpp` |
 | Time management (TimeManager + compute_budget) | `[time_mgr]` | ✅ Phase 1 | `TimeManagerTests.cpp` |
 | Bitboard helpers | `[bitboard]` | ⏳ Phase 1 | `BitboardTests.cpp` (future) |
 | UCI command loop | `[uci]` | ✅ validated via pipe test | `StratChessEvolved.exe uci` (pipe smoke test) |
@@ -164,7 +171,7 @@ Verify ordering priority: PV move → hash move → captures (MVV-LVA) → kille
 
 ### `[board]` — DoMove/UndoMove completeness
 
-**Status**: ✅ **Done.** Move layout Phases 3 & 4 landed in March 2026; all 5 cases (en passant, castling, promotion generation, promotion round-trip, Zobrist hash cycle) implemented and passing (6 test cases, 33 assertions).
+**Status**: ✅ **Done.** Move layout Phases 3 & 4 landed in March 2026 (6 test cases, 33 assertions). Extended March 2026: `BoardMoveTests.cpp` (9 cases, `[board_moves]`), `BoardStateTests.cpp` (12 cases, `[board_state]`), `BoardApiTests.cpp` (11 cases, `[board_api]`) add full move-type, GameInfo state, and API coverage.
 **File**: `StratChessTests/BoardTests.cpp`
 
 - En passant DoMove/UndoMove: captured pawn restored correctly
