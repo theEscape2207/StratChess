@@ -150,7 +150,7 @@ Sources: `StratEngine/Tests/Perft.h/cpp` + `Tests/perft_test_cases.json`
 - Run exe from `StratChessEvolved/` directory — reads `game_settings.json` from working directory
 - AI vs AI is fully headless: `Game::Run()` terminates automatically on checkmate/stalemate; no stdin needed
 - AIPerplex verbose logging is **on** by default in game mode; each move logs `GetMove complete: move=..., depth=..., time=...ms, nodes=..., stable=...` to stdout; default spdlog also writes `logs/multisink.txt` (relative to working dir)
-- For subprocess validation: `Start-Process ..\x64\Release\StratChessEvolved.exe -PassThru -NoNewWindow -RedirectStandardOutput out.txt` then `$proc.Kill()` after N seconds for timed tests; `$proc.WaitForExit(msTimeout)` for games expected to complete naturally
+- For subprocess validation: `Start-Process ..\x64\Release\StratChessEvolved.exe -ArgumentList "game" -PassThru -NoNewWindow -RedirectStandardOutput out.txt` then `$proc.Kill()` after N seconds for timed tests; `$proc.WaitForExit(msTimeout)` for games expected to complete naturally — **the `game` argument is required**: no args (or `uci`) routes into `UciHandler::run()` (`StratChessEvolved.cpp` `main()`), which blocks on stdin and never runs `Game::Run()`
 - **Claude is expected to execute all validation plan steps autonomously** — explicitly flag any step that requires user assistance (e.g. interactive GUI, manual input) before skipping it
 - Run AIPerplex self-play (`"type": 6` for both sides in `game_settings.json`) to verify search behaviour
 - For changes to base classes PlayerAI/PlayerBase, verify through AIAgent self-play (`"type": 3`) as well
