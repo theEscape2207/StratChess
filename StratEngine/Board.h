@@ -28,8 +28,15 @@ public:
 	bool DoMove(const Move&);
 	void UndoMove(const Move&);
 
-	// Depth of the in-flight (unmatched) DoMove recursion since the last
-	// permanently-committed position. Call after any move that will never
+	// Null-move helpers: make/unmake a side-to-move pass without changing material.
+	// These are used by search algorithms implementing null-move pruning. They
+	// must preserve the same push/pop semantics as DoMove/UndoMove (ply bookkeeping,
+	// zobrist history, repetition stack).
+	void DoNullMove();
+	void UndoNullMove();
+
+	// Depth of the in-flight (unmatched) DoMove/DoNullMove recursion since the
+	// last permanently-committed position. Call after any move that will never
 	// be undone (a real game move, or a UCI position replay) — the four
 	// ply-history arrays only need to span search recursion, not game length.
 	size_t GetSearchDepth() const noexcept { return currentPly_; }

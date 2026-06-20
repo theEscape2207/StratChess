@@ -72,10 +72,20 @@ protected:
 	// Registers the amount of used time and prints out if PRINT_STATS is set
 	std::chrono::milliseconds StopTimerAndAdjustVars() const;
 
-	// Tilfoejer dette traek til nuvaerende traekfoelge	
+	// Tilfoejer dette traek til nuvaerende traekfoelge
 	// Sletter eksisterende traek fra listen fra denne ply og ned
 	// Benyttes til Last Move sorting - Saetter parent node
 	void AddMoveToSeq(const Move& move, size_t ply);
+
+	// Null-move counterpart to AddMoveToSeq: no Move to derive info from, so
+	// snapshot the board's current GameInfo directly. Caller must call this
+	// AFTER m_Board.DoNullMove() has already been applied, using the pre-
+	// recursion ply (same convention as AddMoveToSeq(move, ply)).
+	void AddNullMoveToSeq(size_t ply);
+
+	// Shared m_infoSeq size-bookkeeping used by both AddMoveToSeq and
+	// AddNullMoveToSeq.
+	void StoreInfoAtPly(size_t ply, const GameInfo& info);
 
 	// Returns the best first move currently found
 	virtual Move GetBestMove(_In_ GameInfo& info) noexcept;

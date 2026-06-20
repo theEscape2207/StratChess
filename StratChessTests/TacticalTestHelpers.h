@@ -22,3 +22,10 @@ inline std::unique_ptr<PlayerBase> make_tactical_engine(unsigned depth)
     ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
     return ai;
 }
+
+// Down-casts a tactical engine to AIPerplex so tests can reach tuning_ via
+// the public tuning() accessor (e.g. to toggle null_move_enabled).
+inline AIPerplex& as_perplex(std::unique_ptr<PlayerBase>& ai)
+{
+    return *static_cast<AIPerplex*>(ai.get());
+}

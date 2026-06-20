@@ -59,6 +59,25 @@ TEST_CASE("Board - En passant DoMove removes captured pawn; UndoMove restores it
     REQUIRE(board.GetPiece(e6) == NO_PIECE);
 }
 
+TEST_CASE("Board - DoNullMove clears pending en-passant right; UndoNullMove restores it", "[board]")
+{
+    Board& board = Board::Instance();
+    board.SetupFromFEN(FEN_EP);
+
+    REQUIRE(board.GetGameInfo().epSquare == e6);
+    const uint64_t hash_before = board.get_zobrist_hash();
+
+    board.DoNullMove();
+
+    REQUIRE(board.GetGameInfo().epSquare == NO_SQUARE);
+    REQUIRE(board.get_zobrist_hash() != hash_before);
+
+    board.UndoNullMove();
+
+    REQUIRE(board.GetGameInfo().epSquare == e6);
+    REQUIRE(board.get_zobrist_hash() == hash_before);
+}
+
 TEST_CASE("Board - Kingside castling DoMove moves king and rook; UndoMove restores both", "[board]")
 {
     Board& board = Board::Instance();
