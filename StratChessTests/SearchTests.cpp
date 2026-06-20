@@ -4,6 +4,9 @@
 //   assess_iteration_quality() — 6 cases, one per RejectionReason branch
 //   should_stop_early()        — 2 cases (mate score, forced-line short-circuit)
 //   handle_empty_move_emergency() — 2 cases (mate path, true-emergency path)
+//   should_try_null_move()     — 8 cases, one per guard branch (disabled, PV,
+//                                 in-check, depth, mate-score, zugzwang,
+//                                 consecutive-null, otherwise-eligible)
 //
 // Requires STRAT_ENABLE_TEST_ACCESS in the test project preprocessor definitions.
 // See Docs/TestDesign.md §"AIPerplex Test Access" for the mechanism.
