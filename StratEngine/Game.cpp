@@ -270,6 +270,7 @@ void Game::Run()
 		// Foretag traekket paa det virkelige braet
 		if (!rBoard.DoMove(newMove))
 			assert(!"Unexpected illegal move found! Exiting...");
+		rBoard.ResetSearchDepth();
 
 		// Traekket er godkendt! Vi spiller videre!!
 

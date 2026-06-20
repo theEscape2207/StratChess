@@ -97,6 +97,9 @@ void UciHandler::cmd_position(std::string_view line)
                 Board::Instance().DoMove(m);
             }
         }
+        // These moves are a permanent replay, never undone — reset the
+        // undo-stack depth so it only spans the search that follows (issue #53).
+        Board::Instance().ResetSearchDepth();
     }
 }
 
