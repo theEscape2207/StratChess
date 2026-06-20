@@ -91,3 +91,55 @@ TEST_CASE("Tactical - slow suite", "[tactical_full][slow]")
     REQUIRE(m.from() == tc.expected_from);
     REQUIRE(m.to()   == tc.expected_to);
 }
+
+// ---------------------------------------------------------------------------
+// Null-move pruning: guard must not alter search results in a zugzwang
+// position. White has king+pawn only, Black has king only — should_try_null_move's
+// zugzwang guard must refuse NMP here, so enabling/disabling NMP must produce
+// byte-identical search results (same nodes, move, and score).
+// ---------------------------------------------------------------------------
+TEST_CASE("Tactical (full) - null-move pruning guard is a no-op in K+P endgame", "[tactical_full][slow]")
+{
+    const char* fen = "8/8/8/3k4/8/3K4/3P4/8 w - - 0 1";
+    constexpr unsigned depth = 5;
+
+    Board::Instance().SetupFromFEN(fen);
+    auto ai_disabled = make_tactical_engine(depth);
+    as_perplex(ai_disabled).tuning().null_move_enabled = false;
+    GameInfo info_disabled = Board::Instance().GetGameInfo();
+    Move move_disabled = ai_disabled->GetMove(info_disabled);
+    SearchResult result_disabled = as_perplex(ai_disabled).GetLastResult();
+
+    Board::Instance().SetupFromFEN(fen);
+    auto ai_enabled = make_tactical_engine(depth);
+    as_perplex(ai_enabled).tuning().null_move_enabled = true;
+    GameInfo info_enabled = Board::Instance().GetGameInfo();
+    Move move_enabled = ai_enabled->GetMove(info_enabled);
+    SearchResult result_enabled = as_perplex(ai_enabled).GetLastResult();
+
+    REQUIRE(move_disabled == move_enabled);
+    REQUIRE(result_disabled.best_score == result_enabled.best_score);
+    REQUIRE(result_disabled.nodes_searched == result_enabled.nodes_searched);
+}
+
+// ---------------------------------------------------------------------------
+// Null-move pruning: regression test for the m_infoSeq desync bug (Task 4a).
+// A material-rich position at sufficient depth guarantees some non-PV node
+// satisfies every should_try_null_move() guard and actually calls
+// DoNullMove()/recurses — exercising the path Task 1/3's tests never did.
+// Before the Task 4a fix, this crashed with an out-of-range m_infoSeq access.
+// ---------------------------------------------------------------------------
+TEST_CASE("Tactical (full) - null-move pruning does not crash on a real recursion", "[tactical_full][slow]")
+{
+    Board::Instance().SetupFromFEN(
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    constexpr unsigned depth = 7;
+
+    auto ai = make_tactical_engine(depth);
+    as_perplex(ai).tuning().null_move_enabled = true;
+    GameInfo info = Board::Instance().GetGameInfo();
+
+    Move move = ai->GetMove(info);
+
+    REQUIRE(!move.is_null());
+}

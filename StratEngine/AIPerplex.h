@@ -53,6 +53,11 @@ private:
 		int  lmr_min_depth      = 3;    // don't reduce at depth < 3
 		int  lmr_min_move_index = 3;    // don't reduce the first 3 moves (si 0, 1, 2)
 		bool lmr_enabled        = true; // kill-switch: set false to measure LMR impact via SimplePerfStats.txt
+
+		// Null-move pruning tuning
+		bool null_move_enabled  = true;  // enabled by default (validated via tests + self-play; see .claude/plans/null-move-pruning.md)
+		int  null_move_reduction = 3;    // reduction R used in null-move search (depth -> depth-1-R)
+		int  null_move_min_depth = 3;    // minimum depth to attempt null-move pruning
 	} tuning_;
 
 	// INTERNAL STRUCTURES
@@ -116,6 +121,7 @@ private:
 	// Move ordering heuristics
 	void clear_killers() noexcept;
 	void store_killer(int ply, const Move& move) noexcept;
+	void clear_null_move_flags() noexcept;
 
 	void clear_history() noexcept;
 	void age_history() noexcept;
@@ -125,6 +131,7 @@ private:
 	RejectionReason assess_iteration_quality(const IterationMetrics& metrics, const SearchState& state) const;
 	bool should_stop_early(int depth, int score, int pv_length) const;			// Early termination checks
 	bool handle_empty_move_emergency(SearchState& state, PVTable& pv_table);	// Emergency handling
+	bool should_try_null_move(int depth, int beta, int ply, bool is_pv_node, bool in_check) const;
 	
 	// Logging helpers
 	void log_iteration_eval(const IterationMetrics& metrics, const PVTable& pv_table) const;
@@ -141,6 +148,12 @@ private:
 	// Killer move heuristic: two quiet moves per ply that caused a beta cutoff
 	static constexpr int MAX_KILLERS = 2;
 	Move killers_[MAX_PLY][MAX_KILLERS];
+
+	// Null-move consecutive-pass guard: last_move_was_null_[ply] is true when
+	// the move that led to this ply was itself a null move. Indexed the same
+	// way as killers_; cleared at search start and reset immediately after
+	// each null-move attempt completes (see pvs()).
+	bool last_move_was_null_[MAX_PLY]{};
 
 	// History heuristic: accumulated score for quiet moves that caused beta cutoffs,
 	// indexed by [side-to-move][from-square][to-square].

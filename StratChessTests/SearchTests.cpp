@@ -4,6 +4,9 @@
 //   assess_iteration_quality() — 6 cases, one per RejectionReason branch
 //   should_stop_early()        — 2 cases (mate score, forced-line short-circuit)
 //   handle_empty_move_emergency() — 2 cases (mate path, true-emergency path)
+//   should_try_null_move()     — 8 cases, one per guard branch (disabled, PV,
+//                                 in-check, depth, mate-score, zugzwang,
+//                                 consecutive-null, otherwise-eligible)
 //
 // Requires STRAT_ENABLE_TEST_ACCESS in the test project preprocessor definitions.
 // See Docs/TestDesign.md §"AIPerplex Test Access" for the mechanism.
@@ -55,6 +58,15 @@ public:
 
     bool emergency(State& s, PVTable& pv) const
         { return ai->handle_empty_move_emergency(s, pv); }
+
+    bool try_null_move(int depth, int beta, int ply, bool is_pv_node, bool in_check) const
+        { return ai->should_try_null_move(depth, beta, ply, is_pv_node, in_check); }
+
+    // Pokes the private consecutive-null-move guard array. Needed because
+    // last_move_was_null_ is private on AIPerplex — only AIPerlexTestFixture
+    // (the declared friend) can reach it, not the free TEST_CASE functions.
+    void set_last_move_was_null(int ply, bool value) const
+        { ai->last_move_was_null_[ply] = value; }
 };
 
 // ============================================================================
@@ -297,4 +309,93 @@ TEST_CASE("Search - handle_empty_move_emergency: non-mate emergency sets a legal
 
     REQUIRE(result == true);                // emergency move was found
     REQUIRE(!s.best_move.is_null());        // a move was set
+}
+
+// ============================================================================
+// should_try_null_move tests
+// ============================================================================
+
+TEST_CASE("Search - should_try_null_move: disabled returns false", "[search]")
+{
+    Board::Instance().SetupFromFEN(
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    AIPerlexTestFixture fix;
+    fix.ai->tuning().null_move_enabled = false;
+
+    REQUIRE(fix.try_null_move(4, 0, 1, false, false) == false);
+}
+
+TEST_CASE("Search - should_try_null_move: PV node returns false", "[search]")
+{
+    Board::Instance().SetupFromFEN(
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    AIPerlexTestFixture fix;
+    fix.ai->tuning().null_move_enabled = true;
+
+    REQUIRE(fix.try_null_move(4, 0, 1, /*is_pv_node=*/true, false) == false);
+}
+
+TEST_CASE("Search - should_try_null_move: in check returns false", "[search]")
+{
+    Board::Instance().SetupFromFEN(
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    AIPerlexTestFixture fix;
+    fix.ai->tuning().null_move_enabled = true;
+
+    REQUIRE(fix.try_null_move(4, 0, 1, false, /*in_check=*/true) == false);
+}
+
+TEST_CASE("Search - should_try_null_move: depth below minimum returns false", "[search]")
+{
+    Board::Instance().SetupFromFEN(
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    AIPerlexTestFixture fix;
+    fix.ai->tuning().null_move_enabled  = true;
+    fix.ai->tuning().null_move_min_depth = 3;
+
+    REQUIRE(fix.try_null_move(/*depth=*/2, 0, 1, false, false) == false);
+}
+
+TEST_CASE("Search - should_try_null_move: mate-score beta returns false", "[search]")
+{
+    Board::Instance().SetupFromFEN(
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    AIPerlexTestFixture fix;
+    fix.ai->tuning().null_move_enabled = true;
+
+    REQUIRE(fix.try_null_move(4, GameValues::Mate_Threshold, 1, false, false) == false);
+    REQUIRE(fix.try_null_move(4, -GameValues::Mate_Threshold, 1, false, false) == false);
+}
+
+TEST_CASE("Search - should_try_null_move: zugzwang (no non-pawn material) returns false", "[search]")
+{
+    // White: king + pawn only. Black: king only. No non-pawn material for
+    // the side to move (white) -> zugzwang guard must refuse NMP.
+    Board::Instance().SetupFromFEN("8/8/8/3k4/8/3K4/3P4/8 w - - 0 1");
+    AIPerlexTestFixture fix;
+    fix.ai->tuning().null_move_enabled = true;
+
+    REQUIRE(fix.try_null_move(4, 0, 1, false, false) == false);
+}
+
+TEST_CASE("Search - should_try_null_move: consecutive null move returns false", "[search]")
+{
+    Board::Instance().SetupFromFEN(
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    AIPerlexTestFixture fix;
+    fix.ai->tuning().null_move_enabled = true;
+    fix.set_last_move_was_null(2, true);   // ply 2 was reached via a null move
+
+    REQUIRE(fix.try_null_move(4, 0, /*ply=*/2, false, false) == false);
+}
+
+TEST_CASE("Search - should_try_null_move: otherwise-eligible position returns true", "[search]")
+{
+    Board::Instance().SetupFromFEN(
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    AIPerlexTestFixture fix;
+    fix.ai->tuning().null_move_enabled  = true;
+    fix.ai->tuning().null_move_min_depth = 3;
+
+    REQUIRE(fix.try_null_move(4, 0, 1, false, false) == true);
 }
