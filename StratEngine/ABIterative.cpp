@@ -30,7 +30,7 @@ Move ABIterative::GetMove(_Inout_ GameInfo& info)
 	StartTimer();
 
 	// almindelig iterativ soegning
-	for (m_Depth = 1; m_Depth <= max_depth_; ++m_Depth)
+	for (depth_ = 1; depth_ <= max_depth_; ++depth_)
 	{
 		if (ShouldStopSearch())
 			break;
@@ -42,7 +42,7 @@ Move ABIterative::GetMove(_Inout_ GameInfo& info)
 			spdlog::default_logger()->debug("ABIterative: iScore != GetBestScore - when does this happen?");*/
 
 		// Spillet er slut (mat, remis) - ingen grund til at soege videre!!
-		if (m_Line.size() != m_Depth)
+		if (m_Line.size() != depth_)
 			break;
 
 		/*if (m_Line.front() != m_BestMove)
@@ -81,10 +81,11 @@ int ABIterative::Search(int ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& 
 	if (checkDraws(info, ply))
 		return GameValues::Draw;
 
-	// Er vi naaet til bunden af traeet - leaf nodes?
-	if (ply == m_Depth)
+    // Er vi naaet til bunden af traeet - leaf nodes?
+	// Avoid signed/unsigned comparison (ply is int, depth_ is size_t)
+	if (ply >= 0 && static_cast<size_t>(ply) == depth_)
 	{
-		assert(pline.size() <= m_Depth);
+		assert(pline.size() <= depth_);
 		// Quiescent seach
 		return Quiescent(ply, alpha, beta);
 	}
@@ -119,7 +120,7 @@ int ABIterative::Search(int ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& 
 
 			moveFound = true;
 
-			if (ply == 0 && m_Depth == max_depth_)
+			if (ply == 0 && depth_ == max_depth_)
 				spdlog::default_logger()->debug("Root move {}/{}: {} score={}",
 					counter, moveList.size(), curMove.Output(), value);
 
@@ -139,7 +140,7 @@ int ABIterative::Search(int ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& 
 				if (value >= beta)
 				{
 					//	This move failed high (i.e. too good a move), so we are going to return beta
-					assert(pline.size() <= m_Depth);
+					assert(pline.size() <= depth_);
 					return beta;
 				}
 
@@ -157,7 +158,7 @@ int ABIterative::Search(int ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& 
 				if (!line.empty())		// copy all moves from line to pline
 					pline.insert(pline.begin() + 1, line.begin(), line.end());
 
-				assert(pline.size() <= m_Depth);
+				assert(pline.size() <= depth_);
 
 				if (ply == 0) {		// Er vi i roden af traeet ?
 					//Ja, saa saet den nye score
@@ -168,7 +169,7 @@ int ABIterative::Search(int ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& 
 		}
 		else
 		{
-			if (ply == 0 && m_Depth == max_depth_)
+			if (ply == 0 && depth_ == max_depth_)
 				spdlog::default_logger()->debug("Root move {}/{}: {} ILLEGAL",
 					counter, moveList.size(), curMove.Output());
 		}
@@ -187,16 +188,16 @@ int ABIterative::Search(int ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& 
 				//Ja, saa saet den nye score
 				_bestScore = -GameValues::Mate;
 			}
-			assert(pline.size() <= m_Depth);
+			assert(pline.size() <= depth_);
 			return -GameValues::Mate + static_cast<int>(ply);		// returner mate value minus distance to it
 		}
-		assert(pline.size() <= m_Depth);
+		assert(pline.size() <= depth_);
 		// Remis: Godt hvis vi er bagud, men skidt hvis vi er foran
 		UpdateGameState(ply, GameStates::DRAW_PAT);
 		return GameValues::Draw;
 	}
 	UpdateGameState(ply, GameStates::STILL_PLAYING);
-	assert(pline.size() <= m_Depth);
+	assert(pline.size() <= depth_);
 	// Vi har et normalt traek, returner den bedste alpha-vaerdi
 	return alpha;
 }
