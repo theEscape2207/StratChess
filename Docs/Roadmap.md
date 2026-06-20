@@ -1,6 +1,6 @@
 # StratChess Engine Roadmap
 
-**Last Updated**: March 10, 2026
+**Last Updated**: June 20, 2026
 **Timeframe**: Next 6 months (through parallel search implementation)
 **Current Version**: AIPerplex 2.0
 
@@ -518,6 +518,17 @@ Avoid these traps:
 - `std::format` replaces `std::stringstream` in `Move::Output()`
 - `<bit>` and `<format>` added to `StdAfx.h` PCH
 - C++23 upgrade path documented in `.claude/plans/cpp23-upgrade.md`
+
+### Performance: Null-Move Pruning (PR #55, June 2026)
+- `tuning_.null_move_enabled` defaults to `true`; guard helper `should_try_null_move()` centralises every condition: zugzwang (no non-pawn material), mate-score contamination, consecutive-null, PV/in-check, min-depth
+- Two real bugs fixed along the way: `Board::DoNullMove()` wasn't forfeiting en-passant rights (zobrist/EP desync); `PlayerAiBase::m_infoSeq` wasn't sized for null-move plies (out-of-bounds crash the first time NMP recursed in a real self-play game, not caught by unit tests alone)
+- Plan: `.claude/plans/null-move-pruning.md`
+
+### Correctness: Decouple `Board::currentPly_` from Game Length (PR #57, issue #53, June 2026)
+- `currentPly_` indexes four fixed `MAX_PLY=256` ply-history arrays but was never reset after a permanently-committed move, so it grew with total game length while search recursion added depth on top — overflowed the arrays after ~250 real moves (self-play access violation around move 247-249)
+- `Board::ResetSearchDepth()` added, called after every permanent move commit (`Game::Run`'s real move, `UCIHandler`'s position-moves replay), so `currentPly_` only ever spans in-flight search recursion depth, never game length
+- `assert(currentPly_ < MAX_PLY)` guard added in `DoMove`/`UndoMove` as defense in depth
+- Regression tests: undo-stack depth doesn't accumulate across 320 simulated real moves; full search-recursion headroom remains after a 260-move game
 
 ### Infrastructure: UCI Protocol (March 2026)
 - `UCIHandler` class: synchronous command loop with search on `std::thread`
