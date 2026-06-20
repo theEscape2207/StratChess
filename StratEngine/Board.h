@@ -28,6 +28,13 @@ public:
 	bool DoMove(const Move&);
 	void UndoMove(const Move&);
 
+	// Null-move helpers: make/unmake a side-to-move pass without changing material.
+	// These are used by search algorithms implementing null-move pruning. They
+	// must preserve the same push/pop semantics as DoMove/UndoMove (ply bookkeeping,
+	// zobrist history, repetition stack).
+	void DoNullMove();
+	void UndoNullMove();
+
 	// --- Position queries ---
 	bool InCheck() const noexcept;
 
