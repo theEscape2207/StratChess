@@ -6,6 +6,7 @@ A modern C++20 chess engine focused on improving playing strength (ELO) while ma
 ## Repository Structure
 - `StratChessEvolved/` – Main application entry point and project files
 - `StratEngine/` – Core engine source (search, evaluation, move generation, AI agents)
+- `StratEngine/Utils/` – Cross-cutting utilities: `TimeManager` (soft/hard limits), `TimeUtils` (budget formula), `Logger`
 - `StratEngine/Archived/` – Legacy algorithms kept for reference (AITrans, ABIterTrans, HashElement)
 - `StratEngine/Tests/` – Perft and repetition test implementations
 - `StratChessTests/` – Unit test project
@@ -79,6 +80,8 @@ IDS + PVS + quiescence search; Zobrist-hashed transposition table; bitboard repr
 - `StratEngine/TranspositionTable.cpp` / `TranspositionTable.h` – TT implementation
 - `StratEngine/MoveHelper.h` – Move query utilities (`IsCapture`, `IsPawnMove`, `IsKingMove`, `Value`, etc.) — all take `ePiece`, no `Move&`
 - `StratEngine/Sort.cpp` / `Sort.h` – Move ordering
+- `StratEngine/Utils/TimeUtils.h/cpp` – `Engine::compute_budget(remaining, increment, moves_to_go)` → `TimeBudget{soft, hard}`; pure function, no clock dependency
+- `StratEngine/Utils/TimeManager.h` – `chess::TimeManager`: `start(soft, hard)` / `start(allocated)` (delegates); `should_stop_iteration()` (soft) + `should_stop_search()` (hard); `PlayerAiBase::SetClockInfo()` sets budgets — `clock_info_set_` flag prevents `StartTimer()` from overwriting them
 - `StratChessEvolved/game_settings.json` – Runtime player/AI configuration
 - `Docs/Roadmap.md` – Living development plan; check before starting any new work
 - `Docs/TestDesign.md` – Test coverage map and phase plan; check before adding tests
@@ -104,6 +107,8 @@ StratChessTests/x64/Release/StratChessTests.exe [tt]               # Transpositi
 StratChessTests/x64/Release/StratChessTests.exe [eval]             # evaluation position tests
 StratChessTests/x64/Release/StratChessTests.exe [tactical]         # search regression tests (fast, depth 4)
 StratChessTests/x64/Release/StratChessTests.exe [tactical_full]   # slow tactical tier (depth 6, ~2 s)
+StratChessTests/x64/Release/StratChessTests.exe [sort]             # move ordering priority tests
+StratChessTests/x64/Release/StratChessTests.exe [time_mgr]         # compute_budget formula + soft/hard timing
 ```
 `run-tests` excludes `[slow]` tests by default; `extended-tests` includes them.
 Building the `.sln` does not always rebuild the test project. To build it explicitly:
