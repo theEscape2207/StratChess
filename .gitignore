@@ -373,3 +373,4 @@ Directory.Build.user.props
 /StratChessEvolved/logs/*
 /.claude/settings.local.json
 /StratChessTests/logs/*
+/.claude/worktrees/
