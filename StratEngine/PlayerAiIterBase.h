@@ -71,5 +71,5 @@ protected:
 
 	/* Protected variables */
 	PVLine m_Line;			// For iterative
-	size_t m_Depth{ 0 };		// For iterative
+	size_t depth_{ 0 };		// For iterative
 };
