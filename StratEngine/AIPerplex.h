@@ -55,7 +55,7 @@ private:
 		bool lmr_enabled        = true; // kill-switch: set false to measure LMR impact via SimplePerfStats.txt
 
 		// Null-move pruning tuning
-		bool null_move_enabled  = false; // disabled by default; opt-in after validation
+		bool null_move_enabled  = true;  // enabled by default (validated via tests + self-play; see .claude/plans/null-move-pruning.md)
 		int  null_move_reduction = 3;    // reduction R used in null-move search (depth -> depth-1-R)
 		int  null_move_min_depth = 3;    // minimum depth to attempt null-move pruning
 	} tuning_;

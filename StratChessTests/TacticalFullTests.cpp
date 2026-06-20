@@ -121,3 +121,25 @@ TEST_CASE("Tactical (full) - null-move pruning guard is a no-op in K+P endgame",
     REQUIRE(result_disabled.best_score == result_enabled.best_score);
     REQUIRE(result_disabled.nodes_searched == result_enabled.nodes_searched);
 }
+
+// ---------------------------------------------------------------------------
+// Null-move pruning: regression test for the m_infoSeq desync bug (Task 4a).
+// A material-rich position at sufficient depth guarantees some non-PV node
+// satisfies every should_try_null_move() guard and actually calls
+// DoNullMove()/recurses — exercising the path Task 1/3's tests never did.
+// Before the Task 4a fix, this crashed with an out-of-range m_infoSeq access.
+// ---------------------------------------------------------------------------
+TEST_CASE("Tactical (full) - null-move pruning does not crash on a real recursion", "[tactical_full][slow]")
+{
+    Board::Instance().SetupFromFEN(
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    constexpr unsigned depth = 7;
+
+    auto ai = make_tactical_engine(depth);
+    as_perplex(ai).tuning().null_move_enabled = true;
+    GameInfo info = Board::Instance().GetGameInfo();
+
+    Move move = ai->GetMove(info);
+
+    REQUIRE(!move.is_null());
+}

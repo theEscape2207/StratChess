@@ -281,7 +281,7 @@ int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, Tra
 	pv_table.clear_ply(ply);
 
 	// We need the info on the current board state
-	const GameInfo& info = GetLastBoardInfo(ply);
+	GameInfo info = GetLastBoardInfo(ply);
 
 	// Test for 50 moves rule and threefold repetition
 	if (checkDraws(info, ply))
@@ -338,6 +338,7 @@ int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, Tra
 		const int R = tuning_.null_move_reduction;
 		last_move_was_null_[ply + 1] = true;
 		m_Board.DoNullMove();
+		AddNullMoveToSeq(ply);
 		int null_score = -pvs(depth - 1 - R, -beta, -beta + 1, ply + 1, false, tt, pv_table);
 		m_Board.UndoNullMove();
 		last_move_was_null_[ply + 1] = false;
