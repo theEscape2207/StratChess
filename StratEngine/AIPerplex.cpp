@@ -134,6 +134,7 @@ SearchResult  AIPerplex::iterative_deepening(int max_depth, TranspositionTable& 
 	bool extra_depth_used = false;   // soft-limit extension granted at most once per search
 
 	clear_killers();	// Clear killer moves at the start of the search
+	clear_null_move_flags();
 
 	for (int depth = 1; depth <= max_depth; ++depth) {
 
@@ -328,9 +329,28 @@ int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, Tra
 		pv_move = pv_table.get_pv_move(ply);
 	}
 
+	const bool in_check = m_Board.InCheck();
+
+	// Null-move pruning: cheap cutoff attempt before move generation.
+	// should_try_null_move() centralises every guard (zugzwang, mate-score,
+	// consecutive-null, PV/in-check/depth) so it can be unit tested directly.
+	if (should_try_null_move(depth, beta, ply, is_pv_node, in_check)) {
+		const int R = tuning_.null_move_reduction;
+		last_move_was_null_[ply + 1] = true;
+		m_Board.DoNullMove();
+		int null_score = -pvs(depth - 1 - R, -beta, -beta + 1, ply + 1, false, tt, pv_table);
+		m_Board.UndoNullMove();
+		last_move_was_null_[ply + 1] = false;
+		if (null_score >= beta) {
+			tt.store(key, static_cast<int16_t>(null_score), static_cast<int16_t>(depth),
+				static_cast<int16_t>(ply), Move::EmptyMove(), BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
+			return null_score;
+		}
+	}
+
 	MoveList moveList;
 	MoveGenerator::ComputeLegalMoves(info, moveList);
-	
+
 	bool first_child = true;
 	int best_value = -GameValues::Search_Init;
 	Move best_move;
@@ -346,7 +366,6 @@ int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, Tra
 		killers_[ply][0], killers_[ply][1],
 		history_, scored_idx);
 
-	const bool in_check = m_Board.InCheck();
 	bool moveFound = false;
 
 	// Iterate by sorted index — no rebuild of moveList needed
@@ -702,6 +721,11 @@ void AIPerplex::clear_killers() noexcept
 			k = Move::EmptyMove();
 }
 
+void AIPerplex::clear_null_move_flags() noexcept
+{
+	std::memset(last_move_was_null_, 0, sizeof(last_move_was_null_));
+}
+
 void AIPerplex::store_killer(int ply, const Move& move) noexcept
 {
 	// Only quiet moves are stored as killers
@@ -901,6 +925,25 @@ bool AIPerplex::should_stop_early(int depth, int score, int pv_length) const {
 	return false;
 }
 
+bool AIPerplex::should_try_null_move(int depth, int beta, int ply, bool is_pv_node, bool in_check) const
+{
+	if (!tuning_.null_move_enabled) return false;
+	if (is_pv_node || in_check) return false;
+	if (depth < tuning_.null_move_min_depth) return false;
+	if (std::abs(beta) >= GameValues::Mate_Threshold) return false;
+	if (last_move_was_null_[ply]) return false;
+
+	// Zugzwang guard: refuse to "pass" for a side that has no non-pawn
+	// material — the null-move assumption ("a free pass is never better
+	// than moving") is false in king+pawn endgames.
+	const eColor side = m_Board.GetCurrentColor();
+	const auto boards = m_Board.GetBitBoards();
+	const BITBOARD non_pawn_material =
+		boards[static_cast<BITBOARD>(KNIGHT) + side] | boards[static_cast<BITBOARD>(BISHOP) + side]
+		| boards[static_cast<BITBOARD>(ROOK) + side] | boards[static_cast<BITBOARD>(QUEEN) + side];
+	return non_pawn_material != 0;
+}
+
 bool AIPerplex::handle_empty_move_emergency(
 	SearchState& state,
 	PVTable& pv_table)
@@ -1077,7 +1120,7 @@ void AIPerplex::assert_tt_store(const TranspositionTable& tt, std::uint64_t key,
 	[[maybe_unused]] int16_t value, [[maybe_unused]] int16_t depth, Move /*best_move*/,
 	[[maybe_unused]] BoundType bound, NodeType /*node_type*/, [[maybe_unused]] SearchPhase phase)
 {
-	auto verify = tt.probe(key, ply);
+	[[maybe_unused]] auto verify = tt.probe(key, ply);
 
 	assert(verify && "Probe failed after store");
 	assert(verify->key == key && "Key mismatch");
