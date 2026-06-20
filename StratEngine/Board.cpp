@@ -255,6 +255,10 @@ std::span<BITBOARD> Board::GetBitBoards() noexcept
 
 bool Board::DoMove(const Move& m)
 {
+	// Defense in depth: currentPly_ should never reach MAX_PLY now that
+	// ResetSearchDepth() decouples it from total game length (issue #53).
+	assert(currentPly_ < MAX_PLY);
+
 	// capturedPiece must be computed before IsValid (which uses it) and before any board changes.
 	const auto capturedPiece = get_captured_piece(m);
 	capturedHistory_[currentPly_] = capturedPiece;
@@ -413,6 +417,14 @@ bool Board::DoMove(const Move& m)
 	change_player();
 	push_position();
 	return true;
+}
+
+// Call after a move that will never be undone (a real game move, or a UCI
+// position replay). currentPly_ then only ever has to span the depth of an
+// in-flight search excursion, never the length of the whole game.
+void Board::ResetSearchDepth() noexcept
+{
+	currentPly_ = 0;
 }
 
 // Mirror of DoMove(). Assumes the current player is the one who did NOT make the move.

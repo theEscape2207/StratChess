@@ -28,6 +28,13 @@ public:
 	bool DoMove(const Move&);
 	void UndoMove(const Move&);
 
+	// Depth of the in-flight (unmatched) DoMove recursion since the last
+	// permanently-committed position. Call after any move that will never
+	// be undone (a real game move, or a UCI position replay) — the four
+	// ply-history arrays only need to span search recursion, not game length.
+	size_t GetSearchDepth() const noexcept { return currentPly_; }
+	void ResetSearchDepth() noexcept;
+
 	// --- Position queries ---
 	bool InCheck() const noexcept;
 
