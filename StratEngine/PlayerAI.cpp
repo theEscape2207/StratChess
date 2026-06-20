@@ -235,6 +235,12 @@ void PlayerAiBase::AddMoveToSeq(const Move& move, size_t ply)
 // Null-move counterpart: no Move to derive info from, so snapshot the
 // board's current GameInfo directly (the board has already had
 // DoNullMove() applied by the caller before this is called).
+// Note: unlike AddMoveToSeq, this does not call UpdateBoardInfo, so the
+// stored GameInfo::lastMove is whatever the parent ply's real move was,
+// not a sentinel for "no move". GetParentMove()/GetLastBoardInfo() callers
+// must not treat lastMove at a null-move ply as "the move that produced
+// this ply" — currently safe because only AIPerplex calls this method, and
+// AIPerplex never calls GetParentMove().
 void PlayerAiBase::AddNullMoveToSeq(size_t ply)
 {
 	StoreInfoAtPly(ply, m_Board.GetGameInfo());
