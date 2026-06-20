@@ -529,6 +529,112 @@ git commit -m "test: zugzwang regression case for null-move pruning guard"
 
 ---
 
+### Task 4a: Fix `m_infoSeq` desync on null-move ply increment
+
+**Discovered during Task 4's `extended-tests` run** (after flipping `null_move_enabled`
+to `true`): every tactical test crashed with an "invalid vector subscript" /
+out-of-range exception inside `pvs()`. Root cause:
+
+`PlayerAiBase::m_infoSeq` (a `std::vector<GameInfo>`, `PlayerAI.h:223`) is kept
+in lockstep with the search's `ply` parameter, but **only** by
+`AddMoveToSeq(move, ply)` (`PlayerAI.cpp:196-217`), which every real move calls
+right after `DoMove()`. The null-move block added in Task 1
+(`AIPerplex.cpp:337-349`) calls `m_Board.DoNullMove()` and recurses into
+`pvs(..., ply + 1, ...)` but never calls anything to extend `m_infoSeq` for
+that synthetic ply. The very first line of the recursive call,
+`GameInfo info = GetLastBoardInfo(ply)` → `m_infoSeq.at(ply)`
+(`AIPerplex.cpp:284`), then indexes one past the end of `m_infoSeq` and
+throws/crashes. This is why Tasks 1-3's tests never caught it: Task 1's tests
+exercise `should_try_null_move()` as a pure predicate (never actually calling
+`DoNullMove`/recursing), and Task 3's zugzwang test is specifically
+constructed so the guard *prevents* NMP from firing at all — neither test
+exercises a *successful* null-move recursion.
+
+A second, related hazard found during root-cause analysis: `pvs()` currently
+takes `const GameInfo& info = GetLastBoardInfo(ply);` (`AIPerplex.cpp:284`) —
+a reference into `m_infoSeq`'s storage — and uses it again later at
+`MoveGenerator::ComputeLegalMoves(info, moveList)` (`AIPerplex.cpp:352`), with
+the null-move block sitting in between. Once the null-move block is fixed to
+call an `m_infoSeq`-extending method, that call can trigger a
+`std::vector::emplace_back` reallocation, which would invalidate the `info`
+reference between its two uses — a latent dangling-reference bug that only
+exists once Task 4a's primary fix is applied, not before. Both issues are
+fixed together below.
+
+**Files:**
+- Modify: `StratEngine/PlayerAI.h`
+- Modify: `StratEngine/PlayerAI.cpp`
+- Modify: `StratEngine/AIPerplex.cpp`
+- Test: a `[tactical]`-style test that forces `null_move_enabled = true` on a
+  non-zugzwang position at a depth that guarantees NMP actually fires and
+  recurses — proving the crash is fixed, not just guarded around.
+
+**Fix:**
+
+1. In `StratEngine/PlayerAI.cpp`, extract `AddMoveToSeq`'s size-bookkeeping
+   into a small private helper, then add a null-move variant that sources its
+   `GameInfo` directly from the board (no `Move` to derive it from):
+   ```cpp
+   void PlayerAiBase::StoreInfoAtPly(size_t ply, const GameInfo& info)
+   {
+       const size_t infoSize = m_infoSeq.size();
+
+       if (ply + 1 == infoSize)
+           m_infoSeq.emplace_back(info);
+       else if (infoSize == ply + 2)
+           m_infoSeq[ply + 1] = info;
+       else if (infoSize > ply + 2)
+       {
+           m_infoSeq.erase(m_infoSeq.begin() + static_cast<int>(ply + 1), m_infoSeq.end());
+           m_infoSeq.emplace_back(info);
+       }
+       else
+           assert(!"BoardInfo update - Somebody hasn't handled all cases");
+   }
+
+   void PlayerAiBase::AddMoveToSeq(const Move& move, size_t ply)
+   {
+       GameInfo info = GetLastBoardInfo(ply);
+       info.UpdateBoardInfo(move, m_Board.GetPiece(move.to()));
+       StoreInfoAtPly(ply, info);
+   }
+
+   // Null-move counterpart: no Move to derive info from, so snapshot the
+   // board's current GameInfo directly (the board has already had
+   // DoNullMove() applied by the caller before this is called).
+   void PlayerAiBase::AddNullMoveToSeq(size_t ply)
+   {
+       StoreInfoAtPly(ply, m_Board.GetGameInfo());
+   }
+   ```
+   Add `void AddNullMoveToSeq(size_t ply);` and `void StoreInfoAtPly(size_t ply, const GameInfo& info);`
+   declarations to `PlayerAI.h` next to the existing `AddMoveToSeq` declaration.
+2. In `StratEngine/AIPerplex.cpp`'s `pvs()`, call the new method with the
+   *current* `ply` (matching how `AddMoveToSeq(move, ply)` is always called
+   with the pre-recursion ply, not `ply + 1`), right after `DoNullMove()`:
+   ```cpp
+   last_move_was_null_[ply + 1] = true;
+   m_Board.DoNullMove();
+   AddNullMoveToSeq(ply);
+   int null_score = -pvs(depth - 1 - R, -beta, -beta + 1, ply + 1, false, tt, pv_table);
+   ```
+3. In the same function, change the reference to a value copy to eliminate
+   the dangling-reference hazard described above:
+   ```cpp
+   GameInfo info = GetLastBoardInfo(ply);   // was: const GameInfo& info = ...
+   ```
+4. Add a regression test that actually exercises a successful null-move
+   recursion (not just the guard predicate, and not just a guard-blocking
+   zugzwang position): force `null_move_enabled = true` via the public
+   `tuning()` accessor on a normal, material-rich position (e.g. the starting
+   position) at a depth (6+) deep enough that some non-PV node is guaranteed
+   to satisfy every guard and actually call `DoNullMove()`/recurse, then
+   assert `GetMove()` returns a non-null, legal move and does not throw.
+
+**Validation:** `.\build.ps1 all`, then `.\build.ps1 extended-tests` — must
+pass with zero failures (this is exactly the run that caught the bug
+originally; it must go green after the fix).
+
 ### Task 4: Enable null-move pruning by default and validate via self-play
 
 **Files:**
