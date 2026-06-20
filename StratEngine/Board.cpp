@@ -780,3 +780,57 @@ void Board::update_zobrist_side() noexcept
 {
 	zobrist_hash_ ^= zobrist::side_key;
 }
+
+// Make a null-move: advance side-to-move without changing pieces. This mirrors
+// the DoMove/UndoMove save/restore behaviour so search code can treat the
+// position stack uniformly.
+void Board::DoNullMove()
+{
+	// Defense in depth: currentPly_ should never reach MAX_PLY now that
+	// ResetSearchDepth() decouples it from total game length (issue #53).
+	assert(currentPly_ < MAX_PLY);
+
+	// Record snapshot for undo
+	capturedHistory_[currentPly_] = ePiece::NO_PIECE;
+	gameInfoHistory_[currentPly_] = gameInfo_;
+	irreversiblePlyHistory_[currentPly_] = last_irreversible_ply_;
+	zobrist_history_[currentPly_] = zobrist_hash_;
+
+	// A null move forfeits any pending en-passant right, exactly like any
+	// other non-double-push move does in DoMove() (see GetEnPassantSquare
+	// usage there) — otherwise a stale EP square would illegally survive
+	// one extra ply inside the null-move subtree.
+	if (gameInfo_.epSquare != NO_SQUARE) {
+		update_zobrist_ep(gameInfo_.epSquare, NO_SQUARE);
+		gameInfo_.epSquare = NO_SQUARE;
+	}
+
+	if (sideToMove_ == eColor::BLACK)
+		gameInfo_.fullMoveCount++;
+
+	currentPly_++;
+
+	// Switch side and update zobrist via change_player
+	change_player();
+	push_position();
+}
+
+void Board::UndoNullMove()
+{
+	// Mirror UndoMove's ply handling: decrement currentPly_, restore saved state
+	currentPly_--;
+
+	gameInfo_ = gameInfoHistory_[currentPly_];
+	last_irreversible_ply_ = irreversiblePlyHistory_[currentPly_];
+
+	// Restore side-to-move (toggle)
+	sideToMove_ = (sideToMove_ == eColor::WHITE) ? eColor::BLACK : eColor::WHITE;
+
+	if (sideToMove_ == eColor::BLACK)
+		gameInfo_.fullMoveCount--;
+
+	pop_position();
+
+	// Restore zobrist hash from history
+	zobrist_hash_ = zobrist_history_[currentPly_];
+}
