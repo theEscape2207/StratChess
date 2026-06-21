@@ -75,12 +75,6 @@
     <ClCompile Include="..\StratEngine\Utils\TimeUtils.cpp">
       <Filter>Source Files\Utils</Filter>
     </ClCompile>
-    <ClCompile Include="..\StratEngine\OrigPosition.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\StratEngine\MoveOrdering.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="..\StratEngine\ABIterative.cpp">
       <Filter>Source Files\Algos</Filter>
     </ClCompile>
@@ -91,9 +85,6 @@
       <Filter>Source Files\Algos</Filter>
     </ClCompile>
     <ClCompile Include="..\StratEngine\AIPerplex.cpp">
-      <Filter>Source Files\Algos</Filter>
-    </ClCompile>
-    <ClCompile Include="..\StratEngine\AIPerplexParallel.cpp">
       <Filter>Source Files\Algos</Filter>
     </ClCompile>
     <ClCompile Include="..\StratEngine\Utils\FENParser.cpp">
@@ -107,9 +98,6 @@
     </ClCompile>
     <ClCompile Include="..\StratEngine\Tests\TacticalTestRunner.cpp">
       <Filter>Tests</Filter>
-    </ClCompile>
-    <ClCompile Include="..\StratEngine\Position.cpp">
-      <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\StratEngine\PlayerAI.cpp">
       <Filter>Source Files\Algos</Filter>
@@ -185,12 +173,6 @@
     <ClInclude Include="..\StratEngine\Utils\Logger.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>
-    <ClInclude Include="..\StratEngine\OrigPosition.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\StratEngine\MoveOrdering.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\StratEngine\Utils\TimeManager.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>
@@ -223,12 +205,6 @@
     </ClInclude>
     <ClInclude Include="..\StratEngine\AIPerplex.h">
       <Filter>Header Files\Algos</Filter>
-    </ClInclude>
-    <ClInclude Include="..\StratEngine\AIPerplexParallel.h">
-      <Filter>Header Files\Algos</Filter>
-    </ClInclude>
-    <ClInclude Include="..\StratEngine\Position.h">
-      <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\StratEngine\GameState.h">
       <Filter>Header Files</Filter>

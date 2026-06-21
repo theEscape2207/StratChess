@@ -181,7 +181,6 @@ Move extracted and played
 | `AIAgent.cpp/h` | Aspiration windows baseline | ✅ Active |
 | `ABIterative.cpp/h` | Simple iterative deepening | 🎭 Legacy (nostalgic) |
 | `AIBasic.cpp/h` | Basic alpha-beta | 🎭 Legacy (nostalgic) |
-| `AIPerplexParallel.cpp/h` | Parallel search (WIP) | 🚧 In Development |
 | `ABIterTrans.cpp/h` | Broken TT implementation | ❌ Archived |
 | `AITrans.cpp/h` | Broken TT implementation | ❌ Archived |
 
@@ -201,7 +200,6 @@ Move extracted and played
 |------|-------------|
 | `Eval.cpp/h` | Position evaluation (material + positional) |
 | `Sort.cpp/h` | Move ordering utilities (MVV-LVA) |
-| `MoveOrdering.cpp/h` | Advanced move ordering (currently unused) |
 
 ### Data Structures
 
@@ -210,7 +208,6 @@ Move extracted and played
 | `TranspositionTable.h/cpp` | Hash table for position caching (256MB default) |
 | `PVTable.h` | Principal variation storage |
 | `HashElement.h` | TT entry structure |
-| `Position.cpp/h` | Position representation |
 
 ### Base Classes & Interfaces
 
@@ -654,7 +651,6 @@ std::array<uint64_t, 18> bitboards;
 | **AIAgent** | ✅ Active | Baseline for testing (aspiration windows) |
 | **ABIterative** | 🎭 Legacy | Historical reference (simple ID) |
 | **AIBasic** | 🎭 Legacy | Historical reference (basic alpha-beta) |
-| **AIPerplexParallel** | 🚧 WIP | Future parallel search |
 | **ABIterTrans** | ❌ Broken | Old TT bug, should archive |
 | **AITrans** | ❌ Broken | Old TT bug, should archive |
 
