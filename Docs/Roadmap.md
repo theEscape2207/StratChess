@@ -30,7 +30,7 @@ This roadmap organizes development tasks by priority and category. Items are dra
 
 #### 🔴 De-Singleton Board
 - **Estimate**: 3-4 days
-- **Status**: In progress — `Position.h/cpp` created (not yet committed)
+- **Status**: Not started — none of the 4 approach steps below have been started
 - **Blocking**: ThreadData extraction, parallel search (Lazy SMP), and clean unit testing of Eval/MoveGenerator
 - **Rationale**: `Board::Instance()` is a global singleton referenced by `MoveGenerator`, `EvalManager`, and `AIPerplex`. This prevents:
   - Thread-local board copies required by Lazy SMP
@@ -46,7 +46,7 @@ This roadmap organizes development tasks by priority and category. Items are dra
 
 #### 🔴 Extract ThreadData Structure
 - **Estimate**: 2-3 days
-- **Status**: In progress — `AIPerplexParallel.h/cpp` created (not yet committed)
+- **Status**: Not started
 - **Blocking**: Parallel search implementation
 - **Description**: Create thread-local state container to eliminate shared mutable state
 - **Implementation**:
@@ -420,7 +420,8 @@ Avoid these traps:
 - Scoring integrated inline in `pvs()` — relocation to `MoveSorter` is a separate task
 
 ### Refactoring: State Management — GameInfo History in Board
-- `GameInfo` history moved from Player into `Board`; `Position.h/cpp` created
+- `GameInfo` history moved from Player into `Board`: `capturedHistory_`, `gameInfoHistory_`,
+  `irreversiblePlyHistory_`, `zobrist_history_` ply-indexed arrays added directly to `Board.h/cpp`
 - Clean separation of concerns; prerequisite data for De-Singleton Board work
 
 ### Refactoring: Introduce MoveFormatter — centralise move presentation (March 2026)
