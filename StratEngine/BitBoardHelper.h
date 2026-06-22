@@ -49,7 +49,7 @@ namespace BitBoardHelper
 			assert(Bits::isAnyBitSet(board, mask)); //	force assert
 			return false;
 		}
-		Bits::clearBitsRef(board, mask);
+		board = Bits::clearBits(board, mask);
 		return true;
 	}
 
@@ -58,7 +58,7 @@ namespace BitBoardHelper
 	{
 		// Forventer at brikken, der skal indsaettes ikke allerede findes paa braedtet!!
 		assert(Bits::areAllBitsClear(board, mask));
-		Bits::setBitsRef(board, mask);
+		board = Bits::setBits(board, mask);
 	}
 
 }; //namespace BitBoardHelper

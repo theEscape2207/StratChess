@@ -1,176 +1,70 @@
-/////////////////////////////////////////////////////////////////////////////
-// @doc
-// @module BitTools.h | BitTools
-//
-// @normal Copyright (c) 2001 by Eduardo Velasquez
-// @normal Copyright (c) 2004 by Sveinn Sigfredsson
-//
-// Date:	Friday, December 21, 2001
-//
-// Revision: 041125 SSI: Added toogleBits() and toogleBitByPos() template functions
-//						 Changed all ASSERT MFC macros to use assert() instead
-//						 Added const modifiers on _all_ parameters
-//						 Made a lot of parameters by-ref instead of by-val
-//
-///////////////
+// The code is a header file that defines a namespace `Bits` containing utility functions for manipulating bitboards, 
+// which are represented as 64-bit unsigned integers (`std::uint64_t`). 
+
+// Original code copyrighted by Eduardo Velasquez and Sveinn Sigfredsson, with modifications for C++20 and chess engine optimizations.
 
 #pragma once
+#include "defines.h"
 
-#include <cassert>
-#include <limits>
+namespace Bits {
+   
+    // =========================================================================
+    // Query Operations
+    // =========================================================================
+	// Returns true if any bit specified by the mask is set (1) in the value
+    [[nodiscard]] constexpr bool isAnyBitSet(BITBOARD value, BITBOARD mask) noexcept {
+        return (value & mask) != 0;
+    }
 
-namespace Bits
-{
-	/////////////////////////////////////////////////////////////////////////////
-	// Bit functions based on bitmask
+	// Returns true if all bits specified by the mask are set (1) in the value - currently unused
+    [[nodiscard]] constexpr bool areAllBitsSet(BITBOARD value, BITBOARD mask) noexcept {
+        return (value & mask) == mask;
+    }
 
-	// Returns true if any of the bits in mask is set in value. Defined as: (value & mask) != 0
-	template<class T>
-	static inline bool isAnyBitSet(const T& value, const T& mask) noexcept
-	{
-		return (value & mask) != 0;
-	}
+	// Returns true if all bits specified by the mask are clear (0) in the value
+    [[nodiscard]] constexpr bool areAllBitsClear(BITBOARD value, BITBOARD mask) noexcept {
+        return (value & mask) == 0;
+    }
 
-	template<class T, class U>
-	static inline bool isAnyBitSet(const T& value, const U& mask) noexcept
-	{
-		return (value & mask) != 0;
-	}
+    // =========================================================================
+    // Functional Modification Operations (Preferred in chess engines)
+    // =========================================================================
+	// Set bits specified by the mask
+    [[nodiscard]] constexpr BITBOARD setBits(BITBOARD value, BITBOARD mask) noexcept {
+        return value | mask;
+    }
 
-	// Returns true if all the bits in mask are set in value. Defined as: (value & mask) == mask
-	template<class T, class U>
-	static inline bool areAllBitsSet(const T& value, const U& mask) noexcept
-	{
-		return (value & mask) == mask;
-	}
+	// Clear bits specified by the mask
+    [[nodiscard]] constexpr BITBOARD clearBits(BITBOARD value, BITBOARD mask) noexcept {
+        return value & ~mask;
+    }
 
-	// Returns true if all the bits in mask are cleared in value. Defined as: (value & mask) == 0
-	template<class T, class U>
-	static inline bool areAllBitsClear(const T& value, const U& mask) noexcept
-	{
-		return (value & mask) == 0;
-	}
+	// Apply a mask to a value, returning only the bits that are set in both
+    [[nodiscard]] constexpr BITBOARD applyMask(BITBOARD value, BITBOARD mask) noexcept {
+        return value & mask;
+    }
 
-	// Returns value with the mask bits set. Defined as: value | mask
-	template<class T, class U>
-	static inline T setBits(const T& value, const U& mask) noexcept
-	{
-		return value | mask;
-	}
+    // Set bits if true, clear if false (branchless-friendly) 
+    [[nodiscard]] constexpr BITBOARD setBitsConditionally(BITBOARD value, BITBOARD mask, bool enable) noexcept {
+        return (value & ~mask) | (enable ? mask : 0);
+    }
 
-	// Changes value with the mask bits set. Defined as: value |= mask
-	template<class T>
-	static inline void setBitsRef	(T& value, const T& mask) noexcept
-	{
-		value |= mask;
-	}
+    // Add bits, remove bits
+    [[nodiscard]] constexpr BITBOARD setClearBits(BITBOARD value, BITBOARD add, BITBOARD remove) noexcept {
+        return (value | add) & ~remove;
+    }
+} // namespace Bits
 
-	// Returns value with the all the bits set except the mask bits. Defined as: value | ~mask
-	template<class T, class U>
-	static inline T setBitsExcept(const T& value, const U& mask) noexcept
-	{
-		return value | ~mask;
-	}
-
-	// Returns value with the mask bits cleared. Defined as: value & ~mask
-	// Both parameters can be of different types
-	// This is useful when working with enums as masks
-	// (e.g. enum class MyEnum : uint32_t { ... }; )
-	// Then you can call: clearBits<uint32_t, MyEnum>( value, mask );
-	// without having to cast the mask to uint32_t first
-	// which would create an unnecessary temporary variable
-	// See also setBits() above
-	template<class T, class U>
-	static inline T clearBits(const T& value, const U& mask) noexcept
-	{
-		return value & ~mask;
-	}
-
-	// Changes value with the mask bits cleared. Defined as: value &= ~mask
-	template<class T>
-	static inline void clearBitsRef(T& value, const T& mask) noexcept
-	{
-		value &= ~mask;
-	}
-
-	// Returns value with the all the bits cleared except those marked by the mask bits. Defined as: value & mask
-	template <class T, class U>
-	static inline T clearBitsExcept(const T& value, const U& mask) noexcept
-	{
-		return value & mask;
-	}
-
-	// 041125: Added: both parameters are of the same type
-	// Its giving better performance for larger types avoiding the copy
-	// Updates value with the all the bits cleared except those marked by the mask bits. Defined as: value &= mask
-	template <class T>
-	static inline void clearBitsExceptRef(T& value, const T& mask) noexcept
-	{
-		value &= mask;
-	}
-
-	// Returns value with the mask bits set or cleared depending on the value of set.
-	// A bit of a bastard, really...
-	template <class T, class U, class V>
-	static inline T setBits(const T& value, const U& mask, const V& bSet) noexcept
-	{
-		return bSet != 0 ? setBits(value, mask) : clearBits(value, mask);
-	}
-
-	// Returns value with the add bits set and the remove bits cleared. Defined as: (value | add) & ~remove
-	template <class T, class U>
-	static inline T setClearBits(const T& value, const U& add, const U& remove) noexcept
-	{
-		return (value | add) & ~remove;
-	}
-
-	// XOR: Changes all bits in value with the mask bits. Defined as: value ^= mask
-	template <class T, class U>
-	static inline void toogleBits(T& value, const U& mask) noexcept
-	{
-		value ^= mask;
-	}
-
-
-	/////////////////////////////////////////////////////////////////////////////
-	// Bit functions based on bit position
-
-	// Returns value with the nth bit set. Defined as value | (1 << n)
-	template <class T>
-	static inline T setBitByPos(const T& value, const unsigned char bit) noexcept
-	{
-		assert(bit < std::numeric_limits<T>::digits);
-		return value | (1 << bit);
-	}
-
-	// Returns value with the nth bit cleared. Defined as value & ~(1 << n)
-	template <class T>
-	static inline T clearBitByPos(const T& value, const unsigned char bit) noexcept
-	{
-		assert(bit < std::numeric_limits<T>::digits);
-		return value & ~(1 << bit);
-	}
-
-	template <class T>
-	static inline T toogleBitByPos(const T& value, const unsigned char bit) noexcept
-	{
-		assert(bit < std::numeric_limits<T>::digits);
-		return value ^ (1 << bit);
-	}
-
-	// Returns true if value has the the nth bit set. Defined as (value & (1 << n)) != 0
-	template <class T>
-	static inline bool isBitSetByPos(const T& value, const unsigned char bit) noexcept
-	{
-		assert(bit < std::numeric_limits<T>::digits);
-		return (value & (1 << bit)) != 0;
-	}
-
-	// Returns true if value has the the nth bit cleared. Defined as (value & (1 << n)) == 0
-	template <class T>
-	static inline bool isBitClearByPos(const T& value, const unsigned char bit) noexcept
-	{
-		return isBitSetByPos(value, bit) == false;
-	}
-
-}; //namespace BitTools
+// Compile-time smoke tests - zero runtime cost, catch logic regressions in the above at build time
+static_assert(Bits::isAnyBitSet(0b1010, 0b0010) == true, "isAnyBitSet failed");
+static_assert(Bits::isAnyBitSet(0b1010, 0b0001) == false, "isAnyBitSet failed");
+static_assert(Bits::areAllBitsSet(0b1111, 0b1010) == true, "areAllBitsSet failed");
+static_assert(Bits::areAllBitsSet(0b1101, 0b1010) == false, "areAllBitsSet failed");
+static_assert(Bits::areAllBitsClear(0b1100, 0b0011) == true, "areAllBitsClear failed");
+static_assert(Bits::areAllBitsClear(0b1100, 0b0100) == false, "areAllBitsClear failed");
+static_assert(Bits::setBits(0b1010, 0b0001) == 0b1011, "setBits failed");
+static_assert(Bits::clearBits(0b1011, 0b0001) == 0b1010, "clearBits failed");
+static_assert(Bits::applyMask(0b1110, 0b1010) == 0b1010, "applyMask failed");
+static_assert(Bits::setBitsConditionally(0b1010, 0b0001, true) == 0b1011, "setBitsConditionally failed");
+static_assert(Bits::setBitsConditionally(0b1011, 0b0001, false) == 0b1010, "setBitsConditionally failed");
+static_assert(Bits::setClearBits(0b1000, 0b0010, 0b1000) == 0b0010, "setClearBits failed");
