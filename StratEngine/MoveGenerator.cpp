@@ -79,12 +79,12 @@ void MoveGenerator::GeneratePawnCaptures(const BITBOARD* const bbBitBoards, cons
 	// Reducerer bitboardet til felter, hvor modstanderens brikker staar
 	// Er der et en-passant felt, medtages det ogsaa
 	if (info.epSquare != NO_SQUARE) {
-		Bits::clearBitsExceptRef(bbAttackLeft, bbBitBoards[ePiece::ALL_BLACK_PIECES - static_cast<int>(color)] | g_bbMask[info.epSquare]);
-		Bits::clearBitsExceptRef(bbAttackRight, bbBitBoards[ePiece::ALL_BLACK_PIECES - static_cast<int>(color)] | g_bbMask[info.epSquare]);
+		bbAttackLeft = Bits::applyMask(bbAttackLeft, bbBitBoards[ePiece::ALL_BLACK_PIECES - static_cast<int>(color)] | g_bbMask[info.epSquare]);
+		bbAttackRight = Bits::applyMask(bbAttackRight, bbBitBoards[ePiece::ALL_BLACK_PIECES - static_cast<int>(color)] | g_bbMask[info.epSquare]);
 	}
 	else {
-		Bits::clearBitsExceptRef(bbAttackLeft, bbBitBoards[ePiece::ALL_BLACK_PIECES - static_cast<int>(color)]);
-		Bits::clearBitsExceptRef(bbAttackRight, bbBitBoards[ePiece::ALL_BLACK_PIECES - static_cast<int>(color)]);
+		bbAttackLeft = Bits::applyMask(bbAttackLeft, bbBitBoards[ePiece::ALL_BLACK_PIECES - static_cast<int>(color)]);
+		bbAttackRight = Bits::applyMask(bbAttackRight, bbBitBoards[ePiece::ALL_BLACK_PIECES - static_cast<int>(color)]);
 	}
 
 	// Foerst tager vi slagene to the left
@@ -99,7 +99,7 @@ void MoveGenerator::GeneratePawnCaptures(const BITBOARD* const bbBitBoards, cons
 		Move temp = MoveFactory::MakeMove(from, to, MoveType::CAPTURE);
 		AddPawnCaptures(moveList, bbBitBoards, std::move(temp), color);
 
-		Bits::clearBitsRef(bbAttackLeft, g_bbMask[to]);
+		bbAttackLeft = Bits::clearBits(bbAttackLeft, g_bbMask[to]);
 	}
 
 	// Then we take the captures to the right
@@ -113,7 +113,7 @@ void MoveGenerator::GeneratePawnCaptures(const BITBOARD* const bbBitBoards, cons
 
 		Move temp = MoveFactory::MakeMove(from, to, MoveType::CAPTURE);
 		AddPawnCaptures(moveList, bbBitBoards, std::move(temp), color);
-		Bits::clearBitsRef(bbAttackRight, g_bbMask[to]);
+		bbAttackRight = Bits::clearBits(bbAttackRight, g_bbMask[to]);
 	}
 }
 
@@ -126,25 +126,25 @@ void MoveGenerator::GeneratePawnNormalMoves(_In_ const BITBOARD* const bbBitBoar
 		// Et skridt frem
 		bbMoveOne = Bits::clearBits((bbBitBoards[ePiece::WHITE_PAWN] >> ONE_ROW), bbBitBoards[ALL_PIECES]);
 		// Sorterer sidste raekke fra
-		Bits::clearBitsRef(bbMoveOne, MASK_RANK_8);
+		bbMoveOne = Bits::clearBits(bbMoveOne, MASK_RANK_8);
 		// To skridt frem - hvide boender kun fra startplacering, dvs spillets 2. raekke 
 		bbMoveTwo = Bits::clearBits(((bbBitBoards[ePiece::WHITE_PAWN] & MASK_RANK_2) >> TWO_ROWS), bbBitBoards[ALL_PIECES]);
 		// Sikrer os at midterfeltet ogsaa er frit
-		Bits::clearBitsRef(bbMoveTwo, (bbBitBoards[ALL_PIECES] >> ONE_ROW));
+		bbMoveTwo = Bits::clearBits(bbMoveTwo, (bbBitBoards[ALL_PIECES] >> ONE_ROW));
 	}
 	else
 	{
 		// Et skridt frem - men kun hvor der ikke staar nogen foran
 		bbMoveOne = Bits::clearBits((bbBitBoards[ePiece::BLACK_PAWN] << ONE_ROW), bbBitBoards[ALL_PIECES]);
 		// Sorterer sidste raekke fra
-		Bits::clearBitsRef(bbMoveOne, MASK_RANK_1);
+		bbMoveOne = Bits::clearBits(bbMoveOne, MASK_RANK_1);
 		// To skridt frem - sorte boender kun fra startplacering, dvs spillets 7. raekke 
 		bbMoveTwo = Bits::clearBits(((bbBitBoards[ePiece::BLACK_PAWN] & MASK_RANK_7) << TWO_ROWS), bbBitBoards[ALL_PIECES]);
 		// Sikrer os at midterfeltet ogsaa er frit
-		Bits::clearBitsRef(bbMoveTwo, (bbBitBoards[ALL_PIECES] << ONE_ROW));
+		bbMoveTwo = Bits::clearBits(bbMoveTwo, (bbBitBoards[ALL_PIECES] << ONE_ROW));
 	}
 	// Combine the two bitboards
-	Bits::setBitsRef(bbMoveOne, bbMoveTwo);
+	bbMoveOne = Bits::setBits(bbMoveOne, bbMoveTwo);
 
 	const ePiece movPiece = (color == eColor::BLACK) ? ePiece::BLACK_PAWN : ePiece::WHITE_PAWN;
 	const int direction = (color == eColor::BLACK) ? -1 : 1;
@@ -169,7 +169,7 @@ void MoveGenerator::GeneratePawnNormalMoves(_In_ const BITBOARD* const bbBitBoar
 		moveList.push(MoveFactory::MakeMove(from, to, moveType));
 
 		// Now clear it from our attack board
-		Bits::clearBitsRef(bbMoveOne, g_bbMask[to]);
+		bbMoveOne = Bits::clearBits(bbMoveOne, g_bbMask[to]);
 	}
 }
 
@@ -186,13 +186,13 @@ void MoveGenerator::GenerateOfficerMoves(const BITBOARD* const bbBitBoards, Move
 		if (onlyCaptures)
 		{
 			// Reducerer bitboardet til felter, hvor modstanderens brikker staar
-			Bits::clearBitsExceptRef(bbAttack, bbBitBoards[ALL_FROM_COLOR + static_cast<int>(color)]);
+			bbAttack = Bits::applyMask(bbAttack, bbBitBoards[ALL_FROM_COLOR + static_cast<int>(color)]);
 		}
 
 		// Add all legal moves found above
 		AddOfficerMoves(moveList, bbAttack, from);
 
-		Bits::clearBitsRef(bbPiecesToMove, g_bbMask[from]);
+		bbPiecesToMove = Bits::clearBits(bbPiecesToMove, g_bbMask[from]);
 	}
 }
 
@@ -259,7 +259,7 @@ void MoveGenerator::AddPawnPromoteMoves(const BITBOARD* bbBitBoards, eColor colo
 		moveList.push(MoveFactory::MakePromotion(from, to, PieceHelper::AsPiece(BISHOP, color)));
 		moveList.push(MoveFactory::MakePromotion(from, to, PieceHelper::AsPiece(KNIGHT, color)));
 
-		Bits::clearBitsRef(bbAttack, g_bbMask[to]);
+		bbAttack = Bits::clearBits(bbAttack, g_bbMask[to]);
 	}
 }
 
@@ -303,7 +303,7 @@ void MoveGenerator::AddOfficerMoves(MoveList& moveList, BITBOARD bbAttack, eSqua
 		// MoveType flag encodes whether it's a capture; captured piece is retrieved from the board when needed.
 		moveList.push(MoveFactory::MakeMove(from, to, moveType));
 
-		Bits::clearBitsRef(bbAttack, g_bbMask[to]);	// Done, clear this square
+		bbAttack = Bits::clearBits(bbAttack, g_bbMask[to]);	// Done, clear this square
 	}
 }
 
@@ -571,7 +571,7 @@ BITBOARD MoveGenerator::GetAttackBoard(eColor attackByColor) noexcept
 	{
 		iFrom = Board::GetFirstPiece(bbPiecesToMove);
 		bbAttackBoard |= g_bbKnightMoves[iFrom] & ~bbOwnPieces;
-		Bits::clearBitsRef(bbPiecesToMove, g_bbMask[iFrom]);
+		bbPiecesToMove = Bits::clearBits(bbPiecesToMove, g_bbMask[iFrom]);
 	}
 
 
@@ -586,7 +586,7 @@ BITBOARD MoveGenerator::GetAttackBoard(eColor attackByColor) noexcept
 		// Faa mulige traek for dronninger og taarne
 		bbAttackBoard |= GetTowerBitboard(boards.data(), iFrom, attackByColor);
 
-		Bits::clearBitsRef(bbPiecesToMove, g_bbMask[iFrom]);
+		bbPiecesToMove = Bits::clearBits(bbPiecesToMove, g_bbMask[iFrom]);
 	}
 
 
@@ -602,7 +602,7 @@ BITBOARD MoveGenerator::GetAttackBoard(eColor attackByColor) noexcept
 		// Faa mulige traek for dronninger og loebere
 		bbAttackBoard |= GetBishopBitboard(boards.data(), iFrom, attackByColor);
 
-		Bits::clearBitsRef(bbPiecesToMove, g_bbMask[iFrom]);
+		bbPiecesToMove = Bits::clearBits(bbPiecesToMove, g_bbMask[iFrom]);
 	}
 
 	return bbAttackBoard;
