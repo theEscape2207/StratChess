@@ -18,28 +18,35 @@ namespace zobrist {
 	uint64_t side_key;
 
 	void initialize() noexcept {
-		
-		// non-deterministic seed for production use (uncomment for true randomness, but beware non-reproducible hashes across runs)
-		// std::random_device rd;
-		// std::mt19937 rng(rd());
-		// Deterministic seed for reproducibility
-		std::mt19937_64 rng(0x123456789ABCDEF0ULL);
+		// Fills the global key tables exactly once (thread-safe magic static).
+		// Every Board instance must see identical keys, or zobrist hashes computed
+		// from different Board objects (e.g. thread-local boards under Lazy SMP)
+		// would disagree for the same position.
+		static const bool once = [] {
+			// non-deterministic seed for production use (uncomment for true randomness, but beware non-reproducible hashes across runs)
+			// std::random_device rd;
+			// std::mt19937 rng(rd());
+			// Deterministic seed for reproducibility
+			std::mt19937_64 rng(0x123456789ABCDEF0ULL);
 
-		//std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
-		// Fills piece_keys with random 64-bit values for piece-placement Zobrist hashing.
-		for (int piece = ePiece::WHITE_PAWN; piece < ALL_PIECETYPES; ++piece) {
-			for (int square = 0; square < ALL_SQUARES; ++square) {
-				piece_keys[piece][square] = rng();
+			//std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
+			// Fills piece_keys with random 64-bit values for piece-placement Zobrist hashing.
+			for (int piece = ePiece::WHITE_PAWN; piece < ALL_PIECETYPES; ++piece) {
+				for (int square = 0; square < ALL_SQUARES; ++square) {
+					piece_keys[piece][square] = rng();
+				}
 			}
-		}
 
-		for (size_t i = 0; i < 16; ++i)
-			castling_keys[i] = rng();
+			for (size_t i = 0; i < 16; ++i)
+				castling_keys[i] = rng();
 
-		for (size_t sq = 0; sq < NUM_SQUARES; ++sq)
-			ep_keys[sq] = rng();
+			for (size_t sq = 0; sq < NUM_SQUARES; ++sq)
+				ep_keys[sq] = rng();
 
-		side_key = rng();
+			side_key = rng();
+			return true;
+		}();
+		(void)once;
 	}
 }
 
@@ -47,6 +54,11 @@ Board::Board()
 {
 	mailbox_.fill(ePiece::NO_PIECE);
 	zobrist::initialize();
+}
+
+Board::Board(const std::string& fen) : Board()
+{
+	SetupFromFEN(fen);
 }
 
 void Board::clear_board()
@@ -248,7 +260,7 @@ void Board::SetDefaultBoard()
 	spdlog::default_logger()->debug("Default board set up");
 }
 
-std::span<BITBOARD> Board::GetBitBoards() noexcept
+std::span<const BITBOARD> Board::GetBitBoards() const noexcept
 {
 	return std::span(bitboards_);
 }
