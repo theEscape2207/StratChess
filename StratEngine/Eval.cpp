@@ -26,11 +26,8 @@ std::unique_ptr<EvalManager> EvalManager::Create(EvalTypes type)
  *	Description: Sums up the material value from both colors + their positional value
  *	Returns:	 The value of the player in turn subtracted the oppositions value
  */
-int EvalSimple::Evaluate() const noexcept
+int EvalSimple::Evaluate(const Board& board) const noexcept
 {
-	// const Pointer til Board
-	const Board& board = Board::Instance();
-
 	const eColor inTurn = board.GetCurrentColor();
 
 	int totalScore = 0;
@@ -75,10 +72,8 @@ int EvalSimple::Evaluate() const noexcept
 // FIXME:		 Evaluate does not know about Check Mate - this is strictly only an evaluation of the current position 
 //				 - this means that we miss the first (and best, maybe even only?) opportunity to do check mate!
 //
-int EvalComplex::Evaluate() const noexcept
+int EvalComplex::Evaluate(const Board& board) const noexcept
 {
-	Board& board = Board::Instance();
-
 	const int matScoreBlack = board.GetMaterialScore(BLACK);
 	const int matScoreWhite = board.GetMaterialScore(WHITE);
 

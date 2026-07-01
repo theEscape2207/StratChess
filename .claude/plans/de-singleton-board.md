@@ -265,19 +265,22 @@
 
 **Files:** `Eval.h`, `Eval.cpp`, `AIPerplex.cpp`, `PlayerAI.cpp`, `StratChessTests/EvalTests.cpp`
 
-- [ ] **3.1** `Eval.h`: forward-declare `class Board;`, change the interface:
+- [x] **3.1** `Eval.h`: forward-declare `class Board;`, change the interface:
   ```cpp
   virtual int Evaluate(const Board& board) const = 0;
   ```
   and both overrides in `EvalSimple` / `EvalComplex`.
-- [ ] **3.2** `Eval.cpp`: delete `const Board& board = Board::Instance();` (line 32) and `Board& board = Board::Instance();` (line 80) — `board` is now the parameter. Body otherwise unchanged (`GetBitBoards()` at :95 now returns the const span).
-- [ ] **3.3** Callers: `AIPerplex.cpp:540, 571` and `PlayerAI.cpp:39` → `Eval->Evaluate(m_Board)` (final form).
-- [ ] **3.4** Migrate `EvalTests.cpp` to its final non-singleton form now (it is the only test file whose call sites this phase breaks):
+- [x] **3.2** `Eval.cpp`: delete `const Board& board = Board::Instance();` (line 32) and `Board& board = Board::Instance();` (line 80) — `board` is now the parameter. Body otherwise unchanged (`GetBitBoards()` at :95 now returns the const span).
+- [x] **3.3** Callers: `AIPerplex.cpp:540, 571` and `PlayerAI.cpp:39` → `Eval->Evaluate(m_Board)` (final form).
+- [x] **3.4** Migrate `EvalTests.cpp` to its final non-singleton form now (it is the only test file whose call sites this phase breaks):
   ```cpp
   Board board(fen);
   const int score = EvalManager::Create(EvalManager::EvalTypes::SIMPLE)->Evaluate(board);
   ```
-- [ ] **3.5** Build + fast tests (`[eval]` in particular) green → commit: `De-singleton Board phase 3: EvalManager::Evaluate takes explicit Board&`
+  The one test reusing a single board across two FENs ("penalises doubled pawns...") uses `Board board;` (default ctor) + two sequential `SetupFromFEN` calls instead of the one-line FEN ctor, since it needs the same object reconfigured twice.
+- [x] **3.5** Build + fast tests (`[eval]` in particular) green → commit: `De-singleton Board phase 3: EvalManager::Evaluate takes explicit Board&`
+
+  **Validation results**: full build (both configs, Level4/WX) clean. `[eval]`: 11 assertions / 8 test cases, unchanged. Full fast tier: 1557 assertions / 129 test cases, unchanged from Phase 2. Deep perft: 640/640, unchanged (this phase doesn't touch move generation, included as a sanity check).
 
 ### Phase 4 — Inject Board through the player construction chain
 

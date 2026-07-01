@@ -4,8 +4,7 @@
 // Exact centipawn values are intentionally NOT tested — positional tables
 // and future evaluation changes would make exact-value tests fragile.
 //
-// Pattern: Board::Instance().SetupFromFEN(fen) then EvalManager::Create(type)->Evaluate()
-// — identical to RepetitionTests.cpp.
+// Pattern: Board board(fen); then EvalManager::Create(type)->Evaluate(board)
 //
 // See Docs/TestDesign.md §Phase 0 for rationale.
 
@@ -49,10 +48,9 @@ static constexpr const char* FEN_ROOK_ON_7TH =
 
 TEST_CASE("Eval - EvalSimple: starting position is near-symmetric (within 200 cp)", "[eval]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_START);
+    Board board(FEN_START);
 
-    int score = EvalManager::Create(EvalManager::EvalTypes::SIMPLE)->Evaluate();
+    int score = EvalManager::Create(EvalManager::EvalTypes::SIMPLE)->Evaluate(board);
 
     REQUIRE(score >= -200);
     REQUIRE(score <=  200);
@@ -60,10 +58,9 @@ TEST_CASE("Eval - EvalSimple: starting position is near-symmetric (within 200 cp
 
 TEST_CASE("Eval - EvalComplex: starting position is near-symmetric (within 200 cp)", "[eval]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_START);
+    Board board(FEN_START);
 
-    int score = EvalManager::Create(EvalManager::EvalTypes::COMPLEX)->Evaluate();
+    int score = EvalManager::Create(EvalManager::EvalTypes::COMPLEX)->Evaluate(board);
 
     REQUIRE(score >= -200);
     REQUIRE(score <=  200);
@@ -71,35 +68,31 @@ TEST_CASE("Eval - EvalComplex: starting position is near-symmetric (within 200 c
 
 TEST_CASE("Eval - EvalSimple: side with extra queen scores > 500 cp", "[eval]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_WHITE_EXTRA_QUEEN);
+    Board board(FEN_WHITE_EXTRA_QUEEN);
 
-    REQUIRE(EvalManager::Create(EvalManager::EvalTypes::SIMPLE)->Evaluate() > 500);
+    REQUIRE(EvalManager::Create(EvalManager::EvalTypes::SIMPLE)->Evaluate(board) > 500);
 }
 
 TEST_CASE("Eval - EvalSimple: black extra queen scores > 500 cp from black's perspective", "[eval]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_BLACK_EXTRA_QUEEN);  // black to move
+    Board board(FEN_BLACK_EXTRA_QUEEN);  // black to move
 
-    REQUIRE(EvalManager::Create(EvalManager::EvalTypes::SIMPLE)->Evaluate() > 500);
+    REQUIRE(EvalManager::Create(EvalManager::EvalTypes::SIMPLE)->Evaluate(board) > 500);
 }
 
 TEST_CASE("Eval - EvalComplex: side with extra queen scores > 500 cp", "[eval]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_WHITE_EXTRA_QUEEN);
+    Board board(FEN_WHITE_EXTRA_QUEEN);
 
-    REQUIRE(EvalManager::Create(EvalManager::EvalTypes::COMPLEX)->Evaluate() > 500);
+    REQUIRE(EvalManager::Create(EvalManager::EvalTypes::COMPLEX)->Evaluate(board) > 500);
 }
 
 TEST_CASE("Eval - both evaluators agree on material advantage direction", "[eval]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_WHITE_EXTRA_QUEEN);
+    Board board(FEN_WHITE_EXTRA_QUEEN);
 
-    int simple_score  = EvalManager::Create(EvalManager::EvalTypes::SIMPLE)->Evaluate();
-    int complex_score = EvalManager::Create(EvalManager::EvalTypes::COMPLEX)->Evaluate();
+    int simple_score  = EvalManager::Create(EvalManager::EvalTypes::SIMPLE)->Evaluate(board);
+    int complex_score = EvalManager::Create(EvalManager::EvalTypes::COMPLEX)->Evaluate(board);
 
     REQUIRE(simple_score  > 0);
     REQUIRE(complex_score > 0);
@@ -107,13 +100,13 @@ TEST_CASE("Eval - both evaluators agree on material advantage direction", "[eval
 
 TEST_CASE("Eval - EvalComplex penalises doubled pawns relative to normal structure", "[eval]")
 {
-    Board& board = Board::Instance();
+    Board board;
 
     board.SetupFromFEN(FEN_WHITE_DOUBLED);
-    int doubled_score = EvalManager::Create(EvalManager::EvalTypes::COMPLEX)->Evaluate();
+    int doubled_score = EvalManager::Create(EvalManager::EvalTypes::COMPLEX)->Evaluate(board);
 
     board.SetupFromFEN(FEN_WHITE_NORMAL);
-    int normal_score  = EvalManager::Create(EvalManager::EvalTypes::COMPLEX)->Evaluate();
+    int normal_score  = EvalManager::Create(EvalManager::EvalTypes::COMPLEX)->Evaluate(board);
 
     // Normal structure must score strictly higher than the doubled-pawn position.
     REQUIRE(normal_score > doubled_score);
@@ -124,10 +117,9 @@ TEST_CASE("Eval - EvalComplex awards rook-on-7th bonus: position scores positive
     // White has a rook on the 7th rank in an endgame. Black has only a king.
     // EvalComplex should award a rook-on-7th bonus and the material edge,
     // so white's evaluation from white's perspective must be positive.
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_ROOK_ON_7TH);
+    Board board(FEN_ROOK_ON_7TH);
 
-    int score = EvalManager::Create(EvalManager::EvalTypes::COMPLEX)->Evaluate();
+    int score = EvalManager::Create(EvalManager::EvalTypes::COMPLEX)->Evaluate(board);
 
     REQUIRE(score > 0);
 }
