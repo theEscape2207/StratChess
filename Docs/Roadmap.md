@@ -1,6 +1,6 @@
 # StratChess Engine Roadmap
 
-**Last Updated**: June 20, 2026
+**Last Updated**: July 1, 2026
 **Timeframe**: Next 6 months (through parallel search implementation)
 **Current Version**: AIPerplex 2.0
 
@@ -72,6 +72,25 @@ This roadmap organizes development tasks by priority and category. Items are dra
 
 ### Performance
 
+#### 🟡 Magic Bitboards (PEXT) for Sliding-Piece Attacks
+- **Estimate**: 2-3 days
+- **Plan**: `.claude/plans/magic-bitboards-sliding-piece-attacks.md`
+- **Impact**: Removes the `ROTATED90`/`ROTATED45R`/`ROTATED45L` auxiliary bitboards that
+  `Board::add_piece`/`remove_piece` must keep in sync on every `DoMove`/`UndoMove` (3 extra
+  writes + mutual-exclusion asserts per piece placement), and collapses `GetTowerBitboard`/
+  `GetBishopBitboard` from 2 table lookups + OR to a single `_pext_u64`-indexed lookup each.
+- **Approach**: BMI2 PEXT ("fancy magic") attack tables, generated `constexpr` at compile
+  time (same style as the existing rotated-bitboard tables in `defines.h`) — no runtime
+  init step. Requires enabling `/arch:AVX2` codegen project-wide (both `.vcxproj` files),
+  which raises the binary's minimum CPU baseline to Haswell+ (2013+) or Zen3+ (2020+); PEXT
+  is emulated in slow microcode on older AMD (Zen/Zen+/Zen2) — confirmed acceptable since
+  this is a personal dev-only x64 build, not distributed to unknown hardware.
+- **Also benefits**: Shrinks `Board`'s bitboard array by 3 elements and removes one class of
+  `test_bitboards()` invariant failure — relevant context for **De-Singleton Board** above
+  (fewer bitboards to carry per thread-local `Board` copy once Lazy SMP lands).
+- **Validation**: perft equivalence (depth 1-4 fast tier + full `perft_test_cases.json`),
+  `[tactical]`/`[tactical_full]`, nodes-per-second benchmark before/after (see plan for
+  full validation plan).
 
 ---
 
