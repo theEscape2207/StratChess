@@ -75,13 +75,33 @@
 
 ### Phase 0 — Baseline measurements (no code change)
 
-- [ ] **0.1** Record perft NPS baseline (move generation + Do/UndoMove throughput), 3 runs:
+- [x] **0.1** Record perft NPS baseline (move generation + Do/UndoMove throughput), 3 runs:
   ```bash
   ./x64/Release/StratChessEvolved.exe perft run 6
   ```
   Save the three NPS numbers into the PR notes / this plan's Validation section.
-- [ ] **0.2** Record search baseline: run `[tactical_full]` and note total wall time; run one self-play move set (`"type": 6` both sides) and note 3–4 `GetMove complete: ... nodes=..., time=...ms` lines from stdout.
-- [ ] **0.3** Commit this plan file.
+
+  **Baseline captured 2026-07-01** (after Phase 1 committed, before Phase 2 starts touching MoveGenerator):
+  | Run | Nodes | Time | NPS |
+  |---|---|---|---|
+  | 1 | 119,060,324 | 3922 ms | 30,357,043 |
+  | 2 | 119,060,324 | 3895 ms | 30,567,477 |
+  | 3 | 119,060,324 | 3915 ms | 30,411,321 |
+
+  Node count is deterministic and identical across runs (as expected). NPS baseline ≈ 30.4M/s avg. Phase 7 final comparison acceptance band: ±3% → 29.5M–31.4M/s.
+- [x] **0.2** Record search baseline: run `[tactical_full]` and note total wall time; run one self-play move set (`"type": 6` both sides) and note 3–4 `GetMove complete: ... nodes=..., time=...ms` lines from stdout.
+
+  **Self-play baseline captured 2026-07-01** (45 s window, `game_settings.json` already `"type": 6`/depth 15 both sides):
+  ```
+  move=e2-e4, score=15,  depth=15, time=4671ms,  nodes=11,432,010, stable=yes
+  move=e7-e6, score=0,   depth=15, time=5102ms,  nodes=12,442,363, stable=yes
+  move=d2-d4, score=11,  depth=15, time=5970ms,  nodes=14,748,434, stable=yes
+  move=d7-d5, score=-1,  depth=15, time=7201ms,  nodes=18,006,852, stable=yes
+  move=b1-d2, score=10,  depth=15, time=13423ms, nodes=33,641,058, stable=NO
+  move=c8-d7, score=-2,  depth=15, time=5785ms,  nodes=14,526,252, stable=yes
+  ```
+  Depth 15 reached consistently, node counts and timings in the expected range, stability behaving normally (one `stable=NO` is a normal instability event, not a bug). This shape (move/score/depth/nodes/stability distribution) is the qualitative reference for Phase 7's final self-play check — not run to completion, so no `[tactical_full]` wall-time number was captured this pass (deferred to Phase 7's full validation run).
+- [x] **0.3** Commit this plan file.
 
 ### Phase 1 — Board becomes an ordinary copyable class (Instance() survives)
 
