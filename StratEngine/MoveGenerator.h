@@ -38,9 +38,14 @@ private:
 
 	static BITBOARD GetAnyEnPassantAttackingPawns(eColor attackByColor, eSquare epSquare) noexcept;
 
-	static bool IsCapture(const BITBOARD* bbBitBoards, eColor color, const Move &peasantMove) noexcept	//FIXME: THis method is crap and should be reverted
+	// Returns true if an enemy piece is actually standing on move.to(). Distinguishes a normal
+	// pawn capture from an en-passant capture: GeneratePawnCaptures tags every diagonal pawn move
+	// as MoveType::CAPTURE before it's known whether the target square is occupied, so the move's
+	// own type flag can't tell the two apart. Not to be confused with MoveHelper::IsCapture(),
+	// which only reads that flag.
+	static bool IsEnemyPieceOnTarget(const BITBOARD* bbBitBoards, eColor color, const Move& move) noexcept
 	{
-		return Bits::isAnyBitSet(bbBitBoards[ePiece::ALL_BLACK_PIECES - static_cast<bool>(color)], g_bbMask[peasantMove.to()]);
+		return Bits::isAnyBitSet(bbBitBoards[ePiece::ALL_BLACK_PIECES - static_cast<bool>(color)], g_bbMask[move.to()]);
 	}
 
 	static BITBOARD GetOfficerAttackBoard(const BITBOARD* bbBitBoards, eSquare from, ePiece piece) noexcept;

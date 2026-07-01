@@ -149,12 +149,12 @@ private:
 	// --- Bitboard helpers ---
 	bool clear_bitboard_square(TBitboards::size_type iBoard, eSquare square)
 	{
-		return BitBoardHelper::ClearBitboardMask(bitboards_[iBoard], g_bbMask[square]);
+		return BitBoardHelper::clear_bits(bitboards_[iBoard], g_bbMask[square]);
 	}
 
 	void set_bitboard_square(TBitboards::size_type iPiece, eSquare square) noexcept
 	{
-		BitBoardHelper::SetBitboardMask(bitboards_[iPiece], g_bbMask[square]);
+		BitBoardHelper::set_bits(bitboards_[iPiece], g_bbMask[square]);
 	}
 
 	// Returns the bitboard array index for a piece type + color combination
@@ -181,7 +181,7 @@ private:
 
 	// --- Debug ---
 	bool test_bitboards() const;
-	void print_all_bitboards(const TBitboards& boards, std::ostream& = std::cout) const;
+	void print_all_bitboards(const TBitboards& boards, std::ostream&) const;
 
 	// ---- Member variables ----
 

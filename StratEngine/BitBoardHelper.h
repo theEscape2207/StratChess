@@ -1,66 +1,58 @@
-/////////////////////////////////////////////////////////////////////////////
-// @doc
-// @module BitBoardHelper.h | BitBoardHelper
-//
-// @normal Copyright (c) 2006 by Sveinn Sigfredsson
-//
-// Date:	Tuesday, December 12, 2006
-//
-// Revision: 
-//
-///////////////
-
 #pragma once
-
-// remove annoying level 4 warnings
-#pragma warning(push)
-#pragma warning( disable : 4505 )	// Unreferenced local function has been removed
 
 #include "defines.h"
 
 #include "Utils/BitTools.h"
 #include <cassert>
-#include <iostream>
 #include <ostream>
+
+// Only pull in <iostream> for debug builds to avoid heavy header overhead in release
+#if !defined(NDEBUG)
+#include <iostream>
+#endif // !defined(NDEBUG)
+
+
 
 namespace BitBoardHelper
 {
-	// Udskriver et BitBoard til skaermen 
-	static void PrintBitboardBinary(BITBOARD bb, std::ostream& stream)
-	{
-		for (unsigned int i=0; i<ALL_SQUARES; ++i)
-		{
-			stream << ((bb >> i) & UNIT);
-			if ((i & 7) == 7) {
-				stream << '\n';
-			}
-		}
-		stream << '\n';
-	}
+    /// @brief Prints a bitboard as an 8x8 grid of 0s and 1s.
+    ///        LSB (a1) is bottom-left, MSB (h8) is top-right.
+    ///        Intended for debugging only.
+    inline void print_bitboard(std::ostream& out, BITBOARD bb) noexcept
+    {
+        for (std::uint8_t i = 0; i < ALL_SQUARES; ++i)
+        {
+            out << ((bb >> i) & 1u);
+            if ((i & 7) == 7) out << '\n';
+        }
+        out << '\n';
+    }
 
-	// Clears the bits at the board specified by the mask
-	static bool ClearBitboardMask(BITBOARD& board, BITBOARD mask)
-	{
-		// Forventer at brikken, der skal fjernes faktisk findes paa braedtet!!
-		if ( !Bits::isAnyBitSet(board, mask) ) 
-		{
-			PrintBitboardBinary( board, std::cout );
-			PrintBitboardBinary( mask, std::cout );
-			assert(Bits::isAnyBitSet(board, mask)); //	force assert
-			return false;
-		}
-		board = Bits::clearBits(board, mask);
-		return true;
-	}
+    /// @brief Clears bits on the board specified by the mask.
+    /// @returns true if bits were successfully cleared, false if mask had no overlap.
+    inline bool clear_bits(BITBOARD& board, BITBOARD mask) noexcept
+    {
+        if (!Bits::isAnyBitSet(board, mask))    // Verify intersection of board and mask is non-empty
+        {
+#if !defined(NDEBUG)
+            print_bitboard(std::cerr, board);
+            print_bitboard(std::cerr, mask);
+#endif
+            assert(Bits::isAnyBitSet(board, mask) && "clear_bits: attempting to clear unset bits");
+            return false;
+        }
+        board = Bits::clearBits(board, mask);
+        return true;
+    }
 
-	// Saetter Bit(s) og tjekker om der allerede staar en brik paa felterne indeholdt i 'mask'
-	static void SetBitboardMask(BITBOARD& board, BITBOARD mask) noexcept
-	{
-		// Forventer at brikken, der skal indsaettes ikke allerede findes paa braedtet!!
-		assert(Bits::areAllBitsClear(board, mask));
-		board = Bits::setBits(board, mask);
-	}
+    /// @brief Sets bits on the board specified by the mask.
+    ///        Asserts that target bits are currently clear.
+    inline void set_bits(BITBOARD& board, BITBOARD mask) noexcept
+    {
+        // Verify that the piece being placed does not already exist on the board before adding it
+        assert(Bits::areAllBitsClear(board, mask) && "set_bits: attempting to set already-set bits");
+        board = Bits::setBits(board, mask);
+    }
 
 }; //namespace BitBoardHelper
 
-#pragma warning(pop)	// Unreferenced local function has been removed
