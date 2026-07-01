@@ -4,6 +4,8 @@
 #include <memory>
 #include "defines.h"
 
+class Board;
+
 class EvalManager
 {
 public:
@@ -15,7 +17,7 @@ public:
 	};
 	enum class PlayState { MIDDLEGAME, ENDGAME, FINALGAME };
 
-	virtual int Evaluate() const = 0;
+	virtual int Evaluate(const Board& board) const = 0;
 	virtual const char* GetType() const = 0;
 	// Factory constructor!
 	static std::unique_ptr<EvalManager> Create(EvalTypes type);
@@ -45,7 +47,7 @@ class EvalSimple final
 	: public EvalManager
 {
 public:
-	int Evaluate() const noexcept override;
+	int Evaluate(const Board& board) const noexcept override;
 	const char* GetType() const noexcept override		{ return "Simple";	}
 
 	// Force use of factory by
@@ -70,7 +72,7 @@ class EvalComplex final
 	static const short OPEN_FILE				= 15;
 
 public:
-	int Evaluate() const noexcept override;
+	int Evaluate(const Board& board) const noexcept override;
 	const char* GetType() const	noexcept override	{ return "Complex";	}
 
 	// Force use of factory by

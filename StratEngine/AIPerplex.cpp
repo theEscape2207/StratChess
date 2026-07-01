@@ -537,7 +537,7 @@ int AIPerplex::quiescence(int alpha, int beta, int qsearch_depth, int ply, Trans
 	// Limit quiescence extension by qsearch
 	if (qsearch_depth > MAX_QSEARCH_DEPTH)
 	{
-		return Eval->Evaluate();
+		return Eval->Evaluate(m_Board);
 	}
 
 	int original_alpha = alpha;
@@ -568,7 +568,7 @@ int AIPerplex::quiescence(int alpha, int beta, int qsearch_depth, int ply, Trans
 	const GameInfo& info = GetLastBoardInfo(ply);
 
 	// Stand pat evaluation first
-	const int stand_pat = Eval->Evaluate();
+	const int stand_pat = Eval->Evaluate(m_Board);
 	if (stand_pat >= beta)
 	{
 		// Store and cutoff

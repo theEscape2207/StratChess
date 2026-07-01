@@ -36,7 +36,7 @@ int PlayerAiBase::Quiescent( size_t ply, int alpha, int beta )
 	// first entry is tested in Search algorithms
 	
 	// Evaluerer paa stillingen
-	int value = Eval->Evaluate();
+	int value = Eval->Evaluate(m_Board);
 
 	// Begraenser quiescent til en maksimal dybde
 	if (ply == MAX_PLY-10)
