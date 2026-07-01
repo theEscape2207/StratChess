@@ -1,0 +1,67 @@
+name: Build and test
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    # Pinned to the explicit VS2026 image (not the moving windows-latest label) —
+    # this project's projects pin PlatformToolset v145, which matches this image's
+    # default VC.Tools.x86.x64 toolset. See .claude/plans/full-build-test-ci.md.
+    runs-on: windows-2025-vs2026
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute deps root
+        run: |
+          $depsRoot = Join-Path (Split-Path $env:GITHUB_WORKSPACE -Parent) 'deps'
+          "DEPS_ROOT=$depsRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Cache dependencies
+        id: cache-deps
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.DEPS_ROOT }}
+          key: deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
+
+      # Pinned to the exact versions used locally (see Directory.Build.props / CLAUDE.md).
+      - name: Fetch spdlog
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: git clone --depth 1 --branch v1.16.0 https://github.com/gabime/spdlog "$env:DEPS_ROOT\spdlog"
+
+      - name: Fetch nlohmann-json
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: git clone --depth 1 --branch v3.12.0 https://github.com/nlohmann/json "$env:DEPS_ROOT\json"
+
+      - name: Fetch Catch2 (amalgamated)
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch v3.13.0 https://github.com/catchorg/Catch2 "$env:RUNNER_TEMP\Catch2Src"
+          New-Item -ItemType Directory -Force -Path "$env:DEPS_ROOT\Catch2" | Out-Null
+          Copy-Item "$env:RUNNER_TEMP\Catch2Src\extras\catch_amalgamated.hpp" "$env:DEPS_ROOT\Catch2\"
+          Copy-Item "$env:RUNNER_TEMP\Catch2Src\extras\catch_amalgamated.cpp" "$env:DEPS_ROOT\Catch2\"
+
+      # Directory.Build.user.props is the documented, gitignored override mechanism
+      # for DepsRoot (see Directory.Build.user.props.example) — nothing committed.
+      - name: Point build at deps
+        run: |
+          @"
+          <?xml version="1.0" encoding="utf-8"?>
+          <Project>
+            <PropertyGroup>
+              <DepsRoot>$env:DEPS_ROOT\</DepsRoot>
+            </PropertyGroup>
+          </Project>
+          "@ | Set-Content -Path 'Directory.Build.user.props'
+
+      - name: Build
+        run: .\build.ps1 all
+
+      - name: Run fast tests
+        run: |
+          & '.\StratChessTests\x64\Release\StratChessTests.exe' '~[slow]'
+          exit $LASTEXITCODE
