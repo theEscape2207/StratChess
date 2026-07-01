@@ -99,7 +99,7 @@ void MoveGenerator::GeneratePawnCaptures(const BITBOARD* const bbBitBoards, cons
 		Move temp = MoveFactory::MakeMove(from, to, MoveType::CAPTURE);
 		AddPawnCaptures(moveList, bbBitBoards, std::move(temp), color);
 
-		bbAttackLeft = Bits::clearBits(bbAttackLeft, g_bbMask[to]);
+		bbAttackLeft = Bits::clearLsb(bbAttackLeft);
 	}
 
 	// Then we take the captures to the right
@@ -113,7 +113,7 @@ void MoveGenerator::GeneratePawnCaptures(const BITBOARD* const bbBitBoards, cons
 
 		Move temp = MoveFactory::MakeMove(from, to, MoveType::CAPTURE);
 		AddPawnCaptures(moveList, bbBitBoards, std::move(temp), color);
-		bbAttackRight = Bits::clearBits(bbAttackRight, g_bbMask[to]);
+		bbAttackRight = Bits::clearLsb(bbAttackRight);
 	}
 }
 
@@ -169,7 +169,7 @@ void MoveGenerator::GeneratePawnNormalMoves(_In_ const BITBOARD* const bbBitBoar
 		moveList.push(MoveFactory::MakeMove(from, to, moveType));
 
 		// Now clear it from our attack board
-		bbMoveOne = Bits::clearBits(bbMoveOne, g_bbMask[to]);
+		bbMoveOne = Bits::clearLsb(bbMoveOne);
 	}
 }
 
@@ -192,7 +192,7 @@ void MoveGenerator::GenerateOfficerMoves(const BITBOARD* const bbBitBoards, Move
 		// Add all legal moves found above
 		AddOfficerMoves(moveList, bbAttack, from);
 
-		bbPiecesToMove = Bits::clearBits(bbPiecesToMove, g_bbMask[from]);
+		bbPiecesToMove = Bits::clearLsb(bbPiecesToMove);
 	}
 }
 
@@ -259,11 +259,11 @@ void MoveGenerator::AddPawnPromoteMoves(const BITBOARD* bbBitBoards, eColor colo
 		moveList.push(MoveFactory::MakePromotion(from, to, PieceHelper::AsPiece(BISHOP, color)));
 		moveList.push(MoveFactory::MakePromotion(from, to, PieceHelper::AsPiece(KNIGHT, color)));
 
-		bbAttack = Bits::clearBits(bbAttack, g_bbMask[to]);
+		bbAttack = Bits::clearLsb(bbAttack);
 	}
 }
 
-// <param name="moveList">Collection of found moves</param> 
+// <param name="moveList">Collection of found moves</param>
 // Computes all possible moves, filters so only all captures, en passants and promotes remains and returns unsorted
 void MoveGenerator::ComputeCaptures(_In_ const GameInfo& info, _Inout_ MoveList& moveList)
 {
@@ -303,7 +303,7 @@ void MoveGenerator::AddOfficerMoves(MoveList& moveList, BITBOARD bbAttack, eSqua
 		// MoveType flag encodes whether it's a capture; captured piece is retrieved from the board when needed.
 		moveList.push(MoveFactory::MakeMove(from, to, moveType));
 
-		bbAttack = Bits::clearBits(bbAttack, g_bbMask[to]);	// Done, clear this square
+		bbAttack = Bits::clearLsb(bbAttack);	// Done, clear this square
 	}
 }
 
@@ -418,11 +418,10 @@ void MoveGenerator::AddPawnCaptures(MoveList& moveList, const BITBOARD* bbBitBoa
 	// The moving pawn must be on the bitboard square
 	assert(Bits::isAnyBitSet(bbBitBoards[color], g_bbMask[from]));
 
-	[[maybe_unused]] const Board& board = Board::Instance();
-
 	// Normal capture?
-	if (IsCapture(bbBitBoards, color, move))
+	if (IsEnemyPieceOnTarget(bbBitBoards, color, move))
 	{
+		[[maybe_unused]] const Board& board = Board::Instance();
 		assert(PieceHelper::IsActual(board.GetPiece(to)));
 		assert(PieceHelper::Color(board.GetPiece(to)) != color);
 
@@ -571,7 +570,7 @@ BITBOARD MoveGenerator::GetAttackBoard(eColor attackByColor) noexcept
 	{
 		iFrom = Board::GetFirstPiece(bbPiecesToMove);
 		bbAttackBoard |= g_bbKnightMoves[iFrom] & ~bbOwnPieces;
-		bbPiecesToMove = Bits::clearBits(bbPiecesToMove, g_bbMask[iFrom]);
+		bbPiecesToMove = Bits::clearLsb(bbPiecesToMove);
 	}
 
 
@@ -586,7 +585,7 @@ BITBOARD MoveGenerator::GetAttackBoard(eColor attackByColor) noexcept
 		// Faa mulige traek for dronninger og taarne
 		bbAttackBoard |= GetTowerBitboard(boards.data(), iFrom, attackByColor);
 
-		bbPiecesToMove = Bits::clearBits(bbPiecesToMove, g_bbMask[iFrom]);
+		bbPiecesToMove = Bits::clearLsb(bbPiecesToMove);
 	}
 
 
@@ -602,7 +601,7 @@ BITBOARD MoveGenerator::GetAttackBoard(eColor attackByColor) noexcept
 		// Faa mulige traek for dronninger og loebere
 		bbAttackBoard |= GetBishopBitboard(boards.data(), iFrom, attackByColor);
 
-		bbPiecesToMove = Bits::clearBits(bbPiecesToMove, g_bbMask[iFrom]);
+		bbPiecesToMove = Bits::clearLsb(bbPiecesToMove);
 	}
 
 	return bbAttackBoard;

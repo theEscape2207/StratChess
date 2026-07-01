@@ -39,6 +39,13 @@ namespace Bits {
         return value & ~mask;
     }
 
+	// Clears the least-significant set bit (Kernighan's trick). Preferred over
+	// clearBits(value, g_bbMask[countr_zero(value)]) in bitboard-iteration loops -
+	// no table lookup needed since the bit being cleared is always the lsb of 'value' itself.
+    [[nodiscard]] constexpr BITBOARD clearLsb(BITBOARD value) noexcept {
+        return value & (value - 1);
+    }
+
 	// Apply a mask to a value, returning only the bits that are set in both
     [[nodiscard]] constexpr BITBOARD applyMask(BITBOARD value, BITBOARD mask) noexcept {
         return value & mask;
@@ -64,6 +71,8 @@ static_assert(Bits::areAllBitsClear(0b1100, 0b0011) == true, "areAllBitsClear fa
 static_assert(Bits::areAllBitsClear(0b1100, 0b0100) == false, "areAllBitsClear failed");
 static_assert(Bits::setBits(0b1010, 0b0001) == 0b1011, "setBits failed");
 static_assert(Bits::clearBits(0b1011, 0b0001) == 0b1010, "clearBits failed");
+static_assert(Bits::clearLsb(0b1010) == 0b1000, "clearLsb failed");
+static_assert(Bits::clearLsb(0b1100) == 0b1000, "clearLsb failed");
 static_assert(Bits::applyMask(0b1110, 0b1010) == 0b1010, "applyMask failed");
 static_assert(Bits::setBitsConditionally(0b1010, 0b0001, true) == 0b1011, "setBitsConditionally failed");
 static_assert(Bits::setBitsConditionally(0b1011, 0b0001, false) == 0b1010, "setBitsConditionally failed");

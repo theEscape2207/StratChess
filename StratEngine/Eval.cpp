@@ -211,7 +211,7 @@ int EvalComplex::Evaluate() const noexcept
 			break;
 		}
 		// We're done! Remove the bit and continue
-		remaining = Bits::clearBits(remaining, g_bbMask[square]);
+		remaining = Bits::clearLsb(remaining);
 	}
 
 	const eColor color = board.GetCurrentColor();
