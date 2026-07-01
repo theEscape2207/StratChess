@@ -196,7 +196,6 @@ Commit the plan file — it lives under `.claude/plans/` (tracked by git) and se
 - Development happens on `master`; PRs target `main`
 - Keep PRs small and logically scoped
 - Include motivation, design reasoning, and expected impact for non-trivial changes
-- Seek review for changes affecting evaluation, move ordering, or search algorithms
 - Claude worktrees live under `.claude/worktrees/` — build from a worktree works out of the box via `Directory.Build.props`
 - **Worktree PR workflow**: if the worktree branch contains commits unrelated to the current task (e.g. personal WIP from `master` that bled into the worktree), do NOT PR the branch directly — cherry-pick only the relevant commit(s) onto a fresh branch from `origin/main`. If all commits in the worktree are intentional, reviewed, and part of the same plan, PR the branch directly.
 
@@ -209,7 +208,11 @@ Before running `gh pr create` (or pushing an update to an already-open PR):
 2. **Validate — scoped to what actually changed**, via `git diff --name-only origin/main...HEAD`:
    - **Doc-only diff** (every changed file matches `*.md`, `Docs/**`, `.claude/plans/**`, or `CLAUDE.md` — no `.cpp`/`.h`/`.json`/`.ps1`/`.vcxproj*`/source files touched): the pre-commit hook's fast-test pass is sufficient. Do **not** run `Validate-PrePR.ps1` — a full build + extended-test + self-play cycle cannot catch anything a documentation edit could break, and running it anyway just burns minutes for a guaranteed pass (see PR #56, a one-line `CLAUDE.md` fix).
    - **Any code/script/config change**: run `Scripts\Validate-PrePR.ps1` (full build + extended `[slow]` tests + self-play) before opening the PR.
-3. Only after both steps pass, create or update the PR.
+3. **Dispatch a specialized reviewer if the diff touches their domain** (check via `git diff --name-only origin/main...HEAD`):
+   - `Eval.cpp` changed → dispatch the `eval-reviewer` subagent
+   - `AIPerplex.cpp`/`AIPerplex.h` search internals (`pvs()`, `qsearch()`, move ordering, pruning conditions) changed → dispatch the `search-reviewer` subagent
+   - Address findings before opening the PR
+4. Only after steps 1-3 pass, create or update the PR.
 
 ### After a PR merges
 Delete the remote branch, remove the local worktree, and delete the local branch — or invoke the `commit-commands:clean_gone` skill, which handles all three at once. Don't leave merged worktrees lying around as the default; treat cleanup as part of finishing the task, not a separate optional step the user has to ask for.

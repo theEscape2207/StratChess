@@ -367,6 +367,7 @@ FodyWeavers.xsd
 logs/aiperplex.log
 /PredictedInputCache_StratChessEvolved_Debug_x64.dat
 /.github/*
+!/.github/pull_request_template.md
 /sync-from-main.ps1
 # Per-machine MSBuild dependency path overrides — not committed
 Directory.Build.user.props
