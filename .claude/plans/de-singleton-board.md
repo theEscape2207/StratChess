@@ -1,0 +1,370 @@
+# De-Singleton Board Implementation Plan
+
+> **For agentic workers:** execute phase-by-phase; every phase must build (`.\build.ps1 all`) and pass the fast test tier before its commit. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Remove the `Board::Instance()` global singleton so that multiple independent `Board` objects can exist (the prerequisite for thread-local board copies in ThreadData / Lazy SMP), threading `Board&` explicitly through `MoveGenerator`, `EvalManager`, the player class hierarchy, and all runners/tests.
+
+**Architecture:** Incremental bottom-up refactor — `Board` first becomes an ordinary copyable class while `Instance()` temporarily survives; then each consumer layer (MoveGenerator → Eval → Players → owners → tests) is converted to explicit `Board&` parameters; `Instance()` is deleted last. Every phase is a separately committed, green-building, test-passing state.
+
+**Scope limits (explicitly out of scope):**
+- No `ThreadData` extraction (separate roadmap item, follows this one)
+- No from-scratch `Position` class (per prior decision: incremental Board refactor)
+- No behavioral change to search, eval, or move generation — bit-identical single-threaded behavior
+- No merge of the `GameInfo` parameter into `Board` in MoveGenerator signatures (YAGNI; revisit with ThreadData)
+- `StratEngine/Archived/` untouched (not compiled)
+
+---
+
+## Design Decisions
+
+1. **Keep `Instance()` alive until the final phase.** With ~50 engine call sites + ~90 test call sites, a big-bang change is unreviewable and undebuggable. Each phase converts one layer; not-yet-converted callers pass `Board::Instance()` explicitly as the argument, so the build stays green after every commit. Phase 7 deletes `Instance()` and the compiler proves nothing was missed.
+
+2. **Bottom-up conversion order** (MoveGenerator → Eval → Players → owners): converting a callee's signature forces its callers to name a board; callers that already hold `m_Board` (all `PlayerAiBase` descendants) get their final form immediately, everything else temporarily passes `Instance()`.
+
+3. **Board becomes copyable (`= default`).** Required by the follow-up ThreadData item (`Board board` member per thread). All members are value types (`std::array`, `std::vector`, scalars) — default copy semantics are correct. Copy is *never used in this task's hot paths*; it exists and is unit-tested so ThreadData doesn't have to re-open Board.
+
+4. **Zobrist key tables stay global; initialization becomes idempotent + thread-safe.** The tables (`zobrist::piece_keys` etc.) must be identical for every Board instance — otherwise TT entries computed by different threads' boards would disagree. Today `zobrist::initialize()` is called from every `Board` ctor (Board.cpp:49) and unconditionally refills the tables; with many boards (and later, boards constructed on different threads) that is a re-init and a data race. Fix: wrap the fill in a function-local `static` lambda-call (C++ magic static — thread-safe, runs once).
+
+5. **`GetBitBoards()` becomes `const`, returning `std::span<const BITBOARD>`.** Verified: every caller is read-only (AIPerplex.cpp:941, Eval.cpp:95, MoveGenerator.cpp:31/272/528/625). This is what allows `MoveGenerator` and `Eval` to take `const Board&`. The non-const overload is removed entirely.
+
+6. **Parameter conventions:** `const Board&` as *first* parameter for stateless readers (`MoveGenerator`, `EvalManager::Evaluate`); mutable `Board&` for actors that DoMove/UndoMove (players, UCI handler, perft). References only — no `Board*`, no copies in any search path.
+
+7. **Ownership:** each execution context owns exactly one `Board` by value — `Game` gains a `Board board_` member, `UciHandler` gains a `Board board_` member, the perft/tactical/FEN runners in `StratChessEvolved.cpp` create function-local boards, every `TEST_CASE` constructs its own local board. This kills the global-state-bleed problem that today forces the "every TEST_CASE must call SetupFromFEN first" isolation rule.
+
+8. **Convenience constructor** `explicit Board(const std::string& fen)` — collapses the ubiquitous two-line `Board b; b.SetupFromFEN(fen);` test pattern. Default ctor keeps its current meaning (empty board, all squares `NO_PIECE`).
+
+9. **Dead legacy test headers get deleted**, not migrated: `StratEngine/Tests/Unittests.h`, `StratEngine/Tests/RepetitionTests.h`, `StratEngine/Tests/Perft_unittests.h` are documented as retired in Roadmap.md (Catch2 migration, March 2026), reference only each other, and contain 15 `Board::Instance()` uses that would otherwise pollute the final grep check.
+
+10. **`PlayerAiBase`'s default constructor is removed** — it exists only to satisfy "needs to be there" (its own comment) and binds `m_Board` to the singleton. With injection there is no meaningful default. If something actually needs it, that something also needs a board.
+
+11. **Performance expectation: neutral to slightly positive.** `Board::Instance()` is a magic static — every call pays an initialization-guard check, including per-generated-move calls like `AddOfficerMoves`'s `GetPiece(to)` (MoveGenerator.cpp:301). Passing a reference removes that. No new indirection is introduced anywhere. Measured, not assumed: NPS baseline before Phase 1, comparison after Phase 7 (Validation Plan).
+
+---
+
+## Files Changed
+
+**StratEngine (engine):**
+| File | Change |
+|---|---|
+| `Board.h` / `Board.cpp` | public ctor, FEN ctor, copyable, const `GetBitBoards`, thread-safe zobrist init, `InCheck` passes `*this`; `Instance()` deleted in Phase 7 |
+| `MoveGenerator.h` / `.cpp` | `const Board&` first param on `ComputeLegalMoves`, `ComputeCaptures`, `GetAttackBoard` + private helpers |
+| `Eval.h` / `Eval.cpp` | `Evaluate(const Board&)` pure-virtual + both overrides |
+| `PlayerBase.h` / `PlayerBase.cpp` | `Create(type, max_depth, Board&)` factory |
+| `PlayerAI.h` / `PlayerAI.cpp` | `PlayerAiBase(Board&, unsigned)`; default ctor removed; `Quiescent`/`GetBestMove` call sites |
+| `AIPerplex.h` / `AIPerplex.cpp` | ctor gains `Board&`; MoveGenerator/Eval call sites use `m_Board` |
+| `AIBasic.h/.cpp`, `AIAgent.h/.cpp`, `ABIterative.h/.cpp` | same ctor + call-site pattern |
+| `PlayerHuman.h` / `PlayerHuman.cpp` | ctor gains `Board&`, stores `board_` ref; 4 call sites |
+| `Game.h` / `Game.cpp` | `Board board_` member; 4 call sites + factory call + Config call |
+| `Config.h` / `Config.cpp` | `ReadConfigFile`/`ReadBoardSetup`/`ReadFEN` gain `Board&` param |
+| `UCIHandler.h` / `UCIHandler.cpp` | `Board board_` member; 8 call sites + factory call |
+| `Tests/Perft.h` / `Perft.cpp`, `Tests/PerftRunner.cpp` | thread board through internal ComputeLegalMoves calls; local board in runners |
+| `Tests/TacticalTestRunner.h` / `.cpp` | local board per position, passed to factory |
+| `Tests/Unittests.h`, `Tests/RepetitionTests.h`, `Tests/Perft_unittests.h` | **deleted** (retired, dead) |
+
+**StratChessEvolved (app):** `StratChessEvolved.cpp` — local boards in `test_fen_integration` (line 29) and `perftrunner` (line 147).
+
+**StratChessTests:** `BoardTests.cpp`, `BoardMoveTests.cpp`, `BoardStateTests.cpp`, `BoardApiTests.cpp`, `EvalTests.cpp`, `MoveFormatterTests.cpp`, `PerftTests.cpp`, `RepetitionTests.cpp`, `SearchTests.cpp`, `SortTests.cpp`, `TacticalTests.cpp`, `TacticalFullTests.cpp`, `TacticalTestHelpers.h` — all migrated to local boards; **new** `BoardInstanceTests.cpp` (`[board_instance]`) + `.vcxproj`/`.filters` entries.
+
+**Docs:** `Docs/Roadmap.md`, `Docs/TestDesign.md` (Phase 2 status, isolation rules), `CLAUDE.md` ("AIPerplex in tests" snippet, Key Source Files).
+
+**Not touched:** `StratEngine/Archived/*` (not compiled), `MoveFormatter.h/.cpp` (already takes `const Board&`), `Sort.h/.cpp`, `MoveHelper.h`, `TranspositionTable.*` (no Board dependency).
+
+---
+
+## Step-by-Step Changes
+
+### Phase 0 — Baseline measurements (no code change)
+
+- [ ] **0.1** Record perft NPS baseline (move generation + Do/UndoMove throughput), 3 runs:
+  ```bash
+  ./x64/Release/StratChessEvolved.exe perft run 6
+  ```
+  Save the three NPS numbers into the PR notes / this plan's Validation section.
+- [ ] **0.2** Record search baseline: run `[tactical_full]` and note total wall time; run one self-play move set (`"type": 6` both sides) and note 3–4 `GetMove complete: ... nodes=..., time=...ms` lines from stdout.
+- [ ] **0.3** Commit this plan file.
+
+### Phase 1 — Board becomes an ordinary copyable class (Instance() survives)
+
+**Files:** `StratEngine/Board.h`, `StratEngine/Board.cpp`, new `StratChessTests/BoardInstanceTests.cpp`, `StratChessTests/StratChessTests.vcxproj` + `.filters`
+
+- [ ] **1.1** `Board.h`: make the constructor public, add the FEN convenience ctor, default all copy/move operations, mark `Instance()` as temporary:
+  ```cpp
+  public:
+      // TEMPORARY during de-singleton migration — deleted in the final phase.
+      static inline Board& Instance() noexcept
+      {
+          static Board _instance;
+          return _instance;
+      }
+
+      Board();                                   // empty board (all squares NO_PIECE)
+      explicit Board(const std::string& fen);    // constructs, then SetupFromFEN(fen)
+      ~Board() = default;
+
+      Board(const Board&) = default;
+      Board& operator=(const Board&) = default;
+      Board(Board&&) = default;
+      Board& operator=(Board&&) = default;
+  ```
+  Remove the old `private:` ctor/dtor block and the deleted copy/move declarations under the "Non-copyable / non-movable (singleton)" comment (Board.h:99-107).
+- [ ] **1.2** `Board.h`: replace the non-const accessor (line 87) with a const one:
+  ```cpp
+  std::span<const BITBOARD> GetBitBoards() const noexcept;
+  ```
+- [ ] **1.3** `Board.cpp`: implement both:
+  ```cpp
+  Board::Board(const std::string& fen) : Board()
+  {
+      SetupFromFEN(fen);
+  }
+
+  std::span<const BITBOARD> Board::GetBitBoards() const noexcept
+  {
+      return { bitboards_.data(), bitboards_.size() };
+  }
+  ```
+  Fix any caller that stored the span in a non-const context (compiler will list them; all verified read-only).
+- [ ] **1.4** `Board.cpp`: make `zobrist::initialize()` run-once and thread-safe — wrap the existing table-filling body:
+  ```cpp
+  void initialize() noexcept
+  {
+      static const bool once = [] {
+          // ... existing rng + table-filling body, unchanged ...
+          return true;
+      }();
+      (void)once;
+  }
+  ```
+- [ ] **1.5** New `StratChessTests/BoardInstanceTests.cpp`, tag `[board_instance]`. Deliberately does **not** use `MoveGenerator` — at this phase the generator still reads the singleton, so generated moves would not belong to the local boards under test. A hand-built quiet pawn push (legal from the start position) exercises DoMove/UndoMove instead:
+  ```cpp
+  #include <catch2/catch_amalgamated.hpp>
+  #include "Board.h"
+  #include "Move.h"
+
+  static_assert(std::is_copy_constructible_v<Board>);
+  static_assert(std::is_copy_assignable_v<Board>);
+
+  namespace {
+  constexpr auto kStartFEN =
+      "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+  constexpr auto kKiwipeteFEN =
+      "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+
+  // e2-e3: plain quiet pawn push, legal from the start position, no generator needed
+  Move make_e2e3() { return MoveFactory::MakeMove(e2, e3, MoveType::QUIET); }
+  }
+
+  TEST_CASE("Two boards hold independent state", "[board_instance]") {
+      Board a(kStartFEN);
+      Board b(kKiwipeteFEN);
+      REQUIRE(a.get_zobrist_hash() != b.get_zobrist_hash());
+      REQUIRE(a.ExtractFEN() != b.ExtractFEN());
+  }
+
+  TEST_CASE("Mutating one board does not affect another", "[board_instance]") {
+      Board a(kStartFEN);
+      Board b(kStartFEN);
+      const auto hashA = a.get_zobrist_hash();
+      REQUIRE(b.DoMove(make_e2e3()));
+      REQUIRE(a.get_zobrist_hash() == hashA);          // a untouched
+      REQUIRE(b.get_zobrist_hash() != hashA);          // b advanced
+  }
+
+  TEST_CASE("Same FEN yields same zobrist hash across instances", "[board_instance]") {
+      Board a(kKiwipeteFEN);
+      Board b(kKiwipeteFEN);
+      REQUIRE(a.get_zobrist_hash() == b.get_zobrist_hash());   // global key tables shared
+  }
+
+  TEST_CASE("Copied board equals original and diverges independently", "[board_instance]") {
+      Board original(kStartFEN);
+      Board copy = original;
+      REQUIRE(copy.get_zobrist_hash() == original.get_zobrist_hash());
+      REQUIRE(copy.ExtractFEN() == original.ExtractFEN());
+
+      const Move m = make_e2e3();
+      REQUIRE(copy.DoMove(m));
+      REQUIRE(copy.get_zobrist_hash() != original.get_zobrist_hash());
+      copy.UndoMove(m);
+      REQUIRE(copy.get_zobrist_hash() == original.get_zobrist_hash());
+  }
+  ```
+  (Verify `MoveFactory::MakeMove` spelling/location against `Move.h` at implementation time; MoveGenerator.cpp:304 is the reference usage.)
+- [ ] **1.6** Add `BoardInstanceTests.cpp` to `StratChessTests.vcxproj` (`ClCompile`) **and** `.vcxproj.filters`.
+- [ ] **1.7** `.\build.ps1 all` + fast tests green → commit: `De-singleton Board phase 1: Board constructible, copyable, const GetBitBoards`
+
+### Phase 2 — Thread `const Board&` through MoveGenerator
+
+**Files:** `MoveGenerator.h`, `MoveGenerator.cpp`, `Board.cpp` (+ every caller)
+
+- [ ] **2.1** `MoveGenerator.h`: forward-declare `class Board;` and change signatures — public:
+  ```cpp
+  static void ComputeCaptures(_In_ const Board& board, _In_ const GameInfo& info, _Inout_ MoveList& moveList);
+  static void ComputeLegalMoves(_In_ const Board& board, _In_ const GameInfo& info, _Inout_ MoveList& moveList);
+  static BITBOARD GetAttackBoard(const Board& board, eColor) noexcept;
+  ```
+  private (only those that touch the board beyond the `bbBitBoards` pointer they already receive):
+  ```cpp
+  static bool IsAttacked(const Board& board, eSquare pos, eColor attackByColor) noexcept;
+  static bool IsAttacked(const Board& board, BITBOARD squares, eColor attackByColor) noexcept;
+  static void AddOfficerMoves(const Board& board, MoveList& moveList, BITBOARD bbAttack, eSquare from);
+  static void AddPawnCaptures(const Board& board, MoveList& moveList, const BITBOARD*, Move pawnMove, eColor color);
+  static void AddCastleMoves(const Board& board, MoveList& moveList, eColor color, const BITBOARD* bbBitBoards, const GameInfo& info);
+  ```
+  `GetAnyEnPassantAttackingPawns` (line 625 uses `Instance()` only for bitboards): change to take `const BITBOARD* bbBitBoards` as first param instead of a Board. If `IsAttacked` turns out to have zero callers, delete it instead of converting.
+- [ ] **2.2** `MoveGenerator.cpp`: replace every `Board::Instance()` (lines 29, 31, 270, 272, 301, 372, 412, 424, 527, 548, 625) with the `board` parameter / passed-down `bbBitBoards`. Representative:
+  ```cpp
+  void MoveGenerator::ComputeLegalMoves(_In_ const Board& board, _In_ const GameInfo& info, _Inout_ MoveList& moveList)
+  {
+      assert(moveList.empty());
+      const auto color  = board.GetCurrentColor();
+      const auto boards = board.GetBitBoards();
+      ...
+      GenerateOfficerMoves(board, boards.data(), moveList, KNIGHT, color, false);
+      ...
+  }
+  ```
+  Note: `GenerateOfficerMoves` forwards to `AddOfficerMoves` (which needs `board.GetPiece`), so it also gains the `const Board&` first param.
+- [ ] **2.3** `Board.cpp:587` (`InCheck`): `MoveGenerator::GetAttackBoard(*this, byColor);` — this removes the Board→singleton cycle.
+- [ ] **2.4** Update all callers (compiler-driven; pass what is in scope):
+  - `AIPerplex.cpp:353, 586, 973` → `m_Board` (final form)
+  - `PlayerAI.cpp:55` (`Quiescent`) → `m_Board` (final form)
+  - `AIAgent.cpp:97`, `AIBasic.cpp:61`, `ABIterative.cpp:97` → `m_Board` (final form)
+  - `PlayerHuman.cpp:155` → `Board::Instance()` (temporary, finalized Phase 4)
+  - `Tests/Perft.cpp:170, 200, 252, 317` → the `Board&` these functions already receive as parameter
+  - `StratChessTests`: `BoardTests.cpp:117,134`, `SearchTests.cpp:83`, `SortTests.cpp:41,70,95,125,164` → `Board::Instance()` temporary (migrated in Phase 6; `BoardInstanceTests.cpp` has no MoveGenerator calls by design)
+- [ ] **2.5** Build + fast tests + `[perft]` green → commit: `De-singleton Board phase 2: MoveGenerator takes explicit Board&`
+
+### Phase 3 — Thread `const Board&` through EvalManager
+
+**Files:** `Eval.h`, `Eval.cpp`, `AIPerplex.cpp`, `PlayerAI.cpp`, `StratChessTests/EvalTests.cpp`
+
+- [ ] **3.1** `Eval.h`: forward-declare `class Board;`, change the interface:
+  ```cpp
+  virtual int Evaluate(const Board& board) const = 0;
+  ```
+  and both overrides in `EvalSimple` / `EvalComplex`.
+- [ ] **3.2** `Eval.cpp`: delete `const Board& board = Board::Instance();` (line 32) and `Board& board = Board::Instance();` (line 80) — `board` is now the parameter. Body otherwise unchanged (`GetBitBoards()` at :95 now returns the const span).
+- [ ] **3.3** Callers: `AIPerplex.cpp:540, 571` and `PlayerAI.cpp:39` → `Eval->Evaluate(m_Board)` (final form).
+- [ ] **3.4** Migrate `EvalTests.cpp` to its final non-singleton form now (it is the only test file whose call sites this phase breaks):
+  ```cpp
+  Board board(fen);
+  const int score = EvalManager::Create(EvalManager::EvalTypes::SIMPLE)->Evaluate(board);
+  ```
+- [ ] **3.5** Build + fast tests (`[eval]` in particular) green → commit: `De-singleton Board phase 3: EvalManager::Evaluate takes explicit Board&`
+
+### Phase 4 — Inject Board through the player construction chain
+
+**Files:** `PlayerBase.h`, `PlayerBase.cpp`, `PlayerAI.h`, `AIPerplex.h/.cpp`, `AIBasic.h/.cpp`, `AIAgent.h/.cpp`, `ABIterative.h/.cpp`, `PlayerHuman.h/.cpp` + factory callers
+
+- [ ] **4.1** `PlayerBase.h`:
+  ```cpp
+  static std::unique_ptr<PlayerBase> Create(ePlayerTypes type, unsigned max_depth, Board& board);
+  ```
+  (forward-declare `class Board;`)
+- [ ] **4.2** `PlayerAI.h` (`PlayerAiBase`): constructor injection, delete the default ctor:
+  ```cpp
+  protected:
+      explicit PlayerAiBase(Board& board, unsigned md) :
+          m_Board(board),
+          max_depth_(md)
+      {
+      }
+  ```
+  (`Board& m_Board;` member and all 26 `m_Board` uses in AIPerplex.cpp are already correct.)
+- [ ] **4.3** Each AI ctor gains `Board&` and forwards: `AIPerplex(Board& board, unsigned md) : PlayerAiBase(board, md) ...` (AIPerplex.h:30, AIPerplex.cpp:67), same for `AIBasic`, `AIAgent`, `ABIterative`.
+- [ ] **4.4** `PlayerHuman`: ctor gains `Board& board`, store `Board& board_;` member; replace `Board::Instance()` at PlayerHuman.cpp:19, 109, 155 (from Phase 2), 161 with `board_`.
+- [ ] **4.5** `PlayerBase.cpp:16`: factory passes `board` into every branch of the switch.
+- [ ] **4.6** Factory callers (temporary singleton args, finalized in Phase 5/6):
+  - `Game.cpp:176` → `PlayerBase::Create(type, config.depth, Board::Instance())`
+  - `UCIHandler.cpp:43` → same pattern
+  - `Tests/TacticalTestRunner.cpp:53` → same pattern
+  - `StratChessTests/TacticalTestHelpers.h:20`, `SearchTests.cpp:46` → same pattern
+- [ ] **4.7** Build + fast tests green → commit: `De-singleton Board phase 4: players receive Board by injection`
+
+### Phase 5 — Owners own their boards (engine code singleton-free)
+
+**Files:** `Game.h/.cpp`, `Config.h/.cpp`, `UCIHandler.h/.cpp`, `StratChessEvolved.cpp`, `Tests/Perft.cpp`, `Tests/PerftRunner.cpp`, `Tests/TacticalTestRunner.cpp`
+
+- [ ] **5.1** `Game.h`: add `Board board_;` as the **first** data member (players hold a reference into it — it must be constructed before and destroyed after `m_pPlayers`). `Game.cpp`: replace `Board::Instance()` at lines 93, 243, 368, 398 with `board_`; factory call passes `board_`; config call passes `board_`.
+- [ ] **5.2** `Config.h/.cpp`: `ReadConfigFile(const std::string& filename, Board& board)`, `ReadBoardSetup(const json& config, Board& board)`, `ReadFEN(const std::string& fen, Board& board)` — replaces `Board::Instance()` at Config.cpp:33, 41, 47.
+- [ ] **5.3** `UCIHandler.h`: add `Board board_;` member (declared before `ai_`). `UCIHandler.cpp`: replace lines 69, 75, 84, 95, 97, 102, 111, 112 with `board_`; `init_ai()` passes `board_` to the factory.
+- [ ] **5.4** `StratChessEvolved.cpp`: `test_fen_integration` (line 29) and `perftrunner` (line 147) use a function-local `Board board;`.
+- [ ] **5.5** `Tests/Perft.cpp:369` and `Tests/PerftRunner.cpp:48` (the two `// TODO: Update when Board is no longer singleton` sites): local `Board board;` — and delete those TODO comments.
+- [ ] **5.6** `Tests/TacticalTestRunner.cpp:57-58`: local `Board board(pos.fen);` per position, passed to the factory; update the stale "Sets up Board::Instance() internally" comment in `TacticalTestRunner.h:37`.
+- [ ] **5.7** Verify engine is singleton-free:
+  ```bash
+  grep -rn "Board::Instance" StratEngine/ StratChessEvolved/ --include=*.cpp --include=*.h | grep -v Archived
+  ```
+  Expected: only `Board.h` (the accessor itself) and the three retired `Tests/*` headers (deleted next phase).
+- [ ] **5.8** Build + fast tests + a quick self-play sanity game green → commit: `De-singleton Board phase 5: Game/UCI/runners own their boards`
+
+### Phase 6 — Migrate the test suite; delete dead legacy headers
+
+**Files:** all 12 `StratChessTests/*.cpp` listed above, `TacticalTestHelpers.h`; delete `StratEngine/Tests/Unittests.h`, `RepetitionTests.h`, `Perft_unittests.h`
+
+- [ ] **6.1** Mechanical per-file migration rule:
+  - `Board::Instance().SetupFromFEN(fen);` → `Board board(fen);`
+  - every subsequent `Board::Instance().X(...)` in that `TEST_CASE` → `board.X(...)`
+  - MoveGenerator calls gain the `board` argument
+  - order: `Board` local must be declared **before** any `PlayerBase::Create(..., board)` and any `GetGameInfo()` snapshot
+- [ ] **6.2** `TacticalTestHelpers.h`: factory helper takes the board:
+  ```cpp
+  inline std::unique_ptr<PlayerBase> make_tactical_engine(Board& board, unsigned depth)
+  {
+      auto ai = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, depth, board);
+      AIPerplex::SetVerboseLogging(false);
+      ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
+      return ai;
+  }
+  ```
+  Callers (`TacticalTests.cpp`, `TacticalFullTests.cpp`) construct `Board board(tc.fen + " w - - 0 1"-style full FEN);` first, then the engine, then `board.GetGameInfo()`.
+- [ ] **6.3** `SearchTests.cpp` fixture: give `AIPerlexTestFixture` (or the test setup around it) a `Board board_;` member declared **before** `ai_owner` so the reference outlives the AI.
+- [ ] **6.4** Delete `StratEngine/Tests/Unittests.h`, `StratEngine/Tests/RepetitionTests.h`, `StratEngine/Tests/Perft_unittests.h`; remove their `ClInclude`/`Filter` entries from `StratEngine.vcxproj`(+`.filters`) if present.
+- [ ] **6.5** Full grep — zero hits outside `Board.h` and `Archived/`:
+  ```bash
+  grep -rn "Board::Instance" --include=*.cpp --include=*.h . | grep -v Archived
+  ```
+- [ ] **6.6** `.\build.ps1 extended-tests` (all tiers incl. `[slow]`) green → commit: `De-singleton Board phase 6: tests construct boards directly; retire dead test headers`
+
+### Phase 7 — Delete Instance(); documentation
+
+**Files:** `Board.h`, `Docs/Roadmap.md`, `Docs/TestDesign.md`, `CLAUDE.md`
+
+- [ ] **7.1** Delete the `Instance()` accessor and its "TEMPORARY" comment from `Board.h`. Build both projects — the compiler is the completeness proof.
+- [ ] **7.2** Doc updates:
+  - `CLAUDE.md`: "AIPerplex in tests" snippet → board-first pattern (`Board board(fen);` + `Create(..., board)`); Key Source Files notes that mention the singleton.
+  - `Docs/TestDesign.md`: mark Phase 2 done; replace the "every TEST_CASE must SetupFromFEN first because Board state is global" isolation rule with "each TEST_CASE constructs its own Board"; note the NPS-regression-file item stays open.
+  - `Docs/Roadmap.md`: move De-Singleton Board to Completed Work (with PR number); update the ThreadData item's blocking note (now unblocked).
+- [ ] **7.3** Run the full Validation Plan below → commit: `De-singleton Board phase 7: remove Instance(); docs`
+
+---
+
+## Validation Plan
+
+**Per phase (before each commit):**
+```powershell
+.\build.ps1 all           # Release|x64, both projects, warnings-as-errors
+.\build.ps1 run-tests     # fast tier
+```
+
+**Final (after Phase 7, before PR):**
+1. `cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Validate-PrePR.ps1"` — full build + extended `[slow]` tests + self-play.
+2. Deep perft (ground truth for movegen): `cd Tests && ../x64/Release/StratChessEvolved.exe perft test` — all cases must pass with identical node counts.
+3. Tactical suite: `cd Tests && ../x64/Release/StratChessEvolved.exe tactical test` — 8/8.
+4. Self-play **both** hierarchies (base classes changed): AIPerplex vs AIPerplex (`"type": 6`) *and* AIAgent (`"type": 3`) per the PlayerAI/PlayerBase rule in CLAUDE.md; run from `StratChessEvolved/`, verify clean termination and sane `GetMove complete` lines.
+5. UCI smoke test (UCIHandler now owns the board): `(printf "uci\nisready\nposition startpos moves e2e4\ngo depth 8\nquit\n") | ./x64/Release/StratChessEvolved.exe` → well-formed `bestmove`.
+6. **NPS comparison vs Phase 0 baseline**: `perft run 6` ×3 and `[tactical_full]` wall time. Acceptance: within ±3% (expected neutral-to-positive per Design Decision 11). Any regression beyond that must be explained before the PR opens.
+7. Dispatch **search-reviewer** if any `AIPerplex.cpp` diff went beyond mechanical `m_Board`/`Evaluate(m_Board)` argument threading (per pre-PR checklist; eval-reviewer likewise for `Eval.cpp` — expected mechanical-only).
+
+---
+
+## Key Correctness Properties
+
+1. **Zobrist key identity across instances** — the global key tables are filled exactly once (thread-safe); two boards loaded from the same FEN produce the same hash (`[board_instance]` test). Without this, a future shared TT across thread boards is silently corrupt.
+2. **Perft equivalence** — node counts at every depth are bit-identical before/after (fast `[perft]` + deep suite). Move generation semantics must not change.
+3. **Search determinism preserved** — fixed-depth searches return the same best move and node counts as before the refactor (`[tactical]`, `[tactical_full]`, `[search]` unchanged).
+4. **No board copies in hot paths** — `Board` is passed by reference everywhere in this task; the copy ctor exists solely for the ThreadData follow-up and is exercised only in `[board_instance]` tests.
+5. **Reference lifetime safety** — every `Board&` stored in a player outlives the player: `Game::board_` and `UciHandler::board_` are declared before the players/AI members they feed; test fixtures declare the board before the engine.
+6. **Singleton fully gone** — `grep -rn "Board::Instance"` matches nothing outside `Archived/` after Phase 7; the compiler enforces it because the accessor no longer exists.
+7. **Test isolation upgraded** — no shared board state between TEST_CASEs; the old "must SetupFromFEN first" footgun is structurally impossible.
