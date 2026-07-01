@@ -51,7 +51,7 @@ TacticalResult TacticalTestRunner::run_position(const TacticalPosition& pos)
     result.description = pos.description;
 
     auto ai = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX,
-                                 static_cast<unsigned>(pos.depth));
+                                 static_cast<unsigned>(pos.depth), Board::Instance());
     AIPerplex::SetVerboseLogging(false);
     ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
     Board::Instance().SetupFromFEN(pos.fen);

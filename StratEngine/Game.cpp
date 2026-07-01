@@ -173,7 +173,7 @@ void Game::LoadConfigFileSettings()
 
 std::unique_ptr<IPlayer> Game::SetPlayerParams(const Config::PlayerConfig& config)
 {
-	auto player = PlayerBase::Create(static_cast<PlayerBase::ePlayerTypes>(config.type), config.depth);
+	auto player = PlayerBase::Create(static_cast<PlayerBase::ePlayerTypes>(config.type), config.depth, Board::Instance());
 	player->SetEvalEngine(static_cast<EvalManager::EvalTypes>(config.eval));
 
 	// Enable AIPerplex verbose logging in game mode (opt-in here; UCI/test modes disable it).

@@ -8,8 +8,8 @@ class ABIterative final
 {
 public:
 	// Note: NOT to be called directly - only through Factory method
-	explicit ABIterative(_In_ unsigned maxDepth)
-		:PlayerAiIterBase(maxDepth) { }
+	explicit ABIterative(Board& board, _In_ unsigned maxDepth)
+		:PlayerAiIterBase(board, maxDepth) { }
 	// Implementation/overrides of the IPlayer interface
 	Move GetMove( _Inout_ GameInfo& info ) override;
 	const char* GetType() const noexcept override
