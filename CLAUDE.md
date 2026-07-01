@@ -51,6 +51,15 @@ cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\<name>.
 
 Scripts must be invoked with `-File`, not dot-sourced (`$PSScriptRoot` is `$null` under dot-source).
 
+### CI
+`.github/workflows/build-and-test.yml` runs an independent build + fast-test check on every PR
+into `main`, on the `windows-2025-vs2026` runner image (pinned explicitly, not `windows-latest`,
+because this project's `PlatformToolset` is `v145` — see `.claude/plans/full-build-test-ci.md`
+for the verification). It fetches spdlog/nlohmann-json/Catch2 at the same pinned versions used
+locally via a generated `Directory.Build.user.props`, then runs `build.ps1 all` + the fast test
+tier. Extended `[slow]` tests and self-play remain local-only (`Validate-PrePR.ps1`) — self-play's
+timeout-based nondeterminism isn't worth the CI flakiness.
+
 ### Git hooks
 `.githooks/pre-commit` (tracked, runs `Validate-PreCommit.ps1`) is the actual hook — `git`'s
 default `.git/hooks/` is untracked and not used. `build.ps1` sets `core.hooksPath` to `.githooks`
