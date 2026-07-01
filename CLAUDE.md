@@ -51,6 +51,12 @@ cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\<name>.
 
 Scripts must be invoked with `-File`, not dot-sourced (`$PSScriptRoot` is `$null` under dot-source).
 
+### Git hooks
+`.githooks/pre-commit` (tracked, runs `Validate-PreCommit.ps1`) is the actual hook — `git`'s
+default `.git/hooks/` is untracked and not used. `build.ps1` sets `core.hooksPath` to `.githooks`
+automatically on first run, so any clone or worktree gets the hook the first time someone builds;
+no manual setup step needed. If you skip `build.ps1` entirely, run `git config core.hooksPath .githooks` once yourself.
+
 ### MSBuild invocation (fallback / raw)
 When calling MSBuild directly from a **Task (Bash subagent)** using `cmd.exe /c "…"`, use Windows backslash paths and single-slash flags:
 ```
