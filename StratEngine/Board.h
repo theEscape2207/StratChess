@@ -12,12 +12,22 @@ class Board final
 	friend std::ostream& operator<<(std::ostream&, const Board&);
 
 public:
-	// Singleton accessor
+	// TEMPORARY during de-singleton migration — deleted in the final phase.
+	// See .claude/plans/de-singleton-board.md
 	static inline Board& Instance() noexcept
 	{
 		static Board _instance;
 		return _instance;
 	}
+
+	Board();
+	explicit Board(const std::string& fen);
+	~Board() = default;
+
+	Board(const Board&) = default;
+	Board& operator=(const Board&) = default;
+	Board(Board&&) = default;
+	Board& operator=(Board&&) = default;
 
 	// --- Position setup ---
 	void SetDefaultBoard();
@@ -84,7 +94,7 @@ public:
 
 	uint64_t get_zobrist_hash() const noexcept     { return zobrist_hash_; }
 
-	std::span<BITBOARD> GetBitBoards() noexcept;
+	std::span<const BITBOARD> GetBitBoards() const noexcept;
 
 	// Returns the index of the least-significant set bit (square of first piece).
 	// Precondition: mask != 0. std::countr_zero compiles to TZCNT on x64.
@@ -96,16 +106,7 @@ public:
 
 	// --- Test setup helpers (prefer SetupFromFEN for new tests) ---
 
-	// Non-copyable / non-movable (singleton)
-	Board& operator=(const Board&) = delete;
-	Board(const Board&) = delete;
-	Board(Board&&) = delete;
-	Board& operator=(Board&&) = delete;
-
 private:
-	Board();
-	~Board() = default;
-
 	using TBitboards = std::array<BITBOARD, ALL_BITBOARDS>;
 	using sqPieces   = std::tuple<ePiece, eSquare>;
 	using squareCol  = std::vector<sqPieces>;

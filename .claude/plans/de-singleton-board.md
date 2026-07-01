@@ -87,7 +87,7 @@
 
 **Files:** `StratEngine/Board.h`, `StratEngine/Board.cpp`, new `StratChessTests/BoardInstanceTests.cpp`, `StratChessTests/StratChessTests.vcxproj` + `.filters`
 
-- [ ] **1.1** `Board.h`: make the constructor public, add the FEN convenience ctor, default all copy/move operations, mark `Instance()` as temporary:
+- [x] **1.1** `Board.h`: make the constructor public, add the FEN convenience ctor, default all copy/move operations, mark `Instance()` as temporary:
   ```cpp
   public:
       // TEMPORARY during de-singleton migration — deleted in the final phase.
@@ -107,11 +107,11 @@
       Board& operator=(Board&&) = default;
   ```
   Remove the old `private:` ctor/dtor block and the deleted copy/move declarations under the "Non-copyable / non-movable (singleton)" comment (Board.h:99-107).
-- [ ] **1.2** `Board.h`: replace the non-const accessor (line 87) with a const one:
+- [x] **1.2** `Board.h`: replace the non-const accessor (line 87) with a const one:
   ```cpp
   std::span<const BITBOARD> GetBitBoards() const noexcept;
   ```
-- [ ] **1.3** `Board.cpp`: implement both:
+- [x] **1.3** `Board.cpp`: implement both:
   ```cpp
   Board::Board(const std::string& fen) : Board()
   {
@@ -124,7 +124,7 @@
   }
   ```
   Fix any caller that stored the span in a non-const context (compiler will list them; all verified read-only).
-- [ ] **1.4** `Board.cpp`: make `zobrist::initialize()` run-once and thread-safe — wrap the existing table-filling body:
+- [x] **1.4** `Board.cpp`: make `zobrist::initialize()` run-once and thread-safe — wrap the existing table-filling body:
   ```cpp
   void initialize() noexcept
   {
@@ -135,7 +135,7 @@
       (void)once;
   }
   ```
-- [ ] **1.5** New `StratChessTests/BoardInstanceTests.cpp`, tag `[board_instance]`. Deliberately does **not** use `MoveGenerator` — at this phase the generator still reads the singleton, so generated moves would not belong to the local boards under test. A hand-built quiet pawn push (legal from the start position) exercises DoMove/UndoMove instead:
+- [x] **1.5** New `StratChessTests/BoardInstanceTests.cpp`, tag `[board_instance]`. Deliberately does **not** use `MoveGenerator` — at this phase the generator still reads the singleton, so generated moves would not belong to the local boards under test. A hand-built quiet pawn push (legal from the start position) exercises DoMove/UndoMove instead:
   ```cpp
   #include <catch2/catch_amalgamated.hpp>
   #include "Board.h"
@@ -190,8 +190,8 @@
   }
   ```
   (Verify `MoveFactory::MakeMove` spelling/location against `Move.h` at implementation time; MoveGenerator.cpp:304 is the reference usage.)
-- [ ] **1.6** Add `BoardInstanceTests.cpp` to `StratChessTests.vcxproj` (`ClCompile`) **and** `.vcxproj.filters`.
-- [ ] **1.7** `.\build.ps1 all` + fast tests green → commit: `De-singleton Board phase 1: Board constructible, copyable, const GetBitBoards`
+- [x] **1.6** Add `BoardInstanceTests.cpp` to `StratChessTests.vcxproj` (`ClCompile`) **and** `.vcxproj.filters`.
+- [x] **1.7** `.\build.ps1 all` + fast tests green → commit: `De-singleton Board phase 1: Board constructible, copyable, const GetBitBoards`
 
 ### Phase 2 — Thread `const Board&` through MoveGenerator
 

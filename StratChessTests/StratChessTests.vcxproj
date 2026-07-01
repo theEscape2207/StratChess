@@ -175,6 +175,7 @@
     <ClCompile Include="BoardMoveTests.cpp" />
     <ClCompile Include="BoardStateTests.cpp" />
     <ClCompile Include="BoardApiTests.cpp" />
+    <ClCompile Include="BoardInstanceTests.cpp" />
     <ClCompile Include="SearchTests.cpp" />
     <ClCompile Include="SortTests.cpp" />
     <ClCompile Include="MoveFormatterTests.cpp" />
