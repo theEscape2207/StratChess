@@ -1,0 +1,19 @@
+name: Check starting FEN
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  check-fen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify starting FEN
+        shell: bash
+        run: |
+          FEN='rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
+          FILE='StratChessEvolved/game_settings.json'
+          if ! grep -qE "\"FEN\"[[:space:]]*:[[:space:]]*\"${FEN}\"" "$FILE"; then
+            echo "::error file=$FILE::Active FEN is not the starting position. Expected: $FEN"
+            exit 1
+          fi
+          echo "PASS: FEN is at starting position."
