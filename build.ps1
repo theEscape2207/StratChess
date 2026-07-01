@@ -45,6 +45,17 @@ $Platform = 'x64'
 $RepoRoot  = $PSScriptRoot
 
 # ---------------------------------------------------------------------------
+# One-time bootstrap: point this checkout's hooks at the tracked .githooks/
+# directory so new clones/worktrees get FEN + fast-test enforcement without
+# a manual setup step. Idempotent — only writes when the value differs.
+# ---------------------------------------------------------------------------
+$currentHooksPath = git config --get core.hooksPath 2>$null
+if ($currentHooksPath -ne '.githooks') {
+    git config core.hooksPath .githooks
+    Write-Host "Configured core.hooksPath = .githooks" -ForegroundColor DarkGray
+}
+
+# ---------------------------------------------------------------------------
 # Discover MSBuild via vswhere (works regardless of VS version / install path)
 # ---------------------------------------------------------------------------
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'

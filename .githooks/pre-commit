@@ -1,0 +1,6 @@
+#!/bin/sh
+# Pre-commit: FEN check + fast test suite (StratChessEvolved)
+# Try pwsh from PATH first; fall back to the default PS7 install location.
+PWSH=$(command -v pwsh 2>/dev/null || echo "C:/Program Files/PowerShell/7/pwsh.exe")
+"$PWSH" -ExecutionPolicy Bypass -File StratChessEvolved/Scripts/Validate-PreCommit.ps1
+exit $?
