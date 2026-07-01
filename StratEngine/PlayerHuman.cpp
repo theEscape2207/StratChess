@@ -152,7 +152,7 @@ bool PlayerHuman::ParseInput(_In_ const std::string& input,
 // TODO: Remove illegal moves from ComputeLegalMoves?
 bool PlayerHuman::IsAnyLegalMoves(_In_ const GameInfo& info, _Out_ MoveList& moveList)
 {
-	MoveGenerator::ComputeLegalMoves(info, moveList);
+	MoveGenerator::ComputeLegalMoves(Board::Instance(), info, moveList);
 
 	return std::any_of(
 		moveList.begin(),

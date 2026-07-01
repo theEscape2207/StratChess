@@ -596,7 +596,7 @@ bool Board::InCheck() const noexcept
 {
 	// Generate attacks for the opponent to see if our king is under attack
 	const eColor byColor = (sideToMove_ == WHITE ? BLACK : WHITE);
-	const BITBOARD bb = MoveGenerator::GetAttackBoard(byColor);
+	const BITBOARD bb = MoveGenerator::GetAttackBoard(*this, byColor);
 	return Bits::isAnyBitSet(bb, bitboards_.at(static_cast<BITBOARD>(KING) + sideToMove_));
 }
 

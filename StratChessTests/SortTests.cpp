@@ -38,7 +38,7 @@ TEST_CASE("Sort - PV move scores 2'000'000", "[sort]")
 
     GameInfo info = board.GetGameInfo();
     MoveList moveList;
-    MoveGenerator::ComputeLegalMoves(info, moveList);
+    MoveGenerator::ComputeLegalMoves(board, info, moveList);
     const int n = static_cast<int>(moveList.size());
     REQUIRE(n > 1);
 
@@ -67,7 +67,7 @@ TEST_CASE("Sort - Hash move scores 1'900'000 when not the PV move", "[sort]")
 
     GameInfo info = board.GetGameInfo();
     MoveList moveList;
-    MoveGenerator::ComputeLegalMoves(info, moveList);
+    MoveGenerator::ComputeLegalMoves(board, info, moveList);
     const int n = static_cast<int>(moveList.size());
     REQUIRE(n > 2);
 
@@ -92,7 +92,7 @@ TEST_CASE("Sort - Capture scores above 1'000'000 (winning capture category)", "[
 
     GameInfo info = board.GetGameInfo();
     MoveList moveList;
-    MoveGenerator::ComputeLegalMoves(info, moveList);
+    MoveGenerator::ComputeLegalMoves(board, info, moveList);
     const int n = static_cast<int>(moveList.size());
 
     // Find Ra1xa2 in the move list
@@ -122,7 +122,7 @@ TEST_CASE("Sort - Killer0 scores 900'000; beats quiet move with no history", "[s
 
     GameInfo info = board.GetGameInfo();
     MoveList moveList;
-    MoveGenerator::ComputeLegalMoves(info, moveList);
+    MoveGenerator::ComputeLegalMoves(board, info, moveList);
     const int n = static_cast<int>(moveList.size());
 
     // Find a quiet move to designate as killer0 (not the capture a1xa2)
@@ -161,7 +161,7 @@ TEST_CASE("Sort - Quiet move with positive history scores exactly that history v
 
     GameInfo info = board.GetGameInfo();
     MoveList moveList;
-    MoveGenerator::ComputeLegalMoves(info, moveList);
+    MoveGenerator::ComputeLegalMoves(board, info, moveList);
     const int n = static_cast<int>(moveList.size());
 
     // Find a quiet king move

@@ -80,7 +80,7 @@ static Move AnyLegalMove()
         "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     GameInfo info = Board::Instance().GetGameInfo();
     MoveList ml;
-    MoveGenerator::ComputeLegalMoves(info, ml);
+    MoveGenerator::ComputeLegalMoves(Board::Instance(), info, ml);
     REQUIRE(!ml.empty());
     return ml[0];
 }

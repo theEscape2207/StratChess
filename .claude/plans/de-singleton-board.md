@@ -217,7 +217,7 @@
 
 **Files:** `MoveGenerator.h`, `MoveGenerator.cpp`, `Board.cpp` (+ every caller)
 
-- [ ] **2.1** `MoveGenerator.h`: forward-declare `class Board;` and change signatures — public:
+- [x] **2.1** `MoveGenerator.h`: forward-declare `class Board;` and change signatures — public:
   ```cpp
   static void ComputeCaptures(_In_ const Board& board, _In_ const GameInfo& info, _Inout_ MoveList& moveList);
   static void ComputeLegalMoves(_In_ const Board& board, _In_ const GameInfo& info, _Inout_ MoveList& moveList);
@@ -225,14 +225,16 @@
   ```
   private (only those that touch the board beyond the `bbBitBoards` pointer they already receive):
   ```cpp
-  static bool IsAttacked(const Board& board, eSquare pos, eColor attackByColor) noexcept;
-  static bool IsAttacked(const Board& board, BITBOARD squares, eColor attackByColor) noexcept;
   static void AddOfficerMoves(const Board& board, MoveList& moveList, BITBOARD bbAttack, eSquare from);
-  static void AddPawnCaptures(const Board& board, MoveList& moveList, const BITBOARD*, Move pawnMove, eColor color);
+  static void AddPawnCaptures([[maybe_unused]] const Board& board, MoveList& moveList, const BITBOARD*, Move pawnMove, eColor color);
   static void AddCastleMoves(const Board& board, MoveList& moveList, eColor color, const BITBOARD* bbBitBoards, const GameInfo& info);
   ```
-  `GetAnyEnPassantAttackingPawns` (line 625 uses `Instance()` only for bitboards): change to take `const BITBOARD* bbBitBoards` as first param instead of a Board. If `IsAttacked` turns out to have zero callers, delete it instead of converting.
-- [ ] **2.2** `MoveGenerator.cpp`: replace every `Board::Instance()` (lines 29, 31, 270, 272, 301, 372, 412, 424, 527, 548, 625) with the `board` parameter / passed-down `bbBitBoards`. Representative:
+  `GetAnyEnPassantAttackingPawns` (line 625 uses `Instance()` only for bitboards): changed to take `const BITBOARD* bbBitBoards` as first param instead of a Board. Both `IsAttacked` overloads had zero callers (both marked "unused"/"currently unused" in their own comments) — **deleted** rather than converted, per the plan's contingency.
+
+  **Deviation from the plan found during implementation**: `GeneratePawnCaptures` forwards to `AddPawnCaptures` (which now needs `const Board&`), so it also gained a `const Board&` first param — the same forwarding case as `GenerateOfficerMoves`→`AddOfficerMoves`, just missed in the original private-function list above.
+
+  **`[[maybe_unused]]` needed on `AddPawnCaptures`'s `board` param**: every use of `board` inside that function is inside an `assert(...)` call, and Release builds define `NDEBUG` (asserts compile to nothing) — confirmed via `grep NDEBUG StratChessEvolved.vcxproj`. Without the attribute this is an unused-parameter warning under `/W4 /WX`. Matches the existing project convention (see `AIPerplex.h:190-191` / `AIPerplex.cpp:1121-1122` for the same pattern) and the approved-suppression rule in `CLAUDE.md`.
+- [x] **2.2** `MoveGenerator.cpp`: replace every `Board::Instance()` (lines 29, 31, 270, 272, 301, 372, 412, 424, 527, 548, 625) with the `board` parameter / passed-down `bbBitBoards`. Representative:
   ```cpp
   void MoveGenerator::ComputeLegalMoves(_In_ const Board& board, _In_ const GameInfo& info, _Inout_ MoveList& moveList)
   {
@@ -245,15 +247,19 @@
   }
   ```
   Note: `GenerateOfficerMoves` forwards to `AddOfficerMoves` (which needs `board.GetPiece`), so it also gains the `const Board&` first param.
-- [ ] **2.3** `Board.cpp:587` (`InCheck`): `MoveGenerator::GetAttackBoard(*this, byColor);` — this removes the Board→singleton cycle.
-- [ ] **2.4** Update all callers (compiler-driven; pass what is in scope):
+- [x] **2.3** `Board.cpp:587` (`InCheck`): `MoveGenerator::GetAttackBoard(*this, byColor);` — this removes the Board→singleton cycle.
+- [x] **2.4** Update all callers (compiler-driven; pass what is in scope):
   - `AIPerplex.cpp:353, 586, 973` → `m_Board` (final form)
   - `PlayerAI.cpp:55` (`Quiescent`) → `m_Board` (final form)
   - `AIAgent.cpp:97`, `AIBasic.cpp:61`, `ABIterative.cpp:97` → `m_Board` (final form)
   - `PlayerHuman.cpp:155` → `Board::Instance()` (temporary, finalized Phase 4)
   - `Tests/Perft.cpp:170, 200, 252, 317` → the `Board&` these functions already receive as parameter
-  - `StratChessTests`: `BoardTests.cpp:117,134`, `SearchTests.cpp:83`, `SortTests.cpp:41,70,95,125,164` → `Board::Instance()` temporary (migrated in Phase 6; `BoardInstanceTests.cpp` has no MoveGenerator calls by design)
-- [ ] **2.5** Build + fast tests + `[perft]` green → commit: `De-singleton Board phase 2: MoveGenerator takes explicit Board&`
+  - `StratChessTests`: `BoardTests.cpp:117,134`, `SortTests.cpp:41,70,95,125,164` → the local `Board& board = Board::Instance();` already in scope in each `TEST_CASE` (final form for those locals; the `Board::Instance()` binding itself is migrated in Phase 6). `SearchTests.cpp:83` has no local board (uses `Board::Instance()` directly, temporary). `BoardInstanceTests.cpp` has no MoveGenerator calls by design.
+- [x] **2.5** Build + fast tests + `[perft]` green → commit: `De-singleton Board phase 2: MoveGenerator takes explicit Board&`
+
+  **Validation results**: full build (both configs, Level4+/WX) clean. Fast tier: 1557 assertions / 129 test cases, unchanged from Phase 1. Deep perft (`Tests/perft_test_cases.json`): 640/640 passed, node counts identical to pre-Phase-2, NPS ≈31-33M/s per position (in line with or above the Phase 0 baseline — no regression from removing the `Board::Instance()` magic-static overhead per move-generation call).
+
+  **Pre-existing tactical suite finding (not a regression)**: `StratChessEvolved.exe tactical test` returns 7/8 (87%, below the 90% documented threshold) — position `QFORK-001` fails. Verified via `git stash` that this **also fails identically at the Phase 1 commit**, before any MoveGenerator changes — so it predates this refactor and is unrelated to it. `Docs/TestDesign.md` currently (incorrectly) documents this suite as 8/8. Flagged as a separate background task (task_83e8a759) rather than fixed here, since fixing search/eval behavior is out of this plan's scope (Design Decision: "No behavioral change to search, eval, or move generation").
 
 ### Phase 3 — Thread `const Board&` through EvalManager
 
