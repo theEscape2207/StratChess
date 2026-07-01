@@ -114,7 +114,7 @@ TEST_CASE("Board - Promotion move generation: quiet promotion yields PROMOTION_Q
 
     GameInfo info = board.GetGameInfo();
     MoveList moveList;
-    MoveGenerator::ComputeLegalMoves(info, moveList);
+    MoveGenerator::ComputeLegalMoves(board, info, moveList);
 
     // Quiet promotion: c7 → c8, must find at least the queen promotion
     const auto it = std::find_if(moveList.begin(), moveList.end(), [](const Move& m) {
@@ -131,7 +131,7 @@ TEST_CASE("Board - Capture-promotion yields PROMOTION_QUEEN_CAPTURE type", "[boa
 
     GameInfo info = board.GetGameInfo();
     MoveList moveList;
-    MoveGenerator::ComputeLegalMoves(info, moveList);
+    MoveGenerator::ComputeLegalMoves(board, info, moveList);
 
     // Capture-promotion: c7 captures rook on b8, promotes to queen.
     // Encoded as PROMOTION_QUEEN_CAPTURE (capture bit 2 + promotion bit 3 both set).
