@@ -73,9 +73,9 @@ void Board::add_piece(eSquare square, ePiece piece)
 	set_bitboard_square(ALL_PIECES, square);
 
 	// Rotated bitboards for sliding piece attack generation
-	BitBoardHelper::SetBitboardMask(bitboards_[ROTATED90],  g_bbMaskRotated90[square]);
-	BitBoardHelper::SetBitboardMask(bitboards_[ROTATED45R], g_bbMaskRotated45R[square]);
-	BitBoardHelper::SetBitboardMask(bitboards_[ROTATED45L], g_bbMaskRotated45L[square]);
+	BitBoardHelper::set_bits(bitboards_[ROTATED90],  g_bbMaskRotated90[square]);
+	BitBoardHelper::set_bits(bitboards_[ROTATED45R], g_bbMaskRotated45R[square]);
+	BitBoardHelper::set_bits(bitboards_[ROTATED45L], g_bbMaskRotated45L[square]);
 
 	set_square(square, piece);
 	zobrist_hash_ ^= zobrist::piece_keys[piece][square];
@@ -95,9 +95,9 @@ void Board::remove_piece(eSquare square, ePiece piece)
 	clear_bitboard_square(bitboard_index(ALL_FROM_COLOR, PieceHelper::Color(piece)), square);
 	clear_bitboard_square(ALL_PIECES, square);
 
-	BitBoardHelper::ClearBitboardMask(bitboards_[ROTATED90],  g_bbMaskRotated90[square]);
-	BitBoardHelper::ClearBitboardMask(bitboards_[ROTATED45R], g_bbMaskRotated45R[square]);
-	BitBoardHelper::ClearBitboardMask(bitboards_[ROTATED45L], g_bbMaskRotated45L[square]);
+	BitBoardHelper::clear_bits(bitboards_[ROTATED90],  g_bbMaskRotated90[square]);
+	BitBoardHelper::clear_bits(bitboards_[ROTATED45R], g_bbMaskRotated45R[square]);
+	BitBoardHelper::clear_bits(bitboards_[ROTATED45L], g_bbMaskRotated45L[square]);
 
 	clear_square(square);
 	zobrist_hash_ ^= zobrist::piece_keys[piece][square];
@@ -637,7 +637,7 @@ bool Board::test_bitboards() const
 	if (bbOR != bitboards_.at(ALL_PIECES)) {
 		std::ostringstream oss;
 		oss << "Individual boards OR'd together:\n";
-		BitBoardHelper::PrintBitboardBinary(bbOR, oss);
+		BitBoardHelper::print_bitboard(oss, bbOR);
 		print_all_bitboards(bitboards_, oss);
 		spdlog::default_logger()->error("Bitboard corruption detected:\n{}", oss.str());
 		return false;
@@ -650,35 +650,35 @@ void Board::print_all_bitboards(const TBitboards& boards, std::ostream& stream) 
 	stream << *this;
 
 	stream << "ALL_BLACK_PIECES\n";
-	BitBoardHelper::PrintBitboardBinary(boards.at(ePiece::ALL_BLACK_PIECES), stream);
+	BitBoardHelper::print_bitboard(stream, boards.at(ePiece::ALL_BLACK_PIECES));
 	stream << "ALL_WHITE_PIECES\n";
-	BitBoardHelper::PrintBitboardBinary(boards.at(ePiece::ALL_WHITE_PIECES), stream);
+	BitBoardHelper::print_bitboard(stream, boards.at(ePiece::ALL_WHITE_PIECES));
 	stream << "ALL_PIECES\n";
-	BitBoardHelper::PrintBitboardBinary(boards.at(ALL_PIECES), stream);
+	BitBoardHelper::print_bitboard(stream, boards.at(ALL_PIECES));
 	stream << "WHITE_KING\n";
-	BitBoardHelper::PrintBitboardBinary(boards.at(ePiece::WHITE_KING), stream);
+	BitBoardHelper::print_bitboard(stream, boards.at(ePiece::WHITE_KING));
 	stream << "BLACK_KING\n";
-	BitBoardHelper::PrintBitboardBinary(boards.at(ePiece::BLACK_KING), stream);
+	BitBoardHelper::print_bitboard(stream, boards.at(ePiece::BLACK_KING));
 	stream << "WHITE_PAWN\n";
-	BitBoardHelper::PrintBitboardBinary(boards.at(ePiece::WHITE_PAWN), stream);
+	BitBoardHelper::print_bitboard(stream, boards.at(ePiece::WHITE_PAWN));
 	stream << "BLACK_PAWN\n";
-	BitBoardHelper::PrintBitboardBinary(boards.at(ePiece::BLACK_PAWN), stream);
+	BitBoardHelper::print_bitboard(stream, boards.at(ePiece::BLACK_PAWN));
 	stream << "WHITE_BISHOP\n";
-	BitBoardHelper::PrintBitboardBinary(boards.at(ePiece::WHITE_BISHOP), stream);
+	BitBoardHelper::print_bitboard(stream, boards.at(ePiece::WHITE_BISHOP));
 	stream << "BLACK_BISHOP\n";
-	BitBoardHelper::PrintBitboardBinary(boards.at(ePiece::BLACK_BISHOP), stream);
+	BitBoardHelper::print_bitboard(stream, boards.at(ePiece::BLACK_BISHOP));
 	stream << "WHITE_QUEEN\n";
-	BitBoardHelper::PrintBitboardBinary(boards.at(ePiece::WHITE_QUEEN), stream);
+	BitBoardHelper::print_bitboard(stream, boards.at(ePiece::WHITE_QUEEN));
 	stream << "BLACK_QUEEN\n";
-	BitBoardHelper::PrintBitboardBinary(boards.at(ePiece::BLACK_QUEEN), stream);
+	BitBoardHelper::print_bitboard(stream, boards.at(ePiece::BLACK_QUEEN));
 	stream << "WHITE_ROOK\n";
-	BitBoardHelper::PrintBitboardBinary(boards.at(ePiece::WHITE_ROOK), stream);
+	BitBoardHelper::print_bitboard(stream, boards.at(ePiece::WHITE_ROOK));
 	stream << "BLACK_ROOK\n";
-	BitBoardHelper::PrintBitboardBinary(boards.at(ePiece::BLACK_ROOK), stream);
+	BitBoardHelper::print_bitboard(stream, boards.at(ePiece::BLACK_ROOK));
 	stream << "WHITE_KNIGHT\n";
-	BitBoardHelper::PrintBitboardBinary(boards.at(ePiece::WHITE_KNIGHT), stream);
+	BitBoardHelper::print_bitboard(stream, boards.at(ePiece::WHITE_KNIGHT));
 	stream << "BLACK_KNIGHT\n";
-	BitBoardHelper::PrintBitboardBinary(boards.at(ePiece::BLACK_KNIGHT), stream);
+	BitBoardHelper::print_bitboard(stream, boards.at(ePiece::BLACK_KNIGHT));
 }
 
 // Prints the board to the stream as an 8x8 ASCII grid.
