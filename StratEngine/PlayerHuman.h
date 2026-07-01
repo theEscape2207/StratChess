@@ -6,6 +6,7 @@
 #include <sstream>
 
 class Move;
+class Board;
 
 class PlayerHuman final : public PlayerBase  
 {
@@ -23,7 +24,8 @@ public:
 	}
 
 	/* End IPlayer implementation */
-	PlayerHuman() noexcept
+	explicit PlayerHuman(Board& board) noexcept
+		: board_(board)
 	{
 		isHuman_ = true;
 	}
@@ -34,8 +36,9 @@ public:
 	PlayerHuman& operator=(const PlayerHuman&) = delete;
 	PlayerHuman(PlayerHuman&&) = delete;
 	PlayerHuman& operator=(PlayerHuman&&) = delete;
-private: 
-	
+private:
+	Board& board_;
+
 	/* Helpers */
 
 	using MapPieces = std::unordered_map<char, ePieceType>;
@@ -73,5 +76,5 @@ private:
 
 	// Fetches the list of Moves for the Player
 	// Returns true if any legal move is found, and false otherwise
-	static bool IsAnyLegalMoves(_In_ const GameInfo& info, _Out_ MoveList& moveList );
+	static bool IsAnyLegalMoves(Board& board, _In_ const GameInfo& info, _Out_ MoveList& moveList );
 };

@@ -64,8 +64,8 @@ void AIPerplex::SetVerboseLogging(bool enabled) noexcept {
 	}
 }
 
-AIPerplex::AIPerplex(_In_ unsigned md)
-	: PlayerAiBase(md)
+AIPerplex::AIPerplex(Board& board, _In_ unsigned md)
+	: PlayerAiBase(board, md)
 {
 	// allocate TT once per AIPerplex instance; size can be tuned or read from config
 	_tt = std::make_unique<TranspositionTable>(256);

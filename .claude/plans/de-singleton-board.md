@@ -286,12 +286,12 @@
 
 **Files:** `PlayerBase.h`, `PlayerBase.cpp`, `PlayerAI.h`, `AIPerplex.h/.cpp`, `AIBasic.h/.cpp`, `AIAgent.h/.cpp`, `ABIterative.h/.cpp`, `PlayerHuman.h/.cpp` + factory callers
 
-- [ ] **4.1** `PlayerBase.h`:
+- [x] **4.1** `PlayerBase.h`:
   ```cpp
   static std::unique_ptr<PlayerBase> Create(ePlayerTypes type, unsigned max_depth, Board& board);
   ```
   (forward-declare `class Board;`)
-- [ ] **4.2** `PlayerAI.h` (`PlayerAiBase`): constructor injection, delete the default ctor:
+- [x] **4.2** `PlayerAI.h` (`PlayerAiBase`): constructor injection, delete the default ctor:
   ```cpp
   protected:
       explicit PlayerAiBase(Board& board, unsigned md) :
@@ -301,15 +301,21 @@
       }
   ```
   (`Board& m_Board;` member and all 26 `m_Board` uses in AIPerplex.cpp are already correct.)
-- [ ] **4.3** Each AI ctor gains `Board&` and forwards: `AIPerplex(Board& board, unsigned md) : PlayerAiBase(board, md) ...` (AIPerplex.h:30, AIPerplex.cpp:67), same for `AIBasic`, `AIAgent`, `ABIterative`.
-- [ ] **4.4** `PlayerHuman`: ctor gains `Board& board`, store `Board& board_;` member; replace `Board::Instance()` at PlayerHuman.cpp:19, 109, 155 (from Phase 2), 161 with `board_`.
-- [ ] **4.5** `PlayerBase.cpp:16`: factory passes `board` into every branch of the switch.
-- [ ] **4.6** Factory callers (temporary singleton args, finalized in Phase 5/6):
+- [x] **4.3** Each AI ctor gains `Board&` and forwards: `AIPerplex(Board& board, unsigned md) : PlayerAiBase(board, md) ...` (AIPerplex.h:30, AIPerplex.cpp:67), same for `AIBasic`, `AIAgent`, `ABIterative`.
+
+  **Deviation from the plan found during implementation**: `AIAgent`/`ABIterative` don't derive directly from `PlayerAiBase` — they go through an intermediate `PlayerAiIterBase` (`PlayerAiIterBase.h`, not in the plan's file list), whose constructor also needed the `Board&` forwarding treatment: `explicit PlayerAiIterBase(Board& board, unsigned md) : PlayerAiBase(board, md) { ... }`.
+- [x] **4.4** `PlayerHuman`: ctor gains `Board& board`, store `Board& board_;` member; replace `Board::Instance()` at PlayerHuman.cpp:19, 109, 155 (from Phase 2), 161 with `board_`.
+
+  **Deviation from the plan found during implementation**: `IsAnyLegalMoves` is a `static` method (no `board_` member to reach), and it calls the mutating `Board::IsLegalMove()`, so it needed its own `Board& board` parameter rather than just reading `board_` — `static bool IsAnyLegalMoves(Board& board, const GameInfo& info, MoveList& moveList)`. Its lambda at PlayerHuman.cpp:161 captures `board` by reference.
+- [x] **4.5** `PlayerBase.cpp:16`: factory passes `board` into every branch of the switch.
+- [x] **4.6** Factory callers (temporary singleton args, finalized in Phase 5/6):
   - `Game.cpp:176` → `PlayerBase::Create(type, config.depth, Board::Instance())`
   - `UCIHandler.cpp:43` → same pattern
   - `Tests/TacticalTestRunner.cpp:53` → same pattern
-  - `StratChessTests/TacticalTestHelpers.h:20`, `SearchTests.cpp:46` → same pattern
-- [ ] **4.7** Build + fast tests green → commit: `De-singleton Board phase 4: players receive Board by injection`
+  - `StratChessTests/TacticalTestHelpers.h:20` (`make_tactical_engine` helper — passes `Board::Instance()` internally, function signature unchanged for now), `SearchTests.cpp:46` → same pattern
+- [x] **4.7** Build + fast tests green → commit: `De-singleton Board phase 4: players receive Board by injection`
+
+  **Validation results**: full build (both configs, Level4/WX) clean on first attempt. Full fast tier: 1557 assertions / 129 test cases, unchanged. Deep perft: 640/640, unchanged. Self-play sanity checks (base classes `PlayerAI`/`PlayerBase` changed, so both hierarchies per CLAUDE.md's rule): AIAgent (`"type": 3`, 20 s) ran cleanly — legal move sequences, increasing search depths, correct board printout; AIPerplex (`"type": 6`, 25 s, default config) reproduced the **exact same node counts** as the Phase 0 baseline (11,432,010 / 12,442,363 / 14,748,434 for the first three moves) — fully deterministic, no behavioral drift. `game_settings.json` was temporarily edited for the AIAgent run and restored byte-for-byte afterward (verified via `git status`).
 
 ### Phase 5 — Owners own their boards (engine code singleton-free)
 

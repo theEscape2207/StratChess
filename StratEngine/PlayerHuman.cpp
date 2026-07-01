@@ -16,10 +16,10 @@
 // Right now its only possible through e1g1 (short) or e1-c1(long)
 Move PlayerHuman::GetMove(_Inout_ GameInfo& info)
 {
-	Board& board = Board::Instance();
+	Board& board = board_;
 	MoveList moveList;
-	
-	if (!IsAnyLegalMoves(info, moveList))
+
+	if (!IsAnyLegalMoves(board, info, moveList))
 	{
 		// No legal moves left, bye!
 		spdlog::default_logger()->info("Human has no legal moves left");
@@ -106,7 +106,7 @@ Move PlayerHuman::GetMove(_Inout_ GameInfo& info)
 		// TODO: IsLegalMove bliver kaldt i IsAnyLegalMoves(), men illegale traek bliver ikke fjernet
 		if (board.IsLegalMove(*moveIt))
 		{
-			info.UpdateBoardInfo(*moveIt, Board::Instance().GetEffectiveMovPiece(*moveIt));
+			info.UpdateBoardInfo(*moveIt, board.GetEffectiveMovPiece(*moveIt));
 			return *moveIt;
 		}
 	}
@@ -150,14 +150,14 @@ bool PlayerHuman::ParseInput(_In_ const std::string& input,
 
 // Returns true if any legal move is found, and false otherwise
 // TODO: Remove illegal moves from ComputeLegalMoves?
-bool PlayerHuman::IsAnyLegalMoves(_In_ const GameInfo& info, _Out_ MoveList& moveList)
+bool PlayerHuman::IsAnyLegalMoves(Board& board, _In_ const GameInfo& info, _Out_ MoveList& moveList)
 {
-	MoveGenerator::ComputeLegalMoves(Board::Instance(), info, moveList);
+	MoveGenerator::ComputeLegalMoves(board, info, moveList);
 
 	return std::any_of(
 		moveList.begin(),
 		moveList.end(),
-		[](const Move & move) {
-		return Board::Instance().IsLegalMove(move);
+		[&board](const Move & move) {
+		return board.IsLegalMove(move);
 	});
 }

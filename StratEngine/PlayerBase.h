@@ -6,6 +6,7 @@
 
 // Forward declare
 class Move;
+class Board;
 //struct GameInfo;
 
 class PlayerBase : public IPlayer
@@ -43,7 +44,7 @@ public:
 	~PlayerBase() = default;
 
 	// Factory constructor!
-	static std::unique_ptr<PlayerBase> Create(ePlayerTypes type, unsigned max_depth);
+	static std::unique_ptr<PlayerBase> Create(ePlayerTypes type, unsigned max_depth, Board& board);
 
 	PlayerBase(const PlayerBase&) = delete;
 	PlayerBase& operator=(const PlayerBase&) = delete;

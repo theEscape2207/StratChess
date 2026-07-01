@@ -1,6 +1,7 @@
 // TacticalTestHelpers.h — shared helpers for TacticalTests.cpp and TacticalFullTests.cpp
 #pragma once
 #include "AIPerplex.h"
+#include "Board.h"
 #include "Eval.h"
 #include <memory>
 
@@ -17,7 +18,7 @@ struct TacticalCase {
 // Call before ai->GetMove() — AIPerplex reads board state at search time, not at construction time.
 inline std::unique_ptr<PlayerBase> make_tactical_engine(unsigned depth)
 {
-    auto ai = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, depth);
+    auto ai = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, depth, Board::Instance());
     AIPerplex::SetVerboseLogging(false);          // suppress after ctor re-enables it
     ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
     return ai;

@@ -43,7 +43,7 @@ public:
     {
         // depth=4 sets max_depth_ (the IDS hard cap used if GetMove() is ever called).
         // None of the current [search] tests call GetMove(), so this is a don't-care.
-        ai_owner = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, 4);
+        ai_owner = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, 4, Board::Instance());
         ai = static_cast<AIPerplex*>(ai_owner.get());
         AIPerplex::SetVerboseLogging(false);
         // Note: SetEvalEngine() is NOT called — the helper methods under test

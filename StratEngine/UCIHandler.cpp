@@ -40,7 +40,7 @@ UciHandler::~UciHandler()
 
 void UciHandler::init_ai()
 {
-    auto base = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, UCI_DEFAULT_DEPTH);
+    auto base = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, UCI_DEFAULT_DEPTH, Board::Instance());
     AIPerplex::SetVerboseLogging(false);
     base->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);   // public via IPlayer; must be before downcast
     ai_.reset(dynamic_cast<PlayerAiBase*>(base.release()));

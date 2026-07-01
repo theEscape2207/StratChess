@@ -47,19 +47,11 @@ public:
 protected:
 	// Force use of factory by
 	// Preventing constructor, copy-construction & operator=
-	explicit PlayerAiBase(unsigned md) :
-		m_Board(Board::Instance()),
+	explicit PlayerAiBase(Board& board, unsigned md) :
+		m_Board(board),
 		max_depth_(md)
 	{
 		// Create the Evaluation strategy - Right now only possible to select two: SIMPLE and COMPLEX ;-)
-	}
-
-	// default constructor - not used but needs to be there
-	PlayerAiBase() noexcept :
-		m_Board(Board::Instance()),
-		max_depth_(5) // some default
-	{
-
 	}
 
 	//virtual Move GetMove(_Inout_ GameInfo& info) = 0;
