@@ -16,6 +16,7 @@ struct TacticalPosition {
 
 struct TacticalResult {
     std::string id;
+    std::string category;
     std::string description;
     std::string engine_move_uci;
     bool passed = false;
@@ -24,6 +25,20 @@ struct TacticalResult {
 
 class TacticalTestRunner {
 public:
+    struct SuiteVerdict {
+        bool ok = false;
+        int passed = 0;
+        int total = 0;
+        double pass_rate = 0.0;
+        std::vector<std::string> failed_mate_ids;
+    };
+
+    // Pure verdict policy (unit-tested in SuitePolicyTests.cpp):
+    // ok iff total > 0, pass_rate >= required_pass_rate, and no failures
+    // in any category whose name starts with "mate".
+    [[nodiscard]] static SuiteVerdict evaluate_results(
+        const std::vector<TacticalResult>& results, double required_pass_rate);
+
     // Run all positions from the JSON file. Prints per-position results and summary.
     // Returns true if pass_rate >= required_pass_rate.
     [[nodiscard]] static bool run_test_suite(double required_pass_rate = 0.90, bool verbose = true);
