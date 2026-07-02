@@ -127,6 +127,70 @@
       "fen": "6R1/4qp1p/ppr1n1pk/8/1P2P1QP/6N1/P4PP1/6K1 w - - 0 1",
       "best_moves": ["g4h5"],
       "depth": 5
+    },
+    {
+      "id": "WAC-050",
+      "category": "mate_in_3",
+      "description": "WAC.050 Rxb6+: rook sac rips the king shelter",
+      "fen": "k4r2/1R4pb/1pQp1n1p/3P4/5p1P/3P2P1/r1q1R2K/8 w - - 0 1",
+      "best_moves": ["b7b6"],
+      "depth": 6
+    },
+    {
+      "id": "WAC-057",
+      "category": "mate_in_3",
+      "description": "WAC.057 Rf8+: deflection into back-rank mate",
+      "fen": "r3q1kr/ppp5/3p2pQ/8/3PP1b1/5R2/PPP3P1/5RK1 w - - 0 1",
+      "best_moves": ["f3f8"],
+      "depth": 6
+    },
+    {
+      "id": "WAC-064",
+      "category": "mate_in_3",
+      "description": "WAC.064 g4+: pawn check starts king hunt",
+      "fen": "8/6pp/3q1p2/3n1k2/1P6/3NQ2P/5PP1/6K1 w - - 0 1",
+      "best_moves": ["g2g4"],
+      "depth": 6
+    },
+    {
+      "id": "WAC-079",
+      "category": "mate_in_3",
+      "description": "WAC.079 Qxh2+ (Black): queen sac on h2, king hunt",
+      "fen": "r3k2r/pbp2pp1/3b1n2/1p6/3P3p/1B2N1Pq/PP1PQP1P/R1B2RK1 b kq - 0 1",
+      "best_moves": ["h3h2"],
+      "depth": 6
+    },
+    {
+      "id": "WAC-097",
+      "category": "mate_in_3",
+      "description": "WAC.097 Qa8+: long-diagonal switchback mate",
+      "fen": "6k1/5p2/p5np/4B3/3P4/1PP1q3/P3r1QP/6RK w - - 0 1",
+      "best_moves": ["g2a8"],
+      "depth": 6
+    },
+    {
+      "id": "WAC-136",
+      "category": "mate_in_3",
+      "description": "WAC.136 Rc8+: back-rank breakthrough",
+      "fen": "6kr/1q2r1p1/1p2N1Q1/5p2/1P1p4/6R1/7P/2R3K1 w - - 0 1",
+      "best_moves": ["c1c8"],
+      "depth": 6
+    },
+    {
+      "id": "WAC-173",
+      "category": "mate_in_3",
+      "description": "WAC.173 Qh6+: queen invades, mate on the h-file/g7",
+      "fen": "2r1b3/1pp1qrk1/p1n1P1p1/7R/2B1p3/4Q1P1/PP3PP1/3R2K1 w - - 0 1",
+      "best_moves": ["e3h6"],
+      "depth": 6
+    },
+    {
+      "id": "WAC-197",
+      "category": "mate_in_3",
+      "description": "WAC.197 Qf1+ (Black): deflection, promotion mate follows",
+      "fen": "7k/1p4p1/7p/3P1n2/4Q3/2P2P2/PP3qRP/7K b - - 0 1",
+      "best_moves": ["f2f1"],
+      "depth": 6
     }
   ]
 }
