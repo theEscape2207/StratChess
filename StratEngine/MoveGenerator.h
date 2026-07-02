@@ -5,38 +5,36 @@
 
 #include "Utils/BitTools.h"
 
+class Board;
+
 class MoveGenerator final
 {
 public:
 	// Computes all the pseudo legal piece capturing moves on the current board - no check for Check here!
-	static void ComputeCaptures(_In_ const GameInfo& info, _Inout_ MoveList& moveList);
+	static void ComputeCaptures(_In_ const Board& board, _In_ const GameInfo& info, _Inout_ MoveList& moveList);
 	// Computes all the pseudo legal moves on the current board - no check for Check here!
-	static void ComputeLegalMoves(_In_ const GameInfo& info, _Inout_ MoveList& moveList);
+	static void ComputeLegalMoves(_In_ const Board& board, _In_ const GameInfo& info, _Inout_ MoveList& moveList);
 
 	// Returns BITBOARD with all squares attacked by 'Color'
-	static BITBOARD GetAttackBoard( eColor ) noexcept;		// TODO: This is used directly in Board?!?
+	static BITBOARD GetAttackBoard(const Board& board, eColor) noexcept;
 
 	~MoveGenerator() = default;
 private:
 	MoveGenerator() = default;
 
-	// Fungerer ved at kalde GetAttackBoard() og se om et af dem rammer 'pos'
-	static bool IsAttacked(eSquare pos, eColor attackByColor) noexcept;
-
-	static bool IsAttacked(BITBOARD squares, eColor attackByColor) noexcept;
-
-	static void GeneratePawnCaptures(const BITBOARD * const bbBitBoards, const GameInfo & info, MoveList & moveList, eColor color);
+	static void GeneratePawnCaptures(const Board& board, const BITBOARD * const bbBitBoards, const GameInfo & info, MoveList & moveList, eColor color);
 
 	static void GeneratePawnNormalMoves(_In_ const BITBOARD * const bbBitBoards, _In_ eColor color, _Inout_ MoveList& moveList);
 
-	static void GenerateOfficerMoves(const BITBOARD * const bbBitBoards, MoveList& moveList, ePieceType piece, eColor color, bool onlyCaptures );
-	
-	static void AddOfficerMoves(MoveList& moveList, BITBOARD bbAttack, eSquare from);
-	static void AddPawnPromoteMoves( const BITBOARD* bbBitBoards, eColor color, MoveList& moveList );
-	static void AddPawnCaptures(MoveList& moveList, const BITBOARD*, Move pawnMove, eColor color);
-	static void AddCastleMoves(MoveList& moveList, eColor color, const BITBOARD* bbBitBoards, const GameInfo &info);
+	static void GenerateOfficerMoves(const Board& board, const BITBOARD * const bbBitBoards, MoveList& moveList, ePieceType piece, eColor color, bool onlyCaptures );
 
-	static BITBOARD GetAnyEnPassantAttackingPawns(eColor attackByColor, eSquare epSquare) noexcept;
+	static void AddOfficerMoves(const Board& board, MoveList& moveList, BITBOARD bbAttack, eSquare from);
+	static void AddPawnPromoteMoves( const BITBOARD* bbBitBoards, eColor color, MoveList& moveList );
+	// board is only referenced inside assert() checks — compiled out in Release (NDEBUG).
+	static void AddPawnCaptures([[maybe_unused]] const Board& board, MoveList& moveList, const BITBOARD*, Move pawnMove, eColor color);
+	static void AddCastleMoves(const Board& board, MoveList& moveList, eColor color, const BITBOARD* bbBitBoards, const GameInfo &info);
+
+	static BITBOARD GetAnyEnPassantAttackingPawns(const BITBOARD* bbBitBoards, eColor attackByColor, eSquare epSquare) noexcept;
 
 	// Returns true if an enemy piece is actually standing on move.to(). Distinguishes a normal
 	// pawn capture from an en-passant capture: GeneratePawnCaptures tags every diagonal pawn move

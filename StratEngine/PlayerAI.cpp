@@ -36,7 +36,7 @@ int PlayerAiBase::Quiescent( size_t ply, int alpha, int beta )
 	// first entry is tested in Search algorithms
 	
 	// Evaluerer paa stillingen
-	int value = Eval->Evaluate();
+	int value = Eval->Evaluate(m_Board);
 
 	// Begraenser quiescent til en maksimal dybde
 	if (ply == MAX_PLY-10)
@@ -52,7 +52,7 @@ int PlayerAiBase::Quiescent( size_t ply, int alpha, int beta )
 
 	MoveList moveList;
 	// Only work on the captures in Quiescent
-	MoveGenerator::ComputeCaptures( info, moveList );
+	MoveGenerator::ComputeCaptures( m_Board, info, moveList );
 	// Sort the found captures
 	MoveSorter::SortMovesByValue( moveList, moveList.size(), m_Board );
 

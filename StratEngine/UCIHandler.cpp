@@ -40,7 +40,7 @@ UciHandler::~UciHandler()
 
 void UciHandler::init_ai()
 {
-    auto base = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, UCI_DEFAULT_DEPTH);
+    auto base = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, UCI_DEFAULT_DEPTH, board_);
     AIPerplex::SetVerboseLogging(false);
     base->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);   // public via IPlayer; must be before downcast
     ai_.reset(dynamic_cast<PlayerAiBase*>(base.release()));
@@ -66,13 +66,13 @@ void UciHandler::cmd_ucinewgame()
 {
     stop_and_join();
     init_ai();
-    Board::Instance().SetupFromFEN(std::string(STARTING_FEN));
+    board_.SetupFromFEN(std::string(STARTING_FEN));
 }
 
 void UciHandler::cmd_position(std::string_view line)
 {
     if (line.find("startpos") != std::string_view::npos) {
-        Board::Instance().SetupFromFEN(std::string(STARTING_FEN));
+        board_.SetupFromFEN(std::string(STARTING_FEN));
     } else {
         auto fen_pos = line.find("fen ");
         if (fen_pos != std::string_view::npos) {
@@ -81,7 +81,7 @@ void UciHandler::cmd_position(std::string_view line)
             std::string fen = (moves_pos != std::string_view::npos)
                 ? std::string(line.substr(fen_start, moves_pos - fen_start))
                 : std::string(line.substr(fen_start));
-            Board::Instance().SetupFromFEN(fen);
+            board_.SetupFromFEN(fen);
         }
     }
 
@@ -92,14 +92,14 @@ void UciHandler::cmd_position(std::string_view line)
         std::istringstream ss(moves_str);
         std::string token;
         while (ss >> token) {
-            Move m = MoveFormatter::FromUCI(token, Board::Instance());
+            Move m = MoveFormatter::FromUCI(token, board_);
             if (!m.is_null()) {
-                Board::Instance().DoMove(m);
+                board_.DoMove(m);
             }
         }
         // These moves are a permanent replay, never undone — reset the
         // undo-stack depth so it only spans the search that follows (issue #53).
-        Board::Instance().ResetSearchDepth();
+        board_.ResetSearchDepth();
     }
 }
 
@@ -108,8 +108,8 @@ void UciHandler::cmd_go(std::string_view line)
     stop_and_join();
 
     GoParams p = parse_go(line);
-    GameInfo info = Board::Instance().GetGameInfo();
-    const bool white = (Board::Instance().GetCurrentColor() == WHITE);
+    GameInfo info = board_.GetGameInfo();
+    const bool white = (board_.GetCurrentColor() == WHITE);
 
     // Configure time — pick first matching case
     if (p.movetime > 0) {

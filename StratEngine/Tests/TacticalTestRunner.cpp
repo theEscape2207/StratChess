@@ -50,12 +50,12 @@ TacticalResult TacticalTestRunner::run_position(const TacticalPosition& pos)
     result.id          = pos.id;
     result.description = pos.description;
 
+    Board board(pos.fen);
     auto ai = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX,
-                                 static_cast<unsigned>(pos.depth));
+                                 static_cast<unsigned>(pos.depth), board);
     AIPerplex::SetVerboseLogging(false);
     ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
-    Board::Instance().SetupFromFEN(pos.fen);
-    GameInfo info = Board::Instance().GetGameInfo();
+    GameInfo info = board.GetGameInfo();
 
     const auto t0 = std::chrono::steady_clock::now();
     Move m = ai->GetMove(info);

@@ -64,8 +64,8 @@ void AIPerplex::SetVerboseLogging(bool enabled) noexcept {
 	}
 }
 
-AIPerplex::AIPerplex(_In_ unsigned md)
-	: PlayerAiBase(md)
+AIPerplex::AIPerplex(Board& board, _In_ unsigned md)
+	: PlayerAiBase(board, md)
 {
 	// allocate TT once per AIPerplex instance; size can be tuned or read from config
 	_tt = std::make_unique<TranspositionTable>(256);
@@ -350,7 +350,7 @@ int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, Tra
 	}
 
 	MoveList moveList;
-	MoveGenerator::ComputeLegalMoves(info, moveList);
+	MoveGenerator::ComputeLegalMoves(m_Board, info, moveList);
 
 	bool first_child = true;
 	int best_value = -GameValues::Search_Init;
@@ -537,7 +537,7 @@ int AIPerplex::quiescence(int alpha, int beta, int qsearch_depth, int ply, Trans
 	// Limit quiescence extension by qsearch
 	if (qsearch_depth > MAX_QSEARCH_DEPTH)
 	{
-		return Eval->Evaluate();
+		return Eval->Evaluate(m_Board);
 	}
 
 	int original_alpha = alpha;
@@ -568,7 +568,7 @@ int AIPerplex::quiescence(int alpha, int beta, int qsearch_depth, int ply, Trans
 	const GameInfo& info = GetLastBoardInfo(ply);
 
 	// Stand pat evaluation first
-	const int stand_pat = Eval->Evaluate();
+	const int stand_pat = Eval->Evaluate(m_Board);
 	if (stand_pat >= beta)
 	{
 		// Store and cutoff
@@ -583,7 +583,7 @@ int AIPerplex::quiescence(int alpha, int beta, int qsearch_depth, int ply, Trans
 
 	MoveList moveList;
 	// Generate only capture moves and promotions
-	MoveGenerator::ComputeCaptures(info, moveList);
+	MoveGenerator::ComputeCaptures(m_Board, info, moveList);
 	// Sort the found captures
 	MoveSorter::SortMovesByValue(moveList, moveList.size(), m_Board);
 
@@ -970,7 +970,7 @@ bool AIPerplex::handle_empty_move_emergency(
 		max_depth_, state.depth_completed);
 
 	MoveList emergency_moves;
-	MoveGenerator::ComputeLegalMoves(current_info, emergency_moves);
+	MoveGenerator::ComputeLegalMoves(m_Board, current_info, emergency_moves);
 
 	if (emergency_moves.empty()) {
 		log.critical("No legal moves - game is over");

@@ -13,7 +13,7 @@ public:
 	{	return "AI Agent";	}
 
 	// Note: NOT to be called directly - only through Factory method
-	explicit AIAgent(_In_ unsigned md) : PlayerAiIterBase(md) {}
+	explicit AIAgent(Board& board, _In_ unsigned md) : PlayerAiIterBase(board, md) {}
 	~AIAgent() = default;
 
 	// Force use of factory by preventing constructor, copy-construction & operator=

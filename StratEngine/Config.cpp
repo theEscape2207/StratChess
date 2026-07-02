@@ -17,7 +17,7 @@ using json = nlohmann::json;
 // Remark:      
 //***************************************
 
-void Config::ReadBoardSetup(const json& config) const
+void Config::ReadBoardSetup(const json& config, Board& board) const
 {
 	// if nothing is found - use default setup
 	const std::string setupType = config["game"].value("setup", "default");
@@ -30,25 +30,24 @@ void Config::ReadBoardSetup(const json& config) const
 		if (FENstring.empty())
 		{
 			spdlog::default_logger()->warn("FEN key found, but no string - selecting default board");
-			Board::Instance().SetDefaultBoard();
+			board.SetDefaultBoard();
 			return;
 		}
-		ReadFEN(FENstring);
+		ReadFEN(FENstring, board);
 	}
 	else
 	{
 		spdlog::default_logger()->debug("Default board selected");
-		Board::Instance().SetDefaultBoard();
+		board.SetDefaultBoard();
 	}
 }
 
-void Config::ReadFEN(const std::string& fen) const
+void Config::ReadFEN(const std::string& fen, Board& board) const
 {
-	Board& board = Board::Instance();
 	board.SetupFromFEN(fen);
 
 	GameInfo info = board.GetGameInfo(); // Get the final gameInfo from board
-	
+
 	// Done: hand off to game with validated config
 	pGame_->SetCustomGame(info);
 }
@@ -77,7 +76,7 @@ bool Config::CheckBoardSetupData(const std::string& /*strPiece*/, const std::str
 	}*/
 	return true;
 }
-void Config::ReadConfigFile(const std::string& filename)
+void Config::ReadConfigFile(const std::string& filename, Board& board)
 {
 	spdlog::default_logger()->debug("Reading Config File");
 
@@ -93,7 +92,7 @@ void Config::ReadConfigFile(const std::string& filename)
 	SetupPlayerConfig(config);
 
 	// Read any Board setup from the config file
-	ReadBoardSetup(config);
+	ReadBoardSetup(config, board);
 }
 
 namespace {

@@ -6,6 +6,7 @@
 #include "PlayerBase.h"
 #include "PlayerAI.h"
 #include "GameState.h"
+#include "Board.h"
 
 class UciHandler {
 public:
@@ -42,6 +43,10 @@ private:
     void init_ai();         // (re)create AIPerplex instance
 
     static void send(std::string_view msg);   // writes line to stdout + flush
+
+    // Must be declared (and thus constructed/destroyed) before ai_ —
+    // ai_ holds a Board& reference into it that must outlive it.
+    Board board_;
 
     std::unique_ptr<PlayerAiBase> ai_;
     std::thread search_thread_;
