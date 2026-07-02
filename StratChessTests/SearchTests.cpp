@@ -4,8 +4,9 @@
 //   assess_iteration_quality() — 6 cases, one per RejectionReason branch
 //   should_stop_early()        — 2 cases (mate score, forced-line short-circuit)
 //   handle_empty_move_emergency() — 2 cases (mate path, true-emergency path)
-//   should_try_null_move()     — 8 cases, one per guard branch (disabled, PV,
+//   should_try_null_move()     — 10 cases, one per guard branch (disabled, PV,
 //                                 in-check, depth, mate-score, zugzwang,
+//                                 single-piece zugzwang, two-piece eligible,
 //                                 consecutive-null, otherwise-eligible)
 //
 // Requires STRAT_ENABLE_TEST_ACCESS in the test project preprocessor definitions.
@@ -365,6 +366,40 @@ TEST_CASE("Search - should_try_null_move: zugzwang (no non-pawn material) return
     fix.ai->tuning().null_move_enabled = true;
 
     REQUIRE(fix.try_null_move(4, 0, 1, false, false) == false);
+}
+
+TEST_CASE("Search - should_try_null_move: single non-pawn piece returns false (issue #66)", "[search]")
+{
+    // QFORK-001 (issue #66): KQ vs KR is won via domination/zugzwang — Black
+    // loses only because he must move. Letting the side with a lone rook
+    // "pass" makes the null search report that Black holds, hiding the win.
+    // The zugzwang guard must refuse NMP whenever the side to move has fewer
+    // than two non-pawn pieces.
+    AIPerlexTestFixture black_to_move("8/8/8/3r4/4k3/8/8/3QK3 b - - 0 1");
+    black_to_move.ai->tuning().null_move_enabled = true;
+    REQUIRE(black_to_move.try_null_move(4, 0, 1, false, false) == false);
+
+    // Same position, White to move: a lone queen is refused too.
+    AIPerlexTestFixture white_to_move("8/8/8/3r4/4k3/8/8/3QK3 w - - 0 1");
+    white_to_move.ai->tuning().null_move_enabled = true;
+    REQUIRE(white_to_move.try_null_move(4, 0, 1, false, false) == false);
+
+    // One knight + six pawns is still refused: the guard counts non-pawn
+    // pieces, deliberately ignoring pawns (material-count-based, not
+    // phase-based).
+    AIPerlexTestFixture knight_and_pawns("4k3/8/8/8/8/8/PPPPPPN1/4K3 w - - 0 1");
+    knight_and_pawns.ai->tuning().null_move_enabled = true;
+    REQUIRE(knight_and_pawns.try_null_move(4, 0, 1, false, false) == false);
+}
+
+TEST_CASE("Search - should_try_null_move: two non-pawn pieces returns true", "[search]")
+{
+    // Queen + knight for the side to move: above the single-piece zugzwang
+    // guard threshold, so NMP stays available.
+    AIPerlexTestFixture fix("8/8/8/3r4/4k3/8/8/2NQK3 w - - 0 1");
+    fix.ai->tuning().null_move_enabled = true;
+
+    REQUIRE(fix.try_null_move(4, 0, 1, false, false) == true);
 }
 
 TEST_CASE("Search - should_try_null_move: consecutive null move returns false", "[search]")

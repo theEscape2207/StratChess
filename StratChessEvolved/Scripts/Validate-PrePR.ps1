@@ -5,8 +5,9 @@
 .DESCRIPTION
     1. Builds main solution and test project in parallel.
     2. Runs the full extended test suite (including [slow]).
-    3. Runs a headless AIPerplex vs AIPerplex self-play game (60s timeout).
-    All three checks always run before exit so all failures are visible at once.
+    3. Runs the exe tactical suite (Tests/tactical_test_cases.json, 90% threshold).
+    4. Runs a headless AIPerplex vs AIPerplex self-play game (60s timeout).
+    All four checks always run before exit so all failures are visible at once.
     Exits with code 1 if any check fails. Run Validate-PreCommit.ps1 first.
 
 .WHEN TO USE
@@ -54,7 +55,24 @@ catch { $extFailed = $true; Write-Host "Extended-tests threw: $_" -ForegroundCol
 if ($LASTEXITCODE -ne 0) { $extFailed = $true }
 $checkResults['Extended tests'] = if ($extFailed) { 'FAIL' } else { 'PASS' }
 
-# --- Step 3: Self-play ---
+# --- Step 3: Exe tactical suite ---
+# Guards the 90% pass threshold on Tests/tactical_test_cases.json. Issue #66
+# (QFORK-001 silently regressed to 7/8) went unnoticed because no automated
+# gate ran this suite; it takes < 1 s, so it now runs before every PR.
+Write-Host "`n==> Tactical suite (StratChessEvolved.exe tactical test)" -ForegroundColor Cyan
+$testsDir = Join-Path $RepoRoot 'Tests'
+Push-Location $testsDir
+try {
+    $tacticalFailed = $false
+    try   { & $gameExe tactical test }
+    catch { $tacticalFailed = $true; Write-Host "Tactical suite threw: $_" -ForegroundColor DarkGray }
+    if ($LASTEXITCODE -ne 0) { $tacticalFailed = $true }
+    $checkResults['Tactical suite'] = if ($tacticalFailed) { 'FAIL' } else { 'PASS' }
+} finally {
+    Pop-Location
+}
+
+# --- Step 4: Self-play ---
 Write-Host "`n==> Self-play (AIPerplex vs AIPerplex, 60s timeout)" -ForegroundColor Cyan
 
 # Ensure logs/ exists — spdlog silently fails without it

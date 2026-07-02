@@ -548,6 +548,13 @@ Avoid these traps:
 - Plan: `.claude/plans/de-singleton-board.md` (7 phases, each independently built/tested/committed)
 - **Unblocks**: Extract ThreadData Structure (see Critical Priority above), and the "with De-Singleton Board" C++23 item (`std::expected` in `FENParser::ParseFEN`)
 
+### Correctness: NMP Single-Piece Zugzwang Guard (issue #66, July 2026)
+- QFORK-001 (`8/8/8/3r4/4k3/8/8/3QK3 w`, KQ vs KR) regressed to 7/8 on the exe tactical suite when null-move pruning landed (PR #55): the zugzwang guard only refused NMP for a side with *zero* non-pawn material, so the side with a lone rook could "pass", hiding the domination/zugzwang rook win
+- `should_try_null_move()` now requires ≥ 2 non-pawn pieces for the side to move (`std::popcount`); single-piece endgames (K+R, K+Q, K+minor ± pawns) are exactly the zugzwang-prone class and their subtrees are cheap, so the lost pruning is negligible
+- Verification gap closed: the exe tactical suite (never run by any automated gate — how the 7/8 went unnoticed) now runs in `Validate-PrePR.ps1` Step 3, and QFORK-001 is mirrored as a Catch2 `[tactical]` case (pre-commit + CI); new `[search]` unit tests cover the guard branch
+- Future NMP enhancement (not needed for this fix): verification search — on a null-move fail-high at high depth, re-search at reduced depth without the null to confirm; generalizes zugzwang safety beyond material heuristics
+- Plan: `.claude/plans/nmp-single-piece-zugzwang-guard.md`
+
 ### Infrastructure: UCI Protocol (March 2026)
 - `UCIHandler` class: synchronous command loop with search on `std::thread`
 - Commands: `uci`, `isready`, `ucinewgame`, `position` (startpos + fen + moves), `go`, `stop`, `quit`

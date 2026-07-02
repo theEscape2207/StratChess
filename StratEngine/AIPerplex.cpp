@@ -934,15 +934,17 @@ bool AIPerplex::should_try_null_move(int depth, int beta, int ply, bool is_pv_no
 	if (std::abs(beta) >= GameValues::Mate_Threshold) return false;
 	if (last_move_was_null_[ply]) return false;
 
-	// Zugzwang guard: refuse to "pass" for a side that has no non-pawn
-	// material — the null-move assumption ("a free pass is never better
-	// than moving") is false in king+pawn endgames.
+	// Zugzwang guard: refuse to "pass" for a side with fewer than two
+	// non-pawn pieces — the null-move assumption ("a free pass is never
+	// better than moving") is false in king+pawn endgames AND in
+	// single-piece endgames won by domination/zugzwang (issue #66: KQ vs KR,
+	// where the lone rook loses only because its side must move).
 	const eColor side = m_Board.GetCurrentColor();
 	const auto boards = m_Board.GetBitBoards();
 	const BITBOARD non_pawn_material =
 		boards[static_cast<BITBOARD>(KNIGHT) + side] | boards[static_cast<BITBOARD>(BISHOP) + side]
 		| boards[static_cast<BITBOARD>(ROOK) + side] | boards[static_cast<BITBOARD>(QUEEN) + side];
-	return non_pawn_material != 0;
+	return std::popcount(non_pawn_material) >= 2;
 }
 
 bool AIPerplex::handle_empty_move_emergency(

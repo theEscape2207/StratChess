@@ -23,7 +23,7 @@ Tests are **protection tools for the roadmap**, not bureaucratic overhead.
 |------|-----------|---------------|----------|---------|
 | Unit & fast integration | `StratChessTests.exe` | (all), or `[tag]` | < 10 s | Every build |
 | Deep perft | `StratChessEvolved.exe perft test` | — | Minutes | Pre-merge |
-| Full tactical suite | `StratChessEvolved.exe tactical test` | — | Minutes | Pre-merge |
+| Full tactical suite | `StratChessEvolved.exe tactical test` | — | Seconds | Pre-PR (automated: `Validate-PrePR.ps1` Step 3) |
 
 Run all fast tests at once:
 ```bash
@@ -132,6 +132,10 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 - Mate in 1 (queen delivers back-rank mate): engine plays Qd8# (`6k1/5ppp/8/8/8/8/3Q4/6K1`)
   — queen slides along the d-file; lands 3 squares from king (cannot be captured)
 - Capture hanging rook: engine captures undefended piece (`4k3/8/8/8/8/8/8/2rQK3`)
+- QFORK-001 regression (issue #66): KQ vs KR domination (`8/8/8/3r4/4k3/8/8/3QK3`) —
+  null-move pruning must not hide the zugzwang-based rook win; two moves accepted
+  (Qa4+/Qb3), so it lives in a dedicated `TEST_CASE` outside `kFastCases`
+  (whose rows require a unique best move)
 
 ### Slow Tactical Tier (`[tactical_full][slow]`)
 
@@ -212,6 +216,12 @@ Basic operations from `defines.h`: set bit, clear bit, popcount, LSB extraction.
 **Files**: `StratEngine/Tests/TacticalTestRunner.h/cpp`, `Tests/tactical_test_cases.json`
 **Invocation**: run from `Tests/` directory: `StratChessEvolved.exe tactical test`
 **Acceptance**: 90%+ pass rate on included positions
+**Regression history**: QFORK-001 silently regressed to 7/8 when null-move pruning
+landed (PR #55) — the original zugzwang guard let a side with a lone rook "pass",
+hiding the domination win (issue #66). Fixed by requiring ≥ 2 non-pawn pieces in
+`should_try_null_move()`. Because no automated gate ran this suite, the failure was
+only found by hand months later; it now runs in `Validate-PrePR.ps1` (Step 3) and
+QFORK-001 is mirrored as a Catch2 `[tactical]` case (pre-commit + CI).
 
 **Current positions (8)**:
 - Mate-in-1 (rook): `6k1/5ppp/8/8/8/8/5PPP/R5K1` → Ra8# (d4)
