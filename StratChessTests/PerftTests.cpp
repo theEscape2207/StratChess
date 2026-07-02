@@ -20,29 +20,25 @@ static constexpr const char* FEN_START =
 
 TEST_CASE("Perft - Starting position depth 1 = 20", "[perft]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_START);
+    Board board(FEN_START);
     REQUIRE(Perft::run(board, 1).nodes == 20ULL);
 }
 
 TEST_CASE("Perft - Starting position depth 2 = 400", "[perft]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_START);
+    Board board(FEN_START);
     REQUIRE(Perft::run(board, 2).nodes == 400ULL);
 }
 
 TEST_CASE("Perft - Starting position depth 3 = 8902", "[perft]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_START);
+    Board board(FEN_START);
     REQUIRE(Perft::run(board, 3).nodes == 8902ULL);
 }
 
 TEST_CASE("Perft - Starting position depth 4 = 197281", "[perft]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_START);
+    Board board(FEN_START);
     REQUIRE(Perft::run(board, 4).nodes == 197281ULL);
 }
 
@@ -53,21 +49,18 @@ static constexpr const char* FEN_KIWIPETE =
 
 TEST_CASE("Perft - Kiwipete depth 1 = 48", "[perft]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_KIWIPETE);
+    Board board(FEN_KIWIPETE);
     REQUIRE(Perft::run(board, 1).nodes == 48ULL);
 }
 
 TEST_CASE("Perft - Kiwipete depth 2 = 2039", "[perft]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_KIWIPETE);
+    Board board(FEN_KIWIPETE);
     REQUIRE(Perft::run(board, 2).nodes == 2039ULL);
 }
 
 TEST_CASE("Perft - Kiwipete depth 3 = 97862", "[perft]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_KIWIPETE);
+    Board board(FEN_KIWIPETE);
     REQUIRE(Perft::run(board, 3).nodes == 97862ULL);
 }

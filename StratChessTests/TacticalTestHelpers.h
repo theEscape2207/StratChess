@@ -14,11 +14,11 @@ struct TacticalCase {
     unsigned    depth;
 };
 
-// Create a fresh AIPerplex at the given depth, configured for test use.
+// Create a fresh AIPerplex at the given depth, bound to the given board, configured for test use.
 // Call before ai->GetMove() — AIPerplex reads board state at search time, not at construction time.
-inline std::unique_ptr<PlayerBase> make_tactical_engine(unsigned depth)
+inline std::unique_ptr<PlayerBase> make_tactical_engine(Board& board, unsigned depth)
 {
-    auto ai = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, depth, Board::Instance());
+    auto ai = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, depth, board);
     AIPerplex::SetVerboseLogging(false);          // suppress after ctor re-enables it
     ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
     return ai;

@@ -344,12 +344,14 @@
 
 **Files:** all 12 `StratChessTests/*.cpp` listed above, `TacticalTestHelpers.h`; delete `StratEngine/Tests/Unittests.h`, `RepetitionTests.h`, `Perft_unittests.h`
 
-- [ ] **6.1** Mechanical per-file migration rule:
+- [x] **6.1** Mechanical per-file migration rule:
   - `Board::Instance().SetupFromFEN(fen);` → `Board board(fen);`
   - every subsequent `Board::Instance().X(...)` in that `TEST_CASE` → `board.X(...)`
   - MoveGenerator calls gain the `board` argument
   - order: `Board` local must be declared **before** any `PlayerBase::Create(..., board)` and any `GetGameInfo()` snapshot
-- [ ] **6.2** `TacticalTestHelpers.h`: factory helper takes the board:
+
+  **Deviation from the plan found during implementation**: several files reuse a single `Board` object across multiple `SECTION`s or across sequential setup calls within one `TEST_CASE` (e.g. `MoveFormatterTests.cpp`'s `ToShort`/`ToVerbose`/`FromUCI` suites, `BoardStateTests.cpp`'s fifty-move-counter tests). These use `Board board;` (default ctor) once, with the existing per-`SECTION` `board.SetupFromFEN(...)` calls left untouched — the same pattern already established in Phase 3 for `EvalTests.cpp`'s doubled-pawn test. `SearchTests.cpp` needed a different treatment (see 6.3).
+- [x] **6.2** `TacticalTestHelpers.h`: factory helper takes the board:
   ```cpp
   inline std::unique_ptr<PlayerBase> make_tactical_engine(Board& board, unsigned depth)
   {
@@ -359,14 +361,21 @@
       return ai;
   }
   ```
-  Callers (`TacticalTests.cpp`, `TacticalFullTests.cpp`) construct `Board board(tc.fen + " w - - 0 1"-style full FEN);` first, then the engine, then `board.GetGameInfo()`.
-- [ ] **6.3** `SearchTests.cpp` fixture: give `AIPerlexTestFixture` (or the test setup around it) a `Board board_;` member declared **before** `ai_owner` so the reference outlives the AI.
-- [ ] **6.4** Delete `StratEngine/Tests/Unittests.h`, `StratEngine/Tests/RepetitionTests.h`, `StratEngine/Tests/Perft_unittests.h`; remove their `ClInclude`/`Filter` entries from `StratEngine.vcxproj`(+`.filters`) if present.
-- [ ] **6.5** Full grep — zero hits outside `Board.h` and `Archived/`:
+  Callers (`TacticalTests.cpp`, `TacticalFullTests.cpp`) construct `Board board(tc.fen + " w - - 0 1"-style full FEN);` first, then the engine, then `board.GetGameInfo()`. `TacticalFullTests.cpp`'s NMP-comparison test (which runs the search twice, once with NMP disabled and once enabled) uses two independent `Board` objects (`board_disabled`/`board_enabled`), each fed the same starting FEN — preserves the original "fresh identical starting position for both searches" semantics now that state isn't implicitly shared via the singleton.
+- [x] **6.3** `SearchTests.cpp` fixture: give `AIPerlexTestFixture` (or the test setup around it) a `Board board_;` member declared **before** `ai_owner` so the reference outlives the AI.
+
+  **Deviation from the plan found during implementation**: the fixture's constructor gained an optional `const std::string& fen` parameter (defaulting to the standard starting position already used by 7 of 8 `should_try_null_move` test cases), constructing `board_(fen)` in the initializer list. This let every standard-position test case drop its now-redundant explicit `Board::Instance().SetupFromFEN(...)` call entirely and just write `AIPerlexTestFixture fix;`; the one zugzwang test with a different FEN passes it explicitly: `AIPerlexTestFixture fix("8/8/8/3k4/8/3K4/3P4/8 w - - 0 1");`. The free-standing `AnyLegalMove()` helper (used by several `assess_iteration_quality` tests, doesn't touch the fixture) constructs its own local `Board`.
+- [x] **6.4** Delete `StratEngine/Tests/Unittests.h`, `StratEngine/Tests/RepetitionTests.h`, `StratEngine/Tests/Perft_unittests.h`; remove their `ClInclude`/`Filter` entries from `StratEngine.vcxproj`(+`.filters`) if present.
+
+  **Confirmed**: none of the three were referenced in any `.vcxproj`/`.vcxproj.filters` (they were never part of the compiled build — dead since the Catch2 migration, per Roadmap.md's "Retired" note). Only cross-reference was `Unittests.h` including `RepetitionTests.h`; nothing else in the codebase included any of the three. Deleted outright, no project-file changes needed.
+- [x] **6.5** Full grep — zero hits outside `Board.h` and `Archived/`:
   ```bash
   grep -rn "Board::Instance" --include=*.cpp --include=*.h . | grep -v Archived
   ```
-- [ ] **6.6** `.\build.ps1 extended-tests` (all tiers incl. `[slow]`) green → commit: `De-singleton Board phase 6: tests construct boards directly; retire dead test headers`
+  **Confirmed**: single hit, a comment in `BoardInstanceTests.cpp` explaining *why* that file avoids `MoveGenerator` (not an actual call site). Zero hits in compiled code anywhere.
+- [x] **6.6** `.\build.ps1 extended-tests` (all tiers incl. `[slow]`) green → commit: `De-singleton Board phase 6: tests construct boards directly; retire dead test headers`
+
+  **Validation results**: full build (both configs, Level4/WX) clean on first attempt. Extended tests (all tiers incl. `[slow]`): 1611 assertions / 132 test cases, all green. Deep perft: 640/640, unchanged. Tactical suite: 7/8 (87%) — same pre-existing NMP issue (#66), not a regression. Self-play (AIPerplex, 25 s): reproduced the exact Phase 0 baseline node counts for the first four moves, confirming determinism held through the full test-suite migration.
 
 ### Phase 7 — Delete Instance(); documentation
 
