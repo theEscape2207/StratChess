@@ -199,6 +199,54 @@
       "fen": "3r3k/3r1P1p/pp1Nn3/2pp4/7Q/6R1/Pq4PP/5RK1 w - - 0 1",
       "best_moves": ["h4d8"],
       "depth": 8
+    },
+    {
+      "id": "WAC-043",
+      "category": "tactical_win",
+      "description": "WAC.043 Be7/Qxa8: skewer or direct rook win (ce +1909)",
+      "fen": "r2q3k/p2P3p/1p3p2/3QP1r1/8/B7/P5PP/2R3K1 w - - 0 1",
+      "best_moves": ["a3e7", "d5a8"],
+      "depth": 6
+    },
+    {
+      "id": "WAC-148",
+      "category": "tactical_win",
+      "description": "WAC.148 Rxg7: rook sac destroys king cover (ce +2296)",
+      "fen": "2r1k3/6pr/p1nBP3/1p3p1p/2q5/2P5/P1R4P/K2Q2R1 w - - 0 1",
+      "best_moves": ["g1g7"],
+      "depth": 7
+    },
+    {
+      "id": "WAC-287",
+      "category": "tactical_win",
+      "description": "WAC.287 Qh5: mating attack on f7/h7 wins material (ce +751)",
+      "fen": "rn3k1r/pp2bBpp/2p2n2/q5N1/3P4/1P6/P1P3PP/R1BQ1RK1 w - - 0 1",
+      "best_moves": ["d1h5"],
+      "depth": 6
+    },
+    {
+      "id": "WAC-065",
+      "category": "tactical_win",
+      "description": "WAC.065 Ne7+: royal fork setup (ce +1316)",
+      "fen": "1r1r1qk1/p2n1p1p/bp1Pn1pQ/2pNp3/2P2P1N/1P5B/P6P/3R1RK1 w - - 0 1",
+      "best_moves": ["d5e7"],
+      "depth": 7
+    },
+    {
+      "id": "WAC-085",
+      "category": "tactical_win",
+      "description": "WAC.085 Na6: quiet knight move, mating net + material (ce +1774)",
+      "fen": "kr2R3/p4r2/2pq4/2N2p1p/3P2p1/Q5P1/5P1P/5BK1 w - - 0 1",
+      "best_moves": ["c5a6"],
+      "depth": 6
+    },
+    {
+      "id": "WAC-045",
+      "category": "tactical_win",
+      "description": "WAC.045 Qxa1 (Black): back-rank pin wins the rook (ce +778)",
+      "fen": "7k/2p1b1pp/8/1p2P3/1P3r2/2P3Q1/1P5P/R4qBK b - - 0 1",
+      "best_moves": ["f1a1"],
+      "depth": 6
     }
   ]
 }
