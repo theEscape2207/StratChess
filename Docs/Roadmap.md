@@ -8,7 +8,8 @@
 
 ## Overview
 
-This roadmap organizes development tasks by priority and category. Items are drawn from recent debugging sessions, performance analysis, and architectural reviews conducted February–March 2026.
+This roadmap organizes development tasks by priority and category. Items are drawn from recent debugging sessions, 
+performance analysis, and architectural reviews conducted February–March 2026.
 
 ### Priority Levels
 - 🔴 **Critical** - Must complete before parallel search
@@ -24,13 +25,35 @@ This roadmap organizes development tasks by priority and category. Items are dra
 
 ---
 
+## 📌 Near-Term Sequence (decided July 2026)
+
+Agreed ordering after the issue #66 post-mortem (see Completed Work). The #66 process gap
+(tactical suite not run by any gate) is closed; what remains open is coverage *breadth*
+(8 gated positions is thin).
+
+1. **Tactical suite expansion** (~1 day) — the scoped near-term slice of "Create Automated
+   Test Suite" below: add a WAC subset (~25 positions) + mate-in-2/3 set to
+   `Tests/tactical_test_cases.json`. Runner, JSON format, and Pre-PR gate already exist —
+   pure content work at 25–35 ms/position. Endgame/ECMGCP components stay deferred.
+2. **Extract ThreadData Structure** (🔴 Critical, below) — validate the PR #67 way: perft
+   equivalence + byte-identical self-play node counts. For deterministic refactors that is a
+   *stronger* check than any tactical suite (detects any behavioral drift, not just drift
+   that flips a test position), so ThreadData does not need to wait for broader suites.
+3. **Before Lazy SMP**: establish the ELO baseline (below) while the engine is still
+   deterministic, and revisit the deferred automated-suite scope. Once threads race on a
+   shared TT, node-count equivalence stops being available — tactical suites + strength
+   measurement become the primary correctness signal.
+
+---
+
 ## 🔴 Critical Priority (Before Parallel Search)
 
 ### Refactoring
 
 #### 🔴 Extract ThreadData Structure
 - **Estimate**: 2-3 days
-- **Status**: Not started — now unblocked (De-Singleton Board landed; see Completed Work below)
+- **Status**: Not started — now unblocked (De-Singleton Board landed; see Completed Work below).
+  Next up after the tactical suite expansion (step 2 of Near-Term Sequence above)
 - **Blocking**: Parallel search implementation
 - **Description**: Create thread-local state container to eliminate shared mutable state
 - **Implementation**:
@@ -48,7 +71,9 @@ This roadmap organizes development tasks by priority and category. Items are dra
   };
   ```
 - **Files Affected**: `AIPerplex.h/cpp`, `PlayerAiIterBase.h`
-- **Testing**: Verify single-threaded performance unchanged
+- **Testing**: Verify single-threaded performance unchanged; validate the PR #67 way —
+  perft equivalence + byte-identical self-play node counts (deterministic refactor,
+  zero behavioral drift expected)
 
 ---
 
@@ -76,6 +101,19 @@ This roadmap organizes development tasks by priority and category. Items are dra
 - **Validation**: perft equivalence (depth 1-4 fast tier + full `perft_test_cases.json`),
   `[tactical]`/`[tactical_full]`, nodes-per-second benchmark before/after (see plan for
   full validation plan).
+
+### Infrastructure
+
+#### 🟡 ELO Baseline Measurement
+- **Estimate**: ~1 day setup + unattended match time
+- **When**: before Lazy SMP — must be established while the engine is still deterministic
+  (step 3 of Near-Term Sequence above)
+- **Description**: Fixed-games self-play match against a pinned reference build to measure
+  strength differences. Tactical suites verify correctness only — a change can pass 100% of
+  tactical tests and still lose 30 ELO; this is the item that catches that class of regression
+- **Approach**: UCI protocol is in place, so a standard match runner (e.g. cutechess-cli)
+  against a pinned reference exe is the natural fit; details TBD when picked up
+- **Output**: Documented baseline ELO + repeatable procedure to re-measure after search changes
 
 ---
 
@@ -159,9 +197,16 @@ This roadmap organizes development tasks by priority and category. Items are dra
 #### 🟢 Upgrade to C++23
 - **Estimate**: 4-6 hours total
 - **Dependency**: Extract ThreadData Structure (primary motivator — `std::mdspan` for history table)
-- **Secondary dependency**: De-Singleton Board (for `std::expected` in FENParser)
+- **Secondary dependency**: De-Singleton Board — ✅ satisfied (PR #67), so the `std::expected`
+  slice is actionable any time
 - **Plan**: `.claude/plans/cpp23-upgrade.md`
+- **Not sequenced**: deliberately kept out of the Near-Term Sequence — ride-along slices by
+  design, and nothing in Lazy SMP needs C++23
 - **Language Standard Change**: `stdcpp20` → `stdcpplatest` in both `.vcxproj` files (x64 configurations)
+- **Validation hygiene**: land the `stdcpplatest` bump as its own commit (bump + verify
+  byte-identical self-play node counts), separate from the ThreadData refactor PR — a global
+  compiler-standard change inside a node-count-validated refactor would make any drift
+  unattributable
 - **Items** (in dependency order):
   1. **With ThreadData extraction**: `stdcpplatest` bump + `std::mdspan<int32_t, std::extents<int,2,64,64>>` for `history_[2][64][64]`; `std::flat_multimap` for TT diagnostics
   2. **With De-Singleton Board**: `std::expected<ParsedFEN, std::string>` for `FENParser::ParseFEN`
@@ -182,12 +227,15 @@ This roadmap organizes development tasks by priority and category. Items are dra
 - **Output**: CSV files for regression tracking
 
 #### 🟢 Create Automated Test Suite
-- **Estimate**: 2-3 days
-- **Components**:
-  1. **Tactical Tests**: WAC (Win At Chess), BT2630, ECMGCP
-  2. **Mate Tests**: Forced mate positions (mate in 2, 3, 4)
-  3. **Endgame Tests**: Known tablebase positions
-  4. **Regression Tests**: Positions from bug fixes
+- **Estimate**: 2-3 days full scope; ~1 day for the near-term slice
+- **Status**: Partially in place — exe tactical suite (8 positions) is gated in
+  `Validate-PrePR.ps1` Step 3 since PR #69; QFORK-001 mirrored as Catch2 `[tactical]` case
+- **Near-term slice** (step 1 of Near-Term Sequence above): WAC subset (~25 positions) +
+  mate-in-2/3 set added to `Tests/tactical_test_cases.json` — infrastructure exists, pure
+  content work
+- **Deferred**: BT2630/ECMGCP tactical sets, endgame tablebase positions — revisit before
+  Lazy SMP and/or after evaluation work (king safety, mobility) gives them something to catch
+- **Ongoing**: fold in regression positions from each bug fix as they occur
 - **Acceptance**: Pass 80%+ tactical tests, 100% mate tests
 
 ---
@@ -567,6 +615,6 @@ Avoid these traps:
 
 ---
 
-**Document Version**: 1.2
-**Next Review**: June 2026
+**Document Version**: 1.3
+**Next Review**: October 2026
 **Owner**: Thees
