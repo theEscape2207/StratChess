@@ -3,12 +3,14 @@ name: Build and test
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
 
 jobs:
   build-and-test:
     # Pinned to the explicit VS2026 image (not the moving windows-latest label) —
     # this project's projects pin PlatformToolset v145, which matches this image's
-    # default VC.Tools.x86.x64 toolset. See .claude/plans/full-build-test-ci.md.
+    # default VC.Tools.x86.x64 toolset. See .claude/plans/full-build-test-ci-github-actions.md.
     runs-on: windows-2025-vs2026
     defaults:
       run:
@@ -58,8 +60,12 @@ jobs:
           </Project>
           "@ | Set-Content -Path 'Directory.Build.user.props'
 
+      # tests-only, not "all": this job never runs StratChessEvolved.exe, and the
+      # main app project has WholeProgramOptimization (LTCG) enabled for Release|x64
+      # while the test project deliberately doesn't — building "all" wasted the
+      # majority of the ~12min first-run time on an LTCG link of an unused binary.
       - name: Build
-        run: .\build.ps1 all
+        run: .\build.ps1 tests
 
       - name: Run fast tests
         run: |
