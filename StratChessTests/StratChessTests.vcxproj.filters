@@ -78,6 +78,9 @@
     <ClCompile Include="UCITests.cpp">
       <Filter>Source Files\Tests</Filter>
     </ClCompile>
+    <ClCompile Include="SuitePolicyTests.cpp">
+      <Filter>Source Files\Tests</Filter>
+    </ClCompile>
     <!-- Engine sources -->
     <ClCompile Include="..\StratEngine\StdAfx.cpp">
       <Filter>Source Files\Engine</Filter>
@@ -140,6 +143,9 @@
       <Filter>Source Files\Engine</Filter>
     </ClCompile>
     <ClCompile Include="..\StratEngine\Tests\Perft.cpp">
+      <Filter>Source Files\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\StratEngine\Tests\TacticalTestRunner.cpp">
       <Filter>Source Files\Engine</Filter>
     </ClCompile>
     <ClCompile Include="..\StratEngine\UCIHandler.cpp">

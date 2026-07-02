@@ -28,13 +28,16 @@ performance analysis, and architectural reviews conducted February–March 2026.
 ## 📌 Near-Term Sequence (decided July 2026)
 
 Agreed ordering after the issue #66 post-mortem (see Completed Work). The #66 process gap
-(tactical suite not run by any gate) is closed; what remains open is coverage *breadth*
-(8 gated positions is thin).
+(tactical suite not run by any gate) is closed; the other motivator was coverage *breadth*
+(was: 8 gated positions), since closed by step 1 below.
 
 1. **Tactical suite expansion** (~1 day) — the scoped near-term slice of "Create Automated
-   Test Suite" below: add a WAC subset (~25 positions) + mate-in-2/3 set to
-   `Tests/tactical_test_cases.json`. Runner, JSON format, and Pre-PR gate already exist —
+   Test Suite" below: added a WAC subset + mate-in-2/3 set to
+   `Tests/tactical_test_cases.json`. Runner, JSON format, and Pre-PR gate already existed —
    pure content work at 25–35 ms/position. Endgame/ECMGCP components stay deferred.
+   — ✅ done (July 2026): suite grew 8 → 31 positions (WAC mate-in-2/3/4 + non-mate
+   tactical wins), 31/31 passing; mate categories now require 100% pass (unit-tested);
+   `tactical test [filename]` staging support added.
 2. **Extract ThreadData Structure** (🔴 Critical, below) — validate the PR #67 way: perft
    equivalence + byte-identical self-play node counts. For deterministic refactors that is a
    *stronger* check than any tactical suite (detects any behavioral drift, not just drift
@@ -228,15 +231,18 @@ Agreed ordering after the issue #66 post-mortem (see Completed Work). The #66 pr
 
 #### 🟢 Create Automated Test Suite
 - **Estimate**: 2-3 days full scope; ~1 day for the near-term slice
-- **Status**: Partially in place — exe tactical suite (8 positions) is gated in
-  `Validate-PrePR.ps1` Step 3 since PR #69; QFORK-001 mirrored as Catch2 `[tactical]` case
-- **Near-term slice** (step 1 of Near-Term Sequence above): WAC subset (~25 positions) +
-  mate-in-2/3 set added to `Tests/tactical_test_cases.json` — infrastructure exists, pure
-  content work
+- **Status**: Partially in place — exe tactical suite is gated in `Validate-PrePR.ps1`
+  Step 3 since PR #69; QFORK-001 mirrored as Catch2 `[tactical]` case
+- ✅ **Near-term slice done (July 2026)**: WAC mate-in-2/3/4 + non-mate tactical-win
+  batches added to `Tests/tactical_test_cases.json`, 8 → 31 positions, 31/31 passing.
+  Candidates verified via a staging file (`Tests/tactical_staging.json`, transient) +
+  `Scripts/verify_mate_key.py` (ground-truth mate confirmation) before merging into the
+  gated file. See `Docs/TestDesign.md` for the full position list and drop list.
 - **Deferred**: BT2630/ECMGCP tactical sets, endgame tablebase positions — revisit before
   Lazy SMP and/or after evaluation work (king safety, mobility) gives them something to catch
 - **Ongoing**: fold in regression positions from each bug fix as they occur
-- **Acceptance**: Pass 80%+ tactical tests, 100% mate tests
+- **Acceptance**: Pass 90%+ tactical tests overall, 100% mate tests (now enforced by
+  `evaluate_results()` + `[suite_policy]` unit tests, not just a manual target)
 
 ---
 

@@ -104,16 +104,17 @@ static void test_fen_integration() {
 
 static int tacticalrunner(int argc, char** argv) {
     if (argc < 2) {
-        std::cout << "Usage: tactical test\n";
+        std::cout << "Usage: tactical test [filename]\n";
         return 1;
     }
     const std::string command = argv[1];
     if (command == "test") {
-        const bool ok = Testing::TacticalTestRunner::run_test_suite(0.90, true);
+        const std::string filename = (argc >= 3) ? argv[2] : "tactical_test_cases.json";
+        const bool ok = Testing::TacticalTestRunner::run_test_suite(0.90, true, filename);
         return ok ? 0 : 1;
     }
     std::cerr << "Error: unknown tactical command '" << command << "'\n";
-    std::cout << "Usage: tactical test\n";
+    std::cout << "Usage: tactical test [filename]\n";
     return 1;
 }
 

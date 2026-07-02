@@ -212,10 +212,18 @@ Basic operations from `defines.h`: set bit, clear bit, popcount, LSB extraction.
 
 ### Full tactical suite in main executable
 
-**Status**: ✅ **Done.** Tactical runner landed March 2026; 8 positions, 8/8 passing (100%).
+**Status**: ✅ **Done.** Tactical runner landed March 2026 (8 positions); expanded to 31
+positions July 2026 (WAC mate + tactical batches), 31/31 passing (100%).
 **Files**: `StratEngine/Tests/TacticalTestRunner.h/cpp`, `Tests/tactical_test_cases.json`
 **Invocation**: run from `Tests/` directory: `StratChessEvolved.exe tactical test`
-**Acceptance**: 90%+ pass rate on included positions
+(defaults to `tactical_test_cases.json`) or `StratChessEvolved.exe tactical test
+[filename]` to run an arbitrary JSON file — used for staging candidates, see
+"Growing the suite" below.
+**Acceptance**: 90%+ overall pass rate, **and 100% pass rate in every category whose
+name starts with `mate`** (`mate_in_1`, `mate_in_2`, `mate_in_3`, `mate_in_4`). The
+100%-mate rule is enforced by `TacticalTestRunner::evaluate_results()` and unit-tested
+in `StratChessTests/SuitePolicyTests.cpp` (`[suite_policy]`) — a single mate-category
+failure fails the suite even if the overall pass rate is still above 90%.
 **Regression history**: QFORK-001 silently regressed to 7/8 when null-move pruning
 landed (PR #55) — the original zugzwang guard let a side with a lone rook "pass",
 hiding the domination win (issue #66). Fixed by requiring ≥ 2 non-pawn pieces in
@@ -223,17 +231,72 @@ hiding the domination win (issue #66). Fixed by requiring ≥ 2 non-pawn pieces 
 only found by hand months later; it now runs in `Validate-PrePR.ps1` (Step 3) and
 QFORK-001 is mirrored as a Catch2 `[tactical]` case (pre-commit + CI).
 
-**Current positions (8)**:
-- Mate-in-1 (rook): `6k1/5ppp/8/8/8/8/5PPP/R5K1` → Ra8# (d4)
-- Mate-in-1 (queen): `6k1/5ppp/8/8/8/8/3Q4/6K1` → Qd8# (d4)
-- Hanging piece (rook): `4k3/8/8/8/8/8/8/2rQK3` → Qxc1 (d4)
-- Back rank invasion (d7/d8): `r4rk1/pp3ppp/...` (d5)
-- Back rank invasion (d7/d8): `5rk1/p4ppp/...` (d5)
-- Queen wins rook (fork/threat): `8/8/8/3r4/4k3/8/8/3QK3` (d4)
-- Back rank capture (direct): `3r2k1/p4ppp/...` → Rxd8 (d5)
-- Ladder mate or Rb8#: `7k/8/6K1/8/8/8/8/1R5R` (d5)
+**Current positions (31)**, total suite runtime **~1.1 s** (sum of per-position search
+time at Release build speed; wall-clock including process startup ~3 s — well under
+the 60 s budget):
 
-**Expansion note**: suite can be extended to WAC-25 + mate-in-2 set before UCI. Run time per position is 25–35 ms at depth 4–5 (Release build).
+*Original 8 (hand-authored, kept from the March 2026 baseline):*
+- `M1-001` — Rook delivers back-rank checkmate (d4)
+- `M1-002` — Queen delivers back-rank checkmate along d-file (d4)
+- `HANG-001` — Queen captures undefended rook on c1 (d4)
+- `BACK-001` — White rook invades rank 7 or 8 to win material (d5)
+- `BACK-002` — White rook invades rank 7 or 8 to win material (d5)
+- `QFORK-001` — Queen wins rook: Qa4+ forks king and Rd5; Qb3 threatens Qxd5 (d4)
+- `BACK-003` — White rook captures black back-rank rook with check (d5)
+- `M2-001` — Rh7+ Kg8 Rb8# (or Rb8# immediately if Rh1 covers h7) (d5)
+
+*WAC mate-in-2 (8, depth 5):*
+- `WAC-001` — Qg6: queen sac decoy, Nxg6# follows
+- `WAC-004` — Qxh7+: queen sac, hxg6# follows
+- `WAC-005` — Qc4+ (Black): deflection, bxc4# follows
+- `WAC-012` — Qxf3+ (Black): queen sac on f3, Rg1# follows
+- `WAC-027` — Qf8+: deflect the knight, back-rank mate
+- `WAC-054` — Qh1+ (Black): corner check, mate on h-file
+- `WAC-099` — Rh5: rook lift, gxh5 Qxh5#
+- `WAC-246` — Qh5+: king hunt on the h-file
+
+*WAC mate-in-3 (8, depth 6):*
+- `WAC-050` — Rxb6+: rook sac rips the king shelter
+- `WAC-057` — Rf8+: deflection into back-rank mate
+- `WAC-064` — g4+: pawn check starts king hunt
+- `WAC-079` — Qxh2+ (Black): queen sac on h2, king hunt
+- `WAC-097` — Qa8+: long-diagonal switchback mate
+- `WAC-136` — Rc8+: back-rank breakthrough
+- `WAC-173` — Qh6+: queen invades, mate on the h-file/g7
+- `WAC-197` — Qf1+ (Black): deflection, promotion mate follows
+
+*WAC mate-in-4 (1, depth 8):*
+- `WAC-161` — Qxd8+: rook grab with forced mate behind it
+
+*WAC tactical wins, non-mate (6):*
+- `WAC-043` — Be7/Qxa8: skewer or direct rook win (d6)
+- `WAC-287` — Qh5: mating attack on f7/h7 wins material (d6)
+- `WAC-085` — Na6: quiet knight move, mating net + material (d6)
+- `WAC-045` — Qxa1 (Black): back-rank pin wins the rook (d6)
+- `WAC-148` — Rxg7: rook sac destroys king cover (d7)
+- `WAC-065` — Ne7+: royal fork setup (d7)
+
+**Dropped during verification** (candidates from the same WAC batches that the engine
+disagreed with at their target depth — kept here as known-hard positions for this
+engine, not filed as bugs):
+- `WAC-035`, `WAC-139`, `WAC-282` — mate-in-4 candidates; engine chose a different move
+  at depth 7–8 (mate key not confirmed by `verify_mate_key.py` for the engine's line)
+- `WAC-209`, `WAC-124`, `WAC-082`, `WAC-240` — non-mate tactical candidates; engine
+  chose a different (non-equivalent) move at depth 6–7
+- `WAC-041` — K+R+P zugzwang-adjacent endgame; engine chose a different move at depth
+  6–7. Notably this was the one candidate that would have added direct regression
+  coverage for the NMP zugzwang-guard class of bug (issue #66/QFORK-001) beyond
+  QFORK-001 itself — dropping it means that extra coverage did not land. A tighter or
+  hand-constructed zugzwang position is a good candidate for a future staging round.
+
+**Growing the suite**: new candidates never go straight into `tactical_test_cases.json`.
+Stage them in `Tests/tactical_staging.json` (same schema, transient — never committed),
+run `StratChessEvolved.exe tactical test tactical_staging.json` from `Tests/`, and
+reconcile: for mate categories, an engine move that differs from the EPD key is only
+accepted if `Scripts/verify_mate_key.py "<FEN>" <uci_move> <N>` prints `CONFIRMED`
+(ground truth via python-chess, not manual analysis); for non-mate categories the
+engine's move must strictly match the EPD `bm`. Once a candidate is confirmed, move its
+entry into `tactical_test_cases.json` and delete it from the staging file.
 
 ---
 
