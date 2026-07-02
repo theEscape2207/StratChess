@@ -28,12 +28,12 @@ performance analysis, and architectural reviews conducted February–March 2026.
 ## 📌 Near-Term Sequence (decided July 2026)
 
 Agreed ordering after the issue #66 post-mortem (see Completed Work). The #66 process gap
-(tactical suite not run by any gate) is closed; what remains open is coverage *breadth*
-(8 gated positions is thin).
+(tactical suite not run by any gate) is closed; the other motivator was coverage *breadth*
+(was: 8 gated positions), since closed by step 1 below.
 
 1. **Tactical suite expansion** (~1 day) — the scoped near-term slice of "Create Automated
-   Test Suite" below: add a WAC subset (~25 positions) + mate-in-2/3 set to
-   `Tests/tactical_test_cases.json`. Runner, JSON format, and Pre-PR gate already exist —
+   Test Suite" below: added a WAC subset + mate-in-2/3 set to
+   `Tests/tactical_test_cases.json`. Runner, JSON format, and Pre-PR gate already existed —
    pure content work at 25–35 ms/position. Endgame/ECMGCP components stay deferred.
    — ✅ done (July 2026): suite grew 8 → 31 positions (WAC mate-in-2/3/4 + non-mate
    tactical wins), 31/31 passing; mate categories now require 100% pass (unit-tested);
