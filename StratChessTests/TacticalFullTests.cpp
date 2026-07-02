@@ -83,9 +83,9 @@ TEST_CASE("Tactical - slow suite", "[tactical_full][slow]")
     auto tc = GENERATE(from_range(kSlowCases));
 
     INFO(tc.label);
-    Board::Instance().SetupFromFEN(tc.fen);
-    auto ai = make_tactical_engine(tc.depth);
-    GameInfo info = Board::Instance().GetGameInfo();
+    Board board(tc.fen);
+    auto ai = make_tactical_engine(board, tc.depth);
+    GameInfo info = board.GetGameInfo();
     Move m = ai->GetMove(info);
 
     REQUIRE(m.from() == tc.expected_from);
@@ -103,17 +103,17 @@ TEST_CASE("Tactical (full) - null-move pruning guard is a no-op in K+P endgame",
     const char* fen = "8/8/8/3k4/8/3K4/3P4/8 w - - 0 1";
     constexpr unsigned depth = 5;
 
-    Board::Instance().SetupFromFEN(fen);
-    auto ai_disabled = make_tactical_engine(depth);
+    Board board_disabled(fen);
+    auto ai_disabled = make_tactical_engine(board_disabled, depth);
     as_perplex(ai_disabled).tuning().null_move_enabled = false;
-    GameInfo info_disabled = Board::Instance().GetGameInfo();
+    GameInfo info_disabled = board_disabled.GetGameInfo();
     Move move_disabled = ai_disabled->GetMove(info_disabled);
     SearchResult result_disabled = as_perplex(ai_disabled).GetLastResult();
 
-    Board::Instance().SetupFromFEN(fen);
-    auto ai_enabled = make_tactical_engine(depth);
+    Board board_enabled(fen);
+    auto ai_enabled = make_tactical_engine(board_enabled, depth);
     as_perplex(ai_enabled).tuning().null_move_enabled = true;
-    GameInfo info_enabled = Board::Instance().GetGameInfo();
+    GameInfo info_enabled = board_enabled.GetGameInfo();
     Move move_enabled = ai_enabled->GetMove(info_enabled);
     SearchResult result_enabled = as_perplex(ai_enabled).GetLastResult();
 
@@ -131,13 +131,12 @@ TEST_CASE("Tactical (full) - null-move pruning guard is a no-op in K+P endgame",
 // ---------------------------------------------------------------------------
 TEST_CASE("Tactical (full) - null-move pruning does not crash on a real recursion", "[tactical_full][slow]")
 {
-    Board::Instance().SetupFromFEN(
-        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     constexpr unsigned depth = 7;
 
-    auto ai = make_tactical_engine(depth);
+    auto ai = make_tactical_engine(board, depth);
     as_perplex(ai).tuning().null_move_enabled = true;
-    GameInfo info = Board::Instance().GetGameInfo();
+    GameInfo info = board.GetGameInfo();
 
     Move move = ai->GetMove(info);
 

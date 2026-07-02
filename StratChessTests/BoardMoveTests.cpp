@@ -45,8 +45,7 @@ static constexpr const char* FEN_CAP_PROMO =
 
 TEST_CASE("Board - White queenside castling moves king to c1 and rook to d1; UndoMove restores both", "[board_moves]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_CASTLING_W);
+    Board board(FEN_CASTLING_W);
 
     REQUIRE(board.GetPiece(e1) == WHITE_KING);
     REQUIRE(board.GetPiece(a1) == WHITE_ROOK);
@@ -71,8 +70,7 @@ TEST_CASE("Board - White queenside castling moves king to c1 and rook to d1; Und
 
 TEST_CASE("Board - Black kingside castling moves king to g8 and rook to f8; UndoMove restores both", "[board_moves]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_CASTLING_B);
+    Board board(FEN_CASTLING_B);
 
     REQUIRE(board.GetPiece(e8) == BLACK_KING);
     REQUIRE(board.GetPiece(h8) == BLACK_ROOK);
@@ -97,8 +95,7 @@ TEST_CASE("Board - Black kingside castling moves king to g8 and rook to f8; Undo
 
 TEST_CASE("Board - Black queenside castling moves king to c8 and rook to d8; UndoMove restores both", "[board_moves]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_CASTLING_B);
+    Board board(FEN_CASTLING_B);
 
     REQUIRE(board.GetPiece(e8) == BLACK_KING);
     REQUIRE(board.GetPiece(a8) == BLACK_ROOK);
@@ -123,8 +120,7 @@ TEST_CASE("Board - Black queenside castling moves king to c8 and rook to d8; Und
 
 TEST_CASE("Board - Normal capture (white takes black): captured piece removed; UndoMove restores it", "[board_moves]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_CAPTURE_W);
+    Board board(FEN_CAPTURE_W);
 
     REQUIRE(board.GetPiece(d1) == WHITE_QUEEN);
     REQUIRE(board.GetPiece(c1) == BLACK_ROOK);
@@ -143,8 +139,7 @@ TEST_CASE("Board - Normal capture (white takes black): captured piece removed; U
 
 TEST_CASE("Board - Normal capture (black takes white): captured piece removed; UndoMove restores it", "[board_moves]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_CAPTURE_B);
+    Board board(FEN_CAPTURE_B);
 
     REQUIRE(board.GetPiece(e5) == BLACK_ROOK);
     REQUIRE(board.GetPiece(e4) == WHITE_ROOK);
@@ -163,8 +158,7 @@ TEST_CASE("Board - Normal capture (black takes white): captured piece removed; U
 
 TEST_CASE("Board - Double pawn push moves pawn two squares; UndoMove restores", "[board_moves]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_DPUSH);
+    Board board(FEN_DPUSH);
 
     REQUIRE(board.GetPiece(e2) == WHITE_PAWN);
     REQUIRE(board.GetPiece(e4) == NO_PIECE);
@@ -183,8 +177,7 @@ TEST_CASE("Board - Double pawn push moves pawn two squares; UndoMove restores", 
 
 TEST_CASE("Board - Under-promotion to knight: knight on c8; UndoMove restores pawn on c7", "[board_moves]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_UPROMO);
+    Board board(FEN_UPROMO);
 
     REQUIRE(board.GetPiece(c7) == WHITE_PAWN);
     REQUIRE(board.GetPiece(c8) == NO_PIECE);
@@ -203,8 +196,7 @@ TEST_CASE("Board - Under-promotion to knight: knight on c8; UndoMove restores pa
 
 TEST_CASE("Board - Under-promotion to rook: rook on c8; UndoMove restores pawn on c7", "[board_moves]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_UPROMO);
+    Board board(FEN_UPROMO);
 
     REQUIRE(board.GetPiece(c7) == WHITE_PAWN);
     REQUIRE(board.GetPiece(c8) == NO_PIECE);
@@ -223,8 +215,7 @@ TEST_CASE("Board - Under-promotion to rook: rook on c8; UndoMove restores pawn o
 
 TEST_CASE("Board - Capture-promotion: white queen on b8, black rook gone; UndoMove restores both", "[board_moves]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_CAP_PROMO);
+    Board board(FEN_CAP_PROMO);
 
     REQUIRE(board.GetPiece(c7) == WHITE_PAWN);
     REQUIRE(board.GetPiece(b8) == BLACK_ROOK);

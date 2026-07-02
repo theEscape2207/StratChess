@@ -36,14 +36,19 @@ public:
     using Metrics         = AIPerplex::IterationMetrics;
     using State           = AIPerplex::SearchState;
 
+    // Must be declared (and thus constructed/destroyed) before ai_owner —
+    // ai_owner holds a Board& reference into it that must outlive it.
+    Board board_;
     std::unique_ptr<PlayerBase> ai_owner;
     AIPerplex* ai = nullptr;
 
-    AIPerlexTestFixture()
+    explicit AIPerlexTestFixture(const std::string& fen =
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+        : board_(fen)
     {
         // depth=4 sets max_depth_ (the IDS hard cap used if GetMove() is ever called).
         // None of the current [search] tests call GetMove(), so this is a don't-care.
-        ai_owner = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, 4, Board::Instance());
+        ai_owner = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, 4, board_);
         ai = static_cast<AIPerplex*>(ai_owner.get());
         AIPerplex::SetVerboseLogging(false);
         // Note: SetEvalEngine() is NOT called — the helper methods under test
@@ -76,11 +81,10 @@ public:
 // Used to produce a guaranteed non-null Move for assess tests.
 static Move AnyLegalMove()
 {
-    Board::Instance().SetupFromFEN(
-        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    GameInfo info = Board::Instance().GetGameInfo();
+    Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    GameInfo info = board.GetGameInfo();
     MoveList ml;
-    MoveGenerator::ComputeLegalMoves(Board::Instance(), info, ml);
+    MoveGenerator::ComputeLegalMoves(board, info, ml);
     REQUIRE(!ml.empty());
     return ml[0];
 }
@@ -278,9 +282,7 @@ TEST_CASE("Search - should_stop_early: short PV relative to depth returns true",
 
 TEST_CASE("Search - handle_empty_move_emergency: mate score returns false (no move needed)", "[search]")
 {
-    Board::Instance().SetupFromFEN(
-        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    AIPerlexTestFixture fix;
+    AIPerlexTestFixture fix;  // default ctor sets up the starting position
 
     AIPerlexTestFixture::State s{};
     s.best_move  = Move{};  // null — no move found
@@ -294,11 +296,9 @@ TEST_CASE("Search - handle_empty_move_emergency: mate score returns false (no mo
 
 TEST_CASE("Search - handle_empty_move_emergency: non-mate emergency sets a legal move", "[search]")
 {
+    // default ctor sets up a real, playable starting position so the
+    // emergency path finds legal moves
     AIPerlexTestFixture fix;
-
-    // Set up a real, playable position so the emergency path finds legal moves
-    Board::Instance().SetupFromFEN(
-        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 
     AIPerlexTestFixture::State s{};
     s.best_move  = Move{};  // null — emergency condition
@@ -317,9 +317,7 @@ TEST_CASE("Search - handle_empty_move_emergency: non-mate emergency sets a legal
 
 TEST_CASE("Search - should_try_null_move: disabled returns false", "[search]")
 {
-    Board::Instance().SetupFromFEN(
-        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    AIPerlexTestFixture fix;
+    AIPerlexTestFixture fix;  // default ctor sets up the starting position
     fix.ai->tuning().null_move_enabled = false;
 
     REQUIRE(fix.try_null_move(4, 0, 1, false, false) == false);
@@ -327,9 +325,7 @@ TEST_CASE("Search - should_try_null_move: disabled returns false", "[search]")
 
 TEST_CASE("Search - should_try_null_move: PV node returns false", "[search]")
 {
-    Board::Instance().SetupFromFEN(
-        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    AIPerlexTestFixture fix;
+    AIPerlexTestFixture fix;  // default ctor sets up the starting position
     fix.ai->tuning().null_move_enabled = true;
 
     REQUIRE(fix.try_null_move(4, 0, 1, /*is_pv_node=*/true, false) == false);
@@ -337,9 +333,7 @@ TEST_CASE("Search - should_try_null_move: PV node returns false", "[search]")
 
 TEST_CASE("Search - should_try_null_move: in check returns false", "[search]")
 {
-    Board::Instance().SetupFromFEN(
-        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    AIPerlexTestFixture fix;
+    AIPerlexTestFixture fix;  // default ctor sets up the starting position
     fix.ai->tuning().null_move_enabled = true;
 
     REQUIRE(fix.try_null_move(4, 0, 1, false, /*in_check=*/true) == false);
@@ -347,9 +341,7 @@ TEST_CASE("Search - should_try_null_move: in check returns false", "[search]")
 
 TEST_CASE("Search - should_try_null_move: depth below minimum returns false", "[search]")
 {
-    Board::Instance().SetupFromFEN(
-        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    AIPerlexTestFixture fix;
+    AIPerlexTestFixture fix;  // default ctor sets up the starting position
     fix.ai->tuning().null_move_enabled  = true;
     fix.ai->tuning().null_move_min_depth = 3;
 
@@ -358,9 +350,7 @@ TEST_CASE("Search - should_try_null_move: depth below minimum returns false", "[
 
 TEST_CASE("Search - should_try_null_move: mate-score beta returns false", "[search]")
 {
-    Board::Instance().SetupFromFEN(
-        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    AIPerlexTestFixture fix;
+    AIPerlexTestFixture fix;  // default ctor sets up the starting position
     fix.ai->tuning().null_move_enabled = true;
 
     REQUIRE(fix.try_null_move(4, GameValues::Mate_Threshold, 1, false, false) == false);
@@ -371,8 +361,7 @@ TEST_CASE("Search - should_try_null_move: zugzwang (no non-pawn material) return
 {
     // White: king + pawn only. Black: king only. No non-pawn material for
     // the side to move (white) -> zugzwang guard must refuse NMP.
-    Board::Instance().SetupFromFEN("8/8/8/3k4/8/3K4/3P4/8 w - - 0 1");
-    AIPerlexTestFixture fix;
+    AIPerlexTestFixture fix("8/8/8/3k4/8/3K4/3P4/8 w - - 0 1");
     fix.ai->tuning().null_move_enabled = true;
 
     REQUIRE(fix.try_null_move(4, 0, 1, false, false) == false);
@@ -380,9 +369,7 @@ TEST_CASE("Search - should_try_null_move: zugzwang (no non-pawn material) return
 
 TEST_CASE("Search - should_try_null_move: consecutive null move returns false", "[search]")
 {
-    Board::Instance().SetupFromFEN(
-        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    AIPerlexTestFixture fix;
+    AIPerlexTestFixture fix;  // default ctor sets up the starting position
     fix.ai->tuning().null_move_enabled = true;
     fix.set_last_move_was_null(2, true);   // ply 2 was reached via a null move
 
@@ -391,9 +378,7 @@ TEST_CASE("Search - should_try_null_move: consecutive null move returns false", 
 
 TEST_CASE("Search - should_try_null_move: otherwise-eligible position returns true", "[search]")
 {
-    Board::Instance().SetupFromFEN(
-        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    AIPerlexTestFixture fix;
+    AIPerlexTestFixture fix;  // default ctor sets up the starting position
     fix.ai->tuning().null_move_enabled  = true;
     fix.ai->tuning().null_move_min_depth = 3;
 

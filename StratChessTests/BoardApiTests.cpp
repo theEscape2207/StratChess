@@ -54,8 +54,7 @@ static constexpr const char* FEN_BLACK_TO_MOVE =
 
 TEST_CASE("Board::GetCapturedPiece returns NO_PIECE for a quiet move", "[board_api]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_QUIET);
+    Board board(FEN_QUIET);
 
     auto m = MoveFactory::MakeQuiet(a1, h1);
     // Must be called before DoMove — the API contract
@@ -64,8 +63,7 @@ TEST_CASE("Board::GetCapturedPiece returns NO_PIECE for a quiet move", "[board_a
 
 TEST_CASE("Board::GetCapturedPiece returns BLACK_ROOK for white queen captures black rook", "[board_api]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_CAPTURE);
+    Board board(FEN_CAPTURE);
 
     auto m = MoveFactory::MakeCapture(d1, c1);
     REQUIRE(board.GetCapturedPiece(m) == BLACK_ROOK);
@@ -73,8 +71,7 @@ TEST_CASE("Board::GetCapturedPiece returns BLACK_ROOK for white queen captures b
 
 TEST_CASE("Board::GetCapturedPiece returns BLACK_PAWN for EP capture (pawn is not on destination square)", "[board_api]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_EP);
+    Board board(FEN_EP);
 
     // EP: white d5 captures to e6; the black pawn is on e5 (not e6)
     auto m = MoveFactory::MakeEnPassant(d5, e6);
@@ -90,8 +87,7 @@ TEST_CASE("Board::GetCapturedPiece returns BLACK_PAWN for EP capture (pawn is no
 
 TEST_CASE("Board::GetEffectiveMovPiece returns the piece on from-square for a quiet move", "[board_api]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_QUIET);
+    Board board(FEN_QUIET);
 
     auto m = MoveFactory::MakeQuiet(a1, h1);
     REQUIRE(board.GetEffectiveMovPiece(m) == WHITE_ROOK);
@@ -99,8 +95,7 @@ TEST_CASE("Board::GetEffectiveMovPiece returns the piece on from-square for a qu
 
 TEST_CASE("Board::GetEffectiveMovPiece returns the promoted piece, not the pawn", "[board_api]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_PROMO);
+    Board board(FEN_PROMO);
 
     // Pawn is still on c7; GetEffectiveMovPiece must return WHITE_QUEEN (the promoted piece)
     auto m = MoveFactory::MakePromotion(c7, c8, WHITE_QUEEN);
@@ -111,15 +106,13 @@ TEST_CASE("Board::GetEffectiveMovPiece returns the promoted piece, not the pawn"
 
 TEST_CASE("Board::ExtractFEN round-trips the standard starting position", "[board_api]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_START);
+    Board board(FEN_START);
     CHECK(board.ExtractFEN() == std::string(FEN_START));
 }
 
 TEST_CASE("Board::ExtractFEN preserves an active EP square", "[board_api]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_EP_ACTIVE);
+    Board board(FEN_EP_ACTIVE);
     const std::string fen = board.ExtractFEN();
     // The EP field (4th space-delimited token) must contain "d6"
     CHECK(fen.find("d6") != std::string::npos);
@@ -127,8 +120,7 @@ TEST_CASE("Board::ExtractFEN preserves an active EP square", "[board_api]")
 
 TEST_CASE("Board::ExtractFEN preserves partial castling rights (Kq)", "[board_api]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_PARTIAL_RIGHTS);
+    Board board(FEN_PARTIAL_RIGHTS);
     const std::string fen = board.ExtractFEN();
     // Castling field must be exactly "Kq" — surrounded by spaces
     CHECK(fen.find(" Kq ") != std::string::npos);
@@ -136,8 +128,7 @@ TEST_CASE("Board::ExtractFEN preserves partial castling rights (Kq)", "[board_ap
 
 TEST_CASE("Board::ExtractFEN preserves black to move", "[board_api]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_BLACK_TO_MOVE);
+    Board board(FEN_BLACK_TO_MOVE);
     const std::string fen = board.ExtractFEN();
     // Active color field must be 'b'
     CHECK(fen.find(" b ") != std::string::npos);
@@ -145,15 +136,13 @@ TEST_CASE("Board::ExtractFEN preserves black to move", "[board_api]")
 
 TEST_CASE("Board::ExtractFEN preserves halfmove clock (17)", "[board_api]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_BLACK_TO_MOVE);
+    Board board(FEN_BLACK_TO_MOVE);
     CHECK(board.ExtractFEN() == std::string(FEN_BLACK_TO_MOVE));
 }
 
 TEST_CASE("Board::ExtractFEN preserves fullmove number (34)", "[board_api]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_BLACK_TO_MOVE);
+    Board board(FEN_BLACK_TO_MOVE);
     const std::string fen = board.ExtractFEN();
     // The fullmove number is the last space-delimited token
     CHECK(fen.substr(fen.rfind(' ') + 1) == "34");
@@ -163,8 +152,7 @@ TEST_CASE("Board::ExtractFEN preserves fullmove number (34)", "[board_api]")
 
 TEST_CASE("Board::ResetSearchDepth zeroes undo-stack depth after each committed move, regardless of total moves played", "[board_api]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_QUIET);
+    Board board(FEN_QUIET);
 
     // White rook shuffles a1<->a2; black king shuffles d6<->d7. Neither move
     // ever threatens either king, so the 4-ply cycle stays legal indefinitely.
@@ -193,8 +181,7 @@ TEST_CASE("Board::ResetSearchDepth zeroes undo-stack depth after each committed 
 
 TEST_CASE("Board::ResetSearchDepth preserves full search-recursion headroom after a game longer than the old MAX_PLY ceiling", "[board_api]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_QUIET);
+    Board board(FEN_QUIET);
 
     // Commit 260 real moves (already past the old MAX_PLY=256 ceiling on its own),
     // resetting the undo-stack depth after each — mirrors Game::Run's real commit pattern.

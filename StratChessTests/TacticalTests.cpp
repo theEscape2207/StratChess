@@ -51,9 +51,9 @@ TEST_CASE("Tactical - fast suite", "[tactical]")
     auto tc = GENERATE(from_range(kFastCases));
 
     INFO(tc.label);
-    Board::Instance().SetupFromFEN(tc.fen);
-    auto ai = make_tactical_engine(tc.depth);
-    GameInfo info = Board::Instance().GetGameInfo();
+    Board board(tc.fen);
+    auto ai = make_tactical_engine(board, tc.depth);
+    GameInfo info = board.GetGameInfo();
     Move m = ai->GetMove(info);
 
     REQUIRE(m.from() == tc.expected_from);

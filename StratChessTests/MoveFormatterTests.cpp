@@ -122,7 +122,7 @@ TEST_CASE("MoveFormatter::ToUCI - all promotion types (quiet and capture)", "[fo
 
 TEST_CASE("MoveFormatter::ToShort - basic moves", "[formatter]")
 {
-    Board& board = Board::Instance();
+    Board board;
 
     SECTION("White pawn push e2-e4 — no check")
     {
@@ -191,7 +191,7 @@ TEST_CASE("MoveFormatter::ToShort - basic moves", "[formatter]")
 
 TEST_CASE("MoveFormatter::ToVerbose - spot checks", "[formatter]")
 {
-    Board& board = Board::Instance();
+    Board board;
 
     SECTION("White pawn quiet push")
     {
@@ -244,7 +244,7 @@ TEST_CASE("MoveFormatter::ToVerbose - spot checks", "[formatter]")
 
 TEST_CASE("MoveFormatter::FromUCI - basic moves", "[formatter]")
 {
-    Board& board = Board::Instance();
+    Board board;
 
     SECTION("Quiet pawn push e2-e4 from starting position")
     {
@@ -332,8 +332,7 @@ TEST_CASE("MoveFormatter::FromUCI - basic moves", "[formatter]")
 
 TEST_CASE("MoveFormatter - ToUCI/FromUCI round-trip for common move types", "[formatter]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 
     SECTION("Pawn push")
     {

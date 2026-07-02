@@ -44,8 +44,7 @@ static constexpr const char* FEN_MATERIAL_PROMO =
 
 TEST_CASE("Board - Castling rights stripped after king move; UndoMove restores them", "[board_state]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_FULL_RIGHTS);
+    Board board(FEN_FULL_RIGHTS);
 
     // Confirm full rights before move
     REQUIRE((board.GetGameInfo().castlingRights & CastlingRights::WHITE_BOTH) == CastlingRights::WHITE_BOTH);
@@ -66,8 +65,7 @@ TEST_CASE("Board - Castling rights stripped after king move; UndoMove restores t
 
 TEST_CASE("Board - Queenside castling right stripped after rook moves; kingside right intact; UndoMove restores", "[board_state]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_FULL_RIGHTS);
+    Board board(FEN_FULL_RIGHTS);
 
     REQUIRE((board.GetGameInfo().castlingRights & CastlingRights::WHITE_QUEENSIDE) != 0);
     REQUIRE((board.GetGameInfo().castlingRights & CastlingRights::WHITE_KINGSIDE)  != 0);
@@ -87,9 +85,8 @@ TEST_CASE("Board - Queenside castling right stripped after rook moves; kingside 
 
 TEST_CASE("Board - BLACK_KINGSIDE right stripped when rook h8 is captured; UndoMove restores", "[board_state]")
 {
-    Board& board = Board::Instance();
     // FEN: white rook h7, black rook h8, kings on e1/e8; only k right
-    board.SetupFromFEN(FEN_ROOK_CAPTURE);
+    Board board(FEN_ROOK_CAPTURE);
 
     REQUIRE((board.GetGameInfo().castlingRights & CastlingRights::BLACK_KINGSIDE) != 0);
 
@@ -108,8 +105,7 @@ TEST_CASE("Board - BLACK_KINGSIDE right stripped when rook h8 is captured; UndoM
 
 TEST_CASE("Board - EP square set to e3 after white double pawn push e2-e4", "[board_state]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_EP_SETUP);
+    Board board(FEN_EP_SETUP);
 
     REQUIRE(board.GetGameInfo().epSquare == NO_SQUARE);
 
@@ -123,8 +119,7 @@ TEST_CASE("Board - EP square set to e3 after white double pawn push e2-e4", "[bo
 
 TEST_CASE("Board - EP square cleared after a non-EP follow-up move", "[board_state]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_EP_SETUP);
+    Board board(FEN_EP_SETUP);
 
     // White double push sets EP square
     auto push = MoveFactory::MakeMove(e2, e4, MoveType::DOUBLE_PAWN_PUSH);
@@ -143,8 +138,7 @@ TEST_CASE("Board - EP square cleared after a non-EP follow-up move", "[board_sta
 
 TEST_CASE("Board - EP square restored to NO_SQUARE after UndoMove of double push", "[board_state]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_EP_SETUP);
+    Board board(FEN_EP_SETUP);
 
     auto push = MoveFactory::MakeMove(e2, e4, MoveType::DOUBLE_PAWN_PUSH);
     REQUIRE(board.DoMove(push));
@@ -159,8 +153,7 @@ TEST_CASE("Board - EP square restored to NO_SQUARE after UndoMove of double push
 
 TEST_CASE("Board - Side-to-move flips to BLACK after DoMove; restores to WHITE after UndoMove", "[board_state]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN("8/8/3k4/8/8/3K4/8/R7 w - - 0 1"); // white to move
+    Board board("8/8/3k4/8/8/3K4/8/R7 w - - 0 1"); // white to move
 
     REQUIRE(board.GetCurrentColor() == WHITE);
 
@@ -178,8 +171,7 @@ TEST_CASE("Board - Side-to-move flips to BLACK after DoMove; restores to WHITE a
 
 TEST_CASE("Board - Material score decremented for captured side; UndoMove restores", "[board_state]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_MATERIAL_CAPTURE);
+    Board board(FEN_MATERIAL_CAPTURE);
 
     const int blackMatBefore = board.GetMaterialScore(BLACK); // 10500
     const int whiteMatBefore = board.GetMaterialScore(WHITE); // 10900
@@ -199,8 +191,7 @@ TEST_CASE("Board - Material score decremented for captured side; UndoMove restor
 
 TEST_CASE("Board - Material score updated after promotion (pawn -> queen, delta +800); UndoMove restores", "[board_state]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_MATERIAL_PROMO);
+    Board board(FEN_MATERIAL_PROMO);
 
     const int whiteMatBefore = board.GetMaterialScore(WHITE); // 10100 (pawn + king)
 
@@ -219,9 +210,8 @@ TEST_CASE("Board - Material score updated after promotion (pawn -> queen, delta 
 
 TEST_CASE("Board - Fifty-move counter resets to 0 on pawn move; UndoMove restores prior value", "[board_state]")
 {
-    Board& board = Board::Instance();
     // FEN halfmove clock field pre-sets fiftyCount to 10
-    board.SetupFromFEN("4k3/8/8/8/8/8/4P3/4K3 w - - 10 1");
+    Board board("4k3/8/8/8/8/8/4P3/4K3 w - - 10 1");
 
     REQUIRE(board.GetGameInfo().fiftyCount == 10);
 
@@ -238,9 +228,8 @@ TEST_CASE("Board - Fifty-move counter resets to 0 on pawn move; UndoMove restore
 
 TEST_CASE("Board - Fifty-move counter increments by 1 on quiet non-pawn move; UndoMove restores", "[board_state]")
 {
-    Board& board = Board::Instance();
     // FEN halfmove clock pre-set to 5
-    board.SetupFromFEN("8/8/3k4/8/8/3K4/8/R7 w - - 5 1");
+    Board board("8/8/3k4/8/8/3K4/8/R7 w - - 5 1");
 
     REQUIRE(board.GetGameInfo().fiftyCount == 5);
 
@@ -258,9 +247,8 @@ TEST_CASE("Board - fiftyCount reaches 50 after quiet move from 49; UndoMove rest
 {
     // Note: DRAW_50_MOVES game state is set by the game-loop layer (PlayerAI/PlayerHuman
     // via UpdateBoardInfo), not by Board::DoMove. Board only tracks the counter.
-    Board& board = Board::Instance();
     // FEN halfmove clock pre-set to 49 (one quiet move will reach 50)
-    board.SetupFromFEN("8/8/3k4/8/8/3K4/8/R7 w - - 49 1");
+    Board board("8/8/3k4/8/8/3K4/8/R7 w - - 49 1");
 
     REQUIRE(board.GetGameInfo().fiftyCount == 49);
 

@@ -33,8 +33,7 @@ static int FindScore(
 
 TEST_CASE("Sort - PV move scores 2'000'000", "[sort]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_SORT);
+    Board board(FEN_SORT);
 
     GameInfo info = board.GetGameInfo();
     MoveList moveList;
@@ -62,8 +61,7 @@ TEST_CASE("Sort - PV move scores 2'000'000", "[sort]")
 
 TEST_CASE("Sort - Hash move scores 1'900'000 when not the PV move", "[sort]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_SORT);
+    Board board(FEN_SORT);
 
     GameInfo info = board.GetGameInfo();
     MoveList moveList;
@@ -87,8 +85,7 @@ TEST_CASE("Sort - Hash move scores 1'900'000 when not the PV move", "[sort]")
 
 TEST_CASE("Sort - Capture scores above 1'000'000 (winning capture category)", "[sort]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_SORT);
+    Board board(FEN_SORT);
 
     GameInfo info = board.GetGameInfo();
     MoveList moveList;
@@ -117,8 +114,7 @@ TEST_CASE("Sort - Capture scores above 1'000'000 (winning capture category)", "[
 
 TEST_CASE("Sort - Killer0 scores 900'000; beats quiet move with no history", "[sort]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_SORT);
+    Board board(FEN_SORT);
 
     GameInfo info = board.GetGameInfo();
     MoveList moveList;
@@ -156,8 +152,7 @@ TEST_CASE("Sort - Killer0 scores 900'000; beats quiet move with no history", "[s
 
 TEST_CASE("Sort - Quiet move with positive history scores exactly that history value", "[sort]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_SORT);
+    Board board(FEN_SORT);
 
     GameInfo info = board.GetGameInfo();
     MoveList moveList;
