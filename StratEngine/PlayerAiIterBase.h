@@ -12,8 +12,8 @@ public:
 	PlayerAiIterBase& operator=(PlayerAiIterBase&&) = delete;
 protected:
 	// Force use of factory by preventing constructor, copy-construction & operator=
-	explicit PlayerAiIterBase(_In_ unsigned md)
-		: PlayerAiBase(md)
+	explicit PlayerAiIterBase(Board& board, _In_ unsigned md)
+		: PlayerAiBase(board, md)
 	{
 		m_infoSeq.reserve(32);
 	}

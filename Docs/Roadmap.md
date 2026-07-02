@@ -1,6 +1,6 @@
 # StratChess Engine Roadmap
 
-**Last Updated**: July 1, 2026
+**Last Updated**: July 2, 2026
 **Timeframe**: Next 6 months (through parallel search implementation)
 **Current Version**: AIPerplex 2.0
 
@@ -28,25 +28,9 @@ This roadmap organizes development tasks by priority and category. Items are dra
 
 ### Refactoring
 
-#### 🔴 De-Singleton Board
-- **Estimate**: 3-4 days
-- **Status**: Not started — none of the 4 approach steps below have been started
-- **Blocking**: ThreadData extraction, parallel search (Lazy SMP), and clean unit testing of Eval/MoveGenerator
-- **Rationale**: `Board::Instance()` is a global singleton referenced by `MoveGenerator`, `EvalManager`, and `AIPerplex`. This prevents:
-  - Thread-local board copies required by Lazy SMP
-  - Isolated unit testing of Eval and MoveGenerator without global state side-effects
-  - The `ThreadData` struct (`Board board` member per thread)
-- **Approach**:
-  1. Remove `static` from `Board::Instance()`; make Board constructable directly (from FEN or default)
-  2. Pass `Board&` through `MoveGenerator`, `EvalManager`, and `AIPerplex` call sites
-  3. `ThreadData` holds its own `Board` copy (natural fit — see ThreadData item below)
-  4. Update all test fixtures to construct `Board` directly (see `Docs/TestDesign.md` Phase 2)
-- **Testing**: Existing perft + repetition tests serve as regression baseline; update fixtures to non-singleton pattern as part of this task
-- **Test design note**: Tracked as Phase 2 in `Docs/TestDesign.md`
-
 #### 🔴 Extract ThreadData Structure
 - **Estimate**: 2-3 days
-- **Status**: Not started
+- **Status**: Not started — now unblocked (De-Singleton Board landed; see Completed Work below)
 - **Blocking**: Parallel search implementation
 - **Description**: Create thread-local state container to eliminate shared mutable state
 - **Implementation**:
@@ -86,7 +70,8 @@ This roadmap organizes development tasks by priority and category. Items are dra
   is emulated in slow microcode on older AMD (Zen/Zen+/Zen2) — confirmed acceptable since
   this is a personal dev-only x64 build, not distributed to unknown hardware.
 - **Also benefits**: Shrinks `Board`'s bitboard array by 3 elements and removes one class of
-  `test_bitboards()` invariant failure — relevant context for **De-Singleton Board** above
+  `test_bitboards()` invariant failure — relevant context for the completed **De-Singleton Board**
+  work (see Completed Work below) and the upcoming **Extract ThreadData Structure** item
   (fewer bitboards to carry per thread-local `Board` copy once Lazy SMP lands).
 - **Validation**: perft equivalence (depth 1-4 fast tier + full `perft_test_cases.json`),
   `[tactical]`/`[tactical_full]`, nodes-per-second benchmark before/after (see plan for
@@ -549,6 +534,19 @@ Avoid these traps:
 - `Board::ResetSearchDepth()` added, called after every permanent move commit (`Game::Run`'s real move, `UCIHandler`'s position-moves replay), so `currentPly_` only ever spans in-flight search recursion depth, never game length
 - `assert(currentPly_ < MAX_PLY)` guard added in `DoMove`/`UndoMove` as defense in depth
 - Regression tests: undo-stack depth doesn't accumulate across 320 simulated real moves; full search-recursion headroom remains after a 260-move game
+
+### Refactoring: De-Singleton Board (PR #67, July 2026)
+- `Board::Instance()` singleton accessor removed entirely; `Board` is now an ordinary constructible, copyable value type (public default ctor, `explicit Board(const std::string& fen)` convenience ctor, defaulted copy/move)
+- `MoveGenerator` (`ComputeLegalMoves`, `ComputeCaptures`, `GetAttackBoard` + private helpers) and `EvalManager::Evaluate` now take an explicit `const Board&` parameter instead of reaching for the singleton
+- `PlayerBase::Create()` and every player constructor (`PlayerAiBase`, `AIPerplex`, `AIBasic`, `AIAgent`, `ABIterative`, `PlayerHuman`) take `Board&` by injection; `PlayerAiBase`'s now-meaningless default constructor removed
+- `Game` and `UciHandler` each own their own `Board board_` member (declared before the players/AI that hold a reference into it); `Config`'s FEN/board-setup methods take an explicit `Board&`
+- All Catch2 test files construct their own local `Board` — no more shared global board state between `TEST_CASE`s; three dead legacy test headers retired (`Unittests.h`, `RepetitionTests.h`, `Perft_unittests.h`, unused since the March 2026 Catch2 migration)
+- `zobrist::initialize()` changed from "runs on every Board construction" to a thread-safe run-once magic static, so two boards built from the same FEN are guaranteed to hash identically — required for a future shared TT across per-thread boards
+- `GetBitBoards()` changed to a `const` accessor returning `std::span<const BITBOARD>` (every caller was already read-only), which is what unlocked `const Board&` parameters on `MoveGenerator`/`EvalManager`
+- Validated throughout: perft 640/640 with identical node counts at every phase, self-play reproducing byte-identical node counts vs. the pre-refactor baseline (fully deterministic — no behavioral change), self-play through both `PlayerAI`/`PlayerBase`-derived hierarchies (AIPerplex and AIAgent) after the base-class changes in the player-injection phase
+- New `[board_instance]` test tag (`BoardInstanceTests.cpp`) covers instance independence, copy-then-diverge semantics, and cross-instance zobrist identity
+- Plan: `.claude/plans/de-singleton-board.md` (7 phases, each independently built/tested/committed)
+- **Unblocks**: Extract ThreadData Structure (see Critical Priority above), and the "with De-Singleton Board" C++23 item (`std::expected` in `FENParser::ParseFEN`)
 
 ### Infrastructure: UCI Protocol (March 2026)
 - `UCIHandler` class: synchronous command loop with search on `std::thread`

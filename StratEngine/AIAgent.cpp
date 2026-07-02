@@ -94,7 +94,7 @@ int AIAgent::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta, _Inout_ PVLi
 
 	// Henter de lovlige traek
 	MoveList moveList;
-	MoveGenerator::ComputeLegalMoves( info, moveList );
+	MoveGenerator::ComputeLegalMoves( m_Board, info, moveList );
 	
 	// Sorterer traekkene
 	MoveSorter::SortMovesIter( moveList, GetParentMove( ply ), // Last move

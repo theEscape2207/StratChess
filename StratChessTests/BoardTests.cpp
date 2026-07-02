@@ -35,8 +35,7 @@ static constexpr const char* FEN_ROOK_HASH =
 
 TEST_CASE("Board - En passant DoMove removes captured pawn; UndoMove restores it", "[board]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_EP);
+    Board board(FEN_EP);
 
     // Verify initial state
     REQUIRE(board.GetPiece(d5) == WHITE_PAWN);
@@ -61,8 +60,7 @@ TEST_CASE("Board - En passant DoMove removes captured pawn; UndoMove restores it
 
 TEST_CASE("Board - DoNullMove clears pending en-passant right; UndoNullMove restores it", "[board]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_EP);
+    Board board(FEN_EP);
 
     REQUIRE(board.GetGameInfo().epSquare == e6);
     const uint64_t hash_before = board.get_zobrist_hash();
@@ -80,8 +78,7 @@ TEST_CASE("Board - DoNullMove clears pending en-passant right; UndoNullMove rest
 
 TEST_CASE("Board - Kingside castling DoMove moves king and rook; UndoMove restores both", "[board]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_CASTLING);
+    Board board(FEN_CASTLING);
 
     // Verify initial state
     REQUIRE(board.GetPiece(e1) == WHITE_KING);
@@ -109,12 +106,11 @@ TEST_CASE("Board - Kingside castling DoMove moves king and rook; UndoMove restor
 
 TEST_CASE("Board - Promotion move generation: quiet promotion yields PROMOTION_QUEEN", "[board]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_PROMOTION);
+    Board board(FEN_PROMOTION);
 
     GameInfo info = board.GetGameInfo();
     MoveList moveList;
-    MoveGenerator::ComputeLegalMoves(info, moveList);
+    MoveGenerator::ComputeLegalMoves(board, info, moveList);
 
     // Quiet promotion: c7 → c8, must find at least the queen promotion
     const auto it = std::find_if(moveList.begin(), moveList.end(), [](const Move& m) {
@@ -126,12 +122,11 @@ TEST_CASE("Board - Promotion move generation: quiet promotion yields PROMOTION_Q
 
 TEST_CASE("Board - Capture-promotion yields PROMOTION_QUEEN_CAPTURE type", "[board]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_PROMOTION);
+    Board board(FEN_PROMOTION);
 
     GameInfo info = board.GetGameInfo();
     MoveList moveList;
-    MoveGenerator::ComputeLegalMoves(info, moveList);
+    MoveGenerator::ComputeLegalMoves(board, info, moveList);
 
     // Capture-promotion: c7 captures rook on b8, promotes to queen.
     // Encoded as PROMOTION_QUEEN_CAPTURE (capture bit 2 + promotion bit 3 both set).
@@ -144,8 +139,7 @@ TEST_CASE("Board - Capture-promotion yields PROMOTION_QUEEN_CAPTURE type", "[boa
 
 TEST_CASE("Board - Promotion DoMove replaces pawn with queen; UndoMove restores pawn", "[board]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_PROMOTION);
+    Board board(FEN_PROMOTION);
 
     REQUIRE(board.GetPiece(c7) == WHITE_PAWN);
     REQUIRE(board.GetPiece(c8) == NO_PIECE);
@@ -165,8 +159,7 @@ TEST_CASE("Board - Promotion DoMove replaces pawn with queen; UndoMove restores 
 
 TEST_CASE("Board - Zobrist hash is identical before and after a DoMove/UndoMove cycle", "[board]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_ROOK_HASH);
+    Board board(FEN_ROOK_HASH);
 
     const uint64_t hashBefore = board.get_zobrist_hash();
 

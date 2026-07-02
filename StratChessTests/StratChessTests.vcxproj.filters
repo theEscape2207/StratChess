@@ -60,6 +60,9 @@
     <ClCompile Include="BoardApiTests.cpp">
       <Filter>Source Files\Tests</Filter>
     </ClCompile>
+    <ClCompile Include="BoardInstanceTests.cpp">
+      <Filter>Source Files\Tests</Filter>
+    </ClCompile>
     <ClCompile Include="SearchTests.cpp">
       <Filter>Source Files\Tests</Filter>
     </ClCompile>

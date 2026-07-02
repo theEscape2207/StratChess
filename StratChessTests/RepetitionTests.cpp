@@ -62,8 +62,7 @@ void oscillate_cycle_black_first(Board& board)
 
 TEST_CASE("TC1 - Small history: history_size < 4 always returns false", "[repetition]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_ROOK);
+    Board board(FEN_ROOK);
 
     apply_quiet(board, a1, h1);
     REQUIRE_FALSE(board.is_repetition(1));
@@ -77,8 +76,7 @@ TEST_CASE("TC1 - Small history: history_size < 4 always returns false", "[repeti
 
 TEST_CASE("TC2 - Twofold from game history is not a draw", "[repetition]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_ROOK);
+    Board board(FEN_ROOK);
 
     oscillate_cycle(board); // position seen twice: initial + after cycle
 
@@ -87,8 +85,7 @@ TEST_CASE("TC2 - Twofold from game history is not a draw", "[repetition]")
 
 TEST_CASE("TC3 - Threefold repetition is detected", "[repetition]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_ROOK);
+    Board board(FEN_ROOK);
 
     oscillate_cycle(board); // 1st copy of starting state in history
     oscillate_cycle(board); // 2nd copy
@@ -99,8 +96,7 @@ TEST_CASE("TC3 - Threefold repetition is detected", "[repetition]")
 
 TEST_CASE("TC4 - Post-pawn threefold is detected; pawn move resets scan boundary", "[repetition]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_ROOK_PAWN);
+    Board board(FEN_ROOK_PAWN);
 
     apply_quiet(board, a2, a3); // irreversible — black to move next
 
@@ -113,8 +109,7 @@ TEST_CASE("TC4 - Post-pawn threefold is detected; pawn move resets scan boundary
 
 TEST_CASE("TC5 - Post-capture threefold is detected; capture resets scan boundary", "[repetition]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_ROOK_CAPTURE);
+    Board board(FEN_ROOK_CAPTURE);
 
     auto capture = MoveFactory::MakeCapture(a1, a5);
     REQUIRE(board.DoMove(capture)); // irreversible — black to move next
@@ -132,8 +127,7 @@ TEST_CASE("TC5 - Post-capture threefold is detected; capture resets scan boundar
 
 TEST_CASE("TC6 - Castling rights change prevents false positive", "[repetition]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_CASTLING);
+    Board board(FEN_CASTLING);
 
     // Move a-rooks off home squares — both sides lose queenside castling rights.
     apply_quiet(board, a1, a2);
@@ -152,8 +146,7 @@ TEST_CASE("TC6 - Castling rights change prevents false positive", "[repetition]"
 
 TEST_CASE("TC7 - UndoMove fully restores repetition state", "[repetition]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_ROOK);
+    Board board(FEN_ROOK);
 
     auto m1 = MoveFactory::MakeQuiet(a1, h1);
     auto m2 = MoveFactory::MakeQuiet(d6, e6);
@@ -168,8 +161,7 @@ TEST_CASE("TC7 - UndoMove fully restores repetition state", "[repetition]")
 
 TEST_CASE("TC9 - Twofold repetition within search tree is a draw", "[repetition]")
 {
-    Board& board = Board::Instance();
-    board.SetupFromFEN(FEN_ROOK);
+    Board board(FEN_ROOK);
 
     // All 5 moves are search moves (no game history).
     apply_quiet(board, a1, h1); // ply 1 — hash stored at index 0

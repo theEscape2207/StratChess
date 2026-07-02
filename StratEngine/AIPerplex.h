@@ -27,7 +27,7 @@ public:
 	}
 
 	// Note: NOT to be called directly - only through Factory method (needed to be public due to usage of make_unique)
-	explicit AIPerplex(_In_ unsigned md);
+	explicit AIPerplex(Board& board, _In_ unsigned md);
 	~AIPerplex() = default;
 
 	// Force use of factory by preventing constructor, copy-construction & operator=

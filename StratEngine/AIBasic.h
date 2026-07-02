@@ -13,7 +13,7 @@ public:
 	const char* GetType() const noexcept override	{	return "Basic Alpha Beta";	}
 	
 	// Note: NOT to be called directly - only through Factory method
-	explicit AIBasic(_In_ unsigned md) : PlayerAiBase(md) {}
+	explicit AIBasic(Board& board, _In_ unsigned md) : PlayerAiBase(board, md) {}
 	~AIBasic() = default;
 
 	// Force use of factory by preventing constructor, copy-construction & operator=

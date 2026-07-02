@@ -167,7 +167,7 @@ namespace Testing {
 		GameInfo curInfo = board.GetGameInfo();
 
 		MoveList moves;
-		MoveGenerator::ComputeLegalMoves(curInfo, moves);
+		MoveGenerator::ComputeLegalMoves(board, curInfo, moves);
 
 		uint64_t nodes = 0;
 
@@ -197,7 +197,7 @@ namespace Testing {
 
 		auto info = board.GetGameInfo();
 		MoveList moves;
-		MoveGenerator::ComputeLegalMoves(info, moves);
+		MoveGenerator::ComputeLegalMoves(board, info, moves);
 
 		for (const auto& move : moves) {
 			// Try to make the move
@@ -249,7 +249,7 @@ namespace Testing {
 					auto currInfo = board.GetGameInfo();
 					// Check if it's checkmate
 					MoveList nextMoves;
-					MoveGenerator::ComputeLegalMoves(currInfo, nextMoves);
+					MoveGenerator::ComputeLegalMoves(board, currInfo, nextMoves);
 					bool hasLegalMove = false;
 					for (const auto& nextMove : nextMoves) {
 						if (board.DoMove(nextMove)) {
@@ -314,7 +314,7 @@ namespace Testing {
 
 		auto curInfo = board.GetGameInfo();
 		MoveList moves;
-		MoveGenerator::ComputeLegalMoves(curInfo, moves);
+		MoveGenerator::ComputeLegalMoves(board, curInfo, moves);
 
 		uint64_t total_nodes = 0;
 
@@ -366,7 +366,7 @@ namespace Testing {
 			std::cout << "FEN: " << pos.fen << "\n";
 
 			// Set up board from FEN
-			Board& board = Board::Instance();  // TODO: Update when Board is no longer singleton
+			Board board;
 
 			board.SetupFromFEN(pos.fen);
 

@@ -22,19 +22,19 @@
 |                                                          |
  ----------------------------------------------------------
 */
-void MoveGenerator::ComputeLegalMoves(_In_ const GameInfo& info, _Inout_ MoveList& moveList)
+void MoveGenerator::ComputeLegalMoves(_In_ const Board& board, _In_ const GameInfo& info, _Inout_ MoveList& moveList)
 {
 	assert(moveList.empty());		// Check our preconditions ;-)
 
-	const auto color = Board::Instance().GetCurrentColor();
+	const auto color = board.GetCurrentColor();
 
-	const auto boards = Board::Instance().GetBitBoards();
+	const auto boards = board.GetBitBoards();
 
 	/* Pawn moves
 	---------------------*/
 
 	//Captures (including en-passant and promotion-captures)
-	GeneratePawnCaptures(boards.data(), info, moveList, color);
+	GeneratePawnCaptures(board, boards.data(), info, moveList, color);
 
 	//Then normal Promotes
 	AddPawnPromoteMoves(boards.data(), color, moveList);
@@ -44,23 +44,23 @@ void MoveGenerator::ComputeLegalMoves(_In_ const GameInfo& info, _Inout_ MoveLis
 
 	/* Officer moves
 	---------------------*/
-	GenerateOfficerMoves(boards.data(), moveList, KNIGHT, color, false);
-	GenerateOfficerMoves(boards.data(), moveList, BISHOP, color, false);
-	GenerateOfficerMoves(boards.data(), moveList, ROOK, color, false);
-	GenerateOfficerMoves(boards.data(), moveList, QUEEN, color, false);
+	GenerateOfficerMoves(board, boards.data(), moveList, KNIGHT, color, false);
+	GenerateOfficerMoves(board, boards.data(), moveList, BISHOP, color, false);
+	GenerateOfficerMoves(board, boards.data(), moveList, ROOK, color, false);
+	GenerateOfficerMoves(board, boards.data(), moveList, QUEEN, color, false);
 
 	/* King moves
 	-------------------*/
 	// Need to have kings on the board
 	assert(boards[ePiece::BLACK_KING] && boards[ePiece::WHITE_KING]);
 
-	GenerateOfficerMoves(boards.data(), moveList, KING, color, false);
+	GenerateOfficerMoves(board, boards.data(), moveList, KING, color, false);
 
 	// Add any legal castling moves
-	AddCastleMoves(moveList, color, boards.data(), info);
+	AddCastleMoves(board, moveList, color, boards.data(), info);
 }
 
-void MoveGenerator::GeneratePawnCaptures(const BITBOARD* const bbBitBoards, const GameInfo& info, MoveList& moveList, eColor color)
+void MoveGenerator::GeneratePawnCaptures(const Board& board, const BITBOARD* const bbBitBoards, const GameInfo& info, MoveList& moveList, eColor color)
 {
 	BITBOARD bbAttackRight = 0;
 	BITBOARD bbAttackLeft = 0;
@@ -97,7 +97,7 @@ void MoveGenerator::GeneratePawnCaptures(const BITBOARD* const bbBitBoards, cons
 
 		// Construct a call-owned move and forward to AddPawnCaptures
 		Move temp = MoveFactory::MakeMove(from, to, MoveType::CAPTURE);
-		AddPawnCaptures(moveList, bbBitBoards, std::move(temp), color);
+		AddPawnCaptures(board, moveList, bbBitBoards, std::move(temp), color);
 
 		bbAttackLeft = Bits::clearLsb(bbAttackLeft);
 	}
@@ -112,7 +112,7 @@ void MoveGenerator::GeneratePawnCaptures(const BITBOARD* const bbBitBoards, cons
 		auto from = static_cast<eSquare>(to + (color == eColor::BLACK ? -9 : 7));	//FIXME: Add defines, constants whatever
 
 		Move temp = MoveFactory::MakeMove(from, to, MoveType::CAPTURE);
-		AddPawnCaptures(moveList, bbBitBoards, std::move(temp), color);
+		AddPawnCaptures(board, moveList, bbBitBoards, std::move(temp), color);
 		bbAttackRight = Bits::clearLsb(bbAttackRight);
 	}
 }
@@ -173,7 +173,7 @@ void MoveGenerator::GeneratePawnNormalMoves(_In_ const BITBOARD* const bbBitBoar
 	}
 }
 
-void MoveGenerator::GenerateOfficerMoves(const BITBOARD* const bbBitBoards, MoveList& moveList, ePieceType piece, eColor color, bool onlyCaptures)
+void MoveGenerator::GenerateOfficerMoves(const Board& board, const BITBOARD* const bbBitBoards, MoveList& moveList, ePieceType piece, eColor color, bool onlyCaptures)
 {
 	const auto movPiece = PieceHelper::AsPiece(piece, color);
 
@@ -190,7 +190,7 @@ void MoveGenerator::GenerateOfficerMoves(const BITBOARD* const bbBitBoards, Move
 		}
 
 		// Add all legal moves found above
-		AddOfficerMoves(moveList, bbAttack, from);
+		AddOfficerMoves(board, moveList, bbAttack, from);
 
 		bbPiecesToMove = Bits::clearLsb(bbPiecesToMove);
 	}
@@ -265,17 +265,17 @@ void MoveGenerator::AddPawnPromoteMoves(const BITBOARD* bbBitBoards, eColor colo
 
 // <param name="moveList">Collection of found moves</param>
 // Computes all possible moves, filters so only all captures, en passants and promotes remains and returns unsorted
-void MoveGenerator::ComputeCaptures(_In_ const GameInfo& info, _Inout_ MoveList& moveList)
+void MoveGenerator::ComputeCaptures(_In_ const Board& board, _In_ const GameInfo& info, _Inout_ MoveList& moveList)
 {
-	const auto color = Board::Instance().GetCurrentColor();
+	const auto color = board.GetCurrentColor();
 
-	const auto boards = Board::Instance().GetBitBoards();
+	const auto boards = board.GetBitBoards();
 
 	/* Pawn moves
 	---------------------*/
 
 	//Captures (including en-passant and promotion-captures)
-	GeneratePawnCaptures(boards.data(), info, moveList, color);
+	GeneratePawnCaptures(board, boards.data(), info, moveList, color);
 
 	//Then normal Promotes
 	AddPawnPromoteMoves(boards.data(), color, moveList);
@@ -283,22 +283,22 @@ void MoveGenerator::ComputeCaptures(_In_ const GameInfo& info, _Inout_ MoveList&
 	/* Officer moves
 	---------------------*/
 	// GetAttackBoard for opposite color
-	GenerateOfficerMoves(boards.data(), moveList, KNIGHT, color, true);
-	GenerateOfficerMoves(boards.data(), moveList, BISHOP, color, true);
-	GenerateOfficerMoves(boards.data(), moveList, ROOK, color, true);
-	GenerateOfficerMoves(boards.data(), moveList, QUEEN, color, true);
-	GenerateOfficerMoves(boards.data(), moveList, KING, color, true);
+	GenerateOfficerMoves(board, boards.data(), moveList, KNIGHT, color, true);
+	GenerateOfficerMoves(board, boards.data(), moveList, BISHOP, color, true);
+	GenerateOfficerMoves(board, boards.data(), moveList, ROOK, color, true);
+	GenerateOfficerMoves(board, boards.data(), moveList, QUEEN, color, true);
+	GenerateOfficerMoves(board, boards.data(), moveList, KING, color, true);
 }
 
 // Adds all moves in the given attack bitboard to the move list
-void MoveGenerator::AddOfficerMoves(MoveList& moveList, BITBOARD bbAttack, eSquare from)
+void MoveGenerator::AddOfficerMoves(const Board& board, MoveList& moveList, BITBOARD bbAttack, eSquare from)
 {
 	assert(from != NO_SQUARE);
 
 	while (bbAttack)
 	{
 		const auto to = Board::GetFirstPiece(bbAttack);
-		const bool isCapture = PieceHelper::IsActual(Board::Instance().GetPiece(to));
+		const bool isCapture = PieceHelper::IsActual(board.GetPiece(to));
 		const MoveType moveType = isCapture ? MoveType::CAPTURE : MoveType::QUIET;
 		// MoveType flag encodes whether it's a capture; captured piece is retrieved from the board when needed.
 		moveList.push(MoveFactory::MakeMove(from, to, moveType));
@@ -319,7 +319,7 @@ void MoveGenerator::AddOfficerMoves(MoveList& moveList, BITBOARD bbAttack, eSqua
 */
 // TODO: Det er vist overkill at teste om alle felterne Kongen flytter forbi er angrebet for hver eneste traekgenerering
 // i stedet kunne man flytte det til DoMove()
-void MoveGenerator::AddCastleMoves(MoveList& moveList, eColor color, const BITBOARD* bbBitBoards, const GameInfo& info)
+void MoveGenerator::AddCastleMoves(const Board& board, MoveList& moveList, eColor color, const BITBOARD* bbBitBoards, const GameInfo& info)
 {
 	
 	// Per-side castling layout:
@@ -369,15 +369,14 @@ void MoveGenerator::AddCastleMoves(MoveList& moveList, eColor color, const BITBO
 	if (!(info.castlingRights & (side.kingsideFlag | side.queensideFlag)))
 		return;
 
-	const Board& board = Board::Instance();
 	const eSquare sqFrom = Board::GetFirstPiece(bbBitBoards[static_cast<ePiece>(KING + static_cast<int>(color))]);	// There is only one king!!
-	
+
 	// Debug: king must be on its starting square if any castling right is still set
 	assert(sqFrom == side.kingSq);
 	assert(board.GetPiece(side.kingSq) == side.kingPiece);
 
 	const auto attackColor = (color == eColor::WHITE ? eColor::BLACK : eColor::WHITE);
-	const BITBOARD attackBoard = MoveGenerator::GetAttackBoard(attackColor);
+	const BITBOARD attackBoard = MoveGenerator::GetAttackBoard(board, attackColor);
 
 	// Kingside
 	if (info.castlingRights & side.kingsideFlag)
@@ -405,11 +404,11 @@ void MoveGenerator::AddCastleMoves(MoveList& moveList, eColor color, const BITBO
 // Remarks: Move must be a pawn capture move (including en-passant).
 // Also handles promotion captures.
 // color: the color of the moving pawn (passed explicitly; the moving piece is not stored in Move).
-void MoveGenerator::AddPawnCaptures(MoveList& moveList, const BITBOARD* bbBitBoards, Move move, eColor color)
+void MoveGenerator::AddPawnCaptures([[maybe_unused]] const Board& board, MoveList& moveList, const BITBOARD* bbBitBoards, Move move, eColor color)
 {
 	// Prerequisites: Move must be a pawn capture move (including en-passant).
 	// From and To must be set; the pawn of 'color' must be on from.
-	assert(PieceHelper::IsPawn(Board::Instance().GetPiece(move.from())));
+	assert(PieceHelper::IsPawn(board.GetPiece(move.from())));
 	assert(!move.is_null());
 
 	const eSquare from = move.from();
@@ -421,7 +420,6 @@ void MoveGenerator::AddPawnCaptures(MoveList& moveList, const BITBOARD* bbBitBoa
 	// Normal capture?
 	if (IsEnemyPieceOnTarget(bbBitBoards, color, move))
 	{
-		[[maybe_unused]] const Board& board = Board::Instance();
 		assert(PieceHelper::IsActual(board.GetPiece(to)));
 		assert(PieceHelper::Color(board.GetPiece(to)) != color);
 
@@ -491,27 +489,6 @@ BITBOARD MoveGenerator::GetBishopBitboard(const BITBOARD* bbBitBoards, eSquare f
 	return bbAttack;
 }
 
-// Fungerer ved at kalde GetAttackBoard() og se om et af dem rammer 'pos'
-// TODO: Med denne rutine er det ikke muligt at se _hvilken_ brik der truer 'pos'
-// TODO: Currently unused
-bool MoveGenerator::IsAttacked(eSquare pos, eColor attackByColor) noexcept
-{
-	const BITBOARD bb = GetAttackBoard(attackByColor);
-	// Hvis angrebsbitboardet indeholder 'pos' returneres true
-	return Bits::isAnyBitSet(bb, g_bbMask[pos]);
-}
-
-// Fungerer ved at kalde GetAttackBoard() og se om et af dem rammer et af felterne i 'squares' board'et.
-// TODO: Med denne rutine er det ikke muligt at se _hvilken_ brik der truer 'squares'
-// TODO: Also currently unused
-bool MoveGenerator::IsAttacked(BITBOARD squares, eColor attackByColor) noexcept
-{
-	const BITBOARD bb = GetAttackBoard(attackByColor);
-	// Hvis angrebsbitboardet indeholder en i mask 'pos' returneres true
-	return Bits::isAnyBitSet(bb, squares);
-}
-
-
 //***************************************
 // Method:      GetAttackBoard
 // Description: Generates all possible CAPTURE type moves for the color and combines the attacked squares into the returned BTBOARD. 
@@ -522,9 +499,8 @@ bool MoveGenerator::IsAttacked(BITBOARD squares, eColor attackByColor) noexcept
 // Remark:      NOTE: This does not consider EN PASSANT type moves as this is not needed currently
 //				Parts of the code is DUPLICATED from MoveGen. Consider reusing instead.
 //***************************************
-BITBOARD MoveGenerator::GetAttackBoard(eColor attackByColor) noexcept
+BITBOARD MoveGenerator::GetAttackBoard(const Board& board, eColor attackByColor) noexcept
 {
-	auto& board = Board::Instance();
 	const auto boards = board.GetBitBoards();
 	
 	BITBOARD bbAttackBoard = 0;	// Attacked squares bitboard
@@ -545,10 +521,10 @@ BITBOARD MoveGenerator::GetAttackBoard(eColor attackByColor) noexcept
 	}
 
 	// Add en passant target if it exists
-	const auto epSquare = Board::Instance().GetGameInfo().epSquare;
+	const auto epSquare = board.GetGameInfo().epSquare;
 	if (epSquare != NO_SQUARE) {
 		// Check if attacking color has a pawn that can capture en passant
-		BITBOARD adjacentPawns = GetAnyEnPassantAttackingPawns(attackByColor, epSquare);
+		BITBOARD adjacentPawns = GetAnyEnPassantAttackingPawns(boards.data(), attackByColor, epSquare);
 		if (adjacentPawns) {
 			bbAttackBoard |= g_bbMask[epSquare];
 		}
@@ -616,13 +592,12 @@ BITBOARD MoveGenerator::GetAttackBoard(eColor attackByColor) noexcept
 // Parameter:   eSquare epSquare - En passant target square
 // Remark:      The actual enemy pawn is on same rank as attacker, not the ep square
 //***************************************
-BITBOARD MoveGenerator::GetAnyEnPassantAttackingPawns(eColor attackByColor, eSquare epSquare) noexcept
+BITBOARD MoveGenerator::GetAnyEnPassantAttackingPawns(const BITBOARD* boards, eColor attackByColor, eSquare epSquare) noexcept
 {
 	if (epSquare == NO_SQUARE) {
 		return 0;
 	}
 
-	const BITBOARD* boards = Board::Instance().GetBitBoards().data();
 	const ePiece attackingPawn = PieceHelper::AsPawn(attackByColor);
 	const eSquare enemyPawnSquare = SquareHelper::PreviousRow(epSquare, attackByColor);
 
