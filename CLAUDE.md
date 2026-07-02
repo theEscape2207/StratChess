@@ -145,11 +145,11 @@ When constructing FEN positions for tactical tests:
 ### AIPerplex in tests
 Constructor re-enables verbose logging and leaves `Eval` null; follow this setup order:
 ```cpp
-auto ai = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, depth);
+Board board(fen);                                // must be constructed before Create()
+auto ai = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, depth, board);
 AIPerplex::SetVerboseLogging(false);             // must be AFTER Create()
 ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX); // must be before GetMove()
-Board::Instance().SetupFromFEN(fen);             // must be before GetGameInfo()
-GameInfo info = Board::Instance().GetGameInfo();
+GameInfo info = board.GetGameInfo();
 Move m = ai->GetMove(info);
 ```
 
