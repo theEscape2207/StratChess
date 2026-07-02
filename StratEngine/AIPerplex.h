@@ -111,19 +111,23 @@ private:
 
 	// SEARCH METHODS
 	// --------------
-	SearchResult iterative_deepening(int max_depth, TranspositionTable& tt, PVTable& pv_table);
-	int search_with_aspiration(int depth, int seed_score, TranspositionTable& tt, PVTable& pv_table);
-	int pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt, PVTable& pv_table);
-	int adjustScoreForGameState(bool moveFound, int ply, int best_value);
-	int quiescence(int alpha, int beta, int depth_q, int ply, TranspositionTable& tt);
+	// ThreadData is always the first parameter: the search runs entirely on the
+	// per-thread state it carries, while the TranspositionTable stays a separate
+	// explicit parameter because it is shared across threads under Lazy SMP.
+	void init_search(const GameInfo& info);
+	SearchResult iterative_deepening(ThreadData& td, int max_depth, TranspositionTable& tt);
+	int search_with_aspiration(ThreadData& td, int depth, int seed_score, TranspositionTable& tt);
+	int pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt);
+	int adjustScoreForGameState(ThreadData& td, bool moveFound, int ply, int best_value);
+	int quiescence(ThreadData& td, int alpha, int beta, int depth_q, int ply, TranspositionTable& tt);
 
 	// HELPER METHODS
 	// --------------
 	// Quality assessment
 	RejectionReason assess_iteration_quality(const IterationMetrics& metrics, const SearchState& state) const;
 	bool should_stop_early(int depth, int score, int pv_length) const;			// Early termination checks
-	bool handle_empty_move_emergency(SearchState& state, PVTable& pv_table);	// Emergency handling
-	bool should_try_null_move(int depth, int beta, int ply, bool is_pv_node, bool in_check) const;
+	bool handle_empty_move_emergency(ThreadData& td, SearchState& state);		// Emergency handling
+	bool should_try_null_move(const ThreadData& td, int depth, int beta, int ply, bool is_pv_node, bool in_check) const;
 	
 	// Logging helpers
 	void log_iteration_eval(const IterationMetrics& metrics, const PVTable& pv_table) const;
