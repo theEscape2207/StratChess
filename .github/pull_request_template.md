@@ -1,5 +1,8 @@
+## Why
+<!-- 1-3 sentences: motivation / trigger — why this change, and why now -->
+
 ## Summary
-<!-- 1-3 bullet points: what changed and why -->
+<!-- 1-3 bullet points: what changed -->
 
 -
 
@@ -9,5 +12,5 @@
 - [ ]
 
 ## Notes
-<!-- Motivation, design reasoning, and expected impact for non-trivial changes.
+<!-- Design reasoning and expected impact for non-trivial changes.
 Required if this PR touches evaluation, move ordering, or search algorithms (see CLAUDE.md). -->
