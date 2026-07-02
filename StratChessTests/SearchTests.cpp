@@ -68,11 +68,12 @@ public:
     bool try_null_move(int depth, int beta, int ply, bool is_pv_node, bool in_check) const
         { return ai->should_try_null_move(depth, beta, ply, is_pv_node, in_check); }
 
-    // Pokes the private consecutive-null-move guard array. Needed because
-    // last_move_was_null_ is private on AIPerplex — only AIPerlexTestFixture
-    // (the declared friend) can reach it, not the free TEST_CASE functions.
+    // Pokes the consecutive-null-move guard array inside the private td_
+    // member. Needed because td_ is private on AIPerplex — only
+    // AIPerlexTestFixture (the declared friend) can reach it, not the free
+    // TEST_CASE functions.
     void set_last_move_was_null(int ply, bool value) const
-        { ai->last_move_was_null_[ply] = value; }
+        { ai->td_.last_move_was_null[ply] = value; }
 };
 
 // ============================================================================

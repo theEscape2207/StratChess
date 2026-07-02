@@ -70,8 +70,7 @@ AIPerplex::AIPerplex(Board& board, _In_ unsigned md)
 	// allocate TT once per AIPerplex instance; size can be tuned or read from config
 	_tt = std::make_unique<TranspositionTable>(256);
 
-	clear_killers();
-	clear_history();
+	// td_'s constructor clears killers and history.
 	// Verbose logging is opt-in per call site:
 	//   game mode  → Game::SetPlayerParams() calls SetVerboseLogging(true)
 	//   UCI mode   → UciHandler::init_ai()   calls SetVerboseLogging(false)
@@ -133,14 +132,14 @@ SearchResult  AIPerplex::iterative_deepening(int max_depth, TranspositionTable& 
 	nodes_since_check_ = 0;   // reset node counter for this search
 	bool extra_depth_used = false;   // soft-limit extension granted at most once per search
 
-	clear_killers();	// Clear killer moves at the start of the search
-	clear_null_move_flags();
+	td_.clear_killers();	// Clear killer moves at the start of the search
+	td_.clear_null_move_flags();
 
 	for (int depth = 1; depth <= max_depth; ++depth) {
 
 		// BEFORE ITERATION: Prepare for this depth's search
 		tt.newSearchIteration();
-		age_history();
+		td_.age_history();
 		const int64_t nodes_at_start = m_SearchCount;
 
 		// EXECUTE SEARCH: This might get interrupted by timeout
@@ -336,12 +335,12 @@ int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, Tra
 	// consecutive-null, PV/in-check/depth) so it can be unit tested directly.
 	if (should_try_null_move(depth, beta, ply, is_pv_node, in_check)) {
 		const int R = tuning_.null_move_reduction;
-		last_move_was_null_[ply + 1] = true;
+		td_.last_move_was_null[ply + 1] = true;
 		m_Board.DoNullMove();
 		AddNullMoveToSeq(ply);
 		int null_score = -pvs(depth - 1 - R, -beta, -beta + 1, ply + 1, false, tt, pv_table);
 		m_Board.UndoNullMove();
-		last_move_was_null_[ply + 1] = false;
+		td_.last_move_was_null[ply + 1] = false;
 		if (null_score >= beta) {
 			tt.store(key, static_cast<int16_t>(null_score), static_cast<int16_t>(depth),
 				static_cast<int16_t>(ply), Move::EmptyMove(), BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
@@ -364,8 +363,8 @@ int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, Tra
 
 	MoveSorter::ScoreMoves(moveList, n, m_Board, side,
 		pv_move, hash_move,
-		killers_[ply][0], killers_[ply][1],
-		history_, scored_idx);
+		td_.killers[ply][0], td_.killers[ply][1],
+		td_.history, scored_idx);
 
 	bool moveFound = false;
 
@@ -389,7 +388,7 @@ int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, Tra
 			else {
 				const bool isCapture   = MoveHelper::IsCapture(move);
 				const bool isPromotion = MoveHelper::IsPromote(move);
-				const bool isKiller    = (move == killers_[ply][0] || move == killers_[ply][1]);
+				const bool isKiller    = (move == td_.killers[ply][0] || move == td_.killers[ply][1]);
 
 				// Late Move Reductions: reduce quiet, non-killer, non-evasion moves
 				// that appear late in the sorted order. Skip conditions are conservative:
@@ -454,8 +453,8 @@ int AIPerplex::pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, Tra
 
 			if (beta <= alpha)
 			{
-				store_killer(ply, move);
-				update_history(side, move, depth);
+				td_.store_killer(ply, move);
+				td_.update_history(side, move, depth);
 				break;
 		}
 	}
@@ -715,61 +714,7 @@ int AIPerplex::search_with_aspiration(int depth, int seed_score, TranspositionTa
 // ============================================================================
 // HELPERS
 // ============================================================================
-void AIPerplex::clear_killers() noexcept
-{
-	for (auto& ply_killers : killers_)
-		for (auto& k : ply_killers)
-			k = Move::EmptyMove();
-}
-
-void AIPerplex::clear_null_move_flags() noexcept
-{
-	std::memset(last_move_was_null_, 0, sizeof(last_move_was_null_));
-}
-
-void AIPerplex::store_killer(int ply, const Move& move) noexcept
-{
-	// Only quiet moves are stored as killers
-	if (MoveHelper::IsCapture(move))
-		return;
-	// Avoid storing the same move twice in slot 0
-	if (killers_[ply][0] == move)
-		return;
-	// Shift slot 0 to slot 1, then store new killer in slot 0
-	killers_[ply][1] = killers_[ply][0];
-	killers_[ply][0] = move;
-}
-
-void AIPerplex::clear_history() noexcept
-{
-	std::memset(history_, 0, sizeof(history_));
-}
-
-void AIPerplex::age_history() noexcept
-{
-	// Halve all scores between iterative-deepening depths so that older
-	// cutoff information fades rather than being discarded entirely.
-	// Scores from deeper searches stay proportionally larger.
-	for (auto& side : history_)
-		for (auto& from : side)
-			for (auto& score : from)
-				score >>= 1;
-}
-
-void AIPerplex::update_history(eColor side, const Move& move, int depth) noexcept
-{
-	// Only quiet moves contribute to the history table
-	if (MoveHelper::IsCapture(move))
-		return;
-	// Bonus scales with depth^2 so deep cutoffs outweigh shallow ones
-	int32_t& entry = history_[side][move.from()][move.to()];
-	entry += depth * depth;
-	// Cap to avoid int32 overflow after many iterations
-	if (entry > HISTORY_MAX)
-		entry = HISTORY_MAX;
-}
-
-
+// Killer/history/null-flag maintenance lives on ThreadData (ThreadData.h).
 
 AIPerplex::RejectionReason AIPerplex::assess_iteration_quality(
 	const IterationMetrics& metrics,
@@ -932,7 +877,7 @@ bool AIPerplex::should_try_null_move(int depth, int beta, int ply, bool is_pv_no
 	if (is_pv_node || in_check) return false;
 	if (depth < tuning_.null_move_min_depth) return false;
 	if (std::abs(beta) >= GameValues::Mate_Threshold) return false;
-	if (last_move_was_null_[ply]) return false;
+	if (td_.last_move_was_null[ply]) return false;
 
 	// Zugzwang guard: refuse to "pass" for a side with fewer than two
 	// non-pawn pieces — the null-move assumption ("a free pass is never
