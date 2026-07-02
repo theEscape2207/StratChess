@@ -1,6 +1,6 @@
 // SuitePolicyTests.cpp — Catch2 tests for TacticalTestRunner::evaluate_results()
 //
-// Roadmap acceptance criterion for the tactical suite: pass 80%+ tactical
+// Roadmap acceptance criterion for the tactical suite: pass 90%+ tactical
 // tests, 100% mate tests. evaluate_results enforces: overall pass rate >=
 // required threshold AND zero failures in any category starting with "mate".
 
