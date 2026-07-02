@@ -12,14 +12,6 @@ class Board final
 	friend std::ostream& operator<<(std::ostream&, const Board&);
 
 public:
-	// TEMPORARY during de-singleton migration — deleted in the final phase.
-	// See .claude/plans/de-singleton-board.md
-	static inline Board& Instance() noexcept
-	{
-		static Board _instance;
-		return _instance;
-	}
-
 	Board();
 	explicit Board(const std::string& fen);
 	~Board() = default;

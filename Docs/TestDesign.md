@@ -78,8 +78,8 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | Bitboard helpers | `[bitboard]` | ⏳ Phase 1 | `BitboardTests.cpp` (future) |
 | UCI command loop | `[uci]` | ✅ validated via pipe test | `StratChessEvolved.exe uci` (pipe smoke test) |
 | Full tactical suite (WAC/mate-in-N) | — | ✅ Phase 1 | `StratChessEvolved.exe tactical test` |
-| Position class (after Board refactor) | `[position]` | ⏳ Phase 2 | — |
-| NPS / performance regression | — | ⏳ Phase 2 | — |
+| Board instance independence (post-de-singleton) | `[board_instance]` | ✅ Phase 2 | `BoardInstanceTests.cpp` |
+| NPS / performance regression | — | ⏳ Phase 1 | — |
 
 ---
 
@@ -229,22 +229,22 @@ Basic operations from `defines.h`: set bit, clear bit, popcount, LSB extraction.
 
 ## Phase 2 — With Board De-Singletonization
 
-The Board singleton is **incompatible with parallel search** (each thread needs its own Board copy). Removing it is already on the roadmap as a Critical Priority item (see `Roadmap.md`). These test changes come naturally with that refactor.
+**Status**: ✅ **Done.** Landed across 7 commits on `.claude/plans/de-singleton-board.md` (June-July 2026). `Board::Instance()` is gone; every test constructs its own local `Board`.
 
-**Impact on tests**:
-- Replace `Board::Instance().SetupFromFEN(fen)` with constructing a Board directly
-- All test fixtures updated to pass Board by reference
-- `EvalTests.cpp`, `RepetitionTests.cpp`, `PerftTests.cpp` all updated
-- New `[position]` tests for the `Position` class once it encapsulates `GameInfo` history
-- Performance regression test: NPS baseline stored in a file, warn if > 10% regression across builds
+**Impact on tests** (all landed):
+- Every `Board::Instance().SetupFromFEN(fen)` replaced with constructing a `Board` directly — mostly via the FEN constructor `Board board(fen);`, with the default ctor + explicit `SetupFromFEN` kept for tests that reconfigure one board across multiple `SECTION`s or sequential setups
+- All test fixtures updated to hold Board by reference (`AIPerlexTestFixture::board_`, `TacticalTestHelpers.h`'s `make_tactical_engine(Board&, unsigned)`)
+- `EvalTests.cpp`, `RepetitionTests.cpp`, `PerftTests.cpp`, and every other `Board::Instance()`-using test file updated
+- ~~New `[position]` tests for the `Position` class~~ — not applicable; the refactor was an incremental `Board` change per the plan's design decisions, not a from-scratch `Position` class
+- Performance regression test (NPS baseline stored in a file): still **open** — not part of the de-singleton scope; remains a candidate for a future Phase 1 infrastructure item
 
-**Migration rule**: new test files added during Phase 2 should be written for the non-singleton Board from the start.
+**Migration rule**: all new test files should be written for the non-singleton Board from the start (already the only pattern available now that `Instance()` is deleted).
 
 ---
 
 ## Test Isolation Rules
 
-- Every `TEST_CASE` that uses `Board::Instance()` must call `Board::Instance().SetupFromFEN(fen)` as its first action — Board state is global and carries over between tests if not reset.
+- Each `TEST_CASE` constructs its own local `Board` (via the FEN constructor, or the default constructor + `SetupFromFEN`) — no shared global board state between tests.
 - TT tests use a fresh `TranspositionTable(1)` (1 MB) per test — never the AIPerplex-internal TT.
 - Tactical tests create a fresh `AIPerplex` per test — this allocates a 256 MB TT, which is acceptable on development machines (virtual memory is lazy-paged).
 
