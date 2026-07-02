@@ -535,7 +535,7 @@ Avoid these traps:
 - `assert(currentPly_ < MAX_PLY)` guard added in `DoMove`/`UndoMove` as defense in depth
 - Regression tests: undo-stack depth doesn't accumulate across 320 simulated real moves; full search-recursion headroom remains after a 260-move game
 
-### Refactoring: De-Singleton Board (July 2026)
+### Refactoring: De-Singleton Board (PR #67, July 2026)
 - `Board::Instance()` singleton accessor removed entirely; `Board` is now an ordinary constructible, copyable value type (public default ctor, `explicit Board(const std::string& fen)` convenience ctor, defaulted copy/move)
 - `MoveGenerator` (`ComputeLegalMoves`, `ComputeCaptures`, `GetAttackBoard` + private helpers) and `EvalManager::Evaluate` now take an explicit `const Board&` parameter instead of reaching for the singleton
 - `PlayerBase::Create()` and every player constructor (`PlayerAiBase`, `AIPerplex`, `AIBasic`, `AIAgent`, `ABIterative`, `PlayerHuman`) take `Board&` by injection; `PlayerAiBase`'s now-meaningless default constructor removed
