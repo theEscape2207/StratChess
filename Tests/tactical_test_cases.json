@@ -63,6 +63,70 @@
       "fen": "7k/8/6K1/8/8/8/8/1R5R w - - 0 1",
       "best_moves": ["h1h7", "b1b8"],
       "depth": 5
+    },
+    {
+      "id": "WAC-001",
+      "category": "mate_in_2",
+      "description": "WAC.001 Qg6: queen sac decoy, Nxg6# follows",
+      "fen": "2rr3k/pp3pp1/1nnqbN1p/3pN3/2pP4/2P3Q1/PPB4P/R4RK1 w - - 0 1",
+      "best_moves": ["g3g6"],
+      "depth": 5
+    },
+    {
+      "id": "WAC-004",
+      "category": "mate_in_2",
+      "description": "WAC.004 Qxh7+: queen sac, hxg6# follows",
+      "fen": "r1bq2rk/pp3pbp/2p1p1pQ/7P/3P4/2PB1N2/PP3PPR/2KR4 w - - 0 1",
+      "best_moves": ["h6h7"],
+      "depth": 5
+    },
+    {
+      "id": "WAC-005",
+      "category": "mate_in_2",
+      "description": "WAC.005 Qc4+ (Black): deflection, bxc4# follows",
+      "fen": "5k2/6pp/p1qN4/1p1p4/3P4/2PKP2Q/PP3r2/3R4 b - - 0 1",
+      "best_moves": ["c6c4"],
+      "depth": 5
+    },
+    {
+      "id": "WAC-012",
+      "category": "mate_in_2",
+      "description": "WAC.012 Qxf3+ (Black): queen sac on f3, Rg1# follows",
+      "fen": "4k1r1/2p3r1/1pR1p3/3pP2p/3P2qP/P4N2/1PQ4P/5R1K b - - 0 1",
+      "best_moves": ["g4f3"],
+      "depth": 5
+    },
+    {
+      "id": "WAC-027",
+      "category": "mate_in_2",
+      "description": "WAC.027 Qf8+: deflect the knight, back-rank mate",
+      "fen": "7k/pp4np/2p3p1/3pN1q1/3P4/Q7/1r3rPP/2R2RK1 w - - 0 1",
+      "best_moves": ["a3f8"],
+      "depth": 5
+    },
+    {
+      "id": "WAC-054",
+      "category": "mate_in_2",
+      "description": "WAC.054 Qh1+ (Black): corner check, mate on h-file",
+      "fen": "r3kr2/1pp4p/1p1p4/7q/4P1n1/2PP2Q1/PP4P1/R1BB2K1 b q - 0 1",
+      "best_moves": ["h5h1"],
+      "depth": 5
+    },
+    {
+      "id": "WAC-099",
+      "category": "mate_in_2",
+      "description": "WAC.099 Rh5: rook lift, gxh5 Qxh5#",
+      "fen": "r1bq1r1k/1pp1Np1p/p2p2pQ/4R3/n7/8/PPPP1PPP/R1B3K1 w - - 0 1",
+      "best_moves": ["e5h5"],
+      "depth": 5
+    },
+    {
+      "id": "WAC-246",
+      "category": "mate_in_2",
+      "description": "WAC.246 Qh5+: king hunt on the h-file",
+      "fen": "6R1/4qp1p/ppr1n1pk/8/1P2P1QP/6N1/P4PP1/6K1 w - - 0 1",
+      "best_moves": ["g4h5"],
+      "depth": 5
     }
   ]
 }
