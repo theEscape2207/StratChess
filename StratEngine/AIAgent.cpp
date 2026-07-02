@@ -61,7 +61,7 @@ Move AIAgent::GetMove(_Inout_ GameInfo& info )
 		++depth_;	// _Skal_ opdateres her, da "continue" bliver brugt ovenover
 	}
 
-	StopTimerAndAdjustVars();
+	StopTimerAndAdjustVars(m_SearchCount);
 
 	CheckGameOver( info );
 

@@ -52,7 +52,7 @@ Move ABIterative::GetMove(_Inout_ GameInfo& info)
 		ENewPVLineMove.fire(this, m_Line);
 	}
 
-	StopTimerAndAdjustVars();
+	StopTimerAndAdjustVars(m_SearchCount);
 
 	CheckGameOver(info);
 
