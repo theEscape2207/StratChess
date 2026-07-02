@@ -383,6 +383,13 @@ TEST_CASE("Search - should_try_null_move: single non-pawn piece returns false (i
     AIPerlexTestFixture white_to_move("8/8/8/3r4/4k3/8/8/3QK3 w - - 0 1");
     white_to_move.ai->tuning().null_move_enabled = true;
     REQUIRE(white_to_move.try_null_move(4, 0, 1, false, false) == false);
+
+    // One knight + six pawns is still refused: the guard counts non-pawn
+    // pieces, deliberately ignoring pawns (material-count-based, not
+    // phase-based).
+    AIPerlexTestFixture knight_and_pawns("4k3/8/8/8/8/8/PPPPPPN1/4K3 w - - 0 1");
+    knight_and_pawns.ai->tuning().null_move_enabled = true;
+    REQUIRE(knight_and_pawns.try_null_move(4, 0, 1, false, false) == false);
 }
 
 TEST_CASE("Search - should_try_null_move: two non-pawn pieces returns true", "[search]")
