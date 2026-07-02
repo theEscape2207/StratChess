@@ -59,3 +59,24 @@ TEST_CASE("Tactical - fast suite", "[tactical]")
     REQUIRE(m.from() == tc.expected_from);
     REQUIRE(m.to()   == tc.expected_to);
 }
+
+// ---------------------------------------------------------------------------
+// Issue #66 regression: QFORK-001 from the exe tactical suite (Tests/
+// tactical_test_cases.json). KQ vs KR is won via domination/zugzwang, and
+// null-move pruning must not hide the rook win — the original zugzwang guard
+// let the side with a lone rook "pass", flattening every winning line to bare
+// material. Two moves win (Qa4+ fork, Qb3 threat), so this position cannot
+// live in kFastCases (unique-best-move invariant).
+// ---------------------------------------------------------------------------
+TEST_CASE("Tactical - QFORK-001: zugzwang rook win survives null-move pruning (issue #66)", "[tactical]")
+{
+    Board board("8/8/8/3r4/4k3/8/8/3QK3 w - - 0 1");
+    auto ai = make_tactical_engine(board, 4);
+    GameInfo info = board.GetGameInfo();
+    Move m = ai->GetMove(info);
+
+    INFO("engine played " << m.Output());
+    REQUIRE(m.from() == d1);
+    const bool wins_the_rook = (m.to() == a4) || (m.to() == b3);
+    REQUIRE(wins_the_rook);
+}
