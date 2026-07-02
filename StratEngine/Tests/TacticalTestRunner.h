@@ -41,7 +41,9 @@ public:
 
     // Run all positions from the JSON file. Prints per-position results and summary.
     // Returns true if pass_rate >= required_pass_rate.
-    [[nodiscard]] static bool run_test_suite(double required_pass_rate = 0.90, bool verbose = true);
+    [[nodiscard]] static bool run_test_suite(double required_pass_rate = 0.90,
+                                             bool verbose = true,
+                                             const std::string& json_filename = "tactical_test_cases.json");
 
     // Load positions from a JSON file.
     // Must be run from the Tests/ directory — resolves path as:

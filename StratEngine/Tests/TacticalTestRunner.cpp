@@ -92,12 +92,14 @@ TacticalTestRunner::SuiteVerdict TacticalTestRunner::evaluate_results(
     return v;
 }
 
-bool TacticalTestRunner::run_test_suite(double required_pass_rate, bool verbose)
+bool TacticalTestRunner::run_test_suite(double required_pass_rate, bool verbose,
+                                         const std::string& json_filename)
 {
-    auto positions = load_test_cases("tactical_test_cases.json");
+    auto positions = load_test_cases(json_filename);
 
     std::cout << "\n========================================\n";
-    std::cout << "Tactical Test Suite (" << positions.size() << " positions)\n";
+    std::cout << "Tactical Test Suite (" << positions.size() << " positions, "
+              << json_filename << ")\n";
     std::cout << "========================================\n\n";
 
     std::vector<TacticalResult> results;
