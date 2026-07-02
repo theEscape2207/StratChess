@@ -48,6 +48,7 @@ TacticalResult TacticalTestRunner::run_position(const TacticalPosition& pos)
 {
     TacticalResult result;
     result.id          = pos.id;
+    result.category    = pos.category;
     result.description = pos.description;
 
     Board board(pos.fen);
@@ -73,6 +74,24 @@ TacticalResult TacticalTestRunner::run_position(const TacticalPosition& pos)
     return result;
 }
 
+TacticalTestRunner::SuiteVerdict TacticalTestRunner::evaluate_results(
+    const std::vector<TacticalResult>& results, double required_pass_rate)
+{
+    SuiteVerdict v;
+    v.total = static_cast<int>(results.size());
+    for (const auto& r : results) {
+        if (r.passed)
+            ++v.passed;
+        else if (r.category.rfind("mate", 0) == 0)
+            v.failed_mate_ids.push_back(r.id);
+    }
+    v.pass_rate = (v.total > 0) ? static_cast<double>(v.passed) / v.total : 0.0;
+    v.ok = v.total > 0
+        && v.pass_rate >= required_pass_rate
+        && v.failed_mate_ids.empty();
+    return v;
+}
+
 bool TacticalTestRunner::run_test_suite(double required_pass_rate, bool verbose)
 {
     auto positions = load_test_cases("tactical_test_cases.json");
@@ -81,8 +100,7 @@ bool TacticalTestRunner::run_test_suite(double required_pass_rate, bool verbose)
     std::cout << "Tactical Test Suite (" << positions.size() << " positions)\n";
     std::cout << "========================================\n\n";
 
-    int passed = 0;
-    int failed = 0;
+    std::vector<TacticalResult> results;
 
     for (const auto& pos : positions) {
         if (verbose) {
@@ -106,21 +124,25 @@ bool TacticalTestRunner::run_test_suite(double required_pass_rate, bool verbose)
                       << "  (" << result.time_ms << " ms)\n\n";
         }
 
-        if (result.passed) ++passed; else ++failed;
+        results.push_back(result);
     }
 
-    const int total = passed + failed;
-    const double pass_rate = (total > 0) ? static_cast<double>(passed) / total : 0.0;
-    const bool ok = pass_rate >= required_pass_rate;
+    const SuiteVerdict v = evaluate_results(results, required_pass_rate);
 
     std::cout << "========================================\n";
-    std::cout << "Results: " << passed << "/" << total << " passed"
-              << " (" << static_cast<int>(pass_rate * 100) << "%)\n";
-    std::cout << "Required: " << static_cast<int>(required_pass_rate * 100) << "%\n";
-    std::cout << (ok ? "PASS" : "FAIL") << "\n";
+    std::cout << "Results: " << v.passed << "/" << v.total << " passed"
+              << " (" << static_cast<int>(v.pass_rate * 100) << "%)\n";
+    std::cout << "Required: " << static_cast<int>(required_pass_rate * 100)
+              << "% overall, 100% in mate categories\n";
+    if (!v.failed_mate_ids.empty()) {
+        std::cout << "Mate-category failures (always fatal):";
+        for (const auto& id : v.failed_mate_ids) std::cout << " " << id;
+        std::cout << "\n";
+    }
+    std::cout << (v.ok ? "PASS" : "FAIL") << "\n";
     std::cout << "========================================\n\n";
 
-    return ok;
+    return v.ok;
 }
 
 } // namespace Testing
