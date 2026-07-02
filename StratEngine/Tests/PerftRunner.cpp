@@ -45,7 +45,7 @@ int perftrunner_main(int argc, char** argv) {
         }
 
         // Set up starting position
-        Board& board = Board::Instance();  // TODO: Update when Board is no longer singleton
+        Board board;
         board.SetDefaultBoard();
 
         std::cout << "Running perft on starting position at depth " << depth << "\n\n";

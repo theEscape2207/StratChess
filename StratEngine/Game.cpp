@@ -90,7 +90,7 @@ std::ostream& operator<<(std::ostream& os, const Game& game)
 //***************************************
 IPlayer& Game::GetCurrentPlayer() const noexcept
 {
-	return *m_pPlayers[Board::Instance().GetCurrentColor()];
+	return *m_pPlayers[board_.GetCurrentColor()];
 }
 
 //***************************************
@@ -156,7 +156,7 @@ void Game::CreateGameMoveFile()
 void Game::LoadConfigFileSettings()
 {
 	Config reader(this);
-	reader.ReadConfigFile("game_settings.json");
+	reader.ReadConfigFile("game_settings.json", board_);
 
 	// TODO: Setup board explicitly here
 	spdlog::default_logger()->debug("Creating players from Config File");
@@ -173,7 +173,7 @@ void Game::LoadConfigFileSettings()
 
 std::unique_ptr<IPlayer> Game::SetPlayerParams(const Config::PlayerConfig& config)
 {
-	auto player = PlayerBase::Create(static_cast<PlayerBase::ePlayerTypes>(config.type), config.depth, Board::Instance());
+	auto player = PlayerBase::Create(static_cast<PlayerBase::ePlayerTypes>(config.type), config.depth, board_);
 	player->SetEvalEngine(static_cast<EvalManager::EvalTypes>(config.eval));
 
 	// Enable AIPerplex verbose logging in game mode (opt-in here; UCI/test modes disable it).
@@ -240,7 +240,7 @@ void Game::SetGameParams(const GameInfo& info) noexcept
 //***************************************
 void Game::Run()
 {
-	Board& rBoard = Board::Instance();
+	Board& rBoard = board_;
 
 	// First print of board
 	PrintBoardAndMove(Move::EmptyMove());
@@ -365,7 +365,7 @@ void Game::PrintStateMessage() const
 //***************************************
 void Game::PrintBoardAndMove(const Move& move) const
 {
-	const Board& board = Board::Instance();
+	const Board& board = board_;
 	// Print to various places
 	std::stringstream sstream;
 	sstream << "\nBoard " << GetBoardCount() << "\n\n";
@@ -395,7 +395,7 @@ void Game::PrintGameMoves()
 	// MoveFormatter requires the board to be in the post-DoMove state, which it is here.
 	const Move& move = m_GameMoves.back();
 	movesFile_ << "Move " << m_GameMoves.size() << '\n'; //-V128
-	movesFile_ << "Last move: " << MoveFormatter::ToShort(move, Board::Instance()) << '\n';
+	movesFile_ << "Last move: " << MoveFormatter::ToShort(move, board_) << '\n';
 }
 
 //***************************************

@@ -26,7 +26,7 @@ static void test_fen_integration() {
     std::cout << "FEN Integration Test\n";
     std::cout << "========================================\n\n";
 
-    Board& board = Board::Instance();
+    Board board;
 
     // Test positions with expected results
     struct TestCase {
@@ -144,8 +144,8 @@ static int perftrunner(int argc, char** argv) {
             return 1;
         }
 
-        Board& board = Board::Instance();  // TODO: Update when Board is no longer singleton
-        
+        Board board;
+
         if (argc > 3)   //custom fen
         {
             std::string fen = argv[3];

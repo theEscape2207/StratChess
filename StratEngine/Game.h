@@ -6,6 +6,7 @@
 #include "Move.h"
 #include "GameState.h"
 #include "Config.h"
+#include "Board.h"
 #include "Utils/FENParser.h"
 #include "Utils/Logger.h"
 
@@ -96,6 +97,10 @@ public:
 	Game(Game&&) = delete;
 	Game& operator=(Game&&) = delete;
 private:
+	// Must be declared (and thus constructed/destroyed) before m_pPlayers —
+	// players hold a Board& reference into it that must outlive them.
+	Board board_;
+
 	std::unique_ptr<IPlayer> m_pPlayers[2];
 
 	// Data structure for keeping 
