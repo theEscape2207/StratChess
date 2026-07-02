@@ -4,6 +4,7 @@
 #include "GameState.h"	// For CastlingRights, eColor, eSquare
 
 class Game;
+class Board;
 
 class Config final
 {
@@ -48,7 +49,7 @@ public:
 	explicit Config(Game* game) noexcept : pGame_(game) {}
 	//void LoadConfigFileSettings();
 
-	void ReadConfigFile(const std::string& /*filename*/);
+	void ReadConfigFile(const std::string& /*filename*/, Board& board);
 
 	PlayerConfig GetPlayerFromConfig(bool bWhite) const noexcept;
 
@@ -58,10 +59,10 @@ public:
 private:
 	bool CheckBoardSetupData(const std::string& strPiece, const std::string& regex) const;
 	void SetupPlayerConfig(const nlohmann::json& config);
-	void ReadBoardSetup(const nlohmann::json& config) const;
+	void ReadBoardSetup(const nlohmann::json& config, Board& board) const;
 
 	// For FEN support
-	void ReadFEN(const std::string& fen) const;
+	void ReadFEN(const std::string& fen, Board& board) const;
 
 	Game* pGame_;
 

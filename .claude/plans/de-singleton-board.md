@@ -321,18 +321,24 @@
 
 **Files:** `Game.h/.cpp`, `Config.h/.cpp`, `UCIHandler.h/.cpp`, `StratChessEvolved.cpp`, `Tests/Perft.cpp`, `Tests/PerftRunner.cpp`, `Tests/TacticalTestRunner.cpp`
 
-- [ ] **5.1** `Game.h`: add `Board board_;` as the **first** data member (players hold a reference into it — it must be constructed before and destroyed after `m_pPlayers`). `Game.cpp`: replace `Board::Instance()` at lines 93, 243, 368, 398 with `board_`; factory call passes `board_`; config call passes `board_`.
-- [ ] **5.2** `Config.h/.cpp`: `ReadConfigFile(const std::string& filename, Board& board)`, `ReadBoardSetup(const json& config, Board& board)`, `ReadFEN(const std::string& fen, Board& board)` — replaces `Board::Instance()` at Config.cpp:33, 41, 47.
-- [ ] **5.3** `UCIHandler.h`: add `Board board_;` member (declared before `ai_`). `UCIHandler.cpp`: replace lines 69, 75, 84, 95, 97, 102, 111, 112 with `board_`; `init_ai()` passes `board_` to the factory.
-- [ ] **5.4** `StratChessEvolved.cpp`: `test_fen_integration` (line 29) and `perftrunner` (line 147) use a function-local `Board board;`.
-- [ ] **5.5** `Tests/Perft.cpp:369` and `Tests/PerftRunner.cpp:48` (the two `// TODO: Update when Board is no longer singleton` sites): local `Board board;` — and delete those TODO comments.
-- [ ] **5.6** `Tests/TacticalTestRunner.cpp:57-58`: local `Board board(pos.fen);` per position, passed to the factory; update the stale "Sets up Board::Instance() internally" comment in `TacticalTestRunner.h:37`.
-- [ ] **5.7** Verify engine is singleton-free:
+- [x] **5.1** `Game.h`: add `Board board_;` as the **first** data member (players hold a reference into it — it must be constructed before and destroyed after `m_pPlayers`). `Game.cpp`: replace `Board::Instance()` at lines 93, 243, 368, 398 with `board_`; factory call passes `board_`; config call passes `board_`.
+- [x] **5.2** `Config.h/.cpp`: `ReadConfigFile(const std::string& filename, Board& board)`, `ReadBoardSetup(const json& config, Board& board)`, `ReadFEN(const std::string& fen, Board& board)` — replaces `Board::Instance()` at Config.cpp:33, 41, 47.
+- [x] **5.3** `UCIHandler.h`: add `Board board_;` member (declared before `ai_`). `UCIHandler.cpp`: replace lines 69, 75, 84, 95, 97, 102, 111, 112 with `board_`; `init_ai()` passes `board_` to the factory.
+- [x] **5.4** `StratChessEvolved.cpp`: `test_fen_integration` (line 29) and `perftrunner` (line 147) use a function-local `Board board;`.
+- [x] **5.5** `Tests/Perft.cpp:369` and `Tests/PerftRunner.cpp:48` (the two `// TODO: Update when Board is no longer singleton` sites): local `Board board;` — and delete those TODO comments.
+
+  **Note**: `Tests/PerftRunner.cpp`'s `perftrunner_main()` was confirmed to have zero callers anywhere in the codebase (dead code, superseded by the `perftrunner()` static function in `StratChessEvolved.cpp`) — still fixed since it's part of the compiled build and must stay Level4/WX-clean, but left in place rather than deleted (out of scope for this refactor).
+- [x] **5.6** `Tests/TacticalTestRunner.cpp:57-58`: local `Board board(pos.fen);` per position, passed to the factory; update the stale "Sets up Board::Instance() internally" comment in `TacticalTestRunner.h:37`.
+- [x] **5.7** Verify engine is singleton-free:
   ```bash
   grep -rn "Board::Instance" StratEngine/ StratChessEvolved/ --include=*.cpp --include=*.h | grep -v Archived
   ```
   Expected: only `Board.h` (the accessor itself) and the three retired `Tests/*` headers (deleted next phase).
-- [ ] **5.8** Build + fast tests + a quick self-play sanity game green → commit: `De-singleton Board phase 5: Game/UCI/runners own their boards`
+
+  **Confirmed**: exactly the 14 expected hits, all in `Perft_unittests.h` (6) and `RepetitionTests.h` (8) — nothing in `Board.h` itself (the accessor definition doesn't contain the literal call-site string) and nothing else anywhere in engine or app code.
+- [x] **5.8** Build + fast tests + a quick self-play sanity game green → commit: `De-singleton Board phase 5: Game/UCI/runners own their boards`
+
+  **Validation results**: full build (both configs, Level4/WX) clean. Full fast tier: 1557/129, unchanged. Deep perft: 640/640, unchanged. Tactical suite: 7/8 (87%) — same pre-existing NMP issue as Phase 2/before (issue #66), not a regression. UCI smoke test (`UciHandler` now owns `board_` instead of the singleton — first phase this could plausibly break): `position startpos moves e2e4` + `go depth 8` returned a well-formed `bestmove e7e6` with sane `info depth 8 score cp -19 nodes 134273` line. Self-play (AIPerplex, `"type": 6`, 25 s): reproduced the exact same node counts as the Phase 0/4 baseline (11,432,010 / 12,442,363 / 14,748,434) — fully deterministic.
 
 ### Phase 6 — Migrate the test suite; delete dead legacy headers
 

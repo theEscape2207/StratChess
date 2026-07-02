@@ -366,7 +366,7 @@ namespace Testing {
 			std::cout << "FEN: " << pos.fen << "\n";
 
 			// Set up board from FEN
-			Board& board = Board::Instance();  // TODO: Update when Board is no longer singleton
+			Board board;
 
 			board.SetupFromFEN(pos.fen);
 

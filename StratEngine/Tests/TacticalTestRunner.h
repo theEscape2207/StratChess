@@ -34,7 +34,7 @@ public:
     // (same convention as Perft::load_perft_tests_modern)
     [[nodiscard]] static std::vector<TacticalPosition> load_test_cases(const std::string& json_filename);
 
-    // Run a single position. Sets up Board::Instance() from pos.fen internally.
+    // Run a single position. Constructs its own local Board from pos.fen internally.
     static TacticalResult run_position(const TacticalPosition& pos);
 };
 
