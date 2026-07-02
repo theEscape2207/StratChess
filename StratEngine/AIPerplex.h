@@ -4,6 +4,7 @@
 #include "PlayerAI.h"
 #include "TranspositionTable.h"
 #include "PVTable.h"
+#include "ThreadData.h"
 #include <map>
 #include <memory>
 #include <cstdint>
@@ -118,15 +119,6 @@ private:
 
 	// HELPER METHODS
 	// --------------
-	// Move ordering heuristics
-	void clear_killers() noexcept;
-	void store_killer(int ply, const Move& move) noexcept;
-	void clear_null_move_flags() noexcept;
-
-	void clear_history() noexcept;
-	void age_history() noexcept;
-	void update_history(eColor side, const Move& move, int depth) noexcept;
-
 	// Quality assessment
 	RejectionReason assess_iteration_quality(const IterationMetrics& metrics, const SearchState& state) const;
 	bool should_stop_early(int depth, int score, int pv_length) const;			// Early termination checks
@@ -145,21 +137,11 @@ private:
 	// MEMBER VARIABLES
 	std::unique_ptr<TranspositionTable> _tt;	// persistent transposition table
 
-	// Killer move heuristic: two quiet moves per ply that caused a beta cutoff
-	static constexpr int MAX_KILLERS = 2;
-	Move killers_[MAX_PLY][MAX_KILLERS];
-
-	// Null-move consecutive-pass guard: last_move_was_null_[ply] is true when
-	// the move that led to this ply was itself a null move. Indexed the same
-	// way as killers_; cleared at search start and reset immediately after
-	// each null-move attempt completes (see pvs()).
-	bool last_move_was_null_[MAX_PLY]{};
-
-	// History heuristic: accumulated score for quiet moves that caused beta cutoffs,
-	// indexed by [side-to-move][from-square][to-square].
-	// int32 gives plenty of headroom before the depth^2 increments overflow.
-	static constexpr int HISTORY_MAX = 16'384;
-	int32_t history_[2][64][64];
+	// Per-thread search state (board copy, node counter, PV, killers, history, ...).
+	// Persistent member — history is aged between moves, never cleared — and the
+	// single instance used by the (currently single-threaded) search. Lazy SMP
+	// helper threads will each get their own. See ThreadData.h.
+	ThreadData td_;
 
 	// logging control: enable detailed logging when needed (default: false)
 	static inline bool s_verbose_logging = false;
