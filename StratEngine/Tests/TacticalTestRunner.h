@@ -39,11 +39,33 @@ public:
     [[nodiscard]] static SuiteVerdict evaluate_results(
         const std::vector<TacticalResult>& results, double required_pass_rate);
 
+    struct StabilityVerdict {
+        bool ok = false;
+        bool comparable = true;              // false if runs differ in size (structural error)
+        int runs = 0;
+        std::vector<std::string> flipped_ids;    // positions whose pass flag differed across runs
+        std::vector<int> failed_run_indices;     // 1-based indices of runs failing evaluate_results
+    };
+
+    // Pure stability policy (unit-tested in SuitePolicyTests.cpp):
+    // ok iff at least one run, all runs the same size, every run individually
+    // satisfies evaluate_results(), and no position's pass flag differs
+    // between runs. A flip = nondeterminism (the SMP race-bug signal).
+    [[nodiscard]] static StabilityVerdict evaluate_stability(
+        const std::vector<std::vector<TacticalResult>>& runs, double required_pass_rate);
+
     // Run all positions from the JSON file. Prints per-position results and summary.
     // Returns true if pass_rate >= required_pass_rate.
     [[nodiscard]] static bool run_test_suite(double required_pass_rate = 0.90,
                                              bool verbose = true,
                                              const std::string& json_filename = "tactical_test_cases.json");
+
+    // Run the whole suite n_runs consecutive times. Prints one summary line
+    // per run (plus any failing positions) and a final stability verdict.
+    // Returns true iff every run passes the gate and no position flips.
+    [[nodiscard]] static bool run_stability_suite(int n_runs,
+                                                  double required_pass_rate = 0.90,
+                                                  const std::string& json_filename = "tactical_test_cases.json");
 
     // Load positions from a JSON file.
     // Must be run from the Tests/ directory — resolves path as:

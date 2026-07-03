@@ -104,7 +104,7 @@ static void test_fen_integration() {
 
 static int tacticalrunner(int argc, char** argv) {
     if (argc < 2) {
-        std::cout << "Usage: tactical test [filename]\n";
+        std::cout << "Usage: tactical test [filename] | tactical stability [N] [filename]\n";
         return 1;
     }
     const std::string command = argv[1];
@@ -113,8 +113,26 @@ static int tacticalrunner(int argc, char** argv) {
         const bool ok = Testing::TacticalTestRunner::run_test_suite(0.90, true, filename);
         return ok ? 0 : 1;
     }
+    if (command == "stability") {
+        int n_runs = 10;
+        if (argc >= 3) {
+            try {
+                n_runs = std::stoi(argv[2]);
+            } catch (const std::exception&) {
+                std::cerr << "Error: N must be a number, got '" << argv[2] << "'\n";
+                return 1;
+            }
+            if (n_runs < 1) {
+                std::cerr << "Error: N must be >= 1, got " << n_runs << "\n";
+                return 1;
+            }
+        }
+        const std::string filename = (argc >= 4) ? argv[3] : "tactical_test_cases.json";
+        const bool ok = Testing::TacticalTestRunner::run_stability_suite(n_runs, 0.90, filename);
+        return ok ? 0 : 1;
+    }
     std::cerr << "Error: unknown tactical command '" << command << "'\n";
-    std::cout << "Usage: tactical test [filename]\n";
+    std::cout << "Usage: tactical test [filename] | tactical stability [N] [filename]\n";
     return 1;
 }
 

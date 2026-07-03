@@ -23,7 +23,7 @@ Tests are **protection tools for the roadmap**, not bureaucratic overhead.
 |------|-----------|---------------|----------|---------|
 | Unit & fast integration | `StratChessTests.exe` | (all), or `[tag]` | < 10 s | Every build |
 | Deep perft | `StratChessEvolved.exe perft test` | — | Minutes | Pre-merge |
-| Full tactical suite | `StratChessEvolved.exe tactical test` | — | Seconds | Pre-PR (automated: `Validate-PrePR.ps1` Step 3) |
+| Full tactical suite | `StratChessEvolved.exe tactical stability 10` (single run: `tactical test`) | — | ~11 s | Pre-PR (automated: `Validate-PrePR.ps1` Step 3) |
 
 Run all fast tests at once:
 ```bash
@@ -219,6 +219,18 @@ positions July 2026 (WAC mate + tactical batches), 31/31 passing (100%).
 (defaults to `tactical_test_cases.json`) or `StratChessEvolved.exe tactical test
 [filename]` to run an arbitrary JSON file — used for staging candidates, see
 "Growing the suite" below.
+
+**Stability mode**: `StratChessEvolved.exe tactical stability [N] [filename]` (N defaults
+to 10) runs the whole suite N consecutive times and fails on either (a) any run failing
+the normal gate policy or (b) any position whose pass/fail *flips* between runs. The flip
+rule means a consistently-failing tolerated position (within the 90% threshold) does not
+break stability, but a sometimes-failing one does — flips are the signal for
+nondeterministic search results, the primary intermittent-race-bug symptom once Lazy SMP
+threads share the TT. Policy is pure (`TacticalTestRunner::evaluate_stability()`) and
+unit-tested in `SuitePolicyTests.cpp` (`[suite_policy]`). Gated at N=10 in
+`Validate-PrePR.ps1` Step 3; on today's single-threaded fixed-depth search it is
+deterministic and therefore trivially green.
+
 **Acceptance**: 90%+ overall pass rate, **and 100% pass rate in every category whose
 name starts with `mate`** (`mate_in_1`, `mate_in_2`, `mate_in_3`, `mate_in_4`). The
 100%-mate rule is enforced by `TacticalTestRunner::evaluate_results()` and unit-tested
