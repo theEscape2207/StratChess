@@ -45,7 +45,9 @@ counts.
      will read shared stop state. This is also the seam the later TimeControl refactor works on
      — keeping it out makes the two PRs non-overlapping by construction.
      *Lazy SMP follow-up (documented, not done here):* `nodes_since_check_` is a per-node hot
-     counter and would race; each helper thread needs its own amortization counter.
+     counter and would race; each helper thread needs its own amortization counter. Likewise
+     `_bestScore` and `last_result_` (written at root/end of search) and the timer/abort state
+     must stay main-thread-only — flagged by search-reviewer at final review (LGTM otherwise).
    - Static `m_TotalTime`/`m_TotalCount` perf stats — known SMP hazard, game-mode-only;
      flagged for Lazy SMP, not touched here.
    - `tt_misses` debug multimap + `last_result_` — debug/result plumbing written outside the

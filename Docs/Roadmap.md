@@ -38,10 +38,13 @@ Agreed ordering after the issue #66 post-mortem (see Completed Work). The #66 pr
    — ✅ done (July 2026): suite grew 8 → 31 positions (WAC mate-in-2/3/4 + non-mate
    tactical wins), 31/31 passing; mate categories now require 100% pass (unit-tested);
    `tactical test [filename]` staging support added.
-2. **Extract ThreadData Structure** (🔴 Critical, below) — validate the PR #67 way: perft
+2. **Extract ThreadData Structure** (🔴 Critical) — validate the PR #67 way: perft
    equivalence + byte-identical self-play node counts. For deterministic refactors that is a
    *stronger* check than any tactical suite (detects any behavioral drift, not just drift
-   that flips a test position), so ThreadData does not need to wait for broader suites.
+   that flips a test position), so ThreadData did not need to wait for broader suites.
+   — ✅ done (July 2026): `ThreadData` struct passed through the whole search call chain,
+   search runs on a thread-local `Board` copy; byte-identical node counts vs. pre-refactor
+   baseline across a full fixed-depth self-play game (see Completed Work below).
 3. **Before Lazy SMP**: establish the ELO baseline (below) while the engine is still
    deterministic, and revisit the deferred automated-suite scope. Once threads race on a
    shared TT, node-count equivalence stops being available — tactical suites + strength
@@ -53,30 +56,10 @@ Agreed ordering after the issue #66 post-mortem (see Completed Work). The #66 pr
 
 ### Refactoring
 
-#### 🔴 Extract ThreadData Structure
-- **Estimate**: 2-3 days
-- **Status**: Not started — now unblocked (De-Singleton Board landed; see Completed Work below).
-  Next up after the tactical suite expansion (step 2 of Near-Term Sequence above)
-- **Blocking**: Parallel search implementation
-- **Description**: Create thread-local state container to eliminate shared mutable state
-- **Implementation**:
-  ```cpp
-  struct ThreadData {
-      Board board;                    // Thread-local board copy
-      int64_t nodes_searched;         // Thread-local counter
-      PVTable pv_table;               // Thread-local PV
-      std::vector<GameInfo> info_seq; // Thread-local game state
-      int thread_id;                  // For debugging
-
-      // Future: Thread-local move ordering
-      KillerMoves killers;
-      HistoryTable history;
-  };
-  ```
-- **Files Affected**: `AIPerplex.h/cpp`, `PlayerAiIterBase.h`
-- **Testing**: Verify single-threaded performance unchanged; validate the PR #67 way —
-  perft equivalence + byte-identical self-play node counts (deterministic refactor,
-  zero behavioral drift expected)
+None open — **Extract ThreadData Structure** completed July 2026 (see Completed Work below).
+With De-Singleton Board (PR #67) also done, both refactoring blockers for parallel search are
+cleared; what remains before Lazy SMP is step 3 of the Near-Term Sequence above (ELO baseline
++ deferred-suite scope revisit).
 
 ---
 
@@ -199,7 +182,8 @@ Agreed ordering after the issue #66 post-mortem (see Completed Work). The #66 pr
 
 #### 🟢 Upgrade to C++23
 - **Estimate**: 4-6 hours total
-- **Dependency**: Extract ThreadData Structure (primary motivator — `std::mdspan` for history table)
+- **Dependency**: Extract ThreadData Structure — ✅ satisfied (July 2026), so the `std::mdspan`
+  history-table slice is actionable any time (after the separate `stdcpplatest` bump commit)
 - **Secondary dependency**: De-Singleton Board — ✅ satisfied (PR #67), so the `std::expected`
   slice is actionable any time
 - **Plan**: `.claude/plans/cpp23-upgrade.md`
@@ -252,7 +236,8 @@ Agreed ordering after the issue #66 post-mortem (see Completed Work). The #66 pr
 
 #### ⚪ Implement Lazy SMP
 - **Estimate**: 3-4 weeks
-- **Prerequisite**: ThreadData refactoring complete
+- **Prerequisite**: ThreadData refactoring complete — ✅ satisfied (July 2026); remaining
+  pre-work is the ELO baseline (step 3 of the Near-Term Sequence)
 - **Description**: Multiple threads search same position with shared TT
 - **Algorithm**:
   ```
@@ -608,6 +593,30 @@ Avoid these traps:
 - Verification gap closed: the exe tactical suite (never run by any automated gate — how the 7/8 went unnoticed) now runs in `Validate-PrePR.ps1` Step 3, and QFORK-001 is mirrored as a Catch2 `[tactical]` case (pre-commit + CI); new `[search]` unit tests cover the guard branch
 - Future NMP enhancement (not needed for this fix): verification search — on a null-move fail-high at high depth, re-search at reduced depth without the null to confirm; generalizes zugzwang safety beyond material heuristics
 - Plan: `.claude/plans/nmp-single-piece-zugzwang-guard.md`
+
+### Refactoring: Extract ThreadData Structure (July 2026)
+- All per-search mutable state used by `AIPerplex` now lives in a single `ThreadData` struct
+  (`StratEngine/ThreadData.h`): thread-local `Board` copy, node counter, `PVTable`, `GameInfo`
+  sequence, killers, history, null-move flags — plus the maintenance methods that operate on them
+- `ThreadData&` is passed explicitly as the **first** parameter through the whole search call
+  chain (`iterative_deepening` → `search_with_aspiration` → `pvs` → `quiescence` and helpers);
+  the `TranspositionTable` stays a separate explicit parameter because it remains *shared*
+  across threads under Lazy SMP — every call site documents the shared-vs-local split
+- The search runs entirely on `td.board` (copy-assigned from the game board per `GetMove()`);
+  the only remaining side effect on the real board — root game state (mate/stalemate/draw) —
+  is propagated back explicitly after the search returns
+- `PlayerAiBase::StopTimerAndAdjustVars(size_t node_count)` takes the node count explicitly;
+  legacy AIs (`AIBasic`/`AIAgent`/`ABIterative`) pass `m_SearchCount` and are otherwise untouched
+- Time control (`time_manager_`, stop flags), `SearchTuning`, and the TT stay OUT of ThreadData
+  by design (control plane / read-only / shared); noted for Lazy SMP: `nodes_since_check_` and
+  the static `m_TotalTime`/`m_TotalCount` perf stats will need per-thread treatment
+- Validated: byte-identical move/score/depth/nodes sequence across a full 137-move fixed-depth
+  self-play game vs. the pre-refactor baseline; deep perft 640/640; all Catch2 tiers +
+  exe tactical suite 31/31 (`Validate-PrePR.ps1` full gate)
+- Plan: `.claude/plans/extract-threaddata-structure.md` (3 steps, each independently
+  built/tested/committed)
+- **Unblocks**: Lazy SMP (helper thread = another `ThreadData` + same search functions), and
+  the "with ThreadData extraction" C++23 slice (`std::mdspan` history table)
 
 ### Infrastructure: UCI Protocol (March 2026)
 - `UCIHandler` class: synchronous command loop with search on `std::thread`
