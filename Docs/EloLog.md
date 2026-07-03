@@ -35,3 +35,4 @@ Plan/design: `.claude/plans/elo-baseline-measurement.md`.
 | Date | Candidate | Reference | Games | TC | Elo diff | Notes |
 |---|---|---|---|---|---|---|
 | 2026-07-03 | candidate-de96f32+dirty | elo-reference-v1 | 20 | 10+0.1 | n/a | smoke — FAILURES, discard |
+| 2026-07-03 | candidate-916c9bd+dirty | elo-reference-v1 | 20 | 10+0.1 | -17.39 +/- 104.93 | smoke |
