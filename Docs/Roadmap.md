@@ -49,6 +49,9 @@ Agreed ordering after the issue #66 post-mortem (see Completed Work). The #66 pr
    deterministic, and revisit the deferred automated-suite scope. Once threads race on a
    shared TT, node-count equivalence stops being available — tactical suites + strength
    measurement become the primary correctness signal.
+   — ELO baseline half ✅ done (July 2026): `Run-EloMatch.ps1` + `Docs/EloLog.md`, sanity
+   baseline at ±0 (identical builds, pooled 1000 games). The deferred-suite scope revisit
+   (endgame tablebase positions, BT2630/ECMGCP) remains open.
 
 ---
 
@@ -90,16 +93,19 @@ cleared; what remains before Lazy SMP is step 3 of the Near-Term Sequence above 
 
 ### Infrastructure
 
-#### 🟡 ELO Baseline Measurement
-- **Estimate**: ~1 day setup + unattended match time
-- **When**: before Lazy SMP — must be established while the engine is still deterministic
-  (step 3 of Near-Term Sequence above)
-- **Description**: Fixed-games self-play match against a pinned reference build to measure
-  strength differences. Tactical suites verify correctness only — a change can pass 100% of
-  tactical tests and still lose 30 ELO; this is the item that catches that class of regression
-- **Approach**: UCI protocol is in place, so a standard match runner (e.g. cutechess-cli)
-  against a pinned reference exe is the natural fit; details TBD when picked up
-- **Output**: Documented baseline ELO + repeatable procedure to re-measure after search changes
+#### 🟡 ELO Baseline Measurement — ✅ done (July 2026)
+- **Purpose** (unchanged): tactical suites verify correctness only — a change can pass 100%
+  of tactical tests and still lose 30 ELO; this item catches that class of regression
+- **Delivered**: `Scripts\Run-EloMatch.ps1` (fastchess v1.8.0 match runner, committed
+  250-opening book at `Tests/openings/openings-250.pgn`, pinned reference tag
+  `elo-reference-v1`, 10+0.1 TC, color-swapped pairs, adjudication) + `Docs/EloLog.md`
+  (pinned setup record, interpretation guide, append-only measurement history)
+- **Sanity baseline**: identical builds measure −1.4 ELO pooled over 1000 games — the
+  instrument has no directional bias; per-500-game batch noise is ±25 ELO at this draw ratio
+- **To re-measure after a search/eval change**: build the candidate, run the script
+  (≈1 h unattended per 500-game batch), read `Docs/EloLog.md` before interpreting
+- **Found along the way**: >MAX_PLY UCI replay crash (fixed + `[uci]` regression test;
+  see Completed Work)
 
 ---
 
@@ -617,6 +623,25 @@ Avoid these traps:
   built/tested/committed)
 - **Unblocks**: Lazy SMP (helper thread = another `ThreadData` + same search functions), and
   the "with ThreadData extraction" C++23 slice (`std::mdspan` history table)
+
+### Infrastructure: ELO Baseline Measurement (July 2026)
+- `Scripts\Run-EloMatch.ps1`: one-command differential strength measurement — candidate build
+  vs. pinned reference (`elo-reference-v1` tag), fastchess v1.8.0, 250 committed openings
+  (color-swapped pairs), 10+0.1 TC, adjudication, per-engine working dirs; auto-rebuilds the
+  cached reference exe from its tag via a temp worktree on cache miss; appends every result
+  to `Docs/EloLog.md` and exits non-zero on illegal-move/disconnect/stall losses (harness
+  failures, never strength data)
+- Sanity baseline established: identical builds (SHA256-verified) pooled −1.4 ELO over
+  2×500 games — no instrument bias; measured per-batch noise ±25 ELO at this draw ratio
+  (both batches individually hit opposite 2σ edges — pool before acting on edge results)
+- **The smoke match found a real crash on first contact with a match runner**: games longer
+  than MAX_PLY (256) plies overflowed the ply-indexed history arrays during UCI `position`
+  replay (Release access violation) — `cmd_position` reset the undo cursor only after the
+  whole replay loop. Fixed by per-move `ResetSearchDepth()` (matching `Game.cpp`); issue #53
+  follow-up; 300-ply regression test via new `UciHandlerTestFixture` (`[uci]`)
+- Plan: `.claude/plans/elo-baseline-measurement.md`; full setup/interpretation: `Docs/EloLog.md`
+- Deliberately out of scope: SPRT gating (fastchess supports it — adopt when wanted),
+  absolute ELO vs third-party engines, CI integration
 
 ### Infrastructure: UCI Protocol (March 2026)
 - `UCIHandler` class: synchronous command loop with search on `std::thread`
