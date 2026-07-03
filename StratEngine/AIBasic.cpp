@@ -23,7 +23,7 @@ Move AIBasic::GetMove(_Inout_ GameInfo& info)
 	//Kalder den Almindelige rekursive alphabeta soegning
 	Search(0, -GameValues::Search_Init, GameValues::Search_Init);
 
-	StopTimerAndAdjustVars();
+	StopTimerAndAdjustVars(m_SearchCount);
 
 	CheckGameOver(info);
 

@@ -197,6 +197,7 @@
     <ClInclude Include="..\StratEngine\StdAfx.h" />
     <ClInclude Include="..\StratEngine\Tests\Perft.h" />
     <ClInclude Include="..\StratEngine\Tests\TacticalTestRunner.h" />
+    <ClInclude Include="..\StratEngine\ThreadData.h" />
     <ClInclude Include="..\StratEngine\TranspositionTable.h" />
     <ClInclude Include="..\StratEngine\Utils\BitTools.h" />
     <ClInclude Include="..\StratEngine\Utils\FENParser.h" />

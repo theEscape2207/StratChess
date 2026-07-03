@@ -167,6 +167,9 @@
     <ClInclude Include="..\StratEngine\Utils\Subscriber.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>
+    <ClInclude Include="..\StratEngine\ThreadData.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="..\StratEngine\TranspositionTable.h">
       <Filter>Header Files</Filter>
     </ClInclude>

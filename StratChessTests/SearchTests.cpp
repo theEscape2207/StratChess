@@ -62,17 +62,19 @@ public:
     bool stop_early(int depth, int score, int pv_len) const
         { return ai->should_stop_early(depth, score, pv_len); }
 
-    bool emergency(State& s, PVTable& pv) const
-        { return ai->handle_empty_move_emergency(s, pv); }
+    // The PV written by the emergency path now lives in ai->td_.pv_table.
+    bool emergency(State& s) const
+        { return ai->handle_empty_move_emergency(ai->td_, s); }
 
     bool try_null_move(int depth, int beta, int ply, bool is_pv_node, bool in_check) const
-        { return ai->should_try_null_move(depth, beta, ply, is_pv_node, in_check); }
+        { return ai->should_try_null_move(ai->td_, depth, beta, ply, is_pv_node, in_check); }
 
-    // Pokes the private consecutive-null-move guard array. Needed because
-    // last_move_was_null_ is private on AIPerplex — only AIPerlexTestFixture
-    // (the declared friend) can reach it, not the free TEST_CASE functions.
+    // Pokes the consecutive-null-move guard array inside the private td_
+    // member. Needed because td_ is private on AIPerplex — only
+    // AIPerlexTestFixture (the declared friend) can reach it, not the free
+    // TEST_CASE functions.
     void set_last_move_was_null(int ply, bool value) const
-        { ai->last_move_was_null_[ply] = value; }
+        { ai->td_.last_move_was_null[ply] = value; }
 };
 
 // ============================================================================
@@ -289,8 +291,7 @@ TEST_CASE("Search - handle_empty_move_emergency: mate score returns false (no mo
     s.best_move  = Move{};  // null — no move found
     s.best_score = GameValues::Mate_Threshold + 50;  // mate detected
 
-    PVTable pv;
-    REQUIRE(fix.emergency(s, pv) == false);  // game is over, no move needed
+    REQUIRE(fix.emergency(s) == false);  // game is over, no move needed
     // best_move remains null — caller must not play
     REQUIRE(s.best_move.is_null());
 }
@@ -305,8 +306,7 @@ TEST_CASE("Search - handle_empty_move_emergency: non-mate emergency sets a legal
     s.best_move  = Move{};  // null — emergency condition
     s.best_score = 0;       // not a mate score
 
-    PVTable pv;
-    const bool result = fix.emergency(s, pv);
+    const bool result = fix.emergency(s);
 
     REQUIRE(result == true);                // emergency move was found
     REQUIRE(!s.best_move.is_null());        // a move was set
