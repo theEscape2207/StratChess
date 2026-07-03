@@ -50,4 +50,10 @@ private:
 
     std::unique_ptr<PlayerAiBase> ai_;
     std::thread search_thread_;
+
+#ifdef STRAT_ENABLE_TEST_ACCESS
+    // Enables unit tests for private command handlers (cmd_position replay).
+    // Same mechanism as AIPerplex's fixture; defined only in the test project.
+    friend class UciHandlerTestFixture;
+#endif
 };

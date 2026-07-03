@@ -95,11 +95,16 @@ void UciHandler::cmd_position(std::string_view line)
             Move m = MoveFormatter::FromUCI(token, board_);
             if (!m.is_null()) {
                 board_.DoMove(m);
+                // Each replayed move is permanent, never undone — reset per
+                // move (exactly like Game.cpp after every committed move), NOT
+                // once after the loop: the ply-indexed history arrays hold
+                // MAX_PLY entries, so a single post-loop reset lets DoMove
+                // write out of bounds during any replay longer than MAX_PLY
+                // plies (issue #53 follow-up; found by the first fastchess
+                // smoke match — 265-ply game, access violation in Release).
+                board_.ResetSearchDepth();
             }
         }
-        // These moves are a permanent replay, never undone — reset the
-        // undo-stack depth so it only spans the search that follows (issue #53).
-        board_.ResetSearchDepth();
     }
 }
 
