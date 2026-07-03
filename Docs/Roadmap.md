@@ -50,8 +50,14 @@ Agreed ordering after the issue #66 post-mortem (see Completed Work). The #66 pr
    shared TT, node-count equivalence stops being available — tactical suites + strength
    measurement become the primary correctness signal.
    — ELO baseline half ✅ done (July 2026): `Run-EloMatch.ps1` + `Docs/EloLog.md`, sanity
-   baseline at ±0 (identical builds, pooled 1000 games). The deferred-suite scope revisit
-   (endgame tablebase positions, BT2630/ECMGCP) remains open.
+   baseline at ±0 (identical builds, pooled 1000 games).
+   — Deferred-suite scope revisit ✅ decided (July 2026): the pre-SMP artifact is
+   **stability mode** — `tactical stability N` runs the gated suite N consecutive times
+   and fails on any per-run gate failure *or* any position flipping pass/fail between
+   runs; gated at N=10 in `Validate-PrePR.ps1` Step 3. BT2630/ECM-GCP stays deferred
+   until deeper search (post SEE/futility); the endgame tablebase set is scheduled with
+   the eval progress work (#70/#76) as its regression suite. **Step 3 complete — nothing
+   further blocks Lazy SMP.**
 
 ---
 
@@ -61,8 +67,8 @@ Agreed ordering after the issue #66 post-mortem (see Completed Work). The #66 pr
 
 None open — **Extract ThreadData Structure** completed July 2026 (see Completed Work below).
 With De-Singleton Board (PR #67) also done, both refactoring blockers for parallel search are
-cleared; what remains before Lazy SMP is step 3 of the Near-Term Sequence above (ELO baseline
-+ deferred-suite scope revisit).
+cleared; step 3 of the Near-Term Sequence above (ELO baseline + deferred-suite scope
+revisit) completed July 2026 — Lazy SMP is unblocked.
 
 ---
 
@@ -228,8 +234,15 @@ cleared; what remains before Lazy SMP is step 3 of the Near-Term Sequence above 
   Candidates verified via a staging file (`Tests/tactical_staging.json`, transient) +
   `Scripts/verify_mate_key.py` (ground-truth mate confirmation) before merging into the
   gated file. See `Docs/TestDesign.md` for the full position list and drop list.
-- **Deferred**: BT2630/ECMGCP tactical sets, endgame tablebase positions — revisit before
-  Lazy SMP and/or after evaluation work (king safety, mobility) gives them something to catch
+- ✅ **Stability mode (July 2026)**: `tactical stability [N] [filename]` runs the gated
+  suite N consecutive times; fails on any per-run gate failure or any position whose
+  pass/fail flips between runs (`evaluate_stability()`, unit-tested in `[suite_policy]`).
+  Gated at N=10 in `Validate-PrePR.ps1` Step 3 — the cheap detector for intermittent
+  nondeterminism once Lazy SMP threads race on the shared TT.
+- **Deferred (decided July 2026)**: BT2630/ECMGCP — until deeper search (SEE/futility
+  pruning); at avg depth ~10.5 the engine would fail a large fraction, and a gate expected
+  to fail is no gate. Endgame tablebase positions — build alongside the eval progress work
+  (#70/#76) as its regression suite, pinning each fix with positions that failed before.
 - **Ongoing**: fold in regression positions from each bug fix as they occur
 - **Acceptance**: Pass 90%+ tactical tests overall, 100% mate tests (now enforced by
   `evaluate_results()` + `[suite_policy]` unit tests, not just a manual target)

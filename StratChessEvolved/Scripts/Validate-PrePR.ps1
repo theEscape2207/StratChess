@@ -5,7 +5,8 @@
 .DESCRIPTION
     1. Builds main solution and test project in parallel.
     2. Runs the full extended test suite (including [slow]).
-    3. Runs the exe tactical suite (Tests/tactical_test_cases.json, 90% threshold).
+    3. Runs the exe tactical suite in stability mode (10 consecutive runs of
+       Tests/tactical_test_cases.json, 90% threshold per run + no pass/fail flips).
     4. Runs a headless AIPerplex vs AIPerplex self-play game (60s timeout).
     All four checks always run before exit so all failures are visible at once.
     Exits with code 1 if any check fails. Run Validate-PreCommit.ps1 first.
@@ -55,16 +56,19 @@ catch { $extFailed = $true; Write-Host "Extended-tests threw: $_" -ForegroundCol
 if ($LASTEXITCODE -ne 0) { $extFailed = $true }
 $checkResults['Extended tests'] = if ($extFailed) { 'FAIL' } else { 'PASS' }
 
-# --- Step 3: Exe tactical suite ---
+# --- Step 3: Exe tactical suite (stability mode) ---
 # Guards the 90% pass threshold on Tests/tactical_test_cases.json. Issue #66
 # (QFORK-001 silently regressed to 7/8) went unnoticed because no automated
-# gate ran this suite; it takes < 1 s, so it now runs before every PR.
-Write-Host "`n==> Tactical suite (StratChessEvolved.exe tactical test)" -ForegroundColor Cyan
+# gate ran this suite. Stability mode (10 consecutive runs, no pass/fail
+# flips allowed) additionally detects nondeterministic search results — the
+# cheap intermittent-race-bug signal once Lazy SMP threads share the TT.
+# ~11 s total; trivially deterministic (hence green) on single-threaded builds.
+Write-Host "`n==> Tactical suite (StratChessEvolved.exe tactical stability 10)" -ForegroundColor Cyan
 $testsDir = Join-Path $RepoRoot 'Tests'
 Push-Location $testsDir
 try {
     $tacticalFailed = $false
-    try   { & $gameExe tactical test }
+    try   { & $gameExe tactical stability 10 }
     catch { $tacticalFailed = $true; Write-Host "Tactical suite threw: $_" -ForegroundColor DarkGray }
     if ($LASTEXITCODE -ne 0) { $tacticalFailed = $true }
     $checkResults['Tactical suite'] = if ($tacticalFailed) { 'FAIL' } else { 'PASS' }
