@@ -98,6 +98,7 @@ IDS + PVS + quiescence search; Zobrist-hashed transposition table; bitboard repr
 - `StratEngine/MoveGenerator.cpp` / `MoveGenerator.h` – Legal move generation
 - `StratEngine/Eval.cpp` / `Eval.h` – Position evaluation
 - `StratEngine/AIPerplex.cpp` / `AIPerplex.h` – Primary AI agent; `AIPerplex.h` holds `SearchTuning` and internal structs. Null-move pruning gated by `tuning_.null_move_enabled` (default `true`) via `should_try_null_move()` — covers zugzwang, mate-score contamination, consecutive-null, PV/in-check, min-depth
+- `StratEngine/ThreadData.h` – Per-thread search state (thread-local `Board` copy, node counter, `PVTable`, `GameInfo` sequence, killers/history/null-flags + their maintenance methods). `ThreadData&` is always the FIRST parameter of every search method; the search runs on `td.board`, never on the game board (root game state is propagated back in `GetMove()`). The TT stays a separate parameter — shared across threads under future Lazy SMP
 - `StratEngine/TranspositionTable.cpp` / `TranspositionTable.h` – TT implementation
 - `StratEngine/MoveHelper.h` – Move query utilities (`IsCapture`, `IsPawnMove`, `IsKingMove`, `Value`, etc.) — all take `ePiece`, no `Move&`
 - `StratEngine/Sort.cpp` / `Sort.h` – Move ordering
