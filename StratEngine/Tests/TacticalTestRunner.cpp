@@ -181,4 +181,56 @@ bool TacticalTestRunner::run_test_suite(double required_pass_rate, bool verbose,
     return v.ok;
 }
 
+bool TacticalTestRunner::run_stability_suite(int n_runs, double required_pass_rate,
+                                             const std::string& json_filename)
+{
+    auto positions = load_test_cases(json_filename);
+
+    std::cout << "\n========================================\n";
+    std::cout << "Tactical Stability Suite (" << positions.size() << " positions x "
+              << n_runs << " runs, " << json_filename << ")\n";
+    std::cout << "========================================\n\n";
+
+    std::vector<std::vector<TacticalResult>> runs;
+    runs.reserve(static_cast<size_t>(n_runs));
+
+    for (int r = 1; r <= n_runs; ++r) {
+        std::vector<TacticalResult> results;
+        results.reserve(positions.size());
+        int64_t run_ms = 0;
+
+        for (const auto& pos : positions) {
+            TacticalResult result = run_position(pos);
+            run_ms += result.time_ms;
+            if (!result.passed) {
+                std::cout << "  [" << result.id << "] engine " << result.engine_move_uci
+                          << "  FAIL\n";
+            }
+            results.push_back(std::move(result));
+        }
+
+        const SuiteVerdict rv = evaluate_results(results, required_pass_rate);
+        std::cout << "Run " << r << "/" << n_runs << ": " << rv.passed << "/" << rv.total
+                  << " passed (" << run_ms << " ms)  " << (rv.ok ? "PASS" : "FAIL") << "\n";
+        std::cout.flush();
+        runs.push_back(std::move(results));
+    }
+
+    const StabilityVerdict sv = evaluate_stability(runs, required_pass_rate);
+
+    std::cout << "\n========================================\n";
+    std::cout << "Stability: " << sv.runs << " runs, "
+              << sv.failed_run_indices.size() << " failing run(s), "
+              << sv.flipped_ids.size() << " flipped position(s)\n";
+    if (!sv.flipped_ids.empty()) {
+        std::cout << "Flipped (nondeterministic pass/fail):";
+        for (const auto& id : sv.flipped_ids) std::cout << " " << id;
+        std::cout << "\n";
+    }
+    std::cout << (sv.ok ? "PASS" : "FAIL") << "\n";
+    std::cout << "========================================\n\n";
+
+    return sv.ok;
+}
+
 } // namespace Testing
