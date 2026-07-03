@@ -92,6 +92,40 @@ TacticalTestRunner::SuiteVerdict TacticalTestRunner::evaluate_results(
     return v;
 }
 
+TacticalTestRunner::StabilityVerdict TacticalTestRunner::evaluate_stability(
+    const std::vector<std::vector<TacticalResult>>& runs, double required_pass_rate)
+{
+    StabilityVerdict v;
+    v.runs = static_cast<int>(runs.size());
+    if (runs.empty())
+        return v;   // ok=false: fail safe on empty input
+
+    for (size_t r = 0; r < runs.size(); ++r) {
+        if (!evaluate_results(runs[r], required_pass_rate).ok)
+            v.failed_run_indices.push_back(static_cast<int>(r) + 1);
+    }
+
+    const auto& first = runs.front();
+    for (const auto& run : runs) {
+        if (run.size() != first.size()) {
+            v.comparable = false;
+            return v;   // ok=false: runs are not position-by-position comparable
+        }
+    }
+
+    for (size_t i = 0; i < first.size(); ++i) {
+        for (size_t r = 1; r < runs.size(); ++r) {
+            if (runs[r][i].passed != first[i].passed) {
+                v.flipped_ids.push_back(first[i].id);
+                break;
+            }
+        }
+    }
+
+    v.ok = v.failed_run_indices.empty() && v.flipped_ids.empty();
+    return v;
+}
+
 bool TacticalTestRunner::run_test_suite(double required_pass_rate, bool verbose,
                                          const std::string& json_filename)
 {
