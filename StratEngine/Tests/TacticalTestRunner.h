@@ -60,6 +60,13 @@ public:
                                              bool verbose = true,
                                              const std::string& json_filename = "tactical_test_cases.json");
 
+    // Run the whole suite n_runs consecutive times. Prints one summary line
+    // per run (plus any failing positions) and a final stability verdict.
+    // Returns true iff every run passes the gate and no position flips.
+    [[nodiscard]] static bool run_stability_suite(int n_runs,
+                                                  double required_pass_rate = 0.90,
+                                                  const std::string& json_filename = "tactical_test_cases.json");
+
     // Load positions from a JSON file.
     // Must be run from the Tests/ directory — resolves path as:
     //   current_path().parent_path() / "Tests" / json_filename
