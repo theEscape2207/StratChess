@@ -70,6 +70,11 @@ AIPerplex::AIPerplex(Board& board, _In_ unsigned md)
 	// allocate TT once per AIPerplex instance; size can be tuned or read from config
 	_tt = std::make_unique<TranspositionTable>(256);
 
+	// Seed the thread-local board so td_ is valid from birth (init_search()
+	// re-copies before every search). Board-reading helpers must work without
+	// a prior GetMove() call — the [search] unit tests rely on that.
+	td_.board = m_Board;
+
 	// td_'s constructor clears killers and history.
 	// Verbose logging is opt-in per call site:
 	//   game mode  → Game::SetPlayerParams() calls SetVerboseLogging(true)
@@ -85,6 +90,7 @@ AIPerplex::AIPerplex(Board& board, _In_ unsigned md)
 // moves (aged, never cleared).
 void AIPerplex::init_search(const GameInfo& info)
 {
+	td_.board = m_Board;			// thread-local copy — the search runs on this
 	td_.nodes_searched = 0;
 	td_.pv_table = PVTable{};		// fresh PV, exactly like the former GetMove() local
 	td_.info_seq.clear();
@@ -93,7 +99,6 @@ void AIPerplex::init_search(const GameInfo& info)
 
 Move AIPerplex::GetMove(_Inout_ GameInfo& info)
 {
-	InitMoveVariables(info);	// still seeds base m_infoSeq (search reads it until step 3)
 	init_search(info);
 	// Only clear TT if new game (preserve across moves for better performance)
 	if (info.fullMoveCount == 1) {
@@ -103,6 +108,14 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info)
 
 	SearchResult result = iterative_deepening(td_, static_cast<int>(max_depth_), *_tt);
 	last_result_ = result;   // expose via GetLastResult()
+
+	// Propagate the searched game state (mate/stalemate detected at the root)
+	// back to the real game board. This is the only m_Board side effect the
+	// search had before it ran on the thread-local copy; same only-if-changed
+	// condition as ThreadData::update_game_state().
+	const GameStates searched_state = td_.info_seq.at(0).gameState;
+	if (searched_state != m_Board.GetGameInfo().gameState)
+		m_Board.SetGameState(searched_state);
 
 	auto elapsed = StopTimerAndAdjustVars(static_cast<size_t>(td_.nodes_searched));
 
@@ -131,8 +144,13 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info)
 			td_.nodes_searched,
 			result.search_was_stable ? "yes" : "NO");
 	}
-	info = m_Board.GetGameInfo();
-	CheckGameOver(info, false);
+	// Equivalent of CheckGameOver(info, false), reading the thread-local
+	// info_seq root instead of the base-class m_infoSeq (unused by AIPerplex).
+	info = td_.info_seq.at(0);
+	if (info.gameState != GameStates::STILL_PLAYING)
+	{
+		EGameStateChanged.fire(this, info.gameState);
+	}
 	info.UpdateBoardInfo(bestMove, m_Board.GetEffectiveMovPiece(bestMove));
 
 	return bestMove;
@@ -291,10 +309,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	td.pv_table.clear_ply(ply);
 
 	// We need the info on the current board state
-	GameInfo info = GetLastBoardInfo(ply);
+	GameInfo info = td.get_last_info(ply);
 
 	// Test for 50 moves rule and threefold repetition
-	if (checkDraws(info, ply))
+	if (td.check_draws(info, ply))
 		return GameValues::Draw;
 
 	// Er vi naaet til bunden af traeet - evaluering?
@@ -302,7 +320,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	if (depth <= 0)
 		return quiescence(td, alpha, beta, 0, ply, tt);
 
-	auto key = m_Board.get_zobrist_hash();
+	auto key = td.board.get_zobrist_hash();
 	int original_alpha = alpha;
 	Move hash_move;
 	Move pv_move;
@@ -339,7 +357,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		pv_move = td.pv_table.get_pv_move(ply);
 	}
 
-	const bool in_check = m_Board.InCheck();
+	const bool in_check = td.board.InCheck();
 
 	// Null-move pruning: cheap cutoff attempt before move generation.
 	// should_try_null_move() centralises every guard (zugzwang, mate-score,
@@ -347,10 +365,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	if (should_try_null_move(td, depth, beta, ply, is_pv_node, in_check)) {
 		const int R = tuning_.null_move_reduction;
 		td.last_move_was_null[ply + 1] = true;
-		m_Board.DoNullMove();
-		AddNullMoveToSeq(ply);
+		td.board.DoNullMove();
+		td.add_null_move_to_seq(ply);
 		int null_score = -pvs(td, depth - 1 - R, -beta, -beta + 1, ply + 1, false, tt);
-		m_Board.UndoNullMove();
+		td.board.UndoNullMove();
 		td.last_move_was_null[ply + 1] = false;
 		if (null_score >= beta) {
 			tt.store(key, static_cast<int16_t>(null_score), static_cast<int16_t>(depth),
@@ -360,7 +378,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	}
 
 	MoveList moveList;
-	MoveGenerator::ComputeLegalMoves(m_Board, info, moveList);
+	MoveGenerator::ComputeLegalMoves(td.board, info, moveList);
 
 	bool first_child = true;
 	int best_value = -GameValues::Search_Init;
@@ -370,9 +388,9 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// Stack-allocated scored index array — zero heap allocation per call.
 	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
 	const int n = static_cast<int>(moveList.size());
-	const eColor side = m_Board.GetCurrentColor();
+	const eColor side = td.board.GetCurrentColor();
 
-	MoveSorter::ScoreMoves(moveList, n, m_Board, side,
+	MoveSorter::ScoreMoves(moveList, n, td.board, side,
 		pv_move, hash_move,
 		td.killers[ply][0], td.killers[ply][1],
 		td.history, scored_idx);
@@ -385,10 +403,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 		td.nodes_searched++;
 
-		if (m_Board.DoMove(move))
+		if (td.board.DoMove(move))
 		{
 			// Tilfoejer dette traek til nuvaerende traekfoelge - og opdaterer resten
-			AddMoveToSeq(move, ply);
+			td.add_move_to_seq(move, ply);
 			int value;
 
 			if (first_child) {
@@ -442,7 +460,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 					value = -pvs(td, depth - 1, -beta, -alpha, ply + 1, true, tt);
 			}
 
-			m_Board.UndoMove(move);
+			td.board.UndoMove(move);
 			moveFound = true;
 
 			if (value > best_value) {
@@ -503,17 +521,16 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	return adjustScoreForGameState(td, moveFound, ply, best_value);
 }
 
-int AIPerplex::adjustScoreForGameState([[maybe_unused]] ThreadData& td, bool moveFound, int ply, int score)
+int AIPerplex::adjustScoreForGameState(ThreadData& td, bool moveFound, int ply, int score)
 {
-	// td unused until step 3, when UpdateGameState targets td.board/td.info_seq
 	// Any legal moves found?
 	if (!moveFound)
 	{
 		// Nope - so we are either mate or remis here !
-		if (m_Board.InCheck())
+		if (td.board.InCheck())
 		{
 			// Oops - we are mate!!
-			UpdateGameState(ply, m_Board.GetCurrentColor() == WHITE ? GameStates::BLACK_WON : GameStates::WHITE_WON);
+			td.update_game_state(ply, td.board.GetCurrentColor() == WHITE ? GameStates::BLACK_WON : GameStates::WHITE_WON);
 			if (ply == 0)		// Are we at root?
 			{
 				_bestScore = -GameValues::Mate;
@@ -522,11 +539,11 @@ int AIPerplex::adjustScoreForGameState([[maybe_unused]] ThreadData& td, bool mov
 			return -GameValues::Mate + ply;
 		}
 		// Else No move and not in check - Pat!
-		UpdateGameState(ply, GameStates::DRAW_PAT);
+		td.update_game_state(ply, GameStates::DRAW_PAT);
 		return GameValues::Draw;
 	}
 
-	UpdateGameState(ply, GameStates::STILL_PLAYING);
+	td.update_game_state(ply, GameStates::STILL_PLAYING);
 
 	return score;
 }
@@ -548,12 +565,12 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 	// Limit quiescence extension by qsearch
 	if (qsearch_depth > MAX_QSEARCH_DEPTH)
 	{
-		return Eval->Evaluate(m_Board);
+		return Eval->Evaluate(td.board);
 	}
 
 	int original_alpha = alpha;
 
-	auto key = m_Board.get_zobrist_hash();
+	auto key = td.board.get_zobrist_hash();
 
 	// Probe TT for cached info
 	if (auto entry = tt.probe(key, ply)) {
@@ -576,10 +593,10 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 	}
 
 	// We need the info on the current board state
-	const GameInfo& info = GetLastBoardInfo(ply);
+	const GameInfo& info = td.get_last_info(ply);
 
 	// Stand pat evaluation first
-	const int stand_pat = Eval->Evaluate(m_Board);
+	const int stand_pat = Eval->Evaluate(td.board);
 	if (stand_pat >= beta)
 	{
 		// Store and cutoff
@@ -594,16 +611,16 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 
 	MoveList moveList;
 	// Generate only capture moves and promotions
-	MoveGenerator::ComputeCaptures(m_Board, info, moveList);
+	MoveGenerator::ComputeCaptures(td.board, info, moveList);
 	// Sort the found captures
-	MoveSorter::SortMovesByValue(moveList, moveList.size(), m_Board);
+	MoveSorter::SortMovesByValue(moveList, moveList.size(), td.board);
 
 	// Tjek om der er lovlige brugbare traek her
 	bool moveFound = false;
 	Move best_move = Move::EmptyMove();
 
 	// Compute once: delta pruning must not fire when in check (all evasions must be searched)
-	const bool in_check = m_Board.InCheck();
+	const bool in_check = td.board.InCheck();
 
 	for (const auto& move : moveList)
 	{
@@ -611,16 +628,16 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 		// stand_pat is already the alpha lower-bound; MoveHelper::Value() gives the MVV-LVA
 		// score which is conservatively ≤ the raw captured-piece value, so pruning is safe.
 		// Promotions always score ≥ 800 (queen − pawn gain) and are never pruned.
-		if (!in_check && stand_pat + MoveHelper::Value(move, m_Board.GetEffectiveMovPiece(move), m_Board.GetCapturedPiece(move)) + tuning_.delta_pruning_margin < alpha)
+		if (!in_check && stand_pat + MoveHelper::Value(move, td.board.GetEffectiveMovPiece(move), td.board.GetCapturedPiece(move)) + tuning_.delta_pruning_margin < alpha)
 			continue;
 
-		if (!m_Board.DoMove(move))
+		if (!td.board.DoMove(move))
 			continue;
 
-		AddMoveToSeq(move, ply);
+		td.add_move_to_seq(move, ply);
 
 		int score = -quiescence(td, -beta, -alpha, qsearch_depth + 1, ply + 1, tt);
-		m_Board.UndoMove(move);
+		td.board.UndoMove(move);
 
 		moveFound = true;
 
@@ -896,8 +913,8 @@ bool AIPerplex::should_try_null_move(const ThreadData& td, int depth, int beta, 
 	// better than moving") is false in king+pawn endgames AND in
 	// single-piece endgames won by domination/zugzwang (issue #66: KQ vs KR,
 	// where the lone rook loses only because its side must move).
-	const eColor side = m_Board.GetCurrentColor();
-	const auto boards = m_Board.GetBitBoards();
+	const eColor side = td.board.GetCurrentColor();
+	const auto boards = td.board.GetBitBoards();
 	const BITBOARD non_pawn_material =
 		boards[static_cast<BITBOARD>(KNIGHT) + side] | boards[static_cast<BITBOARD>(BISHOP) + side]
 		| boards[static_cast<BITBOARD>(ROOK) + side] | boards[static_cast<BITBOARD>(QUEEN) + side];
@@ -917,7 +934,7 @@ bool AIPerplex::handle_empty_move_emergency(
 	}
 
 	// Check game state
-	const GameInfo& current_info = m_Board.GetGameInfo();
+	const GameInfo current_info = td.board.GetGameInfo();
 	if (current_info.gameState != GameStates::STILL_PLAYING) {
 		log.info("No move needed - game over (state={})",
 			static_cast<int>(current_info.gameState));
@@ -929,7 +946,7 @@ bool AIPerplex::handle_empty_move_emergency(
 		max_depth_, state.depth_completed);
 
 	MoveList emergency_moves;
-	MoveGenerator::ComputeLegalMoves(m_Board, current_info, emergency_moves);
+	MoveGenerator::ComputeLegalMoves(td.board, current_info, emergency_moves);
 
 	if (emergency_moves.empty()) {
 		log.critical("No legal moves - game is over");
@@ -937,14 +954,14 @@ bool AIPerplex::handle_empty_move_emergency(
 	}
 
 	// Verify first move is legal
-	if (!m_Board.DoMove(emergency_moves[0])) {
+	if (!td.board.DoMove(emergency_moves[0])) {
 		log.critical("First pseudolegal move {} is illegal!",
 			emergency_moves[0].Output());
 
 		// Try others
 		for (const auto& move : emergency_moves) {
-			if (m_Board.DoMove(move)) {
-				m_Board.UndoMove(move);
+			if (td.board.DoMove(move)) {
+				td.board.UndoMove(move);
 				state.best_move = move;
 				state.best_score = 0;
 				td.pv_table.update(0, move);
@@ -959,7 +976,7 @@ bool AIPerplex::handle_empty_move_emergency(
 	}
 
 	// First move is legal
-	m_Board.UndoMove(emergency_moves[0]);
+	td.board.UndoMove(emergency_moves[0]);
 	state.best_move = emergency_moves[0];
 	state.best_score = 0;
 	td.pv_table.update(0, emergency_moves[0]);
