@@ -61,8 +61,10 @@ protected:
 	// Quiescent soegning modvirker horisont-effekten
 	int Quiescent(size_t, int, int);
 
-	// Registers the amount of used time and prints out if PRINT_STATS is set
-	std::chrono::milliseconds StopTimerAndAdjustVars() const;
+	// Registers the amount of used time and prints out if PRINT_STATS is set.
+	// node_count: nodes searched this move — legacy AIs pass m_SearchCount,
+	// AIPerplex passes its thread-local ThreadData::nodes_searched.
+	std::chrono::milliseconds StopTimerAndAdjustVars(size_t node_count) const;
 
 	// Tilfoejer dette traek til nuvaerende traekfoelge
 	// Sletter eksisterende traek fra listen fra denne ply og ned

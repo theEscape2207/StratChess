@@ -4,6 +4,7 @@
 #include "PlayerAI.h"
 #include "TranspositionTable.h"
 #include "PVTable.h"
+#include "ThreadData.h"
 #include <map>
 #include <memory>
 #include <cstdint>
@@ -110,28 +111,23 @@ private:
 
 	// SEARCH METHODS
 	// --------------
-	SearchResult iterative_deepening(int max_depth, TranspositionTable& tt, PVTable& pv_table);
-	int search_with_aspiration(int depth, int seed_score, TranspositionTable& tt, PVTable& pv_table);
-	int pvs(int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt, PVTable& pv_table);
-	int adjustScoreForGameState(bool moveFound, int ply, int best_value);
-	int quiescence(int alpha, int beta, int depth_q, int ply, TranspositionTable& tt);
+	// ThreadData is always the first parameter: the search runs entirely on the
+	// per-thread state it carries, while the TranspositionTable stays a separate
+	// explicit parameter because it is shared across threads under Lazy SMP.
+	void init_search(const GameInfo& info);
+	SearchResult iterative_deepening(ThreadData& td, int max_depth, TranspositionTable& tt);
+	int search_with_aspiration(ThreadData& td, int depth, int seed_score, TranspositionTable& tt);
+	int pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt);
+	int adjustScoreForGameState(ThreadData& td, bool moveFound, int ply, int best_value);
+	int quiescence(ThreadData& td, int alpha, int beta, int depth_q, int ply, TranspositionTable& tt);
 
 	// HELPER METHODS
 	// --------------
-	// Move ordering heuristics
-	void clear_killers() noexcept;
-	void store_killer(int ply, const Move& move) noexcept;
-	void clear_null_move_flags() noexcept;
-
-	void clear_history() noexcept;
-	void age_history() noexcept;
-	void update_history(eColor side, const Move& move, int depth) noexcept;
-
 	// Quality assessment
 	RejectionReason assess_iteration_quality(const IterationMetrics& metrics, const SearchState& state) const;
 	bool should_stop_early(int depth, int score, int pv_length) const;			// Early termination checks
-	bool handle_empty_move_emergency(SearchState& state, PVTable& pv_table);	// Emergency handling
-	bool should_try_null_move(int depth, int beta, int ply, bool is_pv_node, bool in_check) const;
+	bool handle_empty_move_emergency(ThreadData& td, SearchState& state);		// Emergency handling
+	bool should_try_null_move(const ThreadData& td, int depth, int beta, int ply, bool is_pv_node, bool in_check) const;
 	
 	// Logging helpers
 	void log_iteration_eval(const IterationMetrics& metrics, const PVTable& pv_table) const;
@@ -145,21 +141,11 @@ private:
 	// MEMBER VARIABLES
 	std::unique_ptr<TranspositionTable> _tt;	// persistent transposition table
 
-	// Killer move heuristic: two quiet moves per ply that caused a beta cutoff
-	static constexpr int MAX_KILLERS = 2;
-	Move killers_[MAX_PLY][MAX_KILLERS];
-
-	// Null-move consecutive-pass guard: last_move_was_null_[ply] is true when
-	// the move that led to this ply was itself a null move. Indexed the same
-	// way as killers_; cleared at search start and reset immediately after
-	// each null-move attempt completes (see pvs()).
-	bool last_move_was_null_[MAX_PLY]{};
-
-	// History heuristic: accumulated score for quiet moves that caused beta cutoffs,
-	// indexed by [side-to-move][from-square][to-square].
-	// int32 gives plenty of headroom before the depth^2 increments overflow.
-	static constexpr int HISTORY_MAX = 16'384;
-	int32_t history_[2][64][64];
+	// Per-thread search state (board copy, node counter, PV, killers, history, ...).
+	// Persistent member — history is aged between moves, never cleared — and the
+	// single instance used by the (currently single-threaded) search. Lazy SMP
+	// helper threads will each get their own. See ThreadData.h.
+	ThreadData td_;
 
 	// logging control: enable detailed logging when needed (default: false)
 	static inline bool s_verbose_logging = false;

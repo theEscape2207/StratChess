@@ -125,14 +125,14 @@ Move PlayerAiBase::GetBestMove(_In_ GameInfo& info ) noexcept
 // Returns:     void - 
 // Remark:      
 // ************************************
-std::chrono::milliseconds PlayerAiBase::StopTimerAndAdjustVars() const 
+std::chrono::milliseconds PlayerAiBase::StopTimerAndAdjustVars(size_t node_count) const
 {
 	auto end = std::chrono::high_resolution_clock::now();
 	auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(end - _startingTime);
 	if( elapsedMs == std::chrono::milliseconds(0))
 		elapsedMs = std::chrono::milliseconds(1);
 	m_TotalTime += elapsedMs;
-	m_TotalCount += m_SearchCount;
+	m_TotalCount += node_count;
 	
 //#ifdef PRINT_STATS
 	auto perf = Engine::Logger::GetPerfLogger();
@@ -143,18 +143,18 @@ std::chrono::milliseconds PlayerAiBase::StopTimerAndAdjustVars() const
 	
 	if (perf) {
 		// preserve column layout using fmt width specifiers and spaces between columns
-		// Columns: m_SearchCount | elapsedMs.count() | nodes/ms | m_TotalCount | m_TotalTime.count() | total nodes/ms
+		// Columns: node_count | elapsedMs.count() | nodes/ms | m_TotalCount | m_TotalTime.count() | total nodes/ms
 		// Use integer arithmetic for nodes per ms (same as original)
 		long nodes_per_ms = 0;
 		if (elapsedMs.count() != 0)
-			nodes_per_ms = static_cast<long>(m_SearchCount / elapsedMs.count());
+			nodes_per_ms = static_cast<long>(node_count / elapsedMs.count());
 		long total_nodes_per_ms = 0;
 		if (m_TotalTime.count() != 0)
 			total_nodes_per_ms = static_cast<long>(m_TotalCount / m_TotalTime.count());
 
 		// Format with right-aligned columns similar to setw in original code
 		perf->info("{:>10} {:>13} {:>13} {:>19} {:>13} {:>13}",
-			m_SearchCount,
+			node_count,
 			elapsedMs.count(),
 			nodes_per_ms,
 			m_TotalCount,
