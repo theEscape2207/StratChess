@@ -53,3 +53,4 @@ this procedure; anything beyond the pooled error bound is signal.
 | 2026-07-03 | candidate-a0aa30a | elo-reference-v1 | 500 | 10+0.1 | 25.06 +/- 25.54 | sanity batch 1 (identical builds) |
 | 2026-07-03 | candidate-a0aa30a+dirty | elo-reference-v1 | 500 | 10+0.1 | -27.85 +/- 27.11 | sanity batch 2 (identical builds; +dirty = batch-1 log row only) |
 | 2026-07-03 | candidate-a0aa30a (pooled) | elo-reference-v1 | 1000 | 10+0.1 | -1.4 (pooled batches 1+2) | **sanity baseline PASS** — 378W/382L/240D, 49.80% |
+| 2026-07-03 | candidate-bda7189+dirty | elo-reference-v1 | 20 | 10+0.1 | 70.44 +/- 131.59 | smoke |
