@@ -137,6 +137,9 @@ New-Item -ItemType Directory -Force $dirA, $dirB | Out-Null
 Write-Host "==> $candidateName vs $ReferenceTag | $Games games, tc=$Tc, concurrency=$Concurrency" -ForegroundColor Cyan
 Write-Host "    PGN: $pgnOut"
 
+# Run from the artifacts dir: fastchess drops a config.json (tournament resume
+# state) into its cwd, which must land under gitignored logs/elo, not the repo.
+Push-Location $pgnDir
 & $fastchess `
     -engine "cmd=$CandidateExe" "name=$candidateName" "dir=$dirA" args=uci `
     -engine "cmd=$refExe" "name=$ReferenceTag" "dir=$dirB" args=uci `
@@ -149,11 +152,14 @@ Write-Host "    PGN: $pgnOut"
     2>&1 | Tee-Object -FilePath $matchLog
 
 $fcExit = $LASTEXITCODE
+Pop-Location
 
 # --- Parse + report ----------------------------------------------------------
+# fastchess 1.8 result block: "Elo: -88.74 +/- 95.36, nElo: ..." and
+# "Games: 20, Wins: 6, Losses: 11, Draws: 3, Points: 7.5 (37.50 %)"
 $log = Get-Content $matchLog -Raw
-$eloLine   = ($log -split "`n" | Select-String -Pattern 'Elo difference' | Select-Object -Last 1)
-$scoreLine = ($log -split "`n" | Select-String -Pattern 'Games: \d+|Score of' | Select-Object -Last 1)
+$eloLine   = ($log -split "`n" | Select-String -Pattern '^\s*Elo:' | Select-Object -Last 1)
+$scoreLine = ($log -split "`n" | Select-String -Pattern 'Games: \d+' | Select-Object -Last 1)
 
 $disasters = ($log -split "`n" | Select-String -Pattern 'illegal|disconnect|stall|loses on time' )
 $hardFail = $false
@@ -169,7 +175,7 @@ if ($scoreLine) { Write-Host $scoreLine.Line.Trim() }
 if ($eloLine)   { Write-Host $eloLine.Line.Trim() }
 
 # --- Append to Docs/EloLog.md -------------------------------------------------
-$eloText = if ($eloLine) { ($eloLine.Line -replace '.*Elo difference:\s*', '').Trim() } else { 'n/a' }
+$eloText = if ($eloLine) { ($eloLine.Line -replace '^\s*Elo:\s*', '' -replace ',\s*nElo.*$', '').Trim() } else { 'n/a' }
 $kind = $Smoke ? 'smoke' : 'match'
 $row = "| $(Get-Date -Format 'yyyy-MM-dd') | $candidateName | $ReferenceTag | $Games | $Tc | $eloText | $kind$($hardFail ? ' — FAILURES, discard' : '') |"
 $eloLog = Join-Path $RepoRoot 'Docs\EloLog.md'
