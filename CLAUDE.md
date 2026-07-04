@@ -89,7 +89,7 @@ cmd.exe /c "\"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.e
 Use `/v:normal` instead of `/v:minimal` when diagnosing build errors.
 
 ## Engine Algorithm Summary
-IDS + PVS + quiescence search; Zobrist-hashed transposition table; bitboard representation; killer moves (2/ply) + history heuristic; threefold/twofold repetition detection. See `Docs/Roadmap.md` for current priorities and planned enhancements.
+IDS + PVS + quiescence search; Zobrist-hashed transposition table; bitboard representation; killer moves (2/ply) + history heuristic; threefold/twofold repetition detection. Active priorities/backlog live in GitHub Issues (see `Docs/Roadmap.md` for the label taxonomy); `Docs/Changelog.md` has the implementation history.
 
 ## Key Source Files
 - `Move::Output()` produces pseudo-LAN (`Pe2-e3`): piece prefix (uppercase=White, lowercase=Black) + from + `-` + to — not short algebraic notation
@@ -104,9 +104,11 @@ IDS + PVS + quiescence search; Zobrist-hashed transposition table; bitboard repr
 - `StratEngine/MoveHelper.h` – Move query utilities (`IsCapture`, `IsPawnMove`, `IsKingMove`, `Value`, etc.) — all take `ePiece`, no `Move&`
 - `StratEngine/Sort.cpp` / `Sort.h` – Move ordering
 - `StratEngine/Utils/TimeUtils.h/cpp` – `Engine::compute_budget(remaining, increment, moves_to_go)` → `TimeBudget{soft, hard}`; pure function, no clock dependency
-- `StratEngine/Utils/TimeManager.h` – `chess::TimeManager`: `start(soft, hard)` / `start(allocated)` (delegates); `should_stop_iteration()` (soft) + `should_stop_search()` (hard); `PlayerAiBase::SetClockInfo()` sets budgets — `clock_info_set_` flag prevents `StartTimer()` from overwriting them
-- `StratChessEvolved/game_settings.json` – Runtime player/AI configuration
-- `Docs/Roadmap.md` – Living development plan; check before starting any new work
+- `StratEngine/Utils/TimeManager.h` – `chess::TimeManager`: `start(soft, hard)` / `start(allocated)` (delegates); `should_stop_iteration()` (soft) + `should_stop_search()` (hard)
+- `StratEngine/SearchLimits.h/cpp` – `SearchLimits` (clock/movetime/depth/infinite, all optional) carries every per-call search constraint; `Engine::resolve_limits()` is the pure resolver (mirrors `compute_budget`'s pattern); `PlayerAiBase::ApplyLimits()` arms the timer from the resolved budget and returns the effective depth. Every `GetMove(info, limits)` call is self-contained — no more pre-call `SetClockInfo()`/`SetMaxDepth()` ordering contract (that method and its `clock_info_set_` flag were deleted in PR #80)
+- `StratChessEvolved/game_settings.json` – Runtime player/AI configuration; per-player `"search_limits"` block (legacy `max_depth`/`time_limit` keys still work via a deprecation-warning fallback)
+- `Docs/Roadmap.md` – General engineering principles only; active backlog lives in GitHub Issues (see its Overview for the label taxonomy)
+- `Docs/Changelog.md` – Historical record of completed work, dated entries (Keep a Changelog-style)
 - `Docs/TestDesign.md` – Test coverage map and phase plan; check before adding tests
 
 ## Development Guidelines

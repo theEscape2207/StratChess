@@ -97,16 +97,16 @@ void AIPerplex::init_search(const GameInfo& info)
 	td_.info_seq.emplace_back(info);
 }
 
-Move AIPerplex::GetMove(_Inout_ GameInfo& info)
+Move AIPerplex::GetMove(_Inout_ GameInfo& info, const SearchLimits& limits)
 {
 	init_search(info);
 	// Only clear TT if new game (preserve across moves for better performance)
 	if (info.fullMoveCount == 1) {
 	_tt->clear();
 	}
-	StartTimer();
+	const unsigned effective_depth = ApplyLimits(limits);
 
-	SearchResult result = iterative_deepening(td_, static_cast<int>(max_depth_), *_tt);
+	SearchResult result = iterative_deepening(td_, static_cast<int>(effective_depth), *_tt);
 	last_result_ = result;   // expose via GetLastResult()
 
 	// Propagate the searched game state (mate/stalemate detected at the root)
