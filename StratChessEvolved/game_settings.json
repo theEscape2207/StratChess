@@ -11,10 +11,13 @@
     "players": {
       "white": {
         "type": 6,
-        /* max_depth: maximum iterative-deepening depth (replaces legacy "depth" key) */
-        "max_depth": 15,
-        /* time_limit: search time budget in milliseconds */
-        "time_limit": 15000,
+        /* search_limits: per-move search constraints, mirrors StratEngine/SearchLimits.h.
+           All fields optional: depth (cap), movetime (ms, soft==hard budget),
+           infinite (bool), clock { remaining, increment, moves_to_go } */
+        "search_limits": {
+          "depth": 15,
+          "movetime": 15000
+        },
         /* Eval:
            0 - None (Human)
            1 - Simple Eval
@@ -35,8 +38,10 @@
       },
       "black": {
         "type": 6,
-        "max_depth": 15,
-        "time_limit": 15000,
+        "search_limits": {
+          "depth": 15,
+          "movetime": 15000
+        },
         "eval": 2,
         "search_tuning": {
           "min_nodes_threshold": 1000,
