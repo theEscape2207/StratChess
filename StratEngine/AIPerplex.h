@@ -21,7 +21,7 @@ struct SearchResult {
 class AIPerplex final : public PlayerAiBase
 {
 public:
-	Move GetMove(_Inout_ GameInfo& info) override;
+	Move GetMove(_Inout_ GameInfo& info, const SearchLimits& limits) override;
 	const char* GetType() const noexcept override
 	{
 		return "Perplexity Transpositional AlphaBeta";

@@ -252,7 +252,7 @@ void Game::Run()
 	for (;;)
 	{
 		// Hent traekket fra den aktive spiller - GameInfo get updated every time
-		Move newMove = GetCurrentPlayer().GetMove(gameInfo_);
+		Move newMove = GetCurrentPlayer().GetMove(gameInfo_, SearchLimits{});
 
 		// Prints out the current score message for AI players (score or "Mate in x moves")
 		PrintStateMessage();

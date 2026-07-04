@@ -9,7 +9,7 @@ class AIBasic final
 
 public:
 	// Implementation/overrides of the IPlayer interface
-	Move GetMove(_Inout_ GameInfo& info) override;
+	Move GetMove(_Inout_ GameInfo& info, const SearchLimits& limits) override;
 	const char* GetType() const noexcept override	{	return "Basic Alpha Beta";	}
 	
 	// Note: NOT to be called directly - only through Factory method
