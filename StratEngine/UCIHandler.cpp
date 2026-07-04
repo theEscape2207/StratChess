@@ -116,33 +116,25 @@ void UciHandler::cmd_go(std::string_view line)
     GameInfo info = board_.GetGameInfo();
     const bool white = (board_.GetCurrentColor() == WHITE);
 
-    // Configure time — pick first matching case
+    // Build the per-call constraints — cmd_go no longer mutates AI state.
+    SearchLimits limits;
     if (p.movetime > 0) {
-        ai_->SetTimeLimit(std::chrono::milliseconds(p.movetime));
+        limits.movetime = std::chrono::milliseconds(p.movetime);
     } else if (p.wtime > 0 || p.btime > 0) {
-        auto remaining = std::chrono::milliseconds(white ? p.wtime : p.btime);
-        auto inc       = std::chrono::milliseconds(white ? p.winc  : p.binc);
-        ai_->SetClockInfo(remaining, inc, p.movestogo);
-    } else if (p.infinite || p.depth > 0) {
-        // Pure depth constraint or infinite: give the engine a large time budget.
-        // The depth cap in iterative_deepening() is the sole stopping criterion.
-        // For go infinite, the UCI 'stop' command is the intended termination.
-        // hours(1) avoids potential overflow from milliseconds::max() in comparisons.
-        ai_->SetTimeLimit(std::chrono::hours(1));
-    } else {
+        limits.clock = ClockInfo{ std::chrono::milliseconds(white ? p.wtime : p.btime),
+                                  std::chrono::milliseconds(white ? p.winc  : p.binc),
+                                  p.movestogo };
+    } else if (!p.infinite && p.depth <= 0) {
         // No constraints at all — apply a safe fallback.
-        ai_->SetTimeLimit(std::chrono::seconds(10));
+        limits.movetime = std::chrono::seconds(10);
     }
-
-    if (p.depth > 0) {
-        ai_->SetMaxDepth(static_cast<unsigned>(p.depth));
-    } else {
-        ai_->SetMaxDepth(p.infinite ? 50u : UCI_DEFAULT_DEPTH);
-    }
+    limits.infinite = p.infinite;
+    limits.depth = (p.depth > 0) ? std::optional<int>(p.depth)
+                                 : std::optional<int>(p.infinite ? 50 : static_cast<int>(UCI_DEFAULT_DEPTH));
 
     auto start = std::chrono::steady_clock::now();
-    search_thread_ = std::thread([this, info, start]() mutable {
-        Move best = ai_->GetMove(info);
+    search_thread_ = std::thread([this, info, start, limits]() mutable {
+        Move best = ai_->GetMove(info, limits);
 
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - start);
