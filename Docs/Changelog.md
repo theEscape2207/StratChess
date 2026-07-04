@@ -12,6 +12,12 @@ This is the permanent historical record migrated from `Docs/Roadmap.md`'s old
 `## ✅ Completed Work` section (see PR #105); `Roadmap.md` itself now holds only active
 principles, pointing to GitHub Issues for the live backlog.
 
+Dates are PR merge dates, verified against `gh pr list`/`gh pr view` — the original
+Roadmap.md's dates and PR citations had several errors (wrong PR numbers, entries filed
+under the wrong month) that surfaced during this migration; see the entries themselves
+for what was corrected. A handful of entries have no PR reference in the original text
+and couldn't be matched with confidence — those remain in the undated pocket below.
+
 Newest first.
 
 ---
@@ -57,23 +63,7 @@ AIAgent self-play regression (base classes changed), full `Validate-PrePR.ps1` g
 smoke tests across all `go` modes. Plan: `.claude/plans/getmove-searchlimits-refactor.md`.
 **Unblocks**: Lazy SMP — no remaining refactoring blockers.
 
-## 2026-07 — Near-Term Sequence before Lazy SMP (decided + completed)
-
-### Changed
-- Ordering agreed after the issue #66 post-mortem: (1) tactical suite expansion — WAC
-  mate-in-2/3/4 + non-mate tactical wins, 8 → 31 gated positions, 100%-mate-category pass
-  policy; (2) Extract ThreadData Structure; (3) ELO baseline + deferred-suite scope
-  revisit before Lazy SMP
-- **Stability mode** (`tactical stability N`) adopted as the pre-SMP correctness
-  artifact — runs the gated suite N consecutive times, fails on any per-run gate failure
-  or any position flipping pass/fail between runs; gated at N=10 in
-  `Validate-PrePR.ps1` Step 3. Chosen because once Lazy SMP threads race on a shared TT,
-  byte-identical node-count equivalence stops being available, so a flakiness detector
-  was needed before that point
-- BT2630/ECM-GCP tactical suite additions deferred until deeper search (SEE/futility
-  pruning); endgame tablebase positions scheduled alongside future eval progress work
-
-## 2026-07 — ELO Baseline Measurement
+## 2026-07-03 — ELO Baseline Measurement (PR #75)
 
 ### Added
 - `Scripts\Run-EloMatch.ps1`: one-command differential strength measurement — candidate
@@ -93,7 +83,7 @@ Sanity baseline: identical builds (SHA256-verified) pooled −1.4 ELO over 2×50
 instrument bias; measured per-batch noise ±25 ELO at this draw ratio. Plan:
 `.claude/plans/elo-baseline-measurement.md`; full setup/interpretation: `Docs/EloLog.md`.
 
-## 2026-07 — Extract ThreadData Structure
+## 2026-07-03 — Extract ThreadData Structure (PR #74)
 
 ### Changed
 - All per-search mutable state used by `AIPerplex` now lives in a single `ThreadData`
@@ -114,7 +104,24 @@ fixed-depth self-play game vs. pre-refactor baseline; deep perft 640/640; all Ca
 tiers + exe tactical suite 31/31. Plan: `.claude/plans/extract-threaddata-structure.md`.
 **Unblocks**: Lazy SMP, and the "with ThreadData extraction" C++23 slice (`std::mdspan`).
 
-## 2026-07 — NMP Single-Piece Zugzwang Guard (issue #66)
+## 2026-07-02 — Near-Term Sequence before Lazy SMP (PR #71, #72)
+
+### Changed
+- Ordering agreed after the issue #66 post-mortem (PR #71): (1) tactical suite
+  expansion; (2) Extract ThreadData Structure; (3) ELO baseline + deferred-suite scope
+  revisit before Lazy SMP
+- Step 1 implemented same day (PR #72): WAC mate-in-2/3/4 + non-mate tactical wins,
+  8 → 31 gated positions, 100%-mate-category pass policy
+- **Stability mode** (`tactical stability N`) adopted as the pre-SMP correctness
+  artifact — runs the gated suite N consecutive times, fails on any per-run gate failure
+  or any position flipping pass/fail between runs; gated at N=10 in
+  `Validate-PrePR.ps1` Step 3. Chosen because once Lazy SMP threads race on a shared TT,
+  byte-identical node-count equivalence stops being available, so a flakiness detector
+  was needed before that point
+- BT2630/ECM-GCP tactical suite additions deferred until deeper search (SEE/futility
+  pruning); endgame tablebase positions scheduled alongside future eval progress work
+
+## 2026-07-02 — NMP Single-Piece Zugzwang Guard (PR #69, issue #66)
 
 ### Fixed
 - QFORK-001 (`8/8/8/3r4/4k3/8/8/3QK3 w`, KQ vs KR) regressed to 7/8 on the exe tactical
@@ -128,7 +135,7 @@ tiers + exe tactical suite 31/31. Plan: `.claude/plans/extract-threaddata-struct
 
 Plan: `.claude/plans/nmp-single-piece-zugzwang-guard.md`.
 
-## 2026-07 — De-Singleton Board (PR #67)
+## 2026-07-02 — De-Singleton Board (PR #67)
 
 ### Changed
 - `Board::Instance()` singleton accessor removed entirely; `Board` is now an ordinary
@@ -149,7 +156,7 @@ identical vs. pre-refactor baseline through both `PlayerAI`/`PlayerBase` hierarc
 Plan: `.claude/plans/de-singleton-board.md` (7 phases). **Unblocks**: Extract ThreadData
 Structure, and the "with De-Singleton Board" C++23 item (`std::expected`).
 
-## 2026-06 — Decouple `Board::currentPly_` from Game Length (PR #57, issue #53)
+## 2026-06-20 — Decouple `Board::currentPly_` from Game Length (PR #57, issue #53)
 
 ### Fixed
 - `currentPly_` indexes four fixed `MAX_PLY=256` ply-history arrays but was never reset
@@ -160,7 +167,7 @@ Structure, and the "with De-Singleton Board" C++23 item (`std::expected`).
   `currentPly_` only ever spans in-flight search recursion depth, never game length
 - `assert(currentPly_ < MAX_PLY)` guard added in `DoMove`/`UndoMove` as defense in depth
 
-## 2026-06 — Null-Move Pruning (PR #55)
+## 2026-06-20 — Null-Move Pruning (PR #55)
 
 ### Added
 - `tuning_.null_move_enabled` defaults to `true`; guard helper `should_try_null_move()`
@@ -174,88 +181,149 @@ Structure, and the "with De-Singleton Board" C++23 item (`std::expected`).
 
 Plan: `.claude/plans/null-move-pruning.md`.
 
-## March 2026
-
-Several entries below have no day-level date recorded in the original roadmap; relative
-order is preserved as originally listed.
+## 2026-03-14 — UCI Protocol (PR #42)
 
 ### Added
-- **UCI Protocol**: `UCIHandler` class, synchronous command loop with search on
-  `std::thread`. Commands: `uci`, `isready`, `ucinewgame`, `position`
-  (startpos/fen/moves), `go`, `stop`, `quit`. Time control: `movetime`,
-  `wtime`/`btime`/`winc`/`binc`/`movestogo`, `depth`, `infinite`.
-  `AIPerplex::GetLastResult()` exposes `SearchResult` for the post-search `info` line.
-  Validated via pipe-based functional smoke test.
-- **Late Move Reductions** (PR #38): sqrt formula
+- `UCIHandler` class: synchronous command loop with search on `std::thread`. Commands:
+  `uci`, `isready`, `ucinewgame`, `position` (startpos/fen/moves), `go`, `stop`, `quit`.
+  Time control: `movetime`, `wtime`/`btime`/`winc`/`binc`/`movestogo`, `depth`,
+  `infinite`. `AIPerplex::GetLastResult()` exposes `SearchResult` for the post-search
+  `info` line. `UCIHandler` moved to `StratEngine/` per `CLAUDE.md` structure.
+- 8 `parse_go` `[uci]` test cases (324 total assertions, all pass)
+
+### Fixed
+- `movetime 5000` was completing in 11s+ instead of ~5.3s — three root causes: hard
+  limit was 3× soft (reduced to 1.5×, so opening moves no longer consume the full hard
+  budget); no fast-exit path on timeout (`IsAborted()` latch + check added to `pvs()`
+  and `quiescence()`, collapsing the stack in O(depth) instead of O(tree_size)); the
+  "move changed" soft-limit extension had no cap (new `extra_depth_used` flag limits it
+  to exactly one extra depth per search)
+- `std::cout` fallback removed from `StopTimerAndAdjustVars()`; `SetVerboseLogging(true)`
+  removed from the `AIPerplex` constructor (verbose logging is now opt-in per call site)
+
+Validated: pipe-based functional smoke test; `go movetime 5000` completes in ~5.3s;
+tested in CuteChess GUI (human vs. engine and engine vs. engine).
+
+## 2026-03-12 — Time Management: Clock-Aware Soft/Hard Limits (PR #41)
+
+### Added
+- `Engine::compute_budget(remaining, increment, moves_to_go)` free function in
+  `TimeUtils.h/cpp` — pure math, independently testable; formula:
+  `soft = usable/horizon + inc*80%`, `hard = min(soft*3, usable/2)`
+- `TimeManager` gains a two-arg `start(soft, hard)` overload +
+  `should_stop_iteration()` (soft-limit gate); one-arg `start(allocated)` delegates
+  unchanged for backward compatibility
+- `PlayerAiBase::SetClockInfo()`: computes the budget and arms the timer;
+  `clock_info_set_` flag prevents `StartTimer()` from overwriting clock-aware budgets
+  (this method and flag were later superseded and deleted by the GetMove SearchLimits
+  refactor, 2026-07-04)
+- Node-based time polling in `pvs()` every 1,024 nodes (amortises `chrono::now()`
+  overhead on deep searches)
+- `[time_mgr]` test tag: 10 assertions (6 formula, 4 timing)
+
+Plan: `.claude/plans/time-management-clock-aware.md`.
+
+## 2026-03-10 — Late Move Reductions + Move Sorting Extraction (PR #38)
+
+### Added
+- **Late Move Reductions**: sqrt formula
   `R = min(max(1, sqrt(depth-1) * sqrt(si-1)), depth-1)`, applied to quiet/non-killer/
-  non-evasion/non-PV-node moves; kill-switch `tuning_.lmr_enabled`. Observed depth 13-15
-  vs 8-9 (without LMR) in the same 15-second budget. 10 `[search]` test cases. Plan:
-  `.claude/plans/lmr-and-search-tests.md`.
-- **Time Management: Clock-Aware Soft/Hard Limits** (PR #5): `Engine::compute_budget()`
-  pure formula (`soft = usable/horizon + inc*80%`, `hard = min(soft*3, usable/2)`);
-  `TimeManager` two-arg `start(soft, hard)`; node-based time polling in `pvs()` every
-  1,024 nodes. `PlayerAiBase::SetClockInfo()` introduced here — later superseded and
-  deleted by the GetMove SearchLimits refactor (2026-07-04). Plan:
-  `.claude/plans/time-management-clock-aware.md`.
+  non-evasion/non-PV-node moves (si≥3, depth≥3); 2-step re-search. Kill-switch
+  `tuning_.lmr_enabled`. Observed depth 13-15 vs 8-9 (without LMR) in the same
+  15-second budget; ~31M vs ~36M nodes/move. 10 `[search]` test cases via
+  `AIPerlexTestFixture`. Plan: `.claude/plans/lmr-and-search-tests.md`.
+
+### Changed
+- **Move Sorting**: inline move scoring loop extracted from `pvs()` into
+  `MoveSorter::ScoreMoves()` static method; precondition asserts + `isKiller1`
+  short-circuit for fast killer detection. 5 `[sort]` test cases, 14 assertions.
+  Plan: `.claude/plans/move-scoring-extraction-and-sort-tests.md`.
+
+## 2026-03-08 — spdlog Level Gate + outLegalMoves Removal (PR #34)
+
+### Changed
+- 3-line per-call logging boilerplate in `AIPerplex` replaced with a spdlog level gate
+  (`s_logger->set_level(...)`)
+- Global `outLegalMoves` stream removed; board/root-move diagnostics now flow through
+  the default spdlog logger at `debug` level
+- `Board::test_bitboards` signature simplified
+
+Plan: `.claude/plans/logging-spdlog-gate-and-outlegalmoves-removal.md`.
+
+## 2026-03-07 — Aspiration Windows, C++20 Adoption, PCH Expansion, SearchTuning exposure (PR #29, #30, #31, #32)
+
+### Added
 - **Aspiration Windows in Iterative Deepening** (PR #30): narrow alpha/beta window
   around the previous depth's score, gradual widening (25cp → 75cp → full) on
-  fail-high/fail-low. Kill-switch `tuning_.aspiration_enabled`.
-- **Killer Moves + History Heuristic**: `killers_[MAX_PLY][MAX_KILLERS]`,
-  `history_[2][64][64]` in `AIPerplex`; killers cleared at search start, history aged
-  each iteration (halved to prevent overflow).
-- **MoveFormatter**: stateless class centralizing move presentation —
-  `ToShort`/`ToVerbose`/`ToUCI`/`FromUCI` in `StratEngine/MoveFormatter.h/cpp`. Fixed
-  gaps: verbose line restored, `+` now in `gamelist.txt`, fragile `\n`-surgery removed.
-  65 assertions, 6 test cases (`[formatter]`). Plan: `.claude/plans/move-formatter.md`.
-- **Perft Testing Framework**: `StratEngine/Tests/Perft.h/cpp` + `PerftRunner.cpp`;
-  `Tests/perft_test_cases.json`; integrated into main binary
-  (`StratChessEvolved.exe perft test`).
-- **Phase 0 Test Coverage**: `[tt]`, `[eval]`, `[tactical]` Catch2 tags;
-  `STRAT_ENABLE_TEST_ACCESS` friend stub added to `AIPerplex.h`.
+  fail-high/fail-low. Kill-switch `tuning_.aspiration_enabled`;
+  `search_with_aspiration()` extracted into its own method.
+- **Expose SearchTuning via game_settings.json** (PR #31): all 8
+  `AIPerplex::SearchTuning` parameters (including the `barelySearched`/
+  `probablyIncomplete`/`pvTooShort` thresholds) exposed as a `search_tuning` JSON
+  block, parsed into `Config::SearchTuningConfig`; absent block leaves AIPerplex
+  defaults untouched. Also consolidated `m_MaxDepth`/`max_depth_` into a single
+  canonical depth field across all AI types, and added a `time_limit` JSON key.
 
 ### Changed
 - **C++20 Adoption — `<bit>` and `<format>`** (PR #32): `std::countr_zero` replaces
   `_tzcnt_u64` `#ifdef` in `Board::GetFirstPiece`; `std::format` replaces
-  `std::stringstream` in `Move::Output()`.
-- **Move Sorting: Extract ScoreMoves + `[sort]` Tests** (PR #38): inline move scoring
-  loop extracted from `pvs()` into `MoveSorter::ScoreMoves()`; 5 test cases, 14
-  assertions.
-- **spdlog Level Gate + outLegalMoves Removal** (PR #34): 3-line per-call logging
-  boilerplate replaced with a spdlog level gate; global `outLegalMoves` stream removed.
-  Plan: `.claude/plans/logging-spdlog-gate-and-outlegalmoves-removal.md`.
-- **Extract Magic Numbers into SearchTuning**: `barelySearched`/`probablyIncomplete`/
-  `pvTooShort` thresholds moved into `SearchTuning`, exposed via `game_settings.json`.
-- **Expand PCH Coverage in StdAfx.h**: 9 STL headers added; redundant per-TU includes
-  removed from 7 source files.
-- **Move class → 16-bit layout** (Phases 1-4): removed `IsCheck`, `[from|to]IsNoSquare`,
-  `MovPiece` (→ `Board::GetEffectiveMovPiece()`), and `Content`/captured-piece fields;
-  `sizeof(Move) == 2` enforced via `static_assert`.
-- **Move sorting: stack-allocated sort buffer**: `pvs()` uses a stack `std::array`
-  instead of heap allocation per call.
-- **GameInfo History in Board**: history arrays moved from Player into `Board`;
-  prerequisite for De-Singleton Board.
-- **Migrate to Catch2 v3**: 2-file amalgamated drop-in; test project rebuilt from empty
-  placeholder; three legacy test headers retired.
-- **TranspositionTable Thread-Safety**: per-bucket `shared_mutex` locks (probes
-  `shared_lock`, stores `unique_lock`); global `shared_mutex` for resize/clear; TT only
-  cleared on new game.
+  `std::stringstream` in `Move::Output()`. C++23 upgrade path documented in
+  `.claude/plans/cpp23-upgrade.md`.
+- **Expand PCH Coverage in StdAfx.h** (PR #29): 9 STL headers added; redundant per-TU
+  includes removed from 7 source files. Zero warnings enforced (`/WX`).
 
-### Removed
-- **Archive Broken Algorithms**: `ABIterTrans.cpp/h` and `AITrans.cpp/h` moved to
-  `StratEngine/Archived/`, removed from the build.
-- **Remove Dead Code**: commented-out old `Search()` method body removed from
-  `AIPerplex.cpp`.
+## 2026-03-04 — Introduce MoveFormatter (PR #26)
 
-### Fixed
-- **Fix `zobrist::initialize()` Never Called**: now called in the `Board` constructor;
-  all castling/en-passant/side-to-move Zobrist keys initialised before any `Board`
-  method runs.
+### Added
+- Stateless class centralizing move presentation in
+  `StratEngine/MoveFormatter.h/cpp`: `ToShort` (pseudo-LAN + `+` check annotation),
+  `ToVerbose` (verbose English), `ToUCI` (wire format), `FromUCI` (parse from board
+  pre-`DoMove` state)
+- Fixed gaps: verbose line restored; `+` now in `gamelist.txt`; fragile `\n`-surgery in
+  `PrintBoardAndMove` removed; promotion-captures get a suffix in perft divide output
+- 65 assertions, 6 test cases (`[formatter]`)
+
+`Move::Output()`/`Move::Output(ePiece)` kept as-is (callers migrated separately — see
+the "Migrate Move::Output() callers" issue). `ToSAN` omitted, deferred until PGN export
+is needed. Plan: `.claude/plans/move-formatter.md`.
+
+## 2026-03-03 — Move class → 16-bit layout, Phases 3-4 (PR #24)
+
+### Changed
+- **Phase 3**: Removed `MovPiece` field — `Board::GetEffectiveMovPiece()` added;
+  `MoveFactory` drops the movPiece param; `MoveHelper`/`GameState`/`Sort` thread it
+  explicitly instead; a Zobrist hash corruption bug in `UndoMove` fixed along the way
+- **Phase 4**: Removed `Content` (captured-piece) field — `sizeof(Move) == 2` enforced
+  via `static_assert`; 4 `PROMOTION_*_CAPTURE` MoveType variants added (capture bit 2 +
+  promotion bit 3); `Board::GetCapturedPiece()` public API added; `MoveFactory` drops
+  the captured param; `Move::Value`/`MoveHelper::IsValid`/`IsPieceCapturedAt` gain an
+  explicit `content` param; `IsCapture`/`IsPromote` simplified to pure flag-bit tests
+
+`BoardTests.cpp` added (6 `[board]` test cases); all 47 tests pass.
+
+## 2026-03-01 — Phase 0 Test Coverage (PR #18)
+
+### Added
+- `[tt]` — TranspositionTable unit tests (store/probe, mate normalization, replacement,
+  counters)
+- `[eval]` — Evaluation position tests (symmetry, material advantage, doubled pawns,
+  rook bonus)
+- `[tactical]` — Fast search regression tests (mate-in-1, hanging piece capture via
+  AIPerplex depth 4)
+- `STRAT_ENABLE_TEST_ACCESS` friend stub added to `AIPerplex.h` for future Phase 1
+  search tests
 
 ## 2026-03-01 — Restrict Board Piece-Setup API to Private (PR #21, commit d4b1bd6)
 
 ### Changed
 - `ClearBoard`, `SetInitialColor`, and `AddPieceToBoard` moved to `private:` — no longer
   called from test code after PR #20; `SetupFromFEN` is the sole public board-setup API
+
+## 2026-02-28 — Move class → 16-bit layout, Phases 1-2 (PR #12)
+
+### Changed
+- **Phase 1**: Removed `Move::IsCheck` field
+- **Phase 2**: Removed `[from|to]IsNoSquare` fields
 
 ## 2026-02-26 — Delta Pruning in Quiescence
 
@@ -265,6 +333,12 @@ order is preserved as originally listed.
 
 Consistently deeper search — mate at depth 14 observed where it wasn't reached before.
 
+## 2026-02-25 — Archive Broken Algorithms (PR #9)
+
+### Removed
+- `ABIterTrans.cpp/h` and `AITrans.cpp/h` moved to `StratEngine/Archived/`,
+  `Archived/README.md` explains historical context, both removed from the build
+
 ## 2026-02-22 — Threefold / Twofold Repetition Correctness
 
 ### Fixed
@@ -273,6 +347,16 @@ Consistently deeper search — mate at depth 14 observed where it wasn't reached
 - Twofold-in-search branch was unreachable; fixed dead condition
 - Castling rights and en-passant square changes now included in Zobrist hash;
   `zobrist_hash_` widened from `unsigned int` to `uint64_t`
+
+## 2026-02-20 — Killer Moves + History Heuristic (PR #6)
+
+### Added
+- Fully implemented in `AIPerplex`: `killers_[MAX_PLY][MAX_KILLERS]`,
+  `history_[2][64][64]`; methods `clear_killers`, `store_killer`, `clear_history`,
+  `age_history`, `update_history`
+- Killers cleared at search start; history aged each iteration (halved to prevent
+  overflow); scoring integrated inline in `pvs()` (relocation to `MoveSorter` handled
+  separately, see 2026-03-10)
 
 ## 2026-02-11 — Search Algorithm Fixes + iterative_deepening Refactor
 
@@ -290,3 +374,35 @@ Consistently deeper search — mate at depth 14 observed where it wasn't reached
 - Introduced `SearchResult` struct for a clean interface
 - Added `SearchTuning` struct for runtime parameters
 - Improved log levels (debug/info/critical)
+
+## Undated
+
+These entries have no PR reference in the original Roadmap.md text and couldn't be
+matched to a specific PR with confidence via title/content search. Believed to fall
+roughly within the Feb–March 2026 window based on their original position in the
+document, but treat the ordering here as unverified.
+
+### Added
+- **Perft Testing Framework**: `StratEngine/Tests/Perft.h/cpp` + `PerftRunner.cpp`;
+  `Tests/perft_test_cases.json`; integrated into main binary
+  (`StratChessEvolved.exe perft test`).
+
+### Changed
+- **Migrate to Catch2 v3**: 2-file amalgamated drop-in; test project rebuilt from empty
+  placeholder; three legacy test headers retired.
+- **TranspositionTable Thread-Safety**: per-bucket `shared_mutex` locks (probes
+  `shared_lock`, stores `unique_lock`); global `shared_mutex` for resize/clear; TT only
+  cleared on new game.
+- **GameInfo History in Board**: history arrays moved from Player into `Board`;
+  prerequisite for De-Singleton Board.
+- **Move sorting: stack-allocated sort buffer**: `pvs()` uses a stack `std::array`
+  instead of heap allocation per call.
+
+### Removed
+- **Remove Dead Code**: commented-out old `Search()` method body removed from
+  `AIPerplex.cpp`.
+
+### Fixed
+- **Fix `zobrist::initialize()` Never Called**: now called in the `Board` constructor;
+  all castling/en-passant/side-to-move Zobrist keys initialised before any `Board`
+  method runs.
