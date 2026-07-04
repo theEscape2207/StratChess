@@ -2,6 +2,7 @@
 
 #include <nlohmann/json.hpp>
 #include "GameState.h"	// For CastlingRights, eColor, eSquare
+#include "SearchLimits.h"
 
 class Game;
 class Board;
@@ -27,9 +28,9 @@ public:
 	struct PlayerConfig
 	{
 		unsigned type{ DEFAULT_EVAL };
-		unsigned depth{ DEFAULT_DEPTH };          // max_depth — read from "max_depth" or fallback "depth"
+		unsigned depth{ DEFAULT_DEPTH };          // max_depth — mirrors search_limits.depth; still needed by PlayerBase::Create
 		unsigned eval{ 0 };
-		uint32_t time_limit_ms{ 15000 };          // milliseconds; applied to all AI types
+		SearchLimits search_limits;               // per-move search constraints, parsed from "search_limits" (or legacy max_depth/time_limit)
 		std::optional<SearchTuningConfig> search_tuning;  // only for AI_PERPLEX (type 6)
 	};
 

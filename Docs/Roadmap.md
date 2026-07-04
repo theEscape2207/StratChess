@@ -149,12 +149,16 @@ revisit) completed July 2026 — Lazy SMP is unblocked.
 
 ### Refactoring
 
-#### 🟢 GetMove TimeControl Refactor
-- **Estimate**: 2-3 days
-- **Dependency**: UCI protocol (#6) — do immediately after UCI lands
-- **Description**: Pass a `TimeControl` struct directly into `GetMove()` instead of
-  calling `SetClockInfo()` as a pre-call side-effect.  Eliminates temporal coupling,
-  makes each call self-contained, and simplifies threading in Lazy SMP.
+#### 🟢 GetMove TimeControl Refactor — ✅ done (July 2026)
+- **Delta from the original sketch**: shipped as an explicit `const SearchLimits&`
+  parameter (`StratEngine/SearchLimits.h`, carrying clock/movetime/depth/infinite) plus a
+  `game_settings.json` migration to a `"search_limits"` block — not the `GameInfo`-field
+  sketch below, which was rejected because `GameInfo` is copied into `info_seq` at every
+  search ply. `SetClockInfo()`/`clock_info_set_` are fully deleted; `cmd_go` and game mode
+  both build a `SearchLimits` and pass it on every `GetMove(info, limits)` call instead of
+  pre-configuring the AI. See `.claude/plans/getmove-searchlimits-refactor.md`.
+- **Original description** (superseded): Pass a `TimeControl` struct directly into
+  `GetMove()` instead of calling `SetClockInfo()` as a pre-call side-effect.
   ```cpp
   struct TimeControl {
       std::chrono::milliseconds remaining;
@@ -164,11 +168,6 @@ revisit) completed July 2026 — Lazy SMP is unblocked.
   // GameInfo gains an optional<TimeControl> field;
   // GetMove() reads it instead of relying on SetClockInfo() being called first.
   ```
-- **Files affected**: `IPlayer.h`, `PlayerBase.h`, `PlayerAiBase.h/cpp`, `GameInfo.h`,
-  all `GetMove()` overrides (PlayerHuman, AIBasic, AIAgent, ABIterative, AIPerplex),
-  UCI handler, `Game.cpp::SetPlayerParams`
-- **Note**: `SetClockInfo()` introduced by the Time Management PR (#5) becomes
-  an internal implementation detail or is removed entirely once this refactor lands.
 
 #### 🟢 Migrate `Move::Output()` callers to `MoveFormatter`
 - **Estimate**: 1 hour
@@ -255,8 +254,11 @@ revisit) completed July 2026 — Lazy SMP is unblocked.
 
 #### ⚪ Implement Lazy SMP
 - **Estimate**: 3-4 weeks
-- **Prerequisite**: ThreadData refactoring complete — ✅ satisfied (July 2026); remaining
-  pre-work is the ELO baseline (step 3 of the Near-Term Sequence)
+- **Prerequisite**: ThreadData refactoring complete — ✅ satisfied (July 2026); GetMove
+  SearchLimits refactor complete — ✅ satisfied (July 2026, removes the pre-call
+  `SetClockInfo()`/`SetMaxDepth()` ordering contract a helper thread could otherwise
+  violate); ELO baseline (step 3 of the Near-Term Sequence) also done — no remaining
+  refactoring blockers
 - **Description**: Multiple threads search same position with shared TT
 - **Algorithm**:
   ```

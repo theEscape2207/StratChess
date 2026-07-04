@@ -155,6 +155,7 @@
     <ClCompile Include="..\StratEngine\PlayerAI.cpp" />
     <ClCompile Include="..\StratEngine\PlayerBase.cpp" />
     <ClCompile Include="..\StratEngine\PlayerHuman.cpp" />
+    <ClCompile Include="..\StratEngine\SearchLimits.cpp" />
     <ClCompile Include="..\StratEngine\Sort.cpp" />
     <ClCompile Include="..\StratEngine\TranspositionTable.cpp" />
     <ClCompile Include="..\StratEngine\Utils\FENParser.cpp" />
@@ -181,6 +182,7 @@
     <ClCompile Include="SortTests.cpp" />
     <ClCompile Include="MoveFormatterTests.cpp" />
     <ClCompile Include="TimeManagerTests.cpp" />
+    <ClCompile Include="SearchLimitsTests.cpp" />
     <ClCompile Include="UCITests.cpp" />
     <ClCompile Include="SuitePolicyTests.cpp" />
   </ItemGroup>

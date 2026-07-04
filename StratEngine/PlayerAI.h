@@ -2,6 +2,7 @@
 #include "PlayerBase.h"
 #include "Board.h"		// includes Move
 #include "Eval.h"
+#include "SearchLimits.h"
 #include "Utils\TimeManager.h"
 #include "Utils/TimeUtils.h"
 #include <vector>
@@ -24,16 +25,6 @@ public:
 
 	void SetMaxDepth(unsigned depth) noexcept { max_depth_ = depth; }
 	void SetTimeLimit(std::chrono::milliseconds ms) noexcept { time_limit_ = ms; }
-
-	/// Call once per move when clock information is available (e.g. from UCI 'go' command).
-	/// Computes soft and hard budgets via Engine::compute_budget() and arms the timer.
-	/// StartTimer() inside GetMove() will honour the pre-armed budgets without overwriting them.
-	/// @param remaining    Time remaining on the clock for this side.
-	/// @param increment    Per-move increment.
-	/// @param moves_to_go  Moves remaining in time control, or 0 if unknown.
-	void SetClockInfo(std::chrono::milliseconds remaining,
-	                  std::chrono::milliseconds increment,
-	                  int moves_to_go = 0) noexcept;
 
 	/// Signal the search to stop immediately (e.g. from UCI 'stop').
 	/// Thread-safe: may be called from any thread.
@@ -84,24 +75,15 @@ protected:
 	// Returns the best first move currently found
 	virtual Move GetBestMove(_In_ GameInfo& info) noexcept;
 
-	/*
-	*		Inline methods
-	*/
-
-	// StartTimer
-	void StartTimer()
-	{
-		_startingTime = std::chrono::high_resolution_clock::now();
-		nodes_since_check_ = 0;
-		if (clock_info_set_) {
-			// SetClockInfo() was called — time_manager_ already armed with soft/hard budgets.
-			// Do NOT call time_manager_.start() again, or we'd overwrite the clock-aware budgets.
-			clock_info_set_ = false;   // reset for next move
-		} else {
-			time_manager_.start(time_limit_);
-		}
-		stop_search_.store(false, std::memory_order_relaxed);
-	}
+	/// Resolves per-call SearchLimits against the configured defaults
+	/// (time_limit_, max_depth_), arms time_manager_ with the resulting
+	/// budget, and resets per-move search state (_startingTime,
+	/// nodes_since_check_, stop_search_) — replaces the old StartTimer().
+	/// Also stores the result in effective_depth_ for legacy AIs whose
+	/// recursive Search()/Quiescent() methods read the depth bound as a
+	/// member rather than a parameter; AIPerplex uses the return value
+	/// directly. Returns the effective search depth for this call.
+	unsigned ApplyLimits(const SearchLimits& limits);
 
 	bool ShouldStopSearch() const noexcept
 	{
@@ -242,14 +224,18 @@ protected:
 	unsigned max_depth_{ 15 };
 	std::chrono::milliseconds time_limit_{ std::chrono::seconds(15) };
 
+	// Set by ApplyLimits() every call: the resolved depth bound for the
+	// current GetMove() call (== max_depth_ unless SearchLimits overrides
+	// it). Legacy AIs (AIBasic/AIAgent/ABIterative) whose recursive
+	// Search()/Quiescent() methods read the depth bound as a member use
+	// this instead of max_depth_, which stays the unmodified configured
+	// default. AIPerplex uses ApplyLimits()'s return value directly instead.
+	unsigned effective_depth_{ 0 };
+
 	//#ifdef PRINT_STATS
 
 		// Samlet tid og antal nodes for begge computerspillere - TODO: Separer evt til per spiller. Human burde ogsaa have en klokke
 	static std::chrono::milliseconds m_TotalTime;
 	static size_t m_TotalCount;
 	//#endif	// PRINT_STATS
-
-private:
-	// Set by SetClockInfo() to prevent StartTimer() from overwriting clock-aware budgets.
-	bool clock_info_set_{ false };
 };

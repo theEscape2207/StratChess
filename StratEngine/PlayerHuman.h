@@ -13,7 +13,7 @@ class PlayerHuman final : public PlayerBase
 public:
 
 	/* IPlayer implementation */
-	Move GetMove(_Inout_ GameInfo& info ) override;
+	Move GetMove(_Inout_ GameInfo& info, const SearchLimits&) override;
 	const char* GetType() const	noexcept override		{	return "Human";		}
 	
 	std::string getDescription() const	override
