@@ -319,13 +319,18 @@ is needed. Plan: `.claude/plans/move-formatter.md`.
 - `ClearBoard`, `SetInitialColor`, and `AddPieceToBoard` moved to `private:` — no longer
   called from test code after PR #20; `SetupFromFEN` is the sole public board-setup API
 
-## 2026-02-28 — Move class → 16-bit layout, Phases 1-2 (PR #12)
+## 2026-02-28 — Move class Phases 1-2 + Catch2 v3 migration (PR #12, #16)
 
 ### Changed
-- **Phase 1**: Removed `Move::IsCheck` field
-- **Phase 2**: Removed `[from|to]IsNoSquare` fields
+- **Move class → 16-bit layout, Phases 1-2** (PR #12): removed `Move::IsCheck` field
+  (Phase 1); removed `[from|to]IsNoSquare` fields (Phase 2)
+- **Migrate to Catch2 v3** (PR #16): 2-file amalgamated drop-in, no pre-build step
+  required; test project `StratChessTests/StratChessTests.vcxproj` rebuilt from empty
+  placeholder; tests migrated: `RepetitionTests.cpp` (TC1-TC7, TC9), `MoveFieldTests.cpp`,
+  `PerftTests.cpp`; retired `TestFramework.h`, `Unittests.h`, `Perft_unittests.h`; tags
+  `[repetition]`, `[moves]`, `[perft]`
 
-## 2026-02-26 — Delta Pruning in Quiescence
+## 2026-02-27 — Delta Pruning in Quiescence (PR #11)
 
 ### Added
 - `tuning_.delta_pruning_margin = 200` added to `SearchTuning`; guard skips captures
@@ -358,6 +363,18 @@ Consistently deeper search — mate at depth 14 observed where it wasn't reached
   overflow); scoring integrated inline in `pvs()` (relocation to `MoveSorter` handled
   separately, see 2026-03-10)
 
+## 2026-02-19 — Perft Testing Framework (commit c13c7f2c)
+
+### Added
+- `StratEngine/Tests/Perft.h/cpp` + `PerftRunner.cpp`; `Tests/perft_test_cases.json`
+  (128 positions, depth 1-6); integrated into main binary
+  (`StratChessEvolved.exe perft test`)
+- Surfaced design issues around `GameInfo` state (en-passant, etc.) that had been
+  stored in `Game` rather than `Board`; one `MoveGenerator` defect found and fixed
+- All 128 test cases passing at every depth where sensible; ~21M NPS in Release
+
+Direct commit, predates PR-based workflow (before PR #1) — not part of any pull request.
+
 ## 2026-02-11 — Search Algorithm Fixes + iterative_deepening Refactor
 
 ### Fixed
@@ -382,14 +399,7 @@ matched to a specific PR with confidence via title/content search. Believed to f
 roughly within the Feb–March 2026 window based on their original position in the
 document, but treat the ordering here as unverified.
 
-### Added
-- **Perft Testing Framework**: `StratEngine/Tests/Perft.h/cpp` + `PerftRunner.cpp`;
-  `Tests/perft_test_cases.json`; integrated into main binary
-  (`StratChessEvolved.exe perft test`).
-
 ### Changed
-- **Migrate to Catch2 v3**: 2-file amalgamated drop-in; test project rebuilt from empty
-  placeholder; three legacy test headers retired.
 - **TranspositionTable Thread-Safety**: per-bucket `shared_mutex` locks (probes
   `shared_lock`, stores `unique_lock`); global `shared_mutex` for resize/clear; TT only
   cleared on new game.
