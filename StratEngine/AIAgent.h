@@ -8,7 +8,7 @@ class AIAgent final
 {
 public:
 	// Implementation/overrides of the IPlayer interface
-	Move GetMove(_Inout_ GameInfo& info) override;
+	Move GetMove(_Inout_ GameInfo& info, const SearchLimits& limits) override;
 	const char* GetType() const noexcept override
 	{	return "AI Agent";	}
 

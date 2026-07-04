@@ -9,23 +9,23 @@
 
 
 // Fetches the next move
-Move AIAgent::GetMove(_Inout_ GameInfo& info )
+Move AIAgent::GetMove(_Inout_ GameInfo& info, const SearchLimits& limits)
 {
 	InitMoveVariables( info );
 
 	// Aspiration Window Search - size +/- Half a pawn
 	const auto windowSize = g_iPieceValues[PAWN] >> 1;	// 50
-	
+
 	// Set alpha and beta boundaries around last best score
-	// TODO: this solution could be a minor deficiency playing with humans, 
+	// TODO: this solution could be a minor deficiency playing with humans,
 	// where m_iBestScore is not getting updated
 	int alpha = GetBestScore() - windowSize;
 	int beta  = GetBestScore() + windowSize;
 
-	StartTimer();
-		
+	ApplyLimits(limits);
+
 	// iterativ search
-	for (depth_ = 1; depth_ <= max_depth_; )	// depth_ maa ikke opdateres her med aspiration search 
+	for (depth_ = 1; depth_ <= effective_depth_; )	// depth_ maa ikke opdateres her med aspiration search
 	{
 		if (ShouldStopSearch()) {
 			break;
@@ -140,7 +140,7 @@ int AIAgent::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta, _Inout_ PVLi
 
 			moveFound = true;
 			
-			if (ply == 0 && depth_ == max_depth_)
+			if (ply == 0 && depth_ == effective_depth_)
 				spdlog::default_logger()->debug("Root move {}/{}: {} score={}",
 					counter, moveList.size(), curMove.Output(), score);
 
@@ -180,7 +180,7 @@ int AIAgent::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta, _Inout_ PVLi
 		}
 		else
 		{
-			if (ply == 0 && depth_ == max_depth_)
+			if (ply == 0 && depth_ == effective_depth_)
 				spdlog::default_logger()->debug("Root move {}/{}: {} ILLEGAL",
 					counter, moveList.size(), curMove.Output());
 		}

@@ -96,18 +96,59 @@ void Config::ReadConfigFile(const std::string& filename, Board& board)
 }
 
 namespace {
+	// Parses the "search_limits" block into a SearchLimits (all keys optional).
+	SearchLimits ParseSearchLimitsBlock(const json& sl)
+	{
+		SearchLimits limits;
+		if (sl.contains("depth"))
+			limits.depth = sl["depth"].get<int>();
+		if (sl.contains("movetime"))
+			limits.movetime = std::chrono::milliseconds(sl["movetime"].get<int64_t>());
+		if (sl.contains("infinite"))
+			limits.infinite = sl["infinite"].get<bool>();
+		if (sl.contains("clock")) {
+			const auto& c = sl["clock"];
+			limits.clock = ClockInfo{
+				std::chrono::milliseconds(c.value("remaining", 0)),
+				std::chrono::milliseconds(c.value("increment", 0)),
+				c.value("moves_to_go", 0)
+			};
+		}
+		return limits;
+	}
+
 	Config::PlayerConfig ParsePlayerConfig(const json& p, int defaultDepth, int defaultEval)
 	{
 		Config::PlayerConfig cfg;
 		cfg.type = p.value("type", defaultEval);
 		cfg.eval = p.value("eval", 0);
-		cfg.time_limit_ms = p.value("time_limit", 15000u);
 
-		// Prefer "max_depth"; fall back to legacy "depth" key
-		if (p.contains("max_depth"))
-			cfg.depth = p["max_depth"].get<unsigned>();
-		else
-			cfg.depth = p.value("depth", static_cast<unsigned>(defaultDepth));
+		if (p.contains("search_limits")) {
+			cfg.search_limits = ParseSearchLimitsBlock(p["search_limits"]);
+		} else {
+			// Legacy fallback: "max_depth"/"time_limit" map onto depth/movetime.
+			// "time_limit" always resolves to a real movetime (defaulting to
+			// 15000ms), matching the old unconditional
+			// p.value("time_limit", 15000u) — otherwise a "max_depth"-only
+			// legacy config would fall through resolve_limits() into the
+			// UCI-style 1h "depth only" budget instead of a real time cap.
+			bool usedLegacyKeys = false;
+			if (p.contains("max_depth")) {
+				cfg.search_limits.depth = p["max_depth"].get<int>();
+				usedLegacyKeys = true;
+			} else if (p.contains("depth")) {
+				cfg.search_limits.depth = p["depth"].get<int>();
+			}
+			cfg.search_limits.movetime = std::chrono::milliseconds(p.value("time_limit", 15000u));
+			if (p.contains("time_limit"))
+				usedLegacyKeys = true;
+			if (usedLegacyKeys) {
+				spdlog::default_logger()->warn(
+					"game_settings.json: player uses legacy \"max_depth\"/\"time_limit\" keys — "
+					"migrate to the \"search_limits\" block");
+			}
+		}
+		cfg.depth = static_cast<unsigned>(cfg.search_limits.depth.value_or(defaultDepth));
 
 		// Parse SearchTuning if present (only meaningful for AI_PERPLEX)
 		if (p.contains("search_tuning")) {

@@ -20,17 +20,17 @@
 // Returns:     Move - The best move found
 // Parameter:   _Inout_ BoardInfo& info - 
 // ************************************
-Move ABIterative::GetMove(_Inout_ GameInfo& info)
+Move ABIterative::GetMove(_Inout_ GameInfo& info, const SearchLimits& limits)
 {
 	InitMoveVariables(info);
 
 	constexpr int alpha = -GameValues::Search_Init;
 	constexpr int beta = GameValues::Search_Init;
 
-	StartTimer();
+	ApplyLimits(limits);
 
 	// almindelig iterativ soegning
-	for (depth_ = 1; depth_ <= max_depth_; ++depth_)
+	for (depth_ = 1; depth_ <= effective_depth_; ++depth_)
 	{
 		if (ShouldStopSearch())
 			break;
@@ -120,7 +120,7 @@ int ABIterative::Search(int ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& 
 
 			moveFound = true;
 
-			if (ply == 0 && depth_ == max_depth_)
+			if (ply == 0 && depth_ == effective_depth_)
 				spdlog::default_logger()->debug("Root move {}/{}: {} score={}",
 					counter, moveList.size(), curMove.Output(), value);
 
@@ -169,7 +169,7 @@ int ABIterative::Search(int ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& 
 		}
 		else
 		{
-			if (ply == 0 && depth_ == max_depth_)
+			if (ply == 0 && depth_ == effective_depth_)
 				spdlog::default_logger()->debug("Root move {}/{}: {} ILLEGAL",
 					counter, moveList.size(), curMove.Output());
 		}

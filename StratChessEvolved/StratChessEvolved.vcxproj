@@ -156,6 +156,7 @@
     <ClCompile Include="..\StratEngine\PlayerAI.cpp" />
     <ClCompile Include="..\StratEngine\PlayerBase.cpp" />
     <ClCompile Include="..\StratEngine\PlayerHuman.cpp" />
+    <ClCompile Include="..\StratEngine\SearchLimits.cpp" />
     <ClCompile Include="..\StratEngine\Sort.cpp" />
     <ClCompile Include="..\StratEngine\StdAfx.cpp" />
     <ClCompile Include="..\StratEngine\Tests\Perft.cpp" />
@@ -192,6 +193,7 @@
     <ClInclude Include="..\StratEngine\PlayerBase.h" />
     <ClInclude Include="..\StratEngine\PlayerHuman.h" />
     <ClInclude Include="..\StratEngine\PVTable.h" />
+    <ClInclude Include="..\StratEngine\SearchLimits.h" />
     <ClInclude Include="..\StratEngine\Sort.h" />
     <ClInclude Include="..\StratEngine\SquareHelper.h" />
     <ClInclude Include="..\StratEngine\StdAfx.h" />
