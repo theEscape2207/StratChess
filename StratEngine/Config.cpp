@@ -127,6 +127,11 @@ namespace {
 			cfg.search_limits = ParseSearchLimitsBlock(p["search_limits"]);
 		} else {
 			// Legacy fallback: "max_depth"/"time_limit" map onto depth/movetime.
+			// "time_limit" always resolves to a real movetime (defaulting to
+			// 15000ms), matching the old unconditional
+			// p.value("time_limit", 15000u) — otherwise a "max_depth"-only
+			// legacy config would fall through resolve_limits() into the
+			// UCI-style 1h "depth only" budget instead of a real time cap.
 			bool usedLegacyKeys = false;
 			if (p.contains("max_depth")) {
 				cfg.search_limits.depth = p["max_depth"].get<int>();
@@ -134,10 +139,9 @@ namespace {
 			} else if (p.contains("depth")) {
 				cfg.search_limits.depth = p["depth"].get<int>();
 			}
-			if (p.contains("time_limit")) {
-				cfg.search_limits.movetime = std::chrono::milliseconds(p["time_limit"].get<int64_t>());
+			cfg.search_limits.movetime = std::chrono::milliseconds(p.value("time_limit", 15000u));
+			if (p.contains("time_limit"))
 				usedLegacyKeys = true;
-			}
 			if (usedLegacyKeys) {
 				spdlog::default_logger()->warn(
 					"game_settings.json: player uses legacy \"max_depth\"/\"time_limit\" keys — "
