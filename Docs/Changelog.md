@@ -232,9 +232,6 @@ order is preserved as originally listed.
   `sizeof(Move) == 2` enforced via `static_assert`.
 - **Move sorting: stack-allocated sort buffer**: `pvs()` uses a stack `std::array`
   instead of heap allocation per call.
-- **Restrict Board Piece-Setup API to Private** (commit d4b1db6 — predates this repo's
-  squashed initial import, exact date not recoverable): `ClearBoard`/`SetInitialColor`/
-  `AddPieceToBoard` moved to `private:`; `SetupFromFEN` is the sole public setup API.
 - **GameInfo History in Board**: history arrays moved from Player into `Board`;
   prerequisite for De-Singleton Board.
 - **Migrate to Catch2 v3**: 2-file amalgamated drop-in; test project rebuilt from empty
@@ -253,6 +250,12 @@ order is preserved as originally listed.
 - **Fix `zobrist::initialize()` Never Called**: now called in the `Board` constructor;
   all castling/en-passant/side-to-move Zobrist keys initialised before any `Board`
   method runs.
+
+## 2026-03-01 — Restrict Board Piece-Setup API to Private (PR #21, commit d4b1bd6)
+
+### Changed
+- `ClearBoard`, `SetInitialColor`, and `AddPieceToBoard` moved to `private:` — no longer
+  called from test code after PR #20; `SetupFromFEN` is the sole public board-setup API
 
 ## 2026-02-26 — Delta Pruning in Quiescence
 
