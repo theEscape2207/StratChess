@@ -103,6 +103,11 @@ private:
 
 	std::unique_ptr<IPlayer> m_pPlayers[2];
 
+	// Per-player search constraints, built once from game_settings.json
+	// ("search_limits" block) and passed on every GetMove() call — mirrors
+	// the color indexing of m_pPlayers (board_.GetCurrentColor()).
+	SearchLimits player_limits_[2];
+
 	// Data structure for keeping 
 	std::vector<Move> m_GameMoves;
 

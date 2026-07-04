@@ -163,11 +163,13 @@ void Game::LoadConfigFileSettings()
 	//TODO: We are creating stuff we do not need (e.g. eval engine as human and NewPVLineMove event as non-iterative AI)
 	const Config::PlayerConfig whiteConfig = reader.GetPlayerFromConfig(true);
 	m_pPlayers[WHITE] = SetPlayerParams(whiteConfig);
+	player_limits_[WHITE] = whiteConfig.search_limits;
 
 	// Create black player
 	const Config::PlayerConfig blackConfig = reader.GetPlayerFromConfig(false);
 
 	m_pPlayers[BLACK] = SetPlayerParams(blackConfig);
+	player_limits_[BLACK] = blackConfig.search_limits;
 }
 
 
@@ -179,11 +181,6 @@ std::unique_ptr<IPlayer> Game::SetPlayerParams(const Config::PlayerConfig& confi
 	// Enable AIPerplex verbose logging in game mode (opt-in here; UCI/test modes disable it).
 	if (dynamic_cast<AIPerplex*>(player.get())) {
 		AIPerplex::SetVerboseLogging(true);
-	}
-
-	// Apply shared AI config (time_limit) to any AI type
-	if (auto* ai = dynamic_cast<PlayerAiBase*>(player.get())) {
-		ai->SetTimeLimit(std::chrono::milliseconds(config.time_limit_ms));
 	}
 
 	// Apply SearchTuning — only valid for AI_PERPLEX (type 6)
@@ -252,7 +249,7 @@ void Game::Run()
 	for (;;)
 	{
 		// Hent traekket fra den aktive spiller - GameInfo get updated every time
-		Move newMove = GetCurrentPlayer().GetMove(gameInfo_);
+		Move newMove = GetCurrentPlayer().GetMove(gameInfo_, player_limits_[board_.GetCurrentColor()]);
 
 		// Prints out the current score message for AI players (score or "Mate in x moves")
 		PrintStateMessage();
