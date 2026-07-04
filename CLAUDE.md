@@ -218,7 +218,8 @@ Commit the plan file — it lives under `.claude/plans/` (tracked by git) and se
 - **Background Bash tasks piping to long-running processes on Windows are unreliable** — they may be killed mid-stream. Use foreground calls for anything that pipes stdin to the engine and reads stdout.
 
 ## Commit & PR Conventions
-- Development happens on `master`; PRs target `main`
+- Development on shared work happens via per-task worktrees forked fresh from `origin/main`; PRs target `main`
+- Local `master` in the main checkout is a personal/scratch branch, independent of any PR workflow — safe to commit to directly, safe to let drift. Never fork a worktree from it, and never fall back to it mid-session if a worktree's branch is already gone (fork a fresh worktree from `origin/main` instead). Run `Scripts\Sync-Master.ps1` any time it needs to catch up with `origin/main` — fast-forwards when possible, merges (preserving local-only commits) when master has diverged, never pushes anywhere. `origin/master` was retired: a leftover from an incomplete master→main rename, never actually relied on as a backup — nothing should reference it going forward.
 - Keep PRs small and logically scoped
 - Include motivation, design reasoning, and expected impact for non-trivial changes
 - Claude worktrees live under `.claude/worktrees/` — build from a worktree works out of the box via `Directory.Build.props`
@@ -240,4 +241,4 @@ Before running `gh pr create` (or pushing an update to an already-open PR):
 4. Only after steps 1-3 pass, create or update the PR.
 
 ### After a PR merges
-Delete the remote branch, remove the local worktree, and delete the local branch — or invoke the `commit-commands:clean_gone` skill, which handles all three at once. Don't leave merged worktrees lying around as the default; treat cleanup as part of finishing the task, not a separate optional step the user has to ask for.
+Delete the remote branch, remove the local worktree, and delete the local branch — or invoke the `commit-commands:clean_gone` skill, which handles all three at once. Don't leave merged worktrees lying around as the default; treat cleanup as part of finishing the task, not a separate optional step the user has to ask for. If continuing directly in the main checkout afterward (not a new worktree), run `Scripts\Sync-Master.ps1` first so `master` reflects the merge.
