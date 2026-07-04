@@ -1,375 +1,29 @@
 # StratChess Engine Roadmap
 
-**Last Updated**: July 2, 2026
-**Timeframe**: Next 6 months (through parallel search implementation)
+**Last Updated**: July 4, 2026
 **Current Version**: AIPerplex 2.0
 
 ---
 
 ## Overview
 
-This roadmap organizes development tasks by priority and category. Items are drawn from recent debugging sessions, 
-performance analysis, and architectural reviews conducted February–March 2026.
+The active backlog lives in **GitHub Issues** as of July 2026 (see PR #80) — this file no
+longer tracks open work. Use the issue tracker, filtered by:
 
-### Priority Levels
-- 🔴 **Critical** - Must complete before parallel search
-- 🟡 **High** - Significant performance or quality wins
-- 🟢 **Medium** - Nice-to-have improvements
-- ⚪ **Long-term** - Future research and experimental features
+- **`category:`** labels — `search`, `eval`, `test`, `elo`, `infra`, `refactor`,
+  `build-tooling`
+- **`priority:`** labels — `critical`, `high`, `medium`, `longterm`
+- **`status:incoming`** — a new idea, minimally captured (what + why/potential),
+  awaiting a triage sweep before it earns a priority label
+- **`type:epic`** — a tracking issue grouping related sub-issues via GitHub's native
+  sub-issue links (parent/child, with a progress bar)
+- **`low-hanging-fruit`** — small, isolated, no dependencies; good to grab anytime
+  without much upfront thought
+- GitHub's native **"Blocked by" / "Blocking"** issue links express `#A requires #B`
+  relationships directly on the issue, independent of the epic/sub-issue tree
 
-### Categories
-- **Performance** - Speed and efficiency improvements
-- **Features** - New search enhancements
-- **Refactoring** - Code quality and maintainability
-- **Infrastructure** - Testing and tooling
-
----
-
-## 📌 Near-Term Sequence (decided July 2026)
-
-Agreed ordering after the issue #66 post-mortem (see Completed Work). The #66 process gap
-(tactical suite not run by any gate) is closed; the other motivator was coverage *breadth*
-(was: 8 gated positions), since closed by step 1 below.
-
-1. **Tactical suite expansion** (~1 day) — the scoped near-term slice of "Create Automated
-   Test Suite" below: added a WAC subset + mate-in-2/3 set to
-   `Tests/tactical_test_cases.json`. Runner, JSON format, and Pre-PR gate already existed —
-   pure content work at 25–35 ms/position. Endgame/ECMGCP components stay deferred.
-   — ✅ done (July 2026): suite grew 8 → 31 positions (WAC mate-in-2/3/4 + non-mate
-   tactical wins), 31/31 passing; mate categories now require 100% pass (unit-tested);
-   `tactical test [filename]` staging support added.
-2. **Extract ThreadData Structure** (🔴 Critical) — validate the PR #67 way: perft
-   equivalence + byte-identical self-play node counts. For deterministic refactors that is a
-   *stronger* check than any tactical suite (detects any behavioral drift, not just drift
-   that flips a test position), so ThreadData did not need to wait for broader suites.
-   — ✅ done (July 2026): `ThreadData` struct passed through the whole search call chain,
-   search runs on a thread-local `Board` copy; byte-identical node counts vs. pre-refactor
-   baseline across a full fixed-depth self-play game (see Completed Work below).
-3. **Before Lazy SMP**: establish the ELO baseline (below) while the engine is still
-   deterministic, and revisit the deferred automated-suite scope. Once threads race on a
-   shared TT, node-count equivalence stops being available — tactical suites + strength
-   measurement become the primary correctness signal.
-   — ELO baseline half ✅ done (July 2026): `Run-EloMatch.ps1` + `Docs/EloLog.md`, sanity
-   baseline at ±0 (identical builds, pooled 1000 games).
-   — Deferred-suite scope revisit ✅ decided (July 2026): the pre-SMP artifact is
-   **stability mode** — `tactical stability N` runs the gated suite N consecutive times
-   and fails on any per-run gate failure *or* any position flipping pass/fail between
-   runs; gated at N=10 in `Validate-PrePR.ps1` Step 3. BT2630/ECM-GCP stays deferred
-   until deeper search (post SEE/futility); the endgame tablebase set is scheduled with
-   the eval progress work (#70/#76) as its regression suite. **Step 3 complete — nothing
-   further blocks Lazy SMP.**
-
----
-
-## 🔴 Critical Priority (Before Parallel Search)
-
-### Refactoring
-
-None open — **Extract ThreadData Structure** completed July 2026 (see Completed Work below).
-With De-Singleton Board (PR #67) also done, both refactoring blockers for parallel search are
-cleared; step 3 of the Near-Term Sequence above (ELO baseline + deferred-suite scope
-revisit) completed July 2026 — Lazy SMP is unblocked.
-
----
-
-## 🟡 High Priority (Significant Wins)
-
-### Performance
-
-#### 🟡 Magic Bitboards (PEXT) for Sliding-Piece Attacks
-- **Estimate**: 2-3 days
-- **Plan**: `.claude/plans/magic-bitboards-sliding-piece-attacks.md`
-- **Impact**: Removes the `ROTATED90`/`ROTATED45R`/`ROTATED45L` auxiliary bitboards that
-  `Board::add_piece`/`remove_piece` must keep in sync on every `DoMove`/`UndoMove` (3 extra
-  writes + mutual-exclusion asserts per piece placement), and collapses `GetTowerBitboard`/
-  `GetBishopBitboard` from 2 table lookups + OR to a single `_pext_u64`-indexed lookup each.
-- **Approach**: BMI2 PEXT ("fancy magic") attack tables, generated `constexpr` at compile
-  time (same style as the existing rotated-bitboard tables in `defines.h`) — no runtime
-  init step. Requires enabling `/arch:AVX2` codegen project-wide (both `.vcxproj` files),
-  which raises the binary's minimum CPU baseline to Haswell+ (2013+) or Zen3+ (2020+); PEXT
-  is emulated in slow microcode on older AMD (Zen/Zen+/Zen2) — confirmed acceptable since
-  this is a personal dev-only x64 build, not distributed to unknown hardware.
-- **Also benefits**: Shrinks `Board`'s bitboard array by 3 elements and removes one class of
-  `test_bitboards()` invariant failure — relevant context for the completed **De-Singleton Board**
-  work (see Completed Work below) and the upcoming **Extract ThreadData Structure** item
-  (fewer bitboards to carry per thread-local `Board` copy once Lazy SMP lands).
-- **Validation**: perft equivalence (depth 1-4 fast tier + full `perft_test_cases.json`),
-  `[tactical]`/`[tactical_full]`, nodes-per-second benchmark before/after (see plan for
-  full validation plan).
-
-### Infrastructure
-
-#### 🟡 ELO Baseline Measurement — ✅ done (July 2026)
-- **Purpose** (unchanged): tactical suites verify correctness only — a change can pass 100%
-  of tactical tests and still lose 30 ELO; this item catches that class of regression
-- **Delivered**: `Scripts\Run-EloMatch.ps1` (fastchess v1.8.0 match runner, committed
-  250-opening book at `Tests/openings/openings-250.pgn`, pinned reference tag
-  `elo-reference-v1`, 10+0.1 TC, color-swapped pairs, adjudication) + `Docs/EloLog.md`
-  (pinned setup record, interpretation guide, append-only measurement history)
-- **Sanity baseline**: identical builds measure −1.4 ELO pooled over 1000 games — the
-  instrument has no directional bias; per-500-game batch noise is ±25 ELO at this draw ratio
-- **To re-measure after a search/eval change**: build the candidate, run the script
-  (≈1 h unattended per 500-game batch), read `Docs/EloLog.md` before interpreting
-- **Found along the way**: >MAX_PLY UCI replay crash (fixed + `[uci]` regression test;
-  see Completed Work)
-
----
-
-## 🟢 Medium Priority (Nice-to-Have)
-
-### Performance
-
-#### 🟢 Add SEE (Static Exchange Evaluation) to Quiescence
-- **Estimate**: 4-5 days
-- **Impact**: 10-15% quiescence speedup
-- **Description**: Evaluate capture sequences statically to prune losing captures
-- **Implementation**:
-  ```cpp
-  int SEE(Move capture) {
-      // Simulate capture sequence
-      // Return material balance
-  }
-
-  // In quiescence:
-  if (SEE(move) < 0 && !in_check) {
-      continue;  // Skip losing capture
-  }
-  ```
-- **Complexity**: Requires careful bitboard manipulation
-- **Testing**: Verify tactical positions work correctly
-
-#### 🟢 Implement Futility Pruning
-- **Estimate**: 2-3 days
-- **Impact**: 5-10% speedup
-- **Description**: Skip nodes where evaluation + margin can't reach alpha
-- **Types**:
-  1. **Reverse Futility Pruning**: Near leaf nodes
-  2. **Futility Pruning**: At frontier nodes
-  3. **Extended Futility Pruning**: Multiple plies from leaf
-
-### Refactoring
-
-#### 🟢 GetMove TimeControl Refactor — ✅ done (July 2026)
-- **Delta from the original sketch**: shipped as an explicit `const SearchLimits&`
-  parameter (`StratEngine/SearchLimits.h`, carrying clock/movetime/depth/infinite) plus a
-  `game_settings.json` migration to a `"search_limits"` block — not the `GameInfo`-field
-  sketch below, which was rejected because `GameInfo` is copied into `info_seq` at every
-  search ply. `SetClockInfo()`/`clock_info_set_` are fully deleted; `cmd_go` and game mode
-  both build a `SearchLimits` and pass it on every `GetMove(info, limits)` call instead of
-  pre-configuring the AI. See `.claude/plans/getmove-searchlimits-refactor.md`.
-- **Original description** (superseded): Pass a `TimeControl` struct directly into
-  `GetMove()` instead of calling `SetClockInfo()` as a pre-call side-effect.
-  ```cpp
-  struct TimeControl {
-      std::chrono::milliseconds remaining;
-      std::chrono::milliseconds increment;
-      int moves_to_go = 0;
-  };
-  // GameInfo gains an optional<TimeControl> field;
-  // GetMove() reads it instead of relying on SetClockInfo() being called first.
-  ```
-
-#### 🟢 Migrate `Move::Output()` callers to `MoveFormatter`
-- **Estimate**: 1 hour
-- **Impact**: Removes the last direct uses of `Move::Output()` / `Move::Output(ePiece)`,
-  enabling those methods to be deleted
-- **Remaining callers**: `Move::operator<<` (Move.cpp), `PVLine::operator<<` (Move.cpp),
-  and ~10 `move.Output()` calls in `AIPerplex.cpp` (search diagnostic logging)
-- **Note**: AIPerplex logging is coordinate-only (`Output()` no-arg) — acceptable today
-  but inconsistent once ToUCI/ToShort are the canonical APIs
-- **When**: when AIPerplex logging is refactored, or when `Move::Output` starts causing
-  maintenance friction
-
-### Infrastructure
-
-#### 🟢 Phase 1 Test Infrastructure (add per-feature, see TestDesign.md)
-- **Estimate**: Varies — add when touching the relevant component
-- **Components** (details in `Docs/TestDesign.md`):
-  - `[board]` / `[board_moves]` / `[board_state]` / `[board_api]` — DoMove/UndoMove completeness + full move-type, GameInfo state, and API coverage — ✅ done (`BoardTests.cpp`, `BoardMoveTests.cpp`, `BoardStateTests.cpp`, `BoardApiTests.cpp`)
-  - `[sort]` — ✅ done — `MoveSorter::ScoreMoves()` extraction + 5 test cases (PR #38)
-  - `[search]` — ✅ done — 10 test cases via `AIPerlexTestFixture`; landed with LMR (PR #38)
-  - Full tactical suite (`StratChessEvolved.exe tactical test`) — add **before UCI** (engine readiness check; does not need to wait for evaluation extension)
-  - `[bitboard]` — bitboard helper tests — add opportunistically
-
-#### 🟢 Upgrade to C++23
-- **Estimate**: 4-6 hours total
-- **Dependency**: Extract ThreadData Structure — ✅ satisfied (July 2026), so the `std::mdspan`
-  history-table slice is actionable any time (after the separate `stdcpplatest` bump commit)
-- **Secondary dependency**: De-Singleton Board — ✅ satisfied (PR #67), so the `std::expected`
-  slice is actionable any time
-- **Plan**: `.claude/plans/cpp23-upgrade.md`
-- **Not sequenced**: deliberately kept out of the Near-Term Sequence — ride-along slices by
-  design, and nothing in Lazy SMP needs C++23
-- **Language Standard Change**: `stdcpp20` → `stdcpplatest` in both `.vcxproj` files (x64 configurations)
-- **Validation hygiene**: land the `stdcpplatest` bump as its own commit (bump + verify
-  byte-identical self-play node counts), separate from the ThreadData refactor PR — a global
-  compiler-standard change inside a node-count-validated refactor would make any drift
-  unattributable
-- **Items** (in dependency order):
-  1. **With ThreadData extraction**: `stdcpplatest` bump + `std::mdspan<int32_t, std::extents<int,2,64,64>>` for `history_[2][64][64]`; `std::flat_multimap` for TT diagnostics
-  2. **With De-Singleton Board**: `std::expected<ParsedFEN, std::string>` for `FENParser::ParseFEN`
-  3. **With MoveOrdering refactor**: `std::views::enumerate` in `pvs()` move scoring loop
-- **Already done** (March 2026): C++20 items `std::countr_zero` (replaces `_tzcnt_u64` #ifdef in `GetFirstPiece`) and `std::format` (replaces `stringstream` in `Move::Output()`) — see plan for details
-- **Note**: MSVC VS 2022 17.8+ already satisfies all C++23 library requirements; no toolchain upgrade needed for this item
-
-#### 🟢 Add Performance Profiling Scripts
-- **Estimate**: 1 day
-- **Tools**:
-  - VTune or perf for CPU profiling
-  - Custom benchmark suite
-- **Metrics to Track**:
-  - Nodes per second at different depths
-  - TT hit rate
-  - Move ordering effectiveness (beta cutoff position)
-  - Quiescence search percentage
-- **Output**: CSV files for regression tracking
-
-#### 🟢 Create Automated Test Suite
-- **Estimate**: 2-3 days full scope; ~1 day for the near-term slice
-- **Status**: Partially in place — exe tactical suite is gated in `Validate-PrePR.ps1`
-  Step 3 since PR #69; QFORK-001 mirrored as Catch2 `[tactical]` case
-- ✅ **Near-term slice done (July 2026)**: WAC mate-in-2/3/4 + non-mate tactical-win
-  batches added to `Tests/tactical_test_cases.json`, 8 → 31 positions, 31/31 passing.
-  Candidates verified via a staging file (`Tests/tactical_staging.json`, transient) +
-  `Scripts/verify_mate_key.py` (ground-truth mate confirmation) before merging into the
-  gated file. See `Docs/TestDesign.md` for the full position list and drop list.
-- ✅ **Stability mode (July 2026)**: `tactical stability [N] [filename]` runs the gated
-  suite N consecutive times; fails on any per-run gate failure or any position whose
-  pass/fail flips between runs (`evaluate_stability()`, unit-tested in `[suite_policy]`).
-  Gated at N=10 in `Validate-PrePR.ps1` Step 3 — the cheap detector for intermittent
-  nondeterminism once Lazy SMP threads race on the shared TT.
-- **Deferred (decided July 2026)**: BT2630/ECMGCP — until deeper search (SEE/futility
-  pruning); at avg depth ~10.5 the engine would fail a large fraction, and a gate expected
-  to fail is no gate. Endgame tablebase positions — build alongside the eval progress work
-  (#70/#76) as its regression suite, pinning each fix with positions that failed before.
-- **Ongoing**: fold in regression positions from each bug fix as they occur
-- **Acceptance**: Pass 90%+ tactical tests overall, 100% mate tests (now enforced by
-  `evaluate_results()` + `[suite_policy]` unit tests, not just a manual target)
-
----
-
-## ⚪ Long-term Ideas (Research & Experimental)
-
-### Parallel Search
-
-#### ⚪ Implement Lazy SMP
-- **Estimate**: 3-4 weeks
-- **Prerequisite**: ThreadData refactoring complete — ✅ satisfied (July 2026); GetMove
-  SearchLimits refactor complete — ✅ satisfied (July 2026, removes the pre-call
-  `SetClockInfo()`/`SetMaxDepth()` ordering contract a helper thread could otherwise
-  violate); ELO baseline (step 3 of the Near-Term Sequence) also done — no remaining
-  refactoring blockers
-- **Description**: Multiple threads search same position with shared TT
-- **Algorithm**:
-  ```
-  Main thread: Normal iterative deepening
-  Helper threads: Start at depth d-3, d-2, etc.
-  All share transposition table
-  Best move propagates through TT
-  ```
-- **Challenges**:
-  - Thread-safe TT access
-  - Load balancing
-  - Move ordering divergence
-- **Target Speedup**: 2-3x on 4 cores, 3-5x on 8 cores
-
-#### ⚪ Implement YBWC (Young Brothers Wait Concept)
-- **Estimate**: 4-5 weeks
-- **Description**: More sophisticated parallel search
-- **Complexity**: Higher than Lazy SMP
-- **ROI**: Questionable vs Lazy SMP simplicity
-
-### Advanced Search
-
-#### ⚪ Multi-PV Search
-- **Estimate**: 1-2 weeks
-- **Description**: Return top N moves with evaluations
-- **Use Case**: Analysis mode, opening book generation
-
-#### ⚪ Singular Extensions
-- **Estimate**: 2-3 weeks
-- **Description**: Extend search when one move is much better
-- **Impact**: Better tactical play, 5-10% improvement
-
-#### ⚪ Internal Iterative Deepening (IID)
-- **Estimate**: 1 week
-- **Description**: Search shallower when no hash move available
-- **Impact**: Better move ordering, 3-5% improvement
-
-### Evaluation
-
-#### ⚪ Add King Safety Evaluation
-- **Estimate**: 2-3 weeks
-- **Components**: Pawn shield scoring, king tropism, open files near king, attack squares
-
-#### ⚪ Add Mobility Evaluation
-- **Estimate**: 1-2 weeks
-- **Description**: Score based on legal moves available
-- **Note**: Expensive to compute, maybe cache
-
-#### ⚪ Tapered Evaluation (Midgame → Endgame)
-- **Estimate**: 1 week
-- **Description**: Interpolate between midgame and endgame scores based on material count
-
-#### ⚪ Neural Network Evaluation (NNUE)
-- **Estimate**: 3-6 months
-- **Impact**: Potentially +300 Elo
-- **Complexity**: Very high — requires training infrastructure
-- **Reference**: Stockfish NNUE implementation
-- **Prerequisite**: Strong classical evaluation baseline
-
-### Advanced Features
-
-#### ⚪ Syzygy Tablebase Support
-- **Estimate**: 2-3 weeks
-- **Library**: [Fathom](https://github.com/jdart1/Fathom)
-- **Impact**: Perfect play in 7-piece endgames, draw avoidance
-
-#### ⚪ Opening Book
-- **Estimate**: 1 week (integration), varies (book creation)
-- **Format**: Polyglot or custom
-- **Source**: Master games database
-
-#### ⚪ Time Management — Phase 2 (complexity-aware)
-- **Estimate**: 1-2 days
-- **Dependency**: Time Management Phase 1 (soft/hard limits, PR #5) ✅ done — do after UCI
-- **Description**: Extend allocation formula with position-complexity signals
-- **Factors**: Search instability (move changed last N iterations), material imbalance,
-  number of legal moves (few moves → spend more time), score variance across depths
-- **Note**: Phase 1 (clock-aware allocation, soft/hard limits) is implemented in PR #5.
-  This item adds the *adaptive* layer on top of the static formula.
-
-### Infrastructure
-
-#### ⚪ Extract StratEngine Static Library
-- **Estimate**: 1–2 days
-- **Impact**: Engine compiled once instead of twice on clean builds (~50% reduction in compilation work)
-- **Risk**: LTCG across a `.lib` boundary requires `/GL` on the library and `/LTCG` on the consuming linker; misconfiguration silently drops cross-TU inlining (5–15% NPS regression). Must be verified with a NPS benchmark.
-- **Better fit**: Natural as a CMake `add_library(StratEngine STATIC …)` — combine with CMake migration rather than doing it in isolation
-
-#### ⚪ Add sccache Compilation Caching
-- **Estimate**: Half a day
-- **Impact**: Near-instant subsequent clean builds when source is unchanged (branch-switch and switch-back). Zero benefit on first clean build.
-- **Approach**: Install `sccache`; set `<CLToolExe>` in vcxproj or CMake `CMAKE_C_COMPILER_LAUNCHER`
-- **Best fit**: Combined with a CI pipeline (GitHub Actions); less useful without CI
-
-#### ⚪ Cross-Platform Build System
-- **Estimate**: 3-5 days
-- **Current**: MSVC on Windows; MSBuild `.vcxproj` / `.sln`; `build.ps1` script wraps invocation
-- **Target**: CMake for Windows/Linux/Mac; Ninja back-end; `cmake --build . --target StratChessTests -j8`
-- **CI**: GitHub Actions for automated builds
-- **Note**: When migrating, preserve `INTERPROCEDURAL_OPTIMIZATION` (`/GL` + `/LTCG` equivalent) on the main Release target to avoid NPS regression; verify with a before/after NPS benchmark
-
-#### ⚪ Migrate to Clang/LLVM Compiler
-- **Estimate**: 1-2 days (on top of CMake migration effort)
-- **Prerequisite**: Cross-Platform Build System (CMake) — **do both together**; migrating MSBuild + Clang in isolation is high cost, low reward
-- **Plan**: `.claude/plans/cpp23-upgrade.md` (toolchain section)
-- **Rationale**:
-  - `clang-tidy` and `clang-format` enforce code quality in CI
-  - Leading-edge C++23/26 language conformance (Clang typically ahead of MSVC on proposals)
-  - Linux/Mac builds for free once on CMake
-  - `std::countr_zero` still compiles to `TZCNT` — no NPS regression expected; verify with before/after benchmark
-- **Note**: MSVC's C++23 standard **library** support is already complete for all features on this roadmap, so Clang is not needed to unlock C++23. This item is purely about toolchain quality and portability.
+This file retains: general engineering principles (below) and the historical record of
+completed work.
 
 ---
 
@@ -397,7 +51,7 @@ revisit) completed July 2026 — Lazy SMP is unblocked.
 ### When to Implement
 Consider this order:
 1. **Bug fixes** - Always first
-2. **Blocking items** - Required for parallel search (De-Singleton Board, ThreadData)
+2. **Blocking items** - Required for parallel search
 3. **High-impact perf** - LMR, killer moves
 4. **Infrastructure** - Testing, profiling (enables confidence)
 5. **Advanced features** - NNUE, tablebases (after solid baseline)
@@ -496,8 +150,8 @@ Avoid these traps:
   - `FromUCI(string_view, Board)` — parse UCI move from board pre-DoMove state
 - **Gaps fixed**: verbose line restored; `+` now in `gamelist.txt`; fragile `\n`-surgery
   in `PrintBoardAndMove` removed; promotion-captures now get suffix in perft divide output
-- **`Move::Output()` / `Move::Output(ePiece)`**: kept as-is (12 callers in AIPerplex
-  use coordinate-only output for search logging; migration deferred — see `Migrate Move::Output()` item)
+- **`Move::Output()` / `Move::Output(ePiece)`**: kept as-is (callers migrated separately —
+  see the "Migrate Move::Output() callers" issue)
 - **`ToSAN`** (Standard Algebraic Notation): omitted — deferred until PGN export is needed
 - **Tests**: `StratChessTests/MoveFormatterTests.cpp` tag `[formatter]` — 65 assertions, 6 test cases
 - **Plan**: `.claude/plans/move-formatter.md`
@@ -537,7 +191,6 @@ Avoid these traps:
 
 ### Refactoring: Remove Dead Code (March 2026)
 - Commented-out old `Search()` method body removed from `AIPerplex.cpp`
-- Remaining `// TODO: Relocate MoveSorting to MoveSorter class` is a live tracked item (see "Migrate Inline Move Scoring" in active section)
 
 ### Infrastructure: Fix zobrist::initialize() Never Called (March 2026)
 - `zobrist::initialize()` now called in `Board` constructor (`Board.cpp` line 50)
@@ -555,8 +208,8 @@ Avoid these traps:
 - `Engine::compute_budget(remaining, increment, moves_to_go)` free function in `TimeUtils.h/cpp`
   — pure math, independently testable; formula: `soft = usable/horizon + inc*80%`, `hard = min(soft*3, usable/2)`
 - `TimeManager` gains two-arg `start(soft, hard)` + `should_stop_iteration()` (soft limit check)
-- `PlayerAiBase::SetClockInfo()` public method: computes budget and arms timer; `clock_info_set_`
-  flag prevents `StartTimer()` from overwriting the clock-aware budgets
+- `PlayerAiBase::SetClockInfo()` public method: computes budget and arms timer (superseded —
+  see "GetMove SearchLimits Refactor" below; `SetClockInfo()` has since been deleted)
 - `AIPerplex::iterative_deepening()` soft-limit gate: stop after depth if `should_stop_iteration()`
   and best move was stable; allow one extra depth if best move just changed (verify the new move)
 - Node-based time polling in `pvs()`: check every 1,024 nodes instead of every call
@@ -606,7 +259,7 @@ Avoid these traps:
 - Validated throughout: perft 640/640 with identical node counts at every phase, self-play reproducing byte-identical node counts vs. the pre-refactor baseline (fully deterministic — no behavioral change), self-play through both `PlayerAI`/`PlayerBase`-derived hierarchies (AIPerplex and AIAgent) after the base-class changes in the player-injection phase
 - New `[board_instance]` test tag (`BoardInstanceTests.cpp`) covers instance independence, copy-then-diverge semantics, and cross-instance zobrist identity
 - Plan: `.claude/plans/de-singleton-board.md` (7 phases, each independently built/tested/committed)
-- **Unblocks**: Extract ThreadData Structure (see Critical Priority above), and the "with De-Singleton Board" C++23 item (`std::expected` in `FENParser::ParseFEN`)
+- **Unblocks**: Extract ThreadData Structure, and the "with De-Singleton Board" C++23 item (`std::expected` in `FENParser::ParseFEN`)
 
 ### Correctness: NMP Single-Piece Zugzwang Guard (issue #66, July 2026)
 - QFORK-001 (`8/8/8/3r4/4k3/8/8/3QK3 w`, KQ vs KR) regressed to 7/8 on the exe tactical suite when null-move pruning landed (PR #55): the zugzwang guard only refused NMP for a side with *zero* non-pawn material, so the side with a lone rook could "pass", hiding the domination/zugzwang rook win
@@ -668,8 +321,46 @@ Avoid these traps:
 - Invoked via: `StratChessEvolved.exe uci`; game mode unchanged (no args)
 - Validated: pipe-based functional smoke test (uci → isready → position → go movetime → quit)
 
+### Planning: Near-Term Sequence Before Lazy SMP (decided + completed July 2026)
+- Ordering agreed after the issue #66 post-mortem: (1) tactical suite expansion — WAC
+  mate-in-2/3/4 + non-mate tactical wins, 8 → 31 gated positions, 100%-mate-category pass
+  policy; (2) Extract ThreadData Structure (see above); (3) ELO baseline + deferred-suite
+  scope revisit before Lazy SMP
+- Key decision: **stability mode** (`tactical stability N`) adopted as the pre-SMP
+  correctness artifact — runs the gated suite N consecutive times, fails on any per-run
+  gate failure or any position flipping pass/fail between runs; gated at N=10 in
+  `Validate-PrePR.ps1` Step 3. Chosen because once Lazy SMP threads race on a shared TT,
+  byte-identical node-count equivalence (this repo's strongest per-refactor check) stops
+  being available, so a flakiness detector was needed before that point
+- BT2630/ECM-GCP tactical suite additions deferred until deeper search (SEE/futility
+  pruning) — a gate expected to fail on a large fraction of positions at current depth is
+  no gate; endgame tablebase positions scheduled alongside future eval progress work as
+  its regression suite
+- **Outcome**: both 🔴 Critical refactoring blockers (ThreadData, De-Singleton Board) and
+  the ELO-baseline pre-work are done
+
+### Refactoring: GetMove SearchLimits Refactor (PR #80, July 2026)
+- Every `GetMove()` call now takes an explicit `const SearchLimits&` (`StratEngine/SearchLimits.h`:
+  clock/movetime/depth/infinite), resolved via a pure `Engine::resolve_limits()` function;
+  `PlayerAiBase::ApplyLimits()` replaces `StartTimer()` + the `clock_info_set_` flag dance
+- `SetClockInfo()` deleted entirely; `UCIHandler::cmd_go` and `Game::SetPlayerParams` both
+  build a `SearchLimits` and pass it per call instead of pre-configuring AI state — removes
+  the pre-call setter-ordering contract a Lazy SMP helper thread could otherwise violate
+- `game_settings.json` migrated to a `"search_limits"` block; legacy `max_depth`/`time_limit`
+  keys still work via a fallback with a one-time deprecation warning
+- Delta from the original roadmap sketch (a `GameInfo`-field `TimeControl` struct): rejected
+  because `GameInfo` is copied into `info_seq` at every search ply
+- Validated: byte-identical fixed-depth self-play node counts vs. pre-refactor baseline,
+  AIAgent self-play regression (base classes changed), full `Validate-PrePR.ps1` gate, UCI
+  smoke tests across all `go` modes
+- `search-reviewer` caught a real gap in the legacy-config fallback (a `max_depth`-only
+  config would have silently gotten an unbounded 1-hour search instead of the old 15s cap)
+  — fixed before merge
+- Plan: `.claude/plans/getmove-searchlimits-refactor.md`
+- **Unblocks**: Lazy SMP — no remaining refactoring blockers
+
 ---
 
-**Document Version**: 1.3
-**Next Review**: October 2026
+**Document Version**: 2.0 — active backlog migrated to GitHub Issues; this file is now
+principles + history only
 **Owner**: Thees
