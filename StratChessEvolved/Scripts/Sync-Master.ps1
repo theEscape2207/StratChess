@@ -10,9 +10,18 @@
     reconciled with origin/main on demand -- fast-forwarded when possible, merged
     (preserving any local-only commits) when master has diverged.
 
-    Never pushes anywhere. Never touches uncommitted changes -- aborts cleanly if the
-    working tree is dirty rather than risk losing anything. Restores whatever branch
-    was checked out before the script ran, if it had to switch to master first.
+    Never pushes anywhere and never opens a PR -- this script only pulls origin/main
+    down into master. (Publishing master's own local-only commits into main is a
+    separate, not-yet-automated step: branch off origin/main, bring the commits over,
+    push, open a PR.)
+
+    A dirty working tree does not block the sync: uncommitted changes (tracked and
+    untracked) are stashed first and popped back at the end, on whichever branch they
+    started on. If the pop hits a conflict, git leaves the stash entry in place rather
+    than dropping it -- nothing is lost, you just resolve the conflict and `git stash
+    drop` yourself once satisfied. Restores whatever branch was checked out before the
+    script ran, if it had to switch to master first -- this always happens, even if the
+    sync itself fails partway through.
 
 .WHEN TO USE
     - At the start of a session that will work directly in the main checkout (not a
@@ -48,27 +57,66 @@ function Write-GitOutput {
     if ($Output) { Write-Host (($Output | Out-String).Trim()) }
 }
 
+# Restores whatever this run changed (branch, stash) and exits. Called from every exit
+# point instead of a bare `exit N` so cleanup always runs, success or failure -- a raw
+# `exit` does not reliably trigger try/finally in a plain script, so this is explicit.
+function Restore-AndExit {
+    param(
+        [int]$Code,
+        [string]$OriginalBranch,
+        [bool]$SwitchedBranch,
+        [bool]$Stashed
+    )
+    if ($SwitchedBranch) {
+        $current = (Invoke-Git @('rev-parse', '--abbrev-ref', 'HEAD')).Output
+        if ($current -ne $OriginalBranch) {
+            Write-Host "`n==> Restoring original branch '$OriginalBranch'" -ForegroundColor Cyan
+            Invoke-Git @('checkout', $OriginalBranch) | Out-Null
+        }
+    }
+    if ($Stashed) {
+        Write-Host "`n==> Restoring stashed changes" -ForegroundColor Cyan
+        $pop = Invoke-Git @('stash', 'pop')
+        if ($pop.ExitCode -ne 0) {
+            Write-Host "WARNING: stash pop hit a conflict -- your changes are safely preserved in the stash (not dropped)." -ForegroundColor Yellow
+            Write-GitOutput $pop.Output
+            Write-Host "Resolve the conflict, then run 'git stash drop' once you're satisfied nothing was lost." -ForegroundColor Yellow
+        } else {
+            Write-Host "PASS: stashed changes restored." -ForegroundColor Green
+        }
+    }
+    exit $Code
+}
+
 Write-Host "`n==> Checking working tree" -ForegroundColor Cyan
+$originalBranch = (Invoke-Git @('rev-parse', '--abbrev-ref', 'HEAD')).Output
+$switchedBranch = $false
+$stashed = $false
+
 $status = Invoke-Git @('status', '--porcelain')
 if ($status.Output) {
-    Write-Host "FAIL: working tree has uncommitted changes. Commit, stash, or switch away before syncing master." -ForegroundColor Red
-    Write-GitOutput $status.Output
-    exit 1
+    Write-Host "Working tree has uncommitted changes -- stashing before sync." -ForegroundColor Yellow
+    $stash = Invoke-Git @('stash', 'push', '-u', '-m', 'Sync-Master.ps1 autostash')
+    if ($stash.ExitCode -ne 0) {
+        Write-Host "FAIL: could not stash uncommitted changes." -ForegroundColor Red
+        Write-GitOutput $stash.Output
+        Restore-AndExit -Code 1 -OriginalBranch $originalBranch -SwitchedBranch $switchedBranch -Stashed $stashed
+    }
+    $stashed = $true
+    Write-Host "PASS: uncommitted changes stashed." -ForegroundColor Green
+} else {
+    Write-Host "PASS: working tree is clean." -ForegroundColor Green
 }
-Write-Host "PASS: working tree is clean." -ForegroundColor Green
-
-$originalBranch = (Invoke-Git @('rev-parse', '--abbrev-ref', 'HEAD')).Output
 
 Write-Host "`n==> Fetching origin/main" -ForegroundColor Cyan
 $fetch = Invoke-Git @('fetch', 'origin', 'main')
 if ($fetch.ExitCode -ne 0) {
     Write-Host "FAIL: git fetch origin main failed." -ForegroundColor Red
     Write-GitOutput $fetch.Output
-    exit 1
+    Restore-AndExit -Code 1 -OriginalBranch $originalBranch -SwitchedBranch $switchedBranch -Stashed $stashed
 }
 Write-Host "PASS: fetched." -ForegroundColor Green
 
-$switchedBranch = $false
 if ($originalBranch -ne 'master') {
     Write-Host "`n==> Switching to master (was on '$originalBranch')" -ForegroundColor Cyan
     $checkout = Invoke-Git @('checkout', 'master')
@@ -81,7 +129,7 @@ if ($originalBranch -ne 'master') {
             $masterPath = ($masterLine -split '\s+')[0]
             Write-Host "master is checked out at: $masterPath -- run this script from there instead." -ForegroundColor Yellow
         }
-        exit 1
+        Restore-AndExit -Code 1 -OriginalBranch $originalBranch -SwitchedBranch $switchedBranch -Stashed $stashed
     }
     $switchedBranch = $true
 }
@@ -105,17 +153,11 @@ if ($ff.ExitCode -eq 0) {
         Invoke-Git @('merge', '--abort') | Out-Null
         Write-GitOutput $merge.Output
         Write-Host "Resolve manually: git checkout master; git merge origin/main" -ForegroundColor Yellow
-        if ($switchedBranch) { Invoke-Git @('checkout', $originalBranch) | Out-Null }
-        exit 1
+        Restore-AndExit -Code 1 -OriginalBranch $originalBranch -SwitchedBranch $switchedBranch -Stashed $stashed
     }
     $mergeSha = (Invoke-Git @('rev-parse', '--short', 'HEAD')).Output
     Write-Host "PASS: merged origin/main into master (new commit $mergeSha); local-only commits preserved." -ForegroundColor Green
 }
 
-if ($switchedBranch) {
-    Write-Host "`n==> Switching back to '$originalBranch'" -ForegroundColor Cyan
-    Invoke-Git @('checkout', $originalBranch) | Out-Null
-}
-
 Write-Host "`nSync complete." -ForegroundColor Green
-exit 0
+Restore-AndExit -Code 0 -OriginalBranch $originalBranch -SwitchedBranch $switchedBranch -Stashed $stashed
