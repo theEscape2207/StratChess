@@ -14,7 +14,7 @@
 
 // TODO: Add support for official input of castling moves (e.g. "0-0" or "0-0-0") 
 // Right now its only possible through e1g1 (short) or e1-c1(long)
-Move PlayerHuman::GetMove(_Inout_ GameInfo& info)
+Move PlayerHuman::GetMove(_Inout_ GameInfo& info, const SearchLimits&)
 {
 	Board& board = board_;
 	MoveList moveList;

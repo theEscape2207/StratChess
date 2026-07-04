@@ -173,14 +173,15 @@ void PlayerAiBase::StopSearch() noexcept
 	time_manager_.stop();
 }
 
-void PlayerAiBase::SetClockInfo(std::chrono::milliseconds remaining,
-                                std::chrono::milliseconds increment,
-                                int moves_to_go) noexcept
+unsigned PlayerAiBase::ApplyLimits(const SearchLimits& limits)
 {
-	auto [soft, hard] = Engine::compute_budget(remaining, increment, moves_to_go);
-	time_limit_ = hard;               // keep in sync for log output
-	time_manager_.start(soft, hard);  // arm now; StartTimer() will skip re-arming
-	clock_info_set_ = true;
+	const auto r = Engine::resolve_limits(limits, time_limit_, max_depth_);
+	_startingTime = std::chrono::high_resolution_clock::now();
+	nodes_since_check_ = 0;
+	time_manager_.start(r.budget.soft, r.budget.hard);
+	stop_search_.store(false, std::memory_order_relaxed);
+	effective_depth_ = r.effective_depth;
+	return r.effective_depth;
 }
 
 // ************************************

@@ -11,7 +11,7 @@ public:
 	explicit ABIterative(Board& board, _In_ unsigned maxDepth)
 		:PlayerAiIterBase(board, maxDepth) { }
 	// Implementation/overrides of the IPlayer interface
-	Move GetMove( _Inout_ GameInfo& info ) override;
+	Move GetMove( _Inout_ GameInfo& info, const SearchLimits& limits ) override;
 	const char* GetType() const noexcept override
 	{	return "Iterative AlphaBeta";	}
 	
