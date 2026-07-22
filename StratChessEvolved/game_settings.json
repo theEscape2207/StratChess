@@ -34,7 +34,11 @@
           "aspiration_initial_delta": 50,
           "aspiration_max_retries": 4,
           "aspiration_enabled": true
-        }
+        },
+        /* threads: Lazy SMP search thread count (config plumbing only for
+           now — no helper threads are spawned yet; flip above 1 once the
+           actual Lazy SMP search is implemented and ELO-validated) */
+        "threads": 1
       },
       "black": {
         "type": 6,
@@ -52,7 +56,11 @@
           "aspiration_initial_delta": 50,
           "aspiration_max_retries": 4,
           "aspiration_enabled": true
-        }
+        },
+        /* threads: Lazy SMP search thread count (config plumbing only for
+           now — no helper threads are spawned yet; flip above 1 once the
+           actual Lazy SMP search is implemented and ELO-validated) */
+        "threads": 1
       }
     },
 

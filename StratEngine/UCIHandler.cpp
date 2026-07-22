@@ -54,6 +54,7 @@ void UciHandler::cmd_uci()
 {
     send("id name StratChess");
     send("id author Thees");
+    send("option name Threads type spin default 1 min 1 max 32");
     send("uciok");
 }
 
@@ -170,6 +171,47 @@ void UciHandler::cmd_stop()
     stop_and_join();
 }
 
+void UciHandler::cmd_setoption(std::string_view line)
+{
+    // Minimal UCI 'setoption' parser — recognizes exactly:
+    //   setoption name Threads value N
+    // Any other option name, or a malformed/missing value, is silently
+    // ignored (standard UCI convention — same as unknown top-level commands
+    // in run()). Case-sensitive match on "Threads", matching the convention
+    // used by Stockfish and other engines.
+    auto trim = [](std::string_view s) {
+        const size_t b = s.find_first_not_of(' ');
+        if (b == std::string_view::npos) return std::string_view{};
+        const size_t e = s.find_last_not_of(' ');
+        return s.substr(b, e - b + 1);
+    };
+
+    const auto name_pos = line.find("name");
+    if (name_pos == std::string_view::npos) return;
+
+    const auto value_pos = line.find("value");
+    const std::string_view name = trim((value_pos != std::string_view::npos)
+        ? line.substr(name_pos + 4, value_pos - (name_pos + 4))
+        : line.substr(name_pos + 4));
+
+    if (name != "Threads" || value_pos == std::string_view::npos) return;
+
+    const std::string_view value_str = trim(line.substr(value_pos + 5));
+    if (value_str.empty()) return;
+    for (char c : value_str) {
+        if (c < '0' || c > '9') return;   // non-numeric — ignore malformed value
+    }
+
+    unsigned n = 0;
+    try {
+        n = static_cast<unsigned>(std::stoul(std::string(value_str)));
+    } catch (...) {
+        return;   // out-of-range or otherwise unparsable — ignore
+    }
+
+    if (ai_) ai_->SetThreads(n);
+}
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
@@ -215,6 +257,7 @@ void UciHandler::run()
         else if (line == "ucinewgame")            { cmd_ucinewgame(); }
         else if (line.starts_with("position"))    { cmd_position(line); }
         else if (line.starts_with("go"))          { cmd_go(line); }
+        else if (line.starts_with("setoption"))   { cmd_setoption(line); }
         else if (line == "stop")                  { cmd_stop(); }
         else if (line == "quit")                  { cmd_stop(); break; }
         // unknown commands: ignore silently (UCI spec)
