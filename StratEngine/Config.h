@@ -32,6 +32,7 @@ public:
 		unsigned eval{ 0 };
 		SearchLimits search_limits;               // per-move search constraints, parsed from "search_limits" (or legacy max_depth/time_limit)
 		std::optional<SearchTuningConfig> search_tuning;  // only for AI_PERPLEX (type 6)
+		std::optional<unsigned> threads;          // Lazy SMP thread count; applied via PlayerAiBase::SetThreads (clamped [1,32]; legacy AIs ignore)
 	};
 
 	struct GameConfig

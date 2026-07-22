@@ -38,6 +38,7 @@ private:
     void cmd_position(std::string_view line);
     void cmd_go(std::string_view line);
     void cmd_stop();
+    void cmd_setoption(std::string_view line);
 
     void stop_and_join();   // signal + join search thread
     void init_ai();         // (re)create AIPerplex instance

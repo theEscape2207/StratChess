@@ -26,6 +26,11 @@ public:
 	void SetMaxDepth(unsigned depth) noexcept { max_depth_ = depth; }
 	void SetTimeLimit(std::chrono::milliseconds ms) noexcept { time_limit_ = ms; }
 
+	/// Configure the number of search threads (Lazy SMP). Base no-op — legacy
+	/// AIs (AIBasic/AIAgent/ABIterative) ignore this; AIPerplex overrides and
+	/// clamps. No threading is actually spawned yet (config plumbing only).
+	virtual void SetThreads(unsigned) noexcept {}
+
 	/// Signal the search to stop immediately (e.g. from UCI 'stop').
 	/// Thread-safe: may be called from any thread.
 	void StopSearch() noexcept;

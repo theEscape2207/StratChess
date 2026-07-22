@@ -6,6 +6,7 @@
 #include "PVTable.h"
 #include "ThreadData.h"
 #include <memory>
+#include <algorithm>
 #include <cstdint>
 
 // Search result structure - returned from iterative_deepening
@@ -25,6 +26,10 @@ public:
 	{
 		return "Perplexity Transpositional AlphaBeta";
 	}
+
+	// Configure the number of Lazy SMP search threads; clamps to [1, 32].
+	// No helper threads are spawned yet — config plumbing only (Task 2).
+	void SetThreads(unsigned n) noexcept override { threads_ = std::clamp(n, 1u, 32u); }
 
 	// Note: NOT to be called directly - only through Factory method (needed to be public due to usage of make_unique)
 	explicit AIPerplex(Board& board, _In_ unsigned md);
@@ -145,6 +150,11 @@ private:
 	// single instance used by the (currently single-threaded) search. Lazy SMP
 	// helper threads will each get their own. See ThreadData.h.
 	ThreadData td_;
+
+	// Configured number of search threads (Lazy SMP). Clamped to [1, 32] by
+	// SetThreads(). Set but not yet consumed by the search — no helper
+	// threads are spawned until Task 3.
+	unsigned threads_{ 1 };
 
 	// logging control: enable detailed logging when needed (default: false)
 	static inline bool s_verbose_logging = false;
