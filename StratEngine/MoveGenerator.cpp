@@ -4,6 +4,7 @@
 
 #include "StdAfx.h"
 #include "MoveGenerator.h"
+#include "Magic.h"
 #include "Board.h"
 #include "SquareHelper.h"
 #include "PieceHelper.h"
@@ -211,13 +212,13 @@ BITBOARD MoveGenerator::GetOfficerAttackBoard(const BITBOARD* bbBitBoards, eSqua
 		return GetBishopBitboard(bbBitBoards, from, color);
 	case ePiece::WHITE_ROOK:
 	case ePiece::BLACK_ROOK:
-		return GetTowerBitboard(bbBitBoards, from, color);
+		return GetRookBitboard(bbBitBoards, from, color);
 	case ePiece::WHITE_QUEEN:
 	case ePiece::BLACK_QUEEN:
 		// Dronningen er i virkeligheden et taarn med en loeber ovenpaa hovedet ;-) 
 		// (dvs kan bevaege sig som baade et taarn og en loeber samtidigt (dog en ad gangen))
 		return GetBishopBitboard(bbBitBoards, from, color) |
-			GetTowerBitboard(bbBitBoards, from, color);
+			GetRookBitboard(bbBitBoards, from, color);
 	case ePiece::WHITE_KING:
 	case ePiece::BLACK_KING:
 		return Bits::clearBits(g_bbKingMoves[from], bbBitBoards[ALL_FROM_COLOR + static_cast<int>(color)]);
@@ -446,24 +447,18 @@ void MoveGenerator::AddPawnCaptures([[maybe_unused]] const Board& board, MoveLis
 }
 
 //***************************************
-// Method:      GetTowerBitboard
+// Method:      GetRookBitboard
 // Description: 
-// FullName:    private MoveGenerator::GetTowerBitboard const
+// FullName:    private MoveGenerator::GetRookBitboard const
 // Returns:     BITBOARD - 
 // Parameter:   const BITBOARD* bbBitBoards - 
 //			:   const Square& from - 
 //			:   eColor color - 
 //***************************************
-BITBOARD MoveGenerator::GetTowerBitboard(const BITBOARD* bbBitBoards, eSquare from, eColor color) noexcept
+BITBOARD MoveGenerator::GetRookBitboard(const BITBOARD* bbBitBoards, eSquare from, eColor color) noexcept
 {
-	// File and Rank moves
-	auto iOccupied = static_cast<int>((bbBitBoards[ALL_PIECES] >> (Rank(from) << 3)) & 255);
-	BITBOARD bbAttack = Bits::clearBits(g_bbMovesRank[from][iOccupied], bbBitBoards[ALL_FROM_COLOR + static_cast<int>(color)]);
-
-	iOccupied = static_cast<int>((bbBitBoards[ROTATED90] >> (File(from) << 3)) & 255);
-	bbAttack |= Bits::clearBits(g_bbMovesFile[from][iOccupied], bbBitBoards[ALL_FROM_COLOR + static_cast<int>(color)]);
-
-	return bbAttack;
+	const BITBOARD bbAttack = RookAttacks(from, bbBitBoards[ALL_PIECES]);
+	return Bits::clearBits(bbAttack, bbBitBoards[ALL_FROM_COLOR + static_cast<int>(color)]);
 }
 
 //***************************************
@@ -477,16 +472,8 @@ BITBOARD MoveGenerator::GetTowerBitboard(const BITBOARD* bbBitBoards, eSquare fr
 //***************************************
 BITBOARD MoveGenerator::GetBishopBitboard(const BITBOARD* bbBitBoards, eSquare from, eColor color) noexcept
 {
-	// Traekmuligheder i begge diagonaler
-	auto iOccupied = static_cast<int>((bbBitBoards[ROTATED45R] >> g_iDiagonalShifts_a1h8[from])
-		& g_bbDiagonalMask_a1h8[from]);
-	BITBOARD bbAttack = Bits::clearBits(g_bbMovesa1h8[from][iOccupied], bbBitBoards[ALL_FROM_COLOR + static_cast<int>(color)]);
-
-	iOccupied = static_cast<int>((bbBitBoards[ROTATED45L] >> g_iDiagonalShifts_a8h1[from])
-		& g_bbDiagonalMask_a8h1[from]);
-	bbAttack |= Bits::clearBits(g_bbMovesa8h1[from][iOccupied], bbBitBoards[ALL_FROM_COLOR + static_cast<int>(color)]);
-
-	return bbAttack;
+	const BITBOARD bbAttack = BishopAttacks(from, bbBitBoards[ALL_PIECES]);
+	return Bits::clearBits(bbAttack, bbBitBoards[ALL_FROM_COLOR + static_cast<int>(color)]);
 }
 
 //***************************************
@@ -559,7 +546,7 @@ BITBOARD MoveGenerator::GetAttackBoard(const Board& board, eColor attackByColor)
 	{
 		iFrom = Board::GetFirstPiece(bbPiecesToMove);
 		// Faa mulige traek for dronninger og taarne
-		bbAttackBoard |= GetTowerBitboard(boards.data(), iFrom, attackByColor);
+		bbAttackBoard |= GetRookBitboard(boards.data(), iFrom, attackByColor);
 
 		bbPiecesToMove = Bits::clearLsb(bbPiecesToMove);
 	}

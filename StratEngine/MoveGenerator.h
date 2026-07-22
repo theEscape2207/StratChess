@@ -47,7 +47,7 @@ private:
 	}
 
 	static BITBOARD GetOfficerAttackBoard(const BITBOARD* bbBitBoards, eSquare from, ePiece piece) noexcept;
-	static BITBOARD GetTowerBitboard(const BITBOARD* bbBitBoards, eSquare from, eColor color) noexcept;
+	static BITBOARD GetRookBitboard(const BITBOARD* bbBitBoards, eSquare from, eColor color) noexcept;
 	static BITBOARD GetBishopBitboard(const BITBOARD* bbBitBoards, eSquare from, eColor color) noexcept;
 
 	// TODO: SwapMoves is duplicated in MoveSorter

@@ -111,8 +111,9 @@
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>$(DepsRoot)json\include;$(DepsRoot)spdlog\include;..\StratEngine</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
       <LanguageStandard_C>stdc11</LanguageStandard_C>
-      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/utf-8 /constexpr:steps100000000 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -132,9 +133,10 @@
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
       <LanguageStandard_C>stdc11</LanguageStandard_C>
       <AdditionalIncludeDirectories>$(DepsRoot)json\include;$(DepsRoot)spdlog\include;..\StratEngine</AdditionalIncludeDirectories>
-      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/utf-8 /constexpr:steps100000000 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -182,6 +184,7 @@
     <ClInclude Include="..\StratEngine\Game.h" />
     <ClInclude Include="..\StratEngine\GameState.h" />
     <ClInclude Include="..\StratEngine\IPlayer.h" />
+    <ClInclude Include="..\StratEngine\Magic.h" />
     <ClInclude Include="..\StratEngine\Move.h" />
     <ClInclude Include="..\StratEngine\MoveFactory.h" />
     <ClInclude Include="..\StratEngine\MoveFormatter.h" />
