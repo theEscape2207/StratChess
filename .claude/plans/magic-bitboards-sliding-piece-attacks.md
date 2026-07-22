@@ -2,7 +2,7 @@
 
 **Created**: 2026-07-01
 **Author**: Claude (analysis session, following BitBoardHelper/MoveGenerator modernization review)
-**Status**: Design only — not started. Not yet added as a hard blocker for anything; tracked as a standalone High-priority Performance item in `Docs/Roadmap.md`.
+**Status**: ✅ **Implemented 2026-07-22** — see "Implementation Status" section at the end of this doc for what actually landed and where it diverged from the design below.
 
 ---
 
@@ -109,3 +109,59 @@ Alternative (deferred, not recommended for first pass): isolate PEXT-using code 
 - No behavioral change to check detection, castling-through-check checks (`AddCastleMoves` calls `GetAttackBoard`, which calls `GetTowerBitboard`/`GetBishopBitboard`), or `GetAttackBoard`'s en-passant handling.
 - `Board::test_bitboards()` invariant (all individual piece boards OR together to equal `ALL_PIECES`) must still hold with the rotated boards removed from the `TBitboards` array.
 - The binary now requires BMI2-capable hardware to run at all (Haswell+/Zen3+) — this is a new, permanent hard requirement, not a soft degradation.
+
+
+---
+
+## Implementation Status (2026-07-22)
+
+Implemented directly on `origin/main` (issue #85), following this design with two decisions
+resolved and one correction to the memory estimate:
+
+1. **No classic-magic fallback / runtime dispatch (Decision 4's "alternative" rejected).**
+   `.claude/plans/full-build-test-ci-github-actions.md` had separately flagged that CI-runner
+   BMI2 support was worth checking before committing to PEXT-only. Checked both: this dev
+   machine (`AMD Ryzen AI 9 HX 370`, Zen 5) and the CI runner (`windows-2025-vs2026`, modern
+   Azure VM, confirmed Haswell+/Zen3+-class in that doc) both have fast BMI2. Went with
+   project-wide `/arch:AVX2`, no fallback — matches this project's convention against
+   unexercised code paths.
+2. **No temporary A/B compile-time switch (Step 8's suggestion skipped).** `Tests/perft_test_cases.json`
+   already encodes expected node counts independent of any old implementation, so it's a
+   sufficient correctness oracle without compiling two attack-generation paths side by side.
+   The old rotated-bitboard code was deleted directly; git history is the rollback path.
+3. **Table size correction**: the ~250KB/~40KB estimate in Decision 3 was wrong by ~8x — actual
+   footprint is `g_bbRookAttacks[64][4096]` = 2 MB + `g_bbBishopAttacks[64][512]` = 256 KB ≈
+   2.25 MB combined (still trivially L2/L3-resident; not a practical concern, just a documentation
+   correction).
+4. **Compile-time table generation needed `/constexpr:steps100000000`** (added to
+   `AdditionalOptions` in all four x64 ClCompile groups, both `.vcxproj` files) — MSVC's default
+   constexpr step budget (1,048,576) was exceeded generating the 2 MB rook table. Still 100%
+   compile-time generation as designed (Decision 2); just a larger allowed budget, not a runtime
+   init step.
+5. **`Magic.h` is a new standalone header** (as anticipated in Step 3's parenthetical) rather than
+   folding the tables into `defines.h` — keeps the already-large `defines.h` from growing further.
+   Everything lives under a `magic::` namespace except the two public `RookAttacks`/`BishopAttacks`
+   lookup functions.
+6. **Added `[magic]` unit tests** (`StratChessTests/MagicBitboardTests.cpp`) beyond this plan's
+   original perft-only validation — hand-verified `RookAttacks`/`BishopAttacks` bitboards for
+   open cross/diagonal, corner + blockers, and fully-blocked-adjacent cases. Perft alone only
+   proves attack generation is *consistent* with legal move counts, not that any individual
+   attack bitboard is correct in isolation; issue #104's `[bitboard]` tag is separately scoped to
+   `BitBoardHelper` bit ops, not sliding-piece attacks.
+
+**Validation results**:
+- `StratChessTests.exe` (all tags): **166/166 passed** (2307 assertions), including 9/9 `[magic]`
+  cases (7 initial + 2 added on search-reviewer's suggestion to exercise fully-saturated masks —
+  the largest-table-index path — for a1 rook / d4 bishop).
+- Deep perft (`Tests/perft_test_cases.json`, full suite): **640/640 passed**.
+- Gated tactical suite: **31/31 passed (100%)**.
+- AIPerplex self-play: ran cleanly for 90s wall-clock, sound moves and scores, no crashes/assertions.
+- **Node-count equivalence** (strongest signal): `perft run 6` from the start position produced
+  **byte-identical node counts** (119,060,324) on the pre-change and post-change binaries.
+- **NPS**: pre-change 32,065,802 NPS vs. post-change 32,204,577 NPS at depth 6 — a wash within
+  run-to-run noise at this benchmark. Perft's cost is dominated by move-list construction, not
+  attack lookup, so this doesn't isolate the win from removing 3 bitboard writes per
+  `DoMove`/`UndoMove` (a structural reduction independent of lookup speed). A search-NPS or
+  ELO-match benchmark would better isolate the attack-lookup-speed component if that's wanted
+  later; not done here since the correctness gates (byte-identical perft + all test tiers) were
+  the binding constraint per the approved plan.

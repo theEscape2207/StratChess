@@ -84,6 +84,9 @@
     <ClCompile Include="SuitePolicyTests.cpp">
       <Filter>Source Files\Tests</Filter>
     </ClCompile>
+    <ClCompile Include="MagicBitboardTests.cpp">
+      <Filter>Source Files\Tests</Filter>
+    </ClCompile>
     <!-- Engine sources -->
     <ClCompile Include="..\StratEngine\StdAfx.cpp">
       <Filter>Source Files\Engine</Filter>
@@ -163,6 +166,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="TacticalTestHelpers.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\StratEngine\Magic.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
