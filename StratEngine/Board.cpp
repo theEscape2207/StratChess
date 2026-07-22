@@ -84,11 +84,6 @@ void Board::add_piece(eSquare square, ePiece piece)
 	set_bitboard_square(bitboard_index(ALL_FROM_COLOR, PieceHelper::Color(piece)), square);
 	set_bitboard_square(ALL_PIECES, square);
 
-	// Rotated bitboards for sliding piece attack generation
-	BitBoardHelper::set_bits(bitboards_[ROTATED90],  g_bbMaskRotated90[square]);
-	BitBoardHelper::set_bits(bitboards_[ROTATED45R], g_bbMaskRotated45R[square]);
-	BitBoardHelper::set_bits(bitboards_[ROTATED45L], g_bbMaskRotated45L[square]);
-
 	set_square(square, piece);
 	zobrist_hash_ ^= zobrist::piece_keys[piece][square];
 
@@ -106,10 +101,6 @@ void Board::remove_piece(eSquare square, ePiece piece)
 
 	clear_bitboard_square(bitboard_index(ALL_FROM_COLOR, PieceHelper::Color(piece)), square);
 	clear_bitboard_square(ALL_PIECES, square);
-
-	BitBoardHelper::clear_bits(bitboards_[ROTATED90],  g_bbMaskRotated90[square]);
-	BitBoardHelper::clear_bits(bitboards_[ROTATED45R], g_bbMaskRotated45R[square]);
-	BitBoardHelper::clear_bits(bitboards_[ROTATED45L], g_bbMaskRotated45L[square]);
 
 	clear_square(square);
 	zobrist_hash_ ^= zobrist::piece_keys[piece][square];

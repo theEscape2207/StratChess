@@ -131,6 +131,9 @@
     <ClInclude Include="..\StratEngine\Game.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\StratEngine\Magic.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="..\StratEngine\Move.h">
       <Filter>Header Files</Filter>
     </ClInclude>
