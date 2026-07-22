@@ -339,6 +339,61 @@ entry into `tactical_test_cases.json` and delete it from the staging file.
 
 ---
 
+## Lazy SMP Shared-State Audit (Task 1, `.claude/plans/lazy-smp.md`)
+
+**Status**: ✅ Done, 2026-07-22. Still single-threaded — no threads spawned, no
+search-behavior change. Validated byte-identical against the pre-SMP baseline
+(`.superpowers/sdd/pre-smp-baseline-nodecounts.txt`): same fixed-depth-5
+AI-vs-AI self-play game to checkmate, 137 `GetMove complete` lines, identical
+move/score/depth/nodes/stable on every line.
+
+**Changes**:
+- `PlayerAiBase::nodes_since_check_` moved to `ThreadData::nodes_since_check_`
+  (`StratEngine/ThreadData.h`). The two increment/check sites in
+  `AIPerplex::pvs()` and `AIPerplex::quiescence()` (`StratEngine/AIPerplex.cpp`)
+  now gate the wall-clock `ShouldStopSearch()` call on `td.thread_id == 0`;
+  helper threads (once they exist, Task 3) rely solely on the existing
+  `IsAborted()` atomic fast-path already at the top of both functions.
+- Dead debug code removed: `AIPerplex::debug_tt_cache_misses()`,
+  `AIPerplex::assert_tt_store()`, and the `tt_misses` multimap. Both call
+  sites were already commented out (no live caller); prefer-deletion per the
+  task brief rather than gating dead code behind `thread_id == 0`.
+
+**Audit findings**:
+- **`EvalManager`/`EvalSimple`/`EvalComplex`** (`StratEngine/Eval.h/.cpp`):
+  confirmed stateless — no data members beyond compile-time constants,
+  `Evaluate()` is `const` and reads only its `const Board&` argument plus
+  `constexpr`/compile-time-initialized global tables (`g_Eval_Bitboards`,
+  `g_bbFileMask`, `g_bbFileUpMask`, `g_bbFileDownMask`). Safe to share a
+  single `EvalManager` instance, unsynchronized, across every Lazy SMP
+  helper thread — documented as a comment on the class in `Eval.h`. No
+  per-thread cloning needed.
+- **`PlayerAiBase::m_TotalTime`/`m_TotalCount`** and `StopTimerAndAdjustVars`
+  (`StratEngine/PlayerAI.h/.cpp`): written only once per `GetMove()` call, on
+  the calling thread, after that call's search has returned — i.e. strictly
+  after any helper threads for that move have joined under the Lazy SMP
+  design. No synchronization added; comment left in `PlayerAI.h` for Task 3
+  to re-verify once helper-thread join actually exists.
+- **spdlog logging** (`AIPerplex.cpp`'s `s_logger`, `Utils/Logger.cpp`'s
+  default/perf loggers): all sinks in use are the `_mt` (thread-safe)
+  variants (`stdout_color_sink_mt`, `basic_file_sink_mt`). The lazy-init
+  guard around `s_logger` itself (`ensure_logger_initialized()`) is a plain
+  `if (s_logger) return;` — not thread-safe if raced — but it is only ever
+  invoked from `AIPerplex::SetVerboseLogging()`, called once during
+  single-threaded setup before any search starts. Per the Lazy SMP plan,
+  helper threads do not log in v1, so this holds; flagged with a comment for
+  if that assumption ever changes.
+- **Static attack/Zobrist tables** (`BitBoardHelper.h`, `Magic.h`,
+  `Board.cpp`'s `zobrist::` namespace): PEXT sliding-piece attack tables in
+  `Magic.h` are `inline constexpr` — fully resolved at compile time, no
+  runtime initialization at all. The Zobrist key tables in `Board.cpp` use a
+  C++11 function-local `static const bool once = [] { ... }();` initializer
+  (a "magic static"), which the standard guarantees is thread-safe even if
+  raced by concurrent `Board` construction from multiple future helper
+  threads. No lazy/unguarded runtime init found anywhere in this set.
+
+---
+
 ## Test Isolation Rules
 
 - Each `TEST_CASE` constructs its own local `Board` (via the FEN constructor, or the default constructor + `SetupFromFEN`) — no shared global board state between tests.

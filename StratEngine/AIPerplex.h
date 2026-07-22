@@ -5,7 +5,6 @@
 #include "TranspositionTable.h"
 #include "PVTable.h"
 #include "ThreadData.h"
-#include <map>
 #include <memory>
 #include <cstdint>
 
@@ -170,13 +169,6 @@ public:
 	const SearchTuning& tuning() const { return tuning_; }
 
 private:
-	// Debug helpers
-	void debug_tt_cache_misses(unsigned int key, int ply);
-	void assert_tt_store(const TranspositionTable& tt, std::uint64_t key, int16_t ply,
-		[[maybe_unused]] int16_t value, [[maybe_unused]] int16_t depth, Move best_move,
-		[[maybe_unused]] BoundType bound, NodeType node_type, [[maybe_unused]] SearchPhase phase);
-	std::multimap<std::uint64_t, int> tt_misses;
-
 	SearchResult last_result_{};
 
 public:

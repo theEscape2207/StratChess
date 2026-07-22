@@ -78,7 +78,8 @@ protected:
 	/// Resolves per-call SearchLimits against the configured defaults
 	/// (time_limit_, max_depth_), arms time_manager_ with the resulting
 	/// budget, and resets per-move search state (_startingTime,
-	/// nodes_since_check_, stop_search_) — replaces the old StartTimer().
+	/// stop_search_) — replaces the old StartTimer(). (nodes_since_check_ now
+	/// lives on ThreadData; see ThreadData.h.)
 	/// Also stores the result in effective_depth_ for legacy AIs whose
 	/// recursive Search()/Quiescent() methods read the depth bound as a
 	/// member rather than a parameter; AIPerplex uses the return value
@@ -215,9 +216,6 @@ protected:
 
 	// Time control
 	std::atomic<bool> stop_search_{ false };
-	// Node-based time-check counter — reset at the start of each search; incremented in pvs().
-	// Checking time every 1024 nodes amortises the cost of chrono::now() calls.
-	int64_t nodes_since_check_{ 0 };
 	chess::TimeManager time_manager_;
 
 	// Search configuration — set from game_settings.json via SetMaxDepth / SetTimeLimit
@@ -235,6 +233,14 @@ protected:
 	//#ifdef PRINT_STATS
 
 		// Samlet tid og antal nodes for begge computerspillere - TODO: Separer evt til per spiller. Human burde ogsaa have en klokke
+		// Lazy SMP audit (Task 1, .claude/plans/lazy-smp.md): these statics are
+		// written only from StopTimerAndAdjustVars(), called once per GetMove()
+		// on the calling (single) thread, strictly after that call's search has
+		// returned (i.e. after any Lazy SMP helper threads for that move have
+		// already joined — the plan's design never has StopTimerAndAdjustVars
+		// run concurrently with an in-flight search). No synchronization is
+		// added here; this comment exists so Task 3's implementer re-verifies
+		// the invariant still holds once helper-thread join actually exists.
 	static std::chrono::milliseconds m_TotalTime;
 	static size_t m_TotalCount;
 	//#endif	// PRINT_STATS

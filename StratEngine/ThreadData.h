@@ -26,6 +26,13 @@ struct ThreadData {
 	// Thread-local node counter (replaces PlayerAiBase::m_SearchCount for AIPerplex).
 	int64_t nodes_searched = 0;
 
+	// Node-based time-check counter (replaces PlayerAiBase::nodes_since_check_ for
+	// AIPerplex). Reset alongside nodes_searched. Under Lazy SMP each helper thread
+	// increments its own copy — no cross-thread contention — but only thread 0 ever
+	// calls the wall-clock check (see pvs()/quiescence(): gated on thread_id == 0).
+	// Helper threads rely solely on the cheap atomic IsAborted() read instead.
+	int64_t nodes_since_check_ = 0;
+
 	// Thread-local principal variation.
 	PVTable pv_table;
 
