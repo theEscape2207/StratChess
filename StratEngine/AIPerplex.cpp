@@ -15,6 +15,20 @@
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 
+// Lazy SMP audit (Task 1, .claude/plans/lazy-smp.md): s_logger's sinks
+// (stdout_color_sink_mt, basic_file_sink_mt — see ensure_logger_initialized()
+// below, and the equivalent _mt sinks in Utils/Logger.cpp's default/perf
+// loggers) are all spdlog "_mt" thread-safe variants, so concurrent log
+// calls from multiple threads would be safe at the sink level. That said,
+// s_logger itself and ensure_logger_initialized()'s lazy-init (a plain
+// `if (s_logger) return;` check, not a magic static) are NOT safe to race:
+// initialization only ever happens from SetVerboseLogging(), invoked once
+// during single-threaded AIPerplex setup before any search (or future
+// helper thread) starts. Per the Lazy SMP plan, helper threads do not log
+// in v1 — they never call any of the log_* helpers below, so s_logger is
+// read-only (already-initialized-or-null) from their perspective. If a
+// future revision adds helper-thread logging, ensure_logger_initialized()
+// must be made safe to call concurrently (e.g. via std::call_once) first.
 static std::shared_ptr<spdlog::logger> s_logger = nullptr;
 static void ensure_logger_initialized()
 {
@@ -158,7 +172,7 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info, const SearchLimits& limits)
 
 SearchResult  AIPerplex::iterative_deepening(ThreadData& td, int max_depth, TranspositionTable& tt) {
 	SearchState state;
-	nodes_since_check_ = 0;   // reset node counter for this search
+	td.nodes_since_check_ = 0;   // reset node counter for this search
 	bool extra_depth_used = false;   // soft-limit extension granted at most once per search
 
 	td.clear_killers();	// Clear killer moves at the start of the search
@@ -300,8 +314,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 	// Node-based time polling: check every 1024 nodes to amortise chrono::now() cost.
 	// On first expiry, ShouldStopSearch() latches should_stop_; all future IsAborted()
-	// calls above then return true for free.
-	if ((++nodes_since_check_ & 1023) == 0) {
+	// calls above then return true for free. Only thread 0 ever calls the wall-clock
+	// check — helper threads increment their own td.nodes_since_check_ but rely solely
+	// on the IsAborted() fast-path above (no chrono::now() calls off the main thread).
+	if (td.thread_id == 0 && (++td.nodes_since_check_ & 1023) == 0) {
 		if (ShouldStopSearch())
 			return GameValues::Draw;
 	}
@@ -348,9 +364,6 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			}
 		}
 	}
-	/*else {
-		debug_tt_cache_misses(key, ply);
-	}*/
 
 	// Get PV move from previous iteration
 	if (is_pv_node && ply > 0) {
@@ -515,9 +528,6 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	tt.store(key, static_cast<int16_t>(best_value),
 		static_cast<int16_t>(depth), static_cast<int16_t>(ply), best_move, bound, node_type, SearchPhase::MAIN);
 
-	// Verify immediately
-	//assert_tt_store(tt, key, ply, best_value, depth, best_move, bound, node_type, SearchPhase::MAIN);
-
 	return adjustScoreForGameState(td, moveFound, ply, best_value);
 }
 
@@ -555,7 +565,9 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 	if (IsAborted())
 		return GameValues::Draw;
 
-	if ((++nodes_since_check_ & 1023) == 0) {
+	// Mirrors pvs(): only thread 0 calls the wall-clock check; helpers rely on
+	// the IsAborted() fast-path above.
+	if (td.thread_id == 0 && (++td.nodes_since_check_ & 1023) == 0) {
 		if (ShouldStopSearch())
 			return GameValues::Draw;
 	}
@@ -1050,59 +1062,4 @@ void AIPerplex::log_aspiration_full_window(int depth, int max_retries) const
 	s_logger->debug(
 		"D{:>2} ASPIRATION: max retries ({}) reached, opening full window",
 		depth, max_retries);
-}
-
-void AIPerplex::debug_tt_cache_misses(unsigned int key, int ply)
-{
-	tt_misses.emplace(key, ply);
-	if (tt_misses.size() % 2000 == 0)
-	{
-		ensure_logger_initialized();
-		if (!s_logger) return;
-
-		s_logger->info("Total inserts: {}", tt_misses.size());
-		s_logger->info("Zobrist hash collisions (count > 1):");
-		s_logger->info("===================================");
-
-		int duplicateKeyCount = 0;
-		size_t totalDuplicateEntries = 0;
-
-		for (auto it = tt_misses.begin(); it != tt_misses.end(); ) {
-			int64_t miss_key = it->first;
-			size_t count = tt_misses.count(miss_key);
-
-			if (count > 1) {
-				duplicateKeyCount++;
-				totalDuplicateEntries += count;
-
-				s_logger->info("Hash: {} (collisions: {})", miss_key, count);
-			}
-
-			// Skip to next unique key
-			it = tt_misses.upper_bound(miss_key);
-		}
-
-		s_logger->info("\nAnalysis Summary:");
-		s_logger->info("  Total cache misses: {}", tt_misses.size());
-		s_logger->info("  Unique zobrist hashes: {}", std::distance(tt_misses.begin(), tt_misses.end()));
-		s_logger->info("  Collision groups (count > 1): {}", duplicateKeyCount);
-		s_logger->info("  Total entries in collisions: {}", totalDuplicateEntries);
-		double rate = 0.0;
-		if (!tt_misses.empty()) rate = (totalDuplicateEntries * 100.0 / tt_misses.size());
-		s_logger->info("  Collision rate: {}%", rate);
-	}
-}
-
-void AIPerplex::assert_tt_store(const TranspositionTable& tt, std::uint64_t key, int16_t ply,
-	[[maybe_unused]] int16_t value, [[maybe_unused]] int16_t depth, Move /*best_move*/,
-	[[maybe_unused]] BoundType bound, NodeType /*node_type*/, [[maybe_unused]] SearchPhase phase)
-{
-	[[maybe_unused]] auto verify = tt.probe(key, ply);
-
-	assert(verify && "Probe failed after store");
-	assert(verify->key == key && "Key mismatch");
-	assert(verify->depth == depth && "Depth mismatch");
-	assert(verify->bound == bound && "Bound mismatch");
-	assert(verify->phase == phase && "Phase mismatch");
-	assert(verify->value == value && "Value mismatch");
 }
