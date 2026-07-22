@@ -76,6 +76,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | Board public query APIs + FEN round-trip | `[board_api]` | ✅ Phase 1 | `BoardApiTests.cpp` |
 | Time management (TimeManager + compute_budget) | `[time_mgr]` | ✅ Phase 1 | `TimeManagerTests.cpp` |
 | Bitboard helpers | `[bitboard]` | ⏳ Phase 1 | `BitboardTests.cpp` (future) |
+| Sliding-piece attack generation (PEXT) | `[magic]` | ✅ Phase 1 | `MagicBitboardTests.cpp` |
 | UCI command loop | `[uci]` | ✅ validated via pipe test | `StratChessEvolved.exe uci` (pipe smoke test) |
 | Full tactical suite (WAC/mate-in-N) | — | ✅ Phase 1 | `StratChessEvolved.exe tactical test` |
 | Board instance independence (post-de-singleton) | `[board_instance]` | ✅ Phase 2 | `BoardInstanceTests.cpp` |
@@ -209,6 +210,17 @@ Verify ordering priority: PV move → hash move → captures (MVV-LVA) → kille
 **File**: `StratChessTests/BitboardTests.cpp`
 
 Basic operations from `defines.h`: set bit, clear bit, popcount, LSB extraction.
+
+### `[magic]` — Sliding-piece attack generation tests
+
+**Status**: ✅ **Done.** Landed with the PEXT magic-bitboard refactor (July 2026), replacing
+rotated-bitboard attack generation. See `.claude/plans/magic-bitboards-sliding-piece-attacks.md`.
+**File**: `StratChessTests/MagicBitboardTests.cpp`
+
+Hand-verified `RookAttacks`/`BishopAttacks` bitboards for open cross/diagonal (empty board),
+corner squares with blockers, and fully-blocked-adjacent cases — independent of perft, which
+only proves attack generation is *consistent* with legal move counts, not that any individual
+attack bitboard is correct in isolation.
 
 ### Full tactical suite in main executable
 
