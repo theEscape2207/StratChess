@@ -111,6 +111,25 @@ void AIPerplex::init_search(const GameInfo& info)
 	td_.info_seq.emplace_back(info);
 }
 
+// Lazy SMP helper thread entry point (plain iterative deepening, no quality
+// gates — see the declaration comment in AIPerplex.h). Runs entirely on its
+// own ThreadData; touches nothing shared except the TT (already thread-safe)
+// and the atomic abort flag it reads via IsAborted(). Never logs, never
+// reports a move — its result is discarded by design (Decision 3, Lazy SMP
+// plan: main thread's search result is the only one that counts).
+void AIPerplex::helper_loop(ThreadData& td, int max_depth, TranspositionTable& tt)
+{
+	int seed_score = 0;
+	for (int depth = 1; depth <= max_depth; ++depth) {
+		if (IsAborted())
+			break;
+		const int score = search_with_aspiration(td, depth, seed_score, tt);
+		if (IsAborted())
+			break;            // partial iteration — discard score
+		seed_score = score;
+	}
+}
+
 Move AIPerplex::GetMove(_Inout_ GameInfo& info, const SearchLimits& limits)
 {
 	init_search(info);
@@ -119,6 +138,37 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info, const SearchLimits& limits)
 	_tt->clear();
 	}
 	const unsigned effective_depth = ApplyLimits(limits);
+
+	// Lazy SMP: spawn threads_ - 1 helper threads to warm the shared TT while
+	// the main search below runs on td_ (main-is-authoritative — Decision 3:
+	// helpers never report a move, only their node counts feed back in).
+	// threads_ == 1 (the default) leaves this block entirely unreached:
+	// `helpers` stays a default-constructed empty vector and helper_tds_ is
+	// never touched — byte-identical to the pre-SMP code path (Gate 1).
+	std::vector<std::jthread> helpers;
+	if (threads_ > 1) {
+		if (helper_tds_.size() < threads_ - 1) {
+			const size_t old = helper_tds_.size();
+			helper_tds_.resize(threads_ - 1);
+			for (size_t i = old; i < helper_tds_.size(); ++i) {
+				helper_tds_[i] = std::make_unique<ThreadData>();
+				helper_tds_[i]->thread_id = static_cast<int>(i) + 1;
+			}
+		}
+		helpers.reserve(threads_ - 1);
+		for (size_t i = 0; i < threads_ - 1; ++i) {
+			ThreadData& htd = *helper_tds_[i];
+			htd.board = m_Board;                       // same seed as td_.board
+			htd.info_seq.clear();
+			htd.info_seq.emplace_back(info);           // same root info as init_search gives td_
+			htd.clear_killers();
+			htd.clear_null_move_flags();
+			htd.nodes_searched = 0;
+			helpers.emplace_back([this, &htd, effective_depth, this_tt = _tt.get()] {
+				helper_loop(htd, static_cast<int>(effective_depth), *this_tt);
+			});
+		}
+	}
 
 	SearchResult result = iterative_deepening(td_, static_cast<int>(effective_depth), *_tt);
 	last_result_ = result;   // expose via GetLastResult()
@@ -131,7 +181,20 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info, const SearchLimits& limits)
 	if (searched_state != m_Board.GetGameInfo().gameState)
 		m_Board.SetGameState(searched_state);
 
-	auto elapsed = StopTimerAndAdjustVars(static_cast<size_t>(td_.nodes_searched));
+	// Latch the abort signal so any still-running helpers collapse in O(depth)
+	// steps (they only ever poll IsAborted()), then join them — helpers.clear()
+	// destroys each std::jthread, which joins automatically. This must happen
+	// before every subsequent return in this function, including the
+	// empty-move emergency path below, so a helper can never outlive GetMove().
+	time_manager_.stop();
+	helpers.clear();
+
+	int64_t total_nodes = td_.nodes_searched;
+	for (size_t i = 0; i + 1 < static_cast<size_t>(threads_); ++i)
+		total_nodes += helper_tds_[i]->nodes_searched;
+	last_result_.nodes_searched = total_nodes;
+
+	auto elapsed = StopTimerAndAdjustVars(static_cast<size_t>(total_nodes));
 
 	Move bestMove = result.best_move;
 
@@ -155,7 +218,7 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info, const SearchLimits& limits)
 			result.best_score,
 			result.depth_completed,
 			elapsed.count(),
-			td_.nodes_searched,
+			total_nodes,
 			result.search_was_stable ? "yes" : "NO");
 	}
 	// Equivalent of CheckGameOver(info, false), reading the thread-local

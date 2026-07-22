@@ -25,6 +25,7 @@
 #include <span>
 #include <sstream>
 #include <string>
+#include <thread>		// std::jthread — Lazy SMP helper threads (AIPerplex::GetMove)
 #include <utility>
 #include <vector>
 

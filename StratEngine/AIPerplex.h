@@ -8,6 +8,7 @@
 #include <memory>
 #include <algorithm>
 #include <cstdint>
+#include <vector>
 
 // Search result structure - returned from iterative_deepening
 struct SearchResult {
@@ -125,6 +126,14 @@ private:
 	int adjustScoreForGameState(ThreadData& td, bool moveFound, int ply, int best_value);
 	int quiescence(ThreadData& td, int alpha, int beta, int depth_q, int ply, TranspositionTable& tt);
 
+	// Lazy SMP helper thread entry point: plain iterative-deepening loop with
+	// no quality gates (no assess_iteration_quality, no emergency handling,
+	// no game-state/root propagation, no logging). Result is discarded —
+	// the helper's only contribution is the TT entries it writes along the
+	// way and its node count (aggregated by GetMove() after join). Exits on
+	// IsAborted() or when max_depth is reached.
+	void helper_loop(ThreadData& td, int max_depth, TranspositionTable& tt);
+
 	// HELPER METHODS
 	// --------------
 	// Quality assessment
@@ -151,9 +160,15 @@ private:
 	// helper threads will each get their own. See ThreadData.h.
 	ThreadData td_;
 
+	// Lazy SMP helper threads' per-thread state, one per helper (threads_ - 1
+	// entries). Sized lazily on first use in GetMove() and never shrunk, so
+	// history/killers age across moves per helper the same way td_'s does.
+	// Empty and untouched whenever threads_ == 1.
+	std::vector<std::unique_ptr<ThreadData>> helper_tds_;
+
 	// Configured number of search threads (Lazy SMP). Clamped to [1, 32] by
-	// SetThreads(). Set but not yet consumed by the search — no helper
-	// threads are spawned until Task 3.
+	// SetThreads(). threads_ == 1 (the default) takes the exact pre-SMP code
+	// path in GetMove() — no helper_tds_ construction, no thread spawn.
 	unsigned threads_{ 1 };
 
 	// logging control: enable detailed logging when needed (default: false)
