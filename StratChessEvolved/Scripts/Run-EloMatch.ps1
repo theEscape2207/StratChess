@@ -39,6 +39,11 @@ param(
     # fastchess time control: seconds+increment.
     [string]$Tc = '10+0.1',
     [int]$Concurrency = 4,
+    # Extra fastchess -engine option tokens for the candidate, space-separated
+    # (e.g. 'option.Threads=4 option.Hash=64'). Appended verbatim after args=uci.
+    [string]$CandidateOptions = '',
+    # Extra fastchess -engine option tokens for the reference build, same format.
+    [string]$ReferenceOptions = '',
     # 20-game pipeline check instead of a full measurement.
     [switch]$Smoke
 )
@@ -137,12 +142,19 @@ New-Item -ItemType Directory -Force $dirA, $dirB | Out-Null
 Write-Host "==> $candidateName vs $ReferenceTag | $Games games, tc=$Tc, concurrency=$Concurrency" -ForegroundColor Cyan
 Write-Host "    PGN: $pgnOut"
 
+# Engine specs as arrays so -CandidateOptions/-ReferenceOptions (e.g. option.Threads=4)
+# splat in as extra fastchess "-engine" option tokens without disturbing the base spec.
+$candidateEngineArgs = @("cmd=$CandidateExe", "name=$candidateName", "dir=$dirA", 'args=uci')
+if ($CandidateOptions) { $candidateEngineArgs += $CandidateOptions -split '\s+' }
+$referenceEngineArgs = @("cmd=$refExe", "name=$ReferenceTag", "dir=$dirB", 'args=uci')
+if ($ReferenceOptions) { $referenceEngineArgs += $ReferenceOptions -split '\s+' }
+
 # Run from the artifacts dir: fastchess drops a config.json (tournament resume
 # state) into its cwd, which must land under gitignored logs/elo, not the repo.
 Push-Location $pgnDir
 & $fastchess `
-    -engine "cmd=$CandidateExe" "name=$candidateName" "dir=$dirA" args=uci `
-    -engine "cmd=$refExe" "name=$ReferenceTag" "dir=$dirB" args=uci `
+    -engine @candidateEngineArgs `
+    -engine @referenceEngineArgs `
     -each "tc=$Tc" `
     -rounds $rounds -repeat -concurrency $Concurrency -recover `
     -openings "file=$book" format=pgn order=sequential `
