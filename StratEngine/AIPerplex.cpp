@@ -24,10 +24,12 @@
 // `if (s_logger) return;` check, not a magic static) are NOT safe to race:
 // initialization only ever happens from SetVerboseLogging(), invoked once
 // during single-threaded AIPerplex setup before any search (or future
-// helper thread) starts. Per the Lazy SMP plan, helper threads do not log
-// in v1 — they never call any of the log_* helpers below, so s_logger is
-// read-only (already-initialized-or-null) from their perspective. If a
-// future revision adds helper-thread logging, ensure_logger_initialized()
+// helper thread) starts. Helper threads run the same search_with_aspiration()
+// code path as the main thread and reach the same log_* call sites, but
+// those calls are gated on `td.thread_id == 0` (see search_with_aspiration()
+// below), so only the main thread ever actually logs; s_logger remains
+// read-only (already-initialized-or-null) from every thread's perspective.
+// If a future revision lets helper threads log too, ensure_logger_initialized()
 // must be made safe to call concurrently (e.g. via std::call_once) first.
 static std::shared_ptr<spdlog::logger> s_logger = nullptr;
 static void ensure_logger_initialized()
@@ -114,7 +116,10 @@ void AIPerplex::init_search(const GameInfo& info)
 // Lazy SMP helper thread entry point (plain iterative deepening, no quality
 // gates — see the declaration comment in AIPerplex.h). Runs entirely on its
 // own ThreadData; touches nothing shared except the TT (already thread-safe)
-// and the atomic abort flag it reads via IsAborted(). Never logs, never
+// and the atomic abort flag it reads via IsAborted(). Calls the same
+// search_with_aspiration() aspiration-window logging as the main thread, but
+// those log_* calls are gated on `td.thread_id == 0` inside
+// search_with_aspiration(), so helper threads never actually log. Never
 // reports a move — its result is discarded by design (Decision 3, Lazy SMP
 // plan: main thread's search result is the only one that counts).
 void AIPerplex::helper_loop(ThreadData& td, int max_depth, TranspositionTable& tt)
@@ -796,7 +801,7 @@ int AIPerplex::search_with_aspiration(ThreadData& td, int depth, int seed_score,
 
 		// Safety fallback: open full window after max retries
 		if (retry >= tuning_.aspiration_max_retries) {
-			log_aspiration_full_window(depth, tuning_.aspiration_max_retries);
+			if (td.thread_id == 0) log_aspiration_full_window(depth, tuning_.aspiration_max_retries);
 			if (!ShouldStopSearch())
 				score = pvs(td, depth, -GameValues::Search_Init, GameValues::Search_Init, 0, true, tt);
 			return score;
@@ -807,10 +812,10 @@ int AIPerplex::search_with_aspiration(ThreadData& td, int depth, int seed_score,
 		delta *= 2;
 		if (score <= alpha) {
 			alpha = std::max(seed_score - delta, -static_cast<int>(GameValues::Search_Init));
-			log_aspiration_retry(depth, retry + 1, score, alpha, beta, true);
+			if (td.thread_id == 0) log_aspiration_retry(depth, retry + 1, score, alpha, beta, true);
 		} else {
 			beta  = std::min(seed_score + delta,  static_cast<int>(GameValues::Search_Init));
-			log_aspiration_retry(depth, retry + 1, score, alpha, beta, false);
+			if (td.thread_id == 0) log_aspiration_retry(depth, retry + 1, score, alpha, beta, false);
 		}
 	}
 }
