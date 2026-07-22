@@ -4,13 +4,10 @@
 
 // Index til bitboards
 inline constexpr auto ALL_PIECES = 14;
-inline constexpr auto ROTATED90 = 15;
-inline constexpr auto ROTATED45R = 16;
-inline constexpr auto ROTATED45L = 17;
 
 // Andre konstanter
 //------------------
-inline constexpr auto ALL_BITBOARDS = 18;
+inline constexpr auto ALL_BITBOARDS = 15;
 inline constexpr auto ALL_SQUARES = 64;
 inline constexpr auto ALL_PIECETYPES = 12;
 
@@ -152,99 +149,7 @@ inline const BITBOARD g_bbFileMask[] =
 };
 
 
-inline constexpr unsigned int g_iRotateR90[ALL_SQUARES] = {
-	a1,a2,a3,a4,a5,a6,a7,a8,
-	b1,b2,b3,b4,b5,b6,b7,b8,
-	c1,c2,c3,c4,c5,c6,c7,c8,
-	d1,d2,d3,d4,d5,d6,d7,d8,
-	e1,e2,e3,e4,e5,e6,e7,e8,
-	f1,f2,f3,f4,f5,f6,f7,f8,
-	g1,g2,g3,g4,g5,g6,g7,g8,
-	h1,h2,h3,h4,h5,h6,h7,h8
-};
 
-
-
-inline constexpr unsigned int g_iRotateR45[ALL_SQUARES] = {
-	a8,
-	a7,b8,
-	a6,b7,c8,
-	a5,b6,c7,d8,
-	a4,b5,c6,d7,e8,
-	a3,b4,c5,d6,e7,f8,
-	a2,b3,c4,d5,e6,f7,g8,
-	a1,b2,c3,d4,e5,f6,g7,h8,
-	b1,c2,d3,e4,f5,g6,h7,
-	c1,d2,e3,f4,g5,h6,
-	d1,e2,f3,g4,h5,
-	e1,f2,g3,h4,
-	f1,g2,h3,
-	g1,h2,
-	h1
-};
-
-
-inline constexpr unsigned int g_iRotateL45[ALL_SQUARES] = {
-	h8,
-	g8,h7,
-	f8,g7,h6,
-	e8,f7,g6,h5,
-	d8,e7,f6,g5,h4,
-	c8,d7,e6,f5,g4,h3,
-	b8,c7,d6,e5,f4,g3,h2,
-	a8,b7,c6,d5,e4,f3,g2,h1,
-	a7,b6,c5,d4,e3,f2,g1,
-	a6,b5,c4,d3,e2,f1,
-	a5,b4,c3,d2,e1,
-	a4,b3,c2,d1,
-	a3,b2,c1,
-	a2,b1,
-	a1
-};
-
-inline constexpr unsigned int g_iDiagonalLength_a1h8[ALL_SQUARES] = {
-	1,2,3,4,5,6,7,8,
-	2,3,4,5,6,7,8,7,
-	3,4,5,6,7,8,7,6,
-	4,5,6,7,8,7,6,5,
-	5,6,7,8,7,6,5,4,
-	6,7,8,7,6,5,4,3,
-	7,8,7,6,5,4,3,2,
-	8,7,6,5,4,3,2,1
-};
-
-inline constexpr unsigned int g_iDiagonalLength_a8h1[ALL_SQUARES] = {
-	8,7,6,5,4,3,2,1,
-	7,8,7,6,5,4,3,2,
-	6,7,8,7,6,5,4,3,
-	5,6,7,8,7,6,5,4,
-	4,5,6,7,8,7,6,5,
-	3,4,5,6,7,8,7,6,
-	2,3,4,5,6,7,8,7,
-	1,2,3,4,5,6,7,8
-};
-
-inline constexpr unsigned int g_iDiagonalShifts_a1h8[ALL_SQUARES] = {
-	0, 1, 3, 6,10,15,21,28,
-	1, 3, 6,10,15,21,28,36,
-	3, 6,10,15,21,28,36,43,
-	6,10,15,21,28,36,43,49,
-	10,15,21,28,36,43,49,54,
-	15,21,28,36,43,49,54,58,
-	21,28,36,43,49,54,58,61,
-	28,36,43,49,54,58,61,63
-};
-
-inline constexpr unsigned int g_iDiagonalShifts_a8h1[ALL_SQUARES] = {
-	28,21,15,10, 6, 3, 1, 0,
-	36,28,21,15,10, 6, 3, 1,
-	43,36,28,21,15,10, 6, 3,
-	49,43,36,28,21,15,10, 6,
-	54,49,43,36,28,21,15,10,
-	58,54,49,43,36,28,21,15,
-	61,58,54,49,43,36,28,21,
-	63,61,58,54,49,43,36,28
-};
 
 // Tabel med brikkernes statiske vaerdier
 inline constexpr unsigned int g_iPieceValues[ALL_PIECETYPES >> 1] = {
@@ -465,50 +370,6 @@ constexpr std::array<BITBOARD, ALL_SQUARES> makeMask() {
 	return result;
 }
 
-// Maske for de roterede bitboards
-constexpr std::array<BITBOARD, ALL_SQUARES> makeMaskRotated90() {
-	std::array<BITBOARD, ALL_SQUARES> result{};
-	auto mask = makeMask();
-	for (unsigned int i = 0; i < ALL_SQUARES; ++i) {
-		result[g_iRotateR90[i]] = mask[i];
-	}
-	return result;
-}
-
-constexpr std::array<BITBOARD, ALL_SQUARES> makeMaskRotated45R() {
-	std::array<BITBOARD, ALL_SQUARES> result{};
-	auto mask = makeMask();
-	for (unsigned int i = 0; i < ALL_SQUARES; ++i) {
-		result[g_iRotateR45[i]] = mask[i];
-	}
-	return result;
-}
-
-constexpr std::array<BITBOARD, ALL_SQUARES> makeMaskRotated45L() {
-	std::array<BITBOARD, ALL_SQUARES> result{};
-	auto mask = makeMask();
-	for (unsigned int i = 0; i < ALL_SQUARES; ++i) {
-		result[g_iRotateL45[i]] = mask[i];
-	}
-	return result;
-}
-
-// Diagonale masker for loebere og dronning
-constexpr std::array<BITBOARD, ALL_SQUARES> makeDiagonalMask_a1h8() {
-	std::array<BITBOARD, ALL_SQUARES> result{};
-	for (unsigned int i = 0; i < ALL_SQUARES; ++i) {
-		result[i] = (1ULL << g_iDiagonalLength_a1h8[i]) - 1;
-	}
-	return result;
-}
-
-constexpr std::array<BITBOARD, ALL_SQUARES> makeDiagonalMask_a8h1() {
-	std::array<BITBOARD, ALL_SQUARES> result{};
-	for (unsigned int i = 0; i < ALL_SQUARES; ++i) {
-		result[i] = (1ULL << g_iDiagonalLength_a8h1[i]) - 1;
-	}
-	return result;
-}
 
 // Masker for raekker og kolonner
 constexpr std::array<BITBOARD, ALL_SQUARES> makeFileUpMask() {
@@ -535,11 +396,6 @@ constexpr std::array<BITBOARD, ALL_SQUARES> makeFileDownMask() {
 
 // Inline constexpr arrays initialiseres ved kompileringstid
 inline constexpr auto g_bbMask = makeMask();
-inline constexpr auto g_bbMaskRotated90 = makeMaskRotated90();
-inline constexpr auto g_bbMaskRotated45R = makeMaskRotated45R();
-inline constexpr auto g_bbMaskRotated45L = makeMaskRotated45L();
-inline constexpr auto g_bbDiagonalMask_a1h8 = makeDiagonalMask_a1h8();
-inline constexpr auto g_bbDiagonalMask_a8h1 = makeDiagonalMask_a8h1();
 inline constexpr auto g_bbFileUpMask = makeFileUpMask();
 inline constexpr auto g_bbFileDownMask = makeFileDownMask();
 
@@ -609,143 +465,9 @@ constexpr std::array<BITBOARD, ALL_SQUARES> makeKingMoves() {
 	return result;
 }
 
-// ============= Rank Moves (Horizontal) =============
-constexpr Array2D<BITBOARD, ALL_SQUARES, 256> makeMovesRank() {
-	Array2D<BITBOARD, ALL_SQUARES, 256> result{};
-
-	for (unsigned int iFile = 0; iFile < 8; ++iFile) {
-		for (int j = 0; j < 256; ++j) {
-			BITBOARD bbMask = 0;
-
-			for (int x = iFile - 1; x >= 0; --x) {
-				bbMask += (UNIT << x);
-				if (j & (1 << x))
-					break;
-			}
-			for (unsigned int x = iFile + 1; x < 8; ++x) {
-				bbMask += (UNIT << x);
-				if (j & (1 << x))
-					break;
-			}
-
-			for (unsigned int iRank = 0; iRank < 8; ++iRank) {
-				result[(iRank << 3) + iFile][j] = bbMask << (iRank << 3);
-			}
-		}
-	}
-	return result;
-}
-
-// ============= File Moves (Vertical) =============
-constexpr Array2D<BITBOARD, ALL_SQUARES, 256> makeMovesFile() {
-	Array2D<BITBOARD, ALL_SQUARES, 256> result{};
-
-	for (unsigned int iRank = 0; iRank < 8; ++iRank) {
-		for (int j = 0; j < 256; ++j) {
-			BITBOARD bbMask = 0;
-
-			for (int x = 6 - iRank; x >= 0; --x) {
-				bbMask += (UNIT << ((7 - x) << 3));
-				if (j & (1 << x))
-					break;
-			}
-			for (int x = 8 - iRank; x < 8; ++x) {
-				bbMask += (UNIT << ((7 - x) << 3));
-				if (j & (1 << x))
-					break;
-			}
-
-			for (unsigned int iFile = 0; iFile < 8; ++iFile) {
-				result[(iRank << 3) + iFile][j] = bbMask << iFile;
-			}
-		}
-	}
-	return result;
-}
-
-// ============= Diagonal a1-h8 Moves =============
-constexpr Array2D<BITBOARD, ALL_SQUARES, 256> makeMovesa1h8() {
-	Array2D<BITBOARD, ALL_SQUARES, 256> result{};
-
-	for (unsigned int i = 0; i < ALL_SQUARES; ++i) {
-		unsigned int iDiagonalStart = 7 * (std::min((File(i)), 7 - (Rank(i)))) + i;
-		unsigned int iDiagonalStartFile = File(iDiagonalStart);
-		unsigned int iDiagonalLength = g_iDiagonalLength_a1h8[i];
-		unsigned int iFile = File(i);
-
-		// Skip invalid diagonals
-		if (iDiagonalLength < 1 || iDiagonalLength > 8)
-			continue;
-
-		for (int j = 0; j < (1 << iDiagonalLength); ++j) {
-			BITBOARD bbMask = 0, bbMask2 = 0;
-
-			for (int x = (iFile - iDiagonalStartFile) - 1; x >= 0; --x) {
-				bbMask += (UNIT << x);
-				if (j & (1 << x))
-					break;
-			}
-			for (unsigned int x = (iFile - iDiagonalStartFile) + 1; x < iDiagonalLength; ++x) {
-				bbMask += (UNIT << x);
-				if (j & (1 << x))
-					break;
-			}
-
-			for (unsigned int x = 0; x < iDiagonalLength; ++x) {
-				bbMask2 += (((bbMask >> x) & 1) << (iDiagonalStart - (7 * x)));
-			}
-
-			result[i][j] = bbMask2;
-		}
-	}
-	return result;
-}
-
-// ============= Diagonal a8-h1 Moves =============
-constexpr Array2D<BITBOARD, ALL_SQUARES, 256> makeMovesa8h1() {
-	Array2D<BITBOARD, ALL_SQUARES, 256> result{};
-
-	for (unsigned int i = 0; i < ALL_SQUARES; ++i) {
-		unsigned int iDiagonalStart = i - 9 * (std::min((File(i)), (Rank(i))));
-		unsigned int iDiagonalStartFile = File(iDiagonalStart);
-		unsigned int iDiagonalLength = g_iDiagonalLength_a8h1[i];
-		unsigned int iFile = File(i);
-
-		// Skip invalid diagonals
-		if (iDiagonalLength < 1 || iDiagonalLength > 8)
-			continue;
-
-		for (int j = 0; j < (1 << iDiagonalLength); ++j) {
-			BITBOARD bbMask = 0, bbMask2 = 0;
-
-			for (int x = (iFile - iDiagonalStartFile) - 1; x >= 0; --x) {
-				bbMask += (UNIT << x);
-				if (j & (1 << x))
-					break;
-			}
-			for (unsigned int x = (iFile - iDiagonalStartFile) + 1; x < iDiagonalLength; ++x) {
-				bbMask += (UNIT << x);
-				if (j & (1 << x))
-					break;
-			}
-
-			for (unsigned int x = 0; x < iDiagonalLength; ++x) {
-				bbMask2 += (((bbMask >> x) & 1) << (iDiagonalStart + (9 * x)));
-			}
-
-			result[i][j] = bbMask2;
-		}
-	}
-	return result;
-}
-
 // ============= Inline Global Variables =============
 inline constexpr auto g_bbKnightMoves = makeKnightMoves();
 inline constexpr auto g_bbKingMoves = makeKingMoves();
-inline constexpr auto g_bbMovesRank = makeMovesRank();
-inline constexpr auto g_bbMovesFile = makeMovesFile();
-inline constexpr auto g_bbMovesa1h8 = makeMovesa1h8();
-inline constexpr auto g_bbMovesa8h1 = makeMovesa8h1();
 
 //constexpr inline auto PRINT_STATS = 1;
 

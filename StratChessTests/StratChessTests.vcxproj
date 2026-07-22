@@ -107,8 +107,9 @@
       <PreprocessorDefinitions>STRAT_ENABLE_TEST_ACCESS;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
       <AdditionalIncludeDirectories>$(DepsRoot)Catch2;$(DepsRoot)json\include;$(DepsRoot)spdlog\include;..\StratEngine;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/utf-8 /constexpr:steps100000000 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -125,8 +126,9 @@
       <PreprocessorDefinitions>STRAT_ENABLE_TEST_ACCESS;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
       <AdditionalIncludeDirectories>$(DepsRoot)Catch2;$(DepsRoot)json\include;$(DepsRoot)spdlog\include;..\StratEngine;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/utf-8 /constexpr:steps100000000 %(AdditionalOptions)</AdditionalOptions>
       <!-- /Z7: embed debug info in .obj files rather than a shared .pdb.
            Eliminates PDB write contention so MSBuild //m parallel compilation works. -->
       <DebugInformationFormat>OldStyle</DebugInformationFormat>
@@ -185,10 +187,12 @@
     <ClCompile Include="SearchLimitsTests.cpp" />
     <ClCompile Include="UCITests.cpp" />
     <ClCompile Include="SuitePolicyTests.cpp" />
+    <ClCompile Include="MagicBitboardTests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\StratEngine\Tests\Perft.h" />
     <ClInclude Include="TacticalTestHelpers.h" />
+    <ClInclude Include="..\StratEngine\Magic.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
