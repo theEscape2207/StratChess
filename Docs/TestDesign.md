@@ -232,16 +232,28 @@ positions July 2026 (WAC mate + tactical batches), 31/31 passing (100%).
 [filename]` to run an arbitrary JSON file — used for staging candidates, see
 "Growing the suite" below.
 
-**Stability mode**: `StratChessEvolved.exe tactical stability [N] [filename]` (N defaults
-to 10) runs the whole suite N consecutive times and fails on either (a) any run failing
-the normal gate policy or (b) any position whose pass/fail *flips* between runs. The flip
-rule means a consistently-failing tolerated position (within the 90% threshold) does not
-break stability, but a sometimes-failing one does — flips are the signal for
-nondeterministic search results, the primary intermittent-race-bug symptom once Lazy SMP
-threads share the TT. Policy is pure (`TacticalTestRunner::evaluate_stability()`) and
-unit-tested in `SuitePolicyTests.cpp` (`[suite_policy]`). Gated at N=10 in
-`Validate-PrePR.ps1` Step 3; on today's single-threaded fixed-depth search it is
-deterministic and therefore trivially green.
+**Stability mode**: `StratChessEvolved.exe tactical stability [N] [filename] [threads]` (N
+defaults to 10, threads defaults to 1) runs the whole suite N consecutive times and fails
+on either (a) any run failing the normal gate policy or (b) any position whose pass/fail
+*flips* between runs. The flip rule means a consistently-failing tolerated position
+(within the 90% threshold) does not break stability, but a sometimes-failing one does —
+flips are the signal for nondeterministic search results, the primary intermittent-race-bug
+symptom once Lazy SMP threads share the TT. Policy is pure
+(`TacticalTestRunner::evaluate_stability()`) and unit-tested in `SuitePolicyTests.cpp`
+(`[suite_policy]`). Gated at N=10, threads=1 (default) in `Validate-PrePR.ps1` Step 3; on
+today's single-threaded fixed-depth search it is deterministic and therefore trivially
+green.
+
+**Threads argument (Lazy SMP Gate 2)**: the optional fourth positional argument is
+forwarded through `run_stability_suite` → `run_test_suite` → `run_position`, which applies
+it via `PlayerAiBase::SetThreads()` (a no-op on legacy AIs; `AIPerplex` clamps to `[1, 32]`
+— the CLI itself only rejects non-positive values, relying on `SetThreads`' own clamp for
+the upper bound) on the `AIPerplex` instance it constructs, before `GetMove()`. This is the
+mechanism for Lazy SMP's Gate 2 ("stable at N threads"): running
+`tactical stability 20 tactical_test_cases.json 4` must show 0 failing runs and 0 flipped
+positions — proof that helper threads sharing the TT do not introduce nondeterministic
+search results at the fixed depths the suite uses. Verified 2026-07-23 (see
+`.claude/plans/lazy-smp.md` Gate Results): 20/20 runs passed, 0 flips at threads=4.
 
 **Acceptance**: 90%+ overall pass rate, **and 100% pass rate in every category whose
 name starts with `mate`** (`mate_in_1`, `mate_in_2`, `mate_in_3`, `mate_in_4`). The
