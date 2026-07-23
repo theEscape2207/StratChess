@@ -15,7 +15,7 @@
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 
-// Lazy SMP audit (Task 1, .claude/plans/lazy-smp.md): s_logger's sinks
+// Lazy SMP thread-safety: s_logger's sinks
 // (stdout_color_sink_mt, basic_file_sink_mt — see ensure_logger_initialized()
 // below, and the equivalent _mt sinks in Utils/Logger.cpp's default/perf
 // loggers) are all spdlog "_mt" thread-safe variants, so concurrent log
@@ -120,8 +120,9 @@ void AIPerplex::init_search(const GameInfo& info)
 // search_with_aspiration() aspiration-window logging as the main thread, but
 // those log_* calls are gated on `td.thread_id == 0` inside
 // search_with_aspiration(), so helper threads never actually log. Never
-// reports a move — its result is discarded by design (Decision 3, Lazy SMP
-// plan: main thread's search result is the only one that counts).
+// reports a move — its result is discarded by design; only the main
+// thread's search result is authoritative (the "main-is-authoritative"
+// design decision, .claude/plans/lazy-smp.md).
 void AIPerplex::helper_loop(ThreadData& td, int max_depth, TranspositionTable& tt)
 {
 	int seed_score = 0;
@@ -157,11 +158,12 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info, const SearchLimits& limits)
 	const unsigned effective_depth = ApplyLimits(limits);
 
 	// Lazy SMP: spawn threads_ - 1 helper threads to warm the shared TT while
-	// the main search below runs on td_ (main-is-authoritative — Decision 3:
-	// helpers never report a move, only their node counts feed back in).
+	// the main search below runs on td_ (main-is-authoritative, see
+	// .claude/plans/lazy-smp.md: helpers never report a move, only
+	// their node counts feed back in).
 	// threads_ == 1 (the default) leaves this block entirely unreached:
 	// `helpers` stays a default-constructed empty vector and helper_tds_ is
-	// never touched — byte-identical to the pre-SMP code path (Gate 1).
+	// never touched — byte-identical to the pre-SMP single-threaded code path.
 	std::vector<std::jthread> helpers;
 	if (threads > 1) {
 		if (helper_tds_.size() < threads - 1) {
