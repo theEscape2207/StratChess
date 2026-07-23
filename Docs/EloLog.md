@@ -54,3 +54,4 @@ this procedure; anything beyond the pooled error bound is signal.
 | 2026-07-03 | candidate-a0aa30a+dirty | elo-reference-v1 | 500 | 10+0.1 | -27.85 +/- 27.11 | sanity batch 2 (identical builds; +dirty = batch-1 log row only) |
 | 2026-07-03 | candidate-a0aa30a (pooled) | elo-reference-v1 | 1000 | 10+0.1 | -1.4 (pooled batches 1+2) | **sanity baseline PASS** — 378W/382L/240D, 49.80% |
 | 2026-07-03 | candidate-bda7189+dirty | elo-reference-v1 | 20 | 10+0.1 | 70.44 +/- 131.59 | smoke |
+| 2026-07-23 | candidate-5bd0fda+dirty (Threads=4) | candidate-threads1 (Threads=1) | 500 | 10+0.1 | 128.55 +/- 28.36 | **Gate 3 PASS** — Lazy SMP threads=4 vs threads=1, same binary; LOS 100.00%, 286W/109L/105D (67.70%); row appended manually — the `Run-EloMatch.ps1` wrapper process was killed by the harness immediately after fastchess finished (before its own Add-Content step), verified against the raw match log |

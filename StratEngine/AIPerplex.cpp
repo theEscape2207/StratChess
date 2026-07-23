@@ -15,6 +15,22 @@
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 
+// Lazy SMP thread-safety: s_logger's sinks
+// (stdout_color_sink_mt, basic_file_sink_mt — see ensure_logger_initialized()
+// below, and the equivalent _mt sinks in Utils/Logger.cpp's default/perf
+// loggers) are all spdlog "_mt" thread-safe variants, so concurrent log
+// calls from multiple threads would be safe at the sink level. That said,
+// s_logger itself and ensure_logger_initialized()'s lazy-init (a plain
+// `if (s_logger) return;` check, not a magic static) are NOT safe to race:
+// initialization only ever happens from SetVerboseLogging(), invoked once
+// during single-threaded AIPerplex setup before any search (or future
+// helper thread) starts. Helper threads run the same search_with_aspiration()
+// code path as the main thread and reach the same log_* call sites, but
+// those calls are gated on `td.thread_id == 0` (see search_with_aspiration()
+// below), so only the main thread ever actually logs; s_logger remains
+// read-only (already-initialized-or-null) from every thread's perspective.
+// If a future revision lets helper threads log too, ensure_logger_initialized()
+// must be made safe to call concurrently (e.g. via std::call_once) first.
 static std::shared_ptr<spdlog::logger> s_logger = nullptr;
 static void ensure_logger_initialized()
 {
@@ -97,14 +113,81 @@ void AIPerplex::init_search(const GameInfo& info)
 	td_.info_seq.emplace_back(info);
 }
 
+// Lazy SMP helper thread entry point (plain iterative deepening, no quality
+// gates — see the declaration comment in AIPerplex.h). Runs entirely on its
+// own ThreadData; touches nothing shared except the TT (already thread-safe)
+// and the atomic abort flag it reads via IsAborted(). Calls the same
+// search_with_aspiration() aspiration-window logging as the main thread, but
+// those log_* calls are gated on `td.thread_id == 0` inside
+// search_with_aspiration(), so helper threads never actually log. Never
+// reports a move — its result is discarded by design; only the main
+// thread's search result is authoritative (the "main-is-authoritative"
+// design decision, .claude/plans/lazy-smp.md).
+void AIPerplex::helper_loop(ThreadData& td, int max_depth, TranspositionTable& tt)
+{
+	int seed_score = 0;
+	for (int depth = 1; depth <= max_depth; ++depth) {
+		if (IsAborted())
+			break;
+		const int score = search_with_aspiration(td, depth, seed_score, tt);
+		if (IsAborted())
+			break;            // partial iteration — discard score
+		seed_score = score;
+	}
+}
+
 Move AIPerplex::GetMove(_Inout_ GameInfo& info, const SearchLimits& limits)
 {
 	init_search(info);
+	// Snapshot threads_ exactly once: UCI's cmd_setoption (unlike cmd_go/
+	// cmd_ucinewgame/cmd_stop) does not call stop_and_join() before writing
+	// threads_, so a client can mutate it on the UCI thread while this
+	// function runs on the search thread. Re-reading the plain `unsigned`
+	// member at multiple points below could observe different values across
+	// reads (e.g. the spawn guard sees the old value while the aggregation
+	// loop sees a new, larger one after helper_tds_ was never resized this
+	// call), which is both a data race and a potential out-of-bounds
+	// helper_tds_[] access. Using one local snapshot everywhere in this
+	// function closes that window; a setoption arriving mid-search simply
+	// takes effect starting with the next GetMove() call.
+	const unsigned threads = threads_;
 	// Only clear TT if new game (preserve across moves for better performance)
 	if (info.fullMoveCount == 1) {
 	_tt->clear();
 	}
 	const unsigned effective_depth = ApplyLimits(limits);
+
+	// Lazy SMP: spawn threads_ - 1 helper threads to warm the shared TT while
+	// the main search below runs on td_ (main-is-authoritative, see
+	// .claude/plans/lazy-smp.md: helpers never report a move, only
+	// their node counts feed back in).
+	// threads_ == 1 (the default) leaves this block entirely unreached:
+	// `helpers` stays a default-constructed empty vector and helper_tds_ is
+	// never touched — byte-identical to the pre-SMP single-threaded code path.
+	std::vector<std::jthread> helpers;
+	if (threads > 1) {
+		if (helper_tds_.size() < threads - 1) {
+			const size_t old = helper_tds_.size();
+			helper_tds_.resize(threads - 1);
+			for (size_t i = old; i < helper_tds_.size(); ++i) {
+				helper_tds_[i] = std::make_unique<ThreadData>();
+				helper_tds_[i]->thread_id = static_cast<int>(i) + 1;
+			}
+		}
+		helpers.reserve(threads - 1);
+		for (size_t i = 0; i < threads - 1; ++i) {
+			ThreadData& htd = *helper_tds_[i];
+			htd.board = m_Board;                       // same seed as td_.board
+			htd.info_seq.clear();
+			htd.info_seq.emplace_back(info);           // same root info as init_search gives td_
+			htd.clear_killers();
+			htd.clear_null_move_flags();
+			htd.nodes_searched = 0;
+			helpers.emplace_back([this, &htd, effective_depth, this_tt = _tt.get()] {
+				helper_loop(htd, static_cast<int>(effective_depth), *this_tt);
+			});
+		}
+	}
 
 	SearchResult result = iterative_deepening(td_, static_cast<int>(effective_depth), *_tt);
 	last_result_ = result;   // expose via GetLastResult()
@@ -117,7 +200,20 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info, const SearchLimits& limits)
 	if (searched_state != m_Board.GetGameInfo().gameState)
 		m_Board.SetGameState(searched_state);
 
-	auto elapsed = StopTimerAndAdjustVars(static_cast<size_t>(td_.nodes_searched));
+	// Latch the abort signal so any still-running helpers collapse in O(depth)
+	// steps (they only ever poll IsAborted()), then join them — helpers.clear()
+	// destroys each std::jthread, which joins automatically. This must happen
+	// before every subsequent return in this function, including the
+	// empty-move emergency path below, so a helper can never outlive GetMove().
+	time_manager_.stop();
+	helpers.clear();
+
+	int64_t total_nodes = td_.nodes_searched;
+	for (size_t i = 0; i + 1 < static_cast<size_t>(threads); ++i)
+		total_nodes += helper_tds_[i]->nodes_searched;
+	last_result_.nodes_searched = total_nodes;
+
+	auto elapsed = StopTimerAndAdjustVars(static_cast<size_t>(total_nodes));
 
 	Move bestMove = result.best_move;
 
@@ -141,7 +237,7 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info, const SearchLimits& limits)
 			result.best_score,
 			result.depth_completed,
 			elapsed.count(),
-			td_.nodes_searched,
+			total_nodes,
 			result.search_was_stable ? "yes" : "NO");
 	}
 	// Equivalent of CheckGameOver(info, false), reading the thread-local
@@ -158,7 +254,7 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info, const SearchLimits& limits)
 
 SearchResult  AIPerplex::iterative_deepening(ThreadData& td, int max_depth, TranspositionTable& tt) {
 	SearchState state;
-	nodes_since_check_ = 0;   // reset node counter for this search
+	td.nodes_since_check_ = 0;   // reset node counter for this search
 	bool extra_depth_used = false;   // soft-limit extension granted at most once per search
 
 	td.clear_killers();	// Clear killer moves at the start of the search
@@ -300,8 +396,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 	// Node-based time polling: check every 1024 nodes to amortise chrono::now() cost.
 	// On first expiry, ShouldStopSearch() latches should_stop_; all future IsAborted()
-	// calls above then return true for free.
-	if ((++nodes_since_check_ & 1023) == 0) {
+	// calls above then return true for free. Only thread 0 ever calls the wall-clock
+	// check — helper threads increment their own td.nodes_since_check_ but rely solely
+	// on the IsAborted() fast-path above (no chrono::now() calls off the main thread).
+	if (td.thread_id == 0 && (++td.nodes_since_check_ & 1023) == 0) {
 		if (ShouldStopSearch())
 			return GameValues::Draw;
 	}
@@ -348,9 +446,6 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			}
 		}
 	}
-	/*else {
-		debug_tt_cache_misses(key, ply);
-	}*/
 
 	// Get PV move from previous iteration
 	if (is_pv_node && ply > 0) {
@@ -515,9 +610,6 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	tt.store(key, static_cast<int16_t>(best_value),
 		static_cast<int16_t>(depth), static_cast<int16_t>(ply), best_move, bound, node_type, SearchPhase::MAIN);
 
-	// Verify immediately
-	//assert_tt_store(tt, key, ply, best_value, depth, best_move, bound, node_type, SearchPhase::MAIN);
-
 	return adjustScoreForGameState(td, moveFound, ply, best_value);
 }
 
@@ -555,7 +647,9 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 	if (IsAborted())
 		return GameValues::Draw;
 
-	if ((++nodes_since_check_ & 1023) == 0) {
+	// Mirrors pvs(): only thread 0 calls the wall-clock check; helpers rely on
+	// the IsAborted() fast-path above.
+	if (td.thread_id == 0 && (++td.nodes_since_check_ & 1023) == 0) {
 		if (ShouldStopSearch())
 			return GameValues::Draw;
 	}
@@ -721,7 +815,7 @@ int AIPerplex::search_with_aspiration(ThreadData& td, int depth, int seed_score,
 
 		// Safety fallback: open full window after max retries
 		if (retry >= tuning_.aspiration_max_retries) {
-			log_aspiration_full_window(depth, tuning_.aspiration_max_retries);
+			if (td.thread_id == 0) log_aspiration_full_window(depth, tuning_.aspiration_max_retries);
 			if (!ShouldStopSearch())
 				score = pvs(td, depth, -GameValues::Search_Init, GameValues::Search_Init, 0, true, tt);
 			return score;
@@ -732,10 +826,10 @@ int AIPerplex::search_with_aspiration(ThreadData& td, int depth, int seed_score,
 		delta *= 2;
 		if (score <= alpha) {
 			alpha = std::max(seed_score - delta, -static_cast<int>(GameValues::Search_Init));
-			log_aspiration_retry(depth, retry + 1, score, alpha, beta, true);
+			if (td.thread_id == 0) log_aspiration_retry(depth, retry + 1, score, alpha, beta, true);
 		} else {
 			beta  = std::min(seed_score + delta,  static_cast<int>(GameValues::Search_Init));
-			log_aspiration_retry(depth, retry + 1, score, alpha, beta, false);
+			if (td.thread_id == 0) log_aspiration_retry(depth, retry + 1, score, alpha, beta, false);
 		}
 	}
 }
@@ -1050,59 +1144,4 @@ void AIPerplex::log_aspiration_full_window(int depth, int max_retries) const
 	s_logger->debug(
 		"D{:>2} ASPIRATION: max retries ({}) reached, opening full window",
 		depth, max_retries);
-}
-
-void AIPerplex::debug_tt_cache_misses(unsigned int key, int ply)
-{
-	tt_misses.emplace(key, ply);
-	if (tt_misses.size() % 2000 == 0)
-	{
-		ensure_logger_initialized();
-		if (!s_logger) return;
-
-		s_logger->info("Total inserts: {}", tt_misses.size());
-		s_logger->info("Zobrist hash collisions (count > 1):");
-		s_logger->info("===================================");
-
-		int duplicateKeyCount = 0;
-		size_t totalDuplicateEntries = 0;
-
-		for (auto it = tt_misses.begin(); it != tt_misses.end(); ) {
-			int64_t miss_key = it->first;
-			size_t count = tt_misses.count(miss_key);
-
-			if (count > 1) {
-				duplicateKeyCount++;
-				totalDuplicateEntries += count;
-
-				s_logger->info("Hash: {} (collisions: {})", miss_key, count);
-			}
-
-			// Skip to next unique key
-			it = tt_misses.upper_bound(miss_key);
-		}
-
-		s_logger->info("\nAnalysis Summary:");
-		s_logger->info("  Total cache misses: {}", tt_misses.size());
-		s_logger->info("  Unique zobrist hashes: {}", std::distance(tt_misses.begin(), tt_misses.end()));
-		s_logger->info("  Collision groups (count > 1): {}", duplicateKeyCount);
-		s_logger->info("  Total entries in collisions: {}", totalDuplicateEntries);
-		double rate = 0.0;
-		if (!tt_misses.empty()) rate = (totalDuplicateEntries * 100.0 / tt_misses.size());
-		s_logger->info("  Collision rate: {}%", rate);
-	}
-}
-
-void AIPerplex::assert_tt_store(const TranspositionTable& tt, std::uint64_t key, int16_t ply,
-	[[maybe_unused]] int16_t value, [[maybe_unused]] int16_t depth, Move /*best_move*/,
-	[[maybe_unused]] BoundType bound, NodeType /*node_type*/, [[maybe_unused]] SearchPhase phase)
-{
-	[[maybe_unused]] auto verify = tt.probe(key, ply);
-
-	assert(verify && "Probe failed after store");
-	assert(verify->key == key && "Key mismatch");
-	assert(verify->depth == depth && "Depth mismatch");
-	assert(verify->bound == bound && "Bound mismatch");
-	assert(verify->phase == phase && "Phase mismatch");
-	assert(verify->value == value && "Value mismatch");
 }

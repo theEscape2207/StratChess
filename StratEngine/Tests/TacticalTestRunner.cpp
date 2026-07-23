@@ -2,6 +2,7 @@
 #include "TacticalTestRunner.h"
 #include "../Board.h"
 #include "../AIPerplex.h"
+#include "../PlayerAI.h"
 #include "../PlayerBase.h"
 #include "../Eval.h"
 #include "../MoveFormatter.h"
@@ -44,7 +45,7 @@ std::vector<TacticalPosition> TacticalTestRunner::load_test_cases(const std::str
     return cases;
 }
 
-TacticalResult TacticalTestRunner::run_position(const TacticalPosition& pos)
+TacticalResult TacticalTestRunner::run_position(const TacticalPosition& pos, unsigned threads)
 {
     TacticalResult result;
     result.id          = pos.id;
@@ -56,6 +57,8 @@ TacticalResult TacticalTestRunner::run_position(const TacticalPosition& pos)
                                  static_cast<unsigned>(pos.depth), board);
     AIPerplex::SetVerboseLogging(false);
     ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
+    if (auto* ai_base = dynamic_cast<PlayerAiBase*>(ai.get()))
+        ai_base->SetThreads(threads);
     GameInfo info = board.GetGameInfo();
 
     const auto t0 = std::chrono::steady_clock::now();
@@ -127,7 +130,7 @@ TacticalTestRunner::StabilityVerdict TacticalTestRunner::evaluate_stability(
 }
 
 bool TacticalTestRunner::run_test_suite(double required_pass_rate, bool verbose,
-                                         const std::string& json_filename)
+                                         const std::string& json_filename, unsigned threads)
 {
     auto positions = load_test_cases(json_filename);
 
@@ -146,7 +149,7 @@ bool TacticalTestRunner::run_test_suite(double required_pass_rate, bool verbose,
             std::cout.flush();
         }
 
-        TacticalResult result = run_position(pos);
+        TacticalResult result = run_position(pos, threads);
 
         const char* verdict = result.passed ? "PASS" : "FAIL";
         if (verbose) {
@@ -182,7 +185,7 @@ bool TacticalTestRunner::run_test_suite(double required_pass_rate, bool verbose,
 }
 
 bool TacticalTestRunner::run_stability_suite(int n_runs, double required_pass_rate,
-                                             const std::string& json_filename)
+                                             const std::string& json_filename, unsigned threads)
 {
     auto positions = load_test_cases(json_filename);
 
@@ -200,7 +203,7 @@ bool TacticalTestRunner::run_stability_suite(int n_runs, double required_pass_ra
         int64_t run_ms = 0;
 
         for (const auto& pos : positions) {
-            TacticalResult result = run_position(pos);
+            TacticalResult result = run_position(pos, threads);
             run_ms += result.time_ms;
             if (!result.passed) {
                 std::cout << "  [" << result.id << "] engine " << result.engine_move_uci

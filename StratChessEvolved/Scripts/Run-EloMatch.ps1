@@ -34,11 +34,21 @@ param(
     [string]$CandidateExe = '',
     # Git tag of the pinned reference build.
     [string]$ReferenceTag = 'elo-reference-v1',
+    # Explicit path to a reference exe. When set, skips the tag-based cache/rebuild
+    # lookup entirely and uses this exe directly as the reference side — ReferenceTag
+    # then becomes purely a display-name label (fastchess engine name + EloLog.md row).
+    # Use to compare two configurations of the SAME binary (e.g. threads=4 vs threads=1).
+    [string]$ReferenceExe = '',
     # Total games (2 games per opening pair). Default ≈ ±15 ELO at 95%.
     [int]$Games = 500,
     # fastchess time control: seconds+increment.
     [string]$Tc = '10+0.1',
     [int]$Concurrency = 4,
+    # Extra fastchess -engine option tokens for the candidate, space-separated
+    # (e.g. 'option.Threads=4 option.Hash=64'). Appended verbatim after args=uci.
+    [string]$CandidateOptions = '',
+    # Extra fastchess -engine option tokens for the reference build, same format.
+    [string]$ReferenceOptions = '',
     # 20-game pipeline check instead of a full measurement.
     [switch]$Smoke
 )
@@ -64,6 +74,7 @@ $EngineTesting = Join-Path $DepsRoot 'EngineTesting'
 $fastchess     = Join-Path $EngineTesting 'fastchess.exe'
 $book          = Join-Path $RepoRoot 'Tests\openings\openings-250.pgn'
 $refExe        = Join-Path $EngineTesting "StratChess-$ReferenceTag.exe"
+if ($ReferenceExe -ne '') { $refExe = $ReferenceExe }
 
 if ($CandidateExe -eq '') { $CandidateExe = Join-Path $RepoRoot 'x64\Release\StratChessEvolved.exe' }
 
@@ -84,9 +95,13 @@ if (-not (Test-Path $CandidateExe)) {
     Write-Host 'Build it first: .\build.ps1 main'
     exit 1
 }
+if ($ReferenceExe -ne '' -and -not (Test-Path $refExe)) {
+    Write-Host "MISSING reference exe: $refExe" -ForegroundColor Red
+    exit 1
+}
 
-# --- Ensure reference exe (rebuild from tag on cache miss) -------------------
-if (-not (Test-Path $refExe)) {
+# --- Ensure reference exe (rebuild from tag on cache miss; skipped entirely when -ReferenceExe is set) ---
+if ($ReferenceExe -eq '' -and -not (Test-Path $refExe)) {
     Write-Host "==> Reference exe not cached; rebuilding from tag '$ReferenceTag'" -ForegroundColor Cyan
     git -C $RepoRoot rev-parse --verify --quiet "refs/tags/$ReferenceTag" | Out-Null
     if ($LASTEXITCODE -ne 0) {
@@ -137,12 +152,19 @@ New-Item -ItemType Directory -Force $dirA, $dirB | Out-Null
 Write-Host "==> $candidateName vs $ReferenceTag | $Games games, tc=$Tc, concurrency=$Concurrency" -ForegroundColor Cyan
 Write-Host "    PGN: $pgnOut"
 
+# Engine specs as arrays so -CandidateOptions/-ReferenceOptions (e.g. option.Threads=4)
+# splat in as extra fastchess "-engine" option tokens without disturbing the base spec.
+$candidateEngineArgs = @("cmd=$CandidateExe", "name=$candidateName", "dir=$dirA", 'args=uci')
+if ($CandidateOptions) { $candidateEngineArgs += $CandidateOptions -split '\s+' }
+$referenceEngineArgs = @("cmd=$refExe", "name=$ReferenceTag", "dir=$dirB", 'args=uci')
+if ($ReferenceOptions) { $referenceEngineArgs += $ReferenceOptions -split '\s+' }
+
 # Run from the artifacts dir: fastchess drops a config.json (tournament resume
 # state) into its cwd, which must land under gitignored logs/elo, not the repo.
 Push-Location $pgnDir
 & $fastchess `
-    -engine "cmd=$CandidateExe" "name=$candidateName" "dir=$dirA" args=uci `
-    -engine "cmd=$refExe" "name=$ReferenceTag" "dir=$dirB" args=uci `
+    -engine @candidateEngineArgs `
+    -engine @referenceEngineArgs `
     -each "tc=$Tc" `
     -rounds $rounds -repeat -concurrency $Concurrency -recover `
     -openings "file=$book" format=pgn order=sequential `

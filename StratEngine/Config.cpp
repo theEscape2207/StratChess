@@ -164,6 +164,12 @@ namespace {
 			t.aspiration_enabled       = st.value("aspiration_enabled",       true);
 			cfg.search_tuning = t;
 		}
+
+		// Parse Lazy SMP thread count if present (optional; default is
+		// PlayerAiBase's own default of 1 when the key is absent).
+		if (p.contains("threads")) {
+			cfg.threads = p["threads"].get<unsigned>();
+		}
 		return cfg;
 	}
 } // anonymous namespace
