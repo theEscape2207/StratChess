@@ -426,9 +426,9 @@ TEST_CASE("Search - should_try_null_move: otherwise-eligible position returns tr
 }
 
 // ============================================================================
-// SetThreads clamp tests (Lazy SMP config plumbing — Task 2)
+// SetThreads clamp tests
 // ============================================================================
-// No actual threading exists yet; these only verify the clamp on threads_.
+// Verifies the [1, 32] clamp on threads_ in isolation.
 
 TEST_CASE("SMP - SetThreads(0) clamps to 1", "[smp]")
 {

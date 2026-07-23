@@ -29,8 +29,8 @@ public:
 	}
 
 	// Configure the number of Lazy SMP search threads; clamps to [1, 32].
-	// Helper threads are real (Task 3) and ELO-validated (Gate 3: +128.55 Elo
-	// at threads=4 vs 1). GetMove() spawns threads_ - 1 helper std::jthreads.
+	// GetMove() spawns threads_ - 1 helper std::jthreads sharing the
+	// transposition table with the main search.
 	void SetThreads(unsigned n) noexcept override { threads_ = std::clamp(n, 1u, 32u); }
 
 	// Note: NOT to be called directly - only through Factory method (needed to be public due to usage of make_unique)

@@ -6,8 +6,7 @@
 
 class Board;
 
-// Lazy SMP sharing contract (audited for Task 1 of .claude/plans/lazy-smp.md,
-// StratChessEvolved worktree "lazy-smp", 2026-07-22): EvalManager and its
+// Lazy SMP sharing contract: EvalManager and its
 // derived classes (EvalSimple, EvalComplex) hold no mutable state of any
 // kind — no data members beyond compile-time-constant enums/statics, and
 // Evaluate() is `const`, reading only its `const Board&` argument plus the

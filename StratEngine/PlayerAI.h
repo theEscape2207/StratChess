@@ -238,14 +238,13 @@ protected:
 	//#ifdef PRINT_STATS
 
 		// Samlet tid og antal nodes for begge computerspillere - TODO: Separer evt til per spiller. Human burde ogsaa have en klokke
-		// Lazy SMP audit (Task 1, .claude/plans/lazy-smp.md): these statics are
-		// written only from StopTimerAndAdjustVars(), called once per GetMove()
-		// on the calling (single) thread, strictly after that call's search has
-		// returned (i.e. after any Lazy SMP helper threads for that move have
-		// already joined — the plan's design never has StopTimerAndAdjustVars
-		// run concurrently with an in-flight search). No synchronization is
-		// added here; this comment exists so Task 3's implementer re-verifies
-		// the invariant still holds once helper-thread join actually exists.
+		// Lazy SMP: these statics are written only from StopTimerAndAdjustVars(),
+		// called once per GetMove() on the calling (single) thread, strictly
+		// after that call's search has returned — i.e. after any Lazy SMP
+		// helper threads for that move have already joined. No synchronization
+		// is needed as a result; if a future change makes StopTimerAndAdjustVars()
+		// run concurrently with an in-flight search, this invariant must be
+		// revisited.
 	static std::chrono::milliseconds m_TotalTime;
 	static size_t m_TotalCount;
 	//#endif	// PRINT_STATS

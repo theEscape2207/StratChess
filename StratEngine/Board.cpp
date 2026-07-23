@@ -21,14 +21,13 @@ namespace zobrist {
 		// Fills the global key tables exactly once (thread-safe magic static).
 		// Every Board instance must see identical keys, or zobrist hashes computed
 		// from different Board objects (e.g. thread-local boards under Lazy SMP)
-		// would disagree for the same position. (Lazy SMP audit, Task 1,
-		// .claude/plans/lazy-smp.md: confirmed this is the only lazy/runtime
+		// would disagree for the same position. This is the only lazy/runtime
 		// init in the attack/Zobrist table set; a C++11 function-local static
 		// initializer is guaranteed thread-safe by the standard, so concurrent
 		// Board construction from multiple helper threads is race-free. See
 		// Magic.h for the sliding-piece attack tables, which need no such
 		// guard at all — they are `inline constexpr`, fully resolved at
-		// compile time with no runtime initialization step whatsoever.)
+		// compile time with no runtime initialization step whatsoever.
 		static const bool once = [] {
 			// non-deterministic seed for production use (uncomment for true randomness, but beware non-reproducible hashes across runs)
 			// std::random_device rd;
