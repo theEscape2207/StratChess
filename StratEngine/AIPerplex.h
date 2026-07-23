@@ -180,6 +180,10 @@ private:
 	// preprocessor settings (StratChessTests.vcxproj) — never in production.
 	// See Docs/TestDesign.md §"AIPerplex Test Access" and §Phase 1 [search] tests.
 	friend class AIPerlexTestFixture;
+	// Grants UCIHandler's test fixture (StratChessTests/UCITests.cpp) access
+	// to threads_ so the "Threads survives ucinewgame" regression test can
+	// verify the fix end to end, not just via UciHandler's own private state.
+	friend class UciHandlerTestFixture;
 #endif
 
 public:

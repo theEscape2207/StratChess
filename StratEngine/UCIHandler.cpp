@@ -44,6 +44,11 @@ void UciHandler::init_ai()
     AIPerplex::SetVerboseLogging(false);
     base->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);   // public via IPlayer; must be before downcast
     ai_.reset(dynamic_cast<PlayerAiBase*>(base.release()));
+    // Restore the last client-configured thread count — init_ai() rebuilds
+    // ai_ from scratch (AIPerplex threads_ defaults to 1), so without this
+    // a prior 'setoption name Threads value N' would be silently lost on
+    // every cmd_ucinewgame().
+    if (ai_) ai_->SetThreads(configured_threads_);
 }
 
 // ---------------------------------------------------------------------------
@@ -209,6 +214,7 @@ void UciHandler::cmd_setoption(std::string_view line)
         return;   // out-of-range or otherwise unparsable — ignore
     }
 
+    configured_threads_ = n;
     if (ai_) ai_->SetThreads(n);
 }
 

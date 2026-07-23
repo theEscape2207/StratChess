@@ -52,6 +52,12 @@ private:
     std::unique_ptr<PlayerAiBase> ai_;
     std::thread search_thread_;
 
+    // Last thread count from a client 'setoption name Threads value N'.
+    // Persists across init_ai() calls (cmd_ucinewgame() rebuilds ai_ from
+    // scratch, which would otherwise silently reset the thread count back
+    // to the AIPerplex default of 1).
+    unsigned configured_threads_{ 1 };
+
 #ifdef STRAT_ENABLE_TEST_ACCESS
     // Enables unit tests for private command handlers (cmd_position replay).
     // Same mechanism as AIPerplex's fixture; defined only in the test project.
