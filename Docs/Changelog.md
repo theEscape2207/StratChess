@@ -22,6 +22,89 @@ Newest first.
 
 ---
 
+## 2026-07-23 — Lazy SMP Parallel Search (PR #109)
+
+### Added
+- Multi-threaded search for `AIPerplex`: `GetMove()` at `threads_ > 1` spawns
+  `threads_ - 1` helper `std::jthread`s (`AIPerplex::helper_loop`) that run a plain
+  iterative-deepening loop from depth 1, sharing the transposition table with the main
+  search thread; main thread's result stays authoritative (helpers never report moves,
+  no depth-skip patterns, no voting) — best move propagates through TT timing alone
+- `PlayerAiBase::SetThreads(unsigned)` (virtual no-op on legacy AIs); `AIPerplex::threads_`
+  clamped to `[1, 32]`; UCI `setoption name Threads value N` (advertised via
+  `option name Threads type spin default 1 min 1 max 32`); `game_settings.json` per-player
+  `"threads"` key (default 1, unchanged by this PR — flipping it to the measured-best
+  value for actual play is a post-merge, user-decided follow-up)
+- `nodes_since_check_` moved from `PlayerAiBase` into `ThreadData`, gated to
+  `thread_id == 0` for clock checks; helpers rely solely on the existing `IsAborted()`
+  relaxed-atomic check (no clock calls off the main thread)
+- `tactical stability N [file] [threads]` CLI form (`StratChessEvolved.exe`) — forwards a
+  threads arg through `TacticalTestRunner::run_stability_suite` → `run_test_suite` →
+  `run_position`; the pre-merge nondeterminism detector for once threads race on a shared
+  TT (byte-identical node-count equivalence stops being available past `threads=1`)
+- `Scripts\Run-EloMatch.ps1`: `-CandidateOptions`/`-ReferenceOptions` (arbitrary fastchess
+  per-engine UCI option tokens, e.g. `option.Threads=4`) and `-ReferenceExe` (point the
+  reference side at an explicit exe instead of always rebuilding from a pinned git tag) —
+  needed to measure the same binary against itself under different `Threads` settings
+
+### Fixed
+- UCI `Threads` option no longer resets on `ucinewgame`: `UciHandler::cmd_ucinewgame()`
+  rebuilds `ai_` from scratch via `init_ai()`, which previously left a fresh `AIPerplex`
+  defaulted to `threads_ == 1` — silently discarding any prior `setoption name Threads
+  value N` under standard UCI usage (`setoption` once at session start, `ucinewgame` before
+  every game), making `Threads` effectively non-functional. Cost real time during this PR's
+  own NPS measurement (below) before a probe comparing total nodes at threads=1 vs threads=4
+  under a fixed `movetime` caught it. Fixed via `UciHandler::configured_threads_`, set by
+  `cmd_setoption()` and reapplied by `init_ai()` on every call (initial `run()` startup and
+  every `ucinewgame`); regression-tested in `UCITests.cpp` (`[uci][smp]`).
+
+### Three-gate validation
+- **Gate 1 (inert at threads=1)**: byte-identical node/move/score/depth sequence vs the
+  pre-SMP baseline — the single-threaded path never touches any thread machinery
+- **Gate 2 (stable at threads=4)**: `tactical stability 20 tactical_test_cases.json 4` —
+  20/20 runs, 31/31 positions each run, 0 failing runs, 0 flipped positions;
+  `Validate-PrePR.ps1` full pass (extended Catch2 tiers, deep perft 640/640, AIAgent
+  self-play unaffected — legacy AIs stay single-threaded)
+- **Gate 3 (measured gain)**: `Run-EloMatch.ps1`, same binary, `option.Threads=4` vs
+  `option.Threads=1`, 500 games @ 10+0.1: **Elo +128.55 ± 28.36, LOS 100.00%**
+  (286W/109L/105D, 67.70%) — comfortably clears the positive-score/LOS>95% merge bar.
+  Recorded in `Docs/EloLog.md`'s history table.
+
+### NPS scaling (31-position tactical suite, fixed depth 8, driven directly over UCI)
+
+| Threads | Total nodes | Total time (ms) | Aggregate NPS | Scaling vs 1T |
+|---|---|---|---|---|
+| 1 | 1,534,954 | 1,281 | 1,198,247 | 1.00x |
+| 2 | 2,702,646 | 1,122 | 2,408,775 | 2.01x |
+| 4 | 5,224,431 | 1,186 | 4,405,085 | 3.68x |
+| 8 | 8,901,291 | 1,283 | 6,937,873 | 5.79x |
+
+Depth 8 finishes fast per position (25–105 ms at threads=1), and `go depth N` is
+depth-limited rather than time-limited, so total wall time stays roughly flat across
+thread counts while combined node throughput scales — more threads do more work in the
+same wall time rather than finishing sooner. That is a real but secondary signal; Gate 3's
+ELO match is what actually measures the production benefit (better move quality per unit
+of *game clock* time). Sub-linear scaling past 2 threads matches Lazy SMP expectations
+(shared-TT search overlap between helpers, diminishing marginal value per added thread,
+plus physical core count capping it).
+
+Plan: `.claude/plans/lazy-smp.md`. `Docs/TestDesign.md` documents the `tactical stability`
+threads arg.
+
+### Follow-ups (deferred; not filed as GitHub issues yet — pending triage)
+- **Lockless TT (Hyatt XOR)**: replace the TT's per-bucket `shared_mutex` with
+  self-validating atomic entries; own PR, gated on measured NPS scaling + a
+  non-regression ELO match. v1 deliberately keeps per-bucket locks — already thread-safe,
+  and the pre-SMP single-threaded search already paid the lock cost, so it's a
+  zero-regression starting point
+- **Persistent thread pool**: current design is spawn-per-search (`GetMove()` spawns
+  `threads_ - 1` helper `std::jthread`s and joins them before returning); only worth
+  revisiting if profiling ever shows thread-spawn cost mattering against seconds-per-move
+  search budgets
+- **`game_settings.json` `"threads"` flip**: post-merge, user-decided — flip both
+  players' `"threads"` from 1 to the measured-best value (4, per this measurement) to
+  actually play with Lazy SMP enabled
+
 ## 2026-07-04 — Roadmap → GitHub Issues migration (PR #105)
 
 ### Changed

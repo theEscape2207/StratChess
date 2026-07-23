@@ -5,9 +5,10 @@
 #include "TranspositionTable.h"
 #include "PVTable.h"
 #include "ThreadData.h"
-#include <map>
 #include <memory>
+#include <algorithm>
 #include <cstdint>
+#include <vector>
 
 // Search result structure - returned from iterative_deepening
 struct SearchResult {
@@ -26,6 +27,11 @@ public:
 	{
 		return "Perplexity Transpositional AlphaBeta";
 	}
+
+	// Configure the number of Lazy SMP search threads; clamps to [1, 32].
+	// GetMove() spawns threads_ - 1 helper std::jthreads sharing the
+	// transposition table with the main search.
+	void SetThreads(unsigned n) noexcept override { threads_ = std::clamp(n, 1u, 32u); }
 
 	// Note: NOT to be called directly - only through Factory method (needed to be public due to usage of make_unique)
 	explicit AIPerplex(Board& board, _In_ unsigned md);
@@ -121,6 +127,14 @@ private:
 	int adjustScoreForGameState(ThreadData& td, bool moveFound, int ply, int best_value);
 	int quiescence(ThreadData& td, int alpha, int beta, int depth_q, int ply, TranspositionTable& tt);
 
+	// Lazy SMP helper thread entry point: plain iterative-deepening loop with
+	// no quality gates (no assess_iteration_quality, no emergency handling,
+	// no game-state/root propagation, no logging). Result is discarded —
+	// the helper's only contribution is the TT entries it writes along the
+	// way and its node count (aggregated by GetMove() after join). Exits on
+	// IsAborted() or when max_depth is reached.
+	void helper_loop(ThreadData& td, int max_depth, TranspositionTable& tt);
+
 	// HELPER METHODS
 	// --------------
 	// Quality assessment
@@ -147,6 +161,17 @@ private:
 	// helper threads will each get their own. See ThreadData.h.
 	ThreadData td_;
 
+	// Lazy SMP helper threads' per-thread state, one per helper (threads_ - 1
+	// entries). Sized lazily on first use in GetMove() and never shrunk, so
+	// history/killers age across moves per helper the same way td_'s does.
+	// Empty and untouched whenever threads_ == 1.
+	std::vector<std::unique_ptr<ThreadData>> helper_tds_;
+
+	// Configured number of search threads (Lazy SMP). Clamped to [1, 32] by
+	// SetThreads(). threads_ == 1 (the default) takes the exact pre-SMP code
+	// path in GetMove() — no helper_tds_ construction, no thread spawn.
+	unsigned threads_{ 1 };
+
 	// logging control: enable detailed logging when needed (default: false)
 	static inline bool s_verbose_logging = false;
 
@@ -156,6 +181,10 @@ private:
 	// preprocessor settings (StratChessTests.vcxproj) — never in production.
 	// See Docs/TestDesign.md §"AIPerplex Test Access" and §Phase 1 [search] tests.
 	friend class AIPerlexTestFixture;
+	// Grants UCIHandler's test fixture (StratChessTests/UCITests.cpp) access
+	// to threads_ so the "Threads survives ucinewgame" regression test can
+	// verify the fix end to end, not just via UciHandler's own private state.
+	friend class UciHandlerTestFixture;
 #endif
 
 public:
@@ -170,13 +199,6 @@ public:
 	const SearchTuning& tuning() const { return tuning_; }
 
 private:
-	// Debug helpers
-	void debug_tt_cache_misses(unsigned int key, int ply);
-	void assert_tt_store(const TranspositionTable& tt, std::uint64_t key, int16_t ply,
-		[[maybe_unused]] int16_t value, [[maybe_unused]] int16_t depth, Move best_move,
-		[[maybe_unused]] BoundType bound, NodeType node_type, [[maybe_unused]] SearchPhase phase);
-	std::multimap<std::uint64_t, int> tt_misses;
-
 	SearchResult last_result_{};
 
 public:
