@@ -35,9 +35,11 @@
           "aspiration_max_retries": 4,
           "aspiration_enabled": true
         },
-        /* threads: Lazy SMP search thread count (config plumbing only for
-           now — no helper threads are spawned yet; flip above 1 once the
-           actual Lazy SMP search is implemented and ELO-validated) */
+        /* threads: Lazy SMP search thread count. Helper threads are real and
+           ELO-validated (Gate 3: +128.55 +/- 28.36 Elo at threads=4 vs 1,
+           LOS 100%, see Docs/Changelog.md 2026-07-23). threads=1 remains the
+           shipped default here pending a user decision to flip it for actual
+           play. */
         "threads": 1
       },
       "black": {
@@ -57,9 +59,11 @@
           "aspiration_max_retries": 4,
           "aspiration_enabled": true
         },
-        /* threads: Lazy SMP search thread count (config plumbing only for
-           now — no helper threads are spawned yet; flip above 1 once the
-           actual Lazy SMP search is implemented and ELO-validated) */
+        /* threads: Lazy SMP search thread count. Helper threads are real and
+           ELO-validated (Gate 3: +128.55 +/- 28.36 Elo at threads=4 vs 1,
+           LOS 100%, see Docs/Changelog.md 2026-07-23). threads=1 remains the
+           shipped default here pending a user decision to flip it for actual
+           play. */
         "threads": 1
       }
     },

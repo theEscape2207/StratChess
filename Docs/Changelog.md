@@ -47,6 +47,17 @@ Newest first.
   reference side at an explicit exe instead of always rebuilding from a pinned git tag) —
   needed to measure the same binary against itself under different `Threads` settings
 
+### Fixed
+- UCI `Threads` option no longer resets on `ucinewgame`: `UciHandler::cmd_ucinewgame()`
+  rebuilds `ai_` from scratch via `init_ai()`, which previously left a fresh `AIPerplex`
+  defaulted to `threads_ == 1` — silently discarding any prior `setoption name Threads
+  value N` under standard UCI usage (`setoption` once at session start, `ucinewgame` before
+  every game), making `Threads` effectively non-functional. Cost real time during this PR's
+  own NPS measurement (below) before a probe comparing total nodes at threads=1 vs threads=4
+  under a fixed `movetime` caught it. Fixed via `UciHandler::configured_threads_`, set by
+  `cmd_setoption()` and reapplied by `init_ai()` on every call (initial `run()` startup and
+  every `ucinewgame`); regression-tested in `UCITests.cpp` (`[uci][smp]`).
+
 ### Three-gate validation
 - **Gate 1 (inert at threads=1)**: byte-identical node/move/score/depth sequence vs the
   pre-SMP baseline — the single-threaded path never touches any thread machinery
@@ -77,16 +88,6 @@ of *game clock* time). Sub-linear scaling past 2 threads matches Lazy SMP expect
 (shared-TT search overlap between helpers, diminishing marginal value per added thread,
 plus physical core count capping it).
 
-### Notes
-- Measurement-methodology finding (no engine source touched to address it — out of this
-  PR's scope): `UciHandler::cmd_ucinewgame()` reconstructs `ai_` from scratch
-  (`init_ai()`), which resets `threads_` back to its default of 1. A UCI driver — or a
-  measurement harness — that sends `setoption name Threads value N` once at session start
-  rather than after every `ucinewgame` will silently search single-threaded with no error.
-  Cost real time during this PR's own NPS measurement before being caught by a probe that
-  compared total nodes at threads=1 vs threads=4 under a fixed `movetime` and found them
-  nearly identical. Filed as a follow-up below.
-
 Plan: `.claude/plans/lazy-smp.md`. `Docs/TestDesign.md` documents the `tactical stability`
 threads arg.
 
@@ -103,9 +104,6 @@ threads arg.
 - **`game_settings.json` `"threads"` flip**: post-merge, user-decided — flip both
   players' `"threads"` from 1 to the measured-best value (4, per this measurement) to
   actually play with Lazy SMP enabled
-- **UCI `Threads` resets on `ucinewgame`**: either document the required command ordering
-  (re-send `setoption` after every `ucinewgame`) or make the setting persist across it,
-  the way most other UCI engines' options do
 
 ## 2026-07-04 — Roadmap → GitHub Issues migration (PR #105)
 
