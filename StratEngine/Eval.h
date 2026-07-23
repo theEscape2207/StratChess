@@ -6,6 +6,15 @@
 
 class Board;
 
+// Lazy SMP sharing contract: EvalManager and its
+// derived classes (EvalSimple, EvalComplex) hold no mutable state of any
+// kind — no data members beyond compile-time-constant enums/statics, and
+// Evaluate() is `const`, reading only its `const Board&` argument plus the
+// read-only global tables in defines.h (g_Eval_Bitboards, g_bbFileMask,
+// g_bbFileUpMask, g_bbFileDownMask — all `constexpr`/compile-time-initialized,
+// no lazy/runtime init). A single EvalManager instance is therefore safe to
+// share, unsynchronized, across every Lazy SMP helper thread's concurrent
+// Evaluate() calls — no per-thread clone is needed.
 class EvalManager
 {
 public:

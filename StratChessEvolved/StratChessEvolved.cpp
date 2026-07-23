@@ -104,7 +104,7 @@ static void test_fen_integration() {
 
 static int tacticalrunner(int argc, char** argv) {
     if (argc < 2) {
-        std::cout << "Usage: tactical test [filename] | tactical stability [N] [filename]\n";
+        std::cout << "Usage: tactical test [filename] | tactical stability [N] [filename] [threads]\n";
         return 1;
     }
     const std::string command = argv[1];
@@ -128,11 +128,28 @@ static int tacticalrunner(int argc, char** argv) {
             }
         }
         const std::string filename = (argc >= 4) ? argv[3] : "tactical_test_cases.json";
-        const bool ok = Testing::TacticalTestRunner::run_stability_suite(n_runs, 0.90, filename);
+        unsigned threads = 1;
+        if (argc >= 5) {
+            int parsed = 0;
+            try {
+                parsed = std::stoi(argv[4]);
+            } catch (const std::exception&) {
+                std::cerr << "Error: threads must be a number, got '" << argv[4] << "'\n";
+                return 1;
+            }
+            if (parsed < 1) {
+                std::cerr << "Error: threads must be >= 1, got " << parsed << "\n";
+                return 1;
+            }
+            // Upper bound (32) is enforced by AIPerplex::SetThreads' own clamp;
+            // no need to duplicate the ceiling check here.
+            threads = static_cast<unsigned>(parsed);
+        }
+        const bool ok = Testing::TacticalTestRunner::run_stability_suite(n_runs, 0.90, filename, threads);
         return ok ? 0 : 1;
     }
     std::cerr << "Error: unknown tactical command '" << command << "'\n";
-    std::cout << "Usage: tactical test [filename] | tactical stability [N] [filename]\n";
+    std::cout << "Usage: tactical test [filename] | tactical stability [N] [filename] [threads]\n";
     return 1;
 }
 

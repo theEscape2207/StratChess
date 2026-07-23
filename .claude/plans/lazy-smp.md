@@ -306,13 +306,13 @@ for (size_t i = 0; i + 1 < static_cast<size_t>(threads_); ++i)
 
 ### Task 4: Gate 2 — stability + regression sweep
 
-- [ ] `tactical stability 20` with a threads=4 configuration → 0 failing runs, 0 flips.
+- [x] `tactical stability 20` with a threads=4 configuration → 0 failing runs, 0 flips.
   (Mechanism: the tactical runner constructs its own AI — add an optional fourth CLI arg,
   `tactical stability 20 tactical_test_cases.json 4` = threads, default 1, plumbed to
   `SetThreads` in `TacticalTestRunner::run_position`; document in `Docs/TestDesign.md`.)
-- [ ] `.\build.ps1 extended-tests` (all tiers), deep perft from `Tests/`, AIAgent
+- [x] `.\build.ps1 extended-tests` (all tiers), deep perft from `Tests/`, AIAgent
   self-play (`"type": 3`) 60 s — legacy AIs unaffected.
-- [ ] `Validate-PrePR.ps1` full gate (covers threads=1 stability + self-play). Commit any
+- [x] `Validate-PrePR.ps1` full gate (covers threads=1 stability + self-play). Commit any
   fixes; document Gate 2 results in the plan file's Gate log (append section).
 
 ### Task 5: Gate 3 — measured gain + docs + PR
@@ -330,3 +330,28 @@ for (size_t i = 0; i + 1 < static_cast<size_t>(threads_); ++i)
 - [ ] Sync `origin/main`, `Validate-PrePR.ps1` once more if code changed, PR with
   Why/Summary/Test plan (three gates + numbers)/Notes. Post-merge follow-up (user
   decision): flip `game_settings.json` `"threads"` to the measured best.
+
+## Gate Results
+
+### Gate 2 — stability + regression sweep (2026-07-23, Task 4)
+
+Implementation: added an optional 4th CLI positional arg (threads, default 1) to
+`tactical stability` in `StratChessEvolved.cpp`; validated as a positive integer by the
+CLI (upper bound left to `AIPerplex::SetThreads`'s own `[1,32]` clamp). Threaded a new
+`unsigned threads = 1` parameter through `TacticalTestRunner::run_stability_suite` →
+`run_test_suite` → `run_position`, applied via `dynamic_cast<PlayerAiBase*>(ai.get())->SetThreads(threads)`
+before `GetMove()` (same pattern as `Game.cpp`'s `SetPlayerParams`). Documented in
+`Docs/TestDesign.md`.
+
+| Check | Command | Result |
+|---|---|---|
+| Tactical stability @ threads=4 | `Tests/` → `../x64/Release/StratChessEvolved.exe tactical stability 20 tactical_test_cases.json 4` | **PASS** — 20/20 runs, 31/31 positions each run, **0 failing runs, 0 flipped positions** |
+| Extended Catch2 tiers | `.\build.ps1 extended-tests` | **PASS** — 2311 assertions in 170 test cases |
+| Deep perft | `Tests/` → `../x64/Release/StratChessEvolved.exe perft test` | **PASS** — 640/640 |
+| AIAgent self-play (legacy AI, `"type": 3` both sides) | `Start-Process StratChessEvolved.exe game`, 60 s timeout | **PASS** — 4 moves completed, no crash/hang/error in stdout or stderr; `game_settings.json` restored afterward |
+| Full pre-PR gate | `Scripts\Validate-PrePR.ps1` (build + extended tests + tactical stability@1 (default) + AIPerplex self-play) | **PASS** — Full build / Extended tests / Tactical suite / Self-play all green; tactical suite ran 10/10 with 0 flips at the default threads=1, confirming the new optional arg didn't disturb the existing invocation |
+
+**Conclusion**: Gate 2 passes cleanly. Lazy SMP helper threads (Task 3) introduce no
+observed nondeterminism in the tactical suite at threads=4 across 20 repeated runs, and
+the `PlayerAiBase::SetThreads` no-op / `nodes_since_check_` relocation (Tasks 1-2) leave
+legacy AIs (`AIAgent`) fully functional. Proceed to Task 5 (Gate 3 — measured ELO gain).

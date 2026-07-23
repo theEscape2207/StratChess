@@ -3,6 +3,7 @@
 
 #include <catch_amalgamated.hpp>
 #include "UCIHandler.h"
+#include "AIPerplex.h"
 #include "Board.h"
 #include "MoveFormatter.h"
 #include <sstream>
@@ -19,6 +20,20 @@ public:
 
     void position(const std::string& line) { handler.cmd_position(line); }
     const Board& board() const { return handler.board_; }
+
+    void setoption(const std::string& line) { handler.cmd_setoption(line); }
+    void ucinewgame() { handler.cmd_ucinewgame(); }
+
+    // Reads threads_ off the live ai_ instance (via the AIPerplex friend
+    // declaration granted to this same fixture class name) — proves the
+    // fix actually reaches the freshly-constructed AIPerplex, not just
+    // UciHandler's own configured_threads_ bookkeeping.
+    unsigned ai_threads() const
+    {
+        auto* perplex = dynamic_cast<AIPerplex*>(handler.ai_.get());
+        REQUIRE(perplex != nullptr);
+        return perplex->threads_;
+    }
 };
 
 // Builds a legal UCI move sequence of at least `min_plies` plies from the
@@ -184,4 +199,44 @@ TEST_CASE("cmd_position: replay longer than MAX_PLY does not overflow ply histor
     }
     REQUIRE(plies >= 300);   // the scenario really is longer than MAX_PLY
     REQUIRE(fix.board().get_zobrist_hash() == truth.get_zobrist_hash());
+}
+
+// ---------------------------------------------------------------------------
+// cmd_setoption Threads — survives cmd_ucinewgame()
+// ---------------------------------------------------------------------------
+
+TEST_CASE("cmd_setoption: Threads value survives cmd_ucinewgame()", "[uci][smp]")
+{
+    // Regression: cmd_ucinewgame() calls init_ai(), which used to construct
+    // a brand-new AIPerplex whose threads_ always defaults to 1 — silently
+    // discarding any prior 'setoption name Threads value N'. Standard UCI
+    // usage is: client sends setoption once at session start, then sends
+    // ucinewgame before every game — so this made Threads effectively
+    // non-functional. Fixed via UciHandler::configured_threads_, restored
+    // on every init_ai() call.
+    UciHandlerTestFixture fix;
+
+    // No ai_ yet (run() hasn't been called) — setoption must still record
+    // the value for the next init_ai(), not just apply it to a live ai_.
+    fix.setoption("setoption name Threads value 4");
+
+    fix.ucinewgame();   // rebuilds ai_ via init_ai()
+
+    REQUIRE(fix.ai_threads() == 4);
+}
+
+TEST_CASE("cmd_setoption: Threads takes effect immediately on the live ai_", "[uci][smp]")
+{
+    // A client may send setoption mid-session without an intervening
+    // ucinewgame — the option must take effect right away, not only be
+    // queued for the next init_ai().
+    UciHandlerTestFixture fix;
+    fix.ucinewgame();   // construct the initial ai_ (threads_ defaults to 1)
+    REQUIRE(fix.ai_threads() == 1);
+
+    fix.setoption("setoption name Threads value 4");
+    REQUIRE(fix.ai_threads() == 4);   // applied to the existing ai_
+
+    fix.ucinewgame();   // rebuild ai_ — must still restore 4, not reset to 1
+    REQUIRE(fix.ai_threads() == 4);
 }

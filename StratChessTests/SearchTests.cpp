@@ -75,6 +75,11 @@ public:
     // TEST_CASE functions.
     void set_last_move_was_null(int ply, bool value) const
         { ai->td_.last_move_was_null[ply] = value; }
+
+    // Reads the private threads_ member — set (clamped) via the public
+    // SetThreads() override; needs friend access because threads_ itself
+    // is private. Used by the [smp] clamp tests below.
+    unsigned threads() const { return ai->threads_; }
 };
 
 // ============================================================================
@@ -418,4 +423,36 @@ TEST_CASE("Search - should_try_null_move: otherwise-eligible position returns tr
     fix.ai->tuning().null_move_min_depth = 3;
 
     REQUIRE(fix.try_null_move(4, 0, 1, false, false) == true);
+}
+
+// ============================================================================
+// SetThreads clamp tests
+// ============================================================================
+// Verifies the [1, 32] clamp on threads_ in isolation.
+
+TEST_CASE("SMP - SetThreads(0) clamps to 1", "[smp]")
+{
+    AIPerlexTestFixture fix;
+    fix.ai->SetThreads(0);
+    REQUIRE(fix.threads() == 1u);
+}
+
+TEST_CASE("SMP - SetThreads(64) clamps to 32", "[smp]")
+{
+    AIPerlexTestFixture fix;
+    fix.ai->SetThreads(64);
+    REQUIRE(fix.threads() == 32u);
+}
+
+TEST_CASE("SMP - SetThreads(4) passes through unchanged", "[smp]")
+{
+    AIPerlexTestFixture fix;
+    fix.ai->SetThreads(4);
+    REQUIRE(fix.threads() == 4u);
+}
+
+TEST_CASE("SMP - SetThreads default is 1", "[smp]")
+{
+    AIPerlexTestFixture fix;
+    REQUIRE(fix.threads() == 1u);
 }
