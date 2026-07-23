@@ -22,7 +22,7 @@ Newest first.
 
 ---
 
-## 2026-07-23 — Lazy SMP Parallel Search (PR #TBD)
+## 2026-07-23 — Lazy SMP Parallel Search (PR #109)
 
 ### Added
 - Multi-threaded search for `AIPerplex`: `GetMove()` at `threads_ > 1` spawns
