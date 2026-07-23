@@ -138,6 +138,18 @@ void AIPerplex::helper_loop(ThreadData& td, int max_depth, TranspositionTable& t
 Move AIPerplex::GetMove(_Inout_ GameInfo& info, const SearchLimits& limits)
 {
 	init_search(info);
+	// Snapshot threads_ exactly once: UCI's cmd_setoption (unlike cmd_go/
+	// cmd_ucinewgame/cmd_stop) does not call stop_and_join() before writing
+	// threads_, so a client can mutate it on the UCI thread while this
+	// function runs on the search thread. Re-reading the plain `unsigned`
+	// member at multiple points below could observe different values across
+	// reads (e.g. the spawn guard sees the old value while the aggregation
+	// loop sees a new, larger one after helper_tds_ was never resized this
+	// call), which is both a data race and a potential out-of-bounds
+	// helper_tds_[] access. Using one local snapshot everywhere in this
+	// function closes that window; a setoption arriving mid-search simply
+	// takes effect starting with the next GetMove() call.
+	const unsigned threads = threads_;
 	// Only clear TT if new game (preserve across moves for better performance)
 	if (info.fullMoveCount == 1) {
 	_tt->clear();
@@ -151,17 +163,17 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info, const SearchLimits& limits)
 	// `helpers` stays a default-constructed empty vector and helper_tds_ is
 	// never touched — byte-identical to the pre-SMP code path (Gate 1).
 	std::vector<std::jthread> helpers;
-	if (threads_ > 1) {
-		if (helper_tds_.size() < threads_ - 1) {
+	if (threads > 1) {
+		if (helper_tds_.size() < threads - 1) {
 			const size_t old = helper_tds_.size();
-			helper_tds_.resize(threads_ - 1);
+			helper_tds_.resize(threads - 1);
 			for (size_t i = old; i < helper_tds_.size(); ++i) {
 				helper_tds_[i] = std::make_unique<ThreadData>();
 				helper_tds_[i]->thread_id = static_cast<int>(i) + 1;
 			}
 		}
-		helpers.reserve(threads_ - 1);
-		for (size_t i = 0; i < threads_ - 1; ++i) {
+		helpers.reserve(threads - 1);
+		for (size_t i = 0; i < threads - 1; ++i) {
 			ThreadData& htd = *helper_tds_[i];
 			htd.board = m_Board;                       // same seed as td_.board
 			htd.info_seq.clear();
@@ -195,7 +207,7 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info, const SearchLimits& limits)
 	helpers.clear();
 
 	int64_t total_nodes = td_.nodes_searched;
-	for (size_t i = 0; i + 1 < static_cast<size_t>(threads_); ++i)
+	for (size_t i = 0; i + 1 < static_cast<size_t>(threads); ++i)
 		total_nodes += helper_tds_[i]->nodes_searched;
 	last_result_.nodes_searched = total_nodes;
 
