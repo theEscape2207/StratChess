@@ -233,7 +233,6 @@ int EvalComplex::Evaluate(const Board& board) const noexcept
 		}
 	}
 
-
 	const eColor color = board.GetCurrentColor();
 
 	if (color == WHITE)

@@ -50,14 +50,14 @@ static constexpr const char* FEN_ROOK_ON_7TH =
 static constexpr const char* FEN_MOPUP_LOSER_KING_CORNER =
     "k6r/8/8/8/3Q4/8/8/4K3 w - - 0 1";
 static constexpr const char* FEN_MOPUP_LOSER_KING_CENTER =
-    "r7/8/2k5/8/3Q4/8/8/4K3 w - - 0 1";
+    "7r/8/2k5/8/3Q4/8/8/4K3 w - - 0 1";
 
 // Same as above, but with one pawn each (Pa2/pa7) — mop-up must be gated off
 // once pawns are on the board.
 static constexpr const char* FEN_MOPUP_LOSER_KING_CORNER_WITH_PAWNS =
     "k6r/p7/8/8/3Q4/8/P7/4K3 w - - 0 1";
 static constexpr const char* FEN_MOPUP_LOSER_KING_CENTER_WITH_PAWNS =
-    "r7/p7/2k5/8/3Q4/8/P7/4K3 w - - 0 1";
+    "7r/p7/2k5/8/3Q4/8/P7/4K3 w - - 0 1";
 
 // White King+Knight vs Black King+Bishop, pawnless, materially EQUAL (300 - 300 = 0).
 // Same corner/center king placement idea — mop-up must be gated off below the
