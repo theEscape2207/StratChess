@@ -30,6 +30,9 @@ Newest first.
   toward a corner once material lead clears `MOPUP_MATERIAL_THRESHOLD`; `Tactical -
   QFORK-001` (issue #66 regression test) hidden via Catch2 `[.]` tag pending a broader
   WAC-style tactical suite — see issue #118
+- Validated: build clean (Level4/`/WX`, 0 warnings); full extended suite 174/174 passing
+  (`Tactical - QFORK-001` intentionally hidden, see above); 1 self-play game to checkmate
+  (move 217), no crash
 
 ## 2026-07-23 — Lazy SMP Parallel Search (PR #109)
 
