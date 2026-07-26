@@ -236,9 +236,25 @@ Before continuing work in a worktree that's been idle, `git fetch origin main` a
 ### Pre-PR checklist
 Before running `gh pr create` (or pushing an update to an already-open PR):
 1. **Sync** — `git fetch origin main`, then `git merge origin/main`. Resolve any conflicts before proceeding (keep both sides' additions when the conflict is just "two PRs added unrelated declarations at the same anchor line" — don't drop either). This step is cheap and applies to every PR, docs included: a doc-only change can still collide with another doc-only change.
-2. **Validate — scoped to what actually changed**, via `git diff --name-only origin/main...HEAD`:
-   - **Doc-only diff** (every changed file matches `*.md`, `Docs/**`, `.claude/plans/**`, or `CLAUDE.md` — no `.cpp`/`.h`/`.json`/`.ps1`/`.vcxproj*`/source files touched): the pre-commit hook's fast-test pass is sufficient. Do **not** run `Validate-PrePR.ps1` — a full build + extended-test + self-play cycle cannot catch anything a documentation edit could break, and running it anyway just burns minutes for a guaranteed pass (see PR #56, a one-line `CLAUDE.md` fix).
-   - **Any code/script/config change**: run `Scripts\Validate-PrePR.ps1` (full build + extended `[slow]` tests + self-play) before opening the PR.
+2. **Validate** — just run `Scripts\Validate-PrePR.ps1`. It now scopes itself to what actually
+   changed and skips gates that cannot observe the diff, so there is no longer a judgement call to
+   make here. `Scripts\Get-ChangeTier.ps1` is the single source of truth for that decision and is
+   shared with CI (`.github/workflows/build-and-test.yml`), so the two cannot drift:
+
+   | Tier | Matches | What runs |
+   |---|---|---|
+   | `Docs` | `*.md`, `Docs/**`, `.claude/plans/**` | Nothing — the pre-commit hook's fast tests already cover it |
+   | `Tooling` | `Scripts\Run-EloMatch.ps1`, `Run-Tests.ps1`, `Sync-Master.ps1`, `verify_mate_key.py` | PowerShell syntax parse only — these are never compiled and never invoked by the engine |
+   | `Build` | `build.ps1`, `Scripts\Validate-*.ps1`, `Get-ChangeTier.ps1`, `.githooks/**`, `.github/**`, `*.vcxproj*`, `*.props`, `*.sln` | Full: build + extended `[slow]` tests + tactical suite + self-play |
+   | `Engine` | `*.cpp`, `*.h`, `*.json`, **and anything unrecognised** | Full |
+
+   A mixed diff takes the **strictest** tier present. Two properties are deliberate and are asserted
+   by `Get-ChangeTier.ps1 -SelfTest`: it **fails closed** (an unrecognised path gets the full run, never
+   a skip), and the validation machinery itself is `Build` tier — a change to `Validate-*.ps1` or the
+   classifier can never take its own shortcut, since a classifier bug would otherwise be self-concealing.
+   Pass `-Force` to run every gate regardless. (Background: PR #56, a one-line `CLAUDE.md` fix, and
+   PR #133, a measurement-script change, both paid a full build + extended-test + self-play cycle for
+   a guaranteed pass — see issue #124.)
 3. **Dispatch a specialized reviewer if the diff touches their domain** (check via `git diff --name-only origin/main...HEAD`):
    - `Eval.cpp` changed → dispatch the `eval-reviewer` subagent
    - `AIPerplex.cpp`/`AIPerplex.h` search internals (`pvs()`, `qsearch()`, move ordering, pruning conditions) changed → dispatch the `search-reviewer` subagent
