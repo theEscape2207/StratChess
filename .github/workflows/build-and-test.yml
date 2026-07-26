@@ -7,7 +7,45 @@ on:
     branches: [main]
 
 jobs:
+  # Decide how much validation this diff is worth, using the SAME classifier the
+  # local pre-PR script uses (StratChessEvolved/Scripts/Get-ChangeTier.ps1) -- one
+  # definition, so CI and the local convention cannot drift apart. See issue #124
+  # and .claude/plans/validation-change-tiers.md.
+  #
+  # Needs fetch-depth: 0 because the default shallow single-commit checkout makes
+  # 'git diff origin/main...HEAD' impossible. This is why classification is its own
+  # small job: build-and-test keeps its cheap shallow checkout.
+  classify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: pwsh
+    outputs:
+      tier: ${{ steps.tier.outputs.tier }}
+      is_full: ${{ steps.tier.outputs.is_full }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Classify changed files
+        id: tier
+        run: |
+          $c = & .\StratChessEvolved\Scripts\Get-ChangeTier.ps1 -BaseRef origin/main
+          Write-Host "Change tier: $($c.Tier) (decided by: $($c.DecidingFile))"
+          Write-Host "Changed files:"
+          $c.ChangedFiles | ForEach-Object { Write-Host "  $_" }
+          "tier=$($c.Tier)" | Out-File $env:GITHUB_OUTPUT -Append
+          "is_full=$($c.IsFull.ToString().ToLower())" | Out-File $env:GITHUB_OUTPUT -Append
+
   build-and-test:
+    needs: classify
+    # Skip the ~6 minute build+test cycle when the diff cannot affect it (docs, or
+    # engine-inert tooling scripts). Pushes to main ALWAYS run: that job's second
+    # purpose is warming the actions/cache deps cache on the default branch, which
+    # actions/cache scopes per-branch -- skipping it on docs-only pushes would let
+    # that cache lapse and make the next code PR pay a cold-cache build.
+    if: github.event_name == 'push' || needs.classify.outputs.is_full == 'true'
     # Pinned to the explicit VS2026 image (not the moving windows-latest label) —
     # this project's projects pin PlatformToolset v145, which matches this image's
     # default VC.Tools.x86.x64 toolset. See .claude/plans/full-build-test-ci-github-actions.md.
@@ -71,3 +109,23 @@ jobs:
         run: |
           & '.\StratChessTests\x64\Release\StratChessTests.exe' '~[slow]'
           exit $LASTEXITCODE
+
+  # Branch protection can require a single always-present check. This job succeeds
+  # whether build-and-test ran or was legitimately skipped, but FAILS if it actually
+  # failed or was cancelled -- so a fast-path PR stays mergeable while a genuine
+  # failure still blocks.
+  build-and-test-result:
+    needs: [classify, build-and-test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report
+        shell: bash
+        run: |
+          echo "tier=${{ needs.classify.outputs.tier }}"
+          echo "build-and-test result=${{ needs.build-and-test.result }}"
+          case "${{ needs.build-and-test.result }}" in
+            success) echo "Build and tests passed."; exit 0 ;;
+            skipped) echo "Skipped: '${{ needs.classify.outputs.tier }}' tier cannot affect the build."; exit 0 ;;
+            *)       echo "Build and tests did not pass."; exit 1 ;;
+          esac
