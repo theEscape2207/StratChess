@@ -22,6 +22,42 @@ Newest first.
 
 ---
 
+## 2026-07-26 — SPRT Support in Run-EloMatch.ps1 (issue #130)
+
+### Added
+- `Scripts\Run-EloMatch.ps1` gains `-Sprt` (`NonRegression` / `Gain` / `Custom`), plus `-Elo0`,
+  `-Elo1`, `-Alpha`, `-Beta` and `-SprtModel`. A sequential test stops as soon as the result is
+  decisive instead of always playing `-Games` games; `-Games` becomes an upper bound.
+- The SPRT verdict (`H0 accepted` / `H1 accepted` / `inconclusive @ N games`) is recorded in the
+  `Docs/EloLog.md` row alongside the Elo point estimate, and a new
+  "Choosing SPRT vs a fixed batch" section documents when to use which.
+
+### Why
+The instrument could not resolve most of what epic #110 asks it to validate. `Docs/EloLog.md`
+measures 500 games ≈ **±25 Elo** for this engine, while the remaining eval terms (bishop pair,
+connected rooks, castling-done, outposts, queen activity) are each worth roughly 5-20 Elo — inside
+the noise floor. The mop-up measurement (`+15.94 ± 27.62`) is the existing demonstration: a result
+equally consistent with "+16 Elo", "no change", and "−10 Elo". Prerequisite for #110 Tiers 3-4;
+replaces the completed #119 at the head of that epic.
+
+### Notes
+- `model=logistic` is pinned so `-Elo0`/`-Elo1` mean literal Elo, the same scale `Docs/EloLog.md`
+  reports everywhere. fastchess's own default is `normalized` (nElo) — a different scale on which
+  `elo1=10` would silently mean something else.
+- The verdict/LLR parse patterns were derived from the actual output of the pinned fastchess 1.8.0
+  build, not from documentation: a pattern matching nothing would degrade every run to
+  "inconclusive", a failure mode that looks like a result.
+- An inconclusive run is recorded as a first-class outcome and flagged in the console — it means
+  "smaller than elo1, or out of budget", never "measured zero".
+- Validated by exercising all parameter-rejection paths, a real SPRT match that terminated early on
+  an H0 acceptance, and a non-SPRT regression run confirming the default path is unchanged.
+
+### Files
+- `StratChessEvolved/Scripts/Run-EloMatch.ps1`, `Docs/EloLog.md`, `CLAUDE.md`
+- Plan: `.claude/plans/elomatch-sprt-support.md`
+
+---
+
 ## 2026-07-26 — ELO Match Concurrency Default Raised to 6
 
 ### Changed
