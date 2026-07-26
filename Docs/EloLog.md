@@ -20,6 +20,7 @@ Plan/design: `.claude/plans/elo-baseline-measurement.md`.
 | Time control | 10s + 0.1s increment |
 | Adjudication | draw: movenumber=40 movecount=8 score=10; resign: movecount=4 score=800 |
 | Machine | Windows 11 Pro x64 (theEscape2207 dev machine) — results are machine-relative; re-establish the sanity row when measuring on different hardware |
+| Concurrency | 6 concurrent games (default, `-Concurrency`) — sized off physical cores (12) ÷ 2 single-threaded engine processes per game, not the 24 logical/SMT threads; re-tune alongside the Machine row above if hardware changes |
 
 ## Resuming an interrupted match
 
