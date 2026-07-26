@@ -50,7 +50,7 @@ cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\<name>.
 | `Scripts\Run-Tests.ps1 [tag]` | Any test verification — optional tag filter |
 | `Scripts\Validate-PreCommit.ps1` | Before every commit — FEN check + fast tests |
 | `Scripts\Validate-PrePR.ps1` | Before opening a PR — full build + extended tests + self-play |
-| `Scripts\Run-EloMatch.ps1 [-Smoke]` | After search/eval/time-management changes — measure strength vs pinned reference build (see `Docs/EloLog.md`); ≈1 h unattended per 500-game batch |
+| `Scripts\Run-EloMatch.ps1 [-Smoke]` | After search/eval/time-management changes — measure strength vs pinned reference build (see `Docs/EloLog.md`); ≈1 h unattended per 500-game batch. **Use `-Sprt NonRegression` / `-Sprt Gain` for anything expected to be worth less than ~25 Elo** — a fixed 500-game batch cannot resolve it, and recording the resulting "±26" row as a measurement is how false confidence accumulates |
 
 Scripts must be invoked with `-File`, not dot-sourced (`$PSScriptRoot` is `$null` under dot-source).
 
