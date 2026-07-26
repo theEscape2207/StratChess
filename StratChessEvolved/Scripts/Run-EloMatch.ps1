@@ -43,7 +43,15 @@ param(
     [int]$Games = 500,
     # fastchess time control: seconds+increment.
     [string]$Tc = '10+0.1',
-    [int]$Concurrency = 4,
+    # Default tuned for the current dev machine (12 physical cores / 24 logical
+    # threads, AMD Ryzen AI 9 HX 370): each concurrent game runs two
+    # single-threaded engine processes, so 6 concurrent games uses all 12
+    # physical cores without oversubscribing them. Sized off physical cores,
+    # not logical/SMT thread count -- single-threaded search doesn't benefit
+    # from SMT sharing, and oversubscribing can introduce timing noise (or
+    # genuine time losses) into the measurement on a fixed real-time control.
+    # Re-tune if this ever runs on different hardware.
+    [int]$Concurrency = 6,
     # Extra fastchess -engine option tokens for the candidate, space-separated
     # (e.g. 'option.Threads=4 option.Hash=64'). Appended verbatim after args=uci.
     [string]$CandidateOptions = '',
