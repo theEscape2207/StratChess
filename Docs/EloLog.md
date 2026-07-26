@@ -55,6 +55,67 @@ other (non-resume) match first will overwrite it before you get the chance.
 - Losses on illegal move / disconnect / time stall are harness or engine **bugs**, never
   strength data — the script flags them, marks the row `FAILURES, discard`, and exits 1.
 
+## Choosing SPRT vs a fixed batch
+
+A fixed batch answers *"how big is the difference?"*. SPRT answers *"is this worth keeping?"* — and
+stops as soon as the evidence is decisive instead of always playing the full game count.
+
+**Use a fixed batch** when a point estimate with an error bound is what you want: baselines, sanity
+runs, and large expected effects (e.g. the Lazy SMP threads=4 row at +128.55 ± 28.36).
+
+**Use SPRT** when the question is accept/reject and the effect is expected to be small — which is
+most of epic #110. This matters more than it sounds:
+
+> 500 games resolves ±25 Elo. Bishop pair, connected rooks, castling-done, outposts and queen
+> activity are each worth roughly 5–20 Elo. **A fixed batch cannot distinguish any of them from
+> zero.** The mop-up row below (`+15.94 ± 27.62`) is exactly this: a result equally consistent with
+> "+16 Elo", "no change", and "−10 Elo".
+
+```
+# "prove it did not make things worse" — refactors, restructures, anything expected neutral
+cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Run-EloMatch.ps1 -Sprt NonRegression"
+
+# "prove it is worth >= ~10 Elo" — small new eval terms
+cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Run-EloMatch.ps1 -Sprt Gain"
+
+# explicit bounds
+... -Sprt Custom -Elo0 0 -Elo1 5
+```
+
+| Preset | Bounds | Question it answers |
+|---|---|---|
+| `NonRegression` | elo0=−5, elo1=0 | Did this hurt? |
+| `Gain` | elo0=0, elo1=10 | Is this worth ≥ ~10 Elo? |
+| `Custom` | `-Elo0` / `-Elo1` (both required) | Anything else |
+
+Notes:
+
+- **`-Games` becomes an upper bound**, not a target — the match stops early on a decision, or at the
+  cap if it never reaches one.
+- **Bounds are in logistic Elo**, the same scale as the `Elo:` line and everything in the history
+  table below. The script pins `model=logistic` for this reason; fastchess's own default is
+  `normalized` (nElo), a different scale on which `elo1=10` would mean something else entirely.
+- `-Sprt` cannot be combined with `-Smoke` (a 20-game run can never reach a decision).
+- Resume (`-ResumeDir`) works normally and preserves the original SPRT bounds — and matters *more*
+  here, since a sequential test can run longer than a fixed batch.
+- **Record the verdict, not just the Elo.** The Notes column carries
+  `SPRT <preset> [elo0, elo1] — H1 accepted` / `H0 accepted` / `inconclusive @ N games`, written
+  automatically by the script. An `H1 accepted` at 300 games is a *stronger* claim than a fixed
+  500-game point estimate — do not read it as though it were weaker.
+- **Inconclusive is a real result**, meaning "smaller than elo1, or we ran out of budget". It is not
+  a failure and not a measurement of zero. The script flags it in yellow rather than letting it pass
+  as a decision.
+
+Verified against the pinned fastchess 1.8.0 build: an SPRT run with bounds `[0, 200]` between two
+identical builds accepted H0 after 10 games rather than playing the 200-game cap.
+
+### When even SPRT cannot resolve a term
+
+Some terms are too small to decide at any practical game count. The fallback is to **bundle several
+into one PR and measure them jointly**. That is a deliberate measurement decision, not sloppy
+scoping — but say so explicitly in the row's Notes, so a later reader does not attribute the whole
+delta to whichever term the commit message happens to mention first.
+
 ## Baseline (established 2026-07-03)
 
 Identical builds (candidate exe byte-identical to the reference exe, SHA256-verified) over

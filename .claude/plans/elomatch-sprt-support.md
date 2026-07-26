@@ -1,6 +1,30 @@
 # Run-EloMatch.ps1 — SPRT Support
 
-**Issue**: #130 · **Epic**: #110 prerequisite · **Depth**: full plan · **Status**: not started
+**Issue**: #130 · **Epic**: #110 prerequisite · **Depth**: full plan · **Status**: implemented 2026-07-26
+
+## Implementation notes (what the plan did not anticipate)
+
+Recorded here because both points cost real debugging time and would have been repeated otherwise:
+
+1. **fastchess's SPRT `model` defaults to `normalized` (nElo), not logistic Elo.** The plan's presets
+   were written in Elo terms (`elo1=10`), which under the default model would silently have meant
+   nElo — a different scale from the `Elo:` line and from every number in `Docs/EloLog.md`. The
+   implementation pins `model=logistic` so the bounds mean what the rest of the measurement
+   vocabulary means. This is exactly the class of error D5 exists to catch, and it was only visible
+   in `fastchess --help`, not in the flag syntax.
+2. **The verdict format** (derived from the pinned 1.8.0 build, per D5 — not from documentation):
+   ```
+   LLR: -3.48 (-118.2%) (-2.94, 2.94) [0.00, 200.00]
+   SPRT ([0.00, 200.00]) completed - H0 was accepted
+   ```
+   fastchess only emits its results block on a rating interval (10 rounds = 20 games), so a
+   calibration run needs to reach that boundary before any SPRT line appears at all.
+3. **A `tc=2+0.02` calibration attempt failed with every game "loses on time"** — too fast for this
+   engine. The script correctly flagged it as a harness/engine failure and exited 1 (good: that
+   detection works), but calibration runs must use the documented `10+0.1`.
+4. **Resume was verified without killing a match**: the autosaved `config.json` carries the full
+   `sprt` block (`{"alpha":0.05,"beta":0.05,"elo0":0,"elo1":200,"model":"logistic","enabled":true}`),
+   which is what `-ResumeDir` restores. Cheaper and more direct than a kill/resume cycle.
 
 ## Goal
 
