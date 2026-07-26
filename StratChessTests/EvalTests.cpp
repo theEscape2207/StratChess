@@ -12,6 +12,11 @@
 #include "Board.h"
 #include "Eval.h"
 
+#include <sstream>
+#include <string>
+#include <vector>
+#include <string_view>
+
 // ── FEN constants ─────────────────────────────────────────────────────────────
 
 // Symmetric starting position — should evaluate to ~0 for both evaluators.
@@ -66,6 +71,36 @@ static constexpr const char* FEN_MOPUP_MARGINAL_CORNER =
     "7k/8/8/8/5N2/8/8/b3K3 w - - 0 1";
 static constexpr const char* FEN_MOPUP_MARGINAL_CENTER =
     "8/8/2k5/8/5N2/8/8/b3K3 w - - 0 1";
+
+// Color-symmetry regression cases (issue #125) — see MirrorFen below.
+
+// White queen on c6: the case that exposes the pre-fix getEvalBoard defect.
+// getEvalBoard(BLACK, sq) used (63 - sq), a 180-degree rotation that mirrors
+// files as well as ranks, instead of a vertical flip (sq ^ 56). Before this fix
+// the queen PST was not file-symmetric (c6 = 4, f6 = 3), so a White queen on c6
+// and its color-mirror (a Black queen on c3) scored 1 cp apart. Black king
+// on h8 is not attacked: c6's rank/file/diagonals reach a6-h6, c1-c8, a8, b7,
+// d7, e8, d5, e4, f3, g2, h1, b5, a4 — not h8. White to move.
+//
+// This is the ONLY whole-position case below that discriminates: the others
+// contain no queen at all, or (FEN_MOPUP_LOSER_KING_CORNER) a queen whose
+// rotated and flipped images happen to hold the same value. The direct
+// getEvalBoard tests are the real guard — do not delete them as "redundant
+// with the position tests".
+static constexpr const char* FEN_QUEEN_C6 =
+    "7k/8/2Q5/8/8/8/8/4K3 w - - 0 1";
+
+// Middlegame with rooks on open/half-open files: both sides have 11800 material
+// (iMinScore > 11500 -> MIDDLEGAME), exercising the rook open/half-open-file
+// terms and the middlegame king PST under color mirroring.
+static constexpr const char* FEN_MIDDLEGAME_ROOKS =
+    "2rr2k1/pp3ppp/5n2/8/8/2N5/PP3PPP/3RR1K1 w - - 0 1";
+
+// Endgame with pawns: 10100 material each side trips the ENDGAME stage (and so
+// the endgame king PST), while the pawns on the board keep the pawnless mop-up
+// branch gated off.
+static constexpr const char* FEN_ENDGAME_KING_PST =
+    "8/5p2/4k3/8/8/2K5/3P4/8 w - - 0 1";
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -195,4 +230,209 @@ TEST_CASE("Eval - EvalComplex mop-up: gated off below the decisive material thre
     // The 400 cp Q-vs-R lead should swing far more from cornering than the
     // materially-equal N-vs-B case, which gets no mop-up bonus at all.
     REQUIRE(decisiveDelta > marginalDelta);
+}
+
+// ── Color-mirroring correctness (issue #125) ──────────────────────────────────
+//
+// Exposes EvalManager's protected mirroring helper for direct testing — no
+// production visibility change; getEvalBoard stays protected on EvalManager.
+struct EvalProbe final : EvalManager
+{
+    int Evaluate(const Board&) const override { return 0; }
+    const char* GetType() const override { return "Probe"; }
+    using EvalManager::getEvalBoard;
+};
+
+TEST_CASE("Eval - getEvalBoard mirrors a Black piece's square vertically, not by 180-degree rotation", "[eval]")
+{
+    // Direct proof of the issue #125 defect: the pre-fix implementation used
+    // (63 - square), a 180-degree rotation. c3 -> c6 is the correct vertical
+    // flip; the buggy code instead produced f6 (63 - 42 == 21 == f6).
+    REQUIRE(EvalProbe::getEvalBoard(BLACK_QUEEN, c3) == c6);
+
+    REQUIRE(EvalProbe::getEvalBoard(BLACK_QUEEN, a1) == a8);
+    REQUIRE(EvalProbe::getEvalBoard(BLACK_QUEEN, h1) == h8);
+    REQUIRE(EvalProbe::getEvalBoard(BLACK_QUEEN, a8) == a1);
+}
+
+TEST_CASE("Eval - getEvalBoard preserves file for every square (Black)", "[eval]")
+{
+    for (int sq = a8; sq < NUM_SQUARES; ++sq)
+    {
+        const auto square = static_cast<eSquare>(sq);
+        CAPTURE(sq);
+        REQUIRE(File(EvalProbe::getEvalBoard(BLACK_QUEEN, square)) == File(square));
+    }
+}
+
+TEST_CASE("Eval - getEvalBoard inverts rank for every square (Black)", "[eval]")
+{
+    for (int sq = a8; sq < NUM_SQUARES; ++sq)
+    {
+        const auto square = static_cast<eSquare>(sq);
+        CAPTURE(sq);
+        REQUIRE(Rank(EvalProbe::getEvalBoard(BLACK_QUEEN, square)) == 7 - Rank(square));
+    }
+}
+
+TEST_CASE("Eval - getEvalBoard leaves White squares unchanged for every square", "[eval]")
+{
+    for (int sq = a8; sq < NUM_SQUARES; ++sq)
+    {
+        const auto square = static_cast<eSquare>(sq);
+        CAPTURE(sq);
+        REQUIRE(EvalProbe::getEvalBoard(WHITE_QUEEN, square) == square);
+    }
+}
+
+// ── FEN color-mirror helper (test scaffolding only — not engine functionality) ─
+//
+// Swaps the case of a single character; digits and other characters pass
+// through unchanged.
+static char SwapPieceCase(char c)
+{
+    if (c >= 'a' && c <= 'z')
+        return static_cast<char>(c - 'a' + 'A');
+    if (c >= 'A' && c <= 'Z')
+        return static_cast<char>(c - 'A' + 'a');
+    return c;
+}
+
+// Reverses rank order and swaps every piece's color.
+static std::string MirrorPlacement(const std::string& placement)
+{
+    std::vector<std::string> ranks;
+    std::stringstream ss(placement);
+    std::string rank;
+    while (std::getline(ss, rank, '/'))
+        ranks.push_back(rank);
+
+    std::string result;
+    for (auto it = ranks.rbegin(); it != ranks.rend(); ++it)
+    {
+        if (!result.empty())
+            result += '/';
+        for (char c : *it)
+            result += SwapPieceCase(c);
+    }
+    return result;
+}
+
+// Swaps case of every castling character and re-emits in canonical KQkq order
+// (the FEN parser is order-insensitive, but a canonical form keeps failures
+// readable). "-" passes through unchanged.
+static std::string MirrorCastling(const std::string& castling)
+{
+    if (castling == "-")
+        return "-";
+
+    std::string swapped;
+    for (char c : castling)
+        swapped += SwapPieceCase(c);
+
+    std::string canonical;
+    for (char c : { 'K', 'Q', 'k', 'q' })
+        if (swapped.find(c) != std::string::npos)
+            canonical += c;
+
+    return canonical.empty() ? "-" : canonical;
+}
+
+// Mirrors the en-passant target's rank (e3 <-> e6, i.e. digit d -> 9 - d); the
+// file is unchanged. "-" passes through unchanged.
+static std::string MirrorEnPassant(const std::string& ep)
+{
+    if (ep == "-")
+        return "-";
+
+    const char file = ep.at(0);
+    const int rank = ep.at(1) - '0';
+    return std::string(1, file) + std::to_string(9 - rank);
+}
+
+// Color-mirrors a FEN: flips the board vertically and swaps every piece's
+// color, so whichever color was to move now faces an identical relative
+// situation as the other color in the mirror. Halfmove/fullmove counters pass
+// through unchanged.
+//
+// A color-mirror of a legal position is always legal: the side not to move in
+// the mirror is the image of the side not to move in the original, so if the
+// original's non-mover isn't in check, neither is the mirror's. Only the
+// original FENs (declared above) needed manual legality verification.
+static std::string MirrorFen(std::string_view fen)
+{
+    std::istringstream iss{ std::string(fen) };
+    std::string placement, active, castling, ep, halfmove, fullmove;
+    iss >> placement >> active >> castling >> ep >> halfmove >> fullmove;
+
+    return MirrorPlacement(placement) + ' '
+         + (active == "w" ? "b" : "w") + ' '
+         + MirrorCastling(castling) + ' '
+         + MirrorEnPassant(ep) + ' '
+         + halfmove + ' '
+         + fullmove;
+}
+
+TEST_CASE("Eval - MirrorFen self-test: mirroring the start position flips only side to move", "[eval]")
+{
+    // A bug in this test-only helper must not be able to make the symmetry
+    // tests below vacuously true; pin down its exact output on a known input.
+    REQUIRE(MirrorFen(FEN_START) == "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1");
+}
+
+TEST_CASE("Eval - MirrorFen self-test: castling rights and en-passant square are mirrored", "[eval]")
+{
+    // FEN_START leaves both helpers untested: its "KQkq" maps to itself under a
+    // case swap, and its en-passant field is "-". Evaluate() ignores both fields,
+    // so only this self-test can catch MirrorCastling/MirrorEnPassant going wrong.
+    // 1. e4 c5 2. — Black has just played c7-c5, so the ep target is c6.
+    REQUIRE(MirrorFen("rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6 0 2")
+            == "rnbqkbnr/pppp1ppp/8/4p3/2P5/8/PP1PPPPP/RNBQKBNR b KQkq c3 0 2");
+
+    // Partial rights must swap colour, not just pass through: White keeps only
+    // kingside, Black only queenside, so the mirror must invert that pairing.
+    REQUIRE(MirrorFen("r3k3/8/8/8/8/8/8/4K2R w Kq - 5 30")
+            == "4k2r/8/8/8/8/8/8/R3K3 b Qk - 5 30");
+}
+
+// ── Whole-position color symmetry (issue #125) ────────────────────────────────
+//
+// Evaluate() is side-to-move-relative: it scores from the perspective of
+// whichever color is on move. Mirroring swaps which color is on move along
+// with the position, so the mover faces an identical relative situation in
+// both the original and the mirror — the scores must be EQUAL, not negated.
+// This is the single most likely thing for a future reader to get backwards.
+static constexpr const char* kSymmetryFens[] = {
+    FEN_START,
+    FEN_QUEEN_C6,
+    FEN_MIDDLEGAME_ROOKS,
+    FEN_ENDGAME_KING_PST,
+    FEN_MOPUP_LOSER_KING_CORNER,
+    // Covers the WHITE_7TH_ROW = 1 / BLACK_7TH_ROW = 6 pairing, the only
+    // direction-aware constant pair otherwise unexercised by a symmetry case.
+    FEN_ROOK_ON_7TH,
+};
+
+TEST_CASE("Eval - EvalSimple is color-symmetric: a position and its mirror score equally", "[eval]")
+{
+    const char* fen = GENERATE(from_range(kSymmetryFens));
+    CAPTURE(fen);
+
+    auto eval = EvalManager::Create(EvalManager::EvalTypes::SIMPLE);
+    Board board(fen);
+    Board mirrored(MirrorFen(fen));
+
+    REQUIRE(eval->Evaluate(board) == eval->Evaluate(mirrored));
+}
+
+TEST_CASE("Eval - EvalComplex is color-symmetric: a position and its mirror score equally", "[eval]")
+{
+    const char* fen = GENERATE(from_range(kSymmetryFens));
+    CAPTURE(fen);
+
+    auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+    Board board(fen);
+    Board mirrored(MirrorFen(fen));
+
+    REQUIRE(eval->Evaluate(board) == eval->Evaluate(mirrored));
 }

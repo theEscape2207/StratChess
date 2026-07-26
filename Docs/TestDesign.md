@@ -124,6 +124,13 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
   king cornered vs. centered
 - Mop-up evaluation: gated off once either side has a pawn on the board
 - Mop-up evaluation: gated off below the 400 cp decisive-material threshold
+- Color symmetry (issue #125): `getEvalBoard` mirrors a Black piece's square vertically
+  (`square ^ 56`), not by 180-degree rotation — direct cases via a test-local `EvalProbe`
+  subclass, plus file-preservation/rank-inversion checked over all 64 squares
+- Color symmetry: whole-position cases via a file-local `MirrorFen` FEN color-mirror helper —
+  starting position, a queen-PST asymmetry regression (queen on c6), a middlegame with
+  rooks on open/half-open files, an endgame that trips the king-PST switch, and a pawnless
+  mop-up ending — `Evaluate(fen) == Evaluate(MirrorFen(fen))` for both evaluators
 
 ### Tactical Tests (`[tactical]`)
 
