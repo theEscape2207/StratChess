@@ -22,6 +22,14 @@
     Must be invoked with -File, not dot-sourced. $PSScriptRoot is $null under dot-source.
 #>
 
+param(
+    # Run every gate regardless of what the diff contains. Use when your judgement
+    # disagrees with the classifier.
+    [switch]$Force,
+    # Ref the diff is computed against when choosing a validation tier.
+    [string]$BaseRef = 'origin/main'
+)
+
 Set-StrictMode -Version Latest
 # Do NOT set $ErrorActionPreference = 'Stop' — this script runs all three checks before
 # exiting so the summary table is always printed. Each step checks $LASTEXITCODE directly.
@@ -34,6 +42,62 @@ $logsDir     = Join-Path $GameDir 'logs'
 $outFile     = Join-Path $GameDir 'pre_pr_selfplay_out.txt'
 $aiLogFile   = Join-Path $logsDir 'aiperplex.log'
 $checkResults = [ordered]@{}
+
+# --- Scope the run to what actually changed (issue #124) ---------------------
+# Full build + extended [slow] tests + a 10-run tactical suite + self-play cannot
+# catch anything a documentation edit or a measurement script could break, and
+# running them anyway burns minutes for a guaranteed pass. Get-ChangeTier.ps1 is
+# the single source of truth for this decision, shared with CI
+# (.github/workflows/build-and-test.yml) so the two definitions cannot drift.
+# It fails closed: anything unrecognised classifies as Engine and gets the full run.
+$tierScript = Join-Path $PSScriptRoot 'Get-ChangeTier.ps1'
+$change = & $tierScript -BaseRef $BaseRef
+
+if ($Force) {
+    Write-Host "`n==> Change tier: $($change.Tier) -- overridden by -Force, running every gate." -ForegroundColor Yellow
+} else {
+    Write-Host "`n==> Change tier: $($change.Tier) (decided by: $($change.DecidingFile))" -ForegroundColor Cyan
+}
+
+if (-not $Force -and $change.Tier -eq 'Docs') {
+    Write-Host 'Docs-only diff -- SKIPPING full build, extended tests, tactical suite and self-play.' -ForegroundColor Green
+    Write-Host "The pre-commit hook's fast-test pass is sufficient for documentation changes." -ForegroundColor Green
+    Write-Host 'Re-run with -Force to validate anyway.'
+    Write-Host ''
+    Write-Host 'Pre-PR validation PASSED (docs-only fast path).' -ForegroundColor Green
+    exit 0
+}
+
+if (-not $Force -and $change.Tier -eq 'Tooling') {
+    Write-Host 'Engine-inert tooling diff -- SKIPPING full build, extended tests, tactical suite and self-play.' -ForegroundColor Green
+    Write-Host 'These scripts are never compiled and never invoked by the engine, so no' -ForegroundColor Green
+    Write-Host 'build/test gate can observe the change. Syntax-checking them instead.' -ForegroundColor Green
+    Write-Host 'Re-run with -Force to validate anyway.'
+    Write-Host ''
+
+    $syntaxFailed = $false
+    foreach ($f in $change.ChangedFiles) {
+        if ($f -notlike '*.ps1') { continue }
+        $full = Join-Path $RepoRoot $f
+        if (-not (Test-Path $full)) { continue }
+        $tokens = $null; $errors = $null
+        [System.Management.Automation.Language.Parser]::ParseInput(
+            (Get-Content $full -Raw), [ref]$tokens, [ref]$errors) | Out-Null
+        if ($errors.Count -gt 0) {
+            Write-Host "  FAIL  $f" -ForegroundColor Red
+            $errors | ForEach-Object { Write-Host "        $($_.Message)" -ForegroundColor Red }
+            $syntaxFailed = $true
+        } else {
+            Write-Host "  PASS  $f (syntax)" -ForegroundColor Green
+        }
+    }
+    Write-Host ''
+    if ($syntaxFailed) { Write-Host 'Pre-PR validation FAILED (script syntax).' -ForegroundColor Red; exit 1 }
+    Write-Host 'Pre-PR validation PASSED (tooling fast path).' -ForegroundColor Green
+    exit 0
+}
+
+Write-Host 'Running the full gate set.' -ForegroundColor Cyan
 
 # --- Step 1: Full parallel build ---
 Write-Host "`n==> Full build (main + tests in parallel)" -ForegroundColor Cyan
@@ -121,6 +185,7 @@ try {
 
 # --- Summary table ---
 Write-Host "`n--- Pre-PR Validation Summary ---" -ForegroundColor Cyan
+Write-Host ("  {0,-22} {1}" -f 'Change tier', $change.Tier) -ForegroundColor DarkGray
 $anyFailed = $false
 foreach ($check in $checkResults.Keys) {
     $status = $checkResults[$check]

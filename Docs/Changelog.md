@@ -22,6 +22,49 @@ Newest first.
 
 ---
 
+## 2026-07-26 — Validation Scoped to the Diff (issue #124)
+
+### Added
+- `Scripts\Get-ChangeTier.ps1` — classifies a diff into `Docs` / `Tooling` / `Build` / `Engine`,
+  strictest-wins on mixed diffs. Single source of truth, shared by `Validate-PrePR.ps1` and
+  `.github/workflows/build-and-test.yml`. Ships with `-SelfTest` (18 assertions).
+- CI `classify` job gating `build-and-test`, plus a `build-and-test-result` summary job so branch
+  protection can require one always-present check that passes on a legitimate skip and fails on a
+  real failure.
+
+### Changed
+- `Scripts\Validate-PrePR.ps1` now scopes itself: `Docs` exits immediately, `Tooling` runs a
+  PowerShell syntax parse, `Build`/`Engine` run the existing four gates unchanged. `-Force` runs
+  everything; `-BaseRef` overrides the diff base. The detected tier and deciding file are printed.
+- `CLAUDE.md` pre-PR checklist step 2 replaced with the tier table — the judgement call is gone,
+  the answer is now "just run the script".
+
+### Why
+Two real cases: PR #123 (one-line `CLAUDE.md` edit) burned a full ~6 min CI cycle, and PR #133
+(SPRT support, a measurement-script change) ran a full build + extended `[slow]` tests + a 10-run
+tactical stability suite + self-play. None of those gates can observe a script that is never
+compiled and never invoked by the engine.
+
+### Notes
+- **Fails closed**: the default rule is `Engine`. There is no "else → cheap" branch — an
+  unrecognised path costs time rather than skipping validation. Asserted in `-SelfTest`, including
+  a case for a newly-added script under `Scripts/` (classifies `Engine` until deliberately listed).
+- **No self-exemption**: `Validate-*.ps1`, `Get-ChangeTier.ps1` and `build.ps1` are `Build` tier.
+  If a change to them could take its own shortcut, a classifier bug would be self-concealing —
+  disabling validation and then declining to validate the change that disabled it.
+- **Pushes to `main` always run the full CI job**, deliberately: that run also warms the
+  per-branch `actions/cache` deps cache, so skipping it on docs-only pushes would make the next
+  code PR pay a cold-cache build.
+- Classification lives in its own CI job because it needs `fetch-depth: 0` to diff; `build-and-test`
+  keeps its cheap shallow checkout.
+
+### Files
+- `StratChessEvolved/Scripts/Get-ChangeTier.ps1` (new), `Scripts/Validate-PrePR.ps1`,
+  `.github/workflows/build-and-test.yml`, `CLAUDE.md`
+- Plan: `.claude/plans/validation-change-tiers.md`
+
+---
+
 ## 2026-07-26 — SPRT Support in Run-EloMatch.ps1 (issue #130)
 
 ### Added
