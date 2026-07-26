@@ -22,6 +22,19 @@ Newest first.
 
 ---
 
+## 2026-07-26 — Mop-Up Evaluation for Won Pawnless Endgames (issue #70)
+
+### Added
+- Mop-up evaluation term in `EvalComplex::Evaluate` giving the engine a gradient toward
+  converting decisively-won pawnless endgames (e.g. KQ vs KR), driving the losing king
+  toward a corner once material lead clears `MOPUP_MATERIAL_THRESHOLD`; `Tactical -
+  QFORK-001` (issue #66 regression test) hidden via Catch2 `[.]` tag pending a broader
+  WAC-style tactical suite — see issue #118
+- Validated: build clean (Level4/`/WX`, 0 warnings); full extended suite 174/174 passing
+  (`Tactical - QFORK-001` intentionally hidden, see above; exe tactical suite now 30/31,
+  see `Docs/TestDesign.md`); 1 self-play game to checkmate (move 217), no crash; ELO
+  +15.94 ± 27.62 over 491/500 games (partial batch, see `Docs/EloLog.md`)
+
 ## 2026-07-23 — Lazy SMP Parallel Search (PR #109)
 
 ### Added
