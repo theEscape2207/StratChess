@@ -21,6 +21,24 @@ Plan/design: `.claude/plans/elo-baseline-measurement.md`.
 | Adjudication | draw: movenumber=40 movecount=8 score=10; resign: movecount=4 score=800 |
 | Machine | Windows 11 Pro x64 (theEscape2207 dev machine) — results are machine-relative; re-establish the sanity row when measuring on different hardware |
 
+## Resuming an interrupted match
+
+If a match gets killed mid-run (check `logs\elo\<stamp>.log` for a trailing `Started game N`
+with no matching `Finished game N` — or the process/log simply stops advancing), resume it instead
+of restarting from scratch:
+
+```
+cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Run-EloMatch.ps1 -ResumeDir StratChessEvolved\logs\elo"
+```
+
+fastchess autosaves tournament state (`config.json`) every `-AutosaveInterval` games (default 20)
+into `logs\elo\` — a single flat file shared by every invocation, not a per-match directory — and
+`-ResumeDir` reloads it to restore the full original engine/tournament configuration.
+`-CandidateExe`/`-ReferenceTag`/`-Games`/`-Tc`/etc. are all ignored when `-ResumeDir` is set. At
+most `-AutosaveInterval` games get replayed (whatever completed since the last checkpoint before
+the kill), not the whole batch. **Resume promptly** — because `config.json` is shared, starting any
+other (non-resume) match first will overwrite it before you get the chance.
+
 ## Interpreting results
 
 - 500 games ≈ **±25 ELO** at 95% confidence with this engine's ~37% draw ratio (measured, see
