@@ -25,6 +25,8 @@ A modern C++20 chess engine focused on improving playing strength (ELO) while ma
 
 ### Build script (preferred)
 `build.ps1` at the repo root wraps MSBuild and discovers the correct executable automatically via `vswhere.exe` — no hard-coded VS paths:
+
+**First commit in a fresh worktree**: the pre-commit hook rebuilds from scratch (no incremental cache) — pass a longer explicit timeout (5-10 min) to whatever runs `git commit`, not the 2-minute default, or it gets killed mid-build with the commit never happening.
 ```powershell
 .\build.ps1               # build main + tests in parallel (Release|x64)
 .\build.ps1 main          # main solution only
@@ -85,6 +87,8 @@ cmd.exe /c "\"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.e
 **Shell notes**: The MSBuild install folder changes with every VS release (`2022`, `18`, …); never hard-code it. In **Git Bash** use `//p:` flags (double-slash) and the `/c/Program Files/…` path form. Direct `Bash` tool invocations are unreliable for Windows paths — prefer the Task (Bash subagent) + `cmd.exe` pattern.
 
 **PowerShell from Bash tool**: The Bash tool runs Git Bash (bash), not PS7. PS7 syntax (`$var`, backtick escapes, piped cmdlets like `Where-Object`/`Select-String`/`Sort-Object`, and multi-line strings) all fail silently when inlined in bash. Rule: write any non-trivial PS logic to a `.ps1` file first, then invoke with `pwsh -ExecutionPolicy Bypass -File .\script.ps1`.
+
+**Editing existing `.ps1` files**: multi-line `sed`/bash substitutions reliably mangle backslashes (Windows paths, PS line-continuation backticks) — write a small Python script to a temp file and run it (`python3 script.py`, not inline `-c`) for precise text replacement instead. Validate syntax without executing via `[System.Management.Automation.Language.Parser]::ParseInput($content, [ref]$tokens, [ref]$errors)`.
 
 Use `/v:normal` instead of `/v:minimal` when diagnosing build errors.
 
@@ -216,6 +220,7 @@ Commit the plan file — it lives under `.claude/plans/` (tracked by git) and se
 - **Always provide the explicit worktree-relative binary path** in implementer prompts. Never use `..` relative paths pointing outside the worktree — the main repo's stale binary may silently satisfy the path check while producing wrong results. Correct pattern: `StratChessTests/x64/Release/StratChessEvolved.exe` from the worktree root, or build first with `.\build.ps1 main` and pass the explicit absolute path.
 - **NEEDS_CONTEXT safety valves only catch "file not found"** — they don't detect a stale or wrong binary. If verification relies on binary output, ensure the binary was built from current worktree sources before the subagent is dispatched.
 - **Background Bash tasks piping to long-running processes on Windows are unreliable** — they may be killed mid-stream. Use foreground calls for anything that pipes stdin to the engine and reads stdout.
+- **A subagent's own long background wait (self-play, an ELO match) doesn't reliably auto-resume its turn when the wait completes.** Don't just wait for a notification — proactively check in (file/log timestamps, process list, or a direct status-check message) every 15-20 min on anything long-running.
 
 ## Commit & PR Conventions
 - Development on shared work happens via per-task worktrees forked fresh from `origin/main`; PRs target `main`
@@ -242,3 +247,5 @@ Before running `gh pr create` (or pushing an update to an already-open PR):
 
 ### After a PR merges
 Delete the remote branch, remove the local worktree, and delete the local branch — or invoke the `commit-commands:clean_gone` skill, which handles all three at once. Don't leave merged worktrees lying around as the default; treat cleanup as part of finishing the task, not a separate optional step the user has to ask for. If continuing directly in the main checkout afterward (not a new worktree), run `Scripts\Sync-Master.ps1` first so `master` reflects the merge.
+
+**Worktree removal gotcha**: for a worktree created via `EnterWorktree` this session, prefer `ExitWorktree(action:"remove")` over manual git commands — clean, no leftovers. Manual `git worktree remove --force` run *from inside* the worktree being removed will deregister it from git but fail to delete the directory (can't rmdir its own cwd) — the leaf survives with no `.git`, and the shell's cwd can get stuck pointing at it while git commands silently resolve against the *outer* repo instead. If you hit this, use absolute paths / `git -C <path>` for everything until the stray directory is cleaned up, and don't trust `pwd` output.
