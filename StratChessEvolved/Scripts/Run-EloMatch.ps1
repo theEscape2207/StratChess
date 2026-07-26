@@ -50,7 +50,19 @@ param(
     # Extra fastchess -engine option tokens for the reference build, same format.
     [string]$ReferenceOptions = '',
     # 20-game pipeline check instead of a full measurement.
-    [switch]$Smoke
+    [switch]$Smoke,
+    # Resume an interrupted match instead of starting a new one. Pass the path
+    # to the existing logs\elo\<stamp> directory from the run that got killed
+    # (it must still contain fastchess's autosaved config.json). All other
+    # match-setup parameters (-CandidateExe, -ReferenceTag/-ReferenceExe,
+    # -Games, -Tc, -Concurrency, -CandidateOptions, -ReferenceOptions) are
+    # ignored when resuming -- fastchess's -config restores the original
+    # engine/tournament setup from that directory's saved state.
+    [string]$ResumeDir = '',
+    # Games between fastchess's own autosave of tournament state (config.json).
+    # Lower = less replayed work if a match is ever interrupted, at the cost of
+    # more frequent disk writes. Default matches fastchess's own default (20).
+    [int]$AutosaveInterval = 20
 )
 
 Set-StrictMode -Version Latest
@@ -86,95 +98,139 @@ if (-not (Test-Path $fastchess)) {
     Write-Host "and place fastchess.exe in $EngineTesting (see Docs/EloLog.md for the pinned version)."
     exit 1
 }
-if (-not (Test-Path $book)) {
-    Write-Host "MISSING: $book (committed opening book — repo checkout incomplete?)" -ForegroundColor Red
-    exit 1
-}
-if (-not (Test-Path $CandidateExe)) {
-    Write-Host "MISSING candidate exe: $CandidateExe" -ForegroundColor Red
-    Write-Host 'Build it first: .\build.ps1 main'
-    exit 1
-}
-if ($ReferenceExe -ne '' -and -not (Test-Path $refExe)) {
-    Write-Host "MISSING reference exe: $refExe" -ForegroundColor Red
-    exit 1
-}
 
-# --- Ensure reference exe (rebuild from tag on cache miss; skipped entirely when -ReferenceExe is set) ---
-if ($ReferenceExe -eq '' -and -not (Test-Path $refExe)) {
-    Write-Host "==> Reference exe not cached; rebuilding from tag '$ReferenceTag'" -ForegroundColor Cyan
-    git -C $RepoRoot rev-parse --verify --quiet "refs/tags/$ReferenceTag" | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "Tag '$ReferenceTag' not found. git fetch origin --tags and retry." -ForegroundColor Red
+if ($ResumeDir -ne '') {
+    # --- Resume mode: skip fresh match setup entirely; fastchess's -config
+    # restores the original engine/tournament configuration from the saved
+    # state (autosaved every -autosaveinterval games during the run that was
+    # interrupted). -CandidateExe/-ReferenceTag/-ReferenceExe/-Games/-Tc/
+    # -Concurrency/-CandidateOptions/-ReferenceOptions are all ignored here.
+    $ResumeDir = (Resolve-Path $ResumeDir).Path
+    $resumeConfig = Join-Path $ResumeDir 'config.json'
+    if (-not (Test-Path $resumeConfig)) {
+        Write-Host "MISSING: $resumeConfig -- $ResumeDir doesn't look like an interrupted match directory (no autosaved config.json)." -ForegroundColor Red
         exit 1
     }
-    # The temp worktree MUST live under <main-repo>\.claude\worktrees\ — that is
-    # the layout Directory.Build.props detects to resolve DepsRoot for worktree
-    # builds; anywhere else and the reference build cannot find spdlog/json.
-    $mainRoot = (git -C $RepoRoot rev-parse --path-format=absolute --git-common-dir) -replace '[\\/]\.git$', ''
-    $tmpWt = Join-Path $mainRoot ".claude\worktrees\elo-ref-build-$PID"
-    git -C $RepoRoot worktree add --detach $tmpWt "refs/tags/$ReferenceTag"
-    if ($LASTEXITCODE -ne 0) { Write-Host 'worktree add failed' -ForegroundColor Red; exit 1 }
-    try {
-        Push-Location $tmpWt
-        & (Join-Path $tmpWt 'build.ps1') main
-        if ($LASTEXITCODE -ne 0) { throw "reference build failed" }
-        Pop-Location
-        New-Item -ItemType Directory -Force $EngineTesting | Out-Null
-        Copy-Item (Join-Path $tmpWt 'x64\Release\StratChessEvolved.exe') $refExe
-    } finally {
-        if ((Get-Location).Path -eq $tmpWt) { Pop-Location }
-        git -C $RepoRoot worktree remove --force $tmpWt
+
+    # config.json is a single flat file shared by every invocation (fastchess
+    # always writes it to its cwd, which this script always Push-Location's
+    # into $pgnDir -- there is no per-match subdirectory). The original run's
+    # timestamp stamp is recovered from the pgn output path it recorded, not
+    # from $ResumeDir's own name.
+    $resumeState = Get-Content $resumeConfig -Raw | ConvertFrom-Json
+    $stamp    = [System.IO.Path]::GetFileNameWithoutExtension($resumeState.pgn.file)
+    $pgnDir   = $ResumeDir
+    $pgnOut   = Join-Path $pgnDir "$stamp.pgn"
+    $matchLog = Join-Path $pgnDir "$stamp.log"
+
+    $candidateSha = (git -C $RepoRoot rev-parse --short HEAD).Trim()
+    $dirty = (git -C $RepoRoot status --porcelain) ? '+dirty' : ''
+    $candidateName = "candidate-$candidateSha$dirty"
+
+    Write-Host "==> Resuming match in $ResumeDir" -ForegroundColor Cyan
+    Write-Host "    PGN: $pgnOut"
+
+    Push-Location $pgnDir
+    & $fastchess `
+        -config file=config.json `
+        -recover `
+        -autosaveinterval $AutosaveInterval `
+        2>&1 | Tee-Object -FilePath $matchLog -Append
+
+    $fcExit = $LASTEXITCODE
+    Pop-Location
+} else {
+    if (-not (Test-Path $book)) {
+        Write-Host "MISSING: $book (committed opening book — repo checkout incomplete?)" -ForegroundColor Red
+        exit 1
     }
-    Write-Host "Reference cached: $refExe"
+    if (-not (Test-Path $CandidateExe)) {
+        Write-Host "MISSING candidate exe: $CandidateExe" -ForegroundColor Red
+        Write-Host 'Build it first: .\build.ps1 main'
+        exit 1
+    }
+    if ($ReferenceExe -ne '' -and -not (Test-Path $refExe)) {
+        Write-Host "MISSING reference exe: $refExe" -ForegroundColor Red
+        exit 1
+    }
+
+    # --- Ensure reference exe (rebuild from tag on cache miss; skipped entirely when -ReferenceExe is set) ---
+    if ($ReferenceExe -eq '' -and -not (Test-Path $refExe)) {
+        Write-Host "==> Reference exe not cached; rebuilding from tag '$ReferenceTag'" -ForegroundColor Cyan
+        git -C $RepoRoot rev-parse --verify --quiet "refs/tags/$ReferenceTag" | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Tag '$ReferenceTag' not found. git fetch origin --tags and retry." -ForegroundColor Red
+            exit 1
+        }
+        # The temp worktree MUST live under <main-repo>\.claude\worktrees\ -- that is
+        # the layout Directory.Build.props detects to resolve DepsRoot for worktree
+        # builds; anywhere else and the reference build cannot find spdlog/json.
+        $mainRoot = (git -C $RepoRoot rev-parse --path-format=absolute --git-common-dir) -replace '[\\/]\.git$', ''
+        $tmpWt = Join-Path $mainRoot ".claude\worktrees\elo-ref-build-$PID"
+        git -C $RepoRoot worktree add --detach $tmpWt "refs/tags/$ReferenceTag"
+        if ($LASTEXITCODE -ne 0) { Write-Host 'worktree add failed' -ForegroundColor Red; exit 1 }
+        try {
+            Push-Location $tmpWt
+            & (Join-Path $tmpWt 'build.ps1') main
+            if ($LASTEXITCODE -ne 0) { throw "reference build failed" }
+            Pop-Location
+            New-Item -ItemType Directory -Force $EngineTesting | Out-Null
+            Copy-Item (Join-Path $tmpWt 'x64\Release\StratChessEvolved.exe') $refExe
+        } finally {
+            if ((Get-Location).Path -eq $tmpWt) { Pop-Location }
+            git -C $RepoRoot worktree remove --force $tmpWt
+        }
+        Write-Host "Reference cached: $refExe"
+    }
+
+    # --- Match -------------------------------------------------------------------
+    if ($Smoke) { $Games = 20 }
+    $rounds = [math]::Max(1, [int]($Games / 2))
+
+    $candidateSha = (git -C $RepoRoot rev-parse --short HEAD).Trim()
+    $dirty = (git -C $RepoRoot status --porcelain) ? '+dirty' : ''
+    $candidateName = "candidate-$candidateSha$dirty"
+
+    $stamp   = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $pgnDir  = Join-Path $GameDir 'logs\elo'
+    New-Item -ItemType Directory -Force $pgnDir | Out-Null
+    $pgnOut  = Join-Path $pgnDir "$stamp.pgn"
+    $matchLog = Join-Path $pgnDir "$stamp.log"
+
+    # Separate working dirs so per-engine incidental output (SimplePerfStats.txt)
+    # never collides across concurrent games.
+    $dirA = Join-Path $pgnDir "$stamp-cand"
+    $dirB = Join-Path $pgnDir "$stamp-ref"
+    New-Item -ItemType Directory -Force $dirA, $dirB | Out-Null
+
+    Write-Host "==> $candidateName vs $ReferenceTag | $Games games, tc=$Tc, concurrency=$Concurrency" -ForegroundColor Cyan
+    Write-Host "    PGN: $pgnOut"
+
+    # Engine specs as arrays so -CandidateOptions/-ReferenceOptions (e.g. option.Threads=4)
+    # splat in as extra fastchess "-engine" option tokens without disturbing the base spec.
+    $candidateEngineArgs = @("cmd=$CandidateExe", "name=$candidateName", "dir=$dirA", 'args=uci')
+    if ($CandidateOptions) { $candidateEngineArgs += $CandidateOptions -split '\s+' }
+    $referenceEngineArgs = @("cmd=$refExe", "name=$ReferenceTag", "dir=$dirB", 'args=uci')
+    if ($ReferenceOptions) { $referenceEngineArgs += $ReferenceOptions -split '\s+' }
+
+    # Run from the artifacts dir: fastchess drops a config.json (tournament resume
+    # state) into its cwd, which must land under gitignored logs/elo, not the repo.
+    Push-Location $pgnDir
+    & $fastchess `
+        -engine @candidateEngineArgs `
+        -engine @referenceEngineArgs `
+        -each "tc=$Tc" `
+        -rounds $rounds -repeat -concurrency $Concurrency -recover `
+        -autosaveinterval $AutosaveInterval `
+        -openings "file=$book" format=pgn order=sequential `
+        -draw movenumber=40 movecount=8 score=10 `
+        -resign movecount=4 score=800 `
+        -pgnout "file=$pgnOut" notation=san `
+        2>&1 | Tee-Object -FilePath $matchLog
+
+    $fcExit = $LASTEXITCODE
+    Pop-Location
 }
-
-# --- Match -------------------------------------------------------------------
-if ($Smoke) { $Games = 20 }
-$rounds = [math]::Max(1, [int]($Games / 2))
-
-$candidateSha = (git -C $RepoRoot rev-parse --short HEAD).Trim()
-$dirty = (git -C $RepoRoot status --porcelain) ? '+dirty' : ''
-$candidateName = "candidate-$candidateSha$dirty"
-
-$stamp   = Get-Date -Format 'yyyyMMdd-HHmmss'
-$pgnDir  = Join-Path $GameDir 'logs\elo'
-New-Item -ItemType Directory -Force $pgnDir | Out-Null
-$pgnOut  = Join-Path $pgnDir "$stamp.pgn"
-$matchLog = Join-Path $pgnDir "$stamp.log"
-
-# Separate working dirs so per-engine incidental output (SimplePerfStats.txt)
-# never collides across concurrent games.
-$dirA = Join-Path $pgnDir "$stamp-cand"
-$dirB = Join-Path $pgnDir "$stamp-ref"
-New-Item -ItemType Directory -Force $dirA, $dirB | Out-Null
-
-Write-Host "==> $candidateName vs $ReferenceTag | $Games games, tc=$Tc, concurrency=$Concurrency" -ForegroundColor Cyan
-Write-Host "    PGN: $pgnOut"
-
-# Engine specs as arrays so -CandidateOptions/-ReferenceOptions (e.g. option.Threads=4)
-# splat in as extra fastchess "-engine" option tokens without disturbing the base spec.
-$candidateEngineArgs = @("cmd=$CandidateExe", "name=$candidateName", "dir=$dirA", 'args=uci')
-if ($CandidateOptions) { $candidateEngineArgs += $CandidateOptions -split '\s+' }
-$referenceEngineArgs = @("cmd=$refExe", "name=$ReferenceTag", "dir=$dirB", 'args=uci')
-if ($ReferenceOptions) { $referenceEngineArgs += $ReferenceOptions -split '\s+' }
-
-# Run from the artifacts dir: fastchess drops a config.json (tournament resume
-# state) into its cwd, which must land under gitignored logs/elo, not the repo.
-Push-Location $pgnDir
-& $fastchess `
-    -engine @candidateEngineArgs `
-    -engine @referenceEngineArgs `
-    -each "tc=$Tc" `
-    -rounds $rounds -repeat -concurrency $Concurrency -recover `
-    -openings "file=$book" format=pgn order=sequential `
-    -draw movenumber=40 movecount=8 score=10 `
-    -resign movecount=4 score=800 `
-    -pgnout "file=$pgnOut" notation=san `
-    2>&1 | Tee-Object -FilePath $matchLog
-
-$fcExit = $LASTEXITCODE
-Pop-Location
 
 # --- Parse + report ----------------------------------------------------------
 # fastchess 1.8 result block: "Elo: -88.74 +/- 95.36, nElo: ..." and
@@ -199,7 +255,9 @@ if ($eloLine)   { Write-Host $eloLine.Line.Trim() }
 # --- Append to Docs/EloLog.md -------------------------------------------------
 $eloText = if ($eloLine) { ($eloLine.Line -replace '^\s*Elo:\s*', '' -replace ',\s*nElo.*$', '').Trim() } else { 'n/a' }
 $kind = $Smoke ? 'smoke' : 'match'
-$row = "| $(Get-Date -Format 'yyyy-MM-dd') | $candidateName | $ReferenceTag | $Games | $Tc | $eloText | $kind$($hardFail ? ' — FAILURES, discard' : '') |"
+$actualGames = $Games
+if ($scoreLine -and ($scoreLine.Line -match 'Games:\s*(\d+)')) { $actualGames = $Matches[1] }
+$row = "| $(Get-Date -Format 'yyyy-MM-dd') | $candidateName | $ReferenceTag | $actualGames | $Tc | $eloText | $kind$($hardFail ? ' — FAILURES, discard' : '') |"
 $eloLog = Join-Path $RepoRoot 'Docs\EloLog.md'
 if (Test-Path $eloLog) {
     Add-Content -Path $eloLog -Value $row
