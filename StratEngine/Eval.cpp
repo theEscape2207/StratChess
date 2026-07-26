@@ -209,6 +209,30 @@ int EvalComplex::Evaluate(const Board& board) const noexcept
 		remaining = Bits::clearLsb(remaining);
 	}
 
+	// Mop-up evaluation: in decisively-won, pawnless endings, reward driving the
+	// losing king to the edge/corner and closing the distance between the two
+	// kings — the win may lie beyond the search horizon otherwise (issue #70).
+	if (gameStage != PlayState::MIDDLEGAME &&
+		white_pawns == 0ULL && black_pawns == 0ULL)
+	{
+		const int matDiff = matScoreWhite - matScoreBlack;
+		const int absMatDiff = (matDiff >= 0) ? matDiff : -matDiff;
+
+		if (absMatDiff >= MOPUP_MATERIAL_THRESHOLD)
+		{
+			const eColor winner = (matDiff > 0) ? WHITE : BLACK;
+			const eColor loser = (winner == WHITE) ? BLACK : WHITE;
+
+			const eSquare winnerKingSq = Board::GetFirstPiece(
+				boards[(winner == WHITE) ? ePiece::WHITE_KING : ePiece::BLACK_KING]);
+			const eSquare loserKingSq = Board::GetFirstPiece(
+				boards[(loser == WHITE) ? ePiece::WHITE_KING : ePiece::BLACK_KING]);
+
+			bonusScore[winner] += MOPUP_CMD_WEIGHT * CenterManhattanDistance(loserKingSq) +
+				MOPUP_KINGDIST_WEIGHT * (MOPUP_MAX_KING_DISTANCE - KingDistance(winnerKingSq, loserKingSq));
+		}
+	}
+
 	const eColor color = board.GetCurrentColor();
 
 	if (color == WHITE)
