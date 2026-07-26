@@ -22,6 +22,16 @@ Newest first.
 
 ---
 
+## 2026-07-26 — ELO Match Concurrency Default Raised to 6
+
+### Changed
+- `Scripts\Run-EloMatch.ps1`'s `-Concurrency` default raised from 4 to 6 for the current dev
+  machine (12 physical cores / 24 logical threads) — sized off physical cores ÷ 2 single-threaded
+  engine processes per game, not logical/SMT thread count, to avoid oversubscribing physical
+  execution resources (which can introduce timing noise into fixed real-time-control measurements)
+  while still meaningfully cutting wall-clock time per match. Documented in `Docs/EloLog.md`'s
+  pinned measurement setup table alongside the Machine row it depends on.
+
 ## 2026-07-26 — ELO Match Resume Support (issue #119)
 
 ### Added
