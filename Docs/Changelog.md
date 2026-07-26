@@ -22,6 +22,18 @@ Newest first.
 
 ---
 
+## 2026-07-26 — ELO Match Resume Support (issue #119)
+
+### Added
+- `-ResumeDir`/`-AutosaveInterval` parameters on `Scripts\Run-EloMatch.ps1`, letting an
+  interrupted match resume from fastchess's own autosaved checkpoint (`config.json`) instead of
+  restarting the full batch — discovered as a prerequisite during #70's validation, where a
+  500-game match was killed by a background-task duration cap at 491/500 games after ~60 minutes
+- Fixed `Docs/EloLog.md`'s recorded game count to come from fastchess's own final `Games: N`
+  summary rather than the (in resume mode, meaningless) `-Games` parameter
+- Validated: a real kill-and-resume test (interrupted after 2/20 games, resumed via `-ResumeDir`)
+  correctly continued from game 3 with no replay/duplication, finishing at exactly 20/20
+
 ## 2026-07-26 — Mop-Up Evaluation for Won Pawnless Endgames (issue #70)
 
 ### Added
