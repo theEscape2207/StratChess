@@ -380,3 +380,7 @@ Directory.Build.user.props
 /.claude/settings.local.json
 /StratChessTests/logs/*
 /.claude/worktrees/
+
+# Generated corpus artifact from Scripts/build_corpus.py's default --out
+# (issue #140) — regenerated per checkout, deliberately not committed.
+/corpus.fen
