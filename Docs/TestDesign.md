@@ -131,6 +131,14 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
   starting position, a queen-PST asymmetry regression (queen on c6), a middlegame with
   rooks on open/half-open files, an endgame that trips the king-PST switch, and a pawnless
   mop-up ending — `Evaluate(fen) == Evaluate(MirrorFen(fen))` for both evaluators
+- Rook open-file definition (issue #126): an enemy knight sharing the rook's file must not
+  demote an open file to half-open (`all_black`/`all_white` narrowed to `black_pawns`/`white_pawns`)
+  — an enemy pawn on the file still demotes it (guard); an own pawn behind the rook still leaves
+  the file half-open/open, pinning the deliberate D5 decision in
+  `.claude/plans/passed-and-backwards-pawn-terms.md`
+- Color symmetry: the #126 knight-on-file and pawn-on-file positions added to the `MirrorFen`
+  whole-position symmetry cases above, since the two new masks are the most likely place for a
+  color asymmetry to be introduced
 
 ### Tactical Tests (`[tactical]`)
 

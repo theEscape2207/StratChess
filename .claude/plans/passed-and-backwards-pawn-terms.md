@@ -1,6 +1,6 @@
 # Passed Pawn Bonus + Backwards Pawn Penalty (and the rook open-file fix)
 
-**Issues**: #116, #126 · **Epic**: #110 Tier 3 · **Depth**: full plan · **Status**: not started
+**Issues**: #116, #126 · **Epic**: #110 Tier 3 · **Depth**: full plan · **Status**: #126 portion (D4/D5/D6, step 5) landed separately on 2026-07-27 — see `Docs/Changelog.md` "Rook Open-File Definition Fix". #116 (passed/backwards pawns, steps 1-4) remains not started and still depends on #99.
 **Depends on**: #99 (tapered eval) for the phase scaling the source TODO already asks for
 
 ## Goal
@@ -116,8 +116,9 @@ Recommendation: **remove**, and note the idea in #117's plan as a tunable-term c
 2. **Pawn attack sets into `EvalContext`** (D3) — needed by the backwards term, reused by #97 later.
 3. **Passed-pawn term** with the rank multiplier and `(mg, eg)` phase split (D2).
 4. **Backwards-pawn term** (D3).
-5. **#126 rook fixes** as a separate commit (D4/D5/D6) — independently reviewable and independently
-   revertible if the measurement comes out oddly.
+5. **DONE (2026-07-27)** — **#126 rook fixes** landed as a separate, independent commit (D4/D5/D6);
+   see `Docs/Changelog.md` "Rook Open-File Definition Fix (issue #126)". Steps 1-4/6 below are for
+   the remaining #116 (passed/backwards pawns) work only.
 6. **Tests.**
 
 ## Validation plan
