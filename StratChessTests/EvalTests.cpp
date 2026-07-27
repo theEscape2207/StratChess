@@ -102,6 +102,39 @@ static constexpr const char* FEN_MIDDLEGAME_ROOKS =
 static constexpr const char* FEN_ENDGAME_KING_PST =
     "8/5p2/4k3/8/8/2K5/3P4/8 w - - 0 1";
 
+// Rook open-file definition (issue #126). White Re1 + Kf1, Black Kg8 + one
+// minor/pawn on the rook's file (e) or one file off (d). The knight's PST
+// value is identical on d5/e5 (10), and the pawn's PST value is identical on
+// d5/e5 (14), so within each pair the ONLY eval difference is the open-file
+// classification.
+static constexpr const char* FEN_ROOK_OPEN_FILE_KNIGHT_ON =
+    "6k1/8/8/4n3/8/8/8/4RK2 w - - 0 1";
+static constexpr const char* FEN_ROOK_OPEN_FILE_KNIGHT_OFF =
+    "6k1/8/8/3n4/8/8/8/4RK2 w - - 0 1";
+static constexpr const char* FEN_ROOK_OPEN_FILE_PAWN_ON =
+    "6k1/8/8/4p3/8/8/8/4RK2 w - - 0 1";
+static constexpr const char* FEN_ROOK_OPEN_FILE_PAWN_OFF =
+    "6k1/8/8/3p4/8/8/8/4RK2 w - - 0 1";
+
+// Rook open-file, own-pawn-behind decision (D5, issue #126). Same fixed White
+// pawn on e4 in both; the rook sits behind it (e6) or ahead of it (e2).
+static constexpr const char* FEN_ROOK_OWN_PAWN_BEHIND =
+    "6k1/8/4R3/8/4P3/8/8/6K1 w - - 0 1";
+static constexpr const char* FEN_ROOK_OWN_PAWN_AHEAD =
+    "6k1/8/8/8/4P3/8/4R3/6K1 w - - 0 1";
+
+// D5, controlled pair: rook fixed on e6 in both, White pawn on d4 (off the
+// rook's file) vs e4 (on it, behind the rook). The White pawn's PST value is
+// identical on d4 and e4 (14), both pawns are isolated, and neither file holds
+// an enemy pawn — so if an own pawn behind the rook leaves the file fully OPEN
+// (D5 as implemented), these two must score exactly EQUAL. Widening the
+// own-pawn test to the whole file would break that equality by 15 cp, which is
+// what makes this pair, unlike the >-assertion above, actually pin D5.
+static constexpr const char* FEN_ROOK_OWN_PAWN_OFF_FILE =
+    "6k1/8/4R3/8/3P4/8/8/6K1 w - - 0 1";
+static constexpr const char* FEN_ROOK_OWN_PAWN_BEHIND_SAME_ROOK =
+    "6k1/8/4R3/8/4P3/8/8/6K1 w - - 0 1";
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 TEST_CASE("Eval - EvalSimple: starting position is near-symmetric (within 200 cp)", "[eval]")
@@ -230,6 +263,76 @@ TEST_CASE("Eval - EvalComplex mop-up: gated off below the decisive material thre
     // The 400 cp Q-vs-R lead should swing far more from cornering than the
     // materially-equal N-vs-B case, which gets no mop-up bonus at all.
     REQUIRE(decisiveDelta > marginalDelta);
+}
+
+// ── Rook open-file definition (issue #126) ────────────────────────────────────
+
+TEST_CASE("Eval - EvalComplex: an enemy knight on the rook's file does not demote an open file", "[eval]")
+{
+    // The discriminator: on unmodified HEAD, "open file" tests for absence of
+    // ANY enemy piece (all_black/all_white), not just enemy pawns, so a knight
+    // sharing the rook's file wrongly demotes it from open to half-open (-5 cp).
+    // The knight's PST value is identical on d5 and e5, and material is
+    // identical, so the open-file classification is the only thing that can
+    // make these two scores differ.
+    auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+
+    Board knightOn(FEN_ROOK_OPEN_FILE_KNIGHT_ON);
+    Board knightOff(FEN_ROOK_OPEN_FILE_KNIGHT_OFF);
+
+    REQUIRE(eval->Evaluate(knightOn) == eval->Evaluate(knightOff));
+}
+
+TEST_CASE("Eval - EvalComplex: an enemy pawn on the rook's file still demotes it to half-open", "[eval]")
+{
+    // Guard: the fix must narrow the open-file test to pawns only, not remove
+    // it. An enemy pawn on the file is still the defining case for half-open.
+    // The pawn's PST value is identical on d5 and e5, so as above the only
+    // possible source of a score difference is the file classification.
+    auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+
+    Board pawnOn(FEN_ROOK_OPEN_FILE_PAWN_ON);
+    Board pawnOff(FEN_ROOK_OPEN_FILE_PAWN_OFF);
+
+    // pawnOff (open file) must still score strictly higher than pawnOn (half-open).
+    REQUIRE(eval->Evaluate(pawnOff) > eval->Evaluate(pawnOn));
+}
+
+TEST_CASE("Eval - EvalComplex: an own pawn ahead of the rook blocks the file bonus", "[eval]")
+{
+    // The half-open test looks only at own pawns AHEAD of the rook
+    // (g_bbFileUpMask), so moving the rook from behind its own pawn to in
+    // front of it forfeits the file bonus entirely.
+    //
+    // Note this pair is NOT fully controlled — the rook moves e6 -> e2, which
+    // also shifts its PST value by 1 — so it can only assert a direction. The
+    // equality test below is what actually pins D5.
+    auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+
+    Board pawnBehind(FEN_ROOK_OWN_PAWN_BEHIND);
+    Board pawnAhead(FEN_ROOK_OWN_PAWN_AHEAD);
+
+    REQUIRE(eval->Evaluate(pawnBehind) > eval->Evaluate(pawnAhead));
+}
+
+TEST_CASE("Eval - EvalComplex: an own pawn behind the rook leaves the file fully open (D5)", "[eval]")
+{
+    // Pins the deliberate D5 decision from
+    // .claude/plans/passed-and-backwards-pawn-terms.md. The rook is fixed on
+    // e6 in both positions; only the White pawn moves, from d4 (off the file)
+    // to e4 (on the file, behind the rook). Its PST value is identical on both
+    // squares and it is isolated either way, so the file classification is the
+    // only thing that could make these differ.
+    //
+    // Equality is the whole point: a ">" assertion would still pass if the
+    // pawn-behind case were demoted to merely half-open. Only exact equality
+    // proves the file is still scored as fully OPEN.
+    auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+
+    Board pawnOffFile(FEN_ROOK_OWN_PAWN_OFF_FILE);
+    Board pawnBehindRook(FEN_ROOK_OWN_PAWN_BEHIND_SAME_ROOK);
+
+    REQUIRE(eval->Evaluate(pawnOffFile) == eval->Evaluate(pawnBehindRook));
 }
 
 // ── Color-mirroring correctness (issue #125) ──────────────────────────────────
@@ -411,6 +514,11 @@ static constexpr const char* kSymmetryFens[] = {
     // Covers the WHITE_7TH_ROW = 1 / BLACK_7TH_ROW = 6 pairing, the only
     // direction-aware constant pair otherwise unexercised by a symmetry case.
     FEN_ROOK_ON_7TH,
+    // Issue #126 coverage: enemy knight sharing the rook's file (open-file
+    // fix) and enemy pawn sharing it (half-open guard) — the two positions
+    // most likely to have a color-asymmetric open-file classification.
+    FEN_ROOK_OPEN_FILE_KNIGHT_ON,
+    FEN_ROOK_OPEN_FILE_PAWN_ON,
 };
 
 TEST_CASE("Eval - EvalSimple is color-symmetric: a position and its mirror score equally", "[eval]")

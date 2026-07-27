@@ -91,8 +91,6 @@ int EvalComplex::Evaluate(const Board& board) const noexcept
 	const BITBOARD all_pieces = boards[ALL_PIECES];
 	const BITBOARD white_pawns = boards[ePiece::WHITE_PAWN];
 	const BITBOARD black_pawns = boards[ePiece::BLACK_PAWN];
-	const BITBOARD all_white = boards[ePiece::ALL_WHITE_PIECES];
-	const BITBOARD all_black = boards[ePiece::ALL_BLACK_PIECES];
 
 	auto remaining = all_pieces;
 	while (remaining)
@@ -152,15 +150,23 @@ int EvalComplex::Evaluate(const Board& board) const noexcept
 				bonusScore[WHITE] += ROOK_ON_7TH_BONUS;
 
 			// Bonus hvis der er aabne raekker til taarnet
+			// "Open" means no PAWNS of either colour on the file (issue #126) —
+			// not "no enemy pieces at all". An enemy piece sharing the file is
+			// usually a target for the rook, not a reason to demote the bonus.
 			if (!(white_pawns & g_bbFileUpMask[square]))
 			{
 				bonusScore[WHITE] += HALF_OPEN_FILE;
 
-				if (!(g_bbFileMask[file] & all_black))
+				// Note the two tests use different scopes: own pawns are
+				// tested FORWARD-ONLY (g_bbFileUpMask above), enemy pawns
+				// WHOLE-FILE (g_bbFileMask here). So an own pawn behind the
+				// rook still leaves the file open, while an enemy pawn behind
+				// it does not. That asymmetry is inherited, not principled —
+				// D5 in .claude/plans/passed-and-backwards-pawn-terms.md keeps
+				// it deliberately, because widening the own-pawn test would
+				// change far more positions than issue #126's actual fix.
+				if (!(g_bbFileMask[file] & black_pawns))
 					bonusScore[WHITE] += OPEN_FILE - HALF_OPEN_FILE;
-				//else if (!(g_bbFileMask[file] & 
-				//		  (pBitBoards[ePiece::BLACK_QUEEN] | pBitBoards[ePiece::BLACK_ROOK])))
-				//	bonusScore[WHITE] += HALF_OPEN_FILE;
 			}
 			break;
 
@@ -171,15 +177,23 @@ int EvalComplex::Evaluate(const Board& board) const noexcept
 				bonusScore[BLACK] += ROOK_ON_7TH_BONUS;
 
 			// Bonus hvis der er aabne raekker til taarnet
+			// "Open" means no PAWNS of either colour on the file (issue #126) —
+			// not "no enemy pieces at all". An enemy piece sharing the file is
+			// usually a target for the rook, not a reason to demote the bonus.
 			if (!(black_pawns & g_bbFileDownMask[square]))
 			{
 				bonusScore[BLACK] += HALF_OPEN_FILE;
 
-				if (!(g_bbFileMask[file] & all_white))
+				// Note the two tests use different scopes: own pawns are
+				// tested FORWARD-ONLY (g_bbFileDownMask above), enemy pawns
+				// WHOLE-FILE (g_bbFileMask here). So an own pawn behind the
+				// rook still leaves the file open, while an enemy pawn behind
+				// it does not. That asymmetry is inherited, not principled —
+				// D5 in .claude/plans/passed-and-backwards-pawn-terms.md keeps
+				// it deliberately, because widening the own-pawn test would
+				// change far more positions than issue #126's actual fix.
+				if (!(g_bbFileMask[file] & white_pawns))
 					bonusScore[BLACK] += OPEN_FILE - HALF_OPEN_FILE;
-				//else if (!(g_bbFileMask[file] & 
-				//		  (pBitBoards[ePiece::WHITE_QUEEN] | pBitBoards[ePiece::WHITE_ROOK])))
-				//	bonusScore[BLACK] += HALF_OPEN_FILE;
 			}
 			break;
 

@@ -22,6 +22,45 @@ Newest first.
 
 ---
 
+## 2026-07-27 — Rook Open-File Definition Fix (issue #126)
+
+### Fixed
+- `EvalComplex::Evaluate` (`StratEngine/Eval.cpp`) tested the rook's open-file bonus against
+  `all_black`/`all_white` — any enemy piece on the file, including a knight, bishop, queen, or
+  the enemy king — instead of enemy pawns only. The standard definition of "open file" is no
+  pawns of either color; an enemy piece sharing the file is usually a target for the rook, not a
+  reason to demote the bonus. Narrowed both rook cases to `black_pawns`/`white_pawns`.
+- Removed the now-dead `all_white`/`all_black` locals (only consumers were the two sites above)
+  and the two commented-out `else if` branches referencing a `pBitBoards` variable that no longer
+  exists (D6 in `.claude/plans/passed-and-backwards-pawn-terms.md`).
+
+**Net behavioural delta**: a rook whose file contains an enemy non-pawn piece (including the
+enemy king) but no pawns of either color now scores `OPEN_FILE - HALF_OPEN_FILE` (5 cp) higher
+for that rook's side than before. Positions where the file already contained an enemy pawn, or
+was genuinely clear of everything, are unchanged. The existing own-pawn-behind-the-rook behaviour
+(D5) is deliberately kept as-is and now documented in a comment at the call site.
+
+**Measurement**: validated with `Run-EloMatch.ps1 -Sprt NonRegression`, per CLAUDE.md's rule that
+anything expected to be worth less than ~25 Elo needs an SPRT to be decidable at all — a
+fixed-length 500-game batch resolves only ±25 Elo here, so its interval would contain zero either
+way. The `NonRegression` preset (`elo0 = -5, elo1 = 0`) asks "did this hurt?", which is the right
+question for a correctness fix.
+
+Result: **inconclusive** — 500 games, `+23.66 +/- 25.70` Elo, LLR 0.76 of ±2.94, 204W/170L/126D
+(53.40%), LOS 96.51%. The SPRT hit its game cap without crossing a bound. Read this as **no
+regression detected**, not as a +23.66 Elo gain: the 95% interval is [-2.04, +49.36] and still
+contains zero. A 5 cp static-eval shift was never expected to be resolvable at this sample size,
+and deciding it either way would need a far larger budget than a correctness fix justifies. See
+`Docs/EloLog.md` for the full row. The `[eval]` regression tests and a clean extended-test run
+(including the full tactical tiers) remain the primary evidence.
+
+### Added
+- `StratChessTests/EvalTests.cpp`: an enemy knight sharing the rook's file no longer demotes an
+  open file (fails on pre-fix HEAD by exactly 5 cp); an enemy pawn on the file still demotes it
+  to half-open (guard); an own pawn behind the rook still leaves the file half-open/open (pins
+  D5). The knight-on-file and pawn-on-file positions were also added to the #125 color-symmetry
+  case list.
+
 ## 2026-07-26 — Eval Color Symmetry Fix (issue #125)
 
 ### Fixed
