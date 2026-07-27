@@ -97,7 +97,9 @@ Notes:
   `normalized` (nElo), a different scale on which `elo1=10` would mean something else entirely.
 - `-Sprt` cannot be combined with `-Smoke` (a 20-game run can never reach a decision).
 - Resume (`-ResumeDir`) works normally and preserves the original SPRT bounds — and matters *more*
-  here, since a sequential test can run longer than a fixed batch.
+  here, since a sequential test can run longer than a fixed batch. It recovers an **interrupted**
+  match only; it cannot extend one that already finished at its `-Games` cap (see
+  "Adjusting `-Games`" below).
 - **Record the verdict, not just the Elo.** The Notes column carries
   `SPRT <preset> [elo0, elo1] — H1 accepted` / `H0 accepted` / `inconclusive @ N games`, written
   automatically by the script. An `H1 accepted` at 300 games is a *stronger* claim than a fixed
@@ -108,6 +110,51 @@ Notes:
 
 Verified against the pinned fastchess 1.8.0 build: an SPRT run with bounds `[0, 200]` between two
 identical builds accepted H0 after 10 games rather than playing the 200-game cap.
+
+### Adjusting `-Games` (and when not to)
+
+`-Games 500` means two different things depending on mode, and conflating them is the trap:
+
+- **Fixed batch — 500 *is* the measurement.** Error scales as 1/√N, so it is an expensive dial:
+  ±25 Elo at 500 → ±12.5 at 2 000 → ±6 at 8 000. Raise it only when a point estimate is the
+  deliverable (a new reference baseline, or fitting data for #117), not to make a verdict "more
+  certain" — that is what SPRT is for.
+- **SPRT — 500 is only the give-up point.** It has no bearing on the answer's quality; the test
+  stops as soon as the evidence is decisive. Raising it is statistically free, and costs wall-clock
+  only in the runs that would otherwise have returned inconclusive. Note the 500 default was chosen
+  as a *fixed-batch resolution target* and is simply inherited as the SPRT cap — there is no
+  statistical reason for those two numbers to be equal.
+
+**Reach for wider bounds before more games.** Expected sample size scales roughly with the inverse
+square of the indifference region's width, so `-Sprt Custom -Elo0 -10 -Elo1 0` costs about **4×
+fewer games** than `NonRegression`'s `[-5, 0]` — usually a better trade than quadrupling the budget.
+Ask the loosest question that still settles the decision.
+
+**Estimating what an inconclusive run would have needed.** LLR accumulates roughly linearly in N
+(in expectation, when the true effect lies outside the indifference region), so
+`games_needed ≈ N × 2.94 / LLR_at_N`. The #126 row below reached LLR 0.76 at 500 games → ~1 900
+games, ~2.5 h. Treat this as order-of-magnitude only: LLR is a random walk, and if the true effect
+sits *inside* the indifference region the test may not converge at any practical N.
+
+**The binding ceiling is operational, not statistical.** A full 500-game batch takes ≈40 min at the
+default `-Concurrency 6`, and the 2026-07-26 mop-up row below was killed at ~60 min by a
+background-task duration cap in the execution tooling. That puts the practical limit for a
+*background-launched* match at roughly **700–750 games**; past that, run it in the foreground or
+expect to resume. Two related traps:
+
+- `-ResumeDir` **cannot extend a completed capped run.** It restores the original `-Games` from the
+  saved `config.json`, so it recovers an *interrupted* match but will not top up a finished one.
+  "Run 500, then add more" is not available — restart at the higher number.
+- **Do not raise `-Concurrency` to buy throughput.** It is pinned to physical cores deliberately;
+  oversubscribing injects timing noise, or genuine time losses, into a fixed real-time control.
+
+**Lowering `-Games`** is only useful for `-Smoke` pipeline checks. Under SPRT it is actively
+counterproductive: an early decision costs nothing, so a low cap buys nothing and risks an
+avoidable inconclusive.
+
+**Before spending 4× the games, consider buying information *per* game instead** — a sharper
+opening book yields more decisive pairs (the #126 run drew 35.6%), and pentanomial scoring (the
+`Ptnml(0-2)` line) is already in use as the other main variance reduction.
 
 ### When even SPRT cannot resolve a term
 
