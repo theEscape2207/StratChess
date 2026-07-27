@@ -85,19 +85,30 @@ public:
 };
 
 // EvalContext — shared, per-call intermediates for EvalComplex::Evaluate().
-// Built once at the top of Evaluate() as a plain stack local and passed by
-// const reference into each term function; nothing in it is ever stored on
+// Built once by EvalComplex::BuildContext() as a plain stack local and passed
+// by const reference into each term function; nothing in it is ever stored on
 // EvalManager/EvalComplex (see the Lazy SMP sharing-contract comment above).
 // Everything here is already computed or trivially available from Board — this
 // names shared work, it does not add any. See
 // `.claude/plans/eval-context-restructure.md` for the restructure this supports.
 struct EvalContext
 {
-	const Board&               board;
 	std::span<const BITBOARD>  boards;             // Board::GetBitBoards(), indexed by ePiece
 	BITBOARD                   all_pieces;          // boards[ALL_PIECES]
 	BITBOARD                   pawns[NUM_COLORS];   // boards[WHITE_PAWN] / boards[BLACK_PAWN]
-	BITBOARD                   occupied[NUM_COLORS];// boards[ALL_WHITE_PIECES] / boards[ALL_BLACK_PIECES]
+	// boards[ALL_WHITE_PIECES] / boards[ALL_BLACK_PIECES]. Unread by any term
+	// today (same for all_pieces above) — both are populated because issue #98
+	// (Mobility) needs per-color occupancy to mask off blocked squares. Do not
+	// remove as dead code; see D3 in eval-context-restructure.md.
+	BITBOARD                   occupied[NUM_COLORS];
+	// NO_SQUARE for a color with no king on the board. That only happens for a
+	// default-constructed or failed-parse Board — MoveGenerator.cpp asserts
+	// both kings exist before any search runs, so every position the search
+	// evaluates has both. Consumers must check for NO_SQUARE before using this
+	// square: Board::GetFirstPiece's assert(mask != 0) precondition is a
+	// Release no-op, so calling it on an empty king bitboard silently reads
+	// past the end of g_Eval_Bitboards rather than trapping. See eval_pst and
+	// eval_mopup, and the kingless-board regression test in EvalTests.cpp.
 	eSquare                    king_sq[NUM_COLORS];
 	// Board::GetMaterialScore(color) — includes the king at 10000 cp
 	// (g_iPieceValues, defines.h). That inclusion cancels in Evaluate()'s
@@ -153,6 +164,13 @@ class EvalComplex final
 		const int rankDiff = AbsDiff(Rank(a), Rank(b));
 		return (fileDiff > rankDiff) ? fileDiff : rankDiff;
 	}
+
+	// Builds the EvalContext Evaluate() and every term function read from —
+	// the one construction site, so phase detection and the rest of the
+	// context's fields can't drift out of sync between production and the
+	// term-level test fixture (StratChessTests/EvalTests.cpp) that also calls
+	// this. See .claude/plans/eval-context-restructure.md.
+	static EvalContext BuildContext(const Board& board) noexcept;
 
 	// Per-term evaluation functions (issue #127 restructure). Each returns
 	// only the named term's contribution for one color; Evaluate() sums the
