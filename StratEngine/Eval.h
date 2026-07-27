@@ -140,7 +140,10 @@ struct EvalBreakdown
 	// Board::GetMaterialScore(color), copied verbatim from EvalContext — so
 	// king-inclusive (10000 cp per side; see EvalContext::material above).
 	// Left unadjusted deliberately: a king-stripped display figure would be a
-	// number no part of the evaluator computes. It cancels in white-minus-black.
+	// number no part of the evaluator computes. It cancels in white-minus-black,
+	// so a consumer showing net contributions never has to account for it. This
+	// is the documented home for that fact — which is why the UCI 'eval' output
+	// does not restate it on every call.
 	int                    material[NUM_COLORS];
 	int                    pawns[NUM_COLORS];    // eval_pawns
 	int                    rooks[NUM_COLORS];    // eval_rooks

@@ -169,6 +169,11 @@ void UciHandler::cmd_eval()
              + " |" + pad_left("black", EVAL_VALUE_COL)
              + " |" + pad_left("net", EVAL_VALUE_COL));
         send(rule);
+        // The material row is king-inclusive (10000 cp per side) because it is
+        // EvalContext::material verbatim — see that field's comment in Eval.h.
+        // It cancels in the net column. Documented there rather than printed on
+        // every invocation: it is a fixed property of the evaluator, not
+        // information about the position being examined.
         send(eval_term_row("material", terms.material[WHITE], terms.material[BLACK]));
         send(eval_term_row("pawns",    terms.pawns[WHITE],    terms.pawns[BLACK]));
         send(eval_term_row("rooks",    terms.rooks[WHITE],    terms.rooks[BLACK]));
@@ -189,7 +194,6 @@ void UciHandler::cmd_eval()
                                   EVAL_TABLE_WIDTH - static_cast<int>(sum_label.size())));
 
         send(std::string("stage: ") + play_state_name(terms.stage));
-        send("(material is king-inclusive at 10000 cp per side; it cancels in net)");
 
         score = terms.total;
     }
