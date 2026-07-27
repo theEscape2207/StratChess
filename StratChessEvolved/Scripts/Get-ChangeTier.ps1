@@ -95,6 +95,7 @@ function Get-TierForPath {
     if ($p -like '*/Scripts/Run-Tests.ps1')                  { return 'Tooling' }
     if ($p -like '*/Scripts/Sync-Master.ps1')                { return 'Tooling' }
     if ($p -like '*/Scripts/verify_mate_key.py')             { return 'Tooling' }
+    if ($p -like '*/Scripts/build_corpus.py')                { return 'Tooling' }
 
     # --- Fail closed ----------------------------------------------------------
     # Everything else, INCLUDING anything unrecognised. Do not add an
@@ -140,6 +141,7 @@ if ($SelfTest) {
     $cases = @(
         @{ Name = 'docs only';                  Files = @('README.md', 'Docs/EloLog.md', '.claude/plans/x.md'); Expect = 'Docs' }
         @{ Name = 'tooling only';               Files = @('StratChessEvolved/Scripts/Run-EloMatch.ps1');        Expect = 'Tooling' }
+        @{ Name = 'corpus tool -> Tooling';     Files = @('StratChessEvolved/Scripts/build_corpus.py');         Expect = 'Tooling' }
         @{ Name = 'docs + tooling -> Tooling';  Files = @('CLAUDE.md', 'StratChessEvolved/Scripts/Run-Tests.ps1'); Expect = 'Tooling' }
         @{ Name = 'docs + cpp -> Engine';       Files = @('CLAUDE.md', 'StratEngine/Eval.cpp');                 Expect = 'Engine' }
         @{ Name = 'build.ps1 -> Build';         Files = @('build.ps1');                                          Expect = 'Build' }

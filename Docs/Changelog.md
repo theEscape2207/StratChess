@@ -85,7 +85,9 @@ Newest first.
   literals, `Tests/openings/openings-250.pgn`, and self-play PGNs — scored with the pre-restructure
   binary and the post-restructure binary via the batch `eval` mode (#129). The two outputs are
   byte-identical (matching SHA-256 hash), checked after every incremental step of the restructure,
-  not just at the end.
+  not just at the end. The one-off harvester that built this corpus was later preserved as
+  `StratChessEvolved/Scripts/build_corpus.py` (issue #140) — see its module docstring and
+  `Docs/TestDesign.md`'s `[uci]` section for reuse by future behaviour-preservation refactors.
 - **Node-count identity (secondary evidence)**: five positions spanning game stages, `go depth 6`
   via UCI with `threads=1` (Lazy SMP is nondeterministic and would mask the signal), searched with
   the pre- and post-restructure binaries. Node counts and best moves match exactly at every

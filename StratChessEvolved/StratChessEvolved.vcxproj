@@ -206,6 +206,7 @@
     <ClInclude Include="..\StratEngine\TranspositionTable.h" />
     <ClInclude Include="..\StratEngine\Utils\BitTools.h" />
     <ClInclude Include="..\StratEngine\Utils\FENParser.h" />
+    <ClInclude Include="..\StratEngine\Utils\FenBatch.h" />
     <ClInclude Include="..\StratEngine\Utils\Formatters.h" />
     <ClInclude Include="..\StratEngine\Utils\Logger.h" />
     <ClInclude Include="..\StratEngine\Utils\StrHelper.h" />

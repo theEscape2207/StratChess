@@ -193,6 +193,7 @@
     <ClInclude Include="..\StratEngine\Tests\Perft.h" />
     <ClInclude Include="TacticalTestHelpers.h" />
     <ClInclude Include="..\StratEngine\Magic.h" />
+    <ClInclude Include="..\StratEngine\Utils\FenBatch.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
