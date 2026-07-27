@@ -139,6 +139,31 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 - Color symmetry: the #126 knight-on-file and pawn-on-file positions added to the `MirrorFen`
   whole-position symmetry cases above, since the two new masks are the most likely place for a
   color asymmetry to be introduced
+- Term-level tests (issue #127 restructure): `EvalComplex::Evaluate()` now builds an
+  `EvalContext` and sums four private per-term functions (`eval_pawns`, `eval_rooks`, `eval_pst`,
+  `eval_mopup`), each `(const EvalContext&, eColor) -> int`. `EvalComplexTestFixture` (a
+  `STRAT_ENABLE_TEST_ACCESS` friend, same mechanism as the AIPerplex/UciHandler fixtures) builds
+  an `EvalContext` from a `Board` and forwards to each term, so terms are asserted on directly
+  instead of only inferred from whole-position deltas:
+  - `eval_pawns`: a normal (non-isolated, non-doubled) structure scores exactly 0; the doubled
+    a-file pair (`FEN_WHITE_DOUBLED`) scores exactly `-(DOUBLED_PAWN_PENALTY + 2*ISOLATED_PAWN_PENALTY)`
+  - `eval_rooks`: a 7th-rank rook on a fully open file scores exactly `ROOK_ON_7TH_BONUS + OPEN_FILE`;
+    the issue #126 knight-on-file case and the D5 own-pawn-behind case are re-asserted as exact
+    term-level equalities, not just whole-position deltas
+  - `eval_pst`: the king receives exactly one PST contribution, from the stage-selected table —
+    verified against an independently-computed expected value (`EvalProbe::GetPositionalScore`
+    plus a direct `g_Eval_Bitboards` lookup) for both the middlegame and endgame tables
+  - `eval_mopup`: only the winning color gets a nonzero contribution; both colors get 0 below the
+    decisive-material threshold
+  - Kingless board: a default-constructed `Board` (no kings, all bitboards zero) evaluates to
+    exactly 0, as it did before the restructure. This is a **Debug-build** regression test in
+    substance: `Board::GetFirstPiece` has an `assert(mask != 0)` precondition, so an unguarded king
+    lookup asserts in Debug and reads out of bounds in Release — where the suite would pass anyway.
+    Reachable in shipping code because `UciHandler::board_` is default-constructed and never set to
+    the start position, so a UCI `eval` issued before any `position` command lands here.
+  - Structural check: the four terms plus raw material, summed the same way `Evaluate()` sums
+    them, reproduce `Evaluate()`'s result exactly across every whole-position FEN used by the
+    color-symmetry cases above
 
 ### Tactical Tests (`[tactical]`)
 
