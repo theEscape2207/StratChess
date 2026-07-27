@@ -289,9 +289,23 @@ overflow regression), and `cmd_setoption`'s Threads persistence across `ucinewga
   whole-rook material imbalance so a sign bug can't hide behind a near-zero score.
 
 Batch-mode FEN scoring (`StratChessEvolved.exe eval <path>`) is a CLI subcommand, not a UCI
-command — see `.claude/plans/uci-eval-command-term-breakdown.md` (D4) — and is covered by
-manual validation (blank/comment/malformed-line handling, stderr line numbers) rather than a
-Catch2 case, matching the existing convention for `perft`/`tactical` CLI runners in this file.
+command — see `.claude/plans/uci-eval-command-term-breakdown.md` (D4). `evalrunner`'s per-line
+classification (blank/comment/malformed/valid) is extracted into `FenBatch::ClassifyLine`
+(`StratEngine/Utils/FenBatch.h`, header-only) and covered by `[uci]` cases in `UCITests.cpp`
+(issue #140) — this is what makes the two-tier guard (field-count pre-filter, then
+`FENParser::ParseFEN` as the authoritative gate) a regression-tested invariant rather than a
+manually-verified one. The surrounding CLI plumbing (file I/O, stdout/stderr framing, line
+numbering) remains covered by manual validation, matching the existing convention for
+`perft`/`tactical` CLI runners in this file.
+
+**Corpus tooling**: `StratChessEvolved/Scripts/build_corpus.py` harvests, validates and
+deduplicates FENs from perft/tactical JSON, `StratChessTests/*.cpp` literals, the openings PGN,
+and optional self-play PGNs (`--pgn-dir`) into a single file consumable by `eval <path>` above.
+It is the tool behind #127's score-identity corpus (8574 positions, byte-identical scores
+before/after the `EvalContext` restructure) and is the reusable form of that workflow for any
+future refactor claiming behaviour preservation (#131), as well as the seed of #117's Texel
+tuning corpus. Requires `pip install python-chess`; run with no arguments from a clean checkout
+for an in-repo-assets-only corpus, or see `--help` for `--pgn-dir`/`--every-n-plies`/`--out`.
 
 ### Full tactical suite in main executable
 

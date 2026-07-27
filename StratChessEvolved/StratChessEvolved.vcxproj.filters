@@ -197,6 +197,9 @@
     <ClInclude Include="..\StratEngine\Utils\FENParser.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>
+    <ClInclude Include="..\StratEngine\Utils\FenBatch.h">
+      <Filter>Header Files\Util</Filter>
+    </ClInclude>
     <ClInclude Include="..\StratEngine\Tests\Perft.h">
       <Filter>Tests</Filter>
     </ClInclude>

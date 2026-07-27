@@ -8,7 +8,7 @@
 #include <Tests/Perft.h>
 #include <Tests/TacticalTestRunner.h>
 #include "Eval.h"
-#include "Utils/FENParser.h"
+#include "Utils/FenBatch.h"
 #include <spdlog/spdlog.h>
 
 static void print_usage() {
@@ -260,43 +260,16 @@ static int evalrunner(int argc, char** argv) {
     while (std::getline(file, line)) {
         ++line_no;
 
-        const auto first = line.find_first_not_of(" \t\r\n");
-        if (first == std::string::npos) continue;   // blank line
-        if (line[first] == '#') continue;            // comment
-
-        // A field-count pre-filter, purely so the most damaging malformation
-        // gets a precise diagnostic: a FEN missing its side-to-move field is
-        // silently treated as Black-to-move (issue #46), which across a large
-        // tuning corpus is garbage fitted with no warning.
-        //
-        // This is NOT the authoritative gate. FENParser's regex actually
-        // requires all six standard fields — halfmove and fullmove included —
-        // so a 4- or 5-field line still fails the parser check below. The
-        // floor is set at 4 to distinguish "this isn't a FEN at all" from
-        // "this is a FEN the parser is strict about", which are different
-        // problems for whoever is cleaning the corpus.
-        std::istringstream field_stream(line);
-        int field_count = 0;
-        std::string field_tok;
-        while (field_stream >> field_tok) ++field_count;
-        if (field_count < 4) {
-            std::cerr << "Warning: line " << line_no << ": malformed FEN ("
-                       << field_count << " field(s), need at least 4), skipped: '"
-                       << line << "'\n";
+        // Classification (blank/comment/malformed/valid, including the two-tier
+        // field-count-then-parser gate) lives in FenBatch::ClassifyLine so it is
+        // directly unit-tested (StratChessTests [uci]) without linking this
+        // translation unit — see FenBatch.h for why the guard is load-bearing.
+        const auto result = FenBatch::ClassifyLine(line);
+        if (result.kind == FenBatch::LineKind::Skip) {
             continue;
         }
-
-        // Belt-and-braces: validate through the real parser too, so a line
-        // that clears the field-count floor above but is still rejected by
-        // FENParser (bad piece placement, illegal castling letters, etc.)
-        // is reported and skipped rather than silently scoring a fresh,
-        // still-default-constructed Board — SetupFromFEN() logs and returns
-        // without applying anything on a parse error (issue #45/#46
-        // territory — corpus hygiene, not just a field count).
-        FENParser::FENGameState state;
-        std::vector<std::tuple<ePiece, eSquare>> pieces;
-        if (auto err = FENParser::ParseFEN(line, state, pieces)) {
-            std::cerr << "Warning: line " << line_no << ": " << *err
+        if (result.kind == FenBatch::LineKind::Malformed) {
+            std::cerr << "Warning: line " << line_no << ": " << result.error
                        << ", skipped: '" << line << "'\n";
             continue;
         }
