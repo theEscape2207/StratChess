@@ -22,6 +22,80 @@ Newest first.
 
 ---
 
+## 2026-07-27 — EvalContext Restructure (issue #127)
+
+### Changed
+- `EvalComplex::Evaluate()` (`StratEngine/Eval.cpp`) reshaped from one ~130-line function built
+  around a 12-way `switch` into an `EvalContext` struct (`StratEngine/Eval.h`) holding the shared
+  per-call intermediates (bitboards, pawn masks, king squares, material, game stage) plus four
+  private per-term functions — `eval_pawns`, `eval_rooks`, `eval_pst`, `eval_mopup` — each
+  `(const EvalContext&, eColor) -> int`. `Evaluate()` itself is now ~25 lines: build the context,
+  sum the four terms per color, apply the side-to-move-relative material difference. Pure
+  restructure — no new term, no changed weight, no changed behaviour.
+- `eval_pst` uses per-piece-type bitboard loops (one per non-king piece type, plus a dedicated
+  king branch) instead of a single mailbox-lookup pass over every occupied square, dropping a
+  `Board::GetPiece(square)` call per piece. Landed as its own step after the other three terms
+  were already extracted, since it was judged the change most likely to disturb score identity.
+- Two structural quirks are preserved exactly, now with comments explaining why: the king is
+  excluded from the generic PST add and instead uses a stage-selected table
+  (`g_Eval_Bitboards[5]`/`[6]`) from its own branch in `eval_pst`; `Board::GetMaterialScore`
+  still includes the king at 10000 cp and that inclusion still cancels in the final
+  white-minus-black difference. Phase detection (`iMinScore <= 11500`, the king-inclusive
+  material, and the `min()` over both sides) is untouched — it is wrong in known ways that belong
+  to #99, not this restructure — and `EvalContext::stage`'s doc comment now carries the
+  explanation for the `11500` constant so it doesn't need re-deriving.
+- Issue #126's rook open-file fix (PR #137: pawns-only classification, not
+  `all_black`/`all_white`) and the deliberately-asymmetric own-pawn-forward-only /
+  enemy-pawn-whole-file scope (open question tracked on #116) both carry over unchanged into
+  `eval_rooks`.
+- `EvalManager` gained no data members; `Evaluate()` is still `const`; `EvalContext` is always a
+  per-call stack local, never a member — the Lazy SMP sharing contract documented in `Eval.h`'s
+  class comment still holds verbatim.
+- **Kingless-board guard (post-review fix, real behavioural guarantee):** the initial restructure
+  called `Board::GetFirstPiece` on both king bitboards unconditionally while building `EvalContext`,
+  and `eval_pst` applied a king PST unconditionally. `GetFirstPiece`'s `assert(mask != 0)`
+  precondition is compiled out in Release, so a kingless `Board` — reachable in production via
+  `UciHandler::board_`, which is never seeded with the start position, so a UCI `eval` issued before
+  any `position` command hits it — silently indexed `g_Eval_Bitboards` out of bounds instead of
+  trapping; Debug caught it as an assertion failure in `[uci]`. Fixed by giving `EvalContext::king_sq`
+  a `NO_SQUARE` sentinel for a colorless king and gating both `eval_pst`'s king branch and
+  `eval_mopup` on it, restoring the pre-#127 behaviour exactly: a kingless board evaluates to `0`,
+  as it always did when the king PST lived inside a loop over `ALL_PIECES` that never iterates on an
+  empty board.
+- Context construction moved into `EvalComplex::BuildContext()`, the single site both `Evaluate()`
+  and the term-level test fixture call — closes the drift hazard where the fixture previously
+  re-implemented the `11500` phase threshold by hand. The three `TODO` breadcrumbs the old `switch`
+  carried (passed pawns, connected rooks, castling-done) are re-attached to the term functions that
+  now own that responsibility.
+
+### Added
+- `StratChessTests/EvalTests.cpp`: term-level `[eval]` cases, the restructure's main secondary
+  benefit — terms are individually callable now, so they can be asserted on directly instead of
+  only inferred from whole-position deltas. `EvalComplexTestFixture` (a `STRAT_ENABLE_TEST_ACCESS`
+  friend of `EvalComplex`, same mechanism as the AIPerplex/UciHandler fixtures) builds an
+  `EvalContext` from a `Board` and forwards to each term. New cases cover exact pawn-penalty and
+  rook-bonus values, the king's exactly-once stage-selected PST contribution (verified against an
+  independently-computed expected value), mop-up's winner-only contribution, and a structural
+  check that the four terms plus raw material reproduce `Evaluate()`'s result exactly. All
+  existing `[eval]` cases, including the #125 colour-symmetry and #126 rook cases, pass unchanged.
+
+### Validation
+- **Score identity (primary evidence)**: an 8574-position corpus — FENs harvested from
+  `Tests/perft_test_cases.json`, `Tests/tactical_test_cases.json`, `StratChessTests/*.cpp`
+  literals, `Tests/openings/openings-250.pgn`, and self-play PGNs — scored with the pre-restructure
+  binary and the post-restructure binary via the batch `eval` mode (#129). The two outputs are
+  byte-identical (matching SHA-256 hash), checked after every incremental step of the restructure,
+  not just at the end.
+- **Node-count identity (secondary evidence)**: five positions spanning game stages, `go depth 6`
+  via UCI with `threads=1` (Lazy SMP is nondeterministic and would mask the signal), searched with
+  the pre- and post-restructure binaries. Node counts and best moves match exactly at every
+  position.
+- **No ELO match**: score and node-count identity are strictly stronger evidence than an ELO batch
+  for a pure refactor — there is nothing an ELO match could show that identity at every node
+  doesn't already prove, and a fixed-size batch can't resolve a true zero-Elo delta anyway.
+
+Plan: `.claude/plans/eval-context-restructure.md`.
+
 ## 2026-07-27 — UCI `eval` Command + Batch FEN Scoring, Phase 1 (issue #129)
 
 ### Added
