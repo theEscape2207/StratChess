@@ -1,6 +1,8 @@
 # Static-Eval Introspection: UCI `eval` + Batch FEN Scoring
 
-**Issue**: #129 · **Epic**: #110 Tier 1 (enabler) · **Depth**: full plan · **Status**: not started
+**Issue**: #129 · **Epic**: #110 Tier 1 (enabler) · **Depth**: full plan · **Status**: Phase 1
+(UCI `eval` + batch FEN scoring) landed 2026-07-27 — see `Docs/Changelog.md`. Phase 2 (per-term
+breakdown, D3) is still pending #127 (`EvalContext` restructure).
 
 ## Goal
 

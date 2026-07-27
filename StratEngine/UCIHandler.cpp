@@ -31,7 +31,15 @@ void UciHandler::send(std::string_view msg)
 // Lifecycle
 // ---------------------------------------------------------------------------
 
-UciHandler::UciHandler() = default;
+UciHandler::UciHandler()
+    // eval_ is constructed here, not in init_ai(): init_ai() is re-run by
+    // cmd_ucinewgame() on every 'ucinewgame', but EvalManager holds no
+    // per-game state (see the Lazy SMP sharing contract comment in Eval.h),
+    // so there is nothing for it to reset. Matches the COMPLEX type
+    // init_ai() configures for the search evaluator.
+    : eval_(EvalManager::Create(EvalManager::EvalTypes::COMPLEX))
+{
+}
 
 UciHandler::~UciHandler()
 {
@@ -73,6 +81,28 @@ void UciHandler::cmd_ucinewgame()
     stop_and_join();
     init_ai();
     board_.SetupFromFEN(std::string(STARTING_FEN));
+}
+
+// Prints the static evaluation of the current position (board_), as set up
+// by the last 'position' command (startpos default if none has run yet).
+// Not a search response: no 'info'/'bestmove' output, so a GUI cannot
+// mistake this for one (D6, .claude/plans/uci-eval-command-term-breakdown.md).
+//
+// Two lines are printed because the engine's score is side-to-move-relative
+// (positive = good for whoever moves next) and that sign convention is the
+// single most confusing thing about reading this engine's output — see D5
+// in the plan. The White-POV line removes any need to mentally flip the
+// sign when Black is to move.
+void UciHandler::cmd_eval()
+{
+    const int score = eval_->Evaluate(board_);
+    const bool white_to_move = (board_.GetCurrentColor() == WHITE);
+    const int white_pov = white_to_move ? score : -score;
+
+    send("static eval: " + std::to_string(score) + " cp (" +
+         (white_to_move ? "White" : "Black") +
+         " to move; positive favours the side to move)");
+    send("white pov: " + std::to_string(white_pov) + " cp");
 }
 
 void UciHandler::cmd_position(std::string_view line)
@@ -261,6 +291,7 @@ void UciHandler::run()
         if (line == "uci")                        { cmd_uci(); }
         else if (line == "isready")               { cmd_isready(); }
         else if (line == "ucinewgame")            { cmd_ucinewgame(); }
+        else if (line == "eval")                  { cmd_eval(); }
         else if (line.starts_with("position"))    { cmd_position(line); }
         else if (line.starts_with("go"))          { cmd_go(line); }
         else if (line.starts_with("setoption"))   { cmd_setoption(line); }

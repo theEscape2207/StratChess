@@ -8,6 +8,7 @@
 #include "GameState.h"
 #include "Board.h"
 
+class EvalManager;
 class UciHandler {
 public:
     UciHandler();
@@ -35,6 +36,7 @@ private:
     void cmd_uci();
     void cmd_isready();
     void cmd_ucinewgame();
+    void cmd_eval();
     void cmd_position(std::string_view line);
     void cmd_go(std::string_view line);
     void cmd_stop();
@@ -50,6 +52,7 @@ private:
     Board board_;
 
     std::unique_ptr<PlayerAiBase> ai_;
+    std::unique_ptr<EvalManager> eval_;
     std::thread search_thread_;
 
     // Last thread count from a client 'setoption name Threads value N'.
