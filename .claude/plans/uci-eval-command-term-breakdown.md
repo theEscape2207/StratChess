@@ -1,8 +1,33 @@
 # Static-Eval Introspection: UCI `eval` + Batch FEN Scoring
 
 **Issue**: #129 · **Epic**: #110 Tier 1 (enabler) · **Depth**: full plan · **Status**: Phase 1
-(UCI `eval` + batch FEN scoring) landed 2026-07-27 — see `Docs/Changelog.md`. Phase 2 (per-term
-breakdown, D3) is still pending #127 (`EvalContext` restructure).
+(UCI `eval` + batch FEN scoring) landed 2026-07-27, PR #139 — see `Docs/Changelog.md`. **Phase 2
+(per-term breakdown, D3) is UNBLOCKED**: its gate, #127, landed 2026-07-27 in PR #141.
+
+### Phase 2 — the API to build on (added by #127, `StratEngine/Eval.h`)
+
+```cpp
+static EvalContext BuildContext(const Board& board) noexcept;
+static int eval_pawns(const EvalContext& ctx, eColor color) noexcept;
+static int eval_rooks(const EvalContext& ctx, eColor color) noexcept;
+static int eval_pst  (const EvalContext& ctx, eColor color) noexcept;
+static int eval_mopup(const EvalContext& ctx, eColor color) noexcept;
+```
+
+Derive the breakdown from these — never a parallel computation (D3's whole point). `BuildContext`
+is what `Evaluate()` itself calls, so using it keeps one construction site and one classification
+of game stage; re-deriving the context in the breakdown path is exactly the drift #127's review
+already caught once in the test fixture.
+
+**Design point still to settle**: these are `private static` on `EvalComplex`, reachable from tests
+only via the `STRAT_ENABLE_TEST_ACCESS`-gated `friend struct EvalComplexTestFixture`. `UciHandler`
+needs a *production* path. Choose deliberately between a public breakdown method on `EvalComplex`
+returning a struct, or exposure through `EvalManager`, and widen visibility no further than the
+chosen option requires.
+
+**The invariant to extend**: `EvalTests.cpp` already asserts that the four terms plus raw material
+reproduce `Evaluate()` exactly. Extend that to the *printed* breakdown, so the displayed numbers
+cannot silently drift from the evaluator — this is the property #117 will be trusting.
 
 ## Goal
 
