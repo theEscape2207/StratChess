@@ -7,6 +7,7 @@
 #include "Board.h"
 #include "MoveFormatter.h"
 #include "Eval.h"
+#include "Utils/FenBatch.h"
 #include <sstream>
 #include <iostream>
 #include <string>
@@ -363,4 +364,78 @@ TEST_CASE("cmd_eval: white-pov line matches the stated sign convention", "[uci]"
         REQUIRE(side_to_move_score != 0);
         REQUIRE(white_pov == -side_to_move_score);
     }
+}
+
+// ---------------------------------------------------------------------------
+// FenBatch::ClassifyLine — batch-mode FEN validation (issue #140)
+// ---------------------------------------------------------------------------
+//
+// evalrunner() (StratChessEvolved.cpp, issue #129 phase 1) is untestable
+// directly — it's a static function in a translation unit the test project
+// does not link. FenBatch::ClassifyLine (StratEngine/Utils/FenBatch.h) is
+// the extracted, header-only classification it now delegates to, so these
+// cases exercise the same two-tier guard evalrunner() relies on: without
+// it, a malformed line would silently score a fresh, empty Board as 0 —
+// plausible-looking garbage in a tuning corpus rather than an obvious
+// failure.
+
+TEST_CASE("FenBatch::ClassifyLine: blank line is Skip", "[uci]")
+{
+    auto r = FenBatch::ClassifyLine("");
+    REQUIRE(r.kind == FenBatch::LineKind::Skip);
+
+    auto r_ws = FenBatch::ClassifyLine("   \t  ");
+    REQUIRE(r_ws.kind == FenBatch::LineKind::Skip);
+}
+
+TEST_CASE("FenBatch::ClassifyLine: '#' comment line is Skip", "[uci]")
+{
+    auto r = FenBatch::ClassifyLine("# this is a comment");
+    REQUIRE(r.kind == FenBatch::LineKind::Skip);
+}
+
+TEST_CASE("FenBatch::ClassifyLine: 2-field line is Malformed via the field-count pre-filter", "[uci]")
+{
+    auto r = FenBatch::ClassifyLine("8/8/8/8/8/8/8/8 w");
+    REQUIRE(r.kind == FenBatch::LineKind::Malformed);
+    REQUIRE_FALSE(r.error.empty());
+    REQUIRE(r.error.find("field(s)") != std::string::npos);
+}
+
+TEST_CASE("FenBatch::ClassifyLine: 4-field line clears the pre-filter but is rejected by FENParser", "[uci]")
+{
+    // FENParser requires all six standard fields (halfmove/fullmove included),
+    // so this line — placement/side/castling/en-passant only — is exactly the
+    // case that distinguishes the two validation tiers: it passes the >= 4
+    // field-count floor but still fails the authoritative parser check.
+    auto r = FenBatch::ClassifyLine("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -");
+    REQUIRE(r.kind == FenBatch::LineKind::Malformed);
+    REQUIRE_FALSE(r.error.empty());
+}
+
+TEST_CASE("FenBatch::ClassifyLine: the two malformed tiers report distinguishable messages", "[uci]")
+{
+    // The whole reason the pre-filter exists is to tell "this isn't a FEN at
+    // all" apart from "this is a FEN the parser is strict about" — if both
+    // tiers produced the same message that distinction would be pointless.
+    auto field_count_tier = FenBatch::ClassifyLine("8/8/8/8/8/8/8/8 w");
+    auto parser_tier = FenBatch::ClassifyLine("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -");
+
+    REQUIRE(field_count_tier.kind == FenBatch::LineKind::Malformed);
+    REQUIRE(parser_tier.kind == FenBatch::LineKind::Malformed);
+    REQUIRE(field_count_tier.error != parser_tier.error);
+}
+
+TEST_CASE("FenBatch::ClassifyLine: valid 6-field White-to-move FEN is Valid", "[uci]")
+{
+    auto r = FenBatch::ClassifyLine("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    REQUIRE(r.kind == FenBatch::LineKind::Valid);
+    REQUIRE(r.error.empty());
+}
+
+TEST_CASE("FenBatch::ClassifyLine: valid 6-field Black-to-move FEN is Valid", "[uci]")
+{
+    auto r = FenBatch::ClassifyLine("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R b KQkq - 0 1");
+    REQUIRE(r.kind == FenBatch::LineKind::Valid);
+    REQUIRE(r.error.empty());
 }
