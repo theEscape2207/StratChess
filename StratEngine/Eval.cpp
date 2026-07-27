@@ -65,187 +65,224 @@ int EvalSimple::Evaluate(const Board& board) const noexcept
 // Class EvalComplex implementation
 //
 
+// eval_pawns — doubled and isolated pawn penalties for one color's pawns
+// (issue #127 restructure — see .claude/plans/eval-context-restructure.md).
+// Loops that color's own pawn bitboard directly; the per-pawn logic is
+// unchanged from the switch cases it replaces, just no longer keyed off the
+// outer per-square loop.
+int EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
+{
+	int score = 0;
+	const BITBOARD ownPawns = ctx.pawns[color];
+
+	auto remaining = ownPawns;
+	while (remaining)
+	{
+		const eSquare square = Board::GetFirstPiece(remaining);
+		const int file = File(square);
+
+		if (color == WHITE)
+		{
+			// Hvis der er en hvid bonde over denne i samme kolonne gives en straf
+			if (ownPawns & g_bbFileUpMask[square])
+				score -= DOUBLED_PAWN_PENALTY;
+		}
+		else
+		{
+			// Hvis der er en sort bonde under denne i samme kolonne gives en straf
+			if (Bits::isAnyBitSet(ownPawns, g_bbFileDownMask[square]))
+				score -= DOUBLED_PAWN_PENALTY;
+		}
+
+		// Hvis der ikke er en bonde i en af raekkerne ved siden af gives en straf
+		if ((file == eFileNames::LEFT_FILE || !(ownPawns & g_bbFileMask[file - 1])) &&
+			(file == eFileNames::RIGHT_FILE || !(ownPawns & g_bbFileMask[file + 1])))
+			score -= ISOLATED_PAWN_PENALTY;
+
+		remaining = Bits::clearLsb(remaining);
+	}
+
+	return score;
+}
+
+// eval_rooks — 7th-rank and half-open/open-file bonuses for one color's
+// rooks (issue #127 restructure — see
+// .claude/plans/eval-context-restructure.md). Loops that color's own rook
+// bitboard directly; per-rook logic is unchanged from the switch cases it
+// replaces.
 //
-//	Evaluate() : 
+// "Open" means no PAWNS of either colour on the file (issue #126 / PR #137)
+// — not "no enemy pieces at all". An enemy piece sharing the file is usually
+// a target for the rook, not a reason to demote the bonus. Preserving this
+// (the fixed form, not the pre-#137 all_black/all_white check) is required —
+// see the "Superseded note" for the rook terms in the plan file.
+//
+// Note the two file tests use different scopes: the own-pawn test is
+// FORWARD-ONLY (g_bbFileUpMask/g_bbFileDownMask), the enemy-pawn test is
+// WHOLE-FILE (g_bbFileMask). So an own pawn behind the rook still leaves the
+// file open, while an enemy pawn behind it does not. That asymmetry is
+// inherited, not principled — D5 in
+// .claude/plans/passed-and-backwards-pawn-terms.md keeps it deliberately,
+// because widening the own-pawn test would change far more positions than
+// issue #126's actual fix. The open question of whether to widen it is
+// recorded on issue #116, not settled here.
+int EvalComplex::eval_rooks(const EvalContext& ctx, eColor color) noexcept
+{
+	int score = 0;
+	const ePiece rookPiece = (color == WHITE) ? ePiece::WHITE_ROOK : ePiece::BLACK_ROOK;
+	const int seventhRank = (color == WHITE) ? WHITE_7TH_ROW : BLACK_7TH_ROW;
+	const BITBOARD ownPawns = ctx.pawns[color];
+	const BITBOARD enemyPawns = ctx.pawns[(color == WHITE) ? BLACK : WHITE];
+
+	auto remaining = ctx.boards[rookPiece];
+	while (remaining)
+	{
+		const eSquare square = Board::GetFirstPiece(remaining);
+		const int rank = Rank(square);
+		const int file = File(square);
+
+		// Bonus hvis taarnet er i syvende raekke sent i spillet
+		if (rank == seventhRank && ctx.stage != PlayState::MIDDLEGAME)
+			score += ROOK_ON_7TH_BONUS;
+
+		// Bonus hvis der er aabne raekker til taarnet
+		const BITBOARD ownForwardMask = (color == WHITE) ? g_bbFileUpMask[square] : g_bbFileDownMask[square];
+		if (!(ownPawns & ownForwardMask))
+		{
+			score += HALF_OPEN_FILE;
+
+			if (!(g_bbFileMask[file] & enemyPawns))
+				score += OPEN_FILE - HALF_OPEN_FILE;
+		}
+
+		remaining = Bits::clearLsb(remaining);
+	}
+
+	return score;
+}
+
+// eval_pst — piece-square-table contribution for one color's pieces (issue
+// #127 restructure — see .claude/plans/eval-context-restructure.md — D5's
+// per-piece-type bitboard loops, replacing an earlier mailbox-lookup
+// version). Every non-king piece type gets its own bitboard loop, so
+// GetPositionalScore is called with a statically-known piece — no
+// board.GetPiece(square) mailbox lookup per square. The king is excluded
+// from those loops and uses its own stage-selected table instead —
+// g_Eval_Bitboards[5] (middlegame) or [6] (endgame) — so it still receives
+// exactly one PST contribution, just from a different table than the rest
+// (D2 in the plan file). Reordering these per-type loops relative to each
+// other, or relative to the old single mailbox loop, cannot change the sum:
+// plain int addition over the same multiset of per-square PST values.
+int EvalComplex::eval_pst(const EvalContext& ctx, eColor color) noexcept
+{
+	int score = 0;
+
+	// One bitboard loop per non-king piece type, each already knowing its
+	// own ePiece value — the PST lookup needs nothing else.
+	static constexpr ePiece kNonKingPieces[5][NUM_COLORS] = {
+		{ ePiece::WHITE_PAWN,   ePiece::BLACK_PAWN   },
+		{ ePiece::WHITE_KNIGHT, ePiece::BLACK_KNIGHT },
+		{ ePiece::WHITE_BISHOP, ePiece::BLACK_BISHOP },
+		{ ePiece::WHITE_ROOK,   ePiece::BLACK_ROOK   },
+		{ ePiece::WHITE_QUEEN,  ePiece::BLACK_QUEEN  },
+	};
+
+	for (const auto& piecePair : kNonKingPieces)
+	{
+		const ePiece piece = piecePair[color];
+
+		auto remaining = ctx.boards[piece];
+		while (remaining)
+		{
+			const eSquare square = Board::GetFirstPiece(remaining);
+			score += GetPositionalScore(square, piece);
+			remaining = Bits::clearLsb(remaining);
+		}
+	}
+
+	// King PST: stage-selected table, not the generic one above (D2).
+	const ePiece kingPiece = (color == WHITE) ? ePiece::WHITE_KING : ePiece::BLACK_KING;
+	const eSquare kingSq = ctx.king_sq[color];
+	if (ctx.stage == PlayState::MIDDLEGAME)
+	{
+		score += g_Eval_Bitboards[5][getEvalBoard(kingPiece, kingSq)];
+	}
+	else
+	{
+		score += g_Eval_Bitboards[6][getEvalBoard(kingPiece, kingSq)];
+	}
+
+	return score;
+}
+
+// eval_mopup — mop-up evaluation for one color (issue #127 restructure — see
+// .claude/plans/eval-context-restructure.md; original term issue #70 /
+// epic #110). In decisively-won, pawnless endings, reward driving the losing
+// king to the edge/corner and closing the distance between the two kings —
+// the win may lie beyond the search horizon otherwise. Only the winning
+// color receives a nonzero contribution; the losing color, and both colors
+// when the gating conditions aren't met, get 0 — matching the original
+// bonusScore[winner]-only update this replaces.
+int EvalComplex::eval_mopup(const EvalContext& ctx, eColor color) noexcept
+{
+	if (ctx.stage == PlayState::MIDDLEGAME ||
+		ctx.pawns[WHITE] != 0ULL || ctx.pawns[BLACK] != 0ULL)
+		return 0;
+
+	const int matDiff = ctx.material[WHITE] - ctx.material[BLACK];
+	const int absMatDiff = (matDiff >= 0) ? matDiff : -matDiff;
+
+	if (absMatDiff < MOPUP_MATERIAL_THRESHOLD)
+		return 0;
+
+	const eColor winner = (matDiff > 0) ? WHITE : BLACK;
+	if (color != winner)
+		return 0;
+
+	const eColor loser = (winner == WHITE) ? BLACK : WHITE;
+	const eSquare winnerKingSq = ctx.king_sq[winner];
+	const eSquare loserKingSq = ctx.king_sq[loser];
+
+	return MOPUP_CMD_WEIGHT * CenterManhattanDistance(loserKingSq) +
+		MOPUP_KINGDIST_WEIGHT * (MOPUP_MAX_KING_DISTANCE - KingDistance(winnerKingSq, loserKingSq));
+}
+
+//
+//	Evaluate() :
 //	Description: Sums up the material value from both colors. Adds additional bonuses according to heuristics
-//	Returns:	 The value of the player in turn subtracted the oppositions value 
-// FIXME:		 Evaluate does not know about Check Mate - this is strictly only an evaluation of the current position 
+//	Returns:	 The value of the player in turn subtracted the oppositions value
+// FIXME:		 Evaluate does not know about Check Mate - this is strictly only an evaluation of the current position
 //				 - this means that we miss the first (and best, maybe even only?) opportunity to do check mate!
 //
 int EvalComplex::Evaluate(const Board& board) const noexcept
 {
-	const int matScoreBlack = board.GetMaterialScore(BLACK);
 	const int matScoreWhite = board.GetMaterialScore(WHITE);
+	const int matScoreBlack = board.GetMaterialScore(BLACK);
 
 	PlayState gameStage = PlayState::MIDDLEGAME;
 	const int iMinScore = std::min(matScoreWhite, matScoreBlack);
 	if (iMinScore <= 11500)		// TODO: King are worth 10000 - but maybe they shouldn't be counted??
-		//if(iMinScore <= 10600)	// TODO: action on 'gameStage = FINALGAME' is the same as 'gameStage = ENDGAME'
-		//	gameStage = PlayState::FINALGAME;
-		//else
 		gameStage = PlayState::ENDGAME;
+
+	const auto boardsSpan = board.GetBitBoards();
+	const EvalContext ctx{
+		.board = board,
+		.boards = boardsSpan,
+		.all_pieces = boardsSpan[ALL_PIECES],
+		.pawns = { boardsSpan[ePiece::WHITE_PAWN], boardsSpan[ePiece::BLACK_PAWN] },
+		.occupied = { boardsSpan[ePiece::ALL_WHITE_PIECES], boardsSpan[ePiece::ALL_BLACK_PIECES] },
+		.king_sq = {
+			Board::GetFirstPiece(boardsSpan[ePiece::WHITE_KING]),
+			Board::GetFirstPiece(boardsSpan[ePiece::BLACK_KING])
+		},
+		.material = { matScoreWhite, matScoreBlack },
+		.stage = gameStage,
+	};
 
 	int bonusScore[2] = { 0 };
 
-	const auto boards = board.GetBitBoards();
-	const BITBOARD all_pieces = boards[ALL_PIECES];
-	const BITBOARD white_pawns = boards[ePiece::WHITE_PAWN];
-	const BITBOARD black_pawns = boards[ePiece::BLACK_PAWN];
-
-	auto remaining = all_pieces;
-	while (remaining)
-	{
-		const eSquare square = Board::GetFirstPiece(remaining);	// First square with a piece on
-		const ePiece piece = board.GetPiece(square);		// get the actual piece
-
-		const int rank = Rank(square);
-		const int file = File(square);
-
-		const int pieceType = (piece >> 1);	// Samme som /2
-
-		// Add the pieces positional values - using preset table values
-		if (pieceType != (KING >> 1))
-		{
-			bonusScore[PieceHelper::Color(piece)] += GetPositionalScore(square, piece);
-		}
-
-		/*
-		 *	Adding bonuses and penalties depending on the relation with the other pieces
-		 *
-		 */
-		switch (piece)
-		{
-		case ePiece::WHITE_PAWN:
-			// TODO: Add bonus for passed pawn - bonus should be dependant on game stage
-
-			// Hvis der er en hvid bonde over denne i samme kolonne gives en straf
-			if (white_pawns & g_bbFileUpMask[square])
-				bonusScore[WHITE] -= DOUBLED_PAWN_PENALTY;
-
-			// Hvis der ikke er en hvid bonde i en af raekkerne ved siden af
-			// gives en straf
-			if ((file == eFileNames::LEFT_FILE || !(white_pawns & g_bbFileMask[file - 1])) &&
-				(file == eFileNames::RIGHT_FILE || !(white_pawns & g_bbFileMask[file + 1])))
-				bonusScore[WHITE] -= ISOLATED_PAWN_PENALTY;
-
-			break;
-
-		case ePiece::BLACK_PAWN:
-
-			// Hvis der er en sort bonde under denne i samme kolonne gives en straf
-			if (Bits::isAnyBitSet(black_pawns, g_bbFileDownMask[square]))
-				bonusScore[BLACK] -= DOUBLED_PAWN_PENALTY;
-
-			// Hvis der ikke er en sort bonde i en af raekkerne ved siden af
-			// gives en straf
-			if ((file == eFileNames::LEFT_FILE || !(black_pawns & g_bbFileMask[file - 1])) &&
-				(file == eFileNames::RIGHT_FILE || !(black_pawns & g_bbFileMask[file + 1])))
-				bonusScore[BLACK] -= ISOLATED_PAWN_PENALTY;
-			break;
-
-		case ePiece::WHITE_ROOK:
-
-			// Bonus hvis taarnet er i syvende raekke sent i spillet
-			if (rank == WHITE_7TH_ROW && gameStage != PlayState::MIDDLEGAME)
-				bonusScore[WHITE] += ROOK_ON_7TH_BONUS;
-
-			// Bonus hvis der er aabne raekker til taarnet
-			// "Open" means no PAWNS of either colour on the file (issue #126) —
-			// not "no enemy pieces at all". An enemy piece sharing the file is
-			// usually a target for the rook, not a reason to demote the bonus.
-			if (!(white_pawns & g_bbFileUpMask[square]))
-			{
-				bonusScore[WHITE] += HALF_OPEN_FILE;
-
-				// Note the two tests use different scopes: own pawns are
-				// tested FORWARD-ONLY (g_bbFileUpMask above), enemy pawns
-				// WHOLE-FILE (g_bbFileMask here). So an own pawn behind the
-				// rook still leaves the file open, while an enemy pawn behind
-				// it does not. That asymmetry is inherited, not principled —
-				// D5 in .claude/plans/passed-and-backwards-pawn-terms.md keeps
-				// it deliberately, because widening the own-pawn test would
-				// change far more positions than issue #126's actual fix.
-				if (!(g_bbFileMask[file] & black_pawns))
-					bonusScore[WHITE] += OPEN_FILE - HALF_OPEN_FILE;
-			}
-			break;
-
-		case ePiece::BLACK_ROOK:
-			// TODO: Add bonus for connected Rooks!!
-			// Bonus hvis taarnet er i syvende raekke sent i spillet
-			if (rank == BLACK_7TH_ROW && gameStage != PlayState::MIDDLEGAME)
-				bonusScore[BLACK] += ROOK_ON_7TH_BONUS;
-
-			// Bonus hvis der er aabne raekker til taarnet
-			// "Open" means no PAWNS of either colour on the file (issue #126) —
-			// not "no enemy pieces at all". An enemy piece sharing the file is
-			// usually a target for the rook, not a reason to demote the bonus.
-			if (!(black_pawns & g_bbFileDownMask[square]))
-			{
-				bonusScore[BLACK] += HALF_OPEN_FILE;
-
-				// Note the two tests use different scopes: own pawns are
-				// tested FORWARD-ONLY (g_bbFileDownMask above), enemy pawns
-				// WHOLE-FILE (g_bbFileMask here). So an own pawn behind the
-				// rook still leaves the file open, while an enemy pawn behind
-				// it does not. That asymmetry is inherited, not principled —
-				// D5 in .claude/plans/passed-and-backwards-pawn-terms.md keeps
-				// it deliberately, because widening the own-pawn test would
-				// change far more positions than issue #126's actual fix.
-				if (!(g_bbFileMask[file] & white_pawns))
-					bonusScore[BLACK] += OPEN_FILE - HALF_OPEN_FILE;
-			}
-			break;
-
-		case ePiece::WHITE_KING:
-		case ePiece::BLACK_KING:
-			// TODO: Add bonus for castling-done!!
-			// End game has other requirements for the King placement
-			if (gameStage == PlayState::MIDDLEGAME)
-				bonusScore[PieceHelper::Color(piece)] +=
-				(g_Eval_Bitboards[5][getEvalBoard(piece, square)]);
-			else
-				bonusScore[PieceHelper::Color(piece)] +=
-				(g_Eval_Bitboards[6][getEvalBoard(piece, square)]);
-			break;
-		case ePiece::WHITE_KNIGHT:
-		case ePiece::BLACK_KNIGHT:
-		case ePiece::WHITE_BISHOP:
-		case ePiece::BLACK_BISHOP:
-		case ePiece::WHITE_QUEEN:
-		case ePiece::BLACK_QUEEN:
-			break;
-		default:
-			assert(!"What! A new type of piece...");
-			break;
-		}
-		// We're done! Remove the bit and continue
-		remaining = Bits::clearLsb(remaining);
-	}
-
-	// Mop-up evaluation: in decisively-won, pawnless endings, reward driving the
-	// losing king to the edge/corner and closing the distance between the two
-	// kings — the win may lie beyond the search horizon otherwise (issue #70).
-	if (gameStage != PlayState::MIDDLEGAME &&
-		white_pawns == 0ULL && black_pawns == 0ULL)
-	{
-		const int matDiff = matScoreWhite - matScoreBlack;
-		const int absMatDiff = (matDiff >= 0) ? matDiff : -matDiff;
-
-		if (absMatDiff >= MOPUP_MATERIAL_THRESHOLD)
-		{
-			const eColor winner = (matDiff > 0) ? WHITE : BLACK;
-			const eColor loser = (winner == WHITE) ? BLACK : WHITE;
-
-			const eSquare winnerKingSq = Board::GetFirstPiece(
-				boards[(winner == WHITE) ? ePiece::WHITE_KING : ePiece::BLACK_KING]);
-			const eSquare loserKingSq = Board::GetFirstPiece(
-				boards[(loser == WHITE) ? ePiece::WHITE_KING : ePiece::BLACK_KING]);
-
-			bonusScore[winner] += MOPUP_CMD_WEIGHT * CenterManhattanDistance(loserKingSq) +
-				MOPUP_KINGDIST_WEIGHT * (MOPUP_MAX_KING_DISTANCE - KingDistance(winnerKingSq, loserKingSq));
-		}
-	}
+	bonusScore[WHITE] += eval_pawns(ctx, WHITE) + eval_rooks(ctx, WHITE) + eval_pst(ctx, WHITE) + eval_mopup(ctx, WHITE);
+	bonusScore[BLACK] += eval_pawns(ctx, BLACK) + eval_rooks(ctx, BLACK) + eval_pst(ctx, BLACK) + eval_mopup(ctx, BLACK);
 
 	const eColor color = board.GetCurrentColor();
 
