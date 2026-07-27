@@ -91,8 +91,6 @@ int EvalComplex::Evaluate(const Board& board) const noexcept
 	const BITBOARD all_pieces = boards[ALL_PIECES];
 	const BITBOARD white_pawns = boards[ePiece::WHITE_PAWN];
 	const BITBOARD black_pawns = boards[ePiece::BLACK_PAWN];
-	const BITBOARD all_white = boards[ePiece::ALL_WHITE_PIECES];
-	const BITBOARD all_black = boards[ePiece::ALL_BLACK_PIECES];
 
 	auto remaining = all_pieces;
 	while (remaining)
@@ -152,15 +150,20 @@ int EvalComplex::Evaluate(const Board& board) const noexcept
 				bonusScore[WHITE] += ROOK_ON_7TH_BONUS;
 
 			// Bonus hvis der er aabne raekker til taarnet
+			// "Open" means no PAWNS of either colour on the file (issue #126) —
+			// not "no enemy pieces at all". An enemy piece sharing the file is
+			// usually a target for the rook, not a reason to demote the bonus.
 			if (!(white_pawns & g_bbFileUpMask[square]))
 			{
 				bonusScore[WHITE] += HALF_OPEN_FILE;
 
-				if (!(g_bbFileMask[file] & all_black))
+				// Only own pawns AHEAD of the rook are checked above
+				// (g_bbFileUpMask), so an own pawn BEHIND the rook still
+				// counts as half-open/open here — deliberate: the rook's
+				// forward file is genuinely clear. See D5 in
+				// .claude/plans/passed-and-backwards-pawn-terms.md.
+				if (!(g_bbFileMask[file] & black_pawns))
 					bonusScore[WHITE] += OPEN_FILE - HALF_OPEN_FILE;
-				//else if (!(g_bbFileMask[file] & 
-				//		  (pBitBoards[ePiece::BLACK_QUEEN] | pBitBoards[ePiece::BLACK_ROOK])))
-				//	bonusScore[WHITE] += HALF_OPEN_FILE;
 			}
 			break;
 
@@ -171,15 +174,20 @@ int EvalComplex::Evaluate(const Board& board) const noexcept
 				bonusScore[BLACK] += ROOK_ON_7TH_BONUS;
 
 			// Bonus hvis der er aabne raekker til taarnet
+			// "Open" means no PAWNS of either colour on the file (issue #126) —
+			// not "no enemy pieces at all". An enemy piece sharing the file is
+			// usually a target for the rook, not a reason to demote the bonus.
 			if (!(black_pawns & g_bbFileDownMask[square]))
 			{
 				bonusScore[BLACK] += HALF_OPEN_FILE;
 
-				if (!(g_bbFileMask[file] & all_white))
+				// Only own pawns AHEAD of the rook are checked above
+				// (g_bbFileDownMask), so an own pawn BEHIND the rook still
+				// counts as half-open/open here — deliberate: the rook's
+				// forward file is genuinely clear. See D5 in
+				// .claude/plans/passed-and-backwards-pawn-terms.md.
+				if (!(g_bbFileMask[file] & white_pawns))
 					bonusScore[BLACK] += OPEN_FILE - HALF_OPEN_FILE;
-				//else if (!(g_bbFileMask[file] & 
-				//		  (pBitBoards[ePiece::WHITE_QUEEN] | pBitBoards[ePiece::WHITE_ROOK])))
-				//	bonusScore[BLACK] += HALF_OPEN_FILE;
 			}
 			break;
 
