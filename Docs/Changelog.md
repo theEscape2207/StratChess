@@ -51,6 +51,22 @@ Newest first.
 - `EvalManager` gained no data members; `Evaluate()` is still `const`; `EvalContext` is always a
   per-call stack local, never a member — the Lazy SMP sharing contract documented in `Eval.h`'s
   class comment still holds verbatim.
+- **Kingless-board guard (post-review fix, real behavioural guarantee):** the initial restructure
+  called `Board::GetFirstPiece` on both king bitboards unconditionally while building `EvalContext`,
+  and `eval_pst` applied a king PST unconditionally. `GetFirstPiece`'s `assert(mask != 0)`
+  precondition is compiled out in Release, so a kingless `Board` — reachable in production via
+  `UciHandler::board_`, which is never seeded with the start position, so a UCI `eval` issued before
+  any `position` command hits it — silently indexed `g_Eval_Bitboards` out of bounds instead of
+  trapping; Debug caught it as an assertion failure in `[uci]`. Fixed by giving `EvalContext::king_sq`
+  a `NO_SQUARE` sentinel for a colorless king and gating both `eval_pst`'s king branch and
+  `eval_mopup` on it, restoring the pre-#127 behaviour exactly: a kingless board evaluates to `0`,
+  as it always did when the king PST lived inside a loop over `ALL_PIECES` that never iterates on an
+  empty board.
+- Context construction moved into `EvalComplex::BuildContext()`, the single site both `Evaluate()`
+  and the term-level test fixture call — closes the drift hazard where the fixture previously
+  re-implemented the `11500` phase threshold by hand. The three `TODO` breadcrumbs the old `switch`
+  carried (passed pawns, connected rooks, castling-done) are re-attached to the term functions that
+  now own that responsibility.
 
 ### Added
 - `StratChessTests/EvalTests.cpp`: term-level `[eval]` cases, the restructure's main secondary

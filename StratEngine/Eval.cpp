@@ -70,6 +70,9 @@ int EvalSimple::Evaluate(const Board& board) const noexcept
 // Loops that color's own pawn bitboard directly; the per-pawn logic is
 // unchanged from the switch cases it replaces, just no longer keyed off the
 // outer per-square loop.
+//
+// TODO: Add bonus for passed pawn - bonus should be dependant on game stage
+// (carried over verbatim from the pre-#127 switch; still open, see issue #116).
 int EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 {
 	int score = 0;
@@ -126,6 +129,9 @@ int EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 // because widening the own-pawn test would change far more positions than
 // issue #126's actual fix. The open question of whether to widen it is
 // recorded on issue #116, not settled here.
+//
+// TODO: Add bonus for connected Rooks!! (carried over verbatim from the
+// pre-#127 switch; still open).
 int EvalComplex::eval_rooks(const EvalContext& ctx, eColor color) noexcept
 {
 	int score = 0;
@@ -201,15 +207,29 @@ int EvalComplex::eval_pst(const EvalContext& ctx, eColor color) noexcept
 	}
 
 	// King PST: stage-selected table, not the generic one above (D2).
-	const ePiece kingPiece = (color == WHITE) ? ePiece::WHITE_KING : ePiece::BLACK_KING;
+	// TODO: Add bonus for castling-done!! (carried over verbatim from the
+	// pre-#127 switch; still open).
+	//
+	// Guard against a missing king: ctx.king_sq[color] is NO_SQUARE for a
+	// color with no king on the board (default-constructed or failed-parse
+	// Board only — see the EvalContext::king_sq comment in Eval.h). The old
+	// switch-based Evaluate() never reached this code for a kingless board at
+	// all, because the outer loop iterated ALL_PIECES and a truly empty board
+	// has none; skipping here reproduces that "no king PST contribution"
+	// outcome instead of indexing g_Eval_Bitboards with GetFirstPiece(0),
+	// which is undefined (Debug: assert trips; Release: reads out of bounds).
 	const eSquare kingSq = ctx.king_sq[color];
-	if (ctx.stage == PlayState::MIDDLEGAME)
+	if (kingSq != NO_SQUARE)
 	{
-		score += g_Eval_Bitboards[5][getEvalBoard(kingPiece, kingSq)];
-	}
-	else
-	{
-		score += g_Eval_Bitboards[6][getEvalBoard(kingPiece, kingSq)];
+		const ePiece kingPiece = (color == WHITE) ? ePiece::WHITE_KING : ePiece::BLACK_KING;
+		if (ctx.stage == PlayState::MIDDLEGAME)
+		{
+			score += g_Eval_Bitboards[5][getEvalBoard(kingPiece, kingSq)];
+		}
+		else
+		{
+			score += g_Eval_Bitboards[6][getEvalBoard(kingPiece, kingSq)];
+		}
 	}
 
 	return score;
@@ -227,6 +247,15 @@ int EvalComplex::eval_mopup(const EvalContext& ctx, eColor color) noexcept
 {
 	if (ctx.stage == PlayState::MIDDLEGAME ||
 		ctx.pawns[WHITE] != 0ULL || ctx.pawns[BLACK] != 0ULL)
+		return 0;
+
+	// A kingless board (default-constructed or failed-parse Board only — see
+	// EvalContext::king_sq) reaches this point whenever it also has no pawns:
+	// stage is ENDGAME (material 0 <= 11500) and both pawn bitboards are
+	// empty. Guarded explicitly rather than left to fall out of the
+	// MOPUP_MATERIAL_THRESHOLD check below, which happens to also save it
+	// today (absMatDiff == 0) but would not if that threshold ever changed.
+	if (ctx.king_sq[WHITE] == NO_SQUARE || ctx.king_sq[BLACK] == NO_SQUARE)
 		return 0;
 
 	const int matDiff = ctx.material[WHITE] - ctx.material[BLACK];
@@ -247,14 +276,15 @@ int EvalComplex::eval_mopup(const EvalContext& ctx, eColor color) noexcept
 		MOPUP_KINGDIST_WEIGHT * (MOPUP_MAX_KING_DISTANCE - KingDistance(winnerKingSq, loserKingSq));
 }
 
-//
-//	Evaluate() :
-//	Description: Sums up the material value from both colors. Adds additional bonuses according to heuristics
-//	Returns:	 The value of the player in turn subtracted the oppositions value
-// FIXME:		 Evaluate does not know about Check Mate - this is strictly only an evaluation of the current position
-//				 - this means that we miss the first (and best, maybe even only?) opportunity to do check mate!
-//
-int EvalComplex::Evaluate(const Board& board) const noexcept
+// BuildContext — the one construction site for EvalContext (issue #127
+// restructure — see .claude/plans/eval-context-restructure.md). Both
+// Evaluate() below and the term-level test fixture
+// (StratChessTests/EvalTests.cpp's EvalComplexTestFixture) call this, so
+// phase detection and every other context field can only be computed one
+// way — no risk of the test fixture silently drifting onto a stale copy of
+// the `11500` threshold or similar (see issue #99, which will eventually
+// replace that threshold).
+EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 {
 	const int matScoreWhite = board.GetMaterialScore(WHITE);
 	const int matScoreBlack = board.GetMaterialScore(BLACK);
@@ -265,19 +295,59 @@ int EvalComplex::Evaluate(const Board& board) const noexcept
 		gameStage = PlayState::ENDGAME;
 
 	const auto boardsSpan = board.GetBitBoards();
-	const EvalContext ctx{
-		.board = board,
+
+#ifndef NDEBUG
+	// Debug-only bitboard/mailbox consistency tripwire. The pre-#127 switch
+	// had `default: assert(!"What! A new type of piece...")` in its per-square
+	// mailbox loop, tripping if board.GetPiece() ever returned something
+	// outside the twelve real piece values while iterating ALL_PIECES. The
+	// per-type bitboard loops this restructure introduced (eval_pawns,
+	// eval_rooks, eval_pst) no longer route through that mailbox lookup at
+	// all, so there is no per-square switch left for that trap to live in.
+	// This reproduces the same intent at the one place all of them now read
+	// from: the union of the twelve per-piece-type bitboards must equal
+	// ALL_PIECES, or a bitboard has drifted out of sync with what the board
+	// thinks is occupied.
+	{
+		BITBOARD unionOfTypes = 0ULL;
+		for (int p = ePiece::WHITE_PAWN; p <= ePiece::BLACK_KING; ++p)
+			unionOfTypes |= boardsSpan[p];
+		assert(unionOfTypes == boardsSpan[ALL_PIECES] &&
+			"Eval: per-type piece bitboards do not reconstruct ALL_PIECES");
+	}
+#endif
+
+	// king_sq is NO_SQUARE for a color with no king on the board — only
+	// reachable via a default-constructed or failed-parse Board (see the
+	// EvalContext::king_sq comment in Eval.h). GetFirstPiece has an
+	// assert(mask != 0) precondition that is compiled out in Release, so it
+	// must not be called on an empty king bitboard.
+	const eSquare whiteKingSq = (boardsSpan[ePiece::WHITE_KING] != 0ULL)
+		? Board::GetFirstPiece(boardsSpan[ePiece::WHITE_KING]) : NO_SQUARE;
+	const eSquare blackKingSq = (boardsSpan[ePiece::BLACK_KING] != 0ULL)
+		? Board::GetFirstPiece(boardsSpan[ePiece::BLACK_KING]) : NO_SQUARE;
+
+	return EvalContext{
 		.boards = boardsSpan,
 		.all_pieces = boardsSpan[ALL_PIECES],
 		.pawns = { boardsSpan[ePiece::WHITE_PAWN], boardsSpan[ePiece::BLACK_PAWN] },
 		.occupied = { boardsSpan[ePiece::ALL_WHITE_PIECES], boardsSpan[ePiece::ALL_BLACK_PIECES] },
-		.king_sq = {
-			Board::GetFirstPiece(boardsSpan[ePiece::WHITE_KING]),
-			Board::GetFirstPiece(boardsSpan[ePiece::BLACK_KING])
-		},
+		.king_sq = { whiteKingSq, blackKingSq },
 		.material = { matScoreWhite, matScoreBlack },
 		.stage = gameStage,
 	};
+}
+
+//
+//	Evaluate() :
+//	Description: Sums up the material value from both colors. Adds additional bonuses according to heuristics
+//	Returns:	 The value of the player in turn subtracted the oppositions value
+// FIXME:		 Evaluate does not know about Check Mate - this is strictly only an evaluation of the current position
+//				 - this means that we miss the first (and best, maybe even only?) opportunity to do check mate!
+//
+int EvalComplex::Evaluate(const Board& board) const noexcept
+{
+	const EvalContext ctx = BuildContext(board);
 
 	int bonusScore[2] = { 0 };
 
@@ -288,7 +358,7 @@ int EvalComplex::Evaluate(const Board& board) const noexcept
 
 	if (color == WHITE)
 	{
-		return (matScoreWhite + bonusScore[WHITE]) - (matScoreBlack + bonusScore[BLACK]);
+		return (ctx.material[WHITE] + bonusScore[WHITE]) - (ctx.material[BLACK] + bonusScore[BLACK]);
 	}
-	return (matScoreBlack + bonusScore[BLACK]) - (matScoreWhite + bonusScore[WHITE]);
+	return (ctx.material[BLACK] + bonusScore[BLACK]) - (ctx.material[WHITE] + bonusScore[WHITE]);
 }

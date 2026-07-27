@@ -158,6 +158,32 @@ TEST_CASE("Eval - EvalComplex: starting position is near-symmetric (within 200 c
     REQUIRE(score <=  200);
 }
 
+TEST_CASE("Eval - EvalComplex: a kingless board evaluates to 0 (pre-#127 behaviour, regression)", "[eval]")
+{
+    // Default-constructed Board has an empty mailbox and zeroed bitboards —
+    // no kings, no pieces at all. UciHandler::board_ is exactly this: it is
+    // never seeded with the start position, so UCI's `eval` command run
+    // before any `position` command evaluates precisely this board (see
+    // StratChessTests/UCITests.cpp, "cmd_eval: works before any position
+    // command, does not crash").
+    //
+    // Before the #127 restructure this was well-defined and always 0: the
+    // king PST lived inside a loop over ALL_PIECES, which never iterates on
+    // an empty board, and the mop-up block returned early on
+    // absMatDiff == 0 < MOPUP_MATERIAL_THRESHOLD before ever touching a king
+    // square. The restructure's context build initially called
+    // Board::GetFirstPiece unconditionally on both king bitboards —
+    // GetFirstPiece has an assert(mask != 0) precondition that Debug catches
+    // (this test was added because Debug `[uci]` was observed to crash on
+    // it) and Release silently violates, indexing g_Eval_Bitboards out of
+    // bounds. EvalContext::king_sq is NO_SQUARE for a color with no king
+    // (see the comment on that field in Eval.h), and eval_pst/eval_mopup
+    // both check for it, restoring the pre-#127 "always 0" result exactly.
+    Board board;
+
+    REQUIRE(EvalManager::Create(EvalManager::EvalTypes::COMPLEX)->Evaluate(board) == 0);
+}
+
 TEST_CASE("Eval - EvalSimple: side with extra queen scores > 500 cp", "[eval]")
 {
     Board board(FEN_WHITE_EXTRA_QUEEN);
@@ -584,34 +610,17 @@ struct EvalComplexTestFixture
     static int IsolatedPawnPenalty() { return EvalComplex::ISOLATED_PAWN_PENALTY; }
     static int RookOn7thBonus()      { return EvalComplex::ROOK_ON_7TH_BONUS; }
     static int OpenFile()            { return EvalComplex::OPEN_FILE; }
+    static int HalfOpenFile()        { return EvalComplex::HALF_OPEN_FILE; }
 
 private:
-    // Mirrors EvalComplex::Evaluate()'s context construction exactly (D4:
-    // phase detection must not be reimplemented differently here) so the
-    // terms under test see the same EvalContext Evaluate() would build.
+    // Forwards to EvalComplex::BuildContext — the production construction
+    // site (Eval.cpp) — rather than reimplementing it here. Issue #99 will
+    // eventually replace the `11500` phase threshold BuildContext uses
+    // internally; having only one construction site means that change can't
+    // leave this fixture silently testing the old threshold.
     static EvalContext BuildContext(const Board& board)
     {
-        const int matScoreWhite = board.GetMaterialScore(WHITE);
-        const int matScoreBlack = board.GetMaterialScore(BLACK);
-
-        EvalManager::PlayState stage = EvalManager::PlayState::MIDDLEGAME;
-        if (std::min(matScoreWhite, matScoreBlack) <= 11500)
-            stage = EvalManager::PlayState::ENDGAME;
-
-        const auto boardsSpan = board.GetBitBoards();
-        return EvalContext{
-            .board = board,
-            .boards = boardsSpan,
-            .all_pieces = boardsSpan[ALL_PIECES],
-            .pawns = { boardsSpan[ePiece::WHITE_PAWN], boardsSpan[ePiece::BLACK_PAWN] },
-            .occupied = { boardsSpan[ePiece::ALL_WHITE_PIECES], boardsSpan[ePiece::ALL_BLACK_PIECES] },
-            .king_sq = {
-                Board::GetFirstPiece(boardsSpan[ePiece::WHITE_KING]),
-                Board::GetFirstPiece(boardsSpan[ePiece::BLACK_KING])
-            },
-            .material = { matScoreWhite, matScoreBlack },
-            .stage = stage,
-        };
+        return EvalComplex::BuildContext(board);
     }
 };
 
@@ -655,20 +664,43 @@ TEST_CASE("Eval - eval_rooks: term-level result matches the #126 open-file guard
     // file must not demote it) directly against the extracted term, not just
     // through the whole-position score — pins the term itself, not merely
     // its net effect once summed with unrelated PST noise.
+    //
+    // Asserting an exact magnitude, not merely that the two positions score
+    // equally: eval_rooks reads nothing but pawn bitboards (see its
+    // implementation), so the knightOn/knightOff pair differs only in a
+    // piece the term provably never looks at — an equality assertion would
+    // still pass even if eval_rooks ignored the file classification entirely
+    // and returned a constant. Both positions have no pawns of either colour
+    // on the board at all, so the file is fully open regardless of the
+    // knight, and there is no rank-7 bonus (the rook sits on e1): the full
+    // open-file total, half-open plus the extra open-file increment.
     Board knightOn(FEN_ROOK_OPEN_FILE_KNIGHT_ON);
     Board knightOff(FEN_ROOK_OPEN_FILE_KNIGHT_OFF);
 
-    REQUIRE(EvalComplexTestFixture::Rooks(knightOn, WHITE) == EvalComplexTestFixture::Rooks(knightOff, WHITE));
+    const int expected = EvalComplexTestFixture::HalfOpenFile()
+                        + (EvalComplexTestFixture::OpenFile() - EvalComplexTestFixture::HalfOpenFile());
+    REQUIRE(EvalComplexTestFixture::Rooks(knightOn, WHITE) == expected);
+    REQUIRE(EvalComplexTestFixture::Rooks(knightOff, WHITE) == expected);
 }
 
 TEST_CASE("Eval - eval_rooks: term-level D5 own-pawn-behind result is exactly equal, not just directionally so", "[eval]")
 {
     // Same pair as the whole-position D5 test above, asserted directly on
     // the extracted term rather than inferred through the full evaluation.
+    //
+    // Asserting an exact magnitude rather than pairwise equality, for the
+    // same reason as the knight-file test above: the two FENs differ only in
+    // where the lone White pawn sits (d4 vs e4), and eval_rooks's own-pawn
+    // check is what's under test — an equality-only assertion would not
+    // catch eval_rooks degenerating to a constant. Rook e6 is behind its own
+    // pawn (or off its file) with no enemy pawns anywhere and is not on the
+    // 7th rank, so the file is fully open: plain OPEN_FILE, no 7th-rank bonus.
     Board pawnOffFile(FEN_ROOK_OWN_PAWN_OFF_FILE);
     Board pawnBehindRook(FEN_ROOK_OWN_PAWN_BEHIND_SAME_ROOK);
 
-    REQUIRE(EvalComplexTestFixture::Rooks(pawnOffFile, WHITE) == EvalComplexTestFixture::Rooks(pawnBehindRook, WHITE));
+    const int expected = EvalComplexTestFixture::OpenFile();
+    REQUIRE(EvalComplexTestFixture::Rooks(pawnOffFile, WHITE) == expected);
+    REQUIRE(EvalComplexTestFixture::Rooks(pawnBehindRook, WHITE) == expected);
 }
 
 TEST_CASE("Eval - eval_pst: the king receives exactly one PST contribution, from the middlegame table", "[eval]")
