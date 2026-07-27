@@ -362,3 +362,33 @@ int EvalComplex::Evaluate(const Board& board) const noexcept
 	}
 	return (ctx.material[BLACK] + bonusScore[BLACK]) - (ctx.material[WHITE] + bonusScore[WHITE]);
 }
+
+//
+//	Breakdown() :
+//	Description: Per-term introspection for the UCI 'eval' command (issue #129
+//	             phase 2). Reports each term's contribution per color for one
+//	             position. Read-only — no score changes, and search never calls
+//	             this.
+//	Returns:	 An EvalBreakdown whose rows come from the same BuildContext and
+//	             the same four term functions Evaluate() above calls.
+//
+// `total` is obtained by calling Evaluate(board) rather than re-applying its
+// side-to-move sign flip here. That keeps the flip in exactly one place, so a
+// future change to it cannot leave the breakdown reporting a total the search
+// would disagree with. The cost is a second BuildContext + term pass per call
+// — irrelevant at one call per interactive 'eval' command.
+//
+EvalBreakdown EvalComplex::Breakdown(const Board& board) const noexcept
+{
+	const EvalContext ctx = BuildContext(board);
+
+	return EvalBreakdown{
+		.material = { ctx.material[WHITE], ctx.material[BLACK] },
+		.pawns    = { eval_pawns(ctx, WHITE), eval_pawns(ctx, BLACK) },
+		.rooks    = { eval_rooks(ctx, WHITE), eval_rooks(ctx, BLACK) },
+		.pst      = { eval_pst(ctx, WHITE),   eval_pst(ctx, BLACK)   },
+		.mopup    = { eval_mopup(ctx, WHITE), eval_mopup(ctx, BLACK) },
+		.stage    = ctx.stage,
+		.total    = Evaluate(board),
+	};
+}

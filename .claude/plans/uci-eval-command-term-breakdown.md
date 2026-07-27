@@ -2,9 +2,9 @@
 
 **Issue**: #129 · **Epic**: #110 Tier 1 (enabler) · **Depth**: full plan · **Status**: Phase 1
 (UCI `eval` + batch FEN scoring) landed 2026-07-27, PR #139 — see `Docs/Changelog.md`. **Phase 2
-(per-term breakdown, D3) is UNBLOCKED**: its gate, #127, landed 2026-07-27 in PR #141.
+(per-term breakdown, D3) implemented 2026-07-27** — its gate, #127, landed the same day in PR #141.
 
-### Phase 2 — the API to build on (added by #127, `StratEngine/Eval.h`)
+### Phase 2 — the API it builds on (added by #127, `StratEngine/Eval.h`)
 
 ```cpp
 static EvalContext BuildContext(const Board& board) noexcept;
@@ -19,15 +19,95 @@ is what `Evaluate()` itself calls, so using it keeps one construction site and o
 of game stage; re-deriving the context in the breakdown path is exactly the drift #127's review
 already caught once in the test fixture.
 
-**Design point still to settle**: these are `private static` on `EvalComplex`, reachable from tests
-only via the `STRAT_ENABLE_TEST_ACCESS`-gated `friend struct EvalComplexTestFixture`. `UciHandler`
-needs a *production* path. Choose deliberately between a public breakdown method on `EvalComplex`
-returning a struct, or exposure through `EvalManager`, and widen visibility no further than the
-chosen option requires.
+### D7 — public `EvalComplex::Breakdown()` returning a struct; **not** a virtual on `EvalManager`
 
-**The invariant to extend**: `EvalTests.cpp` already asserts that the four terms plus raw material
-reproduce `Evaluate()` exactly. Extend that to the *printed* breakdown, so the displayed numbers
-cannot silently drift from the evaluator — this is the property #117 will be trusting.
+The design point the issue left open. The term functions are `private static` on `EvalComplex`,
+reachable from tests only via the `STRAT_ENABLE_TEST_ACCESS`-gated `friend struct
+EvalComplexTestFixture`; `UciHandler` needs a production path. `Eval.h` gains a plain aggregate:
+
+```cpp
+struct EvalBreakdown
+{
+    int material[NUM_COLORS];
+    int pawns[NUM_COLORS];
+    int rooks[NUM_COLORS];
+    int pst[NUM_COLORS];
+    int mopup[NUM_COLORS];
+    EvalManager::PlayState stage;
+    int total;      // side-to-move-relative; == Evaluate(board), not recomputed
+};
+```
+
+and `EvalComplex` gains exactly one public method, `EvalBreakdown Breakdown(const Board&) const
+noexcept`. `BuildContext` and the four `eval_*` functions stay private — visibility widens by one
+method and no further, which is what the issue asked for.
+
+The rejected alternative was a `virtual std::optional<EvalBreakdown> Breakdown(...)` on the
+`EvalManager` base with a `nullopt` default. It removes the downcast at the call site, but at the
+cost of putting a debug-only method on the shared abstract interface that `EvalSimple` — and every
+future evaluator — inherits and can never implement. Widening the base to avoid one `dynamic_cast`
+is the wrong trade: `UciHandler::init_ai()` already downcasts (`dynamic_cast<PlayerAiBase*>`), so
+the pattern is established rather than novel here.
+
+### D8 — `total` comes from `Evaluate()`, and `Evaluate()` is not touched
+
+`Breakdown()` fills the per-term rows from `BuildContext` + the four term functions, then sets
+`total` by calling `Evaluate(board)` itself. The final side-to-move sign-flip therefore exists in
+exactly one place; the breakdown never restates it. This costs a second `BuildContext` per call,
+which is irrelevant on a path invoked once per interactive `eval` command and never from search.
+
+Deliberately *not* done: rewriting `Evaluate()` as `return Breakdown(board).total;`. That would
+make non-drift structural rather than test-enforced, but it puts a ~12-int struct fill on the
+hot path `AIPerplex::quiescence` calls millions of times per second, in exchange for a property
+the honesty test (D9) already pins. Keeping `Evaluate()` byte-for-byte unchanged is also what keeps
+this plan's "zero score impact" correctness property true by construction rather than by argument.
+
+### D9 — the honesty invariant is asserted on the *printed* numbers
+
+`EvalTests.cpp` already asserts that the four terms plus raw material reproduce `Evaluate()`. Phase
+2 extends that to the output, because a breakdown that is right internally and mis-rendered is
+still a debugging tool that lies. `UCITests.cpp` parses the emitted table and asserts:
+
+- `net == white - black` on every row;
+- the sum of the `net` column equals the printed `sum (white pov)` line;
+- that sum equals the printed `white pov:` line, and equals a white-relative `Evaluate()` computed
+  independently from a fresh `Board`.
+
+Plus one `[eval]` case asserting `Breakdown()`'s rows equal the corresponding
+`EvalComplexTestFixture` term calls — this is what ties the new public API to the terms that are
+already individually tested, rather than testing it in isolation.
+
+### D10 — output format
+
+An aligned `white | black | net` table, one row per term plus a material row, then the game stage,
+then phase 1's two total lines **byte-identical** (existing `[uci]` tests parse them):
+
+```
+term       |  white |  black |    net
+-----------+--------+--------+-------
+material   |  24000 |  23100 |    900
+pawns      |    -30 |      0 |    -30
+rooks      |     15 |     15 |      0
+pst        |    -12 |     22 |    -34
+mopup      |      0 |      0 |      0
+-----------+--------+--------+-------
+sum (white pov)                    836
+stage: middlegame
+static eval: 836 cp (White to move; positive favours the side to move)
+white pov: 836 cp
+```
+
+The per-color split, not just the net, is the point: a net of `-30` tells you the pawn term is
+hurting White by 30 or helping Black by 30, and which of those it is, is usually the thing being
+debugged. The stage line is printed because it selects the king PST and gates mop-up entirely.
+
+`material` is printed verbatim from `ctx.material`, which is **king-inclusive** (10000 cp per side,
+see the `EvalContext::material` comment) — hence `24000 | 23100` rather than a familiar-looking
+material count. A king-stripped display figure would be a number no part of the evaluator computes,
+i.e. exactly the parallel computation D3 forbids. A footnote line states that it cancels in `net`.
+
+**Scope limits for phase 2**: no breakdown in batch mode (phase 1's `fen<TAB>score` stdout stays
+machine-clean), no `EvalSimple` breakdown, no new eval term, no change to advertised UCI options.
 
 ## Goal
 

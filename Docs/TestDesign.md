@@ -164,6 +164,19 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
   - Structural check: the four terms plus raw material, summed the same way `Evaluate()` sums
     them, reproduce `Evaluate()`'s result exactly across every whole-position FEN used by the
     color-symmetry cases above
+  - `EvalComplex::Breakdown()` (issue #129 phase 2 — the public production path the UCI `eval`
+    command reads): every row equals the corresponding `EvalComplexTestFixture` term call, and
+    `material` equals `Board::GetMaterialScore`, across the same FEN set. Tied to the already-
+    tested terms rather than asserted in isolation — the failure mode worth guarding is
+    `Breakdown()` reporting something other than what `Evaluate()` sums, which self-consistent
+    output would never reveal
+  - `Breakdown().total` agrees with `Evaluate()`, *and* the rows reproduce it: material plus the
+    four terms, summed white-minus-black, up to the side-to-move sign — the latter is what makes
+    the printed net column trustworthy. D8's stronger claim (that `total` *is* `Evaluate()`'s
+    return value, not a correct re-derivation of its sign flip) is structural and enforced by the
+    code, not by these assertions; what they catch is a re-derivation that is *wrong*
+  - `Breakdown().stage` matches the stage `BuildContext` classifies (MIDDLEGAME at full material,
+    ENDGAME for K+Q vs bare king)
 
 ### Tactical Tests (`[tactical]`)
 
@@ -287,6 +300,22 @@ overflow regression), and `cmd_setoption`'s Threads persistence across `ucinewga
 - `white pov:` matches the stated sign convention: equals the side-to-move score when White is
   to move, equals its negation when Black is to move — checked against two positions with a
   whole-rook material imbalance so a sign bug can't hide behind a near-zero score.
+
+**`cmd_eval` per-term breakdown (issue #129 phase 2)**: asserted on the *printed* table, not on
+`EvalBreakdown` directly — a breakdown that is right internally and mis-rendered is still a
+debugging tool that lies, and #117 reads the output rather than the struct. `extract_term_row`
+matches rows on the first whitespace-delimited token, so changing the column widths cannot quietly
+turn these into no-ops.
+
+- **Extended honesty invariant**: for each of five positions (middlegame, symmetric startpos,
+  endgame, Black-to-move, mop-up-active), every row's `net` equals its own `white - black`; the
+  net column sums to the printed `sum (white pov)` line; that sum equals the `white pov:` line;
+  and it equals a white-relative `Evaluate()` computed independently from a fresh `Board`.
+- Game stage is reported and correct (`middlegame` at full material, `endgame` for K+Q vs K) —
+  it is not derivable from the rows, yet selects the king PST and gates mop-up.
+- A term active for exactly one side shows it in the per-color split: mop-up in a pawnless K+Q
+  vs K is positive for White and exactly 0 for Black. This is what pins the columns as carrying
+  independent information rather than both being derived from `net`.
 
 Batch-mode FEN scoring (`StratChessEvolved.exe eval <path>`) is a CLI subcommand, not a UCI
 command — see `.claude/plans/uci-eval-command-term-breakdown.md` (D4). `evalrunner`'s per-line

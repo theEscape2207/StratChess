@@ -17,7 +17,10 @@ class Board;
 // share, unsynchronized, across every Lazy SMP helper thread's concurrent
 // Evaluate() calls — no per-thread clone is needed. EvalContext below (used
 // by EvalComplex) does not change this: it is always a per-call stack local,
-// never a member of EvalManager or EvalComplex.
+// never a member of EvalManager or EvalComplex. The same holds for
+// EvalComplex::Breakdown() and its EvalBreakdown result (issue #129 phase 2):
+// also `const`, also per-call stack locals — though it is a debug path that no
+// search thread calls.
 class EvalManager
 {
 public:
@@ -124,6 +127,35 @@ struct EvalContext
 	EvalManager::PlayState     stage;
 };
 
+// EvalBreakdown — per-term introspection output for the UCI 'eval' command
+// (issue #129 phase 2 — see .claude/plans/uci-eval-command-term-breakdown.md).
+// Produced by EvalComplex::Breakdown(); read-only, never consulted by search.
+//
+// Every field is indexed by eColor, so a caller can show which side a term is
+// actually acting on rather than only the net effect — the per-color split is
+// usually the thing being debugged. The net contribution of a term is always
+// white-minus-black, matching how Evaluate() combines them.
+struct EvalBreakdown
+{
+	// Board::GetMaterialScore(color), copied verbatim from EvalContext — so
+	// king-inclusive (10000 cp per side; see EvalContext::material above).
+	// Left unadjusted deliberately: a king-stripped display figure would be a
+	// number no part of the evaluator computes. It cancels in white-minus-black.
+	int                    material[NUM_COLORS];
+	int                    pawns[NUM_COLORS];    // eval_pawns
+	int                    rooks[NUM_COLORS];    // eval_rooks
+	int                    pst[NUM_COLORS];      // eval_pst
+	int                    mopup[NUM_COLORS];    // eval_mopup
+	// Included because it is not derivable from the rows: it selects which
+	// king PST eval_pst reads and gates eval_mopup entirely.
+	EvalManager::PlayState stage;
+	// Side-to-move-relative, exactly as Evaluate() returns it — this field is
+	// Evaluate()'s return value, not a re-derivation of it (D8). Material plus
+	// the four terms, summed white-minus-black, reproduces it up to the
+	// side-to-move sign; that identity is asserted in StratChessTests.
+	int                    total;
+};
+
 class EvalComplex final
 	: public EvalManager
 {
@@ -185,6 +217,23 @@ class EvalComplex final
 public:
 	int Evaluate(const Board& board) const noexcept override;
 	const char* GetType() const	noexcept override	{ return "Complex";	}
+
+	// Per-term introspection for the UCI 'eval' command (issue #129 phase 2 —
+	// see .claude/plans/uci-eval-command-term-breakdown.md). Reports what the
+	// four private term functions above contribute, per color, for one
+	// position; changes nothing and is never called from search.
+	//
+	// This is the only member made public for the breakdown: BuildContext and
+	// the eval_* functions stay private, and EvalManager's abstract interface
+	// is left alone rather than growing a debug method EvalSimple could never
+	// implement (D7).
+	//
+	// The rows come from the same BuildContext + eval_* calls Evaluate() makes
+	// — never a parallel computation — and `total` is Evaluate()'s own return
+	// value rather than a restatement of its side-to-move sign flip (D8). That
+	// costs a second BuildContext per call, which is free on a path invoked
+	// once per interactive command.
+	EvalBreakdown Breakdown(const Board& board) const noexcept;
 
 	// Force use of factory by
 	// preventing constructor, copy-construction & operator=
