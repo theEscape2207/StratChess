@@ -1,6 +1,9 @@
 # EvalContext Restructure
 
-**Issue**: #127 · **Epic**: #110 Tier 1 (enabler) · **Depth**: full plan · **Status**: not started
+**Issue**: #127 · **Epic**: #110 Tier 1 (enabler) · **Depth**: full plan · **Status**: landed
+2026-07-27 — corpus score identity confirmed over 8574 positions (SHA-256 match before/after every
+step), node-count identity confirmed at depth 6 on 5 positions (threads=1), all `[eval]`/fast/extended
+tests pass. See `Docs/Changelog.md` (2026-07-27, "EvalContext Restructure") for the full record.
 
 ## Goal
 
@@ -120,10 +123,20 @@ restructure verified only at the end gives no information about which step broke
 2. **Introduce `EvalContext`** and populate it at the top of `Evaluate()`, leaving the existing loop
    reading from it instead of its own locals. No logic moves yet. Corpus diff → identical.
 3. **Extract the pawn terms** (doubled, isolated) into `eval_pawns(ctx, color)`. Corpus diff.
-4. **Extract the rook terms** (7th rank, half-open/open file). Corpus diff. Note the open-file test's
-   `all_black`/`all_white` bug (#126) is preserved verbatim here — fixing it is #126's job, in the
-   #116 PR. Add a `// see #126` comment rather than a silent fix; a reviewer who spots it mid-restructure
-   will otherwise "helpfully" correct it and break identity.
+4. **Extract the rook terms** (7th rank, half-open/open file). Corpus diff.
+
+   **Superseded note (2026-07-27):** this step originally said to preserve the `all_black`/`all_white`
+   open-file bug verbatim, because at the time #126 was still open and slated for the #116 PR. **#126
+   landed first, in PR #137** — the open-file test now reads `black_pawns`/`white_pawns`. Preserve
+   *that*, the fixed form, verbatim. Following the original instruction would re-introduce the bug,
+   break identity against the current binary, and silently revert #137.
+
+   Two things in this term must survive the move unchanged, both deliberate and both easy to
+   "helpfully" correct mid-restructure:
+   - Open-file classification tests **pawns only** (#126 / PR #137).
+   - The own-pawn test is **forward-only** (`g_bbFileUpMask` / `g_bbFileDownMask`) while the enemy-pawn
+     test is **whole-file** (`g_bbFileMask`). That scope asymmetry is inherited, not principled, and is
+     deliberately deferred — the open question is recorded on #116. Do not resolve it here.
 5. **Extract the PST term**, preserving the king exclusion and the stage-selected king table (D2).
    Corpus diff.
 6. **Extract the mop-up term** into `eval_mopup(ctx)` — it is already well-isolated at the tail of
@@ -173,4 +186,7 @@ Before merging, strip any step-N / gate-N scaffolding references from comments (
 6. **`EvalManager` remains stateless**; the Lazy SMP sharing contract in `Eval.h` still holds verbatim
    (D6).
 7. **No term reads state another term writes** — terms are pure functions of the context.
-8. **#126's open-file bug is preserved, not fixed** — a deliberate non-change, commented as such.
+8. **#126's fix is preserved, not reverted.** Open-file classification tests pawns only
+   (`black_pawns`/`white_pawns`, PR #137), and the forward-only own-pawn scope is carried over
+   unchanged — the question of widening it is deferred to #116, not settled here. This property
+   replaces the original "preserve the bug" wording, which predated #137 landing.
