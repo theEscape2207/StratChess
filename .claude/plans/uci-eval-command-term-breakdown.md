@@ -104,7 +104,10 @@ debugged. The stage line is printed because it selects the king PST and gates mo
 `material` is printed verbatim from `ctx.material`, which is **king-inclusive** (10000 cp per side,
 see the `EvalContext::material` comment) — hence `24000 | 23100` rather than a familiar-looking
 material count. A king-stripped display figure would be a number no part of the evaluator computes,
-i.e. exactly the parallel computation D3 forbids. A footnote line states that it cancels in `net`.
+i.e. exactly the parallel computation D3 forbids. That it cancels in `net` is documented at
+`EvalContext::material` and at the print site, **not** emitted as a footnote line: it is a fixed
+property of the evaluator, identical on every call, so printing it per invocation would be
+documentation shipped through the wrong channel.
 
 **Scope limits for phase 2**: no breakdown in batch mode (phase 1's `fen<TAB>score` stdout stays
 machine-clean), no `EvalSimple` breakdown, no new eval term, no change to advertised UCI options.

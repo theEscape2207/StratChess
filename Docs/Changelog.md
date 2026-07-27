@@ -50,8 +50,10 @@ Newest first.
   `return Breakdown(board).total;` would make non-drift structural but puts a struct fill on the
   path `AIPerplex::quiescence` calls millions of times a second.
 - `material` is printed verbatim from `EvalContext`, so king-inclusive (10000 cp per side) — a
-  king-stripped display figure would be a number no part of the evaluator computes. A footnote
-  line notes that it cancels in `net`.
+  king-stripped display figure would be a number no part of the evaluator computes. That it
+  cancels in `net` is documented at `EvalContext::material` and at the print site rather than
+  emitted on every call — it is a fixed property of the evaluator, not information about the
+  position being examined.
 
 ### Validation
 - `[uci]` and `[eval]` tags plus the full fast tier, Release and Debug. The honesty invariant is
