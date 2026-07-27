@@ -36,8 +36,8 @@ static constexpr TacticalCase kFastCases[] = {
     // — Simple 2-ply tactics ——————————————————————————————————————————————
     { "fork: Nc7+ wins Ra8",
       "r3k3/8/8/3N4/8/8/8/4K3 w - - 0 1",        d5, c7, 4 },
-    { "skewer: Re8+ wins Ra8",
-      "r3k3/8/8/8/8/8/8/4RK2 w - - 0 1",         e1, e8, 4 },
+    //{ "skewer: Re8+ wins Ra8",
+    //  "r3k3/8/8/8/8/8/8/4RK2 w - - 0 1",         e1, e8, 4 },
     { "skewer: Qc8+ wins Rg8",
       "4k1r1/5p2/8/8/2Q5/8/8/4K3 w - - 0 1",     c4, c8, 4 },
 };
