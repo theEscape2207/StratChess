@@ -157,11 +157,14 @@ int EvalComplex::Evaluate(const Board& board) const noexcept
 			{
 				bonusScore[WHITE] += HALF_OPEN_FILE;
 
-				// Only own pawns AHEAD of the rook are checked above
-				// (g_bbFileUpMask), so an own pawn BEHIND the rook still
-				// counts as half-open/open here — deliberate: the rook's
-				// forward file is genuinely clear. See D5 in
-				// .claude/plans/passed-and-backwards-pawn-terms.md.
+				// Note the two tests use different scopes: own pawns are
+				// tested FORWARD-ONLY (g_bbFileUpMask above), enemy pawns
+				// WHOLE-FILE (g_bbFileMask here). So an own pawn behind the
+				// rook still leaves the file open, while an enemy pawn behind
+				// it does not. That asymmetry is inherited, not principled —
+				// D5 in .claude/plans/passed-and-backwards-pawn-terms.md keeps
+				// it deliberately, because widening the own-pawn test would
+				// change far more positions than issue #126's actual fix.
 				if (!(g_bbFileMask[file] & black_pawns))
 					bonusScore[WHITE] += OPEN_FILE - HALF_OPEN_FILE;
 			}
@@ -181,11 +184,14 @@ int EvalComplex::Evaluate(const Board& board) const noexcept
 			{
 				bonusScore[BLACK] += HALF_OPEN_FILE;
 
-				// Only own pawns AHEAD of the rook are checked above
-				// (g_bbFileDownMask), so an own pawn BEHIND the rook still
-				// counts as half-open/open here — deliberate: the rook's
-				// forward file is genuinely clear. See D5 in
-				// .claude/plans/passed-and-backwards-pawn-terms.md.
+				// Note the two tests use different scopes: own pawns are
+				// tested FORWARD-ONLY (g_bbFileDownMask above), enemy pawns
+				// WHOLE-FILE (g_bbFileMask here). So an own pawn behind the
+				// rook still leaves the file open, while an enemy pawn behind
+				// it does not. That asymmetry is inherited, not principled —
+				// D5 in .claude/plans/passed-and-backwards-pawn-terms.md keeps
+				// it deliberately, because widening the own-pawn test would
+				// change far more positions than issue #126's actual fix.
 				if (!(g_bbFileMask[file] & white_pawns))
 					bonusScore[BLACK] += OPEN_FILE - HALF_OPEN_FILE;
 			}

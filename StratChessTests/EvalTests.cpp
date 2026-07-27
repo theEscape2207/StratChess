@@ -123,6 +123,18 @@ static constexpr const char* FEN_ROOK_OWN_PAWN_BEHIND =
 static constexpr const char* FEN_ROOK_OWN_PAWN_AHEAD =
     "6k1/8/8/8/4P3/8/4R3/6K1 w - - 0 1";
 
+// D5, controlled pair: rook fixed on e6 in both, White pawn on d4 (off the
+// rook's file) vs e4 (on it, behind the rook). The White pawn's PST value is
+// identical on d4 and e4 (14), both pawns are isolated, and neither file holds
+// an enemy pawn — so if an own pawn behind the rook leaves the file fully OPEN
+// (D5 as implemented), these two must score exactly EQUAL. Widening the
+// own-pawn test to the whole file would break that equality by 15 cp, which is
+// what makes this pair, unlike the >-assertion above, actually pin D5.
+static constexpr const char* FEN_ROOK_OWN_PAWN_OFF_FILE =
+    "6k1/8/4R3/8/3P4/8/8/6K1 w - - 0 1";
+static constexpr const char* FEN_ROOK_OWN_PAWN_BEHIND_SAME_ROOK =
+    "6k1/8/4R3/8/4P3/8/8/6K1 w - - 0 1";
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 TEST_CASE("Eval - EvalSimple: starting position is near-symmetric (within 200 cp)", "[eval]")
@@ -286,21 +298,41 @@ TEST_CASE("Eval - EvalComplex: an enemy pawn on the rook's file still demotes it
     REQUIRE(eval->Evaluate(pawnOff) > eval->Evaluate(pawnOn));
 }
 
-TEST_CASE("Eval - EvalComplex: an own pawn behind the rook still counts as half-open/open (D5)", "[eval]")
+TEST_CASE("Eval - EvalComplex: an own pawn ahead of the rook blocks the file bonus", "[eval]")
 {
-    // Pins the deliberate D5 decision from
-    // .claude/plans/passed-and-backwards-pawn-terms.md: the half-open test
-    // only looks at own pawns AHEAD of the rook (g_bbFileUpMask), so an own
-    // pawn BEHIND the rook on the same file still leaves the file half-open
-    // (and open, since there's no enemy pawn either) — the rook's forward
-    // file is genuinely clear. This is not a bug; changing it is out of scope
-    // for issue #126.
+    // The half-open test looks only at own pawns AHEAD of the rook
+    // (g_bbFileUpMask), so moving the rook from behind its own pawn to in
+    // front of it forfeits the file bonus entirely.
+    //
+    // Note this pair is NOT fully controlled — the rook moves e6 -> e2, which
+    // also shifts its PST value by 1 — so it can only assert a direction. The
+    // equality test below is what actually pins D5.
     auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
 
     Board pawnBehind(FEN_ROOK_OWN_PAWN_BEHIND);
     Board pawnAhead(FEN_ROOK_OWN_PAWN_AHEAD);
 
     REQUIRE(eval->Evaluate(pawnBehind) > eval->Evaluate(pawnAhead));
+}
+
+TEST_CASE("Eval - EvalComplex: an own pawn behind the rook leaves the file fully open (D5)", "[eval]")
+{
+    // Pins the deliberate D5 decision from
+    // .claude/plans/passed-and-backwards-pawn-terms.md. The rook is fixed on
+    // e6 in both positions; only the White pawn moves, from d4 (off the file)
+    // to e4 (on the file, behind the rook). Its PST value is identical on both
+    // squares and it is isolated either way, so the file classification is the
+    // only thing that could make these differ.
+    //
+    // Equality is the whole point: a ">" assertion would still pass if the
+    // pawn-behind case were demoted to merely half-open. Only exact equality
+    // proves the file is still scored as fully OPEN.
+    auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+
+    Board pawnOffFile(FEN_ROOK_OWN_PAWN_OFF_FILE);
+    Board pawnBehindRook(FEN_ROOK_OWN_PAWN_BEHIND_SAME_ROOK);
+
+    REQUIRE(eval->Evaluate(pawnOffFile) == eval->Evaluate(pawnBehindRook));
 }
 
 // ── Color-mirroring correctness (issue #125) ──────────────────────────────────
