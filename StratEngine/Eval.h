@@ -44,12 +44,25 @@ protected:
 	{
 		return g_Eval_Bitboards[piece >> 1][getEvalBoard(piece, squareType)];
 	}
+	// Maps a piece's board square to its PST lookup index. White uses the
+	// square directly; Black needs a vertical mirror (rank r <-> rank 9 - r,
+	// file unchanged) since every PST in defines.h is written from White's
+	// point of view. `square ^ 56` is that vertical flip: given the board
+	// layout in defines.h (a8 = 0 ... h1 = 63), XOR-ing with 56 (0b111000)
+	// flips the three rank bits and leaves the three file bits untouched.
+	//
+	// The previous implementation used `63 - square` (equivalently
+	// `square ^ 63`), a 180-degree rotation: it flips the file bits too, not
+	// just the rank bits. That distinction is invisible for a file-symmetric
+	// PST (rotation and vertical flip agree there) but wrong the moment a
+	// table is file-asymmetric. See the plan file
+	// `.claude/plans/eval-color-symmetry-and-queen-pst-fix.md` for the queen-PST
+	// regression this caused and the test coverage added to guard it
+	// (`StratChessTests/EvalTests.cpp`).
 	static constexpr inline int getEvalBoard(ePiece piece, eSquare square) noexcept
 	{
-		return (PieceHelper::Color(piece) == eColor::BLACK) ? (MAXSQUARES - square) : square;
+		return (PieceHelper::Color(piece) == eColor::BLACK) ? (square ^ 56) : square;
 	}
-private:
-	static const int MAXSQUARES = ALL_SQUARES - 1;
 };
 
 class EvalSimple final
