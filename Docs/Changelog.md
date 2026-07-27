@@ -22,6 +22,51 @@ Newest first.
 
 ---
 
+## 2026-07-27 — Static-Eval Per-Term Breakdown (issue #129 phase 2)
+
+### Added
+- `EvalBreakdown` (`StratEngine/Eval.h`) and `EvalComplex::Breakdown()` (`StratEngine/Eval.cpp`):
+  the public, production path to what each evaluation term contributes for a position, per color,
+  plus the game stage and the total. Rows come from the same `BuildContext` and the same four
+  private term functions `Evaluate()` calls — never a parallel computation.
+- The UCI `eval` command now prints a `white | black | net` table above phase 1's two total lines,
+  followed by the game stage. The per-color split, not just the net, is the point: a net of -30
+  does not say whether a term is penalising White or rewarding Black, which is usually what is
+  being debugged. Completes issue #129; unblocked by the #127 restructure (PR #141).
+
+### Changed
+- `UciHandler::cmd_eval()` downcasts `eval_` to `EvalComplex` to reach the breakdown, mirroring
+  the `dynamic_cast` `init_ai()` already performs. The two total lines print unconditionally, so
+  an evaluator with no terms to report degrades to exactly phase 1's output.
+
+### Design notes
+- Visibility widened by exactly one method: `BuildContext` and the four `eval_*` functions stay
+  private, and `EvalManager`'s abstract interface was deliberately left alone rather than given a
+  `virtual Breakdown()` that `EvalSimple` — and every future evaluator — would inherit and never
+  implement.
+- `EvalBreakdown::total` is `Evaluate()`'s own return value rather than a restatement of its
+  side-to-move sign flip, so the flip lives in one place and `eval` cannot print a total the
+  search would disagree with. `Evaluate()` itself is byte-for-byte unchanged — rewriting it as
+  `return Breakdown(board).total;` would make non-drift structural but puts a struct fill on the
+  path `AIPerplex::quiescence` calls millions of times a second.
+- `material` is printed verbatim from `EvalContext`, so king-inclusive (10000 cp per side) — a
+  king-stripped display figure would be a number no part of the evaluator computes. That it
+  cancels in `net` is documented at `EvalContext::material` and at the print site rather than
+  emitted on every call — it is a fixed property of the evaluator, not information about the
+  position being examined.
+
+### Validation
+- `[uci]` and `[eval]` tags plus the full fast tier, Release and Debug. The honesty invariant is
+  asserted on the *printed* table (`UCITests.cpp`): every row's net equals its own white-minus-
+  black, the net column sums to the printed total, and that total equals a white-relative
+  `Evaluate()` computed independently — across five positions covering middlegame, endgame,
+  Black-to-move and an active mop-up term.
+- No ELO match: no evaluation value changes, and search never calls the new path.
+
+See `.claude/plans/uci-eval-command-term-breakdown.md` (D7–D10) for the full reasoning.
+
+---
+
 ## 2026-07-27 — EvalContext Restructure (issue #127)
 
 ### Changed

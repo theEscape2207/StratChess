@@ -787,3 +787,92 @@ TEST_CASE("Eval - the four terms sum exactly to EvalComplex::Evaluate()'s result
 
     REQUIRE(eval->Evaluate(board) == expected);
 }
+
+// ── EvalComplex::Breakdown() (issue #129 phase 2) ─────────────────────────────
+//
+// Breakdown() is the public, production path to the per-term values that the
+// UCI 'eval' command prints (.claude/plans/uci-eval-command-term-breakdown.md,
+// D7). The tests below tie it to the terms that are already individually
+// asserted above, rather than testing it in isolation — the failure mode worth
+// guarding is Breakdown() quietly reporting something other than what
+// Evaluate() sums, which no amount of self-consistent output would reveal.
+
+TEST_CASE("Eval - Breakdown(): every row equals the term function it reports", "[eval]")
+{
+    const char* fen = GENERATE(from_range(kSymmetryFens));
+    CAPTURE(fen);
+
+    Board board(fen);
+    auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+    auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
+    REQUIRE(complexEval != nullptr);
+
+    const EvalBreakdown terms = complexEval->Breakdown(board);
+
+    for (const eColor color : { WHITE, BLACK }) {
+        CAPTURE(static_cast<int>(color));
+        REQUIRE(terms.material[color] == board.GetMaterialScore(color));
+        REQUIRE(terms.pawns[color]    == EvalComplexTestFixture::Pawns(board, color));
+        REQUIRE(terms.rooks[color]    == EvalComplexTestFixture::Rooks(board, color));
+        REQUIRE(terms.pst[color]      == EvalComplexTestFixture::Pst(board, color));
+        REQUIRE(terms.mopup[color]    == EvalComplexTestFixture::Mopup(board, color));
+    }
+}
+
+TEST_CASE("Eval - Breakdown(): total agrees with Evaluate(), and the rows reproduce it", "[eval]")
+{
+    // Two assertions. `total` equals Evaluate()'s result, and the rows account
+    // for that total exactly: material plus the four terms, summed
+    // white-minus-black, up to the side-to-move sign. The second is what makes
+    // the printed net column trustworthy.
+    //
+    // Note what this does *not* establish. D8 says `total` is Evaluate()'s own
+    // return value rather than a re-derivation of its sign flip — that is a
+    // structural property of Breakdown()'s implementation, and no black-box
+    // assertion can distinguish it from a re-derivation that happens to be
+    // correct. It is enforced by the code and by review, not here. What these
+    // assertions do catch is a re-derivation that is *wrong*, which is the
+    // failure that would actually mislead someone reading the output.
+    const char* fen = GENERATE(from_range(kSymmetryFens));
+    CAPTURE(fen);
+
+    Board board(fen);
+    auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+    auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
+    REQUIRE(complexEval != nullptr);
+
+    const EvalBreakdown terms = complexEval->Breakdown(board);
+
+    REQUIRE(terms.total == eval->Evaluate(board));
+
+    const int whitePov = (terms.material[WHITE] - terms.material[BLACK])
+                       + (terms.pawns[WHITE]    - terms.pawns[BLACK])
+                       + (terms.rooks[WHITE]    - terms.rooks[BLACK])
+                       + (terms.pst[WHITE]      - terms.pst[BLACK])
+                       + (terms.mopup[WHITE]    - terms.mopup[BLACK]);
+
+    const int expectedTotal = (board.GetCurrentColor() == WHITE) ? whitePov : -whitePov;
+    REQUIRE(terms.total == expectedTotal);
+}
+
+TEST_CASE("Eval - Breakdown(): stage matches the context Evaluate() builds", "[eval]")
+{
+    // The stage is reported because it is not derivable from the rows, and it
+    // is what selects the king PST and gates mop-up. Asserting it against the
+    // fixture's own BuildContext keeps the reported stage pinned to the one
+    // construction site rather than to a duplicated threshold (issue #99 will
+    // eventually move that threshold).
+    auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+    auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
+    REQUIRE(complexEval != nullptr);
+
+    SECTION("full starting material is MIDDLEGAME") {
+        Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+        REQUIRE(complexEval->Breakdown(board).stage == EvalManager::PlayState::MIDDLEGAME);
+    }
+
+    SECTION("bare kings plus a queen is ENDGAME") {
+        Board board("4k3/8/8/8/8/8/8/3QK3 w - - 0 1");
+        REQUIRE(complexEval->Breakdown(board).stage == EvalManager::PlayState::ENDGAME);
+    }
+}
