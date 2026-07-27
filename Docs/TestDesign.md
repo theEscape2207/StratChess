@@ -77,7 +77,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | Time management (TimeManager + compute_budget) | `[time_mgr]` | ✅ Phase 1 | `TimeManagerTests.cpp` |
 | Bitboard helpers | `[bitboard]` | ⏳ Phase 1 | `BitboardTests.cpp` (future) |
 | Sliding-piece attack generation (PEXT) | `[magic]` | ✅ Phase 1 | `MagicBitboardTests.cpp` |
-| UCI command loop | `[uci]` | ✅ validated via pipe test | `StratChessEvolved.exe uci` (pipe smoke test) |
+| UCI command loop | `[uci]` | ✅ Phase 1 | `UCITests.cpp` (+ `StratChessEvolved.exe uci` pipe smoke test) |
 | Full tactical suite (WAC/mate-in-N) | — | ✅ Phase 1 | `StratChessEvolved.exe tactical test` |
 | Board instance independence (post-de-singleton) | `[board_instance]` | ✅ Phase 2 | `BoardInstanceTests.cpp` |
 | NPS / performance regression | — | ⏳ Phase 1 | — |
@@ -241,6 +241,32 @@ Hand-verified `RookAttacks`/`BishopAttacks` bitboards for open cross/diagonal (e
 corner squares with blockers, and fully-blocked-adjacent cases — independent of perft, which
 only proves attack generation is *consistent* with legal move counts, not that any individual
 attack bitboard is correct in isolation.
+
+### `[uci]` — UCI command tests
+
+**File**: `StratChessTests/UCITests.cpp`
+**Access**: `UciHandlerTestFixture` (`STRAT_ENABLE_TEST_ACCESS`) drives private command
+handlers (`cmd_position`, `cmd_setoption`, `cmd_ucinewgame`, `cmd_eval`) directly, without a
+running `run()` loop or piped stdin.
+
+Covers `parse_go()` parameter parsing, `cmd_position` move replay (including the MAX_PLY
+overflow regression), and `cmd_setoption`'s Threads persistence across `ucinewgame`.
+
+**`cmd_eval` (issue #129 phase 1 — static-eval introspection)**:
+- Works before any `position` command (default-constructed, empty `board_`) without crashing.
+- **Honesty invariant**: the printed `static eval:` score is a real parse of the emitted
+  number, asserted equal to `EvalManager::Create(COMPLEX)->Evaluate(Board(fen))` for the same
+  FEN — the property that makes the tool trustworthy for #117's tuner and #127's byte-identity
+  check, since it proves `eval` never computes a parallel score.
+- Output contains neither `bestmove` nor `info` — `eval` must not look like a search response.
+- `white pov:` matches the stated sign convention: equals the side-to-move score when White is
+  to move, equals its negation when Black is to move — checked against two positions with a
+  whole-rook material imbalance so a sign bug can't hide behind a near-zero score.
+
+Batch-mode FEN scoring (`StratChessEvolved.exe eval <path>`) is a CLI subcommand, not a UCI
+command — see `.claude/plans/uci-eval-command-term-breakdown.md` (D4) — and is covered by
+manual validation (blank/comment/malformed-line handling, stderr line numbers) rather than a
+Catch2 case, matching the existing convention for `perft`/`tactical` CLI runners in this file.
 
 ### Full tactical suite in main executable
 
