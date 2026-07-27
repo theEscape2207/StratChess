@@ -22,6 +22,34 @@ Newest first.
 
 ---
 
+## 2026-07-26 — Eval Color Symmetry Fix (issue #125)
+
+### Fixed
+- `EvalManager::getEvalBoard` (`StratEngine/Eval.h`) mapped a Black piece's square with
+  `63 - square`, a 180-degree rotation that mirrors files as well as ranks, instead of the
+  intended vertical flip (`square ^ 56`). Invisible for file-symmetric PSTs, but wrong for
+  file-asymmetric ones — a prerequisite for future terms like king-side castling/pawn-storm
+  bonuses (epic #110) and for #117 (Texel tuning), which needs a symmetric evaluator to fit
+  against.
+- Queen PST (`StratEngine/defines.h`) had one asymmetric pair (c6 = 4, f6 = 3) that made the
+  above defect observable; f6 corrected to 4.
+
+**Net behavioural delta**: because all seven PSTs are file-symmetric once the queen typo is
+fixed, a 180-degree rotation and a vertical flip produce identical values for every square —
+so the `getEvalBoard` change on its own is exactly score-identical to the previous behaviour.
+The entire scoring change is the one corrected table cell, enumerated exhaustively: a **White
+queen on f6** and a **Black queen on c3** each gain 1 cp. Every other position is byte-identical.
+No ELO match was run: 1 cp on a single PST cell is orders of magnitude below the instrument's
+±25 Elo resolution and is directionally unbiased (it applies equally to both colors), so a
+500-game batch would cost an hour to return a number indistinguishable from zero. The
+color-symmetry tests plus a clean extended-test run are the stronger evidence here (see
+`.claude/plans/eval-color-symmetry-and-queen-pst-fix.md`).
+
+### Added
+- `StratChessTests/EvalTests.cpp`: direct `getEvalBoard` mirroring cases via a test-local
+  `EvalProbe` subclass, plus whole-position color-symmetry cases (`Evaluate(fen) ==
+  Evaluate(MirrorFen(fen))`, both evaluators) using a new file-local FEN color-mirror helper.
+
 ## 2026-07-26 — Validation Scoped to the Diff (issue #124)
 
 ### Added
