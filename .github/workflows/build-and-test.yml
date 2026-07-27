@@ -50,6 +50,32 @@ jobs:
     # this project's projects pin PlatformToolset v145, which matches this image's
     # default VC.Tools.x86.x64 toolset. See .claude/plans/full-build-test-ci-github-actions.md.
     runs-on: windows-2025-vs2026
+    # Release and Debug are NOT redundant -- each catches a class of failure the
+    # other structurally cannot, so both are required (see issue #146):
+    #
+    #   Debug   -- assert() is live, so DoMove's move/side-to-move invariants and
+    #              the #ifndef NDEBUG tripwires (e.g. Eval.cpp's bitboard/mailbox
+    #              consistency check in BuildContext) actually execute. Release
+    #              compiles all of them out and silently tolerates the OOB reads
+    #              they exist to catch.
+    #   Release -- NDEBUG elides assert(), which turns any variable used *only*
+    #              inside one into an unreferenced local: C4189 under this
+    #              project's Level4 + /WX, i.e. a build error that exists in
+    #              Release only. (This is why CLAUDE.md lists [[maybe_unused]] as
+    #              an approved suppression.) It is also the only leg where the
+    #              optimizer runs, and the only one that builds what ships.
+    #
+    # The legs run on separate runners in parallel, so this costs runner minutes
+    # but effectively no wall-clock on PR feedback. Debug test *execution* is
+    # ~3x slower than Release but that is ~4s vs ~1s on the fast tier -- the cost
+    # here is the second build, not the second test run.
+    strategy:
+      # Both legs must report independently: a Debug-only assertion failure must
+      # not cancel the Release leg (or vice versa) and leave the actual /WX or
+      # optimizer status unknown.
+      fail-fast: false
+      matrix:
+        config: [Release, Debug]
     defaults:
       run:
         shell: pwsh
@@ -61,6 +87,13 @@ jobs:
           $depsRoot = Join-Path (Split-Path $env:GITHUB_WORKSPACE -Parent) 'deps'
           "DEPS_ROOT=$depsRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+      # Key is intentionally NOT matrix-scoped: spdlog, nlohmann-json and Catch2
+      # are header/source drops with no per-configuration content, so both legs
+      # want the identical cache. On a cold cache both legs race to save it and
+      # the loser logs "Unable to reserve cache ... another job may be creating
+      # this cache" — a warning, not a failure, and the next run hits the cache
+      # either way. Do not "fix" it by adding ${{ matrix.config }} to the key:
+      # that would double the cache footprint to store two identical copies.
       - name: Cache dependencies
         id: cache-deps
         uses: actions/cache@v4
@@ -103,17 +136,28 @@ jobs:
       # while the test project deliberately doesn't — building "all" wasted the
       # majority of the ~12min first-run time on an LTCG link of an unused binary.
       - name: Build
-        run: .\build.ps1 tests
+        run: .\build.ps1 tests -Config ${{ matrix.config }}
 
+      # Same '~[slow]' filter in both configs, deliberately: the two legs must
+      # cover the same cases, since the point is that they disagree about which
+      # of those cases fail, not about which run.
       - name: Run fast tests
         run: |
-          & '.\StratChessTests\x64\Release\StratChessTests.exe' '~[slow]'
+          & ".\StratChessTests\x64\${{ matrix.config }}\StratChessTests.exe" '~[slow]'
           exit $LASTEXITCODE
 
   # Branch protection can require a single always-present check. This job succeeds
   # whether build-and-test ran or was legitimately skipped, but FAILS if it actually
   # failed or was cancelled -- so a fast-path PR stays mergeable while a genuine
   # failure still blocks.
+  #
+  # This is also what makes the Release/Debug matrix transparent to branch
+  # protection. Adding the matrix renamed the underlying checks to
+  # "build-and-test (Release)" and "build-and-test (Debug)", which would have
+  # broken a rule pinned to the old "build-and-test" name; the required check is
+  # this job instead. `needs.build-and-test.result` is the AGGREGATE across every
+  # matrix leg -- 'failure' if any leg failed -- so the case block below needs no
+  # change to cover both configurations.
   build-and-test-result:
     needs: [classify, build-and-test]
     if: always()
