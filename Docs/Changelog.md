@@ -22,6 +22,50 @@ Newest first.
 
 ---
 
+## 2026-07-27 — UCI `eval` Command + Batch FEN Scoring, Phase 1 (issue #129)
+
+### Added
+- UCI `eval` command (`UciHandler::cmd_eval()`, `StratEngine/UCIHandler.cpp/h`): prints the
+  static evaluation of the current position (whatever `position` last set up, or the default
+  empty board if none has run yet) as two lines — the raw side-to-move-relative score, and the
+  same score restated from White's point of view — so the sign convention doesn't have to be
+  read out of source. Not a search response: emits neither `info` nor `bestmove`, so a GUI
+  cannot mistake it for one. `UciHandler` now owns its own `EvalManager` instance
+  (`EvalTypes::COMPLEX`, matching what `init_ai()` configures for search), constructed once in
+  the constructor rather than re-created by `init_ai()`/`ucinewgame()` — the evaluator holds no
+  per-game state to reset.
+- CLI batch mode: `StratChessEvolved.exe eval <path-to-fen-file>` (`evalrunner()`,
+  `StratChessEvolved/StratChessEvolved.cpp`) scores one FEN per line and prints
+  `<fen>\t<score>` to stdout — nothing else on stdout, so the output is directly consumable by
+  a corpus-scale tool. **The printed score is the raw, side-to-move-relative value
+  `EvalManager::Evaluate()` returns, with no sign transformation** — this is deliberate: it's a
+  single source of truth with what the search calls, and it's exactly what #127's planned
+  before/after byte-identity check needs to diff. A consumer that wants a White-relative score
+  already has the side-to-move field parsed out of the FEN and can flip the sign itself. Blank
+  lines and `#`-comment lines are skipped silently; a line with fewer than 4 space-separated
+  FEN fields (placement/side-to-move/castling/en-passant — halfmove/fullmove are optional) is
+  rejected with a line-numbered warning to stderr and the run continues (issue #46: a missing
+  side-to-move field otherwise silently defaults to Black-to-move — for a large tuning corpus
+  that's garbage fitted silently). Lines that clear that floor but are still rejected by
+  `FENParser::ParseFEN` are likewise warned and skipped rather than silently scoring a
+  still-default (empty) `Board`.
+- `StratChessTests/UCITests.cpp` `[uci]` cases: `eval` works before any `position` command;
+  the printed score is asserted equal to a direct `EvalManager::Evaluate()` call on the same
+  FEN (the "honesty invariant" that makes the tool trustworthy for #117/#127 — proves `eval`
+  never computes a parallel score); output contains neither `bestmove` nor `info`; the
+  White-POV line matches the stated sign convention on two whole-rook-imbalance positions (one
+  White-to-move, one Black-to-move) so a sign bug can't hide behind a near-zero score.
+
+### Notes
+- **Scope**: `StratEngine/Eval.cpp`/`Eval.h` are untouched — deliberately. Per-term score
+  breakdown is phase 2 of #129, gated on #127 (`EvalContext` restructure) landing first;
+  reimplementing per-term extraction ahead of that would duplicate `Evaluate()`'s internals and
+  risk drifting out of sync with the real evaluator. See
+  `.claude/plans/uci-eval-command-term-breakdown.md` (D3).
+- No ELO match: this changes no score, only adds introspection.
+
+Plan: `.claude/plans/uci-eval-command-term-breakdown.md`.
+
 ## 2026-07-27 — Rook Open-File Definition Fix (issue #126)
 
 ### Fixed

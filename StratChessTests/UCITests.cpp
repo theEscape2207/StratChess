@@ -6,7 +6,9 @@
 #include "AIPerplex.h"
 #include "Board.h"
 #include "MoveFormatter.h"
+#include "Eval.h"
 #include <sstream>
+#include <iostream>
 #include <string>
 
 using P = UciHandler::GoParams;
@@ -23,6 +25,7 @@ public:
 
     void setoption(const std::string& line) { handler.cmd_setoption(line); }
     void ucinewgame() { handler.cmd_ucinewgame(); }
+    void eval() { handler.cmd_eval(); }
 
     // Reads threads_ off the live ai_ instance (via the AIPerplex friend
     // declaration granted to this same fixture class name) — proves the
@@ -239,4 +242,125 @@ TEST_CASE("cmd_setoption: Threads takes effect immediately on the live ai_", "[u
 
     fix.ucinewgame();   // rebuild ai_ — must still restore 4, not reset to 1
     REQUIRE(fix.ai_threads() == 4);
+}
+
+// ---------------------------------------------------------------------------
+// cmd_eval — static evaluation introspection (issue #129 phase 1)
+// ---------------------------------------------------------------------------
+
+// Redirects std::cout into an in-memory buffer for the lifetime of the
+// object; restores the original streambuf on destruction (including when
+// unwinding past a failed REQUIRE), so a single assertion failure can never
+// leave std::cout silently rewired for the rest of the test binary.
+class CoutRedirect
+{
+public:
+    CoutRedirect() : old_(std::cout.rdbuf(buffer_.rdbuf())) {}
+    ~CoutRedirect() { std::cout.rdbuf(old_); }
+
+    CoutRedirect(const CoutRedirect&) = delete;
+    CoutRedirect& operator=(const CoutRedirect&) = delete;
+
+    std::string str() const { return buffer_.str(); }
+
+private:
+    std::ostringstream buffer_;
+    std::streambuf* old_;
+};
+
+// Parses the integer centipawn value out of a "<label><N> cp" line, e.g.
+// label="static eval: " on "static eval: 34 cp (White to move; ...)".
+// A real parse of the emitted number, not a substring check — this is what
+// makes the honesty-invariant test below actually load-bearing.
+static int extract_cp_score(const std::string& output, const std::string& label)
+{
+    const auto label_pos = output.find(label);
+    REQUIRE(label_pos != std::string::npos);
+    const auto value_start = label_pos + label.size();
+    const auto value_end = output.find(" cp", value_start);
+    REQUIRE(value_end != std::string::npos);
+    return std::stoi(output.substr(value_start, value_end - value_start));
+}
+
+TEST_CASE("cmd_eval: works before any position command, does not crash", "[uci]")
+{
+    UciHandlerTestFixture fix;
+    CoutRedirect redirect;
+    REQUIRE_NOTHROW(fix.eval());
+
+    const std::string out = redirect.str();
+    REQUIRE(out.find("static eval:") != std::string::npos);
+    REQUIRE(out.find("white pov:") != std::string::npos);
+}
+
+TEST_CASE("cmd_eval: printed score matches EvalManager::Evaluate() directly (honesty invariant)", "[uci]")
+{
+    // The property that makes this tool trustworthy for #117 (Texel tuning)
+    // and #127 (EvalContext restructure's byte-identity check): 'eval' must
+    // never compute its own parallel score, only report the same Evaluate()
+    // the search calls.
+    const std::string fen =
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";   // Kiwipete
+
+    UciHandlerTestFixture fix;
+    fix.position("position fen " + fen);
+
+    CoutRedirect redirect;
+    fix.eval();
+    const int printed = extract_cp_score(redirect.str(), "static eval:");
+
+    auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+    Board board(fen);
+    const int expected = eval->Evaluate(board);
+
+    REQUIRE(printed == expected);
+}
+
+TEST_CASE("cmd_eval: output contains neither bestmove nor info", "[uci]")
+{
+    // 'eval' is not a search response — a GUI must not mistake it for one.
+    UciHandlerTestFixture fix;
+    fix.position("position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+
+    CoutRedirect redirect;
+    fix.eval();
+    const std::string out = redirect.str();
+
+    REQUIRE(out.find("bestmove") == std::string::npos);
+    REQUIRE(out.find("info") == std::string::npos);
+}
+
+TEST_CASE("cmd_eval: white-pov line matches the stated sign convention", "[uci]")
+{
+    // Both positions have a large, unambiguous material imbalance (a whole
+    // rook) so a sign bug cannot hide behind a near-zero score.
+    UciHandlerTestFixture fix;
+
+    SECTION("White to move — white pov equals the side-to-move score") {
+        fix.position("position fen 4k3/8/8/8/8/8/8/R3K3 w - - 0 1");   // White up a rook
+
+        CoutRedirect redirect;
+        fix.eval();
+        const std::string out = redirect.str();
+
+        const int side_to_move_score = extract_cp_score(out, "static eval:");
+        const int white_pov = extract_cp_score(out, "white pov:");
+
+        REQUIRE(side_to_move_score != 0);
+        REQUIRE(white_pov == side_to_move_score);
+    }
+
+    SECTION("Black to move — white pov is the negation of the side-to-move score") {
+        fix.position("position fen r3k3/8/8/8/8/8/8/4K3 b - - 0 1");   // Black up a rook
+
+        CoutRedirect redirect;
+        fix.eval();
+        const std::string out = redirect.str();
+
+        const int side_to_move_score = extract_cp_score(out, "static eval:");
+        const int white_pov = extract_cp_score(out, "white pov:");
+
+        REQUIRE(side_to_move_score != 0);
+        REQUIRE(white_pov == -side_to_move_score);
+    }
 }
