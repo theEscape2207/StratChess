@@ -1,6 +1,6 @@
 # Eval Color Symmetry + Queen PST Fix
 
-**Issue**: #125 · **Epic**: #110 Tier 0 (correctness) · **Depth**: full plan · **Status**: not started
+**Issue**: #125 · **Epic**: #110 Tier 0 (correctness) · **Depth**: full plan · **Status**: implemented
 
 ## Goal
 
