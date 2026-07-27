@@ -45,7 +45,11 @@ param(
     # then becomes purely a display-name label (fastchess engine name + EloLog.md row).
     # Use to compare two configurations of the SAME binary (e.g. threads=4 vs threads=1).
     [string]$ReferenceExe = '',
-    # Total games (2 games per opening pair). Default ≈ ±15 ELO at 95%.
+    # Total games (2 games per opening pair). Default resolves ≈ ±25 Elo at 95%
+    # -- the figure every 500-game row in Docs/EloLog.md actually came back with
+    # (±25.70, ±27.62, ±28.36), and the one the .NOTES block above quotes. Under
+    # -Sprt this is only an upper bound, not a resolution target; see
+    # "Adjusting -Games" in Docs/EloLog.md before changing it.
     [int]$Games = 500,
     # fastchess time control: seconds+increment.
     [string]$Tc = '10+0.1',
