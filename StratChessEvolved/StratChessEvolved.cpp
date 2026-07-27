@@ -7,6 +7,8 @@
 #include "UCIHandler.h"
 #include <Tests/Perft.h>
 #include <Tests/TacticalTestRunner.h>
+#include "Eval.h"
+#include "Utils/FENParser.h"
 #include <spdlog/spdlog.h>
 
 static void print_usage() {
@@ -219,6 +221,95 @@ static int perftrunner(int argc, char** argv) {
     }
 }
 
+// Batch-scores a file of FENs (one per line) and prints "<fen>\t<score>" to
+// stdout, one line per input FEN — machine-parseable for #117's tuner and
+// for #127's before/after score-identity check
+// (.claude/plans/uci-eval-command-term-breakdown.md, D4/D5).
+//
+// The printed score is the RAW value EvalManager::Evaluate() returns:
+// side-to-move-relative, no sign transformation. This preserves a single
+// source of truth (the search calls the same Evaluate()), and it is exactly
+// the value #127's byte-identity check needs to diff. A consumer that wants
+// a White-relative score already has the side-to-move field parsed out of
+// the FEN and can flip the sign itself.
+//
+// stdout carries only "<fen>\t<score>" lines (no banner, no progress) so the
+// output file is directly consumable; all diagnostics go to stderr.
+static int evalrunner(int argc, char** argv) {
+    if (argc < 2) {
+        std::cerr << "Usage: eval <path-to-fen-file>\n";
+        return 1;
+    }
+
+    std::ifstream file(argv[1]);
+    if (!file.is_open()) {
+        std::cerr << "Error: could not open FEN file '" << argv[1] << "'\n";
+        return 1;
+    }
+
+    // Silence the default spdlog logger: with no sink configured yet in this
+    // mode it falls back to spdlog's built-in stdout console sink, and
+    // FENParser logs parse errors through it — which would otherwise leak
+    // onto stdout and break the "only <fen>\t<score> lines" contract above.
+    spdlog::set_level(spdlog::level::off);
+
+    auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+
+    std::string line;
+    int line_no = 0;
+    while (std::getline(file, line)) {
+        ++line_no;
+
+        const auto first = line.find_first_not_of(" \t\r\n");
+        if (first == std::string::npos) continue;   // blank line
+        if (line[first] == '#') continue;            // comment
+
+        // A field-count pre-filter, purely so the most damaging malformation
+        // gets a precise diagnostic: a FEN missing its side-to-move field is
+        // silently treated as Black-to-move (issue #46), which across a large
+        // tuning corpus is garbage fitted with no warning.
+        //
+        // This is NOT the authoritative gate. FENParser's regex actually
+        // requires all six standard fields — halfmove and fullmove included —
+        // so a 4- or 5-field line still fails the parser check below. The
+        // floor is set at 4 to distinguish "this isn't a FEN at all" from
+        // "this is a FEN the parser is strict about", which are different
+        // problems for whoever is cleaning the corpus.
+        std::istringstream field_stream(line);
+        int field_count = 0;
+        std::string field_tok;
+        while (field_stream >> field_tok) ++field_count;
+        if (field_count < 4) {
+            std::cerr << "Warning: line " << line_no << ": malformed FEN ("
+                       << field_count << " field(s), need at least 4), skipped: '"
+                       << line << "'\n";
+            continue;
+        }
+
+        // Belt-and-braces: validate through the real parser too, so a line
+        // that clears the field-count floor above but is still rejected by
+        // FENParser (bad piece placement, illegal castling letters, etc.)
+        // is reported and skipped rather than silently scoring a fresh,
+        // still-default-constructed Board — SetupFromFEN() logs and returns
+        // without applying anything on a parse error (issue #45/#46
+        // territory — corpus hygiene, not just a field count).
+        FENParser::FENGameState state;
+        std::vector<std::tuple<ePiece, eSquare>> pieces;
+        if (auto err = FENParser::ParseFEN(line, state, pieces)) {
+            std::cerr << "Warning: line " << line_no << ": " << *err
+                       << ", skipped: '" << line << "'\n";
+            continue;
+        }
+
+        Board board;
+        board.SetupFromFEN(line);
+        const int score = eval->Evaluate(board);
+        std::cout << line << '\t' << score << '\n';
+    }
+
+    return 0;
+}
+
 int main(int argc, char** argv)
 {
     if (argc > 1 && std::string(argv[1]) == "test-fen") {
@@ -249,6 +340,12 @@ int main(int argc, char** argv)
 	// Check for tactical commands
 	if (argc > 1 && std::string(argv[1]) == "tactical") {
 		return tacticalrunner(argc - 1, &argv[1]);
+	}
+	// Check for batch eval-scoring command — must come before the
+	// unconditional Game::Run() fallthrough below, or an unrecognised arg
+	// silently starts a game instead (D4, uci-eval-command-term-breakdown.md).
+	if (argc > 1 && std::string(argv[1]) == "eval") {
+		return evalrunner(argc - 1, &argv[1]);
 	}
 	// Explicit game mode or unknown arg — normal game execution
 	Game game;
