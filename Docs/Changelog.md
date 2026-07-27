@@ -40,10 +40,19 @@ for that rook's side than before. Positions where the file already contained an 
 was genuinely clear of everything, are unchanged. The existing own-pawn-behind-the-rook behaviour
 (D5) is deliberately kept as-is and now documented in a comment at the call site.
 
-No ELO match: the issue itself estimates only a few Elo standalone, well below the ±25 Elo
-instrument resolution a fixed-length batch or the `NonRegression`/`Gain` SPRT presets can
-distinguish from noise. The `[eval]` regression tests plus a clean extended-test run (including
-the full tactical tiers) are the evidence for this change.
+**Measurement**: validated with `Run-EloMatch.ps1 -Sprt NonRegression`, per CLAUDE.md's rule that
+anything expected to be worth less than ~25 Elo needs an SPRT to be decidable at all — a
+fixed-length 500-game batch resolves only ±25 Elo here, so its interval would contain zero either
+way. The `NonRegression` preset (`elo0 = -5, elo1 = 0`) asks "did this hurt?", which is the right
+question for a correctness fix.
+
+Result: **inconclusive** — 500 games, `+23.66 +/- 25.70` Elo, LLR 0.76 of ±2.94, 204W/170L/126D
+(53.40%), LOS 96.51%. The SPRT hit its game cap without crossing a bound. Read this as **no
+regression detected**, not as a +23.66 Elo gain: the 95% interval is [-2.04, +49.36] and still
+contains zero. A 5 cp static-eval shift was never expected to be resolvable at this sample size,
+and deciding it either way would need a far larger budget than a correctness fix justifies. See
+`Docs/EloLog.md` for the full row. The `[eval]` regression tests and a clean extended-test run
+(including the full tactical tiers) remain the primary evidence.
 
 ### Added
 - `StratChessTests/EvalTests.cpp`: an enemy knight sharing the rook's file no longer demotes an
