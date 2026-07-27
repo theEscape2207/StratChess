@@ -155,6 +155,12 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
     plus a direct `g_Eval_Bitboards` lookup) for both the middlegame and endgame tables
   - `eval_mopup`: only the winning color gets a nonzero contribution; both colors get 0 below the
     decisive-material threshold
+  - Kingless board: a default-constructed `Board` (no kings, all bitboards zero) evaluates to
+    exactly 0, as it did before the restructure. This is a **Debug-build** regression test in
+    substance: `Board::GetFirstPiece` has an `assert(mask != 0)` precondition, so an unguarded king
+    lookup asserts in Debug and reads out of bounds in Release — where the suite would pass anyway.
+    Reachable in shipping code because `UciHandler::board_` is default-constructed and never set to
+    the start position, so a UCI `eval` issued before any `position` command lands here.
   - Structural check: the four terms plus raw material, summed the same way `Evaluate()` sums
     them, reproduce `Evaluate()`'s result exactly across every whole-position FEN used by the
     color-symmetry cases above
