@@ -54,6 +54,24 @@ cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\<name>.
 
 Scripts must be invoked with `-File`, not dot-sourced (`$PSScriptRoot` is `$null` under dot-source).
 
+### Branch & worktree scripts
+Same folder, same invocation pattern. These automate the worktree-per-task workflow below;
+each one encodes a trap that is easy to hit by hand (see each script's comment-based help).
+
+| Script | When to use |
+|---|---|
+| `Scripts\New-Worktree.ps1 -Name <task>` | Starting any new task — fetches `origin/main`, then creates the branch + worktree at the correct path. Works from inside another worktree (resolves the main checkout via `--git-common-dir`), which is what keeps `$(DepsRoot)` resolvable |
+| `Scripts\New-PullRequest.ps1 -Title "..."` | The whole pre-PR checklist in order: sync → `Validate-PrePR.ps1` → push → create-or-update the PR. `-Draft` for work blocked on another PR; `-NoPr` to stop after pushing and finish in Visual Studio; `-BodyFile` to supply a body (an unspecified body is scaffolded with the Summary/Test plan/Notes headings, since `gh pr create --body` bypasses the PR template) |
+| `Scripts\Remove-Worktree.ps1 -Name <task>` | After a PR merges — removes the worktree, local branch and remote branch, verifying by ancestry that the branch really landed |
+| `Scripts\Get-Worktrees.ps1` | Start of a session, or before resuming an idle worktree — drift vs `origin/main` and PR state for every worktree at once |
+
+`New-PullRequest.ps1` reminds you to dispatch `eval-reviewer`/`search-reviewer` when the diff
+touches their files, but deliberately does not dispatch them — that stays a judgement call.
+
+**Do not bypass `New-PullRequest.ps1` with a bare `git push` to update an open PR**: the push
+succeeds, but `Validate-PrePR.ps1` never runs, so the merged state ends up covered only by the
+pre-commit hook's fast tests. (This happened on PR #148 itself.)
+
 ### CI
 `.github/workflows/build-and-test.yml` runs an independent build + fast-test check on every PR
 into `main` and every push to `main` (the latter both validates post-merge and warms the deps
@@ -231,10 +249,10 @@ Commit the plan file — it lives under `.claude/plans/` (tracked by git) and se
 - **Worktree PR workflow**: if the worktree branch contains commits unrelated to the current task (e.g. personal WIP from `master` that bled into the worktree), do NOT PR the branch directly — cherry-pick only the relevant commit(s) onto a fresh branch from `origin/main`. If all commits in the worktree are intentional, reviewed, and part of the same plan, PR the branch directly.
 
 ### Resuming work in an existing worktree
-Before continuing work in a worktree that's been idle, `git fetch origin main` and check `git log HEAD..origin/main --oneline`. A worktree can silently drift behind `main` indefinitely; catching divergence early avoids discovering a conflict for the first time at PR review (see PR #57, where NMP landed on `main` mid-session and collided with `Board.h`).
+Run `Scripts\Get-Worktrees.ps1` — it reports drift against `origin/main`, working-tree state and PR status for every worktree at once, which is the same check as `git fetch origin main` plus `git log HEAD..origin/main --oneline`, but for all of them rather than the one you remembered to look at. A worktree can silently drift behind `main` indefinitely; catching divergence early avoids discovering a conflict for the first time at PR review (see PR #57, where NMP landed on `main` mid-session and collided with `Board.h`).
 
 ### Pre-PR checklist
-Before running `gh pr create` (or pushing an update to an already-open PR):
+`Scripts\New-PullRequest.ps1` performs steps 1, 2 and 4 in order and stops when an earlier one fails — prefer it over doing these by hand. Step 3 stays manual by design. The steps are spelled out here because the script's ordering only makes sense if you know why each exists:
 1. **Sync** — `git fetch origin main`, then `git merge origin/main`. Resolve any conflicts before proceeding (keep both sides' additions when the conflict is just "two PRs added unrelated declarations at the same anchor line" — don't drop either). This step is cheap and applies to every PR, docs included: a doc-only change can still collide with another doc-only change.
 2. **Validate** — just run `Scripts\Validate-PrePR.ps1`. It now scopes itself to what actually
    changed and skips gates that cannot observe the diff, so there is no longer a judgement call to
@@ -244,8 +262,8 @@ Before running `gh pr create` (or pushing an update to an already-open PR):
    | Tier | Matches | What runs |
    |---|---|---|
    | `Docs` | `*.md`, `Docs/**`, `.claude/plans/**` | Nothing — the pre-commit hook's fast tests already cover it |
-   | `Tooling` | `Scripts\Run-EloMatch.ps1`, `Run-Tests.ps1`, `Sync-Master.ps1`, `verify_mate_key.py` | PowerShell syntax parse only — these are never compiled and never invoked by the engine |
-   | `Build` | `build.ps1`, `Scripts\Validate-*.ps1`, `Get-ChangeTier.ps1`, `.githooks/**`, `.github/**`, `*.vcxproj*`, `*.props`, `*.sln` | Full: build + extended `[slow]` tests + tactical suite + self-play |
+   | `Tooling` | `Scripts\Run-EloMatch.ps1`, `Run-Tests.ps1`, `Sync-Master.ps1`, `verify_mate_key.py`, `build_corpus.py`, `New-Worktree.ps1`, `Remove-Worktree.ps1`, `Get-Worktrees.ps1` | PowerShell syntax parse only — these are never compiled and never invoked by the engine |
+   | `Build` | `build.ps1`, `Scripts\Validate-*.ps1`, `New-PullRequest.ps1`, `Get-ChangeTier.ps1`, `.githooks/**`, `.github/**`, `*.vcxproj*`, `*.props`, `*.sln` | Full: build + extended `[slow]` tests + tactical suite + self-play |
    | `Engine` | `*.cpp`, `*.h`, `*.json`, **and anything unrecognised** | Full |
 
    A mixed diff takes the **strictest** tier present. Two properties are deliberate and are asserted
@@ -262,6 +280,11 @@ Before running `gh pr create` (or pushing an update to an already-open PR):
 4. Only after steps 1-3 pass, create or update the PR.
 
 ### After a PR merges
-Delete the remote branch, remove the local worktree, and delete the local branch — or invoke the `commit-commands:clean_gone` skill, which handles all three at once. Don't leave merged worktrees lying around as the default; treat cleanup as part of finishing the task, not a separate optional step the user has to ask for. If continuing directly in the main checkout afterward (not a new worktree), run `Scripts\Sync-Master.ps1` first so `master` reflects the merge.
+Run `Scripts\Remove-Worktree.ps1 -Name <task> -SyncMaster`. It removes the worktree, the local branch and the remote branch, and `-SyncMaster` then brings `master` up to the merge. (The `commit-commands:clean_gone` skill still works for sweeping several `[gone]` branches at once.) Don't leave merged worktrees lying around as the default; treat cleanup as part of finishing the task, not a separate optional step the user has to ask for.
 
-**Worktree removal gotcha**: for a worktree created via `EnterWorktree` this session, prefer `ExitWorktree(action:"remove")` over manual git commands — clean, no leftovers. Manual `git worktree remove --force` run *from inside* the worktree being removed will deregister it from git but fail to delete the directory (can't rmdir its own cwd) — the leaf survives with no `.git`, and the shell's cwd can get stuck pointing at it while git commands silently resolve against the *outer* repo instead. If you hit this, use absolute paths / `git -C <path>` for everything until the stray directory is cleaned up, and don't trust `pwd` output.
+`Remove-Worktree.ps1` verifies the branch is an ancestor of `origin/main` before deleting anything, so a **squash-merged** PR is reported rather than deleted — its commits are not ancestors even though the content landed. Confirm with `git diff origin/main <branch> --stat` (empty means safe) and re-run with `-Force`.
+
+**Worktree removal gotchas** — all three are handled by the script, and are listed because they still apply when doing it by hand:
+- **Never remove a worktree from inside it.** git deregisters it but cannot rmdir its own cwd, so the leaf survives with no `.git`, and the shell's cwd gets stuck pointing at it while git commands silently resolve against the *outer* repo. If you hit this, use absolute paths / `git -C <path>` for everything and don't trust `pwd`.
+- **A locked directory is not a failure.** On Windows git often deletes every file but cannot rmdir the folder while any process holds it open. Deregister and carry on to the branch deletion — stopping there is how orphaned branches accumulate.
+- **Detached worktrees keep a sibling branch.** Claude Code auto-mode worktrees are detached with a `claude/<dir-name>` branch parked at the same commit; removing the directory alone leaves that branch behind. For a worktree created via `EnterWorktree` this session, `ExitWorktree(action:"remove")` remains the cleanest option.
