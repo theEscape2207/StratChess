@@ -926,10 +926,11 @@ TEST_CASE("Eval - Breakdown(): phase matches the context Evaluate() builds", "[e
     }
 
     SECTION("promotion overshoot clamps rather than extrapolating") {
-        // Three queens a side is 24 from queens alone, plus rooks/minors on top;
-        // an unclamped phase would run past MAX_GAME_PHASE and extrapolate
-        // outside the interpolation range instead of saturating at "opening".
-        Board board("qqq1k3/8/8/8/8/8/8/QQQ1K3 w - - 0 1");
+        // Three queens plus a rook per side: raw phase 2*(12 + 2) = 28, i.e.
+        // strictly ABOVE MAX_GAME_PHASE, so the clamp is actually exercised.
+        // (Three queens a side alone is exactly 24 and would leave the clamp a
+        // no-op — the test would then pass with the clamp deleted.)
+        Board board("qqq1k2r/8/8/8/8/8/8/QQQ1K2R w - - 0 1");
         REQUIRE(complexEval->Breakdown(board).phase == MAX_GAME_PHASE);
     }
 }
@@ -949,16 +950,21 @@ TEST_CASE("Eval - BlendPhase is exact at both endpoints", "[eval]")
 
 TEST_CASE("Eval - BlendPhase moves monotonically between the endpoints", "[eval]")
 {
-    const ScorePair s{ 240, 0 };
+    // Deliberately NOT a pair that divides evenly by MAX_GAME_PHASE: {240, 0}
+    // gives exactly 10*phase at every step and so never truncates, which would
+    // let an arbitrarily-rounding implementation pass. This pair crosses zero
+    // and divides unevenly, exercising truncation in both directions.
+    const ScorePair s{ 100, -40 };
 
     int previous = BlendPhase(s, 0);
+    REQUIRE(previous == -40);
     for (int phase = 1; phase <= MAX_GAME_PHASE; ++phase) {
         const int current = BlendPhase(s, phase);
         CAPTURE(phase, previous, current);
         REQUIRE(current >= previous);
         previous = current;
     }
-    REQUIRE(previous == 240);
+    REQUIRE(previous == 100);
 }
 
 TEST_CASE("Eval - king centralization is worth more as the phase drops", "[eval]")
@@ -979,38 +985,64 @@ TEST_CASE("Eval - king centralization is worth more as the phase drops", "[eval]
 
     const EvalBreakdown high = complexEval->Breakdown(opening);
     const EvalBreakdown low  = complexEval->Breakdown(ending);
-    CAPTURE(high.phase, low.phase, high.pst[WHITE], low.pst[WHITE]);
+
+    // Subtract White's queen PST explicitly rather than relying on it being 0.
+    // It happens to be 0 on d1 today, but #117 is a PST-tuning issue: a queen
+    // table change would otherwise silently turn this into a test of the queen.
+    const int highKingOnly = high.pst[WHITE] - EvalProbe::GetPositionalScore(d1, WHITE_QUEEN);
+    const int lowKingOnly  = low.pst[WHITE];
+    CAPTURE(high.phase, low.phase, highKingOnly, lowKingOnly);
 
     REQUIRE(high.phase > low.phase);
-    REQUIRE(low.pst[WHITE] > high.pst[WHITE]);
+    REQUIRE(lowKingOnly > highKingOnly);
 }
 
 TEST_CASE("Eval - crossing the old stage threshold no longer produces a cliff", "[eval]")
 {
     // The property this change exists to create. Before #99, a capture that took
     // min(material) across 11500 flipped the king from the middlegame table to
-    // the endgame one, moving a centralized king's score by up to 100 cp in a
-    // single ply. The two positions below differ by exactly one minor piece —
-    // which is what used to straddle that threshold — so the king's positional
-    // contribution must now move by far less than that cliff.
-    Board before("4k3/8/8/8/3K4/8/8/4B3 w - - 0 1");
-    Board after("4k3/8/8/8/3K4/8/8/8 w - - 0 1");
+    // the endgame one, moving a centralized king's score by up to ~100 cp in a
+    // single ply.
+    //
+    // Both positions must sit on OPPOSITE sides of that retired threshold for
+    // this to test anything, which means BOTH sides have to start above it —
+    // the threshold took min() over the two colors. An earlier version of this
+    // test used two bare-ish positions that were both already below it, so the
+    // old code produced a delta of 0 and the test passed identically before and
+    // after the change.
+    //
+    //   before: both sides K+Q+R+N = 11720 -> old MIDDLEGAME
+    //   after:  Black loses the knight, 11400 -> old ENDGAME
+    //
+    // Under the old code removing that one knight swung the white-minus-black
+    // king contribution by ~70 cp. It must now move by a small amount.
+    Board before("1n1qk2r/8/8/8/3K4/8/8/1N1Q3R w - - 0 1");
+    Board after("3qk2r/8/8/8/3K4/8/8/1N1Q3R w - - 0 1");
 
     auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
     auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
     REQUIRE(complexEval != nullptr);
 
-    const int pstBefore = complexEval->Breakdown(before).pst[WHITE];
-    const int pstAfter  = complexEval->Breakdown(after).pst[WHITE];
+    const EvalBreakdown b = complexEval->Breakdown(before);
+    const EvalBreakdown a = complexEval->Breakdown(after);
 
-    // Isolate the king: subtract the bishop's own PST contribution, which is the
-    // only other White piece and is untouched by the taper.
-    const int bishopPst = EvalProbe::GetPositionalScore(e1, WHITE_BISHOP);
-    const int kingDelta = pstAfter - (pstBefore - bishopPst);
-    CAPTURE(pstBefore, pstAfter, bishopPst, kingDelta);
+    // Guard the premise: the two positions must actually differ in phase, and
+    // both must be well clear of the endpoints, or there is no taper to test.
+    CAPTURE(b.phase, a.phase);
+    REQUIRE(b.phase != a.phase);
+    REQUIRE(a.phase > 0);
+    REQUIRE(b.phase < MAX_GAME_PHASE);
 
-    const int kingDeltaAbs = (kingDelta < 0) ? -kingDelta : kingDelta;
-    REQUIRE(kingDeltaAbs < 20);
+    // Net king-driven swing, isolated by removing the departing knight's own PST
+    // from the before-position (it is the only piece that leaves).
+    const int knightPst = EvalProbe::GetPositionalScore(b8, BLACK_KNIGHT);
+    const int netBefore = (b.pst[WHITE] - b.pst[BLACK]);
+    const int netAfter  = (a.pst[WHITE] - a.pst[BLACK]);
+    const int swing = netAfter - (netBefore + knightPst);
+    const int swingAbs = (swing < 0) ? -swing : swing;
+    CAPTURE(netBefore, netAfter, knightPst, swing);
+
+    REQUIRE(swingAbs < 20);
 }
 
 TEST_CASE("Eval - mop-up: walking the winning king toward the loser must raise the score (#118 item 4)", "[eval]")
