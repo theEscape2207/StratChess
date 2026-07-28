@@ -235,10 +235,19 @@ ScorePair EvalComplex::eval_pst(const EvalContext& ctx, eColor color) noexcept
 	// discontinuously. Blending them removes a cliff of up to 100 cp that a
 	// single capture could cross mid-search (the mg table is uniformly
 	// -40/-20/0 by rank; the eg table peaks at +60 centrally).
+	// Suppressed entirely while this color is mopping up (issue #118 item 4,
+	// D5(a) in the plan). Otherwise the endgame king table charges the winner
+	// 10 cp per step of centralization given up to walk toward the cornered
+	// loser, against the 4 cp per step mop-up pays for closing in — so
+	// approaching scored NEGATIVE overall, and mop-up only softened a
+	// disincentive it was written to remove. Letting mop-up own king placement
+	// outright restores the standard formulation, and decouples
+	// MOPUP_CMD_WEIGHT from the endgame king PST slope — two numbers that
+	// otherwise express one concept and would fight each other under #117.
 	int kingMg = 0;
 	int kingEg = 0;
 	const eSquare kingSq = ctx.king_sq[color];
-	if (kingSq != NO_SQUARE)
+	if (kingSq != NO_SQUARE && !ctx.mopup_active[color])
 	{
 		const ePiece kingPiece = (color == WHITE) ? ePiece::WHITE_KING : ePiece::BLACK_KING;
 		const int kingIdx = getEvalBoard(kingPiece, kingSq);
@@ -259,30 +268,17 @@ ScorePair EvalComplex::eval_pst(const EvalContext& ctx, eColor color) noexcept
 // bonusScore[winner]-only update this replaces.
 ScorePair EvalComplex::eval_mopup(const EvalContext& ctx, eColor color) noexcept
 {
-	if (ctx.phase > MOPUP_MAX_PHASE ||
-		ctx.pawns[WHITE] != 0ULL || ctx.pawns[BLACK] != 0ULL)
+	// The gate — pawnless, low phase, decisive material lead, both kings on the
+	// board — is evaluated once in BuildContext, and only the leading color is
+	// marked active. eval_pst reads the same flag to suppress that color's king
+	// PST (issue #118 item 4), so the two terms cannot disagree about whether a
+	// position is a mop-up. A kingless board is excluded there, so the king
+	// squares read below are known valid.
+	if (!ctx.mopup_active[color])
 		return ScorePair{};
 
-	// A kingless board (default-constructed or failed-parse Board only — see
-	// EvalContext::king_sq) reaches this point whenever it also has no pawns:
-	// phase is 0 (no pieces at all) and both pawn bitboards are empty. Guarded explicitly rather than left to fall out of the
-	// MOPUP_MATERIAL_THRESHOLD check below, which happens to also save it
-	// today (absMatDiff == 0) but would not if that threshold ever changed.
-	if (ctx.king_sq[WHITE] == NO_SQUARE || ctx.king_sq[BLACK] == NO_SQUARE)
-		return ScorePair{};
-
-	const int matDiff = ctx.material[WHITE] - ctx.material[BLACK];
-	const int absMatDiff = (matDiff >= 0) ? matDiff : -matDiff;
-
-	if (absMatDiff < MOPUP_MATERIAL_THRESHOLD)
-		return ScorePair{};
-
-	const eColor winner = (matDiff > 0) ? WHITE : BLACK;
-	if (color != winner)
-		return ScorePair{};
-
-	const eColor loser = (winner == WHITE) ? BLACK : WHITE;
-	const eSquare winnerKingSq = ctx.king_sq[winner];
+	const eColor loser = (color == WHITE) ? BLACK : WHITE;
+	const eSquare winnerKingSq = ctx.king_sq[color];
 	const eSquare loserKingSq = ctx.king_sq[loser];
 
 	const int mopup = MOPUP_CMD_WEIGHT * CenterManhattanDistance(loserKingSq) +
@@ -351,6 +347,25 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 		PHASE_QUEEN  * (std::popcount(boardsSpan[ePiece::WHITE_QUEEN])  + std::popcount(boardsSpan[ePiece::BLACK_QUEEN]));
 	const int gamePhase = (rawPhase > MAX_GAME_PHASE) ? MAX_GAME_PHASE : rawPhase;
 
+	// Mop-up gate, evaluated here rather than inside eval_mopup so eval_pst can
+	// consult the same answer (issue #118 item 4): pawnless, low phase, both
+	// kings present, and a decisive material lead. Only the leader is active.
+	//
+	// The kingless guard is load-bearing and is why this cannot simply fall out
+	// of the material check: a default-constructed or failed-parse Board is
+	// pawnless at phase 0, and while its material difference is 0 today, that
+	// would stop saving us if MOPUP_MATERIAL_THRESHOLD ever changed.
+	bool mopupActive[NUM_COLORS] = { false, false };
+	if (gamePhase <= MOPUP_MAX_PHASE &&
+		boardsSpan[ePiece::WHITE_PAWN] == 0ULL && boardsSpan[ePiece::BLACK_PAWN] == 0ULL &&
+		whiteKingSq != NO_SQUARE && blackKingSq != NO_SQUARE)
+	{
+		const int matDiff = matScoreWhite - matScoreBlack;
+		const int absMatDiff = (matDiff >= 0) ? matDiff : -matDiff;
+		if (absMatDiff >= MOPUP_MATERIAL_THRESHOLD)
+			mopupActive[(matDiff > 0) ? WHITE : BLACK] = true;
+	}
+
 	return EvalContext{
 		.boards = boardsSpan,
 		.all_pieces = boardsSpan[ALL_PIECES],
@@ -359,6 +374,7 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 		.king_sq = { whiteKingSq, blackKingSq },
 		.material = { matScoreWhite, matScoreBlack },
 		.phase = gamePhase,
+		.mopup_active = { mopupActive[WHITE], mopupActive[BLACK] },
 	};
 }
 
