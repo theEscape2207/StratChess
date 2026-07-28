@@ -185,11 +185,15 @@ TEST_CASE("Board::ResetSearchDepth preserves full search-recursion headroom afte
 
     // Commit 260 real moves (already past the old MAX_PLY=256 ceiling on its own),
     // resetting the undo-stack depth after each — mirrors Game::Run's real commit pattern.
-    for (int i = 0; i < 130; ++i)
+    for (int i = 0; i < 65; ++i)
     {
         REQUIRE(board.DoMove(MoveFactory::MakeQuiet(a1, a2)));
         board.ResetSearchDepth();
+        REQUIRE(board.DoMove(MoveFactory::MakeQuiet(d6, d7)));
+        board.ResetSearchDepth();
         REQUIRE(board.DoMove(MoveFactory::MakeQuiet(a2, a1)));
+        board.ResetSearchDepth();
+        REQUIRE(board.DoMove(MoveFactory::MakeQuiet(d7, d6)));
         board.ResetSearchDepth();
     }
 
