@@ -18,11 +18,21 @@
        silently deleted.
     3. **Locked worktrees** are unlocked first, otherwise removal fails with a message
        that does not name the lock as the cause.
+    4. **Detached worktrees with a sibling branch.** Claude Code's auto-mode worktrees are
+       detached, with a separately-created `claude/<dir-name>` branch parked at the same
+       commit. Removing the directory alone leaves that branch behind, so they pile up
+       unnoticed. This script finds it and deletes both -- but only when the branch both
+       points at the worktree's HEAD and is named after the worktree, so an unrelated
+       branch that merely shares the commit is never touched.
 
     Deletes the remote branch only if it exists. Optionally syncs `master` afterwards.
 
 .PARAMETER Name
     Worktree directory name under `.claude/worktrees/`, e.g. 'eval-mobility-term'.
+
+.PARAMETER Branch
+    Explicitly name the branch to delete. Needed only when the worktree is detached and
+    the sibling-branch match is ambiguous (or named unconventionally).
 
 .PARAMETER Force
     Delete even if the branch is not merged into origin/main. Also passes --force to
@@ -50,6 +60,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$Name,
 
+    [string]$Branch,
     [switch]$Force,
     [switch]$KeepRemote,
     [switch]$SyncMaster
@@ -90,9 +101,48 @@ foreach ($line in $wtLines) {
     }
 }
 
-if (-not $branch) {
-    Write-Host "NOTE: could not resolve a branch for that worktree (detached HEAD, or not registered)." -ForegroundColor Yellow
-} else {
+if (-not $branch -and $Branch) {
+    # Explicit override always wins.
+    $branch = $Branch
+    Write-Host "`n==> Worktree '$Name' -> branch '$branch' (from -Branch)" -ForegroundColor Cyan
+}
+elseif (-not $branch) {
+    # Trap 4: a DETACHED worktree with a sibling branch at the same commit.
+    #
+    # Claude Code's auto-mode worktrees land in this shape: the worktree is detached,
+    # while a separately-created branch (conventionally `claude/<dir-name>`) sits at the
+    # same commit. Removing the directory alone silently leaves that branch behind, so
+    # they accumulate invisibly -- exactly how code-terminal-auto-mode-2fd492 survived
+    # unnoticed for a week.
+    #
+    # Matched conservatively: the branch must point at this worktree's HEAD *and* be
+    # named either <Name> or <something>/<Name>. A branch that merely happens to share
+    # the commit (master, main, or an unrelated branch sitting at the same merge) is
+    # never picked up -- being at the same commit is not evidence of being related.
+    $headSha = & git -C $TargetPath rev-parse HEAD 2>$null
+    if ($LASTEXITCODE -eq 0 -and $headSha) {
+        $candidates = @()
+        foreach ($b in (& git -C $MainCheckout branch --format='%(refname:short)' --points-at $headSha)) {
+            $b = $b.Trim()
+            if (-not $b -or $b -eq 'master' -or $b -eq 'main') { continue }
+            if ($b -eq $Name -or $b -like "*/$Name") { $candidates += $b }
+        }
+
+        if ($candidates.Count -eq 1) {
+            $branch = $candidates[0]
+            Write-Host "`n==> Worktree '$Name' is detached; found sibling branch '$branch' at the same commit." -ForegroundColor Cyan
+        }
+        elseif ($candidates.Count -gt 1) {
+            Write-Host "`nNOTE: detached worktree with several matching branches -- not guessing." -ForegroundColor Yellow
+            foreach ($c in $candidates) { Write-Host "        $c" -ForegroundColor Yellow }
+            Write-Host "      Re-run with -Branch <name> to delete one of them." -ForegroundColor Yellow
+        }
+        else {
+            Write-Host "`nNOTE: detached worktree, no matching branch -- removing the directory only." -ForegroundColor Yellow
+        }
+    }
+}
+else {
     Write-Host "`n==> Worktree '$Name' -> branch '$branch'" -ForegroundColor Cyan
 }
 
