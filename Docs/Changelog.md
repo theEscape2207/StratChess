@@ -22,6 +22,62 @@ Newest first.
 
 ---
 
+## 2026-07-29 — Tapered Evaluation (issue #99, carries #118 item 4)
+
+### Changed
+- Evaluation is now interpolated between a midgame and an endgame score instead of hard-switching
+  on a material threshold. Game phase is an integer in `[0, 24]` computed from non-king, non-pawn
+  piece counts (N=1, B=1, R=2, Q=4 over both sides), clamped against promotion overshoot. Terms
+  return a `ScorePair{mg, eg}`; `BlendPhase` interpolates.
+- **The king PST is the first tapered term.** `g_Eval_Bitboards[5]` and `[6]` were always an
+  (mg, eg) pair — they were just selected discontinuously. Blending them removes a cliff of up to
+  100 cp that a single capture could cross mid-search, which scored positions by *when* a trade
+  happened rather than whether it was good.
+- Rook-on-7th became endgame-weighted (0 at mg, full bonus at eg) rather than hard-gated. Whether
+  that bonus should be endgame-only at all is dubious chess, but re-weighting it is #117's job.
+- `PlayState` (and the never-assigned `FINALGAME`) deleted. `EvalContext::stage` is replaced by
+  `phase`; `EvalBreakdown` reports `phase`, and the UCI `eval` command prints `phase: N/24` in
+  place of `stage: <name>`.
+
+### Fixed
+- **#118 item 4** — the winning king's PST is now suppressed while mop-up is active. The endgame
+  king table charged that king 10 cp per step of centralization given up to approach the cornered
+  loser, against the 4 cp per step mop-up paid for closing in, so approaching scored **negative**:
+  mop-up only ever softened a disincentive it was written to remove. This is the most likely
+  reason #70 measured ≈0 Elo. It also decouples `MOPUP_CMD_WEIGHT` from the endgame king PST
+  slope — two numbers expressing one concept, which #118 flags as a prerequisite for #117.
+
+### Design notes
+- The old `min(material) <= 11500` threshold was wrong in three ways, all removed: it was a
+  discontinuity, it keyed on a king-inclusive material sum (the entire reason for the otherwise
+  inexplicable `11500 = 10000 + 1500`), and it took `min()` over both sides — so a player still
+  holding a queen switched to endgame king scoring as soon as its *opponent* was stripped down.
+- Phase is piece-count based, not material-sum based: a material sum conflates "few pieces left"
+  with "one side is winning", which is the same confusion in another form.
+- `Evaluate()` blends **per term** rather than once over the accumulated pair — a deliberate
+  departure from the plan's D2. Integer truncation makes `BlendPhase(a) + BlendPhase(b)` and
+  `BlendPhase(a + b)` differ by up to 1 cp per term, which would break #129's asserted
+  rows-sum-to-total invariant by ~3 cp. Bounded, deterministic accuracy was traded for a
+  breakdown that still reconciles with the score it reports.
+- Mop-up stays a discrete gate (now keyed on phase), not a blended term: it is a special case for
+  pawnless decisive endings, not a smoothly-scaling idea. The gate moved into `BuildContext` so
+  `eval_pst` and `eval_mopup` read one definition of "mopping up" rather than two copies.
+- Scope was held to terms that already had phase-dependent behaviour. Inventing `(mg, eg)` pairs
+  for every PST is a tuning exercise (#117), and doing it here would have made this unmeasurable.
+
+### Validation
+- Step-1 identity: with every term at `mg == eg`, a 1731-position corpus scored byte-identical
+  (SHA256 `F6D51B9B…`) via #129's batch mode — isolating the plumbing from the behaviour change.
+  After tapering, 344 of those 1731 positions move.
+- Full fast tier passes in Release **and** Debug (2842 assertions, 216 cases), including new
+  endpoint, monotonicity, no-cliff and #118-item-4 cases. The #118 regression test was written
+  first and confirmed failing.
+
+See `.claude/plans/tapered-evaluation.md` for the full reasoning, including the drift review done
+before implementation.
+
+---
+
 ## 2026-07-27 — Static-Eval Per-Term Breakdown (issue #129 phase 2)
 
 ### Added

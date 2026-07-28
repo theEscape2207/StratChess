@@ -175,8 +175,32 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
     the printed net column trustworthy. D8's stronger claim (that `total` *is* `Evaluate()`'s
     return value, not a correct re-derivation of its sign flip) is structural and enforced by the
     code, not by these assertions; what they catch is a re-derivation that is *wrong*
-  - `Breakdown().stage` matches the stage `BuildContext` classifies (MIDDLEGAME at full material,
-    ENDGAME for K+Q vs bare king)
+  - `Breakdown().phase` matches what `BuildContext` computes: `MAX_GAME_PHASE` at full material,
+    4 for K+Q vs bare king, 0 for bare kings, unchanged by adding a full pawn set (pawns carry no
+    phase weight), and clamped rather than extrapolating on a three-queens-a-side promotion overshoot
+
+**Tapered evaluation (`[eval]`, issue #99)**. The taper is asserted on its *endpoints* wherever
+possible rather than on a blended value at one position's particular phase — a blended assertion
+silently depends on the phase weights, so it would start testing something else the moment those
+change.
+
+- `BlendPhase` is exact at both endpoints (`phase == MAX_GAME_PHASE` yields `mg`, `phase == 0`
+  yields `eg`) and moves monotonically between them. The classic tapering bug is an off-by-one
+  that makes neither endpoint reproduce its own input, so both are asserted directly
+- `eval_pst`: the king's two endpoints are exactly `g_Eval_Bitboards[5]` and `[6]` plus the
+  independently-computed non-king PST sum — and the two tables are asserted to *differ* at the
+  test square, so the blend cannot be a no-op masquerading as one. A companion case ties the
+  reported value to `BlendPhase(pair, phase)` for the position's own phase
+- `eval_rooks`: the 7th-rank bonus appears only at the `eg` endpoint, the open-file bonus at both
+- **No cliff**: two positions differing by exactly one minor piece — which used to straddle the old
+  `min(material) <= 11500` threshold — now move the king's contribution by far less than the ~100 cp
+  jump the hard switch produced. This is the property the change exists to create, so it is tested
+  directly rather than inferred
+- King centralization is worth strictly more at low phase than at high phase
+- **#118 item 4 regression**: in a gated pawnless K+Q vs K+R position, walking the winning king
+  toward the cornered loser must *raise* the score. Written before the fix and confirmed failing
+  (approach cost 4 cp); it gains 4 cp after. The test also guards its own premise by asserting
+  mop-up is actually active in both positions, so it cannot pass vacuously
 
 ### Tactical Tests (`[tactical]`)
 
@@ -311,8 +335,9 @@ turn these into no-ops.
   endgame, Black-to-move, mop-up-active), every row's `net` equals its own `white - black`; the
   net column sums to the printed `sum (white pov)` line; that sum equals the `white pov:` line;
   and it equals a white-relative `Evaluate()` computed independently from a fresh `Board`.
-- Game stage is reported and correct (`middlegame` at full material, `endgame` for K+Q vs K) —
-  it is not derivable from the rows, yet selects the king PST and gates mop-up.
+- Game phase is reported and correct (`phase: 24/24` at full material, `phase: 4/24` for K+Q vs K)
+  — it is not derivable from the rows, yet sets where between the mg and eg endpoints every
+  tapered term landed, and gates mop-up. Replaced the `stage: <name>` line in issue #99.
 - A term active for exactly one side shows it in the per-color split: mop-up in a pawnless K+Q
   vs K is positive for White and exactly 0 for Black. This is what pins the columns as carrying
   independent information rather than both being derived from `net`.
