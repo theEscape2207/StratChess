@@ -96,6 +96,17 @@ Integer arithmetic throughout — the engine has no floating point in eval and s
 Non-tapered terms are added to both `mg` and `eg` (equivalently, added after the blend); pick one and
 be consistent, because mixing the two conventions is how tapering bugs hide.
 
+**D2 amended during implementation (2026-07-29): blend per term, not once.** "Blend once" is
+marginally more accurate but is incompatible with an invariant that already exists. Integer
+division truncates, so `BlendPhase(a) + BlendPhase(b)` and `BlendPhase(a + b)` differ by up to
+1 cp per term. #129's breakdown reports a per-term row and asserts — in `[uci]` — that the rows
+sum to the score. Blending once makes that assertion false by up to ~3 cp on a four-term
+evaluation, i.e. it would turn the introspection tool into one that quietly disagrees with the
+evaluator it reports on. The accuracy given up is bounded, deterministic, and far below the
+noise floor of anything this engine can measure; the reconstructibility given up is not
+recoverable. So `Evaluate()` blends each term and sums the results, and the breakdown rows are
+exactly the numbers that were summed.
+
 **D3 — Taper the king PST only, in this PR.** `g_Eval_Bitboards[5]` (mid) and `[6]` (end) become the
 `(mg, eg)` pair for the king — which is what the two tables always were, just selected discontinuously
 instead of blended. This is the change with real expected Elo and the one that fixes #118 item 4.

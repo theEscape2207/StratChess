@@ -73,7 +73,6 @@ public:
 		SIMPLE,			// Simple engine
 		COMPLEX,		// Complex engine
 	};
-	enum class PlayState { MIDDLEGAME, ENDGAME, FINALGAME };
 
 	virtual int Evaluate(const Board& board) const = 0;
 	virtual const char* GetType() const = 0;
@@ -161,17 +160,12 @@ struct EvalContext
 	// final white-minus-black difference, so it is left as-is rather than
 	// "fixed" here.
 	int                        material[NUM_COLORS];
-	// MIDDLEGAME vs ENDGAME, gated on min(material[WHITE], material[BLACK])
-	// <= 11500. That threshold is king-value-inclusive (a king alone is 10000
-	// of it) and takes the min() over both sides rather than each side's own
-	// material — both are known-imprecise (issue #99) and deliberately left
-	// unchanged here: fixing either would move scores, which is out of scope
-	// for a pure restructure (D4, eval-context-restructure.md).
-	EvalManager::PlayState     stage;
 	// Game phase in [0, MAX_GAME_PHASE] from non-king, non-pawn piece counts
-	// (issue #99). Replaces `stage` as the phase signal; both are present only
-	// during the plumbing step, where every term still sets mg == eg so scores
-	// are provably unchanged.
+	// (issue #99). Replaced the old MIDDLEGAME/ENDGAME `stage`, which keyed on
+	// min(material) <= 11500 — a threshold that was king-value-inclusive (hence
+	// the otherwise inexplicable 11500 = 10000 + 1500) and took min() over both
+	// sides, so a player still holding a queen switched to endgame king scoring
+	// as soon as its OPPONENT was stripped down.
 	int                        phase;
 };
 
@@ -197,9 +191,9 @@ struct EvalBreakdown
 	int                    rooks[NUM_COLORS];    // eval_rooks
 	int                    pst[NUM_COLORS];      // eval_pst
 	int                    mopup[NUM_COLORS];    // eval_mopup
-	// Included because it is not derivable from the rows: it selects which
-	// king PST eval_pst reads and gates eval_mopup entirely.
-	EvalManager::PlayState stage;
+	// Included because it is not derivable from the rows: it sets where between
+	// the mg and eg endpoints every tapered term landed, and gates eval_mopup.
+	int                    phase;
 	// Side-to-move-relative, exactly as Evaluate() returns it — this field is
 	// Evaluate()'s return value, not a re-derivation of it (D8). Material plus
 	// the four terms, summed white-minus-black, reproduces it up to the
