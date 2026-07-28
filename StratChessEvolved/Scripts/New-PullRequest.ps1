@@ -17,6 +17,11 @@
     PRs consistent anyway, an unspecified body is scaffolded with the project's
     Summary / Test plan / Notes headings rather than left empty.
 
+    That scaffolding applies ONLY when creating. Re-running the script after another
+    commit -- the normal way to update an open PR -- leaves the existing description
+    untouched unless -Body/-BodyFile is passed. Anything else would silently replace a
+    hand-written PR description with the placeholder on every subsequent push.
+
     This script deliberately does NOT dispatch the specialised reviewers (eval-reviewer,
     search-reviewer). That is step 3 of the checklist and is a judgement call about what
     the diff touches -- it prints a reminder naming the relevant reviewer when the diff
@@ -154,6 +159,22 @@ Write-Host "`n==> [4/4] Pull request" -ForegroundColor Cyan
 $existing = (& gh pr list --head $branch --state open --json number --jq '.[0].number' 2>$null)
 if ($LASTEXITCODE -ne 0) {
     Write-Host "WARNING: 'gh' unavailable or not authenticated -- branch is pushed, open the PR yourself." -ForegroundColor Yellow
+    exit 0
+}
+
+# Did the caller actually supply a body? Must be captured BEFORE the scaffold below
+# fills $Body in, otherwise the update path cannot tell "no body given" apart from
+# "body given", and would overwrite a real PR description with the placeholder.
+$bodySupplied = [bool]($BodyFile -or $Body)
+
+if ($existing -and -not $bodySupplied) {
+    # Updating an open PR with nothing to say about the body: leave it alone. Re-running
+    # this script after another commit is the normal case, and silently replacing a
+    # hand-written description with the scaffold is destructive and easy to miss.
+    Write-Host "PR #$existing is already open for this branch -- pushed; body left unchanged." -ForegroundColor Yellow
+    Write-Host "  (pass -Body/-BodyFile to update the description)" -ForegroundColor DarkGray
+    & gh pr view $existing --json url --jq '.url'
+    Write-Host "`nDone." -ForegroundColor Green
     exit 0
 }
 
