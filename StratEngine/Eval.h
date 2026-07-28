@@ -7,6 +7,49 @@
 
 class Board;
 
+// Tapered evaluation (issue #99 — see .claude/plans/tapered-evaluation.md).
+//
+// Game phase is a single integer in [0, MAX_GAME_PHASE] computed from the
+// non-king, non-pawn material on the board: MAX_GAME_PHASE with a full set of
+// pieces, 0 in a bare-pawn ending. Phase-sensitive terms produce a ScorePair
+// instead of one number and are interpolated between the two endpoints once,
+// at the end of Evaluate().
+//
+// Deliberately piece-COUNT based, not material-sum based: a material sum
+// conflates "few pieces left" with "one side is winning", which is the same
+// confusion as the pre-#99 `min(material) <= 11500` stage threshold it
+// replaces. Phase is a property of the position, not of who is ahead.
+inline constexpr int MAX_GAME_PHASE = 24;
+
+// A phase-dependent score: `mg` applies at MAX_GAME_PHASE, `eg` at phase 0.
+// A term with no phase sensitivity sets both to the same value, which makes it
+// invariant under the blend.
+struct ScorePair
+{
+	int mg = 0;
+	int eg = 0;
+
+	constexpr ScorePair& operator+=(const ScorePair& rhs) noexcept
+	{
+		mg += rhs.mg;
+		eg += rhs.eg;
+		return *this;
+	}
+};
+
+// Interpolate a ScorePair at the given phase. Exact at both endpoints:
+// phase == MAX_GAME_PHASE yields mg, phase == 0 yields eg — an off-by-one here
+// is the classic tapering bug, so both endpoints are asserted in EvalTests.
+//
+// Blended per color rather than on the white-minus-black difference: integer
+// division truncates toward zero, so trunc(a) - trunc(b) and trunc(a - b) can
+// differ by 1. Per-color keeps the mirror property (#125) exact by
+// construction, since a mirrored position feeds each color the other's pair.
+constexpr int BlendPhase(const ScorePair& s, int phase) noexcept
+{
+	return (s.mg * phase + s.eg * (MAX_GAME_PHASE - phase)) / MAX_GAME_PHASE;
+}
+
 // Lazy SMP sharing contract: EvalManager and its
 // derived classes (EvalSimple, EvalComplex) hold no mutable state of any
 // kind — no data members beyond compile-time-constant enums/statics, and
@@ -125,6 +168,11 @@ struct EvalContext
 	// unchanged here: fixing either would move scores, which is out of scope
 	// for a pure restructure (D4, eval-context-restructure.md).
 	EvalManager::PlayState     stage;
+	// Game phase in [0, MAX_GAME_PHASE] from non-king, non-pawn piece counts
+	// (issue #99). Replaces `stage` as the phase signal; both are present only
+	// during the plumbing step, where every term still sets mg == eg so scores
+	// are provably unchanged.
+	int                        phase;
 };
 
 // EvalBreakdown — per-term introspection output for the UCI 'eval' command
@@ -179,6 +227,22 @@ class EvalComplex final
 	static const short MOPUP_KINGDIST_WEIGHT	= 4;	// weight on (MOPUP_MAX_KING_DISTANCE - king-to-king distance)
 	static const short MOPUP_MAX_KING_DISTANCE	= 7;	// max Chebyshev distance on an 8x8 board
 
+	// Game-phase weights per piece (issue #99). Summed over BOTH colors, so a
+	// full set of pieces gives 2*(2*1 + 2*1 + 2*2 + 1*4) = 24 = MAX_GAME_PHASE.
+	// Pawns and kings contribute nothing: pawns are present throughout and
+	// kings always, so neither carries information about how far the game has
+	// progressed.
+	static const short PHASE_KNIGHT		= 1;
+	static const short PHASE_BISHOP		= 1;
+	static const short PHASE_ROOK		= 2;
+	static const short PHASE_QUEEN		= 4;
+
+	// Mop-up stays a hard gate rather than a blended term (D4): it is a
+	// special case for pawnless decisive endings, not a smoothly-scaling
+	// positional idea, and fading it in at half strength mid-game would be
+	// meaningless. Keyed on phase now instead of the old ENDGAME stage.
+	static const short MOPUP_MAX_PHASE	= 6;	// gate: phase <= this counts as a mop-up ending
+
 	// Distance helpers for mop-up scoring — plain grid math, orientation-independent
 	// (works the same whether the square belongs to White or Black).
 	static constexpr int CenterAxisDistance(int coord) noexcept
@@ -212,10 +276,10 @@ class EvalComplex final
 	// terms itself, so no term touches a shared accumulator and no term reads
 	// state another term writes — each is a pure function of EvalContext.
 	// Plain int addition, so summation order cannot change the result.
-	static int eval_pawns(const EvalContext& ctx, eColor color) noexcept;
-	static int eval_rooks(const EvalContext& ctx, eColor color) noexcept;
-	static int eval_pst(const EvalContext& ctx, eColor color) noexcept;
-	static int eval_mopup(const EvalContext& ctx, eColor color) noexcept;
+	static ScorePair eval_pawns(const EvalContext& ctx, eColor color) noexcept;
+	static ScorePair eval_rooks(const EvalContext& ctx, eColor color) noexcept;
+	static ScorePair eval_pst(const EvalContext& ctx, eColor color) noexcept;
+	static ScorePair eval_mopup(const EvalContext& ctx, eColor color) noexcept;
 
 public:
 	int Evaluate(const Board& board) const noexcept override;
