@@ -1,7 +1,35 @@
 # Tapered Evaluation (Midgame → Endgame)
 
-**Issue**: #99 (carries #118 item 4) · **Epic**: #110 Tier 1 · **Depth**: full plan · **Status**: not started
-**Depends on**: #127 (EvalContext restructure) — do not attempt before it lands
+**Issue**: #99 (carries #118 item 4) · **Epic**: #110 Tier 1 · **Depth**: full plan · **Status**: in progress 2026-07-29
+**Depends on**: #127 (EvalContext restructure) — **landed**, PR #141
+
+## Drift review (2026-07-29, before implementation)
+
+Re-checked every load-bearing assumption against `main` at `a025614`. All the eval-side facts hold:
+
+- #127 landed, and `ctx.stage` is consulted in exactly the three places this plan names —
+  `eval_rooks` (7th-rank gate), `eval_pst` (king table selection), `eval_mopup` (gate).
+- **D5's arithmetic is exact, and was verified against `defines.h`, not assumed.** The endgame king
+  table is precisely `60 - 10 * CenterManhattanDistance(sq)` (spot-checked a8=0/CMD 6, b7=20/CMD 4,
+  d4=60/CMD 0), and the midgame table is uniformly −40/−20/0 by rank. So the ≈100 cp cliff and the
+  net −6 cp/step disincentive both stand as written.
+- `MOPUP_*` constants unchanged; #130 (SPRT) is closed, so the preferred measurement is available;
+  #129's batch mode is available for the step-2 identity check, which is why it was sequenced first.
+
+**One real drift, and it widens the blast radius of D6.** #129 phase 2 (PR #145) landed *after* this
+plan was written and made `PlayState` **public API**: `EvalBreakdown::stage` is a field on the struct
+`EvalComplex::Breakdown()` returns, `UciHandler::cmd_eval()` prints it as `stage: middlegame`, and
+both `[uci]` and `[eval]` tests assert on it. Deleting the enum (D6) therefore also touches
+`UCIHandler.cpp`, `UCITests.cpp`, `EvalTests.cpp` and `Docs/TestDesign.md` — none of which appear in
+the Files-Changed table below.
+
+**Resolution**: replace `EvalBreakdown::stage` with `int phase`, and have `cmd_eval` print
+`phase: N/24` instead of `stage: <name>`. This is strictly more informative than the boolean it
+replaces — a reader debugging a king-placement score wants to know *how far* through the taper the
+position is, not which side of a threshold it fell on — and it keeps #129's introspection honest
+rather than leaving it reporting a concept the evaluator no longer has. The `[uci]`/`[eval]` cases
+that assert `stage: middlegame`/`ENDGAME` become phase-value assertions.
+
 
 ## Goal
 

@@ -581,6 +581,11 @@ TEST_CASE("Eval - EvalComplex is color-symmetric: a position and its mirror scor
 // four private per-term functions (eval_pawns, eval_rooks, eval_pst,
 // eval_mopup), each taking (const EvalContext&, eColor) and returning that
 // color's contribution only — see .claude/plans/eval-context-restructure.md.
+// The term accessors return each term BLENDED at the position's own phase
+// (issue #99) — the value that term actually contributes to Evaluate() there.
+// Endpoint behaviour (mg vs eg) is asserted separately by the tapering tests,
+// which drive phase directly rather than inferring it.
+//
 // EvalComplexTestFixture is a friend of EvalComplex (STRAT_ENABLE_TEST_ACCESS,
 // same mechanism as AIPerplex/UciHandler's fixtures) that builds an
 // EvalContext from a Board and forwards to each term, so terms can be
@@ -589,19 +594,23 @@ struct EvalComplexTestFixture
 {
     static int Pawns(const Board& board, eColor color)
     {
-        return EvalComplex::eval_pawns(BuildContext(board), color);
+        const EvalContext ctx = BuildContext(board);
+        return BlendPhase(EvalComplex::eval_pawns(ctx, color), ctx.phase);
     }
     static int Rooks(const Board& board, eColor color)
     {
-        return EvalComplex::eval_rooks(BuildContext(board), color);
+        const EvalContext ctx = BuildContext(board);
+        return BlendPhase(EvalComplex::eval_rooks(ctx, color), ctx.phase);
     }
     static int Pst(const Board& board, eColor color)
     {
-        return EvalComplex::eval_pst(BuildContext(board), color);
+        const EvalContext ctx = BuildContext(board);
+        return BlendPhase(EvalComplex::eval_pst(ctx, color), ctx.phase);
     }
     static int Mopup(const Board& board, eColor color)
     {
-        return EvalComplex::eval_mopup(BuildContext(board), color);
+        const EvalContext ctx = BuildContext(board);
+        return BlendPhase(EvalComplex::eval_mopup(ctx, color), ctx.phase);
     }
 
     // Named constants, exposed so term-level tests can express exact

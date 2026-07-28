@@ -73,7 +73,7 @@ int EvalSimple::Evaluate(const Board& board) const noexcept
 //
 // TODO: Add bonus for passed pawn - bonus should be dependant on game stage
 // (carried over verbatim from the pre-#127 switch; still open, see issue #116).
-int EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
+ScorePair EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 {
 	int score = 0;
 	const BITBOARD ownPawns = ctx.pawns[color];
@@ -105,7 +105,10 @@ int EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 		remaining = Bits::clearLsb(remaining);
 	}
 
-	return score;
+	// No phase sensitivity: doubled/isolated pawn structure matters equally
+	// throughout, so the same value goes to both endpoints and the blend is a
+	// no-op for this term.
+	return ScorePair{ score, score };
 }
 
 // eval_rooks — 7th-rank and half-open/open-file bonuses for one color's
@@ -132,7 +135,7 @@ int EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 //
 // TODO: Add bonus for connected Rooks!! (carried over verbatim from the
 // pre-#127 switch; still open).
-int EvalComplex::eval_rooks(const EvalContext& ctx, eColor color) noexcept
+ScorePair EvalComplex::eval_rooks(const EvalContext& ctx, eColor color) noexcept
 {
 	int score = 0;
 	const ePiece rookPiece = (color == WHITE) ? ePiece::WHITE_ROOK : ePiece::BLACK_ROOK;
@@ -164,7 +167,7 @@ int EvalComplex::eval_rooks(const EvalContext& ctx, eColor color) noexcept
 		remaining = Bits::clearLsb(remaining);
 	}
 
-	return score;
+	return ScorePair{ score, score };
 }
 
 // eval_pst — piece-square-table contribution for one color's pieces (issue
@@ -179,7 +182,7 @@ int EvalComplex::eval_rooks(const EvalContext& ctx, eColor color) noexcept
 // (D2 in the plan file). Reordering these per-type loops relative to each
 // other, or relative to the old single mailbox loop, cannot change the sum:
 // plain int addition over the same multiset of per-square PST values.
-int EvalComplex::eval_pst(const EvalContext& ctx, eColor color) noexcept
+ScorePair EvalComplex::eval_pst(const EvalContext& ctx, eColor color) noexcept
 {
 	int score = 0;
 
@@ -232,7 +235,7 @@ int EvalComplex::eval_pst(const EvalContext& ctx, eColor color) noexcept
 		}
 	}
 
-	return score;
+	return ScorePair{ score, score };
 }
 
 // eval_mopup — mop-up evaluation for one color (issue #127 restructure — see
@@ -243,11 +246,11 @@ int EvalComplex::eval_pst(const EvalContext& ctx, eColor color) noexcept
 // color receives a nonzero contribution; the losing color, and both colors
 // when the gating conditions aren't met, get 0 — matching the original
 // bonusScore[winner]-only update this replaces.
-int EvalComplex::eval_mopup(const EvalContext& ctx, eColor color) noexcept
+ScorePair EvalComplex::eval_mopup(const EvalContext& ctx, eColor color) noexcept
 {
 	if (ctx.stage == PlayState::MIDDLEGAME ||
 		ctx.pawns[WHITE] != 0ULL || ctx.pawns[BLACK] != 0ULL)
-		return 0;
+		return ScorePair{};
 
 	// A kingless board (default-constructed or failed-parse Board only — see
 	// EvalContext::king_sq) reaches this point whenever it also has no pawns:
@@ -256,24 +259,28 @@ int EvalComplex::eval_mopup(const EvalContext& ctx, eColor color) noexcept
 	// MOPUP_MATERIAL_THRESHOLD check below, which happens to also save it
 	// today (absMatDiff == 0) but would not if that threshold ever changed.
 	if (ctx.king_sq[WHITE] == NO_SQUARE || ctx.king_sq[BLACK] == NO_SQUARE)
-		return 0;
+		return ScorePair{};
 
 	const int matDiff = ctx.material[WHITE] - ctx.material[BLACK];
 	const int absMatDiff = (matDiff >= 0) ? matDiff : -matDiff;
 
 	if (absMatDiff < MOPUP_MATERIAL_THRESHOLD)
-		return 0;
+		return ScorePair{};
 
 	const eColor winner = (matDiff > 0) ? WHITE : BLACK;
 	if (color != winner)
-		return 0;
+		return ScorePair{};
 
 	const eColor loser = (winner == WHITE) ? BLACK : WHITE;
 	const eSquare winnerKingSq = ctx.king_sq[winner];
 	const eSquare loserKingSq = ctx.king_sq[loser];
 
-	return MOPUP_CMD_WEIGHT * CenterManhattanDistance(loserKingSq) +
+	const int mopup = MOPUP_CMD_WEIGHT * CenterManhattanDistance(loserKingSq) +
 		MOPUP_KINGDIST_WEIGHT * (MOPUP_MAX_KING_DISTANCE - KingDistance(winnerKingSq, loserKingSq));
+
+	// Gated, not blended (D4): once the gate opens the term applies at full
+	// strength at both endpoints.
+	return ScorePair{ mopup, mopup };
 }
 
 // BuildContext — the one construction site for EvalContext (issue #127
@@ -327,6 +334,18 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 	const eSquare blackKingSq = (boardsSpan[ePiece::BLACK_KING] != 0ULL)
 		? Board::GetFirstPiece(boardsSpan[ePiece::BLACK_KING]) : NO_SQUARE;
 
+	// Game phase from non-king, non-pawn piece counts (issue #99). Summed over
+	// both colors and clamped: promotions can push the raw sum past
+	// MAX_GAME_PHASE (three queens on one side is 12 from queens alone), and an
+	// unclamped phase would extrapolate outside the interpolation range instead
+	// of saturating at "opening".
+	const int rawPhase =
+		PHASE_KNIGHT * (std::popcount(boardsSpan[ePiece::WHITE_KNIGHT]) + std::popcount(boardsSpan[ePiece::BLACK_KNIGHT])) +
+		PHASE_BISHOP * (std::popcount(boardsSpan[ePiece::WHITE_BISHOP]) + std::popcount(boardsSpan[ePiece::BLACK_BISHOP])) +
+		PHASE_ROOK   * (std::popcount(boardsSpan[ePiece::WHITE_ROOK])   + std::popcount(boardsSpan[ePiece::BLACK_ROOK]))   +
+		PHASE_QUEEN  * (std::popcount(boardsSpan[ePiece::WHITE_QUEEN])  + std::popcount(boardsSpan[ePiece::BLACK_QUEEN]));
+	const int gamePhase = (rawPhase > MAX_GAME_PHASE) ? MAX_GAME_PHASE : rawPhase;
+
 	return EvalContext{
 		.boards = boardsSpan,
 		.all_pieces = boardsSpan[ALL_PIECES],
@@ -335,6 +354,7 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 		.king_sq = { whiteKingSq, blackKingSq },
 		.material = { matScoreWhite, matScoreBlack },
 		.stage = gameStage,
+		.phase = gamePhase,
 	};
 }
 
@@ -349,18 +369,34 @@ int EvalComplex::Evaluate(const Board& board) const noexcept
 {
 	const EvalContext ctx = BuildContext(board);
 
-	int bonusScore[2] = { 0 };
+	// Accumulate each color's phase-dependent terms, then interpolate ONCE per
+	// color (D2, issue #99). Material is not tapered and is added after the
+	// blend — a piece is worth its value regardless of how far along the game
+	// is; only positional judgements shift with phase.
+	ScorePair bonusScore[2];
 
-	bonusScore[WHITE] += eval_pawns(ctx, WHITE) + eval_rooks(ctx, WHITE) + eval_pst(ctx, WHITE) + eval_mopup(ctx, WHITE);
-	bonusScore[BLACK] += eval_pawns(ctx, BLACK) + eval_rooks(ctx, BLACK) + eval_pst(ctx, BLACK) + eval_mopup(ctx, BLACK);
+	bonusScore[WHITE] += eval_pawns(ctx, WHITE);
+	bonusScore[WHITE] += eval_rooks(ctx, WHITE);
+	bonusScore[WHITE] += eval_pst(ctx, WHITE);
+	bonusScore[WHITE] += eval_mopup(ctx, WHITE);
+
+	bonusScore[BLACK] += eval_pawns(ctx, BLACK);
+	bonusScore[BLACK] += eval_rooks(ctx, BLACK);
+	bonusScore[BLACK] += eval_pst(ctx, BLACK);
+	bonusScore[BLACK] += eval_mopup(ctx, BLACK);
+
+	const int blended[2] = {
+		BlendPhase(bonusScore[WHITE], ctx.phase),
+		BlendPhase(bonusScore[BLACK], ctx.phase),
+	};
 
 	const eColor color = board.GetCurrentColor();
 
 	if (color == WHITE)
 	{
-		return (ctx.material[WHITE] + bonusScore[WHITE]) - (ctx.material[BLACK] + bonusScore[BLACK]);
+		return (ctx.material[WHITE] + blended[WHITE]) - (ctx.material[BLACK] + blended[BLACK]);
 	}
-	return (ctx.material[BLACK] + bonusScore[BLACK]) - (ctx.material[WHITE] + bonusScore[WHITE]);
+	return (ctx.material[BLACK] + blended[BLACK]) - (ctx.material[WHITE] + blended[WHITE]);
 }
 
 //
@@ -382,12 +418,16 @@ EvalBreakdown EvalComplex::Breakdown(const Board& board) const noexcept
 {
 	const EvalContext ctx = BuildContext(board);
 
+	// Rows are reported BLENDED at this position's phase — i.e. the number each
+	// term actually contributes to `total`, not its mg or eg endpoint. That is
+	// what keeps the printed table summing to the score (the #129 honesty
+	// invariant); the endpoints are visible in the term functions themselves.
 	return EvalBreakdown{
 		.material = { ctx.material[WHITE], ctx.material[BLACK] },
-		.pawns    = { eval_pawns(ctx, WHITE), eval_pawns(ctx, BLACK) },
-		.rooks    = { eval_rooks(ctx, WHITE), eval_rooks(ctx, BLACK) },
-		.pst      = { eval_pst(ctx, WHITE),   eval_pst(ctx, BLACK)   },
-		.mopup    = { eval_mopup(ctx, WHITE), eval_mopup(ctx, BLACK) },
+		.pawns    = { BlendPhase(eval_pawns(ctx, WHITE), ctx.phase), BlendPhase(eval_pawns(ctx, BLACK), ctx.phase) },
+		.rooks    = { BlendPhase(eval_rooks(ctx, WHITE), ctx.phase), BlendPhase(eval_rooks(ctx, BLACK), ctx.phase) },
+		.pst      = { BlendPhase(eval_pst(ctx, WHITE),   ctx.phase), BlendPhase(eval_pst(ctx, BLACK),   ctx.phase) },
+		.mopup    = { BlendPhase(eval_mopup(ctx, WHITE), ctx.phase), BlendPhase(eval_mopup(ctx, BLACK), ctx.phase) },
 		.stage    = ctx.stage,
 		.total    = Evaluate(board),
 	};
