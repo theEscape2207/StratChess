@@ -12,8 +12,9 @@ class Board;
 // Game phase is a single integer in [0, MAX_GAME_PHASE] computed from the
 // non-king, non-pawn material on the board: MAX_GAME_PHASE with a full set of
 // pieces, 0 in a bare-pawn ending. Phase-sensitive terms produce a ScorePair
-// instead of one number and are interpolated between the two endpoints once,
-// at the end of Evaluate().
+// instead of one number and are interpolated between the two endpoints by
+// Evaluate(), which blends each term and sums the results (see the comment
+// there for why per-term rather than once over the accumulated pair).
 //
 // Deliberately piece-COUNT based, not material-sum based: a material sum
 // conflates "few pieces left" with "one side is winning", which is the same
@@ -41,10 +42,12 @@ struct ScorePair
 // phase == MAX_GAME_PHASE yields mg, phase == 0 yields eg — an off-by-one here
 // is the classic tapering bug, so both endpoints are asserted in EvalTests.
 //
-// Blended per color rather than on the white-minus-black difference: integer
-// division truncates toward zero, so trunc(a) - trunc(b) and trunc(a - b) can
-// differ by 1. Per-color keeps the mirror property (#125) exact by
-// construction, since a mirrored position feeds each color the other's pair.
+// Truncation toward zero is odd-symmetric ((-n)/d == -(n/d)), so it introduces
+// no sign-dependent bias and does not by itself threaten the #125 mirror
+// property — blending the white-minus-black difference would preserve that
+// too. Per-color blending is chosen for a different reason: it is what makes
+// the per-term rows #129 prints the literal addends of the score, see
+// Evaluate().
 constexpr int BlendPhase(const ScorePair& s, int phase) noexcept
 {
 	return (s.mg * phase + s.eg * (MAX_GAME_PHASE - phase)) / MAX_GAME_PHASE;
@@ -241,8 +244,15 @@ class EvalComplex final
 	// Mop-up stays a hard gate rather than a blended term (D4): it is a
 	// special case for pawnless decisive endings, not a smoothly-scaling
 	// positional idea, and fading it in at half strength mid-game would be
-	// meaningless. Keyed on phase now instead of the old ENDGAME stage.
-	static const short MOPUP_MAX_PHASE	= 6;	// gate: phase <= this counts as a mop-up ending
+	// meaningless.
+	//
+	// Keyed on the LOSING side's phase, not the total. The retired stage gate
+	// was min(material) <= 11500, i.e. a statement about the weaker side alone;
+	// keying on total phase instead would let extra material on the WINNING
+	// side switch mop-up off. That loses exactly the cases mop-up exists for:
+	// KQQ vs K is total phase 8, and is reached by promoting a second queen —
+	// so the engine would lose its mating guidance at the moment it queens.
+	static const short MOPUP_MAX_LOSER_PHASE	= 6;	// gate: loser's own phase <= this
 
 	// Distance helpers for mop-up scoring — plain grid math, orientation-independent
 	// (works the same whether the square belongs to White or Black).

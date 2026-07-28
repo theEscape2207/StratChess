@@ -184,10 +184,10 @@ ScorePair EvalComplex::eval_rooks(const EvalContext& ctx, eColor color) noexcept
 // version). Every non-king piece type gets its own bitboard loop, so
 // GetPositionalScore is called with a statically-known piece — no
 // board.GetPiece(square) mailbox lookup per square. The king is excluded
-// from those loops and uses its own stage-selected table instead —
-// g_Eval_Bitboards[5] (middlegame) or [6] (endgame) — so it still receives
-// exactly one PST contribution, just from a different table than the rest
-// (D2 in the plan file). Reordering these per-type loops relative to each
+// from those loops: g_Eval_Bitboards[5] (middlegame) and [6] (endgame) are
+// its mg and eg endpoints, blended by phase rather than selected (issue #99),
+// so it still receives exactly one PST contribution — just an interpolated
+// one. (D2 in eval-context-restructure.md, not this change's D2.) Reordering these per-type loops relative to each
 // other, or relative to the old single mailbox loop, cannot change the sum:
 // plain int addition over the same multiset of per-square PST values.
 ScorePair EvalComplex::eval_pst(const EvalContext& ctx, eColor color) noexcept
@@ -217,7 +217,7 @@ ScorePair EvalComplex::eval_pst(const EvalContext& ctx, eColor color) noexcept
 		}
 	}
 
-	// King PST: stage-selected table, not the generic one above (D2).
+	// King PST: its own tapered pair, not the generic table above.
 	// TODO: Add bonus for castling-done!! (carried over verbatim from the
 	// pre-#127 switch; still open).
 	//
@@ -268,8 +268,8 @@ ScorePair EvalComplex::eval_pst(const EvalContext& ctx, eColor color) noexcept
 // bonusScore[winner]-only update this replaces.
 ScorePair EvalComplex::eval_mopup(const EvalContext& ctx, eColor color) noexcept
 {
-	// The gate — pawnless, low phase, decisive material lead, both kings on the
-	// board — is evaluated once in BuildContext, and only the leading color is
+	// The gate — pawnless, decisive material lead, both kings on the board, and
+	// the loser stripped down — is evaluated once in BuildContext, and only the leading color is
 	// marked active. eval_pst reads the same flag to suppress that color's king
 	// PST (issue #118 item 4), so the two terms cannot disagree about whether a
 	// position is a mop-up. A kingless board is excluded there, so the king
@@ -340,30 +340,42 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 	// MAX_GAME_PHASE (three queens on one side is 12 from queens alone), and an
 	// unclamped phase would extrapolate outside the interpolation range instead
 	// of saturating at "opening".
-	const int rawPhase =
-		PHASE_KNIGHT * (std::popcount(boardsSpan[ePiece::WHITE_KNIGHT]) + std::popcount(boardsSpan[ePiece::BLACK_KNIGHT])) +
-		PHASE_BISHOP * (std::popcount(boardsSpan[ePiece::WHITE_BISHOP]) + std::popcount(boardsSpan[ePiece::BLACK_BISHOP])) +
-		PHASE_ROOK   * (std::popcount(boardsSpan[ePiece::WHITE_ROOK])   + std::popcount(boardsSpan[ePiece::BLACK_ROOK]))   +
-		PHASE_QUEEN  * (std::popcount(boardsSpan[ePiece::WHITE_QUEEN])  + std::popcount(boardsSpan[ePiece::BLACK_QUEEN]));
+	const int phaseWhite =
+		PHASE_KNIGHT * std::popcount(boardsSpan[ePiece::WHITE_KNIGHT]) +
+		PHASE_BISHOP * std::popcount(boardsSpan[ePiece::WHITE_BISHOP]) +
+		PHASE_ROOK   * std::popcount(boardsSpan[ePiece::WHITE_ROOK])   +
+		PHASE_QUEEN  * std::popcount(boardsSpan[ePiece::WHITE_QUEEN]);
+	const int phaseBlack =
+		PHASE_KNIGHT * std::popcount(boardsSpan[ePiece::BLACK_KNIGHT]) +
+		PHASE_BISHOP * std::popcount(boardsSpan[ePiece::BLACK_BISHOP]) +
+		PHASE_ROOK   * std::popcount(boardsSpan[ePiece::BLACK_ROOK])   +
+		PHASE_QUEEN  * std::popcount(boardsSpan[ePiece::BLACK_QUEEN]);
+	const int rawPhase = phaseWhite + phaseBlack;
 	const int gamePhase = (rawPhase > MAX_GAME_PHASE) ? MAX_GAME_PHASE : rawPhase;
 
 	// Mop-up gate, evaluated here rather than inside eval_mopup so eval_pst can
-	// consult the same answer (issue #118 item 4): pawnless, low phase, both
-	// kings present, and a decisive material lead. Only the leader is active.
+	// consult the same answer (issue #118 item 4): pawnless, both kings present,
+	// a decisive material lead, and the LOSER reduced to little material. Only
+	// the leader is active. Gating on the loser's phase rather than the total is
+	// what keeps KQQ-vs-K in scope — see MOPUP_MAX_LOSER_PHASE in Eval.h.
 	//
 	// The kingless guard is load-bearing and is why this cannot simply fall out
 	// of the material check: a default-constructed or failed-parse Board is
 	// pawnless at phase 0, and while its material difference is 0 today, that
 	// would stop saving us if MOPUP_MATERIAL_THRESHOLD ever changed.
 	bool mopupActive[NUM_COLORS] = { false, false };
-	if (gamePhase <= MOPUP_MAX_PHASE &&
-		boardsSpan[ePiece::WHITE_PAWN] == 0ULL && boardsSpan[ePiece::BLACK_PAWN] == 0ULL &&
+	if (boardsSpan[ePiece::WHITE_PAWN] == 0ULL && boardsSpan[ePiece::BLACK_PAWN] == 0ULL &&
 		whiteKingSq != NO_SQUARE && blackKingSq != NO_SQUARE)
 	{
 		const int matDiff = matScoreWhite - matScoreBlack;
 		const int absMatDiff = (matDiff >= 0) ? matDiff : -matDiff;
 		if (absMatDiff >= MOPUP_MATERIAL_THRESHOLD)
-			mopupActive[(matDiff > 0) ? WHITE : BLACK] = true;
+		{
+			const eColor winner = (matDiff > 0) ? WHITE : BLACK;
+			const int loserPhase = (winner == WHITE) ? phaseBlack : phaseWhite;
+			if (loserPhase <= MOPUP_MAX_LOSER_PHASE)
+				mopupActive[winner] = true;
+		}
 	}
 
 	return EvalContext{
@@ -399,13 +411,11 @@ int EvalComplex::Evaluate(const Board& board) const noexcept
 	// one centipawn per term. Blending once is marginally more accurate, but it
 	// makes the per-term breakdown #129 prints unable to sum to the score it
 	// reports — and that reconstructibility is an asserted invariant, not a
-	// nicety. The cost is bounded at ~3 cp on a four-term evaluation and is
-	// deterministic; a breakdown whose rows do not add up is a debugging tool
-	// that lies, which is worse.
-	//
-	// Per-color, not on the white-minus-black difference: that keeps the mirror
-	// property (#125) exact, since a mirrored position feeds each color the
-	// other's pairs and truncation therefore applies identically to both.
+	// nicety. Only terms with mg != eg can truncate at all — eval_pawns and
+	// eval_mopup set both endpoints equal, so they blend exactly — which bounds
+	// the cost at under 1 cp per tapered term, i.e. under 2 cp per color today.
+	// Deterministic, and far below anything this engine can measure; a
+	// breakdown whose rows do not add up is a debugging tool that lies.
 	int blended[2] = { 0, 0 };
 	for (const eColor c : { WHITE, BLACK })
 	{
