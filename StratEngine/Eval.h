@@ -167,6 +167,13 @@ struct EvalContext
 	// sides, so a player still holding a queen switched to endgame king scoring
 	// as soon as its OPPONENT was stripped down.
 	int                        phase;
+	// True for the side that is mopping up, false for both otherwise —
+	// i.e. pawnless, decisive material lead, low phase, both kings present.
+	// Computed once in BuildContext so eval_mopup and eval_pst cannot
+	// disagree about whether a position is a mop-up: eval_pst suppresses the
+	// winner's king PST exactly when eval_mopup is paying for king placement
+	// (issue #118 item 4). Two readers of one gate, not two copies of it.
+	bool                       mopup_active[NUM_COLORS];
 };
 
 // EvalBreakdown — per-term introspection output for the UCI 'eval' command

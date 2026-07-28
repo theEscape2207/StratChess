@@ -1012,3 +1012,47 @@ TEST_CASE("Eval - crossing the old stage threshold no longer produces a cliff", 
     const int kingDeltaAbs = (kingDelta < 0) ? -kingDelta : kingDelta;
     REQUIRE(kingDeltaAbs < 20);
 }
+
+TEST_CASE("Eval - mop-up: walking the winning king toward the loser must raise the score (#118 item 4)", "[eval]")
+{
+    // The bug this fixes. Mop-up pays the winning king MOPUP_KINGDIST_WEIGHT (4)
+    // per step of approach, while that same king's endgame PST charges it 10 cp
+    // per step of centralization surrendered to walk toward the corner. The two
+    // terms are pulling in opposite directions and the PST wins, so mop-up only
+    // ever *softened* a disincentive to approach — it never reversed it. That is
+    // the most likely reason #70 measured ≈0 Elo.
+    //
+    // Pawnless K+Q vs K+R: a 400 cp lead (exactly MOPUP_MATERIAL_THRESHOLD) and
+    // phase 6 (Q=4 + R=2), so mop-up is gated on. The Black king is cornered on
+    // a8; White's king moves from d4 to c5, strictly closer to it (Chebyshev
+    // 4 -> 3) and no other piece moves.
+    //
+    // Legality checked: with White to move the Black king on a8 is attacked by
+    // nothing (Qd1 covers the d-file, rank 1, and the d1-a4/d1-h5 diagonals),
+    // and the kings are never adjacent.
+    Board farther("k6r/8/8/8/3K4/8/8/3Q4 w - - 0 1");
+    Board closer("k6r/8/8/2K5/8/8/8/3Q4 w - - 0 1");
+
+    auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+    auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
+    REQUIRE(complexEval != nullptr);
+
+    const EvalBreakdown far = complexEval->Breakdown(farther);
+    const EvalBreakdown near = complexEval->Breakdown(closer);
+
+    // Guard the premise: if either position stopped being a gated mop-up
+    // position this test would pass vacuously.
+    CAPTURE(far.phase, far.mopup[WHITE], near.mopup[WHITE]);
+    REQUIRE(far.mopup[WHITE] > 0);
+    REQUIRE(near.mopup[WHITE] > 0);
+    REQUIRE(near.mopup[WHITE] > far.mopup[WHITE]);
+
+    // The actual property: White's total positional contribution must improve
+    // when its king closes in. Before the fix the king PST's centralization loss
+    // outweighs mop-up's approach bonus and this is negative.
+    const int farTotal  = far.pst[WHITE]  + far.mopup[WHITE];
+    const int nearTotal = near.pst[WHITE] + near.mopup[WHITE];
+    CAPTURE(far.pst[WHITE], near.pst[WHITE], farTotal, nearTotal);
+
+    REQUIRE(nearTotal > farTotal);
+}
