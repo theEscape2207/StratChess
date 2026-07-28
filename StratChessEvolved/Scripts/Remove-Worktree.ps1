@@ -69,6 +69,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# Must be initialised: StrictMode makes reading an undefined variable a terminating error.
+$script:DirLeftBehind = $false
+
 $commonDir = & git rev-parse --path-format=absolute --git-common-dir 2>&1
 if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: not inside a git repository." -ForegroundColor Red; exit 1 }
 $MainCheckout = Split-Path $commonDir -Parent
@@ -169,10 +172,17 @@ if (Test-Path $TargetPath) {
     if ($Force) { $rmArgs += '--force' }
     & git -C $MainCheckout @rmArgs
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "FAIL: git worktree remove failed." -ForegroundColor Red
-        exit 1
+        # Trap 5: on Windows, git routinely deletes every file but cannot rmdir the
+        # folder itself when any process holds a handle on it (a shell sitting in it,
+        # Visual Studio, an indexer). That is a cosmetic leftover, NOT a reason to stop:
+        # the branch cleanup below is the part that actually matters, and bailing here
+        # is how orphaned branches accumulate. Deregister and carry on.
+        Write-Host "WARNING: could not delete the directory (a process is holding it open)." -ForegroundColor Yellow
+        Write-Host "         Deregistering it and continuing with branch cleanup." -ForegroundColor Yellow
+        $script:DirLeftBehind = $true
+    } else {
+        Write-Host "PASS: worktree removed." -ForegroundColor Green
     }
-    Write-Host "PASS: worktree removed." -ForegroundColor Green
 }
 & git -C $MainCheckout worktree prune | Out-Null
 
@@ -198,4 +208,10 @@ if ($SyncMaster) {
     & pwsh -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Sync-Master.ps1')
 }
 
-Write-Host "`nCleanup complete." -ForegroundColor Green
+if ($script:DirLeftBehind) {
+    Write-Host "`nCleanup complete, except the (now empty, deregistered) directory:" -ForegroundColor Yellow
+    Write-Host "  $TargetPath" -ForegroundColor Yellow
+    Write-Host "It is harmless -- delete it once whatever is holding it open has exited." -ForegroundColor Yellow
+} else {
+    Write-Host "`nCleanup complete." -ForegroundColor Green
+}
