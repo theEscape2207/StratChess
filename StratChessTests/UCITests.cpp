@@ -492,28 +492,28 @@ TEST_CASE("cmd_eval: printed breakdown nets are white-minus-black and sum to the
     REQUIRE(net_sum == expected_white_pov);
 }
 
-TEST_CASE("cmd_eval: breakdown reports the game stage the evaluator classified", "[uci]")
+TEST_CASE("cmd_eval: breakdown reports the game phase the evaluator computed", "[uci]")
 {
-    // The stage is printed because it is not derivable from the rows, yet it
-    // selects which king PST eval_pst reads and gates eval_mopup entirely —
-    // so a reader debugging a king-placement score needs it to interpret the
-    // pst row at all. Threshold is min(material) <= 11500, king-inclusive.
+    // Phase is printed because it is not derivable from the rows, yet it sets
+    // where between the mg and eg endpoints every tapered term landed — so a
+    // reader debugging the pst row needs it to interpret that row at all
+    // (issue #99, replacing the old middlegame/endgame stage name).
     UciHandlerTestFixture fix;
 
-    SECTION("full starting material is middlegame") {
+    SECTION("full starting material is the maximum phase") {
         fix.position("position startpos");
 
         CoutRedirect redirect;
         fix.eval();
-        REQUIRE(redirect.str().find("stage: middlegame") != std::string::npos);
+        REQUIRE(redirect.str().find("phase: 24/24") != std::string::npos);
     }
 
-    SECTION("bare kings plus a queen is endgame") {
+    SECTION("bare kings plus a queen is deep in the endgame") {
         fix.position("position fen 4k3/8/8/8/8/8/8/3QK3 w - - 0 1");
 
         CoutRedirect redirect;
         fix.eval();
-        REQUIRE(redirect.str().find("stage: endgame") != std::string::npos);
+        REQUIRE(redirect.str().find("phase: 4/24") != std::string::npos);
     }
 }
 

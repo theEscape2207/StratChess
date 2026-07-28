@@ -613,6 +613,21 @@ struct EvalComplexTestFixture
         return BlendPhase(EvalComplex::eval_mopup(ctx, color), ctx.phase);
     }
 
+    // Raw (mg, eg) pairs, for asserting a tapered term's ENDPOINTS rather
+    // than its value at one position's particular phase.
+    static ScorePair RooksPair(const Board& board, eColor color)
+    {
+        return EvalComplex::eval_rooks(BuildContext(board), color);
+    }
+    static ScorePair PstPair(const Board& board, eColor color)
+    {
+        return EvalComplex::eval_pst(BuildContext(board), color);
+    }
+    static int Phase(const Board& board)
+    {
+        return BuildContext(board).phase;
+    }
+
     // Named constants, exposed so term-level tests can express exact
     // expected values without duplicating magic numbers.
     static int DoubledPawnPenalty()  { return EvalComplex::DOUBLED_PAWN_PENALTY; }
@@ -654,17 +669,19 @@ TEST_CASE("Eval - eval_pawns: doubled and isolated a-file pawns score exactly -(
     REQUIRE(EvalComplexTestFixture::Pawns(board, WHITE) == expected);
 }
 
-TEST_CASE("Eval - eval_rooks: rook on 7th with a fully open file scores exactly ROOK_ON_7TH_BONUS + OPEN_FILE", "[eval]")
+TEST_CASE("Eval - eval_rooks: the 7th-rank bonus is endgame-weighted, the file bonus is not", "[eval]")
 {
-    // FEN_ROOK_ON_7TH: White Re7 alone against a bare king, endgame stage —
-    // the 7th-rank bonus plus a fully open file (no pawns of either colour)
-    // collapse to ROOK_ON_7TH_BONUS + OPEN_FILE: HALF_OPEN_FILE plus the
-    // extra (OPEN_FILE - HALF_OPEN_FILE) once the file turns out fully open,
-    // not just half, sums to plain OPEN_FILE.
+    // FEN_ROOK_ON_7TH: White Re7 alone against a bare king. The fully open
+    // file (no pawns of either colour) is phase-independent and so appears at
+    // both endpoints; the 7th-rank bonus is endgame-weighted (D3, issue #99)
+    // and so appears only at eg. Asserting the endpoints rather than the
+    // blended value keeps this independent of the position's own phase.
     Board board(FEN_ROOK_ON_7TH);
 
-    const int expected = EvalComplexTestFixture::RookOn7thBonus() + EvalComplexTestFixture::OpenFile();
-    REQUIRE(EvalComplexTestFixture::Rooks(board, WHITE) == expected);
+    const ScorePair rooks = EvalComplexTestFixture::RooksPair(board, WHITE);
+
+    REQUIRE(rooks.mg == EvalComplexTestFixture::OpenFile());
+    REQUIRE(rooks.eg == EvalComplexTestFixture::OpenFile() + EvalComplexTestFixture::RookOn7thBonus());
 }
 
 TEST_CASE("Eval - eval_rooks: term-level result matches the #126 open-file guard exactly", "[eval]")
@@ -712,36 +729,47 @@ TEST_CASE("Eval - eval_rooks: term-level D5 own-pawn-behind result is exactly eq
     REQUIRE(EvalComplexTestFixture::Rooks(pawnBehindRook, WHITE) == expected);
 }
 
-TEST_CASE("Eval - eval_pst: the king receives exactly one PST contribution, from the middlegame table", "[eval]")
+TEST_CASE("Eval - eval_pst: the king's two PST endpoints are the two king tables", "[eval]")
 {
-    // Two queens per side (11800 material each, > 11500) force MIDDLEGAME.
     // Kings sit on e1/e8, outside every queen's line of attack (manually
     // verified: no queen shares a rank, file, or diagonal with either king),
-    // so the position is legal despite the unusual material. eval_pst's
-    // total must equal the independently-computed sum of each non-king
-    // piece's generic PST value (via EvalProbe::GetPositionalScore, a
-    // different call path than eval_pst's own per-type loops) plus exactly
-    // one lookup into the middlegame king table (g_Eval_Bitboards[5]).
+    // so the position is legal despite the unusual material.
+    //
+    // Post-#99 the king is no longer assigned one table by a material
+    // threshold: g_Eval_Bitboards[5] and [6] are its mg and eg endpoints. Each
+    // endpoint must equal the independently-computed non-king PST sum (via
+    // EvalProbe::GetPositionalScore, a different call path than eval_pst's own
+    // per-type loops) plus exactly one lookup into the corresponding table.
     Board board("q3k2q/8/8/8/8/8/8/Q3K2Q w - - 0 1");
 
     const int expectedNonKing =
         EvalProbe::GetPositionalScore(a1, WHITE_QUEEN) + EvalProbe::GetPositionalScore(h1, WHITE_QUEEN);
-    const int expectedKing = g_Eval_Bitboards[5][EvalProbe::getEvalBoard(WHITE_KING, e1)];
+    const int kingMg = g_Eval_Bitboards[5][EvalProbe::getEvalBoard(WHITE_KING, e1)];
+    const int kingEg = g_Eval_Bitboards[6][EvalProbe::getEvalBoard(WHITE_KING, e1)];
 
-    REQUIRE(EvalComplexTestFixture::Pst(board, WHITE) == expectedNonKing + expectedKing);
+    const ScorePair pst = EvalComplexTestFixture::PstPair(board, WHITE);
+
+    REQUIRE(pst.mg == expectedNonKing + kingMg);
+    REQUIRE(pst.eg == expectedNonKing + kingEg);
+    // The two tables genuinely disagree here, so the blend below is not a
+    // no-op masquerading as one.
+    REQUIRE(kingMg != kingEg);
 }
 
-TEST_CASE("Eval - eval_pst: the king uses the endgame table once material drops to or below the threshold", "[eval]")
+TEST_CASE("Eval - eval_pst: the reported king contribution is its endpoints blended at the position phase", "[eval]")
 {
-    // Single queen per side: 10900 material, <= 11500, so ENDGAME. Same king
-    // squares as the middlegame case above — only the selected king table
-    // should differ.
-    Board board("4k3/8/8/8/8/8/8/Q3K3 w - - 0 1");
+    // Ties the term's value to its own endpoints and the position's own phase,
+    // so a future change to either the tables or the phase weights cannot
+    // leave the blend silently inconsistent with them.
+    Board board("q3k2q/8/8/8/8/8/8/Q3K2Q w - - 0 1");
 
-    const int expectedNonKing = EvalProbe::GetPositionalScore(a1, WHITE_QUEEN);
-    const int expectedKing = g_Eval_Bitboards[6][EvalProbe::getEvalBoard(WHITE_KING, e1)];
+    const ScorePair pst = EvalComplexTestFixture::PstPair(board, WHITE);
+    const int phase = EvalComplexTestFixture::Phase(board);
+    CAPTURE(pst.mg, pst.eg, phase);
 
-    REQUIRE(EvalComplexTestFixture::Pst(board, WHITE) == expectedNonKing + expectedKing);
+    // Two queens a side and nothing else: 4 + 4 + 4 + 4 = 16.
+    REQUIRE(phase == 16);
+    REQUIRE(EvalComplexTestFixture::Pst(board, WHITE) == BlendPhase(pst, phase));
 }
 
 TEST_CASE("Eval - eval_mopup: only the winning color receives a nonzero contribution", "[eval]")
@@ -864,24 +892,123 @@ TEST_CASE("Eval - Breakdown(): total agrees with Evaluate(), and the rows reprod
     REQUIRE(terms.total == expectedTotal);
 }
 
-TEST_CASE("Eval - Breakdown(): stage matches the context Evaluate() builds", "[eval]")
+TEST_CASE("Eval - Breakdown(): phase matches the context Evaluate() builds", "[eval]")
 {
-    // The stage is reported because it is not derivable from the rows, and it
-    // is what selects the king PST and gates mop-up. Asserting it against the
-    // fixture's own BuildContext keeps the reported stage pinned to the one
-    // construction site rather than to a duplicated threshold (issue #99 will
-    // eventually move that threshold).
+    // Phase is reported because it is not derivable from the rows, and it is
+    // what places every tapered term between its mg and eg endpoints. Asserting
+    // it against Breakdown() keeps the reported value pinned to the one
+    // construction site (BuildContext) rather than to a duplicated formula.
     auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
     auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
     REQUIRE(complexEval != nullptr);
 
-    SECTION("full starting material is MIDDLEGAME") {
+    SECTION("full starting material is MAX_GAME_PHASE") {
         Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-        REQUIRE(complexEval->Breakdown(board).stage == EvalManager::PlayState::MIDDLEGAME);
+        REQUIRE(complexEval->Breakdown(board).phase == MAX_GAME_PHASE);
     }
 
-    SECTION("bare kings plus a queen is ENDGAME") {
+    SECTION("bare kings plus a queen is the queen's weight alone") {
         Board board("4k3/8/8/8/8/8/8/3QK3 w - - 0 1");
-        REQUIRE(complexEval->Breakdown(board).stage == EvalManager::PlayState::ENDGAME);
+        REQUIRE(complexEval->Breakdown(board).phase == 4);
     }
+
+    SECTION("bare kings are phase 0") {
+        Board board("4k3/8/8/8/8/8/8/4K3 w - - 0 1");
+        REQUIRE(complexEval->Breakdown(board).phase == 0);
+    }
+
+    SECTION("pawns do not contribute to phase") {
+        // Same pieces as the bare-kings case plus a full pawn set: phase must
+        // not move, or the taper would drift with pawn trades rather than with
+        // the piece material that actually defines the game's stage.
+        Board board("4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1");
+        REQUIRE(complexEval->Breakdown(board).phase == 0);
+    }
+
+    SECTION("promotion overshoot clamps rather than extrapolating") {
+        // Three queens a side is 24 from queens alone, plus rooks/minors on top;
+        // an unclamped phase would run past MAX_GAME_PHASE and extrapolate
+        // outside the interpolation range instead of saturating at "opening".
+        Board board("qqq1k3/8/8/8/8/8/8/QQQ1K3 w - - 0 1");
+        REQUIRE(complexEval->Breakdown(board).phase == MAX_GAME_PHASE);
+    }
+}
+
+// ── Tapering behaviour (issue #99) ───────────────────────────────────────────
+
+TEST_CASE("Eval - BlendPhase is exact at both endpoints", "[eval]")
+{
+    // The classic tapering bug is an off-by-one that makes neither endpoint
+    // reproduce its own input, so assert both directly rather than inferring
+    // them from a blended position.
+    const ScorePair s{ 100, -40 };
+
+    REQUIRE(BlendPhase(s, MAX_GAME_PHASE) == 100);
+    REQUIRE(BlendPhase(s, 0) == -40);
+}
+
+TEST_CASE("Eval - BlendPhase moves monotonically between the endpoints", "[eval]")
+{
+    const ScorePair s{ 240, 0 };
+
+    int previous = BlendPhase(s, 0);
+    for (int phase = 1; phase <= MAX_GAME_PHASE; ++phase) {
+        const int current = BlendPhase(s, phase);
+        CAPTURE(phase, previous, current);
+        REQUIRE(current >= previous);
+        previous = current;
+    }
+    REQUIRE(previous == 240);
+}
+
+TEST_CASE("Eval - king centralization is worth more as the phase drops", "[eval]")
+{
+    // The substantive effect of tapering: the same central king placement should
+    // be scored progressively better as pieces come off, instead of jumping by
+    // up to 100 cp the moment a material threshold is crossed.
+    //
+    // Both positions have the White king centralized on d4 and the Black king
+    // offside on h8. The only difference is how much non-pawn material is left,
+    // i.e. the phase.
+    Board opening("3qk2r/8/8/8/3K4/8/8/3Q4 w - - 0 1");      // queens + a rook: high phase
+    Board ending("4k3/8/8/8/3K4/8/8/8 w - - 0 1");            // bare kings: phase 0
+
+    auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+    auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
+    REQUIRE(complexEval != nullptr);
+
+    const EvalBreakdown high = complexEval->Breakdown(opening);
+    const EvalBreakdown low  = complexEval->Breakdown(ending);
+    CAPTURE(high.phase, low.phase, high.pst[WHITE], low.pst[WHITE]);
+
+    REQUIRE(high.phase > low.phase);
+    REQUIRE(low.pst[WHITE] > high.pst[WHITE]);
+}
+
+TEST_CASE("Eval - crossing the old stage threshold no longer produces a cliff", "[eval]")
+{
+    // The property this change exists to create. Before #99, a capture that took
+    // min(material) across 11500 flipped the king from the middlegame table to
+    // the endgame one, moving a centralized king's score by up to 100 cp in a
+    // single ply. The two positions below differ by exactly one minor piece —
+    // which is what used to straddle that threshold — so the king's positional
+    // contribution must now move by far less than that cliff.
+    Board before("4k3/8/8/8/3K4/8/8/4B3 w - - 0 1");
+    Board after("4k3/8/8/8/3K4/8/8/8 w - - 0 1");
+
+    auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+    auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
+    REQUIRE(complexEval != nullptr);
+
+    const int pstBefore = complexEval->Breakdown(before).pst[WHITE];
+    const int pstAfter  = complexEval->Breakdown(after).pst[WHITE];
+
+    // Isolate the king: subtract the bishop's own PST contribution, which is the
+    // only other White piece and is untouched by the taper.
+    const int bishopPst = EvalProbe::GetPositionalScore(e1, WHITE_BISHOP);
+    const int kingDelta = pstAfter - (pstBefore - bishopPst);
+    CAPTURE(pstBefore, pstAfter, bishopPst, kingDelta);
+
+    const int kingDeltaAbs = (kingDelta < 0) ? -kingDelta : kingDelta;
+    REQUIRE(kingDeltaAbs < 20);
 }

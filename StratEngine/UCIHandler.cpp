@@ -119,16 +119,6 @@ static std::string eval_term_row(const char* name, int white, int black)
          + " |" + pad_left(std::to_string(white - black), EVAL_VALUE_COL);
 }
 
-static const char* play_state_name(EvalManager::PlayState stage)
-{
-    switch (stage) {
-    case EvalManager::PlayState::MIDDLEGAME: return "middlegame";
-    case EvalManager::PlayState::ENDGAME:    return "endgame";
-    case EvalManager::PlayState::FINALGAME:  return "finalgame";
-    }
-    return "unknown";
-}
-
 // Prints the static evaluation of the current position (board_), as set up
 // by the last 'position' command (startpos default if none has run yet).
 // Not a search response: no 'info'/'bestmove' output, so a GUI cannot
@@ -193,7 +183,10 @@ void UciHandler::cmd_eval()
         send(sum_label + pad_left(std::to_string(net_sum),
                                   EVAL_TABLE_WIDTH - static_cast<int>(sum_label.size())));
 
-        send(std::string("stage: ") + play_state_name(terms.stage));
+        // Phase rather than a stage name (issue #99): the evaluator no longer
+        // has a middlegame/endgame boolean, and how far through the taper a
+        // position sits is what actually explains the pst row.
+        send("phase: " + std::to_string(terms.phase) + "/" + std::to_string(MAX_GAME_PHASE));
 
         score = terms.total;
     }
