@@ -384,3 +384,6 @@ Directory.Build.user.props
 # Generated corpus artifact from Scripts/build_corpus.py's default --out
 # (issue #140) — regenerated per checkout, deliberately not committed.
 /corpus.fen
+
+# Self-play transcript written by Scripts/Validate-PrePR.ps1 (working-dir artifact)
+/StratChessEvolved/pre_pr_selfplay_out.txt

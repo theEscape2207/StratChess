@@ -83,20 +83,124 @@ void UciHandler::cmd_ucinewgame()
     board_.SetupFromFEN(std::string(STARTING_FEN));
 }
 
+// Column layout for the per-term breakdown table (issue #129 phase 2). The
+// widths are shared by the header, the rules and every row so the columns line
+// up, and are named here rather than repeated as literals in each format call.
+static constexpr int EVAL_TERM_COL  = 11;   // term name, left-aligned
+static constexpr int EVAL_VALUE_COL = 7;    // each of white / black / net, right-aligned
+// Total printed width of one row: the term column, the first '|', then three
+// value columns of which the last two are each preceded by " |". The 'sum'
+// line is right-aligned to this so its figure lands under the net column.
+static constexpr int EVAL_TABLE_WIDTH =
+    EVAL_TERM_COL + 1 + EVAL_VALUE_COL + 2 * (2 + EVAL_VALUE_COL);
+
+// Right-align `text` in a field of `width`; returns it unpadded if it is
+// already wider, so an implausibly large score widens the table rather than
+// being truncated into a wrong number.
+static std::string pad_left(const std::string& text, int width)
+{
+    const int fill = width - static_cast<int>(text.size());
+    return (fill > 0) ? std::string(static_cast<size_t>(fill), ' ') + text : text;
+}
+
+static std::string pad_right(const std::string& text, int width)
+{
+    const int fill = width - static_cast<int>(text.size());
+    return (fill > 0) ? text + std::string(static_cast<size_t>(fill), ' ') : text;
+}
+
+// One table row: "<name> | <white> | <black> | <net>", with net always
+// white-minus-black — the direction in which Evaluate() combines the two.
+static std::string eval_term_row(const char* name, int white, int black)
+{
+    return pad_right(name, EVAL_TERM_COL)
+         + "|" + pad_left(std::to_string(white), EVAL_VALUE_COL)
+         + " |" + pad_left(std::to_string(black), EVAL_VALUE_COL)
+         + " |" + pad_left(std::to_string(white - black), EVAL_VALUE_COL);
+}
+
+static const char* play_state_name(EvalManager::PlayState stage)
+{
+    switch (stage) {
+    case EvalManager::PlayState::MIDDLEGAME: return "middlegame";
+    case EvalManager::PlayState::ENDGAME:    return "endgame";
+    case EvalManager::PlayState::FINALGAME:  return "finalgame";
+    }
+    return "unknown";
+}
+
 // Prints the static evaluation of the current position (board_), as set up
 // by the last 'position' command (startpos default if none has run yet).
 // Not a search response: no 'info'/'bestmove' output, so a GUI cannot
 // mistake this for one (D6, .claude/plans/uci-eval-command-term-breakdown.md).
 //
-// Two lines are printed because the engine's score is side-to-move-relative
-// (positive = good for whoever moves next) and that sign convention is the
-// single most confusing thing about reading this engine's output — see D5
-// in the plan. The White-POV line removes any need to mentally flip the
+// Two total lines are printed because the engine's score is side-to-move-
+// relative (positive = good for whoever moves next) and that sign convention
+// is the single most confusing thing about reading this engine's output — see
+// D5 in the plan. The White-POV line removes any need to mentally flip the
 // sign when Black is to move.
+//
+// Above them, phase 2 prints a per-term breakdown (D10). It is emitted only
+// for EvalComplex: the terms are its own, and EvalSimple has none to report,
+// so the base EvalManager interface was left alone rather than given a debug
+// method only one subclass could implement (D7). The downcast mirrors the one
+// init_ai() already performs.
+//
+// When the breakdown is available, the totals below are taken from its `total`
+// field — which is Evaluate()'s own return value (D8) — rather than from a
+// second Evaluate() call here. That is what makes the printed table and the
+// printed total provably the same evaluation of the same position, and not
+// merely two evaluations that happen to agree. Without a breakdown the command
+// falls back to calling Evaluate() directly, degrading to phase 1's output.
 void UciHandler::cmd_eval()
 {
-    const int score = eval_->Evaluate(board_);
     const bool white_to_move = (board_.GetCurrentColor() == WHITE);
+    int score = 0;
+
+    if (const auto* complex_eval = dynamic_cast<const EvalComplex*>(eval_.get())) {
+        const EvalBreakdown terms = complex_eval->Breakdown(board_);
+        const std::string rule = std::string(static_cast<size_t>(EVAL_TERM_COL), '-') + "+"
+                               + std::string(static_cast<size_t>(EVAL_VALUE_COL) + 1, '-') + "+"
+                               + std::string(static_cast<size_t>(EVAL_VALUE_COL) + 1, '-') + "+"
+                               + std::string(static_cast<size_t>(EVAL_VALUE_COL), '-');
+
+        send(pad_right("term", EVAL_TERM_COL)
+             + "|" + pad_left("white", EVAL_VALUE_COL)
+             + " |" + pad_left("black", EVAL_VALUE_COL)
+             + " |" + pad_left("net", EVAL_VALUE_COL));
+        send(rule);
+        // The material row is king-inclusive (10000 cp per side) because it is
+        // EvalContext::material verbatim — see that field's comment in Eval.h.
+        // It cancels in the net column. Documented there rather than printed on
+        // every invocation: it is a fixed property of the evaluator, not
+        // information about the position being examined.
+        send(eval_term_row("material", terms.material[WHITE], terms.material[BLACK]));
+        send(eval_term_row("pawns",    terms.pawns[WHITE],    terms.pawns[BLACK]));
+        send(eval_term_row("rooks",    terms.rooks[WHITE],    terms.rooks[BLACK]));
+        send(eval_term_row("pst",      terms.pst[WHITE],      terms.pst[BLACK]));
+        send(eval_term_row("mopup",    terms.mopup[WHITE],    terms.mopup[BLACK]));
+        send(rule);
+
+        // The sum of the net column. It must equal the 'white pov' line below;
+        // both are printed so a drift between the terms and Evaluate() is
+        // visible on inspection, and asserted on in StratChessTests (D9).
+        const int net_sum = (terms.material[WHITE] - terms.material[BLACK])
+                          + (terms.pawns[WHITE]    - terms.pawns[BLACK])
+                          + (terms.rooks[WHITE]    - terms.rooks[BLACK])
+                          + (terms.pst[WHITE]      - terms.pst[BLACK])
+                          + (terms.mopup[WHITE]    - terms.mopup[BLACK]);
+        const std::string sum_label = "sum (white pov)";
+        send(sum_label + pad_left(std::to_string(net_sum),
+                                  EVAL_TABLE_WIDTH - static_cast<int>(sum_label.size())));
+
+        send(std::string("stage: ") + play_state_name(terms.stage));
+
+        score = terms.total;
+    }
+    else {
+        score = eval_->Evaluate(board_);
+    }
+
     const int white_pov = white_to_move ? score : -score;
 
     send("static eval: " + std::to_string(score) + " cp (" +

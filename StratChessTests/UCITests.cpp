@@ -11,6 +11,8 @@
 #include <sstream>
 #include <iostream>
 #include <string>
+#include <vector>
+#include <algorithm>
 
 using P = UciHandler::GoParams;
 
@@ -273,14 +275,23 @@ private:
 // label="static eval: " on "static eval: 34 cp (White to move; ...)".
 // A real parse of the emitted number, not a substring check — this is what
 // makes the honesty-invariant test below actually load-bearing.
+//
+// The label is matched at the start of a line, not anywhere in the output.
+// Phase 2's breakdown prints a "sum (white pov)" line above "white pov:", and
+// the two are distinguished today only by the trailing colon: an unanchored
+// find() would start silently reading the wrong line the moment anyone added
+// one — turning the sign-convention assertions below into confident nonsense
+// rather than a failure.
 static int extract_cp_score(const std::string& output, const std::string& label)
 {
-    const auto label_pos = output.find(label);
+    const std::string anchored = "\n" + output;
+    const auto label_pos = anchored.find("\n" + label);
     REQUIRE(label_pos != std::string::npos);
-    const auto value_start = label_pos + label.size();
-    const auto value_end = output.find(" cp", value_start);
+
+    const auto value_start = label_pos + 1 + label.size();
+    const auto value_end = anchored.find(" cp", value_start);
     REQUIRE(value_end != std::string::npos);
-    return std::stoi(output.substr(value_start, value_end - value_start));
+    return std::stoi(anchored.substr(value_start, value_end - value_start));
 }
 
 TEST_CASE("cmd_eval: works before any position command, does not crash", "[uci]")
@@ -364,6 +375,172 @@ TEST_CASE("cmd_eval: white-pov line matches the stated sign convention", "[uci]"
         REQUIRE(side_to_move_score != 0);
         REQUIRE(white_pov == -side_to_move_score);
     }
+}
+
+// ---------------------------------------------------------------------------
+// cmd_eval — per-term breakdown (issue #129 phase 2)
+// ---------------------------------------------------------------------------
+//
+// These assert on the *printed* table rather than on EvalBreakdown directly.
+// A breakdown that is right internally and mis-rendered is still a debugging
+// tool that lies, and #117 (Texel tuning) will be reading the output, not the
+// struct. The struct-level check that the rows really are the same terms
+// EvalComplex::Evaluate() sums lives in EvalTests.cpp ([eval]).
+
+struct EvalTermRow { int white; int black; int net; };
+
+static std::vector<std::string> split_lines(const std::string& text)
+{
+    std::vector<std::string> lines;
+    std::istringstream stream(text);
+    std::string line;
+    while (std::getline(stream, line))
+        lines.push_back(line);
+    return lines;
+}
+
+// Pulls one "<term> | <white> | <black> | <net>" row out of the printed table.
+// Matches on the first whitespace-delimited token so column padding is not
+// baked into the test — a change to the column widths must not silently turn
+// these assertions into no-ops.
+static EvalTermRow extract_term_row(const std::string& output, const std::string& term)
+{
+    EvalTermRow row{};
+    bool found = false;
+
+    for (const std::string& line : split_lines(output)) {
+        std::istringstream head(line);
+        std::string first;
+        if (!(head >> first) || first != term)
+            continue;
+
+        const auto bar = line.find('|');
+        REQUIRE(bar != std::string::npos);
+        std::string values = line.substr(bar + 1);
+        std::replace(values.begin(), values.end(), '|', ' ');
+
+        std::istringstream parsed(values);
+        REQUIRE(static_cast<bool>(parsed >> row.white >> row.black >> row.net));
+        found = true;
+        break;
+    }
+
+    REQUIRE(found);
+    return row;
+}
+
+// The "sum (white pov)" line: the label followed by the right-aligned figure.
+static int extract_sum_white_pov(const std::string& output)
+{
+    static const std::string kLabel = "sum (white pov)";
+    const auto label_pos = output.find(kLabel);
+    REQUIRE(label_pos != std::string::npos);
+
+    const auto line_end = output.find('\n', label_pos);
+    const auto value_start = label_pos + kLabel.size();
+    const std::string value = (line_end != std::string::npos)
+        ? output.substr(value_start, line_end - value_start)
+        : output.substr(value_start);
+
+    return std::stoi(value);
+}
+
+// Every term the breakdown prints, in table order. Material is a row like any
+// other: it is the largest single contribution and a sign error there would be
+// the easiest one to miss.
+static const char* const kBreakdownTerms[] = { "material", "pawns", "rooks", "pst", "mopup" };
+
+TEST_CASE("cmd_eval: printed breakdown nets are white-minus-black and sum to the evaluator's score", "[uci]")
+{
+    // The phase 2 honesty invariant (D9). Three separate claims, each of which
+    // has failed in some engine at some point: each row's net is consistent
+    // with its own two columns; the net column sums to the printed total; and
+    // that total is the score the search would actually see, computed here
+    // from a fresh Board through a separate EvalManager instance.
+    const char* fen = GENERATE(
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",   // Kiwipete, middlegame
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",               // startpos, symmetric
+        "8/8/8/3r4/4k3/8/8/3QK3 w - - 0 1",                                       // endgame, White to move
+        "r3k3/8/8/8/8/8/8/4K3 b - - 0 1",                                         // Black to move, Black up a rook
+        "8/8/8/4k3/8/8/8/3QK3 w - - 0 1");                                        // pawnless K+Q vs K — mop-up active
+    CAPTURE(fen);
+
+    UciHandlerTestFixture fix;
+    fix.position(std::string("position fen ") + fen);
+
+    CoutRedirect redirect;
+    fix.eval();
+    const std::string out = redirect.str();
+
+    int net_sum = 0;
+    for (const char* term : kBreakdownTerms) {
+        CAPTURE(term);
+        const EvalTermRow row = extract_term_row(out, term);
+        REQUIRE(row.net == row.white - row.black);
+        net_sum += row.net;
+    }
+
+    REQUIRE(net_sum == extract_sum_white_pov(out));
+    REQUIRE(net_sum == extract_cp_score(out, "white pov:"));
+
+    auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+    Board board(fen);
+    const int side_to_move_score = eval->Evaluate(board);
+    const int expected_white_pov = (board.GetCurrentColor() == WHITE)
+        ? side_to_move_score : -side_to_move_score;
+
+    REQUIRE(net_sum == expected_white_pov);
+}
+
+TEST_CASE("cmd_eval: breakdown reports the game stage the evaluator classified", "[uci]")
+{
+    // The stage is printed because it is not derivable from the rows, yet it
+    // selects which king PST eval_pst reads and gates eval_mopup entirely —
+    // so a reader debugging a king-placement score needs it to interpret the
+    // pst row at all. Threshold is min(material) <= 11500, king-inclusive.
+    UciHandlerTestFixture fix;
+
+    SECTION("full starting material is middlegame") {
+        fix.position("position startpos");
+
+        CoutRedirect redirect;
+        fix.eval();
+        REQUIRE(redirect.str().find("stage: middlegame") != std::string::npos);
+    }
+
+    SECTION("bare kings plus a queen is endgame") {
+        fix.position("position fen 4k3/8/8/8/8/8/8/3QK3 w - - 0 1");
+
+        CoutRedirect redirect;
+        fix.eval();
+        REQUIRE(redirect.str().find("stage: endgame") != std::string::npos);
+    }
+}
+
+TEST_CASE("cmd_eval: a term that is active for exactly one side shows it in the per-color split", "[uci]")
+{
+    // The per-color columns are the reason for the table's shape (D10): a net
+    // of -30 does not say whether the pawn term is penalising White or
+    // rewarding Black. This pins that the columns carry that information
+    // rather than both being derived from the net.
+    //
+    // Pawnless K+Q vs K, White winning decisively: eval_mopup is gated on a
+    // 400 cp material lead, so it is active for White and inert for Black.
+    //
+    // The losing king is cornered on a8 rather than centralised, so both of
+    // eval_mopup's components contribute. With the king on e5 its
+    // center-manhattan-distance is 0 and the entire MOPUP_CMD_WEIGHT term
+    // drops out — the assertion would then rest solely on the king-distance
+    // component, and would still pass with MOPUP_CMD_WEIGHT zeroed.
+    UciHandlerTestFixture fix;
+    fix.position("position fen k7/8/8/8/8/8/8/3QK3 w - - 0 1");
+
+    CoutRedirect redirect;
+    fix.eval();
+    const EvalTermRow mopup = extract_term_row(redirect.str(), "mopup");
+
+    REQUIRE(mopup.white > 0);
+    REQUIRE(mopup.black == 0);
 }
 
 // ---------------------------------------------------------------------------

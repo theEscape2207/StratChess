@@ -75,6 +75,10 @@ function Get-TierForPath {
     # would fall into Tooling — the exact self-exemption hazard this guards.
     if ($p -eq 'build.ps1')                                  { return 'Build' }
     if ($p -like '*/Scripts/Validate-*.ps1')                 { return 'Build' }
+    # Gates whether Validate-PrePR.ps1 runs at all, so a bug in it could exempt a real
+    # change from validation — the same self-concealment hazard the Validate-* rule
+    # above guards against. Build tier, never Tooling.
+    if ($p -like '*/Scripts/New-PullRequest.ps1')            { return 'Build' }
     if ($p -like '*/Scripts/Get-ChangeTier.ps1')             { return 'Build' }
     if ($p -like '.githooks/*')                              { return 'Build' }
     if ($p -like '.github/*')                                { return 'Build' }
@@ -96,6 +100,15 @@ function Get-TierForPath {
     if ($p -like '*/Scripts/Sync-Master.ps1')                { return 'Tooling' }
     if ($p -like '*/Scripts/verify_mate_key.py')             { return 'Tooling' }
     if ($p -like '*/Scripts/build_corpus.py')                { return 'Tooling' }
+    # Branch/worktree management. These create, list and tear down worktrees and
+    # branches; none of them compiles anything or is invoked by the engine, so a
+    # change to one cannot alter build or test behaviour.
+    #
+    # New-PullRequest.ps1 is deliberately NOT here — it has its own Build rule above,
+    # because it gates whether validation runs.
+    if ($p -like '*/Scripts/New-Worktree.ps1')               { return 'Tooling' }
+    if ($p -like '*/Scripts/Remove-Worktree.ps1')            { return 'Tooling' }
+    if ($p -like '*/Scripts/Get-Worktrees.ps1')              { return 'Tooling' }
 
     # --- Fail closed ----------------------------------------------------------
     # Everything else, INCLUDING anything unrecognised. Do not add an
@@ -146,6 +159,11 @@ if ($SelfTest) {
         @{ Name = 'docs + cpp -> Engine';       Files = @('CLAUDE.md', 'StratEngine/Eval.cpp');                 Expect = 'Engine' }
         @{ Name = 'build.ps1 -> Build';         Files = @('build.ps1');                                          Expect = 'Build' }
         @{ Name = 'validator -> Build NOT Tooling'; Files = @('StratChessEvolved/Scripts/Validate-PrePR.ps1');   Expect = 'Build' }
+    @{ Name = 'New-Worktree -> Tooling';    Files = @('StratChessEvolved/Scripts/New-Worktree.ps1');    Expect = 'Tooling' }
+    @{ Name = 'Remove-Worktree -> Tooling'; Files = @('StratChessEvolved/Scripts/Remove-Worktree.ps1'); Expect = 'Tooling' }
+    @{ Name = 'Get-Worktrees -> Tooling';   Files = @('StratChessEvolved/Scripts/Get-Worktrees.ps1');   Expect = 'Tooling' }
+    # The PR driver gates validation, so it must never take the Tooling shortcut.
+    @{ Name = 'New-PullRequest -> Build NOT Tooling'; Files = @('StratChessEvolved/Scripts/New-PullRequest.ps1'); Expect = 'Build' }
         @{ Name = 'classifier -> Build';        Files = @('StratChessEvolved/Scripts/Get-ChangeTier.ps1');       Expect = 'Build' }
         @{ Name = 'workflow -> Build';          Files = @('.github/workflows/build-and-test.yml');               Expect = 'Build' }
         @{ Name = 'hook -> Build';              Files = @('.githooks/pre-commit');                               Expect = 'Build' }
