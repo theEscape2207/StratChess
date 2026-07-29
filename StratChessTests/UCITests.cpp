@@ -571,36 +571,105 @@ TEST_CASE("FenBatch::ClassifyLine: '#' comment line is Skip", "[uci]")
     REQUIRE(r.kind == FenBatch::LineKind::Skip);
 }
 
-TEST_CASE("FenBatch::ClassifyLine: 2-field line is Malformed via the field-count pre-filter", "[uci]")
+TEST_CASE("FenBatch::ClassifyLine: 2-field line is Malformed with the field-count message", "[uci]")
 {
+    // The message now comes from FENParser itself, which counts fields before running its
+    // regex. Previously this check lived in ClassifyLine and the parser's own copy was
+    // unreachable behind the regex (issue #143).
     auto r = FenBatch::ClassifyLine("8/8/8/8/8/8/8/8 w");
     REQUIRE(r.kind == FenBatch::LineKind::Malformed);
     REQUIRE_FALSE(r.error.empty());
-    REQUIRE(r.error.find("field(s)") != std::string::npos);
+    REQUIRE(r.error.find("too few fields") != std::string::npos);
 }
 
-TEST_CASE("FenBatch::ClassifyLine: 4-field line clears the pre-filter but is rejected by FENParser", "[uci]")
+TEST_CASE("FenBatch::ClassifyLine: 4-field line is Valid", "[uci]")
 {
-    // FENParser requires all six standard fields (halfmove/fullmove included),
-    // so this line — placement/side/castling/en-passant only — is exactly the
-    // case that distinguishes the two validation tiers: it passes the >= 4
-    // field-count floor but still fails the authoritative parser check.
+    // Was Malformed until issue #143: the parser's regex demanded all six fields even though
+    // its body treated halfmove/fullmove as optional. EPD corpora and hand-authored positions
+    // are overwhelmingly 4-field, so this is the form #117's tuning work needs to ingest.
     auto r = FenBatch::ClassifyLine("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -");
+    REQUIRE(r.kind == FenBatch::LineKind::Valid);
+    REQUIRE(r.error.empty());
+}
+
+TEST_CASE("FenBatch::ClassifyLine: 5-field line is Valid", "[uci]")
+{
+    auto r = FenBatch::ClassifyLine("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 3");
+    REQUIRE(r.kind == FenBatch::LineKind::Valid);
+    REQUIRE(r.error.empty());
+}
+
+TEST_CASE("FenBatch::ClassifyLine: EPD operations are still rejected", "[uci]")
+{
+    // Accepting 4-6 fields is deliberately NOT the same as accepting EPD. Trailing operations
+    // remain out of scope for the FEN grammar (issue #143); #117's corpus loader owns them.
+    auto r = FenBatch::ClassifyLine(R"(rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - c9 "1-0";)");
     REQUIRE(r.kind == FenBatch::LineKind::Malformed);
     REQUIRE_FALSE(r.error.empty());
 }
 
-TEST_CASE("FenBatch::ClassifyLine: the two malformed tiers report distinguishable messages", "[uci]")
-{
-    // The whole reason the pre-filter exists is to tell "this isn't a FEN at
-    // all" apart from "this is a FEN the parser is strict about" — if both
-    // tiers produced the same message that distinction would be pointless.
-    auto field_count_tier = FenBatch::ClassifyLine("8/8/8/8/8/8/8/8 w");
-    auto parser_tier = FenBatch::ClassifyLine("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -");
+// ---------------------------------------------------------------------------
+// FENParser::ParseFEN — optional halfmove/fullmove fields (issue #143)
+// ---------------------------------------------------------------------------
 
-    REQUIRE(field_count_tier.kind == FenBatch::LineKind::Malformed);
-    REQUIRE(parser_tier.kind == FenBatch::LineKind::Malformed);
-    REQUIRE(field_count_tier.error != parser_tier.error);
+TEST_CASE("FENParser::ParseFEN: 4-field FEN defaults halfmove to 0 and fullmove to 1", "[uci]")
+{
+    FENParser::FENGameState state;
+    std::vector<std::tuple<ePiece, eSquare>> pieces;
+    auto err = FENParser::ParseFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -", state, pieces);
+
+    REQUIRE_FALSE(err.has_value());
+    CHECK(state.sideToMove == eColor::WHITE);
+    CHECK(state.halfMoveClock == 0);
+    CHECK(state.fullMoveCounter == 1);
+}
+
+TEST_CASE("FENParser::ParseFEN: 5-field FEN keeps the halfmove clock, defaults fullmove to 1", "[uci]")
+{
+    FENParser::FENGameState state;
+    std::vector<std::tuple<ePiece, eSquare>> pieces;
+    auto err = FENParser::ParseFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 7", state, pieces);
+
+    REQUIRE_FALSE(err.has_value());
+    CHECK(state.sideToMove == eColor::BLACK);
+    CHECK(state.halfMoveClock == 7);
+    CHECK(state.fullMoveCounter == 1);
+}
+
+TEST_CASE("FENParser::ParseFEN: 6-field FEN is unaffected by the relaxation", "[uci]")
+{
+    FENParser::FENGameState state;
+    std::vector<std::tuple<ePiece, eSquare>> pieces;
+    auto err = FENParser::ParseFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 12 34", state, pieces);
+
+    REQUIRE_FALSE(err.has_value());
+    CHECK(state.halfMoveClock == 12);
+    CHECK(state.fullMoveCounter == 34);
+}
+
+TEST_CASE("FENParser::ParseFEN: fewer than 4 fields reports the field-count error", "[uci]")
+{
+    FENParser::FENGameState state;
+    std::vector<std::tuple<ePiece, eSquare>> pieces;
+    auto err = FENParser::ParseFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq", state, pieces);
+
+    REQUIRE(err.has_value());
+    CHECK(err->find("too few fields") != std::string::npos);
+}
+
+TEST_CASE("Board::SetupFromFEN: 4-field FEN yields fiftyCount 0", "[uci]")
+{
+    // The halfmove default is not inert: SetupFromFEN feeds it into gameInfo_.fiftyCount,
+    // which drives 50-move draw detection. Pin the value rather than leave it implicit.
+    Board board;
+    board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -");
+
+    // SetupFromFEN returns void and applies nothing on a parse error, so assert the position
+    // actually landed -- otherwise a rejected FEN would leave an empty board whose fiftyCount
+    // is also 0, and this test would pass for the wrong reason.
+    REQUIRE(board.GetPiece(e1) == WHITE_KING);
+    REQUIRE(board.GetPiece(e8) == BLACK_KING);
+    CHECK(board.GetGameInfo().fiftyCount == 0);
 }
 
 TEST_CASE("FenBatch::ClassifyLine: valid 6-field White-to-move FEN is Valid", "[uci]")

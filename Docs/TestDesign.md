@@ -346,9 +346,14 @@ Batch-mode FEN scoring (`StratChessEvolved.exe eval <path>`) is a CLI subcommand
 command — see `.claude/plans/uci-eval-command-term-breakdown.md` (D4). `evalrunner`'s per-line
 classification (blank/comment/malformed/valid) is extracted into `FenBatch::ClassifyLine`
 (`StratEngine/Utils/FenBatch.h`, header-only) and covered by `[uci]` cases in `UCITests.cpp`
-(issue #140) — this is what makes the two-tier guard (field-count pre-filter, then
-`FENParser::ParseFEN` as the authoritative gate) a regression-tested invariant rather than a
-manually-verified one. The surrounding CLI plumbing (file I/O, stdout/stderr framing, line
+(issue #140) — this is what makes the guard a regression-tested invariant rather than a
+manually-verified one. The two-tier form (field-count pre-filter, then `FENParser::ParseFEN`)
+collapsed to a single tier in issue #143: the pre-filter advertised "need at least 4" while the
+parser's regex actually demanded all six fields, and `ParseFEN` now counts fields itself ahead
+of its regex. The `[uci]` cases cover 4-, 5- and 6-field FENs, the halfmove/fullmove defaults
+(0 and 1) they imply, and that EPD operations remain rejected.
+
+The surrounding CLI plumbing (file I/O, stdout/stderr framing, line
 numbering) remains covered by manual validation, matching the existing convention for
 `perft`/`tactical` CLI runners in this file.
 
