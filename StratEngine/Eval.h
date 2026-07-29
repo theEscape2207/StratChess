@@ -7,6 +7,52 @@
 
 class Board;
 
+// Tapered evaluation (issue #99 — see .claude/plans/tapered-evaluation.md).
+//
+// Game phase is a single integer in [0, MAX_GAME_PHASE] computed from the
+// non-king, non-pawn material on the board: MAX_GAME_PHASE with a full set of
+// pieces, 0 in a bare-pawn ending. Phase-sensitive terms produce a ScorePair
+// instead of one number and are interpolated between the two endpoints by
+// Evaluate(), which blends each term and sums the results (see the comment
+// there for why per-term rather than once over the accumulated pair).
+//
+// Deliberately piece-COUNT based, not material-sum based: a material sum
+// conflates "few pieces left" with "one side is winning", which is the same
+// confusion as the pre-#99 `min(material) <= 11500` stage threshold it
+// replaces. Phase is a property of the position, not of who is ahead.
+inline constexpr int MAX_GAME_PHASE = 24;
+
+// A phase-dependent score: `mg` applies at MAX_GAME_PHASE, `eg` at phase 0.
+// A term with no phase sensitivity sets both to the same value, which makes it
+// invariant under the blend.
+struct ScorePair
+{
+	int mg = 0;
+	int eg = 0;
+
+	constexpr ScorePair& operator+=(const ScorePair& rhs) noexcept
+	{
+		mg += rhs.mg;
+		eg += rhs.eg;
+		return *this;
+	}
+};
+
+// Interpolate a ScorePair at the given phase. Exact at both endpoints:
+// phase == MAX_GAME_PHASE yields mg, phase == 0 yields eg — an off-by-one here
+// is the classic tapering bug, so both endpoints are asserted in EvalTests.
+//
+// Truncation toward zero is odd-symmetric ((-n)/d == -(n/d)), so it introduces
+// no sign-dependent bias and does not by itself threaten the #125 mirror
+// property — blending the white-minus-black difference would preserve that
+// too. Per-color blending is chosen for a different reason: it is what makes
+// the per-term rows #129 prints the literal addends of the score, see
+// Evaluate().
+constexpr int BlendPhase(const ScorePair& s, int phase) noexcept
+{
+	return (s.mg * phase + s.eg * (MAX_GAME_PHASE - phase)) / MAX_GAME_PHASE;
+}
+
 // Lazy SMP sharing contract: EvalManager and its
 // derived classes (EvalSimple, EvalComplex) hold no mutable state of any
 // kind — no data members beyond compile-time-constant enums/statics, and
@@ -30,7 +76,6 @@ public:
 		SIMPLE,			// Simple engine
 		COMPLEX,		// Complex engine
 	};
-	enum class PlayState { MIDDLEGAME, ENDGAME, FINALGAME };
 
 	virtual int Evaluate(const Board& board) const = 0;
 	virtual const char* GetType() const = 0;
@@ -118,13 +163,20 @@ struct EvalContext
 	// final white-minus-black difference, so it is left as-is rather than
 	// "fixed" here.
 	int                        material[NUM_COLORS];
-	// MIDDLEGAME vs ENDGAME, gated on min(material[WHITE], material[BLACK])
-	// <= 11500. That threshold is king-value-inclusive (a king alone is 10000
-	// of it) and takes the min() over both sides rather than each side's own
-	// material — both are known-imprecise (issue #99) and deliberately left
-	// unchanged here: fixing either would move scores, which is out of scope
-	// for a pure restructure (D4, eval-context-restructure.md).
-	EvalManager::PlayState     stage;
+	// Game phase in [0, MAX_GAME_PHASE] from non-king, non-pawn piece counts
+	// (issue #99). Replaced the old MIDDLEGAME/ENDGAME `stage`, which keyed on
+	// min(material) <= 11500 — a threshold that was king-value-inclusive (hence
+	// the otherwise inexplicable 11500 = 10000 + 1500) and took min() over both
+	// sides, so a player still holding a queen switched to endgame king scoring
+	// as soon as its OPPONENT was stripped down.
+	int                        phase;
+	// True for the side that is mopping up, false for both otherwise —
+	// i.e. pawnless, decisive material lead, low phase, both kings present.
+	// Computed once in BuildContext so eval_mopup and eval_pst cannot
+	// disagree about whether a position is a mop-up: eval_pst suppresses the
+	// winner's king PST exactly when eval_mopup is paying for king placement
+	// (issue #118 item 4). Two readers of one gate, not two copies of it.
+	bool                       mopup_active[NUM_COLORS];
 };
 
 // EvalBreakdown — per-term introspection output for the UCI 'eval' command
@@ -149,9 +201,9 @@ struct EvalBreakdown
 	int                    rooks[NUM_COLORS];    // eval_rooks
 	int                    pst[NUM_COLORS];      // eval_pst
 	int                    mopup[NUM_COLORS];    // eval_mopup
-	// Included because it is not derivable from the rows: it selects which
-	// king PST eval_pst reads and gates eval_mopup entirely.
-	EvalManager::PlayState stage;
+	// Included because it is not derivable from the rows: it sets where between
+	// the mg and eg endpoints every tapered term landed, and gates eval_mopup.
+	int                    phase;
 	// Side-to-move-relative, exactly as Evaluate() returns it — this field is
 	// Evaluate()'s return value, not a re-derivation of it (D8). Material plus
 	// the four terms, summed white-minus-black, reproduces it up to the
@@ -178,6 +230,29 @@ class EvalComplex final
 	static const short MOPUP_CMD_WEIGHT		= 10;	// weight on losing king's center-manhattan-distance
 	static const short MOPUP_KINGDIST_WEIGHT	= 4;	// weight on (MOPUP_MAX_KING_DISTANCE - king-to-king distance)
 	static const short MOPUP_MAX_KING_DISTANCE	= 7;	// max Chebyshev distance on an 8x8 board
+
+	// Game-phase weights per piece (issue #99). Summed over BOTH colors, so a
+	// full set of pieces gives 2*(2*1 + 2*1 + 2*2 + 1*4) = 24 = MAX_GAME_PHASE.
+	// Pawns and kings contribute nothing: pawns are present throughout and
+	// kings always, so neither carries information about how far the game has
+	// progressed.
+	static const short PHASE_KNIGHT		= 1;
+	static const short PHASE_BISHOP		= 1;
+	static const short PHASE_ROOK		= 2;
+	static const short PHASE_QUEEN		= 4;
+
+	// Mop-up stays a hard gate rather than a blended term (D4): it is a
+	// special case for pawnless decisive endings, not a smoothly-scaling
+	// positional idea, and fading it in at half strength mid-game would be
+	// meaningless.
+	//
+	// Keyed on the LOSING side's phase, not the total. The retired stage gate
+	// was min(material) <= 11500, i.e. a statement about the weaker side alone;
+	// keying on total phase instead would let extra material on the WINNING
+	// side switch mop-up off. That loses exactly the cases mop-up exists for:
+	// KQQ vs K is total phase 8, and is reached by promoting a second queen —
+	// so the engine would lose its mating guidance at the moment it queens.
+	static const short MOPUP_MAX_LOSER_PHASE	= 6;	// gate: loser's own phase <= this
 
 	// Distance helpers for mop-up scoring — plain grid math, orientation-independent
 	// (works the same whether the square belongs to White or Black).
@@ -212,10 +287,10 @@ class EvalComplex final
 	// terms itself, so no term touches a shared accumulator and no term reads
 	// state another term writes — each is a pure function of EvalContext.
 	// Plain int addition, so summation order cannot change the result.
-	static int eval_pawns(const EvalContext& ctx, eColor color) noexcept;
-	static int eval_rooks(const EvalContext& ctx, eColor color) noexcept;
-	static int eval_pst(const EvalContext& ctx, eColor color) noexcept;
-	static int eval_mopup(const EvalContext& ctx, eColor color) noexcept;
+	static ScorePair eval_pawns(const EvalContext& ctx, eColor color) noexcept;
+	static ScorePair eval_rooks(const EvalContext& ctx, eColor color) noexcept;
+	static ScorePair eval_pst(const EvalContext& ctx, eColor color) noexcept;
+	static ScorePair eval_mopup(const EvalContext& ctx, eColor color) noexcept;
 
 public:
 	int Evaluate(const Board& board) const noexcept override;

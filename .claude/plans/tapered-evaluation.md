@@ -1,7 +1,72 @@
 # Tapered Evaluation (Midgame → Endgame)
 
-**Issue**: #99 (carries #118 item 4) · **Epic**: #110 Tier 1 · **Depth**: full plan · **Status**: not started
-**Depends on**: #127 (EvalContext restructure) — do not attempt before it lands
+**Issue**: #99 (carries #118 item 4) · **Epic**: #110 Tier 1 · **Depth**: full plan · **Status**: in progress 2026-07-29
+**Depends on**: #127 (EvalContext restructure) — **landed**, PR #141
+
+## Drift review (2026-07-29, before implementation)
+
+Re-checked every load-bearing assumption against `main` at `a025614`. All the eval-side facts hold:
+
+- #127 landed, and `ctx.stage` is consulted in exactly the three places this plan names —
+  `eval_rooks` (7th-rank gate), `eval_pst` (king table selection), `eval_mopup` (gate).
+- **D5's arithmetic is exact, and was verified against `defines.h`, not assumed.** The endgame king
+  table is precisely `60 - 10 * CenterManhattanDistance(sq)` (spot-checked a8=0/CMD 6, b7=20/CMD 4,
+  d4=60/CMD 0), and the midgame table is uniformly −40/−20/0 by rank. So the ≈100 cp cliff and the
+  net −6 cp/step disincentive both stand as written.
+- `MOPUP_*` constants unchanged; #130 (SPRT) is closed, so the preferred measurement is available;
+  #129's batch mode is available for the step-2 identity check, which is why it was sequenced first.
+
+**One real drift, and it widens the blast radius of D6.** #129 phase 2 (PR #145) landed *after* this
+plan was written and made `PlayState` **public API**: `EvalBreakdown::stage` is a field on the struct
+`EvalComplex::Breakdown()` returns, `UciHandler::cmd_eval()` prints it as `stage: middlegame`, and
+both `[uci]` and `[eval]` tests assert on it. Deleting the enum (D6) therefore also touches
+`UCIHandler.cpp`, `UCITests.cpp`, `EvalTests.cpp` and `Docs/TestDesign.md` — none of which appear in
+the Files-Changed table below.
+
+**Resolution**: replace `EvalBreakdown::stage` with `int phase`, and have `cmd_eval` print
+`phase: N/24` instead of `stage: <name>`. This is strictly more informative than the boolean it
+replaces — a reader debugging a king-placement score wants to know *how far* through the taper the
+position is, not which side of a threshold it fell on — and it keeps #129's introspection honest
+rather than leaving it reporting a concept the evaluator no longer has. The `[uci]`/`[eval]` cases
+that assert `stage: middlegame`/`ENDGAME` become phase-value assertions.
+
+
+## eval-reviewer outcomes (2026-07-29)
+
+Verdict was "needs changes", no blocking correctness defect. Blend arithmetic, endpoint exactness,
+phase bounds and #125 mirror symmetry all verified correct. Acted on:
+
+- **Mop-up gate was a coverage regression.** Gating on *total* phase let material on the WINNING
+  side switch mop-up off — losing KQQ-vs-K (phase 8), KQR-vs-KR, KQQ-vs-KQ, all of which the old
+  `min(material)` gate covered. KQQ-vs-K is the damaging one: it is reached by promoting a second
+  queen, so the engine would have lost its mating guidance at the moment it queened, which is the
+  opposite of what #118 item 4 is for. Now gated on the **loser's** phase
+  (`MOPUP_MAX_LOSER_PHASE`), which is what the retired threshold actually meant. Verified: KQQ vs K
+  reports `mopup 22` again, where the total-phase gate gave 0.
+- **Three tests did not discriminate what they claimed.** The "no cliff" case used two positions
+  that were *both* already below the retired `min(material) <= 11500` threshold, so the old code
+  produced a delta of 0 and it passed identically before and after — it never straddled the cliff
+  it was named for. Replaced with a pair where both sides start above the threshold. The clamp case
+  used six queens (exactly 24, so the clamp was a no-op — it would pass with the clamp deleted) and
+  now uses raw phase 28. The monotonicity case used `{240, 0}`, which divides evenly at every step
+  and so never truncated; now `{100, -40}`.
+- **A comment overclaimed.** Per-color blending was justified by the mirror property, but
+  truncation toward zero is odd-symmetric, so blending the difference would preserve the mirror
+  too. The real reason is the rows-sum invariant. Corrected, along with the "~3 cp" truncation
+  bound (only terms with `mg != eg` can truncate, so it is under 1 cp per tapered term) and four
+  stale "stage-selected" comments.
+
+Accepted and **not** acted on, recorded here as known:
+
+- **Middlegame king centralization is the main Elo risk.** The mg king table is rank-only and
+  file-blind (−40 above rank 2), while the eg table peaks at +60 centrally, so the blend crosses
+  zero around phase 14. At phase 14 a king on d4 scores ≈ +1 where the old code said −40, and
+  having castled can cost ≈8 cp. There is no castling bonus to offset it (#115 is still open).
+  This is exactly what the SPRT is for; if the result is neutral-to-negative this is the first
+  suspect, and the answer is a real mg king-safety table (#97/#117), not a patch here.
+- **KBN vs K loses its centralization signal** for the winning king (60 cp PST replaced by a 28 cp
+  proximity term). Worth measuring as moves-to-mate rather than Elo — a normal-TC match will not
+  resolve it. Belongs with #118's remaining items.
 
 ## Goal
 
@@ -67,6 +132,17 @@ score = (mg * phase + eg * (MAX_PHASE - phase)) / MAX_PHASE;
 Integer arithmetic throughout — the engine has no floating point in eval and should not gain any here.
 Non-tapered terms are added to both `mg` and `eg` (equivalently, added after the blend); pick one and
 be consistent, because mixing the two conventions is how tapering bugs hide.
+
+**D2 amended during implementation (2026-07-29): blend per term, not once.** "Blend once" is
+marginally more accurate but is incompatible with an invariant that already exists. Integer
+division truncates, so `BlendPhase(a) + BlendPhase(b)` and `BlendPhase(a + b)` differ by up to
+1 cp per term. #129's breakdown reports a per-term row and asserts — in `[uci]` — that the rows
+sum to the score. Blending once makes that assertion false by up to ~3 cp on a four-term
+evaluation, i.e. it would turn the introspection tool into one that quietly disagrees with the
+evaluator it reports on. The accuracy given up is bounded, deterministic, and far below the
+noise floor of anything this engine can measure; the reconstructibility given up is not
+recoverable. So `Evaluate()` blends each term and sums the results, and the breakdown rows are
+exactly the numbers that were summed.
 
 **D3 — Taper the king PST only, in this PR.** `g_Eval_Bitboards[5]` (mid) and `[6]` (end) become the
 `(mg, eg)` pair for the king — which is what the two tables always were, just selected discontinuously
