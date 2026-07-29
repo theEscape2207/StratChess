@@ -1,12 +1,7 @@
 // MoveFieldTests.cpp — Catch2 [moves] tests for the Move value type.
 //
-// History worth knowing: StratEngine/Tests/MoveFieldTests.h was a legacy-framework file whose
-// own header claimed "MIGRATED — tests live in StratChessTests/MoveFieldTests.cpp". That file
-// was never actually created, and Docs/TestDesign.md listed the [moves] row as done on the
-// strength of that claim. Meanwhile the legacy file drifted so far out of date that it could no
-// longer compile (it called IsEmpty(), operator!, MoveHelper::IsEmpty and a 5-argument Move
-// constructor, none of which still exist). This file is the migration finally being done, against
-// the API as it is today rather than as it was two refactors ago.
+// Covers the packed 16-bit representation (field round-trips), the identity rule, the empty
+// sentinel, and the ToCoord/ToUCI distinction.
 
 #include <catch_amalgamated.hpp>
 #include "Move.h"
@@ -15,8 +10,7 @@
 #include "defines.h"
 
 // ── Field encoding ────────────────────────────────────────────────────────────
-// Move packs from/to/flags into one uint16_t. Nothing else asserted that the packing
-// round-trips across the full range of each field.
+// Move packs from/to/flags into one uint16_t: bits 0-5 from, 6-11 to, 12-15 flags.
 
 TEST_CASE("Move: from/to/flags round-trip across the full range of each field", "[moves]")
 {
