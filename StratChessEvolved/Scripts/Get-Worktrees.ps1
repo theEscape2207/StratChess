@@ -14,11 +14,17 @@
     number and state of any PR for that branch. Merged-but-not-cleaned-up worktrees are
     called out explicitly, since those are the ones that accumulate.
 
+    Finally it scans `.claude\worktrees` directly for directories that are absent from
+    `git worktree list`. Every other cleanup path enumerates from that list, so none of
+    them can see a directory git has forgotten -- which is how ~2.2 GB of stale build
+    output accumulated unnoticed (issue #149).
+
     Read-only: fetches `origin/main` but changes nothing else.
 
 .WHEN TO USE
     - Start of a session, to see what is outstanding.
     - Before resuming work in a worktree that has been idle.
+    - After a worktree removal that reported a locked directory.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
     cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Get-Worktrees.ps1"
@@ -106,4 +112,48 @@ foreach ($e in $entries) {
     }
 }
 Write-Host ("-" * 78)
+
+# Everything above enumerates `git worktree list`, so it structurally cannot report a
+# directory git has no record of. On Windows a removal routinely half-succeeds -- git
+# deletes the files but cannot rmdir a folder another process holds open -- and older
+# removals dropped the registration while leaving a full source tree behind. Both leave
+# residue that no cleanup path can see, so scan the folder itself.
+$wtRoot = Join-Path $MainCheckout '.claude\worktrees'
+if (Test-Path $wtRoot) {
+    $registered = @($entries | ForEach-Object { ($_.Path -replace '/', '\').TrimEnd('\') })
+    $orphans = @(
+        Get-ChildItem -LiteralPath $wtRoot -Directory -Force |
+            Where-Object { $registered -notcontains $_.FullName.TrimEnd('\') }
+    )
+
+    if ($orphans.Count -eq 0) {
+        Write-Host "unregistered: none" -ForegroundColor Green
+    } else {
+        Write-Host ("UNREGISTERED directories in .claude\worktrees: {0}" -f $orphans.Count) -ForegroundColor Red
+        Write-Host '  Absent from `git worktree list` -- invisible to every other cleanup path.' -ForegroundColor DarkGray
+
+        foreach ($o in $orphans) {
+            $files = @(Get-ChildItem -LiteralPath $o.FullName -Recurse -File -Force -ErrorAction SilentlyContinue)
+            # Under Set-StrictMode, Measure-Object over an empty collection returns an
+            # object with no Sum property at all -- so guard on the count, not on $null.
+            $mb = 0
+            if ($files.Count -gt 0) {
+                $mb = [math]::Round((($files | Measure-Object -Property Length -Sum).Sum) / 1MB, 0)
+            }
+
+            if ($files.Count -eq 0) {
+                Write-Host ("  {0} : empty -- safe to delete outright" -f $o.Name) -ForegroundColor Yellow
+            } elseif (Test-Path (Join-Path $o.FullName '.git')) {
+                # Has a .git entry but is not in this repo's list: most likely registered
+                # against a different repository. Do not offer to delete it.
+                Write-Host ("  {0} : {1} MB, has .git -- belongs to another repo? investigate" -f $o.Name, $mb) -ForegroundColor Red
+            } else {
+                Write-Host ("  {0} : {1} MB in {2} file(s), no .git" -f $o.Name, $mb, $files.Count) -ForegroundColor Red
+                Write-Host "           Verify by content before deleting -- NOT with ``git -C``, which" -ForegroundColor DarkGray
+                Write-Host "           silently resolves against the outer repo and reports a clean tree." -ForegroundColor DarkGray
+            }
+        }
+        Write-Host ("-" * 78)
+    }
+}
 Write-Host ""
