@@ -214,7 +214,7 @@ Files written to disk at runtime; all paths are relative to the **working direct
 | `logs/SimplePerfStats.txt` | `Engine::Logger::EnsurePerfLogger()` (`Game.cpp` only) | Game mode only — created eagerly in `Game::Init()`, which is the sole creator | Always in game mode; written per AI move by `StopTimerAndAdjustVars()`, which only writes if a logger already exists | gitignored; no file is produced in tests, the tactical runner or UCI mode |
 | `logs/gamelist.txt` | `Game::CreateGameMoveFile()` (`Game.cpp`) | Game mode only — created eagerly in `Game::Init()` | Always in game mode; one line per move via `MoveFormatter::ToShort` | gitignored |
 
-All four files are gitignored and all land under `logs/`. The `logs/` subdirectory does **not** need to pre-exist — spdlog's `file_helper::open` calls `os::create_dir()` on the parent path, so the sinks create it. (An earlier version of this table claimed the opposite; verified by deleting `logs/` and confirming all four files are recreated.) spdlog does still swallow a `basic_file_sink` constructor failure silently, so a genuine failure — a permissions problem, say — produces no file and no error message. Deprecated file `legalmoves.txt` (pre-spdlog global `std::ofstream`) was removed — board and root-move diagnostics now flow through the default spdlog logger at `debug` level.
+All four files are gitignored and all land under `logs/`. The `logs/` subdirectory does **not** need to pre-exist — spdlog's `file_helper::open` calls `os::create_dir()` on the parent path, so the sinks create it. spdlog does still swallow a `basic_file_sink` constructor failure silently, so a genuine failure — a permissions problem, say — produces no file and no error message. Deprecated file `legalmoves.txt` (pre-spdlog global `std::ofstream`) was removed — board and root-move diagnostics now flow through the default spdlog logger at `debug` level.
 
 **Working directory**: must run exe from `StratChessEvolved/` — both for `game_settings.json` resolution and so all log output lands in `StratChessEvolved/logs/`.
 
@@ -275,8 +275,38 @@ Run `Scripts\Get-Worktrees.ps1` — it reports drift against `origin/main`, work
    a guaranteed pass — see issue #124.)
 3. **Dispatch a specialized reviewer if the diff touches their domain** (check via `git diff --name-only origin/main...HEAD`):
    - `Eval.cpp` changed → dispatch the `eval-reviewer` subagent
-   - `AIPerplex.cpp`/`AIPerplex.h` search internals (`pvs()`, `qsearch()`, move ordering, pruning conditions) changed → dispatch the `search-reviewer` subagent
+   - `AIPerplex.cpp`/`AIPerplex.h`, `ThreadData.h` (killer/history maintenance), or `Sort.cpp`/`Sort.h` changed → dispatch the `search-reviewer` subagent. Move ordering does **not** all live in `AIPerplex.cpp`: `store_killer`/`update_history`/`age_history` are in `ThreadData.h` and MVV-LVA ordering is in `Sort.cpp`.
    - Address findings before opening the PR
+
+   **When `search-reviewer` may be skipped.** Self-certification is permitted only when **every**
+   one of these holds; failing any one means dispatch. Do not judge by "it's only logging" — the
+   question is whether the edit changes what the search computes *or how fast it computes it*,
+   and a log call added inside a per-node path can cut NPS, which under time control means a
+   shallower completed depth and a genuinely different move.
+   1. Every changed line in the search files lies inside a `log_*` function, or is an argument
+      expression to an existing `s_logger->…` / `log.…` / `spdlog::…` call.
+   2. **No log call is added or removed** — only the arguments of existing calls change. Adding
+      a call site is the risky act, not editing one.
+   3. Every new argument expression is a pure read of already-computed values: no `td.`/`board.`
+      mutation, no counter increment, no lazy initialisation, and no board query whose result
+      depends on `DoMove`/`UndoMove` state. (`MoveFormatter::ToShort(move, board)` reads
+      `GetPiece()`/`InCheck()` — never call it after a failed or unpaired `DoMove`; use the
+      board-free `ToCoord` in search diagnostics.)
+   4. No changed line lies inside `pvs`, `quiescence`, `search_with_aspiration`,
+      `iterative_deepening`, `assess_iteration_quality`, `adjustScoreForGameState`,
+      `should_stop_early`, or `should_try_null_move`.
+   5. No numeric literal, comparison operator, or control-flow keyword changed anywhere in the file.
+   6. `SearchTuning` in `AIPerplex.h` is untouched. A one-character constant change there is the
+      highest-Elo-density edit in the repo and the least alarming-looking diff in it — it never
+      self-certifies.
+
+   When skipping, say so in the PR body: *"search-reviewer skipped: logging-only, CLAUDE.md
+   criteria 1-6."* That makes the skip an auditable claim rather than a silent omission.
+
+   `New-PullRequest.ps1` deliberately reminds on **any** touch to these files rather than trying to
+   detect the above automatically. The asymmetry is the point: a false positive costs one subagent
+   dispatch, a false negative merges an unreviewed search change that surfaces weeks later in an
+   Elo match, if at all. Never teach the script to suppress the reminder — escalating it is fine.
 4. Only after steps 1-3 pass, create or update the PR.
 
 ### After a PR merges

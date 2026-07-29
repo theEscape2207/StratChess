@@ -59,7 +59,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 
 | Component | Tag | Status | File |
 |-----------|-----|--------|------|
-| Move structure & sentinels | `[moves]` | ✅ done | `MoveFieldTests.cpp` |
+| Move structure & sentinels | `[moves]` | ✅ done | `StratChessTests/MoveFieldTests.cpp` |
 | Repetition detection | `[repetition]` | ✅ done | `RepetitionTests.cpp` |
 | Move generation (perft d1–d4) | `[perft]` | ✅ done | `PerftTests.cpp` |
 | Move generation (deep perft d5+) | — | ✅ done | `StratChessEvolved.exe perft test` |
