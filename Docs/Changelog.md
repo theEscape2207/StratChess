@@ -57,9 +57,14 @@ cumulative standing rather than this change — an SPRT against a fixed anchor t
 are in `Docs/EloLog.md`, labelled; the conflict between the anchor convention and per-change SPRT
 verdicts is tracked in #159.
 
-Part of the gain is plausibly search efficiency rather than static accuracy: the candidate reaches
-depth 11 on 21.75% fewer nodes despite being 2.03% slower per node. A fixed-nodes match would separate
-the two.
+The gain is evaluation quality, not search efficiency. A first 3-position probe appeared to show a
+21.75% node reduction to depth 11, but that was a sampling artifact — across 5 term-isolating
+positions the spread is -44% to +229% with a -1.6% aggregate. Node count at fixed depth is chaotic
+under small eval perturbations (a 20-30 cp shift can flip the PV and change the entire tree), and
+move ordering never consults static eval anyway: `Sort.cpp` uses TT move, MVV-LVA, killers and
+history. Static eval reaches only the leaf return, the qsearch stand-pat cutoff and alpha raise, and
+delta pruning. The terms therefore pay a real 2.03% nps cost, buy no node reduction, and still won —
+which is what an evaluation improvement is supposed to look like.
 
 ---
 
