@@ -535,6 +535,25 @@ TEST_CASE("Eval - MirrorFen self-test: castling rights and en-passant square are
 // with the position, so the mover faces an identical relative situation in
 // both the original and the mirror — the scores must be EQUAL, not negated.
 // This is the single most likely thing for a future reader to get backwards.
+
+// Castling asymmetry (issue #115). Neither side has rights left; White's king
+// is tucked on g1 while Black's sits on e8, so eval_castling pays White and
+// penalises Black. Mirroring swaps the position and the side to move together,
+// so the score stays EQUAL as above; what this case pins is that the term's
+// direction-aware WHITE_BACK_ROW / BLACK_BACK_ROW pairing is the right way
+// round, since getting it backwards makes the two sides disagree and breaks
+// that equality. Legal: Rf1 covers the f-file only, so Black (the non-mover)
+// is not in check.
+static constexpr const char* FEN_CASTLED_VS_CENTRAL_KING =
+    "4k3/8/8/8/8/8/8/5RK1 w - - 0 1";
+
+// Bishop-pair asymmetry (issue #111). White holds bishops on both square
+// colours (c1 dark, f1 light); Black has a single bishop on g7 — so the pair
+// bonus applies to exactly one side, which is what makes the mirror
+// discriminating. Legal: neither king is attacked.
+static constexpr const char* FEN_BISHOP_PAIR_VS_SINGLE =
+    "4k3/6b1/8/8/8/8/8/2B1KB2 w - - 0 1";
+
 static constexpr const char* kSymmetryFens[] = {
     FEN_START,
     FEN_QUEEN_C6,
@@ -549,6 +568,11 @@ static constexpr const char* kSymmetryFens[] = {
     // most likely to have a color-asymmetric open-file classification.
     FEN_ROOK_OPEN_FILE_KNIGHT_ON,
     FEN_ROOK_OPEN_FILE_PAWN_ON,
+    // The two new terms' direction-aware cases. Every other FEN here either
+    // keeps its castling rights (eval_castling stays silent) or has no bishop
+    // pair, so without these two neither term is discriminated by a mirror.
+    FEN_CASTLED_VS_CENTRAL_KING,
+    FEN_BISHOP_PAIR_VS_SINGLE,
 };
 
 TEST_CASE("Eval - EvalSimple is color-symmetric: a position and its mirror score equally", "[eval]")
@@ -611,6 +635,25 @@ struct EvalComplexTestFixture
     {
         const EvalContext ctx = BuildContext(board);
         return BlendPhase(EvalComplex::eval_mopup(ctx, color), ctx.phase);
+    }
+    static int Bishops(const Board& board, eColor color)
+    {
+        const EvalContext ctx = BuildContext(board);
+        return BlendPhase(EvalComplex::eval_bishops(ctx, color), ctx.phase);
+    }
+    static int Castling(const Board& board, eColor color)
+    {
+        const EvalContext ctx = BuildContext(board);
+        return BlendPhase(EvalComplex::eval_castling(ctx, color), ctx.phase);
+    }
+
+    static ScorePair BishopsPair(const Board& board, eColor color)
+    {
+        return EvalComplex::eval_bishops(BuildContext(board), color);
+    }
+    static ScorePair CastlingPair(const Board& board, eColor color)
+    {
+        return EvalComplex::eval_castling(BuildContext(board), color);
     }
 
     // Raw (mg, eg) pairs, for asserting a tapered term's ENDPOINTS rather
@@ -772,6 +815,118 @@ TEST_CASE("Eval - eval_pst: the reported king contribution is its endpoints blen
     REQUIRE(EvalComplexTestFixture::Pst(board, WHITE) == BlendPhase(pst, phase));
 }
 
+// ── eval_bishops (issue #111) ────────────────────────────────────────────────
+
+TEST_CASE("Eval - eval_bishops: pair requires opposite square colours", "[eval]")
+{
+    SECTION("Two bishops on opposite colours score the pair")
+    {
+        // White Bc1 (dark) + Bf1 (light); Black has one bishop only.
+        Board board("4k3/8/8/8/8/8/8/2B1KB2 w - - 0 1");
+        const ScorePair pair = EvalComplexTestFixture::BishopsPair(board, WHITE);
+        CHECK(pair.mg > 0);
+        CHECK(pair.eg > pair.mg);   // worth more as the board opens
+    }
+    SECTION("Two bishops on the SAME colour are not a pair")
+    {
+        // Bc1 and Ba3 are both dark squares — reachable by underpromotion.
+        // A plain popcount >= 2 would wrongly pay here.
+        Board board("4k3/8/8/8/8/B7/8/2B1K3 w - - 0 1");
+        const ScorePair pair = EvalComplexTestFixture::BishopsPair(board, WHITE);
+        CHECK(pair.mg == 0);
+        CHECK(pair.eg == 0);
+    }
+    SECTION("A single bishop scores nothing")
+    {
+        Board board("4k3/8/8/8/8/8/8/2B1K3 w - - 0 1");
+        CHECK(EvalComplexTestFixture::Bishops(board, WHITE) == 0);
+    }
+    SECTION("Kingless board is safe and scores nothing")
+    {
+        Board board;
+        CHECK(EvalComplexTestFixture::Bishops(board, WHITE) == 0);
+        CHECK(EvalComplexTestFixture::Bishops(board, BLACK) == 0);
+    }
+}
+
+// ── connected rooks (issue #114, inside eval_rooks) ──────────────────────────
+
+TEST_CASE("Eval - eval_rooks: connected rooks require a clear line between them", "[eval]")
+{
+    // Same back rank, nothing between, versus the same two rooks with a piece
+    // wedged between them. Comparing the two isolates the connection bonus from
+    // the open-file and 7th-rank bonuses, which are identical in both.
+    Board connected("4k3/8/8/8/8/8/8/R2R3K w - - 0 1");
+    Board blocked("4k3/8/8/8/8/8/8/R1BR3K w - - 0 1");
+
+    const int connectedMg = EvalComplexTestFixture::RooksPair(connected, WHITE).mg;
+    const int blockedMg   = EvalComplexTestFixture::RooksPair(blocked, WHITE).mg;
+
+    CHECK(connectedMg > blockedMg);
+}
+
+TEST_CASE("Eval - eval_rooks: a lone rook is never connected", "[eval]")
+{
+    Board one("4k3/8/8/8/8/8/8/R6K w - - 0 1");
+    Board two("4k3/8/8/8/8/8/8/R2R3K w - - 0 1");
+
+    CHECK(EvalComplexTestFixture::RooksPair(two, WHITE).mg
+        > EvalComplexTestFixture::RooksPair(one, WHITE).mg);
+}
+
+// ── eval_castling (issue #115) ───────────────────────────────────────────────
+
+TEST_CASE("Eval - eval_castling: silent while any castling right remains", "[eval]")
+{
+    // Rights present => the side has decided nothing, so no bonus and no penalty.
+    Board board("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1");
+    CHECK(EvalComplexTestFixture::CastlingPair(board, WHITE).mg == 0);
+    CHECK(EvalComplexTestFixture::CastlingPair(board, BLACK).mg == 0);
+}
+
+TEST_CASE("Eval - eval_castling: bonus once rights are gone and the king is tucked away", "[eval]")
+{
+    // White king on g1 with no rights left — the castled-kingside picture.
+    Board board("4k3/8/8/8/8/8/8/5RK1 w - - 0 1");
+    const ScorePair pair = EvalComplexTestFixture::CastlingPair(board, WHITE);
+    CHECK(pair.mg > 0);
+    CHECK(pair.eg == 0);   // middlegame-only; the endgame king wants the centre
+}
+
+TEST_CASE("Eval - eval_castling: penalty when rights are lost with the king still central", "[eval]")
+{
+    // King on e1, no rights — lost the option without ever castling.
+    Board board("4k3/8/8/8/8/8/8/4K3 w - - 0 1");
+    CHECK(EvalComplexTestFixture::CastlingPair(board, WHITE).mg < 0);
+}
+
+TEST_CASE("Eval - eval_castling: queenside counts, and the king may step to the corner", "[eval]")
+{
+    for (const char* fen : { "4k3/8/8/8/8/8/8/2K5 w - - 0 1",     // c1, queenside
+                             "4k3/8/8/8/8/8/8/1K6 w - - 0 1",     // b1, stepped over
+                             "4k3/8/8/8/8/8/8/7K w - - 0 1" }) {  // h1, kingside corner
+        CAPTURE(fen);
+        Board board(fen);
+        CHECK(EvalComplexTestFixture::CastlingPair(board, WHITE).mg > 0);
+    }
+}
+
+TEST_CASE("Eval - eval_castling: a king off its home rank never counts as castled", "[eval]")
+{
+    // g2, not g1: the king has walked, so the shelter picture does not apply.
+    Board board("4k3/8/8/8/8/8/6K1/8 w - - 0 1");
+    CHECK(EvalComplexTestFixture::CastlingPair(board, WHITE).mg < 0);
+}
+
+TEST_CASE("Eval - eval_castling: kingless board is safe", "[eval]")
+{
+    // Default-constructed Board has no king; castling_rights defaults to ALL,
+    // so this also exercises the rights-present early return.
+    Board board;
+    CHECK(EvalComplexTestFixture::Castling(board, WHITE) == 0);
+    CHECK(EvalComplexTestFixture::Castling(board, BLACK) == 0);
+}
+
 TEST_CASE("Eval - eval_mopup: only the winning color receives a nonzero contribution", "[eval]")
 {
     // FEN_MOPUP_LOSER_KING_CORNER: White K+Q vs Black K+R, pawnless, White
@@ -792,10 +947,10 @@ TEST_CASE("Eval - eval_mopup: gated off for both colors below the decisive mater
     REQUIRE(EvalComplexTestFixture::Mopup(board, BLACK) == 0);
 }
 
-TEST_CASE("Eval - the four terms sum exactly to EvalComplex::Evaluate()'s result", "[eval]")
+TEST_CASE("Eval - the per-term functions sum exactly to EvalComplex::Evaluate()'s result", "[eval]")
 {
     // Structural regression check: rebuilds Evaluate()'s side-to-move-relative
-    // formula from the four independently-tested terms plus raw material, and
+    // formula from the independently-tested terms plus raw material, and
     // confirms it matches Evaluate() itself across every whole-position FEN
     // already used for the color-symmetry cases above. Guards against the
     // term wrappers drifting out of sync with what Evaluate() actually calls.
@@ -811,11 +966,15 @@ TEST_CASE("Eval - the four terms sum exactly to EvalComplex::Evaluate()'s result
     const int bonusWhite = EvalComplexTestFixture::Pawns(board, WHITE)
                           + EvalComplexTestFixture::Rooks(board, WHITE)
                           + EvalComplexTestFixture::Pst(board, WHITE)
-                          + EvalComplexTestFixture::Mopup(board, WHITE);
+                          + EvalComplexTestFixture::Mopup(board, WHITE)
+                          + EvalComplexTestFixture::Bishops(board, WHITE)
+                          + EvalComplexTestFixture::Castling(board, WHITE);
     const int bonusBlack = EvalComplexTestFixture::Pawns(board, BLACK)
                           + EvalComplexTestFixture::Rooks(board, BLACK)
                           + EvalComplexTestFixture::Pst(board, BLACK)
-                          + EvalComplexTestFixture::Mopup(board, BLACK);
+                          + EvalComplexTestFixture::Mopup(board, BLACK)
+                          + EvalComplexTestFixture::Bishops(board, BLACK)
+                          + EvalComplexTestFixture::Castling(board, BLACK);
 
     const eColor toMove = board.GetCurrentColor();
     const int expected = (toMove == WHITE)
@@ -853,13 +1012,15 @@ TEST_CASE("Eval - Breakdown(): every row equals the term function it reports", "
         REQUIRE(terms.rooks[color]    == EvalComplexTestFixture::Rooks(board, color));
         REQUIRE(terms.pst[color]      == EvalComplexTestFixture::Pst(board, color));
         REQUIRE(terms.mopup[color]    == EvalComplexTestFixture::Mopup(board, color));
+        REQUIRE(terms.bishops[color]  == EvalComplexTestFixture::Bishops(board, color));
+        REQUIRE(terms.castling[color] == EvalComplexTestFixture::Castling(board, color));
     }
 }
 
 TEST_CASE("Eval - Breakdown(): total agrees with Evaluate(), and the rows reproduce it", "[eval]")
 {
     // Two assertions. `total` equals Evaluate()'s result, and the rows account
-    // for that total exactly: material plus the four terms, summed
+    // for that total exactly: material plus every term, summed
     // white-minus-black, up to the side-to-move sign. The second is what makes
     // the printed net column trustworthy.
     //
@@ -886,7 +1047,9 @@ TEST_CASE("Eval - Breakdown(): total agrees with Evaluate(), and the rows reprod
                        + (terms.pawns[WHITE]    - terms.pawns[BLACK])
                        + (terms.rooks[WHITE]    - terms.rooks[BLACK])
                        + (terms.pst[WHITE]      - terms.pst[BLACK])
-                       + (terms.mopup[WHITE]    - terms.mopup[BLACK]);
+                       + (terms.mopup[WHITE]    - terms.mopup[BLACK])
+                       + (terms.bishops[WHITE]  - terms.bishops[BLACK])
+                       + (terms.castling[WHITE] - terms.castling[BLACK]);
 
     const int expectedTotal = (board.GetCurrentColor() == WHITE) ? whitePov : -whitePov;
     REQUIRE(terms.total == expectedTotal);
