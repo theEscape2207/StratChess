@@ -35,9 +35,8 @@ std::optional<std::string> FENParser::ParseFEN(
 	while (!s.empty() && isspace((unsigned char)s.front())) s.erase(s.begin());
 	while (!s.empty() && isspace((unsigned char)s.back())) s.pop_back();
 
-	// Tokenize by whitespace first, so a line that is not a FEN at all gets the specific
-	// "too few fields" diagnostic rather than the regex's generic message. (Ordering matters:
-	// while the regex ran first this check was unreachable dead code.)
+	// Tokenize before the regex runs, so a line that is not a FEN at all gets the specific
+	// "too few fields" diagnostic rather than the regex's generic message.
 	std::istringstream iss(s);
 	std::vector<std::string> parts;
 	std::string token;
@@ -55,9 +54,9 @@ std::optional<std::string> FENParser::ParseFEN(
 	// side castling ep <n>" is a 5-field FEN, and there is no form that supplies the fullmove
 	// number while omitting the halfmove clock.
 	//
-	// Trailing content after field 6 is still rejected. Full EPD (operations such as
-	// `c9 "1-0";` after the four core fields) is deliberately out of scope here — see issue #143;
-	// that belongs in #117's corpus loader, not in the FEN grammar.
+	// Trailing content after field 6 is rejected. Full EPD (operations such as `c9 "1-0";` after
+	// the four core fields) is deliberately out of scope: that belongs in #117's corpus loader,
+	// not in the FEN grammar.
 	static const std::regex fenRx(R"(^\s*([rnbqkpRNBQKP1-8]+\/){7}([rnbqkpRNBQKP1-8]+)\s+[wb]\s+(-|[KQkq]+)\s+(-|[a-h][36])(\s+\d+(\s+\d+)?)?\s*$)");
 	if (!std::regex_match(s, fenRx))
 	{
