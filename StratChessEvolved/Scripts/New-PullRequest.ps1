@@ -136,7 +136,10 @@ if ($SkipValidation) {
 $changed = (& git -C $RepoRoot diff --name-only origin/main...HEAD)
 $reviewers = @()
 if ($changed -match 'StratEngine/Eval\.(cpp|h)$')      { $reviewers += 'eval-reviewer' }
-if ($changed -match 'StratEngine/AIPerplex\.(cpp|h)$') { $reviewers += 'search-reviewer' }
+# Move ordering is not confined to AIPerplex: killer/history maintenance lives in ThreadData.h
+# and MVV-LVA ordering in Sort.cpp. Reminding on any touch is deliberate -- see CLAUDE.md step 3
+# for the criteria under which a human may self-certify a skip. Do not add suppression logic here.
+if ($changed -match 'StratEngine/(AIPerplex\.(cpp|h)|ThreadData\.h|Sort\.(cpp|h))$') { $reviewers += 'search-reviewer' }
 if ($reviewers.Count -gt 0) {
     Write-Host "`nREMINDER: this diff touches a reviewed area." -ForegroundColor Yellow
     foreach ($r in $reviewers) { Write-Host "  dispatch the '$r' subagent before merging (CLAUDE.md step 3)." -ForegroundColor Yellow }

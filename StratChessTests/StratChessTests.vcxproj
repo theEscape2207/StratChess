@@ -182,6 +182,7 @@
     <ClCompile Include="BoardInstanceTests.cpp" />
     <ClCompile Include="SearchTests.cpp" />
     <ClCompile Include="SortTests.cpp" />
+    <ClCompile Include="MoveFieldTests.cpp" />
     <ClCompile Include="MoveFormatterTests.cpp" />
     <ClCompile Include="TimeManagerTests.cpp" />
     <ClCompile Include="SearchLimitsTests.cpp" />
