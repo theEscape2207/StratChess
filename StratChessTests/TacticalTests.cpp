@@ -11,6 +11,7 @@
 #include <catch_amalgamated.hpp>
 #include "TacticalTestHelpers.h"
 #include "Board.h"
+#include "MoveFormatter.h"
 
 // ---------------------------------------------------------------------------
 // Position table — fast tier (depth 4, ~10 positions)
@@ -92,7 +93,7 @@ TEST_CASE("Tactical - QFORK-001: zugzwang rook win survives null-move pruning (i
     GameInfo info = board.GetGameInfo();
     Move m = ai->GetMove(info);
 
-    INFO("engine played " << m.Output());
+    INFO("engine played " << MoveFormatter::ToCoord(m));
     REQUIRE(m.from() == d1);
     const bool wins_the_rook = (m.to() == a4) || (m.to() == b3);
     REQUIRE(wins_the_rook);

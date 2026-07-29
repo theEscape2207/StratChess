@@ -8,6 +8,7 @@
 #include "Utils/Logger.h"
 #include "defines.h"
 #include "MoveHelper.h"
+#include "MoveFormatter.h"
 #include <cstring>
 #include <iterator>
 #include <spdlog/common.h>
@@ -233,7 +234,7 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info, const SearchLimits& limits)
 	if (s_logger) {
 		s_logger->info(
 			"GetMove complete: move={}, score={}, depth={}, time={}ms, nodes={}, stable={}",
-			bestMove.Output(),
+			MoveFormatter::ToCoord(bestMove),
 			result.best_score,
 			result.depth_completed,
 			elapsed.count(),
@@ -890,7 +891,7 @@ void AIPerplex::log_iteration_eval(
 	const int display_length = std::min(metrics.pv_length, 6);
 	for (int i = 0; i < display_length; ++i) {
 		if (i) pv_line += ", ";
-		pv_line += pv_table.get_line(0)[i].Output();
+		pv_line += MoveFormatter::ToCoord(pv_table.get_line(0)[i]);
 	}
 	if (metrics.pv_length > display_length) {
 		pv_line += " ...";
@@ -900,7 +901,7 @@ void AIPerplex::log_iteration_eval(
 		"D{:>2} EVAL: move={:<8} score={:>6} (Δ{:>+5}) nodes={:>8} ({:>3}%) "
 		"pv={:>2} int={} chg={} PV:[{}]",
 		metrics.depth,
-		metrics.current_move.is_null() ? "EMPTY" : metrics.current_move.Output(),
+		metrics.current_move.is_null() ? "EMPTY" : MoveFormatter::ToCoord(metrics.current_move),
 		metrics.current_score,
 		metrics.score_delta,
 		metrics.nodes_searched,
@@ -953,8 +954,8 @@ void AIPerplex::log_rejection(
 	case RejectionReason::MOVE_CHANGED:
 		s_logger->debug(
 			"Depth {:>2}: REJECTED[R5:MOVE_CHANGED] ({} → {}) - Using depth {}",
-			depth, state.last_iteration_move.Output(),
-			metrics.current_move.Output(), state.depth_completed);
+			depth, MoveFormatter::ToCoord(state.last_iteration_move),
+			MoveFormatter::ToCoord(metrics.current_move), state.depth_completed);
 		break;
 
 	default:
@@ -1050,7 +1051,7 @@ bool AIPerplex::handle_empty_move_emergency(
 	// Verify first move is legal
 	if (!td.board.DoMove(emergency_moves[0])) {
 		log.critical("First pseudolegal move {} is illegal!",
-			emergency_moves[0].Output());
+			MoveFormatter::ToCoord(emergency_moves[0]));
 
 		// Try others
 		for (const auto& move : emergency_moves) {
@@ -1060,7 +1061,7 @@ bool AIPerplex::handle_empty_move_emergency(
 				state.best_score = 0;
 				td.pv_table.update(0, move);
 
-				log.critical("Using legal emergency move: {}", move.Output());
+				log.critical("Using legal emergency move: {}", MoveFormatter::ToCoord(move));
 				return true;
 			}
 		}
@@ -1075,7 +1076,7 @@ bool AIPerplex::handle_empty_move_emergency(
 	state.best_score = 0;
 	td.pv_table.update(0, emergency_moves[0]);
 
-	log.critical("Using emergency move: {}", emergency_moves[0].Output());
+	log.critical("Using emergency move: {}", MoveFormatter::ToCoord(emergency_moves[0]));
 	return true;
 }
 
@@ -1093,7 +1094,7 @@ void AIPerplex::log_search_complete(
 		"Search complete: depth={}, score={}, move={}, nodes={}, stable={}",
 		state.depth_completed,
 		state.best_score,
-		state.best_move.Output(),
+		MoveFormatter::ToCoord(state.best_move),
 		state.nodes_at_completed_depth,
 		state.search_was_stable ? "yes" : "NO");
 }
@@ -1110,7 +1111,7 @@ void AIPerplex::log_completed_iteration(
 	const int display_length = std::min(metrics.pv_length, 10);
 	for (int i = 0; i < display_length; ++i) {
 		if (i) pv_line += ", ";
-		pv_line += pv_table.get_line(0)[i].Output();
+		pv_line += MoveFormatter::ToCoord(pv_table.get_line(0)[i]);
 	}
 
 	s_logger->info(
