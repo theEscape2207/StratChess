@@ -5,6 +5,9 @@
 #include "Eval.h"
 
 #include "Board.h"
+#include "Magic.h"   // RookAttacks, for connected rooks (issue #114)
+
+#include <bit>       // std::popcount
 
 // static Factory constructor
 std::unique_ptr<EvalManager> EvalManager::Create(EvalTypes type)
@@ -133,12 +136,13 @@ ScorePair EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 // issue #126's actual fix. The open question of whether to widen it is
 // recorded on issue #116, not settled here.
 //
-// TODO: Add bonus for connected Rooks!! (carried over verbatim from the
-// pre-#127 switch; still open).
+// Connected rooks (issue #114) are scored here too: same rank or file with
+// nothing between, per connected pair.
 ScorePair EvalComplex::eval_rooks(const EvalContext& ctx, eColor color) noexcept
 {
 	int score = 0;            // phase-independent: open/half-open file bonuses
 	int seventhRankEg = 0;    // endgame-only contribution
+	int connectedPairs = 0;   // tapered separately -- see the return below
 	const ePiece rookPiece = (color == WHITE) ? ePiece::WHITE_ROOK : ePiece::BLACK_ROOK;
 	const int seventhRank = (color == WHITE) ? WHITE_7TH_ROW : BLACK_7TH_ROW;
 	const BITBOARD ownPawns = ctx.pawns[color];
@@ -172,10 +176,94 @@ ScorePair EvalComplex::eval_rooks(const EvalContext& ctx, eColor color) noexcept
 				score += OPEN_FILE - HALF_OPEN_FILE;
 		}
 
+		// Connected rooks: does this rook see another of its own along a rank or
+		// file with nothing in between? RookAttacks already accounts for blockers
+		// (PEXT magics, issue #108), so no separate between-mask is needed.
+		//
+		// `remaining` has had every earlier rook cleared, so testing against it
+		// counts each PAIR once rather than twice -- no halving needed, and three
+		// mutually-connected rooks correctly score three pairs.
+		const BITBOARD laterRooks = Bits::clearLsb(remaining);
+		if (laterRooks)
+			connectedPairs += std::popcount(RookAttacks(square, ctx.all_pieces) & laterRooks);
+
 		remaining = Bits::clearLsb(remaining);
 	}
 
-	return ScorePair{ score, score + seventhRankEg };
+	return ScorePair{
+		score + connectedPairs * CONNECTED_ROOKS_BONUS_MG,
+		score + seventhRankEg + connectedPairs * CONNECTED_ROOKS_BONUS_EG
+	};
+}
+
+// eval_bishops -- bishop pair bonus for one color (issue #111).
+//
+// Requires bishops on OPPOSITE square colours rather than merely two bishops.
+// The term exists because the pair covers both colours; two same-coloured
+// bishops (reachable by underpromotion) do not, and a plain count would pay
+// for them anyway. One mask and two tests, so correctness is free here.
+ScorePair EvalComplex::eval_bishops(const EvalContext& ctx, eColor color) noexcept
+{
+	// a1 is dark. With a8 == square 0 and rank increasing downward, the light
+	// squares are those where File(sq) and Rank(sq) share parity.
+	static constexpr BITBOARD LIGHT_SQUARES = 0x55AA55AA55AA55AAULL;
+
+	const ePiece bishopPiece = (color == WHITE) ? ePiece::WHITE_BISHOP : ePiece::BLACK_BISHOP;
+	const BITBOARD bishops = ctx.boards[bishopPiece];
+
+	const bool hasLight = (bishops & LIGHT_SQUARES) != 0;
+	const bool hasDark = (bishops & ~LIGHT_SQUARES) != 0;
+
+	if (!(hasLight && hasDark))
+		return ScorePair{};
+
+	return ScorePair{ BISHOP_PAIR_BONUS_MG, BISHOP_PAIR_BONUS_EG };
+}
+
+// eval_castling -- king-shelter proxy for one color (issue #115).
+//
+// Derived from castling RIGHTS plus king placement, never from move history.
+// Whether a side actually castled is not recoverable from a FEN, so a term
+// that depended on it would make Evaluate() a function of how a position was
+// reached rather than of the position -- two paths to one position would then
+// disagree about its score while sharing a transposition-table entry, and
+// #117's FEN corpus would score every position as never-castled. See D2 in
+// .claude/plans/eval-bishop-pair-connected-rooks-castling.md.
+//
+// While a right remains the side has decided nothing, so the term is silent.
+// Once both rights are gone, the king is either tucked away (bonus) or was
+// dragged off its castling squares without ever getting there (penalty).
+//
+// Middlegame-only: the endgame king belongs in the centre and eval_pst's
+// endgame table already pays for that, so a flat bonus would fight it.
+ScorePair EvalComplex::eval_castling(const EvalContext& ctx, eColor color) noexcept
+{
+	const uint8_t sideRights = (color == WHITE)
+		? CastlingRights::WHITE_BOTH
+		: CastlingRights::BLACK_BOTH;
+
+	if (ctx.castling_rights & sideRights)
+		return ScorePair{};   // still flexible; nothing decided yet
+
+	// Kingless board (default-constructed or failed-parse only) -- same guard as
+	// eval_pst and eval_mopup.
+	const eSquare kingSq = ctx.king_sq[color];
+	if (kingSq == NO_SQUARE)
+		return ScorePair{};
+
+	const int homeRank = (color == WHITE) ? WHITE_BACK_ROW : BLACK_BACK_ROW;
+	if (Rank(kingSq) != homeRank)
+		return ScorePair{ -CASTLING_LOST_PENALTY, 0 };
+
+	// Files b/c (queenside) or g/h (kingside). Files rather than the exact
+	// castling destination squares because a castled king routinely steps to
+	// h1/b1 afterwards, and the term should not evaporate when it does.
+	const int file = File(kingSq);
+	const bool castledZone = (file >= 6) || (file >= 1 && file <= 2);
+
+	return castledZone
+		? ScorePair{ CASTLING_DONE_BONUS, 0 }
+		: ScorePair{ -CASTLING_LOST_PENALTY, 0 };
 }
 
 // eval_pst — piece-square-table contribution for one color's pieces (issue
@@ -387,6 +475,7 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 		.material = { matScoreWhite, matScoreBlack },
 		.phase = gamePhase,
 		.mopup_active = { mopupActive[WHITE], mopupActive[BLACK] },
+		.castling_rights = board.GetGameInfo().castlingRights,
 	};
 }
 
@@ -419,10 +508,12 @@ int EvalComplex::Evaluate(const Board& board) const noexcept
 	int blended[2] = { 0, 0 };
 	for (const eColor c : { WHITE, BLACK })
 	{
-		blended[c] = BlendPhase(eval_pawns(ctx, c), ctx.phase)
-		           + BlendPhase(eval_rooks(ctx, c), ctx.phase)
-		           + BlendPhase(eval_pst(ctx, c),   ctx.phase)
-		           + BlendPhase(eval_mopup(ctx, c), ctx.phase);
+		blended[c] = BlendPhase(eval_pawns(ctx, c),    ctx.phase)
+		           + BlendPhase(eval_rooks(ctx, c),    ctx.phase)
+		           + BlendPhase(eval_pst(ctx, c),      ctx.phase)
+		           + BlendPhase(eval_mopup(ctx, c),    ctx.phase)
+		           + BlendPhase(eval_bishops(ctx, c),  ctx.phase)
+		           + BlendPhase(eval_castling(ctx, c), ctx.phase);
 	}
 
 	const eColor color = board.GetCurrentColor();
@@ -441,7 +532,7 @@ int EvalComplex::Evaluate(const Board& board) const noexcept
 //	             position. Read-only — no score changes, and search never calls
 //	             this.
 //	Returns:	 An EvalBreakdown whose rows come from the same BuildContext and
-//	             the same four term functions Evaluate() above calls.
+//	             the same term functions Evaluate() above calls.
 //
 // `total` is obtained by calling Evaluate(board) rather than re-applying its
 // side-to-move sign flip here. That keeps the flip in exactly one place, so a
@@ -463,6 +554,8 @@ EvalBreakdown EvalComplex::Breakdown(const Board& board) const noexcept
 		.rooks    = { BlendPhase(eval_rooks(ctx, WHITE), ctx.phase), BlendPhase(eval_rooks(ctx, BLACK), ctx.phase) },
 		.pst      = { BlendPhase(eval_pst(ctx, WHITE),   ctx.phase), BlendPhase(eval_pst(ctx, BLACK),   ctx.phase) },
 		.mopup    = { BlendPhase(eval_mopup(ctx, WHITE), ctx.phase), BlendPhase(eval_mopup(ctx, BLACK), ctx.phase) },
+		.bishops  = { BlendPhase(eval_bishops(ctx, WHITE), ctx.phase), BlendPhase(eval_bishops(ctx, BLACK), ctx.phase) },
+		.castling = { BlendPhase(eval_castling(ctx, WHITE), ctx.phase), BlendPhase(eval_castling(ctx, BLACK), ctx.phase) },
 		.phase    = ctx.phase,
 		.total    = Evaluate(board),
 	};
