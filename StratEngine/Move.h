@@ -91,10 +91,8 @@ public:
         data = EMPTY_MOVE;
     }
 
-    // Coordinate-only output (no piece prefix). Suitable for PV lines and stream consumers.
-    std::string Output() const;
-    // Piece-prefixed output (e.g. "Pe2-e4"). Requires the moving piece explicitly.
-    std::string Output(ePiece movPiece) const;
+    // Move presentation lives in MoveFormatter (ToCoord / ToShort / ToUCI / ToVerbose).
+    // Move is a pure 2-byte value; it deliberately owns no formatting.
 
 private:
     uint16_t data{ EMPTY_MOVE }; // bits 0-5: from, 6-11: to, 12-15: flags

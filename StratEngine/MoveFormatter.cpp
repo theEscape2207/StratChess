@@ -34,16 +34,104 @@ namespace {
 } // namespace
 
 // ---------------------------------------------------------------------------
-// MoveFormatter::ToShort
+// MoveFormatter::ToCoord
+// ---------------------------------------------------------------------------
+// No board context required. Coordinate-only pseudo-LAN, no piece prefix.
+// Examples: "e2-e4", "c5xe6", "e5-d6ep", "0-0", "b7-b8"
+std::string MoveFormatter::ToCoord(const Move& move)
+{
+    assert(move.to() != NO_SQUARE);
+
+    const std::string strFrom = SquareToCoord(move.from());
+    const std::string strTo   = SquareToCoord(move.to());
+
+    switch (MoveHelper::AsType(move))
+    {
+    case MoveType::QUIET:
+    case MoveType::DOUBLE_PAWN_PUSH:
+        return std::format("{}-{}", strFrom, strTo);
+    case MoveType::CAPTURE:
+        return std::format("{}x{}", strFrom, strTo);
+    case MoveType::EP_CAPTURE:
+        return std::format("{}-{}ep", strFrom, strTo);
+    case MoveType::PROMOTION_KNIGHT:
+    case MoveType::PROMOTION_BISHOP:
+    case MoveType::PROMOTION_ROOK:
+    case MoveType::PROMOTION_QUEEN:
+    case MoveType::PROMOTION_KNIGHT_CAPTURE:
+    case MoveType::PROMOTION_BISHOP_CAPTURE:
+    case MoveType::PROMOTION_ROOK_CAPTURE:
+    case MoveType::PROMOTION_QUEEN_CAPTURE:
+        // Capture bit (bit 2) encodes whether the promotion also captures.
+        return std::format("{}{}{}",
+            strFrom,
+            (move.flags() & MoveFlags::CAPTURE_BIT) ? 'x' : '-',
+            strTo);
+    case MoveType::KING_CASTLE:
+        return "0-0";
+    case MoveType::QUEEN_CASTLE:
+        return "0-0-0";
+    }
+    return {};
+}
+
+// ---------------------------------------------------------------------------
+// MoveFormatter::ToShort (explicit piece)
+// ---------------------------------------------------------------------------
+// No board context required. Pseudo-LAN with piece prefix, no check annotation.
+// Examples: "Pe2-e4", "Rc1xc7", "pb7-b8Q", "0-0"
+std::string MoveFormatter::ToShort(const Move& move, ePiece movPiece)
+{
+    assert(PieceHelper::IsActual(movPiece));
+    assert(move.to() != NO_SQUARE);
+
+    const std::string strFrom = SquareToCoord(move.from());
+    const std::string strTo   = SquareToCoord(move.to());
+    const char        piece   = PieceHelper::ShortName(movPiece);
+
+    switch (MoveHelper::AsType(move))
+    {
+    case MoveType::QUIET:
+    case MoveType::DOUBLE_PAWN_PUSH:
+        return std::format("{}{}-{}", piece, strFrom, strTo);
+    case MoveType::CAPTURE:
+        return std::format("{}{}x{}", piece, strFrom, strTo);
+    case MoveType::EP_CAPTURE:
+        return std::format("{}{}-{}ep", piece, strFrom, strTo);
+    case MoveType::PROMOTION_KNIGHT:
+    case MoveType::PROMOTION_BISHOP:
+    case MoveType::PROMOTION_ROOK:
+    case MoveType::PROMOTION_QUEEN:
+    case MoveType::PROMOTION_KNIGHT_CAPTURE:
+    case MoveType::PROMOTION_BISHOP_CAPTURE:
+    case MoveType::PROMOTION_ROOK_CAPTURE:
+    case MoveType::PROMOTION_QUEEN_CAPTURE:
+        // Capture bit (bit 2) encodes whether the promotion also captures.
+        // Piece prefix is the pawn (lower-case = black, upper-case = white via ShortName)
+        return std::format("{}{}{}{}{}",
+            g_cPieceNames[PieceHelper::AsPawn(movPiece)],
+            strFrom,
+            (move.flags() & MoveFlags::CAPTURE_BIT) ? 'x' : '-',
+            strTo,
+            piece);
+    case MoveType::KING_CASTLE:
+        return "0-0";
+    case MoveType::QUEEN_CASTLE:
+        return "0-0-0";
+    }
+    return {};
+}
+
+// ---------------------------------------------------------------------------
+// MoveFormatter::ToShort (post-move Board)
 // ---------------------------------------------------------------------------
 // Post-DoMove. Produces pseudo-LAN (e.g. "Pe2-e4", "Rc1xc7+", "pb7-b8Q").
-// Delegates to Move::Output(ePiece) for the base string, then appends '+'
-// when board.InCheck() reports the moving side gave check.
+// Resolves the moving piece from the board, then appends '+' when
+// board.InCheck() reports the moving side gave check.
 std::string MoveFormatter::ToShort(const Move& move, const Board& board)
 {
     assert(!move.is_null());
-    const ePiece movPiece = board.GetPiece(move.to());
-    std::string result = move.Output(movPiece);
+    std::string result = ToShort(move, board.GetPiece(move.to()));
     if (board.InCheck())
         result += '+';
     return result;

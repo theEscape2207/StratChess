@@ -11,6 +11,7 @@
 #include "AIBasic.h"
 #include "Sort.h"
 #include "MoveGenerator.h"
+#include "MoveFormatter.h"
 
 
 // Fetches the next move
@@ -86,7 +87,7 @@ int AIBasic::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta)
 
 			if (ply == 0)
 				spdlog::default_logger()->debug("Root move {}/{}: {} score={}",
-					counter, moveList.size(), curMove.Output(), value);
+					counter, moveList.size(), MoveFormatter::ToCoord(curMove), value);
 
 			//	We got a value back.  We unmade the move.  We're not dead.  Let's
 			//	see how good this move was.  If it was >= "beta", it was so good
@@ -116,7 +117,7 @@ int AIBasic::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta)
 		{
 			if (ply == 0)
 				spdlog::default_logger()->debug("Root move {}/{}: {} ILLEGAL",
-					counter, moveList.size(), curMove.Output());
+					counter, moveList.size(), MoveFormatter::ToCoord(curMove));
 		}
 	}
 	if (moveFound) {
