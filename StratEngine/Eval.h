@@ -177,6 +177,10 @@ struct EvalContext
 	// winner's king PST exactly when eval_mopup is paying for king placement
 	// (issue #118 item 4). Two readers of one gate, not two copies of it.
 	bool                       mopup_active[NUM_COLORS];
+	// GameInfo::castlingRights, the CastlingRights bit flags. This is a FEN
+	// field, so reading it keeps Evaluate() a pure function of the position --
+	// which whether a side has actually castled is not, since no FEN records it.
+	uint8_t                    castling_rights;
 };
 
 // EvalBreakdown — per-term introspection output for the UCI 'eval' command
@@ -198,9 +202,11 @@ struct EvalBreakdown
 	// does not restate it on every call.
 	int                    material[NUM_COLORS];
 	int                    pawns[NUM_COLORS];    // eval_pawns
-	int                    rooks[NUM_COLORS];    // eval_rooks
+	int                    rooks[NUM_COLORS];    // eval_rooks (incl. connected rooks)
 	int                    pst[NUM_COLORS];      // eval_pst
 	int                    mopup[NUM_COLORS];    // eval_mopup
+	int                    bishops[NUM_COLORS];  // eval_bishops
+	int                    castling[NUM_COLORS]; // eval_castling
 	// Included because it is not derivable from the rows: it sets where between
 	// the mg and eg endpoints every tapered term landed, and gates eval_mopup.
 	int                    phase;
@@ -222,6 +228,25 @@ class EvalComplex final
 	static const short ROOK_ON_7TH_BONUS		= 20;
 	static const short HALF_OPEN_FILE			= 10;
 	static const short OPEN_FILE				= 15;
+
+	// Bishop pair (issue #111). Worth more as the board opens, hence the higher
+	// endgame endpoint. Requires bishops on OPPOSITE square colours, not merely
+	// two bishops -- the term exists because the pair covers both colours.
+	static const short BISHOP_PAIR_BONUS_MG		= 30;
+	static const short BISHOP_PAIR_BONUS_EG		= 45;
+
+	// Connected rooks (issue #114): same rank or file with nothing between,
+	// scored per connected pair. Halved in the endgame, where ROOK_ON_7TH_BONUS
+	// already pays for the rook activity that matters most there.
+	static const short CONNECTED_ROOKS_BONUS_MG	= 15;
+	static const short CONNECTED_ROOKS_BONUS_EG	= 8;
+
+	// Castling (issue #115). Middlegame-only: in an endgame the king belongs in
+	// the centre, and the endgame king PST already says so -- a flat bonus here
+	// would fight it. Derived from castling rights plus king placement, never
+	// from move history; see .claude/plans/eval-bishop-pair-connected-rooks-castling.md D2.
+	static const short CASTLING_DONE_BONUS		= 25;
+	static const short CASTLING_LOST_PENALTY	= 20;
 
 	// Mop-up evaluation (won pawnless endgames) — see issue #70 / epic #110.
 	// Gated on: pawnless + decisive material lead. Rewards pushing the losing
@@ -291,6 +316,8 @@ class EvalComplex final
 	static ScorePair eval_rooks(const EvalContext& ctx, eColor color) noexcept;
 	static ScorePair eval_pst(const EvalContext& ctx, eColor color) noexcept;
 	static ScorePair eval_mopup(const EvalContext& ctx, eColor color) noexcept;
+	static ScorePair eval_bishops(const EvalContext& ctx, eColor color) noexcept;
+	static ScorePair eval_castling(const EvalContext& ctx, eColor color) noexcept;
 
 public:
 	int Evaluate(const Board& board) const noexcept override;
