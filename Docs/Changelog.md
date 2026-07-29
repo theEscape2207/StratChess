@@ -22,6 +22,32 @@ Newest first.
 
 ---
 
+## 2026-07-29 — FEN halfmove/fullmove fields made genuinely optional (issue #143)
+
+### Fixed
+- `FENParser::ParseFEN`'s regex ended in `\d+\s+\d+\s*$`, mandating all six FEN fields, while the
+  parser body below it treated fields 5 and 6 as optional and was commented as such. The
+  optionality had been silently disabled since it was written; the regex now accepts 4-6 fields.
+  Strictly more permissive — no previously-valid input changes behaviour.
+- The field-count check (`parts.size() < 4`, "too few fields in FEN") was unreachable dead code,
+  because the regex ran first and rejected such input with the generic "overall format invalid".
+  Tokenizing now happens before the regex, so the specific message actually reaches callers.
+- `FenBatch::ClassifyLine`'s own field-count pre-filter is removed. It reported *"malformed FEN
+  (N field(s), need at least 4)"* when 4 fields were in fact rejected — advice that would not have
+  helped anyone cleaning a corpus. One tier now does what two did, without the wrong message.
+
+### Notes
+- Halfmove defaults to 0 and fullmove to 1 when omitted, now documented at the point of use.
+  The halfmove default is not inert: `Board::SetupFromFEN` feeds it to `gameInfo_.fiftyCount`,
+  which drives 50-move draw detection. Bookkeeping only — unlike a missing side-to-move field
+  (issue #46), it cannot change whose move it is.
+- **EPD is deliberately still rejected.** Trailing operations (`c9 "1-0";`) after the four core
+  fields are out of scope for the FEN grammar; that belongs to issue #117's corpus loader.
+  Accepting 4-6 fields is a prerequisite for EPD ingestion, not a delivery of it.
+- Expected Elo impact: none. Input-format leniency only; no score changes.
+
+---
+
 ## 2026-07-29 — Tapered Evaluation (issue #99, carries #118 item 4)
 
 ### Changed

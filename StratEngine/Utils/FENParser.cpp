@@ -35,14 +35,9 @@ std::optional<std::string> FENParser::ParseFEN(
 	while (!s.empty() && isspace((unsigned char)s.front())) s.erase(s.begin());
 	while (!s.empty() && isspace((unsigned char)s.back())) s.pop_back();
 
-	// Quick overall format check with regex
-	static const std::regex fenRx(R"(^\s*([rnbqkpRNBQKP1-8]+\/){7}([rnbqkpRNBQKP1-8]+)\s+[wb]\s+(-|[KQkq]+)\s+(-|[a-h][36])\s+\d+\s+\d+\s*$)");
-	if (!std::regex_match(s, fenRx))
-	{
-		return std::string("overall format invalid");
-	}
-
-	// Tokenize by whitespace
+	// Tokenize by whitespace first, so a line that is not a FEN at all gets the specific
+	// "too few fields" diagnostic rather than the regex's generic message. (Ordering matters:
+	// while the regex ran first this check was unreachable dead code.)
 	std::istringstream iss(s);
 	std::vector<std::string> parts;
 	std::string token;
@@ -50,6 +45,23 @@ std::optional<std::string> FENParser::ParseFEN(
 
 	if (parts.size() < 4) {
 		return std::string("too few fields in FEN");
+	}
+
+	// Quick overall format check with regex.
+	//
+	// Fields 5 (halfmove clock) and 6 (fullmove number) are OPTIONAL, matching the handling
+	// further down and the `parts.size() < 4` floor above. Hand-authored positions and EPD-style
+	// lines routinely omit them. Field 6 is only accepted when field 5 is present — "placement
+	// side castling ep <n>" is a 5-field FEN, and there is no form that supplies the fullmove
+	// number while omitting the halfmove clock.
+	//
+	// Trailing content after field 6 is still rejected. Full EPD (operations such as
+	// `c9 "1-0";` after the four core fields) is deliberately out of scope here — see issue #143;
+	// that belongs in #117's corpus loader, not in the FEN grammar.
+	static const std::regex fenRx(R"(^\s*([rnbqkpRNBQKP1-8]+\/){7}([rnbqkpRNBQKP1-8]+)\s+[wb]\s+(-|[KQkq]+)\s+(-|[a-h][36])(\s+\d+(\s+\d+)?)?\s*$)");
+	if (!std::regex_match(s, fenRx))
+	{
+		return std::string("overall format invalid");
 	}
 
 	const std::string& pieceField = parts[0];
@@ -104,7 +116,12 @@ std::optional<std::string> FENParser::ParseFEN(
 		outState.epSquare = SquareFromString(ep);
 	}
 
-	// Halfmove clock (optional)
+	// Halfmove clock (optional).
+	// When absent, outState keeps FENGameState's default of 0. Board::SetupFromFEN feeds this
+	// into gameInfo_.fiftyCount, so a 4-field FEN is treated as having made no progress toward
+	// the 50-move draw. That understates progress for a position lifted out of a real game, but
+	// 0 is the conventional default (python-chess does the same) and it is bookkeeping only --
+	// unlike a missing side-to-move field, it cannot change whose move it is (cf. issue #46).
 	if (parts.size() >= 5) {
 		try {
 			int half = std::stoi(parts[4]);
@@ -115,7 +132,9 @@ std::optional<std::string> FENParser::ParseFEN(
 		}
 	}
 
-	// Fullmove number (optional)
+	// Fullmove number (optional). Defaults to FENGameState's 1 when absent -- move one, the
+	// same convention every other FEN consumer uses. Affects display and ExtractFEN round-trips
+	// only; nothing in search reads it.
 	if (parts.size() >= 6) {
 		try {
 			int full = std::stoi(parts[5]);
