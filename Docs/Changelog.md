@@ -22,6 +22,47 @@ Newest first.
 
 ---
 
+## 2026-07-29 — Bishop pair, connected rooks, castling (issues #111, #114, #115)
+
+### Added
+- **Bishop pair** (`eval_bishops`) — requires bishops on **opposite square colours**, not a count of
+  two. The term exists because the pair covers both colours; two same-coloured bishops (reachable by
+  underpromotion) do not, and a `popcount >= 2` shortcut would pay for them anyway. `ScorePair{30, 45}`,
+  rising to the endgame as the board opens.
+- **Connected rooks** (inside `eval_rooks`) — same rank or file with nothing between, scored per
+  connected **pair**. Reuses `RookAttacks` so blockers come from the existing PEXT tables (#108); each
+  pair is counted once by testing only against not-yet-visited rooks. `ScorePair{15, 8}`, falling to the
+  endgame where the 7th-rank bonus already pays.
+- **Castling** (`eval_castling`) — graded by king file on the home rank once both castling rights are
+  gone: a/b/c and g/h sheltered, f neutral, d/e central. Middlegame-only (`{25, 0}` / `{-20, 0}`).
+- `EvalBreakdown` gains `bishops` and `castling` rows, so the UCI `eval` table still sums to the score.
+
+### Notes
+- **Castling is derived from the position, never from history.** Whether a side actually castled is not
+  recoverable from a FEN, so a `hasCastled` flag would have made `Evaluate()` a function of *how* a
+  position was reached: two paths to one position would disagree while sharing a transposition-table
+  entry, and #117's FEN corpus would score every position as never-castled. The term reads castling
+  *rights* — a FEN field — plus king placement, which is the issue's own "irrevocably lost the right"
+  formulation and is position-pure. See `.claude/plans/eval-bishop-pair-connected-rooks-castling.md` D2.
+- Constants are untuned starting points; #117 owns fitting them.
+
+### Measured
+**SPRT `Custom [-5, 15]` vs `main` @ f1c4e19: H1 accepted** at 378 games (LLR 2.97, LOS 99.49%),
++38.76 ± 29.86, 30m52s. Read as "the three terms are worth having" — the 95% interval [+8.90, +68.62]
+excludes zero, but the point estimate should not be quoted as a figure. Attribution among the three was
+traded away deliberately for budget: one SPRT instead of three.
+
+A companion run against the fixed `elo-reference-v1` anchor accepted H1 in 23 minutes, but measures
+cumulative standing rather than this change — an SPRT against a fixed anchor tests the *sum*. Both rows
+are in `Docs/EloLog.md`, labelled; the conflict between the anchor convention and per-change SPRT
+verdicts is tracked in #159.
+
+Part of the gain is plausibly search efficiency rather than static accuracy: the candidate reaches
+depth 11 on 21.75% fewer nodes despite being 2.03% slower per node. A fixed-nodes match would separate
+the two.
+
+---
+
 ## 2026-07-29 — FEN halfmove/fullmove fields made genuinely optional (issue #143)
 
 ### Fixed
