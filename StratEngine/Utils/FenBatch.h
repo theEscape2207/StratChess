@@ -32,18 +32,8 @@ struct LineResult {
     std::string error;  // populated only when kind == Malformed
 };
 
-// Classifies one input line using FENParser::ParseFEN as the single
-// authoritative gate.
-//
-// This used to carry its own field-count pre-filter ahead of the parser, for
-// the sake of a precise diagnostic on the most damaging malformation: a FEN
-// missing its side-to-move field is silently treated as Black-to-move (issue
-// #46), which across a large tuning corpus is garbage fitted with no warning.
-// That tier is gone (issue #143). It reported "need at least 4" while the
-// parser's regex in fact demanded all six fields, so the advice was wrong;
-// and ParseFEN now performs the field-count check itself, before its regex,
-// emitting "too few fields in FEN" for exactly the same inputs. One tier now
-// covers what two used to, without the misleading message.
+// Classifies one input line, delegating to FENParser::ParseFEN as the single
+// authoritative gate -- it reports both a bad field count and a bad format.
 inline LineResult ClassifyLine(std::string_view line) {
     const auto first = line.find_first_not_of(" \t\r\n");
     if (first == std::string_view::npos) {

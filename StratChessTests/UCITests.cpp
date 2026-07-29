@@ -573,9 +573,6 @@ TEST_CASE("FenBatch::ClassifyLine: '#' comment line is Skip", "[uci]")
 
 TEST_CASE("FenBatch::ClassifyLine: 2-field line is Malformed with the field-count message", "[uci]")
 {
-    // The message now comes from FENParser itself, which counts fields before running its
-    // regex. Previously this check lived in ClassifyLine and the parser's own copy was
-    // unreachable behind the regex (issue #143).
     auto r = FenBatch::ClassifyLine("8/8/8/8/8/8/8/8 w");
     REQUIRE(r.kind == FenBatch::LineKind::Malformed);
     REQUIRE_FALSE(r.error.empty());
@@ -584,9 +581,8 @@ TEST_CASE("FenBatch::ClassifyLine: 2-field line is Malformed with the field-coun
 
 TEST_CASE("FenBatch::ClassifyLine: 4-field line is Valid", "[uci]")
 {
-    // Was Malformed until issue #143: the parser's regex demanded all six fields even though
-    // its body treated halfmove/fullmove as optional. EPD corpora and hand-authored positions
-    // are overwhelmingly 4-field, so this is the form #117's tuning work needs to ingest.
+    // EPD corpora and hand-authored positions are overwhelmingly 4-field, so this is the form
+    // #117's tuning work needs to ingest.
     auto r = FenBatch::ClassifyLine("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -");
     REQUIRE(r.kind == FenBatch::LineKind::Valid);
     REQUIRE(r.error.empty());
@@ -602,7 +598,7 @@ TEST_CASE("FenBatch::ClassifyLine: 5-field line is Valid", "[uci]")
 TEST_CASE("FenBatch::ClassifyLine: EPD operations are still rejected", "[uci]")
 {
     // Accepting 4-6 fields is deliberately NOT the same as accepting EPD. Trailing operations
-    // remain out of scope for the FEN grammar (issue #143); #117's corpus loader owns them.
+    // are out of scope for the FEN grammar; #117's corpus loader owns them.
     auto r = FenBatch::ClassifyLine(R"(rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - c9 "1-0";)");
     REQUIRE(r.kind == FenBatch::LineKind::Malformed);
     REQUIRE_FALSE(r.error.empty());

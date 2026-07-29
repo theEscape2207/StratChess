@@ -135,10 +135,9 @@ std::chrono::milliseconds PlayerAiBase::StopTimerAndAdjustVars(size_t node_count
 	m_TotalCount += node_count;
 	
 //#ifdef PRINT_STATS
-	// Use the perf logger only if one already exists. Creating it here would write into the
-	// process CWD, which is how stray SimplePerfStats.txt files appeared at the repo root and
-	// in Tests/ during validation runs (issue #135). Game::Init() is the sole creator, so in
-	// non-game contexts (tests, tactical runner, UCI) this is simply a no-op.
+	// Use the perf logger only if one already exists -- creating it here would write into the
+	// process CWD. Game::Init() is the sole creator, so in non-game contexts (tests, tactical
+	// runner, UCI) this is a no-op.
 	auto perf = Engine::Logger::GetPerfLogger();
 	
 	if (perf) {
