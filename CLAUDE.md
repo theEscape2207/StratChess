@@ -63,7 +63,7 @@ each one encodes a trap that is easy to hit by hand (see each script's comment-b
 | `Scripts\New-Worktree.ps1 -Name <task>` | Starting any new task — fetches `origin/main`, then creates the branch + worktree at the correct path. Works from inside another worktree (resolves the main checkout via `--git-common-dir`), which is what keeps `$(DepsRoot)` resolvable |
 | `Scripts\New-PullRequest.ps1 -Title "..."` | The whole pre-PR checklist in order: sync → `Validate-PrePR.ps1` → push → create-or-update the PR. `-Draft` for work blocked on another PR; `-NoPr` to stop after pushing and finish in Visual Studio; `-BodyFile` to supply a body (an unspecified body is scaffolded with the Summary/Test plan/Notes headings, since `gh pr create --body` bypasses the PR template) |
 | `Scripts\Remove-Worktree.ps1 -Name <task>` | After a PR merges — removes the worktree, local branch and remote branch, verifying by ancestry that the branch really landed |
-| `Scripts\Get-Worktrees.ps1` | Start of a session, or before resuming an idle worktree — drift vs `origin/main` and PR state for every worktree at once |
+| `Scripts\Get-Worktrees.ps1` | Start of a session, or before resuming an idle worktree — drift vs `origin/main` and PR state for every worktree at once, plus any `.claude\worktrees` directory that is **not** in `git worktree list` (the residue of a half-succeeded removal, which no other cleanup path can see) |
 
 `New-PullRequest.ps1` reminds you to dispatch `eval-reviewer`/`search-reviewer` when the diff
 touches their files, but deliberately does not dispatch them — that stays a judgement call.
