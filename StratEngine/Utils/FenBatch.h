@@ -32,19 +32,18 @@ struct LineResult {
     std::string error;  // populated only when kind == Malformed
 };
 
-// Classifies one input line using the same two-tier gate evalrunner() has
-// always used:
-//   1. A field-count pre-filter (< 4 whitespace-separated fields), purely so
-//      the most damaging malformation gets a precise diagnostic: a FEN
-//      missing its side-to-move field is silently treated as Black-to-move
-//      (issue #46), which across a large tuning corpus is garbage fitted
-//      with no warning.
-//   2. FENParser::ParseFEN as the authoritative gate — its regex actually
-//      requires all six standard FEN fields, so a 4- or 5-field line clears
-//      tier 1 but still fails here with the parser's own error message.
-// These two tiers deliberately produce distinguishable messages: whoever is
-// cleaning a corpus needs to know whether a line "isn't a FEN at all" or "is
-// a FEN the parser is strict about".
+// Classifies one input line using FENParser::ParseFEN as the single
+// authoritative gate.
+//
+// This used to carry its own field-count pre-filter ahead of the parser, for
+// the sake of a precise diagnostic on the most damaging malformation: a FEN
+// missing its side-to-move field is silently treated as Black-to-move (issue
+// #46), which across a large tuning corpus is garbage fitted with no warning.
+// That tier is gone (issue #143). It reported "need at least 4" while the
+// parser's regex in fact demanded all six fields, so the advice was wrong;
+// and ParseFEN now performs the field-count check itself, before its regex,
+// emitting "too few fields in FEN" for exactly the same inputs. One tier now
+// covers what two used to, without the misleading message.
 inline LineResult ClassifyLine(std::string_view line) {
     const auto first = line.find_first_not_of(" \t\r\n");
     if (first == std::string_view::npos) {
@@ -52,16 +51,6 @@ inline LineResult ClassifyLine(std::string_view line) {
     }
     if (line[first] == '#') {
         return { LineKind::Skip, {} };             // comment
-    }
-
-    std::istringstream field_stream{ std::string(line) };
-    int field_count = 0;
-    std::string field_tok;
-    while (field_stream >> field_tok) ++field_count;
-    if (field_count < 4) {
-        std::ostringstream msg;
-        msg << "malformed FEN (" << field_count << " field(s), need at least 4)";
-        return { LineKind::Malformed, msg.str() };
     }
 
     FENParser::FENGameState state;
