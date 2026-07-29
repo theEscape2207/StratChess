@@ -180,9 +180,8 @@ ScorePair EvalComplex::eval_rooks(const EvalContext& ctx, eColor color) noexcept
 		// file with nothing in between? RookAttacks already accounts for blockers
 		// (PEXT magics, issue #108), so no separate between-mask is needed.
 		//
-		// `remaining` has had every earlier rook cleared, so testing against it
-		// counts each PAIR once rather than twice -- no halving needed, and three
-		// mutually-connected rooks correctly score three pairs.
+		// `remaining` has had every earlier rook cleared, so testing only against
+		// the later ones counts each PAIR exactly once -- no halving needed.
 		const BITBOARD laterRooks = Bits::clearLsb(remaining);
 		if (laterRooks)
 			connectedPairs += std::popcount(RookAttacks(square, ctx.all_pieces) & laterRooks);
@@ -204,15 +203,18 @@ ScorePair EvalComplex::eval_rooks(const EvalContext& ctx, eColor color) noexcept
 // for them anyway. One mask and two tests, so correctness is free here.
 ScorePair EvalComplex::eval_bishops(const EvalContext& ctx, eColor color) noexcept
 {
-	// a1 is dark. With a8 == square 0 and rank increasing downward, the light
-	// squares are those where File(sq) and Rank(sq) share parity.
-	static constexpr BITBOARD LIGHT_SQUARES = 0x55AA55AA55AA55AAULL;
+	// Square 0 is a8, a LIGHT square, and bit 0 of this mask is clear -- so the
+	// mask holds the DARK squares. Named for what it actually contains: the
+	// pair test is invariant under swapping the two, but a mislabelled constant
+	// would mislead the next term that needs square colour for real (bishop-on
+	// -own-pawn-colour, opposite-coloured-bishop draw scaling).
+	static constexpr BITBOARD DARK_SQUARES = 0x55AA55AA55AA55AAULL;
 
 	const ePiece bishopPiece = (color == WHITE) ? ePiece::WHITE_BISHOP : ePiece::BLACK_BISHOP;
 	const BITBOARD bishops = ctx.boards[bishopPiece];
 
-	const bool hasLight = (bishops & LIGHT_SQUARES) != 0;
-	const bool hasDark = (bishops & ~LIGHT_SQUARES) != 0;
+	const bool hasDark = (bishops & DARK_SQUARES) != 0;
+	const bool hasLight = (bishops & ~DARK_SQUARES) != 0;
 
 	if (!(hasLight && hasDark))
 		return ScorePair{};
@@ -255,15 +257,22 @@ ScorePair EvalComplex::eval_castling(const EvalContext& ctx, eColor color) noexc
 	if (Rank(kingSq) != homeRank)
 		return ScorePair{ -CASTLING_LOST_PENALTY, 0 };
 
-	// Files b/c (queenside) or g/h (kingside). Files rather than the exact
-	// castling destination squares because a castled king routinely steps to
-	// h1/b1 afterwards, and the term should not evaporate when it does.
+	// Graded by file rather than by the exact castling destination square: a
+	// castled king routinely steps to h1 or a1 afterwards, and the term should
+	// not evaporate when it does. a1 is the queenside analogue of h1, not of b1 --
+	// Kb1-a1 is standard in opposite-side-castling Sicilians.
+	//
+	// Three levels, not two. A binary test puts a full bonus-to-penalty cliff on
+	// one quiet king step (g1->f1), and nothing smooths it: the middlegame king
+	// PST is rank-only (defines.h), so this term is the only file signal in the
+	// middlegame. f is neither sheltered nor exposed, so it scores zero and the
+	// worst single-step swing is halved.
 	const int file = File(kingSq);
-	const bool castledZone = (file >= 6) || (file >= 1 && file <= 2);
-
-	return castledZone
-		? ScorePair{ CASTLING_DONE_BONUS, 0 }
-		: ScorePair{ -CASTLING_LOST_PENALTY, 0 };
+	if (file <= 2 || file >= 6)             // a,b,c | g,h -- sheltered
+		return ScorePair{ CASTLING_DONE_BONUS, 0 };
+	if (file == 5)                          // f -- neutral
+		return ScorePair{};
+	return ScorePair{ -CASTLING_LOST_PENALTY, 0 };   // d,e -- central
 }
 
 // eval_pst — piece-square-table contribution for one color's pieces (issue
@@ -475,6 +484,9 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 		.material = { matScoreWhite, matScoreBlack },
 		.phase = gamePhase,
 		.mopup_active = { mopupActive[WHITE], mopupActive[BLACK] },
+		// GetGameInfo() returns by value, but the whole-struct copy folds away here:
+		// a dedicated single-field accessor measured identically (-2.01% vs -2.03%
+		// nps against main), so it was not worth the extra Board API surface.
 		.castling_rights = board.GetGameInfo().castlingRights,
 	};
 }

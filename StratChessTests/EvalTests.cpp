@@ -516,8 +516,11 @@ TEST_CASE("Eval - MirrorFen self-test: mirroring the start position flips only s
 TEST_CASE("Eval - MirrorFen self-test: castling rights and en-passant square are mirrored", "[eval]")
 {
     // FEN_START leaves both helpers untested: its "KQkq" maps to itself under a
-    // case swap, and its en-passant field is "-". Evaluate() ignores both fields,
-    // so only this self-test can catch MirrorCastling/MirrorEnPassant going wrong.
+    // case swap, and its en-passant field is "-". Evaluate() reads the castling
+    // field (eval_castling, issue #115) but not the en-passant one, so a broken
+    // MirrorCastling would silently make the symmetry cases compare two
+    // differently-scored positions -- this self-test is the only thing that
+    // catches either helper going wrong.
     // 1. e4 c5 2. — Black has just played c7-c5, so the ep target is c6.
     REQUIRE(MirrorFen("rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6 0 2")
             == "rnbqkbnr/pppp1ppp/8/4p3/2P5/8/PP1PPPPP/RNBQKBNR b KQkq c3 0 2");
@@ -874,6 +877,25 @@ TEST_CASE("Eval - eval_rooks: a lone rook is never connected", "[eval]")
         > EvalComplexTestFixture::RooksPair(one, WHITE).mg);
 }
 
+TEST_CASE("Eval - eval_rooks: connected pairs are counted exactly, not doubled", "[eval]")
+{
+    // The inequality tests above would also pass if every pair were counted
+    // twice, so pin the arithmetic. Three collinear rooks on an otherwise empty
+    // rank 1: a1-d1 and d1-h1 are connected, a1-h1 is blocked by the d1 rook,
+    // so this is 2 pairs and not 3 -- three mutually-connected rooks are in fact
+    // geometrically impossible, since pairwise alignment forces collinearity and
+    // then the middle rook blocks the outer pair.
+    //
+    // Pawnless, so all three files are open: 3 * OPEN_FILE(15) = 45, plus
+    // 2 * CONNECTED_ROOKS_BONUS_MG(15) = 30, giving mg 75. The endgame endpoint
+    // takes CONNECTED_ROOKS_BONUS_EG(8) instead: 45 + 16 = 61.
+    Board board("4k3/8/8/8/4K3/8/8/R2R3R w - - 0 1");
+    const ScorePair rooks = EvalComplexTestFixture::RooksPair(board, WHITE);
+
+    CHECK(rooks.mg == 75);
+    CHECK(rooks.eg == 61);
+}
+
 // ── eval_castling (issue #115) ───────────────────────────────────────────────
 
 TEST_CASE("Eval - eval_castling: silent while any castling right remains", "[eval]")
@@ -900,15 +922,46 @@ TEST_CASE("Eval - eval_castling: penalty when rights are lost with the king stil
     CHECK(EvalComplexTestFixture::CastlingPair(board, WHITE).mg < 0);
 }
 
-TEST_CASE("Eval - eval_castling: queenside counts, and the king may step to the corner", "[eval]")
+TEST_CASE("Eval - eval_castling: both corners count, not just the kingside one", "[eval]")
 {
-    for (const char* fen : { "4k3/8/8/8/8/8/8/2K5 w - - 0 1",     // c1, queenside
-                             "4k3/8/8/8/8/8/8/1K6 w - - 0 1",     // b1, stepped over
+    // a1 is the queenside analogue of h1. An earlier form tested
+    // `file >= 1 && file <= 2` for the queenside, which covered b1 and c1 but
+    // silently excluded a1 -- so Kh1 scored the bonus while its mirror Ka1 took
+    // the penalty, a 45 cp mg swing on a square that Kb1-a1 reaches routinely in
+    // opposite-side-castling Sicilians.
+    for (const char* fen : { "4k3/8/8/8/8/8/8/K7 w - - 0 1",      // a1, queenside corner
+                             "4k3/8/8/8/8/8/8/1K6 w - - 0 1",     // b1
+                             "4k3/8/8/8/8/8/8/2K5 w - - 0 1",     // c1
+                             "4k3/8/8/8/8/8/8/6K1 w - - 0 1",     // g1
                              "4k3/8/8/8/8/8/8/7K w - - 0 1" }) {  // h1, kingside corner
         CAPTURE(fen);
         Board board(fen);
         CHECK(EvalComplexTestFixture::CastlingPair(board, WHITE).mg > 0);
     }
+}
+
+TEST_CASE("Eval - eval_castling: the two corners score identically", "[eval]")
+{
+    Board kingside("4k3/8/8/8/8/8/8/7K w - - 0 1");
+    Board queenside("4k3/8/8/8/8/8/8/K7 w - - 0 1");
+
+    CHECK(EvalComplexTestFixture::CastlingPair(kingside, WHITE).mg
+       == EvalComplexTestFixture::CastlingPair(queenside, WHITE).mg);
+}
+
+TEST_CASE("Eval - eval_castling: the f-file is neutral, softening the one-step cliff", "[eval]")
+{
+    // A binary sheltered/exposed test made Kg1->Kf1 swing the full bonus-to-
+    // penalty distance on one quiet king move, with nothing to smooth it -- the
+    // middlegame king PST is rank-only, so this term is the only file signal
+    // there. f scores zero instead, halving the worst single-step swing.
+    Board f1("4k3/8/8/8/8/8/8/5K2 w - - 0 1");
+    Board g1("4k3/8/8/8/8/8/8/6K1 w - - 0 1");
+    Board e1("4k3/8/8/8/8/8/8/4K3 w - - 0 1");
+
+    CHECK(EvalComplexTestFixture::CastlingPair(f1, WHITE).mg == 0);
+    CHECK(EvalComplexTestFixture::CastlingPair(g1, WHITE).mg > 0);
+    CHECK(EvalComplexTestFixture::CastlingPair(e1, WHITE).mg < 0);
 }
 
 TEST_CASE("Eval - eval_castling: a king off its home rank never counts as castled", "[eval]")
