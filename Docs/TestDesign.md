@@ -580,6 +580,69 @@ When a bug is found and fixed:
 
 ---
 
+## Writing tests — mechanics
+
+### Running the suite
+
+The test binary lives under `StratChessTests/x64/Release/` (**not** `x64/Release/`) and runs from
+any directory. Filter by tag with a Catch2 argument:
+
+```bash
+StratChessTests/x64/Release/StratChessTests.exe            # all tests
+StratChessTests/x64/Release/StratChessTests.exe "[eval]"   # one tag (see Coverage Map above)
+```
+
+`build.ps1 run-tests` excludes `[slow]`; `build.ps1 extended-tests` includes it. Building the
+`.sln` does not reliably rebuild the test project — use `build.ps1 tests`.
+
+Framework is Catch2 v3 amalgamated from `$(DepsRoot)Catch2/`. The test project uses `/Z7` debug
+format (debug info in the `.obj` files) so parallel `/m` compilation avoids PDB write contention.
+
+Adding a new `.cpp`: add a `ClCompile` entry to `StratChessTests.vcxproj` **and** a matching
+`<Filter>` entry in `.vcxproj.filters`, or the file is not compiled at all. A test file absent from
+the project builds and passes silently by never running.
+
+### Tactical test positions
+
+`StratChessTests/TacticalTestHelpers.h` provides the shared `TacticalCase` struct and
+`make_tactical_engine()` factory. Use the `GENERATE(from_range(kCases))` pattern — see
+`TacticalTests.cpp`.
+
+Constructing FEN positions (all four are bugs that have actually bitten):
+
+- **Always append ` w - - 0 1`.** Omitting the side-to-move field silently makes the engine play as
+  Black — bug #46.
+- **Verify no White piece attacks the Black king** before adding a position. The engine accepts
+  illegal FENs silently and returns king-capture moves — bug #45.
+- **Verify uniqueness against the engine**, not by eye:
+  `(printf "uci\nisready\nposition fen FEN w - - 0 1\ngo depth N\n" | ./x64/Release/StratChessEvolved.exe 2>/dev/null | grep "^bestmove")`
+- In Git Bash use parentheses `(cmd; cmd) | pipe` for multi-command UCI pipes — braces `{ }` fail.
+
+### Constructing AIPerplex in a test
+
+The constructor re-enables verbose logging and leaves `Eval` null, so the order matters:
+
+```cpp
+Board board(fen);                                   // before Create()
+auto ai = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, depth, board);
+AIPerplex::SetVerboseLogging(false);                // after Create()
+ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX); // before GetMove()
+GameInfo info = board.GetGameInfo();
+Move m = ai->GetMove(info);
+```
+
+### Deep perft
+
+Must run from the `Tests/` directory — the executable looks for `perft_test_cases.json` in the
+working directory:
+
+```bash
+cd Tests
+../x64/Release/StratChessEvolved.exe perft test
+```
+
+Sources: `StratEngine/Tests/Perft.h/cpp` + `Tests/perft_test_cases.json`.
+
 ## AIPerplex Test Access
 
 To test private search helper methods, `AIPerplex.h` contains a conditional friend declaration:
