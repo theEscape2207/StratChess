@@ -271,8 +271,10 @@ if ($ResumeDir -ne '') {
     $pgnOut  = Join-Path $pgnDir "$stamp.pgn"
     $matchLog = Join-Path $pgnDir "$stamp.log"
 
-    # Separate working dirs so per-engine incidental output (SimplePerfStats.txt)
-    # never collides across concurrent games.
+    # Separate working dirs so per-engine incidental output never collides across concurrent
+    # games. (SimplePerfStats.txt was the original motivation; since issue #135 only Game::Init
+    # creates that logger, so UCI engines no longer emit it -- the isolation is still worth
+    # keeping for logs/ and any future per-process output.)
     $dirA = Join-Path $pgnDir "$stamp-cand"
     $dirB = Join-Path $pgnDir "$stamp-ref"
     New-Item -ItemType Directory -Force $dirA, $dirB | Out-Null
