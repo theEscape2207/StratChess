@@ -11,6 +11,7 @@
 #include "ABIterative.h"
 #include "Sort.h"
 #include "MoveGenerator.h"
+#include "MoveFormatter.h"
 
 
 // ************************************
@@ -122,7 +123,7 @@ int ABIterative::Search(int ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& 
 
 			if (ply == 0 && depth_ == effective_depth_)
 				spdlog::default_logger()->debug("Root move {}/{}: {} score={}",
-					counter, moveList.size(), curMove.Output(), value);
+					counter, moveList.size(), MoveFormatter::ToCoord(curMove), value);
 
 			//	We got a value back.  We unmade the move.  We're not dead.  Let's
 			//	see how good this move was.  If it was >= "beta", it was so good
@@ -171,7 +172,7 @@ int ABIterative::Search(int ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& 
 		{
 			if (ply == 0 && depth_ == effective_depth_)
 				spdlog::default_logger()->debug("Root move {}/{}: {} ILLEGAL",
-					counter, moveList.size(), curMove.Output());
+					counter, moveList.size(), MoveFormatter::ToCoord(curMove));
 		}
 	}
 	// Fandt vi nogen lovlige traek?

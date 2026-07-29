@@ -11,7 +11,7 @@
 //	for (int i = 0; i < line.get_length(0) && i < 10; ++i)
 //	{
 //		auto move = line.get_line(0)[i];
-//		os << move.Output().c_str();		// write out short notation string
+//		os << MoveFormatter::ToCoord(move).c_str();		// write out coordinate notation
 //
 //		if (move != *(line.rbegin()))	// last real Move
 //			os << ", ";					// Add seperation marker

@@ -6,6 +6,7 @@
 #include "AIAgent.h"
 #include "Sort.h"
 #include "MoveGenerator.h"
+#include "MoveFormatter.h"
 
 
 // Fetches the next move
@@ -142,7 +143,7 @@ int AIAgent::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta, _Inout_ PVLi
 			
 			if (ply == 0 && depth_ == effective_depth_)
 				spdlog::default_logger()->debug("Root move {}/{}: {} score={}",
-					counter, moveList.size(), curMove.Output(), score);
+					counter, moveList.size(), MoveFormatter::ToCoord(curMove), score);
 
 			//	We got a value back.  We unmade the move.  We're not dead.  Let's
 			//	see how good this move was.  If it was >= "beta", it was so good
@@ -182,7 +183,7 @@ int AIAgent::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta, _Inout_ PVLi
 		{
 			if (ply == 0 && depth_ == effective_depth_)
 				spdlog::default_logger()->debug("Root move {}/{}: {} ILLEGAL",
-					counter, moveList.size(), curMove.Output());
+					counter, moveList.size(), MoveFormatter::ToCoord(curMove));
 		}
 	} 
 	

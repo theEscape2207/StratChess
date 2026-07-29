@@ -48,6 +48,8 @@ std::shared_ptr<spdlog::logger> Engine::Logger::EnsurePerfLogger(const std::stri
 
     try {
         std::call_once(g_perf_init_flag, [&]() {
+            // spdlog's file_helper::open creates the parent directory itself, so the caller
+            // does not need to pre-create logs/.
             // Create a synchronous file sink that truncates the file on startup (match previous behavior)
             // If you want async perf logging later, switch to init_thread_pool + async logger here.
             auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(filename, true);

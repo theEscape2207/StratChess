@@ -15,6 +15,7 @@
 #include "../Move.h"
 #include "../MoveHelper.h"
 #include "../defines.h"
+#include "MoveFormatter.h"
 
 // ---------------------------------------------------------------------------
 // Phase 1: IsCheck (removed — check annotation moved to Game.cpp call site)
@@ -33,7 +34,7 @@ inline void test_is_check_output_post()
 {
     // POST Phase 1: Output() must never produce '+' — check is annotated by the caller.
     Move m(e2, e4, MoveType::DOUBLE_PAWN_PUSH, WHITE_PAWN, NO_PIECE);
-    TEST_ASSERT(m.Output().find('+') == std::string::npos,
+    TEST_ASSERT(MoveFormatter::ToCoord(m).find('+') == std::string::npos,
         "POST Phase1: Output() must NOT contain '+'");
 }
 

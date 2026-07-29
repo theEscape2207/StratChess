@@ -21,6 +21,16 @@ class Board;
 class MoveFormatter
 {
 public:
+    // Coordinate-only pseudo-LAN: no piece prefix, no check annotation, no board context.
+    // Examples: "e2-e4", "c5xe6", "e5-d6ep", "0-0", "b7-b8"
+    // Intended for PV lines and search diagnostics, which have no post-move Board to hand.
+    [[nodiscard]] static std::string ToCoord(const Move& move);
+
+    // Pseudo-LAN with piece prefix but no check annotation, for callers that know the moving
+    // piece but have no post-move Board.
+    // Examples: "Pe2-e4", "Rc1xc7", "pb7-b8Q", "0-0"
+    [[nodiscard]] static std::string ToShort(const Move& move, ePiece movPiece);
+
     // Pseudo-LAN with check annotation.
     // Examples: "Pe2-e4", "Rc1xc7+", "pb7-b8Q", "0-0"
     // Appends '+' when board.InCheck() is true after the move.
