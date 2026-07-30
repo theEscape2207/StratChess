@@ -107,7 +107,13 @@ target_precompile_headers(StratEngine PRIVATE
 
 CMake generates a `cmake_pch.hxx` that includes both and force-includes it into every translation
 unit of the target. The macros are therefore defined before any header is parsed, regardless of
-include order, and **no source file gains an include**.
+include order, so **the 17 SAL-carrying headers gain no include**.
+
+Two files do gain one, and must: `StdAfx.h` and `Board.h`. The PCH covers the *CMake* build only —
+`.vcxproj` configures no precompiled header at all, so under MSVC nothing force-includes anything.
+`Board.h` uses `STRAT_FORCEINLINE` directly and is reachable without `StdAfx.h`, so it needs
+`Compat.h` itself or the Windows build breaks. The SAL macros need no such treatment: MSVC supplies
+them via `sal.h` regardless.
 
 The alternative of adding `#include "Compat.h"` to the 17 affected headers is more conventional and
 self-documenting, but it is a 17-file diff on a deadline slice, and those headers are also compiled
