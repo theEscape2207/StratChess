@@ -59,9 +59,9 @@
     {
       "id": "M2-001",
       "category": "mate_in_2",
-      "description": "Rh7+ Kg8 Rb8# (or Rb8# immediately if Rh1 covers h7)",
-      "fen": "7k/8/6K1/8/8/8/8/1R5R w - - 0 1",
-      "best_moves": ["h1h7", "b1b8"],
+      "description": "Rb8#: Kg6 covers g7 and h7 while Rb8 covers the 8th rank",
+      "fen": "7k/8/6K1/8/8/8/8/1R4R1 w - - 0 1",
+      "best_moves": ["b1b8"],
       "depth": 5
     },
     {

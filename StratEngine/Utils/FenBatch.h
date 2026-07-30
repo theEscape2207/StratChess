@@ -9,6 +9,12 @@
 // blank/comment/malformed split an input file needs, and the parser's message for
 // the malformed case, so a bad line can be reported with its line number and
 // skipped rather than aborting the batch.
+//
+// Scope: this is a check on FEN *syntax* only, because it goes through
+// FENParser::ParseFEN, which has no board to generate attacks on. Position
+// legality (issue #45 — the side not to move being in check) is enforced by
+// Board::SetupFromFEN, so a line classified Valid here can still fail to load.
+// Callers must handle both.
 
 #include "FENParser.h"
 
