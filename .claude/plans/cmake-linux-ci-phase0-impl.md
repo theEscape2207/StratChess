@@ -512,25 +512,30 @@ This is the step that catches the two traps. Configure is unavailable on Windows
 Linux-only `CMakeLists.txt`, so check the lists directly instead of assuming:
 
 ```bash
-# Should list 24 files: 25 non-Archived .cpp minus skak.cpp
+# 26 non-Archived .cpp exist; minus skak.cpp -> 25 (the app's engine list)
 find StratEngine -name '*.cpp' -not -path '*/Archived/*' ! -name 'skak.cpp' | sort | wc -l
 
-# Should list 23: the above minus PerftRunner.cpp
+# minus PerftRunner.cpp -> 24 (the test target's engine list)
 find StratEngine -name '*.cpp' -not -path '*/Archived/*' \
      ! -name 'skak.cpp' ! -name 'PerftRunner.cpp' | sort | wc -l
 ```
 
-Expected: `24` then `23`. Cross-check both against the `ClCompile` entries:
+Expected: `25` then `24`. Cross-check both against the `ClCompile` entries:
 
 ```bash
-grep -o 'ClCompile Include="[^"]*"' StratChessEvolved/StratChessEvolved.vcxproj | wc -l   # 26
-grep -o 'ClCompile Include="[^"]*"' StratChessTests/StratChessTests.vcxproj   | wc -l   # 46
+grep -c 'ClCompile Include' StratChessEvolved/StratChessEvolved.vcxproj   # 26
+grep -c 'ClCompile Include' StratChessTests/StratChessTests.vcxproj       # 46
 ```
 
-The app's 26 = 24 engine + 1 app main + 1 (`UCIHandler.cpp`, already inside the 24 — recount by
-listing, not arithmetic, if these disagree). Treat any mismatch as a real finding and reconcile
-against the `.vcxproj` before proceeding; a silently different source list is exactly the failure
-mode the glob was chosen to avoid.
+Both must reconcile exactly:
+
+- **App:** 25 engine + 1 (`StratChessEvolved/StratChessEvolved.cpp`) = 26 ✓
+- **Tests:** 24 engine + 21 (`StratChessTests/*.cpp`) + 1 (`catch_amalgamated.cpp`) = 46 ✓
+
+Reconcile **by name**, not by arithmetic — matching totals can hide two compensating errors. Treat any
+mismatch as a real finding and reconcile against the `.vcxproj` before proceeding; do not adjust the
+regexes to make the numbers agree. A silently different source list is exactly the failure mode the
+glob was chosen to avoid.
 
 - [ ] **Step 4: Confirm the Windows build is still untouched**
 
