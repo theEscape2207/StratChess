@@ -128,8 +128,9 @@ Non-obvious API contracts — the rest of the layout is discoverable.
 `Docs/TestDesign.md` is the coverage map and the guide to writing tests — check it before adding
 any. Two rules matter enough to repeat here, because both are silent failures:
 
-- **Every tactical FEN needs its side-to-move field** (` w - - 0 1`). Omitting it makes the engine
-  play as Black without complaint — bug #46.
+- **Every tactical FEN needs its side-to-move field** (` w - - 0 1`). Omitting it drops below the
+  parser's four-field floor, so the FEN is rejected and the position is never applied — the board
+  keeps whatever it held and the engine answers for that instead.
 - **A `.cpp` missing from `StratChessTests.vcxproj` is never compiled**, so it passes by not running.
 
 Execute validation steps autonomously; flag any step needing user assistance (interactive GUI,

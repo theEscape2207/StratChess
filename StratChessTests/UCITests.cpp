@@ -658,14 +658,78 @@ TEST_CASE("Board::SetupFromFEN: 4-field FEN yields fiftyCount 0", "[uci]")
     // The halfmove default is not inert: SetupFromFEN feeds it into gameInfo_.fiftyCount,
     // which drives 50-move draw detection. Pin the value rather than leave it implicit.
     Board board;
-    board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -");
+    REQUIRE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -"));
 
-    // SetupFromFEN returns void and applies nothing on a parse error, so assert the position
-    // actually landed -- otherwise a rejected FEN would leave an empty board whose fiftyCount
-    // is also 0, and this test would pass for the wrong reason.
+    // The kings are checked as well as the return value: an empty board's fiftyCount is also 0,
+    // so without them a position that never landed would pass this test for the wrong reason.
     REQUIRE(board.GetPiece(e1) == WHITE_KING);
     REQUIRE(board.GetPiece(e8) == BLACK_KING);
     CHECK(board.GetGameInfo().fiftyCount == 0);
+}
+
+// ---------------------------------------------------------------------------
+// Board::SetupFromFEN failure reporting, and cmd_position's response to it
+// (issues #155, #46)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Board::SetupFromFEN: reports failure and leaves the board untouched", "[uci]")
+{
+    Board board;
+    REQUIRE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"));
+
+    // Missing the side-to-move, castling and en-passant fields: rejected by the field-count floor.
+    REQUIRE_FALSE(board.SetupFromFEN("6k1/5ppp/8/8/8/8/5PPP/R5K1"));
+
+    // Untouched means the previous position, not a reset and not an empty board.
+    CHECK(board.GetPiece(e1) == WHITE_KING);
+    CHECK(board.GetPiece(d8) == BLACK_QUEEN);
+    CHECK(board.GetCurrentColor() == WHITE);
+}
+
+TEST_CASE("cmd_position: malformed FEN leaves the previous position intact", "[uci]")
+{
+    UciHandlerTestFixture fx;
+    fx.position("position startpos moves e2e4");
+
+    const std::string before = fx.board().ExtractFEN();
+    REQUIRE(fx.board().GetPiece(e4) == WHITE_PAWN);
+    REQUIRE(fx.board().GetCurrentColor() == BLACK);
+
+    fx.position("position fen this-is-not-a-fen");
+
+    CHECK(fx.board().ExtractFEN() == before);
+}
+
+// Issue #46: a FEN with the side-to-move field omitted. Since #143 added the field-count floor the
+// parser rejects it outright, so the engine can no longer silently decide it is Black's move — but
+// the command must also leave no trace, or the engine answers for a position never sent.
+TEST_CASE("cmd_position: FEN missing the side-to-move field is declined", "[uci]")
+{
+    UciHandlerTestFixture fx;
+    fx.position("position startpos");
+
+    const std::string before = fx.board().ExtractFEN();
+
+    fx.position("position fen 6k1/5ppp/8/8/8/8/5PPP/R5K1");
+
+    CHECK(fx.board().ExtractFEN() == before);
+    CHECK(fx.board().GetCurrentColor() == WHITE);
+}
+
+// The move list is parsed after the position block, so a declined FEN must abandon the whole
+// command — replaying moves onto the position the board still holds would corrupt it.
+TEST_CASE("cmd_position: malformed FEN does not replay its move list", "[uci]")
+{
+    UciHandlerTestFixture fx;
+    fx.position("position startpos");
+
+    const std::string before = fx.board().ExtractFEN();
+
+    fx.position("position fen 6k1/5ppp/8/8/8/8/5PPP/R5K1 moves e2e4 e7e5");
+
+    CHECK(fx.board().ExtractFEN() == before);
+    CHECK(fx.board().GetPiece(e2) == WHITE_PAWN);
+    CHECK(fx.board().GetPiece(e4) == NO_PIECE);
 }
 
 TEST_CASE("FenBatch::ClassifyLine: valid 6-field White-to-move FEN is Valid", "[uci]")
