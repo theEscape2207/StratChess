@@ -30,15 +30,40 @@ Newest first.
   have had to leave its king en prise. Kings on adjacent squares are covered by the same test,
   because `GetAttackBoard` includes king attacks.
 - **`SetupFromFEN` rejects such a position**, reporting through the `bool` channel added for #155, so
-  `position fen <illegal>` is declined and the board keeps what it held. Previously the engine loaded
-  the position and answered with a king capture: `4k3/8/8/8/8/5b2/8/4RK2 w - - 0 1` → `bestmove e1e8`.
+  `position fen <illegal>` is declined and the board keeps what it held.
+
+  The symptom #45 reported — `bestmove e1e8`, capturing the king — no longer reproduced by the time
+  this was fixed, and what was happening instead is worse. Measured on the pre-change engine with
+  `4k3/8/8/8/8/5b2/8/4RK2 w - - 0 1`:
+
+  - **Release**: it plays ordinary moves (`e1e7`/`e1e6`/`f1f2` at depths 1/2/6) and reports a routine
+    material verdict for an impossible position. The king capture *is* generated — nothing in
+    `MoveGenerator` filters it — but `DoMove` discards it by accident, not by design: `MoveHelper::IsValid`
+    has a "cannot take a King" rule that `DoMove` only consults inside an `assert()`, so in Release the
+    capture proceeds, the king is removed, and `InCheck()` then calls `GetFirstPiece()` on the now-empty
+    king bitboard. That violates the function's own documented `mask != 0` precondition:
+    `countr_zero(0)` is 64, so `g_bbKingMoves[64]` reads one entry past a 64-entry table. The garbage
+    that comes back makes `DoMove` conclude the mover left its own king in check, so it rolls back and
+    returns false.
+  - **Debug**: the same position aborts the process on `assert(MoveHelper::IsValid(...))`.
+
+  So the real pre-change exposure was an out-of-bounds read (Release) or an abort (Debug) reachable from
+  any hand-written FEN. Rejecting the position at load closes the only externally reachable route to it;
+  hardening the paths themselves — the assert-only invariants and `GetFirstPiece`'s precondition — is
+  tracked as #163, since a guard in `DoMove` or `GetAttackBoard` costs nps and needs measuring.
 
 ### Fixed
-- **`FEN_ROOK_ON_7TH` in `EvalTests.cpp` was an illegal position** — White's rook on e7 gave check to
-  the black king on e8 while it was White to move. Found by sweeping all 143 FEN literals in the
-  codebase through the loader. The black king moves to g8; the rook stays on e7 and the e-file stays
-  pawnless, so the open-file and 7th-rank assertions are unchanged. It is the only pre-existing
-  illegal FEN in the suite, and the only one of these constants without a hand-verification note.
+Two pre-existing illegal positions, found by sweeping all 292 FENs in the repository (source literals
+plus the `Tests/*.json` suites) through the loader:
+
+- **`FEN_ROOK_ON_7TH` (`EvalTests.cpp`)** — White's rook on e7 gave check to the black king on e8
+  while it was White to move. The black king moves to g8; the rook stays on e7 and the e-file stays
+  pawnless, so the open-file and 7th-rank assertions are unchanged. It is the only one of that file's
+  FEN constants without a hand-verification note in its comment.
+- **`M2-001` (`Tests/tactical_test_cases.json`)** — the second white rook stood on h1, checking the
+  black king down the open h-file with White to move. It moves to g1, which leaves `Rb8#` (the mate
+  the case actually tests, and now its only listed answer) intact; verified against the engine, which
+  finds it at depth 2. The unreachable `h1h7` alternative is dropped.
 
 ### Notes
 - The check runs on a scratch `Board` before the real one is touched, preserving #155's guarantee
