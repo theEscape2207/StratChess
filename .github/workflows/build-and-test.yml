@@ -6,9 +6,8 @@ on:
   push:
     branches: [main]
   # Windows is demoted to nightly. It bills at 2x per minute against included
-  # minutes where Linux bills at 1x, and that multiplier is what exhausted the
-  # July quota (see issue #81). Every PR now runs Linux; Windows runs nightly,
-  # or on demand via the 'windows-ci' label.
+  # minutes where Linux bills at 1x (see issue #81). Runs nightly, or on demand
+  # via the 'windows-ci' label.
   schedule:
     - cron: '0 3 * * *'
 
@@ -194,7 +193,7 @@ jobs:
 
   # Branch protection requires a single always-present check, and this is it --
   # the name must not change. Linux is the gate: it runs on every PR, so a PR is
-  # mergeable on Linux alone, which is the entire point of the budget fix.
+  # mergeable on Linux alone.
   # Windows is advisory in the sense that being SKIPPED is fine, but a Windows
   # job that actually ran and failed still blocks -- an MSVC-only regression
   # (e.g. a Release-only C4189 under /WX) must not merge unnoticed.
