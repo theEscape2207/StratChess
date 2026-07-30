@@ -5,6 +5,12 @@ on:
     branches: [main]
   push:
     branches: [main]
+  # Windows is demoted to nightly. It bills at 2x per minute against included
+  # minutes where Linux bills at 1x, and that multiplier is what exhausted the
+  # July quota (see issue #81). Every PR now runs Linux; Windows runs nightly,
+  # or on demand via the 'windows-ci' label.
+  schedule:
+    - cron: '0 3 * * *'
 
 jobs:
   # Decide how much validation this diff is worth, using the SAME classifier the
@@ -38,14 +44,54 @@ jobs:
           "tier=$($c.Tier)" | Out-File $env:GITHUB_OUTPUT -Append
           "is_full=$($c.IsFull.ToString().ToLower())" | Out-File $env:GITHUB_OUTPUT -Append
 
+  build-linux:
+    needs: classify
+    if: github.event_name == 'push' || github.event_name == 'schedule' || needs.classify.outputs.is_full == 'true'
+    runs-on: ubuntu-latest
+    # Release and Debug are not redundant -- the same asymmetry documented for the
+    # Windows job in issue #146 is compiler-independent. Debug keeps assert() and
+    # the #ifndef NDEBUG bitboard/mailbox tripwire in Eval.cpp live; Release is the
+    # only leg that runs the optimizer. Two Linux legs at 1x still bill less than
+    # one Windows leg at 2x.
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [Release, Debug]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      # Keyed on the pinned dependency tags, matching the Windows job's approach.
+      # Not matrix-scoped: FetchContent sources have no per-configuration content,
+      # so both legs want the identical cache.
+      - name: Cache FetchContent dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: cmake-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.config }}
+
+      - name: Build
+        run: cmake --build build --target StratChessTests --parallel
+
+      # Same '~[slow]' filter as the Windows job, deliberately: the legs must
+      # cover the same cases. The fast tier is self-contained -- no Catch2 test
+      # reads Tests/*.json -- so the working directory does not matter here.
+      - name: Run fast tests
+        run: ./build/StratChessTests '~[slow]'
+
   build-and-test:
     needs: classify
-    # Skip the ~6 minute build+test cycle when the diff cannot affect it (docs, or
-    # engine-inert tooling scripts). Pushes to main ALWAYS run: that job's second
-    # purpose is warming the actions/cache deps cache on the default branch, which
-    # actions/cache scopes per-branch -- skipping it on docs-only pushes would let
-    # that cache lapse and make the next code PR pay a cold-cache build.
-    if: github.event_name == 'push' || needs.classify.outputs.is_full == 'true'
+    # Nightly, or on demand via the 'windows-ci' label. Pushes to main still run
+    # so the actions/cache deps cache on the default branch does not lapse.
+    if: >-
+      github.event_name == 'schedule'
+      || github.event_name == 'push'
+      || contains(github.event.pull_request.labels.*.name, 'windows-ci')
     # Pinned to the explicit VS2026 image (not the moving windows-latest label) —
     # this project's projects pin PlatformToolset v145, which matches this image's
     # default VC.Tools.x86.x64 toolset. See .claude/plans/full-build-test-ci-github-actions.md.
@@ -146,20 +192,14 @@ jobs:
           & ".\StratChessTests\x64\${{ matrix.config }}\StratChessTests.exe" '~[slow]'
           exit $LASTEXITCODE
 
-  # Branch protection can require a single always-present check. This job succeeds
-  # whether build-and-test ran or was legitimately skipped, but FAILS if it actually
-  # failed or was cancelled -- so a fast-path PR stays mergeable while a genuine
-  # failure still blocks.
-  #
-  # This is also what makes the Release/Debug matrix transparent to branch
-  # protection. Adding the matrix renamed the underlying checks to
-  # "build-and-test (Release)" and "build-and-test (Debug)", which would have
-  # broken a rule pinned to the old "build-and-test" name; the required check is
-  # this job instead. `needs.build-and-test.result` is the AGGREGATE across every
-  # matrix leg -- 'failure' if any leg failed -- so the case block below needs no
-  # change to cover both configurations.
+  # Branch protection requires a single always-present check, and this is it --
+  # the name must not change. Linux is the gate: it runs on every PR, so a PR is
+  # mergeable on Linux alone, which is the entire point of the budget fix.
+  # Windows is advisory in the sense that being SKIPPED is fine, but a Windows
+  # job that actually ran and failed still blocks -- an MSVC-only regression
+  # (e.g. a Release-only C4189 under /WX) must not merge unnoticed.
   build-and-test-result:
-    needs: [classify, build-and-test]
+    needs: [classify, build-linux, build-and-test]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -167,9 +207,19 @@ jobs:
         shell: bash
         run: |
           echo "tier=${{ needs.classify.outputs.tier }}"
-          echo "build-and-test result=${{ needs.build-and-test.result }}"
-          case "${{ needs.build-and-test.result }}" in
-            success) echo "Build and tests passed."; exit 0 ;;
-            skipped) echo "Skipped: '${{ needs.classify.outputs.tier }}' tier cannot affect the build."; exit 0 ;;
-            *)       echo "Build and tests did not pass."; exit 1 ;;
+          echo "linux result=${{ needs.build-linux.result }}"
+          echo "windows result=${{ needs.build-and-test.result }}"
+
+          case "${{ needs.build-linux.result }}" in
+            success) echo "Linux build and tests passed." ;;
+            skipped) echo "Linux skipped: '${{ needs.classify.outputs.tier }}' tier cannot affect the build." ;;
+            *)       echo "Linux build and tests did not pass."; exit 1 ;;
           esac
+
+          case "${{ needs.build-and-test.result }}" in
+            success) echo "Windows build and tests passed." ;;
+            skipped) echo "Windows skipped: demoted to nightly / 'windows-ci' label." ;;
+            *)       echo "Windows build and tests did not pass."; exit 1 ;;
+          esac
+
+          exit 0
