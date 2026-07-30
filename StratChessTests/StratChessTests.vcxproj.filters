@@ -177,5 +177,8 @@
     <ClInclude Include="..\StratEngine\Utils\FenBatch.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\StratEngine\Compat.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
