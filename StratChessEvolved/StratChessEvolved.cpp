@@ -67,7 +67,11 @@ static void test_fen_integration() {
         std::cout << "FEN: " << test.fen << "\n";
 
         // Load FEN
-        board.SetupFromFEN(test.fen);
+        if (!board.SetupFromFEN(test.fen)) {
+            std::cout << "FAIL: FEN did not parse\n";
+            failed++;
+            continue;
+        }
 
         // Verify side to move
         if (board.GetCurrentColor() != test.expectedSide) {
@@ -190,7 +194,10 @@ static int perftrunner(int argc, char** argv) {
             // Custom fen: Kiwipete
             //const std::string fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
 			std::cout << "Running perft with custom board setup from FEN at depth " << depth << "\nFEN: " << fen << "\n\n";
-            board.SetupFromFEN(fen);
+            if (!board.SetupFromFEN(fen)) {
+                std::cerr << "Error: could not parse FEN '" << fen << "'\n";
+                return 1;
+            }
         }
         else {
             // Set up starting position
@@ -275,7 +282,12 @@ static int evalrunner(int argc, char** argv) {
         }
 
         Board board;
-        board.SetupFromFEN(line);
+        if (!board.SetupFromFEN(line)) {
+            // ClassifyLine already ran the same parser, so reaching here means the two disagree.
+            std::cerr << "Warning: line " << line_no << ": classified valid but failed to load,"
+                       << " skipped: '" << line << "'\n";
+            continue;
+        }
         const int score = eval->Evaluate(board);
         std::cout << line << '\t' << score << '\n';
     }

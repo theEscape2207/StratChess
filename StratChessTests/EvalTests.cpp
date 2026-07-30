@@ -220,10 +220,10 @@ TEST_CASE("Eval - EvalComplex penalises doubled pawns relative to normal structu
 {
     Board board;
 
-    board.SetupFromFEN(FEN_WHITE_DOUBLED);
+    REQUIRE(board.SetupFromFEN(FEN_WHITE_DOUBLED));
     int doubled_score = EvalManager::Create(EvalManager::EvalTypes::COMPLEX)->Evaluate(board);
 
-    board.SetupFromFEN(FEN_WHITE_NORMAL);
+    REQUIRE(board.SetupFromFEN(FEN_WHITE_NORMAL));
     int normal_score  = EvalManager::Create(EvalManager::EvalTypes::COMPLEX)->Evaluate(board);
 
     // Normal structure must score strictly higher than the doubled-pawn position.

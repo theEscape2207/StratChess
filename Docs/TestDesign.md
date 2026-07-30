@@ -610,8 +610,9 @@ the project builds and passes silently by never running.
 
 Constructing FEN positions (all four are bugs that have actually bitten):
 
-- **Always append ` w - - 0 1`.** Omitting the side-to-move field silently makes the engine play as
-  Black — bug #46.
+- **Always append ` w - - 0 1`.** A FEN with fewer than four fields is rejected by the parser, so
+  the position is never applied: `position` is declined and the engine answers for whatever the
+  board still held. `Board::SetupFromFEN` returns `false` here — in a test, `REQUIRE()` it.
 - **Verify no White piece attacks the Black king** before adding a position. The engine accepts
   illegal FENs silently and returns king-capture moves — bug #45.
 - **Verify uniqueness against the engine**, not by eye:

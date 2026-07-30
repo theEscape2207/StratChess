@@ -13,6 +13,10 @@ class Board final
 
 public:
 	Board();
+
+	// Asserts in Debug builds if the FEN does not parse — there is no way to report failure from a
+	// constructor, and every caller passes a literal, so a malformed one is a bug in the caller.
+	// In Release the board is left empty, matching SetupFromFEN's contract below.
 	explicit Board(const std::string& fen);
 	~Board() = default;
 
@@ -23,7 +27,12 @@ public:
 
 	// --- Position setup ---
 	void SetDefaultBoard();
-	void SetupFromFEN(const std::string& fen);
+
+	// Applies a FEN string to the board. Returns false if the FEN does not parse, leaving the board
+	// exactly as it was — for a freshly constructed Board that means empty, which still evaluates
+	// and generates moves, so a caller that proceeds regardless operates on a position it never
+	// loaded. Hence [[nodiscard]]: the result has to be handled.
+	[[nodiscard]] bool SetupFromFEN(const std::string& fen);
 	std::string ExtractFEN() const;
 
 	// --- Move execution ---
