@@ -22,8 +22,13 @@ each decision was taken and which parts of issue #82 it deliberately departs fro
 
 ## Global Constraints
 
-- **The Windows build must not change behaviour.** `.vcxproj`, `.sln` and `build.ps1` are edited by no
-  task in this plan. Every task that touches a source file must leave `.\build.ps1 all` green.
+- **The Windows build must not change behaviour.** `.sln` and `build.ps1` are edited by no task in
+  this plan. Every task that touches a source file must leave `.\build.ps1 all` green. The `.vcxproj`
+  and `.vcxproj.filters` files admit exactly one class of edit: registering a **new header** as
+  `ClInclude` plus its matching `<Filter>` entry, which CLAUDE.md requires and which changes no build
+  behaviour because headers are not compiled. `ClCompile` entries and compiler settings stay frozen.
+- **Comments describe the code as it stands** (CLAUDE.md) — no point-in-time measurements, no
+  task/gate labels, no history of what the code replaced. Issue references are durable and stay.
 - **No `#pragma warning(disable)` may be added** to any source file (CLAUDE.md). Existing ones are
   guarded, never extended.
 - **No `-Werror`** in this slice. `-Wall -Wextra` only; the warning count is an output of this work,
@@ -591,12 +596,16 @@ on:
   push:
     branches: [main]
   # Windows is demoted to nightly. It bills at 2x per minute against included
-  # minutes where Linux bills at 1x, and that multiplier is what exhausted the
-  # July quota (see issue #81). Every PR now runs Linux; Windows runs nightly,
-  # or on demand via the 'windows-ci' label.
+  # minutes where Linux bills at 1x (see issue #81). Every PR runs Linux;
+  # Windows runs nightly, or on demand via the 'windows-ci' label.
   schedule:
     - cron: '0 3 * * *'
 ```
+
+Comments state the workflow's present behaviour and the durable reason for it. Do **not** record the
+history of why the change happened — that a particular month's quota was exhausted is narrative, and
+CLAUDE.md puts narrative in the PR body or `Docs/Changelog.md`. Issue references are durable
+pointers and stay.
 
 - [ ] **Step 2: Add the `build-linux` job**
 
