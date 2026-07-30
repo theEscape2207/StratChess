@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Compat.h"
 #include "BitBoardHelper.h"
 #include "Move.h"
 #include "GameState.h"
@@ -90,7 +91,7 @@ public:
 
 	// Returns the index of the least-significant set bit (square of first piece).
 	// Precondition: mask != 0. std::countr_zero compiles to TZCNT on x64.
-	static __forceinline eSquare GetFirstPiece(BITBOARD mask) noexcept
+	static STRAT_FORCEINLINE eSquare GetFirstPiece(BITBOARD mask) noexcept
 	{
 		assert(mask != 0);
 		return static_cast<eSquare>(std::countr_zero(mask));

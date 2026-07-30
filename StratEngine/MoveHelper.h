@@ -11,8 +11,10 @@
 #pragma once
 
 // remove annoying level 4 warnings
-#pragma warning(push)
-#pragma warning( disable : 4505 )	// Unreferenced local function has been removed
+#if defined(_MSC_VER)
+#  pragma warning(push)
+#  pragma warning( disable : 4505 )	// Unreferenced local function has been removed
+#endif
 
 #include "Move.h"
 #include "PieceHelper.h"
@@ -202,4 +204,6 @@ namespace MoveHelper
 
 } // namespace MoveHelper
 
-#pragma warning (pop)
+#if defined(_MSC_VER)
+#  pragma warning (pop)
+#endif
