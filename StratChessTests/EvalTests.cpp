@@ -46,10 +46,8 @@ static constexpr const char* FEN_WHITE_NORMAL =
 
 // Endgame: White Ke1 + Re7 (rook on 7th rank). Black Kg8.
 // Reduced material triggers ENDGAME stage; rook-on-7th bonus should apply.
-// White to move. The black king is off the e-file so it is not attacked: with it
-// on e8 this position was illegal (issue #45), the rook giving check while it was
-// Black's opponent to move. The e-file stays pawnless, so the open-file
-// classification the rook tests are asserting is unchanged.
+// White to move. The black king stands off the e-file, so the rook does not
+// attack it — legal. No pawns of either colour, so the e-file counts as open.
 static constexpr const char* FEN_ROOK_ON_7TH =
     "6k1/4R3/8/8/8/8/8/4K3 w - - 0 1";
 

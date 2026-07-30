@@ -127,6 +127,21 @@ void Board::setup_board(const squareCol& col)
 	spdlog::default_logger()->debug("Custom board set up");
 }
 
+// The one rule so far: the side not to move may not be in check, since reaching such a position would
+// have required leaving a king en prise. Kings on adjacent squares fail it too, because GetAttackBoard
+// includes king attacks. Any further rule belongs here, and only needs the scratch board below.
+bool Board::position_is_legal(const squareCol& pieces, eColor sideToMove)
+{
+	// A scratch board, because attack generation needs a populated one and the caller's board may not
+	// be modified until the position is known to be legal. Placement and side to move are all the
+	// query reads; castling rights and en-passant cannot make a king attacked.
+	Board probe;
+	probe.setup_board(pieces);
+	probe.sideToMove_ = sideToMove;
+
+	return !probe.WaitingSideInCheck();
+}
+
 bool Board::SetupFromFEN(const std::string& fen)
 {
 	FENParser::FENGameState state;
@@ -139,21 +154,11 @@ bool Board::SetupFromFEN(const std::string& fen)
 		return false;
 	}
 
-	// A position whose waiting side is in check is illegal — it cannot arise from a legal game — and
-	// the engine would answer it with a king capture. Detecting that needs attack generation, which
-	// needs a populated board, so it runs on a scratch copy: this board must be left untouched if
-	// the position is rejected. Only placement and side to move matter to the query, and
-	// setup_board() running twice on a successful load is the price of that guarantee.
-	{
-		Board probe;
-		probe.setup_board(pieces);
-		probe.sideToMove_ = state.sideToMove;
-
-		if (probe.WaitingSideInCheck()) {
-			spdlog::default_logger()->error(
-				"FEN describes an illegal position (the side not to move is in check): {}", fen);
-			return false;
-		}
+	// Checked before anything is applied, so a rejected FEN leaves this board as it was.
+	if (!position_is_legal(pieces, state.sideToMove)) {
+		spdlog::default_logger()->error(
+			"FEN describes an illegal position (the side not to move is in check): {}", fen);
+		return false;
 	}
 
 	setup_board(pieces);

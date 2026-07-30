@@ -124,6 +124,11 @@ private:
 	// --- Internal position setup ---
 	void setup_board(const squareCol&);
 	void clear_board();
+
+	// True if the position these pieces describe can legally be on the board with `sideToMove` to
+	// move. Evaluated on a scratch board, so it is safe to ask before committing anything: a caller
+	// that rejects a position must leave the current one untouched.
+	static bool position_is_legal(const squareCol& pieces, eColor sideToMove);
 	
 	// --- Low-level piece manipulation (bitboard + mailbox, no material update) ---
 	// Note: these also update zobrist_hash_ as a side-effect.
