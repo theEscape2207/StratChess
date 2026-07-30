@@ -58,14 +58,15 @@ generator, and pinned by a test.
 needs attack generation, which needs a *populated* board — so validating after applying the position
 would mean mutating the board and then discovering it must be rejected.
 
-So a scratch `Board` is populated from the parsed piece list and probed before `*this` is modified:
+So a private `Board::position_is_legal(pieces, sideToMove)` populates a scratch `Board` and probes it
+before `*this` is modified:
 
 ```cpp
-Board probe;
-probe.setup_board(pieces);
-probe.sideToMove_ = state.sideToMove;
-if (probe.WaitingSideInCheck()) { /* log, return false */ }
+if (!position_is_legal(pieces, state.sideToMove)) { /* log, return false */ }
 ```
+
+A named helper rather than an inline block: the scratch-board setup is an implementation detail the
+reader of `SetupFromFEN` does not need, and it is where any further legality rule goes.
 
 `Board` is a copyable value type (#67) and search already keeps a copy per thread, so this is
 ordinary use. `setup_board` runs twice on a successful load; that is deliberate and cheap (32
