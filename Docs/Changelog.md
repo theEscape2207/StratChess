@@ -22,6 +22,42 @@ Newest first.
 
 ---
 
+## 2026-07-30 — `SetupFromFEN` error channel (issues #155, #46)
+
+### Changed
+- **`Board::SetupFromFEN` returns `[[nodiscard]] bool`** instead of `void`. On failure it logs the
+  parse error and leaves the board exactly as it was. `[[nodiscard]]` under `/WX` is what enforces
+  this: a discarded return is `warning C4834` → `error C2220`, so no call site can keep the old
+  silent behaviour. All 8 engine/app call sites and 31 test call sites handle it.
+- **`UciHandler::cmd_position` declines a malformed FEN**: the board keeps the position it held and
+  the function returns before the `moves` list is parsed, so a move list is never replayed onto a
+  position the requested FEN did not load. Logged at debug level — UCI has no error channel, and
+  silently ignoring the command is conventional. Deliberately *not* a reset to the starting
+  position, which would answer `bestmove` for a position the GUI never sent.
+- **`Config::ReadFEN` falls back to the standard opening position** when the FEN in
+  `game_settings.json` does not parse, matching what the empty-FEN path above it already did.
+  `SetCustomGame()` is skipped on that path, since a default board is not a custom game.
+- **`Board(const std::string& fen)` asserts** on a malformed FEN. A constructor has no way to
+  report failure and every caller passes a literal, so Debug is where that should surface; Release
+  behaviour is unchanged (empty board, error logged).
+- `Perft::run_test_suite` now fails the suite on an unparseable suite FEN rather than running the
+  position against an empty board.
+
+### Fixed
+- **#46** — a FEN missing its side-to-move field no longer leads to output for a position that was
+  never loaded. The parse half was already fixed by #143's four-field floor (a bare piece-placement
+  string is rejected, so the side-to-move default is unreachable); what remained was `cmd_position`
+  ignoring the failure. Covered by `[uci]` regression tests.
+
+### Notes
+- Error handling only — no behaviour change on any well-formed FEN, and no Elo impact.
+- Out of scope: FEN *legality* validation (a position whose non-mover is in check, #45). This change
+  builds the channel; #45 adds a rule that reports through it. `FenBatch::ClassifyLine`'s double
+  parse is likewise left for the follow-on #155 mentions.
+- Plan: `.claude/plans/setupfromfen-error-channel.md`.
+
+---
+
 ## 2026-07-29 — Bishop pair, connected rooks, castling (issues #111, #114, #115)
 
 ### Added
