@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include <array>
+#include <cstdint>
 
 // Index til bitboards
 inline constexpr auto ALL_PIECES = 14;
