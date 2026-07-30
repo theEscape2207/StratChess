@@ -60,6 +60,20 @@ These were measured against the tree at `17869ee`, and differ from what #82's co
 - **`Get-ChangeTier.ps1` fails closed to `Engine`.** An unrecognised path such as `CMakeLists.txt`
   gets the strictest tier, so full validation runs. Safe by default; an explicit `Build` rule is a
   correctness improvement, not a fix.
+- **There is no precompiled header today.** CLAUDE.md describes `StratEngine/StdAfx.h` as "the PCH",
+  but neither `.vcxproj` sets `PrecompiledHeader` — `StdAfx.h` is an ordinary common-include header
+  and `StdAfx.cpp` is a vestigial PCH-creator stub. `target_precompile_headers` in CMake is therefore
+  a **new** mechanism, not a translation of an existing one. It is still the right vehicle for
+  `Compat.h` (it force-includes into every TU), but the choice should be understood as additive.
+  CLAUDE.md's Build section is inaccurate here and should be corrected separately.
+- **`skak.cpp` is dead code excluded from both projects**, and `Tests/PerftRunner.cpp` is in the app
+  project but *not* the test project. So the two targets have genuinely different engine source
+  lists, and the glob needs two explicit exclusions to stay faithful. Without them a glob silently
+  changes what each binary contains.
+- **`defines.h` uses `uint8_t` but includes only `<array>`**, and `StdAfx.h` includes `defines.h`
+  *before* its `<cstdint>`. MSVC's `<array>` pulls in `<cstdint>` transitively; libstdc++ is not
+  obliged to. This is the single most likely first compile failure on GCC, and the fix is a one-line
+  `#include <cstdint>` in `defines.h`.
 
 The rest of #82's portability table verified exactly: 12 `#pragma warning` directives in 4 files, one
 `__forceinline` (`Board.h:93`), one `_strnicmp` (`Config.cpp:25`), one `_WIN32_WINNT` (`StdAfx.h:3`).
@@ -71,6 +85,7 @@ The rest of #82's portability table verified exactly: 12 `#pragma warning` direc
 ```cmake
 file(GLOB_RECURSE ENGINE_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/StratEngine/*.cpp)
 list(FILTER ENGINE_SOURCES EXCLUDE REGEX "/Archived/")
+list(FILTER ENGINE_SOURCES EXCLUDE REGEX "/skak\\.cpp$")   # dead file, in neither .vcxproj
 ```
 
 CLAUDE.md calls out that a `.cpp` missing from a project is a silent failure — it passes by not
@@ -96,9 +111,11 @@ include order, and **no source file gains an include**.
 
 The alternative of adding `#include "Compat.h"` to the 17 affected headers is more conventional and
 self-documenting, but it is a 17-file diff on a deadline slice, and those headers are also compiled
-by the authoritative `.vcxproj` — so a mistake there breaks the Windows build too. An explicit
-`-include` compile flag gives the same guarantee but introduces a second force-include mechanism
-alongside the PCH's.
+by the authoritative `.vcxproj` — so a mistake there breaks the Windows build too.
+
+Note this is an **additive** mechanism, not a reuse: the `.vcxproj` files configure no precompiled
+header at all (see findings). The PCH is being introduced here because it is the cheapest reliable
+force-include, and the compile-time benefit is incidental.
 
 ### Dependencies: `FetchContent`, consumed as include directories
 
