@@ -22,6 +22,38 @@ Newest first.
 
 ---
 
+## 2026-07-30 — Reject illegal FENs: waiting side in check (issue #45)
+
+### Added
+- **`Board::WaitingSideInCheck()`** — the mirror of `InCheck()`: true when the king of the side *not*
+  to move is attacked. Unlike `InCheck()` that is not a legal state, since the waiting side would
+  have had to leave its king en prise. Kings on adjacent squares are covered by the same test,
+  because `GetAttackBoard` includes king attacks.
+- **`SetupFromFEN` rejects such a position**, reporting through the `bool` channel added for #155, so
+  `position fen <illegal>` is declined and the board keeps what it held. Previously the engine loaded
+  the position and answered with a king capture: `4k3/8/8/8/8/5b2/8/4RK2 w - - 0 1` → `bestmove e1e8`.
+
+### Fixed
+- **`FEN_ROOK_ON_7TH` in `EvalTests.cpp` was an illegal position** — White's rook on e7 gave check to
+  the black king on e8 while it was White to move. Found by sweeping all 143 FEN literals in the
+  codebase through the loader. The black king moves to g8; the rook stays on e7 and the e-file stays
+  pawnless, so the open-file and 7th-rank assertions are unchanged. It is the only pre-existing
+  illegal FEN in the suite, and the only one of these constants without a hand-verification note.
+
+### Notes
+- The check runs on a scratch `Board` before the real one is touched, preserving #155's guarantee
+  that a rejected FEN mutates nothing. `setup_board()` therefore runs twice on a successful load —
+  deliberate, and trivial next to a search.
+- Legality cannot live in `FENParser` (no board, so no attack generation). `FenBatch::ClassifyLine`
+  consequently validates *syntax* only, and the batch eval runner's `!SetupFromFEN` branch — dead
+  when written in #162 — is now what keeps an illegal position out of a tuning corpus.
+- The issue's alternative (load it, answer `bestmove 0000`) was not taken: declining makes the
+  illegal position unrepresentable instead of something every board consumer must special-case.
+- No Elo impact: no legal position's evaluation or search changes.
+- Plan: `.claude/plans/fen-legality-validation.md`.
+
+---
+
 ## 2026-07-30 — `SetupFromFEN` error channel (issues #155, #46)
 
 ### Changed

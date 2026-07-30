@@ -54,7 +54,16 @@ public:
 	void ResetSearchDepth() noexcept;
 
 	// --- Position queries ---
+
+	// True if the king of the side to move is attacked. Called from DoMove before change_player(),
+	// where the side to move is still the side that just moved — i.e. "did that move leave its own
+	// king in check".
 	bool InCheck() const noexcept;
+
+	// True if the king of the side NOT to move is attacked. Unlike InCheck() this is not a legal
+	// state: the waiting side would have had to leave its king en prise, so a position where it
+	// holds cannot arise from a legal game. Used to reject illegal FENs at load.
+	bool WaitingSideInCheck() const noexcept;
 
 	// Returns the effective moving piece for a move that has NOT yet been applied.
 	// For non-promotion moves: the piece currently on m.from().

@@ -732,6 +732,69 @@ TEST_CASE("cmd_position: malformed FEN does not replay its move list", "[uci]")
     CHECK(fx.board().GetPiece(e4) == NO_PIECE);
 }
 
+// ---------------------------------------------------------------------------
+// Position legality: the side NOT to move may not be in check (issue #45)
+// ---------------------------------------------------------------------------
+
+// The issue's exact repro. White's rook on e1 attacks the black king on e8 with an empty file
+// between them, so Black — the waiting side — is in check. Before this rule the engine loaded the
+// position and answered `bestmove e1e8`, capturing the king.
+TEST_CASE("Board::SetupFromFEN: rejects a position with the waiting side in check", "[uci]")
+{
+    Board board;
+    REQUIRE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"));
+
+    REQUIRE_FALSE(board.SetupFromFEN("4k3/8/8/8/8/5b2/8/4RK2 w - - 0 1"));
+
+    // Rejected means nothing was applied, illegality included.
+    CHECK(board.GetPiece(d8) == BLACK_QUEEN);
+    CHECK(board.GetCurrentColor() == WHITE);
+}
+
+// The control for the test above: the same position with the other side to move is perfectly legal
+// — Black is in check and must answer it. If the rule tested the wrong king this would fail.
+TEST_CASE("Board::SetupFromFEN: accepts the same position with the checked side to move", "[uci]")
+{
+    Board board;
+    REQUIRE(board.SetupFromFEN("4k3/8/8/8/8/5b2/8/4RK2 b - - 0 1"));
+
+    CHECK(board.GetCurrentColor() == BLACK);
+    CHECK(board.InCheck());
+    CHECK_FALSE(board.WaitingSideInCheck());
+}
+
+// Adjacent kings need no rule of their own: each king attacks the other, so the waiting king is
+// attacked and the same test rejects the position.
+TEST_CASE("Board::SetupFromFEN: rejects adjacent kings", "[uci]")
+{
+    Board board;
+    REQUIRE_FALSE(board.SetupFromFEN("8/8/8/3kK3/8/8/8/8 w - - 0 1"));
+    REQUIRE_FALSE(board.SetupFromFEN("8/8/8/3kK3/8/8/8/8 b - - 0 1"));
+}
+
+// Guards against over-rejection: an ordinary position where the side to move is in check has to keep
+// loading, since that is what most tactical test positions are.
+TEST_CASE("Board::SetupFromFEN: a normal check position still loads", "[uci]")
+{
+    Board board;
+    REQUIRE(board.SetupFromFEN("rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3"));
+
+    CHECK(board.InCheck());
+    CHECK_FALSE(board.WaitingSideInCheck());
+}
+
+TEST_CASE("cmd_position: an illegal position is declined", "[uci]")
+{
+    UciHandlerTestFixture fx;
+    fx.position("position startpos");
+
+    const std::string before = fx.board().ExtractFEN();
+
+    fx.position("position fen 4k3/8/8/8/8/5b2/8/4RK2 w - - 0 1");
+
+    CHECK(fx.board().ExtractFEN() == before);
+}
+
 TEST_CASE("FenBatch::ClassifyLine: valid 6-field White-to-move FEN is Valid", "[uci]")
 {
     auto r = FenBatch::ClassifyLine("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");

@@ -139,6 +139,23 @@ bool Board::SetupFromFEN(const std::string& fen)
 		return false;
 	}
 
+	// A position whose waiting side is in check is illegal — it cannot arise from a legal game — and
+	// the engine would answer it with a king capture. Detecting that needs attack generation, which
+	// needs a populated board, so it runs on a scratch copy: this board must be left untouched if
+	// the position is rejected. Only placement and side to move matter to the query, and
+	// setup_board() running twice on a successful load is the price of that guarantee.
+	{
+		Board probe;
+		probe.setup_board(pieces);
+		probe.sideToMove_ = state.sideToMove;
+
+		if (probe.WaitingSideInCheck()) {
+			spdlog::default_logger()->error(
+				"FEN describes an illegal position (the side not to move is in check): {}", fen);
+			return false;
+		}
+	}
+
 	setup_board(pieces);
 
 	sideToMove_              = state.sideToMove;
@@ -591,13 +608,23 @@ ePiece Board::GetCapturedPiece(const Move& m) const noexcept
 	return get_captured_piece(m);
 }
 
-// Returns true if the side that just moved left their own king in check.
+// Returns true if the king of the side to move is under attack.
 bool Board::InCheck() const noexcept
 {
 	// Generate attacks for the opponent to see if our king is under attack
 	const eColor byColor = (sideToMove_ == WHITE ? BLACK : WHITE);
 	const BITBOARD bb = MoveGenerator::GetAttackBoard(*this, byColor);
 	return Bits::isAnyBitSet(bb, bitboards_.at(static_cast<BITBOARD>(KING) + sideToMove_));
+}
+
+// Returns true if the king of the side NOT to move is under attack — the mirror of InCheck(), and
+// an illegal position rather than a legal one. Kings on adjacent squares are covered too, since
+// GetAttackBoard includes king attacks.
+bool Board::WaitingSideInCheck() const noexcept
+{
+	const eColor waiting = (sideToMove_ == WHITE ? BLACK : WHITE);
+	const BITBOARD bb = MoveGenerator::GetAttackBoard(*this, sideToMove_);
+	return Bits::isAnyBitSet(bb, bitboards_.at(static_cast<BITBOARD>(KING) + waiting));
 }
 
 // Adds a piece and maintains material score.

@@ -44,11 +44,14 @@ static constexpr const char* FEN_WHITE_DOUBLED =
 static constexpr const char* FEN_WHITE_NORMAL =
     "4k3/pp6/8/8/8/1P6/P7/4K3 w - - 0 1";
 
-// Endgame: White Ke1 + Re7 (rook on 7th rank). Black Ke8.
+// Endgame: White Ke1 + Re7 (rook on 7th rank). Black Kg8.
 // Reduced material triggers ENDGAME stage; rook-on-7th bonus should apply.
-// White to move.
+// White to move. The black king is off the e-file so it is not attacked: with it
+// on e8 this position was illegal (issue #45), the rook giving check while it was
+// Black's opponent to move. The e-file stays pawnless, so the open-file
+// classification the rook tests are asserting is unchanged.
 static constexpr const char* FEN_ROOK_ON_7TH =
-    "4k3/4R3/8/8/8/8/8/4K3 w - - 0 1";
+    "6k1/4R3/8/8/8/8/8/4K3 w - - 0 1";
 
 // Mop-up evaluation (issue #70 / epic #110): White King+Queen vs Black King+Rook,
 // pawnless, decisive material lead (900 - 500 = 400 cp). Black king cornered (a8)
