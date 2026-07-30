@@ -785,6 +785,168 @@ git commit -m "Classify CMake files as Build tier"
 
 ---
 
+### Task 5: Local dry run with `clang++` + Ninja (no install required)
+
+Turns "unproven" into "configures, compiles, links and passes tests under a non-MSVC frontend". Runs
+entirely on tooling already installed with Visual Studio.
+
+**What this does and does not prove.** `clang++` on Windows defines `_MSC_VER`, defines `_WIN32`, and
+uses **Microsoft STL** — verified empirically, not assumed. So it takes the *same* `Compat.h` branch
+MSVC does and cannot surface the libstdc++ issues. What it does prove is everything in the
+build-system layer plus Clang frontend strictness:
+
+| Proves | Does not prove |
+|---|---|
+| `CMakeLists.txt` syntax and logic | `Compat.h`'s non-MSVC branch |
+| `FetchContent` + `SOURCE_SUBDIR` populate-only trick | Missing `<cstdint>` on libstdc++ |
+| Glob results and the two exclusions | `_WIN32_WINNT` guard |
+| `target_precompile_headers` with `Compat.h` first | `std::format`/`jthread` on libstdc++ |
+| GCC-style flag spellings are accepted | Case-sensitive include paths |
+| Clang frontend strictness (two-phase lookup) | pthread linking |
+| A large share of the `-Wall -Wextra` count | |
+
+**Files:** none committed. This is a verification task; it produces a finding, not a diff.
+
+- [ ] **Step 1: Put the VS-bundled CMake and Ninja on PATH**
+
+```powershell
+$vs   = 'C:\Program Files\Microsoft Visual Studio\18\Community'
+$cm   = "$vs\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin"
+$nj   = "$vs\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja"
+$llvm = "$vs\VC\Tools\Llvm\x64\bin"
+$env:PATH = "$cm;$nj;$llvm;$env:PATH"
+cmake --version; ninja --version; clang++ --version
+```
+
+Expected: CMake ≥ 3.28, Ninja, and clang 22.x reporting `Target: x86_64-pc-windows-msvc`.
+
+- [ ] **Step 2: Configure**
+
+```powershell
+cmake -S . -B build-clang -G Ninja `
+      -DCMAKE_CXX_COMPILER=clang++ `
+      -DCMAKE_BUILD_TYPE=Release
+```
+
+Expected: configure succeeds, `CMAKE_CXX_COMPILER_ID` resolves to `Clang` (so no `if(MSVC)` branch is
+needed), and `_deps/` is populated with all three dependencies without configuring their own projects.
+
+If configure fails on `SOURCE_SUBDIR`, that is a genuine finding about the populate-only idiom —
+report it rather than working around it locally.
+
+- [ ] **Step 3: Build and run**
+
+```powershell
+cmake --build build-clang --target StratChessTests --parallel
+.\build-clang\StratChessTests.exe '~[slow]'
+```
+
+Expected: builds, and the test count matches Task 1 Step 8 exactly. A differing count means the glob
+produced a different source list than the `.vcxproj` — the exact failure the exclusions exist to
+prevent.
+
+- [ ] **Step 4: Record the warning count**
+
+```powershell
+cmake --build build-clang --target StratChessTests --clean-first 2>&1 |
+    Select-String 'warning:' | Measure-Object | Select-Object -Expand Count
+```
+
+This is a *lower bound* on the GCC count, not the GCC count itself. Record it in the ledger and in the
+PR body as such — Clang and GCC differ on which warnings they emit under `-Wall -Wextra`.
+
+- [ ] **Step 5: Clean up**
+
+```powershell
+Remove-Item -Recurse -Force build-clang
+```
+
+`build-clang/` is not the `build/` path `.gitignore` covers, so remove it rather than committing it.
+Report findings; nothing to commit.
+
+---
+
+### Task 6: Real Linux validation under WSL (requires one-time setup)
+
+The only task that closes the gap completely. **Requires the human partner to install WSL** — it needs
+administrator rights and possibly a reboot, so it cannot be done autonomously.
+
+- [ ] **Step 1: Human partner installs WSL**
+
+Ask them to run, in an **elevated** PowerShell:
+
+```powershell
+wsl --install -d Ubuntu-24.04
+```
+
+Then reboot if prompted, and complete the one-time UNIX username/password setup. Ubuntu 24.04 is
+specified deliberately: it matches `ubuntu-latest` on GitHub Actions and ships GCC 13, the same
+compiler the CI job will use.
+
+This is the one step in this plan that cannot be executed autonomously — flag it and wait rather than
+attempting a workaround.
+
+- [ ] **Step 2: Install the toolchain inside WSL**
+
+```bash
+wsl -d Ubuntu-24.04 -- bash -lc "sudo apt-get update && sudo apt-get install -y build-essential cmake ninja-build git && g++ --version && cmake --version"
+```
+
+Expected: GCC 13.x and CMake ≥ 3.28.
+
+- [ ] **Step 3: Build from the Windows worktree via `/mnt`**
+
+```bash
+wsl -d Ubuntu-24.04 -- bash -lc "cd /mnt/c/Users/thees/source/repos/StratChessEvolved/.claude/worktrees/idempotent-spinning-cherny && cmake -S . -B build-wsl -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build-wsl --target StratChessTests --parallel"
+```
+
+Building over `/mnt` is slower than a native ext4 checkout but avoids a second copy of the tree and is
+correctness-equivalent. If throughput becomes annoying, `git clone` into `~` inside WSL instead.
+
+**This is the step that surfaces the real portability failures.** Expect them, and treat each as a
+finding to fix in `Compat.h` or the affected source — not as a reason to weaken the CMakeLists. The
+most likely first failure is `defines.h`'s `uint8_t` if Task 1's `<cstdint>` fix was missed.
+
+- [ ] **Step 4: Run the fast tier**
+
+```bash
+wsl -d Ubuntu-24.04 -- bash -lc "cd /mnt/c/Users/thees/source/repos/StratChessEvolved/.claude/worktrees/idempotent-spinning-cherny && ./build-wsl/StratChessTests '~[slow]'"
+```
+
+Expected: PASS, with the **same test count as Windows** (Task 1 Step 8). A different count means the
+two build systems disagree about the source list.
+
+- [ ] **Step 5: Record the real GCC warning count**
+
+```bash
+wsl -d Ubuntu-24.04 -- bash -lc "cd /mnt/c/Users/thees/source/repos/StratChessEvolved/.claude/worktrees/idempotent-spinning-cherny && cmake --build build-wsl --target StratChessTests --clean-first 2>&1 | grep -c 'warning:'"
+```
+
+This is the **actual** number the `-Werror` follow-up issue should be sized by — supersedes Task 5's
+Clang lower bound. Record it in the ledger and open the follow-up issue with it.
+
+- [ ] **Step 6: Also verify Debug**
+
+```bash
+wsl -d Ubuntu-24.04 -- bash -lc "cd /mnt/c/Users/thees/source/repos/StratChessEvolved/.claude/worktrees/idempotent-spinning-cherny && cmake -S . -B build-wsl-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug && cmake --build build-wsl-debug --target StratChessTests --parallel && ./build-wsl-debug/StratChessTests '~[slow]'"
+```
+
+Debug is where `assert()` and the `#ifndef NDEBUG` bitboard/mailbox tripwire in `Eval.cpp` are live.
+Release compiles them out, so a Debug-only assertion failure on GCC is exactly the class of bug this
+leg exists to catch — and would otherwise reach CI unseen.
+
+- [ ] **Step 7: Clean up and report**
+
+```bash
+wsl -d Ubuntu-24.04 -- bash -lc "cd /mnt/c/Users/thees/source/repos/StratChessEvolved/.claude/worktrees/idempotent-spinning-cherny && rm -rf build-wsl build-wsl-debug"
+```
+
+If this task passes, the PR body may state that the Linux build is **verified locally on GCC 13 /
+Ubuntu 24.04**, and the Aug 1 CI run becomes confirmation rather than first evidence. Say exactly
+which configurations were run; do not generalise beyond them.
+
+---
+
 ## Verification before opening the PR
 
 1. `.\build.ps1 all -Config Release` and `-Config Debug` — both green, zero warnings.
@@ -798,10 +960,17 @@ git commit -m "Classify CMake files as Build tier"
 This is not the logging-only self-certification carve-out; it is simply out of both reviewers' scope.
 State that reasoning in the PR body so the skip is auditable.
 
-**What cannot be verified locally:** there is no Linux machine in this environment, and the Actions
-quota is exhausted until 2026-08-01. The CMake path is therefore *unproven* at PR time. Say so
-plainly in the PR body rather than implying the Linux job is known-green — the first real run is the
-first evidence.
+**How much is verified depends on which of Tasks 5 and 6 ran.** State exactly this in the PR body,
+and nothing stronger:
+
+| Ran | Claim the PR body may make |
+|---|---|
+| Neither | The CMake path is **unproven**. The first CI run after 2026-08-01 is the first evidence. |
+| Task 5 only | Build-system layer and Clang frontend verified on Windows/MS-STL. The libstdc++ and Linux-platform risks remain **unverified**. |
+| Task 6 | The Linux build is **verified locally on GCC 13 / Ubuntu 24.04**, Release and Debug, with the fast-tier count matching Windows. CI becomes confirmation, not first evidence. |
+
+Never imply the Linux job is known-green on the strength of Task 5 alone — it uses Microsoft STL and
+takes the MSVC branch of `Compat.h`, so it cannot see the failures most likely to occur.
 
 ## After the first successful Linux run
 
