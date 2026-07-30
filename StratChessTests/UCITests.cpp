@@ -737,8 +737,8 @@ TEST_CASE("cmd_position: malformed FEN does not replay its move list", "[uci]")
 // ---------------------------------------------------------------------------
 
 // The issue's exact repro. White's rook on e1 attacks the black king on e8 with an empty file
-// between them, so Black — the waiting side — is in check. Before this rule the engine loaded the
-// position and answered `bestmove e1e8`, capturing the king.
+// between them, so Black — the waiting side — is in check. Searching such a position used to reach
+// a board with one king removed, where attack generation reads past its move table.
 TEST_CASE("Board::SetupFromFEN: rejects a position with the waiting side in check", "[uci]")
 {
     Board board;

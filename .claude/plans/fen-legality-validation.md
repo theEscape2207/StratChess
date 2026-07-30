@@ -4,9 +4,18 @@
 
 A FEN describing a position where the side **not** to move has its king attacked is illegal — it
 cannot arise from a legal game, because the mover would have had to leave their king en prise. The
-engine currently loads such a position without complaint and returns a king capture as its best move
-(`position fen 4k3/8/8/8/8/5b2/8/4RK2 w - - 0 1` → `bestmove e1e8`). Reject it at load, reporting
-through the channel #155 built.
+engine loads such a position without complaint. Reject it at load, reporting through the channel #155
+built.
+
+The symptom the issue reports (`bestmove e1e8`, capturing the king) no longer reproduces; measuring
+the pre-change engine on `4k3/8/8/8/8/5b2/8/4RK2 w - - 0 1` shows what happens now instead. The king
+capture is still generated — nothing in `MoveGenerator` filters it — but `DoMove` discards it by
+accident: the "cannot take a King" rule in `MoveHelper::IsValid` is only consulted inside an
+`assert()`, so Debug aborts there, while Release proceeds, removes the king, and then calls
+`GetFirstPiece()` on an empty king bitboard, breaking that function's `mask != 0` precondition —
+`countr_zero(0)` is 64, so `g_bbKingMoves[64]` reads past a 64-entry table, and the resulting garbage
+makes `DoMove` roll the move back. Rejecting the FEN closes the only externally reachable route to
+that state; hardening the paths themselves is tracked separately.
 
 ## Scope limits
 
