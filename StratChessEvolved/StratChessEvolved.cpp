@@ -283,9 +283,10 @@ static int evalrunner(int argc, char** argv) {
 
         Board board;
         if (!board.SetupFromFEN(line)) {
-            // ClassifyLine already ran the same parser, so reaching here means the two disagree.
-            std::cerr << "Warning: line " << line_no << ": classified valid but failed to load,"
-                       << " skipped: '" << line << "'\n";
+            // ClassifyLine checks syntax only; this is where an illegal position (waiting side in
+            // check, issue #45) is caught, and what keeps one out of a tuning corpus.
+            std::cerr << "Warning: line " << line_no << ": parses but will not load"
+                       << " (illegal position?), skipped: '" << line << "'\n";
             continue;
         }
         const int score = eval->Evaluate(board);

@@ -127,6 +127,21 @@ void Board::setup_board(const squareCol& col)
 	spdlog::default_logger()->debug("Custom board set up");
 }
 
+// The one rule so far: the side not to move may not be in check, since reaching such a position would
+// have required leaving a king en prise. Kings on adjacent squares fail it too, because GetAttackBoard
+// includes king attacks. Any further rule belongs here, and only needs the scratch board below.
+bool Board::position_is_legal(const squareCol& pieces, eColor sideToMove)
+{
+	// A scratch board, because attack generation needs a populated one and the caller's board may not
+	// be modified until the position is known to be legal. Placement and side to move are all the
+	// query reads; castling rights and en-passant cannot make a king attacked.
+	Board probe;
+	probe.setup_board(pieces);
+	probe.sideToMove_ = sideToMove;
+
+	return !probe.WaitingSideInCheck();
+}
+
 bool Board::SetupFromFEN(const std::string& fen)
 {
 	FENParser::FENGameState state;
@@ -136,6 +151,13 @@ bool Board::SetupFromFEN(const std::string& fen)
 	auto parseError = FENParser::ParseFEN(fen, state, pieces);
 	if (parseError) {
 		spdlog::default_logger()->error("FEN parse error: {}", *parseError);
+		return false;
+	}
+
+	// Checked before anything is applied, so a rejected FEN leaves this board as it was.
+	if (!position_is_legal(pieces, state.sideToMove)) {
+		spdlog::default_logger()->error(
+			"FEN describes an illegal position (the side not to move is in check): {}", fen);
 		return false;
 	}
 
@@ -591,13 +613,23 @@ ePiece Board::GetCapturedPiece(const Move& m) const noexcept
 	return get_captured_piece(m);
 }
 
-// Returns true if the side that just moved left their own king in check.
+// Returns true if the king of the side to move is under attack.
 bool Board::InCheck() const noexcept
 {
 	// Generate attacks for the opponent to see if our king is under attack
 	const eColor byColor = (sideToMove_ == WHITE ? BLACK : WHITE);
 	const BITBOARD bb = MoveGenerator::GetAttackBoard(*this, byColor);
 	return Bits::isAnyBitSet(bb, bitboards_.at(static_cast<BITBOARD>(KING) + sideToMove_));
+}
+
+// Returns true if the king of the side NOT to move is under attack — the mirror of InCheck(), and
+// an illegal position rather than a legal one. Kings on adjacent squares are covered too, since
+// GetAttackBoard includes king attacks.
+bool Board::WaitingSideInCheck() const noexcept
+{
+	const eColor waiting = (sideToMove_ == WHITE ? BLACK : WHITE);
+	const BITBOARD bb = MoveGenerator::GetAttackBoard(*this, sideToMove_);
+	return Bits::isAnyBitSet(bb, bitboards_.at(static_cast<BITBOARD>(KING) + waiting));
 }
 
 // Adds a piece and maintains material score.
