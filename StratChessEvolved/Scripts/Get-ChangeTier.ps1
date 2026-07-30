@@ -84,6 +84,8 @@ function Get-TierForPath {
     if ($p -like '.github/*')                                { return 'Build' }
     if ($p -like '*.vcxproj' -or $p -like '*.vcxproj.*')     { return 'Build' }
     if ($p -like '*.props' -or $p -like '*.sln')             { return 'Build' }
+    if ($p -like 'CMakeLists.txt' -or $p -like '*/CMakeLists.txt') { return 'Build' }
+    if ($p -like '*.cmake')                                        { return 'Build' }
 
     # --- Docs -----------------------------------------------------------------
     if ($p -like '*.md')                                     { return 'Docs' }
@@ -168,6 +170,8 @@ if ($SelfTest) {
         @{ Name = 'workflow -> Build';          Files = @('.github/workflows/build-and-test.yml');               Expect = 'Build' }
         @{ Name = 'hook -> Build';              Files = @('.githooks/pre-commit');                               Expect = 'Build' }
         @{ Name = 'vcxproj -> Build';           Files = @('StratChessTests/StratChessTests.vcxproj');            Expect = 'Build' }
+        @{ Name = 'CMakeLists -> Build';        Files = @('CMakeLists.txt');                                     Expect = 'Build' }
+        @{ Name = 'cmake module -> Build';      Files = @('cmake/Toolchain.cmake');                              Expect = 'Build' }
         @{ Name = 'FAIL CLOSED: unknown ext';   Files = @('foo/bar.xyz');                                        Expect = 'Engine' }
         @{ Name = 'FAIL CLOSED: new script';    Files = @('StratChessEvolved/Scripts/Brand-New.ps1');            Expect = 'Engine' }
         @{ Name = 'json -> Engine';             Files = @('StratChessEvolved/game_settings.json');               Expect = 'Engine' }
