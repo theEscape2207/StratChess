@@ -64,7 +64,8 @@ Board::Board()
 
 Board::Board(const std::string& fen) : Board()
 {
-	SetupFromFEN(fen);
+	[[maybe_unused]] const bool ok = SetupFromFEN(fen);
+	assert(ok && "Board(fen): malformed FEN, board left empty");
 }
 
 void Board::clear_board()
@@ -126,15 +127,16 @@ void Board::setup_board(const squareCol& col)
 	spdlog::default_logger()->debug("Custom board set up");
 }
 
-void Board::SetupFromFEN(const std::string& fen)
+bool Board::SetupFromFEN(const std::string& fen)
 {
 	FENParser::FENGameState state;
 	std::vector<std::tuple<ePiece, eSquare>> pieces;
 
+	// Nothing below this point runs on a parse error, so the board keeps its previous contents.
 	auto parseError = FENParser::ParseFEN(fen, state, pieces);
 	if (parseError) {
 		spdlog::default_logger()->error("FEN parse error: {}", *parseError);
-		return;
+		return false;
 	}
 
 	setup_board(pieces);
@@ -152,6 +154,7 @@ void Board::SetupFromFEN(const std::string& fen)
 	gameInfo_.castlingRights = state.castlingRights;
 
 	spdlog::default_logger()->debug("Board set up from FEN: {}", fen);
+	return true;
 }
 
 std::string Board::ExtractFEN() const
