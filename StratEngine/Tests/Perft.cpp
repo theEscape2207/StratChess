@@ -7,6 +7,7 @@
 #include "../GameState.h"
 #include <iostream>
 #include <fstream>
+#include <filesystem>
 #include <nlohmann/json.hpp>
 
 namespace Testing {

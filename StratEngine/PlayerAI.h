@@ -3,7 +3,7 @@
 #include "Board.h"		// includes Move
 #include "Eval.h"
 #include "SearchLimits.h"
-#include "Utils\TimeManager.h"
+#include "Utils/TimeManager.h"
 #include "Utils/TimeUtils.h"
 #include <vector>
 #include <sstream>

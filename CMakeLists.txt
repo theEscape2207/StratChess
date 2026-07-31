@@ -1,0 +1,144 @@
+cmake_minimum_required(VERSION 3.24)
+project(StratChess CXX)
+
+# Phase 0 scope: Linux + GCC/Clang only. The .vcxproj/.sln build remains
+# authoritative for Windows, so there are deliberately no if(MSVC) branches here
+# -- compiler-conditional code that CI never exercises rots silently.
+# See .claude/plans/cmake-linux-ci-phase0.md.
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)          # matches MSVC ConformanceMode=true
+
+# Consumed by clangd, VS Code, Zed and coding agents. Costs nothing to emit.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
+endif()
+
+# ---------------------------------------------------------------------------
+# Dependencies
+#
+# Pinned to the versions the Windows CI job already uses. Populated and consumed
+# as include directories rather than via add_subdirectory: all three are
+# header-only in this project, and Catch2 is used through its amalgamated
+# distribution, so every existing #include line stays valid. Switching to real
+# imported targets is issue #166.
+# ---------------------------------------------------------------------------
+include(FetchContent)
+
+# SOURCE_SUBDIR points at a directory that does not exist in any of these repos.
+# That makes FetchContent_MakeAvailable download and populate the sources but
+# skip add_subdirectory(), because there is no CMakeLists.txt at that path -- so
+# none of the dependencies' own CMake projects are configured, and no extra
+# targets appear. This is the supported way to get populate-only behaviour:
+# the bare FetchContent_Populate(name) form is deprecated as of CMake 3.30
+# (policy CMP0169) and warns on the CMake that ubuntu-latest ships.
+FetchContent_Declare(spdlog
+    GIT_REPOSITORY https://github.com/gabime/spdlog
+    GIT_TAG        v1.16.0
+    GIT_SHALLOW    TRUE
+    SOURCE_SUBDIR  do-not-configure)
+
+FetchContent_Declare(nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json
+    GIT_TAG        v3.12.0
+    GIT_SHALLOW    TRUE
+    SOURCE_SUBDIR  do-not-configure)
+
+FetchContent_Declare(catch2
+    GIT_REPOSITORY https://github.com/catchorg/Catch2
+    GIT_TAG        v3.13.0
+    GIT_SHALLOW    TRUE
+    SOURCE_SUBDIR  do-not-configure)
+
+FetchContent_MakeAvailable(spdlog nlohmann_json catch2)
+
+# ---------------------------------------------------------------------------
+# Engine sources
+#
+# Globbed rather than listed: a hand-maintained list here would be a third copy
+# to keep in sync with two .vcxproj files, and a .cpp missing from a project is
+# a silent failure -- it passes by not running. CONFIGURE_DEPENDS re-runs the
+# glob when the directory contents change.
+#
+# Two exclusions, both matching the .vcxproj files exactly:
+#   Archived/       -- retired algorithms, kept for reference, never built.
+#   skak.cpp        -- dead file, entirely commented out, in neither project.
+# ---------------------------------------------------------------------------
+file(GLOB_RECURSE ENGINE_SOURCES CONFIGURE_DEPENDS
+     ${CMAKE_SOURCE_DIR}/StratEngine/*.cpp)
+list(FILTER ENGINE_SOURCES EXCLUDE REGEX "/Archived/")
+list(FILTER ENGINE_SOURCES EXCLUDE REGEX "/skak\\.cpp$")
+
+# PerftRunner.cpp is in StratChessEvolved.vcxproj but NOT StratChessTests.vcxproj.
+# Preserving that asymmetry keeps each binary's contents identical to today's.
+set(ENGINE_SOURCES_TESTS ${ENGINE_SOURCES})
+list(FILTER ENGINE_SOURCES_TESTS EXCLUDE REGEX "/PerftRunner\\.cpp$")
+
+file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
+     ${CMAKE_SOURCE_DIR}/StratChessTests/*.cpp)
+
+# ---------------------------------------------------------------------------
+# Shared compile settings
+#
+# -mavx2 -mbmi2 matches AdvancedVectorExtensions2; Magic.h's _pext_u64 needs BMI2.
+# -Werror is deliberately absent: this code has only ever been /W4 /WX-clean
+# against MSVC, and the GCC warning count is unknown until it first compiles.
+# Tightening is a follow-up sized by the actual count.
+# ---------------------------------------------------------------------------
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)   # std::jthread — Lazy SMP helpers in AIPerplex::GetMove
+
+function(strat_configure_target tgt)
+    target_compile_options(${tgt} PRIVATE -Wall -Wextra -mavx2 -mbmi2)
+    # Magic.h builds its 64 x 4096 sliding-attack tables at compile time, which
+    # costs on the order of 10-26 million constexpr operations. Clang's default
+    # budget (1,048,576 steps) is far below that and GCC's (33,554,432 ops) is
+    # close enough to be unsafe, so both are raised explicitly rather than left
+    # to the toolchain default. MSVC imposes no equivalent limit.
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        target_compile_options(${tgt} PRIVATE -fconstexpr-steps=100000000)
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(${tgt} PRIVATE -fconstexpr-ops-limit=100000000)
+    endif()
+    target_include_directories(${tgt} PRIVATE
+        ${CMAKE_SOURCE_DIR}/StratEngine
+        ${spdlog_SOURCE_DIR}/include
+        ${nlohmann_json_SOURCE_DIR}/include)
+    # Force-include Compat.h into every TU. This is how the SAL no-op macros and
+    # STRAT_FORCEINLINE reach the 17 headers that never include StdAfx.h
+    # themselves, without editing any of them.
+    #
+    # Deliberately NOT target_precompile_headers: CMake's generated PCH makes GCC
+    # process defines.h twice per TU (it does not carry #pragma once state across
+    # the PCH boundary), which is ~60 redefinition errors. A plain -include has no
+    # such interaction, and force-inclusion was always the only thing needed here.
+    target_compile_options(${tgt} PRIVATE
+        -include ${CMAKE_SOURCE_DIR}/StratEngine/Compat.h)
+    target_link_libraries(${tgt} PRIVATE Threads::Threads)
+endfunction()
+
+# ---------------------------------------------------------------------------
+# Targets
+#
+# The engine is compiled into both executables, mirroring the .vcxproj layout.
+# Extracting it as a static library is issue #83: it changes link topology and
+# owes its own nps measurement, so Phase 0 deliberately leaves topology alone.
+#
+# INTERPROCEDURAL_OPTIMIZATION is deliberately NOT set. The nps-relevant binary
+# is still the MSVC one; CMake ships nothing yet. See the spec.
+# ---------------------------------------------------------------------------
+add_executable(StratChessEvolved
+    ${ENGINE_SOURCES}
+    ${CMAKE_SOURCE_DIR}/StratChessEvolved/StratChessEvolved.cpp)
+strat_configure_target(StratChessEvolved)
+
+add_executable(StratChessTests
+    ${ENGINE_SOURCES_TESTS}
+    ${TEST_SOURCES}
+    ${catch2_SOURCE_DIR}/extras/catch_amalgamated.cpp)
+strat_configure_target(StratChessTests)
+target_compile_definitions(StratChessTests PRIVATE STRAT_ENABLE_TEST_ACCESS)
+target_include_directories(StratChessTests PRIVATE ${catch2_SOURCE_DIR}/extras)

@@ -6,7 +6,7 @@
 #include "PlayerHuman.h"
 #include <map>
 #include <regex>
-#include "Utils\StrHelper.h"
+#include "Utils/StrHelper.h"
 #include "Board.h"
 #include "MoveGenerator.h"
 #include <MoveHelper.h>

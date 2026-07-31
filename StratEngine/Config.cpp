@@ -6,6 +6,27 @@
 #include "Board.h"
 #include "Game.h"
 
+namespace {
+
+// Case-insensitive comparison of the first n characters. Replaces MSVC's
+// _strnicmp, which has no portable equivalent in the standard library.
+bool iequals_n(std::string_view a, std::string_view b, std::size_t n)
+{
+	if (a.size() < n || b.size() < n) {
+		return false;
+	}
+	for (std::size_t i = 0; i < n; ++i) {
+		const auto ca = static_cast<unsigned char>(a[i]);
+		const auto cb = static_cast<unsigned char>(b[i]);
+		if (std::tolower(ca) != std::tolower(cb)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+} // namespace
+
 using json = nlohmann::json;
 
 //***************************************
@@ -22,7 +43,7 @@ void Config::ReadBoardSetup(const json& config, Board& board) const
 	// if nothing is found - use default setup
 	const std::string setupType = config["game"].value("setup", "default");
 	const std::string FENKey = "FEN";
-	if (0 == _strnicmp(setupType.c_str(), FENKey.c_str(), 3))
+	if (iequals_n(setupType, FENKey, 3))
 	{
 		spdlog::default_logger()->debug("FEN configuration");
 
