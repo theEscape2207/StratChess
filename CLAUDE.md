@@ -60,6 +60,7 @@ cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\<name>.
 | `Validate-PreCommit.ps1` | Before every commit — FEN check + fast tests (the pre-commit hook runs this) |
 | `Validate-PrePR.ps1` | Before a PR — scopes itself to the change tier; `-Force` to run everything |
 | `Run-EloMatch.ps1 [-Smoke]` | After search/eval/time changes — strength vs the pinned reference (`Docs/EloLog.md`) |
+| `Run-Bench.ps1 -Exe <path>` | Search speed (nps) at fixed depth — before/after any optimisation, or comparing two builds |
 | `New-Worktree.ps1 -Name <task>` | Starting any task — forks fresh from `origin/main` at the correct path |
 | `New-PullRequest.ps1 -Title "…"` | Sync → validate → push → create/update PR. `-Draft`, `-NoPr`, `-BodyFile` |
 | `Remove-Worktree.ps1 -Name <task> -SyncMaster` | After a PR merges — worktree, local and remote branch, then syncs `master` |
@@ -72,6 +73,14 @@ measurement is how false confidence accumulates. An SPRT that hits the `-Games` 
 a bound is **inconclusive**, not a measured zero; record it as such. A full 500-game batch is ≈40 min
 unattended at the default `-Concurrency 6`. Measurement budget is the user's call — report what
 deciding would cost and let them choose.
+
+**Speed vs strength**: `Run-Bench.ps1` measures nps, not Elo — use it when the change is meant to be
+faster, and `Run-EloMatch.ps1` when it is meant to be stronger. Compare **nps**, never node counts at
+fixed depth: the node count is a property of the search, not of the machine code. It is still the
+right *equivalence* check, because two builds of identical source must visit identical nodes and
+return identical best moves at `Threads=1` — if they do not, the builds are not searching the same
+tree and any nps comparison is meaningless. Take repeat runs before quoting a delta; a single pass
+has already produced a 12% outlier on this hardware.
 
 **Never bypass `New-PullRequest.ps1` with a bare `git push`** to update an open PR: the push
 succeeds but `Validate-PrePR.ps1` never runs, leaving the merged state covered only by the

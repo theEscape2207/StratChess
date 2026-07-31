@@ -88,7 +88,8 @@ function(strat_configure_target tgt)
     # costs on the order of 10-26 million constexpr operations. Clang's default
     # budget (1,048,576 steps) is far below that and GCC's (33,554,432 ops) is
     # close enough to be unsafe, so both are raised explicitly rather than left
-    # to the toolchain default. MSVC imposes no equivalent limit.
+    # to the toolchain default. MSVC needs the same treatment and already has it:
+    # the .vcxproj files pass /constexpr:steps100000000.
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         target_compile_options(${tgt} PRIVATE -fconstexpr-steps=100000000)
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
