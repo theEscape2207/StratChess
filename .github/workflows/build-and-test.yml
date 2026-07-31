@@ -3,6 +3,7 @@ name: Build and test
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, labeled]
   push:
     branches: [main]
   # Windows is demoted to nightly. It bills at 2x per minute against included
@@ -46,7 +47,9 @@ jobs:
   build-linux:
     needs: classify
     if: github.event_name == 'push' || github.event_name == 'schedule' || needs.classify.outputs.is_full == 'true'
-    runs-on: ubuntu-latest
+    # Pinned to the exact image (not the moving ubuntu-latest label) — the code
+    # needs GCC >= 13 for std::format, matching the Windows job's pinning approach.
+    runs-on: ubuntu-24.04
     # Release and Debug are not redundant -- the same asymmetry documented for the
     # Windows job in issue #146 is compiler-independent. Debug keeps assert() and
     # the #ifndef NDEBUG bitboard/mailbox tripwire in Eval.cpp live; Release is the
@@ -208,6 +211,11 @@ jobs:
           echo "tier=${{ needs.classify.outputs.tier }}"
           echo "linux result=${{ needs.build-linux.result }}"
           echo "windows result=${{ needs.build-and-test.result }}"
+
+          case "${{ needs.classify.result }}" in
+            success) ;;
+            *) echo "Classification did not succeed; cannot certify this run."; exit 1 ;;
+          esac
 
           case "${{ needs.build-linux.result }}" in
             success) echo "Linux build and tests passed." ;;
