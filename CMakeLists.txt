@@ -88,6 +88,7 @@ file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
 # against MSVC, and the GCC warning count is unknown until it first compiles.
 # Tightening is a follow-up sized by the actual count.
 # ---------------------------------------------------------------------------
+set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)   # std::jthread — Lazy SMP helpers in AIPerplex::GetMove
 
 function(strat_configure_target tgt)

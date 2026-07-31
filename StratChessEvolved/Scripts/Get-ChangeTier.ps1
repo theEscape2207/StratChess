@@ -85,7 +85,7 @@ function Get-TierForPath {
     if ($p -like '*.vcxproj' -or $p -like '*.vcxproj.*')     { return 'Build' }
     if ($p -like '*.props' -or $p -like '*.sln')             { return 'Build' }
     if ($p -like 'CMakeLists.txt' -or $p -like '*/CMakeLists.txt') { return 'Build' }
-    if ($p -like '*.cmake')                                        { return 'Build' }
+    if ($p -like '*.cmake')                                  { return 'Build' }
 
     # --- Docs -----------------------------------------------------------------
     if ($p -like '*.md')                                     { return 'Docs' }
