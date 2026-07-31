@@ -96,9 +96,6 @@
     <ClCompile Include="..\StratEngine\Tests\Perft.cpp">
       <Filter>Tests</Filter>
     </ClCompile>
-    <ClCompile Include="..\StratEngine\Tests\PerftRunner.cpp">
-      <Filter>Tests</Filter>
-    </ClCompile>
     <ClCompile Include="..\StratEngine\Tests\TacticalTestRunner.cpp">
       <Filter>Tests</Filter>
     </ClCompile>

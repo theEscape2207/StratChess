@@ -63,19 +63,12 @@ FetchContent_MakeAvailable(spdlog nlohmann_json catch2)
 # a silent failure -- it passes by not running. CONFIGURE_DEPENDS re-runs the
 # glob when the directory contents change.
 #
-# Two exclusions, both matching the .vcxproj files exactly:
-#   Archived/       -- retired algorithms, kept for reference, never built.
-#   skak.cpp        -- dead file, entirely commented out, in neither project.
+# Archived/ holds retired algorithms kept for reference and must never be built,
+# matching both .vcxproj files.
 # ---------------------------------------------------------------------------
 file(GLOB_RECURSE ENGINE_SOURCES CONFIGURE_DEPENDS
      ${CMAKE_SOURCE_DIR}/StratEngine/*.cpp)
 list(FILTER ENGINE_SOURCES EXCLUDE REGEX "/Archived/")
-list(FILTER ENGINE_SOURCES EXCLUDE REGEX "/skak\\.cpp$")
-
-# PerftRunner.cpp is in StratChessEvolved.vcxproj but NOT StratChessTests.vcxproj.
-# Preserving that asymmetry keeps each binary's contents identical to today's.
-set(ENGINE_SOURCES_TESTS ${ENGINE_SOURCES})
-list(FILTER ENGINE_SOURCES_TESTS EXCLUDE REGEX "/PerftRunner\\.cpp$")
 
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
      ${CMAKE_SOURCE_DIR}/StratChessTests/*.cpp)
@@ -84,15 +77,13 @@ file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
 # Shared compile settings
 #
 # -mavx2 -mbmi2 matches AdvancedVectorExtensions2; Magic.h's _pext_u64 needs BMI2.
-# -Werror is deliberately absent: this code has only ever been /W4 /WX-clean
-# against MSVC, and the GCC warning count is unknown until it first compiles.
-# Tightening is a follow-up sized by the actual count.
+# -Werror matches the Level4 + /WX gate MSBuild has always had.
 # ---------------------------------------------------------------------------
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)   # std::jthread — Lazy SMP helpers in AIPerplex::GetMove
 
 function(strat_configure_target tgt)
-    target_compile_options(${tgt} PRIVATE -Wall -Wextra -mavx2 -mbmi2)
+    target_compile_options(${tgt} PRIVATE -Wall -Wextra -Werror -mavx2 -mbmi2)
     # Magic.h builds its 64 x 4096 sliding-attack tables at compile time, which
     # costs on the order of 10-26 million constexpr operations. Clang's default
     # budget (1,048,576 steps) is far below that and GCC's (33,554,432 ops) is
@@ -136,7 +127,7 @@ add_executable(StratChessEvolved
 strat_configure_target(StratChessEvolved)
 
 add_executable(StratChessTests
-    ${ENGINE_SOURCES_TESTS}
+    ${ENGINE_SOURCES}
     ${TEST_SOURCES}
     ${catch2_SOURCE_DIR}/extras/catch_amalgamated.cpp)
 strat_configure_target(StratChessTests)
