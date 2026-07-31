@@ -220,7 +220,7 @@ jobs:
 
           case "${{ needs.build-and-test.result }}" in
             success) echo "Windows build and tests passed." ;;
-            skipped) echo "Windows skipped: demoted to nightly / 'windows-ci' label." ;;
+            skipped) echo "Windows skipped: runs on merges to main, or on demand via the 'windows-ci' label." ;;
             *)       echo "Windows build and tests did not pass."; exit 1 ;;
           esac
 
