@@ -107,12 +107,16 @@ function(strat_configure_target tgt)
         ${CMAKE_SOURCE_DIR}/StratEngine
         ${spdlog_SOURCE_DIR}/include
         ${nlohmann_json_SOURCE_DIR}/include)
-    # Compat.h MUST precede StdAfx.h: CMake force-includes the generated header
-    # into every TU, which is how the SAL and STRAT_FORCEINLINE definitions reach
-    # the 17 headers that never include StdAfx.h themselves.
-    target_precompile_headers(${tgt} PRIVATE
-        ${CMAKE_SOURCE_DIR}/StratEngine/Compat.h
-        ${CMAKE_SOURCE_DIR}/StratEngine/StdAfx.h)
+    # Force-include Compat.h into every TU. This is how the SAL no-op macros and
+    # STRAT_FORCEINLINE reach the 17 headers that never include StdAfx.h
+    # themselves, without editing any of them.
+    #
+    # Deliberately NOT target_precompile_headers: CMake's generated PCH makes GCC
+    # process defines.h twice per TU (it does not carry #pragma once state across
+    # the PCH boundary), which is ~60 redefinition errors. A plain -include has no
+    # such interaction, and force-inclusion was always the only thing needed here.
+    target_compile_options(${tgt} PRIVATE
+        -include ${CMAKE_SOURCE_DIR}/StratEngine/Compat.h)
     target_link_libraries(${tgt} PRIVATE Threads::Threads)
 endfunction()
 

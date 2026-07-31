@@ -6,11 +6,6 @@ on:
     types: [opened, synchronize, reopened, labeled]
   push:
     branches: [main]
-  # Windows is demoted to nightly. It bills at 2x per minute against included
-  # minutes where Linux bills at 1x (see issue #81). Runs nightly, or on demand
-  # via the 'windows-ci' label.
-  schedule:
-    - cron: '0 3 * * *'
 
 jobs:
   # Decide how much validation this diff is worth, using the SAME classifier the
@@ -46,7 +41,7 @@ jobs:
 
   build-linux:
     needs: classify
-    if: github.event_name == 'push' || github.event_name == 'schedule' || needs.classify.outputs.is_full == 'true'
+    if: github.event_name == 'push' || needs.classify.outputs.is_full == 'true'
     # Pinned to the exact image (not the moving ubuntu-latest label) — the code
     # needs GCC >= 13 for std::format, matching the Windows job's pinning approach.
     runs-on: ubuntu-24.04
@@ -88,11 +83,11 @@ jobs:
 
   build-and-test:
     needs: classify
-    # Nightly, or on demand via the 'windows-ci' label. Pushes to main still run
-    # so the actions/cache deps cache on the default branch does not lapse.
+    # Runs on merges to main and on demand via the 'windows-ci' label, not on
+    # every PR. Pushes to main also keep the actions/cache deps cache on the
+    # default branch from lapsing.
     if: >-
-      github.event_name == 'schedule'
-      || github.event_name == 'push'
+      github.event_name == 'push'
       || contains(github.event.pull_request.labels.*.name, 'windows-ci')
     # Pinned to the explicit VS2026 image (not the moving windows-latest label) —
     # this project's projects pin PlatformToolset v145, which matches this image's
