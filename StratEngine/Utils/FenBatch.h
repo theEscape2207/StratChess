@@ -2,14 +2,19 @@
 
 // Header-only classification for one line of a batch FEN input file (as consumed
 // by `StratChessEvolved.exe eval <path>`, issue #129 phase 1). Extracted out of
-// evalrunner() (StratChessEvolved.cpp) so the classification logic — which is
-// load-bearing, not defensive; see below — is directly testable from
-// StratChessTests without linking StratChessEvolved.cpp (issue #140).
+// evalrunner() (StratChessEvolved.cpp) so the classification logic is directly
+// testable from StratChessTests without linking StratChessEvolved.cpp (issue #140).
 //
-// Why this guard matters: Board() default-constructs an empty board and
-// SetupFromFEN() applies nothing on a parse error, so an unguarded malformed
-// line would silently score a fresh empty board as 0 — plausible-looking
-// garbage in a tuning corpus rather than an obvious failure.
+// What this adds over Board::SetupFromFEN's own bool return: the three-way
+// blank/comment/malformed split an input file needs, and the parser's message for
+// the malformed case, so a bad line can be reported with its line number and
+// skipped rather than aborting the batch.
+//
+// Scope: this is a check on FEN *syntax* only, because it goes through
+// FENParser::ParseFEN, which has no board to generate attacks on. Position
+// legality (issue #45 — the side not to move being in check) is enforced by
+// Board::SetupFromFEN, so a line classified Valid here can still fail to load.
+// Callers must handle both.
 
 #include "FENParser.h"
 

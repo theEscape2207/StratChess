@@ -369,7 +369,14 @@ namespace Testing {
 			// Set up board from FEN
 			Board board;
 
-			board.SetupFromFEN(pos.fen);
+			// A suite FEN that does not parse fails the suite: running the position anyway would
+			// report node counts for an empty board, and skipping it quietly would let
+			// run_test_suite return true for a suite that never ran every position.
+			if (!board.SetupFromFEN(pos.fen)) {
+				all_passed = false;
+				std::cout << "  FAIL: FEN failed to parse, position not run\n\n";
+				continue;
+			}
 
 			// Test each depth (limit to reasonable depths for speed)
 			int max_test_depth = std::min(5, static_cast<int>(pos.expected_nodes.size()) - 1);

@@ -22,6 +22,99 @@ Newest first.
 
 ---
 
+## 2026-07-30 — Reject illegal FENs: waiting side in check (issue #45)
+
+### Added
+- **`Board::WaitingSideInCheck()`** — the mirror of `InCheck()`: true when the king of the side *not*
+  to move is attacked. Unlike `InCheck()` that is not a legal state, since the waiting side would
+  have had to leave its king en prise. Kings on adjacent squares are covered by the same test,
+  because `GetAttackBoard` includes king attacks.
+- **`SetupFromFEN` rejects such a position**, reporting through the `bool` channel added for #155, so
+  `position fen <illegal>` is declined and the board keeps what it held.
+
+  The symptom #45 reported — `bestmove e1e8`, capturing the king — no longer reproduced by the time
+  this was fixed, and what was happening instead is worse. Measured on the pre-change engine with
+  `4k3/8/8/8/8/5b2/8/4RK2 w - - 0 1`:
+
+  - **Release**: it plays ordinary moves (`e1e7`/`e1e6`/`f1f2` at depths 1/2/6) and reports a routine
+    material verdict for an impossible position. The king capture *is* generated — nothing in
+    `MoveGenerator` filters it — but `DoMove` discards it by accident, not by design: `MoveHelper::IsValid`
+    has a "cannot take a King" rule that `DoMove` only consults inside an `assert()`, so in Release the
+    capture proceeds, the king is removed, and `InCheck()` then calls `GetFirstPiece()` on the now-empty
+    king bitboard. That violates the function's own documented `mask != 0` precondition:
+    `countr_zero(0)` is 64, so `g_bbKingMoves[64]` reads one entry past a 64-entry table. The garbage
+    that comes back makes `DoMove` conclude the mover left its own king in check, so it rolls back and
+    returns false.
+  - **Debug**: the same position aborts the process on `assert(MoveHelper::IsValid(...))`.
+
+  So the real pre-change exposure was an out-of-bounds read (Release) or an abort (Debug) reachable from
+  any hand-written FEN. Rejecting the position at load closes the only externally reachable route to it;
+  hardening the paths themselves — the assert-only invariants and `GetFirstPiece`'s precondition — is
+  tracked as #163, since a guard in `DoMove` or `GetAttackBoard` costs nps and needs measuring.
+
+### Fixed
+Two pre-existing illegal positions, found by sweeping all 292 FENs in the repository (source literals
+plus the `Tests/*.json` suites) through the loader:
+
+- **`FEN_ROOK_ON_7TH` (`EvalTests.cpp`)** — White's rook on e7 gave check to the black king on e8
+  while it was White to move. The black king moves to g8; the rook stays on e7 and the e-file stays
+  pawnless, so the open-file and 7th-rank assertions are unchanged. It is the only one of that file's
+  FEN constants without a hand-verification note in its comment.
+- **`M2-001` (`Tests/tactical_test_cases.json`)** — the second white rook stood on h1, checking the
+  black king down the open h-file with White to move. It moves to g1, which leaves `Rb8#` (the mate
+  the case actually tests, and now its only listed answer) intact; verified against the engine, which
+  finds it at depth 2. The unreachable `h1h7` alternative is dropped.
+
+### Notes
+- The check runs on a scratch `Board` before the real one is touched, preserving #155's guarantee
+  that a rejected FEN mutates nothing. `setup_board()` therefore runs twice on a successful load —
+  deliberate, and trivial next to a search.
+- Legality cannot live in `FENParser` (no board, so no attack generation). `FenBatch::ClassifyLine`
+  consequently validates *syntax* only, and the batch eval runner's `!SetupFromFEN` branch — dead
+  when written in #162 — is now what keeps an illegal position out of a tuning corpus.
+- The issue's alternative (load it, answer `bestmove 0000`) was not taken: declining makes the
+  illegal position unrepresentable instead of something every board consumer must special-case.
+- No Elo impact: no legal position's evaluation or search changes.
+- Plan: `.claude/plans/fen-legality-validation.md`.
+
+---
+
+## 2026-07-30 — `SetupFromFEN` error channel (issues #155, #46)
+
+### Changed
+- **`Board::SetupFromFEN` returns `[[nodiscard]] bool`** instead of `void`. On failure it logs the
+  parse error and leaves the board exactly as it was. `[[nodiscard]]` under `/WX` is what enforces
+  this: a discarded return is `warning C4834` → `error C2220`, so no call site can keep the old
+  silent behaviour. All 8 engine/app call sites and 31 test call sites handle it.
+- **`UciHandler::cmd_position` declines a malformed FEN**: the board keeps the position it held and
+  the function returns before the `moves` list is parsed, so a move list is never replayed onto a
+  position the requested FEN did not load. Logged at debug level — UCI has no error channel, and
+  silently ignoring the command is conventional. Deliberately *not* a reset to the starting
+  position, which would answer `bestmove` for a position the GUI never sent.
+- **`Config::ReadFEN` falls back to the standard opening position** when the FEN in
+  `game_settings.json` does not parse, matching what the empty-FEN path above it already did.
+  `SetCustomGame()` is skipped on that path, since a default board is not a custom game.
+- **`Board(const std::string& fen)` asserts** on a malformed FEN. A constructor has no way to
+  report failure and every caller passes a literal, so Debug is where that should surface; Release
+  behaviour is unchanged (empty board, error logged).
+- `Perft::run_test_suite` now fails the suite on an unparseable suite FEN rather than running the
+  position against an empty board.
+
+### Fixed
+- **#46** — a FEN missing its side-to-move field no longer leads to output for a position that was
+  never loaded. The parse half was already fixed by #143's four-field floor (a bare piece-placement
+  string is rejected, so the side-to-move default is unreachable); what remained was `cmd_position`
+  ignoring the failure. Covered by `[uci]` regression tests.
+
+### Notes
+- Error handling only — no behaviour change on any well-formed FEN, and no Elo impact.
+- Out of scope: FEN *legality* validation (a position whose non-mover is in check, #45). This change
+  builds the channel; #45 adds a rule that reports through it. `FenBatch::ClassifyLine`'s double
+  parse is likewise left for the follow-on #155 mentions.
+- Plan: `.claude/plans/setupfromfen-error-channel.md`.
+
+---
+
 ## 2026-07-29 — Bishop pair, connected rooks, castling (issues #111, #114, #115)
 
 ### Added

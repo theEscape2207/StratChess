@@ -80,7 +80,11 @@ void UciHandler::cmd_ucinewgame()
 {
     stop_and_join();
     init_ai();
-    board_.SetupFromFEN(std::string(STARTING_FEN));
+
+    // STARTING_FEN is a compile-time constant; a false return here would mean the constant itself
+    // is malformed, so it is asserted rather than handled.
+    [[maybe_unused]] const bool ok = board_.SetupFromFEN(std::string(STARTING_FEN));
+    assert(ok && "STARTING_FEN failed to parse");
 }
 
 // Column layout for the per-term breakdown table (issue #129 phase 2). The
@@ -209,7 +213,8 @@ void UciHandler::cmd_eval()
 void UciHandler::cmd_position(std::string_view line)
 {
     if (line.find("startpos") != std::string_view::npos) {
-        board_.SetupFromFEN(std::string(STARTING_FEN));
+        [[maybe_unused]] const bool ok = board_.SetupFromFEN(std::string(STARTING_FEN));
+        assert(ok && "STARTING_FEN failed to parse");
     } else {
         auto fen_pos = line.find("fen ");
         if (fen_pos != std::string_view::npos) {
@@ -218,7 +223,17 @@ void UciHandler::cmd_position(std::string_view line)
             std::string fen = (moves_pos != std::string_view::npos)
                 ? std::string(line.substr(fen_start, moves_pos - fen_start))
                 : std::string(line.substr(fen_start));
-            board_.SetupFromFEN(fen);
+
+            // A malformed FEN declines the whole command: the board keeps the position it already
+            // held and the move list below is not replayed onto it. UCI has no error channel for
+            // this, and silently ignoring the command is conventional. Resetting to the starting
+            // position instead would be worse — it would answer `bestmove` for a position the GUI
+            // never sent.
+            if (!board_.SetupFromFEN(fen)) {
+                spdlog::default_logger()->debug(
+                    "position: malformed FEN, command ignored and board left unchanged: {}", fen);
+                return;
+            }
         }
     }
 
