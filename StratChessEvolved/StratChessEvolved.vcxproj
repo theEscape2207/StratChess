@@ -162,7 +162,6 @@
     <ClCompile Include="..\StratEngine\Sort.cpp" />
     <ClCompile Include="..\StratEngine\StdAfx.cpp" />
     <ClCompile Include="..\StratEngine\Tests\Perft.cpp" />
-    <ClCompile Include="..\StratEngine\Tests\PerftRunner.cpp" />
     <ClCompile Include="..\StratEngine\Tests\TacticalTestRunner.cpp" />
     <ClCompile Include="..\StratEngine\TranspositionTable.cpp" />
     <ClCompile Include="..\StratEngine\Utils\FENParser.cpp" />

@@ -10,12 +10,6 @@
 
 #pragma once
 
-// remove annoying level 4 warnings
-#if defined(_MSC_VER)
-#  pragma warning(push)
-#  pragma warning( disable : 4505 )	// Unreferenced local function has been removed
-#endif
-
 #include "Move.h"
 #include "PieceHelper.h"
 #include "SquareHelper.h"
@@ -102,7 +96,8 @@ namespace MoveHelper
 	}
 
 	// content: the captured piece (obtain via Board::GetCapturedPiece before DoMove).
-	[[nodiscard]] static bool IsValid(_In_ const Move& move, _In_ ePiece movPiece, _In_ ePiece content) noexcept
+	// Used only inside assert() (Board.cpp:301, Board.cpp:473), so it is unreferenced in Release.
+	[[nodiscard]] [[maybe_unused]] static bool IsValid(_In_ const Move& move, _In_ ePiece movPiece, _In_ ePiece content) noexcept
 	{
 		if( is_null( move ) )
 			return false;
@@ -203,7 +198,3 @@ namespace MoveHelper
 	}
 
 } // namespace MoveHelper
-
-#if defined(_MSC_VER)
-#  pragma warning (pop)
-#endif

@@ -23,8 +23,9 @@ CI, runtime files, worktree gotchas), `Docs/TestDesign.md` (coverage map + writi
 - `Directory.Build.props` defines `$(DepsRoot)` for spdlog/nlohmann. Copy
   `Directory.Build.user.props.example` → `Directory.Build.user.props` if your dependency layout
   differs from the default (siblings next to the repo).
-- `StratEngine/StdAfx.h` is the PCH — add frequently-used STL headers there, alphabetically inside
-  the `#pragma warning push/pop` block, not in individual `.cpp` files.
+- `StratEngine/StdAfx.h` is the shared common-include header (no build precompiles it) — add
+  frequently-used STL headers there, alphabetically inside the `#pragma warning push/pop` block, not
+  in individual `.cpp` files.
 - Adding files to the solution: headers use `ClInclude`, non-code files (`.md`, `.json`) use `None`;
   **both also need a matching `<Filter>` entry** in `.vcxproj.filters`, or the file is unfiled — and
   a `.cpp` missing from the project is silently never compiled.
