@@ -9,6 +9,8 @@
 #include "defines.h"
 #include "MoveHelper.h"
 #include "MoveFormatter.h"
+#include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <iterator>
 #include <spdlog/common.h>

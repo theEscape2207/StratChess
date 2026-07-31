@@ -119,6 +119,9 @@
     <ClInclude Include="..\StratEngine\Board.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\StratEngine\Compat.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="..\StratEngine\Config.h">
       <Filter>Header Files</Filter>
     </ClInclude>

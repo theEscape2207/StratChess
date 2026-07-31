@@ -178,6 +178,7 @@
     <ClInclude Include="..\StratEngine\AIPerplex.h" />
     <ClInclude Include="..\StratEngine\BitBoardHelper.h" />
     <ClInclude Include="..\StratEngine\Board.h" />
+    <ClInclude Include="..\StratEngine\Compat.h" />
     <ClInclude Include="..\StratEngine\Config.h" />
     <ClInclude Include="..\StratEngine\defines.h" />
     <ClInclude Include="..\StratEngine\Eval.h" />

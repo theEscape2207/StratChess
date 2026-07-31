@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include <array>
+#include <cstdint>
 
 // Index til bitboards
 inline constexpr auto ALL_PIECES = 14;
@@ -110,7 +111,7 @@ enum GameValues : int
 // bitboard representing "white rook" positions will have a bit set
 // for every position occupied on the board by a white rook.
 //
-using BITBOARD = unsigned __int64;
+using BITBOARD = std::uint64_t;
 
 // Helper
 inline constexpr auto ONE_ROW = 8;

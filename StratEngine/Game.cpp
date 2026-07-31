@@ -9,6 +9,7 @@
 #include "PlayerBase.h"		// For factory create
 #include "PlayerAI.h"		// For PlayerAiBase setters
 #include "AIPerplex.h"		// For SearchTuning application
+#include <iomanip>			// std::put_time
 
 // ***************************************
 // Method:      Game
@@ -434,9 +435,9 @@ void Game::AddFileHeader(std::ostream& file)const
 *      Version: 0.8             *
 *********************************
 )";
-	errno_t err = localtime_s(&timeinfo, &now_c);	// MSVC complains about localtime() usage
+	bool ok = STRAT_LOCALTIME(&timeinfo, &now_c);	// plain localtime() is not thread-safe
 	// Print the current time -  // RFC 1123 format is like: "Sun, 06 Nov 1994 08:49:37 GMT"
-	if (err == 0)
+	if (ok)
 	{
 		file << "Time: " << std::put_time(&timeinfo, "%a, %d %b %Y %H:%M:%S %Z") << "\n\n";
 	}
