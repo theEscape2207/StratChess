@@ -33,7 +33,9 @@ each decision was taken and which parts of issue #82 it deliberately departs fro
   guarded, never extended.
 - **No `-Werror`** in this slice. `-Wall -Wextra` only; the warning count is an output of this work,
   not a gate on it.
-- **No `if(MSVC)` branches** in `CMakeLists.txt`. Phase 0 targets GCC/Clang on Linux only.
+- **No `if(MSVC)` branches** in `CMakeLists.txt`. Phase 0 targets GCC/Clang on Linux only. This bans
+  *unexercised* compiler-conditional code; a Clang-vs-GCC branch where both arms are actually
+  exercised (Clang by Task 5, GCC by CI) is fine.
 - **No `INTERPROCEDURAL_OPTIMIZATION`.** Deliberate departure from #82's flag table — see spec.
 - **`StratEngine/Archived/` must never be compiled** by either build system.
 - **No engine behaviour may change.** This slice compiles the same code with a second toolchain.
@@ -463,6 +465,17 @@ find_package(Threads REQUIRED)   # std::jthread — Lazy SMP helpers in AIPerple
 
 function(strat_configure_target tgt)
     target_compile_options(${tgt} PRIVATE -Wall -Wextra -mavx2 -mbmi2)
+
+    # Magic.h builds its 64 x 4096 sliding-attack tables at compile time, which
+    # costs on the order of 10-26 million constexpr operations. Clang's default
+    # budget (1,048,576 steps) is far below that and GCC's (33,554,432 ops) is
+    # close enough to be unsafe, so both are raised explicitly rather than left
+    # to the toolchain default. MSVC imposes no equivalent limit.
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        target_compile_options(${tgt} PRIVATE -fconstexpr-steps=100000000)
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(${tgt} PRIVATE -fconstexpr-ops-limit=100000000)
+    endif()
     target_include_directories(${tgt} PRIVATE
         ${CMAKE_SOURCE_DIR}/StratEngine
         ${spdlog_SOURCE_DIR}/include
@@ -858,6 +871,15 @@ cmake --build build-clang --target StratChessTests --parallel
 Expected: builds, and the test count matches Task 1 Step 8 exactly. A differing count means the glob
 produced a different source list than the `.vcxproj` — the exact failure the exclusions exist to
 prevent.
+
+**`EvalTests.cpp` is expected to fail here and must not be "fixed".** It declares locals named `far`
+and `near`, which Clang treats as legacy Microsoft keywords when targeting `-windows-msvc`, producing
+~15 parse errors. On Linux/GCC both are ordinary identifiers, so this does not affect the CI job and
+is out of scope for Phase 0. It is recorded on issue #84, whose clang-cl bake-off hits it directly.
+
+Consequence: this task cannot produce a linked binary or a test count on Windows. Steps 3's test run
+and Step 4's full warning count are therefore only obtainable once `EvalTests.cpp` is addressed or
+under Task 6. Report what was reached rather than forcing a pass.
 
 - [ ] **Step 4: Record the warning count**
 
