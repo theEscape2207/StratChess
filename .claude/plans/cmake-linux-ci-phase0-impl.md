@@ -608,12 +608,23 @@ on:
     branches: [main]
   push:
     branches: [main]
-  # Windows is demoted to nightly. It bills at 2x per minute against included
-  # minutes where Linux bills at 1x (see issue #81). Every PR runs Linux;
-  # Windows runs nightly, or on demand via the 'windows-ci' label.
-  schedule:
-    - cron: '0 3 * * *'
 ```
+
+**No `schedule:` trigger.** A nightly Windows run was considered and rejected on analysis:
+
+- `push: branches: [main]` already runs Windows on **every merge**, so clean-checkout MSVC coverage
+  exists per-merge without any cron.
+- `Validate-PrePR.ps1` runs a **superset** of the Windows CI job locally on the same compiler — full
+  Release+Debug build, the extended tier including `[slow]`, the tactical suite and self-play, where
+  CI runs only `~[slow]`.
+- The two things CI adds over pre-PR — a clean checkout and dependency resolution from pinned tags —
+  are **not MSVC-specific**, and the Linux job supplies both.
+- A cron builds unchanged code. On a quiet day it recompiles the same commit and passes; its only
+  genuine signal is GitHub runner-image drift, and the dependency tags are pinned.
+
+At ~6 min x 2 legs x 2x billing that is ~24 billed minutes per firing, ~730/month — roughly a third
+of the 2000-minute allowance, spent to detect image drift on a toolchain that is not the gate. The
+`windows-ci` label covers the case where an MSVC-specific regression is suspected.
 
 Comments state the workflow's present behaviour and the durable reason for it. Do **not** record the
 history of why the change happened — that a particular month's quota was exhausted is narrative, and
@@ -677,13 +688,17 @@ Change the `build-and-test` job's `if:` from:
 to:
 
 ```yaml
-    # Nightly, or on demand via the 'windows-ci' label. Pushes to main still run
-    # so the actions/cache deps cache on the default branch does not lapse.
+    # Runs on merges to main and on demand via the 'windows-ci' label, not on
+    # every PR. Pushes to main also keep the actions/cache deps cache on the
+    # default branch from lapsing.
     if: >-
-      github.event_name == 'schedule'
-      || github.event_name == 'push'
+      github.event_name == 'push'
       || contains(github.event.pull_request.labels.*.name, 'windows-ci')
 ```
+
+The label arm only fires because the `pull_request:` trigger declares
+`types: [opened, synchronize, reopened, labeled]`. Without `labeled`, applying the label to an open
+PR triggers no run at all and the escape hatch is unreachable.
 
 Leave the rest of that job — the matrix, the deps steps, the `build.ps1` invocation — exactly as it is.
 
