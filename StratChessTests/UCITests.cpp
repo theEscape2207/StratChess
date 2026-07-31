@@ -658,14 +658,141 @@ TEST_CASE("Board::SetupFromFEN: 4-field FEN yields fiftyCount 0", "[uci]")
     // The halfmove default is not inert: SetupFromFEN feeds it into gameInfo_.fiftyCount,
     // which drives 50-move draw detection. Pin the value rather than leave it implicit.
     Board board;
-    board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -");
+    REQUIRE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -"));
 
-    // SetupFromFEN returns void and applies nothing on a parse error, so assert the position
-    // actually landed -- otherwise a rejected FEN would leave an empty board whose fiftyCount
-    // is also 0, and this test would pass for the wrong reason.
+    // The kings are checked as well as the return value: an empty board's fiftyCount is also 0,
+    // so without them a position that never landed would pass this test for the wrong reason.
     REQUIRE(board.GetPiece(e1) == WHITE_KING);
     REQUIRE(board.GetPiece(e8) == BLACK_KING);
     CHECK(board.GetGameInfo().fiftyCount == 0);
+}
+
+// ---------------------------------------------------------------------------
+// Board::SetupFromFEN failure reporting, and cmd_position's response to it
+// (issues #155, #46)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Board::SetupFromFEN: reports failure and leaves the board untouched", "[uci]")
+{
+    Board board;
+    REQUIRE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"));
+
+    // Missing the side-to-move, castling and en-passant fields: rejected by the field-count floor.
+    REQUIRE_FALSE(board.SetupFromFEN("6k1/5ppp/8/8/8/8/5PPP/R5K1"));
+
+    // Untouched means the previous position, not a reset and not an empty board.
+    CHECK(board.GetPiece(e1) == WHITE_KING);
+    CHECK(board.GetPiece(d8) == BLACK_QUEEN);
+    CHECK(board.GetCurrentColor() == WHITE);
+}
+
+TEST_CASE("cmd_position: malformed FEN leaves the previous position intact", "[uci]")
+{
+    UciHandlerTestFixture fx;
+    fx.position("position startpos moves e2e4");
+
+    const std::string before = fx.board().ExtractFEN();
+    REQUIRE(fx.board().GetPiece(e4) == WHITE_PAWN);
+    REQUIRE(fx.board().GetCurrentColor() == BLACK);
+
+    fx.position("position fen this-is-not-a-fen");
+
+    CHECK(fx.board().ExtractFEN() == before);
+}
+
+// Issue #46: a FEN with the side-to-move field omitted. Since #143 added the field-count floor the
+// parser rejects it outright, so the engine can no longer silently decide it is Black's move — but
+// the command must also leave no trace, or the engine answers for a position never sent.
+TEST_CASE("cmd_position: FEN missing the side-to-move field is declined", "[uci]")
+{
+    UciHandlerTestFixture fx;
+    fx.position("position startpos");
+
+    const std::string before = fx.board().ExtractFEN();
+
+    fx.position("position fen 6k1/5ppp/8/8/8/8/5PPP/R5K1");
+
+    CHECK(fx.board().ExtractFEN() == before);
+    CHECK(fx.board().GetCurrentColor() == WHITE);
+}
+
+// The move list is parsed after the position block, so a declined FEN must abandon the whole
+// command — replaying moves onto the position the board still holds would corrupt it.
+TEST_CASE("cmd_position: malformed FEN does not replay its move list", "[uci]")
+{
+    UciHandlerTestFixture fx;
+    fx.position("position startpos");
+
+    const std::string before = fx.board().ExtractFEN();
+
+    fx.position("position fen 6k1/5ppp/8/8/8/8/5PPP/R5K1 moves e2e4 e7e5");
+
+    CHECK(fx.board().ExtractFEN() == before);
+    CHECK(fx.board().GetPiece(e2) == WHITE_PAWN);
+    CHECK(fx.board().GetPiece(e4) == NO_PIECE);
+}
+
+// ---------------------------------------------------------------------------
+// Position legality: the side NOT to move may not be in check (issue #45)
+// ---------------------------------------------------------------------------
+
+// The issue's exact repro. White's rook on e1 attacks the black king on e8 with an empty file
+// between them, so Black — the waiting side — is in check. Searching such a position used to reach
+// a board with one king removed, where attack generation reads past its move table.
+TEST_CASE("Board::SetupFromFEN: rejects a position with the waiting side in check", "[uci]")
+{
+    Board board;
+    REQUIRE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"));
+
+    REQUIRE_FALSE(board.SetupFromFEN("4k3/8/8/8/8/5b2/8/4RK2 w - - 0 1"));
+
+    // Rejected means nothing was applied, illegality included.
+    CHECK(board.GetPiece(d8) == BLACK_QUEEN);
+    CHECK(board.GetCurrentColor() == WHITE);
+}
+
+// The control for the test above: the same position with the other side to move is perfectly legal
+// — Black is in check and must answer it. If the rule tested the wrong king this would fail.
+TEST_CASE("Board::SetupFromFEN: accepts the same position with the checked side to move", "[uci]")
+{
+    Board board;
+    REQUIRE(board.SetupFromFEN("4k3/8/8/8/8/5b2/8/4RK2 b - - 0 1"));
+
+    CHECK(board.GetCurrentColor() == BLACK);
+    CHECK(board.InCheck());
+    CHECK_FALSE(board.WaitingSideInCheck());
+}
+
+// Adjacent kings need no rule of their own: each king attacks the other, so the waiting king is
+// attacked and the same test rejects the position.
+TEST_CASE("Board::SetupFromFEN: rejects adjacent kings", "[uci]")
+{
+    Board board;
+    REQUIRE_FALSE(board.SetupFromFEN("8/8/8/3kK3/8/8/8/8 w - - 0 1"));
+    REQUIRE_FALSE(board.SetupFromFEN("8/8/8/3kK3/8/8/8/8 b - - 0 1"));
+}
+
+// Guards against over-rejection: an ordinary position where the side to move is in check has to keep
+// loading, since that is what most tactical test positions are.
+TEST_CASE("Board::SetupFromFEN: a normal check position still loads", "[uci]")
+{
+    Board board;
+    REQUIRE(board.SetupFromFEN("rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3"));
+
+    CHECK(board.InCheck());
+    CHECK_FALSE(board.WaitingSideInCheck());
+}
+
+TEST_CASE("cmd_position: an illegal position is declined", "[uci]")
+{
+    UciHandlerTestFixture fx;
+    fx.position("position startpos");
+
+    const std::string before = fx.board().ExtractFEN();
+
+    fx.position("position fen 4k3/8/8/8/8/5b2/8/4RK2 w - - 0 1");
+
+    CHECK(fx.board().ExtractFEN() == before);
 }
 
 TEST_CASE("FenBatch::ClassifyLine: valid 6-field White-to-move FEN is Valid", "[uci]")

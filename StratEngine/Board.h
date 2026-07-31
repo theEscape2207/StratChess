@@ -14,6 +14,10 @@ class Board final
 
 public:
 	Board();
+
+	// Asserts in Debug builds if the FEN does not parse — there is no way to report failure from a
+	// constructor, and every caller passes a literal, so a malformed one is a bug in the caller.
+	// In Release the board is left empty, matching SetupFromFEN's contract below.
 	explicit Board(const std::string& fen);
 	~Board() = default;
 
@@ -24,7 +28,12 @@ public:
 
 	// --- Position setup ---
 	void SetDefaultBoard();
-	void SetupFromFEN(const std::string& fen);
+
+	// Applies a FEN string to the board. Returns false if the FEN does not parse, leaving the board
+	// exactly as it was — for a freshly constructed Board that means empty, which still evaluates
+	// and generates moves, so a caller that proceeds regardless operates on a position it never
+	// loaded. Hence [[nodiscard]]: the result has to be handled.
+	[[nodiscard]] bool SetupFromFEN(const std::string& fen);
 	std::string ExtractFEN() const;
 
 	// --- Move execution ---
@@ -46,7 +55,16 @@ public:
 	void ResetSearchDepth() noexcept;
 
 	// --- Position queries ---
+
+	// True if the king of the side to move is attacked. Called from DoMove before change_player(),
+	// where the side to move is still the side that just moved — i.e. "did that move leave its own
+	// king in check".
 	bool InCheck() const noexcept;
+
+	// True if the king of the side NOT to move is attacked. Unlike InCheck() this is not a legal
+	// state: the waiting side would have had to leave its king en prise, so a position where it
+	// holds cannot arise from a legal game. Used to reject illegal FENs at load.
+	bool WaitingSideInCheck() const noexcept;
 
 	// Returns the effective moving piece for a move that has NOT yet been applied.
 	// For non-promotion moves: the piece currently on m.from().
@@ -107,6 +125,11 @@ private:
 	// --- Internal position setup ---
 	void setup_board(const squareCol&);
 	void clear_board();
+
+	// True if the position these pieces describe can legally be on the board with `sideToMove` to
+	// move. Evaluated on a scratch board, so it is safe to ask before committing anything: a caller
+	// that rejects a position must leave the current one untouched.
+	static bool position_is_legal(const squareCol& pieces, eColor sideToMove);
 	
 	// --- Low-level piece manipulation (bitboard + mailbox, no material update) ---
 	// Note: these also update zobrist_hash_ as a side-effect.

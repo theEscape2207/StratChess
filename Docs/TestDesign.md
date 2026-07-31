@@ -610,10 +610,14 @@ the project builds and passes silently by never running.
 
 Constructing FEN positions (all four are bugs that have actually bitten):
 
-- **Always append ` w - - 0 1`.** Omitting the side-to-move field silently makes the engine play as
-  Black — bug #46.
-- **Verify no White piece attacks the Black king** before adding a position. The engine accepts
-  illegal FENs silently and returns king-capture moves — bug #45.
+- **Always append ` w - - 0 1`.** A FEN with fewer than four fields is rejected by the parser, so
+  the position is never applied: `position` is declined and the engine answers for whatever the
+  board still held. `Board::SetupFromFEN` returns `false` here — in a test, `REQUIRE()` it.
+- **The side not to move may not be in check.** Such a position is illegal and is now rejected at
+  load: `SetupFromFEN` returns `false`, and `Board(fen)` asserts in Debug builds — which is how a
+  bad position announces itself, since the assert aborts the run. Adjacent kings are the same rule.
+  Previously these loaded silently and the engine answered with a king capture (bug #45), so the
+  older FEN constants carry hand-verification notes; keep writing them, they document intent.
 - **Verify uniqueness against the engine**, not by eye:
   `(printf "uci\nisready\nposition fen FEN w - - 0 1\ngo depth N\n" | ./x64/Release/StratChessEvolved.exe 2>/dev/null | grep "^bestmove")`
 - In Git Bash use parentheses `(cmd; cmd) | pipe` for multi-command UCI pipes — braces `{ }` fail.

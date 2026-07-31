@@ -65,7 +65,16 @@ void Config::ReadBoardSetup(const json& config, Board& board) const
 
 void Config::ReadFEN(const std::string& fen, Board& board) const
 {
-	board.SetupFromFEN(fen);
+	// A malformed FEN in game_settings.json falls back to the standard opening position, the same
+	// way an empty FEN value does in ReadBoardSetup — otherwise the game would start from whatever
+	// the board happened to hold, which for a fresh Board is empty.
+	if (!board.SetupFromFEN(fen))
+	{
+		spdlog::default_logger()->error(
+			"FEN in configuration could not be parsed - selecting default board: {}", fen);
+		board.SetDefaultBoard();
+		return;
+	}
 
 	GameInfo info = board.GetGameInfo(); // Get the final gameInfo from board
 
