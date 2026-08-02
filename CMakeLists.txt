@@ -1,10 +1,12 @@
 cmake_minimum_required(VERSION 3.24)
 project(StratChess CXX)
 
-# Phase 0 scope: Linux + GCC/Clang only. The .vcxproj/.sln build remains
-# authoritative for Windows, so there are deliberately no if(MSVC) branches here
-# -- compiler-conditional code that CI never exercises rots silently.
-# See .claude/plans/cmake-linux-ci-phase0.md.
+# Builds on Linux (GCC/Clang) and on Windows via clang-cl + Ninja, configured by
+# the windows-clang-cl preset in CMakePresets.json.
+#
+# The .vcxproj/.sln build remains the day-to-day Visual Studio experience and is
+# what still ships; retiring it is issue #81 Phase 3, and adopting the clang
+# binary is issue #84.
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -83,32 +85,51 @@ set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)   # std::jthread — Lazy SMP helpers in AIPerplex::GetMove
 
 function(strat_configure_target tgt)
-    target_compile_options(${tgt} PRIVATE -Wall -Wextra -Werror -mavx2 -mbmi2)
+    # Spelled identically by every driver here.
+    target_compile_options(${tgt} PRIVATE -mavx2 -mbmi2)
+
     # Magic.h builds its 64 x 4096 sliding-attack tables at compile time, which
     # costs on the order of 10-26 million constexpr operations. Clang's default
     # budget (1,048,576 steps) is far below that and GCC's (33,554,432 ops) is
     # close enough to be unsafe, so both are raised explicitly rather than left
     # to the toolchain default. MSVC needs the same treatment and already has it:
     # the .vcxproj files pass /constexpr:steps100000000.
-    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-        target_compile_options(${tgt} PRIVATE -fconstexpr-steps=100000000)
-    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-        target_compile_options(${tgt} PRIVATE -fconstexpr-ops-limit=100000000)
+    #
+    # Force-including Compat.h is how the SAL no-op macros and STRAT_FORCEINLINE
+    # reach the 17 headers that never include StdAfx.h themselves, without editing
+    # any of them. Deliberately not target_precompile_headers: CMake's generated
+    # PCH makes GCC process defines.h twice per TU (it does not carry #pragma once
+    # state across the PCH boundary), which is ~60 redefinition errors.
+    #
+    # clang-cl runs the same frontend as a Unix clang build but parses MSVC driver
+    # syntax, and each GNU spelling fails differently there -- two of them
+    # silently, which is why they are routed explicitly rather than left to chance:
+    #   -Wall              is taken as MSVC /Wall, which clang maps to -Weverything,
+    #                      burying the build in C++98-compat and padding noise
+    #   -fconstexpr-steps= is accepted by the driver and dropped before it reaches
+    #                      the frontend, so Magic.h blows the default budget
+    #   -include           has no clang-cl equivalent; the header path is taken as
+    #                      a second input file and every TU fails on /Fo
+    if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+        target_compile_options(${tgt} PRIVATE
+            /clang:-Wall /clang:-Wextra /WX
+            /clang:-fconstexpr-steps=100000000
+            /FI${CMAKE_SOURCE_DIR}/StratEngine/Compat.h)
+    else()
+        target_compile_options(${tgt} PRIVATE
+            -Wall -Wextra -Werror
+            -include ${CMAKE_SOURCE_DIR}/StratEngine/Compat.h)
+        if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+            target_compile_options(${tgt} PRIVATE -fconstexpr-steps=100000000)
+        elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            target_compile_options(${tgt} PRIVATE -fconstexpr-ops-limit=100000000)
+        endif()
     endif()
+
     target_include_directories(${tgt} PRIVATE
         ${CMAKE_SOURCE_DIR}/StratEngine
         ${spdlog_SOURCE_DIR}/include
         ${nlohmann_json_SOURCE_DIR}/include)
-    # Force-include Compat.h into every TU. This is how the SAL no-op macros and
-    # STRAT_FORCEINLINE reach the 17 headers that never include StdAfx.h
-    # themselves, without editing any of them.
-    #
-    # Deliberately NOT target_precompile_headers: CMake's generated PCH makes GCC
-    # process defines.h twice per TU (it does not carry #pragma once state across
-    # the PCH boundary), which is ~60 redefinition errors. A plain -include has no
-    # such interaction, and force-inclusion was always the only thing needed here.
-    target_compile_options(${tgt} PRIVATE
-        -include ${CMAKE_SOURCE_DIR}/StratEngine/Compat.h)
     target_link_libraries(${tgt} PRIVATE Threads::Threads)
 endfunction()
 
@@ -119,13 +140,26 @@ endfunction()
 # Extracting it as a static library is issue #83: it changes link topology and
 # owes its own nps measurement, so Phase 0 deliberately leaves topology alone.
 #
-# INTERPROCEDURAL_OPTIMIZATION is deliberately NOT set. The nps-relevant binary
-# is still the MSVC one; CMake ships nothing yet. See the spec.
+# Release links the engine with LTO, matching the WholeProgramOptimization the
+# .vcxproj Release configurations have always set -- without it a CMake-built
+# binary is not comparable to the MSBuild one. The test binary is deliberately
+# left out: it is checked for correctness, not speed, so LTO would only cost
+# build time.
 # ---------------------------------------------------------------------------
 add_executable(StratChessEvolved
     ${ENGINE_SOURCES}
     ${CMAKE_SOURCE_DIR}/StratChessEvolved/StratChessEvolved.cpp)
 strat_configure_target(StratChessEvolved)
+
+include(CheckIPOSupported)
+check_ipo_supported(RESULT STRAT_IPO_SUPPORTED OUTPUT STRAT_IPO_ERROR)
+if(STRAT_IPO_SUPPORTED)
+    set_property(TARGET StratChessEvolved
+                 PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+else()
+    message(WARNING "LTO unavailable; Release will not be optimised across "
+                    "translation units: ${STRAT_IPO_ERROR}")
+endif()
 
 add_executable(StratChessTests
     ${ENGINE_SOURCES}
