@@ -1,0 +1,42 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 24, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "windows-clang-cl",
+      "displayName": "Windows / clang-cl + Ninja (Release)",
+      "description": "Run from a VS Developer PowerShell so clang-cl, llvm-rc, lld-link and ninja are on PATH. CMAKE_RC_COMPILER is set to llvm-rc deliberately: the Windows SDK rc.exe is the only tool in this chain that is not long-path aware, and it fails with RC1109 when the build tree sits under a deep path. llvm-rc has no such limit, and this repo has no .rc files of its own, so it only ever compiles the manifest CMake generates.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_COMPILER": "clang-cl",
+        "CMAKE_RC_COMPILER": "llvm-rc"
+      }
+    },
+    {
+      "name": "windows-clang-cl-debug",
+      "inherits": "windows-clang-cl",
+      "displayName": "Windows / clang-cl + Ninja (Debug)",
+      "description": "Debug configuration. Engine changes should be checked here as well as in Release: Release passes some out-of-bounds reads silently.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-clang-cl",
+      "configurePreset": "windows-clang-cl"
+    },
+    {
+      "name": "windows-clang-cl-debug",
+      "configurePreset": "windows-clang-cl-debug"
+    }
+  ]
+}

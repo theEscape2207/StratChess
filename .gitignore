@@ -388,6 +388,6 @@ Directory.Build.user.props
 # Self-play transcript written by Scripts/Validate-PrePR.ps1 (working-dir artifact)
 /StratChessEvolved/pre_pr_selfplay_out.txt
 
-# CMake (Phase 0 Linux build — see .claude/plans/cmake-linux-ci-phase0.md)
+# CMake build trees, Linux and the Windows clang-cl presets alike
 build/
 compile_commands.json
