@@ -116,8 +116,16 @@ void Config::ReadConfigFile(const std::string& filename, Board& board)
 		return;		// FIXME: add error handling
 	}
 
-	nlohmann::json config;
-	configFile >> config;
+	// game_settings.json is heavily commented, and comments are not valid JSON, so
+	// ignore_comments has to be requested explicitly. The stream operator (>>) does
+	// not do it in every nlohmann version -- it happens to in the library's develop
+	// branch and does not in the v3.12.0 release -- so relying on that default makes
+	// whether the engine can read its own settings depend on which copy of the
+	// header the build picked up.
+	nlohmann::json config = nlohmann::json::parse(configFile,
+	                                              /*cb*/ nullptr,
+	                                              /*allow_exceptions*/ true,
+	                                              /*ignore_comments*/ true);
 
 	SetupPlayerConfig(config);
 
