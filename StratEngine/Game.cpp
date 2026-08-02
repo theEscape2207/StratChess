@@ -135,6 +135,14 @@ void Game::Init()
 	{
 		std::cout << "Log initialization failed: " << ex.what() << '\n';
 	}
+	catch (const std::exception& ex)
+	{
+		// Everything else in Init -- config parsing, player construction, board
+		// setup -- used to propagate out of main and end the process with no
+		// message at all, which makes a bad settings file look like a crash.
+		std::cerr << "Game initialization failed: " << ex.what() << std::endl;
+		throw;
+	}
 
 }
 
