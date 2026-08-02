@@ -42,6 +42,20 @@ CI, runtime files, worktree gotchas), `Docs/TestDesign.md` (coverage map + writi
 `core.hooksPath` to `.githooks` on first run, so any clone or worktree gets the tracked pre-commit
 hook automatically. Raw MSBuild invocation, if ever needed: `Docs/Workflow.md`.
 
+There is also a CMake + clang-cl build, which is **not** what ships — `.vcxproj` still is. Run it
+from a VS Developer PowerShell so `clang-cl`, `llvm-rc`, `lld-link` and `ninja` are on `PATH`:
+
+```powershell
+cmake --preset windows-clang-cl          # or windows-clang-cl-debug
+cmake --build --preset windows-clang-cl
+```
+
+It builds a faster engine than MSVC does while searching an identical tree; the measurement and the
+adoption decision both live in issue #84. Two things in `CMakePresets.json` and `CMakeLists.txt` are
+load-bearing and non-obvious: `CMAKE_RC_COMPILER=llvm-rc` (the SDK's `rc.exe` is the only tool in
+this chain that is not long-path aware), and the `/clang:` prefixes on the warning and constexpr
+flags — clang-cl silently mistranslates the plain GNU spellings.
+
 **First commit in a fresh worktree** rebuilds from scratch — give whatever runs `git commit` a
 5-10 minute timeout, not the 2-minute default, or it is killed mid-build and the commit never lands.
 

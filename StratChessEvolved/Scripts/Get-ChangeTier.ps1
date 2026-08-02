@@ -86,6 +86,9 @@ function Get-TierForPath {
     if ($p -like '*.props' -or $p -like '*.sln')             { return 'Build' }
     if ($p -like 'CMakeLists.txt' -or $p -like '*/CMakeLists.txt') { return 'Build' }
     if ($p -like '*.cmake')                                  { return 'Build' }
+    # Presets carry the compiler, generator and cache variables, so a change here
+    # can alter the produced binary as surely as a compile flag in CMakeLists.txt.
+    if ($p -like 'CMakePresets.json' -or $p -like '*/CMakePresets.json') { return 'Build' }
 
     # --- Docs -----------------------------------------------------------------
     if ($p -like '*.md')                                     { return 'Docs' }
@@ -174,6 +177,7 @@ if ($SelfTest) {
         @{ Name = 'vcxproj -> Build';           Files = @('StratChessTests/StratChessTests.vcxproj');            Expect = 'Build' }
         @{ Name = 'CMakeLists -> Build';        Files = @('CMakeLists.txt');                                     Expect = 'Build' }
         @{ Name = 'cmake module -> Build';      Files = @('cmake/Toolchain.cmake');                              Expect = 'Build' }
+        @{ Name = 'CMakePresets -> Build';      Files = @('CMakePresets.json');                                  Expect = 'Build' }
         @{ Name = 'FAIL CLOSED: unknown ext';   Files = @('foo/bar.xyz');                                        Expect = 'Engine' }
         @{ Name = 'FAIL CLOSED: new script';    Files = @('StratChessEvolved/Scripts/Brand-New.ps1');            Expect = 'Engine' }
         @{ Name = 'json -> Engine';             Files = @('StratChessEvolved/game_settings.json');               Expect = 'Engine' }
