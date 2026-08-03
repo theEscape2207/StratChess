@@ -186,3 +186,34 @@ The MSVC/clang-cl guard was confirmed to fire on both compilers, and the shippin
 Filed rather than fixed here: **#184** (TSan over the shared TT) and **#185** (`classify` cannot
 classify a push, so every merge to `main` runs full Linux validation regardless of tier — a
 pre-existing condition this change made 50% more expensive by adding a third job to that trigger).
+
+### Deep survey
+
+The CI job runs the fast tier, so a second local pass covered everything it does not: the extended
+`[slow]` tier, deep perft, all four non-UCI entry points, and multi-threaded search. Roughly 2000
+lines of instrumented output, **zero ASan/UBSan/LSan findings**.
+
+| Leg | Result |
+|---|---|
+| Extended tier incl. `[slow]` | exit 0 |
+| `perft test` | 640/640, every node count exact |
+| `perft run 5` startpos / Kiwipete, `divide 4` | 4,865,609 nodes correct; exit 0 |
+| `tactical test` | 30/31 — the pre-existing `QFORK-001` failure, identical to the Windows run |
+| `tactical stability 2` | 0 failing runs, 0 flipped positions |
+| `eval` runner, `test-fen` | exit 0 |
+| `game` self-play | **partial** — hit the 300s cap mid-game |
+| UCI `Threads=4`, depth 10 + 9 | correct bestmoves, 0 findings |
+
+`perft test` is the load-bearing row: perft is self-checking, so a corrupted make/unmake or a
+mailbox/bitboard desync would show as a wrong node count independently of whether ASan noticed. Both
+agree.
+
+Two limits worth keeping attached to that table. Self-play **did not finish** — it played real moves
+but the cap cut it off, so `Game::Run()`'s checkmate/stalemate termination and the endgame paths
+behind it were never reached. And the timing-sensitive legs search materially shallower at `-O0`
+under ASan, so a pass there is softer evidence than a pass elsewhere; a *finding* would still be real.
+
+The survey did surface one genuine defect, found by reading output rather than by the sanitizers:
+`cmd_position` and `cmd_setoption` lack the `stop_and_join()` that `cmd_go` performs, so a UCI
+command arriving mid-search mutates state the search is reading. Recorded on **#178**, which already
+owns the UCI input surface. That it was invisible to ASan is itself the argument for #184.
