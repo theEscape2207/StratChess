@@ -84,6 +84,37 @@ file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)   # std::jthread — Lazy SMP helpers in AIPerplex::GetMove
 
+# ---------------------------------------------------------------------------
+# Sanitizers
+#
+# Empty by default, and nothing below reaches a target while it is empty -- an
+# ordinary build produces the same command lines and the same binary as if this
+# section did not exist.
+#
+# Linux only, and refused rather than ignored elsewhere. The GNU -fsanitize=
+# spelling does not survive the MSVC driver, and clang-cl is the compiler that
+# accepts flags and drops them before the frontend sees them (#84), so a Windows
+# build that quietly declined to instrument itself would look exactly like one
+# that worked.
+# ---------------------------------------------------------------------------
+set(STRAT_SANITIZE "" CACHE STRING
+    "Sanitizers to build with, passed through to -fsanitize= (e.g. address,undefined). Empty disables.")
+
+# Sanitizers report and continue by default, which exits 0 -- a CI job would go
+# green with findings on screen. OFF turns any finding into a failure. ON is for
+# surveying an uninstrumented codebase for the first time, where stopping at the
+# first report means one rebuild per finding.
+option(STRAT_SANITIZE_RECOVER
+       "Let sanitizers report and continue rather than abort (survey mode; CI must leave this OFF)" OFF)
+
+if(STRAT_SANITIZE AND (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
+                       OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"))
+    message(FATAL_ERROR
+            "STRAT_SANITIZE is not supported on MSVC or clang-cl. Build on Linux -- "
+            "the sanitize-linux job in .github/workflows/build-and-test.yml is the "
+            "reference invocation.")
+endif()
+
 function(strat_configure_target tgt)
     # Magic.h builds its 64 x 4096 sliding-attack tables at compile time, which
     # costs on the order of 10-26 million constexpr operations -- past every
@@ -132,6 +163,25 @@ function(strat_configure_target tgt)
         elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
             target_compile_options(${tgt} PRIVATE -fconstexpr-ops-limit=100000000)
         endif()
+    endif()
+
+    # Outside the chain above because the MSVC and clang-cl branches are already
+    # excluded by the FATAL_ERROR guard, so this only ever runs for GCC or a Unix
+    # clang. The same flags go on the compile and the link line: -fsanitize=
+    # selects the runtime libraries the link needs, not just the instrumentation.
+    if(STRAT_SANITIZE)
+        set(san_flags -fsanitize=${STRAT_SANITIZE} -fno-omit-frame-pointer)
+        if(NOT STRAT_SANITIZE_RECOVER)
+            list(APPEND san_flags -fno-sanitize-recover=all)
+        endif()
+        target_compile_options(${tgt} PRIVATE ${san_flags})
+        target_link_options(${tgt} PRIVATE ${san_flags})
+
+        # ASan sees a container's heap block, not the elements inside it, so an
+        # out-of-range std::vector::operator[] stays within an allocation it knows
+        # about and is never reported. libstdc++'s own bounds assertions are what
+        # catch that class of error.
+        target_compile_definitions(${tgt} PRIVATE _GLIBCXX_ASSERTIONS)
     endif()
 
     target_include_directories(${tgt} PRIVATE
