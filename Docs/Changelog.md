@@ -22,6 +22,40 @@ Newest first.
 
 ---
 
+## 2026-08-04 — ASan/UBSan in CI (issue #179)
+
+### Added
+- **`sanitize-linux` CI job** — builds `StratChessTests` with `-fsanitize=address,undefined` in Debug
+  and runs the fast tier, on the same trigger as `build-linux`. Debug rather than Release so
+  `assert()` and the `#ifndef NDEBUG` tripwires stay live alongside the instrumentation; they catch a
+  different class of fault than the sanitizers do.
+- **`STRAT_SANITIZE`** (CMake STRING, empty by default) — passed through to `-fsanitize=`. Applied to
+  both the compile and the link line, since `-fsanitize=` also selects the runtime libraries. Adds
+  `-D_GLIBCXX_ASSERTIONS`, because ASan sees a container's heap block but not the elements inside it,
+  so an out-of-range `std::vector::operator[]` is otherwise never reported.
+- **`STRAT_SANITIZE_RECOVER`** (CMake BOOL, `OFF`) — `OFF` adds `-fno-sanitize-recover=all`, which is
+  what makes a finding fail the job: sanitizers report and continue by default, exiting 0 with the
+  findings only in the log. `ON` is survey mode, for a first pass over an uninstrumented
+  configuration where aborting on the first report means one rebuild per finding.
+- **Configure error on MSVC and clang-cl.** The GNU `-fsanitize=` spelling does not survive the MSVC
+  driver, and clang-cl is the compiler that accepts flags and drops them before the frontend (#84), so
+  requesting sanitizers on Windows fails loudly rather than producing an uninstrumented binary that
+  looks instrumented.
+
+### Notes
+- **The engine was clean on first contact** — 250 test cases / 3520 assertions, zero ASan findings,
+  zero UBSan findings, zero leaks. The "expect a first-run backlog" caution in #179 did not apply to
+  the fast tier, so the job landed already enforcing rather than advisory.
+- Scope limit: the fast tier only. Code paths reached solely by the `[slow]` tactical suite or a
+  deeper search are not covered.
+- No new test was needed for move generation: `PerftTests.cpp` already runs the start position to
+  depth 4 and Kiwipete to depth 3 in the fast tier.
+- TSan was deliberately left out and filed as #184 — the shared TT is racy by design, so the work
+  there is deciding which reports are signal, not adding a flag. The push-trigger waste noticed while
+  reviewing the job's condition is #185.
+
+---
+
 ## 2026-07-30 — Reject illegal FENs: waiting side in check (issue #45)
 
 ### Added
