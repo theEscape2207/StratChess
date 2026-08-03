@@ -1,12 +1,23 @@
 name: Check starting FEN
+# Path-filtered rather than tier-gated. game_settings.json classifies as Engine,
+# so tier gating would still fire this on every engine PR while adding a classify
+# dependency of its own -- a minute spent to save a minute. This runs only when
+# the file it guards actually changes.
+#
+# A paths filter on a *required* check leaves a PR waiting on a status that never
+# arrives. That is safe here only because required status checks are unavailable
+# on this plan (they need GitHub Pro on a private repo). Revisit if branch
+# protection is ever enabled.
 on:
   pull_request:
     branches: [main]
+    paths:
+      - 'StratChessEvolved/game_settings.json'
 jobs:
   check-fen:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Verify starting FEN
         shell: bash
         run: |

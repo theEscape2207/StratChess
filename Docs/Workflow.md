@@ -94,10 +94,25 @@ and re-run with `-Force`.
 
 ## CI
 
-`.github/workflows/build-and-test.yml` runs an independent build + fast-test check on every PR into
-`main` and every push to `main`. The push trigger both validates post-merge and warms the deps cache
-on the default branch — `actions/cache` scopes per-branch, so a PR from a differently named branch
-cannot restore a cache only ever saved under another branch.
+`.github/workflows/build-and-test.yml` runs an independent build + fast-test check on **Linux** for
+every PR into `main` and every push to `main`. The push trigger both validates post-merge and warms
+the deps cache on the default branch — `actions/cache` scopes per-branch, so a PR from a differently
+named branch cannot restore a cache only ever saved under another branch.
+
+**Windows runs on demand only**, via the `windows-ci` label on a PR. It bills at 2x and was roughly
+three quarters of this repo's Actions spend while it ran on every merge. Apply the label to any PR
+touching `StratEngine/**`, the CMake files, or the workflow itself — Windows is the only job that
+compiles the clang-cl branch of `strat_configure_target`, the `_MSC_VER` sites in `Compat.h` and
+friends, and the MSVC standard library, and the only one that builds what ships. Two of the three
+clang-cl flag spellings fail *silently* when wrong (#84), so Linux cannot stand in for it.
+`Validate-PrePR.ps1` covers the same ground locally and is a strict superset.
+
+**CI is advisory, not a gate.** Required status checks need GitHub Pro on a private repository, so
+nothing here blocks a merge — the result has to be read. `build-and-test-result` is kept as a single
+always-present check so that enabling protection later is a settings change rather than a rewrite.
+
+`Check starting FEN` is path-filtered to `StratChessEvolved/game_settings.json` and does not run
+otherwise.
 
 Runner image is pinned to `windows-2025-vs2026`, not `windows-latest`, so the toolchain moves only
 when it is changed deliberately — see `.claude/plans/full-build-test-ci-github-actions.md`.
