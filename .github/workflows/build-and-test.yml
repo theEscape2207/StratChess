@@ -25,7 +25,7 @@ jobs:
       tier: ${{ steps.tier.outputs.tier }}
       is_full: ${{ steps.tier.outputs.is_full }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -55,7 +55,7 @@ jobs:
       matrix:
         config: [Release, Debug]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Ninja
         run: sudo apt-get update && sudo apt-get install -y ninja-build
@@ -64,7 +64,7 @@ jobs:
       # Not matrix-scoped: FetchContent sources have no per-configuration content,
       # so both legs want the identical cache.
       - name: Cache FetchContent dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build/_deps
           key: cmake-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
@@ -83,15 +83,31 @@ jobs:
 
   build-and-test:
     needs: classify
-    # Runs on merges to main and on demand via the 'windows-ci' label, not on
-    # every PR. Pushes to main also keep the actions/cache deps cache on the
-    # default branch from lapsing.
-    if: >-
-      github.event_name == 'push'
-      || contains(github.event.pull_request.labels.*.name, 'windows-ci')
+    # On demand only, via the 'windows-ci' label. Windows bills at 2x and was
+    # ~75% of this repo's Actions spend while it ran on every merge, which does
+    # not fit the plan's monthly allowance.
+    #
+    # What that gives up, recorded so the trade is not silently forgotten: this
+    # is the only job that compiles the clang-cl branch of
+    # strat_configure_target, the eight _MSC_VER/_WIN32 sites across Compat.h,
+    # PieceHelper.h, SquareHelper.h and StdAfx.h, the MSVC standard library, and
+    # lld-link/ThinLTO -- and it is the only job that builds what actually ships.
+    # Two of the three clang-cl flag spellings fail SILENTLY when wrong (#84), so
+    # the Linux leg cannot stand in for it.
+    #
+    # Apply the label to any PR touching StratEngine/**, the CMake files, or this
+    # workflow. Validate-PrePR.ps1 covers the same ground locally and is a strict
+    # superset of this job, so what remains uncovered is a clean-checkout-only
+    # failure -- something that passes locally because of local state.
+    #
+    # Consequence of dropping the push trigger: Actions caches are branch-scoped
+    # and only default-branch caches are inherited, so with no run on main the
+    # Windows deps cache is never refreshed there and labelled runs re-fetch
+    # dependencies. Measured at well under a minute per leg; a cost, not a defect.
+    if: contains(github.event.pull_request.labels.*.name, 'windows-ci')
     # Pinned to the explicit VS2026 image (not the moving windows-latest label) —
-    # this project's projects pin PlatformToolset v145, which matches this image's
-    # default VC.Tools.x86.x64 toolset. See .claude/plans/full-build-test-ci-github-actions.md.
+    # keeps the toolchain fixed until it is changed deliberately.
+    # See .claude/plans/full-build-test-ci-github-actions.md.
     runs-on: windows-2025-vs2026
     # Release and Debug are NOT redundant -- each catches a class of failure the
     # other structurally cannot, so both are required (see issue #146):
@@ -123,7 +139,7 @@ jobs:
       run:
         shell: pwsh
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Every Windows preset points FETCHCONTENT_BASE_DIR at build/_deps, so the
       # Release and Debug legs share one dependency clone and one cache entry.
@@ -135,7 +151,7 @@ jobs:
       # either way. Do not "fix" it by adding ${{ matrix.config }} to the key:
       # that would store two identical copies.
       - name: Cache dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build/_deps
           key: win-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
@@ -161,12 +177,18 @@ jobs:
           & $exe '~[slow]'
           exit $LASTEXITCODE
 
-  # Branch protection requires a single always-present check, and this is it --
-  # the name must not change. Linux is the gate: it runs on every PR, so a PR is
-  # mergeable on Linux alone.
-  # Windows is advisory in the sense that being SKIPPED is fine, but a Windows
-  # job that actually ran and failed still blocks -- an MSVC-only regression
-  # (e.g. a Release-only C4189 under /WX) must not merge unnoticed.
+  # The single always-present check, and the name must not change.
+  #
+  # NOTE: branch protection is NOT currently active -- required status checks
+  # need GitHub Pro on a private repository, and the API refuses with 403 on this
+  # plan. So nothing here blocks a merge today; this job's verdict is advisory
+  # and has to be read by a human. The single-check shape is kept deliberately so
+  # that turning protection on later is a settings change and not a rewrite.
+  #
+  # Linux is the substantive gate: it runs on every PR. Windows being SKIPPED is
+  # normal now that it is label-gated, but a Windows job that actually ran and
+  # failed is still reported as a failure -- a clang-cl-only regression must not
+  # pass unnoticed.
   build-and-test-result:
     needs: [classify, build-linux, build-and-test]
     if: always()
@@ -192,7 +214,7 @@ jobs:
 
           case "${{ needs.build-and-test.result }}" in
             success) echo "Windows build and tests passed." ;;
-            skipped) echo "Windows skipped: runs on merges to main, or on demand via the 'windows-ci' label." ;;
+            skipped) echo "Windows skipped: runs on demand only, via the 'windows-ci' label. Label any PR touching StratEngine/**, the CMake files, or this workflow." ;;
             *)       echo "Windows build and tests did not pass."; exit 1 ;;
           esac
 
