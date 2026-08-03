@@ -106,8 +106,11 @@ has already produced a 12% outlier on this hardware.
 succeeds but `Validate-PrePR.ps1` never runs, leaving the merged state covered only by the
 pre-commit hook (this happened on PR #148).
 
-CI runs an independent build + fast tests on every PR and push to `main`; extended tiers and
-self-play stay local. Details: `Docs/Workflow.md`.
+CI runs an independent **Linux** build + fast tests on every PR and push to `main`; extended tiers
+and self-play stay local. **Windows is label-gated** — add `windows-ci` to any PR touching
+`StratEngine/**`, the CMake files or the workflow itself, since it is the only job that builds what
+ships. CI is advisory: required status checks are unavailable on this plan, so a red run does not
+block a merge — read it. Details: `Docs/Workflow.md`.
 
 ## Engine Summary
 IDS + PVS + quiescence; Zobrist-hashed TT; bitboards with PEXT magic sliding attacks; killers
