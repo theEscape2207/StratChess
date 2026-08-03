@@ -391,3 +391,6 @@ Directory.Build.user.props
 # CMake build trees, Linux and the Windows clang-cl presets alike
 build/
 compile_commands.json
+
+# CMake's per-developer preset override — machine-specific by definition
+CMakeUserPresets.json
