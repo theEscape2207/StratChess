@@ -39,8 +39,11 @@
 param(
     # Candidate exe. Default: this repo's Release build (must already exist).
     [string]$CandidateExe = '',
-    # Git tag of the pinned reference build.
-    [string]$ReferenceTag = 'elo-reference-v1',
+    # Git tag of the pinned reference build. v2 is clang-cl/CMake built, matching
+    # what ships, so day-to-day measurements compare like with like. Pass
+    # -ReferenceTag elo-reference-v1 for the long-run epic comparison; that binary
+    # is MSVC-built, so the delta includes the compiler change (see Docs/EloLog.md).
+    [string]$ReferenceTag = 'elo-reference-v2',
     # Explicit path to a reference exe. When set, skips the tag-based cache/rebuild
     # lookup entirely and uses this exe directly as the reference side — ReferenceTag
     # then becomes purely a display-name label (fastchess engine name + EloLog.md row).
