@@ -3,9 +3,9 @@
   "cmakeMinimumRequired": { "major": 3, "minor": 24, "patch": 0 },
   "configurePresets": [
     {
-      "name": "windows-clang-cl",
-      "displayName": "Windows / clang-cl + Ninja (Release)",
-      "description": "Run from a VS Developer PowerShell so clang-cl, llvm-rc, lld-link and ninja are on PATH. CMAKE_RC_COMPILER is set to llvm-rc deliberately: the Windows SDK rc.exe is the only tool in this chain that is not long-path aware, and it fails with RC1109 when the build tree sits under a deep path. llvm-rc has no such limit, and this repo has no .rc files of its own, so it only ever compiles the manifest CMake generates.",
+      "name": "windows-base",
+      "hidden": true,
+      "description": "Run from a VS Developer PowerShell so cl, clang-cl, llvm-rc, lld-link and ninja are on PATH. CMAKE_RC_COMPILER is llvm-rc for every Windows preset, MSVC included: the Windows SDK rc.exe is the only tool in this chain that is not long-path aware and fails with RC1109 under a deep build path. llvm-rc has no such limit, and this repo has no .rc files of its own, so it only ever compiles the manifest CMake generates. It ships with the same VS 'C++ Clang tools for Windows' component clang-cl comes from.",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "condition": {
@@ -14,29 +14,53 @@
         "rhs": "Windows"
       },
       "cacheVariables": {
+        "CMAKE_RC_COMPILER": "llvm-rc",
+        "FETCHCONTENT_BASE_DIR": "${sourceDir}/build/_deps"
+      }
+    },
+    {
+      "name": "windows-clang-cl",
+      "inherits": "windows-base",
+      "displayName": "Windows / clang-cl + Ninja (Release)",
+      "description": "The shipping configuration. Builds a measurably faster engine than MSVC while searching an identical tree - see issue #84. Use this for anything measured: Run-Bench and Run-EloMatch results are only comparable between binaries from the same compiler.",
+      "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_CXX_COMPILER": "clang-cl",
-        "CMAKE_RC_COMPILER": "llvm-rc"
+        "CMAKE_CXX_COMPILER": "clang-cl"
       }
     },
     {
       "name": "windows-clang-cl-debug",
       "inherits": "windows-clang-cl",
       "displayName": "Windows / clang-cl + Ninja (Debug)",
-      "description": "Debug configuration. Engine changes should be checked here as well as in Release: Release passes some out-of-bounds reads silently.",
+      "description": "Engine changes should be checked here as well as in Release: Release passes some out-of-bounds reads silently.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "windows-msvc",
+      "inherits": "windows-base",
+      "displayName": "Windows / MSVC + Ninja (Release)",
+      "description": "MSVC build, kept as a supported second toolchain for development and debugging - notably Edit and Continue, which clang-cl does not provide. It is NOT what ships, so do not measure with it: an MSVC candidate against a clang reference reads as a large phantom regression.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_COMPILER": "cl"
+      }
+    },
+    {
+      "name": "windows-msvc-debug",
+      "inherits": "windows-msvc",
+      "displayName": "Windows / MSVC + Ninja (Debug)",
+      "description": "MSVC Debug. The closest equivalent to the retired .vcxproj Debug configuration.",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug"
       }
     }
   ],
   "buildPresets": [
-    {
-      "name": "windows-clang-cl",
-      "configurePreset": "windows-clang-cl"
-    },
-    {
-      "name": "windows-clang-cl-debug",
-      "configurePreset": "windows-clang-cl-debug"
-    }
+    { "name": "windows-clang-cl",       "configurePreset": "windows-clang-cl" },
+    { "name": "windows-clang-cl-debug", "configurePreset": "windows-clang-cl-debug" },
+    { "name": "windows-msvc",           "configurePreset": "windows-msvc" },
+    { "name": "windows-msvc-debug",     "configurePreset": "windows-msvc-debug" }
   ]
 }

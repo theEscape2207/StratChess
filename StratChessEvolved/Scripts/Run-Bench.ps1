@@ -51,11 +51,14 @@
     nps unreliable. Default 200.
 
 .EXAMPLE
-    .\Run-Bench.ps1 -Exe .\x64\Release\StratChessEvolved.exe
+    .\Run-Bench.ps1 -Exe (.\StratChessEvolved\Scripts\Get-BuildArtifact.ps1)
 
 .EXAMPLE
-    .\Run-Bench.ps1 -Exe .\build-msvc\StratChessEvolved.exe -Depth 10 -Csv msvc.csv
-    .\Run-Bench.ps1 -Exe .\build-clang\StratChessEvolved.exe -Depth 10 -Csv clang.csv
+    # Comparing two builds. Both must come from the same compiler unless the
+    # compiler IS what is being compared -- otherwise the toolchain difference
+    # swamps whatever change is under test.
+    .\Run-Bench.ps1 -Exe .\build\windows-clang-cl\StratChessEvolved.exe -Depth 10 -Csv before.csv
+    .\Run-Bench.ps1 -Exe .\build\windows-msvc\StratChessEvolved.exe     -Depth 10 -Csv after.csv
 #>
 [CmdletBinding()]
 param(

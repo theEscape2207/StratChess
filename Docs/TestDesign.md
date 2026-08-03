@@ -27,24 +27,24 @@ Tests are **protection tools for the roadmap**, not bureaucratic overhead.
 
 Run all fast tests at once:
 ```bash
-x64/Release/StratChessTests.exe
+build/windows-clang-cl/StratChessTests.exe
 ```
 
 Run by tag:
 ```bash
-x64/Release/StratChessTests.exe [tt]
-x64/Release/StratChessTests.exe [eval]
-x64/Release/StratChessTests.exe [tactical]
-x64/Release/StratChessTests.exe [repetition]
-x64/Release/StratChessTests.exe [moves]
-x64/Release/StratChessTests.exe [perft]
-x64/Release/StratChessTests.exe [search]
-x64/Release/StratChessTests.exe [sort]
-x64/Release/StratChessTests.exe [time_mgr]
-x64/Release/StratChessTests.exe [board]
-x64/Release/StratChessTests.exe [board_moves]
-x64/Release/StratChessTests.exe [board_state]
-x64/Release/StratChessTests.exe [board_api]
+build/windows-clang-cl/StratChessTests.exe [tt]
+build/windows-clang-cl/StratChessTests.exe [eval]
+build/windows-clang-cl/StratChessTests.exe [tactical]
+build/windows-clang-cl/StratChessTests.exe [repetition]
+build/windows-clang-cl/StratChessTests.exe [moves]
+build/windows-clang-cl/StratChessTests.exe [perft]
+build/windows-clang-cl/StratChessTests.exe [search]
+build/windows-clang-cl/StratChessTests.exe [sort]
+build/windows-clang-cl/StratChessTests.exe [time_mgr]
+build/windows-clang-cl/StratChessTests.exe [board]
+build/windows-clang-cl/StratChessTests.exe [board_moves]
+build/windows-clang-cl/StratChessTests.exe [board_state]
+build/windows-clang-cl/StratChessTests.exe [board_api]
 ```
 
 The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[slow]` run. Use `extended-tests` to include it:
@@ -241,7 +241,7 @@ Each item below is a standalone task. Do it when the corresponding feature is be
 
 **Status**: ✅ **Done.** LMR landed in March 2026; all 10 cases passing.
 **File**: `StratChessTests/SearchTests.cpp`
-**Activation**: `STRAT_ENABLE_TEST_ACCESS` in x64 Debug + Release preprocessor definitions in `StratChessTests.vcxproj`.
+**Activation**: `STRAT_ENABLE_TEST_ACCESS`, applied to the `StratChessTests` target only by `CMakeLists.txt`.
 
 Tests for private helper methods exposed via `AIPerlexTestFixture` (friend class):
 
@@ -584,23 +584,21 @@ When a bug is found and fixed:
 
 ### Running the suite
 
-The test binary lives under `StratChessTests/x64/Release/` (**not** `x64/Release/`) and runs from
-any directory. Filter by tag with a Catch2 argument:
+The test binary lives under `build/<preset>/` and runs from any directory;
+`Scripts/Get-BuildArtifact.ps1 -Target StratChessTests` resolves the path. Filter by tag with a
+Catch2 argument:
 
 ```bash
-StratChessTests/x64/Release/StratChessTests.exe            # all tests
-StratChessTests/x64/Release/StratChessTests.exe "[eval]"   # one tag (see Coverage Map above)
+build/windows-clang-cl/StratChessTests.exe            # all tests
+build/windows-clang-cl/StratChessTests.exe "[eval]"   # one tag (see Coverage Map above)
 ```
 
-`build.ps1 run-tests` excludes `[slow]`; `build.ps1 extended-tests` includes it. Building the
-`.sln` does not reliably rebuild the test project — use `build.ps1 tests`.
+`build.ps1 run-tests` excludes `[slow]`; `build.ps1 extended-tests` includes it.
 
-Framework is Catch2 v3 amalgamated from `$(DepsRoot)Catch2/`. The test project uses `/Z7` debug
-format (debug info in the `.obj` files) so parallel `/m` compilation avoids PDB write contention.
+Framework is Catch2 v3, amalgamated, fetched and pinned by `FetchContent` into `build/_deps`.
 
-Adding a new `.cpp`: add a `ClCompile` entry to `StratChessTests.vcxproj` **and** a matching
-`<Filter>` entry in `.vcxproj.filters`, or the file is not compiled at all. A test file absent from
-the project builds and passes silently by never running.
+Adding a new `.cpp` needs no project edit — `CMakeLists.txt` globs `StratChessTests/*.cpp` with
+`CONFIGURE_DEPENDS`, so creating the file is enough.
 
 ### Tactical test positions
 
@@ -619,7 +617,7 @@ Constructing FEN positions (all four are bugs that have actually bitten):
   Previously these loaded silently and the engine answered with a king capture (bug #45), so the
   older FEN constants carry hand-verification notes; keep writing them, they document intent.
 - **Verify uniqueness against the engine**, not by eye:
-  `(printf "uci\nisready\nposition fen FEN w - - 0 1\ngo depth N\n" | ./x64/Release/StratChessEvolved.exe 2>/dev/null | grep "^bestmove")`
+  `(printf "uci\nisready\nposition fen FEN w - - 0 1\ngo depth N\n" | ./build/windows-clang-cl/StratChessEvolved.exe 2>/dev/null | grep "^bestmove")`
 - In Git Bash use parentheses `(cmd; cmd) | pipe` for multi-command UCI pipes — braces `{ }` fail.
 
 ### Constructing AIPerplex in a test
@@ -642,7 +640,7 @@ working directory:
 
 ```bash
 cd Tests
-../x64/Release/StratChessEvolved.exe perft test
+../build/windows-clang-cl/StratChessEvolved.exe perft test
 ```
 
 Sources: `StratEngine/Tests/Perft.h/cpp` + `Tests/perft_test_cases.json`.
@@ -657,6 +655,6 @@ To test private search helper methods, `AIPerplex.h` contains a conditional frie
 #endif
 ```
 
-To activate: add `STRAT_ENABLE_TEST_ACCESS` to the preprocessor definitions for the x64 Debug and Release configurations in `StratChessTests.vcxproj`. This is done when `SearchTests.cpp` is written (Phase 1 — do not enable before then).
+To activate: add `STRAT_ENABLE_TEST_ACCESS` to the `StratChessTests` target in `CMakeLists.txt`. This is done when `SearchTests.cpp` is written (Phase 1 — do not enable before then).
 
-The macro is intentionally absent from the production project (`StratChessEvolved.vcxproj`).
+The macro is intentionally absent from the `StratChessEvolved` target.

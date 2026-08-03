@@ -3,13 +3,17 @@
     Build wrapper for StratChessEvolved.
 
 .DESCRIPTION
-    Discovers MSBuild via vswhere and exposes simple build verbs.
-    Defaults to Release|x64.
+    Drives the CMake presets in CMakePresets.json and exposes simple build verbs.
+    Defaults to Release with clang-cl, which is the shipping configuration.
+
+    Imports the Visual Studio developer environment itself, so this works from a
+    plain PowerShell, a git hook or an agent session — clang-cl and cl need
+    INCLUDE/LIB set, and nothing outside a Developer Prompt has them.
 
 .PARAMETER Verb
-    main            Build the main solution (StratChessEvolved.sln)
-    tests           Build the test project (StratChessTests.vcxproj)
-    all             Build main and tests in parallel (default)
+    main            Build the engine executable
+    tests           Build the test executable
+    all             Build both (default)
     run-tests       Build tests then run fast tier only (excludes [slow])
     extended-tests  Build tests then run all tiers including [slow]
 
@@ -19,6 +23,11 @@
 .PARAMETER Config
     Build configuration: Release (default) or Debug.
 
+.PARAMETER Compiler
+    clang-cl (default, what ships) or msvc. MSVC is supported for development and
+    debugging; do not measure with it, since nps and Elo are only comparable
+    between binaries from the same compiler.
+
 .EXAMPLE
     .\build.ps1
     .\build.ps1 tests
@@ -26,6 +35,7 @@
     .\build.ps1 run-tests "[formatter]"
     .\build.ps1 extended-tests
     .\build.ps1 all -Config Debug
+    .\build.ps1 main -Compiler msvc
 #>
 param(
     [Parameter(Position=0)]
@@ -35,14 +45,23 @@ param(
     [Parameter(Position=1)]
     [string]$Tag = '',
 
-    [string]$Config = 'Release'
+    [ValidateSet('Release', 'Debug')]
+    [string]$Config = 'Release',
+
+    [ValidateSet('clang-cl', 'msvc')]
+    [string]$Compiler = 'clang-cl'
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$Platform = 'x64'
-$RepoRoot  = $PSScriptRoot
+$RepoRoot = $PSScriptRoot
+
+$Preset = "windows-$Compiler"
+if ($Config -eq 'Debug') { $Preset += '-debug' }
+
+$BuildDir = Join-Path $RepoRoot "build\$Preset"
+$TestExe  = Join-Path $BuildDir 'StratChessTests.exe'
 
 # ---------------------------------------------------------------------------
 # One-time bootstrap: point this checkout's hooks at the tracked .githooks/
@@ -56,95 +75,106 @@ if ($currentHooksPath -ne '.githooks') {
 }
 
 # ---------------------------------------------------------------------------
-# Discover MSBuild via vswhere (works regardless of VS version / install path)
+# Developer environment
+#
+# vcvars64.bat is the only supported way to get the compiler's INCLUDE/LIB and
+# the Windows SDK onto the environment. It also puts cmake, ninja, clang-cl,
+# lld-link and llvm-rc on PATH, so nothing below needs an absolute tool path.
 # ---------------------------------------------------------------------------
-$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
-if (-not (Test-Path $vswhere)) {
-    Write-Error "vswhere.exe not found at: $vswhere`nIs Visual Studio installed?"
-    exit 1
+function Import-VsDevEnvironment {
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+    if (-not (Test-Path $vswhere)) {
+        Write-Error "vswhere.exe not found at: $vswhere`nIs Visual Studio installed?"
+        exit 1
+    }
+
+    $vsRoot = (& $vswhere -latest -property installationPath) | Select-Object -First 1
+    if (-not $vsRoot) {
+        Write-Error "No Visual Studio installation found via vswhere."
+        exit 1
+    }
+
+    $vcvars = Join-Path $vsRoot 'VC\Auxiliary\Build\vcvars64.bat'
+    if (-not (Test-Path $vcvars)) {
+        Write-Error "vcvars64.bat not found at: $vcvars`nIs the C++ workload installed?"
+        exit 1
+    }
+
+    cmd /c "`"$vcvars`" >nul 2>&1 && set" | ForEach-Object {
+        if ($_ -match '^([^=]+)=(.*)$') { Set-Item -Path "env:$($matches[1])" -Value $matches[2] }
+    }
+
+    foreach ($tool in @('cmake', 'ninja')) {
+        if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
+            Write-Error "$tool not on PATH after vcvars64. Install the 'C++ CMake tools for Windows' VS component."
+            exit 1
+        }
+    }
+
+    # Check the compiler by name here rather than letting CMake fail later: a
+    # missing clang-cl otherwise surfaces as a configure error about a broken
+    # compiler, which does not say which VS component to install.
+    $compilerExe = if ($Compiler -eq 'msvc') { 'cl' } else { 'clang-cl' }
+    if (-not (Get-Command $compilerExe -ErrorAction SilentlyContinue)) {
+        $hint = if ($Compiler -eq 'msvc') {
+            "Install the MSVC v14x build tools VS component."
+        } else {
+            "Install the 'C++ Clang tools for Windows' VS component, or build with -Compiler msvc."
+        }
+        Write-Error "$compilerExe not on PATH after vcvars64. $hint"
+        exit 1
+    }
 }
 
-$MSBuild = (& $vswhere -latest -requires Microsoft.Component.MSBuild `
-    -find 'MSBuild\**\Bin\MSBuild.exe') | Select-Object -First 1
+function Invoke-CMakeBuild {
+    param([string[]]$Targets)
 
-if (-not $MSBuild -or -not (Test-Path $MSBuild)) {
-    Write-Error "MSBuild.exe not found via vswhere. Is the MSBuild component installed?"
-    exit 1
-}
+    # Configure only when there is no cache: Ninja re-runs CMake by itself when
+    # CMakeLists.txt or CMakePresets.json change, so configuring every time only
+    # adds latency.
+    if (-not (Test-Path (Join-Path $BuildDir 'CMakeCache.txt'))) {
+        Write-Host "`n==> Configuring $Preset" -ForegroundColor Cyan
+        & cmake --preset $Preset
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Configure failed (exit $LASTEXITCODE): $Preset"
+            exit $LASTEXITCODE
+        }
+    }
 
-Write-Host "Using MSBuild: $MSBuild" -ForegroundColor DarkGray
-Write-Host "Config: $Config | Platform: $Platform" -ForegroundColor DarkGray
+    $label = if ($Targets) { $Targets -join ', ' } else { 'all targets' }
+    Write-Host "`n==> Building $label ($Preset)" -ForegroundColor Cyan
 
-# ---------------------------------------------------------------------------
-# Helper
-# ---------------------------------------------------------------------------
-function Invoke-MSBuild {
-    param([string]$Target, [switch]$Parallel)
-    $extraArgs = if ($Parallel) { @('/m') } else { @() }
-    $allArgs = @(
-        $Target,
-        "/p:Configuration=$Config",
-        "/p:Platform=$Platform",
-        '/v:minimal'
-    ) + $extraArgs
-    Write-Host ""
-    Write-Host "==> $Target" -ForegroundColor Cyan
-    & $MSBuild @allArgs
+    $buildArgs = @('--build', '--preset', $Preset)
+    foreach ($t in $Targets) { $buildArgs += @('--target', $t) }
+
+    & cmake @buildArgs
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Build failed (exit $LASTEXITCODE): $Target"
+        Write-Error "Build failed (exit $LASTEXITCODE): $label"
         exit $LASTEXITCODE
     }
 }
 
-$Sln      = Join-Path $RepoRoot 'StratChessEvolved.sln'
-$TestProj = Join-Path $RepoRoot 'StratChessTests\StratChessTests.vcxproj'
-$TestExe  = Join-Path $RepoRoot "StratChessTests\$Platform\$Config\StratChessTests.exe"
+Import-VsDevEnvironment
+Write-Host "Preset: $Preset | Config: $Config | Compiler: $Compiler" -ForegroundColor DarkGray
 
 # ---------------------------------------------------------------------------
 # Verbs
+#
+# Ninja builds every requested target in one invocation and parallelises across
+# them, so 'all' needs no job orchestration of its own.
 # ---------------------------------------------------------------------------
 switch ($Verb) {
     'main' {
-        Invoke-MSBuild $Sln -Parallel
+        Invoke-CMakeBuild -Targets @('StratChessEvolved')
     }
     'tests' {
-        Invoke-MSBuild $TestProj -Parallel
+        Invoke-CMakeBuild -Targets @('StratChessTests')
     }
     'all' {
-        Write-Host "`n==> Building main + tests in parallel" -ForegroundColor Cyan
-        $jobMain  = Start-Job { param($msbuild,$sln,$cfg,$plat)
-            & $msbuild $sln /p:Configuration=$cfg /p:Platform=$plat /m /v:minimal
-            $LASTEXITCODE
-        } -ArgumentList $MSBuild,$Sln,$Config,$Platform
-
-        $jobTests = Start-Job { param($msbuild,$proj,$cfg,$plat)
-            & $msbuild $proj /p:Configuration=$cfg /p:Platform=$plat /m /v:minimal
-            $LASTEXITCODE
-        } -ArgumentList $MSBuild,$TestProj,$Config,$Platform
-
-        Wait-Job $jobMain,$jobTests | Out-Null
-        $outMain   = @(Receive-Job $jobMain)
-        $outTests  = @(Receive-Job $jobTests)
-        Remove-Job $jobMain,$jobTests
-
-        # Print MSBuild output (all lines except the last, which is the exit code)
-        $outMain  | Select-Object -SkipLast 1 | ForEach-Object { Write-Host $_ }
-        $outTests | Select-Object -SkipLast 1 | ForEach-Object { Write-Host $_ }
-
-        $exitMain  = $outMain  | Select-Object -Last 1
-        $exitTests = $outTests | Select-Object -Last 1
-
-        # Guard against $null (job threw exception before emitting exit code)
-        if ($null -eq $exitMain)  { $exitMain  = 1 }
-        if ($null -eq $exitTests) { $exitTests = 1 }
-
-        if ($exitMain -ne 0 -or $exitTests -ne 0) {
-            Write-Error "Parallel build failed (main=$exitMain tests=$exitTests)."
-            exit 1
-        }
+        Invoke-CMakeBuild -Targets @()
     }
     'run-tests' {
-        Invoke-MSBuild $TestProj -Parallel
+        Invoke-CMakeBuild -Targets @('StratChessTests')
         Write-Host ""
         # Default: exclude [slow] tests; pass an explicit tag to override.
         $effectiveTag = $Tag ? $Tag : '~[slow]'
@@ -153,7 +183,7 @@ switch ($Verb) {
         exit $LASTEXITCODE
     }
     'extended-tests' {
-        Invoke-MSBuild $TestProj -Parallel
+        Invoke-CMakeBuild -Targets @('StratChessTests')
         Write-Host ""
         if ($Tag) {
             Write-Warning "extended-tests ignores the Tag parameter ('$Tag'). Use run-tests to filter by tag."
