@@ -21,5 +21,6 @@ cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Run-Tes
 ## Notes
 - Run from worktree root (not a subdirectory)
 - Available tags: [sort] [search] [tactical] [perft] [tt] [eval] [repetition] [formatter] [board] [time_mgr]
-- Binary is under `StratChessTests\x64\Release\` (not `x64\Release\`) — the script handles this
+- Binary is under `build\<preset>\` — the script handles this; `Scripts\Get-BuildArtifact.ps1`
+  resolves the path if you need it directly
 - Fallback if Scripts/ unavailable: `cmd.exe /c "pwsh -ExecutionPolicy Bypass -File build.ps1 run-tests"`

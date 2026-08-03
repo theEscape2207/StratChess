@@ -85,15 +85,9 @@ set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)   # std::jthread — Lazy SMP helpers in AIPerplex::GetMove
 
 function(strat_configure_target tgt)
-    # Spelled identically by every driver here.
-    target_compile_options(${tgt} PRIVATE -mavx2 -mbmi2)
-
     # Magic.h builds its 64 x 4096 sliding-attack tables at compile time, which
-    # costs on the order of 10-26 million constexpr operations. Clang's default
-    # budget (1,048,576 steps) is far below that and GCC's (33,554,432 ops) is
-    # close enough to be unsafe, so both are raised explicitly rather than left
-    # to the toolchain default. MSVC needs the same treatment and already has it:
-    # the .vcxproj files pass /constexpr:steps100000000.
+    # costs on the order of 10-26 million constexpr operations -- past every
+    # compiler's default budget, so each one has to be raised explicitly.
     #
     # Force-including Compat.h is how the SAL no-op macros and STRAT_FORCEINLINE
     # reach the 17 headers that never include StdAfx.h themselves, without editing
@@ -101,24 +95,38 @@ function(strat_configure_target tgt)
     # PCH makes GCC process defines.h twice per TU (it does not carry #pragma once
     # state across the PCH boundary), which is ~60 redefinition errors.
     #
-    # clang-cl runs the same frontend as a Unix clang build but parses MSVC driver
-    # syntax, and each GNU spelling fails differently there -- two of them
-    # silently, which is why they are routed explicitly rather than left to chance:
-    #   -Wall              is taken as MSVC /Wall, which clang maps to -Weverything,
-    #                      burying the build in C++98-compat and padding noise
-    #   -fconstexpr-steps= is accepted by the driver and dropped before it reaches
-    #                      the frontend, so Magic.h blows the default budget
-    #   -include           has no clang-cl equivalent; the header path is taken as
-    #                      a second input file and every TU fails on /Fo
-    if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+    # Three drivers, three spellings, and the wrong one is rarely a hard error:
+    #
+    #   clang-cl runs the same frontend as a Unix clang build but parses MSVC
+    #   driver syntax. -Wall is taken as MSVC /Wall, which clang maps to
+    #   -Weverything; -fconstexpr-steps= is accepted by the driver and dropped
+    #   before it reaches the frontend; -include has no equivalent at all and its
+    #   argument becomes a second input file, failing every TU on /Fo.
+    #
+    #   MSVC understands none of the GNU spellings and reports each as a D9002
+    #   warning before carrying on, so -mavx2/-mbmi2 would go missing with the
+    #   build still succeeding -- the reason the nps gate, not just a clean
+    #   compile, is what qualifies a change to this function.
+    set(compat_header ${CMAKE_SOURCE_DIR}/StratEngine/Compat.h)
+
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+        # /arch:AVX2 also enables BMI2, which is what Magic.h's _pext_u64 needs.
         target_compile_options(${tgt} PRIVATE
-            /clang:-Wall /clang:-Wextra /WX
+            /W4 /WX /utf-8 /permissive-
+            /arch:AVX2
+            /constexpr:steps100000000
+            /FI${compat_header})
+    elseif(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+        target_compile_options(${tgt} PRIVATE
+            -mavx2 -mbmi2
+            /clang:-Wall /clang:-Wextra /WX /utf-8
             /clang:-fconstexpr-steps=100000000
-            /FI${CMAKE_SOURCE_DIR}/StratEngine/Compat.h)
+            /FI${compat_header})
     else()
         target_compile_options(${tgt} PRIVATE
+            -mavx2 -mbmi2
             -Wall -Wextra -Werror
-            -include ${CMAKE_SOURCE_DIR}/StratEngine/Compat.h)
+            -include ${compat_header})
         if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
             target_compile_options(${tgt} PRIVATE -fconstexpr-steps=100000000)
         elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
