@@ -16,7 +16,7 @@ Plan/design: `.claude/plans/elo-baseline-measurement.md`.
 | Match runner | fastchess **v1.8.0-alpha** (`fastchess alpha 1.8.0`, windows-x86-64), from https://github.com/Disservin/fastchess/releases/tag/v1.8.0-alpha |
 | Runner location | `<DepsRoot>EngineTesting\fastchess.exe` (repo sibling, same convention as spdlog/json/Catch2) |
 | Opening book | `Tests/openings/openings-250.pgn` — first 250 games of `8moves_v3.pgn` (official-stockfish/books), sequential order, each pair color-swapped (`-repeat`) |
-| Reference build | git tag `elo-reference-v1` (post-ThreadData + UCI replay-overflow fix — last deterministic engine before Lazy SMP). Cached as `<DepsRoot>EngineTesting\StratChess-elo-reference-v1.exe`; rebuilt from the tag automatically on cache miss. Originally pinned at `da06b3c`, re-pointed after the smoke match exposed a >256-ply replay crash (`da06b3c` engines can crash mid-match, poisoning results) — see history row 1 |
+| Reference build | git tag **`elo-reference-v2`** (`c86553a`, 2026-08-03 — first baseline built by clang-cl/CMake, matching what ships). Cached as `EngineTesting\StratChess-elo-reference-v2.exe`; rebuilt from the tag automatically on cache miss. **`elo-reference-v1` is retained, not replaced** — see "Two anchors" below |
 | Time control | 10s + 0.1s increment |
 | Adjudication | draw: movenumber=40 movecount=8 score=10; resign: movecount=4 score=800 |
 | Machine | Windows 11 Pro x64 (theEscape2207 dev machine) — results are machine-relative; re-establish the sanity row when measuring on different hardware |
@@ -168,8 +168,42 @@ delta to whichever term the commit message happens to mention first.
 Identical builds (candidate exe byte-identical to the reference exe, SHA256-verified) over
 2×500 games: pooled **−1.4 ELO** (378W/382L/240D, 49.80%) — zero measurable bias in the
 instrument. The two batches individually hit opposite ±2σ edges, which calibrates the
-per-batch noise above. Future search/eval changes measure against `elo-reference-v1` with
-this procedure; anything beyond the pooled error bound is signal.
+per-batch noise above. Future search/eval changes measure against the pinned reference with
+this procedure; anything beyond the pooled error bound is signal. (That calibration was run
+against `elo-reference-v1`; it measures the *instrument*, not the anchor, so it carries over to
+`elo-reference-v2` unchanged.)
+
+### Two anchors, and which to use
+
+There are two pinned references, and picking the wrong one produces a number that looks real and
+is not.
+
+| Tag | Commit | Compiler | Use for |
+|---|---|---|---|
+| `elo-reference-v2` | `c86553a`, 2026-08-03 | clang-cl + ThinLTO (ships) | **Default.** Day-to-day search/eval changes |
+| `elo-reference-v1` | `bda7189`, 2026-07-03 | MSVC + LTCG | The long-run epic comparison only |
+
+**Why v2 exists.** The shipping compiler changed to clang-cl when #177 merged, and that change alone
+is worth roughly +40 Elo at 10+0.1 (measured in #84). Measuring a clang-built candidate against the
+MSVC-built v1 credits that +40 to whatever change is under test — a phantom gain large enough to
+make an eval regression look like an improvement. v2 removes it by being built the same way the
+candidate is.
+
+**Why v1 is kept.** It is deliberately preserved as the long-run anchor for the eval (#110) and build
+modernization (#81) epics: a single before/after across both, where the compiler gain is *part of*
+what is being measured rather than a confound. Do not delete
+`EngineTesting\StratChess-elo-reference-v1.exe` or the tag. Tracked in #180.
+
+Run it explicitly when that time comes:
+
+```
+... -File StratChessEvolved\Scripts\Run-EloMatch.ps1 -ReferenceTag elo-reference-v1
+```
+
+Note the rebuild path: v1 predates the CMake migration, so rebuilding it from its tag uses that
+tag's own MSBuild `build.ps1` and needs the sibling spdlog/nlohmann checkouts to still exist.
+`Run-EloMatch.ps1` warns when it rebuilds a pre-migration reference, but the warning only fires on a
+cache *miss* — a cached v1 binary is used silently.
 
 ### The anchor answers "where do we stand", not "did this change help"
 
@@ -210,3 +244,4 @@ it is not a defect in any individual row.
 | 2026-07-31 | clang-cl ThinLTO @ 9f45233 | MSVC LTCG @ 9f45233 | 20 | 10+0.1 | -0.00 +/- 172.63 | **Smoke only — not a measurement.** 9W/9L/2D. Run purely to confirm fastchess could drive binaries living outside the normal `x64/Release` layout (both sit in a throwaway `bench/` tree). At 20 games the error bar is +/-172, so the Elo figure carries no information whatsoever and must not be quoted. |
 | 2026-08-01 | clang-cl ThinLTO @ 9f45233 (#84) | MSVC LTCG @ 9f45233 | 622 | 10+0.1 | 27.43 +/- 24.00 | **SPRT Custom [-5, 15] — H1 ACCEPTED at 622 games, LLR 2.98 (101.3%), wall time 00:50:19.** 268W/219L/135D (53.94%), LOS 98.79%, DrawRatio 36.01%, PairsRatio 1.37, Ptnml(0-2) [38, 46, 112, 59, 56], nElo 31.38 +/- 27.30. **This row is the DECISION, not the estimate** — read it as "worth more than 15 Elo", not as "+27.43 Elo"; the 95% interval is [+3.43, +51.43]. The estimate is the 3500-game row below, which supersedes this number. **Both sides are the same source at `9f45233`** — only the compiler and its LTO mode differ (MSVC `/GL /LTCG` vs clang-cl `-flto=thin` with `lld-link`), so the delta is attributable to code generation alone. Equivalence was verified before the match: at Threads=1 both binaries visit identical nodes and return identical best moves on all 8 `Run-Bench.ps1` positions. `[-5, 15]` was chosen over `-Sprt Gain` deliberately: `Gain` is `[0, 10]`, and the tapered-eval row above hit its 2000-game cap still inconclusive on those bounds. Wider bounds decide faster, and `elo1 = 15` is the more useful question — adopting a second toolchain has real cost, so what matters is whether the gain is material. `+dirty` on the auto-appended label was this file plus untracked scratch directories; `git status -- StratEngine StratChessEvolved CMakeLists.txt` was empty, so the binary is exactly `9f45233`. |
 | 2026-08-01 | clang-cl ThinLTO @ 9f45233 (#84) | MSVC LTCG @ 9f45233 | 3500 | 10+0.1 | **40.28 +/- 9.81** | **Fixed batch (no SPRT) — this is the ESTIMATE row. Wall time 04:44:55 at `-Concurrency 6`.** 1525W/1121L/854D (55.77%), LOS 100.00%, DrawRatio 36.91%, PairsRatio 1.62, Ptnml(0-2) [173, 248, 646, 368, 315], nElo 47.69 +/- 11.51. 95% interval **[+30.5, +50.1]**. Run because the SPRT's +/-24 was too wide to act on; a fixed batch was the right tool because SPRT optimises for deciding a hypothesis, not for estimating a value, and its early stop leaves the point estimate subject to optional-stopping bias. **Do NOT pool this with the 622-game SPRT row** — pooling a stopped sample into a fixed batch drags that bias along. This row alone is the estimate; the SPRT row alone is the decision. **The two are consistent, not contradictory**: +40.28 falls inside the SPRT's [+3.43, +51.43], so the earlier figure was simply noisy and landed low. (A prediction that the batch would land *below* +27.43 on optional-stopping grounds was wrong — that effect is real but second-order, and sampling noise at 622 games dominated it.) **Quote this as "+40 Elo at 10+0.1", not as "+40 Elo".** The nps side measured +23.32% (2,798,491 -> 3,451,020 aggregate, 5 runs each, per-config spread 0.27-1.11%), which is 0.302 doublings; at the conventional ~60 Elo/doubling that predicts ~18 Elo. The measured result implies **~133 Elo per doubling**, far above the textbook figure. The likely cause is the time control: speed advantages are amplified at 10+0.1, where an engine is more often one iteration short. Expect a smaller gain at longer controls; this was not measured. **What this does not settle is the cost of adoption** — VS's ClangCL toolset has no LTO integration at all (`-flto` and `lld-link` were wired by hand), `WholeProgramOptimization=true` under it is a trap that produces a smaller binary while passing no `-flto`, and the clang legs only compiled with `-Wno-error` because this engine has only ever been `/W4 /WX`-clean against MSVC. See #84. |
+| 2026-08-03 | elo-reference-v2 (same binary) | elo-reference-v2 | 20 | 10+0.1 | -107.54 +/- 127.62 | **Re-pin verification — carries no strength information.** Both sides were the *same file*, SHA256 `D0B4F7F4…B308D6A`, so the true difference is exactly zero by construction. Run to confirm the new default reference resolves from cache and fastchess drives it; both did. The ±127.62 interval spans zero more than eight times over, which is the point: a 20-game smoke resolves nothing, and reading its point estimate as a result is the mistake this row exists to illustrate. The `+dirty` in the auto-generated label was uncommitted doc/script edits in the worktree — the binary is exactly `c86553a` |
