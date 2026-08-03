@@ -8,10 +8,11 @@
     reports the ELO difference with its error bound and appends a record line to
     Docs/EloLog.md.
 
-    The reference exe is cached in <DepsRoot>EngineTesting\ and rebuilt on demand
-    from its git tag via a temporary worktree, so the procedure survives a wiped
-    deps folder. The candidate is NOT built by this script — build it first
-    (.\build.ps1 main).
+    The reference exe is cached in EngineTesting\ beside the main checkout and is
+    rebuilt on demand from its git tag via a temporary worktree, so the procedure
+    survives a wiped cache. The candidate is NOT built by this script — build it
+    first (.\build.ps1 main), and note that build.ps1 defaults to the shipping
+    clang-cl build, which is the only one comparable against the reference.
 
 .WHEN TO USE
     After any change that can affect playing strength (search, evaluation, move
@@ -145,24 +146,25 @@ if ($Sprt -ne '') {
 $GameDir  = Split-Path $PSScriptRoot -Parent
 $RepoRoot = Split-Path $GameDir -Parent
 
-# --- Resolve DepsRoot the same way Directory.Build.props does ---------------
-# Worktree layout: <main-repo>\.claude\worktrees\<name>\ -> DepsRoot is 4 up.
-# Main repo root: DepsRoot is the parent directory.
-# (Directory.Build.user.props overrides are not parsed here; if you use one,
-#  pass explicit paths or keep EngineTesting\ in the default location.)
-$mainRepoSln = Join-Path (Split-Path (Split-Path (Split-Path $RepoRoot -Parent) -Parent) -Parent) 'StratChessEvolved.sln'
-$DepsRoot = if (Test-Path $mainRepoSln) {
-    Split-Path (Split-Path (Split-Path (Split-Path $RepoRoot -Parent) -Parent) -Parent) -Parent
-} else {
-    Split-Path $RepoRoot -Parent
-}
+# --- Locate EngineTesting\ ---------------------------------------------------
+# fastchess and the cached reference binaries live beside the MAIN checkout, so
+# every worktree shares them instead of re-downloading per branch.
+#
+# The main checkout is resolved through git rather than by probing for a marker
+# file: a worktree's .git is a file, and --git-common-dir always points at the
+# main repository's .git regardless of how deeply the worktree is nested.
+$mainRoot      = (git -C $RepoRoot rev-parse --path-format=absolute --git-common-dir) -replace '[\\/]\.git[\\/]?$', ''
+$DepsRoot      = Split-Path $mainRoot -Parent
 $EngineTesting = Join-Path $DepsRoot 'EngineTesting'
 $fastchess     = Join-Path $EngineTesting 'fastchess.exe'
 $book          = Join-Path $RepoRoot 'Tests\openings\openings-250.pgn'
 $refExe        = Join-Path $EngineTesting "StratChess-$ReferenceTag.exe"
 if ($ReferenceExe -ne '') { $refExe = $ReferenceExe }
 
-if ($CandidateExe -eq '') { $CandidateExe = Join-Path $RepoRoot 'x64\Release\StratChessEvolved.exe' }
+# Defaults to the shipping (clang-cl) build deliberately. Elo is only comparable
+# between binaries from the same compiler: an MSVC candidate measured against the
+# clang reference would show the ~25% nps compiler gap as a phantom regression.
+if ($CandidateExe -eq '') { $CandidateExe = & (Join-Path $PSScriptRoot 'Get-BuildArtifact.ps1') }
 
 # --- Preflight ---------------------------------------------------------------
 if (-not (Test-Path $fastchess)) {
@@ -236,9 +238,11 @@ if ($ResumeDir -ne '') {
             Write-Host "Tag '$ReferenceTag' not found. git fetch origin --tags and retry." -ForegroundColor Red
             exit 1
         }
-        # The temp worktree MUST live under <main-repo>\.claude\worktrees\ -- that is
-        # the layout Directory.Build.props detects to resolve DepsRoot for worktree
-        # builds; anywhere else and the reference build cannot find spdlog/json.
+        # The temp worktree MUST live under <main-repo>\.claude\worktrees\ when the
+        # reference tag predates the CMake migration: that is the layout the
+        # Directory.Build.props of those tags detects to resolve DepsRoot, and
+        # anywhere else the reference build cannot find spdlog/json. Tags after the
+        # migration fetch their own dependencies and do not care.
         $mainRoot = (git -C $RepoRoot rev-parse --path-format=absolute --git-common-dir) -replace '[\\/]\.git$', ''
         $tmpWt = Join-Path $mainRoot ".claude\worktrees\elo-ref-build-$PID"
         git -C $RepoRoot worktree add --detach $tmpWt "refs/tags/$ReferenceTag"
@@ -249,7 +253,26 @@ if ($ResumeDir -ne '') {
             if ($LASTEXITCODE -ne 0) { throw "reference build failed" }
             Pop-Location
             New-Item -ItemType Directory -Force $EngineTesting | Out-Null
-            Copy-Item (Join-Path $tmpWt 'x64\Release\StratChessEvolved.exe') $refExe
+
+            # A reference tag built before the CMake migration is MSVC-compiled and
+            # lands in x64\Release; one built after is clang-cl and lands in
+            # build\<preset>\. Accept either so historical references stay
+            # reproducible, but say something when the compilers differ: that gap
+            # alone is worth roughly +40 Elo at 10+0.1 (issue #84), and it would be
+            # credited to whatever change is under test.
+            if (-not (Test-Path (Join-Path $tmpWt 'CMakePresets.json'))) {
+                Write-Host "WARNING: reference tag '$ReferenceTag' predates the CMake migration." -ForegroundColor Yellow
+                Write-Host "         Its binary is MSVC-built while the candidate is clang-cl. The compiler" -ForegroundColor Yellow
+                Write-Host "         difference alone is worth roughly +40 Elo (#84) and will be attributed" -ForegroundColor Yellow
+                Write-Host "         to the change under test. Re-pin the reference before trusting this." -ForegroundColor Yellow
+            }
+
+            $builtExe = @(
+                (Join-Path $tmpWt 'build\windows-clang-cl\StratChessEvolved.exe'),
+                (Join-Path $tmpWt 'x64\Release\StratChessEvolved.exe')
+            ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+            if (-not $builtExe) { throw "reference build produced no binary in build\windows-clang-cl\ or x64\Release\" }
+            Copy-Item $builtExe $refExe
         } finally {
             if ((Get-Location).Path -eq $tmpWt) { Pop-Location }
             git -C $RepoRoot worktree remove --force $tmpWt

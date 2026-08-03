@@ -15,7 +15,7 @@ what you do; this file holds the background you consult when something is unexpe
 |---|---|---|
 | `Docs` | `*.md`, `Docs/**`, `.claude/plans/**` | Nothing — the pre-commit hook's fast tests already cover it |
 | `Tooling` | `Scripts\Run-EloMatch.ps1`, `Run-Tests.ps1`, `Sync-Master.ps1`, `verify_mate_key.py`, `build_corpus.py`, `New-Worktree.ps1`, `Remove-Worktree.ps1`, `Get-Worktrees.ps1` | PowerShell syntax parse only — never compiled, never invoked by the engine |
-| `Build` | `build.ps1`, `Scripts\Validate-*.ps1`, `New-PullRequest.ps1`, `Get-ChangeTier.ps1`, `.githooks/**`, `.github/**`, `*.vcxproj*`, `*.props`, `*.sln` | Full: build + extended `[slow]` tests + tactical suite + self-play |
+| `Build` | `build.ps1`, `Scripts\Validate-*.ps1`, `New-PullRequest.ps1`, `Get-ChangeTier.ps1`, `.githooks/**`, `.github/**`, `CMakeLists.txt`, `*.cmake`, `CMakePresets.json` | Full: build + extended `[slow]` tests + tactical suite + self-play |
 | `Engine` | `*.cpp`, `*.h`, `*.json`, **and anything unrecognised** | Full |
 
 A mixed diff takes the **strictest** tier present. Two properties are deliberate and asserted by
@@ -99,15 +99,13 @@ and re-run with `-Force`.
 on the default branch — `actions/cache` scopes per-branch, so a PR from a differently named branch
 cannot restore a cache only ever saved under another branch.
 
-Runner image is pinned to `windows-2025-vs2026`, not `windows-latest`, because this project's
-`PlatformToolset` is `v145` — see `.claude/plans/full-build-test-ci-github-actions.md` for the
-verification.
+Runner image is pinned to `windows-2025-vs2026`, not `windows-latest`, so the toolchain moves only
+when it is changed deliberately — see `.claude/plans/full-build-test-ci-github-actions.md`.
 
-It fetches spdlog / nlohmann-json / Catch2 at the same pinned versions used locally via a generated
-`Directory.Build.user.props`, then runs `build.ps1 tests` (not `all`): CI never runs
-`StratChessEvolved.exe`, and the main app project has LTCG (`WholeProgramOptimization`) enabled for
-`Release|x64` while the test project deliberately does not, so building `all` would waste most of
-the wall time linking an unused, LTCG'd binary.
+Dependencies come from `FetchContent` at the versions pinned in `CMakeLists.txt`, cached as
+`build/_deps` and shared by both matrix legs. The job runs `build.ps1 tests` (not `all`): CI never
+runs `StratChessEvolved.exe`, and only the engine target carries `INTERPROCEDURAL_OPTIMIZATION` for
+Release, so building `all` would spend most of the wall time on an LTO link of an unused binary.
 
 Extended `[slow]` tests and self-play stay local-only (`Validate-PrePR.ps1`) — self-play's
 timeout-based nondeterminism is not worth the CI flakiness.
@@ -132,24 +130,25 @@ failure silently, so a permissions problem produces no file and no error message
 
 ---
 
-## Raw MSBuild invocation (fallback)
+## Raw CMake invocation (fallback)
 
-`build.ps1` discovers MSBuild via `vswhere.exe` and is the documented path. Use these only when
-driving MSBuild directly.
-
-```
-cmd.exe /c "\"<MSBuild>\" \"StratChessEvolved.sln\" /p:Configuration=Release /p:Platform=x64 /m /v:minimal"
-```
-
-Discover `<MSBuild>` dynamically — the install folder changes with every VS release (`2022`, `18`,
-…), so never hard-code it:
+`build.ps1` is the documented path: it imports the VS developer environment via `vswhere` and then
+drives the presets. Use these only when driving CMake directly, from a **VS Developer PowerShell**
+so the compiler, `ninja` and `cmake` are on `PATH`.
 
 ```
-cmd.exe /c "\"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe\" -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe"
+cmake --preset windows-clang-cl            # configure (once per build tree)
+cmake --build --preset windows-clang-cl    # build every target
+cmake --build --preset windows-clang-cl --target StratChessTests
 ```
 
-In **Git Bash** use `//p:` flags (double-slash) and the `/c/Program Files/…` path form. Use
-`/v:normal` instead of `/v:minimal` when diagnosing build errors.
+Presets: `windows-clang-cl`, `windows-clang-cl-debug`, `windows-msvc`, `windows-msvc-debug`.
+clang-cl is what ships; MSVC is for development and debugging only, never for measurement.
+
+Configuring is only needed when the build tree does not exist — Ninja re-runs CMake by itself when
+`CMakeLists.txt` or `CMakePresets.json` change. Add `--verbose` to `cmake --build` to see the real
+compiler command lines, which is the only reliable way to confirm a flag actually reached the
+compiler rather than being silently dropped.
 
 ---
 
@@ -158,7 +157,7 @@ In **Git Bash** use `//p:` flags (double-slash) and the `/c/Program Files/…` p
 - AI vs AI is fully headless: `Game::Run()` terminates on checkmate/stalemate; no stdin needed.
 - **The `game` argument is required.** No argument (or `uci`) routes into `UciHandler::run()`, which
   blocks on stdin and never runs `Game::Run()`.
-- Subprocess pattern: `Start-Process ..\x64\Release\StratChessEvolved.exe -ArgumentList "game"
+- Subprocess pattern: `Start-Process ..\build\windows-clang-cl\StratChessEvolved.exe -ArgumentList "game"
   -PassThru -NoNewWindow -RedirectStandardOutput out.txt`, then `$proc.Kill()` after N seconds for a
   timed test, or `$proc.WaitForExit(msTimeout)` for a game expected to finish naturally.
 - Verbose logging is on by default in game mode; each move logs `GetMove complete: move=…, depth=…,
