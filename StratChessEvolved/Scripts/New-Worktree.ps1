@@ -7,13 +7,12 @@
     under `<main checkout>/.claude/worktrees/<name>`. Doing that by hand has three traps
     this script removes:
 
-    1. **Wrong depth breaks the build.** `Directory.Build.props` resolves `$(DepsRoot)`
-       relative to the repo, so a worktree created anywhere else (a temp directory, or
-       nested inside another worktree) compiles nothing -- MSBuild fails on missing
-       spdlog/nlohmann/Catch2 headers with no hint that the location is the cause.
-       This script always resolves the *main* checkout via `git rev-parse
-       --git-common-dir`, so it plants the worktree correctly even when invoked from
-       inside another worktree.
+    1. **Wrong location breaks the tooling.** The build itself no longer cares -- CMake
+       fetches its own dependencies -- but `Run-EloMatch.ps1` finds `EngineTesting\`
+       (fastchess and the cached reference binaries) beside the *main* checkout, and a
+       worktree planted somewhere else resolves it to the wrong place. This script always
+       resolves the main checkout via `git rev-parse --git-common-dir`, so it plants the
+       worktree correctly even when invoked from inside another worktree.
     2. **Forgetting to fetch first** silently forks from a stale `origin/main`, which
        surfaces as a merge conflict at PR time instead of now.
     3. **Forking from `master`.** `master` is a personal scratch branch carrying local
@@ -63,7 +62,7 @@ if (-not $BranchName) { $BranchName = "worktree-$Name" }
 
 # Resolve the MAIN checkout, not whatever worktree we happen to be in. --git-common-dir
 # points at the shared .git directory (the main checkout's) from any worktree; its parent
-# is the main working tree. This is what keeps DepsRoot resolution correct.
+# is the main working tree, which is what EngineTesting\ is resolved against.
 $commonDir = & git rev-parse --path-format=absolute --git-common-dir 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host "FAIL: not inside a git repository." -ForegroundColor Red

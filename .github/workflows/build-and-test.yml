@@ -125,59 +125,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Compute deps root
-        run: |
-          $depsRoot = Join-Path (Split-Path $env:GITHUB_WORKSPACE -Parent) 'deps'
-          "DEPS_ROOT=$depsRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-      # Key is intentionally NOT matrix-scoped: spdlog, nlohmann-json and Catch2
-      # are header/source drops with no per-configuration content, so both legs
-      # want the identical cache. On a cold cache both legs race to save it and
-      # the loser logs "Unable to reserve cache ... another job may be creating
+      # Every Windows preset points FETCHCONTENT_BASE_DIR at build/_deps, so the
+      # Release and Debug legs share one dependency clone and one cache entry.
+      #
+      # The key is intentionally NOT matrix-scoped: the FetchContent sources are
+      # identical across configurations. On a cold cache both legs race to save it
+      # and the loser logs "Unable to reserve cache ... another job may be creating
       # this cache" — a warning, not a failure, and the next run hits the cache
       # either way. Do not "fix" it by adding ${{ matrix.config }} to the key:
-      # that would double the cache footprint to store two identical copies.
+      # that would store two identical copies.
       - name: Cache dependencies
-        id: cache-deps
         uses: actions/cache@v4
         with:
-          path: ${{ env.DEPS_ROOT }}
-          key: deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
+          path: build/_deps
+          key: win-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
 
-      # Pinned to the exact versions used locally (see Directory.Build.props / CLAUDE.md).
-      - name: Fetch spdlog
-        if: steps.cache-deps.outputs.cache-hit != 'true'
-        run: git clone --depth 1 --branch v1.16.0 https://github.com/gabime/spdlog "$env:DEPS_ROOT\spdlog"
-
-      - name: Fetch nlohmann-json
-        if: steps.cache-deps.outputs.cache-hit != 'true'
-        run: git clone --depth 1 --branch v3.12.0 https://github.com/nlohmann/json "$env:DEPS_ROOT\json"
-
-      - name: Fetch Catch2 (amalgamated)
-        if: steps.cache-deps.outputs.cache-hit != 'true'
-        run: |
-          git clone --depth 1 --branch v3.13.0 https://github.com/catchorg/Catch2 "$env:RUNNER_TEMP\Catch2Src"
-          New-Item -ItemType Directory -Force -Path "$env:DEPS_ROOT\Catch2" | Out-Null
-          Copy-Item "$env:RUNNER_TEMP\Catch2Src\extras\catch_amalgamated.hpp" "$env:DEPS_ROOT\Catch2\"
-          Copy-Item "$env:RUNNER_TEMP\Catch2Src\extras\catch_amalgamated.cpp" "$env:DEPS_ROOT\Catch2\"
-
-      # Directory.Build.user.props is the documented, gitignored override mechanism
-      # for DepsRoot (see Directory.Build.user.props.example) — nothing committed.
-      - name: Point build at deps
-        run: |
-          @"
-          <?xml version="1.0" encoding="utf-8"?>
-          <Project>
-            <PropertyGroup>
-              <DepsRoot>$env:DEPS_ROOT\</DepsRoot>
-            </PropertyGroup>
-          </Project>
-          "@ | Set-Content -Path 'Directory.Build.user.props'
-
-      # tests-only, not "all": this job never runs StratChessEvolved.exe, and the
-      # main app project has WholeProgramOptimization (LTCG) enabled for Release|x64
-      # while the test project deliberately doesn't — building "all" wasted the
-      # majority of the ~12min first-run time on an LTCG link of an unused binary.
+      # tests-only, not "all": this job never runs StratChessEvolved.exe, and only
+      # the engine target carries INTERPROCEDURAL_OPTIMIZATION for Release, so
+      # building "all" would spend most of the time on an LTO link of an unused
+      # binary.
+      #
+      # build.ps1 imports the VS developer environment itself, so no separate
+      # setup step is needed here. It defaults to clang-cl, which is what ships;
+      # if a runner image ever lacks the VS Clang component, `-Compiler msvc` is
+      # the one-word fallback and build.ps1 says so by name.
       - name: Build
         run: .\build.ps1 tests -Config ${{ matrix.config }}
 
@@ -186,7 +157,8 @@ jobs:
       # of those cases fail, not about which run.
       - name: Run fast tests
         run: |
-          & ".\StratChessTests\x64\${{ matrix.config }}\StratChessTests.exe" '~[slow]'
+          $exe = .\StratChessEvolved\Scripts\Get-BuildArtifact.ps1 -Target StratChessTests -Config ${{ matrix.config }}
+          & $exe '~[slow]'
           exit $LASTEXITCODE
 
   # Branch protection requires a single always-present check, and this is it --

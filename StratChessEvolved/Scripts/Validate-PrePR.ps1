@@ -37,7 +37,7 @@ Set-StrictMode -Version Latest
 $GameDir     = Split-Path $PSScriptRoot -Parent
 $RepoRoot    = Split-Path $GameDir -Parent
 $buildScript = Join-Path $RepoRoot 'build.ps1'
-$gameExe     = Join-Path $RepoRoot 'x64\Release\StratChessEvolved.exe'
+$gameExe     = & (Join-Path $PSScriptRoot 'Get-BuildArtifact.ps1')
 $logsDir     = Join-Path $GameDir 'logs'
 $outFile     = Join-Path $GameDir 'pre_pr_selfplay_out.txt'
 $aiLogFile   = Join-Path $logsDir 'aiperplex.log'
@@ -104,7 +104,7 @@ Write-Host "`n==> Full build (main + tests in parallel)" -ForegroundColor Cyan
 # build.ps1 sets $ErrorActionPreference='Stop' internally and calls Write-Error on failure,
 # which propagates a terminating error to this script via &. Wrap in try/catch so all three
 # checks always run. Track failure via $buildFailed rather than $LASTEXITCODE — when the
-# terminating error is caught, $LASTEXITCODE reflects the last native process (MSBuild), not
+# terminating error is caught, $LASTEXITCODE reflects the last native process (cmake/ninja), not
 # build.ps1's exit code, so it can't be relied on for the PASS/FAIL decision.
 $buildFailed = $false
 try   { & $buildScript all }

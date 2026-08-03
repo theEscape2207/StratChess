@@ -17,51 +17,57 @@ CI, runtime files, worktree gotchas), `Docs/TestDesign.md` (coverage map + writi
 
 ## Build
 - **Only `x64` builds work** — the x86/Win32 configuration is not maintained for C++20.
-- **Level4 + `/WX` on both projects, Debug and Release** — any new warning is a build error.
-  Approved suppressions: `[[maybe_unused]]` for params used only in `assert()`; `static_cast<>` for
-  intentional narrowing. Never `#pragma warning(disable)` in source.
-- `Directory.Build.props` defines `$(DepsRoot)` for spdlog/nlohmann. Copy
-  `Directory.Build.user.props.example` → `Directory.Build.user.props` if your dependency layout
-  differs from the default (siblings next to the repo).
+- **Warnings are errors everywhere** — `/W4 /WX` on MSVC and clang-cl, `-Wall -Wextra -Werror` on
+  GCC, in both Debug and Release. Approved suppressions: `[[maybe_unused]]` for params used only in
+  `assert()`; `static_cast<>` for intentional narrowing. Never `#pragma warning(disable)` in source.
+- Dependencies (spdlog, nlohmann/json, Catch2) are fetched and pinned by `FetchContent` into
+  `build/_deps`, shared by every preset. There is nothing to install and no sibling checkout to keep
+  in step.
 - `StratEngine/StdAfx.h` is the shared common-include header (no build precompiles it) — add
   frequently-used STL headers there, alphabetically inside the `#pragma warning push/pop` block, not
   in individual `.cpp` files.
-- Adding files to the solution: headers use `ClInclude`, non-code files (`.md`, `.json`) use `None`;
-  **both also need a matching `<Filter>` entry** in `.vcxproj.filters`, or the file is unfiled — and
-  a `.cpp` missing from the project is silently never compiled.
+- **Adding a `.cpp` needs no project edit.** `CMakeLists.txt` globs with `CONFIGURE_DEPENDS`; just
+  create the file. `StratEngine/Archived/` is excluded and never built.
 
 ```powershell
-.\build.ps1                          # main + tests in parallel (Release|x64)
-.\build.ps1 main | tests             # one project
+.\build.ps1                          # engine + tests (Release, clang-cl)
+.\build.ps1 main | tests             # one target
 .\build.ps1 run-tests ["[tag]"]      # build tests, run fast tier (~[slow]), optional tag filter
 .\build.ps1 extended-tests           # include [slow]
-.\build.ps1 all -Config Debug        # parallel debug build
+.\build.ps1 all -Config Debug        # debug build
+.\build.ps1 main -Compiler msvc      # MSVC instead of clang-cl
 ```
 
-`build.ps1` finds MSBuild via `vswhere.exe` — never hard-code a VS path. It also sets
-`core.hooksPath` to `.githooks` on first run, so any clone or worktree gets the tracked pre-commit
-hook automatically. Raw MSBuild invocation, if ever needed: `Docs/Workflow.md`.
+`build.ps1` drives the presets in `CMakePresets.json` and imports the VS developer environment
+itself via `vswhere`, so it works from a plain shell, a git hook or an agent session — never
+hard-code a VS path. It also sets `core.hooksPath` to `.githooks` on first run, so any clone or
+worktree gets the tracked pre-commit hook automatically.
 
-There is also a CMake + clang-cl build, which is **not** what ships — `.vcxproj` still is. Run it
-from a VS Developer PowerShell so `clang-cl`, `llvm-rc`, `lld-link` and `ninja` are on `PATH`:
+**clang-cl is what ships**; MSVC is supported for development and debugging (notably Edit and
+Continue, which clang-cl does not provide). The clang binary is meaningfully faster while searching
+an identical tree — see issue #84. **Never measure with an MSVC build**: `Run-Bench` and
+`Run-EloMatch` numbers are only comparable between binaries from the same compiler, and mixing them
+shows the compiler gap as a phantom regression. `Get-BuildArtifact.ps1` defaults to the shipping
+build for exactly this reason.
 
-```powershell
-cmake --preset windows-clang-cl          # or windows-clang-cl-debug
-cmake --build --preset windows-clang-cl
-```
+Two things in the CMake setup are load-bearing and non-obvious: `CMAKE_RC_COMPILER=llvm-rc` (the
+SDK's `rc.exe` is the only tool in this chain that is not long-path aware), and the `/clang:`
+prefixes on the warning and constexpr flags — clang-cl silently mistranslates the plain GNU
+spellings, and MSVC ignores them with a D9002 warning while still producing a binary.
 
-It builds a faster engine than MSVC does while searching an identical tree; the measurement and the
-adoption decision both live in issue #84. Two things in `CMakePresets.json` and `CMakeLists.txt` are
-load-bearing and non-obvious: `CMAKE_RC_COMPILER=llvm-rc` (the SDK's `rc.exe` is the only tool in
-this chain that is not long-path aware), and the `/clang:` prefixes on the warning and constexpr
-flags — clang-cl silently mistranslates the plain GNU spellings.
+To work in Visual Studio, open the repo as a **folder** rather than a solution; VS reads
+`CMakePresets.json` and offers the presets in its configuration dropdown. Command-line arguments and
+the working directory for debugging live in `.vs/launch.vs.json` (gitignored) — set `currentDir` to
+`${workspaceRoot}\StratChessEvolved`, since `game_settings.json`, `logs/` and the `Tests/` lookup all
+resolve relative to it.
 
-**First commit in a fresh worktree** rebuilds from scratch — give whatever runs `git commit` a
-5-10 minute timeout, not the 2-minute default, or it is killed mid-build and the commit never lands.
+**First build in a fresh worktree** also clones the pinned dependencies into `build/_deps`. That is
+around a minute all-in, so the pre-commit hook fits inside a default timeout — but give `git commit`
+a few minutes of headroom on a cold cache rather than assuming it.
 
 ## Scripts
 
-In `StratChessEvolved/Scripts/`. They resolve working directory and MSBuild paths internally.
+In `StratChessEvolved/Scripts/`. They resolve working directory and build-output paths internally.
 Invoke with `-File` (never dot-sourced — `$PSScriptRoot` is `$null` under dot-source):
 
 ```
@@ -155,7 +161,8 @@ any. Two rules matter enough to repeat here, because both are silent failures:
 - **Every tactical FEN needs its side-to-move field** (` w - - 0 1`). Omitting it drops below the
   parser's four-field floor, so the FEN is rejected and the position is never applied — the board
   keeps whatever it held and the engine answers for that instead.
-- **A `.cpp` missing from `StratChessTests.vcxproj` is never compiled**, so it passes by not running.
+- **Never measure an MSVC-built binary against a clang-built one.** Both run and both look healthy;
+  the compiler gap alone is worth tens of Elo and gets credited to whatever change is under test.
 
 Execute validation steps autonomously; flag any step needing user assistance (interactive GUI,
 manual input) rather than skipping it silently.
