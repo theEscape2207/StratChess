@@ -145,6 +145,49 @@ failure silently, so a permissions problem produces no file and no error message
 
 ---
 
+## Working in Visual Studio
+
+Open the repo as a **folder**, not a solution — VS reads `CMakePresets.json` and offers the presets
+in its configuration dropdown.
+
+Debugger arguments and working directory live in `.vs/launch.vs.json` (gitignored). Set
+`"args": ["game"]` for game mode, and **`"currentDir": "${workspaceRoot}\\StratChessEvolved"`** —
+`game_settings.json`, `logs/` and the `Tests/` lookup all resolve against the working directory, and
+`TacticalTestRunner` takes its *parent*, so only that directory satisfies all three. VS defaults to
+the executable's own folder, which satisfies none of them.
+
+---
+
+## Dependency cache
+
+`FetchContent` clones spdlog, nlohmann/json and Catch2 on the first configure of each build tree, so
+**a fresh worktree's first build needs network**. The committed presets place them in
+`${sourceDir}/build/_deps` — per worktree, and the path CI caches.
+
+`build.ps1` overrides that at configure time with `-D FETCHCONTENT_BASE_DIR=<repos>/StratChessDeps`,
+a single cache beside the main checkout — so only the first worktree on a machine ever clones and the
+rest need no network. It is skipped when `GITHUB_ACTIONS` is set, leaving CI on `build/_deps` where
+its cache key expects them.
+
+Done via `-D` rather than a preset because `CMakeUserPresets.json` cannot redefine a preset that
+`CMakePresets.json` already declares — duplicate names are a hard error — and inheriting under a new
+name would change `binaryDir` too, which `Get-BuildArtifact.ps1` depends on. `CMakeUserPresets.json`
+is gitignored regardless: it is CMake's per-developer override file and is machine-specific by
+definition.
+
+---
+
+## Two CMake settings that are load-bearing
+
+- **`CMAKE_RC_COMPILER=llvm-rc`** — the Windows SDK `rc.exe` is the only tool in this chain that is
+  not long-path aware, and fails with `RC1109` under a deep build path.
+- **`/clang:` prefixes** on the warning and constexpr flags. clang-cl silently mistranslates the
+  plain GNU spellings (`-Wall` is read as `/Wall` → `-Weverything`; `-fconstexpr-steps=` is dropped
+  before reaching the frontend), and MSVC ignores them with a D9002 warning while still producing a
+  binary. A clean compile does not prove a flag arrived — check `cmake --build --verbose`.
+
+---
+
 ## Raw CMake invocation (fallback)
 
 `build.ps1` is the documented path: it imports the VS developer environment via `vswhere` and then
