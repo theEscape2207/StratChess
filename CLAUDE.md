@@ -43,27 +43,14 @@ itself via `vswhere`, so it works from a plain shell, a git hook or an agent ses
 hard-code a VS path. It also sets `core.hooksPath` to `.githooks` on first run, so any clone or
 worktree gets the tracked pre-commit hook automatically.
 
-**clang-cl is what ships**; MSVC is supported for development and debugging (notably Edit and
-Continue, which clang-cl does not provide). The clang binary is meaningfully faster while searching
-an identical tree — see issue #84. **Never measure with an MSVC build**: `Run-Bench` and
-`Run-EloMatch` numbers are only comparable between binaries from the same compiler, and mixing them
-shows the compiler gap as a phantom regression. `Get-BuildArtifact.ps1` defaults to the shipping
-build for exactly this reason.
+**clang-cl is what ships**; MSVC is for development and debugging (it has Edit and Continue, which
+clang-cl does not). **Never measure with an MSVC build** — `Run-Bench` and `Run-EloMatch` compare
+only within one compiler, and mixing them shows the compiler gap as a phantom regression.
+`Get-BuildArtifact.ps1` defaults to the shipping build for that reason.
 
-Two things in the CMake setup are load-bearing and non-obvious: `CMAKE_RC_COMPILER=llvm-rc` (the
-SDK's `rc.exe` is the only tool in this chain that is not long-path aware), and the `/clang:`
-prefixes on the warning and constexpr flags — clang-cl silently mistranslates the plain GNU
-spellings, and MSVC ignores them with a D9002 warning while still producing a binary.
-
-To work in Visual Studio, open the repo as a **folder** rather than a solution; VS reads
-`CMakePresets.json` and offers the presets in its configuration dropdown. Command-line arguments and
-the working directory for debugging live in `.vs/launch.vs.json` (gitignored) — set `currentDir` to
-`${workspaceRoot}\StratChessEvolved`, since `game_settings.json`, `logs/` and the `Tests/` lookup all
-resolve relative to it.
-
-**First build in a fresh worktree** also clones the pinned dependencies into `build/_deps`. That is
-around a minute all-in, so the pre-commit hook fits inside a default timeout — but give `git commit`
-a few minutes of headroom on a cold cache rather than assuming it.
+**A fresh worktree's first build needs network**: it clones the pinned dependencies (~1 min). Visual
+Studio setup, the `/clang:` flag traps, and the shared deps cache that avoids re-cloning per
+worktree: `Docs/Workflow.md`.
 
 ## Scripts
 

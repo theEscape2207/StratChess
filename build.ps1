@@ -126,6 +126,28 @@ function Import-VsDevEnvironment {
     }
 }
 
+# FetchContent clones spdlog, nlohmann/json and Catch2 on a build tree's first
+# configure, so without this every new worktree re-clones all three over the
+# network. Point them at one cache beside the main checkout instead: only the
+# first worktree on a machine pays for the clone, and the rest need no network.
+#
+# Overridden via -D rather than in CMakePresets.json because a preset's
+# cacheVariables cannot be redefined by CMakeUserPresets.json (duplicate preset
+# names are an error), and inheriting under a new name would also change
+# binaryDir, which Get-BuildArtifact.ps1 depends on.
+#
+# Skipped in CI: the workflow caches build/_deps by that exact path, and a
+# runner is discarded after every job so there is nothing to share.
+function Get-SharedDepsCache {
+    if ($env:GITHUB_ACTIONS -eq 'true') { return $null }
+
+    $commonDir = & git -C $RepoRoot rev-parse --path-format=absolute --git-common-dir 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $commonDir) { return $null }
+
+    $mainCheckout = $commonDir -replace '[\\/]\.git[\\/]?$', ''
+    return (Join-Path (Split-Path $mainCheckout -Parent) 'StratChessDeps') -replace '\\', '/'
+}
+
 function Invoke-CMakeBuild {
     param([string[]]$Targets)
 
@@ -134,7 +156,11 @@ function Invoke-CMakeBuild {
     # adds latency.
     if (-not (Test-Path (Join-Path $BuildDir 'CMakeCache.txt'))) {
         Write-Host "`n==> Configuring $Preset" -ForegroundColor Cyan
-        & cmake --preset $Preset
+        $configureArgs = @('--preset', $Preset)
+        $depsCache = Get-SharedDepsCache
+        if ($depsCache) { $configureArgs += @('-D', "FETCHCONTENT_BASE_DIR=$depsCache") }
+
+        & cmake @configureArgs
         if ($LASTEXITCODE -ne 0) {
             Write-Error "Configure failed (exit $LASTEXITCODE): $Preset"
             exit $LASTEXITCODE
