@@ -95,6 +95,44 @@ first.
 
 **Exit:** a go/no-go. Everything after this assumes go.
 
+#### M0 outcome (2026-08-04)
+
+Audited. **Go**, and the audit changed two assumptions.
+
+`MemLeakDetect.cpp.dump` is a **cppcheck** XML dump (`<dumps><platform><rawtokens>`), not a memory
+dump: symbol names plus three source paths under `C:/Development/Kode/StratChess/`. No credentials,
+no personal identifiers. It is 338 KB packed of a 2.73 MiB pack. So it is harmless — but the
+decision is still to remove it, together with an identity scrub, since a rewrite is only affordable
+once and this is the moment.
+
+The exposure that a rewrite is actually *for* is elsewhere: three author identities in history
+(`ssigfred+git@gmail.com`, `oleerling@duck.com`, `thees@POMELO24` — the last carries a machine
+name), plus `C:/Users/thees/...` paths in several plan files and three `Docs/` files.
+
+M0 therefore splits in two, because only the second half is destructive:
+
+- **M0a — content cleanup (normal PR).** Delete `Docs/Devlog.md` (superseded by `Changelog.md`),
+  `Docs/Position_Class_Documentation.md` (602 lines documenting a `Position` class this engine does
+  not have), `Docs/Improving Chess Engine ELO rating.md` (generic advice, superseded by the Roadmap
+  and epic #110) and `Docs/superpowers/` (superseded by `.claude/plans/`). Fix the dangling
+  `.superpowers/sdd/...` reference in `TestDesign.md`. Add the root `README.md` the repository has
+  never had. `.claude/plans/` stays and ships public — it is the repository's own documented
+  convention and the honest design record.
+- **M0b — history rewrite (destructive, separate pass).** `git filter-repo --invert-paths` over
+  `MemLeakDetect.cpp.dump` and `MemLeakDetect.cpp.dump-cert-results`, plus `--mailmap` collapsing
+  the three author identities. Prerequisites and consequences:
+  - All 503 commits are rewritten; every SHA changes. `elo-reference-v1` (bda7189) and
+    `elo-reference-v2` (c86553a) move with their tags, but the SHAs *quoted in prose* go dangling:
+    **29 in `Docs/EloLog.md`**, 3 in `Docs/Changelog.md`, ~15 across `.claude/plans/`. filter-repo
+    writes `.git/filter-repo/commit-map`; use it to remap those references mechanically in a
+    follow-up commit rather than by hand.
+  - Do it with no PR open (there were none at audit time) and with the three live worktrees removed
+    first; every clone and worktree must be recreated afterwards.
+  - Force-pushing does **not** purge the old objects from GitHub — they stay reachable through PR
+    refs unless GitHub Support is asked to run gc. Harmless for this blob; worth knowing before
+    anyone treats a rewrite as a way to unpublish something that matters.
+  - Delete the retired `origin/master` and the stale `origin/worktree-*` branches in the same pass.
+
 ### M1 — Flip, and delete the rationing (immediate value, ~1 session)
 
 Nothing new is engineered here. This milestone only removes constraints that exist because minutes

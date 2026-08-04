@@ -510,8 +510,8 @@ entry into `tactical_test_cases.json` and delete it from the staging file.
 ## Lazy SMP Shared-State Audit (Task 1, `.claude/plans/lazy-smp.md`)
 
 **Status**: ✅ Done, 2026-07-22. Still single-threaded — no threads spawned, no
-search-behavior change. Validated byte-identical against the pre-SMP baseline
-(`.superpowers/sdd/pre-smp-baseline-nodecounts.txt`): same fixed-depth-5
+search-behavior change. Validated byte-identical against the pre-SMP baseline:
+same fixed-depth-5
 AI-vs-AI self-play game to checkmate, 137 `GetMove complete` lines, identical
 move/score/depth/nodes/stable on every line.
 
