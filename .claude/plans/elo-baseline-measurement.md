@@ -41,7 +41,7 @@ lose 30 ELO; this closes that gap. The documented "baseline" is the harness-sani
    `fastchess.exe` and cached reference exes named by tag. The opening book is the one
    committed artifact (small text).
 5. **Reference pinned by git tag, exe rebuilt on demand** — tag `elo-reference-v1` on current
-   `main` (`da06b3c`, post-ThreadData: the last deterministic engine before Lazy SMP work
+   `main` (`8f2f789`, post-ThreadData: the last deterministic engine before Lazy SMP work
    begins). The script rebuilds the cached exe from the tag via a temporary `git worktree`
    whenever it is missing, so the procedure survives a wiped deps folder; nothing depends on
    undocumented local state.
@@ -63,7 +63,7 @@ lose 30 ELO; this closes that gap. The documented "baseline" is the harness-sani
 | `CLAUDE.md` | Row in the validation-scripts table for `Run-EloMatch.ps1` |
 | `.claude/plans/elo-baseline-measurement.md` | This plan |
 
-Git tag `elo-reference-v1` on `da06b3c`, pushed to origin (not a file, listed for completeness).
+Git tag `elo-reference-v1` on `8f2f789`, pushed to origin (not a file, listed for completeness).
 
 ## Step-by-Step Changes
 
@@ -79,7 +79,7 @@ Git tag `elo-reference-v1` on `da06b3c`, pushed to origin (not a file, listed fo
   Record source + trim rule in `Docs/EloLog.md`.
 
 ### Step 2 — Pin the reference
-- `git tag elo-reference-v1 da06b3c && git push origin elo-reference-v1`.
+- `git tag elo-reference-v1 8f2f789 && git push origin elo-reference-v1`.
 - Reference exe build procedure (also implemented inside the script for cache misses):
   temp `git worktree add <tmp> elo-reference-v1` → `.\build.ps1 main` in it →
   copy `x64\Release\StratChessEvolved.exe` → `<DepsRoot>EngineTesting\StratChess-elo-reference-v1.exe`

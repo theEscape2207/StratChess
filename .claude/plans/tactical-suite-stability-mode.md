@@ -46,7 +46,7 @@ PowerShell 7 validation scripts.
 - Pre-commit hook (`.githooks/pre-commit`) runs FEN check + fast tests on every commit —
   do not bypass it.
 - Work on the worktree branch `worktree-lively-orbiting-lantern` (already level with
-  `origin/main` at bda7189); PR targets `main`.
+  `origin/main` at fd8b665); PR targets `main`.
 - The diff touches no `Eval.cpp` and no `AIPerplex` search internals → no specialized
   reviewer dispatch required by the pre-PR checklist.
 - Plan file lives at `.claude/plans/tactical-suite-stability-mode.md` and is committed

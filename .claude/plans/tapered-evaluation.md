@@ -5,7 +5,7 @@
 
 ## Drift review (2026-07-29, before implementation)
 
-Re-checked every load-bearing assumption against `main` at `a025614`. All the eval-side facts hold:
+Re-checked every load-bearing assumption against `main` at `cde6750`. All the eval-side facts hold:
 
 - #127 landed, and `ctx.stage` is consulted in exactly the three places this plan names —
   `eval_rooks` (7th-rank gate), `eval_pst` (king table selection), `eval_mopup` (gate).

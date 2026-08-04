@@ -49,7 +49,7 @@ Established while writing this plan; each one changes a step.
    never-measure-across-compilers rule holds by construction.
 6. **History is 2.73 MiB packed, 94 objects, GPL-3.0 already in place.** One 4 MB blob exists in
    history: `StratEngine/Utils/MemLeakDetect.cpp.dump`, added at the initial commit and removed in
-   d0da227. A debugger dump of ~2010-era code — must be inspected before the repository is public.
+   e8045e1. A debugger dump of ~2010-era code — must be inspected before the repository is public.
 
 ## Design decisions
 
@@ -121,8 +121,8 @@ M0 therefore splits in two, because only the second half is destructive:
 - **M0b — history rewrite (destructive, separate pass).** `git filter-repo --invert-paths` over
   `MemLeakDetect.cpp.dump` and `MemLeakDetect.cpp.dump-cert-results`, plus `--mailmap` collapsing
   the three author identities. Prerequisites and consequences:
-  - All 503 commits are rewritten; every SHA changes. `elo-reference-v1` (bda7189) and
-    `elo-reference-v2` (c86553a) move with their tags, but the SHAs *quoted in prose* go dangling:
+  - All 503 commits are rewritten; every SHA changes. `elo-reference-v1` (fd8b665) and
+    `elo-reference-v2` (df9245f) move with their tags, but the SHAs *quoted in prose* go dangling:
     **29 in `Docs/EloLog.md`**, 3 in `Docs/Changelog.md`, ~15 across `.claude/plans/`. filter-repo
     writes `.git/filter-repo/commit-map`; use it to remap those references mechanically in a
     follow-up commit rather than by hand.
