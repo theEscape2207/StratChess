@@ -22,6 +22,27 @@ Newest first.
 
 ---
 
+## 2026-08-04 — Nightly correctness workflow
+
+M2 of `.claude/plans/public-repo-and-strength-lab.md`. `nightly.yml` runs at 03:00 UTC and on
+`workflow_dispatch`; it gates nothing.
+
+### Added
+
+- `deep-perft` — `perft(7)` from the start position and `perft(6)` from Kiwipete, compared against
+  their known node counts. The fast tier stops at depth 4. Measured at ~50 Mnps locally these are ~1
+  and ~3 minutes, so neither is sharded.
+- `extended-tests` — the `[slow]` tier in Release and Debug.
+- `sanitize-extended` — that tier under ASan+UBSan plus `_GLIBCXX_DEBUG`.
+- `tactical-stability` — `tactical stability 100`.
+- **`STRAT_STDLIB_DEBUG`** (CMake BOOL, `OFF`) — libstdc++ debug mode: checked iterators and
+  container preconditions, which `_GLIBCXX_ASSERTIONS` does not cover. A configure error on MSVC and
+  clang-cl, whose Debug builds get the equivalent from `_ITERATOR_DEBUG_LEVEL`. Used by the nightly
+  only, not by the per-PR sanitizer job, so an unproven stricter configuration cannot block a merge
+  before it is known clean.
+
+---
+
 ## 2026-08-04 — Repository made public; CI un-gated and promoted to a merge gate
 
 Milestone M1 of `.claude/plans/public-repo-and-strength-lab.md`. Public standard runners are free and

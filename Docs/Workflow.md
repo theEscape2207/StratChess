@@ -134,6 +134,26 @@ Windows build look instrumented when it is not.
 merge. A SKIPPED leg reports success deliberately: a Docs-tier PR runs none of the build jobs, and a
 required check that never ran would block it forever.
 
+**`nightly.yml`** runs at 03:00 UTC and on `workflow_dispatch`, and gates nothing — it answers "is
+`main` still correct?", not "may this land?".
+
+| Job | What it adds over the per-PR gate |
+|---|---|
+| `deep-perft` | `perft(7)` from the start position (3,195,901,860 nodes) and `perft(6)` from Kiwipete (8,031,647,685), each compared against the known count. The fast tier stops at depth 4 |
+| `extended-tests` | The `[slow]` tier, Release and Debug |
+| `sanitize-extended` | That tier again under ASan+UBSan plus `_GLIBCXX_DEBUG` |
+| `tactical-stability` | `tactical stability 100`, against the local run's 10 |
+
+`perft run <depth> [fen]` prints a count but does not verify it, so the workflow does the comparison.
+Measured at ~50 Mnps locally, the two deep perfts are ~1 and ~3 minutes, which is why neither is
+sharded across a matrix.
+
+`STRAT_STDLIB_DEBUG=ON` adds libstdc++ debug mode — checked iterators and container preconditions,
+the class `_GLIBCXX_ASSERTIONS` (bounds only) misses and MSVC covers with `_ITERATOR_DEBUG_LEVEL=2`.
+It is deliberately **not** on the per-PR `sanitize-linux` job: that job feeds a required check, and an
+unproven stricter configuration should not be able to block a merge before it is known clean. Promote
+it once the nightly has been green on it.
+
 `Check starting FEN` is path-filtered to `StratChessEvolved/game_settings.json` and does not run
 otherwise.
 
