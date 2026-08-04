@@ -94,8 +94,10 @@ and re-run with `-Force`.
 
 ## CI
 
-`.github/workflows/build-and-test.yml` runs an independent build + fast-test check on **Linux** for
-every PR into `main` and every push to `main`. The push trigger both validates post-merge and warms
+`.github/workflows/build-and-test.yml` runs an independent build + fast-test check on **Linux**.
+On a PR it is tier-gated by `classify` — Build and Engine changes only, so a Docs or Tooling PR
+skips it — and it runs unconditionally on every push to `main`. The push trigger both validates
+post-merge and warms
 the deps cache on the default branch — `actions/cache` scopes per-branch, so a PR from a differently
 named branch cannot restore a cache only ever saved under another branch.
 
@@ -106,6 +108,17 @@ compiles the clang-cl branch of `strat_configure_target`, the `_MSC_VER` sites i
 friends, and the MSVC standard library, and the only one that builds what ships. Two of the three
 clang-cl flag spellings fail *silently* when wrong (#84), so Linux cannot stand in for it.
 `Validate-PrePR.ps1` covers the same ground locally and is a strict superset.
+
+**`sanitize-linux`** builds the test binary with `-fsanitize=address,undefined` and runs the fast
+tier. It shares `build-linux`'s trigger exactly — Build/Engine tiers on a PR, always on push —
+deliberately, rather than being narrowed to Engine: a Build-tier change to `CMakeLists.txt` is
+precisely what can break the sanitizer wiring, and two conditions would eventually drift apart.
+It is the only job that can catch a *silent* fault: an
+out-of-bounds read of the magic tables, a PST, a killer/history table or the mailbox does not crash,
+it returns a wrong evaluation. Debug rather than Release, so `assert()` and the `#ifndef NDEBUG`
+tripwires stay live alongside the instrumentation. Linux-only — the GNU `-fsanitize=` spelling does
+not survive the MSVC driver, and `CMakeLists.txt` raises a configure error rather than letting a
+Windows build look instrumented when it is not.
 
 **CI is advisory, not a gate.** Required status checks need GitHub Pro on a private repository, so
 nothing here blocks a merge — the result has to be read. `build-and-test-result` is kept as a single
@@ -207,6 +220,28 @@ Configuring is only needed when the build tree does not exist — Ninja re-runs 
 `CMakeLists.txt` or `CMakePresets.json` change. Add `--verbose` to `cmake --build` to see the real
 compiler command lines, which is the only reliable way to confirm a flag actually reached the
 compiler rather than being silently dropped.
+
+---
+
+## Reproducing a sanitizer finding
+
+There is no preset and no `build.ps1` verb: `-fsanitize=` is refused on MSVC and clang-cl, so this
+only ever runs on Linux. On WSL, the export-and-extract route in the CI job's image:
+
+```
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DSTRAT_SANITIZE=address,undefined
+cmake --build build --target StratChessTests --parallel
+./build/StratChessTests '~[slow]'
+```
+
+`STRAT_SANITIZE_RECOVER=ON` is the one deliberate exception to that invocation. It drops
+`-fno-sanitize-recover=all`, so the run reports everything it finds instead of aborting on the first
+hit — useful when surveying, and useless as a gate, because a recovering build exits 0 with the
+findings only in the log. Pair it with `ASAN_OPTIONS=halt_on_error=0`. CI leaves it off.
+
+Building over `/mnt/c` does not work — `FetchContent` fails with `configure_file: Operation not
+permitted`, because DrvFs cannot perform the permission operations CMake asks for. Extract onto
+native ext4.
 
 ---
 

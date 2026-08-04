@@ -81,6 +81,61 @@ jobs:
       - name: Run fast tests
         run: ./build/StratChessTests '~[slow]'
 
+  # ASan + UBSan over the fast tier. See issue #179.
+  #
+  # Why it earns a job of its own rather than a third leg of the matrix above:
+  # it is the only one that can catch a *silent* fault. The engine indexes raw
+  # fixed-size arrays with computed values everywhere -- the 64 x 4096 magic
+  # tables, the PSTs, ThreadData's killer/history tables, Board's mailbox -- and
+  # an out-of-bounds read there does not crash. It returns a wrong evaluation,
+  # which then gets credited to whatever change is under test.
+  #
+  # Debug, not Release: assert() and the #ifndef NDEBUG tripwires stay live and
+  # catch a different class of fault than the sanitizers do, so one Debug leg is
+  # worth more than one Release leg. Linux-only -- the GNU -fsanitize= spelling
+  # does not survive the MSVC driver, and CMakeLists.txt refuses it there rather
+  # than producing an uninstrumented binary that looks instrumented.
+  #
+  # Cost: one extra 1x job, seconds of test execution even at ASan's slowdown.
+  sanitize-linux:
+    needs: classify
+    # Same condition as build-linux, deliberately shared rather than narrowed to
+    # the Engine tier: a Build-tier change to CMakeLists.txt is exactly what can
+    # break the sanitizer wiring, and two conditions would eventually drift.
+    if: github.event_name == 'push' || needs.classify.outputs.is_full == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      # Same key as build-linux: FetchContent sources are identical whatever the
+      # build type or instrumentation, so this shares that job's cache entry.
+      - name: Cache FetchContent dependencies
+        uses: actions/cache@v6
+        with:
+          path: build/_deps
+          key: cmake-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
+
+      # STRAT_SANITIZE_RECOVER is left at its OFF default on purpose: sanitizers
+      # report and continue otherwise, which exits 0 and would turn this job green
+      # with the findings sitting in the log.
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DSTRAT_SANITIZE=address,undefined
+
+      - name: Build
+        run: cmake --build build --target StratChessTests --parallel
+
+      # Same '~[slow]' filter as every other leg. The fast tier already runs perft
+      # to depth 4 from the start position and depth 3 from Kiwipete, which is the
+      # densest exercise of move generation in the suite.
+      - name: Run fast tests
+        run: ./build/StratChessTests '~[slow]'
+
   build-and-test:
     needs: classify
     # On demand only, via the 'windows-ci' label. Windows bills at 2x and was
@@ -190,7 +245,7 @@ jobs:
   # failed is still reported as a failure -- a clang-cl-only regression must not
   # pass unnoticed.
   build-and-test-result:
-    needs: [classify, build-linux, build-and-test]
+    needs: [classify, build-linux, sanitize-linux, build-and-test]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -199,6 +254,7 @@ jobs:
         run: |
           echo "tier=${{ needs.classify.outputs.tier }}"
           echo "linux result=${{ needs.build-linux.result }}"
+          echo "sanitizer result=${{ needs.sanitize-linux.result }}"
           echo "windows result=${{ needs.build-and-test.result }}"
 
           case "${{ needs.classify.result }}" in
@@ -210,6 +266,12 @@ jobs:
             success) echo "Linux build and tests passed." ;;
             skipped) echo "Linux skipped: '${{ needs.classify.outputs.tier }}' tier cannot affect the build." ;;
             *)       echo "Linux build and tests did not pass."; exit 1 ;;
+          esac
+
+          case "${{ needs.sanitize-linux.result }}" in
+            success) echo "ASan/UBSan build and tests passed." ;;
+            skipped) echo "Sanitizers skipped: '${{ needs.classify.outputs.tier }}' tier cannot affect the build." ;;
+            *)       echo "ASan/UBSan reported a finding, or the instrumented build failed."; exit 1 ;;
           esac
 
           case "${{ needs.build-and-test.result }}" in
