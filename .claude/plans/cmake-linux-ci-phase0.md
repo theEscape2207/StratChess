@@ -33,7 +33,7 @@ MSVC/MSBuild on Windows.
 
 ## Findings that corrected the issue text
 
-These were measured against the tree at `17869ee`, and differ from what #82's comment records.
+These were measured against the tree at `8ce18f3`, and differ from what #82's comment records.
 
 - **SAL annotation count has drifted.** The issue states 88 across 23 files. Actual: **152 across 27
   files** (116 `_In_`, 32 `_Inout_`, 4 `_Out_`), of which **132 across 21 files** are in sources the
@@ -232,7 +232,7 @@ trying to measure.
 #endif
 ```
 
-The three spellings above are exhaustive as of `17869ee`, verified by enumerating every `_Xxx_`-shaped
+The three spellings above are exhaustive as of `8ce18f3`, verified by enumerating every `_Xxx_`-shaped
 token in the tree. If a future annotation introduces a fourth spelling it will fail to compile off
 MSVC, which is the correct failure mode — noisy, not silent.
 

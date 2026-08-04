@@ -5,7 +5,7 @@
 Remove dead code that the CMake port had to work around, and close the warning gate on the Linux
 build so it matches the `/WX` gate MSBuild has always had.
 
-Forked from `origin/main` at `9f45233` (PR #168, CMake + Linux CI Phase 0).
+Forked from `origin/main` at `64a36a9` (PR #168, CMake + Linux CI Phase 0).
 
 ## What investigation established
 

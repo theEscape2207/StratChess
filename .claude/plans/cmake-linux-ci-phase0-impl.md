@@ -100,7 +100,7 @@ with no deadline value.
 
 - [ ] **Step 1: Create `StratEngine/Compat.h`**
 
-The three SAL spellings below are exhaustive as of `17869ee`, verified by enumerating every
+The three SAL spellings below are exhaustive as of `8ce18f3`, verified by enumerating every
 `_Xxx_`-shaped token in the tree. No `_opt_`, `_reads_` or `_writes_` variants exist.
 
 ```cpp

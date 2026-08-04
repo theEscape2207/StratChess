@@ -205,7 +205,7 @@ plus the `Tests/*.json` suites) through the loader:
 - Constants are untuned starting points; #117 owns fitting them.
 
 ### Measured
-**SPRT `Custom [-5, 15]` vs `main` @ f1c4e19: H1 accepted** at 378 games (LLR 2.97, LOS 99.49%),
+**SPRT `Custom [-5, 15]` vs `main` @ 56b3f45: H1 accepted** at 378 games (LLR 2.97, LOS 99.49%),
 +38.76 ± 29.86, 30m52s. Read as "the three terms are worth having" — the 95% interval [+8.90, +68.62]
 excludes zero, but the point estimate should not be quoted as a figure. Attribution among the three was
 traded away deliberately for budget: one SPRT instead of three.
@@ -1028,7 +1028,7 @@ is needed. Plan: `.claude/plans/move-formatter.md`.
 - `STRAT_ENABLE_TEST_ACCESS` friend stub added to `AIPerplex.h` for future Phase 1
   search tests
 
-## 2026-03-01 — Restrict Board Piece-Setup API to Private (PR #21, commit d4b1bd6)
+## 2026-03-01 — Restrict Board Piece-Setup API to Private (PR #21, commit 8bef567)
 
 ### Changed
 - `ClearBoard`, `SetInitialColor`, and `AddPieceToBoard` moved to `private:` — no longer
@@ -1078,7 +1078,7 @@ Consistently deeper search — mate at depth 14 observed where it wasn't reached
   overflow); scoring integrated inline in `pvs()` (relocation to `MoveSorter` handled
   separately, see 2026-03-10)
 
-## 2026-02-19 — Perft Testing Framework (commit c13c7f2c)
+## 2026-02-19 — Perft Testing Framework (commit 0798a951)
 
 ### Added
 - `StratEngine/Tests/Perft.h/cpp` + `PerftRunner.cpp`; `Tests/perft_test_cases.json`
