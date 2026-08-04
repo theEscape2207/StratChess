@@ -121,9 +121,14 @@ nowhere else, locally or in CI.
 
 **`build-linux`** builds `all`, not just the test target: `StratChessEvolved.cpp` — `main()` and the
 perft, tactical and eval runners — belongs to no other target, so a tests-only build never compiled it
-with GCC. It then runs the fast tier and **`perft test`**, the 131-position / 655-check suite behind
-`Tests/perft_test_cases.json`, which previously ran in no automated gate at all. The Catch2 `[perft]`
-tests cover only seven hardcoded cases (startpos d1-4, Kiwipete d1-3).
+with GCC. It then runs the fast tier, and on the **Release leg only**, **`perft test`** — the
+131-position / 655-check suite behind `Tests/perft_test_cases.json`, which previously ran in no
+automated gate at all. The Catch2 `[perft]` tests cover only seven hardcoded cases (startpos d1-4,
+Kiwipete d1-3).
+
+Release-only because perft is compute-bound: the suite takes **30 s** optimised, and the Debug leg
+reached 4 of 131 positions in six minutes — roughly three hours extrapolated. Never put a perft suite
+on a Debug leg.
 
 **`sanitize-linux`** builds the test binary with `-fsanitize=address,undefined` and
 `STRAT_STDLIB_DEBUG=ON` — libstdc++ debug mode, i.e. checked iterators and container preconditions,

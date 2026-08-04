@@ -26,9 +26,10 @@ Newest first.
 
 ### Added
 
-- **`perft test` runs on `build-linux`** — the 131-position, 655-check suite behind
+- **`perft test` runs on `build-linux`, Release leg only** — the 131-position, 655-check suite behind
   `Tests/perft_test_cases.json`, which previously ran in no automated gate. The Catch2 `[perft]` tests
-  cover seven hardcoded cases (startpos d1-4, Kiwipete d1-3); this is the rest.
+  cover seven hardcoded cases (startpos d1-4, Kiwipete d1-3); this is the rest. Release-only because
+  perft is compute-bound: 30 s optimised against 4 of 131 positions in six minutes under Debug.
 - **CPW positions 4, 5 and 6** added to that suite at depths 1-5 (position 3 was already present).
   They are the standard promotion, pin and castling torture positions. All 15 published node counts
   were reproduced by the engine before being committed — they lock in correct behaviour rather than

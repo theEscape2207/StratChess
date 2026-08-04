@@ -118,12 +118,17 @@ jobs:
       # self-checking, so breadth across positions catches move-generation faults
       # that more depth on one position cannot.
       #
-      # ~20 s locally, ~45 s here. That does not extend the run: build-linux is
-      # not the critical path, the Windows legs are.
+      # RELEASE ONLY, and not for tidiness: perft is compute-bound and an
+      # unoptimised build is unusable for it. The Release leg runs the suite in
+      # 30 s; the Debug leg managed 4 of the 131 positions in six minutes, which
+      # extrapolates to about three hours. Move generation is the same code in
+      # both configurations, and the Catch2 [perft] cases already cover the
+      # shallow depths under Debug with assert() live.
       #
       # Runs from Tests/: the runner resolves perft_test_cases.json relative to
       # the working directory.
       - name: Perft suite
+        if: matrix.config == 'Release'
         working-directory: Tests
         run: ../build/StratChessEvolved perft test
 
