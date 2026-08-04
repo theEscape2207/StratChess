@@ -22,6 +22,33 @@ Newest first.
 
 ---
 
+## 2026-08-04 — Perft suite enters the PR gate; CPW positions 4, 5 and 6 added
+
+### Added
+
+- **`perft test` runs on `build-linux`** — the 131-position, 655-check suite behind
+  `Tests/perft_test_cases.json`, which previously ran in no automated gate. The Catch2 `[perft]` tests
+  cover seven hardcoded cases (startpos d1-4, Kiwipete d1-3); this is the rest.
+- **CPW positions 4, 5 and 6** added to that suite at depths 1-5 (position 3 was already present).
+  They are the standard promotion, pin and castling torture positions. All 15 published node counts
+  were reproduced by the engine before being committed — they lock in correct behaviour rather than
+  reporting a fault.
+
+### Changed
+
+- **`build-linux` builds `all`**, matching the Windows job. `StratChessEvolved.cpp` — `main()` and the
+  perft, tactical and eval runners — belongs to no other target, so GCC never compiled it on a PR. It
+  also exercises the GCC LTO link, which is not MSVC-specific.
+
+### Notes
+
+Runners perft at **~22.5 Mnps**, 2.2× slower than a local build (startpos depth 7 in 140 s, Kiwipete
+depth 6 in 364 s). Deeper perft was costed from that and declined: startpos(8) ~62 min, Kiwipete(7)
+~4.7 h against a 6-hour job cap, and neither adds coverage — startpos(7) already exceeds 2^31 and
+perft allocates nothing per node. Reasoning recorded in `Docs/Workflow.md`.
+
+---
+
 ## 2026-08-04 — Nightly correctness workflow
 
 M2 of `.claude/plans/public-repo-and-strength-lab.md`. `nightly.yml` runs at 03:00 UTC and on

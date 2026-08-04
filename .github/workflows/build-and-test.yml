@@ -99,14 +99,33 @@ jobs:
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.config }}
 
+      # "all", matching the Windows job: StratChessEvolved.cpp -- main() and the
+      # perft/tactical/eval runners -- is in no other target, so a tests-only
+      # build never compiles it with GCC. It also exercises the GCC LTO link,
+      # since INTERPROCEDURAL_OPTIMIZATION_RELEASE is not MSVC-specific.
       - name: Build
-        run: cmake --build build --target StratChessTests --parallel
+        run: cmake --build build --parallel
 
       # Same '~[slow]' filter as the Windows job, deliberately: the legs must
       # cover the same cases. The fast tier is self-contained -- no Catch2 test
       # reads Tests/*.json -- so the working directory does not matter here.
       - name: Run fast tests
         run: ./build/StratChessTests '~[slow]'
+
+      # The Catch2 tier hard-codes seven cases (startpos d1-4, Kiwipete d1-3).
+      # This is the 131-position suite behind Tests/perft_test_cases.json, 655
+      # node-count checks, and it ran in no automated gate before. Perft is
+      # self-checking, so breadth across positions catches move-generation faults
+      # that more depth on one position cannot.
+      #
+      # ~20 s locally, ~45 s here. That does not extend the run: build-linux is
+      # not the critical path, the Windows legs are.
+      #
+      # Runs from Tests/: the runner resolves perft_test_cases.json relative to
+      # the working directory.
+      - name: Perft suite
+        working-directory: Tests
+        run: ../build/StratChessEvolved perft test
 
   # ASan + UBSan over the fast tier. See issue #179.
   #

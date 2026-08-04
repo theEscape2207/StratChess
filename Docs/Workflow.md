@@ -119,6 +119,12 @@ that builds what ships — the clang-cl branch of `strat_configure_target`, the 
 only — Windows Debug (MSVC's checked iterators, `assert()` live on the shipping compiler) is compiled
 nowhere else, locally or in CI.
 
+**`build-linux`** builds `all`, not just the test target: `StratChessEvolved.cpp` — `main()` and the
+perft, tactical and eval runners — belongs to no other target, so a tests-only build never compiled it
+with GCC. It then runs the fast tier and **`perft test`**, the 131-position / 655-check suite behind
+`Tests/perft_test_cases.json`, which previously ran in no automated gate at all. The Catch2 `[perft]`
+tests cover only seven hardcoded cases (startpos d1-4, Kiwipete d1-3).
+
 **`sanitize-linux`** builds the test binary with `-fsanitize=address,undefined` and
 `STRAT_STDLIB_DEBUG=ON` — libstdc++ debug mode, i.e. checked iterators and container preconditions,
 which `_GLIBCXX_ASSERTIONS` (bounds only) misses and MSVC covers with `_ITERATOR_DEBUG_LEVEL=2` — and
@@ -147,8 +153,15 @@ required check that never ran would block it forever.
 | `tactical-stability` | `tactical stability 100`, against the local run's 10 |
 
 `perft run <depth> [fen]` prints a count but does not verify it, so the workflow does the comparison.
-Measured at ~50 Mnps locally, the two deep perfts are ~1 and ~3 minutes, which is why neither is
-sharded across a matrix.
+Runners measure **~22.5 Mnps** (startpos depth 7 in 140 s, Kiwipete depth 6 in 364 s — 2.2× slower
+than a local build), so neither needs sharding across a matrix.
+
+**Deeper perft was measured and declined.** startpos(8) is ~62 min and Kiwipete(7) ~4.7 h at that
+rate, the latter being 78% of GitHub's 6-hour job cap — it would need a 48-way root-move shard to be
+safe. Neither buys coverage: startpos(7) already returns 3,195,901,860, so the 32-bit boundary is
+already crossed, and perft allocates nothing per node, so a longer run stresses nothing. Move
+generation is exercised by **breadth**, which is what `perft test` provides. Do not re-propose depth
+without a reason that survives those numbers.
 
 **The `[slow]` tier is thin.** The fast tier is 250 test cases; everything is 253 — two deep tactical
 searches and the null-move guards. `extended-tests` and `sanitize-extended` are worth their (free)
