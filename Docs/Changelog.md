@@ -37,9 +37,15 @@ M2 of `.claude/plans/public-repo-and-strength-lab.md`. `nightly.yml` runs at 03:
 - `tactical-stability` — `tactical stability 100`.
 - **`STRAT_STDLIB_DEBUG`** (CMake BOOL, `OFF`) — libstdc++ debug mode: checked iterators and
   container preconditions, which `_GLIBCXX_ASSERTIONS` does not cover. A configure error on MSVC and
-  clang-cl, whose Debug builds get the equivalent from `_ITERATOR_DEBUG_LEVEL`. Used by the nightly
-  only, not by the per-PR sanitizer job, so an unproven stricter configuration cannot block a merge
-  before it is known clean.
+  clang-cl, whose Debug builds get the equivalent from `_ITERATOR_DEBUG_LEVEL`. Enabled on the per-PR
+  `sanitize-linux` job as well, after a local GCC 13.3.0 run (the runner's compiler) came back clean
+  over the whole suite in 25 s.
+
+### Notes
+
+The `[slow]` tier is three test cases — 253 against the fast tier's 250. `extended-tests` and
+`sanitize-extended` cost nothing but are weak evidence; "extended tier" oversells what exists.
+Growing it belongs to #156.
 
 ---
 

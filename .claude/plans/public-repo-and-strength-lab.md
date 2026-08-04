@@ -179,9 +179,12 @@ Two corrections to what this milestone assumed:
 - **Deep perft does not need sharding.** Perft runs at ~50 Mnps, making `perft(7)` about a minute and
   Kiwipete `perft(6)` about three. `perft run <depth> [fen]` already accepts a custom FEN, so no
   engine change was needed either.
-- **`_GLIBCXX_DEBUG` went to the nightly, not to `sanitize-linux`.** That job now feeds a required
-  status check, so a stricter configuration that has never run belongs somewhere it cannot block a
-  merge. Promote it after a green nightly.
+- **`_GLIBCXX_DEBUG` runs on both jobs.** It was staged on the nightly first, since `sanitize-linux`
+  feeds a required check, then promoted once a local GCC 13.3.0 build (the runner's compiler, via
+  WSL) came back clean over the whole suite in 25 s.
+- **The `[slow]` tier is three test cases**, 253 against the fast tier's 250. This milestone's
+  "extended tier" jobs are therefore worth much less than the plan implied. The gap is test coverage
+  (#156), not schedule.
 
 Unbudgeted dividend from M1: public repositories get 4-core runners against the private tier's
 2-core, so Linux jobs got 20-40% faster with no configuration change.

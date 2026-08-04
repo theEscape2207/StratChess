@@ -101,8 +101,9 @@ Sanitizers are Linux-only — `STRAT_SANITIZE` is a configure error on MSVC and 
 
 A **nightly** workflow (`nightly.yml`, 03:00 UTC + `workflow_dispatch`) runs what is too slow to
 gate: `perft(7)` from the start position and `perft(6)` from Kiwipete against known node counts, the
-extended `[slow]` tier in both configs, that tier again under ASan+UBSan+`_GLIBCXX_DEBUG`, and
-`tactical stability 100`. It cannot block a merge — read it.
+`[slow]` tier in both configs and again instrumented, and `tactical stability 100`. It cannot block a
+merge — read it. Note `[slow]` is only three test cases (253 against the fast tier's 250), so it
+promises more than it delivers.
 
 **Windows runs on the same trigger as Linux.** It is the only job that builds what ships (clang-cl,
 the `_MSC_VER`/`_WIN32` sites, MSVC's STL, the ThinLTO link). `Validate-PrePR.ps1` does not cover it:

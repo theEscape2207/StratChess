@@ -148,11 +148,17 @@ jobs:
       # STRAT_SANITIZE_RECOVER is left at its OFF default on purpose: sanitizers
       # report and continue otherwise, which exits 0 and would turn this job green
       # with the findings sitting in the log.
+      #
+      # STRAT_STDLIB_DEBUG adds libstdc++ debug mode: checked iterators and
+      # container preconditions, which _GLIBCXX_ASSERTIONS (bounds only) misses.
+      # The whole instrumented suite runs in ~25 s, so it is affordable on a
+      # required check.
       - name: Configure
         run: >
           cmake -S . -B build -G Ninja
           -DCMAKE_BUILD_TYPE=Debug
           -DSTRAT_SANITIZE=address,undefined
+          -DSTRAT_STDLIB_DEBUG=ON
 
       - name: Build
         run: cmake --build build --target StratChessTests --parallel

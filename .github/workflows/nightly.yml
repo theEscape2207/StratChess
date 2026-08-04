@@ -63,11 +63,13 @@ jobs:
           echo "expected=${{ matrix.expected }} actual=$actual"
           test "$actual" = "${{ matrix.expected }}"
 
-  # The tier the per-PR jobs deliberately exclude. Self-contained -- no test reads
-  # anything from Tests/ -- so the working directory does not matter.
+  # The [slow] tier, which is three test cases: two deep tactical searches and the
+  # null-move guards. 250 test cases in the fast tier against 253 here -- it is a
+  # thin tier, not a second suite, so treat a green run as weak evidence.
+  # Self-contained: no test reads anything from Tests/.
   extended-tests:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -93,17 +95,11 @@ jobs:
       - name: Run every test including [slow]
         run: ./build/StratChessTests
 
-  # ASan+UBSan over the extended tier, plus libstdc++ debug mode -- checked
-  # iterators and container preconditions, which is the class MSVC's
-  # _ITERATOR_DEBUG_LEVEL=2 catches and _GLIBCXX_ASSERTIONS (bounds only) does not.
-  #
-  # It runs here rather than on the per-PR sanitize-linux job on purpose: that job
-  # is part of a required status check, and an unproven stricter configuration
-  # belongs somewhere it cannot block a merge until it is known clean. Promote it
-  # once it has been green here.
+  # The same instrumentation the per-PR sanitize-linux job runs -- ASan+UBSan plus
+  # libstdc++ debug mode -- extended to the [slow] tier it excludes.
   sanitize-extended:
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -137,7 +133,7 @@ jobs:
   # the working directory.
   tactical-stability:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
