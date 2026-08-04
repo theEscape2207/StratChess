@@ -99,10 +99,9 @@ Engine** changes only, so a Docs or Tooling change skips them either way. Extend
 self-play stay local. Sanitizers are Linux-only — `STRAT_SANITIZE` is a configure error on MSVC and
 clang-cl.
 
-**Windows runs on the same trigger** — no label, no gate. It is the only job that builds what ships
-(clang-cl, the `_MSC_VER`/`_WIN32` sites, MSVC's STL, the ThinLTO link). Do not assume
-`Validate-PrePR.ps1` covers it: that script never passes `-Config`, so it builds Release only and
-never compiles Debug at all.
+**Windows runs on the same trigger as Linux.** It is the only job that builds what ships (clang-cl,
+the `_MSC_VER`/`_WIN32` sites, MSVC's STL, the ThinLTO link). `Validate-PrePR.ps1` does not cover it:
+it never passes `-Config`, so it builds Release only and never compiles Debug.
 
 CI is a **gate** — `build-and-test-result` is a required check on `main` and a red run blocks the
 merge. A SKIPPED leg reports success on purpose, so Docs and Tooling PRs are not blocked by jobs that

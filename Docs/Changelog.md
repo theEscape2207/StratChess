@@ -24,42 +24,34 @@ Newest first.
 
 ## 2026-08-04 — Repository made public; CI un-gated and promoted to a merge gate
 
-Milestone M1 of `.claude/plans/public-repo-and-strength-lab.md`. The repository is public, which
-makes GitHub-hosted standard runners free and required status checks available. Every rationing
-decision taken while it was private is therefore reversed.
+Milestone M1 of `.claude/plans/public-repo-and-strength-lab.md`. Public standard runners are free and
+required status checks are available, so the rationing the private repository needed is reversed.
 
 ### Changed
 
-- **The `windows-ci` label gate is gone.** Windows now runs on the same tier condition as
-  `build-linux` and `sanitize-linux` — identical `if:` on all three. The label existed only because
-  Windows bills at 2x and was ~75% of Actions spend on a private repository.
-- **`build-and-test-result` is a required status check on `main`.** A red run blocks the merge; CI
-  is no longer advisory. The single always-present check was designed for exactly this, so enabling
-  it was a settings change rather than a rewrite. A SKIPPED leg still reports success, deliberately —
-  a Docs-tier PR runs none of the build jobs, and a required check that never ran would block it.
-- **The Windows legs build `all`, not `tests`.** `INTERPROCEDURAL_OPTIMIZATION_RELEASE` is set on the
-  `StratChessEvolved` target alone, so a tests-only build never performed the ThinLTO link that
-  ships — which had made "the only job that builds what ships" aspirational rather than true.
-- **Added a `concurrency:` group** keyed on workflow + ref, cancelling superseded pull-request runs.
-  Minutes are free, but the 20-job concurrency ceiling is account-wide. Pushes to `main` are exempt:
-  every merge deserves a completed verdict.
-- Dropped `labeled` from the `pull_request` trigger types — nothing reads labels any more.
+- **`windows-ci` label gate removed** — all three build jobs now carry an identical tier condition.
+- **`build-and-test-result` is a required check on `main`**; a red run blocks the merge. A SKIPPED
+  leg reports success, so Docs and Tooling PRs are not blocked by jobs that correctly never ran.
+- **Windows legs build `all`, not `tests`** — `INTERPROCEDURAL_OPTIMIZATION_RELEASE` is set on the
+  `StratChessEvolved` target alone, so a tests-only build never performed the ThinLTO link that ships.
+- **`concurrency:` group added**, cancelling superseded PR runs; the 20-job ceiling is account-wide.
+- Dropped `labeled` from the `pull_request` trigger types.
 
 ### Fixed
 
-- The claim, in both `build-and-test.yml` and `Docs/Workflow.md`, that `Validate-PrePR.ps1` is *a
-  strict superset* of the Windows job. It was true of the **Release** leg only: the script never
-  passes `-Config`, so it takes `build.ps1`'s Release default and never compiles Debug at all.
-  Windows Debug is compiled nowhere else, locally or in CI.
+- The claim that `Validate-PrePR.ps1` is *a strict superset* of the Windows job, in both
+  `build-and-test.yml` and `Docs/Workflow.md`. It never passes `-Config`, so it builds Release only
+  and never compiles Debug.
 
 ### Notes
 
-Preceded by M0: `Docs/Devlog.md`, `Docs/Position_Class_Documentation.md`, `Docs/Improving Chess
-Engine ELO rating.md` and `Docs/superpowers/` deleted, root `README.md` added (PR #191); history
-rewritten with `git filter-repo` to drop a stale 4 MB cppcheck dump and collapse three author
-identities, with the 44 SHAs quoted in prose remapped from the commit map (PR #192). All 505 commit
-SHAs changed on that date; the HEAD tree and both Elo anchor tags' trees are byte-identical across
-the rewrite, so `Docs/EloLog.md` remains valid as measured.
+Public runners are 4-core against the private tier's 2-core: Linux jobs got 20-40% faster with no
+configuration change (`sanitize-linux` 5m34 → 3m17).
+
+Preceded by M0 — four superseded documents deleted and a root `README.md` added (PR #191); history
+rewritten to drop a stale cppcheck dump and collapse three author identities, with the 44 SHAs quoted
+in prose remapped (PR #192). All 505 SHAs changed; the HEAD tree and both Elo anchor trees are
+byte-identical, so `Docs/EloLog.md` remains valid as measured.
 
 ---
 

@@ -115,15 +115,9 @@ that builds what ships — the clang-cl branch of `strat_configure_target`, the 
 `StratChessEvolved.exe` itself. Two of the three clang-cl flag spellings fail *silently* when wrong
 (#84), so Linux cannot stand in for those.
 
-It was gated behind a `windows-ci` label between #182 and 2026-08-04, for one reason only: Windows
-bills at 2x and was roughly three quarters of Actions spend while the repository was private. Public
-standard runners are free, so the gate and the label are gone.
-
-One piece of reasoning from that era should not come back with it. The claim that
-`Validate-PrePR.ps1` is *a strict superset* of the Windows job was true of the **Release** leg only:
-the script never passes `-Config`, so it takes `build.ps1`'s Release default and never compiles Debug
-at all. Windows Debug — MSVC's checked iterators, `assert()` live on the shipping compiler — is
-compiled nowhere else, locally or in CI.
+`Validate-PrePR.ps1` does **not** cover it. The script never passes `-Config`, so it builds Release
+only — Windows Debug (MSVC's checked iterators, `assert()` live on the shipping compiler) is compiled
+nowhere else, locally or in CI.
 
 **`sanitize-linux`** builds the test binary with `-fsanitize=address,undefined` and runs the fast
 tier. It shares `build-linux`'s trigger exactly — Build and Engine tiers, on PRs and merges alike —
@@ -136,11 +130,9 @@ tripwires stay live alongside the instrumentation. Linux-only — the GNU `-fsan
 not survive the MSVC driver, and `CMakeLists.txt` raises a configure error rather than letting a
 Windows build look instrumented when it is not.
 
-**CI is a gate.** The repository went public on 2026-08-04, which makes required status checks free,
-and `build-and-test-result` is now required on `main` — a red run blocks the merge. It stayed a
-single always-present check for exactly this moment, so turning protection on was a settings change
-rather than a rewrite. A SKIPPED leg still reports success, deliberately: a Docs-tier PR runs none of
-the build jobs, and a required check that never ran would block it forever.
+**CI is a gate.** `build-and-test-result` is a required check on `main`, so a red run blocks the
+merge. A SKIPPED leg reports success deliberately: a Docs-tier PR runs none of the build jobs, and a
+required check that never ran would block it forever.
 
 `Check starting FEN` is path-filtered to `StratChessEvolved/game_settings.json` and does not run
 otherwise.

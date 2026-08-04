@@ -171,16 +171,8 @@ jobs:
     # lld-link/ThinLTO. Two of the three clang-cl flag spellings fail SILENTLY
     # when wrong (#84), so no Linux leg can stand in for it.
     #
-    # This ran on demand only, behind a 'windows-ci' label, for exactly one
-    # reason: Windows bills at 2x and was ~75% of Actions spend while the
-    # repository was private. It went public on 2026-08-04 and standard runners
-    # are free there, so the gate is gone and this shares build-linux's trigger.
-    #
-    # Do not reinstate the label without reinstating its cost argument -- and do
-    # not reinstate the reasoning that accompanied it. The claim that
-    # Validate-PrePR.ps1 is "a strict superset" of this job held only for the
-    # Release leg: the script never passes -Config, so it takes build.ps1's
-    # Release default and never compiles Debug at all.
+    # Validate-PrePR.ps1 does not cover this job: it never passes -Config, so it
+    # builds Release only and never compiles Debug at all.
     if: needs.classify.outputs.is_full == 'true'
     # Pinned to the explicit VS2026 image (not the moving windows-latest label) —
     # keeps the toolchain fixed until it is changed deliberately.
@@ -233,11 +225,9 @@ jobs:
           path: build/_deps
           key: win-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
 
-      # "all", not tests-only. INTERPROCEDURAL_OPTIMIZATION_RELEASE is set on the
+      # "all", not tests-only: INTERPROCEDURAL_OPTIMIZATION_RELEASE is set on the
       # StratChessEvolved target alone, so a tests-only build never performs the
-      # ThinLTO link that ships -- which made "the only job that builds what
-      # ships" aspirational rather than true. That link is worth its minutes now
-      # that they are free.
+      # ThinLTO link that ships.
       #
       # build.ps1 imports the VS developer environment itself, so no separate
       # setup step is needed here. It defaults to clang-cl, which is what ships;
@@ -257,15 +247,12 @@ jobs:
 
   # The single always-present check, and the name must not change.
   #
-  # This is the required status check. Required checks are free on a public
-  # repository, so as of 2026-08-04 a red run BLOCKS the merge -- it is no longer
-  # advisory. The single-check shape is what made that a settings change rather
-  # than a rewrite; keep it.
+  # This is the required status check on main: a red run blocks the merge.
   #
-  # Every leg now runs for Build- and Engine-tier changes, on pull requests and
-  # merges alike. Docs and Tooling changes skip all of them, which is a pass, not
-  # a gap: SKIPPED is reported as success on purpose, because a required check
-  # that never runs would block those PRs forever.
+  # Every leg runs for Build- and Engine-tier changes, on pull requests and merges
+  # alike. Docs and Tooling changes skip all of them, and SKIPPED is reported as
+  # success on purpose -- a required check that never runs would block those PRs
+  # forever.
   build-and-test-result:
     needs: [classify, build-linux, sanitize-linux, build-and-test]
     if: always()
