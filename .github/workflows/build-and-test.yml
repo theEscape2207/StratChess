@@ -3,9 +3,17 @@ name: Build and test
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, labeled]
+    types: [opened, synchronize, reopened]
   push:
     branches: [main]
+
+# Supersede in-flight runs for the same ref. Minutes are free on a public
+# repository, but the 20-job concurrency ceiling is shared across the whole
+# account, so a superseded run still costs the next one its start slot. Pushes to
+# main are exempt: every merge deserves its own completed verdict.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Decide how much validation this diff is worth, using the SAME classifier the
@@ -157,39 +165,15 @@ jobs:
 
   build-and-test:
     needs: classify
-    # On demand only, via the 'windows-ci' label. Windows bills at 2x and was
-    # ~75% of this repo's Actions spend while it ran on every merge, which does
-    # not fit the plan's monthly allowance.
-    #
-    # What that gives up, recorded so the trade is not silently forgotten: this
-    # is the only job that compiles the clang-cl branch of
+    # The only job that builds what actually ships: the clang-cl branch of
     # strat_configure_target, the eight _MSC_VER/_WIN32 sites across Compat.h,
     # PieceHelper.h, SquareHelper.h and StdAfx.h, the MSVC standard library, and
-    # lld-link/ThinLTO -- and it is the only job that builds what actually ships.
-    # Two of the three clang-cl flag spellings fail SILENTLY when wrong (#84), so
-    # the Linux leg cannot stand in for it.
+    # lld-link/ThinLTO. Two of the three clang-cl flag spellings fail SILENTLY
+    # when wrong (#84), so no Linux leg can stand in for it.
     #
-    # Apply the label when the diff can change WHAT THE WINDOWS BUILD PRODUCES:
-    # CMakePresets.json, build.ps1, Compat.h, the clang-cl branch of
-    # strat_configure_target, or any _MSC_VER/_WIN32 conditional. Ordinary engine
-    # changes do not qualify -- Validate-PrePR.ps1 already builds them with
-    # clang-cl locally and is a strict superset of this job, build-linux covers
-    # the clean checkout, and sanitize-linux covers the fault class MSVC's debug
-    # STL might otherwise have caught (#187).
-    #
-    # That narrowing assumes Validate-PrePR.ps1 actually ran. A PR pushed around
-    # New-PullRequest.ps1 -- the PR #148 failure mode -- has no local Windows
-    # build behind it, so label it regardless of what it touches.
-    #
-    # What remains uniquely uncovered without the label: Windows-specific DEBUG.
-    # Validate-PrePR.ps1 never passes -Config, so it takes build.ps1's Release
-    # default, while this job runs a Release+Debug matrix.
-    #
-    # Consequence of dropping the push trigger: Actions caches are branch-scoped
-    # and only default-branch caches are inherited, so with no run on main the
-    # Windows deps cache is never refreshed there and labelled runs re-fetch
-    # dependencies. Measured at well under a minute per leg; a cost, not a defect.
-    if: contains(github.event.pull_request.labels.*.name, 'windows-ci')
+    # Validate-PrePR.ps1 does not cover this job: it never passes -Config, so it
+    # builds Release only and never compiles Debug at all.
+    if: needs.classify.outputs.is_full == 'true'
     # Pinned to the explicit VS2026 image (not the moving windows-latest label) —
     # keeps the toolchain fixed until it is changed deliberately.
     # See .claude/plans/full-build-test-ci-github-actions.md.
@@ -241,17 +225,16 @@ jobs:
           path: build/_deps
           key: win-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
 
-      # tests-only, not "all": this job never runs StratChessEvolved.exe, and only
-      # the engine target carries INTERPROCEDURAL_OPTIMIZATION for Release, so
-      # building "all" would spend most of the time on an LTO link of an unused
-      # binary.
+      # "all", not tests-only: INTERPROCEDURAL_OPTIMIZATION_RELEASE is set on the
+      # StratChessEvolved target alone, so a tests-only build never performs the
+      # ThinLTO link that ships.
       #
       # build.ps1 imports the VS developer environment itself, so no separate
       # setup step is needed here. It defaults to clang-cl, which is what ships;
       # if a runner image ever lacks the VS Clang component, `-Compiler msvc` is
       # the one-word fallback and build.ps1 says so by name.
       - name: Build
-        run: .\build.ps1 tests -Config ${{ matrix.config }}
+        run: .\build.ps1 all -Config ${{ matrix.config }}
 
       # Same '~[slow]' filter in both configs, deliberately: the two legs must
       # cover the same cases, since the point is that they disagree about which
@@ -264,18 +247,12 @@ jobs:
 
   # The single always-present check, and the name must not change.
   #
-  # NOTE: branch protection is NOT currently active -- required status checks
-  # need GitHub Pro on a private repository, and the API refuses with 403 on this
-  # plan. So nothing here blocks a merge today; this job's verdict is advisory
-  # and has to be read by a human. The single-check shape is kept deliberately so
-  # that turning protection on later is a settings change and not a rewrite.
+  # This is the required status check on main: a red run blocks the merge.
   #
-  # Linux is the substantive gate: it runs for every Build- and Engine-tier
-  # change, on pull requests and on merges alike. Docs and Tooling changes skip
-  # it on both, which is a pass, not a gap. Windows being SKIPPED is normal now
-  # that it is label-gated, but a Windows job that actually ran and failed is
-  # still reported as a failure -- a clang-cl-only regression must not pass
-  # unnoticed.
+  # Every leg runs for Build- and Engine-tier changes, on pull requests and merges
+  # alike. Docs and Tooling changes skip all of them, and SKIPPED is reported as
+  # success on purpose -- a required check that never runs would block those PRs
+  # forever.
   build-and-test-result:
     needs: [classify, build-linux, sanitize-linux, build-and-test]
     if: always()
@@ -308,7 +285,7 @@ jobs:
 
           case "${{ needs.build-and-test.result }}" in
             success) echo "Windows build and tests passed." ;;
-            skipped) echo "Windows skipped: runs on demand only, via the 'windows-ci' label. Label a PR that can change what the Windows build produces -- CMakePresets.json, build.ps1, Compat.h, the clang-cl branch of strat_configure_target, or any _MSC_VER/_WIN32 conditional." ;;
+            skipped) echo "Windows skipped: '${{ needs.classify.outputs.tier }}' tier cannot affect the build." ;;
             *)       echo "Windows build and tests did not pass."; exit 1 ;;
           esac
 

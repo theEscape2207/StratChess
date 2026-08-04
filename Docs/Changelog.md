@@ -22,6 +22,39 @@ Newest first.
 
 ---
 
+## 2026-08-04 — Repository made public; CI un-gated and promoted to a merge gate
+
+Milestone M1 of `.claude/plans/public-repo-and-strength-lab.md`. Public standard runners are free and
+required status checks are available, so the rationing the private repository needed is reversed.
+
+### Changed
+
+- **`windows-ci` label gate removed** — all three build jobs now carry an identical tier condition.
+- **`build-and-test-result` is a required check on `main`**; a red run blocks the merge. A SKIPPED
+  leg reports success, so Docs and Tooling PRs are not blocked by jobs that correctly never ran.
+- **Windows legs build `all`, not `tests`** — `INTERPROCEDURAL_OPTIMIZATION_RELEASE` is set on the
+  `StratChessEvolved` target alone, so a tests-only build never performed the ThinLTO link that ships.
+- **`concurrency:` group added**, cancelling superseded PR runs; the 20-job ceiling is account-wide.
+- Dropped `labeled` from the `pull_request` trigger types.
+
+### Fixed
+
+- The claim that `Validate-PrePR.ps1` is *a strict superset* of the Windows job, in both
+  `build-and-test.yml` and `Docs/Workflow.md`. It never passes `-Config`, so it builds Release only
+  and never compiles Debug.
+
+### Notes
+
+Public runners are 4-core against the private tier's 2-core: Linux jobs got 20-40% faster with no
+configuration change (`sanitize-linux` 5m34 → 3m17).
+
+Preceded by M0 — four superseded documents deleted and a root `README.md` added (PR #191); history
+rewritten to drop a stale cppcheck dump and collapse three author identities, with the 44 SHAs quoted
+in prose remapped (PR #192). All 505 SHAs changed; the HEAD tree and both Elo anchor trees are
+byte-identical, so `Docs/EloLog.md` remains valid as measured.
+
+---
+
 ## 2026-08-04 — Tier-gate the push trigger; narrow the `windows-ci` rule (issues #185, #187)
 
 ### Fixed

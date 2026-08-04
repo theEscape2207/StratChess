@@ -109,25 +109,15 @@ is branch-scoped so a PR can only restore a cache saved there. This is safe beca
 and changes only on a dependency bump, which is a `CMakeLists.txt` edit and so still Build tier — and
 because eviction is seven days without *access*, which every PR restore refreshes.
 
-**Windows runs on demand only**, via the `windows-ci` label on a PR. It bills at 2x and was roughly
-three quarters of this repo's Actions spend while it ran on every merge. Apply the label when the
-diff can change **what the Windows build produces**: `CMakePresets.json`, `build.ps1`, `Compat.h`,
-the clang-cl branch of `strat_configure_target`, or any `_MSC_VER`/`_WIN32` conditional. Two of the
-three clang-cl flag spellings fail *silently* when wrong (#84), so Linux cannot stand in for those.
+**Windows runs on every Build- and Engine-tier change**, same trigger as Linux. It is the only job
+that builds what ships — the clang-cl branch of `strat_configure_target`, the eight
+`_MSC_VER`/`_WIN32` sites, the MSVC standard library, and the lld-link/ThinLTO link of
+`StratChessEvolved.exe` itself. Two of the three clang-cl flag spellings fail *silently* when wrong
+(#84), so Linux cannot stand in for those.
 
-Ordinary engine changes do **not** need it. `Validate-PrePR.ps1` builds them with clang-cl locally
-and is a strict superset of the job, `build-linux` covers the clean checkout from the same
-`CONFIGURE_DEPENDS` glob, and `sanitize-linux` covers the fault class MSVC's debug STL might
-otherwise have caught. That reasoning holds only if the local script actually ran — a PR pushed
-around `New-PullRequest.ps1` (the PR #148 failure mode) should be labelled regardless.
-
-What stays uniquely uncovered when the label is absent: **Windows-specific Debug**.
-`Validate-PrePR.ps1` never passes `-Config`, so it takes `build.ps1`'s Release default, while the
-Windows job runs a Release+Debug matrix. Closing that locally instead is the open option in #187.
-
-The label itself did not exist in the repository until 2026-08-04 — between #182 introducing the gate
-and then, it referenced something nobody could apply. Nothing was missed (the only merge in that
-window would not have qualified), but a gate whose label is absent fails open and silently.
+`Validate-PrePR.ps1` does **not** cover it. The script never passes `-Config`, so it builds Release
+only — Windows Debug (MSVC's checked iterators, `assert()` live on the shipping compiler) is compiled
+nowhere else, locally or in CI.
 
 **`sanitize-linux`** builds the test binary with `-fsanitize=address,undefined` and runs the fast
 tier. It shares `build-linux`'s trigger exactly — Build and Engine tiers, on PRs and merges alike —
@@ -140,9 +130,9 @@ tripwires stay live alongside the instrumentation. Linux-only — the GNU `-fsan
 not survive the MSVC driver, and `CMakeLists.txt` raises a configure error rather than letting a
 Windows build look instrumented when it is not.
 
-**CI is advisory, not a gate.** Required status checks need GitHub Pro on a private repository, so
-nothing here blocks a merge — the result has to be read. `build-and-test-result` is kept as a single
-always-present check so that enabling protection later is a settings change rather than a rewrite.
+**CI is a gate.** `build-and-test-result` is a required check on `main`, so a red run blocks the
+merge. A SKIPPED leg reports success deliberately: a Docs-tier PR runs none of the build jobs, and a
+required check that never ran would block it forever.
 
 `Check starting FEN` is path-filtered to `StratChessEvolved/game_settings.json` and does not run
 otherwise.
