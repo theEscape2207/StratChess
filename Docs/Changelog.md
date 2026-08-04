@@ -22,6 +22,29 @@ Newest first.
 
 ---
 
+## 2026-08-04 — UCI `go perft` command
+
+### Added
+
+- **`perft <depth>` and `go perft <depth>` in `UciHandler`**, delegating to `Testing::Perft::divide()`
+  on the current position. Output is the conventional divide format (`a2a4: 420`), which matches the
+  regex external validators parse. Depth is bounded by the same limit the `perft` CLI subcommand
+  uses, and malformed input is ignored per UCI convention.
+
+  `stop_and_join()` first: `Perft::divide` walks the tree with `DoMove`/`UndoMove` on `board_`, which
+  a running search is reading.
+
+  Unblocks #196 — perftcheck and similar harnesses drive engines over UCI, and perft was previously
+  reachable only through the CLI subcommands.
+
+### Notes
+
+`go perft` is dispatched before the bare `go` branch, or it would be parsed as a search whose unknown
+tokens are silently skipped. Two `[uci][perft]` tests drive `run()` over redirected stdin to cover
+that ordering specifically — the other tests call `cmd_perft` directly and would not catch it.
+
+---
+
 ## 2026-08-04 — Perft suite enters the PR gate; CPW positions 4, 5 and 6 added
 
 ### Added

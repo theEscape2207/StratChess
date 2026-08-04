@@ -39,6 +39,7 @@ private:
     void cmd_eval();
     void cmd_position(std::string_view line);
     void cmd_go(std::string_view line);
+    void cmd_perft(std::string_view line);
     void cmd_stop();
     void cmd_setoption(std::string_view line);
 

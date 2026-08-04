@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <regex>
 
 using P = UciHandler::GoParams;
 
@@ -26,6 +27,7 @@ public:
     void position(const std::string& line) { handler.cmd_position(line); }
     const Board& board() const { return handler.board_; }
 
+    void perft(const std::string& line) { handler.cmd_perft(line); }
     void setoption(const std::string& line) { handler.cmd_setoption(line); }
     void ucinewgame() { handler.cmd_ucinewgame(); }
     void eval() { handler.cmd_eval(); }
@@ -807,4 +809,182 @@ TEST_CASE("FenBatch::ClassifyLine: valid 6-field Black-to-move FEN is Valid", "[
     auto r = FenBatch::ClassifyLine("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R b KQkq - 0 1");
     REQUIRE(r.kind == FenBatch::LineKind::Valid);
     REQUIRE(r.error.empty());
+}
+
+// ---------------------------------------------------------------------------
+// cmd_perft — "perft <depth>" / "go perft <depth>"
+//
+// The divide lines are a wire format, not diagnostics: external harnesses parse
+// them with ^\s*([a-h][1-8][a-h][1-8][rnbqRNBQ]?)\s*[:\s]\s*(\d+)$ (#196), so
+// these tests assert against that regex rather than against a substring.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+const std::regex kDivideLine{R"(^\s*([a-h][1-8][a-h][1-8][rnbqRNBQ]?)\s*[:\s]\s*(\d+)$)"};
+
+// Every (move, nodes) pair the harness regex accepts out of `output`.
+std::vector<std::pair<std::string, uint64_t>> parse_divide(const std::string& output)
+{
+    std::vector<std::pair<std::string, uint64_t>> out;
+    std::istringstream iss{output};
+    std::string line;
+    while (std::getline(iss, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        std::smatch m;
+        if (std::regex_match(line, m, kDivideLine)) {
+            out.emplace_back(m[1].str(), std::stoull(m[2].str()));
+        }
+    }
+    return out;
+}
+
+uint64_t divide_total(const std::string& output)
+{
+    uint64_t sum = 0;
+    for (const auto& entry : parse_divide(output)) sum += entry.second;
+    return sum;
+}
+
+} // namespace
+
+TEST_CASE("cmd_perft: startpos depth 1 emits 20 harness-parseable divide lines", "[uci][perft]")
+{
+    UciHandlerTestFixture fix;
+    fix.position("position startpos");
+
+    std::string output;
+    {
+        CoutRedirect redirect;
+        fix.perft("perft 1");
+        output = redirect.str();
+    }
+
+    const auto divides = parse_divide(output);
+    REQUIRE(divides.size() == 20);
+    for (const auto& entry : divides) {
+        REQUIRE(entry.first.size() == 4);
+        REQUIRE(entry.second == 1);
+    }
+    REQUIRE(divide_total(output) == 20);
+}
+
+TEST_CASE("cmd_perft: 'go perft' is not parsed as a search", "[uci][perft]")
+{
+    UciHandlerTestFixture fix;
+    fix.position("position startpos");
+
+    std::string output;
+    {
+        CoutRedirect redirect;
+        fix.perft("go perft 2");
+        output = redirect.str();
+    }
+
+    REQUIRE(divide_total(output) == 400);
+    REQUIRE(output.find("bestmove") == std::string::npos);
+}
+
+TEST_CASE("cmd_perft: honours the position set by cmd_position", "[uci][perft]")
+{
+    UciHandlerTestFixture fix;
+    fix.position("position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+
+    std::string output;
+    {
+        CoutRedirect redirect;
+        fix.perft("perft 3");
+        output = redirect.str();
+    }
+
+    REQUIRE(parse_divide(output).size() == 48);
+    REQUIRE(divide_total(output) == 97862);
+}
+
+TEST_CASE("cmd_perft: malformed depth is ignored, not guessed at", "[uci][perft]")
+{
+    UciHandlerTestFixture fix;
+    fix.position("position startpos");
+
+    for (const auto* line : {"perft", "perft abc", "perft -1", "perft 11", "go perft"}) {
+        std::string output;
+        {
+            CoutRedirect redirect;
+            fix.perft(line);
+            output = redirect.str();
+        }
+        INFO("input: " << line);
+        REQUIRE(parse_divide(output).empty());
+    }
+}
+
+TEST_CASE("cmd_perft: leaves the board unchanged", "[uci][perft]")
+{
+    UciHandlerTestFixture fix;
+    fix.position("position startpos");
+
+    {
+        CoutRedirect redirect;
+        fix.perft("perft 3");
+    }
+
+    REQUIRE(fix.board().GetCurrentColor() == WHITE);
+
+    std::string output;
+    {
+        CoutRedirect redirect;
+        fix.perft("perft 1");
+        output = redirect.str();
+    }
+    REQUIRE(divide_total(output) == 20);
+}
+
+// run() is where "go perft" could be swallowed by the "go" branch, and the
+// tests above bypass it by calling cmd_perft directly. This one drives the real
+// command loop over stdin, which is what an external harness does.
+class CinRedirect
+{
+public:
+    explicit CinRedirect(std::string input)
+        : buffer_(std::move(input)), old_(std::cin.rdbuf(buffer_.rdbuf())) {}
+    ~CinRedirect() { std::cin.rdbuf(old_); }
+
+    CinRedirect(const CinRedirect&) = delete;
+    CinRedirect& operator=(const CinRedirect&) = delete;
+
+private:
+    std::istringstream buffer_;
+    std::streambuf* old_;
+};
+
+TEST_CASE("run(): dispatches 'go perft' to perft, not to the search", "[uci][perft]")
+{
+    UciHandler handler;
+
+    std::string output;
+    {
+        CinRedirect input("position startpos\ngo perft 2\nquit\n");
+        CoutRedirect redirect;
+        handler.run();
+        output = redirect.str();
+    }
+
+    REQUIRE(divide_total(output) == 400);
+    REQUIRE(output.find("bestmove") == std::string::npos);
+}
+
+TEST_CASE("run(): a bare 'go' still searches after the perft branch was added", "[uci][perft]")
+{
+    UciHandler handler;
+
+    std::string output;
+    {
+        CinRedirect input("position startpos\ngo depth 3\nquit\n");
+        CoutRedirect redirect;
+        handler.run();
+        output = redirect.str();
+    }
+
+    REQUIRE(output.find("bestmove") != std::string::npos);
+    REQUIRE(parse_divide(output).empty());
 }
