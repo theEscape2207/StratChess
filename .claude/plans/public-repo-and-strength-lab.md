@@ -204,6 +204,30 @@ Finding 3. Replace or supplement `openings-250.pgn` with a large, balanced book 
 **Value delivered locally, before any CI lab exists:** every existing 500-game batch stops
 exhausting the book at exactly its own size, and any batch above 500 games becomes meaningful.
 
+#### M3 outcome (2026-08-05)
+
+Done, with one deliberate departure: **the large book is not committed.**
+
+The plan said to commit one and to check redistribution rights first. Those two pull against each
+other now that the repository is public — a large book is third-party data of varying provenance, and
+`Docs/EloLog.md` shows even the committed 250 openings are a cut of `8moves_v3.pgn`. Rather than
+adjudicate that, the book follows the convention this repository already has for external test
+assets: fastchess and the reference binaries live in `EngineTesting\` beside the checkout, never in
+git. A book is the same kind of asset.
+
+So `Run-EloMatch.ps1` gained `-Book <path>`, auto-resolving to
+`EngineTesting\openings-large.pgn|.epd` when present and falling back to the committed smoke book,
+with the fastchess `format=` flag following the extension.
+
+The more valuable half turned out to be the **exhaustion warning**. The original problem was that
+book exhaustion is invisible: a 5,000-game SPRT silently replays 250 openings twenty times and
+reports a tighter error bar than it earned. Every run now prints the book and its opening count and
+warns when `-Games` exceeds the 2N distinct games available. That makes the constraint self-reporting
+rather than something a reader of this plan has to remember.
+
+**Consequence to accept:** local measurement does not improve until someone drops a book into
+`EngineTesting\`. The warning tells you when that matters, and until then behaviour is unchanged.
+
 ### M4 — Strength lab, single job, calibrated (~1-2 sessions)
 
 New `.github/workflows/strength.yml`, `workflow_dispatch` only. One runner, one job.

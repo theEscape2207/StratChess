@@ -55,6 +55,15 @@ param(
     # -Sprt this is only an upper bound, not a resolution target; see
     # "Adjusting -Games" in Docs/EloLog.md before changing it.
     [int]$Games = 500,
+    # Opening book. Empty auto-resolves: a large book in EngineTesting\ if one is
+    # present, otherwise the committed 250-position smoke book. Accepts .pgn or
+    # .epd -- the format flag passed to fastchess follows the extension.
+    #
+    # Large books are NOT committed: they are third-party data of varying
+    # provenance, and this repository is public. They live beside the checkout
+    # with fastchess and the reference binaries, which is where every other
+    # external test asset already lives.
+    [string]$Book = '',
     # fastchess time control: seconds+increment.
     [string]$Tc = '10+0.1',
     # Default tuned for the current dev machine (12 physical cores / 24 logical
@@ -160,7 +169,32 @@ $mainRoot      = (git -C $RepoRoot rev-parse --path-format=absolute --git-common
 $DepsRoot      = Split-Path $mainRoot -Parent
 $EngineTesting = Join-Path $DepsRoot 'EngineTesting'
 $fastchess     = Join-Path $EngineTesting 'fastchess.exe'
-$book          = Join-Path $RepoRoot 'Tests\openings\openings-250.pgn'
+$smokeBook     = Join-Path $RepoRoot 'Tests\openings\openings-250.pgn'
+
+# --- Resolve the opening book ------------------------------------------------
+# Explicit -Book wins. Otherwise prefer a large book dropped into EngineTesting\
+# (any openings-large.* file), falling back to the committed smoke book.
+if ($Book -ne '') {
+    $book = $Book
+} else {
+    $largeBook = Get-ChildItem -Path $EngineTesting -Filter 'openings-large.*' -File `
+                     -ErrorAction SilentlyContinue |
+                 Sort-Object Name | Select-Object -First 1
+    $book = if ($largeBook) { $largeBook.FullName } else { $smokeBook }
+}
+
+$bookFormat = if ([System.IO.Path]::GetExtension($book).ToLowerInvariant() -eq '.epd') { 'epd' }
+              else { 'pgn' }
+
+# Counts openings so the run can say whether it will exhaust the book. A PGN
+# opening is one [Event tag; an EPD opening is one non-blank line.
+function Get-OpeningCount([string]$path, [string]$format) {
+    if (-not (Test-Path $path)) { return 0 }
+    if ($format -eq 'epd') {
+        return @(Get-Content $path | Where-Object { $_.Trim() -ne '' }).Count
+    }
+    return @(Select-String -Path $path -Pattern '^\[Event' -AllMatches).Count
+}
 $refExe        = Join-Path $EngineTesting "StratChess-$ReferenceTag.exe"
 if ($ReferenceExe -ne '') { $refExe = $ReferenceExe }
 
@@ -220,8 +254,25 @@ if ($ResumeDir -ne '') {
     Pop-Location
 } else {
     if (-not (Test-Path $book)) {
-        Write-Host "MISSING: $book (committed opening book — repo checkout incomplete?)" -ForegroundColor Red
+        if ($book -eq $smokeBook) {
+            Write-Host "MISSING: $book (committed opening book — repo checkout incomplete?)" -ForegroundColor Red
+        } else {
+            Write-Host "MISSING: $book" -ForegroundColor Red
+            Write-Host 'Drop a book at EngineTesting\openings-large.pgn (or .epd), or pass -Book <path>.'
+        }
         exit 1
+    }
+
+    # An opening pair is two games, so N openings yield 2N distinct games. Past
+    # that fastchess wraps and replays them, which narrows the error bars of a
+    # result without adding information to it.
+    $openingCount = Get-OpeningCount $book $bookFormat
+    $distinctGames = 2 * $openingCount
+    Write-Host ("Opening book : {0} ({1} openings, format={2})" -f $book, $openingCount, $bookFormat)
+    if ($openingCount -gt 0 -and $Games -gt $distinctGames) {
+        Write-Host ("WARNING: {0} games requested but the book yields only {1} distinct games." -f $Games, $distinctGames) -ForegroundColor Yellow
+        Write-Host '         Openings will repeat; the extra games tighten the error bar without adding information.' -ForegroundColor Yellow
+        Write-Host '         Use a larger book (EngineTesting\openings-large.pgn|.epd) for batches this size.' -ForegroundColor Yellow
     }
     if (-not (Test-Path $CandidateExe)) {
         Write-Host "MISSING candidate exe: $CandidateExe" -ForegroundColor Red
@@ -339,7 +390,7 @@ if ($ResumeDir -ne '') {
         -rounds $rounds -repeat -concurrency $Concurrency -recover `
         -autosaveinterval $AutosaveInterval `
         @sprtArgs `
-        -openings "file=$book" format=pgn order=sequential `
+        -openings "file=$book" format=$bookFormat order=sequential `
         -draw movenumber=40 movecount=8 score=10 `
         -resign movecount=4 score=800 `
         -pgnout "file=$pgnOut" notation=san `

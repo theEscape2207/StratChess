@@ -22,6 +22,28 @@ Newest first.
 
 ---
 
+## 2026-08-05 — Opening book is selectable, and book exhaustion is now visible
+
+M3 of `.claude/plans/public-repo-and-strength-lab.md`.
+
+### Added
+
+- **`-Book <path>`** on `Run-EloMatch.ps1`. Empty auto-resolves: `EngineTesting\openings-large.pgn`
+  or `.epd` if present, else the committed 250-opening smoke book. The fastchess `format=` flag
+  follows the file extension.
+- **An exhaustion warning.** Every run now prints the book and its opening count, and warns when
+  `-Games` exceeds the 2N distinct games N openings can produce. 500 games consumes the committed
+  book exactly; 501 warns.
+
+### Notes
+
+Large books are deliberately **not committed**: third-party data of varying provenance in a public
+repository. They live in `EngineTesting\` with fastchess and the reference binaries, which is where
+every other external test asset already lives. `Docs/EloLog.md` records how to add one and why rows
+measured on different books are not directly comparable.
+
+---
+
 ## 2026-08-04 — UCI `go perft` command
 
 ### Added
