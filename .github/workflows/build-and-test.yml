@@ -14,8 +14,8 @@ jobs:
   # and .claude/plans/validation-change-tiers.md.
   #
   # Needs fetch-depth: 0 because the default shallow single-commit checkout makes
-  # 'git diff origin/main...HEAD' impossible. This is why classification is its own
-  # small job: build-and-test keeps its cheap shallow checkout.
+  # the base-ref diff impossible. This is why classification is its own small job:
+  # build-and-test keeps its cheap shallow checkout.
   classify:
     runs-on: ubuntu-latest
     defaults:
@@ -31,8 +31,24 @@ jobs:
 
       - name: Classify changed files
         id: tier
+        env:
+          # A pull request compares against origin/main. A push cannot: on a push
+          # to main, origin/main IS HEAD, so that diff is empty -- and an empty
+          # diff correctly returns the weakest tier, which made every merge
+          # classify as Docs no matter what it contained (issue #185).
+          #
+          # github.event.before is the tip main held before the push. For this
+          # repo's shape -- one merge commit per push -- that is the previous main
+          # tip, and unlike HEAD^ it stays correct if a push ever carries several
+          # commits.
+          #
+          # If the ref is unreachable (force push, or the all-zeros SHA on branch
+          # creation) the diff fails and Get-ChangeTier.ps1 returns Engine tier.
+          # That fail-closed path is deliberate: do not add a fallback that
+          # guesses something cheaper.
+          BASE_REF: ${{ github.event_name == 'push' && github.event.before || 'origin/main' }}
         run: |
-          $c = & .\StratChessEvolved\Scripts\Get-ChangeTier.ps1 -BaseRef origin/main
+          $c = & .\StratChessEvolved\Scripts\Get-ChangeTier.ps1 -BaseRef $env:BASE_REF
           Write-Host "Change tier: $($c.Tier) (decided by: $($c.DecidingFile))"
           Write-Host "Changed files:"
           $c.ChangedFiles | ForEach-Object { Write-Host "  $_" }
@@ -41,7 +57,10 @@ jobs:
 
   build-linux:
     needs: classify
-    if: github.event_name == 'push' || needs.classify.outputs.is_full == 'true'
+    # Tier-gated on both events now that classify can read a push (#185). A Docs
+    # or Tooling merge to main runs nothing, because by definition nothing it
+    # contains can affect the build.
+    if: needs.classify.outputs.is_full == 'true'
     # Pinned to the exact image (not the moving ubuntu-latest label) — the code
     # needs GCC >= 13 for std::format, matching the Windows job's pinning approach.
     runs-on: ubuntu-24.04
@@ -102,7 +121,7 @@ jobs:
     # Same condition as build-linux, deliberately shared rather than narrowed to
     # the Engine tier: a Build-tier change to CMakeLists.txt is exactly what can
     # break the sanitizer wiring, and two conditions would eventually drift.
-    if: github.event_name == 'push' || needs.classify.outputs.is_full == 'true'
+    if: needs.classify.outputs.is_full == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -150,10 +169,21 @@ jobs:
     # Two of the three clang-cl flag spellings fail SILENTLY when wrong (#84), so
     # the Linux leg cannot stand in for it.
     #
-    # Apply the label to any PR touching StratEngine/**, the CMake files, or this
-    # workflow. Validate-PrePR.ps1 covers the same ground locally and is a strict
-    # superset of this job, so what remains uncovered is a clean-checkout-only
-    # failure -- something that passes locally because of local state.
+    # Apply the label when the diff can change WHAT THE WINDOWS BUILD PRODUCES:
+    # CMakePresets.json, build.ps1, Compat.h, the clang-cl branch of
+    # strat_configure_target, or any _MSC_VER/_WIN32 conditional. Ordinary engine
+    # changes do not qualify -- Validate-PrePR.ps1 already builds them with
+    # clang-cl locally and is a strict superset of this job, build-linux covers
+    # the clean checkout, and sanitize-linux covers the fault class MSVC's debug
+    # STL might otherwise have caught (#187).
+    #
+    # That narrowing assumes Validate-PrePR.ps1 actually ran. A PR pushed around
+    # New-PullRequest.ps1 -- the PR #148 failure mode -- has no local Windows
+    # build behind it, so label it regardless of what it touches.
+    #
+    # What remains uniquely uncovered without the label: Windows-specific DEBUG.
+    # Validate-PrePR.ps1 never passes -Config, so it takes build.ps1's Release
+    # default, while this job runs a Release+Debug matrix.
     #
     # Consequence of dropping the push trigger: Actions caches are branch-scoped
     # and only default-branch caches are inherited, so with no run on main the
@@ -240,10 +270,12 @@ jobs:
   # and has to be read by a human. The single-check shape is kept deliberately so
   # that turning protection on later is a settings change and not a rewrite.
   #
-  # Linux is the substantive gate: it runs on every PR. Windows being SKIPPED is
-  # normal now that it is label-gated, but a Windows job that actually ran and
-  # failed is still reported as a failure -- a clang-cl-only regression must not
-  # pass unnoticed.
+  # Linux is the substantive gate: it runs for every Build- and Engine-tier
+  # change, on pull requests and on merges alike. Docs and Tooling changes skip
+  # it on both, which is a pass, not a gap. Windows being SKIPPED is normal now
+  # that it is label-gated, but a Windows job that actually ran and failed is
+  # still reported as a failure -- a clang-cl-only regression must not pass
+  # unnoticed.
   build-and-test-result:
     needs: [classify, build-linux, sanitize-linux, build-and-test]
     if: always()
@@ -276,7 +308,7 @@ jobs:
 
           case "${{ needs.build-and-test.result }}" in
             success) echo "Windows build and tests passed." ;;
-            skipped) echo "Windows skipped: runs on demand only, via the 'windows-ci' label. Label any PR touching StratEngine/**, the CMake files, or this workflow." ;;
+            skipped) echo "Windows skipped: runs on demand only, via the 'windows-ci' label. Label a PR that can change what the Windows build produces -- CMakePresets.json, build.ps1, Compat.h, the clang-cl branch of strat_configure_target, or any _MSC_VER/_WIN32 conditional." ;;
             *)       echo "Windows build and tests did not pass."; exit 1 ;;
           esac
 

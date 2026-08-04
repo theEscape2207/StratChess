@@ -94,23 +94,43 @@ and re-run with `-Force`.
 
 ## CI
 
-`.github/workflows/build-and-test.yml` runs an independent build + fast-test check on **Linux**.
-On a PR it is tier-gated by `classify` — Build and Engine changes only, so a Docs or Tooling PR
-skips it — and it runs unconditionally on every push to `main`. The push trigger both validates
-post-merge and warms
-the deps cache on the default branch — `actions/cache` scopes per-branch, so a PR from a differently
-named branch cannot restore a cache only ever saved under another branch.
+`.github/workflows/build-and-test.yml` runs an independent build + fast-test check on **Linux**,
+tier-gated by `classify` on pull requests and on merges alike: Build and Engine changes only, so a
+Docs or Tooling change skips it either way.
+
+**How `classify` reads each event.** A pull request diffs against `origin/main`. A push cannot —
+on a push to `main`, `origin/main` *is* `HEAD`, so the diff is empty and every merge classified as
+Docs regardless of content (#185). Pushes therefore diff against `github.event.before`, the tip
+`main` held before the push. If that ref is unreachable — a force push, or the all-zeros SHA on
+branch creation — `Get-ChangeTier.ps1` fails closed to Engine tier. Leave that path alone.
+
+Consequence for the deps cache: `main` now only builds on Build/Engine merges, and `actions/cache`
+is branch-scoped so a PR can only restore a cache saved there. This is safe because the key is static
+and changes only on a dependency bump, which is a `CMakeLists.txt` edit and so still Build tier — and
+because eviction is seven days without *access*, which every PR restore refreshes.
 
 **Windows runs on demand only**, via the `windows-ci` label on a PR. It bills at 2x and was roughly
-three quarters of this repo's Actions spend while it ran on every merge. Apply the label to any PR
-touching `StratEngine/**`, the CMake files, or the workflow itself — Windows is the only job that
-compiles the clang-cl branch of `strat_configure_target`, the `_MSC_VER` sites in `Compat.h` and
-friends, and the MSVC standard library, and the only one that builds what ships. Two of the three
-clang-cl flag spellings fail *silently* when wrong (#84), so Linux cannot stand in for it.
-`Validate-PrePR.ps1` covers the same ground locally and is a strict superset.
+three quarters of this repo's Actions spend while it ran on every merge. Apply the label when the
+diff can change **what the Windows build produces**: `CMakePresets.json`, `build.ps1`, `Compat.h`,
+the clang-cl branch of `strat_configure_target`, or any `_MSC_VER`/`_WIN32` conditional. Two of the
+three clang-cl flag spellings fail *silently* when wrong (#84), so Linux cannot stand in for those.
+
+Ordinary engine changes do **not** need it. `Validate-PrePR.ps1` builds them with clang-cl locally
+and is a strict superset of the job, `build-linux` covers the clean checkout from the same
+`CONFIGURE_DEPENDS` glob, and `sanitize-linux` covers the fault class MSVC's debug STL might
+otherwise have caught. That reasoning holds only if the local script actually ran — a PR pushed
+around `New-PullRequest.ps1` (the PR #148 failure mode) should be labelled regardless.
+
+What stays uniquely uncovered when the label is absent: **Windows-specific Debug**.
+`Validate-PrePR.ps1` never passes `-Config`, so it takes `build.ps1`'s Release default, while the
+Windows job runs a Release+Debug matrix. Closing that locally instead is the open option in #187.
+
+The label itself did not exist in the repository until 2026-08-04 — between #182 introducing the gate
+and then, it referenced something nobody could apply. Nothing was missed (the only merge in that
+window would not have qualified), but a gate whose label is absent fails open and silently.
 
 **`sanitize-linux`** builds the test binary with `-fsanitize=address,undefined` and runs the fast
-tier. It shares `build-linux`'s trigger exactly — Build/Engine tiers on a PR, always on push —
+tier. It shares `build-linux`'s trigger exactly — Build and Engine tiers, on PRs and merges alike —
 deliberately, rather than being narrowed to Engine: a Build-tier change to `CMakeLists.txt` is
 precisely what can break the sanitizer wiring, and two conditions would eventually drift apart.
 It is the only job that can catch a *silent* fault: an
