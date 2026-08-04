@@ -94,12 +94,18 @@ succeeds but `Validate-PrePR.ps1` never runs, leaving the merged state covered o
 pre-commit hook (this happened on PR #148).
 
 CI runs an independent **Linux** build + fast tests, plus a `sanitize-linux` leg running the same
-tier under ASan+UBSan. Both are tier-gated: on a PR they run for **Build and Engine** changes only,
-so a Docs or Tooling PR skips them; both always run on push to `main`. Extended tiers and self-play
-stay local. Sanitizers are Linux-only — `STRAT_SANITIZE` is a configure error on MSVC and clang-cl.
-**Windows is label-gated** — add `windows-ci` to any PR touching
-`StratEngine/**`, the CMake files or the workflow itself, since it is the only job that builds what
-ships. CI is advisory: required status checks are unavailable on this plan, so a red run does not
+tier under ASan+UBSan. Both are tier-gated on PRs **and** on merges: they run for **Build and
+Engine** changes only, so a Docs or Tooling change skips them either way. Extended tiers and
+self-play stay local. Sanitizers are Linux-only — `STRAT_SANITIZE` is a configure error on MSVC and
+clang-cl.
+
+**Windows is label-gated** — add `windows-ci` when the diff can change *what the Windows build
+produces*: `CMakePresets.json`, `build.ps1`, `Compat.h`, the clang-cl branch of
+`strat_configure_target`, or any `_MSC_VER`/`_WIN32` conditional. Ordinary engine changes do not need
+it — `Validate-PrePR.ps1` builds them with clang-cl locally and is a strict superset of the job. That
+holds only if it actually ran: label a PR pushed around `New-PullRequest.ps1` regardless.
+
+CI is advisory: required status checks are unavailable on this plan, so a red run does not
 block a merge — read it. Details: `Docs/Workflow.md`.
 
 ## Engine Summary
