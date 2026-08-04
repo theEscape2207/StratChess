@@ -22,6 +22,37 @@ Newest first.
 
 ---
 
+## 2026-08-04 — Tier-gate the push trigger; narrow the `windows-ci` rule (issues #185, #187)
+
+### Fixed
+- **`classify` can now read a push.** It diffed `origin/main...HEAD`, which on a push to `main` is
+  empty — so every merge classified as Docs regardless of content, and each job carried
+  `github.event_name == 'push' ||` to compensate, running full Linux validation on docs-only merges.
+  Pushes now diff against `github.event.before`. Chosen over `HEAD^` because it stays correct when a
+  push carries several commits; identical for this repo's one-merge-commit-per-push shape.
+  An unreachable ref still fails closed to Engine tier.
+- `build-linux` and `sanitize-linux` are tier-gated on both events. The Windows job's condition reads
+  `github.event.pull_request.labels`, already null on a push, and is unchanged.
+
+### Changed
+- **The `windows-ci` rule narrowed** from "any PR touching `StratEngine/**`, the CMake files or the
+  workflow" to diffs that can change *what the Windows build produces* — `CMakePresets.json`,
+  `build.ps1`, `Compat.h`, the clang-cl branch of `strat_configure_target`, or any `_MSC_VER`/`_WIN32`
+  conditional. The old rule covered essentially all engine work; `Validate-PrePR.ps1` is a documented
+  strict superset of the job, `build-linux` supplies the clean checkout, and `sanitize-linux` (#186)
+  narrowed the remainder again. The narrowing assumes the local script ran — a PR pushed around
+  `New-PullRequest.ps1` should still be labelled.
+
+### Notes
+- Residual unique Windows coverage is **Windows-specific Debug**: `Validate-PrePR.ps1` never passes
+  `-Config`, so it builds Release only, while the Windows job runs Release+Debug. Closing that
+  locally instead remains open in #187.
+- The `windows-ci` label did not exist in the repository until 2026-08-04. Nothing was missed — the
+  only merge between #182 and then would not have qualified — but a label gate whose label is absent
+  fails open silently, so it is recorded here.
+
+---
+
 ## 2026-08-04 — ASan/UBSan in CI (issue #179)
 
 ### Added
