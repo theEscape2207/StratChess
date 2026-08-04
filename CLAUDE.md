@@ -99,14 +99,14 @@ Engine** changes only, so a Docs or Tooling change skips them either way. Extend
 self-play stay local. Sanitizers are Linux-only — `STRAT_SANITIZE` is a configure error on MSVC and
 clang-cl.
 
-**Windows is label-gated** — add `windows-ci` when the diff can change *what the Windows build
-produces*: `CMakePresets.json`, `build.ps1`, `Compat.h`, the clang-cl branch of
-`strat_configure_target`, or any `_MSC_VER`/`_WIN32` conditional. Ordinary engine changes do not need
-it — `Validate-PrePR.ps1` builds them with clang-cl locally and is a strict superset of the job. That
-holds only if it actually ran: label a PR pushed around `New-PullRequest.ps1` regardless.
+**Windows runs on the same trigger** — no label, no gate. It is the only job that builds what ships
+(clang-cl, the `_MSC_VER`/`_WIN32` sites, MSVC's STL, the ThinLTO link). Do not assume
+`Validate-PrePR.ps1` covers it: that script never passes `-Config`, so it builds Release only and
+never compiles Debug at all.
 
-CI is advisory: required status checks are unavailable on this plan, so a red run does not
-block a merge — read it. Details: `Docs/Workflow.md`.
+CI is a **gate** — `build-and-test-result` is a required check on `main` and a red run blocks the
+merge. A SKIPPED leg reports success on purpose, so Docs and Tooling PRs are not blocked by jobs that
+correctly never ran. Details: `Docs/Workflow.md`.
 
 ## Engine Summary
 IDS + PVS + quiescence; Zobrist-hashed TT; bitboards with PEXT magic sliding attacks; killers
