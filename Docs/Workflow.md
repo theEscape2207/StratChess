@@ -119,9 +119,11 @@ that builds what ships — the clang-cl branch of `strat_configure_target`, the 
 only — Windows Debug (MSVC's checked iterators, `assert()` live on the shipping compiler) is compiled
 nowhere else, locally or in CI.
 
-**`sanitize-linux`** builds the test binary with `-fsanitize=address,undefined` and runs the fast
-tier. It shares `build-linux`'s trigger exactly — Build and Engine tiers, on PRs and merges alike —
-deliberately, rather than being narrowed to Engine: a Build-tier change to `CMakeLists.txt` is
+**`sanitize-linux`** builds the test binary with `-fsanitize=address,undefined` and
+`STRAT_STDLIB_DEBUG=ON` — libstdc++ debug mode, i.e. checked iterators and container preconditions,
+which `_GLIBCXX_ASSERTIONS` (bounds only) misses and MSVC covers with `_ITERATOR_DEBUG_LEVEL=2` — and
+runs the fast tier. It shares `build-linux`'s trigger exactly — Build and Engine tiers, on PRs and
+merges alike — deliberately, rather than being narrowed to Engine: a Build-tier change to `CMakeLists.txt` is
 precisely what can break the sanitizer wiring, and two conditions would eventually drift apart.
 It is the only job that can catch a *silent* fault: an
 out-of-bounds read of the magic tables, a PST, a killer/history table or the mailbox does not crash,
@@ -133,6 +135,25 @@ Windows build look instrumented when it is not.
 **CI is a gate.** `build-and-test-result` is a required check on `main`, so a red run blocks the
 merge. A SKIPPED leg reports success deliberately: a Docs-tier PR runs none of the build jobs, and a
 required check that never ran would block it forever.
+
+**`nightly.yml`** runs at 03:00 UTC and on `workflow_dispatch`, and gates nothing — it answers "is
+`main` still correct?", not "may this land?".
+
+| Job | What it adds over the per-PR gate |
+|---|---|
+| `deep-perft` | `perft(7)` from the start position (3,195,901,860 nodes) and `perft(6)` from Kiwipete (8,031,647,685), each compared against the known count. The fast tier stops at depth 4 |
+| `extended-tests` | The `[slow]` tier, Release and Debug |
+| `sanitize-extended` | That tier under ASan+UBSan plus `_GLIBCXX_DEBUG` |
+| `tactical-stability` | `tactical stability 100`, against the local run's 10 |
+
+`perft run <depth> [fen]` prints a count but does not verify it, so the workflow does the comparison.
+Measured at ~50 Mnps locally, the two deep perfts are ~1 and ~3 minutes, which is why neither is
+sharded across a matrix.
+
+**The `[slow]` tier is thin.** The fast tier is 250 test cases; everything is 253 — two deep tactical
+searches and the null-move guards. `extended-tests` and `sanitize-extended` are worth their (free)
+minutes, but a green run there is weak evidence, and "extended tier" oversells what exists. Growing
+it is #156's territory, not the schedule's.
 
 `Check starting FEN` is path-filtered to `StratChessEvolved/game_settings.json` and does not run
 otherwise.

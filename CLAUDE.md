@@ -95,9 +95,15 @@ pre-commit hook (this happened on PR #148).
 
 CI runs an independent **Linux** build + fast tests, plus a `sanitize-linux` leg running the same
 tier under ASan+UBSan. Both are tier-gated on PRs **and** on merges: they run for **Build and
-Engine** changes only, so a Docs or Tooling change skips them either way. Extended tiers and
-self-play stay local. Sanitizers are Linux-only — `STRAT_SANITIZE` is a configure error on MSVC and
-clang-cl.
+Engine** changes only, so a Docs or Tooling change skips them either way. Self-play stays local.
+Sanitizers are Linux-only — `STRAT_SANITIZE` is a configure error on MSVC and clang-cl, as is
+`STRAT_STDLIB_DEBUG`.
+
+A **nightly** workflow (`nightly.yml`, 03:00 UTC + `workflow_dispatch`) runs what is too slow to
+gate: `perft(7)` from the start position and `perft(6)` from Kiwipete against known node counts, the
+`[slow]` tier in both configs and again instrumented, and `tactical stability 100`. It cannot block a
+merge — read it. Note `[slow]` is only three test cases (253 against the fast tier's 250), so it
+promises more than it delivers.
 
 **Windows runs on the same trigger as Linux.** It is the only job that builds what ships (clang-cl,
 the `_MSC_VER`/`_WIN32` sites, MSVC's STL, the ThinLTO link). `Validate-PrePR.ps1` does not cover it:

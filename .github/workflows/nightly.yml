@@ -1,0 +1,185 @@
+name: Nightly
+
+# Everything too slow for the per-PR gate but cheap enough to run daily now that
+# public standard runners are free. Nothing here blocks a merge -- these jobs
+# answer "is main still correct?", not "may this land?".
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+jobs:
+  # Perft is self-checking: a corrupted make/unmake or a mailbox/bitboard desync
+  # shows up as a wrong node count without any assertion having to catch it. The
+  # fast tier stops at depth 4, which these depths dwarf.
+  #
+  # Measured locally at ~50 Mnps: startpos depth 7 is ~63 s and Kiwipete depth 6
+  # ~2.8 min, so both fit one job even several times slower on a runner. They are
+  # separate matrix legs to report independently, not to make them fit.
+  deep-perft:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: startpos-depth-7
+            depth: 7
+            fen: ""
+            expected: 3195901860
+          - name: kiwipete-depth-6
+            depth: 6
+            fen: "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
+            expected: 8031647685
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Cache FetchContent dependencies
+        uses: actions/cache@v6
+        with:
+          path: build/_deps
+          key: cmake-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --target StratChessEvolved --parallel
+
+      # `perft run` prints the count but does not verify it, so the comparison
+      # against the known-correct value happens here.
+      - name: Perft ${{ matrix.name }}
+        run: |
+          set -o pipefail
+          ./build/StratChessEvolved perft run ${{ matrix.depth }} ${{ matrix.fen && format('"{0}"', matrix.fen) || '' }} | tee out.txt
+          actual=$(grep -oP '^Nodes:\s*\K[0-9]+' out.txt)
+          echo "expected=${{ matrix.expected }} actual=$actual"
+          test "$actual" = "${{ matrix.expected }}"
+
+  # The [slow] tier, which is three test cases: two deep tactical searches and the
+  # null-move guards. 250 test cases in the fast tier against 253 here -- it is a
+  # thin tier, not a second suite, so treat a green run as weak evidence.
+  # Self-contained: no test reads anything from Tests/.
+  extended-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [Release, Debug]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Cache FetchContent dependencies
+        uses: actions/cache@v6
+        with:
+          path: build/_deps
+          key: cmake-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.config }}
+
+      - name: Build
+        run: cmake --build build --target StratChessTests --parallel
+
+      - name: Run every test including [slow]
+        run: ./build/StratChessTests
+
+  # The same instrumentation the per-PR sanitize-linux job runs -- ASan+UBSan plus
+  # libstdc++ debug mode -- extended to the [slow] tier it excludes.
+  sanitize-extended:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Cache FetchContent dependencies
+        uses: actions/cache@v6
+        with:
+          path: build/_deps
+          key: cmake-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DSTRAT_SANITIZE=address,undefined
+          -DSTRAT_STDLIB_DEBUG=ON
+
+      - name: Build
+        run: cmake --build build --target StratChessTests --parallel
+
+      - name: Run every test including [slow]
+        run: ./build/StratChessTests
+
+  # Ten times the local run's repetitions. Stability mode re-runs the suite and
+  # fails on any position whose pass/fail flips, which is the cheap detector for
+  # nondeterminism in a search that shares a TT across threads.
+  #
+  # Must run from Tests/: the runner resolves tactical_test_cases.json relative to
+  # the working directory.
+  tactical-stability:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Cache FetchContent dependencies
+        uses: actions/cache@v6
+        with:
+          path: build/_deps
+          key: cmake-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --target StratChessEvolved --parallel
+
+      # spdlog fails silently when its log directory is missing.
+      - name: Tactical stability x100
+        working-directory: Tests
+        run: |
+          mkdir -p logs
+          ../build/StratChessEvolved tactical stability 100
+
+  nightly-result:
+    needs: [deep-perft, extended-tests, sanitize-extended, tactical-stability]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report
+        shell: bash
+        run: |
+          echo "deep perft:        ${{ needs.deep-perft.result }}"
+          echo "extended tests:    ${{ needs.extended-tests.result }}"
+          echo "sanitize+stdlib:   ${{ needs.sanitize-extended.result }}"
+          echo "tactical x100:     ${{ needs.tactical-stability.result }}"
+
+          fail=0
+          for r in "${{ needs.deep-perft.result }}" \
+                   "${{ needs.extended-tests.result }}" \
+                   "${{ needs.sanitize-extended.result }}" \
+                   "${{ needs.tactical-stability.result }}"; do
+            case "$r" in
+              success) ;;
+              *) fail=1 ;;
+            esac
+          done
+          exit $fail

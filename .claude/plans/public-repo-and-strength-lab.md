@@ -170,6 +170,25 @@ New `.github/workflows/nightly.yml`: `schedule` (daily) + `workflow_dispatch`, o
 
 **Value delivered:** perft depth this project has never tested, plus the iterator-debug class.
 
+#### M1 and M2 outcome (2026-08-04)
+
+Both done. M1 in PR #193, M2 in `nightly.yml` + `STRAT_STDLIB_DEBUG`.
+
+Two corrections to what this milestone assumed:
+
+- **Deep perft does not need sharding.** Perft runs at ~50 Mnps, making `perft(7)` about a minute and
+  Kiwipete `perft(6)` about three. `perft run <depth> [fen]` already accepts a custom FEN, so no
+  engine change was needed either.
+- **`_GLIBCXX_DEBUG` runs on both jobs.** It was staged on the nightly first, since `sanitize-linux`
+  feeds a required check, then promoted once a local GCC 13.3.0 build (the runner's compiler, via
+  WSL) came back clean over the whole suite in 25 s.
+- **The `[slow]` tier is three test cases**, 253 against the fast tier's 250. This milestone's
+  "extended tier" jobs are therefore worth much less than the plan implied. The gap is test coverage
+  (#156), not schedule.
+
+Unbudgeted dividend from M1: public repositories get 4-core runners against the private tier's
+2-core, so Linux jobs got 20-40% faster with no configuration change.
+
 ### M3 — A real opening book (helps local measurement immediately, ~1 session)
 
 Finding 3. Replace or supplement `openings-250.pgn` with a large, balanced book — the UHO

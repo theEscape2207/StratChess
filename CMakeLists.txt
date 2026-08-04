@@ -115,6 +115,26 @@ if(STRAT_SANITIZE AND (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
             "reference invocation.")
 endif()
 
+# libstdc++ debug mode: checked iterators and container preconditions, which is
+# what MSVC gets from _ITERATOR_DEBUG_LEVEL=2 and _GLIBCXX_ASSERTIONS (bounds
+# only) does not cover.
+#
+# It changes the ABI of the standard containers, so every translation unit in the
+# link must agree. That holds here because all three dependencies are
+# populate-only FetchContent sources compiled into our own targets with these
+# flags -- do not switch them to prebuilt imported targets without revisiting it
+# (#166).
+option(STRAT_STDLIB_DEBUG
+       "Build against libstdc++ debug mode (_GLIBCXX_DEBUG). GCC/libstdc++ only." OFF)
+
+if(STRAT_STDLIB_DEBUG AND (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
+                           OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"))
+    message(FATAL_ERROR
+            "STRAT_STDLIB_DEBUG is libstdc++-only and does nothing against the MSVC "
+            "standard library, which enables the equivalent checks through "
+            "_ITERATOR_DEBUG_LEVEL in Debug builds already.")
+endif()
+
 function(strat_configure_target tgt)
     # Magic.h builds its 64 x 4096 sliding-attack tables at compile time, which
     # costs on the order of 10-26 million constexpr operations -- past every
@@ -163,6 +183,10 @@ function(strat_configure_target tgt)
         elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
             target_compile_options(${tgt} PRIVATE -fconstexpr-ops-limit=100000000)
         endif()
+    endif()
+
+    if(STRAT_STDLIB_DEBUG)
+        target_compile_definitions(${tgt} PRIVATE _GLIBCXX_DEBUG _GLIBCXX_DEBUG_PEDANTIC)
     endif()
 
     # Outside the chain above because the MSVC and clang-cl branches are already
