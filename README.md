@@ -59,6 +59,18 @@ StratChessEvolved.exe tactical stability N  # N consecutive runs, flags nondeter
 StratChessEvolved.exe eval <fen-file>       # batch-score positions
 ```
 
+In UCI mode the engine also accepts **`go perft <depth>`** (or `perft <depth>`), printing per-root-move
+node counts in the usual divide format:
+
+```
+position startpos
+go perft 3
+a2a4: 420
+...
+```
+
+That is what external move-generation validators drive.
+
 Per-player search limits, thread count and the starting position live in
 `StratChessEvolved/game_settings.json`.
 

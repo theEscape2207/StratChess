@@ -7,6 +7,7 @@
 #include "PlayerAI.h"
 #include "MoveFormatter.h"
 #include "Board.h"
+#include "Tests/Perft.h"
 #include "Eval.h"
 #include "defines.h"
 #include <spdlog/spdlog.h>
@@ -16,6 +17,10 @@
 static constexpr std::string_view STARTING_FEN =
     "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 static constexpr unsigned UCI_DEFAULT_DEPTH = 20;
+
+// Same bound the 'perft' CLI subcommand enforces, so a mistyped depth cannot
+// start a run that will never finish.
+static constexpr int PERFT_MAX_DEPTH = 10;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -317,6 +322,37 @@ void UciHandler::cmd_go(std::string_view line)
     });
 }
 
+// "perft <depth>" and "go perft <depth>": node counts per root move for the
+// current position, in the divide format every UCI perft harness parses --
+// "e2e4: 600" per move, then the total.
+//
+// stop_and_join() first: Perft::divide walks the tree with DoMove/UndoMove on
+// board_, which a running search is reading.
+void UciHandler::cmd_perft(std::string_view line)
+{
+    stop_and_join();
+
+    // Depth is the last whitespace-separated token; anything unparseable, out of
+    // range, or missing is ignored in keeping with the UCI convention for
+    // malformed input.
+    std::istringstream iss{std::string(line)};
+    std::string token;
+    int depth = -1;
+    while (iss >> token) {
+        if (token == "perft" || token == "go") continue;
+        try {
+            depth = std::stoi(token);
+        } catch (const std::exception&) {
+            return;
+        }
+    }
+
+    if (depth < 0 || depth > PERFT_MAX_DEPTH) return;
+
+    Testing::Perft::divide(board_, depth);
+    std::cout.flush();
+}
+
 void UciHandler::cmd_stop()
 {
     stop_and_join();
@@ -409,6 +445,10 @@ void UciHandler::run()
         else if (line == "ucinewgame")            { cmd_ucinewgame(); }
         else if (line == "eval")                  { cmd_eval(); }
         else if (line.starts_with("position"))    { cmd_position(line); }
+        // Both spellings, and both before the bare 'go': "go perft" would
+        // otherwise be parsed as a search whose unknown tokens are skipped.
+        else if (line.starts_with("go perft"))    { cmd_perft(line); }
+        else if (line.starts_with("perft"))       { cmd_perft(line); }
         else if (line.starts_with("go"))          { cmd_go(line); }
         else if (line.starts_with("setoption"))   { cmd_setoption(line); }
         else if (line == "stop")                  { cmd_stop(); }
