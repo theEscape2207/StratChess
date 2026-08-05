@@ -22,6 +22,27 @@ Newest first.
 
 ---
 
+## 2026-08-05 — `Get-BuildArtifact.ps1` fails on a missing binary by default
+
+### Changed
+
+- **`-RequireExists` became `-AllowMissing`**, inverting the default. A missing binary is now an
+  error at resolution instead of a path handed back to a caller that will fail later, or run
+  something stale from another checkout.
+- `Validate-PrePR.ps1` and `Run-EloMatch.ps1` pass `-AllowMissing`: both legitimately resolve the
+  path *before* it exists — Validate-PrePR builds in Step 1, and `Run-EloMatch -Resume` needs no
+  candidate build at all. Nothing else passed `-RequireExists`, so every other caller gains the check.
+
+### Notes
+
+Prompted by a session where a script pointed at the main checkout's stale binary and reported a fix
+as not working, and another where a returned-but-absent path failed several steps later with an
+unrelated-looking message. The script already resolved paths relative to its own location, which is
+the guard against the cross-worktree case; what it lacked was refusing to hand back a path to
+something that is not there.
+
+---
+
 ## 2026-08-05 — A rejected FEN no longer leaves the previous position on the board
 
 Closes #200.
