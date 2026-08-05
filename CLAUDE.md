@@ -220,9 +220,9 @@ design.
 
 ### After a PR merges
 
-`Remove-Worktree.ps1 -Name <task> -SyncMaster`. Treat cleanup as part of finishing the task, not an
-optional extra the user has to ask for. Squash-merges and locked directories need care —
-`Docs/Workflow.md`.
+`Remove-Worktree.ps1 -Name <task> -SyncMaster`, or `Remove-MergedBranches.ps1 -SyncMaster` when
+working in place. Treat cleanup as part of finishing the task, not an optional extra the user has to
+ask for. Squash-merges and locked directories need care — `Docs/Workflow.md`.
 
 ## Design Documents
 
