@@ -16,8 +16,8 @@
     EQUIVALENCE check — two builds of identical source must visit identical nodes
     and return identical best moves. A node-count difference means code
     generation changed search behaviour, and any nps comparison is then
-    meaningless. See Docs/EloLog.md and issue #161 for why node counts alone have
-    misled this project before.
+    meaningless. See Docs/EloMeasurement.md and issue #161 for why node counts
+    alone have misled this project before.
 
     Each position runs in a FRESH ENGINE PROCESS so no transposition-table state
     carries between them. Process startup is excluded from the measurement: the
