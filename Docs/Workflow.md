@@ -3,7 +3,33 @@
 Detail that `CLAUDE.md` points at rather than carries. `CLAUDE.md` holds the rules that change
 what you do; this file holds the background you consult when something is unexpected.
 
+## Find what you came for
+
+| I want to… | Read |
+|---|---|
+| know what validation my change needs | [Validation tiers](#validation-tiers) |
+| decide whether to dispatch `search-reviewer` | [When `search-reviewer` may be skipped](#when-search-reviewer-may-be-skipped) |
+| start a task, or clean one up afterwards | [Two ways to run a task](#two-ways-to-run-a-task) |
+| run an AI-vs-AI game by hand | [Self-play validation](#self-play-validation) |
+| know what CI runs, and when | [The per-PR gate](#the-per-pr-gate-build-and-testyml) |
+| understand a nightly failure | [Nightly](#nightly-nightlyyml) |
+| measure strength in CI | [Strength lab](#strength-lab-strengthyml) |
+| set up Visual Studio | [Working in Visual Studio](#working-in-visual-studio) |
+| understand a first-build or network failure | [Dependency cache](#dependency-cache) |
+| drive CMake directly | [Raw CMake invocation](#raw-cmake-invocation-fallback) |
+| clean up a worktree that will not go away | [Worktree removal gotchas](#worktree-removal-gotchas) |
+| reproduce an ASan/UBSan finding | [Reproducing a sanitizer finding](#reproducing-a-sanitizer-finding) |
+| find out where a log file came from | [Runtime output files](#runtime-output-files) |
+
+Three things are non-negotiable and are the reason most of this file exists:
+
+- **Every task forks fresh from `origin/main`.** Never from `master`, never from the previous task.
+- **A batch reporting a time loss, illegal move or disconnect is discarded, never reported.**
+- **Never measure an MSVC build against a clang-cl one.** The compiler gap alone is worth tens of Elo.
+
 ---
+
+# Part 1 — Doing the work
 
 ## Validation tiers
 
@@ -66,32 +92,6 @@ Never teach the script to suppress the reminder — escalating it is fine.
 
 ---
 
-## Worktree removal gotchas
-
-All three are handled by `Remove-Worktree.ps1`; they still apply when doing it by hand.
-
-- **Never remove a worktree from inside it.** git deregisters it but cannot rmdir its own cwd, so
-  the leaf survives with no `.git`, and the shell's cwd gets stuck pointing at it while git commands
-  silently resolve against the *outer* repo. If you hit this, use absolute paths / `git -C <path>`
-  and don't trust `pwd`.
-- **A locked directory is not a failure.** On Windows git often deletes every file but cannot rmdir
-  the folder while a process holds it open. Deregister and carry on to the branch deletion —
-  stopping there is how orphaned branches accumulate.
-- **Detached worktrees keep a sibling branch.** Claude Code auto-mode worktrees are detached with a
-  `claude/<dir-name>` branch parked at the same commit; removing the directory alone leaves that
-  branch behind. For a worktree created via `EnterWorktree`, `ExitWorktree(action:"remove")` is
-  cleanest.
-
-`Remove-Worktree.ps1` verifies the branch is an ancestor of `origin/main` before deleting anything,
-so a **squash-merged** PR is reported rather than deleted — its commits are not ancestors even
-though the content landed. Confirm with `git diff origin/main <branch> --stat` (empty means safe)
-and re-run with `-Force`.
-
-`Get-Worktrees.ps1` also reports directories under `.claude\worktrees` that are absent from
-`git worktree list` — the residue of a half-succeeded removal, which no other cleanup path can see.
-
----
-
 ## Two ways to run a task
 
 Both fork every task fresh from `origin/main`. They differ only in whether the task gets its own
@@ -135,7 +135,26 @@ sync: `master` drifts silently until someone notices it is ten commits behind.
 
 ---
 
-## CI
+## Self-play validation
+
+- AI vs AI is fully headless: `Game::Run()` terminates on checkmate/stalemate; no stdin needed.
+- **The `game` argument is required.** No argument (or `uci`) routes into `UciHandler::run()`, which
+  blocks on stdin and never runs `Game::Run()`.
+- Subprocess pattern: `Start-Process ..\build\windows-clang-cl\StratChessEvolved.exe -ArgumentList "game"
+  -PassThru -NoNewWindow -RedirectStandardOutput out.txt`, then `$proc.Kill()` after N seconds for a
+  timed test, or `$proc.WaitForExit(msTimeout)` for a game expected to finish naturally.
+- Verbose logging is on by default in game mode; each move logs `GetMove complete: move=…, depth=…,
+  time=…ms, nodes=…, stable=…` to stdout.
+- Use `"type": 6` for both sides to exercise AIPerplex. For changes to `PlayerAI`/`PlayerBase`,
+  also verify with `"type": 3` (AIAgent).
+- `game_settings.json` accepts C-style `/* */` comments via nlohmann, but PowerShell's
+  `ConvertFrom-Json` rejects them — write plain JSON when generating configs programmatically.
+
+---
+
+# Part 2 — What CI does
+
+## The per-PR gate (`build-and-test.yml`)
 
 `.github/workflows/build-and-test.yml` runs an independent build + fast-test check on **Linux**,
 tier-gated by `classify` on pull requests and on merges alike: Build and Engine changes only, so a
@@ -190,6 +209,24 @@ Windows build look instrumented when it is not.
 merge. A SKIPPED leg reports success deliberately: a Docs-tier PR runs none of the build jobs, and a
 required check that never ran would block it forever.
 
+Dependencies come from `FetchContent` at the versions pinned in `CMakeLists.txt`, cached as
+`build/_deps` and shared by both matrix legs. The job runs `build.ps1 tests` (not `all`): CI never
+runs `StratChessEvolved.exe`, and only the engine target carries `INTERPROCEDURAL_OPTIMIZATION` for
+Release, so building `all` would spend most of the wall time on an LTO link of an unused binary.
+
+Runner image is pinned to `windows-2025-vs2026`, not `windows-latest`, so the toolchain moves only
+when it is changed deliberately — see `.claude/plans/full-build-test-ci-github-actions.md`.
+
+`Check starting FEN` is path-filtered to `StratChessEvolved/game_settings.json` and does not run
+otherwise.
+
+Extended `[slow]` tests and self-play stay local-only (`Validate-PrePR.ps1`) — self-play's
+timeout-based nondeterminism is not worth the CI flakiness.
+
+---
+
+## Nightly (`nightly.yml`)
+
 **`nightly.yml`** runs at 03:00 UTC and on `workflow_dispatch`, and gates nothing — it answers "is
 `main` still correct?", not "may this land?".
 
@@ -216,6 +253,10 @@ searches and the null-move guards. `extended-tests` and `sanitize-extended` are 
 minutes, but a green run there is weak evidence, and "extended tier" oversells what exists. Growing
 it is #156's territory, not the schedule's.
 
+---
+
+## Strength lab (`strength.yml`)
+
 **`strength.yml`** is the CI strength lab: `workflow_dispatch` only, one job, candidate against a
 reference ref with both sides built from source in that job by the same GCC. It reports Elo to the
 job summary and uploads the PGN; it gates nothing and is triggered by nobody automatically.
@@ -237,39 +278,9 @@ same rule as `Run-EloMatch.ps1`, and on a shared runner a time loss most likely 
 oversubscribed, which invalidates the whole batch rather than the one game. Numbers land in
 `Docs/EloLog.md`'s **Linux ledger**, which must never be compared against the local clang-cl rows.
 
-`Check starting FEN` is path-filtered to `StratChessEvolved/game_settings.json` and does not run
-otherwise.
-
-Runner image is pinned to `windows-2025-vs2026`, not `windows-latest`, so the toolchain moves only
-when it is changed deliberately — see `.claude/plans/full-build-test-ci-github-actions.md`.
-
-Dependencies come from `FetchContent` at the versions pinned in `CMakeLists.txt`, cached as
-`build/_deps` and shared by both matrix legs. The job runs `build.ps1 tests` (not `all`): CI never
-runs `StratChessEvolved.exe`, and only the engine target carries `INTERPROCEDURAL_OPTIMIZATION` for
-Release, so building `all` would spend most of the wall time on an LTO link of an unused binary.
-
-Extended `[slow]` tests and self-play stay local-only (`Validate-PrePR.ps1`) — self-play's
-timeout-based nondeterminism is not worth the CI flakiness.
-
 ---
 
-## Runtime output files
-
-All paths are relative to the **working directory**, not the exe location. Run the exe from
-`StratChessEvolved/` so `game_settings.json` resolves and output lands in `StratChessEvolved/logs/`.
-
-| File | Created by | Context | Notes |
-|---|---|---|---|
-| `logs/multisink.txt` | `Logger::InitDefault()` (`Logger.cpp`) | Game mode only; **not** in tests | trace→file, info→console |
-| `logs/aiperplex.log` | `AIPerplex::SetVerboseLogging(true)` (`AIPerplex.cpp`) | Whenever AIPerplex is constructed | Level `off` (file stays empty) when verbose is disabled afterwards, which is what tests do |
-| `logs/SimplePerfStats.txt` | `Logger::EnsurePerfLogger()` (`Game.cpp` only) | Game mode only — `Game::Init()` is the sole creator | Written per AI move by `StopTimerAndAdjustVars()`, which only writes if a logger already exists; no file in tests, the tactical runner or UCI mode |
-| `logs/gamelist.txt` | `Game::CreateGameMoveFile()` (`Game.cpp`) | Game mode only | One line per move via `MoveFormatter::ToShort` |
-
-All four are gitignored. `logs/` does **not** need to pre-exist — spdlog's `file_helper::open` calls
-`os::create_dir()` on the parent path. spdlog *does* swallow a genuine `basic_file_sink` constructor
-failure silently, so a permissions problem produces no file and no error message.
-
----
+# Part 3 — The environment
 
 ## Working in Visual Studio
 
@@ -336,6 +347,34 @@ compiler rather than being silently dropped.
 
 ---
 
+# Part 4 — When something breaks
+
+## Worktree removal gotchas
+
+All three are handled by `Remove-Worktree.ps1`; they still apply when doing it by hand.
+
+- **Never remove a worktree from inside it.** git deregisters it but cannot rmdir its own cwd, so
+  the leaf survives with no `.git`, and the shell's cwd gets stuck pointing at it while git commands
+  silently resolve against the *outer* repo. If you hit this, use absolute paths / `git -C <path>`
+  and don't trust `pwd`.
+- **A locked directory is not a failure.** On Windows git often deletes every file but cannot rmdir
+  the folder while a process holds it open. Deregister and carry on to the branch deletion —
+  stopping there is how orphaned branches accumulate.
+- **Detached worktrees keep a sibling branch.** Claude Code auto-mode worktrees are detached with a
+  `claude/<dir-name>` branch parked at the same commit; removing the directory alone leaves that
+  branch behind. For a worktree created via `EnterWorktree`, `ExitWorktree(action:"remove")` is
+  cleanest.
+
+`Remove-Worktree.ps1` verifies the branch is an ancestor of `origin/main` before deleting anything,
+so a **squash-merged** PR is reported rather than deleted — its commits are not ancestors even
+though the content landed. Confirm with `git diff origin/main <branch> --stat` (empty means safe)
+and re-run with `-Force`.
+
+`Get-Worktrees.ps1` also reports directories under `.claude\worktrees` that are absent from
+`git worktree list` — the residue of a half-succeeded removal, which no other cleanup path can see.
+
+---
+
 ## Reproducing a sanitizer finding
 
 There is no preset and no `build.ps1` verb: `-fsanitize=` is refused on MSVC and clang-cl, so this
@@ -358,17 +397,18 @@ native ext4.
 
 ---
 
-## Self-play validation
+## Runtime output files
 
-- AI vs AI is fully headless: `Game::Run()` terminates on checkmate/stalemate; no stdin needed.
-- **The `game` argument is required.** No argument (or `uci`) routes into `UciHandler::run()`, which
-  blocks on stdin and never runs `Game::Run()`.
-- Subprocess pattern: `Start-Process ..\build\windows-clang-cl\StratChessEvolved.exe -ArgumentList "game"
-  -PassThru -NoNewWindow -RedirectStandardOutput out.txt`, then `$proc.Kill()` after N seconds for a
-  timed test, or `$proc.WaitForExit(msTimeout)` for a game expected to finish naturally.
-- Verbose logging is on by default in game mode; each move logs `GetMove complete: move=…, depth=…,
-  time=…ms, nodes=…, stable=…` to stdout.
-- Use `"type": 6` for both sides to exercise AIPerplex. For changes to `PlayerAI`/`PlayerBase`,
-  also verify with `"type": 3` (AIAgent).
-- `game_settings.json` accepts C-style `/* */` comments via nlohmann, but PowerShell's
-  `ConvertFrom-Json` rejects them — write plain JSON when generating configs programmatically.
+All paths are relative to the **working directory**, not the exe location. Run the exe from
+`StratChessEvolved/` so `game_settings.json` resolves and output lands in `StratChessEvolved/logs/`.
+
+| File | Created by | Context | Notes |
+|---|---|---|---|
+| `logs/multisink.txt` | `Logger::InitDefault()` (`Logger.cpp`) | Game mode only; **not** in tests | trace→file, info→console |
+| `logs/aiperplex.log` | `AIPerplex::SetVerboseLogging(true)` (`AIPerplex.cpp`) | Whenever AIPerplex is constructed | Level `off` (file stays empty) when verbose is disabled afterwards, which is what tests do |
+| `logs/SimplePerfStats.txt` | `Logger::EnsurePerfLogger()` (`Game.cpp` only) | Game mode only — `Game::Init()` is the sole creator | Written per AI move by `StopTimerAndAdjustVars()`, which only writes if a logger already exists; no file in tests, the tactical runner or UCI mode |
+| `logs/gamelist.txt` | `Game::CreateGameMoveFile()` (`Game.cpp`) | Game mode only | One line per move via `MoveFormatter::ToShort` |
+
+All four are gitignored. `logs/` does **not** need to pre-exist — spdlog's `file_helper::open` calls
+`os::create_dir()` on the parent path. spdlog *does* swallow a genuine `basic_file_sink` constructor
+failure silently, so a permissions problem produces no file and no error message.
