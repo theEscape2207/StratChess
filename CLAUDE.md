@@ -68,11 +68,13 @@ cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\<name>.
 | `Validate-PrePR.ps1` | Before a PR — scopes itself to the change tier; `-Force` to run everything |
 | `Run-EloMatch.ps1 [-Smoke]` | After search/eval/time changes — strength vs the pinned reference (method: `Docs/EloMeasurement.md`, results: `Docs/EloLog.md`) |
 | `Run-Bench.ps1 -Exe <path>` | Search speed (nps) at fixed depth — before/after any optimisation, or comparing two builds |
-| `New-Worktree.ps1 -Name <task>` | Starting any task — forks fresh from `origin/main` at the correct path |
+| `New-Worktree.ps1 -Name <task>` | Starting a task that needs its own directory — forks fresh from `origin/main` at the correct path |
+| `New-TaskBranch.ps1 -Name <task>` | Starting a task **in the current worktree** — forks a branch from `origin/main`, refusing on a dirty tree |
 | `New-PullRequest.ps1 -Title "…"` | Sync → validate → push → create/update PR. `-Draft`, `-NoPr`, `-BodyFile` |
 | `Remove-Worktree.ps1 -Name <task> -SyncMaster` | After a PR merges — worktree, local and remote branch, then syncs `master` |
+| `Remove-MergedBranches.ps1 [-SyncMaster]` | After PRs merge, working in-place — deletes branches **verified** merged into `origin/main` |
 | `Get-Worktrees.ps1` | Session start, or before resuming an idle worktree — drift, PR state, and unregistered directories |
-| `Sync-Master.ps1` | Bring `master` up to `origin/main` |
+| `Sync-Master.ps1` | Bring `master` up to `origin/main` — runs from anywhere; finds the worktree holding `master` |
 
 **Measurement**: use `-Sprt NonRegression` / `-Sprt Gain` for anything expected to be worth less
 than ~25 Elo — a fixed 500-game batch cannot resolve it, and recording the resulting "±26" row as a
@@ -183,7 +185,12 @@ manual input) rather than skipping it silently.
 
 ## Commit & PR Conventions
 
-- Work happens in per-task worktrees forked fresh from `origin/main`; PRs target `main`.
+- Every task forks fresh from `origin/main`; PRs target `main`. Two ways to run one, both enforcing
+  that: a **per-task worktree** (`New-Worktree.ps1`) when work must be parked or run alongside
+  another task, or a **task branch in the current worktree** (`New-TaskBranch.ps1`) for a run of
+  small sequential PRs. In-place is sequential only — one worktree holds one branch — and the script
+  refuses to start a task on a tree with uncommitted tracked changes, which is the guard separate
+  directories give for free. Details: `Docs/Workflow.md`.
 - Local `master` is a personal scratch branch — safe to commit to, safe to let drift. Never fork a
   worktree from it. `origin/master` is retired; nothing should reference it.
 - Keep PRs small and logically scoped; include motivation, design reasoning and expected impact for
@@ -213,9 +220,9 @@ design.
 
 ### After a PR merges
 
-`Remove-Worktree.ps1 -Name <task> -SyncMaster`. Treat cleanup as part of finishing the task, not an
-optional extra the user has to ask for. Squash-merges and locked directories need care —
-`Docs/Workflow.md`.
+`Remove-Worktree.ps1 -Name <task> -SyncMaster`, or `Remove-MergedBranches.ps1 -SyncMaster` when
+working in place. Treat cleanup as part of finishing the task, not an optional extra the user has to
+ask for. Squash-merges and locked directories need care — `Docs/Workflow.md`.
 
 ## Design Documents
 

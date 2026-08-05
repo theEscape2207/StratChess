@@ -34,17 +34,50 @@
     cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Sync-Master.ps1"
 
 .NOTES
-    Must be run from the main repository checkout, not a `.claude/worktrees/*` worktree
-    -- git will not let this script check out `master` if it's already checked out in
-    another worktree (which it always will be, since worktrees fork their own branch).
+    Runs from anywhere in the repository. `master` can be checked out in only one
+    worktree, so the script finds that worktree and syncs there. When that is not the
+    tree it was invoked from, it refuses on a dirty target instead of stashing -- the
+    stash stack is shared across worktrees, and those changes are not this script's to
+    move.
     Must be invoked with -File, not dot-sourced ($PSScriptRoot is $null under dot-source).
 #>
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$GameDir  = Split-Path $PSScriptRoot -Parent
-$RepoRoot = Split-Path $GameDir -Parent
+$GameDir   = Split-Path $PSScriptRoot -Parent
+$LocalRoot = Split-Path $GameDir -Parent
+
+# A branch can be checked out in only one worktree, so `master` has exactly one home and
+# the sync has to happen there. Refs and objects are shared, so nothing else cares where
+# it runs from. Finding that home is what lets this script run from anywhere: git refuses
+# even a ref-only `git fetch origin main:master` aimed at a branch checked out elsewhere,
+# so working in the owning tree is the only option available.
+function Get-MasterWorktree {
+    param([string]$Root)
+    $path = $null
+    foreach ($line in (& git -C $Root worktree list --porcelain 2>$null)) {
+        if ($line -like 'worktree *') { $path = $line.Substring(9) }
+        elseif ($line -eq 'branch refs/heads/master' -and $path) { return $path }
+    }
+    return $null
+}
+
+# `worktree list` reports forward slashes on Windows while $PSScriptRoot-derived paths
+# use backslashes, so the two need normalising before they can be compared.
+function ConvertTo-ComparablePath {
+    param([string]$Path)
+    return ($Path -replace '/', '\').TrimEnd('\')
+}
+
+$masterHome = Get-MasterWorktree -Root $LocalRoot
+$Delegated  = $false
+$RepoRoot   = $LocalRoot
+if ($masterHome -and
+    (ConvertTo-ComparablePath $masterHome) -ne (ConvertTo-ComparablePath $LocalRoot)) {
+    $Delegated = $true
+    $RepoRoot  = $masterHome
+}
 
 function Invoke-Git {
     param([string[]]$GitArgs)
@@ -94,7 +127,29 @@ $switchedBranch = $false
 $stashed = $false
 
 $status = Invoke-Git @('status', '--porcelain')
-if ($status.Output) {
+if ($Delegated) {
+    # Never stash another working copy's changes. The stash stack is shared by every
+    # worktree, so an entry pushed here could be popped by a different session working
+    # somewhere else. Refuse and name the tree instead.
+    $gitDir = (Invoke-Git @('rev-parse', '--path-format=absolute', '--git-dir')).Output
+    $busy = @('MERGE_HEAD', 'rebase-merge', 'rebase-apply', 'CHERRY_PICK_HEAD', 'REVERT_HEAD') |
+            Where-Object { Test-Path (Join-Path $gitDir $_) }
+    # Tracked changes only. A fast-forward never touches untracked files, and git refuses
+    # on its own if an incoming commit would overwrite one -- while tool caches and build
+    # leftovers sit untracked in that tree permanently, so counting them as "dirty" would
+    # block every delegated sync forever.
+    $trackedChanges = @($status.Output | Where-Object { $_ -and $_ -notmatch '^\?\?' })
+    if ($trackedChanges.Count -gt 0 -or $busy) {
+        Write-Host "FAIL: master lives in another worktree, and that tree has uncommitted work:" -ForegroundColor Red
+        Write-Host "  $RepoRoot" -ForegroundColor Yellow
+        if ($busy) { Write-Host "  operation in progress: $($busy -join ', ')" -ForegroundColor Yellow }
+        $trackedChanges | ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow }
+        Write-Host "Commit, discard or stash those changes there, then re-run this." -ForegroundColor Yellow
+        exit 1
+    }
+    Write-Host "PASS: master's worktree is clean." -ForegroundColor Green
+    Write-Host "  $RepoRoot"
+} elseif ($status.Output) {
     Write-Host "Working tree has uncommitted changes -- stashing before sync." -ForegroundColor Yellow
     $stash = Invoke-Git @('stash', 'push', '-u', '-m', 'Sync-Master.ps1 autostash')
     if ($stash.ExitCode -ne 0) {

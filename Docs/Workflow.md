@@ -92,6 +92,49 @@ and re-run with `-Force`.
 
 ---
 
+## Two ways to run a task
+
+Both fork every task fresh from `origin/main`. They differ only in whether the task gets its own
+directory.
+
+| | Per-task worktree | Task branch in place |
+|---|---|---|
+| Start | `New-Worktree.ps1 -Name x` | `New-TaskBranch.ps1 -Name x` |
+| Finish | `Remove-Worktree.ps1 -Name x -SyncMaster` | `Remove-MergedBranches.ps1 -SyncMaster` |
+| Parallel tasks | Yes — park one, switch to another | No, sequential only |
+| Build directory | Cold per worktree; first build needs network | Stays warm across tasks |
+| Cleanup failure mode | Orphaned directories, unregistered worktrees | `git branch -D` |
+
+Use a worktree when work must be parked half-finished or run alongside another task. Use in-place for
+a run of small sequential PRs, where directory churn buys nothing and the warm build directory is
+worth real minutes.
+
+**The worktree model enforces two invariants structurally; in-place mode needs scripts to enforce
+them.** This is the whole reason those two scripts exist:
+
+| Invariant | Worktree | In-place |
+|---|---|---|
+| Every task forks from `origin/main` | `New-Worktree.ps1` never reads the current branch | `New-TaskBranch.ps1` does the same — a hand-typed `git checkout -b` would fork off the previous task and drag its commits into the next PR |
+| Uncommitted work cannot cross tasks | Separate working trees | `New-TaskBranch.ps1` refuses on tracked modifications — `git checkout` otherwise carries a dirty tree onto the new branch |
+
+Untracked files never count as dirty in either script: they survive a checkout unchanged, cannot
+enter a commit on their own, and tool caches would otherwise block every run.
+
+`Remove-MergedBranches.ps1` deletes only what `git merge-base --is-ancestor <branch> origin/main`
+proves is contained in `origin/main` — **names are never evidence**. `git branch -d` is not a
+substitute: it asks whether a branch merged into the *current* branch, a different question. It skips
+`master`, `main`, the branch you are on, and anything checked out in another worktree; if the branch
+you are on is itself merged it says so rather than moving your HEAD.
+
+**`Sync-Master.ps1` runs from anywhere.** `master` can be checked out in only one worktree, so the
+script finds that worktree and syncs there rather than requiring you to be standing in it. When that
+is not the tree you invoked from, it refuses on uncommitted tracked changes instead of stashing — the
+stash stack is shared across worktrees, so another session could pop entries it pushed. This matters
+most in in-place mode, where nothing ever removes a worktree and so nothing would otherwise trigger a
+sync: `master` drifts silently until someone notices it is ten commits behind.
+
+---
+
 ## CI
 
 `.github/workflows/build-and-test.yml` runs an independent build + fast-test check on **Linux**,

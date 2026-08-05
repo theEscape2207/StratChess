@@ -115,6 +115,11 @@ function Get-TierForPath {
     if ($p -like '*/Scripts/New-Worktree.ps1')               { return 'Tooling' }
     if ($p -like '*/Scripts/Remove-Worktree.ps1')            { return 'Tooling' }
     if ($p -like '*/Scripts/Get-Worktrees.ps1')              { return 'Tooling' }
+    # The in-place counterparts: a task branch in the current worktree instead of a
+    # worktree of its own. Same reasoning — neither compiles anything nor is invoked by
+    # the engine.
+    if ($p -like '*/Scripts/New-TaskBranch.ps1')             { return 'Tooling' }
+    if ($p -like '*/Scripts/Remove-MergedBranches.ps1')      { return 'Tooling' }
 
     # --- Fail closed ----------------------------------------------------------
     # Everything else, INCLUDING anything unrecognised. Do not add an
@@ -169,6 +174,9 @@ if ($SelfTest) {
     @{ Name = 'New-Worktree -> Tooling';    Files = @('StratChessEvolved/Scripts/New-Worktree.ps1');    Expect = 'Tooling' }
     @{ Name = 'Remove-Worktree -> Tooling'; Files = @('StratChessEvolved/Scripts/Remove-Worktree.ps1'); Expect = 'Tooling' }
     @{ Name = 'Get-Worktrees -> Tooling';   Files = @('StratChessEvolved/Scripts/Get-Worktrees.ps1');   Expect = 'Tooling' }
+    # The in-place counterparts to New-Worktree/Remove-Worktree: same reasoning, same tier.
+    @{ Name = 'New-TaskBranch -> Tooling';       Files = @('StratChessEvolved/Scripts/New-TaskBranch.ps1');       Expect = 'Tooling' }
+    @{ Name = 'Remove-MergedBranches -> Tooling'; Files = @('StratChessEvolved/Scripts/Remove-MergedBranches.ps1'); Expect = 'Tooling' }
     # The PR driver gates validation, so it must never take the Tooling shortcut.
     @{ Name = 'New-PullRequest -> Build NOT Tooling'; Files = @('StratChessEvolved/Scripts/New-PullRequest.ps1'); Expect = 'Build' }
         @{ Name = 'classifier -> Build';        Files = @('StratChessEvolved/Scripts/Get-ChangeTier.ps1');       Expect = 'Build' }
