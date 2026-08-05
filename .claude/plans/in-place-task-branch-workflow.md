@@ -107,9 +107,16 @@ sufficient: it asks whether the branch merged into the *current* branch, which i
 **A merged current branch is reported, not auto-switched.** Silently moving someone's HEAD is
 surprising; `New-TaskBranch.ps1` is the thing that moves you off it, deliberately.
 
-**Untracked files do not block `New-TaskBranch.ps1`.** They survive a checkout unchanged and cannot
-leak into a commit by themselves; `build/` is gitignored and would otherwise trip every run. Only
-tracked modifications block.
+**Untracked files never count as "dirty", in either script.** They survive a checkout unchanged,
+cannot leak into a commit by themselves, and a fast-forward does not touch them — git refuses on its
+own in the one case that matters, where an incoming commit would overwrite one. Only tracked
+modifications block.
+
+This turned out to be load-bearing rather than a nicety. The first run of the delegated sync refused
+because the main checkout held an untracked `.lean-ctx/` tool-cache directory; since such
+directories are permanent fixtures, treating untracked entries as dirt would have blocked every
+delegated sync forever and the fix would have fixed nothing. Discovered by running it, not by
+reading it.
 
 ## Files changed
 
@@ -204,15 +211,21 @@ if ($Delegated) {
     $gitDir = (Invoke-Git @('rev-parse', '--path-format=absolute', '--git-dir')).Output
     $busy = @('MERGE_HEAD', 'rebase-merge', 'rebase-apply', 'CHERRY_PICK_HEAD', 'REVERT_HEAD') |
             Where-Object { Test-Path (Join-Path $gitDir $_) }
-    if ($status.Output -or $busy) {
-        Write-Host "master lives in another worktree, and that tree is not clean:" -ForegroundColor Red
+    # Tracked changes only. A fast-forward never touches untracked files, and git refuses
+    # on its own if an incoming commit would overwrite one -- while tool caches and build
+    # leftovers sit untracked in that tree permanently, so counting them as "dirty" would
+    # block every delegated sync forever.
+    $trackedChanges = @($status.Output | Where-Object { $_ -and $_ -notmatch '^\?\?' })
+    if ($trackedChanges.Count -gt 0 -or $busy) {
+        Write-Host "FAIL: master lives in another worktree, and that tree has uncommitted work:" -ForegroundColor Red
         Write-Host "  $RepoRoot" -ForegroundColor Yellow
         if ($busy) { Write-Host "  operation in progress: $($busy -join ', ')" -ForegroundColor Yellow }
-        Write-GitOutput $status.Output
+        $trackedChanges | ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow }
         Write-Host "Commit, discard or stash those changes there, then re-run this." -ForegroundColor Yellow
         exit 1
     }
-    Write-Host "PASS: master's worktree is clean ($RepoRoot)." -ForegroundColor Green
+    Write-Host "PASS: master's worktree is clean." -ForegroundColor Green
+    Write-Host "  $RepoRoot"
 }
 elseif ($status.Output) {
     Write-Host "Working tree has uncommitted changes -- stashing before sync." -ForegroundColor Yellow
