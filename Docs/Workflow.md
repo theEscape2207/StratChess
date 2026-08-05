@@ -173,6 +173,27 @@ searches and the null-move guards. `extended-tests` and `sanitize-extended` are 
 minutes, but a green run there is weak evidence, and "extended tier" oversells what exists. Growing
 it is #156's territory, not the schedule's.
 
+**`strength.yml`** is the CI strength lab: `workflow_dispatch` only, one job, candidate against a
+reference ref with both sides built from source in that job by the same GCC. It reports Elo to the
+job summary and uploads the PGN; it gates nothing and is triggered by nobody automatically.
+
+Dispatch-only is not a stepping stone to be skipped past. A measurement harness that is wrong is
+worse than none, because its output looks exactly like a measurement — so it stays manual until the
+null test and the known-sign control in M4 of `.claude/plans/public-repo-and-strength-lab.md` have
+both come back right, and no result is recorded before then.
+
+| Input | Meaning |
+|---|---|
+| `reference_ref` | Tag, branch or SHA for the reference side. Pass the candidate's own SHA for a null test |
+| `games` | Total games, two per opening pair |
+| `candidate_tc` / `reference_tc` | Per-side time control. Halve the **base** for a handicap run — an increment under 0.1 s sits below `compute_budget()`'s 100 ms per-move floor and forfeits games |
+| `concurrency` | Concurrent games. A standard runner has 4 vCPU and only one engine per game thinks at a time |
+
+A batch reporting a time loss, an illegal move or a disconnect is **discarded, never reported** —
+same rule as `Run-EloMatch.ps1`, and on a shared runner a time loss most likely means the box was
+oversubscribed, which invalidates the whole batch rather than the one game. Numbers land in
+`Docs/EloLog.md`'s **Linux ledger**, which must never be compared against the local clang-cl rows.
+
 `Check starting FEN` is path-filtered to `StratChessEvolved/game_settings.json` and does not run
 otherwise.
 

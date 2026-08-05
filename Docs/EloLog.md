@@ -247,6 +247,37 @@ cumulative figure is wanted; they answer different questions and both belong in 
 labelled as to which is which. This tension is inherent to a fixed anchor and is tracked separately;
 it is not a defect in any individual row.
 
+## The Linux CI ledger is a separate instrument
+
+`.github/workflows/strength.yml` (`workflow_dispatch` only) plays the same kind of match on a GitHub
+runner: both sides built from source in one job by GCC on `ubuntu-24.04`, Release, `Threads=1`,
+identical adjudication settings to `Run-EloMatch.ps1`.
+
+**Its rows never go in the table below, and are never compared with one.** The binaries come from a
+different compiler on different hardware, which is the one comparison this whole document exists to
+prevent (issue #84 measured the clang-cl/MSVC gap alone at roughly +40 Elo). Ratios transfer between
+the two ledgers; absolute values do not.
+
+Two differences from the local setup, both deliberate:
+
+- **Book.** `UHO_4060_v3.epd` (242,201 openings — the 4060 names the evaluation band the positions
+  were selected from, not their count), downloaded per run from a pinned commit of
+  `official-stockfish/books`. Not committed, for the reason M3 records in
+  `.claude/plans/public-repo-and-strength-lab.md`.
+- **Fixed N, no SPRT.** SPRT is a sequential test and does not shard across runners; the CI
+  instrument buys resolution with games instead, since minutes there are free.
+
+**Increments below 0.1 s forfeit.** `compute_budget()` floors a move at 100 ms, so at 5+0.05 the
+engine loses ground every move once its clock drains — measured at 3 time losses in 4 games, against
+none at 5+0.1. A handicap run must halve the base time and leave the increment alone. The workflow
+warns when either side is given an increment under 0.1 s.
+
+### Linux CI measurement history
+
+| Date | Candidate | Reference | Games | TC | Elo diff | Notes |
+|---|---|---|---|---|---|---|
+| — | — | — | — | — | — | Awaiting the M4 calibration runs (null test and known-sign control); nothing may be recorded here before they pass |
+
 ## Measurement history
 
 | Date | Candidate | Reference | Games | TC | Elo diff | Notes |

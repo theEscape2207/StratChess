@@ -1,0 +1,258 @@
+name: Strength lab
+
+# Differential Elo measurement in CI: candidate (the dispatched ref) against a
+# reference ref, both built here from source by the same toolchain in the same
+# job. This is a SECOND instrument, not a replacement for Run-EloMatch.ps1 --
+# Linux/GCC numbers are not comparable with the clang-cl rows in Docs/EloLog.md,
+# so they are recorded in a separate ledger. Ratios transfer, absolute values do
+# not.
+#
+# workflow_dispatch only, deliberately: a measurement harness that is wrong is
+# worse than none, because its output looks exactly like a measurement. It gets
+# calibrated against a null test and a known-sign control before anything
+# triggers it automatically. Both calibration runs are recorded in
+# .claude/plans/public-repo-and-strength-lab.md and Docs/EloLog.md.
+on:
+  workflow_dispatch:
+    inputs:
+      reference_ref:
+        description: "Reference side: git tag, branch or SHA (use the candidate's own SHA for a null test)"
+        default: elo-reference-v2
+      games:
+        description: "Total games (2 per opening pair; rounded down to an even number)"
+        default: "500"
+      candidate_tc:
+        description: "Candidate time control, seconds+increment"
+        default: "10+0.1"
+      reference_tc:
+        description: "Reference time control. For a known-sign control halve the BASE only (5+0.1) -- see the increment warning below"
+        default: "10+0.1"
+      concurrency:
+        description: "Concurrent games. 4 vCPU on a standard runner; only one engine per game thinks at a time"
+        default: "3"
+
+# Never cancel a running match: a superseded build is cheap to redo, an
+# interrupted 500-game batch is an hour thrown away. Concurrent dispatches queue.
+concurrency:
+  group: strength-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Pinned, like every other external asset this project measures with.
+  FASTCHESS_VERSION: v1.8.0-alpha
+  # UHO_4060_v3: 242,201 unbalanced human openings (the 4060 in the name is the
+  # evaluation band the positions were selected from, not their count), i.e.
+  # 484,402 distinct games -- no batch this plan contemplates can exhaust it.
+  # Pinned to a commit rather than master so a re-run measures the same book.
+  # Not committed to this repository: it is third-party data, and external test
+  # assets live outside the checkout by convention (see M3 in
+  # .claude/plans/public-repo-and-strength-lab.md).
+  BOOK_URL: https://raw.githubusercontent.com/official-stockfish/books/04738d057446e749cb071d58bac39df7f13efb47/UHO_4060_v3.epd.zip
+  BOOK_FILE: UHO_4060_v3.epd
+
+jobs:
+  match:
+    runs-on: ubuntu-24.04
+    # A 500-game batch at 10+0.1 with concurrency 3 runs well under two hours;
+    # this leaves room for a larger dispatch without touching the 6 h job cap.
+    timeout-minutes: 340
+    steps:
+      # fetch-depth: 0 for the tags and history the reference checkout needs.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      # Same key as build-and-test.yml and nightly.yml, so this shares their
+      # cache entry rather than paying for its own clone of the dependencies.
+      - name: Cache FetchContent dependencies
+        uses: actions/cache@v6
+        with:
+          path: build/_deps
+          key: cmake-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
+
+      # Release only. Both sides are built here, from the same compiler and the
+      # same flags, which is the invariant every Elo number in this project
+      # depends on -- a candidate and reference built by different toolchains
+      # show the compiler gap as a phantom strength change (issue #84).
+      - name: Build candidate
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target StratChessEvolved --parallel
+
+      # The reference is built from its own source tree, not from a cached
+      # binary: there is no Linux equivalent of EngineTesting\ here, and a
+      # from-source build is what makes an arbitrary ref measurable.
+      - name: Build reference (${{ inputs.reference_ref }})
+        env:
+          REFERENCE_REF: ${{ inputs.reference_ref }}
+        run: |
+          set -euo pipefail
+          git worktree add --detach "$RUNNER_TEMP/reference" "$REFERENCE_REF"
+          cmake -S "$RUNNER_TEMP/reference" -B "$RUNNER_TEMP/reference/build" -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$RUNNER_TEMP/reference/build" --target StratChessEvolved --parallel
+
+      - name: Fetch fastchess and the opening book
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/tools"
+          cd "$RUNNER_TEMP/tools"
+          curl -sSLf -o fastchess.tar \
+            "https://github.com/Disservin/fastchess/releases/download/$FASTCHESS_VERSION/fastchess-linux-x86-64.tar"
+          tar -xf fastchess.tar
+          # The archive's layout has changed between releases; locate the binary
+          # rather than assuming a name, so a version bump fails loudly here
+          # instead of silently later.
+          bin=$(find . -type f -name 'fastchess*' ! -name '*.tar' | head -1)
+          test -n "$bin"
+          chmod +x "$bin"
+          if [ "$(basename "$bin")" != fastchess ]; then mv "$bin" fastchess; fi
+          ./fastchess --version
+          curl -sSLf -o book.zip "$BOOK_URL"
+          unzip -o -q book.zip
+          test -s "$BOOK_FILE"
+
+      - name: Run match
+        id: match
+        # Inputs reach the shell as environment variables rather than through
+        # ${{ }} interpolation into the command line, which would splice their
+        # text into the script.
+        env:
+          GAMES: ${{ inputs.games }}
+          CANDIDATE_TC: ${{ inputs.candidate_tc }}
+          REFERENCE_TC: ${{ inputs.reference_tc }}
+          MATCH_CONCURRENCY: ${{ inputs.concurrency }}
+        run: |
+          set -euo pipefail
+          tools="$RUNNER_TEMP/tools"
+          work="$RUNNER_TEMP/match"
+          # Separate working directories per engine: the engine writes logs
+          # relative to its cwd, and spdlog fails silently when logs/ is absent.
+          mkdir -p "$work/cand/logs" "$work/ref/logs"
+
+          rounds=$(( GAMES / 2 ))
+          test "$rounds" -ge 1
+
+          # An opening pair is two games, so N openings yield 2N distinct games.
+          # Past that fastchess wraps and replays them, which narrows the error
+          # bar of a result without adding information to it.
+          openings=$(grep -cve '^[[:space:]]*$' "$tools/$BOOK_FILE")
+          echo "Opening book: $BOOK_FILE ($openings openings, $(( 2 * openings )) distinct games)"
+          if [ "$GAMES" -gt $(( 2 * openings )) ]; then
+            echo "::warning::$GAMES games requested but the book yields only $(( 2 * openings )) distinct games; openings will repeat."
+          fi
+
+          # compute_budget() floors a move at 100 ms. An increment below that
+          # loses ground every move once the clock is drained, so the engine
+          # forfeits -- measured locally: 3 time losses in 4 games at 5+0.05,
+          # none at 5+0.1. A control run must therefore halve the BASE time and
+          # leave the increment alone; halving both tests the time manager's
+          # floor, not the harness.
+          for tc in "$CANDIDATE_TC" "$REFERENCE_TC"; do
+            inc=${tc#*+}
+            if [ "$inc" = "$tc" ]; then inc=0; fi
+            if awk -v i="$inc" 'BEGIN { exit !(i < 0.1) }'; then
+              echo "::warning::Time control $tc has an increment below 0.1 s, which is under the engine's 100 ms per-move floor. Expect time forfeits, which discard the batch."
+            fi
+          done
+
+          cand_sha=$(git rev-parse --short HEAD)
+          ref_sha=$(git -C "$RUNNER_TEMP/reference" rev-parse --short HEAD)
+          echo "cand_name=candidate-$cand_sha" >> "$GITHUB_OUTPUT"
+          echo "ref_name=reference-$ref_sha" >> "$GITHUB_OUTPUT"
+          echo "openings=$openings" >> "$GITHUB_OUTPUT"
+
+          # Adjudication settings are copied from Run-EloMatch.ps1 verbatim: the
+          # two instruments must differ only in toolchain and hardware.
+          # Threads=1 on both sides -- Lazy SMP scales with core count, and a
+          # shared runner has none to spare.
+          cd "$work"
+          start=$SECONDS
+          set +e
+          "$tools/fastchess" \
+            -engine cmd="$GITHUB_WORKSPACE/build/StratChessEvolved" name="candidate-$cand_sha" dir=cand args=uci option.Threads=1 "tc=$CANDIDATE_TC" \
+            -engine cmd="$RUNNER_TEMP/reference/build/StratChessEvolved" name="reference-$ref_sha" dir=ref args=uci option.Threads=1 "tc=$REFERENCE_TC" \
+            -each proto=uci \
+            -rounds "$rounds" -repeat -concurrency "$MATCH_CONCURRENCY" -recover \
+            -openings file="$tools/$BOOK_FILE" format=epd order=sequential \
+            -draw movenumber=40 movecount=8 score=10 \
+            -resign movecount=4 score=800 \
+            -pgnout file=match.pgn notation=san \
+            2>&1 | tee match.log
+          fc_exit=${PIPESTATUS[0]}
+          set -e
+          echo "fastchess exit: $fc_exit"
+          echo "elapsed_min=$(( (SECONDS - start) / 60 ))" >> "$GITHUB_OUTPUT"
+          echo "fc_exit=$fc_exit" >> "$GITHUB_OUTPUT"
+
+      # Always runs, so a killed or crashed match still yields its PGN -- the
+      # games played up to that point are the only thing that cannot be redone.
+      - name: Upload PGN and log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: strength-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/match/match.pgn
+            ${{ runner.temp }}/match/match.log
+          if-no-files-found: warn
+
+      # Reporting is a separate step from running so that a parse failure is
+      # distinguishable from a match failure, and so the summary is written even
+      # when the verdict is "discard this batch".
+      - name: Report
+        if: always()
+        run: |
+          set -uo pipefail
+          log="$RUNNER_TEMP/match/match.log"
+          if [ ! -s "$log" ]; then
+            echo "No match log: the match step did not get far enough to produce one." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          # Patterns match Run-EloMatch.ps1's, and were derived from the pinned
+          # fastchess build's actual output rather than its documentation: a
+          # pattern that silently matches nothing degrades every run to
+          # "inconclusive", a failure mode that looks like a result.
+          elo=$(grep -E '^[[:space:]]*Elo:' "$log" | tail -1 | sed 's/^[[:space:]]*//')
+          score=$(grep -E 'Games: [0-9]+' "$log" | tail -1 | sed 's/^[[:space:]]*//')
+
+          {
+            echo "## Strength lab"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Candidate | ${{ steps.match.outputs.cand_name }} @ \`${{ github.ref_name }}\`, tc=${{ inputs.candidate_tc }} |"
+            echo "| Reference | ${{ steps.match.outputs.ref_name }} (\`${{ inputs.reference_ref }}\`), tc=${{ inputs.reference_tc }} |"
+            echo "| Games requested | ${{ inputs.games }} at concurrency ${{ inputs.concurrency }} |"
+            echo "| Book | \`$BOOK_FILE\` (${{ steps.match.outputs.openings }} openings) |"
+            echo "| Toolchain | GCC on ubuntu-24.04, Release, Threads=1 |"
+            echo "| Duration | ${{ steps.match.outputs.elapsed_min }} min |"
+            echo
+            echo '```'
+            echo "${score:-no score line found}"
+            echo "${elo:-no Elo line found}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # A time loss, an illegal move or a disconnect is a harness or engine
+          # BUG, not strength data. Such a batch is discarded, never reported --
+          # on a shared runner a time loss most likely means the box was
+          # oversubscribed, which invalidates every game in the batch, not just
+          # the one that lost.
+          if grep -Eiq 'illegal|disconnect|stall|loses on time' "$log"; then
+            {
+              echo
+              echo "### DISCARD -- harness/engine failures detected"
+              echo
+              echo '```'
+              grep -Ei 'illegal|disconnect|stall|loses on time' "$log" | head -10
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          test "${{ steps.match.outputs.fc_exit }}" = "0"
+          test -n "$elo"
