@@ -275,10 +275,10 @@ private:
 
 // Runs `action` with std::cout captured and returns what it printed.
 //
-// A named helper rather than a brace scope around a CoutRedirect: the redirect
-// has to be torn down before any assertion runs, or a failing CHECK's own
-// message is swallowed by the capture. Expressing that as a function makes the
-// lifetime the point rather than an artefact of where the braces landed.
+// A named helper rather than a brace scope around a CoutRedirect: the capture
+// covers exactly one call, and the result is an expression rather than an
+// out-of-scope variable assigned inside braces. Tests that capture a whole
+// function body keep using CoutRedirect directly, which is equally fine.
 template <typename F>
 static std::string capture_cout(F&& action)
 {
