@@ -17,7 +17,7 @@ Two ledgers, and they are never compared with each other:
 ## Linux CI ledger
 
 Produced by `.github/workflows/strength.yml`. Why its rows are not comparable with the local
-table: see [`EloMeasurement.md`](EloMeasurement.md#the-linux-ci-ledger-is-a-separate-instrument).
+table: see [`EloMeasurement.md`](EloMeasurement.md#4-the-linux-ci-instrument).
 
 | Date | Candidate | Reference | Games | TC | Elo diff | Notes |
 |---|---|---|---|---|---|---|
