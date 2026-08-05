@@ -14,6 +14,30 @@ concurrent games against the 6 a local run manages — turning a 20,000-game bat
 The payload that justifies the work is epic #110: twelve eval sub-issues, each expected to be worth
 single-digit Elo, i.e. twelve measurements that today's ±26 Elo instrument cannot make.
 
+## Where this stands — read this first (2026-08-05)
+
+**M0 through M4 are complete. M5 is next**, and its section carries measured inputs rather than
+estimates.
+
+| | State |
+|---|---|
+| Repository | Public; CI is a gate, `build-and-test-result` required on `main` |
+| Nightly | `nightly.yml` — deep perft, `[slow]` tier, sanitizers + `_GLIBCXX_DEBUG`, tactical ×100 |
+| Opening book | Solved. `EngineTesting\openings-large.*` locally (optional), `UHO_4060_v3.epd` in CI — 242,201 openings |
+| Strength lab | `strength.yml`, `workflow_dispatch` only, **calibrated 2026-08-05** |
+| Resolution today | **±18 Elo** at 1000 games (CI), ±25-26 at 500 (local) |
+| Not yet possible | Epic #110's single-digit terms. That is exactly what M5 buys |
+
+Where things live: method in `Docs/EloMeasurement.md`, results in `Docs/EloLog.md` (two ledgers,
+never compared), workflow in `.github/workflows/strength.yml`.
+
+Issues this work spawned, both open and neither blocking M5:
+
+- **#204** — `compute_budget()`'s 100 ms per-move floor is absolute, so the engine forfeits at any
+  increment below it, and the standard 10+0.1 sits exactly on that floor. Shaped M4's control run and
+  constrains any future time-control choice.
+- **#209** — `Docs/Workflow.md` needs a structure.
+
 ## Scope limits
 
 - **`Run-Bench.ps1` never moves to CI.** nps on a shared, throttled runner is noise. Game-outcome
@@ -313,24 +337,87 @@ a defect in itself, and a `pull_request` trigger would have produced it on someb
 
 ### M5 — Shard it (~1-2 sessions)
 
-- Matrix of N jobs (start at 8, raise to 20 once the account concurrency behaviour is understood),
-  each playing `Games/N` games with a **disjoint slice of the opening book** — overlapping slices
-  replay identical games and inflate confidence.
-- Aggregation job: download all PGN artifacts, pool them, compute Elo, error bar and LLR once, and
-  write a summary to the job summary.
-- Watch the 6-hour per-job cap and artifact retention settings.
+**Start here next session.** M4 replaced most of this milestone's guesses with measurements; the
+numbers below are observed, not estimated.
 
-**Value delivered:** 20,000 games in 2-3 hours unattended; ≈ ±4 Elo where the local instrument
-gives ±26.
+#### What M4 measured that M5 needs
+
+| Input | Value | Source |
+|---|---|---|
+| Throughput | **1000 games at concurrency 3 = 162 min** (~6.2 games/min/job) | The null-test run |
+| Per-job overhead | ~7-10 min: checkout, two source builds, fastchess + book download | Same run |
+| Book supply | 242,201 openings = 484,402 distinct games | `UHO_4060_v3.epd`, printed by every run |
+| Time losses at 10+0.1, concurrency 3 | **Zero over 1200 games** | Both calibration runs |
+| Single-job null to reproduce | **-3.47 ± 18.21** over 1000 games | `Docs/EloLog.md`, Linux ledger |
+
+**Sizing follows directly.** 20 shards × 1000 games each ≈ 162 min per shard, so a 20,000-game batch
+lands in roughly **3 hours wall-clock**, every shard well inside both the 340-minute job timeout and
+the 6-hour cap. Ten shards × 2000 games would be ~324 min per shard — under the cap but past the
+current timeout, so **do not shard fewer than ~16 ways** without raising it.
+
+#### Design decisions M4 settled
+
+- **Slice the book with fastchess's own `start=` index, not by splitting files.** `-openings` accepts
+  `start=(1|N)`, so with `order=sequential` shard *i* (0-based) playing *R* rounds uses
+  `start=<i*R + 1>`. Disjointness becomes arithmetic instead of file surgery. A 20,000-game batch
+  consumes 10,000 openings — **4% of the book** — so supply is a non-issue and M3's worry is closed.
+- **Build once, share the binaries as artifacts.** Currently each job builds both sides from source.
+  Across 20 shards that is ~1 hour of duplicated runner time, but the real argument is correctness:
+  every shard must play *the same two binaries*, and a build job feeding artifacts guarantees it
+  rather than assuming 20 independent builds agree.
+- **Keep per-shard concurrency at 3.** Each matrix job is its own runner, so more shards do not
+  contend with each other; raising the per-job figure is what would. It is validated at zero time
+  losses, and #204 leaves 10+0.1 no margin — treat 3 as fixed.
+- **Artifact names must be unique per shard.** `actions/upload-artifact@v4+` errors on a duplicate
+  name within a run, so the current `strength-${{ github.run_id }}` needs the shard index appended.
+
+#### The two things that can silently produce a wrong number
+
+1. **The error bar must be computed pentanomially, not per-game.** fastchess reports `Ptnml(0-2)`
+   because color-swapped pairs are correlated; pooling raw W/L/D and applying an independent-games
+   formula yields an interval that is simply wrong, in the direction of looking more precise. The
+   aggregator must pool at **pair** level, or reuse fastchess's own maths rather than reimplementing
+   it. Decide which before writing the aggregator — this is the single highest-risk piece of M5.
+2. **A partially failed batch must not be reported.** Each shard keeps the existing gate (any time
+   loss, illegal move, disconnect or stall fails that job). The aggregator must then **refuse to pool
+   unless every shard succeeded** — otherwise a run where three shards died reports the surviving
+   17 as though nothing happened, which is a biased subset wearing a full batch's error bar.
+
+#### Steps
+
+- Split `strength.yml` into `build` → `match` (matrix) → `aggregate`, with the build job uploading
+  both binaries.
+- Matrix of N shards, each with its own `start=` slice and its own artifact name.
+- Aggregation job: download every PGN, pool at pair level, compute Elo and the interval once, write
+  to the job summary, and fail if any shard did not succeed.
+- **Prove the mechanics with a 2-shard, 20-game dispatch before any 3-hour run.** M4's two defects
+  — the fastchess subdirectory and the untracked-dirt refusal — were both invisible on reading and
+  obvious on the first execution. A cheap matrix run exercises slicing, artifact naming and
+  aggregation without spending an afternoon to find a typo.
+
+**Exit:** a sharded null test whose pooled result agrees with **-3.47 ± 18.21**, and whose shards can
+be shown to share no opening (compare the first FEN of each shard's PGNs; any duplicate means the
+slices overlap).
+
+**Value delivered:** 20,000 games in ~3 hours unattended; ≈ ±4 Elo, against ±18 from the current
+single-job instrument and ±26 locally. That is the first point at which epic #110's single-digit eval
+terms are decidable at all.
 
 ### M6 — Wire to PRs and to the epic (~1 session)
 
 - Trigger `strength.yml` automatically on Engine-tier PRs touching `Eval.cpp` or the search files,
   or on a `measure` label — restricted to non-fork PRs.
 - Post the pooled verdict as a PR comment.
-- Add `elo-reference-v2-linux` as a tag, and a **separate table** in `Docs/EloLog.md` for the Linux
-  ledger, with an explicit note that its rows must never be compared against the clang-cl rows.
+- ~~Add a separate table in `Docs/EloLog.md` for the Linux ledger~~ — **done** in M4. The ledger
+  exists, carries the two calibration rows, and states the never-compare rule. The
+  `elo-reference-v2-linux` tag it also proposed is **not needed**: the lab builds the reference from
+  any ref and the ledger records the SHA, so a Linux-specific tag would pin nothing a SHA does not.
 - Then start working #110 sub-issues against it. This is the point where the whole plan pays.
+
+**Before triggering automatically, decide what a red strength run means.** An Elo regression is not
+a build failure: a PR can legitimately lose Elo (a refactor, a correctness fix) and the number
+carries an error bar that a pass/fail check discards. Post the verdict, do not gate on it — unless
+someone deliberately decides otherwise, which is a policy choice this plan does not make for them.
 
 ### Follow-ons, cheap once the above exists
 
@@ -359,10 +446,12 @@ gives ±26.
 - M2: the nightly run's perft node counts match the known values exactly; a deliberately broken
   move-generation commit on a scratch branch makes it fail.
 - M3: a local 501-game run no longer repeats openings.
-- M4: null test within its error bar; time-handicap control strongly negative. Both recorded in
-  `Docs/EloLog.md` **and** in this file.
-- M5: pooled result of a sharded null test agrees with the single-job null test; verify shard slices
-  are disjoint by checking that no two jobs' PGNs share an opening FEN.
+- M4: **done.** Null test -3.47 ± 18.21 over 1000 games; control +75.88 ± 42.56 with the reference on
+  half the base time. Both recorded in `Docs/EloLog.md` and above. Note the control came out
+  *positive*, not "strongly negative" as this line originally predicted — the handicap is applied to
+  the reference, so the candidate wins. Sign convention matters when reading it.
+- M5: pooled result of a sharded null test agrees with **-3.47 ± 18.21**; verify shard slices are
+  disjoint by checking that no two jobs' PGNs share an opening FEN.
 - M6: one #110 sub-issue measured end-to-end.
 
 ## Invariants after this work
