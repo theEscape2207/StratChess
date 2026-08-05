@@ -32,6 +32,11 @@
     Must be invoked with -File, not dot-sourced. $PSScriptRoot is $null under dot-source.
     Losses on illegal moves / disconnects / stalls are harness or engine BUGS, not
     strength data — the script exits 1 when fastchess reports any.
+    Every run appends a row to Docs/EloLog.md; there is no way to suppress that.
+    Runs whose two sides are the same binary AND the same options are detected and
+    the row says so, since their true difference is zero by construction. Same
+    binary with DIFFERENT options is a configuration comparison and a real
+    measurement — it is recorded as one.
     A fixed 500-game batch resolves only ±25 Elo on this setup, so anything expected
     to be worth less than that needs -Sprt to be decidable at all. See the
     "Choosing SPRT vs a fixed batch" section in Docs/EloMeasurement.md.
@@ -217,6 +222,11 @@ if (-not (Test-Path $fastchess)) {
     exit 1
 }
 
+# Set by the fresh-match path below once both exes are known to exist. Resume mode
+# ignores the exe parameters entirely (fastchess restores the original pairing from
+# config.json), so it cannot decide this and leaves the row unannotated.
+$noStrengthData = $false
+
 if ($ResumeDir -ne '') {
     # --- Resume mode: skip fresh match setup entirely; fastchess's -config
     # restores the original engine/tournament configuration from the saved
@@ -347,6 +357,26 @@ if ($ResumeDir -ne '') {
     $dirty = (git -C $RepoRoot status --porcelain) ? '+dirty' : ''
     $candidateName = "candidate-$candidateSha$dirty"
 
+    # A run whose two sides are the same bytes AND the same configuration has a true
+    # difference of exactly zero by construction: pipeline checks, time-forfeit
+    # checks at a given control, reference re-pin verification. Its Elo column is
+    # noise, and a row labelled plain 'match' invites reading it as a result.
+    #
+    # Detected rather than switched on deliberately. A -NoLog style flag is one that
+    # can be forgotten (leaving a junk row, and a dirty tree that mislabels the NEXT
+    # run '+dirty'), and one that could be reached for after seeing a number you did
+    # not like. Detection is neither.
+    #
+    # Differing options are NOT this case. Pointing -ReferenceExe at the same binary
+    # is the documented way to compare two CONFIGURATIONS -- threads=4 vs threads=1 --
+    # and that is a real measurement: Docs/EloLog.md's Lazy SMP row (+128.55 Elo) is
+    # one. Comparison is order-sensitive, so a reordered but equivalent option string
+    # reads as a measurement; that is the safe direction to err, since mislabelling
+    # genuine data as carrying none is the worse mistake.
+    $sameBinary = (Get-FileHash $CandidateExe).Hash -eq (Get-FileHash $refExe).Hash
+    $sameConfig = $CandidateOptions.Trim() -eq $ReferenceOptions.Trim()
+    $noStrengthData = $sameBinary -and $sameConfig
+
     $stamp   = Get-Date -Format 'yyyyMMdd-HHmmss'
     $pgnDir  = Join-Path $GameDir 'logs\elo'
     New-Item -ItemType Directory -Force $pgnDir | Out-Null
@@ -367,6 +397,10 @@ if ($ResumeDir -ne '') {
     Write-Host "==> $candidateName vs $ReferenceTag | $gamesLabel, tc=$Tc, concurrency=$Concurrency" -ForegroundColor Cyan
     if ($Sprt -ne '') {
         Write-Host "    SPRT: $Sprt -- elo0=$Elo0 elo1=$Elo1 alpha=$Alpha beta=$Beta model=$SprtModel" -ForegroundColor Cyan
+    }
+    if ($noStrengthData) {
+        Write-Host '    NOTE: both sides are the same binary and configuration, so the true difference' -ForegroundColor Yellow
+        Write-Host '          is zero by construction. The Elo column will be noise; the row says so.' -ForegroundColor Yellow
     }
     Write-Host "    PGN: $pgnOut"
 
@@ -472,6 +506,11 @@ if ($Sprt -ne '') {
     if ($sprtVerdict -eq 'H1 accepted' -and $eloText -match '^\s*-') {
         Write-Host "WARNING: H1 accepted but the Elo estimate is negative ($eloText) — verdict parse is suspect." -ForegroundColor Red
     }
+}
+# Applied last so it leads the cell whatever the run was -- an SPRT between two
+# identical binaries is every bit as uninformative as a fixed batch between them.
+if ($noStrengthData) {
+    $kind = "**same binary and configuration — carries no strength information.** $kind"
 }
 $row = "| $(Get-Date -Format 'yyyy-MM-dd') | $candidateName | $ReferenceTag | $actualGames | $Tc | $eloText | $kind$($hardFail ? ' — FAILURES, discard' : '') |"
 $eloLog = Join-Path $RepoRoot 'Docs\EloLog.md'
