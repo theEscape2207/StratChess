@@ -249,6 +249,48 @@ Then calibrate before trusting it, and record both runs in the plan:
 
 **Value delivered:** a trustworthy, if slow, second instrument that runs without touching your PC.
 
+#### M4 outcome (2026-08-05)
+
+`.github/workflows/strength.yml` exists and is dispatch-only. **The calibration runs have not
+happened yet**: `workflow_dispatch` only offers a workflow that is already on the default branch, so
+the two runs can only follow the merge. Until both come back right, nothing this workflow prints is a
+measurement, and `Docs/EloLog.md`'s Linux ledger holds a placeholder row saying so.
+
+Three things the plan did not anticipate:
+
+- **The engine forfeits below a 0.1 s increment, so "half the time control" is the wrong control.**
+  `compute_budget()` floors a move at 100 ms while 5+0.05 pays only 50 ms back, so once the clock
+  drains the engine loses ground every move. Measured locally: **3 time losses in 4 games at 5+0.05,
+  none at 5+0.1** — and at 2+0.02 the handicapped side flagged in all four. The control run must
+  therefore halve the **base** and leave the increment alone (10+0.1 vs 5+0.1), which a 6-game local
+  smoke confirmed is both clean and strongly signed. The workflow warns when either side is given an
+  increment under 0.1 s.
+
+  Two consequences beyond this milestone. The standard 10+0.1 sits *exactly* on the floor — its
+  100 ms increment repays the minimum move cost and nothing more — so a slower or contended runner
+  has no margin, which is a live risk for M5's 20-way concurrency and for the local instrument on any
+  slower machine. And the engine cannot play bullet at all: this is a real strength limitation, worth
+  its own issue rather than a workflow comment.
+
+- **The book was already solved, far past what M3 assumed.** `UHO_4060_v3.epd` holds **242,201**
+  openings, not the ~4,060 the filename suggests (that number is the evaluation band the positions
+  were selected from). At 484,402 distinct games no batch in this plan can exhaust it, so M5 needs no
+  larger book and the shard-disjointness work is purely about slicing, not supply.
+
+- **`Run-EloMatch.ps1` was not reused, and should not be.** It is Windows-shaped throughout —
+  `fastchess.exe`, the `EngineTesting\` sibling directory, tag-based binary caching, appending to
+  `Docs/EloLog.md`. Making it cross-platform would put the local instrument's correctness at risk to
+  save a workflow that shares only its adjudication settings, which are copied across verbatim
+  instead. The two instruments deliberately differ only in toolchain and hardware.
+
+Validated before commit rather than by dispatching and watching it fail: the YAML parses, every
+`run:` block passes `bash -n`, and a local fastchess smoke confirmed the exact argument shape the
+workflow uses (per-engine `tc=`, `option.Threads=1`, `-each proto=uci`, an EPD book with
+`format=epd`) — that last one is what surfaced the increment finding.
+
+**Remaining for M4:** dispatch the null test (`reference_ref` = the candidate's own SHA) and the
+known-sign control (`reference_tc` = 5+0.1), then record both here and in the Linux ledger.
+
 ### M5 — Shard it (~1-2 sessions)
 
 - Matrix of N jobs (start at 8, raise to 20 once the account concurrency behaviour is understood),
