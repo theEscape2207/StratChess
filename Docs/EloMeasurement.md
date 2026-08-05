@@ -1,187 +1,277 @@
 # ELO Measurement Method
 
-How strength is measured in this project: the pinned setup, how to run a match, how to read the
-result, and when a fixed batch answers the question versus when only an SPRT can.
+How strength is measured in this project. **The measurements themselves are in
+[`EloLog.md`](EloLog.md)** — this file is the method, that one is the record. Plan/design:
+`.claude/plans/elo-baseline-measurement.md`.
 
-**The measurements themselves are in [`EloLog.md`](EloLog.md)** — this file is the method, that one
-is the record. Plan/design: `.claude/plans/elo-baseline-measurement.md`.
+## The rules that are never traded away
 
-Run a match with:
+Everything else here is guidance. These five are not, because breaking any of them produces a number
+that looks exactly like a measurement and is not one.
+
+1. **Never compare binaries from different compilers.** The clang-cl/MSVC gap alone is worth roughly
+   +40 Elo (#84) and lands on whatever change is under test. See [the two anchors](#the-two-anchors).
+2. **A batch reporting a time loss, illegal move or disconnect is discarded, not reported.** Those
+   are harness or engine bugs, never strength data.
+3. **An SPRT verdict is not a point estimate.** `H1 accepted` means "bigger than `elo1`", and its
+   headline Elo figure carries the usual small-sample inflation. See [reading the
+   result](#reading-the-result).
+4. **The fixed anchor measures where the engine stands, not what your change did.** To decide
+   whether a change earned its place, measure against `main`. See [the anchor measures the
+   sum](#the-anchor-measures-the-sum-not-your-change).
+5. **State the book on any row that did not use the default one.** Opening selection moves the draw
+   rate, and the draw rate moves the error bar.
+
+---
+
+## 1. Running a measurement
+
+### What are you asking?
+
+Pick the row first; the instrument follows from it.
+
+| Your question | Use | Typical cost |
+|---|---|---|
+| Did this make things worse? (refactors, restructures, anything expected neutral) | `-Sprt NonRegression` — bounds `[-5, 0]` | Stops early when decisive; 500-game cap |
+| Is this worth ≥ ~10 Elo? (small new eval terms) | `-Sprt Gain` — bounds `[0, 10]` | Often hits the cap; see [budget](#spending-the-budget) |
+| Anything else, with bounds you choose | `-Sprt Custom -Elo0 <a> -Elo1 <b>` | Wider bounds decide faster |
+| How big is the difference? (baselines, sanity runs, large expected effects — e.g. the Lazy SMP threads=4 row at +128.55 ± 28.36) | Fixed batch | 500 games ≈ 40 min ≈ ±25 Elo |
+| Does the pipeline work at all? | `-Smoke` | 20 games, ~2 min, resolves nothing |
+
+A fixed batch answers *"how big is it?"*. SPRT answers *"is this worth keeping?"* and stops as soon
+as the evidence is decisive. The distinction matters more than it sounds:
+
+> 500 games resolves ±25 Elo. Bishop pair, connected rooks, castling-done, outposts and queen
+> activity are each worth roughly 5–20 Elo. **A fixed batch cannot distinguish any of them from
+> zero.** The mop-up row in `EloLog.md` (`+15.94 ± 27.62`) is exactly this: a result equally
+> consistent with "+16 Elo", "no change", and "−10 Elo".
+
+### The commands
+
+Build the candidate first (`.\build.ps1 main`) — the script does not build it, and `build.ps1`
+defaults to the shipping clang-cl build, which is the only one comparable against the reference.
 
 ```
+# fixed batch against the default anchor
 cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Run-EloMatch.ps1"
+
+# "prove it did not make things worse"
+... Run-EloMatch.ps1 -Sprt NonRegression
+
+# "prove it is worth >= ~10 Elo"
+... Run-EloMatch.ps1 -Sprt Gain
+
+# explicit bounds
+... Run-EloMatch.ps1 -Sprt Custom -Elo0 0 -Elo1 5
+
+# against main rather than the anchor — see rule 4
+... Run-EloMatch.ps1 -ReferenceExe <merge-base build> -ReferenceTag <commit>
 ```
 
-Build the candidate first (`.\build.ps1 main`). Use `-Smoke` for a 20-game pipeline check.
+`-Sprt Custom` requires both `-Elo0` and `-Elo1` explicitly. `-Sprt` cannot be combined with
+`-Smoke`: a 20-game run can never reach a decision, so the result would always read "inconclusive",
+which looks like a measurement and is not one.
 
-## Measurement setup (pinned — changing any of these starts a new setup record)
+The SPRT wiring itself is verified against the pinned fastchess build: bounds `[0, 200]` between two
+identical builds accepted H0 after 10 games rather than playing out the 200-game cap.
+
+### Reading the result
+
+The script appends one row to `EloLog.md` automatically and prints the same figures.
+
+- **Within ±error of 0** — no measurable change. This is the *expected* result for a pure refactor;
+  byte-identical node-count validation is a stronger check for those than any match.
+- **Clearly negative after pooling** (e.g. −30 ± 18 over 1000 games) — a regression. Investigate
+  before merging.
+- **Near the bound** — unresolved. Re-run and pool; see [resolution](#resolution-what-500-games-can-see).
+- **`H1 accepted` / `H0 accepted`** — a decision, not an estimate. An `H1 accepted` at 300 games is a
+  *stronger* claim than a fixed 500-game point estimate, not a weaker one. Record the verdict, which
+  the script writes into the Notes column as `SPRT <preset> [elo0, elo1] — H1 accepted`.
+- **`inconclusive @ N games`** — a real outcome meaning "smaller than `elo1`, or the budget ran out".
+  Not a failure, and **not a measurement of zero**. The script flags it in yellow rather than letting
+  it pass as a decision.
+- **`FAILURES, discard`** — a time loss, illegal move, disconnect or stall. The script marks the row
+  and exits 1. Discard the batch; do not read its Elo.
+
+Bounds and reported Elo are both **logistic** Elo. The script pins `model=logistic` deliberately —
+fastchess's own default is `normalized` (nElo), a different scale on which `elo1=10` would silently
+mean something else.
+
+---
+
+## 2. The setup
+
+### Pinned components
+
+Changing any of these starts a new setup record.
 
 | Component | Value |
 |---|---|
 | Match runner | fastchess **v1.8.0-alpha** (`fastchess alpha 1.8.0`, windows-x86-64), from https://github.com/Disservin/fastchess/releases/tag/v1.8.0-alpha |
 | Runner location | `<DepsRoot>EngineTesting\fastchess.exe` (repo sibling, same convention as spdlog/json/Catch2) |
-| Opening book | Resolved by `Run-EloMatch.ps1`: `-Book <path>` if given, else `EngineTesting\openings-large.pgn|.epd` if present, else the committed `Tests/openings/openings-250.pgn` — first 250 games of `8moves_v3.pgn` (official-stockfish/books), sequential order, each pair color-swapped (`-repeat`). **250 openings = 500 distinct games**; see "Book size" below |
-| Reference build | git tag **`elo-reference-v2`** (`df9245f`, 2026-08-03 — first baseline built by clang-cl/CMake, matching what ships). Cached as `EngineTesting\StratChess-elo-reference-v2.exe`; rebuilt from the tag automatically on cache miss. **`elo-reference-v1` is retained, not replaced** — see "Two anchors" below |
-| Time control | 10s + 0.1s increment |
+| Opening book | Resolved by `Run-EloMatch.ps1`: `-Book <path>` if given, else `EngineTesting\openings-large.pgn\|.epd` if present, else the committed `Tests/openings/openings-250.pgn` — first 250 games of `8moves_v3.pgn` (official-stockfish/books), sequential order, each pair color-swapped (`-repeat`). **250 openings = 500 distinct games**; see [the book runs out](#the-opening-book-runs-out) |
+| Reference build | git tag **`elo-reference-v2`** (`df9245f`, 2026-08-03). Cached as `EngineTesting\StratChess-elo-reference-v2.exe`; rebuilt from the tag automatically on cache miss |
+| Time control | 10 s + 0.1 s increment |
 | Adjudication | draw: movenumber=40 movecount=8 score=10; resign: movecount=4 score=800 |
 | Machine | Windows 11 Pro x64 (theEscape2207 dev machine) — results are machine-relative; re-establish the sanity row when measuring on different hardware |
-| Concurrency | 6 concurrent games (default, `-Concurrency`) — sized off physical cores (12) ÷ 2 single-threaded engine processes per game, not the 24 logical/SMT threads; re-tune alongside the Machine row above if hardware changes |
+| Concurrency | 6 concurrent games (`-Concurrency`) — sized off physical cores (12) ÷ 2 single-threaded engine processes per game, not the 24 logical/SMT threads; re-tune alongside the Machine row |
 
-## Resuming an interrupted match
+**The instrument has been calibrated.** Identical builds (candidate byte-identical to the reference,
+SHA256-verified) over 2×500 games pooled to **−1.4 Elo** (378W/382L/240D, 49.80%): zero measurable
+bias. The two batches individually hit opposite ±2σ edges, which is what calibrates the per-batch
+noise quoted throughout this document. That run used `elo-reference-v1`, but it measures the
+*instrument* rather than the anchor, so it carries over to v2 unchanged.
 
-If a match gets killed mid-run (check `logs\elo\<stamp>.log` for a trailing `Started game N`
-with no matching `Finished game N` — or the process/log simply stops advancing), resume it instead
-of restarting from scratch:
+### The two anchors
 
-```
-cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Run-EloMatch.ps1 -ResumeDir StratChessEvolved\logs\elo"
-```
+There are two pinned references, and picking the wrong one produces a number that looks real and is
+not.
 
-fastchess autosaves tournament state (`config.json`) every `-AutosaveInterval` games (default 20)
-into `logs\elo\` — a single flat file shared by every invocation, not a per-match directory — and
-`-ResumeDir` reloads it to restore the full original engine/tournament configuration.
-`-CandidateExe`/`-ReferenceTag`/`-Games`/`-Tc`/etc. are all ignored when `-ResumeDir` is set. At
-most `-AutosaveInterval` games get replayed (whatever completed since the last checkpoint before
-the kill), not the whole batch. **Resume promptly** — because `config.json` is shared, starting any
-other (non-resume) match first will overwrite it before you get the chance.
+| Tag | Commit | Compiler | Use for |
+|---|---|---|---|
+| `elo-reference-v2` | `df9245f`, 2026-08-03 | clang-cl + ThinLTO (ships) | **Default.** Day-to-day search/eval changes |
+| `elo-reference-v1` | `fd8b665`, 2026-07-03 | MSVC + LTCG | The long-run epic comparison only |
 
-## Interpreting results
+**Why v2 exists.** The shipping compiler changed to clang-cl when #177 merged, and that change alone
+is worth roughly +40 Elo at 10+0.1 (#84). Measuring a clang-built candidate against the MSVC-built
+v1 credits that +40 to whatever change is under test — a phantom gain large enough to make an eval
+regression look like an improvement.
 
-- 500 games ≈ **±25 ELO** at 95% confidence with this engine's ~37% draw ratio (measured, see the
-  sanity rows in `EloLog.md` — lower draw ratios mean noisier matches than the ±15 rule-of-thumb
-  assumes); scale games ×4 to halve the error bound.
-- **Single batches genuinely wander.** The two identical-build sanity batches landed at
-  +25.1 and −27.9 — both at the edge of their own error bars, pooling to −1.4. Treat any
-  single-batch result near the bound as unresolved: re-run and pool before acting on it.
-- Candidate clearly negative after pooling (e.g. −30 ± 18 over 1000 games): regression —
-  investigate before merging.
-- Candidate within **±error of 0**: no measurable strength change (which is the *expected*
-  result for pure refactors — byte-identical node-count validation is stronger for those).
-- Losses on illegal move / disconnect / time stall are harness or engine **bugs**, never
-  strength data — the script flags them, marks the row `FAILURES, discard`, and exits 1.
-
-## Choosing SPRT vs a fixed batch
-
-A fixed batch answers *"how big is the difference?"*. SPRT answers *"is this worth keeping?"* — and
-stops as soon as the evidence is decisive instead of always playing the full game count.
-
-**Use a fixed batch** when a point estimate with an error bound is what you want: baselines, sanity
-runs, and large expected effects (e.g. the Lazy SMP threads=4 row at +128.55 ± 28.36).
-
-**Use SPRT** when the question is accept/reject and the effect is expected to be small — which is
-most of epic #110. This matters more than it sounds:
-
-> 500 games resolves ±25 Elo. Bishop pair, connected rooks, castling-done, outposts and queen
-> activity are each worth roughly 5–20 Elo. **A fixed batch cannot distinguish any of them from
-> zero.** The mop-up row in `EloLog.md` (`+15.94 ± 27.62`) is exactly this: a result equally consistent with
-> "+16 Elo", "no change", and "−10 Elo".
+**Why v1 is kept.** It is the long-run anchor for the eval (#110) and build-modernization (#81)
+epics: a single before/after across both, where the compiler gain is *part of* what is being
+measured rather than a confound. Do not delete `EngineTesting\StratChess-elo-reference-v1.exe` or
+the tag. Tracked in #180.
 
 ```
-# "prove it did not make things worse" — refactors, restructures, anything expected neutral
-cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Run-EloMatch.ps1 -Sprt NonRegression"
-
-# "prove it is worth >= ~10 Elo" — small new eval terms
-cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Run-EloMatch.ps1 -Sprt Gain"
-
-# explicit bounds
-... -Sprt Custom -Elo0 0 -Elo1 5
+... Run-EloMatch.ps1 -ReferenceTag elo-reference-v1
 ```
 
-| Preset | Bounds | Question it answers |
-|---|---|---|
-| `NonRegression` | elo0=−5, elo1=0 | Did this hurt? |
-| `Gain` | elo0=0, elo1=10 | Is this worth ≥ ~10 Elo? |
-| `Custom` | `-Elo0` / `-Elo1` (both required) | Anything else |
+v1 predates the CMake migration, so rebuilding it from its tag uses that tag's own MSBuild
+`build.ps1` and needs the sibling spdlog/nlohmann checkouts to still exist. `Run-EloMatch.ps1` warns
+when it rebuilds a pre-migration reference — but only on a cache *miss*. A cached v1 binary is used
+silently.
 
-Notes:
+### Resuming an interrupted match
 
-- **`-Games` becomes an upper bound**, not a target — the match stops early on a decision, or at the
-  cap if it never reaches one.
-- **Bounds are in logistic Elo**, the same scale as the `Elo:` line and everything in `EloLog.md`'s
-  history table. The script pins `model=logistic` for this reason; fastchess's own default is
-  `normalized` (nElo), a different scale on which `elo1=10` would mean something else entirely.
-- `-Sprt` cannot be combined with `-Smoke` (a 20-game run can never reach a decision).
-- Resume (`-ResumeDir`) works normally and preserves the original SPRT bounds — and matters *more*
-  here, since a sequential test can run longer than a fixed batch. It recovers an **interrupted**
-  match only; it cannot extend one that already finished at its `-Games` cap (see
-  "Adjusting `-Games`" below).
-- **Record the verdict, not just the Elo.** The Notes column carries
-  `SPRT <preset> [elo0, elo1] — H1 accepted` / `H0 accepted` / `inconclusive @ N games`, written
-  automatically by the script. An `H1 accepted` at 300 games is a *stronger* claim than a fixed
-  500-game point estimate — do not read it as though it were weaker.
-- **Inconclusive is a real result**, meaning "smaller than elo1, or we ran out of budget". It is not
-  a failure and not a measurement of zero. The script flags it in yellow rather than letting it pass
-  as a decision.
+Symptom: `logs\elo\<stamp>.log` has a trailing `Started game N` with no matching `Finished game N`,
+or simply stops advancing.
 
-Verified against the pinned fastchess 1.8.0 build: an SPRT run with bounds `[0, 200]` between two
-identical builds accepted H0 after 10 games rather than playing the 200-game cap.
+```
+... Run-EloMatch.ps1 -ResumeDir StratChessEvolved\logs\elo
+```
 
-### Book size, and why 500 games is a cliff
+fastchess autosaves tournament state every `-AutosaveInterval` games (default 20) to
+`logs\elo\config.json`, and `-ResumeDir` reloads it to restore the original engine and tournament
+configuration. At most one autosave interval of games is replayed, not the whole batch.
+`-CandidateExe`, `-ReferenceTag`, `-ReferenceExe`, `-Games`, `-Tc`, `-Concurrency` and the SPRT
+bounds are all ignored when resuming — they come from the saved state.
 
-An opening pair is two games, so **N openings yield 2N distinct games**. The committed book holds 250
-openings, so a 500-game batch consumes it **exactly**. Every game past that replays an opening
-already played, which narrows the reported error bar without adding information to it — the run looks
-more precise than it is.
+Two constraints follow from that file being a single flat file shared by every invocation:
 
-This matters most where it is least visible: SPRT runs take `-Games` as an upper bound and routinely
-ask for thousands. `Run-EloMatch.ps1` now prints the book and its opening count on every run, and
-warns when `-Games` exceeds the distinct-game count.
+- **Resume promptly.** Starting any other (non-resume) match first overwrites it.
+- **A completed capped run cannot be extended.** Resume restores the original `-Games`, so "run 500,
+  then add more" is not available. Restart at the higher number.
 
-**To run bigger batches honestly**, drop a large book beside the checkout as
+---
+
+## 3. Why measurement is hard here
+
+Each of these has cost this project a run, a wrong conclusion, or both.
+
+### Resolution: what 500 games can see
+
+500 games ≈ **±25 Elo** at 95% confidence, given this engine's ~37% draw ratio. That is measured,
+not assumed — the ±15 rule of thumb assumes a higher draw rate than this engine produces. Error
+scales as 1/√N, so halving the bound costs 4× the games: ±25 at 500 → ±12.5 at 2 000 → ±6 at 8 000.
+
+**Single batches genuinely wander.** The two identical-build sanity batches landed at +25.1 and
+−27.9, both at the edge of their own error bars, pooling to −1.4. Treat any single-batch result near
+the bound as unresolved: re-run and pool before acting on it.
+
+### The anchor measures the sum, not your change
+
+`elo-reference-v1` and `-v2` are **fixed** anchors, so every row against one measures cumulative
+progress since it — the engine's standing, not the PR's delta. That is the right instrument for
+tracking the project and the wrong one for deciding whether one small change earned its place:
+
+- **An SPRT against the anchor tests the sum.** H1 means "`main` + this change beats the anchor by
+  more than `elo1`", which can be true on `main`'s pre-existing margin alone. A verdict on a sum
+  licenses no claim about one addend. The 2026-07-29 `candidate-08d4ef8` row in `EloLog.md` accepted
+  H1 in 23 minutes on a comparison that says nothing about the three terms it was run for.
+- **The delta cannot be recovered by subtraction.** Differencing two anchor rows compounds their
+  errors, so the result is less constrained than either input — and most rows are individually
+  inconclusive to begin with.
+
+So to decide whether a change helps, build the merge-base and pass it via `-ReferenceExe`, with
+`-ReferenceTag` naming the commit. Keep the anchor run too when the cumulative figure is wanted; the
+two answer different questions and both belong in the log, labelled as to which is which.
+
+### The opening book runs out
+
+An opening pair is two games, so **N openings yield 2N distinct games**. The committed book holds
+250 openings, so a 500-game batch consumes it **exactly**. Every game past that replays an opening
+already played, which narrows the reported error bar without adding information — the run looks more
+precise than it is.
+
+This is least visible where it matters most: SPRT runs take `-Games` as an upper bound and routinely
+ask for thousands. `Run-EloMatch.ps1` prints the book and its opening count on every run and warns
+when `-Games` exceeds the distinct-game count.
+
+To run bigger batches honestly, drop a large book beside the checkout as
 `EngineTesting\openings-large.pgn` (or `.epd` — the format flag follows the extension). The natural
-choice is the full `8moves_v3.pgn` from official-stockfish/books, the same source the committed
-250-game book was cut from. It is deliberately **not committed**: it is third-party data of varying
-provenance and this repository is public, so it lives with fastchess and the reference binaries,
-which is where every other external test asset already lives.
+choice is the full `8moves_v3.pgn`, the same source the committed book was cut from. It is
+deliberately **not committed**: third-party data of varying provenance, in a public repository, so it
+lives with fastchess and the reference binaries like every other external test asset.
 
-Rows measured on the 250-opening book are not directly comparable to rows measured on a larger one —
-opening selection changes the draw rate, and the draw rate changes the error bar. Note the book
-alongside any row where it is not the committed default.
-
-### Adjusting `-Games` (and when not to)
+### Spending the budget
 
 `-Games 500` means two different things depending on mode, and conflating them is the trap:
 
-- **Fixed batch — 500 *is* the measurement.** Error scales as 1/√N, so it is an expensive dial:
-  ±25 Elo at 500 → ±12.5 at 2 000 → ±6 at 8 000. Raise it only when a point estimate is the
-  deliverable (a new reference baseline, or fitting data for #117), not to make a verdict "more
-  certain" — that is what SPRT is for.
-- **SPRT — 500 is only the give-up point.** It has no bearing on the answer's quality; the test
-  stops as soon as the evidence is decisive. Raising it is statistically free, and costs wall-clock
-  only in the runs that would otherwise have returned inconclusive. Note the 500 default was chosen
-  as a *fixed-batch resolution target* and is simply inherited as the SPRT cap — there is no
-  statistical reason for those two numbers to be equal.
+- **Fixed batch — 500 *is* the measurement.** An expensive dial (1/√N above). Raise it only when a
+  point estimate is the deliverable — a new reference baseline, or fitting data for #117 — not to
+  make a verdict "more certain", which is what SPRT is for.
+- **SPRT — 500 is only the give-up point.** It has no bearing on the answer's quality. Raising it is
+  statistically free and costs wall-clock only in runs that would otherwise return inconclusive. The
+  500 default was chosen as a fixed-batch resolution target and simply inherited as the SPRT cap;
+  there is no statistical reason for the two numbers to be equal.
 
 **Reach for wider bounds before more games.** Expected sample size scales roughly with the inverse
-square of the indifference region's width, so `-Sprt Custom -Elo0 -10 -Elo1 0` costs about **4×
-fewer games** than `NonRegression`'s `[-5, 0]` — usually a better trade than quadrupling the budget.
-Ask the loosest question that still settles the decision.
+square of the indifference region's width, so `-Sprt Custom -Elo0 -10 -Elo1 0` costs about **4× fewer
+games** than `NonRegression`'s `[-5, 0]`. Ask the loosest question that still settles the decision.
 
-**Estimating what an inconclusive run would have needed.** LLR accumulates roughly linearly in N
-(in expectation, when the true effect lies outside the indifference region), so
-`games_needed ≈ N × 2.94 / LLR_at_N`. The #126 row in `EloLog.md` reached LLR 0.76 at 500 games → ~1 900
-games, ~2.5 h. Treat this as order-of-magnitude only: LLR is a random walk, and if the true effect
-sits *inside* the indifference region the test may not converge at any practical N.
+**Buy information per game before buying more games.** A sharper opening book yields more decisive
+pairs (the #126 run drew 35.6%); pentanomial scoring (the `Ptnml(0-2)` line) is already in use as the
+other main variance reduction.
 
-**The binding ceiling is operational, not statistical.** A full 500-game batch takes ≈40 min at the
-default `-Concurrency 6`, and the 2026-07-26 mop-up row in `EloLog.md` was killed at ~60 min by a
-background-task duration cap in the execution tooling. That puts the practical limit for a
-*background-launched* match at roughly **700–750 games**; past that, run it in the foreground or
-expect to resume. Two related traps:
+**Estimating what an inconclusive run would have needed.** LLR accumulates roughly linearly in N in
+expectation, when the true effect lies outside the indifference region, so
+`games_needed ≈ N × 2.94 / LLR_at_N`. The #126 row reached LLR 0.76 at 500 games → ~1 900 games,
+~2.5 h. Order-of-magnitude only: LLR is a random walk, and if the true effect sits *inside* the
+indifference region the test may not converge at any practical N.
 
-- `-ResumeDir` **cannot extend a completed capped run.** It restores the original `-Games` from the
-  saved `config.json`, so it recovers an *interrupted* match but will not top up a finished one.
-  "Run 500, then add more" is not available — restart at the higher number.
-- **Do not raise `-Concurrency` to buy throughput.** It is pinned to physical cores deliberately;
-  oversubscribing injects timing noise, or genuine time losses, into a fixed real-time control.
+**The binding ceiling is operational, not statistical.** A 500-game batch takes ≈40 min at
+`-Concurrency 6`, and the 2026-07-26 mop-up row was killed at ~60 min by a background-task duration
+cap in the execution tooling. The practical limit for a *background-launched* match is roughly
+**700–750 games**; past that, run it in the foreground or expect to resume.
 
-**Lowering `-Games`** is only useful for `-Smoke` pipeline checks. Under SPRT it is actively
-counterproductive: an early decision costs nothing, so a low cap buys nothing and risks an
-avoidable inconclusive.
+**Do not raise `-Concurrency` to buy throughput.** It is pinned to physical cores deliberately;
+oversubscribing injects timing noise — or genuine time losses — into a fixed real-time control, and
+by rule 2 a batch with a time loss is thrown away.
 
-**Before spending 4× the games, consider buying information *per* game instead** — a sharper
-opening book yields more decisive pairs (the #126 run drew 35.6%), and pentanomial scoring (the
-`Ptnml(0-2)` line) is already in use as the other main variance reduction.
+**Lowering `-Games`** is only useful for `-Smoke`. Under SPRT it is actively counterproductive: an
+early decision costs nothing, so a low cap buys nothing and risks an avoidable inconclusive.
+
+### The 100 ms per-move floor
+
+`compute_budget()` floors every move at 100 ms regardless of how much clock is left, so at any
+increment below that the engine loses ground every move once its clock drains, and eventually
+forfeits. Measured: **3 time losses in 4 games at 5+0.05, none at 5+0.1**; at 2+0.02 the handicapped
+side flagged in all four.
+
+Two consequences. A handicap run must halve the **base** time and leave the increment alone —
+halving both tests the time manager's floor rather than whatever is under test. And the standard
+10+0.1 sits *exactly* on the floor: its 100 ms increment repays the minimum move cost and no more, so
+there is no margin on a slower or contended machine. Tracked as #204.
 
 ### When even SPRT cannot resolve a term
 
@@ -190,81 +280,19 @@ into one PR and measure them jointly**. That is a deliberate measurement decisio
 scoping — but say so explicitly in the row's Notes, so a later reader does not attribute the whole
 delta to whichever term the commit message happens to mention first.
 
-## Baseline (established 2026-07-03)
+---
 
-Identical builds (candidate exe byte-identical to the reference exe, SHA256-verified) over
-2×500 games: pooled **−1.4 ELO** (378W/382L/240D, 49.80%) — zero measurable bias in the
-instrument. The two batches individually hit opposite ±2σ edges, which calibrates the
-per-batch noise above. Future search/eval changes measure against the pinned reference with
-this procedure; anything beyond the pooled error bound is signal. (That calibration was run
-against `elo-reference-v1`; it measures the *instrument*, not the anchor, so it carries over to
-`elo-reference-v2` unchanged.)
-
-### Two anchors, and which to use
-
-There are two pinned references, and picking the wrong one produces a number that looks real and
-is not.
-
-| Tag | Commit | Compiler | Use for |
-|---|---|---|---|
-| `elo-reference-v2` | `df9245f`, 2026-08-03 | clang-cl + ThinLTO (ships) | **Default.** Day-to-day search/eval changes |
-| `elo-reference-v1` | `fd8b665`, 2026-07-03 | MSVC + LTCG | The long-run epic comparison only |
-
-**Why v2 exists.** The shipping compiler changed to clang-cl when #177 merged, and that change alone
-is worth roughly +40 Elo at 10+0.1 (measured in #84). Measuring a clang-built candidate against the
-MSVC-built v1 credits that +40 to whatever change is under test — a phantom gain large enough to
-make an eval regression look like an improvement. v2 removes it by being built the same way the
-candidate is.
-
-**Why v1 is kept.** It is deliberately preserved as the long-run anchor for the eval (#110) and build
-modernization (#81) epics: a single before/after across both, where the compiler gain is *part of*
-what is being measured rather than a confound. Do not delete
-`EngineTesting\StratChess-elo-reference-v1.exe` or the tag. Tracked in #180.
-
-Run it explicitly when that time comes:
-
-```
-... -File StratChessEvolved\Scripts\Run-EloMatch.ps1 -ReferenceTag elo-reference-v1
-```
-
-Note the rebuild path: v1 predates the CMake migration, so rebuilding it from its tag uses that
-tag's own MSBuild `build.ps1` and needs the sibling spdlog/nlohmann checkouts to still exist.
-`Run-EloMatch.ps1` warns when it rebuilds a pre-migration reference, but the warning only fires on a
-cache *miss* — a cached v1 binary is used silently.
-
-### The anchor answers "where do we stand", not "did this change help"
-
-`elo-reference-v1` is a **fixed** anchor, so every row measures cumulative progress since it — the
-engine's standing, not the PR's delta. That is the right instrument for tracking the project, and
-the wrong one for deciding whether one small change earned its place, because:
-
-- **An SPRT against the anchor tests the sum.** H1 means "`main` + this change beats the anchor by
-  more than `elo1`", which can be true on `main`'s pre-existing margin alone. A verdict on a sum
-  licenses no claim about one addend. See the 2026-07-29 `candidate-08d4ef8` row in `EloLog.md`, where H1 was
-  accepted in 23 minutes on a comparison that says nothing about the three terms it was run for.
-- **The delta cannot be recovered by subtraction.** Differencing two anchor rows compounds their
-  errors, so the result is less constrained than either input — and most rows here are individually
-  inconclusive to begin with.
-
-**So: to decide whether a change helps, measure it against `main`** — build the merge-base and pass
-it via `-ReferenceExe`, with `-ReferenceTag` naming the commit. Keep the anchor run too when the
-cumulative figure is wanted; they answer different questions and both belong in the log, clearly
-labelled as to which is which. This tension is inherent to a fixed anchor and is tracked separately;
-it is not a defect in any individual row.
-
-
-## The Linux CI ledger is a separate instrument
+## 4. The Linux CI instrument
 
 `.github/workflows/strength.yml` (`workflow_dispatch` only) plays the same kind of match on a GitHub
 runner: both sides built from source in one job by GCC on `ubuntu-24.04`, Release, `Threads=1`,
-identical adjudication settings to `Run-EloMatch.ps1`.
+with adjudication settings copied from `Run-EloMatch.ps1` verbatim.
 
-**Its rows live in their own table in `EloLog.md`, and are never compared with a local one.** The
-binaries come from a different compiler on different hardware, which is the one comparison this
-whole document exists to prevent (issue #84 measured the clang-cl/MSVC gap alone at roughly +40 Elo). Ratios transfer between
-the two ledgers; absolute values do not.
+**Its rows live in their own table in `EloLog.md` and are never compared with a local one** — rule 1,
+applied between instruments rather than within one. Ratios transfer between the two ledgers;
+absolute values do not.
 
-Two differences from the local setup, both deliberate:
+Two deliberate differences from the local setup:
 
 - **Book.** `UHO_4060_v3.epd` (242,201 openings — the 4060 names the evaluation band the positions
   were selected from, not their count), downloaded per run from a pinned commit of
@@ -273,8 +301,8 @@ Two differences from the local setup, both deliberate:
 - **Fixed N, no SPRT.** SPRT is a sequential test and does not shard across runners; the CI
   instrument buys resolution with games instead, since minutes there are free.
 
-**Increments below 0.1 s forfeit.** `compute_budget()` floors a move at 100 ms, so at 5+0.05 the
-engine loses ground every move once its clock drains — measured at 3 time losses in 4 games, against
-none at 5+0.1. A handicap run must halve the base time and leave the increment alone. The workflow
-warns when either side is given an increment under 0.1 s.
+The workflow warns when either side is given an increment under 0.1 s, for the reason in
+[the 100 ms floor](#the-100-ms-per-move-floor).
 
+**It is uncalibrated until its null test and known-sign control pass**, and no result may be recorded
+from it before then. Status: M4 in `.claude/plans/public-repo-and-strength-lab.md`.
