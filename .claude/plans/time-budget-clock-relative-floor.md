@@ -101,19 +101,24 @@ Worked values, integer arithmetic as the code computes it:
 | 50 | 0 | 0 | 100 / 100 | 0 / 0 | fixed — budget exceeded the whole clock |
 | 30 | 0 | 0 | 100 / 100 | 0 / 0 | fixed |
 
-The two formulas diverge only below ~250 ms remaining. Everything the project has ever measured at
-10+0.1 sits far above that, so the existing Elo baseline carries over without a new match.
+The two formulas diverge only at low clock. Sweeping every millisecond at 10+0.1 puts the exact
+threshold at **remaining <= 249 ms**; above that the old and new budgets are equal for every input.
+Everything the project has ever measured at 10+0.1 sits far above that, so the existing Elo baseline
+carries over without a new match.
 
 **Drain behaviour.** Deducting `hard` (worst case; the engine normally stops at `soft`) and adding
 the increment each move gives a stable positive fixed point instead of a drain to zero:
 
-- 2+0.02 converges to **91 ms** remaining, spending 20 ms/move.
-- 5+0.05 converges to **150 ms** remaining, spending 50 ms/move.
+- 2+0.02 settles at **91 ms** remaining, spending 20 ms/move.
+- 5+0.05 settles at **151 ms** remaining, spending 50 ms/move.
 
-Derivation: at a low clock `hard == cap == (r - 50) / 2`, so `r_next = r - (r - 50)/2 + inc`, whose
-continuous fixed point is `r = 50 + 2 * inc`. Integer division makes the 2+0.02 case settle one
-millisecond above that (91, not 90); 5+0.05 lands on 150 exactly. Assert the observed integers, not
-the closed form.
+Derivation: at a low clock `hard == cap == (r - 50) / 2`, so `r_next = r - (r - 50)/2 + inc`, which
+rests where `hard == inc`, i.e. `(r - 50) / 2 == inc`.
+
+Integer division makes **both** `r = 50 + 2*inc` and `r + 1` satisfy that, so the resting value is a
+two-wide band and which end is reached depends on the approach trajectory, not on the formula. The
+test must assert the band (`>= 50 + 2*inc` and `<= 50 + 2*inc + 1`) plus convergence. Asserting one
+member of the band is brittle: 5+0.05 lands on 151, not the 150 the closed form suggests.
 
 ---
 
@@ -167,12 +172,13 @@ Add two cases:
   `{0, 20, 50, 100, 1000, 5000}` x moves_to_go over `{0, 1, 5, 30}`, asserting
   `hard <= remaining && hard >= soft && soft >= 0` with `CAPTURE`. This is the assertion the issue
   says would have caught the bug without a match.
-- **`compute_budget: bullet clock does not drain to zero`** — simulate **400** moves at 2+0.02
-  starting from 120,000 ms, deducting `hard` and adding 20 ms each move; assert the clock stays
-  `> 0` throughout and that the final 20 values are all equal (converged, not merely positive).
-  Repeat for 5+0.05. 400 rather than 200: the clock decays ~5% per move at first, so reaching the
-  fixed point from 120 s takes ~140 moves and a 200-move budget leaves little margin if the early
-  allocation is retuned later.
+- **`compute_budget: sub-100 ms increments do not drain the clock`** — simulate **400** moves at
+  2+0.02 starting from 120,000 ms, deducting `hard` and adding 20 ms each move; assert the clock
+  never goes negative, that the final 20 values are all equal (converged, not merely positive), and
+  that the resting value lies in the `[50 + 2*inc, 50 + 2*inc + 1]` band. Repeat for 5+0.05.
+  400 rather than 200 moves: the clock decays ~5% per move at first, so reaching the resting value
+  from 120 s takes ~140 moves and a 200-move budget leaves little margin if the early allocation is
+  retuned later.
 
 Both new cases are deterministic and sleep-free, so they belong in the fast tier.
 

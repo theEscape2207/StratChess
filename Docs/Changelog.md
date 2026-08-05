@@ -22,6 +22,36 @@ Newest first.
 
 ---
 
+## 2026-08-05 — Time budget is bounded by the clock (#204)
+
+### Fixed
+
+- **`compute_budget()` could return a budget larger than the clock it was given**, so at any
+  increment below 100 ms every move cost more than it repaid and the forfeit was only a question of
+  how many moves remained. Three compounding faults: `usable` was floored at 100 ms (inventing time
+  that was not there), `soft` was floored at an absolute 100 ms, and a trailing
+  `max(min(candidate, cap), soft)` let `soft` override the `usable/2` cap entirely. The last is what
+  actually forfeited — at 200 ms remaining with a 5 s increment the cap computed 75 ms and the
+  function returned 4005 ms.
+- The floor is now clock-relative (`min(100 ms, usable/2)`) and the cap bounds **both** limits via
+  `clamp`, so `hard <= max(remaining - overhead, 0) / 2` holds structurally rather than by case
+  analysis. A clock at or below the 50 ms overhead yields a zero budget; `handle_empty_move_emergency()`
+  supplies a legal move, which is the only non-forfeiting option at that point.
+
+### Notes
+
+Budgets are unchanged wherever `remaining > 249 ms` — verified by sweeping every millisecond at
+10+0.1 — so the existing Elo baseline carries over and no new match was needed. Below that the two
+formulas diverge exactly where the old one forfeited. Simulating a 2+0.02 clock while spending the
+*hard* limit every move now settles at 91 ms remaining instead of draining to zero.
+
+`TimeUtils.h`'s documented invariant said `hard >= soft >= 100 ms`, which was the defect written
+down; it now reads `usable/2 >= hard >= soft >= 0`. Three `[time_mgr]` cases asserted the old floor
+and were updated; the blitz, classical and zero-increment cases were left untouched deliberately, as
+the evidence that normal play did not move. Design: `.claude/plans/time-budget-clock-relative-floor.md`.
+
+---
+
 ## 2026-08-05 — `Get-BuildArtifact.ps1` fails on a missing binary by default
 
 ### Changed
