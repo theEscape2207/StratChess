@@ -229,14 +229,22 @@ void UciHandler::cmd_position(std::string_view line)
                 ? std::string(line.substr(fen_start, moves_pos - fen_start))
                 : std::string(line.substr(fen_start));
 
-            // A malformed FEN declines the whole command: the board keeps the position it already
-            // held and the move list below is not replayed onto it. UCI has no error channel for
-            // this, and silently ignoring the command is conventional. Resetting to the starting
-            // position instead would be worse — it would answer `bestmove` for a position the GUI
-            // never sent.
+            // A rejected FEN resets to the starting position and says so. Both of
+            // those matter:
+            //
+            // Leaving the previous position in place makes the engine answer for
+            // a position the caller never sent, with the answer depending on what
+            // was loaded before -- so the same command yields different results in
+            // different sessions. That is how a whole perftcheck corpus run got
+            // misread as move-generation faults (#200).
+            //
+            // `info string` is the error channel UCI actually has. The move list
+            // below is deliberately not replayed: it describes a position that was
+            // never established.
             if (!board_.SetupFromFEN(fen)) {
-                spdlog::default_logger()->debug(
-                    "position: malformed FEN, command ignored and board left unchanged: {}", fen);
+                send("info string position: rejected FEN, board reset to the starting position");
+                [[maybe_unused]] const bool ok = board_.SetupFromFEN(std::string(STARTING_FEN));
+                assert(ok && "STARTING_FEN failed to parse");
                 return;
             }
         }
@@ -250,17 +258,25 @@ void UciHandler::cmd_position(std::string_view line)
         std::string token;
         while (ss >> token) {
             Move m = MoveFormatter::FromUCI(token, board_);
-            if (!m.is_null()) {
-                board_.DoMove(m);
-                // Each replayed move is permanent, never undone — reset per
-                // move (exactly like Game.cpp after every committed move), NOT
-                // once after the loop: the ply-indexed history arrays hold
-                // MAX_PLY entries, so a single post-loop reset lets DoMove
-                // write out of bounds during any replay longer than MAX_PLY
-                // plies (issue #53 follow-up; found by the first fastchess
-                // smoke match — 265-ply game, access violation in Release).
-                board_.ResetSearchDepth();
+            if (m.is_null()) {
+                // Replay stops here rather than skipping the move: every later
+                // move is relative to the position this one would have produced,
+                // so applying them would build a position nobody described. What
+                // was applied so far stands, and the caller is told where it
+                // stopped.
+                send("info string position: unparseable move '" + token +
+                     "', remaining moves not replayed");
+                return;
             }
+            board_.DoMove(m);
+            // Each replayed move is permanent, never undone — reset per
+            // move (exactly like Game.cpp after every committed move), NOT
+            // once after the loop: the ply-indexed history arrays hold
+            // MAX_PLY entries, so a single post-loop reset lets DoMove
+            // write out of bounds during any replay longer than MAX_PLY
+            // plies (issue #53 follow-up; found by the first fastchess
+            // smoke match — 265-ply game, access violation in Release).
+            board_.ResetSearchDepth();
         }
     }
 }

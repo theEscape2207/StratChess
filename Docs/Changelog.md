@@ -22,6 +22,38 @@ Newest first.
 
 ---
 
+## 2026-08-05 — A rejected FEN no longer leaves the previous position on the board
+
+Closes #200.
+
+### Fixed
+
+- **`cmd_position` reset the board to the start position when `SetupFromFEN` rejects a FEN**, and
+  reports it with `info string`. It previously kept whatever position was already loaded and said
+  nothing, so the engine answered for a position the caller never sent — and the answer depended on
+  what had been loaded earlier in the session. The same command genuinely returned 20 moves in one
+  session and 48 in another.
+- **`MoveFormatter::FromUCI` validated its square characters.** It checked only that the token was at
+  least four characters, so `zzzz` computed file 25 and rank −66 and indexed the mailbox at −503 — an
+  out-of-bounds read reachable from any GUI sending `position startpos moves zzzz`. Found by a test
+  written for the change above, which crashed the test binary with `0xC0000409`.
+- **An unparseable move stops the replay and is reported**, rather than being skipped silently. Later
+  moves are relative to the position the skipped one would have produced, so replaying them built a
+  position nobody described.
+
+### Notes
+
+The previous behaviour was deliberate — it carried a comment arguing that resetting "would answer
+`bestmove` for a position the GUI never sent", and a test asserting it. Both rested on premises that
+do not hold: keeping the previous position answers for an unsent position too, just less visibly and
+non-reproducibly, and `info string` is the error channel UCI has. The test now asserts the new
+contract.
+
+`Board::SetupFromFEN` itself is unchanged and still leaves the board untouched on failure; the reset
+belongs to the UCI layer, which is what owns the session.
+
+---
+
 ## 2026-08-05 — Opening book is selectable, and book exhaustion is now visible
 
 M3 of `.claude/plans/public-repo-and-strength-lab.md`.

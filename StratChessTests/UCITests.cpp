@@ -273,6 +273,20 @@ private:
     std::streambuf* old_;
 };
 
+// Runs `action` with std::cout captured and returns what it printed.
+//
+// A named helper rather than a brace scope around a CoutRedirect: the capture
+// covers exactly one call, and the result is an expression rather than an
+// out-of-scope variable assigned inside braces. Tests that capture a whole
+// function body keep using CoutRedirect directly, which is equally fine.
+template <typename F>
+static std::string capture_cout(F&& action)
+{
+    CoutRedirect redirect;
+    std::forward<F>(action)();
+    return redirect.str();
+}
+
 // Parses the integer centipawn value out of a "<label><N> cp" line, e.g.
 // label="static eval: " on "static eval: 34 cp (White to move; ...)".
 // A real parse of the emitted number, not a substring check — this is what
@@ -688,23 +702,30 @@ TEST_CASE("Board::SetupFromFEN: reports failure and leaves the board untouched",
     CHECK(board.GetCurrentColor() == WHITE);
 }
 
-TEST_CASE("cmd_position: malformed FEN leaves the previous position intact", "[uci]")
+TEST_CASE("cmd_position: malformed FEN resets to the start position and reports it", "[uci]")
 {
     UciHandlerTestFixture fx;
     fx.position("position startpos moves e2e4");
 
-    const std::string before = fx.board().ExtractFEN();
     REQUIRE(fx.board().GetPiece(e4) == WHITE_PAWN);
     REQUIRE(fx.board().GetCurrentColor() == BLACK);
 
-    fx.position("position fen this-is-not-a-fen");
+    const std::string output =
+        capture_cout([&] { fx.position("position fen this-is-not-a-fen"); });
 
-    CHECK(fx.board().ExtractFEN() == before);
+    // The e2e4 position is gone: keeping it would make the engine answer for a
+    // position the caller never sent, and the answer would depend on session
+    // history (#200).
+    CHECK(fx.board().GetPiece(e4) == NO_PIECE);
+    CHECK(fx.board().GetPiece(e2) == WHITE_PAWN);
+    CHECK(fx.board().GetCurrentColor() == WHITE);
+    CHECK(output.find("info string") != std::string::npos);
 }
 
 // Issue #46: a FEN with the side-to-move field omitted. Since #143 added the field-count floor the
-// parser rejects it outright, so the engine can no longer silently decide it is Black's move — but
-// the command must also leave no trace, or the engine answers for a position never sent.
+// parser rejects it outright, so the engine can no longer silently decide it is Black's move. The
+// board is reset to the start position (#200); here the prior position was already the start
+// position, so "reset" and "unchanged" coincide.
 TEST_CASE("cmd_position: FEN missing the side-to-move field is declined", "[uci]")
 {
     UciHandlerTestFixture fx;
@@ -719,7 +740,7 @@ TEST_CASE("cmd_position: FEN missing the side-to-move field is declined", "[uci]
 }
 
 // The move list is parsed after the position block, so a declined FEN must abandon the whole
-// command — replaying moves onto the position the board still holds would corrupt it.
+// command — the moves describe a position that was never established.
 TEST_CASE("cmd_position: malformed FEN does not replay its move list", "[uci]")
 {
     UciHandlerTestFixture fx;
@@ -987,4 +1008,53 @@ TEST_CASE("run(): a bare 'go' still searches after the perft branch was added", 
 
     REQUIRE(output.find("bestmove") != std::string::npos);
     REQUIRE(parse_divide(output).empty());
+}
+
+// ---------------------------------------------------------------------------
+// A rejected FEN must not leave the previous position on the board (#200).
+//
+// The load-bearing property is that the answer does not depend on what was
+// loaded before: the same rejected FEN from two different prior positions must
+// leave the same board.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Nine white pawns — rejected by FENParser's "too many pawns" rule.
+constexpr const char* kRejectedFen = "4k3/8/P7/8/8/8/PPPPPPPP/4K3 w - - 0 1";
+constexpr const char* kKiwipeteFen =
+    "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+
+} // namespace
+
+TEST_CASE("cmd_position: a rejected FEN gives the same board whatever preceded it", "[uci]")
+{
+    auto perft_after = [](const std::string& prior) {
+        UciHandlerTestFixture fix;
+        fix.position(prior);
+        capture_cout([&] { fix.position(std::string("position fen ") + kRejectedFen); });
+        return divide_total(capture_cout([&] { fix.perft("perft 1"); }));
+    };
+
+    const auto after_startpos = perft_after("position startpos");
+    const auto after_kiwipete = perft_after(std::string("position fen ") + kKiwipeteFen);
+
+    // Before #200 these were 20 and 48: the engine reported on the stale board.
+    REQUIRE(after_startpos == after_kiwipete);
+    REQUIRE(after_startpos == 20);
+}
+
+TEST_CASE("cmd_position: an unparseable move stops replay and reports it", "[uci]")
+{
+    UciHandlerTestFixture fix;
+
+    const std::string output =
+        capture_cout([&] { fix.position("position startpos moves e2e4 zzzz e7e5"); });
+
+    REQUIRE(output.find("info string") != std::string::npos);
+    REQUIRE(output.find("zzzz") != std::string::npos);
+
+    // e2e4 applied, replay stopped there: Black to move, 20 replies.
+    REQUIRE(divide_total(capture_cout([&] { fix.perft("perft 1"); })) == 20);
+    REQUIRE(fix.board().GetCurrentColor() == BLACK);
 }
