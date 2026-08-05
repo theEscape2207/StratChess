@@ -291,6 +291,12 @@ workflow uses (per-engine `tc=`, `option.Threads=1`, `-each proto=uci`, an EPD b
 **Remaining for M4:** dispatch the null test (`reference_ref` = the candidate's own SHA) and the
 known-sign control (`reference_tc` = 5+0.1), then record both here and in the Linux ledger.
 
+The first dispatch found a packaging bug rather than a measurement: `fastchess` v1.8.0-alpha extracts
+to a subdirectory, and the guard against `mv fastchess fastchess` compared basenames, so the binary
+was never moved into place. Both builds had already succeeded. That is the argument for
+dispatch-only stated as a fact rather than a principle — the first thing this workflow produced was
+a defect in itself, and a `pull_request` trigger would have produced it on somebody's PR.
+
 ### M5 — Shard it (~1-2 sessions)
 
 - Matrix of N jobs (start at 8, raise to 20 once the account concurrency behaviour is understood),
