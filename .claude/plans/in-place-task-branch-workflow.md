@@ -1,11 +1,33 @@
 # In-place task branches: one worktree, N sequential branches
 
-## Goal
+> **For agentic workers:** implement task-by-task, in order. Steps use checkbox (`- [ ]`) syntax for
+> tracking. Each task ends with a commit and is independently reviewable.
 
-Make "one worktree, many sequential task branches" a first-class workflow alongside the existing
-per-task worktree model, by moving the two invariants it depends on out of the driver's discipline
-and into the tooling — and by fixing the defect the mode exposed: `Sync-Master.ps1` cannot run from
-a worktree at all, so in a mode that never removes worktrees, nothing ever syncs `master`.
+**Goal:** make "one worktree, many sequential task branches" a first-class workflow alongside the
+per-task worktree model, enforcing in tooling the two invariants it currently leaves to discipline.
+
+**Architecture:** a parallel verb set. Two new scripts mirror `New-Worktree.ps1` and
+`Remove-Worktree.ps1` without touching them, and `Sync-Master.ps1` learns to route to whichever
+worktree holds `master` instead of demanding it be run from there.
+
+**Tech Stack:** PowerShell 7 (`pwsh`), git worktrees. No test framework — see "Testing note".
+
+## Global constraints
+
+- PowerShell scripts are invoked with `-File`, never dot-sourced (`$PSScriptRoot` is `$null` under
+  dot-source). Every script states this in `.NOTES`.
+- House script style: comment-based help with `.SYNOPSIS`, `.DESCRIPTION`, `.WHEN TO USE`,
+  `.HOW TO INVOKE`, `.NOTES`; `Set-StrictMode -Version Latest`; `$ErrorActionPreference = 'Stop'`.
+- Task branches are named `worktree-<name>`; `<name>` is kebab-case.
+- Comments describe the code as it stands — no task/gate labels, no history.
+
+## Testing note
+
+There is no Pester or other PowerShell test framework in this repository, and these scripts are
+Tooling tier, so `Validate-PrePR.ps1` only syntax-parses them. The test-first cycle here is at
+command level: run the verification command, watch it fail for the stated reason, implement, run it
+again. The one exception is Task 4, where `Get-ChangeTier.ps1 -SelfTest` is a real assertion table
+and gets a genuine red-to-green cycle.
 
 ## The two modes, and why both are worth having
 
@@ -63,6 +85,9 @@ Established while writing this plan; each one changes a step.
    `git fetch origin main:master` from a worktree returns *"refusing to fetch into branch
    'refs/heads/master' checked out at …"*. There is no worktree-side workaround, which is why
    delegation is the only design available.
+8. **Every git call in `Sync-Master.ps1` goes through one `Invoke-Git` wrapper** that reads
+   `$RepoRoot`. Retargeting that single variable therefore redirects the whole script, which is what
+   keeps the change small.
 
 ## Design decisions
 
@@ -97,79 +122,610 @@ tracked modifications block.
 | `CLAUDE.md` | Two script rows; a note that both modes exist and what each guarantees |
 | `Docs/Workflow.md` | The two modes, the two invariants, and which script enforces each |
 
-## Implementation steps
+---
 
-### Step 1 — `Sync-Master.ps1` routing
+## Task 1: Route `Sync-Master.ps1` to wherever `master` lives
 
-1. After resolving `$RepoRoot` as today, parse `git worktree list --porcelain` into path → branch.
-2. Find the worktree whose branch is `refs/heads/master`. Three cases:
-   - **It is the current worktree** → existing code path unchanged, including the stash logic.
-   - **It is another worktree** → set the git target to that path and take the delegated path below.
-   - **No worktree holds `master`** (e.g. every checkout is detached) → existing code path; the
-     `git checkout master` it performs will succeed because nothing holds the branch.
-3. Delegated path:
-   - Refuse if `git -C <path> status --porcelain` is non-empty, or a merge/rebase is in progress
-     (`MERGE_HEAD`, `rebase-merge/`, `rebase-apply/`). Print the path and stop; do not stash.
-   - `git fetch origin main` — refs and objects are shared by every worktree, so this needs no
-     `-C` and is safe from anywhere.
-   - `git -C <path> merge origin/main --ff-only`, falling back to a real merge on divergence,
-     reusing today's reporting.
-   - Never switch branches and never stash: `master` is already HEAD at that path.
-4. Update `.NOTES`, which currently instructs the reader to run the script from the main checkout.
+**Files:**
+- Modify: `StratChessEvolved/Scripts/Sync-Master.ps1` (help block, lines 46-47, the stash block)
 
-### Step 2 — `New-TaskBranch.ps1`
+**Interfaces:**
+- Consumes: nothing.
+- Produces: `Sync-Master.ps1` succeeds from any worktree. Task 3 relies on this for `-SyncMaster`.
 
-Modelled on `New-Worktree.ps1`, sharing its validation verbatim where it applies.
+- [ ] **Step 1: Capture the current failure**
 
-1. `-Name` mandatory, kebab-case-validated with the same regex and the same error text;
-   `-BranchName` override; derived name is `worktree-<Name>`.
-2. Refuse outside a git repository.
-3. Refuse if the working tree has **tracked** modifications (`git status --porcelain` lines whose
-   status is not `??`). List them. Untracked files pass with no comment.
-4. Warn — do not block — if the current branch holds commits not in `origin/main`
-   (`git rev-list --count origin/main..HEAD` > 0), naming the count and the branch.
-5. `git fetch origin main`; report the resolved `origin/main` short SHA as `New-Worktree.ps1` does.
-6. Refuse if the branch already exists.
-7. `git checkout -b <branch> origin/main`.
-8. Print the same "Next:" block as `New-Worktree.ps1`, minus the `cd`.
+Run from this worktree:
 
-### Step 3 — `Remove-MergedBranches.ps1`
+```
+pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Sync-Master.ps1
+```
 
-1. `-SyncMaster` and `-DryRun` switches.
-2. `git fetch origin main` so ancestry is judged against current `origin/main`.
-3. Collect branches checked out anywhere via `git worktree list --porcelain`.
-4. For each local branch except `master`, `main`, the current branch and anything from (3):
-   `git merge-base --is-ancestor <branch> origin/main` → delete with `git branch -D`, or list under
-   `-DryRun`.
-5. Report skipped branches with the reason (unmerged / checked out elsewhere / current).
-6. If the **current** branch is itself merged, say so and point at `New-TaskBranch.ps1`.
-7. `-SyncMaster` → invoke `Sync-Master.ps1` from `$PSScriptRoot`, which Step 1 has made
-   location-independent.
+Expected: `FAIL: could not check out master.` followed by
+`master is checked out at: C:/Users/thees/source/repos/StratChessEvolved`, exit code 1.
 
-### Step 4 — classifier and docs
+- [ ] **Step 2: Add the resolver and retarget `$RepoRoot`**
 
-1. `Get-ChangeTier.ps1`: a `Tooling` rule for each new script, placed with the other enumerated
-   helpers, plus a self-test case each. Run `-SelfTest`.
-2. `CLAUDE.md`: two rows in the Scripts table; amend the `Sync-Master.ps1` row, which currently
-   implies a location constraint that will no longer exist.
-3. `Docs/Workflow.md`: the two modes, when each is right, the two invariants, and the enforcing
-   script for each.
+Replace lines 46-47 (`$GameDir` / `$RepoRoot`) with:
+
+```powershell
+$GameDir   = Split-Path $PSScriptRoot -Parent
+$LocalRoot = Split-Path $GameDir -Parent
+
+# A branch can be checked out in only one worktree, so `master` has exactly one home
+# and the sync has to happen there. Refs and objects are shared, so everything else
+# works from anywhere. This is why the script never needs the caller to be in a
+# particular directory -- it finds the tree that owns the branch and works there.
+function Get-MasterWorktree {
+    param([string]$Root)
+    $path = $null
+    foreach ($line in (& git -C $Root worktree list --porcelain 2>$null)) {
+        if ($line -like 'worktree *') { $path = $line.Substring(9) }
+        elseif ($line -eq 'branch refs/heads/master' -and $path) { return $path }
+    }
+    return $null
+}
+
+function ConvertTo-ComparablePath {
+    param([string]$Path)
+    return ($Path -replace '/', '\').TrimEnd('\')
+}
+
+$masterHome = Get-MasterWorktree -Root $LocalRoot
+$Delegated  = $false
+$RepoRoot   = $LocalRoot
+if ($masterHome -and
+    (ConvertTo-ComparablePath $masterHome) -ne (ConvertTo-ComparablePath $LocalRoot)) {
+    $Delegated = $true
+    $RepoRoot  = $masterHome
+}
+```
+
+Every git call routes through `Invoke-Git`, which reads `$RepoRoot`, so this one assignment
+redirects the whole script. `$originalBranch` is then read from the target tree and is `master`
+there, which makes the existing `if ($originalBranch -ne 'master')` checkout block skip itself.
+
+- [ ] **Step 3: Guard the stash block and refuse a dirty delegated target**
+
+Replace the `==> Checking working tree` block (the `$status = Invoke-Git @('status', '--porcelain')`
+section) with:
+
+```powershell
+Write-Host "`n==> Checking working tree" -ForegroundColor Cyan
+$originalBranch = (Invoke-Git @('rev-parse', '--abbrev-ref', 'HEAD')).Output
+$switchedBranch = $false
+$stashed = $false
+
+$status = Invoke-Git @('status', '--porcelain')
+if ($Delegated) {
+    # Never stash another working copy's changes: the stash stack is shared across
+    # every worktree, so a different session could pop them. Refuse instead, and say
+    # where to go.
+    $gitDir = (Invoke-Git @('rev-parse', '--path-format=absolute', '--git-dir')).Output
+    $busy = @('MERGE_HEAD', 'rebase-merge', 'rebase-apply', 'CHERRY_PICK_HEAD', 'REVERT_HEAD') |
+            Where-Object { Test-Path (Join-Path $gitDir $_) }
+    if ($status.Output -or $busy) {
+        Write-Host "master lives in another worktree, and that tree is not clean:" -ForegroundColor Red
+        Write-Host "  $RepoRoot" -ForegroundColor Yellow
+        if ($busy) { Write-Host "  operation in progress: $($busy -join ', ')" -ForegroundColor Yellow }
+        Write-GitOutput $status.Output
+        Write-Host "Commit, discard or stash those changes there, then re-run this." -ForegroundColor Yellow
+        exit 1
+    }
+    Write-Host "PASS: master's worktree is clean ($RepoRoot)." -ForegroundColor Green
+}
+elseif ($status.Output) {
+    Write-Host "Working tree has uncommitted changes -- stashing before sync." -ForegroundColor Yellow
+    $stash = Invoke-Git @('stash', 'push', '-u', '-m', 'Sync-Master.ps1 autostash')
+    if ($stash.ExitCode -ne 0) {
+        Write-Host "FAIL: could not stash uncommitted changes." -ForegroundColor Red
+        Write-GitOutput $stash.Output
+        Restore-AndExit -Code 1 -OriginalBranch $originalBranch -SwitchedBranch $switchedBranch -Stashed $stashed
+    }
+    $stashed = $true
+    Write-Host "PASS: uncommitted changes stashed." -ForegroundColor Green
+}
+else {
+    Write-Host "PASS: working tree is clean." -ForegroundColor Green
+}
+```
+
+- [ ] **Step 4: Update `.NOTES`**
+
+Replace the "Must be run from the main repository checkout…" paragraph with:
+
+```
+    Runs from anywhere in the repository. `master` can only be checked out in one
+    worktree, so the script finds that worktree and syncs there. When that is not the
+    tree you invoked from, it refuses on a dirty target instead of stashing -- the
+    stash stack is shared, and those changes are not this script's to move.
+    Must be invoked with -File, not dot-sourced ($PSScriptRoot is $null under dot-source).
+```
+
+- [ ] **Step 5: Verify the delegated path**
+
+```
+pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Sync-Master.ps1
+```
+
+Expected: `PASS: master's worktree is clean`, then either `already up to date with origin/main` or a
+fast-forward report. Exit code 0. Then confirm nothing moved locally: `git status --porcelain` in
+this worktree is unchanged, and `git rev-parse master origin/main` prints two identical SHAs.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add StratChessEvolved/Scripts/Sync-Master.ps1
+git commit -m "Route Sync-Master to the worktree holding master"
+```
+
+---
+
+## Task 2: `New-TaskBranch.ps1`
+
+**Files:**
+- Create: `StratChessEvolved/Scripts/New-TaskBranch.ps1`
+
+**Interfaces:**
+- Consumes: nothing.
+- Produces: `New-TaskBranch.ps1 -Name <kebab> [-BranchName <override>]`, creating branch
+  `worktree-<Name>` at `origin/main`. Task 3 points users at it; Task 4 classifies it.
+
+- [ ] **Step 1: Verify it does not exist yet**
+
+```
+pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\New-TaskBranch.ps1 -Name probe-case
+```
+
+Expected: the file is not found, non-zero exit.
+
+- [ ] **Step 2: Write the script**
+
+```powershell
+<#
+.SYNOPSIS
+    Start a task on a fresh branch in the CURRENT worktree.
+
+.DESCRIPTION
+    The in-place counterpart to New-Worktree.ps1, for running several small tasks in
+    sequence out of one worktree instead of one directory per task. It removes the same
+    traps that script removes, minus the ones about directories:
+
+    1. **Forking from the wrong base.** A hand-typed `git checkout -b` off the previous
+       task's branch drags that task's commits into the next PR. This always forks from
+       `origin/main` and never reads the current branch.
+    2. **Forgetting to fetch first** silently forks from a stale `origin/main`, which
+       surfaces as a merge conflict at PR time instead of now.
+    3. **Carrying uncommitted work across tasks.** `git checkout` moves a dirty tree to
+       the new branch whenever it can do so without conflict, which is how one task's
+       edits end up in another task's commit. Separate worktrees make that impossible;
+       here it takes a check.
+
+    Untracked files do NOT block: they survive a checkout unchanged, cannot enter a
+    commit on their own, and `build/` would otherwise trip every run.
+
+.PARAMETER Name
+    Short kebab-case task name, e.g. 'eval-mobility-term'. Becomes the branch name,
+    prefixed.
+
+.PARAMETER BranchName
+    Override the derived `worktree-<Name>` branch name.
+
+.WHEN TO USE
+    Starting a task when you intend to stay in this worktree. Use New-Worktree.ps1
+    instead when the task must run alongside another one, or when you need to park it
+    half-finished and come back.
+
+.HOW TO INVOKE (from bash, cmd, or PowerShell)
+    cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\New-TaskBranch.ps1 -Name eval-mobility-term"
+
+.NOTES
+    Must be invoked with -File, not dot-sourced ($PSScriptRoot is $null under dot-source).
+#>
+
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$Name,
+
+    [string]$BranchName
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+if ($Name -notmatch '^[a-z0-9]+(-[a-z0-9]+)*$') {
+    Write-Host "FAIL: -Name must be kebab-case (lowercase letters, digits, single hyphens): '$Name'" -ForegroundColor Red
+    Write-Host "      e.g. -Name eval-mobility-term" -ForegroundColor Yellow
+    exit 1
+}
+
+if (-not $BranchName) { $BranchName = "worktree-$Name" }
+
+& git rev-parse --git-dir *> $null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "FAIL: not inside a git repository." -ForegroundColor Red
+    exit 1
+}
+
+# Tracked changes only. Untracked entries are reported by porcelain as '??' and are
+# deliberately allowed through.
+$tracked = @(& git status --porcelain | Where-Object { $_ -and $_ -notmatch '^\?\?' })
+if ($tracked.Count -gt 0) {
+    Write-Host "`nFAIL: working tree has uncommitted changes to tracked files." -ForegroundColor Red
+    Write-Host "      Switching branches would carry them into the new task." -ForegroundColor Yellow
+    $tracked | ForEach-Object { Write-Host "        $_" -ForegroundColor Yellow }
+    Write-Host "      Commit them, or discard them, then re-run." -ForegroundColor Yellow
+    exit 1
+}
+
+$currentBranch = (& git rev-parse --abbrev-ref HEAD).Trim()
+
+Write-Host "`n==> Fetching origin/main" -ForegroundColor Cyan
+& git fetch origin main
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "FAIL: git fetch origin main failed." -ForegroundColor Red
+    exit 1
+}
+$base = (& git rev-parse --short origin/main).Trim()
+Write-Host "PASS: origin/main is at $base." -ForegroundColor Green
+
+# Leaving commits behind is legal -- an open PR is the usual reason -- so this warns
+# rather than blocks. It exists because in-place mode has no directory left sitting
+# there to remind you.
+$ahead = [int](& git rev-list --count origin/main..HEAD 2>$null)
+if ($LASTEXITCODE -eq 0 -and $ahead -gt 0) {
+    Write-Host "`nNOTE: '$currentBranch' has $ahead commit(s) not in origin/main." -ForegroundColor Yellow
+    Write-Host "      They stay on that branch; make sure they are pushed or PR'd." -ForegroundColor Yellow
+}
+
+& git show-ref --verify --quiet "refs/heads/$BranchName"
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "`nFAIL: branch '$BranchName' already exists." -ForegroundColor Red
+    Write-Host "      Pick another -Name, or delete it: git branch -D $BranchName" -ForegroundColor Yellow
+    exit 1
+}
+
+Write-Host "`n==> Creating branch" -ForegroundColor Cyan
+& git checkout -b $BranchName origin/main
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "FAIL: git checkout -b failed." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "`nPASS: on '$BranchName', forked from origin/main ($base)." -ForegroundColor Green
+Write-Host "`nNext:" -ForegroundColor Cyan
+Write-Host "  .\build.ps1 all"
+Write-Host "  ... work ..."
+Write-Host "  .\StratChessEvolved\Scripts\New-PullRequest.ps1 -Title `"...`""
+```
+
+- [ ] **Step 3: Verify the happy path forks from `origin/main`, not HEAD**
+
+Run it from a branch that is *ahead* of `origin/main`, so "forked from HEAD" and "forked from
+`origin/main`" would give different answers:
+
+```
+git rev-parse --abbrev-ref HEAD              # this plan's branch, ahead by 1+ commits
+pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\New-TaskBranch.ps1 -Name probe-case
+git rev-parse HEAD
+git rev-parse origin/main
+```
+
+Expected: the last two SHAs are identical — the new branch sits exactly on `origin/main` and carries
+none of the previous branch's commits.
+
+- [ ] **Step 4: Verify the three refusals and the untracked exemption**
+
+```
+pwsh ... New-TaskBranch.ps1 -Name Bad_Name        # kebab-case refusal, exit 1
+pwsh ... New-TaskBranch.ps1 -Name probe-case      # existing-branch refusal, exit 1
+echo x >> CLAUDE.md ; pwsh ... New-TaskBranch.ps1 -Name probe-two   # dirty refusal, exit 1
+git checkout -- CLAUDE.md
+echo x > scratch.txt ; pwsh ... New-TaskBranch.ps1 -Name probe-two  # untracked: SUCCEEDS
+```
+
+Then clean up the probe branches:
+
+```
+git checkout worktree-in-place-task-branches
+git branch -D worktree-probe-case worktree-probe-two
+rm scratch.txt
+```
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add StratChessEvolved/Scripts/New-TaskBranch.ps1
+git commit -m "Add New-TaskBranch for in-place task starts"
+```
+
+---
+
+## Task 3: `Remove-MergedBranches.ps1`
+
+**Files:**
+- Create: `StratChessEvolved/Scripts/Remove-MergedBranches.ps1`
+
+**Interfaces:**
+- Consumes: `Sync-Master.ps1` (Task 1) for `-SyncMaster`.
+- Produces: `Remove-MergedBranches.ps1 [-SyncMaster] [-DryRun]`.
+
+- [ ] **Step 1: Write the script**
+
+```powershell
+<#
+.SYNOPSIS
+    Delete local branches already merged into origin/main.
+
+.DESCRIPTION
+    The in-place counterpart to Remove-Worktree.ps1's branch cleanup, for the mode where
+    tasks are branches in one worktree rather than directories. It answers one question
+    per branch -- "is this contained in origin/main?" -- and answers it with
+    `git merge-base --is-ancestor`, never by matching a name. A branch called
+    `worktree-old-thing` may hold unpushed work; a branch whose name looks unfamiliar may
+    be fully merged. Only ancestry is evidence.
+
+    `git branch -d` is not sufficient: it tests whether a branch merged into the CURRENT
+    branch, which is a different question and the wrong one here. This verifies against
+    origin/main first, then deletes with -D.
+
+    Never deletes: master, main, the branch you are on, and any branch checked out in
+    another worktree (git would refuse anyway).
+
+.PARAMETER SyncMaster
+    Run Sync-Master.ps1 afterwards so local master reflects the merges.
+
+.PARAMETER DryRun
+    Report what would be deleted and delete nothing.
+
+.WHEN TO USE
+    After one or more PRs merge, when working in-place. The worktree flow uses
+    Remove-Worktree.ps1 instead, which also removes the directory.
+
+.HOW TO INVOKE (from bash, cmd, or PowerShell)
+    cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Remove-MergedBranches.ps1 -SyncMaster"
+
+.NOTES
+    Must be invoked with -File, not dot-sourced ($PSScriptRoot is $null under dot-source).
+#>
+
+[CmdletBinding()]
+param(
+    [switch]$SyncMaster,
+    [switch]$DryRun
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+& git rev-parse --git-dir *> $null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "FAIL: not inside a git repository." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "`n==> Fetching origin/main" -ForegroundColor Cyan
+& git fetch origin main --prune
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "FAIL: git fetch origin main failed." -ForegroundColor Red
+    exit 1
+}
+
+$currentBranch = (& git rev-parse --abbrev-ref HEAD).Trim()
+
+# Branches checked out anywhere else cannot be deleted, so they are skipped with a
+# reason rather than attempted and reported as errors.
+$checkedOutElsewhere = @()
+foreach ($line in (& git worktree list --porcelain)) {
+    if ($line -like 'branch *') {
+        $b = $line.Substring(7) -replace '^refs/heads/', ''
+        if ($b -ne $currentBranch) { $checkedOutElsewhere += $b }
+    }
+}
+
+$deleted = @()
+$skipped = @()
+foreach ($branch in (& git branch --format='%(refname:short)')) {
+    $branch = $branch.Trim()
+    if (-not $branch) { continue }
+    if ($branch -in @('master', 'main')) { continue }
+    if ($branch -eq $currentBranch)      { continue }
+    if ($branch -in $checkedOutElsewhere) {
+        $skipped += "$branch (checked out in another worktree)"
+        continue
+    }
+
+    & git merge-base --is-ancestor $branch origin/main
+    if ($LASTEXITCODE -ne 0) {
+        $skipped += "$branch (not merged into origin/main)"
+        continue
+    }
+
+    if ($DryRun) {
+        $deleted += "$branch (dry run)"
+    } else {
+        & git branch -D $branch *> $null
+        if ($LASTEXITCODE -eq 0) { $deleted += $branch }
+        else { $skipped += "$branch (delete failed)" }
+    }
+}
+
+Write-Host "`n--- Merged branches ---" -ForegroundColor Cyan
+if ($deleted.Count -eq 0) { Write-Host "  none" }
+else { $deleted | ForEach-Object { Write-Host "  deleted: $_" -ForegroundColor Green } }
+
+if ($skipped.Count -gt 0) {
+    Write-Host "`n--- Kept ---" -ForegroundColor Cyan
+    $skipped | ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow }
+}
+
+# Reported rather than acted on: moving someone's HEAD without being asked is
+# surprising, and New-TaskBranch.ps1 is the thing that moves you off it.
+& git merge-base --is-ancestor $currentBranch origin/main
+if ($LASTEXITCODE -eq 0 -and $currentBranch -notin @('master', 'main')) {
+    Write-Host "`nNOTE: the branch you are on ('$currentBranch') is also merged." -ForegroundColor Yellow
+    Write-Host "      Start the next task with New-TaskBranch.ps1, which moves you off it," -ForegroundColor Yellow
+    Write-Host "      then re-run this to clean it up." -ForegroundColor Yellow
+}
+
+if ($SyncMaster) {
+    Write-Host "`n==> Syncing master" -ForegroundColor Cyan
+    & pwsh -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Sync-Master.ps1')
+}
+
+exit 0
+```
+
+- [ ] **Step 2: Verify with throwaway branches**
+
+Build one branch of each kind without disturbing the current one:
+
+```
+git branch probe-merged origin/main                  # contained in origin/main by construction
+git checkout -b probe-unmerged origin/main
+git commit --allow-empty -m "probe commit"           # now NOT contained in origin/main
+git checkout worktree-in-place-task-branches
+pwsh ... Remove-MergedBranches.ps1 -DryRun
+```
+
+Expected: `probe-merged` listed as a dry-run deletion; `probe-unmerged` kept with "not merged into
+origin/main"; the current branch and this worktree's own branch never listed for deletion.
+
+- [ ] **Step 3: Verify the real deletion, then clean up**
+
+```
+pwsh ... Remove-MergedBranches.ps1
+git branch --list 'probe-*'
+git branch -D probe-unmerged
+```
+
+Expected: `probe-merged` gone, `probe-unmerged` still present.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add StratChessEvolved/Scripts/Remove-MergedBranches.ps1
+git commit -m "Add Remove-MergedBranches for in-place cleanup"
+```
+
+---
+
+## Task 4: Classify both scripts as Tooling
+
+**Files:**
+- Modify: `StratChessEvolved/Scripts/Get-ChangeTier.ps1` (Tooling rules; `$cases` table)
+
+**Interfaces:**
+- Consumes: the two script paths from Tasks 2 and 3.
+- Produces: both classify as `Tooling`; `-SelfTest` covers them.
+
+- [ ] **Step 1: Add the failing self-test cases first**
+
+In the `$cases` array, after the `Get-Worktrees -> Tooling` line:
+
+```powershell
+    @{ Name = 'New-TaskBranch -> Tooling';  Files = @('StratChessEvolved/Scripts/New-TaskBranch.ps1');       Expect = 'Tooling' }
+    @{ Name = 'Remove-MergedBranches -> Tooling'; Files = @('StratChessEvolved/Scripts/Remove-MergedBranches.ps1'); Expect = 'Tooling' }
+```
+
+- [ ] **Step 2: Run the self-test and watch it fail**
+
+```
+pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Get-ChangeTier.ps1 -SelfTest
+```
+
+Expected: both new cases FAIL with `-> Engine (expected Tooling)`, exit code 1. That is the
+fail-closed rule working: an unrecognised script is Engine tier until someone classifies it.
+
+- [ ] **Step 3: Add the classification rules**
+
+In `Get-TierForPath`, with the other enumerated helpers:
+
+```powershell
+    if ($p -like '*/Scripts/New-TaskBranch.ps1')             { return 'Tooling' }
+    if ($p -like '*/Scripts/Remove-MergedBranches.ps1')      { return 'Tooling' }
+```
+
+- [ ] **Step 4: Run the self-test and watch it pass**
+
+```
+pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Get-ChangeTier.ps1 -SelfTest
+```
+
+Expected: `All N self-test cases passed.`, exit code 0.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add StratChessEvolved/Scripts/Get-ChangeTier.ps1
+git commit -m "Classify the in-place task scripts as Tooling"
+```
+
+---
+
+## Task 5: Document both modes
+
+**Files:**
+- Modify: `CLAUDE.md` (Scripts table, Commit & PR Conventions)
+- Modify: `Docs/Workflow.md` (a "Two ways to run a task" section)
+
+**Interfaces:**
+- Consumes: everything above.
+- Produces: nothing further depends on this.
+
+- [ ] **Step 1: Add the two rows to `CLAUDE.md`'s Scripts table**
+
+After the `New-Worktree.ps1` row:
+
+```
+| `New-TaskBranch.ps1 -Name <task>` | Starting a task without a new worktree — forks a branch from `origin/main` in place |
+| `Remove-MergedBranches.ps1 [-SyncMaster]` | After PRs merge, when working in-place — deletes branches verified merged into `origin/main` |
+```
+
+And amend the `Sync-Master.ps1` row, which no longer carries a location constraint:
+
+```
+| `Sync-Master.ps1` | Bring `master` up to `origin/main` — runs from anywhere; finds the worktree holding `master` |
+```
+
+- [ ] **Step 2: Add the mode note to `CLAUDE.md`'s Commit & PR Conventions**
+
+After the "Work happens in per-task worktrees" bullet:
+
+```
+- Two ways to run a task, both forking fresh from `origin/main`: a per-task worktree
+  (`New-Worktree.ps1`) when work must be parked or run alongside another, or a task branch in the
+  current worktree (`New-TaskBranch.ps1`) for a run of small sequential PRs. In-place mode is
+  sequential only, and its guard is that the script refuses to start a task on a dirty tree.
+```
+
+- [ ] **Step 3: Add the section to `Docs/Workflow.md`**
+
+Before the CI section, add "Two ways to run a task" carrying: the comparison table from this plan,
+the two invariants and which script enforces each, and the note that `Sync-Master.ps1` routes to
+`master`'s worktree so in-place mode never silently drifts.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add CLAUDE.md Docs/Workflow.md
+git commit -m "Document both task-running modes"
+```
+
+---
 
 ## Validation plan
 
 Tooling tier: `Validate-PrePR.ps1` syntax-parses these scripts and runs nothing else, so behaviour
-must be checked by hand.
+must be checked by hand — the per-task steps above are that check. Before the PR:
 
 | Check | Method |
 |---|---|
-| Forks from `origin/main`, not HEAD | Run from a branch ahead of main; assert `git merge-base HEAD origin/main` equals `origin/main` |
-| Refuses a dirty tree | Modify a tracked file; expect refusal and a non-zero exit |
-| Rejects a bad name / existing branch | Two negative cases |
-| Untracked files do not block | Create an untracked file; expect success |
-| `Remove-MergedBranches` deletes only verified-merged branches | `-DryRun` first; then a throwaway merged branch and a throwaway unmerged one |
-| Skips current and other-worktree branches | Assert this worktree's own branch survives |
-| `Sync-Master` from a worktree | Run here; expect the delegated path and "already up to date" |
 | Classifier | `Get-ChangeTier.ps1 -SelfTest` green |
+| Pre-PR gate | `New-PullRequest.ps1` — Build tier, because `Get-ChangeTier.ps1` itself changed |
+| No stray probe branches | `git branch --list '*probe*'` is empty — catches both `probe-*` (Task 3) and `worktree-probe-*` (Task 2) |
+| `master` untouched by the probes | `git rev-parse master origin/main` prints identical SHAs |
 
 **Known coverage gap.** The "refuse when the delegated target is dirty" path needs the main checkout
 to be dirty, and an agent session confined to a worktree cannot arrange that. It is verified by
