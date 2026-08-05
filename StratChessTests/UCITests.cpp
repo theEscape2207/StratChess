@@ -273,6 +273,20 @@ private:
     std::streambuf* old_;
 };
 
+// Runs `action` with std::cout captured and returns what it printed.
+//
+// A named helper rather than a brace scope around a CoutRedirect: the redirect
+// has to be torn down before any assertion runs, or a failing CHECK's own
+// message is swallowed by the capture. Expressing that as a function makes the
+// lifetime the point rather than an artefact of where the braces landed.
+template <typename F>
+static std::string capture_cout(F&& action)
+{
+    CoutRedirect redirect;
+    std::forward<F>(action)();
+    return redirect.str();
+}
+
 // Parses the integer centipawn value out of a "<label><N> cp" line, e.g.
 // label="static eval: " on "static eval: 34 cp (White to move; ...)".
 // A real parse of the emitted number, not a substring check — this is what
@@ -696,12 +710,8 @@ TEST_CASE("cmd_position: malformed FEN resets to the start position and reports 
     REQUIRE(fx.board().GetPiece(e4) == WHITE_PAWN);
     REQUIRE(fx.board().GetCurrentColor() == BLACK);
 
-    std::string output;
-    {
-        CoutRedirect redirect;
-        fx.position("position fen this-is-not-a-fen");
-        output = redirect.str();
-    }
+    const std::string output =
+        capture_cout([&] { fx.position("position fen this-is-not-a-fen"); });
 
     // The e2e4 position is gone: keeping it would make the engine answer for a
     // position the caller never sent, and the answer would depend on session
@@ -1022,13 +1032,8 @@ TEST_CASE("cmd_position: a rejected FEN gives the same board whatever preceded i
     auto perft_after = [](const std::string& prior) {
         UciHandlerTestFixture fix;
         fix.position(prior);
-        {
-            CoutRedirect quiet;
-            fix.position(std::string("position fen ") + kRejectedFen);
-        }
-        CoutRedirect redirect;
-        fix.perft("perft 1");
-        return divide_total(redirect.str());
+        capture_cout([&] { fix.position(std::string("position fen ") + kRejectedFen); });
+        return divide_total(capture_cout([&] { fix.perft("perft 1"); }));
     };
 
     const auto after_startpos = perft_after("position startpos");
@@ -1043,19 +1048,13 @@ TEST_CASE("cmd_position: an unparseable move stops replay and reports it", "[uci
 {
     UciHandlerTestFixture fix;
 
-    std::string output;
-    {
-        CoutRedirect redirect;
-        fix.position("position startpos moves e2e4 zzzz e7e5");
-        output = redirect.str();
-    }
+    const std::string output =
+        capture_cout([&] { fix.position("position startpos moves e2e4 zzzz e7e5"); });
 
     REQUIRE(output.find("info string") != std::string::npos);
     REQUIRE(output.find("zzzz") != std::string::npos);
 
     // e2e4 applied, replay stopped there: Black to move, 20 replies.
-    CoutRedirect redirect;
-    fix.perft("perft 1");
-    REQUIRE(divide_total(redirect.str()) == 20);
+    REQUIRE(divide_total(capture_cout([&] { fix.perft("perft 1"); })) == 20);
     REQUIRE(fix.board().GetCurrentColor() == BLACK);
 }
