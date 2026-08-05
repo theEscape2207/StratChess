@@ -17,7 +17,8 @@
 .WHEN TO USE
     After any change that can affect playing strength (search, evaluation, move
     ordering, time management) — tactical suites verify correctness only.
-    See Docs/EloLog.md for setup, interpretation guide, and measurement history.
+    Setup and interpretation guide: Docs/EloMeasurement.md. Past results:
+    Docs/EloLog.md.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
     cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Run-EloMatch.ps1"
@@ -33,7 +34,7 @@
     strength data — the script exits 1 when fastchess reports any.
     A fixed 500-game batch resolves only ±25 Elo on this setup, so anything expected
     to be worth less than that needs -Sprt to be decidable at all. See the
-    "Choosing SPRT vs a fixed batch" section in Docs/EloLog.md.
+    "Choosing SPRT vs a fixed batch" section in Docs/EloMeasurement.md.
 #>
 
 param(
@@ -42,7 +43,7 @@ param(
     # Git tag of the pinned reference build. v2 is clang-cl/CMake built, matching
     # what ships, so day-to-day measurements compare like with like. Pass
     # -ReferenceTag elo-reference-v1 for the long-run epic comparison; that binary
-    # is MSVC-built, so the delta includes the compiler change (see Docs/EloLog.md).
+    # is MSVC-built, so the delta includes the compiler change (see Docs/EloMeasurement.md).
     [string]$ReferenceTag = 'elo-reference-v2',
     # Explicit path to a reference exe. When set, skips the tag-based cache/rebuild
     # lookup entirely and uses this exe directly as the reference side — ReferenceTag
@@ -53,7 +54,7 @@ param(
     # -- the figure every 500-game row in Docs/EloLog.md actually came back with
     # (±25.70, ±27.62, ±28.36), and the one the .NOTES block above quotes. Under
     # -Sprt this is only an upper bound, not a resolution target; see
-    # "Adjusting -Games" in Docs/EloLog.md before changing it.
+    # "Adjusting -Games" in Docs/EloMeasurement.md before changing it.
     [int]$Games = 500,
     # Opening book. Empty auto-resolves: a large book in EngineTesting\ if one is
     # present, otherwise the committed 250-position smoke book. Accepts .pgn or
@@ -97,7 +98,7 @@ param(
     # Sequential Probability Ratio Test: stop as soon as the result is decisive
     # instead of always playing -Games games. Most eval terms in epic #110 are
     # worth 5-20 Elo, i.e. INSIDE the +/-25 Elo noise floor of a 500-game batch --
-    # a fixed batch simply cannot resolve them (see Docs/EloLog.md).
+    # a fixed batch simply cannot resolve them (see Docs/EloMeasurement.md).
     #   NonRegression : elo0=-5 elo1=0  -- "prove it did not make things worse"
     #                   (refactors, restructures, anything expected neutral)
     #   Gain          : elo0=0  elo1=10 -- "prove it is worth >= ~10 Elo"
@@ -115,7 +116,7 @@ param(
     [double]$Alpha = 0.05,
     [double]$Beta = 0.05,
     # fastchess SPRT model. Pinned to 'logistic' so -Elo0/-Elo1 mean literal Elo,
-    # the same scale Docs/EloLog.md reports everywhere. fastchess's own default is
+    # the same scale Docs/EloLog.md records everywhere. fastchess's own default is
     # 'normalized' (nElo) -- a DIFFERENT scale, on which "elo1=10" would silently
     # mean something else entirely. Override only if you know which scale you want.
     [ValidateSet('logistic', 'normalized', 'bayesian')]
@@ -212,7 +213,7 @@ if (-not (Test-Path $fastchess)) {
     Write-Host "MISSING: $fastchess" -ForegroundColor Red
     Write-Host 'One-time setup: download the fastchess Windows x64 release from'
     Write-Host '  https://github.com/Disservin/fastchess/releases'
-    Write-Host "and place fastchess.exe in $EngineTesting (see Docs/EloLog.md for the pinned version)."
+    Write-Host "and place fastchess.exe in $EngineTesting (see Docs/EloMeasurement.md for the pinned version)."
     exit 1
 }
 
