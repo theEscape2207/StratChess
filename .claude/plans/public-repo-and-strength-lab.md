@@ -14,18 +14,18 @@ concurrent games against the 6 a local run manages — turning a 20,000-game bat
 The payload that justifies the work is epic #110: twelve eval sub-issues, each expected to be worth
 single-digit Elo, i.e. twelve measurements that today's ±26 Elo instrument cannot make.
 
-## Where this stands — read this first (2026-08-05)
+## Where this stands — read this first (2026-08-06)
 
-**M0 through M4 are complete. M5 is next**, and its section carries measured inputs rather than
-estimates.
+**M0 through M4 are complete. M5's mechanics are built and proven on a 2-shard dispatch; its
+calibrating 20-shard null test is still owed** — see M5's Status section. M6 is untouched.
 
 | | State |
 |---|---|
 | Repository | Public; CI is a gate, `build-and-test-result` required on `main` |
 | Nightly | `nightly.yml` — deep perft, `[slow]` tier, sanitizers + `_GLIBCXX_DEBUG`, tactical ×100 |
 | Opening book | Solved. `EngineTesting\openings-large.*` locally (optional), `UHO_4060_v3.epd` in CI — 242,201 openings |
-| Strength lab | `strength.yml`, `workflow_dispatch` only, **calibrated 2026-08-05** |
-| Resolution today | **±18 Elo** at 1000 games (CI), ±25-26 at 500 (local) |
+| Strength lab | `strength.yml`, `workflow_dispatch` only, **calibrated 2026-08-05**; sharded 2026-08-06, scale calibration pending |
+| Resolution today | **±18 Elo** at 1000 games (CI), ±25-26 at 500 (local); ≈±4 once the 20,000-game batch is exercised |
 | Not yet possible | Epic #110's single-digit terms. That is exactly what M5 buys |
 
 Where things live: method in `Docs/EloMeasurement.md`, results in `Docs/EloLog.md` (two ledgers,
@@ -418,6 +418,35 @@ current timeout, so **do not shard fewer than ~16 ways** without raising it.
 **Exit:** a sharded null test whose pooled result agrees with **-3.47 ± 18.21**, and whose shards can
 be shown to share no opening (compare the first FEN of each shard's PGNs; any duplicate means the
 slices overlap).
+
+#### Status (2026-08-06)
+
+**Mechanics proven; the calibrating null test is still owed.** Run `31053457040` — 2 shards, 20
+games, `reference_ref=HEAD` — went green end to end:
+
+```
+| shard-0 | 5 pairs | [0, 0, 2, 1, 2] |
+| shard-1 | 5 pairs | [0, 2, 2, 1, 0] |
+Pooled: +70.44 +/- 119.43 Elo (10 pairs = 20 games, score 60.00%)
+```
+
+That figure is mechanism, not measurement: at 20 games the interval spans zero many times over.
+Disjointness passed (2 positions, 2 unique). The partial-batch refusal was exercised separately by
+running the aggregator against a single shard log.
+
+The cheap dispatch earned its keep exactly as predicted. Two defects, both invisible on reading:
+
+1. **`.gitignore` blanket-ignores `/.github/*`** behind an allowlist, so `git add -A` silently
+   skipped the new aggregator script. The existing workflow files only survive because tracked files
+   are exempt from `.gitignore`. Fixed by extending the allowlist; the whole first dispatch died at
+   the aggregate step on a file that was never committed.
+2. **The formula check ran too late to be useful.** It now runs in `setup`, before any build — a
+   missing or broken aggregator used to surface only after the entire batch, which on the real run
+   would be three hours to learn the script is absent.
+
+Remaining for M5: the 20-shard × 1000-game null test, ~3 h wall-clock, whose pooled result must agree
+with the single-job **-3.47 ± 18.21**. Until that is recorded, treat the instrument as built but
+uncalibrated at scale — the same status M4's workflow had before its two calibration runs.
 
 **Value delivered:** 20,000 games in ~3 hours unattended; ≈ ±4 Elo, against ±18 from the current
 single-job instrument and ±26 locally. That is the first point at which epic #110's single-digit eval

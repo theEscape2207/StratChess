@@ -22,6 +22,46 @@ Newest first.
 
 ---
 
+## 2026-08-06 — Strength lab runs sharded, pooled pentanomially (M5)
+
+### Changed
+
+- **`strength.yml` split into `setup` → `build` → `match` (matrix) → `aggregate`.** Both engines,
+  fastchess and the book are built and staged once and shipped to every shard as one artifact, so
+  the shards provably play the same two binaries against the same book rather than 20 independent
+  builds being assumed to agree.
+- **Shards slice the book by arithmetic, not file surgery.** With `order=sequential`, shard *i*
+  playing *R* pairs starts at `i*R + 1`, so slices cannot overlap. Verified every run by comparing
+  the first FEN of each shard's PGN, which also hard-fails if the PGNs carry no `[FEN]` tag — without
+  that, the check would silently pass forever.
+
+### Added
+
+- **`.github/scripts/pool_pentanomial.py`** pools shard results at colour-swapped *pair* level.
+  Pooling raw W/L/D and applying an independent-games formula understates the variance, giving an
+  interval that is wrong in the direction of looking more precise. `--self-test` checks the formula
+  against six real (counts, Elo, interval) triples from this project's own matches spanning 6 to
+  3500 games; it reproduces fastchess's own output to both decimals on all six. That check runs in
+  `setup`, before anything expensive.
+- **Refusal to pool a partial batch.** A run where three shards of twenty died is not a smaller
+  batch, it is a biased one — the survivors are those that avoided whatever went wrong. The
+  aggregator requires exactly the expected shard count and the workflow reports the discard.
+
+### Notes
+
+Mechanics proven by a 2-shard, 20-game null dispatch (run `31053457040`). The pooled
+`+70.44 ± 119.43` there is mechanism, not measurement. The calibrating 20-shard × 1000-game null
+test, whose pooled result must agree with the single-job `-3.47 ± 18.21`, is still owed; until then
+the instrument is built but uncalibrated at scale. `workflow_dispatch` only, so it cannot report
+automatically in the meantime.
+
+`.gitignore` blanket-ignores `/.github/*` behind an allowlist, so the new script was silently skipped
+by `git add -A` and the first dispatch died at the aggregate step on a file that was never committed.
+The allowlist now covers `.github/scripts/`. Design:
+`.claude/plans/public-repo-and-strength-lab.md`.
+
+---
+
 ## 2026-08-05 — Time budget is bounded by the clock (#204)
 
 ### Fixed
