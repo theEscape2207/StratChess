@@ -201,7 +201,11 @@ if ($ReferenceExe -ne '') { $refExe = $ReferenceExe }
 # Defaults to the shipping (clang-cl) build deliberately. Elo is only comparable
 # between binaries from the same compiler: an MSVC candidate measured against the
 # clang reference would show the ~25% nps compiler gap as a phantom regression.
-if ($CandidateExe -eq '') { $CandidateExe = & (Join-Path $PSScriptRoot 'Get-BuildArtifact.ps1') }
+# -AllowMissing: -Resume needs no candidate build, and the non-resume path does
+# its own Test-Path below with build instructions.
+if ($CandidateExe -eq '') {
+    $CandidateExe = & (Join-Path $PSScriptRoot 'Get-BuildArtifact.ps1') -AllowMissing
+}
 
 # --- Preflight ---------------------------------------------------------------
 if (-not (Test-Path $fastchess)) {

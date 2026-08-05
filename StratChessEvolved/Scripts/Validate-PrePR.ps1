@@ -37,7 +37,9 @@ Set-StrictMode -Version Latest
 $GameDir     = Split-Path $PSScriptRoot -Parent
 $RepoRoot    = Split-Path $GameDir -Parent
 $buildScript = Join-Path $RepoRoot 'build.ps1'
-$gameExe     = & (Join-Path $PSScriptRoot 'Get-BuildArtifact.ps1')
+# -AllowMissing: this resolves the path before Step 1 builds it, so on a fresh
+# worktree nothing is there yet.
+$gameExe     = & (Join-Path $PSScriptRoot 'Get-BuildArtifact.ps1') -AllowMissing
 $logsDir     = Join-Path $GameDir 'logs'
 $outFile     = Join-Path $GameDir 'pre_pr_selfplay_out.txt'
 $aiLogFile   = Join-Path $logsDir 'aiperplex.log'

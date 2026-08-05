@@ -30,9 +30,12 @@
 .PARAMETER Compiler
     clang-cl (default, the shipping compiler) or msvc.
 
-.PARAMETER RequireExists
-    Exit non-zero with a message if the binary is not present, instead of printing
-    a path to something that has not been built.
+.PARAMETER AllowMissing
+    Print the path even when nothing has been built there yet. Only for callers
+    that resolve the path *before* the build that produces it -- Validate-PrePR
+    and Run-EloMatch both do. Otherwise a missing binary is an error here, so it
+    surfaces at resolution rather than as a confusing failure at first use, or
+    worse, as a stale binary from another checkout.
 #>
 [CmdletBinding()]
 param(
@@ -45,7 +48,7 @@ param(
     [ValidateSet('clang-cl', 'msvc')]
     [string]$Compiler = 'clang-cl',
 
-    [switch]$RequireExists
+    [switch]$AllowMissing
 )
 
 Set-StrictMode -Version Latest
@@ -58,7 +61,7 @@ if ($Config -eq 'Debug') { $preset += '-debug' }
 
 $path = Join-Path $RepoRoot "build\$preset\$Target.exe"
 
-if ($RequireExists -and -not (Test-Path $path)) {
+if (-not $AllowMissing -and -not (Test-Path $path)) {
     Write-Error "Not built: $path`nBuild it with: .\build.ps1 main -Config $Config"
     exit 1
 }
