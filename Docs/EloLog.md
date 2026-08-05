@@ -15,7 +15,7 @@ Plan/design: `.claude/plans/elo-baseline-measurement.md`.
 |---|---|
 | Match runner | fastchess **v1.8.0-alpha** (`fastchess alpha 1.8.0`, windows-x86-64), from https://github.com/Disservin/fastchess/releases/tag/v1.8.0-alpha |
 | Runner location | `<DepsRoot>EngineTesting\fastchess.exe` (repo sibling, same convention as spdlog/json/Catch2) |
-| Opening book | `Tests/openings/openings-250.pgn` — first 250 games of `8moves_v3.pgn` (official-stockfish/books), sequential order, each pair color-swapped (`-repeat`) |
+| Opening book | Resolved by `Run-EloMatch.ps1`: `-Book <path>` if given, else `EngineTesting\openings-large.pgn|.epd` if present, else the committed `Tests/openings/openings-250.pgn` — first 250 games of `8moves_v3.pgn` (official-stockfish/books), sequential order, each pair color-swapped (`-repeat`). **250 openings = 500 distinct games**; see "Book size" below |
 | Reference build | git tag **`elo-reference-v2`** (`df9245f`, 2026-08-03 — first baseline built by clang-cl/CMake, matching what ships). Cached as `EngineTesting\StratChess-elo-reference-v2.exe`; rebuilt from the tag automatically on cache miss. **`elo-reference-v1` is retained, not replaced** — see "Two anchors" below |
 | Time control | 10s + 0.1s increment |
 | Adjudication | draw: movenumber=40 movecount=8 score=10; resign: movecount=4 score=800 |
@@ -110,6 +110,28 @@ Notes:
 
 Verified against the pinned fastchess 1.8.0 build: an SPRT run with bounds `[0, 200]` between two
 identical builds accepted H0 after 10 games rather than playing the 200-game cap.
+
+### Book size, and why 500 games is a cliff
+
+An opening pair is two games, so **N openings yield 2N distinct games**. The committed book holds 250
+openings, so a 500-game batch consumes it **exactly**. Every game past that replays an opening
+already played, which narrows the reported error bar without adding information to it — the run looks
+more precise than it is.
+
+This matters most where it is least visible: SPRT runs take `-Games` as an upper bound and routinely
+ask for thousands. `Run-EloMatch.ps1` now prints the book and its opening count on every run, and
+warns when `-Games` exceeds the distinct-game count.
+
+**To run bigger batches honestly**, drop a large book beside the checkout as
+`EngineTesting\openings-large.pgn` (or `.epd` — the format flag follows the extension). The natural
+choice is the full `8moves_v3.pgn` from official-stockfish/books, the same source the committed
+250-game book was cut from. It is deliberately **not committed**: it is third-party data of varying
+provenance and this repository is public, so it lives with fastchess and the reference binaries,
+which is where every other external test asset already lives.
+
+Rows measured on the 250-opening book are not directly comparable to rows measured on a larger one —
+opening selection changes the draw rate, and the draw rate changes the error bar. Note the book
+alongside any row where it is not the committed default.
 
 ### Adjusting `-Games` (and when not to)
 

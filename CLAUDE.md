@@ -81,6 +81,11 @@ a bound is **inconclusive**, not a measured zero; record it as such. A full 500-
 unattended at the default `-Concurrency 6`. Measurement budget is the user's call — report what
 deciding would cost and let them choose.
 
+**Opening book**: 250 openings = 500 distinct games, so a 500-game batch exhausts the committed book
+exactly and anything larger replays openings. `Run-EloMatch.ps1` prints the count and warns. For
+bigger batches drop a large book at `EngineTesting\openings-large.pgn|.epd` (not committed — public
+repo, third-party data) or pass `-Book`.
+
 **Speed vs strength**: `Run-Bench.ps1` measures nps, not Elo — use it when the change is meant to be
 faster, and `Run-EloMatch.ps1` when it is meant to be stronger. Compare **nps**, never node counts at
 fixed depth: the node count is a property of the search, not of the machine code. It is still the
