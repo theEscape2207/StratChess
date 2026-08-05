@@ -1,16 +1,19 @@
 name: Strength lab
 
 # Differential Elo measurement in CI: candidate (the dispatched ref) against a
-# reference ref, both built here from source by the same toolchain in the same
-# job. This is a SECOND instrument, not a replacement for Run-EloMatch.ps1 --
-# Linux/GCC numbers are not comparable with the clang-cl rows in Docs/EloLog.md,
-# so they are recorded in a separate ledger. Ratios transfer, absolute values do
-# not.
+# reference ref, both built here from source by the same toolchain. This is a
+# SECOND instrument, not a replacement for Run-EloMatch.ps1 -- Linux/GCC numbers
+# are not comparable with the clang-cl rows in Docs/EloLog.md, so they are
+# recorded in a separate ledger. Ratios transfer, absolute values do not.
+#
+# The batch is sharded across parallel matrix jobs and pooled at the end. Each
+# shard plays a disjoint slice of the opening book, so the shards are one batch
+# split up rather than several batches averaged.
 #
 # workflow_dispatch only, deliberately: a measurement harness that is wrong is
 # worse than none, because its output looks exactly like a measurement. It gets
 # calibrated against a null test and a known-sign control before anything
-# triggers it automatically. Both calibration runs are recorded in
+# triggers it automatically. Calibration runs are recorded in
 # .claude/plans/public-repo-and-strength-lab.md and Docs/EloLog.md.
 on:
   workflow_dispatch:
@@ -19,8 +22,11 @@ on:
         description: "Reference side: git tag, branch or SHA (use the candidate's own SHA for a null test)"
         default: elo-reference-v2
       games:
-        description: "Total games (2 per opening pair; rounded down to an even number)"
-        default: "500"
+        description: "Total games across all shards (2 per opening pair; rounded down to fit the shards evenly)"
+        default: "20000"
+      shards:
+        description: "Parallel match jobs. 20x1000 games is ~3 h wall-clock; below ~16 a shard can exceed the job timeout"
+        default: "20"
       candidate_tc:
         description: "Candidate time control, seconds+increment"
         default: "10+0.1"
@@ -28,11 +34,12 @@ on:
         description: "Reference time control. For a known-sign control halve the BASE only (5+0.1) -- see the increment warning below"
         default: "10+0.1"
       concurrency:
-        description: "Concurrent games. 4 vCPU on a standard runner; only one engine per game thinks at a time"
+        description: "Concurrent games PER SHARD. 4 vCPU per runner; validated at zero time losses at 3 -- raising it is what causes contention, not adding shards"
         default: "3"
 
 # Never cancel a running match: a superseded build is cheap to redo, an
-# interrupted 500-game batch is an hour thrown away. Concurrent dispatches queue.
+# interrupted multi-hour batch is an afternoon thrown away. Concurrent
+# dispatches queue.
 concurrency:
   group: strength-${{ github.ref }}
   cancel-in-progress: false
@@ -51,11 +58,72 @@ env:
   BOOK_FILE: UHO_4060_v3.epd
 
 jobs:
-  match:
+  # ---------------------------------------------------------------------------
+  # Turn the requested game count into a shard plan. Doing the arithmetic once,
+  # here, is what lets every later job agree on the slicing without recomputing
+  # it -- and lets an impossible request fail in seconds instead of after a
+  # build.
+  # ---------------------------------------------------------------------------
+  setup:
     runs-on: ubuntu-24.04
-    # A 500-game batch at 10+0.1 with concurrency 3 runs well under two hours;
-    # this leaves room for a larger dispatch without touching the 6 h job cap.
-    timeout-minutes: 340
+    timeout-minutes: 5
+    outputs:
+      shard_list: ${{ steps.plan.outputs.shard_list }}
+      rounds_per_shard: ${{ steps.plan.outputs.rounds_per_shard }}
+      games_per_shard: ${{ steps.plan.outputs.games_per_shard }}
+      actual_games: ${{ steps.plan.outputs.actual_games }}
+    steps:
+      - name: Plan the shards
+        id: plan
+        env:
+          GAMES: ${{ inputs.games }}
+          SHARDS: ${{ inputs.shards }}
+        run: |
+          set -euo pipefail
+          case "$GAMES" in ''|*[!0-9]*) echo "::error::games must be a positive integer"; exit 1;; esac
+          case "$SHARDS" in ''|*[!0-9]*) echo "::error::shards must be a positive integer"; exit 1;; esac
+          test "$SHARDS" -ge 1 || { echo "::error::shards must be >= 1"; exit 1; }
+
+          # A pair (one opening, both colours) is the indivisible unit: it is the
+          # independent sample the pooled error bar is computed over, so a shard
+          # boundary must never fall inside one.
+          rounds_total=$(( GAMES / 2 ))
+          rounds_per_shard=$(( rounds_total / SHARDS ))
+          if [ "$rounds_per_shard" -lt 1 ]; then
+            echo "::error::$GAMES games across $SHARDS shards leaves under one pair per shard."
+            exit 1
+          fi
+          games_per_shard=$(( rounds_per_shard * 2 ))
+          actual_games=$(( games_per_shard * SHARDS ))
+          if [ "$actual_games" -ne "$GAMES" ]; then
+            echo "::warning::Requested $GAMES games; playing $actual_games so every shard gets $rounds_per_shard whole pairs."
+          fi
+
+          shard_list=$(seq 0 $(( SHARDS - 1 )) | jq -sRc 'split("\n") | map(select(length > 0) | tonumber)')
+          {
+            echo "shard_list=$shard_list"
+            echo "rounds_per_shard=$rounds_per_shard"
+            echo "games_per_shard=$games_per_shard"
+            echo "actual_games=$actual_games"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Plan: $SHARDS shards x $games_per_shard games = $actual_games games"
+
+  # ---------------------------------------------------------------------------
+  # Build both engines and stage the harness ONCE. Across 20 shards this saves
+  # ~1 hour of duplicated runner time, but the real argument is correctness:
+  # every shard must play the same two binaries against the same book. Building
+  # once and shipping artifacts guarantees that; 20 independent builds only
+  # assume it.
+  # ---------------------------------------------------------------------------
+  build:
+    needs: setup
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    outputs:
+      cand_name: ${{ steps.stage.outputs.cand_name }}
+      ref_name: ${{ steps.stage.outputs.ref_name }}
+      openings: ${{ steps.stage.outputs.openings }}
     steps:
       # fetch-depth: 0 for the tags and history the reference checkout needs.
       - uses: actions/checkout@v7
@@ -73,10 +141,10 @@ jobs:
           path: build/_deps
           key: cmake-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
 
-      # Release only. Both sides are built here, from the same compiler and the
-      # same flags, which is the invariant every Elo number in this project
-      # depends on -- a candidate and reference built by different toolchains
-      # show the compiler gap as a phantom strength change (issue #84).
+      # Release only. Both sides are built from the same compiler with the same
+      # flags, which is the invariant every Elo number in this project depends
+      # on -- a candidate and reference built by different toolchains show the
+      # compiler gap as a phantom strength change (issue #84).
       - name: Build candidate
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -116,69 +184,131 @@ jobs:
           unzip -o -q book.zip
           test -s "$BOOK_FILE"
 
-      - name: Run match
+      - name: Stage the toolkit
+        id: stage
+        env:
+          ROUNDS_PER_SHARD: ${{ needs.setup.outputs.rounds_per_shard }}
+          SHARDS: ${{ inputs.shards }}
+        run: |
+          set -euo pipefail
+          stage="$RUNNER_TEMP/stage"
+          mkdir -p "$stage"
+          cp build/StratChessEvolved "$stage/candidate"
+          cp "$RUNNER_TEMP/reference/build/StratChessEvolved" "$stage/reference"
+          cp "$RUNNER_TEMP/tools/fastchess" "$stage/fastchess"
+          cp "$RUNNER_TEMP/tools/$BOOK_FILE" "$stage/$BOOK_FILE"
+
+          cand_sha=$(git rev-parse --short HEAD)
+          ref_sha=$(git -C "$RUNNER_TEMP/reference" rev-parse --short HEAD)
+          openings=$(grep -cve '^[[:space:]]*$' "$stage/$BOOK_FILE")
+
+          # Every shard slices from the same book, so supply is checked against
+          # the whole batch: shards x rounds openings are consumed, each yielding
+          # one colour-swapped pair. Past the end fastchess wraps and replays,
+          # which narrows an error bar without adding information to it.
+          needed=$(( ROUNDS_PER_SHARD * SHARDS ))
+          echo "Book: $BOOK_FILE ($openings openings); batch consumes $needed"
+          if [ "$needed" -gt "$openings" ]; then
+            echo "::error::Batch needs $needed openings but the book has $openings. Shards would overlap and replay games."
+            exit 1
+          fi
+
+          {
+            echo "cand_name=candidate-$cand_sha"
+            echo "ref_name=reference-$ref_sha"
+            echo "openings=$openings"
+          } >> "$GITHUB_OUTPUT"
+
+      # Both engines, fastchess and the book travel together as one artifact, so
+      # a shard cannot end up with a mismatched pairing of them.
+      - name: Upload the toolkit
+        uses: actions/upload-artifact@v7
+        with:
+          name: strength-${{ github.run_id }}-toolkit
+          path: ${{ runner.temp }}/stage
+          if-no-files-found: error
+          retention-days: 1
+
+  # ---------------------------------------------------------------------------
+  # One job per shard. Each plays a disjoint, contiguous slice of the book, so
+  # the shards together are exactly the batch a single job would have played.
+  # ---------------------------------------------------------------------------
+  match:
+    needs: [setup, build]
+    runs-on: ubuntu-24.04
+    # A 1000-game shard at 10+0.1 with concurrency 3 runs ~162 min. This leaves
+    # headroom without touching the 6 h job cap.
+    timeout-minutes: 340
+    strategy:
+      # One shard failing must not cancel the rest: the aggregator refuses to
+      # pool a partial batch anyway, and the surviving PGNs are still worth
+      # having for diagnosis.
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.setup.outputs.shard_list) }}
+    steps:
+      - name: Download the toolkit
+        uses: actions/download-artifact@v7
+        with:
+          name: strength-${{ github.run_id }}-toolkit
+          path: ${{ runner.temp }}/tools
+
+      - name: Run shard ${{ matrix.shard }}
         id: match
         # Inputs reach the shell as environment variables rather than through
         # ${{ }} interpolation into the command line, which would splice their
         # text into the script.
         env:
-          GAMES: ${{ inputs.games }}
+          SHARD: ${{ matrix.shard }}
+          ROUNDS: ${{ needs.setup.outputs.rounds_per_shard }}
           CANDIDATE_TC: ${{ inputs.candidate_tc }}
           REFERENCE_TC: ${{ inputs.reference_tc }}
           MATCH_CONCURRENCY: ${{ inputs.concurrency }}
+          CAND_NAME: ${{ needs.build.outputs.cand_name }}
+          REF_NAME: ${{ needs.build.outputs.ref_name }}
         run: |
           set -euo pipefail
           tools="$RUNNER_TEMP/tools"
           work="$RUNNER_TEMP/match"
+          # Artifact download does not preserve the executable bit.
+          chmod +x "$tools/fastchess" "$tools/candidate" "$tools/reference"
           # Separate working directories per engine: the engine writes logs
           # relative to its cwd, and spdlog fails silently when logs/ is absent.
           mkdir -p "$work/cand/logs" "$work/ref/logs"
 
-          rounds=$(( GAMES / 2 ))
-          test "$rounds" -ge 1
+          # Disjointness is arithmetic, not file surgery: with order=sequential,
+          # shard i starting at i*ROUNDS+1 and playing ROUNDS pairs consumes
+          # openings [i*R+1, (i+1)*R], which cannot overlap another shard's.
+          # start= is 1-based.
+          start=$(( SHARD * ROUNDS + 1 ))
+          echo "Shard $SHARD: $ROUNDS pairs from opening $start"
 
-          # An opening pair is two games, so N openings yield 2N distinct games.
-          # Past that fastchess wraps and replays them, which narrows the error
-          # bar of a result without adding information to it.
-          openings=$(grep -cve '^[[:space:]]*$' "$tools/$BOOK_FILE")
-          echo "Opening book: $BOOK_FILE ($openings openings, $(( 2 * openings )) distinct games)"
-          if [ "$GAMES" -gt $(( 2 * openings )) ]; then
-            echo "::warning::$GAMES games requested but the book yields only $(( 2 * openings )) distinct games; openings will repeat."
-          fi
-
-          # compute_budget() floors a move at 100 ms. An increment below that
-          # loses ground every move once the clock is drained, so the engine
-          # forfeits -- measured locally: 3 time losses in 4 games at 5+0.05,
-          # none at 5+0.1. A control run must therefore halve the BASE time and
-          # leave the increment alone; halving both tests the time manager's
-          # floor, not the harness.
+          # compute_budget() bounds a move by the clock (issue #204), but an
+          # increment under 100 ms still leaves the engine playing near-instant
+          # moves at the bottom of its clock. A control run should halve the
+          # BASE time and leave the increment alone; halving both measures the
+          # time manager rather than the change under test.
           for tc in "$CANDIDATE_TC" "$REFERENCE_TC"; do
             inc=${tc#*+}
             if [ "$inc" = "$tc" ]; then inc=0; fi
             if awk -v i="$inc" 'BEGIN { exit !(i < 0.1) }'; then
-              echo "::warning::Time control $tc has an increment below 0.1 s, which is under the engine's 100 ms per-move floor. Expect time forfeits, which discard the batch."
+              echo "::warning::Time control $tc has an increment below 0.1 s. Expect very fast play at low clock, and check the batch for time losses."
             fi
           done
-
-          cand_sha=$(git rev-parse --short HEAD)
-          ref_sha=$(git -C "$RUNNER_TEMP/reference" rev-parse --short HEAD)
-          echo "cand_name=candidate-$cand_sha" >> "$GITHUB_OUTPUT"
-          echo "ref_name=reference-$ref_sha" >> "$GITHUB_OUTPUT"
-          echo "openings=$openings" >> "$GITHUB_OUTPUT"
 
           # Adjudication settings are copied from Run-EloMatch.ps1 verbatim: the
           # two instruments must differ only in toolchain and hardware.
           # Threads=1 on both sides -- Lazy SMP scales with core count, and a
           # shared runner has none to spare.
           cd "$work"
-          start=$SECONDS
+          start_s=$SECONDS
           set +e
           "$tools/fastchess" \
-            -engine cmd="$GITHUB_WORKSPACE/build/StratChessEvolved" name="candidate-$cand_sha" dir=cand args=uci option.Threads=1 "tc=$CANDIDATE_TC" \
-            -engine cmd="$RUNNER_TEMP/reference/build/StratChessEvolved" name="reference-$ref_sha" dir=ref args=uci option.Threads=1 "tc=$REFERENCE_TC" \
+            -engine cmd="$tools/candidate" name="$CAND_NAME" dir=cand args=uci option.Threads=1 "tc=$CANDIDATE_TC" \
+            -engine cmd="$tools/reference" name="$REF_NAME" dir=ref args=uci option.Threads=1 "tc=$REFERENCE_TC" \
             -each proto=uci \
-            -rounds "$rounds" -repeat -concurrency "$MATCH_CONCURRENCY" -recover \
-            -openings file="$tools/$BOOK_FILE" format=epd order=sequential \
+            -rounds "$ROUNDS" -repeat -concurrency "$MATCH_CONCURRENCY" -recover \
+            -openings file="$tools/$BOOK_FILE" format=epd order=sequential start="$start" \
             -draw movenumber=40 movecount=8 score=10 \
             -resign movecount=4 score=800 \
             -pgnout file=match.pgn notation=san \
@@ -186,75 +316,131 @@ jobs:
           fc_exit=${PIPESTATUS[0]}
           set -e
           echo "fastchess exit: $fc_exit"
-          echo "elapsed_min=$(( (SECONDS - start) / 60 ))" >> "$GITHUB_OUTPUT"
-          echo "fc_exit=$fc_exit" >> "$GITHUB_OUTPUT"
+          echo "elapsed_min=$(( (SECONDS - start_s) / 60 ))" >> "$GITHUB_OUTPUT"
 
-      # Always runs, so a killed or crashed match still yields its PGN -- the
+          # A time loss, an illegal move or a disconnect is a harness or engine
+          # BUG, not strength data. On a shared runner it most likely means the
+          # box was oversubscribed, which invalidates every game in the shard,
+          # not just the one that lost. Fail the shard; the aggregator then
+          # refuses to pool the batch at all.
+          if grep -Eiq 'illegal|disconnect|stall|loses on time' match.log; then
+            echo "::error::Shard $SHARD: harness/engine failures detected -- batch is not measurable."
+            grep -Ei 'illegal|disconnect|stall|loses on time' match.log | head -10
+            exit 1
+          fi
+          test "$fc_exit" = "0"
+
+      # Always runs, so a killed or crashed shard still yields its PGN -- the
       # games played up to that point are the only thing that cannot be redone.
-      - name: Upload PGN and log
+      # The name must be unique per shard: upload-artifact@v4+ errors on a
+      # duplicate name within a run.
+      - name: Upload shard PGN and log
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: strength-${{ github.run_id }}
+          name: strength-${{ github.run_id }}-shard-${{ matrix.shard }}
           path: |
             ${{ runner.temp }}/match/match.pgn
             ${{ runner.temp }}/match/match.log
           if-no-files-found: warn
 
-      # Reporting is a separate step from running so that a parse failure is
-      # distinguishable from a match failure, and so the summary is written even
-      # when the verdict is "discard this batch".
-      - name: Report
-        if: always()
+  # ---------------------------------------------------------------------------
+  # Pool the shards into one figure. Runs even when a shard failed, so the
+  # summary explains the discard rather than leaving a red X with no reason.
+  # ---------------------------------------------------------------------------
+  aggregate:
+    needs: [setup, build, match]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      # A biased subset wearing a full batch's error bar is worse than no
+      # result: if three shards of twenty died, the surviving seventeen are not
+      # a random sample of the batch -- they are the ones that happened not to
+      # hit whatever went wrong. Refuse before pooling anything.
+      - name: Refuse a partial batch
+        if: needs.match.result != 'success'
         run: |
-          set -uo pipefail
-          log="$RUNNER_TEMP/match/match.log"
-          if [ ! -s "$log" ]; then
-            echo "No match log: the match step did not get far enough to produce one." | tee -a "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## Strength lab — DISCARDED"
+            echo
+            echo "Shard jobs reported \`${{ needs.match.result }}\`. A batch with a failed shard is"
+            echo "not a smaller batch, it is a biased one: the surviving shards are those that"
+            echo "happened to avoid whatever went wrong. No pooled figure is reported."
+            echo
+            echo "Check the individual shard logs, then re-dispatch."
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+
+      - name: Download every shard
+        uses: actions/download-artifact@v7
+        with:
+          pattern: strength-${{ github.run_id }}-shard-*
+          path: shards
+
+      - name: Verify the slices are disjoint
+        env:
+          SHARDS: ${{ inputs.shards }}
+        run: |
+          set -euo pipefail
+          # Each shard should open on a different book position. A repeated
+          # first FEN means two shards were handed the same slice, which would
+          # double-count games and silently narrow the pooled interval.
+          : > /tmp/first_fens.txt
+          for pgn in shards/*/match.pgn; do
+            fen=$(grep -m1 -oP '(?<=^\[FEN ")[^"]+' "$pgn" || true)
+            if [ -z "$fen" ]; then
+              # Not a cosmetic gap: without FEN tags this check silently passes
+              # on every future run, so treat it as a broken check rather than a
+              # missing nicety.
+              echo "::error::$pgn has no [FEN] tag, so slice disjointness cannot be verified."
+              exit 1
+            fi
+            echo "$fen" >> /tmp/first_fens.txt
+          done
+          sort -o /tmp/first_fens.txt /tmp/first_fens.txt
+
+          total=$(wc -l < /tmp/first_fens.txt)
+          unique=$(sort -u /tmp/first_fens.txt | wc -l)
+          echo "Shard opening positions: $total total, $unique unique"
+          if [ "$total" -ne "$unique" ]; then
+            echo "::error::Shards share an opening position -- the book slices overlap."
+            uniq -d /tmp/first_fens.txt
+            exit 1
+          fi
+          if [ "$total" -ne "$SHARDS" ]; then
+            echo "::error::Expected $SHARDS shard PGNs, found $total."
             exit 1
           fi
 
-          # Patterns match Run-EloMatch.ps1's, and were derived from the pinned
-          # fastchess build's actual output rather than its documentation: a
-          # pattern that silently matches nothing degrades every run to
-          # "inconclusive", a failure mode that looks like a result.
-          elo=$(grep -E '^[[:space:]]*Elo:' "$log" | tail -1 | sed 's/^[[:space:]]*//')
-          score=$(grep -E 'Games: [0-9]+' "$log" | tail -1 | sed 's/^[[:space:]]*//')
+      - name: Pool the result
+        id: pool
+        env:
+          SHARDS: ${{ inputs.shards }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/pool_pentanomial.py \
+            --expect-shards "$SHARDS" \
+            shards/*/match.log | tee /tmp/pooled.md
 
+      - name: Report
+        if: always()
+        run: |
           {
             echo "## Strength lab"
             echo
             echo "| | |"
             echo "|---|---|"
-            echo "| Candidate | ${{ steps.match.outputs.cand_name }} @ \`${{ github.ref_name }}\`, tc=${{ inputs.candidate_tc }} |"
-            echo "| Reference | ${{ steps.match.outputs.ref_name }} (\`${{ inputs.reference_ref }}\`), tc=${{ inputs.reference_tc }} |"
-            echo "| Games requested | ${{ inputs.games }} at concurrency ${{ inputs.concurrency }} |"
-            echo "| Book | \`$BOOK_FILE\` (${{ steps.match.outputs.openings }} openings) |"
+            echo "| Candidate | ${{ needs.build.outputs.cand_name }} @ \`${{ github.ref_name }}\`, tc=${{ inputs.candidate_tc }} |"
+            echo "| Reference | ${{ needs.build.outputs.ref_name }} (\`${{ inputs.reference_ref }}\`), tc=${{ inputs.reference_tc }} |"
+            echo "| Games | ${{ needs.setup.outputs.actual_games }} = ${{ inputs.shards }} shards x ${{ needs.setup.outputs.games_per_shard }}, concurrency ${{ inputs.concurrency }} per shard |"
+            echo "| Book | \`$BOOK_FILE\` (${{ needs.build.outputs.openings }} openings) |"
             echo "| Toolchain | GCC on ubuntu-24.04, Release, Threads=1 |"
-            echo "| Duration | ${{ steps.match.outputs.elapsed_min }} min |"
             echo
-            echo '```'
-            echo "${score:-no score line found}"
-            echo "${elo:-no Elo line found}"
-            echo '```'
+            cat /tmp/pooled.md
+            echo
+            echo "Error bar is pentanomial: pooled over colour-swapped PAIRS, which are the"
+            echo "independent unit. Pooling raw W/L/D would understate the variance."
           } >> "$GITHUB_STEP_SUMMARY"
-
-          # A time loss, an illegal move or a disconnect is a harness or engine
-          # BUG, not strength data. Such a batch is discarded, never reported --
-          # on a shared runner a time loss most likely means the box was
-          # oversubscribed, which invalidates every game in the batch, not just
-          # the one that lost.
-          if grep -Eiq 'illegal|disconnect|stall|loses on time' "$log"; then
-            {
-              echo
-              echo "### DISCARD -- harness/engine failures detected"
-              echo
-              echo '```'
-              grep -Ei 'illegal|disconnect|stall|loses on time' "$log" | head -10
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
-
-          test "${{ steps.match.outputs.fc_exit }}" = "0"
-          test -n "$elo"
