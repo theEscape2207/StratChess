@@ -266,8 +266,13 @@ Move MoveFormatter::FromUCI(std::string_view uci, const Board& board)
 
     // Parse algebraic squares: file 'a'-'h', rank '1'-'8'.
     // Internal layout: rank 8 = row 0, rank 1 = row 7; file a = col 0.
+    // The characters are validated, not just the length: this parses whatever a
+    // GUI sends. "zzzz" would otherwise compute file 25, rank -66 and index the
+    // mailbox at -503 (#200).
     auto parse_sq = [](char file_ch, char rank_ch) -> eSquare
     {
+        if (file_ch < 'a' || file_ch > 'h' || rank_ch < '1' || rank_ch > '8')
+            return NO_SQUARE;
         const int file = file_ch - 'a';     // 0-7
         const int rank = '8' - rank_ch;     // 0 (rank 8) to 7 (rank 1)
         return static_cast<eSquare>(rank * 8 + file);
@@ -275,6 +280,8 @@ Move MoveFormatter::FromUCI(std::string_view uci, const Board& board)
 
     const eSquare from = parse_sq(uci[0], uci[1]);
     const eSquare to   = parse_sq(uci[2], uci[3]);
+    if (from == NO_SQUARE || to == NO_SQUARE)
+        return Move{};
 
     const ePiece piece = board.GetPiece(from);
 
