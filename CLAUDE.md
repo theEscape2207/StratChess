@@ -66,7 +66,7 @@ cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\<name>.
 | `Run-Tests.ps1 [tag]` | Any test verification |
 | `Validate-PreCommit.ps1` | Before every commit — FEN check + fast tests (the pre-commit hook runs this) |
 | `Validate-PrePR.ps1` | Before a PR — scopes itself to the change tier; `-Force` to run everything |
-| `Run-EloMatch.ps1 [-Smoke]` | After search/eval/time changes — strength vs the pinned reference (`Docs/EloLog.md`) |
+| `Run-EloMatch.ps1 [-Smoke]` | After search/eval/time changes — strength vs the pinned reference (method: `Docs/EloMeasurement.md`, results: `Docs/EloLog.md`) |
 | `Run-Bench.ps1 -Exe <path>` | Search speed (nps) at fixed depth — before/after any optimisation, or comparing two builds |
 | `New-Worktree.ps1 -Name <task>` | Starting any task — forks fresh from `origin/main` at the correct path |
 | `New-PullRequest.ps1 -Title "…"` | Sync → validate → push → create/update PR. `-Draft`, `-NoPr`, `-BodyFile` |
