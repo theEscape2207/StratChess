@@ -452,10 +452,83 @@ uncalibrated at scale — the same status M4's workflow had before its two calib
 single-job instrument and ±26 locally. That is the first point at which epic #110's single-digit eval
 terms are decidable at all.
 
-### M6 — Wire to PRs and to the epic (~1 session)
+### M6 — Wire to PRs and to the epic (~1-2 sessions)
 
-- Trigger `strength.yml` automatically on Engine-tier PRs touching `Eval.cpp` or the search files,
-  or on a `measure` label — restricted to non-fork PRs.
+**Read this before designing the triggers.** M5 replaced several of this milestone's assumptions
+with observations, and one of them invalidates the trigger as originally written.
+
+#### What M5 measured that M6 needs
+
+| Input | Value | Source |
+|---|---|---|
+| Wall-clock, 20,000 games | ~3 h (20 shards x 1000, all shards starting immediately) | The M5 null test |
+| Runner-hours per full batch | **~54** (20 shards x ~2.7 h) plus ~10 min of build | Same |
+| Concurrent jobs consumed | **20 — the entire allowance** | Observed: all 20 shards ran at once, none queued |
+| Per-job overhead saved by building once | ~7-10 min x 19 shards | M4's per-job figure, now paid once |
+| Aggregation cost | seconds | The `aggregate` job |
+
+**Actions minutes are free — the repository is public since M1.** Do not reason about M6's cost in
+spend; the earlier "Windows was 75% of spend" framing dates from when the repo was private and no
+longer applies. The binding constraint is **concurrency**, and it is much tighter than a budget:
+
+> A public repository gets 20 concurrent jobs. One full strength dispatch uses all 20 for three
+> hours. While it runs, `build-and-test` on every other PR queues behind it — and `build-and-test`
+> is a **required check**, so an automatic strength run would stall merges repo-wide.
+
+That is a hard blocker for "trigger automatically on Engine-tier PRs touching `Eval.cpp`" as
+written. Any automatic trigger must either cap the matrix well below 20, or serialise strength runs
+against normal CI, or stay label-only. Deciding which is M6's first task, not a detail.
+
+#### The highest-risk piece: making a decidable run affordable
+
+20,000 games is the *resolution* figure, not the *decision* figure. `Run-EloMatch.ps1` already
+solves this locally with `-Sprt`, which stops as soon as the result is decisive — often in a few
+thousand games. The CI lab has no SPRT, so today it always plays the full batch even when the answer
+was obvious at 15%.
+
+Adding SPRT is therefore probably a **prerequisite** for M6 rather than a follow-on, and it is
+genuinely awkward under sharding: SPRT is sequential, and 20 shards running independently cannot
+stop one another. Twenty shards each running their own SPRT would be twenty independent tests, which
+is simply wrong. The workable shapes:
+
+- **Group-sequential**: run a modest batch (say 4,000 games), pool, compute the LLR, and re-dispatch
+  a further batch only if undecided. Statistically sound if the repeated looks are accounted for;
+  the aggregator already produces exactly the pooled counts an LLR needs.
+- **Fixed smaller batch**: pick a size whose interval is good enough for the question and skip
+  sequential testing entirely. Much simpler, and adequate if the question is "is this worth >= 5
+  Elo" rather than "what exactly is it worth".
+
+Decide which before writing anything, exactly as the pentanomial question was decided before the
+aggregator. This is M6's equivalent of that risk.
+
+#### Design decisions M5 settled or exposed
+
+- **Reference must be the merge-base, not a fixed tag.** `reference_ref` currently takes any ref. For
+  a PR the reference has to be `git merge-base HEAD origin/main`, or the run measures everything that
+  landed since the tag rather than the PR's own change. The lab builds any ref from source, so this
+  is an input-computation change, not a workflow-shape one.
+- **Do not gate. Report.** The plan already leaned this way; M5 adds a mechanical argument. The
+  aggregator refuses to pool when any shard fails, by design — so a single flaky shard turns into a
+  red X on a PR for a reason unrelated to its diff. Combined with the error bar and with PRs that
+  legitimately lose Elo, gating would produce false failures more often than true ones. Post the
+  verdict as a comment; leave `build-and-test-result` as the only required check.
+- **Fork PRs get the job summary only.** Invariant 6 forbids `pull_request_target`, and a plain
+  `pull_request` from a fork has a read-only `GITHUB_TOKEN`, so comment posting will fail. Restrict
+  the trigger to non-fork PRs (as planned) and accept that a fork contributor reads the summary.
+- **Put cheap guards before expensive work.** M5's aggregator self-test moved into `setup` after a
+  three-hour batch was nearly spent proving a script was missing. Any M6 script — comment posting,
+  merge-base resolution, LLR computation — should be validated in the same first job.
+- **`.gitignore` blanket-ignores `/.github/*`** behind an allowlist. Any new file M6 adds under
+  `.github/scripts/` must be added to it or `git add -A` will silently skip it; `.py` is already
+  allowlisted as of M5.
+
+#### Steps
+
+- Decide the concurrency story and the SPRT-or-fixed-batch question above. Both are policy, not code.
+- Trigger `strength.yml` on a `measure` label — restricted to non-fork PRs. Prefer the label over an
+  automatic path-based trigger until the concurrency question has an answer that does not stall
+  `build-and-test`.
+- Compute `reference_ref` as the merge-base with `origin/main`.
 - Post the pooled verdict as a PR comment.
 - ~~Add a separate table in `Docs/EloLog.md` for the Linux ledger~~ — **done** in M4. The ledger
   exists, carries the two calibration rows, and states the never-compare rule. The
