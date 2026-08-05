@@ -13,8 +13,17 @@ TimeBudget compute_budget(
     constexpr ms overhead{ 50 };
     constexpr ms floor_time{ 100 };
 
-    // Clamp usable time to avoid zero or negative division
-    const ms usable = std::max(remaining - overhead, floor_time);
+    // Time actually available to spend. Never more than the clock holds, so a
+    // drained clock yields a zero budget rather than an unpayable one.
+    const ms usable = std::max(remaining - overhead, ms{ 0 });
+
+    // Ceiling for both limits: one move never commits more than half of what is
+    // left, which leaves the next move something to spend.
+    const ms cap = usable / 2;
+
+    // Minimum worth searching, but it yields to the clock: below roughly 250 ms
+    // remaining the emergency floor is what the clock can pay, not a constant.
+    const ms floor = std::min(floor_time, cap);
 
     // Horizon: use provided moves_to_go, otherwise assume 30 moves left
     const int horizon = (moves_to_go > 0) ? moves_to_go : 30;
@@ -25,15 +34,14 @@ TimeBudget compute_budget(
             + increment.count() * 8 / 10)  // integer 80% — avoids C4244 double->long long
     };
 
-    const ms soft = std::max(base, floor_time);
+    const ms soft = std::clamp(base, floor, cap);
 
-    // Hard limit: cap at 1.5× soft so one move can never dominate the clock.
+    // Hard limit: 1.5× soft so one move can never dominate the clock.
     // A 3× factor caused the engine to spend the full hard budget on every opening
     // move (because early depths complete well inside soft, depth N+1 then runs
     // until hard fires), leading to time forfeits in sudden-death time controls.
     const ms hard_candidate{ static_cast<ms::rep>(soft.count() * 3 / 2) };
-    const ms hard_cap{ static_cast<ms::rep>(usable.count() / 2) };
-    const ms hard = std::max(std::min(hard_candidate, hard_cap), soft);
+    const ms hard = std::clamp(hard_candidate, soft, cap);
 
     return TimeBudget{ soft, hard };
 }

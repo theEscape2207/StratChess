@@ -1,7 +1,10 @@
 #include <catch_amalgamated.hpp>
 #include "Utils/TimeUtils.h"
 #include "Utils/TimeManager.h"
+#include <algorithm>
+#include <cstdint>
 #include <thread>
+#include <vector>
 
 using namespace std::chrono_literals;
 
@@ -32,18 +35,21 @@ TEST_CASE("compute_budget: classical with moves_to_go (60 min, 20 moves left)", 
 
 TEST_CASE("compute_budget: increment-heavy time trouble (200 ms remaining, 5 s increment)", "[time_mgr]")
 {
+    // A 5 s increment dwarfs the 200 ms clock, so the cap decides: usable = 150,
+    // cap = 75. Spending the increment before it is credited would forfeit.
     auto b = Engine::compute_budget(200ms, 5'000ms, 0);
-    // soft must be >= 100 ms (floor clamp)
-    REQUIRE(b.soft.count() >= 100);
-    REQUIRE(b.hard.count() >= b.soft.count());
+    REQUIRE(b.soft.count() == 75);
+    REQUIRE(b.hard.count() == 75);
+    REQUIRE(b.hard.count() <= 200);
 }
 
-TEST_CASE("compute_budget: time trouble floor (remaining < overhead)", "[time_mgr]")
+TEST_CASE("compute_budget: clock below overhead yields a zero budget", "[time_mgr]")
 {
-    // Less than overhead (50 ms) — must not crash or return zero/negative
+    // 30 ms is less than the 50 ms overhead: nothing is safely spendable, so the
+    // caller must move immediately rather than search on borrowed time.
     auto b = Engine::compute_budget(30ms, 0ms, 0);
-    REQUIRE(b.soft.count() >= 100);
-    REQUIRE(b.hard.count() >= b.soft.count());
+    REQUIRE(b.soft.count() == 0);
+    REQUIRE(b.hard.count() == 0);
 }
 
 TEST_CASE("compute_budget: zero increment, no moves_to_go", "[time_mgr]")
@@ -67,7 +73,62 @@ TEST_CASE("compute_budget: hard is always >= soft invariant", "[time_mgr]")
             m);
         CAPTURE(r, i, m);
         REQUIRE(b.hard.count() >= b.soft.count());
-        REQUIRE(b.soft.count() >= 100);
+        REQUIRE(b.soft.count() >= 0);
+        REQUIRE(b.hard.count() <= r);
+    }
+}
+
+TEST_CASE("compute_budget: hard never exceeds remaining", "[time_mgr]")
+{
+    // The assertion that would have caught issue #204 without playing a game:
+    // a budget larger than the clock it was drawn from is a forfeit waiting to
+    // happen, whatever the increment or horizon says.
+    for (int r : {0, 1, 10, 30, 49, 50, 51, 100, 150, 200, 250, 500, 1'000, 10'000, 100'000}) {
+        for (int i : {0, 20, 50, 100, 1'000, 5'000}) {
+            for (int m : {0, 1, 5, 30}) {
+                auto b = Engine::compute_budget(
+                    std::chrono::milliseconds(r),
+                    std::chrono::milliseconds(i),
+                    m);
+                CAPTURE(r, i, m, b.soft.count(), b.hard.count());
+                REQUIRE(b.soft.count() >= 0);
+                REQUIRE(b.hard.count() >= b.soft.count());
+                REQUIRE(b.hard.count() <= r);
+                // Half of what is left, so the following move can still be paid for
+                REQUIRE(b.hard.count() <= std::max(r - 50, 0) / 2);
+            }
+        }
+    }
+}
+
+TEST_CASE("compute_budget: sub-100 ms increments do not drain the clock", "[time_mgr]")
+{
+    // Issue #204's failure mode: at an increment below the old 100 ms floor every
+    // move cost more than it repaid, so the clock walked down to a forfeit.
+    // Spending the *hard* limit every move is the worst case; the search normally
+    // stops at soft. The clock must instead settle on a positive fixed point.
+    // The clock settles where hard == increment, i.e. (r - 50) / 2 == inc. Integer
+    // division makes both r = 50 + 2*inc and r + 1 satisfy that, so the resting
+    // value is a two-wide band and which end it reaches depends on the approach.
+    // Assert the band, not one of its two members.
+    for (int inc : {20, 50}) {   // 2+0.02 and 5+0.05
+        const int64_t settled_min = 50 + 2 * inc;
+        auto clock = std::chrono::milliseconds(120'000);
+        std::vector<int64_t> tail;
+        for (int move = 0; move < 400; ++move) {
+            auto b = Engine::compute_budget(clock, std::chrono::milliseconds(inc), 0);
+            clock -= b.hard;
+            CAPTURE(inc, move, b.hard.count(), clock.count());
+            REQUIRE(clock.count() >= 0);          // never overspends what is there
+            clock += std::chrono::milliseconds(inc);
+            if (move >= 380)
+                tail.push_back(clock.count());
+        }
+        CAPTURE(inc, clock.count(), settled_min);
+        REQUIRE(clock.count() >= settled_min);
+        REQUIRE(clock.count() <= settled_min + 1);
+        // Converged, not merely still positive
+        REQUIRE(std::equal(tail.begin() + 1, tail.end(), tail.begin()));
     }
 }
 
