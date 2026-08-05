@@ -92,6 +92,13 @@ The script appends one row to `EloLog.md` automatically and prints the same figu
   it pass as a decision.
 - **`FAILURES, discard`** — a time loss, illegal move, disconnect or stall. The script marks the row
   and exits 1. Discard the batch; do not read its Elo.
+- **`same binary and configuration — carries no strength information`** — both sides were the same
+  bytes with the same options, so the true difference is zero by construction and the Elo column is
+  pure noise. Pipeline checks, time-forfeit checks and reference re-pin verification all land here.
+  The script detects this rather than offering a flag to suppress the row: a suppression switch can
+  be forgotten, and could be reached for after seeing an unwelcome number. **Same binary with
+  *different* options is not this case** — that is a configuration comparison and a real
+  measurement, which is how the Lazy SMP `+128.55 Elo` row was produced.
 
 Bounds and reported Elo are both **logistic** Elo. The script pins `model=logistic` deliberately —
 fastchess's own default is `normalized` (nElo), a different scale on which `elo1=10` would silently
