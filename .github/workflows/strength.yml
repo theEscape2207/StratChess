@@ -73,6 +73,15 @@ jobs:
       games_per_shard: ${{ steps.plan.outputs.games_per_shard }}
       actual_games: ${{ steps.plan.outputs.actual_games }}
     steps:
+      - uses: actions/checkout@v7
+
+      # Before anything expensive. A wrong error bar is the failure mode this
+      # whole milestone exists to avoid, and finding out after a three-hour
+      # batch that the aggregator does not work -- or is not even present --
+      # costs the batch. Checked against real fastchess output; see the script.
+      - name: Verify the pooling formula
+        run: python3 .github/scripts/pool_pentanomial.py --self-test
+
       - name: Plan the shards
         id: plan
         env:

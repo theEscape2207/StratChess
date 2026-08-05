@@ -373,6 +373,8 @@ logs/aiperplex.log
 !/.github/pull_request_template.md
 !/.github/workflows/
 !/.github/workflows/*.yml
+!/.github/scripts/
+!/.github/scripts/*.py
 /sync-from-main.ps1
 # Per-machine MSBuild dependency path overrides — not committed
 Directory.Build.user.props

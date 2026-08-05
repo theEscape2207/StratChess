@@ -33,9 +33,14 @@ never compared), workflow in `.github/workflows/strength.yml`.
 
 Issues this work spawned, both open and neither blocking M5:
 
-- **#204** — `compute_budget()`'s 100 ms per-move floor is absolute, so the engine forfeits at any
-  increment below it, and the standard 10+0.1 sits exactly on that floor. Shaped M4's control run and
-  constrains any future time-control choice.
+- **#204** — **fixed** (PR #212, 2026-08-06). `compute_budget()` could return a budget larger than
+  the clock, so the engine forfeited at any increment below 100 ms and the standard 10+0.1 sat
+  exactly on the floor with no margin. `hard` is now capped at half of `max(remaining - overhead, 0)`.
+  This shaped M4's control run; the constraint on control runs is now weaker but has not gone away —
+  see M5's time-control note.
+- **#213** — move overhead is hard-coded at 50 ms with no UCI option to raise it. Opened by #212 as
+  the deferred half of #204. Relevant here: a contended 20-way runner is where a too-small overhead
+  would show up, though #212's cap means it can no longer compound into a forfeit.
 - **#209** — `Docs/Workflow.md` needs a structure.
 
 ## Scope limits
@@ -367,7 +372,9 @@ current timeout, so **do not shard fewer than ~16 ways** without raising it.
   rather than assuming 20 independent builds agree.
 - **Keep per-shard concurrency at 3.** Each matrix job is its own runner, so more shards do not
   contend with each other; raising the per-job figure is what would. It is validated at zero time
-  losses, and #204 leaves 10+0.1 no margin — treat 3 as fixed.
+  losses over 1200 games. The original reason to treat 3 as fixed was that #204 left 10+0.1 no
+  margin; that is now fixed (PR #212), but nothing has been *measured* above 3, so 3 stays fixed on
+  the plainer grounds that it is the only figure with evidence behind it.
 - **Artifact names must be unique per shard.** `actions/upload-artifact@v4+` errors on a duplicate
   name within a run, so the current `strength-${{ github.run_id }}` needs the shard index appended.
 
@@ -378,6 +385,19 @@ current timeout, so **do not shard fewer than ~16 ways** without raising it.
    formula yields an interval that is simply wrong, in the direction of looking more precise. The
    aggregator must pool at **pair** level, or reuse fastchess's own maths rather than reimplementing
    it. Decide which before writing the aggregator — this is the single highest-risk piece of M5.
+
+   **Decided (2026-08-06): pool the `Ptnml(0-2)` counts fastchess already prints.** Reusing its maths
+   directly is not actually available — fastchess computes from games it plays, and has no mode that
+   re-derives statistics from a PGN — so the choice was between parsing its printed counts and
+   re-deriving them from 20,000 games of PGN. Parsing the counts wins: the number being pooled is the
+   number fastchess itself reported, which removes a whole class of parsing disagreement, and pooling
+   is then elementwise addition of five integers per shard.
+
+   The reimplementation risk this was flagged for is retired by `--self-test` in
+   `.github/scripts/pool_pentanomial.py`, which checks the formula against six real
+   (counts, Elo, interval) triples from this project's own matches, spanning 6 to 3500 games. It
+   reproduces fastchess's output to both decimal places on every one, including the tight
+   `+40.28 ± 9.81`. Run it in CI or locally: `python3 .github/scripts/pool_pentanomial.py --self-test`.
 2. **A partially failed batch must not be reported.** Each shard keeps the existing gate (any time
    loss, illegal move, disconnect or stall fails that job). The aggregator must then **refuse to pool
    unless every shard succeeded** — otherwise a run where three shards died reports the surviving
