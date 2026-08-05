@@ -19,9 +19,13 @@ Two ledgers, and they are never compared with each other:
 Produced by `.github/workflows/strength.yml`. Why its rows are not comparable with the local
 table: see [`EloMeasurement.md`](EloMeasurement.md#4-the-linux-ci-instrument).
 
+**Calibrated 2026-08-05.** Both required runs passed, so results from this instrument may now be
+recorded and read. Neither is a strength measurement of anything — they measure the instrument.
+
 | Date | Candidate | Reference | Games | TC | Elo diff | Notes |
 |---|---|---|---|---|---|---|
-| — | — | — | — | — | — | Awaiting the M4 calibration runs (null test and known-sign control); nothing may be recorded here before they pass |
+| 2026-08-05 | c2a9f78 | c2a9f78 (same commit) | 200 | 10+0.1 vs **5+0.1** | 75.88 +/- 42.56 | **Known-sign control — PASS.** 100W/57L/43D (60.75%), LOS 99.99%, DrawRatio 31.00%, PairsRatio 2.29, Ptnml(0-2) [7, 14, 31, 25, 23]. Same binary both sides; the reference gets half the base time and the same increment. The interval [+33, +118] excludes zero, so the harness demonstrably detects a real strength difference — which is all this run claims. It does **not** measure what a 2x time handicap is worth, since there is no independent expectation to compare against. The base is halved and the increment left alone deliberately: at 5+0.05 the engine forfeits on `compute_budget()`'s 100 ms floor (#204), which would test the time manager rather than the harness. **Zero time losses** |
+| 2026-08-05 | c2a9f78 | c2a9f78 (same commit) | 1000 | 10+0.1 | -3.47 +/- 18.21 | **Null test — PASS.** 388W/398L/214D (49.50%), nElo -4.11 +/- 21.53, Ptnml(0-2) [71, 83, 197, 83, 66], 162 min at concurrency 3. Identical commit and identical time control on both sides, so the true difference is zero by construction; the interval [-21.7, +14.7] contains it comfortably. Zero measurable bias in the CI instrument, matching what the local instrument showed at the same game count (-1.4 Elo pooled, 2026-07-03). **Zero time losses**, which also establishes that a shared 4-vCPU runner holds 10+0.1 at concurrency 3 — the open question #204 raised |
 
 ## Measurement history
 

@@ -117,9 +117,9 @@ the `_MSC_VER`/`_WIN32` sites, MSVC's STL, the ThinLTO link). `Validate-PrePR.ps
 it never passes `-Config`, so it builds Release only and never compiles Debug.
 
 A **strength lab** (`strength.yml`, `workflow_dispatch` only) plays a Linux/GCC Elo match between the
-dispatched ref and a reference ref, both built in the same job. It is **uncalibrated until the null
-test and known-sign control in `.claude/plans/public-repo-and-strength-lab.md` pass** — do not quote
-a number from it before then, and never against a row from the local clang-cl ledger.
+dispatched ref and a reference ref, both built in the same job. Calibrated 2026-08-05 (null test
+-3.47 ± 18.21 over 1000 games; 2x-time control +75.88 ± 42.56), so its numbers may be used — but they
+go in `Docs/EloLog.md`'s **Linux ledger** and are never compared against a local clang-cl row.
 
 CI is a **gate** — `build-and-test-result` is a required check on `main` and a red run blocks the
 merge. A SKIPPED leg reports success on purpose, so Docs and Tooling PRs are not blocked by jobs that

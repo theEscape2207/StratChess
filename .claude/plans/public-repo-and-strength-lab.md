@@ -288,8 +288,22 @@ Validated before commit rather than by dispatching and watching it fail: the YAM
 workflow uses (per-engine `tc=`, `option.Threads=1`, `-each proto=uci`, an EPD book with
 `format=epd`) — that last one is what surfaced the increment finding.
 
-**Remaining for M4:** dispatch the null test (`reference_ref` = the candidate's own SHA) and the
-known-sign control (`reference_tc` = 5+0.1), then record both here and in the Linux ledger.
+**M4 is complete.** Both calibration runs passed on 2026-08-05, against `c2a9f78`, and are recorded
+in `Docs/EloLog.md`'s Linux ledger:
+
+| Run | Shape | Result |
+|---|---|---|
+| Known-sign control | 200 games, 10+0.1 vs 5+0.1, same binary | **+75.88 ± 42.56**, LOS 99.99% — detects a real difference |
+| Null test | 1000 games, identical commit and clock | **-3.47 ± 18.21** — contains the guaranteed zero |
+
+Both with **zero time losses**, which settles the risk this milestone raised about 10+0.1 having no
+margin on a shared runner: at concurrency 3 on 4 vCPU it holds. The null result also matches the
+local instrument's -1.4 at the same game count — two instruments on different toolchains and
+hardware agreeing that neither is biased.
+
+The control was run **before** the null test deliberately. A null result from a blind instrument is
+indistinguishable from a null result from a working one, so proving the harness can detect anything
+has to come first; otherwise "0 ± 18" is not evidence of anything at all.
 
 The first dispatch found a packaging bug rather than a measurement: `fastchess` v1.8.0-alpha extracts
 to a subdirectory, and the guard against `mv fastchess fastchess` compared basenames, so the binary

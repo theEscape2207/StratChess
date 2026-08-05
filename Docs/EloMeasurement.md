@@ -304,5 +304,19 @@ Two deliberate differences from the local setup:
 The workflow warns when either side is given an increment under 0.1 s, for the reason in
 [the 100 ms floor](#the-100-ms-per-move-floor).
 
-**It is uncalibrated until its null test and known-sign control pass**, and no result may be recorded
-from it before then. Status: M4 in `.claude/plans/public-repo-and-strength-lab.md`.
+**Calibrated 2026-08-05**, by the two runs recorded at the top of `EloLog.md`:
+
+- **Null test** — identical commit and clock on both sides, 1000 games: **-3.47 ± 18.21**, an
+  interval containing the zero the setup guarantees. No measurable bias, matching the local
+  instrument's -1.4 at the same game count.
+- **Known-sign control** — same binary, reference on half the base time, 200 games:
+  **+75.88 ± 42.56**, LOS 99.99%. The instrument detects a real difference rather than returning
+  noise whatever it is shown.
+
+Both ran with **zero time losses**, which also answers the open question from
+[the 100 ms floor](#the-100-ms-per-move-floor): a shared 4-vCPU runner does hold 10+0.1 at
+concurrency 3.
+
+A null test and a control are the minimum, not a guarantee. They establish that the instrument is
+unbiased and not blind; they say nothing about resolution, which is what the error bar reports on
+every run.
