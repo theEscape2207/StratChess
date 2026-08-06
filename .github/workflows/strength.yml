@@ -75,6 +75,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Per-shard concurrency has to be sized off PHYSICAL cores: a
+      # single-threaded search gains nothing from SMT sharing, and
+      # oversubscribing adds timing noise. The match shards run on the same
+      # runner label as this job, so recording the topology once here says what
+      # the 4 vCPU actually are.
+      - name: Record the runner's CPU topology
+        run: lscpu
+
       # Before anything expensive. A wrong error bar is the failure mode this
       # whole milestone exists to avoid, and finding out after a three-hour
       # batch that the aggregator does not work -- or is not even present --
