@@ -135,7 +135,7 @@ same book. `match` is the shard matrix. `aggregate` pools them.
 |---|---|
 | `reference_ref` | Tag, branch or SHA for the reference side. Pass the candidate's own SHA for a null test |
 | `games` | Total games across all shards, two per opening pair. Rounded down so each shard gets whole pairs |
-| `shards` | Parallel match jobs. 20×1000 games is ~3 h; below ~16 a shard can exceed the 340-minute job timeout |
+| `shards` | Parallel match jobs, default 18. 18×1110 games is ~3 h and leaves 2 of the 20 concurrent-job slots free, so a run no longer blocks every other PR; 20 consumes the whole allowance for the duration. Below ~16 a shard can exceed the 340-minute job timeout |
 | `candidate_tc` / `reference_tc` | Per-side time control. Halve the **base** for a handicap run — an increment under 0.1 s makes the engine play near-instantly at the bottom of its clock |
 | `concurrency` | Concurrent games **per shard**. Validated at 3; raising it causes contention, adding shards does not |
 

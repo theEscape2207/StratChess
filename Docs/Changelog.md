@@ -22,6 +22,41 @@ Newest first.
 
 ---
 
+## 2026-08-06 — Strength lab defaults to 18 shards, so a run stops blocking CI (#217 Experiment A)
+
+### Changed
+
+- **`shards` defaults to 18, not 20.** At 20 a dispatch consumed the entire 20-job concurrent
+  allowance, so `build-and-test-result` — a required check — could not start for any other PR until
+  the batch finished three hours later. That made a full run night-time-only. 18 leaves two slots
+  free.
+- `strength.yml`, `Docs/CI.md` and the plan's status table describe the new default; the runner
+  topology is recorded by the `lscpu` step added the same day.
+
+### Notes
+
+**Measured, not assumed.** A second null test at 18 × 1110 returned **-1.51 ± 4.15** against the
+20-shard **-2.17 ± 4.18**. The interval is the result: at ~10,000 pairs a spread estimate is itself
+known to about ±0.03, so the 0.03 difference is one standard error and the split costs no
+resolution. Wall-clock **3 h 04 min against 2 h 47 min — a 17-minute cost.** Zero time losses,
+slices disjoint, point estimate containing the guaranteed zero. Recorded in the Linux ledger.
+
+**The blocking claim was verified directly**, not inferred. An unrelated Build-tier PR opened while
+the batch ran had its first job start 5 s later and completed in 10 min, against a 4.5-5 min
+uncontended baseline — two of its five build legs running at a time while three queued. A delay,
+not a block.
+
+**This says nothing about per-shard concurrency.** Shard count changes how many runners are used,
+not the CPU each engine gets, so the effective time control is unchanged and the row stays
+comparable with everything already in the ledger. Raising concurrency would not be, which is why
+#217's Experiment B is a separate question.
+
+**`strategy.max-parallel` is the wrong lever** and was rejected: with 20 shards capped at 18, the
+last two only start when the first two finish, roughly doubling wall-clock to save the same two
+slots.
+
+---
+
 ## 2026-08-06 — CI split out; standing decisions written down (#209 follow-up)
 
 ### Changed

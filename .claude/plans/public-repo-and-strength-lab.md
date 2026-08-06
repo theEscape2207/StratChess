@@ -26,12 +26,18 @@ originally drafted.
 | Repository | Public; CI is a gate, `build-and-test-result` required on `main` |
 | Nightly | `nightly.yml` — deep perft, `[slow]` tier, sanitizers + `_GLIBCXX_DEBUG`, tactical ×100 |
 | Opening book | Solved. `EngineTesting\openings-large.*` locally (optional), `UHO_4060_v3.epd` in CI — 242,201 openings |
-| Strength lab | `strength.yml`, `workflow_dispatch` only, sharded 20 ways, **calibrated at scale 2026-08-06** |
+| Strength lab | `strength.yml`, `workflow_dispatch` only, sharded **18 ways**, **calibrated at scale 2026-08-06** |
 | Resolution today | **±4 Elo** at 20,000 games (CI, ~3 h); ±18 at 1000 single-job; ±25-26 at 500 (local) |
 | Not yet possible | Epic #110's single-digit terms. That is exactly what M5 buys |
 
 Where things live: method in `Docs/EloMeasurement.md`, results in `Docs/EloLog.md` (two ledgers,
 never compared), workflow in `.github/workflows/strength.yml`.
+
+**The default is 18 shards, not 20** (#217 Experiment A, 2026-08-06). 20 consumed the entire
+concurrent-job allowance, so a run blocked every other PR's required check for three hours and was
+therefore night-time-only. 18 leaves two slots free, costs **17 minutes** and no resolution —
+**-1.51 ± 4.15** against the 20-shard **-2.17 ± 4.18**. Sections below that were written against 20
+shards record what was measured at the time and are left as they stand.
 
 Issues this work spawned, both open and neither blocking M5:
 
