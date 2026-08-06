@@ -217,6 +217,13 @@ void UciHandler::cmd_eval()
 
 void UciHandler::cmd_position(std::string_view line)
 {
+    // The search reads the board through its own ThreadData copy, taken on the
+    // search thread after cmd_go returns -- so mutating board_ here can land
+    // before that copy and make the engine answer for a position the client
+    // never asked about, with no diagnostic.
+    if (refuse_while_searching("position")) {
+        return;
+    }
     if (line.find("startpos") != std::string_view::npos) {
         [[maybe_unused]] const bool ok = board_.SetupFromFEN(std::string(STARTING_FEN));
         assert(ok && "STARTING_FEN failed to parse");
@@ -306,6 +313,9 @@ void UciHandler::cmd_go(std::string_view line)
                                  : std::optional<int>(p.infinite ? 50 : static_cast<int>(UCI_DEFAULT_DEPTH));
 
     auto start = std::chrono::steady_clock::now();
+    // Raised on this thread, before the search exists, so a command arriving
+    // immediately after 'go' cannot observe a stale false.
+    searching_.store(true, std::memory_order_release);
     search_thread_ = std::thread([this, info, start, limits]() mutable {
         Move best = ai_->GetMove(info, limits);
 
@@ -335,7 +345,29 @@ void UciHandler::cmd_go(std::string_view line)
 
         const std::string bm = best.is_null() ? "0000" : MoveFormatter::ToUCI(best);
         send("bestmove " + bm);
+        // Cleared only after bestmove is out, so a client that acts the instant
+        // it reads bestmove finds the engine already accepting commands.
+        searching_.store(false, std::memory_order_release);
     });
+}
+
+// UCI has no error channel, so the refusal goes out as 'info string' -- the
+// convention every GUI records in its engine log. Stdout only, deliberately:
+// stdout IS the protocol channel here, so a stderr copy would just duplicate
+// the line for anyone merging the two streams, and land it out of order
+// because stderr is unbuffered.
+//
+// The command is refused rather than honoured: abandoning a running search on a
+// protocol violation would discard work the client did ask for, and a
+// conforming GUI never sends these mid-search anyway.
+bool UciHandler::refuse_while_searching(std::string_view command)
+{
+    if (!searching_.load(std::memory_order_acquire)) {
+        return false;
+    }
+    send("info string " + std::string(command) +
+         ": ignored, a search is in progress -- send 'stop' first");
+    return true;
 }
 
 // "perft <depth>" and "go perft <depth>": node counts per root move for the
@@ -376,6 +408,12 @@ void UciHandler::cmd_stop()
 
 void UciHandler::cmd_setoption(std::string_view line)
 {
+    // The more dangerous half of the pair: SetThreads reconfigures an AI a
+    // search is running on, and cmd_ucinewgame's init_ai() would destroy it
+    // outright -- a use-after-free rather than merely a wrong answer.
+    if (refuse_while_searching("setoption")) {
+        return;
+    }
     // Minimal UCI 'setoption' parser — recognizes exactly:
     //   setoption name Threads value N
     // Any other option name, or a malformed/missing value, is silently
@@ -424,6 +462,10 @@ void UciHandler::stop_and_join()
 {
     if (ai_) ai_->StopSearch();
     if (search_thread_.joinable()) search_thread_.join();
+    // Belt and braces: the search clears this itself, but a thread that ended
+    // without reaching that point must not leave the engine refusing commands
+    // for the rest of the session.
+    searching_.store(false, std::memory_order_release);
     if (ai_) ai_->SetMaxDepth(UCI_DEFAULT_DEPTH);
     if (ai_) ai_->SetTimeLimit(std::chrono::seconds(15));
 }

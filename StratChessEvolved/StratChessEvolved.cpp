@@ -8,6 +8,7 @@
 #include <Tests/Perft.h>
 #include <Tests/TacticalTestRunner.h>
 #include "Eval.h"
+#include "Utils/ArgParse.h"
 #include "Utils/FenBatch.h"
 #include <spdlog/spdlog.h>
 
@@ -122,12 +123,12 @@ static int tacticalrunner(int argc, char** argv) {
     if (command == "stability") {
         int n_runs = 10;
         if (argc >= 3) {
-            try {
-                n_runs = std::stoi(argv[2]);
-            } catch (const std::exception&) {
+            const auto parsed_runs = Engine::parse_int(argv[2]);
+            if (!parsed_runs) {
                 std::cerr << "Error: N must be a number, got '" << argv[2] << "'\n";
                 return 1;
             }
+            n_runs = *parsed_runs;
             if (n_runs < 1) {
                 std::cerr << "Error: N must be >= 1, got " << n_runs << "\n";
                 return 1;
@@ -136,13 +137,12 @@ static int tacticalrunner(int argc, char** argv) {
         const std::string filename = (argc >= 4) ? argv[3] : "tactical_test_cases.json";
         unsigned threads = 1;
         if (argc >= 5) {
-            int parsed = 0;
-            try {
-                parsed = std::stoi(argv[4]);
-            } catch (const std::exception&) {
+            const auto parsed_threads = Engine::parse_int(argv[4]);
+            if (!parsed_threads) {
                 std::cerr << "Error: threads must be a number, got '" << argv[4] << "'\n";
                 return 1;
             }
+            const int parsed = *parsed_threads;
             if (parsed < 1) {
                 std::cerr << "Error: threads must be >= 1, got " << parsed << "\n";
                 return 1;
@@ -180,7 +180,12 @@ static int perftrunner(int argc, char** argv) {
             return 1;
         }
 
-        int depth = std::stoi(argv[2]);
+        const auto parsed_depth = Engine::parse_int(argv[2]);
+        if (!parsed_depth) {
+            std::cerr << "Error: depth must be a number, got '" << argv[2] << "'\n";
+            return 1;
+        }
+        const int depth = *parsed_depth;
         if (depth < 0 || depth > 10) {
             std::cerr << "Error: depth must be between 0 and 10\n";
             return 1;
@@ -311,30 +316,48 @@ int main(int argc, char** argv)
         return 0;
     }
         
-	// UCI mode: default (no args) or explicit "uci" — this is what GUIs expect
-	// Game mode: StratChessEvolved.exe game
-	if (argc == 1 || std::string(argv[1]) == "uci") {
-		spdlog::set_level(spdlog::level::off);
-		UciHandler handler;
-		handler.run();
+	// Backstop for every mode below. Game::Init reports the specific cause and
+	// rethrows deliberately -- it is not its place to choose an exit code, and
+	// swallowing there would let a half-initialised Game continue into Run().
+	// Without this catch the rethrow reaches std::terminate, which is why a bad
+	// settings file used to present as a crash (0xC0000409) even after it had
+	// printed a perfectly good diagnostic.
+	try {
+		// UCI mode: default (no args) or explicit "uci" — this is what GUIs expect
+		// Game mode: StratChessEvolved.exe game
+		if (argc == 1 || std::string(argv[1]) == "uci") {
+			spdlog::set_level(spdlog::level::off);
+			UciHandler handler;
+			handler.run();
+			return 0;
+		}
+		// Check for perft commands
+		if (argc > 2 && std::string(argv[1]) == "perft") {
+			return perftrunner(argc - 1, &argv[1]);
+		}
+		// Check for tactical commands
+		if (argc > 1 && std::string(argv[1]) == "tactical") {
+			return tacticalrunner(argc - 1, &argv[1]);
+		}
+		// Check for batch eval-scoring command — must come before the
+		// unconditional Game::Run() fallthrough below, or an unrecognised arg
+		// silently starts a game instead (D4, uci-eval-command-term-breakdown.md).
+		if (argc > 1 && std::string(argv[1]) == "eval") {
+			return evalrunner(argc - 1, &argv[1]);
+		}
+		// Explicit game mode or unknown arg — normal game execution
+		Game game;
+		game.Run();
 		return 0;
 	}
-	// Check for perft commands
-	if (argc > 2 && std::string(argv[1]) == "perft") {
-		return perftrunner(argc - 1, &argv[1]);
+	catch (const std::exception& ex) {
+		// stderr, not stdout: cout is buffered and its contents are lost when a
+		// process dies abruptly, which is why the original failure looked silent.
+		std::cerr << "Fatal: " << ex.what() << std::endl;
+		return 1;
 	}
-	// Check for tactical commands
-	if (argc > 1 && std::string(argv[1]) == "tactical") {
-		return tacticalrunner(argc - 1, &argv[1]);
+	catch (...) {
+		std::cerr << "Fatal: unknown exception" << std::endl;
+		return 1;
 	}
-	// Check for batch eval-scoring command — must come before the
-	// unconditional Game::Run() fallthrough below, or an unrecognised arg
-	// silently starts a game instead (D4, uci-eval-command-term-breakdown.md).
-	if (argc > 1 && std::string(argv[1]) == "eval") {
-		return evalrunner(argc - 1, &argv[1]);
-	}
-	// Explicit game mode or unknown arg — normal game execution
-	Game game;
-	game.Run();
-	return 0;
 }

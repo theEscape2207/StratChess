@@ -5,6 +5,7 @@
 #include "../MoveFormatter.h"
 #include "../MoveGenerator.h"
 #include "../GameState.h"
+#include "../Utils/ArgParse.h"
 #include <iostream>
 #include <fstream>
 #include <filesystem>
@@ -132,26 +133,42 @@ namespace Testing {
 		}
 		json data = json::parse(file);
 
+		// .at() throughout: tc is a const reference, and indexing a const json
+		// with a missing key is undefined behaviour rather than an error. On the
+		// top-level array operator[] would instead insert a null and yield zero
+		// test cases, so a renamed key would silently report a passing suite that
+		// checked nothing.
+		const json& cases = data.at("perft_test_cases");
 		std::vector<PerftPosition> test_cases;
-		test_cases.reserve(data["perft_test_cases"].size());
+		test_cases.reserve(cases.size());
 
-		for (const auto& tc : data["perft_test_cases"]) {
+		for (const auto& tc : cases) {
 			PerftPosition test;
-			test.fen = tc["fen"].get<std::string>();
+			test.fen = tc.at("fen").get<std::string>();
 			// Convert depths from JSON object to vector
-			const auto& depths = tc["depths"];
+			const auto& depths = tc.at("depths");
+			// Parse once. A key that is not a non-negative integer is reported and
+			// skipped rather than thrown on: the depths are JSON object keys, so a
+			// typo used to escape as an exception from std::stoi, and a negative
+			// key would have indexed expected_nodes out of bounds below.
+			std::vector<std::pair<int, uint64_t>> parsed_depths;
+			parsed_depths.reserve(depths.size());
 			int max_depth = 0;
 			for (auto it = depths.begin(); it != depths.end(); ++it) {
-				int depth = std::stoi(it.key());
-				if (depth > max_depth) {
-					max_depth = depth;
+				const auto depth = Engine::parse_int(it.key());
+				if (!depth || *depth < 0) {
+					std::cerr << "Perft test cases: ignoring non-numeric depth key '"
+					          << it.key() << "' for FEN " << test.fen << '\n';
+					continue;
+				}
+				parsed_depths.emplace_back(*depth, it.value().get<uint64_t>());
+				if (*depth > max_depth) {
+					max_depth = *depth;
 				}
 			}
-			test.expected_nodes.resize(max_depth + 1, 0); // +1 to include depth 0
-			for (auto it = depths.begin(); it != depths.end(); ++it) {
-				int depth = std::stoi(it.key());
-				uint64_t expected = it.value();
-				test.expected_nodes[depth] = expected;
+			test.expected_nodes.resize(static_cast<size_t>(max_depth) + 1, 0); // +1 to include depth 0
+			for (const auto& [depth, expected] : parsed_depths) {
+				test.expected_nodes[static_cast<size_t>(depth)] = expected;
 			}
 			test_cases.push_back(std::move(test));
 		}

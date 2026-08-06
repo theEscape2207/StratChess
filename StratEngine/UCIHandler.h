@@ -1,5 +1,6 @@
 // UCIHandler.h — UCI protocol command loop for StratChess engine.
 #pragma once
+#include <atomic>
 #include <memory>
 #include <string>
 #include <thread>
@@ -46,6 +47,11 @@ private:
     void stop_and_join();   // signal + join search thread
     void init_ai();         // (re)create AIPerplex instance
 
+    /// Reports and returns true when a search is in flight, for the commands
+    /// that mutate state the search is reading. Named for the decision it
+    /// carries: those commands are refused, not queued and not honoured.
+    bool refuse_while_searching(std::string_view command);
+
     static void send(std::string_view msg);   // writes line to stdout + flush
 
     // Must be declared (and thus constructed/destroyed) before ai_ —
@@ -55,6 +61,13 @@ private:
     std::unique_ptr<PlayerAiBase> ai_;
     std::unique_ptr<EvalManager> eval_;
     std::thread search_thread_;
+
+    // Whether a search is actually running. search_thread_.joinable() cannot
+    // answer this: a std::thread stays joinable after its function returns,
+    // until someone joins it, and cmd_go only joins at the start of the NEXT
+    // search. Testing joinable() would therefore refuse the 'position' of every
+    // normal go -> bestmove -> position cycle.
+    std::atomic<bool> searching_{ false };
 
     // Last thread count from a client 'setoption name Threads value N'.
     // Persists across init_ai() calls (cmd_ucinewgame() rebuilds ai_ from

@@ -40,14 +40,20 @@ using json = nlohmann::json;
 
 void Config::ReadBoardSetup(const json& config, Board& board) const
 {
+	// .at(), never operator[]: on a CONST json a missing key is undefined
+	// behaviour, not an error. Release happened to carry on and throw something
+	// later; a Debug build asserts inside nlohmann. .at() throws out_of_range
+	// naming the key, in both configurations.
+	const json& game = config.at("game");
+
 	// if nothing is found - use default setup
-	const std::string setupType = config["game"].value("setup", "default");
+	const std::string setupType = game.value("setup", "default");
 	const std::string FENKey = "FEN";
 	if (iequals_n(setupType, FENKey, 3))
 	{
 		spdlog::default_logger()->debug("FEN configuration");
 
-		const std::string FENstring = config["game"].value(FENKey, "");
+		const std::string FENstring = game.value(FENKey, "");
 		if (FENstring.empty())
 		{
 			spdlog::default_logger()->warn("FEN key found, but no string - selecting default board");
@@ -112,8 +118,14 @@ void Config::ReadConfigFile(const std::string& filename, Board& board)
 
 	std::ifstream configFile(filename);
 	if (!configFile) {
-		std::cerr << "Cannot open game_settings.json\n";
-		return;		// FIXME: add error handling
+		// Say what happens next, not just what failed. Silently continuing on
+		// built-in defaults is the failure mode that looks like the settings
+		// file was read and ignored.
+		std::cerr << "Cannot open " << filename
+		          << " -- continuing with built-in defaults (both players type "
+		          << DEFAULT_EVAL << ", depth " << DEFAULT_DEPTH
+		          << ", standard opening position)\n";
+		return;
 	}
 
 	// game_settings.json is heavily commented, and comments are not valid JSON, so
@@ -214,8 +226,12 @@ namespace {
 
 void Config::SetupPlayerConfig(const json& config)
 {
-	white_ = ParsePlayerConfig(config["game"]["players"]["white"], DEFAULT_DEPTH, DEFAULT_EVAL);
-	black_ = ParsePlayerConfig(config["game"]["players"]["black"], DEFAULT_DEPTH, DEFAULT_EVAL);
+	// .at() rather than operator[] — see ReadBoardSetup: indexing a const json
+	// with an absent key is UB, and every key on this path is absent in a
+	// settings file that is merely wrong rather than malformed.
+	const json& players = config.at("game").at("players");
+	white_ = ParsePlayerConfig(players.at("white"), DEFAULT_DEPTH, DEFAULT_EVAL);
+	black_ = ParsePlayerConfig(players.at("black"), DEFAULT_DEPTH, DEFAULT_EVAL);
 }
 
 Config::PlayerConfig Config::GetPlayerFromConfig(bool bWhite) const noexcept

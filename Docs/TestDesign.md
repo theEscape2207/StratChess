@@ -80,6 +80,8 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | UCI command loop | `[uci]` | ✅ Phase 1 | `UCITests.cpp` (+ `StratChessEvolved.exe uci` pipe smoke test) |
 | Full tactical suite (WAC/mate-in-N) | — | ✅ Phase 1 | `StratChessEvolved.exe tactical test` |
 | Board instance independence (post-de-singleton) | `[board_instance]` | ✅ Phase 2 | `BoardInstanceTests.cpp` |
+| External integer parsing (argv, JSON keys) | `[argparse]` | ✅ Phase 1 | `ArgParseTests.cpp` |
+| Settings-file parsing and its failure modes | `[config]` | ✅ Phase 1 | `ConfigTests.cpp` |
 | NPS / performance regression | — | ⏳ Phase 1 | — |
 
 ---
@@ -313,6 +315,38 @@ running `run()` loop or piped stdin.
 
 Covers `parse_go()` parameter parsing, `cmd_position` move replay (including the MAX_PLY
 overflow regression), and `cmd_setoption`'s Threads persistence across `ucinewgame`.
+
+Also covers the mid-search refusal (#178): `position` and `setoption` are rejected while a search
+runs. The fixture sets the `searching_` flag directly rather than starting a real search — the
+contract under test is the guard's, not the scheduler's, and racing a live search would make the
+cases timing-dependent. One case exists specifically to pin *why* the flag is needed: a
+`search_thread_.joinable()` guard would look equivalent and would reject the `position` of every
+normal `go` → `bestmove` → `position` cycle, because a `std::thread` stays joinable after its
+function returns.
+
+### `[argparse]` — External integer parsing
+
+**File**: `StratChessTests/ArgParseTests.cpp`
+
+`Engine::parse_int` is what every `argv` and JSON-key integer goes through. The cases that matter are
+the rejections: `std::stoi` accepts trailing garbage (`"12abc"` → 12) and reports the rest by
+throwing, which is how `perft run abc` used to kill the process with no message at all (#178).
+Covers blank input, trailing text, embedded spaces, and one past each `int` boundary.
+
+### `[config]` — Settings-file parsing
+
+**File**: `StratChessTests/ConfigTests.cpp`
+
+Each case writes a `game_settings.json` to a temp file and asserts what `Config::ReadConfigFile`
+does with it: truncated JSON, valid JSON without a `"game"` key, and a key of the wrong type all
+throw a *diagnosable* nlohmann exception, which `main` turns into a clean exit 1 rather than a
+`0xC0000409` fail-fast. A missing file is deliberately **not** an exception — defaults are a usable
+outcome, and the message says so.
+
+Two guards against the suite passing for the wrong reason: a well-formed document must parse and
+yield the expected depths, and a commented document must parse — `game_settings.json` ships heavily
+commented, so a regression in `ignore_comments` would break the shipped file rather than a test.
+`Config(nullptr)` is safe for all of these because `pGame_` is dereferenced only on the FEN path.
 
 **`cmd_eval` (issue #129 phase 1 — static-eval introspection)**:
 - Works before any `position` command (default-constructed, empty `board_`) without crashing.
