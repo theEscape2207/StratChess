@@ -90,7 +90,8 @@ default.
 | Document | Contents |
 |---|---|
 | [Docs/Engine-Readme.md](Docs/Engine-Readme.md) | Engine internals: search, evaluation, data structures |
-| [Docs/Workflow.md](Docs/Workflow.md) | Validation tiers, CI, review gates, runtime files |
+| [Docs/Workflow.md](Docs/Workflow.md) | Standing decisions (validation strategy, speed/nps, threat model), validation tiers, review gates, runtime files |
+| [Docs/CI.md](Docs/CI.md) | What each GitHub Actions workflow runs, and when |
 | [Docs/TestDesign.md](Docs/TestDesign.md) | Test coverage map and how to write new tests |
 | [Docs/Changelog.md](Docs/Changelog.md) | What changed and when |
 | [Docs/EloMeasurement.md](Docs/EloMeasurement.md) | How strength is measured: setup, interpretation, SPRT |
