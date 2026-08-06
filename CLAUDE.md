@@ -3,9 +3,10 @@
 A modern C++20 chess engine focused on improving playing strength (Elo) while maintaining clarity,
 efficiency, and robustness.
 
-Reference detail is pointed at, not duplicated: `Docs/Workflow.md` (validation tiers, review gate,
-CI, runtime files, worktree gotchas), `Docs/TestDesign.md` (coverage map + writing tests),
-`Docs/Changelog.md` (history). Live backlog is GitHub Issues.
+Reference detail is pointed at, not duplicated: `Docs/Workflow.md` (standing decisions — what
+validates what, speed/nps, threat model — plus validation tiers, review gate, runtime files,
+worktree gotchas), `Docs/CI.md` (what each workflow runs), `Docs/TestDesign.md` (coverage map +
+writing tests), `Docs/Changelog.md` (history). Live backlog is GitHub Issues.
 
 ## Repository Structure
 - `StratChessEvolved/` – Application entry point, `game_settings.json`, `Scripts/`
@@ -100,30 +101,26 @@ has already produced a 12% outlier on this hardware.
 succeeds but `Validate-PrePR.ps1` never runs, leaving the merged state covered only by the
 pre-commit hook (this happened on PR #148).
 
-CI runs an independent **Linux** build + fast tests, plus a `sanitize-linux` leg running the same
-tier under ASan+UBSan. Both are tier-gated on PRs **and** on merges: they run for **Build and
-Engine** changes only, so a Docs or Tooling change skips them either way. Self-play stays local.
-Sanitizers are Linux-only — `STRAT_SANITIZE` is a configure error on MSVC and clang-cl, as is
-`STRAT_STDLIB_DEBUG`.
-
-A **nightly** workflow (`nightly.yml`, 03:00 UTC + `workflow_dispatch`) runs what is too slow to
-gate: `perft(7)` from the start position and `perft(6)` from Kiwipete against known node counts, the
-`[slow]` tier in both configs and again instrumented, and `tactical stability 100`. It cannot block a
-merge — read it. Note `[slow]` is only three test cases (253 against the fast tier's 250), so it
-promises more than it delivers.
-
-**Windows runs on the same trigger as Linux.** It is the only job that builds what ships (clang-cl,
-the `_MSC_VER`/`_WIN32` sites, MSVC's STL, the ThinLTO link). `Validate-PrePR.ps1` does not cover it:
-it never passes `-Config`, so it builds Release only and never compiles Debug.
-
-A **strength lab** (`strength.yml`, `workflow_dispatch` only) plays a Linux/GCC Elo match between the
-dispatched ref and a reference ref, both built in the same job. Calibrated 2026-08-05 (null test
--3.47 ± 18.21 over 1000 games; 2x-time control +75.88 ± 42.56), so its numbers may be used — but they
-go in `Docs/EloLog.md`'s **Linux ledger** and are never compared against a local clang-cl row.
-
 CI is a **gate** — `build-and-test-result` is a required check on `main` and a red run blocks the
 merge. A SKIPPED leg reports success on purpose, so Docs and Tooling PRs are not blocked by jobs that
-correctly never ran. Details: `Docs/Workflow.md`.
+correctly never ran. Build/Engine tiers only; Docs and Tooling skip the build jobs on PRs and merges
+alike. Self-play stays local. What each workflow runs, and when: `Docs/CI.md`.
+
+**Linux Debug + sanitizers is the primary correctness gate; Windows CI covers the shipping
+toolchain.** They answer different questions and neither replaces the other — clang-cl silently drops
+flags Linux can never observe. Do not add a Windows Debug configuration to a gate. The reasoning, and
+what would change it: `Docs/Workflow.md` → Standing decisions.
+
+**The goal is measured positive Elo, not nps.** Below ~5% use `Run-Bench.ps1`; an Elo match cannot
+resolve an effect that small at any affordable game count (1% nps ≈ 1.7 Elo, against the lab's ±4).
+Anything adding per-node work — evaluation terms as much as compiler flags — gets a bench pass, and a
+measured slowdown needs a stated benefit that outweighs it. Sizing and instrument choice:
+`Docs/Workflow.md` → Speed and nps.
+
+**Threat model**: not network-facing, no privilege boundary, no attacker. External-input work aims at
+robustness — a clear diagnostic and a clean exit — not security. Exploit mitigations need a reason
+beyond sounding prudent; CFG was declined on exactly that basis (#218). Full statement:
+`Docs/Workflow.md` → Threat model.
 
 ## Engine Summary
 IDS + PVS + quiescence; Zobrist-hashed TT; bitboards with PEXT magic sliding attacks; killers

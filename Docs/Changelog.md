@@ -22,6 +22,40 @@ Newest first.
 
 ---
 
+## 2026-08-06 — CI split out; standing decisions written down (#209 follow-up)
+
+### Changed
+
+- **`Docs/CI.md` is new**, carrying what each workflow runs. It was a third of `Workflow.md` and
+  three workflows deep; #209 grouped it and noted the split as available once the seams were visible.
+  Moved verbatim — no CI content was rewritten.
+- **`Workflow.md` gains Part 2, "Standing decisions"**: direction that was previously implicit and
+  could drift back by accident. `CLAUDE.md` now points at these rather than restating them.
+
+### Added
+
+- **What validates what.** Linux Debug + sanitizers is the primary correctness gate; Windows CI
+  covers the *shipping toolchain* and does not become redundant when TSan and MSan land, because
+  clang-cl silently drops flags Linux cannot observe. `/RTC1` is the live example: clang-cl accepts
+  it, warns about nothing even under `-Wunused-command-line-argument`, and emits byte-identical
+  objects, where MSVC produces 53% more object. No Windows Debug configuration belongs in a gate —
+  ASan and MSan subsume what `/RTC1` would find.
+- **Speed and nps.** The goal is measured positive Elo; speed serves it. Below ~5%, `Run-Bench.ps1`
+  is the instrument — an Elo match cannot resolve an effect that small, since 1% nps ≈ 1.7 Elo
+  against the strength lab's ±4. Anything adding per-node work gets a bench pass, evaluation terms
+  included, and a measured slowdown needs a stated benefit that outweighs it.
+- **Threat model.** Not network-facing, no privilege boundary, no attacker. External-input work aims
+  at robustness rather than security, and exploit mitigations need a reason beyond sounding prudent.
+
+### Notes
+
+Recorded first use: **#218 (Control Flow Guard) was declined and closed** on the threat model,
+deliberately without benchmarking — a 0% cost result would still not have answered the adoption
+question, because cost was never the objection. `/GS`, ASLR, high-entropy VA and DEP are all on by
+default, verified present, cost nothing to keep, and stay.
+
+---
+
 ## 2026-08-06 — External input reports and exits cleanly (#178)
 
 ### Fixed
