@@ -257,26 +257,49 @@ it is #156's territory, not the schedule's.
 
 ## Strength lab (`strength.yml`)
 
-**`strength.yml`** is the CI strength lab: `workflow_dispatch` only, one job, candidate against a
-reference ref with both sides built from source in that job by the same GCC. It reports Elo to the
-job summary and uploads the PGN; it gates nothing and is triggered by nobody automatically.
+**`strength.yml`** is the CI strength lab: `workflow_dispatch` only, candidate against a reference
+ref with both sides built from source by the same GCC. It reports pooled Elo to the job summary and
+uploads every shard's PGN; it gates nothing and is triggered by nobody automatically.
 
 Dispatch-only is not a stepping stone to be skipped past. A measurement harness that is wrong is
-worse than none, because its output looks exactly like a measurement — so it stays manual until the
-null test and the known-sign control in M4 of `.claude/plans/public-repo-and-strength-lab.md` have
-both come back right, and no result is recorded before then.
+worse than none, because its output looks exactly like a measurement — so it stays manual, and its
+numbers are only trusted because the null test and the known-sign control were run first. Both are
+in `Docs/EloLog.md`'s Linux ledger.
+
+**Four jobs.** `setup` turns the requested game count into a shard plan and self-tests the pooling
+formula before anything expensive runs. `build` compiles both engines and stages them with fastchess
+and the book as **one artifact**, so every shard provably plays the same two binaries against the
+same book. `match` is the shard matrix. `aggregate` pools them.
 
 | Input | Meaning |
 |---|---|
 | `reference_ref` | Tag, branch or SHA for the reference side. Pass the candidate's own SHA for a null test |
-| `games` | Total games, two per opening pair |
-| `candidate_tc` / `reference_tc` | Per-side time control. Halve the **base** for a handicap run — an increment under 0.1 s sits below `compute_budget()`'s 100 ms per-move floor and forfeits games |
-| `concurrency` | Concurrent games. A standard runner has 4 vCPU and only one engine per game thinks at a time |
+| `games` | Total games across all shards, two per opening pair. Rounded down so each shard gets whole pairs |
+| `shards` | Parallel match jobs. 20×1000 games is ~3 h; below ~16 a shard can exceed the 340-minute job timeout |
+| `candidate_tc` / `reference_tc` | Per-side time control. Halve the **base** for a handicap run — an increment under 0.1 s makes the engine play near-instantly at the bottom of its clock |
+| `concurrency` | Concurrent games **per shard**. Validated at 3; raising it causes contention, adding shards does not |
+
+**Shard slices are disjoint by arithmetic.** With `order=sequential`, shard *i* playing *R* pairs
+starts at opening `i*R + 1`. `aggregate` re-checks this every run by comparing the first FEN of each
+shard's PGN, and fails if two match.
+
+**The error bar is pentanomial** — pooled over colour-swapped *pairs*, which are the independent
+unit, by `.github/scripts/pool_pentanomial.py`. Pooling raw W/L/D would understate the variance and
+produce an interval that is wrong in the direction of looking more precise. That script's
+`--self-test` reproduces fastchess's own Elo and interval on six real matches from this project;
+`setup` runs it before any build.
 
 A batch reporting a time loss, an illegal move or a disconnect is **discarded, never reported** —
 same rule as `Run-EloMatch.ps1`, and on a shared runner a time loss most likely means the box was
-oversubscribed, which invalidates the whole batch rather than the one game. Numbers land in
-`Docs/EloLog.md`'s **Linux ledger**, which must never be compared against the local clang-cl rows.
+oversubscribed, which invalidates the whole batch rather than the one game. **A failed shard
+discards the whole batch**, not just itself: the survivors are the ones that happened to avoid
+whatever went wrong, so pooling them would be a biased subset wearing a full batch's error bar.
+Numbers land in `Docs/EloLog.md`'s **Linux ledger**, which must never be compared against the local
+clang-cl rows.
+
+**A full dispatch consumes the entire 20-job concurrent allowance for ~3 hours**, and
+`build-and-test` is a required check — so a strength run in flight will queue everyone else's merges.
+Worth knowing before starting one, and the reason the lab is not wired to trigger automatically.
 
 ---
 

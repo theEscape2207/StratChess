@@ -49,11 +49,17 @@ Newest first.
 
 ### Notes
 
-Mechanics proven by a 2-shard, 20-game null dispatch (run `31053457040`). The pooled
-`+70.44 ± 119.43` there is mechanism, not measurement. The calibrating 20-shard × 1000-game null
-test, whose pooled result must agree with the single-job `-3.47 ± 18.21`, is still owed; until then
-the instrument is built but uncalibrated at scale. `workflow_dispatch` only, so it cannot report
-automatically in the meantime.
+**Calibrated at scale.** A 20,000-game null test (20 shards × 1000, run `31054348465`, 2 h 47 min)
+returned **-2.17 ± 4.18** — agreeing with the single-job instrument's `-3.47 ± 18.21`, containing the
+true zero the test guarantees, and hitting the forecast ±4 resolution. Shard slices verified disjoint
+(20 opening positions, 20 unique), zero time losses across all 20 shards. Recorded in the Linux
+ledger. Mechanics were proven first by a cheap 2-shard, 20-game dispatch whose `+70.44 ± 119.43` was
+mechanism rather than measurement.
+
+Resolution is now **±4 Elo**, against ±18 single-job and ±25-26 locally — the first interval that can
+resolve one of epic #110's single-digit eval terms. Still `workflow_dispatch` only; wiring it to PRs
+is M6, and a full dispatch holds the entire 20-job concurrent allowance for three hours, which
+constrains how that trigger can be designed.
 
 `.gitignore` blanket-ignores `/.github/*` behind an allowlist, so the new script was silently skipped
 by `git add -A` and the first dispatch died at the aggregate step on a file that was never committed.

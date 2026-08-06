@@ -16,16 +16,18 @@ single-digit Elo, i.e. twelve measurements that today's ±26 Elo instrument cann
 
 ## Where this stands — read this first (2026-08-06)
 
-**M0 through M4 are complete. M5's mechanics are built and proven on a 2-shard dispatch; its
-calibrating 20-shard null test is still owed** — see M5's Status section. M6 is untouched.
+**M0 through M5 are complete.** The sharded lab is calibrated at scale: a 20,000-game null test came
+back **-2.17 ± 4.18**, agreeing with the single-job instrument and containing the true zero. **M6 is
+next** — its section carries M5's measured inputs, one of which invalidates the trigger as
+originally drafted.
 
 | | State |
 |---|---|
 | Repository | Public; CI is a gate, `build-and-test-result` required on `main` |
 | Nightly | `nightly.yml` — deep perft, `[slow]` tier, sanitizers + `_GLIBCXX_DEBUG`, tactical ×100 |
 | Opening book | Solved. `EngineTesting\openings-large.*` locally (optional), `UHO_4060_v3.epd` in CI — 242,201 openings |
-| Strength lab | `strength.yml`, `workflow_dispatch` only, **calibrated 2026-08-05**; sharded 2026-08-06, scale calibration pending |
-| Resolution today | **±18 Elo** at 1000 games (CI), ±25-26 at 500 (local); ≈±4 once the 20,000-game batch is exercised |
+| Strength lab | `strength.yml`, `workflow_dispatch` only, sharded 20 ways, **calibrated at scale 2026-08-06** |
+| Resolution today | **±4 Elo** at 20,000 games (CI, ~3 h); ±18 at 1000 single-job; ±25-26 at 500 (local) |
 | Not yet possible | Epic #110's single-digit terms. That is exactly what M5 buys |
 
 Where things live: method in `Docs/EloMeasurement.md`, results in `Docs/EloLog.md` (two ledgers,
@@ -419,20 +421,32 @@ current timeout, so **do not shard fewer than ~16 ways** without raising it.
 be shown to share no opening (compare the first FEN of each shard's PGNs; any duplicate means the
 slices overlap).
 
-#### Status (2026-08-06)
+#### Status (2026-08-06) — **M5 COMPLETE**
 
-**Mechanics proven; the calibrating null test is still owed.** Run `31053457040` — 2 shards, 20
-games, `reference_ref=HEAD` — went green end to end:
+**Exit criterion met.** Run `31054348465` — 20 shards x 1000 games, `reference_ref=HEAD`, 2 h 47 min
+wall-clock, all 23 jobs green:
 
 ```
-| shard-0 | 5 pairs | [0, 0, 2, 1, 2] |
-| shard-1 | 5 pairs | [0, 2, 2, 1, 0] |
-Pooled: +70.44 +/- 119.43 Elo (10 pairs = 20 games, score 60.00%)
+Shard opening positions: 20 total, 20 unique
+Pooled: -2.17 +/- 4.18 Elo  (10000 pairs = 20000 games, score 49.69%)
+Pooled Ptnml(0-2): [1495, 1665, 3754, 1642, 1444]
 ```
 
-That figure is mechanism, not measurement: at 20 games the interval spans zero many times over.
-Disjointness passed (2 positions, 2 unique). The partial-batch refusal was exercised separately by
-running the aggregator against a single shard log.
+All three conditions hold:
+
+| Condition | Result |
+|---|---|
+| Agrees with the single-job instrument (`-3.47 ± 18.21`) | **Yes** — `-2.17` sits well inside it, so sharding introduced no bias |
+| Consistent with the true value, which is exactly 0 | **Yes** — `[-6.35, +2.01]` contains it |
+| Reaches the predicted resolution | **Yes** — ±4.18 against a forecast of ≈±4 |
+
+Recorded in `Docs/EloLog.md`'s Linux ledger. **The instrument is now calibrated at scale**: ±4 Elo,
+against ±18 single-job and ±26 locally, which is the first interval this project has had that can
+resolve one of epic #110's single-digit terms.
+
+Mechanics were proven first by a cheap 2-shard, 20-game dispatch (run `31053457040`), whose
+`+70.44 ± 119.43` was mechanism rather than measurement. The partial-batch refusal was exercised
+separately by running the aggregator against a single shard log.
 
 The cheap dispatch earned its keep exactly as predicted. Two defects, both invisible on reading:
 
@@ -444,9 +458,8 @@ The cheap dispatch earned its keep exactly as predicted. Two defects, both invis
    missing or broken aggregator used to surface only after the entire batch, which on the real run
    would be three hours to learn the script is absent.
 
-Remaining for M5: the 20-shard × 1000-game null test, ~3 h wall-clock, whose pooled result must agree
-with the single-job **-3.47 ± 18.21**. Until that is recorded, treat the instrument as built but
-uncalibrated at scale — the same status M4's workflow had before its two calibration runs.
+Nothing remains for M5. The next milestone is M6, whose trigger design is constrained by the
+concurrency figure this run established — see M6.
 
 **Value delivered:** 20,000 games in ~3 hours unattended; ≈ ±4 Elo, against ±18 from the current
 single-job instrument and ±26 locally. That is the first point at which epic #110's single-digit eval
