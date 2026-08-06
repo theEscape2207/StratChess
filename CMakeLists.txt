@@ -4,9 +4,8 @@ project(StratChess CXX)
 # Builds on Linux (GCC/Clang) and on Windows via clang-cl + Ninja, configured by
 # the windows-clang-cl preset in CMakePresets.json.
 #
-# This is the only build system -- the .vcxproj/.sln pair is gone. clang-cl is
-# what ships; the MSVC presets are for development and debugging, and the two
-# compilers are never measured against each other.
+# clang-cl is what ships; the MSVC presets are for development and debugging,
+# and the two compilers are never measured against each other.
 
 # Magic.h indexes the sliding-attack tables with _pext_u64, so the engine needs
 # x86-64 with BMI2 (Intel Haswell 2013 / AMD Excavator 2015 onwards). There is
