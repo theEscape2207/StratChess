@@ -22,6 +22,49 @@ Newest first.
 
 ---
 
+## 2026-08-06 — External input reports and exits cleanly (#178)
+
+### Fixed
+
+- **Malformed input no longer fail-fasts.** Every config failure printed a precise diagnostic and
+  then died with `0xC0000409` (`STATUS_STACK_BUFFER_OVERRUN` — `std::terminate`), because
+  `Game::Init` catches, reports and rethrows with nothing above it. `main` now catches, so the same
+  message is followed by exit 1. `Init` keeps rethrowing deliberately: swallowing there would let a
+  half-initialised `Game` continue into `Run()`.
+- **`perft run <depth>` parsed its argument unguarded** and died with no output whatsoever — the only
+  input path in the engine that failed completely silently.
+- **`position` and `setoption` no longer mutate state a running search reads.** Both are refused with
+  an `info string` while a search is in flight. Previously a `position` arriving mid-search could
+  make the engine answer for a position the client never asked about: the documented reproduction
+  returned `e2a6`, which is not legal from the start position it had actually searched. It now
+  returns `g1f3`.
+- Perft test-case loading rejected a non-numeric depth key by throwing, and a *negative* key would
+  have indexed `expected_nodes` out of bounds.
+
+### Added
+
+- **`Engine::parse_int`** (`StratEngine/Utils/ArgParse.h`) — the single path for every `argv` and
+  JSON-key integer. Stricter than `std::stoi`, which accepts trailing garbage (`"12abc"` → 12) and
+  reports everything else by throwing. `[argparse]` and `[config]` test tags.
+
+### Notes
+
+`Game::Init` is called from `Game`'s constructor, so a throwing `Init` means the object is never
+fully constructed and `~Game()` never runs — which is why catching in `main` needed no cleanup work
+alongside it. `unsubscribePlayerEvents`'s "assumes both players exist" TODO is unreachable from this
+path and was left alone.
+
+The mid-search guard needs an explicit flag: `search_thread_.joinable()` looks equivalent but stays
+true after the thread function returns, so it would have rejected the `position` of every normal
+`go` → `bestmove` → `position` cycle. A test pins that reasoning.
+
+CFG is split to its own issue — the shipped binary has ASLR, high-entropy VA, DEP and `/GS` (all
+verified present, so the CMake migration lost nothing), but its CFG function table is empty, making
+the guard inert. Enabling it needs a measurement, not a bugfix. Design:
+`.claude/plans/harden-external-input-sites.md`.
+
+---
+
 ## 2026-08-06 — Strength lab runs sharded, pooled pentanomially (M5)
 
 ### Changed

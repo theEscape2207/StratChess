@@ -32,6 +32,14 @@ public:
     void ucinewgame() { handler.cmd_ucinewgame(); }
     void eval() { handler.cmd_eval(); }
 
+    // Drives the mid-search guard without starting a real search: spawning one
+    // and racing it would make these cases timing-dependent, and what is under
+    // test is the guard's contract, not the scheduler. That the flag is
+    // genuinely set for a real search is covered end-to-end by piping the
+    // issue #178 reproduction through the built exe.
+    void set_searching(bool value) { handler.searching_.store(value); }
+    unsigned configured_threads() const { return handler.configured_threads_; }
+
     // Reads threads_ off the live ai_ instance (via the AIPerplex friend
     // declaration granted to this same fixture class name) — proves the
     // fix actually reaches the freshly-constructed AIPerplex, not just
@@ -1057,4 +1065,68 @@ TEST_CASE("cmd_position: an unparseable move stops replay and reports it", "[uci
     // e2e4 applied, replay stopped there: Black to move, 20 replies.
     REQUIRE(divide_total(capture_cout([&] { fix.perft("perft 1"); })) == 20);
     REQUIRE(fix.board().GetCurrentColor() == BLACK);
+}
+
+// ---------------------------------------------------------------------------
+// Commands that mutate state a running search reads are refused (issue #178)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("cmd_position: refused while a search is running, board untouched", "[uci]")
+{
+    UciHandlerTestFixture fix;
+    fix.position("position startpos");
+
+    fix.set_searching(true);
+    const std::string output =
+        capture_cout([&] { fix.position("position fen 4k3/8/8/8/8/8/8/4K2R w K - 0 1"); });
+    fix.set_searching(false);
+
+    REQUIRE(output.find("info string") != std::string::npos);
+    REQUIRE(output.find("position") != std::string::npos);
+
+    // The refusal must be a refusal: a partially applied position would be
+    // worse than either honouring or rejecting the command outright.
+    REQUIRE(divide_total(capture_cout([&] { fix.perft("perft 1"); })) == 20);
+    REQUIRE(fix.board().GetCurrentColor() == WHITE);
+}
+
+TEST_CASE("cmd_setoption: refused while a search is running", "[uci][smp]")
+{
+    UciHandlerTestFixture fix;
+    fix.ucinewgame();   // construct the initial ai_
+    fix.setoption("setoption name Threads value 2");
+    REQUIRE(fix.ai_threads() == 2);
+
+    fix.set_searching(true);
+    const std::string output =
+        capture_cout([&] { fix.setoption("setoption name Threads value 8"); });
+    fix.set_searching(false);
+
+    REQUIRE(output.find("info string") != std::string::npos);
+
+    // SetThreads on a live AI is the dangerous half of the pair, so the guard
+    // must run before any state changes -- including the bookkeeping copy.
+    REQUIRE(fix.ai_threads() == 2);
+    REQUIRE(fix.configured_threads() == 2);
+}
+
+TEST_CASE("Both commands work normally once the search is over", "[uci]")
+{
+    // The guard must key off an explicit flag, not search_thread_.joinable():
+    // a std::thread stays joinable after its function returns, so a
+    // joinable()-based guard would refuse the 'position' of every normal
+    // go -> bestmove -> position cycle.
+    UciHandlerTestFixture fix;
+    fix.ucinewgame();   // construct the initial ai_
+
+    fix.set_searching(true);
+    capture_cout([&] { fix.position("position startpos moves e2e4"); });
+    fix.set_searching(false);
+
+    capture_cout([&] { fix.position("position startpos moves e2e4"); });
+    REQUIRE(fix.board().GetCurrentColor() == BLACK);
+    REQUIRE(divide_total(capture_cout([&] { fix.perft("perft 1"); })) == 20);
+
+    fix.setoption("setoption name Threads value 3");
+    REQUIRE(fix.ai_threads() == 3);
 }
