@@ -16,8 +16,13 @@ clear enough to keep changing.
 
 ## Building
 
-x64 only. The dependencies (spdlog, nlohmann/json, Catch2) are fetched and pinned by CMake's
-`FetchContent`, so there is nothing to install first — the first build needs network access.
+**x86-64 with BMI2 only** — Intel Haswell or AMD Excavator onwards. The sliding-piece attacks are
+indexed with the PEXT instruction and there is no portable fallback, so ARM, including Apple
+Silicon, cannot build or run the engine; CMake stops with a message saying so rather than failing
+somewhere obscure. 32-bit x86 is not maintained either.
+
+The dependencies (spdlog, nlohmann/json, Catch2) are fetched and pinned by CMake's `FetchContent`,
+so there is nothing to install first — the first build needs network access.
 
 **Windows** — requires Visual Studio with the clang-cl component. `build.ps1` locates and imports
 the developer environment itself, so a plain shell works:
