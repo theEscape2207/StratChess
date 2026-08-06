@@ -16,8 +16,16 @@ clear enough to keep changing.
 
 ## Building
 
-x64 only. The dependencies (spdlog, nlohmann/json, Catch2) are fetched and pinned by CMake's
-`FetchContent`, so there is nothing to install first — the first build needs network access.
+**x86-64 with BMI2 only** — Intel Haswell (2013) or AMD Excavator (2015) onwards. The sliding-piece
+attacks are indexed with the PEXT instruction and there is no portable fallback, so ARM, including
+Apple Silicon, cannot build or run the engine; CMake stops with a message saying so rather than
+failing somewhere obscure. 32-bit x86 is not maintained either.
+
+On AMD, PEXT is microcoded until **Zen 3 (2020)**. Zen 1 and Zen 2 run the engine correctly but
+search considerably slower than the same core otherwise would.
+
+The dependencies (spdlog, nlohmann/json, Catch2) are fetched and pinned by CMake's `FetchContent`,
+so there is nothing to install first — the first build needs network access.
 
 **Windows** — requires Visual Studio with the clang-cl component. `build.ps1` locates and imports
 the developer environment itself, so a plain shell works:

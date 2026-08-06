@@ -4,9 +4,26 @@ project(StratChess CXX)
 # Builds on Linux (GCC/Clang) and on Windows via clang-cl + Ninja, configured by
 # the windows-clang-cl preset in CMakePresets.json.
 #
-# The .vcxproj/.sln build remains the day-to-day Visual Studio experience and is
-# what still ships; retiring it is issue #81 Phase 3, and adopting the clang
-# binary is issue #84.
+# clang-cl is what ships; the MSVC presets are for development and debugging,
+# and the two compilers are never measured against each other.
+
+# Magic.h indexes the sliding-attack tables with _pext_u64, so the engine needs
+# x86-64 with BMI2 (Intel Haswell 2013 / AMD Excavator 2015 onwards). There is
+# no portable fallback path and none is planned -- issue #165. ARM, including
+# Apple Silicon, is not supported.
+#
+# Reported here because the failure is otherwise obscure: an aarch64 compiler
+# rejects the -mavx2/-mbmi2 set further down with a bare "unrecognized command
+# line option", several hundred lines into a configure log.
+string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" strat_target_arch)
+if(NOT strat_target_arch MATCHES "^(x86_64|amd64)$")
+    message(FATAL_ERROR
+        "StratChess requires x86-64 with BMI2 (Intel Haswell 2013 / AMD Excavator 2015 or newer).\n"
+        "This toolchain targets '${CMAKE_SYSTEM_PROCESSOR}'.\n"
+        "The engine's sliding-piece attacks use the PEXT instruction and have no "
+        "portable fallback, so ARM -- including Apple Silicon -- cannot build or run "
+        "it. See issue #165.")
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
