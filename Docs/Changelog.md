@@ -46,14 +46,20 @@ king-safety signal and belongs to #97.
 already reward central placement, so a smaller gain than the literature suggests is the expected
 outcome rather than a defect.
 
-**Cost: -4.7% nps** (`Run-Bench.ps1`, depth 12, clang-cl, two runs per binary; per-position -8.0% to
-+0.5%, consistent in sign on 7 of 8). This is the first term to add real per-node work, and at
-roughly 1% nps ≈ 1.7 Elo it is a material price that better evaluation has to outweigh — which is
-what the Elo measurement decides, not this entry.
+**Measured at +38.34 ± 4.26 Elo** over 19,980 games against the merge base (run `31191858114`,
+95% interval [+34.08, +42.60], score 55.50%). Decisive, not suggestive — the interval clears zero by
+eight standard errors. Recorded in `Docs/EloLog.md`'s per-change table, which this is the first row
+of.
 
-**Node counts are not evidence here.** They moved -51% to +32% across the eight bench positions
-(aggregate -11.4%), the same chaos `EloLog.md` records from #111/#114/#115's node probe. The
-apparent ~7% improvement in time-to-depth follows from those counts and is equally unreliable.
+**That figure is the NET of two opposing effects.** The term costs **-6.2% nps** (`Run-Bench.ps1`,
+depth 12, clang-cl, two runs per binary; per-position -8.1% to +3.2%) — roughly 10 Elo of search
+speed at the project's ~1.7 Elo per 1% conversion. So the evaluation improvement is worth about +48
+gross, and the term repays its own cost several times over. It is also the pre-tuning figure: #117
+owns the weights.
+
+**Node counts and time-to-depth are not evidence here** and are deliberately not quoted. The best
+move changes at the root on several bench positions, so the two builds search different trees; nps is
+the only clean per-node measure. The same trap is on record from #111/#114/#115's node probe.
 
 **`WAC-287` removed from the tactical suite.** It began failing at its committed depth 6, but the
 cause is not this term: with the mobility weights zeroed — behaviourally `main` — it already fails at
