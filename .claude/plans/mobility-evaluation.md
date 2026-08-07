@@ -1,90 +1,160 @@
 # Mobility Evaluation (+ Queen Activity)
 
-**Issues**: #98, #113 · **Epic**: #110 Tier 2 · **Depth**: design sketch · **Status**: not started
-**Depends on**: #127 (EvalContext), #99 (phase-weighted mobility)
-
-> Sketch, not an executable plan. Written to capture the design decisions that are already settled and
-> the questions that are not, so this can be turned into a full plan when it comes up in the sequence.
-> Do not treat the numbers here as chosen.
+**Issues**: #98, #113 · **Epic**: #110 Tier 2 · **Status**: ready to execute
+**Supersedes**: the design sketch of 2026-07-24, whose measurement section predates the CI strength lab
 
 ## Goal
 
-Score each piece by the number of squares it can move to, weighted per piece type and per phase.
-Historically one of the largest single ELO contributors in engine-evaluation history. #113 (queen
-activity) is folded in here rather than tracked separately — it exists as its own issue only to guarantee
-the queen is not skipped if mobility scoped down to "cheap pieces first", and this sketch covers the
-queen from the start, so that risk is retired.
+Score each piece by how many squares it can move to, weighted per piece type and per phase. This is
+historically one of the largest single Elo contributors in engine evaluation, and it is the last
+Tier 2 item in epic #110.
 
-## Approach
+#113 (queen activity) is delivered here rather than separately. It exists as its own issue only to
+guarantee the queen is not skipped if mobility scoped down to "cheap pieces first"; this plan covers
+the queen from the start, so that risk is retired and #113 closes with #98.
 
-**The expensive part is already done.** The original roadmap note flagged mobility as "expensive to
-compute, maybe cache". PEXT magic bitboards (#108) made that largely obsolete: `RookAttacks(sq, occ)` and
-`BishopAttacks(sq, occ)` (`Magic.h`) return full sliding attack sets from a table lookup, so rook, bishop
-and queen mobility is a `std::popcount` over a bitboard the engine can produce in a few instructions.
-Knight mobility comes from the precomputed knight-move tables in `defines.h`.
+## Scope limits
 
-Sketch of the per-piece computation:
+- **Knight, bishop, rook, queen only.** Not the king — king mobility is a king-safety signal and
+  belongs to #97, where it can be weighed against attacker counts rather than paid as a flat bonus.
+  Not pawns — pawn structure is `eval_pawns`.
+- **No weight tuning.** Land conservative literature-standard weights, measure, and let #117 tune the
+  full term set in one pass. Do not spend days hand-tuning; that is what #117 is for.
+- **No king-safety groundwork.** See D7.
 
-```
-attacks = <piece attack set given ctx.all_pieces>
-safe    = attacks & ~ctx.occupied[own]        // cannot move onto own pieces
-score  += MOBILITY_WEIGHT[pieceType] * popcount(safe)
-```
+## What changed since the sketch
 
-### Decisions that look settled
+Verified against `main` at `8bcdd28` rather than assumed.
 
-- **Pseudo-legal, not legal, mobility.** Filtering for check-legality would require move generation per
-  piece per node. Every strong engine uses pseudo-legal counts here; the distinction is noise relative to
-  the term's weight.
-- **Exclude squares attacked by enemy pawns** from the count (the standard "safe mobility" refinement).
-  A square a pawn covers is not a square a knight can usefully occupy. Needs the pawn attack sets that
-  #116's backwards-pawn term already puts in `EvalContext` — so sequence after #116 if convenient, or add
-  them here.
-- **Per-piece-type weights, phase-split.** Weights differ substantially by piece (a rook's extra square is
-  worth less than a knight's), and mobility generally matters more in the midgame. Return `(mg, eg)` pairs
-  per #99's convention.
-- **Do not double-count with PSTs.** Mobility and the existing PSTs both reward central placement; adding
-  a strong mobility term on top of unchanged PSTs can overweight centralization. Expect this to show up
-  as a smaller-than-hoped ELO gain and treat it as a #117 retuning input, not a bug.
+| Sketch assumption | Reality now |
+|---|---|
+| "Depends on #127 (EvalContext)" | **Closed and in the code.** `BuildContext`, `EvalContext`, per-term `ScorePair` functions all exist |
+| "Depends on #99 (phase-weighted)" | **Closed.** Terms return `ScorePair{mg, eg}`; `Evaluate()` blends per term |
+| "sequence after #116 if convenient" | **#116 is still open**, so this work adds the pawn attack sets itself (D2) |
+| "use SPRT (#130) `Gain` preset if available" | **Obsolete.** The CI lab resolves ±4.15 at 20,000 games; see Measurement |
+| "plausibly resolvable by a 500-game batch" | **Wrong.** 500 games locally is ±25-26 and cannot resolve this |
+| "#118 item 3 should land with this work" | **#118 was closed as COMPLETED** on 2026-07-29 with item 3 explicitly deferred to post-#98 — see Carried Work |
 
-### Open questions
+**The groundwork was laid deliberately.** `EvalContext::occupied[NUM_COLORS]` and `all_pieces` are
+already populated and carry the comment *"Unread by any term today … both are populated because issue
+#98 (Mobility) needs per-color occupancy to mask off blocked squares. Do not remove as dead code."*
+This term is what makes them live.
 
-- **Weight magnitudes** — genuinely unknown for this engine, and this term is unusually sensitive to them.
-  Candidate approach: land with conservative literature-standard weights, measure, then let #117 tune. Do
-  not spend days hand-tuning; that is what #117 exists for.
-- **Whether to count squares occupied by enemy pieces** (capture targets) as mobility. Both conventions
-  exist. Pick one, comment it, and don't mix.
-- **Cost.** This is the first term that adds real per-node work. `Evaluate()` is only called from
-  `AIPerplex::quiescence`, which bounds the damage, but measure nodes/second before and after at fixed
-  depth. If throughput drops enough to cost search depth, the term can be net-negative even if the scores
-  are better — that is the actual risk here, not correctness.
+## Design decisions
 
-## Measurement
+**D1 — Pseudo-legal, not legal, mobility.** Filtering for check-legality needs move generation per
+piece per node. Every strong engine counts pseudo-legal squares here; the distinction is noise
+relative to the term's weight and unaffordable at eval frequency.
 
-Expected to be one of the larger gains in the epic, so plausibly resolvable by a 500-game batch — but use
-SPRT (#130) `Gain` preset if available. **Report nodes/second alongside Elo**: a positive Elo result that
-came with a 15% throughput loss means the term is stronger than it looks; a neutral result with a
-throughput loss means it is a net regression being masked.
+**D2 — Safe mobility: exclude squares attacked by enemy pawns.** A square a pawn covers is not a
+square a knight can usefully occupy. #116 would have put pawn attack sets in `EvalContext`; it is
+still open, so add them here. `MoveGenerator::GeneratePawnCaptures` (`MoveGenerator.cpp:64-72`)
+already computes exactly these sets — mirror its file-masked shifts rather than inventing new ones,
+so the two cannot disagree about edge files.
 
-## Files likely touched
+**D3 — Count squares occupied by enemy pieces.** The mask is `attacks & ~ctx.occupied[own]`, so a
+capture target counts as mobility. Both conventions exist in the literature; this one is chosen
+because it needs one mask rather than two, and because a piece that can capture is genuinely active.
+**Comment the choice at the mask** — mixing conventions between piece types is the failure mode.
 
-`StratEngine/Eval.h` (weight tables), `StratEngine/Eval.cpp` (term function),
-`StratChessTests/EvalTests.cpp`, `Docs/TestDesign.md`, `Docs/Changelog.md`.
+**D4 — Per-piece-type weights, phase-split.** A rook's extra square is worth less than a knight's,
+and mobility generally matters more in the midgame. Weights are `(mg, eg)` pairs per piece type,
+returned as a `ScorePair`.
 
-## Test ideas
+**D5 — Do not double-count with the PSTs.** Mobility and the existing PSTs both reward central
+placement. Expect a smaller gain than the literature suggests, and treat it as a #117 retuning input
+rather than a bug in this term.
 
-- A knight on a central square scores higher than the same knight in a corner (the canonical case).
-- A rook on an open file scores higher than a rook boxed in behind its own pawns.
-- Adding an enemy pawn that covers a square the knight could reach reduces the knight's mobility score
-  (the safe-mobility refinement).
-- Blocking a bishop's diagonal with an own piece reduces its score; blocking with an enemy piece behaves
-  per whichever capture-target convention was chosen.
-- #125's mirror-symmetry cases still pass.
+**D6 — One term function, all four piece types.** `eval_mobility(ctx, color)` matching the existing
+`eval_*` shape, rather than four functions. The attack-set computation is the shared cost; splitting
+it would recompute occupancy masks per piece type and add four rows to the breakdown for one concept.
 
-## Notes for later issues
+**D7 — Do NOT accumulate an attack-set union into `EvalContext` for #97.** The sketch suggested this
+"as a side effect". It is incompatible with the current structure: term functions take
+`const EvalContext&` and return a `ScorePair` — they cannot mutate the context, and making them able
+to would break the purity that lets `Evaluate()` be `const` and thread-safe under Lazy SMP. When #97
+needs the sets, the right move is for `BuildContext` to compute them, not for a term to leave them
+behind. Note it there; build nothing now.
 
-- #97 (King Safety) will reuse the per-piece attack sets computed here to count attackers in the king
-  zone. Structure the term so those sets are available to the king-safety term rather than computed twice
-  — probably by accumulating a per-color attack-set union into `EvalContext` as a side effect.
-- #118 item 3 (mop-up has no stalemate/mobility awareness for the losing king) becomes implementable once
-  a mobility count exists; the regression positions that issue asks for should land with this work.
+## Carried work
+
+**#118 item 3** (mop-up has no stalemate/mobility awareness for the losing king) was deferred until a
+mobility count existed, but #118 closed as COMPLETED, leaving the follow-up tracked nowhere. It is
+now **#234**, filed separately on purpose: it is mop-up-scoped rather than mobility-scoped, so
+bundling it would widen this change's diff for an unrelated reason.
+
+Nothing here blocks on #234. The dependency runs the other way — #234 becomes implementable once this
+term makes a king's safe-square count available.
+
+## Files changed
+
+| File | Change |
+|---|---|
+| `StratEngine/Eval.h` | `MOBILITY_*` weight tables; `pawn_attacks[NUM_COLORS]` in `EvalContext`; `mobility` field in `EvalBreakdown`; `eval_mobility` declaration |
+| `StratEngine/Eval.cpp` | `eval_mobility()`; pawn attacks in `BuildContext()`; wire into `Evaluate()` and `Breakdown()` |
+| `StratChessTests/EvalTests.cpp` | Term tests (see Validation) |
+| `Docs/TestDesign.md` | Coverage map entry |
+| `Docs/Changelog.md` | Dated entry |
+
+## Steps
+
+1. **Pawn attack sets.** Add `BITBOARD pawn_attacks[NUM_COLORS]` to `EvalContext`; populate in
+   `BuildContext()` from `ctx.pawns[]`, mirroring `MoveGenerator.cpp:64-72`. Comment that #116 will
+   want these too.
+2. **Weights.** Add `MOBILITY_KNIGHT_MG/EG`, `..._BISHOP_*`, `..._ROOK_*`, `..._QUEEN_*` to `Eval.h`
+   beside the existing term constants. Conservative starting values; comment that #117 owns tuning.
+3. **`eval_mobility(ctx, color)`.** For each of the four piece types, iterate that piece's bitboard;
+   attacks from `g_bbKnightMoves[sq]` (knight), `BishopAttacks(sq, ctx.all_pieces)`,
+   `RookAttacks(sq, …)`, or their union (queen); mask with
+   `~ctx.occupied[own] & ~ctx.pawn_attacks[enemy]`; `std::popcount`; accumulate weighted.
+   `Magic.h` is already included in `Eval.cpp` (for #114).
+4. **Wire into `Evaluate()`** — add `+ BlendPhase(eval_mobility(ctx, c), ctx.phase)` to the blend loop.
+5. **Wire into `Breakdown()`** and add the `EvalBreakdown::mobility` field. **Not optional**: the
+   breakdown rows summing to `total` is an asserted invariant (#129).
+6. **Tests**, then docs.
+
+## Validation
+
+**Correctness**
+
+- Knight on a central square scores above the same knight in a corner (the canonical case).
+- Rook on an open file scores above a rook boxed in behind its own pawns.
+- Adding an enemy pawn covering a reachable square lowers the knight's score (proves D2).
+- Blocking a bishop's diagonal with an own piece lowers its score; with an enemy piece it does not
+  (proves D3's convention).
+- Queen scores strictly above a rook on the same square with the same occupancy (proves #113).
+- **#125's mirror-symmetry cases still pass** — a mirrored position must score exactly negated.
+- The kingless-board regression still passes.
+- **Run the Debug build**: Release silently tolerates the out-of-bounds reads this kind of table and
+  bitboard indexing can introduce.
+
+**Speed** — this is the first term that adds real per-node work, and the actual risk here is not
+correctness.
+
+- `Run-Bench.ps1` before and after, same compiler, repeat runs before quoting a delta.
+- Per `CLAUDE.md`, a measured slowdown needs a stated benefit that outweighs it. A neutral Elo result
+  with a throughput loss is a **net regression being masked**; a positive Elo result with one means
+  the term is stronger than it looks.
+
+**Strength**
+
+- CI strength lab, **20,000 games**, reference left at its `merge-base` default. Per #230, epic #110
+  terms **skip the screen** and go straight to a full batch — screening a small positive change costs
+  55 minutes to be told "inconclusive" four times in five.
+- ~3 h, 18 shards, two CI slots stay free. The result posts to the PR automatically.
+- Record in `Docs/EloLog.md`'s **Linux CI — per-change measurements** table. That table's rows are
+  not comparable with each other and must never be summed.
+
+**Review** — `Eval.cpp` is in scope for `eval-reviewer`; dispatch it per the pre-PR checklist.
+
+## Invariants that must hold afterwards
+
+1. **`Breakdown()` rows sum to `total`.** Asserted; the honesty invariant behind #129.
+2. **`Evaluate()` stays a pure function of the position** — no history, no move-order dependence, or
+   two paths to one position disagree while sharing a TT entry.
+3. **Colour symmetry**: mirroring a position negates the score exactly (#125).
+4. **Thread safety**: nothing stored on `EvalManager`/`EvalComplex`; `EvalContext` remains a stack
+   local built per call. Lazy SMP shares the evaluator across threads.
+5. **No per-node allocation** — bitboards and `popcount` only.
+6. `EvalContext::occupied[]` and `all_pieces` become genuinely read; their "do not remove as dead
+   code" comments can go.
