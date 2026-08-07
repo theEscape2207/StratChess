@@ -515,13 +515,14 @@ automatic trigger makes likely, because when it was written one run was assumed 
 **Any trigger design needs a repo-wide serialisation group** — a constant such as `strength-lab`
 rather than one keyed on `github.ref`. Decide this before the trigger, not after.
 
-#### Making a decidable run affordable — decided
+#### The screen: an instrument choice, not a mandatory stage
 
-20,000 games is the *resolution* figure, not the *decision* figure. A full batch is three hours, and
-most of that is wasted on candidates whose answer was obvious early.
+20,000 games is the *resolution* figure, not the *decision* figure, and a full batch is three hours.
+A cheaper screen exists, but it earns its place far less often than it first appears.
 
-**The decision: a single 6,000-game screen, promoting when the observed Elo is at least 1.645
-standard errors clear of zero, then a full batch for survivors.**
+**The screen: 6,000 games, promoting when the observed Elo is at least 1.645 standard errors clear
+of zero. It is an option, not a required first stage** — the same kind of choice as `Run-Bench.ps1`
+versus `Run-EloMatch.ps1`, picked from what the change is expected to do rather than run by default.
 
 ##### The sizing constant
 
@@ -591,6 +592,39 @@ on changes that are clearly bad or clearly nothing.
 **"Inconclusive" is not "zero" and not "pass"** — the same discipline `Docs/EloLog.md` already applies
 to SPRT runs that hit their cap.
 
+##### When the screen is worth running — the break-even
+
+The screen costs 0.92 h unconditionally and saves the 3.07 h batch only when it **rejects**. So it
+pays when `P(reject) * 3.07 >= 0.92`, i.e. **P(reject) >= 30%**, which at `SE = 3.87` means a true
+value around **-4.3 Elo or worse**.
+
+| True Elo | P(reject) | Effect of screening |
+|---|---|---|
+| +3 | ~1% | adds ~29% to total runtime (3.96 h against 3.07 h) |
+| 0 | 5% | pure overhead |
+| -3 | 19% | still a net loss |
+| **-4.3** | **30%** | **break-even** |
+| -8 | 66% | saves ~1.1 h |
+| -15 | 99% | saves ~2 h |
+
+**So epic #110's planned terms skip the screen by default.** They are expected to be small and
+positive; screening them costs an extra 55 minutes to be told "inconclusive" four times in five.
+Dispatch the full batch directly.
+
+**Reach for the screen when a real regression is genuinely plausible** — roughly, when you would bet
+30% or better that the change is worse than -4 Elo. That means a specific suspicion, not "eval
+changes are tricky in general": a restructuring whose sign is unclear, a term interacting with
+something already tuned, or a change whose local numbers already look wrong.
+
+Two things reinforce keeping it optional:
+
+- **A cheaper regression guard already exists and is already mandatory.** `CLAUDE.md` requires
+  `Run-EloMatch.ps1` after search/eval changes: 500 games, ~40 minutes, on the dev machine,
+  consuming no CI slots. Gross blunders die there, before CI is involved.
+- **A conditional screen throws its own games away.** Deciding whether to continue *based on* the
+  screen is selection, so its 6,000 games cannot then be pooled into the 20,000 without biasing the
+  estimate. If the number is wanted regardless, one 20,000-game batch beats 6,000 followed by 20,000.
+
 ##### The decision tree
 
 ```
@@ -637,12 +671,14 @@ estimate, explicitly not pooled.
 
 1. **Merge-base `reference_ref`** — in place (#226). `reference_ref` defaults to `merge-base`,
    resolved and verified in `setup`.
-2. **Screening policy** — decided above: a single 6,000-game screen promoting at `1.645 * SE`, then a
-   full batch for survivors. Policy, not code; the code is step 5.
+2. **Screening policy** — decided above: the 6,000-game screen promoting at `1.645 * SE` is an
+   option, not a stage. Epic #110's terms go straight to a full batch. Policy, not code.
 3. **Repo-wide serialisation group** — in place (#228). The group is the constant `strength-lab`.
-4. **Trigger on a `measure` label**, restricted to non-fork PRs.
-5. **Report the screen verdict from `aggregate`.** `pool_pentanomial.py` already returns the Elo and
-   the standard error, so this is a comparison and a printed verdict, not new statistics.
+4. **Trigger on a `measure` label**, restricted to non-fork PRs. It dispatches *the lab*, with screen
+   versus full batch selected by the existing `games` input — not a fixed two-stage pipeline.
+5. **Report a verdict from `aggregate`** when the run was a screen. `pool_pentanomial.py` already
+   returns the Elo and the standard error, so this is a comparison and a printed line, not new
+   statistics.
 6. **Post the pooled verdict as a PR comment.**
 7. Then start working #110 sub-issues against it. This is the point where the whole plan pays.
 
