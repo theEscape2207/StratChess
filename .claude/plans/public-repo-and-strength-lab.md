@@ -14,21 +14,23 @@ concurrent games against the 6 a local run manages — turning a 20,000-game bat
 The payload that justifies the work is epic #110: twelve eval sub-issues, each expected to be worth
 single-digit Elo, i.e. twelve measurements that today's ±26 Elo instrument cannot make.
 
-## Where this stands — read this first (2026-08-06)
+## Where this stands — read this first (2026-08-07)
 
-**M0 through M5 are complete.** The sharded lab is calibrated at scale: a 20,000-game null test came
-back **-2.17 ± 4.18**, agreeing with the single-job instrument and containing the true zero. **M6 is
-next** — its section was rewritten against #217's measurements, which removed the concurrency blocker
-it had been designed around and exposed a different one.
+**M0 through M6 are complete. The lab is built; what remains is using it.** The sharded instrument is
+calibrated at scale — a 20,000-game null test returned **-2.17 ± 4.18**, agreeing with the single-job
+instrument and containing the true zero — and it now resolves its own reference, serialises against
+itself, and reports back to the pull request that asked for it.
+
+**Epic #110 is next**, and it is what every milestone above was for.
 
 | | State |
 |---|---|
 | Repository | Public; CI is a gate, `build-and-test-result` required on `main` |
 | Nightly | `nightly.yml` — deep perft, `[slow]` tier, sanitizers + `_GLIBCXX_DEBUG`, tactical ×100 |
 | Opening book | Solved. `EngineTesting\openings-large.*` locally (optional), `UHO_4060_v3.epd` in CI — 242,201 openings |
-| Strength lab | `strength.yml`, `workflow_dispatch` only, sharded **18 ways**, **calibrated at scale 2026-08-06** |
+| Strength lab | `strength.yml`, `workflow_dispatch` only, sharded **18 ways**, reference defaults to the **merge base**, one run at a time, result posted to the branch's PR |
 | Resolution today | **±4 Elo** at 20,000 games (CI, ~3 h); ±18 at 1000 single-job; ±25-26 at 500 (local) |
-| Not yet possible | Epic #110's single-digit terms. That is exactly what M5 buys |
+| Now possible | Epic #110's single-digit terms. That is what the whole plan was for |
 
 Where things live: method in `Docs/EloMeasurement.md`, results in `Docs/EloLog.md` (two ledgers,
 never compared), workflow in `.github/workflows/strength.yml`.
@@ -471,11 +473,11 @@ runs can be in flight at once — see M6.
 single-job instrument and ±26 locally. That is the first point at which epic #110's single-digit eval
 terms are decidable at all.
 
-### M6 — Wire to PRs and to the epic (~1-2 sessions)
+### M6 — Wire to PRs and to the epic — complete
 
-**Read this before designing the triggers.** M5 and #217 replaced most of this milestone's original
-assumptions with measurements. The concurrency blocker it was written around no longer exists; a
-different one takes its place.
+**Read this before changing the lab.** M5 and #217 replaced most of this milestone's original
+assumptions with measurements: the concurrency blocker it was designed around no longer exists, and a
+different one took its place. The sections below record what was decided and why.
 
 #### Measured inputs
 
@@ -674,13 +676,18 @@ estimate, explicitly not pooled.
 2. **Screening policy** — decided above: the 6,000-game screen promoting at `1.645 * SE` is an
    option, not a stage. Epic #110's terms go straight to a full batch. Policy, not code.
 3. **Repo-wide serialisation group** — in place (#228). The group is the constant `strength-lab`.
-4. **Trigger on a `measure` label**, restricted to non-fork PRs. It dispatches *the lab*, with screen
-   versus full batch selected by the existing `games` input — not a fixed two-stage pipeline.
-5. **Report a verdict from `aggregate`** when the run was a screen. `pool_pentanomial.py` already
-   returns the Elo and the standard error, so this is a comparison and a printed line, not new
-   statistics.
-6. **Post the pooled verdict as a PR comment.**
-7. Then start working #110 sub-issues against it. This is the point where the whole plan pays.
+4. **Trigger on a `measure` label** — **superseded, not built.** A `pull_request: types: [labeled]`
+   trigger leaves `inputs.*` empty, so all six inputs would need default-resolution plumbed through
+   every job. The label's real payoff was pull-request context, which #231 obtains with a branch
+   lookup instead. It also keeps `games` a per-run choice, which matters now the screen is optional.
+5. **Report a verdict from `aggregate`** when the run was a screen — **deferred deliberately.** It
+   only produces output on screen runs, and those are the exception. Build it when a screen is
+   actually reached for and the `1.645 * SE` comparison is being done by hand.
+6. **Post the pooled result to the pull request** — in place (#231), keyed off the dispatched branch.
+   One open PR gets the comment; none or several leave the job summary as the only report; a
+   discarded batch posts nothing.
+7. **Start working #110 sub-issues against it.** This is the point where the whole plan pays, and it
+   is where the work now moves.
 
 #### What this milestone deliberately does not do
 
