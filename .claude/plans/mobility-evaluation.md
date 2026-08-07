@@ -76,16 +76,15 @@ to would break the purity that lets `Evaluate()` be `const` and thread-safe unde
 needs the sets, the right move is for `BuildContext` to compute them, not for a term to leave them
 behind. Note it there; build nothing now.
 
-## Carried work — do not lose this
+## Carried work
 
-**#118 item 3** (mop-up has no stalemate/mobility awareness for the losing king) was explicitly
-deferred until a mobility count existed, but #118 is now **closed as COMPLETED**. The follow-up
-therefore lives nowhere except this file.
+**#118 item 3** (mop-up has no stalemate/mobility awareness for the losing king) was deferred until a
+mobility count existed, but #118 closed as COMPLETED, leaving the follow-up tracked nowhere. It is
+now **#234**, filed separately on purpose: it is mop-up-scoped rather than mobility-scoped, so
+bundling it would widen this change's diff for an unrelated reason.
 
-Either land its stalemate-trap regression positions with this work, or **re-file it as its own issue
-before starting** so it survives independently of this plan. Re-filing is preferred: it is
-mop-up-scoped, not mobility-scoped, and bundling it would widen this change's diff for an unrelated
-reason.
+Nothing here blocks on #234. The dependency runs the other way — #234 becomes implementable once this
+term makes a king's safe-square count available.
 
 ## Files changed
 
