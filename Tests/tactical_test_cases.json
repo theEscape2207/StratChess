@@ -209,14 +209,6 @@
       "depth": 7
     },
     {
-      "id": "WAC-287",
-      "category": "tactical_win",
-      "description": "WAC.287 Qh5: mating attack on f7/h7 wins material (ce +751)",
-      "fen": "rn3k1r/pp2bBpp/2p2n2/q5N1/3P4/1P6/P1P3PP/R1BQ1RK1 w - - 0 1",
-      "best_moves": ["d1h5"],
-      "depth": 6
-    },
-    {
       "id": "WAC-065",
       "category": "tactical_win",
       "description": "WAC.065 Ne7+: royal fork setup (ce +1316)",

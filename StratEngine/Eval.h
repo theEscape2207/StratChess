@@ -144,11 +144,16 @@ struct EvalContext
 	std::span<const BITBOARD>  boards;             // Board::GetBitBoards(), indexed by ePiece
 	BITBOARD                   all_pieces;          // boards[ALL_PIECES]
 	BITBOARD                   pawns[NUM_COLORS];   // boards[WHITE_PAWN] / boards[BLACK_PAWN]
-	// boards[ALL_WHITE_PIECES] / boards[ALL_BLACK_PIECES]. Unread by any term
-	// today (same for all_pieces above) — both are populated because issue #98
-	// (Mobility) needs per-color occupancy to mask off blocked squares. Do not
-	// remove as dead code; see D3 in eval-context-restructure.md.
+	// boards[ALL_WHITE_PIECES] / boards[ALL_BLACK_PIECES]. Read by eval_mobility
+	// to mask off squares occupied by the side's own pieces (issue #98).
 	BITBOARD                   occupied[NUM_COLORS];
+	// Squares each color's pawns attack. Derived here rather than read from
+	// Board, using the same file-masked shifts MoveGenerator::GeneratePawnCaptures
+	// uses, so the two cannot disagree about what an edge-file pawn covers.
+	// eval_mobility subtracts the ENEMY set: a square an enemy pawn guards is not
+	// one a piece can usefully occupy. Issue #116 (backwards pawns) will want
+	// these too, which is why they live in the context rather than in one term.
+	BITBOARD                   pawn_attacks[NUM_COLORS];
 	// NO_SQUARE for a color with no king on the board. That only happens for a
 	// default-constructed or failed-parse Board — MoveGenerator.cpp asserts
 	// both kings exist before any search runs, so every position the search
@@ -207,6 +212,7 @@ struct EvalBreakdown
 	int                    mopup[NUM_COLORS];    // eval_mopup
 	int                    bishops[NUM_COLORS];  // eval_bishops
 	int                    castling[NUM_COLORS]; // eval_castling
+	int                    mobility[NUM_COLORS]; // eval_mobility
 	// Included because it is not derivable from the rows: it sets where between
 	// the mg and eg endpoints every tapered term landed, and gates eval_mopup.
 	int                    phase;
@@ -247,6 +253,56 @@ class EvalComplex final
 	// from move history; see .claude/plans/eval-bishop-pair-connected-rooks-castling.md D2.
 	static const short CASTLING_DONE_BONUS		= 25;
 	static const short CASTLING_LOST_PENALTY	= 20;
+
+	// Mobility (issues #98, #113): value of one reachable square, per piece
+	// type. Weighted per type because an extra square is worth much less to a
+	// queen -- which already has many -- than to a knight, and phase-split
+	// because a rook's mobility matters more once files open in the endgame.
+	//
+	// These are literature-standard magnitudes, deliberately NOT hand-tuned:
+	// #117 (automated Texel-style tuning) owns the values, and this term is
+	// unusually sensitive to them.
+	//
+	// The knight is worth MORE per square than the bishop, which looks backwards
+	// until the counts are included: a bishop sees 7-13 squares to a knight's
+	// 2-8, so equal per-square weights would hand the bishop roughly 2.5x the
+	// total. g_iPieceValues rates both minors at 300, so that would be an
+	// undeclared bishop premium stacking on BISHOP_PAIR_BONUS -- a material
+	// change arriving as a side effect of a mobility weight.
+	//
+	// Mobility overlaps the PSTs, which already reward central placement. The
+	// overlap is not marginal: a knight's mobility swing is comparable to its
+	// entire PST range, so this roughly doubles the centralization gradient for
+	// minors. That may be an improvement, but it is a real change in emphasis
+	// rather than a small addition, and it is a #117 retuning input.
+	static const short MOBILITY_KNIGHT_MG		= 4;
+	static const short MOBILITY_KNIGHT_EG		= 4;
+	static const short MOBILITY_BISHOP_MG		= 3;
+	static const short MOBILITY_BISHOP_EG		= 3;
+	static const short MOBILITY_ROOK_MG		= 2;
+	static const short MOBILITY_ROOK_EG		= 4;
+	static const short MOBILITY_QUEEN_MG		= 1;
+	static const short MOBILITY_QUEEN_EG		= 2;
+
+	// Square counts are measured against a typical count per piece type rather
+	// than against zero, so the term is roughly zero-mean and a cramped piece is
+	// penalised instead of merely under-rewarded.
+	//
+	// Without this the count is strictly positive, so every piece carries a
+	// permanent bonus that only cancels while material is symmetric -- the term
+	// would silently act as a piece-value adjustment across trades, and #117
+	// would inherit mobility entangled with material rather than as an
+	// independent positional term. Costs nothing at runtime.
+	//
+	// It also keeps mobility from overwhelming eval_mopup: with absolute counts
+	// a KBNvK winner scored +47 of mobility against mop-up's 12, an unsuppressed
+	// centralization pull four times the term meant to be steering. Relative
+	// counts put it at -4. Same failure mode eval_pst had to solve for the
+	// king PST (issue #118 item 4).
+	static const short MOBILITY_BASE_KNIGHT		= 4;
+	static const short MOBILITY_BASE_BISHOP		= 7;
+	static const short MOBILITY_BASE_ROOK		= 7;
+	static const short MOBILITY_BASE_QUEEN		= 14;
 
 	// Mop-up evaluation (won pawnless endgames) — see issue #70 / epic #110.
 	// Gated on: pawnless + decisive material lead. Rewards pushing the losing
@@ -318,6 +374,7 @@ class EvalComplex final
 	static ScorePair eval_mopup(const EvalContext& ctx, eColor color) noexcept;
 	static ScorePair eval_bishops(const EvalContext& ctx, eColor color) noexcept;
 	static ScorePair eval_castling(const EvalContext& ctx, eColor color) noexcept;
+	static ScorePair eval_mobility(const EvalContext& ctx, eColor color) noexcept;
 
 public:
 	int Evaluate(const Board& board) const noexcept override;

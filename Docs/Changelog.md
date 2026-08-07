@@ -22,6 +22,69 @@ Newest first.
 
 ---
 
+## 2026-08-07 — Mobility evaluation for knight, bishop, rook and queen (#98, #113)
+
+### Added
+
+- **`eval_mobility`** — counts the squares each piece can move to, weighted per piece type and
+  phase-split, and adds it to the tapered sum. Closes #113 as well: the queen is scored from the
+  start, which is the risk that issue existed to prevent.
+- **`EvalContext::pawn_attacks`**, built in `BuildContext` with the same file-masked shifts
+  `MoveGenerator::GeneratePawnCaptures` uses, so the two cannot disagree about what an edge-file
+  pawn covers. #116 will want them too.
+- A `mobility` row in `EvalBreakdown`, the UCI `eval` table, and the printed net sum.
+
+### Notes
+
+**Design, all recorded at the term**: pseudo-legal rather than legal (legality filtering would need
+move generation per piece per node); safe mobility, so squares an enemy pawn covers do not count;
+enemy-occupied squares *do* count, since a piece that can capture is active — one mask rather than
+two, applied identically to every piece type. The king is excluded deliberately: king mobility is a
+king-safety signal and belongs to #97.
+
+**Weights are conservative and not hand-tuned.** #117 owns them. Mobility overlaps the PSTs, which
+already reward central placement, so a smaller gain than the literature suggests is the expected
+outcome rather than a defect.
+
+**Measured at +38.34 ± 4.26 Elo** over 19,980 games against the merge base (run `31191858114`,
+95% interval [+34.08, +42.60], score 55.50%). Decisive, not suggestive — the interval clears zero by
+eight standard errors. Recorded in `Docs/EloLog.md`'s per-change table, which this is the first row
+of.
+
+**That figure is the NET of two opposing effects.** The term costs **-6.2% nps** (`Run-Bench.ps1`,
+depth 12, clang-cl, two runs per binary; per-position -8.1% to +3.2%) — roughly 10 Elo of search
+speed at the project's ~1.7 Elo per 1% conversion. So the evaluation improvement is worth about +48
+gross, and the term repays its own cost several times over. It is also the pre-tuning figure: #117
+owns the weights.
+
+**Node counts and time-to-depth are not evidence here** and are deliberately not quoted. The best
+move changes at the root on several bench positions, so the two builds search different trees; nps is
+the only clean per-node measure. The same trap is on record from #111/#114/#115's node probe.
+
+**`WAC-287` removed from the tactical suite.** It began failing at its committed depth 6, but the
+cause is not this term: with the mobility weights zeroed — behaviourally `main` — it already fails at
+depth 8. A depth sweep showed it oscillating PASS/FAIL/PASS/FAIL across depths 5-8 both with and
+without mobility, so it never met the depth-stability criterion #235 introduced. Suite is 36/36.
+
+The sweep also separated two things that look alike. Ten positions simply **need more depth** — they
+fail shallow and pass at every greater depth, which is normal and fine. Three get **worse with more
+search**: `WAC-043` is correct at depths 5, 6 and 7 and wrong at 8; `WAC-287` alternates strictly with
+parity; `WAC-065` dips at 6 and recovers. A deeper search returning a worse move is a property of the
+search, not of the position, and nothing in the repository currently tests for it — `tactical
+stability` checks repeat runs at ONE depth. Filed as #237.
+
+**Two tests were re-pointed from `Evaluate()` to the term they are about.** The #126 open-file tests
+asserted whole-position equality to prove a claim about `eval_rooks`; moving a knight or a pawn
+legitimately changes mobility, so those totals now differ while the rook term does not. Comparing
+totals to prove a single term's behaviour was over-coupling that any new term would have broken.
+
+**`UCITests`' breakdown row list was incomplete**, holding 5 of the 7 rows. Its "nets sum to the
+printed total" invariant was passing only because `bishops` and `castling` were zero in the tested
+positions. Now complete, and it caught a real omission immediately: the `eval` command's printed sum
+had not been updated for the new row.
+
+---
+
 ## 2026-08-07 — Tactical suite is green again: QFORK-001 out, seven depth-verified positions in (#235)
 
 ### Removed

@@ -295,22 +295,6 @@ TEST_CASE("Eval - EvalComplex mop-up: gated off below the decisive material thre
 
 // ── Rook open-file definition (issue #126) ────────────────────────────────────
 
-TEST_CASE("Eval - EvalComplex: an enemy knight on the rook's file does not demote an open file", "[eval]")
-{
-    // The discriminator: on unmodified HEAD, "open file" tests for absence of
-    // ANY enemy piece (all_black/all_white), not just enemy pawns, so a knight
-    // sharing the rook's file wrongly demotes it from open to half-open (-5 cp).
-    // The knight's PST value is identical on d5 and e5, and material is
-    // identical, so the open-file classification is the only thing that can
-    // make these two scores differ.
-    auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
-
-    Board knightOn(FEN_ROOK_OPEN_FILE_KNIGHT_ON);
-    Board knightOff(FEN_ROOK_OPEN_FILE_KNIGHT_OFF);
-
-    REQUIRE(eval->Evaluate(knightOn) == eval->Evaluate(knightOff));
-}
-
 TEST_CASE("Eval - EvalComplex: an enemy pawn on the rook's file still demotes it to half-open", "[eval]")
 {
     // Guard: the fix must narrow the open-file test to pawns only, not remove
@@ -341,26 +325,6 @@ TEST_CASE("Eval - EvalComplex: an own pawn ahead of the rook blocks the file bon
     Board pawnAhead(FEN_ROOK_OWN_PAWN_AHEAD);
 
     REQUIRE(eval->Evaluate(pawnBehind) > eval->Evaluate(pawnAhead));
-}
-
-TEST_CASE("Eval - EvalComplex: an own pawn behind the rook leaves the file fully open (D5)", "[eval]")
-{
-    // Pins the deliberate D5 decision from
-    // .claude/plans/passed-and-backwards-pawn-terms.md. The rook is fixed on
-    // e6 in both positions; only the White pawn moves, from d4 (off the file)
-    // to e4 (on the file, behind the rook). Its PST value is identical on both
-    // squares and it is isolated either way, so the file classification is the
-    // only thing that could make these differ.
-    //
-    // Equality is the whole point: a ">" assertion would still pass if the
-    // pawn-behind case were demoted to merely half-open. Only exact equality
-    // proves the file is still scored as fully OPEN.
-    auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
-
-    Board pawnOffFile(FEN_ROOK_OWN_PAWN_OFF_FILE);
-    Board pawnBehindRook(FEN_ROOK_OWN_PAWN_BEHIND_SAME_ROOK);
-
-    REQUIRE(eval->Evaluate(pawnOffFile) == eval->Evaluate(pawnBehindRook));
 }
 
 // ── Color-mirroring correctness (issue #125) ──────────────────────────────────
@@ -645,6 +609,11 @@ struct EvalComplexTestFixture
         const EvalContext ctx = BuildContext(board);
         return BlendPhase(EvalComplex::eval_bishops(ctx, color), ctx.phase);
     }
+    static int Mobility(const Board& board, eColor color)
+    {
+        const EvalContext ctx = BuildContext(board);
+        return BlendPhase(EvalComplex::eval_mobility(ctx, color), ctx.phase);
+    }
     static int Castling(const Board& board, eColor color)
     {
         const EvalContext ctx = BuildContext(board);
@@ -658,6 +627,11 @@ struct EvalComplexTestFixture
     static ScorePair CastlingPair(const Board& board, eColor color)
     {
         return EvalComplex::eval_castling(BuildContext(board), color);
+    }
+
+    static ScorePair MobilityPair(const Board& board, eColor color)
+    {
+        return EvalComplex::eval_mobility(BuildContext(board), color);
     }
 
     // Raw (mg, eg) pairs, for asserting a tapered term's ENDPOINTS rather
@@ -700,6 +674,155 @@ TEST_CASE("Eval - eval_pawns: pawns with no isolation and no doubling score exac
     Board board(FEN_WHITE_NORMAL);
 
     REQUIRE(EvalComplexTestFixture::Pawns(board, WHITE) == 0);
+}
+
+TEST_CASE("Eval - eval_rooks: an enemy knight on the rook's file does not demote an open file", "[eval]")
+{
+    // Issue #126's discriminator: "open file" must test for absence of enemy
+    // PAWNS, not of any enemy piece. Before the fix, a knight sharing the rook's
+    // file wrongly demoted it from open to half-open (-5 cp). The knight's PST
+    // value is identical on d5 and e5 and material is identical, so the file
+    // classification is the only thing that can make the ROOK term differ.
+    //
+    // Asserted term-level rather than on whole-position Evaluate(): moving the
+    // knight legitimately changes mobility (#98), so the totals differ even
+    // though the open-file classification does not. The term-level assertion is
+    // what this test always meant.
+    Board knightOn(FEN_ROOK_OPEN_FILE_KNIGHT_ON);
+    Board knightOff(FEN_ROOK_OPEN_FILE_KNIGHT_OFF);
+
+    REQUIRE(EvalComplexTestFixture::Rooks(knightOn, WHITE)
+            == EvalComplexTestFixture::Rooks(knightOff, WHITE));
+}
+
+TEST_CASE("Eval - eval_rooks: an own pawn behind the rook leaves the file fully open (D5)", "[eval]")
+{
+    // Pins the deliberate D5 decision from
+    // .claude/plans/passed-and-backwards-pawn-terms.md. The rook is fixed on
+    // e6 in both positions; only the White pawn moves, from d4 (off the file)
+    // to e4 (on the file, behind the rook). Its PST value is identical on both
+    // squares and it is isolated either way, so the file classification is the
+    // only thing that could make the ROOK term differ.
+    //
+    // Equality is the whole point: a ">" assertion would still pass if the
+    // pawn-behind case were demoted to merely half-open. Only exact equality
+    // proves the file is still scored as fully OPEN.
+    //
+    // Asserted on eval_rooks rather than on whole-position Evaluate(): moving a
+    // pawn legitimately changes mobility (#98), so the two positions' total
+    // scores are no longer equal even though the rook term is. Comparing totals
+    // to prove a claim about one term was over-coupling that a later term was
+    // always going to break.
+    Board pawnOffFile(FEN_ROOK_OWN_PAWN_OFF_FILE);
+    Board pawnBehindRook(FEN_ROOK_OWN_PAWN_BEHIND_SAME_ROOK);
+
+    REQUIRE(EvalComplexTestFixture::Rooks(pawnOffFile, WHITE)
+            == EvalComplexTestFixture::Rooks(pawnBehindRook, WHITE));
+}
+
+// ── eval_mobility (issues #98, #113) ─────────────────────────────────────────
+
+TEST_CASE("Eval - eval_mobility: a central knight outscores a cornered one", "[eval]")
+{
+    // The canonical mobility case: a knight on d4 reaches 8 squares, one on a1
+    // reaches 2. Nothing else differs between the positions.
+    Board central("4k3/8/8/8/3N4/8/8/4K3 w - - 0 1");
+    Board cornered("4k3/8/8/8/8/8/8/N3K3 w - - 0 1");
+
+    REQUIRE(EvalComplexTestFixture::Mobility(central, WHITE)
+            > EvalComplexTestFixture::Mobility(cornered, WHITE));
+}
+
+TEST_CASE("Eval - eval_mobility: a rook on an open file outscores one boxed in behind its own pawns", "[eval]")
+{
+    Board open("4k3/8/8/8/8/8/8/3RK3 w - - 0 1");
+    Board boxed("4k3/8/8/8/8/8/3PPP2/3RK3 w - - 0 1");
+
+    REQUIRE(EvalComplexTestFixture::Mobility(open, WHITE)
+            > EvalComplexTestFixture::Mobility(boxed, WHITE));
+}
+
+TEST_CASE("Eval - eval_mobility: squares covered by an enemy pawn do not count (safe mobility)", "[eval]")
+{
+    // Same White knight on d4 in both. A knight on d4 reaches b3, b5, c2, c6,
+    // e2, e6, f3 and f5; the Black pawn on d7 covers c6 and e6, two of them.
+    // The pawn blocks nothing directly -- a knight jumps -- so the only thing
+    // that can change the count is the safe-mobility mask.
+    //
+    // A pawn on d6 would prove nothing: it covers c5 and e5, and a knight on d4
+    // reaches neither.
+    Board unguarded("4k3/8/8/8/3N4/8/8/4K3 w - - 0 1");
+    Board guarded("4k3/3p4/8/8/3N4/8/8/4K3 w - - 0 1");
+
+    REQUIRE(EvalComplexTestFixture::Mobility(guarded, WHITE)
+            < EvalComplexTestFixture::Mobility(unguarded, WHITE));
+}
+
+TEST_CASE("Eval - eval_mobility: the safe-mobility mask is colour-symmetric", "[eval]")
+{
+    // The case above asserts WHITE's mobility against a BLACK pawn, so it only
+    // ever exercises the white pawn-attack shifts. This mirrors it, which is the
+    // only thing that touches the black `<<9`/`<<7` expression in BuildContext.
+    //
+    // Worth its own case because the failure is silent: a transposed shift or a
+    // swapped file mask would compile, pass every other test, and quietly cost
+    // Black a few squares per node in every game of a 20,000-game run. Issue
+    // #125 was this exact class of defect.
+    //
+    // The pawn must be on an EDGE FILE. A central pawn cannot discriminate:
+    // both file masks pass it through, so `p<<9 | p<<7` is the same set however
+    // the two shifts are ordered, and a transposition survives the test. The
+    // masks exist only to stop an a- or h-file pawn wrapping around the board,
+    // so only an a- or h-file pawn tests them.
+    //
+    // Black pawn a7 covers b6 and nothing else (the other diagonal would wrap).
+    // The knight on d5 reaches b6, so the count drops from 8 to 7. Under
+    // transposed shifts the pawn's attack lands on h7 instead, the knight
+    // reaches none of it, and the count stays 8.
+    Board whiteSide("4k3/p7/8/3N4/8/8/8/4K3 w - - 0 1");
+    Board blackSide("4k3/8/8/8/3n4/8/P7/4K3 b - - 0 1");
+
+    REQUIRE(EvalComplexTestFixture::Mobility(whiteSide, WHITE)
+            == EvalComplexTestFixture::Mobility(blackSide, BLACK));
+
+    // ...and the mask must actually be biting, or the equality above is vacuous.
+    Board whiteUnmasked("4k3/8/8/3N4/8/8/8/4K3 w - - 0 1");
+    Board blackUnmasked("4k3/8/8/8/3n4/8/8/4K3 b - - 0 1");
+    REQUIRE(EvalComplexTestFixture::Mobility(whiteSide, WHITE)
+            < EvalComplexTestFixture::Mobility(whiteUnmasked, WHITE));
+    REQUIRE(EvalComplexTestFixture::Mobility(blackSide, BLACK)
+            < EvalComplexTestFixture::Mobility(blackUnmasked, BLACK));
+}
+
+TEST_CASE("Eval - eval_mobility: own pieces block, enemy pieces are capture targets", "[eval]")
+{
+    // Pins the D3 convention: `attacks & ~occupied[own]`, so an enemy piece on a
+    // reachable square still counts (it can be captured) while an own piece does
+    // not. A bishop on c1 with the b2 square occupied either way isolates it.
+    Board ownBlocker("4k3/8/8/8/8/8/1P6/2B1K3 w - - 0 1");
+    Board enemyBlocker("4k3/8/8/8/8/8/1p6/2B1K3 w - - 0 1");
+
+    REQUIRE(EvalComplexTestFixture::Mobility(enemyBlocker, WHITE)
+            > EvalComplexTestFixture::Mobility(ownBlocker, WHITE));
+}
+
+TEST_CASE("Eval - eval_mobility: the queen is scored, not skipped (issue #113)", "[eval]")
+{
+    // #113 exists so the queen is not left out if mobility scopes down to cheap
+    // pieces. A lone queen must produce a nonzero term.
+    Board queen("4k3/8/8/8/3Q4/8/8/4K3 w - - 0 1");
+
+    REQUIRE(EvalComplexTestFixture::Mobility(queen, WHITE) > 0);
+}
+
+TEST_CASE("Eval - eval_mobility: a bare king contributes nothing", "[eval]")
+{
+    // The king is deliberately excluded -- king mobility belongs to #97, where
+    // it can be weighed against attacker counts rather than paid per square.
+    Board kings("4k3/8/8/8/8/8/8/4K3 w - - 0 1");
+
+    REQUIRE(EvalComplexTestFixture::Mobility(kings, WHITE) == 0);
+    REQUIRE(EvalComplexTestFixture::Mobility(kings, BLACK) == 0);
 }
 
 TEST_CASE("Eval - eval_pawns: doubled and isolated a-file pawns score exactly -(doubled + 2*isolated)", "[eval]")
@@ -1022,13 +1145,15 @@ TEST_CASE("Eval - the per-term functions sum exactly to EvalComplex::Evaluate()'
                           + EvalComplexTestFixture::Pst(board, WHITE)
                           + EvalComplexTestFixture::Mopup(board, WHITE)
                           + EvalComplexTestFixture::Bishops(board, WHITE)
-                          + EvalComplexTestFixture::Castling(board, WHITE);
+                          + EvalComplexTestFixture::Castling(board, WHITE)
+                          + EvalComplexTestFixture::Mobility(board, WHITE);
     const int bonusBlack = EvalComplexTestFixture::Pawns(board, BLACK)
                           + EvalComplexTestFixture::Rooks(board, BLACK)
                           + EvalComplexTestFixture::Pst(board, BLACK)
                           + EvalComplexTestFixture::Mopup(board, BLACK)
                           + EvalComplexTestFixture::Bishops(board, BLACK)
-                          + EvalComplexTestFixture::Castling(board, BLACK);
+                          + EvalComplexTestFixture::Castling(board, BLACK)
+                          + EvalComplexTestFixture::Mobility(board, BLACK);
 
     const eColor toMove = board.GetCurrentColor();
     const int expected = (toMove == WHITE)
@@ -1103,7 +1228,8 @@ TEST_CASE("Eval - Breakdown(): total agrees with Evaluate(), and the rows reprod
                        + (terms.pst[WHITE]      - terms.pst[BLACK])
                        + (terms.mopup[WHITE]    - terms.mopup[BLACK])
                        + (terms.bishops[WHITE]  - terms.bishops[BLACK])
-                       + (terms.castling[WHITE] - terms.castling[BLACK]);
+                       + (terms.castling[WHITE] - terms.castling[BLACK])
+                       + (terms.mobility[WHITE] - terms.mobility[BLACK]);
 
     const int expectedTotal = (board.GetCurrentColor() == WHITE) ? whitePov : -whitePov;
     REQUIRE(terms.total == expectedTotal);

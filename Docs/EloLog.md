@@ -42,10 +42,9 @@ Reference is the **merge base** — the commit the candidate forked from `main`,
 reference; errors compound, and Elo is not cleanly additive across changes that interact. For
 cumulative progress use the anchor table below, which is what it exists for.
 
-*No rows yet. Epic #110's sub-issues are expected to be the first.*
-
 | Date | Candidate | Merge base | Games | TC | Elo diff | Notes |
 |---|---|---|---|---|---|---|
+| 2026-08-07 | 95300b4 (mobility, #98 + #113) | fc5d4bd | 19980 | 10+0.1 | **+38.34 +/- 4.26** | **Mobility evaluation for knight, bishop, rook and queen — the first per-change row in this table.** 18 shards x 555 pairs, pooled Ptnml(0-2) [1155, 1307, 3706, 1831, 1991], score 55.50%, run `31191858114`. 95% interval **[+34.08, +42.60]**, excluding zero by eight standard errors — decisive, not suggestive. Reference resolved automatically as the merge base (#226's first production use), so the delta is attributable to this change alone rather than to everything landed since a tag. **Read this as the NET of two opposing effects**: the term costs **-6.2% nps** (`Run-Bench.ps1` depth 12, per-position -8.1% to +3.2%), i.e. roughly 10 Elo of search speed at the project's ~1.7 Elo per 1% conversion, so the evaluation improvement is worth about +48 gross. Weights are deliberately untuned literature-standard values with a per-piece baseline offset (counts measured relative to typical mobility, not absolute) — #117 owns tuning, and this row is the pre-tuning figure. Interval width ±4.26 against the instrument's calibrated ±4.15 at the same game count, so no loss of resolution. Not comparable with any other row in this table: each has its own merge base |
 
 ## Linux CI — anchor measurements
 

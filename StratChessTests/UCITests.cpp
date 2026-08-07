@@ -472,7 +472,14 @@ static int extract_sum_white_pov(const std::string& output)
 // Every term the breakdown prints, in table order. Material is a row like any
 // other: it is the largest single contribution and a sign error there would be
 // the easiest one to miss.
-static const char* const kBreakdownTerms[] = { "material", "pawns", "rooks", "pst", "mopup" };
+// Every row the breakdown prints. The list must stay complete: the sum check
+// below compares these nets against the printed total, so a missing row makes
+// the invariant vacuous rather than failing loudly -- it passed for a while
+// with `bishops` and `castling` absent only because both were zero in the
+// positions tested here.
+static const char* const kBreakdownTerms[] = {
+    "material", "pawns", "rooks", "pst", "mopup", "bishops", "castling", "mobility"
+};
 
 TEST_CASE("cmd_eval: printed breakdown nets are white-minus-black and sum to the evaluator's score", "[uci]")
 {
