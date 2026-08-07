@@ -144,11 +144,16 @@ struct EvalContext
 	std::span<const BITBOARD>  boards;             // Board::GetBitBoards(), indexed by ePiece
 	BITBOARD                   all_pieces;          // boards[ALL_PIECES]
 	BITBOARD                   pawns[NUM_COLORS];   // boards[WHITE_PAWN] / boards[BLACK_PAWN]
-	// boards[ALL_WHITE_PIECES] / boards[ALL_BLACK_PIECES]. Unread by any term
-	// today (same for all_pieces above) — both are populated because issue #98
-	// (Mobility) needs per-color occupancy to mask off blocked squares. Do not
-	// remove as dead code; see D3 in eval-context-restructure.md.
+	// boards[ALL_WHITE_PIECES] / boards[ALL_BLACK_PIECES]. Read by eval_mobility
+	// to mask off squares occupied by the side's own pieces (issue #98).
 	BITBOARD                   occupied[NUM_COLORS];
+	// Squares each color's pawns attack. Derived here rather than read from
+	// Board, using the same file-masked shifts MoveGenerator::GeneratePawnCaptures
+	// uses, so the two cannot disagree about what an edge-file pawn covers.
+	// eval_mobility subtracts the ENEMY set: a square an enemy pawn guards is not
+	// one a piece can usefully occupy. Issue #116 (backwards pawns) will want
+	// these too, which is why they live in the context rather than in one term.
+	BITBOARD                   pawn_attacks[NUM_COLORS];
 	// NO_SQUARE for a color with no king on the board. That only happens for a
 	// default-constructed or failed-parse Board — MoveGenerator.cpp asserts
 	// both kings exist before any search runs, so every position the search
@@ -207,6 +212,7 @@ struct EvalBreakdown
 	int                    mopup[NUM_COLORS];    // eval_mopup
 	int                    bishops[NUM_COLORS];  // eval_bishops
 	int                    castling[NUM_COLORS]; // eval_castling
+	int                    mobility[NUM_COLORS]; // eval_mobility
 	// Included because it is not derivable from the rows: it sets where between
 	// the mg and eg endpoints every tapered term landed, and gates eval_mopup.
 	int                    phase;
@@ -247,6 +253,25 @@ class EvalComplex final
 	// from move history; see .claude/plans/eval-bishop-pair-connected-rooks-castling.md D2.
 	static const short CASTLING_DONE_BONUS		= 25;
 	static const short CASTLING_LOST_PENALTY	= 20;
+
+	// Mobility (issues #98, #113): value of one reachable square, per piece
+	// type. Weighted per type because an extra square is worth much less to a
+	// queen -- which already has many -- than to a knight, and phase-split
+	// because a rook's mobility matters more once files open in the endgame.
+	//
+	// These are conservative literature-standard magnitudes, deliberately NOT
+	// hand-tuned: #117 (automated Texel-style tuning) owns the values, and this
+	// term is unusually sensitive to them. Mobility overlaps the PSTs, which
+	// already reward central placement -- expect a smaller gain than the raw
+	// weights suggest and treat that as a retuning input, not a defect.
+	static const short MOBILITY_KNIGHT_MG		= 4;
+	static const short MOBILITY_KNIGHT_EG		= 4;
+	static const short MOBILITY_BISHOP_MG		= 5;
+	static const short MOBILITY_BISHOP_EG		= 5;
+	static const short MOBILITY_ROOK_MG		= 2;
+	static const short MOBILITY_ROOK_EG		= 4;
+	static const short MOBILITY_QUEEN_MG		= 1;
+	static const short MOBILITY_QUEEN_EG		= 2;
 
 	// Mop-up evaluation (won pawnless endgames) — see issue #70 / epic #110.
 	// Gated on: pawnless + decisive material lead. Rewards pushing the losing
@@ -318,6 +343,7 @@ class EvalComplex final
 	static ScorePair eval_mopup(const EvalContext& ctx, eColor color) noexcept;
 	static ScorePair eval_bishops(const EvalContext& ctx, eColor color) noexcept;
 	static ScorePair eval_castling(const EvalContext& ctx, eColor color) noexcept;
+	static ScorePair eval_mobility(const EvalContext& ctx, eColor color) noexcept;
 
 public:
 	int Evaluate(const Board& board) const noexcept override;

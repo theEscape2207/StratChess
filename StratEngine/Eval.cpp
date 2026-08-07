@@ -355,6 +355,80 @@ ScorePair EvalComplex::eval_pst(const EvalContext& ctx, eColor color) noexcept
 	return ScorePair{ score + kingMg, score + kingEg };
 }
 
+// eval_mobility -- how many squares this color's pieces can move to (issues
+// #98 and #113).
+//
+// PSEUDO-LEGAL, not legal: filtering for check-legality would need move
+// generation per piece per node, and Evaluate() runs at quiescence frequency.
+// Every strong engine counts pseudo-legal squares here; the difference is noise
+// next to the term's weight.
+//
+// SAFE mobility: squares an enemy pawn covers are excluded, because a square a
+// pawn guards is not one a knight can usefully occupy.
+//
+// Enemy-OCCUPIED squares are INCLUDED -- a piece that can capture is active, and
+// this needs one mask rather than two. Both conventions exist in the literature;
+// what matters is that every piece type below uses the same one, which is why
+// the mask is computed once here rather than per type.
+//
+// The king is deliberately absent: king mobility is a king-safety signal and
+// belongs with issue #97, where it can be weighed against attacker counts rather
+// than paid as a flat per-square bonus.
+ScorePair EvalComplex::eval_mobility(const EvalContext& ctx, eColor color) noexcept
+{
+	const eColor enemy = (color == WHITE) ? BLACK : WHITE;
+	const BITBOARD usable = ~ctx.occupied[color] & ~ctx.pawn_attacks[enemy];
+
+	int mg = 0;
+	int eg = 0;
+
+	auto knights = ctx.boards[(color == WHITE) ? ePiece::WHITE_KNIGHT : ePiece::BLACK_KNIGHT];
+	while (knights)
+	{
+		const eSquare square = Board::GetFirstPiece(knights);
+		const int count = std::popcount(g_bbKnightMoves[square] & usable);
+		mg += count * MOBILITY_KNIGHT_MG;
+		eg += count * MOBILITY_KNIGHT_EG;
+		knights = Bits::clearLsb(knights);
+	}
+
+	auto bishops = ctx.boards[(color == WHITE) ? ePiece::WHITE_BISHOP : ePiece::BLACK_BISHOP];
+	while (bishops)
+	{
+		const eSquare square = Board::GetFirstPiece(bishops);
+		const int count = std::popcount(BishopAttacks(square, ctx.all_pieces) & usable);
+		mg += count * MOBILITY_BISHOP_MG;
+		eg += count * MOBILITY_BISHOP_EG;
+		bishops = Bits::clearLsb(bishops);
+	}
+
+	auto rooks = ctx.boards[(color == WHITE) ? ePiece::WHITE_ROOK : ePiece::BLACK_ROOK];
+	while (rooks)
+	{
+		const eSquare square = Board::GetFirstPiece(rooks);
+		const int count = std::popcount(RookAttacks(square, ctx.all_pieces) & usable);
+		mg += count * MOBILITY_ROOK_MG;
+		eg += count * MOBILITY_ROOK_EG;
+		rooks = Bits::clearLsb(rooks);
+	}
+
+	// A queen is a rook and a bishop on the same square; there is no separate
+	// PEXT table for it (Magic.h), and the union is what every generator uses.
+	auto queens = ctx.boards[(color == WHITE) ? ePiece::WHITE_QUEEN : ePiece::BLACK_QUEEN];
+	while (queens)
+	{
+		const eSquare square = Board::GetFirstPiece(queens);
+		const BITBOARD attacks =
+			RookAttacks(square, ctx.all_pieces) | BishopAttacks(square, ctx.all_pieces);
+		const int count = std::popcount(attacks & usable);
+		mg += count * MOBILITY_QUEEN_MG;
+		eg += count * MOBILITY_QUEEN_EG;
+		queens = Bits::clearLsb(queens);
+	}
+
+	return ScorePair{ mg, eg };
+}
+
 // eval_mopup — mop-up evaluation for one color (issue #127 restructure — see
 // .claude/plans/eval-context-restructure.md; original term issue #70 /
 // epic #110). In decisively-won, pawnless endings, reward driving the losing
@@ -475,11 +549,26 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 		}
 	}
 
+	// Pawn attack sets, shifted exactly as MoveGenerator::GeneratePawnCaptures
+	// does. The file mask drops the pawns that would wrap around the board edge:
+	// a pawn on the h-file has no "right" capture. Squares are included whether or
+	// not anything stands on them -- this is the set a pawn COVERS, which is what
+	// makes a square unusable for an enemy piece, not the set it can capture on.
+	const BITBOARD whitePawnsBb = boardsSpan[ePiece::WHITE_PAWN];
+	const BITBOARD blackPawnsBb = boardsSpan[ePiece::BLACK_PAWN];
+	const BITBOARD whitePawnAttacks =
+		(Bits::clearBits(whitePawnsBb, g_bbFileMask[eFileNames::RIGHT_FILE]) >> 7) |
+		(Bits::clearBits(whitePawnsBb, g_bbFileMask[eFileNames::LEFT_FILE]) >> 9);
+	const BITBOARD blackPawnAttacks =
+		(Bits::clearBits(blackPawnsBb, g_bbFileMask[eFileNames::RIGHT_FILE]) << 9) |
+		(Bits::clearBits(blackPawnsBb, g_bbFileMask[eFileNames::LEFT_FILE]) << 7);
+
 	return EvalContext{
 		.boards = boardsSpan,
 		.all_pieces = boardsSpan[ALL_PIECES],
-		.pawns = { boardsSpan[ePiece::WHITE_PAWN], boardsSpan[ePiece::BLACK_PAWN] },
+		.pawns = { whitePawnsBb, blackPawnsBb },
 		.occupied = { boardsSpan[ePiece::ALL_WHITE_PIECES], boardsSpan[ePiece::ALL_BLACK_PIECES] },
+		.pawn_attacks = { whitePawnAttacks, blackPawnAttacks },
 		.king_sq = { whiteKingSq, blackKingSq },
 		.material = { matScoreWhite, matScoreBlack },
 		.phase = gamePhase,
@@ -525,7 +614,8 @@ int EvalComplex::Evaluate(const Board& board) const noexcept
 		           + BlendPhase(eval_pst(ctx, c),      ctx.phase)
 		           + BlendPhase(eval_mopup(ctx, c),    ctx.phase)
 		           + BlendPhase(eval_bishops(ctx, c),  ctx.phase)
-		           + BlendPhase(eval_castling(ctx, c), ctx.phase);
+		           + BlendPhase(eval_castling(ctx, c), ctx.phase)
+		           + BlendPhase(eval_mobility(ctx, c), ctx.phase);
 	}
 
 	const eColor color = board.GetCurrentColor();
@@ -568,6 +658,7 @@ EvalBreakdown EvalComplex::Breakdown(const Board& board) const noexcept
 		.mopup    = { BlendPhase(eval_mopup(ctx, WHITE), ctx.phase), BlendPhase(eval_mopup(ctx, BLACK), ctx.phase) },
 		.bishops  = { BlendPhase(eval_bishops(ctx, WHITE), ctx.phase), BlendPhase(eval_bishops(ctx, BLACK), ctx.phase) },
 		.castling = { BlendPhase(eval_castling(ctx, WHITE), ctx.phase), BlendPhase(eval_castling(ctx, BLACK), ctx.phase) },
+		.mobility = { BlendPhase(eval_mobility(ctx, WHITE), ctx.phase), BlendPhase(eval_mobility(ctx, BLACK), ctx.phase) },
 		.phase    = ctx.phase,
 		.total    = Evaluate(board),
 	};
