@@ -216,11 +216,9 @@ change.
 - Mate in 1 (queen delivers back-rank mate): engine plays Qd8# (`6k1/5ppp/8/8/8/8/3Q4/6K1`)
   — queen slides along the d-file; lands 3 squares from king (cannot be captured)
 - Capture hanging rook: engine captures undefended piece (`4k3/8/8/8/8/8/8/2rQK3`)
-- QFORK-001 regression (issue #66): KQ vs KR domination (`8/8/8/3r4/4k3/8/8/3QK3`) —
-  null-move pruning must not hide the zugzwang-based rook win; two moves accepted
-  (Qa4+/Qb3), so it lives in a dedicated `TEST_CASE` outside `kFastCases`
-  (whose rows require a unique best move) — this `TEST_CASE` is now hidden via
-  Catch2's `[.]` tag (see Regression history below, and issue #118)
+- (QFORK-001 was removed in #235 — its best move was depth-dependent, so it tested nothing
+  stable. The null-move-pruning zugzwang guard it was written for, #66, is code-level in
+  `should_try_null_move()` and unaffected.)
 
 ### Slow Tactical Tier (`[tactical_full][slow]`)
 
@@ -403,7 +401,8 @@ for an in-repo-assets-only corpus, or see `--help` for `--pgn-dir`/`--every-n-pl
 ### Full tactical suite in main executable
 
 **Status**: ✅ **Done.** Tactical runner landed March 2026 (8 positions); expanded to 31
-positions July 2026 (WAC mate + tactical batches), 31/31 passing (100%).
+positions July 2026 (WAC mate + tactical batches), then to **37** in August 2026 — QFORK-001
+removed and seven depth-verified WAC positions added (#235). **37/37 passing (100%).**
 **Files**: `StratEngine/Tests/TacticalTestRunner.h/cpp`, `Tests/tactical_test_cases.json`
 **Invocation**: run from `Tests/` directory: `StratChessEvolved.exe tactical test`
 (defaults to `tactical_test_cases.json`) or `StratChessEvolved.exe tactical test
@@ -523,6 +522,15 @@ accepted if `Scripts/verify_mate_key.py "<FEN>" <uci_move> <N>` prints `CONFIRME
 (ground truth via python-chess, not manual analysis); for non-mate categories the
 engine's move must strictly match the EPD `bm`. Once a candidate is confirmed, move its
 entry into `tactical_test_cases.json` and delete it from the staging file.
+
+**Depth stability is a hard requirement, not a preference.** A position whose best move changes
+with search depth is not a regression test. QFORK-001 was accepted on a single depth-4 check and
+then answered `d1-b3`, `d1-g4` and `d1e2` at different depths, sitting failed in the suite for over
+a month before anyone questioned it (#235). Before promoting a candidate, run it at several depths
+around its target — 4-8 is a reasonable band — and require the **same** expected move at every one.
+A position that only solves from depth 6 upward is fine; commit it with `depth: 6`, having verified
+6 through 9. Prefer positions decided by a decisive material or mating margin: the ones decided by
+a few centipawns are exactly what produces a razor-thin tie that any eval change can tip.
 
 ---
 

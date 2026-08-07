@@ -41,14 +41,6 @@
       "depth": 5
     },
     {
-      "id": "QFORK-001",
-      "category": "queen_fork",
-      "description": "Queen wins rook: Qa4+ forks king and Rd5; Qb3 threatens Qxd5",
-      "fen": "8/8/8/3r4/4k3/8/8/3QK3 w - - 0 1",
-      "best_moves": ["d1a4", "d1b3"],
-      "depth": 4
-    },
-    {
       "id": "BACK-003",
       "category": "back_rank",
       "description": "White rook captures black back-rank rook with check",
@@ -246,6 +238,62 @@
       "description": "WAC.045 Qxa1 (Black): back-rank pin wins the rook (ce +778)",
       "fen": "7k/2p1b1pp/8/1p2P3/1P3r2/2P3Q1/1P5P/R4qBK b - - 0 1",
       "best_moves": ["f1a1"],
+      "depth": 6
+    },
+    {
+      "id": "WAC-003",
+      "category": "tactical_win",
+      "description": "WAC.003 Rg3: deflects the queen off the back-rank defence",
+      "fen": "5rk1/1ppb3p/p1pb4/6q1/3P1p1r/2P1R2P/PP1BQ1P1/5RKN w - - 0 1",
+      "best_moves": ["e3g3"],
+      "depth": 6
+    },
+    {
+      "id": "WAC-006",
+      "category": "tactical_win",
+      "description": "WAC.006 Rb7: rook cuts the king off in a pawn endgame",
+      "fen": "7k/p7/1R5K/6r1/6p1/6P1/8/8 w - - 0 1",
+      "best_moves": ["b6b7"],
+      "depth": 6
+    },
+    {
+      "id": "WAC-007",
+      "category": "tactical_win",
+      "description": "WAC.007 Ne3 (Black): knight fork wins material",
+      "fen": "rnbqkb1r/pppp1ppp/8/4P3/6n1/7P/PPPNPPP1/R1BQKBNR b KQkq - 0 1",
+      "best_moves": ["g4e3"],
+      "depth": 6
+    },
+    {
+      "id": "WAC-008",
+      "category": "tactical_win",
+      "description": "WAC.008 Rf7: rook infiltration on the seventh decides",
+      "fen": "r4q1k/p2bR1rp/2p2Q1N/5p2/5p2/2P5/PP3PPP/R5K1 w - - 0 1",
+      "best_moves": ["e7f7"],
+      "depth": 6
+    },
+    {
+      "id": "WAC-010",
+      "category": "tactical_win",
+      "description": "WAC.010 Rxh7: rook sacrifice tears open the king",
+      "fen": "2br2k1/2q3rn/p2NppQ1/2p1P3/Pp5R/4P3/1P3PPP/3R2K1 w - - 0 1",
+      "best_moves": ["h4h7"],
+      "depth": 5
+    },
+    {
+      "id": "WAC-011",
+      "category": "tactical_win",
+      "description": "WAC.011 Bxc6: bishop capture wins a piece",
+      "fen": "r1b1kb1r/3q1ppp/pBp1pn2/8/Np3P2/5B2/PPP3PP/R2Q1RK1 w kq - 0 1",
+      "best_moves": ["f3c6"],
+      "depth": 5
+    },
+    {
+      "id": "WAC-014",
+      "category": "tactical_win",
+      "description": "WAC.014 Qxh7+: queen sacrifice cracks the king position",
+      "fen": "r2rb1k1/pp1q1p1p/2n1p1p1/2bp4/5P2/PP1BPR1Q/1BPN2PP/R5K1 w - - 0 1",
+      "best_moves": ["h3h7"],
       "depth": 6
     }
   ]
