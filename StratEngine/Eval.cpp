@@ -493,6 +493,14 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 			unionOfTypes |= boardsSpan[p];
 		assert(unionOfTypes == boardsSpan[ALL_PIECES] &&
 			"Eval: per-type piece bitboards do not reconstruct ALL_PIECES");
+
+		// The per-COLOR occupancy is a separate pair of bitboards, and until
+		// eval_mobility (#98) no Eval term read them -- so the check above never
+		// covered them. Mobility masks against occupied[], so a drift there
+		// silently mis-scores every position rather than tripping anything.
+		assert((boardsSpan[ePiece::ALL_WHITE_PIECES] | boardsSpan[ePiece::ALL_BLACK_PIECES])
+				== boardsSpan[ALL_PIECES] &&
+			"Eval: per-color occupancy does not reconstruct ALL_PIECES");
 	}
 #endif
 

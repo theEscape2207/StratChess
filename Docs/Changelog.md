@@ -60,9 +60,12 @@ cause is not this term: with the mobility weights zeroed — behaviourally `main
 depth 8. A depth sweep showed it oscillating PASS/FAIL/PASS/FAIL across depths 5-8 both with and
 without mobility, so it never met the depth-stability criterion #235 introduced. Suite is 36/36.
 
-The sweep also found that **13 of the 37 positions are not depth-stable**; they merely happen to be
-pinned at a depth that works. #235's criterion was applied to the seven positions added there, not to
-the 30 that predate it. Tracked separately rather than widened into this change.
+The sweep also separated two things that look alike. Ten positions simply **need more depth** — they
+fail shallow and pass at every greater depth, which is normal and fine. Three get **worse with more
+search**: `WAC-043` is correct at depths 5, 6 and 7 and wrong at 8; `WAC-287` alternates strictly with
+parity; `WAC-065` dips at 6 and recovers. A deeper search returning a worse move is a property of the
+search, not of the position, and nothing in the repository currently tests for it — `tactical
+stability` checks repeat runs at ONE depth. Filed as #237.
 
 **Two tests were re-pointed from `Evaluate()` to the term they are about.** The #126 open-file tests
 asserted whole-position equality to prove a claim about `eval_rooks`; moving a knight or a pawn

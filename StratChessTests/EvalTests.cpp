@@ -758,6 +758,42 @@ TEST_CASE("Eval - eval_mobility: squares covered by an enemy pawn do not count (
             < EvalComplexTestFixture::Mobility(unguarded, WHITE));
 }
 
+TEST_CASE("Eval - eval_mobility: the safe-mobility mask is colour-symmetric", "[eval]")
+{
+    // The case above asserts WHITE's mobility against a BLACK pawn, so it only
+    // ever exercises the white pawn-attack shifts. This mirrors it, which is the
+    // only thing that touches the black `<<9`/`<<7` expression in BuildContext.
+    //
+    // Worth its own case because the failure is silent: a transposed shift or a
+    // swapped file mask would compile, pass every other test, and quietly cost
+    // Black a few squares per node in every game of a 20,000-game run. Issue
+    // #125 was this exact class of defect.
+    //
+    // The pawn must be on an EDGE FILE. A central pawn cannot discriminate:
+    // both file masks pass it through, so `p<<9 | p<<7` is the same set however
+    // the two shifts are ordered, and a transposition survives the test. The
+    // masks exist only to stop an a- or h-file pawn wrapping around the board,
+    // so only an a- or h-file pawn tests them.
+    //
+    // Black pawn a7 covers b6 and nothing else (the other diagonal would wrap).
+    // The knight on d5 reaches b6, so the count drops from 8 to 7. Under
+    // transposed shifts the pawn's attack lands on h7 instead, the knight
+    // reaches none of it, and the count stays 8.
+    Board whiteSide("4k3/p7/8/3N4/8/8/8/4K3 w - - 0 1");
+    Board blackSide("4k3/8/8/8/3n4/8/P7/4K3 b - - 0 1");
+
+    REQUIRE(EvalComplexTestFixture::Mobility(whiteSide, WHITE)
+            == EvalComplexTestFixture::Mobility(blackSide, BLACK));
+
+    // ...and the mask must actually be biting, or the equality above is vacuous.
+    Board whiteUnmasked("4k3/8/8/3N4/8/8/8/4K3 w - - 0 1");
+    Board blackUnmasked("4k3/8/8/8/3n4/8/8/4K3 b - - 0 1");
+    REQUIRE(EvalComplexTestFixture::Mobility(whiteSide, WHITE)
+            < EvalComplexTestFixture::Mobility(whiteUnmasked, WHITE));
+    REQUIRE(EvalComplexTestFixture::Mobility(blackSide, BLACK)
+            < EvalComplexTestFixture::Mobility(blackUnmasked, BLACK));
+}
+
 TEST_CASE("Eval - eval_mobility: own pieces block, enemy pieces are capture targets", "[eval]")
 {
     // Pins the D3 convention: `attacks & ~occupied[own]`, so an enemy piece on a
