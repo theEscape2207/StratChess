@@ -25,8 +25,8 @@ on:
         description: "Total games across all shards (2 per opening pair; rounded down to fit the shards evenly)"
         default: "20000"
       shards:
-        description: "Parallel match jobs. 20x1000 games is ~3 h wall-clock; below ~16 a shard can exceed the job timeout"
-        default: "20"
+        description: "Parallel match jobs. 18x1110 games is ~3 h wall-clock and leaves 2 of the 20 concurrent-job slots free, so other PRs still move; 20 consumes the whole allowance. Below ~16 a shard can exceed the job timeout"
+        default: "18"
       candidate_tc:
         description: "Candidate time control, seconds+increment"
         default: "10+0.1"
@@ -127,10 +127,10 @@ jobs:
           echo "Plan: $SHARDS shards x $games_per_shard games = $actual_games games"
 
   # ---------------------------------------------------------------------------
-  # Build both engines and stage the harness ONCE. Across 20 shards this saves
+  # Build both engines and stage the harness ONCE. Across 18 shards this saves
   # ~1 hour of duplicated runner time, but the real argument is correctness:
   # every shard must play the same two binaries against the same book. Building
-  # once and shipping artifacts guarantees that; 20 independent builds only
+  # once and shipping artifacts guarantees that; 18 independent builds only
   # assume it.
   # ---------------------------------------------------------------------------
   build:
@@ -253,7 +253,7 @@ jobs:
   match:
     needs: [setup, build]
     runs-on: ubuntu-24.04
-    # A 1000-game shard at 10+0.1 with concurrency 3 runs ~162 min. This leaves
+    # A 1110-game shard at 10+0.1 with concurrency 3 runs ~172 min. This leaves
     # headroom without touching the 6 h job cap.
     timeout-minutes: 340
     strategy:
