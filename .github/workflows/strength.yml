@@ -416,6 +416,11 @@ jobs:
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    # Scoped to this job, which is the only one that writes anything back. The
+    # other jobs keep the default read-only token.
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v7
 
@@ -488,6 +493,8 @@ jobs:
             --expect-shards "$SHARDS" \
             shards/*/match.log | tee /tmp/pooled.md
 
+      # Built once into a file and used twice, so the pull-request comment and
+      # the job summary cannot drift apart.
       - name: Report
         if: always()
         run: |
@@ -506,4 +513,37 @@ jobs:
             echo
             echo "Error bar is pentanomial: pooled over colour-swapped PAIRS, which are the"
             echo "independent unit. Pooling raw W/L/D would understate the variance."
-          } >> "$GITHUB_STEP_SUMMARY"
+            echo
+            echo "[Run ${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          } > /tmp/report.md
+          cat /tmp/report.md >> "$GITHUB_STEP_SUMMARY"
+
+      # A three-hour measurement is worth little if it is only discoverable by
+      # remembering which run produced it, so the result is posted to the pull
+      # request for the dispatched branch.
+      #
+      # Only when pooling succeeded: a discarded batch has no figure to report,
+      # and the job summary already explains the discard.
+      #
+      # A dispatch always runs on a branch of this repository, so any pull
+      # request found here is same-repo and the token can comment on it. The
+      # fork restriction that would otherwise need `pull_request_target` (see
+      # invariant 6) cannot arise on this trigger.
+      #
+      # Exactly one open pull request, or nothing: none and the run was not for
+      # a review, several and the right thread is a guess. Either way the job
+      # summary has already been written, so nothing is lost by staying quiet.
+      - name: Comment on the branch's pull request
+        if: steps.pool.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          prs=$(gh pr list --head "$GITHUB_REF_NAME" --state open --json number --jq '.[].number')
+          count=$(printf '%s' "$prs" | grep -c '[0-9]' || true)
+          if [ "$count" -ne 1 ]; then
+            echo "Found $count open pull requests for '$GITHUB_REF_NAME'; the job summary is the only report."
+            exit 0
+          fi
+          gh pr comment "$prs" --body-file /tmp/report.md
+          echo "Posted the result to pull request #$prs."
