@@ -1,6 +1,31 @@
 # Mobility Evaluation (+ Queen Activity)
 
-**Issues**: #98, #113 · **Epic**: #110 Tier 2 · **Status**: ready to execute
+**Issues**: #98, #113 (both closed) · **Epic**: #110 Tier 2 · **Status**: done, PR #238
+
+## Outcome
+
+**+38.34 ± 4.26 Elo** over 19,980 games against the merge base (run `31191858114`, 95% interval
+[+34.08, +42.60], score 55.50%) — the first per-change row in `Docs/EloLog.md`'s Linux ledger. Net of
+a **-6.2% nps** cost, so the evaluation improvement is worth roughly +48 gross. Detail in
+`Docs/Changelog.md`.
+
+**Two design decisions came from the `eval-reviewer` pass and are not in the sections below**, which
+record the pre-implementation design:
+
+- **Counts are relative to a per-piece baseline** (`MOBILITY_BASE_*`), not absolute. Absolute counts
+  are strictly positive, so the term acted as a piece-value adjustment across trades and would have
+  handed #117 mobility entangled with material. It also removed an interaction this plan did not
+  anticipate: in KBNvK, absolute counts gave mobility +47 against `eval_mopup`'s 12 — an unsuppressed
+  centralization pull four times the term meant to be steering, the same failure `eval_pst` had to
+  solve for the king PST (#118 item 4). Relative counts put it at -4, with no special-casing.
+- **Bishop is 3 per square against the knight's 4**, not 5. Bishops see 7-13 squares to a knight's
+  2-8, so equal weights handed the bishop ~2.5x the total — an undeclared material change, since
+  `g_iPieceValues` rates both minors at 300.
+
+**Left for later, deliberately**: sharing rook attack sets between `eval_rooks` and `eval_mobility`
+(<1 Elo of nps) is folded into #97, which needs the same attack sets and should design their shape
+once. #234 (mop-up stalemate awareness) is now unblocked. #237 was opened from this work.
+
 **Supersedes**: the design sketch of 2026-07-24, whose measurement section predates the CI strength lab
 
 ## Goal
