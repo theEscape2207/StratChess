@@ -515,36 +515,89 @@ automatic trigger makes likely, because when it was written one run was assumed 
 **Any trigger design needs a repo-wide serialisation group** — a constant such as `strength-lab`
 rather than one keyed on `github.ref`. Decide this before the trigger, not after.
 
-#### The highest-risk piece: making a decidable run affordable
+#### Making a decidable run affordable — decided
 
-20,000 games is the *resolution* figure, not the *decision* figure. `Run-EloMatch.ps1` solves this
-locally with `-Sprt`, which stops as soon as the result is decisive. The CI lab has no SPRT, so it
-always plays the full batch even when the answer was obvious at 15%.
+20,000 games is the *resolution* figure, not the *decision* figure. A full batch is three hours, and
+most of that is wasted on candidates whose answer was obvious early.
 
-SPRT is genuinely awkward under sharding: it is sequential, and 18 independent shards cannot stop one
-another. Eighteen shards each running their own SPRT would be eighteen independent tests, which is
-simply wrong. Two shapes were considered; **the measured resolution now decides between them.**
+**The decision: a single 6,000-game screen at bounds `[-5, +5]`, then a full batch for survivors.**
 
-Intervals scale as `1/sqrt(n)`, so from the measured ±4.15 at 19,980 games:
+##### The sizing constant
 
-| Games | Interval |
+Everything below comes from this project's own calibration rather than a textbook. The 18-shard null
+test gave ±4.15 at 9,990 pairs; a 95% interval is 1.96 SE, so SE = 2.117 Elo and, since
+`SE = sigma/sqrt(n)`:
+
+> **sigma ~= 212 Elo per colour-swapped pair** — the information one pair carries.
+
+With SPRT crossing at `A = ln((1-beta)/alpha) = ln(19) ~= 2.944` for `alpha = beta = 0.05`, expected
+LLR gain per pair is `(elo1 - elo0)/sigma^2 * (true - midpoint)`, which gives
+
+> **E[games] ~= 26,365 * (10 / width) / |true - midpoint|**
+
+Checked against three real runs before being relied on: the tapered-eval row predicts LLR 1.99 at
+1,000 pairs against 1.90 observed; the bishop-pair row predicts 265 games against 288; the
+clang-vs-MSVC row predicts 373 against 622, which is within the spread of a single SPRT realisation.
+
+##### Two properties that drive the design
+
+- **The midpoint is the threshold being tested.** `[0, 10]` and `[-5, 15]` both have midpoint 5, so
+  they ask the same question and differ only in speed. A pair of bounds can never decide a true value
+  sitting exactly on its midpoint.
+- **The width is the speed knob.** Doubling the width halves the games.
+
+##### Why the midpoint is 0 and not 5
+
+A `>= 5 Elo` screen would be actively harmful here. Epic #110 is twelve terms each expected to be
+worth single digits; twelve genuine `+3`s are worth roughly 40 Elo together but every one of them
+fails a `+5` threshold individually. Testing "is this positive" keeps them. Symmetric `[-5, +5]`
+does that, and still kills a `-3` regression in about 80 minutes.
+
+##### Why one look and not several
+
+The cap equals the look, so **there is no sequential testing left** — this is a fixed 6,000-game
+batch with an LLR decision rule, not a group-sequential design. No alpha-spending function is needed
+and none is being skipped: the repeated-looks problem is avoided by not having repeated looks. The
+cost is that an obvious disaster still pays the full 55 minutes instead of dying at 1,300 games; the
+gain is a bounded, predictable cost per candidate and a much simpler aggregator.
+
+##### What 6,000 games buys
+
+Expected LLR after 3,000 pairs is `0.67 * true`, so the screen decides when **|true| >~ 4.4 Elo** and
+returns inconclusive below that. The batch's own interval is ±7.6, so it genuinely cannot resolve a
+3-Elo term either way. That is the screen working as designed — **"inconclusive" must never be read
+as "zero"**, which is the same discipline `Docs/EloLog.md` already applies to SPRT runs that hit
+their cap.
+
+##### The decision tree
+
+```
+dispatch 6,000 games at [-5, +5]   (~55 min, one dispatch)
+  -> pool, compute LLR
+     LLR >= +2.944  -> H1: on the positive side. Promote to a full 20,000-game
+                       batch, which is what produces the number for the ledger.
+     LLR <= -2.944  -> H0: on the negative side. Reject; record the decision.
+     otherwise      -> INCONCLUSIVE. Not zero, not a pass. A judgement call:
+                       spend a full batch, or drop the term.
+```
+
+Expected screen outcomes, from the formula above:
+
+| True Elo | Screen result |
 |---|---|
-| 4,000 | ~±9.3 |
-| 5,000 | ~±8.3 |
-| 10,000 | ~±5.9 |
-| 19,980 | **±4.15** |
+| +7 | H1 (would decide alone in ~3,800 games) |
+| +5 | H1, marginal |
+| +3 | inconclusive — needs a full batch to resolve |
+| 0 | inconclusive |
+| -3 | inconclusive |
+| -5 | H0, marginal |
+| -7 | H0 |
 
-- **Fixed smaller batch — rejected.** Epic #110's terms are single-digit; a ±8 interval cannot
-  resolve a 5-Elo term. A smaller batch does not serve the payload this plan exists for.
-- **Group-sequential — the recommendation.** Run a modest batch, pool, compute the LLR, re-dispatch
-  only if undecided. Statistically sound provided the repeated looks are accounted for (alpha
-  spending); the aggregator already emits exactly the pooled pentanomial counts an LLR needs.
-
-Group-sequential also helps the concurrency story rather than straining it. A 4,000-game first look
-is 18 shards × 222 pairs ≈ **37 minutes**, so it replaces one three-hour occupation with a series of
-short ones with free gaps between — which serves "usable during working hours" better than the shard
-count alone. Decide the alpha-spending scheme before writing anything, exactly as the pentanomial
-question was decided before the aggregator. This is M6's equivalent of that risk.
+**SPRT decides, it does not estimate.** An early stop leaves the point estimate subject to
+optional-stopping bias, which is why a survivor goes to a fixed batch rather than having its screen
+figure recorded. `Docs/EloLog.md` already documents this the hard way — its clang-vs-MSVC pair is a
+622-game SPRT for the decision and a separate 3,500-game batch for the estimate, explicitly not
+pooled.
 
 #### Design decisions already settled
 
@@ -572,13 +625,16 @@ question was decided before the aggregator. This is M6's equivalent of that risk
 
 #### Steps, in dependency order
 
-1. **Merge-base `reference_ref`.** Load-bearing and independent of every other decision — worth doing
-   whether or not the rest of M6 is ever built.
-2. **Decide the alpha-spending scheme** for group-sequential. Policy, not code.
-3. **Repo-wide serialisation group** on `strength.yml`.
+1. **Merge-base `reference_ref`** — in place (#226). `reference_ref` defaults to `merge-base`,
+   resolved and verified in `setup`.
+2. **Screening policy** — decided above: a single 6,000-game screen at `[-5, +5]`, then a full batch
+   for survivors. Policy, not code; the code is step 5.
+3. **Repo-wide serialisation group** — in place (#228). The group is the constant `strength-lab`.
 4. **Trigger on a `measure` label**, restricted to non-fork PRs.
-5. **Post the pooled verdict as a PR comment.**
-6. Then start working #110 sub-issues against it. This is the point where the whole plan pays.
+5. **Compute the LLR in `aggregate`** and report the screen's verdict. `pool_pentanomial.py` already
+   produces the pooled counts it needs, and its `--self-test` is where the LLR belongs too.
+6. **Post the pooled verdict as a PR comment.**
+7. Then start working #110 sub-issues against it. This is the point where the whole plan pays.
 
 #### What this milestone deliberately does not do
 
