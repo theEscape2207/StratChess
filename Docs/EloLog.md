@@ -22,6 +22,14 @@ table: see [`EloMeasurement.md`](EloMeasurement.md#4-the-linux-ci-instrument).
 **Calibrated 2026-08-05.** Both required runs passed, so results from this instrument may now be
 recorded and read. Neither is a strength measurement of anything — they measure the instrument.
 
+**Two kinds of reference, and they must not be mixed.** `reference_ref` defaults to `merge-base`,
+so a row normally compares a change against the commit it forked from and the delta is attributable
+to that change alone. Such rows are **not comparable with each other** — each has a different
+reference — and **must never be summed** to claim cumulative Elo: the errors compound, and Elo is
+not cleanly additive across changes that interact. For total progress, run against a fixed anchor
+(`elo-reference-v2`) deliberately and record it as such; that is what the anchors are preserved for.
+Every row's Reference column says which kind it is.
+
 | Date | Candidate | Reference | Games | TC | Elo diff | Notes |
 |---|---|---|---|---|---|---|
 | 2026-08-05 | c2a9f78 | c2a9f78 (same commit) | 200 | 10+0.1 vs **5+0.1** | 75.88 +/- 42.56 | **Known-sign control — PASS.** 100W/57L/43D (60.75%), LOS 99.99%, DrawRatio 31.00%, PairsRatio 2.29, Ptnml(0-2) [7, 14, 31, 25, 23]. Same binary both sides; the reference gets half the base time and the same increment. The interval [+33, +118] excludes zero, so the harness demonstrably detects a real strength difference — which is all this run claims. It does **not** measure what a 2x time handicap is worth, since there is no independent expectation to compare against. The base is halved and the increment left alone deliberately: at 5+0.05 the engine forfeits on `compute_budget()`'s 100 ms floor (#204), which would test the time manager rather than the harness. **Zero time losses** |

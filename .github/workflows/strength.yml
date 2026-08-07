@@ -19,8 +19,8 @@ on:
   workflow_dispatch:
     inputs:
       reference_ref:
-        description: "Reference side: git tag, branch or SHA (use the candidate's own SHA for a null test)"
-        default: elo-reference-v2
+        description: "Reference side. 'merge-base' measures this ref against where it forked from main, so the result is attributable to this change alone. A tag such as elo-reference-v2 measures cumulative strength instead; the candidate's own SHA is a null test"
+        default: merge-base
       games:
         description: "Total games across all shards (2 per opening pair; rounded down to fit the shards evenly)"
         default: "20000"
@@ -72,8 +72,46 @@ jobs:
       rounds_per_shard: ${{ steps.plan.outputs.rounds_per_shard }}
       games_per_shard: ${{ steps.plan.outputs.games_per_shard }}
       actual_games: ${{ steps.plan.outputs.actual_games }}
+      reference_sha: ${{ steps.reference.outputs.reference_sha }}
     steps:
+      # fetch-depth: 0 because the reference is resolved and verified here: a
+      # merge base needs history, and a tag or SHA needs its objects present.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Resolving here rather than in `build` follows the same rule as the
+      # pooling self-test below: a reference that does not exist costs seconds
+      # now instead of failing after Ninja and a full candidate build.
+      #
+      # Measuring against a fixed tag cannot separate this change's delta from
+      # the margin main had already accumulated, which is why the merge base is
+      # the default -- see Docs/EloLog.md.
+      - name: Resolve the reference
+        id: reference
+        env:
+          REFERENCE_REF: ${{ inputs.reference_ref }}
+        run: |
+          set -euo pipefail
+          if [ "$REFERENCE_REF" = "merge-base" ]; then
+            git fetch --no-tags --quiet origin main
+            if ! resolved=$(git merge-base HEAD FETCH_HEAD); then
+              echo "::error::No merge base between this ref and origin/main."
+              exit 1
+            fi
+            if [ "$resolved" = "$(git rev-parse HEAD)" ]; then
+              echo "::warning::The merge base is this very commit, so both sides are identical. This run is a null test, not a measurement of a change."
+            fi
+          else
+            resolved="$REFERENCE_REF"
+          fi
+
+          if ! sha=$(git rev-parse --verify --quiet "$resolved^{commit}"); then
+            echo "::error::Reference '$REFERENCE_REF' does not resolve to a commit."
+            exit 1
+          fi
+          echo "Reference: $REFERENCE_REF -> $sha"
+          echo "reference_sha=$sha" >> "$GITHUB_OUTPUT"
 
       # Per-shard concurrency has to be sized off PHYSICAL cores: a
       # single-threaded search gains nothing from SMT sharing, and
@@ -170,9 +208,9 @@ jobs:
       # The reference is built from its own source tree, not from a cached
       # binary: there is no Linux equivalent of EngineTesting\ here, and a
       # from-source build is what makes an arbitrary ref measurable.
-      - name: Build reference (${{ inputs.reference_ref }})
+      - name: Build reference (${{ inputs.reference_ref }} = ${{ needs.setup.outputs.reference_sha }})
         env:
-          REFERENCE_REF: ${{ inputs.reference_ref }}
+          REFERENCE_REF: ${{ needs.setup.outputs.reference_sha }}
         run: |
           set -euo pipefail
           git worktree add --detach "$RUNNER_TEMP/reference" "$REFERENCE_REF"
@@ -451,7 +489,7 @@ jobs:
             echo "| | |"
             echo "|---|---|"
             echo "| Candidate | ${{ needs.build.outputs.cand_name }} @ \`${{ github.ref_name }}\`, tc=${{ inputs.candidate_tc }} |"
-            echo "| Reference | ${{ needs.build.outputs.ref_name }} (\`${{ inputs.reference_ref }}\`), tc=${{ inputs.reference_tc }} |"
+            echo "| Reference | ${{ needs.build.outputs.ref_name }} (\`${{ inputs.reference_ref }}\` = \`${{ needs.setup.outputs.reference_sha }}\`), tc=${{ inputs.reference_tc }} |"
             echo "| Games | ${{ needs.setup.outputs.actual_games }} = ${{ inputs.shards }} shards x ${{ needs.setup.outputs.games_per_shard }}, concurrency ${{ inputs.concurrency }} per shard |"
             echo "| Book | \`$BOOK_FILE\` (${{ needs.build.outputs.openings }} openings) |"
             echo "| Toolchain | GCC on ubuntu-24.04, Release, Threads=1 |"
