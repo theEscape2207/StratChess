@@ -37,11 +37,19 @@ on:
         description: "Concurrent games PER SHARD. 4 vCPU per runner; validated at zero time losses at 3 -- raising it is what causes contention, not adding shards"
         default: "3"
 
+# One strength run at a time, repository-wide. The group is deliberately a
+# constant rather than keyed on the ref: a run takes 18 of the 20 concurrent
+# jobs, so two runs on different refs would not queue -- they would both start,
+# take nine shards each, and starve normal CI for far longer than either needs.
+#
 # Never cancel a running match: a superseded build is cheap to redo, an
-# interrupted multi-hour batch is an afternoon thrown away. Concurrent
-# dispatches queue.
+# interrupted multi-hour batch is an afternoon thrown away.
+#
+# Note that only ONE run can wait: GitHub keeps a single pending run per group
+# and cancels the previously pending one, so dispatching a third while a batch
+# is running silently supersedes the second. Dispatch deliberately.
 concurrency:
-  group: strength-${{ github.ref }}
+  group: strength-lab
   cancel-in-progress: false
 
 env:

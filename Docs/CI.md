@@ -139,6 +139,13 @@ same book. `match` is the shard matrix. `aggregate` pools them.
 | `candidate_tc` / `reference_tc` | Per-side time control. Halve the **base** for a handicap run — an increment under 0.1 s makes the engine play near-instantly at the bottom of its clock |
 | `concurrency` | Concurrent games **per shard**. Validated at 3; raising it causes contention, adding shards does not |
 
+**One run at a time, repository-wide.** The workflow's concurrency group is the constant
+`strength-lab`, not one keyed on the ref: a run takes 18 of the 20 concurrent jobs, so two runs on
+different refs would both start with nine shards each and starve normal CI for longer than either
+needs. A running batch is never cancelled. Only one run can wait, though — GitHub keeps a single
+pending run per group and cancels the previously pending one, so a third dispatch supersedes the
+second.
+
 **Shard slices are disjoint by arithmetic.** With `order=sequential`, shard *i* playing *R* pairs
 starts at opening `i*R + 1`. `aggregate` re-checks this every run by comparing the first FEN of each
 shard's PGN, and fails if two match.
