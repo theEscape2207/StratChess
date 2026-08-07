@@ -22,6 +22,39 @@ Newest first.
 
 ---
 
+## 2026-08-07 — Tactical suite is green again: QFORK-001 out, seven depth-verified positions in (#235)
+
+### Removed
+
+- **`QFORK-001`** from `Tests/tactical_test_cases.json`, and its `[.]`-hidden Catch2 twin from
+  `StratChessTests/TacticalTests.cpp`. Its best move was depth-dependent — `d1-b3` at depth 4-5,
+  `d1-g4` at 6+, and `d1e2` in the suite as it stood — so it tested nothing stable. Issue #66's
+  null-move-pruning zugzwang guard, which it was written for, is code-level in
+  `should_try_null_move()` and unaffected.
+
+### Added
+
+- **Seven WAC positions**, each verified to give the same best move at every depth in a band, not at
+  a single depth: WAC-010 and WAC-011 at depth 5 (stable 4-8), and WAC-003, 006, 007, 008 and 014 at
+  depth 6 (stable 6-9). All are `tactical_win`, which also thins the suite's mate-heavy skew.
+- **A depth-stability requirement** in `Docs/TestDesign.md`'s "Growing the suite" procedure — the
+  criterion whose absence let QFORK-001 in on a single depth-4 check.
+
+### Notes
+
+**The suite now reports 37/37 (100%).** It had been reporting 30/31 for over a month while printing
+`PASS`, because `TacticalTestRunner` has only an aggregate pass-rate threshold and 96.8% cleared it.
+A permanently-red case in a green suite trains everyone to skip the `FAIL` lines, so a *second*
+regression would have looked identical to the noise. Restoring "any FAIL is news" was the point of
+the change; the seven new positions are the bonus.
+
+**Three candidates were rejected by the same check that validated the rest** — one the engine never
+solves within depth 8, and two whose answers flapped across depths (`d4b5`/`b2b4`/`d4f5` and
+`g2g3`/`e1c1`/`c4e6`). They are exactly the class of position this issue existed to keep out, and
+they were caught before being committed rather than a month afterwards.
+
+---
+
 ## 2026-08-06 — Strength lab defaults to 18 shards, so a run stops blocking CI (#217 Experiment A)
 
 ### Changed
