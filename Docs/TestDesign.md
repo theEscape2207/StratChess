@@ -157,6 +157,12 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
     plus a direct `g_Eval_Bitboards` lookup) for both the middlegame and endgame tables
   - `eval_mopup`: only the winning color gets a nonzero contribution; both colors get 0 below the
     decisive-material threshold
+  - `eval_mobility` (#98, #113): a central knight outscores a cornered one; an open-file rook
+    outscores one boxed in behind its own pawns; a square covered by an enemy pawn stops counting
+    (the safe-mobility mask); an own piece blocks a bishop's diagonal while an enemy piece on the
+    same square does not (pinning the capture-target convention); a lone queen scores nonzero (#113,
+    so the queen cannot be silently skipped); and a bare king scores exactly 0 (king mobility is
+    #97's, not this term's)
   - Kingless board: a default-constructed `Board` (no kings, all bitboards zero) evaluates to
     exactly 0, as it did before the restructure. This is a **Debug-build** regression test in
     substance: `Board::GetFirstPiece` has an `assert(mask != 0)` precondition, so an unguarded king
