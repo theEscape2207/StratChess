@@ -520,7 +520,8 @@ rather than one keyed on `github.ref`. Decide this before the trigger, not after
 20,000 games is the *resolution* figure, not the *decision* figure. A full batch is three hours, and
 most of that is wasted on candidates whose answer was obvious early.
 
-**The decision: a single 6,000-game screen at bounds `[-5, +5]`, then a full batch for survivors.**
+**The decision: a single 6,000-game screen, promoting when the observed Elo is at least 1.645
+standard errors clear of zero, then a full batch for survivors.**
 
 ##### The sizing constant
 
@@ -530,74 +531,83 @@ test gave ±4.15 at 9,990 pairs; a 95% interval is 1.96 SE, so SE = 2.117 Elo an
 
 > **sigma ~= 212 Elo per colour-swapped pair** — the information one pair carries.
 
-With SPRT crossing at `A = ln((1-beta)/alpha) = ln(19) ~= 2.944` for `alpha = beta = 0.05`, expected
-LLR gain per pair is `(elo1 - elo0)/sigma^2 * (true - midpoint)`, which gives
+At 6,000 games (3,000 pairs) that is **SE = 3.87 Elo**, so the threshold is
+`1.645 * 3.87 = 6.4 Elo`.
 
-> **E[games] ~= 26,365 * (10 / width) / |true - midpoint|**
+##### Why a threshold and not an SPRT
 
-Checked against three real runs before being relied on: the tapered-eval row predicts LLR 1.99 at
-1,000 pairs against 1.90 observed; the bishop-pair row predicts 265 games against 288; the
-clang-vs-MSVC row predicts 373 against 622, which is within the spread of a single SPRT realisation.
+SPRT's log-likelihood ratio exists to support *sequential* stopping. The cap here equals the look, so
+there is exactly one look and nothing sequential left — this is a fixed-sample test, and a
+fixed-sample test's natural decision rule is the confidence interval `pool()` already computes.
 
-##### Two properties that drive the design
+That matters because **fastchess cannot compute a pooled LLR for us.** Its `-sprt` runs only during a
+live match: `man.md` documents no PGN-input mode and no stats-only mode, and running the screen
+unsharded so fastchess could do it live would take ~16 hours. An LLR would therefore have to be
+hand-written, and a hand-written one was measured against four real rows in `Docs/EloLog.md` and came
+out **1.3% to 4.6% high**, systematically, because fastchess estimates the variance under each
+hypothesis rather than pooling it. A decision rule biased toward "promote" is the worst kind of bug
+here: it looks exactly like the screen working.
 
-- **The midpoint is the threshold being tested.** `[0, 10]` and `[-5, 15]` both have midpoint 5, so
-  they ask the same question and differ only in speed. A pair of bounds can never decide a true value
-  sitting exactly on its midpoint.
-- **The width is the speed knob.** Doubling the width halves the games.
+The interval rule needs no new statistics. `pool()` is already checked against six real fastchess
+outputs by `--self-test`, so the screen inherits a validated formula instead of introducing an
+unvalidated one.
 
-##### Why the midpoint is 0 and not 5
+It is also more honest. Bounds of `[-5, +5]` *look* principled, but their operative content was only
+ever "promote above ~4.4 observed Elo". Stating the threshold directly makes the policy visible
+rather than encoding it in two hypothesis values whose relationship to the decision is non-obvious.
+
+##### Why the threshold sits at zero and not at +5
 
 A `>= 5 Elo` screen would be actively harmful here. Epic #110 is twelve terms each expected to be
 worth single digits; twelve genuine `+3`s are worth roughly 40 Elo together but every one of them
-fails a `+5` threshold individually. Testing "is this positive" keeps them. Symmetric `[-5, +5]`
-does that, and still kills a `-3` regression in about 80 minutes.
+fails a `+5` threshold individually. Testing "is this positive" keeps them.
 
 ##### Why one look and not several
 
-The cap equals the look, so **there is no sequential testing left** — this is a fixed 6,000-game
-batch with an LLR decision rule, not a group-sequential design. No alpha-spending function is needed
-and none is being skipped: the repeated-looks problem is avoided by not having repeated looks. The
-cost is that an obvious disaster still pays the full 55 minutes instead of dying at 1,300 games; the
-gain is a bounded, predictable cost per candidate and a much simpler aggregator.
+Bounded, predictable cost per candidate — one dispatch, ~55 minutes, fits a night. The cost is that
+an obvious disaster still pays the full 55 minutes instead of dying early; with a single look nothing
+could stop early anyway.
 
-##### What 6,000 games buys
+##### What the screen actually decides
 
-Expected LLR after 3,000 pairs is `0.67 * true`, so the screen decides when **|true| >~ 4.4 Elo** and
-returns inconclusive below that. The batch's own interval is ±7.6, so it genuinely cannot resolve a
-3-Elo term either way. That is the screen working as designed — **"inconclusive" must never be read
-as "zero"**, which is the same discipline `Docs/EloLog.md` already applies to SPRT runs that hit
-their cap.
+`z = 1.645` is one-sided 95%: conventional, defensible without explanation, and it errs toward not
+spending three-hour batches on noise. Probability of each verdict, from `SE = 3.87`:
+
+| True Elo | Promote | Reject | Inconclusive |
+|---|---|---|---|
+| +10 | 83% | ~0% | 17% |
+| +7 | 56% | ~0% | 44% |
+| +5 | 36% | ~0% | 64% |
+| +3 | 19% | 1% | 80% |
+| 0 | 5% | 5% | 90% |
+| -3 | 1% | 19% | 80% |
+| -7 | ~0% | 56% | 44% |
+
+**Read the middle column, not the first.** For the effect sizes epic #110 expects, the screen is a
+**dud-and-regression filter, not a decision-maker**: a genuine `+3` term comes back inconclusive four
+times in five and still needs a full batch. What the screen reliably buys is not spending three hours
+on changes that are clearly bad or clearly nothing.
+
+**"Inconclusive" is not "zero" and not "pass"** — the same discipline `Docs/EloLog.md` already applies
+to SPRT runs that hit their cap.
 
 ##### The decision tree
 
 ```
-dispatch 6,000 games at [-5, +5]   (~55 min, one dispatch)
-  -> pool, compute LLR
-     LLR >= +2.944  -> H1: on the positive side. Promote to a full 20,000-game
-                       batch, which is what produces the number for the ledger.
-     LLR <= -2.944  -> H0: on the negative side. Reject; record the decision.
-     otherwise      -> INCONCLUSIVE. Not zero, not a pass. A judgement call:
-                       spend a full batch, or drop the term.
+dispatch 6,000 games, reference = merge base   (~55 min, one dispatch)
+  -> pool -> observed Elo and SE
+     Elo >= +1.645 * SE  -> PROMOTE. Run a full 20,000-game batch; that batch,
+                            not the screen, produces the number for the ledger.
+     Elo <= -1.645 * SE  -> REJECT. Record the decision.
+     otherwise           -> INCONCLUSIVE. A judgement call: spend a full batch,
+                            or drop the term. Never recorded as zero.
 ```
 
-Expected screen outcomes, from the formula above:
-
-| True Elo | Screen result |
-|---|---|
-| +7 | H1 (would decide alone in ~3,800 games) |
-| +5 | H1, marginal |
-| +3 | inconclusive — needs a full batch to resolve |
-| 0 | inconclusive |
-| -3 | inconclusive |
-| -5 | H0, marginal |
-| -7 | H0 |
-
-**SPRT decides, it does not estimate.** An early stop leaves the point estimate subject to
-optional-stopping bias, which is why a survivor goes to a fixed batch rather than having its screen
-figure recorded. `Docs/EloLog.md` already documents this the hard way — its clang-vs-MSVC pair is a
-622-game SPRT for the decision and a separate 3,500-game batch for the estimate, explicitly not
-pooled.
+**The screen decides, it does not estimate.** A survivor goes to a fixed batch rather than having its
+screen figure recorded — selecting on "cleared the threshold" biases the point estimate upward, the
+same way an SPRT's early stop does. `Docs/EloLog.md` already documents this the hard way: its
+clang-vs-MSVC pair is a 622-game SPRT for the decision and a separate 3,500-game batch for the
+estimate, explicitly not pooled.
 
 #### Design decisions already settled
 
@@ -627,12 +637,12 @@ pooled.
 
 1. **Merge-base `reference_ref`** — in place (#226). `reference_ref` defaults to `merge-base`,
    resolved and verified in `setup`.
-2. **Screening policy** — decided above: a single 6,000-game screen at `[-5, +5]`, then a full batch
-   for survivors. Policy, not code; the code is step 5.
+2. **Screening policy** — decided above: a single 6,000-game screen promoting at `1.645 * SE`, then a
+   full batch for survivors. Policy, not code; the code is step 5.
 3. **Repo-wide serialisation group** — in place (#228). The group is the constant `strength-lab`.
 4. **Trigger on a `measure` label**, restricted to non-fork PRs.
-5. **Compute the LLR in `aggregate`** and report the screen's verdict. `pool_pentanomial.py` already
-   produces the pooled counts it needs, and its `--self-test` is where the LLR belongs too.
+5. **Report the screen verdict from `aggregate`.** `pool_pentanomial.py` already returns the Elo and
+   the standard error, so this is a comparison and a printed verdict, not new statistics.
 6. **Post the pooled verdict as a PR comment.**
 7. Then start working #110 sub-issues against it. This is the point where the whole plan pays.
 
