@@ -7,28 +7,24 @@ per run, so **the local table stays at the end of this file**.
 [`EloMeasurement.md`](EloMeasurement.md)** — the pinned setup, the interpretation guide, and the
 SPRT-versus-fixed-batch decision. Nothing here restates it.
 
-Two ledgers, and they are never compared with each other:
+**A row is only ever read against other rows in its own table.** Different instruments and different
+references are not on a common scale, so the tables are kept apart rather than annotated.
 
-| Ledger | Instrument |
-|---|---|
-| [Linux CI](#linux-ci-ledger) | `strength.yml` on a GitHub runner — GCC, `ubuntu-24.04` |
-| [Local](#measurement-history) | `Run-EloMatch.ps1` on the dev machine — clang-cl, Windows |
+| Table | Instrument | What one row says |
+|---|---|---|
+| [Linux CI — calibration](#linux-ci--instrument-calibration) | `strength.yml`, GCC on `ubuntu-24.04` | how the harness behaves — nothing about the engine |
+| [Linux CI — per change](#linux-ci--per-change-measurements) | same | what one change was worth against the commit it forked from |
+| [Linux CI — against an anchor](#linux-ci--anchor-measurements) | same | cumulative strength against a fixed tag |
+| [Local](#measurement-history) | `Run-EloMatch.ps1`, clang-cl on Windows | mixed — each row names its own reference |
 
-## Linux CI ledger
+## Linux CI — instrument calibration
 
 Produced by `.github/workflows/strength.yml`. Why its rows are not comparable with the local
 table: see [`EloMeasurement.md`](EloMeasurement.md#4-the-linux-ci-instrument).
 
 **Calibrated 2026-08-05.** Both required runs passed, so results from this instrument may now be
-recorded and read. Neither is a strength measurement of anything — they measure the instrument.
-
-**Two kinds of reference, and they must not be mixed.** `reference_ref` defaults to `merge-base`,
-so a row normally compares a change against the commit it forked from and the delta is attributable
-to that change alone. Such rows are **not comparable with each other** — each has a different
-reference — and **must never be summed** to claim cumulative Elo: the errors compound, and Elo is
-not cleanly additive across changes that interact. For total progress, run against a fixed anchor
-(`elo-reference-v2`) deliberately and record it as such; that is what the anchors are preserved for.
-Every row's Reference column says which kind it is.
+recorded and read. Nothing here is a strength measurement of anything — these rows measure the
+instrument, which is why they sit apart from the two tables below.
 
 | Date | Candidate | Reference | Games | TC | Elo diff | Notes |
 |---|---|---|---|---|---|---|
@@ -36,6 +32,35 @@ Every row's Reference column says which kind it is.
 | 2026-08-05 | c2a9f78 | c2a9f78 (same commit) | 1000 | 10+0.1 | -3.47 +/- 18.21 | **Null test — PASS.** 388W/398L/214D (49.50%), nElo -4.11 +/- 21.53, Ptnml(0-2) [71, 83, 197, 83, 66], 162 min at concurrency 3. Identical commit and identical time control on both sides, so the true difference is zero by construction; the interval [-21.7, +14.7] contains it comfortably. Zero measurable bias in the CI instrument, matching what the local instrument showed at the same game count (-1.4 Elo pooled, 2026-07-03). **Zero time losses**, which also establishes that a shared 4-vCPU runner holds 10+0.1 at concurrency 3 — the open question #204 raised |
 | 2026-08-06 | 0e0fc94 | 0e0fc94 (same commit) | 20000 | 10+0.1 | **-2.17 +/- 4.18** | **Sharded null test — PASS. Calibrates the 20-way instrument; carries no strength information.** 20 shards x 500 pairs, pooled Ptnml(0-2) [1495, 1665, 3754, 1642, 1444], score 49.69%, 2 h 47 min wall-clock. Identical commit and time control on both sides, so the true difference is zero by construction and [-6.35, +2.01] contains it. **Agrees with the single-job row above** (-3.47 +/- 18.21), which is the check that matters: sharding did not introduce bias. Resolution **±4.18** against ±18 single-job and ±26 locally — the first interval this project has had that can resolve a single-digit eval term. Shard slices verified disjoint (20 opening positions, 20 unique). Error bar pooled **pentanomially over pairs**, not per-game; see `.github/scripts/pool_pentanomial.py`. **Zero time losses** across all 20 shards, at concurrency 3 per shard |
 | 2026-08-06 | c52d1a6 | c52d1a6 (same commit) | 19980 | 10+0.1 | **-1.51 +/- 4.15** | **Shard-count experiment (#217 Experiment A) — PASS. Measures the instrument, not the engine.** 18 shards x 555 pairs, pooled Ptnml(0-2) [1461, 1649, 3828, 1620, 1432], score 49.78%, 3 h 04 min wall-clock. Run to decide whether dropping from 20 shards to 18 costs anything, since 20 consumes the entire 20-job concurrency allowance and blocks every other PR's required check for the duration. **The interval is the result: ±4.15 against the 20-shard row's ±4.18.** At ~10,000 pairs a spread estimate is itself known to about ±0.03, so a 0.03 difference is one standard error — the two are indistinguishable, and the split costs no resolution. Point estimate contains the guaranteed zero, [-5.66, +2.64]. **Cost is 17 minutes** (3 h 04 against 2 h 47), matching the estimate in #217. **Zero time losses** across all 18 shards at concurrency 3. Shard slices verified disjoint (18 opening positions, 18 unique). Comparable with the row above: shard count changes how many runners are used, not the CPU each engine gets, so the effective time control is unchanged — unlike a change to per-shard concurrency, which would not be comparable. Measured while an unrelated Build-tier PR ran on the two freed slots: its first job started 5 s after dispatch and the run finished in 10 min against a 4.5-5 min uncontended baseline, i.e. a delay rather than a block |
+
+## Linux CI — per-change measurements
+
+Reference is the **merge base** — the commit the candidate forked from `main`, which is
+`reference_ref`'s default — so each row is attributable to that change alone.
+
+**Rows here are not comparable with each other, and must never be summed.** Each has a different
+reference; errors compound, and Elo is not cleanly additive across changes that interact. For
+cumulative progress use the anchor table below, which is what it exists for.
+
+*No rows yet. Epic #110's sub-issues are expected to be the first.*
+
+| Date | Candidate | Merge base | Games | TC | Elo diff | Notes |
+|---|---|---|---|---|---|---|
+
+## Linux CI — anchor measurements
+
+Reference is a fixed tag, so these rows **are** comparable with each other and show cumulative
+progress. `elo-reference-v2` is the current anchor; `elo-reference-v1` is deliberately preserved for
+the epic-scale before/after (#180).
+
+Reach for this when the question is "how much stronger are we than we were", not "what was this
+change worth" — a run has to be dispatched with the tag explicitly, since the default is the merge
+base.
+
+*No rows yet.*
+
+| Date | Candidate | Anchor | Games | TC | Elo diff | Notes |
+|---|---|---|---|---|---|---|
 
 ## Measurement history
 
