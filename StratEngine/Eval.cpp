@@ -374,6 +374,11 @@ ScorePair EvalComplex::eval_pst(const EvalContext& ctx, eColor color) noexcept
 // The king is deliberately absent: king mobility is a king-safety signal and
 // belongs with issue #97, where it can be weighed against attacker counts rather
 // than paid as a flat per-square bonus.
+//
+// Counts are taken RELATIVE to a typical count per piece type (MOBILITY_BASE_*),
+// so a cramped piece scores negative rather than merely small. An absolute count
+// would be strictly positive and would only cancel while material is symmetric,
+// making the term a piece-value adjustment across trades -- see the constants.
 ScorePair EvalComplex::eval_mobility(const EvalContext& ctx, eColor color) noexcept
 {
 	const eColor enemy = (color == WHITE) ? BLACK : WHITE;
@@ -386,7 +391,7 @@ ScorePair EvalComplex::eval_mobility(const EvalContext& ctx, eColor color) noexc
 	while (knights)
 	{
 		const eSquare square = Board::GetFirstPiece(knights);
-		const int count = std::popcount(g_bbKnightMoves[square] & usable);
+		const int count = std::popcount(g_bbKnightMoves[square] & usable) - MOBILITY_BASE_KNIGHT;
 		mg += count * MOBILITY_KNIGHT_MG;
 		eg += count * MOBILITY_KNIGHT_EG;
 		knights = Bits::clearLsb(knights);
@@ -396,7 +401,7 @@ ScorePair EvalComplex::eval_mobility(const EvalContext& ctx, eColor color) noexc
 	while (bishops)
 	{
 		const eSquare square = Board::GetFirstPiece(bishops);
-		const int count = std::popcount(BishopAttacks(square, ctx.all_pieces) & usable);
+		const int count = std::popcount(BishopAttacks(square, ctx.all_pieces) & usable) - MOBILITY_BASE_BISHOP;
 		mg += count * MOBILITY_BISHOP_MG;
 		eg += count * MOBILITY_BISHOP_EG;
 		bishops = Bits::clearLsb(bishops);
@@ -406,7 +411,7 @@ ScorePair EvalComplex::eval_mobility(const EvalContext& ctx, eColor color) noexc
 	while (rooks)
 	{
 		const eSquare square = Board::GetFirstPiece(rooks);
-		const int count = std::popcount(RookAttacks(square, ctx.all_pieces) & usable);
+		const int count = std::popcount(RookAttacks(square, ctx.all_pieces) & usable) - MOBILITY_BASE_ROOK;
 		mg += count * MOBILITY_ROOK_MG;
 		eg += count * MOBILITY_ROOK_EG;
 		rooks = Bits::clearLsb(rooks);
@@ -420,7 +425,7 @@ ScorePair EvalComplex::eval_mobility(const EvalContext& ctx, eColor color) noexc
 		const eSquare square = Board::GetFirstPiece(queens);
 		const BITBOARD attacks =
 			RookAttacks(square, ctx.all_pieces) | BishopAttacks(square, ctx.all_pieces);
-		const int count = std::popcount(attacks & usable);
+		const int count = std::popcount(attacks & usable) - MOBILITY_BASE_QUEEN;
 		mg += count * MOBILITY_QUEEN_MG;
 		eg += count * MOBILITY_QUEEN_EG;
 		queens = Bits::clearLsb(queens);

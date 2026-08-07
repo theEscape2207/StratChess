@@ -259,19 +259,50 @@ class EvalComplex final
 	// queen -- which already has many -- than to a knight, and phase-split
 	// because a rook's mobility matters more once files open in the endgame.
 	//
-	// These are conservative literature-standard magnitudes, deliberately NOT
-	// hand-tuned: #117 (automated Texel-style tuning) owns the values, and this
-	// term is unusually sensitive to them. Mobility overlaps the PSTs, which
-	// already reward central placement -- expect a smaller gain than the raw
-	// weights suggest and treat that as a retuning input, not a defect.
+	// These are literature-standard magnitudes, deliberately NOT hand-tuned:
+	// #117 (automated Texel-style tuning) owns the values, and this term is
+	// unusually sensitive to them.
+	//
+	// The knight is worth MORE per square than the bishop, which looks backwards
+	// until the counts are included: a bishop sees 7-13 squares to a knight's
+	// 2-8, so equal per-square weights would hand the bishop roughly 2.5x the
+	// total. g_iPieceValues rates both minors at 300, so that would be an
+	// undeclared bishop premium stacking on BISHOP_PAIR_BONUS -- a material
+	// change arriving as a side effect of a mobility weight.
+	//
+	// Mobility overlaps the PSTs, which already reward central placement. The
+	// overlap is not marginal: a knight's mobility swing is comparable to its
+	// entire PST range, so this roughly doubles the centralization gradient for
+	// minors. That may be an improvement, but it is a real change in emphasis
+	// rather than a small addition, and it is a #117 retuning input.
 	static const short MOBILITY_KNIGHT_MG		= 4;
 	static const short MOBILITY_KNIGHT_EG		= 4;
-	static const short MOBILITY_BISHOP_MG		= 5;
-	static const short MOBILITY_BISHOP_EG		= 5;
+	static const short MOBILITY_BISHOP_MG		= 3;
+	static const short MOBILITY_BISHOP_EG		= 3;
 	static const short MOBILITY_ROOK_MG		= 2;
 	static const short MOBILITY_ROOK_EG		= 4;
 	static const short MOBILITY_QUEEN_MG		= 1;
 	static const short MOBILITY_QUEEN_EG		= 2;
+
+	// Square counts are measured against a typical count per piece type rather
+	// than against zero, so the term is roughly zero-mean and a cramped piece is
+	// penalised instead of merely under-rewarded.
+	//
+	// Without this the count is strictly positive, so every piece carries a
+	// permanent bonus that only cancels while material is symmetric -- the term
+	// would silently act as a piece-value adjustment across trades, and #117
+	// would inherit mobility entangled with material rather than as an
+	// independent positional term. Costs nothing at runtime.
+	//
+	// It also keeps mobility from overwhelming eval_mopup: with absolute counts
+	// a KBNvK winner scored +47 of mobility against mop-up's 12, an unsuppressed
+	// centralization pull four times the term meant to be steering. Relative
+	// counts put it at -4. Same failure mode eval_pst had to solve for the
+	// king PST (issue #118 item 4).
+	static const short MOBILITY_BASE_KNIGHT		= 4;
+	static const short MOBILITY_BASE_BISHOP		= 7;
+	static const short MOBILITY_BASE_ROOK		= 7;
+	static const short MOBILITY_BASE_QUEEN		= 14;
 
 	// Mop-up evaluation (won pawnless endgames) — see issue #70 / epic #110.
 	// Gated on: pawnless + decisive material lead. Rewards pushing the losing
