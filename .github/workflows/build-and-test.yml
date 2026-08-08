@@ -193,6 +193,59 @@ jobs:
       - name: Run fast tests
         run: ./build/StratChessTests '~[slow]'
 
+  # TSan covers the one thing ASan cannot: a data race in the Lazy SMP helpers
+  # that has not yet corrupted anything. It is a separate job because TSan and
+  # ASan cannot be combined at link time.
+  #
+  # This job deliberately does NOT run the Catch2 tier. The `[smp]` tests only
+  # check SetThreads() clamping and the rest of the tier is single-threaded, so a
+  # TSan run over it spawns no helpers and cannot fail for the reason this job
+  # exists -- and sanitize-linux already runs that tier under ASan/UBSan. Building
+  # only the engine keeps this inside the wall-clock set by build-linux (Release),
+  # so it costs runner minutes rather than PR feedback time.
+  #
+  # Survey, positive control and the cost measurements: .claude/plans/tsan-lazy-smp.md.
+  tsan-linux:
+    needs: classify
+    # Same condition as build-linux and sanitize-linux, for the same reason: a
+    # Build-tier change to CMakeLists.txt is what breaks sanitizer wiring.
+    if: needs.classify.outputs.is_full == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Cache FetchContent dependencies
+        uses: actions/cache@v6
+        with:
+          path: build/_deps
+          key: cmake-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
+
+      # STRAT_SANITIZE_RECOVER stays at its OFF default: a report must abort the
+      # process and fail the job, not print and exit 0.
+      #
+      # STRAT_STDLIB_DEBUG is deliberately absent. It changes the container ABI,
+      # and its value (checked iterators) is already covered by sanitize-linux;
+      # adding it here would only slow the instrumented build.
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DSTRAT_SANITIZE=thread
+
+      - name: Build engine
+        run: cmake --build build --target StratChessEvolved --parallel
+
+      # setarch -R disables ASLR. Ubuntu 24.04 raises vm.mmap_rnd_bits beyond what
+      # TSan's shadow mapping tolerates, and without this the process dies with
+      # "FATAL: ThreadSanitizer: unexpected memory mapping" before main -- which
+      # reports zero races while running none of the search.
+      - name: Drive multi-threaded searches
+        working-directory: StratChessEvolved
+        run: setarch $(uname -m) -R python3 ../.github/scripts/tsan_smp_drive.py ../build/StratChessEvolved
+
   build-and-test:
     needs: classify
     # The only job that builds what actually ships: the clang-cl branch of
@@ -284,7 +337,7 @@ jobs:
   # success on purpose -- a required check that never runs would block those PRs
   # forever.
   build-and-test-result:
-    needs: [classify, build-linux, sanitize-linux, build-and-test]
+    needs: [classify, build-linux, sanitize-linux, tsan-linux, build-and-test]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -294,6 +347,7 @@ jobs:
           echo "tier=${{ needs.classify.outputs.tier }}"
           echo "linux result=${{ needs.build-linux.result }}"
           echo "sanitizer result=${{ needs.sanitize-linux.result }}"
+          echo "tsan result=${{ needs.tsan-linux.result }}"
           echo "windows result=${{ needs.build-and-test.result }}"
 
           case "${{ needs.classify.result }}" in
@@ -311,6 +365,12 @@ jobs:
             success) echo "ASan/UBSan build and tests passed." ;;
             skipped) echo "Sanitizers skipped: '${{ needs.classify.outputs.tier }}' tier cannot affect the build." ;;
             *)       echo "ASan/UBSan reported a finding, or the instrumented build failed."; exit 1 ;;
+          esac
+
+          case "${{ needs.tsan-linux.result }}" in
+            success) echo "TSan multi-threaded search passed." ;;
+            skipped) echo "TSan skipped: '${{ needs.classify.outputs.tier }}' tier cannot affect the build." ;;
+            *)       echo "TSan reported a data race, or the instrumented build failed."; exit 1 ;;
           esac
 
           case "${{ needs.build-and-test.result }}" in
