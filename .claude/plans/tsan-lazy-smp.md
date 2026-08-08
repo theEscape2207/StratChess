@@ -75,10 +75,10 @@ a one-off survey.
 
 ## Design decisions
 
-**A CI job is justified, on the same trigger as `sanitize-linux`.** Measured cost: the seven-scenario
-drive is 54.1 s locally, and the fast tier is 65.4 s under TSan against 8.2 s for a clean Debug build
-(8.0x, inside the expected 5-15x). Same order as the existing sanitizer leg, so it runs per-PR rather
-than nightly.
+**A CI job is justified, on the same trigger as `sanitize-linux`.** Measured cost: the six-scenario
+drive is **48.2 s pinned to four cores** (the runner's count, via `taskset -c 0-3`), and the fast tier
+is 65.4 s under TSan against 8.2 s for a clean Debug build (8.0x, inside the expected 5-15x). Same
+order as the existing sanitizer leg, so it runs per-PR rather than nightly.
 
 **The job must drive multi-threaded search itself.** Running only `~[slow]` would be a job that
 cannot fail for the reason it exists — the point #184 makes about `Threads=1` proving nothing. So the
@@ -86,12 +86,32 @@ job runs the committed driver, at `Threads=4`, `8` and `16`.
 
 **Drive time is cheap, so the scenarios are broad rather than minimal.** The whole drive is under a
 minute against an instrumented build costing ~200 s, so the marginal cost of another scenario is
-noise. Seven cover: helpers on quiet and tactical positions, several searches over a warm shared TT,
-a `ucinewgame` clear, `SetThreads` on a live AI, an externally requested `stop` mid-search, the
-time-managed `movetime` abort, and 16 helpers heavily oversubscribed. The two abort scenarios matter
-most — they are the only ones where a search ends on something other than its own depth limit, so
-they exercise the latched abort flag every helper polls, and `stop` versus `movetime` differ in which
-thread decides.
+noise. Six cover: helpers on quiet and tactical positions, several searches over a warm shared TT, a
+`ucinewgame` clear, `SetThreads` on a live AI, the time-managed `movetime` abort, and 16 helpers
+heavily oversubscribed. Per-scenario timings at four cores:
+
+| Scenario | 4 cores |
+|---|---|
+| `threads4-startpos` | 5.5 s |
+| `threads4-tactical` | 9.8 s |
+| `threads4-sequence` | 10.1 s |
+| `threads8-reconfigure` | 7.2 s |
+| `threads4-movetime` | 7.4 s |
+| `threads16-oversubscribed` | 8.0 s |
+
+Oversubscription is cheap — 16 helpers on four cores costs 8.0 s, less than the four-thread tactical
+scenario — so thread count is not what to economise on here.
+
+**No `stop` scenario, and that cost a CI run to learn.** A `stop`-mid-search scenario was written and
+looked fine at 24 cores. On the runner the job ran past seven minutes and was cancelled; reproducing
+the runner's core count locally showed the driver timing out after 240 s waiting for a `bestmove`
+that never came. An instrumented engine never answers `stop` — at 1, 4 and 8 threads, on 4 and 24
+cores — while a clean build of the same commit answers in **0.00 s**, verified with the pre-`stop`
+output drained so a leftover `bestmove` could not be miscounted. Filed as #243. It reproduces at
+`Threads=1`, so it is neither an SMP nor an oversubscription effect, and the shipping binary is
+unaffected. The consequence for this job is a real coverage gap: if a race ever lives between
+`cmd_stop` and the helpers polling the abort flag, this job cannot see it. `movetime` covers the
+time-manager half of the same mechanism.
 
 **And it runs *only* that drive — no Catch2 tier.** The tier is single-threaded, so under TSan it
 adds no coverage this job does not already have, while costing a second instrumented target and 65 s
@@ -124,12 +144,10 @@ fan out in parallel, then `build-and-test-result` closes:
 ### Uncontended
 
 `tsan-linux` becomes a **sixth parallel job**, not a sixth serial step, so it costs PR feedback time
-only if it runs longer than the 248 s critical path. Estimated 200-260 s: the instrumented engine
+only if it runs longer than the 248 s critical path. Estimated **250-270 s**: the instrumented engine
 build should land near `sanitize-linux`'s ~200 s build (fewer translation units — no Catch2
-amalgamation, no test sources), plus a drive measured at **54.1 s locally on 24 cores**. The
-`Threads=4` scenarios should transfer to a 4-vCPU runner roughly unchanged (four threads, four
-cores); the `Threads=8` and `16` scenarios are oversubscribed there and cost proportionally more,
-though the `stop` and `movetime` scenarios are wall-clock bound and so runner-independent.
+amalgamation, no test sources), plus the drive at **48.2 s measured on four cores**, which is the
+runner's core count rather than an extrapolation from a 24-core machine.
 
 So: **expected wall-clock impact between none and ~+30 s**, and runner minutes up by roughly one job
 (~4 min against ~20 job-minutes today, i.e. ~+20%) — free on a public repository. Docs- and
