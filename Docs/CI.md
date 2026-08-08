@@ -65,6 +65,30 @@ tripwires stay live alongside the instrumentation. Linux-only — the GNU `-fsan
 not survive the MSVC driver, and `CMakeLists.txt` raises a configure error rather than letting a
 Windows build look instrumented when it is not.
 
+**`tsan-linux`** builds `StratChessEvolved` with `-fsanitize=thread` and runs
+`.github/scripts/tsan_smp_drive.py`, which drives six multi-threaded scenarios over UCI at
+`Threads=4`, `8` and `16` — including a time-managed `movetime` abort, the one path where a search
+ends on something other than its own depth limit. The job takes **197 s** (85 s build, 86 s drive),
+under the `build-linux (Release)` critical path, so it adds no wall-clock time to a PR. Same trigger
+as the two jobs above, for the same reason.
+
+There is no `stop` scenario: a TSan-instrumented engine never answers `stop` with a `bestmove`, while
+a clean build of the same commit answers in 0.00 s (#243). So the abort-on-request path is out of
+reach here; `movetime` exercises the time-manager half of the same mechanism.
+
+It does **not** run the Catch2 tier, and that is the point of the job's design. The `[smp]` tests only
+check `SetThreads()` clamping and the rest of the tier is single-threaded, so a TSan run over it
+spawns no helper threads and cannot fail for the reason the job exists — while a second instrumented
+target plus 65 s of instrumented test execution would push the job past `build-linux (Release)`, the
+current critical path, and slow every full-tier PR. `sanitize-linux` already runs that tier.
+
+Two mechanics that are easy to get wrong, both of which produce a *falsely clean* run:
+`setarch $(uname -m) -R` disables ASLR, without which TSan dies with `unexpected memory mapping`
+before `main` on Ubuntu 24.04 and reports nothing; and the driver waits for `uciok`/`readyok`/
+`bestmove` rather than piping commands, which would otherwise arrive mid-search and be refused by the
+UCI guards. TSan cannot be combined with ASan, hence a separate job. Survey, positive control, cost
+and contention analysis: `.claude/plans/tsan-lazy-smp.md`.
+
 **CI is a gate.** `build-and-test-result` is a required check on `main`, so a red run blocks the
 merge. A SKIPPED leg reports success deliberately: a Docs-tier PR runs none of the build jobs, and a
 required check that never ran would block it forever.
