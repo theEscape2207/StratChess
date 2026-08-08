@@ -144,21 +144,35 @@ fan out in parallel, then `build-and-test-result` closes:
 ### Uncontended
 
 `tsan-linux` becomes a **sixth parallel job**, not a sixth serial step, so it costs PR feedback time
-only if it runs longer than the 248 s critical path. Estimated **250-270 s**: the instrumented engine
-build should land near `sanitize-linux`'s ~200 s build (fewer translation units — no Catch2
-amalgamation, no test sources), plus the drive at **48.2 s measured on four cores**, which is the
-runner's core count rather than an extrapolation from a 24-core machine.
+only if it runs longer than the critical path.
 
-So: **expected wall-clock impact between none and ~+30 s**, and runner minutes up by roughly one job
-(~4 min against ~20 job-minutes today, i.e. ~+20%) — free on a public repository. Docs- and
-Tooling-tier PRs are unaffected: the job carries the same `is_full == 'true'` condition as its
-siblings and skips wholesale.
+**Measured on run `31265550387`: the job takes 197 s** — 85 s to build the instrumented engine, 86 s
+for the drive, the rest setup. That is comfortably under `build-linux (Release)` at 260 s, so the
+critical path is unchanged and **wall-clock impact is zero**: 292 s total against the 308 s baseline,
+i.e. inside run-to-run variation. Runner minutes rise by roughly one job (~3 min against ~20
+job-minutes), free on a public repository. Docs- and Tooling-tier PRs are unaffected: the job carries
+the same `is_full == 'true'` condition as its siblings and skips wholesale.
 
-This is the estimate the design was built around, and it is why the job builds only
-`StratChessEvolved` and skips the Catch2 tier. Adding the tier would have cost a second instrumented
-target (~+150 s) plus 65 s of measured test execution, pushing the job past the critical path and
-making every full-tier PR wait longer — for coverage that is single-threaded and already provided by
-`sanitize-linux`. The first real run replaces this estimate.
+The drive costs 86 s on the runner against 48 s pinned to four cores locally — same core count, so
+the difference is the runner's slower cores. Per-scenario, the ordering is preserved and nothing
+dominates:
+
+| Scenario | 4 cores local | Runner |
+|---|---|---|
+| `threads4-startpos` | 5.5 s | 8.2 s |
+| `threads4-tactical` | 9.8 s | 20.3 s |
+| `threads4-sequence` | 10.1 s | 17.6 s |
+| `threads8-reconfigure` | 7.2 s | 12.3 s |
+| `threads4-movetime` | 7.4 s | 10.0 s |
+| `threads16-oversubscribed` | 8.0 s | 17.7 s |
+
+There is headroom for more scenarios before the job reaches the critical path: roughly 60 s of drive
+time, or another 40% again.
+
+That headroom exists because the job builds only `StratChessEvolved` and skips the Catch2 tier.
+Adding the tier would cost a second instrumented target plus its instrumented execution — on these
+measured numbers, enough to put the job past 260 s and make every full-tier PR wait longer — for
+coverage that is single-threaded and already provided by `sanitize-linux`.
 
 ### During an 18-shard strength run
 

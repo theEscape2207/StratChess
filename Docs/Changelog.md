@@ -60,7 +60,8 @@ reach, which is why `movetime` is covered instead.
 
 Validation: `Build` tier. The driver was exercised against the instrumented build pinned to four
 cores, the runner's count — 6/6 scenarios clean in 48.2 s — and separately observed failing correctly
-when the binary still carried the injected race.
+when the binary still carried the injected race. The job's first green run took **197 s** against the
+260 s critical path, so PR wall clock is unchanged.
 
 ---
 
