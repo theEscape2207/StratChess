@@ -1431,3 +1431,144 @@ TEST_CASE("Eval - mop-up: walking the winning king toward the loser must raise t
 
     REQUIRE(nearTotal > farTotal);
 }
+
+// ---------------------------------------------------------------------------
+// Passed and backwards pawns (issue #116)
+//
+// The span masks are tested for CONTENT first, before anything that consumes
+// them: a wrong mask produces a term that is subtly wrong in every position at
+// once, and no whole-position delta test would localise it.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("PassedMask - white d4 covers exactly the c/d/e files ahead", "[eval]")
+{
+    BITBOARD expected = 0;
+    for (const int sq : { c5, c6, c7, c8, d5, d6, d7, d8, e5, e6, e7, e8 })
+        expected |= (1ULL << sq);
+
+    REQUIRE(g_bbPassedMaskWhite[d4] == expected);
+}
+
+TEST_CASE("PassedMask - black d5 covers exactly the c/d/e files ahead", "[eval]")
+{
+    BITBOARD expected = 0;
+    for (const int sq : { c4, c3, c2, c1, d4, d3, d2, d1, e4, e3, e2, e1 })
+        expected |= (1ULL << sq);
+
+    REQUIRE(g_bbPassedMaskBlack[d5] == expected);
+}
+
+TEST_CASE("PassedMask - edge files do not wrap around the board", "[eval]")
+{
+    // The classic generator bug: shifting a file mask sideways wraps a2's span
+    // onto the h-file. Built with explicit file bounds instead, so assert it.
+    BITBOARD hFile = 0;
+    for (const int sq : { h1, h2, h3, h4, h5, h6, h7, h8 })
+        hFile |= (1ULL << sq);
+    BITBOARD aFile = 0;
+    for (const int sq : { a1, a2, a3, a4, a5, a6, a7, a8 })
+        aFile |= (1ULL << sq);
+
+    REQUIRE((g_bbPassedMaskWhite[a2] & hFile) == 0);
+    REQUIRE((g_bbPassedMaskWhite[h2] & aFile) == 0);
+    REQUIRE((g_bbPassedMaskBlack[a7] & hFile) == 0);
+    REQUIRE((g_bbPassedMaskBlack[h7] & aFile) == 0);
+}
+
+TEST_CASE("PassedMask - nothing is ahead of a pawn on the promotion rank", "[eval]")
+{
+    REQUIRE(g_bbPassedMaskWhite[d8] == 0);
+    REQUIRE(g_bbPassedMaskBlack[d1] == 0);
+}
+
+TEST_CASE("Eval - EvalComplex rewards a passed pawn over a blocked one", "[eval]")
+{
+    // Identical but for the black pawn on d7, which stands in the white e5
+    // pawn's adjacent-file span and so denies it passed status.
+    Board passed("4k3/8/8/4P3/8/8/8/4K3 w - - 0 1");
+    Board blocked("4k3/3p4/8/4P3/8/8/8/4K3 w - - 0 1");
+
+    const int passedScore  = EvalComplexTestFixture::Pawns(passed, WHITE);
+    const int blockedScore = EvalComplexTestFixture::Pawns(blocked, WHITE);
+
+    CAPTURE(passedScore, blockedScore);
+    REQUIRE(passedScore > blockedScore);
+}
+
+TEST_CASE("Eval - EvalComplex passer bonus grows as the pawn advances", "[eval]")
+{
+    Board third("4k3/8/8/8/8/4P3/8/4K3 w - - 0 1");
+    Board seventh("4k3/4P3/8/8/8/8/8/4K3 w - - 0 1");
+
+    const int thirdScore   = EvalComplexTestFixture::Pawns(third, WHITE);
+    const int seventhScore = EvalComplexTestFixture::Pawns(seventh, WHITE);
+
+    CAPTURE(thirdScore, seventhScore);
+    REQUIRE(seventhScore > thirdScore);
+}
+
+TEST_CASE("Eval - EvalComplex passer is worth more in the endgame than the middlegame", "[eval]")
+{
+    // Same pawn structure. The queens and rooks only move the phase, and
+    // eval_pawns reads no piece other than pawns, so any difference here is the
+    // mg/eg endpoints of the passer bonus and nothing else.
+    Board middlegame("rq2k3/8/8/4P3/8/8/8/RQ2K3 w - - 0 1");
+    Board endgame("4k3/8/8/4P3/8/8/8/4K3 w - - 0 1");
+
+    const int middlegameScore = EvalComplexTestFixture::Pawns(middlegame, WHITE);
+    const int endgameScore    = EvalComplexTestFixture::Pawns(endgame, WHITE);
+
+    CAPTURE(middlegameScore, endgameScore);
+    REQUIRE(endgameScore > middlegameScore);
+}
+
+TEST_CASE("Eval - EvalComplex detects an a-file passer", "[eval]")
+{
+    // Guards the wraparound case end to end: a black h-pawn must not stop the
+    // white a-pawn from counting as passed, while a black b-pawn must.
+    Board aFilePasser("4k3/7p/8/P7/8/8/8/4K3 w - - 0 1");
+    Board aFileBlocked("4k3/1p6/8/P7/8/8/8/4K3 w - - 0 1");
+
+    const int passerScore  = EvalComplexTestFixture::Pawns(aFilePasser, WHITE);
+    const int blockedScore = EvalComplexTestFixture::Pawns(aFileBlocked, WHITE);
+
+    CAPTURE(passerScore, blockedScore);
+    REQUIRE(passerScore > blockedScore);
+}
+
+TEST_CASE("Eval - EvalComplex penalises a backwards pawn", "[eval]")
+{
+    // White b2 is backwards: its only neighbour (c3) has advanced past it, and
+    // its stop square b3 is attacked by the black a4 pawn and defended by no
+    // white pawn. The comparison moves the black pawn to the h-file, which
+    // removes clause (b) and nothing else.
+    Board backwards("4k3/8/8/8/p7/2P5/1P6/4K3 w - - 0 1");
+    Board notAttacked("4k3/8/8/8/7p/2P5/1P6/4K3 w - - 0 1");
+
+    const int backwardsScore   = EvalComplexTestFixture::Pawns(backwards, WHITE);
+    const int notAttackedScore = EvalComplexTestFixture::Pawns(notAttacked, WHITE);
+
+    CAPTURE(backwardsScore, notAttackedScore);
+    REQUIRE(backwardsScore < notAttackedScore);
+}
+
+TEST_CASE("Eval - EvalComplex does not penalise a pawn its neighbour is level with", "[eval]")
+{
+    // Clause (a) only. The two positions differ by the white a2 pawn and nothing
+    // else: it sits LEVEL with b2 on an adjacent file, so b2 is no longer behind
+    // every neighbour and is not backwards -- even though b3 is still attacked by
+    // a4 and still undefended, so clause (b) holds in both.
+    //
+    // a2 itself contributes nothing to compare against: it is not passed (the
+    // black a4 pawn is in its span), not isolated (b2 is adjacent), not doubled,
+    // and not backwards (b2 is level with it in turn). So the whole difference is
+    // b2's penalty disappearing.
+    Board levelNeighbour("4k3/8/8/8/p7/2P5/PP6/4K3 w - - 0 1");
+    Board backwards("4k3/8/8/8/p7/2P5/1P6/4K3 w - - 0 1");
+
+    const int levelScore     = EvalComplexTestFixture::Pawns(levelNeighbour, WHITE);
+    const int backwardsScore = EvalComplexTestFixture::Pawns(backwards, WHITE);
+
+    CAPTURE(levelScore, backwardsScore);
+    REQUIRE(levelScore > backwardsScore);
+}

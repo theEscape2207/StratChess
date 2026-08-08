@@ -165,6 +165,15 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
     same square does not (pinning the capture-target convention); a lone queen scores nonzero (#113,
     so the queen cannot be silently skipped); and a bare king scores exactly 0 (king mobility is
     #97's, not this term's)
+  - Passed and backwards pawns (#116): the span masks are asserted for **content** before any term
+    consumes them — `g_bbPassedMaskWhite[d4]` is exactly the c/d/e files ahead, an a- or h-file pawn's
+    span never reaches the opposite edge (the wraparound bug this kind of generator invites), and a
+    pawn on the promotion rank has an empty span. Then the term itself: a passer outscores the same
+    pawn with an enemy pawn in its span; the bonus grows as the pawn advances and is larger at low
+    phase than high (the tapering property); an a-file passer is detected past a black h-pawn; a
+    backwards pawn is penalised, and a pawn failing **either** clause is not — the clause-(a) case
+    differs from its comparison by one added pawn that contributes nothing itself, so the whole delta
+    is the penalty disappearing
   - Kingless board: a default-constructed `Board` (no kings, all bitboards zero) evaluates to
     exactly 0, as it did before the restructure. This is a **Debug-build** regression test in
     substance: `Board::GetFirstPiece` has an `assert(mask != 0)` precondition, so an unguarded king

@@ -1,6 +1,6 @@
 # Passed Pawn Bonus + Backwards Pawn Penalty (and the rook open-file fix)
 
-**Issues**: #116, #126 · **Epic**: #110 Tier 3 · **Depth**: full plan · **Status**: #126 portion (D4/D5/D6, step 5) landed separately on 2026-07-27 — see `Docs/Changelog.md` "Rook Open-File Definition Fix". #116 (passed/backwards pawns, steps 1-4) remains not started and still depends on #99.
+**Issues**: #116, #126 · **Epic**: #110 Tier 3 · **Depth**: full plan · **Status**: **complete**. The #126 portion (D4/D5/D6, step 5) landed 2026-07-27 — see `Docs/Changelog.md` "Rook Open-File Definition Fix". The #116 portion (steps 1, 3, 4, 6) landed 2026-08-09; step 2 needed no work, because the mobility PR (#98/#113) had already put `pawn_attacks` in `EvalContext` for its own use, exactly as D3 anticipated.
 **Depends on**: #99 (tapered eval) for the phase scaling the source TODO already asks for
 
 ## Goal

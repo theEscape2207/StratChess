@@ -78,14 +78,26 @@ int EvalSimple::Evaluate(const Board& board) const noexcept
 // (carried over verbatim from the pre-#127 switch; still open, see issue #116).
 ScorePair EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 {
+	// Doubled, isolated and backwards are phase-neutral and accumulate here;
+	// the passer bonus is the one term in this function that tapers, so it is
+	// kept in its own pair of accumulators until the return.
 	int score = 0;
+	int passedMg = 0;
+	int passedEg = 0;
 	const BITBOARD ownPawns = ctx.pawns[color];
+	const eColor enemy = (color == WHITE) ? BLACK : WHITE;
+	const BITBOARD enemyPawns = ctx.pawns[enemy];
 
 	auto remaining = ownPawns;
 	while (remaining)
 	{
 		const eSquare square = Board::GetFirstPiece(remaining);
 		const int file = File(square);
+		const int squareIndex = static_cast<int>(square);
+		const int row = squareIndex / ONE_ROW;   // 0 = rank 8, 7 = rank 1
+		// Own file plus both adjacent files, ahead of this pawn only.
+		const BITBOARD forwardSpan = (color == WHITE) ? g_bbPassedMaskWhite[square]
+		                                              : g_bbPassedMaskBlack[square];
 
 		if (color == WHITE)
 		{
@@ -105,13 +117,52 @@ ScorePair EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 			(file == eFileNames::RIGHT_FILE || !(ownPawns & g_bbFileMask[file + 1])))
 			score -= ISOLATED_PAWN_PENALTY;
 
+		// Passed: no enemy pawn anywhere in the three-file span ahead, so nothing
+		// can block it or capture it on its way to promotion. Scaled by how far it
+		// has advanced and tapered toward the endgame, where a passer is worth
+		// most (issue #116).
+		if (!(enemyPawns & forwardSpan))
+		{
+			const int advanced = (color == WHITE) ? (7 - row) : row;
+			const int scale = PASSED_PAWN_RANK_SCALE[advanced];
+			passedMg += PASSED_PAWN_BONUS * scale / 16;
+			passedEg += PASSED_PAWN_BONUS_EG * scale / 16;
+		}
+
+		// Backwards: BOTH clauses required, per the definition on
+		// BACKWARDS_PAWN_PENALTY.
+		//
+		// (a) every friendly pawn on an adjacent file is strictly AHEAD of this
+		//     one, so none can ever come back to defend it. Intersecting the
+		//     adjacent files with the complement of the forward span leaves exactly
+		//     the adjacent-file squares level with or behind this pawn -- one
+		//     friendly pawn there and the pawn is not backwards.
+		const BITBOARD adjacentFiles =
+			((file == eFileNames::LEFT_FILE)  ? 0ULL : g_bbFileMask[file - 1]) |
+			((file == eFileNames::RIGHT_FILE) ? 0ULL : g_bbFileMask[file + 1]);
+
+		if (!(ownPawns & adjacentFiles & ~forwardSpan))
+		{
+			// (b) the stop square is covered by an enemy pawn and not by a friendly
+			//     one, so the pawn cannot advance out of trouble either.
+			const int stopIndex = (color == WHITE) ? (squareIndex - ONE_ROW)
+			                                       : (squareIndex + ONE_ROW);
+			if (stopIndex >= 0 && stopIndex < ALL_SQUARES)
+			{
+				const BITBOARD stopSquare = 1ULL << stopIndex;
+				if ((ctx.pawn_attacks[enemy] & stopSquare) &&
+					!(ctx.pawn_attacks[color] & stopSquare))
+					score -= BACKWARDS_PAWN_PENALTY;
+			}
+		}
+
 		remaining = Bits::clearLsb(remaining);
 	}
 
-	// No phase sensitivity: doubled/isolated pawn structure matters equally
-	// throughout, so the same value goes to both endpoints and the blend is a
-	// no-op for this term.
-	return ScorePair{ score, score };
+	// Doubled, isolated and backwards pawn structure matters equally throughout,
+	// so those go to both endpoints unchanged; only the passer bonus differs
+	// between them.
+	return ScorePair{ score + passedMg, score + passedEg };
 }
 
 // eval_rooks — 7th-rank and half-open/open-file bonuses for one color's

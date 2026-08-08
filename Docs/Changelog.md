@@ -22,6 +22,41 @@ Newest first.
 
 ---
 
+## 2026-08-09 — Passed-pawn bonus and backwards-pawn penalty (#116)
+
+### Added
+
+- **Passed-pawn bonus** in `eval_pawns`: no enemy pawn on the pawn's own or either adjacent file
+  ahead of it. Scaled by how far the pawn has advanced (`PASSED_PAWN_RANK_SCALE`, 1/16ths) and
+  tapered, giving roughly 20/45 cp on the starting rank up to 80/180 cp on the 7th.
+- **Backwards-pawn penalty**, requiring **both** clauses: every friendly pawn on an adjacent file is
+  strictly ahead, *and* the stop square is attacked by an enemy pawn and defended by none. The
+  definition is written on the constant, because "backwards pawn" has several incompatible ones in
+  the literature and an unstated one cannot be tuned.
+- **`g_bbPassedMaskWhite` / `g_bbPassedMaskBlack`** in `defines.h` — compile-time three-file forward
+  spans, built with explicit file bounds rather than a shifted file mask, which is what keeps an
+  a-file pawn's span off the h-file.
+
+### Notes
+
+This retires the two constants issue #116 exists for: `PASSED_PAWN_BONUS` and
+`BACKWARDS_PAWN_PENALTY` were defined and referenced nowhere, under a standing
+`// TODO: Add bonus for passed pawn - bonus should be dependant on game stage`. The phase dependence
+that TODO asked for is what `PASSED_PAWN_BONUS_EG` provides.
+
+The masks also give the backwards term its clause (a) for free: intersecting the adjacent files with
+the complement of the forward span leaves exactly the adjacent-file squares level with or behind the
+pawn, so no second mask table was needed.
+
+Values are untuned and literature-shaped, matching how mobility landed — #117 owns tuning. Rank and
+phase shape are in a separate table from the magnitude so #117 can move them independently.
+
+Validation: `[eval]` 71 cases, full fast tier in Release **and** Debug (5,971 assertions, 291 cases).
+Bench against the merge base shows no slowdown — 3.36M nps against 3.31M, i.e. the term costs nothing
+measurable, with within-build spread of 0.3-0.4% across repeat runs.
+
+---
+
 ## 2026-08-08 — ThreadSanitizer for the Lazy SMP helpers (#184)
 
 ### Added

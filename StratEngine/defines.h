@@ -395,10 +395,45 @@ constexpr std::array<BITBOARD, ALL_SQUARES> makeFileDownMask() {
 	return result;
 }
 
+// Passed-pawn span: the pawn's own file plus both adjacent files, on every rank
+// AHEAD of the square. A pawn is passed when no enemy pawn stands anywhere in
+// this span (issue #116).
+//
+// Square 0 is a8 and 63 is h1, so "ahead" for White means DECREASING index and
+// for Black increasing -- the same direction convention as the FileUp/FileDown
+// masks above. The file bounds are tested explicitly rather than by shifting a
+// file mask, which is what keeps an a-file pawn's span off the h-file: a shift
+// wraps around the board edge, and that wraparound is the classic bug in this
+// kind of generator.
+//
+// A pawn on the promotion rank has an empty span, which is correct rather than
+// degenerate: there is nothing ahead of it.
+constexpr std::array<BITBOARD, ALL_SQUARES> makePassedMask(bool forWhite) {
+	std::array<BITBOARD, ALL_SQUARES> result{};
+	for (int i = 0; i < ALL_SQUARES; ++i) {
+		const int file = i % 8;
+		const int row = i / 8;          // 0 = rank 8, 7 = rank 1
+		BITBOARD span = 0;
+		const int step = forWhite ? -1 : 1;
+		for (int r = row + step; r >= 0 && r < 8; r += step) {
+			for (int df = -1; df <= 1; ++df) {
+				const int f = file + df;
+				if (f < 0 || f > 7)
+					continue;
+				span |= (1ULL << (r * 8 + f));
+			}
+		}
+		result[i] = span;
+	}
+	return result;
+}
+
 // Inline constexpr arrays initialiseres ved kompileringstid
 inline constexpr auto g_bbMask = makeMask();
 inline constexpr auto g_bbFileUpMask = makeFileUpMask();
 inline constexpr auto g_bbFileDownMask = makeFileDownMask();
+inline constexpr auto g_bbPassedMaskWhite = makePassedMask(true);
+inline constexpr auto g_bbPassedMaskBlack = makePassedMask(false);
 
 // Type alias for 2D array: [ALL_SQUARES][256]
 template <typename T, std::size_t Rows, std::size_t Cols>
