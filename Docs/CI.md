@@ -66,8 +66,10 @@ not survive the MSVC driver, and `CMakeLists.txt` raises a configure error rathe
 Windows build look instrumented when it is not.
 
 **`tsan-linux`** builds `StratChessEvolved` with `-fsanitize=thread` and runs
-`.github/scripts/tsan_smp_drive.py`, which drives four multi-threaded searches over UCI at
-`Threads=4` and `Threads=8`. Same trigger as the two jobs above, for the same reason.
+`.github/scripts/tsan_smp_drive.py`, which drives seven multi-threaded scenarios over UCI at
+`Threads=4`, `8` and `16` — including an externally requested `stop` mid-search and a time-managed
+`movetime` abort, the two paths where a search ends on something other than its own depth limit.
+Same trigger as the two jobs above, for the same reason.
 
 It does **not** run the Catch2 tier, and that is the point of the job's design. The `[smp]` tests only
 check `SetThreads()` clamping and the rest of the tier is single-threaded, so a TSan run over it

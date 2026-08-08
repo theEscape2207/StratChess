@@ -75,14 +75,23 @@ a one-off survey.
 
 ## Design decisions
 
-**A CI job is justified, on the same trigger as `sanitize-linux`.** Measured cost: the four-scenario
-drive is 31.6 s locally, and the fast tier is 65.4 s under TSan against 8.2 s for a clean Debug build
+**A CI job is justified, on the same trigger as `sanitize-linux`.** Measured cost: the seven-scenario
+drive is 54.1 s locally, and the fast tier is 65.4 s under TSan against 8.2 s for a clean Debug build
 (8.0x, inside the expected 5-15x). Same order as the existing sanitizer leg, so it runs per-PR rather
 than nightly.
 
 **The job must drive multi-threaded search itself.** Running only `~[slow]` would be a job that
 cannot fail for the reason it exists — the point #184 makes about `Threads=1` proving nothing. So the
-job runs the committed driver at `Threads=4` and `Threads=8`.
+job runs the committed driver, at `Threads=4`, `8` and `16`.
+
+**Drive time is cheap, so the scenarios are broad rather than minimal.** The whole drive is under a
+minute against an instrumented build costing ~200 s, so the marginal cost of another scenario is
+noise. Seven cover: helpers on quiet and tactical positions, several searches over a warm shared TT,
+a `ucinewgame` clear, `SetThreads` on a live AI, an externally requested `stop` mid-search, the
+time-managed `movetime` abort, and 16 helpers heavily oversubscribed. The two abort scenarios matter
+most — they are the only ones where a search ends on something other than its own depth limit, so
+they exercise the latched abort flag every helper polls, and `stop` versus `movetime` differ in which
+thread decides.
 
 **And it runs *only* that drive — no Catch2 tier.** The tier is single-threaded, so under TSan it
 adds no coverage this job does not already have, while costing a second instrumented target and 65 s
@@ -117,9 +126,10 @@ fan out in parallel, then `build-and-test-result` closes:
 `tsan-linux` becomes a **sixth parallel job**, not a sixth serial step, so it costs PR feedback time
 only if it runs longer than the 248 s critical path. Estimated 200-260 s: the instrumented engine
 build should land near `sanitize-linux`'s ~200 s build (fewer translation units — no Catch2
-amalgamation, no test sources), plus a drive measured at **31.6 s locally on 24 cores**. The
+amalgamation, no test sources), plus a drive measured at **54.1 s locally on 24 cores**. The
 `Threads=4` scenarios should transfer to a 4-vCPU runner roughly unchanged (four threads, four
-cores); only the `Threads=8` scenario is oversubscribed there and should cost about double.
+cores); the `Threads=8` and `16` scenarios are oversubscribed there and cost proportionally more,
+though the `stop` and `movetime` scenarios are wall-clock bound and so runner-independent.
 
 So: **expected wall-clock impact between none and ~+30 s**, and runner minutes up by roughly one job
 (~4 min against ~20 job-minutes today, i.e. ~+20%) — free on a public repository. Docs- and

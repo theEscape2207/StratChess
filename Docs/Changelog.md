@@ -27,8 +27,9 @@ Newest first.
 ### Added
 
 - **`tsan-linux`** in `build-and-test.yml`: builds `StratChessEvolved` with `-fsanitize=thread` and
-  drives four multi-threaded searches over UCI at `Threads=4` and `Threads=8`. Wired into
-  `build-and-test-result`, so a race blocks the merge and a skipped tier still reports success.
+  drives seven multi-threaded scenarios over UCI at `Threads=4`, `8` and `16`, including a `stop`
+  mid-search and a time-managed `movetime` abort. Wired into `build-and-test-result`, so a race
+  blocks the merge and a skipped tier still reports success.
 - **`.github/scripts/tsan_smp_drive.py`** — the driver, committed rather than inlined in YAML so a CI
   failure reproduces locally. It waits for each command's completion token and treats an early exit
   as failure, which is what a race looks like under `-fno-sanitize-recover`.
@@ -52,8 +53,8 @@ The job builds only the engine and skips the Catch2 tier: the tier is single-thr
 it adds nothing, and including it would cost a second instrumented target plus 65 s and push the job
 past the current critical path.
 
-Validation: `Build` tier. The driver was exercised against the instrumented build — 4/4 scenarios
-clean in 31.6 s, and separately observed failing correctly when the binary still carried the injected
+Validation: `Build` tier. The driver was exercised against the instrumented build — 7/7 scenarios
+clean in 54.1 s, and separately observed failing correctly when the binary still carried the injected
 race.
 
 ---
