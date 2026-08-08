@@ -34,6 +34,9 @@ Newest first.
   `-Limit` bounds a sanity run, `-ClassifyReport` re-reads a past report without running anything.
 - `Docs/TestDesign.md` gains the sweep as a tier, a coverage-map row and a section carrying the
   2026-08-05 result. `Docs/Workflow.md` records the standing decision that it stays local.
+- `Get-ChangeTier.ps1` classifies the new script as `Tooling`, with a self-test case. Its enumeration
+  is deliberately explicit, so an unregistered script falls to `Engine` — which is what this one did
+  on its own branch until it was registered.
 
 ### Notes
 
@@ -46,9 +49,11 @@ The result was reachable only through issue comments before this. It is now a do
 on every legally reachable position in the corpus at depths 1–4, `MoveGenerator` matches the
 Stockfish/TGCT oracle exactly.
 
-Validation: `Tooling` tier. The classifier was checked against the archived 73-failure report from
-#198 (73 rejected, 0 unexplained, reproducing that run's reading) and against a mutated copy of it
-with one fingerprint broken (1 unexplained, exit 1). A live 3,000-case run exercised the run path.
+Validation ran at `Engine` tier — full build, extended tests, tactical suite and self-play, all
+passing — because the new script was still unregistered when the branch was validated. The classifier
+was checked against the archived 73-failure report from #198 (73 rejected, 0 unexplained, reproducing
+that run's reading) and against a mutated copy of it with one fingerprint broken (1 unexplained,
+exit 1). A live 3,000-case run exercised the run path.
 
 ---
 
