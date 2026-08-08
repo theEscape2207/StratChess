@@ -69,6 +69,7 @@ cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\<name>.
 | `Validate-PrePR.ps1` | Before a PR — scopes itself to the change tier; `-Force` to run everything |
 | `Run-EloMatch.ps1 [-Smoke]` | After search/eval/time changes — strength vs the pinned reference (method: `Docs/EloMeasurement.md`, results: `Docs/EloLog.md`) |
 | `Run-Bench.ps1 -Exe <path>` | Search speed (nps) at fixed depth — before/after any optimisation, or comparing two builds |
+| `Run-PerftCheck.ps1` | Move generation against a 142,953-position corpus (~25 min) — after `MoveGenerator`, make/unmake or FEN-parser work. A clean sweep is not zero failures; the script classifies them (`Docs/TestDesign.md`) |
 | `New-Worktree.ps1 -Name <task>` | Starting a task that needs its own directory — forks fresh from `origin/main` at the correct path |
 | `New-TaskBranch.ps1 -Name <task>` | Starting a task **in the current worktree** — forks a branch from `origin/main`, refusing on a dirty tree |
 | `New-PullRequest.ps1 -Title "…"` | Sync → validate → push → create/update PR. `-Draft`, `-NoPr`, `-BodyFile` |
