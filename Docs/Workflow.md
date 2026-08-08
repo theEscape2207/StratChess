@@ -185,6 +185,15 @@ different axis — *toolchain*, not bug class — and Linux cannot cover it by c
 
 So: Linux answers "is the code correct?", Windows answers "does the shipping toolchain build it?".
 
+**The perftcheck corpus stays a local instrument and is not a CI leg (#196).** The sweep of all
+142,953 positions found **zero disagreements on legally reachable input** (#198), so as a gate it
+would be a regression tripwire rather than a discovery tool — and that role is already filled by
+`perft test` in the Build tier and the depth-7/depth-6 perft legs in `nightly.yml`. Against that it
+costs ~25 minutes and an 84 MB binary to fetch or cache per run. Run it from
+`Scripts\Run-PerftCheck.ps1` after `MoveGenerator`, make/unmake or FEN-parser work, and when a
+periodic exhaustive statement is wanted. What would change this: a defect that the committed suite
+misses and the corpus catches, which would make the breadth worth paying for continuously.
+
 ## Speed and nps
 
 **The goal is measured positive Elo, not nps.** Speed is a means; it is not the objective, and

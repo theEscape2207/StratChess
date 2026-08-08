@@ -22,6 +22,41 @@ Newest first.
 
 ---
 
+## 2026-08-08 — `Run-PerftCheck.ps1`, and the corpus sweep recorded (#196)
+
+### Added
+
+- **`Scripts/Run-PerftCheck.ps1`** wraps perftcheck: resolves `perftcheck.exe` from `EngineTesting\`
+  and the engine through `Get-BuildArtifact.ps1`, runs the corpus, then **classifies the failures**.
+  A clean sweep is not zero failures — the corpus holds positions the FEN parser rejects, and the
+  engine answers for the start position instead. Those carry a fingerprint (an actual node count
+  equal to startpos perft at that depth); the script buckets them and fails only on what is left.
+  `-Limit` bounds a sanity run, `-ClassifyReport` re-reads a past report without running anything.
+- `Docs/TestDesign.md` gains the sweep as a tier, a coverage-map row and a section carrying the
+  2026-08-05 result. `Docs/Workflow.md` records the standing decision that it stays local.
+- `Get-ChangeTier.ps1` classifies the new script as `Tooling`, with a self-test case. Its enumeration
+  is deliberately explicit, so an unregistered script falls to `Engine` — which is what this one did
+  on its own branch until it was registered.
+
+### Notes
+
+Closes #196. Steps 1, 2 and 4 of it were already discharged (the UCI `go perft` command in #197, the
+exhaustive run in #198, the Apache-2.0 licence); what remained was the CI question, and the sweep's
+own result answers it — zero disagreements on legally reachable input means a CI leg would be a
+regression tripwire, a role `perft test` and the nightly perft legs already fill.
+
+The result was reachable only through issue comments before this. It is now a documented statement:
+on every legally reachable position in the corpus at depths 1–4, `MoveGenerator` matches the
+Stockfish/TGCT oracle exactly.
+
+Validation ran at `Engine` tier — full build, extended tests, tactical suite and self-play, all
+passing — because the new script was still unregistered when the branch was validated. The classifier
+was checked against the archived 73-failure report from #198 (73 rejected, 0 unexplained, reproducing
+that run's reading) and against a mutated copy of it with one fingerprint broken (1 unexplained,
+exit 1). A live 3,000-case run exercised the run path.
+
+---
+
 ## 2026-08-08 — `Run-EloMatch.ps1` refuses an SPRT against the fixed anchor (#159)
 
 ### Changed

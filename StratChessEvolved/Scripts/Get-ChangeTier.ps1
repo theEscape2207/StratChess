@@ -102,6 +102,7 @@ function Get-TierForPath {
     # Engine until someone deliberately classifies them.
     if ($p -like '*/Scripts/Run-EloMatch.ps1')               { return 'Tooling' }
     if ($p -like '*/Scripts/Run-Bench.ps1')                  { return 'Tooling' }
+    if ($p -like '*/Scripts/Run-PerftCheck.ps1')             { return 'Tooling' }
     if ($p -like '*/Scripts/Run-Tests.ps1')                  { return 'Tooling' }
     if ($p -like '*/Scripts/Sync-Master.ps1')                { return 'Tooling' }
     if ($p -like '*/Scripts/verify_mate_key.py')             { return 'Tooling' }
@@ -167,6 +168,7 @@ if ($SelfTest) {
         @{ Name = 'tooling only';               Files = @('StratChessEvolved/Scripts/Run-EloMatch.ps1');        Expect = 'Tooling' }
         @{ Name = 'corpus tool -> Tooling';     Files = @('StratChessEvolved/Scripts/build_corpus.py');         Expect = 'Tooling' }
         @{ Name = 'bench tool -> Tooling';      Files = @('StratChessEvolved/Scripts/Run-Bench.ps1');          Expect = 'Tooling' }
+        @{ Name = 'perftcheck tool -> Tooling'; Files = @('StratChessEvolved/Scripts/Run-PerftCheck.ps1');     Expect = 'Tooling' }
         @{ Name = 'docs + tooling -> Tooling';  Files = @('CLAUDE.md', 'StratChessEvolved/Scripts/Run-Tests.ps1'); Expect = 'Tooling' }
         @{ Name = 'docs + cpp -> Engine';       Files = @('CLAUDE.md', 'StratEngine/Eval.cpp');                 Expect = 'Engine' }
         @{ Name = 'build.ps1 -> Build';         Files = @('build.ps1');                                          Expect = 'Build' }

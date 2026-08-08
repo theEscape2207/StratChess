@@ -24,6 +24,7 @@ Tests are **protection tools for the roadmap**, not bureaucratic overhead.
 | Unit & fast integration | `StratChessTests.exe` | (all), or `[tag]` | < 10 s | Every build |
 | Deep perft | `StratChessEvolved.exe perft test` | — | Minutes | Pre-merge |
 | Full tactical suite | `StratChessEvolved.exe tactical stability 10` (single run: `tactical test`) | — | ~11 s | Pre-PR (automated: `Validate-PrePR.ps1` Step 3) |
+| Corpus move-gen sweep | `Scripts\Run-PerftCheck.ps1` | — | ~25 min | On demand — see [the corpus sweep](#corpus-move-generation-sweep-perftcheck) |
 
 Run all fast tests at once:
 ```bash
@@ -63,6 +64,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | Repetition detection | `[repetition]` | ✅ done | `RepetitionTests.cpp` |
 | Move generation (perft d1–d4) | `[perft]` | ✅ done | `PerftTests.cpp` |
 | Move generation (deep perft d5+) | — | ✅ done | `StratChessEvolved.exe perft test` |
+| Move generation (142,953-position corpus, d1–d4) | — | ✅ swept clean 2026-08-05 | `Scripts\Run-PerftCheck.ps1` |
 | **MoveFormatter** | `[formatter]` | ✅ Phase 0 | `MoveFormatterTests.cpp` |
 | **TranspositionTable** | `[tt]` | ✅ Phase 0 | `TTTests.cpp` |
 | **Evaluation (EvalSimple/Complex)** | `[eval]` | ✅ Phase 0 | `EvalTests.cpp` |
@@ -692,6 +694,35 @@ cd Tests
 ```
 
 Sources: `StratEngine/Tests/Perft.h/cpp` + `Tests/perft_test_cases.json`.
+
+### Corpus move-generation sweep (perftcheck)
+
+The breadth instrument. [perftcheck](https://grandchesstree.com/perftcheck) (Apache-2.0) drives the
+engine over UCI with `go perft <depth>` and compares its divide output against a Stockfish/TGCT
+oracle across **142,953 positions at depths 1–4** — roughly a thousand times the breadth of the
+committed suite, which is where move-generation faults are actually found (#195).
+
+```powershell
+cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Run-PerftCheck.ps1"
+... Run-PerftCheck.ps1 -Limit 5000                       # bounded sanity run, seconds
+... Run-PerftCheck.ps1 -ClassifyReport <report.json>      # re-read a past run, no engine needed
+```
+
+`perftcheck.exe` (~84 MB, not committed) lives in `EngineTesting\` beside `fastchess.exe`; the script
+prints the download URL if it is missing. Cost per case is superlinear — the corpus is ordered roughly
+simplest-first — so a `-Limit` run's rate does not extrapolate to the whole.
+
+**A clean sweep does not mean zero failures.** The corpus contains positions the FEN parser correctly
+rejects (pawns on rank 1/8, nine pawns, over 32 pieces); the engine resets to the start position and
+answers for that, which the oracle scores as a mismatch. Those failures carry a fingerprint — an
+actual node count equal to the start position's perft for that depth — and the script buckets them
+mechanically, failing only on what is left over. Classify by that rule, never by eye: reading the raw
+counts as move-generation discrepancies is exactly the mistake #200 had to correct.
+
+**Result, 2026-08-05** (`8edd327`, edge cases included): 561,641 checks, **561,568 passed**, 73
+failures over 19 distinct positions, **every one carrying the rejected-FEN fingerprint**, 23.4 min.
+On every legally reachable position in the corpus at depths 1–4, `MoveGenerator` matches the oracle
+exactly. Full detail and the failure classification: #198.
 
 ## AIPerplex Test Access
 
