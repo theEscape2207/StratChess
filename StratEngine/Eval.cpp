@@ -68,14 +68,13 @@ int EvalSimple::Evaluate(const Board& board) const noexcept
 // Class EvalComplex implementation
 //
 
-// eval_pawns — doubled and isolated pawn penalties for one color's pawns
+// eval_pawns — doubled, isolated, passed and backwards pawns for one color
 // (issue #127 restructure — see .claude/plans/eval-context-restructure.md).
-// Loops that color's own pawn bitboard directly; the per-pawn logic is
-// unchanged from the switch cases it replaces, just no longer keyed off the
-// outer per-square loop.
+// Loops that color's own pawn bitboard directly.
 //
-// TODO: Add bonus for passed pawn - bonus should be dependant on game stage
-// (carried over verbatim from the pre-#127 switch; still open, see issue #116).
+// The passer bonus is the only tapered part: it is worth more as the endgame
+// approaches, so this function returns unequal mg/eg endpoints. Everything else
+// here is phase-neutral (issue #116).
 ScorePair EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 {
 	// Doubled, isolated and backwards are phase-neutral and accumulate here;
@@ -94,7 +93,7 @@ ScorePair EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 		const eSquare square = Board::GetFirstPiece(remaining);
 		const int file = File(square);
 		const int squareIndex = static_cast<int>(square);
-		const int row = squareIndex / ONE_ROW;   // 0 = rank 8, 7 = rank 1
+		const int row = static_cast<int>(Rank(square));   // 0 = rank 8, 7 = rank 1
 		// Own file plus both adjacent files, ahead of this pawn only.
 		const BITBOARD forwardSpan = (color == WHITE) ? g_bbPassedMaskWhite[square]
 		                                              : g_bbPassedMaskBlack[square];
@@ -121,7 +120,14 @@ ScorePair EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 		// can block it or capture it on its way to promotion. Scaled by how far it
 		// has advanced and tapered toward the endgame, where a passer is worth
 		// most (issue #116).
-		if (!(enemyPawns & forwardSpan))
+		//
+		// A friendly pawn of its own on the same file ahead disqualifies it too:
+		// the rear pawn of a doubled pair can never advance past its own partner,
+		// so paying it a full passer bonus would score a pawn that is going nowhere.
+		// Only the front pawn of such a pair is passed.
+		const BITBOARD ownFileAhead = (color == WHITE) ? g_bbFileUpMask[square]
+		                                               : g_bbFileDownMask[square];
+		if (!(enemyPawns & forwardSpan) && !(ownPawns & ownFileAhead))
 		{
 			const int advanced = (color == WHITE) ? (7 - row) : row;
 			const int scale = PASSED_PAWN_RANK_SCALE[advanced];
@@ -145,6 +151,13 @@ ScorePair EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 		{
 			// (b) the stop square is covered by an enemy pawn and not by a friendly
 			//     one, so the pawn cannot advance out of trouble either.
+			//
+			// The "not by a friendly one" half cannot currently fire: a friendly
+			// pawn covering the stop square would have to stand on an adjacent file
+			// LEVEL with this pawn, which clause (a) has already ruled out. It is
+			// kept because it is half of the stated definition and would start
+			// mattering the moment clause (a) were relaxed to "strictly behind" --
+			// but #117 should not try to tune a condition that never fires today.
 			const int stopIndex = (color == WHITE) ? (squareIndex - ONE_ROW)
 			                                       : (squareIndex + ONE_ROW);
 			if (stopIndex >= 0 && stopIndex < ALL_SQUARES)
@@ -665,9 +678,10 @@ int EvalComplex::Evaluate(const Board& board) const noexcept
 	// one centipawn per term. Blending once is marginally more accurate, but it
 	// makes the per-term breakdown #129 prints unable to sum to the score it
 	// reports — and that reconstructibility is an asserted invariant, not a
-	// nicety. Only terms with mg != eg can truncate at all — eval_pawns and
-	// eval_mopup set both endpoints equal, so they blend exactly — which bounds
-	// the cost at under 1 cp per tapered term, i.e. under 2 cp per color today.
+	// nicety. Only terms with mg != eg can truncate at all — eval_mopup sets both
+	// endpoints equal, so it blends exactly, and eval_pawns does too whenever the
+	// side has no passed pawn — which bounds the cost at one centipawn per
+	// tapered term.
 	// Deterministic, and far below anything this engine can measure; a
 	// breakdown whose rows do not add up is a debugging tool that lies.
 	int blended[2] = { 0, 0 };

@@ -522,6 +522,15 @@ static constexpr const char* FEN_CASTLED_VS_CENTRAL_KING =
 static constexpr const char* FEN_BISHOP_PAIR_VS_SINGLE =
     "4k3/6b1/8/8/8/8/8/2B1KB2 w - - 0 1";
 
+// Passed pawns on OPPOSITE EDGE FILES, at deliberately different advancement
+// (issue #116). Both properties matter: opposite edges mean a mask that wrapped
+// around the a/h boundary shows up in a whole-position score rather than only in
+// the mask unit tests, and unequal advancement means a broken per-colour
+// `advanced` index cannot cancel between the two sides. Legal: kings on e8/e1,
+// neither attacked.
+static constexpr const char* FEN_EDGE_FILE_PASSERS =
+    "4k3/8/8/p7/8/7P/8/4K3 w - - 0 1";
+
 static constexpr const char* kSymmetryFens[] = {
     FEN_START,
     FEN_QUEEN_C6,
@@ -541,6 +550,10 @@ static constexpr const char* kSymmetryFens[] = {
     // pair, so without these two neither term is discriminated by a mirror.
     FEN_CASTLED_VS_CENTRAL_KING,
     FEN_BISHOP_PAIR_VS_SINGLE,
+    // Issue #116: the passer term is direction-aware through a new mask pair and
+    // a per-colour rank index, and no other FEN here puts a passer on an edge
+    // file, which is where a wraparound asymmetry would hide.
+    FEN_EDGE_FILE_PASSERS,
 };
 
 TEST_CASE("Eval - EvalSimple is color-symmetric: a position and its mirror score equally", "[eval]")
@@ -1540,10 +1553,16 @@ TEST_CASE("Eval - EvalComplex penalises a backwards pawn", "[eval]")
 {
     // White b2 is backwards: its only neighbour (c3) has advanced past it, and
     // its stop square b3 is attacked by the black a4 pawn and defended by no
-    // white pawn. The comparison moves the black pawn to the h-file, which
-    // removes clause (b) and nothing else.
+    // white pawn.
+    //
+    // The control moves that black pawn a4 -> a5, which stops it attacking b3
+    // (it now covers b4) and changes NOTHING else: a5 is still inside b2's
+    // forward span, so b2 remains not-passed in both positions. Moving it to the
+    // h-file instead would also take it out of that span and hand b2 a passer
+    // bonus, and the assertion would then pass on the passer swing while telling
+    // us nothing about clause (b).
     Board backwards("4k3/8/8/8/p7/2P5/1P6/4K3 w - - 0 1");
-    Board notAttacked("4k3/8/8/8/7p/2P5/1P6/4K3 w - - 0 1");
+    Board notAttacked("4k3/8/8/p7/8/2P5/1P6/4K3 w - - 0 1");
 
     const int backwardsScore   = EvalComplexTestFixture::Pawns(backwards, WHITE);
     const int notAttackedScore = EvalComplexTestFixture::Pawns(notAttacked, WHITE);
@@ -1571,4 +1590,23 @@ TEST_CASE("Eval - EvalComplex does not penalise a pawn its neighbour is level wi
 
     CAPTURE(levelScore, backwardsScore);
     REQUIRE(levelScore > backwardsScore);
+}
+
+TEST_CASE("Eval - EvalComplex does not score the rear pawn of a doubled pair as passed", "[eval]")
+{
+    // The rear pawn can never advance past its own partner, so only the front
+    // pawn of the pair is passed. Both positions have the same two white pawns
+    // on the same two ranks and no black pawns at all; they differ only in
+    // whether the pawns share a file.
+    Board doubled("4k3/8/4P3/4P3/8/8/8/4K3 w - - 0 1");
+    Board separated("4k3/8/4P3/2P5/8/8/8/4K3 w - - 0 1");
+
+    const int doubledScore   = EvalComplexTestFixture::Pawns(doubled, WHITE);
+    const int separatedScore = EvalComplexTestFixture::Pawns(separated, WHITE);
+
+    // Separated wins by two passer bonuses against one, minus the doubled and
+    // isolated penalties -- a margin far larger than the 10 cp that separated
+    // them when the rear pawn was scored as a passer too.
+    CAPTURE(doubledScore, separatedScore);
+    REQUIRE(separatedScore > doubledScore + 50);
 }

@@ -27,8 +27,10 @@ Newest first.
 ### Added
 
 - **Passed-pawn bonus** in `eval_pawns`: no enemy pawn on the pawn's own or either adjacent file
-  ahead of it. Scaled by how far the pawn has advanced (`PASSED_PAWN_RANK_SCALE`, 1/16ths) and
-  tapered, giving roughly 20/45 cp on the starting rank up to 80/180 cp on the 7th.
+  ahead of it, and no friendly pawn of its own directly ahead — the rear pawn of a doubled pair can
+  never advance past its partner, so only the front pawn is passed. Scaled by how far the pawn has
+  advanced (`PASSED_PAWN_RANK_SCALE`, 1/16ths) and tapered, giving roughly 20/45 cp on the starting
+  rank up to 80/180 cp on the 7th.
 - **Backwards-pawn penalty**, requiring **both** clauses: every friendly pawn on an adjacent file is
   strictly ahead, *and* the stop square is attacked by an enemy pawn and defended by none. The
   definition is written on the constant, because "backwards pawn" has several incompatible ones in
@@ -51,9 +53,20 @@ pawn, so no second mask table was needed.
 Values are untuned and literature-shaped, matching how mobility landed — #117 owns tuning. Rank and
 phase shape are in a separate table from the magnitude so #117 can move them independently.
 
-Validation: `[eval]` 71 cases, full fast tier in Release **and** Debug (5,971 assertions, 291 cases).
-Bench against the merge base shows no slowdown — 3.36M nps against 3.31M, i.e. the term costs nothing
-measurable, with within-build spread of 0.3-0.4% across repeat runs.
+`eval-reviewer` verified the masks exhaustively rather than by inspection — all 64 squares of both
+arrays against an independent reimplementation, plus the clause-(a) set identity and the White/Black
+mirror relation — and found no defect in them. Three of its findings were fixed here: the
+doubled-pair exclusion above, a stale blend comment that still claimed `eval_pawns` was phase-neutral
+(it tapers now), and a backwards-pawn test that did not test what it claimed. That test moved the
+black pawn to the h-file, which also took it out of the white pawn's span and handed it a passer
+bonus, so the assertion passed on the passer swing and would have held with the penalty at zero. The
+control now moves the pawn one rank instead, and both backwards tests were confirmed to fail with
+`BACKWARDS_PAWN_PENALTY` temporarily set to 0.
+
+Validation: `[eval]` 72 cases, full fast tier in Release **and** Debug (5,993 assertions, 292 cases),
+including a new colour-symmetry FEN with passers on opposite edge files at different advancement.
+Bench against the merge base shows no slowdown — 3.385M nps against 3.315M, spreads of 0.1% and 0.4%
+within each build.
 
 ---
 
