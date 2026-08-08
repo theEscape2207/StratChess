@@ -22,6 +22,42 @@ Newest first.
 
 ---
 
+## 2026-08-08 — ThreadSanitizer for the Lazy SMP helpers (#184)
+
+### Added
+
+- **`tsan-linux`** in `build-and-test.yml`: builds `StratChessEvolved` with `-fsanitize=thread` and
+  drives four multi-threaded searches over UCI at `Threads=4` and `Threads=8`. Wired into
+  `build-and-test-result`, so a race blocks the merge and a skipped tier still reports success.
+- **`.github/scripts/tsan_smp_drive.py`** — the driver, committed rather than inlined in YAML so a CI
+  failure reproduces locally. It waits for each command's completion token and treats an early exit
+  as failure, which is what a race looks like under `-fno-sanitize-recover`.
+- `.claude/plans/tsan-lazy-smp.md` — survey, positive control, cost measurements and the CI
+  contention analysis.
+
+### Notes
+
+**No suppression file, and that is the result.** #184 expected the shared TT to be racy-by-tolerance
+and budgeted for suppressions. `TranspositionTable` is not lock-free — a `std::shared_mutex` per
+bucket, atomics for the counters — so there is no torn read to tolerate. Six configurations plus the
+fast tier reported zero races, with helpers demonstrably running (144,260 nodes at `Threads=1` against
+421,608 at `Threads=4` on the same depth-8 search).
+
+The zero is backed by a positive control: a deliberate unsynchronised increment injected into
+`helper_loop` produced two reports with correct stacks. Two mechanics silently fake a clean run and
+are handled — ASLR (TSan dies before `main` on Ubuntu 24.04 without `setarch -R`) and piping UCI
+commands ahead of the searches they configure.
+
+The job builds only the engine and skips the Catch2 tier: the tier is single-threaded, so under TSan
+it adds nothing, and including it would cost a second instrumented target plus 65 s and push the job
+past the current critical path.
+
+Validation: `Build` tier. The driver was exercised against the instrumented build — 4/4 scenarios
+clean in 31.6 s, and separately observed failing correctly when the binary still carried the injected
+race.
+
+---
+
 ## 2026-08-08 — `Run-PerftCheck.ps1`, and the corpus sweep recorded (#196)
 
 ### Added
