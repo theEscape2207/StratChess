@@ -52,25 +52,31 @@ Build the candidate first (`.\build.ps1 main`) — the script does not build it,
 defaults to the shipping clang-cl build, which is the only one comparable against the reference.
 
 ```
-# fixed batch against the default anchor
+# fixed batch against the default anchor — "where do we stand"
 cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Run-EloMatch.ps1"
-
-# "prove it did not make things worse"
-... Run-EloMatch.ps1 -Sprt NonRegression
-
-# "prove it is worth >= ~10 Elo"
-... Run-EloMatch.ps1 -Sprt Gain
-
-# explicit bounds
-... Run-EloMatch.ps1 -Sprt Custom -Elo0 0 -Elo1 5
 
 # against main rather than the anchor — see rule 4
 ... Run-EloMatch.ps1 -ReferenceExe <merge-base build> -ReferenceTag <commit>
+
+# every -Sprt form needs that same isolating reference, so build the merge base first
+# "prove it did not make things worse"
+... Run-EloMatch.ps1 -Sprt NonRegression -ReferenceExe <merge-base build> -ReferenceTag <commit>
+
+# "prove it is worth >= ~10 Elo"
+... Run-EloMatch.ps1 -Sprt Gain -ReferenceExe <merge-base build> -ReferenceTag <commit>
+
+# explicit bounds
+... Run-EloMatch.ps1 -Sprt Custom -Elo0 0 -Elo1 5 -ReferenceExe <merge-base build> -ReferenceTag <commit>
+
+# a cumulative verdict, asked for deliberately — "how far ahead of the anchor are we"
+... Run-EloMatch.ps1 -Sprt Custom -Elo0 0 -Elo1 20 -AnchorSprt
 ```
 
 `-Sprt Custom` requires both `-Elo0` and `-Elo1` explicitly. `-Sprt` cannot be combined with
 `-Smoke`: a 20-game run can never reach a decision, so the result would always read "inconclusive",
-which looks like a measurement and is not one.
+which looks like a measurement and is not one. Nor can it run against the tag-resolved reference —
+that verdict would be about the wrong quantity; see [the anchor measures the
+sum](#the-anchor-measures-the-sum-not-your-change).
 
 The SPRT wiring itself is verified against the pinned fastchess build: bounds `[0, 200]` between two
 identical builds accepted H0 after 10 games rather than playing out the 200-game cap.
@@ -212,6 +218,12 @@ tracking the project and the wrong one for deciding whether one small change ear
 So to decide whether a change helps, build the merge-base and pass it via `-ReferenceExe`, with
 `-ReferenceTag` naming the commit. Keep the anchor run too when the cumulative figure is wanted; the
 two answer different questions and both belong in the log, labelled as to which is which.
+
+`Run-EloMatch.ps1` enforces this rather than trusting it: `-Sprt` exits 1 when the reference comes
+from the tag lookup, because such a reference is a fixed anchor by construction. `-ReferenceExe` is
+the per-change path. `-AnchorSprt` overrides the refusal for a cumulative reading asked for on
+purpose, and labels the `EloLog.md` row accordingly, so the two kinds of verdict stay distinguishable
+without anyone having to annotate a row by hand afterwards — which is what the 2026-07-29 row needed.
 
 ### The opening book runs out
 

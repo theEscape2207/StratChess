@@ -22,6 +22,31 @@ Newest first.
 
 ---
 
+## 2026-08-08 — `Run-EloMatch.ps1` refuses an SPRT against the fixed anchor (#159)
+
+### Changed
+
+- **`-Sprt` now exits 1 when the reference comes from the tag lookup.** A tag-resolved reference is a
+  fixed anchor, so the hypothesis under test is about `main` plus the change versus that anchor — a
+  statement about the sum, satisfiable by the margin `main` had already accumulated. The combination
+  is refused rather than warned about, because no per-change reading of such a verdict exists and
+  none can be recovered by differencing anchor rows.
+- **`-AnchorSprt`** overrides the refusal for a cumulative reading wanted on purpose, and labels the
+  `EloLog.md` row as one. The 2026-07-29 `candidate-08d4ef8` row needed that caveat written by hand
+  after the fact; it is now emitted with the row.
+- `Docs/EloMeasurement.md`'s command examples pair every `-Sprt` form with `-ReferenceExe`.
+
+### Notes
+
+Closes the last open item of #159 — the methodology decision it asked for was settled in
+`EloMeasurement.md`, and `strength.yml` already defaults `reference_ref` to the merge base. The local
+script was the one path that still produced a verdict about the wrong quantity by default.
+
+Validation: `Tooling` tier, plus the four argument paths exercised directly — default anchor refused,
+`-AnchorSprt` and `-ReferenceExe` admitted, and the non-SPRT default path unchanged.
+
+---
+
 ## 2026-08-07 — Mobility evaluation for knight, bishop, rook and queen (#98, #113)
 
 ### Added

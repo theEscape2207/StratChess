@@ -24,9 +24,10 @@
     cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Run-EloMatch.ps1"
     Smoke run (pipeline check, 20 games):
     cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Run-EloMatch.ps1 -Smoke"
-    SPRT (stops as soon as the result is decisive; -Games becomes an upper bound):
-    cmd.exe /c "pwsh ... Run-EloMatch.ps1 -Sprt NonRegression"   # did this hurt?
-    cmd.exe /c "pwsh ... Run-EloMatch.ps1 -Sprt Gain"            # is it worth >= ~10 Elo?
+    SPRT (stops as soon as the result is decisive; -Games becomes an upper bound).
+    Needs a reference that isolates the change, so build the merge base first:
+    cmd.exe /c "pwsh ... Run-EloMatch.ps1 -Sprt NonRegression -ReferenceExe <mb.exe> -ReferenceTag <commit>"
+    cmd.exe /c "pwsh ... Run-EloMatch.ps1 -Sprt Gain -ReferenceExe <mb.exe> -ReferenceTag <commit>"
 
 .NOTES
     Must be invoked with -File, not dot-sourced. $PSScriptRoot is $null under dot-source.
@@ -40,6 +41,9 @@
     A fixed 500-game batch resolves only ±25 Elo on this setup, so anything expected
     to be worth less than that needs -Sprt to be decidable at all. See the
     "Choosing SPRT vs a fixed batch" section in Docs/EloMeasurement.md.
+    -Sprt is refused against a tag-resolved reference: a fixed anchor turns the
+    hypothesis into one about cumulative standing rather than about the change.
+    Pass -AnchorSprt when that cumulative verdict is what is actually wanted.
 #>
 
 param(
@@ -125,7 +129,11 @@ param(
     # 'normalized' (nElo) -- a DIFFERENT scale, on which "elo1=10" would silently
     # mean something else entirely. Override only if you know which scale you want.
     [ValidateSet('logistic', 'normalized', 'bayesian')]
-    [string]$SprtModel = 'logistic'
+    [string]$SprtModel = 'logistic',
+    # Opt out of the fixed-anchor SPRT guard below, declaring that a verdict about
+    # cumulative standing is the one wanted. The EloLog row is labelled as such, so
+    # a deliberate anchor SPRT stays distinguishable from a per-change one.
+    [switch]$AnchorSprt
 )
 
 Set-StrictMode -Version Latest
@@ -157,6 +165,25 @@ if ($Sprt -ne '') {
     }
     if ($Alpha -le 0 -or $Alpha -ge 1 -or $Beta -le 0 -or $Beta -ge 1) {
         Write-Host "SPRT error rates must be in (0,1): alpha=$Alpha beta=$Beta." -ForegroundColor Red
+        exit 1
+    }
+    # A tag-resolved reference is a FIXED anchor, so the hypothesis under test
+    # becomes "main plus this change beats the anchor by more than elo1" -- a
+    # statement about the sum, which the margin main had already accumulated can
+    # satisfy on its own. No per-change reading of such a verdict exists, and none
+    # can be recovered by differencing anchor rows, so the combination is refused
+    # rather than warned about. An explicit -ReferenceExe is the per-change path:
+    # it points at a build of the merge base, which the tag lookup cannot reach.
+    if ($ReferenceExe -eq '' -and -not $AnchorSprt) {
+        Write-Host "-Sprt against the fixed anchor '$ReferenceTag' tests the SUM, not this change." -ForegroundColor Red
+        Write-Host "H1 would mean 'main plus this change beats the anchor by more than elo1', which main's" -ForegroundColor Red
+        Write-Host 'pre-existing margin can satisfy alone -- the verdict would describe the wrong quantity.' -ForegroundColor Red
+        Write-Host ''
+        Write-Host 'To measure THIS change:' -ForegroundColor Yellow
+        Write-Host '  - dispatch .github/workflows/strength.yml with reference_ref=merge-base (resolves +/-4 Elo), or' -ForegroundColor Yellow
+        Write-Host '  - build the merge base and pass -ReferenceExe <exe> -ReferenceTag <commit> here.' -ForegroundColor Yellow
+        Write-Host 'For a deliberate cumulative reading, re-run with -AnchorSprt; the EloLog row is labelled as one.' -ForegroundColor Yellow
+        Write-Host 'Background: Docs/EloMeasurement.md -- "The anchor measures the sum, not your change".' -ForegroundColor Yellow
         exit 1
     }
 }
@@ -501,6 +528,12 @@ if ($Sprt -ne '') {
     # game count it gave up at rather than a placeholder.
     if ($sprtVerdict -like 'inconclusive*') { $sprtVerdict = "inconclusive @ $actualGames games" }
     $kind = "SPRT $Sprt [$Elo0, $Elo1] — $sprtVerdict"
+    # The guard above only lets an anchor SPRT through when -AnchorSprt asked for
+    # one, so say in the row which quantity the verdict is about; a reader months
+    # later has no other way to tell the two apart.
+    if ($AnchorSprt) {
+        $kind = "$kind — **against a fixed anchor: cumulative standing, not the value of this change**"
+    }
     # Sanity check: an accepted H1 alongside a negative point estimate means the
     # parse latched onto the wrong line. Better a loud warning than a wrong row.
     if ($sprtVerdict -eq 'H1 accepted' -and $eloText -match '^\s*-') {

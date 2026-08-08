@@ -80,7 +80,9 @@ cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\<name>.
 **Measurement**: use `-Sprt NonRegression` / `-Sprt Gain` for anything expected to be worth less
 than ~25 Elo — a fixed 500-game batch cannot resolve it, and recording the resulting "±26" row as a
 measurement is how false confidence accumulates. An SPRT that hits the `-Games` cap without crossing
-a bound is **inconclusive**, not a measured zero; record it as such. A full 500-game batch is ≈40 min
+a bound is **inconclusive**, not a measured zero; record it as such. An SPRT needs a reference that
+isolates the change, so `Run-EloMatch.ps1` refuses `-Sprt` against the fixed anchor (`-AnchorSprt`
+overrides it for a deliberate cumulative reading). A full 500-game batch is ≈40 min
 unattended at the default `-Concurrency 6`. Measurement budget is the user's call — report what
 deciding would cost and let them choose.
 
