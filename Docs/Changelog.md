@@ -52,6 +52,9 @@ replaying the previous move. With the corrected order and the same 50 ms probe s
 A unit test cannot capture this: on a correct build the window does not exist, so nothing can observe
 it without reintroducing the defect. The probe plus the recorded before/after is the regression
 artifact.
+
+---
+
 ## 2026-08-09 — Passed-pawn bonus and backwards-pawn penalty (#116)
 
 ### Added
