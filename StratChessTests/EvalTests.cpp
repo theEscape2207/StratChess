@@ -13,6 +13,7 @@
 #include "Eval.h"
 
 #include <algorithm>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -522,6 +523,23 @@ static constexpr const char* FEN_CASTLED_VS_CENTRAL_KING =
 static constexpr const char* FEN_BISHOP_PAIR_VS_SINGLE =
     "4k3/6b1/8/8/8/8/8/2B1KB2 w - - 0 1";
 
+// Passed pawns on OPPOSITE EDGE FILES, at deliberately different advancement
+// (issue #116). Both properties matter: opposite edges mean a mask that wrapped
+// around the a/h boundary shows up in a whole-position score rather than only in
+// the mask unit tests, and unequal advancement means a broken per-colour
+// `advanced` index cannot cancel between the two sides. Legal: kings on e8/e1,
+// neither attacked.
+static constexpr const char* FEN_EDGE_FILE_PASSERS =
+    "4k3/8/8/p7/8/7P/8/4K3 w - - 0 1";
+
+// Blockaded passer (issue #116). White's e7 pawn has the black king squarely on
+// its stop square, so the blockade discount applies to exactly one side. This is
+// the only place `eval_pawns` reads a non-pawn bitboard (`ctx.occupied[enemy]`),
+// and it is per-colour, so without this the mirror battery never exercises it.
+// Legal: the kings are not adjacent and neither is in check.
+static constexpr const char* FEN_BLOCKADED_PASSER =
+    "4k3/4P3/8/8/8/8/8/4K3 w - - 0 1";
+
 static constexpr const char* kSymmetryFens[] = {
     FEN_START,
     FEN_QUEEN_C6,
@@ -541,6 +559,11 @@ static constexpr const char* kSymmetryFens[] = {
     // pair, so without these two neither term is discriminated by a mirror.
     FEN_CASTLED_VS_CENTRAL_KING,
     FEN_BISHOP_PAIR_VS_SINGLE,
+    // Issue #116: the passer term is direction-aware through a new mask pair and
+    // a per-colour rank index, and no other FEN here puts a passer on an edge
+    // file, which is where a wraparound asymmetry would hide.
+    FEN_EDGE_FILE_PASSERS,
+    FEN_BLOCKADED_PASSER,
 };
 
 TEST_CASE("Eval - EvalSimple is color-symmetric: a position and its mirror score equally", "[eval]")
@@ -1430,4 +1453,246 @@ TEST_CASE("Eval - mop-up: walking the winning king toward the loser must raise t
     CAPTURE(far.pst[WHITE], near.pst[WHITE], farTotal, nearTotal);
 
     REQUIRE(nearTotal > farTotal);
+}
+
+// ---------------------------------------------------------------------------
+// Passed and backwards pawns (issue #116)
+//
+// The span masks are tested for CONTENT first, before anything that consumes
+// them: a wrong mask produces a term that is subtly wrong in every position at
+// once, and no whole-position delta test would localise it.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("PassedMask - white d4 covers exactly the c/d/e files ahead", "[eval]")
+{
+    BITBOARD expected = 0;
+    for (const int sq : { c5, c6, c7, c8, d5, d6, d7, d8, e5, e6, e7, e8 })
+        expected |= (1ULL << sq);
+
+    REQUIRE(g_bbPassedMaskWhite[d4] == expected);
+}
+
+TEST_CASE("PassedMask - black d5 covers exactly the c/d/e files ahead", "[eval]")
+{
+    BITBOARD expected = 0;
+    for (const int sq : { c4, c3, c2, c1, d4, d3, d2, d1, e4, e3, e2, e1 })
+        expected |= (1ULL << sq);
+
+    REQUIRE(g_bbPassedMaskBlack[d5] == expected);
+}
+
+TEST_CASE("PassedMask - edge files do not wrap around the board", "[eval]")
+{
+    // The classic generator bug: shifting a file mask sideways wraps a2's span
+    // onto the h-file. Built with explicit file bounds instead, so assert it.
+    BITBOARD hFile = 0;
+    for (const int sq : { h1, h2, h3, h4, h5, h6, h7, h8 })
+        hFile |= (1ULL << sq);
+    BITBOARD aFile = 0;
+    for (const int sq : { a1, a2, a3, a4, a5, a6, a7, a8 })
+        aFile |= (1ULL << sq);
+
+    REQUIRE((g_bbPassedMaskWhite[a2] & hFile) == 0);
+    REQUIRE((g_bbPassedMaskWhite[h2] & aFile) == 0);
+    REQUIRE((g_bbPassedMaskBlack[a7] & hFile) == 0);
+    REQUIRE((g_bbPassedMaskBlack[h7] & aFile) == 0);
+}
+
+TEST_CASE("PassedMask - nothing is ahead of a pawn on the promotion rank", "[eval]")
+{
+    REQUIRE(g_bbPassedMaskWhite[d8] == 0);
+    REQUIRE(g_bbPassedMaskBlack[d1] == 0);
+}
+
+TEST_CASE("Eval - EvalComplex rewards a passed pawn over a blocked one", "[eval]")
+{
+    // Identical but for the black pawn on d7, which stands in the white e5
+    // pawn's adjacent-file span and so denies it passed status.
+    Board passed("4k3/8/8/4P3/8/8/8/4K3 w - - 0 1");
+    Board blocked("4k3/3p4/8/4P3/8/8/8/4K3 w - - 0 1");
+
+    const int passedScore  = EvalComplexTestFixture::Pawns(passed, WHITE);
+    const int blockedScore = EvalComplexTestFixture::Pawns(blocked, WHITE);
+
+    CAPTURE(passedScore, blockedScore);
+    REQUIRE(passedScore > blockedScore);
+}
+
+TEST_CASE("Eval - EvalComplex passer bonus grows as the pawn advances", "[eval]")
+{
+    // Both kings on a8/a-file, deliberately off the pawn's file: with the black
+    // king on e8 the seventh-rank pawn would be BLOCKADED, so the pair would vary
+    // advancement and blockade status together and the comparison would no longer
+    // isolate rank.
+    Board third("k7/8/8/8/8/4P3/8/4K3 w - - 0 1");
+    Board seventh("k7/4P3/8/8/8/8/8/4K3 w - - 0 1");
+
+    const int thirdScore   = EvalComplexTestFixture::Pawns(third, WHITE);
+    const int seventhScore = EvalComplexTestFixture::Pawns(seventh, WHITE);
+
+    CAPTURE(thirdScore, seventhScore);
+    REQUIRE(seventhScore > thirdScore);
+}
+
+TEST_CASE("Eval - EvalComplex passer is worth more in the endgame than the middlegame", "[eval]")
+{
+    // Same pawn structure. The queens and rooks only move the phase, and
+    // eval_pawns reads no piece other than pawns, so any difference here is the
+    // mg/eg endpoints of the passer bonus and nothing else.
+    Board middlegame("rq2k3/8/8/4P3/8/8/8/RQ2K3 w - - 0 1");
+    Board endgame("4k3/8/8/4P3/8/8/8/4K3 w - - 0 1");
+
+    const int middlegameScore = EvalComplexTestFixture::Pawns(middlegame, WHITE);
+    const int endgameScore    = EvalComplexTestFixture::Pawns(endgame, WHITE);
+
+    CAPTURE(middlegameScore, endgameScore);
+    REQUIRE(endgameScore > middlegameScore);
+}
+
+TEST_CASE("Eval - EvalComplex detects an a-file passer", "[eval]")
+{
+    // Guards the wraparound case end to end: a black h-pawn must not stop the
+    // white a-pawn from counting as passed, while a black b-pawn must.
+    Board aFilePasser("4k3/7p/8/P7/8/8/8/4K3 w - - 0 1");
+    Board aFileBlocked("4k3/1p6/8/P7/8/8/8/4K3 w - - 0 1");
+
+    const int passerScore  = EvalComplexTestFixture::Pawns(aFilePasser, WHITE);
+    const int blockedScore = EvalComplexTestFixture::Pawns(aFileBlocked, WHITE);
+
+    CAPTURE(passerScore, blockedScore);
+    REQUIRE(passerScore > blockedScore);
+}
+
+TEST_CASE("Eval - EvalComplex penalises a backwards pawn", "[eval]")
+{
+    // White b2 is backwards: its only neighbour (c3) has advanced past it, and
+    // its stop square b3 is attacked by the black a4 pawn and defended by no
+    // white pawn.
+    //
+    // The control moves that black pawn a4 -> a5, which stops it attacking b3
+    // (it now covers b4) and changes NOTHING else: a5 is still inside b2's
+    // forward span, so b2 remains not-passed in both positions. Moving it to the
+    // h-file instead would also take it out of that span and hand b2 a passer
+    // bonus, and the assertion would then pass on the passer swing while telling
+    // us nothing about clause (b).
+    Board backwards("4k3/8/8/8/p7/2P5/1P6/4K3 w - - 0 1");
+    Board notAttacked("4k3/8/8/p7/8/2P5/1P6/4K3 w - - 0 1");
+
+    const int backwardsScore   = EvalComplexTestFixture::Pawns(backwards, WHITE);
+    const int notAttackedScore = EvalComplexTestFixture::Pawns(notAttacked, WHITE);
+
+    CAPTURE(backwardsScore, notAttackedScore);
+    REQUIRE(backwardsScore < notAttackedScore);
+}
+
+TEST_CASE("Eval - EvalComplex does not penalise a pawn its neighbour is level with", "[eval]")
+{
+    // Clause (a) only. The two positions differ by the white a2 pawn and nothing
+    // else: it sits LEVEL with b2 on an adjacent file, so b2 is no longer behind
+    // every neighbour and is not backwards -- even though b3 is still attacked by
+    // a4 and still undefended, so clause (b) holds in both.
+    //
+    // a2 itself contributes nothing to compare against: it is not passed (the
+    // black a4 pawn is in its span), not isolated (b2 is adjacent), not doubled,
+    // and not backwards (b2 is level with it in turn). So the whole difference is
+    // b2's penalty disappearing.
+    Board levelNeighbour("4k3/8/8/8/p7/2P5/PP6/4K3 w - - 0 1");
+    Board backwards("4k3/8/8/8/p7/2P5/1P6/4K3 w - - 0 1");
+
+    const int levelScore     = EvalComplexTestFixture::Pawns(levelNeighbour, WHITE);
+    const int backwardsScore = EvalComplexTestFixture::Pawns(backwards, WHITE);
+
+    CAPTURE(levelScore, backwardsScore);
+    REQUIRE(levelScore > backwardsScore);
+}
+
+TEST_CASE("Eval - EvalComplex passer bonus is monotonic across every rank", "[eval]")
+{
+    // The bonus is scaled by rank and then again by the blockade factor, and each
+    // scaling truncates. Truncation cannot be reasoned about in general -- it has
+    // to be checked at every rank, because a single non-monotonic step means an
+    // advancing pawn can lose value by moving forward.
+    //
+    // Walked twice: once free, once with the black king held on the pawn's stop
+    // square at every step, because the blockade discount is the SECOND scaling and
+    // only the blockaded walk exercises both truncations.
+    //
+    // Free walk -- black king parked on a8, off the pawn's file, so it never
+    // blockades and never moves the phase.
+    const char* byRank[] = {
+        "k7/8/8/8/8/8/4P3/4K3 w - - 0 1",   // e2
+        "k7/8/8/8/8/4P3/8/4K3 w - - 0 1",   // e3
+        "k7/8/8/8/4P3/8/8/4K3 w - - 0 1",   // e4
+        "k7/8/8/4P3/8/8/8/4K3 w - - 0 1",   // e5
+        "k7/8/4P3/8/8/8/8/4K3 w - - 0 1",   // e6
+        "k7/4P3/8/8/8/8/8/4K3 w - - 0 1",   // e7
+    };
+
+    int previous = std::numeric_limits<int>::min();
+    for (const char* fen : byRank) {
+        Board board(fen);
+        const int score = EvalComplexTestFixture::Pawns(board, WHITE);
+        CAPTURE(fen, score, previous);
+        REQUIRE(score >= previous);
+        previous = score;
+    }
+
+    // Blockaded walk -- the black king sits on the stop square at every rank, so
+    // every value goes through `scale * BLOCKADED / 16` as well.
+    const char* byRankBlockaded[] = {
+        "8/8/8/8/8/4k3/4P3/4K3 w - - 0 1",   // e2, king e3
+        "8/8/8/8/4k3/4P3/8/4K3 w - - 0 1",   // e3, king e4
+        "8/8/8/4k3/4P3/8/8/4K3 w - - 0 1",   // e4, king e5
+        "8/8/4k3/4P3/8/8/8/4K3 w - - 0 1",   // e5, king e6
+        "8/4k3/4P3/8/8/8/8/4K3 w - - 0 1",   // e6, king e7
+        "4k3/4P3/8/8/8/8/8/4K3 w - - 0 1",   // e7, king e8
+    };
+
+    previous = std::numeric_limits<int>::min();
+    for (const char* fen : byRankBlockaded) {
+        Board board(fen);
+        const int score = EvalComplexTestFixture::Pawns(board, WHITE);
+        CAPTURE(fen, score, previous);
+        REQUIRE(score >= previous);
+        previous = score;
+    }
+}
+
+TEST_CASE("Eval - EvalComplex discounts a passer whose stop square is blockaded", "[eval]")
+{
+    // Same white passer on e6 both times; the black king either sits on its stop
+    // square e7, where the pawn cannot move at all until it is dislodged, or stands
+    // aside on a8.
+    //
+    // The blockade test is the one place `eval_pawns` reads a non-pawn bitboard
+    // (`ctx.occupied[enemy]`), and the only square of it that can matter is the stop
+    // square -- so moving the king between those two squares changes exactly one
+    // input to one term, and the whole delta is the discount.
+    Board blockaded("4k3/4P3/8/8/8/8/8/4K3 w - - 0 1");
+    Board freeToRun("k7/4P3/8/8/8/8/8/4K3 w - - 0 1");
+
+    const int blockadedScore = EvalComplexTestFixture::Pawns(blockaded, WHITE);
+    const int freeScore      = EvalComplexTestFixture::Pawns(freeToRun, WHITE);
+
+    CAPTURE(blockadedScore, freeScore);
+    REQUIRE(freeScore > blockadedScore);
+}
+
+TEST_CASE("Eval - EvalComplex does not score the rear pawn of a doubled pair as passed", "[eval]")
+{
+    // The rear pawn can never advance past its own partner, so only the front
+    // pawn of the pair is passed. Both positions have the same two white pawns
+    // on the same two ranks and no black pawns at all; they differ only in
+    // whether the pawns share a file.
+    Board doubled("4k3/8/4P3/4P3/8/8/8/4K3 w - - 0 1");
+    Board separated("4k3/8/4P3/2P5/8/8/8/4K3 w - - 0 1");
+
+    const int doubledScore   = EvalComplexTestFixture::Pawns(doubled, WHITE);
+    const int separatedScore = EvalComplexTestFixture::Pawns(separated, WHITE);
+
+    // Separated wins by two passer bonuses against one, minus the doubled and
+    // isolated penalties -- a margin far larger than the 10 cp that separated
+    // them when the rear pawn was scored as a passer too.
+    CAPTURE(doubledScore, separatedScore);
+    REQUIRE(separatedScore > doubledScore + 50);
 }

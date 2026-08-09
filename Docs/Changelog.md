@@ -55,6 +55,85 @@ artifact.
 
 ---
 
+## 2026-08-09 — Retune the passer bonus after a measured regression (#116)
+
+### Changed
+
+- **`PASSED_PAWN_RANK_SCALE` halved** — roughly 10/22 cp on the pawn's starting rank up to 40/90 at
+  the 7th, where the first version gave 20/45 up to 80/180. Shape untouched, so the two measurements
+  differ in magnitude alone.
+- **Blockade discount**: a passer whose stop square is occupied by any enemy piece scores half
+  (`PASSED_PAWN_BLOCKADED_SCALE`). The first version paid a 7th-rank passer its full value with the
+  enemy king parked in front of it.
+
+### Notes
+
+The first version measured **-11.52 +/- 4.36 Elo** over 19,980 games (run `31300861562`) — decisively
+negative, with the 95% interval entirely below zero. The detection was not at fault: the masks were
+verified exhaustively and the unit tests pin every property. The valuation was, in the two places the
+eval review had flagged in advance.
+
+New test: the passer bonus is asserted **monotonic across every rank**, walking a lone pawn from its
+starting square to the 7th. The bonus is now scaled twice and each scaling truncates, so monotonicity
+has to be checked rank by rank rather than argued in general.
+
+Bench against the merge base is **not usable as a like-for-like comparison here**, and the aggregate
+figure is actively misleading: the two builds search different trees, and the candidate spends far
+more of its nodes on `open-mid`, the slowest-nps position in the suite (8.6M nodes -> 13.8M), which
+drags the weighted aggregate down well past any per-node cost. Per position the cost is roughly
+1.5-7.6%, with one position slightly faster. Strength, which subsumes both the evaluation change and
+its speed cost, is the only instrument that settles this.
+
+---
+
+## 2026-08-09 — Passed-pawn bonus and backwards-pawn penalty (#116)
+
+### Added
+
+- **Passed-pawn bonus** in `eval_pawns`: no enemy pawn on the pawn's own or either adjacent file
+  ahead of it, and no friendly pawn of its own directly ahead — the rear pawn of a doubled pair can
+  never advance past its partner, so only the front pawn is passed. Scaled by how far the pawn has
+  advanced (`PASSED_PAWN_RANK_SCALE`, 1/16ths) and tapered, giving roughly 20/45 cp on the starting
+  rank up to 80/180 cp on the 7th.
+- **Backwards-pawn penalty**, requiring **both** clauses: every friendly pawn on an adjacent file is
+  strictly ahead, *and* the stop square is attacked by an enemy pawn and defended by none. The
+  definition is written on the constant, because "backwards pawn" has several incompatible ones in
+  the literature and an unstated one cannot be tuned.
+- **`g_bbPassedMaskWhite` / `g_bbPassedMaskBlack`** in `defines.h` — compile-time three-file forward
+  spans, built with explicit file bounds rather than a shifted file mask, which is what keeps an
+  a-file pawn's span off the h-file.
+
+### Notes
+
+This retires the two constants issue #116 exists for: `PASSED_PAWN_BONUS` and
+`BACKWARDS_PAWN_PENALTY` were defined and referenced nowhere, under a standing
+`// TODO: Add bonus for passed pawn - bonus should be dependant on game stage`. The phase dependence
+that TODO asked for is what `PASSED_PAWN_BONUS_EG` provides.
+
+The masks also give the backwards term its clause (a) for free: intersecting the adjacent files with
+the complement of the forward span leaves exactly the adjacent-file squares level with or behind the
+pawn, so no second mask table was needed.
+
+Values are untuned and literature-shaped, matching how mobility landed — #117 owns tuning. Rank and
+phase shape are in a separate table from the magnitude so #117 can move them independently.
+
+`eval-reviewer` verified the masks exhaustively rather than by inspection — all 64 squares of both
+arrays against an independent reimplementation, plus the clause-(a) set identity and the White/Black
+mirror relation — and found no defect in them. Three of its findings were fixed here: the
+doubled-pair exclusion above, a stale blend comment that still claimed `eval_pawns` was phase-neutral
+(it tapers now), and a backwards-pawn test that did not test what it claimed. That test moved the
+black pawn to the h-file, which also took it out of the white pawn's span and handed it a passer
+bonus, so the assertion passed on the passer swing and would have held with the penalty at zero. The
+control now moves the pawn one rank instead, and both backwards tests were confirmed to fail with
+`BACKWARDS_PAWN_PENALTY` temporarily set to 0.
+
+Validation: `[eval]` 72 cases, full fast tier in Release **and** Debug (5,993 assertions, 292 cases),
+including a new colour-symmetry FEN with passers on opposite edge files at different advancement.
+Bench against the merge base shows no slowdown — 3.385M nps against 3.315M, spreads of 0.1% and 0.4%
+within each build.
+
+---
+
 ## 2026-08-08 — ThreadSanitizer for the Lazy SMP helpers (#184)
 
 ### Added

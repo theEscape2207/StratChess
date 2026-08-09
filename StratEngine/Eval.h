@@ -229,8 +229,23 @@ class EvalComplex final
 	// Bonuses and penalties for eval
 	static const short DOUBLED_PAWN_PENALTY		= 10;
 	static const short ISOLATED_PAWN_PENALTY	= 20;
+	// Backwards pawn (issue #116). BOTH clauses are required: the pawn is behind
+	// every friendly pawn on its adjacent files, AND its stop square is attacked
+	// by an enemy pawn without being defended by a friendly one. A pawn meeting
+	// only one is not backwards -- "backwards pawn" has several incompatible
+	// definitions in the literature and an unstated one cannot be tuned.
+	//
+	// Deliberately small. A mis-specified structural penalty is a rounding error
+	// at 5 cp and a strategic distortion at 30.
 	static const short BACKWARDS_PAWN_PENALTY	= 5;
+	// Passed pawn (issue #116): no enemy pawn on its own or either adjacent file
+	// ahead of it (g_bbPassedMask*, defines.h). The base bonus is scaled by rank
+	// and by phase -- see PASSED_PAWN_RANK_SCALE and the eg endpoint below.
 	static const short PASSED_PAWN_BONUS		= 20;
+	// Passers are worth more as the endgame approaches: fewer pieces to blockade
+	// or round them up, and the king can escort. The source TODO this term
+	// replaces asked for exactly this phase dependence.
+	static const short PASSED_PAWN_BONUS_EG		= 45;
 	static const short ROOK_ON_7TH_BONUS		= 20;
 	static const short HALF_OPEN_FILE			= 10;
 	static const short OPEN_FILE				= 15;
@@ -275,6 +290,31 @@ class EvalComplex final
 	// entire PST range, so this roughly doubles the centralization gradient for
 	// minors. That may be an improvement, but it is a real change in emphasis
 	// rather than a small addition, and it is a #117 retuning input.
+	// Per-rank multiplier for the passed-pawn bonus, in 1/16ths, indexed by how
+	// far the pawn has advanced from its side's point of view: [1] is its
+	// starting rank, [6] is one step from promotion. A passer on the 7th is worth
+	// several times one on the 3rd, and the shape matters as much as the
+	// magnitude. [0] and [7] are the back and promotion ranks -- unreachable for
+	// a pawn, present so the table is indexable by any rank without a bounds test
+	// in the hot path.
+	//
+	// Kept separate from PASSED_PAWN_BONUS rather than folded into it so issue
+	// #117 can tune shape and magnitude independently.
+	//
+	// HALVED from the first measured version, which gave 20/45 cp on the starting
+	// rank up to 80/180 at the 7th and measured **-11.52 +/- 4.36 Elo** over 19,980
+	// games (run 31300861562). The shape was left alone; only the magnitude moved,
+	// so that result and this one differ in one variable. Now roughly 10/22 cp on
+	// the starting rank up to 40/90 at the 7th.
+	static constexpr short PASSED_PAWN_RANK_SCALE[8] = { 8, 8, 10, 14, 20, 28, 32, 32 };
+
+	// A passer whose stop square is occupied by an enemy piece is not running
+	// anywhere: it has to be dislodged first, and the blockader is usually well
+	// placed. Scored at this fraction (in 1/16ths) of the normal bonus. The first
+	// measured version had no blockade awareness at all and paid a 7th-rank passer
+	// its full value with the enemy king parked in front of it.
+	static constexpr short PASSED_PAWN_BLOCKADED_SCALE = 8;   // half
+
 	static const short MOBILITY_KNIGHT_MG		= 4;
 	static const short MOBILITY_KNIGHT_EG		= 4;
 	static const short MOBILITY_BISHOP_MG		= 3;

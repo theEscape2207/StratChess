@@ -68,24 +68,45 @@ int EvalSimple::Evaluate(const Board& board) const noexcept
 // Class EvalComplex implementation
 //
 
-// eval_pawns — doubled and isolated pawn penalties for one color's pawns
+// eval_pawns — doubled, isolated, passed and backwards pawns for one color
 // (issue #127 restructure — see .claude/plans/eval-context-restructure.md).
-// Loops that color's own pawn bitboard directly; the per-pawn logic is
-// unchanged from the switch cases it replaces, just no longer keyed off the
-// outer per-square loop.
+// Loops that color's own pawn bitboard directly.
 //
-// TODO: Add bonus for passed pawn - bonus should be dependant on game stage
-// (carried over verbatim from the pre-#127 switch; still open, see issue #116).
+// The passer bonus is the only tapered part: it is worth more as the endgame
+// approaches, so this function returns unequal mg/eg endpoints. Everything else
+// here is phase-neutral (issue #116).
 ScorePair EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 {
+	// Doubled, isolated and backwards are phase-neutral and accumulate here;
+	// the passer bonus is the one term in this function that tapers, so it is
+	// kept in its own pair of accumulators until the return.
 	int score = 0;
+	int passedMg = 0;
+	int passedEg = 0;
 	const BITBOARD ownPawns = ctx.pawns[color];
+	const eColor enemy = (color == WHITE) ? BLACK : WHITE;
+	const BITBOARD enemyPawns = ctx.pawns[enemy];
 
 	auto remaining = ownPawns;
 	while (remaining)
 	{
 		const eSquare square = Board::GetFirstPiece(remaining);
 		const int file = File(square);
+		const int squareIndex = static_cast<int>(square);
+		const int row = static_cast<int>(Rank(square));   // 0 = rank 8, 7 = rank 1
+		// Own file plus both adjacent files, ahead of this pawn only.
+		const BITBOARD forwardSpan = (color == WHITE) ? g_bbPassedMaskWhite[square]
+		                                              : g_bbPassedMaskBlack[square];
+		// The square directly ahead -- the one this pawn must pass through. Both the
+		// passer and the backwards term ask about it, and each only inside a branch
+		// most pawns do not enter, so it is computed on demand rather than once per
+		// pawn. Off-board only for a pawn on the promotion rank, which cannot occur
+		// in a legal position.
+		const auto stop_square = [&]() -> BITBOARD {
+			const int idx = (color == WHITE) ? (squareIndex - ONE_ROW)
+			                                 : (squareIndex + ONE_ROW);
+			return (idx >= 0 && idx < ALL_SQUARES) ? (1ULL << idx) : 0ULL;
+		};
 
 		if (color == WHITE)
 		{
@@ -105,13 +126,68 @@ ScorePair EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 			(file == eFileNames::RIGHT_FILE || !(ownPawns & g_bbFileMask[file + 1])))
 			score -= ISOLATED_PAWN_PENALTY;
 
+		// Passed: no enemy pawn anywhere in the three-file span ahead, so nothing
+		// can block it or capture it on its way to promotion. Scaled by how far it
+		// has advanced and tapered toward the endgame, where a passer is worth
+		// most (issue #116).
+		//
+		// A friendly pawn of its own on the same file ahead disqualifies it too:
+		// the rear pawn of a doubled pair can never advance past its own partner,
+		// so paying it a full passer bonus would score a pawn that is going nowhere.
+		// Only the front pawn of such a pair is passed.
+		const BITBOARD ownFileAhead = (color == WHITE) ? g_bbFileUpMask[square]
+		                                               : g_bbFileDownMask[square];
+		if (!(enemyPawns & forwardSpan) && !(ownPawns & ownFileAhead))
+		{
+			const int advanced = (color == WHITE) ? (7 - row) : row;
+			int scale = PASSED_PAWN_RANK_SCALE[advanced];
+			// Blockaded: an enemy piece sits on the stop square, so the pawn cannot
+			// advance at all until it is dislodged. In practice this means any enemy
+			// piece OTHER than a pawn -- the stop square is inside forwardSpan, so an
+			// enemy pawn there would already have failed the passed test above and this
+			// branch would never have been entered.
+			if (ctx.occupied[enemy] & stop_square())
+				scale = scale * PASSED_PAWN_BLOCKADED_SCALE / 16;
+			passedMg += PASSED_PAWN_BONUS * scale / 16;
+			passedEg += PASSED_PAWN_BONUS_EG * scale / 16;
+		}
+
+		// Backwards: BOTH clauses required, per the definition on
+		// BACKWARDS_PAWN_PENALTY.
+		//
+		// (a) every friendly pawn on an adjacent file is strictly AHEAD of this
+		//     one, so none can ever come back to defend it. Intersecting the
+		//     adjacent files with the complement of the forward span leaves exactly
+		//     the adjacent-file squares level with or behind this pawn -- one
+		//     friendly pawn there and the pawn is not backwards.
+		const BITBOARD adjacentFiles =
+			((file == eFileNames::LEFT_FILE)  ? 0ULL : g_bbFileMask[file - 1]) |
+			((file == eFileNames::RIGHT_FILE) ? 0ULL : g_bbFileMask[file + 1]);
+
+		if (!(ownPawns & adjacentFiles & ~forwardSpan))
+		{
+			// (b) the stop square is covered by an enemy pawn and not by a friendly
+			//     one, so the pawn cannot advance out of trouble either.
+			//
+			// The "not by a friendly one" half cannot currently fire: a friendly
+			// pawn covering the stop square would have to stand on an adjacent file
+			// LEVEL with this pawn, which clause (a) has already ruled out. It is
+			// kept because it is half of the stated definition and would start
+			// mattering the moment clause (a) were relaxed to "strictly behind" --
+			// but #117 should not try to tune a condition that never fires today.
+			const BITBOARD stopSquare = stop_square();
+			if ((ctx.pawn_attacks[enemy] & stopSquare) &&
+				!(ctx.pawn_attacks[color] & stopSquare))
+				score -= BACKWARDS_PAWN_PENALTY;
+		}
+
 		remaining = Bits::clearLsb(remaining);
 	}
 
-	// No phase sensitivity: doubled/isolated pawn structure matters equally
-	// throughout, so the same value goes to both endpoints and the blend is a
-	// no-op for this term.
-	return ScorePair{ score, score };
+	// Doubled, isolated and backwards pawn structure matters equally throughout,
+	// so those go to both endpoints unchanged; only the passer bonus differs
+	// between them.
+	return ScorePair{ score + passedMg, score + passedEg };
 }
 
 // eval_rooks — 7th-rank and half-open/open-file bonuses for one color's
@@ -614,9 +690,10 @@ int EvalComplex::Evaluate(const Board& board) const noexcept
 	// one centipawn per term. Blending once is marginally more accurate, but it
 	// makes the per-term breakdown #129 prints unable to sum to the score it
 	// reports — and that reconstructibility is an asserted invariant, not a
-	// nicety. Only terms with mg != eg can truncate at all — eval_pawns and
-	// eval_mopup set both endpoints equal, so they blend exactly — which bounds
-	// the cost at under 1 cp per tapered term, i.e. under 2 cp per color today.
+	// nicety. Only terms with mg != eg can truncate at all — eval_mopup sets both
+	// endpoints equal, so it blends exactly, and eval_pawns does too whenever the
+	// side has no passed pawn — which bounds the cost at one centipawn per
+	// tapered term.
 	// Deterministic, and far below anything this engine can measure; a
 	// breakdown whose rows do not add up is a debugging tool that lies.
 	int blended[2] = { 0, 0 };
