@@ -532,6 +532,14 @@ static constexpr const char* FEN_BISHOP_PAIR_VS_SINGLE =
 static constexpr const char* FEN_EDGE_FILE_PASSERS =
     "4k3/8/8/p7/8/7P/8/4K3 w - - 0 1";
 
+// Blockaded passer (issue #116). White's e7 pawn has the black king squarely on
+// its stop square, so the blockade discount applies to exactly one side. This is
+// the only place `eval_pawns` reads a non-pawn bitboard (`ctx.occupied[enemy]`),
+// and it is per-colour, so without this the mirror battery never exercises it.
+// Legal: the kings are not adjacent and neither is in check.
+static constexpr const char* FEN_BLOCKADED_PASSER =
+    "4k3/4P3/8/8/8/8/8/4K3 w - - 0 1";
+
 static constexpr const char* kSymmetryFens[] = {
     FEN_START,
     FEN_QUEEN_C6,
@@ -555,6 +563,7 @@ static constexpr const char* kSymmetryFens[] = {
     // a per-colour rank index, and no other FEN here puts a passer on an edge
     // file, which is where a wraparound asymmetry would hide.
     FEN_EDGE_FILE_PASSERS,
+    FEN_BLOCKADED_PASSER,
 };
 
 TEST_CASE("Eval - EvalSimple is color-symmetric: a position and its mirror score equally", "[eval]")
@@ -1511,8 +1520,12 @@ TEST_CASE("Eval - EvalComplex rewards a passed pawn over a blocked one", "[eval]
 
 TEST_CASE("Eval - EvalComplex passer bonus grows as the pawn advances", "[eval]")
 {
-    Board third("4k3/8/8/8/8/4P3/8/4K3 w - - 0 1");
-    Board seventh("4k3/4P3/8/8/8/8/8/4K3 w - - 0 1");
+    // Both kings on a8/a-file, deliberately off the pawn's file: with the black
+    // king on e8 the seventh-rank pawn would be BLOCKADED, so the pair would vary
+    // advancement and blockade status together and the comparison would no longer
+    // isolate rank.
+    Board third("k7/8/8/8/8/4P3/8/4K3 w - - 0 1");
+    Board seventh("k7/4P3/8/8/8/8/8/4K3 w - - 0 1");
 
     const int thirdScore   = EvalComplexTestFixture::Pawns(third, WHITE);
     const int seventhScore = EvalComplexTestFixture::Pawns(seventh, WHITE);
@@ -1600,8 +1613,12 @@ TEST_CASE("Eval - EvalComplex passer bonus is monotonic across every rank", "[ev
     // to be checked at every rank, because a single non-monotonic step means an
     // advancing pawn can lose value by moving forward.
     //
-    // A lone white e-pawn walked from its starting rank to the 7th, black king
-    // parked on a8 so it never blockades and never moves the phase.
+    // Walked twice: once free, once with the black king held on the pawn's stop
+    // square at every step, because the blockade discount is the SECOND scaling and
+    // only the blockaded walk exercises both truncations.
+    //
+    // Free walk -- black king parked on a8, off the pawn's file, so it never
+    // blockades and never moves the phase.
     const char* byRank[] = {
         "k7/8/8/8/8/8/4P3/4K3 w - - 0 1",   // e2
         "k7/8/8/8/8/4P3/8/4K3 w - - 0 1",   // e3
@@ -1619,14 +1636,38 @@ TEST_CASE("Eval - EvalComplex passer bonus is monotonic across every rank", "[ev
         REQUIRE(score >= previous);
         previous = score;
     }
+
+    // Blockaded walk -- the black king sits on the stop square at every rank, so
+    // every value goes through `scale * BLOCKADED / 16` as well.
+    const char* byRankBlockaded[] = {
+        "8/8/8/8/8/4k3/4P3/4K3 w - - 0 1",   // e2, king e3
+        "8/8/8/8/4k3/4P3/8/4K3 w - - 0 1",   // e3, king e4
+        "8/8/8/4k3/4P3/8/8/4K3 w - - 0 1",   // e4, king e5
+        "8/8/4k3/4P3/8/8/8/4K3 w - - 0 1",   // e5, king e6
+        "8/4k3/4P3/8/8/8/8/4K3 w - - 0 1",   // e6, king e7
+        "4k3/4P3/8/8/8/8/8/4K3 w - - 0 1",   // e7, king e8
+    };
+
+    previous = std::numeric_limits<int>::min();
+    for (const char* fen : byRankBlockaded) {
+        Board board(fen);
+        const int score = EvalComplexTestFixture::Pawns(board, WHITE);
+        CAPTURE(fen, score, previous);
+        REQUIRE(score >= previous);
+        previous = score;
+    }
 }
 
 TEST_CASE("Eval - EvalComplex discounts a passer whose stop square is blockaded", "[eval]")
 {
     // Same white passer on e6 both times; the black king either sits on its stop
-    // square e7, where the pawn cannot move at all until it is dislodged, or
-    // stands aside on a7. Nothing else differs, and eval_pawns reads no piece
-    // other than pawns, so the whole delta is the blockade discount.
+    // square e7, where the pawn cannot move at all until it is dislodged, or stands
+    // aside on a8.
+    //
+    // The blockade test is the one place `eval_pawns` reads a non-pawn bitboard
+    // (`ctx.occupied[enemy]`), and the only square of it that can matter is the stop
+    // square -- so moving the king between those two squares changes exactly one
+    // input to one term, and the whole delta is the discount.
     Board blockaded("4k3/4P3/8/8/8/8/8/4K3 w - - 0 1");
     Board freeToRun("k7/4P3/8/8/8/8/8/4K3 w - - 0 1");
 
