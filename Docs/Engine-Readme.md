@@ -1,8 +1,8 @@
 # StratChess Engine Documentation
 
-**Version**: 2.0 (February 2026)  
+**Version**: 3.0 (August 2026)  
 **Language**: C++20  
-**Primary Algorithm**: AIPerplex (PVS + Transposition Tables + Iterative Deepening)
+**Primary Algorithm**: AIPerplex (PVS + Transposition Tables + Iterative Deepening + Lazy SMP)
 
 ---
 
@@ -27,8 +27,12 @@ StratChess is a chess engine that has evolved over 20 years, featuring multiple 
 - **Principal Variation Search (PVS)** with null-window optimization
 - **Transposition Tables** with separate MAIN/QUIESCENCE phases
 - **Iterative Deepening** with robust timeout and quality assessment
+- **Aspiration windows** around the previous iteration's score
 - **Quiescence Search** for tactical stability
-- **Bitboard representation** for efficient move generation
+- **Null-move pruning** and **Late Move Reductions (LMR)**
+- **Killer moves** (2 per ply) and **history heuristic** for move ordering
+- **Lazy SMP** parallel search — helper threads share the transposition table
+- **Bitboard representation** with PEXT magic bitboards for sliding attacks
 - **Comprehensive logging** via spdlog for diagnostics
 - **Tunable parameters** for search behavior
 
@@ -44,17 +48,41 @@ StratChess is a chess engine that has evolved over 20 years, featuring multiple 
 ## Quick Start
 
 ### Building
-```cpp
-// Prerequisites: C++20 compiler, spdlog library
 
-// Create an AI instance
-AIPerplex ai(15);  // Max depth 15
-ai.SetVerboseLogging(true);
+CMake is the only build system. `build.ps1` wraps the presets in `CMakePresets.json` and imports the
+Visual Studio environment itself, so it works from any shell. **clang-cl is what ships**; MSVC is for
+development and debugging only, and must never be used for measurement.
 
-// Get a move
-GameInfo info = board.GetGameInfo();
-Move bestMove = ai.GetMove(info);
+```powershell
+.\build.ps1                     # engine + tests (Release, clang-cl)
+.\build.ps1 run-tests           # build tests, run the fast tier
+.\build.ps1 all -Config Debug   # debug build
 ```
+
+Binaries land in `build/<preset>/`. See `CLAUDE.md` for the full build contract.
+
+### Driving a search
+
+```cpp
+Board board;
+board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+
+auto player = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, 20, board);
+auto* ai = dynamic_cast<PlayerAiBase*>(player.get());
+ai->SetThreads(4);                       // Lazy SMP; default is 1
+
+SearchLimits limits;                     // every constraint is optional
+limits.movetime = std::chrono::milliseconds(5000);
+
+GameInfo info = board.GetGameInfo();
+Move best = ai->GetMove(info, limits);   // `info` is updated with root state on return
+```
+
+`SearchLimits` carries every per-call constraint (clock / movetime / depth / infinite). Each
+`GetMove()` call is self-contained — there is no pre-call ordering contract to satisfy.
+
+The `dynamic_cast` above is a known wart, not the intended design: `PlayerBase`'s interface does not
+expose the capabilities its consumers need. Tracked by the search-interface decoupling issue.
 
 ### Configuration
 ```cpp
@@ -72,12 +100,14 @@ ai.tuning().score_draw_threshold = 20;       // Suspicious score=0 detection
 ### High-Level Design
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                         Game Loop                           │
-│                    (Game.cpp/h)                             │
-└───────────────┬─────────────────────────────────────────────┘
-                │
-                ▼
+┌──────────────────────────┐   ┌──────────────────────────┐
+│   UCI Front End          │   │   Interactive Game Loop  │
+│   (UCIHandler.cpp/h)     │   │   (Game.cpp/h)           │
+│   stdin/stdout protocol  │   │   console play           │
+└───────────┬──────────────┘   └───────────┬──────────────┘
+            │                              │
+            └──────────────┬───────────────┘
+                           ▼
 ┌───────────────────────────────────────────────────────────┐
 │                    Player Interface                       │
 │                     (IPlayer.h)                           │
@@ -85,7 +115,7 @@ ai.tuning().score_draw_threshold = 20;       // Suspicious score=0 detection
         │
         ├─── PlayerHuman ──────────────────────────────────┐
         │                                                  │
-        └─── PlayerAI (Base Class)                         │
+        └─── PlayerAiBase (Base Class)                     │
                   │                                        │
                   ├─── AIPerplex ★ (Production)            │
                   ├─── AIAgent (Baseline)                  │
@@ -96,7 +126,14 @@ ai.tuning().score_draw_threshold = 20;       // Suspicious score=0 detection
 ┌──────────────────────────────────────────────────────────┴──┐
 │                   Search Components                         │
 │  ┌────────────────────────────────────────────────────────┐ │
-│  │  Iterative Deepening                                   │ │
+│  │  Lazy SMP (threads > 1)                                │ │
+│  │  ├─ N-1 helper threads, each with its own ThreadData   │ │
+│  │  ├─ Shared transposition table                         │ │
+│  │  └─ Main thread authoritative — helpers report nothing │ │
+│  └─────────────┬──────────────────────────────────────────┘ │
+│                ▼                                            │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │  Iterative Deepening + Aspiration Windows              │ │
 │  │  ├─ Depth 1, 2, 3... up to max_depth                   │ │
 │  │  └─ Timeout handling with quality assessment           │ │
 │  └─────────────┬──────────────────────────────────────────┘ │
@@ -105,6 +142,7 @@ ai.tuning().score_draw_threshold = 20;       // Suspicious score=0 detection
 │  │  Principal Variation Search (PVS)                      │ │
 │  │  ├─ Alpha-Beta pruning                                 │ │
 │  │  ├─ Null-window search for non-PV nodes                │ │
+│  │  ├─ Null-move pruning / Late Move Reductions           │ │
 │  │  ├─ Re-search on fail-high                             │ │
 │  │  └─ Transposition table probe/store                    │ │
 │  └─────────────┬──────────────────────────────────────────┘ │
@@ -114,7 +152,7 @@ ai.tuning().score_draw_threshold = 20;       // Suspicious score=0 detection
 │  │  ├─ Stand-pat evaluation                               │ │
 │  │  ├─ Capture-only search                                │ │
 │  │  ├─ MVV-LVA move ordering                              │ │
-│  │  └─ Depth limit (15 plies)                             │ │
+│  │  └─ Depth limit                                        │ │
 │  └────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
                   │
@@ -124,26 +162,42 @@ ai.tuning().score_draw_threshold = 20;       // Suspicious score=0 detection
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐        │
 │  │ Board        │  │ Move         │  │ Evaluator    │        │
 │  │ Bitboards    │  │ Generator    │  │ Material +   │        │
-│  │ Zobrist Hash │  │ Legal Moves  │  │ Position     │        │
+│  │ Zobrist Hash │  │ PEXT magics  │  │ Position     │        │
 │  └──────────────┘  └──────────────┘  └──────────────┘        │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐        │
 │  │ Transposition│  │ PV Table     │  │ Move         │        │
 │  │ Table        │  │ Principal    │  │ Ordering     │        │
-│  │ 256MB cache  │  │ Variation    │  │ MVV-LVA      │        │
+│  │ shared, 256MB│  │ Variation    │  │ MVV-LVA +    │        │
+│  │              │  │              │  │ killers/hist │        │
 │  └──────────────┘  └──────────────┘  └──────────────┘        │
 └──────────────────────────────────────────────────────────────┘
 ```
+
+### Threading model
+
+`AIPerplex::SetThreads(N)` selects Lazy SMP width; the shipping default is 1, and at 1 no helper
+threads are spawned at all — that path is byte-identical to the pre-SMP single-threaded code.
+
+Above 1, `GetMove()` spawns `N-1` `std::jthread` helpers for the duration of the call. Each helper
+owns its own `ThreadData` (its own `Board` copy, PV, killers, history and node counter) and shares
+only the transposition table and the atomic abort flag. Helpers never report a move: only the main
+thread's result is authoritative. They exist to warm the shared TT.
+
+Over UCI the width is set with `setoption name Threads value N`; in game mode it comes from the
+`"threads"` key in `game_settings.json`.
 
 ### Data Flow
 
 ```
 GetMove() Entry
     ↓
-Initialize Search State
+Initialize ThreadData (board copy, PV, counters)
+    ↓
+Spawn N-1 Lazy SMP helpers (if threads > 1)
     ↓
 Iterative Deepening Loop (depth 1 → max_depth)
     │
-    ├─→ Execute PVS at current depth
+    ├─→ Execute PVS at current depth (aspiration window)
     │       ↓
     │   Generate Moves → Sort by value → Search each
     │       ↓
@@ -164,6 +218,8 @@ Iterative Deepening Loop (depth 1 → max_depth)
     └─→ Early Termination Check
         (mate found or forced line)
     ↓
+Join helpers, aggregate node counts
+    ↓
 Return SearchResult
     ↓
 Move extracted and played
@@ -173,16 +229,19 @@ Move extracted and played
 
 ## File Structure
 
+> The tables below are maintained by hand and have drifted before. Treat the directory tree as the
+> source of truth; these are an orientation aid, not an inventory contract.
+
 ### Core Search Algorithms
 
 | File | Description | Status |
 |------|-------------|--------|
-| `AIPerplex.cpp/h` | **Production algorithm**: PVS + TT + ID + Quiescence | ✅ Active |
+| `AIPerplex.cpp/h` | **Production algorithm**: PVS + TT + ID + Quiescence + Lazy SMP | ✅ Active |
 | `AIAgent.cpp/h` | Aspiration windows baseline | ✅ Active |
 | `ABIterative.cpp/h` | Simple iterative deepening | 🎭 Legacy (nostalgic) |
 | `AIBasic.cpp/h` | Basic alpha-beta | 🎭 Legacy (nostalgic) |
-| `ABIterTrans.cpp/h` | Broken TT implementation | ❌ Archived |
-| `AITrans.cpp/h` | Broken TT implementation | ❌ Archived |
+| `Archived/ABIterTrans.cpp/h` | Broken TT implementation | ❌ Archived — not built |
+| `Archived/AITrans.cpp/h` | Broken TT implementation | ❌ Archived — not built |
 
 ### Game Infrastructure
 
@@ -191,31 +250,34 @@ Move extracted and played
 | `Board.cpp/h` | Bitboard representation, move execution, Zobrist hashing |
 | `Move.cpp/h` | Move encoding (16-bit), move value calculation |
 | `MoveGenerator.cpp/h` | Legal move generation, capture generation |
+| `Magic.h` | PEXT magic bitboards for sliding-piece attacks |
 | `Game.cpp/h` | Game loop, player management, move validation |
 | `GameState.h` | Game state enum (playing, checkmate, stalemate, draw) |
+| `UCIHandler.cpp/h` | UCI protocol command loop — the production entry point |
 
 ### Evaluation & Ordering
 
 | File | Description |
 |------|-------------|
-| `Eval.cpp/h` | Position evaluation (material + positional) |
+| `Eval.cpp/h` | Position evaluation (material + positional, tapered) |
 | `Sort.cpp/h` | Move ordering utilities (MVV-LVA) |
 
 ### Data Structures
 
 | File | Description |
 |------|-------------|
-| `TranspositionTable.h/cpp` | Hash table for position caching (256MB default) |
+| `TranspositionTable.h/cpp` | Hash table for position caching (256 MB requested) |
+| `ThreadData.h` | Per-search state: board copy, PV, killers, history, counters |
+| `SearchLimits.h` | Per-call search constraints (clock / movetime / depth / infinite) |
 | `PVTable.h` | Principal variation storage |
-| `HashElement.h` | TT entry structure |
 
 ### Base Classes & Interfaces
 
 | File | Description |
 |------|-------------|
 | `IPlayer.h` | Player interface (AI and Human) |
-| `PlayerBase.cpp/h` | Base player implementation |
-| `PlayerAI.cpp/h` | AI player base class |
+| `PlayerBase.cpp/h` | Base player implementation + factory |
+| `PlayerAI.cpp/h` | AI player base class (`PlayerAiBase`) |
 | `PlayerAiIterBase.h` | Iterative AI base (time management) |
 | `PlayerHuman.cpp/h` | Human player input handling |
 
@@ -225,9 +287,11 @@ Move extracted and played
 |------|-------------|
 | `Utils/Logger.cpp/h` | Logging infrastructure (spdlog wrapper) |
 | `Utils/FENParser.cpp/h` | FEN string parsing for position setup |
-| `Utils/TimeManager.h` | Time control management |
+| `Utils/TimeManager.h` | Time control management (soft/hard limits) |
+| `Utils/TimeUtils.h` | Time budget formula |
 | `Utils/BitTools.h` | Bitboard manipulation utilities |
 | `Utils/Formatters.h` | Output formatting helpers |
+| `MoveFormatter.h` | All move formatting (coordinate, short, UCI, verbose) |
 
 ### Configuration & Constants
 
@@ -235,8 +299,7 @@ Move extracted and played
 |------|-------------|
 | `defines.h` | Core enums (Color, PieceType, Square, GameValues) |
 | `Config.cpp/h` | Engine configuration |
-| `globals.h` | Global constants |
-| `typedef.h` | Type definitions |
+| `StdAfx.h` | Shared common-include header |
 
 ### Helper Headers
 
@@ -257,7 +320,7 @@ Move extracted and played
 
 **Description**: An enhancement of alpha-beta that uses null-window searches for most nodes, with re-searches when needed.
 
-**Algorithm**:
+**Algorithm** (simplified — omits null-move pruning, LMR and killer/history ordering; see the source for those):
 ```
 pvs(depth, alpha, beta, ply, is_pv_node):
     if depth <= 0:
@@ -302,17 +365,17 @@ pvs(depth, alpha, beta, ply, is_pv_node):
 - **Re-search**: Only re-search with full window when null-window fails high
 - **PV tracking**: Updates principal variation when alpha improves
 - **TT integration**: Probes before search, stores after
-- **Move ordering**: PV move > Hash move > Captures > Quiet moves
-
-**Performance**: 2-3x faster than plain alpha-beta in typical positions
+- **Move ordering**: PV move > Hash move > Captures > Killers > History
+- **Null-move pruning**: Gated by `should_try_null_move()` — covers zugzwang, mate-score contamination, consecutive nulls, PV/in-check and a minimum depth
+- **Late Move Reductions**: Later quiet moves searched at reduced depth, re-searched on fail-high
 
 ---
 
 ### 2. Iterative Deepening with Quality Assessment
 
-**Location**: `AIPerplex::iterative_deepening()`
+**Location**: `AIPerplex::iterative_deepening()`, `AIPerplex::search_with_aspiration()`
 
-**Description**: Searches depth 1, 2, 3... until time runs out, with sophisticated interrupted search handling.
+**Description**: Searches depth 1, 2, 3... until time runs out, with sophisticated interrupted search handling. Each iteration is searched inside an aspiration window centred on the previous iteration's score, widening on fail-high or fail-low.
 
 **Algorithm**:
 ```
@@ -322,8 +385,8 @@ iterative_deepening(max_depth):
     for depth = 1 to max_depth:
         nodes_at_start = node_count
         
-        # Execute search at this depth
-        score = pvs(depth, -INF, +INF, 0, true)
+        # Execute search at this depth (aspiration window around previous score)
+        score = search_with_aspiration(depth, previous_score)
         
         # Gather metrics
         metrics = {
@@ -408,7 +471,7 @@ quiescence(alpha, beta, depth):
 - **Depth limit**: Prevents infinite capture sequences
 - **TT caching**: Stores quiescence results separately from main search
 
-**Future Enhancement**: Delta pruning (skip captures that can't improve alpha)
+**Future Enhancement**: Delta pruning and SEE-based pruning (skip captures that can't improve alpha)
 
 ---
 
@@ -416,47 +479,68 @@ quiescence(alpha, beta, depth):
 
 **Location**: `TranspositionTable.h/cpp`
 
-**Description**: Hash table caching position evaluations to avoid re-searching identical positions.
+**Description**: Hash table caching position evaluations to avoid re-searching identical positions. Shared across all Lazy SMP threads.
 
 **Entry Structure**:
 ```cpp
 struct TTEntry {
-    uint64_t key;           // Zobrist hash
-    int16_t value;          // Evaluation score
+    std::uint64_t key;      // Zobrist hash
+    int16_t value;          // Evaluation score (mate scores normalized by ply)
     int16_t depth;          // Search depth
-    Move best_move;         // Best move found
+    SearchPhase phase;      // MAIN or QUIESCENCE
     BoundType bound;        // EXACT, LOWER, or UPPER
     NodeType node_type;     // PV, CUT, or ALL
-    SearchPhase phase;      // MAIN or QUIESCENCE
+    uint8_t age;            // Search generation, for replacement
+    Move best_move;         // Best move found
 };
 ```
 
-**Replacement Strategy**: 
-- Always replace if new depth ≥ old depth
-- Preferentially keep PV nodes
-- Separate storage for MAIN vs QUIESCENCE searches
+**Layout**: four entries per bucket, power-of-two bucket count for mask indexing.
 
-**Size**: 256MB default (~16M entries)
+**Concurrency**: one `std::shared_mutex` per bucket — probes take a shared lock, stores take the
+exclusive side. Whether that cost is worth removing is an open measurement question.
 
-**Hit Rate**: Typically 80-90% in middle game
+**Replacement Strategy**: `replacementScore()` weighs depth, age, node type and search phase — PV
+entries get a bonus, quiescence depth is scaled down to a main-search equivalent, and older entries
+are penalised. An exact key match always overwrites in place.
+
+**Size**: 256 MB requested. Note that the bucket count is rounded *down* to a power of two, so the
+allocation is smaller than the request and `memory_mb()` reports the request rather than the
+allocation — a known bug, tracked separately. There is currently no UCI `Hash` option; the size is
+fixed at construction.
 
 ---
 
 ### 5. Move Ordering
 
-**Current Implementation**: `AIPerplex::pvs()` (inline sorting)
+**Current Implementation**: `AIPerplex::pvs()` (inline sorting) and `Sort.cpp/h`
 
 **Order of Priority**:
-1. **PV move** (from previous iteration) - 200,000 points
-2. **Hash move** (from TT) - 150,000 points
-3. **Captures** (by MVV-LVA) - 100x victim value
-4. **Quiet moves** - deterministic tiebreaker
+1. **PV move** (from previous iteration)
+2. **Hash move** (from TT)
+3. **Captures** (by MVV-LVA)
+4. **Killer moves** (2 per ply, from `ThreadData`)
+5. **History heuristic** (aged, survives across moves)
 
-**Future Enhancement**: Extract to `MoveSorter` class, add killer moves and history heuristic
+**Future Enhancement**: Extract to a `MoveSorter` class; counter-move history; SEE-based capture ordering
 
 ---
 
 ## Data Structures
+
+### ThreadData
+
+**Location**: `ThreadData.h`
+
+All per-search state, so a Lazy SMP helper can run without touching anything the main thread owns:
+its own `Board` copy, node counter, PV table, `GameInfo` sequence, killer moves, history table and
+null-move flags.
+
+`ThreadData&` is the **first parameter of every search method**. The search runs on `td.board`, never
+on the game board. The transposition table stays a separate, explicitly passed shared parameter —
+that is the one thing helpers deliberately share.
+
+---
 
 ### SearchResult
 
@@ -473,6 +557,17 @@ struct SearchResult {
 ```
 
 **Purpose**: Clean interface between `iterative_deepening()` and `GetMove()`, avoiding reliance on PV table state.
+
+---
+
+### SearchLimits
+
+**Location**: `SearchLimits.h`
+
+Every per-call constraint, all optional: clock (with increment and moves-to-go), movetime, depth,
+infinite. `Engine::resolve_limits()` resolves it and `PlayerAiBase::ApplyLimits()` arms the timer.
+`Engine::compute_budget(remaining, increment, moves_to_go)` → `TimeBudget{soft, hard}` is a pure
+function and is unit-tested as one.
 
 ---
 
@@ -531,10 +626,17 @@ Bits 6-11:  To square (0-63)
 Bits 12-15: Move type (quiet, capture, castle, promotion, etc.)
 ```
 
-**Key Methods**:
-- `Move::Value()` - Returns capture value for ordering
-- `IsEmpty()` - Check for null move
-- `Output()` - Human-readable string (e.g., "e2-e4")
+`static_assert(sizeof(Move) == 2)` pins the size.
+
+**Contracts worth knowing**:
+- The moving and captured pieces are **not** stored. Use `Board::GetEffectiveMovPiece(m)` (pre-move
+  only) and `Board::GetCapturedPiece(m)`; after `DoMove`, identify the moved piece with
+  `board.GetPiece(m.to())`.
+- Equality compares from/to only and **ignores flags** — two moves differing only in promotion piece
+  compare equal.
+- `is_null()` tests for the empty move.
+- Formatting lives entirely in `MoveFormatter` (`ToCoord`, `ToShort`, `ToUCI`, `ToVerbose`,
+  `FromUCI`), not on `Move` itself.
 
 ---
 
@@ -542,42 +644,42 @@ Bits 12-15: Move type (quiet, capture, castle, promotion, etc.)
 
 **Location**: `PVTable.h`
 
-**Structure**: Array of PV lines, one per ply
+**Structure**: Triangular array — each ply stores the PV from that point to the leaf.
 
 ```cpp
 class PVTable {
-    std::array<std::array<Move, MAX_PLY>, MAX_PLY> table;
-    std::array<int, MAX_PLY> lengths;
-    
+    std::array<std::array<Move, MAX_PV_LENGTH>, MAX_PLY> pv_;
+    std::array<int, MAX_PLY> pv_lengths_;
+
 public:
-    void update(int ply, Move move);  // Copy PV from child + prepend
-    Move get_pv_move(int ply);        // Get best move at ply
-    int get_length(int ply);          // Get PV length
+    void update(int ply, Move move) noexcept;   // Copy PV from child + prepend
+    Move get_pv_move(int ply) const noexcept;   // Best move at ply
+    int  get_length(int ply) const noexcept;    // PV length at ply
 };
 ```
-
-**Triangular array** - each ply stores PV from that point to leaf.
 
 ---
 
 ### Bitboards
 
-**Location**: `Board.h`
+**Location**: `Board.h`, `defines.h`
 
 **Representation**: 64-bit integers, one bit per square
 
 ```cpp
-std::array<uint64_t, 18> bitboards;
+using TBitboards = std::array<BITBOARD, ALL_BITBOARDS>;   // ALL_BITBOARDS == 15
 // [0-11]: Individual pieces (white pawn, black pawn, ...)
 // [12-13]: All white, all black
-// [14]: All pieces
-// [15-17]: Rotated boards (for attack generation)
+// [14]:    All pieces (ALL_PIECES)
 ```
 
 **Benefits**: 
 - Parallel operations (find all pawns in one operation)
-- Fast attack generation using magic bitboards
+- Fast attack generation using PEXT magic bitboards (`Magic.h`)
 - Efficient move generation
+
+Sliding-piece attacks use PEXT magic bitboards. The older rotated-bitboard scheme
+(`ROTATED90`/`45R`/`45L`) has been removed.
 
 ---
 
@@ -585,15 +687,23 @@ std::array<uint64_t, 18> bitboards;
 
 ### External Libraries
 
-| Library | Version | Purpose | License |
-|---------|---------|---------|---------|
-| **spdlog** | 1.x | Async logging infrastructure | MIT |
-| **C++ Standard Library** | C++20 | Core functionality | - |
+Fetched and pinned by CMake `FetchContent` into `build/_deps` and shared by every preset — there is
+nothing to install.
+
+| Library | Purpose | License |
+|---------|---------|---------|
+| **spdlog** | Async logging infrastructure | MIT |
+| **nlohmann/json** | `game_settings.json`, test corpora | MIT |
+| **Catch2 v3** | Unit test framework (amalgamated) | BSL-1.0 |
+| **C++ Standard Library** | C++20 | - |
+
+Approved external dependencies are spdlog and nlohmann/json only; Catch2 is test-only.
 
 ### C++20 Features Used
 
 - **Designated initializers**: `SearchResult{.best_move = move, ...}`
 - **Three-way comparison** (`<=>`)
+- **`std::jthread`** (Lazy SMP helpers)
 - **Concepts** (limited use)
 - **Ranges** (limited use)
 - **constexpr** enhancements
@@ -601,18 +711,19 @@ std::array<uint64_t, 18> bitboards;
 
 ### Compiler Requirements
 
-- **MSVC**: 2019 or later (v142+)
-- **GCC**: 10+ (with C++20 support)
-- **Clang**: 12+ (with C++20 support)
+- **clang-cl** — the shipping compiler
+- **MSVC** 2022 — development and debugging only (never for measurement)
+- **GCC** 12+ — Linux CI, Debug + sanitizers
+
+Only `x64` builds are maintained. Warnings are errors everywhere (`/W4 /WX`, `-Wall -Wextra -Werror`)
+in both Debug and Release.
 
 ### Build Configuration
 
-**Optimization Flags** (Release):
-- MSVC: `/O2 /Oi /GL /arch:AVX2`
-- GCC/Clang: `-O3 -march=native -flto`
-
-**Required Defines**:
-- `_CRT_SECURE_NO_WARNINGS` (MSVC)
+- Release enables interprocedural optimisation (`INTERPROCEDURAL_OPTIMIZATION_RELEASE`)
+- `-mavx2 -mbmi2` — `Magic.h`'s `_pext_u64` requires BMI2
+- Sanitizers are Linux-only via `-DSTRAT_SANITIZE=...`, and refused on MSVC/clang-cl rather than
+  silently dropped
 
 ---
 
@@ -623,26 +734,20 @@ std::array<uint64_t, 18> bitboards;
 **Strengths**:
 - ✅ Robust timeout handling (no bad moves on interrupt)
 - ✅ Sophisticated quality assessment
-- ✅ Clean architecture (refactored with SearchResult)
+- ✅ Clean architecture (`ThreadData` + `SearchResult` + `SearchLimits`)
 - ✅ Comprehensive diagnostics
 - ✅ Tunable parameters
-- ✅ Defeats previous baseline (AIAgent) 10/10
-
-**Recent Fixes** (Feb 2026):
-- ✅ Fixed iterative deepening timeout move selection bug
-- ✅ Fixed score=0 acceptance on incomplete searches
-- ✅ Fixed PV table/move mismatch bug
-- ✅ Fixed mate detection causing infinite emergency loop
-- ✅ Fixed mate found not stopping iteration
-- ✅ Removed false-positive score-swing rejections
+- ✅ Lazy SMP parallel search
+- ✅ Null-move pruning, LMR, killers, history, aspiration windows
 
 **Known Limitations**:
-- ⚠️ No Late Move Reductions (LMR) - significant perf opportunity
-- ⚠️ No delta pruning in quiescence
-- ⚠️ Move sorting done inline (should be in MoveSorter class)
-- ⚠️ No killer moves or history heuristic
-- ⚠️ No aspiration windows (AIAgent has this)
-- ⚠️ Single-threaded only
+- ⚠️ No delta pruning or SEE-based pruning in quiescence
+- ⚠️ Move sorting done inline (should be in a `MoveSorter` class)
+- ⚠️ No counter-move history
+- ⚠️ No singular extensions
+- ⚠️ No UCI `Hash` option — transposition table size is fixed at 256 MB
+- ⚠️ Production search still inherits the legacy `PlayerAiBase` hierarchy
+- ⚠️ No tablebase support
 
 ### Other Algorithms
 
@@ -651,34 +756,37 @@ std::array<uint64_t, 18> bitboards;
 | **AIAgent** | ✅ Active | Baseline for testing (aspiration windows) |
 | **ABIterative** | 🎭 Legacy | Historical reference (simple ID) |
 | **AIBasic** | 🎭 Legacy | Historical reference (basic alpha-beta) |
-| **ABIterTrans** | ❌ Broken | Old TT bug, should archive |
-| **AITrans** | ❌ Broken | Old TT bug, should archive |
+| **ABIterTrans** | ❌ Archived | Old TT bug; `PlayerBase::Create()` throws |
+| **AITrans** | ❌ Archived | Old TT bug; `PlayerBase::Create()` throws |
 
 ---
 
 ## Performance Characteristics
 
+Figures below are from the Lazy SMP merge measurements on the developer machine (clang-cl Release).
+They are hardware-specific — re-measure with `Run-Bench.ps1` rather than quoting them.
+
 ### Search Speed
-- **Nodes per second**: ~100k-500k (single-threaded, depth-dependent)
-- **Typical search depth**: 8-12 plies (15-second time control)
+- **Nodes per second**: ~1.2 M single-threaded, ~6.9 M at 8 threads (5.79x)
+- **Typical search depth**: depends on time control and position
 - **Quiescence depth**: 10-15 plies average
 
 ### Memory Usage
-- **Transposition Table**: 256 MB
-- **Stack usage**: ~50-100 KB (recursive search)
-- **Total**: ~300 MB
+- **Transposition Table**: 256 MB requested (see the rounding note above)
+- **Stack usage**: ~50-100 KB per search thread (recursive search)
 
 ### Scaling
 - **Time doubling**: +1-2 ply depth
 - **Effective branching factor**: ~3-4 (with ordering)
-- **TT hit rate**: 80-90% (middle game)
 
-### Bottlenecks
-1. **Move generation**: ~30% of time
-2. **Position evaluation**: ~20% of time
-3. **Move sorting**: ~15% of time (can optimize with thread_local)
-4. **TT lookups**: ~10% of time
-5. **PVS recursion**: ~25% of time
+### Measuring changes
+
+Compare **nps**, never node counts at fixed depth — the node count is a property of the search, not
+of the machine code. Two builds of identical source must visit identical nodes and return identical
+best moves at `Threads=1`; if they do not, they are not searching the same tree and any nps
+comparison is meaningless. Take repeat runs before quoting a delta.
+
+Use `Run-Bench.ps1` for speed and `Run-EloMatch.ps1` for strength — they answer different questions.
 
 ---
 
@@ -710,24 +818,31 @@ std::array<uint64_t, 18> bitboards;
 AIPerplex::SetVerboseLogging(true);
 ```
 
+Verbose logging is opt-in per call site; the constructor does not enable it.
+
+### Validation
+
+`Docs/TestDesign.md` is the coverage map. The scripts in `StratChessEvolved/Scripts/` cover unit
+tests, pre-commit and pre-PR validation, perft against a 142,953-position corpus, tactical stability,
+benchmarking and Elo measurement. `Docs/Workflow.md` describes which validation tier applies to which
+kind of change.
+
 ---
 
 ## Future Enhancements
 
-See [Roadmap.md](Roadmap.md) for detailed plans.
+The live backlog is GitHub Issues; `Docs/Roadmap.md` carries the larger themes.
 
-**High-Priority**:
-- Late Move Reductions (2-3x speedup)
-- Delta pruning in quiescence
-- Extract move ordering to MoveSorter class
+**Search**:
+- Delta pruning and SEE-based pruning in quiescence
+- Counter-move history
+- Singular extensions
+- Extract move ordering to a `MoveSorter` class
 
-**Medium-Priority**:
-- Killer moves + history heuristic
-- Aspiration windows
-- SEE pruning
+**Evaluation**:
+- The evaluation-improvement epic and its sub-issues
 
-**Long-Term**:
-- Parallel search (Lazy SMP)
+**Longer term**:
 - Syzygy tablebase support
 - Neural network evaluation
 
@@ -747,9 +862,13 @@ See [Roadmap.md](Roadmap.md) for detailed plans.
 - [Transposition Tables](https://www.chessprogramming.org/Transposition_Table)
 
 ### Related Documentation
-- `Roadmap.md` - Future development plans
-- `CHANGELOG.md` - Version history (TODO)
-- Individual algorithm docs (TODO)
+- `CLAUDE.md` - Build, scripts, conventions and key source facts
+- `Docs/Workflow.md` - Standing decisions, validation tiers, review gate
+- `Docs/CI.md` - What each CI workflow runs
+- `Docs/TestDesign.md` - Coverage map and guide to writing tests
+- `Docs/Changelog.md` - Version history
+- `Docs/Roadmap.md` - Future development themes
+- `Docs/EloMeasurement.md` / `Docs/EloLog.md` - Strength measurement method and results
 
 ---
 
@@ -759,13 +878,13 @@ See [Roadmap.md](Roadmap.md) for detailed plans.
 - C++20 modern style
 - 4-space indentation (tabs in legacy code)
 - Descriptive variable names
-- Comments for non-obvious logic
+- Comments describe the code as it stands — not what it replaced, and not point-in-time measurements
 
 ### Before Submitting
-1. Run existing games to verify no regression
-2. Add diagnostic logging for new features
-3. Update this README if architecture changes
-4. Run static analysis (PVS-Studio)
+1. Run `Validate-PreCommit.ps1` (the pre-commit hook does this)
+2. Run `Validate-PrePR.ps1` before opening a PR — it scopes itself to the change tier
+3. Dispatch a specialised reviewer if the diff touches evaluation or search
+4. Update this document if the architecture changes
 
 ### Contact
 - Original Author: Thees (20 years development)
@@ -773,5 +892,5 @@ See [Roadmap.md](Roadmap.md) for detailed plans.
 
 ---
 
-**Last Updated**: February 11, 2026  
-**Document Version**: 1.0
+**Last Updated**: August 10, 2026  
+**Document Version**: 3.0
