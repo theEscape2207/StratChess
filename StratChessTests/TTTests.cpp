@@ -174,3 +174,75 @@ TEST_CASE("TT - clear resets entry_count and pv_count to zero", "[tt]")
     REQUIRE(tt.count_entries()  == 0);
     REQUIRE(tt.count_pv_nodes() == 0);
 }
+
+// ── Allocation reporting ──────────────────────────────────────────────────────
+//
+// The bucket count is rounded down to a power of two, so the table is generally
+// smaller than the megabytes requested. These pin the two properties that make
+// that acceptable: the diagnostic must describe the allocation rather than the
+// request, and the allocation must never exceed the request.
+
+TEST_CASE("TT - memory_mb reports what was allocated, not what was requested", "[tt]")
+{
+    // 256 MiB / 96-byte buckets = 2796202, floored to 2^21 = 2097152 buckets,
+    // which is 192 MiB of entries. Reporting 256 here would hide a 25% shortfall.
+    TranspositionTable tt(256);
+
+    REQUIRE(tt.requested_memory_mb() == 256);
+    REQUIRE(tt.bucket_count()        == 2097152u);
+    REQUIRE(tt.memory_mb()           == 192);
+}
+
+TEST_CASE("TT - allocation never exceeds the requested budget", "[tt]")
+{
+    // The argument is a memory cap, so rounding must not overshoot it. Sizes
+    // either side of a power-of-two boundary, where round-to-nearest would.
+    for (const size_t requested : { size_t{1}, size_t{7}, size_t{64}, size_t{100},
+                                    size_t{256}, size_t{300}, size_t{511} }) {
+        TranspositionTable tt(requested);
+
+        INFO("requested " << requested << " MiB");
+        REQUIRE(tt.requested_memory_mb() == requested);
+        REQUIRE(tt.memory_mb() <= requested);
+    }
+}
+
+TEST_CASE("TT - byte accounting is self-consistent", "[tt]")
+{
+    TranspositionTable tt(16);
+
+    REQUIRE(tt.bucket_count() > 0);
+    REQUIRE(tt.entry_bytes() == tt.bucket_count() * 96);          // 4 x 24-byte entries
+    REQUIRE(tt.lock_bytes() == tt.bucket_count() * sizeof(std::shared_mutex));
+    REQUIRE(tt.allocated_bytes() == tt.entry_bytes() + tt.lock_bytes());
+    REQUIRE(tt.memory_mb() == tt.entry_bytes() / (1024 * 1024));
+}
+
+TEST_CASE("TT - bucket count is a power of two", "[tt]")
+{
+    // probe/store index with `key & index_mask`, which is only equivalent to a
+    // modulo when the bucket count is a power of two.
+    for (const size_t requested : { size_t{1}, size_t{5}, size_t{16}, size_t{100}, size_t{256} }) {
+        TranspositionTable tt(requested);
+        const size_t n = tt.bucket_count();
+
+        INFO("requested " << requested << " MiB, got " << n << " buckets");
+        REQUIRE(n > 0);
+        REQUIRE((n & (n - 1)) == 0);
+    }
+}
+
+TEST_CASE("TT - a request too small for one bucket still allocates one", "[tt]")
+{
+    // 0 MiB would compute zero buckets; the table must stay usable rather than
+    // producing an index_mask of SIZE_MAX.
+    TranspositionTable tt(0);
+
+    REQUIRE(tt.bucket_count() == 1);
+    REQUIRE(tt.memory_mb()    == 0);
+
+    do_store(tt, KEY_A, 123);
+    auto result = tt.probe(KEY_A, 0);
+    REQUIRE(result.has_value());
+    REQUIRE(result->value == 123);
+}

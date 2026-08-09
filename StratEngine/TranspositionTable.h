@@ -55,16 +55,25 @@ struct TTEntry {
     }
 };
 
+// Pinned deliberately. The bucket count is derived from sizeof(TTEntry), so
+// growing an entry shrinks the table for the same megabyte request -- which
+// changes which positions collide, and therefore changes search results. That
+// must be a decision someone makes, not a side effect of adding a field: a
+// failure here means re-running the search-change validation tier, not bumping
+// the number.
+static_assert(sizeof(TTEntry) == 24, "TTEntry size change alters the bucket count and search behaviour");
+
 // Transposition Table class
 // Thread-safe with per-bucket locks for concurrent access
 // Uses a simple replacement strategy based on depth and age
 // Supports normalization of mate scores for correct distance handling
 // Provides O(1) diagnostics via atomic counters
-// Resize and clear operations are protected by a global mutex
+// clear() is protected by a global mutex
 // Probes use shared locks for concurrent reads
 class TranspositionTable {
 private:
-    // keep a global shared mutex for infrequent global ops (resize/clear)
+    // Global mutex for whole-table operations, so they cannot interleave with
+    // each other. Only clear() takes it today; there is no resize().
     std::shared_mutex tt_mutex;
 
     static constexpr size_t BUCKET_SIZE = 4;
@@ -73,13 +82,19 @@ private:
         TTEntry entries[BUCKET_SIZE];
     };
 
+    static_assert(sizeof(Bucket) == BUCKET_SIZE * sizeof(TTEntry),
+                  "Bucket must be exactly BUCKET_SIZE entries with no padding");
+
     std::vector<Bucket> table;
     // per-bucket shared mutexes to allow concurrent probes
     std::unique_ptr<std::shared_mutex[]> bucket_locks;
     size_t index_mask{ 0 };
 
     std::atomic<uint8_t> current_age{ 0 };
-    size_t size_mb;
+
+    // What the caller asked for. Kept only so requested_memory_mb() can report
+    // it -- it is NOT what was allocated. See memory_mb().
+    size_t requested_mb;
 
     // atomic counters for O(1) diagnostics (avoid scanning entire table)
     std::atomic<size_t> entry_count{ 0 };
@@ -94,10 +109,20 @@ private:
     }
 
 public:
-    explicit TranspositionTable(size_t mb = 256) : size_mb(mb) {
+    // The bucket count is a power of two so probe/store can index with a mask
+    // instead of a modulo, and it is rounded DOWN rather than to the nearest
+    // power of two. Down is deliberate: the argument is a memory budget, so
+    // overshooting it would be the worse failure -- a caller capping the table
+    // for a constrained machine must not get a larger one than it asked for.
+    //
+    // The cost is that the allocation is generally smaller than the request, by
+    // up to half. At the 256 MiB default: 268435456 / 96 = 2796202 buckets,
+    // rounded down to 2^21 = 2097152, so 192 MiB of entries rather than 256.
+    // memory_mb() reports what was actually allocated for exactly this reason.
+    explicit TranspositionTable(size_t mb = 256) : requested_mb(mb) {
         size_t num_buckets = (mb * 1024 * 1024) / sizeof(Bucket);
         if (num_buckets == 0) num_buckets = 1;
-		
+
         // use power-of-two bucket count for fast mask indexing
         size_t buckets = floor_pow2(num_buckets);
         table.resize(buckets);
@@ -306,5 +331,26 @@ public:
 
     // diagnostics
     size_t bucket_count() const noexcept { return table.size(); }
-    size_t memory_mb() const noexcept { return size_mb; }
+
+    // What the constructor was asked for. Reported separately from what was
+    // allocated because the two differ -- see the constructor comment.
+    size_t requested_memory_mb() const noexcept { return requested_mb; }
+
+    // Bytes holding TT entries.
+    size_t entry_bytes() const noexcept { return table.size() * sizeof(Bucket); }
+
+    // Bytes held by the parallel lock array, which cannot hold entries. Sharply
+    // platform-dependent: sizeof(std::shared_mutex) is 8 on the MSVC STL
+    // (SRWLOCK-based) but 56 on libstdc++ (pthread_rwlock_t), so this is a few
+    // percent on the shipping Windows build and over half again the entry
+    // memory on Linux.
+    size_t lock_bytes() const noexcept { return table.size() * sizeof(std::shared_mutex); }
+
+    // Everything the table allocates, entries plus locks.
+    size_t allocated_bytes() const noexcept { return entry_bytes() + lock_bytes(); }
+
+    // Megabytes actually allocated for entries -- NOT the constructor argument.
+    // Reporting the request here instead would make the table's single memory
+    // diagnostic incapable of revealing the shortfall it is there to describe.
+    size_t memory_mb() const noexcept { return entry_bytes() / (1024 * 1024); }
 };
