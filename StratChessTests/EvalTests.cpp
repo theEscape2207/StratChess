@@ -13,6 +13,7 @@
 #include "Eval.h"
 
 #include <algorithm>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -1590,6 +1591,50 @@ TEST_CASE("Eval - EvalComplex does not penalise a pawn its neighbour is level wi
 
     CAPTURE(levelScore, backwardsScore);
     REQUIRE(levelScore > backwardsScore);
+}
+
+TEST_CASE("Eval - EvalComplex passer bonus is monotonic across every rank", "[eval]")
+{
+    // The bonus is scaled by rank and then again by the blockade factor, and each
+    // scaling truncates. Truncation cannot be reasoned about in general -- it has
+    // to be checked at every rank, because a single non-monotonic step means an
+    // advancing pawn can lose value by moving forward.
+    //
+    // A lone white e-pawn walked from its starting rank to the 7th, black king
+    // parked on a8 so it never blockades and never moves the phase.
+    const char* byRank[] = {
+        "k7/8/8/8/8/8/4P3/4K3 w - - 0 1",   // e2
+        "k7/8/8/8/8/4P3/8/4K3 w - - 0 1",   // e3
+        "k7/8/8/8/4P3/8/8/4K3 w - - 0 1",   // e4
+        "k7/8/8/4P3/8/8/8/4K3 w - - 0 1",   // e5
+        "k7/8/4P3/8/8/8/8/4K3 w - - 0 1",   // e6
+        "k7/4P3/8/8/8/8/8/4K3 w - - 0 1",   // e7
+    };
+
+    int previous = std::numeric_limits<int>::min();
+    for (const char* fen : byRank) {
+        Board board(fen);
+        const int score = EvalComplexTestFixture::Pawns(board, WHITE);
+        CAPTURE(fen, score, previous);
+        REQUIRE(score >= previous);
+        previous = score;
+    }
+}
+
+TEST_CASE("Eval - EvalComplex discounts a passer whose stop square is blockaded", "[eval]")
+{
+    // Same white passer on e6 both times; the black king either sits on its stop
+    // square e7, where the pawn cannot move at all until it is dislodged, or
+    // stands aside on a7. Nothing else differs, and eval_pawns reads no piece
+    // other than pawns, so the whole delta is the blockade discount.
+    Board blockaded("4k3/4P3/8/8/8/8/8/4K3 w - - 0 1");
+    Board freeToRun("k7/4P3/8/8/8/8/8/4K3 w - - 0 1");
+
+    const int blockadedScore = EvalComplexTestFixture::Pawns(blockaded, WHITE);
+    const int freeScore      = EvalComplexTestFixture::Pawns(freeToRun, WHITE);
+
+    CAPTURE(blockadedScore, freeScore);
+    REQUIRE(freeScore > blockadedScore);
 }
 
 TEST_CASE("Eval - EvalComplex does not score the rear pawn of a doubled pair as passed", "[eval]")

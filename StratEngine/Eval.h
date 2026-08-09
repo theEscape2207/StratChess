@@ -299,10 +299,21 @@ class EvalComplex final
 	// in the hot path.
 	//
 	// Kept separate from PASSED_PAWN_BONUS rather than folded into it so issue
-	// #117 can tune shape and magnitude independently. The values are untuned and
-	// literature-shaped, giving roughly 20/45 cp on the starting rank up to 80/180
-	// at the 7th -- #117 owns the tuning, as it did for mobility.
-	static constexpr short PASSED_PAWN_RANK_SCALE[8] = { 16, 16, 20, 28, 40, 56, 64, 64 };
+	// #117 can tune shape and magnitude independently.
+	//
+	// HALVED from the first measured version, which gave 20/45 cp on the starting
+	// rank up to 80/180 at the 7th and measured **-11.52 +/- 4.36 Elo** over 19,980
+	// games (run 31300861562). The shape was left alone; only the magnitude moved,
+	// so that result and this one differ in one variable. Now roughly 10/22 cp on
+	// the starting rank up to 40/90 at the 7th.
+	static constexpr short PASSED_PAWN_RANK_SCALE[8] = { 8, 8, 10, 14, 20, 28, 32, 32 };
+
+	// A passer whose stop square is occupied by an enemy piece is not running
+	// anywhere: it has to be dislodged first, and the blockader is usually well
+	// placed. Scored at this fraction (in 1/16ths) of the normal bonus. The first
+	// measured version had no blockade awareness at all and paid a 7th-rank passer
+	// its full value with the enemy king parked in front of it.
+	static constexpr short PASSED_PAWN_BLOCKADED_SCALE = 8;   // half
 
 	static const short MOBILITY_KNIGHT_MG		= 4;
 	static const short MOBILITY_KNIGHT_EG		= 4;

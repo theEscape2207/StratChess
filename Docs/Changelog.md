@@ -55,6 +55,37 @@ artifact.
 
 ---
 
+## 2026-08-09 — Retune the passer bonus after a measured regression (#116)
+
+### Changed
+
+- **`PASSED_PAWN_RANK_SCALE` halved** — roughly 10/22 cp on the pawn's starting rank up to 40/90 at
+  the 7th, where the first version gave 20/45 up to 80/180. Shape untouched, so the two measurements
+  differ in magnitude alone.
+- **Blockade discount**: a passer whose stop square is occupied by any enemy piece scores half
+  (`PASSED_PAWN_BLOCKADED_SCALE`). The first version paid a 7th-rank passer its full value with the
+  enemy king parked in front of it.
+
+### Notes
+
+The first version measured **-11.52 +/- 4.36 Elo** over 19,980 games (run `31300861562`) — decisively
+negative, with the 95% interval entirely below zero. The detection was not at fault: the masks were
+verified exhaustively and the unit tests pin every property. The valuation was, in the two places the
+eval review had flagged in advance.
+
+New test: the passer bonus is asserted **monotonic across every rank**, walking a lone pawn from its
+starting square to the 7th. The bonus is now scaled twice and each scaling truncates, so monotonicity
+has to be checked rank by rank rather than argued in general.
+
+Bench against the merge base is **not usable as a like-for-like comparison here**, and the aggregate
+figure is actively misleading: the two builds search different trees, and the candidate spends far
+more of its nodes on `open-mid`, the slowest-nps position in the suite (8.6M nodes -> 13.8M), which
+drags the weighted aggregate down well past any per-node cost. Per position the cost is roughly
+1.5-7.6%, with one position slightly faster. Strength, which subsumes both the evaluation change and
+its speed cost, is the only instrument that settles this.
+
+---
+
 ## 2026-08-09 — Passed-pawn bonus and backwards-pawn penalty (#116)
 
 ### Added

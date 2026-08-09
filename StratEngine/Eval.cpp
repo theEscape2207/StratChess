@@ -97,6 +97,16 @@ ScorePair EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 		// Own file plus both adjacent files, ahead of this pawn only.
 		const BITBOARD forwardSpan = (color == WHITE) ? g_bbPassedMaskWhite[square]
 		                                              : g_bbPassedMaskBlack[square];
+		// The square directly ahead -- the one this pawn must pass through. Both the
+		// passer and the backwards term ask about it, and each only inside a branch
+		// most pawns do not enter, so it is computed on demand rather than once per
+		// pawn. Off-board only for a pawn on the promotion rank, which cannot occur
+		// in a legal position.
+		const auto stop_square_of = [&]() -> BITBOARD {
+			const int idx = (color == WHITE) ? (squareIndex - ONE_ROW)
+			                                 : (squareIndex + ONE_ROW);
+			return (idx >= 0 && idx < ALL_SQUARES) ? (1ULL << idx) : 0ULL;
+		};
 
 		if (color == WHITE)
 		{
@@ -130,7 +140,12 @@ ScorePair EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 		if (!(enemyPawns & forwardSpan) && !(ownPawns & ownFileAhead))
 		{
 			const int advanced = (color == WHITE) ? (7 - row) : row;
-			const int scale = PASSED_PAWN_RANK_SCALE[advanced];
+			int scale = PASSED_PAWN_RANK_SCALE[advanced];
+			// Blockaded: an enemy piece sits on the stop square, so the pawn cannot
+			// advance at all until it is dislodged. Any enemy piece counts, not just
+			// the king -- what matters is that the square is occupied.
+			if (ctx.occupied[enemy] & stop_square_of())
+				scale = static_cast<int>(scale * PASSED_PAWN_BLOCKADED_SCALE / 16);
 			passedMg += PASSED_PAWN_BONUS * scale / 16;
 			passedEg += PASSED_PAWN_BONUS_EG * scale / 16;
 		}
@@ -158,15 +173,10 @@ ScorePair EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 			// kept because it is half of the stated definition and would start
 			// mattering the moment clause (a) were relaxed to "strictly behind" --
 			// but #117 should not try to tune a condition that never fires today.
-			const int stopIndex = (color == WHITE) ? (squareIndex - ONE_ROW)
-			                                       : (squareIndex + ONE_ROW);
-			if (stopIndex >= 0 && stopIndex < ALL_SQUARES)
-			{
-				const BITBOARD stopSquare = 1ULL << stopIndex;
-				if ((ctx.pawn_attacks[enemy] & stopSquare) &&
-					!(ctx.pawn_attacks[color] & stopSquare))
-					score -= BACKWARDS_PAWN_PENALTY;
-			}
+			const BITBOARD stopSquare = stop_square_of();
+			if ((ctx.pawn_attacks[enemy] & stopSquare) &&
+				!(ctx.pawn_attacks[color] & stopSquare))
+				score -= BACKWARDS_PAWN_PENALTY;
 		}
 
 		remaining = Bits::clearLsb(remaining);
