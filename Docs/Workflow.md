@@ -208,6 +208,19 @@ misses and the corpus catches, which would make the breadth worth paying for con
 **The goal is measured positive Elo, not nps.** Speed is a means; it is not the objective, and
 trading a little of it for more strength is a good deal when the trade is measured.
 
+**`Run-Bench.ps1`'s aggregate nps is meaningless between builds whose evaluation differs.** The
+aggregate is weighted by where the nodes were spent, and two evaluations search different trees — so
+it measures the change in tree shape, not the change in per-node cost. Measured on #116: the
+aggregate read **12% slower** while per-position nps ranged from −1.5% to −7.6% with one position
+*faster*, because the candidate spent 8.6M → 13.8M of its nodes on `open-mid`, the slowest-nps
+position in the suite. Two hypotheses were chased and discarded on the strength of that bogus number
+before the per-position table explained it.
+
+So: for an evaluation change, read the **per-position** nps column, treat it as an estimate rather
+than a measurement, and let strength settle it — Elo already includes whatever the speed cost was.
+The aggregate is trustworthy only where the existing equivalence check applies: two builds of
+identical source, which by construction visit identical nodes.
+
 **Use the right instrument for the size of the effect.** From this project's own data — the clang-cl
 migration measured +23.32% nps → +40.28 Elo at 10+0.1 — roughly **1% nps ≈ 1.7 Elo**. That is
 *below* the ±4 Elo the 20,000-game strength lab resolves, so:
