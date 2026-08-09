@@ -22,6 +22,39 @@ Newest first.
 
 ---
 
+## 2026-08-09 — Fix: the engine could play an illegal move after `bestmove` (#245)
+
+### Fixed
+
+- **`searching_` is now cleared BEFORE `bestmove` is sent, not after** (`UCIHandler.cpp`). The old
+  order left a window in which the engine had already published `bestmove` but still reported itself
+  as searching. `refuse_while_searching()` silently refuses `position` in that state — while `go` is
+  not refused — so a client replying at full speed had its `position` dropped, and the next search
+  ran on the **previous** position. The engine then returned a move that was legal there and illegal
+  on the real board: typically its own previous move, from a square it had already vacated.
+
+### Notes
+
+Found by the strength lab, not by the test suite: two games out of ~19,980 in run `31281221815` were
+forfeited this way (`0-1 {White makes an illegal move}`), which failed two shards and voided that
+measurement. Every earlier production run had passed clean, because the window is nanoseconds wide —
+about 1 command cycle in 10^6.
+
+**Not caused by the evaluation change that surfaced it.** Evaluation selects among legal moves; it
+cannot make the engine lose track of its own pieces. One of the two failures is in a pawnless
+K+B+N vs K ending, where the new pawn terms return zero for both sides.
+
+Confirmed experimentally rather than by inspection. Widening the window to 50 ms in a scratch build
+turned the race from unobservable into deterministic — **39 of 40** iterations refused, 38 of them
+replaying the previous move. With the corrected order and the same 50 ms probe still in place:
+**0 of 40**. `Scripts/uci_race_probe.py` is the driver, and its docstring carries the recipe.
+
+A unit test cannot capture this: on a correct build the window does not exist, so nothing can observe
+it without reintroducing the defect. The probe plus the recorded before/after is the regression
+artifact.
+
+---
+
 ## 2026-08-08 — ThreadSanitizer for the Lazy SMP helpers (#184)
 
 ### Added

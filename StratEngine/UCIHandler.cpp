@@ -346,10 +346,22 @@ void UciHandler::cmd_go(std::string_view line)
              " pv "         + (best.is_null() ? "0000" : MoveFormatter::ToUCI(best)));
 
         const std::string bm = best.is_null() ? "0000" : MoveFormatter::ToUCI(best);
-        send("bestmove " + bm);
-        // Cleared only after bestmove is out, so a client that acts the instant
-        // it reads bestmove finds the engine already accepting commands.
+        // Cleared BEFORE bestmove goes out, not after. `bestmove` is the only
+        // thing a client waits for, so it will send the next `position` the
+        // instant it reads that line -- and refuse_while_searching() silently
+        // refuses `position` while this flag is set, leaving board_ on the
+        // previous position. `go` is not refused, so the next search then runs
+        // on a stale board and returns a move that is illegal in the real one:
+        // typically the engine's own previous move, from a square it has already
+        // vacated. That forfeited two games in the 19,980-game run 31281221815
+        // (issue #245).
+        //
+        // Ordering it this way makes the window unreachable rather than narrow:
+        // by the time the client can possibly observe bestmove, the engine is
+        // already accepting commands. GetMove() has returned by here, so nothing
+        // below touches board_ and clearing early races with no search work.
         searching_.store(false, std::memory_order_release);
+        send("bestmove " + bm);
     });
 }
 
