@@ -21,6 +21,22 @@
 #include "defines.h"
 
 // ============================================================================
+// Helper
+// ============================================================================
+// Returns any legal move from the starting position.
+// Used to produce a guaranteed non-null Move for assess tests, and (below)
+// by the fixture's own per-game-state pokes.
+static Move AnyLegalMove()
+{
+    Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    GameInfo info = board.GetGameInfo();
+    MoveList ml;
+    MoveGenerator::ComputeLegalMoves(board, info, ml);
+    REQUIRE(!ml.empty());
+    return ml[0];
+}
+
+// ============================================================================
 // Test fixture
 // ============================================================================
 // Must be defined here (not in a header) — the name must match the friend
@@ -96,6 +112,26 @@ public:
 
     void start_new_game() const { ai->StartNewGame(); }
 
+    // --- Per-game state pokes, for proving StartNewGame() resets them ---
+
+    void poke_history() const { ai->td_.update_history(WHITE, AnyLegalMove(), 4); }
+    bool history_is_clear() const
+    {
+        for (const auto& side : ai->td_.history)
+            for (const auto& from : side)
+                for (int32_t score : from)
+                    if (score != 0) return false;
+        return true;
+    }
+
+    void poke_killer(int ply) const { ai->td_.store_killer(ply, AnyLegalMove()); }
+    bool has_killer(int ply) const { return !ai->td_.killers[ply][0].is_null(); }
+
+    void add_fake_helper() const { ai->helper_tds_.push_back(std::make_unique<ThreadData>()); }
+    size_t helper_count() const { return ai->helper_tds_.size(); }
+
+    void set_last_result_depth(int depth) const { ai->last_result_.depth_completed = depth; }
+
     void search_depth_one()
     {
         ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
@@ -105,21 +141,6 @@ public:
         REQUIRE_FALSE(move.is_null());
     }
 };
-
-// ============================================================================
-// Helper
-// ============================================================================
-// Returns any legal move from the starting position.
-// Used to produce a guaranteed non-null Move for assess tests.
-static Move AnyLegalMove()
-{
-    Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    GameInfo info = board.GetGameInfo();
-    MoveList ml;
-    MoveGenerator::ComputeLegalMoves(board, info, ml);
-    REQUIRE(!ml.empty());
-    return ml[0];
-}
 
 // ============================================================================
 // New-game lifecycle tests
@@ -144,6 +165,56 @@ TEST_CASE("Search - fullmove-one position does not define TT lifetime", "[search
     fix.search_depth_one();
 
     REQUIRE(fix.has_tt_marker());
+}
+
+TEST_CASE("Search - StartNewGame resets td_ history and killers", "[search]")
+{
+    AIPerlexTestFixture fix;
+    fix.poke_history();
+    fix.poke_killer(0);
+    REQUIRE_FALSE(fix.history_is_clear());
+    REQUIRE(fix.has_killer(0));
+
+    fix.start_new_game();
+
+    REQUIRE(fix.history_is_clear());
+    REQUIRE_FALSE(fix.has_killer(0));
+}
+
+TEST_CASE("Search - StartNewGame clears helper_tds_", "[search][smp]")
+{
+    // Lazy SMP helpers are reused across searches within a game (GetMove()
+    // only grows helper_tds_, never shrinks it) — StartNewGame() must clear
+    // the vector so the next search reconstructs them fresh instead of
+    // carrying killers/history over from the previous game.
+    AIPerlexTestFixture fix;
+    fix.add_fake_helper();
+    REQUIRE(fix.helper_count() == 1);
+
+    fix.start_new_game();
+
+    REQUIRE(fix.helper_count() == 0);
+}
+
+TEST_CASE("Search - StartNewGame resets tuning_ to defaults", "[search]")
+{
+    AIPerlexTestFixture fix;
+    fix.ai->tuning().null_move_enabled = false;
+
+    fix.start_new_game();
+
+    REQUIRE(fix.ai->tuning().null_move_enabled == true);
+}
+
+TEST_CASE("Search - StartNewGame resets last_result_", "[search]")
+{
+    AIPerlexTestFixture fix;
+    fix.set_last_result_depth(5);
+    REQUIRE(fix.ai->GetLastResult().depth_completed == 5);
+
+    fix.start_new_game();
+
+    REQUIRE(fix.ai->GetLastResult().depth_completed == 0);
 }
 
 // ============================================================================

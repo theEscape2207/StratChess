@@ -7,6 +7,7 @@
 #include "Board.h"
 #include "MoveFormatter.h"
 #include "Eval.h"
+#include "TranspositionTable.h"
 #include "Utils/FenBatch.h"
 #include <sstream>
 #include <iostream>
@@ -49,6 +50,27 @@ public:
         auto* perplex = dynamic_cast<AIPerplex*>(handler.ai_.get());
         REQUIRE(perplex != nullptr);
         return perplex->threads_;
+    }
+
+    // Identity of the live ai_ instance, for proving cmd_ucinewgame() no
+    // longer rebuilds it.
+    const void* ai_identity() const { return handler.ai_.get(); }
+
+    static constexpr uint64_t TT_MARKER_KEY = 0x7fff'ffff'ffff'fffeULL;
+
+    void store_tt_marker() const
+    {
+        auto* perplex = dynamic_cast<AIPerplex*>(handler.ai_.get());
+        REQUIRE(perplex != nullptr);
+        perplex->_tt->store(TT_MARKER_KEY, 123, 1, 0, Move::EmptyMove(),
+                             BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+    }
+
+    bool has_tt_marker() const
+    {
+        auto* perplex = dynamic_cast<AIPerplex*>(handler.ai_.get());
+        REQUIRE(perplex != nullptr);
+        return perplex->_tt->probe(TT_MARKER_KEY, 0).has_value();
     }
 };
 
@@ -255,6 +277,34 @@ TEST_CASE("cmd_setoption: Threads takes effect immediately on the live ai_", "[u
 
     fix.ucinewgame();   // rebuild ai_ — must still restore 4, not reset to 1
     REQUIRE(fix.ai_threads() == 4);
+}
+
+// ---------------------------------------------------------------------------
+// cmd_ucinewgame — StartNewGame() lifecycle, not a rebuild
+// ---------------------------------------------------------------------------
+
+TEST_CASE("cmd_ucinewgame: does not rebuild the AIPerplex instance", "[uci]")
+{
+    UciHandlerTestFixture fix;
+    fix.ucinewgame();   // first call still constructs ai_
+    const void* first = fix.ai_identity();
+
+    fix.ucinewgame();
+    fix.ucinewgame();
+
+    REQUIRE(fix.ai_identity() == first);
+}
+
+TEST_CASE("cmd_ucinewgame: a TT entry does not survive into the next game", "[uci][tt]")
+{
+    UciHandlerTestFixture fix;
+    fix.ucinewgame();
+    fix.store_tt_marker();
+    REQUIRE(fix.has_tt_marker());
+
+    fix.ucinewgame();
+
+    REQUIRE_FALSE(fix.has_tt_marker());
 }
 
 // ---------------------------------------------------------------------------
