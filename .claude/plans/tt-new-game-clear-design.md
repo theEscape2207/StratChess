@@ -17,7 +17,9 @@ This change will:
 - add an explicit AI new-game lifecycle hook;
 - invoke that hook from both `UciHandler::cmd_ucinewgame()` and non-UCI `Game` player setup;
 - remove the `fullMoveCount == 1` clear from the timed `AIPerplex::GetMove()` path;
-- add unit and integration coverage for the empty fast path and both runtime lifecycle owners; and
+- preserve TT contents when a client analyzes or searches a FEN whose fullmove field is one;
+- add unit coverage for the empty fast path, concrete lifecycle override, and move-metadata
+  regression, with runtime validation of both lifecycle owners; and
 - measure the first-search latency and verify deterministic search equivalence at `Threads=1`.
 
 This change will not implement lazy TT generations, change TT entry layout or replacement policy,
@@ -40,6 +42,11 @@ The method will still reset the table's age and diagnostic counters after a popu
 empty fast path does not need to reset age because no stored entry can observe it; the next stored
 entry uses the current age consistently. No entry representation or probe behavior changes.
 
+The zero-count check is safe for the intended lifecycle use because both runtime owners call it only
+when no search can be storing entries. That precondition will be stated beside `clear()` in the
+source: the whole-table mutex serializes clear calls, but stores take only bucket locks and are not
+excluded by it. This change deliberately does not claim to make clear concurrent with search.
+
 ### D2: Put new-game behavior on the AI lifecycle, not move metadata
 
 `PlayerAiBase` will gain a virtual `StartNewGame()` default no-op so lifecycle owners can notify any
@@ -48,6 +55,12 @@ AI without knowing its concrete type. `AIPerplex` will override it and call `_tt
 This hook belongs on `PlayerAiBase`, rather than `IPlayer`, because humans have no search state and
 all runtime call sites already distinguish AI players. Legacy AI implementations inherit the no-op,
 so their behavior is unchanged.
+
+`Game::SetPlayerParams()` returns `std::unique_ptr<IPlayer>`, so its concrete call will use
+`dynamic_cast<PlayerAiBase*>` beside the existing `SetThreads` block at the end of the function. This
+adds one downcast while #256 is considering cleaner search-interface boundaries, but the lifecycle
+method itself belongs on that future interface and carries forward rather than becoming discarded
+work.
 
 ### D3: Both runtime owners call the hook before any move clock starts
 
@@ -59,6 +72,13 @@ Non-UCI `Game` mode will call `StartNewGame()` while configuring each AI player,
 requests a move. This explicitly covers the gameplay path even though players currently receive a
 fresh TT during construction. If player ownership is later reused across games, the lifecycle hook
 remains the correct reset point.
+
+An instrumented 20-game `Run-EloMatch.ps1 -Smoke` probe on 2026-08-10 recorded exactly 20
+`ucinewgame` calls in each side's isolated working directory: one per game per engine. Fastchess
+therefore retains fresh-table match isolation after this change. A UCI client that omits
+`ucinewgame` will intentionally keep TT contents for its whole engine session; entries remain
+position-keyed and age normally. The engine will not infer resource lifetime from FEN move metadata
+to compensate for a missing lifecycle command.
 
 `AIPerplex::GetMove()` will no longer inspect `GameInfo::fullMoveCount` to manage TT lifetime. That
 field describes the board position, not ownership of engine resources, and custom/FEN positions can
@@ -94,11 +114,16 @@ lock or branch.
 3. `[tt]`: a second clear reports the table was already empty.
 4. `[search]`: populate an `AIPerplex` TT through test access, call `StartNewGame()`, and verify the
    entry is removed; this proves the concrete lifecycle override.
-5. `[uci]`: populate the live AI TT, call `cmd_ucinewgame()`, and verify the replacement AI starts
+5. `[search]`: populate the TT, search a position whose FEN fullmove field is one, and verify the
+   marker entry survives. This catches any future reintroduction of position-metadata-driven TT
+   lifetime and covers a second existing defect in analysis/custom-position sessions.
+6. `[uci]`: populate the live AI TT, call `cmd_ucinewgame()`, and verify the replacement AI starts
    empty and the lifecycle path remains valid.
-6. Non-UCI game mode: run the repository's headless AI-vs-AI self-play path with AIPerplex on both
-   sides. The production call remains directly in `Game::SetPlayerParams()`; no test-only lifecycle
-   state is added merely to observe an otherwise side-effect-free call on a fresh table.
+
+Non-UCI game setup receives no artificial counter merely to observe a side-effect-free hook call on
+a freshly constructed table. Its production insertion point is explicit above; headless AIPerplex
+self-play validates the complete game-mode path but is reported as runtime validation, not as proof
+that this particular call occurred.
 
 Tests will be written and observed failing before each production change.
 
