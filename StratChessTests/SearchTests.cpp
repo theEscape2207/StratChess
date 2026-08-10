@@ -32,6 +32,8 @@
 class AIPerlexTestFixture
 {
 public:
+    static constexpr uint64_t TT_MARKER_KEY = 0x7fff'ffff'ffff'ffffULL;
+
     // Re-export private types for test use
     using RejectionReason = AIPerplex::RejectionReason;
     using Metrics         = AIPerplex::IterationMetrics;
@@ -80,6 +82,28 @@ public:
     // SetThreads() override; needs friend access because threads_ itself
     // is private. Used by the [smp] clamp tests below.
     unsigned threads() const { return ai->threads_; }
+
+    void store_tt_marker() const
+    {
+        ai->_tt->store(TT_MARKER_KEY, 123, 1, 0, Move::EmptyMove(),
+                       BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+    }
+
+    bool has_tt_marker() const
+    {
+        return ai->_tt->probe(TT_MARKER_KEY, 0).has_value();
+    }
+
+    void start_new_game() const { ai->StartNewGame(); }
+
+    void search_depth_one()
+    {
+        ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
+        GameInfo info = board_.GetGameInfo();
+        REQUIRE(info.fullMoveCount == 1);
+        const Move move = ai->GetMove(info, SearchLimits::fixed_depth(1));
+        REQUIRE_FALSE(move.is_null());
+    }
 };
 
 // ============================================================================
@@ -95,6 +119,31 @@ static Move AnyLegalMove()
     MoveGenerator::ComputeLegalMoves(board, info, ml);
     REQUIRE(!ml.empty());
     return ml[0];
+}
+
+// ============================================================================
+// New-game lifecycle tests
+// ============================================================================
+
+TEST_CASE("Search - StartNewGame clears a populated AIPerplex TT", "[search][tt]")
+{
+    AIPerlexTestFixture fix;
+    fix.store_tt_marker();
+    REQUIRE(fix.has_tt_marker());
+
+    fix.start_new_game();
+
+    REQUIRE_FALSE(fix.has_tt_marker());
+}
+
+TEST_CASE("Search - fullmove-one position does not define TT lifetime", "[search][tt]")
+{
+    AIPerlexTestFixture fix;
+    fix.store_tt_marker();
+
+    fix.search_depth_one();
+
+    REQUIRE(fix.has_tt_marker());
 }
 
 // ============================================================================

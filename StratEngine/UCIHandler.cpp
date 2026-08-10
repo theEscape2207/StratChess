@@ -85,6 +85,7 @@ void UciHandler::cmd_ucinewgame()
 {
     stop_and_join();
     init_ai();
+    if (ai_) ai_->StartNewGame();
 
     // STARTING_FEN is a compile-time constant; a false return here would mean the constant itself
     // is malformed, so it is asserted rather than handled.
