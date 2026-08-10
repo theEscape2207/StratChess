@@ -218,6 +218,24 @@ design.
    skip in the PR body so it is auditable. Address findings before opening the PR.
 4. Only after 1-3 pass, create or update the PR.
 
+### Cross-agent review
+
+Separate from step 3: a second agent reviews selected artifacts and comments on the PR or issue
+**before merge**. The user routes it — it is not dispatched from here — so a pushed PR is *awaiting
+review*, not done. Say so when reporting one.
+
+- **Review**: issues and specs before work starts, measurement and validation plans, and documents
+  making provenance claims. These are where a bad premise is expensive and invisible to CI.
+- **Skip**: diffs already covered by `eval-reviewer` / `search-reviewer`, mechanical changes where CI
+  is the real gate, and artifacts that have already converged.
+- **One round per artifact** unless it finds something blocking. Signal density falls off sharply
+  after the first pass.
+
+Its strengths are provenance (who actually measured a number) and logical form (dichotomies that do
+not hold); it is weak at judging what is worth changing versus leaving alone. **Adjudicate on the
+merits** — push back with reasoning where a point does not hold rather than complying with all of
+them, and record the disposition so the exchange stays auditable.
+
 ### After a PR merges
 
 `Remove-Worktree.ps1 -Name <task> -SyncMaster`, or `Remove-MergedBranches.ps1 -SyncMaster` when
