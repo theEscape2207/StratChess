@@ -224,12 +224,19 @@ Separate from step 3: a second agent reviews selected artifacts and comments on 
 **before merge**. The user routes it — it is not dispatched from here — so a pushed PR is *awaiting
 review*, not done. Say so when reporting one.
 
-- **Review**: issues and specs before work starts, measurement and validation plans, and documents
-  making provenance claims. These are where a bad premise is expensive and invisible to CI.
-- **Skip**: diffs already covered by `eval-reviewer` / `search-reviewer`, mechanical changes where CI
-  is the real gate, and artifacts that have already converged.
+- **Review**: issues and specs before work starts, design docs, measurement and validation plans, and
+  documents making provenance claims. These are where a bad premise is expensive and invisible to CI.
+  Aim it hardest at the design doc's "assumptions I cannot verify from the code" section.
+- **Skip**: mechanical changes where CI is the real gate, and artifacts that have already converged.
+- **Division of labour**: `eval-reviewer` / `search-reviewer` review the **diff**; the cross-agent
+  reviewer reviews the **design doc**. Putting both on one artifact is where cost blows up for little
+  added signal.
 - **One round per artifact** unless it finds something blocking. Signal density falls off sharply
   after the first pass.
+- **Rank findings blocking / add / clarify** when reviewing — unranked findings force the author to
+  re-triage before acting.
+- **A blocking finding is closed with evidence, not assertion.** "Verify X" means measure it and
+  report the method, as PR #263 did for fastchess's `ucinewgame` behaviour.
 
 Its strengths are provenance (who actually measured a number) and logical form (dichotomies that do
 not hold); it is weak at judging what is worth changing versus leaving alone. **Adjudicate on the
@@ -244,10 +251,26 @@ ask for. Squash-merges and locked directories need care — `Docs/Workflow.md`.
 
 ## Design Documents
 
-For any non-trivial multi-file task, write `.claude/plans/<kebab-name>.md` before implementing:
-goal and scope limits, design decisions and why, files changed, step-by-step detail sufficient to
-resume mid-task, validation plan, and the invariants that must hold afterwards. Commit it — it
-outlives the worktree. **Name it after its content**, never an auto-generated string.
+Write `.claude/plans/<kebab-name>.md` before implementing when **either** the change has a decision
+that could reasonably go more than one way, or it rests on an assumption you cannot verify from the
+code in front of you. File count is not the trigger: a ten-file mechanical rename needs nothing, a
+one-line change to `replacementScore()` needs one. Start from `.claude/plans/TEMPLATE.md`, and
+**name the file after its content**, never an auto-generated string.
+
+**Write for a future maintainer arriving cold**, not for the agent doing the work, and keep it
+proportional — a document longer than the diff it describes means either the change is riskier than
+it looks or the document is padding.
+
+**Durable decisions and rationale get committed; execution detail does not.** Ordering, file-by-file
+edit lists and implementation checklists belong in the scratchpad unless the task is complex, paused,
+or handed to someone else. A separate implementation plan is rarely worth writing and almost never
+worth committing.
+
+The design doc lands in **one** commit in its final state — revise by amending, not by adding
+`docs: address review` commits. Its Harvest section names where each durable decision ends up (source
+comment, Key Source Facts, PR body); anything durable living only in the plan has not been harvested
+yet. Plans for **unstarted** work are specs and stay; plans for **shipped** work have no remaining
+consumer once harvested.
 
 ## Subagent Dispatch
 
