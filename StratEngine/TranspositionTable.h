@@ -313,6 +313,8 @@ public:
     bool clear() {
         std::scoped_lock g(tt_mutex);
         if (entry_count.load(std::memory_order_relaxed) == 0) {
+            // With no entries, current_age need not be reset: replacementScore()
+            // compares only age differences, and the next entry adopts this age.
             return false;
         }
 
