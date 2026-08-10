@@ -42,7 +42,7 @@ Derived from the class definitions, not by re-deriving intent from `init_ai()`'s
 | `helper_tds_` | Yes, `.clear()` the vector | Lazily resized in `GetMove()` (`if (helper_tds_.size() < threads - 1)`), so clearing it forces fresh `ThreadData` construction (with correct `thread_id`) on the next search — exactly mirrors what the old rebuild did, and frees memory sized for a prior larger `-Threads`. |
 | `threads_` | **No** | It's no longer discarded by a rebuild, so there is nothing to restore — the shadow-copy tax this issue exists to remove. `configured_threads_` on `UciHandler` still applies once, lazily, when `ai_` is first constructed (client can `setoption` before the first `ucinewgame`); it is never re-applied afterward. |
 | Evaluator | **No** | `EvalManager`/`EvalComplex` are documented stateless and thread-shared (`Eval.h`, Lazy-SMP sharing contract comment) — recreating it changes nothing observable. |
-| `tuning_` | Yes, `= SearchTuning{}` | Not reachable via UCI today, but `StartNewGame()` is a public API other callers (tests, future direct `AIPerplex` use) rely on for a clean-slate guarantee. |
+| `tuning_` | **No** | Caller configuration, same reasoning as `threads_` — not accumulated search state. **Changed during implementation**: the first draft reset it to defaults, reasoning it wasn't reachable via UCI; `search-reviewer` caught that `Game::SetPlayerParams()` (`Game.cpp`) applies `game_settings.json`'s `search_tuning` overrides and then unconditionally calls `StartNewGame()` on the same object, so resetting `tuning_` there would have silently discarded every configured override before the first move. |
 | `last_result_` | Yes, `= SearchResult{}` | Otherwise `GetLastResult()` could return the previous game's result before the first search of the new one. |
 | `max_depth_` / `time_limit_` | **No new code** | Already unconditionally reset by `stop_and_join()`, called immediately before `StartNewGame()` in `cmd_ucinewgame()` — untouched by this change. |
 
@@ -92,3 +92,4 @@ above, not a strength question.
 | `helper_tds_.clear()` relies on `GetMove()`'s lazy-resize contract | Source comment at the `.clear()` call |
 | Fixed-depth before/after equivalence result | PR body |
 | `ai_` lazy-once construction, `configured_threads_`'s narrowed role | Source comment on `UciHandler::init_ai()` |
+| `tuning_` is caller configuration, not reset (the `Game.cpp` interaction that makes resetting it wrong) | Source comment on `AIPerplex::StartNewGame()` |

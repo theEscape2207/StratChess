@@ -76,10 +76,13 @@ struct ThreadData {
 		std::memset(last_move_was_null, 0, sizeof(last_move_was_null));
 	}
 
-	// Resets everything that must not leak into a new game. History and
-	// killers are deliberately aged, never cleared, WITHIN a game (see the
-	// class comment above) -- this is what draws that line at the game
-	// boundary instead. `board` is reset too even though every GetMove()
+	// Resets everything that must not leak into a new game. History is
+	// deliberately aged, never cleared, WITHIN a game (see the class comment
+	// above) -- this is what draws that line at the game boundary instead.
+	// Killers and null-move flags are already cleared at the start of every
+	// move by iterative_deepening(), so clearing them again here is only for
+	// the (harmless) case of something reading them before the new game's
+	// first search runs. `board` is reset too even though every GetMove()
 	// copy-assigns it fresh from the real game board before searching: it
 	// costs nothing and avoids a stale position sitting in thread-local
 	// state between games.

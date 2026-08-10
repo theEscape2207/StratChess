@@ -196,14 +196,18 @@ TEST_CASE("Search - StartNewGame clears helper_tds_", "[search][smp]")
     REQUIRE(fix.helper_count() == 0);
 }
 
-TEST_CASE("Search - StartNewGame resets tuning_ to defaults", "[search]")
+TEST_CASE("Search - StartNewGame does not reset tuning_", "[search]")
 {
+    // Regression: Game::SetPlayerParams() applies game_settings.json's
+    // search_tuning overrides and then unconditionally calls StartNewGame()
+    // on the same object -- if StartNewGame() reset tuning_, every configured
+    // override would be silently discarded before the first move is searched.
     AIPerlexTestFixture fix;
     fix.ai->tuning().null_move_enabled = false;
 
     fix.start_new_game();
 
-    REQUIRE(fix.ai->tuning().null_move_enabled == true);
+    REQUIRE(fix.ai->tuning().null_move_enabled == false);
 }
 
 TEST_CASE("Search - StartNewGame resets last_result_", "[search]")

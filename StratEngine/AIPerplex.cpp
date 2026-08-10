@@ -107,6 +107,12 @@ AIPerplex::AIPerplex(Board& board, _In_ unsigned md)
 // What is deliberately NOT reset here:
 //   - threads_    : never discarded by anything now that ai_ persists across
 //                   games, so there is nothing to restore.
+//   - tuning_     : caller configuration, not accumulated search state --
+//                   the same reasoning as threads_. Game::SetPlayerParams()
+//                   applies game_settings.json's search_tuning overrides and
+//                   then unconditionally calls StartNewGame() on the same
+//                   object; resetting tuning_ here would silently discard
+//                   those overrides before the first move is searched.
 //   - the evaluator: EvalManager/EvalComplex are documented stateless and
 //                    thread-shared (see the Lazy SMP sharing contract
 //                    comment in Eval.h) -- recreating one changes nothing.
@@ -122,7 +128,6 @@ void AIPerplex::StartNewGame()
 	// correct thread_id reassigned -- on the next search, rather than
 	// reusing helpers whose killers/history carry over from the last game.
 	helper_tds_.clear();
-	tuning_ = SearchTuning{};
 	last_result_ = SearchResult{};
 }
 
