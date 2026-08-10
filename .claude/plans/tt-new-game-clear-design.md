@@ -117,8 +117,11 @@ lock or branch.
 5. `[search]`: populate the TT, search a position whose FEN fullmove field is one, and verify the
    marker entry survives. This catches any future reintroduction of position-metadata-driven TT
    lifetime and covers a second existing defect in analysis/custom-position sessions.
-6. `[uci]`: populate the live AI TT, call `cmd_ucinewgame()`, and verify the replacement AI starts
-   empty and the lifecycle path remains valid.
+
+The existing `[uci][smp]` tests continue to exercise `cmd_ucinewgame()` rebuilding the AI and
+restoring configured options. A new "replacement AI starts empty" assertion would already pass
+before this change because reconstruction alone creates a fresh TT, so it would not test the new
+lifecycle hook; the direct `[search][tt]` test above is the regression for that behavior.
 
 Non-UCI game setup receives no artificial counter merely to observe a side-effect-free hook call on
 a freshly constructed table. Its production insertion point is explicit above; headless AIPerplex
