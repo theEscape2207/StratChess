@@ -32,6 +32,7 @@ public:
 	// GetMove() spawns threads_ - 1 helper std::jthreads sharing the
 	// transposition table with the main search.
 	void SetThreads(unsigned n) noexcept override { threads_ = std::clamp(n, 1u, 32u); }
+	void StartNewGame() override;
 
 	// Note: NOT to be called directly - only through Factory method (needed to be public due to usage of make_unique)
 	explicit AIPerplex(Board& board, _In_ unsigned md);

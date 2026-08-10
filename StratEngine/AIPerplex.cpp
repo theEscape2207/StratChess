@@ -102,6 +102,11 @@ AIPerplex::AIPerplex(Board& board, _In_ unsigned md)
 	// Do NOT enable it here — constructors must not have stdout side-effects.
 }
 
+void AIPerplex::StartNewGame()
+{
+	(void)_tt->clear();
+}
+
 // PVS Iterative transpositional alpha beta search
 // Transposition tables
 // Resets td_'s per-search state. Move-ordering state (killers, history) is
