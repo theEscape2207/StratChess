@@ -2,19 +2,34 @@
 
 **Repository:** `theEscape2207/StratChess`  
 **Reviewed snapshot:** `eb8fcb917bee08c91118e1ee2ddb3188e3b5a4c2`  
-**Review date:** 2026-08-09
+**Review date:** 2026-08-09  
+**Addendum added:** 2026-08-10, verified against `77fa3f0e31bb8cd18d87fbc93d72769d31a3839b`
+and the issue tracker at that commit
 
-> **Point-in-time document.** This records an assessment made on the date above. It is not
-> maintained against the tree and will drift — read it as evidence of what was true at that commit,
-> not as a current description. Do not update it in place; supersede it with a new dated review.
+> **Two documents in one file.** This section is a project-aware **addendum**: what the original
+> review could not know, and where its recommendations were revised. The **original review,
+> preserved verbatim** begins at `## Executive summary` below — a point-in-time assessment of the
+> commit named at the top of this file.
+>
+> The original body is deliberately frozen rather than corrected, because its value is as evidence
+> of what an unbriefed reading of the tree produced. It therefore still recommends things the
+> addendum rejects — the `strat_engine` static library appears in its Executive summary, its P1 and
+> its Recommended roadmap. **Where the two disagree, the addendum wins.**
+>
+> The addendum may be extended as issues progress. Neither part should be rewritten to describe the
+> current tree; supersede this file with a new dated review instead.
 
 ## Status and project context
 
 This review was produced by an agent working **without project background** — no access to the
-issue history or to decisions recorded in `Docs/`. Its observations of the code hold up: every
-factual claim spot-checked during triage was accurate, including the P3 documentation drift, the
-`UciHandler` downcasts and the `PlayerAiBase` legacy members. What it lacks is the record of what
-has already been decided and why.
+issue history or to decisions recorded in `Docs/`.
+
+Most of its code-level observations held up under spot-checking: the P3 documentation drift, the
+`UciHandler` downcasts and the `PlayerAiBase` legacy members all verified exactly. The gaps recorded
+below are of two kinds: the tool-source example is factually correct but missing the consumer
+context that decides what to do about it, and P1's enumeration of concurrent UCI writers is
+incomplete (it omits `cmd_uci()`). What the review lacks more broadly is the record of what has
+already been decided, and why.
 
 Read the following alongside it.
 
@@ -22,49 +37,75 @@ Read the following alongside it.
 
 | Review finding | Issue | Outcome of triage |
 |---|---|---|
-| P1 — UCI output serialization | **#249** | Accepted. Narrowed to a mutex in `send()` plus one stress test; batched with #247/#243. Two of the review's proposed test criteria were dropped as unable to observe the defect |
+| P1 — UCI output serialization | **#249** | Accepted. Narrowed to a mutex in `send()` plus one stress test; batched with #247/#243. Two proposed test criteria were dropped as non-probative *for output atomicity*: TSan cannot observe it in principle, and `uci_race_probe.py` tests the #245 ordering regression — which it does detect — rather than this defect |
 | P1 — TT synchronization | **#250** | Accepted as **measurement-first**. The rewrite is deferred until measurement justifies it; triggers for revisiting are named in the issue |
 | P1 — no reusable engine-core target | **#251** | **Substantially revised** — see below |
 | P2 — main executable has too many roles | **#251** | Folded in; the separate-binaries part is deferred with a named trigger |
 | P3 — documentation drift | **#253** | Accepted and widened; the omissions turned out to matter more than the broken references |
 
-Also opened from this review: **#254** (no UCI `Hash` option) and **#252** (the TT allocates 25%
-less than requested), neither of which the review identified.
+Also opened from this review: **#254** (no UCI `Hash` option) and **#252** (the TT allocates less
+than requested and misreports it), neither of which the review identified. #252 is now fixed by
+PR #258.
+
+The "25%" in #252's title is about **entry storage**: a 256 MiB request allocates 192 MiB of
+entries. Total footprint differs again, because the parallel lock array is counted in neither
+figure — roughly **208 MiB on Windows and 304 MiB on Linux** for a nominal 256 MiB table, since
+`sizeof(std::shared_mutex)` is 8 on the MSVC STL and 56 on libstdc++. Quoting "allocates 25% less"
+without saying *less of what* contradicts those totals.
 
 ### Where the review should not be followed as written
 
 **The engine-library recommendation contradicts a decided question.** P1 recommends "a single
 `strat_engine` static library is an appropriate first step." That is precisely what **#83**
 proposed and it was closed *not planned after measurement*: the saving was ~25-30 s of PR feedback,
-against `STRAT_ENABLE_TEST_ACCESS` and LTO risks that `CMakeLists.txt` itself estimates at 5-15%
-nps. The review does not cite #83 and its "without changing runtime behavior" claim is what that
-analysis disputes. The roadmap also places this — the highest-risk item in the document — in the
-near-term bucket, ahead of much safer work.
+against `STRAT_ENABLE_TEST_ACCESS` and LTO risk. **#83 itself estimates 5-15% nps** if a
+misconfigured consuming linker silently drops cross-TU inlining. (`CMakeLists.txt:238-246` records
+the current topology and why Phase 0 left it alone; the percentage is #83's, not CMake's.) The
+review does not cite #83, and its "without changing runtime behavior" claim is what that analysis
+disputes. The roadmap also places this — the highest-risk item in the document — in the near-term
+bucket, ahead of much safer work.
 
 **The four-library structure is over-engineered for this project.** `strat_position` /
 `strat_search` / `strat_uci` / `strat_tools` presumes multiple consumers or independent release
-cycles; there is one production consumer. The `strat_position` ↔ `strat_search` boundary is also
-the hottest in the program (move generation and evaluation called from `pvs()`): either LTO crosses
-it, making the boundary notional, or it does not, and the split costs nps for a diagram. #251
-now expresses **ownership** without introducing compiled artifacts, and defers the artifacts until
-something needs them.
+cycles; there is one production consumer.
 
-**Two of the review's factual premises about the tool sources do not hold.** `StratEngine/Tests/`
-is not glob residue in the shipping binary: `Perft.cpp` backs the UCI `go perft` command that
-`Run-PerftCheck.ps1` drives across the 142,953-position corpus, and `TacticalTestRunner.cpp` backs
-the `tactical` CLI mode that `Validate-PrePR.ps1` runs as step 3 of the required gate. Both are
-deliberate dependencies. The *ownership* argument survives; the "accidentally included" framing
-does not.
+An earlier draft of this addendum argued that if LTO crosses such a boundary the boundary is
+"notional". That was a false dichotomy and is corrected rather than deleted: a target boundary
+enforces source ownership, dependency direction and visibility whether or not the optimiser inlines
+across it. Those benefits are real and they survive LTO.
+
+The case against compiled libraries *here* is cost against present need, not architectural
+futility. `strat_position` ↔ `strat_search` is the hottest boundary in the program (move generation
+and evaluation called from `pvs()`), so it is exactly where a mishandled LTO configuration would
+cost the most — against a benefit #83 measured at ~25-30 s of PR feedback, with no second consumer
+asking for it. #251 therefore expresses **ownership** without introducing compiled artifacts, and
+defers the artifacts until a measured need or a second consumer appears.
+
+**The tool-source example lacks the consumer context that decides it.** The inclusion facts are
+correct: `StratEngine/Tests/Perft.cpp` and `TacticalTestRunner.cpp` are compiled into both
+executables. What the review could not know is that both have **deliberate production consumers** —
+`Perft.cpp` backs the UCI `go perft` command that `Run-PerftCheck.ps1` drives across the
+142,953-position corpus, and `TacticalTestRunner.cpp` backs the `tactical` CLI mode that
+`Validate-PrePR.ps1` runs as step 3 of the required gate.
+
+So the facts stand, and the *ownership* argument built on them survives. What does not survive is the
+implication that these files are candidates for eviction into an exclusive tools target: there is no
+glob residue here to remove, only a real dependency the build does not name.
 
 ### Corrections and additions to the P2 findings
 
-**The proposed `SearchEngine` interface drops `GameInfo`, which is load-bearing.** The current
+**The proposed `SearchEngine` interface drops a required output, not just a parameter.** The current
 `GetMove(GameInfo&, const SearchLimits&)` propagates root state back through that reference, and
-`AIPerplex::GetMove()` fires `EGameStateChanged` from `info.gameState`. Game mode depends on it.
-Any replacement interface must account for it.
+`AIPerplex::GetMove()` fires `EGameStateChanged` from `info.gameState`. Game mode consumes it.
 
-**The interface costs nothing on the hot path,** which the review does not say and should: it is
-one virtual call per move, not per node.
+The requirement is the **output semantic, not the carrier.** A replacement must not keep the mutable
+`GameInfo&` merely to preserve the behaviour — that would retain precisely the legacy coupling the
+redesign exists to remove. Returning the resulting game state as part of a revised `SearchResult`
+would satisfy it and be cleaner. What must not happen is dropping the semantic silently, which is
+what the proposed signature does.
+
+**The interface has negligible search cost,** which the review does not say and should: one virtual
+call per move, outside the per-node hot path.
 
 **P2's motivation is weaker than P2's case.** "Introduce a concrete-independent interface" reads as
 speculative generality with a single implementation. The honest and stronger motivation is the
@@ -81,10 +122,18 @@ scoped as an architecture review, but it should not be adopted as *the* roadmap.
 the goal as **measured positive Elo, not nps**; the project's strongest asset is a working SPRT
 strength lab; and the eval-improvement epic (**#110**, 12 sub-issues) goes unmentioned.
 
-Architecturally this engine is in good shape. What it lacks relative to its stated goal is search
-and evaluation *features*, not structure — and those are where the remaining Elo is.
+Architecturally this engine is in good shape, and the structural debt this review documents is real
+— #256 exists because of it. But structure is **not the current Elo bottleneck**: the nearest
+strength gains are search and evaluation *features*, and nine structural roadmap items should
+complement that work rather than displace it.
 
 ---
+
+# Original review — preserved verbatim
+
+*Written without project context on 2026-08-09. Not edited and not maintained. Recommendations here
+are superseded wherever the addendum above identifies them — most importantly the `strat_engine`
+static library, which #83 already closed after measurement.*
 
 ## Executive summary
 
