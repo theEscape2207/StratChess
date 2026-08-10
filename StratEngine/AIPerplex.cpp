@@ -159,10 +159,6 @@ Move AIPerplex::GetMove(_Inout_ GameInfo& info, const SearchLimits& limits)
 	// function closes that window; a setoption arriving mid-search simply
 	// takes effect starting with the next GetMove() call.
 	const unsigned threads = threads_;
-	// Only clear TT if new game (preserve across moves for better performance)
-	if (info.fullMoveCount == 1) {
-	_tt->clear();
-	}
 	const unsigned effective_depth = ApplyLimits(limits);
 
 	// Lazy SMP: spawn threads_ - 1 helper threads to warm the shared TT while

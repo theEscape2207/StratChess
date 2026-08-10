@@ -95,6 +95,15 @@ public:
     }
 
     void start_new_game() const { ai->StartNewGame(); }
+
+    void search_depth_one()
+    {
+        ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
+        GameInfo info = board_.GetGameInfo();
+        REQUIRE(info.fullMoveCount == 1);
+        const Move move = ai->GetMove(info, SearchLimits::fixed_depth(1));
+        REQUIRE_FALSE(move.is_null());
+    }
 };
 
 // ============================================================================
@@ -125,6 +134,16 @@ TEST_CASE("Search - StartNewGame clears a populated AIPerplex TT", "[search][tt]
     fix.start_new_game();
 
     REQUIRE_FALSE(fix.has_tt_marker());
+}
+
+TEST_CASE("Search - fullmove-one position does not define TT lifetime", "[search][tt]")
+{
+    AIPerlexTestFixture fix;
+    fix.store_tt_marker();
+
+    fix.search_depth_one();
+
+    REQUIRE(fix.has_tt_marker());
 }
 
 // ============================================================================
