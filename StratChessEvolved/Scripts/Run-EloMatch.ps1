@@ -304,6 +304,11 @@ if ($ResumeDir -ne '') {
         }
         exit 1
     }
+    # Resolve to absolute now that existence is confirmed: fastchess is launched
+    # from an isolated per-engine directory ($dirA/$dirB below), so a relative
+    # path here would re-resolve under that directory and fail to launch even
+    # though the check above just passed against the caller's cwd (#268).
+    $book = (Resolve-Path $book).Path
 
     # An opening pair is two games, so N openings yield 2N distinct games. Past
     # that fastchess wraps and replays them, which narrows the error bars of a
@@ -321,10 +326,12 @@ if ($ResumeDir -ne '') {
         Write-Host 'Build it first: .\build.ps1 main'
         exit 1
     }
+    $CandidateExe = (Resolve-Path $CandidateExe).Path
     if ($ReferenceExe -ne '' -and -not (Test-Path $refExe)) {
         Write-Host "MISSING reference exe: $refExe" -ForegroundColor Red
         exit 1
     }
+    if ($ReferenceExe -ne '') { $refExe = (Resolve-Path $refExe).Path }
 
     # --- Ensure reference exe (rebuild from tag on cache miss; skipped entirely when -ReferenceExe is set) ---
     if ($ReferenceExe -eq '' -and -not (Test-Path $refExe)) {
