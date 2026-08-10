@@ -56,11 +56,16 @@ worktree: `Docs/Workflow.md`.
 ## Scripts
 
 In `StratChessEvolved/Scripts/`. They resolve working directory and build-output paths internally.
-Invoke with `-File` (never dot-sourced — `$PSScriptRoot` is `$null` under dot-source):
+**They require PowerShell 7** — `powershell` (Windows PowerShell 5) fails on PS7 syntax. Invoke
+`pwsh` directly with `-File` and an **absolute** script path:
 
 ```
-cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\<name>.ps1"
+pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\<name>.ps1
 ```
+
+Never dot-source (`$PSScriptRoot` is `$null` under dot-source), and do not wrap the call in
+`cmd.exe /c "..."` — that form swallows script output in some shells, so a failing script looks like
+a silent no-op.
 
 | Script | When |
 |---|---|
@@ -217,6 +222,11 @@ design.
    its six conditions are in `Docs/Workflow.md` — read them before claiming a skip, and state the
    skip in the PR body so it is auditable. Address findings before opening the PR.
 4. Only after 1-3 pass, create or update the PR.
+
+**Batch review follow-ups into one push.** `Get-ChangeTier.ps1` classifies the whole PR diff
+(`origin/main...HEAD`), not the latest commit — deliberately, since the merged state is what the gate
+asserts about. So a comment-only fix on an Engine PR still reruns the full Engine tier locally and in
+CI. Collect the round's findings, address them together, then push once.
 
 ### Cross-agent review
 
