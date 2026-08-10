@@ -307,9 +307,17 @@ public:
         return pv_count.load(std::memory_order_relaxed);
     }
 
-    // clear table: take global lock to avoid races with concurrent resizes or other global ops
-    void clear() {
+    // Lifecycle operation: callers must ensure no search can store concurrently.
+    // tt_mutex serializes clear calls; store() intentionally takes only bucket locks.
+    // Returns whether stored entries were removed.
+    bool clear() {
         std::scoped_lock g(tt_mutex);
+        if (entry_count.load(std::memory_order_relaxed) == 0) {
+            // With no entries, current_age need not be reset: replacementScore()
+            // compares only age differences, and the next entry adopts this age.
+            return false;
+        }
+
         size_t buckets = table.size();
         for (size_t idx = 0; idx < buckets; ++idx) {
             std::unique_lock lock(bucket_locks[idx]);
@@ -327,6 +335,7 @@ public:
         current_age.store(0, std::memory_order_relaxed);
         entry_count.store(0, std::memory_order_relaxed);
         pv_count.store(0, std::memory_order_relaxed);
+        return true;
     }
 
     // diagnostics

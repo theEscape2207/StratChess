@@ -31,6 +31,10 @@ public:
 	/// clamps. No threading is actually spawned yet (config plumbing only).
 	virtual void SetThreads(unsigned) noexcept {}
 
+	/// Reset per-game search state before the first move of a new game.
+	/// Legacy AIs have no persistent state that needs an explicit reset.
+	virtual void StartNewGame() {}
+
 	/// Signal the search to stop immediately (e.g. from UCI 'stop').
 	/// Thread-safe: may be called from any thread.
 	void StopSearch() noexcept;

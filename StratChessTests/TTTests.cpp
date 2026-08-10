@@ -120,7 +120,7 @@ TEST_CASE("TT - clear removes all entries; subsequent probes return nullopt", "[
     do_store(tt, KEY_A, 100);
     do_store(tt, KEY_B, 200);
 
-    tt.clear();
+    REQUIRE(tt.clear());
 
     REQUIRE_FALSE(tt.probe(KEY_A, 0).has_value());
     REQUIRE_FALSE(tt.probe(KEY_B, 0).has_value());
@@ -169,10 +169,26 @@ TEST_CASE("TT - clear resets entry_count and pv_count to zero", "[tt]")
     do_store(tt, KEY_A, 100);
     do_store(tt, KEY_B, 200);
 
-    tt.clear();
+    REQUIRE(tt.clear());
 
     REQUIRE(tt.count_entries()  == 0);
     REQUIRE(tt.count_pv_nodes() == 0);
+}
+
+TEST_CASE("TT - clear reports no work for a freshly constructed table", "[tt]")
+{
+    TranspositionTable tt(1);
+
+    REQUIRE_FALSE(tt.clear());
+}
+
+TEST_CASE("TT - repeated clear reports no work after the table is empty", "[tt]")
+{
+    TranspositionTable tt(1);
+    do_store(tt, KEY_A, 100);
+
+    REQUIRE(tt.clear());
+    REQUIRE_FALSE(tt.clear());
 }
 
 // ── Allocation reporting ──────────────────────────────────────────────────────

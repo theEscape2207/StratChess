@@ -212,15 +212,14 @@ std::unique_ptr<IPlayer> Game::SetPlayerParams(const Config::PlayerConfig& confi
 		}
 	}
 
-	// Apply Lazy SMP thread count — SetThreads is a no-op base virtual on
-	// PlayerAiBase, so unlike search_tuning above no AI_PERPLEX-only type
-	// check/warning is needed: legacy AIs (AIBasic/AIAgent/ABIterative)
-	// silently ignore it via the base no-op, and non-AI (human) players are
-	// skipped entirely because the dynamic_cast fails.
-	if (config.threads.has_value()) {
-		if (auto* ai = dynamic_cast<PlayerAiBase*>(player.get())) {
+	// Configure AI-only options and signal the new-game lifecycle before Run()
+	// can request a move. Legacy AIs inherit no-op implementations; non-AI
+	// players are skipped because the dynamic_cast fails.
+	if (auto* ai = dynamic_cast<PlayerAiBase*>(player.get())) {
+		if (config.threads.has_value()) {
 			ai->SetThreads(*config.threads);
 		}
+		ai->StartNewGame();
 	}
 
 	//Register events
