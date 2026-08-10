@@ -3,12 +3,13 @@
 **Repository:** `theEscape2207/StratChess`  
 **Reviewed snapshot:** `eb8fcb917bee08c91118e1ee2ddb3188e3b5a4c2`  
 **Review date:** 2026-08-09  
-**Addendum added:** 2026-08-10, verified against `origin/main` and the issue tracker on that date
+**Addendum added:** 2026-08-10, verified against `77fa3f0e31bb8cd18d87fbc93d72769d31a3839b`
+and the issue tracker at that commit
 
-> **Two documents in one file.** Everything above the divider is a project-aware **addendum**:
-> what the original review could not know, and where its recommendations were revised. Everything
-> below the divider is the **original review, preserved verbatim** — a point-in-time assessment of
-> the commit named above.
+> **Two documents in one file.** This section is a project-aware **addendum**: what the original
+> review could not know, and where its recommendations were revised. The **original review,
+> preserved verbatim** begins at `## Executive summary` below — a point-in-time assessment of the
+> commit named at the top of this file.
 >
 > The original body is deliberately frozen rather than corrected, because its value is as evidence
 > of what an unbriefed reading of the tree produced. It therefore still recommends things the
@@ -24,10 +25,11 @@ This review was produced by an agent working **without project background** — 
 issue history or to decisions recorded in `Docs/`.
 
 Most of its code-level observations held up under spot-checking: the P3 documentation drift, the
-`UciHandler` downcasts and the `PlayerAiBase` legacy members all verified exactly. The exceptions
-are recorded below — two premises about the tool sources do not hold, and P1's enumeration of
-concurrent UCI writers is incomplete (it omits `cmd_uci()`). What the review lacks more broadly is
-the record of what has already been decided, and why.
+`UciHandler` downcasts and the `PlayerAiBase` legacy members all verified exactly. The gaps recorded
+below are of two kinds: the tool-source example is factually correct but missing the consumer
+context that decides what to do about it, and P1's enumeration of concurrent UCI writers is
+incomplete (it omits `cmd_uci()`). What the review lacks more broadly is the record of what has
+already been decided, and why.
 
 Read the following alongside it.
 
@@ -79,12 +81,16 @@ cost the most — against a benefit #83 measured at ~25-30 s of PR feedback, wit
 asking for it. #251 therefore expresses **ownership** without introducing compiled artifacts, and
 defers the artifacts until a measured need or a second consumer appears.
 
-**Two of the review's factual premises about the tool sources do not hold.** `StratEngine/Tests/`
-is not glob residue in the shipping binary: `Perft.cpp` backs the UCI `go perft` command that
-`Run-PerftCheck.ps1` drives across the 142,953-position corpus, and `TacticalTestRunner.cpp` backs
-the `tactical` CLI mode that `Validate-PrePR.ps1` runs as step 3 of the required gate. Both are
-deliberate dependencies. The *ownership* argument survives; the "accidentally included" framing
-does not.
+**The tool-source example lacks the consumer context that decides it.** The inclusion facts are
+correct: `StratEngine/Tests/Perft.cpp` and `TacticalTestRunner.cpp` are compiled into both
+executables. What the review could not know is that both have **deliberate production consumers** —
+`Perft.cpp` backs the UCI `go perft` command that `Run-PerftCheck.ps1` drives across the
+142,953-position corpus, and `TacticalTestRunner.cpp` backs the `tactical` CLI mode that
+`Validate-PrePR.ps1` runs as step 3 of the required gate.
+
+So the facts stand, and the *ownership* argument built on them survives. What does not survive is the
+implication that these files are candidates for eviction into an exclusive tools target: there is no
+glob residue here to remove, only a real dependency the build does not name.
 
 ### Corrections and additions to the P2 findings
 
