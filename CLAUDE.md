@@ -224,12 +224,24 @@ Separate from step 3: a second agent reviews selected artifacts and comments on 
 **before merge**. The user routes it — it is not dispatched from here — so a pushed PR is *awaiting
 review*, not done. Say so when reporting one.
 
-- **Review**: issues and specs before work starts, measurement and validation plans, and documents
-  making provenance claims. These are where a bad premise is expensive and invisible to CI.
-- **Skip**: diffs already covered by `eval-reviewer` / `search-reviewer`, mechanical changes where CI
-  is the real gate, and artifacts that have already converged.
+- **Review**: issues and specs before work starts, design docs, measurement and validation plans, and
+  documents making provenance claims. These are where a bad premise is expensive and invisible to CI.
+  Aim it hardest at the design doc's "assumptions I cannot verify from the code" section.
+- **Skip**: mechanical changes where CI is the real gate, and artifacts that have already converged.
+- **Division of labour**: `eval-reviewer` / `search-reviewer` review the **diff**; the cross-agent
+  reviewer reviews the **design doc**. Putting both on one artifact is where cost blows up for little
+  added signal. That split leaves a seam, so **the PR body must state which approved decisions
+  changed during implementation, and why** — otherwise nobody checks the diff still matches the
+  design. The Harvest table is the natural place to notice it.
 - **One round per artifact** unless it finds something blocking. Signal density falls off sharply
   after the first pass.
+- **Rank findings** when reviewing — unranked findings force the author to re-triage before acting.
+  **Blocking**: merging without it risks a wrong or unverifiable result. **Add**: a real gap worth
+  closing, but the change is sound without it. **Clarify**: wording or framing, no behaviour at stake.
+- **A blocking finding is closed with evidence proportionate to the claim**, not with an assertion.
+  Measurement when the claim is about runtime or external behaviour — as PR #263 did for fastchess's
+  `ucinewgame` — but source inspection, an authoritative specification, a focused test or explicit
+  reasoning all qualify where they actually settle the question.
 
 Its strengths are provenance (who actually measured a number) and logical form (dichotomies that do
 not hold); it is weak at judging what is worth changing versus leaving alone. **Adjudicate on the
@@ -244,10 +256,37 @@ ask for. Squash-merges and locked directories need care — `Docs/Workflow.md`.
 
 ## Design Documents
 
-For any non-trivial multi-file task, write `.claude/plans/<kebab-name>.md` before implementing:
-goal and scope limits, design decisions and why, files changed, step-by-step detail sufficient to
-resume mid-task, validation plan, and the invariants that must hold afterwards. Commit it — it
-outlives the worktree. **Name it after its content**, never an auto-generated string.
+Write `.claude/plans/<kebab-name>.md` before implementing when **either** the change has a decision
+that could reasonably go more than one way *and* materially affects a contract, the architecture,
+correctness, strength, performance or maintenance cost, or it rests on an assumption you cannot
+verify from the code in front of you. File count is not the trigger: a ten-file mechanical rename
+needs nothing, a one-line change to `replacementScore()` needs one. Start from
+`.claude/plans/TEMPLATE.md`, and **name the file after its content**, never an auto-generated string.
+
+**Write for a future maintainer arriving cold**, not for the agent doing the work, and keep it
+proportional — a document longer than the diff it describes means either the change is riskier than
+it looks or the document is padding.
+
+**Durable decisions and rationale get committed; execution detail does not.** Ordering, file-by-file
+edit lists and implementation checklists belong in the scratchpad unless the task is complex, paused,
+or handed to someone else. A separate implementation plan is rarely worth writing and almost never
+worth committing.
+
+**Lifecycle.** Land the doc in one logical commit before first publishing it for review. After that
+the branch is reviewed history: **never force-push it just for tidiness** — add a normal follow-up
+commit and squash at merge if compact history is wanted. Keep the document through design review,
+then delete it in the same PR once Harvest is complete. Git history preserves it, so a link from an
+old comment stays resolvable.
+
+Its Harvest section names where each durable decision ends up. Prefer a source comment, Key Source
+Facts, or `Docs/Changelog.md` for anything that matters — a PR body is fine for working detail but is
+editable and lives outside Git, so important measurements should also be reachable from the tree.
+Anything durable living only in the plan has not been harvested yet.
+
+**Delete only when all three hold**: no inbound references, no deliberate spec/ADR role, and every
+durable item has a discoverable destination. Plans for **unstarted** work are specs and stay. So do
+records whose rationale is too substantial to inline — `.claude/plans/tsan-lazy-smp.md` is one, cited
+from `Docs/CI.md` for survey and cost analysis with no other home.
 
 ## Subagent Dispatch
 
