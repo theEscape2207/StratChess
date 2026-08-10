@@ -128,7 +128,7 @@ git commit -m "fix: skip clearing an empty TT"
 
 **Interfaces:**
 - Consumes: `PlayerAiBase`, the AIPerplex-owned `_tt`, UCI's stopped-search lifecycle, and `Game::SetPlayerParams()`'s existing `dynamic_cast<PlayerAiBase*>` pattern.
-- Produces: `virtual void PlayerAiBase::StartNewGame() noexcept`, overridden by `void AIPerplex::StartNewGame() noexcept`.
+- Produces: `virtual void PlayerAiBase::StartNewGame()`, overridden by `void AIPerplex::StartNewGame()`.
 
 - [ ] **Step 1: Extend the search fixture and write the failing lifecycle test**
 
@@ -177,19 +177,19 @@ Expected: compilation fails because `AIPerplex::StartNewGame()` does not exist.
 In `PlayerAiBase`:
 
 ```cpp
-virtual void StartNewGame() noexcept {}
+virtual void StartNewGame() {}
 ```
 
 In `AIPerplex` public declarations:
 
 ```cpp
-void StartNewGame() noexcept override;
+void StartNewGame() override;
 ```
 
 In `AIPerplex.cpp`:
 
 ```cpp
-void AIPerplex::StartNewGame() noexcept
+void AIPerplex::StartNewGame()
 {
     (void)_tt->clear();
 }
