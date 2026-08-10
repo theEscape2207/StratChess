@@ -5,6 +5,7 @@
 
 #pragma once
 #include "defines.h"
+#include <cstdint>
 
 namespace Bits {
    

@@ -22,7 +22,7 @@ struct SearchResult {
 class AIPerplex final : public PlayerAiBase
 {
 public:
-	Move GetMove(_Inout_ GameInfo& info, const SearchLimits& limits) override;
+	Move GetMove(GameInfo& info, const SearchLimits& limits) override;
 	const char* GetType() const noexcept override
 	{
 		return "Perplexity Transpositional AlphaBeta";
@@ -35,7 +35,7 @@ public:
 	void StartNewGame() override;
 
 	// Note: NOT to be called directly - only through Factory method (needed to be public due to usage of make_unique)
-	explicit AIPerplex(Board& board, _In_ unsigned md);
+	explicit AIPerplex(Board& board, unsigned md);
 	~AIPerplex() = default;
 
 	// Force use of factory by preventing constructor, copy-construction & operator=

@@ -10,7 +10,7 @@
 
 
 // Fetches the next move
-Move AIAgent::GetMove(_Inout_ GameInfo& info, const SearchLimits& limits)
+Move AIAgent::GetMove(GameInfo& info, const SearchLimits& limits)
 {
 	InitMoveVariables( info );
 
@@ -71,7 +71,7 @@ Move AIAgent::GetMove(_Inout_ GameInfo& info, const SearchLimits& limits)
 
 
 // En iterativ alpha-beta with PVL and PVS
-int AIAgent::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& pline)
+int AIAgent::Search(size_t ply, int alpha, int beta, PVLine& pline)
 {
 	// Check time and stop signal
 	if (ShouldStopSearch()) {

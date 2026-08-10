@@ -5,6 +5,7 @@
 #include "Move.h"
 #include "GameState.h"
 #include "PieceHelper.h"
+#include <cstdint>
 #include <span>
 #include <vector>
 

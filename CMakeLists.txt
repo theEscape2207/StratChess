@@ -157,8 +157,8 @@ function(strat_configure_target tgt)
     # costs on the order of 10-26 million constexpr operations -- past every
     # compiler's default budget, so each one has to be raised explicitly.
     #
-    # Force-including Compat.h is how the SAL no-op macros and STRAT_FORCEINLINE
-    # reach the 17 headers that never include StdAfx.h themselves, without editing
+    # Force-including Compat.h is how STRAT_FORCEINLINE and STRAT_LOCALTIME
+    # reach the headers that never include StdAfx.h themselves, without editing
     # any of them. Deliberately not target_precompile_headers: CMake's generated
     # PCH makes GCC process defines.h twice per TU (it does not carry #pragma once
     # state across the PCH boundary), which is ~60 redefinition errors.

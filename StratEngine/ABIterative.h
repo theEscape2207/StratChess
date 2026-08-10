@@ -8,10 +8,10 @@ class ABIterative final
 {
 public:
 	// Note: NOT to be called directly - only through Factory method
-	explicit ABIterative(Board& board, _In_ unsigned maxDepth)
+	explicit ABIterative(Board& board, unsigned maxDepth)
 		:PlayerAiIterBase(board, maxDepth) { }
 	// Implementation/overrides of the IPlayer interface
-	Move GetMove( _Inout_ GameInfo& info, const SearchLimits& limits ) override;
+	Move GetMove( GameInfo& info, const SearchLimits& limits ) override;
 	const char* GetType() const noexcept override
 	{	return "Iterative AlphaBeta";	}
 	
@@ -22,5 +22,5 @@ public:
 	ABIterative(ABIterative&&) = delete;
 	ABIterative& operator=(ABIterative&&) = delete;
 private:
-	int Search(int ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& pline);
+	int Search(int ply, int alpha, int beta, PVLine& pline);
 };

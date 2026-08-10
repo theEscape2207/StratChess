@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PieceHelper.h"
+#include <cstdint>
 #include <memory>
 #include <span>
 #include "defines.h"

@@ -50,7 +50,7 @@ public:
 	// Convenience overload: no per-call limits — use the engine's configured
 	// defaults (time_limit_, max_depth_). Not virtual; forwards to the real
 	// GetMove(info, limits) override.
-	Move GetMove(_Inout_ GameInfo& info) { return GetMove(info, SearchLimits{}); }
+	Move GetMove(GameInfo& info) { return GetMove(info, SearchLimits{}); }
 
 	// Factory constructor!
 	static std::unique_ptr<PlayerBase> Create(ePlayerTypes type, unsigned max_depth, Board& board);

@@ -10,7 +10,7 @@ extern std::ofstream outLegalMoves;
 
 // Transposition tables
 // FIXME: Transposition tables do not generate the same moves as the other algorithms - i.e. we have a bug!
-Move AITrans::GetMove(_Inout_ GameInfo& info)
+Move AITrans::GetMove(GameInfo& info)
 {
 	InitMoveVariables(info);
 
@@ -38,7 +38,7 @@ Move AITrans::GetMove(_Inout_ GameInfo& info)
 // An alpha-beta with transposition table
 // FIXME: Transposition tables still doesn't work correctly
 // - AITrans simply asserts atm - and not every time at that :( :( Most likely some bug in the hash probing / storing code around mate positions
-int AITrans::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta)
+int AITrans::Search(size_t ply, int alpha, int beta)
 {
 	// Check time and stop signal
 	if (ShouldStopSearch()) {

@@ -17,7 +17,7 @@
 
 namespace MoveHelper
 {
-	[[nodiscard]] static inline MoveType AsType(_In_ const Move& move) noexcept
+	[[nodiscard]] static inline MoveType AsType(const Move& move) noexcept
 	{
 		return static_cast<MoveType>(move.flags());
 	}
@@ -27,20 +27,20 @@ namespace MoveHelper
 	*/
 
 	// Is this piece moving from this square?
-	[[nodiscard]] static inline bool IsPieceMovingFrom(_In_ const Move& move, _In_ ePiece movPiece, ePiece type, eSquare square) noexcept
+	[[nodiscard]] static inline bool IsPieceMovingFrom(const Move& move, ePiece movPiece, ePiece type, eSquare square) noexcept
 	{
 		return (PieceHelper::IsOfPiece(movPiece, type) && (move.from() == square));
 	}
 
 	// Is this piece captured at this square?
 	// content: the captured piece (obtain via Board::GetCapturedPiece before DoMove).
-	[[nodiscard]] static inline bool IsPieceCapturedAt(_In_ const Move& move, _In_ ePiece content, ePiece type, eSquare square) noexcept
+	[[nodiscard]] static inline bool IsPieceCapturedAt(const Move& move, ePiece content, ePiece type, eSquare square) noexcept
 	{
 		return (PieceHelper::IsOfPiece(content, type) && (move.to() == square));
 	}
 
 	// Is the moving piece a pawn?
-	[[nodiscard]] static inline bool IsPawnMove(_In_ ePiece movPiece) noexcept
+	[[nodiscard]] static inline bool IsPawnMove(ePiece movPiece) noexcept
 	{
 		return PieceHelper::IsPawn(movPiece);
 	}
@@ -55,7 +55,7 @@ namespace MoveHelper
 	// Returns:     true if the move captures a piece (CAPTURE, EP_CAPTURE, or any PROMOTION_*_CAPTURE).
 	// Determined purely from flag bit 2 (CAPTURE_BIT).
 	//************************************
-	[[nodiscard]] static inline bool IsCapture(_In_ const Move& move) noexcept
+	[[nodiscard]] static inline bool IsCapture(const Move& move) noexcept
 	{
 		return (move.flags() & MoveFlags::CAPTURE_BIT) != 0;
 	}
@@ -64,24 +64,24 @@ namespace MoveHelper
 	// Method:      IsPromote
 	// Returns:     true for all promotion types (quiet and capture), i.e. flag bit 3 set.
 	//************************************
-	[[nodiscard]] static inline bool IsPromote(_In_ const Move& move) noexcept
+	[[nodiscard]] static inline bool IsPromote(const Move& move) noexcept
 	{
 		return (move.flags() & MoveFlags::PROMOTION_BIT) != 0;
 	}
 
-	[[nodiscard]] static inline bool IsEnPassant(_In_ const Move& move) noexcept
+	[[nodiscard]] static inline bool IsEnPassant(const Move& move) noexcept
 	{
 		return AsType(move) == MoveType::EP_CAPTURE;
 	}
 
-	[[nodiscard]] static inline bool IsCastling(_In_ const Move& move) noexcept
+	[[nodiscard]] static inline bool IsCastling(const Move& move) noexcept
 	{
 		MoveType type = AsType(move);
 		return (type == MoveType::QUEEN_CASTLE)
 			|| (type == MoveType::KING_CASTLE);
 	}
 
-	[[nodiscard]] static inline eSquare GetEnPassantSquare(_In_ const Move& move, _In_ ePiece movPiece) noexcept
+	[[nodiscard]] static inline eSquare GetEnPassantSquare(const Move& move, ePiece movPiece) noexcept
 	{
 		if(AsType(move) != MoveType::DOUBLE_PAWN_PUSH)
 			return NO_SQUARE;
@@ -90,14 +90,14 @@ namespace MoveHelper
 			SquareHelper::Calc(move.to(), -ONE_ROW));
 	}
 
-	[[nodiscard]] static inline bool is_null(_In_ const Move& move ) noexcept
+	[[nodiscard]] static inline bool is_null(const Move& move ) noexcept
 	{
 		return move.is_null();
 	}
 
 	// content: the captured piece (obtain via Board::GetCapturedPiece before DoMove).
 	// Used only inside assert() (Board.cpp:301, Board.cpp:473), so it is unreferenced in Release.
-	[[nodiscard]] [[maybe_unused]] static bool IsValid(_In_ const Move& move, _In_ ePiece movPiece, _In_ ePiece content) noexcept
+	[[nodiscard]] [[maybe_unused]] static bool IsValid(const Move& move, ePiece movPiece, ePiece content) noexcept
 	{
 		if( is_null( move ) )
 			return false;
@@ -165,7 +165,7 @@ namespace MoveHelper
 	// Formula: Captured piece value + (Promotion value diff) - Moving piece/16
 	// Rationale: ranks pawn-takes-bishop above queen-takes-bishop; a quiet pawn move scores lower
 	// than a quiet rook move (negative, scaled by 1/16 of piece value).
-	[[nodiscard]] static inline int Value(_In_ const Move& move, _In_ ePiece movPiece, _In_ ePiece content) noexcept
+	[[nodiscard]] static inline int Value(const Move& move, ePiece movPiece, ePiece content) noexcept
 	{
 		int captureScore = 0;
 		const auto movingPieceScore = PieceHelper::Value(movPiece) >> 4;

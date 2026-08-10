@@ -3,6 +3,7 @@
 #include "MoveHelper.h"
 #include "Move.h"
 #include <cassert>
+#include <cstdint>
 
 // Castling rights bit flags
 namespace CastlingRights {
