@@ -477,13 +477,18 @@ the node-count equivalence check does not settle more cheaply and more precisely
 
 ## Follow-up issues to file
 
+All five filed.
+
 | Issue | Size | Why separate |
 |---|---:|---|
-| Include-what-you-use vs the `StdAfx.h` umbrella convention | 662 findings | Architectural decision plus a `CLAUDE.md` convention reversal |
-| Enable `misc-const-correctness` | 330 | Mechanical but touches `Eval.cpp`/`AIPerplex.cpp` — reviewer gate |
-| Enable `misc-use-anonymous-namespace` | 349 | Same |
-| Fix the ~120 enabled-set findings, then make clang-tidy blocking | ~120 | The issue's own staging: configure first, enforce second |
-| Possible OOB read in `PieceHelper::Value()` | 1 | An engine defect, not lint configuration |
+| #281 — include-what-you-use vs the `StdAfx.h` umbrella convention | 683 findings | Architectural decision plus a `CLAUDE.md` convention reversal |
+| #282 — enable `misc-const-correctness` | 330 | Mechanical but touches `Eval.cpp`/`AIPerplex.cpp` — reviewer gate |
+| #283 — enable `misc-use-anonymous-namespace` | 349 | Same |
+| #284 — clear the enabled-set backlog, then make clang-tidy blocking | 97 | The issue's own staging: configure first, enforce second |
+| #285 — possible OOB read in `PieceHelper::Value()` | 1 | An engine defect, not lint configuration |
+
+#284 carries the platform-gap warning from D3: a fix PR validated only against CI will believe itself
+complete with 13 real `bugprone-exception-escape` findings outstanding on the shipping build.
 
 ## Harvest
 
