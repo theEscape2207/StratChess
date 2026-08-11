@@ -1232,6 +1232,15 @@ TEST_CASE("dispatch: 'go' before any ucinewgame constructs the AI instead of cra
     // thread, so everything the thread prints has been printed before the capture ends.
     UciHandlerTestFixture fix;
 
+    // A default-constructed Board is EMPTY, and cmd_position is what fills it -- searching without
+    // this trips assert(mask != 0) in Board::GetFirstPiece, which aborts a Debug build and is
+    // invisible in Release. That is a different defect from the one under test here (#279).
+    //
+    // cmd_position does not construct ai_, so the guard is still what this exercises; the
+    // assertion below is what keeps that true if init_ai() ever moves.
+    capture_cout([&] { fix.dispatch("position startpos"); });
+    REQUIRE(fix.ai_identity() == nullptr);
+
     const std::string out = capture_cout([&] {
         fix.dispatch("go depth 1");
         fix.dispatch("stop");
