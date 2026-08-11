@@ -1222,6 +1222,24 @@ TEST_CASE("dispatch: returns false for quit and true for everything else", "[uci
     REQUIRE_FALSE(fix.dispatch("quit"));
 }
 
+TEST_CASE("dispatch: 'go' before any ucinewgame constructs the AI instead of crashing", "[uci]")
+{
+    // Unreachable through run(), which calls init_ai() before reading a command -- but reachable
+    // through dispatch(), and what used to happen was an access violation on the search thread
+    // that took the whole test binary down with no failing assertion to point at it.
+    //
+    // 'stop' inside the captured scope is what makes this deterministic: it joins the search
+    // thread, so everything the thread prints has been printed before the capture ends.
+    UciHandlerTestFixture fix;
+
+    const std::string out = capture_cout([&] {
+        fix.dispatch("go depth 1");
+        fix.dispatch("stop");
+    });
+
+    REQUIRE(out.find("bestmove") != std::string::npos);
+}
+
 TEST_CASE("command log: nothing is written unless it is enabled", "[uci]")
 {
     // The default a match run gets. There is no path to check for absence here
