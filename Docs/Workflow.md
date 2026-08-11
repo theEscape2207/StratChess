@@ -242,6 +242,21 @@ compiler flags. Eval terms are where nps actually goes; scrutinising a 1% flag w
 unmeasured is the wrong emphasis. Take repeat runs: a single pass has already produced a 12% outlier
 on this hardware, and per-config spread is normally 0.27-1.11%.
 
+**Building the "before" binary.** A bench comparison needs two binaries, and two builds of the same
+worktree cannot coexist — the second overwrites the first in `build/<preset>/`. `Run-EloMatch.ps1`
+solves this internally for tag-resolved references; by hand, for `origin/main` or any other ref:
+
+```powershell
+git worktree add --detach <main-repo>\.claude\worktrees\bench-ref origin/main
+pwsh -ExecutionPolicy Bypass -File <...>\bench-ref\build.ps1 main
+Copy-Item <...>\bench-ref\build\windows-clang-cl\StratChessEvolved.exe EngineTesting\bench-main-<sha>.exe
+git worktree remove --force <...>\bench-ref
+```
+
+**Copy the exe out before removing the worktree** — that is the step that makes it survive. Then run
+`Run-Bench.ps1 -Exe` once per binary. Both sides must come from the same compiler, which they do if
+both used `build.ps1`'s clang-cl default.
+
 **A measured slowdown needs a stated benefit that outweighs it**, in correctness, robustness,
 maintainability or clarity — written down in the PR, not assumed. A slowdown with no such statement
 is a regression regardless of how small.
@@ -401,8 +416,9 @@ All paths are relative to the **working directory**, not the exe location. Run t
 | `logs/aiperplex.log` | `AIPerplex::SetVerboseLogging(true)` (`AIPerplex.cpp`) | Whenever AIPerplex is constructed | Level `off` (file stays empty) when verbose is disabled afterwards, which is what tests do |
 | `logs/SimplePerfStats.txt` | `Logger::EnsurePerfLogger()` (`Game.cpp` only) | Game mode only — `Game::Init()` is the sole creator | Written per AI move by `StopTimerAndAdjustVars()`, which only writes if a logger already exists; no file in tests, the tactical runner or UCI mode |
 | `logs/gamelist.txt` | `Game::CreateGameMoveFile()` (`Game.cpp`) | Game mode only | One line per move via `MoveFormatter::ToShort` |
+| `logs/uci_commands_<pid>.log` | `uci --log-commands[=path]` (`UCIHandler.cpp`) | UCI mode, **opt-in only** — nothing is written without the flag | One line per received command, flushed per line so a hang or crash keeps its tail. The pid is in the name because a match at `-Concurrency 6` runs six engines from one directory. Never stdout: in UCI mode spdlog's *default* logger is still its built-in stdout console sink, silent only because `main()` sets the level to `off` |
 
-All four are gitignored. `logs/` does **not** need to pre-exist — spdlog's `file_helper::open` calls
+All five are gitignored. `logs/` does **not** need to pre-exist — spdlog's `file_helper::open` calls
 `os::create_dir()` on the parent path. spdlog *does* swallow a genuine `basic_file_sink` constructor
 failure silently, so a permissions problem produces no file and no error message.
 

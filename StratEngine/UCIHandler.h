@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <spdlog/spdlog.h>
 #include "PlayerBase.h"
 #include "PlayerAI.h"
 #include "GameState.h"
@@ -15,6 +16,16 @@ public:
     UciHandler();
     ~UciHandler();
     void run();   // blocking command loop; reads from stdin
+
+    /// Start logging every received command to `filename`, one line each.
+    /// Off unless a caller asks for it: 'uci --log-commands[=path]'.
+    /// Returns false if the file could not be opened, in which case nothing is logged.
+    bool EnableCommandLog(const std::string& filename);
+
+    /// Default log path for EnableCommandLog. The process id is part of the name because a match
+    /// at -Concurrency 6 runs six engines from one working directory, and spdlog's file sink is
+    /// thread-safe but not process-safe — one shared path yields interleaved or truncated files.
+    static std::string DefaultCommandLogPath();
 
     /// Parameters parsed from a UCI 'go' command line.
     /// Public so unit tests can call parse_go() directly without a running handler.
@@ -43,6 +54,11 @@ private:
     void cmd_perft(std::string_view line);
     void cmd_stop();
     void cmd_setoption(std::string_view line);
+
+    /// Routes one command line. Returns false for 'quit', which ends the loop.
+    /// Separate from run() so the routing — and the command log — are unit-testable without
+    /// feeding stdin.
+    bool dispatch(std::string_view line);
 
     void stop_and_join();   // signal + join search thread
     void init_ai();         // construct the AIPerplex instance (once; see cmd_ucinewgame())
@@ -76,6 +92,11 @@ private:
     // across cmd_ucinewgame() (see AIPerplex::StartNewGame()), so there is
     // no later point where the live thread count needs restoring.
     unsigned configured_threads_{ 1 };
+
+    // Null unless EnableCommandLog() succeeded. Owned here and nowhere else — it is deliberately
+    // not registered with spdlog (see Logger::CreateUciCommandLogger), so the file is closed when
+    // this handler is destroyed.
+    std::shared_ptr<spdlog::logger> command_log_;
 
 #ifdef STRAT_ENABLE_TEST_ACCESS
     // Enables unit tests for private command handlers (cmd_position replay).

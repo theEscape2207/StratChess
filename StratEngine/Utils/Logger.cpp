@@ -67,6 +67,26 @@ std::shared_ptr<spdlog::logger> Engine::Logger::EnsurePerfLogger(const std::stri
     return spdlog::get(PERF_LOGGER_NAME);
 }
 
+std::shared_ptr<spdlog::logger> Engine::Logger::CreateUciCommandLogger(const std::string& filename)
+{
+    try {
+        // Truncate on open: one file per engine process, describing that session only.
+        auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(filename, true);
+        auto logger = std::make_shared<spdlog::logger>("UciCommands", file_sink);
+        logger->set_level(spdlog::level::debug);
+        logger->set_pattern("[%Y-%m-%d %H:%M:%S.%e] %v");
+        // Per line: the case this exists for is a command that hangs or crashes the engine, which
+        // is exactly what a buffered write loses.
+        logger->flush_on(spdlog::level::debug);
+        return logger;
+    }
+    catch (...) {
+        // spdlog swallows a genuine sink-construction failure, so this is best effort; the caller
+        // reports the null.
+        return nullptr;
+    }
+}
+
 std::shared_ptr<spdlog::logger> Engine::Logger::GetLogger(const std::string& name) noexcept
 {
     return spdlog::get(name);

@@ -10,9 +10,15 @@
 #include "Tests/Perft.h"
 #include "Eval.h"
 #include "defines.h"
+#include "Utils/Logger.h"
 #include <spdlog/spdlog.h>
 #include <iostream>
 #include <sstream>
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 
 static constexpr std::string_view STARTING_FEN =
     "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -30,6 +36,26 @@ void UciHandler::send(std::string_view msg)
 {
     std::cout << msg << '\n';
     std::cout.flush();
+}
+
+static int current_process_id()
+{
+#ifdef _WIN32
+    return _getpid();
+#else
+    return static_cast<int>(getpid());
+#endif
+}
+
+std::string UciHandler::DefaultCommandLogPath()
+{
+    return "logs/uci_commands_" + std::to_string(current_process_id()) + ".log";
+}
+
+bool UciHandler::EnableCommandLog(const std::string& filename)
+{
+    command_log_ = Engine::Logger::CreateUciCommandLogger(filename);
+    return command_log_ != nullptr;
 }
 
 // ---------------------------------------------------------------------------
@@ -512,24 +538,35 @@ UciHandler::GoParams UciHandler::parse_go(std::string_view line)
 // Main loop
 // ---------------------------------------------------------------------------
 
+bool UciHandler::dispatch(std::string_view line)
+{
+    // Logged BEFORE the command runs. The case this exists for is a command that hangs or crashes
+    // the engine, and a line written afterwards is never written at all. The sink flushes per line
+    // for the same reason. Never stdout — see Logger::CreateUciCommandLogger.
+    if (command_log_) command_log_->debug(">> {}", line);
+
+    if (line == "uci")                        { cmd_uci(); }
+    else if (line == "isready")               { cmd_isready(); }
+    else if (line == "ucinewgame")            { cmd_ucinewgame(); }
+    else if (line == "eval")                  { cmd_eval(); }
+    else if (line.starts_with("position"))    { cmd_position(line); }
+    // Both spellings, and both before the bare 'go': "go perft" would
+    // otherwise be parsed as a search whose unknown tokens are skipped.
+    else if (line.starts_with("go perft"))    { cmd_perft(line); }
+    else if (line.starts_with("perft"))       { cmd_perft(line); }
+    else if (line.starts_with("go"))          { cmd_go(line); }
+    else if (line.starts_with("setoption"))   { cmd_setoption(line); }
+    else if (line == "stop")                  { cmd_stop(); }
+    else if (line == "quit")                  { cmd_stop(); return false; }
+    // unknown commands: ignore silently (UCI spec)
+    return true;
+}
+
 void UciHandler::run()
 {
     init_ai();
     std::string line;
     while (std::getline(std::cin, line)) {
-        if (line == "uci")                        { cmd_uci(); }
-        else if (line == "isready")               { cmd_isready(); }
-        else if (line == "ucinewgame")            { cmd_ucinewgame(); }
-        else if (line == "eval")                  { cmd_eval(); }
-        else if (line.starts_with("position"))    { cmd_position(line); }
-        // Both spellings, and both before the bare 'go': "go perft" would
-        // otherwise be parsed as a search whose unknown tokens are skipped.
-        else if (line.starts_with("go perft"))    { cmd_perft(line); }
-        else if (line.starts_with("perft"))       { cmd_perft(line); }
-        else if (line.starts_with("go"))          { cmd_go(line); }
-        else if (line.starts_with("setoption"))   { cmd_setoption(line); }
-        else if (line == "stop")                  { cmd_stop(); }
-        else if (line == "quit")                  { cmd_stop(); break; }
-        // unknown commands: ignore silently (UCI spec)
+        if (!dispatch(line)) break;
     }
 }
