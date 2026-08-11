@@ -474,8 +474,8 @@ void UciHandler::cmd_setoption(std::string_view line)
     //   setoption name Hash value N
     // Any other option name, or a malformed/missing value, is silently
     // ignored (standard UCI convention — same as unknown top-level commands
-    // in run()). Case-sensitive match on "Threads", matching the convention
-    // used by Stockfish and other engines.
+    // in run()). Case-sensitive matches on "Threads" and "Hash", matching the
+    // convention used by Stockfish and other engines.
     auto trim = [](std::string_view s) {
         const size_t b = s.find_first_not_of(' ');
         if (b == std::string_view::npos) return std::string_view{};
