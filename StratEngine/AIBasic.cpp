@@ -15,7 +15,7 @@
 
 
 // Fetches the next move
-Move AIBasic::GetMove(_Inout_ GameInfo& info, const SearchLimits& limits)
+Move AIBasic::GetMove(GameInfo& info, const SearchLimits& limits)
 {
 	InitMoveVariables(info);
 
@@ -33,7 +33,7 @@ Move AIBasic::GetMove(_Inout_ GameInfo& info, const SearchLimits& limits)
 
 // En basic alpha-beta
 // p.t. ogsaa med anti-horisont-effekt og simpel sortering
-int AIBasic::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta)
+int AIBasic::Search(size_t ply, int alpha, int beta)
 {
 	// Check time and stop signal
 	if (ShouldStopSearch()) {

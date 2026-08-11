@@ -104,7 +104,7 @@ int PlayerAiBase::Quiescent( size_t ply, int alpha, int beta )
 // Parameter:  BoardInfo& info - 
 // Remark:    
 // ************************************
-Move PlayerAiBase::GetBestMove(_In_ GameInfo& info ) noexcept
+Move PlayerAiBase::GetBestMove(GameInfo& info ) noexcept
 {
 	// Returner det bedste traek - hvis der er noget
 	if ( !m_BestMove.is_null() )

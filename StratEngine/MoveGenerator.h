@@ -11,9 +11,9 @@ class MoveGenerator final
 {
 public:
 	// Computes all the pseudo legal piece capturing moves on the current board - no check for Check here!
-	static void ComputeCaptures(_In_ const Board& board, _In_ const GameInfo& info, _Inout_ MoveList& moveList);
+	static void ComputeCaptures(const Board& board, const GameInfo& info, MoveList& moveList);
 	// Computes all the pseudo legal moves on the current board - no check for Check here!
-	static void ComputeLegalMoves(_In_ const Board& board, _In_ const GameInfo& info, _Inout_ MoveList& moveList);
+	static void ComputeLegalMoves(const Board& board, const GameInfo& info, MoveList& moveList);
 
 	// Returns BITBOARD with all squares attacked by 'Color'
 	static BITBOARD GetAttackBoard(const Board& board, eColor) noexcept;
@@ -24,7 +24,7 @@ private:
 
 	static void GeneratePawnCaptures(const Board& board, const BITBOARD * const bbBitBoards, const GameInfo & info, MoveList & moveList, eColor color);
 
-	static void GeneratePawnNormalMoves(_In_ const BITBOARD * const bbBitBoards, _In_ eColor color, _Inout_ MoveList& moveList);
+	static void GeneratePawnNormalMoves(const BITBOARD * const bbBitBoards, eColor color, MoveList& moveList);
 
 	static void GenerateOfficerMoves(const Board& board, const BITBOARD * const bbBitBoards, MoveList& moveList, ePieceType piece, eColor color, bool onlyCaptures );
 

@@ -83,7 +83,7 @@ void AIPerplex::SetVerboseLogging(bool enabled) noexcept {
 	}
 }
 
-AIPerplex::AIPerplex(Board& board, _In_ unsigned md)
+AIPerplex::AIPerplex(Board& board, unsigned md)
 	: PlayerAiBase(board, md)
 {
 	// allocate TT once per AIPerplex instance; size can be tuned or read from config
@@ -144,7 +144,7 @@ void AIPerplex::helper_loop(ThreadData& td, int max_depth, TranspositionTable& t
 	}
 }
 
-Move AIPerplex::GetMove(_Inout_ GameInfo& info, const SearchLimits& limits)
+Move AIPerplex::GetMove(GameInfo& info, const SearchLimits& limits)
 {
 	init_search(info);
 	// Snapshot threads_ exactly once: UCI's cmd_setoption (unlike cmd_go/

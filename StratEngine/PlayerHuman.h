@@ -13,7 +13,7 @@ class PlayerHuman final : public PlayerBase
 public:
 
 	/* IPlayer implementation */
-	Move GetMove(_Inout_ GameInfo& info, const SearchLimits&) override;
+	Move GetMove(GameInfo& info, const SearchLimits&) override;
 	const char* GetType() const	noexcept override		{	return "Human";		}
 	
 	std::string getDescription() const	override
@@ -59,12 +59,12 @@ private:
 	}
 
 	// Validates the user input using regex
-	static bool ValidateInput(_In_ const std::string& strInput);
+	static bool ValidateInput(const std::string& strInput);
 	// Returns true if we are trying a promotion; in that case sets promotedType.
-	static bool ParseInput(_In_ const std::string& input, _Inout_ Move& move, _Out_ ePieceType& promotedType);
+	static bool ParseInput(const std::string& input, Move& move, ePieceType& promotedType);
 
 	// We know a lot - ignoring the optional '-' and promote chars
-	static eSquare GetSquare(std::string::const_iterator& begin, _In_ const std::string::const_iterator& end)
+	static eSquare GetSquare(std::string::const_iterator& begin, const std::string::const_iterator& end)
 	{
 		const int row = *begin++ - 'a';
 		const int col = ((8-((*begin)-'0')) << 3);
@@ -76,5 +76,5 @@ private:
 
 	// Fetches the list of Moves for the Player
 	// Returns true if any legal move is found, and false otherwise
-	static bool IsAnyLegalMoves(Board& board, _In_ const GameInfo& info, _Out_ MoveList& moveList );
+	static bool IsAnyLegalMoves(Board& board, const GameInfo& info, MoveList& moveList );
 };

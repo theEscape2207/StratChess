@@ -8,12 +8,12 @@ class AIAgent final
 {
 public:
 	// Implementation/overrides of the IPlayer interface
-	Move GetMove(_Inout_ GameInfo& info, const SearchLimits& limits) override;
+	Move GetMove(GameInfo& info, const SearchLimits& limits) override;
 	const char* GetType() const noexcept override
 	{	return "AI Agent";	}
 
 	// Note: NOT to be called directly - only through Factory method
-	explicit AIAgent(Board& board, _In_ unsigned md) : PlayerAiIterBase(board, md) {}
+	explicit AIAgent(Board& board, unsigned md) : PlayerAiIterBase(board, md) {}
 	~AIAgent() = default;
 
 	// Force use of factory by preventing constructor, copy-construction & operator=
@@ -22,5 +22,5 @@ public:
 	AIAgent(AIAgent&&) = delete;
 	AIAgent& operator=(AIAgent&&) = delete;
 private:
-	int Search( _In_ size_t ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& pline );
+	int Search( size_t ply, int alpha, int beta, PVLine& pline );
 };

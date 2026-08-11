@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <deque>		// For PVLine
 #include "PieceHelper.h"
 
@@ -19,7 +20,7 @@ class Move final
     static constexpr uint16_t EMPTY_MOVE = 0xFFFF;
 
     // Prints content to stream - Implemented in .cpp
-    friend std::ostream& operator<<(std::ostream&, _In_ const Move& move);
+    friend std::ostream& operator<<(std::ostream&, const Move& move);
 public:
     // Copy constructor
     constexpr Move(const Move& rhs) noexcept = default;
@@ -63,24 +64,24 @@ public:
     ~Move() noexcept = default;
 
     // Copy assignment operator
-    Move& operator= (_In_ const Move& rhs) noexcept = default;
+    Move& operator= (const Move& rhs) noexcept = default;
 
     constexpr void SetMove(eSquare from, eSquare to, MoveType moveType) noexcept
     {
         data = static_cast<uint16_t>(from | (to << 6) | static_cast<uint8_t>(moveType) << 12);
     }
 
-    bool operator==(_In_ const Move& rhs) const noexcept
+    bool operator==(const Move& rhs) const noexcept
     {
         return IsSameAs(rhs);
     }
 
-    bool operator!=(_In_ const Move& rhs) const noexcept
+    bool operator!=(const Move& rhs) const noexcept
     {
         return !IsSameAs(rhs);
     }
 
-    bool IsSameAs(_In_ const Move& rhs) const noexcept
+    bool IsSameAs(const Move& rhs) const noexcept
     {
         return ((to() == rhs.to())
             && (from() == rhs.from()));
@@ -170,5 +171,5 @@ private:
 // Principal variation line
 // Keeps the best variant in the vector
 using PVLine = std::deque<Move>;
-std::ostream& operator<<(std::ostream&, _In_ const PVLine&);
+std::ostream& operator<<(std::ostream&, const PVLine&);
 

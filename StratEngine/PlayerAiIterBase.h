@@ -12,14 +12,14 @@ public:
 	PlayerAiIterBase& operator=(PlayerAiIterBase&&) = delete;
 protected:
 	// Force use of factory by preventing constructor, copy-construction & operator=
-	explicit PlayerAiIterBase(Board& board, _In_ unsigned md)
+	explicit PlayerAiIterBase(Board& board, unsigned md)
 		: PlayerAiBase(board, md)
 	{
 		m_infoSeq.reserve(32);
 	}
 
 	// Iter classes store the currently best move in the PVL, so maintain the list there
-	void InitMoveVariables(_In_ const GameInfo& info) override
+	void InitMoveVariables(const GameInfo& info) override
 	{
 		m_SearchCount = 0;					// Clear search counter
 
@@ -35,7 +35,7 @@ protected:
 		}
 	}
 
-	const Move* GetIterMove(_In_ size_t currentPly) const
+	const Move* GetIterMove(size_t currentPly) const
 	{
 		if (m_Line.empty() || currentPly >= m_Line.size())
 			return nullptr;
@@ -50,7 +50,7 @@ protected:
 	// Parameter:  BoardInfo& info - 
 	// Remark:    
 	// ************************************
-	Move GetBestMove(_In_ GameInfo& info) noexcept override
+	Move GetBestMove(GameInfo& info) noexcept override
 	{
 		// Returner det bedste traek - hvis der er noget
 		if (!m_Line.empty())
@@ -64,7 +64,7 @@ protected:
 		return Move::EmptyMove();
 	}
 
-	constexpr bool IsOutsideWindow(_In_ int score, _In_ int alpha, _In_ int beta) noexcept
+	constexpr bool IsOutsideWindow(int score, int alpha, int beta) noexcept
 	{
 		return (score <= alpha) || (score >= beta);
 	}

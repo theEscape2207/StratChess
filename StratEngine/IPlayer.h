@@ -11,7 +11,7 @@ class IPlayer
 public:
 	IPlayer() noexcept = default;
 	// Virtual functions
-	virtual Move GetMove(_Inout_ GameInfo& info, const SearchLimits& limits) = 0;
+	virtual Move GetMove(GameInfo& info, const SearchLimits& limits) = 0;
 	//;virtual unsigned GetMaxDepth() = 0;
 	virtual const char* GetType()const = 0;
 	virtual std::string getDescription() const = 0;

@@ -14,7 +14,7 @@
 
 // TODO: Add support for official input of castling moves (e.g. "0-0" or "0-0-0") 
 // Right now its only possible through e1g1 (short) or e1-c1(long)
-Move PlayerHuman::GetMove(_Inout_ GameInfo& info, const SearchLimits&)
+Move PlayerHuman::GetMove(GameInfo& info, const SearchLimits&)
 {
 	Board& board = board_;
 	MoveList moveList;
@@ -114,7 +114,7 @@ Move PlayerHuman::GetMove(_Inout_ GameInfo& info, const SearchLimits&)
 
 // Validates the user input using Poco regex
 // Only lower case input - must be converted before
-bool PlayerHuman::ValidateInput(_In_ const std::string& strInput)
+bool PlayerHuman::ValidateInput(const std::string& strInput)
 {
 	// We are allowing the row as lower case and the col as a number with an optional '-' in between
 	// Also optional promotional choices i.e. Queen, Rook, Bishop or Knight
@@ -128,9 +128,9 @@ bool PlayerHuman::ValidateInput(_In_ const std::string& strInput)
 // Expects parameter input to be lower case
 // The returned Move has a generic type
 // Returns true if the user specified an allowed promotional character; sets promotedType in that case
-bool PlayerHuman::ParseInput(_In_ const std::string& input,
-	_Inout_ Move& move,
-	_Out_ ePieceType& promotedType)
+bool PlayerHuman::ParseInput(const std::string& input,
+	Move& move,
+	ePieceType& promotedType)
 {
 	auto curIt = input.begin();
 	const auto end = input.end();
@@ -150,7 +150,7 @@ bool PlayerHuman::ParseInput(_In_ const std::string& input,
 
 // Returns true if any legal move is found, and false otherwise
 // TODO: Remove illegal moves from ComputeLegalMoves?
-bool PlayerHuman::IsAnyLegalMoves(Board& board, _In_ const GameInfo& info, _Out_ MoveList& moveList)
+bool PlayerHuman::IsAnyLegalMoves(Board& board, const GameInfo& info, MoveList& moveList)
 {
 	MoveGenerator::ComputeLegalMoves(board, info, moveList);
 

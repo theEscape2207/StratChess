@@ -20,7 +20,7 @@ namespace SquareHelper
 	*	methods
 	*/
 	// Calculate the new eSquare position 
-	static inline constexpr eSquare Calc(_In_ eSquare square, _In_ int offset) noexcept
+	static inline constexpr eSquare Calc(eSquare square, int offset) noexcept
 	{
 		return static_cast<eSquare>(square + offset);
 	}

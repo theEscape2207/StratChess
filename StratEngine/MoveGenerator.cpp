@@ -23,7 +23,7 @@
 |                                                          |
  ----------------------------------------------------------
 */
-void MoveGenerator::ComputeLegalMoves(_In_ const Board& board, _In_ const GameInfo& info, _Inout_ MoveList& moveList)
+void MoveGenerator::ComputeLegalMoves(const Board& board, const GameInfo& info, MoveList& moveList)
 {
 	assert(moveList.empty());		// Check our preconditions ;-)
 
@@ -118,7 +118,7 @@ void MoveGenerator::GeneratePawnCaptures(const Board& board, const BITBOARD* con
 	}
 }
 
-void MoveGenerator::GeneratePawnNormalMoves(_In_ const BITBOARD* const bbBitBoards, _In_ eColor color, _Inout_ MoveList& moveList)
+void MoveGenerator::GeneratePawnNormalMoves(const BITBOARD* const bbBitBoards, eColor color, MoveList& moveList)
 {
 	BITBOARD bbMoveOne = 0;
 	BITBOARD bbMoveTwo = 0;
@@ -266,7 +266,7 @@ void MoveGenerator::AddPawnPromoteMoves(const BITBOARD* bbBitBoards, eColor colo
 
 // <param name="moveList">Collection of found moves</param>
 // Computes all possible moves, filters so only all captures, en passants and promotes remains and returns unsorted
-void MoveGenerator::ComputeCaptures(_In_ const Board& board, _In_ const GameInfo& info, _Inout_ MoveList& moveList)
+void MoveGenerator::ComputeCaptures(const Board& board, const GameInfo& info, MoveList& moveList)
 {
 	const auto color = board.GetCurrentColor();
 

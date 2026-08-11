@@ -2,7 +2,7 @@
 
 #include "Move.h"
 
-//std::ostream& operator<<(std::ostream& os, _In_ const PVTable& line)
+//std::ostream& operator<<(std::ostream& os, const PVTable& line)
 //{
 //	//assert(!line.empty());
 //

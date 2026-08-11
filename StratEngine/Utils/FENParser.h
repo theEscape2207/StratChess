@@ -3,6 +3,7 @@
 #include "defines.h"
 #include "GameState.h"
 #include "Config.h"
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <tuple>

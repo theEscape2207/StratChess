@@ -4,6 +4,7 @@
 
 #include "Utils/BitTools.h"
 #include <cassert>
+#include <cstdint>
 #include <ostream>
 
 // Only pull in <iostream> for debug builds to avoid heavy header overhead in release

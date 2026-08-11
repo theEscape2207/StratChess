@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 #include "GameState.h"	// For CastlingRights, eColor, eSquare
 #include "SearchLimits.h"
+#include <cstdint>
 
 class Game;
 class Board;

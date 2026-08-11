@@ -8,13 +8,13 @@ class ABIterTrans final
 {
 public:
 	// Implementation/overrides of the IPlayer interface
-	Move GetMove( _Inout_ GameInfo& info) override;
+	Move GetMove( GameInfo& info) override;
 
 	const char* GetType() const noexcept override
 	{ return "Transpositional Iterative AlphaBeta"; }
 	
 	// Note: NOT to be called directly - only through Factory method
-	explicit ABIterTrans(_In_ unsigned md) : PlayerAiIterBase(md) {}
+	explicit ABIterTrans(unsigned md) : PlayerAiIterBase(md) {}
 	~ABIterTrans() = default;
 
 	// Force use of factory by preventing constructor, copy-construction & operator=
@@ -23,5 +23,5 @@ public:
 	ABIterTrans(ABIterTrans&&) = delete;
 	ABIterTrans& operator=(ABIterTrans&&) = delete;
 private:
-	int Search( _In_ size_t ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& pline );
+	int Search( size_t ply, int alpha, int beta, PVLine& pline );
 };

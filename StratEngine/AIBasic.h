@@ -9,11 +9,11 @@ class AIBasic final
 
 public:
 	// Implementation/overrides of the IPlayer interface
-	Move GetMove(_Inout_ GameInfo& info, const SearchLimits& limits) override;
+	Move GetMove(GameInfo& info, const SearchLimits& limits) override;
 	const char* GetType() const noexcept override	{	return "Basic Alpha Beta";	}
 	
 	// Note: NOT to be called directly - only through Factory method
-	explicit AIBasic(Board& board, _In_ unsigned md) : PlayerAiBase(board, md) {}
+	explicit AIBasic(Board& board, unsigned md) : PlayerAiBase(board, md) {}
 	~AIBasic() = default;
 
 	// Force use of factory by preventing constructor, copy-construction & operator=
@@ -22,5 +22,5 @@ public:
 	AIBasic(AIBasic&&) = delete;
 	AIBasic& operator=(AIBasic&&) = delete;
 private:
-	int Search(_In_ size_t ply, _In_ int alpha, _In_ int beta);
+	int Search(size_t ply, int alpha, int beta);
 };

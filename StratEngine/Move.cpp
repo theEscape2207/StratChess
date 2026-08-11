@@ -7,7 +7,7 @@
 
 // Prints a Move to a stream in coordinate-only form (e.g. "Last move: e2-e4").
 // The moving piece is not available here; use MoveFormatter::ToShort for piece-prefixed notation.
-std::ostream& operator<<(std::ostream& os, _In_ const Move& m)
+std::ostream& operator<<(std::ostream& os, const Move& m)
 {
 	if (!m.is_null())	// Empty moves are allowed, but ignored
 		os << "Move: " << MoveFormatter::ToCoord(m).c_str() << '\n';
@@ -16,7 +16,7 @@ std::ostream& operator<<(std::ostream& os, _In_ const Move& m)
 
 // Denne funktion printer den bedste linje ud for hver iterativ fordybning
 // Invariant: Must be called only with moves in the line
-std::ostream& operator<<(std::ostream& os, _In_ const PVLine& line)
+std::ostream& operator<<(std::ostream& os, const PVLine& line)
 {
 	assert(!line.empty());
 

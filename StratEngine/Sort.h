@@ -1,5 +1,6 @@
 #pragma once
 #include "Move.h"
+#include <cstdint>
 
 class Board;
 

@@ -15,7 +15,7 @@ extern std::ofstream outLegalMoves;
 // Aspirational Iterative transpositional alpha beta search
 // Transposition tables
 // FIXME: Transposition tables earlier did not generate the same moves as the other algorithms - i.e. we have a bug!
-Move ABIterTrans::GetMove(_Inout_ GameInfo& info)
+Move ABIterTrans::GetMove(GameInfo& info)
 {
 	InitMoveVariables(info);
 
@@ -93,7 +93,7 @@ Move ABIterTrans::GetMove(_Inout_ GameInfo& info)
 // An iterative alpha-beta with PVL and transposition table
 // FIXME: Transposition tables still doesn't work correctly 
 // - ABIterTrans doesn't assert, but does not generate the same moves as the non-trans search algos
-int ABIterTrans::Search(_In_ size_t ply, _In_ int alpha, _In_ int beta, _Inout_ PVLine& pline)
+int ABIterTrans::Search(size_t ply, int alpha, int beta, PVLine& pline)
 {
 	// Check time and stop signal
 	if (ShouldStopSearch()) {

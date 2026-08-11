@@ -54,7 +54,7 @@ protected:
 		// Create the Evaluation strategy - Right now only possible to select two: SIMPLE and COMPLEX ;-)
 	}
 
-	//virtual Move GetMove(_Inout_ GameInfo& info) = 0;
+	//virtual Move GetMove(GameInfo& info) = 0;
 
 	/* AI helper methods */
 
@@ -82,7 +82,7 @@ protected:
 	void StoreInfoAtPly(size_t ply, const GameInfo& info);
 
 	// Returns the best first move currently found
-	virtual Move GetBestMove(_In_ GameInfo& info) noexcept;
+	virtual Move GetBestMove(GameInfo& info) noexcept;
 
 	/// Resolves per-call SearchLimits against the configured defaults
 	/// (time_limit_, max_depth_), arms time_manager_ with the resulting
@@ -122,7 +122,7 @@ protected:
 	// Remark:      TODO: Burde flyttes ned som en template metode DoInit efter m_MoveSeq
 	//	  		    Non Iter edition
 	// ************************************
-	virtual void InitMoveVariables(_In_ const GameInfo& info)
+	virtual void InitMoveVariables(const GameInfo& info)
 	{
 		m_SearchCount = 0;
 

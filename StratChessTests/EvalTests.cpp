@@ -1435,22 +1435,26 @@ TEST_CASE("Eval - mop-up: walking the winning king toward the loser must raise t
     auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
     REQUIRE(complexEval != nullptr);
 
-    const EvalBreakdown far = complexEval->Breakdown(farther);
-    const EvalBreakdown near = complexEval->Breakdown(closer);
+    // Named farBreakdown/nearBreakdown, not far/near: those are macros from
+    // <windows.h> (minwindef.h defines both as empty), so a plain `far`/`near`
+    // local silently breaks the moment any header in this translation unit
+    // starts transitively including it.
+    const EvalBreakdown farBreakdown = complexEval->Breakdown(farther);
+    const EvalBreakdown nearBreakdown = complexEval->Breakdown(closer);
 
     // Guard the premise: if either position stopped being a gated mop-up
     // position this test would pass vacuously.
-    CAPTURE(far.phase, far.mopup[WHITE], near.mopup[WHITE]);
-    REQUIRE(far.mopup[WHITE] > 0);
-    REQUIRE(near.mopup[WHITE] > 0);
-    REQUIRE(near.mopup[WHITE] > far.mopup[WHITE]);
+    CAPTURE(farBreakdown.phase, farBreakdown.mopup[WHITE], nearBreakdown.mopup[WHITE]);
+    REQUIRE(farBreakdown.mopup[WHITE] > 0);
+    REQUIRE(nearBreakdown.mopup[WHITE] > 0);
+    REQUIRE(nearBreakdown.mopup[WHITE] > farBreakdown.mopup[WHITE]);
 
     // The actual property: White's total positional contribution must improve
     // when its king closes in. Before the fix the king PST's centralization loss
     // outweighs mop-up's approach bonus and this is negative.
-    const int farTotal  = far.pst[WHITE]  + far.mopup[WHITE];
-    const int nearTotal = near.pst[WHITE] + near.mopup[WHITE];
-    CAPTURE(far.pst[WHITE], near.pst[WHITE], farTotal, nearTotal);
+    const int farTotal  = farBreakdown.pst[WHITE]  + farBreakdown.mopup[WHITE];
+    const int nearTotal = nearBreakdown.pst[WHITE] + nearBreakdown.mopup[WHITE];
+    CAPTURE(farBreakdown.pst[WHITE], nearBreakdown.pst[WHITE], farTotal, nearTotal);
 
     REQUIRE(nearTotal > farTotal);
 }

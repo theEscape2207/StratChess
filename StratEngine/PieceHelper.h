@@ -27,42 +27,42 @@ namespace PieceHelper
 	*	methods
 	*/
 
-	static inline constexpr bool IsOfType(_In_ ePiece piece, _In_ ePieceType type) noexcept
+	static inline constexpr bool IsOfType(ePiece piece, ePieceType type) noexcept
 	{
 		return ((piece >> 1) == (type >> 1));
 	}
 
-	static inline constexpr bool IsOfPiece(_In_ ePiece piece, _In_ ePiece type) noexcept
+	static inline constexpr bool IsOfPiece(ePiece piece, ePiece type) noexcept
 	{
 		return (piece == type);
 	}
 
-	static inline constexpr bool IsActual(_In_ ePiece piece) noexcept
+	static inline constexpr bool IsActual(ePiece piece) noexcept
 	{
 		return (ePiece::WHITE_PAWN <= piece) && (piece <= ePiece::BLACK_KING);
 	}
 
-	static inline constexpr bool IsPawn(_In_ ePiece piece) noexcept
+	static inline constexpr bool IsPawn(ePiece piece) noexcept
 	{
 		return IsOfType(piece, PAWN);
 	}
 
-	static inline constexpr bool IsKing(_In_ ePiece piece) noexcept
+	static inline constexpr bool IsKing(ePiece piece) noexcept
 	{
 		return IsOfType(piece, KING);
 	}
 
-	static inline constexpr bool IsNoPiece(_In_ ePiece piece) noexcept
+	static inline constexpr bool IsNoPiece(ePiece piece) noexcept
 	{
 		return (piece == ePiece::NO_PIECE);
 	}
 
-	static inline constexpr std::string FullName(_In_ enum ePiece piece)
+	static inline constexpr std::string FullName(enum ePiece piece)
 	{
 		return g_cPieceNamesVerbose[piece];
 	}
 
-	static inline constexpr char ShortName(_In_ ePiece piece) noexcept
+	static inline constexpr char ShortName(ePiece piece) noexcept
 	{
 		return g_cPieceNames[piece];
 	}
@@ -72,54 +72,54 @@ namespace PieceHelper
 	/// </summary>
 	/// <param name="piece">The Piece</param>
 	/// <returns>The corresponding Pawn of same color</returns>
-	static inline constexpr ePiece AsPawn(_In_ ePiece piece) noexcept
+	static inline constexpr ePiece AsPawn(ePiece piece) noexcept
 	{
 		return static_cast<ePiece>(piece & 1);
 	}
 
-	static inline constexpr std::string FullPawnName(_In_ ePiece piece)
+	static inline constexpr std::string FullPawnName(ePiece piece)
 	{
 		return g_cPieceNamesVerbose[AsPawn(piece)];
 	}
 
-	static inline constexpr bool IsNotEmpty(_In_ ePiece piece) noexcept
+	static inline constexpr bool IsNotEmpty(ePiece piece) noexcept
 	{
 		return piece != ePiece::NO_PIECE;
 	}
 
-	static inline constexpr unsigned int Value(_In_ ePiece piece) noexcept
+	static inline constexpr unsigned int Value(ePiece piece) noexcept
 	{
 		return (g_iPieceValues[piece >> 1]);
 	}
 
-	static inline constexpr eColor Color(_In_ ePiece piece) noexcept
+	static inline constexpr eColor Color(ePiece piece) noexcept
 	{
 		return static_cast<eColor>(piece & 1);
 	}
 
 	// It is always possible to go from PieceType to Piece
-	static inline constexpr ePiece AsPiece(_In_ ePieceType pieceType, _In_ eColor color) noexcept
+	static inline constexpr ePiece AsPiece(ePieceType pieceType, eColor color) noexcept
 	{
 		return static_cast<ePiece>(pieceType + static_cast<size_t>(color));
 	}
 
-	static inline constexpr ePiece AsPiece(_In_ ePiece piece, _In_ eColor color) noexcept
+	static inline constexpr ePiece AsPiece(ePiece piece, eColor color) noexcept
 	{
 		return static_cast<ePiece>(piece + static_cast<size_t>(color));
 	}
 
-	static inline constexpr ePieceType AsPieceType(_In_ ePiece piece) noexcept
+	static inline constexpr ePieceType AsPieceType(ePiece piece) noexcept
 	{
 		return static_cast<ePieceType>(piece >> 1);
 	}
 	// Returns the Pawn of the opposite color. E.g. color=WHITE_ -> BLACK_PAWN
-	static inline constexpr ePiece AsPawn(_In_ eColor color) noexcept
+	static inline constexpr ePiece AsPawn(eColor color) noexcept
 	{
 		return static_cast<ePiece>(color);
 	}
 	
 	// Returns the Pawn of the opposite color. E.g. color=WHITE_ -> BLACK_PAWN
-	static inline constexpr ePiece OppositePawn(_In_ eColor color) noexcept
+	static inline constexpr ePiece OppositePawn(eColor color) noexcept
 	{
 		return static_cast<ePiece>(BLACK_PAWN - static_cast<size_t>(color));
 	}
