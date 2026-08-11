@@ -5,3 +5,8 @@
 
 # Reformat: apply .clang-format across the tree (#175)
 5d0bd0a687bad1919415ba70839ecf76da63d3e4
+
+# Reformat: converge Eval.cpp comment reflow (#175)
+# clang-format needs a second pass over reflowed comments; this is the rest of
+# the commit above, not a separate change.
+fb7c52b40bf64ea794a8f771ee353c5e2564f1d5
