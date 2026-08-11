@@ -37,11 +37,11 @@ void UciHandler::send(std::string_view msg)
 // ---------------------------------------------------------------------------
 
 UciHandler::UciHandler()
-    // eval_ is constructed here, not in init_ai(): init_ai() is re-run by
-    // cmd_ucinewgame() on every 'ucinewgame', but EvalManager holds no
+    // eval_ is constructed here, not in init_ai(): EvalManager holds no
     // per-game state (see the Lazy SMP sharing contract comment in Eval.h),
-    // so there is nothing for it to reset. Matches the COMPLEX type
-    // init_ai() configures for the search evaluator.
+    // so there is nothing for it to reset between games regardless of where
+    // it is constructed. Matches the COMPLEX type init_ai() configures for
+    // the search evaluator.
     : eval_(EvalManager::Create(EvalManager::EvalTypes::COMPLEX))
 {
 }
@@ -57,10 +57,11 @@ void UciHandler::init_ai()
     AIPerplex::SetVerboseLogging(false);
     base->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);   // public via IPlayer; must be before downcast
     ai_.reset(dynamic_cast<PlayerAiBase*>(base.release()));
-    // Restore the last client-configured thread count — init_ai() rebuilds
-    // ai_ from scratch (AIPerplex threads_ defaults to 1), so without this
-    // a prior 'setoption name Threads value N' would be silently lost on
-    // every cmd_ucinewgame().
+    // Apply any thread count set via 'setoption' before ai_ existed (a
+    // client may configure options before the first 'ucinewgame'). ai_ now
+    // persists across games — cmd_ucinewgame() calls StartNewGame() instead
+    // of rebuilding — so this only ever runs once per process, not on every
+    // new game.
     if (ai_) ai_->SetThreads(configured_threads_);
 }
 
@@ -84,7 +85,10 @@ void UciHandler::cmd_isready()
 void UciHandler::cmd_ucinewgame()
 {
     stop_and_join();
-    init_ai();
+    // run() constructs ai_ once before the command loop starts, so this is
+    // normally already true. It can still be null here in a test fixture
+    // that calls cmd_ucinewgame() directly without run().
+    if (!ai_) init_ai();
     if (ai_) ai_->StartNewGame();
 
     // STARTING_FEN is a compile-time constant; a false return here would mean the constant itself

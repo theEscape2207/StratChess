@@ -45,7 +45,7 @@ private:
     void cmd_setoption(std::string_view line);
 
     void stop_and_join();   // signal + join search thread
-    void init_ai();         // (re)create AIPerplex instance
+    void init_ai();         // construct the AIPerplex instance (once; see cmd_ucinewgame())
 
     /// Reports and returns true when a search is in flight, for the commands
     /// that mutate state the search is reading. Named for the decision it
@@ -70,9 +70,11 @@ private:
     std::atomic<bool> searching_{ false };
 
     // Last thread count from a client 'setoption name Threads value N'.
-    // Persists across init_ai() calls (cmd_ucinewgame() rebuilds ai_ from
-    // scratch, which would otherwise silently reset the thread count back
-    // to the AIPerplex default of 1).
+    // Only needed for the case where 'setoption' arrives before ai_ exists
+    // (init_ai() applies it once, at construction) — once ai_ exists,
+    // 'setoption' also calls ai_->SetThreads() directly, and ai_ persists
+    // across cmd_ucinewgame() (see AIPerplex::StartNewGame()), so there is
+    // no later point where the live thread count needs restoring.
     unsigned configured_threads_{ 1 };
 
 #ifdef STRAT_ENABLE_TEST_ACCESS

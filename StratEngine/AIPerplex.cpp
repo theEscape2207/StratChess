@@ -102,9 +102,33 @@ AIPerplex::AIPerplex(Board& board, unsigned md)
 	// Do NOT enable it here — constructors must not have stdout side-effects.
 }
 
+// Resets every piece of per-game state so that a persisting AIPerplex is
+// equivalent to a freshly-constructed one, without paying for a rebuild.
+// What is deliberately NOT reset here:
+//   - threads_    : never discarded by anything now that ai_ persists across
+//                   games, so there is nothing to restore.
+//   - tuning_     : caller configuration, not accumulated search state --
+//                   the same reasoning as threads_. Game::SetPlayerParams()
+//                   applies game_settings.json's search_tuning overrides and
+//                   then unconditionally calls StartNewGame() on the same
+//                   object; resetting tuning_ here would silently discard
+//                   those overrides before the first move is searched.
+//   - the evaluator: EvalManager/EvalComplex are documented stateless and
+//                    thread-shared (see the Lazy SMP sharing contract
+//                    comment in Eval.h) -- recreating one changes nothing.
+//   - max_depth_ / time_limit_ (PlayerAiBase): unconditionally reset by
+//     UciHandler::stop_and_join(), called immediately before this in
+//     cmd_ucinewgame().
 void AIPerplex::StartNewGame()
 {
 	(void)_tt->clear();
+	td_.reset_for_new_game();
+	// Lazily resized in GetMove() (`if (helper_tds_.size() < threads - 1)`),
+	// so clearing it forces fresh ThreadData construction -- with the
+	// correct thread_id reassigned -- on the next search, rather than
+	// reusing helpers whose killers/history carry over from the last game.
+	helper_tds_.clear();
+	last_result_ = SearchResult{};
 }
 
 // PVS Iterative transpositional alpha beta search
