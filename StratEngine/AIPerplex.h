@@ -32,6 +32,11 @@ public:
 	// GetMove() spawns threads_ - 1 helper std::jthreads sharing the
 	// transposition table with the main search.
 	void SetThreads(unsigned n) noexcept override { threads_ = std::clamp(n, 1u, 32u); }
+	static constexpr unsigned DEFAULT_HASH_MB = 192;
+	static constexpr unsigned MIN_HASH_MB = 1;
+	static constexpr unsigned MAX_HASH_MB = 1536;
+
+	HashConfigurationResult SetHash(unsigned mb) noexcept override;
 	void StartNewGame() override;
 
 	// Note: NOT to be called directly - only through Factory method (needed to be public due to usage of make_unique)

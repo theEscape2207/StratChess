@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iterator>
+#include <new>
 #include <spdlog/common.h>
 #include <spdlog/logger.h>
 #include <spdlog/sinks/basic_file_sink.h>
@@ -86,8 +87,7 @@ void AIPerplex::SetVerboseLogging(bool enabled) noexcept {
 AIPerplex::AIPerplex(Board& board, unsigned md)
 	: PlayerAiBase(board, md)
 {
-	// allocate TT once per AIPerplex instance; size can be tuned or read from config
-	_tt = std::make_unique<TranspositionTable>(256);
+	_tt = std::make_unique<TranspositionTable>(DEFAULT_HASH_MB);
 
 	// Seed the thread-local board so td_ is valid from birth (init_search()
 	// re-copies before every search). Board-reading helpers must work without
@@ -100,6 +100,27 @@ AIPerplex::AIPerplex(Board& board, unsigned md)
 	//   UCI mode   → UciHandler::init_ai()   calls SetVerboseLogging(false)
 	//   test mode  → test setup              calls SetVerboseLogging(false)
 	// Do NOT enable it here — constructors must not have stdout side-effects.
+}
+
+// Callers must ensure no search is using _tt. Constructing the replacement
+// before assigning it retains the old table if allocation fails.
+PlayerAiBase::HashConfigurationResult AIPerplex::SetHash(unsigned mb) noexcept
+{
+	const unsigned requested = std::clamp(mb, MIN_HASH_MB, MAX_HASH_MB);
+	try {
+		auto replacement = std::make_unique<TranspositionTable>(requested);
+		const HashConfigurationResult result{
+			true,
+			requested,
+			replacement->memory_mb(),
+			replacement->bucket_count()
+		};
+		_tt = std::move(replacement);
+		return result;
+	}
+	catch (const std::bad_alloc&) {
+		return { false, requested, 0, 0 };
+	}
 }
 
 // Resets every piece of per-game state so that a persisting AIPerplex is

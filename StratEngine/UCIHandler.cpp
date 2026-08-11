@@ -100,6 +100,12 @@ void UciHandler::cmd_uci()
     send("id name StratChess");
     send("id author Thees");
     send("option name Threads type spin default 1 min 1 max 32");
+    // Hash budgets TT entry bytes. Arbitrary values round down to a power-of-two
+    // bucket count; exact-fit values include 192 / 384 / 768 / 1536. The
+    // separately queryable lock_bytes() is additional memory.
+    send("option name Hash type spin default " + std::to_string(AIPerplex::DEFAULT_HASH_MB) +
+         " min " + std::to_string(AIPerplex::MIN_HASH_MB) +
+         " max " + std::to_string(AIPerplex::MAX_HASH_MB));
     send("uciok");
 }
 
@@ -453,14 +459,13 @@ void UciHandler::cmd_stop()
 
 void UciHandler::cmd_setoption(std::string_view line)
 {
-    // The more dangerous half of the pair: SetThreads reconfigures an AI a
-    // search is running on, and cmd_ucinewgame's init_ai() would destroy it
-    // outright -- a use-after-free rather than merely a wrong answer.
+    // Both supported options mutate a live AI, so they must not race a search.
     if (refuse_while_searching("setoption")) {
         return;
     }
     // Minimal UCI 'setoption' parser — recognizes exactly:
     //   setoption name Threads value N
+    //   setoption name Hash value N
     // Any other option name, or a malformed/missing value, is silently
     // ignored (standard UCI convention — same as unknown top-level commands
     // in run()). Case-sensitive match on "Threads", matching the convention
@@ -480,7 +485,8 @@ void UciHandler::cmd_setoption(std::string_view line)
         ? line.substr(name_pos + 4, value_pos - (name_pos + 4))
         : line.substr(name_pos + 4));
 
-    if (name != "Threads" || value_pos == std::string_view::npos) return;
+    if ((name != "Threads" && name != "Hash") ||
+        value_pos == std::string_view::npos) return;
 
     const std::string_view value_str = trim(line.substr(value_pos + 5));
     if (value_str.empty()) return;
@@ -495,8 +501,29 @@ void UciHandler::cmd_setoption(std::string_view line)
         return;   // out-of-range or otherwise unparsable — ignore
     }
 
-    configured_threads_ = n;
-    if (ai_) ai_->SetThreads(n);
+    if (name == "Threads") {
+        configured_threads_ = n;
+        if (ai_) ai_->SetThreads(n);
+        return;
+    }
+
+    // run() constructs ai_ before dispatching commands, and ai_ persists across
+    // ucinewgame. Hash therefore needs no configured shadow; a null ai_ exists
+    // only in direct test-only handler calls.
+    if (!ai_) return;
+
+    // searching_ can clear before bestmove, but only after GetMove() has joined
+    // helper threads and returned, so an accepted replacement has no concurrent
+    // transposition-table reader.
+    const auto result = ai_->SetHash(n);
+    if (!result.success) {
+        send("info string hash " + std::to_string(result.requested_mb) +
+             " MiB allocation failed; previous table retained");
+        return;
+    }
+
+    send("info string hash " + std::to_string(result.entry_mb) +
+         " MiB (" + std::to_string(result.bucket_count) + " buckets)");
 }
 
 // ---------------------------------------------------------------------------
