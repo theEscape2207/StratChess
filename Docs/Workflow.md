@@ -68,6 +68,25 @@ not. To set it without running a build:
 git config blame.ignoreRevsFile .git-blame-ignore-revs
 ```
 
+**Every `.clang-format` change means a new entry.** Changing the configuration re-runs the formatter
+over the whole tree, so it lands as a commit that rewrites most files without altering a line of
+code. `Validate-PrePR.ps1` fails when a commit on the branch touches 20 or more sources and is not
+listed (`Run-Lint.ps1 -Check BlameIgnore`); `-AllowUnlistedReformat` acknowledges a large commit that
+genuinely changes code.
+
+Two limits are worth knowing rather than discovering. The rule is a **file count**, not a proof that
+a commit is formatting-only — proving that needs the `.clang-format` as it stood at that commit,
+which stops being available the moment the config changes again, which is the case the check exists
+for. And a reformat touching fewer than 20 files slips through: `c705971` in PR #175 touched four.
+
+Ignoring a commit is also **wholesale, not per file**. The reformat commits also carry the
+`.clang-format` change that caused them, so blame on `.clang-format` itself skips past them. That is
+the right trade, since the sources are what anyone actually blames.
+
+Finally, `--ignore-revs-file` does not suppress attribution completely: a line git cannot map to a
+predecessor stays on the ignored commit. Measured on this tree, that is ~3.4% of lines and **all of
+them are brace- or punctuation-only**, so nothing meaningful is misattributed.
+
 ---
 
 ## When `search-reviewer` may be skipped

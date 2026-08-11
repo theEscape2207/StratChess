@@ -26,7 +26,21 @@
     ... -Fix                     # rewrite files in place to satisfy clang-format
 
 .PARAMETER Check
-    Format, Tidy, or Both (default).
+    Format, Tidy, BlameIgnore, or Both (default, meaning all three).
+
+    BlameIgnore is pure git and needs no toolchain: it fails when a commit on this
+    branch touches -ReformatThreshold or more sources without appearing in
+    .git-blame-ignore-revs. Every clang-format configuration change rewrites most
+    of the tree, and forgetting to record that buries the real history of every
+    file it touched.
+
+.PARAMETER ReformatThreshold
+    Source-file count at which a commit is expected in .git-blame-ignore-revs.
+    Default 20.
+
+.PARAMETER AllowUnlistedReformat
+    Acknowledge a large commit that genuinely changes code, so BlameIgnore does
+    not expect it to be recorded.
 
 .PARAMETER All
     Lint every non-archived source instead of only what changed against -BaseRef.
@@ -46,12 +60,19 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Format', 'Tidy', 'Both')]
+    [ValidateSet('Format', 'Tidy', 'BlameIgnore', 'Both')]
     [string]$Check = 'Both',
 
     [switch]$All,
     [string]$BaseRef = 'origin/main',
     [switch]$Fix,
+
+    # A commit touching at least this many sources is treated as a reformat.
+    [int]$ReformatThreshold = 20,
+
+    # Acknowledge a large commit that genuinely changes code, so it is not
+    # expected in .git-blame-ignore-revs.
+    [switch]$AllowUnlistedReformat,
 
     [string]$ClangFormat,
     [string]$ClangTidy,
@@ -240,10 +261,103 @@ function Invoke-TidyCheck {
     Write-Host "`nclang-tidy findings above are ADVISORY and do not fail this script (see #284)." -ForegroundColor DarkGray
 }
 
+function Invoke-BlameIgnoreCheck {
+    <#
+        Every clang-format configuration change re-runs the formatter across the
+        tree, producing a commit that rewrites most files without altering a line
+        of code. Such a commit must be listed in .git-blame-ignore-revs or it
+        buries the real history of every file it touches -- and it is easy to
+        forget, because nothing else in the pipeline notices.
+
+        The rule is deliberately a COUNT, not an attempt to prove a commit is
+        formatting-only. Proving that needs the .clang-format as it stood at that
+        commit, which stops being available the moment the config changes again --
+        exactly the case this exists to catch. A count cannot be fooled that way,
+        and in this repository a commit touching 20+ sources is a reformat or a
+        mass rename; both want acknowledging. -AllowUnlistedReformat is the escape
+        hatch for the rare genuine one.
+    #>
+    Write-Host "`n==> .git-blame-ignore-revs coverage" -ForegroundColor Cyan
+
+    $ignoreFile = Join-Path $RepoRoot '.git-blame-ignore-revs'
+    $listed = @()
+    if (Test-Path $ignoreFile) {
+        $listed = @(Get-Content $ignoreFile |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { $_ -and -not $_.StartsWith('#') })
+    }
+
+    $commits = @(git -C $RepoRoot rev-list --no-merges "$BaseRef..HEAD" 2>$null | Where-Object { $_ })
+    if ($LASTEXITCODE -ne 0) {
+        # Fail closed, exactly as the file selection does: an unresolvable base
+        # must not read as "nothing to check".
+        throw "Cannot list commits against '$BaseRef'. Fetch it, or pass -BaseRef."
+    }
+    if ($commits.Count -eq 0) {
+        Write-Host 'No commits on this branch; nothing to check.' -ForegroundColor Green
+        return $true
+    }
+
+    $unlisted = @()
+    foreach ($c in $commits) {
+        $touched = @(git -C $RepoRoot show --name-only --format= $c 2>$null |
+            Where-Object { $_ -match '\.(cpp|h)$' -and $_ -notmatch '(^|/)Archived/' })
+        if ($touched.Count -lt $ReformatThreshold) { continue }
+        if ($listed -contains $c) {
+            Write-Host ("  listed    {0}  {1} source(s)" -f $c.Substring(0, 9), $touched.Count) -ForegroundColor DarkGray
+            continue
+        }
+        $unlisted += [PSCustomObject]@{
+            Sha     = $c
+            Count   = $touched.Count
+            Subject = (git -C $RepoRoot log -1 --format=%s $c)
+        }
+    }
+
+    if ($unlisted.Count -eq 0) {
+        Write-Host 'PASS: every large-footprint commit is accounted for.' -ForegroundColor Green
+        return $true
+    }
+
+    if ($AllowUnlistedReformat) {
+        foreach ($u in $unlisted) {
+            Write-Host ("  ALLOWED   {0}  {1} source(s)  {2}" -f $u.Sha.Substring(0, 9), $u.Count, $u.Subject) -ForegroundColor Yellow
+        }
+        Write-Host 'PASS: unlisted commits acknowledged via -AllowUnlistedReformat.' -ForegroundColor Yellow
+        return $true
+    }
+
+    Write-Host "FAIL: $($unlisted.Count) commit(s) touch $ReformatThreshold+ sources and are not in .git-blame-ignore-revs:" -ForegroundColor Red
+    foreach ($u in $unlisted) {
+        Write-Host ("  {0}  {1,3} source(s)  {2}" -f $u.Sha.Substring(0, 9), $u.Count, $u.Subject) -ForegroundColor Red
+    }
+    Write-Host ''
+    Write-Host 'If these are reformats, append to .git-blame-ignore-revs:' -ForegroundColor Yellow
+    foreach ($u in $unlisted) {
+        Write-Host ''
+        Write-Host ("    # {0}" -f $u.Subject) -ForegroundColor Yellow
+        Write-Host ("    {0}" -f $u.Sha) -ForegroundColor Yellow
+    }
+    Write-Host ''
+    Write-Host 'If they genuinely change code, re-run with -AllowUnlistedReformat.' -ForegroundColor Yellow
+    return $false
+}
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-Write-Host '==> Toolchain' -ForegroundColor Cyan
+$blameOk = $true
+if ($Check -in @('BlameIgnore', 'Both')) { $blameOk = Invoke-BlameIgnoreCheck }
+
+# Pure git; needs no toolchain and no file list, so it can stand alone.
+if ($Check -eq 'BlameIgnore') {
+    Write-Host ''
+    if (-not $blameOk) { Write-Host 'Lint FAILED (blame-ignore coverage).' -ForegroundColor Red; exit 1 }
+    Write-Host 'Lint PASSED.' -ForegroundColor Green
+    exit 0
+}
+
+Write-Host "`n==> Toolchain" -ForegroundColor Cyan
 $fmtExe = $null; $tidyExe = $null
 if ($Check -in @('Format', 'Both')) {
     $fmtExe = Resolve-LlvmTool -Name 'clang-format' -Explicit $ClangFormat
@@ -257,6 +371,7 @@ if ($Check -in @('Tidy', 'Both')) {
 $files = Get-TargetFiles
 if ($files.Count -eq 0) {
     Write-Host "`nNo C++ sources in scope; nothing to lint." -ForegroundColor Green
+    if (-not $blameOk) { Write-Host 'Lint FAILED (blame-ignore coverage).' -ForegroundColor Red; exit 1 }
     exit 0
 }
 
@@ -266,5 +381,6 @@ if ($Check -in @('Tidy',   'Both')) { Invoke-TidyCheck  -Files $files -Exe $tidy
 
 Write-Host ''
 if (-not $formatOk) { Write-Host 'Lint FAILED (formatting).' -ForegroundColor Red; exit 1 }
+if (-not $blameOk)  { Write-Host 'Lint FAILED (blame-ignore coverage).' -ForegroundColor Red; exit 1 }
 Write-Host 'Lint PASSED.' -ForegroundColor Green
 exit 0

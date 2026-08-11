@@ -117,6 +117,19 @@ catch { $lintFailed = $true; Write-Host "Lint threw: $_" -ForegroundColor DarkGr
 if ($LASTEXITCODE -ne 0) { $lintFailed = $true }
 $checkResults['clang-format'] = if ($lintFailed) { 'FAIL' } else { 'PASS' }
 
+# --- Step 0b: blame-ignore coverage ---
+# A clang-format configuration change re-runs the formatter over the whole tree,
+# so it lands as a commit that rewrites most files without altering a line of
+# code. Unless it is recorded in .git-blame-ignore-revs it buries the real
+# history of every file it touched -- and nothing else in the pipeline notices.
+# Pure git, so it costs nothing.
+Write-Host "`n==> Blame-ignore coverage (issue #175)" -ForegroundColor Cyan
+$blameFailed = $false
+try   { & $lintScript -Check BlameIgnore -BaseRef $BaseRef }
+catch { $blameFailed = $true; Write-Host "Blame-ignore check threw: $_" -ForegroundColor DarkGray }
+if ($LASTEXITCODE -ne 0) { $blameFailed = $true }
+$checkResults['Blame-ignore'] = if ($blameFailed) { 'FAIL' } else { 'PASS' }
+
 # --- Step 1: Full parallel build ---
 Write-Host "`n==> Full build (main + tests in parallel)" -ForegroundColor Cyan
 # build.ps1 sets $ErrorActionPreference='Stop' internally and calls Write-Error on failure,
