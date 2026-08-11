@@ -144,13 +144,21 @@ renders it as a tab, consistent with `UseTab: ForIndentation`. Cost is 3 lines o
 
 **Measured churn against this complete config** (clang-format 22.1.8, all 93 non-archived sources):
 
-| | |
-|---|---:|
-| Files needing reformat | **90 / 93** |
-| Lines added / removed | +9,746 / −9,503 |
-| Share of the tree rewritten | **48.1%** |
-| Files with a changed include sequence | **0** |
-| Files touched under `Archived/` | **0** |
+| | Projected | As landed |
+|---|---:|---:|
+| Files needing reformat | 90 / 93 | **90 / 93** |
+| Lines added / removed | +9,749 / −9,506 | **+9,662 / −9,419** |
+| Share of the tree rewritten | 48.1% | **47.7%** |
+| Files with a changed include sequence | 0 | **0** |
+| Files touched under `Archived/` | 0 | **0** |
+
+**clang-format is not idempotent in a single pass, and the reformat has to run to a
+fixpoint.** Applying it once left `Eval.cpp` still failing `--dry-run -Werror`: reflowing the long
+`Evaluate()` header comment emitted two continuation lines beginning `//` with no following space,
+which only a second pass corrects. One extra pass converged the whole tree (2 lines). This is why the
+reformat is two commits, both listed in `.git-blame-ignore-revs`, and why `Run-Lint.ps1 -Fix` loops
+to a fixpoint rather than shelling out once. A single-pass `-Fix` would hand developers a tree that
+still fails CI.
 
 This supersedes the earlier "WebKit rewrites ~77% of sampled lines" figure, which established only
 that no preset fits and was never an estimate of this configuration's diff. Roughly half the tree
@@ -424,9 +432,16 @@ it without running the build.
    and invisible to the Linux gate. Recorded in D3; a caveat for the follow-up fix PR, not a blocker
    for this one, since clang-tidy is advisory here either way.
 
-3. **The reformat is semantically inert.** True for formatting in the general case, but macro
-   continuations and multi-line string literals are where it stops being true. *Verification*: the
-   equivalence check in the Validation section. Not yet done.
+3. ~~**The reformat is semantically inert.**~~ **VERIFIED.** `Run-Bench.ps1` at depth 12,
+   `Threads=1`, over the 8-position set, comparing a binary built at `2b14da4` (pre-reformat) against
+   one built at `697a16f` (post-reformat): **identical node counts in all 8 positions** (34,478,850
+   total each) and **identical best moves**. Two builds of semantically identical source must visit
+   an identical tree, and they do. nps differed by 0.7%, which is run-to-run noise on the same
+   machine code and not a measurement of anything.
+
+   Also verified alongside it: the reformatted tree is format-clean under **CI's** clang-format
+   22.1.8, not merely the local 22.1.3 — 0 of 93 files fail `--dry-run -Werror`. So the blocking gate
+   will be green on arrival rather than rejecting the very commit that created it.
 
 4. **`PieceHelper::Value()` is reachable with `NO_PIECE`.** `clang-analyzer-security.ArrayBound`
    reports an out-of-bounds read on `g_iPieceValues[piece >> 1]` at `PieceHelper.h:92`. Now confirmed
