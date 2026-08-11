@@ -119,8 +119,12 @@ them.** This is the whole reason those two scripts exist:
 | Every task forks from `origin/main` | `New-Worktree.ps1` never reads the current branch | `New-TaskBranch.ps1` does the same — a hand-typed `git checkout -b` would fork off the previous task and drag its commits into the next PR |
 | Uncommitted work cannot cross tasks | Separate working trees | `New-TaskBranch.ps1` refuses on tracked modifications — `git checkout` otherwise carries a dirty tree onto the new branch |
 
-Untracked files never count as dirty in either script: they survive a checkout unchanged, cannot
-enter a commit on their own, and tool caches would otherwise block every run.
+`New-TaskBranch.ps1` ignores untracked files: they survive a checkout unchanged and cannot enter a
+commit on their own. `New-PullRequest.ps1` is deliberately narrower: it warns and continues for
+untracked non-build files (such as tool caches), but refuses untracked `*.cpp` or `*.h` files and
+anything under `StratEngine/`, `StratChessEvolved/`, or `StratChessTests/`. Those files could be an
+omitted build input or an unfinished change; add them if intentional, or remove/move them before
+running the script.
 
 `Remove-MergedBranches.ps1` deletes only what `git merge-base --is-ancestor <branch> origin/main`
 proves is contained in `origin/main` — **names are never evidence**. `git branch -d` is not a

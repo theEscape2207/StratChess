@@ -93,11 +93,30 @@ if ($branch -eq 'master' -or $branch -eq 'main') {
 
 Write-Host "`n==> Branch: $branch" -ForegroundColor Cyan
 
-$dirty = (& git -C $RepoRoot status --porcelain)
-if ($dirty) {
-    Write-Host "FAIL: working tree has uncommitted changes -- commit them first." -ForegroundColor Red
-    Write-Host (($dirty | Out-String).Trim()) -ForegroundColor Yellow
+# Tracked changes must be committed. Untracked files are allowed only when they cannot
+# plausibly be an omitted build input; see Docs/Workflow.md for the narrow contract.
+$tracked = @(& git -C $RepoRoot status --porcelain | Where-Object { $_ -and $_ -notmatch '^\?\?' })
+if ($tracked.Count -gt 0) {
+    Write-Host "FAIL: working tree has uncommitted changes to tracked files -- commit them first." -ForegroundColor Red
+    Write-Host (($tracked | Out-String).Trim()) -ForegroundColor Yellow
     exit 1
+}
+
+# `git status` collapses an untracked directory to one entry, which would hide an untracked
+# .cpp/.h nested under an otherwise harmless directory. `ls-files --others` lists every file.
+$untracked = @(& git -C $RepoRoot ls-files --others --exclude-standard)
+$blockingUntracked = @($untracked | Where-Object {
+    $_ -match '\.(cpp|h)$' -or $_ -match '^(StratEngine|StratChessEvolved|StratChessTests)(/|\\)'
+})
+if ($blockingUntracked.Count -gt 0) {
+    Write-Host "FAIL: working tree has untracked files that could be omitted from the build or commit." -ForegroundColor Red
+    $blockingUntracked | ForEach-Object { Write-Host "      $_" -ForegroundColor Yellow }
+    Write-Host "      Add them if intentional, or remove/move them, then re-run." -ForegroundColor Yellow
+    exit 1
+}
+if ($untracked.Count -gt 0) {
+    Write-Host "WARNING: continuing with untracked non-build files:" -ForegroundColor Yellow
+    $untracked | ForEach-Object { Write-Host "      $_" -ForegroundColor DarkYellow }
 }
 
 # --- 1. Sync -------------------------------------------------------------------
