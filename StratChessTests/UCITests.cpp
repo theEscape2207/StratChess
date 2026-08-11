@@ -1334,6 +1334,33 @@ TEST_CASE("dispatch: returns false for quit and true for everything else", "[uci
     REQUIRE_FALSE(fix.dispatch("quit"));
 }
 
+TEST_CASE("dispatch: 'go' before any ucinewgame constructs the AI instead of crashing", "[uci]")
+{
+    // Unreachable through run(), which calls init_ai() before reading a command -- but reachable
+    // through dispatch(), and what used to happen was an access violation on the search thread
+    // that took the whole test binary down with no failing assertion to point at it.
+    //
+    // 'stop' inside the captured scope is what makes this deterministic: it joins the search
+    // thread, so everything the thread prints has been printed before the capture ends.
+    UciHandlerTestFixture fix;
+
+    // A default-constructed Board is EMPTY, and cmd_position is what fills it -- searching without
+    // this trips assert(mask != 0) in Board::GetFirstPiece, which aborts a Debug build and is
+    // invisible in Release. That is a different defect from the one under test here (#279).
+    //
+    // cmd_position does not construct ai_, so the guard is still what this exercises; the
+    // assertion below is what keeps that true if init_ai() ever moves.
+    capture_cout([&] { fix.dispatch("position startpos"); });
+    REQUIRE(fix.ai_identity() == nullptr);
+
+    const std::string out = capture_cout([&] {
+        fix.dispatch("go depth 1");
+        fix.dispatch("stop");
+    });
+
+    REQUIRE(out.find("bestmove") != std::string::npos);
+}
+
 TEST_CASE("command log: nothing is written unless it is enabled", "[uci]")
 {
     // The default a match run gets. There is no path to check for absence here

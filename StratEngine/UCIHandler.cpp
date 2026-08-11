@@ -331,6 +331,12 @@ void UciHandler::cmd_go(std::string_view line)
 {
     stop_and_join();
 
+    // Same guard, and the same reason, as cmd_ucinewgame(): run() constructs ai_ before the command
+    // loop starts, so this is normally already true. It can still be null when dispatch() is driven
+    // directly, as the unit tests do -- and there the search thread below would dereference it,
+    // which crashes the test binary with no diagnostic rather than failing an assertion.
+    if (!ai_) init_ai();
+
     GoParams p = parse_go(line);
     GameInfo info = board_.GetGameInfo();
     const bool white = (board_.GetCurrentColor() == WHITE);
