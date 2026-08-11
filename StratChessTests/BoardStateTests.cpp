@@ -63,9 +63,9 @@ TEST_CASE("Board - Castling rights stripped after king move; UndoMove restores t
 	      CastlingRights::WHITE_BOTH);
 }
 
-TEST_CASE("Board - Queenside castling right stripped after rook moves; kingside right intact; "
-          "UndoMove restores",
-          "[board_state]")
+TEST_CASE(
+    "Board - Queenside castling right stripped after rook moves; kingside right intact; UndoMove restores",
+    "[board_state]")
 {
 	Board board(FEN_FULL_RIGHTS);
 

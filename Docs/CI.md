@@ -121,6 +121,23 @@ is closed by the nightly `lint-tree` job rather than by header-to-TU mapping, wh
 `defines.h` or `StdAfx.h` would expand to a whole-tree run — the one shape capable of becoming the
 critical path.
 
+**Cost scales with the number of changed `.cpp` files, and clang-tidy is the whole of it.** Measured
+on the reformat PR itself (#286), the worst case this job can have — 90 changed sources, 46
+translation units:
+
+| Step | Time |
+|---|---|
+| Install LLVM from apt.llvm.org | 26 s |
+| Configure the lint database | 3 s |
+| clang-format over 90 files | < 1 s |
+| **clang-tidy over 46 TUs** | **10 min 02 s** |
+
+So the fixed overhead is ~30 s and everything else is ~13 s per translation unit. A normal PR
+touching a handful of files finishes well inside the ~260 s critical path; a tree-wide change makes
+this job the critical path instead. That is the right trade — the alternative is not analysing what a
+tree-wide change touched — but it is worth knowing before wondering why one PR's CI took twice as
+long. The pinned-LLVM install, often assumed to be the expensive part, is not.
+
 **CI is a gate.** `build-and-test-result` is a required check on `main`, so a red run blocks the
 merge. A SKIPPED leg reports success deliberately: a Docs-tier PR runs none of the build jobs, and a
 required check that never ran would block it forever.

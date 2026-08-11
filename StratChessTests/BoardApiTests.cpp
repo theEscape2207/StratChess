@@ -146,9 +146,9 @@ TEST_CASE("Board::ExtractFEN preserves fullmove number (34)", "[board_api]")
 
 // ── ResetSearchDepth (issue #53: currentPly_ overflow across long games) ──────
 
-TEST_CASE("Board::ResetSearchDepth zeroes undo-stack depth after each committed move, regardless "
-          "of total moves played",
-          "[board_api]")
+TEST_CASE(
+    "Board::ResetSearchDepth zeroes undo-stack depth after each committed move, regardless of total moves played",
+    "[board_api]")
 {
 	Board board(FEN_QUIET);
 
@@ -177,9 +177,9 @@ TEST_CASE("Board::ResetSearchDepth zeroes undo-stack depth after each committed 
 	}
 }
 
-TEST_CASE("Board::ResetSearchDepth preserves full search-recursion headroom after a game longer "
-          "than the old MAX_PLY ceiling",
-          "[board_api]")
+TEST_CASE(
+    "Board::ResetSearchDepth preserves full search-recursion headroom after a game longer than the old MAX_PLY ceiling",
+    "[board_api]")
 {
 	Board board(FEN_QUIET);
 

@@ -15,6 +15,11 @@ AllowShortFunctionsOnASingleLine: Empty
 # on it. Reordering includes is a semantic change, not formatting.
 SortIncludes:  Never
 IncludeBlocks: Preserve
+# LLVM's default (true) splits a long literal into adjacent literals to fit the
+# column limit. Concatenation preserves the value, but it makes Catch2 TEST_CASE
+# names and log messages no longer greppable as one string, which is the main
+# reason anyone searches for them.
+BreakStringLiterals: false
 # LLVM's default (None) would flatten the nested _MSC_VER branches in Compat.h,
 # StdAfx.h, SquareHelper.h and PieceHelper.h to column zero.
 IndentPPDirectives: AfterHash

@@ -227,9 +227,9 @@ TEST_CASE("Eval - EvalComplex awards rook-on-7th bonus: position scores positive
 	REQUIRE(score > 0);
 }
 
-TEST_CASE("Eval - EvalComplex mop-up: decisively-won pawnless ending scores higher with the losing "
-          "king cornered",
-          "[eval]")
+TEST_CASE(
+    "Eval - EvalComplex mop-up: decisively-won pawnless ending scores higher with the losing king cornered",
+    "[eval]")
 {
 	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
 
@@ -908,9 +908,9 @@ TEST_CASE("Eval - eval_rooks: term-level result matches the #126 open-file guard
 	REQUIRE(EvalComplexTestFixture::Rooks(knightOff, WHITE) == expected);
 }
 
-TEST_CASE("Eval - eval_rooks: term-level D5 own-pawn-behind result is exactly equal, not just "
-          "directionally so",
-          "[eval]")
+TEST_CASE(
+    "Eval - eval_rooks: term-level D5 own-pawn-behind result is exactly equal, not just directionally so",
+    "[eval]")
 {
 	// Same pair as the whole-position D5 test above, asserted directly on
 	// the extracted term rather than inferred through the full evaluation.
@@ -957,9 +957,9 @@ TEST_CASE("Eval - eval_pst: the king's two PST endpoints are the two king tables
 	REQUIRE(kingMg != kingEg);
 }
 
-TEST_CASE("Eval - eval_pst: the reported king contribution is its endpoints blended at the "
-          "position phase",
-          "[eval]")
+TEST_CASE(
+    "Eval - eval_pst: the reported king contribution is its endpoints blended at the position phase",
+    "[eval]")
 {
 	// Ties the term's value to its own endpoints and the position's own phase,
 	// so a future change to either the tables or the phase weights cannot

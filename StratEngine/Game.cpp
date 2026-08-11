@@ -107,15 +107,15 @@ void Game::Init()
 		Engine::Logger::EnsurePerfLogger("logs/SimplePerfStats.txt");
 		auto perf = Engine::Logger::GetPerfLogger();
 		if (perf) {
-			perf->info("No. of nodes  |  Ms used  |  Nodes pr. ms  |  Total nodes  |  Total time  "
-			           "|  Total nodes pr. ms");
-			perf->info("---------------------------------------------------------------------------"
-			           "--------------------------");
+			perf->info(
+			    "No. of nodes  |  Ms used  |  Nodes pr. ms  |  Total nodes  |  Total time  |  Total nodes pr. ms");
+			perf->info(
+			    "-----------------------------------------------------------------------------------------------------");
 		} else {
-			std::cout << "No. of nodes  |  Ms used  |  Nodes pr. ms  |  Total nodes  |  Total time "
-			             " |  Total nodes pr. ms\n";
-			std::cout << "-------------------------------------------------------------------------"
-			             "----------------------------\n";
+			std::cout
+			    << "No. of nodes  |  Ms used  |  Nodes pr. ms  |  Total nodes  |  Total time  |  Total nodes pr. ms\n";
+			std::cout
+			    << "-----------------------------------------------------------------------------------------------------\n";
 		}
 
 		// Existing startup code
