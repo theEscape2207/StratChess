@@ -653,11 +653,11 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 //
 //	Evaluate() :
 //	Description: Sums up the material value from both colors. Adds additional bonuses according to
-//heuristics 	Returns:	 The value of the player in turn subtracted the oppositions value
+// heuristics 	Returns:	 The value of the player in turn subtracted the oppositions value
 // FIXME:		 Evaluate does not know about Check Mate - this is strictly only an evaluation of
 // the current position
 //				 - this means that we miss the first (and best, maybe even only?) opportunity to do
-//check mate!
+// check mate!
 //
 int EvalComplex::Evaluate(const Board& board) const noexcept
 {
