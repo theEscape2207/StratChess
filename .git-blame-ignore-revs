@@ -1,0 +1,7 @@
+# Commits to skip in `git blame` because they only reformat.
+# GitHub honours this file automatically; locally it needs
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# which build.ps1 sets on first run.
+
+# Reformat: apply .clang-format across the tree (#175)
+5d0bd0a687bad1919415ba70839ecf76da63d3e4
