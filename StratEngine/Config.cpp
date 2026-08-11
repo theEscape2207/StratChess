@@ -31,11 +31,11 @@ using json = nlohmann::json;
 
 //***************************************
 // Method:      ReadBoardSetup
-// Description: 
+// Description:
 // FullName:    private Game::ReadBoardSetup const
-// Returns:     void - 
-// Parameter:   const json& config - 
-// Remark:      
+// Returns:     void -
+// Parameter:   const json& config -
+// Remark:
 //***************************************
 
 void Config::ReadBoardSetup(const json& config, Board& board) const
@@ -49,21 +49,18 @@ void Config::ReadBoardSetup(const json& config, Board& board) const
 	// if nothing is found - use default setup
 	const std::string setupType = game.value("setup", "default");
 	const std::string FENKey = "FEN";
-	if (iequals_n(setupType, FENKey, 3))
-	{
+	if (iequals_n(setupType, FENKey, 3)) {
 		spdlog::default_logger()->debug("FEN configuration");
 
 		const std::string FENstring = game.value(FENKey, "");
-		if (FENstring.empty())
-		{
-			spdlog::default_logger()->warn("FEN key found, but no string - selecting default board");
+		if (FENstring.empty()) {
+			spdlog::default_logger()->warn(
+			    "FEN key found, but no string - selecting default board");
 			board.SetDefaultBoard();
 			return;
 		}
 		ReadFEN(FENstring, board);
-	}
-	else
-	{
+	} else {
 		spdlog::default_logger()->debug("Default board selected");
 		board.SetDefaultBoard();
 	}
@@ -74,10 +71,9 @@ void Config::ReadFEN(const std::string& fen, Board& board) const
 	// A malformed FEN in game_settings.json falls back to the standard opening position, the same
 	// way an empty FEN value does in ReadBoardSetup — otherwise the game would start from whatever
 	// the board happened to hold, which for a fresh Board is empty.
-	if (!board.SetupFromFEN(fen))
-	{
+	if (!board.SetupFromFEN(fen)) {
 		spdlog::default_logger()->error(
-			"FEN in configuration could not be parsed - selecting default board: {}", fen);
+		    "FEN in configuration could not be parsed - selecting default board: {}", fen);
 		board.SetDefaultBoard();
 		return;
 	}
@@ -90,25 +86,26 @@ void Config::ReadFEN(const std::string& fen, Board& board) const
 
 //***************************************
 // Method:      CheckBoardSetupData
-// Description: 
+// Description:
 // FullName:    private Game::CheckBoardSetupData const
-// Returns:     bool - 
-// Parameter:   const std::string& strPiece - 
-// Parameter:   const std::string& regexStr - 
-// Remark:      
+// Returns:     bool -
+// Parameter:   const std::string& strPiece -
+// Parameter:   const std::string& regexStr -
+// Remark:
 //***************************************
-bool Config::CheckBoardSetupData(const std::string& /*strPiece*/, const std::string& /*regex*/) const
+bool Config::CheckBoardSetupData(const std::string& /*strPiece*/,
+                                 const std::string& /*regex*/) const
 {
-	//FIXME: Not yet ported away from Poco
+	// FIXME: Not yet ported away from Poco
 	/*const Poco::RegularExpression regPiece(regex);
 	if (!regPiece.match(strPiece))
 	{
-		std::stringstream str;
+	    std::stringstream str;
 
-		str << "Invalid board setup data found: Piece on square "
-			<< strPiece.c_str() << " with type: " << strPiece.c_str() << std::endl;
-		spdlog::default_logger()->warn(str.str());
-		return false;
+	    str << "Invalid board setup data found: Piece on square "
+	        << strPiece.c_str() << " with type: " << strPiece.c_str() << std::endl;
+	    spdlog::default_logger()->warn(str.str());
+	    return false;
 	}*/
 	return true;
 }
@@ -122,9 +119,8 @@ void Config::ReadConfigFile(const std::string& filename, Board& board)
 		// built-in defaults is the failure mode that looks like the settings
 		// file was read and ignored.
 		std::cerr << "Cannot open " << filename
-		          << " -- continuing with built-in defaults (both players type "
-		          << DEFAULT_EVAL << ", depth " << DEFAULT_DEPTH
-		          << ", standard opening position)\n";
+		          << " -- continuing with built-in defaults (both players type " << DEFAULT_EVAL
+		          << ", depth " << DEFAULT_DEPTH << ", standard opening position)\n";
 		return;
 	}
 
@@ -146,82 +142,80 @@ void Config::ReadConfigFile(const std::string& filename, Board& board)
 }
 
 namespace {
-	// Parses the "search_limits" block into a SearchLimits (all keys optional).
-	SearchLimits ParseSearchLimitsBlock(const json& sl)
-	{
-		SearchLimits limits;
-		if (sl.contains("depth"))
-			limits.depth = sl["depth"].get<int>();
-		if (sl.contains("movetime"))
-			limits.movetime = std::chrono::milliseconds(sl["movetime"].get<int64_t>());
-		if (sl.contains("infinite"))
-			limits.infinite = sl["infinite"].get<bool>();
-		if (sl.contains("clock")) {
-			const auto& c = sl["clock"];
-			limits.clock = ClockInfo{
-				std::chrono::milliseconds(c.value("remaining", 0)),
-				std::chrono::milliseconds(c.value("increment", 0)),
-				c.value("moves_to_go", 0)
-			};
+// Parses the "search_limits" block into a SearchLimits (all keys optional).
+SearchLimits ParseSearchLimitsBlock(const json& sl)
+{
+	SearchLimits limits;
+	if (sl.contains("depth"))
+		limits.depth = sl["depth"].get<int>();
+	if (sl.contains("movetime"))
+		limits.movetime = std::chrono::milliseconds(sl["movetime"].get<int64_t>());
+	if (sl.contains("infinite"))
+		limits.infinite = sl["infinite"].get<bool>();
+	if (sl.contains("clock")) {
+		const auto& c = sl["clock"];
+		limits.clock = ClockInfo{std::chrono::milliseconds(c.value("remaining", 0)),
+		                         std::chrono::milliseconds(c.value("increment", 0)),
+		                         c.value("moves_to_go", 0)};
+	}
+	return limits;
+}
+
+Config::PlayerConfig ParsePlayerConfig(const json& p, int defaultDepth, int defaultEval)
+{
+	Config::PlayerConfig cfg;
+	cfg.type = p.value("type", defaultEval);
+	cfg.eval = p.value("eval", 0);
+
+	if (p.contains("search_limits")) {
+		cfg.search_limits = ParseSearchLimitsBlock(p["search_limits"]);
+	} else {
+		// Legacy fallback: "max_depth"/"time_limit" map onto depth/movetime.
+		// "time_limit" always resolves to a real movetime (defaulting to
+		// 15000ms), matching the old unconditional
+		// p.value("time_limit", 15000u) — otherwise a "max_depth"-only
+		// legacy config would fall through resolve_limits() into the
+		// UCI-style 1h "depth only" budget instead of a real time cap.
+		bool usedLegacyKeys = false;
+		if (p.contains("max_depth")) {
+			cfg.search_limits.depth = p["max_depth"].get<int>();
+			usedLegacyKeys = true;
+		} else if (p.contains("depth")) {
+			cfg.search_limits.depth = p["depth"].get<int>();
 		}
-		return limits;
+		cfg.search_limits.movetime = std::chrono::milliseconds(p.value("time_limit", 15000u));
+		if (p.contains("time_limit"))
+			usedLegacyKeys = true;
+		if (usedLegacyKeys) {
+			spdlog::default_logger()->warn(
+			    "game_settings.json: player uses legacy \"max_depth\"/\"time_limit\" keys — "
+			    "migrate to the \"search_limits\" block");
+		}
+	}
+	cfg.depth = static_cast<unsigned>(cfg.search_limits.depth.value_or(defaultDepth));
+
+	// Parse SearchTuning if present (only meaningful for AI_PERPLEX)
+	if (p.contains("search_tuning")) {
+		const auto& st = p["search_tuning"];
+		Config::SearchTuningConfig t;
+		t.min_nodes_threshold = st.value("min_nodes_threshold", static_cast<int64_t>(1000));
+		t.min_completion_ratio = st.value("min_completion_ratio", 0.10);
+		t.min_pv_ratio = st.value("min_pv_ratio", 0.33);
+		t.score_draw_threshold = st.value("score_draw_threshold", 20);
+		t.delta_pruning_margin = st.value("delta_pruning_margin", 200);
+		t.aspiration_initial_delta = st.value("aspiration_initial_delta", 50);
+		t.aspiration_max_retries = st.value("aspiration_max_retries", 4);
+		t.aspiration_enabled = st.value("aspiration_enabled", true);
+		cfg.search_tuning = t;
 	}
 
-	Config::PlayerConfig ParsePlayerConfig(const json& p, int defaultDepth, int defaultEval)
-	{
-		Config::PlayerConfig cfg;
-		cfg.type = p.value("type", defaultEval);
-		cfg.eval = p.value("eval", 0);
-
-		if (p.contains("search_limits")) {
-			cfg.search_limits = ParseSearchLimitsBlock(p["search_limits"]);
-		} else {
-			// Legacy fallback: "max_depth"/"time_limit" map onto depth/movetime.
-			// "time_limit" always resolves to a real movetime (defaulting to
-			// 15000ms), matching the old unconditional
-			// p.value("time_limit", 15000u) — otherwise a "max_depth"-only
-			// legacy config would fall through resolve_limits() into the
-			// UCI-style 1h "depth only" budget instead of a real time cap.
-			bool usedLegacyKeys = false;
-			if (p.contains("max_depth")) {
-				cfg.search_limits.depth = p["max_depth"].get<int>();
-				usedLegacyKeys = true;
-			} else if (p.contains("depth")) {
-				cfg.search_limits.depth = p["depth"].get<int>();
-			}
-			cfg.search_limits.movetime = std::chrono::milliseconds(p.value("time_limit", 15000u));
-			if (p.contains("time_limit"))
-				usedLegacyKeys = true;
-			if (usedLegacyKeys) {
-				spdlog::default_logger()->warn(
-					"game_settings.json: player uses legacy \"max_depth\"/\"time_limit\" keys — "
-					"migrate to the \"search_limits\" block");
-			}
-		}
-		cfg.depth = static_cast<unsigned>(cfg.search_limits.depth.value_or(defaultDepth));
-
-		// Parse SearchTuning if present (only meaningful for AI_PERPLEX)
-		if (p.contains("search_tuning")) {
-			const auto& st = p["search_tuning"];
-			Config::SearchTuningConfig t;
-			t.min_nodes_threshold    = st.value("min_nodes_threshold",    static_cast<int64_t>(1000));
-			t.min_completion_ratio   = st.value("min_completion_ratio",   0.10);
-			t.min_pv_ratio           = st.value("min_pv_ratio",           0.33);
-			t.score_draw_threshold   = st.value("score_draw_threshold",   20);
-			t.delta_pruning_margin   = st.value("delta_pruning_margin",   200);
-			t.aspiration_initial_delta = st.value("aspiration_initial_delta", 50);
-			t.aspiration_max_retries   = st.value("aspiration_max_retries",   4);
-			t.aspiration_enabled       = st.value("aspiration_enabled",       true);
-			cfg.search_tuning = t;
-		}
-
-		// Parse Lazy SMP thread count if present (optional; default is
-		// PlayerAiBase's own default of 1 when the key is absent).
-		if (p.contains("threads")) {
-			cfg.threads = p["threads"].get<unsigned>();
-		}
-		return cfg;
+	// Parse Lazy SMP thread count if present (optional; default is
+	// PlayerAiBase's own default of 1 when the key is absent).
+	if (p.contains("threads")) {
+		cfg.threads = p["threads"].get<unsigned>();
 	}
+	return cfg;
+}
 } // anonymous namespace
 
 void Config::SetupPlayerConfig(const json& config)
@@ -236,8 +230,7 @@ void Config::SetupPlayerConfig(const json& config)
 
 Config::PlayerConfig Config::GetPlayerFromConfig(bool bWhite) const noexcept
 {
-	if (bWhite)
-	{
+	if (bWhite) {
 		return white_;
 	}
 	return black_;

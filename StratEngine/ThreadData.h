@@ -159,16 +159,15 @@ struct ThreadData {
 		// where to add it? size er 2 efter foerste traek ved ply 0
 		const size_t infoSize = info_seq.size();
 
-		if (ply + 1 == infoSize)		// foerste traek ved hver dybde
+		if (ply + 1 == infoSize) // foerste traek ved hver dybde
 			info_seq.emplace_back(info);
-		else if (infoSize == ply + 2)	// 2. traek ved hver dybde og resten
+		else if (infoSize == ply + 2) // 2. traek ved hver dybde og resten
 			info_seq[ply + 1] = info;
-		else if (infoSize > ply + 2)	// Skal der slettes nogen? Dont delete the first!
+		else if (infoSize > ply + 2) // Skal der slettes nogen? Dont delete the first!
 		{
 			info_seq.erase(info_seq.begin() + static_cast<int>(ply + 1), info_seq.end());
 			info_seq.emplace_back(info);
-		}
-		else
+		} else
 			assert(!"BoardInfo update - Somebody hasn't handled all cases");
 	}
 
@@ -197,12 +196,10 @@ struct ThreadData {
 	// Test for 50 moves rule and threefold repetition (thread-local board)
 	bool check_draws(const GameInfo& info, int ply) const noexcept
 	{
-		if (ply > 0 && board.is_repetition(ply))
-		{
+		if (ply > 0 && board.is_repetition(ply)) {
 			return true;
 		}
-		if (info.fiftyCount >= 50)
-		{
+		if (info.fiftyCount >= 50) {
 			assert(info.gameState == GameStates::DRAW_50_MOVES);
 			return true;
 		}
@@ -214,11 +211,9 @@ struct ThreadData {
 	// to the real game board after the search returns.
 	void update_game_state(size_t ply, GameStates newState)
 	{
-		if (ply == 0)
-		{
+		if (ply == 0) {
 			GameInfo& info = info_seq.at(ply);
-			if (newState != info.gameState)
-			{
+			if (newState != info.gameState) {
 				board.SetGameState(newState);
 				info.gameState = newState;
 			}

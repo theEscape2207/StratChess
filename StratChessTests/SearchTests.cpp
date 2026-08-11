@@ -28,12 +28,12 @@
 // by the fixture's own per-game-state pokes.
 static Move AnyLegalMove()
 {
-    Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    GameInfo info = board.GetGameInfo();
-    MoveList ml;
-    MoveGenerator::ComputeLegalMoves(board, info, ml);
-    REQUIRE(!ml.empty());
-    return ml[0];
+	Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+	GameInfo info = board.GetGameInfo();
+	MoveList ml;
+	MoveGenerator::ComputeLegalMoves(board, info, ml);
+	REQUIRE(!ml.empty());
+	return ml[0];
 }
 
 // ============================================================================
@@ -45,101 +45,135 @@ static Move AnyLegalMove()
 // Public type aliases re-export the private AIPerplex nested types so that
 // TEST_CASE functions outside the class can write e.g.
 //   AIPerlexTestFixture::RejectionReason::INCOMPLETE
-class AIPerlexTestFixture
-{
-public:
-    static constexpr uint64_t TT_MARKER_KEY = 0x7fff'ffff'ffff'ffffULL;
+class AIPerlexTestFixture {
+  public:
+	static constexpr uint64_t TT_MARKER_KEY = 0x7fff'ffff'ffff'ffffULL;
 
-    // Re-export private types for test use
-    using RejectionReason = AIPerplex::RejectionReason;
-    using Metrics         = AIPerplex::IterationMetrics;
-    using State           = AIPerplex::SearchState;
+	// Re-export private types for test use
+	using RejectionReason = AIPerplex::RejectionReason;
+	using Metrics = AIPerplex::IterationMetrics;
+	using State = AIPerplex::SearchState;
 
-    // Must be declared (and thus constructed/destroyed) before ai_owner —
-    // ai_owner holds a Board& reference into it that must outlive it.
-    Board board_;
-    std::unique_ptr<PlayerBase> ai_owner;
-    AIPerplex* ai = nullptr;
+	// Must be declared (and thus constructed/destroyed) before ai_owner —
+	// ai_owner holds a Board& reference into it that must outlive it.
+	Board board_;
+	std::unique_ptr<PlayerBase> ai_owner;
+	AIPerplex* ai = nullptr;
 
-    explicit AIPerlexTestFixture(const std::string& fen =
-        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
-        : board_(fen)
-    {
-        // depth=4 sets max_depth_ (the IDS hard cap used if GetMove() is ever called).
-        // None of the current [search] tests call GetMove(), so this is a don't-care.
-        ai_owner = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, 4, board_);
-        ai = static_cast<AIPerplex*>(ai_owner.get());
-        AIPerplex::SetVerboseLogging(false);
-        // Note: SetEvalEngine() is NOT called — the helper methods under test
-        // do not invoke Eval->Evaluate(), so this is safe.
-    }
+	explicit AIPerlexTestFixture(
+	    const std::string& fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+	    : board_(fen)
+	{
+		// depth=4 sets max_depth_ (the IDS hard cap used if GetMove() is ever called).
+		// None of the current [search] tests call GetMove(), so this is a don't-care.
+		ai_owner = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, 4, board_);
+		ai = static_cast<AIPerplex*>(ai_owner.get());
+		AIPerplex::SetVerboseLogging(false);
+		// Note: SetEvalEngine() is NOT called — the helper methods under test
+		// do not invoke Eval->Evaluate(), so this is safe.
+	}
 
-    RejectionReason assess(const Metrics& m, const State& s) const
-        { return ai->assess_iteration_quality(m, s); }
+	RejectionReason assess(const Metrics& m, const State& s) const
+	{
+		return ai->assess_iteration_quality(m, s);
+	}
 
-    bool stop_early(int depth, int score, int pv_len) const
-        { return ai->should_stop_early(depth, score, pv_len); }
+	bool stop_early(int depth, int score, int pv_len) const
+	{
+		return ai->should_stop_early(depth, score, pv_len);
+	}
 
-    // The PV written by the emergency path now lives in ai->td_.pv_table.
-    bool emergency(State& s) const
-        { return ai->handle_empty_move_emergency(ai->td_, s); }
+	// The PV written by the emergency path now lives in ai->td_.pv_table.
+	bool emergency(State& s) const
+	{
+		return ai->handle_empty_move_emergency(ai->td_, s);
+	}
 
-    bool try_null_move(int depth, int beta, int ply, bool is_pv_node, bool in_check) const
-        { return ai->should_try_null_move(ai->td_, depth, beta, ply, is_pv_node, in_check); }
+	bool try_null_move(int depth, int beta, int ply, bool is_pv_node, bool in_check) const
+	{
+		return ai->should_try_null_move(ai->td_, depth, beta, ply, is_pv_node, in_check);
+	}
 
-    // Pokes the consecutive-null-move guard array inside the private td_
-    // member. Needed because td_ is private on AIPerplex — only
-    // AIPerlexTestFixture (the declared friend) can reach it, not the free
-    // TEST_CASE functions.
-    void set_last_move_was_null(int ply, bool value) const
-        { ai->td_.last_move_was_null[ply] = value; }
+	// Pokes the consecutive-null-move guard array inside the private td_
+	// member. Needed because td_ is private on AIPerplex — only
+	// AIPerlexTestFixture (the declared friend) can reach it, not the free
+	// TEST_CASE functions.
+	void set_last_move_was_null(int ply, bool value) const
+	{
+		ai->td_.last_move_was_null[ply] = value;
+	}
 
-    // Reads the private threads_ member — set (clamped) via the public
-    // SetThreads() override; needs friend access because threads_ itself
-    // is private. Used by the [smp] clamp tests below.
-    unsigned threads() const { return ai->threads_; }
+	// Reads the private threads_ member — set (clamped) via the public
+	// SetThreads() override; needs friend access because threads_ itself
+	// is private. Used by the [smp] clamp tests below.
+	unsigned threads() const
+	{
+		return ai->threads_;
+	}
 
-    void store_tt_marker() const
-    {
-        ai->_tt->store(TT_MARKER_KEY, 123, 1, 0, Move::EmptyMove(),
-                       BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
-    }
+	void store_tt_marker() const
+	{
+		ai->_tt->store(TT_MARKER_KEY, 123, 1, 0, Move::EmptyMove(), BoundType::EXACT,
+		               NodeType::PV_NODE, SearchPhase::MAIN);
+	}
 
-    bool has_tt_marker() const
-    {
-        return ai->_tt->probe(TT_MARKER_KEY, 0).has_value();
-    }
+	bool has_tt_marker() const
+	{
+		return ai->_tt->probe(TT_MARKER_KEY, 0).has_value();
+	}
 
-    void start_new_game() const { ai->StartNewGame(); }
+	void start_new_game() const
+	{
+		ai->StartNewGame();
+	}
 
-    // --- Per-game state pokes, for proving StartNewGame() resets them ---
+	// --- Per-game state pokes, for proving StartNewGame() resets them ---
 
-    void poke_history() const { ai->td_.update_history(WHITE, AnyLegalMove(), 4); }
-    bool history_is_clear() const
-    {
-        for (const auto& side : ai->td_.history)
-            for (const auto& from : side)
-                for (int32_t score : from)
-                    if (score != 0) return false;
-        return true;
-    }
+	void poke_history() const
+	{
+		ai->td_.update_history(WHITE, AnyLegalMove(), 4);
+	}
+	bool history_is_clear() const
+	{
+		for (const auto& side : ai->td_.history)
+			for (const auto& from : side)
+				for (int32_t score : from)
+					if (score != 0)
+						return false;
+		return true;
+	}
 
-    void poke_killer(int ply) const { ai->td_.store_killer(ply, AnyLegalMove()); }
-    bool has_killer(int ply) const { return !ai->td_.killers[ply][0].is_null(); }
+	void poke_killer(int ply) const
+	{
+		ai->td_.store_killer(ply, AnyLegalMove());
+	}
+	bool has_killer(int ply) const
+	{
+		return !ai->td_.killers[ply][0].is_null();
+	}
 
-    void add_fake_helper() const { ai->helper_tds_.push_back(std::make_unique<ThreadData>()); }
-    size_t helper_count() const { return ai->helper_tds_.size(); }
+	void add_fake_helper() const
+	{
+		ai->helper_tds_.push_back(std::make_unique<ThreadData>());
+	}
+	size_t helper_count() const
+	{
+		return ai->helper_tds_.size();
+	}
 
-    void set_last_result_depth(int depth) const { ai->last_result_.depth_completed = depth; }
+	void set_last_result_depth(int depth) const
+	{
+		ai->last_result_.depth_completed = depth;
+	}
 
-    void search_depth_one()
-    {
-        ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
-        GameInfo info = board_.GetGameInfo();
-        REQUIRE(info.fullMoveCount == 1);
-        const Move move = ai->GetMove(info, SearchLimits::fixed_depth(1));
-        REQUIRE_FALSE(move.is_null());
-    }
+	void search_depth_one()
+	{
+		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
+		GameInfo info = board_.GetGameInfo();
+		REQUIRE(info.fullMoveCount == 1);
+		const Move move = ai->GetMove(info, SearchLimits::fixed_depth(1));
+		REQUIRE_FALSE(move.is_null());
+	}
 };
 
 // ============================================================================
@@ -148,77 +182,77 @@ public:
 
 TEST_CASE("Search - StartNewGame clears a populated AIPerplex TT", "[search][tt]")
 {
-    AIPerlexTestFixture fix;
-    fix.store_tt_marker();
-    REQUIRE(fix.has_tt_marker());
+	AIPerlexTestFixture fix;
+	fix.store_tt_marker();
+	REQUIRE(fix.has_tt_marker());
 
-    fix.start_new_game();
+	fix.start_new_game();
 
-    REQUIRE_FALSE(fix.has_tt_marker());
+	REQUIRE_FALSE(fix.has_tt_marker());
 }
 
 TEST_CASE("Search - fullmove-one position does not define TT lifetime", "[search][tt]")
 {
-    AIPerlexTestFixture fix;
-    fix.store_tt_marker();
+	AIPerlexTestFixture fix;
+	fix.store_tt_marker();
 
-    fix.search_depth_one();
+	fix.search_depth_one();
 
-    REQUIRE(fix.has_tt_marker());
+	REQUIRE(fix.has_tt_marker());
 }
 
 TEST_CASE("Search - StartNewGame resets td_ history and killers", "[search]")
 {
-    AIPerlexTestFixture fix;
-    fix.poke_history();
-    fix.poke_killer(0);
-    REQUIRE_FALSE(fix.history_is_clear());
-    REQUIRE(fix.has_killer(0));
+	AIPerlexTestFixture fix;
+	fix.poke_history();
+	fix.poke_killer(0);
+	REQUIRE_FALSE(fix.history_is_clear());
+	REQUIRE(fix.has_killer(0));
 
-    fix.start_new_game();
+	fix.start_new_game();
 
-    REQUIRE(fix.history_is_clear());
-    REQUIRE_FALSE(fix.has_killer(0));
+	REQUIRE(fix.history_is_clear());
+	REQUIRE_FALSE(fix.has_killer(0));
 }
 
 TEST_CASE("Search - StartNewGame clears helper_tds_", "[search][smp]")
 {
-    // Lazy SMP helpers are reused across searches within a game (GetMove()
-    // only grows helper_tds_, never shrinks it) — StartNewGame() must clear
-    // the vector so the next search reconstructs them fresh instead of
-    // carrying killers/history over from the previous game.
-    AIPerlexTestFixture fix;
-    fix.add_fake_helper();
-    REQUIRE(fix.helper_count() == 1);
+	// Lazy SMP helpers are reused across searches within a game (GetMove()
+	// only grows helper_tds_, never shrinks it) — StartNewGame() must clear
+	// the vector so the next search reconstructs them fresh instead of
+	// carrying killers/history over from the previous game.
+	AIPerlexTestFixture fix;
+	fix.add_fake_helper();
+	REQUIRE(fix.helper_count() == 1);
 
-    fix.start_new_game();
+	fix.start_new_game();
 
-    REQUIRE(fix.helper_count() == 0);
+	REQUIRE(fix.helper_count() == 0);
 }
 
 TEST_CASE("Search - StartNewGame does not reset tuning_", "[search]")
 {
-    // Regression: Game::SetPlayerParams() applies game_settings.json's
-    // search_tuning overrides and then unconditionally calls StartNewGame()
-    // on the same object -- if StartNewGame() reset tuning_, every configured
-    // override would be silently discarded before the first move is searched.
-    AIPerlexTestFixture fix;
-    fix.ai->tuning().null_move_enabled = false;
+	// Regression: Game::SetPlayerParams() applies game_settings.json's
+	// search_tuning overrides and then unconditionally calls StartNewGame()
+	// on the same object -- if StartNewGame() reset tuning_, every configured
+	// override would be silently discarded before the first move is searched.
+	AIPerlexTestFixture fix;
+	fix.ai->tuning().null_move_enabled = false;
 
-    fix.start_new_game();
+	fix.start_new_game();
 
-    REQUIRE(fix.ai->tuning().null_move_enabled == false);
+	REQUIRE(fix.ai->tuning().null_move_enabled == false);
 }
 
 TEST_CASE("Search - StartNewGame resets last_result_", "[search]")
 {
-    AIPerlexTestFixture fix;
-    fix.set_last_result_depth(5);
-    REQUIRE(fix.ai->GetLastResult().depth_completed == 5);
+	AIPerlexTestFixture fix;
+	fix.set_last_result_depth(5);
+	REQUIRE(fix.ai->GetLastResult().depth_completed == 5);
 
-    fix.start_new_game();
+	fix.start_new_game();
 
-    REQUIRE(fix.ai->GetLastResult().depth_completed == 0);
+	REQUIRE(fix.ai->GetLastResult().depth_completed == 0);
 }
 
 // ============================================================================
@@ -227,158 +261,152 @@ TEST_CASE("Search - StartNewGame resets last_result_", "[search]")
 
 TEST_CASE("Search - assess: null current_move yields INCOMPLETE", "[search]")
 {
-    AIPerlexTestFixture fix;
+	AIPerlexTestFixture fix;
 
-    AIPerlexTestFixture::Metrics m{};
-    m.depth            = 4;
-    m.current_move     = Move{};    // null — triggers CASE 1
-    m.current_score    = 100;
-    m.nodes_searched   = 5000;
-    m.pv_length        = 2;
-    m.interrupted      = true;
-    m.move_changed     = false;
-    m.score_delta      = 10;
-    m.completion_ratio = 0.5;
+	AIPerlexTestFixture::Metrics m{};
+	m.depth = 4;
+	m.current_move = Move{}; // null — triggers CASE 1
+	m.current_score = 100;
+	m.nodes_searched = 5000;
+	m.pv_length = 2;
+	m.interrupted = true;
+	m.move_changed = false;
+	m.score_delta = 10;
+	m.completion_ratio = 0.5;
 
-    AIPerlexTestFixture::State s{};
-    s.depth_completed          = 0;
-    s.best_score               = 100;
-    s.nodes_at_completed_depth = 0;
+	AIPerlexTestFixture::State s{};
+	s.depth_completed = 0;
+	s.best_score = 100;
+	s.nodes_at_completed_depth = 0;
 
-    REQUIRE(fix.assess(m, s) ==
-            AIPerlexTestFixture::RejectionReason::INCOMPLETE);
+	REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::INCOMPLETE);
 }
 
 TEST_CASE("Search - assess: too few nodes yields INCOMPLETE", "[search]")
 {
-    AIPerlexTestFixture fix;
-    const Move any = AnyLegalMove();
+	AIPerlexTestFixture fix;
+	const Move any = AnyLegalMove();
 
-    AIPerlexTestFixture::Metrics m{};
-    m.depth            = 4;
-    m.current_move     = any;
-    m.current_score    = 100;
-    m.nodes_searched   = 10;    // below min_nodes_threshold (default 1000) — CASE 1
-    m.pv_length        = 2;
-    m.interrupted      = true;
-    m.move_changed     = false;
-    m.score_delta      = 10;
-    m.completion_ratio = 0.5;
+	AIPerlexTestFixture::Metrics m{};
+	m.depth = 4;
+	m.current_move = any;
+	m.current_score = 100;
+	m.nodes_searched = 10; // below min_nodes_threshold (default 1000) — CASE 1
+	m.pv_length = 2;
+	m.interrupted = true;
+	m.move_changed = false;
+	m.score_delta = 10;
+	m.completion_ratio = 0.5;
 
-    AIPerlexTestFixture::State s{};
-    s.depth_completed          = 0;
-    s.best_score               = 100;
-    s.nodes_at_completed_depth = 0;
+	AIPerlexTestFixture::State s{};
+	s.depth_completed = 0;
+	s.best_score = 100;
+	s.nodes_at_completed_depth = 0;
 
-    REQUIRE(fix.assess(m, s) ==
-            AIPerlexTestFixture::RejectionReason::INCOMPLETE);
+	REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::INCOMPLETE);
 }
 
 TEST_CASE("Search - assess: low completion ratio yields TOO_FEW_NODES", "[search]")
 {
-    AIPerlexTestFixture fix;
-    const Move any = AnyLegalMove();
+	AIPerlexTestFixture fix;
+	const Move any = AnyLegalMove();
 
-    // Pass CASE 1 (move ok, nodes ok) but fail CASE 2 (completion ratio)
-    AIPerlexTestFixture::Metrics m{};
-    m.depth            = 4;
-    m.current_move     = any;
-    m.current_score    = 100;
-    m.nodes_searched   = 5000;
-    m.pv_length        = 2;
-    m.interrupted      = true;
-    m.move_changed     = false;
-    m.score_delta      = 10;
-    m.completion_ratio = 0.01;  // below min_completion_ratio (default 0.10)
+	// Pass CASE 1 (move ok, nodes ok) but fail CASE 2 (completion ratio)
+	AIPerlexTestFixture::Metrics m{};
+	m.depth = 4;
+	m.current_move = any;
+	m.current_score = 100;
+	m.nodes_searched = 5000;
+	m.pv_length = 2;
+	m.interrupted = true;
+	m.move_changed = false;
+	m.score_delta = 10;
+	m.completion_ratio = 0.01; // below min_completion_ratio (default 0.10)
 
-    AIPerlexTestFixture::State s{};
-    s.depth_completed          = 3;     // > 0: previous depth exists
-    s.best_score               = 100;
-    s.nodes_at_completed_depth = 5000;  // > 0: denominator present
+	AIPerlexTestFixture::State s{};
+	s.depth_completed = 3; // > 0: previous depth exists
+	s.best_score = 100;
+	s.nodes_at_completed_depth = 5000; // > 0: denominator present
 
-    REQUIRE(fix.assess(m, s) ==
-            AIPerlexTestFixture::RejectionReason::TOO_FEW_NODES);
+	REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::TOO_FEW_NODES);
 }
 
 TEST_CASE("Search - assess: pv too short yields SHORT_PV", "[search]")
 {
-    AIPerlexTestFixture fix;
-    const Move any = AnyLegalMove();
+	AIPerlexTestFixture fix;
+	const Move any = AnyLegalMove();
 
-    // depth=9, min_pv_ratio=0.33 → min required pv = max(1, int(9*0.33)) = max(1, 2) = 2
-    // pv_length=1 < 2 → SHORT_PV
-    AIPerlexTestFixture::Metrics m{};
-    m.depth            = 9;
-    m.current_move     = any;
-    m.current_score    = 100;
-    m.nodes_searched   = 5000;
-    m.pv_length        = 1;     // too short (< 2)
-    m.interrupted      = true;
-    m.move_changed     = false;
-    m.score_delta      = 10;
-    m.completion_ratio = 0.5;   // passes CASE 2
+	// depth=9, min_pv_ratio=0.33 → min required pv = max(1, int(9*0.33)) = max(1, 2) = 2
+	// pv_length=1 < 2 → SHORT_PV
+	AIPerlexTestFixture::Metrics m{};
+	m.depth = 9;
+	m.current_move = any;
+	m.current_score = 100;
+	m.nodes_searched = 5000;
+	m.pv_length = 1; // too short (< 2)
+	m.interrupted = true;
+	m.move_changed = false;
+	m.score_delta = 10;
+	m.completion_ratio = 0.5; // passes CASE 2
 
-    AIPerlexTestFixture::State s{};
-    s.depth_completed          = 8;
-    s.best_score               = 100;
-    s.nodes_at_completed_depth = 5000;
+	AIPerlexTestFixture::State s{};
+	s.depth_completed = 8;
+	s.best_score = 100;
+	s.nodes_at_completed_depth = 5000;
 
-    REQUIRE(fix.assess(m, s) ==
-            AIPerlexTestFixture::RejectionReason::SHORT_PV);
+	REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::SHORT_PV);
 }
 
 TEST_CASE("Search - assess: score drops to 0 from large value yields SCORE_DROP", "[search]")
 {
-    AIPerlexTestFixture fix;
-    const Move any = AnyLegalMove();
+	AIPerlexTestFixture fix;
+	const Move any = AnyLegalMove();
 
-    // current_score == 0, previous was 300 (abs > score_draw_threshold=20) → SCORE_DROP
-    AIPerlexTestFixture::Metrics m{};
-    m.depth            = 4;
-    m.current_move     = any;
-    m.current_score    = 0;     // suspicious zero
-    m.nodes_searched   = 5000;
-    m.pv_length        = 3;
-    m.interrupted      = true;
-    m.move_changed     = false;
-    m.score_delta      = -300;
-    m.completion_ratio = 0.5;
+	// current_score == 0, previous was 300 (abs > score_draw_threshold=20) → SCORE_DROP
+	AIPerlexTestFixture::Metrics m{};
+	m.depth = 4;
+	m.current_move = any;
+	m.current_score = 0; // suspicious zero
+	m.nodes_searched = 5000;
+	m.pv_length = 3;
+	m.interrupted = true;
+	m.move_changed = false;
+	m.score_delta = -300;
+	m.completion_ratio = 0.5;
 
-    AIPerlexTestFixture::State s{};
-    s.depth_completed          = 3;
-    s.best_score               = 300;   // abs > score_draw_threshold (20)
-    s.nodes_at_completed_depth = 5000;
+	AIPerlexTestFixture::State s{};
+	s.depth_completed = 3;
+	s.best_score = 300; // abs > score_draw_threshold (20)
+	s.nodes_at_completed_depth = 5000;
 
-    REQUIRE(fix.assess(m, s) ==
-            AIPerlexTestFixture::RejectionReason::SCORE_DROP);
+	REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::SCORE_DROP);
 }
 
 TEST_CASE("Search - assess: move changed on interrupt yields MOVE_CHANGED", "[search]")
 {
-    AIPerlexTestFixture fix;
-    const Move any = AnyLegalMove();
+	AIPerlexTestFixture fix;
+	const Move any = AnyLegalMove();
 
-    AIPerlexTestFixture::Metrics m{};
-    m.depth            = 4;
-    m.current_move     = any;
-    m.current_score    = 100;
-    m.nodes_searched   = 5000;
-    m.pv_length        = 3;
-    m.interrupted      = true;
-    m.move_changed     = true;  // different from last iteration
-    m.score_delta      = 10;
-    m.completion_ratio = 0.5;
+	AIPerlexTestFixture::Metrics m{};
+	m.depth = 4;
+	m.current_move = any;
+	m.current_score = 100;
+	m.nodes_searched = 5000;
+	m.pv_length = 3;
+	m.interrupted = true;
+	m.move_changed = true; // different from last iteration
+	m.score_delta = 10;
+	m.completion_ratio = 0.5;
 
-    AIPerlexTestFixture::State s{};
-    s.depth_completed          = 3;
-    s.best_score               = 90;
-    s.nodes_at_completed_depth = 5000;
-    s.last_iteration_move      = Move{};  // not read by assess_iteration_quality;
-                                          // CASE 5 fires on metrics.move_changed == true
-                                          // && state.depth_completed > 0
+	AIPerlexTestFixture::State s{};
+	s.depth_completed = 3;
+	s.best_score = 90;
+	s.nodes_at_completed_depth = 5000;
+	s.last_iteration_move = Move{}; // not read by assess_iteration_quality;
+	                                // CASE 5 fires on metrics.move_changed == true
+	                                // && state.depth_completed > 0
 
-    REQUIRE(fix.assess(m, s) ==
-            AIPerlexTestFixture::RejectionReason::MOVE_CHANGED);
+	REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::MOVE_CHANGED);
 }
 
 // ============================================================================
@@ -387,58 +415,59 @@ TEST_CASE("Search - assess: move changed on interrupt yields MOVE_CHANGED", "[se
 
 TEST_CASE("Search - should_stop_early: mate score returns true", "[search]")
 {
-    AIPerlexTestFixture fix;
-    // GameValues::Mate_Threshold == 29900; mate score is >= this
-    REQUIRE(fix.stop_early(5, GameValues::Mate_Threshold, 4) == true);
-    REQUIRE(fix.stop_early(5, GameValues::Mate_Threshold + 100, 4) == true);
-    REQUIRE(fix.stop_early(5, -(GameValues::Mate_Threshold), 4) == true);
+	AIPerlexTestFixture fix;
+	// GameValues::Mate_Threshold == 29900; mate score is >= this
+	REQUIRE(fix.stop_early(5, GameValues::Mate_Threshold, 4) == true);
+	REQUIRE(fix.stop_early(5, GameValues::Mate_Threshold + 100, 4) == true);
+	REQUIRE(fix.stop_early(5, -(GameValues::Mate_Threshold), 4) == true);
 }
 
 TEST_CASE("Search - should_stop_early: short PV relative to depth returns true", "[search]")
 {
-    AIPerlexTestFixture fix;
-    // Condition: depth > 1 && pv_length > 0 && pv_length < (depth - depth/2)
-    // depth=6, pv_length=2 → 2 < (6-3)=3 → true
-    REQUIRE(fix.stop_early(6, 100, 2) == true);
-    // depth=4, pv_length=1 → 1 < (4-2)=2 → true
-    REQUIRE(fix.stop_early(4, 100, 1) == true);
-    // depth=4, pv_length=2 → 2 == (4-2)=2, not < → false
-    REQUIRE(fix.stop_early(4, 100, 2) == false);
-    // depth=1: condition requires depth > 1 → false
-    REQUIRE(fix.stop_early(1, 100, 0) == false);
+	AIPerlexTestFixture fix;
+	// Condition: depth > 1 && pv_length > 0 && pv_length < (depth - depth/2)
+	// depth=6, pv_length=2 → 2 < (6-3)=3 → true
+	REQUIRE(fix.stop_early(6, 100, 2) == true);
+	// depth=4, pv_length=1 → 1 < (4-2)=2 → true
+	REQUIRE(fix.stop_early(4, 100, 1) == true);
+	// depth=4, pv_length=2 → 2 == (4-2)=2, not < → false
+	REQUIRE(fix.stop_early(4, 100, 2) == false);
+	// depth=1: condition requires depth > 1 → false
+	REQUIRE(fix.stop_early(1, 100, 0) == false);
 }
 
 // ============================================================================
 // handle_empty_move_emergency tests
 // ============================================================================
 
-TEST_CASE("Search - handle_empty_move_emergency: mate score returns false (no move needed)", "[search]")
+TEST_CASE("Search - handle_empty_move_emergency: mate score returns false (no move needed)",
+          "[search]")
 {
-    AIPerlexTestFixture fix;  // default ctor sets up the starting position
+	AIPerlexTestFixture fix; // default ctor sets up the starting position
 
-    AIPerlexTestFixture::State s{};
-    s.best_move  = Move{};  // null — no move found
-    s.best_score = GameValues::Mate_Threshold + 50;  // mate detected
+	AIPerlexTestFixture::State s{};
+	s.best_move = Move{};                           // null — no move found
+	s.best_score = GameValues::Mate_Threshold + 50; // mate detected
 
-    REQUIRE(fix.emergency(s) == false);  // game is over, no move needed
-    // best_move remains null — caller must not play
-    REQUIRE(s.best_move.is_null());
+	REQUIRE(fix.emergency(s) == false); // game is over, no move needed
+	// best_move remains null — caller must not play
+	REQUIRE(s.best_move.is_null());
 }
 
 TEST_CASE("Search - handle_empty_move_emergency: non-mate emergency sets a legal move", "[search]")
 {
-    // default ctor sets up a real, playable starting position so the
-    // emergency path finds legal moves
-    AIPerlexTestFixture fix;
+	// default ctor sets up a real, playable starting position so the
+	// emergency path finds legal moves
+	AIPerlexTestFixture fix;
 
-    AIPerlexTestFixture::State s{};
-    s.best_move  = Move{};  // null — emergency condition
-    s.best_score = 0;       // not a mate score
+	AIPerlexTestFixture::State s{};
+	s.best_move = Move{}; // null — emergency condition
+	s.best_score = 0;     // not a mate score
 
-    const bool result = fix.emergency(s);
+	const bool result = fix.emergency(s);
 
-    REQUIRE(result == true);                // emergency move was found
-    REQUIRE(!s.best_move.is_null());        // a move was set
+	REQUIRE(result == true);         // emergency move was found
+	REQUIRE(!s.best_move.is_null()); // a move was set
 }
 
 // ============================================================================
@@ -447,106 +476,108 @@ TEST_CASE("Search - handle_empty_move_emergency: non-mate emergency sets a legal
 
 TEST_CASE("Search - should_try_null_move: disabled returns false", "[search]")
 {
-    AIPerlexTestFixture fix;  // default ctor sets up the starting position
-    fix.ai->tuning().null_move_enabled = false;
+	AIPerlexTestFixture fix; // default ctor sets up the starting position
+	fix.ai->tuning().null_move_enabled = false;
 
-    REQUIRE(fix.try_null_move(4, 0, 1, false, false) == false);
+	REQUIRE(fix.try_null_move(4, 0, 1, false, false) == false);
 }
 
 TEST_CASE("Search - should_try_null_move: PV node returns false", "[search]")
 {
-    AIPerlexTestFixture fix;  // default ctor sets up the starting position
-    fix.ai->tuning().null_move_enabled = true;
+	AIPerlexTestFixture fix; // default ctor sets up the starting position
+	fix.ai->tuning().null_move_enabled = true;
 
-    REQUIRE(fix.try_null_move(4, 0, 1, /*is_pv_node=*/true, false) == false);
+	REQUIRE(fix.try_null_move(4, 0, 1, /*is_pv_node=*/true, false) == false);
 }
 
 TEST_CASE("Search - should_try_null_move: in check returns false", "[search]")
 {
-    AIPerlexTestFixture fix;  // default ctor sets up the starting position
-    fix.ai->tuning().null_move_enabled = true;
+	AIPerlexTestFixture fix; // default ctor sets up the starting position
+	fix.ai->tuning().null_move_enabled = true;
 
-    REQUIRE(fix.try_null_move(4, 0, 1, false, /*in_check=*/true) == false);
+	REQUIRE(fix.try_null_move(4, 0, 1, false, /*in_check=*/true) == false);
 }
 
 TEST_CASE("Search - should_try_null_move: depth below minimum returns false", "[search]")
 {
-    AIPerlexTestFixture fix;  // default ctor sets up the starting position
-    fix.ai->tuning().null_move_enabled  = true;
-    fix.ai->tuning().null_move_min_depth = 3;
+	AIPerlexTestFixture fix; // default ctor sets up the starting position
+	fix.ai->tuning().null_move_enabled = true;
+	fix.ai->tuning().null_move_min_depth = 3;
 
-    REQUIRE(fix.try_null_move(/*depth=*/2, 0, 1, false, false) == false);
+	REQUIRE(fix.try_null_move(/*depth=*/2, 0, 1, false, false) == false);
 }
 
 TEST_CASE("Search - should_try_null_move: mate-score beta returns false", "[search]")
 {
-    AIPerlexTestFixture fix;  // default ctor sets up the starting position
-    fix.ai->tuning().null_move_enabled = true;
+	AIPerlexTestFixture fix; // default ctor sets up the starting position
+	fix.ai->tuning().null_move_enabled = true;
 
-    REQUIRE(fix.try_null_move(4, GameValues::Mate_Threshold, 1, false, false) == false);
-    REQUIRE(fix.try_null_move(4, -GameValues::Mate_Threshold, 1, false, false) == false);
+	REQUIRE(fix.try_null_move(4, GameValues::Mate_Threshold, 1, false, false) == false);
+	REQUIRE(fix.try_null_move(4, -GameValues::Mate_Threshold, 1, false, false) == false);
 }
 
-TEST_CASE("Search - should_try_null_move: zugzwang (no non-pawn material) returns false", "[search]")
+TEST_CASE("Search - should_try_null_move: zugzwang (no non-pawn material) returns false",
+          "[search]")
 {
-    // White: king + pawn only. Black: king only. No non-pawn material for
-    // the side to move (white) -> zugzwang guard must refuse NMP.
-    AIPerlexTestFixture fix("8/8/8/3k4/8/3K4/3P4/8 w - - 0 1");
-    fix.ai->tuning().null_move_enabled = true;
+	// White: king + pawn only. Black: king only. No non-pawn material for
+	// the side to move (white) -> zugzwang guard must refuse NMP.
+	AIPerlexTestFixture fix("8/8/8/3k4/8/3K4/3P4/8 w - - 0 1");
+	fix.ai->tuning().null_move_enabled = true;
 
-    REQUIRE(fix.try_null_move(4, 0, 1, false, false) == false);
+	REQUIRE(fix.try_null_move(4, 0, 1, false, false) == false);
 }
 
-TEST_CASE("Search - should_try_null_move: single non-pawn piece returns false (issue #66)", "[search]")
+TEST_CASE("Search - should_try_null_move: single non-pawn piece returns false (issue #66)",
+          "[search]")
 {
-    // QFORK-001 (issue #66): KQ vs KR is won via domination/zugzwang — Black
-    // loses only because he must move. Letting the side with a lone rook
-    // "pass" makes the null search report that Black holds, hiding the win.
-    // The zugzwang guard must refuse NMP whenever the side to move has fewer
-    // than two non-pawn pieces.
-    AIPerlexTestFixture black_to_move("8/8/8/3r4/4k3/8/8/3QK3 b - - 0 1");
-    black_to_move.ai->tuning().null_move_enabled = true;
-    REQUIRE(black_to_move.try_null_move(4, 0, 1, false, false) == false);
+	// QFORK-001 (issue #66): KQ vs KR is won via domination/zugzwang — Black
+	// loses only because he must move. Letting the side with a lone rook
+	// "pass" makes the null search report that Black holds, hiding the win.
+	// The zugzwang guard must refuse NMP whenever the side to move has fewer
+	// than two non-pawn pieces.
+	AIPerlexTestFixture black_to_move("8/8/8/3r4/4k3/8/8/3QK3 b - - 0 1");
+	black_to_move.ai->tuning().null_move_enabled = true;
+	REQUIRE(black_to_move.try_null_move(4, 0, 1, false, false) == false);
 
-    // Same position, White to move: a lone queen is refused too.
-    AIPerlexTestFixture white_to_move("8/8/8/3r4/4k3/8/8/3QK3 w - - 0 1");
-    white_to_move.ai->tuning().null_move_enabled = true;
-    REQUIRE(white_to_move.try_null_move(4, 0, 1, false, false) == false);
+	// Same position, White to move: a lone queen is refused too.
+	AIPerlexTestFixture white_to_move("8/8/8/3r4/4k3/8/8/3QK3 w - - 0 1");
+	white_to_move.ai->tuning().null_move_enabled = true;
+	REQUIRE(white_to_move.try_null_move(4, 0, 1, false, false) == false);
 
-    // One knight + six pawns is still refused: the guard counts non-pawn
-    // pieces, deliberately ignoring pawns (material-count-based, not
-    // phase-based).
-    AIPerlexTestFixture knight_and_pawns("4k3/8/8/8/8/8/PPPPPPN1/4K3 w - - 0 1");
-    knight_and_pawns.ai->tuning().null_move_enabled = true;
-    REQUIRE(knight_and_pawns.try_null_move(4, 0, 1, false, false) == false);
+	// One knight + six pawns is still refused: the guard counts non-pawn
+	// pieces, deliberately ignoring pawns (material-count-based, not
+	// phase-based).
+	AIPerlexTestFixture knight_and_pawns("4k3/8/8/8/8/8/PPPPPPN1/4K3 w - - 0 1");
+	knight_and_pawns.ai->tuning().null_move_enabled = true;
+	REQUIRE(knight_and_pawns.try_null_move(4, 0, 1, false, false) == false);
 }
 
 TEST_CASE("Search - should_try_null_move: two non-pawn pieces returns true", "[search]")
 {
-    // Queen + knight for the side to move: above the single-piece zugzwang
-    // guard threshold, so NMP stays available.
-    AIPerlexTestFixture fix("8/8/8/3r4/4k3/8/8/2NQK3 w - - 0 1");
-    fix.ai->tuning().null_move_enabled = true;
+	// Queen + knight for the side to move: above the single-piece zugzwang
+	// guard threshold, so NMP stays available.
+	AIPerlexTestFixture fix("8/8/8/3r4/4k3/8/8/2NQK3 w - - 0 1");
+	fix.ai->tuning().null_move_enabled = true;
 
-    REQUIRE(fix.try_null_move(4, 0, 1, false, false) == true);
+	REQUIRE(fix.try_null_move(4, 0, 1, false, false) == true);
 }
 
 TEST_CASE("Search - should_try_null_move: consecutive null move returns false", "[search]")
 {
-    AIPerlexTestFixture fix;  // default ctor sets up the starting position
-    fix.ai->tuning().null_move_enabled = true;
-    fix.set_last_move_was_null(2, true);   // ply 2 was reached via a null move
+	AIPerlexTestFixture fix; // default ctor sets up the starting position
+	fix.ai->tuning().null_move_enabled = true;
+	fix.set_last_move_was_null(2, true); // ply 2 was reached via a null move
 
-    REQUIRE(fix.try_null_move(4, 0, /*ply=*/2, false, false) == false);
+	REQUIRE(fix.try_null_move(4, 0, /*ply=*/2, false, false) == false);
 }
 
 TEST_CASE("Search - should_try_null_move: otherwise-eligible position returns true", "[search]")
 {
-    AIPerlexTestFixture fix;  // default ctor sets up the starting position
-    fix.ai->tuning().null_move_enabled  = true;
-    fix.ai->tuning().null_move_min_depth = 3;
+	AIPerlexTestFixture fix; // default ctor sets up the starting position
+	fix.ai->tuning().null_move_enabled = true;
+	fix.ai->tuning().null_move_min_depth = 3;
 
-    REQUIRE(fix.try_null_move(4, 0, 1, false, false) == true);
+	REQUIRE(fix.try_null_move(4, 0, 1, false, false) == true);
 }
 
 // ============================================================================
@@ -556,27 +587,27 @@ TEST_CASE("Search - should_try_null_move: otherwise-eligible position returns tr
 
 TEST_CASE("SMP - SetThreads(0) clamps to 1", "[smp]")
 {
-    AIPerlexTestFixture fix;
-    fix.ai->SetThreads(0);
-    REQUIRE(fix.threads() == 1u);
+	AIPerlexTestFixture fix;
+	fix.ai->SetThreads(0);
+	REQUIRE(fix.threads() == 1u);
 }
 
 TEST_CASE("SMP - SetThreads(64) clamps to 32", "[smp]")
 {
-    AIPerlexTestFixture fix;
-    fix.ai->SetThreads(64);
-    REQUIRE(fix.threads() == 32u);
+	AIPerlexTestFixture fix;
+	fix.ai->SetThreads(64);
+	REQUIRE(fix.threads() == 32u);
 }
 
 TEST_CASE("SMP - SetThreads(4) passes through unchanged", "[smp]")
 {
-    AIPerlexTestFixture fix;
-    fix.ai->SetThreads(4);
-    REQUIRE(fix.threads() == 4u);
+	AIPerlexTestFixture fix;
+	fix.ai->SetThreads(4);
+	REQUIRE(fix.threads() == 4u);
 }
 
 TEST_CASE("SMP - SetThreads default is 1", "[smp]")
 {
-    AIPerlexTestFixture fix;
-    REQUIRE(fix.threads() == 1u);
+	AIPerlexTestFixture fix;
+	REQUIRE(fix.threads() == 1u);
 }

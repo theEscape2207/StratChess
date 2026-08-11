@@ -8,24 +8,24 @@
 class Move;
 class Board;
 
-class PlayerHuman final : public PlayerBase  
-{
-public:
-
+class PlayerHuman final : public PlayerBase {
+  public:
 	/* IPlayer implementation */
 	Move GetMove(GameInfo& info, const SearchLimits&) override;
-	const char* GetType() const	noexcept override		{	return "Human";		}
-	
-	std::string getDescription() const	override
-	{	
+	const char* GetType() const noexcept override
+	{
+		return "Human";
+	}
+
+	std::string getDescription() const override
+	{
 		std::stringstream sstream;
 		sstream << "\n\tPlayer type:\t" << GetType() << '\n';
 		return sstream.str();
 	}
 
 	/* End IPlayer implementation */
-	explicit PlayerHuman(Board& board) noexcept
-		: board_(board)
+	explicit PlayerHuman(Board& board) noexcept : board_(board)
 	{
 		isHuman_ = true;
 	}
@@ -36,7 +36,8 @@ public:
 	PlayerHuman& operator=(const PlayerHuman&) = delete;
 	PlayerHuman(PlayerHuman&&) = delete;
 	PlayerHuman& operator=(PlayerHuman&&) = delete;
-private:
+
+  private:
 	Board& board_;
 
 	/* Helpers */
@@ -47,14 +48,11 @@ private:
 
 	static MapPieces& GetPromoteMap()
 	{
-		static MapPieces promoteMap
-		{
-			// expects lower case input
-			{ 'q', QUEEN },
-			{ 'r', ROOK },
-			{ 'b', BISHOP },
-			{ 'n', KNIGHT }
-		};
+		static MapPieces promoteMap{// expects lower case input
+		                            {'q', QUEEN},
+		                            {'r', ROOK},
+		                            {'b', BISHOP},
+		                            {'n', KNIGHT}};
 		return promoteMap;
 	}
 
@@ -64,17 +62,18 @@ private:
 	static bool ParseInput(const std::string& input, Move& move, ePieceType& promotedType);
 
 	// We know a lot - ignoring the optional '-' and promote chars
-	static eSquare GetSquare(std::string::const_iterator& begin, const std::string::const_iterator& end)
+	static eSquare GetSquare(std::string::const_iterator& begin,
+	                         const std::string::const_iterator& end)
 	{
 		const int row = *begin++ - 'a';
-		const int col = ((8-((*begin)-'0')) << 3);
+		const int col = ((8 - ((*begin) - '0')) << 3);
 		// If its a '-' ignore it!
 		if (++begin != end && *begin == '-')
 			++begin;
-		return static_cast<eSquare>(col+row);
+		return static_cast<eSquare>(col + row);
 	}
 
 	// Fetches the list of Moves for the Player
 	// Returns true if any legal move is found, and false otherwise
-	static bool IsAnyLegalMoves(Board& board, const GameInfo& info, MoveList& moveList );
+	static bool IsAnyLegalMoves(Board& board, const GameInfo& info, MoveList& moveList);
 };

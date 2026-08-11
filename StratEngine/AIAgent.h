@@ -3,14 +3,14 @@
 
 class Move;
 
-class AIAgent final
-	: public PlayerAiIterBase
-{
-public:
+class AIAgent final : public PlayerAiIterBase {
+  public:
 	// Implementation/overrides of the IPlayer interface
 	Move GetMove(GameInfo& info, const SearchLimits& limits) override;
 	const char* GetType() const noexcept override
-	{	return "AI Agent";	}
+	{
+		return "AI Agent";
+	}
 
 	// Note: NOT to be called directly - only through Factory method
 	explicit AIAgent(Board& board, unsigned md) : PlayerAiIterBase(board, md) {}
@@ -21,6 +21,7 @@ public:
 	AIAgent& operator=(const AIAgent&) = delete;
 	AIAgent(AIAgent&&) = delete;
 	AIAgent& operator=(AIAgent&&) = delete;
-private:
-	int Search( size_t ply, int alpha, int beta, PVLine& pline );
+
+  private:
+	int Search(size_t ply, int alpha, int beta, PVLine& pline);
 };

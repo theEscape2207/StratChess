@@ -9,52 +9,51 @@
 #include "Utils/FENParser.h"
 #include <random>
 
-
 // Zobrist key tables (defined here, declared in Board.h)
 namespace zobrist {
-	std::array<std::array<uint64_t, NUM_SQUARES>, ALL_PIECETYPES> piece_keys;
-	std::array<uint64_t, 16> castling_keys;
-	std::array<uint64_t, NUM_SQUARES> ep_keys;
-	uint64_t side_key;
+std::array<std::array<uint64_t, NUM_SQUARES>, ALL_PIECETYPES> piece_keys;
+std::array<uint64_t, 16> castling_keys;
+std::array<uint64_t, NUM_SQUARES> ep_keys;
+uint64_t side_key;
 
-	void initialize() noexcept {
-		// Fills the global key tables exactly once (thread-safe magic static).
-		// Every Board instance must see identical keys, or zobrist hashes computed
-		// from different Board objects (e.g. thread-local boards under Lazy SMP)
-		// would disagree for the same position. This is the only lazy/runtime
-		// init in the attack/Zobrist table set; a C++11 function-local static
-		// initializer is guaranteed thread-safe by the standard, so concurrent
-		// Board construction from multiple helper threads is race-free. See
-		// Magic.h for the sliding-piece attack tables, which need no such
-		// guard at all — they are `inline constexpr`, fully resolved at
-		// compile time with no runtime initialization step whatsoever.
-		static const bool once = [] {
-			// non-deterministic seed for production use (uncomment for true randomness, but beware non-reproducible hashes across runs)
-			// std::random_device rd;
-			// std::mt19937 rng(rd());
-			// Deterministic seed for reproducibility
-			std::mt19937_64 rng(0x123456789ABCDEF0ULL);
+void initialize() noexcept
+{
+	// Fills the global key tables exactly once (thread-safe magic static).
+	// Every Board instance must see identical keys, or zobrist hashes computed
+	// from different Board objects (e.g. thread-local boards under Lazy SMP)
+	// would disagree for the same position. This is the only lazy/runtime
+	// init in the attack/Zobrist table set; a C++11 function-local static
+	// initializer is guaranteed thread-safe by the standard, so concurrent
+	// Board construction from multiple helper threads is race-free. See
+	// Magic.h for the sliding-piece attack tables, which need no such
+	// guard at all — they are `inline constexpr`, fully resolved at
+	// compile time with no runtime initialization step whatsoever.
+	static const bool once = [] {
+		// non-deterministic seed for production use (uncomment for true randomness, but beware
+		// non-reproducible hashes across runs) std::random_device rd; std::mt19937 rng(rd());
+		// Deterministic seed for reproducibility
+		std::mt19937_64 rng(0x123456789ABCDEF0ULL);
 
-			//std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
-			// Fills piece_keys with random 64-bit values for piece-placement Zobrist hashing.
-			for (int piece = ePiece::WHITE_PAWN; piece < ALL_PIECETYPES; ++piece) {
-				for (int square = 0; square < ALL_SQUARES; ++square) {
-					piece_keys[piece][square] = rng();
-				}
+		// std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
+		//  Fills piece_keys with random 64-bit values for piece-placement Zobrist hashing.
+		for (int piece = ePiece::WHITE_PAWN; piece < ALL_PIECETYPES; ++piece) {
+			for (int square = 0; square < ALL_SQUARES; ++square) {
+				piece_keys[piece][square] = rng();
 			}
+		}
 
-			for (size_t i = 0; i < 16; ++i)
-				castling_keys[i] = rng();
+		for (size_t i = 0; i < 16; ++i)
+			castling_keys[i] = rng();
 
-			for (size_t sq = 0; sq < NUM_SQUARES; ++sq)
-				ep_keys[sq] = rng();
+		for (size_t sq = 0; sq < NUM_SQUARES; ++sq)
+			ep_keys[sq] = rng();
 
-			side_key = rng();
-			return true;
-		}();
-		(void)once;
-	}
+		side_key = rng();
+		return true;
+	}();
+	(void)once;
 }
+} // namespace zobrist
 
 Board::Board()
 {
@@ -127,14 +126,15 @@ void Board::setup_board(const squareCol& col)
 	spdlog::default_logger()->debug("Custom board set up");
 }
 
-// The one rule so far: the side not to move may not be in check, since reaching such a position would
-// have required leaving a king en prise. Kings on adjacent squares fail it too, because GetAttackBoard
-// includes king attacks. Any further rule belongs here, and only needs the scratch board below.
+// The one rule so far: the side not to move may not be in check, since reaching such a position
+// would have required leaving a king en prise. Kings on adjacent squares fail it too, because
+// GetAttackBoard includes king attacks. Any further rule belongs here, and only needs the scratch
+// board below.
 bool Board::position_is_legal(const squareCol& pieces, eColor sideToMove)
 {
-	// A scratch board, because attack generation needs a populated one and the caller's board may not
-	// be modified until the position is known to be legal. Placement and side to move are all the
-	// query reads; castling rights and en-passant cannot make a king attacked.
+	// A scratch board, because attack generation needs a populated one and the caller's board may
+	// not be modified until the position is known to be legal. Placement and side to move are all
+	// the query reads; castling rights and en-passant cannot make a king attacked.
 	Board probe;
 	probe.setup_board(pieces);
 	probe.sideToMove_ = sideToMove;
@@ -157,22 +157,22 @@ bool Board::SetupFromFEN(const std::string& fen)
 	// Checked before anything is applied, so a rejected FEN leaves this board as it was.
 	if (!position_is_legal(pieces, state.sideToMove)) {
 		spdlog::default_logger()->error(
-			"FEN describes an illegal position (the side not to move is in check): {}", fen);
+		    "FEN describes an illegal position (the side not to move is in check): {}", fen);
 		return false;
 	}
 
 	setup_board(pieces);
 
-	sideToMove_              = state.sideToMove;
-	gameInfo_.epSquare       = state.epSquare;
+	sideToMove_ = state.sideToMove;
+	gameInfo_.epSquare = state.epSquare;
 	gameInfo_.castlingRights = state.castlingRights;
-	gameInfo_.fiftyCount     = state.halfMoveClock;
-	gameInfo_.fullMoveCount  = state.fullMoveCounter;
+	gameInfo_.fiftyCount = state.halfMoveClock;
+	gameInfo_.fullMoveCount = state.fullMoveCounter;
 
 	// Validate parsed metadata and adjust castling/EP if inconsistent with actual pieces
 	FENParser::ValidatePositionAgainstFENMetadata(*this, state);
 
-	gameInfo_.epSquare       = state.epSquare;
+	gameInfo_.epSquare = state.epSquare;
 	gameInfo_.castlingRights = state.castlingRights;
 
 	spdlog::default_logger()->debug("Board set up from FEN: {}", fen);
@@ -189,12 +189,11 @@ std::string Board::ExtractFEN() const
 
 		for (int file = 0; file < 8; ++file) {
 			eSquare square = static_cast<eSquare>((rank << 3) + file);
-			ePiece  piece  = GetPiece(square);
+			ePiece piece = GetPiece(square);
 
 			if (piece == ePiece::NO_PIECE) {
 				emptyCount++;
-			}
-			else {
+			} else {
 				if (emptyCount > 0) {
 					fen += std::to_string(emptyCount);
 					emptyCount = 0;
@@ -218,20 +217,22 @@ std::string Board::ExtractFEN() const
 	fen += ' ';
 	if (gameInfo_.castlingRights == CastlingRights::NONE) {
 		fen += '-';
-	}
-	else {
-		if (gameInfo_.castlingRights & CastlingRights::WHITE_KINGSIDE)  fen += 'K';
-		if (gameInfo_.castlingRights & CastlingRights::WHITE_QUEENSIDE) fen += 'Q';
-		if (gameInfo_.castlingRights & CastlingRights::BLACK_KINGSIDE)  fen += 'k';
-		if (gameInfo_.castlingRights & CastlingRights::BLACK_QUEENSIDE) fen += 'q';
+	} else {
+		if (gameInfo_.castlingRights & CastlingRights::WHITE_KINGSIDE)
+			fen += 'K';
+		if (gameInfo_.castlingRights & CastlingRights::WHITE_QUEENSIDE)
+			fen += 'Q';
+		if (gameInfo_.castlingRights & CastlingRights::BLACK_KINGSIDE)
+			fen += 'k';
+		if (gameInfo_.castlingRights & CastlingRights::BLACK_QUEENSIDE)
+			fen += 'q';
 	}
 
 	// 4. En passant target square
 	fen += ' ';
 	if (gameInfo_.epSquare == NO_SQUARE) {
 		fen += '-';
-	}
-	else {
+	} else {
 		int file = File(gameInfo_.epSquare);
 		int rank = 7 - Rank(gameInfo_.epSquare);
 		fen += static_cast<char>('a' + file);
@@ -254,14 +255,14 @@ void Board::SetDefaultBoard()
 	clear_board();
 
 	// Black pieces
-	add_piece_to_board(ePiece::BLACK_ROOK,   a8);
+	add_piece_to_board(ePiece::BLACK_ROOK, a8);
 	add_piece_to_board(ePiece::BLACK_KNIGHT, b8);
 	add_piece_to_board(ePiece::BLACK_BISHOP, c8);
-	add_piece_to_board(ePiece::BLACK_QUEEN,  d8);
-	add_piece_to_board(ePiece::BLACK_KING,   e8);
+	add_piece_to_board(ePiece::BLACK_QUEEN, d8);
+	add_piece_to_board(ePiece::BLACK_KING, e8);
 	add_piece_to_board(ePiece::BLACK_BISHOP, f8);
 	add_piece_to_board(ePiece::BLACK_KNIGHT, g8);
-	add_piece_to_board(ePiece::BLACK_ROOK,   h8);
+	add_piece_to_board(ePiece::BLACK_ROOK, h8);
 
 	for (int i = a7; i <= h7; i++)
 		add_piece_to_board(ePiece::BLACK_PAWN, static_cast<eSquare>(i));
@@ -270,14 +271,14 @@ void Board::SetDefaultBoard()
 	for (int i = a2; i <= h2; i++)
 		add_piece_to_board(ePiece::WHITE_PAWN, static_cast<eSquare>(i));
 
-	add_piece_to_board(ePiece::WHITE_ROOK,   a1);
+	add_piece_to_board(ePiece::WHITE_ROOK, a1);
 	add_piece_to_board(ePiece::WHITE_KNIGHT, b1);
 	add_piece_to_board(ePiece::WHITE_BISHOP, c1);
-	add_piece_to_board(ePiece::WHITE_QUEEN,  d1);
-	add_piece_to_board(ePiece::WHITE_KING,   e1);
+	add_piece_to_board(ePiece::WHITE_QUEEN, d1);
+	add_piece_to_board(ePiece::WHITE_KING, e1);
 	add_piece_to_board(ePiece::WHITE_BISHOP, f1);
 	add_piece_to_board(ePiece::WHITE_KNIGHT, g1);
-	add_piece_to_board(ePiece::WHITE_ROOK,   h1);
+	add_piece_to_board(ePiece::WHITE_ROOK, h1);
 
 	spdlog::default_logger()->debug("Default board set up");
 }
@@ -302,15 +303,14 @@ bool Board::DoMove(const Move& m)
 	assert(GetCurrentColor() == PieceHelper::Color(movPiece));
 
 	// Save state for UndoMove
-	gameInfoHistory_[currentPly_]        = gameInfo_;
+	gameInfoHistory_[currentPly_] = gameInfo_;
 	irreversiblePlyHistory_[currentPly_] = last_irreversible_ply_;
-	zobrist_history_[currentPly_]        = zobrist_hash_;
+	zobrist_history_[currentPly_] = zobrist_hash_;
 
 	const eSquare from = m.from();
-	const eSquare to   = m.to();
+	const eSquare to = m.to();
 
-	switch (MoveHelper::AsType(m))
-	{
+	switch (MoveHelper::AsType(m)) {
 	case MoveType::QUIET:
 		assert(!PieceHelper::IsActual(capturedPiece));
 		move_piece(movPiece, from, to);
@@ -346,54 +346,54 @@ bool Board::DoMove(const Move& m)
 	case MoveType::PROMOTION_BISHOP_CAPTURE:
 	case MoveType::PROMOTION_ROOK_CAPTURE:
 	case MoveType::PROMOTION_QUEEN_CAPTURE:
-		assert(!MoveHelper::IsPawnMove(movPiece));  // movPiece is the promoted piece type
+		assert(!MoveHelper::IsPawnMove(movPiece)); // movPiece is the promoted piece type
 		if (MoveHelper::IsCapture(m))
 			remove_piece_from_board(capturedPiece, to);
-		remove_piece_from_board(PieceHelper::AsPawn(movPiece), from);  // remove the pawn
-		add_piece_to_board(movPiece, to);                               // place promoted piece
+		remove_piece_from_board(PieceHelper::AsPawn(movPiece), from); // remove the pawn
+		add_piece_to_board(movPiece, to);                             // place promoted piece
 		break;
 
 	case MoveType::QUEEN_CASTLE:
 		assert(from == e1 || from == e8);
 		assert(PieceHelper::IsKing(GetPiece(from)));
 		assert(PieceHelper::IsKing(movPiece));
-		switch (to)
-		{
-		case c1:  // Long castling — move rook from a1|a8 to d1|d8
+		switch (to) {
+		case c1: // Long castling — move rook from a1|a8 to d1|d8
 		case c8:
 			assert(PieceHelper::IsNoPiece(GetPiece(from - 1)));
 			assert(PieceHelper::IsNoPiece(GetPiece(from - 2)));
 			assert(PieceHelper::IsNoPiece(GetPiece(from - 3)));
-			assert(PieceHelper::IsOfPiece(GetPiece(from - 4), PieceHelper::AsPiece(ROOK, sideToMove_)));
-			move_piece(PieceHelper::AsPiece(ROOK, sideToMove_),
-				SquareHelper::Calc(to, -2), SquareHelper::Calc(to, +1));
+			assert(PieceHelper::IsOfPiece(GetPiece(from - 4),
+			                              PieceHelper::AsPiece(ROOK, sideToMove_)));
+			move_piece(PieceHelper::AsPiece(ROOK, sideToMove_), SquareHelper::Calc(to, -2),
+			           SquareHelper::Calc(to, +1));
 			break;
 		default:
 			assert(!"Invalid castling 'to' square");
 			break;
 		}
-		move_piece(movPiece, from, to);  // move the king
+		move_piece(movPiece, from, to); // move the king
 		break;
 
 	case MoveType::KING_CASTLE:
 		assert(from == e1 || from == e8);
 		assert(PieceHelper::IsKing(GetPiece(from)));
 		assert(PieceHelper::IsKing(movPiece));
-		switch (to)
-		{
-		case g1:  // Short castling — move rook from h1|h8 to f1|f8
+		switch (to) {
+		case g1: // Short castling — move rook from h1|h8 to f1|f8
 		case g8:
 			assert(PieceHelper::IsNoPiece(GetPiece(from + 1)));
 			assert(PieceHelper::IsNoPiece(GetPiece(from + 2)));
-			assert(PieceHelper::IsOfPiece(GetPiece(from + 3), PieceHelper::AsPiece(ROOK, sideToMove_)));
-			move_piece(PieceHelper::AsPiece(ROOK, sideToMove_),
-				SquareHelper::Calc(to, +1), SquareHelper::Calc(to, -1));
+			assert(PieceHelper::IsOfPiece(GetPiece(from + 3),
+			                              PieceHelper::AsPiece(ROOK, sideToMove_)));
+			move_piece(PieceHelper::AsPiece(ROOK, sideToMove_), SquareHelper::Calc(to, +1),
+			           SquareHelper::Calc(to, -1));
 			break;
 		default:
 			assert(!"Invalid castling 'to' square");
 			break;
 		}
-		move_piece(movPiece, from, to);  // move the king
+		move_piece(movPiece, from, to); // move the king
 		break;
 
 	default:
@@ -412,17 +412,25 @@ bool Board::DoMove(const Move& m)
 	}
 
 	if (PieceHelper::IsOfType(movPiece, ROOK)) {
-		if      (from == a1) gameInfo_.castlingRights &= ~CastlingRights::WHITE_QUEENSIDE;
-		else if (from == h1) gameInfo_.castlingRights &= ~CastlingRights::WHITE_KINGSIDE;
-		else if (from == a8) gameInfo_.castlingRights &= ~CastlingRights::BLACK_QUEENSIDE;
-		else if (from == h8) gameInfo_.castlingRights &= ~CastlingRights::BLACK_KINGSIDE;
+		if (from == a1)
+			gameInfo_.castlingRights &= ~CastlingRights::WHITE_QUEENSIDE;
+		else if (from == h1)
+			gameInfo_.castlingRights &= ~CastlingRights::WHITE_KINGSIDE;
+		else if (from == a8)
+			gameInfo_.castlingRights &= ~CastlingRights::BLACK_QUEENSIDE;
+		else if (from == h8)
+			gameInfo_.castlingRights &= ~CastlingRights::BLACK_KINGSIDE;
 	}
 
 	// Capturing a rook on its starting square also revokes castling rights
-	if      (to == a1) gameInfo_.castlingRights &= ~CastlingRights::WHITE_QUEENSIDE;
-	else if (to == h1) gameInfo_.castlingRights &= ~CastlingRights::WHITE_KINGSIDE;
-	else if (to == a8) gameInfo_.castlingRights &= ~CastlingRights::BLACK_QUEENSIDE;
-	else if (to == h8) gameInfo_.castlingRights &= ~CastlingRights::BLACK_KINGSIDE;
+	if (to == a1)
+		gameInfo_.castlingRights &= ~CastlingRights::WHITE_QUEENSIDE;
+	else if (to == h1)
+		gameInfo_.castlingRights &= ~CastlingRights::WHITE_KINGSIDE;
+	else if (to == a8)
+		gameInfo_.castlingRights &= ~CastlingRights::BLACK_QUEENSIDE;
+	else if (to == h8)
+		gameInfo_.castlingRights &= ~CastlingRights::BLACK_KINGSIDE;
 
 	if (oldCastlingRights != gameInfo_.castlingRights)
 		update_zobrist_castling(oldCastlingRights, gameInfo_.castlingRights);
@@ -466,7 +474,8 @@ void Board::UndoMove(const Move& m)
 {
 	currentPly_--;
 
-	// The moving piece is currently on m.to() (placed there by DoMove); read before any state changes.
+	// The moving piece is currently on m.to() (placed there by DoMove); read before any state
+	// changes.
 	const ePiece movingPiece = GetPiece(m.to());
 	// capturedPiece is needed for IsValid and for restoring the board; read from history now.
 	const auto capturedPiece = capturedHistory_[currentPly_];
@@ -474,10 +483,10 @@ void Board::UndoMove(const Move& m)
 	assert(GetCurrentColor() != PieceHelper::Color(movingPiece));
 
 	// Restore saved state
-	gameInfo_                = gameInfoHistory_[currentPly_];
-	last_irreversible_ply_   = irreversiblePlyHistory_[currentPly_];
-	const auto from			 = m.from();
-	const auto to			 = m.to();
+	gameInfo_ = gameInfoHistory_[currentPly_];
+	last_irreversible_ply_ = irreversiblePlyHistory_[currentPly_];
+	const auto from = m.from();
+	const auto to = m.to();
 
 	sideToMove_ = (sideToMove_ == eColor::WHITE) ? eColor::BLACK : eColor::WHITE;
 
@@ -486,8 +495,7 @@ void Board::UndoMove(const Move& m)
 
 	pop_position();
 
-	switch (MoveHelper::AsType(m))
-	{
+	switch (MoveHelper::AsType(m)) {
 	case MoveType::QUIET:
 		assert(!PieceHelper::IsActual(capturedPiece));
 		move_piece(movingPiece, to, from);
@@ -526,53 +534,51 @@ void Board::UndoMove(const Move& m)
 	case MoveType::PROMOTION_ROOK_CAPTURE:
 	case MoveType::PROMOTION_QUEEN_CAPTURE:
 		assert(!MoveHelper::IsPawnMove(movingPiece));
-		remove_piece_from_board(movingPiece, to);    // remove promoted piece
+		remove_piece_from_board(movingPiece, to); // remove promoted piece
 		if (MoveHelper::IsCapture(m)) {
 			assert(PieceHelper::IsActual(capturedPiece));
-			add_piece_to_board(capturedPiece, to);      // restore captured piece
+			add_piece_to_board(capturedPiece, to); // restore captured piece
 		}
-		add_piece_to_board(PieceHelper::AsPawn(movingPiece), from);  // restore pawn
+		add_piece_to_board(PieceHelper::AsPawn(movingPiece), from); // restore pawn
 		break;
 
 	case MoveType::QUEEN_CASTLE:
 		assert(from == e1 || from == e8);
 		assert(PieceHelper::IsKing(GetPiece(to)));
 		assert(PieceHelper::IsKing(movingPiece));
-		switch (to)
-		{
-		case c1:  // Move rook back from d1|d8 to a1|a8
+		switch (to) {
+		case c1: // Move rook back from d1|d8 to a1|a8
 		case c8:
 			assert(PieceHelper::IsNoPiece(GetPiece(from)));
 			assert(PieceHelper::IsNoPiece(GetPiece(to - 1)));
 			assert(PieceHelper::IsNoPiece(GetPiece(to - 2)));
-			move_piece(PieceHelper::AsPiece(ROOK, sideToMove_),
-				SquareHelper::Calc(to, +1), SquareHelper::Calc(to, -2));
+			move_piece(PieceHelper::AsPiece(ROOK, sideToMove_), SquareHelper::Calc(to, +1),
+			           SquareHelper::Calc(to, -2));
 			break;
 		default:
 			assert(!"Invalid castling 'to' square");
 			break;
 		}
-		move_piece(movingPiece, to, from);  // restore king
+		move_piece(movingPiece, to, from); // restore king
 		break;
 
 	case MoveType::KING_CASTLE:
 		assert(from == e1 || from == e8);
 		assert(PieceHelper::IsKing(GetPiece(to)));
 		assert(PieceHelper::IsKing(movingPiece));
-		switch (to)
-		{
-		case g1:  // Move rook back from f1|f8 to h1|h8
+		switch (to) {
+		case g1: // Move rook back from f1|f8 to h1|h8
 		case g8:
 			assert(PieceHelper::IsNoPiece(GetPiece(from)));
 			assert(PieceHelper::IsNoPiece(GetPiece(to + 1)));
-			move_piece(PieceHelper::AsPiece(ROOK, sideToMove_),
-				SquareHelper::Calc(to, -1), SquareHelper::Calc(to, +1));
+			move_piece(PieceHelper::AsPiece(ROOK, sideToMove_), SquareHelper::Calc(to, -1),
+			           SquareHelper::Calc(to, +1));
 			break;
 		default:
 			assert(!"Invalid castling 'to' square");
 			break;
 		}
-		move_piece(movingPiece, to, from);  // restore king
+		move_piece(movingPiece, to, from); // restore king
 		break;
 
 	default:
@@ -596,14 +602,19 @@ ePiece Board::GetEffectiveMovPiece(const Move& m) const noexcept
 	const eColor color = PieceHelper::Color(onBoard);
 	switch (static_cast<MoveType>(m.flags())) {
 	case MoveType::PROMOTION_QUEEN:
-	case MoveType::PROMOTION_QUEEN_CAPTURE:  return PieceHelper::AsPiece(QUEEN,  color);
+	case MoveType::PROMOTION_QUEEN_CAPTURE:
+		return PieceHelper::AsPiece(QUEEN, color);
 	case MoveType::PROMOTION_ROOK:
-	case MoveType::PROMOTION_ROOK_CAPTURE:   return PieceHelper::AsPiece(ROOK,   color);
+	case MoveType::PROMOTION_ROOK_CAPTURE:
+		return PieceHelper::AsPiece(ROOK, color);
 	case MoveType::PROMOTION_BISHOP:
-	case MoveType::PROMOTION_BISHOP_CAPTURE: return PieceHelper::AsPiece(BISHOP, color);
+	case MoveType::PROMOTION_BISHOP_CAPTURE:
+		return PieceHelper::AsPiece(BISHOP, color);
 	case MoveType::PROMOTION_KNIGHT:
-	case MoveType::PROMOTION_KNIGHT_CAPTURE: return PieceHelper::AsPiece(KNIGHT, color);
-	default: return onBoard;
+	case MoveType::PROMOTION_KNIGHT_CAPTURE:
+		return PieceHelper::AsPiece(KNIGHT, color);
+	default:
+		return onBoard;
 	}
 }
 
@@ -662,9 +673,8 @@ void Board::update_threefold_rep(const Move& m, ePiece movPiece)
 {
 	if (MoveHelper::IsPawnMove(movPiece) || MoveHelper::IsCapture(m)) {
 		last_irreversible_ply_ = position_history_.size();
-		gameInfo_.fiftyCount   = 0;
-	}
-	else {
+		gameInfo_.fiftyCount = 0;
+	} else {
 		gameInfo_.fiftyCount++;
 	}
 }
@@ -769,16 +779,12 @@ bool Board::is_repetition(int ply) const
 	if (history_size < 4)
 		return false;
 
-	for (size_t i = history_size - 3;
-		i >= last_irreversible_ply_ && i < history_size;
-		i -= 2)
-	{
+	for (size_t i = history_size - 3; i >= last_irreversible_ply_ && i < history_size; i -= 2) {
 		if (position_history_[i] == zobrist_hash_) {
 			repetitions++;
 
 			// Entry at index i is from the current search iff i >= history at root
-			const bool both_in_search = (ply > 0) &&
-				(i >= history_size - static_cast<size_t>(ply));
+			const bool both_in_search = (ply > 0) && (i >= history_size - static_cast<size_t>(ply));
 
 			if (both_in_search && repetitions >= 1)
 				return true;
@@ -816,8 +822,10 @@ void Board::update_zobrist_castling(uint8_t old_rights, uint8_t new_rights) noex
 
 void Board::update_zobrist_ep(eSquare old_ep, eSquare new_ep) noexcept
 {
-	if (old_ep != NO_SQUARE) zobrist_hash_ ^= zobrist::ep_keys[old_ep];
-	if (new_ep != NO_SQUARE) zobrist_hash_ ^= zobrist::ep_keys[new_ep];
+	if (old_ep != NO_SQUARE)
+		zobrist_hash_ ^= zobrist::ep_keys[old_ep];
+	if (new_ep != NO_SQUARE)
+		zobrist_hash_ ^= zobrist::ep_keys[new_ep];
 }
 
 void Board::update_zobrist_side() noexcept

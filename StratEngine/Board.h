@@ -9,11 +9,10 @@
 #include <span>
 #include <vector>
 
-class Board final
-{
+class Board final {
 	friend std::ostream& operator<<(std::ostream&, const Board&);
 
-public:
+  public:
 	Board();
 
 	// Asserts in Debug builds if the FEN does not parse — there is no way to report failure from a
@@ -52,7 +51,10 @@ public:
 	// last permanently-committed position. Call after any move that will never
 	// be undone (a real game move, or a UCI position replay) — the four
 	// ply-history arrays only need to span search recursion, not game length.
-	size_t GetSearchDepth() const noexcept { return currentPly_; }
+	size_t GetSearchDepth() const noexcept
+	{
+		return currentPly_;
+	}
 	void ResetSearchDepth() noexcept;
 
 	// --- Position queries ---
@@ -86,7 +88,8 @@ public:
 
 	bool IsLegalMove(const Move& move)
 	{
-		if (!DoMove(move)) return false;
+		if (!DoMove(move))
+			return false;
 		UndoMove(move);
 		return true;
 	}
@@ -94,17 +97,38 @@ public:
 	bool is_repetition(int ply) const;
 
 	// --- State accessors ---
-	eColor GetCurrentColor() const noexcept { return sideToMove_; }
+	eColor GetCurrentColor() const noexcept
+	{
+		return sideToMove_;
+	}
 
-	ePiece GetPiece(eSquare square) const noexcept { return mailbox_.at(square); }
-	ePiece GetPiece(int square) const noexcept     { return mailbox_.at(static_cast<eSquare>(square)); }
+	ePiece GetPiece(eSquare square) const noexcept
+	{
+		return mailbox_.at(square);
+	}
+	ePiece GetPiece(int square) const noexcept
+	{
+		return mailbox_.at(static_cast<eSquare>(square));
+	}
 
-	int GetMaterialScore(eColor color) const noexcept { return material_score_[color]; }
+	int GetMaterialScore(eColor color) const noexcept
+	{
+		return material_score_[color];
+	}
 
-	GameInfo GetGameInfo() const noexcept          { return gameInfo_; }
-	void SetGameState(GameStates state) noexcept   { gameInfo_.gameState = state; }
+	GameInfo GetGameInfo() const noexcept
+	{
+		return gameInfo_;
+	}
+	void SetGameState(GameStates state) noexcept
+	{
+		gameInfo_.gameState = state;
+	}
 
-	uint64_t get_zobrist_hash() const noexcept     { return zobrist_hash_; }
+	uint64_t get_zobrist_hash() const noexcept
+	{
+		return zobrist_hash_;
+	}
 
 	std::span<const BITBOARD> GetBitBoards() const noexcept;
 
@@ -118,10 +142,10 @@ public:
 
 	// --- Test setup helpers (prefer SetupFromFEN for new tests) ---
 
-private:
+  private:
 	using TBitboards = std::array<BITBOARD, ALL_BITBOARDS>;
-	using sqPieces   = std::tuple<ePiece, eSquare>;
-	using squareCol  = std::vector<sqPieces>;
+	using sqPieces = std::tuple<ePiece, eSquare>;
+	using squareCol = std::vector<sqPieces>;
 
 	// --- Internal position setup ---
 	void setup_board(const squareCol&);
@@ -131,7 +155,7 @@ private:
 	// move. Evaluated on a scratch board, so it is safe to ask before committing anything: a caller
 	// that rejects a position must leave the current one untouched.
 	static bool position_is_legal(const squareCol& pieces, eColor sideToMove);
-	
+
 	// --- Low-level piece manipulation (bitboard + mailbox, no material update) ---
 	// Note: these also update zobrist_hash_ as a side-effect.
 	void add_piece(eSquare square, ePiece piece);
@@ -159,9 +183,10 @@ private:
 	{
 		if (!MoveHelper::IsCapture(move))
 			return ePiece::NO_PIECE;
-		return (move.flags() == MoveFlags::EP_CAPTURE) ? 
-			PieceHelper::OppositePawn(sideToMove_) : // EP capture is a pawn, but the captured piece is not on the destination square
-			mailbox_[move.to()];
+		return (move.flags() == MoveFlags::EP_CAPTURE) ? PieceHelper::OppositePawn(sideToMove_)
+		                                               : // EP capture is a pawn, but the captured
+		                                                 // piece is not on the destination square
+		           mailbox_[move.to()];
 	}
 
 	// --- Bitboard helpers ---
@@ -203,27 +228,27 @@ private:
 
 	// ---- Member variables ----
 
-	eColor   sideToMove_{ eColor::WHITE };
+	eColor sideToMove_{eColor::WHITE};
 	GameInfo gameInfo_;
 
 	std::array<ePiece, ALL_SQUARES> mailbox_{};
-	TBitboards bitboards_{ { 0 } };
+	TBitboards bitboards_{{0}};
 
-	size_t currentPly_{ 0 };
+	size_t currentPly_{0};
 
 	// Repetition tracking
 	std::vector<uint64_t> position_history_;
-	size_t last_irreversible_ply_{ 0 };
+	size_t last_irreversible_ply_{0};
 
-	int material_score_[NUM_COLORS]{ 0 };
+	int material_score_[NUM_COLORS]{0};
 
 	// Ply-indexed undo state (pre-allocated to MAX_PLY for O(1) unmake)
-	std::array<uint64_t, MAX_PLY>  zobrist_history_{ 0 };
-	std::array<size_t,   MAX_PLY>  irreversiblePlyHistory_{ 0 };
-	std::array<GameInfo, MAX_PLY>  gameInfoHistory_{};
-	std::array<ePiece,   MAX_PLY>  capturedHistory_{ ePiece::NO_PIECE };
+	std::array<uint64_t, MAX_PLY> zobrist_history_{0};
+	std::array<size_t, MAX_PLY> irreversiblePlyHistory_{0};
+	std::array<GameInfo, MAX_PLY> gameInfoHistory_{};
+	std::array<ePiece, MAX_PLY> capturedHistory_{ePiece::NO_PIECE};
 
-	uint64_t zobrist_hash_{ 0 };
+	uint64_t zobrist_hash_{0};
 };
 
 // ============================================================================
@@ -231,10 +256,10 @@ private:
 // Declared here, defined in Board.cpp.
 // ============================================================================
 namespace zobrist {
-	extern std::array<std::array<uint64_t, NUM_SQUARES>, ALL_PIECETYPES> piece_keys;
-	extern std::array<uint64_t, 16> castling_keys;
-	extern std::array<uint64_t, NUM_SQUARES> ep_keys;
-	extern uint64_t side_key;
+extern std::array<std::array<uint64_t, NUM_SQUARES>, ALL_PIECETYPES> piece_keys;
+extern std::array<uint64_t, 16> castling_keys;
+extern std::array<uint64_t, NUM_SQUARES> ep_keys;
+extern uint64_t side_key;
 
-	void initialize() noexcept;
-}
+void initialize() noexcept;
+} // namespace zobrist

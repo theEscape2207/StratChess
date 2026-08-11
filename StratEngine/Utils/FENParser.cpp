@@ -2,12 +2,12 @@
 #include "FENParser.h"
 #include "Board.h"
 #include "PieceHelper.h"
-#include "Formatters.h"		// For logging of pieces and squares
+#include "Formatters.h" // For logging of pieces and squares
 #include <regex>
 #include <optional>
 
 /*
-FEN specifies the piece placement, the active color, the castling availability, 
+FEN specifies the piece placement, the active color, the castling availability,
 the en passant target square, the halfmove clock, and the fullmove number.
 
 <FEN> ::=  <Piece Placement>
@@ -25,22 +25,24 @@ rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1
 */
 
 // Primary interface using FENGameState
-std::optional<std::string> FENParser::ParseFEN(
-	const std::string& fen, 
-	FENGameState& outState, 
-	std::vector<std::tuple<ePiece, eSquare>>& outPieces) noexcept
+std::optional<std::string>
+FENParser::ParseFEN(const std::string& fen, FENGameState& outState,
+                    std::vector<std::tuple<ePiece, eSquare>>& outPieces) noexcept
 {
 	// Trim input
 	std::string s = fen;
-	while (!s.empty() && isspace((unsigned char)s.front())) s.erase(s.begin());
-	while (!s.empty() && isspace((unsigned char)s.back())) s.pop_back();
+	while (!s.empty() && isspace((unsigned char)s.front()))
+		s.erase(s.begin());
+	while (!s.empty() && isspace((unsigned char)s.back()))
+		s.pop_back();
 
 	// Tokenize before the regex runs, so a line that is not a FEN at all gets the specific
 	// "too few fields" diagnostic rather than the regex's generic message.
 	std::istringstream iss(s);
 	std::vector<std::string> parts;
 	std::string token;
-	while (iss >> token) parts.emplace_back(token);
+	while (iss >> token)
+		parts.emplace_back(token);
 
 	if (parts.size() < 4) {
 		return std::string("too few fields in FEN");
@@ -57,9 +59,9 @@ std::optional<std::string> FENParser::ParseFEN(
 	// Trailing content after field 6 is rejected. Full EPD (operations such as `c9 "1-0";` after
 	// the four core fields) is deliberately out of scope: that belongs in #117's corpus loader,
 	// not in the FEN grammar.
-	static const std::regex fenRx(R"(^\s*([rnbqkpRNBQKP1-8]+\/){7}([rnbqkpRNBQKP1-8]+)\s+[wb]\s+(-|[KQkq]+)\s+(-|[a-h][36])(\s+\d+(\s+\d+)?)?\s*$)");
-	if (!std::regex_match(s, fenRx))
-	{
+	static const std::regex fenRx(
+	    R"(^\s*([rnbqkpRNBQKP1-8]+\/){7}([rnbqkpRNBQKP1-8]+)\s+[wb]\s+(-|[KQkq]+)\s+(-|[a-h][36])(\s+\d+(\s+\d+)?)?\s*$)");
+	if (!std::regex_match(s, fenRx)) {
 		return std::string("overall format invalid");
 	}
 
@@ -70,19 +72,22 @@ std::optional<std::string> FENParser::ParseFEN(
 		std::istringstream rankss(pieceField);
 		std::string rankToken;
 		std::vector<std::string> ranks;
-		while (std::getline(rankss, rankToken, '/')) ranks.emplace_back(rankToken);
+		while (std::getline(rankss, rankToken, '/'))
+			ranks.emplace_back(rankToken);
 		if (ranks.size() != 8) {
 			return std::string("expected 8 ranks in piece placement");
 		}
 		for (size_t i = 0; i < ranks.size(); ++i) {
 			int files = 0;
 			for (char c : ranks[i]) {
-				if (std::isdigit(static_cast<unsigned char>(c))) files += c - '0';
-				else files += 1;
+				if (std::isdigit(static_cast<unsigned char>(c)))
+					files += c - '0';
+				else
+					files += 1;
 			}
 			if (files != 8) {
-				return std::string("rank ") + std::to_string(i) + 
-					" expands to " + std::to_string(files) + " files (expected 8)";
+				return std::string("rank ") + std::to_string(i) + " expands to " +
+				       std::to_string(files) + " files (expected 8)";
 			}
 		}
 	}
@@ -100,16 +105,14 @@ std::optional<std::string> FENParser::ParseFEN(
 	outState.sideToMove = (side[0] == 'b') ? eColor::BLACK : eColor::WHITE;
 
 	// Castling rights
-	if (auto err = PopulateCastlingFlags(parts[2], outState.castlingRights))
-	{
+	if (auto err = PopulateCastlingFlags(parts[2], outState.castlingRights)) {
 		return err;
 	}
 
 	// En-passant - verifies format as well
 	const std::string& ep = parts[3];
 	if (ep != "-") {
-		if (ep.size() != 2 || ep[0] < 'a' || ep[0] > 'h' || 
-			(ep[1] != '3' && ep[1] != '6')) {
+		if (ep.size() != 2 || ep[0] < 'a' || ep[0] > 'h' || (ep[1] != '3' && ep[1] != '6')) {
 			return std::string("invalid en-passant square");
 		}
 		outState.epSquare = SquareFromString(ep);
@@ -125,8 +128,7 @@ std::optional<std::string> FENParser::ParseFEN(
 		try {
 			int half = std::stoi(parts[4]);
 			outState.halfMoveClock = std::max(0, half);
-		}
-		catch (...) {
+		} catch (...) {
 			return std::string("invalid halfmove clock");
 		}
 	}
@@ -138,8 +140,7 @@ std::optional<std::string> FENParser::ParseFEN(
 		try {
 			int full = std::stoi(parts[5]);
 			outState.fullMoveCounter = std::max(1, full);
-		}
-		catch (...) {
+		} catch (...) {
 			return std::string("invalid fullmove counter");
 		}
 	}
@@ -147,40 +148,37 @@ std::optional<std::string> FENParser::ParseFEN(
 	return std::nullopt; // success
 }
 
-
-std::optional<std::string> FENParser::PopulateCastlingFlags(
-	const std::string& castling, 
-	uint8_t& outRights) noexcept
+std::optional<std::string> FENParser::PopulateCastlingFlags(const std::string& castling,
+                                                            uint8_t& outRights) noexcept
 {
-	if (castling == "-")
-	{
+	if (castling == "-") {
 		outRights = CastlingRights::NONE;
 		return std::nullopt;
 	}
-	
-	static constexpr std::array<std::pair<char, uint8_t>, 4> charToRight = { {
-		{ 'K', CastlingRights::WHITE_KINGSIDE  },
-		{ 'Q', CastlingRights::WHITE_QUEENSIDE },
-		{ 'k', CastlingRights::BLACK_KINGSIDE  },
-		{ 'q', CastlingRights::BLACK_QUEENSIDE }
-	} };
-	
+
+	static constexpr std::array<std::pair<char, uint8_t>, 4> charToRight = {
+	    {{'K', CastlingRights::WHITE_KINGSIDE},
+	     {'Q', CastlingRights::WHITE_QUEENSIDE},
+	     {'k', CastlingRights::BLACK_KINGSIDE},
+	     {'q', CastlingRights::BLACK_QUEENSIDE}}};
+
 	uint8_t rights = CastlingRights::NONE;
-	
-	for (char c : castling)
-	{
+
+	for (char c : castling) {
 		uint8_t bit = CastlingRights::NONE;
-		for (const auto& [ch, flag] : charToRight)
-		{
-			if (c == ch) { bit = flag; break; }
+		for (const auto& [ch, flag] : charToRight) {
+			if (c == ch) {
+				bit = flag;
+				break;
+			}
 		}
-		
+
 		if (bit == CastlingRights::NONE)
 			return std::string("invalid castling character encountered");
-		
-		if (rights & bit)  // bit already set → duplicate
+
+		if (rights & bit) // bit already set → duplicate
 			return std::string("duplicate castling character encountered");
-		
+
 		rights |= bit;
 	}
 
@@ -188,9 +186,9 @@ std::optional<std::string> FENParser::PopulateCastlingFlags(
 	return std::nullopt;
 }
 
-std::optional<std::string> FENParser::ParsePiecePlacementField(
-	const std::string& placement, 
-	std::vector<std::tuple<ePiece, eSquare>>& outVec) noexcept
+std::optional<std::string>
+FENParser::ParsePiecePlacementField(const std::string& placement,
+                                    std::vector<std::tuple<ePiece, eSquare>>& outVec) noexcept
 {
 	outVec.clear();
 
@@ -199,7 +197,8 @@ std::optional<std::string> FENParser::ParsePiecePlacementField(
 	{
 		std::istringstream ss(placement);
 		std::string token;
-		while (std::getline(ss, token, '/')) ranks.emplace_back(token);
+		while (std::getline(ss, token, '/'))
+			ranks.emplace_back(token);
 	}
 
 	if (ranks.size() != 8) {
@@ -226,33 +225,60 @@ std::optional<std::string> FENParser::ParsePiecePlacementField(
 					return std::string("rank expands past 8 files");
 				}
 				fileIndex += n;
-			}
-			else {
+			} else {
 				if (fileIndex >= 8) {
 					return std::string("too many files in rank");
 				}
 
 				ePiece piece = ePiece::NO_PIECE;
 				switch (c) {
-				case 'K': piece = ePiece::WHITE_KING; ++whiteKingCount; break;
-				case 'Q': piece = ePiece::WHITE_QUEEN; break;
-				case 'R': piece = ePiece::WHITE_ROOK; break;
-				case 'B': piece = ePiece::WHITE_BISHOP; break;
-				case 'N': piece = ePiece::WHITE_KNIGHT; break;
-				case 'P': piece = ePiece::WHITE_PAWN; ++whitePawnCount; break;
-				case 'k': piece = ePiece::BLACK_KING; ++blackKingCount; break;
-				case 'q': piece = ePiece::BLACK_QUEEN; break;
-				case 'r': piece = ePiece::BLACK_ROOK; break;
-				case 'b': piece = ePiece::BLACK_BISHOP; break;
-				case 'n': piece = ePiece::BLACK_KNIGHT; break;
-				case 'p': piece = ePiece::BLACK_PAWN; ++blackPawnCount; break;
+				case 'K':
+					piece = ePiece::WHITE_KING;
+					++whiteKingCount;
+					break;
+				case 'Q':
+					piece = ePiece::WHITE_QUEEN;
+					break;
+				case 'R':
+					piece = ePiece::WHITE_ROOK;
+					break;
+				case 'B':
+					piece = ePiece::WHITE_BISHOP;
+					break;
+				case 'N':
+					piece = ePiece::WHITE_KNIGHT;
+					break;
+				case 'P':
+					piece = ePiece::WHITE_PAWN;
+					++whitePawnCount;
+					break;
+				case 'k':
+					piece = ePiece::BLACK_KING;
+					++blackKingCount;
+					break;
+				case 'q':
+					piece = ePiece::BLACK_QUEEN;
+					break;
+				case 'r':
+					piece = ePiece::BLACK_ROOK;
+					break;
+				case 'b':
+					piece = ePiece::BLACK_BISHOP;
+					break;
+				case 'n':
+					piece = ePiece::BLACK_KNIGHT;
+					break;
+				case 'p':
+					piece = ePiece::BLACK_PAWN;
+					++blackPawnCount;
+					break;
 				default:
 					return std::string("invalid piece character in placement");
 				}
 
 				// Pawns cannot appear on first or last rank
-				if ((piece == ePiece::WHITE_PAWN || piece == ePiece::BLACK_PAWN) && 
-					(rank == 0 || rank == 7)) {
+				if ((piece == ePiece::WHITE_PAWN || piece == ePiece::BLACK_PAWN) &&
+				    (rank == 0 || rank == 7)) {
 					return std::string("pawn on invalid rank");
 				}
 
@@ -285,10 +311,11 @@ std::optional<std::string> FENParser::ParsePiecePlacementField(
 
 eSquare FENParser::SquareFromString(const std::string& s) noexcept
 {
-	if (s.size() != 2) return NO_SQUARE;
+	if (s.size() != 2)
+		return NO_SQUARE;
 	const char file = s[0];
 	const char rankChar = s[1];
-	if (file < 'a' || file > 'h' || rankChar < '1' || rankChar > '8') 
+	if (file < 'a' || file > 'h' || rankChar < '1' || rankChar > '8')
 		return NO_SQUARE;
 	const unsigned int row = file - 'a';
 	const unsigned int col = ((8 - (rankChar - '0')) << 3);
@@ -296,18 +323,16 @@ eSquare FENParser::SquareFromString(const std::string& s) noexcept
 }
 
 // Validate against explicit Board reference
-bool FENParser::ValidatePositionAgainstFENMetadata(
-	const Board& board,
-	FENGameState& state) noexcept
+bool FENParser::ValidatePositionAgainstFENMetadata(const Board& board, FENGameState& state) noexcept
 {
 	// Each entry defines one side's castling validation requirements
-	static constexpr std::array<std::tuple<eSquare, eColor, uint8_t, uint8_t, eSquare, eSquare>, 2> sides = { {
-		{ e1, WHITE, CastlingRights::WHITE_KINGSIDE, CastlingRights::WHITE_QUEENSIDE, h1, a1 },
-		{ e8, BLACK, CastlingRights::BLACK_KINGSIDE, CastlingRights::BLACK_QUEENSIDE, h8, a8 }
-	} };
+	static constexpr std::array<std::tuple<eSquare, eColor, uint8_t, uint8_t, eSquare, eSquare>, 2>
+	    sides = {
+	        {{e1, WHITE, CastlingRights::WHITE_KINGSIDE, CastlingRights::WHITE_QUEENSIDE, h1, a1},
+	         {e8, BLACK, CastlingRights::BLACK_KINGSIDE, CastlingRights::BLACK_QUEENSIDE, h8, a8}}};
 
-	for (const auto& [kingSq, color, kingsideFlag, queensideFlag, rookKingSq, rookQueenSq] : sides)
-	{
+	for (const auto& [kingSq, color, kingsideFlag, queensideFlag, rookKingSq, rookQueenSq] :
+	     sides) {
 		uint8_t sideMask = kingsideFlag | queensideFlag;
 
 		// Skip if neither right is claimed for this side
@@ -316,38 +341,29 @@ bool FENParser::ValidatePositionAgainstFENMetadata(
 
 		// King must be present and correct color
 		if (!PieceHelper::IsKing(board.GetPiece(kingSq)) ||
-			PieceHelper::Color(board.GetPiece(kingSq)) != color)
-		{
-			spdlog::default_logger()->warn(
-				"Clearing {} castling rights: king not on {}", color, kingSq);
+		    PieceHelper::Color(board.GetPiece(kingSq)) != color) {
+			spdlog::default_logger()->warn("Clearing {} castling rights: king not on {}", color,
+			                               kingSq);
 			state.castlingRights &= ~sideMask;
 			continue;
 		}
 
 		// Check kingside rook
-		if (state.castlingRights & kingsideFlag)
-		{
-			if (!PieceHelper::IsOfPiece(
-				board.GetPiece(rookKingSq), 
-				PieceHelper::AsPiece(ROOK, color)))
-			{
+		if (state.castlingRights & kingsideFlag) {
+			if (!PieceHelper::IsOfPiece(board.GetPiece(rookKingSq),
+			                            PieceHelper::AsPiece(ROOK, color))) {
 				spdlog::default_logger()->warn(
-					"Clearing {} king-side castling right: rook not on {}", 
-					color, rookKingSq);
+				    "Clearing {} king-side castling right: rook not on {}", color, rookKingSq);
 				state.castlingRights &= ~kingsideFlag;
 			}
 		}
 
 		// Check queenside rook
-		if (state.castlingRights & queensideFlag)
-		{
-			if (!PieceHelper::IsOfPiece(
-				board.GetPiece(rookQueenSq), 
-				PieceHelper::AsPiece(ROOK, color)))
-			{
+		if (state.castlingRights & queensideFlag) {
+			if (!PieceHelper::IsOfPiece(board.GetPiece(rookQueenSq),
+			                            PieceHelper::AsPiece(ROOK, color))) {
 				spdlog::default_logger()->warn(
-					"Clearing {} queen-side castling right: rook not on {}", 
-					color, rookQueenSq);
+				    "Clearing {} queen-side castling right: rook not on {}", color, rookQueenSq);
 				state.castlingRights &= ~queensideFlag;
 			}
 		}
@@ -361,24 +377,21 @@ bool FENParser::ValidatePositionAgainstFENMetadata(
 
 		eColor lastMover = (state.sideToMove == WHITE) ? BLACK : WHITE;
 		int pawnRankIndex = -1;
-		
+
 		if (lastMover == WHITE) {
 			if (epRankIndex != 5) { // rank 3 (index 5)
 				spdlog::default_logger()->warn(
-					"Clearing en-passant: ep square rank inconsistent with side to move");
+				    "Clearing en-passant: ep square rank inconsistent with side to move");
 				state.epSquare = NO_SQUARE;
-			}
-			else {
+			} else {
 				pawnRankIndex = 4;
 			}
-		}
-		else { // lastMover == BLACK
+		} else {                    // lastMover == BLACK
 			if (epRankIndex != 2) { // rank 6 (index 2)
 				spdlog::default_logger()->warn(
-					"Clearing en-passant: ep square rank inconsistent with side to move");
+				    "Clearing en-passant: ep square rank inconsistent with side to move");
 				state.epSquare = NO_SQUARE;
-			}
-			else {
+			} else {
 				pawnRankIndex = 3;
 			}
 		}
@@ -388,7 +401,7 @@ bool FENParser::ValidatePositionAgainstFENMetadata(
 			const ePiece p = board.GetPiece(pawnSq);
 			if (!PieceHelper::IsPawn(p) || PieceHelper::Color(p) != lastMover) {
 				spdlog::default_logger()->warn(
-					"Clearing en-passant: no pawn of expected color on square for ep capture");
+				    "Clearing en-passant: no pawn of expected color on square for ep capture");
 				state.epSquare = NO_SQUARE;
 			}
 		}
@@ -398,9 +411,7 @@ bool FENParser::ValidatePositionAgainstFENMetadata(
 }
 
 // Conversion utilities
-void FENParser::ToGameConfig(
-	const FENGameState& state, 
-	Config::GameConfig& outConfig) noexcept
+void FENParser::ToGameConfig(const FENGameState& state, Config::GameConfig& outConfig) noexcept
 {
 	outConfig.sideToMove = state.sideToMove;
 	outConfig.epSquare = state.epSquare;
@@ -409,8 +420,7 @@ void FENParser::ToGameConfig(
 	outConfig.fullMoveCounter = state.fullMoveCounter;
 }
 
-FENParser::FENGameState FENParser::FromGameConfig(
-	const Config::GameConfig& config) noexcept
+FENParser::FENGameState FENParser::FromGameConfig(const Config::GameConfig& config) noexcept
 {
 	FENGameState state;
 	state.sideToMove = config.sideToMove;

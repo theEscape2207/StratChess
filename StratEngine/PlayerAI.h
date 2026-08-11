@@ -1,6 +1,6 @@
 #pragma once
 #include "PlayerBase.h"
-#include "Board.h"		// includes Move
+#include "Board.h" // includes Move
 #include "Eval.h"
 #include "SearchLimits.h"
 #include "Utils/TimeManager.h"
@@ -9,22 +9,30 @@
 #include <sstream>
 #include <chrono>
 
-class PlayerAiBase : public PlayerBase
-{
-public:
+class PlayerAiBase : public PlayerBase {
+  public:
 	~PlayerAiBase() = default;
 
-	std::string getDescription() const override {
+	std::string getDescription() const override
+	{
 		std::stringstream str;
-		str << "\n\tEngine type:\t" << GetType() <<
-			"\n\tDepth:\t\t" << max_depth_ <<
-			"\n\tEvaluation:\t" << Eval->GetType() << '\n';
+		str << "\n\tEngine type:\t" << GetType() << "\n\tDepth:\t\t" << max_depth_
+		    << "\n\tEvaluation:\t" << Eval->GetType() << '\n';
 		return str.str();
 	}
-	const char* GetType() const noexcept override { return "AI"; }
+	const char* GetType() const noexcept override
+	{
+		return "AI";
+	}
 
-	void SetMaxDepth(unsigned depth) noexcept { max_depth_ = depth; }
-	void SetTimeLimit(std::chrono::milliseconds ms) noexcept { time_limit_ = ms; }
+	void SetMaxDepth(unsigned depth) noexcept
+	{
+		max_depth_ = depth;
+	}
+	void SetTimeLimit(std::chrono::milliseconds ms) noexcept
+	{
+		time_limit_ = ms;
+	}
 
 	/// Configure the number of search threads (Lazy SMP). Base no-op — legacy
 	/// AIs (AIBasic/AIAgent/ABIterative) ignore this; AIPerplex overrides and
@@ -44,17 +52,16 @@ public:
 	PlayerAiBase(PlayerAiBase&&) = delete;
 	PlayerAiBase& operator=(PlayerAiBase&&) = delete;
 
-protected:
+  protected:
 	// Force use of factory by
 	// Preventing constructor, copy-construction & operator=
-	explicit PlayerAiBase(Board& board, unsigned md) :
-		m_Board(board),
-		max_depth_(md)
+	explicit PlayerAiBase(Board& board, unsigned md) : m_Board(board), max_depth_(md)
 	{
-		// Create the Evaluation strategy - Right now only possible to select two: SIMPLE and COMPLEX ;-)
+		// Create the Evaluation strategy - Right now only possible to select two: SIMPLE and
+		// COMPLEX ;-)
 	}
 
-	//virtual Move GetMove(GameInfo& info) = 0;
+	// virtual Move GetMove(GameInfo& info) = 0;
 
 	/* AI helper methods */
 
@@ -110,15 +117,15 @@ protected:
 
 	void SetEvalEngine(EvalManager::EvalTypes type) override
 	{
-		Eval = EvalManager::Create(type);	// create new eval
+		Eval = EvalManager::Create(type); // create new eval
 	}
 
 	// ************************************
 	// Method:      InitMoveVariables
-	// Description: 
+	// Description:
 	// FullName:    protected PlayerAiBase::InitMoveVariables
-	// Returns:     void - 
-	// Parameter:   const GameInfo& info - 
+	// Returns:     void -
+	// Parameter:   const GameInfo& info -
 	// Remark:      TODO: Burde flyttes ned som en template metode DoInit efter m_MoveSeq
 	//	  		    Non Iter edition
 	// ************************************
@@ -143,7 +150,7 @@ protected:
 
 	const GameInfo& GetLastBoardInfo(size_t currentPly) const
 	{
-		// This must always contain the last move, hence the one extra info 
+		// This must always contain the last move, hence the one extra info
 		return m_infoSeq.at(currentPly);
 	}
 
@@ -154,30 +161,28 @@ protected:
 	// Returns:     void
 	// Parameter:   unsigned int currentPly - the current depth
 	// Parameter:   const GameStates& newState - The new state
-	// Remark:      
+	// Remark:
 	// ************************************
 	void UpdateGameState(size_t currentPly, GameStates newState)
 	{
-		if (currentPly == 0)
-		{
+		if (currentPly == 0) {
 			GameInfo& info = m_infoSeq.at(currentPly);
-			if (newState != info.gameState)
-			{
-				m_Board.SetGameState(newState);	// AIPerplex uses board version
+			if (newState != info.gameState) {
+				m_Board.SetGameState(newState); // AIPerplex uses board version
 				info.gameState = newState;
 			}
 		}
 	}
 
-	// TODO: rename to FireStateChanged. Also, investigate if refreshInfo is needed for old AI structure
+	// TODO: rename to FireStateChanged. Also, investigate if refreshInfo is needed for old AI
+	// structure
 	void CheckGameOver(GameInfo& info, bool fromBoard = true)
 	{
 		if (fromBoard)
 			info = m_Board.GetGameInfo();
 		else
 			info = GetLastBoardInfo(0);
-		if (info.gameState != GameStates::STILL_PLAYING)
-		{
+		if (info.gameState != GameStates::STILL_PLAYING) {
 			EGameStateChanged.fire(this, info.gameState);
 		}
 	}
@@ -185,19 +190,17 @@ protected:
 	// ************************************
 	// Method:      IsFiftyMoves
 	// Description: Test for 50 moves rules
-	// FullName:    protected PlayerAiBase::IsFiftyMoves 
-	// Returns:     bool - true if 
-	// Parameter:   const BoardInfo& info - 
-	// Remark:		
+	// FullName:    protected PlayerAiBase::IsFiftyMoves
+	// Returns:     bool - true if
+	// Parameter:   const BoardInfo& info -
+	// Remark:
 	// ************************************
 	bool checkDraws(const GameInfo& info, int ply) const noexcept
 	{
-		if (ply > 0 && m_Board.is_repetition(ply))
-		{
+		if (ply > 0 && m_Board.is_repetition(ply)) {
 			return true;
 		}
-		if (info.fiftyCount >= 50)
-		{
+		if (info.fiftyCount >= 50) {
 			assert(info.gameState == GameStates::DRAW_50_MOVES);
 			return true;
 		}
@@ -205,18 +208,19 @@ protected:
 	}
 
 	/*
-	*	Protected Variables	- used by nested classes
-	*/
+	 *	Protected Variables	- used by nested classes
+	 */
 	// Debug: taeller hvor mange gange Alpha-Beta koeres igennem
-	size_t m_SearchCount{ 0 };
+	size_t m_SearchCount{0};
 	// Lokal reference til Board
 	Board& m_Board;
 
 	// The embedded Eval object for per-player evaluation
 	std::unique_ptr<EvalManager> Eval;
 
-	// Store GameInfo sequence for Do/Undo TODO: Board is now handling those for AIPerplex - other algos needs to be moved
-	std::vector< GameInfo > m_infoSeq;
+	// Store GameInfo sequence for Do/Undo TODO: Board is now handling those for AIPerplex - other
+	// algos needs to be moved
+	std::vector<GameInfo> m_infoSeq;
 
 	// Det bedste traek indtil nu
 	Move m_BestMove;
@@ -224,12 +228,12 @@ protected:
 	std::chrono::time_point<std::chrono::high_resolution_clock> _startingTime;
 
 	// Time control
-	std::atomic<bool> stop_search_{ false };
+	std::atomic<bool> stop_search_{false};
 	chess::TimeManager time_manager_;
 
 	// Search configuration — set from game_settings.json via SetMaxDepth / SetTimeLimit
-	unsigned max_depth_{ 15 };
-	std::chrono::milliseconds time_limit_{ std::chrono::seconds(15) };
+	unsigned max_depth_{15};
+	std::chrono::milliseconds time_limit_{std::chrono::seconds(15)};
 
 	// Set by ApplyLimits() every call: the resolved depth bound for the
 	// current GetMove() call (== max_depth_ unless SearchLimits overrides
@@ -237,19 +241,19 @@ protected:
 	// Search()/Quiescent() methods read the depth bound as a member use
 	// this instead of max_depth_, which stays the unmodified configured
 	// default. AIPerplex uses ApplyLimits()'s return value directly instead.
-	unsigned effective_depth_{ 0 };
+	unsigned effective_depth_{0};
 
-	//#ifdef PRINT_STATS
+	// #ifdef PRINT_STATS
 
-		// Samlet tid og antal nodes for begge computerspillere - TODO: Separer evt til per spiller. Human burde ogsaa have en klokke
-		// Lazy SMP: these statics are written only from StopTimerAndAdjustVars(),
-		// called once per GetMove() on the calling (single) thread, strictly
-		// after that call's search has returned — i.e. after any Lazy SMP
-		// helper threads for that move have already joined. No synchronization
-		// is needed as a result; if a future change makes StopTimerAndAdjustVars()
-		// run concurrently with an in-flight search, this invariant must be
-		// revisited.
+	// Samlet tid og antal nodes for begge computerspillere - TODO: Separer evt til per spiller.
+	// Human burde ogsaa have en klokke Lazy SMP: these statics are written only from
+	// StopTimerAndAdjustVars(), called once per GetMove() on the calling (single) thread, strictly
+	// after that call's search has returned — i.e. after any Lazy SMP
+	// helper threads for that move have already joined. No synchronization
+	// is needed as a result; if a future change makes StopTimerAndAdjustVars()
+	// run concurrently with an in-flight search, this invariant must be
+	// revisited.
 	static std::chrono::milliseconds m_TotalTime;
 	static size_t m_TotalCount;
-	//#endif	// PRINT_STATS
+	// #endif	// PRINT_STATS
 };

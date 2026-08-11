@@ -10,30 +10,28 @@
 
 // remove annoying level 4 warnings
 #if defined(_MSC_VER)
-#  pragma warning(push)
-#  pragma warning( disable : 4505 )	// Unreferenced local function has been removed
+#	pragma warning(push)
+#	pragma warning(disable : 4505) // Unreferenced local function has been removed
 #endif
 
-namespace SquareHelper
+namespace SquareHelper {
+/*
+ *	methods
+ */
+// Calculate the new eSquare position
+static inline constexpr eSquare Calc(eSquare square, int offset) noexcept
 {
-	/*
-	*	methods
-	*/
-	// Calculate the new eSquare position 
-	static inline constexpr eSquare Calc(eSquare square, int offset) noexcept
-	{
-		return static_cast<eSquare>(square + offset);
-	}
+	return static_cast<eSquare>(square + offset);
+}
 
-	// Helper for finding the previous row eSquare position depending on color
-	static inline constexpr eSquare PreviousRow(eSquare To, eColor color) noexcept
-	{
-		return (color == eColor::WHITE ?
-			SquareHelper::Calc(To, +ONE_ROW) :
-			SquareHelper::Calc(To, -ONE_ROW));
-	}
+// Helper for finding the previous row eSquare position depending on color
+static inline constexpr eSquare PreviousRow(eSquare To, eColor color) noexcept
+{
+	return (color == eColor::WHITE ? SquareHelper::Calc(To, +ONE_ROW)
+	                               : SquareHelper::Calc(To, -ONE_ROW));
+}
 } // namespace SquareHelper
 
 #if defined(_MSC_VER)
-#  pragma warning (pop)
+#	pragma warning(pop)
 #endif

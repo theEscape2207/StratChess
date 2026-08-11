@@ -2,7 +2,7 @@
 
 #include "Move.h"
 
-//std::ostream& operator<<(std::ostream& os, const PVTable& line)
+// std::ostream& operator<<(std::ostream& os, const PVTable& line)
 //{
 //	//assert(!line.empty());
 //
@@ -17,4 +17,4 @@
 //			os << ", ";					// Add seperation marker
 //	}
 //	return os;
-//}
+// }
