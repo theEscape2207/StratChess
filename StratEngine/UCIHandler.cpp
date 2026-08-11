@@ -524,7 +524,7 @@ void UciHandler::cmd_setoption(std::string_view line)
     const auto result = ai_->SetHash(n);
     if (!result.success) {
         send("info string hash " + std::to_string(result.requested_mb) +
-             " MiB allocation failed; previous table retained");
+             " MiB not applied; previous configuration retained");
         return;
     }
 

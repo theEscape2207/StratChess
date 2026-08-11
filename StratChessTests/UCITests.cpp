@@ -388,6 +388,16 @@ TEST_CASE("cmd_uci: advertises Hash exact-fit default and policy bounds", "[uci]
             != std::string::npos);
 }
 
+TEST_CASE("AIPerplex default Hash has the documented exact-fit geometry", "[uci][tt]")
+{
+    UciHandlerTestFixture fix;
+    fix.ucinewgame();
+
+    REQUIRE(fix.ai_hash_requested_mb() == AIPerplex::DEFAULT_HASH_MB);
+    REQUIRE(fix.ai_hash_bucket_count() == 2097152u);
+    REQUIRE(fix.ai_hash_memory_mb() == 192);
+}
+
 TEST_CASE("cmd_setoption: Hash replaces and reports the live table, then survives ucinewgame", "[uci][tt]")
 {
     UciHandlerTestFixture fix;
