@@ -92,6 +92,7 @@ ReferenceAlignment: Pointer
 AllowShortFunctionsOnASingleLine: Empty   # LLVM default All would collapse PieceHelper.h's accessors
 SortIncludes:  Never          # see below
 IncludeBlocks: Preserve
+IndentPPDirectives: AfterHash # LLVM default None flattens the nested _MSC_VER branches
 BreakBeforeBraces: Custom
 BraceWrapping:
   AfterFunction:         true
@@ -135,9 +136,31 @@ spaces — otherwise the layout silently degrades under any tab width but 4.
 affordable and 100 is the stated preference. If tuning shows 100 forces materially worse wrapping in
 the wide PST and bitboard tables, fall back to 120 and record why.
 
-**Churn is re-measured against this complete config**, not against the nearest stock style. The
-earlier "WebKit rewrites ~77% of sampled lines" figure established only that no preset fits; it is
-not an estimate of this configuration's diff.
+`IndentPPDirectives: AfterHash` is a late addition, and only 17 lines in 4 files depend on it —
+`StdAfx.h`, `Compat.h`, `SquareHelper.h`, `PieceHelper.h`. LLVM's default (`None`) flattens
+`#  define STRAT_FORCEINLINE ...` to column zero, erasing the visual nesting of exactly the
+`_MSC_VER`/`_WIN32` compat branches that are hardest to read. `AfterHash` preserves the nesting and
+renders it as a tab, consistent with `UseTab: ForIndentation`. Cost is 3 lines of extra churn.
+
+**Measured churn against this complete config** (clang-format 22.1.8, all 93 non-archived sources):
+
+| | |
+|---|---:|
+| Files needing reformat | **90 / 93** |
+| Lines added / removed | +9,746 / −9,503 |
+| Share of the tree rewritten | **48.1%** |
+| Files with a changed include sequence | **0** |
+| Files touched under `Archived/` | **0** |
+
+This supersedes the earlier "WebKit rewrites ~77% of sampled lines" figure, which established only
+that no preset fits and was never an estimate of this configuration's diff. Roughly half the tree
+moves — consistent with D1's finding that the indent character alone is split near 50/50, and the
+reason the reformat is one blame-ignored commit rather than 90 unrelated diffs.
+
+The include result is the one that matters for safety: **no file's sequence of included headers
+changes.** 36 include *lines* do appear in the diff, but every one is trailing-comment realignment
+(tab-aligned comments becoming space-aligned) or the `Compat.h` preprocessor indent above — never a
+reordering. `SortIncludes: Never` does what D2 needs it to.
 
 ### D3: Enable bugprone + performance + clang-analyzer; exclude two checks
 
@@ -182,16 +205,25 @@ What remains is **97 findings**, small enough to fix in a single follow-up PR:
 | `bugprone-branch-clone` | 3 | 3 |
 | `performance-move-const-arg` | 2 | 2 |
 | **`bugprone-exception-escape`** | **2** | **15** |
+| **`bugprone-reserved-identifier`** | **0** | **3** |
 | `performance-unnecessary-value-param` | 1 | 1 |
 | `bugprone-random-generator-seed` (`Board.cpp:36`) | 1 | 1 |
 | `bugprone-inc-dec-in-conditions` | 1 | 1 |
 | **Total** | **97** | **113** |
 
-Every check agrees across platforms except `bugprone-exception-escape`, which accounts for the entire
-16-finding gap: Windows reports 15 (`Logger.cpp`, `BitBoardHelper.h`, `IPlayer.h`, `AIPerplex.cpp`,
-`main`, two test destructors), Linux only 2, both in `FENParser.cpp`. The MSVC standard library's
-different `noexcept` surface is the plausible cause. This matters for the follow-up fix PR: **13 of
-those findings will be invisible to the Linux gate but real on the shipping clang-cl build.**
+Every check agrees across platforms except two, which together account for the whole 16-finding gap:
+
+- **`bugprone-exception-escape`, 15 Windows / 2 Linux (−13).** Windows reports `Logger.cpp`,
+  `BitBoardHelper.h`, `IPlayer.h`, `AIPerplex.cpp`, `main` and two test destructors; Linux only two
+  sites in `FENParser.cpp`. The MSVC standard library's different `noexcept` surface is the plausible
+  cause.
+- **`bugprone-reserved-identifier`, 3 Windows / 0 Linux (−3).** These are `_WIN32_WINNT` and
+  neighbours in `StdAfx.h`, inside `_WIN32` guards that Linux never compiles. Unlike the above this
+  one is *correctly* absent: the code does not exist in a Linux build.
+
+This matters for the follow-up fix PR: **16 findings are invisible to the Linux gate, and 13 of them
+are real on the shipping clang-cl build.** A fix PR validated only against CI would leave those
+untouched and believe itself complete.
 
 By location the enabled set is 73 in `StratEngine`, 20 in `StratChessTests`, 2 in
 `StratChessEvolved`, and 2 in vendored Catch2 — see the `_deps` note below.
@@ -386,10 +418,11 @@ it without running the build.
    mode is excluded). Totals: 4,684 unique findings broad / **97 in the enabled set**, against 4,734
    / 113 on Windows. D3 now carries the Linux numbers.
 
-   **One residual difference is carried forward rather than closed**: `bugprone-exception-escape`
-   reports 15 on Windows and 2 on Linux. The Linux gate cannot see the other 13, which are real on
-   the shipping clang-cl build. Recorded in D3; it is a caveat for the follow-up fix PR, not a
-   blocker for this one, since clang-tidy is advisory here either way.
+   **One residual difference is carried forward rather than closed**: 16 findings are Windows-only.
+   Three (`bugprone-reserved-identifier`) are correctly absent on Linux — the guarded code is not
+   compiled there. The other 13 (`bugprone-exception-escape`) are real on the shipping clang-cl build
+   and invisible to the Linux gate. Recorded in D3; a caveat for the follow-up fix PR, not a blocker
+   for this one, since clang-tidy is advisory here either way.
 
 3. **The reformat is semantically inert.** True for formatting in the general case, but macro
    continuations and multi-line string literals are where it stops being true. *Verification*: the
@@ -408,9 +441,9 @@ it without running the build.
 - The engine binary built after the reformat visits **identical node counts** and returns
   **identical best moves** at fixed depth with `Threads=1`, compared to the binary built before it.
 - The full test suite passes unchanged, in both Debug and Release.
-- **The reformat diff moves no `#include` line.** `SortIncludes: Never` makes this the expected
-  outcome; it is asserted rather than assumed, because include order is the one formatting change
-  that carries semantics here.
+- **No file's sequence of included headers changes.** Asserted on the *sequence*, not on whether
+  include lines appear in the diff — 36 do, all of them trailing-comment realignment. Include order
+  is the one formatting change that carries semantics here. Measured: 0 files reordered.
 - `build-and-test-result` stays the required check and keeps its name, and **`lint-linux` is in its
   `needs` list** — otherwise "blocking" is a claim the wiring does not support. The lint job must be
   able to turn it red on a format mismatch and must never turn it red on a clang-tidy finding.
