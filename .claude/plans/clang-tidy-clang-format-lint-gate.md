@@ -141,38 +141,72 @@ not an estimate of this configuration's diff.
 
 ### D3: Enable bugprone + performance + clang-analyzer; exclude two checks
 
-Measured on the full tree (48 TUs, LLVM 22.1.3) with a deliberately broad probe —
-`bugprone-*`, `performance-*`, `modernize-*`, `misc-*`, `readability-*`, `clang-analyzer-*`,
-`cert-*`, `concurrency-*` — **4,734 unique findings**, dominated by checks that are wrong for this
-codebase:
+Measured twice on the full tree, 48 TUs: on Windows against a clang-cl database (LLVM 22.1.3) and
+on Linux against the D7 clang database (clang 22.1.8, WSL Ubuntu 24.04 matching the CI image). **The
+Linux run is authoritative** — it is the configuration CI will use. Totals agree closely:
+
+| Metric | Windows clang-cl 22.1.3 | Linux clang 22.1.8 |
+|---|---:|---:|
+| Raw diagnostic lines | 18,902 | 18,856 |
+| Unique findings, broad probe | 4,734 | 4,684 |
+| **Enabled set (this decision)** | 113 | **97** |
+| `clang-diagnostic-error` | — | **0** |
+
+The probe was `bugprone-*`, `performance-*`, `modernize-*`, `misc-*`, `readability-*`,
+`clang-analyzer-*`, `cert-*`, `concurrency-*`. Linux counts below; the total is dominated by checks
+that are wrong for this codebase:
 
 | Check | Findings | Disposition |
 |---|---:|---|
-| `modernize-use-trailing-return-type` | 779 | Off — pure style; would rewrite every signature |
-| `misc-include-cleaner` | 662 | Deferred, see D4 |
-| `readability-identifier-length` | 504 | Off — `sq`, `to`, `bb` are the right names here |
-| `readability-magic-numbers` | 474 | Off — PSTs and bitboard constants are magic numbers by construction |
+| `modernize-use-trailing-return-type` | 745 | Off — pure style; would rewrite every signature |
+| `misc-include-cleaner` | 683 | Deferred, see D4 |
+| `readability-identifier-length` | 503 | Off — `sq`, `to`, `bb` are the right names here |
+| `readability-magic-numbers` | 448 | Off — PSTs and bitboard constants are magic numbers by construction |
 | `misc-use-anonymous-namespace` | 349 | Deferred, see D4 |
-| `readability-braces-around-statements` | 345 | Off — clang-format's remit |
+| `readability-braces-around-statements` | 344 | Off — clang-format's remit |
 | `misc-const-correctness` | 330 | Deferred, see D4 |
-| `bugprone-throwing-static-initialization` | 319 | Off — **all 319 are in `StratChessTests/`**, one per Catch2 `TEST_CASE` static registration. A pure artifact of the test framework |
+| `bugprone-throwing-static-initialization` | 320 | Off — **every one is in `StratChessTests/`**, one per Catch2 `TEST_CASE` static registration. A pure artifact of the test framework |
 
-What remains is **~120 findings**, small enough to fix in a single follow-up PR:
+What remains is **97 findings**, small enough to fix in a single follow-up PR:
 
-- `bugprone-*` less the two excluded checks: **75** — narrowing-conversions 32, exception-escape 15,
-  unchecked-optional-access 14 (all in tests), empty-catch 3, implicit-widening 3, plus singletons
-  including `bugprone-random-generator-seed` on `Board.cpp:36`
-- `performance-*`: **33** — enum-size 20, inefficient-vector-operation 5, avoid-endl 5,
-  move-const-arg 2, unnecessary-value-param 1
-- `clang-analyzer-*`: **5**, of which 2 are in vendored Catch2. The deep static analyzer is
-  essentially clean on our code.
+| Check | Linux | Windows |
+|---|---:|---:|
+| `bugprone-narrowing-conversions` | 32 | 32 |
+| `performance-enum-size` | 20 | 20 |
+| `bugprone-unchecked-optional-access` | 14 | 14 |
+| `clang-analyzer-*` | 5 | 5 |
+| `performance-inefficient-vector-operation` | 5 | 5 |
+| `performance-avoid-endl` | 5 | 5 |
+| `bugprone-implicit-widening-of-multiplication-result` | 3 | 3 |
+| `bugprone-empty-catch` | 3 | 3 |
+| `bugprone-branch-clone` | 3 | 3 |
+| `performance-move-const-arg` | 2 | 2 |
+| **`bugprone-exception-escape`** | **2** | **15** |
+| `performance-unnecessary-value-param` | 1 | 1 |
+| `bugprone-random-generator-seed` (`Board.cpp:36`) | 1 | 1 |
+| `bugprone-inc-dec-in-conditions` | 1 | 1 |
+| **Total** | **97** | **113** |
+
+Every check agrees across platforms except `bugprone-exception-escape`, which accounts for the entire
+16-finding gap: Windows reports 15 (`Logger.cpp`, `BitBoardHelper.h`, `IPlayer.h`, `AIPerplex.cpp`,
+`main`, two test destructors), Linux only 2, both in `FENParser.cpp`. The MSVC standard library's
+different `noexcept` surface is the plausible cause. This matters for the follow-up fix PR: **13 of
+those findings will be invisible to the Linux gate but real on the shipping clang-cl build.**
+
+By location the enabled set is 73 in `StratEngine`, 20 in `StratChessTests`, 2 in
+`StratChessEvolved`, and 2 in vendored Catch2 — see the `_deps` note below.
 
 `bugprone-easily-swappable-parameters` (14) is also excluded: adjacent same-typed parameters are
 inherent to a move-generation API (`from`, `to`; `rank`, `file`) and the check has no actionable fix.
 
-Rejected: **`clang-analyzer` only** (5 findings, could block on day one) — leaves the 108 bugprone
-and performance findings undetected, which is most of the value. Rejected: **also enabling
-`misc-const-correctness` and `misc-use-anonymous-namespace`** (~800 findings) — both are real
+**`--header-filter` alone does not exclude vendored headers.** Two `clang-analyzer` findings in
+`_deps/catch2-src/extras/catch_amalgamated.hpp` survived a filter scoped to the three source
+directories. The `.clang-tidy` therefore needs an explicit `ExcludeHeaderFilterRegex` for `_deps`;
+without it the gate reports findings nobody can fix.
+
+Rejected: **`clang-analyzer` only** (5 findings, could block on day one) — leaves the 92 bugprone and
+performance findings undetected, which is most of the value. Rejected: **also enabling
+`misc-const-correctness` and `misc-use-anonymous-namespace`** (~680 findings) — both are real
 improvements, but they touch `Eval.cpp` and `AIPerplex.cpp` and so drag in the specialised-reviewer
 gate, making this PR a different and much larger thing.
 
@@ -340,32 +374,34 @@ it without running the build.
 
 ## Assumptions I cannot verify from the code
 
-1. **apt.llvm.org publishes LLVM 22 packages for ubuntu-24.04 (noble), including `clang-22`,
-   `clang-format-22` and `clang-tidy-22`.** Established by review against apt.llvm.org's published
-   Noble package list, matching the LLVM 22.1.3 the local VS 18 toolchain ships. Treated as settled
-   for design purposes; the first CI run is what executes it. Keep the fallback explicit: if the
-   major turns out unavailable, pin to the newest that is and record the delta against the local
-   toolchain in `Docs/CI.md` rather than silently drifting.
+1. ~~**apt.llvm.org publishes LLVM 22 packages for ubuntu-24.04 (noble).**~~ **VERIFIED** by
+   installing them on WSL Ubuntu 24.04.4 (the CI image): `clang-22`, `clang-tidy-22` and
+   `clang-format-22` all install and run, at **22.1.8**. Note the patch-level drift from the VS 18
+   toolchain's 22.1.3 — the majors match, which is what D5's pinning argument actually depends on,
+   but `Docs/CI.md` should state both so the difference is not rediscovered as a surprise.
 
-2. **The Linux finding set differs from the measured Windows one.** Every number in D3 was measured
-   against a **clang-cl** database on Windows. The lint database is Linux clang (D7), so the eight
-   `_MSC_VER`/`_WIN32` sites across `Compat.h`, `PieceHelper.h`, `SquareHelper.h` and `StdAfx.h`
-   compile the other branch. The counts in D3 are an estimate for CI, not a prediction.
-   *Verification*: re-run the survey under WSL against a clang-configured Linux Release database at
-   the pinned major, before implementation, and reconcile D3 against it. **Not yet done — this is a
-   prerequisite, not a nice-to-have**, because D7 shows a wrongly-configured database produces zero
-   findings and a green job. The re-run is the evidence that the database works at all.
+2. ~~**The Linux finding set differs from the measured Windows one.**~~ **VERIFIED and reconciled**:
+   the survey was re-run under WSL against a clang-22-configured Release database. `0`
+   `clang-diagnostic-error` diagnostics, 48 TUs analysed, so the database is sound (D7's failure
+   mode is excluded). Totals: 4,684 unique findings broad / **97 in the enabled set**, against 4,734
+   / 113 on Windows. D3 now carries the Linux numbers.
+
+   **One residual difference is carried forward rather than closed**: `bugprone-exception-escape`
+   reports 15 on Windows and 2 on Linux. The Linux gate cannot see the other 13, which are real on
+   the shipping clang-cl build. Recorded in D3; it is a caveat for the follow-up fix PR, not a
+   blocker for this one, since clang-tidy is advisory here either way.
 
 3. **The reformat is semantically inert.** True for formatting in the general case, but macro
    continuations and multi-line string literals are where it stops being true. *Verification*: the
    equivalence check in the Validation section. Not yet done.
 
 4. **`PieceHelper::Value()` is reachable with `NO_PIECE`.** `clang-analyzer-security.ArrayBound`
-   reports an out-of-bounds read on `g_iPieceValues[piece >> 1]` at `PieceHelper.h:92`. The analyzer
-   reports a path it believes reachable; whether any caller actually passes `NO_PIECE` is not
-   established. *Verification*: inspect callers, and if reachable, add a test that trips it under
-   ASan. Deliberately **not** done here — it is a possible engine defect, not lint configuration, and
-   gets its own issue.
+   reports an out-of-bounds read on `g_iPieceValues[piece >> 1]` at `PieceHelper.h:92`. Now confirmed
+   to reproduce on **both** platforms, so it is not a clang-cl artifact — but the analyzer only
+   claims the path exists, and whether any caller actually passes `NO_PIECE` remains unestablished.
+   *Verification*: inspect callers, and if reachable, add a test that trips it under ASan.
+   Deliberately **not** done here — it is a possible engine defect, not lint configuration, and gets
+   its own issue.
 
 ## Invariants
 
