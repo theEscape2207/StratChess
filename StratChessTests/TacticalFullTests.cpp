@@ -73,8 +73,7 @@ TEST_CASE("Tactical - slow suite", "[tactical_full][slow]")
 // zugzwang guard must refuse NMP here, so enabling/disabling NMP must produce
 // byte-identical search results (same nodes, move, and score).
 // ---------------------------------------------------------------------------
-TEST_CASE("Tactical (full) - null-move pruning guard is a no-op in K+P endgame",
-          "[tactical_full][slow]")
+TEST_CASE("Tactical (full) - null-move pruning guard is a no-op in K+P endgame", "[tactical_full][slow]")
 {
 	const char* fen = "8/8/8/3k4/8/3K4/3P4/8 w - - 0 1";
 	constexpr unsigned depth = 5;
@@ -105,8 +104,7 @@ TEST_CASE("Tactical (full) - null-move pruning guard is a no-op in K+P endgame",
 // DoNullMove()/recurses — exercising the path Task 1/3's tests never did.
 // Before the Task 4a fix, this crashed with an out-of-range m_infoSeq access.
 // ---------------------------------------------------------------------------
-TEST_CASE("Tactical (full) - null-move pruning does not crash on a real recursion",
-          "[tactical_full][slow]")
+TEST_CASE("Tactical (full) - null-move pruning does not crash on a real recursion", "[tactical_full][slow]")
 {
 	Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 	constexpr unsigned depth = 7;

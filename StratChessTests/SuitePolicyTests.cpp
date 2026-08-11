@@ -85,8 +85,7 @@ TEST_CASE("empty result set fails safe", "[suite_policy]")
 // run individually satisfies evaluate_results(), and no position's pass flag
 // differs between runs (a "flip" = nondeterminism).
 
-static std::vector<TacticalResult>
-make_run(std::initializer_list<std::pair<const char*, bool>> entries)
+static std::vector<TacticalResult> make_run(std::initializer_list<std::pair<const char*, bool>> entries)
 {
 	std::vector<TacticalResult> run;
 	for (const auto& [id, passed] : entries)

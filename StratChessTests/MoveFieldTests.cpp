@@ -91,10 +91,7 @@ TEST_CASE("Move: the empty sentinel is consistent across every route to it", "[m
 		const Move def;
 		CHECK(def.is_null());
 	}
-	SECTION("A real move is not null")
-	{
-		CHECK_FALSE(MoveFactory::MakeQuiet(e2, e4).is_null());
-	}
+	SECTION("A real move is not null") { CHECK_FALSE(MoveFactory::MakeQuiet(e2, e4).is_null()); }
 	SECTION("Clear() returns a real move to the sentinel")
 	{
 		Move m = MoveFactory::MakeQuiet(e2, e4);
@@ -118,8 +115,7 @@ TEST_CASE("Move: the empty sentinel is consistent across every route to it", "[m
 // These two are similar enough to invite a "simplification" that collapses one into the
 // other. They are not interchangeable. Every case below is one where they disagree.
 
-TEST_CASE("MoveFormatter: ToCoord and ToUCI are deliberately different formats",
-          "[moves][formatter]")
+TEST_CASE("MoveFormatter: ToCoord and ToUCI are deliberately different formats", "[moves][formatter]")
 {
 	SECTION("Promotion — ToCoord cannot express the promoted piece, ToUCI can")
 	{
@@ -150,8 +146,7 @@ TEST_CASE("MoveFormatter: ToCoord and ToUCI are deliberately different formats",
 	}
 }
 
-TEST_CASE("MoveFormatter::ToCoord: defined for all 14 real MoveTypes, empty for flags 6 and 7",
-          "[moves][formatter]")
+TEST_CASE("MoveFormatter::ToCoord: defined for all 14 real MoveTypes, empty for flags 6 and 7", "[moves][formatter]")
 {
 	// ToCoord switches on MoveHelper::AsType(move), which is static_cast<MoveType>(flags()).
 	// Flag values 6 and 7 have no enumerator, so they fall through to `return {}`. Freezing

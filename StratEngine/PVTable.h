@@ -42,15 +42,9 @@ class PVTable {
 		return (ply < MAX_PLY && pv_lengths_[ply] > 0) ? pv_lines_[ply][0] : Move::EmptyMove();
 	}
 
-	[[nodiscard]] const std::array<Move, MAX_PV_LENGTH>& get_line(int ply) const noexcept
-	{
-		return pv_lines_[ply];
-	}
+	[[nodiscard]] const std::array<Move, MAX_PV_LENGTH>& get_line(int ply) const noexcept { return pv_lines_[ply]; }
 
-	[[nodiscard]] int get_length(int ply) const noexcept
-	{
-		return (ply < MAX_PLY) ? pv_lengths_[ply] : 0;
-	}
+	[[nodiscard]] int get_length(int ply) const noexcept { return (ply < MAX_PLY) ? pv_lengths_[ply] : 0; }
 
   private:
 	std::array<std::array<Move, MAX_PV_LENGTH>, MAX_PLY> pv_lines_;

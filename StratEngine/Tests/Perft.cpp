@@ -84,10 +84,9 @@ std::vector<PerftPosition> Perft::get_test_positions(bool extendedSuite)
 	    // Position 6: Position with en passant field (not actual ep possible)
 	    {"rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
 	     {
-	         1,       // depth 0
-	         20,      // depth 1
-	         600,     // Stockfish and I agree - Seems Claude got original "400" from a copy of the
-	                  // starting pos :-P // depth 2
+	         1,  // depth 0
+	         20, // depth 1
+	         600, // Stockfish and I agree - Seems Claude got original "400" from a copy of the starting pos :-P // depth 2
 	         13160,   // Not "8902",			// depth 3
 	         405385,  // Again, not "197281", // depth 4
 	         9771632, // Not "4865609"     // depth 5
@@ -144,8 +143,8 @@ std::vector<PerftPosition> Perft::load_perft_tests_modern(const std::string& jso
 		for (auto it = depths.begin(); it != depths.end(); ++it) {
 			const auto depth = Engine::parse_int(it.key());
 			if (!depth || *depth < 0) {
-				std::cerr << "Perft test cases: ignoring non-numeric depth key '" << it.key()
-				          << "' for FEN " << test.fen << '\n';
+				std::cerr << "Perft test cases: ignoring non-numeric depth key '" << it.key() << "' for FEN "
+				          << test.fen << '\n';
 				continue;
 			}
 			parsed_depths.emplace_back(*depth, it.value().get<uint64_t>());
@@ -241,8 +240,7 @@ void Perft::perft_detailed_recursive(Board& board, int depth, PerftResult& resul
 			case MoveType::PROMOTION_BISHOP_CAPTURE:
 			case MoveType::PROMOTION_ROOK_CAPTURE:
 			case MoveType::PROMOTION_QUEEN_CAPTURE:
-				// Phase 4: capture-promotions have their own MoveType (CAPTURE_BIT +
-				// PROMOTION_BIT).
+				// Phase 4: capture-promotions have their own MoveType (CAPTURE_BIT + PROMOTION_BIT).
 				result.promotions++;
 				result.captures++;
 				break;
@@ -391,9 +389,8 @@ bool Perft::run_test_suite(bool extended, bool verbose)
 		// Test each depth (limit to reasonable depths for speed)
 		int max_test_depth = std::min(5, static_cast<int>(pos.expected_nodes.size()) - 1);
 #ifdef DEBUG
-		max_test_depth =
-		    std::min(4, static_cast<int>(pos.expected_nodes.size()) - 1); // Debug builds are slower
-#endif                                                                    // DEBUG
+		max_test_depth = std::min(4, static_cast<int>(pos.expected_nodes.size()) - 1); // Debug builds are slower
+#endif                                                                                 // DEBUG
 
 		for (int depth = 1; depth <= max_test_depth; ++depth) {
 			test_count++;
@@ -410,8 +407,8 @@ bool Perft::run_test_suite(bool extended, bool verbose)
 			if (passed) {
 				passed_count++;
 				if (verbose) {
-					std::cout << "✓ PASS (" << result.nodes << " nodes, " << result.duration.count()
-					          << " ms, " << result.nps() << " nps)\n";
+					std::cout << "✓ PASS (" << result.nodes << " nodes, " << result.duration.count() << " ms, "
+					          << result.nps() << " nps)\n";
 				}
 			} else {
 				all_passed = false;
@@ -432,8 +429,7 @@ bool Perft::run_test_suite(bool extended, bool verbose)
 	}
 	std::cout << "========================================\n\n";
 	auto end = std::chrono::high_resolution_clock::now();
-	std::cout << "Time spent: "
-	          << std::chrono::duration_cast<std::chrono::milliseconds>(end - start) << " seconds\n";
+	std::cout << "Time spent: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start) << " seconds\n";
 
 	return all_passed;
 }

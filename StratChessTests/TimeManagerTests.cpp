@@ -33,8 +33,7 @@ TEST_CASE("compute_budget: classical with moves_to_go (60 min, 20 moves left)", 
 	REQUIRE(b.hard.count() <= 271'000);
 }
 
-TEST_CASE("compute_budget: increment-heavy time trouble (200 ms remaining, 5 s increment)",
-          "[time_mgr]")
+TEST_CASE("compute_budget: increment-heavy time trouble (200 ms remaining, 5 s increment)", "[time_mgr]")
 {
 	// A 5 s increment dwarfs the 200 ms clock, so the cap decides: usable = 150,
 	// cap = 75. Spending the increment before it is credited would forfeit.
@@ -67,10 +66,8 @@ TEST_CASE("compute_budget: hard is always >= soft invariant", "[time_mgr]")
 	struct Case {
 		int remaining_ms, inc_ms, mtg;
 	};
-	for (auto [r, i, m] :
-	     std::initializer_list<Case>{{5000, 0, 0}, {500, 500, 5}, {100000, 1000, 15}, {50, 0, 0}}) {
-		auto b =
-		    Engine::compute_budget(std::chrono::milliseconds(r), std::chrono::milliseconds(i), m);
+	for (auto [r, i, m] : std::initializer_list<Case>{{5000, 0, 0}, {500, 500, 5}, {100000, 1000, 15}, {50, 0, 0}}) {
+		auto b = Engine::compute_budget(std::chrono::milliseconds(r), std::chrono::milliseconds(i), m);
 		CAPTURE(r, i, m);
 		REQUIRE(b.hard.count() >= b.soft.count());
 		REQUIRE(b.soft.count() >= 0);
@@ -86,8 +83,7 @@ TEST_CASE("compute_budget: hard never exceeds remaining", "[time_mgr]")
 	for (int r : {0, 1, 10, 30, 49, 50, 51, 100, 150, 200, 250, 500, 1'000, 10'000, 100'000}) {
 		for (int i : {0, 20, 50, 100, 1'000, 5'000}) {
 			for (int m : {0, 1, 5, 30}) {
-				auto b = Engine::compute_budget(std::chrono::milliseconds(r),
-				                                std::chrono::milliseconds(i), m);
+				auto b = Engine::compute_budget(std::chrono::milliseconds(r), std::chrono::milliseconds(i), m);
 				CAPTURE(r, i, m, b.soft.count(), b.hard.count());
 				REQUIRE(b.soft.count() >= 0);
 				REQUIRE(b.hard.count() >= b.soft.count());

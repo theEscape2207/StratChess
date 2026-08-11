@@ -7,7 +7,7 @@
 // Forward declare
 class Move;
 class Board;
-// struct GameInfo;
+//struct GameInfo;
 
 class PlayerBase : public IPlayer {
   public:
@@ -25,19 +25,13 @@ class PlayerBase : public IPlayer {
 	// Returns the current GameState
 	/*GameInfo::GameStates GetGameState() const
 	{
-	    return this->gameState_;
+		return this->gameState_;
 	}*/
 
 	/* IPlayer implementation */
-	int GetBestScore() const noexcept override
-	{
-		return _bestScore;
-	}
+	int GetBestScore() const noexcept override { return _bestScore; }
 
-	bool IsHuman() const noexcept override
-	{
-		return isHuman_;
-	}
+	bool IsHuman() const noexcept override { return isHuman_; }
 	/* End IPlayer implementation */
 
 	PlayerBase() = default;
@@ -50,10 +44,7 @@ class PlayerBase : public IPlayer {
 	// Convenience overload: no per-call limits — use the engine's configured
 	// defaults (time_limit_, max_depth_). Not virtual; forwards to the real
 	// GetMove(info, limits) override.
-	Move GetMove(GameInfo& info)
-	{
-		return GetMove(info, SearchLimits{});
-	}
+	Move GetMove(GameInfo& info) { return GetMove(info, SearchLimits{}); }
 
 	// Factory constructor!
 	static std::unique_ptr<PlayerBase> Create(ePlayerTypes type, unsigned max_depth, Board& board);

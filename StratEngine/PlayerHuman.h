@@ -12,10 +12,7 @@ class PlayerHuman final : public PlayerBase {
   public:
 	/* IPlayer implementation */
 	Move GetMove(GameInfo& info, const SearchLimits&) override;
-	const char* GetType() const noexcept override
-	{
-		return "Human";
-	}
+	const char* GetType() const noexcept override { return "Human"; }
 
 	std::string getDescription() const override
 	{
@@ -25,10 +22,7 @@ class PlayerHuman final : public PlayerBase {
 	}
 
 	/* End IPlayer implementation */
-	explicit PlayerHuman(Board& board) noexcept : board_(board)
-	{
-		isHuman_ = true;
-	}
+	explicit PlayerHuman(Board& board) noexcept : board_(board) { isHuman_ = true; }
 	~PlayerHuman() final = default;
 
 	// Force use of factory by preventing constructor, copy-construction & operator=
@@ -62,8 +56,7 @@ class PlayerHuman final : public PlayerBase {
 	static bool ParseInput(const std::string& input, Move& move, ePieceType& promotedType);
 
 	// We know a lot - ignoring the optional '-' and promote chars
-	static eSquare GetSquare(std::string::const_iterator& begin,
-	                         const std::string::const_iterator& end)
+	static eSquare GetSquare(std::string::const_iterator& begin, const std::string::const_iterator& end)
 	{
 		const int row = *begin++ - 'a';
 		const int col = ((8 - ((*begin) - '0')) << 3);

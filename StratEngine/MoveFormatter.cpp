@@ -23,8 +23,7 @@ namespace {
 // gives 0=pawn, 1=knight, 2=bishop, 3=rook, 4=queen, 5=king.
 [[nodiscard]] const char* PieceTypeName(ePiece piece) noexcept
 {
-	static constexpr std::array<const char*, 6> names = {"pawn", "knight", "bishop",
-	                                                     "rook", "queen",  "king"};
+	static constexpr std::array<const char*, 6> names = {"pawn", "knight", "bishop", "rook", "queen", "king"};
 	const size_t index = static_cast<size_t>(piece) >> 1;
 	assert(index < names.size());
 	return names[index];
@@ -61,8 +60,7 @@ std::string MoveFormatter::ToCoord(const Move& move)
 	case MoveType::PROMOTION_ROOK_CAPTURE:
 	case MoveType::PROMOTION_QUEEN_CAPTURE:
 		// Capture bit (bit 2) encodes whether the promotion also captures.
-		return std::format("{}{}{}", strFrom, (move.flags() & MoveFlags::CAPTURE_BIT) ? 'x' : '-',
-		                   strTo);
+		return std::format("{}{}{}", strFrom, (move.flags() & MoveFlags::CAPTURE_BIT) ? 'x' : '-', strTo);
 	case MoveType::KING_CASTLE:
 		return "0-0";
 	case MoveType::QUEEN_CASTLE:
@@ -178,8 +176,7 @@ std::string MoveFormatter::ToVerbose(const Move& move, const Board& board)
 		// movPiece is the promoted piece; recover the pawn color for the subject
 		const eColor color = PieceHelper::Color(movPiece);
 		const ePiece pawn = PieceHelper::AsPawn(color);
-		result = std::string(PieceHelper::FullName(pawn)) + " promotes to " +
-		         PieceTypeName(movPiece) + " on " + to;
+		result = std::string(PieceHelper::FullName(pawn)) + " promotes to " + PieceTypeName(movPiece) + " on " + to;
 		break;
 	}
 
@@ -189,8 +186,8 @@ std::string MoveFormatter::ToVerbose(const Move& move, const Board& board)
 	case MoveType::PROMOTION_QUEEN_CAPTURE: {
 		const eColor color = PieceHelper::Color(movPiece);
 		const ePiece pawn = PieceHelper::AsPawn(color);
-		result = std::string(PieceHelper::FullName(pawn)) + " captures and promotes to " +
-		         PieceTypeName(movPiece) + " on " + to;
+		result = std::string(PieceHelper::FullName(pawn)) + " captures and promotes to " + PieceTypeName(movPiece) +
+		         " on " + to;
 		break;
 	}
 
@@ -279,19 +276,13 @@ Move MoveFormatter::FromUCI(std::string_view uci, const Board& board)
 		const bool isCapture = PieceHelper::IsActual(board.GetPiece(to));
 		switch (uci[4]) {
 		case 'q':
-			return Move(from, to,
-			            isCapture ? MoveType::PROMOTION_QUEEN_CAPTURE : MoveType::PROMOTION_QUEEN);
+			return Move(from, to, isCapture ? MoveType::PROMOTION_QUEEN_CAPTURE : MoveType::PROMOTION_QUEEN);
 		case 'r':
-			return Move(from, to,
-			            isCapture ? MoveType::PROMOTION_ROOK_CAPTURE : MoveType::PROMOTION_ROOK);
+			return Move(from, to, isCapture ? MoveType::PROMOTION_ROOK_CAPTURE : MoveType::PROMOTION_ROOK);
 		case 'b':
-			return Move(from, to,
-			            isCapture ? MoveType::PROMOTION_BISHOP_CAPTURE
-			                      : MoveType::PROMOTION_BISHOP);
+			return Move(from, to, isCapture ? MoveType::PROMOTION_BISHOP_CAPTURE : MoveType::PROMOTION_BISHOP);
 		case 'n':
-			return Move(from, to,
-			            isCapture ? MoveType::PROMOTION_KNIGHT_CAPTURE
-			                      : MoveType::PROMOTION_KNIGHT);
+			return Move(from, to, isCapture ? MoveType::PROMOTION_KNIGHT_CAPTURE : MoveType::PROMOTION_KNIGHT);
 		default:
 			return Move{}; // unknown suffix — reject rather than silently defaulting to queen
 		}
@@ -307,8 +298,7 @@ Move MoveFormatter::FromUCI(std::string_view uci, const Board& board)
 	}
 
 	// --- En passant (pawn moves diagonally to an empty square) ---
-	if (PieceHelper::IsPawn(piece) && File(from) != File(to) &&
-	    !PieceHelper::IsActual(board.GetPiece(to))) {
+	if (PieceHelper::IsPawn(piece) && File(from) != File(to) && !PieceHelper::IsActual(board.GetPiece(to))) {
 		return Move(from, to, MoveType::EP_CAPTURE);
 	}
 

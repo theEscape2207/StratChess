@@ -17,16 +17,14 @@ class IPlayer {
 
 	virtual int GetBestScore() const = 0;
 	virtual bool IsHuman() const = 0;
-	virtual void SetEvalEngine(EvalManager::EvalTypes)
-	{ /* Overridden where needed (AI's) */
-	}
+	virtual void SetEvalEngine(EvalManager::EvalTypes) { /* Overridden where needed (AI's) */ }
 
 	virtual ~IPlayer() = default;
 
 	/*
-	 *	Events
-	 */
-	Event<const PVLine> ENewPVLineMove; // A new Move is added to the Principal variation line
+	*	Events
+	*/
+	Event<const PVLine> ENewPVLineMove;        // A new Move is added to the Principal variation line
 	Event<const GameStates> EGameStateChanged; // The Game State has changed
 
 	IPlayer(const IPlayer&) = delete;

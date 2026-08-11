@@ -36,9 +36,7 @@ static constexpr const char* FEN_CAP_PROMO = "1r6/2P5/8/8/8/8/8/4K2k w - - 0 1";
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-TEST_CASE(
-    "Board - White queenside castling moves king to c1 and rook to d1; UndoMove restores both",
-    "[board_moves]")
+TEST_CASE("Board - White queenside castling moves king to c1 and rook to d1; UndoMove restores both", "[board_moves]")
 {
 	Board board(FEN_CASTLING_W);
 
@@ -63,8 +61,7 @@ TEST_CASE(
 	CHECK(board.GetPiece(d1) == NO_PIECE);
 }
 
-TEST_CASE("Board - Black kingside castling moves king to g8 and rook to f8; UndoMove restores both",
-          "[board_moves]")
+TEST_CASE("Board - Black kingside castling moves king to g8 and rook to f8; UndoMove restores both", "[board_moves]")
 {
 	Board board(FEN_CASTLING_B);
 
@@ -89,9 +86,7 @@ TEST_CASE("Board - Black kingside castling moves king to g8 and rook to f8; Undo
 	CHECK(board.GetPiece(f8) == NO_PIECE);
 }
 
-TEST_CASE(
-    "Board - Black queenside castling moves king to c8 and rook to d8; UndoMove restores both",
-    "[board_moves]")
+TEST_CASE("Board - Black queenside castling moves king to c8 and rook to d8; UndoMove restores both", "[board_moves]")
 {
 	Board board(FEN_CASTLING_B);
 
@@ -116,9 +111,7 @@ TEST_CASE(
 	CHECK(board.GetPiece(d8) == NO_PIECE);
 }
 
-TEST_CASE(
-    "Board - Normal capture (white takes black): captured piece removed; UndoMove restores it",
-    "[board_moves]")
+TEST_CASE("Board - Normal capture (white takes black): captured piece removed; UndoMove restores it", "[board_moves]")
 {
 	Board board(FEN_CAPTURE_W);
 
@@ -137,9 +130,7 @@ TEST_CASE(
 	CHECK(board.GetPiece(c1) == BLACK_ROOK);
 }
 
-TEST_CASE(
-    "Board - Normal capture (black takes white): captured piece removed; UndoMove restores it",
-    "[board_moves]")
+TEST_CASE("Board - Normal capture (black takes white): captured piece removed; UndoMove restores it", "[board_moves]")
 {
 	Board board(FEN_CAPTURE_B);
 
@@ -177,8 +168,7 @@ TEST_CASE("Board - Double pawn push moves pawn two squares; UndoMove restores", 
 	CHECK(board.GetPiece(e4) == NO_PIECE);
 }
 
-TEST_CASE("Board - Under-promotion to knight: knight on c8; UndoMove restores pawn on c7",
-          "[board_moves]")
+TEST_CASE("Board - Under-promotion to knight: knight on c8; UndoMove restores pawn on c7", "[board_moves]")
 {
 	Board board(FEN_UPROMO);
 
@@ -197,8 +187,7 @@ TEST_CASE("Board - Under-promotion to knight: knight on c8; UndoMove restores pa
 	CHECK(board.GetPiece(c8) == NO_PIECE);
 }
 
-TEST_CASE("Board - Under-promotion to rook: rook on c8; UndoMove restores pawn on c7",
-          "[board_moves]")
+TEST_CASE("Board - Under-promotion to rook: rook on c8; UndoMove restores pawn on c7", "[board_moves]")
 {
 	Board board(FEN_UPROMO);
 
@@ -217,8 +206,7 @@ TEST_CASE("Board - Under-promotion to rook: rook on c8; UndoMove restores pawn o
 	CHECK(board.GetPiece(c8) == NO_PIECE);
 }
 
-TEST_CASE("Board - Capture-promotion: white queen on b8, black rook gone; UndoMove restores both",
-          "[board_moves]")
+TEST_CASE("Board - Capture-promotion: white queen on b8, black rook gone; UndoMove restores both", "[board_moves]")
 {
 	Board board(FEN_CAP_PROMO);
 

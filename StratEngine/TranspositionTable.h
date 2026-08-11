@@ -44,8 +44,8 @@ struct TTEntry {
 	Move best_move;
 
 	TTEntry()
-	    : key(0), value(0), depth(0), phase(SearchPhase::MAIN), bound(BoundType::EXACT),
-	      node_type(NodeType::ALL_NODE), age(0), best_move()
+	    : key(0), value(0), depth(0), phase(SearchPhase::MAIN), bound(BoundType::EXACT), node_type(NodeType::ALL_NODE),
+	      age(0), best_move()
 	{}
 };
 
@@ -55,8 +55,7 @@ struct TTEntry {
 // must be a decision someone makes, not a side effect of adding a field: a
 // failure here means re-running the search-change validation tier, not bumping
 // the number.
-static_assert(sizeof(TTEntry) == 24,
-              "TTEntry size change alters the bucket count and search behaviour");
+static_assert(sizeof(TTEntry) == 24, "TTEntry size change alters the bucket count and search behaviour");
 
 // Transposition Table class
 // Thread-safe with per-bucket locks for concurrent access
@@ -165,10 +164,7 @@ class TranspositionTable {
 		return stored_value;
 	}
 
-	void newSearchIteration()
-	{
-		current_age.fetch_add(1, std::memory_order_relaxed);
-	}
+	void newSearchIteration() { current_age.fetch_add(1, std::memory_order_relaxed); }
 
 	std::optional<TTEntry> probe(std::uint64_t key, int current_ply) const
 	{
@@ -191,8 +187,8 @@ class TranspositionTable {
 		return std::nullopt;
 	}
 
-	void store(std::uint64_t key, int16_t value, int16_t depth, int16_t ply, Move best_move,
-	           BoundType bound, NodeType node_type, SearchPhase phase)
+	void store(std::uint64_t key, int16_t value, int16_t depth, int16_t ply, Move best_move, BoundType bound,
+	           NodeType node_type, SearchPhase phase)
 	{
 		size_t index = static_cast<size_t>(key) & index_mask;
 		auto& bucket = table[index];
@@ -267,9 +263,7 @@ class TranspositionTable {
 		int pv_bonus = (entry.node_type == NodeType::PV_NODE) ? 512 : 0;
 
 		// Scale quiescence depth down to equivalent main search scale (tunable)
-		int adjusted_depth = (entry.phase == SearchPhase::MAIN)
-		                         ? entry.depth
-		                         : quiescenceEquivalentDepth(entry.depth);
+		int adjusted_depth = (entry.phase == SearchPhase::MAIN) ? entry.depth : quiescenceEquivalentDepth(entry.depth);
 
 		// Quiescence searches sometimes have shallower depth but should still be considered
 		int phase_bonus = (entry.phase == SearchPhase::MAIN) ? 0 : 0 /*-256*/;
@@ -277,42 +271,36 @@ class TranspositionTable {
 	}
 
 	/*size_t count_entries() const {
-	    size_t count = 0;
-	    size_t buckets = table.size();
-	    for (size_t idx = 0; idx < buckets; ++idx) {
-	        std::shared_lock lock(bucket_locks[idx]);
-	        for (const auto& entry : table[idx].entries) {
-	            if (entry.key != 0)
-	                ++count;
-	        }
-	    }
-	    return count;
-	}
+        size_t count = 0;
+        size_t buckets = table.size();
+        for (size_t idx = 0; idx < buckets; ++idx) {
+            std::shared_lock lock(bucket_locks[idx]);
+            for (const auto& entry : table[idx].entries) {
+                if (entry.key != 0)
+                    ++count;
+            }
+        }
+        return count;
+    }
 
-	size_t count_pv_nodes() const {
-	    size_t count = 0;
-	    size_t buckets = table.size();
-	    for (size_t idx = 0; idx < buckets; ++idx) {
-	        std::shared_lock lock(bucket_locks[idx]);
-	        for (const auto& entry : table[idx].entries) {
-	            if (entry.key != 0 && entry.node_type == NodeType::PV_NODE) {
-	                ++count;
-	            }
-	        }
-	    }
-	    return count;
-	}*/
+    size_t count_pv_nodes() const {
+        size_t count = 0;
+        size_t buckets = table.size();
+        for (size_t idx = 0; idx < buckets; ++idx) {
+            std::shared_lock lock(bucket_locks[idx]);
+            for (const auto& entry : table[idx].entries) {
+                if (entry.key != 0 && entry.node_type == NodeType::PV_NODE) {
+                    ++count;
+                }
+            }
+        }
+        return count;
+    }*/
 
 	// O(1) diagnostics using atomics: cheap to call from hot paths
-	size_t count_entries() const noexcept
-	{
-		return entry_count.load(std::memory_order_relaxed);
-	}
+	size_t count_entries() const noexcept { return entry_count.load(std::memory_order_relaxed); }
 
-	size_t count_pv_nodes() const noexcept
-	{
-		return pv_count.load(std::memory_order_relaxed);
-	}
+	size_t count_pv_nodes() const noexcept { return pv_count.load(std::memory_order_relaxed); }
 
 	// Lifecycle operation: callers must ensure no search can store concurrently.
 	// tt_mutex serializes clear calls; store() intentionally takes only bucket locks.
@@ -347,45 +335,27 @@ class TranspositionTable {
 	}
 
 	// diagnostics
-	size_t bucket_count() const noexcept
-	{
-		return table.size();
-	}
+	size_t bucket_count() const noexcept { return table.size(); }
 
 	// What the constructor was asked for. Reported separately from what was
 	// allocated because the two differ -- see the constructor comment.
-	size_t requested_memory_mb() const noexcept
-	{
-		return requested_mb;
-	}
+	size_t requested_memory_mb() const noexcept { return requested_mb; }
 
 	// Bytes holding TT entries.
-	size_t entry_bytes() const noexcept
-	{
-		return table.size() * sizeof(Bucket);
-	}
+	size_t entry_bytes() const noexcept { return table.size() * sizeof(Bucket); }
 
 	// Bytes held by the parallel lock array, which cannot hold entries. Sharply
 	// platform-dependent: sizeof(std::shared_mutex) is 8 on the MSVC STL
 	// (SRWLOCK-based) but 56 on libstdc++ (pthread_rwlock_t), so this is a few
 	// percent on the shipping Windows build and over half again the entry
 	// memory on Linux.
-	size_t lock_bytes() const noexcept
-	{
-		return table.size() * sizeof(std::shared_mutex);
-	}
+	size_t lock_bytes() const noexcept { return table.size() * sizeof(std::shared_mutex); }
 
 	// Everything the table allocates, entries plus locks.
-	size_t allocated_bytes() const noexcept
-	{
-		return entry_bytes() + lock_bytes();
-	}
+	size_t allocated_bytes() const noexcept { return entry_bytes() + lock_bytes(); }
 
 	// Megabytes actually allocated for entries -- NOT the constructor argument.
 	// Reporting the request here instead would make the table's single memory
 	// diagnostic incapable of revealing the shortfall it is there to describe.
-	size_t memory_mb() const noexcept
-	{
-		return entry_bytes() / (1024 * 1024);
-	}
+	size_t memory_mb() const noexcept { return entry_bytes() / (1024 * 1024); }
 };

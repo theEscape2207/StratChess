@@ -13,10 +13,8 @@ TEST_CASE("parse_int: accepts whole integers", "[argparse]")
 	REQUIRE(parse_int("-5") == -5);
 	REQUIRE(parse_int("+3") == 3);
 	REQUIRE(parse_int("0010") == 10);
-	REQUIRE(parse_int(std::to_string(std::numeric_limits<int>::max())) ==
-	        std::numeric_limits<int>::max());
-	REQUIRE(parse_int(std::to_string(std::numeric_limits<int>::min())) ==
-	        std::numeric_limits<int>::min());
+	REQUIRE(parse_int(std::to_string(std::numeric_limits<int>::max())) == std::numeric_limits<int>::max());
+	REQUIRE(parse_int(std::to_string(std::numeric_limits<int>::min())) == std::numeric_limits<int>::min());
 }
 
 TEST_CASE("parse_int: rejects anything that is not exactly an integer", "[argparse]")
@@ -54,10 +52,6 @@ TEST_CASE("parse_int: rejects values outside int rather than wrapping", "[argpar
 	REQUIRE_FALSE(parse_int("-99999999999999").has_value());
 
 	// One past each boundary, which is where a wrap would hide.
-	REQUIRE_FALSE(
-	    parse_int(std::to_string(static_cast<long long>(std::numeric_limits<int>::max()) + 1))
-	        .has_value());
-	REQUIRE_FALSE(
-	    parse_int(std::to_string(static_cast<long long>(std::numeric_limits<int>::min()) - 1))
-	        .has_value());
+	REQUIRE_FALSE(parse_int(std::to_string(static_cast<long long>(std::numeric_limits<int>::max()) + 1)).has_value());
+	REQUIRE_FALSE(parse_int(std::to_string(static_cast<long long>(std::numeric_limits<int>::min()) - 1)).has_value());
 }

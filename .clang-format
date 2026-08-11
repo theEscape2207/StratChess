@@ -5,12 +5,22 @@ Standard:      c++20
 UseTab:        ForIndentation
 TabWidth:      4
 IndentWidth:   4
-ColumnLimit:   100
+# 120 rather than 100. A trailing comment counts toward the limit, and at 100 the
+# SearchTuning block in AIPerplex.h had initializers torn off their declarations
+# (`bool lmr_enabled =` / `    true;`) purely to make room for the comment.
+ColumnLimit:   120
 IndentCaseLabels: false
 NamespaceIndentation: None
 PointerAlignment:   Left
 ReferenceAlignment: Pointer
-AllowShortFunctionsOnASingleLine: Empty
+# Keep one-line accessors on one line. `Empty` expanded every `T Get() const { return x_; }`
+# into four lines, which is noise in the player and helper headers.
+AllowShortFunctionsOnASingleLine: All
+# Never re-wrap comment text. Comment layout here is frequently deliberate -- column
+# headers, aligned tables, board diagrams -- and re-wrapping ran separate sentences
+# together. It also removes the one-pass non-idempotency, since reflow was what
+# produced continuation lines needing a second pass.
+ReflowComments: Never
 # Include order carries meaning here: StdAfx.h must precede the headers that rely
 # on it. Reordering includes is a semantic change, not formatting.
 SortIncludes:  Never

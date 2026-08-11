@@ -195,17 +195,10 @@ TEST_CASE("MoveFormatter::ToCoord - no board context", "[formatter]")
 {
 	SECTION("Quiet pawn push e2-e4")
 	{
-		CHECK(MoveFormatter::ToCoord(MoveFactory::MakeMove(e2, e4, MoveType::DOUBLE_PAWN_PUSH)) ==
-		      "e2-e4");
+		CHECK(MoveFormatter::ToCoord(MoveFactory::MakeMove(e2, e4, MoveType::DOUBLE_PAWN_PUSH)) == "e2-e4");
 	}
-	SECTION("Quiet knight move g1-f3")
-	{
-		CHECK(MoveFormatter::ToCoord(MoveFactory::MakeQuiet(g1, f3)) == "g1-f3");
-	}
-	SECTION("Capture uses 'x'")
-	{
-		CHECK(MoveFormatter::ToCoord(MoveFactory::MakeCapture(c5, d6)) == "c5xd6");
-	}
+	SECTION("Quiet knight move g1-f3") { CHECK(MoveFormatter::ToCoord(MoveFactory::MakeQuiet(g1, f3)) == "g1-f3"); }
+	SECTION("Capture uses 'x'") { CHECK(MoveFormatter::ToCoord(MoveFactory::MakeCapture(c5, d6)) == "c5xd6"); }
 	SECTION("En passant carries the 'ep' suffix")
 	{
 		// Distinct from ToUCI, which renders this as plain "f5e6".
@@ -213,25 +206,19 @@ TEST_CASE("MoveFormatter::ToCoord - no board context", "[formatter]")
 	}
 	SECTION("Castling collapses to 0-0 / 0-0-0, losing the squares")
 	{
-		CHECK(MoveFormatter::ToCoord(MoveFactory::MakeMove(e1, g1, MoveType::KING_CASTLE)) ==
-		      "0-0");
-		CHECK(MoveFormatter::ToCoord(MoveFactory::MakeMove(e1, c1, MoveType::QUEEN_CASTLE)) ==
-		      "0-0-0");
-		CHECK(MoveFormatter::ToCoord(MoveFactory::MakeMove(e8, g8, MoveType::KING_CASTLE)) ==
-		      "0-0");
+		CHECK(MoveFormatter::ToCoord(MoveFactory::MakeMove(e1, g1, MoveType::KING_CASTLE)) == "0-0");
+		CHECK(MoveFormatter::ToCoord(MoveFactory::MakeMove(e1, c1, MoveType::QUEEN_CASTLE)) == "0-0-0");
+		CHECK(MoveFormatter::ToCoord(MoveFactory::MakeMove(e8, g8, MoveType::KING_CASTLE)) == "0-0");
 	}
 	SECTION("Promotion shows the squares but not the promoted piece")
 	{
 		// Coordinate form has no piece prefix, so it cannot express the promotion choice.
-		CHECK(MoveFormatter::ToCoord(MoveFactory::MakePromotion(b7, b8, WHITE_QUEEN, false)) ==
-		      "b7-b8");
-		CHECK(MoveFormatter::ToCoord(MoveFactory::MakePromotion(b7, b8, WHITE_KNIGHT, false)) ==
-		      "b7-b8");
+		CHECK(MoveFormatter::ToCoord(MoveFactory::MakePromotion(b7, b8, WHITE_QUEEN, false)) == "b7-b8");
+		CHECK(MoveFormatter::ToCoord(MoveFactory::MakePromotion(b7, b8, WHITE_KNIGHT, false)) == "b7-b8");
 	}
 	SECTION("Capture-promotion uses 'x'")
 	{
-		CHECK(MoveFormatter::ToCoord(MoveFactory::MakePromotion(b7, a8, WHITE_QUEEN, true)) ==
-		      "b7xa8");
+		CHECK(MoveFormatter::ToCoord(MoveFactory::MakePromotion(b7, a8, WHITE_QUEEN, true)) == "b7xa8");
 	}
 }
 
@@ -242,8 +229,8 @@ TEST_CASE("MoveFormatter::ToShort - explicit piece, no board", "[formatter]")
 {
 	SECTION("White pawn push")
 	{
-		CHECK(MoveFormatter::ToShort(MoveFactory::MakeMove(e2, e4, MoveType::DOUBLE_PAWN_PUSH),
-		                             WHITE_PAWN) == "Pe2-e4");
+		CHECK(MoveFormatter::ToShort(MoveFactory::MakeMove(e2, e4, MoveType::DOUBLE_PAWN_PUSH), WHITE_PAWN) ==
+		      "Pe2-e4");
 	}
 	SECTION("Piece prefix case encodes colour")
 	{
@@ -257,27 +244,21 @@ TEST_CASE("MoveFormatter::ToShort - explicit piece, no board", "[formatter]")
 	}
 	SECTION("Castling")
 	{
-		CHECK(MoveFormatter::ToShort(MoveFactory::MakeMove(e1, g1, MoveType::KING_CASTLE),
-		                             WHITE_KING) == "0-0");
-		CHECK(MoveFormatter::ToShort(MoveFactory::MakeMove(e1, c1, MoveType::QUEEN_CASTLE),
-		                             WHITE_KING) == "0-0-0");
+		CHECK(MoveFormatter::ToShort(MoveFactory::MakeMove(e1, g1, MoveType::KING_CASTLE), WHITE_KING) == "0-0");
+		CHECK(MoveFormatter::ToShort(MoveFactory::MakeMove(e1, c1, MoveType::QUEEN_CASTLE), WHITE_KING) == "0-0-0");
 	}
 	SECTION("Promotion prefixes the pawn and suffixes the promoted piece")
 	{
-		CHECK(MoveFormatter::ToShort(MoveFactory::MakePromotion(b7, b8, WHITE_QUEEN, false),
-		                             WHITE_QUEEN) == "Pb7-b8Q");
-		CHECK(MoveFormatter::ToShort(MoveFactory::MakePromotion(b2, b1, BLACK_QUEEN, false),
-		                             BLACK_QUEEN) == "pb2-b1q");
-		CHECK(MoveFormatter::ToShort(MoveFactory::MakePromotion(b7, a8, WHITE_ROOK, true),
-		                             WHITE_ROOK) == "Pb7xa8R");
+		CHECK(MoveFormatter::ToShort(MoveFactory::MakePromotion(b7, b8, WHITE_QUEEN, false), WHITE_QUEEN) == "Pb7-b8Q");
+		CHECK(MoveFormatter::ToShort(MoveFactory::MakePromotion(b2, b1, BLACK_QUEEN, false), BLACK_QUEEN) == "pb2-b1q");
+		CHECK(MoveFormatter::ToShort(MoveFactory::MakePromotion(b7, a8, WHITE_ROOK, true), WHITE_ROOK) == "Pb7xa8R");
 	}
 	SECTION("Agrees with the Board overload when the move gives no check")
 	{
 		Board board;
 		REQUIRE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"));
 		auto m = MoveFactory::MakeMove(e2, e4, MoveType::DOUBLE_PAWN_PUSH);
-		CHECK(MoveFormatter::ToShort(m, board) ==
-		      MoveFormatter::ToShort(m, board.GetPiece(m.to())));
+		CHECK(MoveFormatter::ToShort(m, board) == MoveFormatter::ToShort(m, board.GetPiece(m.to())));
 	}
 	SECTION("Board overload adds '+' that the explicit-piece overload does not")
 	{
@@ -331,8 +312,7 @@ TEST_CASE("MoveFormatter::ToVerbose - spot checks", "[formatter]")
 		// or file a, so not in check from the newly promoted rook on a1)
 		REQUIRE(board.SetupFromFEN("7k/8/8/8/8/7K/8/r7 w - - 0 1"));
 		auto m = MoveFactory::MakePromotion(b2, a1, BLACK_ROOK, true);
-		CHECK(MoveFormatter::ToVerbose(m, board) ==
-		      "Black pawn captures and promotes to rook on a1");
+		CHECK(MoveFormatter::ToVerbose(m, board) == "Black pawn captures and promotes to rook on a1");
 	}
 	SECTION("White pawn en passant")
 	{

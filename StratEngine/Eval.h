@@ -117,10 +117,7 @@ class EvalManager {
 class EvalSimple final : public EvalManager {
   public:
 	int Evaluate(const Board& board) const noexcept override;
-	const char* GetType() const noexcept override
-	{
-		return "Simple";
-	}
+	const char* GetType() const noexcept override { return "Simple"; }
 
 	// Force use of factory by
 	// preventing constructor, copy-construction & operator=
@@ -342,12 +339,10 @@ class EvalComplex final : public EvalManager {
 	// Mop-up evaluation (won pawnless endgames) — see issue #70 / epic #110.
 	// Gated on: pawnless + decisive material lead. Rewards pushing the losing
 	// king to the edge/corner and closing the distance between the two kings.
-	static const short MOPUP_MATERIAL_THRESHOLD =
-	    400;                                  // min material lead (cp) before mop-up applies
-	static const short MOPUP_CMD_WEIGHT = 10; // weight on losing king's center-manhattan-distance
-	static const short MOPUP_KINGDIST_WEIGHT =
-	    4; // weight on (MOPUP_MAX_KING_DISTANCE - king-to-king distance)
-	static const short MOPUP_MAX_KING_DISTANCE = 7; // max Chebyshev distance on an 8x8 board
+	static const short MOPUP_MATERIAL_THRESHOLD = 400; // min material lead (cp) before mop-up applies
+	static const short MOPUP_CMD_WEIGHT = 10;          // weight on losing king's center-manhattan-distance
+	static const short MOPUP_KINGDIST_WEIGHT = 4;      // weight on (MOPUP_MAX_KING_DISTANCE - king-to-king distance)
+	static const short MOPUP_MAX_KING_DISTANCE = 7;    // max Chebyshev distance on an 8x8 board
 
 	// Game-phase weights per piece (issue #99). Summed over BOTH colors, so a
 	// full set of pieces gives 2*(2*1 + 2*1 + 2*2 + 1*4) = 24 = MAX_GAME_PHASE.
@@ -374,18 +369,12 @@ class EvalComplex final : public EvalManager {
 
 	// Distance helpers for mop-up scoring — plain grid math, orientation-independent
 	// (works the same whether the square belongs to White or Black).
-	static constexpr int CenterAxisDistance(int coord) noexcept
-	{
-		return (coord <= 3) ? (3 - coord) : (coord - 4);
-	}
+	static constexpr int CenterAxisDistance(int coord) noexcept { return (coord <= 3) ? (3 - coord) : (coord - 4); }
 	static constexpr int CenterManhattanDistance(eSquare square) noexcept
 	{
 		return CenterAxisDistance(File(square)) + CenterAxisDistance(Rank(square));
 	}
-	static constexpr int AbsDiff(int a, int b) noexcept
-	{
-		return (a > b) ? (a - b) : (b - a);
-	}
+	static constexpr int AbsDiff(int a, int b) noexcept { return (a > b) ? (a - b) : (b - a); }
 	static constexpr int KingDistance(eSquare a, eSquare b) noexcept
 	{
 		const int fileDiff = AbsDiff(File(a), File(b));
@@ -415,10 +404,7 @@ class EvalComplex final : public EvalManager {
 
   public:
 	int Evaluate(const Board& board) const noexcept override;
-	const char* GetType() const noexcept override
-	{
-		return "Complex";
-	}
+	const char* GetType() const noexcept override { return "Complex"; }
 
 	// Per-term introspection for the UCI 'eval' command (issue #129 phase 2 —
 	// see .claude/plans/uci-eval-command-term-breakdown.md). Reports what the

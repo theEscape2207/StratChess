@@ -37,35 +37,29 @@ static constexpr const char* FEN_MATERIAL_PROMO = "4k3/2P5/8/8/8/8/8/4K3 w - - 0
 
 // ── Castling rights ───────────────────────────────────────────────────────────
 
-TEST_CASE("Board - Castling rights stripped after king move; UndoMove restores them",
-          "[board_state]")
+TEST_CASE("Board - Castling rights stripped after king move; UndoMove restores them", "[board_state]")
 {
 	Board board(FEN_FULL_RIGHTS);
 
 	// Confirm full rights before move
-	REQUIRE((board.GetGameInfo().castlingRights & CastlingRights::WHITE_BOTH) ==
-	        CastlingRights::WHITE_BOTH);
+	REQUIRE((board.GetGameInfo().castlingRights & CastlingRights::WHITE_BOTH) == CastlingRights::WHITE_BOTH);
 
 	// White king e1 → e2 (quiet move, not a castling)
 	auto m = MoveFactory::MakeQuiet(e1, e2);
 	REQUIRE(board.DoMove(m));
 
 	// Both white castling rights must be gone
-	CHECK((board.GetGameInfo().castlingRights & CastlingRights::WHITE_BOTH) ==
-	      CastlingRights::NONE);
+	CHECK((board.GetGameInfo().castlingRights & CastlingRights::WHITE_BOTH) == CastlingRights::NONE);
 	// Black rights must be untouched
-	CHECK((board.GetGameInfo().castlingRights & CastlingRights::BLACK_BOTH) ==
-	      CastlingRights::BLACK_BOTH);
+	CHECK((board.GetGameInfo().castlingRights & CastlingRights::BLACK_BOTH) == CastlingRights::BLACK_BOTH);
 
 	board.UndoMove(m);
 
-	CHECK((board.GetGameInfo().castlingRights & CastlingRights::WHITE_BOTH) ==
-	      CastlingRights::WHITE_BOTH);
+	CHECK((board.GetGameInfo().castlingRights & CastlingRights::WHITE_BOTH) == CastlingRights::WHITE_BOTH);
 }
 
-TEST_CASE(
-    "Board - Queenside castling right stripped after rook moves; kingside right intact; UndoMove restores",
-    "[board_state]")
+TEST_CASE("Board - Queenside castling right stripped after rook moves; kingside right intact; UndoMove restores",
+          "[board_state]")
 {
 	Board board(FEN_FULL_RIGHTS);
 
@@ -85,8 +79,7 @@ TEST_CASE(
 	CHECK((board.GetGameInfo().castlingRights & CastlingRights::WHITE_KINGSIDE) != 0);
 }
 
-TEST_CASE("Board - BLACK_KINGSIDE right stripped when rook h8 is captured; UndoMove restores",
-          "[board_state]")
+TEST_CASE("Board - BLACK_KINGSIDE right stripped when rook h8 is captured; UndoMove restores", "[board_state]")
 {
 	// FEN: white rook h7, black rook h8, kings on e1/e8; only k right
 	Board board(FEN_ROOK_CAPTURE);
@@ -154,8 +147,7 @@ TEST_CASE("Board - EP square restored to NO_SQUARE after UndoMove of double push
 
 // ── Side-to-move ──────────────────────────────────────────────────────────────
 
-TEST_CASE("Board - Side-to-move flips to BLACK after DoMove; restores to WHITE after UndoMove",
-          "[board_state]")
+TEST_CASE("Board - Side-to-move flips to BLACK after DoMove; restores to WHITE after UndoMove", "[board_state]")
 {
 	Board board("8/8/3k4/8/8/3K4/8/R7 w - - 0 1"); // white to move
 
@@ -173,8 +165,7 @@ TEST_CASE("Board - Side-to-move flips to BLACK after DoMove; restores to WHITE a
 
 // ── Material scores ───────────────────────────────────────────────────────────
 
-TEST_CASE("Board - Material score decremented for captured side; UndoMove restores",
-          "[board_state]")
+TEST_CASE("Board - Material score decremented for captured side; UndoMove restores", "[board_state]")
 {
 	Board board(FEN_MATERIAL_CAPTURE);
 
@@ -194,9 +185,8 @@ TEST_CASE("Board - Material score decremented for captured side; UndoMove restor
 	CHECK(board.GetMaterialScore(WHITE) == whiteMatBefore);
 }
 
-TEST_CASE(
-    "Board - Material score updated after promotion (pawn -> queen, delta +800); UndoMove restores",
-    "[board_state]")
+TEST_CASE("Board - Material score updated after promotion (pawn -> queen, delta +800); UndoMove restores",
+          "[board_state]")
 {
 	Board board(FEN_MATERIAL_PROMO);
 
@@ -215,8 +205,7 @@ TEST_CASE(
 
 // ── Fifty-move counter ────────────────────────────────────────────────────────
 
-TEST_CASE("Board - Fifty-move counter resets to 0 on pawn move; UndoMove restores prior value",
-          "[board_state]")
+TEST_CASE("Board - Fifty-move counter resets to 0 on pawn move; UndoMove restores prior value", "[board_state]")
 {
 	// FEN halfmove clock field pre-sets fiftyCount to 10
 	Board board("4k3/8/8/8/8/8/4P3/4K3 w - - 10 1");
@@ -234,8 +223,7 @@ TEST_CASE("Board - Fifty-move counter resets to 0 on pawn move; UndoMove restore
 	CHECK(board.GetGameInfo().fiftyCount == 10);
 }
 
-TEST_CASE("Board - Fifty-move counter increments by 1 on quiet non-pawn move; UndoMove restores",
-          "[board_state]")
+TEST_CASE("Board - Fifty-move counter increments by 1 on quiet non-pawn move; UndoMove restores", "[board_state]")
 {
 	// FEN halfmove clock pre-set to 5
 	Board board("8/8/3k4/8/8/3K4/8/R7 w - - 5 1");
@@ -252,8 +240,7 @@ TEST_CASE("Board - Fifty-move counter increments by 1 on quiet non-pawn move; Un
 	CHECK(board.GetGameInfo().fiftyCount == 5);
 }
 
-TEST_CASE("Board - fiftyCount reaches 50 after quiet move from 49; UndoMove restores to 49",
-          "[board_state]")
+TEST_CASE("Board - fiftyCount reaches 50 after quiet move from 49; UndoMove restores to 49", "[board_state]")
 {
 	// Note: DRAW_50_MOVES game state is set by the game-loop layer (PlayerAI/PlayerHuman
 	// via UpdateBoardInfo), not by Board::DoMove. Board only tracks the counter.

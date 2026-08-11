@@ -27,54 +27,24 @@ class UciHandlerTestFixture {
   public:
 	UciHandler handler;
 
-	void position(const std::string& line)
-	{
-		handler.cmd_position(line);
-	}
-	const Board& board() const
-	{
-		return handler.board_;
-	}
+	void position(const std::string& line) { handler.cmd_position(line); }
+	const Board& board() const { return handler.board_; }
 
-	bool dispatch(const std::string& line)
-	{
-		return handler.dispatch(line);
-	}
+	bool dispatch(const std::string& line) { return handler.dispatch(line); }
 
-	void perft(const std::string& line)
-	{
-		handler.cmd_perft(line);
-	}
-	void setoption(const std::string& line)
-	{
-		handler.cmd_setoption(line);
-	}
-	void ucinewgame()
-	{
-		handler.cmd_ucinewgame();
-	}
-	void uci()
-	{
-		handler.cmd_uci();
-	}
-	void eval()
-	{
-		handler.cmd_eval();
-	}
+	void perft(const std::string& line) { handler.cmd_perft(line); }
+	void setoption(const std::string& line) { handler.cmd_setoption(line); }
+	void ucinewgame() { handler.cmd_ucinewgame(); }
+	void uci() { handler.cmd_uci(); }
+	void eval() { handler.cmd_eval(); }
 
 	// Drives the mid-search guard without starting a real search: spawning one
 	// and racing it would make these cases timing-dependent, and what is under
 	// test is the guard's contract, not the scheduler. That the flag is
 	// genuinely set for a real search is covered end-to-end by piping the
 	// issue #178 reproduction through the built exe.
-	void set_searching(bool value)
-	{
-		handler.searching_.store(value);
-	}
-	unsigned configured_threads() const
-	{
-		return handler.configured_threads_;
-	}
+	void set_searching(bool value) { handler.searching_.store(value); }
+	unsigned configured_threads() const { return handler.configured_threads_; }
 
 	// Reads threads_ off the live ai_ instance (via the AIPerplex friend
 	// declaration granted to this same fixture class name) — proves the
@@ -89,10 +59,7 @@ class UciHandlerTestFixture {
 
 	// Identity of the live ai_ instance, for proving cmd_ucinewgame() no
 	// longer rebuilds it.
-	const void* ai_identity() const
-	{
-		return handler.ai_.get();
-	}
+	const void* ai_identity() const { return handler.ai_.get(); }
 
 	static constexpr uint64_t TT_MARKER_KEY = 0x7fff'ffff'ffff'fffeULL;
 
@@ -100,8 +67,8 @@ class UciHandlerTestFixture {
 	{
 		auto* perplex = dynamic_cast<AIPerplex*>(handler.ai_.get());
 		REQUIRE(perplex != nullptr);
-		perplex->_tt->store(TT_MARKER_KEY, 123, 1, 0, Move::EmptyMove(), BoundType::EXACT,
-		                    NodeType::PV_NODE, SearchPhase::MAIN);
+		perplex->_tt->store(TT_MARKER_KEY, 123, 1, 0, Move::EmptyMove(), BoundType::EXACT, NodeType::PV_NODE,
+		                    SearchPhase::MAIN);
 	}
 
 	bool has_tt_marker() const
@@ -386,18 +353,12 @@ TEST_CASE("cmd_ucinewgame: a TT entry does not survive into the next game", "[uc
 class CoutRedirect {
   public:
 	CoutRedirect() : old_(std::cout.rdbuf(buffer_.rdbuf())) {}
-	~CoutRedirect()
-	{
-		std::cout.rdbuf(old_);
-	}
+	~CoutRedirect() { std::cout.rdbuf(old_); }
 
 	CoutRedirect(const CoutRedirect&) = delete;
 	CoutRedirect& operator=(const CoutRedirect&) = delete;
 
-	std::string str() const
-	{
-		return buffer_.str();
-	}
+	std::string str() const { return buffer_.str(); }
 
   private:
 	std::ostringstream buffer_;
@@ -422,8 +383,7 @@ TEST_CASE("cmd_uci: advertises Hash exact-fit default and policy bounds", "[uci]
 	UciHandlerTestFixture fix;
 	const std::string output = capture_cout([&] { fix.uci(); });
 
-	REQUIRE(output.find("option name Hash type spin default 192 min 1 max 1536\n") !=
-	        std::string::npos);
+	REQUIRE(output.find("option name Hash type spin default 192 min 1 max 1536\n") != std::string::npos);
 }
 
 TEST_CASE("AIPerplex default Hash has the documented exact-fit geometry", "[uci][tt]")
@@ -436,8 +396,7 @@ TEST_CASE("AIPerplex default Hash has the documented exact-fit geometry", "[uci]
 	REQUIRE(fix.ai_hash_memory_mb() == 192);
 }
 
-TEST_CASE("cmd_setoption: Hash replaces and reports the live table, then survives ucinewgame",
-          "[uci][tt]")
+TEST_CASE("cmd_setoption: Hash replaces and reports the live table, then survives ucinewgame", "[uci][tt]")
 {
 	UciHandlerTestFixture fix;
 	fix.ucinewgame();
@@ -483,8 +442,7 @@ TEST_CASE("cmd_setoption: malformed Hash leaves the live table unchanged", "[uci
 	fix.ucinewgame();
 	const void* original = fix.tt_identity();
 
-	const std::string output =
-	    capture_cout([&] { fix.setoption("setoption name Hash value nope"); });
+	const std::string output = capture_cout([&] { fix.setoption("setoption name Hash value nope"); });
 
 	REQUIRE(output.empty());
 	REQUIRE(fix.tt_identity() == original);
@@ -501,8 +459,7 @@ TEST_CASE("cmd_setoption: Hash replacement is refused while a search is running"
 	const std::string output = capture_cout([&] { fix.setoption("setoption name Hash value 12"); });
 	fix.set_searching(false);
 
-	REQUIRE(output ==
-	        "info string setoption: ignored, a search is in progress -- send 'stop' first\n");
+	REQUIRE(output == "info string setoption: ignored, a search is in progress -- send 'stop' first\n");
 	REQUIRE(fix.tt_identity() == configured);
 	REQUIRE(fix.ai_hash_requested_mb() == 6);
 }
@@ -541,15 +498,13 @@ TEST_CASE("cmd_eval: works before any position command, does not crash", "[uci]"
 	REQUIRE(out.find("white pov:") != std::string::npos);
 }
 
-TEST_CASE("cmd_eval: printed score matches EvalManager::Evaluate() directly (honesty invariant)",
-          "[uci]")
+TEST_CASE("cmd_eval: printed score matches EvalManager::Evaluate() directly (honesty invariant)", "[uci]")
 {
 	// The property that makes this tool trustworthy for #117 (Texel tuning)
 	// and #127 (EvalContext restructure's byte-identity check): 'eval' must
 	// never compute its own parallel score, only report the same Evaluate()
 	// the search calls.
-	const std::string fen =
-	    "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"; // Kiwipete
+	const std::string fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"; // Kiwipete
 
 	UciHandlerTestFixture fix;
 	fix.position("position fen " + fen);
@@ -569,8 +524,7 @@ TEST_CASE("cmd_eval: output contains neither bestmove nor info", "[uci]")
 {
 	// 'eval' is not a search response — a GUI must not mistake it for one.
 	UciHandlerTestFixture fix;
-	fix.position(
-	    "position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+	fix.position("position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
 
 	CoutRedirect redirect;
 	fix.eval();
@@ -682,9 +636,8 @@ static int extract_sum_white_pov(const std::string& output)
 
 	const auto line_end = output.find('\n', label_pos);
 	const auto value_start = label_pos + kLabel.size();
-	const std::string value = (line_end != std::string::npos)
-	                              ? output.substr(value_start, line_end - value_start)
-	                              : output.substr(value_start);
+	const std::string value = (line_end != std::string::npos) ? output.substr(value_start, line_end - value_start)
+	                                                          : output.substr(value_start);
 
 	return std::stoi(value);
 }
@@ -700,21 +653,19 @@ static int extract_sum_white_pov(const std::string& output)
 static const char* const kBreakdownTerms[] = {"material", "pawns",   "rooks",    "pst",
                                               "mopup",    "bishops", "castling", "mobility"};
 
-TEST_CASE("cmd_eval: printed breakdown nets are white-minus-black and sum to the evaluator's score",
-          "[uci]")
+TEST_CASE("cmd_eval: printed breakdown nets are white-minus-black and sum to the evaluator's score", "[uci]")
 {
 	// The phase 2 honesty invariant (D9). Three separate claims, each of which
 	// has failed in some engine at some point: each row's net is consistent
 	// with its own two columns; the net column sums to the printed total; and
 	// that total is the score the search would actually see, computed here
 	// from a fresh Board through a separate EvalManager instance.
-	const char* fen = GENERATE(
-	    "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", // Kiwipete,
-	                                                                            // middlegame
-	    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", // startpos, symmetric
-	    "8/8/8/3r4/4k3/8/8/3QK3 w - - 0 1",                         // endgame, White to move
-	    "r3k3/8/8/8/8/8/8/4K3 b - - 0 1",  // Black to move, Black up a rook
-	    "8/8/8/4k3/8/8/8/3QK3 w - - 0 1"); // pawnless K+Q vs K — mop-up active
+	const char* fen =
+	    GENERATE("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", // Kiwipete, middlegame
+	             "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",             // startpos, symmetric
+	             "8/8/8/3r4/4k3/8/8/3QK3 w - - 0 1",                                     // endgame, White to move
+	             "r3k3/8/8/8/8/8/8/4K3 b - - 0 1",  // Black to move, Black up a rook
+	             "8/8/8/4k3/8/8/8/3QK3 w - - 0 1"); // pawnless K+Q vs K — mop-up active
 	CAPTURE(fen);
 
 	UciHandlerTestFixture fix;
@@ -738,8 +689,7 @@ TEST_CASE("cmd_eval: printed breakdown nets are white-minus-black and sum to the
 	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
 	Board board(fen);
 	const int side_to_move_score = eval->Evaluate(board);
-	const int expected_white_pov =
-	    (board.GetCurrentColor() == WHITE) ? side_to_move_score : -side_to_move_score;
+	const int expected_white_pov = (board.GetCurrentColor() == WHITE) ? side_to_move_score : -side_to_move_score;
 
 	REQUIRE(net_sum == expected_white_pov);
 }
@@ -771,8 +721,7 @@ TEST_CASE("cmd_eval: breakdown reports the game phase the evaluator computed", "
 	}
 }
 
-TEST_CASE("cmd_eval: a term that is active for exactly one side shows it in the per-color split",
-          "[uci]")
+TEST_CASE("cmd_eval: a term that is active for exactly one side shows it in the per-color split", "[uci]")
 {
 	// The per-color columns are the reason for the table's shape (D10): a net
 	// of -30 does not say whether the pawn term is penalising White or
@@ -854,8 +803,7 @@ TEST_CASE("FenBatch::ClassifyLine: EPD operations are still rejected", "[uci]")
 {
 	// Accepting 4-6 fields is deliberately NOT the same as accepting EPD. Trailing operations
 	// are out of scope for the FEN grammar; #117's corpus loader owns them.
-	auto r =
-	    FenBatch::ClassifyLine(R"(rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - c9 "1-0";)");
+	auto r = FenBatch::ClassifyLine(R"(rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - c9 "1-0";)");
 	REQUIRE(r.kind == FenBatch::LineKind::Malformed);
 	REQUIRE_FALSE(r.error.empty());
 }
@@ -868,8 +816,7 @@ TEST_CASE("FENParser::ParseFEN: 4-field FEN defaults halfmove to 0 and fullmove 
 {
 	FENParser::FENGameState state;
 	std::vector<std::tuple<ePiece, eSquare>> pieces;
-	auto err =
-	    FENParser::ParseFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -", state, pieces);
+	auto err = FENParser::ParseFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -", state, pieces);
 
 	REQUIRE_FALSE(err.has_value());
 	CHECK(state.sideToMove == eColor::WHITE);
@@ -877,13 +824,11 @@ TEST_CASE("FENParser::ParseFEN: 4-field FEN defaults halfmove to 0 and fullmove 
 	CHECK(state.fullMoveCounter == 1);
 }
 
-TEST_CASE("FENParser::ParseFEN: 5-field FEN keeps the halfmove clock, defaults fullmove to 1",
-          "[uci]")
+TEST_CASE("FENParser::ParseFEN: 5-field FEN keeps the halfmove clock, defaults fullmove to 1", "[uci]")
 {
 	FENParser::FENGameState state;
 	std::vector<std::tuple<ePiece, eSquare>> pieces;
-	auto err = FENParser::ParseFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 7", state,
-	                               pieces);
+	auto err = FENParser::ParseFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 7", state, pieces);
 
 	REQUIRE_FALSE(err.has_value());
 	CHECK(state.sideToMove == eColor::BLACK);
@@ -895,8 +840,7 @@ TEST_CASE("FENParser::ParseFEN: 6-field FEN is unaffected by the relaxation", "[
 {
 	FENParser::FENGameState state;
 	std::vector<std::tuple<ePiece, eSquare>> pieces;
-	auto err = FENParser::ParseFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 12 34",
-	                               state, pieces);
+	auto err = FENParser::ParseFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 12 34", state, pieces);
 
 	REQUIRE_FALSE(err.has_value());
 	CHECK(state.halfMoveClock == 12);
@@ -907,8 +851,7 @@ TEST_CASE("FENParser::ParseFEN: fewer than 4 fields reports the field-count erro
 {
 	FENParser::FENGameState state;
 	std::vector<std::tuple<ePiece, eSquare>> pieces;
-	auto err =
-	    FENParser::ParseFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq", state, pieces);
+	auto err = FENParser::ParseFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq", state, pieces);
 
 	REQUIRE(err.has_value());
 	CHECK(err->find("too few fields") != std::string::npos);
@@ -1039,8 +982,8 @@ TEST_CASE("Board::SetupFromFEN: rejects adjacent kings", "[uci]")
 	REQUIRE_FALSE(board.SetupFromFEN("8/8/8/3kK3/8/8/8/8 b - - 0 1"));
 }
 
-// Guards against over-rejection: an ordinary position where the side to move is in check has to
-// keep loading, since that is what most tactical test positions are.
+// Guards against over-rejection: an ordinary position where the side to move is in check has to keep
+// loading, since that is what most tactical test positions are.
 TEST_CASE("Board::SetupFromFEN: a normal check position still loads", "[uci]")
 {
 	Board board;
@@ -1071,8 +1014,7 @@ TEST_CASE("FenBatch::ClassifyLine: valid 6-field White-to-move FEN is Valid", "[
 
 TEST_CASE("FenBatch::ClassifyLine: valid 6-field Black-to-move FEN is Valid", "[uci]")
 {
-	auto r = FenBatch::ClassifyLine(
-	    "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R b KQkq - 0 1");
+	auto r = FenBatch::ClassifyLine("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R b KQkq - 0 1");
 	REQUIRE(r.kind == FenBatch::LineKind::Valid);
 	REQUIRE(r.error.empty());
 }
@@ -1156,8 +1098,7 @@ TEST_CASE("cmd_perft: 'go perft' is not parsed as a search", "[uci][perft]")
 TEST_CASE("cmd_perft: honours the position set by cmd_position", "[uci][perft]")
 {
 	UciHandlerTestFixture fix;
-	fix.position(
-	    "position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+	fix.position("position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
 
 	std::string output;
 	{
@@ -1213,13 +1154,8 @@ TEST_CASE("cmd_perft: leaves the board unchanged", "[uci][perft]")
 // command loop over stdin, which is what an external harness does.
 class CinRedirect {
   public:
-	explicit CinRedirect(std::string input)
-	    : buffer_(std::move(input)), old_(std::cin.rdbuf(buffer_.rdbuf()))
-	{}
-	~CinRedirect()
-	{
-		std::cin.rdbuf(old_);
-	}
+	explicit CinRedirect(std::string input) : buffer_(std::move(input)), old_(std::cin.rdbuf(buffer_.rdbuf())) {}
+	~CinRedirect() { std::cin.rdbuf(old_); }
 
 	CinRedirect(const CinRedirect&) = delete;
 	CinRedirect& operator=(const CinRedirect&) = delete;
@@ -1273,8 +1209,7 @@ namespace {
 
 // Nine white pawns — rejected by FENParser's "too many pawns" rule.
 constexpr const char* kRejectedFen = "4k3/8/P7/8/8/8/PPPPPPPP/4K3 w - - 0 1";
-constexpr const char* kKiwipeteFen =
-    "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+constexpr const char* kKiwipeteFen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
 
 } // namespace
 
@@ -1299,8 +1234,7 @@ TEST_CASE("cmd_position: an unparseable move stops replay and reports it", "[uci
 {
 	UciHandlerTestFixture fix;
 
-	const std::string output =
-	    capture_cout([&] { fix.position("position startpos moves e2e4 zzzz e7e5"); });
+	const std::string output = capture_cout([&] { fix.position("position startpos moves e2e4 zzzz e7e5"); });
 
 	REQUIRE(output.find("info string") != std::string::npos);
 	REQUIRE(output.find("zzzz") != std::string::npos);
@@ -1320,8 +1254,7 @@ TEST_CASE("cmd_position: refused while a search is running, board untouched", "[
 	fix.position("position startpos");
 
 	fix.set_searching(true);
-	const std::string output =
-	    capture_cout([&] { fix.position("position fen 4k3/8/8/8/8/8/8/4K2R w K - 0 1"); });
+	const std::string output = capture_cout([&] { fix.position("position fen 4k3/8/8/8/8/8/8/4K2R w K - 0 1"); });
 	fix.set_searching(false);
 
 	REQUIRE(output.find("info string") != std::string::npos);
@@ -1341,8 +1274,7 @@ TEST_CASE("cmd_setoption: refused while a search is running", "[uci][smp]")
 	REQUIRE(fix.ai_threads() == 2);
 
 	fix.set_searching(true);
-	const std::string output =
-	    capture_cout([&] { fix.setoption("setoption name Threads value 8"); });
+	const std::string output = capture_cout([&] { fix.setoption("setoption name Threads value 8"); });
 	fix.set_searching(false);
 
 	REQUIRE(output.find("info string") != std::string::npos);

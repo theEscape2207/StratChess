@@ -17,10 +17,7 @@ template <typename T> class Event {
 		return id;
 	}
 
-	void unsubscribe(size_t handle)
-	{
-		callbacks.erase(handle);
-	}
+	void unsubscribe(size_t handle) { callbacks.erase(handle); }
 
 	void fire(const void* sender, T& arg)
 	{
@@ -29,18 +26,12 @@ template <typename T> class Event {
 		}
 	}
 
-	void clear()
-	{
-		callbacks.clear();
-	}
+	void clear() { callbacks.clear(); }
 };
 
 class Source {
   public:
 	Event<int> theEvent;
 
-	void fireEvent(int n)
-	{
-		theEvent.fire(this, n);
-	}
+	void fireEvent(int n) { theEvent.fire(this, n); }
 };

@@ -17,8 +17,8 @@ static constexpr const char* FEN_SORT = "4k3/8/8/8/8/8/r7/R3K3 w - - 0 1";
 
 // Helper: find the score assigned to a specific move in out_scored_idx.
 // Returns INT_MIN if not found.
-static int FindScore(const std::array<std::pair<int, int>, MoveList::MAX_MOVES>& scored_idx,
-                     const MoveList& moveList, int n, const Move& target)
+static int FindScore(const std::array<std::pair<int, int>, MoveList::MAX_MOVES>& scored_idx, const MoveList& moveList,
+                     int n, const Move& target)
 {
 	for (int i = 0; i < n; ++i) {
 		if (moveList[scored_idx[i].second] == target)
@@ -44,8 +44,7 @@ TEST_CASE("Sort - PV move scores 2'000'000", "[sort]")
 	int32_t history[2][64][64] = {};
 
 	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	MoveSorter::ScoreMoves(moveList, n, board, WHITE, pv_move, null_move, killer0, killer1, history,
-	                       scored_idx);
+	MoveSorter::ScoreMoves(moveList, n, board, WHITE, pv_move, null_move, killer0, killer1, history, scored_idx);
 
 	const int pv_score = FindScore(scored_idx, moveList, n, pv_move);
 	REQUIRE(pv_score == 2'000'000);
@@ -69,8 +68,7 @@ TEST_CASE("Sort - Hash move scores 1'900'000 when not the PV move", "[sort]")
 	int32_t history[2][64][64] = {};
 
 	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	MoveSorter::ScoreMoves(moveList, n, board, WHITE, pv_move, hash_move, killer0, killer1, history,
-	                       scored_idx);
+	MoveSorter::ScoreMoves(moveList, n, board, WHITE, pv_move, hash_move, killer0, killer1, history, scored_idx);
 
 	REQUIRE(FindScore(scored_idx, moveList, n, hash_move) == 1'900'000);
 }
@@ -85,8 +83,8 @@ TEST_CASE("Sort - Capture scores above 1'000'000 (winning capture category)", "[
 	const int n = static_cast<int>(moveList.size());
 
 	// Find Ra1xa2 in the move list
-	const auto it = std::find_if(moveList.begin(), moveList.end(),
-	                             [](const Move& m) { return m.from() == a1 && m.to() == a2; });
+	const auto it =
+	    std::find_if(moveList.begin(), moveList.end(), [](const Move& m) { return m.from() == a1 && m.to() == a2; });
 	REQUIRE(it != moveList.end());
 	const Move capture = *it;
 
@@ -94,8 +92,7 @@ TEST_CASE("Sort - Capture scores above 1'000'000 (winning capture category)", "[
 	int32_t history[2][64][64] = {};
 
 	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, null_move, killer0, killer1,
-	                       history, scored_idx);
+	MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, null_move, killer0, killer1, history, scored_idx);
 
 	const int cap_score = FindScore(scored_idx, moveList, n, capture);
 	REQUIRE(cap_score >= 1'000'000); // winning-capture category
@@ -128,13 +125,11 @@ TEST_CASE("Sort - Killer0 scores 900'000; beats quiet move with no history", "[s
 	int32_t history[2][64][64] = {};
 
 	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, null_move, killer0, killer1,
-	                       history, scored_idx);
+	MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, null_move, killer0, killer1, history, scored_idx);
 
 	REQUIRE(FindScore(scored_idx, moveList, n, killer0) == 900'000);
 	REQUIRE(FindScore(scored_idx, moveList, n, quiet_no_history) == 0);
-	REQUIRE(FindScore(scored_idx, moveList, n, killer0) >
-	        FindScore(scored_idx, moveList, n, quiet_no_history));
+	REQUIRE(FindScore(scored_idx, moveList, n, killer0) > FindScore(scored_idx, moveList, n, quiet_no_history));
 }
 
 TEST_CASE("Sort - Quiet move with positive history scores exactly that history value", "[sort]")
@@ -147,8 +142,8 @@ TEST_CASE("Sort - Quiet move with positive history scores exactly that history v
 	const int n = static_cast<int>(moveList.size());
 
 	// Find a quiet king move
-	const auto it = std::find_if(moveList.begin(), moveList.end(),
-	                             [](const Move& m) { return m.from() == e1 && m.to() == d1; });
+	const auto it =
+	    std::find_if(moveList.begin(), moveList.end(), [](const Move& m) { return m.from() == e1 && m.to() == d1; });
 	REQUIRE(it != moveList.end());
 	const Move quiet_move = *it;
 
@@ -157,8 +152,7 @@ TEST_CASE("Sort - Quiet move with positive history scores exactly that history v
 	history[WHITE][e1][d1] = 42; // inject a history score
 
 	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, null_move, killer0, killer1,
-	                       history, scored_idx);
+	MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, null_move, killer0, killer1, history, scored_idx);
 
 	REQUIRE(FindScore(scored_idx, moveList, n, quiet_move) == 42);
 }

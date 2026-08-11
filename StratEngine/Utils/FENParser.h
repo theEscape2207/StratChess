@@ -30,13 +30,11 @@ class FENParser final {
 
 	// Primary interface - parse FEN into standalone structures
 	// This is what Board::SetupFromFEN() should call
-	static std::optional<std::string>
-	ParseFEN(const std::string& fen, FENGameState& outState,
-	         std::vector<std::tuple<ePiece, eSquare>>& outPieces) noexcept;
+	static std::optional<std::string> ParseFEN(const std::string& fen, FENGameState& outState,
+	                                           std::vector<std::tuple<ePiece, eSquare>>& outPieces) noexcept;
 
 	// Validate FEN metadata against actual board state
-	static bool ValidatePositionAgainstFENMetadata(const Board& board,
-	                                               FENGameState& state) noexcept;
+	static bool ValidatePositionAgainstFENMetadata(const Board& board, FENGameState& state) noexcept;
 
 	// Utility: Convert FENGameState to Config::GameConfig (for backward compatibility)
 	static void ToGameConfig(const FENGameState& state, Config::GameConfig& outConfig) noexcept;
@@ -49,13 +47,11 @@ class FENParser final {
 	// Fills outVec with (piece, square) tuples in the same square-indexing used in Board.
 	// On success returns std::nullopt. On failure returns an error message.
 	static std::optional<std::string>
-	ParsePiecePlacementField(const std::string& placement,
-	                         std::vector<std::tuple<ePiece, eSquare>>& outVec) noexcept;
+	ParsePiecePlacementField(const std::string& placement, std::vector<std::tuple<ePiece, eSquare>>& outVec) noexcept;
 
 	// Convert a 2-char square like "e3" to eSquare. Returns NO_SQUARE on invalid input.
 	static eSquare SquareFromString(const std::string& s) noexcept;
 
 	// Parse FEN castling string format either "KQkq" or "-" if no more available.
-	static std::optional<std::string> PopulateCastlingFlags(const std::string& castling,
-	                                                        uint8_t& outRights) noexcept;
+	static std::optional<std::string> PopulateCastlingFlags(const std::string& castling, uint8_t& outRights) noexcept;
 };

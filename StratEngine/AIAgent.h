@@ -7,10 +7,7 @@ class AIAgent final : public PlayerAiIterBase {
   public:
 	// Implementation/overrides of the IPlayer interface
 	Move GetMove(GameInfo& info, const SearchLimits& limits) override;
-	const char* GetType() const noexcept override
-	{
-		return "AI Agent";
-	}
+	const char* GetType() const noexcept override { return "AI Agent"; }
 
 	// Note: NOT to be called directly - only through Factory method
 	explicit AIAgent(Board& board, unsigned md) : PlayerAiIterBase(board, md) {}

@@ -43,8 +43,7 @@ TEST_CASE("Perft - Starting position depth 4 = 197281", "[perft]")
 
 // ── Kiwipete (complex middlegame — exercises castling, promotions, en passant) ─
 
-static constexpr const char* FEN_KIWIPETE =
-    "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+static constexpr const char* FEN_KIWIPETE = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
 
 TEST_CASE("Perft - Kiwipete depth 1 = 48", "[perft]")
 {

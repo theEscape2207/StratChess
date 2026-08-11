@@ -29,8 +29,7 @@ TimeBudget compute_budget(std::chrono::milliseconds remaining, std::chrono::mill
 	// Base allocation: spread time evenly + capture most of the increment
 	const ms base{
 	    static_cast<ms::rep>(usable.count() / horizon +
-	                         increment.count() * 8 /
-	                             10) // integer 80% — avoids C4244 double->long long
+	                         increment.count() * 8 / 10) // integer 80% — avoids C4244 double->long long
 	};
 
 	const ms soft = std::clamp(base, floor, cap);

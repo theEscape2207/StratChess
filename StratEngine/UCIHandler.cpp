@@ -20,8 +20,7 @@
 #	include <unistd.h>
 #endif
 
-static constexpr std::string_view STARTING_FEN =
-    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+static constexpr std::string_view STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 static constexpr unsigned UCI_DEFAULT_DEPTH = 20;
 
 // Same bound the 'perft' CLI subcommand enforces, so a mistyped depth cannot
@@ -71,17 +70,13 @@ UciHandler::UciHandler()
     : eval_(EvalManager::Create(EvalManager::EvalTypes::COMPLEX))
 {}
 
-UciHandler::~UciHandler()
-{
-	stop_and_join();
-}
+UciHandler::~UciHandler() { stop_and_join(); }
 
 void UciHandler::init_ai()
 {
 	auto base = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, UCI_DEFAULT_DEPTH, board_);
 	AIPerplex::SetVerboseLogging(false);
-	base->SetEvalEngine(
-	    EvalManager::EvalTypes::COMPLEX); // public via IPlayer; must be before downcast
+	base->SetEvalEngine(EvalManager::EvalTypes::COMPLEX); // public via IPlayer; must be before downcast
 	ai_.reset(dynamic_cast<PlayerAiBase*>(base.release()));
 	// Apply any thread count set via 'setoption' before ai_ existed (a
 	// client may configure options before the first 'ucinewgame'). ai_ now
@@ -104,16 +99,12 @@ void UciHandler::cmd_uci()
 	// Hash budgets TT entry bytes. Arbitrary values round down to a power-of-two
 	// bucket count; exact-fit values include 192 / 384 / 768 / 1536. The
 	// separately queryable lock_bytes() is additional memory.
-	send("option name Hash type spin default " + std::to_string(AIPerplex::DEFAULT_HASH_MB) +
-	     " min " + std::to_string(AIPerplex::MIN_HASH_MB) + " max " +
-	     std::to_string(AIPerplex::MAX_HASH_MB));
+	send("option name Hash type spin default " + std::to_string(AIPerplex::DEFAULT_HASH_MB) + " min " +
+	     std::to_string(AIPerplex::MIN_HASH_MB) + " max " + std::to_string(AIPerplex::MAX_HASH_MB));
 	send("uciok");
 }
 
-void UciHandler::cmd_isready()
-{
-	send("readyok");
-}
+void UciHandler::cmd_isready() { send("readyok"); }
 
 void UciHandler::cmd_ucinewgame()
 {
@@ -140,8 +131,7 @@ static constexpr int EVAL_VALUE_COL = 7; // each of white / black / net, right-a
 // Total printed width of one row: the term column, the first '|', then three
 // value columns of which the last two are each preceded by " |". The 'sum'
 // line is right-aligned to this so its figure lands under the net column.
-static constexpr int EVAL_TABLE_WIDTH =
-    EVAL_TERM_COL + 1 + EVAL_VALUE_COL + 2 * (2 + EVAL_VALUE_COL);
+static constexpr int EVAL_TABLE_WIDTH = EVAL_TERM_COL + 1 + EVAL_VALUE_COL + 2 * (2 + EVAL_VALUE_COL);
 
 // Right-align `text` in a field of `width`; returns it unpadded if it is
 // already wider, so an implausibly large score widens the table rather than
@@ -162,8 +152,8 @@ static std::string pad_right(const std::string& text, int width)
 // white-minus-black — the direction in which Evaluate() combines the two.
 static std::string eval_term_row(const char* name, int white, int black)
 {
-	return pad_right(name, EVAL_TERM_COL) + "|" + pad_left(std::to_string(white), EVAL_VALUE_COL) +
-	       " |" + pad_left(std::to_string(black), EVAL_VALUE_COL) + " |" +
+	return pad_right(name, EVAL_TERM_COL) + "|" + pad_left(std::to_string(white), EVAL_VALUE_COL) + " |" +
+	       pad_left(std::to_string(black), EVAL_VALUE_COL) + " |" +
 	       pad_left(std::to_string(white - black), EVAL_VALUE_COL);
 }
 
@@ -224,15 +214,12 @@ void UciHandler::cmd_eval()
 		// both are printed so a drift between the terms and Evaluate() is
 		// visible on inspection, and asserted on in StratChessTests (D9).
 		const int net_sum =
-		    (terms.material[WHITE] - terms.material[BLACK]) +
-		    (terms.pawns[WHITE] - terms.pawns[BLACK]) + (terms.rooks[WHITE] - terms.rooks[BLACK]) +
-		    (terms.pst[WHITE] - terms.pst[BLACK]) + (terms.mopup[WHITE] - terms.mopup[BLACK]) +
-		    (terms.bishops[WHITE] - terms.bishops[BLACK]) +
-		    (terms.castling[WHITE] - terms.castling[BLACK]) +
-		    (terms.mobility[WHITE] - terms.mobility[BLACK]);
+		    (terms.material[WHITE] - terms.material[BLACK]) + (terms.pawns[WHITE] - terms.pawns[BLACK]) +
+		    (terms.rooks[WHITE] - terms.rooks[BLACK]) + (terms.pst[WHITE] - terms.pst[BLACK]) +
+		    (terms.mopup[WHITE] - terms.mopup[BLACK]) + (terms.bishops[WHITE] - terms.bishops[BLACK]) +
+		    (terms.castling[WHITE] - terms.castling[BLACK]) + (terms.mobility[WHITE] - terms.mobility[BLACK]);
 		const std::string sum_label = "sum (white pov)";
-		send(sum_label + pad_left(std::to_string(net_sum),
-		                          EVAL_TABLE_WIDTH - static_cast<int>(sum_label.size())));
+		send(sum_label + pad_left(std::to_string(net_sum), EVAL_TABLE_WIDTH - static_cast<int>(sum_label.size())));
 
 		// Phase rather than a stage name (issue #99): the evaluator no longer
 		// has a middlegame/endgame boolean, and how far through the taper a
@@ -307,8 +294,7 @@ void UciHandler::cmd_position(std::string_view line)
 				// so applying them would build a position nobody described. What
 				// was applied so far stands, and the caller is told where it
 				// stopped.
-				send("info string position: unparseable move '" + token +
-				     "', remaining moves not replayed");
+				send("info string position: unparseable move '" + token + "', remaining moves not replayed");
 				return;
 			}
 			board_.DoMove(m);
@@ -351,9 +337,8 @@ void UciHandler::cmd_go(std::string_view line)
 		limits.movetime = std::chrono::seconds(10);
 	}
 	limits.infinite = p.infinite;
-	limits.depth = (p.depth > 0)
-	                   ? std::optional<int>(p.depth)
-	                   : std::optional<int>(p.infinite ? 50 : static_cast<int>(UCI_DEFAULT_DEPTH));
+	limits.depth = (p.depth > 0) ? std::optional<int>(p.depth)
+	                             : std::optional<int>(p.infinite ? 50 : static_cast<int>(UCI_DEFAULT_DEPTH));
 
 	auto start = std::chrono::steady_clock::now();
 	// Raised on this thread, before the search exists, so a command arriving
@@ -362,8 +347,7 @@ void UciHandler::cmd_go(std::string_view line)
 	search_thread_ = std::thread([this, info, start, limits]() mutable {
 		Move best = ai_->GetMove(info, limits);
 
-		auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-		    std::chrono::steady_clock::now() - start);
+		auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
 
 		auto* perplex = dynamic_cast<AIPerplex*>(ai_.get());
 		SearchResult result = perplex ? perplex->GetLastResult() : SearchResult{};
@@ -380,9 +364,8 @@ void UciHandler::cmd_go(std::string_view line)
 			score_str = "cp " + std::to_string(cp);
 		}
 
-		send("info depth " + std::to_string(result.depth_completed) + " score " + score_str +
-		     " nodes " + std::to_string(result.nodes_searched) + " time " +
-		     std::to_string(elapsed.count()) + " pv " +
+		send("info depth " + std::to_string(result.depth_completed) + " score " + score_str + " nodes " +
+		     std::to_string(result.nodes_searched) + " time " + std::to_string(elapsed.count()) + " pv " +
 		     (best.is_null() ? "0000" : MoveFormatter::ToUCI(best)));
 
 		const std::string bm = best.is_null() ? "0000" : MoveFormatter::ToUCI(best);
@@ -419,8 +402,7 @@ bool UciHandler::refuse_while_searching(std::string_view command)
 	if (!searching_.load(std::memory_order_acquire)) {
 		return false;
 	}
-	send("info string " + std::string(command) +
-	     ": ignored, a search is in progress -- send 'stop' first");
+	send("info string " + std::string(command) + ": ignored, a search is in progress -- send 'stop' first");
 	return true;
 }
 
@@ -457,10 +439,7 @@ void UciHandler::cmd_perft(std::string_view line)
 	std::cout.flush();
 }
 
-void UciHandler::cmd_stop()
-{
-	stop_and_join();
-}
+void UciHandler::cmd_stop() { stop_and_join(); }
 
 void UciHandler::cmd_setoption(std::string_view line)
 {
@@ -488,9 +467,9 @@ void UciHandler::cmd_setoption(std::string_view line)
 		return;
 
 	const auto value_pos = line.find("value");
-	const std::string_view name = trim((value_pos != std::string_view::npos)
-	                                       ? line.substr(name_pos + 4, value_pos - (name_pos + 4))
-	                                       : line.substr(name_pos + 4));
+	const std::string_view name =
+	    trim((value_pos != std::string_view::npos) ? line.substr(name_pos + 4, value_pos - (name_pos + 4))
+	                                               : line.substr(name_pos + 4));
 
 	if ((name != "Threads" && name != "Hash") || value_pos == std::string_view::npos)
 		return;
@@ -533,8 +512,8 @@ void UciHandler::cmd_setoption(std::string_view line)
 		return;
 	}
 
-	send("info string hash " + std::to_string(result.entry_mb) + " MiB (" +
-	     std::to_string(result.bucket_count) + " buckets)");
+	send("info string hash " + std::to_string(result.entry_mb) + " MiB (" + std::to_string(result.bucket_count) +
+	     " buckets)");
 }
 
 // ---------------------------------------------------------------------------

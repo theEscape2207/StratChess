@@ -22,8 +22,8 @@ Move PlayerHuman::GetMove(GameInfo& info, const SearchLimits&)
 		// No legal moves left, bye!
 		spdlog::default_logger()->info("Human has no legal moves left");
 		if (board.InCheck()) {
-			EGameStateChanged.fire(this, board.GetCurrentColor() == WHITE ? GameStates::BLACK_WON
-			                                                              : GameStates::WHITE_WON);
+			EGameStateChanged.fire(this,
+			                       board.GetCurrentColor() == WHITE ? GameStates::BLACK_WON : GameStates::WHITE_WON);
 			this->_bestScore = -GameValues::Mate;
 
 			return Move::EmptyMove();
@@ -46,8 +46,7 @@ Move PlayerHuman::GetMove(GameInfo& info, const SearchLimits&)
 		std::cin >> strOrg;
 
 		// We only want _trimmed_ lower case all over
-		const std::string strMove =
-		    StringHelper::toLower(StringHelper::trim(strOrg)); // Save the original input
+		const std::string strMove = StringHelper::toLower(StringHelper::trim(strOrg)); // Save the original input
 
 		// mulighed for at skrive "quit" eller "exit" for at quitte
 		if (strMove == "exit" || strMove == "quit") {
@@ -94,15 +93,13 @@ Move PlayerHuman::GetMove(GameInfo& info, const SearchLimits&)
 					return MoveType::PROMOTION_QUEEN;
 				}
 			};
-			const MoveType targetType =
-			    userPromote ? toPromotionType(userPieceType) : MoveType::PROMOTION_QUEEN;
+			const MoveType targetType = userPromote ? toPromotionType(userPieceType) : MoveType::PROMOTION_QUEEN;
 			if (MoveHelper::AsType(*moveIt) != targetType)
 				continue; // Not the requested promotion piece — try next
 		}
 
 		// Tjekker traekket for lovlighed(dvs ikke skak osv). Returnerer hvis OK
-		// TODO: IsLegalMove bliver kaldt i IsAnyLegalMoves(), men illegale traek bliver ikke
-		// fjernet
+		// TODO: IsLegalMove bliver kaldt i IsAnyLegalMoves(), men illegale traek bliver ikke fjernet
 		if (board.IsLegalMove(*moveIt)) {
 			info.UpdateBoardInfo(*moveIt, board.GetEffectiveMovPiece(*moveIt));
 			return *moveIt;
@@ -117,8 +114,7 @@ bool PlayerHuman::ValidateInput(const std::string& strInput)
 	// We are allowing the row as lower case and the col as a number with an optional '-' in between
 	// Also optional promotional choices i.e. Queen, Rook, Bishop or Knight
 	// Allowed: e2e4, E2e4, e2-E4, e2-E4Q, D7D8R
-	// Must be between 4 and 6 chars: letter-digit-(optional '-') letter-digit (optional
-	// promotional)
+	// Must be between 4 and 6 chars: letter-digit-(optional '-') letter-digit (optional promotional)
 	static const std::regex regPiece(R"([a-h][1-8]-?[a-h][1-8](q|r|b|n)?)");
 	return std::regex_match(strInput, regPiece);
 }
@@ -126,8 +122,7 @@ bool PlayerHuman::ValidateInput(const std::string& strInput)
 // Returns true if we are trying a promotion
 // Expects parameter input to be lower case
 // The returned Move has a generic type
-// Returns true if the user specified an allowed promotional character; sets promotedType in that
-// case
+// Returns true if the user specified an allowed promotional character; sets promotedType in that case
 bool PlayerHuman::ParseInput(const std::string& input, Move& move, ePieceType& promotedType)
 {
 	auto curIt = input.begin();

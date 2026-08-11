@@ -29,13 +29,14 @@ void initialize() noexcept
 	// guard at all — they are `inline constexpr`, fully resolved at
 	// compile time with no runtime initialization step whatsoever.
 	static const bool once = [] {
-		// non-deterministic seed for production use (uncomment for true randomness, but beware
-		// non-reproducible hashes across runs) std::random_device rd; std::mt19937 rng(rd());
+		// non-deterministic seed for production use (uncomment for true randomness, but beware non-reproducible hashes across runs)
+		// std::random_device rd;
+		// std::mt19937 rng(rd());
 		// Deterministic seed for reproducibility
 		std::mt19937_64 rng(0x123456789ABCDEF0ULL);
 
-		// std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
-		//  Fills piece_keys with random 64-bit values for piece-placement Zobrist hashing.
+		//std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
+		// Fills piece_keys with random 64-bit values for piece-placement Zobrist hashing.
 		for (int piece = ePiece::WHITE_PAWN; piece < ALL_PIECETYPES; ++piece) {
 			for (int square = 0; square < ALL_SQUARES; ++square) {
 				piece_keys[piece][square] = rng();
@@ -126,15 +127,14 @@ void Board::setup_board(const squareCol& col)
 	spdlog::default_logger()->debug("Custom board set up");
 }
 
-// The one rule so far: the side not to move may not be in check, since reaching such a position
-// would have required leaving a king en prise. Kings on adjacent squares fail it too, because
-// GetAttackBoard includes king attacks. Any further rule belongs here, and only needs the scratch
-// board below.
+// The one rule so far: the side not to move may not be in check, since reaching such a position would
+// have required leaving a king en prise. Kings on adjacent squares fail it too, because GetAttackBoard
+// includes king attacks. Any further rule belongs here, and only needs the scratch board below.
 bool Board::position_is_legal(const squareCol& pieces, eColor sideToMove)
 {
-	// A scratch board, because attack generation needs a populated one and the caller's board may
-	// not be modified until the position is known to be legal. Placement and side to move are all
-	// the query reads; castling rights and en-passant cannot make a king attacked.
+	// A scratch board, because attack generation needs a populated one and the caller's board may not
+	// be modified until the position is known to be legal. Placement and side to move are all the
+	// query reads; castling rights and en-passant cannot make a king attacked.
 	Board probe;
 	probe.setup_board(pieces);
 	probe.sideToMove_ = sideToMove;
@@ -156,8 +156,8 @@ bool Board::SetupFromFEN(const std::string& fen)
 
 	// Checked before anything is applied, so a rejected FEN leaves this board as it was.
 	if (!position_is_legal(pieces, state.sideToMove)) {
-		spdlog::default_logger()->error(
-		    "FEN describes an illegal position (the side not to move is in check): {}", fen);
+		spdlog::default_logger()->error("FEN describes an illegal position (the side not to move is in check): {}",
+		                                fen);
 		return false;
 	}
 
@@ -283,10 +283,7 @@ void Board::SetDefaultBoard()
 	spdlog::default_logger()->debug("Default board set up");
 }
 
-std::span<const BITBOARD> Board::GetBitBoards() const noexcept
-{
-	return std::span(bitboards_);
-}
+std::span<const BITBOARD> Board::GetBitBoards() const noexcept { return std::span(bitboards_); }
 
 bool Board::DoMove(const Move& m)
 {
@@ -363,10 +360,8 @@ bool Board::DoMove(const Move& m)
 			assert(PieceHelper::IsNoPiece(GetPiece(from - 1)));
 			assert(PieceHelper::IsNoPiece(GetPiece(from - 2)));
 			assert(PieceHelper::IsNoPiece(GetPiece(from - 3)));
-			assert(PieceHelper::IsOfPiece(GetPiece(from - 4),
-			                              PieceHelper::AsPiece(ROOK, sideToMove_)));
-			move_piece(PieceHelper::AsPiece(ROOK, sideToMove_), SquareHelper::Calc(to, -2),
-			           SquareHelper::Calc(to, +1));
+			assert(PieceHelper::IsOfPiece(GetPiece(from - 4), PieceHelper::AsPiece(ROOK, sideToMove_)));
+			move_piece(PieceHelper::AsPiece(ROOK, sideToMove_), SquareHelper::Calc(to, -2), SquareHelper::Calc(to, +1));
 			break;
 		default:
 			assert(!"Invalid castling 'to' square");
@@ -384,10 +379,8 @@ bool Board::DoMove(const Move& m)
 		case g8:
 			assert(PieceHelper::IsNoPiece(GetPiece(from + 1)));
 			assert(PieceHelper::IsNoPiece(GetPiece(from + 2)));
-			assert(PieceHelper::IsOfPiece(GetPiece(from + 3),
-			                              PieceHelper::AsPiece(ROOK, sideToMove_)));
-			move_piece(PieceHelper::AsPiece(ROOK, sideToMove_), SquareHelper::Calc(to, +1),
-			           SquareHelper::Calc(to, -1));
+			assert(PieceHelper::IsOfPiece(GetPiece(from + 3), PieceHelper::AsPiece(ROOK, sideToMove_)));
+			move_piece(PieceHelper::AsPiece(ROOK, sideToMove_), SquareHelper::Calc(to, +1), SquareHelper::Calc(to, -1));
 			break;
 		default:
 			assert(!"Invalid castling 'to' square");
@@ -464,18 +457,14 @@ bool Board::DoMove(const Move& m)
 // Call after a move that will never be undone (a real game move, or a UCI
 // position replay). currentPly_ then only ever has to span the depth of an
 // in-flight search excursion, never the length of the whole game.
-void Board::ResetSearchDepth() noexcept
-{
-	currentPly_ = 0;
-}
+void Board::ResetSearchDepth() noexcept { currentPly_ = 0; }
 
 // Mirror of DoMove(). Assumes the current player is the one who did NOT make the move.
 void Board::UndoMove(const Move& m)
 {
 	currentPly_--;
 
-	// The moving piece is currently on m.to() (placed there by DoMove); read before any state
-	// changes.
+	// The moving piece is currently on m.to() (placed there by DoMove); read before any state changes.
 	const ePiece movingPiece = GetPiece(m.to());
 	// capturedPiece is needed for IsValid and for restoring the board; read from history now.
 	const auto capturedPiece = capturedHistory_[currentPly_];
@@ -552,8 +541,7 @@ void Board::UndoMove(const Move& m)
 			assert(PieceHelper::IsNoPiece(GetPiece(from)));
 			assert(PieceHelper::IsNoPiece(GetPiece(to - 1)));
 			assert(PieceHelper::IsNoPiece(GetPiece(to - 2)));
-			move_piece(PieceHelper::AsPiece(ROOK, sideToMove_), SquareHelper::Calc(to, +1),
-			           SquareHelper::Calc(to, -2));
+			move_piece(PieceHelper::AsPiece(ROOK, sideToMove_), SquareHelper::Calc(to, +1), SquareHelper::Calc(to, -2));
 			break;
 		default:
 			assert(!"Invalid castling 'to' square");
@@ -571,8 +559,7 @@ void Board::UndoMove(const Move& m)
 		case g8:
 			assert(PieceHelper::IsNoPiece(GetPiece(from)));
 			assert(PieceHelper::IsNoPiece(GetPiece(to + 1)));
-			move_piece(PieceHelper::AsPiece(ROOK, sideToMove_), SquareHelper::Calc(to, -1),
-			           SquareHelper::Calc(to, +1));
+			move_piece(PieceHelper::AsPiece(ROOK, sideToMove_), SquareHelper::Calc(to, -1), SquareHelper::Calc(to, +1));
 			break;
 		default:
 			assert(!"Invalid castling 'to' square");
@@ -619,10 +606,7 @@ ePiece Board::GetEffectiveMovPiece(const Move& m) const noexcept
 }
 
 // Public wrapper around get_captured_piece — used by Sort and external callers.
-ePiece Board::GetCapturedPiece(const Move& m) const noexcept
-{
-	return get_captured_piece(m);
-}
+ePiece Board::GetCapturedPiece(const Move& m) const noexcept { return get_captured_piece(m); }
 
 // Returns true if the king of the side to move is under attack.
 bool Board::InCheck() const noexcept
@@ -797,10 +781,7 @@ bool Board::is_repetition(int ply) const
 	return false;
 }
 
-void Board::push_position()
-{
-	position_history_.push_back(zobrist_hash_);
-}
+void Board::push_position() { position_history_.push_back(zobrist_hash_); }
 
 void Board::pop_position()
 {
@@ -828,10 +809,7 @@ void Board::update_zobrist_ep(eSquare old_ep, eSquare new_ep) noexcept
 		zobrist_hash_ ^= zobrist::ep_keys[new_ep];
 }
 
-void Board::update_zobrist_side() noexcept
-{
-	zobrist_hash_ ^= zobrist::side_key;
-}
+void Board::update_zobrist_side() noexcept { zobrist_hash_ ^= zobrist::side_key; }
 
 // Make a null-move: advance side-to-move without changing pieces. This mirrors
 // the DoMove/UndoMove save/restore behaviour so search code can treat the

@@ -25,13 +25,12 @@ Move AIAgent::GetMove(GameInfo& info, const SearchLimits& limits)
 	ApplyLimits(limits);
 
 	// iterativ search
-	for (depth_ = 1;
-	     depth_ <= effective_depth_;) // depth_ maa ikke opdateres her med aspiration search
+	for (depth_ = 1; depth_ <= effective_depth_;) // depth_ maa ikke opdateres her med aspiration search
 	{
 		if (ShouldStopSearch()) {
 			break;
 		}
-		// Kald vores iterative soegerutine
+		//Kald vores iterative soegerutine
 		const int score = Search(0, alpha, beta, m_Line);
 
 		if (IsOutsideWindow(score, alpha, beta)) {
@@ -121,11 +120,10 @@ int AIAgent::Search(size_t ply, int alpha, int beta, PVLine& pline)
 				score = -Search(ply + 1, -beta, -alpha, line);
 			} else // alle andre traek
 			{
-				// Vi regner med at alle andre vaerdier er daarligere!! Dvs sorteringen skal vaere
-				// rigtig god rekursivt kald til Alpha-Beta PVS - minimalt vindue for hurtig cutoff
-				// eller daarligt traek
+				// Vi regner med at alle andre vaerdier er daarligere!! Dvs sorteringen skal vaere rigtig god
+				// rekursivt kald til Alpha-Beta PVS - minimalt vindue for hurtig cutoff eller daarligt traek
 				score = -Search(ply + 1, -alpha - 1, -alpha, line);
-				// Hvis scoren er imellem, saa maa vi soege endnu en gang
+				//Hvis scoren er imellem, saa maa vi soege endnu en gang
 				if (score > alpha && score < beta)
 					score = -Search(ply + 1, -beta, -alpha, line);
 			}
@@ -136,9 +134,8 @@ int AIAgent::Search(size_t ply, int alpha, int beta, PVLine& pline)
 			moveFound = true;
 
 			if (ply == 0 && depth_ == effective_depth_)
-				spdlog::default_logger()->debug("Root move {}/{}: {} score={}", counter,
-				                                moveList.size(), MoveFormatter::ToCoord(curMove),
-				                                score);
+				spdlog::default_logger()->debug("Root move {}/{}: {} score={}", counter, moveList.size(),
+				                                MoveFormatter::ToCoord(curMove), score);
 
 			//	We got a value back.  We unmade the move.  We're not dead.  Let's
 			//	see how good this move was.  If it was >= "beta", it was so good
@@ -175,27 +172,25 @@ int AIAgent::Search(size_t ply, int alpha, int beta, PVLine& pline)
 			}
 		} else {
 			if (ply == 0 && depth_ == effective_depth_)
-				spdlog::default_logger()->debug("Root move {}/{}: {} ILLEGAL", counter,
-				                                moveList.size(), MoveFormatter::ToCoord(curMove));
+				spdlog::default_logger()->debug("Root move {}/{}: {} ILLEGAL", counter, moveList.size(),
+				                                MoveFormatter::ToCoord(curMove));
 		}
 	}
 
 	// Fandt vi nogen lovlige traek?
 	if (!moveFound) {
-		// Nope - i denne gren er vi enten mat eller der er remis!!
+		//Nope - i denne gren er vi enten mat eller der er remis!!
 		pline.clear(); // Denne gren indeholder ingen traek til PVLine
 		// FIXME: Er ovenstaaende rigtigt!! Er det meningen at vi skal toemme linjen her?
 		if (m_Board.InCheck()) {
 			// Ups...Vi er vist mat her!!
-			UpdateGameState(ply, m_Board.GetCurrentColor() == WHITE ? GameStates::BLACK_WON
-			                                                        : GameStates::WHITE_WON);
+			UpdateGameState(ply, m_Board.GetCurrentColor() == WHITE ? GameStates::BLACK_WON : GameStates::WHITE_WON);
 			if (ply == 0) // Er vi i roden af traeet ?
 			{
-				// Ja, saa saet den nye score
+				//Ja, saa saet den nye score
 				this->_bestScore = -GameValues::Mate;
 			}
-			return -GameValues::Mate +
-			       static_cast<int>(ply); // returner mate value minus distance to it
+			return -GameValues::Mate + static_cast<int>(ply); // returner mate value minus distance to it
 		}
 		// Remis: Godt hvis vi er bagud, men skidt hvis vi er foran
 		UpdateGameState(ply, GameStates::DRAW_PAT);

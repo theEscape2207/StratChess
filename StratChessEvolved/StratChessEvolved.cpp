@@ -42,10 +42,8 @@ static void test_fen_integration()
 	};
 
 	std::vector<TestCase> quick_tests = {
-	    {"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "Starting position", 32,
-	     WHITE},
-	    {"r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", "Kiwipete", 30,
-	     WHITE},
+	    {"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "Starting position", 32, WHITE},
+	    {"r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", "Kiwipete", 30, WHITE},
 	    {"8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", "Endgame position", 10, WHITE}};
 
 	int passed = 0;
@@ -99,8 +97,7 @@ static void test_fen_integration()
 static int tacticalrunner(int argc, char** argv)
 {
 	if (argc < 2) {
-		std::cout
-		    << "Usage: tactical test [filename] | tactical stability [N] [filename] [threads]\n";
+		std::cout << "Usage: tactical test [filename] | tactical stability [N] [filename] [threads]\n";
 		return 1;
 	}
 	const std::string command = argv[1];
@@ -140,8 +137,7 @@ static int tacticalrunner(int argc, char** argv)
 			// no need to duplicate the ceiling check here.
 			threads = static_cast<unsigned>(parsed);
 		}
-		const bool ok =
-		    Testing::TacticalTestRunner::run_stability_suite(n_runs, 0.90, filename, threads);
+		const bool ok = Testing::TacticalTestRunner::run_stability_suite(n_runs, 0.90, filename, threads);
 		return ok ? 0 : 1;
 	}
 	std::cerr << "Error: unknown tactical command '" << command << "'\n";
@@ -183,14 +179,13 @@ static int perftrunner(int argc, char** argv)
 
 		Board board;
 
-		if (argc > 3) // custom fen
+		if (argc > 3) //custom fen
 		{
 			std::string fen = argv[3];
 			// Custom fen: Kiwipete
-			// const std::string fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w
-			// KQkq - 0 1";
-			std::cout << "Running perft with custom board setup from FEN at depth " << depth
-			          << "\nFEN: " << fen << "\n\n";
+			//const std::string fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+			std::cout << "Running perft with custom board setup from FEN at depth " << depth << "\nFEN: " << fen
+			          << "\n\n";
 			if (!board.SetupFromFEN(fen)) {
 				std::cerr << "Error: could not parse FEN '" << fen << "'\n";
 				return 1;
@@ -270,8 +265,7 @@ static int evalrunner(int argc, char** argv)
 			continue;
 		}
 		if (result.kind == FenBatch::LineKind::Malformed) {
-			std::cerr << "Warning: line " << line_no << ": " << result.error << ", skipped: '"
-			          << line << "'\n";
+			std::cerr << "Warning: line " << line_no << ": " << result.error << ", skipped: '" << line << "'\n";
 			continue;
 		}
 

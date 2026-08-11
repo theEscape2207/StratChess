@@ -60,8 +60,7 @@ class AIPerlexTestFixture {
 	std::unique_ptr<PlayerBase> ai_owner;
 	AIPerplex* ai = nullptr;
 
-	explicit AIPerlexTestFixture(
-	    const std::string& fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+	explicit AIPerlexTestFixture(const std::string& fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
 	    : board_(fen)
 	{
 		// depth=4 sets max_depth_ (the IDS hard cap used if GetMove() is ever called).
@@ -73,21 +72,12 @@ class AIPerlexTestFixture {
 		// do not invoke Eval->Evaluate(), so this is safe.
 	}
 
-	RejectionReason assess(const Metrics& m, const State& s) const
-	{
-		return ai->assess_iteration_quality(m, s);
-	}
+	RejectionReason assess(const Metrics& m, const State& s) const { return ai->assess_iteration_quality(m, s); }
 
-	bool stop_early(int depth, int score, int pv_len) const
-	{
-		return ai->should_stop_early(depth, score, pv_len);
-	}
+	bool stop_early(int depth, int score, int pv_len) const { return ai->should_stop_early(depth, score, pv_len); }
 
 	// The PV written by the emergency path now lives in ai->td_.pv_table.
-	bool emergency(State& s) const
-	{
-		return ai->handle_empty_move_emergency(ai->td_, s);
-	}
+	bool emergency(State& s) const { return ai->handle_empty_move_emergency(ai->td_, s); }
 
 	bool try_null_move(int depth, int beta, int ply, bool is_pv_node, bool in_check) const
 	{
@@ -98,41 +88,26 @@ class AIPerlexTestFixture {
 	// member. Needed because td_ is private on AIPerplex — only
 	// AIPerlexTestFixture (the declared friend) can reach it, not the free
 	// TEST_CASE functions.
-	void set_last_move_was_null(int ply, bool value) const
-	{
-		ai->td_.last_move_was_null[ply] = value;
-	}
+	void set_last_move_was_null(int ply, bool value) const { ai->td_.last_move_was_null[ply] = value; }
 
 	// Reads the private threads_ member — set (clamped) via the public
 	// SetThreads() override; needs friend access because threads_ itself
 	// is private. Used by the [smp] clamp tests below.
-	unsigned threads() const
-	{
-		return ai->threads_;
-	}
+	unsigned threads() const { return ai->threads_; }
 
 	void store_tt_marker() const
 	{
-		ai->_tt->store(TT_MARKER_KEY, 123, 1, 0, Move::EmptyMove(), BoundType::EXACT,
-		               NodeType::PV_NODE, SearchPhase::MAIN);
+		ai->_tt->store(TT_MARKER_KEY, 123, 1, 0, Move::EmptyMove(), BoundType::EXACT, NodeType::PV_NODE,
+		               SearchPhase::MAIN);
 	}
 
-	bool has_tt_marker() const
-	{
-		return ai->_tt->probe(TT_MARKER_KEY, 0).has_value();
-	}
+	bool has_tt_marker() const { return ai->_tt->probe(TT_MARKER_KEY, 0).has_value(); }
 
-	void start_new_game() const
-	{
-		ai->StartNewGame();
-	}
+	void start_new_game() const { ai->StartNewGame(); }
 
 	// --- Per-game state pokes, for proving StartNewGame() resets them ---
 
-	void poke_history() const
-	{
-		ai->td_.update_history(WHITE, AnyLegalMove(), 4);
-	}
+	void poke_history() const { ai->td_.update_history(WHITE, AnyLegalMove(), 4); }
 	bool history_is_clear() const
 	{
 		for (const auto& side : ai->td_.history)
@@ -143,28 +118,13 @@ class AIPerlexTestFixture {
 		return true;
 	}
 
-	void poke_killer(int ply) const
-	{
-		ai->td_.store_killer(ply, AnyLegalMove());
-	}
-	bool has_killer(int ply) const
-	{
-		return !ai->td_.killers[ply][0].is_null();
-	}
+	void poke_killer(int ply) const { ai->td_.store_killer(ply, AnyLegalMove()); }
+	bool has_killer(int ply) const { return !ai->td_.killers[ply][0].is_null(); }
 
-	void add_fake_helper() const
-	{
-		ai->helper_tds_.push_back(std::make_unique<ThreadData>());
-	}
-	size_t helper_count() const
-	{
-		return ai->helper_tds_.size();
-	}
+	void add_fake_helper() const { ai->helper_tds_.push_back(std::make_unique<ThreadData>()); }
+	size_t helper_count() const { return ai->helper_tds_.size(); }
 
-	void set_last_result_depth(int depth) const
-	{
-		ai->last_result_.depth_completed = depth;
-	}
+	void set_last_result_depth(int depth) const { ai->last_result_.depth_completed = depth; }
 
 	void search_depth_one()
 	{
@@ -440,8 +400,7 @@ TEST_CASE("Search - should_stop_early: short PV relative to depth returns true",
 // handle_empty_move_emergency tests
 // ============================================================================
 
-TEST_CASE("Search - handle_empty_move_emergency: mate score returns false (no move needed)",
-          "[search]")
+TEST_CASE("Search - handle_empty_move_emergency: mate score returns false (no move needed)", "[search]")
 {
 	AIPerlexTestFixture fix; // default ctor sets up the starting position
 
@@ -516,8 +475,7 @@ TEST_CASE("Search - should_try_null_move: mate-score beta returns false", "[sear
 	REQUIRE(fix.try_null_move(4, -GameValues::Mate_Threshold, 1, false, false) == false);
 }
 
-TEST_CASE("Search - should_try_null_move: zugzwang (no non-pawn material) returns false",
-          "[search]")
+TEST_CASE("Search - should_try_null_move: zugzwang (no non-pawn material) returns false", "[search]")
 {
 	// White: king + pawn only. Black: king only. No non-pawn material for
 	// the side to move (white) -> zugzwang guard must refuse NMP.
@@ -527,8 +485,7 @@ TEST_CASE("Search - should_try_null_move: zugzwang (no non-pawn material) return
 	REQUIRE(fix.try_null_move(4, 0, 1, false, false) == false);
 }
 
-TEST_CASE("Search - should_try_null_move: single non-pawn piece returns false (issue #66)",
-          "[search]")
+TEST_CASE("Search - should_try_null_move: single non-pawn piece returns false (issue #66)", "[search]")
 {
 	// QFORK-001 (issue #66): KQ vs KR is won via domination/zugzwang — Black
 	// loses only because he must move. Letting the side with a lone rook

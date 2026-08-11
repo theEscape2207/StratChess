@@ -13,14 +13,14 @@ inline constexpr auto ALL_SQUARES = 64;
 inline constexpr auto ALL_PIECETYPES = 12;
 
 enum eColor : uint8_t {
-	// NO_COLOR = -1,
+	//NO_COLOR = -1,
 	WHITE = 0,
 	BLACK = 1,
 	NUM_COLORS = 2
 };
 
 enum ePieceType : uint8_t {
-	// NO_TYPE = -1,
+	//NO_TYPE = -1,
 	PAWN = 0,
 	KNIGHT = 2,
 	BISHOP = 4,
@@ -80,74 +80,21 @@ enum eRowNames /*: uint8_t*/ {
 enum eFileNames : uint8_t { LEFT_FILE = 0, RIGHT_FILE = 7 };
 
 // Feltbetegnelser
+// clang-format off
+// Laid out as the board itself, eight squares per rank. One enumerator per line
+// is technically equivalent and unreadable.
 enum eSquare /*: uint8_t*/ {
-	a8 = 0,
-	b8,
-	c8,
-	d8,
-	e8,
-	f8,
-	g8,
-	h8,
-	a7,
-	b7,
-	c7,
-	d7,
-	e7,
-	f7,
-	g7,
-	h7,
-	a6,
-	b6,
-	c6,
-	d6,
-	e6,
-	f6,
-	g6,
-	h6,
-	a5,
-	b5,
-	c5,
-	d5,
-	e5,
-	f5,
-	g5,
-	h5,
-	a4,
-	b4,
-	c4,
-	d4,
-	e4,
-	f4,
-	g4,
-	h4,
-	a3,
-	b3,
-	c3,
-	d3,
-	e3,
-	f3,
-	g3,
-	h3,
-	a2,
-	b2,
-	c2,
-	d2,
-	e2,
-	f2,
-	g2,
-	h2,
-	a1,
-	b1,
-	c1,
-	d1,
-	e1,
-	f1,
-	g1,
-	h1 = 63,
-	NUM_SQUARES,
-	NO_SQUARE = 255
+	a8 = 0, b8, c8, d8, e8, f8, g8, h8,
+	a7, b7, c7, d7, e7, f7, g7, h7,
+	a6, b6, c6, d6, e6, f6, g6, h6,
+	a5, b5, c5, d5, e5, f5, g5, h5,
+	a4, b4, c4, d4, e4, f4, g4, h4,
+	a3, b3, c3, d3, e3, f3, g3, h3,
+	a2, b2, c2, d2, e2, f2, g2, h2,
+	a1, b1, c1, d1, e1, f1, g1, h1 = 63,
+	NUM_SQUARES, NO_SQUARE = 255
 };
+// clang-format on
 
 // Bestemmer den maksimale soegedybde for Quiescent(?)
 constexpr auto MAX_PLY = 256;
@@ -201,14 +148,16 @@ inline const BITBOARD g_bbFileMask[] = {
 };
 
 // Tabel med brikkernes statiske vaerdier
+// clang-format off
 inline constexpr unsigned int g_iPieceValues[ALL_PIECETYPES >> 1] = {
-    100,  // Boender
-    300,  // Springere
-    300,  // Loebere
-    500,  // Taarne
-    900,  // Dronninger
-    10000 // Konger
+	100, 		// Boender
+	300, 		// Springere
+	300, 		// Loebere
+	500, 		// Taarne
+	900, 		// Dronninger
+	10000		// Konger
 };
+// clang-format on
 
 /*
 constexpr short g_Eval_Bitboards[][ALL_SQUARES] =
@@ -269,50 +218,98 @@ constexpr short g_Eval_Bitboards[][ALL_SQUARES] =
 };
 */
 
-inline constexpr short g_Eval_Bitboards[][ALL_SQUARES] = {
-    {                                /* Pawn positional values */
-     0,  0,  0,  0,  0,  0,  0,  0,  /* 8 */
-     24, 28, 32, 35, 35, 32, 28, 24, /* 7 */
-     5,  10, 16, 25, 25, 16, 10, 5,  /* 6 */
-     4,  8,  14, 19, 19, 14, 8,  4,  /* 5 */
-     1,  3,  7,  14, 14, 7,  3,  1,  /* 4 */
-     1,  2,  5,  7,  7,  5,  2,  1,  /* 3 */
-     1,  1,  2,  -8, -8, 2,  1,  1,  /* 2 */
-     0,  0,  0,  0,  0,  0,  0,  0}, /* 1 */
-                                     /* A   B   C   D   E   F   G   H  */
+// clang-format off
+// Piece-square tables, one 8x8 board per piece, read as the board is drawn: rank 8
+// at the top, file A on the left, with the trailing /* n */ markers naming the rank.
+// Reflowing these to the column limit destroys the only property that makes them
+// checkable by eye.
+inline constexpr short g_Eval_Bitboards[][ALL_SQUARES] =
+{
+	{
+		/* Pawn positional values */
+		0,  0,  0,  0,  0,  0,  0,  0,  /* 8 */
+		24, 28, 32, 35, 35, 32, 28, 24, /* 7 */
+		5, 10, 16, 25, 25, 16, 10,  5,  /* 6 */
+		4,  8, 14, 19, 19, 14,  8,  4,  /* 5 */
+		1,  3,  7, 14, 14,  7,  3,  1,  /* 4 */
+		1,  2,  5,  7,  7,  5,  2,  1,  /* 3 */
+		1,  1,  2, -8, -8,  2,  1,  1,  /* 2 */
+		0,  0,  0,  0,  0,  0,  0,  0 },/* 1 */
+		/* A   B   C   D   E   F   G   H  */
 
-    /* Knight positional values */
-    {-14, -10, -7, -5, -5, -7, -10, -14, -10, -5,  2,   3,  3,  2,   -5,  -10,
-     -4,  5,   7,  7,  7,  7,  5,   -4,  -5,  6,   8,   10, 10, 8,   6,   -5,
-     -6,  3,   8,  10, 10, 8,  3,   -6,  -8,  0,   5,   8,  8,  5,   0,   -8,
-     -10, -8,  0,  1,  1,  0,  -8,  -10, -16, -10, -10, -8, -8, -10, -10, -16},
+	/* Knight positional values */
+   {
+	   -14,-10, -7, -5, -5, -7,-10,-14,
+	   -10, -5,  2,  3,  3,  2, -5,-10,
+	   -4,  5,  7,  7,  7,  7,  5, -4,
+	   -5,  6,  8, 10, 10,  8,  6, -5,
+	   -6,  3,  8, 10, 10,  8,  3, -6,
+	   -8,  0,  5,  8,  8,  5,  0, -8,
+	   -10, -8,  0,  1,  1,  0, -8,-10,
+	   -16,-10,-10, -8, -8,-10,-10,-16
+   },
 
-    /* Bishop positional values */
-    {2, 7, 7, 7, 7, 7, 7, 2, 2, 4, 4, 4, 4,  4,  4,  2,  4,  6,  7,  7, 7, 7,
-     6, 4, 4, 6, 8, 8, 8, 8, 6, 4, 0, 4, 6,  8,  8,  6,  4,  0,  0,  4, 5, 6,
-     6, 5, 4, 0, 0, 6, 5, 5, 5, 5, 6, 0, -8, -8, -6, -6, -6, -6, -8, -8},
+	/* Bishop positional values */
+	{
+		2,  7,  7,  7,  7,  7,  7,  2,
+		2,  4,  4,  4,  4,  4,  4,  2,
+		4,  6,  7,  7,  7,  7,  6,  4,
+		4,  6,  8,  8,  8,  8,  6,  4,
+		0,  4,  6,  8,  8,  6,  4,  0,
+		0,  4,  5,  6,  6,  5,  4,  0,
+		0,  6,  5,  5,  5,  5,  6,  0,
+		-8, -8, -6, -6, -6, -6, -8, -8
+	},
 
-    /* Rook positional values */
-    {0, 1, 2,  3,  3,  2,  1, 0, 2, 4,  6,  6,  6,  6, 4, 2, 3,  4,  5,  6,  6, 5,
-     4, 3, -2, 0,  4,  5,  5, 4, 0, -2, -4, -2, 3,  5, 5, 3, -2, -4, -6, -2, 3, 5,
-     5, 3, -2, -6, -6, -2, 4, 5, 5, 4,  -2, -6, -0, 0, 0, 0, 0,  0,  0,  0},
+	/* Rook positional values */
+	{
+		0,  1,  2,  3,  3,  2,  1,  0,
+		2,  4,  6,  6,  6,  6,  4,  2,
+		3,  4,  5,  6,  6,  5,  4,  3,
+		-2,  0,  4,  5,  5,  4,  0, -2,
+		-4, -2,  3,  5,  5,  3, -2, -4,
+		-6, -2,  3,  5,  5,  3, -2, -6,
+		-6, -2,  4,  5,  5,  4, -2, -6,
+		-0,  0,  0,  0,  0,  0,  0,  0
+	},
 
-    /* Queen positional values */
-    {0, 0, 0, 0,  0,  0,  0, 0, 0, 2, 3,  4,  4,  3,  2,  0, 0, 2,  4,  5, 5, 4,
-     2, 0, 0, 2,  4,  8,  8, 4, 2, 0, -1, 0,  3,  6,  6,  3, 0, -1, -1, 0, 2, 3,
-     3, 2, 0, -1, -2, -1, 0, 0, 0, 0, -1, -2, -3, -2, -1, 0, 0, -1, -2, -3},
+	/* Queen positional values */
+	{
+		0,  0,  0,  0,  0,  0,  0,  0,
+		0,  2,  3,  4,  4,  3,  2,  0,
+		0,  2,  4,  5,  5,  4,  2,  0,
+		0,  2,  4,  8,  8,  4,  2,  0,
+		-1,  0,  3,  6,  6,  3,  0, -1,
+		-1,  0,  2,  3,  3,  2,  0, -1,
+		-2, -1,  0,  0,  0,  0, -1, -2,
+		-3, -2, -1,  0,  0, -1, -2, -3 },
 
-    /* King positional values - opening and middlegame*/
+		/* King positional values - opening and middlegame*/
 
-    {-40, -40, -40, -40, -40, -40, -40, -40, -40, -40, -40, -40, -40, -40, -40, -40,
-     -40, -40, -40, -40, -40, -40, -40, -40, -40, -40, -40, -40, -40, -40, -40, -40,
-     -40, -40, -40, -40, -40, -40, -40, -40, -40, -40, -40, -40, -40, -40, -40, -40,
-     -20, -20, -20, -20, -20, -20, -20, -20, 0,   0,   0,   0,   0,   0,   0,   0},
+	{
+		-40, -40, -40, -40, -40, -40, -40, -40,
+		-40, -40, -40, -40, -40, -40, -40, -40,
+		-40, -40, -40, -40, -40, -40, -40, -40,
+		-40, -40, -40, -40, -40, -40, -40, -40,
+		-40, -40, -40, -40, -40, -40, -40, -40,
+		-40, -40, -40, -40, -40, -40, -40, -40,
+		-20, -20, -20, -20, -20, -20, -20, -20,
+		0,   0,   0,   0,   0,   0,   0,   0 },
 
-    /* King positional values - endgame*/
-    {0,  10, 20, 30, 30, 20, 10, 0,  10, 20, 30, 40, 40, 30, 20, 10, 20, 30, 40, 50, 50, 40,
-     30, 20, 30, 40, 50, 60, 60, 50, 40, 30, 30, 40, 50, 60, 60, 50, 40, 30, 20, 30, 40, 50,
-     50, 40, 30, 20, 10, 20, 30, 40, 40, 30, 20, 10, 0,  10, 20, 30, 30, 20, 10, 0}};
+
+		/* King positional values - endgame*/
+		 {
+			 0,   10,  20,  30,  30,  20,  10,   0,
+			 10,  20,  30,  40,  40,  30,  20,  10,
+			 20,  30,  40,  50,  50,  40,  30,  20,
+			 30,  40,  50,  60,  60,  50,  40,  30,
+			 30,  40,  50,  60,  60,  50,  40,  30,
+			 20,  30,  40,  50,  50,  40,  30,  20,
+			 10,  20,  30,  40,  40,  30,  20,  10,
+			 0,   10,  20,  30,  30,  20,  10,   0
+		 }
+};
+// clang-format on
 
 // Setup short piece names
 inline constexpr auto initPieceNames()
@@ -446,8 +443,7 @@ inline constexpr auto g_bbPassedMaskWhite = makePassedMask(true);
 inline constexpr auto g_bbPassedMaskBlack = makePassedMask(false);
 
 // Type alias for 2D array: [ALL_SQUARES][256]
-template <typename T, std::size_t Rows, std::size_t Cols>
-using Array2D = std::array<std::array<T, Cols>, Rows>;
+template <typename T, std::size_t Rows, std::size_t Cols> using Array2D = std::array<std::array<T, Cols>, Rows>;
 
 // ============= Knight Moves =============
 inline constexpr std::array<std::array<int, 2>, 8> knightOffsets{
@@ -515,4 +511,4 @@ constexpr std::array<BITBOARD, ALL_SQUARES> makeKingMoves()
 inline constexpr auto g_bbKnightMoves = makeKnightMoves();
 inline constexpr auto g_bbKingMoves = makeKingMoves();
 
-// constexpr inline auto PRINT_STATS = 1;
+//constexpr inline auto PRINT_STATS = 1;

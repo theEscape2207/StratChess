@@ -10,10 +10,7 @@
 #include "defines.h"
 
 namespace {
-constexpr BITBOARD squares()
-{
-	return 0;
-}
+constexpr BITBOARD squares() { return 0; }
 
 template <typename... Squares> constexpr BITBOARD squares(eSquare sq, Squares... rest)
 {

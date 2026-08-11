@@ -31,25 +31,13 @@ class Move final {
 	    : data(static_cast<uint16_t>(from | (to << 6) | (flags << 12)))
 	{}
 
-	[[nodiscard]] constexpr eSquare from() const noexcept
-	{
-		return static_cast<eSquare>(data & 0x3F);
-	}
+	[[nodiscard]] constexpr eSquare from() const noexcept { return static_cast<eSquare>(data & 0x3F); }
 
-	[[nodiscard]] constexpr eSquare to() const noexcept
-	{
-		return static_cast<eSquare>((data >> 6) & 0x3F);
-	}
+	[[nodiscard]] constexpr eSquare to() const noexcept { return static_cast<eSquare>((data >> 6) & 0x3F); }
 
-	[[nodiscard]] constexpr uint8_t flags() const noexcept
-	{
-		return static_cast<uint8_t>(data >> 12);
-	}
+	[[nodiscard]] constexpr uint8_t flags() const noexcept { return static_cast<uint8_t>(data >> 12); }
 
-	[[nodiscard]] constexpr bool is_null() const noexcept
-	{
-		return data == EMPTY_MOVE;
-	}
+	[[nodiscard]] constexpr bool is_null() const noexcept { return data == EMPTY_MOVE; }
 
 	// Move constructor - use compiler-generated/defaulted implementation so the
 	// object can be copied as a whole (avoids repeated bitfield RMW ops).
@@ -73,25 +61,13 @@ class Move final {
 		data = static_cast<uint16_t>(from | (to << 6) | static_cast<uint8_t>(moveType) << 12);
 	}
 
-	bool operator==(const Move& rhs) const noexcept
-	{
-		return IsSameAs(rhs);
-	}
+	bool operator==(const Move& rhs) const noexcept { return IsSameAs(rhs); }
 
-	bool operator!=(const Move& rhs) const noexcept
-	{
-		return !IsSameAs(rhs);
-	}
+	bool operator!=(const Move& rhs) const noexcept { return !IsSameAs(rhs); }
 
-	bool IsSameAs(const Move& rhs) const noexcept
-	{
-		return ((to() == rhs.to()) && (from() == rhs.from()));
-	}
+	bool IsSameAs(const Move& rhs) const noexcept { return ((to() == rhs.to()) && (from() == rhs.from())); }
 
-	void Clear() noexcept
-	{
-		data = EMPTY_MOVE;
-	}
+	void Clear() noexcept { data = EMPTY_MOVE; }
 
 	// Move presentation lives in MoveFormatter (ToCoord / ToShort / ToUCI / ToVerbose).
 	// Move is a pure 2-byte value; it deliberately owns no formatting.
@@ -146,53 +122,20 @@ class MoveList {
 		}
 	}
 
-	[[nodiscard]] size_t size() const noexcept
-	{
-		return size_;
-	}
-	[[nodiscard]] bool empty() const noexcept
-	{
-		return size_ == 0;
-	}
-	void clear() noexcept
-	{
-		size_ = 0;
-	}
+	[[nodiscard]] size_t size() const noexcept { return size_; }
+	[[nodiscard]] bool empty() const noexcept { return size_ == 0; }
+	void clear() noexcept { size_ = 0; }
 
-	[[nodiscard]] Move* begin() noexcept
-	{
-		return moves_.data();
-	}
-	[[nodiscard]] Move* end() noexcept
-	{
-		return moves_.data() + size_;
-	}
-	[[nodiscard]] const Move* begin() const noexcept
-	{
-		return moves_.data();
-	}
-	[[nodiscard]] const Move* end() const noexcept
-	{
-		return moves_.data() + size_;
-	}
+	[[nodiscard]] Move* begin() noexcept { return moves_.data(); }
+	[[nodiscard]] Move* end() noexcept { return moves_.data() + size_; }
+	[[nodiscard]] const Move* begin() const noexcept { return moves_.data(); }
+	[[nodiscard]] const Move* end() const noexcept { return moves_.data() + size_; }
 
-	[[nodiscard]] Move& operator[](size_t idx) noexcept
-	{
-		return moves_[idx];
-	}
-	[[nodiscard]] const Move& operator[](size_t idx) const noexcept
-	{
-		return moves_[idx];
-	}
+	[[nodiscard]] Move& operator[](size_t idx) noexcept { return moves_[idx]; }
+	[[nodiscard]] const Move& operator[](size_t idx) const noexcept { return moves_[idx]; }
 
-	const Move& front() const noexcept
-	{
-		return moves_[0];
-	}
-	const Move& back() const noexcept
-	{
-		return moves_[size_ - 1];
-	}
+	const Move& front() const noexcept { return moves_[0]; }
+	const Move& back() const noexcept { return moves_[size_ - 1]; }
 
   private:
 	std::array<Move, MAX_MOVES> moves_;

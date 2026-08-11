@@ -126,8 +126,7 @@ TEST_CASE("Board - Capture-promotion yields PROMOTION_QUEEN_CAPTURE type", "[boa
 	// Capture-promotion: c7 captures rook on b8, promotes to queen.
 	// Encoded as PROMOTION_QUEEN_CAPTURE (capture bit 2 + promotion bit 3 both set).
 	const auto it = std::find_if(moveList.begin(), moveList.end(), [](const Move& m) {
-		return m.from() == c7 && m.to() == b8 &&
-		       MoveHelper::AsType(m) == MoveType::PROMOTION_QUEEN_CAPTURE;
+		return m.from() == c7 && m.to() == b8 && MoveHelper::AsType(m) == MoveType::PROMOTION_QUEEN_CAPTURE;
 	});
 	REQUIRE(it != moveList.end());
 }

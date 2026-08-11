@@ -152,9 +152,8 @@ constexpr std::array<BITBOARD, ALL_SQUARES> makeBishopMasks() noexcept
 inline constexpr auto g_bbRookMask = makeRookMasks();
 inline constexpr auto g_bbBishopMask = makeBishopMasks();
 
-inline constexpr std::size_t ROOK_TABLE_SIZE = 4096; // 2^12 — covers the widest rook mask (12 bits)
-inline constexpr std::size_t BISHOP_TABLE_SIZE =
-    512; // 2^9  — covers the widest bishop mask (9 bits)
+inline constexpr std::size_t ROOK_TABLE_SIZE = 4096;  // 2^12 — covers the widest rook mask (12 bits)
+inline constexpr std::size_t BISHOP_TABLE_SIZE = 512; // 2^9  — covers the widest bishop mask (9 bits)
 
 constexpr std::array<std::array<BITBOARD, ROOK_TABLE_SIZE>, ALL_SQUARES> makeRookAttacks() noexcept
 {
@@ -171,8 +170,7 @@ constexpr std::array<std::array<BITBOARD, ROOK_TABLE_SIZE>, ALL_SQUARES> makeRoo
 	return result;
 }
 
-constexpr std::array<std::array<BITBOARD, BISHOP_TABLE_SIZE>, ALL_SQUARES>
-makeBishopAttacks() noexcept
+constexpr std::array<std::array<BITBOARD, BISHOP_TABLE_SIZE>, ALL_SQUARES> makeBishopAttacks() noexcept
 {
 	std::array<std::array<BITBOARD, BISHOP_TABLE_SIZE>, ALL_SQUARES> result{};
 	for (unsigned int sq = 0; sq < ALL_SQUARES; ++sq) {
@@ -195,13 +193,11 @@ inline constexpr auto g_bbBishopAttacks = makeBishopAttacks();
 inline BITBOARD RookAttacks(eSquare sq, BITBOARD occupied) noexcept
 {
 	const BITBOARD relevant = occupied & magic::g_bbRookMask[sq];
-	return magic::g_bbRookAttacks[sq][static_cast<std::size_t>(
-	    _pext_u64(relevant, magic::g_bbRookMask[sq]))];
+	return magic::g_bbRookAttacks[sq][static_cast<std::size_t>(_pext_u64(relevant, magic::g_bbRookMask[sq]))];
 }
 
 inline BITBOARD BishopAttacks(eSquare sq, BITBOARD occupied) noexcept
 {
 	const BITBOARD relevant = occupied & magic::g_bbBishopMask[sq];
-	return magic::g_bbBishopAttacks[sq][static_cast<std::size_t>(
-	    _pext_u64(relevant, magic::g_bbBishopMask[sq]))];
+	return magic::g_bbBishopAttacks[sq][static_cast<std::size_t>(_pext_u64(relevant, magic::g_bbBishopMask[sq]))];
 }

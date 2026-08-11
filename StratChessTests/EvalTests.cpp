@@ -54,10 +54,8 @@ static constexpr const char* FEN_MOPUP_LOSER_KING_CENTER = "7r/8/2k5/8/3Q4/8/8/4
 
 // Same as above, but with one pawn each (Pa2/pa7) — mop-up must be gated off
 // once pawns are on the board.
-static constexpr const char* FEN_MOPUP_LOSER_KING_CORNER_WITH_PAWNS =
-    "k6r/p7/8/8/3Q4/8/P7/4K3 w - - 0 1";
-static constexpr const char* FEN_MOPUP_LOSER_KING_CENTER_WITH_PAWNS =
-    "7r/p7/2k5/8/3Q4/8/P7/4K3 w - - 0 1";
+static constexpr const char* FEN_MOPUP_LOSER_KING_CORNER_WITH_PAWNS = "k6r/p7/8/8/3Q4/8/P7/4K3 w - - 0 1";
+static constexpr const char* FEN_MOPUP_LOSER_KING_CENTER_WITH_PAWNS = "7r/p7/2k5/8/3Q4/8/P7/4K3 w - - 0 1";
 
 // White King+Knight vs Black King+Bishop, pawnless, materially EQUAL (300 - 300 = 0).
 // Same corner/center king placement idea — mop-up must be gated off below the
@@ -85,8 +83,7 @@ static constexpr const char* FEN_QUEEN_C6 = "7k/8/2Q5/8/8/8/8/4K3 w - - 0 1";
 // Middlegame with rooks on open/half-open files: both sides have 11800 material
 // (iMinScore > 11500 -> MIDDLEGAME), exercising the rook open/half-open-file
 // terms and the middlegame king PST under color mirroring.
-static constexpr const char* FEN_MIDDLEGAME_ROOKS =
-    "2rr2k1/pp3ppp/5n2/8/8/2N5/PP3PPP/3RR1K1 w - - 0 1";
+static constexpr const char* FEN_MIDDLEGAME_ROOKS = "2rr2k1/pp3ppp/5n2/8/8/2N5/PP3PPP/3RR1K1 w - - 0 1";
 
 // Endgame with pawns: 10100 material each side trips the ENDGAME stage (and so
 // the endgame king PST), while the pawns on the board keep the pawnless mop-up
@@ -116,8 +113,7 @@ static constexpr const char* FEN_ROOK_OWN_PAWN_AHEAD = "6k1/8/8/8/4P3/8/4R3/6K1 
 // own-pawn test to the whole file would break that equality by 15 cp, which is
 // what makes this pair, unlike the >-assertion above, actually pin D5.
 static constexpr const char* FEN_ROOK_OWN_PAWN_OFF_FILE = "6k1/8/4R3/8/3P4/8/8/6K1 w - - 0 1";
-static constexpr const char* FEN_ROOK_OWN_PAWN_BEHIND_SAME_ROOK =
-    "6k1/8/4R3/8/4P3/8/8/6K1 w - - 0 1";
+static constexpr const char* FEN_ROOK_OWN_PAWN_BEHIND_SAME_ROOK = "6k1/8/4R3/8/4P3/8/8/6K1 w - - 0 1";
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -141,8 +137,7 @@ TEST_CASE("Eval - EvalComplex: starting position is near-symmetric (within 200 c
 	REQUIRE(score <= 200);
 }
 
-TEST_CASE("Eval - EvalComplex: a kingless board evaluates to 0 (pre-#127 behaviour, regression)",
-          "[eval]")
+TEST_CASE("Eval - EvalComplex: a kingless board evaluates to 0 (pre-#127 behaviour, regression)", "[eval]")
 {
 	// Default-constructed Board has an empty mailbox and zeroed bitboards —
 	// no kings, no pieces at all. UciHandler::board_ is exactly this: it is
@@ -214,8 +209,7 @@ TEST_CASE("Eval - EvalComplex penalises doubled pawns relative to normal structu
 	REQUIRE(normal_score > doubled_score);
 }
 
-TEST_CASE("Eval - EvalComplex awards rook-on-7th bonus: position scores positively for white",
-          "[eval]")
+TEST_CASE("Eval - EvalComplex awards rook-on-7th bonus: position scores positively for white", "[eval]")
 {
 	// White has a rook on the 7th rank in an endgame. Black has only a king.
 	// EvalComplex should award a rook-on-7th bonus and the material edge,
@@ -227,9 +221,8 @@ TEST_CASE("Eval - EvalComplex awards rook-on-7th bonus: position scores positive
 	REQUIRE(score > 0);
 }
 
-TEST_CASE(
-    "Eval - EvalComplex mop-up: decisively-won pawnless ending scores higher with the losing king cornered",
-    "[eval]")
+TEST_CASE("Eval - EvalComplex mop-up: decisively-won pawnless ending scores higher with the losing king cornered",
+          "[eval]")
 {
 	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
 
@@ -280,8 +273,7 @@ TEST_CASE("Eval - EvalComplex mop-up: gated off below the decisive material thre
 
 // ── Rook open-file definition (issue #126) ────────────────────────────────────
 
-TEST_CASE("Eval - EvalComplex: an enemy pawn on the rook's file still demotes it to half-open",
-          "[eval]")
+TEST_CASE("Eval - EvalComplex: an enemy pawn on the rook's file still demotes it to half-open", "[eval]")
 {
 	// Guard: the fix must narrow the open-file test to pawns only, not remove
 	// it. An enemy pawn on the file is still the defining case for half-open.
@@ -320,21 +312,13 @@ TEST_CASE("Eval - EvalComplex: an own pawn ahead of the rook blocks the file bon
 // used by the term-level tests below (issue #127 restructure) to compute an
 // independently-derived expected PST value.
 struct EvalProbe final : EvalManager {
-	int Evaluate(const Board&) const override
-	{
-		return 0;
-	}
-	const char* GetType() const override
-	{
-		return "Probe";
-	}
+	int Evaluate(const Board&) const override { return 0; }
+	const char* GetType() const override { return "Probe"; }
 	using EvalManager::getEvalBoard;
 	using EvalManager::GetPositionalScore;
 };
 
-TEST_CASE(
-    "Eval - getEvalBoard mirrors a Black piece's square vertically, not by 180-degree rotation",
-    "[eval]")
+TEST_CASE("Eval - getEvalBoard mirrors a Black piece's square vertically, not by 180-degree rotation", "[eval]")
 {
 	// Direct proof of the issue #125 defect: the pre-fix implementation used
 	// (63 - square), a 180-degree rotation. c3 -> c6 is the correct vertical
@@ -452,20 +436,18 @@ static std::string MirrorFen(std::string_view fen)
 	std::string placement, active, castling, ep, halfmove, fullmove;
 	iss >> placement >> active >> castling >> ep >> halfmove >> fullmove;
 
-	return MirrorPlacement(placement) + ' ' + (active == "w" ? "b" : "w") + ' ' +
-	       MirrorCastling(castling) + ' ' + MirrorEnPassant(ep) + ' ' + halfmove + ' ' + fullmove;
+	return MirrorPlacement(placement) + ' ' + (active == "w" ? "b" : "w") + ' ' + MirrorCastling(castling) + ' ' +
+	       MirrorEnPassant(ep) + ' ' + halfmove + ' ' + fullmove;
 }
 
-TEST_CASE("Eval - MirrorFen self-test: mirroring the start position flips only side to move",
-          "[eval]")
+TEST_CASE("Eval - MirrorFen self-test: mirroring the start position flips only side to move", "[eval]")
 {
 	// A bug in this test-only helper must not be able to make the symmetry
 	// tests below vacuously true; pin down its exact output on a known input.
 	REQUIRE(MirrorFen(FEN_START) == "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1");
 }
 
-TEST_CASE("Eval - MirrorFen self-test: castling rights and en-passant square are mirrored",
-          "[eval]")
+TEST_CASE("Eval - MirrorFen self-test: castling rights and en-passant square are mirrored", "[eval]")
 {
 	// FEN_START leaves both helpers untested: its "KQkq" maps to itself under a
 	// case swap, and its en-passant field is "-". Evaluate() reads the castling
@@ -559,8 +541,7 @@ TEST_CASE("Eval - EvalSimple is color-symmetric: a position and its mirror score
 	REQUIRE(eval->Evaluate(board) == eval->Evaluate(mirrored));
 }
 
-TEST_CASE("Eval - EvalComplex is color-symmetric: a position and its mirror score equally",
-          "[eval]")
+TEST_CASE("Eval - EvalComplex is color-symmetric: a position and its mirror score equally", "[eval]")
 {
 	const char* fen = GENERATE(from_range(kSymmetryFens));
 	CAPTURE(fen);
@@ -648,33 +629,15 @@ struct EvalComplexTestFixture {
 	{
 		return EvalComplex::eval_pst(BuildContext(board), color);
 	}
-	static int Phase(const Board& board)
-	{
-		return BuildContext(board).phase;
-	}
+	static int Phase(const Board& board) { return BuildContext(board).phase; }
 
 	// Named constants, exposed so term-level tests can express exact
 	// expected values without duplicating magic numbers.
-	static int DoubledPawnPenalty()
-	{
-		return EvalComplex::DOUBLED_PAWN_PENALTY;
-	}
-	static int IsolatedPawnPenalty()
-	{
-		return EvalComplex::ISOLATED_PAWN_PENALTY;
-	}
-	static int RookOn7thBonus()
-	{
-		return EvalComplex::ROOK_ON_7TH_BONUS;
-	}
-	static int OpenFile()
-	{
-		return EvalComplex::OPEN_FILE;
-	}
-	static int HalfOpenFile()
-	{
-		return EvalComplex::HALF_OPEN_FILE;
-	}
+	static int DoubledPawnPenalty() { return EvalComplex::DOUBLED_PAWN_PENALTY; }
+	static int IsolatedPawnPenalty() { return EvalComplex::ISOLATED_PAWN_PENALTY; }
+	static int RookOn7thBonus() { return EvalComplex::ROOK_ON_7TH_BONUS; }
+	static int OpenFile() { return EvalComplex::OPEN_FILE; }
+	static int HalfOpenFile() { return EvalComplex::HALF_OPEN_FILE; }
 
   private:
 	// Forwards to EvalComplex::BuildContext — the production construction
@@ -682,10 +645,7 @@ struct EvalComplexTestFixture {
 	// eventually replace the `11500` phase threshold BuildContext uses
 	// internally; having only one construction site means that change can't
 	// leave this fixture silently testing the old threshold.
-	static EvalContext BuildContext(const Board& board)
-	{
-		return EvalComplex::BuildContext(board);
-	}
+	static EvalContext BuildContext(const Board& board) { return EvalComplex::BuildContext(board); }
 };
 
 TEST_CASE("Eval - eval_pawns: pawns with no isolation and no doubling score exactly 0", "[eval]")
@@ -695,8 +655,7 @@ TEST_CASE("Eval - eval_pawns: pawns with no isolation and no doubling score exac
 	REQUIRE(EvalComplexTestFixture::Pawns(board, WHITE) == 0);
 }
 
-TEST_CASE("Eval - eval_rooks: an enemy knight on the rook's file does not demote an open file",
-          "[eval]")
+TEST_CASE("Eval - eval_rooks: an enemy knight on the rook's file does not demote an open file", "[eval]")
 {
 	// Issue #126's discriminator: "open file" must test for absence of enemy
 	// PAWNS, not of any enemy piece. Before the fix, a knight sharing the rook's
@@ -711,12 +670,10 @@ TEST_CASE("Eval - eval_rooks: an enemy knight on the rook's file does not demote
 	Board knightOn(FEN_ROOK_OPEN_FILE_KNIGHT_ON);
 	Board knightOff(FEN_ROOK_OPEN_FILE_KNIGHT_OFF);
 
-	REQUIRE(EvalComplexTestFixture::Rooks(knightOn, WHITE) ==
-	        EvalComplexTestFixture::Rooks(knightOff, WHITE));
+	REQUIRE(EvalComplexTestFixture::Rooks(knightOn, WHITE) == EvalComplexTestFixture::Rooks(knightOff, WHITE));
 }
 
-TEST_CASE("Eval - eval_rooks: an own pawn behind the rook leaves the file fully open (D5)",
-          "[eval]")
+TEST_CASE("Eval - eval_rooks: an own pawn behind the rook leaves the file fully open (D5)", "[eval]")
 {
 	// Pins the deliberate D5 decision from
 	// .claude/plans/passed-and-backwards-pawn-terms.md. The rook is fixed on
@@ -737,8 +694,7 @@ TEST_CASE("Eval - eval_rooks: an own pawn behind the rook leaves the file fully 
 	Board pawnOffFile(FEN_ROOK_OWN_PAWN_OFF_FILE);
 	Board pawnBehindRook(FEN_ROOK_OWN_PAWN_BEHIND_SAME_ROOK);
 
-	REQUIRE(EvalComplexTestFixture::Rooks(pawnOffFile, WHITE) ==
-	        EvalComplexTestFixture::Rooks(pawnBehindRook, WHITE));
+	REQUIRE(EvalComplexTestFixture::Rooks(pawnOffFile, WHITE) == EvalComplexTestFixture::Rooks(pawnBehindRook, WHITE));
 }
 
 // ── eval_mobility (issues #98, #113) ─────────────────────────────────────────
@@ -750,23 +706,18 @@ TEST_CASE("Eval - eval_mobility: a central knight outscores a cornered one", "[e
 	Board central("4k3/8/8/8/3N4/8/8/4K3 w - - 0 1");
 	Board cornered("4k3/8/8/8/8/8/8/N3K3 w - - 0 1");
 
-	REQUIRE(EvalComplexTestFixture::Mobility(central, WHITE) >
-	        EvalComplexTestFixture::Mobility(cornered, WHITE));
+	REQUIRE(EvalComplexTestFixture::Mobility(central, WHITE) > EvalComplexTestFixture::Mobility(cornered, WHITE));
 }
 
-TEST_CASE(
-    "Eval - eval_mobility: a rook on an open file outscores one boxed in behind its own pawns",
-    "[eval]")
+TEST_CASE("Eval - eval_mobility: a rook on an open file outscores one boxed in behind its own pawns", "[eval]")
 {
 	Board open("4k3/8/8/8/8/8/8/3RK3 w - - 0 1");
 	Board boxed("4k3/8/8/8/8/8/3PPP2/3RK3 w - - 0 1");
 
-	REQUIRE(EvalComplexTestFixture::Mobility(open, WHITE) >
-	        EvalComplexTestFixture::Mobility(boxed, WHITE));
+	REQUIRE(EvalComplexTestFixture::Mobility(open, WHITE) > EvalComplexTestFixture::Mobility(boxed, WHITE));
 }
 
-TEST_CASE("Eval - eval_mobility: squares covered by an enemy pawn do not count (safe mobility)",
-          "[eval]")
+TEST_CASE("Eval - eval_mobility: squares covered by an enemy pawn do not count (safe mobility)", "[eval]")
 {
 	// Same White knight on d4 in both. A knight on d4 reaches b3, b5, c2, c6,
 	// e2, e6, f3 and f5; the Black pawn on d7 covers c6 and e6, two of them.
@@ -778,8 +729,7 @@ TEST_CASE("Eval - eval_mobility: squares covered by an enemy pawn do not count (
 	Board unguarded("4k3/8/8/8/3N4/8/8/4K3 w - - 0 1");
 	Board guarded("4k3/3p4/8/8/3N4/8/8/4K3 w - - 0 1");
 
-	REQUIRE(EvalComplexTestFixture::Mobility(guarded, WHITE) <
-	        EvalComplexTestFixture::Mobility(unguarded, WHITE));
+	REQUIRE(EvalComplexTestFixture::Mobility(guarded, WHITE) < EvalComplexTestFixture::Mobility(unguarded, WHITE));
 }
 
 TEST_CASE("Eval - eval_mobility: the safe-mobility mask is colour-symmetric", "[eval]")
@@ -806,8 +756,7 @@ TEST_CASE("Eval - eval_mobility: the safe-mobility mask is colour-symmetric", "[
 	Board whiteSide("4k3/p7/8/3N4/8/8/8/4K3 w - - 0 1");
 	Board blackSide("4k3/8/8/8/3n4/8/P7/4K3 b - - 0 1");
 
-	REQUIRE(EvalComplexTestFixture::Mobility(whiteSide, WHITE) ==
-	        EvalComplexTestFixture::Mobility(blackSide, BLACK));
+	REQUIRE(EvalComplexTestFixture::Mobility(whiteSide, WHITE) == EvalComplexTestFixture::Mobility(blackSide, BLACK));
 
 	// ...and the mask must actually be biting, or the equality above is vacuous.
 	Board whiteUnmasked("4k3/8/8/3N4/8/8/8/4K3 w - - 0 1");
@@ -849,9 +798,7 @@ TEST_CASE("Eval - eval_mobility: a bare king contributes nothing", "[eval]")
 	REQUIRE(EvalComplexTestFixture::Mobility(kings, BLACK) == 0);
 }
 
-TEST_CASE(
-    "Eval - eval_pawns: doubled and isolated a-file pawns score exactly -(doubled + 2*isolated)",
-    "[eval]")
+TEST_CASE("Eval - eval_pawns: doubled and isolated a-file pawns score exactly -(doubled + 2*isolated)", "[eval]")
 {
 	// FEN_WHITE_DOUBLED: White Pa2 + Pa3, no b-file pawn. Both pawns are
 	// isolated (the only neighbouring file, b, has no White pawn); the lower
@@ -860,13 +807,12 @@ TEST_CASE(
 	// ahead of it on the same file triggers that check.
 	Board board(FEN_WHITE_DOUBLED);
 
-	const int expected = -(EvalComplexTestFixture::DoubledPawnPenalty() +
-	                       2 * EvalComplexTestFixture::IsolatedPawnPenalty());
+	const int expected =
+	    -(EvalComplexTestFixture::DoubledPawnPenalty() + 2 * EvalComplexTestFixture::IsolatedPawnPenalty());
 	REQUIRE(EvalComplexTestFixture::Pawns(board, WHITE) == expected);
 }
 
-TEST_CASE("Eval - eval_rooks: the 7th-rank bonus is endgame-weighted, the file bonus is not",
-          "[eval]")
+TEST_CASE("Eval - eval_rooks: the 7th-rank bonus is endgame-weighted, the file bonus is not", "[eval]")
 {
 	// FEN_ROOK_ON_7TH: White Re7 alone against a bare king. The fully open
 	// file (no pawns of either colour) is phase-independent and so appears at
@@ -878,8 +824,7 @@ TEST_CASE("Eval - eval_rooks: the 7th-rank bonus is endgame-weighted, the file b
 	const ScorePair rooks = EvalComplexTestFixture::RooksPair(board, WHITE);
 
 	REQUIRE(rooks.mg == EvalComplexTestFixture::OpenFile());
-	REQUIRE(rooks.eg ==
-	        EvalComplexTestFixture::OpenFile() + EvalComplexTestFixture::RookOn7thBonus());
+	REQUIRE(rooks.eg == EvalComplexTestFixture::OpenFile() + EvalComplexTestFixture::RookOn7thBonus());
 }
 
 TEST_CASE("Eval - eval_rooks: term-level result matches the #126 open-file guard exactly", "[eval]")
@@ -901,16 +846,14 @@ TEST_CASE("Eval - eval_rooks: term-level result matches the #126 open-file guard
 	Board knightOn(FEN_ROOK_OPEN_FILE_KNIGHT_ON);
 	Board knightOff(FEN_ROOK_OPEN_FILE_KNIGHT_OFF);
 
-	const int expected =
-	    EvalComplexTestFixture::HalfOpenFile() +
-	    (EvalComplexTestFixture::OpenFile() - EvalComplexTestFixture::HalfOpenFile());
+	const int expected = EvalComplexTestFixture::HalfOpenFile() +
+	                     (EvalComplexTestFixture::OpenFile() - EvalComplexTestFixture::HalfOpenFile());
 	REQUIRE(EvalComplexTestFixture::Rooks(knightOn, WHITE) == expected);
 	REQUIRE(EvalComplexTestFixture::Rooks(knightOff, WHITE) == expected);
 }
 
-TEST_CASE(
-    "Eval - eval_rooks: term-level D5 own-pawn-behind result is exactly equal, not just directionally so",
-    "[eval]")
+TEST_CASE("Eval - eval_rooks: term-level D5 own-pawn-behind result is exactly equal, not just directionally so",
+          "[eval]")
 {
 	// Same pair as the whole-position D5 test above, asserted directly on
 	// the extracted term rather than inferred through the full evaluation.
@@ -943,8 +886,8 @@ TEST_CASE("Eval - eval_pst: the king's two PST endpoints are the two king tables
 	// per-type loops) plus exactly one lookup into the corresponding table.
 	Board board("q3k2q/8/8/8/8/8/8/Q3K2Q w - - 0 1");
 
-	const int expectedNonKing = EvalProbe::GetPositionalScore(a1, WHITE_QUEEN) +
-	                            EvalProbe::GetPositionalScore(h1, WHITE_QUEEN);
+	const int expectedNonKing =
+	    EvalProbe::GetPositionalScore(a1, WHITE_QUEEN) + EvalProbe::GetPositionalScore(h1, WHITE_QUEEN);
 	const int kingMg = g_Eval_Bitboards[5][EvalProbe::getEvalBoard(WHITE_KING, e1)];
 	const int kingEg = g_Eval_Bitboards[6][EvalProbe::getEvalBoard(WHITE_KING, e1)];
 
@@ -957,9 +900,7 @@ TEST_CASE("Eval - eval_pst: the king's two PST endpoints are the two king tables
 	REQUIRE(kingMg != kingEg);
 }
 
-TEST_CASE(
-    "Eval - eval_pst: the reported king contribution is its endpoints blended at the position phase",
-    "[eval]")
+TEST_CASE("Eval - eval_pst: the reported king contribution is its endpoints blended at the position phase", "[eval]")
 {
 	// Ties the term's value to its own endpoints and the position's own phase,
 	// so a future change to either the tables or the phase weights cannot
@@ -1030,8 +971,7 @@ TEST_CASE("Eval - eval_rooks: a lone rook is never connected", "[eval]")
 	Board one("4k3/8/8/8/8/8/8/R6K w - - 0 1");
 	Board two("4k3/8/8/8/8/8/8/R2R3K w - - 0 1");
 
-	CHECK(EvalComplexTestFixture::RooksPair(two, WHITE).mg >
-	      EvalComplexTestFixture::RooksPair(one, WHITE).mg);
+	CHECK(EvalComplexTestFixture::RooksPair(two, WHITE).mg > EvalComplexTestFixture::RooksPair(one, WHITE).mg);
 }
 
 TEST_CASE("Eval - eval_rooks: connected pairs are counted exactly, not doubled", "[eval]")
@@ -1072,8 +1012,7 @@ TEST_CASE("Eval - eval_castling: bonus once rights are gone and the king is tuck
 	CHECK(pair.eg == 0); // middlegame-only; the endgame king wants the centre
 }
 
-TEST_CASE("Eval - eval_castling: penalty when rights are lost with the king still central",
-          "[eval]")
+TEST_CASE("Eval - eval_castling: penalty when rights are lost with the king still central", "[eval]")
 {
 	// King on e1, no rights — lost the option without ever castling.
 	Board board("4k3/8/8/8/8/8/8/4K3 w - - 0 1");
@@ -1148,8 +1087,7 @@ TEST_CASE("Eval - eval_mopup: only the winning color receives a nonzero contribu
 	REQUIRE(EvalComplexTestFixture::Mopup(board, BLACK) == 0);
 }
 
-TEST_CASE("Eval - eval_mopup: gated off for both colors below the decisive material threshold",
-          "[eval]")
+TEST_CASE("Eval - eval_mopup: gated off for both colors below the decisive material threshold", "[eval]")
 {
 	// FEN_MOPUP_MARGINAL_CORNER: K+N vs K+B, materially equal — below the
 	// 400 cp threshold, so neither color should get a contribution.
@@ -1175,18 +1113,16 @@ TEST_CASE("Eval - the per-term functions sum exactly to EvalComplex::Evaluate()'
 	const int matWhite = board.GetMaterialScore(WHITE);
 	const int matBlack = board.GetMaterialScore(BLACK);
 
-	const int bonusWhite =
-	    EvalComplexTestFixture::Pawns(board, WHITE) + EvalComplexTestFixture::Rooks(board, WHITE) +
-	    EvalComplexTestFixture::Pst(board, WHITE) + EvalComplexTestFixture::Mopup(board, WHITE) +
-	    EvalComplexTestFixture::Bishops(board, WHITE) +
-	    EvalComplexTestFixture::Castling(board, WHITE) +
-	    EvalComplexTestFixture::Mobility(board, WHITE);
-	const int bonusBlack =
-	    EvalComplexTestFixture::Pawns(board, BLACK) + EvalComplexTestFixture::Rooks(board, BLACK) +
-	    EvalComplexTestFixture::Pst(board, BLACK) + EvalComplexTestFixture::Mopup(board, BLACK) +
-	    EvalComplexTestFixture::Bishops(board, BLACK) +
-	    EvalComplexTestFixture::Castling(board, BLACK) +
-	    EvalComplexTestFixture::Mobility(board, BLACK);
+	const int bonusWhite = EvalComplexTestFixture::Pawns(board, WHITE) + EvalComplexTestFixture::Rooks(board, WHITE) +
+	                       EvalComplexTestFixture::Pst(board, WHITE) + EvalComplexTestFixture::Mopup(board, WHITE) +
+	                       EvalComplexTestFixture::Bishops(board, WHITE) +
+	                       EvalComplexTestFixture::Castling(board, WHITE) +
+	                       EvalComplexTestFixture::Mobility(board, WHITE);
+	const int bonusBlack = EvalComplexTestFixture::Pawns(board, BLACK) + EvalComplexTestFixture::Rooks(board, BLACK) +
+	                       EvalComplexTestFixture::Pst(board, BLACK) + EvalComplexTestFixture::Mopup(board, BLACK) +
+	                       EvalComplexTestFixture::Bishops(board, BLACK) +
+	                       EvalComplexTestFixture::Castling(board, BLACK) +
+	                       EvalComplexTestFixture::Mobility(board, BLACK);
 
 	const eColor toMove = board.GetCurrentColor();
 	const int expected = (toMove == WHITE) ? (matWhite + bonusWhite) - (matBlack + bonusBlack)
@@ -1254,13 +1190,11 @@ TEST_CASE("Eval - Breakdown(): total agrees with Evaluate(), and the rows reprod
 
 	REQUIRE(terms.total == eval->Evaluate(board));
 
-	const int whitePov =
-	    (terms.material[WHITE] - terms.material[BLACK]) +
-	    (terms.pawns[WHITE] - terms.pawns[BLACK]) + (terms.rooks[WHITE] - terms.rooks[BLACK]) +
-	    (terms.pst[WHITE] - terms.pst[BLACK]) + (terms.mopup[WHITE] - terms.mopup[BLACK]) +
-	    (terms.bishops[WHITE] - terms.bishops[BLACK]) +
-	    (terms.castling[WHITE] - terms.castling[BLACK]) +
-	    (terms.mobility[WHITE] - terms.mobility[BLACK]);
+	const int whitePov = (terms.material[WHITE] - terms.material[BLACK]) + (terms.pawns[WHITE] - terms.pawns[BLACK]) +
+	                     (terms.rooks[WHITE] - terms.rooks[BLACK]) + (terms.pst[WHITE] - terms.pst[BLACK]) +
+	                     (terms.mopup[WHITE] - terms.mopup[BLACK]) + (terms.bishops[WHITE] - terms.bishops[BLACK]) +
+	                     (terms.castling[WHITE] - terms.castling[BLACK]) +
+	                     (terms.mobility[WHITE] - terms.mobility[BLACK]);
 
 	const int expectedTotal = (board.GetCurrentColor() == WHITE) ? whitePov : -whitePov;
 	REQUIRE(terms.total == expectedTotal);
@@ -1424,9 +1358,7 @@ TEST_CASE("Eval - crossing the old stage threshold no longer produces a cliff", 
 	REQUIRE(swingAbs < 20);
 }
 
-TEST_CASE(
-    "Eval - mop-up: walking the winning king toward the loser must raise the score (#118 item 4)",
-    "[eval]")
+TEST_CASE("Eval - mop-up: walking the winning king toward the loser must raise the score (#118 item 4)", "[eval]")
 {
 	// The bug this fixes. Mop-up pays the winning king MOPUP_KINGDIST_WEIGHT (4)
 	// per step of approach, while that same king's endgame PST charges it 10 cp

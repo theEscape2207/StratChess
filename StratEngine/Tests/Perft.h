@@ -58,7 +58,7 @@ class Perft {
 	// Get standard test positions
 	static std::vector<PerftPosition> get_test_positions(bool extended);
 
-	// std::vector<PerftTestCase> load_test_cases(const std::string& json_filename);
+	//std::vector<PerftTestCase> load_test_cases(const std::string& json_filename);
 	static std::vector<PerftPosition> load_perft_tests_modern(const std::string& json_filename);
 
   private:

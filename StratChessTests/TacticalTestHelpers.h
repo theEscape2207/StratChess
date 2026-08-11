@@ -26,7 +26,4 @@ inline std::unique_ptr<PlayerBase> make_tactical_engine(Board& board, unsigned d
 
 // Down-casts a tactical engine to AIPerplex so tests can reach tuning_ via
 // the public tuning() accessor (e.g. to toggle null_move_enabled).
-inline AIPerplex& as_perplex(std::unique_ptr<PlayerBase>& ai)
-{
-	return *static_cast<AIPerplex*>(ai.get());
-}
+inline AIPerplex& as_perplex(std::unique_ptr<PlayerBase>& ai) { return *static_cast<AIPerplex*>(ai.get()); }

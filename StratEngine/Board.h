@@ -51,10 +51,7 @@ class Board final {
 	// last permanently-committed position. Call after any move that will never
 	// be undone (a real game move, or a UCI position replay) — the four
 	// ply-history arrays only need to span search recursion, not game length.
-	size_t GetSearchDepth() const noexcept
-	{
-		return currentPly_;
-	}
+	size_t GetSearchDepth() const noexcept { return currentPly_; }
 	void ResetSearchDepth() noexcept;
 
 	// --- Position queries ---
@@ -81,10 +78,7 @@ class Board final {
 	ePiece GetCapturedPiece(const Move& m) const noexcept;
 
 	// Returns true if any square covered by mask is occupied
-	bool IsOccupied(BITBOARD mask) const noexcept
-	{
-		return Bits::isAnyBitSet(bitboards_.at(ALL_PIECES), mask);
-	}
+	bool IsOccupied(BITBOARD mask) const noexcept { return Bits::isAnyBitSet(bitboards_.at(ALL_PIECES), mask); }
 
 	bool IsLegalMove(const Move& move)
 	{
@@ -97,38 +91,17 @@ class Board final {
 	bool is_repetition(int ply) const;
 
 	// --- State accessors ---
-	eColor GetCurrentColor() const noexcept
-	{
-		return sideToMove_;
-	}
+	eColor GetCurrentColor() const noexcept { return sideToMove_; }
 
-	ePiece GetPiece(eSquare square) const noexcept
-	{
-		return mailbox_.at(square);
-	}
-	ePiece GetPiece(int square) const noexcept
-	{
-		return mailbox_.at(static_cast<eSquare>(square));
-	}
+	ePiece GetPiece(eSquare square) const noexcept { return mailbox_.at(square); }
+	ePiece GetPiece(int square) const noexcept { return mailbox_.at(static_cast<eSquare>(square)); }
 
-	int GetMaterialScore(eColor color) const noexcept
-	{
-		return material_score_[color];
-	}
+	int GetMaterialScore(eColor color) const noexcept { return material_score_[color]; }
 
-	GameInfo GetGameInfo() const noexcept
-	{
-		return gameInfo_;
-	}
-	void SetGameState(GameStates state) noexcept
-	{
-		gameInfo_.gameState = state;
-	}
+	GameInfo GetGameInfo() const noexcept { return gameInfo_; }
+	void SetGameState(GameStates state) noexcept { gameInfo_.gameState = state; }
 
-	uint64_t get_zobrist_hash() const noexcept
-	{
-		return zobrist_hash_;
-	}
+	uint64_t get_zobrist_hash() const noexcept { return zobrist_hash_; }
 
 	std::span<const BITBOARD> GetBitBoards() const noexcept;
 
@@ -183,9 +156,9 @@ class Board final {
 	{
 		if (!MoveHelper::IsCapture(move))
 			return ePiece::NO_PIECE;
-		return (move.flags() == MoveFlags::EP_CAPTURE) ? PieceHelper::OppositePawn(sideToMove_)
-		                                               : // EP capture is a pawn, but the captured
-		                                                 // piece is not on the destination square
+		return (move.flags() == MoveFlags::EP_CAPTURE)
+		           ? PieceHelper::OppositePawn(sideToMove_)
+		           : // EP capture is a pawn, but the captured piece is not on the destination square
 		           mailbox_[move.to()];
 	}
 

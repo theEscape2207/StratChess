@@ -54,8 +54,7 @@ void Config::ReadBoardSetup(const json& config, Board& board) const
 
 		const std::string FENstring = game.value(FENKey, "");
 		if (FENstring.empty()) {
-			spdlog::default_logger()->warn(
-			    "FEN key found, but no string - selecting default board");
+			spdlog::default_logger()->warn("FEN key found, but no string - selecting default board");
 			board.SetDefaultBoard();
 			return;
 		}
@@ -72,8 +71,7 @@ void Config::ReadFEN(const std::string& fen, Board& board) const
 	// way an empty FEN value does in ReadBoardSetup — otherwise the game would start from whatever
 	// the board happened to hold, which for a fresh Board is empty.
 	if (!board.SetupFromFEN(fen)) {
-		spdlog::default_logger()->error(
-		    "FEN in configuration could not be parsed - selecting default board: {}", fen);
+		spdlog::default_logger()->error("FEN in configuration could not be parsed - selecting default board: {}", fen);
 		board.SetDefaultBoard();
 		return;
 	}
@@ -93,19 +91,18 @@ void Config::ReadFEN(const std::string& fen, Board& board) const
 // Parameter:   const std::string& regexStr -
 // Remark:
 //***************************************
-bool Config::CheckBoardSetupData(const std::string& /*strPiece*/,
-                                 const std::string& /*regex*/) const
+bool Config::CheckBoardSetupData(const std::string& /*strPiece*/, const std::string& /*regex*/) const
 {
-	// FIXME: Not yet ported away from Poco
+	//FIXME: Not yet ported away from Poco
 	/*const Poco::RegularExpression regPiece(regex);
 	if (!regPiece.match(strPiece))
 	{
-	    std::stringstream str;
+		std::stringstream str;
 
-	    str << "Invalid board setup data found: Piece on square "
-	        << strPiece.c_str() << " with type: " << strPiece.c_str() << std::endl;
-	    spdlog::default_logger()->warn(str.str());
-	    return false;
+		str << "Invalid board setup data found: Piece on square "
+			<< strPiece.c_str() << " with type: " << strPiece.c_str() << std::endl;
+		spdlog::default_logger()->warn(str.str());
+		return false;
 	}*/
 	return true;
 }
@@ -118,9 +115,8 @@ void Config::ReadConfigFile(const std::string& filename, Board& board)
 		// Say what happens next, not just what failed. Silently continuing on
 		// built-in defaults is the failure mode that looks like the settings
 		// file was read and ignored.
-		std::cerr << "Cannot open " << filename
-		          << " -- continuing with built-in defaults (both players type " << DEFAULT_EVAL
-		          << ", depth " << DEFAULT_DEPTH << ", standard opening position)\n";
+		std::cerr << "Cannot open " << filename << " -- continuing with built-in defaults (both players type "
+		          << DEFAULT_EVAL << ", depth " << DEFAULT_DEPTH << ", standard opening position)\n";
 		return;
 	}
 
@@ -155,8 +151,7 @@ SearchLimits ParseSearchLimitsBlock(const json& sl)
 	if (sl.contains("clock")) {
 		const auto& c = sl["clock"];
 		limits.clock = ClockInfo{std::chrono::milliseconds(c.value("remaining", 0)),
-		                         std::chrono::milliseconds(c.value("increment", 0)),
-		                         c.value("moves_to_go", 0)};
+		                         std::chrono::milliseconds(c.value("increment", 0)), c.value("moves_to_go", 0)};
 	}
 	return limits;
 }
@@ -187,9 +182,8 @@ Config::PlayerConfig ParsePlayerConfig(const json& p, int defaultDepth, int defa
 		if (p.contains("time_limit"))
 			usedLegacyKeys = true;
 		if (usedLegacyKeys) {
-			spdlog::default_logger()->warn(
-			    "game_settings.json: player uses legacy \"max_depth\"/\"time_limit\" keys — "
-			    "migrate to the \"search_limits\" block");
+			spdlog::default_logger()->warn("game_settings.json: player uses legacy \"max_depth\"/\"time_limit\" keys — "
+			                               "migrate to the \"search_limits\" block");
 		}
 	}
 	cfg.depth = static_cast<unsigned>(cfg.search_limits.depth.value_or(defaultDepth));

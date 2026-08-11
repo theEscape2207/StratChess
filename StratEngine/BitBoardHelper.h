@@ -52,4 +52,4 @@ inline void set_bits(BITBOARD& board, BITBOARD mask) noexcept
 	board = Bits::setBits(board, mask);
 }
 
-}; // namespace BitBoardHelper
+}; //namespace BitBoardHelper

@@ -20,7 +20,7 @@ Move AIBasic::GetMove(GameInfo& info, const SearchLimits& limits)
 
 	ApplyLimits(limits);
 
-	// Kalder den Almindelige rekursive alphabeta soegning
+	//Kalder den Almindelige rekursive alphabeta soegning
 	Search(0, -GameValues::Search_Init, GameValues::Search_Init);
 
 	StopTimerAndAdjustVars(m_SearchCount);
@@ -82,9 +82,8 @@ int AIBasic::Search(size_t ply, int alpha, int beta)
 			moveFound = true; // Har fundet et gyldigt traek
 
 			if (ply == 0)
-				spdlog::default_logger()->debug("Root move {}/{}: {} score={}", counter,
-				                                moveList.size(), MoveFormatter::ToCoord(curMove),
-				                                value);
+				spdlog::default_logger()->debug("Root move {}/{}: {} score={}", counter, moveList.size(),
+				                                MoveFormatter::ToCoord(curMove), value);
 
 			//	We got a value back.  We unmade the move.  We're not dead.  Let's
 			//	see how good this move was.  If it was >= "beta", it was so good
@@ -111,8 +110,8 @@ int AIBasic::Search(size_t ply, int alpha, int beta)
 			}
 		} else {
 			if (ply == 0)
-				spdlog::default_logger()->debug("Root move {}/{}: {} ILLEGAL", counter,
-				                                moveList.size(), MoveFormatter::ToCoord(curMove));
+				spdlog::default_logger()->debug("Root move {}/{}: {} ILLEGAL", counter, moveList.size(),
+				                                MoveFormatter::ToCoord(curMove));
 		}
 	}
 	if (moveFound) {
@@ -122,15 +121,13 @@ int AIBasic::Search(size_t ply, int alpha, int beta)
 	}
 	// Ingen lovlige traek !
 	if (m_Board.InCheck()) {
-		UpdateGameState(ply, m_Board.GetCurrentColor() == WHITE ? GameStates::BLACK_WON
-		                                                        : GameStates::WHITE_WON);
+		UpdateGameState(ply, m_Board.GetCurrentColor() == WHITE ? GameStates::BLACK_WON : GameStates::WHITE_WON);
 		// Ups...Vi er vist mat her!!
 		if (ply == 0) // Er vi i roden af traeet ?
 		{
-			this->_bestScore = -GameValues::Mate; // Ja, saa saet den nye score
+			this->_bestScore = -GameValues::Mate; //Ja, saa saet den nye score
 		}
-		return -GameValues::Mate +
-		       static_cast<int>(ply); // returner mat-vaerdi minus afstanden til matten
+		return -GameValues::Mate + static_cast<int>(ply); // returner mat-vaerdi minus afstanden til matten
 	}
 	// Remis: Godt hvis vi er bagud, men skidt hvis vi er foran
 	UpdateGameState(ply, GameStates::DRAW_PAT);

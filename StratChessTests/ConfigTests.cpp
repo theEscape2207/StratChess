@@ -15,8 +15,8 @@ class TempConfig {
 	explicit TempConfig(std::string_view contents)
 	    : path_(std::filesystem::temp_directory_path() /
 	            ("strat_cfg_" + std::to_string(++counter_) + "_" +
-	             std::to_string(static_cast<unsigned long long>(
-	                 std::chrono::steady_clock::now().time_since_epoch().count())) +
+	             std::to_string(
+	                 static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count())) +
 	             ".json"))
 	{
 		std::ofstream out(path_);
@@ -31,10 +31,7 @@ class TempConfig {
 	TempConfig(const TempConfig&) = delete;
 	TempConfig& operator=(const TempConfig&) = delete;
 
-	[[nodiscard]] std::string path() const
-	{
-		return path_.string();
-	}
+	[[nodiscard]] std::string path() const { return path_.string(); }
 
   private:
 	std::filesystem::path path_;
@@ -44,10 +41,7 @@ class TempConfig {
 // Config dereferences its Game* only on the FEN path (ReadFEN -> SetCustomGame).
 // None of the documents below declare a FEN setup, so nullptr is safe here and
 // keeps these cases free of a whole Game.
-Config MakeReader()
-{
-	return Config(nullptr);
-}
+Config MakeReader() { return Config(nullptr); }
 
 } // namespace
 
@@ -143,8 +137,7 @@ TEST_CASE("Config: comments are accepted", "[config]")
 
 TEST_CASE("Config: a missing file falls back to defaults without throwing", "[config]")
 {
-	const auto missing =
-	    (std::filesystem::temp_directory_path() / "strat_cfg_definitely_absent_178.json").string();
+	const auto missing = (std::filesystem::temp_directory_path() / "strat_cfg_definitely_absent_178.json").string();
 	REQUIRE_FALSE(std::filesystem::exists(missing));
 
 	Board board;

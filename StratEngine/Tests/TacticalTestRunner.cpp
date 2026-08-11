@@ -53,8 +53,7 @@ TacticalResult TacticalTestRunner::run_position(const TacticalPosition& pos, uns
 	result.description = pos.description;
 
 	Board board(pos.fen);
-	auto ai = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX,
-	                             static_cast<unsigned>(pos.depth), board);
+	auto ai = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, static_cast<unsigned>(pos.depth), board);
 	AIPerplex::SetVerboseLogging(false);
 	ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
 	if (auto* ai_base = dynamic_cast<PlayerAiBase*>(ai.get()))
@@ -77,9 +76,8 @@ TacticalResult TacticalTestRunner::run_position(const TacticalPosition& pos, uns
 	return result;
 }
 
-TacticalTestRunner::SuiteVerdict
-TacticalTestRunner::evaluate_results(const std::vector<TacticalResult>& results,
-                                     double required_pass_rate)
+TacticalTestRunner::SuiteVerdict TacticalTestRunner::evaluate_results(const std::vector<TacticalResult>& results,
+                                                                      double required_pass_rate)
 {
 	SuiteVerdict v;
 	v.total = static_cast<int>(results.size());
@@ -95,8 +93,7 @@ TacticalTestRunner::evaluate_results(const std::vector<TacticalResult>& results,
 }
 
 TacticalTestRunner::StabilityVerdict
-TacticalTestRunner::evaluate_stability(const std::vector<std::vector<TacticalResult>>& runs,
-                                       double required_pass_rate)
+TacticalTestRunner::evaluate_stability(const std::vector<std::vector<TacticalResult>>& runs, double required_pass_rate)
 {
 	StabilityVerdict v;
 	v.runs = static_cast<int>(runs.size());
@@ -129,14 +126,13 @@ TacticalTestRunner::evaluate_stability(const std::vector<std::vector<TacticalRes
 	return v;
 }
 
-bool TacticalTestRunner::run_test_suite(double required_pass_rate, bool verbose,
-                                        const std::string& json_filename, unsigned threads)
+bool TacticalTestRunner::run_test_suite(double required_pass_rate, bool verbose, const std::string& json_filename,
+                                        unsigned threads)
 {
 	auto positions = load_test_cases(json_filename);
 
 	std::cout << "\n========================================\n";
-	std::cout << "Tactical Test Suite (" << positions.size() << " positions, " << json_filename
-	          << ")\n";
+	std::cout << "Tactical Test Suite (" << positions.size() << " positions, " << json_filename << ")\n";
 	std::cout << "========================================\n\n";
 
 	std::vector<TacticalResult> results;
@@ -170,8 +166,7 @@ bool TacticalTestRunner::run_test_suite(double required_pass_rate, bool verbose,
 	std::cout << "========================================\n";
 	std::cout << "Results: " << v.passed << "/" << v.total << " passed"
 	          << " (" << static_cast<int>(v.pass_rate * 100) << "%)\n";
-	std::cout << "Required: " << static_cast<int>(required_pass_rate * 100)
-	          << "% overall, 100% in mate categories\n";
+	std::cout << "Required: " << static_cast<int>(required_pass_rate * 100) << "% overall, 100% in mate categories\n";
 	if (!v.failed_mate_ids.empty()) {
 		std::cout << "Mate-category failures (always fatal):";
 		for (const auto& id : v.failed_mate_ids)
@@ -184,14 +179,14 @@ bool TacticalTestRunner::run_test_suite(double required_pass_rate, bool verbose,
 	return v.ok;
 }
 
-bool TacticalTestRunner::run_stability_suite(int n_runs, double required_pass_rate,
-                                             const std::string& json_filename, unsigned threads)
+bool TacticalTestRunner::run_stability_suite(int n_runs, double required_pass_rate, const std::string& json_filename,
+                                             unsigned threads)
 {
 	auto positions = load_test_cases(json_filename);
 
 	std::cout << "\n========================================\n";
-	std::cout << "Tactical Stability Suite (" << positions.size() << " positions x " << n_runs
-	          << " runs, " << json_filename << ")\n";
+	std::cout << "Tactical Stability Suite (" << positions.size() << " positions x " << n_runs << " runs, "
+	          << json_filename << ")\n";
 	std::cout << "========================================\n\n";
 
 	std::vector<std::vector<TacticalResult>> runs;
@@ -206,15 +201,14 @@ bool TacticalTestRunner::run_stability_suite(int n_runs, double required_pass_ra
 			TacticalResult result = run_position(pos, threads);
 			run_ms += result.time_ms;
 			if (!result.passed) {
-				std::cout << "  [" << result.id << "] engine " << result.engine_move_uci
-				          << "  FAIL\n";
+				std::cout << "  [" << result.id << "] engine " << result.engine_move_uci << "  FAIL\n";
 			}
 			results.push_back(std::move(result));
 		}
 
 		const SuiteVerdict rv = evaluate_results(results, required_pass_rate);
-		std::cout << "Run " << r << "/" << n_runs << ": " << rv.passed << "/" << rv.total
-		          << " passed (" << run_ms << " ms)  " << (rv.ok ? "PASS" : "FAIL") << "\n";
+		std::cout << "Run " << r << "/" << n_runs << ": " << rv.passed << "/" << rv.total << " passed (" << run_ms
+		          << " ms)  " << (rv.ok ? "PASS" : "FAIL") << "\n";
 		std::cout.flush();
 		runs.push_back(std::move(results));
 	}
@@ -222,8 +216,8 @@ bool TacticalTestRunner::run_stability_suite(int n_runs, double required_pass_ra
 	const StabilityVerdict sv = evaluate_stability(runs, required_pass_rate);
 
 	std::cout << "\n========================================\n";
-	std::cout << "Stability: " << sv.runs << " runs, " << sv.failed_run_indices.size()
-	          << " failing run(s), " << sv.flipped_ids.size() << " flipped position(s)\n";
+	std::cout << "Stability: " << sv.runs << " runs, " << sv.failed_run_indices.size() << " failing run(s), "
+	          << sv.flipped_ids.size() << " flipped position(s)\n";
 	if (!sv.flipped_ids.empty()) {
 		std::cout << "Flipped (nondeterministic pass/fail):";
 		for (const auto& id : sv.flipped_ids)

@@ -71,10 +71,7 @@ struct ThreadData {
 				k = Move::EmptyMove();
 	}
 
-	void clear_null_move_flags() noexcept
-	{
-		std::memset(last_move_was_null, 0, sizeof(last_move_was_null));
-	}
+	void clear_null_move_flags() noexcept { std::memset(last_move_was_null, 0, sizeof(last_move_was_null)); }
 
 	// Resets everything that must not leak into a new game. History is
 	// deliberately aged, never cleared, WITHIN a game (see the class comment
@@ -111,10 +108,7 @@ struct ThreadData {
 		killers[ply][0] = move;
 	}
 
-	void clear_history() noexcept
-	{
-		std::memset(history, 0, sizeof(history));
-	}
+	void clear_history() noexcept { std::memset(history, 0, sizeof(history)); }
 
 	void age_history() noexcept
 	{
@@ -188,10 +182,7 @@ struct ThreadData {
 	// stored GameInfo::lastMove is whatever the parent ply's real move was,
 	// not a sentinel for "no move". Callers must not treat lastMove at a
 	// null-move ply as "the move that produced this ply".
-	void add_null_move_to_seq(size_t ply)
-	{
-		store_info_at_ply(ply, board.GetGameInfo());
-	}
+	void add_null_move_to_seq(size_t ply) { store_info_at_ply(ply, board.GetGameInfo()); }
 
 	// Test for 50 moves rule and threefold repetition (thread-local board)
 	bool check_draws(const GameInfo& info, int ply) const noexcept

@@ -41,7 +41,7 @@
 #	pragma warning(pop)
 #endif
 
-// Allow using spdlog all over
+//Allow using spdlog all over
 #include <spdlog/spdlog.h>
 
 using BitSpan = std::span<BITBOARD>;

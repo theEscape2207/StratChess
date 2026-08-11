@@ -20,8 +20,7 @@ struct SearchLimits {
 	bool infinite = false;                             // UCI: infinite
 
 	[[nodiscard]] static SearchLimits from_clock(std::chrono::milliseconds remaining,
-	                                             std::chrono::milliseconds increment,
-	                                             int moves_to_go) noexcept;
+	                                             std::chrono::milliseconds increment, int moves_to_go) noexcept;
 	[[nodiscard]] static SearchLimits fixed_time(std::chrono::milliseconds movetime) noexcept;
 	[[nodiscard]] static SearchLimits fixed_depth(int depth) noexcept;
 	[[nodiscard]] static SearchLimits infinite_search() noexcept;
@@ -40,8 +39,7 @@ struct ResolvedLimits {
 /// dependency, unit-testable without a player object (same pattern as
 /// compute_budget). Precedence: movetime > clock for timing; depth always
 /// caps depth; empty limits fall back to (default_time, default_depth).
-[[nodiscard]] ResolvedLimits resolve_limits(const SearchLimits& limits,
-                                            std::chrono::milliseconds default_time,
+[[nodiscard]] ResolvedLimits resolve_limits(const SearchLimits& limits, std::chrono::milliseconds default_time,
                                             unsigned default_depth) noexcept;
 
 } // namespace Engine

@@ -20,8 +20,7 @@ struct TimeBudget {
 ///          max(remaining - overhead, 0), so spending it can never forfeit.
 ///          At or below the overhead the budget is zero and the caller is
 ///          expected to move immediately.
-[[nodiscard]] TimeBudget compute_budget(std::chrono::milliseconds remaining,
-                                        std::chrono::milliseconds increment,
+[[nodiscard]] TimeBudget compute_budget(std::chrono::milliseconds remaining, std::chrono::milliseconds increment,
                                         int moves_to_go) noexcept;
 
 } // namespace Engine

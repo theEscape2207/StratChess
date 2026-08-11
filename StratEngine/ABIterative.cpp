@@ -34,20 +34,18 @@ Move ABIterative::GetMove(GameInfo& info, const SearchLimits& limits)
 		if (ShouldStopSearch())
 			break;
 
-		// Kald vores iterative soegerutine (resetting alpha and beta)
+		//Kald vores iterative soegerutine (resetting alpha and beta)
 		/*const int score =*/Search(0, alpha, beta, m_Line);
 
 		/*if (score != GetBestScore())
-		    spdlog::default_logger()->debug("ABIterative: iScore != GetBestScore - when does this
-		   happen?");*/
+			spdlog::default_logger()->debug("ABIterative: iScore != GetBestScore - when does this happen?");*/
 
 		// Spillet er slut (mat, remis) - ingen grund til at soege videre!!
 		if (m_Line.size() != depth_)
 			break;
 
 		/*if (m_Line.front() != m_BestMove)
-		    spdlog::default_logger()->debug("ABIterative: iScore != GetBestScore - when does this
-		   happen?");*/
+			spdlog::default_logger()->debug("ABIterative: iScore != GetBestScore - when does this happen?");*/
 
 		// We've gotten a new move in the PVLine
 		ENewPVLineMove.fire(this, m_Line);
@@ -119,9 +117,8 @@ int ABIterative::Search(int ply, int alpha, int beta, PVLine& pline)
 			moveFound = true;
 
 			if (ply == 0 && depth_ == effective_depth_)
-				spdlog::default_logger()->debug("Root move {}/{}: {} score={}", counter,
-				                                moveList.size(), MoveFormatter::ToCoord(curMove),
-				                                value);
+				spdlog::default_logger()->debug("Root move {}/{}: {} score={}", counter, moveList.size(),
+				                                MoveFormatter::ToCoord(curMove), value);
 
 			//	We got a value back.  We unmade the move.  We're not dead.  Let's
 			//	see how good this move was.  If it was >= "beta", it was so good
@@ -159,35 +156,33 @@ int ABIterative::Search(int ply, int alpha, int beta, PVLine& pline)
 				assert(pline.size() <= depth_);
 
 				if (ply == 0) { // Er vi i roden af traeet ?
-					// Ja, saa saet den nye score
+					//Ja, saa saet den nye score
 					this->_bestScore = value;
 					m_BestMove = curMove;
 				}
 			}
 		} else {
 			if (ply == 0 && depth_ == effective_depth_)
-				spdlog::default_logger()->debug("Root move {}/{}: {} ILLEGAL", counter,
-				                                moveList.size(), MoveFormatter::ToCoord(curMove));
+				spdlog::default_logger()->debug("Root move {}/{}: {} ILLEGAL", counter, moveList.size(),
+				                                MoveFormatter::ToCoord(curMove));
 		}
 	}
 	// Fandt vi nogen lovlige traek?
 	if (!moveFound) {
-		// Nope - i denne gren er vi enten mat eller der er remis!!
-		pline.clear(); // TODO: SVN20141229 Why are we clearing the pline here? And why are the
-		               // assert()s below still here, then?!?
+		//Nope - i denne gren er vi enten mat eller der er remis!!
+		pline
+		    .clear(); //TODO: SVN20141229 Why are we clearing the pline here? And why are the assert()s below still here, then?!?
 		if (m_Board.InCheck()) {
-			UpdateGameState(ply, m_Board.GetCurrentColor() == eColor::WHITE
-			                         ? GameStates::BLACK_WON
-			                         : GameStates::WHITE_WON);
+			UpdateGameState(ply,
+			                m_Board.GetCurrentColor() == eColor::WHITE ? GameStates::BLACK_WON : GameStates::WHITE_WON);
 			// Ups...Vi er vist mat her!!
 			if (ply == 0) // Er vi i roden af traeet ?
 			{
-				// Ja, saa saet den nye score
+				//Ja, saa saet den nye score
 				_bestScore = -GameValues::Mate;
 			}
 			assert(pline.size() <= depth_);
-			return -GameValues::Mate +
-			       static_cast<int>(ply); // returner mate value minus distance to it
+			return -GameValues::Mate + static_cast<int>(ply); // returner mate value minus distance to it
 		}
 		assert(pline.size() <= depth_);
 		// Remis: Godt hvis vi er bagud, men skidt hvis vi er foran

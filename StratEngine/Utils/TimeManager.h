@@ -31,24 +31,15 @@ class TimeManager {
 
 	/// Start timer with a single budget (soft == hard).  Preserves existing behaviour
 	/// for all callers that use a fixed time limit via SetTimeLimit().
-	void start(std::chrono::milliseconds allocated) noexcept
-	{
-		start(allocated, allocated);
-	}
+	void start(std::chrono::milliseconds allocated) noexcept { start(allocated, allocated); }
 
 	/// Signal immediate stop (e.g. from UCI 'stop' command).
-	void stop() noexcept
-	{
-		should_stop_.store(true, std::memory_order_relaxed);
-	}
+	void stop() noexcept { should_stop_.store(true, std::memory_order_relaxed); }
 
 	/// Fast check: reads only the latched atomic — no clock call.
 	/// Returns true once should_stop_search() has fired at least once, or after stop().
 	/// Use this for per-node early-exit guards where chrono::now() overhead matters.
-	[[nodiscard]] bool is_aborted() const noexcept
-	{
-		return should_stop_.load(std::memory_order_relaxed);
-	}
+	[[nodiscard]] bool is_aborted() const noexcept { return should_stop_.load(std::memory_order_relaxed); }
 
 	/// Hard limit check — abort the search immediately.
 	/// On first expiry, latches should_stop_ so that subsequent is_aborted() calls
@@ -77,8 +68,7 @@ class TimeManager {
 
 	[[nodiscard]] auto elapsed() const noexcept
 	{
-		return std::chrono::duration_cast<std::chrono::milliseconds>(
-		    std::chrono::steady_clock::now() - start_time_);
+		return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time_);
 	}
 
   private:

@@ -9,10 +9,7 @@ class ABIterative final : public PlayerAiIterBase {
 	explicit ABIterative(Board& board, unsigned maxDepth) : PlayerAiIterBase(board, maxDepth) {}
 	// Implementation/overrides of the IPlayer interface
 	Move GetMove(GameInfo& info, const SearchLimits& limits) override;
-	const char* GetType() const noexcept override
-	{
-		return "Iterative AlphaBeta";
-	}
+	const char* GetType() const noexcept override { return "Iterative AlphaBeta"; }
 
 	~ABIterative() = default;
 	// Force use of factory by preventing constructor, copy-construction & operator=

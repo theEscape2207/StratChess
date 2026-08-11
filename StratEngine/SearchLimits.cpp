@@ -1,8 +1,8 @@
 #include "StdAfx.h"
 #include "SearchLimits.h"
 
-SearchLimits SearchLimits::from_clock(std::chrono::milliseconds remaining,
-                                      std::chrono::milliseconds increment, int moves_to_go) noexcept
+SearchLimits SearchLimits::from_clock(std::chrono::milliseconds remaining, std::chrono::milliseconds increment,
+                                      int moves_to_go) noexcept
 {
 	SearchLimits limits;
 	limits.clock = ClockInfo{remaining, increment, moves_to_go};
@@ -36,13 +36,11 @@ ResolvedLimits resolve_limits(const SearchLimits& limits, std::chrono::milliseco
                               unsigned default_depth) noexcept
 {
 	ResolvedLimits r{};
-	r.effective_depth = limits.depth ? static_cast<unsigned>(*limits.depth)
-	                                 : (limits.infinite ? 50u : default_depth);
+	r.effective_depth = limits.depth ? static_cast<unsigned>(*limits.depth) : (limits.infinite ? 50u : default_depth);
 	if (limits.movetime) { // movetime wins over clock (defensive)
 		r.budget = {*limits.movetime, *limits.movetime};
 	} else if (limits.clock) {
-		r.budget = compute_budget(limits.clock->remaining, limits.clock->increment,
-		                          limits.clock->moves_to_go);
+		r.budget = compute_budget(limits.clock->remaining, limits.clock->increment, limits.clock->moves_to_go);
 	} else if (limits.infinite || limits.depth) {
 		// Depth cap or UCI 'stop' is the stopping criterion; hours(1) avoids
 		// potential overflow from milliseconds::max() in comparisons.

@@ -18,10 +18,7 @@
 // Returns:      -
 // Remark:
 // ***************************************
-Game::Game()
-{
-	Init();
-}
+Game::Game() { Init(); }
 
 //***************************************
 // Method:      ~Game
@@ -35,8 +32,7 @@ Game::~Game()
 	try {
 		unsubscribePlayerEvents();
 
-		// Under VisualStudio, this must be called before main finishes to workaround a known VS
-		// issue
+		// Under VisualStudio, this must be called before main finishes to workaround a known VS issue
 		spdlog::drop_all();
 	} catch (const std::exception&) {
 		// Don't care if any deregistration fails, we're closing here
@@ -45,14 +41,16 @@ Game::~Game()
 
 //***************************************
 // Method:      unsubscribePlayerEvents
-// Description: Unsubscribes from all player events. Calling this in destructor to avoid dangling
-// references. FullName:    private Game::unsubscribePlayerEvents Returns:     void - Remark:
+// Description: Unsubscribes from all player events. Calling this in destructor to avoid dangling references.
+// FullName:    private Game::unsubscribePlayerEvents
+// Returns:     void -
+// Remark:
 //***************************************
 void Game::unsubscribePlayerEvents()
 {
 	// TODO: Potential issue if players were not created. This function assumes both players exist.
-	// TODO: Calling clear() where unsubscribe() should be used, but we have no handles to
-	// unsubscribe with here. Deregister our delegates
+	// TODO: Calling clear() where unsubscribe() should be used, but we have no handles to unsubscribe with here.
+	// Deregister our delegates
 	m_pPlayers[WHITE]->ENewPVLineMove.clear();
 	m_pPlayers[BLACK]->ENewPVLineMove.clear();
 
@@ -84,10 +82,7 @@ std::ostream& operator<<(std::ostream& os, const Game& game)
 // Returns:     PlayerBase& -
 // Remark:
 //***************************************
-IPlayer& Game::GetCurrentPlayer() const noexcept
-{
-	return *m_pPlayers[board_.GetCurrentColor()];
-}
+IPlayer& Game::GetCurrentPlayer() const noexcept { return *m_pPlayers[board_.GetCurrentColor()]; }
 
 //***************************************
 // Method:      Init
@@ -161,8 +156,7 @@ void Game::LoadConfigFileSettings()
 
 	// TODO: Setup board explicitly here
 	spdlog::default_logger()->debug("Creating players from Config File");
-	// TODO: We are creating stuff we do not need (e.g. eval engine as human and NewPVLineMove event
-	// as non-iterative AI)
+	//TODO: We are creating stuff we do not need (e.g. eval engine as human and NewPVLineMove event as non-iterative AI)
 	const Config::PlayerConfig whiteConfig = reader.GetPlayerFromConfig(true);
 	m_pPlayers[WHITE] = SetPlayerParams(whiteConfig);
 	player_limits_[WHITE] = whiteConfig.search_limits;
@@ -176,8 +170,7 @@ void Game::LoadConfigFileSettings()
 
 std::unique_ptr<IPlayer> Game::SetPlayerParams(const Config::PlayerConfig& config)
 {
-	auto player = PlayerBase::Create(static_cast<PlayerBase::ePlayerTypes>(config.type),
-	                                 config.depth, board_);
+	auto player = PlayerBase::Create(static_cast<PlayerBase::ePlayerTypes>(config.type), config.depth, board_);
 	player->SetEvalEngine(static_cast<EvalManager::EvalTypes>(config.eval));
 
 	// Enable AIPerplex verbose logging in game mode (opt-in here; UCI/test modes disable it).
@@ -216,11 +209,9 @@ std::unique_ptr<IPlayer> Game::SetPlayerParams(const Config::PlayerConfig& confi
 		ai->StartNewGame();
 	}
 
-	// Register events
-	player->ENewPVLineMove.subscribe(
-	    [this](const void* s, const PVLine& pvl) { onNewPVLineMove(s, pvl); });
-	player->EGameStateChanged.subscribe(
-	    [this](const void* s, const GameStates& gs) { OnGameStateChanged(s, gs); });
+	//Register events
+	player->ENewPVLineMove.subscribe([this](const void* s, const PVLine& pvl) { onNewPVLineMove(s, pvl); });
+	player->EGameStateChanged.subscribe([this](const void* s, const GameStates& gs) { OnGameStateChanged(s, gs); });
 	return player;
 }
 
@@ -230,9 +221,8 @@ void Game::SetGameParams(const GameInfo& info) noexcept
 	gameInfo_.epSquare = info.epSquare;
 	/*if (info.epSquare != NO_SQUARE)
 	{
-	    const auto movPiece = (config.sideToMove == WHITE) ? BLACK_PAWN : WHITE_PAWN;
-	    gameInfo_.lastMove.SetMove(NO_SQUARE, NO_SQUARE, MoveType::DOUBLE_PAWN_PUSH, movPiece,
-	NO_PIECE );
+		const auto movPiece = (config.sideToMove == WHITE) ? BLACK_PAWN : WHITE_PAWN;
+		gameInfo_.lastMove.SetMove(NO_SQUARE, NO_SQUARE, MoveType::DOUBLE_PAWN_PUSH, movPiece, NO_PIECE );
 	}*/
 
 	// Castling availability
@@ -259,13 +249,12 @@ void Game::Run()
 	PrintBoardAndMove(Move::EmptyMove());
 
 	/*
-	 *	Main game loop
-	 *	Player->GetMove() is the main driver of the game
-	 */
+	*	Main game loop
+	*	Player->GetMove() is the main driver of the game
+	*/
 	for (;;) {
 		// Hent traekket fra den aktive spiller - GameInfo get updated every time
-		Move newMove =
-		    GetCurrentPlayer().GetMove(gameInfo_, player_limits_[board_.GetCurrentColor()]);
+		Move newMove = GetCurrentPlayer().GetMove(gameInfo_, player_limits_[board_.GetCurrentColor()]);
 
 		// Prints out the current score message for AI players (score or "Mate in x moves")
 		PrintStateMessage();
@@ -293,8 +282,7 @@ void Game::Run()
 		PrintBoardAndMove(newMove);
 	}
 
-	// FIXME: Add a menu allowing a new game to be played - including option to override from
-	// game-setup file
+	// FIXME: Add a menu allowing a new game to be played - including option to override from game-setup file
 	spdlog::default_logger()->warn("Spillet er slut\n\nTryk enter for at afslutte!");
 }
 
@@ -350,8 +338,7 @@ void Game::PrintStateMessage() const
 			spdlog::default_logger()->info("Its a Draw ! No more legal moves - but not in check!");
 			break;
 		case GameStates::DRAW_50_MOVES:
-			spdlog::default_logger()->info(
-			    "Its a Draw ! 50 moves has passed since last Capture or peasant move!");
+			spdlog::default_logger()->info("Its a Draw ! 50 moves has passed since last Capture or peasant move!");
 			break;
 		case GameStates::HUMAN_EXITED:
 			spdlog::default_logger()->info("Human player exited game. Opponent is the Winner!");

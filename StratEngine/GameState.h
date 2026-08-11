@@ -48,15 +48,11 @@ struct GameInfo {
 		fiftyCount = 0;
 		fullMoveCount = 1;
 	}
-	bool GameEnded() const noexcept
-	{
-		return gameState != GameStates::STILL_PLAYING;
-	}
+	bool GameEnded() const noexcept { return gameState != GameStates::STILL_PLAYING; }
 
 	// Updates the BoardInfo with information about En Passant and castling possibilities
 	// For each move done, update as done above according to input move.
-	// movPiece: the effective moving piece (Board::GetEffectiveMovPiece or GetPiece(to) after
-	// DoMove)
+	// movPiece: the effective moving piece (Board::GetEffectiveMovPiece or GetPiece(to) after DoMove)
 	void UpdateBoardInfo(const Move& move, ePiece movPiece) noexcept
 	{
 		// Set the En Passant square
@@ -72,8 +68,7 @@ struct GameInfo {
 	{
 		auto sideToMove = PieceHelper::Color(movPiece);
 		if (PieceHelper::IsKing(movPiece)) {
-			castlingRights &= ~(sideToMove == eColor::WHITE ? CastlingRights::WHITE_BOTH
-			                                                : CastlingRights::BLACK_BOTH);
+			castlingRights &= ~(sideToMove == eColor::WHITE ? CastlingRights::WHITE_BOTH : CastlingRights::BLACK_BOTH);
 		}
 
 		// Strip rights based on from/to squares - covers rook moves,

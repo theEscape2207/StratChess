@@ -12,10 +12,7 @@ class PlayerAiIterBase : public PlayerAiBase {
 
   protected:
 	// Force use of factory by preventing constructor, copy-construction & operator=
-	explicit PlayerAiIterBase(Board& board, unsigned md) : PlayerAiBase(board, md)
-	{
-		m_infoSeq.reserve(32);
-	}
+	explicit PlayerAiIterBase(Board& board, unsigned md) : PlayerAiBase(board, md) { m_infoSeq.reserve(32); }
 
 	// Iter classes store the currently best move in the PVL, so maintain the list there
 	void InitMoveVariables(const GameInfo& info) override

@@ -12,17 +12,12 @@
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-static Move no_move()
-{
-	return Move::EmptyMove();
-}
+static Move no_move() { return Move::EmptyMove(); }
 
 // Convenience wrapper: stores a value at the given key with sensible defaults.
-static void do_store(TranspositionTable& tt, uint64_t key, int16_t value, int16_t depth = 5,
-                     int16_t ply = 0)
+static void do_store(TranspositionTable& tt, uint64_t key, int16_t value, int16_t depth = 5, int16_t ply = 0)
 {
-	tt.store(key, value, depth, ply, no_move(), BoundType::EXACT, NodeType::PV_NODE,
-	         SearchPhase::MAIN);
+	tt.store(key, value, depth, ply, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
 }
 
 static constexpr uint64_t KEY_A = 1'000'001;

@@ -27,15 +27,13 @@ class Config final {
 
 	struct PlayerConfig {
 		unsigned type{DEFAULT_EVAL};
-		unsigned depth{DEFAULT_DEPTH}; // max_depth — mirrors search_limits.depth; still needed by
-		                               // PlayerBase::Create
+		unsigned depth{DEFAULT_DEPTH}; // max_depth — mirrors search_limits.depth; still needed by PlayerBase::Create
 		unsigned eval{0};
-		SearchLimits search_limits; // per-move search constraints, parsed from "search_limits" (or
-		                            // legacy max_depth/time_limit)
+		SearchLimits
+		    search_limits; // per-move search constraints, parsed from "search_limits" (or legacy max_depth/time_limit)
 		std::optional<SearchTuningConfig> search_tuning; // only for AI_PERPLEX (type 6)
 		std::optional<unsigned>
-		    threads; // Lazy SMP thread count; applied via PlayerAiBase::SetThreads (clamped [1,32];
-		             // legacy AIs ignore)
+		    threads; // Lazy SMP thread count; applied via PlayerAiBase::SetThreads (clamped [1,32]; legacy AIs ignore)
 	};
 
 	struct GameConfig {
@@ -51,7 +49,7 @@ class Config final {
 		int fullMoveCounter{0};
 	};
 	explicit Config(Game* game) noexcept : pGame_(game) {}
-	// void LoadConfigFileSettings();
+	//void LoadConfigFileSettings();
 
 	void ReadConfigFile(const std::string& /*filename*/, Board& board);
 

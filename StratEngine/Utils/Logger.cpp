@@ -21,15 +21,13 @@ void Engine::Logger::InitDefault()
 			console_sink->set_pattern(("%T.%e %^%l%$: %v"));
 
 			// create file sink for general logs
-			auto file_sink =
-			    std::make_shared<spdlog::sinks::basic_file_sink_mt>("logs/multisink.txt", true);
+			auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("logs/multisink.txt", true);
 			file_sink->set_level(spdlog::level::trace);
 			file_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
 
 			spdlog::sinks_init_list sink_list = {file_sink, console_sink};
 
-			auto multi =
-			    std::make_shared<spdlog::logger>("multi_sink", sink_list.begin(), sink_list.end());
+			auto multi = std::make_shared<spdlog::logger>("multi_sink", sink_list.begin(), sink_list.end());
 			multi->set_level(spdlog::level::debug);
 
 			// set as default logger so existing code that uses spdlog::info() continues to work
@@ -52,9 +50,8 @@ std::shared_ptr<spdlog::logger> Engine::Logger::EnsurePerfLogger(const std::stri
 		std::call_once(g_perf_init_flag, [&]() {
 			// spdlog's file_helper::open creates the parent directory itself, so the caller
 			// does not need to pre-create logs/.
-			// Create a synchronous file sink that truncates the file on startup (match previous
-			// behavior) If you want async perf logging later, switch to init_thread_pool + async
-			// logger here.
+			// Create a synchronous file sink that truncates the file on startup (match previous behavior)
+			// If you want async perf logging later, switch to init_thread_pool + async logger here.
 			auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(filename, true);
 			file_sink->set_level(spdlog::level::info);
 			auto perf_logger = std::make_shared<spdlog::logger>(PERF_LOGGER_NAME, file_sink);
@@ -93,12 +90,6 @@ std::shared_ptr<spdlog::logger> Engine::Logger::GetLogger(const std::string& nam
 	return spdlog::get(name);
 }
 
-std::shared_ptr<spdlog::logger> Engine::Logger::DefaultLogger() noexcept
-{
-	return spdlog::default_logger();
-}
+std::shared_ptr<spdlog::logger> Engine::Logger::DefaultLogger() noexcept { return spdlog::default_logger(); }
 
-std::shared_ptr<spdlog::logger> Engine::Logger::GetPerfLogger() noexcept
-{
-	return spdlog::get(PERF_LOGGER_NAME);
-}
+std::shared_ptr<spdlog::logger> Engine::Logger::GetPerfLogger() noexcept { return spdlog::get(PERF_LOGGER_NAME); }

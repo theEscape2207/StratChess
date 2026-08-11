@@ -16,7 +16,7 @@ void MoveSorter::SortMovesIter(MoveList& moveList,   // traeklisten
 	if (pIterMove != nullptr) // Har vi et traek at kigge paa?
 	{
 		const size_t numMoves = moveList.size();
-		// Vi loeber traekkene igennem og sorterer
+		//Vi loeber traekkene igennem og sorterer
 		for (size_t i = 0; i < numMoves; ++i) {
 			// Iterative deepening - bedste traek paa samme dybde fra sidste traek
 			if (*pIterMove == moveList[i]) {
@@ -45,7 +45,7 @@ void MoveSorter::SortMoves(MoveList& moveList,   // traeklisten
 	const size_t numMoves = moveList.size();
 	// Slag af sidst flyttet brik hvis den eksisterer
 	if (!lastMove.is_null()) {
-		// Vi loeber traekkene igennem og sorterer videre
+		//Vi loeber traekkene igennem og sorterer videre
 		const eSquare lastTo = lastMove.to();
 		for (loop = curIndex; loop < numMoves; ++loop) {
 			// Slag af sidst flyttet brik
@@ -59,9 +59,8 @@ void MoveSorter::SortMoves(MoveList& moveList,   // traeklisten
 		}
 	}
 
-	const size_t lastMoveEndIndex =
-	    curIndex; // TODO: Right now we are not sorting the last move captures as just found
-	              // Test whether we should do it anyway.
+	const size_t lastMoveEndIndex = curIndex; // TODO: Right now we are not sorting the last move captures as just found
+	                                          // Test whether we should do it anyway.
 
 	// Vi koerer videre fra hvor vi slap
 	for (loop = curIndex; loop < numMoves; ++loop) {
@@ -83,25 +82,21 @@ void MoveSorter::SortMoves(MoveList& moveList,   // traeklisten
 // Dvs ikke at ofre sin dronning for at faa den #%&!! bonde ;-)
 // Bemaerk: start er default 0
 // TODO: Why dont the callers supply iterators instead?
-void MoveSorter::SortMovesByValue(MoveList& moveList, size_t captures, const Board& board,
-                                  size_t start)
+void MoveSorter::SortMovesByValue(MoveList& moveList, size_t captures, const Board& board, size_t start)
 {
 	// Sort captures by MVV-LVA: captured piece value minus (moving piece value / 16).
 	// board supplies the moving piece (Phase 3) and captured piece (Phase 4) for each move.
 	if (captures >= 2) // Mindst 2 for at sortere
-		std::sort(moveList.begin() + static_cast<int>(start),
-		          moveList.begin() + static_cast<int>(start + captures),
+		std::sort(moveList.begin() + static_cast<int>(start), moveList.begin() + static_cast<int>(start + captures),
 		          [&board](const Move& a, const Move& b) {
-			          return MoveHelper::Value(a, board.GetEffectiveMovPiece(a),
-			                                   board.GetCapturedPiece(a)) >
-			                 MoveHelper::Value(b, board.GetEffectiveMovPiece(b),
-			                                   board.GetCapturedPiece(b));
+			          return MoveHelper::Value(a, board.GetEffectiveMovPiece(a), board.GetCapturedPiece(a)) >
+			                 MoveHelper::Value(b, board.GetEffectiveMovPiece(b), board.GetCapturedPiece(b));
 		          });
 }
 
-void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const Board& board, eColor side,
-                            const Move& pv_move, const Move& hash_move, const Move& killer0,
-                            const Move& killer1, const int32_t (&history)[2][64][64],
+void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const Board& board, eColor side, const Move& pv_move,
+                            const Move& hash_move, const Move& killer0, const Move& killer1,
+                            const int32_t (&history)[2][64][64],
                             std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx)
 {
 	assert(n >= 0 && n <= static_cast<int>(MoveList::MAX_MOVES));
@@ -118,8 +113,7 @@ void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const Board& board,
 			const bool isCapture = MoveHelper::IsCapture(mv);
 			const bool isKiller0 = !isCapture && (mv == killer0);
 			const bool isKiller1 = !isKiller0 && !isCapture && (mv == killer1);
-			const int mvv_lva =
-			    MoveHelper::Value(mv, board.GetEffectiveMovPiece(mv), board.GetCapturedPiece(mv));
+			const int mvv_lva = MoveHelper::Value(mv, board.GetEffectiveMovPiece(mv), board.GetCapturedPiece(mv));
 
 			if (isKiller0)
 				s = 900'000;

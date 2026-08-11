@@ -16,23 +16,14 @@ class PlayerAiBase : public PlayerBase {
 	std::string getDescription() const override
 	{
 		std::stringstream str;
-		str << "\n\tEngine type:\t" << GetType() << "\n\tDepth:\t\t" << max_depth_
-		    << "\n\tEvaluation:\t" << Eval->GetType() << '\n';
+		str << "\n\tEngine type:\t" << GetType() << "\n\tDepth:\t\t" << max_depth_ << "\n\tEvaluation:\t"
+		    << Eval->GetType() << '\n';
 		return str.str();
 	}
-	const char* GetType() const noexcept override
-	{
-		return "AI";
-	}
+	const char* GetType() const noexcept override { return "AI"; }
 
-	void SetMaxDepth(unsigned depth) noexcept
-	{
-		max_depth_ = depth;
-	}
-	void SetTimeLimit(std::chrono::milliseconds ms) noexcept
-	{
-		time_limit_ = ms;
-	}
+	void SetMaxDepth(unsigned depth) noexcept { max_depth_ = depth; }
+	void SetTimeLimit(std::chrono::milliseconds ms) noexcept { time_limit_ = ms; }
 
 	struct HashConfigurationResult {
 		bool success{false};
@@ -43,10 +34,7 @@ class PlayerAiBase : public PlayerBase {
 
 	/// Replace the transposition table for a client-supplied entry-memory budget.
 	/// Unsupported legacy AIs return failure; AIPerplex returns the actual allocation.
-	virtual HashConfigurationResult SetHash(unsigned) noexcept
-	{
-		return {};
-	}
+	virtual HashConfigurationResult SetHash(unsigned) noexcept { return {}; }
 
 	/// Configure the number of search threads (Lazy SMP). Base no-op — legacy
 	/// AIs (AIBasic/AIAgent/ABIterative) ignore this; AIPerplex overrides and
@@ -71,11 +59,10 @@ class PlayerAiBase : public PlayerBase {
 	// Preventing constructor, copy-construction & operator=
 	explicit PlayerAiBase(Board& board, unsigned md) : m_Board(board), max_depth_(md)
 	{
-		// Create the Evaluation strategy - Right now only possible to select two: SIMPLE and
-		// COMPLEX ;-)
+		// Create the Evaluation strategy - Right now only possible to select two: SIMPLE and COMPLEX ;-)
 	}
 
-	// virtual Move GetMove(GameInfo& info) = 0;
+	//virtual Move GetMove(GameInfo& info) = 0;
 
 	/* AI helper methods */
 
@@ -116,18 +103,12 @@ class PlayerAiBase : public PlayerBase {
 	/// directly. Returns the effective search depth for this call.
 	unsigned ApplyLimits(const SearchLimits& limits);
 
-	bool ShouldStopSearch() const noexcept
-	{
-		return time_manager_.should_stop_search();
-	}
+	bool ShouldStopSearch() const noexcept { return time_manager_.should_stop_search(); }
 
 	/// Cheap per-node guard: only reads the latched atomic, no clock call.
 	/// Use at the top of pvs()/quiescence() so the call stack collapses in O(depth)
 	/// steps after the first ShouldStopSearch() fires and latches the flag.
-	bool IsAborted() const noexcept
-	{
-		return time_manager_.is_aborted();
-	}
+	bool IsAborted() const noexcept { return time_manager_.is_aborted(); }
 
 	void SetEvalEngine(EvalManager::EvalTypes type) override
 	{
@@ -157,10 +138,7 @@ class PlayerAiBase : public PlayerBase {
 	}
 
 	// Returns the Current Move's predecessor in the current move sequence tree
-	const Move& GetParentMove(size_t currentPly) const
-	{
-		return GetLastBoardInfo(currentPly).lastMove;
-	}
+	const Move& GetParentMove(size_t currentPly) const { return GetLastBoardInfo(currentPly).lastMove; }
 
 	const GameInfo& GetLastBoardInfo(size_t currentPly) const
 	{
@@ -188,8 +166,7 @@ class PlayerAiBase : public PlayerBase {
 		}
 	}
 
-	// TODO: rename to FireStateChanged. Also, investigate if refreshInfo is needed for old AI
-	// structure
+	// TODO: rename to FireStateChanged. Also, investigate if refreshInfo is needed for old AI structure
 	void CheckGameOver(GameInfo& info, bool fromBoard = true)
 	{
 		if (fromBoard)
@@ -222,8 +199,8 @@ class PlayerAiBase : public PlayerBase {
 	}
 
 	/*
-	 *	Protected Variables	- used by nested classes
-	 */
+	*	Protected Variables	- used by nested classes
+	*/
 	// Debug: taeller hvor mange gange Alpha-Beta koeres igennem
 	size_t m_SearchCount{0};
 	// Lokal reference til Board
@@ -232,8 +209,7 @@ class PlayerAiBase : public PlayerBase {
 	// The embedded Eval object for per-player evaluation
 	std::unique_ptr<EvalManager> Eval;
 
-	// Store GameInfo sequence for Do/Undo TODO: Board is now handling those for AIPerplex - other
-	// algos needs to be moved
+	// Store GameInfo sequence for Do/Undo TODO: Board is now handling those for AIPerplex - other algos needs to be moved
 	std::vector<GameInfo> m_infoSeq;
 
 	// Det bedste traek indtil nu
@@ -257,11 +233,11 @@ class PlayerAiBase : public PlayerBase {
 	// default. AIPerplex uses ApplyLimits()'s return value directly instead.
 	unsigned effective_depth_{0};
 
-	// #ifdef PRINT_STATS
+	//#ifdef PRINT_STATS
 
-	// Samlet tid og antal nodes for begge computerspillere - TODO: Separer evt til per spiller.
-	// Human burde ogsaa have en klokke Lazy SMP: these statics are written only from
-	// StopTimerAndAdjustVars(), called once per GetMove() on the calling (single) thread, strictly
+	// Samlet tid og antal nodes for begge computerspillere - TODO: Separer evt til per spiller. Human burde ogsaa have en klokke
+	// Lazy SMP: these statics are written only from StopTimerAndAdjustVars(),
+	// called once per GetMove() on the calling (single) thread, strictly
 	// after that call's search has returned — i.e. after any Lazy SMP
 	// helper threads for that move have already joined. No synchronization
 	// is needed as a result; if a future change makes StopTimerAndAdjustVars()
@@ -269,5 +245,5 @@ class PlayerAiBase : public PlayerBase {
 	// revisited.
 	static std::chrono::milliseconds m_TotalTime;
 	static size_t m_TotalCount;
-	// #endif	// PRINT_STATS
+	//#endif	// PRINT_STATS
 };

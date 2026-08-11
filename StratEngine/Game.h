@@ -33,24 +33,15 @@ class Game final {
 	void PrintStateMessage() const;
 
 	// Inline stuff
-	size_t GetBoardCount() const noexcept
-	{
-		return m_GameMoves.size();
-	}
+	size_t GetBoardCount() const noexcept { return m_GameMoves.size(); }
 
-	bool IsStillPlaying() const noexcept
-	{
-		return !gameInfo_.GameEnded();
-	}
+	bool IsStillPlaying() const noexcept { return !gameInfo_.GameEnded(); }
 
-	static bool HasHumanExited(const Move& move) noexcept
-	{
-		return move.is_null();
-	}
+	static bool HasHumanExited(const Move& move) noexcept { return move.is_null(); }
 
 	/*
-	 * Event Methods
-	 */
+	* Event Methods
+	*/
 	// A New move has been committed to the current PVLine
 	// Currently we just print it to screen
 	//************************************

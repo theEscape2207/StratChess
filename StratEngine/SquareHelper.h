@@ -16,8 +16,8 @@
 
 namespace SquareHelper {
 /*
- *	methods
- */
+	*	methods
+	*/
 // Calculate the new eSquare position
 static inline constexpr eSquare Calc(eSquare square, int offset) noexcept
 {
@@ -27,8 +27,7 @@ static inline constexpr eSquare Calc(eSquare square, int offset) noexcept
 // Helper for finding the previous row eSquare position depending on color
 static inline constexpr eSquare PreviousRow(eSquare To, eColor color) noexcept
 {
-	return (color == eColor::WHITE ? SquareHelper::Calc(To, +ONE_ROW)
-	                               : SquareHelper::Calc(To, -ONE_ROW));
+	return (color == eColor::WHITE ? SquareHelper::Calc(To, +ONE_ROW) : SquareHelper::Calc(To, -ONE_ROW));
 }
 } // namespace SquareHelper
 

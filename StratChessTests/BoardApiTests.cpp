@@ -53,8 +53,7 @@ TEST_CASE("Board::GetCapturedPiece returns NO_PIECE for a quiet move", "[board_a
 	REQUIRE(board.GetCapturedPiece(m) == NO_PIECE);
 }
 
-TEST_CASE("Board::GetCapturedPiece returns BLACK_ROOK for white queen captures black rook",
-          "[board_api]")
+TEST_CASE("Board::GetCapturedPiece returns BLACK_ROOK for white queen captures black rook", "[board_api]")
 {
 	Board board(FEN_CAPTURE);
 
@@ -62,9 +61,8 @@ TEST_CASE("Board::GetCapturedPiece returns BLACK_ROOK for white queen captures b
 	REQUIRE(board.GetCapturedPiece(m) == BLACK_ROOK);
 }
 
-TEST_CASE(
-    "Board::GetCapturedPiece returns BLACK_PAWN for EP capture (pawn is not on destination square)",
-    "[board_api]")
+TEST_CASE("Board::GetCapturedPiece returns BLACK_PAWN for EP capture (pawn is not on destination square)",
+          "[board_api]")
 {
 	Board board(FEN_EP);
 
@@ -80,8 +78,7 @@ TEST_CASE(
 
 // ── GetEffectiveMovPiece ──────────────────────────────────────────────────────
 
-TEST_CASE("Board::GetEffectiveMovPiece returns the piece on from-square for a quiet move",
-          "[board_api]")
+TEST_CASE("Board::GetEffectiveMovPiece returns the piece on from-square for a quiet move", "[board_api]")
 {
 	Board board(FEN_QUIET);
 
@@ -146,16 +143,14 @@ TEST_CASE("Board::ExtractFEN preserves fullmove number (34)", "[board_api]")
 
 // ── ResetSearchDepth (issue #53: currentPly_ overflow across long games) ──────
 
-TEST_CASE(
-    "Board::ResetSearchDepth zeroes undo-stack depth after each committed move, regardless of total moves played",
-    "[board_api]")
+TEST_CASE("Board::ResetSearchDepth zeroes undo-stack depth after each committed move, regardless of total moves played",
+          "[board_api]")
 {
 	Board board(FEN_QUIET);
 
 	// White rook shuffles a1<->a2; black king shuffles d6<->d7. Neither move
 	// ever threatens either king, so the 4-ply cycle stays legal indefinitely.
-	constexpr int kCycles =
-	    80; // 80 * 4 = 320 committed real moves — past the old MAX_PLY=256 ceiling
+	constexpr int kCycles = 80; // 80 * 4 = 320 committed real moves — past the old MAX_PLY=256 ceiling
 	for (int cycle = 0; cycle < kCycles; ++cycle) {
 		REQUIRE(board.DoMove(MoveFactory::MakeQuiet(a1, a2)));
 		// Depth reflects only this single commit, never the cumulative move
@@ -199,9 +194,8 @@ TEST_CASE(
 	// Now simulate search recursion on top of that (reset) baseline: 50 nested
 	// DoMove pushes without intervening undo. In the old scheme, currentPly_
 	// would already sit at ~260 here, so this would overflow MAX_PLY=256.
-	const std::array<Move, 4> cycle = {
-	    MoveFactory::MakeQuiet(a1, a2), MoveFactory::MakeQuiet(d6, d7),
-	    MoveFactory::MakeQuiet(a2, a1), MoveFactory::MakeQuiet(d7, d6)};
+	const std::array<Move, 4> cycle = {MoveFactory::MakeQuiet(a1, a2), MoveFactory::MakeQuiet(d6, d7),
+	                                   MoveFactory::MakeQuiet(a2, a1), MoveFactory::MakeQuiet(d7, d6)};
 
 	constexpr int kRecursionDepth = 50;
 	for (int depth = 0; depth < kRecursionDepth; ++depth) {
