@@ -10,7 +10,9 @@ IndentWidth:   4
 # (`bool lmr_enabled =` / `    true;`) purely to make room for the comment.
 ColumnLimit:   120
 IndentCaseLabels: false
-NamespaceIndentation: None
+# The tree indents namespace bodies (19 files do). LLVM's default of None
+# un-indented all of them: measured 265 changed lines in Magic.h against 103 here.
+NamespaceIndentation: All
 PointerAlignment:   Left
 ReferenceAlignment: Pointer
 # Keep one-line accessors on one line. `Empty` expanded every `T Get() const { return x_; }`

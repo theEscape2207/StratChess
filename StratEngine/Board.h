@@ -229,10 +229,10 @@ class Board final {
 // Declared here, defined in Board.cpp.
 // ============================================================================
 namespace zobrist {
-extern std::array<std::array<uint64_t, NUM_SQUARES>, ALL_PIECETYPES> piece_keys;
-extern std::array<uint64_t, 16> castling_keys;
-extern std::array<uint64_t, NUM_SQUARES> ep_keys;
-extern uint64_t side_key;
+	extern std::array<std::array<uint64_t, NUM_SQUARES>, ALL_PIECETYPES> piece_keys;
+	extern std::array<uint64_t, 16> castling_keys;
+	extern std::array<uint64_t, NUM_SQUARES> ep_keys;
+	extern uint64_t side_key;
 
-void initialize() noexcept;
+	void initialize() noexcept;
 } // namespace zobrist

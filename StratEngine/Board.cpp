@@ -11,49 +11,49 @@
 
 // Zobrist key tables (defined here, declared in Board.h)
 namespace zobrist {
-std::array<std::array<uint64_t, NUM_SQUARES>, ALL_PIECETYPES> piece_keys;
-std::array<uint64_t, 16> castling_keys;
-std::array<uint64_t, NUM_SQUARES> ep_keys;
-uint64_t side_key;
+	std::array<std::array<uint64_t, NUM_SQUARES>, ALL_PIECETYPES> piece_keys;
+	std::array<uint64_t, 16> castling_keys;
+	std::array<uint64_t, NUM_SQUARES> ep_keys;
+	uint64_t side_key;
 
-void initialize() noexcept
-{
-	// Fills the global key tables exactly once (thread-safe magic static).
-	// Every Board instance must see identical keys, or zobrist hashes computed
-	// from different Board objects (e.g. thread-local boards under Lazy SMP)
-	// would disagree for the same position. This is the only lazy/runtime
-	// init in the attack/Zobrist table set; a C++11 function-local static
-	// initializer is guaranteed thread-safe by the standard, so concurrent
-	// Board construction from multiple helper threads is race-free. See
-	// Magic.h for the sliding-piece attack tables, which need no such
-	// guard at all — they are `inline constexpr`, fully resolved at
-	// compile time with no runtime initialization step whatsoever.
-	static const bool once = [] {
-		// non-deterministic seed for production use (uncomment for true randomness, but beware non-reproducible hashes across runs)
-		// std::random_device rd;
-		// std::mt19937 rng(rd());
-		// Deterministic seed for reproducibility
-		std::mt19937_64 rng(0x123456789ABCDEF0ULL);
+	void initialize() noexcept
+	{
+		// Fills the global key tables exactly once (thread-safe magic static).
+		// Every Board instance must see identical keys, or zobrist hashes computed
+		// from different Board objects (e.g. thread-local boards under Lazy SMP)
+		// would disagree for the same position. This is the only lazy/runtime
+		// init in the attack/Zobrist table set; a C++11 function-local static
+		// initializer is guaranteed thread-safe by the standard, so concurrent
+		// Board construction from multiple helper threads is race-free. See
+		// Magic.h for the sliding-piece attack tables, which need no such
+		// guard at all — they are `inline constexpr`, fully resolved at
+		// compile time with no runtime initialization step whatsoever.
+		static const bool once = [] {
+			// non-deterministic seed for production use (uncomment for true randomness, but beware non-reproducible hashes across runs)
+			// std::random_device rd;
+			// std::mt19937 rng(rd());
+			// Deterministic seed for reproducibility
+			std::mt19937_64 rng(0x123456789ABCDEF0ULL);
 
-		//std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
-		// Fills piece_keys with random 64-bit values for piece-placement Zobrist hashing.
-		for (int piece = ePiece::WHITE_PAWN; piece < ALL_PIECETYPES; ++piece) {
-			for (int square = 0; square < ALL_SQUARES; ++square) {
-				piece_keys[piece][square] = rng();
+			//std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
+			// Fills piece_keys with random 64-bit values for piece-placement Zobrist hashing.
+			for (int piece = ePiece::WHITE_PAWN; piece < ALL_PIECETYPES; ++piece) {
+				for (int square = 0; square < ALL_SQUARES; ++square) {
+					piece_keys[piece][square] = rng();
+				}
 			}
-		}
 
-		for (size_t i = 0; i < 16; ++i)
-			castling_keys[i] = rng();
+			for (size_t i = 0; i < 16; ++i)
+				castling_keys[i] = rng();
 
-		for (size_t sq = 0; sq < NUM_SQUARES; ++sq)
-			ep_keys[sq] = rng();
+			for (size_t sq = 0; sq < NUM_SQUARES; ++sq)
+				ep_keys[sq] = rng();
 
-		side_key = rng();
-		return true;
-	}();
-	(void)once;
-}
+			side_key = rng();
+			return true;
+		}();
+		(void)once;
+	}
 } // namespace zobrist
 
 Board::Board()

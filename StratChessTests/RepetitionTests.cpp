@@ -28,29 +28,29 @@ static constexpr const char* FEN_CASTLING = "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 
 
 namespace {
 
-void apply_quiet(Board& board, eSquare from, eSquare to)
-{
-	auto m = MoveFactory::MakeQuiet(from, to);
-	REQUIRE(board.DoMove(m)); // fail fast on bad setup move
-}
+	void apply_quiet(Board& board, eSquare from, eSquare to)
+	{
+		auto m = MoveFactory::MakeQuiet(from, to);
+		REQUIRE(board.DoMove(m)); // fail fast on bad setup move
+	}
 
-// One oscillation cycle starting with WHITE. Ra1<->h1, Kd6<->e6.
-void oscillate_cycle(Board& board)
-{
-	apply_quiet(board, a1, h1);
-	apply_quiet(board, d6, e6);
-	apply_quiet(board, h1, a1);
-	apply_quiet(board, e6, d6);
-}
+	// One oscillation cycle starting with WHITE. Ra1<->h1, Kd6<->e6.
+	void oscillate_cycle(Board& board)
+	{
+		apply_quiet(board, a1, h1);
+		apply_quiet(board, d6, e6);
+		apply_quiet(board, h1, a1);
+		apply_quiet(board, e6, d6);
+	}
 
-// One oscillation cycle starting with BLACK (used after an irreversible white move).
-void oscillate_cycle_black_first(Board& board)
-{
-	apply_quiet(board, d6, e6);
-	apply_quiet(board, a1, h1);
-	apply_quiet(board, e6, d6);
-	apply_quiet(board, h1, a1);
-}
+	// One oscillation cycle starting with BLACK (used after an irreversible white move).
+	void oscillate_cycle_black_first(Board& board)
+	{
+		apply_quiet(board, d6, e6);
+		apply_quiet(board, a1, h1);
+		apply_quiet(board, e6, d6);
+		apply_quiet(board, h1, a1);
+	}
 
 } // anonymous namespace
 

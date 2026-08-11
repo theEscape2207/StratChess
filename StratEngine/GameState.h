@@ -7,14 +7,14 @@
 
 // Castling rights bit flags
 namespace CastlingRights {
-constexpr uint8_t NONE = 0;
-constexpr uint8_t WHITE_KINGSIDE = 1 << 0;
-constexpr uint8_t WHITE_QUEENSIDE = 1 << 1;
-constexpr uint8_t BLACK_KINGSIDE = 1 << 2;
-constexpr uint8_t BLACK_QUEENSIDE = 1 << 3;
-constexpr uint8_t WHITE_BOTH = WHITE_KINGSIDE | WHITE_QUEENSIDE;
-constexpr uint8_t BLACK_BOTH = BLACK_KINGSIDE | BLACK_QUEENSIDE;
-constexpr uint8_t ALL = WHITE_BOTH | BLACK_BOTH;
+	constexpr uint8_t NONE = 0;
+	constexpr uint8_t WHITE_KINGSIDE = 1 << 0;
+	constexpr uint8_t WHITE_QUEENSIDE = 1 << 1;
+	constexpr uint8_t BLACK_KINGSIDE = 1 << 2;
+	constexpr uint8_t BLACK_QUEENSIDE = 1 << 3;
+	constexpr uint8_t WHITE_BOTH = WHITE_KINGSIDE | WHITE_QUEENSIDE;
+	constexpr uint8_t BLACK_BOTH = BLACK_KINGSIDE | BLACK_QUEENSIDE;
+	constexpr uint8_t ALL = WHITE_BOTH | BLACK_BOTH;
 } // namespace CastlingRights
 
 // Possible game states

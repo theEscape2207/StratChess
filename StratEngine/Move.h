@@ -89,23 +89,23 @@ static_assert(sizeof(Move) == 2, "Move must be exactly 2 bytes");
 
 // Move flags — mirror of MoveType enum for constexpr use in get_captured_piece and factory helpers.
 namespace MoveFlags {
-constexpr uint8_t QUIET = 0;
-constexpr uint8_t DOUBLE_PAWN_PUSH = 1;
-constexpr uint8_t KING_CASTLE = 2;
-constexpr uint8_t QUEEN_CASTLE = 3;
-constexpr uint8_t CAPTURE = 4;
-constexpr uint8_t EP_CAPTURE = 5;
-constexpr uint8_t PROMOTION_KNIGHT = 8;
-constexpr uint8_t PROMOTION_BISHOP = 9;
-constexpr uint8_t PROMOTION_ROOK = 10;
-constexpr uint8_t PROMOTION_QUEEN = 11;
-constexpr uint8_t PROMOTION_KNIGHT_CAPTURE = 12;
-constexpr uint8_t PROMOTION_BISHOP_CAPTURE = 13;
-constexpr uint8_t PROMOTION_ROOK_CAPTURE = 14;
-constexpr uint8_t PROMOTION_QUEEN_CAPTURE = 15;
-// Bit masks
-constexpr uint8_t CAPTURE_BIT = 0x4;   // bit 2: move involves a capture
-constexpr uint8_t PROMOTION_BIT = 0x8; // bit 3: move is a promotion
+	constexpr uint8_t QUIET = 0;
+	constexpr uint8_t DOUBLE_PAWN_PUSH = 1;
+	constexpr uint8_t KING_CASTLE = 2;
+	constexpr uint8_t QUEEN_CASTLE = 3;
+	constexpr uint8_t CAPTURE = 4;
+	constexpr uint8_t EP_CAPTURE = 5;
+	constexpr uint8_t PROMOTION_KNIGHT = 8;
+	constexpr uint8_t PROMOTION_BISHOP = 9;
+	constexpr uint8_t PROMOTION_ROOK = 10;
+	constexpr uint8_t PROMOTION_QUEEN = 11;
+	constexpr uint8_t PROMOTION_KNIGHT_CAPTURE = 12;
+	constexpr uint8_t PROMOTION_BISHOP_CAPTURE = 13;
+	constexpr uint8_t PROMOTION_ROOK_CAPTURE = 14;
+	constexpr uint8_t PROMOTION_QUEEN_CAPTURE = 15;
+	// Bit masks
+	constexpr uint8_t CAPTURE_BIT = 0x4;   // bit 2: move involves a capture
+	constexpr uint8_t PROMOTION_BIT = 0x8; // bit 3: move is a promotion
 } // namespace MoveFlags
 
 // Move list with small buffer optimization

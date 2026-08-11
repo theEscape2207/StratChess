@@ -1029,32 +1029,32 @@ TEST_CASE("FenBatch::ClassifyLine: valid 6-field Black-to-move FEN is Valid", "[
 
 namespace {
 
-const std::regex kDivideLine{R"(^\s*([a-h][1-8][a-h][1-8][rnbqRNBQ]?)\s*[:\s]\s*(\d+)$)"};
+	const std::regex kDivideLine{R"(^\s*([a-h][1-8][a-h][1-8][rnbqRNBQ]?)\s*[:\s]\s*(\d+)$)"};
 
-// Every (move, nodes) pair the harness regex accepts out of `output`.
-std::vector<std::pair<std::string, uint64_t>> parse_divide(const std::string& output)
-{
-	std::vector<std::pair<std::string, uint64_t>> out;
-	std::istringstream iss{output};
-	std::string line;
-	while (std::getline(iss, line)) {
-		if (!line.empty() && line.back() == '\r')
-			line.pop_back();
-		std::smatch m;
-		if (std::regex_match(line, m, kDivideLine)) {
-			out.emplace_back(m[1].str(), std::stoull(m[2].str()));
+	// Every (move, nodes) pair the harness regex accepts out of `output`.
+	std::vector<std::pair<std::string, uint64_t>> parse_divide(const std::string& output)
+	{
+		std::vector<std::pair<std::string, uint64_t>> out;
+		std::istringstream iss{output};
+		std::string line;
+		while (std::getline(iss, line)) {
+			if (!line.empty() && line.back() == '\r')
+				line.pop_back();
+			std::smatch m;
+			if (std::regex_match(line, m, kDivideLine)) {
+				out.emplace_back(m[1].str(), std::stoull(m[2].str()));
+			}
 		}
+		return out;
 	}
-	return out;
-}
 
-uint64_t divide_total(const std::string& output)
-{
-	uint64_t sum = 0;
-	for (const auto& entry : parse_divide(output))
-		sum += entry.second;
-	return sum;
-}
+	uint64_t divide_total(const std::string& output)
+	{
+		uint64_t sum = 0;
+		for (const auto& entry : parse_divide(output))
+			sum += entry.second;
+		return sum;
+	}
 
 } // namespace
 
@@ -1207,9 +1207,9 @@ TEST_CASE("run(): a bare 'go' still searches after the perft branch was added", 
 
 namespace {
 
-// Nine white pawns — rejected by FENParser's "too many pawns" rule.
-constexpr const char* kRejectedFen = "4k3/8/P7/8/8/8/PPPPPPPP/4K3 w - - 0 1";
-constexpr const char* kKiwipeteFen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+	// Nine white pawns — rejected by FENParser's "too many pawns" rule.
+	constexpr const char* kRejectedFen = "4k3/8/P7/8/8/8/PPPPPPPP/4K3 w - - 0 1";
+	constexpr const char* kKiwipeteFen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
 
 } // namespace
 

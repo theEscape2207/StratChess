@@ -12,11 +12,11 @@
 #include "MoveFactory.h"
 
 namespace {
-constexpr const char* kStartFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-constexpr const char* kKiwipeteFEN = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+	constexpr const char* kStartFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+	constexpr const char* kKiwipeteFEN = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
 
-// e2-e3: plain quiet pawn push, legal from the start position, no generator needed
-Move make_e2e3() { return MoveFactory::MakeMove(e2, e3, MoveType::QUIET); }
+	// e2-e3: plain quiet pawn push, legal from the start position, no generator needed
+	Move make_e2e3() { return MoveFactory::MakeMove(e2, e3, MoveType::QUIET); }
 } // namespace
 
 static_assert(std::is_copy_constructible_v<Board>);

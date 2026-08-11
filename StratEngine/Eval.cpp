@@ -353,11 +353,16 @@ ScorePair EvalComplex::eval_pst(const EvalContext& ctx, eColor color) noexcept
 
 	// One bitboard loop per non-king piece type, each already knowing its
 	// own ePiece value — the PST lookup needs nothing else.
+	// clang-format off
+	// Aligned in two columns so the white/black pairing is visible at a glance.
 	static constexpr ePiece kNonKingPieces[5][NUM_COLORS] = {
-	    {ePiece::WHITE_PAWN, ePiece::BLACK_PAWN},     {ePiece::WHITE_KNIGHT, ePiece::BLACK_KNIGHT},
-	    {ePiece::WHITE_BISHOP, ePiece::BLACK_BISHOP}, {ePiece::WHITE_ROOK, ePiece::BLACK_ROOK},
-	    {ePiece::WHITE_QUEEN, ePiece::BLACK_QUEEN},
+		{ ePiece::WHITE_PAWN,   ePiece::BLACK_PAWN   },
+		{ ePiece::WHITE_KNIGHT, ePiece::BLACK_KNIGHT },
+		{ ePiece::WHITE_BISHOP, ePiece::BLACK_BISHOP },
+		{ ePiece::WHITE_ROOK,   ePiece::BLACK_ROOK   },
+		{ ePiece::WHITE_QUEEN,  ePiece::BLACK_QUEEN  },
 	};
+	// clang-format on
 
 	for (const auto& piecePair : kNonKingPieces) {
 		const ePiece piece = piecePair[color];
@@ -703,18 +708,20 @@ EvalBreakdown EvalComplex::Breakdown(const Board& board) const noexcept
 	// term actually contributes to `total`, not its mg or eg endpoint. That is
 	// what keeps the printed table summing to the score (the #129 honesty
 	// invariant); the endpoints are visible in the term functions themselves.
+	// clang-format off
+	// One row per term, white and black columns aligned, so the table can be read
+	// against the printed breakdown it produces.
 	return EvalBreakdown{
-	    .material = {ctx.material[WHITE], ctx.material[BLACK]},
-	    .pawns = {BlendPhase(eval_pawns(ctx, WHITE), ctx.phase), BlendPhase(eval_pawns(ctx, BLACK), ctx.phase)},
-	    .rooks = {BlendPhase(eval_rooks(ctx, WHITE), ctx.phase), BlendPhase(eval_rooks(ctx, BLACK), ctx.phase)},
-	    .pst = {BlendPhase(eval_pst(ctx, WHITE), ctx.phase), BlendPhase(eval_pst(ctx, BLACK), ctx.phase)},
-	    .mopup = {BlendPhase(eval_mopup(ctx, WHITE), ctx.phase), BlendPhase(eval_mopup(ctx, BLACK), ctx.phase)},
-	    .bishops = {BlendPhase(eval_bishops(ctx, WHITE), ctx.phase), BlendPhase(eval_bishops(ctx, BLACK), ctx.phase)},
-	    .castling = {BlendPhase(eval_castling(ctx, WHITE), ctx.phase),
-	                 BlendPhase(eval_castling(ctx, BLACK), ctx.phase)},
-	    .mobility = {BlendPhase(eval_mobility(ctx, WHITE), ctx.phase),
-	                 BlendPhase(eval_mobility(ctx, BLACK), ctx.phase)},
-	    .phase = ctx.phase,
-	    .total = Evaluate(board),
+		.material = { ctx.material[WHITE], ctx.material[BLACK] },
+		.pawns    = { BlendPhase(eval_pawns(ctx, WHITE), ctx.phase), BlendPhase(eval_pawns(ctx, BLACK), ctx.phase) },
+		.rooks    = { BlendPhase(eval_rooks(ctx, WHITE), ctx.phase), BlendPhase(eval_rooks(ctx, BLACK), ctx.phase) },
+		.pst      = { BlendPhase(eval_pst(ctx, WHITE),   ctx.phase), BlendPhase(eval_pst(ctx, BLACK),   ctx.phase) },
+		.mopup    = { BlendPhase(eval_mopup(ctx, WHITE), ctx.phase), BlendPhase(eval_mopup(ctx, BLACK), ctx.phase) },
+		.bishops  = { BlendPhase(eval_bishops(ctx, WHITE), ctx.phase), BlendPhase(eval_bishops(ctx, BLACK), ctx.phase) },
+		.castling = { BlendPhase(eval_castling(ctx, WHITE), ctx.phase), BlendPhase(eval_castling(ctx, BLACK), ctx.phase) },
+		.mobility = { BlendPhase(eval_mobility(ctx, WHITE), ctx.phase), BlendPhase(eval_mobility(ctx, BLACK), ctx.phase) },
+		.phase    = ctx.phase,
+		.total    = Evaluate(board),
 	};
+	// clang-format on
 }

@@ -8,22 +8,22 @@
 
 namespace {
 
-// Case-insensitive comparison of the first n characters. Replaces MSVC's
-// _strnicmp, which has no portable equivalent in the standard library.
-bool iequals_n(std::string_view a, std::string_view b, std::size_t n)
-{
-	if (a.size() < n || b.size() < n) {
-		return false;
-	}
-	for (std::size_t i = 0; i < n; ++i) {
-		const auto ca = static_cast<unsigned char>(a[i]);
-		const auto cb = static_cast<unsigned char>(b[i]);
-		if (std::tolower(ca) != std::tolower(cb)) {
+	// Case-insensitive comparison of the first n characters. Replaces MSVC's
+	// _strnicmp, which has no portable equivalent in the standard library.
+	bool iequals_n(std::string_view a, std::string_view b, std::size_t n)
+	{
+		if (a.size() < n || b.size() < n) {
 			return false;
 		}
+		for (std::size_t i = 0; i < n; ++i) {
+			const auto ca = static_cast<unsigned char>(a[i]);
+			const auto cb = static_cast<unsigned char>(b[i]);
+			if (std::tolower(ca) != std::tolower(cb)) {
+				return false;
+			}
+		}
+		return true;
 	}
-	return true;
-}
 
 } // namespace
 
@@ -138,78 +138,79 @@ void Config::ReadConfigFile(const std::string& filename, Board& board)
 }
 
 namespace {
-// Parses the "search_limits" block into a SearchLimits (all keys optional).
-SearchLimits ParseSearchLimitsBlock(const json& sl)
-{
-	SearchLimits limits;
-	if (sl.contains("depth"))
-		limits.depth = sl["depth"].get<int>();
-	if (sl.contains("movetime"))
-		limits.movetime = std::chrono::milliseconds(sl["movetime"].get<int64_t>());
-	if (sl.contains("infinite"))
-		limits.infinite = sl["infinite"].get<bool>();
-	if (sl.contains("clock")) {
-		const auto& c = sl["clock"];
-		limits.clock = ClockInfo{std::chrono::milliseconds(c.value("remaining", 0)),
-		                         std::chrono::milliseconds(c.value("increment", 0)), c.value("moves_to_go", 0)};
-	}
-	return limits;
-}
-
-Config::PlayerConfig ParsePlayerConfig(const json& p, int defaultDepth, int defaultEval)
-{
-	Config::PlayerConfig cfg;
-	cfg.type = p.value("type", defaultEval);
-	cfg.eval = p.value("eval", 0);
-
-	if (p.contains("search_limits")) {
-		cfg.search_limits = ParseSearchLimitsBlock(p["search_limits"]);
-	} else {
-		// Legacy fallback: "max_depth"/"time_limit" map onto depth/movetime.
-		// "time_limit" always resolves to a real movetime (defaulting to
-		// 15000ms), matching the old unconditional
-		// p.value("time_limit", 15000u) — otherwise a "max_depth"-only
-		// legacy config would fall through resolve_limits() into the
-		// UCI-style 1h "depth only" budget instead of a real time cap.
-		bool usedLegacyKeys = false;
-		if (p.contains("max_depth")) {
-			cfg.search_limits.depth = p["max_depth"].get<int>();
-			usedLegacyKeys = true;
-		} else if (p.contains("depth")) {
-			cfg.search_limits.depth = p["depth"].get<int>();
+	// Parses the "search_limits" block into a SearchLimits (all keys optional).
+	SearchLimits ParseSearchLimitsBlock(const json& sl)
+	{
+		SearchLimits limits;
+		if (sl.contains("depth"))
+			limits.depth = sl["depth"].get<int>();
+		if (sl.contains("movetime"))
+			limits.movetime = std::chrono::milliseconds(sl["movetime"].get<int64_t>());
+		if (sl.contains("infinite"))
+			limits.infinite = sl["infinite"].get<bool>();
+		if (sl.contains("clock")) {
+			const auto& c = sl["clock"];
+			limits.clock = ClockInfo{std::chrono::milliseconds(c.value("remaining", 0)),
+			                         std::chrono::milliseconds(c.value("increment", 0)), c.value("moves_to_go", 0)};
 		}
-		cfg.search_limits.movetime = std::chrono::milliseconds(p.value("time_limit", 15000u));
-		if (p.contains("time_limit"))
-			usedLegacyKeys = true;
-		if (usedLegacyKeys) {
-			spdlog::default_logger()->warn("game_settings.json: player uses legacy \"max_depth\"/\"time_limit\" keys — "
-			                               "migrate to the \"search_limits\" block");
+		return limits;
+	}
+
+	Config::PlayerConfig ParsePlayerConfig(const json& p, int defaultDepth, int defaultEval)
+	{
+		Config::PlayerConfig cfg;
+		cfg.type = p.value("type", defaultEval);
+		cfg.eval = p.value("eval", 0);
+
+		if (p.contains("search_limits")) {
+			cfg.search_limits = ParseSearchLimitsBlock(p["search_limits"]);
+		} else {
+			// Legacy fallback: "max_depth"/"time_limit" map onto depth/movetime.
+			// "time_limit" always resolves to a real movetime (defaulting to
+			// 15000ms), matching the old unconditional
+			// p.value("time_limit", 15000u) — otherwise a "max_depth"-only
+			// legacy config would fall through resolve_limits() into the
+			// UCI-style 1h "depth only" budget instead of a real time cap.
+			bool usedLegacyKeys = false;
+			if (p.contains("max_depth")) {
+				cfg.search_limits.depth = p["max_depth"].get<int>();
+				usedLegacyKeys = true;
+			} else if (p.contains("depth")) {
+				cfg.search_limits.depth = p["depth"].get<int>();
+			}
+			cfg.search_limits.movetime = std::chrono::milliseconds(p.value("time_limit", 15000u));
+			if (p.contains("time_limit"))
+				usedLegacyKeys = true;
+			if (usedLegacyKeys) {
+				spdlog::default_logger()->warn(
+				    "game_settings.json: player uses legacy \"max_depth\"/\"time_limit\" keys — "
+				    "migrate to the \"search_limits\" block");
+			}
 		}
-	}
-	cfg.depth = static_cast<unsigned>(cfg.search_limits.depth.value_or(defaultDepth));
+		cfg.depth = static_cast<unsigned>(cfg.search_limits.depth.value_or(defaultDepth));
 
-	// Parse SearchTuning if present (only meaningful for AI_PERPLEX)
-	if (p.contains("search_tuning")) {
-		const auto& st = p["search_tuning"];
-		Config::SearchTuningConfig t;
-		t.min_nodes_threshold = st.value("min_nodes_threshold", static_cast<int64_t>(1000));
-		t.min_completion_ratio = st.value("min_completion_ratio", 0.10);
-		t.min_pv_ratio = st.value("min_pv_ratio", 0.33);
-		t.score_draw_threshold = st.value("score_draw_threshold", 20);
-		t.delta_pruning_margin = st.value("delta_pruning_margin", 200);
-		t.aspiration_initial_delta = st.value("aspiration_initial_delta", 50);
-		t.aspiration_max_retries = st.value("aspiration_max_retries", 4);
-		t.aspiration_enabled = st.value("aspiration_enabled", true);
-		cfg.search_tuning = t;
-	}
+		// Parse SearchTuning if present (only meaningful for AI_PERPLEX)
+		if (p.contains("search_tuning")) {
+			const auto& st = p["search_tuning"];
+			Config::SearchTuningConfig t;
+			t.min_nodes_threshold = st.value("min_nodes_threshold", static_cast<int64_t>(1000));
+			t.min_completion_ratio = st.value("min_completion_ratio", 0.10);
+			t.min_pv_ratio = st.value("min_pv_ratio", 0.33);
+			t.score_draw_threshold = st.value("score_draw_threshold", 20);
+			t.delta_pruning_margin = st.value("delta_pruning_margin", 200);
+			t.aspiration_initial_delta = st.value("aspiration_initial_delta", 50);
+			t.aspiration_max_retries = st.value("aspiration_max_retries", 4);
+			t.aspiration_enabled = st.value("aspiration_enabled", true);
+			cfg.search_tuning = t;
+		}
 
-	// Parse Lazy SMP thread count if present (optional; default is
-	// PlayerAiBase's own default of 1 when the key is absent).
-	if (p.contains("threads")) {
-		cfg.threads = p["threads"].get<unsigned>();
+		// Parse Lazy SMP thread count if present (optional; default is
+		// PlayerAiBase's own default of 1 when the key is absent).
+		if (p.contains("threads")) {
+			cfg.threads = p["threads"].get<unsigned>();
+		}
+		return cfg;
 	}
-	return cfg;
-}
 } // anonymous namespace
 
 void Config::SetupPlayerConfig(const json& config)

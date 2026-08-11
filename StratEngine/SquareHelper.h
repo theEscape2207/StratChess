@@ -15,20 +15,20 @@
 #endif
 
 namespace SquareHelper {
-/*
+	/*
 	*	methods
 	*/
-// Calculate the new eSquare position
-static inline constexpr eSquare Calc(eSquare square, int offset) noexcept
-{
-	return static_cast<eSquare>(square + offset);
-}
+	// Calculate the new eSquare position
+	static inline constexpr eSquare Calc(eSquare square, int offset) noexcept
+	{
+		return static_cast<eSquare>(square + offset);
+	}
 
-// Helper for finding the previous row eSquare position depending on color
-static inline constexpr eSquare PreviousRow(eSquare To, eColor color) noexcept
-{
-	return (color == eColor::WHITE ? SquareHelper::Calc(To, +ONE_ROW) : SquareHelper::Calc(To, -ONE_ROW));
-}
+	// Helper for finding the previous row eSquare position depending on color
+	static inline constexpr eSquare PreviousRow(eSquare To, eColor color) noexcept
+	{
+		return (color == eColor::WHITE ? SquareHelper::Calc(To, +ONE_ROW) : SquareHelper::Calc(To, -ONE_ROW));
+	}
 } // namespace SquareHelper
 
 #if defined(_MSC_VER)

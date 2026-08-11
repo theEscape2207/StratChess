@@ -546,9 +546,15 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 					// Clamped to [1, depth-1]; when R == depth-1 the recursive call is
 					// at depth 0 (falls into quiescence). The re-search below restores
 					// full depth if alpha is beaten.
-					const int R = std::min(std::max(1, static_cast<int>(std::sqrt(static_cast<double>(depth - 1)) *
-					                                                    std::sqrt(static_cast<double>(si - 1)))),
-					                       depth - 1);
+					// clang-format off
+					// Hand-wrapped so the sqrt(depth) * sqrt(move index) product and the
+					// clamp to [1, depth-1] stay visible as separate steps.
+					const int R = std::min(
+						std::max(1, static_cast<int>(
+							std::sqrt(static_cast<double>(depth - 1)) *
+							std::sqrt(static_cast<double>(si - 1)))),
+						depth - 1);
+					// clang-format on
 
 					// Reduced-depth null-window search
 					value = -pvs(td, depth - 1 - R, -alpha - 1, -alpha, ply + 1, false, tt);

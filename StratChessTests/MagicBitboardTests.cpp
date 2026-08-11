@@ -10,12 +10,12 @@
 #include "defines.h"
 
 namespace {
-constexpr BITBOARD squares() { return 0; }
+	constexpr BITBOARD squares() { return 0; }
 
-template <typename... Squares> constexpr BITBOARD squares(eSquare sq, Squares... rest)
-{
-	return (UNIT << sq) | squares(rest...);
-}
+	template <typename... Squares> constexpr BITBOARD squares(eSquare sq, Squares... rest)
+	{
+		return (UNIT << sq) | squares(rest...);
+	}
 } // namespace
 
 TEST_CASE("RookAttacks - open cross from d4 on empty board", "[magic]")

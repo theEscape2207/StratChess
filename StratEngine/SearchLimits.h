@@ -28,18 +28,18 @@ struct SearchLimits {
 
 namespace Engine {
 
-/// Everything the search needs after limits are resolved against the
-/// engine's configured defaults.
-struct ResolvedLimits {
-	TimeBudget budget; // soft/hard, see Utils/TimeUtils.h
-	unsigned effective_depth;
-};
+	/// Everything the search needs after limits are resolved against the
+	/// engine's configured defaults.
+	struct ResolvedLimits {
+		TimeBudget budget; // soft/hard, see Utils/TimeUtils.h
+		unsigned effective_depth;
+	};
 
-/// Pure resolution of SearchLimits against configured defaults — no clock
-/// dependency, unit-testable without a player object (same pattern as
-/// compute_budget). Precedence: movetime > clock for timing; depth always
-/// caps depth; empty limits fall back to (default_time, default_depth).
-[[nodiscard]] ResolvedLimits resolve_limits(const SearchLimits& limits, std::chrono::milliseconds default_time,
-                                            unsigned default_depth) noexcept;
+	/// Pure resolution of SearchLimits against configured defaults — no clock
+	/// dependency, unit-testable without a player object (same pattern as
+	/// compute_budget). Precedence: movetime > clock for timing; depth always
+	/// caps depth; empty limits fall back to (default_time, default_depth).
+	[[nodiscard]] ResolvedLimits resolve_limits(const SearchLimits& limits, std::chrono::milliseconds default_time,
+	                                            unsigned default_depth) noexcept;
 
 } // namespace Engine

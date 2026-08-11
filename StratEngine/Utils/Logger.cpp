@@ -6,9 +6,9 @@
 using namespace Engine::Logger;
 
 namespace {
-std::once_flag g_default_init_flag;
-std::once_flag g_perf_init_flag;
-static constexpr char PERF_LOGGER_NAME[] = "PerfStats";
+	std::once_flag g_default_init_flag;
+	std::once_flag g_perf_init_flag;
+	static constexpr char PERF_LOGGER_NAME[] = "PerfStats";
 } // namespace
 
 void Engine::Logger::InitDefault()

@@ -8,40 +8,40 @@
 
 namespace {
 
-// Writes a settings document to a uniquely named temp file and removes it
-// afterwards, so the cases cannot collide when the suite runs concurrently.
-class TempConfig {
-  public:
-	explicit TempConfig(std::string_view contents)
-	    : path_(std::filesystem::temp_directory_path() /
-	            ("strat_cfg_" + std::to_string(++counter_) + "_" +
-	             std::to_string(
-	                 static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count())) +
-	             ".json"))
-	{
-		std::ofstream out(path_);
-		out << contents;
-	}
-	~TempConfig()
-	{
-		std::error_code ec;
-		std::filesystem::remove(path_, ec);
-	}
+	// Writes a settings document to a uniquely named temp file and removes it
+	// afterwards, so the cases cannot collide when the suite runs concurrently.
+	class TempConfig {
+	  public:
+		explicit TempConfig(std::string_view contents)
+		    : path_(std::filesystem::temp_directory_path() /
+		            ("strat_cfg_" + std::to_string(++counter_) + "_" +
+		             std::to_string(
+		                 static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count())) +
+		             ".json"))
+		{
+			std::ofstream out(path_);
+			out << contents;
+		}
+		~TempConfig()
+		{
+			std::error_code ec;
+			std::filesystem::remove(path_, ec);
+		}
 
-	TempConfig(const TempConfig&) = delete;
-	TempConfig& operator=(const TempConfig&) = delete;
+		TempConfig(const TempConfig&) = delete;
+		TempConfig& operator=(const TempConfig&) = delete;
 
-	[[nodiscard]] std::string path() const { return path_.string(); }
+		[[nodiscard]] std::string path() const { return path_.string(); }
 
-  private:
-	std::filesystem::path path_;
-	static inline int counter_ = 0;
-};
+	  private:
+		std::filesystem::path path_;
+		static inline int counter_ = 0;
+	};
 
-// Config dereferences its Game* only on the FEN path (ReadFEN -> SetCustomGame).
-// None of the documents below declare a FEN setup, so nullptr is safe here and
-// keeps these cases free of a whole Game.
-Config MakeReader() { return Config(nullptr); }
+	// Config dereferences its Game* only on the FEN path (ReadFEN -> SetCustomGame).
+	// None of the documents below declare a FEN setup, so nullptr is safe here and
+	// keeps these cases free of a whole Game.
+	Config MakeReader() { return Config(nullptr); }
 
 } // namespace
 

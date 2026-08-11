@@ -32,23 +32,24 @@ SearchLimits SearchLimits::infinite_search() noexcept
 
 namespace Engine {
 
-ResolvedLimits resolve_limits(const SearchLimits& limits, std::chrono::milliseconds default_time,
-                              unsigned default_depth) noexcept
-{
-	ResolvedLimits r{};
-	r.effective_depth = limits.depth ? static_cast<unsigned>(*limits.depth) : (limits.infinite ? 50u : default_depth);
-	if (limits.movetime) { // movetime wins over clock (defensive)
-		r.budget = {*limits.movetime, *limits.movetime};
-	} else if (limits.clock) {
-		r.budget = compute_budget(limits.clock->remaining, limits.clock->increment, limits.clock->moves_to_go);
-	} else if (limits.infinite || limits.depth) {
-		// Depth cap or UCI 'stop' is the stopping criterion; hours(1) avoids
-		// potential overflow from milliseconds::max() in comparisons.
-		r.budget = {std::chrono::hours(1), std::chrono::hours(1)};
-	} else {
-		r.budget = {default_time, default_time};
+	ResolvedLimits resolve_limits(const SearchLimits& limits, std::chrono::milliseconds default_time,
+	                              unsigned default_depth) noexcept
+	{
+		ResolvedLimits r{};
+		r.effective_depth =
+		    limits.depth ? static_cast<unsigned>(*limits.depth) : (limits.infinite ? 50u : default_depth);
+		if (limits.movetime) { // movetime wins over clock (defensive)
+			r.budget = {*limits.movetime, *limits.movetime};
+		} else if (limits.clock) {
+			r.budget = compute_budget(limits.clock->remaining, limits.clock->increment, limits.clock->moves_to_go);
+		} else if (limits.infinite || limits.depth) {
+			// Depth cap or UCI 'stop' is the stopping criterion; hours(1) avoids
+			// potential overflow from milliseconds::max() in comparisons.
+			r.budget = {std::chrono::hours(1), std::chrono::hours(1)};
+		} else {
+			r.budget = {default_time, default_time};
+		}
+		return r;
 	}
-	return r;
-}
 
 } // namespace Engine

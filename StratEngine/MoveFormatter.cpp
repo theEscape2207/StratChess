@@ -9,25 +9,25 @@
 
 namespace {
 
-// Returns the algebraic coordinate for a square (e.g., e2, a8, h1).
-// Mirrors the internal GetBoardCoord helper in Move.cpp.
-[[nodiscard]] std::string SquareToCoord(eSquare sq)
-{
-	std::string s(1, static_cast<char>(File(sq) + 'a'));
-	s += static_cast<char>((8 - Rank(sq)) + '0');
-	return s;
-}
+	// Returns the algebraic coordinate for a square (e.g., e2, a8, h1).
+	// Mirrors the internal GetBoardCoord helper in Move.cpp.
+	[[nodiscard]] std::string SquareToCoord(eSquare sq)
+	{
+		std::string s(1, static_cast<char>(File(sq) + 'a'));
+		s += static_cast<char>((8 - Rank(sq)) + '0');
+		return s;
+	}
 
-// Returns lowercase piece type name ("pawn", "knight", ..., "king").
-// Index is derived from the ePiece value: static_cast<size_t>(piece) >> 1
-// gives 0=pawn, 1=knight, 2=bishop, 3=rook, 4=queen, 5=king.
-[[nodiscard]] const char* PieceTypeName(ePiece piece) noexcept
-{
-	static constexpr std::array<const char*, 6> names = {"pawn", "knight", "bishop", "rook", "queen", "king"};
-	const size_t index = static_cast<size_t>(piece) >> 1;
-	assert(index < names.size());
-	return names[index];
-}
+	// Returns lowercase piece type name ("pawn", "knight", ..., "king").
+	// Index is derived from the ePiece value: static_cast<size_t>(piece) >> 1
+	// gives 0=pawn, 1=knight, 2=bishop, 3=rook, 4=queen, 5=king.
+	[[nodiscard]] const char* PieceTypeName(ePiece piece) noexcept
+	{
+		static constexpr std::array<const char*, 6> names = {"pawn", "knight", "bishop", "rook", "queen", "king"};
+		const size_t index = static_cast<size_t>(piece) >> 1;
+		assert(index < names.size());
+		return names[index];
+	}
 
 } // namespace
 
