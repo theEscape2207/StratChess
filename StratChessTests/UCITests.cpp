@@ -1298,8 +1298,24 @@ TEST_CASE("command log: two handlers log to their own files", "[uci]")
 
 TEST_CASE("command log: an unopenable path is reported, not silently ignored", "[uci]")
 {
+    // The parent has to be impossible to create on EVERY platform, which "a path that does not
+    // exist" is not: spdlog's file_helper::open creates missing directories, so an absent path is
+    // opened rather than refused. A drive letter is no help either — 'Z:/...' is an absent drive
+    // on Windows but an ordinary relative directory name on Linux, which is how the first version
+    // of this test passed locally and failed all three Linux jobs.
+    //
+    // A regular FILE used as a directory component cannot be created through anywhere.
+    const auto blocker = temp_log_path("blocker");
+    {
+        std::ofstream create(blocker);
+        create << "not a directory\n";
+    }
+    REQUIRE(std::filesystem::is_regular_file(blocker));
+
     UciHandlerTestFixture fix;
-    REQUIRE_FALSE(fix.handler.EnableCommandLog("Z:/no/such/directory/uci.log"));
+    REQUIRE_FALSE(fix.handler.EnableCommandLog((blocker / "uci.log").string()));
+
+    REQUIRE(std::filesystem::remove(blocker));
 }
 
 TEST_CASE("DefaultCommandLogPath: carries the process id", "[uci]")
