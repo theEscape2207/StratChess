@@ -22,6 +22,38 @@ Newest first.
 
 ---
 
+## 2026-08-11 — Tooling: reusable UCI latency probe, and a log of received commands (#269)
+
+### Added
+
+- **`Scripts/Measure-UciLatency.ps1`** — round-trip cost of one UCI command against a control case,
+  fresh process per case. Three sessions had written a throwaway version of this (#213, #263, #266);
+  the two traps that made #213's numbers wrong are now built in and documented in the script's help:
+  drive past move 1, and use `-CompletionMarker bestmove` for `go`, which is asynchronous and whose
+  `readyok` therefore comes back mid-search.
+- **`uci --log-commands[=path]`** — one line per received command, flushed per line, written to a
+  file-only logger. Off unless asked for. It answers "did the GUI actually send X?" without the
+  temporary source instrumentation #263 needed.
+
+### Notes
+
+The command log must never use spdlog's default logger: in UCI mode nothing calls `InitDefault()`,
+so the default is still spdlog's built-in **stdout** console sink, silent only because `main()` sets
+the global level to `off`. Stdout is the protocol channel. The logger is also unregistered and owned
+by the `UciHandler`, unlike `EnsurePerfLogger`'s registry-plus-`once_flag` shape, which would pin the
+first filename for the process lifetime and hold its handle open.
+
+Measured with the new script on the shipping build: control (`isready` round trip) **0.09 ms**
+median, `ucinewgame` **0.07 ms** — indistinguishable, which is PR #274's rebuild removal showing up
+where #266 had measured 36.83 ms. Instrument calibration against a known duration: `go movetime 200`
+read **201.37 ms** median (min 201.12, max 201.66).
+
+Equivalence against `origin/main` @ `2253483`, `Run-Bench.ps1 -Depth 12 -Threads 1`: identical node
+counts and best moves on all eight positions (34,478,850 nodes both sides). The logging call sits in
+the command loop, off the search path.
+
+---
+
 ## 2026-08-09 — Fix: the engine could play an illegal move after `bestmove` (#245)
 
 ### Fixed

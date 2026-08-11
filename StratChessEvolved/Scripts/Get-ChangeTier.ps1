@@ -108,6 +108,7 @@ function Get-TierForPath {
     if ($p -like '*/Scripts/verify_mate_key.py')             { return 'Tooling' }
     if ($p -like '*/Scripts/build_corpus.py')                { return 'Tooling' }
     if ($p -like '*/Scripts/uci_race_probe.py')              { return 'Tooling' }
+    if ($p -like '*/Scripts/Measure-UciLatency.ps1')         { return 'Tooling' }
     # Branch/worktree management. These create, list and tear down worktrees and
     # branches; none of them compiles anything or is invoked by the engine, so a
     # change to one cannot alter build or test behaviour.

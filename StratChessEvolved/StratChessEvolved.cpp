@@ -301,6 +301,46 @@ static int evalrunner(int argc, char** argv) {
     return 0;
 }
 
+// Arguments following 'uci'. Exactly one is recognised:
+//
+//   --log-commands           log received commands to UciHandler::DefaultCommandLogPath()
+//   --log-commands=<path>    ... to <path>, verbatim
+//
+// Recognition is an exact match or the '--log-commands=' prefix with a non-empty remainder --
+// deliberately not a starts_with("--log-commands") test, which would accept '--log-commandsfoo'.
+// A token that begins with the flag but matches neither form is a near miss, i.e. someone trying
+// to use it and failing: that is reported and refused rather than ignored, because silently
+// starting without the log is what costs a debugging session. Anything else keeps UCI's own
+// convention of ignoring what it does not recognise, but says so, since a client that expected an
+// argument to do something should hear that it did not.
+//
+// Diagnostics go to stderr: stdout is the protocol channel.
+//
+// Returns false when an argument was malformed; the caller exits non-zero.
+static bool parse_uci_args(int argc, char** argv, std::optional<std::string>& log_path)
+{
+    static constexpr std::string_view FLAG = "--log-commands";
+
+    for (int i = 0; i < argc; ++i) {
+        const std::string_view arg = argv[i];
+        if (arg == FLAG) {
+            log_path = UciHandler::DefaultCommandLogPath();   // last occurrence wins
+        }
+        else if (arg.starts_with(std::string(FLAG) + "=") && arg.size() > FLAG.size() + 1) {
+            log_path = std::string(arg.substr(FLAG.size() + 1));
+        }
+        else if (arg.starts_with(FLAG)) {
+            std::cerr << "Error: malformed argument '" << arg << "'. Use --log-commands or"
+                         " --log-commands=<path>.\n";
+            return false;
+        }
+        else {
+            std::cerr << "Warning: ignoring unrecognised argument '" << arg << "'\n";
+        }
+    }
+    return true;
+}
+
 int main(int argc, char** argv)
 {
     if (argc > 1 && std::string(argv[1]) == "test-fen") {
@@ -327,7 +367,17 @@ int main(int argc, char** argv)
 		// Game mode: StratChessEvolved.exe game
 		if (argc == 1 || std::string(argv[1]) == "uci") {
 			spdlog::set_level(spdlog::level::off);
+			std::optional<std::string> log_path;
+			if (argc > 2 && !parse_uci_args(argc - 2, &argv[2], log_path)) {
+				return 1;
+			}
 			UciHandler handler;
+			// Fatal rather than a warning: the log was asked for explicitly, and running on
+			// without it produces an empty answer to whatever question it was enabled for.
+			if (log_path && !handler.EnableCommandLog(*log_path)) {
+				std::cerr << "Fatal: could not open UCI command log '" << *log_path << "'\n";
+				return 1;
+			}
 			handler.run();
 			return 0;
 		}

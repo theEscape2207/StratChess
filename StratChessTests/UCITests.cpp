@@ -15,6 +15,9 @@
 #include <vector>
 #include <algorithm>
 #include <regex>
+#include <filesystem>
+#include <fstream>
+#include <random>
 
 using P = UciHandler::GoParams;
 
@@ -27,6 +30,8 @@ public:
 
     void position(const std::string& line) { handler.cmd_position(line); }
     const Board& board() const { return handler.board_; }
+
+    bool dispatch(const std::string& line) { return handler.dispatch(line); }
 
     void perft(const std::string& line) { handler.cmd_perft(line); }
     void setoption(const std::string& line) { handler.cmd_setoption(line); }
@@ -1186,4 +1191,143 @@ TEST_CASE("Both commands work normally once the search is over", "[uci]")
 
     fix.setoption("setoption name Threads value 3");
     REQUIRE(fix.ai_threads() == 3);
+}
+
+// ---------------------------------------------------------------------------
+// dispatch() and the received-command log (issue #269)
+// ---------------------------------------------------------------------------
+
+// A path in the system temp directory, unique per test, so two tests never
+// share a log file -- which is the property CreateUciCommandLogger's
+// unregistered, handler-owned logger exists to provide.
+static std::filesystem::path temp_log_path(const std::string& stem)
+{
+    return std::filesystem::temp_directory_path() /
+           ("strat_uci_log_" + stem + "_" + std::to_string(std::random_device{}()) + ".log");
+}
+
+static std::string read_file(const std::filesystem::path& path)
+{
+    std::ifstream in(path);
+    return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+}
+
+TEST_CASE("dispatch: returns false for quit and true for everything else", "[uci]")
+{
+    UciHandlerTestFixture fix;
+
+    REQUIRE(capture_cout([&] { REQUIRE(fix.dispatch("isready")); }) == "readyok\n");
+    REQUIRE(fix.dispatch("not a uci command"));
+    REQUIRE(fix.dispatch("position startpos"));
+    REQUIRE_FALSE(fix.dispatch("quit"));
+}
+
+TEST_CASE("command log: nothing is written unless it is enabled", "[uci]")
+{
+    // The default a match run gets. There is no path to check for absence here
+    // by design -- with no logger there is no filename either, so the assertion
+    // is that dispatching is inert.
+    UciHandlerTestFixture fix;
+    const auto before = std::filesystem::current_path() / "logs";
+    const bool logs_existed = std::filesystem::exists(before);
+
+    capture_cout([&] { fix.dispatch("isready"); });
+
+    if (!logs_existed) {
+        REQUIRE_FALSE(std::filesystem::exists(before));
+    }
+}
+
+TEST_CASE("command log: records every received command, including ignored ones", "[uci]")
+{
+    const auto path = temp_log_path("received");
+
+    {
+        UciHandlerTestFixture fix;
+        REQUIRE(fix.handler.EnableCommandLog(path.string()));
+
+        capture_cout([&] {
+            fix.dispatch("isready");
+            // Silently ignored by the command loop, and still logged: "the GUI
+            // sent something the engine did not act on" is exactly the question
+            // this answers.
+            fix.dispatch("ponderhit");
+            fix.dispatch("position startpos moves e2e4");
+        });
+    }   // handler destroyed -> sink released
+
+    const std::string contents = read_file(path);
+    REQUIRE(contents.find(">> isready") != std::string::npos);
+    REQUIRE(contents.find(">> ponderhit") != std::string::npos);
+    REQUIRE(contents.find(">> position startpos moves e2e4") != std::string::npos);
+
+    // Released with the handler, so the file can be removed while the process
+    // lives on. A registered logger under a fixed name would still hold it.
+    REQUIRE(std::filesystem::remove(path));
+}
+
+TEST_CASE("command log: two handlers log to their own files", "[uci]")
+{
+    // The regression that a spdlog-registry logger would cause: the second
+    // handler would silently inherit the first one's file, and this test would
+    // find the second command in the first file.
+    const auto first_path  = temp_log_path("first");
+    const auto second_path = temp_log_path("second");
+
+    {
+        UciHandlerTestFixture first;
+        REQUIRE(first.handler.EnableCommandLog(first_path.string()));
+        capture_cout([&] { first.dispatch("isready"); });
+
+        UciHandlerTestFixture second;
+        REQUIRE(second.handler.EnableCommandLog(second_path.string()));
+        capture_cout([&] { second.dispatch("ucinewgame"); });
+    }
+
+    const std::string first_contents  = read_file(first_path);
+    const std::string second_contents = read_file(second_path);
+
+    REQUIRE(first_contents.find(">> isready") != std::string::npos);
+    REQUIRE(first_contents.find(">> ucinewgame") == std::string::npos);
+    REQUIRE(second_contents.find(">> ucinewgame") != std::string::npos);
+    REQUIRE(second_contents.find(">> isready") == std::string::npos);
+
+    REQUIRE(std::filesystem::remove(first_path));
+    REQUIRE(std::filesystem::remove(second_path));
+}
+
+TEST_CASE("command log: an unopenable path is reported, not silently ignored", "[uci]")
+{
+    // The parent has to be impossible to create on EVERY platform, which "a path that does not
+    // exist" is not: spdlog's file_helper::open creates missing directories, so an absent path is
+    // opened rather than refused. A drive letter is no help either — 'Z:/...' is an absent drive
+    // on Windows but an ordinary relative directory name on Linux, which is how the first version
+    // of this test passed locally and failed all three Linux jobs.
+    //
+    // A regular FILE used as a directory component cannot be created through anywhere.
+    const auto blocker = temp_log_path("blocker");
+    {
+        std::ofstream create(blocker);
+        create << "not a directory\n";
+    }
+    REQUIRE(std::filesystem::is_regular_file(blocker));
+
+    UciHandlerTestFixture fix;
+    REQUIRE_FALSE(fix.handler.EnableCommandLog((blocker / "uci.log").string()));
+
+    REQUIRE(std::filesystem::remove(blocker));
+}
+
+TEST_CASE("DefaultCommandLogPath: carries the process id", "[uci]")
+{
+    // Six engines share one working directory at -Concurrency 6, and the file
+    // sink is not process-safe.
+    const std::string path = UciHandler::DefaultCommandLogPath();
+    REQUIRE(path.starts_with("logs/uci_commands_"));
+    REQUIRE(path.ends_with(".log"));
+
+    const auto digits_begin = path.find_last_of('_') + 1;
+    const std::string pid = path.substr(digits_begin, path.size() - digits_begin - 4);
+    REQUIRE_FALSE(pid.empty());
+    REQUIRE(std::all_of(pid.begin(), pid.end(), [](char c) { return c >= '0' && c <= '9'; }));
 }
