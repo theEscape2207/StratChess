@@ -329,7 +329,9 @@ handlers (`cmd_position`, `cmd_setoption`, `cmd_ucinewgame`, `cmd_eval`) directl
 running `run()` loop or piped stdin.
 
 Covers `parse_go()` parameter parsing, `cmd_position` move replay (including the MAX_PLY
-overflow regression), and `cmd_setoption`'s Threads persistence across `ucinewgame`.
+overflow regression), `cmd_setoption`'s Threads persistence across `ucinewgame`, and Hash option
+advertisement, allocation reporting, replacement, persistence, malformed-input and in-search
+refusal contracts.
 
 Also covers the mid-search refusal (#178): `position` and `setoption` are rejected while a search
 runs. The fixture sets the `searching_` flag directly rather than starting a real search — the

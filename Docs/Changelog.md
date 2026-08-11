@@ -64,6 +64,31 @@ each) and identical best moves at depth 12, `Threads=1`, before versus after.
 
 ---
 
+## 2026-08-11 — Configurable UCI transposition-table memory (#254)
+
+### Added
+
+- **`Hash` UCI spin option** — advertised as `default 192 min 1 max 1536` MiB. Applying it while
+  idle constructs a replacement transposition table, then swaps it into the persistent AI only
+  after allocation succeeds; allocation failure keeps the prior table live and reports the failure
+  through `info string`.
+- Successful changes report the actual rounded-down entry allocation and bucket count. Hash budgets
+  cover entry bytes; the platform-dependent lock array remains additional memory.
+
+### Notes
+
+The advertised 192 MiB default is behaviorally unchanged: the former 256 MiB constructor request
+already rounded down to 2,097,152 buckets / 192 MiB. Against `origin/main`, `Run-Bench.ps1 -Depth 12
+-Threads 1` produced identical best moves and node counts on all eight positions (34,478,850 total
+nodes in each build).
+
+`ucinewgame` clears but does not replace the configured table. With a depth-8 search before every
+timed clear, its median setup latency was **22.520 ms at 192 MiB** and **175.707 ms at 1536 MiB**
+(five samples after one warm-up). This occurs before `go`, so it is client-visible setup latency,
+not search-clock time.
+
+---
+
 ## 2026-08-11 — Tooling: reusable UCI latency probe, and a log of received commands (#269)
 
 ### Added

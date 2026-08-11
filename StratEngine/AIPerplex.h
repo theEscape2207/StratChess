@@ -34,6 +34,14 @@ class AIPerplex final : public PlayerAiBase {
 	{
 		threads_ = std::clamp(n, 1u, 32u);
 	}
+	// MAX_HASH_MB = 1536 is a deliberate policy cap, not the largest exact fit.
+	// Steady-state total is about 1664 MiB on Windows or 2432 MiB on Linux including locks;
+	// construct-before-replace briefly holds old and new tables, roughly doubling the peak.
+	static constexpr unsigned DEFAULT_HASH_MB = 192;
+	static constexpr unsigned MIN_HASH_MB = 1;
+	static constexpr unsigned MAX_HASH_MB = 1536;
+
+	HashConfigurationResult SetHash(unsigned mb) noexcept override;
 	void StartNewGame() override;
 
 	// Note: NOT to be called directly - only through Factory method (needed to be public due to

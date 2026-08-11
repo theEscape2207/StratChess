@@ -53,6 +53,10 @@ class UciHandlerTestFixture {
 	{
 		handler.cmd_ucinewgame();
 	}
+	void uci()
+	{
+		handler.cmd_uci();
+	}
 	void eval()
 	{
 		handler.cmd_eval();
@@ -105,6 +109,34 @@ class UciHandlerTestFixture {
 		auto* perplex = dynamic_cast<AIPerplex*>(handler.ai_.get());
 		REQUIRE(perplex != nullptr);
 		return perplex->_tt->probe(TT_MARKER_KEY, 0).has_value();
+	}
+
+	size_t ai_hash_requested_mb() const
+	{
+		auto* perplex = dynamic_cast<AIPerplex*>(handler.ai_.get());
+		REQUIRE(perplex != nullptr);
+		return perplex->_tt->requested_memory_mb();
+	}
+
+	size_t ai_hash_memory_mb() const
+	{
+		auto* perplex = dynamic_cast<AIPerplex*>(handler.ai_.get());
+		REQUIRE(perplex != nullptr);
+		return perplex->_tt->memory_mb();
+	}
+
+	size_t ai_hash_bucket_count() const
+	{
+		auto* perplex = dynamic_cast<AIPerplex*>(handler.ai_.get());
+		REQUIRE(perplex != nullptr);
+		return perplex->_tt->bucket_count();
+	}
+
+	const void* tt_identity() const
+	{
+		auto* perplex = dynamic_cast<AIPerplex*>(handler.ai_.get());
+		REQUIRE(perplex != nullptr);
+		return perplex->_tt.get();
 	}
 };
 
@@ -383,6 +415,96 @@ template <typename F> static std::string capture_cout(F&& action)
 	CoutRedirect redirect;
 	std::forward<F>(action)();
 	return redirect.str();
+}
+
+TEST_CASE("cmd_uci: advertises Hash exact-fit default and policy bounds", "[uci][tt]")
+{
+	UciHandlerTestFixture fix;
+	const std::string output = capture_cout([&] { fix.uci(); });
+
+	REQUIRE(output.find("option name Hash type spin default 192 min 1 max 1536\n") !=
+	        std::string::npos);
+}
+
+TEST_CASE("AIPerplex default Hash has the documented exact-fit geometry", "[uci][tt]")
+{
+	UciHandlerTestFixture fix;
+	fix.ucinewgame();
+
+	REQUIRE(fix.ai_hash_requested_mb() == AIPerplex::DEFAULT_HASH_MB);
+	REQUIRE(fix.ai_hash_bucket_count() == 2097152u);
+	REQUIRE(fix.ai_hash_memory_mb() == 192);
+}
+
+TEST_CASE("cmd_setoption: Hash replaces and reports the live table, then survives ucinewgame",
+          "[uci][tt]")
+{
+	UciHandlerTestFixture fix;
+	fix.ucinewgame();
+	const void* original = fix.tt_identity();
+	fix.store_tt_marker();
+
+	const std::string output = capture_cout([&] { fix.setoption("setoption name Hash value 6"); });
+
+	REQUIRE(output == "info string hash 6 MiB (65536 buckets)\n");
+	REQUIRE(fix.tt_identity() != original);
+	REQUIRE_FALSE(fix.has_tt_marker());
+	REQUIRE(fix.ai_hash_requested_mb() == 6);
+	REQUIRE(fix.ai_hash_memory_mb() == 6);
+	REQUIRE(fix.ai_hash_bucket_count() == 65536u);
+
+	const void* configured = fix.tt_identity();
+	fix.ucinewgame();
+	REQUIRE(fix.tt_identity() == configured);
+	REQUIRE(fix.ai_hash_requested_mb() == 6);
+	REQUIRE(fix.ai_hash_memory_mb() == 6);
+}
+
+TEST_CASE("cmd_setoption: Hash reports round-down and the sub-MiB minimum", "[uci][tt]")
+{
+	UciHandlerTestFixture fix;
+	fix.ucinewgame();
+
+	const std::string rounded = capture_cout([&] { fix.setoption("setoption name Hash value 5"); });
+	REQUIRE(rounded == "info string hash 3 MiB (32768 buckets)\n");
+	REQUIRE(fix.ai_hash_requested_mb() == 5);
+	REQUIRE(fix.ai_hash_memory_mb() == 3);
+
+	const std::string minimum = capture_cout([&] { fix.setoption("setoption name Hash value 0"); });
+	REQUIRE(minimum == "info string hash 0 MiB (8192 buckets)\n");
+	REQUIRE(fix.ai_hash_requested_mb() == 1);
+	REQUIRE(fix.ai_hash_memory_mb() == 0);
+	REQUIRE(fix.ai_hash_bucket_count() == 8192u);
+}
+
+TEST_CASE("cmd_setoption: malformed Hash leaves the live table unchanged", "[uci][tt]")
+{
+	UciHandlerTestFixture fix;
+	fix.ucinewgame();
+	const void* original = fix.tt_identity();
+
+	const std::string output =
+	    capture_cout([&] { fix.setoption("setoption name Hash value nope"); });
+
+	REQUIRE(output.empty());
+	REQUIRE(fix.tt_identity() == original);
+}
+
+TEST_CASE("cmd_setoption: Hash replacement is refused while a search is running", "[uci][tt]")
+{
+	UciHandlerTestFixture fix;
+	fix.ucinewgame();
+	capture_cout([&] { fix.setoption("setoption name Hash value 6"); });
+	const void* configured = fix.tt_identity();
+
+	fix.set_searching(true);
+	const std::string output = capture_cout([&] { fix.setoption("setoption name Hash value 12"); });
+	fix.set_searching(false);
+
+	REQUIRE(output ==
+	        "info string setoption: ignored, a search is in progress -- send 'stop' first\n");
+	REQUIRE(fix.tt_identity() == configured);
+	REQUIRE(fix.ai_hash_requested_mb() == 6);
 }
 
 // Parses the integer centipawn value out of a "<label><N> cp" line, e.g.
@@ -1279,6 +1401,33 @@ TEST_CASE("dispatch: returns false for quit and true for everything else", "[uci
 	REQUIRE(fix.dispatch("not a uci command"));
 	REQUIRE(fix.dispatch("position startpos"));
 	REQUIRE_FALSE(fix.dispatch("quit"));
+}
+
+TEST_CASE("dispatch: 'go' before any ucinewgame constructs the AI instead of crashing", "[uci]")
+{
+	// Unreachable through run(), which calls init_ai() before reading a command -- but reachable
+	// through dispatch(), and what used to happen was an access violation on the search thread
+	// that took the whole test binary down with no failing assertion to point at it.
+	//
+	// 'stop' inside the captured scope is what makes this deterministic: it joins the search
+	// thread, so everything the thread prints has been printed before the capture ends.
+	UciHandlerTestFixture fix;
+
+	// A default-constructed Board is EMPTY, and cmd_position is what fills it -- searching without
+	// this trips assert(mask != 0) in Board::GetFirstPiece, which aborts a Debug build and is
+	// invisible in Release. That is a different defect from the one under test here (#279).
+	//
+	// cmd_position does not construct ai_, so the guard is still what this exercises; the
+	// assertion below is what keeps that true if init_ai() ever moves.
+	capture_cout([&] { fix.dispatch("position startpos"); });
+	REQUIRE(fix.ai_identity() == nullptr);
+
+	const std::string out = capture_cout([&] {
+		fix.dispatch("go depth 1");
+		fix.dispatch("stop");
+	});
+
+	REQUIRE(out.find("bestmove") != std::string::npos);
 }
 
 TEST_CASE("command log: nothing is written unless it is enabled", "[uci]")
