@@ -26,6 +26,17 @@ public:
 	void SetMaxDepth(unsigned depth) noexcept { max_depth_ = depth; }
 	void SetTimeLimit(std::chrono::milliseconds ms) noexcept { time_limit_ = ms; }
 
+	struct HashConfigurationResult {
+		bool success{ false };
+		unsigned requested_mb{ 0 };
+		size_t entry_mb{ 0 };
+		size_t bucket_count{ 0 };
+	};
+
+	/// Replace the transposition table for a client-supplied entry-memory budget.
+	/// Unsupported legacy AIs return failure; AIPerplex returns the actual allocation.
+	virtual HashConfigurationResult SetHash(unsigned) noexcept { return {}; }
+
 	/// Configure the number of search threads (Lazy SMP). Base no-op — legacy
 	/// AIs (AIBasic/AIAgent/ABIterative) ignore this; AIPerplex overrides and
 	/// clamps. No threading is actually spawned yet (config plumbing only).
