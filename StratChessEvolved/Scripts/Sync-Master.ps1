@@ -97,14 +97,28 @@ function Restore-AndExit {
     param(
         [int]$Code,
         [string]$OriginalBranch,
+        [string]$OriginalCommit,
+        [bool]$WasDetached,
         [bool]$SwitchedBranch,
         [bool]$Stashed
     )
     if ($SwitchedBranch) {
-        $current = (Invoke-Git @('rev-parse', '--abbrev-ref', 'HEAD')).Output
-        if ($current -ne $OriginalBranch) {
-            Write-Host "`n==> Restoring original branch '$OriginalBranch'" -ForegroundColor Cyan
-            Invoke-Git @('checkout', $OriginalBranch) | Out-Null
+        # A detached HEAD reports as the literal string 'HEAD' from
+        # rev-parse --abbrev-ref, which is not a checkout-able branch name --
+        # `git checkout HEAD` while already on master is a no-op that leaves
+        # master checked out and silently fails to restore the detached state.
+        if ($WasDetached) {
+            $currentCommit = (Invoke-Git @('rev-parse', 'HEAD')).Output
+            if ($currentCommit -ne $OriginalCommit) {
+                Write-Host "`n==> Restoring detached HEAD at $OriginalCommit" -ForegroundColor Cyan
+                Invoke-Git @('checkout', '--detach', $OriginalCommit) | Out-Null
+            }
+        } else {
+            $current = (Invoke-Git @('rev-parse', '--abbrev-ref', 'HEAD')).Output
+            if ($current -ne $OriginalBranch) {
+                Write-Host "`n==> Restoring original branch '$OriginalBranch'" -ForegroundColor Cyan
+                Invoke-Git @('checkout', $OriginalBranch) | Out-Null
+            }
         }
     }
     if ($Stashed) {
@@ -123,6 +137,8 @@ function Restore-AndExit {
 
 Write-Host "`n==> Checking working tree" -ForegroundColor Cyan
 $originalBranch = (Invoke-Git @('rev-parse', '--abbrev-ref', 'HEAD')).Output
+$originalCommit = (Invoke-Git @('rev-parse', 'HEAD')).Output
+$wasDetached    = ($originalBranch -eq 'HEAD')
 $switchedBranch = $false
 $stashed = $false
 
@@ -155,7 +171,7 @@ if ($Delegated) {
     if ($stash.ExitCode -ne 0) {
         Write-Host "FAIL: could not stash uncommitted changes." -ForegroundColor Red
         Write-GitOutput $stash.Output
-        Restore-AndExit -Code 1 -OriginalBranch $originalBranch -SwitchedBranch $switchedBranch -Stashed $stashed
+        Restore-AndExit -Code 1 -OriginalBranch $originalBranch -OriginalCommit $originalCommit -WasDetached $wasDetached -SwitchedBranch $switchedBranch -Stashed $stashed
     }
     $stashed = $true
     Write-Host "PASS: uncommitted changes stashed." -ForegroundColor Green
@@ -168,7 +184,7 @@ $fetch = Invoke-Git @('fetch', 'origin', 'main')
 if ($fetch.ExitCode -ne 0) {
     Write-Host "FAIL: git fetch origin main failed." -ForegroundColor Red
     Write-GitOutput $fetch.Output
-    Restore-AndExit -Code 1 -OriginalBranch $originalBranch -SwitchedBranch $switchedBranch -Stashed $stashed
+    Restore-AndExit -Code 1 -OriginalBranch $originalBranch -OriginalCommit $originalCommit -WasDetached $wasDetached -SwitchedBranch $switchedBranch -Stashed $stashed
 }
 Write-Host "PASS: fetched." -ForegroundColor Green
 
@@ -184,7 +200,7 @@ if ($originalBranch -ne 'master') {
             $masterPath = ($masterLine -split '\s+')[0]
             Write-Host "master is checked out at: $masterPath -- run this script from there instead." -ForegroundColor Yellow
         }
-        Restore-AndExit -Code 1 -OriginalBranch $originalBranch -SwitchedBranch $switchedBranch -Stashed $stashed
+        Restore-AndExit -Code 1 -OriginalBranch $originalBranch -OriginalCommit $originalCommit -WasDetached $wasDetached -SwitchedBranch $switchedBranch -Stashed $stashed
     }
     $switchedBranch = $true
 }
@@ -208,11 +224,11 @@ if ($ff.ExitCode -eq 0) {
         Invoke-Git @('merge', '--abort') | Out-Null
         Write-GitOutput $merge.Output
         Write-Host "Resolve manually: git checkout master; git merge origin/main" -ForegroundColor Yellow
-        Restore-AndExit -Code 1 -OriginalBranch $originalBranch -SwitchedBranch $switchedBranch -Stashed $stashed
+        Restore-AndExit -Code 1 -OriginalBranch $originalBranch -OriginalCommit $originalCommit -WasDetached $wasDetached -SwitchedBranch $switchedBranch -Stashed $stashed
     }
     $mergeSha = (Invoke-Git @('rev-parse', '--short', 'HEAD')).Output
     Write-Host "PASS: merged origin/main into master (new commit $mergeSha); local-only commits preserved." -ForegroundColor Green
 }
 
 Write-Host "`nSync complete." -ForegroundColor Green
-Restore-AndExit -Code 0 -OriginalBranch $originalBranch -SwitchedBranch $switchedBranch -Stashed $stashed
+Restore-AndExit -Code 0 -OriginalBranch $originalBranch -OriginalCommit $originalCommit -WasDetached $wasDetached -SwitchedBranch $switchedBranch -Stashed $stashed
