@@ -33,7 +33,7 @@
     and come back -- this mode is sequential, since one worktree holds one branch at a time.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
-    cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\New-TaskBranch.ps1 -Name eval-mobility-term"
+    pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\New-TaskBranch.ps1 -Name eval-mobility-term
 
 .NOTES
     Must be invoked with -File, not dot-sourced ($PSScriptRoot is $null under dot-source).

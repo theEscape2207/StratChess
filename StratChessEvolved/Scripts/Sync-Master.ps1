@@ -31,7 +31,7 @@
     - Safe to run unconditionally / repeatedly -- it's a no-op if already up to date.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
-    cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Sync-Master.ps1"
+    pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\Sync-Master.ps1
 
 .NOTES
     Runs from anywhere in the repository. `master` can be checked out in only one

@@ -18,8 +18,8 @@
     preset directory it landed in.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
-    cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Get-BuildArtifact.ps1"
-    ... -File StratChessEvolved\Scripts\Get-BuildArtifact.ps1 -Target StratChessTests -Config Debug
+    pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\Get-BuildArtifact.ps1
+    ... -File C:\...\StratChessEvolved\Scripts\Get-BuildArtifact.ps1 -Target StratChessTests -Config Debug
 
 .PARAMETER Target
     StratChessEvolved (default) or StratChessTests.

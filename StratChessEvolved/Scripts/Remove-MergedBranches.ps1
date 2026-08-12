@@ -28,7 +28,7 @@
     Remove-Worktree.ps1 instead, which also removes the directory.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
-    cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Remove-MergedBranches.ps1 -SyncMaster"
+    pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\Remove-MergedBranches.ps1 -SyncMaster
 
 .NOTES
     Must be invoked with -File, not dot-sourced ($PSScriptRoot is $null under dot-source).
@@ -56,7 +56,11 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-$currentBranch = (& git rev-parse --abbrev-ref HEAD).Trim()
+# $null (not "HEAD") when detached, so the current-branch comparisons below never
+# match a real branch name and the merged-branch NOTE is skipped -- there is nothing
+# to move off of.
+$currentBranch = & git symbolic-ref -q --short HEAD 2>$null
+if ($LASTEXITCODE -ne 0) { $currentBranch = $null }
 
 # A branch checked out in another worktree cannot be deleted, so it is skipped with a
 # reason rather than attempted and reported as an error.
@@ -70,7 +74,10 @@ foreach ($line in (& git worktree list --porcelain)) {
 
 $deleted = @()
 $kept    = @()
-foreach ($branch in (& git branch --format='%(refname:short)')) {
+# for-each-ref lists only real branches; `git branch` also emits a synthetic
+# "(HEAD detached at ...)" line when detached, which is not a valid object name and
+# would trip merge-base --is-ancestor below.
+foreach ($branch in (& git for-each-ref refs/heads --format='%(refname:short)')) {
     $branch = $branch.Trim()
     if (-not $branch) { continue }
     if ($branch -in @('master', 'main')) { continue }
@@ -107,7 +114,7 @@ if ($kept.Count -gt 0) {
 
 # Reported rather than acted on: moving someone's HEAD unasked is surprising, and
 # New-TaskBranch.ps1 is the thing that moves you off it.
-if ($currentBranch -notin @('master', 'main')) {
+if ($currentBranch -and $currentBranch -notin @('master', 'main')) {
     & git merge-base --is-ancestor $currentBranch origin/main
     if ($LASTEXITCODE -eq 0) {
         Write-Host "`nNOTE: the branch you are on ('$currentBranch') is also merged." -ForegroundColor Yellow

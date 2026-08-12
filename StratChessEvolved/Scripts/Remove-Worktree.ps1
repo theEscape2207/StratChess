@@ -49,7 +49,7 @@
     known worktree.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell) -- run from the MAIN checkout
-    cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Remove-Worktree.ps1 -Name eval-mobility-term -SyncMaster"
+    pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\Remove-Worktree.ps1 -Name eval-mobility-term -SyncMaster
 
 .NOTES
     Must be invoked with -File, not dot-sourced ($PSScriptRoot is $null under dot-source).

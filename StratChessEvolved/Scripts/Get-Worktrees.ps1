@@ -27,7 +27,7 @@
     - After a worktree removal that reported a locked directory.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
-    cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Get-Worktrees.ps1"
+    pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\Get-Worktrees.ps1
 
 .NOTES
     Must be invoked with -File, not dot-sourced ($PSScriptRoot is $null under dot-source).

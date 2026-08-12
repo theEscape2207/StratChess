@@ -920,7 +920,7 @@ TEST_CASE("cmd_position: FEN missing the side-to-move field is declined", "[uci]
 
 	const std::string before = fx.board().ExtractFEN();
 
-	fx.position("position fen 6k1/5ppp/8/8/8/8/5PPP/R5K1");
+	capture_cout([&] { fx.position("position fen 6k1/5ppp/8/8/8/8/5PPP/R5K1"); });
 
 	CHECK(fx.board().ExtractFEN() == before);
 	CHECK(fx.board().GetCurrentColor() == WHITE);
@@ -935,7 +935,7 @@ TEST_CASE("cmd_position: malformed FEN does not replay its move list", "[uci]")
 
 	const std::string before = fx.board().ExtractFEN();
 
-	fx.position("position fen 6k1/5ppp/8/8/8/8/5PPP/R5K1 moves e2e4 e7e5");
+	capture_cout([&] { fx.position("position fen 6k1/5ppp/8/8/8/8/5PPP/R5K1 moves e2e4 e7e5"); });
 
 	CHECK(fx.board().ExtractFEN() == before);
 	CHECK(fx.board().GetPiece(e2) == WHITE_PAWN);
@@ -1000,7 +1000,7 @@ TEST_CASE("cmd_position: an illegal position is declined", "[uci]")
 
 	const std::string before = fx.board().ExtractFEN();
 
-	fx.position("position fen 4k3/8/8/8/8/5b2/8/4RK2 w - - 0 1");
+	capture_cout([&] { fx.position("position fen 4k3/8/8/8/8/5b2/8/4RK2 w - - 0 1"); });
 
 	CHECK(fx.board().ExtractFEN() == before);
 }

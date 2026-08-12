@@ -165,7 +165,9 @@ function Invoke-CMakeBuild {
     # adds latency.
     if (-not (Test-Path (Join-Path $BuildDir 'CMakeCache.txt'))) {
         Write-Host "`n==> Configuring $Preset" -ForegroundColor Cyan
-        $configureArgs = @('--preset', $Preset)
+        # --log-level=WARNING drops the ~20 lines of compiler-ABI/pthread probing
+        # CMake emits on every reconfigure; warnings and errors still surface.
+        $configureArgs = @('--preset', $Preset, '--log-level=WARNING')
         $depsCache = Get-SharedDepsCache
         if ($depsCache) { $configureArgs += @('-D', "FETCHCONTENT_BASE_DIR=$depsCache") }
 
@@ -182,7 +184,11 @@ function Invoke-CMakeBuild {
     $buildArgs = @('--build', '--preset', $Preset)
     foreach ($t in $Targets) { $buildArgs += @('--target', $t) }
 
-    & cmake @buildArgs
+    # Ninja's \r-based progress bar becomes runs of blank lines once captured
+    # non-interactively; dropping empty lines keeps real progress and errors
+    # visible without the padding. Native command output still streams through
+    # the pipeline, and $LASTEXITCODE still reflects cmake's own exit code.
+    & cmake @buildArgs | Where-Object { $_ -ne '' }
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Build failed (exit $LASTEXITCODE): $label"
         exit $LASTEXITCODE
