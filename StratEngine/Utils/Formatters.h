@@ -1,6 +1,12 @@
 ﻿#pragma once
 #include <spdlog/fmt/bundled/base.h>
-#include "defines.h"		// eColor, eSquare
+#include "defines.h" // eColor, eSquare
+
+// clang-format off
+// Whole file exempt. Every formatter here is a lookup table laid out to match what
+// it describes: the square names as an 8x8 board, the piece names in white/black
+// pairs. Reflowing them to a column limit turns each into an undifferentiated run
+// of strings, which is precisely what these tables exist to avoid.
 
 // eColor formatter
 template<> struct fmt::formatter<eColor> {
@@ -51,6 +57,7 @@ template<> struct fmt::formatter<ePiece> {
 };
 
 // MoveType formatter
+// (file remains under clang-format off; the fence closes at end of file)
 template<> struct fmt::formatter<MoveType> {
     constexpr auto parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
     auto format(MoveType m, fmt::format_context& ctx) const {
@@ -76,3 +83,4 @@ template<> struct fmt::formatter<MoveType> {
         return fmt::format_to(ctx.out(), "{}", name);
     }
 };
+// clang-format on

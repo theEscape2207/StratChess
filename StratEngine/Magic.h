@@ -6,6 +6,12 @@
 #include <bit>
 #include <immintrin.h>
 
+// clang-format off
+// Whole file exempt. This is dense bit-manipulation whose readability comes from
+// its hand-chosen line breaks — one logical step per line in the deposit/attack
+// loops, and the magic tables kept narrow. Reformatting grew it by ~40 lines
+// without making any of it easier to follow.
+
 // PEXT-based ("fancy magic") sliding-piece attack generation for rooks and bishops.
 // See .claude/plans/magic-bitboards-sliding-piece-attacks.md for the design rationale.
 //
@@ -158,3 +164,4 @@ inline BITBOARD BishopAttacks(eSquare sq, BITBOARD occupied) noexcept
 	const BITBOARD relevant = occupied & magic::g_bbBishopMask[sq];
 	return magic::g_bbBishopAttacks[sq][static_cast<std::size_t>(_pext_u64(relevant, magic::g_bbBishopMask[sq]))];
 }
+// clang-format on

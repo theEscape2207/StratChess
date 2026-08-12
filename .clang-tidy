@@ -1,0 +1,27 @@
+# Static analysis for StratChessEvolved. See issue #175.
+#
+# Deliberately narrow. A survey of the full tree measured 4,684 findings across a
+# broad check set; the checks enabled here account for 97 of them and the rest are
+# either wrong for this codebase or deferred to their own issues (#281, #282, #283).
+#
+# bugprone-throwing-static-initialization is off because all 320 findings are Catch2
+# TEST_CASE static registration - an artifact of the test framework, not a defect.
+#
+# bugprone-easily-swappable-parameters is off because adjacent same-typed parameters
+# are inherent to a move-generation API (from/to, rank/file) and it has no fix.
+#
+# WarningsAsErrors is empty on purpose: the backlog is cleared in #284, and only then
+# does this become blocking. Do not set it before that lands.
+Checks: >
+  -*,
+  bugprone-*,
+  performance-*,
+  clang-analyzer-*,
+  -bugprone-throwing-static-initialization,
+  -bugprone-easily-swappable-parameters
+WarningsAsErrors: ''
+# Our sources only. ExcludeHeaderFilterRegex is required as well: HeaderFilterRegex
+# alone still let two findings through from vendored Catch2 under build/_deps.
+HeaderFilterRegex: '.*(StratEngine|StratChessEvolved|StratChessTests)[\\/].*'
+ExcludeHeaderFilterRegex: '.*[\\/]_deps[\\/].*'
+FormatStyle: file

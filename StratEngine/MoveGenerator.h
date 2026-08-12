@@ -7,9 +7,8 @@
 
 class Board;
 
-class MoveGenerator final
-{
-public:
+class MoveGenerator final {
+  public:
 	// Computes all the pseudo legal piece capturing moves on the current board - no check for Check here!
 	static void ComputeCaptures(const Board& board, const GameInfo& info, MoveList& moveList);
 	// Computes all the pseudo legal moves on the current board - no check for Check here!
@@ -19,22 +18,28 @@ public:
 	static BITBOARD GetAttackBoard(const Board& board, eColor) noexcept;
 
 	~MoveGenerator() = default;
-private:
+
+  private:
 	MoveGenerator() = default;
 
-	static void GeneratePawnCaptures(const Board& board, const BITBOARD * const bbBitBoards, const GameInfo & info, MoveList & moveList, eColor color);
+	static void GeneratePawnCaptures(const Board& board, const BITBOARD* const bbBitBoards, const GameInfo& info,
+	                                 MoveList& moveList, eColor color);
 
-	static void GeneratePawnNormalMoves(const BITBOARD * const bbBitBoards, eColor color, MoveList& moveList);
+	static void GeneratePawnNormalMoves(const BITBOARD* const bbBitBoards, eColor color, MoveList& moveList);
 
-	static void GenerateOfficerMoves(const Board& board, const BITBOARD * const bbBitBoards, MoveList& moveList, ePieceType piece, eColor color, bool onlyCaptures );
+	static void GenerateOfficerMoves(const Board& board, const BITBOARD* const bbBitBoards, MoveList& moveList,
+	                                 ePieceType piece, eColor color, bool onlyCaptures);
 
 	static void AddOfficerMoves(const Board& board, MoveList& moveList, BITBOARD bbAttack, eSquare from);
-	static void AddPawnPromoteMoves( const BITBOARD* bbBitBoards, eColor color, MoveList& moveList );
+	static void AddPawnPromoteMoves(const BITBOARD* bbBitBoards, eColor color, MoveList& moveList);
 	// board is only referenced inside assert() checks — compiled out in Release (NDEBUG).
-	static void AddPawnCaptures([[maybe_unused]] const Board& board, MoveList& moveList, const BITBOARD*, Move pawnMove, eColor color);
-	static void AddCastleMoves(const Board& board, MoveList& moveList, eColor color, const BITBOARD* bbBitBoards, const GameInfo &info);
+	static void AddPawnCaptures([[maybe_unused]] const Board& board, MoveList& moveList, const BITBOARD*, Move pawnMove,
+	                            eColor color);
+	static void AddCastleMoves(const Board& board, MoveList& moveList, eColor color, const BITBOARD* bbBitBoards,
+	                           const GameInfo& info);
 
-	static BITBOARD GetAnyEnPassantAttackingPawns(const BITBOARD* bbBitBoards, eColor attackByColor, eSquare epSquare) noexcept;
+	static BITBOARD GetAnyEnPassantAttackingPawns(const BITBOARD* bbBitBoards, eColor attackByColor,
+	                                              eSquare epSquare) noexcept;
 
 	// Returns true if an enemy piece is actually standing on move.to(). Distinguishes a normal
 	// pawn capture from an en-passant capture: GeneratePawnCaptures tags every diagonal pawn move
@@ -53,14 +58,13 @@ private:
 	// TODO: SwapMoves is duplicated in MoveSorter
 	static void SwapMoves(MoveList& moveList, size_t first, size_t second) //-V2009
 	{
-		if(first == second)	// no need to swap anything here :-)
+		if (first == second) // no need to swap anything here :-)
 			return;
 		std::swap(moveList[first], moveList[second]);
 	}
 
 	static constexpr bool IsAnyBackRow(eSquare field) noexcept
-	{	
-		return ( Rank( field ) == eRowNames::WHITE_BACK_ROW || 
-				 Rank( field ) == eRowNames::BLACK_BACK_ROW);
+	{
+		return (Rank(field) == eRowNames::WHITE_BACK_ROW || Rank(field) == eRowNames::BLACK_BACK_ROW);
 	}
 };

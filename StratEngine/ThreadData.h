@@ -71,10 +71,7 @@ struct ThreadData {
 				k = Move::EmptyMove();
 	}
 
-	void clear_null_move_flags() noexcept
-	{
-		std::memset(last_move_was_null, 0, sizeof(last_move_was_null));
-	}
+	void clear_null_move_flags() noexcept { std::memset(last_move_was_null, 0, sizeof(last_move_was_null)); }
 
 	// Resets everything that must not leak into a new game. History is
 	// deliberately aged, never cleared, WITHIN a game (see the class comment
@@ -111,10 +108,7 @@ struct ThreadData {
 		killers[ply][0] = move;
 	}
 
-	void clear_history() noexcept
-	{
-		std::memset(history, 0, sizeof(history));
-	}
+	void clear_history() noexcept { std::memset(history, 0, sizeof(history)); }
 
 	void age_history() noexcept
 	{
@@ -159,16 +153,15 @@ struct ThreadData {
 		// where to add it? size er 2 efter foerste traek ved ply 0
 		const size_t infoSize = info_seq.size();
 
-		if (ply + 1 == infoSize)		// foerste traek ved hver dybde
+		if (ply + 1 == infoSize) // foerste traek ved hver dybde
 			info_seq.emplace_back(info);
-		else if (infoSize == ply + 2)	// 2. traek ved hver dybde og resten
+		else if (infoSize == ply + 2) // 2. traek ved hver dybde og resten
 			info_seq[ply + 1] = info;
-		else if (infoSize > ply + 2)	// Skal der slettes nogen? Dont delete the first!
+		else if (infoSize > ply + 2) // Skal der slettes nogen? Dont delete the first!
 		{
 			info_seq.erase(info_seq.begin() + static_cast<int>(ply + 1), info_seq.end());
 			info_seq.emplace_back(info);
-		}
-		else
+		} else
 			assert(!"BoardInfo update - Somebody hasn't handled all cases");
 	}
 
@@ -189,20 +182,15 @@ struct ThreadData {
 	// stored GameInfo::lastMove is whatever the parent ply's real move was,
 	// not a sentinel for "no move". Callers must not treat lastMove at a
 	// null-move ply as "the move that produced this ply".
-	void add_null_move_to_seq(size_t ply)
-	{
-		store_info_at_ply(ply, board.GetGameInfo());
-	}
+	void add_null_move_to_seq(size_t ply) { store_info_at_ply(ply, board.GetGameInfo()); }
 
 	// Test for 50 moves rule and threefold repetition (thread-local board)
 	bool check_draws(const GameInfo& info, int ply) const noexcept
 	{
-		if (ply > 0 && board.is_repetition(ply))
-		{
+		if (ply > 0 && board.is_repetition(ply)) {
 			return true;
 		}
-		if (info.fiftyCount >= 50)
-		{
+		if (info.fiftyCount >= 50) {
 			assert(info.gameState == GameStates::DRAW_50_MOVES);
 			return true;
 		}
@@ -214,11 +202,9 @@ struct ThreadData {
 	// to the real game board after the search returns.
 	void update_game_state(size_t ply, GameStates newState)
 	{
-		if (ply == 0)
-		{
+		if (ply == 0) {
 			GameInfo& info = info_seq.at(ply);
-			if (newState != info.gameState)
-			{
+			if (newState != info.gameState) {
 				board.SetGameState(newState);
 				info.gameState = newState;
 			}

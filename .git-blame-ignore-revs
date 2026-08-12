@@ -1,0 +1,31 @@
+# Commits to skip in `git blame` because they only reformat.
+# GitHub honours this file automatically; locally it needs
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# which build.ps1 sets on first run.
+
+# Reformat: apply .clang-format across the tree (#175)
+5d0bd0a687bad1919415ba70839ecf76da63d3e4
+
+# Reformat: converge Eval.cpp comment reflow (#175)
+# clang-format needs a second pass over reflowed comments; this is the rest of
+# the commit above, not a separate change.
+fb7c52b40bf64ea794a8f771ee353c5e2564f1d5
+
+# Keep string literals unsplit (#175)
+c7059713cd33a3a3867d09e9bbb82aa03b64efbd
+
+# Stop the formatter destroying deliberate layout (#175)
+f3965c0789de596effb8440a013bad6ffcf3b7d9
+
+# Exempt hand-aligned code from the formatter (#175)
+7a5c95eafa98a32cefbeec778f5ed32c88648758
+
+# The three above re-ran the formatter after a configuration change, so each
+# rewrote most of the tree without altering a line of code. They also carry the
+# .clang-format change that caused the rewrite; blame ignores a commit wholesale
+# rather than per file, so blame on .clang-format itself will skip past them to
+# the commit that introduced the file. That is the right trade: the sources are
+# what anyone actually blames.
+#
+# The merge commit is deliberately absent -- git cannot ignore a merge, and the
+# lines it touched were rewritten again by the commits above in any case.

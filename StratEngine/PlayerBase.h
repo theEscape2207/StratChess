@@ -9,19 +9,19 @@ class Move;
 class Board;
 //struct GameInfo;
 
-class PlayerBase : public IPlayer
-{
-public:
-	enum class ePlayerTypes{	HUMAN,					// 0
-						ALPHABETA,				// 1
-						ABITERATING,			// 2
-						AIAGENT,				// 3
-						AITRANS,				// 4 — ARCHIVED (TT bugs, use AI_PERPLEX)
-						ABITERATIVE_TRANS,		// 5 — ARCHIVED (TT bugs, use AI_PERPLEX)
-						AI_PERPLEX,				// 6
-						};
+class PlayerBase : public IPlayer {
+  public:
+	enum class ePlayerTypes {
+		HUMAN,             // 0
+		ALPHABETA,         // 1
+		ABITERATING,       // 2
+		AIAGENT,           // 3
+		AITRANS,           // 4 — ARCHIVED (TT bugs, use AI_PERPLEX)
+		ABITERATIVE_TRANS, // 5 — ARCHIVED (TT bugs, use AI_PERPLEX)
+		AI_PERPLEX,        // 6
+	};
 	// Non-virtual
-	
+
 	// Returns the current GameState
 	/*GameInfo::GameStates GetGameState() const
 	{
@@ -29,15 +29,9 @@ public:
 	}*/
 
 	/* IPlayer implementation */
-	int GetBestScore() const noexcept override
-	{
-		return _bestScore;
-	}
+	int GetBestScore() const noexcept override { return _bestScore; }
 
-	bool IsHuman() const noexcept override
-	{
-		return isHuman_;
-	}
+	bool IsHuman() const noexcept override { return isHuman_; }
 	/* End IPlayer implementation */
 
 	PlayerBase() = default;
@@ -60,16 +54,16 @@ public:
 	PlayerBase(PlayerBase&&) = delete;
 	PlayerBase& operator=(PlayerBase&&) = delete;
 
-protected:
+  protected:
 	/*
 	 * Protected variables
 	 */
 	// The current best score
-	int _bestScore{ 0 };
+	int _bestScore{0};
 
 	// Only used for printout atm
 	std::string type_;
-	unsigned depth_{ 0 };
+	unsigned depth_{0};
 
-	bool isHuman_{ false };
+	bool isHuman_{false};
 };

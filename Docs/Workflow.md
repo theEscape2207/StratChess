@@ -43,7 +43,7 @@ Four things are non-negotiable and are the reason most of this file exists:
 |---|---|---|
 | `Docs` | `*.md`, `Docs/**`, `.claude/plans/**` | Nothing — the pre-commit hook's fast tests already cover it |
 | `Tooling` | `Scripts\Run-EloMatch.ps1`, `Run-Tests.ps1`, `Sync-Master.ps1`, `verify_mate_key.py`, `build_corpus.py`, `New-Worktree.ps1`, `Remove-Worktree.ps1`, `Get-Worktrees.ps1` | PowerShell syntax parse only — never compiled, never invoked by the engine |
-| `Build` | `build.ps1`, `Scripts\Validate-*.ps1`, `New-PullRequest.ps1`, `Get-ChangeTier.ps1`, `.githooks/**`, `.github/**`, `CMakeLists.txt`, `*.cmake`, `CMakePresets.json` | Full: build + extended `[slow]` tests + tactical suite + self-play |
+| `Build` | `build.ps1`, `Scripts\Validate-*.ps1`, `New-PullRequest.ps1`, `Get-ChangeTier.ps1`, `Run-Lint.ps1`, `.githooks/**`, `.github/**`, `CMakeLists.txt`, `*.cmake`, `CMakePresets.json`, `.clang-format`, `.clang-tidy`, `.git-blame-ignore-revs` | Full: build + extended `[slow]` tests + tactical suite + self-play, preceded by the clang-format check |
 | `Engine` | `*.cpp`, `*.h`, `*.json`, **and anything unrecognised** | Full |
 
 A mixed diff takes the **strictest** tier present. Two properties are deliberate and asserted by
@@ -54,6 +54,38 @@ self-concealing. `-Force` runs every gate regardless.
 
 Background: PR #56 (a one-line `CLAUDE.md` fix) and PR #133 (a measurement-script change) both paid
 a full build + extended-test + self-play cycle for a guaranteed pass — issue #124.
+
+`Run-Lint.ps1` is `Build` and not `Tooling` despite sitting beside the engine-inert helper scripts:
+`Validate-PrePR.ps1` calls its format check, so a bug in it could suppress a gate and then decline to
+validate the change that suppressed it — the same self-concealment hazard as the classifier itself.
+
+**`git blame` skips the reformat commits only if configured.** `build.ps1` sets
+`blame.ignoreRevsFile` on first run, alongside the `core.hooksPath` line, so any clone or worktree
+gets it. GitHub's blame view honours `.git-blame-ignore-revs` automatically; local `git blame` does
+not. To set it without running a build:
+
+```powershell
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
+**Every `.clang-format` change means a new entry.** Changing the configuration re-runs the formatter
+over the whole tree, so it lands as a commit that rewrites most files without altering a line of
+code. `Validate-PrePR.ps1` fails when a commit on the branch touches 20 or more sources and is not
+listed (`Run-Lint.ps1 -Check BlameIgnore`); `-AllowUnlistedReformat` acknowledges a large commit that
+genuinely changes code.
+
+Two limits are worth knowing rather than discovering. The rule is a **file count**, not a proof that
+a commit is formatting-only — proving that needs the `.clang-format` as it stood at that commit,
+which stops being available the moment the config changes again, which is the case the check exists
+for. And a reformat touching fewer than 20 files slips through: `c705971` in PR #175 touched four.
+
+Ignoring a commit is also **wholesale, not per file**. The reformat commits also carry the
+`.clang-format` change that caused them, so blame on `.clang-format` itself skips past them. That is
+the right trade, since the sources are what anyone actually blames.
+
+Finally, `--ignore-revs-file` does not suppress attribution completely: a line git cannot map to a
+predecessor stays on the ignored commit. Measured on this tree, that is ~3.4% of lines and **all of
+them are brace- or punctuation-only**, so nothing meaningful is misattributed.
 
 ---
 

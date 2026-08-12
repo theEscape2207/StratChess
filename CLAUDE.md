@@ -70,6 +70,7 @@ a silent no-op.
 | Script | When |
 |---|---|
 | `Run-Tests.ps1 [tag]` | Any test verification |
+| `Run-Lint.ps1 [-Check Format\|Tidy\|BlameIgnore] [-All] [-Fix]` | clang-format (CI blocks on it), clang-tidy (advisory), and a check that a tree-wide reformat was recorded in `.git-blame-ignore-revs`. Resolves both tools via `vswhere`; neither is on `PATH`. `-Fix` iterates to a fixpoint — clang-format is not idempotent in one pass |
 | `Validate-PreCommit.ps1` | Before every commit — FEN check + fast tests (the pre-commit hook runs this) |
 | `Validate-PrePR.ps1` | Before a PR — scopes itself to the change tier; `-Force` to run everything |
 | `Run-EloMatch.ps1 [-Smoke]` | After search/eval/time changes — strength vs the pinned reference (method: `Docs/EloMeasurement.md`, results: `Docs/EloLog.md`) |

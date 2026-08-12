@@ -5,11 +5,11 @@
 #include "StdAfx.h"
 #include "PlayerAI.h"
 #include "Utils/TimeUtils.h"
-#include "Sort.h"		// Different Move sorting heuristics
+#include "Sort.h" // Different Move sorting heuristics
 #include "MoveGenerator.h"
 #include "Utils/Logger.h"
 #include <spdlog/spdlog.h>
-#include <iomanip>		// setw() osv.
+#include <iomanip> // setw() osv.
 
 // static variables
 std::chrono::milliseconds PlayerAiBase::m_TotalTime = std::chrono::milliseconds(0);
@@ -19,32 +19,32 @@ size_t PlayerAiBase::m_TotalCount = 0;
 // Method:      Quiescent
 // Description: Soegning udover horisonten - p.t. kun slagudvekslinger
 // FullName:    protected PlayerAiBase::Quiescent
-// Returns:     int - 
+// Returns:     int -
 // Parameter:   unsigned ply - depth
-// Parameter:   int alpha - 
-// Parameter:   int beta - 
-// Remark:      
+// Parameter:   int alpha -
+// Parameter:   int beta -
+// Remark:
 // ************************************
-int PlayerAiBase::Quiescent( size_t ply, int alpha, int beta )
+int PlayerAiBase::Quiescent(size_t ply, int alpha, int beta)
 {
 	// Increments counter
 	m_SearchCount++;
 
-	const GameInfo& info = GetLastBoardInfo( ply );
+	const GameInfo& info = GetLastBoardInfo(ply);
 
 	// 50 moves rules will never get hit as long we only have Captures in Quiescent moves
 	// first entry is tested in Search algorithms
-	
+
 	// Evaluerer paa stillingen
 	int value = Eval->Evaluate(m_Board);
 
 	// Begraenser quiescent til en maksimal dybde
-	if (ply == MAX_PLY-10)
+	if (ply == MAX_PLY - 10)
 		return value;
 
-	if (value > alpha)		// Er det en bedre vaerdi?
+	if (value > alpha) // Er det en bedre vaerdi?
 	{
-		if (value >= beta)		// Cutoff !
+		if (value >= beta) // Cutoff !
 			return beta;
 
 		alpha = value;
@@ -52,94 +52,91 @@ int PlayerAiBase::Quiescent( size_t ply, int alpha, int beta )
 
 	MoveList moveList;
 	// Only work on the captures in Quiescent
-	MoveGenerator::ComputeCaptures( m_Board, info, moveList );
+	MoveGenerator::ComputeCaptures(m_Board, info, moveList);
 	// Sort the found captures
-	MoveSorter::SortMovesByValue( moveList, moveList.size(), m_Board );
+	MoveSorter::SortMovesByValue(moveList, moveList.size(), m_Board);
 
 	// Tjek om der er lovlige brugbare traek her
 	bool moveFound = false;
 
-	// vi loeber dem allesammen igennem 
-	for (const auto &curMove : moveList)
-	{
+	// vi loeber dem allesammen igennem
+	for (const auto& curMove : moveList) {
 		// Foretag traekket
 		if (!m_Board.DoMove(curMove))
 			continue;
-		
+
 		// Tilfoejer dette traek til nuvaerende traekfoelge
 		AddMoveToSeq(curMove, ply);
 
 		// rekursivt kald til Quiescent. Dette sker _rigtigt_ mange gange
-		value = -Quiescent(ply+1, -beta, -alpha );
+		value = -Quiescent(ply + 1, -beta, -alpha);
 
 		// Vi er tilbage igen. Undo traekket igen
 		m_Board.UndoMove(curMove);
 
 		moveFound = true;
 
-		if (value > alpha)		// Er det en bedre vaerdi?
+		if (value > alpha) // Er det en bedre vaerdi?
 		{
-			if (value >= beta)		// For hoej. Cutoff !
+			if (value >= beta) // For hoej. Cutoff !
 				return beta;
 
-			alpha = value;			// Ny bedste vaerdi
+			alpha = value; // Ny bedste vaerdi
 		}
 	}
 	// Found no legal moves here
 	// We don't check for mate / stalemate here, because without generating all
 	// of the moves leading up to it, we don't know if the position could have
-	// been avoided by one side or not.  So simply return our evaluation score 
-	if( !moveFound )
+	// been avoided by one side or not.  So simply return our evaluation score
+	if (!moveFound)
 		return value;
-		
+
 	// return den bedste alpha-vaerdi
 	return alpha;
 }
 
 // ************************************
 // Method:     GetBestMove
-// Description: 
-// FullName:   protected PlayerAiBase::GetBestMove 
+// Description:
+// FullName:   protected PlayerAiBase::GetBestMove
 // Returns:    const Move - The best move or EmptyMove if game is over
-// Parameter:  BoardInfo& info - 
-// Remark:    
+// Parameter:  BoardInfo& info -
+// Remark:
 // ************************************
-Move PlayerAiBase::GetBestMove(GameInfo& info ) noexcept
+Move PlayerAiBase::GetBestMove(GameInfo& info) noexcept
 {
 	// Returner det bedste traek - hvis der er noget
-	if ( !m_BestMove.is_null() )
-	{
-		info.UpdateBoardInfo( m_BestMove, m_Board.GetEffectiveMovPiece(m_BestMove));
+	if (!m_BestMove.is_null()) {
+		info.UpdateBoardInfo(m_BestMove, m_Board.GetEffectiveMovPiece(m_BestMove));
 		return m_BestMove;
 	}
 	// No moves found!
-	assert( info.gameState != GameStates::STILL_PLAYING );
+	assert(info.gameState != GameStates::STILL_PLAYING);
 	return Move::EmptyMove();
 }
-
 
 // ************************************
 // Method:      StopTimer
 // Description: Updates time statistics - and prints it to file if PRINT_STATS is defined
 // FullName:    protected PlayerAiBase::StopTimer
-// Returns:     void - 
-// Remark:      
+// Returns:     void -
+// Remark:
 // ************************************
 std::chrono::milliseconds PlayerAiBase::StopTimerAndAdjustVars(size_t node_count) const
 {
 	auto end = std::chrono::high_resolution_clock::now();
 	auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(end - _startingTime);
-	if( elapsedMs == std::chrono::milliseconds(0))
+	if (elapsedMs == std::chrono::milliseconds(0))
 		elapsedMs = std::chrono::milliseconds(1);
 	m_TotalTime += elapsedMs;
 	m_TotalCount += node_count;
-	
-//#ifdef PRINT_STATS
+
+	//#ifdef PRINT_STATS
 	// Use the perf logger only if one already exists -- creating it here would write into the
 	// process CWD. Game::Init() is the sole creator, so in non-game contexts (tests, tactical
 	// runner, UCI) this is a no-op.
 	auto perf = Engine::Logger::GetPerfLogger();
-	
+
 	if (perf) {
 		// preserve column layout using fmt width specifiers and spaces between columns
 		// Columns: node_count | elapsedMs.count() | nodes/ms | m_TotalCount | m_TotalTime.count() | total nodes/ms
@@ -152,25 +149,17 @@ std::chrono::milliseconds PlayerAiBase::StopTimerAndAdjustVars(size_t node_count
 			total_nodes_per_ms = static_cast<long>(m_TotalCount / m_TotalTime.count());
 
 		// Format with right-aligned columns similar to setw in original code
-		perf->info("{:>10} {:>13} {:>13} {:>19} {:>13} {:>13}",
-			node_count,
-			elapsedMs.count(),
-			nodes_per_ms,
-			m_TotalCount,
-			m_TotalTime.count(),
-			total_nodes_per_ms);
+		perf->info("{:>10} {:>13} {:>13} {:>19} {:>13} {:>13}", node_count, elapsedMs.count(), nodes_per_ms,
+		           m_TotalCount, m_TotalTime.count(), total_nodes_per_ms);
 	}
 	// If perf logger is unavailable (e.g. logs/ absent in UCI mode), skip silently.
 	// Writing to std::cout here would corrupt the UCI output stream.
 
-//#endif // PRINT_STATS
+	//#endif // PRINT_STATS
 	return elapsedMs;
 }
 
-void PlayerAiBase::StopSearch() noexcept
-{
-	time_manager_.stop();
-}
+void PlayerAiBase::StopSearch() noexcept { time_manager_.stop(); }
 
 unsigned PlayerAiBase::ApplyLimits(const SearchLimits& limits)
 {
@@ -198,16 +187,15 @@ void PlayerAiBase::StoreInfoAtPly(size_t ply, const GameInfo& info)
 	// where to add it? size er 2 efter foerste traek ved ply 0
 	const size_t infoSize = m_infoSeq.size();
 
-	if( ply+1 == infoSize )			// foerste traek ved hver dybde
-		m_infoSeq.emplace_back( info );
-	else if( infoSize == ply+2 )	// 2. traek ved hver dybde og resten
-		m_infoSeq[ply+1] = info;
-	else if( infoSize > ply+2)	// Skal der slettes nogen? Dont delete the first!
+	if (ply + 1 == infoSize) // foerste traek ved hver dybde
+		m_infoSeq.emplace_back(info);
+	else if (infoSize == ply + 2) // 2. traek ved hver dybde og resten
+		m_infoSeq[ply + 1] = info;
+	else if (infoSize > ply + 2) // Skal der slettes nogen? Dont delete the first!
 	{
-		m_infoSeq.erase( m_infoSeq.begin()+static_cast<int>(ply+1), m_infoSeq.end() );
-		m_infoSeq.emplace_back( info );
-	}
-	else
+		m_infoSeq.erase(m_infoSeq.begin() + static_cast<int>(ply + 1), m_infoSeq.end());
+		m_infoSeq.emplace_back(info);
+	} else
 		assert(!"BoardInfo update - Somebody hasn't handled all cases");
 }
 
@@ -223,10 +211,10 @@ void PlayerAiBase::StoreInfoAtPly(size_t ply, const GameInfo& info)
 // ************************************
 void PlayerAiBase::AddMoveToSeq(const Move& move, size_t ply)
 {
-	GameInfo info = GetLastBoardInfo( ply );
+	GameInfo info = GetLastBoardInfo(ply);
 
 	// After DoMove the piece sits on move.to(); read it to obtain the moving piece.
-	info.UpdateBoardInfo( move, m_Board.GetPiece(move.to()) );
+	info.UpdateBoardInfo(move, m_Board.GetPiece(move.to()));
 
 	StoreInfoAtPly(ply, info);
 }
@@ -240,7 +228,4 @@ void PlayerAiBase::AddMoveToSeq(const Move& move, size_t ply)
 // must not treat lastMove at a null-move ply as "the move that produced
 // this ply" — currently safe because only AIPerplex calls this method, and
 // AIPerplex never calls GetParentMove().
-void PlayerAiBase::AddNullMoveToSeq(size_t ply)
-{
-	StoreInfoAtPly(ply, m_Board.GetGameInfo());
-}
+void PlayerAiBase::AddNullMoveToSeq(size_t ply) { StoreInfoAtPly(ply, m_Board.GetGameInfo()); }

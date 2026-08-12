@@ -6,41 +6,35 @@
 #include "Game.h"
 #include "Board.h"
 #include "MoveFormatter.h"
-#include "PlayerBase.h"		// For factory create
-#include "PlayerAI.h"		// For PlayerAiBase setters
-#include "AIPerplex.h"		// For SearchTuning application
-#include <iomanip>			// std::put_time
+#include "PlayerBase.h" // For factory create
+#include "PlayerAI.h"   // For PlayerAiBase setters
+#include "AIPerplex.h"  // For SearchTuning application
+#include <iomanip>      // std::put_time
 
 // ***************************************
 // Method:      Game
 // Description: Constructor
 // FullName:    public Game::Game
-// Returns:      - 
-// Remark:      
+// Returns:      -
+// Remark:
 // ***************************************
-Game::Game()
-{
-	Init();
-}
+Game::Game() { Init(); }
 
 //***************************************
 // Method:      ~Game
 // Description: Destructor
-// FullName:    public Game::~Game 
-// Returns:      - 
-// Remark:      
+// FullName:    public Game::~Game
+// Returns:      -
+// Remark:
 //***************************************
 Game::~Game()
 {
-	try
-	{
+	try {
 		unsubscribePlayerEvents();
 
 		// Under VisualStudio, this must be called before main finishes to workaround a known VS issue
 		spdlog::drop_all();
-	}
-	catch (const std::exception&)
-	{
+	} catch (const std::exception&) {
 		// Don't care if any deregistration fails, we're closing here
 	}
 }
@@ -66,17 +60,16 @@ void Game::unsubscribePlayerEvents()
 
 //***************************************
 // Method:      operator<<
-// Description: 
-// FullName:    public << 
-// Returns:     std::ostream& - 
-// Parameter:   std::ostream &os - 
-// Parameter:   const Game &game - 
-// Remark:      
+// Description:
+// FullName:    public <<
+// Returns:     std::ostream& -
+// Parameter:   std::ostream &os -
+// Parameter:   const Game &game -
+// Remark:
 //***************************************
 std::ostream& operator<<(std::ostream& os, const Game& game)
 {
-	for (const auto& m : game.m_GameMoves)
-	{
+	for (const auto& m : game.m_GameMoves) {
 		os << m << '\n';
 	}
 	return os;
@@ -84,27 +77,23 @@ std::ostream& operator<<(std::ostream& os, const Game& game)
 
 //***************************************
 // Method:      GetCurrentPlayer
-// Description: 
+// Description:
 // FullName:    private Game::GetCurrentPlayer const
-// Returns:     PlayerBase& - 
-// Remark:      
+// Returns:     PlayerBase& -
+// Remark:
 //***************************************
-IPlayer& Game::GetCurrentPlayer() const noexcept
-{
-	return *m_pPlayers[board_.GetCurrentColor()];
-}
+IPlayer& Game::GetCurrentPlayer() const noexcept { return *m_pPlayers[board_.GetCurrentColor()]; }
 
 //***************************************
 // Method:      Init
-// Description: 
-// FullName:    private Game::Init 
-// Returns:     void - 
-// Remark:      
+// Description:
+// FullName:    private Game::Init
+// Returns:     void -
+// Remark:
 //***************************************
 void Game::Init()
 {
-	try
-	{
+	try {
 		// Initialize engine default logger
 		Engine::Logger::InitDefault();
 		auto& logger = *spdlog::get("multi_sink");
@@ -113,14 +102,17 @@ void Game::Init()
 		Engine::Logger::EnsurePerfLogger("logs/SimplePerfStats.txt");
 		auto perf = Engine::Logger::GetPerfLogger();
 		if (perf) {
-			perf->info("No. of nodes  |  Ms used  |  Nodes pr. ms  |  Total nodes  |  Total time  |  Total nodes pr. ms");
-			perf->info("-----------------------------------------------------------------------------------------------------");
+			perf->info(
+			    "No. of nodes  |  Ms used  |  Nodes pr. ms  |  Total nodes  |  Total time  |  Total nodes pr. ms");
+			perf->info(
+			    "-----------------------------------------------------------------------------------------------------");
+		} else {
+			std::cout
+			    << "No. of nodes  |  Ms used  |  Nodes pr. ms  |  Total nodes  |  Total time  |  Total nodes pr. ms\n";
+			std::cout
+			    << "-----------------------------------------------------------------------------------------------------\n";
 		}
-		else {
-			std::cout << "No. of nodes  |  Ms used  |  Nodes pr. ms  |  Total nodes  |  Total time  |  Total nodes pr. ms\n";
-			std::cout << "-----------------------------------------------------------------------------------------------------\n";
-		}
-		
+
 		// Existing startup code
 		LoadConfigFileSettings();
 
@@ -130,20 +122,15 @@ void Game::Init()
 		logger.info(sstream.str());
 		AddFileHeader(sstream);
 
-	}
-	catch (const spdlog::spdlog_ex& ex)
-	{
+	} catch (const spdlog::spdlog_ex& ex) {
 		std::cout << "Log initialization failed: " << ex.what() << '\n';
-	}
-	catch (const std::exception& ex)
-	{
+	} catch (const std::exception& ex) {
 		// Everything else in Init -- config parsing, player construction, board
 		// setup -- used to propagate out of main and end the process with no
 		// message at all, which makes a bad settings file look like a crash.
 		std::cerr << "Game initialization failed: " << ex.what() << std::endl;
 		throw;
 	}
-
 }
 
 void Game::CreateGameMoveFile()
@@ -157,9 +144,9 @@ void Game::CreateGameMoveFile()
 
 //***************************************
 // Method:      LoadConfigFileSettings
-// Description: 
-// FullName:    private Game::LoadConfigFileSettings 
-// Returns:     void - 
+// Description:
+// FullName:    private Game::LoadConfigFileSettings
+// Returns:     void -
 // Remark:      FIXME: Validate input ranges - depth, eval engine type, player type
 //***************************************
 void Game::LoadConfigFileSettings()
@@ -181,7 +168,6 @@ void Game::LoadConfigFileSettings()
 	player_limits_[BLACK] = blackConfig.search_limits;
 }
 
-
 std::unique_ptr<IPlayer> Game::SetPlayerParams(const Config::PlayerConfig& config)
 {
 	auto player = PlayerBase::Create(static_cast<PlayerBase::ePlayerTypes>(config.type), config.depth, board_);
@@ -197,18 +183,19 @@ std::unique_ptr<IPlayer> Game::SetPlayerParams(const Config::PlayerConfig& confi
 		constexpr unsigned kAiPerplex = static_cast<unsigned>(PlayerBase::ePlayerTypes::AI_PERPLEX);
 		if (config.type != kAiPerplex) {
 			spdlog::warn("search_tuning in game_settings.json is ignored for player type {} "
-			             "(only supported by AI_PERPLEX)", config.type);
+			             "(only supported by AI_PERPLEX)",
+			             config.type);
 		} else if (auto* perplex = dynamic_cast<AIPerplex*>(player.get())) {
 			const auto& st = *config.search_tuning;
 			auto& t = perplex->tuning();
-			t.min_nodes_threshold    = st.min_nodes_threshold;
-			t.min_completion_ratio   = st.min_completion_ratio;
-			t.min_pv_ratio           = st.min_pv_ratio;
-			t.score_draw_threshold   = st.score_draw_threshold;
-			t.delta_pruning_margin   = st.delta_pruning_margin;
+			t.min_nodes_threshold = st.min_nodes_threshold;
+			t.min_completion_ratio = st.min_completion_ratio;
+			t.min_pv_ratio = st.min_pv_ratio;
+			t.score_draw_threshold = st.score_draw_threshold;
+			t.delta_pruning_margin = st.delta_pruning_margin;
 			t.aspiration_initial_delta = st.aspiration_initial_delta;
-			t.aspiration_max_retries   = st.aspiration_max_retries;
-			t.aspiration_enabled       = st.aspiration_enabled;
+			t.aspiration_max_retries = st.aspiration_max_retries;
+			t.aspiration_enabled = st.aspiration_enabled;
 		}
 	}
 
@@ -250,9 +237,9 @@ void Game::SetGameParams(const GameInfo& info) noexcept
 //***************************************
 // Method:      RunGame
 // Description: This is the main game loop
-// FullName:    private Game::RunGame 
-// Returns:     void - 
-// Remark:      
+// FullName:    private Game::RunGame
+// Returns:     void -
+// Remark:
 //***************************************
 void Game::Run()
 {
@@ -265,20 +252,18 @@ void Game::Run()
 	*	Main game loop
 	*	Player->GetMove() is the main driver of the game
 	*/
-	for (;;)
-	{
+	for (;;) {
 		// Hent traekket fra den aktive spiller - GameInfo get updated every time
 		Move newMove = GetCurrentPlayer().GetMove(gameInfo_, player_limits_[board_.GetCurrentColor()]);
 
 		// Prints out the current score message for AI players (score or "Mate in x moves")
 		PrintStateMessage();
 
-		if (!IsStillPlaying())	// Test om spillet er slut
+		if (!IsStillPlaying()) // Test om spillet er slut
 			break;
 
 		// Has the user typed "exit" or "quit"?
-		if (HasHumanExited(newMove))
-		{
+		if (HasHumanExited(newMove)) {
 			spdlog::default_logger()->warn("User has exited the game\n");
 			break;
 		}
@@ -301,14 +286,13 @@ void Game::Run()
 	spdlog::default_logger()->warn("Spillet er slut\n\nTryk enter for at afslutte!");
 }
 
-
 //***************************************
 // Method:      AddGameMove
-// Description: 
-// FullName:    private Game::AddGameMove 
-// Returns:     void - 
+// Description:
+// FullName:    private Game::AddGameMove
+// Returns:     void -
 // Parameter:   const Move& move - move to be added
-// Remark:      
+// Remark:
 //***************************************
 void Game::AddGameMove(const Move& move)
 {
@@ -318,16 +302,15 @@ void Game::AddGameMove(const Move& move)
 
 //***************************************
 // Method:      PrintStateMessage
-// Description: 
+// Description:
 // FullName:    private Game::PrintStateMessage const
 // Returns:     void
 // Remark:      FIXME: Export the Max depth from the AIs to prevent hardcoding
 //***************************************
 void Game::PrintStateMessage() const
 {
-	if (IsStillPlaying())
-	{
-		if (GetCurrentPlayer().IsHuman())	// score doesn't make sense
+	if (IsStillPlaying()) {
+		if (GetCurrentPlayer().IsHuman()) // score doesn't make sense
 			return;
 
 		std::stringstream sstream;
@@ -342,11 +325,9 @@ void Game::PrintStateMessage() const
 			sstream << "Score: " << score << '\n';
 
 		spdlog::default_logger()->info(sstream.str());
-	}
-	else	// TODO: This should be moved to the OnGameStateChanged event method
+	} else // TODO: This should be moved to the OnGameStateChanged event method
 	{
-		switch (gameInfo_.gameState)
-		{
+		switch (gameInfo_.gameState) {
 		case GameStates::WHITE_WON:
 			spdlog::default_logger()->info("CHECK MATE ! White is the Winner!");
 			break;
@@ -370,13 +351,12 @@ void Game::PrintStateMessage() const
 	}
 }
 
-
 //***************************************
 // Method:      PrintBoardAndMove
-// Description: 
+// Description:
 // FullName:    private Game::PrintBoardAndMove const
-// Returns:     void - 
-// Parameter:   const Move& move - 
+// Returns:     void -
+// Parameter:   const Move& move -
 // Remark:      TODO: Fix printing to file - maybe just a static ofstream object?
 //***************************************
 void Game::PrintBoardAndMove(const Move& move) const
@@ -387,8 +367,7 @@ void Game::PrintBoardAndMove(const Move& move) const
 	sstream << "\nBoard " << GetBoardCount() << "\n\n";
 	sstream << board;
 
-	if (!move.is_null())
-	{
+	if (!move.is_null()) {
 		// MoveFormatter requires the board to be in the post-DoMove state, which it is
 		// at this call site. GetPiece(to) returns the moved (or promoted) piece.
 		sstream << "Last move: " << MoveFormatter::ToShort(move, board) << '\n';
@@ -400,9 +379,9 @@ void Game::PrintBoardAndMove(const Move& move) const
 
 //***************************************
 // Method:      PrintGameMoves
-// Description: 
+// Description:
 // FullName:    private Game::PrintGameMoves
-// Returns:     void - 
+// Returns:     void -
 // Remark:      Always only one game object
 //***************************************
 void Game::PrintGameMoves()
@@ -419,7 +398,7 @@ void Game::PrintGameMoves()
 // Description: Use this for printing out a nice file header for each game file
 //				Prints out Players, depth, date and time
 // FullName:    private Game::AddFileHeader const
-// Returns:     void - 
+// Returns:     void -
 // Parameter:   std::ostream& file - the out stream to write to
 // Remark:      Adds the following header :
 //				Chess Game
@@ -428,7 +407,7 @@ void Game::PrintGameMoves()
 //				Date: <Current Date and Local Time>
 //				-------------------------
 //***************************************
-void Game::AddFileHeader(std::ostream& file)const
+void Game::AddFileHeader(std::ostream& file) const
 {
 	using namespace std::chrono;
 	auto now = system_clock::now();
@@ -442,10 +421,9 @@ void Game::AddFileHeader(std::ostream& file)const
 *      Version: 0.8             *
 *********************************
 )";
-	bool ok = STRAT_LOCALTIME(&timeinfo, &now_c);	// plain localtime() is not thread-safe
+	bool ok = STRAT_LOCALTIME(&timeinfo, &now_c); // plain localtime() is not thread-safe
 	// Print the current time -  // RFC 1123 format is like: "Sun, 06 Nov 1994 08:49:37 GMT"
-	if (ok)
-	{
+	if (ok) {
 		file << "Time: " << std::put_time(&timeinfo, "%a, %d %b %Y %H:%M:%S %Z") << "\n\n";
 	}
 

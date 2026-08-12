@@ -5,18 +5,22 @@
 #include "Eval.h"
 
 #include "Board.h"
-#include "Magic.h"   // RookAttacks, for connected rooks (issue #114)
+#include "Magic.h" // RookAttacks, for connected rooks (issue #114)
 
-#include <bit>       // std::popcount
+#include <bit> // std::popcount
 
 // static Factory constructor
 std::unique_ptr<EvalManager> EvalManager::Create(EvalTypes type)
 {
 	switch (type) {
-	case EvalTypes::NONE:		return nullptr;
-	case EvalTypes::SIMPLE:		return std::make_unique<EvalSimple>();
-	case EvalTypes::COMPLEX:	return std::make_unique<EvalComplex>();
-	default:			throw std::invalid_argument("Unknown Eval type");	// Oops... another eval
+	case EvalTypes::NONE:
+		return nullptr;
+	case EvalTypes::SIMPLE:
+		return std::make_unique<EvalSimple>();
+	case EvalTypes::COMPLEX:
+		return std::make_unique<EvalComplex>();
+	default:
+		throw std::invalid_argument("Unknown Eval type"); // Oops... another eval
 	}
 }
 
@@ -36,15 +40,14 @@ int EvalSimple::Evaluate(const Board& board) const noexcept
 	int totalScore = 0;
 
 	//Check every field in the Board array if the piece is there.
-	for (int temp = a8; temp < NUM_SQUARES; ++temp)	// Hmm... iterator instead?
+	for (int temp = a8; temp < NUM_SQUARES; ++temp) // Hmm... iterator instead?
 	{
 		const auto square = static_cast<eSquare>(temp);
 		// Henter Briktype fra BoardArray; enten NO_PIECE eller briktype
 		const ePiece piece = board.GetPiece(square);
 
 		//hvis staar en brik paa feltet
-		if (PieceHelper::IsActual(piece))
-		{
+		if (PieceHelper::IsActual(piece)) {
 			//Add the eval-tabelvalue to the score. Rotates if Black.
 			// Hvem er i tur og er det paagaeldendes brik		+ material value
 			const int pieceScore = GetPositionalScore(square, piece) + PieceHelper::Value(piece);
@@ -52,9 +55,7 @@ int EvalSimple::Evaluate(const Board& board) const noexcept
 			if (PieceHelper::Color(piece) == inTurn) //-V1051
 			{
 				totalScore += pieceScore;
-			}
-			else
-			{
+			} else {
 				totalScore -= pieceScore;
 			}
 		}
@@ -88,34 +89,28 @@ ScorePair EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 	const BITBOARD enemyPawns = ctx.pawns[enemy];
 
 	auto remaining = ownPawns;
-	while (remaining)
-	{
+	while (remaining) {
 		const eSquare square = Board::GetFirstPiece(remaining);
 		const int file = File(square);
 		const int squareIndex = static_cast<int>(square);
-		const int row = static_cast<int>(Rank(square));   // 0 = rank 8, 7 = rank 1
+		const int row = static_cast<int>(Rank(square)); // 0 = rank 8, 7 = rank 1
 		// Own file plus both adjacent files, ahead of this pawn only.
-		const BITBOARD forwardSpan = (color == WHITE) ? g_bbPassedMaskWhite[square]
-		                                              : g_bbPassedMaskBlack[square];
+		const BITBOARD forwardSpan = (color == WHITE) ? g_bbPassedMaskWhite[square] : g_bbPassedMaskBlack[square];
 		// The square directly ahead -- the one this pawn must pass through. Both the
 		// passer and the backwards term ask about it, and each only inside a branch
 		// most pawns do not enter, so it is computed on demand rather than once per
 		// pawn. Off-board only for a pawn on the promotion rank, which cannot occur
 		// in a legal position.
 		const auto stop_square = [&]() -> BITBOARD {
-			const int idx = (color == WHITE) ? (squareIndex - ONE_ROW)
-			                                 : (squareIndex + ONE_ROW);
+			const int idx = (color == WHITE) ? (squareIndex - ONE_ROW) : (squareIndex + ONE_ROW);
 			return (idx >= 0 && idx < ALL_SQUARES) ? (1ULL << idx) : 0ULL;
 		};
 
-		if (color == WHITE)
-		{
+		if (color == WHITE) {
 			// Hvis der er en hvid bonde over denne i samme kolonne gives en straf
 			if (ownPawns & g_bbFileUpMask[square])
 				score -= DOUBLED_PAWN_PENALTY;
-		}
-		else
-		{
+		} else {
 			// Hvis der er en sort bonde under denne i samme kolonne gives en straf
 			if (Bits::isAnyBitSet(ownPawns, g_bbFileDownMask[square]))
 				score -= DOUBLED_PAWN_PENALTY;
@@ -123,7 +118,7 @@ ScorePair EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 
 		// Hvis der ikke er en bonde i en af raekkerne ved siden af gives en straf
 		if ((file == eFileNames::LEFT_FILE || !(ownPawns & g_bbFileMask[file - 1])) &&
-			(file == eFileNames::RIGHT_FILE || !(ownPawns & g_bbFileMask[file + 1])))
+		    (file == eFileNames::RIGHT_FILE || !(ownPawns & g_bbFileMask[file + 1])))
 			score -= ISOLATED_PAWN_PENALTY;
 
 		// Passed: no enemy pawn anywhere in the three-file span ahead, so nothing
@@ -135,10 +130,8 @@ ScorePair EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 		// the rear pawn of a doubled pair can never advance past its own partner,
 		// so paying it a full passer bonus would score a pawn that is going nowhere.
 		// Only the front pawn of such a pair is passed.
-		const BITBOARD ownFileAhead = (color == WHITE) ? g_bbFileUpMask[square]
-		                                               : g_bbFileDownMask[square];
-		if (!(enemyPawns & forwardSpan) && !(ownPawns & ownFileAhead))
-		{
+		const BITBOARD ownFileAhead = (color == WHITE) ? g_bbFileUpMask[square] : g_bbFileDownMask[square];
+		if (!(enemyPawns & forwardSpan) && !(ownPawns & ownFileAhead)) {
 			const int advanced = (color == WHITE) ? (7 - row) : row;
 			int scale = PASSED_PAWN_RANK_SCALE[advanced];
 			// Blockaded: an enemy piece sits on the stop square, so the pawn cannot
@@ -160,12 +153,10 @@ ScorePair EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 		//     adjacent files with the complement of the forward span leaves exactly
 		//     the adjacent-file squares level with or behind this pawn -- one
 		//     friendly pawn there and the pawn is not backwards.
-		const BITBOARD adjacentFiles =
-			((file == eFileNames::LEFT_FILE)  ? 0ULL : g_bbFileMask[file - 1]) |
-			((file == eFileNames::RIGHT_FILE) ? 0ULL : g_bbFileMask[file + 1]);
+		const BITBOARD adjacentFiles = ((file == eFileNames::LEFT_FILE) ? 0ULL : g_bbFileMask[file - 1]) |
+		                               ((file == eFileNames::RIGHT_FILE) ? 0ULL : g_bbFileMask[file + 1]);
 
-		if (!(ownPawns & adjacentFiles & ~forwardSpan))
-		{
+		if (!(ownPawns & adjacentFiles & ~forwardSpan)) {
 			// (b) the stop square is covered by an enemy pawn and not by a friendly
 			//     one, so the pawn cannot advance out of trouble either.
 			//
@@ -176,8 +167,7 @@ ScorePair EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 			// mattering the moment clause (a) were relaxed to "strictly behind" --
 			// but #117 should not try to tune a condition that never fires today.
 			const BITBOARD stopSquare = stop_square();
-			if ((ctx.pawn_attacks[enemy] & stopSquare) &&
-				!(ctx.pawn_attacks[color] & stopSquare))
+			if ((ctx.pawn_attacks[enemy] & stopSquare) && !(ctx.pawn_attacks[color] & stopSquare))
 				score -= BACKWARDS_PAWN_PENALTY;
 		}
 
@@ -187,7 +177,7 @@ ScorePair EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 	// Doubled, isolated and backwards pawn structure matters equally throughout,
 	// so those go to both endpoints unchanged; only the passer bonus differs
 	// between them.
-	return ScorePair{ score + passedMg, score + passedEg };
+	return ScorePair{score + passedMg, score + passedEg};
 }
 
 // eval_rooks — 7th-rank and half-open/open-file bonuses for one color's
@@ -216,17 +206,16 @@ ScorePair EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 // nothing between, per connected pair.
 ScorePair EvalComplex::eval_rooks(const EvalContext& ctx, eColor color) noexcept
 {
-	int score = 0;            // phase-independent: open/half-open file bonuses
-	int seventhRankEg = 0;    // endgame-only contribution
-	int connectedPairs = 0;   // tapered separately -- see the return below
+	int score = 0;          // phase-independent: open/half-open file bonuses
+	int seventhRankEg = 0;  // endgame-only contribution
+	int connectedPairs = 0; // tapered separately -- see the return below
 	const ePiece rookPiece = (color == WHITE) ? ePiece::WHITE_ROOK : ePiece::BLACK_ROOK;
 	const int seventhRank = (color == WHITE) ? WHITE_7TH_ROW : BLACK_7TH_ROW;
 	const BITBOARD ownPawns = ctx.pawns[color];
 	const BITBOARD enemyPawns = ctx.pawns[(color == WHITE) ? BLACK : WHITE];
 
 	auto remaining = ctx.boards[rookPiece];
-	while (remaining)
-	{
+	while (remaining) {
 		const eSquare square = Board::GetFirstPiece(remaining);
 		const int rank = Rank(square);
 		const int file = File(square);
@@ -244,8 +233,7 @@ ScorePair EvalComplex::eval_rooks(const EvalContext& ctx, eColor color) noexcept
 
 		// Bonus hvis der er aabne raekker til taarnet
 		const BITBOARD ownForwardMask = (color == WHITE) ? g_bbFileUpMask[square] : g_bbFileDownMask[square];
-		if (!(ownPawns & ownForwardMask))
-		{
+		if (!(ownPawns & ownForwardMask)) {
 			score += HALF_OPEN_FILE;
 
 			if (!(g_bbFileMask[file] & enemyPawns))
@@ -265,10 +253,8 @@ ScorePair EvalComplex::eval_rooks(const EvalContext& ctx, eColor color) noexcept
 		remaining = Bits::clearLsb(remaining);
 	}
 
-	return ScorePair{
-		score + connectedPairs * CONNECTED_ROOKS_BONUS_MG,
-		score + seventhRankEg + connectedPairs * CONNECTED_ROOKS_BONUS_EG
-	};
+	return ScorePair{score + connectedPairs * CONNECTED_ROOKS_BONUS_MG,
+	                 score + seventhRankEg + connectedPairs * CONNECTED_ROOKS_BONUS_EG};
 }
 
 // eval_bishops -- bishop pair bonus for one color (issue #111).
@@ -295,7 +281,7 @@ ScorePair EvalComplex::eval_bishops(const EvalContext& ctx, eColor color) noexce
 	if (!(hasLight && hasDark))
 		return ScorePair{};
 
-	return ScorePair{ BISHOP_PAIR_BONUS_MG, BISHOP_PAIR_BONUS_EG };
+	return ScorePair{BISHOP_PAIR_BONUS_MG, BISHOP_PAIR_BONUS_EG};
 }
 
 // eval_castling -- king-shelter proxy for one color (issue #115).
@@ -316,12 +302,10 @@ ScorePair EvalComplex::eval_bishops(const EvalContext& ctx, eColor color) noexce
 // endgame table already pays for that, so a flat bonus would fight it.
 ScorePair EvalComplex::eval_castling(const EvalContext& ctx, eColor color) noexcept
 {
-	const uint8_t sideRights = (color == WHITE)
-		? CastlingRights::WHITE_BOTH
-		: CastlingRights::BLACK_BOTH;
+	const uint8_t sideRights = (color == WHITE) ? CastlingRights::WHITE_BOTH : CastlingRights::BLACK_BOTH;
 
 	if (ctx.castling_rights & sideRights)
-		return ScorePair{};   // still flexible; nothing decided yet
+		return ScorePair{}; // still flexible; nothing decided yet
 
 	// Kingless board (default-constructed or failed-parse only) -- same guard as
 	// eval_pst and eval_mopup.
@@ -331,7 +315,7 @@ ScorePair EvalComplex::eval_castling(const EvalContext& ctx, eColor color) noexc
 
 	const int homeRank = (color == WHITE) ? WHITE_BACK_ROW : BLACK_BACK_ROW;
 	if (Rank(kingSq) != homeRank)
-		return ScorePair{ -CASTLING_LOST_PENALTY, 0 };
+		return ScorePair{-CASTLING_LOST_PENALTY, 0};
 
 	// Graded by file rather than by the exact castling destination square: a
 	// castled king routinely steps to h1 or a1 afterwards, and the term should
@@ -344,11 +328,11 @@ ScorePair EvalComplex::eval_castling(const EvalContext& ctx, eColor color) noexc
 	// middlegame. f is neither sheltered nor exposed, so it scores zero and the
 	// worst single-step swing is halved.
 	const int file = File(kingSq);
-	if (file <= 2 || file >= 6)             // a,b,c | g,h -- sheltered
-		return ScorePair{ CASTLING_DONE_BONUS, 0 };
-	if (file == 5)                          // f -- neutral
+	if (file <= 2 || file >= 6) // a,b,c | g,h -- sheltered
+		return ScorePair{CASTLING_DONE_BONUS, 0};
+	if (file == 5) // f -- neutral
 		return ScorePair{};
-	return ScorePair{ -CASTLING_LOST_PENALTY, 0 };   // d,e -- central
+	return ScorePair{-CASTLING_LOST_PENALTY, 0}; // d,e -- central
 }
 
 // eval_pst — piece-square-table contribution for one color's pieces (issue
@@ -369,6 +353,8 @@ ScorePair EvalComplex::eval_pst(const EvalContext& ctx, eColor color) noexcept
 
 	// One bitboard loop per non-king piece type, each already knowing its
 	// own ePiece value — the PST lookup needs nothing else.
+	// clang-format off
+	// Aligned in two columns so the white/black pairing is visible at a glance.
 	static constexpr ePiece kNonKingPieces[5][NUM_COLORS] = {
 		{ ePiece::WHITE_PAWN,   ePiece::BLACK_PAWN   },
 		{ ePiece::WHITE_KNIGHT, ePiece::BLACK_KNIGHT },
@@ -376,14 +362,13 @@ ScorePair EvalComplex::eval_pst(const EvalContext& ctx, eColor color) noexcept
 		{ ePiece::WHITE_ROOK,   ePiece::BLACK_ROOK   },
 		{ ePiece::WHITE_QUEEN,  ePiece::BLACK_QUEEN  },
 	};
+	// clang-format on
 
-	for (const auto& piecePair : kNonKingPieces)
-	{
+	for (const auto& piecePair : kNonKingPieces) {
 		const ePiece piece = piecePair[color];
 
 		auto remaining = ctx.boards[piece];
-		while (remaining)
-		{
+		while (remaining) {
 			const eSquare square = Board::GetFirstPiece(remaining);
 			score += GetPositionalScore(square, piece);
 			remaining = Bits::clearLsb(remaining);
@@ -420,15 +405,14 @@ ScorePair EvalComplex::eval_pst(const EvalContext& ctx, eColor color) noexcept
 	int kingMg = 0;
 	int kingEg = 0;
 	const eSquare kingSq = ctx.king_sq[color];
-	if (kingSq != NO_SQUARE && !ctx.mopup_active[color])
-	{
+	if (kingSq != NO_SQUARE && !ctx.mopup_active[color]) {
 		const ePiece kingPiece = (color == WHITE) ? ePiece::WHITE_KING : ePiece::BLACK_KING;
 		const int kingIdx = getEvalBoard(kingPiece, kingSq);
 		kingMg = g_Eval_Bitboards[5][kingIdx];
 		kingEg = g_Eval_Bitboards[6][kingIdx];
 	}
 
-	return ScorePair{ score + kingMg, score + kingEg };
+	return ScorePair{score + kingMg, score + kingEg};
 }
 
 // eval_mobility -- how many squares this color's pieces can move to (issues
@@ -464,8 +448,7 @@ ScorePair EvalComplex::eval_mobility(const EvalContext& ctx, eColor color) noexc
 	int eg = 0;
 
 	auto knights = ctx.boards[(color == WHITE) ? ePiece::WHITE_KNIGHT : ePiece::BLACK_KNIGHT];
-	while (knights)
-	{
+	while (knights) {
 		const eSquare square = Board::GetFirstPiece(knights);
 		const int count = std::popcount(g_bbKnightMoves[square] & usable) - MOBILITY_BASE_KNIGHT;
 		mg += count * MOBILITY_KNIGHT_MG;
@@ -474,8 +457,7 @@ ScorePair EvalComplex::eval_mobility(const EvalContext& ctx, eColor color) noexc
 	}
 
 	auto bishops = ctx.boards[(color == WHITE) ? ePiece::WHITE_BISHOP : ePiece::BLACK_BISHOP];
-	while (bishops)
-	{
+	while (bishops) {
 		const eSquare square = Board::GetFirstPiece(bishops);
 		const int count = std::popcount(BishopAttacks(square, ctx.all_pieces) & usable) - MOBILITY_BASE_BISHOP;
 		mg += count * MOBILITY_BISHOP_MG;
@@ -484,8 +466,7 @@ ScorePair EvalComplex::eval_mobility(const EvalContext& ctx, eColor color) noexc
 	}
 
 	auto rooks = ctx.boards[(color == WHITE) ? ePiece::WHITE_ROOK : ePiece::BLACK_ROOK];
-	while (rooks)
-	{
+	while (rooks) {
 		const eSquare square = Board::GetFirstPiece(rooks);
 		const int count = std::popcount(RookAttacks(square, ctx.all_pieces) & usable) - MOBILITY_BASE_ROOK;
 		mg += count * MOBILITY_ROOK_MG;
@@ -496,18 +477,16 @@ ScorePair EvalComplex::eval_mobility(const EvalContext& ctx, eColor color) noexc
 	// A queen is a rook and a bishop on the same square; there is no separate
 	// PEXT table for it (Magic.h), and the union is what every generator uses.
 	auto queens = ctx.boards[(color == WHITE) ? ePiece::WHITE_QUEEN : ePiece::BLACK_QUEEN];
-	while (queens)
-	{
+	while (queens) {
 		const eSquare square = Board::GetFirstPiece(queens);
-		const BITBOARD attacks =
-			RookAttacks(square, ctx.all_pieces) | BishopAttacks(square, ctx.all_pieces);
+		const BITBOARD attacks = RookAttacks(square, ctx.all_pieces) | BishopAttacks(square, ctx.all_pieces);
 		const int count = std::popcount(attacks & usable) - MOBILITY_BASE_QUEEN;
 		mg += count * MOBILITY_QUEEN_MG;
 		eg += count * MOBILITY_QUEEN_EG;
 		queens = Bits::clearLsb(queens);
 	}
 
-	return ScorePair{ mg, eg };
+	return ScorePair{mg, eg};
 }
 
 // eval_mopup — mop-up evaluation for one color (issue #127 restructure — see
@@ -534,11 +513,11 @@ ScorePair EvalComplex::eval_mopup(const EvalContext& ctx, eColor color) noexcept
 	const eSquare loserKingSq = ctx.king_sq[loser];
 
 	const int mopup = MOPUP_CMD_WEIGHT * CenterManhattanDistance(loserKingSq) +
-		MOPUP_KINGDIST_WEIGHT * (MOPUP_MAX_KING_DISTANCE - KingDistance(winnerKingSq, loserKingSq));
+	                  MOPUP_KINGDIST_WEIGHT * (MOPUP_MAX_KING_DISTANCE - KingDistance(winnerKingSq, loserKingSq));
 
 	// Gated, not blended (D4): once the gate opens the term applies at full
 	// strength at both endpoints.
-	return ScorePair{ mopup, mopup };
+	return ScorePair{mopup, mopup};
 }
 
 // BuildContext — the one construction site for EvalContext (issue #127
@@ -573,15 +552,15 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 		for (int p = ePiece::WHITE_PAWN; p <= ePiece::BLACK_KING; ++p)
 			unionOfTypes |= boardsSpan[p];
 		assert(unionOfTypes == boardsSpan[ALL_PIECES] &&
-			"Eval: per-type piece bitboards do not reconstruct ALL_PIECES");
+		       "Eval: per-type piece bitboards do not reconstruct ALL_PIECES");
 
 		// The per-COLOR occupancy is a separate pair of bitboards, and until
 		// eval_mobility (#98) no Eval term read them -- so the check above never
 		// covered them. Mobility masks against occupied[], so a drift there
 		// silently mis-scores every position rather than tripping anything.
-		assert((boardsSpan[ePiece::ALL_WHITE_PIECES] | boardsSpan[ePiece::ALL_BLACK_PIECES])
-				== boardsSpan[ALL_PIECES] &&
-			"Eval: per-color occupancy does not reconstruct ALL_PIECES");
+		assert((boardsSpan[ePiece::ALL_WHITE_PIECES] | boardsSpan[ePiece::ALL_BLACK_PIECES]) ==
+		           boardsSpan[ALL_PIECES] &&
+		       "Eval: per-color occupancy does not reconstruct ALL_PIECES");
 	}
 #endif
 
@@ -590,26 +569,24 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 	// EvalContext::king_sq comment in Eval.h). GetFirstPiece has an
 	// assert(mask != 0) precondition that is compiled out in Release, so it
 	// must not be called on an empty king bitboard.
-	const eSquare whiteKingSq = (boardsSpan[ePiece::WHITE_KING] != 0ULL)
-		? Board::GetFirstPiece(boardsSpan[ePiece::WHITE_KING]) : NO_SQUARE;
-	const eSquare blackKingSq = (boardsSpan[ePiece::BLACK_KING] != 0ULL)
-		? Board::GetFirstPiece(boardsSpan[ePiece::BLACK_KING]) : NO_SQUARE;
+	const eSquare whiteKingSq =
+	    (boardsSpan[ePiece::WHITE_KING] != 0ULL) ? Board::GetFirstPiece(boardsSpan[ePiece::WHITE_KING]) : NO_SQUARE;
+	const eSquare blackKingSq =
+	    (boardsSpan[ePiece::BLACK_KING] != 0ULL) ? Board::GetFirstPiece(boardsSpan[ePiece::BLACK_KING]) : NO_SQUARE;
 
 	// Game phase from non-king, non-pawn piece counts (issue #99). Summed over
 	// both colors and clamped: promotions can push the raw sum past
 	// MAX_GAME_PHASE (three queens on one side is 12 from queens alone), and an
 	// unclamped phase would extrapolate outside the interpolation range instead
 	// of saturating at "opening".
-	const int phaseWhite =
-		PHASE_KNIGHT * std::popcount(boardsSpan[ePiece::WHITE_KNIGHT]) +
-		PHASE_BISHOP * std::popcount(boardsSpan[ePiece::WHITE_BISHOP]) +
-		PHASE_ROOK   * std::popcount(boardsSpan[ePiece::WHITE_ROOK])   +
-		PHASE_QUEEN  * std::popcount(boardsSpan[ePiece::WHITE_QUEEN]);
-	const int phaseBlack =
-		PHASE_KNIGHT * std::popcount(boardsSpan[ePiece::BLACK_KNIGHT]) +
-		PHASE_BISHOP * std::popcount(boardsSpan[ePiece::BLACK_BISHOP]) +
-		PHASE_ROOK   * std::popcount(boardsSpan[ePiece::BLACK_ROOK])   +
-		PHASE_QUEEN  * std::popcount(boardsSpan[ePiece::BLACK_QUEEN]);
+	const int phaseWhite = PHASE_KNIGHT * std::popcount(boardsSpan[ePiece::WHITE_KNIGHT]) +
+	                       PHASE_BISHOP * std::popcount(boardsSpan[ePiece::WHITE_BISHOP]) +
+	                       PHASE_ROOK * std::popcount(boardsSpan[ePiece::WHITE_ROOK]) +
+	                       PHASE_QUEEN * std::popcount(boardsSpan[ePiece::WHITE_QUEEN]);
+	const int phaseBlack = PHASE_KNIGHT * std::popcount(boardsSpan[ePiece::BLACK_KNIGHT]) +
+	                       PHASE_BISHOP * std::popcount(boardsSpan[ePiece::BLACK_BISHOP]) +
+	                       PHASE_ROOK * std::popcount(boardsSpan[ePiece::BLACK_ROOK]) +
+	                       PHASE_QUEEN * std::popcount(boardsSpan[ePiece::BLACK_QUEEN]);
 	const int rawPhase = phaseWhite + phaseBlack;
 	const int gamePhase = (rawPhase > MAX_GAME_PHASE) ? MAX_GAME_PHASE : rawPhase;
 
@@ -623,14 +600,12 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 	// of the material check: a default-constructed or failed-parse Board is
 	// pawnless at phase 0, and while its material difference is 0 today, that
 	// would stop saving us if MOPUP_MATERIAL_THRESHOLD ever changed.
-	bool mopupActive[NUM_COLORS] = { false, false };
-	if (boardsSpan[ePiece::WHITE_PAWN] == 0ULL && boardsSpan[ePiece::BLACK_PAWN] == 0ULL &&
-		whiteKingSq != NO_SQUARE && blackKingSq != NO_SQUARE)
-	{
+	bool mopupActive[NUM_COLORS] = {false, false};
+	if (boardsSpan[ePiece::WHITE_PAWN] == 0ULL && boardsSpan[ePiece::BLACK_PAWN] == 0ULL && whiteKingSq != NO_SQUARE &&
+	    blackKingSq != NO_SQUARE) {
 		const int matDiff = matScoreWhite - matScoreBlack;
 		const int absMatDiff = (matDiff >= 0) ? matDiff : -matDiff;
-		if (absMatDiff >= MOPUP_MATERIAL_THRESHOLD)
-		{
+		if (absMatDiff >= MOPUP_MATERIAL_THRESHOLD) {
 			const eColor winner = (matDiff > 0) ? WHITE : BLACK;
 			const int loserPhase = (winner == WHITE) ? phaseBlack : phaseWhite;
 			if (loserPhase <= MOPUP_MAX_LOSER_PHASE)
@@ -645,27 +620,25 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 	// makes a square unusable for an enemy piece, not the set it can capture on.
 	const BITBOARD whitePawnsBb = boardsSpan[ePiece::WHITE_PAWN];
 	const BITBOARD blackPawnsBb = boardsSpan[ePiece::BLACK_PAWN];
-	const BITBOARD whitePawnAttacks =
-		(Bits::clearBits(whitePawnsBb, g_bbFileMask[eFileNames::RIGHT_FILE]) >> 7) |
-		(Bits::clearBits(whitePawnsBb, g_bbFileMask[eFileNames::LEFT_FILE]) >> 9);
-	const BITBOARD blackPawnAttacks =
-		(Bits::clearBits(blackPawnsBb, g_bbFileMask[eFileNames::RIGHT_FILE]) << 9) |
-		(Bits::clearBits(blackPawnsBb, g_bbFileMask[eFileNames::LEFT_FILE]) << 7);
+	const BITBOARD whitePawnAttacks = (Bits::clearBits(whitePawnsBb, g_bbFileMask[eFileNames::RIGHT_FILE]) >> 7) |
+	                                  (Bits::clearBits(whitePawnsBb, g_bbFileMask[eFileNames::LEFT_FILE]) >> 9);
+	const BITBOARD blackPawnAttacks = (Bits::clearBits(blackPawnsBb, g_bbFileMask[eFileNames::RIGHT_FILE]) << 9) |
+	                                  (Bits::clearBits(blackPawnsBb, g_bbFileMask[eFileNames::LEFT_FILE]) << 7);
 
 	return EvalContext{
-		.boards = boardsSpan,
-		.all_pieces = boardsSpan[ALL_PIECES],
-		.pawns = { whitePawnsBb, blackPawnsBb },
-		.occupied = { boardsSpan[ePiece::ALL_WHITE_PIECES], boardsSpan[ePiece::ALL_BLACK_PIECES] },
-		.pawn_attacks = { whitePawnAttacks, blackPawnAttacks },
-		.king_sq = { whiteKingSq, blackKingSq },
-		.material = { matScoreWhite, matScoreBlack },
-		.phase = gamePhase,
-		.mopup_active = { mopupActive[WHITE], mopupActive[BLACK] },
-		// GetGameInfo() returns by value, but the whole-struct copy folds away here:
-		// a dedicated single-field accessor measured identically (-2.01% vs -2.03%
-		// nps against main), so it was not worth the extra Board API surface.
-		.castling_rights = board.GetGameInfo().castlingRights,
+	    .boards = boardsSpan,
+	    .all_pieces = boardsSpan[ALL_PIECES],
+	    .pawns = {whitePawnsBb, blackPawnsBb},
+	    .occupied = {boardsSpan[ePiece::ALL_WHITE_PIECES], boardsSpan[ePiece::ALL_BLACK_PIECES]},
+	    .pawn_attacks = {whitePawnAttacks, blackPawnAttacks},
+	    .king_sq = {whiteKingSq, blackKingSq},
+	    .material = {matScoreWhite, matScoreBlack},
+	    .phase = gamePhase,
+	    .mopup_active = {mopupActive[WHITE], mopupActive[BLACK]},
+	    // GetGameInfo() returns by value, but the whole-struct copy folds away here:
+	    // a dedicated single-field accessor measured identically (-2.01% vs -2.03%
+	    // nps against main), so it was not worth the extra Board API surface.
+	    .castling_rights = board.GetGameInfo().castlingRights,
 	};
 }
 
@@ -696,22 +669,17 @@ int EvalComplex::Evaluate(const Board& board) const noexcept
 	// tapered term.
 	// Deterministic, and far below anything this engine can measure; a
 	// breakdown whose rows do not add up is a debugging tool that lies.
-	int blended[2] = { 0, 0 };
-	for (const eColor c : { WHITE, BLACK })
-	{
-		blended[c] = BlendPhase(eval_pawns(ctx, c),    ctx.phase)
-		           + BlendPhase(eval_rooks(ctx, c),    ctx.phase)
-		           + BlendPhase(eval_pst(ctx, c),      ctx.phase)
-		           + BlendPhase(eval_mopup(ctx, c),    ctx.phase)
-		           + BlendPhase(eval_bishops(ctx, c),  ctx.phase)
-		           + BlendPhase(eval_castling(ctx, c), ctx.phase)
-		           + BlendPhase(eval_mobility(ctx, c), ctx.phase);
+	int blended[2] = {0, 0};
+	for (const eColor c : {WHITE, BLACK}) {
+		blended[c] = BlendPhase(eval_pawns(ctx, c), ctx.phase) + BlendPhase(eval_rooks(ctx, c), ctx.phase) +
+		             BlendPhase(eval_pst(ctx, c), ctx.phase) + BlendPhase(eval_mopup(ctx, c), ctx.phase) +
+		             BlendPhase(eval_bishops(ctx, c), ctx.phase) + BlendPhase(eval_castling(ctx, c), ctx.phase) +
+		             BlendPhase(eval_mobility(ctx, c), ctx.phase);
 	}
 
 	const eColor color = board.GetCurrentColor();
 
-	if (color == WHITE)
-	{
+	if (color == WHITE) {
 		return (ctx.material[WHITE] + blended[WHITE]) - (ctx.material[BLACK] + blended[BLACK]);
 	}
 	return (ctx.material[BLACK] + blended[BLACK]) - (ctx.material[WHITE] + blended[WHITE]);
@@ -740,6 +708,9 @@ EvalBreakdown EvalComplex::Breakdown(const Board& board) const noexcept
 	// term actually contributes to `total`, not its mg or eg endpoint. That is
 	// what keeps the printed table summing to the score (the #129 honesty
 	// invariant); the endpoints are visible in the term functions themselves.
+	// clang-format off
+	// One row per term, white and black columns aligned, so the table can be read
+	// against the printed breakdown it produces.
 	return EvalBreakdown{
 		.material = { ctx.material[WHITE], ctx.material[BLACK] },
 		.pawns    = { BlendPhase(eval_pawns(ctx, WHITE), ctx.phase), BlendPhase(eval_pawns(ctx, BLACK), ctx.phase) },
@@ -752,4 +723,5 @@ EvalBreakdown EvalComplex::Breakdown(const Board& board) const noexcept
 		.phase    = ctx.phase,
 		.total    = Evaluate(board),
 	};
+	// clang-format on
 }

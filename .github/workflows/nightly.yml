@@ -159,8 +159,86 @@ jobs:
           mkdir -p logs
           ../build/StratChessEvolved tactical stability 100
 
+  # Whole-tree clang-tidy. The per-PR lint job deliberately analyses only the .cpp
+  # files a pull request touches, which leaves one gap: a header is not a translation
+  # unit, so a PR changing only .h files analyses nothing. Closing that gap in the PR
+  # job would mean header-to-TU mapping, and a change to defines.h or StdAfx.h would
+  # expand to the whole tree anyway -- which is the one shape capable of becoming the
+  # critical path there. Here wall clock does not matter, so the whole tree runs.
+  #
+  # Advisory for findings, exactly as on a PR: the backlog is still open (#284). The
+  # per-check summary doubles as the backlog trend line.
+  lint-tree:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      LLVM_MAJOR: "22"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Install LLVM ${{ env.LLVM_MAJOR }}
+        run: |
+          set -euo pipefail
+          wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
+          chmod +x /tmp/llvm.sh
+          sudo /tmp/llvm.sh "$LLVM_MAJOR"
+          sudo apt-get install -y "clang-tidy-$LLVM_MAJOR" "clang-format-$LLVM_MAJOR"
+
+      - name: Cache FetchContent dependencies
+        uses: actions/cache@v6
+        with:
+          path: build/_deps
+          key: cmake-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
+
+      # clang, not the default GCC: a GCC database carries -fconstexpr-ops-limit=,
+      # which the clang driver rejects, and every TU then fails to parse. See the
+      # lint-linux job in build-and-test.yml.
+      - name: Configure lint database
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_C_COMPILER=clang-$LLVM_MAJOR
+          -DCMAKE_CXX_COMPILER=clang++-$LLVM_MAJOR
+
+      # main is format-clean by construction, so a violation here means something
+      # reached main without the PR gate -- worth failing over.
+      - name: clang-format over the whole tree
+        run: |
+          set -euo pipefail
+          git ls-files '*.cpp' '*.h' | grep -v '/Archived/' > /tmp/src.txt
+          echo "checking $(wc -l < /tmp/src.txt) files"
+          xargs -a /tmp/src.txt "clang-format-$LLVM_MAJOR" --style=file --dry-run -Werror
+
+      - name: clang-tidy over the whole tree (advisory)
+        run: |
+          set -uo pipefail
+          git ls-files '*.cpp' | grep -v '/Archived/' > /tmp/tu.txt
+          n=$(wc -l < /tmp/tu.txt)
+          echo "translation units: $n"
+          xargs -a /tmp/tu.txt -P 4 -I{} "clang-tidy-$LLVM_MAJOR" -p build --quiet {} \
+            > /tmp/tidy.txt 2>&1 || true
+
+          # A broken compile database and a clean codebase both yield zero findings.
+          # Only this distinguishes them, so it fails the job rather than reporting green.
+          errs=$(grep -c 'clang-diagnostic-error' /tmp/tidy.txt || true)
+          if [ "$errs" -gt 0 ]; then
+            echo "::error::clang-tidy hit $errs clang-diagnostic-error(s): the compile database is wrong, not the code."
+            grep 'clang-diagnostic-error' /tmp/tidy.txt | head -20
+            exit 1
+          fi
+
+          echo "--- findings per check (unique) ---"
+          grep -oE '\[[a-z0-9.,-]+\]$' /tmp/tidy.txt | tr -d '[]' | tr ',' '\n' \
+            | sort | uniq -c | sort -rn
+          echo "--- total unique findings ---"
+          grep -E '^\S+:[0-9]+:[0-9]+: (warning|error):' /tmp/tidy.txt | sort -u | wc -l
+          echo "Advisory: findings do not fail this job until #284 lands."
+
   nightly-result:
-    needs: [deep-perft, extended-tests, sanitize-extended, tactical-stability]
+    needs: [deep-perft, extended-tests, sanitize-extended, tactical-stability, lint-tree]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -171,12 +249,14 @@ jobs:
           echo "extended tests:    ${{ needs.extended-tests.result }}"
           echo "sanitize+stdlib:   ${{ needs.sanitize-extended.result }}"
           echo "tactical x100:     ${{ needs.tactical-stability.result }}"
+          echo "whole-tree lint:   ${{ needs.lint-tree.result }}"
 
           fail=0
           for r in "${{ needs.deep-perft.result }}" \
                    "${{ needs.extended-tests.result }}" \
                    "${{ needs.sanitize-extended.result }}" \
-                   "${{ needs.tactical-stability.result }}"; do
+                   "${{ needs.tactical-stability.result }}" \
+                   "${{ needs.lint-tree.result }}"; do
             case "$r" in
               success) ;;
               *) fail=1 ;;

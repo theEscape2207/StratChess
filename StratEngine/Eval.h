@@ -26,8 +26,7 @@ inline constexpr int MAX_GAME_PHASE = 24;
 // A phase-dependent score: `mg` applies at MAX_GAME_PHASE, `eg` at phase 0.
 // A term with no phase sensitivity sets both to the same value, which makes it
 // invariant under the blend.
-struct ScorePair
-{
+struct ScorePair {
 	int mg = 0;
 	int eg = 0;
 
@@ -68,14 +67,12 @@ constexpr int BlendPhase(const ScorePair& s, int phase) noexcept
 // EvalComplex::Breakdown() and its EvalBreakdown result (issue #129 phase 2):
 // also `const`, also per-call stack locals — though it is a debug path that no
 // search thread calls.
-class EvalManager
-{
-public:
-
+class EvalManager {
+  public:
 	enum class EvalTypes {
-		NONE,			// No eval engine, i.e. human
-		SIMPLE,			// Simple engine
-		COMPLEX,		// Complex engine
+		NONE,    // No eval engine, i.e. human
+		SIMPLE,  // Simple engine
+		COMPLEX, // Complex engine
 	};
 
 	virtual int Evaluate(const Board& board) const = 0;
@@ -91,7 +88,7 @@ public:
 	EvalManager(EvalManager&&) = delete;
 	EvalManager& operator=(EvalManager&&) = delete;
 
-protected:
+  protected:
 	static inline int GetPositionalScore(eSquare squareType, ePiece piece) noexcept
 	{
 		return g_Eval_Bitboards[piece >> 1][getEvalBoard(piece, squareType)];
@@ -117,12 +114,10 @@ protected:
 	}
 };
 
-class EvalSimple final
-	: public EvalManager
-{
-public:
+class EvalSimple final : public EvalManager {
+  public:
 	int Evaluate(const Board& board) const noexcept override;
-	const char* GetType() const noexcept override		{ return "Simple";	}
+	const char* GetType() const noexcept override { return "Simple"; }
 
 	// Force use of factory by
 	// preventing constructor, copy-construction & operator=
@@ -140,21 +135,20 @@ public:
 // Everything here is already computed or trivially available from Board — this
 // names shared work, it does not add any. See
 // `.claude/plans/eval-context-restructure.md` for the restructure this supports.
-struct EvalContext
-{
-	std::span<const BITBOARD>  boards;             // Board::GetBitBoards(), indexed by ePiece
-	BITBOARD                   all_pieces;          // boards[ALL_PIECES]
-	BITBOARD                   pawns[NUM_COLORS];   // boards[WHITE_PAWN] / boards[BLACK_PAWN]
+struct EvalContext {
+	std::span<const BITBOARD> boards; // Board::GetBitBoards(), indexed by ePiece
+	BITBOARD all_pieces;              // boards[ALL_PIECES]
+	BITBOARD pawns[NUM_COLORS];       // boards[WHITE_PAWN] / boards[BLACK_PAWN]
 	// boards[ALL_WHITE_PIECES] / boards[ALL_BLACK_PIECES]. Read by eval_mobility
 	// to mask off squares occupied by the side's own pieces (issue #98).
-	BITBOARD                   occupied[NUM_COLORS];
+	BITBOARD occupied[NUM_COLORS];
 	// Squares each color's pawns attack. Derived here rather than read from
 	// Board, using the same file-masked shifts MoveGenerator::GeneratePawnCaptures
 	// uses, so the two cannot disagree about what an edge-file pawn covers.
 	// eval_mobility subtracts the ENEMY set: a square an enemy pawn guards is not
 	// one a piece can usefully occupy. Issue #116 (backwards pawns) will want
 	// these too, which is why they live in the context rather than in one term.
-	BITBOARD                   pawn_attacks[NUM_COLORS];
+	BITBOARD pawn_attacks[NUM_COLORS];
 	// NO_SQUARE for a color with no king on the board. That only happens for a
 	// default-constructed or failed-parse Board — MoveGenerator.cpp asserts
 	// both kings exist before any search runs, so every position the search
@@ -163,30 +157,30 @@ struct EvalContext
 	// Release no-op, so calling it on an empty king bitboard silently reads
 	// past the end of g_Eval_Bitboards rather than trapping. See eval_pst and
 	// eval_mopup, and the kingless-board regression test in EvalTests.cpp.
-	eSquare                    king_sq[NUM_COLORS];
+	eSquare king_sq[NUM_COLORS];
 	// Board::GetMaterialScore(color) — includes the king at 10000 cp
 	// (g_iPieceValues, defines.h). That inclusion cancels in Evaluate()'s
 	// final white-minus-black difference, so it is left as-is rather than
 	// "fixed" here.
-	int                        material[NUM_COLORS];
+	int material[NUM_COLORS];
 	// Game phase in [0, MAX_GAME_PHASE] from non-king, non-pawn piece counts
 	// (issue #99). Replaced the old MIDDLEGAME/ENDGAME `stage`, which keyed on
 	// min(material) <= 11500 — a threshold that was king-value-inclusive (hence
 	// the otherwise inexplicable 11500 = 10000 + 1500) and took min() over both
 	// sides, so a player still holding a queen switched to endgame king scoring
 	// as soon as its OPPONENT was stripped down.
-	int                        phase;
+	int phase;
 	// True for the side that is mopping up, false for both otherwise —
 	// i.e. pawnless, decisive material lead, low phase, both kings present.
 	// Computed once in BuildContext so eval_mopup and eval_pst cannot
 	// disagree about whether a position is a mop-up: eval_pst suppresses the
 	// winner's king PST exactly when eval_mopup is paying for king placement
 	// (issue #118 item 4). Two readers of one gate, not two copies of it.
-	bool                       mopup_active[NUM_COLORS];
+	bool mopup_active[NUM_COLORS];
 	// GameInfo::castlingRights, the CastlingRights bit flags. This is a FEN
 	// field, so reading it keeps Evaluate() a pure function of the position --
 	// which whether a side has actually castled is not, since no FEN records it.
-	uint8_t                    castling_rights;
+	uint8_t castling_rights;
 };
 
 // EvalBreakdown — per-term introspection output for the UCI 'eval' command
@@ -197,8 +191,7 @@ struct EvalContext
 // actually acting on rather than only the net effect — the per-color split is
 // usually the thing being debugged. The net contribution of a term is always
 // white-minus-black, matching how Evaluate() combines them.
-struct EvalBreakdown
-{
+struct EvalBreakdown {
 	// Board::GetMaterialScore(color), copied verbatim from EvalContext — so
 	// king-inclusive (10000 cp per side; see EvalContext::material above).
 	// Left unadjusted deliberately: a king-stripped display figure would be a
@@ -206,30 +199,28 @@ struct EvalBreakdown
 	// so a consumer showing net contributions never has to account for it. This
 	// is the documented home for that fact — which is why the UCI 'eval' output
 	// does not restate it on every call.
-	int                    material[NUM_COLORS];
-	int                    pawns[NUM_COLORS];    // eval_pawns
-	int                    rooks[NUM_COLORS];    // eval_rooks (incl. connected rooks)
-	int                    pst[NUM_COLORS];      // eval_pst
-	int                    mopup[NUM_COLORS];    // eval_mopup
-	int                    bishops[NUM_COLORS];  // eval_bishops
-	int                    castling[NUM_COLORS]; // eval_castling
-	int                    mobility[NUM_COLORS]; // eval_mobility
+	int material[NUM_COLORS];
+	int pawns[NUM_COLORS];    // eval_pawns
+	int rooks[NUM_COLORS];    // eval_rooks (incl. connected rooks)
+	int pst[NUM_COLORS];      // eval_pst
+	int mopup[NUM_COLORS];    // eval_mopup
+	int bishops[NUM_COLORS];  // eval_bishops
+	int castling[NUM_COLORS]; // eval_castling
+	int mobility[NUM_COLORS]; // eval_mobility
 	// Included because it is not derivable from the rows: it sets where between
 	// the mg and eg endpoints every tapered term landed, and gates eval_mopup.
-	int                    phase;
+	int phase;
 	// Side-to-move-relative, exactly as Evaluate() returns it — this field is
 	// Evaluate()'s return value, not a re-derivation of it (D8). Material plus
 	// the four terms, summed white-minus-black, reproduces it up to the
 	// side-to-move sign; that identity is asserted in StratChessTests.
-	int                    total;
+	int total;
 };
 
-class EvalComplex final
-	: public EvalManager
-{
+class EvalComplex final : public EvalManager {
 	// Bonuses and penalties for eval
-	static const short DOUBLED_PAWN_PENALTY		= 10;
-	static const short ISOLATED_PAWN_PENALTY	= 20;
+	static const short DOUBLED_PAWN_PENALTY = 10;
+	static const short ISOLATED_PAWN_PENALTY = 20;
 	// Backwards pawn (issue #116). BOTH clauses are required: the pawn is behind
 	// every friendly pawn on its adjacent files, AND its stop square is attacked
 	// by an enemy pawn without being defended by a friendly one. A pawn meeting
@@ -238,37 +229,37 @@ class EvalComplex final
 	//
 	// Deliberately small. A mis-specified structural penalty is a rounding error
 	// at 5 cp and a strategic distortion at 30.
-	static const short BACKWARDS_PAWN_PENALTY	= 5;
+	static const short BACKWARDS_PAWN_PENALTY = 5;
 	// Passed pawn (issue #116): no enemy pawn on its own or either adjacent file
 	// ahead of it (g_bbPassedMask*, defines.h). The base bonus is scaled by rank
 	// and by phase -- see PASSED_PAWN_RANK_SCALE and the eg endpoint below.
-	static const short PASSED_PAWN_BONUS		= 20;
+	static const short PASSED_PAWN_BONUS = 20;
 	// Passers are worth more as the endgame approaches: fewer pieces to blockade
 	// or round them up, and the king can escort. The source TODO this term
 	// replaces asked for exactly this phase dependence.
-	static const short PASSED_PAWN_BONUS_EG		= 45;
-	static const short ROOK_ON_7TH_BONUS		= 20;
-	static const short HALF_OPEN_FILE			= 10;
-	static const short OPEN_FILE				= 15;
+	static const short PASSED_PAWN_BONUS_EG = 45;
+	static const short ROOK_ON_7TH_BONUS = 20;
+	static const short HALF_OPEN_FILE = 10;
+	static const short OPEN_FILE = 15;
 
 	// Bishop pair (issue #111). Worth more as the board opens, hence the higher
 	// endgame endpoint. Requires bishops on OPPOSITE square colours, not merely
 	// two bishops -- the term exists because the pair covers both colours.
-	static const short BISHOP_PAIR_BONUS_MG		= 30;
-	static const short BISHOP_PAIR_BONUS_EG		= 45;
+	static const short BISHOP_PAIR_BONUS_MG = 30;
+	static const short BISHOP_PAIR_BONUS_EG = 45;
 
 	// Connected rooks (issue #114): same rank or file with nothing between,
 	// scored per connected pair. Halved in the endgame, where ROOK_ON_7TH_BONUS
 	// already pays for the rook activity that matters most there.
-	static const short CONNECTED_ROOKS_BONUS_MG	= 15;
-	static const short CONNECTED_ROOKS_BONUS_EG	= 8;
+	static const short CONNECTED_ROOKS_BONUS_MG = 15;
+	static const short CONNECTED_ROOKS_BONUS_EG = 8;
 
 	// Castling (issue #115). Middlegame-only: in an endgame the king belongs in
 	// the centre, and the endgame king PST already says so -- a flat bonus here
 	// would fight it. Derived from castling rights plus king placement, never
 	// from move history; see .claude/plans/eval-bishop-pair-connected-rooks-castling.md D2.
-	static const short CASTLING_DONE_BONUS		= 25;
-	static const short CASTLING_LOST_PENALTY	= 20;
+	static const short CASTLING_DONE_BONUS = 25;
+	static const short CASTLING_LOST_PENALTY = 20;
 
 	// Mobility (issues #98, #113): value of one reachable square, per piece
 	// type. Weighted per type because an extra square is worth much less to a
@@ -307,23 +298,23 @@ class EvalComplex final
 	// games (run 31300861562). The shape was left alone; only the magnitude moved,
 	// so that result and this one differ in one variable. Now roughly 10/22 cp on
 	// the starting rank up to 40/90 at the 7th.
-	static constexpr short PASSED_PAWN_RANK_SCALE[8] = { 8, 8, 10, 14, 20, 28, 32, 32 };
+	static constexpr short PASSED_PAWN_RANK_SCALE[8] = {8, 8, 10, 14, 20, 28, 32, 32};
 
 	// A passer whose stop square is occupied by an enemy piece is not running
 	// anywhere: it has to be dislodged first, and the blockader is usually well
 	// placed. Scored at this fraction (in 1/16ths) of the normal bonus. The first
 	// measured version had no blockade awareness at all and paid a 7th-rank passer
 	// its full value with the enemy king parked in front of it.
-	static constexpr short PASSED_PAWN_BLOCKADED_SCALE = 8;   // half
+	static constexpr short PASSED_PAWN_BLOCKADED_SCALE = 8; // half
 
-	static const short MOBILITY_KNIGHT_MG		= 4;
-	static const short MOBILITY_KNIGHT_EG		= 4;
-	static const short MOBILITY_BISHOP_MG		= 3;
-	static const short MOBILITY_BISHOP_EG		= 3;
-	static const short MOBILITY_ROOK_MG		= 2;
-	static const short MOBILITY_ROOK_EG		= 4;
-	static const short MOBILITY_QUEEN_MG		= 1;
-	static const short MOBILITY_QUEEN_EG		= 2;
+	static const short MOBILITY_KNIGHT_MG = 4;
+	static const short MOBILITY_KNIGHT_EG = 4;
+	static const short MOBILITY_BISHOP_MG = 3;
+	static const short MOBILITY_BISHOP_EG = 3;
+	static const short MOBILITY_ROOK_MG = 2;
+	static const short MOBILITY_ROOK_EG = 4;
+	static const short MOBILITY_QUEEN_MG = 1;
+	static const short MOBILITY_QUEEN_EG = 2;
 
 	// Square counts are measured against a typical count per piece type rather
 	// than against zero, so the term is roughly zero-mean and a cramped piece is
@@ -340,28 +331,28 @@ class EvalComplex final
 	// centralization pull four times the term meant to be steering. Relative
 	// counts put it at -4. Same failure mode eval_pst had to solve for the
 	// king PST (issue #118 item 4).
-	static const short MOBILITY_BASE_KNIGHT		= 4;
-	static const short MOBILITY_BASE_BISHOP		= 7;
-	static const short MOBILITY_BASE_ROOK		= 7;
-	static const short MOBILITY_BASE_QUEEN		= 14;
+	static const short MOBILITY_BASE_KNIGHT = 4;
+	static const short MOBILITY_BASE_BISHOP = 7;
+	static const short MOBILITY_BASE_ROOK = 7;
+	static const short MOBILITY_BASE_QUEEN = 14;
 
 	// Mop-up evaluation (won pawnless endgames) — see issue #70 / epic #110.
 	// Gated on: pawnless + decisive material lead. Rewards pushing the losing
 	// king to the edge/corner and closing the distance between the two kings.
-	static const short MOPUP_MATERIAL_THRESHOLD	= 400;	// min material lead (cp) before mop-up applies
-	static const short MOPUP_CMD_WEIGHT		= 10;	// weight on losing king's center-manhattan-distance
-	static const short MOPUP_KINGDIST_WEIGHT	= 4;	// weight on (MOPUP_MAX_KING_DISTANCE - king-to-king distance)
-	static const short MOPUP_MAX_KING_DISTANCE	= 7;	// max Chebyshev distance on an 8x8 board
+	static const short MOPUP_MATERIAL_THRESHOLD = 400; // min material lead (cp) before mop-up applies
+	static const short MOPUP_CMD_WEIGHT = 10;          // weight on losing king's center-manhattan-distance
+	static const short MOPUP_KINGDIST_WEIGHT = 4;      // weight on (MOPUP_MAX_KING_DISTANCE - king-to-king distance)
+	static const short MOPUP_MAX_KING_DISTANCE = 7;    // max Chebyshev distance on an 8x8 board
 
 	// Game-phase weights per piece (issue #99). Summed over BOTH colors, so a
 	// full set of pieces gives 2*(2*1 + 2*1 + 2*2 + 1*4) = 24 = MAX_GAME_PHASE.
 	// Pawns and kings contribute nothing: pawns are present throughout and
 	// kings always, so neither carries information about how far the game has
 	// progressed.
-	static const short PHASE_KNIGHT		= 1;
-	static const short PHASE_BISHOP		= 1;
-	static const short PHASE_ROOK		= 2;
-	static const short PHASE_QUEEN		= 4;
+	static const short PHASE_KNIGHT = 1;
+	static const short PHASE_BISHOP = 1;
+	static const short PHASE_ROOK = 2;
+	static const short PHASE_QUEEN = 4;
 
 	// Mop-up stays a hard gate rather than a blended term (D4): it is a
 	// special case for pawnless decisive endings, not a smoothly-scaling
@@ -374,22 +365,16 @@ class EvalComplex final
 	// side switch mop-up off. That loses exactly the cases mop-up exists for:
 	// KQQ vs K is total phase 8, and is reached by promoting a second queen —
 	// so the engine would lose its mating guidance at the moment it queens.
-	static const short MOPUP_MAX_LOSER_PHASE	= 6;	// gate: loser's own phase <= this
+	static const short MOPUP_MAX_LOSER_PHASE = 6; // gate: loser's own phase <= this
 
 	// Distance helpers for mop-up scoring — plain grid math, orientation-independent
 	// (works the same whether the square belongs to White or Black).
-	static constexpr int CenterAxisDistance(int coord) noexcept
-	{
-		return (coord <= 3) ? (3 - coord) : (coord - 4);
-	}
+	static constexpr int CenterAxisDistance(int coord) noexcept { return (coord <= 3) ? (3 - coord) : (coord - 4); }
 	static constexpr int CenterManhattanDistance(eSquare square) noexcept
 	{
 		return CenterAxisDistance(File(square)) + CenterAxisDistance(Rank(square));
 	}
-	static constexpr int AbsDiff(int a, int b) noexcept
-	{
-		return (a > b) ? (a - b) : (b - a);
-	}
+	static constexpr int AbsDiff(int a, int b) noexcept { return (a > b) ? (a - b) : (b - a); }
 	static constexpr int KingDistance(eSquare a, eSquare b) noexcept
 	{
 		const int fileDiff = AbsDiff(File(a), File(b));
@@ -417,9 +402,9 @@ class EvalComplex final
 	static ScorePair eval_castling(const EvalContext& ctx, eColor color) noexcept;
 	static ScorePair eval_mobility(const EvalContext& ctx, eColor color) noexcept;
 
-public:
+  public:
 	int Evaluate(const Board& board) const noexcept override;
-	const char* GetType() const	noexcept override	{ return "Complex";	}
+	const char* GetType() const noexcept override { return "Complex"; }
 
 	// Per-term introspection for the UCI 'eval' command (issue #129 phase 2 —
 	// see .claude/plans/uci-eval-command-term-breakdown.md). Reports what the

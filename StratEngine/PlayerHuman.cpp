@@ -11,21 +11,19 @@
 #include "MoveGenerator.h"
 #include <MoveHelper.h>
 
-
-// TODO: Add support for official input of castling moves (e.g. "0-0" or "0-0-0") 
+// TODO: Add support for official input of castling moves (e.g. "0-0" or "0-0-0")
 // Right now its only possible through e1g1 (short) or e1-c1(long)
 Move PlayerHuman::GetMove(GameInfo& info, const SearchLimits&)
 {
 	Board& board = board_;
 	MoveList moveList;
 
-	if (!IsAnyLegalMoves(board, info, moveList))
-	{
+	if (!IsAnyLegalMoves(board, info, moveList)) {
 		// No legal moves left, bye!
 		spdlog::default_logger()->info("Human has no legal moves left");
-		if (board.InCheck())
-		{
-			EGameStateChanged.fire(this, board.GetCurrentColor() == WHITE ? GameStates::BLACK_WON : GameStates::WHITE_WON);
+		if (board.InCheck()) {
+			EGameStateChanged.fire(this,
+			                       board.GetCurrentColor() == WHITE ? GameStates::BLACK_WON : GameStates::WHITE_WON);
 			this->_bestScore = -GameValues::Mate;
 
 			return Move::EmptyMove();
@@ -39,8 +37,7 @@ Move PlayerHuman::GetMove(GameInfo& info, const SearchLimits&)
 	std::string strOrg;
 
 	// vi fortsaetter indtil traekket er lovligt - eller der quittes
-	for (;;)
-	{
+	for (;;) {
 		std::stringstream moveMsg;
 		if (bInCheck)
 			moveMsg << "Du er skak!!\n";
@@ -49,18 +46,16 @@ Move PlayerHuman::GetMove(GameInfo& info, const SearchLimits&)
 		std::cin >> strOrg;
 
 		// We only want _trimmed_ lower case all over
-		const std::string strMove = StringHelper::toLower(StringHelper::trim(strOrg));	// Save the original input
+		const std::string strMove = StringHelper::toLower(StringHelper::trim(strOrg)); // Save the original input
 
 		// mulighed for at skrive "quit" eller "exit" for at quitte
-		if (strMove == "exit" || strMove == "quit")
-		{
+		if (strMove == "exit" || strMove == "quit") {
 			spdlog::default_logger()->warn("User quitted");
 			EGameStateChanged.fire(this, GameStates::HUMAN_EXITED);
 			return Move::EmptyMove();
 		}
 
-		if (!ValidateInput(strMove))
-		{
+		if (!ValidateInput(strMove)) {
 			std::stringstream sstream;
 			sstream << "Ugyldigt input: " << strOrg << "\nProev igen\n";
 			spdlog::default_logger()->info(sstream.str());
@@ -69,12 +64,11 @@ Move PlayerHuman::GetMove(GameInfo& info, const SearchLimits&)
 
 		// User input is validated. Now Parse user input
 		Move userMove;
-		ePieceType userPieceType = QUEEN;	// default if not specified
+		ePieceType userPieceType = QUEEN; // default if not specified
 		const bool userPromote = ParseInput(strMove, userMove, userPieceType);
 
 		auto moveIt = std::find(moveList.begin(), moveList.end(), userMove);
-		if (moveIt == moveList.end())
-		{
+		if (moveIt == moveList.end()) {
 			// Traekket blev ikke fundet af computeren, saa deeet...
 			std::stringstream sstream;
 			sstream << "Traekket: " << strOrg << " er ikke lovligt!\n";
@@ -83,29 +77,30 @@ Move PlayerHuman::GetMove(GameInfo& info, const SearchLimits&)
 		}
 
 		// Special: Er det en Promotion? Saa er der 4 valgmuligheder!
-		if (MoveHelper::IsPromote(*moveIt))
-		{
+		if (MoveHelper::IsPromote(*moveIt)) {
 			// Map a ePieceType to the corresponding promotion MoveType flag
 			auto toPromotionType = [](ePieceType pt) -> MoveType {
 				switch (pt) {
-				case QUEEN:  return MoveType::PROMOTION_QUEEN;
-				case ROOK:   return MoveType::PROMOTION_ROOK;
-				case BISHOP: return MoveType::PROMOTION_BISHOP;
-				case KNIGHT: return MoveType::PROMOTION_KNIGHT;
-				default:     return MoveType::PROMOTION_QUEEN;
+				case QUEEN:
+					return MoveType::PROMOTION_QUEEN;
+				case ROOK:
+					return MoveType::PROMOTION_ROOK;
+				case BISHOP:
+					return MoveType::PROMOTION_BISHOP;
+				case KNIGHT:
+					return MoveType::PROMOTION_KNIGHT;
+				default:
+					return MoveType::PROMOTION_QUEEN;
 				}
 			};
-			const MoveType targetType = userPromote
-				? toPromotionType(userPieceType)
-				: MoveType::PROMOTION_QUEEN;
+			const MoveType targetType = userPromote ? toPromotionType(userPieceType) : MoveType::PROMOTION_QUEEN;
 			if (MoveHelper::AsType(*moveIt) != targetType)
-				continue;	// Not the requested promotion piece — try next
+				continue; // Not the requested promotion piece — try next
 		}
 
 		// Tjekker traekket for lovlighed(dvs ikke skak osv). Returnerer hvis OK
 		// TODO: IsLegalMove bliver kaldt i IsAnyLegalMoves(), men illegale traek bliver ikke fjernet
-		if (board.IsLegalMove(*moveIt))
-		{
+		if (board.IsLegalMove(*moveIt)) {
 			info.UpdateBoardInfo(*moveIt, board.GetEffectiveMovPiece(*moveIt));
 			return *moveIt;
 		}
@@ -128,15 +123,13 @@ bool PlayerHuman::ValidateInput(const std::string& strInput)
 // Expects parameter input to be lower case
 // The returned Move has a generic type
 // Returns true if the user specified an allowed promotional character; sets promotedType in that case
-bool PlayerHuman::ParseInput(const std::string& input,
-	Move& move,
-	ePieceType& promotedType)
+bool PlayerHuman::ParseInput(const std::string& input, Move& move, ePieceType& promotedType)
 {
 	auto curIt = input.begin();
 	const auto end = input.end();
 	eSquare from = GetSquare(curIt, end);
 	eSquare to = GetSquare(curIt, end);
-	move.SetMove(from, to, MoveType::QUIET);	// Generic type for now
+	move.SetMove(from, to, MoveType::QUIET); // Generic type for now
 
 	// No promotion this time?
 	if (curIt == end)
@@ -154,10 +147,6 @@ bool PlayerHuman::IsAnyLegalMoves(Board& board, const GameInfo& info, MoveList& 
 {
 	MoveGenerator::ComputeLegalMoves(board, info, moveList);
 
-	return std::any_of(
-		moveList.begin(),
-		moveList.end(),
-		[&board](const Move & move) {
-		return board.IsLegalMove(move);
-	});
+	return std::any_of(moveList.begin(), moveList.end(),
+	                   [&board](const Move& move) { return board.IsLegalMove(move); });
 }

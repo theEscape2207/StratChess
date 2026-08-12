@@ -74,6 +74,15 @@ if ($currentHooksPath -ne '.githooks') {
     Write-Host "Configured core.hooksPath = .githooks" -ForegroundColor DarkGray
 }
 
+# GitHub honours .git-blame-ignore-revs automatically; local `git blame` does not
+# unless blame.ignoreRevsFile is set, so the reformat commit stays hidden from
+# blame here too.
+$currentBlameIgnoreRevs = git config --get blame.ignoreRevsFile 2>$null
+if ($currentBlameIgnoreRevs -ne '.git-blame-ignore-revs') {
+    git config blame.ignoreRevsFile .git-blame-ignore-revs
+    Write-Host "Configured blame.ignoreRevsFile = .git-blame-ignore-revs" -ForegroundColor DarkGray
+}
+
 # ---------------------------------------------------------------------------
 # Developer environment
 #

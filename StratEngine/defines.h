@@ -12,18 +12,17 @@ inline constexpr auto ALL_BITBOARDS = 15;
 inline constexpr auto ALL_SQUARES = 64;
 inline constexpr auto ALL_PIECETYPES = 12;
 
-enum eColor : uint8_t 
-{ 
-	//NO_COLOR = -1, 
-	WHITE = 0, 
+enum eColor : uint8_t {
+	//NO_COLOR = -1,
+	WHITE = 0,
 	BLACK = 1,
 	NUM_COLORS = 2
 };
 
 enum ePieceType : uint8_t {
-	//NO_TYPE = -1, 
-	PAWN = 0, 
-	KNIGHT = 2, 
+	//NO_TYPE = -1,
+	PAWN = 0,
+	KNIGHT = 2,
 	BISHOP = 4,
 	ROOK = 6,
 	QUEEN = 8,
@@ -46,7 +45,7 @@ enum ePiece : uint8_t {
 	WHITE_KING,
 	BLACK_KING,
 	ALL_WHITE_PIECES,
-	ALL_BLACK_PIECES,	// = 13
+	ALL_BLACK_PIECES, // = 13
 	NO_PIECE = 15
 };
 
@@ -71,13 +70,19 @@ enum class MoveType : uint8_t {
 };
 
 enum eRowNames /*: uint8_t*/ {
-	NO_ROW = -1, BLACK_BACK_ROW = 0, WHITE_7TH_ROW = 1,	// TODO: Confusing names
-	BLACK_7TH_ROW = 6, WHITE_BACK_ROW = 7
-};	// Cannot easily be converted to enum class
+	NO_ROW = -1,
+	BLACK_BACK_ROW = 0,
+	WHITE_7TH_ROW = 1, // TODO: Confusing names
+	BLACK_7TH_ROW = 6,
+	WHITE_BACK_ROW = 7
+}; // Cannot easily be converted to enum class
 
 enum eFileNames : uint8_t { LEFT_FILE = 0, RIGHT_FILE = 7 };
 
 // Feltbetegnelser
+// clang-format off
+// Laid out as the board itself, eight squares per rank. One enumerator per line
+// is technically equivalent and unreadable.
 enum eSquare /*: uint8_t*/ {
 	a8 = 0, b8, c8, d8, e8, f8, g8, h8,
 	a7, b7, c7, d7, e7, f7, g7, h7,
@@ -89,17 +94,17 @@ enum eSquare /*: uint8_t*/ {
 	a1, b1, c1, d1, e1, f1, g1, h1 = 63,
 	NUM_SQUARES, NO_SQUARE = 255
 };
+// clang-format on
 
 // Bestemmer den maksimale soegedybde for Quiescent(?)
 constexpr auto MAX_PLY = 256;
 
-enum GameValues : int
-{
-	Draw = 0,								// 
-	Mate_Threshold = 29900,					// Above this - we've found a mate
-	Mate = 30000,							// Arbitraer _hoej_ vaerdi for mat
-	Search_Init = 50000,					// Start-vaerdier for alpha-beta soegningen
-	Unknown_Hash = 65000					// Bruges i Transposition tables
+enum GameValues : int {
+	Draw = 0,               //
+	Mate_Threshold = 29900, // Above this - we've found a mate
+	Mate = 30000,           // Arbitraer _hoej_ vaerdi for mat
+	Search_Init = 50000,    // Start-vaerdier for alpha-beta soegningen
+	Unknown_Hash = 65000    // Bruges i Transposition tables
 };
 
 // Typer
@@ -118,11 +123,11 @@ inline constexpr auto ONE_ROW = 8;
 inline constexpr auto TWO_ROWS = 16;
 
 // Makroer
-inline constexpr BITBOARD UNIT = 1;	// 64 bit 1-tal
-inline constexpr BITBOARD EMPTY = 0;	// 64 bit 0
+inline constexpr BITBOARD UNIT = 1;  // 64 bit 1-tal
+inline constexpr BITBOARD EMPTY = 0; // 64 bit 0
 
-#define File(x)		((x) & 7)
-#define Rank(x)		((x) >> 3)
+#define File(x) ((x) & 7)
+#define Rank(x) ((x) >> 3)
 
 inline constexpr BITBOARD FIRST_TWO_RANKS_MASK = 0x000000000000ffff;
 inline constexpr BITBOARD SECOND_TWO_RANKS_MASK = 0x00000000ffff0000U;
@@ -137,22 +142,13 @@ inline constexpr BITBOARD MASK_RANK_6 = 0x0000000000ff0000;
 inline constexpr BITBOARD MASK_RANK_7 = 0x000000000000ff00;
 inline constexpr BITBOARD MASK_RANK_8 = 0x00000000000000ff;
 
-inline const BITBOARD g_bbFileMask[] =
-{
-	0x0101010101010101,
-	0x0202020202020202,
-	0x0404040404040404,
-	0x0808080808080808,
-	0x1010101010101010,
-	0x2020202020202020,
-	0x4040404040404040,
-	0x8080808080808080U,
+inline const BITBOARD g_bbFileMask[] = {
+    0x0101010101010101, 0x0202020202020202, 0x0404040404040404, 0x0808080808080808,
+    0x1010101010101010, 0x2020202020202020, 0x4040404040404040, 0x8080808080808080U,
 };
 
-
-
-
 // Tabel med brikkernes statiske vaerdier
+// clang-format off
 inline constexpr unsigned int g_iPieceValues[ALL_PIECETYPES >> 1] = {
 	100, 		// Boender
 	300, 		// Springere
@@ -161,7 +157,7 @@ inline constexpr unsigned int g_iPieceValues[ALL_PIECETYPES >> 1] = {
 	900, 		// Dronninger
 	10000		// Konger
 };
-
+// clang-format on
 
 /*
 constexpr short g_Eval_Bitboards[][ALL_SQUARES] =
@@ -222,6 +218,11 @@ constexpr short g_Eval_Bitboards[][ALL_SQUARES] =
 };
 */
 
+// clang-format off
+// Piece-square tables, one 8x8 board per piece, read as the board is drawn: rank 8
+// at the top, file A on the left, with the trailing /* n */ markers naming the rank.
+// Reflowing these to the column limit destroys the only property that makes them
+// checkable by eye.
 inline constexpr short g_Eval_Bitboards[][ALL_SQUARES] =
 {
 	{
@@ -308,9 +309,11 @@ inline constexpr short g_Eval_Bitboards[][ALL_SQUARES] =
 			 0,   10,  20,  30,  30,  20,  10,   0
 		 }
 };
+// clang-format on
 
 // Setup short piece names
-inline constexpr auto initPieceNames() {
+inline constexpr auto initPieceNames()
+{
 	std::array<char, ALL_PIECETYPES + 1> names{};
 	names[WHITE_PAWN] = 'P';
 	names[BLACK_PAWN] = 'p';
@@ -331,7 +334,8 @@ inline constexpr auto initPieceNames() {
 inline constexpr auto g_cPieceNames = initPieceNames();
 
 // Setup verbose piece names
-inline constexpr auto initLongPieceNames() {
+inline constexpr auto initLongPieceNames()
+{
 	std::array<const char*, ALL_PIECETYPES> names{};
 	names[WHITE_PAWN] = "White pawn";
 	names[BLACK_PAWN] = "Black pawn";
@@ -361,35 +365,37 @@ inline constexpr auto g_cPieceNamesVerbose = initLongPieceNames();
 */
 
 // Hjaelpefunktioner til at generere hver bitboard-array
-// 
+//
 // Set mask for each square
-constexpr std::array<BITBOARD, ALL_SQUARES> makeMask() {
+constexpr std::array<BITBOARD, ALL_SQUARES> makeMask()
+{
 	std::array<BITBOARD, ALL_SQUARES> result{};
 	for (unsigned int i = 0; i < ALL_SQUARES; ++i) {
-		result[i] = (1ULL << i);  // UNIT << i
+		result[i] = (1ULL << i); // UNIT << i
 	}
 	return result;
 }
 
-
 // Masker for raekker og kolonner
-constexpr std::array<BITBOARD, ALL_SQUARES> makeFileUpMask() {
+constexpr std::array<BITBOARD, ALL_SQUARES> makeFileUpMask()
+{
 	std::array<BITBOARD, ALL_SQUARES> result{};
 	for (unsigned int i = 0; i < ALL_SQUARES; ++i) {
 		result[i] = 0;
 		for (int j = i - 8; j >= 0; j -= 8) {
-			result[i] += (1ULL << j);  // UNIT << j
+			result[i] += (1ULL << j); // UNIT << j
 		}
 	}
 	return result;
 }
 
-constexpr std::array<BITBOARD, ALL_SQUARES> makeFileDownMask() {
+constexpr std::array<BITBOARD, ALL_SQUARES> makeFileDownMask()
+{
 	std::array<BITBOARD, ALL_SQUARES> result{};
 	for (unsigned int i = 0; i < ALL_SQUARES; ++i) {
 		result[i] = 0;
 		for (int j = i + 8; j < ALL_SQUARES; j += 8) {
-			result[i] += (1ULL << j);  // UNIT << j
+			result[i] += (1ULL << j); // UNIT << j
 		}
 	}
 	return result;
@@ -408,11 +414,12 @@ constexpr std::array<BITBOARD, ALL_SQUARES> makeFileDownMask() {
 //
 // A pawn on the promotion rank has an empty span, which is correct rather than
 // degenerate: there is nothing ahead of it.
-constexpr std::array<BITBOARD, ALL_SQUARES> makePassedMask(bool forWhite) {
+constexpr std::array<BITBOARD, ALL_SQUARES> makePassedMask(bool forWhite)
+{
 	std::array<BITBOARD, ALL_SQUARES> result{};
 	for (int i = 0; i < ALL_SQUARES; ++i) {
 		const int file = i % 8;
-		const int row = i / 8;          // 0 = rank 8, 7 = rank 1
+		const int row = i / 8; // 0 = rank 8, 7 = rank 1
 		BITBOARD span = 0;
 		const int step = forWhite ? -1 : 1;
 		for (int r = row + step; r >= 0 && r < 8; r += step) {
@@ -436,14 +443,11 @@ inline constexpr auto g_bbPassedMaskWhite = makePassedMask(true);
 inline constexpr auto g_bbPassedMaskBlack = makePassedMask(false);
 
 // Type alias for 2D array: [ALL_SQUARES][256]
-template <typename T, std::size_t Rows, std::size_t Cols>
-using Array2D = std::array<std::array<T, Cols>, Rows>;
+template <typename T, std::size_t Rows, std::size_t Cols> using Array2D = std::array<std::array<T, Cols>, Rows>;
 
 // ============= Knight Moves =============
-inline constexpr std::array<std::array<int, 2>, 8> knightOffsets{ {
-	{{  2,  1 }}, {{  1,  2 }}, {{ -1,  2 }}, {{ -2,  1 }},
-	{{ -2, -1 }}, {{ -1, -2 }}, {{  1, -2 }}, {{  2, -1 }}
-} };
+inline constexpr std::array<std::array<int, 2>, 8> knightOffsets{
+    {{{2, 1}}, {{1, 2}}, {{-1, 2}}, {{-2, 1}}, {{-2, -1}}, {{-1, -2}}, {{1, -2}}, {{2, -1}}}};
 
 /**
  * Genererer knight-move bitboards for alle felter på skakbrættet.
@@ -454,15 +458,16 @@ inline constexpr std::array<std::array<int, 2>, 8> knightOffsets{ {
  *
  * Array-indeks: 0-63 = destination field
  */
-constexpr std::array<BITBOARD, ALL_SQUARES> makeKnightMoves() {
+constexpr std::array<BITBOARD, ALL_SQUARES> makeKnightMoves()
+{
 	std::array<BITBOARD, ALL_SQUARES> result{};
-	
+
 	for (unsigned int i = 0; i < ALL_SQUARES; ++i) {
 		auto rank = static_cast<int>(Rank(i));
 		auto file = static_cast<int>(File(i));
 		BITBOARD moves = 0;
 		// Liste af alle potensielle afvigelser (rankΔ, fileΔ)
-		
+
 		for (const auto& offset : knightOffsets) {
 			int r = rank + offset[0];
 			int f = file + offset[1];
@@ -475,7 +480,8 @@ constexpr std::array<BITBOARD, ALL_SQUARES> makeKnightMoves() {
 }
 
 // ============= King Moves =============
-constexpr std::array<BITBOARD, ALL_SQUARES> makeKingMoves() {
+constexpr std::array<BITBOARD, ALL_SQUARES> makeKingMoves()
+{
 	std::array<BITBOARD, ALL_SQUARES> result{};
 	for (unsigned int i = 0; i < ALL_SQUARES; ++i) {
 		result[i] = 0;
@@ -506,4 +512,3 @@ inline constexpr auto g_bbKnightMoves = makeKnightMoves();
 inline constexpr auto g_bbKingMoves = makeKingMoves();
 
 //constexpr inline auto PRINT_STATS = 1;
-

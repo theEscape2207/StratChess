@@ -26,35 +26,36 @@
 
 namespace FenBatch {
 
-enum class LineKind {
-    Skip,       // blank line or '#' comment — not an error, nothing to report
-    Malformed,  // failed either validation tier; `error` explains why
-    Valid       // parses cleanly; safe to SetupFromFEN() and score
-};
+	enum class LineKind {
+		Skip,      // blank line or '#' comment — not an error, nothing to report
+		Malformed, // failed either validation tier; `error` explains why
+		Valid      // parses cleanly; safe to SetupFromFEN() and score
+	};
 
-struct LineResult {
-    LineKind kind;
-    std::string error;  // populated only when kind == Malformed
-};
+	struct LineResult {
+		LineKind kind;
+		std::string error; // populated only when kind == Malformed
+	};
 
-// Classifies one input line, delegating to FENParser::ParseFEN as the single
-// authoritative gate -- it reports both a bad field count and a bad format.
-inline LineResult ClassifyLine(std::string_view line) {
-    const auto first = line.find_first_not_of(" \t\r\n");
-    if (first == std::string_view::npos) {
-        return { LineKind::Skip, {} };            // blank line
-    }
-    if (line[first] == '#') {
-        return { LineKind::Skip, {} };             // comment
-    }
+	// Classifies one input line, delegating to FENParser::ParseFEN as the single
+	// authoritative gate -- it reports both a bad field count and a bad format.
+	inline LineResult ClassifyLine(std::string_view line)
+	{
+		const auto first = line.find_first_not_of(" \t\r\n");
+		if (first == std::string_view::npos) {
+			return {LineKind::Skip, {}}; // blank line
+		}
+		if (line[first] == '#') {
+			return {LineKind::Skip, {}}; // comment
+		}
 
-    FENParser::FENGameState state;
-    std::vector<std::tuple<ePiece, eSquare>> pieces;
-    if (auto err = FENParser::ParseFEN(std::string(line), state, pieces)) {
-        return { LineKind::Malformed, *err };
-    }
+		FENParser::FENGameState state;
+		std::vector<std::tuple<ePiece, eSquare>> pieces;
+		if (auto err = FENParser::ParseFEN(std::string(line), state, pieces)) {
+			return {LineKind::Malformed, *err};
+		}
 
-    return { LineKind::Valid, {} };
-}
+		return {LineKind::Valid, {}};
+	}
 
-}  // namespace FenBatch
+} // namespace FenBatch

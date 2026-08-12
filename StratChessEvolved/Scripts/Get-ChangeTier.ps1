@@ -80,6 +80,16 @@ function Get-TierForPath {
     # above guards against. Build tier, never Tooling.
     if ($p -like '*/Scripts/New-PullRequest.ps1')            { return 'Build' }
     if ($p -like '*/Scripts/Get-ChangeTier.ps1')             { return 'Build' }
+    # Validate-PrePR.ps1 invokes Run-Lint.ps1's format check, so a bug in it could
+    # suppress a gate and then decline to validate the change that suppressed it --
+    # the same self-concealment hazard as the Validate-* rule above. Build, never
+    # Tooling, despite living beside the engine-inert helper scripts.
+    if ($p -like '*/Scripts/Run-Lint.ps1')                   { return 'Build' }
+    # Lint configuration decides what CI enforces about every source file. It reaches
+    # Build tier anyway through the fail-closed default, but only as "unrecognised";
+    # naming it makes the classification deliberate and the self-test able to assert it.
+    if ($p -eq '.clang-format' -or $p -eq '.clang-tidy')     { return 'Build' }
+    if ($p -eq '.git-blame-ignore-revs')                     { return 'Build' }
     if ($p -like '.githooks/*')                              { return 'Build' }
     if ($p -like '.github/*')                                { return 'Build' }
     if ($p -like '*.vcxproj' -or $p -like '*.vcxproj.*')     { return 'Build' }
@@ -185,6 +195,11 @@ if ($SelfTest) {
     # The PR driver gates validation, so it must never take the Tooling shortcut.
     @{ Name = 'New-PullRequest -> Build NOT Tooling'; Files = @('StratChessEvolved/Scripts/New-PullRequest.ps1'); Expect = 'Build' }
         @{ Name = 'classifier -> Build';        Files = @('StratChessEvolved/Scripts/Get-ChangeTier.ps1');       Expect = 'Build' }
+        # The lint runner gates validation, so it must never take the Tooling shortcut.
+        @{ Name = 'Run-Lint -> Build NOT Tooling'; Files = @('StratChessEvolved/Scripts/Run-Lint.ps1');           Expect = 'Build' }
+        @{ Name = '.clang-format -> Build';     Files = @('.clang-format');                                      Expect = 'Build' }
+        @{ Name = '.clang-tidy -> Build';       Files = @('.clang-tidy');                                        Expect = 'Build' }
+        @{ Name = 'blame-ignore -> Build';      Files = @('.git-blame-ignore-revs');                             Expect = 'Build' }
         @{ Name = 'workflow -> Build';          Files = @('.github/workflows/build-and-test.yml');               Expect = 'Build' }
         @{ Name = 'hook -> Build';              Files = @('.githooks/pre-commit');                               Expect = 'Build' }
         @{ Name = 'vcxproj -> Build';           Files = @('StratChessTests/StratChessTests.vcxproj');            Expect = 'Build' }

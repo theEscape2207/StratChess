@@ -40,8 +40,9 @@ static void ensure_logger_initialized()
 {
 	// ensure the general default logger is initialized first (no-op if already)
 	Engine::Logger::InitDefault();
-	if (s_logger) return;
-	
+	if (s_logger)
+		return;
+
 	// create AIPerplex specific logger if desired
 	// Use spdlog directly via Engine::Logger utilities
 	if (!Engine::Logger::GetLogger("AIPerplex")) {
@@ -58,34 +59,33 @@ static void ensure_logger_initialized()
 			file_sink->set_level(spdlog::level::debug);
 			file_sink->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
 
-			s_logger = std::make_shared<spdlog::logger>(		// was spdlog:async_logger
-				"AIPerplex",
-				spdlog::sinks_init_list{ console_sink, file_sink });
-				//tp,
-				//spdlog::async_overflow_policy::block);
+			s_logger = std::make_shared<spdlog::logger>( // was spdlog:async_logger
+			    "AIPerplex", spdlog::sinks_init_list{console_sink, file_sink});
+			//tp,
+			//spdlog::async_overflow_policy::block);
 
 			spdlog::register_logger(s_logger);
 			s_logger->set_level(spdlog::level::debug);
 			s_logger->flush_on(spdlog::level::debug);
-		}
-		catch (...) {
+		} catch (...) {
 			// best-effort; leave it empty if creation fails
 		}
 	}
 }
 
-void AIPerplex::SetVerboseLogging(bool enabled) noexcept {
+void AIPerplex::SetVerboseLogging(bool enabled) noexcept
+{
 	s_verbose_logging = enabled;
 	if (enabled) {
 		ensure_logger_initialized();
-		if (s_logger) s_logger->set_level(spdlog::level::debug);
+		if (s_logger)
+			s_logger->set_level(spdlog::level::debug);
 	} else if (s_logger) {
 		s_logger->set_level(spdlog::level::off);
 	}
 }
 
-AIPerplex::AIPerplex(Board& board, unsigned md)
-	: PlayerAiBase(board, md)
+AIPerplex::AIPerplex(Board& board, unsigned md) : PlayerAiBase(board, md)
 {
 	_tt = std::make_unique<TranspositionTable>(DEFAULT_HASH_MB);
 
@@ -109,17 +109,11 @@ PlayerAiBase::HashConfigurationResult AIPerplex::SetHash(unsigned mb) noexcept
 	const unsigned requested = std::clamp(mb, MIN_HASH_MB, MAX_HASH_MB);
 	try {
 		auto replacement = std::make_unique<TranspositionTable>(requested);
-		const HashConfigurationResult result{
-			true,
-			requested,
-			replacement->memory_mb(),
-			replacement->bucket_count()
-		};
+		const HashConfigurationResult result{true, requested, replacement->memory_mb(), replacement->bucket_count()};
 		_tt = std::move(replacement);
 		return result;
-	}
-	catch (const std::bad_alloc&) {
-		return { false, requested, 0, 0 };
+	} catch (const std::bad_alloc&) {
+		return {false, requested, 0, 0};
 	}
 }
 
@@ -159,9 +153,9 @@ void AIPerplex::StartNewGame()
 // moves (aged, never cleared).
 void AIPerplex::init_search(const GameInfo& info)
 {
-	td_.board = m_Board;			// thread-local copy — the search runs on this
+	td_.board = m_Board; // thread-local copy — the search runs on this
 	td_.nodes_searched = 0;
-	td_.pv_table = PVTable{};		// fresh PV, exactly like the former GetMove() local
+	td_.pv_table = PVTable{}; // fresh PV, exactly like the former GetMove() local
 	td_.info_seq.clear();
 	td_.info_seq.emplace_back(info);
 }
@@ -184,7 +178,7 @@ void AIPerplex::helper_loop(ThreadData& td, int max_depth, TranspositionTable& t
 			break;
 		const int score = search_with_aspiration(td, depth, seed_score, tt);
 		if (IsAborted())
-			break;            // partial iteration — discard score
+			break; // partial iteration — discard score
 		seed_score = score;
 	}
 }
@@ -226,9 +220,9 @@ Move AIPerplex::GetMove(GameInfo& info, const SearchLimits& limits)
 		helpers.reserve(threads - 1);
 		for (size_t i = 0; i < threads - 1; ++i) {
 			ThreadData& htd = *helper_tds_[i];
-			htd.board = m_Board;                       // same seed as td_.board
+			htd.board = m_Board; // same seed as td_.board
 			htd.info_seq.clear();
-			htd.info_seq.emplace_back(info);           // same root info as init_search gives td_
+			htd.info_seq.emplace_back(info); // same root info as init_search gives td_
 			htd.clear_killers();
 			htd.clear_null_move_flags();
 			htd.nodes_searched = 0;
@@ -239,7 +233,7 @@ Move AIPerplex::GetMove(GameInfo& info, const SearchLimits& limits)
 	}
 
 	SearchResult result = iterative_deepening(td_, static_cast<int>(effective_depth), *_tt);
-	last_result_ = result;   // expose via GetLastResult()
+	last_result_ = result; // expose via GetLastResult()
 
 	// Propagate the searched game state (mate/stalemate detected at the root)
 	// back to the real game board. This is the only m_Board side effect the
@@ -267,7 +261,7 @@ Move AIPerplex::GetMove(GameInfo& info, const SearchLimits& limits)
 	Move bestMove = result.best_move;
 
 	// Defensive check for game-over scenario
-	if ( bestMove.is_null()) {
+	if (bestMove.is_null()) {
 		info = m_Board.GetGameInfo();
 		//if ( !info.GameEnded())
 		/*ensure_logger_initialized();
@@ -280,20 +274,14 @@ Move AIPerplex::GetMove(GameInfo& info, const SearchLimits& limits)
 
 	// Success logging
 	if (s_logger) {
-		s_logger->info(
-			"GetMove complete: move={}, score={}, depth={}, time={}ms, nodes={}, stable={}",
-			MoveFormatter::ToCoord(bestMove),
-			result.best_score,
-			result.depth_completed,
-			elapsed.count(),
-			total_nodes,
-			result.search_was_stable ? "yes" : "NO");
+		s_logger->info("GetMove complete: move={}, score={}, depth={}, time={}ms, nodes={}, stable={}",
+		               MoveFormatter::ToCoord(bestMove), result.best_score, result.depth_completed, elapsed.count(),
+		               total_nodes, result.search_was_stable ? "yes" : "NO");
 	}
 	// Equivalent of CheckGameOver(info, false), reading the thread-local
 	// info_seq root instead of the base-class m_infoSeq (unused by AIPerplex).
 	info = td_.info_seq.at(0);
-	if (info.gameState != GameStates::STILL_PLAYING)
-	{
+	if (info.gameState != GameStates::STILL_PLAYING) {
 		EGameStateChanged.fire(this, info.gameState);
 	}
 	info.UpdateBoardInfo(bestMove, m_Board.GetEffectiveMovPiece(bestMove));
@@ -301,12 +289,13 @@ Move AIPerplex::GetMove(GameInfo& info, const SearchLimits& limits)
 	return bestMove;
 }
 
-SearchResult  AIPerplex::iterative_deepening(ThreadData& td, int max_depth, TranspositionTable& tt) {
+SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, TranspositionTable& tt)
+{
 	SearchState state;
-	td.nodes_since_check_ = 0;   // reset node counter for this search
-	bool extra_depth_used = false;   // soft-limit extension granted at most once per search
+	td.nodes_since_check_ = 0;     // reset node counter for this search
+	bool extra_depth_used = false; // soft-limit extension granted at most once per search
 
-	td.clear_killers();	// Clear killer moves at the start of the search
+	td.clear_killers(); // Clear killer moves at the start of the search
 	td.clear_null_move_flags();
 
 	for (int depth = 1; depth <= max_depth; ++depth) {
@@ -320,8 +309,7 @@ SearchResult  AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Tran
 		int currentBestScore;
 		if (state.depth_completed == 0 || !tuning_.aspiration_enabled) {
 			// Depth 1 or kill-switch: always full window (no reliable seed yet)
-			currentBestScore = pvs(td, depth, -GameValues::Search_Init, GameValues::Search_Init,
-				0, true, tt);
+			currentBestScore = pvs(td, depth, -GameValues::Search_Init, GameValues::Search_Init, 0, true, tt);
 		} else {
 			currentBestScore = search_with_aspiration(td, depth, state.best_score, tt);
 		}
@@ -333,13 +321,13 @@ SearchResult  AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Tran
 		metrics.current_score = currentBestScore;
 		metrics.nodes_searched = td.nodes_searched - nodes_at_start;
 		metrics.pv_length = td.pv_table.get_length(0);
-		metrics.interrupted = ShouldStopSearch();	// Check on time expiry
+		metrics.interrupted = ShouldStopSearch(); // Check on time expiry
 		metrics.move_changed = (metrics.current_move != state.last_iteration_move);
 		metrics.score_delta = currentBestScore - state.best_score;
 		metrics.completion_ratio = (state.nodes_at_completed_depth > 0)
-			? static_cast<double>(metrics.nodes_searched) / state.nodes_at_completed_depth
-			: 1.0;
-		
+		                               ? static_cast<double>(metrics.nodes_searched) / state.nodes_at_completed_depth
+		                               : 1.0;
+
 		// Debug logging (detailed diagnostics)
 		log_iteration_eval(metrics, td.pv_table);
 
@@ -348,15 +336,13 @@ SearchResult  AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Tran
 		RejectionReason rejection_reason = RejectionReason::NONE;
 
 		if (!metrics.interrupted) {
-			decision = IterationDecision::ACCEPT_AND_CONTINUE;	// Depth completed
-				}
-		else {
+			decision = IterationDecision::ACCEPT_AND_CONTINUE; // Depth completed
+		} else {
 			// Interrupted - assess quality
 			rejection_reason = assess_iteration_quality(metrics, state);
-			decision = (rejection_reason != RejectionReason::NONE)
-				? IterationDecision::REJECT_AND_STOP
-				: IterationDecision::ACCEPT_AND_STOP;
-			}
+			decision = (rejection_reason != RejectionReason::NONE) ? IterationDecision::REJECT_AND_STOP
+			                                                       : IterationDecision::ACCEPT_AND_STOP;
+		}
 
 		// Execute decision
 		bool continue_iteration = false;
@@ -380,7 +366,7 @@ SearchResult  AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Tran
 					continue_iteration = false;
 					break;
 				}
-				extra_depth_used = true;   // grant extension exactly once
+				extra_depth_used = true; // grant extension exactly once
 			}
 
 			continue_iteration = !should_stop_early(depth, metrics.current_score, metrics.pv_length);
@@ -404,21 +390,16 @@ SearchResult  AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Tran
 		}
 
 		if (!continue_iteration) {
-			break;	// Exit iteration_deepening
+			break; // Exit iteration_deepening
+		}
 	}
-}
 
 	// Handle empty move emergency
 	if (state.best_move.is_null()) {
 		if (!handle_empty_move_emergency(td, state)) {
 			// Game over - return what we have
-			return SearchResult{
-				state.best_move,
-				state.best_score,
-				state.depth_completed,
-				state.nodes_at_completed_depth,
-				state.search_was_stable
-			};
+			return SearchResult{state.best_move, state.best_score, state.depth_completed,
+			                    state.nodes_at_completed_depth, state.search_was_stable};
 		}
 	}
 
@@ -426,13 +407,8 @@ SearchResult  AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Tran
 	if (state.depth_completed > 0) {
 		log_search_complete(state, td.pv_table);
 	}
-	return SearchResult{
-		state.best_move,
-		state.best_score,
-		state.depth_completed,
-		state.nodes_at_completed_depth,
-		state.search_was_stable
-	};
+	return SearchResult{state.best_move, state.best_score, state.depth_completed, state.nodes_at_completed_depth,
+	                    state.search_was_stable};
 }
 
 int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt)
@@ -473,8 +449,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	Move pv_move;
 
 	// TT probe
-	if (auto entry = tt.probe(key, ply))
-	{
+	if (auto entry = tt.probe(key, ply)) {
 		if (entry->phase == SearchPhase::MAIN) { // Avoid the Quiescence nodes to affect main search - just to make sure
 			hash_move = entry->best_move;
 
@@ -515,8 +490,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		td.board.UndoNullMove();
 		td.last_move_was_null[ply + 1] = false;
 		if (null_score >= beta) {
-			tt.store(key, static_cast<int16_t>(null_score), static_cast<int16_t>(depth),
-				static_cast<int16_t>(ply), Move::EmptyMove(), BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
+			tt.store(key, static_cast<int16_t>(null_score), static_cast<int16_t>(depth), static_cast<int16_t>(ply),
+			         Move::EmptyMove(), BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
 			return null_score;
 		}
 	}
@@ -528,16 +503,13 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	int best_value = -GameValues::Search_Init;
 	Move best_move;
 
-
 	// Stack-allocated scored index array — zero heap allocation per call.
 	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
 	const int n = static_cast<int>(moveList.size());
 	const eColor side = td.board.GetCurrentColor();
 
-	MoveSorter::ScoreMoves(moveList, n, td.board, side,
-		pv_move, hash_move,
-		td.killers[ply][0], td.killers[ply][1],
-		td.history, scored_idx);
+	MoveSorter::ScoreMoves(moveList, n, td.board, side, pv_move, hash_move, td.killers[ply][0], td.killers[ply][1],
+	                       td.history, scored_idx);
 
 	bool moveFound = false;
 
@@ -547,8 +519,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 		td.nodes_searched++;
 
-		if (td.board.DoMove(move))
-		{
+		if (td.board.DoMove(move)) {
 			// Tilfoejer dette traek til nuvaerende traekfoelge - og opdaterer resten
 			td.add_move_to_seq(move, ply);
 			int value;
@@ -557,36 +528,33 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				// Full window search for first move
 				value = -pvs(td, depth - 1, -beta, -alpha, ply + 1, is_pv_node, tt);
 				first_child = false;
-			}
-			else {
-				const bool isCapture   = MoveHelper::IsCapture(move);
+			} else {
+				const bool isCapture = MoveHelper::IsCapture(move);
 				const bool isPromotion = MoveHelper::IsPromote(move);
-				const bool isKiller    = (move == td.killers[ply][0] || move == td.killers[ply][1]);
+				const bool isKiller = (move == td.killers[ply][0] || move == td.killers[ply][1]);
 
 				// Late Move Reductions: reduce quiet, non-killer, non-evasion moves
 				// that appear late in the sorted order. Skip conditions are conservative:
 				// captures, promotions, killers, evasions (in_check), PV nodes, and early
 				// moves are always searched at full depth.
 				// Future skip candidates: passed pawn pushes, moves giving check.
-				const bool applyLMR = tuning_.lmr_enabled
-					&& !is_pv_node
-					&& !in_check
-					&& !isCapture
-					&& !isPromotion
-					&& !isKiller
-					&& si >= tuning_.lmr_min_move_index
-					&& depth >= tuning_.lmr_min_depth;
+				const bool applyLMR = tuning_.lmr_enabled && !is_pv_node && !in_check && !isCapture && !isPromotion &&
+				                      !isKiller && si >= tuning_.lmr_min_move_index && depth >= tuning_.lmr_min_depth;
 
 				if (applyLMR) {
 					// sqrt formula: scales naturally with depth and move index.
 					// Clamped to [1, depth-1]; when R == depth-1 the recursive call is
 					// at depth 0 (falls into quiescence). The re-search below restores
 					// full depth if alpha is beaten.
+					// clang-format off
+					// Hand-wrapped so the sqrt(depth) * sqrt(move index) product and the
+					// clamp to [1, depth-1] stay visible as separate steps.
 					const int R = std::min(
 						std::max(1, static_cast<int>(
 							std::sqrt(static_cast<double>(depth - 1)) *
 							std::sqrt(static_cast<double>(si - 1)))),
 						depth - 1);
+					// clang-format on
 
 					// Reduced-depth null-window search
 					value = -pvs(td, depth - 1 - R, -alpha - 1, -alpha, ply + 1, false, tt);
@@ -624,13 +592,12 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				}
 			}
 
-			if (beta <= alpha)
-			{
+			if (beta <= alpha) {
 				td.store_killer(ply, move);
 				td.update_history(side, move, depth);
 				break;
+			}
 		}
-	}
 	}
 
 	// Classify node and store
@@ -642,22 +609,19 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		// This is ALL_NODE regardless of whether stand_pat improved alpha
 		node_type = NodeType::ALL_NODE;
 		bound = (best_value > original_alpha) ? BoundType::EXACT : BoundType::UPPER;
-	}
-	else if (best_value <= original_alpha) {
+	} else if (best_value <= original_alpha) {
 		bound = BoundType::UPPER;
 		node_type = NodeType::ALL_NODE;
-	}
-	else if (best_value >= beta) {
+	} else if (best_value >= beta) {
 		bound = BoundType::LOWER;
 		node_type = NodeType::CUT_NODE;
-	}
-	else {
+	} else {
 		bound = BoundType::EXACT;
 		node_type = is_pv_node ? NodeType::PV_NODE : NodeType::ALL_NODE;
 	}
 
-	tt.store(key, static_cast<int16_t>(best_value),
-		static_cast<int16_t>(depth), static_cast<int16_t>(ply), best_move, bound, node_type, SearchPhase::MAIN);
+	tt.store(key, static_cast<int16_t>(best_value), static_cast<int16_t>(depth), static_cast<int16_t>(ply), best_move,
+	         bound, node_type, SearchPhase::MAIN);
 
 	return adjustScoreForGameState(td, moveFound, ply, best_value);
 }
@@ -665,14 +629,13 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 int AIPerplex::adjustScoreForGameState(ThreadData& td, bool moveFound, int ply, int score)
 {
 	// Any legal moves found?
-	if (!moveFound)
-	{
+	if (!moveFound) {
 		// Nope - so we are either mate or remis here !
-		if (td.board.InCheck())
-		{
+		if (td.board.InCheck()) {
 			// Oops - we are mate!!
-			td.update_game_state(ply, td.board.GetCurrentColor() == WHITE ? GameStates::BLACK_WON : GameStates::WHITE_WON);
-			if (ply == 0)		// Are we at root?
+			td.update_game_state(ply,
+			                     td.board.GetCurrentColor() == WHITE ? GameStates::BLACK_WON : GameStates::WHITE_WON);
+			if (ply == 0) // Are we at root?
 			{
 				_bestScore = -GameValues::Mate;
 			}
@@ -703,11 +666,10 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 			return GameValues::Draw;
 	}
 
-	constexpr int MAX_QSEARCH_DEPTH = 15;  // Lets keep it real
+	constexpr int MAX_QSEARCH_DEPTH = 15; // Lets keep it real
 
 	// Limit quiescence extension by qsearch
-	if (qsearch_depth > MAX_QSEARCH_DEPTH)
-	{
+	if (qsearch_depth > MAX_QSEARCH_DEPTH) {
 		return Eval->Evaluate(td.board);
 	}
 
@@ -740,11 +702,10 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 
 	// Stand pat evaluation first
 	const int stand_pat = Eval->Evaluate(td.board);
-	if (stand_pat >= beta)
-	{
+	if (stand_pat >= beta) {
 		// Store and cutoff
 		tt.store(key, static_cast<int16_t>(beta), static_cast<int16_t>(qsearch_depth), static_cast<int16_t>(ply),
-			Move::EmptyMove(), BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::QUIESCENCE);
+		         Move::EmptyMove(), BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::QUIESCENCE);
 		return beta;
 	}
 	// stand-pat is the baseline (valid option: don't capture)
@@ -765,13 +726,15 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 	// Compute once: delta pruning must not fire when in check (all evasions must be searched)
 	const bool in_check = td.board.InCheck();
 
-	for (const auto& move : moveList)
-	{
+	for (const auto& move : moveList) {
 		// Delta pruning: skip captures whose best-case material gain cannot raise alpha.
 		// stand_pat is already the alpha lower-bound; MoveHelper::Value() gives the MVV-LVA
 		// score which is conservatively ≤ the raw captured-piece value, so pruning is safe.
 		// Promotions always score ≥ 800 (queen − pawn gain) and are never pruned.
-		if (!in_check && stand_pat + MoveHelper::Value(move, td.board.GetEffectiveMovPiece(move), td.board.GetCapturedPiece(move)) + tuning_.delta_pruning_margin < alpha)
+		if (!in_check &&
+		    stand_pat + MoveHelper::Value(move, td.board.GetEffectiveMovPiece(move), td.board.GetCapturedPiece(move)) +
+		            tuning_.delta_pruning_margin <
+		        alpha)
 			continue;
 
 		if (!td.board.DoMove(move))
@@ -786,7 +749,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 
 		if (score >= beta) {
 			tt.store(key, static_cast<int16_t>(beta), static_cast<int16_t>(qsearch_depth), static_cast<int16_t>(ply),
-				move, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::QUIESCENCE);
+			         move, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::QUIESCENCE);
 			return beta;
 		}
 		if (score > best_value) {
@@ -798,7 +761,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 	// Found no legal moves here
 	// We don't check for mate / stalemate here, because without generating all
 	// of the moves leading up to it, we don't know if the position could have
-	// been avoided by one side or not.  So simply return our evaluation score 
+	// been avoided by one side or not.  So simply return our evaluation score
 	/*if (!moveFound)
 	{
 		return stand_pat;
@@ -813,25 +776,22 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 		// This is ALL_NODE regardless of whether stand_pat improved alpha
 		node_type = NodeType::ALL_NODE;
 		bound = (best_value > original_alpha) ? BoundType::EXACT : BoundType::UPPER;
-	}
-	else if (best_value <= original_alpha) {
+	} else if (best_value <= original_alpha) {
 		// Failed to improve alpha (or came close)
 		node_type = NodeType::ALL_NODE;
 		bound = BoundType::UPPER;
-	}
-	else if (best_value >= beta) {
+	} else if (best_value >= beta) {
 		// Beta cutoff (would have returned earlier, but for completeness)
 		node_type = NodeType::CUT_NODE;
 		bound = BoundType::LOWER;
-	}
-	else {
+	} else {
 		// Captures found AND improved alpha, no beta cutoff => PV node
 		node_type = NodeType::PV_NODE;
 		bound = BoundType::EXACT;
 	}
 
 	tt.store(key, static_cast<int16_t>(best_value), static_cast<int16_t>(qsearch_depth), static_cast<int16_t>(ply),
-		best_move, bound, node_type, SearchPhase::QUIESCENCE);
+	         best_move, bound, node_type, SearchPhase::QUIESCENCE);
 	return best_value;
 }
 
@@ -842,10 +802,10 @@ int AIPerplex::search_with_aspiration(ThreadData& td, int depth, int seed_score,
 {
 	int delta = tuning_.aspiration_initial_delta;
 	int alpha = std::max(seed_score - delta, -GameValues::Search_Init);
-	int beta  = std::min(seed_score + delta, static_cast<int>(GameValues::Search_Init));
-	int score = seed_score;  // safe fallback if interrupted before the first pvs() call
+	int beta = std::min(seed_score + delta, static_cast<int>(GameValues::Search_Init));
+	int score = seed_score; // safe fallback if interrupted before the first pvs() call
 
-	for (int retry = 0; ; ++retry) {
+	for (int retry = 0;; ++retry) {
 		if (ShouldStopSearch()) {
 			// Interrupt before entering pvs(): clear PV so iterative_deepening sees EmptyMove
 			// and triggers INCOMPLETE rejection rather than accepting a stale PV as valid.
@@ -864,7 +824,8 @@ int AIPerplex::search_with_aspiration(ThreadData& td, int depth, int seed_score,
 
 		// Safety fallback: open full window after max retries
 		if (retry >= tuning_.aspiration_max_retries) {
-			if (td.thread_id == 0) log_aspiration_full_window(depth, tuning_.aspiration_max_retries);
+			if (td.thread_id == 0)
+				log_aspiration_full_window(depth, tuning_.aspiration_max_retries);
 			if (!ShouldStopSearch())
 				score = pvs(td, depth, -GameValues::Search_Init, GameValues::Search_Init, 0, true, tt);
 			return score;
@@ -875,10 +836,12 @@ int AIPerplex::search_with_aspiration(ThreadData& td, int depth, int seed_score,
 		delta *= 2;
 		if (score <= alpha) {
 			alpha = std::max(seed_score - delta, -static_cast<int>(GameValues::Search_Init));
-			if (td.thread_id == 0) log_aspiration_retry(depth, retry + 1, score, alpha, beta, true);
+			if (td.thread_id == 0)
+				log_aspiration_retry(depth, retry + 1, score, alpha, beta, true);
 		} else {
-			beta  = std::min(seed_score + delta,  static_cast<int>(GameValues::Search_Init));
-			if (td.thread_id == 0) log_aspiration_retry(depth, retry + 1, score, alpha, beta, false);
+			beta = std::min(seed_score + delta, static_cast<int>(GameValues::Search_Init));
+			if (td.thread_id == 0)
+				log_aspiration_retry(depth, retry + 1, score, alpha, beta, false);
 		}
 	}
 }
@@ -888,9 +851,8 @@ int AIPerplex::search_with_aspiration(ThreadData& td, int depth, int seed_score,
 // ============================================================================
 // Killer/history/null-flag maintenance lives on ThreadData (ThreadData.h).
 
-AIPerplex::RejectionReason AIPerplex::assess_iteration_quality(
-	const IterationMetrics& metrics,
-	const SearchState& state) const
+AIPerplex::RejectionReason AIPerplex::assess_iteration_quality(const IterationMetrics& metrics,
+                                                               const SearchState& state) const
 {
 	// CASE 1: Obviously incomplete
 	if (metrics.current_move.is_null() || metrics.nodes_searched < tuning_.min_nodes_threshold) {
@@ -898,22 +860,20 @@ AIPerplex::RejectionReason AIPerplex::assess_iteration_quality(
 	}
 
 	// CASE 2: Too few nodes compared to previous depth
-	if (state.depth_completed > 0 &&
-		state.nodes_at_completed_depth > 0 &&
-		metrics.completion_ratio < tuning_.min_completion_ratio) {
+	if (state.depth_completed > 0 && state.nodes_at_completed_depth > 0 &&
+	    metrics.completion_ratio < tuning_.min_completion_ratio) {
 		return RejectionReason::TOO_FEW_NODES;
 	}
 
 	// CASE 3: PV too short
 	if (metrics.pv_length < std::max(1, static_cast<int>(metrics.depth * tuning_.min_pv_ratio)) &&
-		state.depth_completed > 0) {
+	    state.depth_completed > 0) {
 		return RejectionReason::SHORT_PV;
 	}
 
 	// CASE 4: Score dropped to 0 suspiciously
-	if (metrics.current_score == 0 &&
-		state.depth_completed > 0 &&
-		std::abs(state.best_score) > tuning_.score_draw_threshold) {
+	if (metrics.current_score == 0 && state.depth_completed > 0 &&
+	    std::abs(state.best_score) > tuning_.score_draw_threshold) {
 		return RejectionReason::SCORE_DROP;
 	}
 
@@ -926,84 +886,67 @@ AIPerplex::RejectionReason AIPerplex::assess_iteration_quality(
 	return RejectionReason::NONE;
 }
 
-void AIPerplex::log_iteration_eval(
-	const IterationMetrics& metrics,
-	const PVTable& pv_table) const
+void AIPerplex::log_iteration_eval(const IterationMetrics& metrics, const PVTable& pv_table) const
 {
-	if (!s_logger) return;
-	if (!s_logger->should_log(spdlog::level::debug)) return;
+	if (!s_logger)
+		return;
+	if (!s_logger->should_log(spdlog::level::debug))
+		return;
 
 	// Build PV string
 	std::string pv_line;
 	pv_line.reserve(80);
 	const int display_length = std::min(metrics.pv_length, 6);
 	for (int i = 0; i < display_length; ++i) {
-		if (i) pv_line += ", ";
+		if (i)
+			pv_line += ", ";
 		pv_line += MoveFormatter::ToCoord(pv_table.get_line(0)[i]);
 	}
 	if (metrics.pv_length > display_length) {
 		pv_line += " ...";
 	}
 
-	s_logger->debug(
-		"D{:>2} EVAL: move={:<8} score={:>6} (Δ{:>+5}) nodes={:>8} ({:>3}%) "
-		"pv={:>2} int={} chg={} PV:[{}]",
-		metrics.depth,
-		metrics.current_move.is_null() ? "EMPTY" : MoveFormatter::ToCoord(metrics.current_move),
-		metrics.current_score,
-		metrics.score_delta,
-		metrics.nodes_searched,
-		static_cast<int>(metrics.completion_ratio * 100),
-		metrics.pv_length,
-		metrics.interrupted ? "Y" : "N",
-		metrics.move_changed ? "Y" : "N",
-		pv_line
-	);
+	s_logger->debug("D{:>2} EVAL: move={:<8} score={:>6} (Δ{:>+5}) nodes={:>8} ({:>3}%) "
+	                "pv={:>2} int={} chg={} PV:[{}]",
+	                metrics.depth,
+	                metrics.current_move.is_null() ? "EMPTY" : MoveFormatter::ToCoord(metrics.current_move),
+	                metrics.current_score, metrics.score_delta, metrics.nodes_searched,
+	                static_cast<int>(metrics.completion_ratio * 100), metrics.pv_length,
+	                metrics.interrupted ? "Y" : "N", metrics.move_changed ? "Y" : "N", pv_line);
 }
 
-void AIPerplex::log_rejection(
-	int depth,
-	RejectionReason reason,
-	const IterationMetrics& metrics,
-	const SearchState& state) const
+void AIPerplex::log_rejection(int depth, RejectionReason reason, const IterationMetrics& metrics,
+                              const SearchState& state) const
 {
-	if (!s_logger) return;
+	if (!s_logger)
+		return;
 
 	switch (reason) {
 	case RejectionReason::INCOMPLETE:
-		s_logger->debug(
-			"Depth {:>2}: REJECTED[R1:INCOMPLETE] (nodes={}, move={}) - Using depth {}",
-			depth, metrics.nodes_searched,
-			metrics.current_move.is_null() ? "EMPTY" : "ok",
-			state.depth_completed);
+		s_logger->debug("Depth {:>2}: REJECTED[R1:INCOMPLETE] (nodes={}, move={}) - Using depth {}", depth,
+		                metrics.nodes_searched, metrics.current_move.is_null() ? "EMPTY" : "ok", state.depth_completed);
 		break;
 
 	case RejectionReason::TOO_FEW_NODES:
-		s_logger->debug(
-			"Depth {:>2}: REJECTED[R2:TOO_FEW_NODES] ({} = {:.0f}% of D{}) - using depth {}",
-			depth, metrics.nodes_searched,
-			metrics.completion_ratio * 100,
-			state.depth_completed,
-			state.depth_completed);
+		s_logger->debug("Depth {:>2}: REJECTED[R2:TOO_FEW_NODES] ({} = {:.0f}% of D{}) - using depth {}", depth,
+		                metrics.nodes_searched, metrics.completion_ratio * 100, state.depth_completed,
+		                state.depth_completed);
 		break;
 
 	case RejectionReason::SHORT_PV:
-		s_logger->debug(
-			"Depth {:>2}: REJECTED[R3:SHORT_PV] (pv={} vs depth={}) - using depth {}",
-			depth, metrics.pv_length, depth, state.depth_completed);
+		s_logger->debug("Depth {:>2}: REJECTED[R3:SHORT_PV] (pv={} vs depth={}) - using depth {}", depth,
+		                metrics.pv_length, depth, state.depth_completed);
 		break;
 
 	case RejectionReason::SCORE_DROP:
-		s_logger->debug(
-			"Depth {:>2}: REJECTED[R4:SCORE_DROP] ({} → 0) - Using depth {}",
-			depth, state.best_score, state.depth_completed);
+		s_logger->debug("Depth {:>2}: REJECTED[R4:SCORE_DROP] ({} → 0) - Using depth {}", depth, state.best_score,
+		                state.depth_completed);
 		break;
 
 	case RejectionReason::MOVE_CHANGED:
-		s_logger->debug(
-			"Depth {:>2}: REJECTED[R5:MOVE_CHANGED] ({} → {}) - Using depth {}",
-			depth, MoveFormatter::ToCoord(state.last_iteration_move),
-			MoveFormatter::ToCoord(metrics.current_move), state.depth_completed);
+		s_logger->debug("Depth {:>2}: REJECTED[R5:MOVE_CHANGED] ({} → {}) - Using depth {}", depth,
+		                MoveFormatter::ToCoord(state.last_iteration_move), MoveFormatter::ToCoord(metrics.current_move),
+		                state.depth_completed);
 		break;
 
 	default:
@@ -1011,17 +954,18 @@ void AIPerplex::log_rejection(
 	}
 }
 
-void AIPerplex::log_acceptance(const IterationMetrics& metrics) const {
-	if (!s_logger) return;
+void AIPerplex::log_acceptance(const IterationMetrics& metrics) const
+{
+	if (!s_logger)
+		return;
 
 	// Noteworthy so Info
-	s_logger->info(
-		"Depth {:>2}: ACCEPTED[INTERRUPTED] (nodes={}, score={}, pv={})",
-		metrics.depth, metrics.nodes_searched,
-		metrics.current_score, metrics.pv_length);
+	s_logger->info("Depth {:>2}: ACCEPTED[INTERRUPTED] (nodes={}, score={}, pv={})", metrics.depth,
+	               metrics.nodes_searched, metrics.current_score, metrics.pv_length);
 }
 
-bool AIPerplex::should_stop_early(int depth, int score, int pv_length) const {
+bool AIPerplex::should_stop_early(int depth, int score, int pv_length) const
+{
 	// Mate found
 	if (std::abs(score) >= GameValues::Mate_Threshold) {
 		if (s_logger) {
@@ -1033,9 +977,7 @@ bool AIPerplex::should_stop_early(int depth, int score, int pv_length) const {
 	// Forced line (PV much shorter than depth)
 	if (depth > 1 && pv_length > 0 && pv_length < (depth - depth / 2)) {
 		if (s_logger) {
-			s_logger->info(
-				"Short PV ({} vs depth {}) indicates forced line, stopping",
-				pv_length, depth);
+			s_logger->info("Short PV ({} vs depth {}) indicates forced line, stopping", pv_length, depth);
 		}
 		return true;
 	}
@@ -1043,13 +985,19 @@ bool AIPerplex::should_stop_early(int depth, int score, int pv_length) const {
 	return false;
 }
 
-bool AIPerplex::should_try_null_move(const ThreadData& td, int depth, int beta, int ply, bool is_pv_node, bool in_check) const
+bool AIPerplex::should_try_null_move(const ThreadData& td, int depth, int beta, int ply, bool is_pv_node,
+                                     bool in_check) const
 {
-	if (!tuning_.null_move_enabled) return false;
-	if (is_pv_node || in_check) return false;
-	if (depth < tuning_.null_move_min_depth) return false;
-	if (std::abs(beta) >= GameValues::Mate_Threshold) return false;
-	if (td.last_move_was_null[ply]) return false;
+	if (!tuning_.null_move_enabled)
+		return false;
+	if (is_pv_node || in_check)
+		return false;
+	if (depth < tuning_.null_move_min_depth)
+		return false;
+	if (std::abs(beta) >= GameValues::Mate_Threshold)
+		return false;
+	if (td.last_move_was_null[ply])
+		return false;
 
 	// Zugzwang guard: refuse to "pass" for a side with fewer than two
 	// non-pawn pieces — the null-move assumption ("a free pass is never
@@ -1059,14 +1007,12 @@ bool AIPerplex::should_try_null_move(const ThreadData& td, int depth, int beta, 
 	const eColor side = td.board.GetCurrentColor();
 	const auto boards = td.board.GetBitBoards();
 	const BITBOARD non_pawn_material =
-		boards[static_cast<BITBOARD>(KNIGHT) + side] | boards[static_cast<BITBOARD>(BISHOP) + side]
-		| boards[static_cast<BITBOARD>(ROOK) + side] | boards[static_cast<BITBOARD>(QUEEN) + side];
+	    boards[static_cast<BITBOARD>(KNIGHT) + side] | boards[static_cast<BITBOARD>(BISHOP) + side] |
+	    boards[static_cast<BITBOARD>(ROOK) + side] | boards[static_cast<BITBOARD>(QUEEN) + side];
 	return std::popcount(non_pawn_material) >= 2;
 }
 
-bool AIPerplex::handle_empty_move_emergency(
-	ThreadData& td,
-	SearchState& state)
+bool AIPerplex::handle_empty_move_emergency(ThreadData& td, SearchState& state)
 {
 	auto& log = *spdlog::default_logger();
 
@@ -1079,14 +1025,12 @@ bool AIPerplex::handle_empty_move_emergency(
 	// Check game state
 	const GameInfo current_info = td.board.GetGameInfo();
 	if (current_info.gameState != GameStates::STILL_PLAYING) {
-		log.info("No move needed - game over (state={})",
-			static_cast<int>(current_info.gameState));
+		log.info("No move needed - game over (state={})", static_cast<int>(current_info.gameState));
 		return false;
 	}
 
 	// True emergency - generate any legal move
-	log.critical("EMERGENCY: No best move found (max_depth={}, last_completed={})",
-		max_depth_, state.depth_completed);
+	log.critical("EMERGENCY: No best move found (max_depth={}, last_completed={})", max_depth_, state.depth_completed);
 
 	MoveList emergency_moves;
 	MoveGenerator::ComputeLegalMoves(td.board, current_info, emergency_moves);
@@ -1098,8 +1042,7 @@ bool AIPerplex::handle_empty_move_emergency(
 
 	// Verify first move is legal
 	if (!td.board.DoMove(emergency_moves[0])) {
-		log.critical("First pseudolegal move {} is illegal!",
-			MoveFormatter::ToCoord(emergency_moves[0]));
+		log.critical("First pseudolegal move {} is illegal!", MoveFormatter::ToCoord(emergency_moves[0]));
 
 		// Try others
 		for (const auto& move : emergency_moves) {
@@ -1128,69 +1071,54 @@ bool AIPerplex::handle_empty_move_emergency(
 	return true;
 }
 
-void AIPerplex::log_search_complete(
-	const SearchState& state,
-	const PVTable& pv_table) const
+void AIPerplex::log_search_complete(const SearchState& state, const PVTable& pv_table) const
 {
-	if (!s_logger) return;
+	if (!s_logger)
+		return;
 
 	if (state.best_move.is_null() || pv_table.get_length(0) == 0) {
 		return;
 	}
 
-	s_logger->info(
-		"Search complete: depth={}, score={}, move={}, nodes={}, stable={}",
-		state.depth_completed,
-		state.best_score,
-		MoveFormatter::ToCoord(state.best_move),
-		state.nodes_at_completed_depth,
-		state.search_was_stable ? "yes" : "NO");
+	s_logger->info("Search complete: depth={}, score={}, move={}, nodes={}, stable={}", state.depth_completed,
+	               state.best_score, MoveFormatter::ToCoord(state.best_move), state.nodes_at_completed_depth,
+	               state.search_was_stable ? "yes" : "NO");
 }
 
-void AIPerplex::log_completed_iteration(
-	const IterationMetrics& metrics,
-	const PVTable& pv_table) const
+void AIPerplex::log_completed_iteration(const IterationMetrics& metrics, const PVTable& pv_table) const
 {
-	if (!s_logger) return;
-	if (!s_logger->should_log(spdlog::level::info)) return;
+	if (!s_logger)
+		return;
+	if (!s_logger->should_log(spdlog::level::info))
+		return;
 
 	std::string pv_line;
 	pv_line.reserve(128);
 	const int display_length = std::min(metrics.pv_length, 10);
 	for (int i = 0; i < display_length; ++i) {
-		if (i) pv_line += ", ";
+		if (i)
+			pv_line += ", ";
 		pv_line += MoveFormatter::ToCoord(pv_table.get_line(0)[i]);
 	}
 
-	s_logger->info(
-		"Depth {:>2}: Score: {:>6} Nodes: {:>8} PV[{}]: {} {}",
-		metrics.depth,
-		metrics.current_score,
-		metrics.nodes_searched,
-		metrics.pv_length,
-		pv_line,
-		(metrics.move_changed && metrics.depth > 1) ? "(!)" : "");
+	s_logger->info("Depth {:>2}: Score: {:>6} Nodes: {:>8} PV[{}]: {} {}", metrics.depth, metrics.current_score,
+	               metrics.nodes_searched, metrics.pv_length, pv_line,
+	               (metrics.move_changed && metrics.depth > 1) ? "(!)" : "");
 }
 
 void AIPerplex::log_aspiration_retry(int depth, int retry, int score, int alpha, int beta, bool fail_low) const
 {
-	if (!s_logger) return;
+	if (!s_logger)
+		return;
 
-	s_logger->debug(
-		"D{:>2} ASPIRATION: {} retry {} score={:>6} new window=[{:>7},{:>7}]",
-		depth,
-		fail_low ? "FAIL-LOW " : "FAIL-HIGH",
-		retry,
-		score,
-		alpha,
-		beta);
+	s_logger->debug("D{:>2} ASPIRATION: {} retry {} score={:>6} new window=[{:>7},{:>7}]", depth,
+	                fail_low ? "FAIL-LOW " : "FAIL-HIGH", retry, score, alpha, beta);
 }
 
 void AIPerplex::log_aspiration_full_window(int depth, int max_retries) const
 {
-	if (!s_logger) return;
+	if (!s_logger)
+		return;
 
-	s_logger->debug(
-		"D{:>2} ASPIRATION: max retries ({}) reached, opening full window",
-		depth, max_retries);
+	s_logger->debug("D{:>2} ASPIRATION: max retries ({}) reached, opening full window", depth, max_retries);
 }

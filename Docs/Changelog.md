@@ -22,6 +22,48 @@ Newest first.
 
 ---
 
+## 2026-08-11 — Build tooling: clang-format and clang-tidy lint gate (#175)
+
+### Added
+
+- **`.clang-format`** — K&R-derived layout per CppCoreGuidelines NL.17, tabs at width 4, 100 columns.
+  `SortIncludes: Never` is load-bearing: include order carries meaning here because `StdAfx.h` must
+  precede the headers relying on it, so reordering would be a semantic change, not formatting.
+- **`.clang-tidy`** — `bugprone-*`, `performance-*`, `clang-analyzer-*`, less two checks.
+  `WarningsAsErrors` deliberately empty; enforcement is #284.
+- **`lint-linux`** in the per-PR gate, and **`lint-tree`** (whole tree) in nightly. clang-format
+  blocks, clang-tidy is advisory. Details and the reasoning: `Docs/CI.md`.
+- **`Scripts/Run-Lint.ps1`** — the local counterpart, called by `Validate-PrePR.ps1`.
+
+### Changed
+
+- **The tree was reformatted in one pass** (90 of 93 files, +9,662/−9,419, 47.7%). The issue assumed
+  the tree was internally consistent and that bulk reformatting should be avoided; measurement said
+  otherwise — **43 tab-indented files against 45 space-indented, 10 mixed internally, and 29% of
+  braces attached against a 71% Allman majority**. With no single existing style to codify the churn
+  was unavoidable, so it landed once as isolated commits rather than leaking into every future engine
+  PR. Both are in `.git-blame-ignore-revs`, and `build.ps1` now sets `blame.ignoreRevsFile` on first
+  run.
+
+### Notes
+
+Three findings worth keeping, each of which produces a check that looks healthy while doing nothing:
+
+- **clang-format is not idempotent in one pass.** Reflowing a long comment can emit continuation
+  lines that only a second pass corrects, which is why the reformat is two commits and why
+  `Run-Lint.ps1 -Fix` iterates to a fixpoint.
+- **The lint compile database must be configured with clang, not GCC.** `strat_configure_target`
+  emits `-fconstexpr-ops-limit=` for GCC, which the clang driver rejects outright; all 73 entries of
+  a GCC database carry it, so every translation unit fails to parse and an advisory job reports green
+  having analysed nothing.
+- **16 findings are Windows-only** (13 `bugprone-exception-escape`, 3 `bugprone-reserved-identifier`)
+  and the Linux gate cannot see them. The 13 are real on the shipping clang-cl build.
+
+Reformat verified semantically inert: identical node counts in all 8 bench positions (34,478,850
+each) and identical best moves at depth 12, `Threads=1`, before versus after.
+
+---
+
 ## 2026-08-11 — Configurable UCI transposition-table memory (#254)
 
 ### Added

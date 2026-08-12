@@ -9,7 +9,7 @@
 // The moving piece is not available here; use MoveFormatter::ToShort for piece-prefixed notation.
 std::ostream& operator<<(std::ostream& os, const Move& m)
 {
-	if (!m.is_null())	// Empty moves are allowed, but ignored
+	if (!m.is_null()) // Empty moves are allowed, but ignored
 		os << "Move: " << MoveFormatter::ToCoord(m).c_str() << '\n';
 	return os;
 }
@@ -20,14 +20,13 @@ std::ostream& operator<<(std::ostream& os, const PVLine& line)
 {
 	assert(!line.empty());
 
-	os << "Depth " << line.size() << ": ";		// TODO: Ekstra check her ? //-V128
+	os << "Depth " << line.size() << ": "; // TODO: Ekstra check her ? //-V128
 
-	for (const auto& move : line)
-	{
-		os << MoveFormatter::ToCoord(move).c_str();		// write out coordinate notation
+	for (const auto& move : line) {
+		os << MoveFormatter::ToCoord(move).c_str(); // write out coordinate notation
 
-		if (move != *(line.rbegin()))	// last real Move
-			os << ", ";					// Add separation marker
+		if (move != *(line.rbegin())) // last real Move
+			os << ", ";               // Add separation marker
 	}
 	return os;
 }

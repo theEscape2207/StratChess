@@ -89,6 +89,55 @@ before `main` on Ubuntu 24.04 and reports nothing; and the driver waits for `uci
 UCI guards. TSan cannot be combined with ASan, hence a separate job. Survey, positive control, cost
 and contention analysis: `.claude/plans/tsan-lazy-smp.md`.
 
+**`lint-linux`** runs clang-format and clang-tidy over the files the PR touches, on the same tier
+condition as the jobs above. The two tools sit at different readiness and get **opposite step
+semantics**:
+
+| Tool | Scope | Effect |
+|---|---|---|
+| clang-format | changed `.cpp` **and** `.h` | **Blocking.** The tree was reformatted wholesale (#175), so it is format-clean by construction and enforcing that costs nothing |
+| clang-tidy | changed `.cpp` only | **Advisory** until #284 clears the 97-finding backlog. Findings print and do not fail the job |
+
+The success-forcing is per *step*, deliberately — a job-level `continue-on-error` would swallow the
+format failure too. And the tidy step is advisory about *findings* only: any `clang-diagnostic-error`
+fails the job, because that means source did not parse and the run analysed nothing.
+
+**LLVM is pinned to major 22**, installed from apt.llvm.org rather than using the image's
+`clang-tidy-18`. The check inventory differs between clang-tidy majors, so an unpinned runner
+silently gains and loses checks when the image moves. Major 22 is what Visual Studio 18 ships, so
+developers already have it; the CI patch level is 22.1.8 against the VS toolchain's 22.1.3, and
+clang-format output was verified byte-identical between them across all 93 sources — which is what
+makes a blocking format check safe. `Run-Lint.ps1` warns when the local major differs.
+
+The lint database is configured with **clang, not the default GCC**, and this is load-bearing rather
+than cosmetic. `strat_configure_target` emits `-fconstexpr-ops-limit=` for GCC and
+`-fconstexpr-steps=` for Clang; clang-tidy consumes the database through the clang driver, which
+rejects the GNU spelling as an unknown argument. Against a GCC database every translation unit fails
+to parse — measured, all 73 entries — and the job would report green having analysed nothing. The
+step therefore prints the number of TUs analysed as a positive control.
+
+A header is not a translation unit, so a PR touching only `.h` files analyses nothing here. That gap
+is closed by the nightly `lint-tree` job rather than by header-to-TU mapping, which a change to
+`defines.h` or `StdAfx.h` would expand to a whole-tree run — the one shape capable of becoming the
+critical path.
+
+**Cost scales with the number of changed `.cpp` files, and clang-tidy is the whole of it.** Measured
+on the reformat PR itself (#286), the worst case this job can have — 90 changed sources, 46
+translation units:
+
+| Step | Time |
+|---|---|
+| Install LLVM from apt.llvm.org | 26 s |
+| Configure the lint database | 3 s |
+| clang-format over 90 files | < 1 s |
+| **clang-tidy over 46 TUs** | **10 min 02 s** |
+
+So the fixed overhead is ~30 s and everything else is ~13 s per translation unit. A normal PR
+touching a handful of files finishes well inside the ~260 s critical path; a tree-wide change makes
+this job the critical path instead. That is the right trade — the alternative is not analysing what a
+tree-wide change touched — but it is worth knowing before wondering why one PR's CI took twice as
+long. The pinned-LLVM install, often assumed to be the expensive part, is not.
+
 **CI is a gate.** `build-and-test-result` is a required check on `main`, so a red run blocks the
 merge. A SKIPPED leg reports success deliberately: a Docs-tier PR runs none of the build jobs, and a
 required check that never ran would block it forever.
@@ -120,6 +169,7 @@ timeout-based nondeterminism is not worth the CI flakiness.
 | `extended-tests` | The `[slow]` tier, Release and Debug |
 | `sanitize-extended` | That tier under ASan+UBSan plus `_GLIBCXX_DEBUG` |
 | `tactical-stability` | `tactical stability 100`, against the local run's 10 |
+| `lint-tree` | clang-format and clang-tidy over the **whole tree**, closing the per-PR job's header gap. Advisory for findings; its per-check summary is the backlog trend line |
 
 `perft run <depth> [fen]` prints a count but does not verify it, so the workflow does the comparison.
 Runners measure **~22.5 Mnps** (startpos depth 7 in 140 s, Kiwipete depth 6 in 364 s — 2.2× slower

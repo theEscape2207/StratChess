@@ -1,0 +1,58 @@
+# Formatting for StratChessEvolved. See issue #175.
+BasedOnStyle:  LLVM
+Language:      Cpp
+Standard:      c++20
+UseTab:        ForIndentation
+TabWidth:      4
+IndentWidth:   4
+# 120 rather than 100. A trailing comment counts toward the limit, and at 100 the
+# SearchTuning block in AIPerplex.h had initializers torn off their declarations
+# (`bool lmr_enabled =` / `    true;`) purely to make room for the comment.
+ColumnLimit:   120
+IndentCaseLabels: false
+# The tree indents namespace bodies (19 files do). LLVM's default of None
+# un-indented all of them: measured 265 changed lines in Magic.h against 103 here.
+NamespaceIndentation: All
+PointerAlignment:   Left
+ReferenceAlignment: Pointer
+# Keep one-line accessors on one line. `Empty` expanded every `T Get() const { return x_; }`
+# into four lines, which is noise in the player and helper headers.
+AllowShortFunctionsOnASingleLine: All
+# Never re-wrap comment text. Comment layout here is frequently deliberate -- column
+# headers, aligned tables, board diagrams -- and re-wrapping ran separate sentences
+# together. It also removes the one-pass non-idempotency, since reflow was what
+# produced continuation lines needing a second pass.
+ReflowComments: Never
+# Include order carries meaning here: StdAfx.h must precede the headers that rely
+# on it. Reordering includes is a semantic change, not formatting.
+SortIncludes:  Never
+IncludeBlocks: Preserve
+# LLVM's default (true) splits a long literal into adjacent literals to fit the
+# column limit. Concatenation preserves the value, but it makes Catch2 TEST_CASE
+# names and log messages no longer greppable as one string, which is the main
+# reason anyone searches for them.
+BreakStringLiterals: false
+# LLVM's default (None) would flatten the nested _MSC_VER branches in Compat.h,
+# StdAfx.h, SquareHelper.h and PieceHelper.h to column zero.
+IndentPPDirectives: AfterHash
+# LineEnding is deliberately left at its default (derive from the file). Git stores
+# LF and checks out CRLF on Windows via `* text=auto`; pinning LF here would make
+# the local format check fail against every CRLF working-tree file.
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction:         true
+  AfterClass:            false
+  AfterStruct:           false
+  AfterUnion:            false
+  AfterEnum:             false
+  AfterNamespace:        false
+  AfterCaseLabel:        false
+  AfterControlStatement: Never
+  BeforeElse:            false
+  BeforeCatch:           false
+  BeforeWhile:           false
+  BeforeLambdaBody:      false
+  IndentBraces:          false
+  SplitEmptyFunction:    false
+  SplitEmptyRecord:      false
+  SplitEmptyNamespace:   false
