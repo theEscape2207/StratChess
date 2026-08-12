@@ -16,6 +16,7 @@
 #	pragma warning(disable : 4505) // Unreferenced local function has been removed
 #endif
 
+#include <cassert>
 #include <string>
 
 #include "defines.h"
@@ -58,7 +59,14 @@ namespace PieceHelper {
 
 	static inline constexpr bool IsNotEmpty(ePiece piece) noexcept { return piece != ePiece::NO_PIECE; }
 
-	static inline constexpr unsigned int Value(ePiece piece) noexcept { return (g_iPieceValues[piece >> 1]); }
+	// Callers are expected to pass an actual piece. The aggregate entries and NO_PIECE index the
+	// zero-valued tail of g_iPieceValues, so a stray value reads in bounds and scores nothing
+	// rather than reading past the table; the assert catches the caller that got there by mistake.
+	static inline constexpr unsigned int Value(ePiece piece) noexcept
+	{
+		assert(IsActual(piece));
+		return (g_iPieceValues[piece >> 1]);
+	}
 
 	static inline constexpr eColor Color(ePiece piece) noexcept { return static_cast<eColor>(piece & 1); }
 
@@ -73,9 +81,14 @@ namespace PieceHelper {
 		return static_cast<ePiece>(piece + static_cast<size_t>(color));
 	}
 
+	// ePieceType steps in twos (KNIGHT == 2, BISHOP == 4, ...), matching ePiece with the colour
+	// bit cleared — so the type is recovered by masking bit 0, not by shifting it away. Shifting
+	// yields a compact 0-5 index, which is what IsOfType compares but is not an ePieceType value.
+	// Only defined for actual pieces; the aggregates and NO_PIECE have no type.
 	static inline constexpr ePieceType AsPieceType(ePiece piece) noexcept
 	{
-		return static_cast<ePieceType>(piece >> 1);
+		assert(IsActual(piece));
+		return static_cast<ePieceType>(piece & ~1);
 	}
 	// Returns the Pawn of the opposite color. E.g. color=WHITE_ -> BLACK_PAWN
 	static inline constexpr ePiece AsPawn(eColor color) noexcept { return static_cast<ePiece>(color); }

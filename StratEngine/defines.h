@@ -147,15 +147,21 @@ inline const BITBOARD g_bbFileMask[] = {
     0x1010101010101010, 0x2020202020202020, 0x4040404040404040, 0x8080808080808080U,
 };
 
-// Tabel med brikkernes statiske vaerdier
+// Tabel med brikkernes statiske vaerdier, indexeret med (piece >> 1).
+// Sized to the whole ePiece range rather than to ALL_PIECETYPES: the aggregate
+// entries and NO_PIECE also shift down into this table (12 >> 1 == 13 >> 1 == 6,
+// 15 >> 1 == 7), so a six-element table leaves those indices out of bounds. They
+// score zero — no piece, no material.
 // clang-format off
-inline constexpr unsigned int g_iPieceValues[ALL_PIECETYPES >> 1] = {
+inline constexpr unsigned int g_iPieceValues[(ePiece::NO_PIECE >> 1) + 1] = {
 	100, 		// Boender
 	300, 		// Springere
 	300, 		// Loebere
 	500, 		// Taarne
 	900, 		// Dronninger
-	10000		// Konger
+	10000,		// Konger
+	0, 			// ALL_WHITE_PIECES / ALL_BLACK_PIECES
+	0			// NO_PIECE
 };
 // clang-format on
 
