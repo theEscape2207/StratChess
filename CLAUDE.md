@@ -99,14 +99,6 @@ exactly and anything larger replays openings. `Run-EloMatch.ps1` prints the coun
 bigger batches drop a large book at `EngineTesting\openings-large.pgn|.epd` (not committed — public
 repo, third-party data) or pass `-Book`.
 
-**Speed vs strength**: `Run-Bench.ps1` measures nps, not Elo — use it when the change is meant to be
-faster, and `Run-EloMatch.ps1` when it is meant to be stronger. Compare **nps**, never node counts at
-fixed depth: the node count is a property of the search, not of the machine code. It is still the
-right *equivalence* check, because two builds of identical source must visit identical nodes and
-return identical best moves at `Threads=1` — if they do not, the builds are not searching the same
-tree and any nps comparison is meaningless. Take repeat runs before quoting a delta; a single pass
-has already produced a 12% outlier on this hardware.
-
 **Never bypass `New-PullRequest.ps1` with a bare `git push`** to update an open PR: the push
 succeeds but `Validate-PrePR.ps1` never runs, leaving the merged state covered only by the
 pre-commit hook (this happened on PR #148).
@@ -121,11 +113,14 @@ toolchain.** They answer different questions and neither replaces the other — 
 flags Linux can never observe. Do not add a Windows Debug configuration to a gate. The reasoning, and
 what would change it: `Docs/Workflow.md` → Standing decisions.
 
-**The goal is measured positive Elo, not nps.** Below ~5% use `Run-Bench.ps1`; an Elo match cannot
-resolve an effect that small at any affordable game count (1% nps ≈ 1.7 Elo, against the lab's ±4).
-Anything adding per-node work — evaluation terms as much as compiler flags — gets a bench pass, and a
-measured slowdown needs a stated benefit that outweighs it. Sizing and instrument choice:
-`Docs/Workflow.md` → Speed and nps.
+**Speed vs strength, and the goal is measured positive Elo — not nps.** `Run-Bench.ps1` measures
+nps, `Run-EloMatch.ps1` measures strength; below ~5% nps an Elo match cannot resolve the effect at
+any affordable game count. Compare **nps**, never node counts at fixed depth — the node count is a
+property of the search, not the machine code, which is exactly what makes it the right *equivalence*
+check: two builds of identical source must visit identical nodes and return identical best moves at
+`Threads=1`. Anything adding per-node work — evaluation terms as much as compiler flags — gets a
+bench pass, and a measured slowdown needs a stated benefit that outweighs it. Effect sizing, repeat
+runs, and why an eval change needs the per-position column: `Docs/Workflow.md` → Speed and nps.
 
 **Threat model**: not network-facing, no privilege boundary, no attacker. External-input work aims at
 robustness — a clear diagnostic and a clean exit — not security. Exploit mitigations need a reason
@@ -226,9 +221,8 @@ design.
 4. Only after 1-3 pass, create or update the PR.
 
 **Batch review follow-ups into one push.** `Get-ChangeTier.ps1` classifies the whole PR diff
-(`origin/main...HEAD`), not the latest commit — deliberately, since the merged state is what the gate
-asserts about. So a comment-only fix on an Engine PR still reruns the full Engine tier locally and in
-CI. Collect the round's findings, address them together, then push once.
+(`origin/main...HEAD`), not the latest commit, so a comment-only fix on an Engine PR still reruns the
+full Engine tier locally and in CI. Collect the round's findings, address them together, push once.
 
 ### Cross-agent review
 
@@ -236,29 +230,10 @@ Separate from step 3: a second agent reviews selected artifacts and comments on 
 **before merge**. The user routes it — it is not dispatched from here — so a pushed PR is *awaiting
 review*, not done. Say so when reporting one.
 
-- **Review**: issues and specs before work starts, design docs, measurement and validation plans, and
-  documents making provenance claims. These are where a bad premise is expensive and invisible to CI.
-  Aim it hardest at the design doc's "assumptions I cannot verify from the code" section.
-- **Skip**: mechanical changes where CI is the real gate, and artifacts that have already converged.
-- **Division of labour**: `eval-reviewer` / `search-reviewer` review the **diff**; the cross-agent
-  reviewer reviews the **design doc**. Putting both on one artifact is where cost blows up for little
-  added signal. That split leaves a seam, so **the PR body must state which approved decisions
-  changed during implementation, and why** — otherwise nobody checks the diff still matches the
-  design. The Harvest table is the natural place to notice it.
-- **One round per artifact** unless it finds something blocking. Signal density falls off sharply
-  after the first pass.
-- **Rank findings** when reviewing — unranked findings force the author to re-triage before acting.
-  **Blocking**: merging without it risks a wrong or unverifiable result. **Add**: a real gap worth
-  closing, but the change is sound without it. **Clarify**: wording or framing, no behaviour at stake.
-- **A blocking finding is closed with evidence proportionate to the claim**, not with an assertion.
-  Measurement when the claim is about runtime or external behaviour — as PR #263 did for fastchess's
-  `ucinewgame` — but source inspection, an authoritative specification, a focused test or explicit
-  reasoning all qualify where they actually settle the question.
-
-Its strengths are provenance (who actually measured a number) and logical form (dichotomies that do
-not hold); it is weak at judging what is worth changing versus leaving alone. **Adjudicate on the
-merits** — push back with reasoning where a point does not hold rather than complying with all of
-them, and record the disposition so the exchange stays auditable.
+Because the specialised reviewers read the **diff** while the cross-agent reviewer reads the **design
+doc**, nothing checks that the two still agree — so **the PR body must state which approved decisions
+changed during implementation, and why**. What to send, how to rank findings, and the evidence a
+blocking finding needs: `Docs/Workflow.md` → Cross-agent review.
 
 ### After a PR merges
 
@@ -284,21 +259,8 @@ edit lists and implementation checklists belong in the scratchpad unless the tas
 or handed to someone else. A separate implementation plan is rarely worth writing and almost never
 worth committing.
 
-**Lifecycle.** Land the doc in one logical commit before first publishing it for review. After that
-the branch is reviewed history: **never force-push it just for tidiness** — add a normal follow-up
-commit and squash at merge if compact history is wanted. Keep the document through design review,
-then delete it in the same PR once Harvest is complete. Git history preserves it, so a link from an
-old comment stays resolvable.
-
-Its Harvest section names where each durable decision ends up. Prefer a source comment, Key Source
-Facts, or `Docs/Changelog.md` for anything that matters — a PR body is fine for working detail but is
-editable and lives outside Git, so important measurements should also be reachable from the tree.
-Anything durable living only in the plan has not been harvested yet.
-
-**Delete only when all three hold**: no inbound references, no deliberate spec/ADR role, and every
-durable item has a discoverable destination. Plans for **unstarted** work are specs and stay. So do
-records whose rationale is too substantial to inline — `.claude/plans/tsan-lazy-smp.md` is one, cited
-from `Docs/CI.md` for survey and cost analysis with no other home.
+Landing the doc, the Harvest section, and the three conditions for deleting one:
+`Docs/Workflow.md` → Design document lifecycle.
 
 ## Subagent Dispatch
 
