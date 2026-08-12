@@ -9,6 +9,8 @@ what you do; this file holds the background you consult when something is unexpe
 |---|---|
 | know what validation my change needs | [Validation tiers](#validation-tiers) |
 | decide whether to dispatch `search-reviewer` | [When `search-reviewer` may be skipped](#when-search-reviewer-may-be-skipped) |
+| send an artifact to the cross-agent reviewer, or rank findings | [Cross-agent review](#cross-agent-review) |
+| know what happens to a design doc after review | [Design document lifecycle](#design-document-lifecycle) |
 | start a task, or clean one up afterwards | [Two ways to run a task](#two-ways-to-run-a-task) |
 | run an AI-vs-AI game by hand | [Self-play validation](#self-play-validation) |
 | know whether I may spend 1% of nps | [Speed and nps](#speed-and-nps) |
@@ -123,6 +125,69 @@ That makes the skip an auditable claim rather than a silent omission.
 automatically. The asymmetry is the point: a false positive costs one subagent dispatch, a false
 negative merges an unreviewed search change that surfaces weeks later in an Elo match, if at all.
 Never teach the script to suppress the reminder — escalating it is fine.
+
+---
+
+## Cross-agent review
+
+Separate from the specialised reviewers: a second agent reviews selected artifacts and comments on
+the PR or issue before merge. The user routes it, so a pushed PR is *awaiting review*, not done.
+
+**What to send.** Issues and specs before work starts, design docs, measurement and validation
+plans, and documents making provenance claims — these are where a bad premise is expensive and
+invisible to CI. Aim it hardest at the design doc's "assumptions I cannot verify from the code"
+section. **Skip** mechanical changes where CI is the real gate, and artifacts that have already
+converged.
+
+**Division of labour.** `eval-reviewer` / `search-reviewer` review the **diff**; the cross-agent
+reviewer reviews the **design doc**. Putting both on one artifact is where cost blows up for little
+added signal. That split leaves a seam — nobody checks the diff still matches the design — which is
+why CLAUDE.md requires the PR body to state which approved decisions changed during implementation.
+The Harvest table is the natural place to notice it.
+
+**One round per artifact** unless it finds something blocking. Signal density falls off sharply
+after the first pass.
+
+**Rank findings.** Unranked findings force the author to re-triage before acting.
+
+| Rank | Meaning |
+|---|---|
+| **Blocking** | Merging without it risks a wrong or unverifiable result |
+| **Add** | A real gap worth closing, but the change is sound without it |
+| **Clarify** | Wording or framing, no behaviour at stake |
+
+**A blocking finding is closed with evidence proportionate to the claim**, not with an assertion.
+Measurement when the claim is about runtime or external behaviour — as PR #263 did for fastchess's
+`ucinewgame` — but source inspection, an authoritative specification, a focused test or explicit
+reasoning all qualify where they actually settle the question.
+
+The reviewer's strengths are provenance (who actually measured a number) and logical form
+(dichotomies that do not hold); it is weak at judging what is worth changing versus leaving alone.
+**Adjudicate on the merits** — push back with reasoning where a point does not hold rather than
+complying with all of them, and record the disposition so the exchange stays auditable.
+
+---
+
+## Design document lifecycle
+
+When to write one at all, and how to pitch it, is in CLAUDE.md → Design Documents. This is what
+happens to the file afterwards.
+
+**Land the doc in one logical commit before first publishing it for review.** After that the branch
+is reviewed history: **never force-push it just for tidiness** — add a normal follow-up commit and
+squash at merge if compact history is wanted. Keep the document through design review, then delete
+it in the same PR once Harvest is complete. Git history preserves it, so a link from an old comment
+stays resolvable.
+
+**Harvest** names where each durable decision ends up. Prefer a source comment, CLAUDE.md's Key
+Source Facts, or `Docs/Changelog.md` for anything that matters — a PR body is fine for working
+detail but is editable and lives outside Git, so important measurements should also be reachable
+from the tree. Anything durable living only in the plan has not been harvested yet.
+
+**Delete only when all three hold**: no inbound references, no deliberate spec/ADR role, and every
+durable item has a discoverable destination. Plans for **unstarted** work are specs and stay. So do
+records whose rationale is too substantial to inline — `.claude/plans/tsan-lazy-smp.md` is one,
+cited from `Docs/CI.md` for survey and cost analysis with no other home.
 
 ---
 
