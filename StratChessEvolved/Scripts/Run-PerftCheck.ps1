@@ -24,11 +24,11 @@
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
     Full corpus including edge cases -- the exhaustive pass, ~25 minutes:
-    cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Run-PerftCheck.ps1"
+    pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\Run-PerftCheck.ps1
     Bounded sanity run, well under a minute:
-    cmd.exe /c "pwsh ... Run-PerftCheck.ps1 -Limit 5000"
+    pwsh ... Run-PerftCheck.ps1 -Limit 5000
     Re-read a past run without repeating it:
-    cmd.exe /c "pwsh ... Run-PerftCheck.ps1 -ClassifyReport <path to report.json>"
+    pwsh ... Run-PerftCheck.ps1 -ClassifyReport <path to report.json>
 
 .NOTES
     Must be invoked with -File, not dot-sourced. $PSScriptRoot is $null under dot-source.

@@ -4,9 +4,27 @@
 
 #include <filesystem>
 #include <fstream>
+#include <iostream>
+#include <sstream>
 #include <string>
 
 namespace {
+
+	// Config's own fallback-to-defaults path reports on stderr (deliberately, for a real
+	// user running the CLI). The test exercising it only asserts REQUIRE_NOTHROW, so
+	// without this the message leaks into every passing test run's console output.
+	class CerrRedirect {
+	  public:
+		CerrRedirect() : old_(std::cerr.rdbuf(buffer_.rdbuf())) {}
+		~CerrRedirect() { std::cerr.rdbuf(old_); }
+
+		CerrRedirect(const CerrRedirect&) = delete;
+		CerrRedirect& operator=(const CerrRedirect&) = delete;
+
+	  private:
+		std::ostringstream buffer_;
+		std::streambuf* old_;
+	};
 
 	// Writes a settings document to a uniquely named temp file and removes it
 	// afterwards, so the cases cannot collide when the suite runs concurrently.
@@ -144,5 +162,6 @@ TEST_CASE("Config: a missing file falls back to defaults without throwing", "[co
 	Config reader = MakeReader();
 	// Reported on stderr, then defaults stand -- deliberately not an exception,
 	// since running with defaults is a usable outcome and the message says so.
+	CerrRedirect redirect;
 	REQUIRE_NOTHROW(reader.ReadConfigFile(missing, board));
 }

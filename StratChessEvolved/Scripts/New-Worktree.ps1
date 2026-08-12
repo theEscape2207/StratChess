@@ -34,7 +34,7 @@
     Starting any new task that will produce a PR.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
-    cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\New-Worktree.ps1 -Name eval-mobility-term"
+    pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\New-Worktree.ps1 -Name eval-mobility-term
 
 .NOTES
     Safe to run from the main checkout or from inside any existing worktree.

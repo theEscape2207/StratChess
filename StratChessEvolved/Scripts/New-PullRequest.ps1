@@ -53,7 +53,7 @@
     When a worktree branch is ready to become a PR, or to update one already open.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell), from inside the worktree
-    cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\New-PullRequest.ps1 -Title ""Add mobility eval term (#98)"""
+    pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\New-PullRequest.ps1 -Title "Add mobility eval term (#98)"
 
 .NOTES
     Refuses to run on `master` -- that branch is personal scratch and is not the source

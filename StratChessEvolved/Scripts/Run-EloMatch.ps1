@@ -21,13 +21,13 @@
     Docs/EloLog.md.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
-    cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Run-EloMatch.ps1"
+    pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\Run-EloMatch.ps1
     Smoke run (pipeline check, 20 games):
-    cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Run-EloMatch.ps1 -Smoke"
+    pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\Run-EloMatch.ps1 -Smoke
     SPRT (stops as soon as the result is decisive; -Games becomes an upper bound).
     Needs a reference that isolates the change, so build the merge base first:
-    cmd.exe /c "pwsh ... Run-EloMatch.ps1 -Sprt NonRegression -ReferenceExe <mb.exe> -ReferenceTag <commit>"
-    cmd.exe /c "pwsh ... Run-EloMatch.ps1 -Sprt Gain -ReferenceExe <mb.exe> -ReferenceTag <commit>"
+    pwsh ... Run-EloMatch.ps1 -Sprt NonRegression -ReferenceExe <mb.exe> -ReferenceTag <commit>
+    pwsh ... Run-EloMatch.ps1 -Sprt Gain -ReferenceExe <mb.exe> -ReferenceTag <commit>
 
 .NOTES
     Must be invoked with -File, not dot-sourced. $PSScriptRoot is $null under dot-source.
