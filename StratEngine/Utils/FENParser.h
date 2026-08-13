@@ -43,10 +43,12 @@ class FENParser final {
 	static FENGameState FromGameConfig(const Config::GameConfig& config) noexcept;
 
   private:
+	static std::optional<std::string> ParseFENImpl(const std::string& fen, FENGameState& outState,
+	                                               std::vector<std::tuple<ePiece, eSquare>>& outPieces);
+
 	// Parse only the piece placement field (the part before the first space).
 	// Fills outVec with (piece, square) tuples in the same square-indexing used in Board.
 	// On success returns std::nullopt. On failure returns an error message.
-	// Not noexcept: only ever called from within ParseFEN's own try/catch.
 	static std::optional<std::string> ParsePiecePlacementField(const std::string& placement,
 	                                                           std::vector<std::tuple<ePiece, eSquare>>& outVec);
 
@@ -54,6 +56,5 @@ class FENParser final {
 	static eSquare SquareFromString(const std::string& s) noexcept;
 
 	// Parse FEN castling string format either "KQkq" or "-" if no more available.
-	// Not noexcept: only ever called from within ParseFEN's own try/catch.
 	static std::optional<std::string> PopulateCastlingFlags(const std::string& castling, uint8_t& outRights);
 };
