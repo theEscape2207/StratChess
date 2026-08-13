@@ -138,28 +138,29 @@ class TranspositionTable {
 		return std::abs(value) >= (GameValues::Mate_Threshold);
 	}
 
-	// Storage: normalize mate scores
+	// Storage: normalize mate scores. Cast makes the int->int16_t narrowing explicit; safe
+	// because Mate_Threshold (29900) + MAX_PLY (256) fits int16_t.
 	int16_t normalize_for_storage(int16_t value, int ply) const noexcept
 	{
 		if (value >= GameValues::Mate_Threshold) {
 			// Winning mate: add ply to "push back" the mate distance
-			return value + static_cast<int16_t>(ply);
+			return static_cast<int16_t>(value + ply);
 		} else if (value <= -GameValues::Mate_Threshold) {
 			// Losing mate: subtract ply
-			return value - static_cast<int16_t>(ply);
+			return static_cast<int16_t>(value - ply);
 		}
 		return value; // Non-mate scores unchanged
 	}
 
-	// Retrieval: denormalize mate scores
+	// Retrieval: denormalize mate scores. See normalize_for_storage re: the narrowing cast.
 	int16_t denormalize_from_storage(int16_t stored_value, int ply) const noexcept
 	{
 		if (stored_value >= GameValues::Mate_Threshold) {
 			// Store mate-in-N rather than absolute mate value
-			return stored_value - static_cast<int16_t>(ply);
+			return static_cast<int16_t>(stored_value - ply);
 		} else if (stored_value <= -GameValues::Mate_Threshold) {
 			// Add ply
-			return stored_value + static_cast<int16_t>(ply);
+			return static_cast<int16_t>(stored_value + ply);
 		}
 		return stored_value;
 	}
@@ -265,8 +266,9 @@ class TranspositionTable {
 		// Scale quiescence depth down to equivalent main search scale (tunable)
 		int adjusted_depth = (entry.phase == SearchPhase::MAIN) ? entry.depth : quiescenceEquivalentDepth(entry.depth);
 
-		// Quiescence searches sometimes have shallower depth but should still be considered
-		int phase_bonus = (entry.phase == SearchPhase::MAIN) ? 0 : 0 /*-256*/;
+		// Quiescence searches sometimes have shallower depth but should still be
+		// considered -- no phase bonus/penalty either way.
+		constexpr int phase_bonus = 0;
 		return adjusted_depth * 256 + pv_bonus + phase_bonus - age_diff * 512;
 	}
 

@@ -46,12 +46,14 @@ class FENParser final {
 	// Parse only the piece placement field (the part before the first space).
 	// Fills outVec with (piece, square) tuples in the same square-indexing used in Board.
 	// On success returns std::nullopt. On failure returns an error message.
-	static std::optional<std::string>
-	ParsePiecePlacementField(const std::string& placement, std::vector<std::tuple<ePiece, eSquare>>& outVec) noexcept;
+	// Not noexcept: only ever called from within ParseFEN's own try/catch.
+	static std::optional<std::string> ParsePiecePlacementField(const std::string& placement,
+	                                                           std::vector<std::tuple<ePiece, eSquare>>& outVec);
 
 	// Convert a 2-char square like "e3" to eSquare. Returns NO_SQUARE on invalid input.
 	static eSquare SquareFromString(const std::string& s) noexcept;
 
 	// Parse FEN castling string format either "KQkq" or "-" if no more available.
-	static std::optional<std::string> PopulateCastlingFlags(const std::string& castling, uint8_t& outRights) noexcept;
+	// Not noexcept: only ever called from within ParseFEN's own try/catch.
+	static std::optional<std::string> PopulateCastlingFlags(const std::string& castling, uint8_t& outRights);
 };

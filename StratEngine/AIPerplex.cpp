@@ -67,8 +67,7 @@ static void ensure_logger_initialized()
 			spdlog::register_logger(s_logger);
 			s_logger->set_level(spdlog::level::debug);
 			s_logger->flush_on(spdlog::level::debug);
-		} catch (...) {
-			// best-effort; leave it empty if creation fails
+		} catch (...) { // NOLINT(bugprone-empty-catch) - best-effort logger init
 		}
 	}
 }
@@ -76,12 +75,15 @@ static void ensure_logger_initialized()
 void AIPerplex::SetVerboseLogging(bool enabled) noexcept
 {
 	s_verbose_logging = enabled;
-	if (enabled) {
-		ensure_logger_initialized();
-		if (s_logger)
-			s_logger->set_level(spdlog::level::debug);
-	} else if (s_logger) {
-		s_logger->set_level(spdlog::level::off);
+	try {
+		if (enabled) {
+			ensure_logger_initialized();
+			if (s_logger)
+				s_logger->set_level(spdlog::level::debug);
+		} else if (s_logger) {
+			s_logger->set_level(spdlog::level::off);
+		}
+	} catch (...) { // NOLINT(bugprone-empty-catch) - best-effort logging toggle
 	}
 }
 
@@ -324,9 +326,11 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 		metrics.interrupted = ShouldStopSearch(); // Check on time expiry
 		metrics.move_changed = (metrics.current_move != state.last_iteration_move);
 		metrics.score_delta = currentBestScore - state.best_score;
-		metrics.completion_ratio = (state.nodes_at_completed_depth > 0)
-		                               ? static_cast<double>(metrics.nodes_searched) / state.nodes_at_completed_depth
-		                               : 1.0;
+		// node counts never realistically approach 2^53 (int64_t->double precision loss)
+		metrics.completion_ratio =
+		    (state.nodes_at_completed_depth > 0)
+		        ? static_cast<double>(metrics.nodes_searched) / static_cast<double>(state.nodes_at_completed_depth)
+		        : 1.0;
 
 		// Debug logging (detailed diagnostics)
 		log_iteration_eval(metrics, td.pv_table);

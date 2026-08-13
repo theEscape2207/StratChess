@@ -62,7 +62,7 @@ namespace PieceHelper {
 	// Callers are expected to pass an actual piece. The aggregate entries and NO_PIECE index the
 	// zero-valued tail of g_iPieceValues, so a stray value reads in bounds and scores nothing
 	// rather than reading past the table; the assert catches the caller that got there by mistake.
-	static inline constexpr unsigned int Value(ePiece piece) noexcept
+	static inline constexpr int Value(ePiece piece) noexcept
 	{
 		assert(IsActual(piece));
 		return (g_iPieceValues[piece >> 1]);
@@ -70,9 +70,11 @@ namespace PieceHelper {
 
 	static inline constexpr eColor Color(ePiece piece) noexcept { return static_cast<eColor>(piece & 1); }
 
-	// It is always possible to go from PieceType to Piece
+	// It is always possible to go from PieceType to Piece. ePieceType (0,2,...,12) + color (0/1)
+	// always sums to [0,13], exactly ePiece's valid range -- analyzer false positive.
 	static inline constexpr ePiece AsPiece(ePieceType pieceType, eColor color) noexcept
 	{
+		// NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
 		return static_cast<ePiece>(pieceType + static_cast<size_t>(color));
 	}
 

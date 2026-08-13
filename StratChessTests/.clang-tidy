@@ -1,0 +1,9 @@
+# Overrides the root .clang-tidy for test sources only. See issue #284.
+#
+# bugprone-unchecked-optional-access is off here: all 14 occurrences found clearing #284's
+# backlog were the same false positive, Catch2's REQUIRE(opt.has_value()) followed by
+# REQUIRE(opt->field ...) -- the check doesn't recognise REQUIRE as a guard. Zero occurrences
+# in StratEngine/, where the check stays on.
+InheritParentConfig: true
+Checks: >
+  -bugprone-unchecked-optional-access

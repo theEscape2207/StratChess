@@ -34,8 +34,9 @@ Game::~Game()
 
 		// Under VisualStudio, this must be called before main finishes to workaround a known VS issue
 		spdlog::drop_all();
-	} catch (const std::exception&) {
-		// Don't care if any deregistration fails, we're closing here
+	} catch (const std::exception&) { // NOLINT(bugprone-empty-catch)
+		                              // Don't care if any deregistration fails, we're closing here -- a
+		                              // destructor must not let this propagate regardless
 	}
 }
 

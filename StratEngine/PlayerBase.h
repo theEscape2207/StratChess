@@ -11,6 +11,8 @@ class Board;
 
 class PlayerBase : public IPlayer {
   public:
+	// Never a stored field.
+	// NOLINTNEXTLINE(performance-enum-size)
 	enum class ePlayerTypes {
 		HUMAN,             // 0
 		ALPHABETA,         // 1

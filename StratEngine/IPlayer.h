@@ -8,6 +8,8 @@
 
 class IPlayer {
   public:
+	// Defaulted; Event<T>'s unordered_map default-ctor is noexcept.
+	// NOLINTNEXTLINE(bugprone-exception-escape)
 	IPlayer() noexcept = default;
 	// Virtual functions
 	virtual Move GetMove(GameInfo& info, const SearchLimits& limits) = 0;

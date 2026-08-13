@@ -322,27 +322,30 @@ static bool parse_uci_args(int argc, char** argv, std::optional<std::string>& lo
 	return true;
 }
 
+// Backstop for the whole function, not just the modes below: argv parsing itself
+// (std::string construction) can throw, and Game::Init reports its specific cause and
+// rethrows deliberately -- it is not its place to choose an exit code, and swallowing there
+// would let a half-initialised Game continue into Run(). Without this catch the rethrow
+// reaches std::terminate, which is why a bad settings file used to present as a crash
+// (0xC0000409) even after it had printed a perfectly good diagnostic.
+// Still flagged: the catch handlers' own std::cerr calls aren't noexcept either (same edge
+// case as FENParser::ParseFEN), but main is already the outermost boundary.
+// NOLINTNEXTLINE(bugprone-exception-escape)
 int main(int argc, char** argv)
 {
-	if (argc > 1 && std::string(argv[1]) == "test-fen") {
-		test_fen_integration();
-		return 0;
-	}
-	if (argc > 1 && std::string(argv[1]) == "unittest") {
-		// Unit tests have migrated to StratChessTests.exe (Catch2 v3).
-		// Run:             x64\Release\StratChessTests.exe
-		// Filter by tag:   StratChessTests.exe [repetition]
-		std::cout << "Unit tests have moved to StratChessTests.exe\n";
-		return 0;
-	}
-
-	// Backstop for every mode below. Game::Init reports the specific cause and
-	// rethrows deliberately -- it is not its place to choose an exit code, and
-	// swallowing there would let a half-initialised Game continue into Run().
-	// Without this catch the rethrow reaches std::terminate, which is why a bad
-	// settings file used to present as a crash (0xC0000409) even after it had
-	// printed a perfectly good diagnostic.
 	try {
+		if (argc > 1 && std::string(argv[1]) == "test-fen") {
+			test_fen_integration();
+			return 0;
+		}
+		if (argc > 1 && std::string(argv[1]) == "unittest") {
+			// Unit tests have migrated to StratChessTests.exe (Catch2 v3).
+			// Run:             x64\Release\StratChessTests.exe
+			// Filter by tag:   StratChessTests.exe [repetition]
+			std::cout << "Unit tests have moved to StratChessTests.exe\n";
+			return 0;
+		}
+
 		// UCI mode: default (no args) or explicit "uci" — this is what GUIs expect
 		// Game mode: StratChessEvolved.exe game
 		if (argc == 1 || std::string(argv[1]) == "uci") {
