@@ -18,6 +18,9 @@
 #include <filesystem>
 #include <fstream>
 #include <random>
+#include <mutex>
+#include <stdexcept>
+#include <spdlog/sinks/base_sink.h>
 
 using P = UciHandler::GoParams;
 
@@ -861,6 +864,70 @@ TEST_CASE("FENParser::ParseFEN: fewer than 4 fields reports the field-count erro
 
 	REQUIRE(err.has_value());
 	CHECK(err->find("too few fields") != std::string::npos);
+}
+
+namespace {
+	// Throws on every log call, to exercise ValidatePositionAgainstFENMetadata's handling of a
+	// failing spdlog sink (see PR #293 review, "FENParser.cpp:157: safe_warn").
+	class ThrowingSink final : public spdlog::sinks::base_sink<std::mutex> {
+	  protected:
+		void sink_it_(const spdlog::details::log_msg&) override { throw std::runtime_error("sink failure (test)"); }
+		void flush_() override {}
+	};
+
+	// RAII: attaches ThrowingSink to the default logger and detaches it on scope exit --
+	// including via a failed REQUIRE/CHECK -- so a test failure here can't leave later tests
+	// logging into a sink that throws.
+	class ScopedThrowingSink {
+	  public:
+		ScopedThrowingSink() : sink_(std::make_shared<ThrowingSink>())
+		{
+			spdlog::default_logger()->sinks().push_back(sink_);
+		}
+		~ScopedThrowingSink()
+		{
+			try {
+				auto& sinks = spdlog::default_logger()->sinks();
+				sinks.erase(std::remove(sinks.begin(), sinks.end(), sink_), sinks.end());
+			} catch (...) { // NOLINT(bugprone-empty-catch) - cleanup in a destructor
+			}
+		}
+		ScopedThrowingSink(const ScopedThrowingSink&) = delete;
+		ScopedThrowingSink& operator=(const ScopedThrowingSink&) = delete;
+
+	  private:
+		std::shared_ptr<ThrowingSink> sink_;
+	};
+} // namespace
+
+TEST_CASE("FENParser::ValidatePositionAgainstFENMetadata: every correction still applies when "
+          "logging throws",
+          "[uci]")
+{
+	// White king on d1 (not e1, so the claimed Q right must be cleared) and an en-passant
+	// square with no pawn behind it to justify it (so epSquare must be cleared too) --
+	// two independent corrections. If a throw during the first correction's log call aborted
+	// validation early, the second correction would never run.
+	const std::string fen = "4k3/8/8/8/4P3/8/8/3K4 w Q e6 0 1";
+
+	Board board;
+	REQUIRE(board.SetupFromFEN(fen)); // sets up the pieces; also exercises the real call path once
+
+	FENParser::FENGameState state;
+	std::vector<std::tuple<ePiece, eSquare>> pieces;
+	REQUIRE_FALSE(FENParser::ParseFEN(fen, state, pieces)); // fresh, uncorrected state
+	REQUIRE(state.castlingRights == CastlingRights::WHITE_QUEENSIDE);
+	REQUIRE(state.epSquare == e6);
+
+	bool ok = false;
+	{
+		ScopedThrowingSink throwing;
+		REQUIRE_NOTHROW(ok = FENParser::ValidatePositionAgainstFENMetadata(board, state));
+	}
+
+	CHECK(ok);
+	CHECK(state.castlingRights == CastlingRights::NONE);
+	CHECK(state.epSquare == NO_SQUARE);
 }
 
 TEST_CASE("Board::SetupFromFEN: 4-field FEN yields fiftyCount 0", "[uci]")

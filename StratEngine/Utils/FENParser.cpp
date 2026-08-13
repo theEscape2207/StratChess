@@ -328,92 +328,97 @@ eSquare FENParser::SquareFromString(const std::string& s) noexcept
 	return static_cast<eSquare>(col + row);
 }
 
+namespace {
+	// spdlog's warn() isn't noexcept. Wrapping only the log call (not the correction beside
+	// it) means a logging failure can never interrupt validation partway through -- every
+	// correction below still applies even if none of the warnings can be recorded. A broad
+	// try/catch around the whole function let a mid-validation throw return early with
+	// `state` only partially corrected, which Board::SetupFromFEN doesn't check before
+	// applying it (PR #293 review).
+	template <typename... Args> void safe_warn(std::string_view fmt_str, const Args&... args) noexcept
+	{
+		try {
+			spdlog::default_logger()->warn(fmt::runtime(fmt_str), args...);
+		} catch (...) { // NOLINT(bugprone-empty-catch) - logging is best-effort here
+		}
+	}
+} // namespace
+
 // Validate against explicit Board reference
-//
-// spdlog's warn() isn't noexcept, hence the try/catch below.
 bool FENParser::ValidatePositionAgainstFENMetadata(const Board& board, FENGameState& state) noexcept
 {
-	try {
-		// Each entry defines one side's castling validation requirements
-		static constexpr std::array<std::tuple<eSquare, eColor, uint8_t, uint8_t, eSquare, eSquare>, 2> sides = {
-		    {{e1, WHITE, CastlingRights::WHITE_KINGSIDE, CastlingRights::WHITE_QUEENSIDE, h1, a1},
-		     {e8, BLACK, CastlingRights::BLACK_KINGSIDE, CastlingRights::BLACK_QUEENSIDE, h8, a8}}};
+	// Each entry defines one side's castling validation requirements
+	static constexpr std::array<std::tuple<eSquare, eColor, uint8_t, uint8_t, eSquare, eSquare>, 2> sides = {
+	    {{e1, WHITE, CastlingRights::WHITE_KINGSIDE, CastlingRights::WHITE_QUEENSIDE, h1, a1},
+	     {e8, BLACK, CastlingRights::BLACK_KINGSIDE, CastlingRights::BLACK_QUEENSIDE, h8, a8}}};
 
-		for (const auto& [kingSq, color, kingsideFlag, queensideFlag, rookKingSq, rookQueenSq] : sides) {
-			uint8_t sideMask = kingsideFlag | queensideFlag;
+	for (const auto& [kingSq, color, kingsideFlag, queensideFlag, rookKingSq, rookQueenSq] : sides) {
+		uint8_t sideMask = kingsideFlag | queensideFlag;
 
-			// Skip if neither right is claimed for this side
-			if (!(state.castlingRights & sideMask))
-				continue;
+		// Skip if neither right is claimed for this side
+		if (!(state.castlingRights & sideMask))
+			continue;
 
-			// King must be present and correct color
-			if (!PieceHelper::IsKing(board.GetPiece(kingSq)) || PieceHelper::Color(board.GetPiece(kingSq)) != color) {
-				spdlog::default_logger()->warn("Clearing {} castling rights: king not on {}", color, kingSq);
-				state.castlingRights &= ~sideMask;
-				continue;
-			}
+		// King must be present and correct color
+		if (!PieceHelper::IsKing(board.GetPiece(kingSq)) || PieceHelper::Color(board.GetPiece(kingSq)) != color) {
+			safe_warn("Clearing {} castling rights: king not on {}", color, kingSq);
+			state.castlingRights &= ~sideMask;
+			continue;
+		}
 
-			// Check kingside rook
-			if (state.castlingRights & kingsideFlag) {
-				if (!PieceHelper::IsOfPiece(board.GetPiece(rookKingSq), PieceHelper::AsPiece(ROOK, color))) {
-					spdlog::default_logger()->warn("Clearing {} king-side castling right: rook not on {}", color,
-					                               rookKingSq);
-					state.castlingRights &= ~kingsideFlag;
-				}
-			}
-
-			// Check queenside rook
-			if (state.castlingRights & queensideFlag) {
-				if (!PieceHelper::IsOfPiece(board.GetPiece(rookQueenSq), PieceHelper::AsPiece(ROOK, color))) {
-					spdlog::default_logger()->warn("Clearing {} queen-side castling right: rook not on {}", color,
-					                               rookQueenSq);
-					state.castlingRights &= ~queensideFlag;
-				}
+		// Check kingside rook
+		if (state.castlingRights & kingsideFlag) {
+			if (!PieceHelper::IsOfPiece(board.GetPiece(rookKingSq), PieceHelper::AsPiece(ROOK, color))) {
+				safe_warn("Clearing {} king-side castling right: rook not on {}", color, rookKingSq);
+				state.castlingRights &= ~kingsideFlag;
 			}
 		}
 
-		// Validate en-passant
-		if (state.epSquare != NO_SQUARE) {
-			const int epIndex = static_cast<int>(state.epSquare);
-			const int file = epIndex % 8;
-			const int epRankIndex = epIndex / 8;
-
-			eColor lastMover = (state.sideToMove == WHITE) ? BLACK : WHITE;
-			int pawnRankIndex = -1;
-
-			if (lastMover == WHITE) {
-				if (epRankIndex != 5) { // rank 3 (index 5)
-					spdlog::default_logger()->warn(
-					    "Clearing en-passant: ep square rank inconsistent with side to move");
-					state.epSquare = NO_SQUARE;
-				} else {
-					pawnRankIndex = 4;
-				}
-			} else {                    // lastMover == BLACK
-				if (epRankIndex != 2) { // rank 6 (index 2)
-					spdlog::default_logger()->warn(
-					    "Clearing en-passant: ep square rank inconsistent with side to move");
-					state.epSquare = NO_SQUARE;
-				} else {
-					pawnRankIndex = 3;
-				}
-			}
-
-			if (pawnRankIndex != -1 && state.epSquare != NO_SQUARE) {
-				const eSquare pawnSq = static_cast<eSquare>((pawnRankIndex << 3) + file);
-				const ePiece p = board.GetPiece(pawnSq);
-				if (!PieceHelper::IsPawn(p) || PieceHelper::Color(p) != lastMover) {
-					spdlog::default_logger()->warn(
-					    "Clearing en-passant: no pawn of expected color on square for ep capture");
-					state.epSquare = NO_SQUARE;
-				}
+		// Check queenside rook
+		if (state.castlingRights & queensideFlag) {
+			if (!PieceHelper::IsOfPiece(board.GetPiece(rookQueenSq), PieceHelper::AsPiece(ROOK, color))) {
+				safe_warn("Clearing {} queen-side castling right: rook not on {}", color, rookQueenSq);
+				state.castlingRights &= ~queensideFlag;
 			}
 		}
-
-		return true;
-	} catch (...) {
-		return false;
 	}
+
+	// Validate en-passant
+	if (state.epSquare != NO_SQUARE) {
+		const int epIndex = static_cast<int>(state.epSquare);
+		const int file = epIndex % 8;
+		const int epRankIndex = epIndex / 8;
+
+		eColor lastMover = (state.sideToMove == WHITE) ? BLACK : WHITE;
+		int pawnRankIndex = -1;
+
+		if (lastMover == WHITE) {
+			if (epRankIndex != 5) { // rank 3 (index 5)
+				safe_warn("Clearing en-passant: ep square rank inconsistent with side to move");
+				state.epSquare = NO_SQUARE;
+			} else {
+				pawnRankIndex = 4;
+			}
+		} else {                    // lastMover == BLACK
+			if (epRankIndex != 2) { // rank 6 (index 2)
+				safe_warn("Clearing en-passant: ep square rank inconsistent with side to move");
+				state.epSquare = NO_SQUARE;
+			} else {
+				pawnRankIndex = 3;
+			}
+		}
+
+		if (pawnRankIndex != -1 && state.epSquare != NO_SQUARE) {
+			const eSquare pawnSq = static_cast<eSquare>((pawnRankIndex << 3) + file);
+			const ePiece p = board.GetPiece(pawnSq);
+			if (!PieceHelper::IsPawn(p) || PieceHelper::Color(p) != lastMover) {
+				safe_warn("Clearing en-passant: no pawn of expected color on square for ep capture");
+				state.epSquare = NO_SQUARE;
+			}
+		}
+	}
+
+	return true;
 }
 
 // Conversion utilities
