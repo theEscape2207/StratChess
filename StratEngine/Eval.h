@@ -69,8 +69,6 @@ constexpr int BlendPhase(const ScorePair& s, int phase) noexcept
 // search thread calls.
 class EvalManager {
   public:
-	// Never a stored field.
-	// NOLINTNEXTLINE(performance-enum-size)
 	enum class EvalTypes {
 		NONE,    // No eval engine, i.e. human
 		SIMPLE,  // Simple engine

@@ -106,16 +106,12 @@ class AIPerplex final : public PlayerAiBase {
 		{}
 	};
 
-	// Local var, ~10-40 calls per search, not per-node.
-	// NOLINTNEXTLINE(performance-enum-size)
 	enum class IterationDecision {
 		ACCEPT_AND_CONTINUE, // Use this depth, keep going
 		ACCEPT_AND_STOP,     // Use this depth, stop iteration
 		REJECT_AND_STOP      // Reject this depth, use previous
 	};
 
-	// Same as IterationDecision above.
-	// NOLINTNEXTLINE(performance-enum-size)
 	enum class RejectionReason { NONE, INCOMPLETE, TOO_FEW_NODES, SHORT_PV, SCORE_DROP, MOVE_CHANGED };
 
 	// SEARCH METHODS

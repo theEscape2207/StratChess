@@ -69,9 +69,8 @@ enum class MoveType : uint8_t {
 	PROMOTION_QUEEN_CAPTURE = 15,
 };
 
-// Commented-out `: uint8_t` is a prior attempt reverted for an unrecorded reason -- see #292.
-// NOLINTNEXTLINE(performance-enum-size)
-enum eRowNames /*: uint8_t*/ {
+// NO_ROW requires a signed representation.
+enum eRowNames {
 	NO_ROW = -1,
 	BLACK_BACK_ROW = 0,
 	WHITE_7TH_ROW = 1, // TODO: Confusing names
@@ -85,9 +84,7 @@ enum eFileNames : uint8_t { LEFT_FILE = 0, RIGHT_FILE = 7 };
 // clang-format off
 // Laid out as the board itself, eight squares per rank. One enumerator per line
 // is technically equivalent and unreadable.
-// Commented-out `: uint8_t` is a prior attempt reverted for an unrecorded reason -- see #292.
-// NOLINTNEXTLINE(performance-enum-size)
-enum eSquare /*: uint8_t*/ {
+enum eSquare {
 	a8 = 0, b8, c8, d8, e8, f8, g8, h8,
 	a7, b7, c7, d7, e7, f7, g7, h7,
 	a6, b6, c6, d6, e6, f6, g6, h6,
@@ -104,7 +101,6 @@ enum eSquare /*: uint8_t*/ {
 constexpr auto MAX_PLY = 256;
 
 // Named constants used inline in arithmetic, never a stored field.
-// NOLINTNEXTLINE(performance-enum-size)
 enum GameValues : int {
 	Draw = 0,               //
 	Mate_Threshold = 29900, // Above this - we've found a mate

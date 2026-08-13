@@ -70,8 +70,7 @@ namespace PieceHelper {
 
 	static inline constexpr eColor Color(ePiece piece) noexcept { return static_cast<eColor>(piece & 1); }
 
-	// It is always possible to go from PieceType to Piece. ePieceType (0,2,...,12) + color (0/1)
-	// always sums to [0,13], exactly ePiece's valid range -- analyzer false positive.
+	// Valid piece types and colors produce named ePiece values 0 through 13.
 	static inline constexpr ePiece AsPiece(ePieceType pieceType, eColor color) noexcept
 	{
 		// NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)

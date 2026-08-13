@@ -138,8 +138,7 @@ class TranspositionTable {
 		return std::abs(value) >= (GameValues::Mate_Threshold);
 	}
 
-	// Storage: normalize mate scores. Cast makes the int->int16_t narrowing explicit; safe
-	// because Mate_Threshold (29900) + MAX_PLY (256) fits int16_t.
+	// Storage: normalize mate scores. Mate +/- MAX_PLY fits in int16_t.
 	int16_t normalize_for_storage(int16_t value, int ply) const noexcept
 	{
 		if (value >= GameValues::Mate_Threshold) {
