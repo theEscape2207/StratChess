@@ -69,6 +69,8 @@ enum class MoveType : uint8_t {
 	PROMOTION_QUEEN_CAPTURE = 15,
 };
 
+// NOLINTNEXTLINE(performance-enum-size) - the commented-out `: uint8_t` above is a prior attempt
+// that was reverted for an unrecorded reason; see #292 before retrying board/square enums.
 enum eRowNames /*: uint8_t*/ {
 	NO_ROW = -1,
 	BLACK_BACK_ROW = 0,
@@ -83,6 +85,8 @@ enum eFileNames : uint8_t { LEFT_FILE = 0, RIGHT_FILE = 7 };
 // clang-format off
 // Laid out as the board itself, eight squares per rank. One enumerator per line
 // is technically equivalent and unreadable.
+// NOLINTNEXTLINE(performance-enum-size) - the commented-out `: uint8_t` is a prior attempt that
+// was reverted for an unrecorded reason; see #292 for the investigation before retrying.
 enum eSquare /*: uint8_t*/ {
 	a8 = 0, b8, c8, d8, e8, f8, g8, h8,
 	a7, b7, c7, d7, e7, f7, g7, h7,
@@ -99,6 +103,9 @@ enum eSquare /*: uint8_t*/ {
 // Bestemmer den maksimale soegedybde for Quiescent(?)
 constexpr auto MAX_PLY = 256;
 
+// NOLINTNEXTLINE(performance-enum-size) - these are named constants used inline in arithmetic
+// (integer promotion means the storage type doesn't affect any computation), never a stored
+// struct/array field, so shrinking has no measurable benefit.
 enum GameValues : int {
 	Draw = 0,               //
 	Mate_Threshold = 29900, // Above this - we've found a mate
@@ -152,8 +159,11 @@ inline const BITBOARD g_bbFileMask[] = {
 // entries and NO_PIECE also shift down into this table (12 >> 1 == 13 >> 1 == 6,
 // 15 >> 1 == 7), so a six-element table leaves those indices out of bounds. They
 // score zero — no piece, no material.
+// int, not unsigned: every caller uses these values in signed score arithmetic
+// (material_score_, MoveHelper::Value, aspiration windows), and unsigned made
+// every one of those a narrowing-conversion finding (issue #284).
 // clang-format off
-inline constexpr unsigned int g_iPieceValues[(ePiece::NO_PIECE >> 1) + 1] = {
+inline constexpr int g_iPieceValues[(ePiece::NO_PIECE >> 1) + 1] = {
 	100, 		// Boender
 	300, 		// Springere
 	300, 		// Loebere
@@ -386,7 +396,7 @@ constexpr std::array<BITBOARD, ALL_SQUARES> makeMask()
 constexpr std::array<BITBOARD, ALL_SQUARES> makeFileUpMask()
 {
 	std::array<BITBOARD, ALL_SQUARES> result{};
-	for (unsigned int i = 0; i < ALL_SQUARES; ++i) {
+	for (int i = 0; i < ALL_SQUARES; ++i) {
 		result[i] = 0;
 		for (int j = i - 8; j >= 0; j -= 8) {
 			result[i] += (1ULL << j); // UNIT << j
@@ -398,7 +408,7 @@ constexpr std::array<BITBOARD, ALL_SQUARES> makeFileUpMask()
 constexpr std::array<BITBOARD, ALL_SQUARES> makeFileDownMask()
 {
 	std::array<BITBOARD, ALL_SQUARES> result{};
-	for (unsigned int i = 0; i < ALL_SQUARES; ++i) {
+	for (int i = 0; i < ALL_SQUARES; ++i) {
 		result[i] = 0;
 		for (int j = i + 8; j < ALL_SQUARES; j += 8) {
 			result[i] += (1ULL << j); // UNIT << j

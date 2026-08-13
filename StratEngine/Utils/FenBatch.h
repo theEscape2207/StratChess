@@ -26,6 +26,9 @@
 
 namespace FenBatch {
 
+	// NOLINTNEXTLINE(performance-enum-size) - LineResult below is not bulk-stored (one instance
+	// per input line during a batch eval run, not per-node); no measurable benefit, and the
+	// struct's std::string member dwarfs whatever byte this would save anyway.
 	enum class LineKind {
 		Skip,      // blank line or '#' comment — not an error, nothing to report
 		Malformed, // failed either validation tier; `error` explains why

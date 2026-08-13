@@ -62,7 +62,7 @@ namespace PieceHelper {
 	// Callers are expected to pass an actual piece. The aggregate entries and NO_PIECE index the
 	// zero-valued tail of g_iPieceValues, so a stray value reads in bounds and scores nothing
 	// rather than reading past the table; the assert catches the caller that got there by mistake.
-	static inline constexpr unsigned int Value(ePiece piece) noexcept
+	static inline constexpr int Value(ePiece piece) noexcept
 	{
 		assert(IsActual(piece));
 		return (g_iPieceValues[piece >> 1]);

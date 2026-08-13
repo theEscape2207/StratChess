@@ -106,12 +106,15 @@ class AIPerplex final : public PlayerAiBase {
 		{}
 	};
 
+	// NOLINTNEXTLINE(performance-enum-size) - a local variable in iterative_deepening(), one
+	// instance per ID iteration (~10-40 per search, not per-node); no measurable benefit.
 	enum class IterationDecision {
 		ACCEPT_AND_CONTINUE, // Use this depth, keep going
 		ACCEPT_AND_STOP,     // Use this depth, stop iteration
 		REJECT_AND_STOP      // Reject this depth, use previous
 	};
 
+	// NOLINTNEXTLINE(performance-enum-size) - same as IterationDecision above
 	enum class RejectionReason { NONE, INCOMPLETE, TOO_FEW_NODES, SHORT_PV, SCORE_DROP, MOVE_CHANGED };
 
 	// SEARCH METHODS

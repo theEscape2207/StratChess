@@ -14,7 +14,7 @@ Move AIAgent::GetMove(GameInfo& info, const SearchLimits& limits)
 	InitMoveVariables(info);
 
 	// Aspiration Window Search - size +/- Half a pawn
-	const auto windowSize = g_iPieceValues[PAWN] >> 1; // 50
+	const int windowSize = g_iPieceValues[PAWN] >> 1; // 50
 
 	// Set alpha and beta boundaries around last best score
 	// TODO: this solution could be a minor deficiency playing with humans,

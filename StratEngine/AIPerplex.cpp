@@ -327,9 +327,11 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 		metrics.interrupted = ShouldStopSearch(); // Check on time expiry
 		metrics.move_changed = (metrics.current_move != state.last_iteration_move);
 		metrics.score_delta = currentBestScore - state.best_score;
-		metrics.completion_ratio = (state.nodes_at_completed_depth > 0)
-		                               ? static_cast<double>(metrics.nodes_searched) / state.nodes_at_completed_depth
-		                               : 1.0;
+		// node counts realistically never approach 2^53, where int64_t->double would lose precision
+		metrics.completion_ratio =
+		    (state.nodes_at_completed_depth > 0)
+		        ? static_cast<double>(metrics.nodes_searched) / static_cast<double>(state.nodes_at_completed_depth)
+		        : 1.0;
 
 		// Debug logging (detailed diagnostics)
 		log_iteration_eval(metrics, td.pv_table);
