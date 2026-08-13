@@ -70,11 +70,8 @@ namespace PieceHelper {
 
 	static inline constexpr eColor Color(ePiece piece) noexcept { return static_cast<eColor>(piece & 1); }
 
-	// It is always possible to go from PieceType to Piece. ePieceType's enumerators (PAWN=0,
-	// KNIGHT=2, ..., KING=10, ALL_FROM_COLOR=12) plus color (0 or 1) sum to every value in
-	// [0, 13], which is exactly ePiece's WHITE_PAWN..ALL_BLACK_PIECES range -- always a declared
-	// enumerator for any legitimate pieceType, so the analyzer's out-of-range concern is a false
-	// positive here.
+	// It is always possible to go from PieceType to Piece. ePieceType (0,2,...,12) + color (0/1)
+	// always sums to [0,13], exactly ePiece's valid range -- analyzer false positive.
 	static inline constexpr ePiece AsPiece(ePieceType pieceType, eColor color) noexcept
 	{
 		// NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)

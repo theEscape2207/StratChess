@@ -1,13 +1,9 @@
 # Overrides the root .clang-tidy for test sources only. See issue #284.
 #
-# bugprone-unchecked-optional-access is off here because every occurrence in this
-# tree (14/14, measured clearing #284's backlog) was the same false positive: a
-# Catch2 REQUIRE(opt.has_value()) immediately followed by REQUIRE(opt->field ...).
-# The check's dataflow analysis doesn't recognise REQUIRE as a guard (it looks for
-# if/branch patterns, not assertion macros), so it can never pass for that idiom --
-# and production code (StratEngine/) has zero occurrences of the pattern at all, so
-# there's nothing this check protects here that a real bug would slip through.
-# Left enabled in the root config for StratEngine/, where it still could catch one.
+# bugprone-unchecked-optional-access is off here: all 14 occurrences found clearing #284's
+# backlog were the same false positive, Catch2's REQUIRE(opt.has_value()) followed by
+# REQUIRE(opt->field ...) -- the check doesn't recognise REQUIRE as a guard. Zero occurrences
+# in StratEngine/, where the check stays on.
 InheritParentConfig: true
 Checks: >
   -bugprone-unchecked-optional-access

@@ -18,7 +18,6 @@ namespace BitBoardHelper {
 	///        Intended for debugging only.
 	inline void print_bitboard(std::ostream& out, BITBOARD bb) noexcept
 	{
-		// Debug-only output: a stream failure here must not crash the caller.
 		try {
 			for (std::uint8_t i = 0; i < ALL_SQUARES; ++i) {
 				out << ((bb >> i) & 1u);

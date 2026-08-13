@@ -138,11 +138,8 @@ class TranspositionTable {
 		return std::abs(value) >= (GameValues::Mate_Threshold);
 	}
 
-	// Storage: normalize mate scores.
-	// The +/- ply below happens in `int` (usual arithmetic promotion of int16_t operands), then
-	// narrows back to int16_t on return -- safe because Mate_Threshold (29900) + MAX_PLY (256)
-	// stays well inside int16_t's range, but the compiler can't see that bound, so the cast makes
-	// the narrowing explicit instead of implicit.
+	// Storage: normalize mate scores. Cast makes the int->int16_t narrowing explicit; safe
+	// because Mate_Threshold (29900) + MAX_PLY (256) fits int16_t.
 	int16_t normalize_for_storage(int16_t value, int ply) const noexcept
 	{
 		if (value >= GameValues::Mate_Threshold) {
@@ -155,8 +152,7 @@ class TranspositionTable {
 		return value; // Non-mate scores unchanged
 	}
 
-	// Retrieval: denormalize mate scores. See normalize_for_storage for why the narrowing cast
-	// on the whole expression (not just `ply`) is safe.
+	// Retrieval: denormalize mate scores. See normalize_for_storage re: the narrowing cast.
 	int16_t denormalize_from_storage(int16_t stored_value, int ply) const noexcept
 	{
 		if (stored_value >= GameValues::Mate_Threshold) {

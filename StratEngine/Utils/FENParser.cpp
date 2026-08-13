@@ -26,13 +26,9 @@ rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1
 
 // Primary interface using FENGameState
 //
-// Untrusted input (UCI `position fen ...`) runs through string allocation, std::regex and
-// std::to_string, none of which are noexcept -- the try/catch below reports a pathological FEN
-// as an error instead of terminating the engine.
-// The try/catch below covers every throwing call in the body, but the catch handler's own
-// `return std::string(...)` is itself an allocation that could theoretically throw bad_alloc with
-// nothing left to catch it; accepted as an unreachable-in-practice edge case rather than changing
-// the error type away from std::string.
+// Untrusted input, so wrapped in try/catch rather than left to terminate on a pathological FEN.
+// Still flagged: the catch handler's own `return std::string(...)` is itself an allocation that
+// could theoretically throw with nothing left to catch it -- accepted as unreachable in practice.
 // NOLINTNEXTLINE(bugprone-exception-escape)
 std::optional<std::string> FENParser::ParseFEN(const std::string& fen, FENGameState& outState,
                                                std::vector<std::tuple<ePiece, eSquare>>& outPieces) noexcept
@@ -160,8 +156,7 @@ std::optional<std::string> FENParser::ParseFEN(const std::string& fen, FENGameSt
 	}
 }
 
-// Private helper, only ever called from within ParseFEN's try/catch above -- not noexcept itself,
-// so any exception it throws is caught at that single boundary.
+// Not noexcept: only called from within ParseFEN's try/catch above.
 std::optional<std::string> FENParser::PopulateCastlingFlags(const std::string& castling, uint8_t& outRights)
 {
 	if (castling == "-") {
@@ -198,8 +193,7 @@ std::optional<std::string> FENParser::PopulateCastlingFlags(const std::string& c
 	return std::nullopt;
 }
 
-// Private helper, only ever called from within ParseFEN's try/catch above -- not noexcept itself,
-// so any exception it throws is caught at that single boundary.
+// Not noexcept: only called from within ParseFEN's try/catch above.
 std::optional<std::string> FENParser::ParsePiecePlacementField(const std::string& placement,
                                                                std::vector<std::tuple<ePiece, eSquare>>& outVec)
 {
@@ -336,8 +330,7 @@ eSquare FENParser::SquareFromString(const std::string& s) noexcept
 
 // Validate against explicit Board reference
 //
-// spdlog's warn() calls below are not noexcept (fmt formatting can throw), so the try/catch wraps
-// the whole body rather than terminating the engine on a logging failure.
+// spdlog's warn() isn't noexcept, hence the try/catch below.
 bool FENParser::ValidatePositionAgainstFENMetadata(const Board& board, FENGameState& state) noexcept
 {
 	try {

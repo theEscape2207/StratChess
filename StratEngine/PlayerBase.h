@@ -11,8 +11,8 @@ class Board;
 
 class PlayerBase : public IPlayer {
   public:
-	// NOLINTNEXTLINE(performance-enum-size) - only ever a factory function parameter (Create()
-	// below), never a stored field; no measurable benefit.
+	// Never a stored field.
+	// NOLINTNEXTLINE(performance-enum-size)
 	enum class ePlayerTypes {
 		HUMAN,             // 0
 		ALPHABETA,         // 1

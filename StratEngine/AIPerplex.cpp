@@ -67,8 +67,7 @@ static void ensure_logger_initialized()
 			spdlog::register_logger(s_logger);
 			s_logger->set_level(spdlog::level::debug);
 			s_logger->flush_on(spdlog::level::debug);
-		} catch (...) { // NOLINT(bugprone-empty-catch) - best-effort logger init;
-			            // nothing to log the failure to since the logger itself is what failed
+		} catch (...) { // NOLINT(bugprone-empty-catch) - best-effort logger init
 		}
 	}
 }
@@ -327,7 +326,7 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 		metrics.interrupted = ShouldStopSearch(); // Check on time expiry
 		metrics.move_changed = (metrics.current_move != state.last_iteration_move);
 		metrics.score_delta = currentBestScore - state.best_score;
-		// node counts realistically never approach 2^53, where int64_t->double would lose precision
+		// node counts never realistically approach 2^53 (int64_t->double precision loss)
 		metrics.completion_ratio =
 		    (state.nodes_at_completed_depth > 0)
 		        ? static_cast<double>(metrics.nodes_searched) / static_cast<double>(state.nodes_at_completed_depth)

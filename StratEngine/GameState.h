@@ -18,8 +18,8 @@ namespace CastlingRights {
 } // namespace CastlingRights
 
 // Possible game states
-// NOLINTNEXTLINE(performance-enum-size) - shrinking this alone doesn't reduce sizeof(GameInfo)
-// (padding absorbs it); see #292 for the combined fix that does.
+// Shrinking this alone doesn't shrink GameInfo (padding absorbs it) -- see #292.
+// NOLINTNEXTLINE(performance-enum-size)
 enum class GameStates {
 	STILL_PLAYING, // 0
 	WHITE_WON,     // 1
