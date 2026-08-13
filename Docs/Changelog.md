@@ -22,6 +22,19 @@ Newest first.
 
 ---
 
+## 2026-08-13 — Enforced clang-tidy Gate and Nightly Deep (#284)
+
+### Changed
+
+- The fast `bugprone-*`/`performance-*` Gate now blocks local PrePR and required PR CI; analyzer and
+  exception-escape checks moved to failing Linux and Windows Nightly jobs.
+- Lint uses a normalized database that selects shipping Engine commands and deterministic bounded
+  workers (Gate 4, Deep 2). Missing commands, worker failures, and findings fail closed.
+- Tests inherit focused exclusions for Catch2 optional guards and performance checks. See `Docs/CI.md`
+  for scopes, commands, failure semantics, and measured timings.
+
+---
+
 ## 2026-08-11 — Build tooling: clang-format and clang-tidy lint gate (#175)
 
 ### Added

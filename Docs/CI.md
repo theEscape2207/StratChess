@@ -89,54 +89,88 @@ before `main` on Ubuntu 24.04 and reports nothing; and the driver waits for `uci
 UCI guards. TSan cannot be combined with ASan, hence a separate job. Survey, positive control, cost
 and contention analysis: `.claude/plans/tsan-lazy-smp.md`.
 
-**`lint-linux`** runs clang-format and clang-tidy over the files the PR touches, on the same tier
-condition as the jobs above. The two tools sit at different readiness and get **opposite step
-semantics**:
+**`lint-linux`** runs the shared `Run-Lint.ps1` entry point over files the PR touches, on the same
+tier condition as the jobs above:
 
 | Tool | Scope | Effect |
 |---|---|---|
-| clang-format | changed `.cpp` **and** `.h` | **Blocking.** The tree was reformatted wholesale (#175), so it is format-clean by construction and enforcing that costs nothing |
-| clang-tidy | changed `.cpp` only | **Advisory** until #284 clears the 97-finding backlog. Findings print and do not fail the job |
+| clang-format | changed `.cpp` and `.h` | **Blocking** |
+| clang-tidy Gate | changed `.cpp` only | **Blocking** for findings and infrastructure failures |
 
-The success-forcing is per *step*, deliberately — a job-level `continue-on-error` would swallow the
-format failure too. And the tidy step is advisory about *findings* only: any `clang-diagnostic-error`
-fails the job, because that means source did not parse and the run analysed nothing.
+`Validate-PrePR.ps1` calls the same Gate runner after its shipping clang-cl build, so local and CI
+validation share file selection, normalization, checks, worker behavior, and failure rules. Direct
+local invocations are:
+
+```powershell
+pwsh -File StratChessEvolved/Scripts/Run-Lint.ps1 -Check Tidy -Profile Gate
+pwsh -File StratChessEvolved/Scripts/Run-Lint.ps1 -Check Tidy -Profile Gate -All
+pwsh -File StratChessEvolved/Scripts/Run-Lint.ps1 -Check Tidy -Profile Deep -All
+```
+
+### clang-tidy profiles
+
+| Profile | Checks | Source scope | Where it blocks | Workers |
+|---|---|---|---|---:|
+| Gate | `bugprone-*`, `performance-*` | Engine, application, and tests | PrePR and required PR CI; whole tree Nightly | 4 |
+| Deep | `clang-analyzer-*`, `bugprone-exception-escape` | Shipping Engine/application only | Nightly Linux and Windows | 2 |
+
+Gate excludes `bugprone-throwing-static-initialization` (Catch2 registration),
+`bugprone-easily-swappable-parameters` (the move API intentionally has adjacent same-typed values),
+and the checks assigned to Deep. `StratChessTests/.clang-tidy` additionally disables
+`bugprone-unchecked-optional-access`, because clang-tidy does not model Catch2 `REQUIRE`, and
+`performance-*`, because test code favors clarity over micro-optimization. Deep does not analyze
+test translation units.
+
+Both profiles set `WarningsAsErrors: '*'`. A finding, non-zero worker, missing worker result,
+malformed/missing database, failed diff, or normalization ambiguity fails the invocation. A changed
+scope with no `.cpp` is the only valid zero-TU result; whole-tree lint selecting zero TUs fails.
+
+### Compilation database and workers
+
+`New-TidyCompileDatabase.ps1` canonicalizes source paths and writes a separate database for each
+profile. CMake builds every Engine source for both `StratChessEvolved` and `StratChessTests`; the
+normalizer retains the shipping `StratChessEvolved` command and rejects ambiguous or missing shipping
+candidates. The Windows database currently reports **74 inputs, 50 canonical sources, 50 selected
+commands, and 24 duplicate target entries removed**. The original build database is never changed.
+
+The runner starts one clang-tidy process per selected TU through a bounded pool. Gate defaults to four
+workers and Deep to two; required/Nightly CI passes those values explicitly. `-Jobs 1` is the serial
+diagnostic baseline, and any positive `-Jobs` value is accepted. Each worker's stdout, stderr, and exit
+code are captured separately, then non-empty results are printed in canonical source order. The summary
+includes tool/version, profile/config, normalized and selected counts, requested/effective workers,
+completed invocations, elapsed time, and findings grouped by check.
 
 **LLVM is pinned to major 22**, installed from apt.llvm.org rather than using the image's
 `clang-tidy-18`. The check inventory differs between clang-tidy majors, so an unpinned runner
 silently gains and loses checks when the image moves. Major 22 is what Visual Studio 18 ships, so
 developers already have it; the CI patch level is 22.1.8 against the VS toolchain's 22.1.3, and
-clang-format output was verified byte-identical between them across all 93 sources — which is what
+clang-format output was verified byte-identical between them across the source tree — which is what
 makes a blocking format check safe. `Run-Lint.ps1` warns when the local major differs.
 
 The lint database is configured with **clang, not the default GCC**, and this is load-bearing rather
 than cosmetic. `strat_configure_target` emits `-fconstexpr-ops-limit=` for GCC and
 `-fconstexpr-steps=` for Clang; clang-tidy consumes the database through the clang driver, which
 rejects the GNU spelling as an unknown argument. Against a GCC database every translation unit fails
-to parse — measured, all 73 entries — and the job would report green having analysed nothing. The
-step therefore prints the number of TUs analysed as a positive control.
+to parse. The runner fails that infrastructure error and reports completed invocation counts as a
+positive control.
 
 A header is not a translation unit, so a PR touching only `.h` files analyses nothing here. That gap
 is closed by the nightly `lint-tree` job rather than by header-to-TU mapping, which a change to
 `defines.h` or `StdAfx.h` would expand to a whole-tree run — the one shape capable of becoming the
-critical path.
+critical path. Changes to a lint config, `Run-Lint.ps1`, or the database normalizer deliberately
+expand to the whole tree so the gate machinery validates itself.
 
-**Cost scales with the number of changed `.cpp` files, and clang-tidy is the whole of it.** Measured
-on the reformat PR itself (#286), the worst case this job can have — 90 changed sources, 46
-translation units:
+Local Windows/clang-cl whole-tree measurements on 2026-08-13 show why the bounded defaults matter:
 
-| Step | Time |
-|---|---|
-| Install LLVM from apt.llvm.org | 26 s |
-| Configure the lint database | 3 s |
-| clang-format over 90 files | < 1 s |
-| **clang-tidy over 46 TUs** | **10 min 02 s** |
+| Profile | TUs | Workers | Findings | Elapsed |
+|---|---:|---:|---:|---:|
+| Gate | 49 | 1 | 0 | 86.0 s |
+| Gate | 49 | 4 | 0 | 24.7 s |
+| Deep | 25 | 1 | 0 | 154.8 s |
+| Deep | 25 | 2 | 0 | 71.8 s |
 
-So the fixed overhead is ~30 s and everything else is ~13 s per translation unit. A normal PR
-touching a handful of files finishes well inside the ~260 s critical path; a tree-wide change makes
-this job the critical path instead. That is the right trade — the alternative is not analysing what a
-tree-wide change touched — but it is worth knowing before wondering why one PR's CI took twice as
-long. The pinned-LLVM install, often assumed to be the expensive part, is not.
+Required PR CI analyzes only changed TUs, so it normally stays below the existing build critical path.
+Whole-tree Gate and both Deep platform runs belong to Nightly.
 
 **CI is a gate.** `build-and-test-result` is a required check on `main`, so a red run blocks the
 merge. A SKIPPED leg reports success deliberately: a Docs-tier PR runs none of the build jobs, and a
@@ -169,7 +203,9 @@ timeout-based nondeterminism is not worth the CI flakiness.
 | `extended-tests` | The `[slow]` tier, Release and Debug |
 | `sanitize-extended` | That tier under ASan+UBSan plus `_GLIBCXX_DEBUG` |
 | `tactical-stability` | `tactical stability 100`, against the local run's 10 |
-| `lint-tree` | clang-format and clang-tidy over the **whole tree**, closing the per-PR job's header gap. Advisory for findings; its per-check summary is the backlog trend line |
+| `lint-tree` | Failing clang-format and fast Gate over the whole tree, closing the per-PR job's header gap |
+| `lint-deep-linux` | Failing Deep profile over normalized shipping sources with Linux Clang |
+| `lint-deep-windows` | Failing Deep profile over normalized shipping sources with Windows clang-cl |
 
 `perft run <depth> [fen]` prints a count but does not verify it, so the workflow does the comparison.
 Runners measure **~22.5 Mnps** (startpos depth 7 in 140 s, Kiwipete depth 6 in 364 s — 2.2× slower
