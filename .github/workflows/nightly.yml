@@ -159,15 +159,7 @@ jobs:
           mkdir -p logs
           ../build/StratChessEvolved tactical stability 100
 
-  # Whole-tree clang-tidy. The per-PR lint job deliberately analyses only the .cpp
-  # files a pull request touches, which leaves one gap: a header is not a translation
-  # unit, so a PR changing only .h files analyses nothing. Closing that gap in the PR
-  # job would mean header-to-TU mapping, and a change to defines.h or StdAfx.h would
-  # expand to the whole tree anyway -- which is the one shape capable of becoming the
-  # critical path there. Here wall clock does not matter, so the whole tree runs.
-  #
-  # Advisory for findings, exactly as on a PR: the backlog is still open (#284). The
-  # per-check summary doubles as the backlog trend line.
+  # Whole-tree format and fast Gate checks close the PR job's header-only gap.
   lint-tree:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -203,42 +195,118 @@ jobs:
           -DCMAKE_C_COMPILER=clang-$LLVM_MAJOR
           -DCMAKE_CXX_COMPILER=clang++-$LLVM_MAJOR
 
-      # main is format-clean by construction, so a violation here means something
-      # reached main without the PR gate -- worth failing over.
-      - name: clang-format over the whole tree
+      - name: Validate lint scripts
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File StratChessEvolved/Scripts/New-TidyCompileDatabase.ps1 -SelfTest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pwsh -NoProfile -File StratChessEvolved/Scripts/Run-Lint.ps1 -SelfTest
+          exit $LASTEXITCODE
+
+      - name: clang-format over the whole tree (blocking)
+        shell: pwsh
+        run: |
+          $format = (Get-Command "clang-format-$env:LLVM_MAJOR").Source
+          pwsh -NoProfile -File StratChessEvolved/Scripts/Run-Lint.ps1 `
+            -Check Format -All -ClangFormat $format
+          exit $LASTEXITCODE
+
+      - name: clang-tidy Gate over the whole tree (blocking)
+        shell: pwsh
+        run: |
+          $tidy = (Get-Command "clang-tidy-$env:LLVM_MAJOR").Source
+          pwsh -NoProfile -File StratChessEvolved/Scripts/Run-Lint.ps1 `
+            -Check Tidy -Profile Gate -All -BuildDirectory build `
+            -ClangTidy $tidy -Jobs 4
+          exit $LASTEXITCODE
+
+  # Analyzer-heavy checks stay off the required PR path and fail Nightly instead.
+  lint-deep-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      LLVM_MAJOR: "22"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Install LLVM ${{ env.LLVM_MAJOR }}
         run: |
           set -euo pipefail
-          git ls-files '*.cpp' '*.h' | grep -v '/Archived/' > /tmp/src.txt
-          echo "checking $(wc -l < /tmp/src.txt) files"
-          xargs -a /tmp/src.txt "clang-format-$LLVM_MAJOR" --style=file --dry-run -Werror
+          wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
+          chmod +x /tmp/llvm.sh
+          sudo /tmp/llvm.sh "$LLVM_MAJOR"
+          sudo apt-get install -y "clang-tidy-$LLVM_MAJOR"
 
-      - name: clang-tidy over the whole tree (advisory)
+      - name: Cache FetchContent dependencies
+        uses: actions/cache@v6
+        with:
+          path: build/_deps
+          key: cmake-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
+
+      - name: Configure lint database
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_C_COMPILER=clang-$LLVM_MAJOR
+          -DCMAKE_CXX_COMPILER=clang++-$LLVM_MAJOR
+
+      - name: Validate lint scripts
+        shell: pwsh
         run: |
-          set -uo pipefail
-          git ls-files '*.cpp' | grep -v '/Archived/' > /tmp/tu.txt
-          n=$(wc -l < /tmp/tu.txt)
-          echo "translation units: $n"
-          xargs -a /tmp/tu.txt -P 4 -I{} "clang-tidy-$LLVM_MAJOR" -p build --quiet {} \
-            > /tmp/tidy.txt 2>&1 || true
+          pwsh -NoProfile -File StratChessEvolved/Scripts/New-TidyCompileDatabase.ps1 -SelfTest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pwsh -NoProfile -File StratChessEvolved/Scripts/Run-Lint.ps1 -SelfTest
+          exit $LASTEXITCODE
 
-          # A broken compile database and a clean codebase both yield zero findings.
-          # Only this distinguishes them, so it fails the job rather than reporting green.
-          errs=$(grep -c 'clang-diagnostic-error' /tmp/tidy.txt || true)
-          if [ "$errs" -gt 0 ]; then
-            echo "::error::clang-tidy hit $errs clang-diagnostic-error(s): the compile database is wrong, not the code."
-            grep 'clang-diagnostic-error' /tmp/tidy.txt | head -20
-            exit 1
-          fi
+      - name: clang-tidy Deep on shipping sources (blocking)
+        shell: pwsh
+        run: |
+          $tidy = (Get-Command "clang-tidy-$env:LLVM_MAJOR").Source
+          pwsh -NoProfile -File StratChessEvolved/Scripts/Run-Lint.ps1 `
+            -Check Tidy -Profile Deep -All -BuildDirectory build `
+            -ClangTidy $tidy -Jobs 2
+          exit $LASTEXITCODE
 
-          echo "--- findings per check (unique) ---"
-          grep -oE '\[[a-z0-9.,-]+\]$' /tmp/tidy.txt | tr -d '[]' | tr ',' '\n' \
-            | sort | uniq -c | sort -rn
-          echo "--- total unique findings ---"
-          grep -E '^\S+:[0-9]+:[0-9]+: (warning|error):' /tmp/tidy.txt | sort -u | wc -l
-          echo "Advisory: findings do not fail this job until #284 lands."
+  lint-deep-windows:
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cache FetchContent dependencies
+        uses: actions/cache@v6
+        with:
+          path: build/_deps
+          key: cmake-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
+
+      - name: Validate lint scripts
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File StratChessEvolved/Scripts/New-TidyCompileDatabase.ps1 -SelfTest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pwsh -NoProfile -File StratChessEvolved/Scripts/Run-Lint.ps1 -SelfTest
+          exit $LASTEXITCODE
+
+      - name: Configure shipping clang-cl database
+        shell: pwsh
+        run: .\build.ps1 main
+
+      - name: clang-tidy Deep on shipping sources (blocking)
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $vsRoot = & $vswhere -latest -prerelease -products * -property installationPath | Select-Object -First 1
+          $tidy = Join-Path $vsRoot 'VC\Tools\Llvm\x64\bin\clang-tidy.exe'
+          pwsh -NoProfile -File StratChessEvolved/Scripts/Run-Lint.ps1 `
+            -Check Tidy -Profile Deep -All `
+            -BuildDirectory build/windows-clang-cl -ClangTidy $tidy -Jobs 2
+          exit $LASTEXITCODE
 
   nightly-result:
-    needs: [deep-perft, extended-tests, sanitize-extended, tactical-stability, lint-tree]
+    needs: [deep-perft, extended-tests, sanitize-extended, tactical-stability, lint-tree, lint-deep-linux, lint-deep-windows]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -250,13 +318,17 @@ jobs:
           echo "sanitize+stdlib:   ${{ needs.sanitize-extended.result }}"
           echo "tactical x100:     ${{ needs.tactical-stability.result }}"
           echo "whole-tree lint:   ${{ needs.lint-tree.result }}"
+          echo "deep lint Linux:   ${{ needs.lint-deep-linux.result }}"
+          echo "deep lint Windows: ${{ needs.lint-deep-windows.result }}"
 
           fail=0
           for r in "${{ needs.deep-perft.result }}" \
                    "${{ needs.extended-tests.result }}" \
                    "${{ needs.sanitize-extended.result }}" \
                    "${{ needs.tactical-stability.result }}" \
-                   "${{ needs.lint-tree.result }}"; do
+                   "${{ needs.lint-tree.result }}" \
+                   "${{ needs.lint-deep-linux.result }}" \
+                   "${{ needs.lint-deep-windows.result }}"; do
             case "$r" in
               success) ;;
               *) fail=1 ;;

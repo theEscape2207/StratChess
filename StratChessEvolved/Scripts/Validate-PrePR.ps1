@@ -101,14 +101,19 @@ if (-not $Force -and $change.Tier -eq 'Tooling') {
 
 Write-Host 'Running the full gate set.' -ForegroundColor Cyan
 
-# --- Step 0: clang-format ---
+# --- Step 0a: build wrapper self-test ---
+Write-Host "`n==> Build wrapper self-test" -ForegroundColor Cyan
+$buildSelfTestFailed = $false
+try   { & $buildScript -SelfTest }
+catch { $buildSelfTestFailed = $true; Write-Host "Build self-test threw: $_" -ForegroundColor DarkGray }
+if ($LASTEXITCODE -ne 0) { $buildSelfTestFailed = $true }
+$checkResults['Build wrapper self-test'] = if ($buildSelfTestFailed) { 'FAIL' } else { 'PASS' }
+
+# --- Step 0b: clang-format ---
 # CI blocks a pull request whose sources are not formatted, so the same answer has
 # to be reachable before pushing -- otherwise this is the only gate in the repo that
 # can only be discovered after a push. It runs first because it is by far the
 # cheapest: seconds against several minutes for the build.
-#
-# Only the format half. clang-tidy is advisory in CI while its backlog is open
-# (#284), and a local gate must not be stricter than the remote one.
 Write-Host "`n==> clang-format (issue #175)" -ForegroundColor Cyan
 $lintScript = Join-Path $PSScriptRoot 'Run-Lint.ps1'
 $lintFailed = $false
@@ -117,7 +122,7 @@ catch { $lintFailed = $true; Write-Host "Lint threw: $_" -ForegroundColor DarkGr
 if ($LASTEXITCODE -ne 0) { $lintFailed = $true }
 $checkResults['clang-format'] = if ($lintFailed) { 'FAIL' } else { 'PASS' }
 
-# --- Step 0b: blame-ignore coverage ---
+# --- Step 0c: blame-ignore coverage ---
 # A clang-format configuration change re-runs the formatter over the whole tree,
 # so it lands as a commit that rewrites most files without altering a line of
 # code. Unless it is recorded in .git-blame-ignore-revs it buries the real
@@ -142,6 +147,16 @@ try   { & $buildScript all }
 catch { $buildFailed = $true; Write-Host "Build threw: $_" -ForegroundColor DarkGray }
 if ($LASTEXITCODE -ne 0) { $buildFailed = $true }
 $checkResults['Full build'] = if ($buildFailed) { 'FAIL' } else { 'PASS' }
+
+# --- Step 1b: fast clang-tidy Gate ---
+# Run after the build so a fresh worktree has the shipping clang-cl compilation
+# database the shared local/CI runner requires.
+Write-Host "`n==> clang-tidy Gate (issues #175/#284)" -ForegroundColor Cyan
+$tidyFailed = $false
+try   { & $lintScript -Check Tidy -Profile Gate -BaseRef $BaseRef }
+catch { $tidyFailed = $true; Write-Host "clang-tidy Gate threw: $_" -ForegroundColor DarkGray }
+if ($LASTEXITCODE -ne 0) { $tidyFailed = $true }
+$checkResults['clang-tidy Gate'] = if ($tidyFailed) { 'FAIL' } else { 'PASS' }
 
 # --- Step 2: Extended test suite ---
 Write-Host "`n==> Extended test suite (including [slow])" -ForegroundColor Cyan

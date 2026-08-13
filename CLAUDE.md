@@ -41,8 +41,10 @@ writing tests), `Docs/Changelog.md` (history). Live backlog is GitHub Issues.
 
 `build.ps1` drives the presets in `CMakePresets.json` and imports the VS developer environment
 itself via `vswhere`, so it works from a plain shell, a git hook or an agent session — never
-hard-code a VS path. It also sets `core.hooksPath` to `.githooks` on first run, so any clone or
-worktree gets the tracked pre-commit hook automatically.
+hard-code a VS path. Agent shells may omit `PROCESSOR_ARCHITECTURE`, leaving
+`CMAKE_SYSTEM_PROCESSOR` blank on fresh configuration; the wrapper restores it from the VS x64
+target. Do not pass `-D CMAKE_SYSTEM_PROCESSOR` instead — system detection overwrites it. The wrapper
+also sets `core.hooksPath` to `.githooks` on first run, so every worktree gets the tracked hook.
 
 **clang-cl is what ships**; MSVC is for development and debugging (it has Edit and Continue, which
 clang-cl does not). **Never measure with an MSVC build** — `Run-Bench` and `Run-EloMatch` compare
@@ -70,7 +72,7 @@ a silent no-op.
 | Script | When |
 |---|---|
 | `Run-Tests.ps1 [tag]` | Any test verification |
-| `Run-Lint.ps1 [-Check Format\|Tidy\|BlameIgnore] [-All] [-Fix]` | clang-format (CI blocks on it), clang-tidy (advisory), and a check that a tree-wide reformat was recorded in `.git-blame-ignore-revs`. Resolves both tools via `vswhere`; neither is on `PATH`. `-Fix` iterates to a fixpoint — clang-format is not idempotent in one pass |
+| `Run-Lint.ps1 [-Check Format\|Tidy\|BlameIgnore] [-Profile Gate\|Deep] [-All] [-Jobs n] [-Fix]` | Blocking clang-format and clang-tidy. Gate defaults to 4 workers and runs in PrePR/required CI; analyzer-heavy Deep defaults to 2 and runs in Nightly. Resolves LLVM via `vswhere`; `-Fix` iterates clang-format to a fixpoint |
 | `Validate-PreCommit.ps1` | Before every commit — FEN check + fast tests (the pre-commit hook runs this) |
 | `Validate-PrePR.ps1` | Before a PR — scopes itself to the change tier; `-Force` to run everything |
 | `Run-EloMatch.ps1 [-Smoke]` | After search/eval/time changes — strength vs the pinned reference (method: `Docs/EloMeasurement.md`, results: `Docs/EloLog.md`) |

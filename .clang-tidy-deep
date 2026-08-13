@@ -1,0 +1,9 @@
+# Analyzer-heavy checks run only in failing Nightly jobs.
+Checks: >
+  -*,
+  clang-analyzer-*,
+  bugprone-exception-escape
+WarningsAsErrors: '*'
+HeaderFilterRegex: '.*(StratEngine|StratChessEvolved)[\\/].*'
+ExcludeHeaderFilterRegex: '.*[\\/]_deps[\\/].*'
+FormatStyle: file
