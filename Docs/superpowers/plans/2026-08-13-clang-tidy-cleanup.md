@@ -304,7 +304,11 @@ Expected: both configurations exit 0. Report test case and assertion totals for 
 ./StratChessEvolved/Scripts/Run-Lint.ps1 -Check Tidy -All
 ```
 
-Expected: format passes and broad Windows/clang-cl tidy reports zero findings. Tidy remains advisory in PR 1, so inspect the complete output rather than relying only on the exit code.
+Expected: format passes. The broad Windows/clang-cl profile reports only the 14 known
+`bugprone-unchecked-optional-access` findings in Catch2 tests whose preceding fatal `REQUIRE`
+guards are not modeled by the check; Engine and application sources report zero findings. PR 2
+adds the approved test-profile override. Tidy remains advisory in PR 1, so inspect the complete
+output rather than relying only on the exit code.
 
 - [ ] **Step 3: Record the post-change benchmark**
 
@@ -346,7 +350,10 @@ git ls-files '*.cpp' | grep -v '/Archived/' | \
 ./build-linux-tidy/StratChessTests '~[slow]'
 ```
 
-Expected: zero tidy findings/diagnostic errors and all fast tests pass. If WSL lacks clang-22 or Ninja, report the environmental blocker rather than substituting another LLVM major.
+Expected: Linux reports the same 14 test-only `bugprone-unchecked-optional-access` findings as
+Windows, no Engine/application findings or diagnostic errors, and all fast tests pass. If WSL
+lacks clang-22 or Ninja, report the environmental blocker rather than substituting another LLVM
+major.
 
 - [ ] **Step 6: Audit scope and comments**
 
