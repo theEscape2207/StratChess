@@ -376,8 +376,7 @@ int main(int argc, char** argv)
 		game.Run();
 		return 0;
 	} catch (const std::exception& ex) {
-		// stderr, not stdout: cout is buffered and its contents are lost when a
-		// process dies abruptly, which is why the original failure looked silent.
+		// Keep fatal diagnostics off stdout, which is the UCI protocol channel.
 		std::cerr << "Fatal: " << ex.what() << '\n';
 		return 1;
 	} catch (...) {
