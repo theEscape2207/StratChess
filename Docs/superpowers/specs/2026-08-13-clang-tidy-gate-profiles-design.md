@@ -168,6 +168,19 @@ It gains an explicit profile selection:
 - `-Profile Deep` selects `.clang-tidy-deep`, normalizes the database, limits scope to shipping
   Engine/application translation units, and fails on findings.
 
+It also gains `-Jobs <positive integer>` and runs one clang-tidy process per selected translation
+unit through a bounded worker pool. Gate defaults to four workers; Deep defaults to two because
+analyzer processes consume more memory. An explicit value overrides the profile default, and the
+effective worker count never exceeds the selected translation-unit count. CI passes `-Jobs 4` for
+Gate and `-Jobs 2` for Deep so its concurrency is reproducible rather than host-dependent.
+
+Normalization completes before work is scheduled, so parallelism applies only to unique selected
+translation units. Each worker captures its source's stdout, stderr, and exit code independently;
+the runner prints results in deterministic source order after all workers finish. Any failed worker,
+tidy finding, or missing result fails the aggregate command. This bounded pool is preferred over a
+single multi-source invocation, which processes sources sequentially, and over unbounded per-source
+fan-out, which can exhaust memory during deep analysis.
+
 `-Check Format` remains independent of compile-database setup. `-Check Tidy` defaults to `Gate` once
 PR 2 flips enforcement. `Validate-PrePR.ps1` invokes the gate tidy check as well as format and
 propagates either failure.
@@ -181,6 +194,7 @@ The runner prints:
 - resolved tool/version;
 - profile and configuration path;
 - source count and normalized command count;
+- requested/effective worker count and completed invocation count;
 - elapsed tidy time;
 - findings grouped by check.
 
@@ -196,6 +210,7 @@ ambiguity, or tidy finding exits nonzero.
 
 - clang-format checks changed `.cpp` and `.h` files;
 - gate clang-tidy checks changed `.cpp` files using the normalized shipping database;
+- gate clang-tidy uses four workers, capped by the changed translation-unit count;
 - both steps are blocking;
 - `build-and-test-result` continues to aggregate `lint-linux`, updating its success/error text to
   describe both checks as required.
@@ -206,9 +221,10 @@ No analyzer or exception-escape check runs here.
 
 Nightly exposes three lint results independently:
 
-1. `lint-tree`: whole-tree format plus fast gate profile on Linux;
-2. `lint-deep-linux`: deep profile on shipping Linux translation units;
-3. `lint-deep-windows`: deep profile on shipping Windows/clang-cl translation units.
+1. `lint-tree`: whole-tree format plus fast gate profile on Linux with four tidy workers;
+2. `lint-deep-linux`: deep profile on shipping Linux translation units with two tidy workers;
+3. `lint-deep-windows`: deep profile on shipping Windows/clang-cl translation units with two tidy
+   workers.
 
 `nightly-result` depends on all three and turns red if any fails. Separate jobs preserve diagnosis
 and prevent one platform/profile failure from suppressing another run.
@@ -242,8 +258,13 @@ Tests use temporary directories and never overwrite a real build database.
 - Run the fast whole-tree profile on Linux and Windows with zero findings.
 - Run the deep shipping profile on Linux and Windows with zero findings.
 - Verify a synthetic known finding makes each profile command exit nonzero.
+- Verify `-Jobs 1`, profile defaults, and explicit overrides analyze every selected normalized
+  translation unit exactly once and never exceed their requested concurrency.
+- Verify one failed worker fails the aggregate command and parallel diagnostics are emitted in
+  deterministic source order.
 - Compare raw and normalized invocation counts.
-- Record elapsed timings for changed-file gate, whole-tree fast, and whole-tree deep runs.
+- Record elapsed timings for changed-file gate, whole-tree fast, and whole-tree deep runs, including
+  a `-Jobs 1` baseline for each whole-tree profile.
 - Run full Release and Debug tests after each PR's changes.
 
 ## Documentation and Issue Closure
