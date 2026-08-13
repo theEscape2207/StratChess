@@ -328,15 +328,8 @@ jobs:
           & $exe '~[slow]'
           exit $LASTEXITCODE
 
-  # clang-format and clang-tidy over what the pull request actually touches.
-  # See issue #175 and .claude/plans/clang-tidy-clang-format-lint-gate.md.
-  #
-  # The two tools are at different readiness and get opposite step semantics.
-  # clang-format FAILS this job: the tree was reformatted wholesale, so it is
-  # format-clean by construction and enforcing that costs nothing. clang-tidy is
-  # forced to success because its backlog is still open (#284). The success-forcing
-  # is per STEP, deliberately -- a job-level continue-on-error would swallow the
-  # format failure too.
+  # Required formatting and fast clang-tidy Gate checks over changed C++ sources.
+  # The shared PowerShell runner keeps local PrePR and CI behavior identical.
   #
   # Seventh parallel job after classify. The critical path is build-linux (Release)
   # at ~260 s; linting the 1-5 files a PR usually touches lands far below that, so
@@ -362,9 +355,8 @@ jobs:
 
       # Pinned major, not ubuntu-24.04's default clang-tidy-18. The check inventory
       # differs between clang-tidy majors, so an unpinned runner silently gains and
-      # loses checks when the image moves; and once #284 makes this blocking, a
-      # version gap between a developer's toolchain and CI produces "clean locally,
-      # red in CI" with no visible cause.
+      # loses checks when the image moves. A version gap between a developer's
+      # toolchain and CI produces "clean locally, red in CI" with no visible cause.
       #
       # LLVM 22 is what Visual Studio 18 ships, so developers already have it.
       # clang-format output was verified byte-identical between 22.1.3 (VS) and
@@ -389,9 +381,7 @@ jobs:
       # and -fconstexpr-steps= for Clang. clang-tidy is LibTooling: it consumes the
       # database's arguments through the clang driver, which rejects the GNU spelling
       # as an unknown argument. Against a GCC database every translation unit fails to
-      # parse -- and with the tidy step forced to success, this job would report green
-      # having analysed nothing. Measured: all 73 entries of a GCC-configured database
-      # carry the rejected flag.
+      # parse; the shared runner treats that as an infrastructure failure.
       #
       # Release and non-sanitized: the sanitizer and stdlib-debug configurations
       # change which macros are live and would report findings that do not apply to a
@@ -403,55 +393,36 @@ jobs:
           -DCMAKE_C_COMPILER=clang-$LLVM_MAJOR
           -DCMAKE_CXX_COMPILER=clang++-$LLVM_MAJOR
 
-      # Fails closed: an empty file list must never be mistaken for a clean tree.
-      - name: Collect changed files
+      - name: Validate lint scripts
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File StratChessEvolved/Scripts/New-TidyCompileDatabase.ps1 -SelfTest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pwsh -NoProfile -File StratChessEvolved/Scripts/Run-Lint.ps1 -SelfTest
+          exit $LASTEXITCODE
+
+      - name: clang-format (blocking)
+        shell: pwsh
         env:
-          # A pull request compares against origin/main; a push to main cannot,
-          # because origin/main IS HEAD there. Same reasoning as classify.
           BASE_REF: ${{ github.event_name == 'push' && github.event.before || 'origin/main' }}
         run: |
-          set -euo pipefail
-          if ! git diff --name-only "$BASE_REF...HEAD" > /tmp/all-changed.txt; then
-            echo "::error::Cannot diff against $BASE_REF; refusing to lint an empty list."
-            exit 1
-          fi
-          grep -E '\.(cpp|h)$' /tmp/all-changed.txt | grep -v '/Archived/' > /tmp/src.txt || true
-          grep -E '\.cpp$' /tmp/src.txt > /tmp/tu.txt || true
-          echo "changed C++ sources: $(wc -l < /tmp/src.txt)"
-          cat /tmp/src.txt
+          $format = (Get-Command "clang-format-$env:LLVM_MAJOR").Source
+          pwsh -NoProfile -File StratChessEvolved/Scripts/Run-Lint.ps1 `
+            -Check Format -BaseRef $env:BASE_REF -ClangFormat $format
+          exit $LASTEXITCODE
 
-      # BLOCKING. Both .cpp and .h: formatting needs no compile database, so headers
-      # cost nothing to include, and excluding them would leave the "tree is
-      # format-clean" invariant false.
-      - name: clang-format (blocking)
+      # Changed .cpp files only; header-only changes are covered by Nightly's
+      # whole-tree Gate. The runner fails closed on database or worker errors.
+      - name: clang-tidy Gate (blocking)
+        shell: pwsh
+        env:
+          BASE_REF: ${{ github.event_name == 'push' && github.event.before || 'origin/main' }}
         run: |
-          set -euo pipefail
-          if [ ! -s /tmp/src.txt ]; then echo "No C++ sources changed."; exit 0; fi
-          xargs -a /tmp/src.txt "clang-format-$LLVM_MAJOR" --style=file --dry-run -Werror
-
-      # ADVISORY for findings, but NOT for a broken database. Changed .cpp only: a
-      # header is not a translation unit, and headers are covered transitively here
-      # and comprehensively by the nightly whole-tree pass.
-      #
-      # The TU count is a positive control. A wrong compile database and a clean
-      # codebase both produce zero findings; only this number tells them apart. And a
-      # clang-diagnostic-error means source failed to parse, which fails the job --
-      # that is a configuration fault, not a lint finding, and `|| true` must not hide
-      # it.
-      - name: clang-tidy (advisory)
-        run: |
-          set -uo pipefail
-          n=$(wc -l < /tmp/tu.txt)
-          echo "translation units analysed: $n"
-          if [ "$n" -eq 0 ]; then echo "No .cpp files changed; nothing to analyse."; exit 0; fi
-          out=$(xargs -a /tmp/tu.txt "clang-tidy-$LLVM_MAJOR" -p build --quiet 2>&1 || true)
-          echo "$out"
-          errs=$(printf '%s\n' "$out" | grep -c 'clang-diagnostic-error' || true)
-          if [ "$errs" -gt 0 ]; then
-            echo "::error::clang-tidy hit $errs clang-diagnostic-error(s): the compile database is wrong, not the code. This job analysed nothing."
-            exit 1
-          fi
-          echo "clang-tidy findings above are advisory and do not fail this job (see #284)."
+          $tidy = (Get-Command "clang-tidy-$env:LLVM_MAJOR").Source
+          pwsh -NoProfile -File StratChessEvolved/Scripts/Run-Lint.ps1 `
+            -Check Tidy -Profile Gate -BaseRef $env:BASE_REF `
+            -BuildDirectory build -ClangTidy $tidy -Jobs 4
+          exit $LASTEXITCODE
 
   # The single always-present check, and the name must not change.
   #
@@ -505,13 +476,10 @@ jobs:
             *)       echo "Windows build and tests did not pass."; exit 1 ;;
           esac
 
-          # Only clang-format can turn this red. The clang-tidy step forces itself to
-          # success while its backlog is open (#284), so a failure here means either a
-          # formatting violation or a compile database that could not be parsed at all.
           case "${{ needs.lint-linux.result }}" in
-            success) echo "Lint passed (clang-format clean; clang-tidy advisory)." ;;
+            success) echo "Required clang-format and clang-tidy Gate checks passed." ;;
             skipped) echo "Lint skipped: '${{ needs.classify.outputs.tier }}' tier cannot affect the build." ;;
-            *)       echo "Lint failed: sources are not clang-formatted, or the lint compile database is broken."; exit 1 ;;
+            *)       echo "Lint failed: formatting, clang-tidy findings, or lint infrastructure did not pass."; exit 1 ;;
           esac
 
           exit 0

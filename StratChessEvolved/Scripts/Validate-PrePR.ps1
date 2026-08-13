@@ -106,9 +106,6 @@ Write-Host 'Running the full gate set.' -ForegroundColor Cyan
 # to be reachable before pushing -- otherwise this is the only gate in the repo that
 # can only be discovered after a push. It runs first because it is by far the
 # cheapest: seconds against several minutes for the build.
-#
-# Only the format half. clang-tidy is advisory in CI while its backlog is open
-# (#284), and a local gate must not be stricter than the remote one.
 Write-Host "`n==> clang-format (issue #175)" -ForegroundColor Cyan
 $lintScript = Join-Path $PSScriptRoot 'Run-Lint.ps1'
 $lintFailed = $false
@@ -142,6 +139,16 @@ try   { & $buildScript all }
 catch { $buildFailed = $true; Write-Host "Build threw: $_" -ForegroundColor DarkGray }
 if ($LASTEXITCODE -ne 0) { $buildFailed = $true }
 $checkResults['Full build'] = if ($buildFailed) { 'FAIL' } else { 'PASS' }
+
+# --- Step 1b: fast clang-tidy Gate ---
+# Run after the build so a fresh worktree has the shipping clang-cl compilation
+# database the shared local/CI runner requires.
+Write-Host "`n==> clang-tidy Gate (issues #175/#284)" -ForegroundColor Cyan
+$tidyFailed = $false
+try   { & $lintScript -Check Tidy -Profile Gate -BaseRef $BaseRef }
+catch { $tidyFailed = $true; Write-Host "clang-tidy Gate threw: $_" -ForegroundColor DarkGray }
+if ($LASTEXITCODE -ne 0) { $tidyFailed = $true }
+$checkResults['clang-tidy Gate'] = if ($tidyFailed) { 'FAIL' } else { 'PASS' }
 
 # --- Step 2: Extended test suite ---
 Write-Host "`n==> Extended test suite (including [slow])" -ForegroundColor Cyan
