@@ -41,8 +41,10 @@ writing tests), `Docs/Changelog.md` (history). Live backlog is GitHub Issues.
 
 `build.ps1` drives the presets in `CMakePresets.json` and imports the VS developer environment
 itself via `vswhere`, so it works from a plain shell, a git hook or an agent session — never
-hard-code a VS path. It also sets `core.hooksPath` to `.githooks` on first run, so any clone or
-worktree gets the tracked pre-commit hook automatically.
+hard-code a VS path. Agent shells may omit `PROCESSOR_ARCHITECTURE`, leaving
+`CMAKE_SYSTEM_PROCESSOR` blank on fresh configuration; the wrapper restores it from the VS x64
+target. Do not pass `-D CMAKE_SYSTEM_PROCESSOR` instead — system detection overwrites it. The wrapper
+also sets `core.hooksPath` to `.githooks` on first run, so every worktree gets the tracked hook.
 
 **clang-cl is what ships**; MSVC is for development and debugging (it has Edit and Continue, which
 clang-cl does not). **Never measure with an MSVC build** — `Run-Bench` and `Run-EloMatch` compare

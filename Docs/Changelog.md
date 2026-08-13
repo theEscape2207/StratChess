@@ -32,6 +32,8 @@ Newest first.
   workers (Gate 4, Deep 2). Missing commands, worker failures, and findings fail closed.
 - Tests inherit focused exclusions for Catch2 optional guards and performance checks. See `Docs/CI.md`
   for scopes, commands, failure semantics, and measured timings.
+- The Windows build wrapper restores a missing `PROCESSOR_ARCHITECTURE` from the VS x64 target before
+  fresh CMake configuration; its focused regression cases run in the local PrePR gate.
 
 ---
 

@@ -28,6 +28,9 @@
     debugging; do not measure with it, since nps and Elo are only comparable
     between binaries from the same compiler.
 
+.PARAMETER SelfTest
+    Run build-wrapper regression tests without configuring or building.
+
 .EXAMPLE
     .\build.ps1
     .\build.ps1 tests
@@ -36,6 +39,7 @@
     .\build.ps1 extended-tests
     .\build.ps1 all -Config Debug
     .\build.ps1 main -Compiler msvc
+    .\build.ps1 -SelfTest
 #>
 param(
     [Parameter(Position=0)]
@@ -49,7 +53,9 @@ param(
     [string]$Config = 'Release',
 
     [ValidateSet('clang-cl', 'msvc')]
-    [string]$Compiler = 'clang-cl'
+    [string]$Compiler = 'clang-cl',
+
+    [switch]$SelfTest
 )
 
 Set-StrictMode -Version Latest
@@ -62,6 +68,64 @@ if ($Config -eq 'Debug') { $Preset += '-debug' }
 
 $BuildDir = Join-Path $RepoRoot "build\$Preset"
 $TestExe  = Join-Path $BuildDir 'StratChessTests.exe'
+
+function Resolve-ProcessorArchitecture {
+    param(
+        [AllowEmptyString()][string]$CurrentArchitecture,
+        [AllowEmptyString()][string]$VsTargetArchitecture
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($CurrentArchitecture)) {
+        return $CurrentArchitecture
+    }
+
+    if ($VsTargetArchitecture -ieq 'x64') {
+        return 'AMD64'
+    }
+
+    throw "PROCESSOR_ARCHITECTURE is missing and vcvars64 reported target '$VsTargetArchitecture'. A fresh CMake configure cannot identify x86-64."
+}
+
+function Invoke-SelfTest {
+    $cases = @(
+        @{ Name = 'existing architecture is preserved'; Current = 'AMD64'; Target = 'x64'; Expected = 'AMD64' }
+        @{ Name = 'missing architecture uses VS x64 target'; Current = ''; Target = 'x64'; Expected = 'AMD64' }
+        @{ Name = 'missing architecture without VS target fails'; Current = ''; Target = ''; ExpectError = $true }
+        @{ Name = 'missing architecture with unsupported target fails'; Current = ''; Target = 'arm64'; ExpectError = $true }
+    )
+    $failures = 0
+    foreach ($case in $cases) {
+        $expectsError = $case.ContainsKey('ExpectError')
+        $passed = $false
+        $detail = 'expected an exception'
+        try {
+            $actual = Resolve-ProcessorArchitecture -CurrentArchitecture $case.Current -VsTargetArchitecture $case.Target
+            if (-not $expectsError) {
+                $passed = $actual -eq $case.Expected
+                $detail = "expected '$($case.Expected)', got '$actual'"
+            }
+        } catch {
+            $passed = $expectsError
+            $detail = $_.Exception.Message
+        }
+
+        if ($passed) {
+            Write-Host "PASS: $($case.Name)" -ForegroundColor Green
+        } else {
+            Write-Host "FAIL: $($case.Name) ($detail)" -ForegroundColor Red
+            $failures++
+        }
+    }
+
+    if ($failures) { Write-Host "$failures self-test case(s) FAILED." -ForegroundColor Red }
+    else { Write-Host "$($cases.Count) self-test cases passed." -ForegroundColor Green }
+    return $failures -eq 0
+}
+
+if ($SelfTest) {
+    if (Invoke-SelfTest) { exit 0 }
+    exit 1
+}
 
 # ---------------------------------------------------------------------------
 # One-time bootstrap: point this checkout's hooks at the tracked .githooks/
@@ -112,6 +176,12 @@ function Import-VsDevEnvironment {
     cmd /c "`"$vcvars`" >nul 2>&1 && set" | ForEach-Object {
         if ($_ -match '^([^=]+)=(.*)$') { Set-Item -Path "env:$($matches[1])" -Value $matches[2] }
     }
+
+    # Some agent shells omit this standard Windows variable, and vcvars64 does
+    # not restore it. Fresh CMake trees need it for CMAKE_SYSTEM_PROCESSOR.
+    $env:PROCESSOR_ARCHITECTURE = Resolve-ProcessorArchitecture `
+        -CurrentArchitecture $env:PROCESSOR_ARCHITECTURE `
+        -VsTargetArchitecture $env:VSCMD_ARG_TGT_ARCH
 
     foreach ($tool in @('cmake', 'ninja')) {
         if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
