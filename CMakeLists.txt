@@ -226,7 +226,8 @@ function(strat_configure_target tgt)
     endif()
 
     target_include_directories(${tgt} PRIVATE
-        ${CMAKE_SOURCE_DIR}/StratEngine
+        ${CMAKE_SOURCE_DIR}/StratEngine)
+    target_include_directories(${tgt} SYSTEM PRIVATE
         ${spdlog_SOURCE_DIR}/include
         ${nlohmann_json_SOURCE_DIR}/include)
     target_link_libraries(${tgt} PRIVATE Threads::Threads)
@@ -266,4 +267,4 @@ add_executable(StratChessTests
     ${catch2_SOURCE_DIR}/extras/catch_amalgamated.cpp)
 strat_configure_target(StratChessTests)
 target_compile_definitions(StratChessTests PRIVATE STRAT_ENABLE_TEST_ACCESS)
-target_include_directories(StratChessTests PRIVATE ${catch2_SOURCE_DIR}/extras)
+target_include_directories(StratChessTests SYSTEM PRIVATE ${catch2_SOURCE_DIR}/extras)

@@ -4,6 +4,7 @@
 
 #if defined(_WIN32)
 #	ifndef _WIN32_WINNT
+// NOLINTNEXTLINE(bugprone-reserved-identifier) - mandated Windows SDK macro name
 #		define _WIN32_WINNT 0x0600
 #	endif
 #endif

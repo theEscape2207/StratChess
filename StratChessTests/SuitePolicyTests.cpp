@@ -37,6 +37,7 @@ TEST_CASE("one mate failure fails the suite even above the overall threshold", "
 {
 	// 19/20 = 95% overall — above 90% — but the failed position is a mate.
 	std::vector<TacticalResult> results;
+	results.reserve(20);
 	for (int i = 0; i < 19; ++i)
 		results.push_back(make_result("T", "tactical_win", true));
 	results.push_back(make_result("WAC-004", "mate_in_2", false));
@@ -51,6 +52,7 @@ TEST_CASE("non-mate failures within the threshold still pass", "[suite_policy]")
 {
 	// 9/10 = 90%, failure is non-mate -> ok at 0.90 threshold.
 	std::vector<TacticalResult> results;
+	results.reserve(10);
 	for (int i = 0; i < 9; ++i)
 		results.push_back(make_result("T", "tactical_win", true));
 	results.push_back(make_result("T-FAIL", "tactical_win", false));
@@ -64,6 +66,7 @@ TEST_CASE("non-mate failures below the threshold fail", "[suite_policy]")
 {
 	// 8/10 = 80% < 90%.
 	std::vector<TacticalResult> results;
+	results.reserve(10);
 	for (int i = 0; i < 8; ++i)
 		results.push_back(make_result("T", "tactical_win", true));
 	results.push_back(make_result("T-FAIL1", "tactical_win", false));
@@ -133,6 +136,7 @@ TEST_CASE("a position flipping between runs fails stability", "[suite_policy]")
 TEST_CASE("a consistent mate failure fails every run but is not a flip", "[suite_policy]")
 {
 	std::vector<TacticalResult> run;
+	run.reserve(20);
 	for (int i = 0; i < 19; ++i)
 		run.push_back(make_result("T", "tactical_win", true));
 	run.push_back(make_result("WAC-004", "mate_in_2", false)); // fails per-run gate
@@ -150,6 +154,7 @@ TEST_CASE("a consistent tolerated non-mate failure stays stable", "[suite_policy
 	// 9/10 = 90% with a non-mate failure passes the gate; failing identically
 	// in every run is deterministic, so stability passes too.
 	std::vector<TacticalResult> run;
+	run.reserve(10);
 	for (int i = 0; i < 9; ++i)
 		run.push_back(make_result("T", "tactical_win", true));
 	run.push_back(make_result("T-FAIL", "tactical_win", false));

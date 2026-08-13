@@ -382,10 +382,10 @@ int main(int argc, char** argv)
 	} catch (const std::exception& ex) {
 		// stderr, not stdout: cout is buffered and its contents are lost when a
 		// process dies abruptly, which is why the original failure looked silent.
-		std::cerr << "Fatal: " << ex.what() << std::endl;
+		std::cerr << "Fatal: " << ex.what() << '\n';
 		return 1;
 	} catch (...) {
-		std::cerr << "Fatal: unknown exception" << std::endl;
+		std::cerr << "Fatal: unknown exception" << '\n';
 		return 1;
 	}
 }

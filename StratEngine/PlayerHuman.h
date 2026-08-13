@@ -61,7 +61,8 @@ class PlayerHuman final : public PlayerBase {
 		const int row = *begin++ - 'a';
 		const int col = ((8 - ((*begin) - '0')) << 3);
 		// If its a '-' ignore it!
-		if (++begin != end && *begin == '-')
+		++begin;
+		if (begin != end && *begin == '-')
 			++begin;
 		return static_cast<eSquare>(col + row);
 	}

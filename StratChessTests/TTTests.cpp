@@ -224,7 +224,7 @@ TEST_CASE("TT - byte accounting is self-consistent", "[tt]")
 	REQUIRE(tt.entry_bytes() == tt.bucket_count() * 96); // 4 x 24-byte entries
 	REQUIRE(tt.lock_bytes() == tt.bucket_count() * sizeof(std::shared_mutex));
 	REQUIRE(tt.allocated_bytes() == tt.entry_bytes() + tt.lock_bytes());
-	REQUIRE(tt.memory_mb() == tt.entry_bytes() / (1024 * 1024));
+	REQUIRE(tt.memory_mb() == tt.entry_bytes() / (size_t{1024} * 1024));
 }
 
 TEST_CASE("TT - bucket count is a power of two", "[tt]")

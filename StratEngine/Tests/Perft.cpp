@@ -113,8 +113,8 @@ namespace Testing {
 		path.append(json_filename);
 		std::ifstream file(path);
 		if (!file.is_open()) {
-			std::cerr << "ERROR: Cannot open " << json_filename << std::endl;
-			std::cerr << "Working directory: " << std::filesystem::current_path() << std::endl;
+			std::cerr << "ERROR: Cannot open " << json_filename << '\n';
+			std::cerr << "Working directory: " << std::filesystem::current_path() << '\n';
 			throw std::runtime_error("Failed to load perft test cases");
 		}
 		json data = json::parse(file);

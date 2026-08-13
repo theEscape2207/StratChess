@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <unordered_map>
+#include <utility>
 
 template <typename T> class Event {
   private:
@@ -13,7 +14,7 @@ template <typename T> class Event {
 	size_t subscribe(std::function<void(const void*, T&)> callback)
 	{
 		size_t id = next_id++;
-		callbacks[id] = callback;
+		callbacks[id] = std::move(callback);
 		return id;
 	}
 
