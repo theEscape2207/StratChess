@@ -97,7 +97,7 @@ void MoveGenerator::GeneratePawnCaptures(const Board& board, const BITBOARD* con
 
 		// Construct a call-owned move and forward to AddPawnCaptures
 		Move temp = MoveFactory::MakeMove(from, to, MoveType::CAPTURE);
-		AddPawnCaptures(board, moveList, bbBitBoards, std::move(temp), color);
+		AddPawnCaptures(board, moveList, bbBitBoards, temp, color);
 
 		bbAttackLeft = Bits::clearLsb(bbAttackLeft);
 	}
@@ -112,7 +112,7 @@ void MoveGenerator::GeneratePawnCaptures(const Board& board, const BITBOARD* con
 		    static_cast<eSquare>(to + (color == eColor::BLACK ? -9 : 7)); //FIXME: Add defines, constants whatever
 
 		Move temp = MoveFactory::MakeMove(from, to, MoveType::CAPTURE);
-		AddPawnCaptures(board, moveList, bbBitBoards, std::move(temp), color);
+		AddPawnCaptures(board, moveList, bbBitBoards, temp, color);
 		bbAttackRight = Bits::clearLsb(bbAttackRight);
 	}
 }

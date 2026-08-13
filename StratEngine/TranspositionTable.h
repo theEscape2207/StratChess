@@ -357,5 +357,5 @@ class TranspositionTable {
 	// Megabytes actually allocated for entries -- NOT the constructor argument.
 	// Reporting the request here instead would make the table's single memory
 	// diagnostic incapable of revealing the shortfall it is there to describe.
-	size_t memory_mb() const noexcept { return entry_bytes() / (1024 * 1024); }
+	size_t memory_mb() const noexcept { return entry_bytes() / (size_t{1024} * 1024); }
 };
