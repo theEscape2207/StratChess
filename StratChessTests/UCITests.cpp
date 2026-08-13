@@ -353,7 +353,13 @@ TEST_CASE("cmd_ucinewgame: a TT entry does not survive into the next game", "[uc
 class CoutRedirect {
   public:
 	CoutRedirect() : old_(std::cout.rdbuf(buffer_.rdbuf())) {}
-	~CoutRedirect() { std::cout.rdbuf(old_); }
+	~CoutRedirect()
+	{
+		try {
+			std::cout.rdbuf(old_);
+		} catch (...) { // NOLINT(bugprone-empty-catch) - restoring cout in a destructor
+		}
+	}
 
 	CoutRedirect(const CoutRedirect&) = delete;
 	CoutRedirect& operator=(const CoutRedirect&) = delete;
@@ -1155,7 +1161,13 @@ TEST_CASE("cmd_perft: leaves the board unchanged", "[uci][perft]")
 class CinRedirect {
   public:
 	explicit CinRedirect(std::string input) : buffer_(std::move(input)), old_(std::cin.rdbuf(buffer_.rdbuf())) {}
-	~CinRedirect() { std::cin.rdbuf(old_); }
+	~CinRedirect()
+	{
+		try {
+			std::cin.rdbuf(old_);
+		} catch (...) { // NOLINT(bugprone-empty-catch) - restoring cin in a destructor
+		}
+	}
 
 	CinRedirect(const CinRedirect&) = delete;
 	CinRedirect& operator=(const CinRedirect&) = delete;

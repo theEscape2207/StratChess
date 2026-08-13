@@ -21,9 +21,9 @@ namespace MoveHelper {
 	// values on purpose: every switch on the result falls through to its own default, which is the
 	// behaviour MoveFieldTests freezes for ToCoord. Converting this to a checked cast or asserting
 	// the range would break that contract, so the analyzer finding is suppressed rather than fixed.
-	// NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
 	[[nodiscard]] static inline MoveType AsType(const Move& move) noexcept
 	{
+		// NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
 		return static_cast<MoveType>(move.flags());
 	}
 

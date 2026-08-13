@@ -67,8 +67,8 @@ static void ensure_logger_initialized()
 			spdlog::register_logger(s_logger);
 			s_logger->set_level(spdlog::level::debug);
 			s_logger->flush_on(spdlog::level::debug);
-		} catch (...) {
-			// best-effort; leave it empty if creation fails
+		} catch (...) { // NOLINT(bugprone-empty-catch) - best-effort logger init;
+			            // nothing to log the failure to since the logger itself is what failed
 		}
 	}
 }
@@ -76,12 +76,15 @@ static void ensure_logger_initialized()
 void AIPerplex::SetVerboseLogging(bool enabled) noexcept
 {
 	s_verbose_logging = enabled;
-	if (enabled) {
-		ensure_logger_initialized();
-		if (s_logger)
-			s_logger->set_level(spdlog::level::debug);
-	} else if (s_logger) {
-		s_logger->set_level(spdlog::level::off);
+	try {
+		if (enabled) {
+			ensure_logger_initialized();
+			if (s_logger)
+				s_logger->set_level(spdlog::level::debug);
+		} else if (s_logger) {
+			s_logger->set_level(spdlog::level::off);
+		}
+	} catch (...) { // NOLINT(bugprone-empty-catch) - best-effort logging toggle
 	}
 }
 

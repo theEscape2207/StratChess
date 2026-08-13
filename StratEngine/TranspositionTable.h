@@ -265,8 +265,9 @@ class TranspositionTable {
 		// Scale quiescence depth down to equivalent main search scale (tunable)
 		int adjusted_depth = (entry.phase == SearchPhase::MAIN) ? entry.depth : quiescenceEquivalentDepth(entry.depth);
 
-		// Quiescence searches sometimes have shallower depth but should still be considered
-		int phase_bonus = (entry.phase == SearchPhase::MAIN) ? 0 : 0 /*-256*/;
+		// Quiescence searches sometimes have shallower depth but should still be
+		// considered -- no phase bonus/penalty either way.
+		constexpr int phase_bonus = 0;
 		return adjusted_depth * 256 + pv_bonus + phase_bonus - age_diff * 512;
 	}
 

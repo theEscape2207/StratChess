@@ -32,8 +32,9 @@ namespace zobrist {
 			// non-deterministic seed for production use (uncomment for true randomness, but beware non-reproducible hashes across runs)
 			// std::random_device rd;
 			// std::mt19937 rng(rd());
-			// Deterministic seed for reproducibility
-			std::mt19937_64 rng(0x123456789ABCDEF0ULL);
+			// Deterministic seed for reproducibility -- not a security-sensitive use,
+			// so the fixed seed is deliberate, not a defect.
+			std::mt19937_64 rng(0x123456789ABCDEF0ULL); // NOLINT(bugprone-random-generator-seed)
 
 			//std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
 			// Fills piece_keys with random 64-bit values for piece-placement Zobrist hashing.

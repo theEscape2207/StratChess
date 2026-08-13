@@ -589,9 +589,7 @@ bool UciHandler::dispatch(std::string_view line)
 	}
 	// Both spellings, and both before the bare 'go': "go perft" would
 	// otherwise be parsed as a search whose unknown tokens are skipped.
-	else if (line.starts_with("go perft")) {
-		cmd_perft(line);
-	} else if (line.starts_with("perft")) {
+	else if (line.starts_with("go perft") || line.starts_with("perft")) {
 		cmd_perft(line);
 	} else if (line.starts_with("go")) {
 		cmd_go(line);

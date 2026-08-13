@@ -33,8 +33,8 @@ void Engine::Logger::InitDefault()
 			// set as default logger so existing code that uses spdlog::info() continues to work
 			spdlog::set_default_logger(multi);
 			spdlog::flush_on(spdlog::level::info);
-		} catch (const spdlog::spdlog_ex&) {
-			// ignore — caller code may fallback to std::cout if needed
+		} catch (const spdlog::spdlog_ex&) { // NOLINT(bugprone-empty-catch)
+			                                 // ignore — caller code may fallback to std::cout if needed
 		}
 	});
 }
@@ -87,9 +87,27 @@ std::shared_ptr<spdlog::logger> Engine::Logger::CreateUciCommandLogger(const std
 
 std::shared_ptr<spdlog::logger> Engine::Logger::GetLogger(const std::string& name) noexcept
 {
-	return spdlog::get(name);
+	try {
+		return spdlog::get(name);
+	} catch (...) {
+		return nullptr;
+	}
 }
 
-std::shared_ptr<spdlog::logger> Engine::Logger::DefaultLogger() noexcept { return spdlog::default_logger(); }
+std::shared_ptr<spdlog::logger> Engine::Logger::DefaultLogger() noexcept
+{
+	try {
+		return spdlog::default_logger();
+	} catch (...) {
+		return nullptr;
+	}
+}
 
-std::shared_ptr<spdlog::logger> Engine::Logger::GetPerfLogger() noexcept { return spdlog::get(PERF_LOGGER_NAME); }
+std::shared_ptr<spdlog::logger> Engine::Logger::GetPerfLogger() noexcept
+{
+	try {
+		return spdlog::get(PERF_LOGGER_NAME);
+	} catch (...) {
+		return nullptr;
+	}
+}

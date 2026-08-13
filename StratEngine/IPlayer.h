@@ -8,6 +8,8 @@
 
 class IPlayer {
   public:
+	// NOLINTNEXTLINE(bugprone-exception-escape) - defaulted; the Event<T> members' unordered_map
+	// default-constructs empty with std::allocator, which the standard requires to be noexcept.
 	IPlayer() noexcept = default;
 	// Virtual functions
 	virtual Move GetMove(GameInfo& info, const SearchLimits& limits) = 0;

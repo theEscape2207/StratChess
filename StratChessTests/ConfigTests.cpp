@@ -16,7 +16,13 @@ namespace {
 	class CerrRedirect {
 	  public:
 		CerrRedirect() : old_(std::cerr.rdbuf(buffer_.rdbuf())) {}
-		~CerrRedirect() { std::cerr.rdbuf(old_); }
+		~CerrRedirect()
+		{
+			try {
+				std::cerr.rdbuf(old_);
+			} catch (...) { // NOLINT(bugprone-empty-catch) - restoring cerr in a destructor
+			}
+		}
 
 		CerrRedirect(const CerrRedirect&) = delete;
 		CerrRedirect& operator=(const CerrRedirect&) = delete;

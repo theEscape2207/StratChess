@@ -18,12 +18,16 @@ namespace BitBoardHelper {
 	///        Intended for debugging only.
 	inline void print_bitboard(std::ostream& out, BITBOARD bb) noexcept
 	{
-		for (std::uint8_t i = 0; i < ALL_SQUARES; ++i) {
-			out << ((bb >> i) & 1u);
-			if ((i & 7) == 7)
-				out << '\n';
+		// Debug-only output: a stream failure here must not crash the caller.
+		try {
+			for (std::uint8_t i = 0; i < ALL_SQUARES; ++i) {
+				out << ((bb >> i) & 1u);
+				if ((i & 7) == 7)
+					out << '\n';
+			}
+			out << '\n';
+		} catch (...) { // NOLINT(bugprone-empty-catch) - debug output only, nothing to do on failure
 		}
-		out << '\n';
 	}
 
 	/// @brief Clears bits on the board specified by the mask.
