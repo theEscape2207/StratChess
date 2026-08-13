@@ -322,14 +322,7 @@ static bool parse_uci_args(int argc, char** argv, std::optional<std::string>& lo
 	return true;
 }
 
-// Backstop for the whole function, not just the modes below: argv parsing itself
-// (std::string construction) can throw, and Game::Init reports its specific cause and
-// rethrows deliberately -- it is not its place to choose an exit code, and swallowing there
-// would let a half-initialised Game continue into Run(). Without this catch the rethrow
-// reaches std::terminate, which is why a bad settings file used to present as a crash
-// (0xC0000409) even after it had printed a perfectly good diagnostic.
-// Still flagged: the catch handlers' own std::cerr calls aren't noexcept either (same edge
-// case as FENParser::ParseFEN), but main is already the outermost boundary.
+// Convert uncaught startup/runtime exceptions into a process-level failure code.
 // NOLINTNEXTLINE(bugprone-exception-escape)
 int main(int argc, char** argv)
 {

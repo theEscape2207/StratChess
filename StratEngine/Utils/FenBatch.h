@@ -26,8 +26,6 @@
 
 namespace FenBatch {
 
-	// LineResult below isn't bulk-stored; its std::string member dwarfs any savings anyway.
-	// NOLINTNEXTLINE(performance-enum-size)
 	enum class LineKind {
 		Skip,      // blank line or '#' comment — not an error, nothing to report
 		Malformed, // failed either validation tier; `error` explains why
