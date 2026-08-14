@@ -1010,15 +1010,40 @@ TEST_CASE("cmd_position: malformed FEN does not replay its move list", "[uci]")
 	CHECK(fx.board().GetPiece(e4) == NO_PIECE);
 }
 
+TEST_CASE("cmd_position: an illegal move rejects the entire replay", "[uci]")
+{
+	UciHandlerTestFixture fx;
+	const std::string output = capture_cout([&] { fx.position("position startpos moves e2e4 e7e8"); });
+
+	// e7e8 is coordinate-shaped but illegal: it targets Black's own king. The valid
+	// prefix must not remain applied when a later token invalidates the whole replay.
+	CHECK(output.find("illegal move 'e7e8'") != std::string::npos);
+	CHECK(fx.board().GetPiece(e2) == WHITE_PAWN);
+	CHECK(fx.board().GetPiece(e4) == NO_PIECE);
+	CHECK(fx.board().GetPiece(e7) == BLACK_PAWN);
+	CHECK(fx.board().GetPiece(e8) == BLACK_KING);
+}
+
+TEST_CASE("cmd_position: legal promotion replay preserves the requested piece", "[uci]")
+{
+	UciHandlerTestFixture fx;
+	const std::string output =
+	    capture_cout([&] { fx.position("position fen 4k3/1P6/8/8/8/8/8/4K3 w - - 0 1 moves b7b8n"); });
+
+	CHECK(output.find("illegal move") == std::string::npos);
+	CHECK(fx.board().GetPiece(b7) == NO_PIECE);
+	CHECK(fx.board().GetPiece(b8) == WHITE_KNIGHT);
+}
+
 // ---------------------------------------------------------------------------
 // Piece placement sanity: exactly one king per color (issue #163)
 //
 // A board missing a king, or holding two of one color, is what let a generated
 // king-capturing move reach Board::DoMove and read one entry past
 // g_bbKingMoves' 64-entry table before #45 closed the only known route in. The
-// invariant this pins was already enforced by FENParser::ParsePiecePlacementField
-// -- SetupFromFEN is the only way to populate a Board's pieces, so there is no
-// gap left to guard -- but nothing previously exercised it directly.
+// initial-position invariant was already enforced by FENParser::ParsePiecePlacementField.
+// UCI replay separately resolves every client token against generated moves before DoMove,
+// so malformed protocol input cannot remove a king after setup either.
 // ---------------------------------------------------------------------------
 
 TEST_CASE("Board::SetupFromFEN: rejects a FEN with no black king", "[uci]")
@@ -1123,8 +1148,7 @@ TEST_CASE("cmd_position: a legal en-passant square is preserved, not cleared", "
 TEST_CASE("cmd_position: castling repair is reported via UCI (spdlog is off there)", "[uci]")
 {
 	UciHandlerTestFixture fx;
-	const std::string output =
-	    capture_cout([&] { fx.position("position fen 4k3/8/8/8/4P3/8/8/3K4 w Q e6 0 1"); });
+	const std::string output = capture_cout([&] { fx.position("position fen 4k3/8/8/8/4P3/8/8/3K4 w Q e6 0 1"); });
 
 	CHECK(fx.board().GetGameInfo().castlingRights == CastlingRights::NONE);
 	CHECK(fx.board().GetGameInfo().epSquare == NO_SQUARE);
@@ -1426,7 +1450,7 @@ TEST_CASE("cmd_position: a rejected FEN gives the same board whatever preceded i
 	REQUIRE(after_startpos == 20);
 }
 
-TEST_CASE("cmd_position: an unparseable move stops replay and reports it", "[uci]")
+TEST_CASE("cmd_position: an unparseable move rejects the entire replay and reports it", "[uci]")
 {
 	UciHandlerTestFixture fix;
 
@@ -1435,9 +1459,11 @@ TEST_CASE("cmd_position: an unparseable move stops replay and reports it", "[uci
 	REQUIRE(output.find("info string") != std::string::npos);
 	REQUIRE(output.find("zzzz") != std::string::npos);
 
-	// e2e4 applied, replay stopped there: Black to move, 20 replies.
+	// The valid prefix is not committed when a later token invalidates the replay.
 	REQUIRE(divide_total(capture_cout([&] { fix.perft("perft 1"); })) == 20);
-	REQUIRE(fix.board().GetCurrentColor() == BLACK);
+	REQUIRE(fix.board().GetCurrentColor() == WHITE);
+	REQUIRE(fix.board().GetPiece(e2) == WHITE_PAWN);
+	REQUIRE(fix.board().GetPiece(e4) == NO_PIECE);
 }
 
 // ---------------------------------------------------------------------------
