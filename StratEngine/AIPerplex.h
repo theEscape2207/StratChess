@@ -5,9 +5,10 @@
 #include "TranspositionTable.h"
 #include "PVTable.h"
 #include "ThreadData.h"
-#include <memory>
 #include <algorithm>
 #include <cstdint>
+#include <functional>
+#include <memory>
 #include <vector>
 
 // Search result structure - returned from iterative_deepening
@@ -17,6 +18,29 @@ struct SearchResult {
 	int depth_completed = 0;
 	int64_t nodes_searched = 0;
 	bool search_was_stable = true;
+};
+
+// Snapshot of one accepted iterative-deepening iteration, handed to the
+// iteration observer (see AIPerplex::SetIterationObserver). `nodes` is the
+// CUMULATIVE main-search-thread node count at the end of this accepted
+// iteration (td.nodes_searched) — the standard UCI convention for a
+// per-iteration "nodes so far" figure, not the per-iteration delta
+// IterationMetrics tracks. It is NOT guaranteed to equal the final
+// info/bestmove line's node count: on a clocked search the loop typically
+// starts one more iteration, gets interrupted, and has that iteration
+// rejected by assess_iteration_quality() (REJECT_AND_STOP emits nothing —
+// see iterative_deepening()), but the rejected iteration's nodes are already
+// in td.nodes_searched by the time GetMove() reports the final total, so
+// that total is typically strictly greater than this field at Threads=1.
+// Under Lazy SMP the two also diverge because the final total sums helper
+// threads' nodes, which are never visible here. `pv` is a copy of the PV
+// table's root line, taken at emit time before the next iteration
+// overwrites it.
+struct IterationInfo {
+	int depth = 0;
+	int score = 0;
+	int64_t nodes = 0;
+	std::vector<Move> pv;
 };
 
 class AIPerplex final : public PlayerAiBase {
@@ -37,6 +61,19 @@ class AIPerplex final : public PlayerAiBase {
 
 	HashConfigurationResult SetHash(unsigned mb) noexcept override;
 	void StartNewGame() override;
+
+	// Registers a callback invoked once per accepted iterative-deepening iteration
+	// (both ACCEPT_AND_CONTINUE and ACCEPT_AND_STOP, never REJECT_AND_STOP), from
+	// whichever thread is running iterative_deepening() — the main search thread
+	// only; Lazy SMP helper threads run helper_loop() and never call this. Empty
+	// by default: no observer means no per-iteration work at all, so game mode and
+	// non-UCI callers that never register one are unaffected. UCIHandler::cmd_go
+	// is the only current caller — it registers before spawning the search thread
+	// and clears the observer once the search returns.
+	void SetIterationObserver(std::function<void(const IterationInfo&)> observer)
+	{
+		iteration_observer_ = std::move(observer);
+	}
 
 	// Note: NOT to be called directly - only through Factory method (needed to be public due to usage of make_unique)
 	explicit AIPerplex(Board& board, unsigned md);
@@ -152,6 +189,12 @@ class AIPerplex final : public PlayerAiBase {
 	void log_aspiration_retry(int depth, int retry, int score, int alpha, int beta, bool fail_low) const;
 	void log_aspiration_full_window(int depth, int max_retries) const;
 
+	// Builds an IterationInfo snapshot (copying the PV out of td before the next
+	// iteration mutates it) and forwards it to iteration_observer_. No-op when no
+	// observer is registered. Called from both accept branches of
+	// iterative_deepening(), after `state` is updated for that iteration.
+	void emit_iteration_info(const ThreadData& td, int depth, int score) const;
+
 	// MEMBER VARIABLES
 	std::unique_ptr<TranspositionTable> _tt; // persistent transposition table
 
@@ -174,6 +217,11 @@ class AIPerplex final : public PlayerAiBase {
 
 	// logging control: enable detailed logging when needed (default: false)
 	static inline bool s_verbose_logging = false;
+
+	// Per-iteration UCI diagnostic hook (see SetIterationObserver). Default-constructed
+	// empty: emit_iteration_info() checks this before doing any work, so an unregistered
+	// observer costs a single bool check per accepted iteration.
+	std::function<void(const IterationInfo&)> iteration_observer_;
 
 #ifdef STRAT_ENABLE_TEST_ACCESS
 	// Enable fine-grained unit tests for private search helpers.

@@ -7,6 +7,7 @@
 #include "Board.h"
 #include "MoveFactory.h"
 #include "MoveFormatter.h"
+#include "MoveGenerator.h"
 #include "Eval.h"
 #include "TranspositionTable.h"
 #include "Utils/FenBatch.h"
@@ -21,6 +22,8 @@
 #include <random>
 #include <mutex>
 #include <stdexcept>
+#include <thread>
+#include <chrono>
 #include <spdlog/sinks/base_sink.h>
 
 using P = UciHandler::GoParams;
@@ -108,6 +111,30 @@ class UciHandlerTestFixture {
 		auto* perplex = dynamic_cast<AIPerplex*>(handler.ai_.get());
 		REQUIRE(perplex != nullptr);
 		return perplex->_tt.get();
+	}
+
+	// cmd_go() runs the search on handler.search_thread_ and returns immediately;
+	// dispatch("go ...") in a test therefore needs an explicit synchronous wait for
+	// the thread to finish (and flush its output) before the captured cout buffer
+	// can be inspected. Direct join rather than handler.stop_and_join(): the tests
+	// using this drive a fixed-depth search that is expected to finish on its own,
+	// so there is nothing to signal -- only completion to wait for.
+	void join_search()
+	{
+		if (handler.search_thread_.joinable())
+			handler.search_thread_.join();
+	}
+
+	// Calls AIPerplex::GetMove() directly, the way game mode (non-UCI) does --
+	// bypassing cmd_go entirely, so no iteration observer is ever registered.
+	// Used to pin that an unregistered observer means emit_iteration_info() does
+	// no work and prints nothing (issue #237 stage 0, item 3).
+	Move run_search_directly(int depth)
+	{
+		auto* perplex = dynamic_cast<AIPerplex*>(handler.ai_.get());
+		REQUIRE(perplex != nullptr);
+		GameInfo info = handler.board_.GetGameInfo();
+		return perplex->GetMove(info, SearchLimits::fixed_depth(depth));
 	}
 };
 
@@ -1704,4 +1731,348 @@ TEST_CASE("DefaultCommandLogPath: carries the process id", "[uci]")
 	const std::string pid = path.substr(digits_begin, path.size() - digits_begin - 4);
 	REQUIRE_FALSE(pid.empty());
 	REQUIRE(std::all_of(pid.begin(), pid.end(), [](char c) { return c >= '0' && c <= '9'; }));
+}
+
+// ---------------------------------------------------------------------------
+// cmd_go — per-iteration 'info' reporting (issue #237 stage 0)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+	// One parsed "info depth ..." line. `score` keeps the two-token form
+	// ("cp 34" / "mate 3") verbatim so tests can check the kind without
+	// re-deriving GameValues::Mate_Threshold.
+	struct ParsedInfoLine {
+		int depth = 0;
+		std::string score;
+		int64_t nodes = 0;
+		int time_ms = 0;
+		std::vector<std::string> pv;
+	};
+
+	// Every "info depth ..." line in `output`, in emission order. Deliberately
+	// tolerant of any other 'info' line shape (e.g. 'info string ...') by only
+	// matching the "info depth" prefix — those are unrelated protocol output,
+	// not a parse failure.
+	std::vector<ParsedInfoLine> parse_info_depth_lines(const std::string& output)
+	{
+		std::vector<ParsedInfoLine> result;
+		for (const std::string& line : split_lines(output)) {
+			if (!line.starts_with("info depth "))
+				continue;
+
+			std::istringstream iss(line);
+			std::string tok;
+			ParsedInfoLine info;
+			while (iss >> tok) {
+				if (tok == "depth") {
+					iss >> info.depth;
+				} else if (tok == "score") {
+					std::string kind;
+					std::string value;
+					iss >> kind >> value;
+					info.score = kind + " " + value;
+				} else if (tok == "nodes") {
+					iss >> info.nodes;
+				} else if (tok == "time") {
+					iss >> info.time_ms;
+				} else if (tok == "pv") {
+					std::string move;
+					while (iss >> move)
+						info.pv.push_back(move);
+				}
+			}
+			result.push_back(std::move(info));
+		}
+		return result;
+	}
+
+	// The move token on a "bestmove <move>" line, or empty if none is present.
+	std::string extract_bestmove(const std::string& output)
+	{
+		for (const std::string& line : split_lines(output)) {
+			if (line.starts_with("bestmove ")) {
+				return line.substr(std::string("bestmove ").size());
+			}
+		}
+		return {};
+	}
+
+	// Replays a full PV (as UCI tokens) from `board`, resolving each token
+	// against the position's own legal move list at that point -- mirrors
+	// UciHandler's private find_replay_move() (UCIHandler.cpp), which is not
+	// reachable from here. Returns false at the first token that is not a
+	// legal move in the position it is played from.
+	bool replay_pv_is_legal(Board board, const std::vector<std::string>& pv_tokens)
+	{
+		for (const std::string& token : pv_tokens) {
+			MoveList moves;
+			MoveGenerator::ComputeLegalMoves(board, board.GetGameInfo(), moves);
+
+			Move found;
+			bool matched = false;
+			for (const Move& candidate : moves) {
+				if (MoveFormatter::ToUCI(candidate) == token) {
+					found = candidate;
+					matched = true;
+					break;
+				}
+			}
+			if (!matched || !board.DoMove(found))
+				return false;
+			board.ResetSearchDepth();
+		}
+		return true;
+	}
+
+} // namespace
+
+TEST_CASE("cmd_go: 'go depth 4' emits per-iteration info lines with strictly increasing depth", "[uci]")
+{
+	UciHandlerTestFixture fix;
+	fix.position("position startpos");
+
+	std::string output;
+	{
+		CoutRedirect redirect;
+		fix.dispatch("go depth 4");
+		fix.join_search();
+		output = redirect.str();
+	}
+
+	const auto info_lines = parse_info_depth_lines(output);
+	// At least the 4 per-iteration lines (depths 1-4) plus the unchanged final
+	// summary line -- whose depth repeats the last iteration's, so only the
+	// first 4 are asserted to be strictly increasing.
+	REQUIRE(info_lines.size() >= 4);
+	for (size_t i = 1; i < 4; ++i) {
+		REQUIRE(info_lines[i].depth > info_lines[i - 1].depth);
+	}
+	REQUIRE(info_lines[0].depth == 1);
+
+	int bestmove_lines = 0;
+	for (const std::string& line : split_lines(output)) {
+		if (line.starts_with("bestmove "))
+			++bestmove_lines;
+	}
+	REQUIRE(bestmove_lines == 1);
+}
+
+TEST_CASE("cmd_go: the last info line's pv and score agree with bestmove", "[uci]")
+{
+	// This is the guarantee item 6 (issue #237 stage 0) exists for: the final
+	// info line and 'bestmove' are built from the same shared score formatter
+	// and the same SearchResult, so they cannot drift from each other.
+	UciHandlerTestFixture fix;
+	fix.position("position startpos");
+
+	std::string output;
+	{
+		CoutRedirect redirect;
+		fix.dispatch("go depth 4");
+		fix.join_search();
+		output = redirect.str();
+	}
+
+	const auto info_lines = parse_info_depth_lines(output);
+	REQUIRE_FALSE(info_lines.empty());
+	const ParsedInfoLine& last = info_lines.back();
+	REQUIRE_FALSE(last.pv.empty());
+
+	const std::string bestmove = extract_bestmove(output);
+	REQUIRE_FALSE(bestmove.empty());
+	REQUIRE(last.pv.front() == bestmove);
+}
+
+TEST_CASE("cmd_go: at depth >= 3 the pv carries more than one move and replays legally", "[uci]")
+{
+	UciHandlerTestFixture fix;
+	fix.position("position startpos");
+
+	std::string output;
+	{
+		CoutRedirect redirect;
+		fix.dispatch("go depth 4");
+		fix.join_search();
+		output = redirect.str();
+	}
+
+	const auto info_lines = parse_info_depth_lines(output);
+	REQUIRE(info_lines.size() >= 4);
+
+	// info_lines[3] is the fourth emitted line, i.e. the depth-4 per-iteration
+	// line (see the strictly-increasing-depth test above for why depths 1-4
+	// occupy the first four slots).
+	const ParsedInfoLine& depth4 = info_lines[3];
+	REQUIRE(depth4.depth >= 3);
+	REQUIRE(depth4.pv.size() > 1);
+
+	Board board;
+	REQUIRE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"));
+	REQUIRE(replay_pv_is_legal(board, depth4.pv));
+}
+
+TEST_CASE("cmd_go: a forced mate reports 'mate N', not 'cp', in the score field", "[uci]")
+{
+	// Ra1-a8# -- verified elsewhere in this codebase's tactical suite
+	// (TacticalTests.cpp: "M1: rook back rank", depth 4) as an actual mate-in-1
+	// the search finds, so this FEN is not a fresh, unverified claim.
+	UciHandlerTestFixture fix;
+	fix.position("position fen 6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1");
+
+	std::string output;
+	{
+		CoutRedirect redirect;
+		fix.dispatch("go depth 4");
+		fix.join_search();
+		output = redirect.str();
+	}
+
+	const auto info_lines = parse_info_depth_lines(output);
+	REQUIRE_FALSE(info_lines.empty());
+	REQUIRE(info_lines.back().score.starts_with("mate "));
+	REQUIRE(extract_bestmove(output) == "a1a8");
+}
+
+TEST_CASE("AIPerplex::GetMove: emits no per-iteration output when no observer is registered", "[uci]")
+{
+	// Game mode and non-UCI callers never call SetIterationObserver -- this pins
+	// that emit_iteration_info() is a true no-op without one, so the default
+	// (non-UCI) search path is unaffected by this stage's addition.
+	UciHandlerTestFixture fix;
+	fix.ucinewgame();
+	fix.position("position startpos");
+
+	std::string output;
+	{
+		CoutRedirect redirect;
+		fix.run_search_directly(4);
+		output = redirect.str();
+	}
+
+	REQUIRE(output.empty());
+}
+
+TEST_CASE("cmd_go: 'go movetime 300' final info line's nodes are >= the last per-iteration line's", "[uci]")
+{
+	// This is currently the only automated coverage of the ACCEPT_AND_STOP /
+	// REJECT_AND_STOP paths through AIPerplex::iterative_deepening(): every
+	// other 'go' test in this file is fixed-depth, which always finishes via
+	// ACCEPT_AND_CONTINUE reaching max_depth rather than being interrupted.
+	UciHandlerTestFixture fix;
+	// Kiwipete: complex enough that 300ms will not reach UCI_DEFAULT_DEPTH (20).
+	fix.position("position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+
+	std::string output;
+	{
+		CoutRedirect redirect;
+		fix.dispatch("go movetime 300");
+		fix.join_search();
+		output = redirect.str();
+	}
+
+	const auto info_lines = parse_info_depth_lines(output);
+	// At least one accepted per-iteration line plus the final summary line.
+	REQUIRE(info_lines.size() >= 2);
+
+	const ParsedInfoLine& last_iteration = info_lines[info_lines.size() - 2];
+	const ParsedInfoLine& final_line = info_lines.back();
+
+	REQUIRE(last_iteration.depth == final_line.depth);
+	REQUIRE(last_iteration.score == final_line.score);
+	// <=, not ==: a clocked search typically starts one more iteration that gets
+	// interrupted and then rejected by assess_iteration_quality() -- REJECT_AND_STOP
+	// emits no per-iteration line for it (iterative_deepening(), AIPerplex.cpp), but
+	// that rejected iteration's nodes are already folded into td.nodes_searched by
+	// the time GetMove() reports the final total (AIPerplex.h's IterationInfo doc).
+	REQUIRE(last_iteration.nodes <= final_line.nodes);
+}
+
+TEST_CASE("cmd_go: 'stop' during 'go infinite' produces well-formed output under concurrent isready", "[uci]")
+{
+	// Exercises the send() mutex added when per-iteration output widened the
+	// interleaving window between the search thread's info lines and the command
+	// loop's own send() calls (UCIHandler.cpp send(), issue #237 stage 0 finding).
+	// 'go infinite' returns as soon as the search thread is spawned, so the
+	// isready calls below run on this (calling) thread genuinely concurrently
+	// with the search thread's output -- Kiwipete at unbounded depth cannot
+	// finish on its own before 'stop' arrives.
+	//
+	// The sleep before issuing isready/stop is not about search progress -- it
+	// closes a separate, pre-existing race documented in TimeManager.h's own
+	// threading contract: StopSearch() (callable from any thread) and
+	// ApplyLimits()'s time_manager_.start() (called from inside GetMove(), on
+	// the search thread, only after it is scheduled) are unsynchronized, so a
+	// 'stop' arriving before the search thread reaches start() is silently
+	// overwritten and the search becomes unstoppable for the rest of this
+	// process. Fixing that race is outside this change's scope; the sleep keeps
+	// this test about the send() mutex, not about that unrelated gap.
+	UciHandlerTestFixture fix;
+	fix.position("position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+
+	constexpr int kIsReadyCount = 20;
+	std::string output;
+	{
+		CoutRedirect redirect;
+		fix.dispatch("go infinite");
+		std::this_thread::sleep_for(std::chrono::milliseconds(200));
+		for (int i = 0; i < kIsReadyCount; ++i) {
+			fix.dispatch("isready");
+		}
+		fix.dispatch("stop"); // joins the search thread; only returns once it has
+		output = redirect.str();
+	}
+
+	const std::regex line_shape{R"(^(info|bestmove|readyok)\b)"};
+	int readyok_count = 0;
+	for (const std::string& line : split_lines(output)) {
+		if (line.empty())
+			continue;
+		REQUIRE(std::regex_search(line, line_shape));
+		if (line == "readyok")
+			++readyok_count;
+	}
+	REQUIRE(readyok_count == kIsReadyCount);
+}
+
+TEST_CASE("cmd_go: two back-to-back 'go depth 4' searches each produce one bestmove and restart depths at 1", "[uci]")
+{
+	// Pins the observer register/clear lifecycle (UCIHandler.cpp cmd_go / search
+	// thread lambda) against a future refactor: the second search's per-iteration
+	// depths must restart at 1, not continue from wherever the first search's
+	// observer left off.
+	UciHandlerTestFixture fix;
+	fix.position("position startpos");
+
+	std::string output;
+	{
+		CoutRedirect redirect;
+		fix.dispatch("go depth 4");
+		fix.join_search();
+		fix.dispatch("go depth 4");
+		fix.join_search();
+		output = redirect.str();
+	}
+
+	const auto lines = split_lines(output);
+	int bestmove_count = 0;
+	size_t first_bestmove_index = lines.size();
+	for (size_t i = 0; i < lines.size(); ++i) {
+		if (lines[i].starts_with("bestmove ")) {
+			++bestmove_count;
+			if (first_bestmove_index == lines.size())
+				first_bestmove_index = i;
+		}
+	}
+	REQUIRE(bestmove_count == 2);
+
+	// Info lines strictly after the first bestmove belong to the second search.
+	std::string tail;
+	for (size_t i = first_bestmove_index + 1; i < lines.size(); ++i) {
+		tail += lines[i];
+		tail += '\n';
+	}
+	const auto second_search_info = parse_info_depth_lines(tail);
+	REQUIRE_FALSE(second_search_info.empty());
+	REQUIRE(second_search_info.front().depth == 1);
 }

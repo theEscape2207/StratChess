@@ -14,7 +14,9 @@
 #include "Utils/Logger.h"
 #include <spdlog/spdlog.h>
 #include <iostream>
+#include <mutex>
 #include <sstream>
+#include <vector>
 #ifdef _WIN32
 #	include <process.h>
 #else
@@ -46,10 +48,53 @@ namespace {
 		}
 		return Move{};
 	}
+
+	// Shared by the per-iteration info lines and the final info/bestmove line
+	// (item 6, issue #237 stage 0): both must format a raw centipawn score the
+	// same way, so the last per-iteration line can never drift from bestmove.
+	std::string format_uci_score(int cp)
+	{
+		const bool is_mate = std::abs(cp) >= GameValues::Mate_Threshold;
+		if (is_mate) {
+			int plies = GameValues::Mate - std::abs(cp);
+			int mate_n = (plies + 1) / 2;
+			return "mate " + std::to_string(cp > 0 ? mate_n : -mate_n);
+		}
+		return "cp " + std::to_string(cp);
+	}
+
+	// Space-separated UCI move list for a full PV. Only the per-iteration lines
+	// use this — the final info line keeps its single-move `pv` field unchanged
+	// (item 8: the final line's contract does not change in this stage).
+	std::string format_uci_pv(const std::vector<Move>& pv)
+	{
+		if (pv.empty())
+			return "0000";
+		std::string result;
+		for (size_t i = 0; i < pv.size(); ++i) {
+			if (i)
+				result += ' ';
+			result += MoveFormatter::ToUCI(pv[i]);
+		}
+		return result;
+	}
 } // namespace
 
 void UciHandler::send(std::string_view msg)
 {
+	// One line per UCI protocol message is a hard requirement: a client reads
+	// stdout line by line, and a line torn between two threads' partial writes
+	// is a protocol violation a match runner resolves by forfeiting the game
+	// (issue #237 stage 0 finding). Before per-iteration `info` lines existed,
+	// the search thread only ever emitted two lines back-to-back at the very end
+	// of a search, leaving a narrow interleaving window; per-iteration output
+	// widens that window to the whole search, so the write+flush below is now
+	// serialised against every other send() call (the command loop's `isready`
+	// replies, `info string` refusals, etc.) via a function-local static mutex.
+	// Building the string happens on the caller's stack before this call, so it
+	// needs no synchronisation of its own -- only the shared stdout write does.
+	static std::mutex send_mutex;
+	std::lock_guard<std::mutex> lock(send_mutex);
 	std::cout << msg << '\n';
 	std::cout.flush();
 }
@@ -364,28 +409,48 @@ void UciHandler::cmd_go(std::string_view line)
 	                             : std::optional<int>(p.infinite ? 50 : static_cast<int>(UCI_DEFAULT_DEPTH));
 
 	auto start = std::chrono::steady_clock::now();
+
+	// Reached the same way the final-line code below always has (dynamic_cast on
+	// ai_.get()), just earlier: the observer must be registered before the search
+	// thread starts, so this cast now happens here instead of inside the thread
+	// lambda. AIPerplex is the only PlayerAiBase concrete type that supports
+	// per-iteration reporting -- a non-AIPerplex ai_ (none currently exist) simply
+	// gets no per-iteration lines, same as leaving the observer unregistered.
+	auto* perplex = dynamic_cast<AIPerplex*>(ai_.get());
+	if (perplex) {
+		// Registered before search_thread_ spawns, so the observer is live for the
+		// entire search; cleared once GetMove() returns, from inside the thread
+		// lambda below, so a subsequent search under a fresh 'go' does not fire
+		// this stale closure before its own registration runs.
+		perplex->SetIterationObserver([start](const IterationInfo& iter) {
+			auto elapsed =
+			    std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
+			send("info depth " + std::to_string(iter.depth) + " score " + format_uci_score(iter.score) + " nodes " +
+			     std::to_string(iter.nodes) + " time " + std::to_string(elapsed.count()) + " pv " +
+			     format_uci_pv(iter.pv));
+		});
+	}
+
 	// Raised on this thread, before the search exists, so a command arriving
 	// immediately after 'go' cannot observe a stale false.
 	searching_.store(true, std::memory_order_release);
-	search_thread_ = std::thread([this, info, start, limits]() mutable {
+	search_thread_ = std::thread([this, info, start, limits, perplex]() mutable {
 		Move best = ai_->GetMove(info, limits);
 
 		auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
 
-		auto* perplex = dynamic_cast<AIPerplex*>(ai_.get());
+		// Search is over: no more iterations will fire the observer, and the next
+		// 'go' registers its own before spawning its thread. Clearing here rather
+		// than leaving the closure installed keeps "no observer registered" the
+		// resting state, so any future non-cmd_go path that calls GetMove() cannot
+		// fire this stale closure.
+		if (perplex)
+			perplex->SetIterationObserver(nullptr);
+
 		SearchResult result = perplex ? perplex->GetLastResult() : SearchResult{};
 
 		const int cp = result.best_score;
-		const bool is_mate = std::abs(cp) >= GameValues::Mate_Threshold;
-
-		std::string score_str;
-		if (is_mate) {
-			int plies = GameValues::Mate - std::abs(cp);
-			int mate_n = (plies + 1) / 2;
-			score_str = "mate " + std::to_string(cp > 0 ? mate_n : -mate_n);
-		} else {
-			score_str = "cp " + std::to_string(cp);
-		}
+		const std::string score_str = format_uci_score(cp);
 
 		send("info depth " + std::to_string(result.depth_completed) + " score " + score_str + " nodes " +
 		     std::to_string(result.nodes_searched) + " time " + std::to_string(elapsed.count()) + " pv " +
