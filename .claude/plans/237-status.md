@@ -40,10 +40,15 @@ Verified against the checkout; the issue does not mention these.
   `AIPerplex.cpp:355` (`ACCEPT_AND_CONTINUE`) and at `:379` (`ACCEPT_AND_STOP`). Only the first
   calls `log_completed_iteration()`. Emitting from that call site alone would drop the final
   iteration of every clocked search — exactly the iteration that has to agree with `bestmove`.
-- **Cumulative node counts diverge under Lazy SMP.** `iterative_deepening()` sees only
-  `td.nodes_searched` (main thread); the final `info`/`bestmove` line reports the cross-thread total
-  assembled at `AIPerplex.cpp:256-259`. At `Threads=1` these are equal. Stage 0 reports the
-  main-thread figure per iteration and leaves the final line alone; this is documented, not fixed.
+- **Cumulative node counts diverge from the final line in two ways, not one.** `iterative_deepening()`
+  sees only `td.nodes_searched` (main thread), while the final `info`/`bestmove` line reports the
+  cross-thread total assembled at `AIPerplex.cpp:256-259` — that is the Lazy SMP divergence. The
+  second one bites even at `Threads=1`: a clocked search typically starts depth N+1, is interrupted,
+  and is rejected by `assess_iteration_quality()`, so `REJECT_AND_STOP` emits nothing while those
+  nodes are already counted. The final line is therefore strictly **greater** than the last
+  per-iteration line on essentially every timed search. Compare with `<=`, never `==`. (An earlier
+  revision of this document claimed equality at `Threads=1`; that held only for the fixed-depth case
+  the equivalence gate exercised.)
 - **The absolute-ply bound stage 2 asks for is genuinely absent, and the exposure is smaller than it
   looks.** `pvs()` indexes `td.killers[ply]` and `td.last_move_was_null[ply+1]` unguarded, and both
   are `[MAX_PLY]` (256, `defines.h:101`). `quiescence()` touches neither, and `PVTable` guards every
@@ -57,11 +62,79 @@ Verified against the checkout; the issue does not mention these.
   mate score, not spurious cutoffs. Fix it because it is wrong, and do not expect it to move
   `WAC-287` on its own.
 
+## Tactical test semantics — decided
+
+A tactical test asserts **any objectively equivalent decisive continuation**, not the puzzle key
+move. That is a change from the current suite, which asserts the key move.
+
+Consequences for stage 4:
+
+- Accepted-move lists are widened from **external** analysis only — exact tablebase results where
+  the position is within reach, a strong external engine otherwise. Never from what the current
+  engine happens to score equally; that would make the suite assert the engine's own eval.
+- The widening is evidence-backed per position, recorded with the source, and lands as its own PR.
+- `WAC-043`'s alternatives and `QFORK-001`'s five tablebase-winning moves are the first candidates.
+  Note the suite already had a two-best-options precedent in the `QFORK-001` handling.
+
+**The evidence source is the bottleneck, and it showed up immediately.** Applied to the first two
+positions, the rule widened nothing: `WAC-043`'s `h2h4` was disproven, and `WAC-065`'s `h6f8` was
+unverifiable because Lichess cloud eval only answers for positions someone has already analysed —
+neither the position itself at `multiPv=5` nor the position after the move is cached. A full-suite
+audit under these semantics therefore needs a local strong engine as the evidence source. That is a
+tooling decision, and it should be settled before the audit issue is opened rather than discovered
+34 positions in.
+
+**Deferred, not rejected:** tagging positions by intent (key-move tests vs. don't-blunder tests) and
+asserting differently per tag is the more accurate model, but it is a test-framework change on top
+of the data change. Raise it as its own issue rather than folding it into stage 4.
+
+## Correction to the issue body: `WAC-043`'s historical failure is not overstated
+
+The issue says WAC-043's alternatives are "winning, although by different margins", and treats its
+historical depth-8 failure as an artefact of an over-narrow accepted list. External measurement
+(Lichess cloud eval, depth 20) says otherwise:
+
+| move | cp | in `best_moves` |
+|---|---:|---|
+| `d5a8` | +3715 | yes |
+| `a3e7` | +3567 | yes |
+| `a3b2` | +2358 | no |
+| `h2h4` | +793 | no — this is the depth-8 competitor |
+| `h2h3` | +683 | no |
+
+`h2h4` is winning in the sense that any engine converts +793, but preferring it over `d5a8` throws
+away roughly 2900 cp. Under the decided semantics that is a genuine search error, not a second
+solution. So `WAC-043` correctly stays out of the causal reproduction set — it does not currently
+regress — but its historical failure should not be described as a test-data artefact. Update the
+issue body accordingly.
+
+## Split out: #299, abort returns a valid score
+
+Found while reviewing stage 0, filed separately because it is **not** reachable from #237's
+reproduction: `WAC-287` is swept at fixed depth with no clock, so no abort ever fires.
+
+`pvs()` and `quiescence()` return `GameValues::Draw` on abort — the same value `check_draws()`
+returns for a genuine repetition/50-move draw — and neither has an abort check between its move loop
+and its `tt.store()`. Contaminated values therefore reach the shared table at full nominal depth and
+outlive the search. Under time control only, which is why no fixed-depth test catches it.
+
+Keep it out of stages 1-3. Those are deliberately one-defect-at-a-time so that each one's effect on
+`WAC-287` is attributable; #299 changes TT contents under time control and would destroy that.
+
+## Also split out: the `stop`-before-`start` race
+
+Surfaced when stage 0's concurrency test hung deterministically. `TimeManager::start()` stores
+`should_stop_ = false` (`TimeManager.h:29`); `ApplyLimits()` calls it from inside `GetMove()` on the
+**search thread** (`AIPerplex.cpp:203`); `stop()` is callable from any thread. A `stop` arriving
+between the search thread being spawned and its reaching `ApplyLimits()` is therefore silently
+erased, and with `go infinite` (`limits.depth = 50`) the search never ends — `stop_and_join()` blocks
+in `join()` forever. `TimeManager.h:15-16` documents the ordering requirement without enforcing it.
+
+Stage 0's test closes the window with a 200 ms sleep and says so in its comment. **That sleep is a
+marker, not a fix** — when the race is fixed, delete it and let the test exercise the real window.
+
 ## Open questions for the user
 
-- **Stage 4 semantics.** Does a tactical test assert "the puzzle key move" or "any objectively
-  equivalent decisive continuation"? The issue explicitly defers this. Nothing in stage 4 can be
-  implemented until it is answered, and #235's admission criteria probably want the same answer.
 - **Measurement budget for stage 2.** Legal in-check qsearch adds nodes by design. Deciding it needs
   `Run-Bench.ps1` plus an SPRT, not a fixed batch. A `-Sprt NonRegression` run is unattended hours;
   the call is the user's.
@@ -72,12 +145,18 @@ Verified against the checkout; the issue does not mention these.
 
 | # | Stage | Kind | Status | Branch / PR |
 |---|---|---|---|---|
-| 0 | Per-iteration UCI `info` + `send()` serialisation | semantics-preserving | **in progress** | `worktree-237-uci-per-iteration-info` |
+| 0 | Per-iteration UCI `info` + `send()` serialisation | semantics-preserving | **PR open, awaiting review** | `worktree-237-uci-per-iteration-info` |
 | 0b | `WAC-287` baseline sweep, depths 4-12 | evidence | blocked on 0 | — |
 | 1 | Terminal-node TT storage (defect B) | search change | not started | — |
 | 2 | Legal qsearch while in check (defect A) | search change | not started | — |
 | 3 | Qsearch TT depth → remaining budget (defect C) | search change | not started | — |
-| 4 | Tactical test-data semantics (`WAC-043`, `WAC-065`) | test data | blocked on user decision | — |
+| 4 | Tactical test-data semantics (`WAC-043`, `WAC-065`) | test data | **PR #298, awaiting review** | `worktree-237-tactical-data-semantics` |
+
+Stage 4 is scoped to the two positions #237 names. Adopting the new semantics implies the other 34
+positions were written under the old one and may also carry narrow lists, but a full-suite audit is
+its own issue — widening a corpus piecemeal inside a search-debugging issue is how test data drifts.
+Stage 4 also corrects `Docs/TestDesign.md`, which still lists `WAC-287` in the suite (count of 6)
+after its removal from `Tests/tactical_test_cases.json`.
 
 ### Stage 0 — instrumentation
 
@@ -101,7 +180,37 @@ Equivalence gate: build a baseline binary from `origin/main` **before** touching
 (`run-tests` does not rebuild the exe), then compare `bestmove`, final score and node count at fixed
 depth, `Threads=1`, fixed Hash, across a small FEN corpus.
 
+Decided during implementation, from the `search-reviewer` pass:
+
+- **The observer ships enabled for every UCI `go`, including rated play.** `Run-EloMatch.ps1` drives
+  UCI, so the candidate pays the per-iteration emit cost inside its search budget while the pinned
+  `elo-reference-v2` does not. Kept always-on rather than gated behind a `setoption`: per-depth
+  `info` is standard UCI that every serious engine emits, so this is a conformance improvement, and
+  the bias runs *against* the candidate — it understates gains rather than inventing them. Sizing:
+  roughly 12 depths x 40 moves = ~480 extra writes per game, tens of microseconds each, against a
+  10 s budget. Order 0.2%, below the noise floor of any batch we can afford. Revisit only if a
+  future stage needs byte-identical timing against the reference.
+- **The emit is charged to the search budget.** It sits before `time_manager_.should_stop_iteration()`
+  in the `ACCEPT_AND_CONTINUE` branch, so in principle it can flip the soft-limit gate one depth
+  earlier. Fixed-depth identity cannot observe this by construction — it is not a defect, but it is
+  why "search-semantics-preserving" here means *what* the search computes, not *how fast*.
+
 ### Stage 0b — baseline
+
+Two instrument quirks to know before reading any of this as evidence:
+
+- **A `mate +/-9999` reading is not a mate score.** `format_uci_score()` treats any
+  `|cp| >= Mate_Threshold` as mate, and `Search_Init` (50000) exceeds it, yielding
+  `plies = 30000 - 50000 = -20000` and `mate -9999`. The root score should never actually be
+  `+/-Search_Init` — `adjustScoreForGameState()` converts terminal nodes before returning — so this
+  is latent rather than live, and it was left alone as out of scope for a semantics-preserving
+  stage. If it ever appears, it is a sentinel leak, not a mate.
+- **An interrupted-but-accepted iteration can carry a contaminated score.** `pvs()` returns
+  `GameValues::Draw` on abort, and `assess_iteration_quality()` only catches the resulting bogus 0
+  when `|state.best_score| > score_draw_threshold`. This is pre-existing and already reached the
+  final `info` line; the instrument merely makes it visible one line earlier. A clocked search
+  showing a plausible score at depth N and a suspicious 0 at depth N+1 is displaying this, not a new
+  bug. Use fixed depth for evidence runs and it cannot arise.
 
 Once stage 0 merges, record for `rn3k1r/pp2bBpp/2p2n2/q5N1/3P4/1P6/P1P3PP/R1BQ1RK1 w - - 0 1` at
 depths 4-12, `Threads=1`, fixed Hash, fresh process per depth: per-iteration score, full PV,
