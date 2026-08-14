@@ -1089,6 +1089,18 @@ TEST_CASE("Board(fen): a missing king leaves the board empty, matching SetupFrom
 // (issue #221)
 // ---------------------------------------------------------------------------
 
+TEST_CASE("Board::SetupFromFEN: repairs overload replaces previous diagnostics", "[uci]")
+{
+	Board board;
+	std::vector<std::string> repairs;
+
+	REQUIRE(board.SetupFromFEN("4k3/8/8/8/4P3/8/8/3K4 w Q e6 0 1", repairs));
+	REQUIRE_FALSE(repairs.empty());
+
+	REQUIRE(board.SetupFromFEN("4k3/8/8/8/8/8/8/4K3 w - - 0 1", repairs));
+	CHECK(repairs.empty());
+}
+
 // Previously the most destructive response (whole FEN rejected) was reserved for the
 // least-destructive-looking input: an en-passant square whose rank isn't 3 or 6 at all.
 // Now it is repaired like every other inconsistent ep square, and the position is kept.

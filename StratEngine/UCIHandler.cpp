@@ -289,7 +289,7 @@ void UciHandler::cmd_position(std::string_view line)
 			// below is deliberately not replayed: it describes a position that was
 			// never established.
 			std::vector<std::string> repairs;
-			if (!board_.SetupFromFEN(fen, &repairs)) {
+			if (!board_.SetupFromFEN(fen, repairs)) {
 				send("info string position: rejected FEN, board reset to the starting position");
 				[[maybe_unused]] const bool ok = board_.SetupFromFEN(std::string(STARTING_FEN));
 				assert(ok && "STARTING_FEN failed to parse");

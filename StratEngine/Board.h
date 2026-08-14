@@ -36,9 +36,10 @@ class Board final {
 	//
 	// A FEN that does parse can still have inconsistent metadata (an en-passant square with no
 	// pawn behind it, castling rights with no rook to back them) — those get repaired rather than
-	// rejected. outWarnings, when non-null, receives one message per repair so a caller without a
-	// visible log (UCI mode) can still tell the client its position was not applied verbatim.
-	[[nodiscard]] bool SetupFromFEN(const std::string& fen, std::vector<std::string>* outWarnings = nullptr);
+	// rejected. The repairs overload replaces its vector contents with one message per repair so a
+	// caller without a visible log (UCI mode) can tell the client its position was not applied verbatim.
+	[[nodiscard]] bool SetupFromFEN(const std::string& fen);
+	[[nodiscard]] bool SetupFromFEN(const std::string& fen, std::vector<std::string>& repairs);
 	std::string ExtractFEN() const;
 
 	// --- Move execution ---
@@ -128,6 +129,7 @@ class Board final {
 	// --- Internal position setup ---
 	void setup_board(const squareCol&);
 	void clear_board();
+	bool setup_from_fen_impl(const std::string& fen, std::vector<std::string>* repairs);
 
 	// True if the position these pieces describe can legally be on the board with `sideToMove` to
 	// move. Evaluated on a scratch board, so it is safe to ask before committing anything: a caller
