@@ -1010,6 +1010,55 @@ TEST_CASE("cmd_position: malformed FEN does not replay its move list", "[uci]")
 }
 
 // ---------------------------------------------------------------------------
+// Piece placement sanity: exactly one king per color (issue #163)
+//
+// A board missing a king, or holding two of one color, is what let a generated
+// king-capturing move reach Board::DoMove and read one entry past
+// g_bbKingMoves' 64-entry table before #45 closed the only known route in. The
+// invariant this pins was already enforced by FENParser::ParsePiecePlacementField
+// -- SetupFromFEN is the only way to populate a Board's pieces, so there is no
+// gap left to guard -- but nothing previously exercised it directly.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Board::SetupFromFEN: rejects a FEN with no black king", "[uci]")
+{
+	Board board;
+	REQUIRE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"));
+
+	// Black king square (e8) left empty; every other black piece unchanged.
+	REQUIRE_FALSE(board.SetupFromFEN("rnbq1bnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"));
+
+	CHECK(board.GetPiece(e8) == BLACK_KING);
+}
+
+TEST_CASE("Board::SetupFromFEN: rejects a FEN with two white kings", "[uci]")
+{
+	Board board;
+	REQUIRE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"));
+
+	// White queen (d1) replaced by a second white king.
+	REQUIRE_FALSE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBKKBNR w KQkq - 0 1"));
+
+	CHECK(board.GetPiece(d1) == WHITE_QUEEN);
+}
+
+// Board(fen) documents an assert-in-Debug / empty-board-in-Release contract for a malformed
+// FEN (Board.h: "every caller passes a literal, so a malformed one is a bug in the caller") --
+// it is not meant to validate untrusted input, unlike SetupFromFEN. Gated to Release only:
+// under Debug the constructor's own assert would abort the process, which is correct behavior
+// for a caller bug but not something a REQUIRE-based test can observe without crashing the
+// Debug/sanitizer CI leg along with it.
+#ifdef NDEBUG
+TEST_CASE("Board(fen): a missing king leaves the board empty, matching SetupFromFEN's contract", "[uci]")
+{
+	Board board("rnbq1bnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+
+	CHECK(board.GetPiece(e1) == NO_PIECE);
+	CHECK(board.GetPiece(a1) == NO_PIECE);
+}
+#endif
+
+// ---------------------------------------------------------------------------
 // Position legality: the side NOT to move may not be in check (issue #45)
 // ---------------------------------------------------------------------------
 
