@@ -558,8 +558,11 @@ the suite assert our own evaluation function instead. Checked under this rule: `
 (the move the engine's own search preferred at depth 8, per `Docs/Changelog.md`) scored +793cp
 against +3567/+3715cp for the accepted `a3e7`/`d5a8` pair (Lichess cloud eval, depth 20) — not the
 same class, so the list is unchanged.
-`WAC-065`'s competing `h6f8` had no cached line at all beyond the accepted `d5e7`, so it stays
-unverified and unchanged rather than added on no evidence.
+`WAC-065`'s competing `h6f8` stays unverified and unchanged rather than added on no evidence. Both
+routes into that source are exhausted: `multiPv` on the position itself returns only `d5e7`, and the
+position after `h6f8` (`1r1r1Qk1/p2n1p1p/bp1Pn1p1/2pNp3/2P2P1N/1P5B/P6P/3R1RK1 b - - 0 1`, whose
+eval negates into a score for the move) is not cached either. Resolving it needs a different
+external engine, not another query here.
 
 ---
 
