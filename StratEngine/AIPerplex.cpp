@@ -361,6 +361,7 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 			state.search_was_stable = !metrics.move_changed;
 
 			log_completed_iteration(metrics, td.pv_table);
+			emit_iteration_info(td, state.depth_completed, state.best_score);
 
 			// Soft limit gate: stop after this depth if the allocated time budget
 			// is consumed.  Exception: if the best move just changed, allow one
@@ -384,6 +385,7 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 			state.search_was_stable = !metrics.move_changed;
 
 			log_acceptance(metrics);
+			emit_iteration_info(td, state.depth_completed, state.best_score);
 			continue_iteration = false;
 			break;
 
@@ -1108,6 +1110,30 @@ void AIPerplex::log_completed_iteration(const IterationMetrics& metrics, const P
 	s_logger->info("Depth {:>2}: Score: {:>6} Nodes: {:>8} PV[{}]: {} {}", metrics.depth, metrics.current_score,
 	               metrics.nodes_searched, metrics.pv_length, pv_line,
 	               (metrics.move_changed && metrics.depth > 1) ? "(!)" : "");
+}
+
+void AIPerplex::emit_iteration_info(const ThreadData& td, int depth, int score) const
+{
+	if (!iteration_observer_)
+		return;
+
+	// td.nodes_searched is the main-search-thread's cumulative count. At Threads=1
+	// this equals the cross-thread total the final info/bestmove line reports
+	// (AIPerplex.cpp GetMove(), ~line 256); under Lazy SMP the two diverge because
+	// helper threads' nodes are invisible here. That divergence is intentional: a
+	// per-iteration figure that included helper totals would require synchronising
+	// with every helper on every accepted depth, for a number this stage's callers
+	// use as a progress indicator, not a decision input.
+	const int length = td.pv_table.get_length(0);
+	const auto& line = td.pv_table.get_line(0);
+
+	IterationInfo iter;
+	iter.depth = depth;
+	iter.score = score;
+	iter.nodes = td.nodes_searched;
+	iter.pv.assign(line.begin(), line.begin() + length);
+
+	iteration_observer_(iter);
 }
 
 void AIPerplex::log_aspiration_retry(int depth, int retry, int score, int alpha, int beta, bool fail_low) const
