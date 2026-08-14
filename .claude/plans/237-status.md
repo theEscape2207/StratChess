@@ -133,11 +133,53 @@ in `join()` forever. `TimeManager.h:15-16` documents the ordering requirement wi
 Stage 0's test closes the window with a 200 ms sleep and says so in its comment. **That sleep is a
 marker, not a fix** — when the race is fixed, delete it and let the test exercise the real window.
 
+## Stage 2 measurement — decided: bench + SPRT
+
+Approved 2026-08-15. Concrete parameters, so the run does not have to be re-litigated when stage 2 is
+ready:
+
+**Bench.** `Run-Bench.ps1 -Exe <path>` before and after. The "before" binary must be built from the
+merge base *before* the working tree is touched — `run-tests` does not rebuild the exe, so a
+forgotten rebuild silently benchmarks the new binary against itself. Compare **nps**, never node
+counts: stage 2 changes what the search visits by design, so node counts are expected to move and
+carry no information here.
+
+**SPRT.** `-Sprt NonRegression` (elo0 = -5, elo1 = 0 — "prove it did not make things worse") against
+`-ReferenceExe <merge-base build>`. Not against the tag anchor: `Run-EloMatch.ps1` refuses `-Sprt`
+there on purpose, because an anchor tests the cumulative sum rather than this change.
+
+**Opening book — already solved, but not by default.** `C:\Users\thees\source\repos\EngineTesting\`
+holds `8moves_v3.pgn`: **34 700 openings = 69 400 distinct games**. The auto-resolver only picks up
+files matching `openings-large.*`, so as it stands a run falls back to the committed 250-opening
+smoke book and starts replaying openings after game 500 — which narrows the error bar without adding
+information. Either copy it to `EngineTesting\openings-large.pgn` once, or pass
+`-Book "C:\Users\thees\source\repos\EngineTesting\8moves_v3.pgn"` explicitly. At 69 400 distinct
+games the book stops being a constraint at any N this project would run.
+
+**`-Games` must be raised well above the 500 default.** Under SPRT it is only a give-up point, and
+raising it is statistically free — it costs wall-clock only in runs that would otherwise return
+inconclusive. Leaving it at 500 buys nothing and risks an avoidable "inconclusive".
+
+**Operational ceiling.** ≈40 min per 500 games at `-Concurrency 6`. A *background-launched* match
+tops out around 700-750 games before hitting the execution tooling's duration cap, so a
+multi-thousand-game SPRT must run in the foreground or use resume. Do not raise `-Concurrency` to
+buy throughput — it is pinned to physical cores, and oversubscription injects time losses, which
+discard the batch.
+
+**If it comes back expensive, widen the bounds before buying games.** Expected sample size scales
+with the inverse square of the indifference region's width, so `-Sprt Custom -Elo0 -10 -Elo1 0` costs
+roughly **4x fewer games** than `NonRegression`'s `[-5, 0]`. Ask the loosest question that still
+settles the decision.
+
+**Expect a possible small negative.** Stage 2 adds nodes by design — legal in-check qsearch does
+strictly more work per node. A measured slowdown is acceptable only with a stated benefit that
+outweighs it; the benefit claimed here is correctness (qsearch currently evaluates positions as
+though the side to move may decline to leave check). If the SPRT accepts H0, that is a real result to
+record, not a failure to re-run until it passes.
+
 ## Open questions for the user
 
-- **Measurement budget for stage 2.** Legal in-check qsearch adds nodes by design. Deciding it needs
-  `Run-Bench.ps1` plus an SPRT, not a fixed batch. A `-Sprt NonRegression` run is unattended hours;
-  the call is the user's.
+None outstanding.
 
 ---
 
