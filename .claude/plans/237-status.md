@@ -145,12 +145,12 @@ marker, not a fix** — when the race is fixed, delete it and let the test exerc
 
 | # | Stage | Kind | Status | Branch / PR |
 |---|---|---|---|---|
-| 0 | Per-iteration UCI `info` + `send()` serialisation | semantics-preserving | **PR open, awaiting review** | `worktree-237-uci-per-iteration-info` |
-| 0b | `WAC-287` baseline sweep, depths 4-12 | evidence | blocked on 0 | — |
+| 0 | Per-iteration UCI `info` + `send()` serialisation | semantics-preserving | **merged, PR #300** | — |
+| 0b | `WAC-287` baseline sweep, depths 4-12 | evidence | **done, recorded below** | `worktree-237-wac287-baseline` |
 | 1 | Terminal-node TT storage (defect B) | search change | not started | — |
 | 2 | Legal qsearch while in check (defect A) | search change | not started | — |
 | 3 | Qsearch TT depth → remaining budget (defect C) | search change | not started | — |
-| 4 | Tactical test-data semantics (`WAC-043`, `WAC-065`) | test data | **PR #298, awaiting review** | `worktree-237-tactical-data-semantics` |
+| 4 | Tactical test-data semantics (`WAC-043`, `WAC-065`) | test data | **merged, PR #298** | — |
 
 Stage 4 is scoped to the two positions #237 names. Adopting the new semantics implies the other 34
 positions were written under the old one and may also carry narrow lists, but a full-suite audit is
@@ -212,10 +212,64 @@ Two instrument quirks to know before reading any of this as evidence:
   showing a plausible score at depth N and a suspicious 0 at depth N+1 is displaying this, not a new
   bug. Use fixed depth for evidence runs and it cannot arise.
 
-Once stage 0 merges, record for `rn3k1r/pp2bBpp/2p2n2/q5N1/3P4/1P6/P1P3PP/R1BQ1RK1 w - - 0 1` at
-depths 4-12, `Threads=1`, fixed Hash, fresh process per depth: per-iteration score, full PV,
-cumulative nodes, selected move. This table is the comparison basis for stages 1-3 and belongs in
-this file, not in a chat transcript.
+#### The baseline
+
+Recorded 2026-08-15 on `b72f361` (`origin/main`, stage 0 merged). Release clang-cl,
+`Threads=1`, `Hash=192`, position
+`rn3k1r/pp2bBpp/2p2n2/q5N1/3P4/1P6/P1P3PP/R1BQ1RK1 w - - 0 1`. **This is the comparison basis for
+stages 1-3.**
+
+| depth | move | score | nodes | PV |
+|---:|---|---:|---:|---|
+| 1 | `g5h7` | +266 | 43 | `g5h7` |
+| 2 | `h2h4` | +102 | 305 | `h2h4 a5a2` |
+| 3 | `c1d2` | +290 | 3 053 | `c1d2 a5b5 g5h7` |
+| 4 | `d1h5` | +215 | 16 303 | `d1h5 e7d6 g5e6 f8e7` |
+| 5 | `d1h5` | **+518** | 23 624 | `d1h5 e7c5 g5e6 f8e7 h5c5` |
+| 6 | `d1h5` | +196 | 87 912 | `d1h5 e7b4 g5e6 f8e7 h5a5 b4a5` |
+| 7 | `d1h5` | **+495** | 115 875 | `d1h5 e7c5 g5e6 f8e7 h5c5 a5c5 e6c5` |
+| 8 | `f7e6` | +189 | 937 049 | `f7e6 a5c3 a1b1 b8a6 g5e4 c3a5 e4f6 e7f6` |
+| 9 | `d1h5` | **+438** | 1 300 926 | `d1h5 e7c5 g5e6 f8e7 c1g5 c5d4 e6d4 h7h6 a1e1` |
+| 10 | `d1h5` | +245 | 1 702 695 | `d1h5 e7c5 g5e6 f8e7 h5c5 a5c5 e6c5 e7f7 c5b7 b8d7` |
+| 11 | `d1h5` | **+502** | 2 232 309 | `d1h5 a5g5 h5g5 f8f7 g1h1 g7g6 f1f6 e7f6 g5f4 b8d7 f4f6` |
+| 12 | `d1h5` | +268 | 3 592 464 | `d1h5 e7c5 g5e6 f8e7 h5c5 a5c5 e6c5 e7f7 c5b7 b8d7 c1d2 h8e8` |
+
+#### What the baseline changes about the diagnosis
+
+**The depth-8 move is a symptom; the parity swing is the phenomenon.** Scores separate almost
+perfectly by depth parity:
+
+- odd (5, 7, 9, 11): +518, +495, +438, +502 — mean ≈ **+488**
+- even (4, 6, 8, 10, 12): +215, +196, +189, +245, +268 — mean ≈ **+223**
+
+A ≈265 cp oscillation, and it is **not converging**: the gap at depth 11→12 (+502 → +268) is as wide
+as at 5→6. `d1h5` is chosen at every depth from 4 to 12 except 8, and the move that displaces it
+scores +189 — squarely inside the even-depth band, not an outlier. At depth 8 the compressed
+even-depth scores simply reordered.
+
+So "deeper search returns a worse move at depth 8" is the visible tip of a systematic even/odd
+horizon effect. **Stages 1-3 should be judged on whether the parity swing narrows, not on whether
+depth 8 flips back.** The swing is a continuous, far more sensitive metric; the depth-8 flip is one
+noisy bit.
+
+**The disputed line runs through a check.** The recurring PV fragment `g5e6 f8e7` is `Ne6+` followed
+by a king evasion — a knight on e6 attacks f8. This is the first *direct* link between `WAC-287` and
+defect A: quiescence permits stand-pat while in check and generates only captures, so it cannot see a
+quiet king evasion. The main line of this position repeatedly puts the side to move in check near the
+horizon, which is exactly where that defect bites. Still not proof, but far stronger than the
+plausibility argument in the issue body.
+
+#### Method note: fresh-process-per-depth is unnecessary
+
+Per-iteration output at depths 1..N is **byte-identical** whether produced by a fresh `go depth N` or
+read out of a single deeper run — same scores, same PVs, same node counts. Verified across the
+separate depth-4..10 runs and the depth-12 run.
+
+That is expected (a fresh process at depth N still runs iterations 1..N, building the same TT the
+same way), and it confirms the search is fully deterministic at `Threads=1`. Practical consequence:
+**one `go depth 12` reproduces this entire table.** Stages 1-3 can capture their post-change sweep in
+a single run instead of nine, and any divergence in the 1..12 sequence is a real effect rather than
+run-to-run noise.
 
 ### Stages 1-3
 
@@ -224,8 +278,12 @@ exact invariant, the fix alone, the identical post-change sweep, the full suite,
 dispatch, and — for 2 and 3 — bench plus SPRT.
 
 Stage 1 is the smallest and the least likely to change anything observable. Stage 2 is the one with
-a plausible mechanism for `WAC-287`'s depth-8 score reversal, and the one that costs nodes. Stage 3
-is a rename-and-invert with a narrow blast radius.
+a mechanism for `WAC-287`'s behaviour — now supported by the baseline's `Ne6+` finding, not just by
+argument — and the one that costs nodes. Stage 3 is a rename-and-invert with a narrow blast radius.
+
+Judge each stage on the **parity swing** (odd-depth mean minus even-depth mean, ≈265 cp at baseline),
+not on whether depth 8 flips back to `d1h5`. The swing is continuous and sensitive; the depth-8 move
+is one bit of a compressed ordering and can flip for reasons unrelated to the fix under test.
 
 ---
 
