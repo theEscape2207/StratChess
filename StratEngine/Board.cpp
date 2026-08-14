@@ -142,7 +142,15 @@ bool Board::position_is_legal(const squareCol& pieces, eColor sideToMove)
 	return !probe.WaitingSideInCheck();
 }
 
-bool Board::SetupFromFEN(const std::string& fen)
+bool Board::SetupFromFEN(const std::string& fen) { return setup_from_fen_impl(fen, nullptr); }
+
+bool Board::SetupFromFEN(const std::string& fen, std::vector<std::string>& repairs)
+{
+	repairs.clear();
+	return setup_from_fen_impl(fen, &repairs);
+}
+
+bool Board::setup_from_fen_impl(const std::string& fen, std::vector<std::string>* repairs)
 {
 	FENParser::FENGameState state;
 	std::vector<std::tuple<ePiece, eSquare>> pieces;
@@ -170,7 +178,7 @@ bool Board::SetupFromFEN(const std::string& fen)
 	gameInfo_.fullMoveCount = state.fullMoveCounter;
 
 	// Validate parsed metadata and adjust castling/EP if inconsistent with actual pieces
-	FENParser::ValidatePositionAgainstFENMetadata(*this, state);
+	FENParser::ValidatePositionAgainstFENMetadata(*this, state, repairs);
 
 	gameInfo_.epSquare = state.epSquare;
 	gameInfo_.castlingRights = state.castlingRights;

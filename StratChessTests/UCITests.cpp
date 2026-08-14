@@ -5,6 +5,7 @@
 #include "UCIHandler.h"
 #include "AIPerplex.h"
 #include "Board.h"
+#include "MoveFactory.h"
 #include "MoveFormatter.h"
 #include "Eval.h"
 #include "TranspositionTable.h"
@@ -1009,6 +1010,164 @@ TEST_CASE("cmd_position: malformed FEN does not replay its move list", "[uci]")
 	CHECK(fx.board().GetPiece(e4) == NO_PIECE);
 }
 
+TEST_CASE("cmd_position: an illegal move rejects the entire replay", "[uci]")
+{
+	UciHandlerTestFixture fx;
+	const std::string output = capture_cout([&] { fx.position("position startpos moves e2e4 e7e8"); });
+
+	// e7e8 is coordinate-shaped but illegal: it targets Black's own king. The valid
+	// prefix must not remain applied when a later token invalidates the whole replay.
+	CHECK(output.find("illegal move 'e7e8'") != std::string::npos);
+	CHECK(fx.board().GetPiece(e2) == WHITE_PAWN);
+	CHECK(fx.board().GetPiece(e4) == NO_PIECE);
+	CHECK(fx.board().GetPiece(e7) == BLACK_PAWN);
+	CHECK(fx.board().GetPiece(e8) == BLACK_KING);
+}
+
+TEST_CASE("cmd_position: legal promotion replay preserves the requested piece", "[uci]")
+{
+	UciHandlerTestFixture fx;
+	const std::string output =
+	    capture_cout([&] { fx.position("position fen 4k3/1P6/8/8/8/8/8/4K3 w - - 0 1 moves b7b8n"); });
+
+	CHECK(output.find("illegal move") == std::string::npos);
+	CHECK(fx.board().GetPiece(b7) == NO_PIECE);
+	CHECK(fx.board().GetPiece(b8) == WHITE_KNIGHT);
+}
+
+// ---------------------------------------------------------------------------
+// Piece placement sanity: exactly one king per color (issue #163)
+//
+// A board missing a king, or holding two of one color, is what let a generated
+// king-capturing move reach Board::DoMove and read one entry past
+// g_bbKingMoves' 64-entry table before #45 closed the only known route in. The
+// initial-position invariant was already enforced by FENParser::ParsePiecePlacementField.
+// UCI replay separately resolves every client token against generated moves before DoMove,
+// so malformed protocol input cannot remove a king after setup either.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Board::SetupFromFEN: rejects a FEN with no black king", "[uci]")
+{
+	Board board;
+	REQUIRE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"));
+
+	// Black king square (e8) left empty; every other black piece unchanged.
+	REQUIRE_FALSE(board.SetupFromFEN("rnbq1bnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"));
+
+	CHECK(board.GetPiece(e8) == BLACK_KING);
+}
+
+TEST_CASE("Board::SetupFromFEN: rejects a FEN with two white kings", "[uci]")
+{
+	Board board;
+	REQUIRE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"));
+
+	// White queen (d1) replaced by a second white king.
+	REQUIRE_FALSE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBKKBNR w KQkq - 0 1"));
+
+	CHECK(board.GetPiece(d1) == WHITE_QUEEN);
+}
+
+// Board(fen) documents an assert-in-Debug / empty-board-in-Release contract for a malformed
+// FEN (Board.h: "every caller passes a literal, so a malformed one is a bug in the caller") --
+// it is not meant to validate untrusted input, unlike SetupFromFEN. Gated to Release only:
+// under Debug the constructor's own assert would abort the process, which is correct behavior
+// for a caller bug but not something a REQUIRE-based test can observe without crashing the
+// Debug/sanitizer CI leg along with it.
+#ifdef NDEBUG
+TEST_CASE("Board(fen): a missing king leaves the board empty, matching SetupFromFEN's contract", "[uci]")
+{
+	Board board("rnbq1bnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+
+	CHECK(board.GetPiece(e1) == NO_PIECE);
+	CHECK(board.GetPiece(a1) == NO_PIECE);
+}
+#endif
+
+// ---------------------------------------------------------------------------
+// FEN metadata repair: clear and report, don't reject the whole position
+// (issue #221)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Board::SetupFromFEN: repairs overload replaces previous diagnostics", "[uci]")
+{
+	Board board;
+	std::vector<std::string> repairs;
+
+	REQUIRE(board.SetupFromFEN("4k3/8/8/8/4P3/8/8/3K4 w Q e6 0 1", repairs));
+	REQUIRE_FALSE(repairs.empty());
+
+	REQUIRE(board.SetupFromFEN("4k3/8/8/8/8/8/8/4K3 w - - 0 1", repairs));
+	CHECK(repairs.empty());
+}
+
+// Previously the most destructive response (whole FEN rejected) was reserved for the
+// least-destructive-looking input: an en-passant square whose rank isn't 3 or 6 at all.
+// Now it is repaired like every other inconsistent ep square, and the position is kept.
+TEST_CASE("cmd_position: en-passant square on a non-3/6 rank is repaired, not rejected", "[uci]")
+{
+	UciHandlerTestFixture fx;
+	const std::string output = capture_cout([&] { fx.position("position fen 4k3/8/8/8/8/8/8/4K3 w - d5 0 1"); });
+
+	CHECK(fx.board().GetPiece(e1) == WHITE_KING);
+	CHECK(fx.board().GetPiece(e8) == BLACK_KING);
+	CHECK(fx.board().GetGameInfo().epSquare == NO_SQUARE);
+	CHECK(output.find("rejected FEN") == std::string::npos);
+	CHECK(output.find("info string position:") != std::string::npos);
+}
+
+// This repair already happened before #221; what was missing is that spdlog is off in UCI
+// mode, so the client had no way to see it. a3 is right-rank-shaped but wrong for White to
+// move (needs rank 6, not 3).
+TEST_CASE("cmd_position: en-passant square inconsistent with side to move is repaired and reported", "[uci]")
+{
+	UciHandlerTestFixture fx;
+	const std::string output = capture_cout([&] { fx.position("position fen 4k3/8/8/8/8/8/8/4K3 w - a3 0 1"); });
+
+	CHECK(fx.board().GetGameInfo().epSquare == NO_SQUARE);
+	CHECK(output.find("rank inconsistent") != std::string::npos);
+}
+
+// Right rank for the side to move, but no pawn on the square the capture would remove.
+TEST_CASE("cmd_position: en-passant square with no pawn to capture is repaired and reported", "[uci]")
+{
+	UciHandlerTestFixture fx;
+	const std::string output = capture_cout([&] { fx.position("position fen 4k3/8/8/8/8/8/8/4K3 b - e3 0 1"); });
+
+	CHECK(fx.board().GetGameInfo().epSquare == NO_SQUARE);
+	CHECK(output.find("no pawn") != std::string::npos);
+}
+
+// The control: a fix that cleared en-passant unconditionally would pass every test above for
+// the wrong reason. This one must keep it, and the capture must still be playable.
+TEST_CASE("cmd_position: a legal en-passant square is preserved, not cleared", "[uci]")
+{
+	UciHandlerTestFixture fx;
+	const std::string output = capture_cout([&] { fx.position("position fen 8/8/8/3Pp3/8/8/8/4K2k w - e6 0 1"); });
+
+	CHECK(fx.board().GetGameInfo().epSquare == e6);
+	CHECK(output.find("info string") == std::string::npos);
+
+	// fx.board() is const; the capture itself is checked on an independently loaded board.
+	Board board("8/8/8/3Pp3/8/8/8/4K2k w - e6 0 1");
+	auto ep = MoveFactory::MakeEnPassant(d5, e6);
+	CHECK(board.DoMove(ep));
+}
+
+// Castling repair (king or rook missing from where the rights claim) already worked; it was
+// equally invisible over UCI. Reuses the two-corrections-at-once FEN from
+// FENParser::ValidatePositionAgainstFENMetadata's own throwing-sink test.
+TEST_CASE("cmd_position: castling repair is reported via UCI (spdlog is off there)", "[uci]")
+{
+	UciHandlerTestFixture fx;
+	const std::string output = capture_cout([&] { fx.position("position fen 4k3/8/8/8/4P3/8/8/3K4 w Q e6 0 1"); });
+
+	CHECK(fx.board().GetGameInfo().castlingRights == CastlingRights::NONE);
+	CHECK(fx.board().GetGameInfo().epSquare == NO_SQUARE);
+	CHECK(output.find("king not on") != std::string::npos);
+	CHECK(output.find("no pawn") != std::string::npos);
+}
+
 // ---------------------------------------------------------------------------
 // Position legality: the side NOT to move may not be in check (issue #45)
 // ---------------------------------------------------------------------------
@@ -1303,7 +1462,7 @@ TEST_CASE("cmd_position: a rejected FEN gives the same board whatever preceded i
 	REQUIRE(after_startpos == 20);
 }
 
-TEST_CASE("cmd_position: an unparseable move stops replay and reports it", "[uci]")
+TEST_CASE("cmd_position: an unparseable move rejects the entire replay and reports it", "[uci]")
 {
 	UciHandlerTestFixture fix;
 
@@ -1312,9 +1471,11 @@ TEST_CASE("cmd_position: an unparseable move stops replay and reports it", "[uci
 	REQUIRE(output.find("info string") != std::string::npos);
 	REQUIRE(output.find("zzzz") != std::string::npos);
 
-	// e2e4 applied, replay stopped there: Black to move, 20 replies.
+	// The valid prefix is not committed when a later token invalidates the replay.
 	REQUIRE(divide_total(capture_cout([&] { fix.perft("perft 1"); })) == 20);
-	REQUIRE(fix.board().GetCurrentColor() == BLACK);
+	REQUIRE(fix.board().GetCurrentColor() == WHITE);
+	REQUIRE(fix.board().GetPiece(e2) == WHITE_PAWN);
+	REQUIRE(fix.board().GetPiece(e4) == NO_PIECE);
 }
 
 // ---------------------------------------------------------------------------

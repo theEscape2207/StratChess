@@ -6,6 +6,7 @@
 #include "AIPerplex.h"
 #include "PlayerAI.h"
 #include "MoveFormatter.h"
+#include "MoveGenerator.h"
 #include "Board.h"
 #include "Tests/Perft.h"
 #include "Eval.h"
@@ -30,6 +31,22 @@ static constexpr int PERFT_MAX_DEPTH = 10;
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+namespace {
+	Move find_replay_move(std::string_view token, const Board& board)
+	{
+		MoveList moves;
+		MoveGenerator::ComputeLegalMoves(board, board.GetGameInfo(), moves);
+		for (const Move& move : moves) {
+			// Move equality ignores flags, so compare the complete UCI form to preserve
+			// the requested promotion piece.
+			if (MoveFormatter::ToUCI(move) == token) {
+				return move;
+			}
+		}
+		return Move{};
+	}
+} // namespace
 
 void UciHandler::send(std::string_view msg)
 {
@@ -271,11 +288,19 @@ void UciHandler::cmd_position(std::string_view line)
 			// `info string` is the error channel UCI actually has. The move list
 			// below is deliberately not replayed: it describes a position that was
 			// never established.
-			if (!board_.SetupFromFEN(fen)) {
+			std::vector<std::string> repairs;
+			if (!board_.SetupFromFEN(fen, repairs)) {
 				send("info string position: rejected FEN, board reset to the starting position");
 				[[maybe_unused]] const bool ok = board_.SetupFromFEN(std::string(STARTING_FEN));
 				assert(ok && "STARTING_FEN failed to parse");
 				return;
+			}
+			// A FEN that parsed can still have had metadata repaired (an en-passant square with
+			// no pawn behind it, castling rights with no rook to back them). spdlog is off in
+			// UCI mode, so this is the only channel that tells the client its position was not
+			// applied verbatim.
+			for (const auto& repair : repairs) {
+				send("info string position: " + repair);
 			}
 		}
 	}
@@ -283,21 +308,18 @@ void UciHandler::cmd_position(std::string_view line)
 	// Apply move list if present
 	auto moves_pos = line.find("moves ");
 	if (moves_pos != std::string_view::npos) {
+		Board replay = board_;
 		std::string moves_str(line.substr(moves_pos + 6));
 		std::istringstream ss(moves_str);
 		std::string token;
 		while (ss >> token) {
-			Move m = MoveFormatter::FromUCI(token, board_);
-			if (m.is_null()) {
-				// Replay stops here rather than skipping the move: every later
-				// move is relative to the position this one would have produced,
-				// so applying them would build a position nobody described. What
-				// was applied so far stands, and the caller is told where it
-				// stopped.
-				send("info string position: unparseable move '" + token + "', remaining moves not replayed");
+			const Move move = find_replay_move(token, replay);
+			if (move.is_null() || !replay.DoMove(move)) {
+				// A position move list is one transaction: later tokens describe a
+				// continuation of every earlier token, so a bad token invalidates all of it.
+				send("info string position: illegal move '" + token + "', move list not applied");
 				return;
 			}
-			board_.DoMove(m);
 			// Each replayed move is permanent, never undone — reset per
 			// move (exactly like Game.cpp after every committed move), NOT
 			// once after the loop: the ply-indexed history arrays hold
@@ -305,8 +327,9 @@ void UciHandler::cmd_position(std::string_view line)
 			// write out of bounds during any replay longer than MAX_PLY
 			// plies (issue #53 follow-up; found by the first fastchess
 			// smoke match — 265-ply game, access violation in Release).
-			board_.ResetSearchDepth();
+			replay.ResetSearchDepth();
 		}
+		board_ = std::move(replay);
 	}
 }
 
