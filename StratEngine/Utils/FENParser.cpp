@@ -69,8 +69,11 @@ std::optional<std::string> FENParser::ParseFENImpl(const std::string& fen, FENGa
 	// Trailing content after field 6 is rejected. Full EPD (operations such as `c9 "1-0";` after
 	// the four core fields) is deliberately out of scope: that belongs in #117's corpus loader,
 	// not in the FEN grammar.
+	//
+	// En-passant accepts any rank here; only ValidatePositionAgainstFENMetadata knows enough
+	// (side to move, actual pieces) to say which rank is right, so rank checking lives there.
 	static const std::regex fenRx(
-	    R"(^\s*([rnbqkpRNBQKP1-8]+\/){7}([rnbqkpRNBQKP1-8]+)\s+[wb]\s+(-|[KQkq]+)\s+(-|[a-h][36])(\s+\d+(\s+\d+)?)?\s*$)");
+	    R"(^\s*([rnbqkpRNBQKP1-8]+\/){7}([rnbqkpRNBQKP1-8]+)\s+[wb]\s+(-|[KQkq]+)\s+(-|[a-h][1-8])(\s+\d+(\s+\d+)?)?\s*$)");
 	if (!std::regex_match(s, fenRx)) {
 		return std::string("overall format invalid");
 	}
@@ -119,12 +122,10 @@ std::optional<std::string> FENParser::ParseFENImpl(const std::string& fen, FENGa
 		return err;
 	}
 
-	// En-passant - verifies format as well
+	// En-passant. Shape is already guaranteed by fenRx above ("-" or [a-h][1-8]); rank
+	// consistency is checked later, in ValidatePositionAgainstFENMetadata.
 	const std::string& ep = parts[3];
 	if (ep != "-") {
-		if (ep.size() != 2 || ep[0] < 'a' || ep[0] > 'h' || (ep[1] != '3' && ep[1] != '6')) {
-			return std::string("invalid en-passant square");
-		}
 		outState.epSquare = SquareFromString(ep);
 	}
 
@@ -329,18 +330,35 @@ eSquare FENParser::SquareFromString(const std::string& s) noexcept
 }
 
 namespace {
-	// Metadata correction must continue even when best-effort warning logging fails.
-	template <typename... Args> void log_warning_noexcept(std::string_view fmt_str, const Args&... args) noexcept
+	// Metadata correction must continue even when formatting, logging, or collecting a warning
+	// fails -- each step is best-effort and none of them may abort the repair itself. outWarnings
+	// is the channel a caller reads when spdlog is off (UCI mode); see cmd_position.
+	template <typename... Args>
+	void report_repair_noexcept(std::vector<std::string>* outWarnings, std::string_view fmt_str,
+	                            const Args&... args) noexcept
 	{
+		std::string message;
 		try {
-			spdlog::default_logger()->warn(fmt::runtime(fmt_str), args...);
+			message = fmt::format(fmt::runtime(fmt_str), args...);
+		} catch (...) { // NOLINT(bugprone-empty-catch) - formatting is best-effort here
+			return;
+		}
+		try {
+			spdlog::default_logger()->warn(message);
 		} catch (...) { // NOLINT(bugprone-empty-catch) - logging is best-effort here
+		}
+		if (outWarnings) {
+			try {
+				outWarnings->push_back(message);
+			} catch (...) { // NOLINT(bugprone-empty-catch) - collection is best-effort here
+			}
 		}
 	}
 } // namespace
 
 // Validate against explicit Board reference
-bool FENParser::ValidatePositionAgainstFENMetadata(const Board& board, FENGameState& state) noexcept
+bool FENParser::ValidatePositionAgainstFENMetadata(const Board& board, FENGameState& state,
+                                                   std::vector<std::string>* outWarnings) noexcept
 {
 	// Each entry defines one side's castling validation requirements
 	static constexpr std::array<std::tuple<eSquare, eColor, uint8_t, uint8_t, eSquare, eSquare>, 2> sides = {
@@ -356,7 +374,7 @@ bool FENParser::ValidatePositionAgainstFENMetadata(const Board& board, FENGameSt
 
 		// King must be present and correct color
 		if (!PieceHelper::IsKing(board.GetPiece(kingSq)) || PieceHelper::Color(board.GetPiece(kingSq)) != color) {
-			log_warning_noexcept("Clearing {} castling rights: king not on {}", color, kingSq);
+			report_repair_noexcept(outWarnings, "Clearing {} castling rights: king not on {}", color, kingSq);
 			state.castlingRights &= ~sideMask;
 			continue;
 		}
@@ -364,7 +382,8 @@ bool FENParser::ValidatePositionAgainstFENMetadata(const Board& board, FENGameSt
 		// Check kingside rook
 		if (state.castlingRights & kingsideFlag) {
 			if (!PieceHelper::IsOfPiece(board.GetPiece(rookKingSq), PieceHelper::AsPiece(ROOK, color))) {
-				log_warning_noexcept("Clearing {} king-side castling right: rook not on {}", color, rookKingSq);
+				report_repair_noexcept(outWarnings, "Clearing {} king-side castling right: rook not on {}", color,
+				                       rookKingSq);
 				state.castlingRights &= ~kingsideFlag;
 			}
 		}
@@ -372,7 +391,8 @@ bool FENParser::ValidatePositionAgainstFENMetadata(const Board& board, FENGameSt
 		// Check queenside rook
 		if (state.castlingRights & queensideFlag) {
 			if (!PieceHelper::IsOfPiece(board.GetPiece(rookQueenSq), PieceHelper::AsPiece(ROOK, color))) {
-				log_warning_noexcept("Clearing {} queen-side castling right: rook not on {}", color, rookQueenSq);
+				report_repair_noexcept(outWarnings, "Clearing {} queen-side castling right: rook not on {}", color,
+				                       rookQueenSq);
 				state.castlingRights &= ~queensideFlag;
 			}
 		}
@@ -389,14 +409,16 @@ bool FENParser::ValidatePositionAgainstFENMetadata(const Board& board, FENGameSt
 
 		if (lastMover == WHITE) {
 			if (epRankIndex != 5) { // rank 3 (index 5)
-				log_warning_noexcept("Clearing en-passant: ep square rank inconsistent with side to move");
+				report_repair_noexcept(outWarnings,
+				                       "Clearing en-passant: ep square rank inconsistent with side to move");
 				state.epSquare = NO_SQUARE;
 			} else {
 				pawnRankIndex = 4;
 			}
 		} else {                    // lastMover == BLACK
 			if (epRankIndex != 2) { // rank 6 (index 2)
-				log_warning_noexcept("Clearing en-passant: ep square rank inconsistent with side to move");
+				report_repair_noexcept(outWarnings,
+				                       "Clearing en-passant: ep square rank inconsistent with side to move");
 				state.epSquare = NO_SQUARE;
 			} else {
 				pawnRankIndex = 3;
@@ -407,7 +429,8 @@ bool FENParser::ValidatePositionAgainstFENMetadata(const Board& board, FENGameSt
 			const eSquare pawnSq = static_cast<eSquare>((pawnRankIndex << 3) + file);
 			const ePiece p = board.GetPiece(pawnSq);
 			if (!PieceHelper::IsPawn(p) || PieceHelper::Color(p) != lastMover) {
-				log_warning_noexcept("Clearing en-passant: no pawn of expected color on square for ep capture");
+				report_repair_noexcept(outWarnings,
+				                       "Clearing en-passant: no pawn of expected color on square for ep capture");
 				state.epSquare = NO_SQUARE;
 			}
 		}

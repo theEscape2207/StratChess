@@ -271,11 +271,19 @@ void UciHandler::cmd_position(std::string_view line)
 			// `info string` is the error channel UCI actually has. The move list
 			// below is deliberately not replayed: it describes a position that was
 			// never established.
-			if (!board_.SetupFromFEN(fen)) {
+			std::vector<std::string> repairs;
+			if (!board_.SetupFromFEN(fen, &repairs)) {
 				send("info string position: rejected FEN, board reset to the starting position");
 				[[maybe_unused]] const bool ok = board_.SetupFromFEN(std::string(STARTING_FEN));
 				assert(ok && "STARTING_FEN failed to parse");
 				return;
+			}
+			// A FEN that parsed can still have had metadata repaired (an en-passant square with
+			// no pawn behind it, castling rights with no rook to back them). spdlog is off in
+			// UCI mode, so this is the only channel that tells the client its position was not
+			// applied verbatim.
+			for (const auto& repair : repairs) {
+				send("info string position: " + repair);
 			}
 		}
 	}

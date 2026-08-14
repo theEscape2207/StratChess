@@ -33,7 +33,12 @@ class Board final {
 	// exactly as it was — for a freshly constructed Board that means empty, which still evaluates
 	// and generates moves, so a caller that proceeds regardless operates on a position it never
 	// loaded. Hence [[nodiscard]]: the result has to be handled.
-	[[nodiscard]] bool SetupFromFEN(const std::string& fen);
+	//
+	// A FEN that does parse can still have inconsistent metadata (an en-passant square with no
+	// pawn behind it, castling rights with no rook to back them) — those get repaired rather than
+	// rejected. outWarnings, when non-null, receives one message per repair so a caller without a
+	// visible log (UCI mode) can still tell the client its position was not applied verbatim.
+	[[nodiscard]] bool SetupFromFEN(const std::string& fen, std::vector<std::string>* outWarnings = nullptr);
 	std::string ExtractFEN() const;
 
 	// --- Move execution ---

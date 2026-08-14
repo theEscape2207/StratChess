@@ -5,6 +5,7 @@
 #include "UCIHandler.h"
 #include "AIPerplex.h"
 #include "Board.h"
+#include "MoveFactory.h"
 #include "MoveFormatter.h"
 #include "Eval.h"
 #include "TranspositionTable.h"
@@ -1057,6 +1058,79 @@ TEST_CASE("Board(fen): a missing king leaves the board empty, matching SetupFrom
 	CHECK(board.GetPiece(a1) == NO_PIECE);
 }
 #endif
+
+// ---------------------------------------------------------------------------
+// FEN metadata repair: clear and report, don't reject the whole position
+// (issue #221)
+// ---------------------------------------------------------------------------
+
+// Previously the most destructive response (whole FEN rejected) was reserved for the
+// least-destructive-looking input: an en-passant square whose rank isn't 3 or 6 at all.
+// Now it is repaired like every other inconsistent ep square, and the position is kept.
+TEST_CASE("cmd_position: en-passant square on a non-3/6 rank is repaired, not rejected", "[uci]")
+{
+	UciHandlerTestFixture fx;
+	const std::string output = capture_cout([&] { fx.position("position fen 4k3/8/8/8/8/8/8/4K3 w - d5 0 1"); });
+
+	CHECK(fx.board().GetPiece(e1) == WHITE_KING);
+	CHECK(fx.board().GetPiece(e8) == BLACK_KING);
+	CHECK(fx.board().GetGameInfo().epSquare == NO_SQUARE);
+	CHECK(output.find("rejected FEN") == std::string::npos);
+	CHECK(output.find("info string position:") != std::string::npos);
+}
+
+// This repair already happened before #221; what was missing is that spdlog is off in UCI
+// mode, so the client had no way to see it. a3 is right-rank-shaped but wrong for White to
+// move (needs rank 6, not 3).
+TEST_CASE("cmd_position: en-passant square inconsistent with side to move is repaired and reported", "[uci]")
+{
+	UciHandlerTestFixture fx;
+	const std::string output = capture_cout([&] { fx.position("position fen 4k3/8/8/8/8/8/8/4K3 w - a3 0 1"); });
+
+	CHECK(fx.board().GetGameInfo().epSquare == NO_SQUARE);
+	CHECK(output.find("rank inconsistent") != std::string::npos);
+}
+
+// Right rank for the side to move, but no pawn on the square the capture would remove.
+TEST_CASE("cmd_position: en-passant square with no pawn to capture is repaired and reported", "[uci]")
+{
+	UciHandlerTestFixture fx;
+	const std::string output = capture_cout([&] { fx.position("position fen 4k3/8/8/8/8/8/8/4K3 b - e3 0 1"); });
+
+	CHECK(fx.board().GetGameInfo().epSquare == NO_SQUARE);
+	CHECK(output.find("no pawn") != std::string::npos);
+}
+
+// The control: a fix that cleared en-passant unconditionally would pass every test above for
+// the wrong reason. This one must keep it, and the capture must still be playable.
+TEST_CASE("cmd_position: a legal en-passant square is preserved, not cleared", "[uci]")
+{
+	UciHandlerTestFixture fx;
+	const std::string output = capture_cout([&] { fx.position("position fen 8/8/8/3Pp3/8/8/8/4K2k w - e6 0 1"); });
+
+	CHECK(fx.board().GetGameInfo().epSquare == e6);
+	CHECK(output.find("info string") == std::string::npos);
+
+	// fx.board() is const; the capture itself is checked on an independently loaded board.
+	Board board("8/8/8/3Pp3/8/8/8/4K2k w - e6 0 1");
+	auto ep = MoveFactory::MakeEnPassant(d5, e6);
+	CHECK(board.DoMove(ep));
+}
+
+// Castling repair (king or rook missing from where the rights claim) already worked; it was
+// equally invisible over UCI. Reuses the two-corrections-at-once FEN from
+// FENParser::ValidatePositionAgainstFENMetadata's own throwing-sink test.
+TEST_CASE("cmd_position: castling repair is reported via UCI (spdlog is off there)", "[uci]")
+{
+	UciHandlerTestFixture fx;
+	const std::string output =
+	    capture_cout([&] { fx.position("position fen 4k3/8/8/8/4P3/8/8/3K4 w Q e6 0 1"); });
+
+	CHECK(fx.board().GetGameInfo().castlingRights == CastlingRights::NONE);
+	CHECK(fx.board().GetGameInfo().epSquare == NO_SQUARE);
+	CHECK(output.find("king not on") != std::string::npos);
+	CHECK(output.find("no pawn") != std::string::npos);
+}
 
 // ---------------------------------------------------------------------------
 // Position legality: the side NOT to move may not be in check (issue #45)

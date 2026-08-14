@@ -33,8 +33,11 @@ class FENParser final {
 	static std::optional<std::string> ParseFEN(const std::string& fen, FENGameState& outState,
 	                                           std::vector<std::tuple<ePiece, eSquare>>& outPieces) noexcept;
 
-	// Validate FEN metadata against actual board state
-	static bool ValidatePositionAgainstFENMetadata(const Board& board, FENGameState& state) noexcept;
+	// Validate FEN metadata against actual board state, repairing (clearing) and reporting any
+	// inconsistency rather than rejecting the position. outWarnings, when non-null, receives one
+	// message per repair -- the channel a caller reads when spdlog is off (UCI mode).
+	static bool ValidatePositionAgainstFENMetadata(const Board& board, FENGameState& state,
+	                                               std::vector<std::string>* outWarnings = nullptr) noexcept;
 
 	// Utility: Convert FENGameState to Config::GameConfig (for backward compatibility)
 	static void ToGameConfig(const FENGameState& state, Config::GameConfig& outConfig) noexcept;
