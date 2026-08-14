@@ -441,8 +441,9 @@ void UciHandler::cmd_go(std::string_view line)
 
 		// Search is over: no more iterations will fire the observer, and the next
 		// 'go' registers its own before spawning its thread. Clearing here rather
-		// than leaving the closure installed avoids holding `this` (via the
-		// closure's captured UciHandler pointer) live past the search that owns it.
+		// than leaving the closure installed keeps "no observer registered" the
+		// resting state, so any future non-cmd_go path that calls GetMove() cannot
+		// fire this stale closure.
 		if (perplex)
 			perplex->SetIterationObserver(nullptr);
 

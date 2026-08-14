@@ -20,13 +20,22 @@ struct SearchResult {
 	bool search_was_stable = true;
 };
 
-// Snapshot of one completed iterative-deepening iteration, handed to the
+// Snapshot of one accepted iterative-deepening iteration, handed to the
 // iteration observer (see AIPerplex::SetIterationObserver). `nodes` is the
-// CUMULATIVE main-search-thread node count at emit time (td.nodes_searched),
-// not the per-iteration delta IterationMetrics tracks — a diagnostic reading
-// a UCI stream wants "how many nodes so far", matching the final info line's
-// convention. `pv` is a copy of the PV table's root line, taken at emit time
-// before the next iteration overwrites it.
+// CUMULATIVE main-search-thread node count at the end of this accepted
+// iteration (td.nodes_searched) — the standard UCI convention for a
+// per-iteration "nodes so far" figure, not the per-iteration delta
+// IterationMetrics tracks. It is NOT guaranteed to equal the final
+// info/bestmove line's node count: on a clocked search the loop typically
+// starts one more iteration, gets interrupted, and has that iteration
+// rejected by assess_iteration_quality() (REJECT_AND_STOP emits nothing —
+// see iterative_deepening()), but the rejected iteration's nodes are already
+// in td.nodes_searched by the time GetMove() reports the final total, so
+// that total is typically strictly greater than this field at Threads=1.
+// Under Lazy SMP the two also diverge because the final total sums helper
+// threads' nodes, which are never visible here. `pv` is a copy of the PV
+// table's root line, taken at emit time before the next iteration
+// overwrites it.
 struct IterationInfo {
 	int depth = 0;
 	int score = 0;

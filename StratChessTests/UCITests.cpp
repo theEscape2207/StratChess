@@ -22,6 +22,8 @@
 #include <random>
 #include <mutex>
 #include <stdexcept>
+#include <thread>
+#include <chrono>
 #include <spdlog/sinks/base_sink.h>
 
 using P = UciHandler::GoParams;
@@ -1949,4 +1951,128 @@ TEST_CASE("AIPerplex::GetMove: emits no per-iteration output when no observer is
 	}
 
 	REQUIRE(output.empty());
+}
+
+TEST_CASE("cmd_go: 'go movetime 300' final info line's nodes are >= the last per-iteration line's", "[uci]")
+{
+	// This is currently the only automated coverage of the ACCEPT_AND_STOP /
+	// REJECT_AND_STOP paths through AIPerplex::iterative_deepening(): every
+	// other 'go' test in this file is fixed-depth, which always finishes via
+	// ACCEPT_AND_CONTINUE reaching max_depth rather than being interrupted.
+	UciHandlerTestFixture fix;
+	// Kiwipete: complex enough that 300ms will not reach UCI_DEFAULT_DEPTH (20).
+	fix.position("position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+
+	std::string output;
+	{
+		CoutRedirect redirect;
+		fix.dispatch("go movetime 300");
+		fix.join_search();
+		output = redirect.str();
+	}
+
+	const auto info_lines = parse_info_depth_lines(output);
+	// At least one accepted per-iteration line plus the final summary line.
+	REQUIRE(info_lines.size() >= 2);
+
+	const ParsedInfoLine& last_iteration = info_lines[info_lines.size() - 2];
+	const ParsedInfoLine& final_line = info_lines.back();
+
+	REQUIRE(last_iteration.depth == final_line.depth);
+	REQUIRE(last_iteration.score == final_line.score);
+	// <=, not ==: a clocked search typically starts one more iteration that gets
+	// interrupted and then rejected by assess_iteration_quality() -- REJECT_AND_STOP
+	// emits no per-iteration line for it (iterative_deepening(), AIPerplex.cpp), but
+	// that rejected iteration's nodes are already folded into td.nodes_searched by
+	// the time GetMove() reports the final total (AIPerplex.h's IterationInfo doc).
+	REQUIRE(last_iteration.nodes <= final_line.nodes);
+}
+
+TEST_CASE("cmd_go: 'stop' during 'go infinite' produces well-formed output under concurrent isready", "[uci]")
+{
+	// Exercises the send() mutex added when per-iteration output widened the
+	// interleaving window between the search thread's info lines and the command
+	// loop's own send() calls (UCIHandler.cpp send(), issue #237 stage 0 finding).
+	// 'go infinite' returns as soon as the search thread is spawned, so the
+	// isready calls below run on this (calling) thread genuinely concurrently
+	// with the search thread's output -- Kiwipete at unbounded depth cannot
+	// finish on its own before 'stop' arrives.
+	//
+	// The sleep before issuing isready/stop is not about search progress -- it
+	// closes a separate, pre-existing race documented in TimeManager.h's own
+	// threading contract: StopSearch() (callable from any thread) and
+	// ApplyLimits()'s time_manager_.start() (called from inside GetMove(), on
+	// the search thread, only after it is scheduled) are unsynchronized, so a
+	// 'stop' arriving before the search thread reaches start() is silently
+	// overwritten and the search becomes unstoppable for the rest of this
+	// process. Fixing that race is outside this change's scope; the sleep keeps
+	// this test about the send() mutex, not about that unrelated gap.
+	UciHandlerTestFixture fix;
+	fix.position("position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+
+	constexpr int kIsReadyCount = 20;
+	std::string output;
+	{
+		CoutRedirect redirect;
+		fix.dispatch("go infinite");
+		std::this_thread::sleep_for(std::chrono::milliseconds(200));
+		for (int i = 0; i < kIsReadyCount; ++i) {
+			fix.dispatch("isready");
+		}
+		fix.dispatch("stop"); // joins the search thread; only returns once it has
+		output = redirect.str();
+	}
+
+	const std::regex line_shape{R"(^(info|bestmove|readyok)\b)"};
+	int readyok_count = 0;
+	for (const std::string& line : split_lines(output)) {
+		if (line.empty())
+			continue;
+		REQUIRE(std::regex_search(line, line_shape));
+		if (line == "readyok")
+			++readyok_count;
+	}
+	REQUIRE(readyok_count == kIsReadyCount);
+}
+
+TEST_CASE("cmd_go: two back-to-back 'go depth 4' searches each produce one bestmove and restart depths at 1", "[uci]")
+{
+	// Pins the observer register/clear lifecycle (UCIHandler.cpp cmd_go / search
+	// thread lambda) against a future refactor: the second search's per-iteration
+	// depths must restart at 1, not continue from wherever the first search's
+	// observer left off.
+	UciHandlerTestFixture fix;
+	fix.position("position startpos");
+
+	std::string output;
+	{
+		CoutRedirect redirect;
+		fix.dispatch("go depth 4");
+		fix.join_search();
+		fix.dispatch("go depth 4");
+		fix.join_search();
+		output = redirect.str();
+	}
+
+	const auto lines = split_lines(output);
+	int bestmove_count = 0;
+	size_t first_bestmove_index = lines.size();
+	for (size_t i = 0; i < lines.size(); ++i) {
+		if (lines[i].starts_with("bestmove ")) {
+			++bestmove_count;
+			if (first_bestmove_index == lines.size())
+				first_bestmove_index = i;
+		}
+	}
+	REQUIRE(bestmove_count == 2);
+
+	// Info lines strictly after the first bestmove belong to the second search.
+	std::string tail;
+	for (size_t i = first_bestmove_index + 1; i < lines.size(); ++i) {
+		tail += lines[i];
+		tail += '\n';
+	}
+	const auto second_search_info = parse_info_depth_lines(tail);
+	REQUIRE_FALSE(second_search_info.empty());
+	REQUIRE(second_search_info.front().depth == 1);
 }

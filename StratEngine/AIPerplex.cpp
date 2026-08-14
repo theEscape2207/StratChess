@@ -1117,13 +1117,16 @@ void AIPerplex::emit_iteration_info(const ThreadData& td, int depth, int score) 
 	if (!iteration_observer_)
 		return;
 
-	// td.nodes_searched is the main-search-thread's cumulative count. At Threads=1
-	// this equals the cross-thread total the final info/bestmove line reports
-	// (AIPerplex.cpp GetMove(), ~line 256); under Lazy SMP the two diverge because
-	// helper threads' nodes are invisible here. That divergence is intentional: a
-	// per-iteration figure that included helper totals would require synchronising
-	// with every helper on every accepted depth, for a number this stage's callers
-	// use as a progress indicator, not a decision input.
+	// td.nodes_searched is the main-search-thread's cumulative count as of this
+	// accepted iteration. It does not generally equal the final info/bestmove
+	// line's total (AIPerplex.cpp GetMove(), ~line 256): a rejected trailing
+	// iteration (REJECT_AND_STOP, see iterative_deepening()) still adds its
+	// nodes to td.nodes_searched before assess_iteration_quality() throws the
+	// iteration away, so the final line's count is typically strictly greater
+	// than this figure at Threads=1; under Lazy SMP the final total also sums
+	// helper threads' nodes, which are invisible here. Not synchronising with
+	// helpers on every accepted depth is intentional: this is a progress
+	// indicator, not a decision input.
 	const int length = td.pv_table.get_length(0);
 	const auto& line = td.pv_table.get_line(0);
 
