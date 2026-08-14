@@ -512,9 +512,8 @@ the 60 s budget):
 *WAC mate-in-4 (1, depth 8):*
 - `WAC-161` — Qxd8+: rook grab with forced mate behind it
 
-*WAC tactical wins, non-mate (6):*
+*WAC tactical wins, non-mate (5):*
 - `WAC-043` — Be7/Qxa8: skewer or direct rook win (d6)
-- `WAC-287` — Qh5: mating attack on f7/h7 wins material (d6)
 - `WAC-085` — Na6: quiet knight move, mating net + material (d6)
 - `WAC-045` — Qxa1 (Black): back-rank pin wins the rook (d6)
 - `WAC-148` — Rxg7: rook sac destroys king cover (d7)
@@ -550,6 +549,20 @@ around its target — 4-8 is a reasonable band — and require the **same** expe
 A position that only solves from depth 6 upward is fine; commit it with `depth: 6`, having verified
 6 through 9. Prefer positions decided by a decisive material or mating margin: the ones decided by
 a few centipawns are exactly what produces a razor-thin tie that any eval change can tip.
+
+**`best_moves` asserts any objectively equivalent decisive continuation, not only the puzzle's
+historical key move** (#237 stage 4) — the suite is checking chess truth, not this engine's
+preferences. A list is widened only on **external** evidence (a real engine, e.g. Lichess cloud
+eval); it is never widened because our own engine also scores a move highly, since that would make
+the suite assert our own evaluation function instead. Checked under this rule: `WAC-043`'s `h2h4`
+(the move the engine's own search preferred at depth 8, per `Docs/Changelog.md`) scored +793cp
+against +3567/+3715cp for the accepted `a3e7`/`d5a8` pair (Lichess cloud eval, depth 20) — not the
+same class, so the list is unchanged.
+`WAC-065`'s competing `h6f8` stays unverified and unchanged rather than added on no evidence. Both
+routes into that source are exhausted: `multiPv` on the position itself returns only `d5e7`, and the
+position after `h6f8` (`1r1r1Qk1/p2n1p1p/bp1Pn1p1/2pNp3/2P2P1N/1P5B/P6P/3R1RK1 b - - 0 1`, whose
+eval negates into a score for the move) is not cached either. Resolving it needs a different
+external engine, not another query here.
 
 ---
 

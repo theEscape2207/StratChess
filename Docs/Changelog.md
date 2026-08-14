@@ -22,6 +22,30 @@ Newest first.
 
 ---
 
+## 2026-08-14 — Tactical suite: assert equivalent continuations, not just the key move (#237)
+
+### Changed
+
+- `best_moves` now asserts any objectively equivalent decisive continuation rather than only the
+  puzzle's historical key move — widening is admitted only on **external** evidence (a real engine),
+  never because our own engine also scores a move highly, which would make the suite assert our own
+  evaluation function instead of chess truth. Documented in `Docs/TestDesign.md`'s tactical suite
+  section.
+- Checked `WAC-043`'s `h2h4` and `WAC-065`'s `h6f8` — the two depth-sensitivity cases from #237's
+  original depth sweep — against Lichess cloud eval. `h2h4` scored +793cp against +3567/+3715cp for
+  the accepted `a3e7`/`d5a8` pair (depth 20): not the same class, so it is not a valid alternative,
+  confirming the depth-8 preference was a genuine search regression rather than a second solution.
+  `h6f8` had no cached line in Lichess's database beyond the accepted `d5e7`, so it is left
+  unverified rather than added on no evidence. A second route — querying the post-`h6f8` position
+  (`1r1r1Qk1/p2n1p1p/bp1Pn1p1/2pNp3/2P2P1N/1P5B/P6P/3R1RK1 b - - 0 1`) and reading its cp as the
+  move's score — also came back uncached, so both routes into this source are exhausted. Neither
+  `best_moves` list changed.
+- Corrected `Docs/TestDesign.md`'s stale "WAC tactical wins, non-mate (6)" listing, which still named
+  `WAC-287` after its removal (2026-08-07, "Mobility evaluation for knight, bishop, rook and queen",
+  #98/#113); the category is 5 positions.
+
+---
+
 ## 2026-08-13 — Enforced clang-tidy Gate and Nightly Deep (#284)
 
 ### Changed
