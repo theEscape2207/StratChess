@@ -541,12 +541,17 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 				// Late Move Reductions: reduce quiet, non-killer, non-evasion moves
 				// that appear late in the sorted order. Skip conditions are conservative:
-				// captures, promotions, killers, evasions (in_check), PV nodes, and early
-				// moves are always searched at full depth.
-				// Future skip candidates: passed pawn pushes, moves giving check.
-				const bool givesCheck = td.board.InCheck();
-				const bool applyLMR = tuning_.lmr_enabled && !is_pv_node && !in_check && !givesCheck && !isCapture && !isPromotion &&
-				                      !isKiller && si >= tuning_.lmr_min_move_index && depth >= tuning_.lmr_min_depth;
+				// captures, promotions, killers, evasions (in_check), PV nodes, checking
+				// moves, and early moves are always searched at full depth.
+				// Future skip candidates: passed pawn pushes.
+				//
+				// The board still holds the position after DoMove, so InCheck() here asks
+				// whether the opponent is in check, i.e. whether this move gives check. It
+				// is last in the chain deliberately: InCheck() generates a whole-side attack
+				// board, and every earlier term disqualifies far more moves than it admits.
+				const bool applyLMR = tuning_.lmr_enabled && !is_pv_node && !in_check && !isCapture && !isPromotion &&
+				                      !isKiller && si >= tuning_.lmr_min_move_index && depth >= tuning_.lmr_min_depth &&
+				                      !td.board.InCheck();
 
 				if (applyLMR) {
 					// sqrt formula: scales naturally with depth and move index.
@@ -698,15 +703,23 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 		return Eval->Evaluate(td.board);
 	}
 
-	// Repetition and fifty-move draws, checked only on the in-check path because only that
-	// path can reach them. A side that is not in check generates captures alone, and every
-	// capture is irreversible, so a capture-only chain strictly reduces material and cannot
-	// repeat. An in-check node also generates quiet evasions, and a quiet evasion may itself
-	// give check — so two sides can go on checking each other with no capture between them,
-	// leaving material unchanged and the position free to repeat. Without this the line runs
-	// to the absolute backstop below and is settled by a static evaluation of a position that
-	// is still in check, which is the defect this whole path exists to remove.
-	if (in_check && td.check_draws(td.get_last_info(ply), ply))
+	// Repetition and fifty-move draws. pvs() checks these before it hands a node to
+	// quiescence, so historically quiescence could reach neither: every move it could make
+	// was a capture or a pawn move, which resets the fifty-move counter and makes repetition
+	// impossible. Generating quiet evasions breaks both halves of that.
+	//
+	// Repetition becomes reachable because a quiet evasion may itself give check, so two
+	// sides can go on checking each other with no capture between them — material never
+	// falls and the position is free to repeat. Left undetected, such a line runs to the
+	// absolute backstop below and is settled by a static evaluation of a position that is
+	// still in check, which is the defect this whole path exists to remove.
+	//
+	// The fifty-move counter becomes reachable the same way but is observed one ply later:
+	// a quiet evasion can push the count to the limit, and the node that results need not
+	// itself be in check. So this is deliberately not gated on in_check — gating it would
+	// leave a genuine fifty-move draw scored by material, and would trip the STILL_PLAYING
+	// assertion in GameState::UpdateFiftyMovesState on the next move made from that node.
+	if (td.check_draws(td.get_last_info(ply), ply))
 		return GameValues::Draw;
 
 	// Absolute backstop. With the draw check above, a real search should never reach this —

@@ -22,6 +22,7 @@
 #include "TranspositionTable.h"
 #include "defines.h"
 #include <chrono>
+#include <initializer_list>
 #include <optional>
 
 // ============================================================================
@@ -188,6 +189,28 @@ class AIPerlexTestFixture {
 		ai->td_.nodes_since_check_ = 0;
 		ai->td_.info_seq.assign(static_cast<size_t>(ply) + 1, board_.GetGameInfo());
 		return ai->quiescence(ai->td_, alpha, beta, qsearch_depth, ply, *ai->_tt);
+	}
+
+	// Replays a UCI move list onto td_.board, advancing info_seq in lockstep the way the
+	// search does, then runs one quiescence() node at the resulting ply. Lets a test place
+	// the node inside a line, with real repetition history behind it, rather than at a
+	// synthetic root.
+	int quiesce_after(std::initializer_list<const char*> moves, int alpha, int beta) const
+	{
+		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
+		ai->time_manager_.start(std::chrono::milliseconds(60'000));
+		ai->td_.board = board_;
+		ai->td_.nodes_since_check_ = 0;
+		ai->td_.info_seq.assign(1, board_.GetGameInfo());
+
+		int ply = 0;
+		for (const char* uci : moves) {
+			const Move move = MoveFormatter::FromUCI(uci, ai->td_.board);
+			REQUIRE(ai->td_.board.DoMove(move));
+			ai->td_.add_move_to_seq(move, static_cast<size_t>(ply));
+			++ply;
+		}
+		return ai->quiescence(ai->td_, alpha, beta, /*qsearch_depth=*/0, ply, *ai->_tt);
 	}
 
 	// Static evaluation of the fixture's board — the value stand-pat would have used.
@@ -833,6 +856,30 @@ TEST_CASE("Qsearch - in check, a capturing evasion is still found", "[search][qs
 	REQUIRE(entry.has_value());
 	REQUIRE_FALSE(entry->best_move.is_null());
 	CHECK(MoveFormatter::ToUCI(entry->best_move) == "e7e2");
+}
+
+TEST_CASE("Qsearch - an in-check line that repeats the root scores as a draw", "[search][qsearch][repetition]")
+{
+	// The termination case the in-check path introduced. White's king is checked along the
+	// rank, steps off it, and the rook re-checks on the next rank — a quiet evasion answered
+	// by a quiet check, with no capture anywhere. Four plies later the position is the root
+	// again, and nothing about the material has changed, so this can go on forever.
+	//
+	// Removing either the FEN-setup seeding of the repetition history or quiescence's
+	// check_draws call makes this return -572 — the static evaluation of a position that is
+	// still in check, which is exactly the failure mode being guarded against.
+	//
+	// It does NOT pin the third part, widening the in-search bound to admit the root: with
+	// that reverted the same draw is found one cycle deeper, between two in-search
+	// positions, and the score is still 0. That half is covered by the tactical suite
+	// instead, where without it the engine shuffles a knight rather than winning a queen
+	// (WAC-008, 35/36).
+	AIPerlexTestFixture fix("7k/8/8/8/8/8/8/r6K w - - 0 1");
+	REQUIRE(fix.board_.InCheck());
+
+	const int score =
+	    fix.quiesce_after({"h1h2", "a1a2", "h2h1", "a2a1"}, -GameValues::Search_Init, GameValues::Search_Init);
+	CHECK(score == GameValues::Draw);
 }
 
 TEST_CASE("Qsearch - out of check, the stand-pat cutoff is unchanged", "[search][qsearch]")

@@ -183,9 +183,10 @@ bool Board::setup_from_fen_impl(const std::string& fen, std::vector<std::string>
 	gameInfo_.epSquare = state.epSquare;
 	gameInfo_.castlingRights = state.castlingRights;
 
-	// EXPERIMENT: seed the repetition history with the position itself. push_position()
-	// is otherwise only called from DoMove, so a board set up from a FEN with no move
-	// list has an empty history and cannot see a line that returns to its own start.
+	// Seed the repetition history with the position itself. push_position() is otherwise
+	// only reached from DoMove, so without this a board set up from a FEN carries an empty
+	// history: a line returning to its own starting position is invisible, and a game-level
+	// three-fold whose first occurrence is the start position needs a fourth to be claimed.
 	push_position();
 
 	spdlog::default_logger()->debug("Board set up from FEN: {}", fen);
