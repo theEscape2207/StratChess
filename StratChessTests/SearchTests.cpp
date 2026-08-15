@@ -774,6 +774,11 @@ TEST_CASE("Qsearch - in check, stand-pat cannot cut off and mate is seen", "[sea
 	CHECK(fix.quiesce_node(-GameValues::Search_Init, beta, /*qsearch_depth=*/0, ply) == -GameValues::Mate + ply);
 }
 
+// The assertion that carries these three is the TT's stored best move: it names the
+// evasion the node actually searched. "Not mate" alone is not enough — the capture-only
+// version returns stand-pat here, which is also not mate, so such a test passes on the
+// very behaviour it is meant to reject.
+
 TEST_CASE("Qsearch - in check, a quiet king evasion is found", "[search][qsearch]")
 {
 	// Ra1 checks along the rank; every escape is a quiet king step off it, and no
@@ -782,9 +787,15 @@ TEST_CASE("Qsearch - in check, a quiet king evasion is found", "[search][qsearch
 	REQUIRE(fix.board_.InCheck());
 	REQUIRE(fix.count_legal_moves() > 0);
 
-	const int score = fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init, 0, /*ply=*/2);
-	// Not mate: reporting one here would mean the evasions were never generated.
+	const int ply = 2;
+	const int score = fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init, 0, ply);
 	CHECK(score > -GameValues::Mate_Threshold);
+
+	const auto entry = fix.probe_tt(ply);
+	REQUIRE(entry.has_value());
+	REQUIRE_FALSE(entry->best_move.is_null());
+	// Only the king can move, so whichever escape was chosen must start on g1.
+	CHECK(entry->best_move.from() == g1);
 }
 
 TEST_CASE("Qsearch - in check, a quiet blocking evasion is found", "[search][qsearch]")
@@ -793,10 +804,16 @@ TEST_CASE("Qsearch - in check, a quiet blocking evasion is found", "[search][qse
 	// legal reply is the quiet interposition Rd7-d1. Nothing can capture the rook.
 	AIPerlexTestFixture fix("7k/3R4/8/8/8/8/5PPP/r5K1 w - - 0 1");
 	REQUIRE(fix.board_.InCheck());
-	REQUIRE(fix.count_legal_moves() > 0);
+	REQUIRE(fix.count_legal_moves() == 1);
 
-	const int score = fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init, 0, /*ply=*/2);
+	const int ply = 2;
+	const int score = fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init, 0, ply);
 	CHECK(score > -GameValues::Mate_Threshold);
+
+	const auto entry = fix.probe_tt(ply);
+	REQUIRE(entry.has_value());
+	REQUIRE_FALSE(entry->best_move.is_null());
+	CHECK(MoveFormatter::ToUCI(entry->best_move) == "d7d1");
 }
 
 TEST_CASE("Qsearch - in check, a capturing evasion is still found", "[search][qsearch]")
@@ -806,10 +823,16 @@ TEST_CASE("Qsearch - in check, a capturing evasion is still found", "[search][qs
 	// it must survive the switch to a full evasion list.
 	AIPerlexTestFixture fix("7k/4R3/8/8/8/8/4nPPP/5RKR w - - 0 1");
 	REQUIRE(fix.board_.InCheck());
-	REQUIRE(fix.count_legal_moves() > 0);
+	REQUIRE(fix.count_legal_moves() == 1);
 
-	const int score = fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init, 0, /*ply=*/2);
+	const int ply = 2;
+	const int score = fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init, 0, ply);
 	CHECK(score > -GameValues::Mate_Threshold);
+
+	const auto entry = fix.probe_tt(ply);
+	REQUIRE(entry.has_value());
+	REQUIRE_FALSE(entry->best_move.is_null());
+	CHECK(MoveFormatter::ToUCI(entry->best_move) == "e7e2");
 }
 
 TEST_CASE("Qsearch - out of check, the stand-pat cutoff is unchanged", "[search][qsearch]")

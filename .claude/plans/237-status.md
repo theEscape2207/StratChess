@@ -331,11 +331,17 @@ pruning. Out of check nothing changes at all.
    node returns the static evaluation even in check — that is the one place the issue's "never
    return a static eval while in check" has to yield, and it is why the bound must be somewhere a
    real search cannot reach.
-2. **The recursion is bounded by material, not by the ply cap.** Worth stating because it looks
-   unbounded: a side that is *not* in check still generates captures only, so the chain can only
-   continue through **capturing checks**, which run out. Quiet perpetual check cannot occur inside
-   qsearch. This is what makes bypassing `MAX_QSEARCH_DEPTH` affordable, and it is the assumption to
-   re-check if the node cost comes back worse than expected.
+2. **~~The recursion is bounded by material, not by the ply cap.~~ That claim was wrong.** It ran:
+   a side that is *not* in check generates captures only, so the chain can only continue through
+   capturing checks, which run out. The hole is that an in-check node generates **quiet** evasions
+   too, and a quiet evasion may itself give check. Two sides can therefore alternate checks with no
+   capture between them — material never falls, the position is free to repeat, and the line runs to
+   the absolute backstop, where it is settled by a static evaluation of a position still in check.
+   That is precisely the defect this stage removes, reintroduced at the ply cap.
+   **Resolved by checking repetition and fifty-move draws on the in-check path**, which is the only
+   path that can reach them; a capture-only chain is irreversible and cannot repeat. Caught in
+   review — the bad invariant is recorded here rather than deleted, because it is the kind of
+   argument that sounds airtight and licenses removing a bound.
 3. **Evasions keep `qsearch_depth + 1`.** Not counting them against the budget is the other common
    choice and risks explosion; counting them is the smaller change.
 4. **Evasion ordering is left as `SortMovesByValue` (MVV-LVA).** On a mixed list quiets score

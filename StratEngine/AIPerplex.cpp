@@ -698,9 +698,20 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 		return Eval->Evaluate(td.board);
 	}
 
-	// Absolute backstop for the in-check path above. Nothing a real search reaches — evasion
-	// chains die out long before this — but the recursion must terminate on its own rather
-	// than on an assumption, and ply indexes fixed-size per-thread arrays elsewhere in the
+	// Repetition and fifty-move draws, checked only on the in-check path because only that
+	// path can reach them. A side that is not in check generates captures alone, and every
+	// capture is irreversible, so a capture-only chain strictly reduces material and cannot
+	// repeat. An in-check node also generates quiet evasions, and a quiet evasion may itself
+	// give check — so two sides can go on checking each other with no capture between them,
+	// leaving material unchanged and the position free to repeat. Without this the line runs
+	// to the absolute backstop below and is settled by a static evaluation of a position that
+	// is still in check, which is the defect this whole path exists to remove.
+	if (in_check && td.check_draws(td.get_last_info(ply), ply))
+		return GameValues::Draw;
+
+	// Absolute backstop. With the draw check above, a real search should never reach this —
+	// but the recursion must terminate on its own rather than on an argument about what
+	// positions can arise, and ply indexes fixed-size per-thread arrays elsewhere in the
 	// search. This is the one place a position is evaluated while still in check.
 	if (ply >= MAX_PLY - 1) {
 		return Eval->Evaluate(td.board);
