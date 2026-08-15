@@ -163,12 +163,13 @@ class AIPerlexTestFixture {
 	// Runs one pvs() node on the fixture's board at an arbitrary ply, with the
 	// thread-local state a real search would have set up. Lets the terminal-node
 	// tests place a mate/stalemate node at a chosen ply without building a tree.
-	int search_node(int depth, int ply) const
+	int search_node(int depth, int ply, int alpha = -GameValues::Search_Init, int beta = GameValues::Search_Init,
+	                bool is_pv_node = true) const
 	{
 		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
 		ai->td_.board = board_;
 		ai->td_.info_seq.assign(static_cast<size_t>(ply) + 1, board_.GetGameInfo());
-		return ai->pvs(ai->td_, depth, -GameValues::Search_Init, GameValues::Search_Init, ply, true, *ai->_tt);
+		return ai->pvs(ai->td_, depth, alpha, beta, ply, is_pv_node, *ai->_tt);
 	}
 
 	std::optional<TTEntry> probe_tt(int ply) const { return ai->_tt->probe(board_.get_zobrist_hash(), ply); }
@@ -668,6 +669,39 @@ TEST_CASE("Search - stalemate node is stored as an exact draw score", "[search][
 	CHECK(entry->bound == BoundType::EXACT);
 	CHECK(entry->best_move.is_null());
 	CHECK(entry->phase == SearchPhase::MAIN);
+}
+
+TEST_CASE("Search - terminal score is stored exact even when it falls outside the window", "[search][tt]")
+{
+	// The terminal value is the position's true minimax value, not a window-relative
+	// bound, so it is stored EXACT regardless of the window it was searched under.
+	AIPerlexTestFixture fix("R5k1/5ppp/8/8/8/8/8/6K1 b - - 0 1");
+	REQUIRE(fix.count_legal_moves() == 0);
+
+	REQUIRE(fix.search_node(/*depth=*/3, /*ply=*/0, /*alpha=*/100, /*beta=*/200) == -GameValues::Mate);
+
+	const auto entry = fix.probe_tt(0);
+	REQUIRE(entry.has_value());
+	CHECK(entry->value == -GameValues::Mate);
+	CHECK(entry->bound == BoundType::EXACT);
+}
+
+TEST_CASE("Search - a probe of a terminal entry cannot return the wrapped sentinel", "[search][tt]")
+{
+	// The stored value only misleads a prober whose alpha already exceeds +15536,
+	// which is the regime an aspiration window enters after a mate score is seeded.
+	// Stored as an UPPER bound of +15536, the entry collapsed such a window and
+	// handed the caller +155 pawns for a drawn position; stored EXACT it cannot.
+	AIPerlexTestFixture fix("7k/8/8/8/8/8/5q2/7K w - - 0 1");
+	REQUIRE(fix.count_legal_moves() == 0);
+
+	// Seed the entry at a depth deeper than the probing call will ask for.
+	REQUIRE(fix.search_node(/*depth=*/5, /*ply=*/0) == GameValues::Draw);
+
+	const int score = fix.search_node(/*depth=*/1, /*ply=*/0, /*alpha=*/GameValues::Mate - 60,
+	                                  /*beta=*/GameValues::Mate, /*is_pv_node=*/false);
+	CHECK(score == GameValues::Draw);
+	CHECK(score != static_cast<int16_t>(-GameValues::Search_Init));
 }
 
 TEST_CASE("Search - a full search stores its mated child node correctly", "[search][tt]")
