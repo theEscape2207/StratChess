@@ -191,4 +191,24 @@ namespace MoveHelper {
 		return 0;
 	}
 
+	// Optimistic upper bound on the material a move can win, for delta pruning.
+	//
+	// Deliberately NOT Value(): that is MVV-LVA, an ordering heuristic, and it subtracts
+	// a sixteenth of the moving piece so that a pawn takes a bishop outranks a queen taking
+	// the same bishop. Subtracting anything makes it an underestimate, and a pruning bound
+	// that underestimates discards moves that were worth searching. The king makes this
+	// stark: its value is 10 000, so the subtraction is 625 and Value() scores a won pawn
+	// at -525 — enough to prune every king capture of a pawn or a minor.
+	//
+	// content is the captured piece (NO_PIECE for a quiet move); for en-passant
+	// Board::get_captured_piece already resolves it to the pawn actually taken.
+	// movPiece is the effective moving piece, i.e. the promoted piece for a promotion.
+	[[nodiscard]] static inline int DeltaGain(const Move& move, ePiece movPiece, ePiece content) noexcept
+	{
+		int gain = PieceHelper::IsActual(content) ? PieceHelper::Value(content) : 0;
+		if (IsPromote(move))
+			gain += PieceHelper::Value(movPiece) - PieceHelper::Value(ePiece::WHITE_PAWN);
+		return gain;
+	}
+
 } // namespace MoveHelper

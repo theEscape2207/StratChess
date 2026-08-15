@@ -19,8 +19,10 @@
 #include "MoveGenerator.h"
 #include "PlayerBase.h"
 #include "PVTable.h"
+#include "MoveHelper.h"
 #include "TranspositionTable.h"
 #include "defines.h"
+#include <chrono>
 #include <optional>
 
 // ============================================================================
@@ -175,6 +177,26 @@ class AIPerlexTestFixture {
 	std::optional<TTEntry> probe_tt(int ply) const { return ai->_tt->probe(board_.get_zobrist_hash(), ply); }
 
 	std::optional<TTEntry> probe_tt(uint64_t key, int ply) const { return ai->_tt->probe(key, ply); }
+
+	// Runs one quiescence() node on the fixture's board. The timer is armed because
+	// quiescence polls the wall clock every 1024 nodes and a default-constructed
+	// TimeManager has its start_time_ at the epoch, which would latch an abort.
+	int quiesce_node(int alpha, int beta, int qsearch_depth, int ply) const
+	{
+		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
+		ai->time_manager_.start(std::chrono::milliseconds(60'000));
+		ai->td_.board = board_;
+		ai->td_.nodes_since_check_ = 0;
+		ai->td_.info_seq.assign(static_cast<size_t>(ply) + 1, board_.GetGameInfo());
+		return ai->quiescence(ai->td_, alpha, beta, qsearch_depth, ply, *ai->_tt);
+	}
+
+	// Static evaluation of the fixture's board — the value stand-pat would have used.
+	int evaluate() const
+	{
+		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
+		return ai->Eval->Evaluate(board_);
+	}
 
 	// Full fixed-depth search from the fixture's board. SetEvalEngine() is protected
 	// on PlayerAiBase, so only the fixture (a declared friend) can arm the evaluator.
@@ -726,4 +748,59 @@ TEST_CASE("Search - a full search stores its mated child node correctly", "[sear
 	CHECK(entry->value == -GameValues::Mate + 1);
 	CHECK(entry->bound == BoundType::EXACT);
 	CHECK(entry->best_move.is_null());
+}
+
+// ============================================================================
+// Delta pruning bound
+// ============================================================================
+// Delta pruning needs an OPTIMISTIC bound on what a move can win. MoveHelper::Value
+// is MVV-LVA — an ordering heuristic that subtracts a sixteenth of the moving piece —
+// so it understates the gain and is not usable as a bound. For a king (10 000) that
+// subtraction is 625, which turns a won pawn into -525 and discards the capture.
+// Officer and king captures only became reachable in quiescence with #306, which is
+// what exposed this.
+
+TEST_CASE("Qsearch - delta pruning keeps a king capture that wins a pawn", "[search][qsearch]")
+{
+	// Kxd2 wins an undefended pawn. It is the only capture available, and the rooks
+	// keep the position clear of insufficient-material handling so the gain shows up.
+	AIPerlexTestFixture fix("7k/8/8/8/r7/8/3p4/3KR3 w - - 0 1");
+	REQUIRE_FALSE(fix.board_.InCheck());
+
+	const int stand_pat = fix.evaluate();
+	const int score = fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init, 0, /*ply=*/0);
+
+	// Standing pat is always available, so the node can never score below it. Scoring
+	// exactly it means the only capture was pruned before it was ever searched.
+	INFO("stand_pat = " << stand_pat << ", qsearch = " << score);
+	CHECK(score > stand_pat);
+}
+
+TEST_CASE("MoveHelper - DeltaGain bounds the material a move can win", "[search][qsearch]")
+{
+	Board board("7k/8/8/8/r7/8/3p4/3KR3 w - - 0 1");
+	const Move kingTakesPawn = MoveFormatter::FromUCI("d1d2", board);
+	// The bound is the pawn itself, not the pawn minus a sixteenth of the king.
+	CHECK(MoveHelper::DeltaGain(kingTakesPawn, board.GetEffectiveMovPiece(kingTakesPawn),
+	                            board.GetCapturedPiece(kingTakesPawn)) == 100);
+
+	// A promotion is worth the piece it becomes less the pawn it consumes, and a
+	// capture-promotion adds the captured piece on top.
+	Board promo("r3k3/1P6/8/8/8/8/8/4K3 w - - 0 1");
+	const Move queenPromo = MoveFormatter::FromUCI("b7b8q", promo);
+	CHECK(MoveHelper::DeltaGain(queenPromo, promo.GetEffectiveMovPiece(queenPromo),
+	                            promo.GetCapturedPiece(queenPromo)) == 800);
+
+	// 200, not the ">= 800" the old delta-pruning comment claimed for all promotions.
+	const Move knightPromo = MoveFormatter::FromUCI("b7b8n", promo);
+	CHECK(MoveHelper::DeltaGain(knightPromo, promo.GetEffectiveMovPiece(knightPromo),
+	                            promo.GetCapturedPiece(knightPromo)) == 200);
+
+	const Move queenPromoCapture = MoveFormatter::FromUCI("b7a8q", promo);
+	CHECK(MoveHelper::DeltaGain(queenPromoCapture, promo.GetEffectiveMovPiece(queenPromoCapture),
+	                            promo.GetCapturedPiece(queenPromoCapture)) == 800 + 500);
+
+	// A quiet move wins nothing.
+	const Move quiet = MoveFormatter::FromUCI("e1e2", promo);
+	CHECK(MoveHelper::DeltaGain(quiet, promo.GetEffectiveMovPiece(quiet), promo.GetCapturedPiece(quiet)) == 0);
 }

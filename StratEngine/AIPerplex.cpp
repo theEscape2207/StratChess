@@ -743,11 +743,15 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 
 	for (const auto& move : moveList) {
 		// Delta pruning: skip captures whose best-case material gain cannot raise alpha.
-		// stand_pat is already the alpha lower-bound; MoveHelper::Value() gives the MVV-LVA
-		// score which is conservatively ≤ the raw captured-piece value, so pruning is safe.
-		// Promotions always score ≥ 800 (queen − pawn gain) and are never pruned.
-		if (!in_check &&
-		    stand_pat + MoveHelper::Value(move, td.board.GetEffectiveMovPiece(move), td.board.GetCapturedPiece(move)) +
+		// The bound must never understate the gain, so it is MoveHelper::DeltaGain (raw
+		// captured material plus promotion gain) and not MoveHelper::Value, whose MVV-LVA
+		// subtraction is an ordering device — see the comment on DeltaGain for why that
+		// distinction removed every king capture of a pawn or a minor.
+		// Promotions are exempt outright: their value is tactical rather than material,
+		// and a knight promotion's 200 is small enough to prune once alpha has risen.
+		if (!in_check && !MoveHelper::IsPromote(move) &&
+		    stand_pat +
+		            MoveHelper::DeltaGain(move, td.board.GetEffectiveMovPiece(move), td.board.GetCapturedPiece(move)) +
 		            tuning_.delta_pruning_margin <
 		        alpha)
 			continue;
