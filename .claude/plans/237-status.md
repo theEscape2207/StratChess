@@ -292,6 +292,24 @@ document predicted; defect B was worth fixing because it is wrong, not because i
 **Consequence for stages 2-3: the baseline table above is still the comparison basis.** Stage 1 left
 it untouched, so a stage-2 or stage-3 sweep can be read straight against it.
 
+From the `search-reviewer` pass (LGTM, no blocking findings):
+
+- **The old bound was inert except in mate-range windows, and that is where it did damage.** +15536
+  as an UPPER bound only collapses a window whose `alpha` already exceeds it — which is exactly the
+  aspiration window `search_with_aspiration()` opens after a mate score is seeded. There the probe
+  returned +155 pawns for a mated or stalemated position. That regime, not general search, is where
+  any Elo lives; a general game batch cannot resolve it, a mate-heavy suite could. This is now
+  pinned by the probe-side test.
+- **The new terminal store is the one `tt.store()` in `pvs()` that is provably abort-immune.** The
+  abort check sits above every store, and the move loop has no abort exit that skips
+  `moveFound = true`; the terminal value derives from `InCheck()` and `ply` alone, never from a
+  child result. So when **#299** adds a "don't store when aborted" guard, this site must be left
+  exempt rather than wrapped with the rest.
+- **Pre-existing, needs its own issue:** mate normalisation in `TranspositionTable.h:142-165` is
+  gated on `Mate_Threshold` (29900), so above ply 100 `-Mate + ply` stops normalising and the entry
+  is stored ply-relative. Unreachable at real depths, but this is the first path that writes such an
+  entry directly rather than propagating one.
+
 ### Stages 2-3
 
 Specified in the issue body. Each needs: a focused regression test for the exact invariant, the fix
