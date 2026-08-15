@@ -684,8 +684,25 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 
 	constexpr int MAX_QSEARCH_DEPTH = 15; // Lets keep it real
 
-	// Limit quiescence extension by qsearch
-	if (qsearch_depth > MAX_QSEARCH_DEPTH) {
+	// A side to move in check may not decline to move, so this node cannot be settled by a
+	// static evaluation: no stand-pat, and every legal evasion must be searched, not just
+	// captures. Computed before the depth cutoffs because it decides which one applies.
+	const bool in_check = td.board.InCheck();
+
+	// Limit quiescence extension by qsearch. In check the budget is deliberately ignored —
+	// returning an evaluation of a position whose side to move is still in check is the
+	// defect this stage removes. The chain that bypasses the budget terminates on material
+	// rather than on depth: a side that is not in check still generates captures only, so it
+	// can only keep checking by capturing, which runs out.
+	if (qsearch_depth > MAX_QSEARCH_DEPTH && !in_check) {
+		return Eval->Evaluate(td.board);
+	}
+
+	// Absolute backstop for the in-check path above. Nothing a real search reaches — evasion
+	// chains die out long before this — but the recursion must terminate on its own rather
+	// than on an assumption, and ply indexes fixed-size per-thread arrays elsewhere in the
+	// search. This is the one place a position is evaluated while still in check.
+	if (ply >= MAX_PLY - 1) {
 		return Eval->Evaluate(td.board);
 	}
 
@@ -716,31 +733,45 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 	// We need the info on the current board state
 	const GameInfo& info = td.get_last_info(ply);
 
-	// Stand pat evaluation first
-	const int stand_pat = Eval->Evaluate(td.board);
-	if (stand_pat >= beta) {
-		// Store and cutoff
-		tt.store(key, static_cast<int16_t>(beta), static_cast<int16_t>(qsearch_depth), static_cast<int16_t>(ply),
-		         Move::EmptyMove(), BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::QUIESCENCE);
-		return beta;
+	// Stand-pat: the option of making no move at all. Out of check it is the node's baseline
+	// and can cut off on its own. In check it does not exist — the side to move is obliged to
+	// leave check — so neither the cutoff nor the baseline applies, and the static evaluation
+	// backing them is not computed at all (delta pruning, its only other consumer, is likewise
+	// disabled below).
+	int best_value = -GameValues::Search_Init;
+	int stand_pat = 0;
+
+	if (!in_check) {
+		stand_pat = Eval->Evaluate(td.board);
+		if (stand_pat >= beta) {
+			// Store and cutoff
+			tt.store(key, static_cast<int16_t>(beta), static_cast<int16_t>(qsearch_depth), static_cast<int16_t>(ply),
+			         Move::EmptyMove(), BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::QUIESCENCE);
+			return beta;
+		}
+		// stand-pat is the baseline (valid option: don't capture)
+		best_value = stand_pat;
+		if (stand_pat > alpha)
+			alpha = stand_pat;
 	}
-	// stand-pat is the baseline (valid option: don't capture)
-	int best_value = stand_pat;
-	if (stand_pat > alpha)
-		alpha = stand_pat;
 
 	MoveList moveList;
-	// Generate only capture moves and promotions
-	MoveGenerator::ComputeCaptures(td.board, info, moveList);
+	if (in_check) {
+		// Every evasion counts, including quiet blocks and king walks, so a capture-only
+		// generator cannot answer this node. The list is pseudo-legal; DoMove() below rejects
+		// the moves that leave the king in check, which is what makes an empty survivor set
+		// mean checkmate.
+		MoveGenerator::ComputeLegalMoves(td.board, info, moveList);
+	} else {
+		// Generate only capture moves and promotions
+		MoveGenerator::ComputeCaptures(td.board, info, moveList);
+	}
 	// Sort the found captures
 	MoveSorter::SortMovesByValue(moveList, moveList.size(), td.board);
 
 	// Tjek om der er lovlige brugbare traek her
 	bool moveFound = false;
 	Move best_move = Move::EmptyMove();
-
-	// Compute once: delta pruning must not fire when in check (all evasions must be searched)
-	const bool in_check = td.board.InCheck();
 
 	for (const auto& move : moveList) {
 		// Delta pruning: skip captures whose best-case material gain cannot raise alpha.
@@ -774,14 +805,20 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 			best_move = move;
 		}
 	}
-	// Found no legal moves here
-	// We don't check for mate / stalemate here, because without generating all
-	// of the moves leading up to it, we don't know if the position could have
-	// been avoided by one side or not.  So simply return our evaluation score
-	/*if (!moveFound)
-	{
-		return stand_pat;
-	}*/
+	// In check, the move list was every legal evasion, so no survivor means checkmate — the
+	// one terminal state quiescence can identify with certainty. Score it by ply so shorter
+	// mates are preferred, and store it exact with an empty move: best_value is still the
+	// -Search_Init sentinel here, and narrowing that into the table is defect B all over again.
+	if (in_check && !moveFound) {
+		const int mate_value = -GameValues::Mate + ply;
+		tt.store(key, static_cast<int16_t>(mate_value), static_cast<int16_t>(qsearch_depth), static_cast<int16_t>(ply),
+		         Move::EmptyMove(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::QUIESCENCE);
+		return mate_value;
+	}
+
+	// Out of check, no move found means no capture was available — not stalemate. Whether the
+	// position could have been avoided is invisible from here, so the node keeps its stand-pat
+	// evaluation rather than claiming a draw.
 
 	// Classify node type correctly
 	NodeType node_type;

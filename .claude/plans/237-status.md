@@ -171,8 +171,8 @@ None outstanding.
 |---|---|---|---|---|
 | 0 | Per-iteration UCI `info` + `send()` serialisation | semantics-preserving | **merged, PR #300** | — |
 | 0b | `WAC-287` baseline sweep, depths 4-12 | evidence | **done, recorded below** | `worktree-237-wac287-baseline` |
-| 1 | Terminal-node TT storage (defect B) | search change | **implemented, PR pending** | `worktree-237-stage1-terminal-tt` |
-| 2 | Legal qsearch while in check (defect A) | search change | not started | — |
+| 1 | Terminal-node TT storage (defect B) | search change | **merged, PR #304** | — |
+| 2 | Legal qsearch while in check (defect A) | search change | design pinned, implementing | `worktree-237-stage2-legal-qsearch-in-check` |
 | 3 | Qsearch TT depth → remaining budget (defect C) | search change | not started | — |
 | 4 | Tactical test-data semantics (`WAC-043`, `WAC-065`) | test data | **merged, PR #298** | — |
 
@@ -306,15 +306,61 @@ From the `search-reviewer` pass (LGTM, no blocking findings):
 - **The ply-100 mate-normalisation cliff is now #305.** Pre-existing, latent, and no longer this
   document's to carry.
 
-### Stages 2-3
+### Stage 2 — legal qsearch while in check: design, pinned before implementation
 
-Specified in the issue body. Each needs: a focused regression test for the exact invariant, the fix
-alone, the post-change sweep against the baseline table, the full suite, a `search-reviewer`
-dispatch, and bench plus SPRT (parameters pinned above).
+All of it lives in `AIPerplex::quiescence()`. Read against `origin/main` @ `97340a5`.
+
+**The shape.** `in_check` moves to the top of the function, above the `MAX_QSEARCH_DEPTH` cutoff.
+In check the node becomes a small full-width search: no stand-pat, all legal evasions, no delta
+pruning. Out of check nothing changes at all.
+
+| | out of check | in check |
+|---|---|---|
+| stand-pat baseline / `>= beta` cutoff | as today | **suppressed** — illegal to decline a move |
+| `Eval->Evaluate()` | as today | **not called** — its only consumers are stand-pat and delta pruning |
+| move generation | `ComputeCaptures` | `ComputeLegalMoves` (pseudo-legal; `DoMove` filters) |
+| delta pruning | as today | already disabled today, unchanged |
+| `!moveFound` | "no captures" — *not* stalemate, as today | **checkmate**: return `-Mate + ply`, store EXACT + empty move |
+| `MAX_QSEARCH_DEPTH` cutoff | as today | bypassed; bounded by absolute ply instead |
+
+**Decisions that could have gone the other way:**
+
+1. **The absolute bound is a pure safety net at `MAX_PLY`, not an in-check extension budget.** The
+   issue asks for "an explicit absolute-ply safety bound"; a *tuned* limit on consecutive check
+   extensions is a strength decision and would confound this stage's measurement. At the bound the
+   node returns the static evaluation even in check — that is the one place the issue's "never
+   return a static eval while in check" has to yield, and it is why the bound must be somewhere a
+   real search cannot reach.
+2. **The recursion is bounded by material, not by the ply cap.** Worth stating because it looks
+   unbounded: a side that is *not* in check still generates captures only, so the chain can only
+   continue through **capturing checks**, which run out. Quiet perpetual check cannot occur inside
+   qsearch. This is what makes bypassing `MAX_QSEARCH_DEPTH` affordable, and it is the assumption to
+   re-check if the node cost comes back worse than expected.
+3. **Evasions keep `qsearch_depth + 1`.** Not counting them against the budget is the other common
+   choice and risks explosion; counting them is the smaller change.
+4. **Evasion ordering is left as `SortMovesByValue` (MVV-LVA).** On a mixed list quiets score
+   `-piece/16`, so king moves — often the only evasion — sort *last*. That is poor ordering and
+   costs nodes, but a new evasion heuristic in this PR would confound the node/Elo attribution the
+   whole issue exists to protect. **Follow-up candidate, not this stage.**
+5. **TT phase and depth are untouched** (`QUIESCENCE`, `qsearch_depth`). Their semantics are stage
+   3's; fixing both at once would destroy attribution.
+
+**Already true, so not part of this change:** delta pruning is gated on `!in_check` today, and
+castling-out-of-check is already excluded because `AddCastleMoves` includes the king's origin square
+in its attack mask.
+
+**Watch during implementation:** `const GameInfo& info` at the top of `quiescence()` is a *reference*
+into `td.info_seq`, which `add_move_to_seq()` can reallocate. It is safe today only because `info` is
+read before the move loop and never after. Do not introduce a use of it after the loop.
+
+### Stage 3
+
+Specified in the issue body. Needs: a focused regression test for the exact invariant, the fix alone,
+the post-change sweep against the baseline table, the full suite, a `search-reviewer` dispatch, and
+bench plus SPRT (parameters pinned above). It is a rename-and-invert with a narrow blast radius.
 
 Stage 2 is the one with a mechanism for `WAC-287`'s behaviour — supported by the baseline's `Ne6+`
-finding, not just by argument — and the one that costs nodes. Stage 3 is a rename-and-invert with a
-narrow blast radius.
+finding, not just by argument — and the one that costs nodes.
 
 Judge each stage on the **parity swing** (odd-depth mean minus even-depth mean, ≈265 cp at baseline),
 not on whether depth 8 flips back to `d1h5`. The swing is continuous and sensitive; the depth-8 move

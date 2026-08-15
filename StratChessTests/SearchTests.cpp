@@ -21,6 +21,7 @@
 #include "PVTable.h"
 #include "TranspositionTable.h"
 #include "defines.h"
+#include <chrono>
 #include <optional>
 
 // ============================================================================
@@ -175,6 +176,26 @@ class AIPerlexTestFixture {
 	std::optional<TTEntry> probe_tt(int ply) const { return ai->_tt->probe(board_.get_zobrist_hash(), ply); }
 
 	std::optional<TTEntry> probe_tt(uint64_t key, int ply) const { return ai->_tt->probe(key, ply); }
+
+	// Runs one quiescence() node on the fixture's board. The timer is armed because
+	// quiescence polls the wall clock every 1024 nodes and a default-constructed
+	// TimeManager has its start_time_ at the epoch, which would latch an abort.
+	int quiesce_node(int alpha, int beta, int qsearch_depth, int ply) const
+	{
+		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
+		ai->time_manager_.start(std::chrono::milliseconds(60'000));
+		ai->td_.board = board_;
+		ai->td_.nodes_since_check_ = 0;
+		ai->td_.info_seq.assign(static_cast<size_t>(ply) + 1, board_.GetGameInfo());
+		return ai->quiescence(ai->td_, alpha, beta, qsearch_depth, ply, *ai->_tt);
+	}
+
+	// Static evaluation of the fixture's board — the value stand-pat would have used.
+	int evaluate() const
+	{
+		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
+		return ai->Eval->Evaluate(board_);
+	}
 
 	// Full fixed-depth search from the fixture's board. SetEvalEngine() is protected
 	// on PlayerAiBase, so only the fixture (a declared friend) can arm the evaluator.
@@ -726,4 +747,82 @@ TEST_CASE("Search - a full search stores its mated child node correctly", "[sear
 	CHECK(entry->value == -GameValues::Mate + 1);
 	CHECK(entry->bound == BoundType::EXACT);
 	CHECK(entry->best_move.is_null());
+}
+
+// ============================================================================
+// Legal quiescence while in check
+// ============================================================================
+// A side to move in check may not decline to move, so quiescence cannot settle
+// such a node by standing pat, and a capture-only move list cannot answer it:
+// blocks and king walks are evasions too. Each case below is a position where
+// the capture-only, stand-pat-first version returns a different answer.
+
+TEST_CASE("Qsearch - in check, stand-pat cannot cut off and mate is seen", "[search][qsearch]")
+{
+	// White is two knights up and in check from Ra1; f2/g2/h2 are its own pawns and
+	// f1/h1 are covered along the rank, so it is mate. Neither knight can reach the
+	// first rank. Standing pat here returns a winning score for a lost position.
+	AIPerlexTestFixture fix("7k/8/8/NN6/8/8/5PPP/r5K1 w - - 0 1");
+	REQUIRE(fix.board_.InCheck());
+	REQUIRE(fix.count_legal_moves() == 0);
+
+	constexpr int beta = 100;
+	// The precondition that makes this test meaningful: stand-pat would have cut off.
+	REQUIRE(fix.evaluate() >= beta);
+
+	const int ply = 3;
+	CHECK(fix.quiesce_node(-GameValues::Search_Init, beta, /*qsearch_depth=*/0, ply) == -GameValues::Mate + ply);
+}
+
+TEST_CASE("Qsearch - in check, a quiet king evasion is found", "[search][qsearch]")
+{
+	// Ra1 checks along the rank; every escape is a quiet king step off it, and no
+	// capture exists. A capture-only generator sees an empty list here.
+	AIPerlexTestFixture fix("7k/8/8/8/8/8/8/r5K1 w - - 0 1");
+	REQUIRE(fix.board_.InCheck());
+	REQUIRE(fix.count_legal_moves() > 0);
+
+	const int score = fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init, 0, /*ply=*/2);
+	// Not mate: reporting one here would mean the evasions were never generated.
+	CHECK(score > -GameValues::Mate_Threshold);
+}
+
+TEST_CASE("Qsearch - in check, a quiet blocking evasion is found", "[search][qsearch]")
+{
+	// Ra1 checks along the rank, the king is walled in by its own pawns, and the only
+	// legal reply is the quiet interposition Rd7-d1. Nothing can capture the rook.
+	AIPerlexTestFixture fix("7k/3R4/8/8/8/8/5PPP/r5K1 w - - 0 1");
+	REQUIRE(fix.board_.InCheck());
+	REQUIRE(fix.count_legal_moves() > 0);
+
+	const int score = fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init, 0, /*ply=*/2);
+	CHECK(score > -GameValues::Mate_Threshold);
+}
+
+TEST_CASE("Qsearch - in check, a capturing evasion is still found", "[search][qsearch]")
+{
+	// Ne2 checks the boxed-in king and a knight check cannot be blocked, so Re7xe2 is
+	// the only legal reply. This is the one evasion shape the old generator could see;
+	// it must survive the switch to a full evasion list.
+	AIPerlexTestFixture fix("7k/4R3/8/8/8/8/4nPPP/5RKR w - - 0 1");
+	REQUIRE(fix.board_.InCheck());
+	REQUIRE(fix.count_legal_moves() > 0);
+
+	const int score = fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init, 0, /*ply=*/2);
+	CHECK(score > -GameValues::Mate_Threshold);
+}
+
+TEST_CASE("Qsearch - out of check, the stand-pat cutoff is unchanged", "[search][qsearch]")
+{
+	// The untouched path: quiet position, evaluation above beta, so the node stands pat
+	// and returns beta without generating anything. The queen sits on b1, not a1: from a1
+	// it would check the black king on h8, and a FEN whose side-not-to-move is in check is
+	// rejected outright by Board::setup_from_fen_impl, leaving an empty board behind.
+	AIPerlexTestFixture fix("7k/8/8/8/8/8/8/1Q4K1 w - - 0 1");
+	REQUIRE_FALSE(fix.board_.InCheck());
+
+	constexpr int beta = 100;
+	REQUIRE(fix.evaluate() >= beta);
+
+	CHECK(fix.quiesce_node(-GameValues::Search_Init, beta, 0, /*ply=*/0) == beta);
 }
