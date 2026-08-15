@@ -300,15 +300,11 @@ From the `search-reviewer` pass (LGTM, no blocking findings):
   returned +155 pawns for a mated or stalemated position. That regime, not general search, is where
   any Elo lives; a general game batch cannot resolve it, a mate-heavy suite could. This is now
   pinned by the probe-side test.
-- **The new terminal store is the one `tt.store()` in `pvs()` that is provably abort-immune.** The
-  abort check sits above every store, and the move loop has no abort exit that skips
-  `moveFound = true`; the terminal value derives from `InCheck()` and `ply` alone, never from a
-  child result. So when **#299** adds a "don't store when aborted" guard, this site must be left
-  exempt rather than wrapped with the rest.
-- **Pre-existing, needs its own issue:** mate normalisation in `TranspositionTable.h:142-165` is
-  gated on `Mate_Threshold` (29900), so above ply 100 `-Mate + ply` stops normalising and the entry
-  is stored ply-relative. Unreachable at real depths, but this is the first path that writes such an
-  entry directly rather than propagating one.
+- **The new terminal store is the one `tt.store()` in `pvs()` that is provably abort-immune**, so
+  #299's discard-on-abort guard must leave it exempt rather than wrap it. Written up on #299 itself
+  (comment), so it survives this file.
+- **The ply-100 mate-normalisation cliff is now #305.** Pre-existing, latent, and no longer this
+  document's to carry.
 
 ### Stages 2-3
 
