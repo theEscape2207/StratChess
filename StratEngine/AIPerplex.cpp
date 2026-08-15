@@ -544,7 +544,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				// captures, promotions, killers, evasions (in_check), PV nodes, and early
 				// moves are always searched at full depth.
 				// Future skip candidates: passed pawn pushes, moves giving check.
-				const bool applyLMR = tuning_.lmr_enabled && !is_pv_node && !in_check && !isCapture && !isPromotion &&
+				const bool givesCheck = td.board.InCheck();
+				const bool applyLMR = tuning_.lmr_enabled && !is_pv_node && !in_check && !givesCheck && !isCapture && !isPromotion &&
 				                      !isKiller && si >= tuning_.lmr_min_move_index && depth >= tuning_.lmr_min_depth;
 
 				if (applyLMR) {
