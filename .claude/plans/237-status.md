@@ -4,7 +4,7 @@ Living status document for the #237 work sequence. The issue body is the authori
 specification; this file records **where the work stands, what was decided beyond the issue, and
 what the next session should pick up**. Delete it when #237 closes.
 
-Last updated: 2026-08-14.
+Last updated: 2026-08-15.
 
 ---
 
@@ -26,41 +26,23 @@ relitigated without new evidence.
 5. **Test-data changes are a separate, non-blocking track** (stage 4). They must not be folded into
    a search PR.
 
-## Findings added on top of the issue body
+## Findings still live
 
-Verified against the checkout; the issue does not mention these.
+Verified against the checkout; the issue does not mention these. (The `send()` race, the two accept
+branches and defect B's arithmetic were here too — all three are now fixed and harvested.)
 
-- **`send()` is unsynchronised.** `UCIHandler.h:71` declares `static void send(std::string_view)`
-  writing straight to stdout. Today the search thread emits exactly two lines, at the very end of
-  the search, so interleaving with the command loop is a narrow window. Per-iteration `info` widens
-  it to the whole search: a `go infinite` search emitting info while the main loop answers
-  `isready` can tear a line, and a torn line is a protocol violation that a match runner resolves by
-  forfeiting (the failure mode of #245). **Stage 0 must serialise `send()`.**
-- **There are two accept branches, not one.** `iterative_deepening()` accepts at
-  `AIPerplex.cpp:355` (`ACCEPT_AND_CONTINUE`) and at `:379` (`ACCEPT_AND_STOP`). Only the first
-  calls `log_completed_iteration()`. Emitting from that call site alone would drop the final
-  iteration of every clocked search — exactly the iteration that has to agree with `bestmove`.
 - **Cumulative node counts diverge from the final line in two ways, not one.** `iterative_deepening()`
   sees only `td.nodes_searched` (main thread), while the final `info`/`bestmove` line reports the
   cross-thread total assembled at `AIPerplex.cpp:256-259` — that is the Lazy SMP divergence. The
   second one bites even at `Threads=1`: a clocked search typically starts depth N+1, is interrupted,
   and is rejected by `assess_iteration_quality()`, so `REJECT_AND_STOP` emits nothing while those
   nodes are already counted. The final line is therefore strictly **greater** than the last
-  per-iteration line on essentially every timed search. Compare with `<=`, never `==`. (An earlier
-  revision of this document claimed equality at `Threads=1`; that held only for the fixed-depth case
-  the equivalence gate exercised.)
+  per-iteration line on essentially every timed search. Compare with `<=`, never `==`.
 - **The absolute-ply bound stage 2 asks for is genuinely absent, and the exposure is smaller than it
   looks.** `pvs()` indexes `td.killers[ply]` and `td.last_move_was_null[ply+1]` unguarded, and both
   are `[MAX_PLY]` (256, `defines.h:101`). `quiescence()` touches neither, and `PVTable` guards every
   ply access (`PVTable.h`). So removing the `MAX_QSEARCH_DEPTH` cap for in-check nodes risks stack
   exhaustion on a perpetual-check line rather than an out-of-bounds write. Bound it anyway.
-- **Defect B's magnitude is confirmed arithmetic, not an estimate.** `Search_Init = 50000`
-  (`defines.h:108`); `static_cast<int16_t>(-50000)` is well-defined modulo 2^16 since C++20 and
-  yields **+15536**. `normalize_for_storage()` leaves it alone (below `Mate_Threshold = 29900`), so
-  it is stored verbatim as an UPPER bound. As a cutoff it is nearly inert — a probe must have
-  `alpha >= 15536` to trigger it — so the damage is the poisoned hash move and the never-cached
-  mate score, not spurious cutoffs. Fix it because it is wrong, and do not expect it to move
-  `WAC-287` on its own.
 
 ## Tactical test semantics — decided
 
@@ -189,7 +171,7 @@ None outstanding.
 |---|---|---|---|---|
 | 0 | Per-iteration UCI `info` + `send()` serialisation | semantics-preserving | **merged, PR #300** | — |
 | 0b | `WAC-287` baseline sweep, depths 4-12 | evidence | **done, recorded below** | `worktree-237-wac287-baseline` |
-| 1 | Terminal-node TT storage (defect B) | search change | not started | — |
+| 1 | Terminal-node TT storage (defect B) | search change | **implemented, PR pending** | `worktree-237-stage1-terminal-tt` |
 | 2 | Legal qsearch while in check (defect A) | search change | not started | — |
 | 3 | Qsearch TT depth → remaining budget (defect C) | search change | not started | — |
 | 4 | Tactical test-data semantics (`WAC-043`, `WAC-065`) | test data | **merged, PR #298** | — |
@@ -200,42 +182,16 @@ its own issue — widening a corpus piecemeal inside a search-debugging issue is
 Stage 4 also corrects `Docs/TestDesign.md`, which still lists `WAC-287` in the suite (count of 6)
 after its removal from `Tests/tactical_test_cases.json`.
 
-### Stage 0 — instrumentation
+### Stage 0 — instrumentation (merged; design harvested into the code)
 
-Pinned design (beyond what the issue specifies):
-
-- Snapshot type is a value type carrying `depth`, `score`, cumulative main-thread `nodes`, and a
-  **copied** PV (`pv_table.get_line(0)` truncated to `get_length(0)`), taken before the next
-  iteration mutates the table.
-- The observer lives on `AIPerplex`, not on `PlayerAiBase`. `cmd_go` already reaches the concrete
-  type by `dynamic_cast` (`UCIHandler.cpp:375`); reuse that rather than widening the base class for
-  one consumer. Register before spawning `search_thread_`, clear after the search.
-- Emit from a single helper called in **both** accept branches, after `state` is updated. Never on
-  `REJECT_AND_STOP`.
-- Mate/cp formatting is extracted from the existing final-line code (`UCIHandler.cpp:379-388`) and
-  shared, so the last `info` cannot drift from `bestmove`.
-- `send()` gains a mutex (or equivalent) covering the whole line write.
-- Helper threads stay silent for free: `helper_loop()` has its own loop and never enters
-  `iterative_deepening()`.
-
-Equivalence gate: build a baseline binary from `origin/main` **before** touching anything
-(`run-tests` does not rebuild the exe), then compare `bestmove`, final score and node count at fixed
-depth, `Threads=1`, fixed Hash, across a small FEN corpus.
-
-Decided during implementation, from the `search-reviewer` pass:
+One decision survives because later stages have to work around it:
 
 - **The observer ships enabled for every UCI `go`, including rated play.** `Run-EloMatch.ps1` drives
-  UCI, so the candidate pays the per-iteration emit cost inside its search budget while the pinned
-  `elo-reference-v2` does not. Kept always-on rather than gated behind a `setoption`: per-depth
-  `info` is standard UCI that every serious engine emits, so this is a conformance improvement, and
-  the bias runs *against* the candidate — it understates gains rather than inventing them. Sizing:
-  roughly 12 depths x 40 moves = ~480 extra writes per game, tens of microseconds each, against a
-  10 s budget. Order 0.2%, below the noise floor of any batch we can afford. Revisit only if a
-  future stage needs byte-identical timing against the reference.
-- **The emit is charged to the search budget.** It sits before `time_manager_.should_stop_iteration()`
-  in the `ACCEPT_AND_CONTINUE` branch, so in principle it can flip the soft-limit gate one depth
-  earlier. Fixed-depth identity cannot observe this by construction — it is not a defect, but it is
-  why "search-semantics-preserving" here means *what* the search computes, not *how fast*.
+  UCI, so a candidate built from this repo pays the per-iteration emit cost inside its search budget
+  while the pinned `elo-reference-v2` does not. Kept always-on because per-depth `info` is standard
+  UCI, and the bias runs *against* the candidate — it understates gains rather than inventing them.
+  Sizing is order 0.2%, below the noise floor of any batch we can afford. Revisit only if a stage
+  needs byte-identical timing against the reference.
 
 ### Stage 0b — baseline
 
@@ -313,15 +269,52 @@ same way), and it confirms the search is fully deterministic at `Threads=1`. Pra
 a single run instead of nine, and any divergence in the 1..12 sequence is a real effect rather than
 run-to-run noise.
 
-### Stages 1-3
+### Stage 1 — terminal-node TT storage: done, and `WAC-287` did not move
 
-Specified in the issue body. Each needs: the pre-change sweep, a focused regression test for the
-exact invariant, the fix alone, the identical post-change sweep, the full suite, a `search-reviewer`
-dispatch, and — for 2 and 3 — bench plus SPRT.
+Branch `worktree-237-stage1-terminal-tt`, commit `79473d1`. `pvs()` now resolves the
+checkmate/stalemate score before it classifies and stores the node, and writes it as EXACT with an
+empty move; the `-Search_Init` sentinel can no longer be narrowed into the table.
 
-Stage 1 is the smallest and the least likely to change anything observable. Stage 2 is the one with
-a mechanism for `WAC-287`'s behaviour — now supported by the baseline's `Ne6+` finding, not just by
-argument — and the one that costs nodes. Stage 3 is a rename-and-invert with a narrow blast radius.
+Post-change sweep, same position and settings as the baseline above: **identical selected move,
+score and PV at every depth 1-12.** Only node counts moved, and only downward — 0 at depths 1-5,
+then −40 (d6), −40 (d7), −148 (d8), −427 (d9), −713 (d10), −1 795 (d11), −3 502 (d12: 3 592 464 →
+3 588 962, −0.1%). The parity swing is unchanged at ≈265 cp and depth 8 still returns `f7e6`.
+
+Bench, depth 12, two runs each: before 2 956 513 / 2 970 266 nps, after 2 987 626 / 2 975 507 nps —
++0.6%, inside the run-to-run spread. Total bench nodes 34 478 850 → 34 477 205 (−0.005%).
+
+**No SPRT was run, and one is not worth buying.** Nothing the search decides changed on either
+corpus, and a 0.1% node effect is two orders of magnitude below what any affordable batch resolves.
+The stage stands on the regression tests plus the invariance of the sweep. This is the outcome the
+document predicted; defect B was worth fixing because it is wrong, not because it explains
+`WAC-287`.
+
+**Consequence for stages 2-3: the baseline table above is still the comparison basis.** Stage 1 left
+it untouched, so a stage-2 or stage-3 sweep can be read straight against it.
+
+From the `search-reviewer` pass (LGTM, no blocking findings):
+
+- **The old bound was inert except in mate-range windows, and that is where it did damage.** +15536
+  as an UPPER bound only collapses a window whose `alpha` already exceeds it — which is exactly the
+  aspiration window `search_with_aspiration()` opens after a mate score is seeded. There the probe
+  returned +155 pawns for a mated or stalemated position. That regime, not general search, is where
+  any Elo lives; a general game batch cannot resolve it, a mate-heavy suite could. This is now
+  pinned by the probe-side test.
+- **The new terminal store is the one `tt.store()` in `pvs()` that is provably abort-immune**, so
+  #299's discard-on-abort guard must leave it exempt rather than wrap it. Written up on #299 itself
+  (comment), so it survives this file.
+- **The ply-100 mate-normalisation cliff is now #305.** Pre-existing, latent, and no longer this
+  document's to carry.
+
+### Stages 2-3
+
+Specified in the issue body. Each needs: a focused regression test for the exact invariant, the fix
+alone, the post-change sweep against the baseline table, the full suite, a `search-reviewer`
+dispatch, and bench plus SPRT (parameters pinned above).
+
+Stage 2 is the one with a mechanism for `WAC-287`'s behaviour — supported by the baseline's `Ne6+`
+finding, not just by argument — and the one that costs nodes. Stage 3 is a rename-and-invert with a
+narrow blast radius.
 
 Judge each stage on the **parity swing** (odd-depth mean minus even-depth mean, ≈265 cp at baseline),
 not on whether depth 8 flips back to `d1h5`. The swing is continuous and sensitive; the depth-8 move

@@ -15,10 +15,13 @@
 #include <catch_amalgamated.hpp>
 #include "AIPerplex.h"
 #include "Board.h"
+#include "MoveFormatter.h"
 #include "MoveGenerator.h"
 #include "PlayerBase.h"
 #include "PVTable.h"
+#include "TranspositionTable.h"
 #include "defines.h"
+#include <optional>
 
 // ============================================================================
 // Helper
@@ -133,6 +136,53 @@ class AIPerlexTestFixture {
 		REQUIRE(info.fullMoveCount == 1);
 		const Move move = ai->GetMove(info, SearchLimits::fixed_depth(1));
 		REQUIRE_FALSE(move.is_null());
+	}
+
+	// --- Terminal-node helpers ---
+
+	// Counts the moves that survive DoMove(). ComputeLegalMoves() is pseudo-legal at
+	// the edges and pvs() relies on DoMove() to reject the rest, so this is the same
+	// notion of "has a move" the search uses. Zero makes the position terminal.
+	int count_legal_moves() const
+	{
+		Board copy = board_;
+		GameInfo info = copy.GetGameInfo();
+		MoveList ml;
+		MoveGenerator::ComputeLegalMoves(copy, info, ml);
+
+		int legal = 0;
+		for (const auto& move : ml) {
+			if (copy.DoMove(move)) {
+				++legal;
+				copy.UndoMove(move);
+			}
+		}
+		return legal;
+	}
+
+	// Runs one pvs() node on the fixture's board at an arbitrary ply, with the
+	// thread-local state a real search would have set up. Lets the terminal-node
+	// tests place a mate/stalemate node at a chosen ply without building a tree.
+	int search_node(int depth, int ply, int alpha = -GameValues::Search_Init, int beta = GameValues::Search_Init,
+	                bool is_pv_node = true) const
+	{
+		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
+		ai->td_.board = board_;
+		ai->td_.info_seq.assign(static_cast<size_t>(ply) + 1, board_.GetGameInfo());
+		return ai->pvs(ai->td_, depth, alpha, beta, ply, is_pv_node, *ai->_tt);
+	}
+
+	std::optional<TTEntry> probe_tt(int ply) const { return ai->_tt->probe(board_.get_zobrist_hash(), ply); }
+
+	std::optional<TTEntry> probe_tt(uint64_t key, int ply) const { return ai->_tt->probe(key, ply); }
+
+	// Full fixed-depth search from the fixture's board. SetEvalEngine() is protected
+	// on PlayerAiBase, so only the fixture (a declared friend) can arm the evaluator.
+	Move search_to_depth(int depth) const
+	{
+		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
+		GameInfo info = board_.GetGameInfo();
+		return ai->GetMove(info, SearchLimits::fixed_depth(depth));
 	}
 };
 
@@ -567,4 +617,113 @@ TEST_CASE("SMP - SetThreads default is 1", "[smp]")
 {
 	AIPerlexTestFixture fix;
 	REQUIRE(fix.threads() == 1u);
+}
+
+// ============================================================================
+// Terminal-node TT storage
+// ============================================================================
+// A node with no legal move leaves best_value at the -Search_Init sentinel.
+// Narrowing that to the TT's int16_t value field wraps it to +15536, so pvs()
+// must resolve the checkmate/stalemate score before it classifies and stores
+// the entry. These tests drive a single pvs() node so the terminal position
+// sits at a chosen ply, then read back what reached the table.
+
+TEST_CASE("Search - checkmate node is stored as an exact ply-adjusted mate score", "[search][tt]")
+{
+	// Black to move and mated: Ra8 covers the back rank, f7/g7/h7 block every escape.
+	AIPerlexTestFixture fix("R5k1/5ppp/8/8/8/8/8/6K1 b - - 0 1");
+	REQUIRE(fix.board_.InCheck());
+	REQUIRE(fix.count_legal_moves() == 0);
+
+	const int ply = GENERATE(0, 1, 5);
+	INFO("ply = " << ply);
+
+	REQUIRE(fix.search_node(/*depth=*/3, ply) == -GameValues::Mate + ply);
+
+	const auto entry = fix.probe_tt(ply);
+	REQUIRE(entry.has_value());
+	CHECK(entry->value == -GameValues::Mate + ply);
+	// The wrapped sentinel this storage path used to write instead.
+	CHECK(entry->value != static_cast<int16_t>(-GameValues::Search_Init));
+	CHECK(entry->bound == BoundType::EXACT);
+	CHECK(entry->best_move.is_null());
+	CHECK(entry->phase == SearchPhase::MAIN);
+}
+
+TEST_CASE("Search - stalemate node is stored as an exact draw score", "[search][tt]")
+{
+	// White to move and stalemated: Qf2 covers g1/g2/h2 without giving check.
+	AIPerlexTestFixture fix("7k/8/8/8/8/8/5q2/7K w - - 0 1");
+	REQUIRE_FALSE(fix.board_.InCheck());
+	REQUIRE(fix.count_legal_moves() == 0);
+
+	const int ply = GENERATE(0, 2, 7);
+	INFO("ply = " << ply);
+
+	REQUIRE(fix.search_node(/*depth=*/3, ply) == GameValues::Draw);
+
+	const auto entry = fix.probe_tt(ply);
+	REQUIRE(entry.has_value());
+	CHECK(entry->value == GameValues::Draw);
+	CHECK(entry->value != static_cast<int16_t>(-GameValues::Search_Init));
+	CHECK(entry->bound == BoundType::EXACT);
+	CHECK(entry->best_move.is_null());
+	CHECK(entry->phase == SearchPhase::MAIN);
+}
+
+TEST_CASE("Search - terminal score is stored exact even when it falls outside the window", "[search][tt]")
+{
+	// The terminal value is the position's true minimax value, not a window-relative
+	// bound, so it is stored EXACT regardless of the window it was searched under.
+	AIPerlexTestFixture fix("R5k1/5ppp/8/8/8/8/8/6K1 b - - 0 1");
+	REQUIRE(fix.count_legal_moves() == 0);
+
+	REQUIRE(fix.search_node(/*depth=*/3, /*ply=*/0, /*alpha=*/100, /*beta=*/200) == -GameValues::Mate);
+
+	const auto entry = fix.probe_tt(0);
+	REQUIRE(entry.has_value());
+	CHECK(entry->value == -GameValues::Mate);
+	CHECK(entry->bound == BoundType::EXACT);
+}
+
+TEST_CASE("Search - a probe of a terminal entry cannot return the wrapped sentinel", "[search][tt]")
+{
+	// The stored value only misleads a prober whose alpha already exceeds +15536,
+	// which is the regime an aspiration window enters after a mate score is seeded.
+	// Stored as an UPPER bound of +15536, the entry collapsed such a window and
+	// handed the caller +155 pawns for a drawn position; stored EXACT it cannot.
+	AIPerlexTestFixture fix("7k/8/8/8/8/8/5q2/7K w - - 0 1");
+	REQUIRE(fix.count_legal_moves() == 0);
+
+	// Seed the entry at a depth deeper than the probing call will ask for.
+	REQUIRE(fix.search_node(/*depth=*/5, /*ply=*/0) == GameValues::Draw);
+
+	const int score = fix.search_node(/*depth=*/1, /*ply=*/0, /*alpha=*/GameValues::Mate - 60,
+	                                  /*beta=*/GameValues::Mate, /*is_pv_node=*/false);
+	CHECK(score == GameValues::Draw);
+	CHECK(score != static_cast<int16_t>(-GameValues::Search_Init));
+}
+
+TEST_CASE("Search - a full search stores its mated child node correctly", "[search][tt]")
+{
+	// Ra8 is mate in one. Depth 2 is the shallowest search that reaches the mated
+	// position through pvs(): at depth 1 the child node is entered with depth 0 and
+	// handed to quiescence, which never generates moves or detects mate.
+	const std::string fen = "6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1";
+	AIPerlexTestFixture fix(fen);
+
+	Board mated(fen);
+	const Move mating_move = MoveFormatter::FromUCI("a1a8", mated);
+	REQUIRE(mated.DoMove(mating_move));
+	const uint64_t mated_key = mated.get_zobrist_hash();
+
+	REQUIRE(MoveFormatter::ToUCI(fix.search_to_depth(2)) == "a1a8");
+
+	// The mated position was searched at ply 1, so probing at ply 1 must give back
+	// the same mate-in-one the root saw.
+	const auto entry = fix.probe_tt(mated_key, 1);
+	REQUIRE(entry.has_value());
+	CHECK(entry->value == -GameValues::Mate + 1);
+	CHECK(entry->bound == BoundType::EXACT);
+	CHECK(entry->best_move.is_null());
 }
