@@ -54,24 +54,37 @@ static std::vector<std::string> CaptureMoves(const char* fen)
 	return out;
 }
 
-// True when every generated move lands on a square an enemy piece occupies. En-passant
-// is excluded: its target square is empty by definition, so it is checked separately.
-static bool AllTargetsHoldAnEnemyPiece(const char* fen)
+// Asserts that every generated move lands on a square an enemy piece occupies, and that
+// no move targets a king. En-passant is excluded: its target square is empty by
+// definition, so it is checked separately.
+//
+// The non-emptiness REQUIRE is load-bearing, not decoration: a property expressed as a
+// loop over the move list holds vacuously when the list is empty, which is precisely the
+// state #306 left ComputeCaptures() in. Without it this helper passes on the broken code.
+static void CheckEveryTargetHoldsAnEnemyPiece(const char* fen)
 {
+	INFO("fen = " << fen);
 	Board board(fen);
+	REQUIRE(CountPieces(board) >= 2);
+
 	GameInfo info = board.GetGameInfo();
 	MoveList moves;
 	MoveGenerator::ComputeCaptures(board, info, moves);
+	REQUIRE(moves.size() > 0);
 
 	const eColor us = board.GetCurrentColor();
 	for (const auto& move : moves) {
 		if (MoveHelper::IsPromote(move) && !MoveHelper::IsCapture(move))
 			continue; // quiet promotions are generated on purpose
 		const ePiece target = board.GetPiece(move.to());
-		if (!PieceHelper::IsActual(target) || PieceHelper::Color(target) == us)
-			return false;
+		INFO("move = " << MoveFormatter::ToUCI(move));
+		CHECK(PieceHelper::IsActual(target));
+		CHECK(PieceHelper::Color(target) != us);
+		// A king is never a legal capture target. DoMove() would reject the reply that
+		// left it en prise, so no such position reaches the search, but the generator
+		// should not be the thing relied on to discover that.
+		CHECK_FALSE(PieceHelper::IsKing(target));
 	}
-	return true;
 }
 
 // ── One capture per piece type, both colours ─────────────────────────────────
@@ -127,11 +140,22 @@ TEST_CASE("ComputeCaptures - a blocked officer with no enemy target yields nothi
 
 TEST_CASE("ComputeCaptures - every generated target holds an enemy piece", "[movegen][capture]")
 {
-	// A crowded middlegame position: the property must hold with many pieces of both
-	// colours in contact, not just in the one-capture cases above.
-	constexpr const char* busy = "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 1";
-	CHECK(AllTargetsHoldAnEnemyPiece(busy));
-	CHECK(AllTargetsHoldAnEnemyPiece("r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 0 1"));
+	// Crowded positions with many pieces of both colours in contact: the property must
+	// hold there, not just in the one-capture cases above. Kiwipete is included because
+	// it is the densest capture position in common use.
+	CheckEveryTargetHoldsAnEnemyPiece("r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 1");
+	CheckEveryTargetHoldsAnEnemyPiece("r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 0 1");
+	CheckEveryTargetHoldsAnEnemyPiece("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+	CheckEveryTargetHoldsAnEnemyPiece("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R b KQkq - 0 1");
+}
+
+TEST_CASE("ComputeCaptures - en-passant is generated and stays on the pawn path", "[movegen][capture]")
+{
+	// The one target square that is empty rather than enemy-occupied. It is ORed into
+	// the enemy mask by GeneratePawnCaptures only, so the officer path must never reach
+	// it — asserting the exact list pins both halves.
+	CHECK(CaptureMoves("4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1") == std::vector<std::string>{"e5d6"});
+	CHECK(CaptureMoves("4k3/8/8/8/3Pp3/8/8/4K3 b - d3 0 1") == std::vector<std::string>{"e4d3"});
 }
 
 TEST_CASE("ComputeCaptures - captures are a subset of the legal move list", "[movegen][capture]")
