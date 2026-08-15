@@ -606,16 +606,25 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		}
 	}
 
+	// Terminal node: no legal move could be played, so this position is checkmate or
+	// stalemate and best_value is still the -Search_Init sentinel. Resolve the true
+	// score before storing — narrowing the sentinel to the TT's int16_t value field
+	// would wrap it to +15536 and cache a nonsensical bound for the position.
+	// The score is exact and depth-independent, so it is stored as EXACT with an
+	// empty move; tt.store() normalises the mate distance by ply.
+	if (!moveFound) {
+		const int terminal_value = adjustScoreForGameState(td, moveFound, ply, best_value);
+		tt.store(key, static_cast<int16_t>(terminal_value), static_cast<int16_t>(depth), static_cast<int16_t>(ply),
+		         Move::EmptyMove(), BoundType::EXACT, is_pv_node ? NodeType::PV_NODE : NodeType::ALL_NODE,
+		         SearchPhase::MAIN);
+		return terminal_value;
+	}
+
 	// Classify node and store
 	BoundType bound;
 	NodeType node_type;
 
-	if (!moveFound) {
-		// No captures were available to search
-		// This is ALL_NODE regardless of whether stand_pat improved alpha
-		node_type = NodeType::ALL_NODE;
-		bound = (best_value > original_alpha) ? BoundType::EXACT : BoundType::UPPER;
-	} else if (best_value <= original_alpha) {
+	if (best_value <= original_alpha) {
 		bound = BoundType::UPPER;
 		node_type = NodeType::ALL_NODE;
 	} else if (best_value >= beta) {
