@@ -183,6 +183,11 @@ bool Board::setup_from_fen_impl(const std::string& fen, std::vector<std::string>
 	gameInfo_.epSquare = state.epSquare;
 	gameInfo_.castlingRights = state.castlingRights;
 
+	// EXPERIMENT: seed the repetition history with the position itself. push_position()
+	// is otherwise only called from DoMove, so a board set up from a FEN with no move
+	// list has an empty history and cannot see a line that returns to its own start.
+	push_position();
+
 	spdlog::default_logger()->debug("Board set up from FEN: {}", fen);
 	return true;
 }
@@ -775,8 +780,10 @@ bool Board::is_repetition(int ply) const
 		if (position_history_[i] == zobrist_hash_) {
 			repetitions++;
 
-			// Entry at index i is from the current search iff i >= history at root
-			const bool both_in_search = (ply > 0) && (i >= history_size - static_cast<size_t>(ply));
+			// Entry at index i is from the current search iff i >= history at root.
+			// The root position itself sits one index below that, and a line returning
+			// to it is a repetition the side to move can force, so it counts too.
+			const bool both_in_search = (ply > 0) && (i + 1 >= history_size - static_cast<size_t>(ply));
 
 			if (both_in_search && repetitions >= 1)
 				return true;
