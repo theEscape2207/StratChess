@@ -270,9 +270,13 @@ class TranspositionTable {
 		// the main scale before they compete, so the entry that kept more search wins.
 		int adjusted_depth = (entry.phase == SearchPhase::MAIN) ? entry.depth : quiescenceEquivalentDepth(entry.depth);
 
-		// Quiescence searches sometimes have shallower depth but should still be
-		// considered -- no phase bonus/penalty either way.
-		constexpr int phase_bonus = 0;
+		// A quiescence entry resolves captures from a single node; a main-search entry of the
+		// same nominal depth resolves a full-width subtree, and pvs() mines main entries for a
+		// hash move even when they are too shallow to cut off. The penalty is sized to put the
+		// entire quiescence band below main-search depth 0 -- a full budget reaches
+		// 7 * 256 = 1792 -- so quiescence content displaces main content only by being newer,
+		// never by claiming more depth.
+		const int phase_bonus = (entry.phase == SearchPhase::MAIN) ? 0 : -2048;
 		return adjusted_depth * 256 + pv_bonus + phase_bonus - age_diff * 512;
 	}
 

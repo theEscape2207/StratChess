@@ -271,18 +271,32 @@ TEST_CASE("TT - a quiescence entry that kept more budget outranks one that kept 
 	CHECK(spent >= exhausted);
 }
 
-TEST_CASE("TT - a fresh quiescence entry ranks between shallow and deep main entries", "[tt]")
+TEST_CASE("TT - even a full-budget quiescence entry ranks below every main entry", "[tt]")
 {
-	// The 0.5 discount puts a full-budget quiescence entry at main-search depth 7. Below that
-	// a main entry loses its bucket slot to quiescence content; above it, it does not. Moving
-	// the discount moves that crossover, which is a strength decision, not a refactor.
+	// The phase penalty exists to make this true at the same age. Without it the discount
+	// alone puts a full-budget quiescence entry at main-search depth 7, where it evicts the
+	// shallow main entries that supply pvs() with hash moves — worth ~35% more nodes on the
+	// bench suite at a 16 MB table, and nothing at all at 192 MB.
 	TranspositionTable tt(1);
 	constexpr int age = 0;
 
 	const int fresh_qsearch = tt.replacementScore(entry_with(15, SearchPhase::QUIESCENCE), age);
 
-	CHECK(fresh_qsearch > tt.replacementScore(entry_with(6, SearchPhase::MAIN), age));
+	CHECK(fresh_qsearch < tt.replacementScore(entry_with(0, SearchPhase::MAIN), age));
 	CHECK(fresh_qsearch < tt.replacementScore(entry_with(8, SearchPhase::MAIN), age));
+}
+
+TEST_CASE("TT - a newer quiescence entry still displaces an aged main entry", "[tt]")
+{
+	// The penalty must not make quiescence entries immortal in the other direction: a main
+	// entry several generations old is stale, and age is the axis that is allowed to override
+	// the phase ranking.
+	TranspositionTable tt(1);
+
+	const int fresh_qsearch = tt.replacementScore(entry_with(15, SearchPhase::QUIESCENCE), /*age=*/0);
+	const int aged_main = tt.replacementScore(entry_with(4, SearchPhase::MAIN), /*age=*/8);
+
+	CHECK(fresh_qsearch > aged_main);
 }
 
 TEST_CASE("TT - the quiescence depth discount is monotone across zero", "[tt]")
