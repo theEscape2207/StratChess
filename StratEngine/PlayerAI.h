@@ -71,7 +71,8 @@ class PlayerAiBase : public PlayerBase {
 
 	// Registers the amount of used time and prints out if PRINT_STATS is set.
 	// node_count: nodes searched this move — legacy AIs pass m_SearchCount,
-	// AIPerplex passes its thread-local ThreadData::nodes_searched.
+	// AIPerplex passes both trees summed across every search thread (main plus
+	// quiescence), not a single thread's ThreadData::nodes_searched.
 	std::chrono::milliseconds StopTimerAndAdjustVars(size_t node_count) const;
 
 	// Tilfoejer dette traek til nuvaerende traekfoelge

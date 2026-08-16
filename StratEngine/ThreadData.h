@@ -23,8 +23,16 @@ struct ThreadData {
 	// Copy-assigned from the game board at the start of every GetMove().
 	Board board;
 
-	// Thread-local node counter (replaces PlayerAiBase::m_SearchCount for AIPerplex).
+	// Thread-local main-tree node counter (replaces PlayerAiBase::m_SearchCount for
+	// AIPerplex). Counts pvs() move edges only. Keeping quiescence out is deliberate:
+	// assess_iteration_quality() and completion_ratio are calibrated against main-tree size,
+	// so folding it in here would change search behaviour, not just reporting.
 	int64_t nodes_searched = 0;
+
+	// Thread-local quiescence counter, same unit as nodes_searched: one per move edge
+	// searched. The two sum without overlap — a quiescence root's incoming edge belongs to
+	// the main tree — and are reported both together (UCI 'nodes') and apart (Run-Bench.ps1).
+	int64_t qnodes_searched = 0;
 
 	// Node-based time-check counter (replaces PlayerAiBase::nodes_since_check_ for
 	// AIPerplex). Reset alongside nodes_searched. Under Lazy SMP each helper thread
@@ -87,6 +95,7 @@ struct ThreadData {
 	{
 		board = Board();
 		nodes_searched = 0;
+		qnodes_searched = 0;
 		nodes_since_check_ = 0;
 		pv_table = PVTable();
 		info_seq.clear();

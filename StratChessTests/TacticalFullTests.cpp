@@ -95,6 +95,10 @@ TEST_CASE("Tactical (full) - null-move pruning guard is a no-op in K+P endgame",
 	REQUIRE(move_disabled == move_enabled);
 	REQUIRE(result_disabled.best_score == result_enabled.best_score);
 	REQUIRE(result_disabled.nodes_searched == result_enabled.nodes_searched);
+	// The quiescence tree has to match too, or half the search escapes this check.
+	REQUIRE(result_disabled.qnodes_searched == result_enabled.qnodes_searched);
+	// Pins the field a mid-struct insertion silently defaulted to true once already.
+	REQUIRE(result_disabled.search_was_stable == result_enabled.search_was_stable);
 }
 
 // ---------------------------------------------------------------------------

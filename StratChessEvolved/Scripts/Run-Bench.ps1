@@ -3,8 +3,9 @@
     Measure search speed (nodes per second) at fixed depth over a position set.
 
 .DESCRIPTION
-    Drives the engine over UCI and reports nodes, time, nps and the best move for
-    each position, plus an aggregate.
+    Drives the engine over UCI and reports the main-tree and quiescence node
+    counts, their total, time, nps and the best move for each position, plus an
+    aggregate.
 
     Intended for comparing two BUILDS of the same source — a different compiler,
     optimisation setting, or an optimisation change. Run it once per binary and
@@ -18,6 +19,16 @@
     generation changed search behaviour, and any nps comparison is then
     meaningless. See Docs/EloMeasurement.md and issue #161 for why node counts
     alone have misled this project before.
+
+    Why the main/qs split: nps is only meaningful when the node count covers all the
+    work the clock is charged for. Before issue #312 the engine counted main-tree
+    nodes only, so a change that moved work into quiescence showed up as an nps
+    collapse with no visible cause — that is exactly how #306 was misread. If the
+    two columns move in opposite directions, read the WALL CLOCK, not nps: it is
+    the only figure that cannot be distorted by relocating work between the trees.
+
+    A build predating #312 does not emit the split; those rows show '-' and the
+    script says so, because that build's nps is not comparable with a newer one's.
 
     Each position runs in a FRESH ENGINE PROCESS so no transposition-table state
     carries between them. Process startup is excluded from the measurement: the
@@ -175,11 +186,42 @@ function Invoke-Search {
         throw "No parseable 'info ... nodes N time T' line for FEN: $Fen`nEngine output:`n$out"
     }
 
+    # Main-tree/quiescence split (issue #312). Engines built before that change do not
+    # emit it, and comparing against such a build is the normal case for a before/after
+    # run, so its absence is reported as unknown rather than as zero.
+    $contract = [regex]::Match($out, 'info string benchcontract (\d+)')
+    $split    = [regex]::Matches($out, 'info string treenodes main (\d+) qs (\d+)')
+    $contractNo = if ($contract.Success) { [int]$contract.Groups[1].Value } else { 0 }
+    $nodes     = [int64]$info[$info.Count - 1].Groups[1].Value
+    $mainNodes = $null
+    $qsNodes   = $null
+    if ($split.Count -gt 0) {
+        $lastSplit = $split[$split.Count - 1]
+        $mainNodes = [int64]$lastSplit.Groups[1].Value
+        $qsNodes   = [int64]$lastSplit.Groups[2].Value
+    }
+
+    # A contract >= 1 build promises the split on every search, and that it sums to the
+    # total. Either failing means engine and parser have drifted, so refuse the run.
+    if ($contractNo -ge 1 -and $split.Count -eq 0) {
+        throw ("Contract $contractNo build emitted no 'info string treenodes' line for FEN: $Fen" +
+               "`nThe engine and this script disagree about the measurement contract." +
+               "`nEngine output:`n$out")
+    }
+    if ($null -ne $mainNodes -and ($mainNodes + $qsNodes) -ne $nodes) {
+        throw ("Node split does not sum to the reported total for FEN: $Fen" +
+               "`n  main $mainNodes + qs $qsNodes = $($mainNodes + $qsNodes), but 'nodes' says $nodes." +
+               "`nEngine output:`n$out")
+    }
+
     $last = $info[$info.Count - 1]
     [pscustomobject]@{
-        Nodes = [int64]$last.Groups[1].Value
-        Ms    = [int64]$last.Groups[2].Value
-        Best  = if ($best.Success) { $best.Groups[1].Value } else { '(none)' }
+        Nodes     = $nodes
+        MainNodes = $mainNodes
+        QsNodes   = $qsNodes
+        Ms        = [int64]$last.Groups[2].Value
+        Best      = if ($best.Success) { $best.Groups[1].Value } else { '(none)' }
+        Contract  = $contractNo
     }
 }
 
@@ -197,21 +239,40 @@ $workDir = Split-Path -Parent $exePath
 # the array would be silently coerced to a single string.
 $positionList = @(Resolve-Positions -Path $Positions)
 
+# Everything deciding whether two runs may be compared, on one line, so it survives
+# being pasted into a doc. The position hash is the part with no other signal:
+# editing the suite silently invalidates every recorded table.
+$posHash = & {
+    $sha    = [System.Security.Cryptography.SHA256]::Create()
+    $joined = ($positionList | ForEach-Object { $_.Fen }) -join "`n"
+    $bytes  = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($joined))
+    $sha.Dispose()
+    (( $bytes | ForEach-Object { $_.ToString('x2') } ) -join '').Substring(0, 12)
+}
+$exeHash = (Get-FileHash -Path $exePath -Algorithm SHA256).Hash.Substring(0, 12).ToLower()
+
 Write-Host ""
 Write-Host "Engine  : $exePath"
 Write-Host "Depth   : $Depth    Threads: $Threads    Positions: $($positionList.Count)"
+$setName = if ($Positions) { Split-Path -Leaf $Positions } else { 'builtin' }
+Write-Host "Set     : $setName sha $posHash    Build: sha $exeHash    Host: $([Environment]::MachineName)"
 if ($Threads -gt 1) {
     Write-Host "WARNING : Threads > 1 makes node counts non-deterministic; the" -ForegroundColor Yellow
     Write-Host "          equivalence check between builds is not valid."       -ForegroundColor Yellow
 }
 Write-Host ""
-Write-Host ("{0,-12} {1,14} {2,9} {3,12}  {4}" -f 'position', 'nodes', 'ms', 'nps', 'best')
-Write-Host ('-' * 62)
+Write-Host ("{0,-12} {1,13} {2,13} {3,13} {4,8} {5,12}  {6}" -f `
+            'position', 'main nodes', 'qs nodes', 'nodes', 'ms', 'nps', 'best')
+Write-Host ('-' * 92)
 
-$rows       = [System.Collections.Generic.List[object]]::new()
-$totalNodes = [int64]0
-$totalMs    = [int64]0
-$fastCount  = 0
+$rows        = [System.Collections.Generic.List[object]]::new()
+$totalNodes  = [int64]0
+$totalMain   = [int64]0
+$totalQs     = [int64]0
+$haveSplit   = $true
+$totalMs     = [int64]0
+$fastCount   = 0
+$contracts   = [System.Collections.Generic.HashSet[int]]::new()
 
 foreach ($p in $positionList) {
     $r = Invoke-Search -ExePath $exePath -WorkDir $workDir -Fen $p.Fen `
@@ -220,29 +281,70 @@ foreach ($p in $positionList) {
     $nps = if ($r.Ms -gt 0) { [int64]($r.Nodes * 1000 / $r.Ms) } else { 0 }
     $totalNodes += $r.Nodes
     $totalMs    += $r.Ms
+    [void]$contracts.Add($r.Contract)
+
+    if ($null -eq $r.MainNodes) {
+        $haveSplit = $false
+        $mainCell = '-'
+        $qsCell   = '-'
+    } else {
+        $totalMain += $r.MainNodes
+        $totalQs   += $r.QsNodes
+        $mainCell = '{0:N0}' -f $r.MainNodes
+        $qsCell   = '{0:N0}' -f $r.QsNodes
+    }
 
     $flag = ''
     if ($r.Ms -lt $MinTimeMs) { $flag = ' (too fast to time)'; $fastCount++ }
 
-    Write-Host ("{0,-12} {1,14:N0} {2,9:N0} {3,12:N0}  {4}{5}" -f `
-                $p.Name, $r.Nodes, $r.Ms, $nps, $r.Best, $flag)
+    Write-Host ("{0,-12} {1,13} {2,13} {3,13:N0} {4,8:N0} {5,12:N0}  {6}{7}" -f `
+                $p.Name, $mainCell, $qsCell, $r.Nodes, $r.Ms, $nps, $r.Best, $flag)
 
     $rows.Add([pscustomobject]@{
-        Position = $p.Name
-        Fen      = $p.Fen
-        Nodes    = $r.Nodes
-        Ms       = $r.Ms
-        Nps      = $nps
-        Best     = $r.Best
+        Position  = $p.Name
+        Fen       = $p.Fen
+        MainNodes = $r.MainNodes
+        QsNodes   = $r.QsNodes
+        Nodes     = $r.Nodes
+        Ms        = $r.Ms
+        Nps       = $nps
+        Best      = $r.Best
     })
 }
 
 $aggregate = if ($totalMs -gt 0) { [int64]($totalNodes * 1000 / $totalMs) } else { 0 }
 
-Write-Host ('-' * 62)
-Write-Host ("{0,-12} {1,14:N0} {2,9:N0} {3,12:N0}" -f 'TOTAL', $totalNodes, $totalMs, $aggregate)
+$mainTotalCell = if ($haveSplit) { '{0:N0}' -f $totalMain } else { '-' }
+$qsTotalCell   = if ($haveSplit) { '{0:N0}' -f $totalQs }   else { '-' }
+
+Write-Host ('-' * 92)
+Write-Host ("{0,-12} {1,13} {2,13} {3,13:N0} {4,8:N0} {5,12:N0}" -f `
+            'TOTAL', $mainTotalCell, $qsTotalCell, $totalNodes, $totalMs, $aggregate)
 Write-Host ""
-Write-Host "Aggregate nps: $('{0:N0}' -f $aggregate)"
+$contractLabel = ($contracts | Sort-Object) -join ','
+Write-Host "Aggregate nps: $('{0:N0}' -f $aggregate)    Wall clock: $('{0:N0}' -f $totalMs) ms    Contract: $contractLabel"
+
+if ($haveSplit -and $totalNodes -gt 0) {
+    $qsShare = [math]::Round(100.0 * $totalQs / $totalNodes, 1)
+    Write-Host "Quiescence share of nodes: $qsShare%"
+}
+
+if ($contracts.Count -gt 1) {
+    # One binary answered two different contracts across positions, which should be
+    # impossible -- the contract is a compile-time constant. Treat it as a corrupt run.
+    Write-Host ""
+    Write-Host "ERROR: positions reported differing contracts ($contractLabel). This run" -ForegroundColor Red
+    Write-Host "       is not internally consistent; discard it."                          -ForegroundColor Red
+} elseif ($contracts.Contains(0)) {
+    Write-Host ""
+    Write-Host "NOTE: contract 0 -- this build predates issue #312 and counts main-tree"  -ForegroundColor Yellow
+    Write-Host "      nodes only, so its 'nodes' and 'nps' are NOT comparable with a"      -ForegroundColor Yellow
+    Write-Host "      contract 1 build. Compare wall clock, which is unaffected."          -ForegroundColor Yellow
+}
+
+Write-Host ""
+Write-Host "Two tables are comparable only if Contract, Set sha, Depth and Threads all"
+Write-Host "match. Build sha and Host are recorded so a difference can be attributed."
 
 if ($fastCount -gt 0) {
     Write-Host ""
