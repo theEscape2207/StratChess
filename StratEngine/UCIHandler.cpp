@@ -161,24 +161,29 @@ void UciHandler::init_ai()
 // leave it alone, because they do not change what the numbers mean.
 //
 //   1 — UCI 'nodes' is the main tree plus the quiescence tree (#312), both counted in
-//       MOVE EDGES so the two sum without overlap. One residual asymmetry, worth a
-//       fraction of a percent: pvs() counts a move before DoMove() can reject it as
-//       illegal, quiescence after. Aligning them means moving pvs()'s increment, which
-//       changes search behaviour (assess_iteration_quality) rather than reporting.
+//       MOVE EDGES, so the two sum with nothing counted twice. It is NOT a complete
+//       census of nodes visited, and the gaps are unmeasured: null-move edges (pvs()
+//       ~line 509) and LMR/PV re-searches of an already-counted edge belong to neither
+//       column, and the loops straddle DoMove() differently — pvs() counts a move
+//       before it can be rejected as illegal, quiescence after. Aligning that last one
+//       means moving pvs()'s increment, which changes search behaviour
+//       (assess_iteration_quality) rather than reporting.
 static constexpr int MEASUREMENT_CONTRACT = 1;
 
 void UciHandler::cmd_uci()
 {
 	send("id name StratChess");
 	send("id author Thees");
-	send("info string benchcontract " + std::to_string(MEASUREMENT_CONTRACT));
 	send("option name Threads type spin default 1 min 1 max 32");
 	// Hash budgets TT entry bytes. Arbitrary values round down to a power-of-two
 	// bucket count; exact-fit values include 192 / 384 / 768 / 1536. The
 	// separately queryable lock_bytes() is additional memory.
 	send("option name Hash type spin default " + std::to_string(AIPerplex::DEFAULT_HASH_MB) + " min " +
 	     std::to_string(AIPerplex::MIN_HASH_MB) + " max " + std::to_string(AIPerplex::MAX_HASH_MB));
+	// After uciok, not inside the block: the spec's reply to 'uci' is id + option + uciok,
+	// and an 'info' line among them is out of spec even though GUIs tolerate it.
 	send("uciok");
+	send("info string benchcontract " + std::to_string(MEASUREMENT_CONTRACT));
 }
 
 void UciHandler::cmd_isready() { send("readyok"); }

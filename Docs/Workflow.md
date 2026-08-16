@@ -339,7 +339,9 @@ into `Docs/EloLog.md`'s #237 row, one of them sign-inverted.
 
 Read the `main nodes` column as *the main tree including its frontier*: a quiescence root is a
 `pvs()` call at depth 0, so the edge into it is a main-tree edge and only the capture chain below it
-lands in `qs nodes`. The two columns therefore sum to the total exactly, with no node counted twice.
+lands in `qs nodes`. The two columns sum with nothing counted twice — but they are not a complete
+census of nodes visited, and the gaps are unmeasured; see `MEASUREMENT_CONTRACT` in
+`StratEngine/UCIHandler.cpp` for what neither column sees.
 
 **Use the right instrument for the size of the effect.** From this project's own data — the clang-cl
 migration measured +23.32% nps → +40.28 Elo at 10+0.1 — roughly **1% nps ≈ 1.7 Elo**. That is

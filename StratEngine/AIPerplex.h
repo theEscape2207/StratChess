@@ -35,7 +35,7 @@ struct SearchResult {
 // starts one more iteration, gets interrupted, and has that iteration
 // rejected by assess_iteration_quality() (REJECT_AND_STOP emits nothing —
 // see iterative_deepening()), but the rejected iteration's nodes are already
-// in td.nodes_searched by the time GetMove() reports the final total, so
+// in both counters by the time GetMove() reports the final total, so
 // that total is typically strictly greater than this field at Threads=1.
 // Under Lazy SMP the two also diverge because the final total sums helper
 // threads' nodes, which are never visible here. `pv` is a copy of the PV
