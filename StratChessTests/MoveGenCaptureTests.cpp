@@ -48,8 +48,17 @@ static std::vector<std::string> CaptureMoves(const char* fen)
 
 	std::vector<std::string> out;
 	out.reserve(moves.size());
-	for (const auto& move : moves)
+	for (const auto& move : moves) {
+		const ePiece target = board.GetPiece(move.to());
+		if (PieceHelper::IsActual(target)) {
+			CHECK(MoveHelper::IsCapture(move));
+		} else if (MoveHelper::IsPromote(move)) {
+			CHECK_FALSE(MoveHelper::IsCapture(move));
+		} else {
+			CHECK(MoveHelper::AsType(move) == MoveType::EP_CAPTURE);
+		}
 		out.emplace_back(MoveFormatter::ToUCI(move));
+	}
 	std::sort(out.begin(), out.end());
 	return out;
 }

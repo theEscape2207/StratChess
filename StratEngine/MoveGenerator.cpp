@@ -179,12 +179,7 @@ void MoveGenerator::GenerateOfficerMoves(const Board& board, const BITBOARD* con
 
 		BITBOARD bbAttack = GetOfficerAttackBoard(bbBitBoards, from, movPiece);
 		if (onlyCaptures) {
-			// Reducerer bitboardet til felter, hvor modstanderens brikker staar.
-			// Two different colour indices are in play in this file and they are easy to
-			// confuse: ALL_BLACK_PIECES - color is the enemy set (as in GeneratePawnCaptures),
-			// ALL_FROM_COLOR + color is the mover's own set. Own-occupied squares are already
-			// gone from bbAttack by the time it gets here, so masking with the own set instead
-			// would leave nothing at all and no officer capture would ever be generated.
+			// Keep only squares occupied by the opponent.
 			bbAttack = Bits::applyMask(bbAttack, bbBitBoards[ePiece::ALL_BLACK_PIECES - static_cast<int>(color)]);
 		}
 
