@@ -696,9 +696,9 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 
 	// Limit quiescence extension by qsearch. In check the budget is deliberately ignored —
 	// returning an evaluation of a position whose side to move is still in check is the
-	// defect this stage removes. The chain that bypasses the budget terminates on material
-	// rather than on depth: a side that is not in check still generates captures only, so it
-	// can only keep checking by capturing, which runs out.
+	// defect this path exists to remove. What bounds the chain that bypasses the budget is
+	// the draw and backstop checks below, not material: a quiet evasion may itself give
+	// check, so two sides can go on checking each other without a capture between them.
 	if (qsearch_depth > MAX_QSEARCH_DEPTH && !in_check) {
 		return Eval->Evaluate(td.board);
 	}
@@ -832,7 +832,8 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 	// In check, the move list was every legal evasion, so no survivor means checkmate — the
 	// one terminal state quiescence can identify with certainty. Score it by ply so shorter
 	// mates are preferred, and store it exact with an empty move: best_value is still the
-	// -Search_Init sentinel here, and narrowing that into the table is defect B all over again.
+	// -Search_Init sentinel here, and narrowing that sentinel into the table hands later
+	// probes a score no position ever had.
 	if (in_check && !moveFound) {
 		const int mate_value = -GameValues::Mate + ply;
 		tt.store(key, static_cast<int16_t>(mate_value), static_cast<int16_t>(qsearch_depth), static_cast<int16_t>(ply),
