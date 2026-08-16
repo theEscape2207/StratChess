@@ -200,6 +200,7 @@ class TranspositionTable {
 		uint8_t age = current_age.load(std::memory_order_relaxed);
 		size_t replaceIndex = 0;
 		int worst_score = std::numeric_limits<int>::max();
+		bool found_empty = false;
 
 		for (size_t i = 0; i < BUCKET_SIZE; ++i) {
 			auto& entry = bucket.entries[i];
@@ -208,6 +209,21 @@ class TranspositionTable {
 				// Exact same position - overwrite old record
 				replaceIndex = i;
 				break;
+			}
+
+			// An empty slot costs nothing to fill, so it is taken ahead of any occupied
+			// entry rather than competing on score. Scoring it would make the bucket's
+			// effective associativity depend on the replacement arithmetic: an entry whose
+			// score sits below an empty slot's is evicted while that slot stays empty.
+			if (entry.key == 0) {
+				if (!found_empty) {
+					found_empty = true;
+					replaceIndex = i;
+				}
+				continue;
+			}
+			if (found_empty) {
+				continue;
 			}
 
 			int score = replacementScore(entry, age);
@@ -272,11 +288,12 @@ class TranspositionTable {
 
 		// A quiescence entry resolves captures from a single node; a main-search entry of the
 		// same nominal depth resolves a full-width subtree, and pvs() mines main entries for a
-		// hash move even when they are too shallow to cut off. The penalty is sized to put the
-		// entire quiescence band below main-search depth 0 -- a full budget reaches
-		// 7 * 256 = 1792 -- so quiescence content displaces main content only by being newer,
-		// never by claiming more depth.
-		const int phase_bonus = (entry.phase == SearchPhase::MAIN) ? 0 : -2048;
+		// hash move even when they are too shallow to cut off. The penalty puts the entire
+		// quiescence band below main-search depth 0, so quiescence content displaces main
+		// content only by being newer, never by claiming more depth. It has to clear the
+		// PV bonus as well as the discounted depth to do that: a full budget marked PV_NODE
+		// otherwise reaches 7 * 256 + 512 = 2304.
+		const int phase_bonus = (entry.phase == SearchPhase::MAIN) ? 0 : -2560;
 		return adjusted_depth * 256 + pv_bonus + phase_bonus - age_diff * 512;
 	}
 

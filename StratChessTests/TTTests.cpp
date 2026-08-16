@@ -277,13 +277,90 @@ TEST_CASE("TT - even a full-budget quiescence entry ranks below every main entry
 	// alone puts a full-budget quiescence entry at main-search depth 7, where it evicts the
 	// shallow main entries that supply pvs() with hash moves — worth ~35% more nodes on the
 	// bench suite at a 16 MB table, and nothing at all at 192 MB.
+	//
+	// Every node type is checked because the PV bonus is added after the discount: a
+	// PV_NODE quiescence entry is the one that comes closest to escaping the band.
 	TranspositionTable tt(1);
 	constexpr int age = 0;
 
-	const int fresh_qsearch = tt.replacementScore(entry_with(15, SearchPhase::QUIESCENCE), age);
+	const int weakest_main = tt.replacementScore(entry_with(0, SearchPhase::MAIN, NodeType::ALL_NODE), age);
 
-	CHECK(fresh_qsearch < tt.replacementScore(entry_with(0, SearchPhase::MAIN), age));
-	CHECK(fresh_qsearch < tt.replacementScore(entry_with(8, SearchPhase::MAIN), age));
+	for (const NodeType type : {NodeType::ALL_NODE, NodeType::CUT_NODE, NodeType::PV_NODE}) {
+		const int fresh_qsearch = tt.replacementScore(entry_with(15, SearchPhase::QUIESCENCE, type), age);
+		INFO("node type " << static_cast<int>(type));
+		CHECK(fresh_qsearch < weakest_main);
+	}
+}
+
+TEST_CASE("TT - an empty slot is filled before any occupied entry is evicted", "[tt]")
+{
+	// store() picks the lowest-scoring slot, and the quiescence phase penalty puts an
+	// exhausted quiescence entry below what an empty slot scores. Without an explicit
+	// preference for empty slots, that entry is evicted while three slots stay empty, and the
+	// bucket's effective associativity silently drops to one.
+	TranspositionTable tt(0); // one bucket, so every key collides
+	REQUIRE(tt.bucket_count() == 1);
+
+	tt.newSearchIteration(); // matches the search: age is never 0 at store time
+
+	// An exhausted quiescence entry: the most evictable thing the engine can produce.
+	tt.store(KEY_A, 10, /*depth=*/-5, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE);
+
+	// Three more distinct keys. A four-entry bucket holds all four without evicting anything.
+	tt.store(KEY_B, 20, 4, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+	tt.store(KEY_MISS, 30, 6, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+	tt.store(KEY_A + 1, 40, 8, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+
+	CHECK(tt.probe(KEY_A, 0).has_value());
+	CHECK(tt.probe(KEY_B, 0).has_value());
+	CHECK(tt.probe(KEY_MISS, 0).has_value());
+	CHECK(tt.probe(KEY_A + 1, 0).has_value());
+}
+
+TEST_CASE("TT - a quiescence store evicts the weakest main entry, not an arbitrary one", "[tt]")
+{
+	// The phase ranking pinned above, driven through store() rather than read off
+	// replacementScore(): the scoring function is only worth anything if the storage path
+	// actually consults it, and only a full bucket forces it to choose.
+	TranspositionTable tt(0);
+	REQUIRE(tt.bucket_count() == 1);
+
+	tt.newSearchIteration();
+
+	const uint64_t deep = KEY_A;
+	const uint64_t middling = KEY_B;
+	const uint64_t shallow = KEY_MISS;
+	const uint64_t shallowest = KEY_A + 1;
+
+	tt.store(deep, 10, 12, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
+	tt.store(middling, 20, 8, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
+	tt.store(shallow, 30, 4, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
+	tt.store(shallowest, 40, 1, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
+
+	// Bucket is full; this one has to displace something.
+	tt.store(KEY_A + 2, 50, 15, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE);
+
+	CHECK_FALSE(tt.probe(shallowest, 0).has_value());
+	CHECK(tt.probe(deep, 0).has_value());
+	CHECK(tt.probe(middling, 0).has_value());
+	CHECK(tt.probe(shallow, 0).has_value());
+}
+
+TEST_CASE("TT - a same-key store overwrites regardless of phase", "[tt]")
+{
+	// Pre-existing behaviour, pinned because it is the one route by which a quiescence
+	// result can still destroy a main-search entry and its hash move: the key match short
+	// circuits before any scoring. Whether that is right is not this change's question.
+	TranspositionTable tt(0);
+	tt.newSearchIteration();
+
+	tt.store(KEY_A, 500, 12, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+	tt.store(KEY_A, 60, 15, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE);
+
+	const auto result = tt.probe(KEY_A, 0);
+	REQUIRE(result.has_value());
+	CHECK(result->phase == SearchPhase::QUIESCENCE);
+	CHECK(result->value == 60);
 }
 
 TEST_CASE("TT - a newer quiescence entry still displaces an aged main entry", "[tt]")

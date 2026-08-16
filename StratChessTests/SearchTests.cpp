@@ -1070,8 +1070,8 @@ TEST_CASE("Qsearch - an entry with less remaining budget does not satisfy a fres
 TEST_CASE("Qsearch - the root of a check chain records its full budget", "[search][qsearch][tt]")
 {
 	// A lone rook checking a cornered king: every evasion is quiet, so the chain runs on the
-	// in-check path that ignores the budget. The entry left behind must record that it had no
-	// budget left, which is what keeps it from being served to nodes that do.
+	// in-check path that ignores the budget. The chain's own entries carry negative budgets;
+	// this pins the root, which is the only one of them reachable by key from here.
 	AIPerlexTestFixture fix("7k/8/8/8/8/8/8/r6K w - - 0 1");
 	REQUIRE(fix.board_.InCheck());
 
