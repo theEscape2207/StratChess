@@ -36,7 +36,8 @@ enum class SearchPhase : uint8_t { MAIN, QUIESCENCE };
 struct TTEntry {
 	std::uint64_t key;
 	int16_t value;
-	int16_t depth; // Search depth or equivalent
+	int16_t depth; // Search remaining when the entry was produced: main-search depth, or
+	               // quiescence budget. Larger always means more search, in both phases.
 	SearchPhase phase;
 	BoundType bound;
 	NodeType node_type; // Track node type for better replacement
@@ -199,6 +200,7 @@ class TranspositionTable {
 		uint8_t age = current_age.load(std::memory_order_relaxed);
 		size_t replaceIndex = 0;
 		int worst_score = std::numeric_limits<int>::max();
+		bool found_empty = false;
 
 		for (size_t i = 0; i < BUCKET_SIZE; ++i) {
 			auto& entry = bucket.entries[i];
@@ -207,6 +209,21 @@ class TranspositionTable {
 				// Exact same position - overwrite old record
 				replaceIndex = i;
 				break;
+			}
+
+			// An empty slot costs nothing to fill, so it is taken ahead of any occupied
+			// entry rather than competing on score. Scoring it would make the bucket's
+			// effective associativity depend on the replacement arithmetic: an entry whose
+			// score sits below an empty slot's is evicted while that slot stays empty.
+			if (entry.key == 0) {
+				if (!found_empty) {
+					found_empty = true;
+					replaceIndex = i;
+				}
+				continue;
+			}
+			if (found_empty) {
+				continue;
 			}
 
 			int score = replacementScore(entry, age);
@@ -245,11 +262,14 @@ class TranspositionTable {
 		}
 	}
 
-	// Scale quiescence depth down to equivalent main search scale (tunable)
-	int quiescenceEquivalentDepth(int quiescencePly) const noexcept
+	// Express a quiescence entry's remaining budget on the main search's depth scale, so
+	// replacementScore() can rank both phases with one arithmetic. A quiescence ply resolves
+	// far less than a main-search ply, hence the discount; both units count search still to
+	// come, so more is better on either side of the comparison.
+	int quiescenceEquivalentDepth(int quiescenceBudget) const noexcept
 	{
 		constexpr double scale = 0.5; // tuned constant
-		return static_cast<int>(quiescencePly * scale);
+		return static_cast<int>(quiescenceBudget * scale);
 	}
 
 	// Compute entry score balancing depth, age, node type, and search phase
@@ -262,12 +282,18 @@ class TranspositionTable {
 		// PV nodes are more valuable to keep
 		int pv_bonus = (entry.node_type == NodeType::PV_NODE) ? 512 : 0;
 
-		// Scale quiescence depth down to equivalent main search scale (tunable)
+		// entry.depth is remaining search in both phases; quiescence plies are discounted to
+		// the main scale before they compete, so the entry that kept more search wins.
 		int adjusted_depth = (entry.phase == SearchPhase::MAIN) ? entry.depth : quiescenceEquivalentDepth(entry.depth);
 
-		// Quiescence searches sometimes have shallower depth but should still be
-		// considered -- no phase bonus/penalty either way.
-		constexpr int phase_bonus = 0;
+		// A quiescence entry resolves captures from a single node; a main-search entry of the
+		// same nominal depth resolves a full-width subtree, and pvs() mines main entries for a
+		// hash move even when they are too shallow to cut off. The penalty puts the entire
+		// quiescence band below main-search depth 0, so quiescence content displaces main
+		// content only by being newer, never by claiming more depth. It has to clear the
+		// PV bonus as well as the discounted depth to do that: a full budget marked PV_NODE
+		// otherwise reaches 7 * 256 + 512 = 2304.
+		const int phase_bonus = (entry.phase == SearchPhase::MAIN) ? 0 : -2560;
 		return adjusted_depth * 256 + pv_bonus + phase_bonus - age_diff * 512;
 	}
 
