@@ -55,6 +55,10 @@ class AIPerlexTestFixture {
   public:
 	static constexpr uint64_t TT_MARKER_KEY = 0x7fff'ffff'ffff'ffffULL;
 
+	// The budget pvs() hands a fresh quiescence node. Re-exported because AIPerplex keeps it
+	// private and the TEST_CASE functions below are not friends.
+	static constexpr int QSEARCH_BUDGET = AIPerplex::QSEARCH_BUDGET;
+
 	// Re-export private types for test use
 	using RejectionReason = AIPerplex::RejectionReason;
 	using Metrics = AIPerplex::IterationMetrics;
@@ -182,14 +186,22 @@ class AIPerlexTestFixture {
 	// Runs one quiescence() node on the fixture's board. The timer is armed because
 	// quiescence polls the wall clock every 1024 nodes and a default-constructed
 	// TimeManager has its start_time_ at the epoch, which would latch an abort.
-	int quiesce_node(int alpha, int beta, int qsearch_depth, int ply) const
+	int quiesce_node(int alpha, int beta, int qsearch_budget, int ply) const
 	{
 		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
 		ai->time_manager_.start(std::chrono::milliseconds(60'000));
 		ai->td_.board = board_;
 		ai->td_.nodes_since_check_ = 0;
 		ai->td_.info_seq.assign(static_cast<size_t>(ply) + 1, board_.GetGameInfo());
-		return ai->quiescence(ai->td_, alpha, beta, qsearch_depth, ply, *ai->_tt);
+		return ai->quiescence(ai->td_, alpha, beta, qsearch_budget, ply, *ai->_tt);
+	}
+
+	// Plants a quiescence entry for the fixture's board with a chosen remaining budget, so a
+	// test can prove which budgets a later probe is willing to reuse.
+	void store_qsearch_entry(int16_t value, int16_t qsearch_budget, int ply) const
+	{
+		ai->_tt->store(board_.get_zobrist_hash(), value, qsearch_budget, static_cast<int16_t>(ply), Move::EmptyMove(),
+		               BoundType::EXACT, NodeType::PV_NODE, SearchPhase::QUIESCENCE);
 	}
 
 	// Replays a UCI move list onto td_.board, advancing info_seq in lockstep the way the
@@ -211,7 +223,7 @@ class AIPerlexTestFixture {
 			ai->td_.add_move_to_seq(move, static_cast<size_t>(ply));
 			++ply;
 		}
-		return ai->quiescence(ai->td_, alpha, beta, /*qsearch_depth=*/0, ply, *ai->_tt);
+		return ai->quiescence(ai->td_, alpha, beta, AIPerplex::QSEARCH_BUDGET, ply, *ai->_tt);
 	}
 
 	SearchResult last_result() const { return ai->GetLastResult(); }
@@ -805,7 +817,8 @@ TEST_CASE("Qsearch - delta pruning keeps a king capture that wins a pawn", "[sea
 	REQUIRE_FALSE(fix.board_.InCheck());
 
 	const int stand_pat = fix.evaluate();
-	const int score = fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init, 0, /*ply=*/0);
+	const int score = fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init,
+	                                   AIPerlexTestFixture::QSEARCH_BUDGET, /*ply=*/0);
 
 	// Standing pat is always available, so the node can never score below it. Scoring
 	// exactly it means the only capture was pruned before it was ever searched.
@@ -864,7 +877,8 @@ TEST_CASE("Qsearch - in check, stand-pat cannot cut off and mate is seen", "[sea
 	REQUIRE(fix.evaluate() >= beta);
 
 	const int ply = 3;
-	CHECK(fix.quiesce_node(-GameValues::Search_Init, beta, /*qsearch_depth=*/0, ply) == -GameValues::Mate + ply);
+	CHECK(fix.quiesce_node(-GameValues::Search_Init, beta, AIPerlexTestFixture::QSEARCH_BUDGET, ply) ==
+	      -GameValues::Mate + ply);
 }
 
 // The assertion that carries these three is the TT's stored best move: it names the
@@ -881,7 +895,8 @@ TEST_CASE("Qsearch - in check, a quiet king evasion is found", "[search][qsearch
 	REQUIRE(fix.count_legal_moves() > 0);
 
 	const int ply = 2;
-	const int score = fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init, 0, ply);
+	const int score =
+	    fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init, AIPerlexTestFixture::QSEARCH_BUDGET, ply);
 	CHECK(score > -GameValues::Mate_Threshold);
 
 	const auto entry = fix.probe_tt(ply);
@@ -904,7 +919,8 @@ TEST_CASE("Qsearch - in check, a quiet blocking evasion is found and refuted", "
 	REQUIRE(fix.count_legal_moves() == 1);
 
 	const int ply = 2;
-	const int score = fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init, 0, ply);
+	const int score =
+	    fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init, AIPerlexTestFixture::QSEARCH_BUDGET, ply);
 	CHECK(score == -GameValues::Mate + ply + 2);
 
 	const auto entry = fix.probe_tt(ply);
@@ -923,7 +939,8 @@ TEST_CASE("Qsearch - in check, a capturing evasion is still found", "[search][qs
 	REQUIRE(fix.count_legal_moves() == 1);
 
 	const int ply = 2;
-	const int score = fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init, 0, ply);
+	const int score =
+	    fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init, AIPerlexTestFixture::QSEARCH_BUDGET, ply);
 	CHECK(score > -GameValues::Mate_Threshold);
 
 	const auto entry = fix.probe_tt(ply);
@@ -968,7 +985,60 @@ TEST_CASE("Qsearch - out of check, the stand-pat cutoff is unchanged", "[search]
 	constexpr int beta = 100;
 	REQUIRE(fix.evaluate() >= beta);
 
-	CHECK(fix.quiesce_node(-GameValues::Search_Init, beta, 0, /*ply=*/0) == beta);
+	CHECK(fix.quiesce_node(-GameValues::Search_Init, beta, AIPerlexTestFixture::QSEARCH_BUDGET, /*ply=*/0) == beta);
+}
+
+// ============================================================================
+// Quiescence TT depth: remaining budget, not plies consumed
+// ============================================================================
+// The transposition table's depth field means "search still to come" on the main
+// path, and quiescence now writes the same unit. Both tests fail if the parameter
+// ever goes back to counting plies already spent: the first would store 0 at a
+// fresh node, the second would reuse an entry produced with less search left.
+
+TEST_CASE("Qsearch - a node stores its remaining budget as the entry depth", "[search][qsearch][tt]")
+{
+	// A quiet position, so the node stands pat and stores without recursing: the entry's
+	// depth is then exactly the budget this node was given.
+	AIPerlexTestFixture fix("7k/8/8/8/8/8/8/1Q4K1 w - - 0 1");
+
+	fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init, AIPerlexTestFixture::QSEARCH_BUDGET,
+	                 /*ply=*/0);
+
+	const auto entry = fix.probe_tt(/*ply=*/0);
+	REQUIRE(entry.has_value());
+	CHECK(entry->phase == SearchPhase::QUIESCENCE);
+	CHECK(entry->depth == AIPerlexTestFixture::QSEARCH_BUDGET);
+}
+
+TEST_CASE("Qsearch - an entry with less remaining budget does not satisfy a deeper probe", "[search][qsearch][tt]")
+{
+	// A value no evaluation of this position could produce, so returning it proves the
+	// entry was reused rather than the node re-searched.
+	constexpr int16_t planted = 12'345;
+	const std::string quiet_position = "7k/8/8/8/8/8/8/1Q4K1 w - - 0 1";
+
+	SECTION("insufficient entry is ignored")
+	{
+		AIPerlexTestFixture fix(quiet_position);
+		fix.store_qsearch_entry(planted, /*qsearch_budget=*/1, /*ply=*/0);
+
+		const int score = fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init,
+		                                   AIPerlexTestFixture::QSEARCH_BUDGET, /*ply=*/0);
+
+		CHECK(score != planted);
+	}
+
+	SECTION("sufficient entry is reused")
+	{
+		AIPerlexTestFixture fix(quiet_position);
+		fix.store_qsearch_entry(planted, AIPerlexTestFixture::QSEARCH_BUDGET, /*ply=*/0);
+
+		const int score = fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init,
+		                                   AIPerlexTestFixture::QSEARCH_BUDGET, /*ply=*/0);
+
+		CHECK(score == planted);
+	}
 }
 
 // ============================================================================

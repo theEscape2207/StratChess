@@ -461,7 +461,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// Er vi naaet til bunden af traeet - evaluering?
 	//	See if static eval will cause a cutoff or raise alpha.
 	if (depth <= 0)
-		return quiescence(td, alpha, beta, 0, ply, tt);
+		return quiescence(td, alpha, beta, QSEARCH_BUDGET, ply, tt);
 
 	auto key = td.board.get_zobrist_hash();
 	int original_alpha = alpha;
@@ -687,7 +687,7 @@ int AIPerplex::adjustScoreForGameState(ThreadData& td, bool moveFound, int ply, 
 	return score;
 }
 
-int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth, int ply, TranspositionTable& tt)
+int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budget, int ply, TranspositionTable& tt)
 {
 	// Fast early exit: IsAborted() reads only the latched atomic (no clock call).
 	// Mirrors pvs() — collapses quiescence chains in O(depth) after latch fires.
@@ -701,8 +701,6 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 			return GameValues::Draw;
 	}
 
-	constexpr int MAX_QSEARCH_DEPTH = 15; // Lets keep it real
-
 	// A side to move in check may not decline to move, so this node cannot be settled by a
 	// static evaluation: no stand-pat, and every legal evasion must be searched, not just
 	// captures. Computed before the depth cutoffs because it decides which one applies.
@@ -713,7 +711,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 	// defect this path exists to remove. What bounds the chain that bypasses the budget is
 	// the draw and backstop checks below, not material: a quiet evasion may itself give
 	// check, so two sides can go on checking each other without a capture between them.
-	if (qsearch_depth > MAX_QSEARCH_DEPTH && !in_check) {
+	if (qsearch_budget < 0 && !in_check) {
 		return Eval->Evaluate(td.board);
 	}
 
@@ -748,11 +746,11 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 
 	auto key = td.board.get_zobrist_hash();
 
-	// Probe TT for cached info
+	// Probe TT for cached info. Both sides of the comparison are remaining budget, so an entry
+	// is reusable exactly when it was produced with at least as much search left as this node
+	// has — the same invariant the main search relies on.
 	if (auto entry = tt.probe(key, ply)) {
-		// Only use TT cutoff if QUIESCENCE entry AND depth stored is sufficient
-		if (entry->phase == SearchPhase::QUIESCENCE && entry->depth >= qsearch_depth) {
-			// Scale quiescence depth for comparison
+		if (entry->phase == SearchPhase::QUIESCENCE && entry->depth >= qsearch_budget) {
 			if (entry->bound == BoundType::EXACT) {
 				return entry->value;
 			}
@@ -783,7 +781,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 		stand_pat = Eval->Evaluate(td.board);
 		if (stand_pat >= beta) {
 			// Store and cutoff
-			tt.store(key, static_cast<int16_t>(beta), static_cast<int16_t>(qsearch_depth), static_cast<int16_t>(ply),
+			tt.store(key, static_cast<int16_t>(beta), static_cast<int16_t>(qsearch_budget), static_cast<int16_t>(ply),
 			         Move::EmptyMove(), BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::QUIESCENCE);
 			return beta;
 		}
@@ -829,13 +827,13 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 		// every quiescence root, whose incoming move the parent's loop already counted.
 		td.qnodes_searched++;
 
-		int score = -quiescence(td, -beta, -alpha, qsearch_depth + 1, ply + 1, tt);
+		int score = -quiescence(td, -beta, -alpha, qsearch_budget - 1, ply + 1, tt);
 		td.board.UndoMove(move);
 
 		moveFound = true;
 
 		if (score >= beta) {
-			tt.store(key, static_cast<int16_t>(beta), static_cast<int16_t>(qsearch_depth), static_cast<int16_t>(ply),
+			tt.store(key, static_cast<int16_t>(beta), static_cast<int16_t>(qsearch_budget), static_cast<int16_t>(ply),
 			         move, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::QUIESCENCE);
 			return beta;
 		}
@@ -852,7 +850,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 	// probes a score no position ever had.
 	if (in_check && !moveFound) {
 		const int mate_value = -GameValues::Mate + ply;
-		tt.store(key, static_cast<int16_t>(mate_value), static_cast<int16_t>(qsearch_depth), static_cast<int16_t>(ply),
+		tt.store(key, static_cast<int16_t>(mate_value), static_cast<int16_t>(qsearch_budget), static_cast<int16_t>(ply),
 		         Move::EmptyMove(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::QUIESCENCE);
 		return mate_value;
 	}
@@ -884,7 +882,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 		bound = BoundType::EXACT;
 	}
 
-	tt.store(key, static_cast<int16_t>(best_value), static_cast<int16_t>(qsearch_depth), static_cast<int16_t>(ply),
+	tt.store(key, static_cast<int16_t>(best_value), static_cast<int16_t>(qsearch_budget), static_cast<int16_t>(ply),
 	         best_move, bound, node_type, SearchPhase::QUIESCENCE);
 	return best_value;
 }
