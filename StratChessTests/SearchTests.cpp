@@ -196,6 +196,19 @@ class AIPerlexTestFixture {
 		return ai->quiescence(ai->td_, alpha, beta, qsearch_budget, ply, *ai->_tt);
 	}
 
+	// Enters quiescence the way the search does — through pvs() with no depth left — so the
+	// budget under test is the one pvs() hands out, not one the test chose. Passing the budget
+	// in directly would assert nothing about the unit it is expressed in.
+	int quiesce_via_pvs(int alpha, int beta, int ply) const
+	{
+		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
+		ai->time_manager_.start(std::chrono::milliseconds(60'000));
+		ai->td_.board = board_;
+		ai->td_.nodes_since_check_ = 0;
+		ai->td_.info_seq.assign(static_cast<size_t>(ply) + 1, board_.GetGameInfo());
+		return ai->pvs(ai->td_, /*depth=*/0, alpha, beta, ply, /*is_pv_node=*/true, *ai->_tt);
+	}
+
 	// Plants a quiescence entry for the fixture's board with a chosen remaining budget, so a
 	// test can prove which budgets a later probe is willing to reuse.
 	void store_qsearch_entry(int16_t value, int16_t qsearch_budget, int ply) const
@@ -992,18 +1005,18 @@ TEST_CASE("Qsearch - out of check, the stand-pat cutoff is unchanged", "[search]
 // Quiescence TT depth: remaining budget, not plies consumed
 // ============================================================================
 // The transposition table's depth field means "search still to come" on the main
-// path, and quiescence now writes the same unit. Both tests fail if the parameter
-// ever goes back to counting plies already spent: the first would store 0 at a
-// fresh node, the second would reuse an entry produced with less search left.
+// path, and quiescence now writes the same unit. Both tests enter through pvs() so
+// that the budget is the one the search hands out: with plies counted as consumed
+// instead, the first would see 0 stored at a fresh node, and the second would reuse
+// an entry produced with almost no search left.
 
-TEST_CASE("Qsearch - a node stores its remaining budget as the entry depth", "[search][qsearch][tt]")
+TEST_CASE("Qsearch - a fresh node stores its remaining budget as the entry depth", "[search][qsearch][tt]")
 {
 	// A quiet position, so the node stands pat and stores without recursing: the entry's
-	// depth is then exactly the budget this node was given.
+	// depth is then exactly the budget pvs() handed the node.
 	AIPerlexTestFixture fix("7k/8/8/8/8/8/8/1Q4K1 w - - 0 1");
 
-	fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init, AIPerlexTestFixture::QSEARCH_BUDGET,
-	                 /*ply=*/0);
+	fix.quiesce_via_pvs(-GameValues::Search_Init, GameValues::Search_Init, /*ply=*/0);
 
 	const auto entry = fix.probe_tt(/*ply=*/0);
 	REQUIRE(entry.has_value());
@@ -1011,10 +1024,10 @@ TEST_CASE("Qsearch - a node stores its remaining budget as the entry depth", "[s
 	CHECK(entry->depth == AIPerlexTestFixture::QSEARCH_BUDGET);
 }
 
-TEST_CASE("Qsearch - an entry with less remaining budget does not satisfy a deeper probe", "[search][qsearch][tt]")
+TEST_CASE("Qsearch - an entry with less remaining budget does not satisfy a fresh node", "[search][qsearch][tt]")
 {
-	// A value no evaluation of this position could produce, so returning it proves the
-	// entry was reused rather than the node re-searched.
+	// A value no evaluation of this position could produce, so returning it proves the entry
+	// was reused rather than the node re-searched.
 	constexpr int16_t planted = 12'345;
 	const std::string quiet_position = "7k/8/8/8/8/8/8/1Q4K1 w - - 0 1";
 
@@ -1023,8 +1036,7 @@ TEST_CASE("Qsearch - an entry with less remaining budget does not satisfy a deep
 		AIPerlexTestFixture fix(quiet_position);
 		fix.store_qsearch_entry(planted, /*qsearch_budget=*/1, /*ply=*/0);
 
-		const int score = fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init,
-		                                   AIPerlexTestFixture::QSEARCH_BUDGET, /*ply=*/0);
+		const int score = fix.quiesce_via_pvs(-GameValues::Search_Init, GameValues::Search_Init, /*ply=*/0);
 
 		CHECK(score != planted);
 	}
@@ -1034,8 +1046,7 @@ TEST_CASE("Qsearch - an entry with less remaining budget does not satisfy a deep
 		AIPerlexTestFixture fix(quiet_position);
 		fix.store_qsearch_entry(planted, AIPerlexTestFixture::QSEARCH_BUDGET, /*ply=*/0);
 
-		const int score = fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init,
-		                                   AIPerlexTestFixture::QSEARCH_BUDGET, /*ply=*/0);
+		const int score = fix.quiesce_via_pvs(-GameValues::Search_Init, GameValues::Search_Init, /*ply=*/0);
 
 		CHECK(score == planted);
 	}
