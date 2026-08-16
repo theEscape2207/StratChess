@@ -2,9 +2,32 @@
 
 Living status document for the #237 work sequence. The issue body is the authoritative
 specification; this file records **where the work stands, what was decided beyond the issue, and
-what the next session should pick up**. Delete it when #237 closes.
+what the next session should pick up**.
 
 Last updated: 2026-08-16.
+
+---
+
+## Read this first: #306 answered the issue, and #312 invalidated the numbers
+
+**#237 is closed** (COMPLETED, 2026-08-15 — auto-closed by stage 1's PR #304). Its headline question
+is genuinely answered, but by **#306** rather than by any of the three defects it named:
+`MoveGenerator::GenerateOfficerMoves()` masked the capture set with the mover's *own* pieces, so
+`ComputeCaptures()` never produced an officer capture and quiescence had only ever resolved pawn
+captures and promotions. The fix merged as **PR #316**; the evidence is the last comment on #237.
+
+Three consequences, and they are why this file still exists:
+
+1. **Stage 3 (defect C) is the only unfinished stage, and it is now an ordinary correctness fix.**
+   It has to justify itself on the invariant it repairs plus its own bench/SPRT numbers. The parity
+   swing is spent as an acceptance criterion — #306 took it from ≈265 cp to ≈4 cp on its own.
+2. **Every sweep recorded below is historical.** The stage 0b baseline and the stage 2 sweep both
+   predate #306, so neither is a valid comparison basis. Stage 3's first step is a fresh sweep of the
+   same position on current `origin/main`.
+3. **Every node count below is pre-#312.** `nodes_searched` excluded quiescence nodes until PR #313,
+   so those figures are not comparable with anything measured today, in either direction.
+
+Delete this file when stage 3 lands or is dropped and the follow-ups in the ledger below have homes.
 
 ---
 
@@ -42,7 +65,8 @@ branches and defect B's arithmetic were here too — all three are now fixed and
   looks.** `pvs()` indexes `td.killers[ply]` and `td.last_move_was_null[ply+1]` unguarded, and both
   are `[MAX_PLY]` (256, `defines.h:101`). `quiescence()` touches neither, and `PVTable` guards every
   ply access (`PVTable.h`). So removing the `MAX_QSEARCH_DEPTH` cap for in-check nodes risks stack
-  exhaustion on a perpetual-check line rather than an out-of-bounds write. Bound it anyway.
+  exhaustion on a perpetual-check line rather than an out-of-bounds write. *Addressed by stage 2
+  (PR #311), which added the `MAX_PLY` backstop plus draw detection on the in-check path.*
 
 ## Tactical test semantics — decided
 
@@ -103,7 +127,7 @@ outlive the search. Under time control only, which is why no fixed-depth test ca
 Keep it out of stages 1-3. Those are deliberately one-defect-at-a-time so that each one's effect on
 `WAC-287` is attributable; #299 changes TT contents under time control and would destroy that.
 
-## Also split out: the `stop`-before-`start` race
+## Also split out: the `stop`-before-`start` race — now #301
 
 Surfaced when stage 0's concurrency test hung deterministically. `TimeManager::start()` stores
 `should_stop_ = false` (`TimeManager.h:29`); `ApplyLimits()` calls it from inside `GetMove()` on the
@@ -115,10 +139,9 @@ in `join()` forever. `TimeManager.h:15-16` documents the ordering requirement wi
 Stage 0's test closes the window with a 200 ms sleep and says so in its comment. **That sleep is a
 marker, not a fix** — when the race is fixed, delete it and let the test exercise the real window.
 
-## Stage 2 measurement — decided: bench + SPRT
+## Measurement parameters — decided: bench + SPRT
 
-Approved 2026-08-15. Concrete parameters, so the run does not have to be re-litigated when stage 2 is
-ready:
+Approved 2026-08-15 for stage 2, and they carry over unchanged to stage 3:
 
 **Bench.** `Run-Bench.ps1 -Exe <path>` before and after. The "before" binary must be built from the
 merge base *before* the working tree is touched — `run-tests` does not rebuild the exe, so a
@@ -170,11 +193,13 @@ None outstanding.
 | # | Stage | Kind | Status | Branch / PR |
 |---|---|---|---|---|
 | 0 | Per-iteration UCI `info` + `send()` serialisation | semantics-preserving | **merged, PR #300** | — |
-| 0b | `WAC-287` baseline sweep, depths 4-12 | evidence | **done, recorded below** | `worktree-237-wac287-baseline` |
+| 0b | `WAC-287` baseline sweep, depths 4-12 | evidence | **done, PR #303 — expired by #306** | — |
 | 1 | Terminal-node TT storage (defect B) | search change | **merged, PR #304** | — |
-| 2 | Legal qsearch while in check (defect A) | search change | **implemented, PR pending** | `worktree-237-qsearch-prerequisites` |
-| 3 | Qsearch TT depth → remaining budget (defect C) | search change | not started | — |
+| 2 | Legal qsearch while in check (defect A) | search change | **merged, PR #311** | — |
+| 3 | Qsearch TT depth → remaining budget (defect C) | search change | **not started — the only open stage** | — |
 | 4 | Tactical test-data semantics (`WAC-043`, `WAC-065`) | test data | **merged, PR #298** | — |
+| — | Officer captures in `ComputeCaptures()` (#306) | search change | **merged, PR #316** — this is what explained `WAC-287` | — |
+| — | Quiescence nodes counted in `nodes_searched` (#312) | instrumentation | **merged, PR #313** | — |
 
 Stage 4 is scoped to the two positions #237 names. Adopting the new semantics implies the other 34
 positions were written under the old one and may also carry narrow lists, but a full-suite audit is
@@ -210,12 +235,16 @@ Two instrument quirks to know before reading any of this as evidence:
   showing a plausible score at depth N and a suspicious 0 at depth N+1 is displaying this, not a new
   bug. Use fixed depth for evidence runs and it cannot arise.
 
-#### The baseline
+#### The baseline — expired, kept for the reasoning it produced
 
 Recorded 2026-08-15 on `b72f361` (`origin/main`, stage 0 merged). Release clang-cl,
 `Threads=1`, `Hash=192`, position
-`rn3k1r/pp2bBpp/2p2n2/q5N1/3P4/1P6/P1P3PP/R1BQ1RK1 w - - 0 1`. **This is the comparison basis for
-stages 1-3.**
+`rn3k1r/pp2bBpp/2p2n2/q5N1/3P4/1P6/P1P3PP/R1BQ1RK1 w - - 0 1`.
+
+**Do not compare anything against this table.** It was the comparison basis for stages 1-3 until
+#306 merged; the position now scores flat across depths 4-12 and returns `d1h5` throughout. Node
+counts here are also pre-#312 (main-search only). What survives is the *method* — the parity
+decomposition, and the `Ne6+` observation that first tied this position to horizon checks.
 
 | depth | move | score | nodes | PV |
 |---:|---|---:|---:|---|
@@ -370,6 +399,10 @@ read before the move loop and never after. Do not introduce a use of it after th
 
 #### Stage 2 — post-change sweep: the parity swing narrowed by a third
 
+**Superseded.** This sweep was taken with the #306 defect still present, i.e. against a quiescence
+that could not resolve officer captures, and its node counts are pre-#312. Stage 2 merged as PR #311
+on its own correctness grounds; the swing reduction below is no longer evidence for anything.
+
 Recorded 2026-08-16 on `223870f`, same position, binary and settings as the baseline
 (`Threads=1`, `Hash=192`, one `go depth 12`).
 
@@ -404,25 +437,73 @@ and `WAC-287` is a position whose main line runs through checks repeatedly, whic
 selected. The suite-wide direction is what the nps and Elo numbers are built on; this position is
 the diagnostic, not the sample.
 
-### Stage 3
+### Stage 3 — qsearch TT depth: the one stage still open
 
-Specified in the issue body. Needs: a focused regression test for the exact invariant, the fix alone,
-the post-change sweep against the baseline table, the full suite, a `search-reviewer` dispatch, and
-bench plus SPRT (parameters pinned above). It is a rename-and-invert with a narrow blast radius.
+Specified in the issue body, section 3. **Still present in the code**, verified against `origin/main`
+@ `d8f0f54`:
 
-Stage 2 is the one with a mechanism for `WAC-287`'s behaviour — supported by the baseline's `Ne6+`
-finding, not just by argument — and the one that costs nodes.
+- `AIPerplex.cpp:754` accepts a quiescence entry when `entry->depth >= qsearch_depth`, where
+  `qsearch_depth` counts plies *consumed* — so an entry with less remaining search satisfies a node
+  that needs more.
+- The four `tt.store()` calls in `quiescence()` write that consumed count as the entry depth.
+- `TranspositionTable.h:249` `quiescenceEquivalentDepth()` scales it by 0.5 and
+  `replacementScore()` (line 266) rewards the larger value, so replacement prefers the *shallower*
+  result.
 
-Judge each stage on the **parity swing** (odd-depth mean minus even-depth mean, ≈265 cp at baseline),
-not on whether depth 8 flips back to `d1h5`. The swing is continuous and sensitive; the depth-8 move
-is one bit of a compressed ordering and can flip for reasons unrelated to the fix under test.
+The fix is store-and-compare remaining budget instead of plies consumed, which makes the existing
+`entry_depth >= requested_depth` convention correct and lets replacement scoring drop the inverted
+arithmetic. Narrow blast radius; it is a rename-and-invert plus the tests.
+
+**Its acceptance criterion is not `WAC-287` any more.** Judge it on the invariant it repairs, the
+regression tests for cutoff sufficiency and replacement ordering, and its own bench/SPRT. Record the
+fresh `WAC-287` sweep as evidence of *no* unexpected change, not as the success condition — that
+position no longer oscillates.
+
+Steps, unchanged from the issue's validation section apart from the criterion:
+
+1. Fresh pre-change sweep on `origin/main` (one `go depth 12`, `Threads=1`, `Hash=192`) — the tables
+   above cannot serve as the "before".
+2. Regression tests for the exact invariant, then the fix alone.
+3. Repeat the sweep; full test suite; tactical suite (36/36 is the current state).
+4. `search-reviewer` dispatch — the diff touches `AIPerplex.cpp` qsearch and TT integration.
+5. Bench plus SPRT, parameters as pinned above.
+
+**Open question before starting: is stage 3 worth shipping at all?** It is a real defect and the fix
+is small, but the issue that motivated it is answered and closed. The honest options are to finish it
+as a standalone correctness PR against a new issue, or to close it out as won't-do with the defect
+documented. That is the user's call, and it should be made before the sweep is run.
+
+### Spin-offs from this work — where each one lives now
+
+| # | What | Status |
+|---|---|---|
+| #299 | Aborted searches return `Draw` and poison the TT at full depth | open; stage 1's terminal store is exempt from its guard (noted on the issue) |
+| #301 | `stop` erased by `TimeManager::start()`, `go infinite` unstoppable | open; stage 0's 200 ms sleep in the concurrency test is the marker to delete when it lands |
+| #305 | TT mate-score normalisation stops working beyond ply 100 | open |
+| #306 | Officer captures never generated | **closed, PR #316** |
+| #307 | Legacy `PlayerAiBase::Quiescent` has no depth cap, live after #306 | open |
+| #308 | `quiescence()` holds a `GameInfo` reference into a vector it can reallocate | open — this is the "watch during implementation" note above, now filed |
+| #310 | Reported PV contains illegal moves | open |
+| #312 | `nodes_searched` excluded quiescence | **closed, PR #313** |
+| #314, #315 | Node-counter gaps (null-move/re-search edges; `qnodes` above `Threads=1`) | open |
+
+Two items from this document have **no home yet**:
+
+- **Evasion ordering.** `SortMovesByValue` scores quiets at `-piece/16`, so king moves — often the
+  only evasion — sort last on the in-check qsearch path stage 2 added. Deliberately left alone to
+  protect attribution; nothing tracks it now. Closest existing issue is #86 (SEE in quiescence).
+- **The `WAC-043` correction to the #237 issue body.** The body still calls the historical
+  alternatives "winning, although by different margins"; the measurement in this file says `h2h4`
+  throws away ~2900 cp and the depth-8 failure was a genuine search error, not a test-data artefact.
+  The issue is closed, so this is a comment or a body edit, not a reopen.
 
 ---
 
 ## Resuming in a later session
 
-1. Read this file and the #237 issue body.
+1. Read this file's "Read this first" section, then the #237 issue body **and its last comment** —
+   the comment is where the conclusion lives.
 2. `Get-Worktrees.ps1` for drift and PR state.
-3. Pick up the first stage on the board that is not merged; the stages are strictly ordered except
-   stage 4.
-4. Re-check assumptions against `origin/main` before executing — this document ages.
+3. Stage 3 is the only open stage, and it starts with the decision recorded in its section above.
+4. Re-check assumptions against `origin/main` before executing — this document ages, and it has now
+   been overtaken once already.
