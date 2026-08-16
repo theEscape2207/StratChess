@@ -1050,6 +1050,40 @@ TEST_CASE("Qsearch - an entry with less remaining budget does not satisfy a fres
 
 		CHECK(score == planted);
 	}
+
+	SECTION("an entry from an exhausted in-check chain is ignored")
+	{
+		// In check the budget is bypassed, so a chain of evasions drives it negative and the
+		// entries it stores carry negative depths. This pins the contract for that range
+		// rather than reproducing a past defect: under plies-consumed those entries carried
+		// the *largest* depths in the table, so the situation this rules out could not arise
+		// in the same shape, and reverting the unit does not fail this section.
+		AIPerlexTestFixture fix(quiet_position);
+		fix.store_qsearch_entry(planted, /*qsearch_budget=*/-5, /*ply=*/0);
+
+		const int score = fix.quiesce_via_pvs(-GameValues::Search_Init, GameValues::Search_Init, /*ply=*/0);
+
+		CHECK(score != planted);
+	}
+}
+
+TEST_CASE("Qsearch - the root of a check chain records its full budget", "[search][qsearch][tt]")
+{
+	// A lone rook checking a cornered king: every evasion is quiet, so the chain runs on the
+	// in-check path that ignores the budget. The entry left behind must record that it had no
+	// budget left, which is what keeps it from being served to nodes that do.
+	AIPerlexTestFixture fix("7k/8/8/8/8/8/8/r6K w - - 0 1");
+	REQUIRE(fix.board_.InCheck());
+
+	fix.quiesce_via_pvs(-GameValues::Search_Init, GameValues::Search_Init, /*ply=*/0);
+
+	const auto entry = fix.probe_tt(/*ply=*/0);
+	REQUIRE(entry.has_value());
+	CHECK(entry->phase == SearchPhase::QUIESCENCE);
+	// The root of the chain still holds its full budget; the entries below it are the negative
+	// ones, and they are unreachable from here without walking the tree. What this pins is that
+	// the root is not itself recorded as exhausted.
+	CHECK(entry->depth == AIPerlexTestFixture::QSEARCH_BUDGET);
 }
 
 // ============================================================================

@@ -166,9 +166,10 @@ class AIPerplex final : public PlayerAiBase {
 	int search_with_aspiration(ThreadData& td, int depth, int seed_score, TranspositionTable& tt);
 	int pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt);
 	int adjustScoreForGameState(ThreadData& td, bool moveFound, int ply, int best_value);
-	// Plies of quiescence a node entering from pvs() starts with. quiescence() spends it
-	// downwards, so the value it carries is always search still to come — the same unit
-	// pvs() uses for depth and both phases write to the transposition table.
+	// Budget a node entering quiescence from pvs() starts with. quiescence() spends it
+	// downwards and stops when it goes negative, so 16 ply levels run out of check; the value
+	// it carries is always search still to come — the same unit pvs() uses for depth and both
+	// phases write to the transposition table.
 	static constexpr int QSEARCH_BUDGET = 15;
 
 	// qsearch_budget is the quiescence plies still to come, counted down towards zero, so it

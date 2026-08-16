@@ -241,6 +241,65 @@ TEST_CASE("TT - bucket count is a power of two", "[tt]")
 	}
 }
 
+// ── Replacement ranking across phases ─────────────────────────────────────────
+//
+// entry.depth is remaining search in both phases, so replacement can rank the two
+// with one arithmetic — a quiescence budget discounted onto the main-search scale.
+// These pin the discount, because it decides how much shallow main-search content
+// quiescence entries are allowed to evict, and nothing else would notice it moving.
+
+static TTEntry entry_with(int16_t depth, SearchPhase phase, NodeType node_type = NodeType::ALL_NODE)
+{
+	TTEntry e;
+	e.key = KEY_A;
+	e.depth = depth;
+	e.phase = phase;
+	e.node_type = node_type;
+	return e;
+}
+
+TEST_CASE("TT - a quiescence entry that kept more budget outranks one that kept less", "[tt]")
+{
+	TranspositionTable tt(1);
+	constexpr int age = 0;
+
+	const int full = tt.replacementScore(entry_with(15, SearchPhase::QUIESCENCE), age);
+	const int spent = tt.replacementScore(entry_with(0, SearchPhase::QUIESCENCE), age);
+	const int exhausted = tt.replacementScore(entry_with(-5, SearchPhase::QUIESCENCE), age);
+
+	CHECK(full > spent);
+	CHECK(spent >= exhausted);
+}
+
+TEST_CASE("TT - a fresh quiescence entry ranks between shallow and deep main entries", "[tt]")
+{
+	// The 0.5 discount puts a full-budget quiescence entry at main-search depth 7. Below that
+	// a main entry loses its bucket slot to quiescence content; above it, it does not. Moving
+	// the discount moves that crossover, which is a strength decision, not a refactor.
+	TranspositionTable tt(1);
+	constexpr int age = 0;
+
+	const int fresh_qsearch = tt.replacementScore(entry_with(15, SearchPhase::QUIESCENCE), age);
+
+	CHECK(fresh_qsearch > tt.replacementScore(entry_with(6, SearchPhase::MAIN), age));
+	CHECK(fresh_qsearch < tt.replacementScore(entry_with(8, SearchPhase::MAIN), age));
+}
+
+TEST_CASE("TT - the quiescence depth discount is monotone across zero", "[tt]")
+{
+	// Truncation toward zero flattens -1, 0 and 1 onto 0; that is harmless. An ordering
+	// inversion would not be — it would make an exhausted entry outrank a fresh one.
+	TranspositionTable tt(1);
+
+	int previous = tt.quiescenceEquivalentDepth(-20);
+	for (int budget = -19; budget <= 20; ++budget) {
+		const int current = tt.quiescenceEquivalentDepth(budget);
+		INFO("budget " << budget);
+		REQUIRE(current >= previous);
+		previous = current;
+	}
+}
+
 TEST_CASE("TT - a request too small for one bucket still allocates one", "[tt]")
 {
 	// 0 MiB would compute zero buckets; the table must stay usable rather than
