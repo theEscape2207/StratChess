@@ -18,16 +18,17 @@ captures and promotions. The fix merged as **PR #316**; the evidence is the last
 
 Three consequences, and they are why this file still exists:
 
-1. **Stage 3 (defect C) is the only unfinished stage, and it is now an ordinary correctness fix.**
-   It has to justify itself on the invariant it repairs plus its own bench/SPRT numbers. The parity
-   swing is spent as an acceptance criterion — #306 took it from ≈265 cp to ≈4 cp on its own.
+1. **Every stage is now merged**, stage 3 last, as PR #318. It shipped as an ordinary correctness fix
+   judged on the invariant it repairs plus bench, because the parity swing was spent as an acceptance
+   criterion — #306 took it from ≈265 cp to ≈4 cp on its own.
 2. **Every sweep recorded below is historical.** The stage 0b baseline and the stage 2 sweep both
-   predate #306, so neither is a valid comparison basis. Stage 3's first step is a fresh sweep of the
-   same position on current `origin/main`.
+   predate #306, so neither is a valid comparison basis for anything. Stage 3 measured against a
+   fresh baseline taken on `d8f0f54`.
 3. **Every node count below is pre-#312.** `nodes_searched` excluded quiescence nodes until PR #313,
    so those figures are not comparable with anything measured today, in either direction.
 
-Delete this file when stage 3 lands or is dropped and the follow-ups in the ledger below have homes.
+One task is left — the cumulative strength run — and then this file goes. See
+[What is left, and when this file can go](#what-is-left-and-when-this-file-can-go).
 
 ---
 
@@ -196,7 +197,7 @@ None outstanding.
 | 0b | `WAC-287` baseline sweep, depths 4-12 | evidence | **done, PR #303 — expired by #306** | — |
 | 1 | Terminal-node TT storage (defect B) | search change | **merged, PR #304** | — |
 | 2 | Legal qsearch while in check (defect A) | search change | **merged, PR #311** | — |
-| 3 | Qsearch TT depth → remaining budget (defect C) | search change | **not started — the only open stage** | — |
+| 3 | Qsearch TT depth → remaining budget (defect C) | search change | **merged, PR #318** — plus the TT replacement-policy fixes it forced | — |
 | 4 | Tactical test-data semantics (`WAC-043`, `WAC-065`) | test data | **merged, PR #298** | — |
 | — | Officer captures in `ComputeCaptures()` (#306) | search change | **merged, PR #316** — this is what explained `WAC-287` | — |
 | — | Quiescence nodes counted in `nodes_searched` (#312) | instrumentation | **merged, PR #313** | — |
@@ -437,41 +438,59 @@ and `WAC-287` is a position whose main line runs through checks repeatedly, whic
 selected. The suite-wide direction is what the nps and Elo numbers are built on; this position is
 the diagnostic, not the sample.
 
-### Stage 3 — qsearch TT depth: the one stage still open
+### Stage 3 — qsearch TT depth: merged, PR #318, and it grew two companions
 
-Specified in the issue body, section 3. **Still present in the code**, verified against `origin/main`
-@ `d8f0f54`:
+Shipped as a correctness fix on its own terms: the issue that motivated it was already answered, so
+it was judged on the invariant it repairs plus bench, not on `WAC-287`.
 
-- `AIPerplex.cpp:754` accepts a quiescence entry when `entry->depth >= qsearch_depth`, where
-  `qsearch_depth` counts plies *consumed* — so an entry with less remaining search satisfies a node
-  that needs more.
-- The four `tt.store()` calls in `quiescence()` write that consumed count as the entry depth.
-- `TranspositionTable.h:249` `quiescenceEquivalentDepth()` scales it by 0.5 and
-  `replacementScore()` (line 266) rewards the larger value, so replacement prefers the *shallower*
-  result.
+**What landed, in three parts.** Only the first was planned.
 
-The fix is store-and-compare remaining budget instead of plies consumed, which makes the existing
-`entry_depth >= requested_depth` convention correct and lets replacement scoring drop the inverted
-arithmetic. Narrow blast radius; it is a rename-and-invert plus the tests.
+1. **The unit fix.** `quiescence()`'s parameter is remaining budget: `AIPerplex::QSEARCH_BUDGET = 15`
+   from `pvs()`, `qsearch_budget - 1` on recursion, cutoff at `< 0`, and all four `tt.store()` calls
+   write the remainder. The cutoff is exactly equivalent — `consumed > 15 ⟺ budget < 0` — so the
+   node set the budget admits is unchanged; the reuse relation is what flips.
+2. **A phase penalty in `replacementScore()`.** Correcting the unit moved a quiescence *root* — one
+   per main-search leaf, so the most numerous entry there is — from `adjusted_depth` 0 to 7, i.e.
+   above every main entry of depth 1-6. `pvs()` mines main entries for a hash move even when they are
+   too shallow to cut off, so that cost interior move ordering. The −2560 penalty puts the whole
+   quiescence band below main-search depth 0, PV bonus included.
+3. **Empty slots are filled before anything is evicted.** `store()` scored empty slots like occupied
+   ones; an empty slot scores `-512 * age_diff`, so penalized quiescence entries sank *below* empty
+   slots and were evicted while three slots in the bucket sat unused.
 
-**Its acceptance criterion is not `WAC-287` any more.** Judge it on the invariant it repairs, the
-regression tests for cutoff sufficiency and replacement ordering, and its own bench/SPRT. Record the
-fresh `WAC-287` sweep as evidence of *no* unexpected change, not as the success condition — that
-position no longer oscillates.
+**Measured, `Run-Bench` position set at fixed depth (node counts are deterministic; wall clock was
+single-sampled and is not quoted as a measurement):**
 
-Steps, unchanged from the issue's validation section apart from the criterion:
+| variant | 16 MB nodes | 192 MB nodes |
+|---|---:|---:|
+| pre-change reference | 29.80 M | 33.44 M |
+| unit fix alone | 40.25 M (+35.1%) | 28.13 M (−15.9%) |
+| + phase penalty | 32.33 M (+8.5%) | 27.74 M (−17.0%) |
+| + empty-slot fix (shipped) | **28.98 M (−2.7%)** | **28.41 M (−15.0%)** |
 
-1. Fresh pre-change sweep on `origin/main` (one `go depth 12`, `Threads=1`, `Hash=192`) — the tables
-   above cannot serve as the "before".
-2. Regression tests for the exact invariant, then the fix alone.
-3. Repeat the sweep; full test suite; tactical suite (36/36 is the current state).
-4. `search-reviewer` dispatch — the diff touches `AIPerplex.cpp` qsearch and TT integration.
-5. Bench plus SPRT, parameters as pinned above.
+`WAC-287` returns identical move, score and PV at every depth 1-12 against a fresh pre-change
+baseline on `d8f0f54`.
 
-**Open question before starting: is stage 3 worth shipping at all?** It is a real defect and the fix
-is small, but the issue that motivated it is answered and closed. The honest options are to finish it
-as a standalone correctness PR against a new issue, or to close it out as won't-do with the defect
-documented. That is the user's call, and it should be made before the sweep is run.
+**SPRT: inconclusive, and deliberately not in `Docs/EloLog.md`.** `-Sprt NonRegression` against the
+pre-change build, 2000 games at 10+0.1, 192 MB: `+9.90 +/- 11.88 Elo`, LOS 94.9%, LLR 1.69 of 2.94.
+Roughly 3000-3500 games would likely have crossed the accept bound. The batch also raised
+illegal-PV warnings (#310) from *both* engines, which makes it discardable by this project's own
+rule, and it measured only the first of the three changes above. Recorded here rather than in the
+ledger for both reasons.
+
+#### Harvest: two decisions this stage reversed
+
+- **"TT phase and depth are untouched by stage 3"** (the stage 2 design section above) is **wrong as
+  shipped**. Depth semantics changed, and the replacement calibration had to change with them. Left
+  in place above rather than edited, because the reasoning that produced it is the useful part.
+- **The +8.5% residual at 16 MB was not "the price of correctness".** It was characterised that way
+  before the empty-slot defect was found. Both reviews' instinct that replacement policy was still
+  wrong beat the argument that the cost was unavoidable — worth remembering the next time a residual
+  gets explained rather than investigated.
+
+Durable content is in the source: the budget unit on `AIPerplex::QSEARCH_BUDGET` and
+`quiescence()`'s declaration, the penalty's sizing argument in `replacementScore()`, and the
+empty-slot rule in `store()`. Nothing from this section needs to survive the file.
 
 ### Spin-offs from this work — where each one lives now
 
@@ -486,16 +505,42 @@ documented. That is the user's call, and it should be made before the sweep is r
 | #310 | Reported PV contains illegal moves | open |
 | #312 | `nodes_searched` excluded quiescence | **closed, PR #313** |
 | #314, #315 | Node-counter gaps (null-move/re-search edges; `qnodes` above `Threads=1`) | open |
+| #319 | TT same-key store overwrites unconditionally, bypassing phase and depth | open; the one route still ignoring the policy stage 3 established. Current behaviour is pinned by a test |
+| #320 | Quiescence evasion ordering sorts king moves last | open; deferred through stages 2-3 to protect attribution, that reason has expired |
+| #321 | In-check quiescence entries store negative budgets and are never reused | open |
 
-Two items from this document have **no home yet**:
+Both items that had no home now have one: evasion ordering is #320, and the `WAC-043` correction was
+applied to the #237 issue body on 2026-08-16.
 
-- **Evasion ordering.** `SortMovesByValue` scores quiets at `-piece/16`, so king moves — often the
-  only evasion — sort last on the in-check qsearch path stage 2 added. Deliberately left alone to
-  protect attribution; nothing tracks it now. Closest existing issue is #86 (SEE in quiescence).
-- **The `WAC-043` correction to the #237 issue body.** The body still calls the historical
-  alternatives "winning, although by different margins"; the measurement in this file says `h2h4`
-  throws away ~2900 cp and the depth-8 failure was a genuine search error, not a test-data artefact.
-  The issue is closed, so this is a comment or a body edit, not a reopen.
+---
+
+## What is left, and when this file can go
+
+**Outstanding: the cumulative strength measurement.** Everything in #237 is merged; what has never
+been measured is the arc as a whole. Agreed parameters, so the dispatch does not have to be
+re-derived:
+
+```
+gh workflow run strength.yml --ref main \
+  -f reference_ref=bda2cc48e6c948322afa7f11a49331f80a17862a \
+  -f games=19980 -f shards=18 -f concurrency=3
+```
+
+`bda2cc4` is the merge of #298 — the last commit before any #237 *engine* change, so the run spans
+#300, #304, #311, #316, #313 and #318. Expect #306 to dominate the result. It is ~3 h and takes 18 of
+the 20 concurrent job slots, so it queues every other merge while it runs. The number lands in
+`Docs/EloLog.md`'s **Linux/GCC ledger** and must not be compared with the local clang-cl rows,
+including the SPRT quoted above.
+
+**Then delete this file.** The three lifecycle conditions (`Docs/Workflow.md` → Design document
+lifecycle) are otherwise already met:
+
+- *No inbound references* — nothing in the tree cites it.
+- *No spec role* — the strength run above is the last unstarted item, and it is one command.
+- *Durable content harvested* — tactical-test semantics are in `Docs/TestDesign.md`, SPRT bounds,
+  book resolution and the meaning of "inconclusive" are in `Docs/EloMeasurement.md`, the per-stage
+  reasoning is in source comments, and every loose end is an issue in the table above. Record the
+  strength-run result in `Docs/EloLog.md`, not here.
 
 ---
 
@@ -504,6 +549,6 @@ Two items from this document have **no home yet**:
 1. Read this file's "Read this first" section, then the #237 issue body **and its last comment** —
    the comment is where the conclusion lives.
 2. `Get-Worktrees.ps1` for drift and PR state.
-3. Stage 3 is the only open stage, and it starts with the decision recorded in its section above.
+3. All five stages are merged. The only work left is the strength run above.
 4. Re-check assumptions against `origin/main` before executing — this document ages, and it has now
-   been overtaken once already.
+   been overtaken twice.
