@@ -3,8 +3,9 @@
     Measure search speed (nodes per second) at fixed depth over a position set.
 
 .DESCRIPTION
-    Drives the engine over UCI and reports nodes, time, nps and the best move for
-    each position, plus an aggregate.
+    Drives the engine over UCI and reports the main-tree and quiescence node
+    counts, their total, time, nps and the best move for each position, plus an
+    aggregate.
 
     Intended for comparing two BUILDS of the same source — a different compiler,
     optimisation setting, or an optimisation change. Run it once per binary and
@@ -18,6 +19,16 @@
     generation changed search behaviour, and any nps comparison is then
     meaningless. See Docs/EloMeasurement.md and issue #161 for why node counts
     alone have misled this project before.
+
+    Why the pv/qs split: nps is only meaningful when the node count covers all the
+    work the clock is charged for. Before issue #312 the engine counted main-tree
+    nodes only, so a change that moved work into quiescence showed up as an nps
+    collapse with no visible cause — that is exactly how #306 was misread. If the
+    two columns move in opposite directions, read the WALL CLOCK, not nps: it is
+    the only figure that cannot be distorted by relocating work between the trees.
+
+    A build predating #312 does not emit the split; those rows show '-' and the
+    script says so, because that build's nps is not comparable with a newer one's.
 
     Each position runs in a FRESH ENGINE PROCESS so no transposition-table state
     carries between them. Process startup is excluded from the measurement: the
@@ -175,11 +186,25 @@ function Invoke-Search {
         throw "No parseable 'info ... nodes N time T' line for FEN: $Fen`nEngine output:`n$out"
     }
 
+    # Main-tree/quiescence split (issue #312). Engines built before that change do not
+    # emit it, and comparing against such a build is the normal case for a before/after
+    # run, so its absence is reported as unknown rather than as zero.
+    $split   = [regex]::Matches($out, 'info string treenodes pv (\d+) qs (\d+)')
+    $pvNodes = $null
+    $qsNodes = $null
+    if ($split.Count -gt 0) {
+        $lastSplit = $split[$split.Count - 1]
+        $pvNodes   = [int64]$lastSplit.Groups[1].Value
+        $qsNodes   = [int64]$lastSplit.Groups[2].Value
+    }
+
     $last = $info[$info.Count - 1]
     [pscustomobject]@{
-        Nodes = [int64]$last.Groups[1].Value
-        Ms    = [int64]$last.Groups[2].Value
-        Best  = if ($best.Success) { $best.Groups[1].Value } else { '(none)' }
+        Nodes   = [int64]$last.Groups[1].Value
+        PvNodes = $pvNodes
+        QsNodes = $qsNodes
+        Ms      = [int64]$last.Groups[2].Value
+        Best    = if ($best.Success) { $best.Groups[1].Value } else { '(none)' }
     }
 }
 
@@ -205,13 +230,17 @@ if ($Threads -gt 1) {
     Write-Host "          equivalence check between builds is not valid."       -ForegroundColor Yellow
 }
 Write-Host ""
-Write-Host ("{0,-12} {1,14} {2,9} {3,12}  {4}" -f 'position', 'nodes', 'ms', 'nps', 'best')
-Write-Host ('-' * 62)
+Write-Host ("{0,-12} {1,13} {2,13} {3,13} {4,8} {5,12}  {6}" -f `
+            'position', 'pv nodes', 'qs nodes', 'nodes', 'ms', 'nps', 'best')
+Write-Host ('-' * 92)
 
-$rows       = [System.Collections.Generic.List[object]]::new()
-$totalNodes = [int64]0
-$totalMs    = [int64]0
-$fastCount  = 0
+$rows        = [System.Collections.Generic.List[object]]::new()
+$totalNodes  = [int64]0
+$totalPv     = [int64]0
+$totalQs     = [int64]0
+$haveSplit   = $true
+$totalMs     = [int64]0
+$fastCount   = 0
 
 foreach ($p in $positionList) {
     $r = Invoke-Search -ExePath $exePath -WorkDir $workDir -Fen $p.Fen `
@@ -221,15 +250,28 @@ foreach ($p in $positionList) {
     $totalNodes += $r.Nodes
     $totalMs    += $r.Ms
 
+    if ($null -eq $r.PvNodes) {
+        $haveSplit = $false
+        $pvCell = '-'
+        $qsCell = '-'
+    } else {
+        $totalPv += $r.PvNodes
+        $totalQs += $r.QsNodes
+        $pvCell = '{0:N0}' -f $r.PvNodes
+        $qsCell = '{0:N0}' -f $r.QsNodes
+    }
+
     $flag = ''
     if ($r.Ms -lt $MinTimeMs) { $flag = ' (too fast to time)'; $fastCount++ }
 
-    Write-Host ("{0,-12} {1,14:N0} {2,9:N0} {3,12:N0}  {4}{5}" -f `
-                $p.Name, $r.Nodes, $r.Ms, $nps, $r.Best, $flag)
+    Write-Host ("{0,-12} {1,13} {2,13} {3,13:N0} {4,8:N0} {5,12:N0}  {6}{7}" -f `
+                $p.Name, $pvCell, $qsCell, $r.Nodes, $r.Ms, $nps, $r.Best, $flag)
 
     $rows.Add([pscustomobject]@{
         Position = $p.Name
         Fen      = $p.Fen
+        PvNodes  = $r.PvNodes
+        QsNodes  = $r.QsNodes
         Nodes    = $r.Nodes
         Ms       = $r.Ms
         Nps      = $nps
@@ -239,10 +281,24 @@ foreach ($p in $positionList) {
 
 $aggregate = if ($totalMs -gt 0) { [int64]($totalNodes * 1000 / $totalMs) } else { 0 }
 
-Write-Host ('-' * 62)
-Write-Host ("{0,-12} {1,14:N0} {2,9:N0} {3,12:N0}" -f 'TOTAL', $totalNodes, $totalMs, $aggregate)
+$pvTotalCell = if ($haveSplit) { '{0:N0}' -f $totalPv } else { '-' }
+$qsTotalCell = if ($haveSplit) { '{0:N0}' -f $totalQs } else { '-' }
+
+Write-Host ('-' * 92)
+Write-Host ("{0,-12} {1,13} {2,13} {3,13:N0} {4,8:N0} {5,12:N0}" -f `
+            'TOTAL', $pvTotalCell, $qsTotalCell, $totalNodes, $totalMs, $aggregate)
 Write-Host ""
-Write-Host "Aggregate nps: $('{0:N0}' -f $aggregate)"
+Write-Host "Aggregate nps: $('{0:N0}' -f $aggregate)    Wall clock: $('{0:N0}' -f $totalMs) ms"
+
+if ($haveSplit -and $totalNodes -gt 0) {
+    $qsShare = [math]::Round(100.0 * $totalQs / $totalNodes, 1)
+    Write-Host "Quiescence share of nodes: $qsShare%"
+} elseif (-not $haveSplit) {
+    Write-Host ""
+    Write-Host "NOTE: this build does not report the pv/qs split (predates issue #312)." -ForegroundColor Yellow
+    Write-Host "      Its 'nodes' column counts main-tree nodes only, so its nps is not"  -ForegroundColor Yellow
+    Write-Host "      comparable with a build that reports the total. Compare wall clock." -ForegroundColor Yellow
+}
 
 if ($fastCount -gt 0) {
     Write-Host ""

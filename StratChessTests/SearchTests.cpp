@@ -213,6 +213,12 @@ class AIPerlexTestFixture {
 		return ai->quiescence(ai->td_, alpha, beta, /*qsearch_depth=*/0, ply, *ai->_tt);
 	}
 
+	SearchResult last_result() const { return ai->GetLastResult(); }
+
+	int64_t qnodes() const { return ai->td_.qnodes_searched; }
+
+	int64_t pvnodes() const { return ai->td_.nodes_searched; }
+
 	// Static evaluation of the fixture's board — the value stand-pat would have used.
 	int evaluate() const
 	{
@@ -895,4 +901,46 @@ TEST_CASE("Qsearch - out of check, the stand-pat cutoff is unchanged", "[search]
 	REQUIRE(fix.evaluate() >= beta);
 
 	CHECK(fix.quiesce_node(-GameValues::Search_Init, beta, 0, /*ply=*/0) == beta);
+}
+
+// ============================================================================
+// Quiescence node accounting
+// ============================================================================
+// nodes_searched counts pvs() nodes only, so roughly half the search used to be
+// invisible to every figure derived from it — most damagingly nps, where
+// quiescence work reached the denominator's time but never the numerator's
+// count. These pin the split and the total that UCI reports.
+
+TEST_CASE("Search - quiescence nodes are counted separately from main-tree nodes", "[search][nodes]")
+{
+	AIPerlexTestFixture fix("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+
+	REQUIRE_FALSE(fix.search_to_depth(6).is_null());
+
+	// Both trees must have been walked. A zero on either side means a counter stopped
+	// being incremented, which is silent in every other test.
+	CHECK(fix.pvnodes() > 0);
+	CHECK(fix.qnodes() > 0);
+
+	// At Threads=1 there are no helper counts to add, so the result's fields are exactly
+	// the main thread's, and the two are reported separately rather than pre-summed.
+	const SearchResult result = fix.last_result();
+	CHECK(result.nodes_searched == fix.pvnodes());
+	CHECK(result.qnodes_searched == fix.qnodes());
+}
+
+TEST_CASE("Search - node counters reset between searches", "[search][nodes]")
+{
+	AIPerlexTestFixture fix("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+
+	REQUIRE_FALSE(fix.search_to_depth(5).is_null());
+	const int64_t first_q = fix.qnodes();
+	REQUIRE(first_q > 0);
+
+	// A second search must report its own count, not one accumulated across both —
+	// init_search() clears the counter. Only the direction is asserted: the transposition
+	// table carries over, so the second search legitimately visits fewer nodes.
+	REQUIRE_FALSE(fix.search_to_depth(5).is_null());
+	CHECK(fix.qnodes() > 0);
+	CHECK(fix.qnodes() <= first_q);
 }

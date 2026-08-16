@@ -16,14 +16,18 @@ struct SearchResult {
 	Move best_move = Move::EmptyMove();
 	int best_score = 0;
 	int depth_completed = 0;
+	// Main tree and quiescence tree are kept apart here and summed only where a total is
+	// reported, so a caller can tell which tree a change moved work into.
 	int64_t nodes_searched = 0;
+	int64_t qnodes_searched = 0;
 	bool search_was_stable = true;
 };
 
 // Snapshot of one accepted iterative-deepening iteration, handed to the
 // iteration observer (see AIPerplex::SetIterationObserver). `nodes` is the
 // CUMULATIVE main-search-thread node count at the end of this accepted
-// iteration (td.nodes_searched) — the standard UCI convention for a
+// iteration, both trees summed (td.nodes_searched + td.qnodes_searched) —
+// the standard UCI convention for a
 // per-iteration "nodes so far" figure, not the per-iteration delta
 // IterationMetrics tracks. It is NOT guaranteed to equal the final
 // info/bestmove line's node count: on a clocked search the loop typically

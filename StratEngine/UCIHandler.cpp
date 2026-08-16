@@ -452,9 +452,17 @@ void UciHandler::cmd_go(std::string_view line)
 		const int cp = result.best_score;
 		const std::string score_str = format_uci_score(cp);
 
+		// 'nodes' is every node the search visited, main tree and quiescence tree together,
+		// which is what the protocol means and what makes the client's nps figure honest.
 		send("info depth " + std::to_string(result.depth_completed) + " score " + score_str + " nodes " +
-		     std::to_string(result.nodes_searched) + " time " + std::to_string(elapsed.count()) + " pv " +
-		     (best.is_null() ? "0000" : MoveFormatter::ToUCI(best)));
+		     std::to_string(result.nodes_searched + result.qnodes_searched) + " time " +
+		     std::to_string(elapsed.count()) + " pv " + (best.is_null() ? "0000" : MoveFormatter::ToUCI(best)));
+
+		// The split, as an 'info string' so GUIs and match runners ignore it. Without it a
+		// change that relocates work between the two trees is indistinguishable from one
+		// that simply got slower -- see #312.
+		send("info string treenodes pv " + std::to_string(result.nodes_searched) + " qs " +
+		     std::to_string(result.qnodes_searched));
 
 		const std::string bm = best.is_null() ? "0000" : MoveFormatter::ToUCI(best);
 		// Cleared BEFORE bestmove goes out, not after. `bestmove` is the only

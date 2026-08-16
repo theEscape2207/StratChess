@@ -157,6 +157,7 @@ void AIPerplex::init_search(const GameInfo& info)
 {
 	td_.board = m_Board; // thread-local copy — the search runs on this
 	td_.nodes_searched = 0;
+	td_.qnodes_searched = 0;
 	td_.pv_table = PVTable{}; // fresh PV, exactly like the former GetMove() local
 	td_.info_seq.clear();
 	td_.info_seq.emplace_back(info);
@@ -228,6 +229,7 @@ Move AIPerplex::GetMove(GameInfo& info, const SearchLimits& limits)
 			htd.clear_killers();
 			htd.clear_null_move_flags();
 			htd.nodes_searched = 0;
+			htd.qnodes_searched = 0;
 			helpers.emplace_back([this, &htd, effective_depth, this_tt = _tt.get()] {
 				helper_loop(htd, static_cast<int>(effective_depth), *this_tt);
 			});
@@ -254,11 +256,18 @@ Move AIPerplex::GetMove(GameInfo& info, const SearchLimits& limits)
 	helpers.clear();
 
 	int64_t total_nodes = td_.nodes_searched;
-	for (size_t i = 0; i + 1 < static_cast<size_t>(threads); ++i)
+	int64_t total_qnodes = td_.qnodes_searched;
+	for (size_t i = 0; i + 1 < static_cast<size_t>(threads); ++i) {
 		total_nodes += helper_tds_[i]->nodes_searched;
+		total_qnodes += helper_tds_[i]->qnodes_searched;
+	}
 	last_result_.nodes_searched = total_nodes;
+	last_result_.qnodes_searched = total_qnodes;
 
-	auto elapsed = StopTimerAndAdjustVars(static_cast<size_t>(total_nodes));
+	// The reported total is both trees: UCI 'nodes' means every node the search visited,
+	// and an nps computed from the main tree alone charges quiescence work to the clock
+	// without ever crediting it to the count.
+	auto elapsed = StopTimerAndAdjustVars(static_cast<size_t>(total_nodes + total_qnodes));
 
 	Move bestMove = result.best_move;
 
@@ -675,6 +684,8 @@ int AIPerplex::adjustScoreForGameState(ThreadData& td, bool moveFound, int ply, 
 
 int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth, int ply, TranspositionTable& tt)
 {
+	td.qnodes_searched++;
+
 	// Fast early exit: IsAborted() reads only the latched atomic (no clock call).
 	// Mirrors pvs() — collapses quiescence chains in O(depth) after latch fires.
 	if (IsAborted())
@@ -1189,11 +1200,11 @@ void AIPerplex::emit_iteration_info(const ThreadData& td, int depth, int score) 
 	if (!iteration_observer_)
 		return;
 
-	// td.nodes_searched is the main-search-thread's cumulative count as of this
-	// accepted iteration. It does not generally equal the final info/bestmove
+	// The reported figure is the main-search-thread's cumulative count of both trees as
+	// of this accepted iteration. It does not generally equal the final info/bestmove
 	// line's total (AIPerplex.cpp GetMove(), ~line 256): a rejected trailing
 	// iteration (REJECT_AND_STOP, see iterative_deepening()) still adds its
-	// nodes to td.nodes_searched before assess_iteration_quality() throws the
+	// nodes to those counters before assess_iteration_quality() throws the
 	// iteration away, so the final line's count is typically strictly greater
 	// than this figure at Threads=1; under Lazy SMP the final total also sums
 	// helper threads' nodes, which are invisible here. Not synchronising with
@@ -1205,7 +1216,7 @@ void AIPerplex::emit_iteration_info(const ThreadData& td, int depth, int score) 
 	IterationInfo iter;
 	iter.depth = depth;
 	iter.score = score;
-	iter.nodes = td.nodes_searched;
+	iter.nodes = td.nodes_searched + td.qnodes_searched;
 	iter.pv.assign(line.begin(), line.begin() + length);
 
 	iteration_observer_(iter);
