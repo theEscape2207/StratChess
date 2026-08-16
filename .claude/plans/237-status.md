@@ -4,7 +4,7 @@ Living status document for the #237 work sequence. The issue body is the authori
 specification; this file records **where the work stands, what was decided beyond the issue, and
 what the next session should pick up**. Delete it when #237 closes.
 
-Last updated: 2026-08-15.
+Last updated: 2026-08-16.
 
 ---
 
@@ -171,8 +171,8 @@ None outstanding.
 |---|---|---|---|---|
 | 0 | Per-iteration UCI `info` + `send()` serialisation | semantics-preserving | **merged, PR #300** | — |
 | 0b | `WAC-287` baseline sweep, depths 4-12 | evidence | **done, recorded below** | `worktree-237-wac287-baseline` |
-| 1 | Terminal-node TT storage (defect B) | search change | **implemented, PR pending** | `worktree-237-stage1-terminal-tt` |
-| 2 | Legal qsearch while in check (defect A) | search change | not started | — |
+| 1 | Terminal-node TT storage (defect B) | search change | **merged, PR #304** | — |
+| 2 | Legal qsearch while in check (defect A) | search change | **implemented, PR pending** | `worktree-237-qsearch-prerequisites` |
 | 3 | Qsearch TT depth → remaining budget (defect C) | search change | not started | — |
 | 4 | Tactical test-data semantics (`WAC-043`, `WAC-065`) | test data | **merged, PR #298** | — |
 
@@ -306,15 +306,112 @@ From the `search-reviewer` pass (LGTM, no blocking findings):
 - **The ply-100 mate-normalisation cliff is now #305.** Pre-existing, latent, and no longer this
   document's to carry.
 
-### Stages 2-3
+### Stage 2 — legal qsearch while in check: design, pinned before implementation
 
-Specified in the issue body. Each needs: a focused regression test for the exact invariant, the fix
-alone, the post-change sweep against the baseline table, the full suite, a `search-reviewer`
-dispatch, and bench plus SPRT (parameters pinned above).
+All of it lives in `AIPerplex::quiescence()`. Read against `origin/main` @ `97340a5`.
+
+**Stage 2 ships with two prerequisites, and the branch is named for them.** Legal in-check
+quiescence makes quiet evasions reachable, and that exposed two defects that had been unreachable:
+LMR was reducing checking moves, and a board set up from a FEN carried an empty repetition history
+(`Board::setup_from_fen_impl` never seeded it, and `is_repetition` excluded the root position).
+Stage 2 alone scores 35/36 on the tactical suite; all four changes together score 36/36 — so the
+intermediate states are configurations that will never ship, and splitting them into separate PRs
+would have measured engines we do not intend to build. Per-defect attribution was established by
+tactical-suite bisection instead of by Elo.
+
+**The shape.** `in_check` moves to the top of the function, above the `MAX_QSEARCH_DEPTH` cutoff.
+In check the node becomes a small full-width search: no stand-pat, all legal evasions, no delta
+pruning. Out of check nothing changes at all.
+
+| | out of check | in check |
+|---|---|---|
+| stand-pat baseline / `>= beta` cutoff | as today | **suppressed** — illegal to decline a move |
+| `Eval->Evaluate()` | as today | **not called** — its only consumers are stand-pat and delta pruning |
+| move generation | `ComputeCaptures` | `ComputeLegalMoves` (pseudo-legal; `DoMove` filters) |
+| delta pruning | as today | already disabled today, unchanged |
+| `!moveFound` | "no captures" — *not* stalemate, as today | **checkmate**: return `-Mate + ply`, store EXACT + empty move |
+| `MAX_QSEARCH_DEPTH` cutoff | as today | bypassed; bounded by absolute ply instead |
+
+**Decisions that could have gone the other way:**
+
+1. **The absolute bound is a pure safety net at `MAX_PLY`, not an in-check extension budget.** The
+   issue asks for "an explicit absolute-ply safety bound"; a *tuned* limit on consecutive check
+   extensions is a strength decision and would confound this stage's measurement. At the bound the
+   node returns the static evaluation even in check — that is the one place the issue's "never
+   return a static eval while in check" has to yield, and it is why the bound must be somewhere a
+   real search cannot reach.
+2. **~~The recursion is bounded by material, not by the ply cap.~~ That claim was wrong.** It ran:
+   a side that is *not* in check generates captures only, so the chain can only continue through
+   capturing checks, which run out. The hole is that an in-check node generates **quiet** evasions
+   too, and a quiet evasion may itself give check. Two sides can therefore alternate checks with no
+   capture between them — material never falls, the position is free to repeat, and the line runs to
+   the absolute backstop, where it is settled by a static evaluation of a position still in check.
+   That is precisely the defect this stage removes, reintroduced at the ply cap.
+   **Resolved by checking repetition and fifty-move draws on the in-check path**, which is the only
+   path that can reach them; a capture-only chain is irreversible and cannot repeat. Caught in
+   review — the bad invariant is recorded here rather than deleted, because it is the kind of
+   argument that sounds airtight and licenses removing a bound.
+3. **Evasions keep `qsearch_depth + 1`.** Not counting them against the budget is the other common
+   choice and risks explosion; counting them is the smaller change.
+4. **Evasion ordering is left as `SortMovesByValue` (MVV-LVA).** On a mixed list quiets score
+   `-piece/16`, so king moves — often the only evasion — sort *last*. That is poor ordering and
+   costs nodes, but a new evasion heuristic in this PR would confound the node/Elo attribution the
+   whole issue exists to protect. **Follow-up candidate, not this stage.**
+5. **TT phase and depth are untouched** (`QUIESCENCE`, `qsearch_depth`). Their semantics are stage
+   3's; fixing both at once would destroy attribution.
+
+**Already true, so not part of this change:** delta pruning is gated on `!in_check` today, and
+castling-out-of-check is already excluded because `AddCastleMoves` includes the king's origin square
+in its attack mask.
+
+**Watch during implementation:** `const GameInfo& info` at the top of `quiescence()` is a *reference*
+into `td.info_seq`, which `add_move_to_seq()` can reallocate. It is safe today only because `info` is
+read before the move loop and never after. Do not introduce a use of it after the loop.
+
+#### Stage 2 — post-change sweep: the parity swing narrowed by a third
+
+Recorded 2026-08-16 on `223870f`, same position, binary and settings as the baseline
+(`Threads=1`, `Hash=192`, one `go depth 12`).
+
+| depth | move | score | nodes | baseline move | baseline score |
+|---:|---|---:|---:|---|---:|
+| 1 | `c1f4` | +206 | 43 | `g5h7` | +266 |
+| 2 | `h2h4` | +102 | 306 | `h2h4` | +102 |
+| 3 | `d1h5` | +287 | 3 521 | `c1d2` | +290 |
+| 4 | `d1h5` | +215 | 5 954 | `d1h5` | +215 |
+| 5 | `d1h5` | **+499** | 12 191 | `d1h5` | +518 |
+| 6 | `d1h5` | +202 | 68 596 | `d1h5` | +196 |
+| 7 | `d1h5` | **+484** | 101 300 | `d1h5` | +495 |
+| 8 | `f7c4` | +204 | 1 127 795 | `f7e6` | +189 |
+| 9 | `f7c4` | **+296** | 1 255 416 | `d1h5` | +438 |
+| 10 | `d1h5` | +245 | 2 576 173 | `d1h5` | +245 |
+| 11 | `d1h5` | **+306** | 3 267 349 | `d1h5` | +502 |
+| 12 | `d1h5` | +268 | 5 090 641 | `d1h5` | +268 |
+
+Odd-depth mean **+396** (was +488), even-depth mean **+227** (was +223): the swing falls from
+**≈266 cp to ≈169 cp, a 36% reduction**, and it comes entirely from the odd-depth band collapsing
+toward the even one — which is the direction the diagnosis predicts, since the odd band is the one
+inflated by quiescence nodes that stood pat while in check. Depths 9 and 11 carry almost all of it.
+
+Read against the criterion this document set, that is the stage working. Two things it is not:
+the swing is reduced, not removed, so defect A is one contributor rather than the whole
+phenomenon; and depth 8 still does not return `d1h5` — it now prefers `f7c4`, and depth 9 follows
+it. That was expected to be a noisy bit and it behaved like one.
+
+Node counts on **this** position rise 3 592 464 → 5 090 641 at depth 12 (+42%), against −30% across
+the bench suite. Both are real: legal in-check qsearch does strictly more work per in-check node,
+and `WAC-287` is a position whose main line runs through checks repeatedly, which is why it was
+selected. The suite-wide direction is what the nps and Elo numbers are built on; this position is
+the diagnostic, not the sample.
+
+### Stage 3
+
+Specified in the issue body. Needs: a focused regression test for the exact invariant, the fix alone,
+the post-change sweep against the baseline table, the full suite, a `search-reviewer` dispatch, and
+bench plus SPRT (parameters pinned above). It is a rename-and-invert with a narrow blast radius.
 
 Stage 2 is the one with a mechanism for `WAC-287`'s behaviour — supported by the baseline's `Ne6+`
-finding, not just by argument — and the one that costs nodes. Stage 3 is a rename-and-invert with a
-narrow blast radius.
+finding, not just by argument — and the one that costs nodes.
 
 Judge each stage on the **parity swing** (odd-depth mean minus even-depth mean, ≈265 cp at baseline),
 not on whether depth 8 flips back to `d1h5`. The swing is continuous and sensitive; the depth-8 move
