@@ -812,12 +812,10 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 	Move best_move = Move::EmptyMove();
 
 	for (const auto& move : moveList) {
-		// Delta pruning: skip captures whose best-case material gain cannot raise alpha.
-		// stand_pat is already the alpha lower-bound; MoveHelper::Value() gives the MVV-LVA
-		// score which is conservatively ≤ the raw captured-piece value, so pruning is safe.
-		// Promotions always score ≥ 800 (queen − pawn gain) and are never pruned.
-		if (!in_check &&
-		    stand_pat + MoveHelper::Value(move, td.board.GetEffectiveMovPiece(move), td.board.GetCapturedPiece(move)) +
+		// Promotions stay: their tactical value is not bounded by immediate material gain.
+		if (!in_check && !MoveHelper::IsPromote(move) &&
+		    stand_pat +
+		            MoveHelper::DeltaGain(move, td.board.GetEffectiveMovPiece(move), td.board.GetCapturedPiece(move)) +
 		            tuning_.delta_pruning_margin <
 		        alpha)
 			continue;

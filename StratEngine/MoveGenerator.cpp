@@ -179,8 +179,8 @@ void MoveGenerator::GenerateOfficerMoves(const Board& board, const BITBOARD* con
 
 		BITBOARD bbAttack = GetOfficerAttackBoard(bbBitBoards, from, movPiece);
 		if (onlyCaptures) {
-			// Reducerer bitboardet til felter, hvor modstanderens brikker staar
-			bbAttack = Bits::applyMask(bbAttack, bbBitBoards[ALL_FROM_COLOR + static_cast<int>(color)]);
+			// Keep only squares occupied by the opponent.
+			bbAttack = Bits::applyMask(bbAttack, bbBitBoards[ePiece::ALL_BLACK_PIECES - static_cast<int>(color)]);
 		}
 
 		// Add all legal moves found above

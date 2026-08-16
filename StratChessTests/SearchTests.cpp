@@ -19,6 +19,7 @@
 #include "MoveGenerator.h"
 #include "PlayerBase.h"
 #include "PVTable.h"
+#include "MoveHelper.h"
 #include "TranspositionTable.h"
 #include "defines.h"
 #include <chrono>
@@ -787,6 +788,61 @@ TEST_CASE("Search - a full search stores its mated child node correctly", "[sear
 }
 
 // ============================================================================
+// Delta pruning bound
+// ============================================================================
+// Delta pruning needs an OPTIMISTIC bound on what a move can win. MoveHelper::Value
+// is MVV-LVA — an ordering heuristic that subtracts a sixteenth of the moving piece —
+// so it understates the gain and is not usable as a bound. For a king (10 000) that
+// subtraction is 625, which turns a won pawn into -525 and discards the capture.
+// Officer and king captures only became reachable in quiescence with #306, which is
+// what exposed this.
+
+TEST_CASE("Qsearch - delta pruning keeps a king capture that wins a pawn", "[search][qsearch]")
+{
+	// Kxd2 wins an undefended pawn. It is the only capture available, and the rooks
+	// keep the position clear of insufficient-material handling so the gain shows up.
+	AIPerlexTestFixture fix("7k/8/8/8/r7/8/3p4/3KR3 w - - 0 1");
+	REQUIRE_FALSE(fix.board_.InCheck());
+
+	const int stand_pat = fix.evaluate();
+	const int score = fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init, 0, /*ply=*/0);
+
+	// Standing pat is always available, so the node can never score below it. Scoring
+	// exactly it means the only capture was pruned before it was ever searched.
+	INFO("stand_pat = " << stand_pat << ", qsearch = " << score);
+	CHECK(score > stand_pat);
+}
+
+TEST_CASE("MoveHelper - DeltaGain bounds the material a move can win", "[search][qsearch]")
+{
+	Board board("7k/8/8/8/r7/8/3p4/3KR3 w - - 0 1");
+	const Move kingTakesPawn = MoveFormatter::FromUCI("d1d2", board);
+	// The bound is the pawn itself, not the pawn minus a sixteenth of the king.
+	CHECK(MoveHelper::DeltaGain(kingTakesPawn, board.GetEffectiveMovPiece(kingTakesPawn),
+	                            board.GetCapturedPiece(kingTakesPawn)) == 100);
+
+	// A promotion is worth the piece it becomes less the pawn it consumes, and a
+	// capture-promotion adds the captured piece on top.
+	Board promo("r3k3/1P6/8/8/8/8/8/4K3 w - - 0 1");
+	const Move queenPromo = MoveFormatter::FromUCI("b7b8q", promo);
+	CHECK(MoveHelper::DeltaGain(queenPromo, promo.GetEffectiveMovPiece(queenPromo),
+	                            promo.GetCapturedPiece(queenPromo)) == 800);
+
+	// 200, not the ">= 800" the old delta-pruning comment claimed for all promotions.
+	const Move knightPromo = MoveFormatter::FromUCI("b7b8n", promo);
+	CHECK(MoveHelper::DeltaGain(knightPromo, promo.GetEffectiveMovPiece(knightPromo),
+	                            promo.GetCapturedPiece(knightPromo)) == 200);
+
+	const Move queenPromoCapture = MoveFormatter::FromUCI("b7a8q", promo);
+	CHECK(MoveHelper::DeltaGain(queenPromoCapture, promo.GetEffectiveMovPiece(queenPromoCapture),
+	                            promo.GetCapturedPiece(queenPromoCapture)) == 800 + 500);
+
+	// A quiet move wins nothing.
+	const Move quiet = MoveFormatter::FromUCI("e1e2", promo);
+	CHECK(MoveHelper::DeltaGain(quiet, promo.GetEffectiveMovPiece(quiet), promo.GetCapturedPiece(quiet)) == 0);
+}
+
+// ============================================================================
 // Legal quiescence while in check
 // ============================================================================
 // A side to move in check may not decline to move, so quiescence cannot settle
@@ -835,17 +891,21 @@ TEST_CASE("Qsearch - in check, a quiet king evasion is found", "[search][qsearch
 	CHECK(entry->best_move.from() == g1);
 }
 
-TEST_CASE("Qsearch - in check, a quiet blocking evasion is found", "[search][qsearch]")
+TEST_CASE("Qsearch - in check, a quiet blocking evasion is found and refuted", "[search][qsearch]")
 {
 	// Ra1 checks along the rank, the king is walled in by its own pawns, and the only
-	// legal reply is the quiet interposition Rd7-d1. Nothing can capture the rook.
+	// legal reply is the quiet interposition Rd7-d1 — a move no capture-only generator
+	// produces. The block does not save the game: Rxd1 renews the check with nothing left
+	// to interpose. Both halves of that line are needed to see it, so this case fails
+	// under either change alone — a capture-only evasion list never finds Rd1, and a
+	// pawn-only capture list never finds the officer recapture that mates.
 	AIPerlexTestFixture fix("7k/3R4/8/8/8/8/5PPP/r5K1 w - - 0 1");
 	REQUIRE(fix.board_.InCheck());
 	REQUIRE(fix.count_legal_moves() == 1);
 
 	const int ply = 2;
 	const int score = fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init, 0, ply);
-	CHECK(score > -GameValues::Mate_Threshold);
+	CHECK(score == -GameValues::Mate + ply + 2);
 
 	const auto entry = fix.probe_tt(ply);
 	REQUIRE(entry.has_value());

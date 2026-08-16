@@ -191,4 +191,13 @@ namespace MoveHelper {
 		return 0;
 	}
 
+	// Optimistic material-gain bound; unlike Value(), it never subtracts the attacker.
+	[[nodiscard]] static inline int DeltaGain(const Move& move, ePiece movPiece, ePiece content) noexcept
+	{
+		int gain = PieceHelper::IsActual(content) ? PieceHelper::Value(content) : 0;
+		if (IsPromote(move))
+			gain += PieceHelper::Value(movPiece) - PieceHelper::Value(ePiece::WHITE_PAWN);
+		return gain;
+	}
+
 } // namespace MoveHelper
