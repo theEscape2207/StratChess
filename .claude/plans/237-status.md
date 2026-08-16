@@ -2,9 +2,33 @@
 
 Living status document for the #237 work sequence. The issue body is the authoritative
 specification; this file records **where the work stands, what was decided beyond the issue, and
-what the next session should pick up**. Delete it when #237 closes.
+what the next session should pick up**.
 
 Last updated: 2026-08-16.
+
+---
+
+## Read this first: #306 answered the issue, and #312 invalidated the numbers
+
+**#237 is closed** (COMPLETED, 2026-08-15 — auto-closed by stage 1's PR #304). Its headline question
+is genuinely answered, but by **#306** rather than by any of the three defects it named:
+`MoveGenerator::GenerateOfficerMoves()` masked the capture set with the mover's *own* pieces, so
+`ComputeCaptures()` never produced an officer capture and quiescence had only ever resolved pawn
+captures and promotions. The fix merged as **PR #316**; the evidence is the last comment on #237.
+
+Three consequences, and they are why this file still exists:
+
+1. **Every stage is now merged**, stage 3 last, as PR #318. It shipped as an ordinary correctness fix
+   judged on the invariant it repairs plus bench, because the parity swing was spent as an acceptance
+   criterion — #306 took it from ≈265 cp to ≈4 cp on its own.
+2. **Every sweep recorded below is historical.** The stage 0b baseline and the stage 2 sweep both
+   predate #306, so neither is a valid comparison basis for anything. Stage 3 measured against a
+   fresh baseline taken on `d8f0f54`.
+3. **Every node count below is pre-#312.** `nodes_searched` excluded quiescence nodes until PR #313,
+   so those figures are not comparable with anything measured today, in either direction.
+
+One task is left — the cumulative strength run — and then this file goes. See
+[What is left, and when this file can go](#what-is-left-and-when-this-file-can-go).
 
 ---
 
@@ -42,7 +66,8 @@ branches and defect B's arithmetic were here too — all three are now fixed and
   looks.** `pvs()` indexes `td.killers[ply]` and `td.last_move_was_null[ply+1]` unguarded, and both
   are `[MAX_PLY]` (256, `defines.h:101`). `quiescence()` touches neither, and `PVTable` guards every
   ply access (`PVTable.h`). So removing the `MAX_QSEARCH_DEPTH` cap for in-check nodes risks stack
-  exhaustion on a perpetual-check line rather than an out-of-bounds write. Bound it anyway.
+  exhaustion on a perpetual-check line rather than an out-of-bounds write. *Addressed by stage 2
+  (PR #311), which added the `MAX_PLY` backstop plus draw detection on the in-check path.*
 
 ## Tactical test semantics — decided
 
@@ -103,7 +128,7 @@ outlive the search. Under time control only, which is why no fixed-depth test ca
 Keep it out of stages 1-3. Those are deliberately one-defect-at-a-time so that each one's effect on
 `WAC-287` is attributable; #299 changes TT contents under time control and would destroy that.
 
-## Also split out: the `stop`-before-`start` race
+## Also split out: the `stop`-before-`start` race — now #301
 
 Surfaced when stage 0's concurrency test hung deterministically. `TimeManager::start()` stores
 `should_stop_ = false` (`TimeManager.h:29`); `ApplyLimits()` calls it from inside `GetMove()` on the
@@ -115,10 +140,9 @@ in `join()` forever. `TimeManager.h:15-16` documents the ordering requirement wi
 Stage 0's test closes the window with a 200 ms sleep and says so in its comment. **That sleep is a
 marker, not a fix** — when the race is fixed, delete it and let the test exercise the real window.
 
-## Stage 2 measurement — decided: bench + SPRT
+## Measurement parameters — decided: bench + SPRT
 
-Approved 2026-08-15. Concrete parameters, so the run does not have to be re-litigated when stage 2 is
-ready:
+Approved 2026-08-15 for stage 2, and they carry over unchanged to stage 3:
 
 **Bench.** `Run-Bench.ps1 -Exe <path>` before and after. The "before" binary must be built from the
 merge base *before* the working tree is touched — `run-tests` does not rebuild the exe, so a
@@ -170,11 +194,13 @@ None outstanding.
 | # | Stage | Kind | Status | Branch / PR |
 |---|---|---|---|---|
 | 0 | Per-iteration UCI `info` + `send()` serialisation | semantics-preserving | **merged, PR #300** | — |
-| 0b | `WAC-287` baseline sweep, depths 4-12 | evidence | **done, recorded below** | `worktree-237-wac287-baseline` |
+| 0b | `WAC-287` baseline sweep, depths 4-12 | evidence | **done, PR #303 — expired by #306** | — |
 | 1 | Terminal-node TT storage (defect B) | search change | **merged, PR #304** | — |
-| 2 | Legal qsearch while in check (defect A) | search change | **implemented, PR pending** | `worktree-237-qsearch-prerequisites` |
-| 3 | Qsearch TT depth → remaining budget (defect C) | search change | not started | — |
+| 2 | Legal qsearch while in check (defect A) | search change | **merged, PR #311** | — |
+| 3 | Qsearch TT depth → remaining budget (defect C) | search change | **merged, PR #318** — plus the TT replacement-policy fixes it forced | — |
 | 4 | Tactical test-data semantics (`WAC-043`, `WAC-065`) | test data | **merged, PR #298** | — |
+| — | Officer captures in `ComputeCaptures()` (#306) | search change | **merged, PR #316** — this is what explained `WAC-287` | — |
+| — | Quiescence nodes counted in `nodes_searched` (#312) | instrumentation | **merged, PR #313** | — |
 
 Stage 4 is scoped to the two positions #237 names. Adopting the new semantics implies the other 34
 positions were written under the old one and may also carry narrow lists, but a full-suite audit is
@@ -210,12 +236,16 @@ Two instrument quirks to know before reading any of this as evidence:
   showing a plausible score at depth N and a suspicious 0 at depth N+1 is displaying this, not a new
   bug. Use fixed depth for evidence runs and it cannot arise.
 
-#### The baseline
+#### The baseline — expired, kept for the reasoning it produced
 
 Recorded 2026-08-15 on `b72f361` (`origin/main`, stage 0 merged). Release clang-cl,
 `Threads=1`, `Hash=192`, position
-`rn3k1r/pp2bBpp/2p2n2/q5N1/3P4/1P6/P1P3PP/R1BQ1RK1 w - - 0 1`. **This is the comparison basis for
-stages 1-3.**
+`rn3k1r/pp2bBpp/2p2n2/q5N1/3P4/1P6/P1P3PP/R1BQ1RK1 w - - 0 1`.
+
+**Do not compare anything against this table.** It was the comparison basis for stages 1-3 until
+#306 merged; the position now scores flat across depths 4-12 and returns `d1h5` throughout. Node
+counts here are also pre-#312 (main-search only). What survives is the *method* — the parity
+decomposition, and the `Ne6+` observation that first tied this position to horizon checks.
 
 | depth | move | score | nodes | PV |
 |---:|---|---:|---:|---|
@@ -370,6 +400,10 @@ read before the move loop and never after. Do not introduce a use of it after th
 
 #### Stage 2 — post-change sweep: the parity swing narrowed by a third
 
+**Superseded.** This sweep was taken with the #306 defect still present, i.e. against a quiescence
+that could not resolve officer captures, and its node counts are pre-#312. Stage 2 merged as PR #311
+on its own correctness grounds; the swing reduction below is no longer evidence for anything.
+
 Recorded 2026-08-16 on `223870f`, same position, binary and settings as the baseline
 (`Threads=1`, `Hash=192`, one `go depth 12`).
 
@@ -404,25 +438,117 @@ and `WAC-287` is a position whose main line runs through checks repeatedly, whic
 selected. The suite-wide direction is what the nps and Elo numbers are built on; this position is
 the diagnostic, not the sample.
 
-### Stage 3
+### Stage 3 — qsearch TT depth: merged, PR #318, and it grew two companions
 
-Specified in the issue body. Needs: a focused regression test for the exact invariant, the fix alone,
-the post-change sweep against the baseline table, the full suite, a `search-reviewer` dispatch, and
-bench plus SPRT (parameters pinned above). It is a rename-and-invert with a narrow blast radius.
+Shipped as a correctness fix on its own terms: the issue that motivated it was already answered, so
+it was judged on the invariant it repairs plus bench, not on `WAC-287`.
 
-Stage 2 is the one with a mechanism for `WAC-287`'s behaviour — supported by the baseline's `Ne6+`
-finding, not just by argument — and the one that costs nodes.
+**What landed, in three parts.** Only the first was planned.
 
-Judge each stage on the **parity swing** (odd-depth mean minus even-depth mean, ≈265 cp at baseline),
-not on whether depth 8 flips back to `d1h5`. The swing is continuous and sensitive; the depth-8 move
-is one bit of a compressed ordering and can flip for reasons unrelated to the fix under test.
+1. **The unit fix.** `quiescence()`'s parameter is remaining budget: `AIPerplex::QSEARCH_BUDGET = 15`
+   from `pvs()`, `qsearch_budget - 1` on recursion, cutoff at `< 0`, and all four `tt.store()` calls
+   write the remainder. The cutoff is exactly equivalent — `consumed > 15 ⟺ budget < 0` — so the
+   node set the budget admits is unchanged; the reuse relation is what flips.
+2. **A phase penalty in `replacementScore()`.** Correcting the unit moved a quiescence *root* — one
+   per main-search leaf, so the most numerous entry there is — from `adjusted_depth` 0 to 7, i.e.
+   above every main entry of depth 1-6. `pvs()` mines main entries for a hash move even when they are
+   too shallow to cut off, so that cost interior move ordering. The −2560 penalty puts the whole
+   quiescence band below main-search depth 0, PV bonus included.
+3. **Empty slots are filled before anything is evicted.** `store()` scored empty slots like occupied
+   ones; an empty slot scores `-512 * age_diff`, so penalized quiescence entries sank *below* empty
+   slots and were evicted while three slots in the bucket sat unused.
+
+**Measured, `Run-Bench` position set at fixed depth (node counts are deterministic; wall clock was
+single-sampled and is not quoted as a measurement):**
+
+| variant | 16 MB nodes | 192 MB nodes |
+|---|---:|---:|
+| pre-change reference | 29.80 M | 33.44 M |
+| unit fix alone | 40.25 M (+35.1%) | 28.13 M (−15.9%) |
+| + phase penalty | 32.33 M (+8.5%) | 27.74 M (−17.0%) |
+| + empty-slot fix (shipped) | **28.98 M (−2.7%)** | **28.41 M (−15.0%)** |
+
+`WAC-287` returns identical move, score and PV at every depth 1-12 against a fresh pre-change
+baseline on `d8f0f54`.
+
+**SPRT: inconclusive, and deliberately not in `Docs/EloLog.md`.** `-Sprt NonRegression` against the
+pre-change build, 2000 games at 10+0.1, 192 MB: `+9.90 +/- 11.88 Elo`, LOS 94.9%, LLR 1.69 of 2.94.
+Roughly 3000-3500 games would likely have crossed the accept bound. The batch also raised
+illegal-PV warnings (#310) from *both* engines, which makes it discardable by this project's own
+rule, and it measured only the first of the three changes above. Recorded here rather than in the
+ledger for both reasons.
+
+#### Harvest: two decisions this stage reversed
+
+- **"TT phase and depth are untouched by stage 3"** (the stage 2 design section above) is **wrong as
+  shipped**. Depth semantics changed, and the replacement calibration had to change with them. Left
+  in place above rather than edited, because the reasoning that produced it is the useful part.
+- **The +8.5% residual at 16 MB was not "the price of correctness".** It was characterised that way
+  before the empty-slot defect was found. Both reviews' instinct that replacement policy was still
+  wrong beat the argument that the cost was unavoidable — worth remembering the next time a residual
+  gets explained rather than investigated.
+
+Durable content is in the source: the budget unit on `AIPerplex::QSEARCH_BUDGET` and
+`quiescence()`'s declaration, the penalty's sizing argument in `replacementScore()`, and the
+empty-slot rule in `store()`. Nothing from this section needs to survive the file.
+
+### Spin-offs from this work — where each one lives now
+
+| # | What | Status |
+|---|---|---|
+| #299 | Aborted searches return `Draw` and poison the TT at full depth | open; stage 1's terminal store is exempt from its guard (noted on the issue) |
+| #301 | `stop` erased by `TimeManager::start()`, `go infinite` unstoppable | open; stage 0's 200 ms sleep in the concurrency test is the marker to delete when it lands |
+| #305 | TT mate-score normalisation stops working beyond ply 100 | open |
+| #306 | Officer captures never generated | **closed, PR #316** |
+| #307 | Legacy `PlayerAiBase::Quiescent` has no depth cap, live after #306 | open |
+| #308 | `quiescence()` holds a `GameInfo` reference into a vector it can reallocate | open — this is the "watch during implementation" note above, now filed |
+| #310 | Reported PV contains illegal moves | open |
+| #312 | `nodes_searched` excluded quiescence | **closed, PR #313** |
+| #314, #315 | Node-counter gaps (null-move/re-search edges; `qnodes` above `Threads=1`) | open |
+| #319 | TT same-key store overwrites unconditionally, bypassing phase and depth | open; the one route still ignoring the policy stage 3 established. Current behaviour is pinned by a test |
+| #320 | Quiescence evasion ordering sorts king moves last | open; deferred through stages 2-3 to protect attribution, that reason has expired |
+| #321 | In-check quiescence entries store negative budgets and are never reused | open |
+
+Both items that had no home now have one: evasion ordering is #320, and the `WAC-043` correction was
+applied to the #237 issue body on 2026-08-16.
+
+---
+
+## What is left, and when this file can go
+
+**Outstanding: the cumulative strength measurement.** Everything in #237 is merged; what has never
+been measured is the arc as a whole. Agreed parameters, so the dispatch does not have to be
+re-derived:
+
+```
+gh workflow run strength.yml --ref main \
+  -f reference_ref=bda2cc48e6c948322afa7f11a49331f80a17862a \
+  -f games=19980 -f shards=18 -f concurrency=3
+```
+
+`bda2cc4` is the merge of #298 — the last commit before any #237 *engine* change, so the run spans
+#300, #304, #311, #316, #313 and #318. Expect #306 to dominate the result. It is ~3 h and takes 18 of
+the 20 concurrent job slots, so it queues every other merge while it runs. The number lands in
+`Docs/EloLog.md`'s **Linux/GCC ledger** and must not be compared with the local clang-cl rows,
+including the SPRT quoted above.
+
+**Then delete this file.** The three lifecycle conditions (`Docs/Workflow.md` → Design document
+lifecycle) are otherwise already met:
+
+- *No inbound references* — nothing in the tree cites it.
+- *No spec role* — the strength run above is the last unstarted item, and it is one command.
+- *Durable content harvested* — tactical-test semantics are in `Docs/TestDesign.md`, SPRT bounds,
+  book resolution and the meaning of "inconclusive" are in `Docs/EloMeasurement.md`, the per-stage
+  reasoning is in source comments, and every loose end is an issue in the table above. Record the
+  strength-run result in `Docs/EloLog.md`, not here.
 
 ---
 
 ## Resuming in a later session
 
-1. Read this file and the #237 issue body.
+1. Read this file's "Read this first" section, then the #237 issue body **and its last comment** —
+   the comment is where the conclusion lives.
 2. `Get-Worktrees.ps1` for drift and PR state.
-3. Pick up the first stage on the board that is not merged; the stages are strictly ordered except
-   stage 4.
-4. Re-check assumptions against `origin/main` before executing — this document ages.
+3. All five stages are merged. The only work left is the strength run above.
+4. Re-check assumptions against `origin/main` before executing — this document ages, and it has now
+   been overtaken twice.
