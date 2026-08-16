@@ -4,7 +4,7 @@ Living status document for the #237 work sequence. The issue body is the authori
 specification; this file records **where the work stands, what was decided beyond the issue, and
 what the next session should pick up**. Delete it when #237 closes.
 
-Last updated: 2026-08-15.
+Last updated: 2026-08-16.
 
 ---
 
@@ -172,7 +172,7 @@ None outstanding.
 | 0 | Per-iteration UCI `info` + `send()` serialisation | semantics-preserving | **merged, PR #300** | — |
 | 0b | `WAC-287` baseline sweep, depths 4-12 | evidence | **done, recorded below** | `worktree-237-wac287-baseline` |
 | 1 | Terminal-node TT storage (defect B) | search change | **merged, PR #304** | — |
-| 2 | Legal qsearch while in check (defect A) | search change | design pinned, implementing | `worktree-237-stage2-legal-qsearch-in-check` |
+| 2 | Legal qsearch while in check (defect A) | search change | **implemented, PR pending** | `worktree-237-qsearch-prerequisites` |
 | 3 | Qsearch TT depth → remaining budget (defect C) | search change | not started | — |
 | 4 | Tactical test-data semantics (`WAC-043`, `WAC-065`) | test data | **merged, PR #298** | — |
 
@@ -310,6 +310,15 @@ From the `search-reviewer` pass (LGTM, no blocking findings):
 
 All of it lives in `AIPerplex::quiescence()`. Read against `origin/main` @ `97340a5`.
 
+**Stage 2 ships with two prerequisites, and the branch is named for them.** Legal in-check
+quiescence makes quiet evasions reachable, and that exposed two defects that had been unreachable:
+LMR was reducing checking moves, and a board set up from a FEN carried an empty repetition history
+(`Board::setup_from_fen_impl` never seeded it, and `is_repetition` excluded the root position).
+Stage 2 alone scores 35/36 on the tactical suite; all four changes together score 36/36 — so the
+intermediate states are configurations that will never ship, and splitting them into separate PRs
+would have measured engines we do not intend to build. Per-defect attribution was established by
+tactical-suite bisection instead of by Elo.
+
 **The shape.** `in_check` moves to the top of the function, above the `MAX_QSEARCH_DEPTH` cutoff.
 In check the node becomes a small full-width search: no stand-pat, all legal evasions, no delta
 pruning. Out of check nothing changes at all.
@@ -358,6 +367,42 @@ in its attack mask.
 **Watch during implementation:** `const GameInfo& info` at the top of `quiescence()` is a *reference*
 into `td.info_seq`, which `add_move_to_seq()` can reallocate. It is safe today only because `info` is
 read before the move loop and never after. Do not introduce a use of it after the loop.
+
+#### Stage 2 — post-change sweep: the parity swing narrowed by a third
+
+Recorded 2026-08-16 on `223870f`, same position, binary and settings as the baseline
+(`Threads=1`, `Hash=192`, one `go depth 12`).
+
+| depth | move | score | nodes | baseline move | baseline score |
+|---:|---|---:|---:|---|---:|
+| 1 | `c1f4` | +206 | 43 | `g5h7` | +266 |
+| 2 | `h2h4` | +102 | 306 | `h2h4` | +102 |
+| 3 | `d1h5` | +287 | 3 521 | `c1d2` | +290 |
+| 4 | `d1h5` | +215 | 5 954 | `d1h5` | +215 |
+| 5 | `d1h5` | **+499** | 12 191 | `d1h5` | +518 |
+| 6 | `d1h5` | +202 | 68 596 | `d1h5` | +196 |
+| 7 | `d1h5` | **+484** | 101 300 | `d1h5` | +495 |
+| 8 | `f7c4` | +204 | 1 127 795 | `f7e6` | +189 |
+| 9 | `f7c4` | **+296** | 1 255 416 | `d1h5` | +438 |
+| 10 | `d1h5` | +245 | 2 576 173 | `d1h5` | +245 |
+| 11 | `d1h5` | **+306** | 3 267 349 | `d1h5` | +502 |
+| 12 | `d1h5` | +268 | 5 090 641 | `d1h5` | +268 |
+
+Odd-depth mean **+396** (was +488), even-depth mean **+227** (was +223): the swing falls from
+**≈266 cp to ≈169 cp, a 36% reduction**, and it comes entirely from the odd-depth band collapsing
+toward the even one — which is the direction the diagnosis predicts, since the odd band is the one
+inflated by quiescence nodes that stood pat while in check. Depths 9 and 11 carry almost all of it.
+
+Read against the criterion this document set, that is the stage working. Two things it is not:
+the swing is reduced, not removed, so defect A is one contributor rather than the whole
+phenomenon; and depth 8 still does not return `d1h5` — it now prefers `f7c4`, and depth 9 follows
+it. That was expected to be a noisy bit and it behaved like one.
+
+Node counts on **this** position rise 3 592 464 → 5 090 641 at depth 12 (+42%), against −30% across
+the bench suite. Both are real: legal in-check qsearch does strictly more work per in-check node,
+and `WAC-287` is a position whose main line runs through checks repeatedly, which is why it was
+selected. The suite-wide direction is what the nps and Elo numbers are built on; this position is
+the diagnostic, not the sample.
 
 ### Stage 3
 
