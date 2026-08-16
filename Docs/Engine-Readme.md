@@ -431,45 +431,63 @@ iterative_deepening(max_depth):
 
 **Location**: `AIPerplex::quiescence()`
 
-**Description**: Searches only tactical moves (captures) until position is "quiet" to avoid horizon effects.
+**Description**: Searches only tactical moves (captures) until position is "quiet" to avoid horizon
+effects. In check it becomes a small full-width search instead: the side to move may not decline to
+move, so neither stand-pat nor a capture-only move list is legal there.
 
 **Algorithm**:
 ```
-quiescence(alpha, beta, depth):
-    if depth > MAX_QSEARCH_DEPTH:
+quiescence(alpha, beta, budget):
+    in_check = board.InCheck()
+
+    # budget counts plies still to come, so larger means more search — the same
+    # unit pvs() uses for depth, and what both phases store in the TT.
+    if budget < 0 and not in_check:
         return evaluate()
-    
-    # Stand-pat: can we already cutoff?
-    stand_pat = evaluate()
-    if stand_pat >= beta:
-        return beta
-    
-    if stand_pat > alpha:
-        alpha = stand_pat
-    
-    # Generate and search captures only
-    captures = generate_captures()
-    sort_by_MVV_LVA(captures)
-    
-    best_score = stand_pat
-    for each capture:
-        score = -quiescence(-beta, -alpha, depth+1)
-        
+
+    if is_repetition_or_fifty_move():   # reachable only via quiet evasions
+        return draw
+    if ply >= MAX_PLY - 1:              # absolute backstop
+        return evaluate()
+
+    entry = tt.probe()
+    if entry.phase == QUIESCENCE and entry.depth >= budget:
+        ... cutoff / window narrowing ...
+
+    if not in_check:
+        # Stand-pat: can we already cutoff?
+        stand_pat = evaluate()
+        if stand_pat >= beta:
+            return beta
+        if stand_pat > alpha:
+            alpha = stand_pat
+
+    moves = generate_legal_moves() if in_check else generate_captures()
+    sort_by_MVV_LVA(moves)
+
+    best_score = stand_pat if not in_check else -INFINITY
+    for each move:
+        score = -quiescence(-beta, -alpha, budget - 1)
+
         if score >= beta:
             return beta
         if score > best_score:
             best_score = score
             alpha = max(alpha, score)
-    
+
+    if in_check and no move was legal:
+        return -MATE + ply
+
     return best_score
 ```
 
 **Key Features**:
-- **Stand-pat**: Always have option to not capture
-- **Capture-only**: Dramatically reduces search tree
+- **Stand-pat**: Always have option to not capture — except in check, where it does not exist
+- **Capture-only**: Dramatically reduces search tree; in check, all legal evasions are generated
 - **MVV-LVA ordering**: Most Valuable Victim - Least Valuable Attacker
-- **Depth limit**: Prevents infinite capture sequences
-- **TT caching**: Stores quiescence results separately from main search
+- **Budget limit**: Prevents infinite capture sequences; in check it is bypassed, and the draw
+  checks plus the absolute ply backstop bound the recursion instead
+- **TT caching**: Stores quiescence results separately from main search, keyed on remaining budget
 
 **Future Enhancement**: Delta pruning and SEE-based pruning (skip captures that can't improve alpha)
 
