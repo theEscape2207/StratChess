@@ -217,7 +217,15 @@ class AIPerlexTestFixture {
 
 	int64_t qnodes() const { return ai->td_.qnodes_searched; }
 
-	int64_t pvnodes() const { return ai->td_.nodes_searched; }
+	int64_t mainnodes() const { return ai->td_.nodes_searched; }
+
+	// Writes both node counters directly, so a test can plant a value the search itself
+	// could never produce and then prove init_search() replaced it rather than added to it.
+	void poison_node_counters(int64_t value) const
+	{
+		ai->td_.nodes_searched = value;
+		ai->td_.qnodes_searched = value;
+	}
 
 	// Static evaluation of the fixture's board — the value stand-pat would have used.
 	int evaluate() const
@@ -919,13 +927,13 @@ TEST_CASE("Search - quiescence nodes are counted separately from main-tree nodes
 
 	// Both trees must have been walked. A zero on either side means a counter stopped
 	// being incremented, which is silent in every other test.
-	CHECK(fix.pvnodes() > 0);
+	CHECK(fix.mainnodes() > 0);
 	CHECK(fix.qnodes() > 0);
 
 	// At Threads=1 there are no helper counts to add, so the result's fields are exactly
 	// the main thread's, and the two are reported separately rather than pre-summed.
 	const SearchResult result = fix.last_result();
-	CHECK(result.nodes_searched == fix.pvnodes());
+	CHECK(result.nodes_searched == fix.mainnodes());
 	CHECK(result.qnodes_searched == fix.qnodes());
 }
 
@@ -934,22 +942,30 @@ TEST_CASE("Search - node counters reset between searches", "[search][nodes]")
 	AIPerlexTestFixture fix("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
 
 	REQUIRE_FALSE(fix.search_to_depth(5).is_null());
+	const int64_t first_main = fix.mainnodes();
 	const int64_t first_q = fix.qnodes();
+	REQUIRE(first_main > 0);
 	REQUIRE(first_q > 0);
 
-	// A second search on the SAME fixture reuses a warm transposition table, so its
-	// count is not comparable with the first — it keeps shrinking as the table fills.
-	// What is asserted is only that the counter did not accumulate: an accumulating
-	// counter could never report less than the search before it.
+	// A second search on the SAME fixture reuses a warm transposition table, so its count
+	// is not comparable with the first and cannot be asserted against it. What makes the
+	// reset provable anyway is planting a value no search of this position could reach:
+	// init_search() must REPLACE it, so a counter that accumulated instead can only report
+	// at least the sentinel back.
+	constexpr int64_t sentinel = 1'000'000'000;
+	fix.poison_node_counters(sentinel);
+
 	REQUIRE_FALSE(fix.search_to_depth(5).is_null());
-	const int64_t second_q = fix.qnodes();
-	REQUIRE(second_q > 0);
-	CHECK(second_q < first_q + second_q);
+	CHECK(fix.mainnodes() < sentinel);
+	CHECK(fix.qnodes() < sentinel);
+	CHECK(fix.mainnodes() > 0);
+	CHECK(fix.qnodes() > 0);
 
 	// The exact-equality form of the same property, with the table taken out of it:
 	// an independent fixture is a fresh AI and a fresh TT, so a correctly reset
 	// counter must reproduce the first search's count exactly.
 	AIPerlexTestFixture fresh("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
 	REQUIRE_FALSE(fresh.search_to_depth(5).is_null());
+	CHECK(fresh.mainnodes() == first_main);
 	CHECK(fresh.qnodes() == first_q);
 }

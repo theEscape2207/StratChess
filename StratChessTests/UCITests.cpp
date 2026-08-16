@@ -17,6 +17,8 @@
 #include <vector>
 #include <algorithm>
 #include <regex>
+#include <optional>
+#include <utility>
 #include <filesystem>
 #include <fstream>
 #include <random>
@@ -2075,4 +2077,88 @@ TEST_CASE("cmd_go: two back-to-back 'go depth 4' searches each produce one bestm
 	const auto second_search_info = parse_info_depth_lines(tail);
 	REQUIRE_FALSE(second_search_info.empty());
 	REQUIRE(second_search_info.front().depth == 1);
+}
+
+// ---------------------------------------------------------------------------
+// Measurement contract over the wire (issue #312)
+// ---------------------------------------------------------------------------
+// The C++ side can prove the counters are right and Run-Bench.ps1 can prove it
+// parses what it is given, but between them sits the protocol text itself. These
+// pin that text, so a typo in either producer cannot pass the suite unnoticed.
+
+namespace {
+
+	// The 'main' and 'qs' operands of the last "info string treenodes ..." line,
+	// or nullopt if the output carries none.
+	std::optional<std::pair<int64_t, int64_t>> parse_treenodes(const std::string& output)
+	{
+		std::optional<std::pair<int64_t, int64_t>> found;
+		for (const std::string& line : split_lines(output)) {
+			if (!line.starts_with("info string treenodes "))
+				continue;
+
+			std::istringstream iss(line);
+			std::string info;
+			std::string string_tok;
+			std::string treenodes;
+			std::string main_tok;
+			int64_t main_nodes = 0;
+			std::string qs_tok;
+			int64_t qs_nodes = 0;
+			if (!(iss >> info >> string_tok >> treenodes >> main_tok >> main_nodes >> qs_tok >> qs_nodes))
+				continue;
+			if (main_tok != "main" || qs_tok != "qs")
+				continue;
+			found = std::make_pair(main_nodes, qs_nodes);
+		}
+		return found;
+	}
+
+} // namespace
+
+TEST_CASE("cmd_uci: the handshake advertises a measurement contract version", "[uci][nodes]")
+{
+	// Run-Bench.ps1 keys comparability off this line and treats its absence as
+	// "pre-#312 build, main-tree nodes only". A silent removal would therefore not
+	// error out — it would relabel every future run as an old one.
+	UciHandlerTestFixture fix;
+	const std::string output = capture_cout([&] { fix.uci(); });
+
+	const std::regex contract_line(R"(^info string benchcontract [1-9]\d*$)");
+	bool matched = false;
+	for (const std::string& line : split_lines(output)) {
+		if (std::regex_match(line, contract_line))
+			matched = true;
+	}
+	REQUIRE(matched);
+}
+
+TEST_CASE("cmd_go: 'nodes' equals the reported main/quiescence split", "[uci][nodes]")
+{
+	UciHandlerTestFixture fix;
+	fix.position("position startpos");
+
+	std::string output;
+	{
+		CoutRedirect redirect;
+		fix.dispatch("go depth 5");
+		fix.join_search();
+		output = redirect.str();
+	}
+
+	const auto split = parse_treenodes(output);
+	REQUIRE(split.has_value());
+	const auto [main_nodes, qs_nodes] = *split;
+
+	// Both trees walked: a zero on either side is what a counter that stopped being
+	// incremented looks like from outside the engine.
+	CHECK(main_nodes > 0);
+	CHECK(qs_nodes > 0);
+
+	// The invariant Run-Bench.ps1 enforces on every position it measures. It holds only
+	// because the two counters count the same unit; counting quiescence function entries
+	// instead of edges would add one node per quiescence root and break it.
+	const auto info_lines = parse_info_depth_lines(output);
+	REQUIRE_FALSE(info_lines.empty());
+	CHECK(info_lines.back().nodes == main_nodes + qs_nodes);
 }

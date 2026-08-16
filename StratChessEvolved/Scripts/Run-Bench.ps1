@@ -20,7 +20,7 @@
     meaningless. See Docs/EloMeasurement.md and issue #161 for why node counts
     alone have misled this project before.
 
-    Why the pv/qs split: nps is only meaningful when the node count covers all the
+    Why the main/qs split: nps is only meaningful when the node count covers all the
     work the clock is charged for. Before issue #312 the engine counted main-tree
     nodes only, so a change that moved work into quiescence showed up as an nps
     collapse with no visible cause — that is exactly how #306 was misread. If the
@@ -190,23 +190,40 @@ function Invoke-Search {
     # emit it, and comparing against such a build is the normal case for a before/after
     # run, so its absence is reported as unknown rather than as zero.
     $contract = [regex]::Match($out, 'info string benchcontract (\d+)')
-    $split   = [regex]::Matches($out, 'info string treenodes pv (\d+) qs (\d+)')
-    $pvNodes = $null
-    $qsNodes = $null
+    $split    = [regex]::Matches($out, 'info string treenodes main (\d+) qs (\d+)')
+    $contractNo = if ($contract.Success) { [int]$contract.Groups[1].Value } else { 0 }
+    $nodes     = [int64]$info[$info.Count - 1].Groups[1].Value
+    $mainNodes = $null
+    $qsNodes   = $null
     if ($split.Count -gt 0) {
         $lastSplit = $split[$split.Count - 1]
-        $pvNodes   = [int64]$lastSplit.Groups[1].Value
+        $mainNodes = [int64]$lastSplit.Groups[1].Value
         $qsNodes   = [int64]$lastSplit.Groups[2].Value
+    }
+
+    # A contract >= 1 build promises the split on every search, and promises it sums to
+    # the reported total. Both are cheap to check and neither can fail quietly: a missing
+    # or inconsistent split means the producer and this parser have drifted apart, and
+    # every figure derived from the run is then suspect. Refuse the run instead.
+    if ($contractNo -ge 1 -and $split.Count -eq 0) {
+        throw ("Contract $contractNo build emitted no 'info string treenodes' line for FEN: $Fen" +
+               "`nThe engine and this script disagree about the measurement contract." +
+               "`nEngine output:`n$out")
+    }
+    if ($null -ne $mainNodes -and ($mainNodes + $qsNodes) -ne $nodes) {
+        throw ("Node split does not sum to the reported total for FEN: $Fen" +
+               "`n  main $mainNodes + qs $qsNodes = $($mainNodes + $qsNodes), but 'nodes' says $nodes." +
+               "`nEngine output:`n$out")
     }
 
     $last = $info[$info.Count - 1]
     [pscustomobject]@{
-        Nodes    = [int64]$last.Groups[1].Value
-        PvNodes  = $pvNodes
-        QsNodes  = $qsNodes
-        Ms       = [int64]$last.Groups[2].Value
-        Best     = if ($best.Success) { $best.Groups[1].Value } else { '(none)' }
-        Contract = if ($contract.Success) { [int]$contract.Groups[1].Value } else { 0 }
+        Nodes     = $nodes
+        MainNodes = $mainNodes
+        QsNodes   = $qsNodes
+        Ms        = [int64]$last.Groups[2].Value
+        Best      = if ($best.Success) { $best.Groups[1].Value } else { '(none)' }
+        Contract  = $contractNo
     }
 }
 
@@ -243,19 +260,19 @@ Write-Host ""
 Write-Host "Engine  : $exePath"
 Write-Host "Depth   : $Depth    Threads: $Threads    Positions: $($positionList.Count)"
 $setName = if ($Positions) { Split-Path -Leaf $Positions } else { 'builtin' }
-Write-Host "Set     : $setName sha $posHash    Build: sha $exeHash    Host: $env:COMPUTERNAME"
+Write-Host "Set     : $setName sha $posHash    Build: sha $exeHash    Host: $([Environment]::MachineName)"
 if ($Threads -gt 1) {
     Write-Host "WARNING : Threads > 1 makes node counts non-deterministic; the" -ForegroundColor Yellow
     Write-Host "          equivalence check between builds is not valid."       -ForegroundColor Yellow
 }
 Write-Host ""
 Write-Host ("{0,-12} {1,13} {2,13} {3,13} {4,8} {5,12}  {6}" -f `
-            'position', 'pv nodes', 'qs nodes', 'nodes', 'ms', 'nps', 'best')
+            'position', 'main nodes', 'qs nodes', 'nodes', 'ms', 'nps', 'best')
 Write-Host ('-' * 92)
 
 $rows        = [System.Collections.Generic.List[object]]::new()
 $totalNodes  = [int64]0
-$totalPv     = [int64]0
+$totalMain   = [int64]0
 $totalQs     = [int64]0
 $haveSplit   = $true
 $totalMs     = [int64]0
@@ -271,43 +288,43 @@ foreach ($p in $positionList) {
     $totalMs    += $r.Ms
     [void]$contracts.Add($r.Contract)
 
-    if ($null -eq $r.PvNodes) {
+    if ($null -eq $r.MainNodes) {
         $haveSplit = $false
-        $pvCell = '-'
-        $qsCell = '-'
+        $mainCell = '-'
+        $qsCell   = '-'
     } else {
-        $totalPv += $r.PvNodes
-        $totalQs += $r.QsNodes
-        $pvCell = '{0:N0}' -f $r.PvNodes
-        $qsCell = '{0:N0}' -f $r.QsNodes
+        $totalMain += $r.MainNodes
+        $totalQs   += $r.QsNodes
+        $mainCell = '{0:N0}' -f $r.MainNodes
+        $qsCell   = '{0:N0}' -f $r.QsNodes
     }
 
     $flag = ''
     if ($r.Ms -lt $MinTimeMs) { $flag = ' (too fast to time)'; $fastCount++ }
 
     Write-Host ("{0,-12} {1,13} {2,13} {3,13:N0} {4,8:N0} {5,12:N0}  {6}{7}" -f `
-                $p.Name, $pvCell, $qsCell, $r.Nodes, $r.Ms, $nps, $r.Best, $flag)
+                $p.Name, $mainCell, $qsCell, $r.Nodes, $r.Ms, $nps, $r.Best, $flag)
 
     $rows.Add([pscustomobject]@{
-        Position = $p.Name
-        Fen      = $p.Fen
-        PvNodes  = $r.PvNodes
-        QsNodes  = $r.QsNodes
-        Nodes    = $r.Nodes
-        Ms       = $r.Ms
-        Nps      = $nps
-        Best     = $r.Best
+        Position  = $p.Name
+        Fen       = $p.Fen
+        MainNodes = $r.MainNodes
+        QsNodes   = $r.QsNodes
+        Nodes     = $r.Nodes
+        Ms        = $r.Ms
+        Nps       = $nps
+        Best      = $r.Best
     })
 }
 
 $aggregate = if ($totalMs -gt 0) { [int64]($totalNodes * 1000 / $totalMs) } else { 0 }
 
-$pvTotalCell = if ($haveSplit) { '{0:N0}' -f $totalPv } else { '-' }
-$qsTotalCell = if ($haveSplit) { '{0:N0}' -f $totalQs } else { '-' }
+$mainTotalCell = if ($haveSplit) { '{0:N0}' -f $totalMain } else { '-' }
+$qsTotalCell   = if ($haveSplit) { '{0:N0}' -f $totalQs }   else { '-' }
 
 Write-Host ('-' * 92)
 Write-Host ("{0,-12} {1,13} {2,13} {3,13:N0} {4,8:N0} {5,12:N0}" -f `
-            'TOTAL', $pvTotalCell, $qsTotalCell, $totalNodes, $totalMs, $aggregate)
+            'TOTAL', $mainTotalCell, $qsTotalCell, $totalNodes, $totalMs, $aggregate)
 Write-Host ""
 $contractLabel = ($contracts | Sort-Object) -join ','
 Write-Host "Aggregate nps: $('{0:N0}' -f $aggregate)    Wall clock: $('{0:N0}' -f $totalMs) ms    Contract: $contractLabel"
