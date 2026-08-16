@@ -323,18 +323,23 @@ The aggregate is trustworthy only where the existing equivalence check applies: 
 identical source, which by construction visit identical nodes.
 
 **Check which tree the nodes moved to before believing an nps change.** `Run-Bench.ps1` reports the
-main tree and the quiescence tree separately (`pv nodes` / `qs nodes`) alongside the total. If the
+main tree and the quiescence tree separately (`main nodes` / `qs nodes`) alongside the total. If the
 two columns move in opposite directions the change relocated work rather than adding or removing it,
 and nps says more about the split than about speed — read the **wall clock**, which no relocation can
 distort. Measured on #306: nps read −37% while the wall clock rose 28% and the main tree *shrank*
 19%, because the quiescence tree grew 34-43%.
 
 This is worth stating because the counters used to hide it. Until #312 `nodes_searched` counted
-`pvs()` nodes only, so quiescence — 44.5% of all nodes on the bench suite — reached the nps
-denominator's time but never its numerator's count. Any node count or nps recorded before
-2026-08-16 is main-tree only and is not comparable with one taken after; wall clock is unaffected
-and comparable throughout. Never *derive* a time-to-depth as `nodes / nps` across two runs: that
-error put two wrong figures into `Docs/EloLog.md`'s #237 row, one of them sign-inverted.
+`pvs()` move edges only, so every move searched inside quiescence — 12.1% of the true total on the
+bench suite at depth 12 — reached the nps denominator's time but never its numerator's count, which
+alone understated nps by 13.8%. Any node count or nps recorded before 2026-08-16 is main-tree only
+and is not comparable with one taken after; wall clock is unaffected and comparable throughout.
+Never *derive* a time-to-depth as `nodes / nps` across two runs: that error put two wrong figures
+into `Docs/EloLog.md`'s #237 row, one of them sign-inverted.
+
+Read the `main nodes` column as *the main tree including its frontier*: a quiescence root is a
+`pvs()` call at depth 0, so the edge into it is a main-tree edge and only the capture chain below it
+lands in `qs nodes`. The two columns therefore sum to the total exactly, with no node counted twice.
 
 **Use the right instrument for the size of the effect.** From this project's own data — the clang-cl
 migration measured +23.32% nps → +40.28 Elo at 10+0.1 — roughly **1% nps ≈ 1.7 Elo**. That is

@@ -695,10 +695,6 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 	if (IsAborted())
 		return GameValues::Draw;
 
-	// Counted after the abort check, matching pvs(), so a collapsing chain does not
-	// inflate the count with nodes it never searched.
-	td.qnodes_searched++;
-
 	// Mirrors pvs(): only thread 0 calls the wall-clock check; helpers rely on
 	// the IsAborted() fast-path above.
 	if (td.thread_id == 0 && (++td.nodes_since_check_ & 1023) == 0) {
@@ -831,6 +827,12 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 			continue;
 
 		td.add_move_to_seq(move, ply);
+
+		// Counted per searched child edge, not per function entry. Entering quiescence from
+		// pvs() does not cross a new edge — the move that got here was already counted by
+		// the parent's loop — so counting entries would add one node per quiescence root to
+		// the total. See MEASUREMENT_CONTRACT (UCIHandler.cpp) for the unit both counters use.
+		td.qnodes_searched++;
 
 		int score = -quiescence(td, -beta, -alpha, qsearch_depth + 1, ply + 1, tt);
 		td.board.UndoMove(move);

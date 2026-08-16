@@ -160,14 +160,14 @@ void UciHandler::init_ai()
 // This is not a build id and not an engine version: refactors and strength changes
 // leave it alone, because they do not change what the numbers mean.
 //
-//   1 — UCI 'nodes' is the main tree plus the quiescence tree (#312). Note the two
-//       counters do not count the same unit: pvs() increments once per move attempted,
-//       quiescence() once per node entered, so the sum double-counts every quiescence
-//       ROOT (its parent already counted the move into it). The figure is therefore an
-//       upper bound on nodes visited, not an exact count. It is still far closer than
-//       contract 0, and two contract-1 builds inflate identically, so comparisons hold.
-//       Reconciling the units is behavioural — metrics.nodes_searched feeds
-//       assess_iteration_quality() — so it belongs in its own change, not here.
+//   1 — UCI 'nodes' is the main tree plus the quiescence tree (#312). Both counters
+//       count MOVE EDGES, one per move the search takes up, so the two sum without
+//       overlap: entering quiescence from pvs() crosses no new edge, and the move that
+//       got there was already counted by the parent's loop. The one residual asymmetry
+//       is legality — pvs() counts a move before DoMove() rejects it as illegal, and
+//       quiescence counts after — which is worth a fraction of a percent and cannot be
+//       removed here, because pvs()'s counter feeds assess_iteration_quality() and moving
+//       it changes search behaviour rather than reporting.
 static constexpr int MEASUREMENT_CONTRACT = 1;
 
 void UciHandler::cmd_uci()
@@ -472,16 +472,17 @@ void UciHandler::cmd_go(std::string_view line)
 
 		// 'nodes' covers both trees rather than the main tree alone, which is what the
 		// protocol means and what keeps the client's nps from charging quiescence work to
-		// the clock without counting it. See MEASUREMENT_CONTRACT for why the sum is an
-		// upper bound rather than an exact node count.
+		// the clock without counting it. See MEASUREMENT_CONTRACT for the unit.
 		send("info depth " + std::to_string(result.depth_completed) + " score " + score_str + " nodes " +
 		     std::to_string(result.nodes_searched + result.qnodes_searched) + " time " +
 		     std::to_string(elapsed.count()) + " pv " + (best.is_null() ? "0000" : MoveFormatter::ToUCI(best)));
 
 		// The split, as an 'info string' so GUIs and match runners ignore it. Without it a
 		// change that relocates work between the two trees is indistinguishable from one
-		// that simply got slower -- see #312.
-		send("info string treenodes pv " + std::to_string(result.nodes_searched) + " qs " +
+		// that simply got slower -- see #312. 'main' rather than 'pv' because pvs() searches
+		// PV and non-PV nodes alike; the distinction here is main tree versus quiescence.
+		// The two addends must sum to the 'nodes' figure above -- Run-Bench.ps1 checks it.
+		send("info string treenodes main " + std::to_string(result.nodes_searched) + " qs " +
 		     std::to_string(result.qnodes_searched));
 
 		const std::string bm = best.is_null() ? "0000" : MoveFormatter::ToUCI(best);

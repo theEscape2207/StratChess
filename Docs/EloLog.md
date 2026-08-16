@@ -12,7 +12,8 @@ references are not on a common scale, so the tables are kept apart rather than a
 
 **Node counts and nps quoted in rows before 2026-08-16 are main-tree only.** Until #312 the engine
 counted `pvs()` nodes and never `quiescence()` nodes, so any node count or nps in an earlier row
-excludes roughly half the search — 44.5% of all nodes on the bench suite at the time of the fix.
+excludes every move searched inside quiescence — 12.1% of the true total on the bench suite at the
+time of the fix, which understated nps by 13.8%.
 Two consequences when reading old rows: an nps figure is not comparable with one taken after #312,
 and a change that moved work between the main tree and the quiescence tree could show an nps
 collapse with no real slowdown, or the reverse. **Wall clock was never affected** and is the figure
