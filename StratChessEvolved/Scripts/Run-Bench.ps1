@@ -201,10 +201,8 @@ function Invoke-Search {
         $qsNodes   = [int64]$lastSplit.Groups[2].Value
     }
 
-    # A contract >= 1 build promises the split on every search, and promises it sums to
-    # the reported total. Both are cheap to check and neither can fail quietly: a missing
-    # or inconsistent split means the producer and this parser have drifted apart, and
-    # every figure derived from the run is then suspect. Refuse the run instead.
+    # A contract >= 1 build promises the split on every search, and that it sums to the
+    # total. Either failing means engine and parser have drifted, so refuse the run.
     if ($contractNo -ge 1 -and $split.Count -eq 0) {
         throw ("Contract $contractNo build emitted no 'info string treenodes' line for FEN: $Fen" +
                "`nThe engine and this script disagree about the measurement contract." +
@@ -241,12 +239,9 @@ $workDir = Split-Path -Parent $exePath
 # the array would be silently coerced to a single string.
 $positionList = @(Resolve-Positions -Path $Positions)
 
-# Everything that decides whether two runs of this script may be compared, on one
-# line, so it survives being pasted into a doc. The position hash covers the FENs
-# themselves: editing the suite silently invalidates every recorded table, and
-# nothing else would signal it. The engine hash distinguishes two builds with the
-# same contract. The contract itself comes from the engine and is filled in after
-# the first position runs, since it arrives in the UCI handshake.
+# Everything deciding whether two runs may be compared, on one line, so it survives
+# being pasted into a doc. The position hash is the part with no other signal:
+# editing the suite silently invalidates every recorded table.
 $posHash = & {
     $sha    = [System.Security.Cryptography.SHA256]::Create()
     $joined = ($positionList | ForEach-Object { $_.Fen }) -join "`n"

@@ -219,8 +219,8 @@ class AIPerlexTestFixture {
 
 	int64_t mainnodes() const { return ai->td_.nodes_searched; }
 
-	// Writes both node counters directly, so a test can plant a value the search itself
-	// could never produce and then prove init_search() replaced it rather than added to it.
+	// Plants a value the search itself could never produce, so a test can prove
+	// init_search() replaced the counters rather than added to them.
 	void poison_node_counters(int64_t value) const
 	{
 		ai->td_.nodes_searched = value;
@@ -914,10 +914,8 @@ TEST_CASE("Qsearch - out of check, the stand-pat cutoff is unchanged", "[search]
 // ============================================================================
 // Quiescence node accounting
 // ============================================================================
-// nodes_searched counts pvs() nodes only, so roughly half the search used to be
-// invisible to every figure derived from it — most damagingly nps, where
-// quiescence work reached the denominator's time but never the numerator's
-// count. These pin the split and the total that UCI reports.
+// nodes_searched counts pvs() edges only, so quiescence work reached the nps
+// denominator's time but never its numerator's count. These pin the split.
 
 TEST_CASE("Search - quiescence nodes are counted separately from main-tree nodes", "[search][nodes]")
 {
@@ -925,8 +923,8 @@ TEST_CASE("Search - quiescence nodes are counted separately from main-tree nodes
 
 	REQUIRE_FALSE(fix.search_to_depth(6).is_null());
 
-	// Both trees must have been walked. A zero on either side means a counter stopped
-	// being incremented, which is silent in every other test.
+	// A zero on either side means a counter stopped being incremented — silent
+	// in every other test.
 	CHECK(fix.mainnodes() > 0);
 	CHECK(fix.qnodes() > 0);
 
@@ -947,11 +945,9 @@ TEST_CASE("Search - node counters reset between searches", "[search][nodes]")
 	REQUIRE(first_main > 0);
 	REQUIRE(first_q > 0);
 
-	// A second search on the SAME fixture reuses a warm transposition table, so its count
-	// is not comparable with the first and cannot be asserted against it. What makes the
-	// reset provable anyway is planting a value no search of this position could reach:
-	// init_search() must REPLACE it, so a counter that accumulated instead can only report
-	// at least the sentinel back.
+	// A second search on the SAME fixture reuses a warm TT, so its count is not comparable
+	// with the first. The sentinel makes the reset provable anyway: a counter that
+	// accumulated instead of resetting can only report back at least this much.
 	constexpr int64_t sentinel = 1'000'000'000;
 	fix.poison_node_counters(sentinel);
 

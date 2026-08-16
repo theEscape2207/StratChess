@@ -24,19 +24,14 @@ struct ThreadData {
 	Board board;
 
 	// Thread-local main-tree node counter (replaces PlayerAiBase::m_SearchCount for
-	// AIPerplex). Counts pvs() move edges only — quiescence keeps its own counter below.
-	// The split is deliberate: assess_iteration_quality() and completion_ratio are
-	// calibrated against main-tree size, so folding quiescence in here would change search
-	// behaviour, not just reporting.
+	// AIPerplex). Counts pvs() move edges only. Keeping quiescence out is deliberate:
+	// assess_iteration_quality() and completion_ratio are calibrated against main-tree size,
+	// so folding it in here would change search behaviour, not just reporting.
 	int64_t nodes_searched = 0;
 
-	// Thread-local quiescence node counter, counting the same unit as nodes_searched: one
-	// per move edge the quiescence loop searches. Entering quiescence from pvs() crosses no
-	// new edge, so a quiescence root belongs to the main-tree count that produced it and the
-	// two counters sum without overlap. Reported to UCI as part of the node total (the
-	// protocol means all nodes searched), and separately by Run-Bench.ps1, so a change that
-	// relocates work between the two trees is visible instead of showing up as a phantom
-	// nps regression.
+	// Thread-local quiescence counter, same unit as nodes_searched: one per move edge
+	// searched. The two sum without overlap — a quiescence root's incoming edge belongs to
+	// the main tree — and are reported both together (UCI 'nodes') and apart (Run-Bench.ps1).
 	int64_t qnodes_searched = 0;
 
 	// Node-based time-check counter (replaces PlayerAiBase::nodes_since_check_ for

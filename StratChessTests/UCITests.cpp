@@ -2082,9 +2082,8 @@ TEST_CASE("cmd_go: two back-to-back 'go depth 4' searches each produce one bestm
 // ---------------------------------------------------------------------------
 // Measurement contract over the wire (issue #312)
 // ---------------------------------------------------------------------------
-// The C++ side can prove the counters are right and Run-Bench.ps1 can prove it
-// parses what it is given, but between them sits the protocol text itself. These
-// pin that text, so a typo in either producer cannot pass the suite unnoticed.
+// Between the counters (covered in SearchTests) and the bench parser sits the
+// protocol text itself, which nothing else asserts on.
 
 namespace {
 
@@ -2118,9 +2117,8 @@ namespace {
 
 TEST_CASE("cmd_uci: the handshake advertises a measurement contract version", "[uci][nodes]")
 {
-	// Run-Bench.ps1 keys comparability off this line and treats its absence as
-	// "pre-#312 build, main-tree nodes only". A silent removal would therefore not
-	// error out — it would relabel every future run as an old one.
+	// Run-Bench.ps1 reads absence as "pre-#312 build", so losing this line would not
+	// error out — it would silently relabel every future run as an old one.
 	UciHandlerTestFixture fix;
 	const std::string output = capture_cout([&] { fix.uci(); });
 
@@ -2150,14 +2148,12 @@ TEST_CASE("cmd_go: 'nodes' equals the reported main/quiescence split", "[uci][no
 	REQUIRE(split.has_value());
 	const auto [main_nodes, qs_nodes] = *split;
 
-	// Both trees walked: a zero on either side is what a counter that stopped being
-	// incremented looks like from outside the engine.
+	// A zero on either side is what a counter that stopped being incremented looks like
+	// from outside the engine.
 	CHECK(main_nodes > 0);
 	CHECK(qs_nodes > 0);
 
-	// The invariant Run-Bench.ps1 enforces on every position it measures. It holds only
-	// because the two counters count the same unit; counting quiescence function entries
-	// instead of edges would add one node per quiescence root and break it.
+	// The same invariant Run-Bench.ps1 enforces on every position it measures.
 	const auto info_lines = parse_info_depth_lines(output);
 	REQUIRE_FALSE(info_lines.empty());
 	CHECK(info_lines.back().nodes == main_nodes + qs_nodes);

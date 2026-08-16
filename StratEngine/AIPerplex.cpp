@@ -264,9 +264,8 @@ Move AIPerplex::GetMove(GameInfo& info, const SearchLimits& limits)
 	last_result_.nodes_searched = total_nodes;
 	last_result_.qnodes_searched = total_qnodes;
 
-	// The reported total is both trees: UCI 'nodes' means every node the search visited,
-	// and an nps computed from the main tree alone charges quiescence work to the clock
-	// without ever crediting it to the count.
+	// Both trees: an nps computed from the main tree alone charges quiescence work to
+	// the clock without ever crediting it to the count.
 	auto elapsed = StopTimerAndAdjustVars(static_cast<size_t>(total_nodes + total_qnodes));
 
 	Move bestMove = result.best_move;
@@ -828,10 +827,8 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth
 
 		td.add_move_to_seq(move, ply);
 
-		// Counted per searched child edge, not per function entry. Entering quiescence from
-		// pvs() does not cross a new edge — the move that got here was already counted by
-		// the parent's loop — so counting entries would add one node per quiescence root to
-		// the total. See MEASUREMENT_CONTRACT (UCIHandler.cpp) for the unit both counters use.
+		// Per searched edge, matching pvs(): counting entries here instead would re-count
+		// every quiescence root, whose incoming move the parent's loop already counted.
 		td.qnodes_searched++;
 
 		int score = -quiescence(td, -beta, -alpha, qsearch_depth + 1, ply + 1, tt);
