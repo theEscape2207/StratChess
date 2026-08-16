@@ -18,6 +18,9 @@ struct SearchResult {
 	int depth_completed = 0;
 	// Main tree and quiescence tree are kept apart here and summed only where a total is
 	// reported, so a caller can tell which tree a change moved work into.
+	// Construct this struct with DESIGNATED initializers: inserting a member mid-struct
+	// shifts every positional initializer after it, and bool -> int64_t is a promotion
+	// rather than a narrowing conversion, so /W4 /WX does not catch the shift.
 	int64_t nodes_searched = 0;
 	int64_t qnodes_searched = 0;
 	bool search_was_stable = true;

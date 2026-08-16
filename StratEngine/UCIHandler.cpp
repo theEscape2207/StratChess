@@ -160,7 +160,14 @@ void UciHandler::init_ai()
 // This is not a build id and not an engine version: refactors and strength changes
 // leave it alone, because they do not change what the numbers mean.
 //
-//   1 — UCI 'nodes' is the main tree plus the quiescence tree (#312).
+//   1 — UCI 'nodes' is the main tree plus the quiescence tree (#312). Note the two
+//       counters do not count the same unit: pvs() increments once per move attempted,
+//       quiescence() once per node entered, so the sum double-counts every quiescence
+//       ROOT (its parent already counted the move into it). The figure is therefore an
+//       upper bound on nodes visited, not an exact count. It is still far closer than
+//       contract 0, and two contract-1 builds inflate identically, so comparisons hold.
+//       Reconciling the units is behavioural — metrics.nodes_searched feeds
+//       assess_iteration_quality() — so it belongs in its own change, not here.
 static constexpr int MEASUREMENT_CONTRACT = 1;
 
 void UciHandler::cmd_uci()
@@ -463,8 +470,10 @@ void UciHandler::cmd_go(std::string_view line)
 		const int cp = result.best_score;
 		const std::string score_str = format_uci_score(cp);
 
-		// 'nodes' is every node the search visited, main tree and quiescence tree together,
-		// which is what the protocol means and what makes the client's nps figure honest.
+		// 'nodes' covers both trees rather than the main tree alone, which is what the
+		// protocol means and what keeps the client's nps from charging quiescence work to
+		// the clock without counting it. See MEASUREMENT_CONTRACT for why the sum is an
+		// upper bound rather than an exact node count.
 		send("info depth " + std::to_string(result.depth_completed) + " score " + score_str + " nodes " +
 		     std::to_string(result.nodes_searched + result.qnodes_searched) + " time " +
 		     std::to_string(elapsed.count()) + " pv " + (best.is_null() ? "0000" : MoveFormatter::ToUCI(best)));

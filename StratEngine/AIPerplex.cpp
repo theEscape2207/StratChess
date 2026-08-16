@@ -413,8 +413,11 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 	if (state.best_move.is_null()) {
 		if (!handle_empty_move_emergency(td, state)) {
 			// Game over - return what we have
-			return SearchResult{state.best_move, state.best_score, state.depth_completed,
-			                    state.nodes_at_completed_depth, state.search_was_stable};
+			return SearchResult{.best_move = state.best_move,
+			                    .best_score = state.best_score,
+			                    .depth_completed = state.depth_completed,
+			                    .nodes_searched = state.nodes_at_completed_depth,
+			                    .search_was_stable = state.search_was_stable};
 		}
 	}
 
@@ -422,8 +425,11 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 	if (state.depth_completed > 0) {
 		log_search_complete(state, td.pv_table);
 	}
-	return SearchResult{state.best_move, state.best_score, state.depth_completed, state.nodes_at_completed_depth,
-	                    state.search_was_stable};
+	return SearchResult{.best_move = state.best_move,
+	                    .best_score = state.best_score,
+	                    .depth_completed = state.depth_completed,
+	                    .nodes_searched = state.nodes_at_completed_depth,
+	                    .search_was_stable = state.search_was_stable};
 }
 
 int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt)
@@ -684,12 +690,14 @@ int AIPerplex::adjustScoreForGameState(ThreadData& td, bool moveFound, int ply, 
 
 int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_depth, int ply, TranspositionTable& tt)
 {
-	td.qnodes_searched++;
-
 	// Fast early exit: IsAborted() reads only the latched atomic (no clock call).
 	// Mirrors pvs() — collapses quiescence chains in O(depth) after latch fires.
 	if (IsAborted())
 		return GameValues::Draw;
+
+	// Counted after the abort check, matching pvs(), so a collapsing chain does not
+	// inflate the count with nodes it never searched.
+	td.qnodes_searched++;
 
 	// Mirrors pvs(): only thread 0 calls the wall-clock check; helpers rely on
 	// the IsAborted() fast-path above.

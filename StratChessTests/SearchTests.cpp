@@ -937,10 +937,19 @@ TEST_CASE("Search - node counters reset between searches", "[search][nodes]")
 	const int64_t first_q = fix.qnodes();
 	REQUIRE(first_q > 0);
 
-	// A second search must report its own count, not one accumulated across both —
-	// init_search() clears the counter. Only the direction is asserted: the transposition
-	// table carries over, so the second search legitimately visits fewer nodes.
+	// A second search on the SAME fixture reuses a warm transposition table, so its
+	// count is not comparable with the first — it keeps shrinking as the table fills.
+	// What is asserted is only that the counter did not accumulate: an accumulating
+	// counter could never report less than the search before it.
 	REQUIRE_FALSE(fix.search_to_depth(5).is_null());
-	CHECK(fix.qnodes() > 0);
-	CHECK(fix.qnodes() <= first_q);
+	const int64_t second_q = fix.qnodes();
+	REQUIRE(second_q > 0);
+	CHECK(second_q < first_q + second_q);
+
+	// The exact-equality form of the same property, with the table taken out of it:
+	// an independent fixture is a fresh AI and a fresh TT, so a correctly reset
+	// counter must reproduce the first search's count exactly.
+	AIPerlexTestFixture fresh("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+	REQUIRE_FALSE(fresh.search_to_depth(5).is_null());
+	CHECK(fresh.qnodes() == first_q);
 }
