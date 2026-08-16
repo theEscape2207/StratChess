@@ -214,6 +214,20 @@ class AIPerlexTestFixture {
 		return ai->quiescence(ai->td_, alpha, beta, /*qsearch_depth=*/0, ply, *ai->_tt);
 	}
 
+	SearchResult last_result() const { return ai->GetLastResult(); }
+
+	int64_t qnodes() const { return ai->td_.qnodes_searched; }
+
+	int64_t mainnodes() const { return ai->td_.nodes_searched; }
+
+	// Plants a value the search itself could never produce, so a test can prove
+	// init_search() replaced the counters rather than added to them.
+	void poison_node_counters(int64_t value) const
+	{
+		ai->td_.nodes_searched = value;
+		ai->td_.qnodes_searched = value;
+	}
+
 	// Static evaluation of the fixture's board — the value stand-pat would have used.
 	int evaluate() const
 	{
@@ -955,4 +969,59 @@ TEST_CASE("Qsearch - out of check, the stand-pat cutoff is unchanged", "[search]
 	REQUIRE(fix.evaluate() >= beta);
 
 	CHECK(fix.quiesce_node(-GameValues::Search_Init, beta, 0, /*ply=*/0) == beta);
+}
+
+// ============================================================================
+// Quiescence node accounting
+// ============================================================================
+// nodes_searched counts pvs() edges only, so quiescence work reached the nps
+// denominator's time but never its numerator's count. These pin the split.
+
+TEST_CASE("Search - quiescence nodes are counted separately from main-tree nodes", "[search][nodes]")
+{
+	AIPerlexTestFixture fix("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+
+	REQUIRE_FALSE(fix.search_to_depth(6).is_null());
+
+	// A zero on either side means a counter stopped being incremented — silent
+	// in every other test.
+	CHECK(fix.mainnodes() > 0);
+	CHECK(fix.qnodes() > 0);
+
+	// At Threads=1 there are no helper counts to add, so the result's fields are exactly
+	// the main thread's, and the two are reported separately rather than pre-summed.
+	const SearchResult result = fix.last_result();
+	CHECK(result.nodes_searched == fix.mainnodes());
+	CHECK(result.qnodes_searched == fix.qnodes());
+}
+
+TEST_CASE("Search - node counters reset between searches", "[search][nodes]")
+{
+	AIPerlexTestFixture fix("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+
+	REQUIRE_FALSE(fix.search_to_depth(5).is_null());
+	const int64_t first_main = fix.mainnodes();
+	const int64_t first_q = fix.qnodes();
+	REQUIRE(first_main > 0);
+	REQUIRE(first_q > 0);
+
+	// A second search on the SAME fixture reuses a warm TT, so its count is not comparable
+	// with the first. The sentinel makes the reset provable anyway: a counter that
+	// accumulated instead of resetting can only report back at least this much.
+	constexpr int64_t sentinel = 1'000'000'000;
+	fix.poison_node_counters(sentinel);
+
+	REQUIRE_FALSE(fix.search_to_depth(5).is_null());
+	CHECK(fix.mainnodes() < sentinel);
+	CHECK(fix.qnodes() < sentinel);
+	CHECK(fix.mainnodes() > 0);
+	CHECK(fix.qnodes() > 0);
+
+	// The exact-equality form of the same property, with the table taken out of it:
+	// an independent fixture is a fresh AI and a fresh TT, so a correctly reset
+	// counter must reproduce the first search's count exactly.
+	AIPerlexTestFixture fresh("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+	REQUIRE_FALSE(fresh.search_to_depth(5).is_null());
+	CHECK(fresh.mainnodes() == first_main);
+	CHECK(fresh.qnodes() == first_q);
 }

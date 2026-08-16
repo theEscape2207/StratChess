@@ -153,6 +153,23 @@ void UciHandler::init_ai()
 // Command implementations
 // ---------------------------------------------------------------------------
 
+// Measurement contract version. Bump ONLY when something changes what a reported
+// measurement means — what counts as a node, which trees are included, what nps is
+// computed from. Two bench tables are comparable only if this matches; a run that
+// reports no contract at all predates the split and counted main-tree nodes only.
+// This is not a build id and not an engine version: refactors and strength changes
+// leave it alone, because they do not change what the numbers mean.
+//
+//   1 — UCI 'nodes' is the main tree plus the quiescence tree (#312), both counted in
+//       MOVE EDGES, so the two sum with nothing counted twice. It is NOT a complete
+//       census of nodes visited, and the gaps are unmeasured: null-move edges (pvs()
+//       ~line 509) and LMR/PV re-searches of an already-counted edge belong to neither
+//       column, and the loops straddle DoMove() differently — pvs() counts a move
+//       before it can be rejected as illegal, quiescence after. Aligning that last one
+//       means moving pvs()'s increment, which changes search behaviour
+//       (assess_iteration_quality) rather than reporting.
+static constexpr int MEASUREMENT_CONTRACT = 1;
+
 void UciHandler::cmd_uci()
 {
 	send("id name StratChess");
@@ -163,7 +180,10 @@ void UciHandler::cmd_uci()
 	// separately queryable lock_bytes() is additional memory.
 	send("option name Hash type spin default " + std::to_string(AIPerplex::DEFAULT_HASH_MB) + " min " +
 	     std::to_string(AIPerplex::MIN_HASH_MB) + " max " + std::to_string(AIPerplex::MAX_HASH_MB));
+	// After uciok, not inside the block: the spec's reply to 'uci' is id + option + uciok,
+	// and an 'info' line among them is out of spec even though GUIs tolerate it.
 	send("uciok");
+	send("info string benchcontract " + std::to_string(MEASUREMENT_CONTRACT));
 }
 
 void UciHandler::cmd_isready() { send("readyok"); }
@@ -452,9 +472,19 @@ void UciHandler::cmd_go(std::string_view line)
 		const int cp = result.best_score;
 		const std::string score_str = format_uci_score(cp);
 
+		// 'nodes' covers both trees rather than the main tree alone, which is what the
+		// protocol means and what keeps the client's nps from charging quiescence work to
+		// the clock without counting it. See MEASUREMENT_CONTRACT for the unit.
 		send("info depth " + std::to_string(result.depth_completed) + " score " + score_str + " nodes " +
-		     std::to_string(result.nodes_searched) + " time " + std::to_string(elapsed.count()) + " pv " +
-		     (best.is_null() ? "0000" : MoveFormatter::ToUCI(best)));
+		     std::to_string(result.nodes_searched + result.qnodes_searched) + " time " +
+		     std::to_string(elapsed.count()) + " pv " + (best.is_null() ? "0000" : MoveFormatter::ToUCI(best)));
+
+		// The split, as an 'info string' so GUIs and match runners ignore it: without it a
+		// change that relocates work between the trees looks like one that simply got slower
+		// (#312). The two must sum to 'nodes' above -- Run-Bench.ps1 refuses a run if they
+		// do not. 'main' not 'pv' because pvs() searches PV and non-PV nodes alike.
+		send("info string treenodes main " + std::to_string(result.nodes_searched) + " qs " +
+		     std::to_string(result.qnodes_searched));
 
 		const std::string bm = best.is_null() ? "0000" : MoveFormatter::ToUCI(best);
 		// Cleared BEFORE bestmove goes out, not after. `bestmove` is the only

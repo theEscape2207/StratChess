@@ -16,21 +16,26 @@ struct SearchResult {
 	Move best_move = Move::EmptyMove();
 	int best_score = 0;
 	int depth_completed = 0;
+	// The two trees stay apart here and are summed only where a total is reported.
+	// Construct with DESIGNATED initializers: a member inserted mid-struct shifts every
+	// positional initializer after it, and bool -> int64_t promotes rather than narrows,
+	// so /W4 /WX does not catch the shift.
 	int64_t nodes_searched = 0;
+	int64_t qnodes_searched = 0;
 	bool search_was_stable = true;
 };
 
 // Snapshot of one accepted iterative-deepening iteration, handed to the
 // iteration observer (see AIPerplex::SetIterationObserver). `nodes` is the
 // CUMULATIVE main-search-thread node count at the end of this accepted
-// iteration (td.nodes_searched) — the standard UCI convention for a
-// per-iteration "nodes so far" figure, not the per-iteration delta
-// IterationMetrics tracks. It is NOT guaranteed to equal the final
+// iteration, both trees summed (td.nodes_searched + td.qnodes_searched) — the
+// standard UCI convention for a per-iteration "nodes so far" figure, not the
+// per-iteration delta IterationMetrics tracks. It is NOT guaranteed to equal the final
 // info/bestmove line's node count: on a clocked search the loop typically
 // starts one more iteration, gets interrupted, and has that iteration
 // rejected by assess_iteration_quality() (REJECT_AND_STOP emits nothing —
 // see iterative_deepening()), but the rejected iteration's nodes are already
-// in td.nodes_searched by the time GetMove() reports the final total, so
+// in both counters by the time GetMove() reports the final total, so
 // that total is typically strictly greater than this field at Threads=1.
 // Under Lazy SMP the two also diverge because the final total sums helper
 // threads' nodes, which are never visible here. `pv` is a copy of the PV
