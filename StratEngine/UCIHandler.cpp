@@ -153,10 +153,21 @@ void UciHandler::init_ai()
 // Command implementations
 // ---------------------------------------------------------------------------
 
+// Measurement contract version. Bump ONLY when something changes what a reported
+// measurement means — what counts as a node, which trees are included, what nps is
+// computed from. Two bench tables are comparable only if this matches; a run that
+// reports no contract at all predates the split and counted main-tree nodes only.
+// This is not a build id and not an engine version: refactors and strength changes
+// leave it alone, because they do not change what the numbers mean.
+//
+//   1 — UCI 'nodes' is the main tree plus the quiescence tree (#312).
+static constexpr int MEASUREMENT_CONTRACT = 1;
+
 void UciHandler::cmd_uci()
 {
 	send("id name StratChess");
 	send("id author Thees");
+	send("info string benchcontract " + std::to_string(MEASUREMENT_CONTRACT));
 	send("option name Threads type spin default 1 min 1 max 32");
 	// Hash budgets TT entry bytes. Arbitrary values round down to a power-of-two
 	// bucket count; exact-fit values include 192 / 384 / 768 / 1536. The

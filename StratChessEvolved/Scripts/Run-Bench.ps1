@@ -189,6 +189,7 @@ function Invoke-Search {
     # Main-tree/quiescence split (issue #312). Engines built before that change do not
     # emit it, and comparing against such a build is the normal case for a before/after
     # run, so its absence is reported as unknown rather than as zero.
+    $contract = [regex]::Match($out, 'info string benchcontract (\d+)')
     $split   = [regex]::Matches($out, 'info string treenodes pv (\d+) qs (\d+)')
     $pvNodes = $null
     $qsNodes = $null
@@ -200,11 +201,12 @@ function Invoke-Search {
 
     $last = $info[$info.Count - 1]
     [pscustomobject]@{
-        Nodes   = [int64]$last.Groups[1].Value
-        PvNodes = $pvNodes
-        QsNodes = $qsNodes
-        Ms      = [int64]$last.Groups[2].Value
-        Best    = if ($best.Success) { $best.Groups[1].Value } else { '(none)' }
+        Nodes    = [int64]$last.Groups[1].Value
+        PvNodes  = $pvNodes
+        QsNodes  = $qsNodes
+        Ms       = [int64]$last.Groups[2].Value
+        Best     = if ($best.Success) { $best.Groups[1].Value } else { '(none)' }
+        Contract = if ($contract.Success) { [int]$contract.Groups[1].Value } else { 0 }
     }
 }
 
@@ -222,9 +224,26 @@ $workDir = Split-Path -Parent $exePath
 # the array would be silently coerced to a single string.
 $positionList = @(Resolve-Positions -Path $Positions)
 
+# Everything that decides whether two runs of this script may be compared, on one
+# line, so it survives being pasted into a doc. The position hash covers the FENs
+# themselves: editing the suite silently invalidates every recorded table, and
+# nothing else would signal it. The engine hash distinguishes two builds with the
+# same contract. The contract itself comes from the engine and is filled in after
+# the first position runs, since it arrives in the UCI handshake.
+$posHash = & {
+    $sha    = [System.Security.Cryptography.SHA256]::Create()
+    $joined = ($positionList | ForEach-Object { $_.Fen }) -join "`n"
+    $bytes  = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($joined))
+    $sha.Dispose()
+    (( $bytes | ForEach-Object { $_.ToString('x2') } ) -join '').Substring(0, 12)
+}
+$exeHash = (Get-FileHash -Path $exePath -Algorithm SHA256).Hash.Substring(0, 12).ToLower()
+
 Write-Host ""
 Write-Host "Engine  : $exePath"
 Write-Host "Depth   : $Depth    Threads: $Threads    Positions: $($positionList.Count)"
+$setName = if ($Positions) { Split-Path -Leaf $Positions } else { 'builtin' }
+Write-Host "Set     : $setName sha $posHash    Build: sha $exeHash    Host: $env:COMPUTERNAME"
 if ($Threads -gt 1) {
     Write-Host "WARNING : Threads > 1 makes node counts non-deterministic; the" -ForegroundColor Yellow
     Write-Host "          equivalence check between builds is not valid."       -ForegroundColor Yellow
@@ -241,6 +260,7 @@ $totalQs     = [int64]0
 $haveSplit   = $true
 $totalMs     = [int64]0
 $fastCount   = 0
+$contracts   = [System.Collections.Generic.HashSet[int]]::new()
 
 foreach ($p in $positionList) {
     $r = Invoke-Search -ExePath $exePath -WorkDir $workDir -Fen $p.Fen `
@@ -249,6 +269,7 @@ foreach ($p in $positionList) {
     $nps = if ($r.Ms -gt 0) { [int64]($r.Nodes * 1000 / $r.Ms) } else { 0 }
     $totalNodes += $r.Nodes
     $totalMs    += $r.Ms
+    [void]$contracts.Add($r.Contract)
 
     if ($null -eq $r.PvNodes) {
         $haveSplit = $false
@@ -288,17 +309,30 @@ Write-Host ('-' * 92)
 Write-Host ("{0,-12} {1,13} {2,13} {3,13:N0} {4,8:N0} {5,12:N0}" -f `
             'TOTAL', $pvTotalCell, $qsTotalCell, $totalNodes, $totalMs, $aggregate)
 Write-Host ""
-Write-Host "Aggregate nps: $('{0:N0}' -f $aggregate)    Wall clock: $('{0:N0}' -f $totalMs) ms"
+$contractLabel = ($contracts | Sort-Object) -join ','
+Write-Host "Aggregate nps: $('{0:N0}' -f $aggregate)    Wall clock: $('{0:N0}' -f $totalMs) ms    Contract: $contractLabel"
 
 if ($haveSplit -and $totalNodes -gt 0) {
     $qsShare = [math]::Round(100.0 * $totalQs / $totalNodes, 1)
     Write-Host "Quiescence share of nodes: $qsShare%"
-} elseif (-not $haveSplit) {
-    Write-Host ""
-    Write-Host "NOTE: this build does not report the pv/qs split (predates issue #312)." -ForegroundColor Yellow
-    Write-Host "      Its 'nodes' column counts main-tree nodes only, so its nps is not"  -ForegroundColor Yellow
-    Write-Host "      comparable with a build that reports the total. Compare wall clock." -ForegroundColor Yellow
 }
+
+if ($contracts.Count -gt 1) {
+    # One binary answered two different contracts across positions, which should be
+    # impossible -- the contract is a compile-time constant. Treat it as a corrupt run.
+    Write-Host ""
+    Write-Host "ERROR: positions reported differing contracts ($contractLabel). This run" -ForegroundColor Red
+    Write-Host "       is not internally consistent; discard it."                          -ForegroundColor Red
+} elseif ($contracts.Contains(0)) {
+    Write-Host ""
+    Write-Host "NOTE: contract 0 -- this build predates issue #312 and counts main-tree"  -ForegroundColor Yellow
+    Write-Host "      nodes only, so its 'nodes' and 'nps' are NOT comparable with a"      -ForegroundColor Yellow
+    Write-Host "      contract 1 build. Compare wall clock, which is unaffected."          -ForegroundColor Yellow
+}
+
+Write-Host ""
+Write-Host "Two tables are comparable only if Contract, Set sha, Depth and Threads all"
+Write-Host "match. Build sha and Host are recorded so a difference can be attributed."
 
 if ($fastCount -gt 0) {
     Write-Host ""
