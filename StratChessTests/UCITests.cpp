@@ -1942,6 +1942,75 @@ TEST_CASE("cmd_go: 'go nodes 1' still returns a move", "[uci]")
 	REQUIRE_FALSE(extract_bestmove(output).empty());
 }
 
+TEST_CASE("cmd_go: a node-limited search never reports a spliced pv", "[uci]")
+{
+	// #310: fastchess rejected moves in our pv lines at about 0.24 per game. The cause was
+	// an aborted frame going on to splice an earlier sibling's line onto its own move, so
+	// from the ply where the two positions diverge the line describes a different board.
+	//
+	// The node limit is what makes that reproducible: at Threads=1 the abort lands on the
+	// same node every run. 10'000 from this position is where it was reproduced before the
+	// unwind guard — depth 5 reported "pv d7d5 e4d5 d5e4 ...", a black move from a square
+	// that by then holds a white pawn. The neighbouring budgets are not free coverage of a
+	// second defect; they are the same check at other abort points, which is where a future
+	// regression would just as likely land.
+	const int budget = GENERATE(5'000, 10'000, 20'000, 50'000);
+
+	UciHandlerTestFixture fix;
+	fix.position("position startpos moves e2e4 e7e5 g1f3");
+
+	std::string output;
+	{
+		CoutRedirect redirect;
+		fix.dispatch("go nodes " + std::to_string(budget));
+		fix.join_search();
+		output = redirect.str();
+	}
+
+	const auto info_lines = parse_info_depth_lines(output);
+	REQUIRE_FALSE(info_lines.empty());
+
+	Board board;
+	REQUIRE(board.SetupFromFEN("rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2"));
+
+	for (const ParsedInfoLine& line : info_lines) {
+		INFO("budget " << budget << ", depth " << line.depth);
+		REQUIRE(replay_pv_is_legal(board, line.pv));
+	}
+
+	// The interrupted iteration is kept rather than discarded, so the move played has to be
+	// the one its own partial line names.
+	REQUIRE_FALSE(info_lines.back().pv.empty());
+	REQUIRE(info_lines.back().pv.front() == extract_bestmove(output));
+}
+
+TEST_CASE("cmd_go: a node limit bounds a multi-threaded search too", "[uci][smp]")
+{
+	// Only thread 0 polls, so the budget bounds thread 0's node count and the reported
+	// total — which sums every helper — lands near Threads times it. The property worth
+	// pinning is that the search still stops and still answers: helpers exit on the same
+	// latched flag, and their aborted frames unwind through the same guard.
+	UciHandlerTestFixture fix;
+	fix.setoption("setoption name Threads value 4");
+	fix.position("position startpos moves e2e4 e7e5 g1f3");
+
+	std::string output;
+	{
+		CoutRedirect redirect;
+		fix.dispatch("go nodes 20000");
+		fix.join_search();
+		output = redirect.str();
+	}
+
+	const auto info_lines = parse_info_depth_lines(output);
+	REQUIRE_FALSE(info_lines.empty());
+	REQUIRE_FALSE(extract_bestmove(output).empty());
+
+	Board board;
+	REQUIRE(board.SetupFromFEN("rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2"));
+	REQUIRE(replay_pv_is_legal(board, info_lines.back().pv));
+}
+
 TEST_CASE("cmd_go: an explicit depth still caps a node-bounded search", "[uci]")
 {
 	// A node budget lifts the default depth cap so it cannot silently truncate a

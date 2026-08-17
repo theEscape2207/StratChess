@@ -176,6 +176,20 @@ class AIPerplex final : public PlayerAiBase {
 	// carries the same "remaining search" unit as pvs()'s depth and the TT entries both store.
 	int quiescence(ThreadData& td, int alpha, int beta, int qsearch_budget, int ply, TranspositionTable& tt);
 
+	// The per-node limit poll shared by pvs() and quiescence(): true means this search must
+	// stop now. Only thread 0 polls, and only every 1024 node entries, so the chrono::now()
+	// behind the clock check is amortised; a helper thread returns false without even
+	// touching the counter. Whichever limit fires latches the abort flag, after which the
+	// IsAborted() fast path at the top of both functions answers for free.
+	//
+	// The two counters are in different units, which matters when reasoning about how far
+	// past the budget a node-limited search can run: nodes_since_check_ counts node
+	// *entries*, while the budget is compared against nodes_searched (one per move edge
+	// considered, including edges DoMove rejects) plus qnodes_searched (one per legal
+	// quiescence edge). So the stop lands at the first poll at or past the budget, not at
+	// the first multiple of 1024 of the budget's own counter.
+	bool poll_search_limits(ThreadData& td);
+
 	// Lazy SMP helper thread entry point: plain iterative-deepening loop with
 	// no quality gates (no assess_iteration_quality, no emergency handling,
 	// no game-state/root propagation, no logging). Result is discarded —

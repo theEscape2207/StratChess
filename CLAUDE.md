@@ -156,6 +156,10 @@ Non-obvious API contracts — the rest of the layout is discoverable.
 - `Engine::compute_budget(remaining, increment, moves_to_go)` → `TimeBudget{soft, hard}` is pure.
 - Null-move pruning is gated by `tuning_.null_move_enabled` via `should_try_null_move()` (covers
   zugzwang, mate-score contamination, consecutive nulls, PV/in-check, min-depth).
+- **An aborted frame mutates nothing.** `pvs()`/`quiescence()` check `IsAborted()` immediately after
+  each recursive call returns and the board is restored, so no store, PV update or killer/history
+  write is reachable from a child that never finished. A store added below that guard is covered by
+  it; one added above it has to justify itself the way the three exempt stores do in comments there.
 - `game_settings.json` holds per-player `"search_limits"`; it accepts C-style `/* */` comments via
   nlohmann, but PowerShell's `ConvertFrom-Json` does not.
 
