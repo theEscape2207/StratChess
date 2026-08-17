@@ -446,6 +446,17 @@ bool AIPerplex::poll_search_limits(ThreadData& td)
 
 int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt)
 {
+	// Cleared before the two abort exits below, not after them. A frame that returns from either
+	// has searched nothing, and its return value is the fabricated GameValues::Draw — safe for a
+	// parent frame, which discards it at its own unwind guard, but not for the root: the value
+	// travels out through search_with_aspiration() to iterative_deepening(), which would accept
+	// it as this iteration's score alongside a still-populated row 0 from an earlier aspiration
+	// retry. An empty row makes metrics.current_move empty, which is the INCOMPLETE rejection
+	// the machinery already has — the same signal search_with_aspiration() publishes explicitly
+	// when it is interrupted before entering pvs() at all. Nothing else changes: on a normal
+	// entry the clear happens exactly where it did.
+	td.pv_table.clear_ply(ply);
+
 	// Fast early exit: IsAborted() reads only the latched atomic (no clock call).
 	// After the first StopRequested() fires and latches the flag, this collapses
 	// the entire call stack in O(depth) steps instead of O(tree_size).
@@ -454,8 +465,6 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 	if (poll_search_limits(td))
 		return GameValues::Draw;
-
-	td.pv_table.clear_ply(ply);
 
 	// We need the info on the current board state
 	GameInfo info = td.get_last_info(ply);
@@ -625,6 +634,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			// after its recursive call returns. best_value is the best score over the
 			// children that did complete, which is a valid lower bound for this node and is
 			// what the root reports for an interrupted iteration.
+			//
+			// The node counters are the one deliberate exception: they are incremented before
+			// this point and stay incremented, because they measure work done, not results
+			// kept.
 			if (IsAborted())
 				return best_value;
 
@@ -804,10 +817,10 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// backing them is not computed at all (delta pruning, its only other consumer, is likewise
 	// disabled below).
 	//
-	// The cutoff store below is exempt from the unwind invariant: it is reached before this
-	// node searches anything, so its value is a static evaluation of the position in front of
-	// it and owes nothing to a child. Whether the search is about to be aborted does not make
-	// a static evaluation any less true.
+	// The cutoff store below is exempt from the unwind invariant: it is reached before this node
+	// searches anything, so what it records — that a static evaluation of the position in front
+	// of it already beats beta, stored fail-hard as beta itself — owes nothing to a child.
+	// Whether the search is about to be aborted does not make a static evaluation any less true.
 	int best_value = -GameValues::Search_Init;
 	int stand_pat = 0;
 
@@ -1168,6 +1181,12 @@ bool AIPerplex::handle_empty_move_emergency(ThreadData& td, SearchState& state)
 
 	// True emergency - generate any legal move
 	log.critical("EMERGENCY: No best move found (max_depth={}, last_completed={})", max_depth_, state.depth_completed);
+
+	// PVTable::update copies row ply + 1 onto the end of row ply. Row 1 here holds whatever the
+	// last subtree to reach ply 1 left behind — a different position entirely — so without this
+	// the emergency move would be published with a tail spliced onto it, the same defect the
+	// unwind guard removes from the search itself.
+	td.pv_table.clear_ply(1);
 
 	MoveList emergency_moves;
 	MoveGenerator::ComputeLegalMoves(td.board, current_info, emergency_moves);

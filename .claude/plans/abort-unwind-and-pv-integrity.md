@@ -111,9 +111,25 @@ root move and the iteration is rejected — the existing machinery already handl
 
 ### D4: PV integrity comes from D1, not from moving `clear_ply`
 
-Rejected: hoisting `clear_ply(ply)` above the two abort returns. It also stops the splice, but it
-leaves a length-1 PV naming a move whose subtree was never searched, and it empties row 0 on an
-abort-at-root, so `log_search_complete` loses the last coherent line it prints today.
+Rejected: hoisting `clear_ply(ply)` above the two abort returns *instead of* D1. It also stops the
+splice, but on its own it leaves a length-1 PV naming a move whose subtree was never searched.
+
+**Amended during PR 1's review: the hoist lands as well as D1, not instead of it.** D1 leaves one
+fabricated score reachable, because the two entry exits return `GameValues::Draw` without having
+searched anything. For a parent frame that is harmless — it discards the value at its own guard —
+but the root's caller is not a frame: an abort at the entry of an aspiration *retry* returns that 0
+through `search_with_aspiration()` while row 0 still holds the previous retry's line, so
+`iterative_deepening()` sees a plausible move, a large node count and a full-length PV, and
+`assess_iteration_quality`'s CASE 4 accepts `score cp 0` in a balanced position. Clearing first makes
+row 0 empty, which is the INCOMPLETE rejection the machinery already has — and is exactly what
+`search_with_aspiration()` already publishes explicitly for the interrupted-before-entry case, so this
+is a consistency fix rather than a new policy. The original objection survives only as the note that
+`log_search_complete` prints nothing for such an iteration, which is honest: there is no line.
+
+The same review found `handle_empty_move_emergency()` publishing row 0 through `PVTable::update`,
+which copies row 1 — stale, from a different position. `clear_ply(1)` before it. Harmless today
+because the emergency path runs after the last `emit_iteration_info` and the final UCI line carries
+only the move, but "row 0 always replays legally" is not globally true without it.
 
 ### D5: Assert in Debug at the emission choke point; do not sanitise in Release
 

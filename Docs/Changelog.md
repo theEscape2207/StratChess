@@ -32,6 +32,15 @@ Newest first.
   interrupted search returned `GameValues::Draw` — a legal score — and every frame on the unwinding
   stack consumed it and wrote it onwards, so entries at full nominal depth, cutoffs that never
   happened and spliced PV rows all outlived the search that produced them.
+- `pvs()` clears its PV row *before* the two abort exits rather than after. Those exits return a
+  fabricated `GameValues::Draw` without having searched anything — harmless to a parent frame, which
+  discards it at its own guard, but the root's caller is not a frame: an abort at the entry of an
+  aspiration retry carried that 0 out to `iterative_deepening()` beside a still-populated row 0 from
+  the previous retry, and `assess_iteration_quality`'s CASE 4 accepts `score cp 0` in a balanced
+  position. An empty row is the INCOMPLETE rejection the machinery already has, and is what
+  `search_with_aspiration()` already publishes for the interrupted-before-entry case.
+- `handle_empty_move_emergency()` clears row 1 before publishing the emergency move. `PVTable::update`
+  copies row 1 onto row 0, and row 1 there holds whatever subtree last reached ply 1.
 - That splice is #310: fastchess rejected moves in our `info … pv` lines at about 0.24 per game
   (4,780 warnings over 19,980 games). Reproduced deterministically with the node limit from #326 —
   `position startpos moves e2e4 e7e5 g1f3`, `go nodes 10000` reported
@@ -92,8 +101,10 @@ Newest first.
 - Debug-build tests, so the new assertion is live. Falsified both new checks by disabling the three
   guards: the regression test fails at budget 10,000 depth 5, and the Debug assertion fires at the
   same point.
-- `search-reviewer`: see the PR. Design and decisions:
-  `.claude/plans/abort-unwind-and-pv-integrity.md` (D1-D5).
+- `search-reviewer`: LGTM, no blocking findings. Its two substantive ones are the `clear_ply` hoist
+  and the emergency-path row 1 above, both taken; the third — that the previous-iteration PV-move
+  ordering hint has always been dead — is #299's PR 2 and stays out of this diff. Design and
+  decisions: `.claude/plans/abort-unwind-and-pv-integrity.md` (D1-D5, with D4 amended by this review).
 
 ## 2026-08-17 — Node limit (`go nodes`) as a deterministic abort seam (#326)
 

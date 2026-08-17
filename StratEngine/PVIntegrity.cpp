@@ -23,8 +23,8 @@ bool pv_replays_legally(const Board& root, std::span<const Move> line)
 		MoveList moves;
 		MoveGenerator::ComputeLegalMoves(board, board.GetGameInfo(), moves);
 
-		const bool generated = std::any_of(moves.begin(), moves.end(),
-		                                   [&move](const Move& candidate) { return same_move_exactly(candidate, move); });
+		const bool generated = std::any_of(
+		    moves.begin(), moves.end(), [&move](const Move& candidate) { return same_move_exactly(candidate, move); });
 		if (!generated)
 			return false;
 
