@@ -23,6 +23,13 @@ SearchLimits SearchLimits::fixed_depth(int depth) noexcept
 	return limits;
 }
 
+SearchLimits SearchLimits::fixed_nodes(int64_t nodes) noexcept
+{
+	SearchLimits limits;
+	limits.nodes = nodes;
+	return limits;
+}
+
 SearchLimits SearchLimits::infinite_search() noexcept
 {
 	SearchLimits limits;
@@ -38,13 +45,15 @@ namespace Engine {
 		ResolvedLimits r{};
 		r.effective_depth =
 		    limits.depth ? static_cast<unsigned>(*limits.depth) : (limits.infinite ? 50u : default_depth);
+		r.node_limit = limits.nodes;
 		if (limits.movetime) { // movetime wins over clock (defensive)
 			r.budget = {*limits.movetime, *limits.movetime};
 		} else if (limits.clock) {
 			r.budget = compute_budget(limits.clock->remaining, limits.clock->increment, limits.clock->moves_to_go);
-		} else if (limits.infinite || limits.depth) {
-			// Depth cap or UCI 'stop' is the stopping criterion; hours(1) avoids
-			// potential overflow from milliseconds::max() in comparisons.
+		} else if (limits.infinite || limits.depth || limits.nodes) {
+			// A depth cap, a node limit or UCI 'stop' is the stopping criterion;
+			// hours(1) avoids potential overflow from milliseconds::max() in
+			// comparisons.
 			r.budget = {std::chrono::hours(1), std::chrono::hours(1)};
 		} else {
 			r.budget = {default_time, default_time};

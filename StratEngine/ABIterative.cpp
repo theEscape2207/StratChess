@@ -31,7 +31,7 @@ Move ABIterative::GetMove(GameInfo& info, const SearchLimits& limits)
 
 	// almindelig iterativ soegning
 	for (depth_ = 1; depth_ <= effective_depth_; ++depth_) {
-		if (ShouldStopSearch())
+		if (TimeLimitReached())
 			break;
 
 		//Kald vores iterative soegerutine (resetting alpha and beta)
@@ -71,7 +71,7 @@ Move ABIterative::GetMove(GameInfo& info, const SearchLimits& limits)
 int ABIterative::Search(int ply, int alpha, int beta, PVLine& pline)
 {
 	// Check time and stop signal
-	if (ShouldStopSearch()) {
+	if (TimeLimitReached()) {
 		return GameValues::Draw;
 	}
 	const GameInfo& info = GetLastBoardInfo(ply);

@@ -168,6 +168,7 @@ unsigned PlayerAiBase::ApplyLimits(const SearchLimits& limits)
 	time_manager_.start(r.budget.soft, r.budget.hard);
 	stop_search_.store(false, std::memory_order_relaxed);
 	effective_depth_ = r.effective_depth;
+	node_limit_ = r.node_limit;
 	return r.effective_depth;
 }
 

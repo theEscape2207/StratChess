@@ -27,7 +27,7 @@ Move AIAgent::GetMove(GameInfo& info, const SearchLimits& limits)
 	// iterativ search
 	for (depth_ = 1; depth_ <= effective_depth_;) // depth_ maa ikke opdateres her med aspiration search
 	{
-		if (ShouldStopSearch()) {
+		if (TimeLimitReached()) {
 			break;
 		}
 		//Kald vores iterative soegerutine
@@ -71,7 +71,7 @@ Move AIAgent::GetMove(GameInfo& info, const SearchLimits& limits)
 int AIAgent::Search(size_t ply, int alpha, int beta, PVLine& pline)
 {
 	// Check time and stop signal
-	if (ShouldStopSearch()) {
+	if (TimeLimitReached()) {
 		return GameValues::Draw;
 	}
 	const GameInfo& info = GetLastBoardInfo(ply);

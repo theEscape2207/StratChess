@@ -118,8 +118,19 @@ abort-at-root, so `log_search_complete` loses the last coherent line it prints t
 ### D5: Assert in Debug at the emission choke point; do not sanitise in Release
 
 `emit_iteration_info` is the single place the reported PV leaves the engine. Assert there, through a
-named helper — `pv_replays_legally(root_board, line)` — so the invariant is unit testable without a
-search.
+named helper — `bool pv_replays_legally(const Board& root, std::span<const Move> line)` — so the
+invariant is unit testable without a search. It needs no `ThreadData` and no `GameInfo` argument:
+`Board` is `= default` copyable (`Board.h:24-27`, with precedent at `UCIHandler.cpp:376`) and
+`DoMove` maintains `gameInfo_` itself, so a disposable local copy plus `board.GetGameInfo()` at each
+step is sufficient — the pattern `Perft::perft_recursive` (`Tests/Perft.cpp:165-194`) already uses.
+
+**Each step needs both halves of legality, and they are not interchangeable.**
+`MoveGenerator::ComputeLegalMoves` is pseudo-legal — it does not test check (`MoveGenerator.h:15`) —
+while `DoMove` returns false only when the move leaves its own king in check (`Board.cpp:458-464`)
+and otherwise executes whatever from/to/flags triple it is handed, including a geometrically
+impossible one. So: test membership in the generated list, *then* `DoMove`. Membership must compare
+`flags()` explicitly, because `Move` equality ignores them (`Move.h:64-68`) and would match a PV
+move against a different promotion piece.
 
 Rejected: trimming the emitted line to its longest legally-replayable prefix in Release. It would
 guarantee fastchess never warns again while permanently hiding any splice path we have not found,
@@ -179,12 +190,9 @@ every build and is frozen reference code.
 
 ## Assumptions I cannot verify from the code
 
-Two earlier assumptions have since been checked and are recorded under Invariants (the game-state
-skip) and D8 (the zero budget). What remains:
+Three earlier assumptions have since been checked and are recorded under Invariants (the game-state
+skip), D8 (the zero budget) and D5 (the legality replay). What remains:
 
-- **A legality replay is available outside a search.** `pv_replays_legally` needs a board copy and
-  the `GameInfo` threading that `DoMove` expects. Whether that is constructible without a full
-  `ThreadData` is unchecked.
 - **The fastchess warnings are this defect and not an additional one.** Inferred from the duplicate
   from-square signature and `score cp 0` at depth, not replayed. Would be settled by mining a
   position out of `logs/elo/*.log` and reproducing the illegal line with the zero-budget abort before

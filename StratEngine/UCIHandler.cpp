@@ -420,10 +420,13 @@ void UciHandler::cmd_go(std::string_view line)
 	} else if (p.wtime > 0 || p.btime > 0) {
 		limits.clock = ClockInfo{std::chrono::milliseconds(white ? p.wtime : p.btime),
 		                         std::chrono::milliseconds(white ? p.winc : p.binc), p.movestogo};
-	} else if (!p.infinite && p.depth <= 0) {
-		// No constraints at all — apply a safe fallback.
+	} else if (!p.infinite && p.depth <= 0 && p.nodes <= 0) {
+		// No constraints at all — apply a safe fallback. A node budget counts as a
+		// constraint: 'go nodes N' must stop on N nodes, not 10 seconds before it.
 		limits.movetime = std::chrono::seconds(10);
 	}
+	if (p.nodes > 0)
+		limits.nodes = p.nodes;
 	limits.infinite = p.infinite;
 	limits.depth = (p.depth > 0) ? std::optional<int>(p.depth)
 	                             : std::optional<int>(p.infinite ? 50 : static_cast<int>(UCI_DEFAULT_DEPTH));
@@ -675,6 +678,8 @@ UciHandler::GoParams UciHandler::parse_go(std::string_view line)
 			ss >> p.depth;
 		} else if (token == "movetime") {
 			ss >> p.movetime;
+		} else if (token == "nodes") {
+			ss >> p.nodes;
 		} else if (token == "infinite") {
 			p.infinite = true;
 		}
