@@ -95,12 +95,12 @@ void MoveSorter::SortMovesByValue(MoveList& moveList, size_t captures, const Boa
 }
 
 // The hash move is the top tier. There is deliberately no separate tier above it for the
-// previous iteration's principal variation: measured over four depth-12 searches, such a hint
-// can be offered at only ~55 nodes in an entire search — one per ply per iteration, since it
-// exists only along the PV — and at those nodes it names the move the transposition table
-// already names, differing once across all four. That is not a coincidence to be tuned around:
-// the entry at a PV node is that node's own store from the previous iteration, which is where
-// the hint would come from too.
+// previous iteration's principal variation: such a hint exists only along the PV, so it can be
+// offered at one node per ply per iteration, and at those nodes it names the move the
+// transposition table already names — the entry at a PV node is that node's own store from the
+// previous iteration, which is where the hint would come from too. Where the table has nothing
+// to offer there, it is because the entry was overwritten, not because the hint knew better
+// (#335), and the fix belongs in the table.
 //
 // This applies to interior PV nodes. Ordering the ROOT's moves by the previous iteration's
 // scores is a separate question with a different answer available to it, and nothing here

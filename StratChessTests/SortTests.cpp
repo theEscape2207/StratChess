@@ -13,6 +13,10 @@
 
 // Rook endgame: White Ra1, Ke1 vs Black Ra2, Ke8.
 // Ra1xa2 is the only capture; all other legal white moves are quiet.
+//
+// Deliberately promotion-free. FindScore() below matches on Move equality, which ignores flags,
+// so two promotions on the same squares would alias and a test picking moveList[k] by index
+// could designate a move it did not mean.
 static constexpr const char* FEN_SORT = "4k3/8/8/8/8/8/r7/R3K3 w - - 0 1";
 
 // Helper: find the score assigned to a specific move in out_scored_idx.
@@ -61,6 +65,14 @@ TEST_CASE("Sort - an empty hash move promotes nothing", "[sort]")
 	MoveList moveList;
 	MoveGenerator::ComputeLegalMoves(board, info, moveList);
 	const int n = static_cast<int>(moveList.size());
+	REQUIRE(n > 0); // or the loops below would assert nothing and still pass
+
+	// The property itself, asserted rather than inferred from the scores: the sentinel's from
+	// and to are the same square, and no generated move's are. The score check alone would
+	// still pass under an encoding that broke the sentinel while leaving from == to.
+	REQUIRE(Move::EmptyMove().from() == Move::EmptyMove().to());
+	for (int i = 0; i < n; ++i)
+		REQUIRE(moveList[i].from() != moveList[i].to());
 
 	const Move null_move, killer0, killer1;
 	int32_t history[2][64][64] = {};
