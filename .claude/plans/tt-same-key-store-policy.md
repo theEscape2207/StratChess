@@ -28,7 +28,7 @@ accepted PV: 18 because a quiescence store replaced the main entry, 3 because a 
 - Let `quiescence()` mine `MAIN` entries for cutoffs. A declined quiescence store means the qsearch
   cache is now missing at those keys, and letting qsearch use the main entry there is the obvious
   answer — but it is a second behaviour change with its own measurement, so it belongs in its own
-  issue.
+  issue. Filed as #337.
 - Refresh the age of an entry whose overwrite was declined. That would keep a retained entry alive
   longer against *other* keys, which is a change to the eviction path this document excludes.
 
@@ -117,7 +117,7 @@ as a gate.
 | Why an empty incoming move keeps the old one (D2) | source comment in `store()` |
 | "An exact key match always overwrites in place" is no longer true | `Docs/Engine-Readme.md` |
 | Before/after PV-node hash-move availability, bench, SPRT | `Docs/Changelog.md` + PR body |
-| qsearch could mine `MAIN` entries — deliberately not done here | follow-up issue |
+| qsearch could mine `MAIN` entries — deliberately not done here | #337 |
 
 No approved decision changed during implementation. D1 and D2 landed as written; the measurement
 confirmed the "before" figures this document takes from #335 exactly (197 / 176 / 0 / 18 / 3).
