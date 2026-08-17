@@ -18,6 +18,7 @@
 #include "MoveFormatter.h"
 #include "MoveGenerator.h"
 #include "PlayerBase.h"
+#include "PVIntegrity.h"
 #include "PVTable.h"
 #include "MoveHelper.h"
 #include "TranspositionTable.h"
@@ -133,6 +134,18 @@ class AIPerlexTestFixture {
 
 	void poke_killer(int ply) const { ai->td_.store_killer(ply, AnyLegalMove()); }
 	bool has_killer(int ply) const { return !ai->td_.killers[ply][0].is_null(); }
+
+	// --- PV table pokes ---
+	// A row seeded here stands in for what a real search leaves behind: row 0 for a completed
+	// aspiration retry, row 1 for whatever subtree last reached ply 1. Both are the input the
+	// abort and emergency paths have to refuse to publish.
+	void seed_pv_row(int ply, const Move& move) const { ai->td_.pv_table.update(ply, move); }
+	int pv_length(int ply) const { return ai->td_.pv_table.get_length(ply); }
+	Move pv_move(int ply) const { return ai->td_.pv_table.get_pv_move(ply); }
+	std::span<const Move> pv_line(int ply) const
+	{
+		return {ai->td_.pv_table.get_line(ply).data(), static_cast<size_t>(ai->td_.pv_table.get_length(ply))};
+	}
 
 	void add_fake_helper() const { ai->helper_tds_.push_back(std::make_unique<ThreadData>()); }
 	size_t helper_count() const { return ai->helper_tds_.size(); }
@@ -574,6 +587,27 @@ TEST_CASE("Search - handle_empty_move_emergency: non-mate emergency sets a legal
 
 	REQUIRE(result == true);         // emergency move was found
 	REQUIRE(!s.best_move.is_null()); // a move was set
+}
+
+TEST_CASE("Search - handle_empty_move_emergency: a stale row 1 is not spliced onto the emergency move", "[search][pv]")
+{
+	// PVTable::update copies row ply + 1 onto the end of row ply, and row 1 at this point holds
+	// whatever subtree last reached ply 1 — a different position. Without clearing it first the
+	// emergency move is published with a tail that describes nothing, which is #310's defect
+	// arriving by another route.
+	AIPerlexTestFixture fix;
+	fix.seed_pv_row(1, AnyLegalMove());
+	REQUIRE(fix.pv_length(1) == 1); // the stale row the emergency path must not read
+
+	AIPerlexTestFixture::State s{};
+	s.best_move = Move{};
+	s.best_score = 0;
+
+	REQUIRE(fix.emergency(s));
+
+	REQUIRE(fix.pv_length(0) == 1); // exactly the emergency move, nothing spliced on
+	REQUIRE(fix.pv_move(0) == s.best_move);
+	REQUIRE(pv_replays_legally(fix.board_, fix.pv_line(0)));
 }
 
 // ============================================================================
@@ -1203,4 +1237,26 @@ TEST_CASE("Search - fixed_nodes is deterministic across repeated searches", "[se
 
 	CHECK(MoveFormatter::ToUCI(first_move) == MoveFormatter::ToUCI(second_move));
 	CHECK(first_total == second_total);
+}
+
+TEST_CASE("Search - a pvs frame that aborts at entry leaves an empty pv row", "[search][pv]")
+{
+	// The one abort the unwind guard cannot cover, because it happens before the frame searches
+	// anything: the entry exit returns a fabricated GameValues::Draw. A parent frame discards
+	// that at its own guard, but the root's caller is search_with_aspiration(), which hands it to
+	// iterative_deepening() as this iteration's score. Row 0 is what decides whether that score
+	// is believed — a populated row (here, a completed aspiration retry's line) makes
+	// metrics.current_move plausible and lets `score cp 0` through CASE 4 in a balanced position.
+	// Clearing the row before the exit is what turns it into the INCOMPLETE rejection instead.
+	AIPerlexTestFixture fix;
+	fix.seed_pv_row(0, AnyLegalMove());
+	REQUIRE(fix.pv_length(0) == 1); // the earlier retry's line, still standing
+
+	fix.ai->StopSearch(); // latch the abort flag, as UCI 'stop' or an expired clock would
+
+	const int score = fix.search_node(/*depth=*/4, /*ply=*/0);
+
+	REQUIRE(score == GameValues::Draw); // fabricated: nothing was searched
+	REQUIRE(fix.pv_length(0) == 0);     // ... and nothing is published alongside it
+	REQUIRE(fix.pv_move(0).is_null());
 }

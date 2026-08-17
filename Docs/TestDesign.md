@@ -337,6 +337,20 @@ king in check, and `DoMove` executes any from/to/flags triple it is handed, so p
 prove the position offered it. The flag cases are not padding — `Move` equality ignores flags, so a
 membership test written with `==` passes every one of them.
 
+Two `[search][pv]` cases in `SearchTests.cpp` cover the abort paths the end-to-end UCI test cannot
+force deterministically, both through `AIPerlexTestFixture`:
+
+- **A `pvs()` frame that aborts at entry leaves an empty row 0.** Seed row 0 (standing in for a
+  completed aspiration retry), latch the abort with `StopSearch()`, run one node. The entry exit
+  returns a fabricated `GameValues::Draw`, and an empty row is what makes `iterative_deepening()`
+  reject it as INCOMPLETE instead of reporting `score cp 0`.
+- **A stale row 1 is not spliced onto the emergency move.** `PVTable::update` copies row `ply + 1`,
+  so `handle_empty_move_emergency()` must clear row 1 first or publish a two-move line whose tail
+  came from another position.
+
+Both are red against the code before their fix — row 0 keeps its seeded move, and row 0 comes out
+length 2 — which is the only reason they are worth having.
+
 ### `[bitboard]` — Bitboard helper tests
 
 **When**: opportunistically (low priority)

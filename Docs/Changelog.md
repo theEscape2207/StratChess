@@ -98,9 +98,11 @@ Newest first.
 - Bench (8 positions, depth 12, `Threads=1`, clang-cl): nps 2,893,228 / 2,902,984 before against
   2,899,429 / 2,897,063 after — mean delta **+0.005%**, an order of magnitude inside the within-side
   spread. The guard is one predictable branch per searched child.
-- Debug-build tests, so the new assertion is live. Falsified both new checks by disabling the three
-  guards: the regression test fails at budget 10,000 depth 5, and the Debug assertion fires at the
-  same point.
+- Debug-build tests, so the new assertion is live. Every new check was falsified against the code it
+  guards: disabling the three unwind guards fails the regression test at budget 10,000 depth 5 and
+  fires the Debug assertion at the same point; moving `clear_ply` back below the abort exits leaves
+  row 0 populated; dropping the emergency path's `clear_ply(1)` publishes a two-move row 0; and
+  removing a source root from `build.ps1`'s partition fails both `-SelfTest` cases.
 - `search-reviewer`: LGTM, no blocking findings. Its two substantive ones are the `clear_ply` hoist
   and the emergency-path row 1 above, both taken; the third — that the previous-iteration PV-move
   ordering hint has always been dead — is #299's PR 2 and stays out of this diff. Design and

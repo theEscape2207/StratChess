@@ -246,22 +246,31 @@ function Invoke-SelfTest {
     # Compared as full paths under $RepoRoot, never as a substring of one: a worktree of
     # this repository lives under a directory called StratChessEvolved itself, so every
     # source path contains that name.
+    # Each case asserts BOTH halves: the other artifact's directory is absent, and every directory
+    # this one is built from is present. Exclusion alone would pass just as happily on a source set
+    # that had lost a root altogether, which fails the opposite way — a stale binary reported fresh.
     $partitionCases = @(
-        @{ Name = "the main binary's sources exclude StratChessTests"
-           Artifact = 'Main'; Excluded = 'StratChessTests'; Included = 'StratEngine' }
-        @{ Name = "the test binary's sources exclude StratChessEvolved"
-           Artifact = 'Tests'; Excluded = 'StratChessEvolved'; Included = 'StratEngine' }
+        @{ Name = "the main binary's sources are StratEngine + StratChessEvolved, not StratChessTests"
+           Artifact = 'Main'; Excluded = 'StratChessTests'; Included = @('StratEngine', 'StratChessEvolved') }
+        @{ Name = "the test binary's sources are StratEngine + StratChessTests, not StratChessEvolved"
+           Artifact = 'Tests'; Excluded = 'StratChessEvolved'; Included = @('StratEngine', 'StratChessTests') }
     )
 
     $failures = 0
     foreach ($case in $partitionCases) {
         $set = Get-BuildRelevantSources -Root $RepoRoot -Artifact $case.Artifact
         $excludedDir = (Join-Path $RepoRoot $case.Excluded) + [IO.Path]::DirectorySeparatorChar
-        $includedDir = (Join-Path $RepoRoot $case.Included) + [IO.Path]::DirectorySeparatorChar
         $leaked = @($set | Where-Object { $_.Path.StartsWith($excludedDir, [StringComparison]::OrdinalIgnoreCase) })
-        $covered = @($set | Where-Object { $_.Path.StartsWith($includedDir, [StringComparison]::OrdinalIgnoreCase) })
-        $passed = ($leaked.Count -eq 0) -and ($covered.Count -gt 0)
-        $detail = "$($leaked.Count) file(s) under '$excludedDir', $($covered.Count) under '$includedDir'"
+
+        $missing = @()
+        foreach ($included in $case.Included) {
+            $includedDir = (Join-Path $RepoRoot $included) + [IO.Path]::DirectorySeparatorChar
+            $covered = @($set | Where-Object { $_.Path.StartsWith($includedDir, [StringComparison]::OrdinalIgnoreCase) })
+            if ($covered.Count -eq 0) { $missing += $included }
+        }
+
+        $passed = ($leaked.Count -eq 0) -and ($missing.Count -eq 0)
+        $detail = "$($leaked.Count) file(s) under '$excludedDir'; no files from: $($missing -join ', ')"
 
         if ($passed) {
             Write-Host "PASS: $($case.Name)" -ForegroundColor Green
