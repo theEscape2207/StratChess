@@ -226,6 +226,21 @@ TEST_CASE("parse_go: depth + infinite", "[uci]")
 	REQUIRE(p.depth == 10);
 }
 
+TEST_CASE("parse_go: nodes", "[uci]")
+{
+	auto p = UciHandler::parse_go("go nodes 20000");
+	REQUIRE(p.nodes == 20000);
+	REQUIRE(p.movetime == 0);
+	REQUIRE(p.depth == 0);
+	REQUIRE(p.infinite == false);
+}
+
+TEST_CASE("parse_go: no nodes token — p.nodes stays 0", "[uci]")
+{
+	auto p = UciHandler::parse_go("go wtime 60000 btime 60000");
+	REQUIRE(p.nodes == 0);
+}
+
 // ---------------------------------------------------------------------------
 // parse_go — robustness
 // ---------------------------------------------------------------------------

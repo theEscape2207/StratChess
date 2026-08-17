@@ -96,6 +96,61 @@ TEST_CASE("resolve_limits: movetime wins over clock for timing", "[limits]")
 }
 
 // ============================================================
+// nodes — orthogonal to timing/depth, not an alternative to them
+// ============================================================
+
+TEST_CASE("resolve_limits: nodes passes through to node_limit unchanged", "[limits]")
+{
+	const auto r = Engine::resolve_limits(SearchLimits::fixed_nodes(20'000), 15'000ms, 15);
+
+	REQUIRE(r.node_limit.has_value());
+	REQUIRE(*r.node_limit == 20'000);
+}
+
+TEST_CASE("resolve_limits: nodes only — 1h budget, not default_time", "[limits]")
+{
+	const auto r = Engine::resolve_limits(SearchLimits::fixed_nodes(20'000), 15'000ms, 15);
+
+	// Same stopping-criterion branch as depth/infinite: the clock must not be the
+	// thing that stops this search, so it gets the same hours(1) escape valve.
+	REQUIRE(r.budget.soft == std::chrono::hours(1));
+	REQUIRE(r.budget.hard == std::chrono::hours(1));
+	REQUIRE(r.budget.soft != 15'000ms);
+}
+
+TEST_CASE("resolve_limits: movetime + nodes — movetime budget, node_limit still set", "[limits]")
+{
+	SearchLimits limits = SearchLimits::fixed_time(3'000ms);
+	limits.nodes = 20'000;
+	const auto r = Engine::resolve_limits(limits, 15'000ms, 15);
+
+	REQUIRE(r.budget.soft == 3'000ms);
+	REQUIRE(r.budget.hard == 3'000ms);
+	REQUIRE(r.node_limit.has_value());
+	REQUIRE(*r.node_limit == 20'000);
+}
+
+TEST_CASE("resolve_limits: clock + nodes — compute_budget budget, node_limit still set", "[limits]")
+{
+	SearchLimits limits = SearchLimits::from_clock(60'000ms, 1'000ms, 40);
+	limits.nodes = 20'000;
+	const auto r = Engine::resolve_limits(limits, 15'000ms, 15);
+
+	const auto expected = Engine::compute_budget(60'000ms, 1'000ms, 40);
+	REQUIRE(r.budget.soft == expected.soft);
+	REQUIRE(r.budget.hard == expected.hard);
+	REQUIRE(r.node_limit.has_value());
+	REQUIRE(*r.node_limit == 20'000);
+}
+
+TEST_CASE("resolve_limits: no nodes set — node_limit is nullopt", "[limits]")
+{
+	const auto r = Engine::resolve_limits(SearchLimits::fixed_depth(9), 15'000ms, 15);
+
+	REQUIRE_FALSE(r.node_limit.has_value());
+}
+
+// ============================================================
 // Factory field checks
 // ============================================================
 
