@@ -1164,9 +1164,12 @@ TEST_CASE("Search - node counters reset between searches", "[search][nodes]")
 
 TEST_CASE("Search - fixed_nodes stops within one poll interval past the budget", "[search][nodes]")
 {
-	// After 1.e4 e5 2.Nf3, black to move. max_depth=20 so the node poll — not
-	// the IDS depth cap — is what stops this search.
-	AIPerlexTestFixture fix("rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2", /*max_depth=*/20);
+	// After 1.e4 e5 2.Nf3, black to move. max_depth=8 is chosen so that this test
+	// fails rather than hangs if the poll ever stops firing: a full depth-8 search
+	// here costs far more than the budget, so a broken limit overshoots the upper
+	// bound below and goes red in about a second — while with a working limit the
+	// search still stops on nodes, mid-iteration, well before depth 8.
+	AIPerlexTestFixture fix("rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2", /*max_depth=*/8);
 
 	constexpr int64_t node_budget = 20000;
 	const Move move = fix.search_with_nodes(node_budget);
@@ -1188,12 +1191,12 @@ TEST_CASE("Search - fixed_nodes is deterministic across repeated searches", "[se
 	const std::string fen = "rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2";
 	constexpr int64_t node_budget = 20000;
 
-	AIPerlexTestFixture first(fen, /*max_depth=*/20);
+	AIPerlexTestFixture first(fen, /*max_depth=*/8);
 	const Move first_move = first.search_with_nodes(node_budget);
 	REQUIRE_FALSE(first_move.is_null());
 	const int64_t first_total = first.mainnodes() + first.qnodes();
 
-	AIPerlexTestFixture second(fen, /*max_depth=*/20);
+	AIPerlexTestFixture second(fen, /*max_depth=*/8);
 	const Move second_move = second.search_with_nodes(node_budget);
 	REQUIRE_FALSE(second_move.is_null());
 	const int64_t second_total = second.mainnodes() + second.qnodes();

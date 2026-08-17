@@ -38,6 +38,14 @@ All four assumptions in the design are settled. None changed a decision.
 
 ## Watch out for
 
+- **A node-limited search's TT and PV are deliberately untrustworthy until PR 1 lands.** The seam
+  makes the abort fire on demand, and the abort is exactly what poisons them. Do not use it to
+  generate reference data in the meantime.
+- `StratChessTests/UCITests.cpp` already has a PV-legality replay helper behind the `cmd_go` tests
+  (the anonymous-namespace block ending just before "at depth >= 3 the pv carries more than one move
+  and replays legally"). Check it before writing `pv_replays_legally` — the test side may already
+  have the shape PR 1 needs.
+
 - The interrupted-iteration reproduction above is the PR 1 test case, but it must be re-derived
   after PR 1's guard changes what an interrupted iteration returns.
 - `Move` equality ignores flags, so the PV replay's membership test must compare `flags()` itself.

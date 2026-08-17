@@ -25,6 +25,10 @@ SearchLimits SearchLimits::fixed_depth(int depth) noexcept
 
 SearchLimits SearchLimits::fixed_nodes(int64_t nodes) noexcept
 {
+	// A budget of 0 is not "unlimited" — the field is an optional, so setting it at
+	// all arms the check, and 0 aborts at the first poll. Callers wanting no limit
+	// leave the field alone rather than passing 0.
+	assert(nodes > 0);
 	SearchLimits limits;
 	limits.nodes = nodes;
 	return limits;

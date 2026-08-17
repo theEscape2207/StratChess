@@ -104,14 +104,21 @@ class PlayerAiBase : public PlayerBase {
 	/// directly. Returns the effective search depth for this call.
 	unsigned ApplyLimits(const SearchLimits& limits);
 
-	/// Hard time limit: has the clock run out? Latches the abort flag on first
-	/// expiry, so IsAborted() answers for free afterwards.
-	bool TimeLimitReached() const noexcept { return time_manager_.should_stop_search(); }
+	/// Has anything asked this search to stop? True when the abort flag is
+	/// already latched — by a node limit, by UCI 'stop' via StopSearch(), or by
+	/// the end of a previous search — and otherwise when the hard clock limit has
+	/// just expired, which latches it. Deliberately not named for the clock: the
+	/// flag has carried more than one reason since UCI 'stop' existed, and a name
+	/// claiming otherwise is what a reader of the abort path would trust.
+	bool StopRequested() const noexcept { return time_manager_.should_stop_search(); }
 
 	/// Node budget: has this search used its allowance? Latches the same abort
 	/// flag as the clock, so the stack collapse and every IsAborted() consumer
 	/// need not know which limit stopped them. Unlimited unless the caller asked
 	/// for a node budget, in which case a false answer costs one optional test.
+	/// Only AIPerplex polls this; the legacy agents accept a node limit through
+	/// ApplyLimits() and then ignore it, so for them only the depth cap bounds
+	/// a nodes-only search.
 	/// @param nodes  Nodes searched so far by the polling thread — under Lazy
 	///               SMP that is thread 0's count, matching the clock check.
 	bool NodeLimitReached(int64_t nodes) noexcept
@@ -124,7 +131,7 @@ class PlayerAiBase : public PlayerBase {
 
 	/// Cheap per-node guard: only reads the latched atomic, no clock call.
 	/// Use at the top of pvs()/quiescence() so the call stack collapses in O(depth)
-	/// steps after the first TimeLimitReached() or NodeLimitReached() fires and
+	/// steps after the first StopRequested() or NodeLimitReached() fires and
 	/// latches the flag.
 	bool IsAborted() const noexcept { return time_manager_.is_aborted(); }
 

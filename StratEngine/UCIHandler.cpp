@@ -428,8 +428,14 @@ void UciHandler::cmd_go(std::string_view line)
 	if (p.nodes > 0)
 		limits.nodes = p.nodes;
 	limits.infinite = p.infinite;
-	limits.depth = (p.depth > 0) ? std::optional<int>(p.depth)
-	                             : std::optional<int>(p.infinite ? 50 : static_cast<int>(UCI_DEFAULT_DEPTH));
+	// 'go nodes N' means search N nodes, so it must not inherit the default depth
+	// cap — that would silently stop a large budget at UCI_DEFAULT_DEPTH instead.
+	// It takes the same generous cap as 'infinite', leaving the node budget as the
+	// operative limit. An explicit 'depth' still wins over both.
+	const bool node_bounded = p.nodes > 0;
+	limits.depth = (p.depth > 0)
+	                   ? std::optional<int>(p.depth)
+	                   : std::optional<int>((p.infinite || node_bounded) ? 50 : static_cast<int>(UCI_DEFAULT_DEPTH));
 
 	auto start = std::chrono::steady_clock::now();
 

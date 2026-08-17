@@ -169,10 +169,13 @@ budget is wall-clock dependent and so not deterministic at all.
 
 Chosen: `std::optional<int64_t> nodes` on `SearchLimits`, resolved alongside the others, checked
 inside the existing poll block and latching through `TimeManager::stop()` so the whole existing
-collapse path is reused unchanged. At `Threads=1` node counting is deterministic, so "abort at node
-K × 1024" is reproducible bit-for-bit. `go nodes` is also a UCI standard the engine lacks, and it is
-what makes node-limited matches machine-independent, so this is a feature rather than test
-scaffolding.
+collapse path is reused unchanged. At `Threads=1` node counting is deterministic, so the abort point
+is reproducible bit-for-bit. `go nodes` is also a UCI standard the engine lacks, so this is a feature
+rather than test scaffolding.
+
+Only thread 0 polls, so the budget bounds *thread 0's* node count and a `Threads=N` search lands near
+N times the budget. The determinism this exists for is therefore a `Threads=1` property, and a
+node-limited match is machine-independent only at `Threads=1`.
 
 Rejected: a test-only `abort_after_nodes_` seam — same determinism, smaller diff, but it puts
 test-only machinery in the production search and gives a user nothing. Rejected: a probabilistic soak
@@ -183,10 +186,16 @@ Because only thread 0 polls, the limit is thread-0's own node count and is there
 under Lazy SMP, exactly as the clock check already is. That belongs in the `go nodes` documentation.
 
 **Rename.** With two stop reasons, `ShouldStopSearch()` no longer describes what it tests. It becomes
-`TimeLimitReached()`, paired with `NodeLimitReached()`, while `IsAborted()` stays the umbrella read of
-the latched flag. One declaration (`PlayerAI.h:107`) and thirteen live call sites, seven of them in
-`AIPerplex.cpp` and the rest in the legacy agents. `Archived/` keeps the old name: it is excluded from
-every build and is frozen reference code.
+`StopRequested()`, paired with `NodeLimitReached()`, while `IsAborted()` stays the cheap latched read.
+One declaration and thirteen live call sites, seven of them in `AIPerplex.cpp` and the rest in the
+legacy agents. `Archived/` keeps the old name: it is excluded from every build and is frozen reference
+code.
+
+A time-based name was the first choice and is wrong: `should_stop_search()` returns true whenever the
+flag is *already* latched, so it answers for a node limit and for UCI `stop` as well as for the clock —
+`cmd_stop` has latched it since it existed. Four call sites already rely on that generality. If PR 1
+needs to know *which* limit stopped a search, that wants a `StopReason` beside the flag, not a name
+that implies one.
 
 ## Assumptions I cannot verify from the code
 
