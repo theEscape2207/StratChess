@@ -367,10 +367,15 @@ TEST_CASE("TT - a same-key quiescence store does not displace a main entry", "[t
 	tt.store(KEY_A, 500, 12, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
 	tt.store(KEY_A, 60, 15, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE);
 
+	// Every field, not just the two that name the failure: a store that wrote part of the
+	// entry before deciding to decline would pass a narrower check.
 	const auto result = tt.probe(KEY_A, 0);
 	REQUIRE(result.has_value());
 	CHECK(result->phase == SearchPhase::MAIN);
 	CHECK(result->value == 500);
+	CHECK(result->depth == 12);
+	CHECK(result->bound == BoundType::EXACT);
+	CHECK(result->node_type == NodeType::PV_NODE);
 	CHECK(result->best_move == HASH_MOVE);
 }
 
@@ -386,6 +391,73 @@ TEST_CASE("TT - a shallower same-key main store does not displace a deeper one",
 	REQUIRE(result.has_value());
 	CHECK(result->depth == 12);
 	CHECK(result->value == 500);
+	CHECK(result->bound == BoundType::EXACT);
+	CHECK(result->node_type == NodeType::PV_NODE);
+	CHECK(result->best_move == HASH_MOVE);
+}
+
+TEST_CASE("TT - on a same-key store the PV bonus is worth two plies of depth", "[tt]")
+{
+	// A consequence of reusing one ranking for both paths, pinned because it is the case a
+	// reader gets wrong: the PV bonus is 512 and a ply is 256, so a deeper non-PV store has
+	// to be two plies deeper to take a PV entry's slot. It costs a cutoff, never soundness,
+	// and one generation of age (-512) cancels the bonus exactly.
+	auto stored_then = [](int16_t incoming_depth) {
+		TranspositionTable tt(0);
+		tt.newSearchIteration();
+		tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+		tt.store(KEY_A, 60, incoming_depth, 0, OTHER_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
+		return tt.probe(KEY_A, 0).value().value;
+	};
+
+	CHECK(stored_then(9) == 500); // one ply deeper: declined
+	CHECK(stored_then(10) == 60); // two plies deeper: accepted
+}
+
+TEST_CASE("TT - an evicting store with no move does not inherit the evicted entry's move", "[tt]")
+{
+	// The move is carried forward only where the key matches and it therefore describes this
+	// very position. Doing it on the eviction path would file a hint for one position under
+	// another's key, which no probe could tell apart from a real one.
+	TranspositionTable tt(0); // one bucket, so every key collides
+	REQUIRE(tt.bucket_count() == 1);
+	tt.newSearchIteration();
+
+	// The weakest of the four, and the only one carrying a move.
+	tt.store(KEY_A, 10, 1, 0, HASH_MOVE, BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
+	tt.store(KEY_B, 20, 8, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
+	tt.store(KEY_MISS, 30, 8, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
+	tt.store(KEY_A + 1, 40, 8, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
+
+	// Bucket is full; this displaces the depth-1 entry.
+	tt.store(KEY_A + 2, 50, 12, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+
+	CHECK_FALSE(tt.probe(KEY_A, 0).has_value()); // it really was an eviction
+	const auto result = tt.probe(KEY_A + 2, 0);
+	REQUIRE(result.has_value());
+	CHECK(result->best_move.is_null());
+}
+
+TEST_CASE("TT - the two replacementScore overloads agree", "[tt]")
+{
+	// store() ranks an entry that is not in the table yet against one that is, so the two
+	// spellings of the ranking have to be the same function. Nothing else would notice them
+	// drifting apart until a replacement decision started going the wrong way.
+	TranspositionTable tt(1);
+
+	for (const int16_t depth : {int16_t{-5}, int16_t{0}, int16_t{1}, int16_t{8}, int16_t{15}}) {
+		for (const SearchPhase phase : {SearchPhase::MAIN, SearchPhase::QUIESCENCE}) {
+			for (const NodeType type : {NodeType::ALL_NODE, NodeType::CUT_NODE, NodeType::PV_NODE}) {
+				for (const int age_diff : {0, 1, 8}) {
+					// entry_with() leaves age at 0, so probing at `age_diff` is that difference.
+					const TTEntry stored = entry_with(depth, phase, type);
+					INFO("depth " << depth << " phase " << static_cast<int>(phase) << " type " << static_cast<int>(type)
+					              << " age_diff " << age_diff);
+					CHECK(tt.replacementScore(stored, age_diff) == tt.replacementScore(depth, phase, type, age_diff));
+				}
+			}
+		}
+	}
 }
 
 TEST_CASE("TT - a same-key store at equal depth wins", "[tt]")

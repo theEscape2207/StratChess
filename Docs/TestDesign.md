@@ -99,9 +99,9 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 **Test cases**:
 - Store and probe: entry is retrievable by key
 - Probe miss: unknown key returns `nullopt`
-- Same-key store: the incoming entry is scored against the one it would replace — a deeper or
-  equal-depth store wins, a quiescence store or a shallower one is declined, and an accepted store
-  with no move keeps the move already there
+- Same-key store: the incoming entry is scored against the one it would replace — a store that
+  outranks it wins (ties included), a quiescence store or a shallower one is declined, and an
+  accepted store with no move keeps the move already there
 - Non-mate score: unaffected by normalization at any ply
 - Winning mate round-trip: `normalize`/`denormalize` at same ply recovers original value
 - Losing mate round-trip: same for negative mate

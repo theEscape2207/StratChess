@@ -51,6 +51,15 @@ Ties overwrite (`>=`). The incoming entry always carries the current age, so a t
 phase and node type at the same age — the PVS re-search case, where the fresher bound is the one
 worth keeping.
 
+The price of reusing one ranking is that the PV bonus, which on the eviction path means "this entry
+is more useful to keep", now also acts on a comparison between two claims about the *same* position,
+where depth is what makes a claim stronger. At 512 against a ply's 256, a non-PV store has to be two
+plies deeper to displace a PV entry, so a transposition that reaches the position one ply further
+from the root and searches it deeper is declined. That costs a cutoff, never soundness — the retained
+entry is still a sound claim — and it is bounded to one iteration, since a generation of age is
+-512 and cancels the bonus exactly. Accepted rather than special-cased: a same-key exception to the
+PV bonus would be the second policy this decision exists to avoid.
+
 ### D2: Preserve `best_move` on the overwrite path when the incoming move is empty
 
 Needed *in addition to* D1, because the 3 empty-move cases are `MAIN` stores from `pvs()` itself —

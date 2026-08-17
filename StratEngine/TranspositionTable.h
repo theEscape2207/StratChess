@@ -250,6 +250,14 @@ class TranspositionTable {
 			// stores that legitimately win here carry none: pvs()'s null-move cutoff and its
 			// terminal mate/stalemate store both write Move::EmptyMove() at full depth.
 			// Keeping the old move leaves the node ordered rather than erasing the hint.
+			//
+			// The move is inherited across a phase change too, so a QUIESCENCE entry can end
+			// up holding a quiet move no capture-only generator would produce. That is inert
+			// while quiescence() never reads best_move and pvs() reads it only from MAIN
+			// entries; a change that lets quiescence mine a hash move has to revisit this.
+			//
+			// Only on the same-key path: on the eviction path the stored move belongs to a
+			// different position, and no probe could tell such a hint from a real one.
 			if (best_move.is_null())
 				best_move = entry.best_move;
 		}
