@@ -22,6 +22,62 @@ Newest first.
 
 ---
 
+## 2026-08-17 — The previous-iteration PV ordering tier was dead, and is removed (#299, #310)
+
+### Removed
+
+- `MoveSorter::ScoreMoves`'s 2,000,000 tier for the previous iteration's PV move, its `pv_move`
+  parameter, and the dead local in `pvs()` that fed it. `pvs()` read the hint from a PV row the same
+  call had already cleared on entry, so it was the empty move at every node — and an empty `Move`
+  reads as `h1 → h1` under `Move`'s from/to equality, which move generation never produces. The tier
+  matched nothing, ever; ordering has been hash-move-first in practice for as long as the code has
+  existed.
+
+### The measurement that decided it
+
+This closes #299/#310's third landing, which was planned as a *revival* of the hint rather than its
+removal. The revival was implemented in full and instrumented at the point of use, and the counts
+reversed the plan. Per **entire** depth-12 search at `Threads=1` — each visiting millions of nodes:
+
+| | startpos | kiwipete | open-mid | closed-mid |
+|---|---|---|---|---|
+| hint offered at all | 55 | 56 | 55 | 55 |
+| …agrees with the hash move | 48 | 50 | 47 | 52 |
+| …**differs** from the hash move | 0 | 0 | **1** | 0 |
+| …TT held **no** move for the node | 7 | 6 | 7 | 3 |
+| TT entry deeper/equal/shallower than the node | 0/0/48 | 0/1/49 | 0/0/47 | 0/0/52 |
+
+The hint is gated on `is_pv_node && ply > 0` and on the path still following the snapshot, so it can
+fire at most once per ply per iteration — ~55 times per search, not a fraction of the tree. Where it
+fires it names the move the transposition table already names, differing **once across four complete
+searches**. That is mechanical rather than lucky: the entry at a PV node is that node's own store
+from the previous iteration, which is where the hint came from too. The depth row shows it — the
+entry is nearly always *shallower* than the node's remaining depth, i.e. last iteration's.
+
+So the revival's entire content was the 3–7 nodes per search where the TT had lost the entry. Scoring
+the hint below the hash move, or using it only on a TT miss, are the same change as scoring it above:
+the two moves differ at ~0–1 nodes per search. There was no variant to test. The TT losses are filed
+as #335, where that intended benefit actually lives — better retention helps at every probe, not just
+those ~55 nodes.
+
+For the record, the revival's own fixed-depth cost: total nodes +3.8%, wall clock +4.5%, per-position
+nps flat, with per-position node counts swinging from −29% to +48% and one best move changing at
+depth 12. Those swings are ~5 high-leverage PV nodes getting a different first move; the sign is
+per-position luck, and eight positions cannot resolve it in either direction.
+
+### Validation
+
+- **Fixed-depth equivalence** (`Compare-SearchEquivalence.ps1 -BaselineRef origin/main`, its first
+  real use): identical across **90 compared lines, 6 positions, depth 12, `Threads=1`** — every
+  per-iteration `info` line, the final line and `bestmove`. Behaviour is bit-identical, which is the
+  whole correctness argument for removing a scoring tier from the search.
+- `Run-Bench.ps1`, two interleaved runs per side: aggregate nps before 2.712M / 2.804M, after 2.792M /
+  2.766M. The within-side spread exceeds the between-side difference, so the removed comparison is
+  below the instrument's resolution. Node counts are identical by the check above, so these differ
+  only in timing.
+- **No Elo match**, and this is the case the equivalence check exists to replace rather than
+  supplement: bit-identical output leaves no strength question to ask.
+
 ## 2026-08-17 — A script for the fixed-depth equivalence check (#330)
 
 ### Added
@@ -146,7 +202,8 @@ Newest first.
 - `search-reviewer`: LGTM, no blocking findings. Its two substantive ones are the `clear_ply` hoist
   and the emergency-path row 1 above, both taken; the third — that the previous-iteration PV-move
   ordering hint has always been dead — is #299's PR 2 and stays out of this diff. Design and
-  decisions: `.claude/plans/abort-unwind-and-pv-integrity.md` (D1-D5, with D4 amended by this review).
+  decisions: `.claude/plans/abort-unwind-and-pv-integrity.md` (D1-D5, with D4 amended by this
+  review), retired once discharged — read it at the commit that deleted it.
 
 ## 2026-08-17 — Node limit (`go nodes`) as a deterministic abort seam (#326)
 
@@ -195,7 +252,8 @@ until #299's fix lands, and must not be used to generate reference data before t
 - No Elo match: the limit is opt-in and unset in every match and in `game_settings.json`, so the
   equivalence result closes the strength question.
 - `search-reviewer`: LGTM, no blocking findings. Design and decisions:
-  `.claude/plans/abort-unwind-and-pv-integrity.md` (D8).
+  `.claude/plans/abort-unwind-and-pv-integrity.md` (D8), retired once discharged — read it at the
+  commit that deleted it.
 
 ## 2026-08-17 — `build.ps1` reports a stale artifact instead of leaving it to be measured
 
