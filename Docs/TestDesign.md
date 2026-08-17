@@ -269,10 +269,15 @@ Tests for private helper methods exposed via `AIPerlexTestFixture` (friend class
 
 ### `[sort]` — Move ordering tests
 
-**Status**: ✅ **Done.** ScoreMoves extracted from pvs() inline loop; 5 test cases, 14 assertions, all passing.
+**Status**: ✅ **Done.** ScoreMoves extracted from pvs() inline loop; 5 test cases, all passing.
 **File**: `StratChessTests/SortTests.cpp`
 
-Verify ordering priority: PV move → hash move → captures (MVV-LVA) → killers → history scores.
+Verify ordering priority: hash move → captures (MVV-LVA) → killers → history scores.
+
+The hash move is the top tier, and one case asserts that an *empty* hash move promotes nothing. That
+is not a trivial case: an empty `Move` reads as `h1 → h1` under `Move`'s from/to equality, and it is
+what made the removed previous-iteration PV tier provably dead rather than merely unused — it was fed
+an empty move at every node, so it matched nothing, ever.
 
 ### `[board]` — DoMove/UndoMove completeness
 

@@ -94,9 +94,19 @@ void MoveSorter::SortMovesByValue(MoveList& moveList, size_t captures, const Boa
 		          });
 }
 
-void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const Board& board, eColor side, const Move& pv_move,
-                            const Move& hash_move, const Move& killer0, const Move& killer1,
-                            const int32_t (&history)[2][64][64],
+// The hash move is the top tier. There is deliberately no separate tier above it for the
+// previous iteration's principal variation: such a hint exists only along the PV, so it can be
+// offered at one node per ply per iteration, and at those nodes it names the move the
+// transposition table already names — the entry at a PV node is that node's own store from the
+// previous iteration, which is where the hint would come from too. Where the table has nothing
+// to offer there, it is because the entry was overwritten, not because the hint knew better
+// (#335), and the fix belongs in the table.
+//
+// This applies to interior PV nodes. Ordering the ROOT's moves by the previous iteration's
+// scores is a separate question with a different answer available to it, and nothing here
+// forecloses it.
+void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const Board& board, eColor side, const Move& hash_move,
+                            const Move& killer0, const Move& killer1, const int32_t (&history)[2][64][64],
                             std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx)
 {
 	assert(n >= 0 && n <= static_cast<int>(MoveList::MAX_MOVES));
@@ -105,9 +115,7 @@ void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const Board& board,
 		const Move& mv = moveList[i];
 		int s = 0;
 
-		if (mv == pv_move) {
-			s = 2'000'000;
-		} else if (mv == hash_move) {
+		if (mv == hash_move) {
 			s = 1'900'000;
 		} else {
 			const bool isCapture = MoveHelper::IsCapture(mv);

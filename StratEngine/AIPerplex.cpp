@@ -481,7 +481,6 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	auto key = td.board.get_zobrist_hash();
 	int original_alpha = alpha;
 	Move hash_move;
-	Move pv_move;
 
 	// TT probe
 	if (auto entry = tt.probe(key, ply)) {
@@ -504,11 +503,6 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				}
 			}
 		}
-	}
-
-	// Get PV move from previous iteration
-	if (is_pv_node && ply > 0) {
-		pv_move = td.pv_table.get_pv_move(ply);
 	}
 
 	const bool in_check = td.board.InCheck();
@@ -553,8 +547,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	const int n = static_cast<int>(moveList.size());
 	const eColor side = td.board.GetCurrentColor();
 
-	MoveSorter::ScoreMoves(moveList, n, td.board, side, pv_move, hash_move, td.killers[ply][0], td.killers[ply][1],
-	                       td.history, scored_idx);
+	MoveSorter::ScoreMoves(moveList, n, td.board, side, hash_move, td.killers[ply][0], td.killers[ply][1], td.history,
+	                       scored_idx);
 
 	bool moveFound = false;
 
