@@ -22,6 +22,39 @@ Newest first.
 
 ---
 
+## 2026-08-17 — A script for the fixed-depth equivalence check (#330)
+
+### Added
+
+- `Scripts\Compare-SearchEquivalence.ps1`. The check CLAUDE.md and `Docs/Workflow.md` both name as the
+  gate for a behaviour-preserving change had no script, so it was hand-rolled each time and was only
+  as good as that morning's probe — for #326 the first version compared the final `info` line alone,
+  which would have missed a divergence at any earlier iteration. It compares every per-iteration
+  `info` line, the final line and `bestmove` across six positions at `Threads=1` and fixed depth, with
+  only `time` stripped. `info string treenodes` is compared too when both builds emit it, and reported
+  rather than counted as a difference when only one does (a baseline predating #312 emits none).
+- `-BaselineRef <ref>` builds the "before" side itself, in a throwaway detached worktree, cached per
+  commit. The recipe it replaces was broken for any change that *adds* a file: restoring a file list
+  over the working tree cannot restore a file the baseline never had, so the new file stays and is
+  compiled into the "before" build, which `CONFIGURE_DEPENDS` globbing then picks up silently. #331
+  added three files, so the documented recipe would have produced exactly that. `git stash push -u` is
+  correct by construction but shares a stash stack with every other worktree of this repo.
+- Refusals rather than warnings for the two ways a run reports "identical" without having checked
+  anything: both sides being the same binary, and a mixed-compiler pair whose difference could be code
+  generation. `-AllowSameBinary` and `-AllowMixedCompiler` open each deliberately.
+- Default depth 12, matching `Run-Bench.ps1` and the equivalence results already recorded here.
+
+### Validation
+
+- `-SelfTest`: 18 cases over the comparator, the positions-file parser and the compiler inference,
+  falsified by breaking one assertion and confirming the exit code goes to 1.
+- Falsified end to end. `origin/main` against itself: identical across 90 compared lines, 6 positions,
+  depth 12, in 15 s with the baseline cached. With `lmr_min_move_index` moved 3 → 4, all six positions
+  reported DIFFERENT — every one of them at iteration 4 or 5, while the score, the PV and the best
+  move were still identical, which is the divergence a final-line-only probe cannot see.
+- `-AllowSameBinary` against one binary reports identical, so the harness contributes no noise of its
+  own.
+
 ## 2026-08-17 — An aborted search frame mutates nothing (#299, #310)
 
 ### Fixed

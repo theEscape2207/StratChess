@@ -77,6 +77,7 @@ a silent no-op.
 | `Validate-PrePR.ps1` | Before a PR — scopes itself to the change tier; `-Force` to run everything |
 | `Run-EloMatch.ps1 [-Smoke]` | After search/eval/time changes — strength vs the pinned reference (method: `Docs/EloMeasurement.md`, results: `Docs/EloLog.md`) |
 | `Run-Bench.ps1 -Exe <path>` | Search speed (nps) at fixed depth — before/after any optimisation, or comparing two builds |
+| `Compare-SearchEquivalence.ps1 -After <exe> [-Before <exe>\|-BaselineRef <ref>]` | The gate for a change that claims to preserve behaviour — every per-iteration `info` line and `bestmove` compared at fixed depth, `Threads=1`. `-BaselineRef origin/main` builds and caches the baseline itself |
 | `Measure-UciLatency.ps1 -Command <cmd>` | Round-trip cost of one UCI command against a control case — protocol-level latency, not search speed. Its help carries the two traps (drive past move 1; `go` needs `-CompletionMarker bestmove`) |
 | `Run-PerftCheck.ps1` | Move generation against a 142,953-position corpus (~25 min) — after `MoveGenerator`, make/unmake or FEN-parser work. A clean sweep is not zero failures; the script classifies them (`Docs/TestDesign.md`) |
 | `New-Worktree.ps1 -Name <task>` | Starting a task that needs its own directory — forks fresh from `origin/main` at the correct path |
