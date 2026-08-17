@@ -103,6 +103,13 @@ Newest first.
   fires the Debug assertion at the same point; moving `clear_ply` back below the abort exits leaves
   row 0 populated; dropping the emergency path's `clear_ply(1)` publishes a two-move row 0; and
   removing a source root from `build.ps1`'s partition fails both `-SelfTest` cases.
+- `-Sprt NonRegression [-5, 0]` against a build of the merge base, run after merge: **inconclusive at
+  the 500-game cap**, -13.21 ± 23.72, LLR -0.37 (-12.4%), interval [-36.93, +10.51]. No regression
+  demonstrated and none demonstrated absent; deciding it needs 2000-4000 more games, which is not
+  worth spending on a fix whose fixed-depth output is bit-identical. The row's real result is the
+  warning split: **385 `Illegal PV move` warnings over 500 games, every one from the pre-fix side and
+  none from the fixed one** — #310 measured in the setting it was reported from. Full row, including
+  the third correction of the same false-positive `FAILURES` stamp: `Docs/EloLog.md`.
 - `search-reviewer`: LGTM, no blocking findings. Its two substantive ones are the `clear_ply` hoist
   and the emergency-path row 1 above, both taken; the third — that the previous-iteration PV-move
   ordering hint has always been dead — is #299's PR 2 and stays out of this diff. Design and
