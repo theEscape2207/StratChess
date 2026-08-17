@@ -593,7 +593,7 @@ move/score/depth/nodes/stable on every line.
 - `PlayerAiBase::nodes_since_check_` moved to `ThreadData::nodes_since_check_`
   (`StratEngine/ThreadData.h`). The two increment/check sites in
   `AIPerplex::pvs()` and `AIPerplex::quiescence()` (`StratEngine/AIPerplex.cpp`)
-  now gate the wall-clock `ShouldStopSearch()` call on `td.thread_id == 0`;
+  now gate the wall-clock `StopRequested()` call on `td.thread_id == 0`;
   helper threads (once they exist, Task 3) rely solely on the existing
   `IsAborted()` atomic fast-path already at the top of both functions.
 - Dead debug code removed: `AIPerplex::debug_tt_cache_misses()`,

@@ -35,8 +35,9 @@ class UciHandler {
 		int winc = 0;
 		int binc = 0;
 		int movestogo = 0;
-		int depth = 0;    // 0 = use engine default
-		int movetime = 0; // 0 = use clock / depth
+		int depth = 0;     // 0 = use engine default
+		int movetime = 0;  // 0 = use clock / depth
+		int64_t nodes = 0; // 0 = unlimited
 		bool infinite = false;
 	};
 

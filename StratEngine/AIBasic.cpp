@@ -35,7 +35,7 @@ Move AIBasic::GetMove(GameInfo& info, const SearchLimits& limits)
 int AIBasic::Search(size_t ply, int alpha, int beta)
 {
 	// Check time and stop signal
-	if (ShouldStopSearch()) {
+	if (StopRequested()) {
 		return GameValues::Draw;
 	}
 	const GameInfo& info = GetLastBoardInfo(ply);

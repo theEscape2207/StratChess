@@ -226,6 +226,21 @@ TEST_CASE("parse_go: depth + infinite", "[uci]")
 	REQUIRE(p.depth == 10);
 }
 
+TEST_CASE("parse_go: nodes", "[uci]")
+{
+	auto p = UciHandler::parse_go("go nodes 20000");
+	REQUIRE(p.nodes == 20000);
+	REQUIRE(p.movetime == 0);
+	REQUIRE(p.depth == 0);
+	REQUIRE(p.infinite == false);
+}
+
+TEST_CASE("parse_go: no nodes token — p.nodes stays 0", "[uci]")
+{
+	auto p = UciHandler::parse_go("go wtime 60000 btime 60000");
+	REQUIRE(p.nodes == 0);
+}
+
 // ---------------------------------------------------------------------------
 // parse_go — robustness
 // ---------------------------------------------------------------------------
@@ -1884,6 +1899,71 @@ TEST_CASE("cmd_go: the last info line's pv and score agree with bestmove", "[uci
 	const std::string bestmove = extract_bestmove(output);
 	REQUIRE_FALSE(bestmove.empty());
 	REQUIRE(last.pv.front() == bestmove);
+}
+
+TEST_CASE("cmd_go: 'go nodes N' stops on the node budget", "[uci]")
+{
+	// Driven past move 1 deliberately: from startpos the first search also pays a
+	// cold transposition table, which is a different measurement.
+	UciHandlerTestFixture fix;
+	fix.position("position startpos moves e2e4 e7e5 g1f3");
+
+	std::string output;
+	{
+		CoutRedirect redirect;
+		fix.dispatch("go nodes 20000");
+		fix.join_search();
+		output = redirect.str();
+	}
+
+	const auto info_lines = parse_info_depth_lines(output);
+	REQUIRE_FALSE(info_lines.empty());
+	// At or past the budget, because the limit is only observed at a poll boundary.
+	REQUIRE(info_lines.back().nodes >= 20000);
+	REQUIRE_FALSE(extract_bestmove(output).empty());
+}
+
+TEST_CASE("cmd_go: 'go nodes 1' still returns a move", "[uci]")
+{
+	// The tightest budget expressible. The abort fires at the first poll, so no
+	// iteration can complete normally and the answer has to come out of the
+	// interrupted-iteration handling rather than a finished search.
+	UciHandlerTestFixture fix;
+	fix.position("position startpos moves e2e4 e7e5 g1f3");
+
+	std::string output;
+	{
+		CoutRedirect redirect;
+		fix.dispatch("go nodes 1");
+		fix.join_search();
+		output = redirect.str();
+	}
+
+	REQUIRE_FALSE(extract_bestmove(output).empty());
+}
+
+TEST_CASE("cmd_go: an explicit depth still caps a node-bounded search", "[uci]")
+{
+	// A node budget lifts the default depth cap so it cannot silently truncate a
+	// large budget, but an explicit 'depth' outranks both. Without that ordering a
+	// node-limited match could not also be depth-limited.
+	UciHandlerTestFixture fix;
+	fix.position("position startpos moves e2e4 e7e5 g1f3");
+
+	std::string output;
+	{
+		CoutRedirect redirect;
+		fix.dispatch("go depth 5 nodes 100000000");
+		fix.join_search();
+		output = redirect.str();
+	}
+
+	const auto info_lines = parse_info_depth_lines(output);
+	REQUIRE_FALSE(info_lines.empty());
+	for (const ParsedInfoLine& line : info_lines) {
+		CHECK(line.depth <= 5);
+	}
+	REQUIRE_FALSE(extract_bestmove(output).empty());
 }
 
 TEST_CASE("cmd_go: at depth >= 3 the pv carries more than one move and replays legally", "[uci]")

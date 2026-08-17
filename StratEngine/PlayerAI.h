@@ -104,11 +104,35 @@ class PlayerAiBase : public PlayerBase {
 	/// directly. Returns the effective search depth for this call.
 	unsigned ApplyLimits(const SearchLimits& limits);
 
-	bool ShouldStopSearch() const noexcept { return time_manager_.should_stop_search(); }
+	/// Has anything asked this search to stop? True when the abort flag is
+	/// already latched — by a node limit, by UCI 'stop' via StopSearch(), or by
+	/// the end of a previous search — and otherwise when the hard clock limit has
+	/// just expired, which latches it. Deliberately not named for the clock: the
+	/// flag has carried more than one reason since UCI 'stop' existed, and a name
+	/// claiming otherwise is what a reader of the abort path would trust.
+	bool StopRequested() const noexcept { return time_manager_.should_stop_search(); }
+
+	/// Node budget: has this search used its allowance? Latches the same abort
+	/// flag as the clock, so the stack collapse and every IsAborted() consumer
+	/// need not know which limit stopped them. Unlimited unless the caller asked
+	/// for a node budget, in which case a false answer costs one optional test.
+	/// Only AIPerplex polls this; the legacy agents accept a node limit through
+	/// ApplyLimits() and then ignore it, so for them only the depth cap bounds
+	/// a nodes-only search.
+	/// @param nodes  Nodes searched so far by the polling thread — under Lazy
+	///               SMP that is thread 0's count, matching the clock check.
+	bool NodeLimitReached(int64_t nodes) noexcept
+	{
+		if (!node_limit_ || nodes < *node_limit_)
+			return false;
+		time_manager_.stop();
+		return true;
+	}
 
 	/// Cheap per-node guard: only reads the latched atomic, no clock call.
 	/// Use at the top of pvs()/quiescence() so the call stack collapses in O(depth)
-	/// steps after the first ShouldStopSearch() fires and latches the flag.
+	/// steps after the first StopRequested() or NodeLimitReached() fires and
+	/// latches the flag.
 	bool IsAborted() const noexcept { return time_manager_.is_aborted(); }
 
 	void SetEvalEngine(EvalManager::EvalTypes type) override
@@ -233,6 +257,10 @@ class PlayerAiBase : public PlayerBase {
 	// this instead of max_depth_, which stays the unmodified configured
 	// default. AIPerplex uses ApplyLimits()'s return value directly instead.
 	unsigned effective_depth_{0};
+
+	// Set by ApplyLimits() every call: the resolved node budget, or nullopt for
+	// unlimited (the default, and what every clock- or depth-driven call gets).
+	std::optional<int64_t> node_limit_;
 
 	//#ifdef PRINT_STATS
 

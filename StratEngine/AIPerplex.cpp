@@ -331,7 +331,7 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 		metrics.current_score = currentBestScore;
 		metrics.nodes_searched = td.nodes_searched - nodes_at_start;
 		metrics.pv_length = td.pv_table.get_length(0);
-		metrics.interrupted = ShouldStopSearch(); // Check on time expiry
+		metrics.interrupted = StopRequested(); // clock, node budget or UCI stop
 		metrics.move_changed = (metrics.current_move != state.last_iteration_move);
 		metrics.score_delta = currentBestScore - state.best_score;
 		// node counts never realistically approach 2^53 (int64_t->double precision loss)
@@ -434,18 +434,29 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt)
 {
 	// Fast early exit: IsAborted() reads only the latched atomic (no clock call).
-	// After the first ShouldStopSearch() fires and latches the flag, this collapses
+	// After the first StopRequested() fires and latches the flag, this collapses
 	// the entire call stack in O(depth) steps instead of O(tree_size).
 	if (IsAborted())
 		return GameValues::Draw;
 
-	// Node-based time polling: check every 1024 nodes to amortise chrono::now() cost.
-	// On first expiry, ShouldStopSearch() latches should_stop_; all future IsAborted()
-	// calls above then return true for free. Only thread 0 ever calls the wall-clock
-	// check — helper threads increment their own td.nodes_since_check_ but rely solely
-	// on the IsAborted() fast-path above (no chrono::now() calls off the main thread).
+	// Limit polling every 1024 node entries, to amortise the chrono::now() cost of
+	// the clock check. Whichever check fires first latches should_stop_, after which
+	// the IsAborted() fast-path above answers for free.
+	//
+	// Only thread 0 polls here: && short-circuits, so a helper never even reaches
+	// the ++ and its nodes_since_check_ stays at 0 for the whole search. Helpers do
+	// still call StopRequested() elsewhere — search_with_aspiration() at every retry
+	// boundary, and the LMR re-search guard below — so this gate bounds how often
+	// the clock is read, not which threads read it.
+	//
+	// The two counters are in different units, which matters when reasoning about how
+	// far past the budget a node-limited search can run: nodes_since_check_ counts
+	// node *entries*, while the budget is compared against nodes_searched (one per
+	// move edge considered, including edges DoMove rejects) plus qnodes_searched (one
+	// per legal quiescence edge). So the stop lands at the first *poll* at or past the
+	// budget, not the first multiple of 1024 of the budget's own counter.
 	if (td.thread_id == 0 && (++td.nodes_since_check_ & 1023) == 0) {
-		if (ShouldStopSearch())
+		if (StopRequested() || NodeLimitReached(td.nodes_searched + td.qnodes_searched))
 			return GameValues::Draw;
 	}
 
@@ -586,7 +597,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 					value = -pvs(td, depth - 1 - R, -alpha - 1, -alpha, ply + 1, false, tt);
 
 					// Re-search at full depth-1 null window if the reduced result beats alpha
-					if (value > alpha && !ShouldStopSearch())
+					if (value > alpha && !StopRequested())
 						value = -pvs(td, depth - 1, -alpha - 1, -alpha, ply + 1, false, tt);
 				} else {
 					// Normal null-window search (unchanged)
@@ -694,10 +705,10 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	if (IsAborted())
 		return GameValues::Draw;
 
-	// Mirrors pvs(): only thread 0 calls the wall-clock check; helpers rely on
-	// the IsAborted() fast-path above.
+	// Mirrors pvs(), including the counter-unit note there: only thread 0 polls at
+	// this site, and && short-circuits so a helper never increments the counter.
 	if (td.thread_id == 0 && (++td.nodes_since_check_ & 1023) == 0) {
-		if (ShouldStopSearch())
+		if (StopRequested() || NodeLimitReached(td.nodes_searched + td.qnodes_searched))
 			return GameValues::Draw;
 	}
 
@@ -898,7 +909,7 @@ int AIPerplex::search_with_aspiration(ThreadData& td, int depth, int seed_score,
 	int score = seed_score; // safe fallback if interrupted before the first pvs() call
 
 	for (int retry = 0;; ++retry) {
-		if (ShouldStopSearch()) {
+		if (StopRequested()) {
 			// Interrupt before entering pvs(): clear PV so iterative_deepening sees EmptyMove
 			// and triggers INCOMPLETE rejection rather than accepting a stale PV as valid.
 			td.pv_table.clear_ply(0);
@@ -907,7 +918,7 @@ int AIPerplex::search_with_aspiration(ThreadData& td, int depth, int seed_score,
 
 		score = pvs(td, depth, alpha, beta, 0, true, tt);
 
-		if (ShouldStopSearch())
+		if (StopRequested())
 			return score;
 
 		// In-window: accept the score
@@ -918,7 +929,7 @@ int AIPerplex::search_with_aspiration(ThreadData& td, int depth, int seed_score,
 		if (retry >= tuning_.aspiration_max_retries) {
 			if (td.thread_id == 0)
 				log_aspiration_full_window(depth, tuning_.aspiration_max_retries);
-			if (!ShouldStopSearch())
+			if (!StopRequested())
 				score = pvs(td, depth, -GameValues::Search_Init, GameValues::Search_Init, 0, true, tt);
 			return score;
 		}

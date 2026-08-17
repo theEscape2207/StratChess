@@ -70,12 +70,15 @@ class AIPerlexTestFixture {
 	std::unique_ptr<PlayerBase> ai_owner;
 	AIPerplex* ai = nullptr;
 
-	explicit AIPerlexTestFixture(const std::string& fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+	explicit AIPerlexTestFixture(const std::string& fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+	                             unsigned max_depth = 4)
 	    : board_(fen)
 	{
-		// depth=4 sets max_depth_ (the IDS hard cap used if GetMove() is ever called).
-		// None of the current [search] tests call GetMove(), so this is a don't-care.
-		ai_owner = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, 4, board_);
+		// max_depth sets max_depth_ (the IDS hard cap used if GetMove() is ever called).
+		// Defaults to 4, a don't-care for the many [search] tests that never call
+		// GetMove(); the node-limit tests below raise it so the node poll — not the
+		// depth cap — is what stops the search.
+		ai_owner = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, max_depth, board_);
 		ai = static_cast<AIPerplex*>(ai_owner.get());
 		AIPerplex::SetVerboseLogging(false);
 		// Note: SetEvalEngine() is NOT called — the helper methods under test
@@ -267,6 +270,16 @@ class AIPerlexTestFixture {
 		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
 		GameInfo info = board_.GetGameInfo();
 		return ai->GetMove(info, SearchLimits::fixed_depth(depth));
+	}
+
+	// Full search bounded by a node budget instead of a fixed depth. Requires the
+	// fixture to be constructed with a max_depth high enough that the node poll,
+	// not the IDS depth cap, is what stops the search.
+	Move search_with_nodes(int64_t nodes) const
+	{
+		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
+		GameInfo info = board_.GetGameInfo();
+		return ai->GetMove(info, SearchLimits::fixed_nodes(nodes));
 	}
 };
 
@@ -1139,4 +1152,55 @@ TEST_CASE("Search - node counters reset between searches", "[search][nodes]")
 	REQUIRE_FALSE(fresh.search_to_depth(5).is_null());
 	CHECK(fresh.mainnodes() == first_main);
 	CHECK(fresh.qnodes() == first_q);
+}
+
+// ============================================================================
+// go nodes — node-limit poll (SearchLimits::fixed_nodes)
+// ============================================================================
+// The poll in pvs()/quiescence() fires only every 1024 nodes on thread 0, so
+// the search cannot stop exactly at the budget — these pin the observable
+// contract instead: it stops within one poll interval, and it does so the
+// same way every time.
+
+TEST_CASE("Search - fixed_nodes stops within one poll interval past the budget", "[search][nodes]")
+{
+	// After 1.e4 e5 2.Nf3, black to move. max_depth=8 is chosen so that this test
+	// fails rather than hangs if the poll ever stops firing: a full depth-8 search
+	// here costs far more than the budget, so a broken limit overshoots the upper
+	// bound below and goes red in about a second — while with a working limit the
+	// search still stops on nodes, mid-iteration, well before depth 8.
+	AIPerlexTestFixture fix("rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2", /*max_depth=*/8);
+
+	constexpr int64_t node_budget = 20000;
+	const Move move = fix.search_with_nodes(node_budget);
+	REQUIRE_FALSE(move.is_null());
+
+	const int64_t total_nodes = fix.mainnodes() + fix.qnodes();
+	CHECK(total_nodes >= node_budget);
+	// Loose on purpose: the limit is observed only at multiples of 1024, and during
+	// the abort collapse the parent pvs()/quiescence() frames each add their own
+	// nodes before unwinding. Do not tighten without re-deriving the bound.
+	CHECK(total_nodes <= node_budget + 8192);
+}
+
+TEST_CASE("Search - fixed_nodes is deterministic across repeated searches", "[search][nodes]")
+{
+	// This is the property the abort-collapse strategy depends on: a fresh search
+	// hitting the same node budget from the same position must behave identically
+	// every time, not just land in a range.
+	const std::string fen = "rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2";
+	constexpr int64_t node_budget = 20000;
+
+	AIPerlexTestFixture first(fen, /*max_depth=*/8);
+	const Move first_move = first.search_with_nodes(node_budget);
+	REQUIRE_FALSE(first_move.is_null());
+	const int64_t first_total = first.mainnodes() + first.qnodes();
+
+	AIPerlexTestFixture second(fen, /*max_depth=*/8);
+	const Move second_move = second.search_with_nodes(node_budget);
+	REQUIRE_FALSE(second_move.is_null());
+	const int64_t second_total = second.mainnodes() + second.qnodes();
+
+	CHECK(MoveFormatter::ToUCI(first_move) == MoveFormatter::ToUCI(second_move));
+	CHECK(first_total == second_total);
 }
