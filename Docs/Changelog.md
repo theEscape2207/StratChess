@@ -22,6 +22,35 @@ Newest first.
 
 ---
 
+## 2026-08-17 — `build.ps1` reports a stale artifact instead of leaving it to be measured
+
+### Added
+
+- Every verb now checks, after building, whether each artifact is newer than the newest source the
+  build consumes. The target that was just built is **fatal** if it is still older — that means the
+  build reported success without producing a current binary. An artifact the verb deliberately did not
+  rebuild is a **warning** that names both the newer source and who will read the old binary. This is
+  the `run-tests` trap made visible: it builds only `StratChessTests`, so the tactical suite, UCI
+  `eval` and `Run-Bench` silently read a stale `StratChessEvolved.exe` afterwards.
+- The verdict is a pure function with five `-SelfTest` cases, including the falsification (a stale
+  artifact must fail *and* name the file that made it stale) and the boundary where an artifact is
+  exactly as old as its newest source.
+- Watched set is only what the build consumes: `StratEngine`, `StratChessTests`, `StratChessEvolved`
+  sources plus `CMakeLists.txt` and `CMakePresets.json`, excluding `StratEngine/Archived` (never
+  built). `Docs`, `Scripts` and `.claude` are deliberately outside it, so editing a design document
+  never reports a binary as stale.
+
+### Notes
+
+- **Ninja's own dependency graph cannot answer this here.** `ninja -n <target>` stops at
+  `Re-running CMake` and never evaluates the downstream edges, because `CONFIGURE_DEPENDS` leaves a
+  pending glob re-check on every invocation. Asked about a binary that was demonstrably 340 ms older
+  than its sources, it reported no work to do — so a check built on `-n` would pass exactly when it
+  matters. Timestamps are used instead.
+- Measurement entry points that resolve a binary through `Get-BuildArtifact.ps1` and then measure it
+  (`Measure-UciLatency.ps1`, and the documented `Run-Bench.ps1 -Exe (Get-BuildArtifact.ps1)` form) are
+  **not** covered yet; that guard is filed separately.
+
 ## 2026-08-14 — Tactical suite: assert equivalent continuations, not just the key move (#237)
 
 ### Changed
