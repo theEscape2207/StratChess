@@ -24,7 +24,13 @@ having moved back to c5. The interrupted-but-accepted iteration then emits it ve
 
 ## Scope
 
-**This change will**, as two landings:
+**This change will**, as three landings:
+
+*PR 0 — a deterministic abort trigger*
+
+- Add an opt-in node limit (`go nodes N`) checked inside the existing poll, and rename
+  `ShouldStopSearch()` to `TimeLimitReached()` now that the clock is no longer the only stop reason
+  (D8).
 
 *PR 1 — abort correctness*
 
@@ -42,7 +48,11 @@ having moved back to c5. The interrupted-but-accepted iteration then emits it ve
 **This change will not:**
 
 - Introduce a dedicated abort sentinel score (D2).
-- Touch the abort *trigger* — `TimeManager`, the budget formula, or the 1024-node poll interval.
+- Change the clock trigger — `TimeManager`'s limits, the budget formula, or the 1024-node poll
+  cadence. PR 0 adds a second stop *reason* inside the existing poll; it does not alter when the poll
+  runs or how the clock behaves.
+- Rename `should_stop_early()`, which is a mate-distance/PV-length early exit and unrelated to
+  stopping on a limit, despite now reading similarly to its neighbours.
 - Guard the three stores that depend on no child result (D1, exempt list).
 - Validate or truncate PVs in Release builds (D5).
 - Remove or relax `assess_iteration_quality`'s CASE 4/5. They also guard root-move instability,
@@ -136,17 +146,42 @@ a legal move here.
 Chosen: snapshot the accepted iteration's root line, and apply `snapshot[ply]` only while the current
 path is still a prefix of that line, so the hint is always legal in the position it is offered for.
 
+### D8: A node limit, not the clock, is what makes the abort path testable
+
+The abort path cannot be regression-tested through the clock. A zero budget is passed through
+verbatim (`SearchLimits.cpp:41-42`; `TimeBudget` documents that a drained clock yields zero and is
+never floored) and `should_stop_search()` latches on its first call because `el >= 0ms` always holds —
+but that first call is either the poll at node 1024 or, more usually, `:334` right after depth 1
+completes, since depth 1 is far too small to reach the poll. The abort therefore lands before any
+iteration deep enough to build or emit a spliced line. Deterministic, and useless. Any non-zero
+budget is wall-clock dependent and so not deterministic at all.
+
+Chosen: `std::optional<int64_t> nodes` on `SearchLimits`, resolved alongside the others, checked
+inside the existing poll block and latching through `TimeManager::stop()` so the whole existing
+collapse path is reused unchanged. At `Threads=1` node counting is deterministic, so "abort at node
+K × 1024" is reproducible bit-for-bit. `go nodes` is also a UCI standard the engine lacks, and it is
+what makes node-limited matches machine-independent, so this is a feature rather than test
+scaffolding.
+
+Rejected: a test-only `abort_after_nodes_` seam — same determinism, smaller diff, but it puts
+test-only machinery in the production search and gives a user nothing. Rejected: a probabilistic soak
+test over short movetimes — it would go red quickly on the field rate of 0.24 warnings per game, but a
+regression test that is only *probably* red is not a regression test.
+
+Because only thread 0 polls, the limit is thread-0's own node count and is therefore approximate
+under Lazy SMP, exactly as the clock check already is. That belongs in the `go nodes` documentation.
+
+**Rename.** With two stop reasons, `ShouldStopSearch()` no longer describes what it tests. It becomes
+`TimeLimitReached()`, paired with `NodeLimitReached()`, while `IsAborted()` stays the umbrella read of
+the latched flag. One declaration (`PlayerAI.h:107`) and thirteen live call sites, seven of them in
+`AIPerplex.cpp` and the rest in the legacy agents. `Archived/` keeps the old name: it is excluded from
+every build and is frozen reference code.
+
 ## Assumptions I cannot verify from the code
 
-- **Skipping `adjustScoreForGameState` on the unwind leaves no stale per-thread game state.** The
-  abort return bypasses `td.update_game_state(ply, …)`, and a stale `STILL_PLAYING`/`DRAW_PAT` entry
-  is what `GameState::UpdateFiftyMovesState`'s assertion reads. Would be verified by reading
-  `ThreadData::update_game_state` against `init_search`'s reset, then a Debug-build timed self-play
-  game with assertions live. Not done.
-- **A 0 ms allocation survives `resolve_limits`/`compute_budget`.** The deterministic test in
-  Validation depends on it: with a zero budget the first poll at node 1024 latches the abort, and at
-  `Threads=1` node counting is deterministic, so the abort point is reproducible bit-for-bit. If the
-  budget is floored, the test needs a different seam. Not verified.
+Two earlier assumptions have since been checked and are recorded under Invariants (the game-state
+skip) and D8 (the zero budget). What remains:
+
 - **A legality replay is available outside a search.** `pv_replays_legally` needs a board copy and
   the `GameInfo` threading that `DoMove` expects. Whether that is constructible without a full
   `ThreadData` is unchecked.
@@ -163,19 +198,36 @@ path is still a prefix of that line, so the hint is always legal in the position
 - Killers and history are never updated from an aborted child's cutoff.
 - Every emitted `info … pv` line replays legally from the search root.
 - An aborted frame restores the board before returning, on both the move and null-move paths.
+- The root game state survives the unwind. Returning early skips `adjustScoreForGameState`, hence
+  `td.update_game_state`, whose two consumers are `:246` (propagated to `m_Board`) and `:293-296`
+  (returned, and fires `EGameStateChanged`). The skip is inert: the function is a no-op for every
+  `ply > 0` (`ThreadData.h:214`), `init_search` seeds `info_seq[0]` with the true state, any completed
+  iteration has already written `STILL_PLAYING`, and the only other value it writes — mate or
+  stalemate — requires `!moveFound`, which an aborted frame cannot be.
 
 ## Validation
 
-Engine tier, both landings.
+Engine tier, all three landings.
+
+**PR 0**
+
+- Unit tests: the limit is honoured to the poll's 1024-node granularity at `Threads=1`; an unset
+  limit changes nothing; `resolve_limits` precedence against `movetime`, `clock` and `depth`.
+- Fixed-depth equivalence with no limit set: identical node counts and best moves at `Threads=1`.
+- `Run-Bench.ps1` before/after — the new comparison sits inside the existing 1024-node poll, so the
+  expectation is no measurable change; the run exists to confirm that.
+- No Elo match. The limit is opt-in and unset in every match and in `game_settings.json`, so with the
+  equivalence result above there is no strength question to answer.
 
 **PR 1**
 
 - Fixed-depth equivalence: identical node counts and best moves at `Threads=1`, before and after.
 - `Run-Bench.ps1` before/after — the change adds one branch per searched child.
 - Debug-build tests (`build.ps1 all -Config Debug`), so the new assertion is live.
-- Deterministic abort test: search a position with a zero time budget at `Threads=1`, so the abort
-  latches at node 1024, and assert the emitted PV replays legally. Falsify it by reverting the guard
-  and confirming it fails.
+- Deterministic abort test, on PR 0's node limit: search at `Threads=1` with a limit chosen deep
+  enough that an interrupted iteration is accepted, and assert the emitted PV replays legally and no
+  transposition entry was written from an incomplete child. Falsify it by reverting the guard and
+  confirming it fails.
 - `-Sprt NonRegression` under time control. TT content changes there, so a fixed-depth equivalence
   result does not cover it. Cost to be reported before starting; the decision to spend it is the
   user's.
@@ -197,6 +249,8 @@ No perft run: move generation is untouched. Linux Debug + sanitizers come from C
 | D2 superseding #299's abort-signal direction | PR 1 body, and a closing comment on #299 |
 | Bench and SPRT results | `Docs/Changelog.md`, `Docs/EloLog.md`, PR bodies |
 | The PV-move hint was dead, and why the naive revival is wrong | source comment where the snapshot is applied |
+| `go nodes` semantics, including that it is thread-0's count under Lazy SMP | doc comment on the new `SearchLimits` field, and `Docs/Changelog.md` |
+| Why the clock cannot trigger a deterministic abort deep in the tree | `Docs/TestDesign.md`, next to the abort-path tests |
 
 This file stays until PR 2 lands: while PR 2 is unstarted it is the spec for it. Delete it in PR 2
 once the table above is discharged.
