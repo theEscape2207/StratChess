@@ -4,6 +4,7 @@
 #include "StdAfx.h"
 #include "AIPerplex.h"
 #include "MoveGenerator.h"
+#include "PVIntegrity.h"
 #include "Sort.h"
 #include "Utils/Logger.h"
 #include "defines.h"
@@ -431,36 +432,39 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 	                    .search_was_stable = state.search_was_stable};
 }
 
+bool AIPerplex::poll_search_limits(ThreadData& td)
+{
+	// Helpers never even reach the ++, so their nodes_since_check_ stays at 0 for the whole
+	// search. They do still call StopRequested() elsewhere — search_with_aspiration() at
+	// every retry boundary, and pvs()'s LMR re-search guard — so this gate bounds how often
+	// the clock is read, not which threads read it.
+	if (td.thread_id != 0 || (++td.nodes_since_check_ & 1023) != 0)
+		return false;
+
+	return StopRequested() || NodeLimitReached(td.nodes_searched + td.qnodes_searched);
+}
+
 int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt)
 {
+	// Cleared before the two abort exits below, not after them. A frame that returns from either
+	// has searched nothing, and its return value is the fabricated GameValues::Draw — safe for a
+	// parent frame, which discards it at its own unwind guard, but not for the root: the value
+	// travels out through search_with_aspiration() to iterative_deepening(), which would accept
+	// it as this iteration's score alongside a still-populated row 0 from an earlier aspiration
+	// retry. An empty row makes metrics.current_move empty, which is the INCOMPLETE rejection
+	// the machinery already has — the same signal search_with_aspiration() publishes explicitly
+	// when it is interrupted before entering pvs() at all. Nothing else changes: on a normal
+	// entry the clear happens exactly where it did.
+	td.pv_table.clear_ply(ply);
+
 	// Fast early exit: IsAborted() reads only the latched atomic (no clock call).
 	// After the first StopRequested() fires and latches the flag, this collapses
 	// the entire call stack in O(depth) steps instead of O(tree_size).
 	if (IsAborted())
 		return GameValues::Draw;
 
-	// Limit polling every 1024 node entries, to amortise the chrono::now() cost of
-	// the clock check. Whichever check fires first latches should_stop_, after which
-	// the IsAborted() fast-path above answers for free.
-	//
-	// Only thread 0 polls here: && short-circuits, so a helper never even reaches
-	// the ++ and its nodes_since_check_ stays at 0 for the whole search. Helpers do
-	// still call StopRequested() elsewhere — search_with_aspiration() at every retry
-	// boundary, and the LMR re-search guard below — so this gate bounds how often
-	// the clock is read, not which threads read it.
-	//
-	// The two counters are in different units, which matters when reasoning about how
-	// far past the budget a node-limited search can run: nodes_since_check_ counts
-	// node *entries*, while the budget is compared against nodes_searched (one per
-	// move edge considered, including edges DoMove rejects) plus qnodes_searched (one
-	// per legal quiescence edge). So the stop lands at the first *poll* at or past the
-	// budget, not the first multiple of 1024 of the budget's own counter.
-	if (td.thread_id == 0 && (++td.nodes_since_check_ & 1023) == 0) {
-		if (StopRequested() || NodeLimitReached(td.nodes_searched + td.qnodes_searched))
-			return GameValues::Draw;
-	}
-
-	td.pv_table.clear_ply(ply);
+	if (poll_search_limits(td))
+		return GameValues::Draw;
 
 	// We need the info on the current board state
 	GameInfo info = td.get_last_info(ply);
@@ -509,6 +513,11 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 	const bool in_check = td.board.InCheck();
 
+	// Declared before the null-move search so the unwind guard below it has the same value
+	// to return as the guard in the move loop: the best score over the children that
+	// actually completed, still the -Search_Init sentinel when none did.
+	int best_value = -GameValues::Search_Init;
+
 	// Null-move pruning: cheap cutoff attempt before move generation.
 	// should_try_null_move() centralises every guard (zugzwang, mate-score,
 	// consecutive-null, PV/in-check/depth) so it can be unit tested directly.
@@ -520,6 +529,12 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		int null_score = -pvs(td, depth - 1 - R, -beta, -beta + 1, ply + 1, false, tt);
 		td.board.UndoNullMove();
 		td.last_move_was_null[ply + 1] = false;
+
+		// Unwind invariant, see the move loop below: null_score comes from a search that was
+		// cut off, so the store it would justify is not ours to make.
+		if (IsAborted())
+			return best_value;
+
 		if (null_score >= beta) {
 			tt.store(key, static_cast<int16_t>(null_score), static_cast<int16_t>(depth), static_cast<int16_t>(ply),
 			         Move::EmptyMove(), BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
@@ -531,7 +546,6 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	MoveGenerator::ComputeLegalMoves(td.board, info, moveList);
 
 	bool first_child = true;
-	int best_value = -GameValues::Search_Init;
 	Move best_move;
 
 	// Stack-allocated scored index array — zero heap allocation per call.
@@ -610,6 +624,23 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			}
 
 			td.board.UndoMove(move);
+
+			// Unwind invariant: an aborted frame mutates nothing. `value` came from a search
+			// that was cut off mid-tree, so everything below — the transposition store, the
+			// PV row, the killer and history updates — would record a result no search ever
+			// produced, and those writes outlive the search that made them. Returning here,
+			// with the board already restored, is what keeps the whole unwinding stack out
+			// of them: every parent frame reaches its own copy of this guard immediately
+			// after its recursive call returns. best_value is the best score over the
+			// children that did complete, which is a valid lower bound for this node and is
+			// what the root reports for an interrupted iteration.
+			//
+			// The node counters are the one deliberate exception: they are incremented before
+			// this point and stay incremented, because they measure work done, not results
+			// kept.
+			if (IsAborted())
+				return best_value;
+
 			moveFound = true;
 
 			if (value > best_value) {
@@ -643,6 +674,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// would wrap it to +15536 and cache a nonsensical bound for the position.
 	// The score is exact and depth-independent, so it is stored as EXACT with an
 	// empty move; tt.store() normalises the mate distance by ply.
+	//
+	// Exempt from the unwind invariant above: !moveFound means no child search ran at all,
+	// so this value derives from InCheck() and ply alone and is as true after an abort as
+	// before one. The guard in the loop cannot have been passed on the way here.
 	if (!moveFound) {
 		const int terminal_value = adjustScoreForGameState(td, moveFound, ply, best_value);
 		tt.store(key, static_cast<int16_t>(terminal_value), static_cast<int16_t>(depth), static_cast<int16_t>(ply),
@@ -705,12 +740,8 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	if (IsAborted())
 		return GameValues::Draw;
 
-	// Mirrors pvs(), including the counter-unit note there: only thread 0 polls at
-	// this site, and && short-circuits so a helper never increments the counter.
-	if (td.thread_id == 0 && (++td.nodes_since_check_ & 1023) == 0) {
-		if (StopRequested() || NodeLimitReached(td.nodes_searched + td.qnodes_searched))
-			return GameValues::Draw;
-	}
+	if (poll_search_limits(td))
+		return GameValues::Draw;
 
 	// A side to move in check may not decline to move, so this node cannot be settled by a
 	// static evaluation: no stand-pat, and every legal evasion must be searched, not just
@@ -785,6 +816,11 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// leave check — so neither the cutoff nor the baseline applies, and the static evaluation
 	// backing them is not computed at all (delta pruning, its only other consumer, is likewise
 	// disabled below).
+	//
+	// The cutoff store below is exempt from the unwind invariant: it is reached before this node
+	// searches anything, so what it records — that a static evaluation of the position in front
+	// of it already beats beta, stored fail-hard as beta itself — owes nothing to a child.
+	// Whether the search is about to be aborted does not make a static evaluation any less true.
 	int best_value = -GameValues::Search_Init;
 	int stand_pat = 0;
 
@@ -841,6 +877,13 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 		int score = -quiescence(td, -beta, -alpha, qsearch_budget - 1, ply + 1, tt);
 		td.board.UndoMove(move);
 
+		// Unwind invariant, as in pvs(): `score` came from a search that was cut off, so the
+		// cutoff store below and the final store after the loop are both unearned. Returning
+		// here is also what keeps the beta-cutoff store out of reach — it returns from inside
+		// the loop, so a check placed after the loop would never run for it.
+		if (IsAborted())
+			return best_value;
+
 		moveFound = true;
 
 		if (score >= beta) {
@@ -859,6 +902,10 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// mates are preferred, and store it exact with an empty move: best_value is still the
 	// -Search_Init sentinel here, and narrowing that sentinel into the table hands later
 	// probes a score no position ever had.
+	//
+	// Exempt from the unwind invariant for the same reason as pvs()'s terminal store: no
+	// child of this node was searched, so the score follows from InCheck() and ply alone.
+	// An abort during the loop returns above rather than arriving here with !moveFound.
 	if (in_check && !moveFound) {
 		const int mate_value = -GameValues::Mate + ply;
 		tt.store(key, static_cast<int16_t>(mate_value), static_cast<int16_t>(qsearch_budget), static_cast<int16_t>(ply),
@@ -1135,6 +1182,12 @@ bool AIPerplex::handle_empty_move_emergency(ThreadData& td, SearchState& state)
 	// True emergency - generate any legal move
 	log.critical("EMERGENCY: No best move found (max_depth={}, last_completed={})", max_depth_, state.depth_completed);
 
+	// PVTable::update copies row ply + 1 onto the end of row ply. Row 1 here holds whatever the
+	// last subtree to reach ply 1 left behind — a different position entirely — so without this
+	// the emergency move would be published with a tail spliced onto it, the same defect the
+	// unwind guard removes from the search itself.
+	td.pv_table.clear_ply(1);
+
 	MoveList emergency_moves;
 	MoveGenerator::ComputeLegalMoves(td.board, current_info, emergency_moves);
 
@@ -1211,6 +1264,17 @@ void AIPerplex::log_completed_iteration(const IterationMetrics& metrics, const P
 
 void AIPerplex::emit_iteration_info(const ThreadData& td, int depth, int score) const
 {
+	// The PV of an accepted iteration, asserted before anything reads it: a line spliced out
+	// of two different subtrees replays illegally at the ply where the positions diverge.
+	// td.board is back at the search root by the time an iteration is accepted, on the abort
+	// path as much as the completed one. Checked ahead of the observer test because the
+	// accepted line is what the search logs and what its first move is played from, whether
+	// or not a UCI client is listening. Debug only — truncating a bad line in Release would
+	// guarantee no GUI ever complains again while hiding whatever produced it, which is the
+	// opposite of what this is for.
+	assert(pv_replays_legally(td.board, std::span<const Move>(td.pv_table.get_line(0).data(),
+	                                                          static_cast<size_t>(td.pv_table.get_length(0)))));
+
 	if (!iteration_observer_)
 		return;
 

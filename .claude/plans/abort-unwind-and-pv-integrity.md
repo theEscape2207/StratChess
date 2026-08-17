@@ -111,9 +111,25 @@ root move and the iteration is rejected — the existing machinery already handl
 
 ### D4: PV integrity comes from D1, not from moving `clear_ply`
 
-Rejected: hoisting `clear_ply(ply)` above the two abort returns. It also stops the splice, but it
-leaves a length-1 PV naming a move whose subtree was never searched, and it empties row 0 on an
-abort-at-root, so `log_search_complete` loses the last coherent line it prints today.
+Rejected: hoisting `clear_ply(ply)` above the two abort returns *instead of* D1. It also stops the
+splice, but on its own it leaves a length-1 PV naming a move whose subtree was never searched.
+
+**Amended during PR 1's review: the hoist lands as well as D1, not instead of it.** D1 leaves one
+fabricated score reachable, because the two entry exits return `GameValues::Draw` without having
+searched anything. For a parent frame that is harmless — it discards the value at its own guard —
+but the root's caller is not a frame: an abort at the entry of an aspiration *retry* returns that 0
+through `search_with_aspiration()` while row 0 still holds the previous retry's line, so
+`iterative_deepening()` sees a plausible move, a large node count and a full-length PV, and
+`assess_iteration_quality`'s CASE 4 accepts `score cp 0` in a balanced position. Clearing first makes
+row 0 empty, which is the INCOMPLETE rejection the machinery already has — and is exactly what
+`search_with_aspiration()` already publishes explicitly for the interrupted-before-entry case, so this
+is a consistency fix rather than a new policy. The original objection survives only as the note that
+`log_search_complete` prints nothing for such an iteration, which is honest: there is no line.
+
+The same review found `handle_empty_move_emergency()` publishing row 0 through `PVTable::update`,
+which copies row 1 — stale, from a different position. `clear_ply(1)` before it. Harmless today
+because the emergency path runs after the last `emit_iteration_info` and the final UCI line carries
+only the move, but "row 0 always replays legally" is not globally true without it.
 
 ### D5: Assert in Debug at the emission choke point; do not sanitise in Release
 
@@ -199,13 +215,12 @@ that implies one.
 
 ## Assumptions I cannot verify from the code
 
-Three earlier assumptions have since been checked and are recorded under Invariants (the game-state
-skip), D8 (the zero budget) and D5 (the legality replay). What remains:
-
-- **The fastchess warnings are this defect and not an additional one.** Inferred from the duplicate
-  from-square signature and `score cp 0` at depth, not replayed. Would be settled by mining a
-  position out of `logs/elo/*.log` and reproducing the illegal line with the zero-budget abort before
-  the fix.
+All four are now checked. Three are recorded under Invariants (the game-state skip), D8 (the zero
+budget) and D5 (the legality replay). The fourth — **that the fastchess warnings are this defect and
+not an additional one** — was settled in PR 1 rather than by mining `logs/elo/*.log`: at
+`go nodes 10000` from `position startpos moves e2e4 e7e5 g1f3` the pre-fix engine emitted
+`pv d7d5 e4d5 d5e4 d2d4 g8f6` at depth 5, an illegal line of exactly #310's shape, and the unwind
+guard removes it. Nothing is left inferred.
 
 ## Invariants
 
@@ -271,8 +286,17 @@ No perft run: move generation is untouched. Linux Debug + sanitizers come from C
 
 PR 0's rows are discharged: `go nodes` semantics, the rename and its reasoning, and the bench and
 equivalence results are in `Docs/Changelog.md` (2026-08-17); why the clock cannot test the abort path is
-in `Docs/TestDesign.md` beside the `[time_mgr]` section. The exempt-store comments, the unwind
-invariant, the PV assertion and the SPRT results belong to PR 1 and PR 2 and are still outstanding.
+in `Docs/TestDesign.md` beside the `[time_mgr]` section.
+
+PR 1's rows are discharged too: the exempt-store comments sit at all three sites, the unwind invariant
+is in `CLAUDE.md` → Key Source Facts and at the guard in `pvs()`, `pv_replays_legally` and its `[pv]`
+tests carry the PV invariant, and D2 is in the PR body and the changelog. One deliberate gap, stated
+rather than quietly dropped: **the "no transposition entry from an incomplete child" half of PR 1's
+validation has no direct test.** It is structural — control cannot reach a store — and its observable
+consequences (the spliced PV, the contaminated `score cp 0`) are what the regression test and the
+Debug assertion check. A direct assertion would need either new test-only accessors into the table or
+an inference from entry depth that aspiration re-searches make unsound. What remains outstanding is
+PR 1's `-Sprt NonRegression` and everything belonging to PR 2.
 
 This file stays until PR 2 lands: while PR 2 is unstarted it is the spec for it. Delete it in PR 2
 once the table above is discharged.

@@ -22,6 +22,92 @@ Newest first.
 
 ---
 
+## 2026-08-17 — An aborted search frame mutates nothing (#299, #310)
+
+### Fixed
+
+- `pvs()` and `quiescence()` check `IsAborted()` immediately after each recursive call returns and the
+  board is restored, and return there. Control no longer reaches any state the aborted child would
+  have justified: the transposition stores, the PV row, the killer and history updates. Previously an
+  interrupted search returned `GameValues::Draw` — a legal score — and every frame on the unwinding
+  stack consumed it and wrote it onwards, so entries at full nominal depth, cutoffs that never
+  happened and spliced PV rows all outlived the search that produced them.
+- `pvs()` clears its PV row *before* the two abort exits rather than after. Those exits return a
+  fabricated `GameValues::Draw` without having searched anything — harmless to a parent frame, which
+  discards it at its own guard, but the root's caller is not a frame: an abort at the entry of an
+  aspiration retry carried that 0 out to `iterative_deepening()` beside a still-populated row 0 from
+  the previous retry, and `assess_iteration_quality`'s CASE 4 accepts `score cp 0` in a balanced
+  position. An empty row is the INCOMPLETE rejection the machinery already has, and is what
+  `search_with_aspiration()` already publishes for the interrupted-before-entry case.
+- `handle_empty_move_emergency()` clears row 1 before publishing the emergency move. `PVTable::update`
+  copies row 1 onto row 0, and row 1 there holds whatever subtree last reached ply 1.
+- That splice is #310: fastchess rejected moves in our `info … pv` lines at about 0.24 per game
+  (4,780 warnings over 19,980 games). Reproduced deterministically with the node limit from #326 —
+  `position startpos moves e2e4 e7e5 g1f3`, `go nodes 10000` reported
+  `pv d7d5 e4d5 d5e4 d2d4 g8f6` at depth 5, a black move from a square holding a white pawn — and
+  the same command now reports a line that replays. The `score cp 0` at depth that #299 traced is
+  gone with it: the same position at `go nodes 20000` reported `0` after the previous depth's `-8`,
+  and now reports `-8`.
+
+### Added
+
+- `pv_replays_legally(root, line)` (`StratEngine/PVIntegrity.h`), asserted in Debug at
+  `AIPerplex::emit_iteration_info` — the point an accepted iteration's PV becomes something the engine
+  reports and plays. Both halves of legality are needed and are not interchangeable:
+  `ComputeLegalMoves` is pseudo-legal, and `DoMove` executes any from/to/flags triple it is handed. It
+  compares `flags()` explicitly, because `Move` equality ignores them (#325) and would match a PV move
+  against a different promotion piece.
+- Deterministic abort regression test over four node budgets, plus a `Threads=4` node-limit smoke
+  test and the `nodes = 0` / `infinite + nodes` resolution cases deferred from #326.
+
+### Changed
+
+- The duplicated 1024-node poll in `pvs()`/`quiescence()` is one private helper,
+  `poll_search_limits()`. Both copies had to agree on the two counters they read, and this change adds
+  abort state to exactly that block.
+- `build.ps1`'s freshness check compares each artifact against the sources **that artifact** is built
+  from, rather than one shared set. Adding a test-only file otherwise makes `StratChessEvolved.exe`
+  permanently "older than" a file it does not depend on and no rebuild of it can answer, which is a
+  fatal error on every verb — reproduced by this PR's own new test file. Two `-SelfTest` cases pin the
+  partition.
+
+### Notes
+
+- The three stores that survive an abort are exempt because they derive from `InCheck()`, `ply` and
+  `Eval` alone, never from a child search: `pvs()`'s terminal store, and quiescence's stand-pat cutoff
+  and mate stores. Each carries the argument at the site, because the reason it is safe is not local
+  to it. The two `!moveFound` stores are additionally unreachable after an abort — the guard returns
+  before `moveFound` is ever set.
+- **Supersedes an approved direction in #299**, which proposed a dedicated abort sentinel score so an
+  abort could not be confused with a genuine `Draw`. Under the unwind invariant that confusion is
+  unreachable: an aborted frame's return value is consumed only by a parent that is itself returning
+  immediately. A sentinel would need a magnitude surviving negation at every frame and a check at
+  every consumer, for a value nothing reads.
+- The interrupted root iteration is kept rather than discarded (#299's third bullet). Its
+  `best_value` is the best score over the root moves that completed — a valid lower bound — and row 0
+  of the PV table holds that move's coherent line. The ±20 cp blind spot in
+  `assess_iteration_quality`'s CASE 4 closes as a consequence: there is no contaminated `0` left to
+  accept.
+
+### Validation
+
+- Fixed-depth equivalence at `Threads=1`: 4 positions at depth 7, every per-iteration `info` line
+  (nodes, score, full PV) plus the final line and `bestmove`, wall-clock `time` stripped — identical
+  to `origin/main`. The bench set adds 8 more at depth 12: identical node counts (28,411,501) and
+  identical best moves. No clock, no abort, so this had to hold exactly.
+- Bench (8 positions, depth 12, `Threads=1`, clang-cl): nps 2,893,228 / 2,902,984 before against
+  2,899,429 / 2,897,063 after — mean delta **+0.005%**, an order of magnitude inside the within-side
+  spread. The guard is one predictable branch per searched child.
+- Debug-build tests, so the new assertion is live. Every new check was falsified against the code it
+  guards: disabling the three unwind guards fails the regression test at budget 10,000 depth 5 and
+  fires the Debug assertion at the same point; moving `clear_ply` back below the abort exits leaves
+  row 0 populated; dropping the emergency path's `clear_ply(1)` publishes a two-move row 0; and
+  removing a source root from `build.ps1`'s partition fails both `-SelfTest` cases.
+- `search-reviewer`: LGTM, no blocking findings. Its two substantive ones are the `clear_ply` hoist
+  and the emergency-path row 1 above, both taken; the third — that the previous-iteration PV-move
+  ordering hint has always been dead — is #299's PR 2 and stays out of this diff. Design and
+  decisions: `.claude/plans/abort-unwind-and-pv-integrity.md` (D1-D5, with D4 amended by this review).
+
 ## 2026-08-17 — Node limit (`go nodes`) as a deterministic abort seam (#326)
 
 ### Added

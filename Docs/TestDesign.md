@@ -80,6 +80,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | Bitboard helpers | `[bitboard]` | ⏳ Phase 1 | `BitboardTests.cpp` (future) |
 | Sliding-piece attack generation (PEXT) | `[magic]` | ✅ Phase 1 | `MagicBitboardTests.cpp` |
 | UCI command loop | `[uci]` | ✅ Phase 1 | `UCITests.cpp` (+ `StratChessEvolved.exe uci` pipe smoke test) |
+| PV legality (`pv_replays_legally`) | `[pv]` | ✅ Phase 2 | `PVIntegrityTests.cpp` |
 | Full tactical suite (WAC/mate-in-N) | — | ✅ Phase 1 | `StratChessEvolved.exe tactical test` |
 | Board instance independence (post-de-singleton) | `[board_instance]` | ✅ Phase 2 | `BoardInstanceTests.cpp` |
 | External integer parsing (argv, JSON keys) | `[argparse]` | ✅ Phase 1 | `ArgParseTests.cpp` |
@@ -315,6 +316,40 @@ budget count different things (see the comment on the poll in `pvs()`).
 A node-limit test must fail rather than hang when the mechanism regresses. Choose a depth cap the
 search can actually finish: with no working limit, the only remaining bound is the one-hour fallback
 clock, so a cap that is too deep turns a real defect into a CI timeout with no diagnostic.
+
+**The abort-path regression test is `cmd_go: a node-limited search never reports a spliced pv`**
+(`[uci]`). It drives `go nodes N` over four budgets from `position startpos moves e2e4 e7e5 g1f3` and
+replays every emitted PV. The budget that reproduces #310 is **10,000**: before the unwind guard it
+reported `pv d7d5 e4d5 d5e4 …` at depth 5 — a black move from a square that by then holds a white
+pawn. Budgets are not interchangeable, and one was found by sweeping rather than reasoned to; a new
+abort defect will land at whatever budget it lands at, which is why the test checks several and why a
+future one should be added rather than an existing one retuned.
+
+### `[pv]` — PV legality
+
+**File**: `StratChessTests/PVIntegrityTests.cpp`
+
+`pv_replays_legally(root, line)` (`StratEngine/PVIntegrity.h`) is the invariant behind the Debug
+assertion in `AIPerplex::emit_iteration_info`, tested directly because the assertion fires from inside
+a search where the input that produced it is no longer reachable. Both halves of legality need their
+own case: `ComputeLegalMoves` is pseudo-legal, so membership in it does not rule out leaving one's own
+king in check, and `DoMove` executes any from/to/flags triple it is handed, so playing a move does not
+prove the position offered it. The flag cases are not padding — `Move` equality ignores flags, so a
+membership test written with `==` passes every one of them.
+
+Two `[search][pv]` cases in `SearchTests.cpp` cover the abort paths the end-to-end UCI test cannot
+force deterministically, both through `AIPerlexTestFixture`:
+
+- **A `pvs()` frame that aborts at entry leaves an empty row 0.** Seed row 0 (standing in for a
+  completed aspiration retry), latch the abort with `StopSearch()`, run one node. The entry exit
+  returns a fabricated `GameValues::Draw`, and an empty row is what makes `iterative_deepening()`
+  reject it as INCOMPLETE instead of reporting `score cp 0`.
+- **A stale row 1 is not spliced onto the emergency move.** `PVTable::update` copies row `ply + 1`,
+  so `handle_empty_move_emergency()` must clear row 1 first or publish a two-move line whose tail
+  came from another position.
+
+Both are red against the code before their fix — row 0 keeps its seeded move, and row 0 comes out
+length 2 — which is the only reason they are worth having.
 
 ### `[bitboard]` — Bitboard helper tests
 

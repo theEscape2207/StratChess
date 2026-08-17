@@ -150,6 +150,34 @@ TEST_CASE("resolve_limits: no nodes set — node_limit is nullopt", "[limits]")
 	REQUIRE_FALSE(r.node_limit.has_value());
 }
 
+TEST_CASE("resolve_limits: a budget of 0 arms the check, it does not mean unlimited", "[limits]")
+{
+	// Set through the field rather than fixed_nodes(), which asserts against 0 in Debug.
+	// "Unlimited" is the field being absent; 0 is a budget the first poll is already past.
+	SearchLimits limits;
+	limits.nodes = 0;
+	const auto r = Engine::resolve_limits(limits, 15'000ms, 15);
+
+	REQUIRE(r.node_limit.has_value());
+	REQUIRE(*r.node_limit == 0);
+	// And it counts as a stopping criterion, so the clock does not fall back to default_time.
+	REQUIRE(r.budget.hard == std::chrono::hours(1));
+}
+
+TEST_CASE("resolve_limits: infinite + nodes — the node limit survives, depth stays 50", "[limits]")
+{
+	// UCI 'go infinite nodes N' is legal input. 'infinite' means no clock, not no limits:
+	// the node budget is the only thing that can stop such a search short of 'stop'.
+	SearchLimits limits = SearchLimits::infinite_search();
+	limits.nodes = 20'000;
+	const auto r = Engine::resolve_limits(limits, 15'000ms, 15);
+
+	REQUIRE(r.node_limit.has_value());
+	REQUIRE(*r.node_limit == 20'000);
+	REQUIRE(r.effective_depth == 50u);
+	REQUIRE(r.budget.hard == std::chrono::hours(1));
+}
+
 // ============================================================
 // Factory field checks
 // ============================================================
