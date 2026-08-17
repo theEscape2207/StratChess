@@ -132,16 +132,24 @@ function Test-ArtifactFreshness {
     return [pscustomobject]@{ Fresh = $false; Reason = 'stale'; NewestSourcePath = $newest.Path }
 }
 
-# Every file the build actually consumes. Docs, Scripts and .claude are deliberately
-# outside the set so editing a design document never reports a binary as stale, and
-# StratEngine/Archived is excluded because CMake never builds it.
+# Every file the named artifact is actually built from. Docs, Scripts and .claude are
+# deliberately outside the set so editing a design document never reports a binary as
+# stale, and StratEngine/Archived is excluded because CMake never builds it.
+#
+# The two artifacts get different sets, matching CMakeLists.txt: both compile
+# StratEngine, but StratChessTests.exe adds StratChessTests/ and StratChessEvolved.exe
+# adds StratChessEvolved/. One shared set instead reports the main binary as stale
+# forever after a test-only file is added — a file it does not depend on and no rebuild
+# can make it newer than.
 function Get-BuildRelevantSources {
-    param([string]$Root)
+    param(
+        [string]$Root,
+        [ValidateSet('Main', 'Tests')][string]$Artifact
+    )
 
     $roots = @(
         (Join-Path $Root 'StratEngine'),
-        (Join-Path $Root 'StratChessTests'),
-        (Join-Path $Root 'StratChessEvolved')
+        (Join-Path $Root ($Artifact -eq 'Tests' ? 'StratChessTests' : 'StratChessEvolved'))
     ) | Where-Object { Test-Path $_ }
 
     $sources = @()
@@ -232,7 +240,37 @@ function Invoke-SelfTest {
            Reason   = 'no-sources' }
     )
 
+    # Source-set partitioning, against the real tree. Falsifies the bug the split exists
+    # for: with one shared set, a test-only file is "newer than" the main binary that no
+    # rebuild of it can ever answer, so build.ps1 fails fatally from then on.
+    # Compared as full paths under $RepoRoot, never as a substring of one: a worktree of
+    # this repository lives under a directory called StratChessEvolved itself, so every
+    # source path contains that name.
+    $partitionCases = @(
+        @{ Name = "the main binary's sources exclude StratChessTests"
+           Artifact = 'Main'; Excluded = 'StratChessTests'; Included = 'StratEngine' }
+        @{ Name = "the test binary's sources exclude StratChessEvolved"
+           Artifact = 'Tests'; Excluded = 'StratChessEvolved'; Included = 'StratEngine' }
+    )
+
     $failures = 0
+    foreach ($case in $partitionCases) {
+        $set = Get-BuildRelevantSources -Root $RepoRoot -Artifact $case.Artifact
+        $excludedDir = (Join-Path $RepoRoot $case.Excluded) + [IO.Path]::DirectorySeparatorChar
+        $includedDir = (Join-Path $RepoRoot $case.Included) + [IO.Path]::DirectorySeparatorChar
+        $leaked = @($set | Where-Object { $_.Path.StartsWith($excludedDir, [StringComparison]::OrdinalIgnoreCase) })
+        $covered = @($set | Where-Object { $_.Path.StartsWith($includedDir, [StringComparison]::OrdinalIgnoreCase) })
+        $passed = ($leaked.Count -eq 0) -and ($covered.Count -gt 0)
+        $detail = "$($leaked.Count) file(s) under '$excludedDir', $($covered.Count) under '$includedDir'"
+
+        if ($passed) {
+            Write-Host "PASS: $($case.Name)" -ForegroundColor Green
+        } else {
+            Write-Host "FAIL: $($case.Name) ($detail)" -ForegroundColor Red
+            $failures++
+        }
+    }
+
     foreach ($case in $freshnessCases) {
         $verdict = Test-ArtifactFreshness -ArtifactWriteTime $case.Artifact -Sources $case.Sources
         $passed = $verdict.Fresh -eq $case.Fresh
@@ -277,7 +315,7 @@ function Invoke-SelfTest {
         }
     }
 
-    $total = $cases.Count + $freshnessCases.Count
+    $total = $cases.Count + $freshnessCases.Count + $partitionCases.Count
     if ($failures) { Write-Host "$failures self-test case(s) FAILED." -ForegroundColor Red }
     else { Write-Host "$total self-test cases passed." -ForegroundColor Green }
     return $failures -eq 0
@@ -445,27 +483,23 @@ $engineConsumers = 'The tactical suite, UCI eval and Run-Bench'
 switch ($Verb) {
     'main' {
         Invoke-CMakeBuild -Targets @('StratChessEvolved')
-        $sources = Get-BuildRelevantSources -Root $RepoRoot
-        Assert-ArtifactFresh -ArtifactPath $MainExe -Sources $sources -Fatal
-        Assert-ArtifactFresh -ArtifactPath $TestExe -Sources $sources -Consumers 'Run-Tests.ps1 and Validate-PreCommit.ps1'
+        Assert-ArtifactFresh -ArtifactPath $MainExe -Sources (Get-BuildRelevantSources -Root $RepoRoot -Artifact Main) -Fatal
+        Assert-ArtifactFresh -ArtifactPath $TestExe -Sources (Get-BuildRelevantSources -Root $RepoRoot -Artifact Tests) -Consumers 'Run-Tests.ps1 and Validate-PreCommit.ps1'
     }
     'tests' {
         Invoke-CMakeBuild -Targets @('StratChessTests')
-        $sources = Get-BuildRelevantSources -Root $RepoRoot
-        Assert-ArtifactFresh -ArtifactPath $TestExe -Sources $sources -Fatal
-        Assert-ArtifactFresh -ArtifactPath $MainExe -Sources $sources -Consumers $engineConsumers
+        Assert-ArtifactFresh -ArtifactPath $TestExe -Sources (Get-BuildRelevantSources -Root $RepoRoot -Artifact Tests) -Fatal
+        Assert-ArtifactFresh -ArtifactPath $MainExe -Sources (Get-BuildRelevantSources -Root $RepoRoot -Artifact Main) -Consumers $engineConsumers
     }
     'all' {
         Invoke-CMakeBuild -Targets @()
-        $sources = Get-BuildRelevantSources -Root $RepoRoot
-        Assert-ArtifactFresh -ArtifactPath $MainExe -Sources $sources -Fatal
-        Assert-ArtifactFresh -ArtifactPath $TestExe -Sources $sources -Fatal
+        Assert-ArtifactFresh -ArtifactPath $MainExe -Sources (Get-BuildRelevantSources -Root $RepoRoot -Artifact Main) -Fatal
+        Assert-ArtifactFresh -ArtifactPath $TestExe -Sources (Get-BuildRelevantSources -Root $RepoRoot -Artifact Tests) -Fatal
     }
     'run-tests' {
         Invoke-CMakeBuild -Targets @('StratChessTests')
-        $sources = Get-BuildRelevantSources -Root $RepoRoot
-        Assert-ArtifactFresh -ArtifactPath $TestExe -Sources $sources -Fatal
-        Assert-ArtifactFresh -ArtifactPath $MainExe -Sources $sources -Consumers $engineConsumers
+        Assert-ArtifactFresh -ArtifactPath $TestExe -Sources (Get-BuildRelevantSources -Root $RepoRoot -Artifact Tests) -Fatal
+        Assert-ArtifactFresh -ArtifactPath $MainExe -Sources (Get-BuildRelevantSources -Root $RepoRoot -Artifact Main) -Consumers $engineConsumers
         Write-Host ""
         # Default: exclude [slow] tests; pass an explicit tag to override.
         $effectiveTag = $Tag ? $Tag : '~[slow]'
@@ -475,9 +509,8 @@ switch ($Verb) {
     }
     'extended-tests' {
         Invoke-CMakeBuild -Targets @('StratChessTests')
-        $sources = Get-BuildRelevantSources -Root $RepoRoot
-        Assert-ArtifactFresh -ArtifactPath $TestExe -Sources $sources -Fatal
-        Assert-ArtifactFresh -ArtifactPath $MainExe -Sources $sources -Consumers $engineConsumers
+        Assert-ArtifactFresh -ArtifactPath $TestExe -Sources (Get-BuildRelevantSources -Root $RepoRoot -Artifact Tests) -Fatal
+        Assert-ArtifactFresh -ArtifactPath $MainExe -Sources (Get-BuildRelevantSources -Root $RepoRoot -Artifact Main) -Consumers $engineConsumers
         Write-Host ""
         if ($Tag) {
             Write-Warning "extended-tests ignores the Tag parameter ('$Tag'). Use run-tests to filter by tag."
