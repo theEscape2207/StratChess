@@ -33,8 +33,11 @@ Newest first.
   the `run-tests` trap made visible: it builds only `StratChessTests`, so the tactical suite, UCI
   `eval` and `Run-Bench` silently read a stale `StratChessEvolved.exe` afterwards.
 - The verdict is a pure function with five `-SelfTest` cases, including the falsification (a stale
-  artifact must fail *and* name the file that made it stale) and the boundary where an artifact is
-  exactly as old as its newest source.
+  artifact must fail *and* name the file that made it stale) and the equal-timestamp boundary.
+- **A tie counts as stale.** Ninja rebuilds when a source's mtime exactly equals the object it
+  produces — measured by setting the two equal and watching it recompile — so treating a tie as fresh
+  would let this check pass on something the build system itself considers dirty. It also errs the
+  cheap way: a false "stale" costs one no-op rebuild, a false "fresh" costs a wrong measurement.
 - Watched set is only what the build consumes: `StratEngine`, `StratChessTests`, `StratChessEvolved`
   sources plus `CMakeLists.txt` and `CMakePresets.json`, excluding `StratEngine/Archived` (never
   built). `Docs`, `Scripts` and `.claude` are deliberately outside it, so editing a design document

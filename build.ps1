@@ -120,8 +120,13 @@ function Test-ArtifactFreshness {
         return [pscustomobject]@{ Fresh = $true; Reason = 'no-sources'; NewestSourcePath = $null }
     }
 
+    # Strictly newer, so a tie counts as stale. That matches ninja, which rebuilds when a
+    # source's mtime exactly equals the object it produces (measured, not assumed), and it
+    # errs the cheap way: a false 'stale' costs one no-op rebuild, while a false 'fresh'
+    # costs a wrong measurement, which is the whole reason this check exists. Ties are not
+    # only a theoretical concern on filesystems with coarse timestamp granularity.
     $newest = $Sources | Sort-Object -Property WriteTime -Descending | Select-Object -First 1
-    if ([DateTime]$ArtifactWriteTime -ge [DateTime]$newest.WriteTime) {
+    if ([DateTime]$ArtifactWriteTime -gt [DateTime]$newest.WriteTime) {
         return [pscustomobject]@{ Fresh = $true; Reason = 'fresh'; NewestSourcePath = $newest.Path }
     }
     return [pscustomobject]@{ Fresh = $false; Reason = 'stale'; NewestSourcePath = $newest.Path }
@@ -210,10 +215,11 @@ function Invoke-SelfTest {
                         [pscustomobject]@{ Path = 'edited.h'; WriteTime = $t0.AddSeconds(1) })
            Fresh    = $false
            Newest   = 'edited.h' }
-        @{ Name = 'artifact exactly as old as its newest source is fresh'
+        @{ Name = 'artifact exactly as old as its newest source is stale'
            Artifact = $t0
            Sources  = @([pscustomobject]@{ Path = 'a.cpp'; WriteTime = $t0 })
-           Fresh    = $true }
+           Fresh    = $false
+           Reason   = 'stale' }
         @{ Name = 'missing artifact is not fresh'
            Artifact = $null
            Sources  = @([pscustomobject]@{ Path = 'a.cpp'; WriteTime = $t0 })
