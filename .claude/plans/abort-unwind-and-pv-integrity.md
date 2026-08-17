@@ -269,5 +269,10 @@ No perft run: move generation is untouched. Linux Debug + sanitizers come from C
 | `go nodes` semantics, including that it is thread-0's count under Lazy SMP | doc comment on the new `SearchLimits` field, and `Docs/Changelog.md` |
 | Why the clock cannot trigger a deterministic abort deep in the tree | `Docs/TestDesign.md`, next to the abort-path tests |
 
+PR 0's rows are discharged: `go nodes` semantics, the rename and its reasoning, and the bench and
+equivalence results are in `Docs/Changelog.md` (2026-08-17); why the clock cannot test the abort path is
+in `Docs/TestDesign.md` beside the `[time_mgr]` section. The exempt-store comments, the unwind
+invariant, the PV assertion and the SPRT results belong to PR 1 and PR 2 and are still outstanding.
+
 This file stays until PR 2 lands: while PR 2 is unstarted it is the spec for it. Delete it in PR 2
 once the table above is discharged.

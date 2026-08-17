@@ -303,6 +303,19 @@ Verify ordering priority: PV move → hash move → captures (MVV-LVA) → kille
 - `stop()` fires `should_stop_search()` immediately
 - `elapsed()` increases monotonically
 
+**Testing the abort path needs a node limit, not the clock.** `SearchLimits::fixed_nodes(N)` /
+`go nodes N` exists for this: at `Threads=1` node counting is deterministic, so the abort lands at a
+reproducible point and a test can assert on what the interrupted search produced. The clock cannot do
+that. A zero budget is passed through verbatim and latches on its first check, but that check is
+either the 1024-node poll or the end of depth 1 — always too shallow to reach the behaviour worth
+asserting — and any non-zero budget is wall-clock dependent. Related: `[nodes]` cases in
+`SearchTests.cpp`, whose upper bound is deliberately loose because the poll cadence and the node
+budget count different things (see the comment on the poll in `pvs()`).
+
+A node-limit test must fail rather than hang when the mechanism regresses. Choose a depth cap the
+search can actually finish: with no working limit, the only remaining bound is the one-hour fallback
+clock, so a cap that is too deep turns a real defect into a CI timeout with no diagnostic.
+
 ### `[bitboard]` — Bitboard helper tests
 
 **When**: opportunistically (low priority)

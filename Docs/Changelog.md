@@ -22,6 +22,55 @@ Newest first.
 
 ---
 
+## 2026-08-17 — Node limit (`go nodes`) as a deterministic abort seam (#326)
+
+### Added
+
+- `SearchLimits::nodes` / `fixed_nodes(N)` / UCI `go nodes N`, resolved into
+  `ResolvedLimits::node_limit` and observed by `PlayerAiBase::NodeLimitReached()` inside the existing
+  1024-node poll in `pvs()` and `quiescence()`. It latches the same abort flag as the clock, so the
+  O(depth) stack collapse and every `IsAborted()` consumer stay reason-agnostic.
+- A node budget lifts the default depth cap in `cmd_go`, which would otherwise stop a large budget at
+  `UCI_DEFAULT_DEPTH` in violation of the UCI spec. An explicit `depth` still outranks both.
+
+### Changed
+
+- `ShouldStopSearch()` → `StopRequested()`. A time-based name was the first choice and is wrong:
+  `TimeManager::should_stop_search()` returns true whenever the abort flag is *already* latched, so it
+  answers for a node limit and for UCI `stop` as much as for the clock — `cmd_stop` has latched it for
+  as long as it has existed, and four call sites already rely on that generality. `IsAborted()` remains
+  the cheap latched read; `NodeLimitReached()` is the one genuinely specific predicate.
+- Corrected two long-standing false claims in the poll comment: helper threads do **not** increment
+  `nodes_since_check_` (`&&` short-circuits before the `++`), and they **do** call `chrono::now()`, via
+  `search_with_aspiration`'s retry boundaries and the LMR re-search guard, neither of which is gated on
+  `thread_id`.
+
+### Why
+
+The abort path cannot be regression-tested through the clock, and #299/#310 both need to. At
+`Threads=1` node counting is deterministic, so a node limit aborts at a reproducible point; a zero
+time budget latches at the 1024-node poll or the end of depth 1, always too shallow, and any non-zero
+budget is wall-clock dependent. Under `Threads>1` the budget bounds thread 0's count only, so a search
+lands near N times the budget — documented in `SearchLimits.h`.
+
+It reproduces #299 on demand: `position startpos moves e2e4 e7e5 g1f3` then `go nodes 20000` returns
+`score cp 0` at depth 6 straight after depth 5's `-8`, which is the contaminated abort score being
+accepted. A node-limited search's transposition table and PV are therefore deliberately untrustworthy
+until #299's fix lands, and must not be used to generate reference data before then.
+
+### Validation
+
+- Fixed-depth equivalence: 6 positions at depth 10, every per-iteration `info` line (nodes, score, full
+  PV) plus the final line and `bestmove`, wall-clock `time` stripped — 72 lines byte-identical to
+  `origin/main`.
+- Bench (8 positions, depth 12, two runs per side): identical node counts both sides (28,411,501); nps
+  2,948,781 / 2,953,686 before against 2,947,557 / 2,954,914 after, mean delta **+0.00%**, within-side
+  spread exceeding the between-side difference.
+- No Elo match: the limit is opt-in and unset in every match and in `game_settings.json`, so the
+  equivalence result closes the strength question.
+- `search-reviewer`: LGTM, no blocking findings. Design and decisions:
+  `.claude/plans/abort-unwind-and-pv-integrity.md` (D8).
+
 ## 2026-08-17 — `build.ps1` reports a stale artifact instead of leaving it to be measured
 
 ### Added
