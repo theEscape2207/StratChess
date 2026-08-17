@@ -22,6 +22,57 @@ Newest first.
 
 ---
 
+## 2026-08-17 — A same-key TT store now obeys the replacement policy (#319)
+
+### Fixed
+
+- `TranspositionTable::store()` short-circuited on `entry.key == key` and overwrote the slot with no
+  regard for phase, depth or bound. Everything the replacement policy decides was skipped on the one
+  path where both sides describe the *same position*. It now scores the incoming entry against the
+  one it would replace, with `replacementScore()` — the same ranking that decides evictions, reused
+  rather than restated, since a second hand-written policy is how the hole appeared in the first
+  place. Ties overwrite: the incoming entry carries the current age, so a tie is the same node
+  re-searched at the same depth, where the fresher bound wins.
+- A store that wins the slot but carries `Move::EmptyMove()` keeps the move already there. That is a
+  separate case, not a consequence of the ranking: `pvs()`'s own null-move cutoff and terminal
+  mate/stalemate stores write an empty move at full depth, so they outrank the entry they land on and
+  erase its hash move legitimately. The move is a pure ordering hint produced for this same key and
+  reaches nothing but `MoveSorter::ScoreMoves()`, where it is matched against the freshly generated
+  legal moves.
+
+### The measurement
+
+Both failure modes were counted on `090e3f8` before the fix (#335 has the method): PV nodes lying on
+the **previous** iteration's accepted PV, so each was certainly stored last iteration and a miss is a
+loss rather than a first visit. `Threads=1`, `go depth 12`, four positions. The instrumentation was
+reverted rather than committed; it is reproduced here on the same build and re-run after the fix.
+
+| | before | after |
+|---|---|---|
+| PV nodes examined | 197 | 221 |
+| usable MAIN entry with a move | 176 | **221** |
+| entry present, phase QUIESCENCE | **18** | 0 |
+| entry present, MAIN, `best_move` empty | **3** | 0 |
+| entry absent — evicted under capacity | 0 | 0 |
+
+Capacity replacement fired in none of the samples on either side, so the key-match short circuit was
+not one contributor among several — it was the whole of the observed damage. The examined count rises
+because the PV itself gets longer once the ordering holds.
+
+### Validation
+
+- **Not** a fixed-depth-equivalence change: it alters what the table holds under normal search, so
+  `Compare-SearchEquivalence.ps1` is expected to differ and was not run as a gate.
+- `Run-Bench.ps1`, depth 12, `Threads=1`, both sides clang-cl Release: aggregate nps 2.939M → 2.945M
+  (flat, as expected — the change adds no per-node work), total nodes 28.41M → **22.30M (−21.5%)**,
+  wall clock 9.667s → 7.570s. Identical best moves on all eight positions. Per position the node
+  count runs from −68% (closed-mid) to +48% (rook-endgm); the aggregate is the honest figure, and
+  eight positions cannot resolve the sign per position.
+- `[tt]` unit tests cover both declined cases, both accepted ones, the preserved move and the
+  counters. Each new test was run against the unfixed header first: four fail there.
+- **Strength**: an SPRT against `elo-reference-v2` is the gate and had not run when this was written;
+  a node reduction at fixed depth is evidence of better ordering, not of Elo.
+
 ## 2026-08-17 — The previous-iteration PV ordering tier was dead, and is removed (#299, #310)
 
 ### Removed

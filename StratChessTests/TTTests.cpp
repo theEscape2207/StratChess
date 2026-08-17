@@ -346,15 +346,124 @@ TEST_CASE("TT - a quiescence store evicts the weakest main entry, not an arbitra
 	CHECK(tt.probe(shallow, 0).has_value());
 }
 
-TEST_CASE("TT - a same-key store overwrites regardless of phase", "[tt]")
+// ── Same-key replacement ──────────────────────────────────────────────────────
+//
+// A store for a key already in the bucket is scored against the entry it would replace,
+// by the same ranking that decides evictions. These pin what that buys: the two ways a
+// same-key store used to destroy a main entry's hash move, measured at 21 of 197 PV nodes
+// per #319, plus the cases that must still overwrite.
+
+static const Move HASH_MOVE = Move(e2, e4, MoveFlags::QUIET);
+static const Move OTHER_MOVE = Move(g1, f3, MoveFlags::QUIET);
+
+TEST_CASE("TT - a same-key quiescence store does not displace a main entry", "[tt]")
 {
-	// Pre-existing behaviour, pinned because it is the one route by which a quiescence
-	// result can still destroy a main-search entry and its hash move: the key match short
-	// circuits before any scoring. Whether that is right is not this change's question.
+	// The dominant failure this fixes: pvs() mines main entries for a hash move even when
+	// they are too shallow to cut off, and refuses to mine a quiescence entry at all, so a
+	// quiescence store landing on a PV node's key erased its move without evicting anything.
 	TranspositionTable tt(0);
 	tt.newSearchIteration();
 
-	tt.store(KEY_A, 500, 12, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+	tt.store(KEY_A, 500, 12, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+	tt.store(KEY_A, 60, 15, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE);
+
+	const auto result = tt.probe(KEY_A, 0);
+	REQUIRE(result.has_value());
+	CHECK(result->phase == SearchPhase::MAIN);
+	CHECK(result->value == 500);
+	CHECK(result->best_move == HASH_MOVE);
+}
+
+TEST_CASE("TT - a shallower same-key main store does not displace a deeper one", "[tt]")
+{
+	TranspositionTable tt(0);
+	tt.newSearchIteration();
+
+	tt.store(KEY_A, 500, 12, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+	tt.store(KEY_A, 60, 4, 0, OTHER_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
+
+	const auto result = tt.probe(KEY_A, 0);
+	REQUIRE(result.has_value());
+	CHECK(result->depth == 12);
+	CHECK(result->value == 500);
+}
+
+TEST_CASE("TT - a same-key store at equal depth wins", "[tt]")
+{
+	// PVS re-searches the same node at the same depth with a wider window. The second
+	// result is the one worth keeping, so ties must overwrite rather than be declined.
+	TranspositionTable tt(0);
+	tt.newSearchIteration();
+
+	tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
+	tt.store(KEY_A, 60, 8, 0, OTHER_MOVE, BoundType::EXACT, NodeType::CUT_NODE, SearchPhase::MAIN);
+
+	const auto result = tt.probe(KEY_A, 0);
+	REQUIRE(result.has_value());
+	CHECK(result->value == 60);
+	CHECK(result->bound == BoundType::EXACT);
+	CHECK(result->best_move == OTHER_MOVE);
+}
+
+TEST_CASE("TT - an accepted same-key store with no move keeps the stored hash move", "[tt]")
+{
+	// pvs()'s own null-move cutoff and terminal mate stores write Move::EmptyMove() at full
+	// depth, so they outrank the entry they land on and overwrite it legitimately. The move
+	// is a pure ordering hint produced for this same key, so carrying it forward costs
+	// nothing and keeps the node's ordering.
+	TranspositionTable tt(0);
+	tt.newSearchIteration();
+
+	tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+	tt.store(KEY_A, 60, 10, 0, no_move(), BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
+
+	const auto result = tt.probe(KEY_A, 0);
+	REQUIRE(result.has_value());
+	CHECK(result->value == 60); // the store was accepted
+	CHECK(result->depth == 10);
+	CHECK(result->best_move == HASH_MOVE); // but the move survived it
+}
+
+TEST_CASE("TT - an accepted same-key store with a move replaces the stored one", "[tt]")
+{
+	TranspositionTable tt(0);
+	tt.newSearchIteration();
+
+	tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+	tt.store(KEY_A, 60, 10, 0, OTHER_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+
+	const auto result = tt.probe(KEY_A, 0);
+	REQUIRE(result.has_value());
+	CHECK(result->best_move == OTHER_MOVE);
+}
+
+TEST_CASE("TT - a declined same-key store leaves the counters alone", "[tt]")
+{
+	TranspositionTable tt(0);
+	tt.newSearchIteration();
+
+	tt.store(KEY_A, 500, 12, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+	REQUIRE(tt.count_entries() == 1);
+	REQUIRE(tt.count_pv_nodes() == 1);
+
+	tt.store(KEY_A, 60, 15, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE);
+
+	CHECK(tt.count_entries() == 1);
+	CHECK(tt.count_pv_nodes() == 1); // the PV entry is still there, so it is still counted
+}
+
+TEST_CASE("TT - a same-key store still wins once the stored entry is generations old", "[tt]")
+{
+	// Age is the axis allowed to override the phase ranking, on this path as on the eviction
+	// path: an entry from several iterations ago is stale, and a same-key store is the
+	// strongest evidence there is that the position is being searched again now.
+	TranspositionTable tt(0);
+	tt.newSearchIteration();
+
+	tt.store(KEY_A, 500, 4, 0, HASH_MOVE, BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
+	for (int i = 0; i < 8; ++i)
+		tt.newSearchIteration();
+
 	tt.store(KEY_A, 60, 15, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE);
 
 	const auto result = tt.probe(KEY_A, 0);

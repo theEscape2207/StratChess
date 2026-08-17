@@ -201,13 +201,16 @@ class TranspositionTable {
 		size_t replaceIndex = 0;
 		int worst_score = std::numeric_limits<int>::max();
 		bool found_empty = false;
+		bool same_key = false;
 
 		for (size_t i = 0; i < BUCKET_SIZE; ++i) {
 			auto& entry = bucket.entries[i];
 
 			if (entry.key == key) {
-				// Exact same position - overwrite old record
+				// Exact same position: this slot is the only candidate, but whether the
+				// incoming entry earns it is still a replacement decision -- see below.
 				replaceIndex = i;
+				same_key = true;
 				break;
 			}
 
@@ -233,6 +236,23 @@ class TranspositionTable {
 			}
 		}
 		auto& entry = bucket.entries[replaceIndex];
+
+		if (same_key) {
+			// Both sides describe the same position, so the ranking that decides evictions
+			// decides this too: a quiescence result must not displace the main entry pvs()
+			// mines for a hash move, and a shallow re-visit must not discard a deeper
+			// result. Ties overwrite -- the incoming entry carries the current age, so a tie
+			// is the same node re-searched at the same depth, where the fresher bound wins.
+			if (replacementScore(depth, phase, node_type, /*age_diff=*/0) < replacementScore(entry, age))
+				return;
+
+			// The stored move is a pure ordering hint for this same position, and several
+			// stores that legitimately win here carry none: pvs()'s null-move cutoff and its
+			// terminal mate/stalemate store both write Move::EmptyMove() at full depth.
+			// Keeping the old move leaves the node ordered rather than erasing the hint.
+			if (best_move.is_null())
+				best_move = entry.best_move;
+		}
 
 		// Track counts: was entry empty? was it PV before?
 		bool was_empty = (entry.key == 0);
@@ -277,14 +297,20 @@ class TranspositionTable {
 	// Provides a bonus for PV entries and a penalty for quiescence entries
 	int replacementScore(const TTEntry& entry, int age) const noexcept
 	{
-		int age_diff = (age - entry.age) & 0xFF;
+		return replacementScore(entry.depth, entry.phase, entry.node_type, (age - entry.age) & 0xFF);
+	}
 
+	// The same ranking for content that is not in the table yet, so store() can weigh an
+	// incoming entry against the one it would replace. An entry being written always carries
+	// the current age, hence an age difference of zero.
+	int replacementScore(int16_t depth, SearchPhase phase, NodeType node_type, int age_diff) const noexcept
+	{
 		// PV nodes are more valuable to keep
-		int pv_bonus = (entry.node_type == NodeType::PV_NODE) ? 512 : 0;
+		int pv_bonus = (node_type == NodeType::PV_NODE) ? 512 : 0;
 
-		// entry.depth is remaining search in both phases; quiescence plies are discounted to
+		// depth is remaining search in both phases; quiescence plies are discounted to
 		// the main scale before they compete, so the entry that kept more search wins.
-		int adjusted_depth = (entry.phase == SearchPhase::MAIN) ? entry.depth : quiescenceEquivalentDepth(entry.depth);
+		int adjusted_depth = (phase == SearchPhase::MAIN) ? depth : quiescenceEquivalentDepth(depth);
 
 		// A quiescence entry resolves captures from a single node; a main-search entry of the
 		// same nominal depth resolves a full-width subtree, and pvs() mines main entries for a
@@ -293,7 +319,7 @@ class TranspositionTable {
 		// content only by being newer, never by claiming more depth. It has to clear the
 		// PV bonus as well as the discounted depth to do that: a full budget marked PV_NODE
 		// otherwise reaches 7 * 256 + 512 = 2304.
-		const int phase_bonus = (entry.phase == SearchPhase::MAIN) ? 0 : -2560;
+		const int phase_bonus = (phase == SearchPhase::MAIN) ? 0 : -2560;
 		return adjusted_depth * 256 + pv_bonus + phase_bonus - age_diff * 512;
 	}
 
