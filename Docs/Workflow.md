@@ -14,6 +14,7 @@ what you do; this file holds the background you consult when something is unexpe
 | start a task, or clean one up afterwards | [Two ways to run a task](#two-ways-to-run-a-task) |
 | run an AI-vs-AI game by hand | [Self-play validation](#self-play-validation) |
 | know whether I may spend 1% of nps | [Speed and nps](#speed-and-nps) |
+| prove a refactor changed nothing | [What validates what](#what-validates-what) |
 | judge whether a hardening or mitigation is worth it | [Threat model](#threat-model) |
 | know why Linux and Windows validate different things | [What validates what](#what-validates-what) |
 | know what CI runs, and when | [`CI.md`](CI.md) |
@@ -294,6 +295,22 @@ against a deliberately injected race that TSan did report. So the job gates on a
 a suppression is ever added it must name why that race is tolerated — a permanently suppressed
 sanitizer looks like coverage and is worse than none. A future lock-free TT reopens this question
 entirely.
+
+**A change that claims to preserve behaviour is gated by fixed-depth equivalence, and the gate is
+`Scripts\Compare-SearchEquivalence.ps1`.** It compares every per-iteration `info` line and `bestmove`
+between two binaries at `Threads=1`, with only `time` stripped. Comparing the final line alone is a
+weaker check that has already been written by hand and shipped: two builds can agree on the answer
+and disagree on how they reached it, which for a refactor is exactly what is under test. Measured on
+a deliberate one-constant LMR change, all six positions diverged four to five iterations before the
+score, the PV or the best move did.
+
+The trap is the *baseline*, not the comparison. Restoring a file list over the working tree cannot
+restore a file the baseline never had, so a new file stays in the tree and is compiled into the
+"before" build — and `CMakeLists.txt` globs with `CONFIGURE_DEPENDS`, so a stray new `.cpp` is picked
+up silently. Use `-BaselineRef origin/main`, which builds a whole tree at that ref in a throwaway
+worktree and caches it per commit; the first run costs a build, later ones are seconds. Where node
+counts change by design — an evaluation or ordering change — this answers nothing, and `Run-Bench`
+plus an SPRT is the route.
 
 **The perftcheck corpus stays a local instrument and is not a CI leg (#196).** The sweep of all
 142,953 positions found **zero disagreements on legally reachable input** (#198), so as a gate it
