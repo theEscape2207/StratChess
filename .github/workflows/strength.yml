@@ -381,14 +381,24 @@ jobs:
           echo "fastchess exit: $fc_exit"
           echo "elapsed_min=$(( (SECONDS - start_s) / 60 ))" >> "$GITHUB_OUTPUT"
 
-          # A time loss, an illegal move or a disconnect is a harness or engine
-          # BUG, not strength data. On a shared runner it most likely means the
-          # box was oversubscribed, which invalidates every game in the shard,
-          # not just the one that lost. Fail the shard; the aggregator then
-          # refuses to pool the batch at all.
-          if grep -Eiq 'illegal|disconnect|stall|loses on time' match.log; then
+          # An illegal PV move is a defect in the `pv` field of an info line
+          # (#310). fastchess warns and plays the game on from `bestmove`, so
+          # the result is unaffected and the batch stays measurable. Surfaced as
+          # a warning because a PV that does not replay is still worthless as
+          # evidence -- it just is not a reason to discard 1110 sound games.
+          pv_warnings=$(grep -ci 'Illegal PV move' match.log || true)
+          if [ "$pv_warnings" -gt 0 ]; then
+            echo "::warning::Shard $SHARD: $pv_warnings illegal-PV warnings (#310) -- reported PV only, games unaffected."
+          fi
+
+          # A time loss, an illegal move PLAYED or a disconnect is a harness or
+          # engine BUG, not strength data. On a shared runner it most likely
+          # means the box was oversubscribed, which invalidates every game in
+          # the shard, not just the one that lost. Fail the shard; the
+          # aggregator then refuses to pool the batch at all.
+          if grep -Ei 'illegal|disconnect|stall|loses on time' match.log | grep -qvi 'Illegal PV move'; then
             echo "::error::Shard $SHARD: harness/engine failures detected -- batch is not measurable."
-            grep -Ei 'illegal|disconnect|stall|loses on time' match.log | head -10
+            grep -Ei 'illegal|disconnect|stall|loses on time' match.log | grep -vi 'Illegal PV move' | head -10
             exit 1
           fi
           test "$fc_exit" = "0"
