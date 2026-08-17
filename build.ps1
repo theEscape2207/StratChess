@@ -29,7 +29,15 @@
     between binaries from the same compiler.
 
 .PARAMETER SelfTest
-    Run build-wrapper regression tests without configuring or building.
+    Run build-wrapper regression tests without configuring or building. Covers the
+    processor-architecture fallback and the artifact-freshness verdict.
+
+.NOTES
+    After building, each artifact is checked against the newest source the build
+    consumes. The target just built is fatal if still older; an artifact this verb did
+    not rebuild is a warning naming the newer source and its consumers -- 'run-tests'
+    builds only the test binary, so the tactical suite, UCI eval and Run-Bench would
+    otherwise read a stale engine silently.
 
 .EXAMPLE
     .\build.ps1
@@ -86,6 +94,105 @@ function Resolve-ProcessorArchitecture {
     throw "PROCESSOR_ARCHITECTURE is missing and vcvars64 reported target '$VsTargetArchitecture'. A fresh CMake configure cannot identify x86-64."
 }
 
+# Was this artifact produced after the newest source it is built from?
+#
+# Pure, so the verdict is testable without a build (see Invoke-SelfTest). It compares
+# timestamps rather than consulting ninja: `ninja -n` cannot answer this here, because
+# CONFIGURE_DEPENDS leaves a pending glob re-check on every invocation and the dry run
+# stops at "Re-running CMake" without ever evaluating the downstream edges. It reports
+# a genuinely stale binary as having no work to do.
+#
+# $Sources takes objects with Path and WriteTime, so callers decide what counts as a
+# source and the comparison stays free of filesystem access.
+function Test-ArtifactFreshness {
+    param(
+        [object]$ArtifactWriteTime,
+        [object[]]$Sources
+    )
+
+    if ($null -eq $ArtifactWriteTime) {
+        return [pscustomobject]@{ Fresh = $false; Reason = 'missing'; NewestSourcePath = $null }
+    }
+    if (-not $Sources -or $Sources.Count -eq 0) {
+        # Nothing to compare against. Reported rather than assumed: an empty source set
+        # means the watched globs matched nothing, which is a bug in the caller, not a
+        # clean bill of health.
+        return [pscustomobject]@{ Fresh = $true; Reason = 'no-sources'; NewestSourcePath = $null }
+    }
+
+    # Strictly newer, so a tie counts as stale. That matches ninja, which rebuilds when a
+    # source's mtime exactly equals the object it produces (measured, not assumed), and it
+    # errs the cheap way: a false 'stale' costs one no-op rebuild, while a false 'fresh'
+    # costs a wrong measurement, which is the whole reason this check exists. Ties are not
+    # only a theoretical concern on filesystems with coarse timestamp granularity.
+    $newest = $Sources | Sort-Object -Property WriteTime -Descending | Select-Object -First 1
+    if ([DateTime]$ArtifactWriteTime -gt [DateTime]$newest.WriteTime) {
+        return [pscustomobject]@{ Fresh = $true; Reason = 'fresh'; NewestSourcePath = $newest.Path }
+    }
+    return [pscustomobject]@{ Fresh = $false; Reason = 'stale'; NewestSourcePath = $newest.Path }
+}
+
+# Every file the build actually consumes. Docs, Scripts and .claude are deliberately
+# outside the set so editing a design document never reports a binary as stale, and
+# StratEngine/Archived is excluded because CMake never builds it.
+function Get-BuildRelevantSources {
+    param([string]$Root)
+
+    $roots = @(
+        (Join-Path $Root 'StratEngine'),
+        (Join-Path $Root 'StratChessTests'),
+        (Join-Path $Root 'StratChessEvolved')
+    ) | Where-Object { Test-Path $_ }
+
+    $sources = @()
+    if ($roots) {
+        $sources += Get-ChildItem -Path $roots -Recurse -File -Include '*.cpp', '*.h', '*.hpp' |
+            Where-Object { $_.FullName -notmatch '\\StratEngine\\Archived\\' }
+    }
+    foreach ($name in @('CMakeLists.txt', 'CMakePresets.json')) {
+        $path = Join-Path $Root $name
+        if (Test-Path $path) { $sources += Get-Item $path }
+    }
+
+    return $sources | ForEach-Object { [pscustomobject]@{ Path = $_.FullName; WriteTime = $_.LastWriteTime } }
+}
+
+# Reports on one artifact. $Fatal for the target that was just built -- a stale
+# artifact there means the build did not produce what it claimed, which must not pass
+# silently. A warning for artifacts a verb deliberately did not rebuild.
+function Assert-ArtifactFresh {
+    param(
+        [string]$ArtifactPath,
+        [object[]]$Sources,
+        [string]$Consumers = '',
+        [switch]$Fatal
+    )
+
+    $writeTime = (Test-Path $ArtifactPath) ? (Get-Item $ArtifactPath).LastWriteTime : $null
+    $verdict = Test-ArtifactFreshness -ArtifactWriteTime $writeTime -Sources $Sources
+
+    if ($verdict.Reason -eq 'no-sources') {
+        Write-Warning "Freshness check found no sources to compare against - the watched globs matched nothing."
+        return
+    }
+    if ($verdict.Fresh) { return }
+    if ($verdict.Reason -eq 'missing' -and -not $Fatal) { return }
+
+    $name = Split-Path $ArtifactPath -Leaf
+    $newer = Split-Path $verdict.NewestSourcePath -Leaf
+    if ($Fatal) {
+        Write-Error "$name is older than $newer even after building it. The build reported success without producing a current binary."
+        exit 1
+    }
+
+    Write-Host ""
+    Write-Warning "$name is STALE - $newer is newer, and this verb did not rebuild it."
+    if ($Consumers) {
+        Write-Host "         $Consumers will read the old binary." -ForegroundColor Yellow
+    }
+    Write-Host "         Rebuild it with: .\build.ps1 all" -ForegroundColor Yellow
+}
+
 function Invoke-SelfTest {
     $cases = @(
         @{ Name = 'existing architecture is preserved'; Current = 'AMD64'; Target = 'x64'; Expected = 'AMD64' }
@@ -93,7 +200,60 @@ function Invoke-SelfTest {
         @{ Name = 'missing architecture without VS target fails'; Current = ''; Target = ''; ExpectError = $true }
         @{ Name = 'missing architecture with unsupported target fails'; Current = ''; Target = 'arm64'; ExpectError = $true }
     )
+    # Freshness verdicts. The stale case is the falsification: it must fail while
+    # naming the file that made it stale, or the check would be untrustworthy in
+    # exactly the situation it exists for.
+    $t0 = [DateTime]'2026-01-01T12:00:00'
+    $freshnessCases = @(
+        @{ Name = 'artifact newer than every source is fresh'
+           Artifact = $t0.AddSeconds(1)
+           Sources  = @([pscustomobject]@{ Path = 'a.cpp'; WriteTime = $t0 })
+           Fresh    = $true }
+        @{ Name = 'artifact older than a source is stale and names it'
+           Artifact = $t0
+           Sources  = @([pscustomobject]@{ Path = 'old.cpp'; WriteTime = $t0.AddSeconds(-10) },
+                        [pscustomobject]@{ Path = 'edited.h'; WriteTime = $t0.AddSeconds(1) })
+           Fresh    = $false
+           Newest   = 'edited.h' }
+        @{ Name = 'artifact exactly as old as its newest source is stale'
+           Artifact = $t0
+           Sources  = @([pscustomobject]@{ Path = 'a.cpp'; WriteTime = $t0 })
+           Fresh    = $false
+           Reason   = 'stale' }
+        @{ Name = 'missing artifact is not fresh'
+           Artifact = $null
+           Sources  = @([pscustomobject]@{ Path = 'a.cpp'; WriteTime = $t0 })
+           Fresh    = $false
+           Reason   = 'missing' }
+        @{ Name = 'empty source set is reported, not assumed clean'
+           Artifact = $t0
+           Sources  = @()
+           Fresh    = $true
+           Reason   = 'no-sources' }
+    )
+
     $failures = 0
+    foreach ($case in $freshnessCases) {
+        $verdict = Test-ArtifactFreshness -ArtifactWriteTime $case.Artifact -Sources $case.Sources
+        $passed = $verdict.Fresh -eq $case.Fresh
+        $detail = "expected Fresh=$($case.Fresh), got $($verdict.Fresh)"
+        if ($passed -and $case.ContainsKey('Reason')) {
+            $passed = $verdict.Reason -eq $case.Reason
+            $detail = "expected Reason='$($case.Reason)', got '$($verdict.Reason)'"
+        }
+        if ($passed -and $case.ContainsKey('Newest')) {
+            $passed = $verdict.NewestSourcePath -eq $case.Newest
+            $detail = "expected NewestSourcePath='$($case.Newest)', got '$($verdict.NewestSourcePath)'"
+        }
+
+        if ($passed) {
+            Write-Host "PASS: $($case.Name)" -ForegroundColor Green
+        } else {
+            Write-Host "FAIL: $($case.Name) ($detail)" -ForegroundColor Red
+            $failures++
+        }
+    }
+
     foreach ($case in $cases) {
         $expectsError = $case.ContainsKey('ExpectError')
         $passed = $false
@@ -117,8 +277,9 @@ function Invoke-SelfTest {
         }
     }
 
+    $total = $cases.Count + $freshnessCases.Count
     if ($failures) { Write-Host "$failures self-test case(s) FAILED." -ForegroundColor Red }
-    else { Write-Host "$($cases.Count) self-test cases passed." -ForegroundColor Green }
+    else { Write-Host "$total self-test cases passed." -ForegroundColor Green }
     return $failures -eq 0
 }
 
@@ -274,18 +435,37 @@ Write-Host "Preset: $Preset | Config: $Config | Compiler: $Compiler" -Foreground
 # Ninja builds every requested target in one invocation and parallelises across
 # them, so 'all' needs no job orchestration of its own.
 # ---------------------------------------------------------------------------
+$MainExe = Join-Path $BuildDir 'StratChessEvolved.exe'
+
+# Which artifacts a verb leaves untouched, and who then reads them. A stale binary has
+# produced wrong measurements more than once: the verb builds one target and the next
+# step measures the other, and nothing says so.
+$engineConsumers = 'The tactical suite, UCI eval and Run-Bench'
+
 switch ($Verb) {
     'main' {
         Invoke-CMakeBuild -Targets @('StratChessEvolved')
+        $sources = Get-BuildRelevantSources -Root $RepoRoot
+        Assert-ArtifactFresh -ArtifactPath $MainExe -Sources $sources -Fatal
+        Assert-ArtifactFresh -ArtifactPath $TestExe -Sources $sources -Consumers 'Run-Tests.ps1 and Validate-PreCommit.ps1'
     }
     'tests' {
         Invoke-CMakeBuild -Targets @('StratChessTests')
+        $sources = Get-BuildRelevantSources -Root $RepoRoot
+        Assert-ArtifactFresh -ArtifactPath $TestExe -Sources $sources -Fatal
+        Assert-ArtifactFresh -ArtifactPath $MainExe -Sources $sources -Consumers $engineConsumers
     }
     'all' {
         Invoke-CMakeBuild -Targets @()
+        $sources = Get-BuildRelevantSources -Root $RepoRoot
+        Assert-ArtifactFresh -ArtifactPath $MainExe -Sources $sources -Fatal
+        Assert-ArtifactFresh -ArtifactPath $TestExe -Sources $sources -Fatal
     }
     'run-tests' {
         Invoke-CMakeBuild -Targets @('StratChessTests')
+        $sources = Get-BuildRelevantSources -Root $RepoRoot
+        Assert-ArtifactFresh -ArtifactPath $TestExe -Sources $sources -Fatal
+        Assert-ArtifactFresh -ArtifactPath $MainExe -Sources $sources -Consumers $engineConsumers
         Write-Host ""
         # Default: exclude [slow] tests; pass an explicit tag to override.
         $effectiveTag = $Tag ? $Tag : '~[slow]'
@@ -295,6 +475,9 @@ switch ($Verb) {
     }
     'extended-tests' {
         Invoke-CMakeBuild -Targets @('StratChessTests')
+        $sources = Get-BuildRelevantSources -Root $RepoRoot
+        Assert-ArtifactFresh -ArtifactPath $TestExe -Sources $sources -Fatal
+        Assert-ArtifactFresh -ArtifactPath $MainExe -Sources $sources -Consumers $engineConsumers
         Write-Host ""
         if ($Tag) {
             Write-Warning "extended-tests ignores the Tag parameter ('$Tag'). Use run-tests to filter by tag."
