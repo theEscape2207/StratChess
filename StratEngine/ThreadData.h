@@ -193,17 +193,14 @@ struct ThreadData {
 	// null-move ply as "the move that produced this ply".
 	void add_null_move_to_seq(size_t ply) { store_info_at_ply(ply, board.GetGameInfo()); }
 
-	// Test for 50 moves rule and threefold repetition (thread-local board)
+	// Threefold repetition and the fifty-move rule (thread-local board). Neither applies at
+	// the root: the caller asked for a move, not an adjudication, and a draw returned there
+	// leaves the search with nothing to report but the emergency move.
 	bool check_draws(const GameInfo& info, int ply) const noexcept
 	{
-		if (ply > 0 && board.is_repetition(ply)) {
-			return true;
-		}
-		if (info.halfmoveClock >= 50) {
-			assert(info.gameState == GameStates::DRAW_50_MOVES);
-			return true;
-		}
-		return false;
+		if (ply == 0)
+			return false;
+		return board.is_repetition(ply) || info.halfmoveClock >= HALFMOVE_CLOCK_LIMIT;
 	}
 
 	// Updates the game state at the root of the search tree (thread-local

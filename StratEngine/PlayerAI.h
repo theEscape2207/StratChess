@@ -207,14 +207,9 @@ class PlayerAiBase : public PlayerBase {
 	// neither applies at the root: the caller asked for a move, not for an adjudication.
 	bool checkDraws(const GameInfo& info, int ply) const noexcept
 	{
-		if (ply > 0 && m_Board.is_repetition(ply)) {
-			return true;
-		}
-		if (info.halfmoveClock >= 50) {
-			assert(info.gameState == GameStates::DRAW_50_MOVES);
-			return true;
-		}
-		return false;
+		if (ply == 0)
+			return false;
+		return m_Board.is_repetition(ply) || info.halfmoveClock >= HALFMOVE_CLOCK_LIMIT;
 	}
 
 	/*

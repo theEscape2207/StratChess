@@ -27,6 +27,9 @@ enum class GameStates {
 	HUMAN_EXITED   // 5
 };
 
+// The rule is fifty moves by each side, and halfmoveClock counts halfmoves.
+inline constexpr int HALFMOVE_CLOCK_LIMIT = 100;
+
 // Contains information about the board situation
 struct GameInfo {
 	GameStates gameState{GameStates::STILL_PLAYING};
@@ -88,11 +91,11 @@ struct GameInfo {
 	void UpdateHalfmoveClock(const Move& move, ePiece movPiece) noexcept
 	{
 		if (MoveHelper::IsCapture(move) || MoveHelper::IsPawnMove(movPiece)) {
-			halfmoveClock = 0; // if so, then reset counter
+			halfmoveClock = 0; // captures and pawn moves are irreversible
 			assert(gameState == GameStates::STILL_PLAYING);
 		} else {
-			if (++halfmoveClock >= 50)                    // Increment and test for fifty moves
-				gameState = GameStates::DRAW_50_MOVES; // Should use UpdateGameState?
+			if (++halfmoveClock >= HALFMOVE_CLOCK_LIMIT)
+				gameState = GameStates::DRAW_50_MOVES;
 		}
 	}
 };
