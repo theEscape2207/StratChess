@@ -438,38 +438,50 @@ function Get-SharedDepsCache {
 function Invoke-CMakeBuild {
     param([string[]]$Targets)
 
-    # Configure only when there is no cache: Ninja re-runs CMake by itself when
-    # CMakeLists.txt or CMakePresets.json change, so configuring every time only
-    # adds latency.
-    if (-not (Test-Path (Join-Path $BuildDir 'CMakeCache.txt'))) {
-        Write-Host "`n==> Configuring $Preset" -ForegroundColor Cyan
-        # --log-level=WARNING drops the ~20 lines of compiler-ABI/pthread probing
-        # CMake emits on every reconfigure; warnings and errors still surface.
-        $configureArgs = @('--preset', $Preset, '--log-level=WARNING')
-        $depsCache = Get-SharedDepsCache
-        if ($depsCache) { $configureArgs += @('-D', "FETCHCONTENT_BASE_DIR=$depsCache") }
+    # cmake --preset resolves CMakePresets.json against the current directory,
+    # not against any path given on the command line -- so invoking this script
+    # by absolute path from another worktree configures and builds THAT tree.
+    # Pinning the working directory here, around the only two cmake calls, makes
+    # the whole script cwd-independent without disturbing callers that already
+    # set their own location (e.g. a -BaselineRef checkout building an old
+    # commit's copy of this file).
+    Push-Location $RepoRoot
+    try {
+        # Configure only when there is no cache: Ninja re-runs CMake by itself when
+        # CMakeLists.txt or CMakePresets.json change, so configuring every time only
+        # adds latency.
+        if (-not (Test-Path (Join-Path $BuildDir 'CMakeCache.txt'))) {
+            Write-Host "`n==> Configuring $Preset" -ForegroundColor Cyan
+            # --log-level=WARNING drops the ~20 lines of compiler-ABI/pthread probing
+            # CMake emits on every reconfigure; warnings and errors still surface.
+            $configureArgs = @('--preset', $Preset, '--log-level=WARNING')
+            $depsCache = Get-SharedDepsCache
+            if ($depsCache) { $configureArgs += @('-D', "FETCHCONTENT_BASE_DIR=$depsCache") }
 
-        & cmake @configureArgs
+            & cmake @configureArgs
+            if ($LASTEXITCODE -ne 0) {
+                Write-Error "Configure failed (exit $LASTEXITCODE): $Preset"
+                exit $LASTEXITCODE
+            }
+        }
+
+        $label = if ($Targets) { $Targets -join ', ' } else { 'all targets' }
+        Write-Host "`n==> Building $label ($Preset)" -ForegroundColor Cyan
+
+        $buildArgs = @('--build', '--preset', $Preset)
+        foreach ($t in $Targets) { $buildArgs += @('--target', $t) }
+
+        # Ninja's \r-based progress bar becomes runs of blank lines once captured
+        # non-interactively; dropping empty lines keeps real progress and errors
+        # visible without the padding. Native command output still streams through
+        # the pipeline, and $LASTEXITCODE still reflects cmake's own exit code.
+        & cmake @buildArgs | Where-Object { $_ -ne '' }
         if ($LASTEXITCODE -ne 0) {
-            Write-Error "Configure failed (exit $LASTEXITCODE): $Preset"
+            Write-Error "Build failed (exit $LASTEXITCODE): $label"
             exit $LASTEXITCODE
         }
-    }
-
-    $label = if ($Targets) { $Targets -join ', ' } else { 'all targets' }
-    Write-Host "`n==> Building $label ($Preset)" -ForegroundColor Cyan
-
-    $buildArgs = @('--build', '--preset', $Preset)
-    foreach ($t in $Targets) { $buildArgs += @('--target', $t) }
-
-    # Ninja's \r-based progress bar becomes runs of blank lines once captured
-    # non-interactively; dropping empty lines keeps real progress and errors
-    # visible without the padding. Native command output still streams through
-    # the pipeline, and $LASTEXITCODE still reflects cmake's own exit code.
-    & cmake @buildArgs | Where-Object { $_ -ne '' }
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Build failed (exit $LASTEXITCODE): $label"
-        exit $LASTEXITCODE
+    } finally {
+        Pop-Location
     }
 }
 
