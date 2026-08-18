@@ -308,7 +308,10 @@ class TranspositionTable {
 			return incoming_score > stored_score;
 
 		// pvs() mines main entries for a hash move and quiescence() cannot read one at all, so
-		// a cross-phase tie is not a tie: the main-search entry holds the slot either way.
+		// a cross-phase tie is not a tie: the main-search entry holds the slot either way. Only
+		// one of those ways is reachable today -- an incoming main store carries at least depth
+		// 1 and so scores at least 256, while the quiescence band is capped at -256 -- but that
+		// is a property of the constants, not of this decision, so the step is written whole.
 		if (phase != stored.phase)
 			return phase == SearchPhase::MAIN;
 
@@ -319,8 +322,12 @@ class TranspositionTable {
 			return depth > stored.depth;
 
 		// An exact score returns from probe() outright where a bound only narrows the window,
-		// so exactness is not traded for freshness. The same node searched again at the same
-		// depth with a narrower window is the case that produces this.
+		// so exactness is not traded for freshness. In the main search an exact score means a
+		// PV node, since a null window cannot produce one, so the scores meet here only when
+		// one generation of age has cancelled the PV bonus: the trade is that the previous
+		// iteration's exact value outlives a same-depth bound by one generation, after which
+		// the ranking retires it on age. In quiescence the two meet within a generation, where
+		// the exact score is a stand-pat and the bound searched a capture that failed low.
 		if ((bound == BoundType::EXACT) != (stored.bound == BoundType::EXACT))
 			return bound == BoundType::EXACT;
 

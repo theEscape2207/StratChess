@@ -465,10 +465,10 @@ TEST_CASE("TT - the two replacementScore overloads agree", "[tt]")
 
 TEST_CASE("TT - a same-key store at equal depth wins", "[tt]")
 {
-	// PVS re-searches the same node at the same depth with a wider window. The second
-	// result is the one worth keeping, so a store that nothing separates from the entry it
-	// lands on overwrites rather than being declined. Exactness is the one thing that
-	// separates them, pinned below.
+	// PVS re-searches the same node at the same depth with a wider window, and the second
+	// result is the one worth keeping. This pair is settled by exactness rather than by the
+	// terminal overwrite -- the re-search upgrades a bound to an exact score, which is the
+	// direction exactness allows. The terminal itself is pinned separately, below.
 	TranspositionTable tt(0);
 	tt.newSearchIteration();
 
@@ -485,9 +485,10 @@ TEST_CASE("TT - a same-key store at equal depth wins", "[tt]")
 TEST_CASE("TT - an accepted same-key store with no move keeps the stored hash move", "[tt]")
 {
 	// pvs()'s own null-move cutoff and terminal mate stores write Move::EmptyMove() at full
-	// depth, so they outrank the entry they land on and overwrite it legitimately. The move
-	// is a pure ordering hint produced for this same key, so carrying it forward costs
-	// nothing and keeps the node's ordering.
+	// depth, so they win the slot on their own merits and erase the hash move legitimately --
+	// here on depth, two plies of it against the PV bonus's 512. The move is a pure ordering
+	// hint produced for this same key, so carrying it forward costs nothing and keeps the
+	// node's ordering.
 	TranspositionTable tt(0);
 	tt.newSearchIteration();
 
@@ -616,16 +617,22 @@ TEST_CASE("TT - a shallower same-key quiescence store does not displace a deeper
 	// rank at 0. quiescence() admits an entry on raw depth (`entry->depth >= qsearch_budget`),
 	// so an equal rank overwriting would drop a budget-1 entry that the next budget-1 probe
 	// needs and leave one only budget 0 can read.
-	TranspositionTable tt(0);
-	tt.newSearchIteration();
+	// Negative budgets are reachable, not hypothetical: quiescence() keeps going below zero
+	// while in check, so every pairing of the three is a position the search can present.
+	auto kept_depth = [](int16_t stored_depth, int16_t incoming_depth) {
+		TranspositionTable tt(0);
+		tt.newSearchIteration();
+		tt.store(KEY_A, 500, stored_depth, 0, HASH_MOVE, BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE);
+		tt.store(KEY_A, 60, incoming_depth, 0, OTHER_MOVE, BoundType::EXACT, NodeType::ALL_NODE,
+		         SearchPhase::QUIESCENCE);
+		return tt.probe(KEY_A, 0).value().depth;
+	};
 
-	tt.store(KEY_A, 500, 1, 0, HASH_MOVE, BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE);
-	tt.store(KEY_A, 60, 0, 0, OTHER_MOVE, BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE);
-
-	const auto result = tt.probe(KEY_A, 0);
-	REQUIRE(result.has_value());
-	CHECK(result->depth == 1);
-	CHECK(result->value == 500);
+	CHECK(kept_depth(1, 0) == 1);
+	CHECK(kept_depth(1, -1) == 1);
+	CHECK(kept_depth(0, -1) == 0);
+	CHECK(kept_depth(-1, 0) == 0); // and the deeper budget still takes the slot
+	CHECK(kept_depth(0, 1) == 1);
 }
 
 TEST_CASE("TT - a same-key bound does not overwrite an exact score of the same depth", "[tt]")
@@ -647,4 +654,74 @@ TEST_CASE("TT - a same-key bound does not overwrite an exact score of the same d
 	// Deeper still wins: exactness settles a tie, it does not outrank search.
 	tt.store(KEY_A, 60, 9, 0, OTHER_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
 	CHECK(tt.probe(KEY_A, 0).value().value == 60);
+}
+
+TEST_CASE("TT - a same-key store that nothing separates from the stored entry wins", "[tt]")
+{
+	// The terminal case, and the one every other same-key test now exits before reaching: the
+	// aspiration retries. newSearchIteration() runs once per depth, not once per attempt, so a
+	// root that fails high twice stores the same depth, phase, node type and bound under the
+	// same age. Declining the second would freeze the entry on the first, narrower window's
+	// value for the rest of the iteration.
+	TranspositionTable tt(0);
+	tt.newSearchIteration();
+
+	tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
+	tt.store(KEY_A, 60, 8, 0, OTHER_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
+
+	const auto result = tt.probe(KEY_A, 0);
+	REQUIRE(result.has_value());
+	CHECK(result->value == 60);
+	CHECK(result->best_move == OTHER_MOVE);
+}
+
+TEST_CASE("TT - a tie across phases leaves the main entry in the slot", "[tt]")
+{
+	// The step that guards the hash move pvs() mines, pinned with the one input that reaches
+	// it: the scores meet across phases only once age is involved. A two-generation-old MAIN
+	// depth 1 entry scores 256 - 1024, and a quiescence budget 10 marked PV_NODE scores
+	// 5 * 256 + 512 - 2560. Both -768, and quiescence() cannot serve pvs() a move.
+	TranspositionTable tt(0);
+	tt.newSearchIteration();
+
+	tt.store(KEY_A, 500, 1, 0, HASH_MOVE, BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
+	tt.newSearchIteration();
+	tt.newSearchIteration();
+
+	tt.store(KEY_A, 60, 10, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::QUIESCENCE);
+
+	const auto result = tt.probe(KEY_A, 0);
+	REQUIRE(result.has_value());
+	CHECK(result->phase == SearchPhase::MAIN);
+	CHECK(result->value == 500);
+	CHECK(result->best_move == HASH_MOVE);
+}
+
+TEST_CASE("TT - a same-key bound does not downgrade the previous iteration's exact score", "[tt]")
+{
+	// The reachable form of the exactness step, and the one trade this policy makes. In the
+	// main search an exact score means a PV node -- a null window cannot produce one -- so the
+	// PV bonus and one generation of age cancel exactly and the two meet at 2048. The previous
+	// iteration's exact value is kept for one more generation.
+	TranspositionTable tt(0);
+	tt.newSearchIteration();
+
+	tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+	tt.newSearchIteration();
+	tt.store(KEY_A, 60, 8, 0, OTHER_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
+
+	auto result = tt.probe(KEY_A, 0);
+	REQUIRE(result.has_value());
+	CHECK(result->bound == BoundType::EXACT);
+	CHECK(result->value == 500);
+
+	// The stickiness is bounded to that one generation: at two the stored score falls to
+	// 2048 - 512 and the bound wins outright, on the score rather than on any tie-break.
+	tt.newSearchIteration();
+	tt.store(KEY_A, 60, 8, 0, OTHER_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
+
+	result = tt.probe(KEY_A, 0);
+	REQUIRE(result.has_value());
+	CHECK(result->bound == BoundType::LOWER);
+	CHECK(result->value == 60);
 }
