@@ -55,9 +55,11 @@ param(
     # is MSVC-built, so the delta includes the compiler change (see Docs/EloMeasurement.md).
     [string]$ReferenceTag = 'elo-reference-v2',
     # Explicit path to a reference exe. When set, skips the tag-based cache/rebuild
-    # lookup entirely and uses this exe directly as the reference side — ReferenceTag
-    # then becomes purely a display-name label (fastchess engine name + EloLog.md row).
-    # Use to compare two configurations of the SAME binary (e.g. threads=4 vs threads=1).
+    # lookup entirely and uses this exe directly as the reference side. Pass
+    # -ReferenceTag alongside it (e.g. a commit sha) to label the row; left at
+    # its default, the row is labelled from the exe's own filename instead of
+    # the misleading default tag. Use to compare two configurations of the SAME
+    # binary (e.g. threads=4 vs threads=1), or a merge-base build against HEAD.
     [string]$ReferenceExe = '',
     # Total games (2 games per opening pair). Default resolves ≈ ±25 Elo at 95%
     # -- the figure every 500-game row in Docs/EloLog.md actually came back with
@@ -230,6 +232,19 @@ function Get-OpeningCount([string]$path, [string]$format) {
 }
 $refExe        = Join-Path $EngineTesting "StratChess-$ReferenceTag.exe"
 if ($ReferenceExe -ne '') { $refExe = $ReferenceExe }
+
+# What names the reference side in fastchess's engine list, the console banner
+# and the EloLog.md row. -ReferenceTag names it correctly by construction when
+# it drove the tag-based cache/rebuild lookup above. Pointing -ReferenceExe at
+# an arbitrary binary while leaving -ReferenceTag at its default would still
+# read as the pinned anchor, so it falls back to the exe's own basename instead
+# -- an explicit -ReferenceTag passed alongside -ReferenceExe (e.g. a commit
+# sha, as in the SPRT examples above) still labels it, since that pairing is
+# the documented way to say what the exe actually is.
+$refName = $ReferenceTag
+if ($ReferenceExe -ne '' -and -not $PSBoundParameters.ContainsKey('ReferenceTag')) {
+    $refName = "ref-$([IO.Path]::GetFileNameWithoutExtension($ReferenceExe))"
+}
 
 # Defaults to the shipping (clang-cl) build deliberately. Elo is only comparable
 # between binaries from the same compiler: an MSVC candidate measured against the
@@ -428,7 +443,7 @@ if ($ResumeDir -ne '') {
     # Report the RESOLVED bounds, not the preset name -- the log should record what
     # was actually tested, not which shorthand was typed.
     $gamesLabel = ($Sprt -ne '') ? "up to $Games games (SPRT cap)" : "$Games games"
-    Write-Host "==> $candidateName vs $ReferenceTag | $gamesLabel, tc=$Tc, concurrency=$Concurrency" -ForegroundColor Cyan
+    Write-Host "==> $candidateName vs $refName | $gamesLabel, tc=$Tc, concurrency=$Concurrency" -ForegroundColor Cyan
     if ($Sprt -ne '') {
         Write-Host "    SPRT: $Sprt -- elo0=$Elo0 elo1=$Elo1 alpha=$Alpha beta=$Beta model=$SprtModel" -ForegroundColor Cyan
     }
@@ -442,7 +457,7 @@ if ($ResumeDir -ne '') {
     # splat in as extra fastchess "-engine" option tokens without disturbing the base spec.
     $candidateEngineArgs = @("cmd=$CandidateExe", "name=$candidateName", "dir=$dirA", 'args=uci')
     if ($CandidateOptions) { $candidateEngineArgs += $CandidateOptions -split '\s+' }
-    $referenceEngineArgs = @("cmd=$refExe", "name=$ReferenceTag", "dir=$dirB", 'args=uci')
+    $referenceEngineArgs = @("cmd=$refExe", "name=$refName", "dir=$dirB", 'args=uci')
     if ($ReferenceOptions) { $referenceEngineArgs += $ReferenceOptions -split '\s+' }
 
     # SPRT tokens splatted the same way as the -engine option arrays above: empty
@@ -492,7 +507,14 @@ $scoreLine = ($log -split "`n" | Select-String -Pattern 'Games: \d+' | Select-Ob
 $llrLine     = ($log -split "`n" | Select-String -Pattern '^\s*LLR:' | Select-Object -Last 1)
 $verdictLine = ($log -split "`n" | Select-String -Pattern 'SPRT\s*\(.*\)\s*completed\s*-\s*(H0|H1) was accepted' | Select-Object -Last 1)
 
-$disasters = ($log -split "`n" | Select-String -Pattern 'illegal|disconnect|stall|loses on time' )
+# 'illegal' alone also matches "Warning; Illegal PV move" -- fastchess's own
+# report that an engine's reported PV contained an illegal move, which it
+# tolerates and plays through from bestmove (see the Reference-column note
+# above; this is the reporting defect fastchess 1.8 emits on both engines
+# roughly once a game and is not a played illegal move). The negative lookahead
+# excludes only that phrasing, so an actual played illegal move -- any other
+# wording containing 'illegal' -- still trips the guard.
+$disasters = ($log -split "`n" | Select-String -Pattern 'illegal(?!\s+pv\s+move)|disconnect|stall|loses on time' )
 $hardFail = $false
 if ($fcExit -ne 0) { Write-Host "fastchess exited with code $fcExit" -ForegroundColor Red; $hardFail = $true }
 if ($disasters) {
@@ -552,7 +574,7 @@ if ($Sprt -ne '') {
 if ($noStrengthData) {
     $kind = "**same binary and configuration — carries no strength information.** $kind"
 }
-$row = "| $(Get-Date -Format 'yyyy-MM-dd') | $candidateName | $ReferenceTag | $actualGames | $Tc | $eloText | $kind$($hardFail ? ' — FAILURES, discard' : '') |"
+$row = "| $(Get-Date -Format 'yyyy-MM-dd') | $candidateName | $refName | $actualGames | $Tc | $eloText | $kind$($hardFail ? ' — FAILURES, discard' : '') |"
 $eloLog = Join-Path $RepoRoot 'Docs\EloLog.md'
 if (Test-Path $eloLog) {
     Add-Content -Path $eloLog -Value $row
