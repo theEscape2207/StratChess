@@ -55,25 +55,26 @@ TEST_CASE("Move: from/to/flags round-trip across the full range of each field", 
 
 // ── Identity ──────────────────────────────────────────────────────────────────
 
-TEST_CASE("Move: equality compares from/to only and deliberately ignores flags", "[moves]")
+TEST_CASE("Move: equality is exact — the full encoding, flags included", "[moves]")
 {
-	// operator== delegates to IsSameAs, which compares to() and from() and nothing else.
-	// This is a genuine trap: two moves that do completely different things to the board
-	// compare equal. Pinned here so that a future change either preserves it knowingly or
-	// has to delete this test on purpose.
-	SECTION("Same squares, different promotion piece — equal")
+	// operator== delegates to IsSameAs, which compares the raw 2-byte encoding.
+	SECTION("Same squares, different promotion piece — not equal")
 	{
 		const Move promoteQueen = MoveFactory::MakePromotion(e7, e8, WHITE_QUEEN, false);
 		const Move promoteKnight = MoveFactory::MakePromotion(e7, e8, WHITE_KNIGHT, false);
 
-		REQUIRE(promoteQueen.flags() != promoteKnight.flags()); // genuinely different moves
-		CHECK(promoteQueen == promoteKnight);                   // ...yet compare equal
-		CHECK(promoteQueen.IsSameAs(promoteKnight));
-		CHECK_FALSE(promoteQueen != promoteKnight);
+		REQUIRE(promoteQueen.flags() != promoteKnight.flags());
+		CHECK_FALSE(promoteQueen == promoteKnight);
+		CHECK_FALSE(promoteQueen.IsSameAs(promoteKnight));
+		CHECK(promoteQueen != promoteKnight);
 	}
-	SECTION("Same squares, quiet vs capture — equal")
+	SECTION("Same squares, quiet vs capture — not equal")
 	{
-		CHECK(MoveFactory::MakeQuiet(c5, d6) == MoveFactory::MakeCapture(c5, d6));
+		CHECK(MoveFactory::MakeQuiet(c5, d6) != MoveFactory::MakeCapture(c5, d6));
+	}
+	SECTION("Same squares, same flags — equal")
+	{
+		CHECK(MoveFactory::MakeQuiet(e2, e4) == MoveFactory::MakeQuiet(e2, e4));
 	}
 	SECTION("Different squares — not equal")
 	{

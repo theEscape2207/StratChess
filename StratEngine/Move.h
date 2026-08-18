@@ -65,7 +65,7 @@ class Move final {
 
 	bool operator!=(const Move& rhs) const noexcept { return !IsSameAs(rhs); }
 
-	bool IsSameAs(const Move& rhs) const noexcept { return ((to() == rhs.to()) && (from() == rhs.from())); }
+	bool IsSameAs(const Move& rhs) const noexcept { return data == rhs.data; }
 
 	void Clear() noexcept { data = EMPTY_MOVE; }
 

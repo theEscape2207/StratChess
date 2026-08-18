@@ -141,13 +141,13 @@ Non-obvious API contracts — the rest of the layout is discoverable.
 - `Move` is a pure 2-byte value (from/to/flags). The moving and captured pieces are **not** stored:
   use `Board::GetEffectiveMovPiece(m)` (pre-move only) and `Board::GetCapturedPiece(m)`. After
   `DoMove`, identify the moved piece with `board.GetPiece(m.to())`.
-- `Move` equality compares from/to only and **ignores flags** — two moves differing only in
-  promotion piece compare equal.
+- `Move` equality is exact (compares the raw 2-byte encoding, flags included) — two moves differing
+  only in promotion piece, or a quiet move vs. a capture on the same squares, compare unequal.
 - Move formatting lives entirely in `MoveFormatter`: `ToCoord` (coordinate-only, no board),
   `ToShort` (piece-prefixed; the `Board` overload appends `+` and reads the board, so never call it
   after a failed or unpaired `DoMove`), `ToUCI`, `ToVerbose`, `FromUCI`.
-- `MoveHelper` predicates (`IsCapture`, `IsPawnMove`, `IsKingMove`, `Value`) take an `ePiece`, never
-  a `Move&`.
+- Most `MoveHelper` predicates (`IsCapture`, `IsPromote`, `Value`, ...) take a `const Move&`;
+  `IsPawnMove` is the exception, taking a bare `ePiece`.
 - `ThreadData&` is the **first parameter of every search method**. The search runs on `td.board`,
   never the game board; root state is propagated back in `GetMove()`. The TT is a separate shared
   parameter — Lazy SMP helpers each get their own `ThreadData`.
