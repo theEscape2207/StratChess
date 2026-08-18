@@ -1001,8 +1001,8 @@ TEST_CASE("UCI: a high halfmove clock still yields a searched move", "[uci]")
 
 	UciHandlerTestFixture fx;
 	fx.ucinewgame(); // constructs ai_, which run_search_directly needs
-	fx.position("position fen r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - " +
-	            std::to_string(clock) + " 4");
+	fx.position("position fen r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - " + std::to_string(clock) +
+	            " 4");
 	REQUIRE(fx.board().GetGameInfo().halfmoveClock == clock);
 
 	const Move best = fx.run_search_directly(4);
