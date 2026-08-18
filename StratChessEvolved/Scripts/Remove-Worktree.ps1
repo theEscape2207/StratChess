@@ -232,7 +232,10 @@ if ($branch) {
 
 if ($SyncMaster) {
     Write-Host "`n==> Syncing master" -ForegroundColor Cyan
-    & pwsh -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Sync-Master.ps1')
+    # $PSScriptRoot is unsafe here: when the executing script is the removed worktree's
+    # own copy, Trap 3 above may have just deleted this directory's contents (including
+    # this script's sibling Sync-Master.ps1). $MainCheckout's copy always survives.
+    & pwsh -ExecutionPolicy Bypass -File (Join-Path $MainCheckout 'StratChessEvolved\Scripts\Sync-Master.ps1')
 }
 
 if ($script:DirLeftBehind) {
