@@ -99,6 +99,10 @@ TEST_CASE("Search from a high-but-legal halfmove clock still searches and return
 
 // At or past the threshold the game is drawn, but a UCI engine is not the arbiter of that
 // and must still answer with a legal move rather than nothing.
+//
+// The position must keep a root capture available (Nxe5, Bxf7): that is what exercises the
+// clock-reset branch of UpdateHalfmoveClock at ply 0 with the clock already at the limit,
+// which is where its STILL_PLAYING assert would fire in Debug. Keep one when changing FENs.
 TEST_CASE("Search at or past the fifty-move threshold still returns a legal move", "[fifty_move]")
 {
 	const int clock = GENERATE(100, 120);
@@ -135,5 +139,9 @@ TEST_CASE("The move that reaches the fifty-move threshold is returned, not withh
 	REQUIRE_FALSE(move.is_null());
 	CHECK(info.halfmoveClock == 100);
 	CHECK(info.gameState == GameStates::DRAW_50_MOVES);
-	CHECK(board.IsLegalMove(move));
+
+	// Replayed on a fresh board so the check stays independent of anything the search
+	// may come to write back through the board it holds by reference.
+	Board replay("4k3/8/8/8/8/8/1R6/4K3 w - - 99 60");
+	CHECK(replay.IsLegalMove(move));
 }

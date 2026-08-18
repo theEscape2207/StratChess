@@ -138,6 +138,15 @@ class UciHandlerTestFixture {
 		GameInfo info = handler.board_.GetGameInfo();
 		return perplex->GetMove(info, SearchLimits::fixed_depth(depth));
 	}
+
+	// Nodes from the last search. A non-null bestmove alone does not prove a search ran:
+	// the empty-move emergency path also returns one, having searched nothing.
+	int64_t last_main_nodes() const
+	{
+		auto* perplex = dynamic_cast<AIPerplex*>(handler.ai_.get());
+		REQUIRE(perplex != nullptr);
+		return perplex->GetLastResult().nodes_searched;
+	}
 };
 
 // Builds a legal UCI move sequence of at least `min_plies` plies from the
@@ -981,6 +990,25 @@ TEST_CASE("Board::SetupFromFEN: 4-field FEN yields halfmoveClock 0", "[uci]")
 	REQUIRE(board.GetPiece(e1) == WHITE_KING);
 	REQUIRE(board.GetPiece(e8) == BLACK_KING);
 	CHECK(board.GetGameInfo().halfmoveClock == 0);
+}
+
+// cmd_go seeds the root GameInfo from the board, whose gameState is never DRAW_50_MOVES.
+// A high clock therefore has to be handled by the search itself, not by the seed (#345).
+TEST_CASE("UCI: a high halfmove clock still yields a searched move", "[uci]")
+{
+	const int clock = GENERATE(50, 99, 100);
+	INFO("halfmove clock: " << clock);
+
+	UciHandlerTestFixture fx;
+	fx.ucinewgame(); // constructs ai_, which run_search_directly needs
+	fx.position("position fen r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - " +
+	            std::to_string(clock) + " 4");
+	REQUIRE(fx.board().GetGameInfo().halfmoveClock == clock);
+
+	const Move best = fx.run_search_directly(4);
+
+	CHECK_FALSE(best.is_null());
+	CHECK(fx.last_main_nodes() > 0);
 }
 
 // ---------------------------------------------------------------------------
