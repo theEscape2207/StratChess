@@ -10,7 +10,10 @@
        delete its own working directory: it deregisters the worktree but leaves an
        orphaned folder with no `.git`, and the shell's cwd is left pointing at it while
        git commands silently resolve against the *outer* repo instead. This script
-       detects that case and refuses with instructions, rather than half-doing it.
+       detects that case and refuses with instructions, rather than half-doing it. An
+       agent session permanently pinned inside that directory can pass `-FromInside` to
+       proceed anyway: every git call below already targets the main checkout via `-C`,
+       never cwd, so this is safe.
     2. **Merge verification, not name-trust.** Before deleting anything it checks the
        branch is actually an ancestor of `origin/main` (`git merge-base --is-ancestor`).
        A branch whose commits were squash-merged is NOT an ancestor, so that case is
@@ -44,12 +47,22 @@
 .PARAMETER SyncMaster
     Run Sync-Master.ps1 afterwards so local master reflects the merge.
 
+.PARAMETER FromInside
+    Acknowledge that the caller's shell is permanently pinned inside the worktree
+    being removed (an agent session, not a human terminal) and cannot cd to the
+    main checkout. Every git call in this script already targets the main checkout
+    via -C, so this is safe -- only the final directory deletion is skipped, same
+    as the existing Trap 5 handling for a locked directory.
+
 .WHEN TO USE
     After a PR merges. Equivalent to the `commit-commands:clean_gone` skill for a single
     known worktree.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell) -- run from the MAIN checkout
     pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\Remove-Worktree.ps1 -Name eval-mobility-term -SyncMaster
+
+    An agent session whose shell is pinned inside the worktree being removed and cannot
+    cd elsewhere should add -FromInside.
 
 .NOTES
     Must be invoked with -File, not dot-sourced ($PSScriptRoot is $null under dot-source).
@@ -63,7 +76,8 @@ param(
     [string]$Branch,
     [switch]$Force,
     [switch]$KeepRemote,
-    [switch]$SyncMaster
+    [switch]$SyncMaster,
+    [switch]$FromInside
 )
 
 Set-StrictMode -Version Latest
@@ -77,15 +91,28 @@ if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: not inside a git repository." -Fore
 $MainCheckout = Split-Path $commonDir -Parent
 $TargetPath   = Join-Path (Join-Path $MainCheckout '.claude\worktrees') $Name
 
-# Trap 1: refuse to remove the worktree we are standing in.
+# Trap 1: refuse to remove the worktree we are standing in, unless the caller has
+# confirmed via -FromInside that it cannot cd elsewhere (an agent session pinned to
+# this directory for its lifetime). Safe to allow: every git call below targets
+# $MainCheckout via -C, never cwd, and Trap 5 already tolerates the directory itself
+# surviving the removal.
 $here = (Get-Location).Path
-if ($here -eq $TargetPath -or $here.StartsWith($TargetPath + [IO.Path]::DirectorySeparatorChar)) {
+$insideTarget = $here -eq $TargetPath -or $here.StartsWith($TargetPath + [IO.Path]::DirectorySeparatorChar)
+if ($insideTarget -and -not $FromInside) {
     Write-Host "FAIL: you are inside the worktree being removed." -ForegroundColor Red
     Write-Host "      git cannot delete its own working directory -- it would deregister the" -ForegroundColor Yellow
     Write-Host "      worktree and leave an orphaned folder behind." -ForegroundColor Yellow
     Write-Host "      Run this from the main checkout instead:" -ForegroundColor Yellow
     Write-Host "        cd `"$MainCheckout`"" -ForegroundColor Yellow
+    Write-Host "      Or, if this is an agent session permanently pinned to this directory" -ForegroundColor Yellow
+    Write-Host "      and cannot cd, re-run with -FromInside -- every git call below already" -ForegroundColor Yellow
+    Write-Host "      targets the main checkout explicitly, so this is safe." -ForegroundColor Yellow
     exit 1
+}
+if ($insideTarget) {
+    Write-Host "NOTE: running from inside the worktree being removed (-FromInside)." -ForegroundColor Yellow
+    Write-Host "      The directory itself cannot be deleted until this session exits;" -ForegroundColor Yellow
+    Write-Host "      branch cleanup below is unaffected." -ForegroundColor Yellow
 }
 
 if (-not (Test-Path $TargetPath)) {
