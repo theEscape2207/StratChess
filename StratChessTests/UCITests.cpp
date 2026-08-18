@@ -1068,6 +1068,18 @@ TEST_CASE("cmd_position: an illegal move rejects the entire replay", "[uci]")
 	CHECK(fx.board().GetPiece(e8) == BLACK_KING);
 }
 
+TEST_CASE("cmd_position: an oversized move token rejects the entire replay", "[uci]")
+{
+	UciHandlerTestFixture fx;
+	// "e2e4xx" is a well-formed 4-char prefix with trailing garbage — FromUCI must
+	// reject the whole token rather than silently parsing just the prefix.
+	const std::string output = capture_cout([&] { fx.position("position startpos moves e2e4xx"); });
+
+	CHECK(output.find("illegal move 'e2e4xx'") != std::string::npos);
+	CHECK(fx.board().GetPiece(e2) == WHITE_PAWN);
+	CHECK(fx.board().GetPiece(e4) == NO_PIECE);
+}
+
 TEST_CASE("cmd_position: legal promotion replay preserves the requested piece", "[uci]")
 {
 	UciHandlerTestFixture fx;
