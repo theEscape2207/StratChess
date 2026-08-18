@@ -520,7 +520,11 @@ exclusive side. Whether that cost is worth removing is an open measurement quest
 
 **Replacement Strategy**: `replacementScore()` weighs depth, age, node type and search phase — PV
 entries get a bonus, quiescence depth is scaled down to a main-search equivalent, and older entries
-are penalised. An exact key match always overwrites in place.
+are penalised. An exact key match is scored the same way against the entry it would replace, so a
+quiescence result cannot displace the main entry for the same position and a shallow re-visit cannot
+discard a deeper one. An equal score is settled on the raw phase, depth and bound the ranking rounds
+away, and only a store that nothing separates from the entry it lands on overwrites. A store that
+wins the slot but carries no move keeps the one already there.
 
 **Size**: 256 MB requested. Note that the bucket count is rounded *down* to a power of two, so the
 allocation is smaller than the request and `memory_mb()` reports the request rather than the

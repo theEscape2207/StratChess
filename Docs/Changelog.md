@@ -22,6 +22,80 @@ Newest first.
 
 ---
 
+## 2026-08-17 — A same-key TT store now obeys the replacement policy (#319)
+
+### Fixed
+
+- `TranspositionTable::store()` short-circuited on `entry.key == key` and overwrote the slot with no
+  regard for phase, depth or bound. Everything the replacement policy decides was skipped on the one
+  path where both sides describe the *same position*. It now scores the incoming entry against the
+  one it would replace, with `replacementScore()` — the same ranking that decides evictions, reused
+  rather than restated, since a second hand-written policy is how the hole appeared in the first
+  place.
+- An equal score is not treated as an equivalent entry. The ranking quantises in order to compare
+  *different* positions — a quiescence ply is worth half a main-search ply, the PV bonus is priced at
+  two plies, and the bound is not an input at all — so an equal score covers three cases where
+  overwriting discards the better claim: quiescence budget 1 losing to 0 (both round to rank 0, while
+  `quiescence()` admits an entry on raw depth), a depth-10 non-PV entry losing to a depth-8 PV store
+  (both 2560), and an exact score losing to a bound of the same depth. `sameKeyStoreWins()` falls
+  through an equal score to phase, then raw depth, then exactness, and overwrites only when nothing
+  separates the two — the same node re-searched, which is what PVS's re-search and the aspiration
+  retries produce.
+- A declined store is dropped whole: nothing is merged into the retained entry and its age is not
+  refreshed, so winning here does not also buy the entry a longer life against the other keys in its
+  bucket.
+- A store that wins the slot but carries `Move::EmptyMove()` keeps the move already there. That is a
+  separate case, not a consequence of the ranking: `pvs()`'s own null-move cutoff and terminal
+  mate/stalemate stores write an empty move at full depth, so they outrank the entry they land on and
+  erase its hash move legitimately. The move is a pure ordering hint produced for this same key and
+  reaches nothing but `MoveSorter::ScoreMoves()`, where it is matched against the freshly generated
+  legal moves.
+
+### The measurement
+
+Both failure modes were counted on `090e3f8` before the fix (#335 has the method): PV nodes lying on
+the **previous** iteration's accepted PV, so each was certainly stored last iteration and a miss is a
+loss rather than a first visit. `Threads=1`, `go depth 12`, four positions. The instrumentation was
+reverted rather than committed; it is reproduced here on the same build and re-run after the fix.
+
+| | before | after |
+|---|---|---|
+| PV nodes examined | 197 | 221 |
+| usable MAIN entry with a move | 176 | **221** |
+| entry present, phase QUIESCENCE | **18** | 0 |
+| entry present, MAIN, `best_move` empty | **3** | 0 |
+| entry absent — evicted under capacity | 0 | 0 |
+
+Capacity replacement fired in none of the samples on either side, so the key-match short circuit was
+not one contributor among several — it was the whole of the observed damage. The examined count rises
+because the PV itself gets longer once the ordering holds.
+
+### Validation
+
+- **Not** a fixed-depth-equivalence change: it alters what the table holds under normal search, so
+  `Compare-SearchEquivalence.ps1` is expected to differ and was not run as a gate.
+- `Run-Bench.ps1`, depth 12, `Threads=1`, both sides clang-cl Release, the two binaries measured
+  back to back: total nodes 28.41M → **21.64M (−23.8%)**, wall clock 10.140s → 7.896s. Per position
+  the node count runs from −68% (closed-mid) to +39% (rook-endgm); the aggregate is the honest
+  figure, and eight positions cannot resolve the sign per position. Seven of eight best moves are
+  unchanged; rook-endgm returns `f2e3` at 43 cp where the baseline returns `a2a4` at 38 cp — a better
+  move found with fewer nodes, not a coin flip between equals.
+- nps is unresolvable here and is not claimed either way: the *same* binary measured 2.945M on one
+  day and 2.674M on the next, a spread far wider than the 2.802M → 2.740M between the two builds. The
+  change adds no per-node work by construction — the extra comparisons run only on a store that
+  lands on its own key — and the wall clock, which cannot be distorted by relocating work, follows
+  the node count down.
+- `[tt]` unit tests cover both declined cases, both accepted ones, the preserved move, the counters
+  and one per equal-score case. Each new test was run against the unfixed header first and fails
+  there: four for the scoring, three more for the equal-score cases.
+- **Strength**: `-Sprt Gain` against a build of the merge base (`090e3f8`) at 10+0.1. **H1 accepted
+  at 530 games** (LLR 2.95), +46.82 +/- 23.14 Elo, LOS 100%. What that establishes is "worth at least
+  10 Elo", not "+46.8" — the test stopped as soon as it could, so the point estimate carries
+  optional-stopping inflation; an earlier run of the same binary to a fixed 500-game cap put it at
+  +36.26 +/- 23.20 and is the less biased estimate. The reference is the merge base rather than
+  `elo-reference-v2`: `Run-EloMatch.ps1` refuses `-Sprt` against the fixed anchor, which would measure
+  the sum of every change since it. Both rows, and why they differ, in `Docs/EloLog.md`.
+
 ## 2026-08-17 — The previous-iteration PV ordering tier was dead, and is removed (#299, #310)
 
 ### Removed
