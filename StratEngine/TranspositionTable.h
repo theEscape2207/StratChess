@@ -240,10 +240,12 @@ class TranspositionTable {
 		if (same_key) {
 			// Both sides describe the same position, so the ranking that decides evictions
 			// decides this too: a quiescence result must not displace the main entry pvs()
-			// mines for a hash move, and a shallow re-visit must not discard a deeper
-			// result. Ties overwrite -- the incoming entry carries the current age, so a tie
-			// is the same node re-searched at the same depth, where the fresher bound wins.
-			if (replacementScore(depth, phase, node_type, /*age_diff=*/0) < replacementScore(entry, age))
+			// mines for a hash move, and a shallow re-visit must not discard a deeper result.
+			//
+			// A declined store is dropped whole. Nothing is merged into the retained entry and
+			// its age is not refreshed, so keeping it here does not also keep it alive against
+			// the other keys in the bucket -- that would be a change to the eviction path.
+			if (!sameKeyStoreWins(entry, depth, phase, node_type, bound, age))
 				return;
 
 			// The stored move is a pure ordering hint for this same position, and several
@@ -288,6 +290,43 @@ class TranspositionTable {
 				pv_count.fetch_add(1, std::memory_order_relaxed);
 			}
 		}
+	}
+
+	// Whether an incoming store takes the slot from the entry already holding its key.
+	//
+	// The retention ranking answers a question about two *different* positions competing for
+	// one slot, and it quantises in order to: a quiescence ply is worth half a main-search
+	// ply, the PV bonus is priced at two plies, and the bound is not an input at all. On the
+	// same key those collapsed distinctions are exactly what separates two claims about one
+	// position, so the ranking decides the general case and the raw fields settle its ties.
+	bool sameKeyStoreWins(const TTEntry& stored, int16_t depth, SearchPhase phase, NodeType node_type, BoundType bound,
+	                      uint8_t age) const noexcept
+	{
+		const int incoming_score = replacementScore(depth, phase, node_type, /*age_diff=*/0);
+		const int stored_score = replacementScore(stored, age);
+		if (incoming_score != stored_score)
+			return incoming_score > stored_score;
+
+		// pvs() mines main entries for a hash move and quiescence() cannot read one at all, so
+		// a cross-phase tie is not a tie: the main-search entry holds the slot either way.
+		if (phase != stored.phase)
+			return phase == SearchPhase::MAIN;
+
+		// Raw depth, because the halving rounds several quiescence budgets onto one rank (1, 0
+		// and -1 all reach 0) and the PV bonus buys two plies. Neither makes the shallower
+		// claim the stronger one, and quiescence() admits an entry on raw depth alone.
+		if (depth != stored.depth)
+			return depth > stored.depth;
+
+		// An exact score returns from probe() outright where a bound only narrows the window,
+		// so exactness is not traded for freshness. The same node searched again at the same
+		// depth with a narrower window is the case that produces this.
+		if ((bound == BoundType::EXACT) != (stored.bound == BoundType::EXACT))
+			return bound == BoundType::EXACT;
+
+		// Nothing separates them: the same node re-searched, which is what PVS's re-search and
+		// the aspiration retries do on every widening. The fresher result wins.
+		return true;
 	}
 
 	// Express a quiescence entry's remaining budget on the main search's depth scale, so
