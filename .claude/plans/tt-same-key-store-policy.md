@@ -134,7 +134,7 @@ as a gate.
   declined quiescence stores push the other way, so the sign is not predictable in advance.
 - **Strength** — SPRT against a build of the merge base, passed as `-ReferenceExe`. `Run-EloMatch.ps1`
   refuses `-Sprt` against the fixed `elo-reference-v2` anchor, which would test the sum of every
-  change since the anchor rather than this one. Required before merge; not started unattended.
+  change since the anchor rather than this one. Run: see Harvest.
 
 ## Harvest
 
@@ -154,5 +154,6 @@ from #335 exactly (197 / 176 / 0 / 18 / 3). One approved decision changed after 
 equivalent entry. It is a strict narrowing of what the same-key path accepts — nothing declined
 before is accepted now — and it cut a further 3.0% of nodes at depth 12, every position improving.
 
-The SPRT verdict is harvested to `Docs/Changelog.md` and, whatever it says, to `Docs/EloLog.md`;
-`Run-EloMatch.ps1` writes the row itself.
+The SPRT ran against a merge-base build and is harvested to `Docs/Changelog.md` and `Docs/EloLog.md`:
++36.26 +/- 23.20 Elo over 500 games at 10+0.1, LOS 99.90%, and **formally inconclusive** — LLR 2.23
+against the 2.94 the [0, 10] test needs. Recorded as inconclusive rather than as a measured +36.

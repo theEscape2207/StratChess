@@ -88,10 +88,12 @@ because the PV itself gets longer once the ordering holds.
 - `[tt]` unit tests cover both declined cases, both accepted ones, the preserved move, the counters
   and one per equal-score case. Each new test was run against the unfixed header first and fails
   there: four for the scoring, three more for the equal-score cases.
-- **Strength**: an SPRT is the gate and had not run when this was written; a node reduction at fixed
-  depth is evidence of better ordering, not of Elo. It runs against a build of the merge base passed
-  as `-ReferenceExe` — `Run-EloMatch.ps1` refuses `-Sprt` against the fixed `elo-reference-v2` anchor,
-  which would measure the sum of every change since the anchor rather than this one.
+- **Strength**: `-Sprt Gain` against a build of the merge base (`090e3f8`), 500 games at 10+0.1.
+  **+36.26 +/- 23.20 Elo, LOS 99.90%** — but the SPRT itself is **inconclusive**, having reached LLR
+  2.23 of the 2.94 it needs before the game cap. Almost certainly a gain; the [0, 10] question is not
+  formally answered, and roughly 150-250 more games would answer it. The reference is the merge base
+  rather than `elo-reference-v2`: `Run-EloMatch.ps1` refuses `-Sprt` against the fixed anchor, which
+  would measure the sum of every change since it. Full row in `Docs/EloLog.md`.
 
 ## 2026-08-17 — The previous-iteration PV ordering tier was dead, and is removed (#299, #310)
 
