@@ -242,6 +242,16 @@ choice is the full `8moves_v3.pgn`, the same source the committed book was cut f
 deliberately **not committed**: third-party data of varying provenance, in a public repository, so it
 lives with fastchess and the reference binaries like every other external test asset.
 
+**The discovery glob matches the name, not the content.** A book sitting in `EngineTesting\` under
+its upstream name is invisible to it, and the run silently falls back to the committed 250 — which is
+how #338's first SPRT came to exhaust the small book while `8moves_v3.pgn` sat unused in the same
+directory. Copy or rename it to `openings-large.pgn`, and read back the line the script prints before
+trusting a batch larger than 500 games:
+
+```
+Opening book : ...\EngineTesting\openings-large.pgn (34700 openings, format=pgn)
+```
+
 ### Spending the budget
 
 `-Games 500` means two different things depending on mode, and conflating them is the trap:
