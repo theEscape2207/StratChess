@@ -77,6 +77,10 @@ if ($Config -eq 'Debug') { $Preset += '-debug' }
 $BuildDir = Join-Path $RepoRoot "build\$Preset"
 $TestExe  = Join-Path $BuildDir 'StratChessTests.exe'
 
+# Test-ArtifactFreshness and Get-BuildRelevantSources: shared with
+# Get-BuildArtifact.ps1, which needs the same verdict at read time.
+. (Join-Path $RepoRoot 'StratChessEvolved\Scripts\BuildFreshness.ps1')
+
 function Resolve-ProcessorArchitecture {
     param(
         [AllowEmptyString()][string]$CurrentArchitecture,
@@ -92,77 +96,6 @@ function Resolve-ProcessorArchitecture {
     }
 
     throw "PROCESSOR_ARCHITECTURE is missing and vcvars64 reported target '$VsTargetArchitecture'. A fresh CMake configure cannot identify x86-64."
-}
-
-# Was this artifact produced after the newest source it is built from?
-#
-# Pure, so the verdict is testable without a build (see Invoke-SelfTest). It compares
-# timestamps rather than consulting ninja: `ninja -n` cannot answer this here, because
-# CONFIGURE_DEPENDS leaves a pending glob re-check on every invocation and the dry run
-# stops at "Re-running CMake" without ever evaluating the downstream edges. It reports
-# a genuinely stale binary as having no work to do.
-#
-# $Sources takes objects with Path and WriteTime, so callers decide what counts as a
-# source and the comparison stays free of filesystem access.
-function Test-ArtifactFreshness {
-    param(
-        [object]$ArtifactWriteTime,
-        [object[]]$Sources
-    )
-
-    if ($null -eq $ArtifactWriteTime) {
-        return [pscustomobject]@{ Fresh = $false; Reason = 'missing'; NewestSourcePath = $null }
-    }
-    if (-not $Sources -or $Sources.Count -eq 0) {
-        # Nothing to compare against. Reported rather than assumed: an empty source set
-        # means the watched globs matched nothing, which is a bug in the caller, not a
-        # clean bill of health.
-        return [pscustomobject]@{ Fresh = $true; Reason = 'no-sources'; NewestSourcePath = $null }
-    }
-
-    # Strictly newer, so a tie counts as stale. That matches ninja, which rebuilds when a
-    # source's mtime exactly equals the object it produces (measured, not assumed), and it
-    # errs the cheap way: a false 'stale' costs one no-op rebuild, while a false 'fresh'
-    # costs a wrong measurement, which is the whole reason this check exists. Ties are not
-    # only a theoretical concern on filesystems with coarse timestamp granularity.
-    $newest = $Sources | Sort-Object -Property WriteTime -Descending | Select-Object -First 1
-    if ([DateTime]$ArtifactWriteTime -gt [DateTime]$newest.WriteTime) {
-        return [pscustomobject]@{ Fresh = $true; Reason = 'fresh'; NewestSourcePath = $newest.Path }
-    }
-    return [pscustomobject]@{ Fresh = $false; Reason = 'stale'; NewestSourcePath = $newest.Path }
-}
-
-# Every file the named artifact is actually built from. Docs, Scripts and .claude are
-# deliberately outside the set so editing a design document never reports a binary as
-# stale, and StratEngine/Archived is excluded because CMake never builds it.
-#
-# The two artifacts get different sets, matching CMakeLists.txt: both compile
-# StratEngine, but StratChessTests.exe adds StratChessTests/ and StratChessEvolved.exe
-# adds StratChessEvolved/. One shared set instead reports the main binary as stale
-# forever after a test-only file is added — a file it does not depend on and no rebuild
-# can make it newer than.
-function Get-BuildRelevantSources {
-    param(
-        [string]$Root,
-        [ValidateSet('Main', 'Tests')][string]$Artifact
-    )
-
-    $roots = @(
-        (Join-Path $Root 'StratEngine'),
-        (Join-Path $Root ($Artifact -eq 'Tests' ? 'StratChessTests' : 'StratChessEvolved'))
-    ) | Where-Object { Test-Path $_ }
-
-    $sources = @()
-    if ($roots) {
-        $sources += Get-ChildItem -Path $roots -Recurse -File -Include '*.cpp', '*.h', '*.hpp' |
-            Where-Object { $_.FullName -notmatch '\\StratEngine\\Archived\\' }
-    }
-    foreach ($name in @('CMakeLists.txt', 'CMakePresets.json')) {
-        $path = Join-Path $Root $name
-        if (Test-Path $path) { $sources += Get-Item $path }
-    }
-
-    return $sources | ForEach-Object { [pscustomobject]@{ Path = $_.FullName; WriteTime = $_.LastWriteTime } }
 }
 
 # Reports on one artifact. $Fatal for the target that was just built -- a stale
@@ -438,38 +371,50 @@ function Get-SharedDepsCache {
 function Invoke-CMakeBuild {
     param([string[]]$Targets)
 
-    # Configure only when there is no cache: Ninja re-runs CMake by itself when
-    # CMakeLists.txt or CMakePresets.json change, so configuring every time only
-    # adds latency.
-    if (-not (Test-Path (Join-Path $BuildDir 'CMakeCache.txt'))) {
-        Write-Host "`n==> Configuring $Preset" -ForegroundColor Cyan
-        # --log-level=WARNING drops the ~20 lines of compiler-ABI/pthread probing
-        # CMake emits on every reconfigure; warnings and errors still surface.
-        $configureArgs = @('--preset', $Preset, '--log-level=WARNING')
-        $depsCache = Get-SharedDepsCache
-        if ($depsCache) { $configureArgs += @('-D', "FETCHCONTENT_BASE_DIR=$depsCache") }
+    # cmake --preset resolves CMakePresets.json against the current directory,
+    # not against any path given on the command line -- so invoking this script
+    # by absolute path from another worktree configures and builds THAT tree.
+    # Pinning the working directory here, around the only two cmake calls, makes
+    # the whole script cwd-independent without disturbing callers that already
+    # set their own location (e.g. a -BaselineRef checkout building an old
+    # commit's copy of this file).
+    Push-Location $RepoRoot
+    try {
+        # Configure only when there is no cache: Ninja re-runs CMake by itself when
+        # CMakeLists.txt or CMakePresets.json change, so configuring every time only
+        # adds latency.
+        if (-not (Test-Path (Join-Path $BuildDir 'CMakeCache.txt'))) {
+            Write-Host "`n==> Configuring $Preset" -ForegroundColor Cyan
+            # --log-level=WARNING drops the ~20 lines of compiler-ABI/pthread probing
+            # CMake emits on every reconfigure; warnings and errors still surface.
+            $configureArgs = @('--preset', $Preset, '--log-level=WARNING')
+            $depsCache = Get-SharedDepsCache
+            if ($depsCache) { $configureArgs += @('-D', "FETCHCONTENT_BASE_DIR=$depsCache") }
 
-        & cmake @configureArgs
+            & cmake @configureArgs
+            if ($LASTEXITCODE -ne 0) {
+                Write-Error "Configure failed (exit $LASTEXITCODE): $Preset"
+                exit $LASTEXITCODE
+            }
+        }
+
+        $label = if ($Targets) { $Targets -join ', ' } else { 'all targets' }
+        Write-Host "`n==> Building $label ($Preset)" -ForegroundColor Cyan
+
+        $buildArgs = @('--build', '--preset', $Preset)
+        foreach ($t in $Targets) { $buildArgs += @('--target', $t) }
+
+        # Ninja's \r-based progress bar becomes runs of blank lines once captured
+        # non-interactively; dropping empty lines keeps real progress and errors
+        # visible without the padding. Native command output still streams through
+        # the pipeline, and $LASTEXITCODE still reflects cmake's own exit code.
+        & cmake @buildArgs | Where-Object { $_ -ne '' }
         if ($LASTEXITCODE -ne 0) {
-            Write-Error "Configure failed (exit $LASTEXITCODE): $Preset"
+            Write-Error "Build failed (exit $LASTEXITCODE): $label"
             exit $LASTEXITCODE
         }
-    }
-
-    $label = if ($Targets) { $Targets -join ', ' } else { 'all targets' }
-    Write-Host "`n==> Building $label ($Preset)" -ForegroundColor Cyan
-
-    $buildArgs = @('--build', '--preset', $Preset)
-    foreach ($t in $Targets) { $buildArgs += @('--target', $t) }
-
-    # Ninja's \r-based progress bar becomes runs of blank lines once captured
-    # non-interactively; dropping empty lines keeps real progress and errors
-    # visible without the padding. Native command output still streams through
-    # the pipeline, and $LASTEXITCODE still reflects cmake's own exit code.
-    & cmake @buildArgs | Where-Object { $_ -ne '' }
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Build failed (exit $LASTEXITCODE): $label"
-        exit $LASTEXITCODE
+    } finally {
+        Pop-Location
     }
 }
 

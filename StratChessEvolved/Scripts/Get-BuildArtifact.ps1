@@ -31,11 +31,16 @@
     clang-cl (default, the shipping compiler) or msvc.
 
 .PARAMETER AllowMissing
-    Print the path even when nothing has been built there yet. Only for callers
-    that resolve the path *before* the build that produces it -- Validate-PrePR
-    and Run-EloMatch both do. Otherwise a missing binary is an error here, so it
-    surfaces at resolution rather than as a confusing failure at first use, or
-    worse, as a stale binary from another checkout.
+    Print the path even when nothing has been built there yet, and implies
+    -AllowStale. Only for callers that resolve the path *before* the build that
+    produces it -- Validate-PrePR and Run-EloMatch both do, so a freshness error
+    there would fire on a binary they are about to rebuild anyway. Otherwise a
+    missing binary is an error here, so it surfaces at resolution rather than as
+    a confusing failure at first use.
+
+.PARAMETER AllowStale
+    Skip the freshness check and print the path even if sources are newer than
+    the binary. For a caller deliberately measuring an old build.
 #>
 [CmdletBinding()]
 param(
@@ -48,13 +53,16 @@ param(
     [ValidateSet('clang-cl', 'msvc')]
     [string]$Compiler = 'clang-cl',
 
-    [switch]$AllowMissing
+    [switch]$AllowMissing,
+    [switch]$AllowStale
 )
 
 Set-StrictMode -Version Latest
 
 $GameDir  = Split-Path $PSScriptRoot -Parent
 $RepoRoot = Split-Path $GameDir -Parent
+
+. (Join-Path $PSScriptRoot 'BuildFreshness.ps1')
 
 $preset = "windows-$Compiler"
 if ($Config -eq 'Debug') { $preset += '-debug' }
@@ -64,6 +72,17 @@ $path = Join-Path $RepoRoot "build\$preset\$Target.exe"
 if (-not $AllowMissing -and -not (Test-Path $path)) {
     Write-Error "Not built: $path`nBuild it with: .\build.ps1 main -Config $Config"
     exit 1
+}
+
+if (-not $AllowMissing -and -not $AllowStale -and (Test-Path $path)) {
+    $artifact = ($Target -eq 'StratChessTests') ? 'Tests' : 'Main'
+    $writeTime = (Get-Item $path).LastWriteTime
+    $verdict = Test-ArtifactFreshness -ArtifactWriteTime $writeTime -Sources (Get-BuildRelevantSources -Root $RepoRoot -Artifact $artifact)
+    if ($verdict.Reason -eq 'stale') {
+        $newer = Split-Path $verdict.NewestSourcePath -Leaf
+        Write-Error "Stale: $path`n$newer is newer. Rebuild it with: .\build.ps1 main -Config $Config, or pass -AllowStale to use it anyway."
+        exit 1
+    }
 }
 
 Write-Output $path
