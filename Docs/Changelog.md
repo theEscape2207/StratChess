@@ -88,12 +88,13 @@ because the PV itself gets longer once the ordering holds.
 - `[tt]` unit tests cover both declined cases, both accepted ones, the preserved move, the counters
   and one per equal-score case. Each new test was run against the unfixed header first and fails
   there: four for the scoring, three more for the equal-score cases.
-- **Strength**: `-Sprt Gain` against a build of the merge base (`090e3f8`), 500 games at 10+0.1.
-  **+36.26 +/- 23.20 Elo, LOS 99.90%** — but the SPRT itself is **inconclusive**, having reached LLR
-  2.23 of the 2.94 it needs before the game cap. Almost certainly a gain; the [0, 10] question is not
-  formally answered, and roughly 150-250 more games would answer it. The reference is the merge base
-  rather than `elo-reference-v2`: `Run-EloMatch.ps1` refuses `-Sprt` against the fixed anchor, which
-  would measure the sum of every change since it. Full row in `Docs/EloLog.md`.
+- **Strength**: `-Sprt Gain` against a build of the merge base (`090e3f8`) at 10+0.1. **H1 accepted
+  at 530 games** (LLR 2.95), +46.82 +/- 23.14 Elo, LOS 100%. What that establishes is "worth at least
+  10 Elo", not "+46.8" — the test stopped as soon as it could, so the point estimate carries
+  optional-stopping inflation; an earlier run of the same binary to a fixed 500-game cap put it at
+  +36.26 +/- 23.20 and is the less biased estimate. The reference is the merge base rather than
+  `elo-reference-v2`: `Run-EloMatch.ps1` refuses `-Sprt` against the fixed anchor, which would measure
+  the sum of every change since it. Both rows, and why they differ, in `Docs/EloLog.md`.
 
 ## 2026-08-17 — The previous-iteration PV ordering tier was dead, and is removed (#299, #310)
 

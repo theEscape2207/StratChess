@@ -155,5 +155,6 @@ equivalent entry. It is a strict narrowing of what the same-key path accepts —
 before is accepted now — and it cut a further 3.0% of nodes at depth 12, every position improving.
 
 The SPRT ran against a merge-base build and is harvested to `Docs/Changelog.md` and `Docs/EloLog.md`:
-+36.26 +/- 23.20 Elo over 500 games at 10+0.1, LOS 99.90%, and **formally inconclusive** — LLR 2.23
-against the 2.94 the [0, 10] test needs. Recorded as inconclusive rather than as a measured +36.
+**`Gain [0, 10]` H1 accepted at 530 games**, +46.82 +/- 23.14 Elo, LOS 100%. Recorded as "worth at
+least 10 Elo" rather than as a measured +46.8 — an SPRT that stops the moment it can inflates its
+point estimate, and an earlier fixed-cap run of the same binary put it at +36.26 +/- 23.20.
