@@ -969,18 +969,18 @@ TEST_CASE("FENParser::ValidatePositionAgainstFENMetadata: every correction still
 	CHECK(state.epSquare == NO_SQUARE);
 }
 
-TEST_CASE("Board::SetupFromFEN: 4-field FEN yields fiftyCount 0", "[uci]")
+TEST_CASE("Board::SetupFromFEN: 4-field FEN yields halfmoveClock 0", "[uci]")
 {
-	// The halfmove default is not inert: SetupFromFEN feeds it into gameInfo_.fiftyCount,
+	// The halfmove default is not inert: SetupFromFEN feeds it into gameInfo_.halfmoveClock,
 	// which drives 50-move draw detection. Pin the value rather than leave it implicit.
 	Board board;
 	REQUIRE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -"));
 
-	// The kings are checked as well as the return value: an empty board's fiftyCount is also 0,
+	// The kings are checked as well as the return value: an empty board's halfmoveClock is also 0,
 	// so without them a position that never landed would pass this test for the wrong reason.
 	REQUIRE(board.GetPiece(e1) == WHITE_KING);
 	REQUIRE(board.GetPiece(e8) == BLACK_KING);
-	CHECK(board.GetGameInfo().fiftyCount == 0);
+	CHECK(board.GetGameInfo().halfmoveClock == 0);
 }
 
 // ---------------------------------------------------------------------------

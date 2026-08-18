@@ -230,7 +230,7 @@ void Game::SetGameParams(const GameInfo& info) noexcept
 	gameInfo_.castlingRights = info.castlingRights;
 
 	// Halfmove clock
-	gameInfo_.fiftyCount = info.fiftyCount;
+	gameInfo_.halfmoveClock = info.halfmoveClock;
 	// Fullmove number
 	gameInfo_.fullMoveCount = info.fullMoveCount;
 }

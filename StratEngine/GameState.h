@@ -33,7 +33,7 @@ struct GameInfo {
 	eSquare epSquare{NO_SQUARE};
 	uint8_t castlingRights{CastlingRights::ALL};
 	Move lastMove;
-	int fiftyCount{0};
+	int halfmoveClock{0};
 	int fullMoveCount{0};
 
 	GameInfo() noexcept = default;
@@ -45,7 +45,7 @@ struct GameInfo {
 		epSquare = NO_SQUARE;
 		castlingRights = CastlingRights::ALL;
 		lastMove.Clear();
-		fiftyCount = 0;
+		halfmoveClock = 0;
 		fullMoveCount = 1;
 	}
 	bool GameEnded() const noexcept { return gameState != GameStates::STILL_PLAYING; }
@@ -61,7 +61,7 @@ struct GameInfo {
 
 		UpdateCastlingState(move, movPiece);
 
-		UpdateFiftyMovesState(move, movPiece);
+		UpdateHalfmoveClock(move, movPiece);
 	}
 
 	void UpdateCastlingState(const Move& m, ePiece movPiece) noexcept
@@ -85,13 +85,13 @@ struct GameInfo {
 		}
 	}
 
-	void UpdateFiftyMovesState(const Move& move, ePiece movPiece) noexcept
+	void UpdateHalfmoveClock(const Move& move, ePiece movPiece) noexcept
 	{
 		if (MoveHelper::IsCapture(move) || MoveHelper::IsPawnMove(movPiece)) {
-			fiftyCount = 0; // if so, then reset counter
+			halfmoveClock = 0; // if so, then reset counter
 			assert(gameState == GameStates::STILL_PLAYING);
 		} else {
-			if (++fiftyCount >= 50)                    // Increment and test for fifty moves
+			if (++halfmoveClock >= 50)                    // Increment and test for fifty moves
 				gameState = GameStates::DRAW_50_MOVES; // Should use UpdateGameState?
 		}
 	}

@@ -199,7 +199,7 @@ struct ThreadData {
 		if (ply > 0 && board.is_repetition(ply)) {
 			return true;
 		}
-		if (info.fiftyCount >= 50) {
+		if (info.halfmoveClock >= 50) {
 			assert(info.gameState == GameStates::DRAW_50_MOVES);
 			return true;
 		}
