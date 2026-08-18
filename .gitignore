@@ -396,3 +396,6 @@ compile_commands.json
 
 # CMake's per-developer preset override — machine-specific by definition
 CMakeUserPresets.json
+
+# Per-machine cache and config written by the lean-ctx MCP server
+/.lean-ctx/
