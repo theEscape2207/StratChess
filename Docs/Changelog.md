@@ -31,8 +31,19 @@ Newest first.
   path where both sides describe the *same position*. It now scores the incoming entry against the
   one it would replace, with `replacementScore()` — the same ranking that decides evictions, reused
   rather than restated, since a second hand-written policy is how the hole appeared in the first
-  place. Ties overwrite: the incoming entry carries the current age, so a tie is the same node
-  re-searched at the same depth, where the fresher bound wins.
+  place.
+- An equal score is not treated as an equivalent entry. The ranking quantises in order to compare
+  *different* positions — a quiescence ply is worth half a main-search ply, the PV bonus is priced at
+  two plies, and the bound is not an input at all — so an equal score covers three cases where
+  overwriting discards the better claim: quiescence budget 1 losing to 0 (both round to rank 0, while
+  `quiescence()` admits an entry on raw depth), a depth-10 non-PV entry losing to a depth-8 PV store
+  (both 2560), and an exact score losing to a bound of the same depth. `sameKeyStoreWins()` falls
+  through an equal score to phase, then raw depth, then exactness, and overwrites only when nothing
+  separates the two — the same node re-searched, which is what PVS's re-search and the aspiration
+  retries produce.
+- A declined store is dropped whole: nothing is merged into the retained entry and its age is not
+  refreshed, so winning here does not also buy the entry a longer life against the other keys in its
+  bucket.
 - A store that wins the slot but carries `Move::EmptyMove()` keeps the move already there. That is a
   separate case, not a consequence of the ranking: `pvs()`'s own null-move cutoff and terminal
   mate/stalemate stores write an empty move at full depth, so they outrank the entry they land on and
@@ -63,15 +74,24 @@ because the PV itself gets longer once the ordering holds.
 
 - **Not** a fixed-depth-equivalence change: it alters what the table holds under normal search, so
   `Compare-SearchEquivalence.ps1` is expected to differ and was not run as a gate.
-- `Run-Bench.ps1`, depth 12, `Threads=1`, both sides clang-cl Release: aggregate nps 2.939M → 2.945M
-  (flat, as expected — the change adds no per-node work), total nodes 28.41M → **22.30M (−21.5%)**,
-  wall clock 9.667s → 7.570s. Identical best moves on all eight positions. Per position the node
-  count runs from −68% (closed-mid) to +48% (rook-endgm); the aggregate is the honest figure, and
-  eight positions cannot resolve the sign per position.
-- `[tt]` unit tests cover both declined cases, both accepted ones, the preserved move and the
-  counters. Each new test was run against the unfixed header first: four fail there.
-- **Strength**: an SPRT against `elo-reference-v2` is the gate and had not run when this was written;
-  a node reduction at fixed depth is evidence of better ordering, not of Elo.
+- `Run-Bench.ps1`, depth 12, `Threads=1`, both sides clang-cl Release, the two binaries measured
+  back to back: total nodes 28.41M → **21.64M (−23.8%)**, wall clock 10.140s → 7.896s. Per position
+  the node count runs from −68% (closed-mid) to +39% (rook-endgm); the aggregate is the honest
+  figure, and eight positions cannot resolve the sign per position. Seven of eight best moves are
+  unchanged; rook-endgm returns `f2e3` at 43 cp where the baseline returns `a2a4` at 38 cp — a better
+  move found with fewer nodes, not a coin flip between equals.
+- nps is unresolvable here and is not claimed either way: the *same* binary measured 2.945M on one
+  day and 2.674M on the next, a spread far wider than the 2.802M → 2.740M between the two builds. The
+  change adds no per-node work by construction — the extra comparisons run only on a store that
+  lands on its own key — and the wall clock, which cannot be distorted by relocating work, follows
+  the node count down.
+- `[tt]` unit tests cover both declined cases, both accepted ones, the preserved move, the counters
+  and one per equal-score case. Each new test was run against the unfixed header first and fails
+  there: four for the scoring, three more for the equal-score cases.
+- **Strength**: an SPRT is the gate and had not run when this was written; a node reduction at fixed
+  depth is evidence of better ordering, not of Elo. It runs against a build of the merge base passed
+  as `-ReferenceExe` — `Run-EloMatch.ps1` refuses `-Sprt` against the fixed `elo-reference-v2` anchor,
+  which would measure the sum of every change since the anchor rather than this one.
 
 ## 2026-08-17 — The previous-iteration PV ordering tier was dead, and is removed (#299, #310)
 
