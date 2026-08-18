@@ -67,7 +67,12 @@ Move PlayerHuman::GetMove(GameInfo& info, const SearchLimits&)
 		ePieceType userPieceType = QUEEN; // default if not specified
 		const bool userPromote = ParseInput(strMove, userMove, userPieceType);
 
-		auto moveIt = std::find(moveList.begin(), moveList.end(), userMove);
+		// userMove only carries from/to — ParseInput has no way to know the real flags
+		// (capture, castle, en passant, promotion piece), so match on squares here; the
+		// promotion piece, if any, is checked separately below.
+		auto moveIt = std::find_if(moveList.begin(), moveList.end(), [&userMove](const Move& candidate) {
+			return candidate.from() == userMove.from() && candidate.to() == userMove.to();
+		});
 		if (moveIt == moveList.end()) {
 			// Traekket blev ikke fundet af computeren, saa deeet...
 			std::stringstream sstream;

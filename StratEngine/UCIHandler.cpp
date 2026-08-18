@@ -37,12 +37,14 @@ static constexpr int PERFT_MAX_DEPTH = 10;
 namespace {
 	Move find_replay_move(std::string_view token, const Board& board)
 	{
+		const Move parsed = MoveFormatter::FromUCI(token, board);
+		if (parsed.is_null())
+			return Move{};
+
 		MoveList moves;
 		MoveGenerator::ComputeLegalMoves(board, board.GetGameInfo(), moves);
 		for (const Move& move : moves) {
-			// Move equality ignores flags, so compare the complete UCI form to preserve
-			// the requested promotion piece.
-			if (MoveFormatter::ToUCI(move) == token) {
+			if (move == parsed) {
 				return move;
 			}
 		}

@@ -4,17 +4,6 @@
 #include "Board.h"
 #include "MoveGenerator.h"
 
-namespace {
-
-	// Move equality compares from/to only, so the PV's promotion piece — and the difference
-	// between a quiet move and a capture on the same squares — has to be compared here.
-	bool same_move_exactly(const Move& a, const Move& b) noexcept
-	{
-		return a.from() == b.from() && a.to() == b.to() && a.flags() == b.flags();
-	}
-
-} // namespace
-
 bool pv_replays_legally(const Board& root, std::span<const Move> line)
 {
 	Board board = root;
@@ -23,8 +12,8 @@ bool pv_replays_legally(const Board& root, std::span<const Move> line)
 		MoveList moves;
 		MoveGenerator::ComputeLegalMoves(board, board.GetGameInfo(), moves);
 
-		const bool generated = std::any_of(
-		    moves.begin(), moves.end(), [&move](const Move& candidate) { return same_move_exactly(candidate, move); });
+		const bool generated =
+		    std::any_of(moves.begin(), moves.end(), [&move](const Move& candidate) { return candidate == move; });
 		if (!generated)
 			return false;
 

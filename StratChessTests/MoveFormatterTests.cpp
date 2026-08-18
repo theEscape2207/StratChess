@@ -409,6 +409,12 @@ TEST_CASE("MoveFormatter::FromUCI - basic moves", "[formatter]")
 		Move m = MoveFormatter::FromUCI("b7b8x", board); // invalid suffix
 		CHECK(m.is_null());
 	}
+	SECTION("Malformed input returns empty move — too long")
+	{
+		REQUIRE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"));
+		Move m = MoveFormatter::FromUCI("e2e4xx", board); // trailing garbage past the 5-char form
+		CHECK(m.is_null());
+	}
 }
 
 // ── Round-trip: ToUCI -> FromUCI ──────────────────────────────────────────────

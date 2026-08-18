@@ -248,7 +248,7 @@ std::string MoveFormatter::ToUCI(const Move& move)
 // Returns Move{} (is_null() == true) for malformed input.
 Move MoveFormatter::FromUCI(std::string_view uci, const Board& board)
 {
-	if (uci.size() < 4)
+	if (uci.size() < 4 || uci.size() > 5)
 		return Move{};
 
 	// Parse algebraic squares: file 'a'-'h', rank '1'-'8'.
