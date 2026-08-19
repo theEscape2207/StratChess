@@ -86,6 +86,7 @@ a silent no-op.
 | `Remove-Worktree.ps1 -Name <task> -SyncMaster` | After a PR merges — worktree, local and remote branch, then syncs `master` |
 | `Remove-MergedBranches.ps1 [-SyncMaster]` | After PRs merge, working in-place — deletes branches **verified** merged into `origin/main` |
 | `Get-Worktrees.ps1` | Session start, or before resuming an idle worktree — drift, PR state, and unregistered directories |
+| `Get-PrChecks.ps1 [-Pr n] [-Wait]` | "Is the PR green?" — one line when it is, and when it is not, the failing step and its errors without a second call. `-Wait` polls to completion. Exit 0 green / 1 failed / 2 still running |
 | `Sync-Master.ps1` | Bring `master` up to `origin/main` — runs from anywhere; finds the worktree holding `master` |
 
 **Measurement**: use `-Sprt NonRegression` / `-Sprt Gain` for anything expected to be worth less
