@@ -46,6 +46,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Lives in classify because classify is the one job with no tier condition:
+      # a workflow edit is Build tier today, but a guard that can be skipped is
+      # not a guard. The self-test runs first, so a broken detector fails loudly
+      # instead of passing everything.
+      - name: Check workflow job timeouts
+        run: |
+          pwsh -NoProfile -File StratChessEvolved/Scripts/Test-WorkflowTimeouts.ps1 -SelfTest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pwsh -NoProfile -File StratChessEvolved/Scripts/Test-WorkflowTimeouts.ps1
+          exit $LASTEXITCODE
+
       - name: Classify changed files
         id: tier
         env:
