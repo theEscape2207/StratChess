@@ -26,6 +26,10 @@ Docs regardless of content (#185). Pushes therefore diff against `github.event.b
 `main` held before the push. If that ref is unreachable — a force push, or the all-zeros SHA on
 branch creation — `Get-ChangeTier.ps1` fails closed to Engine tier. Leave that path alone.
 
+`classify` also runs `Test-WorkflowTimeouts.ps1`, which fails the run if any job in any workflow
+omits `timeout-minutes`. It lives here because `classify` is the only job with no tier condition, and
+`Validate-PrePR.ps1` runs the same script so the answer is reachable before pushing.
+
 Consequence for the deps cache: `main` now only builds on Build/Engine merges, and `actions/cache`
 is branch-scoped so a PR can only restore a cache saved there. This is safe because the key is static
 and changes only on a dependency bump, which is a `CMakeLists.txt` edit and so still Build tier — and

@@ -493,9 +493,6 @@ void Board::UndoMove(const Move& m)
 
 	sideToMove_ = (sideToMove_ == eColor::WHITE) ? eColor::BLACK : eColor::WHITE;
 
-	if (sideToMove_ == eColor::BLACK)
-		gameInfo_.fullMoveCount--;
-
 	pop_position();
 
 	switch (MoveHelper::AsType(m)) {
@@ -871,9 +868,6 @@ void Board::UndoNullMove()
 
 	// Restore side-to-move (toggle)
 	sideToMove_ = (sideToMove_ == eColor::WHITE) ? eColor::BLACK : eColor::WHITE;
-
-	if (sideToMove_ == eColor::BLACK)
-		gameInfo_.fullMoveCount--;
 
 	pop_position();
 

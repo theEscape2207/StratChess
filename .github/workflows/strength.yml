@@ -65,6 +65,14 @@ env:
   BOOK_URL: https://raw.githubusercontent.com/official-stockfish/books/04738d057446e749cb071d58bac39df7f13efb47/UHO_4060_v3.epd.zip
   BOOK_FILE: UHO_4060_v3.epd
 
+# Every Linux job below pins ubuntu-24.04, whose image ships Ninja and CMake on
+# PATH -- `-G Ninja` needs no install step. Do not add one: it puts an Ubuntu apt
+# mirror on the critical path of every job, and a stalled mirror hangs `apt-get
+# update` indefinitely. A job on a different image must confirm this first.
+#
+# Every job sets timeout-minutes. The GitHub default is 6 hours, which a hung
+# network step burns in full before anyone sees a verdict. The values are well
+# above normal runtime -- they exist to catch a hang, not a slow runner.
 jobs:
   # ---------------------------------------------------------------------------
   # Turn the requested game count into a shard plan. Doing the arithmetic once,
@@ -192,9 +200,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-
-      - name: Install Ninja
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
 
       # Same key as build-and-test.yml and nightly.yml, so this shares their
       # cache entry rather than paying for its own clone of the dependencies.

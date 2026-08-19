@@ -42,6 +42,9 @@ static constexpr const char* FEN_PARTIAL_RIGHTS = "r3k3/8/8/8/8/8/8/4K2R w Kq - 
 // Black to move, halfmove=17, fullmove=34 — tests all numeric/side fields
 static constexpr const char* FEN_BLACK_TO_MOVE = "4k3/8/8/8/8/8/8/R3K3 b - - 17 34";
 
+// Black to move, non-trivial fullmove number — for make/unmake round-trip coverage
+static constexpr const char* FEN_UNDO_BLACK = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 34";
+
 // ── GetCapturedPiece ──────────────────────────────────────────────────────────
 
 TEST_CASE("Board::GetCapturedPiece returns NO_PIECE for a quiet move", "[board_api]")
@@ -206,4 +209,61 @@ TEST_CASE(
 		board.UndoMove(cycle[(depth - 1) % 4]);
 		REQUIRE(board.GetSearchDepth() == static_cast<size_t>(depth - 1));
 	}
+}
+
+// ── fullMoveCount restoration on undo ─────────────────────────────────────────
+
+TEST_CASE("Board::UndoMove restores fullMoveCount and FEN exactly after a Black move", "[board_api]")
+{
+	Board board(FEN_UNDO_BLACK);
+	const GameInfo before = board.GetGameInfo();
+	const std::string fenBefore = board.ExtractFEN();
+
+	auto m = MoveFactory::MakeQuiet(b8, c6);
+	REQUIRE(board.DoMove(m));
+	board.UndoMove(m);
+
+	CHECK(board.GetGameInfo().fullMoveCount == before.fullMoveCount);
+	CHECK(board.ExtractFEN() == fenBefore);
+}
+
+TEST_CASE("Board::UndoNullMove restores fullMoveCount and FEN exactly after a Black null move", "[board_api]")
+{
+	Board board(FEN_UNDO_BLACK);
+	const GameInfo before = board.GetGameInfo();
+	const std::string fenBefore = board.ExtractFEN();
+
+	board.DoNullMove();
+	board.UndoNullMove();
+
+	CHECK(board.GetGameInfo().fullMoveCount == before.fullMoveCount);
+	CHECK(board.ExtractFEN() == fenBefore);
+}
+
+TEST_CASE("Board::IsLegalMove leaves fullMoveCount and FEN unchanged for a Black move", "[board_api]")
+{
+	Board board(FEN_UNDO_BLACK);
+	const GameInfo before = board.GetGameInfo();
+	const std::string fenBefore = board.ExtractFEN();
+
+	REQUIRE(board.IsLegalMove(MoveFactory::MakeQuiet(b8, c6)));
+
+	CHECK(board.GetGameInfo().fullMoveCount == before.fullMoveCount);
+	CHECK(board.ExtractFEN() == fenBefore);
+}
+
+TEST_CASE("Board::UndoMove keeps fullMoveCount stable across repeated Black make/unmake cycles", "[board_api]")
+{
+	Board board(FEN_UNDO_BLACK);
+	const int expected = board.GetGameInfo().fullMoveCount;
+	const std::string fenBefore = board.ExtractFEN();
+
+	auto m = MoveFactory::MakeQuiet(b8, c6);
+	for (int i = 0; i < 10; ++i) {
+		REQUIRE(board.DoMove(m));
+		board.UndoMove(m);
+	}
+
+	CHECK(board.GetGameInfo().fullMoveCount == expected);
+	CHECK(board.ExtractFEN() == fenBefore);
 }

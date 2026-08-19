@@ -15,6 +15,14 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Every Linux job below pins ubuntu-24.04, whose image ships Ninja and CMake on
+# PATH -- `-G Ninja` needs no install step. Do not add one: it puts an Ubuntu apt
+# mirror on the critical path of every job, and a stalled mirror hangs `apt-get
+# update` indefinitely. A job on a different image must confirm this first.
+#
+# Every job sets timeout-minutes. The GitHub default is 6 hours, which a hung
+# network step burns in full while the required check sits pending. The values
+# are well above normal runtime -- they exist to catch a hang, not a slow runner.
 jobs:
   # Decide how much validation this diff is worth, using the SAME classifier the
   # local pre-PR script uses (StratChessEvolved/Scripts/Get-ChangeTier.ps1) -- one
@@ -26,6 +34,7 @@ jobs:
   # build-and-test keeps its cheap shallow checkout.
   classify:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         shell: pwsh
@@ -36,6 +45,17 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      # Lives in classify because classify is the one job with no tier condition:
+      # a workflow edit is Build tier today, but a guard that can be skipped is
+      # not a guard. The self-test runs first, so a broken detector fails loudly
+      # instead of passing everything.
+      - name: Check workflow job timeouts
+        run: |
+          pwsh -NoProfile -File StratChessEvolved/Scripts/Test-WorkflowTimeouts.ps1 -SelfTest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pwsh -NoProfile -File StratChessEvolved/Scripts/Test-WorkflowTimeouts.ps1
+          exit $LASTEXITCODE
 
       - name: Classify changed files
         id: tier
@@ -72,6 +92,7 @@ jobs:
     # Pinned to the exact image (not the moving ubuntu-latest label) — the code
     # needs GCC >= 13 for std::format, matching the Windows job's pinning approach.
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     # Release and Debug are not redundant -- the same asymmetry documented for the
     # Windows job in issue #146 is compiler-independent. Debug keeps assert() and
     # the #ifndef NDEBUG bitboard/mailbox tripwire in Eval.cpp live; Release is the
@@ -83,9 +104,6 @@ jobs:
         config: [Release, Debug]
     steps:
       - uses: actions/checkout@v7
-
-      - name: Install Ninja
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
 
       # Keyed on the pinned dependency tags, matching the Windows job's approach.
       # Not matrix-scoped: FetchContent sources have no per-configuration content,
@@ -155,11 +173,9 @@ jobs:
     # break the sanitizer wiring, and two conditions would eventually drift.
     if: needs.classify.outputs.is_full == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-
-      - name: Install Ninja
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
 
       # Same key as build-linux: FetchContent sources are identical whatever the
       # build type or instrumentation, so this shares that job's cache entry.
@@ -211,11 +227,9 @@ jobs:
     # Build-tier change to CMakeLists.txt is what breaks sanitizer wiring.
     if: needs.classify.outputs.is_full == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-
-      - name: Install Ninja
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
 
       - name: Cache FetchContent dependencies
         uses: actions/cache@v6
@@ -261,6 +275,7 @@ jobs:
     # keeps the toolchain fixed until it is changed deliberately.
     # See .claude/plans/full-build-test-ci-github-actions.md.
     runs-on: windows-2025-vs2026
+    timeout-minutes: 30
     # Release and Debug are NOT redundant -- each catches a class of failure the
     # other structurally cannot, so both are required (see issue #146):
     #
@@ -341,6 +356,7 @@ jobs:
     # database this job depends on.
     if: needs.classify.outputs.is_full == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     env:
       LLVM_MAJOR: "22"
     steps:
@@ -349,9 +365,6 @@ jobs:
           # The changed-file list needs history: a default shallow checkout cannot
           # resolve origin/main...HEAD. Same reason classify sets this.
           fetch-depth: 0
-
-      - name: Install Ninja
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
 
       # Pinned major, not ubuntu-24.04's default clang-tidy-18. The check inventory
       # differs between clang-tidy majors, so an unpinned runner silently gains and
@@ -363,6 +376,9 @@ jobs:
       # 22.1.8 (apt.llvm.org) across all 93 sources, which is what makes the
       # blocking format check safe.
       - name: Install LLVM ${{ env.LLVM_MAJOR }}
+        # The only step here that depends on an apt mirror. Bounded so a
+        # stalled mirror fails the step instead of hanging to the job ceiling.
+        timeout-minutes: 10
         run: |
           set -euo pipefail
           wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
@@ -436,6 +452,7 @@ jobs:
     needs: [classify, build-linux, sanitize-linux, tsan-linux, build-and-test, lint-linux]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Report
         shell: bash
@@ -447,39 +464,47 @@ jobs:
           echo "windows result=${{ needs.build-and-test.result }}"
           echo "lint result=${{ needs.lint-linux.result }}"
 
+          # One shape for every leg. 'cancelled' is called out separately because a
+          # job killed by timeout-minutes reports exactly that -- GitHub's
+          # needs.<job>.result vocabulary is success/failure/cancelled/skipped with
+          # no distinct timed-out state, so a manual cancel, a supersede and a time
+          # bound are indistinguishable here. What they share is the part worth
+          # saying: the job never finished, so this is not a verdict on the diff.
+          # Reading a clean diff for a fault that was never in it is the cost of
+          # reporting it as a plain failure. Still exit 1 -- unverified is not passed.
+          verdict() {
+            local label="$1" result="$2" pass="$3" fail="$4"
+            case "$result" in
+              success)   echo "$pass" ;;
+              skipped)   echo "$label skipped: '${{ needs.classify.outputs.tier }}' tier cannot affect the build." ;;
+              cancelled) echo "$label was cancelled or hit its time bound. Nothing is known about the diff from this leg; re-run before investigating it."; return 1 ;;
+              *)         echo "$fail"; return 1 ;;
+            esac
+          }
+
           case "${{ needs.classify.result }}" in
             success) ;;
             *) echo "Classification did not succeed; cannot certify this run."; exit 1 ;;
           esac
 
-          case "${{ needs.build-linux.result }}" in
-            success) echo "Linux build and tests passed." ;;
-            skipped) echo "Linux skipped: '${{ needs.classify.outputs.tier }}' tier cannot affect the build." ;;
-            *)       echo "Linux build and tests did not pass."; exit 1 ;;
-          esac
+          verdict "Linux" "${{ needs.build-linux.result }}" \
+            "Linux build and tests passed." \
+            "Linux build and tests did not pass." || exit 1
 
-          case "${{ needs.sanitize-linux.result }}" in
-            success) echo "ASan/UBSan build and tests passed." ;;
-            skipped) echo "Sanitizers skipped: '${{ needs.classify.outputs.tier }}' tier cannot affect the build." ;;
-            *)       echo "ASan/UBSan reported a finding, or the instrumented build failed."; exit 1 ;;
-          esac
+          verdict "Sanitizers" "${{ needs.sanitize-linux.result }}" \
+            "ASan/UBSan build and tests passed." \
+            "ASan/UBSan reported a finding, or the instrumented build failed." || exit 1
 
-          case "${{ needs.tsan-linux.result }}" in
-            success) echo "TSan multi-threaded search passed." ;;
-            skipped) echo "TSan skipped: '${{ needs.classify.outputs.tier }}' tier cannot affect the build." ;;
-            *)       echo "TSan reported a data race, or the instrumented build failed."; exit 1 ;;
-          esac
+          verdict "TSan" "${{ needs.tsan-linux.result }}" \
+            "TSan multi-threaded search passed." \
+            "TSan reported a data race, or the instrumented build failed." || exit 1
 
-          case "${{ needs.build-and-test.result }}" in
-            success) echo "Windows build and tests passed." ;;
-            skipped) echo "Windows skipped: '${{ needs.classify.outputs.tier }}' tier cannot affect the build." ;;
-            *)       echo "Windows build and tests did not pass."; exit 1 ;;
-          esac
+          verdict "Windows" "${{ needs.build-and-test.result }}" \
+            "Windows build and tests passed." \
+            "Windows build and tests did not pass." || exit 1
 
-          case "${{ needs.lint-linux.result }}" in
-            success) echo "Required clang-format and clang-tidy Gate checks passed." ;;
-            skipped) echo "Lint skipped: '${{ needs.classify.outputs.tier }}' tier cannot affect the build." ;;
-            *)       echo "Lint failed: formatting, clang-tidy findings, or lint infrastructure did not pass."; exit 1 ;;
-          esac
+          verdict "Lint" "${{ needs.lint-linux.result }}" \
+            "Required clang-format and clang-tidy Gate checks passed." \
+            "Lint failed: formatting, clang-tidy findings, or lint infrastructure did not pass." || exit 1
 
           exit 0
