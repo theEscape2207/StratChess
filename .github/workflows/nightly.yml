@@ -12,6 +12,14 @@ concurrency:
   group: nightly
   cancel-in-progress: false
 
+# Every Linux job below pins ubuntu-24.04, whose image ships Ninja and CMake on
+# PATH -- `-G Ninja` needs no install step. Do not add one: it puts an Ubuntu apt
+# mirror on the critical path of every job, and a stalled mirror hangs `apt-get
+# update` indefinitely. A job on a different image must confirm this first.
+#
+# Every job sets timeout-minutes. The GitHub default is 6 hours, which a hung
+# network step burns in full before anyone sees a verdict. The values are well
+# above normal runtime -- they exist to catch a hang, not a slow runner.
 jobs:
   # Perft is self-checking: a corrupted make/unmake or a mailbox/bitboard desync
   # shows up as a wrong node count without any assertion having to catch it. The
@@ -37,9 +45,6 @@ jobs:
             expected: 8031647685
     steps:
       - uses: actions/checkout@v7
-
-      - name: Install Ninja
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
 
       - name: Cache FetchContent dependencies
         uses: actions/cache@v6
@@ -77,9 +82,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install Ninja
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
-
       - name: Cache FetchContent dependencies
         uses: actions/cache@v6
         with:
@@ -102,9 +104,6 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
-
-      - name: Install Ninja
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
 
       - name: Cache FetchContent dependencies
         uses: actions/cache@v6
@@ -137,9 +136,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install Ninja
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
-
       - name: Cache FetchContent dependencies
         uses: actions/cache@v6
         with:
@@ -168,10 +164,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install Ninja
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
-
       - name: Install LLVM ${{ env.LLVM_MAJOR }}
+        # The only step here that depends on an apt mirror. Bounded so a
+        # stalled mirror fails the step instead of hanging to the job ceiling.
+        timeout-minutes: 10
         run: |
           set -euo pipefail
           wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
@@ -229,10 +225,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install Ninja
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
-
       - name: Install LLVM ${{ env.LLVM_MAJOR }}
+        # The only step here that depends on an apt mirror. Bounded so a
+        # stalled mirror fails the step instead of hanging to the job ceiling.
+        timeout-minutes: 10
         run: |
           set -euo pipefail
           wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
@@ -309,6 +305,7 @@ jobs:
     needs: [deep-perft, extended-tests, sanitize-extended, tactical-stability, lint-tree, lint-deep-linux, lint-deep-windows]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Report
         shell: bash

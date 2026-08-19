@@ -6,6 +6,7 @@ jobs:
   delete-branch:
     if: github.event.pull_request.merged == true && !contains(fromJSON('["master", "main"]'), github.event.pull_request.head.ref)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: write
     steps:
