@@ -86,6 +86,11 @@ function Get-TierForPath {
     # Tooling, despite living beside the engine-inert helper scripts.
     if ($p -like '*/Scripts/Run-Lint.ps1')                   { return 'Build' }
     if ($p -like '*/Scripts/New-TidyCompileDatabase.ps1')    { return 'Build' }
+    # Enforces that every CI job states a timeout, from inside CI. Same hazard once
+    # more: a bug here disarms a guard silently. Named rather than left to the
+    # fail-closed default, which would call it Engine -- stricter than a script that
+    # compiles nothing and is never invoked by the engine deserves.
+    if ($p -like '*/Scripts/Test-WorkflowTimeouts.ps1')      { return 'Build' }
     # Lint configuration decides what CI enforces about every source file. It reaches
     # Build tier anyway through the fail-closed default, but only as "unrecognised";
     # naming it makes the classification deliberate and the self-test able to assert it.
@@ -206,6 +211,7 @@ if ($SelfTest) {
         @{ Name = 'Deep tidy config -> Build';  Files = @('.clang-tidy-deep');                                   Expect = 'Build' }
         @{ Name = 'test tidy config -> Build';  Files = @('StratChessTests/.clang-tidy');                         Expect = 'Build' }
         @{ Name = 'tidy DB normalizer -> Build'; Files = @('StratChessEvolved/Scripts/New-TidyCompileDatabase.ps1'); Expect = 'Build' }
+        @{ Name = 'timeout guard -> Build';     Files = @('StratChessEvolved/Scripts/Test-WorkflowTimeouts.ps1');  Expect = 'Build' }
         @{ Name = 'blame-ignore -> Build';      Files = @('.git-blame-ignore-revs');                             Expect = 'Build' }
         @{ Name = 'workflow -> Build';          Files = @('.github/workflows/build-and-test.yml');               Expect = 'Build' }
         @{ Name = 'hook -> Build';              Files = @('.githooks/pre-commit');                               Expect = 'Build' }

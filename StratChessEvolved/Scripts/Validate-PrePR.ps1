@@ -135,6 +135,18 @@ catch { $blameFailed = $true; Write-Host "Blame-ignore check threw: $_" -Foregro
 if ($LASTEXITCODE -ne 0) { $blameFailed = $true }
 $checkResults['Blame-ignore'] = if ($blameFailed) { 'FAIL' } else { 'PASS' }
 
+# --- Step 0d: workflow job timeouts ---
+# The classify job enforces this, so without it here a workflow edit that forgets
+# timeout-minutes is only discoverable after a push -- the same asymmetry the
+# clang-format step above exists to remove. Pure text, so it costs nothing.
+Write-Host "`n==> Workflow job timeouts" -ForegroundColor Cyan
+$timeoutScript = Join-Path $PSScriptRoot 'Test-WorkflowTimeouts.ps1'
+$timeoutFailed = $false
+try   { & $timeoutScript }
+catch { $timeoutFailed = $true; Write-Host "Timeout guard threw: $_" -ForegroundColor DarkGray }
+if ($LASTEXITCODE -ne 0) { $timeoutFailed = $true }
+$checkResults['Workflow timeouts'] = if ($timeoutFailed) { 'FAIL' } else { 'PASS' }
+
 # --- Step 1: Full parallel build ---
 Write-Host "`n==> Full build (main + tests in parallel)" -ForegroundColor Cyan
 # build.ps1 sets $ErrorActionPreference='Stop' internally and calls Write-Error on failure,
