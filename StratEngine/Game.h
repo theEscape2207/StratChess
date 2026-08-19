@@ -65,10 +65,24 @@ class Game final {
 	Game();
 	~Game();
 
+	// Test seam. Run() is a console loop with no other automated coverage, and it is where
+	// the outcome of every game is decided — the returned state, the fifty-move
+	// adjudication and the termination test. TestAccess builds a Game around an explicit
+	// position and two supplied players, skipping the settings file and log files Init()
+	// would otherwise set up, so the loop can be driven with scripted results.
+	//
+	// Deliberately narrow: it injects players and reads the outcome. It does not change who
+	// owns the board or constructs the players — decoupling that is #256.
+	struct TestAccess;
+
 	void unsubscribePlayerEvents();
 
 	void Run();
 
+  private:
+	Game(const std::string& fen, std::unique_ptr<IPlayer> white, std::unique_ptr<IPlayer> black);
+
+  public:
 	Game(const Game&) = delete;
 	Game& operator=(const Game&) = delete;
 	Game(Game&&) = delete;
@@ -91,6 +105,11 @@ class Game final {
 
 	// For printing Game Moves to File
 	std::ofstream movesFile_;
+	// Init() set the loggers up, so this Game tears them down. A Game built by the test seam
+	// did neither: dropping the registry from inside a test process leaves every later test
+	// with a null default logger.
+	bool owns_logging_{true};
+
 	// The outcome, as reported by the player that last moved or adjudicated by Run() itself.
 	GameStates game_state_{GameStates::STILL_PLAYING};
 };

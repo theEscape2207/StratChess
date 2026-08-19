@@ -159,6 +159,15 @@ class AIPerlexTestFixture {
 		REQUIRE_FALSE(move.is_null());
 	}
 
+	// One complete GetMove() at a chosen thread count — the only way to observe the aggregation
+	// GetMove() performs after joining its helpers.
+	SearchResult get_move_at_threads(unsigned threads, int depth) const
+	{
+		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
+		ai->SetThreads(threads);
+		return ai->GetMove(SearchLimits::fixed_depth(depth));
+	}
+
 	// --- Terminal-node helpers ---
 
 	// Counts the moves that survive DoMove(). ComputeLegalMoves() is pseudo-legal at
@@ -737,6 +746,31 @@ TEST_CASE("SMP - SetThreads default is 1", "[smp]")
 {
 	AIPerlexTestFixture fix;
 	REQUIRE(fix.threads() == 1u);
+}
+
+// GetMove() returns the result AFTER the helper threads are joined and their node counts folded
+// in, which is the same object GetLastResult() hands out. The two are only distinguishable at
+// Threads > 1: the pre-join result carries the main thread's counts alone, so returning it would
+// pass at Threads = 1 and silently under-report everywhere else.
+TEST_CASE("SMP - GetMove's return value matches GetLastResult at Threads > 1", "[smp]")
+{
+	AIPerlexTestFixture fix("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 6);
+
+	const SearchResult returned = fix.get_move_at_threads(4, 6);
+	const SearchResult last = fix.ai->GetLastResult();
+
+	REQUIRE_FALSE(returned.best_move.is_null());
+	CHECK(returned.best_move == last.best_move);
+	CHECK(returned.best_score == last.best_score);
+	CHECK(returned.depth_completed == last.depth_completed);
+	CHECK(returned.game_state == last.game_state);
+	CHECK(returned.nodes_searched == last.nodes_searched);
+	CHECK(returned.qnodes_searched == last.qnodes_searched);
+	CHECK(returned.search_was_stable == last.search_was_stable);
+
+	// The aggregate really is an aggregate: helpers searched too, so the total exceeds the main
+	// thread's own count. Without this the check above would pass on a pre-join result.
+	CHECK(returned.nodes_searched > fix.mainnodes());
 }
 
 // ============================================================================

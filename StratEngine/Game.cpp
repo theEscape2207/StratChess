@@ -20,6 +20,19 @@
 // ***************************************
 Game::Game() { Init(); }
 
+// Test-seam constructor: an explicit position and two supplied players, with none of
+// Init()'s settings-file reading or log-file creation. Everything Run() touches is either
+// set here or default-constructed — m_GameMoves is empty and movesFile_ stays closed, which
+// PrintGameMoves() tolerates.
+Game::Game(const std::string& fen, std::unique_ptr<IPlayer> white, std::unique_ptr<IPlayer> black)
+{
+	owns_logging_ = false;
+	if (!board_.SetupFromFEN(fen))
+		board_.SetDefaultBoard();
+	m_pPlayers[WHITE] = std::move(white);
+	m_pPlayers[BLACK] = std::move(black);
+}
+
 //***************************************
 // Method:      ~Game
 // Description: Destructor
@@ -33,7 +46,8 @@ Game::~Game()
 		unsubscribePlayerEvents();
 
 		// Under VisualStudio, this must be called before main finishes to workaround a known VS issue
-		spdlog::drop_all();
+		if (owns_logging_)
+			spdlog::drop_all();
 	} catch (const std::exception&) { // NOLINT(bugprone-empty-catch)
 		                              // Don't care if any deregistration fails, we're closing here -- a
 		                              // destructor must not let this propagate regardless
