@@ -131,7 +131,7 @@ std::optional<std::string> FENParser::ParseFENImpl(const std::string& fen, FENGa
 
 	// Halfmove clock (optional).
 	// When absent, outState keeps FENGameState's default of 0. Board::SetupFromFEN feeds this
-	// into gameInfo_.fiftyCount, so a 4-field FEN is treated as having made no progress toward
+	// into gameInfo_.halfmoveClock, so a 4-field FEN is treated as having made no progress toward
 	// the 50-move draw. That understates progress for a position lifted out of a real game, but
 	// 0 is the conventional default (python-chess does the same) and it is bookkeeping only --
 	// unlike a missing side-to-move field, it cannot change whose move it is (cf. issue #46).

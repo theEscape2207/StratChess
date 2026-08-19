@@ -174,7 +174,7 @@ bool Board::setup_from_fen_impl(const std::string& fen, std::vector<std::string>
 	sideToMove_ = state.sideToMove;
 	gameInfo_.epSquare = state.epSquare;
 	gameInfo_.castlingRights = state.castlingRights;
-	gameInfo_.fiftyCount = state.halfMoveClock;
+	gameInfo_.halfmoveClock = state.halfMoveClock;
 	gameInfo_.fullMoveCount = state.fullMoveCounter;
 
 	// Validate parsed metadata and adjust castling/EP if inconsistent with actual pieces
@@ -255,7 +255,7 @@ std::string Board::ExtractFEN() const
 
 	// 5. Halfmove clock
 	fen += ' ';
-	fen += std::to_string(gameInfo_.fiftyCount);
+	fen += std::to_string(gameInfo_.halfmoveClock);
 
 	// 6. Fullmove number
 	fen += ' ';
@@ -668,9 +668,9 @@ void Board::update_threefold_rep(const Move& m, ePiece movPiece)
 {
 	if (MoveHelper::IsPawnMove(movPiece) || MoveHelper::IsCapture(m)) {
 		last_irreversible_ply_ = position_history_.size();
-		gameInfo_.fiftyCount = 0;
+		gameInfo_.halfmoveClock = 0;
 	} else {
-		gameInfo_.fiftyCount++;
+		gameInfo_.halfmoveClock++;
 	}
 }
 

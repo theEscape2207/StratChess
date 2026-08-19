@@ -203,24 +203,13 @@ class PlayerAiBase : public PlayerBase {
 		}
 	}
 
-	// ************************************
-	// Method:      IsFiftyMoves
-	// Description: Test for 50 moves rules
-	// FullName:    protected PlayerAiBase::IsFiftyMoves
-	// Returns:     bool - true if
-	// Parameter:   const BoardInfo& info -
-	// Remark:
-	// ************************************
+	// Threefold repetition and the fifty-move rule. Both are draws by position history, so
+	// neither applies at the root: the caller asked for a move, not for an adjudication.
 	bool checkDraws(const GameInfo& info, int ply) const noexcept
 	{
-		if (ply > 0 && m_Board.is_repetition(ply)) {
-			return true;
-		}
-		if (info.fiftyCount >= 50) {
-			assert(info.gameState == GameStates::DRAW_50_MOVES);
-			return true;
-		}
-		return false;
+		if (ply == 0)
+			return false;
+		return m_Board.is_repetition(ply) || info.halfmoveClock >= HALFMOVE_CLOCK_LIMIT;
 	}
 
 	/*
