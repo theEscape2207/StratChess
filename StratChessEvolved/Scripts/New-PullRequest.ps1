@@ -40,6 +40,11 @@
     Open the PR as a draft. Use for work that must not merge yet (e.g. blocked on
     another PR landing first).
 
+.PARAMETER AllowUnlistedReformat
+    Forwarded to Validate-PrePR.ps1's blame-ignore check. Use when a commit touches 20+ sources
+    and genuinely changes code -- a wide refactor -- so it must NOT go into
+    .git-blame-ignore-revs, which would hide real authorship from git blame.
+
 .PARAMETER SkipValidation
     Skip Validate-PrePR.ps1. For docs-only changes where the pre-commit hook already
     covered it, or to re-push after a trivial amend. Prints a loud warning -- the whole
@@ -67,7 +72,8 @@ param(
     [string]$Body,
     [switch]$Draft,
     [switch]$SkipValidation,
-    [switch]$NoPr
+    [switch]$NoPr,
+    [switch]$AllowUnlistedReformat
 )
 
 Set-StrictMode -Version Latest
@@ -144,7 +150,8 @@ Write-Host "`n==> [2/4] Pre-PR validation" -ForegroundColor Cyan
 if ($SkipValidation) {
     Write-Host "WARNING: -SkipValidation set; Validate-PrePR.ps1 did NOT run." -ForegroundColor Yellow
 } else {
-    & pwsh -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Validate-PrePR.ps1')
+    & pwsh -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Validate-PrePR.ps1') `
+        -AllowUnlistedReformat:$AllowUnlistedReformat
     if ($LASTEXITCODE -ne 0) {
         Write-Host "`nFAIL: pre-PR validation failed -- nothing pushed." -ForegroundColor Red
         exit 1
