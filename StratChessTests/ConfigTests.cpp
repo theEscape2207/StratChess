@@ -62,10 +62,7 @@ namespace {
 		static inline int counter_ = 0;
 	};
 
-	// Config dereferences its Game* only on the FEN path (ReadFEN -> SetCustomGame).
-	// None of the documents below declare a FEN setup, so nullptr is safe here and
-	// keeps these cases free of a whole Game.
-	Config MakeReader() { return Config(nullptr); }
+	Config MakeReader() { return Config(); }
 
 } // namespace
 
@@ -170,4 +167,54 @@ TEST_CASE("Config: a missing file falls back to defaults without throwing", "[co
 	// since running with defaults is a usable outcome and the message says so.
 	CerrRedirect redirect;
 	REQUIRE_NOTHROW(reader.ReadConfigFile(missing, board));
+}
+
+TEST_CASE("Config: a FEN setup is applied to the board", "[config]")
+{
+	// The FEN path is the one that used to reach back into Game. It now ends at the board,
+	// which is what this asserts: the position, and the metadata that comes with it.
+	TempConfig cfg(R"({
+        "game": {
+            "setup": "FEN",
+            "FEN": "r3k2r/8/8/4pP2/8/8/8/R3K2R w KQkq e6 7 12",
+            "players": {
+                "white": { "type": 6 },
+                "black": { "type": 6 }
+            }
+        }
+    })");
+
+	Board board;
+	Config reader = MakeReader();
+	REQUIRE_NOTHROW(reader.ReadConfigFile(cfg.path(), board));
+
+	REQUIRE(board.GetCurrentColor() == eColor::WHITE);
+	REQUIRE(board.GetPiece(e1) == ePiece::WHITE_KING);
+	REQUIRE(board.GetPiece(e8) == ePiece::BLACK_KING);
+	REQUIRE(board.ep_square() == e6);
+	REQUIRE(board.castling_rights() == CastlingRights::ALL);
+	REQUIRE(board.halfmove_clock() == 7);
+}
+
+TEST_CASE("Config: a malformed FEN falls back to the default board", "[config]")
+{
+	TempConfig cfg(R"({
+        "game": {
+            "setup": "FEN",
+            "FEN": "not-a-fen",
+            "players": {
+                "white": { "type": 6 },
+                "black": { "type": 6 }
+            }
+        }
+    })");
+
+	Board board;
+	Config reader = MakeReader();
+	REQUIRE_NOTHROW(reader.ReadConfigFile(cfg.path(), board));
+
+	// Standard opening position, not whatever the board happened to hold.
+	REQUIRE(board.GetPiece(e1) == ePiece::WHITE_KING);
+	REQUIRE(board.GetPiece(d8) == ePiece::BLACK_QUEEN);
+	REQUIRE(board.ep_square() == NO_SQUARE);
 }

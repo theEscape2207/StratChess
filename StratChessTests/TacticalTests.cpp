@@ -51,7 +51,7 @@ TEST_CASE("Tactical - fast suite", "[tactical]")
 	Board board(tc.fen);
 	auto ai = make_tactical_engine(board, tc.depth);
 	GameInfo info = board.GetGameInfo();
-	Move m = ai->GetMove(info);
+	Move m = ai->GetMove().best_move;
 
 	REQUIRE(m.from() == tc.expected_from);
 	REQUIRE(m.to() == tc.expected_to);

@@ -11,7 +11,7 @@ class Board;
 class PlayerHuman final : public PlayerBase {
   public:
 	/* IPlayer implementation */
-	Move GetMove(GameInfo& info, const SearchLimits&) override;
+	SearchResult GetMove(const SearchLimits&) override;
 	const char* GetType() const noexcept override { return "Human"; }
 
 	std::string getDescription() const override

@@ -95,18 +95,16 @@ int PlayerAiBase::Quiescent(size_t ply, int alpha, int beta)
 // Description:
 // FullName:   protected PlayerAiBase::GetBestMove
 // Returns:    const Move - The best move or EmptyMove if game is over
-// Parameter:  BoardInfo& info -
 // Remark:
 // ************************************
-Move PlayerAiBase::GetBestMove(GameInfo& info) noexcept
+Move PlayerAiBase::GetBestMove() noexcept
 {
 	// Returner det bedste traek - hvis der er noget
-	if (!m_BestMove.is_null()) {
-		info.UpdateBoardInfo(m_BestMove, m_Board.GetEffectiveMovPiece(m_BestMove));
+	if (!m_BestMove.is_null())
 		return m_BestMove;
-	}
-	// No moves found!
-	assert(info.gameState != GameStates::STILL_PLAYING);
+
+	// No moves found — the search must have adjudicated the root.
+	assert(m_Board.GetGameInfo().gameState != GameStates::STILL_PLAYING);
 	return Move::EmptyMove();
 }
 

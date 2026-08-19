@@ -75,11 +75,6 @@ void Config::ReadFEN(const std::string& fen, Board& board) const
 		board.SetDefaultBoard();
 		return;
 	}
-
-	GameInfo info = board.GetGameInfo(); // Get the final gameInfo from board
-
-	// Done: hand off to game with validated config
-	pGame_->SetCustomGame(info);
 }
 
 //***************************************

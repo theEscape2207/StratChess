@@ -37,14 +37,14 @@ class PlayerBase : public IPlayer {
 	PlayerBase() = default;
 	~PlayerBase() = default;
 
-	// Un-hide IPlayer::GetMove(info, limits) — without this, the non-virtual
-	// overload below would hide it from name lookup on derived classes.
+	// Un-hide IPlayer::GetMove(limits) — without this, the non-virtual overload
+	// below would hide it from name lookup on derived classes.
 	using IPlayer::GetMove;
 
 	// Convenience overload: no per-call limits — use the engine's configured
 	// defaults (time_limit_, max_depth_). Not virtual; forwards to the real
-	// GetMove(info, limits) override.
-	Move GetMove(GameInfo& info) { return GetMove(info, SearchLimits{}); }
+	// GetMove(limits) override.
+	SearchResult GetMove() { return GetMove(SearchLimits{}); }
 
 	// Factory constructor!
 	static std::unique_ptr<PlayerBase> Create(ePlayerTypes type, unsigned max_depth, Board& board);

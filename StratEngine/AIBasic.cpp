@@ -14,7 +14,7 @@
 #include "MoveFormatter.h"
 
 // Fetches the next move
-Move AIBasic::GetMove(GameInfo& info, const SearchLimits& limits)
+SearchResult AIBasic::GetMove(const SearchLimits& limits)
 {
 	InitMoveVariables();
 
@@ -25,9 +25,7 @@ Move AIBasic::GetMove(GameInfo& info, const SearchLimits& limits)
 
 	StopTimerAndAdjustVars(m_SearchCount);
 
-	CheckGameOver(info);
-
-	return GetBestMove(info);
+	return MakeResult();
 }
 
 // En basic alpha-beta

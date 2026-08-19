@@ -75,7 +75,16 @@ class PlayerAiBase : public PlayerBase {
 	std::chrono::milliseconds StopTimerAndAdjustVars(size_t node_count) const;
 
 	// Returns the best first move currently found
-	virtual Move GetBestMove(GameInfo& info) noexcept;
+	virtual Move GetBestMove() noexcept;
+
+	// What a legacy agent reports for one GetMove() call: the move it settled on and the
+	// root verdict the search left on the board. The search counters stay at their defaults —
+	// these agents do not track the main and quiescence trees apart.
+	SearchResult MakeResult() noexcept
+	{
+		return {
+		    .best_move = GetBestMove(), .best_score = GetBestScore(), .game_state = m_Board.GetGameInfo().gameState};
+	}
 
 	/// Resolves per-call SearchLimits against the configured defaults
 	/// (time_limit_, max_depth_), arms time_manager_ with the resulting
@@ -157,15 +166,6 @@ class PlayerAiBase : public PlayerBase {
 	{
 		if (currentPly == 0)
 			m_Board.SetGameState(newState);
-	}
-
-	// TODO: rename to FireStateChanged. Also, investigate if refreshInfo is needed for old AI structure
-	void CheckGameOver(GameInfo& info)
-	{
-		info = m_Board.GetGameInfo();
-		if (info.gameState != GameStates::STILL_PLAYING) {
-			EGameStateChanged.fire(this, info.gameState);
-		}
 	}
 
 	// Threefold repetition and the fifty-move rule. Both are draws by position history, so

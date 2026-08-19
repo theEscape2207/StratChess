@@ -154,9 +154,8 @@ class AIPerlexTestFixture {
 	void search_depth_one()
 	{
 		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
-		GameInfo info = board_.GetGameInfo();
-		REQUIRE(info.fullMoveCount == 1);
-		const Move move = ai->GetMove(info, SearchLimits::fixed_depth(1));
+		REQUIRE(board_.GetGameInfo().fullMoveCount == 1);
+		const Move move = ai->GetMove(SearchLimits::fixed_depth(1)).best_move;
 		REQUIRE_FALSE(move.is_null());
 	}
 
@@ -273,8 +272,7 @@ class AIPerlexTestFixture {
 	Move search_to_depth(int depth) const
 	{
 		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
-		GameInfo info = board_.GetGameInfo();
-		return ai->GetMove(info, SearchLimits::fixed_depth(depth));
+		return ai->GetMove(SearchLimits::fixed_depth(depth)).best_move;
 	}
 
 	// Full search bounded by a node budget instead of a fixed depth. Requires the
@@ -283,8 +281,7 @@ class AIPerlexTestFixture {
 	Move search_with_nodes(int64_t nodes) const
 	{
 		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
-		GameInfo info = board_.GetGameInfo();
-		return ai->GetMove(info, SearchLimits::fixed_nodes(nodes));
+		return ai->GetMove(SearchLimits::fixed_nodes(nodes)).best_move;
 	}
 };
 

@@ -5,25 +5,12 @@
 #include "TranspositionTable.h"
 #include "PVTable.h"
 #include "ThreadData.h"
+#include "SearchResult.h"
 #include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <vector>
-
-// Search result structure - returned from iterative_deepening
-struct SearchResult {
-	Move best_move = Move::EmptyMove();
-	int best_score = 0;
-	int depth_completed = 0;
-	// The two trees stay apart here and are summed only where a total is reported.
-	// Construct with DESIGNATED initializers: a member inserted mid-struct shifts every
-	// positional initializer after it, and bool -> int64_t promotes rather than narrows,
-	// so /W4 /WX does not catch the shift.
-	int64_t nodes_searched = 0;
-	int64_t qnodes_searched = 0;
-	bool search_was_stable = true;
-};
 
 // Snapshot of one accepted iterative-deepening iteration, handed to the
 // iteration observer (see AIPerplex::SetIterationObserver). `nodes` is the
@@ -50,7 +37,7 @@ struct IterationInfo {
 
 class AIPerplex final : public PlayerAiBase {
   public:
-	Move GetMove(GameInfo& info, const SearchLimits& limits) override;
+	SearchResult GetMove(const SearchLimits& limits) override;
 	const char* GetType() const noexcept override { return "Perplexity Transpositional AlphaBeta"; }
 
 	// Configure the number of Lazy SMP search threads; clamps to [1, 32].

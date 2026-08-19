@@ -185,7 +185,7 @@ void AIPerplex::helper_loop(ThreadData& td, int max_depth, TranspositionTable& t
 	}
 }
 
-Move AIPerplex::GetMove(GameInfo& info, const SearchLimits& limits)
+SearchResult AIPerplex::GetMove(const SearchLimits& limits)
 {
 	init_search();
 	// Snapshot threads_ exactly once: UCI's cmd_setoption (unlike cmd_go/
@@ -242,6 +242,7 @@ Move AIPerplex::GetMove(GameInfo& info, const SearchLimits& limits)
 	const GameStates searched_state = td_.board.GetGameInfo().gameState;
 	if (searched_state != m_Board.GetGameInfo().gameState)
 		m_Board.SetGameState(searched_state);
+	last_result_.game_state = searched_state;
 
 	// Latch the abort signal so any still-running helpers collapse in O(depth)
 	// steps (they only ever poll IsAborted()), then join them — helpers.clear()
@@ -264,18 +265,12 @@ Move AIPerplex::GetMove(GameInfo& info, const SearchLimits& limits)
 	// the clock without ever crediting it to the count.
 	auto elapsed = StopTimerAndAdjustVars(static_cast<size_t>(total_nodes + total_qnodes));
 
-	Move bestMove = result.best_move;
+	const Move bestMove = result.best_move;
 
-	// Defensive check for game-over scenario
+	// Game over at the root: no move to play, and last_result_.game_state carries why.
 	if (bestMove.is_null()) {
-		info = m_Board.GetGameInfo();
-		//if ( !info.GameEnded())
-		/*ensure_logger_initialized();
-		if (s_logger) {
-			s_logger->error("No move from search - game is over (score={})", result.best_score);
-		}*/
 		_bestScore = result.best_score;
-		return Move::EmptyMove();
+		return last_result_;
 	}
 
 	// Success logging
@@ -284,15 +279,10 @@ Move AIPerplex::GetMove(GameInfo& info, const SearchLimits& limits)
 		               MoveFormatter::ToCoord(bestMove), result.best_score, result.depth_completed, elapsed.count(),
 		               total_nodes, result.search_was_stable ? "yes" : "NO");
 	}
-	// The board is the root's state of record, and the search's verdict was propagated to it
-	// above, so this reports exactly what was searched.
-	info = m_Board.GetGameInfo();
-	if (info.gameState != GameStates::STILL_PLAYING) {
-		EGameStateChanged.fire(this, info.gameState);
-	}
-	info.UpdateBoardInfo(bestMove, m_Board.GetEffectiveMovPiece(bestMove));
-
-	return bestMove;
+	// last_result_, not the local `result`: the node counts above were aggregated across the
+	// joined helper threads, so the two differ at Threads > 1. GetLastResult() must be
+	// indistinguishable from what this returns for the same call.
+	return last_result_;
 }
 
 SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, TranspositionTable& tt)

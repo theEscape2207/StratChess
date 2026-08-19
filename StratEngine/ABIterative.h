@@ -8,7 +8,7 @@ class ABIterative final : public PlayerAiIterBase {
 	// Note: NOT to be called directly - only through Factory method
 	explicit ABIterative(Board& board, unsigned maxDepth) : PlayerAiIterBase(board, maxDepth) {}
 	// Implementation/overrides of the IPlayer interface
-	Move GetMove(GameInfo& info, const SearchLimits& limits) override;
+	SearchResult GetMove(const SearchLimits& limits) override;
 	const char* GetType() const noexcept override { return "Iterative AlphaBeta"; }
 
 	~ABIterative() = default;

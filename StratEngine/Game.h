@@ -18,7 +18,6 @@ class Game final {
 	void Init();
 	void LoadConfigFileSettings();
 	std::unique_ptr<IPlayer> SetPlayerParams(const Config::PlayerConfig& config);
-	void SetGameParams(const GameInfo& info) noexcept;
 	void CreateGameMoveFile();
 
 	void PrintBoardAndMove(const Move& move) const;
@@ -30,12 +29,14 @@ class Game final {
 
 	IPlayer& GetCurrentPlayer() const noexcept;
 
-	void PrintStateMessage() const;
+	// Takes the player that just moved: GetCurrentPlayer() keys off the side to move, which
+	// DoMove has already flipped by the time this runs, and the score belongs to the mover.
+	void PrintStateMessage(const IPlayer& mover) const;
 
 	// Inline stuff
 	size_t GetBoardCount() const noexcept { return m_GameMoves.size(); }
 
-	bool IsStillPlaying() const noexcept { return !gameInfo_.GameEnded(); }
+	bool IsStillPlaying() const noexcept { return game_state_ == GameStates::STILL_PLAYING; }
 
 	static bool HasHumanExited(const Move& move) noexcept { return move.is_null(); }
 
@@ -60,31 +61,11 @@ class Game final {
 		spdlog::default_logger()->warn(sstream.str());
 	}
 
-	// ************************************
-	// Method:      OnGameStateChanged
-	// Description: Event receiver - gets called when the overall game state changes
-	// FullName:    private Game::OnGameStateChanged
-	// Returns:     void -
-	// Parameter:   const void*  - pointer to the sender object
-	// Parameter:   const GameInfo::GameStates& newState -
-	// Remark:
-	//************************************
-	void OnGameStateChanged(const void* /*pSender*/, const GameStates& newState) noexcept
-	{
-		gameInfo_.gameState = newState;
-	}
-
   public:
 	Game();
 	~Game();
 
 	void unsubscribePlayerEvents();
-
-	void SetCustomGame(const GameInfo& info) noexcept
-	{
-		customGame_ = true;
-		SetGameParams(info);
-	}
 
 	void Run();
 
@@ -110,6 +91,6 @@ class Game final {
 
 	// For printing Game Moves to File
 	std::ofstream movesFile_;
-	GameInfo gameInfo_;
-	bool customGame_{false};
+	// The outcome, as reported by the player that last moved or adjudicated by Run() itself.
+	GameStates game_state_{GameStates::STILL_PLAYING};
 };

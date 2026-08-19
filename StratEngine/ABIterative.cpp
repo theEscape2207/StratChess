@@ -20,7 +20,7 @@
 // Returns:     Move - The best move found
 // Parameter:   BoardInfo& info -
 // ************************************
-Move ABIterative::GetMove(GameInfo& info, const SearchLimits& limits)
+SearchResult ABIterative::GetMove(const SearchLimits& limits)
 {
 	InitMoveVariables();
 
@@ -53,9 +53,7 @@ Move ABIterative::GetMove(GameInfo& info, const SearchLimits& limits)
 
 	StopTimerAndAdjustVars(m_SearchCount);
 
-	CheckGameOver(info);
-
-	return GetBestMove(info);
+	return MakeResult();
 }
 
 // ************************************

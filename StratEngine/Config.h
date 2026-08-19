@@ -5,7 +5,6 @@
 #include "SearchLimits.h"
 #include <cstdint>
 
-class Game;
 class Board;
 
 class Config final {
@@ -48,7 +47,6 @@ class Config final {
 		// Fullmove number - number of moves done by both black and white
 		int fullMoveCounter{0};
 	};
-	explicit Config(Game* game) noexcept : pGame_(game) {}
 	//void LoadConfigFileSettings();
 
 	void ReadConfigFile(const std::string& /*filename*/, Board& board);
@@ -65,8 +63,6 @@ class Config final {
 
 	// For FEN support
 	void ReadFEN(const std::string& fen, Board& board) const;
-
-	Game* pGame_;
 
 	PlayerConfig white_;
 	PlayerConfig black_;

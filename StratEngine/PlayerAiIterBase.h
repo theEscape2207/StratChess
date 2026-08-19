@@ -39,19 +39,16 @@ class PlayerAiIterBase : public PlayerAiBase {
 	// Description:
 	// FullName:   protected PlayerAiIterBase::GetBestMove
 	// Returns:    const Move - The best move or EmptyMove if game is over
-	// Parameter:  BoardInfo& info -
 	// Remark:
 	// ************************************
-	Move GetBestMove(GameInfo& info) noexcept override
+	Move GetBestMove() noexcept override
 	{
 		// Returner det bedste traek - hvis der er noget
-		if (!m_Line.empty()) {
-			info.UpdateBoardInfo(m_Line.front(), m_Board.GetEffectiveMovPiece(m_Line.front()));
+		if (!m_Line.empty())
 			return m_Line.front(); // Henter det foerste traek fra PVL
-		}
 
-		// No moves found!
-		assert(info.gameState != GameStates::STILL_PLAYING);
+		// No moves found — the search must have adjudicated the root.
+		assert(m_Board.GetGameInfo().gameState != GameStates::STILL_PLAYING);
 		return Move::EmptyMove();
 	}
 

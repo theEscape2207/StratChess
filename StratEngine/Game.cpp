@@ -54,9 +54,6 @@ void Game::unsubscribePlayerEvents()
 	// Deregister our delegates
 	m_pPlayers[WHITE]->ENewPVLineMove.clear();
 	m_pPlayers[BLACK]->ENewPVLineMove.clear();
-
-	m_pPlayers[WHITE]->EGameStateChanged.clear();
-	m_pPlayers[BLACK]->EGameStateChanged.clear();
 }
 
 //***************************************
@@ -152,7 +149,7 @@ void Game::CreateGameMoveFile()
 //***************************************
 void Game::LoadConfigFileSettings()
 {
-	Config reader(this);
+	Config reader;
 	reader.ReadConfigFile("game_settings.json", board_);
 
 	// TODO: Setup board explicitly here
@@ -212,27 +209,7 @@ std::unique_ptr<IPlayer> Game::SetPlayerParams(const Config::PlayerConfig& confi
 
 	//Register events
 	player->ENewPVLineMove.subscribe([this](const void* s, const PVLine& pvl) { onNewPVLineMove(s, pvl); });
-	player->EGameStateChanged.subscribe([this](const void* s, const GameStates& gs) { OnGameStateChanged(s, gs); });
 	return player;
-}
-
-void Game::SetGameParams(const GameInfo& info) noexcept
-{
-	// Set ep square
-	gameInfo_.epSquare = info.epSquare;
-	/*if (info.epSquare != NO_SQUARE)
-	{
-		const auto movPiece = (config.sideToMove == WHITE) ? BLACK_PAWN : WHITE_PAWN;
-		gameInfo_.lastMove.SetMove(NO_SQUARE, NO_SQUARE, MoveType::DOUBLE_PAWN_PUSH, movPiece, NO_PIECE );
-	}*/
-
-	// Castling availability
-	gameInfo_.castlingRights = info.castlingRights;
-
-	// Halfmove clock
-	gameInfo_.halfmoveClock = info.halfmoveClock;
-	// Fullmove number
-	gameInfo_.fullMoveCount = info.fullMoveCount;
 }
 
 //***************************************
@@ -254,33 +231,46 @@ void Game::Run()
 	*	Player->GetMove() is the main driver of the game
 	*/
 	for (;;) {
-		// Hent traekket fra den aktive spiller - GameInfo get updated every time
-		Move newMove = GetCurrentPlayer().GetMove(gameInfo_, player_limits_[board_.GetCurrentColor()]);
+		// The mover and its result are both captured before anything is committed: DoMove
+		// flips the side to move, so GetCurrentPlayer() would name the opponent afterwards,
+		// and the score to report belongs to the player that just moved.
+		IPlayer& mover = GetCurrentPlayer();
+		const SearchResult result = mover.GetMove(player_limits_[board_.GetCurrentColor()]);
+
+		bool committed = false;
+		if (!result.best_move.is_null()) {
+			// Foretag traekket paa det virkelige braet
+			committed = rBoard.DoMove(result.best_move);
+			assert(committed && "Unexpected illegal move found! Exiting...");
+			if (committed) {
+				rBoard.ResetSearchDepth();
+
+				// Tilfoej traekket til traeklisten og opdater spil-variable
+				AddGameMove(result.best_move);
+			}
+		}
+
+		game_state_ = result.game_state;
+
+		// The fifty-move rule is a fact about the position the board now holds, so it is
+		// adjudicated here rather than by a search that never visits that position. It can
+		// only turn a still-running game into a draw: a mate, a stalemate or HUMAN_EXITED
+		// already reported by the mover takes precedence and is never overwritten.
+		if (committed && game_state_ == GameStates::STILL_PLAYING && board_.halfmove_clock() >= HALFMOVE_CLOCK_LIMIT)
+			game_state_ = GameStates::DRAW_50_MOVES;
 
 		// Prints out the current score message for AI players (score or "Mate in x moves")
-		PrintStateMessage();
+		PrintStateMessage(mover);
 
-		// A real move is committed before the game-over test: GetMove() reports the fifty-move
-		// draw through gameInfo_ and returns the move that caused it, so testing first would
-		// end the game on a position the board never reached.
-		if (!newMove.is_null()) {
-			// Foretag traekket paa det virkelige braet
-			if (!rBoard.DoMove(newMove))
-				assert(!"Unexpected illegal move found! Exiting...");
-			rBoard.ResetSearchDepth();
-
-			// Tilfoej traekket til traeklisten og opdater spil-variable
-			AddGameMove(newMove);
-
+		if (committed)
 			// Print the board and last move to screen (and debug)
-			PrintBoardAndMove(newMove);
-		}
+			PrintBoardAndMove(result.best_move);
 
 		if (!IsStillPlaying()) // Test om spillet er slut
 			break;
 
 		// A null move with the game still running means the user typed "exit" or "quit".
-		if (HasHumanExited(newMove)) {
+		if (HasHumanExited(result.best_move)) {
 			spdlog::default_logger()->warn("User has exited the game\n");
 			break;
 		}
@@ -311,15 +301,15 @@ void Game::AddGameMove(const Move& move)
 // Returns:     void
 // Remark:      FIXME: Export the Max depth from the AIs to prevent hardcoding
 //***************************************
-void Game::PrintStateMessage() const
+void Game::PrintStateMessage(const IPlayer& mover) const
 {
 	if (IsStillPlaying()) {
-		if (GetCurrentPlayer().IsHuman()) // score doesn't make sense
+		if (mover.IsHuman()) // score doesn't make sense
 			return;
 
 		std::stringstream sstream;
 		// AIs
-		const int score = GetCurrentPlayer().GetBestScore();
+		const int score = mover.GetBestScore();
 
 		// Can we see a mate?
 		if (score >= GameValues::Mate_Threshold || (-score >= GameValues::Mate_Threshold))
@@ -329,9 +319,8 @@ void Game::PrintStateMessage() const
 			sstream << "Score: " << score << '\n';
 
 		spdlog::default_logger()->info(sstream.str());
-	} else // TODO: This should be moved to the OnGameStateChanged event method
-	{
-		switch (gameInfo_.gameState) {
+	} else {
+		switch (game_state_) {
 		case GameStates::WHITE_WON:
 			spdlog::default_logger()->info("CHECK MATE ! White is the Winner!");
 			break;

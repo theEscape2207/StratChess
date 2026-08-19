@@ -9,7 +9,7 @@
 #include "MoveFormatter.h"
 
 // Fetches the next move
-Move AIAgent::GetMove(GameInfo& info, const SearchLimits& limits)
+SearchResult AIAgent::GetMove(const SearchLimits& limits)
 {
 	InitMoveVariables();
 
@@ -62,9 +62,7 @@ Move AIAgent::GetMove(GameInfo& info, const SearchLimits& limits)
 
 	StopTimerAndAdjustVars(m_SearchCount);
 
-	CheckGameOver(info);
-
-	return GetBestMove(info);
+	return MakeResult();
 }
 
 // En iterativ alpha-beta with PVL and PVS
