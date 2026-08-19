@@ -175,6 +175,17 @@ if ($NoPr) {
     exit 0
 }
 
+# A hint, not a call. Waiting on CI here would change this script's contract from
+# "submit" to "submit and babysit", and would conflate two exit codes that have to
+# stay separate: 0 from this script means the pull request was submitted, never that
+# CI liked it. Naming the command is enough -- the failure mode is forgetting the
+# step, not finding it hard to type. (-NoPr returns above, having nothing to watch.)
+function Show-NextStep {
+    Write-Host "`nNext:" -ForegroundColor Cyan
+    Write-Host ("  pwsh -File {0} -Wait" -f (Join-Path $PSScriptRoot 'Get-PrChecks.ps1'))
+    Write-Host '    one line if the checks go green; the failing step and its errors if not' -ForegroundColor DarkGray
+}
+
 # --- 4. PR ---------------------------------------------------------------------
 Write-Host "`n==> [4/4] Pull request" -ForegroundColor Cyan
 
@@ -197,6 +208,7 @@ if ($existing -and -not $bodySupplied) {
     Write-Host "  (pass -Body/-BodyFile to update the description)" -ForegroundColor DarkGray
     & gh pr view $existing --json url --jq '.url'
     Write-Host "`nDone." -ForegroundColor Green
+    Show-NextStep
     exit 0
 }
 
@@ -231,7 +243,10 @@ if ($BodyFile) {
 try {
     if ($existing) {
         Write-Host "PR #$existing is already open for this branch -- updating its body." -ForegroundColor Yellow
-        & gh pr edit $existing --body-file $bodyPath
+        # `gh pr edit` prints the PR URL to stdout on success. Suppress it and let the
+        # explicit view below be the one source of that line, so every path through
+        # this step emits exactly one URL -- this branch used to print two.
+        & gh pr edit $existing --body-file $bodyPath | Out-Null
         if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: gh pr edit failed." -ForegroundColor Red; exit 1 }
         & gh pr view $existing --json url --jq '.url'
     } else {
@@ -249,3 +264,4 @@ try {
 }
 
 Write-Host "`nDone." -ForegroundColor Green
+Show-NextStep

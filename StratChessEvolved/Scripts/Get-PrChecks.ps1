@@ -466,9 +466,16 @@ while ($true) {
     if (-not $Wait -or $summary.Verdict -notin @('running', 'none')) { break }
     if ($now -ge $deadline) { $timedOut = $true; break }
 
-    Write-Host ("... {0}/{1} complete, {2} elapsed" -f `
-        ($summary.Passed + $summary.Failed.Count), $summary.Total,
-        (Format-Duration $summary.ElapsedSeconds)) -ForegroundColor DarkGray
+    # Straight after a push the new head has no checks yet, and "0/0 complete, --
+    # elapsed" reads like a fault rather than the normal gap before a run is created.
+    if ($summary.Total -eq 0) {
+        Write-Host '... no checks reported yet' -ForegroundColor DarkGray
+    }
+    else {
+        Write-Host ("... {0}/{1} complete, {2} elapsed" -f `
+            ($summary.Passed + $summary.Failed.Count), $summary.Total,
+            (Format-Duration $summary.ElapsedSeconds)) -ForegroundColor DarkGray
+    }
     Start-Sleep -Seconds $PollSeconds
     $pull = Get-PrSnapshot -Number $Pr
 }
