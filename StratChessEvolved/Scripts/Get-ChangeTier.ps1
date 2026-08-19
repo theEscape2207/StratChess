@@ -141,6 +141,10 @@ function Get-TierForPath {
     # the engine.
     if ($p -like '*/Scripts/New-TaskBranch.ps1')             { return 'Tooling' }
     if ($p -like '*/Scripts/Remove-MergedBranches.ps1')      { return 'Tooling' }
+    # Reports a pull request's check state. Read-only and advisory: it gates nothing,
+    # so unlike New-PullRequest.ps1 above there is no self-concealment hazard to guard
+    # against. Same shape as Get-Worktrees.ps1.
+    if ($p -like '*/Scripts/Get-PrChecks.ps1')               { return 'Tooling' }
 
     # --- Fail closed ----------------------------------------------------------
     # Everything else, INCLUDING anything unrecognised. Do not add an
@@ -198,6 +202,7 @@ if ($SelfTest) {
     @{ Name = 'New-Worktree -> Tooling';    Files = @('StratChessEvolved/Scripts/New-Worktree.ps1');    Expect = 'Tooling' }
     @{ Name = 'Remove-Worktree -> Tooling'; Files = @('StratChessEvolved/Scripts/Remove-Worktree.ps1'); Expect = 'Tooling' }
     @{ Name = 'Get-Worktrees -> Tooling';   Files = @('StratChessEvolved/Scripts/Get-Worktrees.ps1');   Expect = 'Tooling' }
+        @{ Name = 'Get-PrChecks -> Tooling';    Files = @('StratChessEvolved/Scripts/Get-PrChecks.ps1');   Expect = 'Tooling' }
     # The in-place counterparts to New-Worktree/Remove-Worktree: same reasoning, same tier.
     @{ Name = 'New-TaskBranch -> Tooling';       Files = @('StratChessEvolved/Scripts/New-TaskBranch.ps1');       Expect = 'Tooling' }
     @{ Name = 'Remove-MergedBranches -> Tooling'; Files = @('StratChessEvolved/Scripts/Remove-MergedBranches.ps1'); Expect = 'Tooling' }
