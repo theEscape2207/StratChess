@@ -59,6 +59,7 @@ int AIBasic::Search(size_t ply, int alpha, int beta)
 	MoveList moveList;
 	MoveGenerator::ComputeLegalMoves(m_Board, moveList);
 
+	assert_parent_move_matches_board(ply);
 	// Sorterer traekkene
 	MoveSorter::SortMoves(moveList, GetParentMove(ply), m_Board);
 

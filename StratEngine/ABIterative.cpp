@@ -93,6 +93,7 @@ int ABIterative::Search(int ply, int alpha, int beta, PVLine& pline)
 
 	MoveList moveList;
 	MoveGenerator::ComputeLegalMoves(m_Board, moveList);
+	assert_parent_move_matches_board(ply);
 	// Sorterer traekkene - iterativt
 	MoveSorter::SortMovesIter(moveList, GetParentMove(ply), GetIterMove(ply), m_Board);
 

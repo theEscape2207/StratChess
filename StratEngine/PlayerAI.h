@@ -165,6 +165,15 @@ class PlayerAiBase : public PlayerBase {
 	// Returns the Current Move's predecessor in the current move sequence tree
 	const Move& GetParentMove(size_t currentPly) const { return GetLastBoardInfo(currentPly).lastMove; }
 
+	// Temporary evidence probe, deleted together with m_infoSeq: the parent move the sorter reads
+	// out of the sequence must be the move the board itself last applied. Nothing but move ordering
+	// consumes it, so a difference here would be a silent change in the order the legacy agents
+	// search — the one thing no test in the suite asserts. Debug only.
+	void assert_parent_move_matches_board([[maybe_unused]] size_t currentPly) const
+	{
+		assert(GetParentMove(currentPly) == m_Board.last_move());
+	}
+
 	const GameInfo& GetLastBoardInfo(size_t currentPly) const
 	{
 		// This must always contain the last move, hence the one extra info

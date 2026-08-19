@@ -93,6 +93,7 @@ int AIAgent::Search(size_t ply, int alpha, int beta, PVLine& pline)
 	MoveList moveList;
 	MoveGenerator::ComputeLegalMoves(m_Board, moveList);
 
+	assert_parent_move_matches_board(ply);
 	// Sorterer traekkene
 	MoveSorter::SortMovesIter(moveList, GetParentMove(ply), // Last move
 	                          GetIterMove(ply), m_Board);
