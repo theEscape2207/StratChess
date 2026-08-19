@@ -766,7 +766,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// a quiet evasion can push the count to the limit, and the node that results need not
 	// itself be in check. So this is deliberately not gated on in_check — gating it would
 	// leave a genuine fifty-move draw scored by material, and would trip the STILL_PLAYING
-	// assertion in GameState::UpdateFiftyMovesState on the next move made from that node.
+	// assertion in GameState::UpdateHalfmoveClock on the next move made from that node.
 	if (td.check_draws(td.get_last_info(ply), ply))
 		return GameValues::Draw;
 

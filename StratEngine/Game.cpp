@@ -230,7 +230,7 @@ void Game::SetGameParams(const GameInfo& info) noexcept
 	gameInfo_.castlingRights = info.castlingRights;
 
 	// Halfmove clock
-	gameInfo_.fiftyCount = info.fiftyCount;
+	gameInfo_.halfmoveClock = info.halfmoveClock;
 	// Fullmove number
 	gameInfo_.fullMoveCount = info.fullMoveCount;
 }
@@ -260,27 +260,30 @@ void Game::Run()
 		// Prints out the current score message for AI players (score or "Mate in x moves")
 		PrintStateMessage();
 
+		// A real move is committed before the game-over test: GetMove() reports the fifty-move
+		// draw through gameInfo_ and returns the move that caused it, so testing first would
+		// end the game on a position the board never reached.
+		if (!newMove.is_null()) {
+			// Foretag traekket paa det virkelige braet
+			if (!rBoard.DoMove(newMove))
+				assert(!"Unexpected illegal move found! Exiting...");
+			rBoard.ResetSearchDepth();
+
+			// Tilfoej traekket til traeklisten og opdater spil-variable
+			AddGameMove(newMove);
+
+			// Print the board and last move to screen (and debug)
+			PrintBoardAndMove(newMove);
+		}
+
 		if (!IsStillPlaying()) // Test om spillet er slut
 			break;
 
-		// Has the user typed "exit" or "quit"?
+		// A null move with the game still running means the user typed "exit" or "quit".
 		if (HasHumanExited(newMove)) {
 			spdlog::default_logger()->warn("User has exited the game\n");
 			break;
 		}
-
-		// Foretag traekket paa det virkelige braet
-		if (!rBoard.DoMove(newMove))
-			assert(!"Unexpected illegal move found! Exiting...");
-		rBoard.ResetSearchDepth();
-
-		// Traekket er godkendt! Vi spiller videre!!
-
-		// Tilfoej traekket til traeklisten og opdater spil-variable
-		AddGameMove(newMove);
-
-		// Print the board and last move to screen (and debug)
-		PrintBoardAndMove(newMove);
 	}
 
 	// FIXME: Add a menu allowing a new game to be played - including option to override from game-setup file

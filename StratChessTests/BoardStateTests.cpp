@@ -207,20 +207,20 @@ TEST_CASE("Board - Material score updated after promotion (pawn -> queen, delta 
 
 TEST_CASE("Board - Fifty-move counter resets to 0 on pawn move; UndoMove restores prior value", "[board_state]")
 {
-	// FEN halfmove clock field pre-sets fiftyCount to 10
+	// FEN halfmove clock field pre-sets halfmoveClock to 10
 	Board board("4k3/8/8/8/8/8/4P3/4K3 w - - 10 1");
 
-	REQUIRE(board.GetGameInfo().fiftyCount == 10);
+	REQUIRE(board.GetGameInfo().halfmoveClock == 10);
 
 	// Pawn move resets the counter
 	auto pawn = MoveFactory::MakeQuiet(e2, e3);
 	REQUIRE(board.DoMove(pawn));
 
-	CHECK(board.GetGameInfo().fiftyCount == 0);
+	CHECK(board.GetGameInfo().halfmoveClock == 0);
 
 	board.UndoMove(pawn);
 
-	CHECK(board.GetGameInfo().fiftyCount == 10);
+	CHECK(board.GetGameInfo().halfmoveClock == 10);
 }
 
 TEST_CASE("Board - Fifty-move counter increments by 1 on quiet non-pawn move; UndoMove restores", "[board_state]")
@@ -228,33 +228,33 @@ TEST_CASE("Board - Fifty-move counter increments by 1 on quiet non-pawn move; Un
 	// FEN halfmove clock pre-set to 5
 	Board board("8/8/3k4/8/8/3K4/8/R7 w - - 5 1");
 
-	REQUIRE(board.GetGameInfo().fiftyCount == 5);
+	REQUIRE(board.GetGameInfo().halfmoveClock == 5);
 
 	auto m = MoveFactory::MakeQuiet(a1, a2);
 	REQUIRE(board.DoMove(m));
 
-	CHECK(board.GetGameInfo().fiftyCount == 6);
+	CHECK(board.GetGameInfo().halfmoveClock == 6);
 
 	board.UndoMove(m);
 
-	CHECK(board.GetGameInfo().fiftyCount == 5);
+	CHECK(board.GetGameInfo().halfmoveClock == 5);
 }
 
-TEST_CASE("Board - fiftyCount reaches 50 after quiet move from 49; UndoMove restores to 49", "[board_state]")
+TEST_CASE("Board - halfmoveClock reaches 50 after quiet move from 49; UndoMove restores to 49", "[board_state]")
 {
 	// Note: DRAW_50_MOVES game state is set by the game-loop layer (PlayerAI/PlayerHuman
 	// via UpdateBoardInfo), not by Board::DoMove. Board only tracks the counter.
 	// FEN halfmove clock pre-set to 49 (one quiet move will reach 50)
 	Board board("8/8/3k4/8/8/3K4/8/R7 w - - 49 1");
 
-	REQUIRE(board.GetGameInfo().fiftyCount == 49);
+	REQUIRE(board.GetGameInfo().halfmoveClock == 49);
 
 	auto m = MoveFactory::MakeQuiet(a1, a2);
 	REQUIRE(board.DoMove(m));
 
-	CHECK(board.GetGameInfo().fiftyCount == 50);
+	CHECK(board.GetGameInfo().halfmoveClock == 50);
 
 	board.UndoMove(m);
 
-	CHECK(board.GetGameInfo().fiftyCount == 49);
+	CHECK(board.GetGameInfo().halfmoveClock == 49);
 }

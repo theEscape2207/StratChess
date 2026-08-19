@@ -75,6 +75,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | Board DoMove/UndoMove completeness | `[board]` | ✅ Phase 1 | `BoardTests.cpp` |
 | Board move-type round-trips (all types) | `[board_moves]` | ✅ Phase 1 | `BoardMoveTests.cpp` |
 | Board GameInfo state lifecycle | `[board_state]` | ✅ Phase 1 | `BoardStateTests.cpp` |
+| Fifty-move rule (threshold, root, draw reporting) | `[fifty_move]` | ✅ | `FiftyMoveRuleTests.cpp` |
 | Board public query APIs + FEN round-trip | `[board_api]` | ✅ Phase 1 | `BoardApiTests.cpp` |
 | Time management (TimeManager + compute_budget) | `[time_mgr]` | ✅ Phase 1 | `TimeManagerTests.cpp` |
 | Bitboard helpers | `[bitboard]` | ⏳ Phase 1 | `BitboardTests.cpp` (future) |
