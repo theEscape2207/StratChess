@@ -8,7 +8,9 @@
     3. Runs the exe tactical suite in stability mode (10 consecutive runs of
        Tests/tactical_test_cases.json, 90% threshold per run + no pass/fail flips).
     4. Runs a headless AIPerplex vs AIPerplex self-play game (60s timeout).
-    All four checks always run before exit so all failures are visible at once.
+    Preceded by cheap text-only gates: clang-format, blame-ignore coverage, workflow
+    job timeouts, and the -SelfTest of any changed script that carries one.
+    Every check runs before exit so all failures are visible at once.
     Exits with code 1 if any check fails. Run Validate-PreCommit.ps1 first.
 
 .WHEN TO USE
@@ -45,6 +47,51 @@ $outFile     = Join-Path $GameDir 'pre_pr_selfplay_out.txt'
 $aiLogFile   = Join-Path $logsDir 'aiperplex.log'
 $checkResults = [ordered]@{}
 
+# --- Script self-tests -------------------------------------------------------
+# Several Scripts/*.ps1 carry a -SelfTest switch holding synthetic cases that prove
+# the script's own logic -- the only coverage those scripts have, since no build or
+# test gate can reach them. Naming each one here would mean remembering to add the
+# next one, and the ones most likely to be forgotten are the newest. Detecting the
+# switch from the parsed AST instead means a script that grows tests gets them run
+# from the commit that adds them.
+function Invoke-ChangedScriptSelfTest {
+    param([Parameter(Mandatory)][AllowEmptyCollection()][string[]]$ChangedFile)
+
+    $anyFailed = $false
+    $ran = 0
+    foreach ($f in $ChangedFile) {
+        if ($f -notlike '*.ps1') { continue }
+        $full = Join-Path $RepoRoot $f
+        # A deleted script still appears in the diff.
+        if (-not (Test-Path -LiteralPath $full)) { continue }
+
+        $tokens = $null; $errors = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseInput(
+            (Get-Content -LiteralPath $full -Raw), [ref]$tokens, [ref]$errors)
+        if ($errors.Count -gt 0) {
+            Write-Host "  FAIL  $f (syntax)" -ForegroundColor Red
+            $errors | ForEach-Object { Write-Host "        $($_.Message)" -ForegroundColor Red }
+            $anyFailed = $true
+            continue
+        }
+        Write-Host "  PASS  $f (syntax)" -ForegroundColor Green
+
+        if (-not $ast.ParamBlock) { continue }
+        $names = @($ast.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath })
+        if ($names -notcontains 'SelfTest') { continue }
+
+        $ran++
+        # A child pwsh, not dot-sourcing: these scripts exit rather than return, and
+        # dot-sourcing one would take this script down with it.
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File $full -SelfTest | Out-Host
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "  FAIL  $f (-SelfTest exited $LASTEXITCODE)" -ForegroundColor Red
+            $anyFailed = $true
+        }
+    }
+    return [pscustomobject]@{ Failed = $anyFailed; SelfTestsRun = $ran }
+}
+
 # --- Scope the run to what actually changed (issue #124) ---------------------
 # Full build + extended [slow] tests + a 10-run tactical suite + self-play cannot
 # catch anything a documentation edit or a measurement script could break, and
@@ -73,29 +120,19 @@ if (-not $Force -and $change.Tier -eq 'Docs') {
 if (-not $Force -and $change.Tier -eq 'Tooling') {
     Write-Host 'Engine-inert tooling diff -- SKIPPING full build, extended tests, tactical suite and self-play.' -ForegroundColor Green
     Write-Host 'These scripts are never compiled and never invoked by the engine, so no' -ForegroundColor Green
-    Write-Host 'build/test gate can observe the change. Syntax-checking them instead.' -ForegroundColor Green
+    Write-Host 'build/test gate can observe the change. Syntax-checking them and' -ForegroundColor Green
+    Write-Host 'running any -SelfTest they carry instead.' -ForegroundColor Green
     Write-Host 'Re-run with -Force to validate anyway.'
     Write-Host ''
 
-    $syntaxFailed = $false
-    foreach ($f in $change.ChangedFiles) {
-        if ($f -notlike '*.ps1') { continue }
-        $full = Join-Path $RepoRoot $f
-        if (-not (Test-Path $full)) { continue }
-        $tokens = $null; $errors = $null
-        [System.Management.Automation.Language.Parser]::ParseInput(
-            (Get-Content $full -Raw), [ref]$tokens, [ref]$errors) | Out-Null
-        if ($errors.Count -gt 0) {
-            Write-Host "  FAIL  $f" -ForegroundColor Red
-            $errors | ForEach-Object { Write-Host "        $($_.Message)" -ForegroundColor Red }
-            $syntaxFailed = $true
-        } else {
-            Write-Host "  PASS  $f (syntax)" -ForegroundColor Green
-        }
-    }
+    $scriptCheck = Invoke-ChangedScriptSelfTest -ChangedFile $change.ChangedFiles
     Write-Host ''
-    if ($syntaxFailed) { Write-Host 'Pre-PR validation FAILED (script syntax).' -ForegroundColor Red; exit 1 }
-    Write-Host 'Pre-PR validation PASSED (tooling fast path).' -ForegroundColor Green
+    if ($scriptCheck.Failed) {
+        Write-Host 'Pre-PR validation FAILED (script syntax or self-test).' -ForegroundColor Red
+        exit 1
+    }
+    Write-Host ("Pre-PR validation PASSED (tooling fast path; {0} self-test(s) run)." -f `
+            $scriptCheck.SelfTestsRun) -ForegroundColor Green
     exit 0
 }
 
@@ -146,6 +183,17 @@ try   { & $timeoutScript }
 catch { $timeoutFailed = $true; Write-Host "Timeout guard threw: $_" -ForegroundColor DarkGray }
 if ($LASTEXITCODE -ne 0) { $timeoutFailed = $true }
 $checkResults['Workflow timeouts'] = if ($timeoutFailed) { 'FAIL' } else { 'PASS' }
+
+# --- Step 0e: self-tests of any changed script ---
+# Also run here, not only on the Tooling fast path: a Build- or Engine-tier diff can
+# perfectly well change a script that carries tests, and skipping them because the
+# diff also touched C++ is the wrong way round. Pure PowerShell, so it costs seconds.
+Write-Host "`n==> Script self-tests" -ForegroundColor Cyan
+$scriptCheck = Invoke-ChangedScriptSelfTest -ChangedFile $change.ChangedFiles
+if ($scriptCheck.SelfTestsRun -eq 0) {
+    Write-Host '  No changed script carries a -SelfTest switch.' -ForegroundColor DarkGray
+}
+$checkResults['Script self-tests'] = if ($scriptCheck.Failed) { 'FAIL' } else { 'PASS' }
 
 # --- Step 1: Full parallel build ---
 Write-Host "`n==> Full build (main + tests in parallel)" -ForegroundColor Cyan
