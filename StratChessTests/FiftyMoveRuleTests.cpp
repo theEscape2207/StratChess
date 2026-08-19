@@ -100,9 +100,9 @@ TEST_CASE("Search from a high-but-legal halfmove clock still searches and return
 // At or past the threshold the game is drawn, but a UCI engine is not the arbiter of that
 // and must still answer with a legal move rather than nothing.
 //
-// The position must keep a root capture available (Nxe5, Bxf7): that is what exercises the
-// clock-reset branch of UpdateHalfmoveClock at ply 0 with the clock already at the limit,
-// which is where its STILL_PLAYING assert would fire in Debug. Keep one when changing FENs.
+// The position deliberately keeps a root capture available (Nxe5, Bxf7), so the search has to
+// cope with the clock resetting at ply 0 while it is already at the limit. Keep one when
+// changing FENs.
 TEST_CASE("Search at or past the fifty-move threshold still returns a legal move", "[fifty_move]")
 {
 	const int clock = GENERATE(100, 120);
@@ -111,7 +111,6 @@ TEST_CASE("Search at or past the fifty-move threshold still returns a legal move
 	Board board(fen_with_clock(clock));
 	auto ai = make_tactical_engine(board, 4);
 
-	GameInfo info = board.GetGameInfo();
 	const Move move = ai->GetMove(SearchLimits::fixed_depth(4)).best_move;
 
 	REQUIRE_FALSE(move.is_null());

@@ -60,7 +60,6 @@ TEST_CASE("Tactical - slow suite", "[tactical_full][slow]")
 	INFO(tc.label);
 	Board board(tc.fen);
 	auto ai = make_tactical_engine(board, tc.depth);
-	GameInfo info = board.GetGameInfo();
 	Move m = ai->GetMove().best_move;
 
 	REQUIRE(m.from() == tc.expected_from);
@@ -81,14 +80,12 @@ TEST_CASE("Tactical (full) - null-move pruning guard is a no-op in K+P endgame",
 	Board board_disabled(fen);
 	auto ai_disabled = make_tactical_engine(board_disabled, depth);
 	as_perplex(ai_disabled).tuning().null_move_enabled = false;
-	GameInfo info_disabled = board_disabled.GetGameInfo();
 	Move move_disabled = ai_disabled->GetMove().best_move;
 	SearchResult result_disabled = as_perplex(ai_disabled).GetLastResult();
 
 	Board board_enabled(fen);
 	auto ai_enabled = make_tactical_engine(board_enabled, depth);
 	as_perplex(ai_enabled).tuning().null_move_enabled = true;
-	GameInfo info_enabled = board_enabled.GetGameInfo();
 	Move move_enabled = ai_enabled->GetMove().best_move;
 	SearchResult result_enabled = as_perplex(ai_enabled).GetLastResult();
 
@@ -115,7 +112,6 @@ TEST_CASE("Tactical (full) - null-move pruning does not crash on a real recursio
 
 	auto ai = make_tactical_engine(board, depth);
 	as_perplex(ai).tuning().null_move_enabled = true;
-	GameInfo info = board.GetGameInfo();
 
 	Move move = ai->GetMove().best_move;
 
