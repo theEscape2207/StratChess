@@ -352,6 +352,27 @@ pointed into.
 | #292 re-scoped: the per-node copy is gone, `gameInfoHistory_` remains | comment on #292 |
 | FIDE divergence on mate-vs-fifty-move precedence, deliberately preserved | PR body; file an issue only if it is ever worth changing |
 
-**Approved decisions that changed during implementation:** none yet — fill in before opening the PR.
-The cross-agent review of the first draft corrected its central premise (`Game::gameInfo_` is not
-write-only) and added D8-D11; that is recorded here rather than only in the review thread.
+**Approved decisions that changed during implementation.** The cross-agent review of the first draft
+corrected its central premise (`Game::gameInfo_` is not write-only) and added D8-D11; that is recorded
+here rather than only in the review thread. Four things then changed while implementing:
+
+- **`Config` loses its `Game*` as well.** The scope list said "simplify `Config::ReadFEN` to the
+  `SetupFromFEN` call it now is". `pGame_`'s only use in the codebase was the `SetCustomGame` call
+  being removed, and clang's `-Wunused-private-field` is in `-Wall`, so `/WX` forces removing the
+  member and the `explicit Config(Game*)` parameter with it. This also closes a latent null
+  dereference: `ConfigTests.cpp` already constructed `Config(nullptr)` while `ReadFEN` dereferenced
+  `pGame_` unconditionally on its success path.
+- **`Game::owns_logging_`**, not in any decision. `~Game()` calls `spdlog::drop_all()`, which is
+  right for an application shutting down and fatal inside a test process — it nulls the default
+  logger for every later test, and D11's seam segfaulted the second time two `Game`s ran in one
+  binary. A `Game` that never set logging up must not tear it down.
+- **A second Debug probe alongside D7's**, `assert_parent_move_matches_board`, asserting the legacy
+  agents' `GetParentMove(ply)` already equalled `board.last_move()` at all three sort sites. D8's
+  equivalence table was a reading of the code and the design accepted it as argument plus one
+  self-play game; the probe made it executed evidence across a complete game per legacy agent, and
+  was deleted with `m_infoSeq` as D7's was.
+- **`fullMoveCount` is not preserved by value.** D3 argued the sequences were redundant field by
+  field, but `fullMoveCount` was never among them: `Game::gameInfo_`'s copy was stale (only
+  `SetGameParams` ever wrote it) while the board's increments. `GetMove` now writes the board's —
+  correct — value where it used to write the stale one. Nothing read it, and the field is deleted by
+  the same change.

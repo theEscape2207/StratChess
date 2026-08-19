@@ -74,10 +74,7 @@ namespace {
 	constexpr const char* KR_VS_K_CLOCK_99 = "4k3/8/8/8/8/8/1R6/4K3 w - - 99 60";
 	constexpr const char* KR_VS_K_CLOCK_120 = "4k3/8/8/8/8/8/1R6/4K3 w - - 120 60";
 
-	SearchResult quiet_rook_move()
-	{
-		return {.best_move = MoveFactory::MakeMove(b2, b3, MoveType::QUIET)};
-	}
+	SearchResult quiet_rook_move() { return {.best_move = MoveFactory::MakeMove(b2, b3, MoveType::QUIET)}; }
 
 } // namespace
 
@@ -109,9 +106,8 @@ TEST_CASE("Game: a clock below the limit keeps the game running", "[game]")
 TEST_CASE("Game: a mate reported at the root ends the game", "[game]")
 {
 	// A search that finds mate at its own root returns no move and says so in game_state.
-	auto game = Game::TestAccess::Make(
-	    "4k3/8/8/8/8/8/1R6/4K3 w - - 5 60",
-	    scripted({SearchResult{.game_state = GameStates::WHITE_WON}}), silent());
+	auto game = Game::TestAccess::Make("4k3/8/8/8/8/8/1R6/4K3 w - - 5 60",
+	                                   scripted({SearchResult{.game_state = GameStates::WHITE_WON}}), silent());
 
 	game->Run();
 
@@ -147,8 +143,8 @@ TEST_CASE("Game: an already-high clock cannot overwrite an outcome the mover rep
 {
 	// The precondition on the fifty-move check. A position loaded from a FEN whose clock is past
 	// the limit must not turn a mate, a stalemate or a human leaving into a draw.
-	const GameStates reported = GENERATE(GameStates::WHITE_WON, GameStates::BLACK_WON, GameStates::DRAW_PAT,
-	                                     GameStates::HUMAN_EXITED);
+	const GameStates reported =
+	    GENERATE(GameStates::WHITE_WON, GameStates::BLACK_WON, GameStates::DRAW_PAT, GameStates::HUMAN_EXITED);
 	INFO("reported state: " << static_cast<int>(reported));
 
 	auto game = Game::TestAccess::Make(KR_VS_K_CLOCK_120, scripted({SearchResult{.game_state = reported}}), silent());

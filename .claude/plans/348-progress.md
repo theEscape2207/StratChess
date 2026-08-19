@@ -12,46 +12,50 @@ Design: `.claude/plans/gameinfo-board-single-authority.md`.
 | 7 | D4/D10 — `SearchResult` header; `GetMove(const SearchLimits&) -> SearchResult` | done |
 | 8 | D5/D9/D6 — `Game::Run` retained-mover order, fifty-move adjudication, `EGameStateChanged` retired | done |
 | 9 | D11 — `Game` test seam + transition tests, and the D10 aggregation test | done |
-| 10 | Perft, bench, `search-reviewer` | **next** |
-| 11 | Harvest (CLAUDE.md / Docs) + PR | not started |
+| 10 | Perft, bench, `search-reviewer` | perft running; review done |
+| 11 | Harvest + PR | harvest done, PR pending |
 
 ## Evidence
 
 `Compare-SearchEquivalence -BaselineRef origin/main`: **IDENTICAL, 90 lines, 6 positions, depth 12**,
-re-run after steps 3, 4, 5 and 8. Release 7126 assertions / 451 cases; Debug 7122 / 450. clang-format
-and clang-tidy Gate clean. Legacy self-play (all three agents) reached checkmate at unchanged game
-lengths; a full AIPerplex game terminates on `Game::Run`'s own fifty-move check.
+re-run after steps 3, 4, 5 and 8. `Run-Bench` 4 alternating runs/side: **2,981,112 → 3,071,809 nps
+(+3.0%)**, node counts identical. Release 7126 assertions / 451 cases; Debug 7122 / 450. Format and
+clang-tidy Gate clean. Legacy self-play unchanged in game length; a full AIPerplex game terminates on
+`Game::Run`'s own fifty-move check.
 
-Both new tests were falsified: breaking the D9 precedence guard fails 6 of the 8 `[game]` cases, and
-returning the pre-join `result` from `GetMove` fails the D10 case.
+Both new tests were falsified before being trusted (breaking the D9 guard fails 6 of 8 `[game]` cases;
+returning the pre-join `result` fails the D10 case).
 
-## Deviations from the design (for the PR body)
+## search-reviewer outcome
 
-- **`Config` loses its `Game*`.** `pGame_`'s only use was `SetCustomGame`; once that goes, clang's
-  `-Wunused-private-field` makes `/WX` fail, so the member and the `explicit Config(Game*)` parameter
-  go too. Also closes a latent null-deref — `ConfigTests.cpp` constructs `Config(nullptr)` while
-  `ReadFEN` dereferenced `pGame_` unconditionally.
-- **`Game::owns_logging_`.** `~Game()` calls `spdlog::drop_all()`, which nulls the default logger for
-  every later test in the process — a segfault the first time two seam-built `Game`s run in one
-  binary. A `Game` that never set logging up must not tear it down.
-- **An extra Debug probe** (`assert_parent_move_matches_board`), added and deleted alongside D7's,
-  asserting the legacy agents' parent move already equals `board.last_move()`. The design accepted
-  that equivalence as argument only.
-- **`fullMoveCount`** is the one field step 5 does not preserve by value: `Game::gameInfo_`'s copy was
-  stale, the board's is correct. Nothing read it, and step 6 deleted the field.
-- `Perft.cpp` lost the comment *"MoveGenerator needs latest GameInfo, which only board has"* — the
-  design's own evidence for D1, no longer describing anything.
-- `FiftyMoveRuleTests`' threshold case now asserts the new contract: the search returns
-  `STILL_PLAYING` and the clock crosses the limit on the caller's board.
+**LGTM, no correctness findings.** Six low-severity notes; four acted on, two carried to the PR body.
+
+| # | Note | Action |
+|---|---|---|
+| F1 | Two comments described `UpdateBoardInfo`, which now has no production callers | fixed (`AIPerplex.cpp`, `BoardStateTests.cpp`) |
+| F2 | The D10 test's `nodes > mainnodes()` can fail legitimately — a helper that never gets scheduled contributes 0 | fixed: asserts the exact sum via new fixture accessors |
+| F3 | `Game::Run` spins forever in Release if `DoMove` rejects a move (pre-existing shape) | fixed: logs and breaks |
+| F5 | `~Game()` assumed both players exist — true under `Init()`, not under the new seam | fixed: null-guarded |
+| F4 | Pre-existing data race: `adjustScoreForGameState` writes `_bestScore` at ply 0 from helper threads | **not fixed** — untouched by this change; flagged in the PR body |
+| F6 | `GetParentMove()` returning by value into a `const Move&` parameter | cleared by the reviewer, no dangling |
+
+Also added, from the reviewer's suggested tests: three `[board_state]` cases pinning the `Board`
+lifecycle coupling D8 creates — `SetupFromFEN` clears `lastMove`, a rejected `DoMove` leaves it
+alone, and `DoNullMove`/`UndoNullMove` disturb neither it nor the clock.
+
+Not taken: pinned-move tests for legacy agent ordering (the reviewer's suggestion 5). The design
+already accepts that gap and #307 will retire that code; noted in the PR body.
+
+## Deviations from the design (in the PR body)
+
+`Config` loses its `Game*`; `Game::owns_logging_`; the extra legacy Debug probe; `fullMoveCount` is
+the one field not preserved by value. Full reasoning is in the design doc's closing section.
 
 ## Next steps
 
-**Step 10** — `Run-PerftCheck.ps1` (~25 min; movegen signatures changed and `Perft` is a caller — a
-clean sweep is the script's classification, not zero failures); `Run-Bench.ps1` before/after against
-an `origin/main` build, same compiler, `Threads=1`, reported as measured; then dispatch
-`search-reviewer` (the diff touches `AIPerplex.cpp` and `ThreadData.h`).
-
-**Step 11** — harvest into `CLAUDE.md` (Key Source Facts: the board is the sole authority; `GetMove`
-returns the post-join `SearchResult`), `Docs/Engine-Readme.md:77-78`, `Docs/TestDesign.md` (the new
-`Game` seam), `Docs/Changelog.md` (with the measured bench). Then `New-PullRequest.ps1`. The PR body
-must list the deviations above, and note that #308 is closed outright and #292 is re-scoped.
+1. Wait for `Run-PerftCheck.ps1` (was at 82%, 47 classified failures — a clean sweep is the script's
+   classification, not zero).
+2. Rebuild, full Release + Debug suites, format lint. The review fixes are uncommitted.
+3. Commit the review round as one commit, then `New-PullRequest.ps1 -BodyFile` with the body drafted
+   in the scratchpad (`pr_body.md`).
+4. After the PR: it is **awaiting cross-agent review**, not done.

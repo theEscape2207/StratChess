@@ -63,11 +63,12 @@ Game::~Game()
 //***************************************
 void Game::unsubscribePlayerEvents()
 {
-	// TODO: Potential issue if players were not created. This function assumes both players exist.
 	// TODO: Calling clear() where unsubscribe() should be used, but we have no handles to unsubscribe with here.
-	// Deregister our delegates
-	m_pPlayers[WHITE]->ENewPVLineMove.clear();
-	m_pPlayers[BLACK]->ENewPVLineMove.clear();
+	// Deregister our delegates. Both players always exist when Init() built them; the test-seam
+	// constructor takes whatever it is handed, so neither is assumed.
+	for (auto& player : m_pPlayers)
+		if (player)
+			player->ENewPVLineMove.clear();
 }
 
 //***************************************
@@ -256,12 +257,17 @@ void Game::Run()
 			// Foretag traekket paa det virkelige braet
 			committed = rBoard.DoMove(result.best_move);
 			assert(committed && "Unexpected illegal move found! Exiting...");
-			if (committed) {
-				rBoard.ResetSearchDepth();
-
-				// Tilfoej traekket til traeklisten og opdater spil-variable
-				AddGameMove(result.best_move);
+			if (!committed) {
+				// Only an engine bug gets here. Stopping matters anyway: a rejected move leaves the
+				// side to move unchanged, so the loop would ask the same player for the same move
+				// forever in a build where the assert above is compiled out.
+				spdlog::default_logger()->error("Player returned an illegal move - stopping the game");
+				break;
 			}
+			rBoard.ResetSearchDepth();
+
+			// Tilfoej traekket til traeklisten og opdater spil-variable
+			AddGameMove(result.best_move);
 		}
 
 		game_state_ = result.game_state;

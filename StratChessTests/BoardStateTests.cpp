@@ -242,8 +242,8 @@ TEST_CASE("Board - Fifty-move counter increments by 1 on quiet non-pawn move; Un
 
 TEST_CASE("Board - halfmoveClock reaches 50 after quiet move from 49; UndoMove restores to 49", "[board_state]")
 {
-	// Note: DRAW_50_MOVES game state is set by the game-loop layer (PlayerAI/PlayerHuman
-	// via UpdateBoardInfo), not by Board::DoMove. Board only tracks the counter.
+	// Note: DRAW_50_MOVES is adjudicated by Game::Run, on the position the board reaches after
+	// the move is committed. Board only tracks the counter.
 	// FEN halfmove clock pre-set to 49 (one quiet move will reach 50)
 	Board board("8/8/3k4/8/8/3K4/8/R7 w - - 49 1");
 
@@ -257,4 +257,60 @@ TEST_CASE("Board - halfmoveClock reaches 50 after quiet move from 49; UndoMove r
 	board.UndoMove(m);
 
 	CHECK(board.GetGameInfo().halfmoveClock == 49);
+}
+
+// ============================================================================
+// lastMove — the board is the only object that tracks the move that produced
+// the current position, and move ordering is its only consumer.
+// ============================================================================
+
+TEST_CASE("Board - SetupFromFEN clears lastMove", "[board_state]")
+{
+	// MoveSorter front-loads recaptures on lastMove's to-square and asserts the match is a
+	// capture or a promotion. A lastMove surviving a FEN reload onto a reused board would trip
+	// that assert the moment its to-square coincided with a quiet move's in the new position.
+	Board board("8/8/3k4/8/8/3K4/8/R7 w - - 0 1");
+	REQUIRE(board.DoMove(MoveFactory::MakeQuiet(a1, a2)));
+	REQUIRE_FALSE(board.last_move().is_null());
+
+	REQUIRE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"));
+
+	CHECK(board.last_move().is_null());
+}
+
+TEST_CASE("Board - a move rejected for leaving the king in check leaves lastMove alone", "[board_state]")
+{
+	// DoMove rolls such a move back through UndoMove, which restores gameInfo_ wholesale.
+	// Without that, a rejected pseudo-legal move would become the parent move the sorter reads.
+	// White rook e2, black rook e7, kings on e1/e8 — everything on the e-file.
+	Board board("4k3/4r3/8/8/8/8/4R3/4K3 w - - 0 1");
+	const auto played = MoveFactory::MakeQuiet(e2, e5);
+	REQUIRE(board.DoMove(played));
+	REQUIRE(board.last_move() == played);
+
+	// The black rook is now pinned against its king by the white rook on e5, so stepping off
+	// the file is pseudo-legal but leaves the king in check — DoMove must reject it.
+	const auto illegal = MoveFactory::MakeQuiet(e7, d7);
+	REQUIRE_FALSE(board.DoMove(illegal));
+
+	CHECK(board.last_move() == played);
+}
+
+TEST_CASE("Board - a null move leaves the halfmove clock and lastMove untouched", "[board_state]")
+{
+	// The search's draw check reads the board's clock at a null-move ply, so a null move must not
+	// advance it. It also must not disturb lastMove, and UndoNullMove must restore both.
+	Board board("8/8/3k4/8/8/3K4/8/R7 w - - 17 1");
+	const auto played = MoveFactory::MakeQuiet(a1, a2);
+	REQUIRE(board.DoMove(played));
+
+	const int clock_before = board.halfmove_clock();
+
+	board.DoNullMove();
+	CHECK(board.halfmove_clock() == clock_before);
+	CHECK(board.last_move() == played);
+
+	board.UndoNullMove();
+	CHECK(board.halfmove_clock() == clock_before);
+	CHECK(board.last_move() == played);
 }

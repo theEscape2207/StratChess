@@ -74,8 +74,8 @@ ai->SetThreads(4);                       // Lazy SMP; default is 1
 SearchLimits limits;                     // every constraint is optional
 limits.movetime = std::chrono::milliseconds(5000);
 
-GameInfo info = board.GetGameInfo();
-Move best = ai->GetMove(info, limits);   // `info` is updated with root state on return
+SearchResult result = ai->GetMove(limits);
+Move best = result.best_move;            // result also carries the root game state and node counts
 ```
 
 `SearchLimits` carries every per-call constraint (clock / movetime / depth / infinite). Each

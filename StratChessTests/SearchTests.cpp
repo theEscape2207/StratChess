@@ -149,6 +149,24 @@ class AIPerlexTestFixture {
 	void add_fake_helper() const { ai->helper_tds_.push_back(std::make_unique<ThreadData>()); }
 	size_t helper_count() const { return ai->helper_tds_.size(); }
 
+	// The helper threads' own counters, for checking GetMove()'s post-join aggregation exactly
+	// rather than by inequality — a helper that never got scheduled contributes a legitimate 0.
+	int64_t helper_nodes() const
+	{
+		int64_t total = 0;
+		for (const auto& htd : ai->helper_tds_)
+			total += htd->nodes_searched;
+		return total;
+	}
+
+	int64_t helper_qnodes() const
+	{
+		int64_t total = 0;
+		for (const auto& htd : ai->helper_tds_)
+			total += htd->qnodes_searched;
+		return total;
+	}
+
 	void set_last_result_depth(int depth) const { ai->last_result_.depth_completed = depth; }
 
 	void search_depth_one()
@@ -768,9 +786,13 @@ TEST_CASE("SMP - GetMove's return value matches GetLastResult at Threads > 1", "
 	CHECK(returned.qnodes_searched == last.qnodes_searched);
 	CHECK(returned.search_was_stable == last.search_was_stable);
 
-	// The aggregate really is an aggregate: helpers searched too, so the total exceeds the main
-	// thread's own count. Without this the check above would pass on a pre-join result.
-	CHECK(returned.nodes_searched > fix.mainnodes());
+	// The aggregate really is an aggregate. Stated as the exact sum rather than an inequality:
+	// a helper whose thread starts after the main search has already finished contributes a
+	// legitimate zero, so "greater than the main thread's count" is not guaranteed on a loaded
+	// or single-core machine. Without this, the equality checks above would pass on a pre-join
+	// result.
+	CHECK(returned.nodes_searched == fix.mainnodes() + fix.helper_nodes());
+	CHECK(returned.qnodes_searched == fix.qnodes() + fix.helper_qnodes());
 }
 
 // ============================================================================
