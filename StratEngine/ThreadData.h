@@ -193,6 +193,29 @@ struct ThreadData {
 	// null-move ply as "the move that produced this ply".
 	void add_null_move_to_seq(size_t ply) { store_info_at_ply(ply, board.GetGameInfo()); }
 
+	// Temporary evidence probe: asserts that info_seq[ply] carries nothing the board does not
+	// already hold, at every node the search visits. It is checked in Debug only, and it is
+	// deleted together with info_seq once it has run clean — its only purpose is to make the
+	// redundancy a measured fact instead of a reading of the code.
+	//
+	// lastMove and fullMoveCount are excluded: the board never writes lastMove yet, and the
+	// sequence never writes fullMoveCount. gameState is only checked at the root, which is the
+	// one ply where a caller-supplied GameInfo can disagree with the board it was derived from.
+#ifndef NDEBUG
+	void assert_info_matches_board(size_t ply) const
+	{
+		const GameInfo& seq = info_seq.at(ply);
+		const GameInfo brd = board.GetGameInfo();
+		assert(seq.epSquare == brd.epSquare);
+		assert(seq.castlingRights == brd.castlingRights);
+		assert(seq.halfmoveClock == brd.halfmoveClock);
+		if (ply == 0)
+			assert(seq.gameState == brd.gameState);
+	}
+#else
+	void assert_info_matches_board(size_t) const noexcept {}
+#endif
+
 	// Threefold repetition and the fifty-move rule (thread-local board). Neither applies at
 	// the root: the caller asked for a move, not an adjudication, and a draw returned there
 	// leaves the search with nothing to report but the emergency move.

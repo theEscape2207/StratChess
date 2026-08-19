@@ -467,6 +467,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		return GameValues::Draw;
 
 	// We need the info on the current board state
+	td.assert_info_matches_board(ply);
 	GameInfo info = td.get_last_info(ply);
 
 	// Test for 50 moves rule and threefold repetition
@@ -767,6 +768,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// itself be in check. So this is deliberately not gated on in_check — gating it would
 	// leave a genuine fifty-move draw scored by material, and would trip the STILL_PLAYING
 	// assertion in GameState::UpdateHalfmoveClock on the next move made from that node.
+	td.assert_info_matches_board(ply);
 	if (td.check_draws(td.get_last_info(ply), ply))
 		return GameValues::Draw;
 
