@@ -243,7 +243,10 @@ if ($BodyFile) {
 try {
     if ($existing) {
         Write-Host "PR #$existing is already open for this branch -- updating its body." -ForegroundColor Yellow
-        & gh pr edit $existing --body-file $bodyPath
+        # `gh pr edit` prints the PR URL to stdout on success. Suppress it and let the
+        # explicit view below be the one source of that line, so every path through
+        # this step emits exactly one URL -- this branch used to print two.
+        & gh pr edit $existing --body-file $bodyPath | Out-Null
         if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: gh pr edit failed." -ForegroundColor Red; exit 1 }
         & gh pr view $existing --json url --jq '.url'
     } else {
