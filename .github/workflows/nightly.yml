@@ -319,16 +319,23 @@ jobs:
           echo "deep lint Windows: ${{ needs.lint-deep-windows.result }}"
 
           fail=0
-          for r in "${{ needs.deep-perft.result }}" \
-                   "${{ needs.extended-tests.result }}" \
-                   "${{ needs.sanitize-extended.result }}" \
-                   "${{ needs.tactical-stability.result }}" \
-                   "${{ needs.lint-tree.result }}" \
-                   "${{ needs.lint-deep-linux.result }}" \
-                   "${{ needs.lint-deep-windows.result }}"; do
-            case "$r" in
-              success) ;;
-              *) fail=1 ;;
+          # 'cancelled' is named separately from a plain failure because a job killed
+          # by timeout-minutes reports exactly that, indistinguishable from a manual
+          # cancel. Either way the leg produced no answer about main, which is a
+          # different thing from having produced a bad one. Both still fail the run.
+          check() {
+            case "$2" in
+              success)   ;;
+              cancelled) echo "NOTE: $1 was cancelled or hit its time bound -- no verdict from this leg."; fail=1 ;;
+              *)         echo "FAIL: $1 ($2)"; fail=1 ;;
             esac
-          done
+          }
+
+          check "deep perft"        "${{ needs.deep-perft.result }}"
+          check "extended tests"    "${{ needs.extended-tests.result }}"
+          check "sanitize+stdlib"   "${{ needs.sanitize-extended.result }}"
+          check "tactical x100"     "${{ needs.tactical-stability.result }}"
+          check "whole-tree lint"   "${{ needs.lint-tree.result }}"
+          check "deep lint Linux"   "${{ needs.lint-deep-linux.result }}"
+          check "deep lint Windows" "${{ needs.lint-deep-windows.result }}"
           exit $fail

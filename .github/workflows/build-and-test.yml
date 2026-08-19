@@ -464,39 +464,47 @@ jobs:
           echo "windows result=${{ needs.build-and-test.result }}"
           echo "lint result=${{ needs.lint-linux.result }}"
 
+          # One shape for every leg. 'cancelled' is called out separately because a
+          # job killed by timeout-minutes reports exactly that -- GitHub's
+          # needs.<job>.result vocabulary is success/failure/cancelled/skipped with
+          # no distinct timed-out state, so a manual cancel, a supersede and a time
+          # bound are indistinguishable here. What they share is the part worth
+          # saying: the job never finished, so this is not a verdict on the diff.
+          # Reading a clean diff for a fault that was never in it is the cost of
+          # reporting it as a plain failure. Still exit 1 -- unverified is not passed.
+          verdict() {
+            local label="$1" result="$2" pass="$3" fail="$4"
+            case "$result" in
+              success)   echo "$pass" ;;
+              skipped)   echo "$label skipped: '${{ needs.classify.outputs.tier }}' tier cannot affect the build." ;;
+              cancelled) echo "$label was cancelled or hit its time bound. Nothing is known about the diff from this leg; re-run before investigating it."; return 1 ;;
+              *)         echo "$fail"; return 1 ;;
+            esac
+          }
+
           case "${{ needs.classify.result }}" in
             success) ;;
             *) echo "Classification did not succeed; cannot certify this run."; exit 1 ;;
           esac
 
-          case "${{ needs.build-linux.result }}" in
-            success) echo "Linux build and tests passed." ;;
-            skipped) echo "Linux skipped: '${{ needs.classify.outputs.tier }}' tier cannot affect the build." ;;
-            *)       echo "Linux build and tests did not pass."; exit 1 ;;
-          esac
+          verdict "Linux" "${{ needs.build-linux.result }}" \
+            "Linux build and tests passed." \
+            "Linux build and tests did not pass." || exit 1
 
-          case "${{ needs.sanitize-linux.result }}" in
-            success) echo "ASan/UBSan build and tests passed." ;;
-            skipped) echo "Sanitizers skipped: '${{ needs.classify.outputs.tier }}' tier cannot affect the build." ;;
-            *)       echo "ASan/UBSan reported a finding, or the instrumented build failed."; exit 1 ;;
-          esac
+          verdict "Sanitizers" "${{ needs.sanitize-linux.result }}" \
+            "ASan/UBSan build and tests passed." \
+            "ASan/UBSan reported a finding, or the instrumented build failed." || exit 1
 
-          case "${{ needs.tsan-linux.result }}" in
-            success) echo "TSan multi-threaded search passed." ;;
-            skipped) echo "TSan skipped: '${{ needs.classify.outputs.tier }}' tier cannot affect the build." ;;
-            *)       echo "TSan reported a data race, or the instrumented build failed."; exit 1 ;;
-          esac
+          verdict "TSan" "${{ needs.tsan-linux.result }}" \
+            "TSan multi-threaded search passed." \
+            "TSan reported a data race, or the instrumented build failed." || exit 1
 
-          case "${{ needs.build-and-test.result }}" in
-            success) echo "Windows build and tests passed." ;;
-            skipped) echo "Windows skipped: '${{ needs.classify.outputs.tier }}' tier cannot affect the build." ;;
-            *)       echo "Windows build and tests did not pass."; exit 1 ;;
-          esac
+          verdict "Windows" "${{ needs.build-and-test.result }}" \
+            "Windows build and tests passed." \
+            "Windows build and tests did not pass." || exit 1
 
-          case "${{ needs.lint-linux.result }}" in
-            success) echo "Required clang-format and clang-tidy Gate checks passed." ;;
-            skipped) echo "Lint skipped: '${{ needs.classify.outputs.tier }}' tier cannot affect the build." ;;
-            *)       echo "Lint failed: formatting, clang-tidy findings, or lint infrastructure did not pass."; exit 1 ;;
-          esac
+          verdict "Lint" "${{ needs.lint-linux.result }}" \
+            "Required clang-format and clang-tidy Gate checks passed." \
+            "Lint failed: formatting, clang-tidy findings, or lint infrastructure did not pass." || exit 1
 
           exit 0
