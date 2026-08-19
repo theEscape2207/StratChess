@@ -36,9 +36,8 @@
 static Move AnyLegalMove()
 {
 	Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-	GameInfo info = board.GetGameInfo();
 	MoveList ml;
-	MoveGenerator::ComputeLegalMoves(board, info, ml);
+	MoveGenerator::ComputeLegalMoves(board, ml);
 	REQUIRE(!ml.empty());
 	return ml[0];
 }
@@ -169,9 +168,8 @@ class AIPerlexTestFixture {
 	int count_legal_moves() const
 	{
 		Board copy = board_;
-		GameInfo info = copy.GetGameInfo();
 		MoveList ml;
-		MoveGenerator::ComputeLegalMoves(copy, info, ml);
+		MoveGenerator::ComputeLegalMoves(copy, ml);
 
 		int legal = 0;
 		for (const auto& move : ml) {

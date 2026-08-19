@@ -23,7 +23,7 @@
 |                                                          |
  ----------------------------------------------------------
 */
-void MoveGenerator::ComputeLegalMoves(const Board& board, const GameInfo& info, MoveList& moveList)
+void MoveGenerator::ComputeLegalMoves(const Board& board, MoveList& moveList)
 {
 	assert(moveList.empty()); // Check our preconditions ;-)
 
@@ -35,7 +35,7 @@ void MoveGenerator::ComputeLegalMoves(const Board& board, const GameInfo& info, 
 	---------------------*/
 
 	//Captures (including en-passant and promotion-captures)
-	GeneratePawnCaptures(board, boards.data(), info, moveList, color);
+	GeneratePawnCaptures(board, boards.data(), moveList, color);
 
 	//Then normal Promotes
 	AddPawnPromoteMoves(boards.data(), color, moveList);
@@ -58,11 +58,11 @@ void MoveGenerator::ComputeLegalMoves(const Board& board, const GameInfo& info, 
 	GenerateOfficerMoves(board, boards.data(), moveList, KING, color, false);
 
 	// Add any legal castling moves
-	AddCastleMoves(board, moveList, color, boards.data(), info);
+	AddCastleMoves(board, moveList, color, boards.data());
 }
 
-void MoveGenerator::GeneratePawnCaptures(const Board& board, const BITBOARD* const bbBitBoards, const GameInfo& info,
-                                         MoveList& moveList, eColor color)
+void MoveGenerator::GeneratePawnCaptures(const Board& board, const BITBOARD* const bbBitBoards, MoveList& moveList,
+                                         eColor color)
 {
 	BITBOARD bbAttackRight = 0;
 	BITBOARD bbAttackLeft = 0;
@@ -77,11 +77,11 @@ void MoveGenerator::GeneratePawnCaptures(const Board& board, const BITBOARD* con
 	}
 	// Reducerer bitboardet til felter, hvor modstanderens brikker staar
 	// Er der et en-passant felt, medtages det ogsaa
-	if (info.epSquare != NO_SQUARE) {
+	if (board.ep_square() != NO_SQUARE) {
 		bbAttackLeft = Bits::applyMask(bbAttackLeft, bbBitBoards[ePiece::ALL_BLACK_PIECES - static_cast<int>(color)] |
-		                                                 g_bbMask[info.epSquare]);
+		                                                 g_bbMask[board.ep_square()]);
 		bbAttackRight = Bits::applyMask(bbAttackRight, bbBitBoards[ePiece::ALL_BLACK_PIECES - static_cast<int>(color)] |
-		                                                   g_bbMask[info.epSquare]);
+		                                                   g_bbMask[board.ep_square()]);
 	} else {
 		bbAttackLeft = Bits::applyMask(bbAttackLeft, bbBitBoards[ePiece::ALL_BLACK_PIECES - static_cast<int>(color)]);
 		bbAttackRight = Bits::applyMask(bbAttackRight, bbBitBoards[ePiece::ALL_BLACK_PIECES - static_cast<int>(color)]);
@@ -255,7 +255,7 @@ void MoveGenerator::AddPawnPromoteMoves(const BITBOARD* bbBitBoards, eColor colo
 
 // <param name="moveList">Collection of found moves</param>
 // Computes all possible moves, filters so only all captures, en passants and promotes remains and returns unsorted
-void MoveGenerator::ComputeCaptures(const Board& board, const GameInfo& info, MoveList& moveList)
+void MoveGenerator::ComputeCaptures(const Board& board, MoveList& moveList)
 {
 	const auto color = board.GetCurrentColor();
 
@@ -265,7 +265,7 @@ void MoveGenerator::ComputeCaptures(const Board& board, const GameInfo& info, Mo
 	---------------------*/
 
 	//Captures (including en-passant and promotion-captures)
-	GeneratePawnCaptures(board, boards.data(), info, moveList, color);
+	GeneratePawnCaptures(board, boards.data(), moveList, color);
 
 	//Then normal Promotes
 	AddPawnPromoteMoves(boards.data(), color, moveList);
@@ -308,8 +308,7 @@ void MoveGenerator::AddOfficerMoves(const Board& board, MoveList& moveList, BITB
 */
 // TODO: Det er vist overkill at teste om alle felterne Kongen flytter forbi er angrebet for hver eneste traekgenerering
 // i stedet kunne man flytte det til DoMove()
-void MoveGenerator::AddCastleMoves(const Board& board, MoveList& moveList, eColor color, const BITBOARD* bbBitBoards,
-                                   const GameInfo& info)
+void MoveGenerator::AddCastleMoves(const Board& board, MoveList& moveList, eColor color, const BITBOARD* bbBitBoards)
 {
 
 	// Per-side castling layout:
@@ -343,7 +342,7 @@ void MoveGenerator::AddCastleMoves(const Board& board, MoveList& moveList, eColo
 	const auto& side = sides[static_cast<int>(color)];
 
 	// Early exit if neither right is available for this side
-	if (!(info.castlingRights & (side.kingsideFlag | side.queensideFlag)))
+	if (!(board.castling_rights() & (side.kingsideFlag | side.queensideFlag)))
 		return;
 
 	const eSquare sqFrom = Board::GetFirstPiece(
@@ -357,7 +356,7 @@ void MoveGenerator::AddCastleMoves(const Board& board, MoveList& moveList, eColo
 	const BITBOARD attackBoard = MoveGenerator::GetAttackBoard(board, attackColor);
 
 	// Kingside
-	if (info.castlingRights & side.kingsideFlag) {
+	if (board.castling_rights() & side.kingsideFlag) {
 		// Are these squares being attacked ? The king must not move away from, pass or move into a check!
 		if (!Bits::isAnyBitSet(attackBoard, side.kingsideAttackMask) && !board.IsOccupied(side.kingsideTransitMask)) {
 			moveList.push(MoveFactory::MakeMove(sqFrom, side.kingsideTarget, MoveType::KING_CASTLE));
@@ -365,7 +364,7 @@ void MoveGenerator::AddCastleMoves(const Board& board, MoveList& moveList, eColo
 	}
 
 	// Queenside
-	if (info.castlingRights & side.queensideFlag) {
+	if (board.castling_rights() & side.queensideFlag) {
 		if (!Bits::isAnyBitSet(attackBoard, side.queensideAttackMask) && !board.IsOccupied(side.queensideTransitMask)) {
 			moveList.push(MoveFactory::MakeMove(sqFrom, side.queensideTarget, MoveType::QUEEN_CASTLE));
 		}

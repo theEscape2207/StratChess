@@ -1864,7 +1864,7 @@ namespace {
 	{
 		for (const std::string& token : pv_tokens) {
 			MoveList moves;
-			MoveGenerator::ComputeLegalMoves(board, board.GetGameInfo(), moves);
+			MoveGenerator::ComputeLegalMoves(board, moves);
 
 			Move found;
 			bool matched = false;

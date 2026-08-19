@@ -538,7 +538,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	}
 
 	MoveList moveList;
-	MoveGenerator::ComputeLegalMoves(td.board, info, moveList);
+	MoveGenerator::ComputeLegalMoves(td.board, moveList);
 
 	bool first_child = true;
 	Move best_move;
@@ -804,9 +804,6 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 		}
 	}
 
-	// We need the info on the current board state
-	const GameInfo& info = td.get_last_info(ply);
-
 	// Stand-pat: the option of making no move at all. Out of check it is the node's baseline
 	// and can cut off on its own. In check it does not exist — the side to move is obliged to
 	// leave check — so neither the cutoff nor the baseline applies, and the static evaluation
@@ -840,10 +837,10 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 		// generator cannot answer this node. The list is pseudo-legal; DoMove() below rejects
 		// the moves that leave the king in check, which is what makes an empty survivor set
 		// mean checkmate.
-		MoveGenerator::ComputeLegalMoves(td.board, info, moveList);
+		MoveGenerator::ComputeLegalMoves(td.board, moveList);
 	} else {
 		// Generate only capture moves and promotions
-		MoveGenerator::ComputeCaptures(td.board, info, moveList);
+		MoveGenerator::ComputeCaptures(td.board, moveList);
 	}
 	// Sort the found captures
 	MoveSorter::SortMovesByValue(moveList, moveList.size(), td.board);
@@ -1185,7 +1182,7 @@ bool AIPerplex::handle_empty_move_emergency(ThreadData& td, SearchState& state)
 	td.pv_table.clear_ply(1);
 
 	MoveList emergency_moves;
-	MoveGenerator::ComputeLegalMoves(td.board, current_info, emergency_moves);
+	MoveGenerator::ComputeLegalMoves(td.board, emergency_moves);
 
 	if (emergency_moves.empty()) {
 		log.critical("No legal moves - game is over");

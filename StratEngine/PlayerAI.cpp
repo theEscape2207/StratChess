@@ -30,8 +30,6 @@ int PlayerAiBase::Quiescent(size_t ply, int alpha, int beta)
 	// Increments counter
 	m_SearchCount++;
 
-	const GameInfo& info = GetLastBoardInfo(ply);
-
 	// 50 moves rules will never get hit as long we only have Captures in Quiescent moves
 	// first entry is tested in Search algorithms
 
@@ -52,7 +50,7 @@ int PlayerAiBase::Quiescent(size_t ply, int alpha, int beta)
 
 	MoveList moveList;
 	// Only work on the captures in Quiescent
-	MoveGenerator::ComputeCaptures(m_Board, info, moveList);
+	MoveGenerator::ComputeCaptures(m_Board, moveList);
 	// Sort the found captures
 	MoveSorter::SortMovesByValue(moveList, moveList.size(), m_Board);
 

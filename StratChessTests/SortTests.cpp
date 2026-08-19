@@ -37,9 +37,8 @@ TEST_CASE("Sort - Hash move scores 1'900'000 and sorts first", "[sort]")
 	// was never supplied, and measurement showed it would name the hash move anyway.
 	Board board(FEN_SORT);
 
-	GameInfo info = board.GetGameInfo();
 	MoveList moveList;
-	MoveGenerator::ComputeLegalMoves(board, info, moveList);
+	MoveGenerator::ComputeLegalMoves(board, moveList);
 	const int n = static_cast<int>(moveList.size());
 	REQUIRE(n > 2);
 
@@ -61,9 +60,8 @@ TEST_CASE("Sort - an empty hash move promotes nothing", "[sort]")
 	// property that made the removed PV tier provably dead rather than merely unused.
 	Board board(FEN_SORT);
 
-	GameInfo info = board.GetGameInfo();
 	MoveList moveList;
-	MoveGenerator::ComputeLegalMoves(board, info, moveList);
+	MoveGenerator::ComputeLegalMoves(board, moveList);
 	const int n = static_cast<int>(moveList.size());
 	REQUIRE(n > 0); // or the loops below would assert nothing and still pass
 
@@ -88,9 +86,8 @@ TEST_CASE("Sort - Capture scores above 1'000'000 (winning capture category)", "[
 {
 	Board board(FEN_SORT);
 
-	GameInfo info = board.GetGameInfo();
 	MoveList moveList;
-	MoveGenerator::ComputeLegalMoves(board, info, moveList);
+	MoveGenerator::ComputeLegalMoves(board, moveList);
 	const int n = static_cast<int>(moveList.size());
 
 	// Find Ra1xa2 in the move list
@@ -113,9 +110,8 @@ TEST_CASE("Sort - Killer0 scores 900'000; beats quiet move with no history", "[s
 {
 	Board board(FEN_SORT);
 
-	GameInfo info = board.GetGameInfo();
 	MoveList moveList;
-	MoveGenerator::ComputeLegalMoves(board, info, moveList);
+	MoveGenerator::ComputeLegalMoves(board, moveList);
 	const int n = static_cast<int>(moveList.size());
 
 	// Find a quiet move to designate as killer0 (not the capture a1xa2)
@@ -147,9 +143,8 @@ TEST_CASE("Sort - Quiet move with positive history scores exactly that history v
 {
 	Board board(FEN_SORT);
 
-	GameInfo info = board.GetGameInfo();
 	MoveList moveList;
-	MoveGenerator::ComputeLegalMoves(board, info, moveList);
+	MoveGenerator::ComputeLegalMoves(board, moveList);
 	const int n = static_cast<int>(moveList.size());
 
 	// Find a quiet king move

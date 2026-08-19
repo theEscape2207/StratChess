@@ -107,6 +107,14 @@ class Board final {
 	GameInfo GetGameInfo() const noexcept { return gameInfo_; }
 	void SetGameState(GameStates state) noexcept { gameInfo_.gameState = state; }
 
+	// The board is the single authority for the position metadata below. Move generation, the
+	// Zobrist hash and the undo stack all read it from here, so there is no second object that
+	// could disagree with the position these accessors describe.
+	eSquare ep_square() const noexcept { return gameInfo_.epSquare; }
+	uint8_t castling_rights() const noexcept { return gameInfo_.castlingRights; }
+	int halfmove_clock() const noexcept { return gameInfo_.halfmoveClock; }
+	Move last_move() const noexcept { return gameInfo_.lastMove; }
+
 	uint64_t get_zobrist_hash() const noexcept { return zobrist_hash_; }
 
 	std::span<const BITBOARD> GetBitBoards() const noexcept;

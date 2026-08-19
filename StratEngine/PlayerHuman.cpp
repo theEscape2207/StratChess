@@ -18,7 +18,7 @@ Move PlayerHuman::GetMove(GameInfo& info, const SearchLimits&)
 	Board& board = board_;
 	MoveList moveList;
 
-	if (!IsAnyLegalMoves(board, info, moveList)) {
+	if (!IsAnyLegalMoves(board, moveList)) {
 		// No legal moves left, bye!
 		spdlog::default_logger()->info("Human has no legal moves left");
 		if (board.InCheck()) {
@@ -148,9 +148,9 @@ bool PlayerHuman::ParseInput(const std::string& input, Move& move, ePieceType& p
 
 // Returns true if any legal move is found, and false otherwise
 // TODO: Remove illegal moves from ComputeLegalMoves?
-bool PlayerHuman::IsAnyLegalMoves(Board& board, const GameInfo& info, MoveList& moveList)
+bool PlayerHuman::IsAnyLegalMoves(Board& board, MoveList& moveList)
 {
-	MoveGenerator::ComputeLegalMoves(board, info, moveList);
+	MoveGenerator::ComputeLegalMoves(board, moveList);
 
 	return std::any_of(moveList.begin(), moveList.end(),
 	                   [&board](const Move& move) { return board.IsLegalMove(move); });

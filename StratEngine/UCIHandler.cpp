@@ -42,7 +42,7 @@ namespace {
 			return Move{};
 
 		MoveList moves;
-		MoveGenerator::ComputeLegalMoves(board, board.GetGameInfo(), moves);
+		MoveGenerator::ComputeLegalMoves(board, moves);
 		for (const Move& move : moves) {
 			if (move == parsed) {
 				return move;
