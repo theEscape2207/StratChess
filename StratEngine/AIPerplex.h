@@ -161,7 +161,7 @@ class AIPerplex final : public PlayerAiBase {
 	// ThreadData is always the first parameter: the search runs entirely on the
 	// per-thread state it carries, while the TranspositionTable stays a separate
 	// explicit parameter because it is shared across threads under Lazy SMP.
-	void init_search(const GameInfo& info);
+	void init_search();
 	SearchResult iterative_deepening(ThreadData& td, int max_depth, TranspositionTable& tt);
 	int search_with_aspiration(ThreadData& td, int depth, int seed_score, TranspositionTable& tt);
 	int pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt);

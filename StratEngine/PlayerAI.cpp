@@ -63,9 +63,6 @@ int PlayerAiBase::Quiescent(size_t ply, int alpha, int beta)
 		if (!m_Board.DoMove(curMove))
 			continue;
 
-		// Tilfoejer dette traek til nuvaerende traekfoelge
-		AddMoveToSeq(curMove, ply);
-
 		// rekursivt kald til Quiescent. Dette sker _rigtigt_ mange gange
 		value = -Quiescent(ply + 1, -beta, -alpha);
 
@@ -169,62 +166,3 @@ unsigned PlayerAiBase::ApplyLimits(const SearchLimits& limits)
 	node_limit_ = r.node_limit;
 	return r.effective_depth;
 }
-
-// ************************************
-// Method:      StoreInfoAtPly
-// Description: Faelles bookkeeping for m_infoSeq - holder vektoren i lockstep
-//				 med search-traeets ply, uanset om GameInfo stammer fra et
-//				 rigtigt traek (AddMoveToSeq) eller et null-move (AddNullMoveToSeq)
-// FullName:    protected PlayerAiBase::StoreInfoAtPly
-// Returns:     nothing
-// Parameter:   size_t ply -
-// Parameter:   const GameInfo& info -
-// Remark:
-// ************************************
-void PlayerAiBase::StoreInfoAtPly(size_t ply, const GameInfo& info)
-{
-	// where to add it? size er 2 efter foerste traek ved ply 0
-	const size_t infoSize = m_infoSeq.size();
-
-	if (ply + 1 == infoSize) // foerste traek ved hver dybde
-		m_infoSeq.emplace_back(info);
-	else if (infoSize == ply + 2) // 2. traek ved hver dybde og resten
-		m_infoSeq[ply + 1] = info;
-	else if (infoSize > ply + 2) // Skal der slettes nogen? Dont delete the first!
-	{
-		m_infoSeq.erase(m_infoSeq.begin() + static_cast<int>(ply + 1), m_infoSeq.end());
-		m_infoSeq.emplace_back(info);
-	} else
-		assert(!"BoardInfo update - Somebody hasn't handled all cases");
-}
-
-// ************************************
-// Method:      AddMoveToSeq
-// Description: Tilfoejer data omkring dette traek til nuvaerende BoardInfo struktur
-//				 Sletter eksisterende data fra sekvensen fra denne ply og ned
-// FullName:    protected PlayerAiBase::AddMoveToSeq
-// Returns:     nothing
-// Parameter:   const Move& move -
-// Parameter:   unsigned ply -
-// Remark:
-// ************************************
-void PlayerAiBase::AddMoveToSeq(const Move& move, size_t ply)
-{
-	GameInfo info = GetLastBoardInfo(ply);
-
-	// After DoMove the piece sits on move.to(); read it to obtain the moving piece.
-	info.UpdateBoardInfo(move, m_Board.GetPiece(move.to()));
-
-	StoreInfoAtPly(ply, info);
-}
-
-// Null-move counterpart: no Move to derive info from, so snapshot the
-// board's current GameInfo directly (the board has already had
-// DoNullMove() applied by the caller before this is called).
-// Note: unlike AddMoveToSeq, this does not call UpdateBoardInfo, so the
-// stored GameInfo::lastMove is whatever the parent ply's real move was,
-// not a sentinel for "no move". GetParentMove()/GetLastBoardInfo() callers
-// must not treat lastMove at a null-move ply as "the move that produced
-// this ply" — currently safe because only AIPerplex calls this method, and
-// AIPerplex never calls GetParentMove().
-void PlayerAiBase::AddNullMoveToSeq(size_t ply) { StoreInfoAtPly(ply, m_Board.GetGameInfo()); }

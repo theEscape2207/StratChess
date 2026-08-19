@@ -10,115 +10,115 @@ cleanup precede D4.
 
 | # | Step | State |
 |---|---|---|
-| 1 | D7 — Debug-only assert that `info_seq[ply]` agrees with `td.board`; run Debug tests | **done** |
+| 1 | D7 — Debug-only assert that `info_seq[ply]` agrees with `td.board` | **done** |
 | 2 | D2 — `Board` accessors `ep_square()` / `castling_rights()` / `halfmove_clock()` / `last_move()` | **done** |
 | 3 | D1 — movegen drops its `const GameInfo&` parameter | **done** |
 | 4 | D8 — `Board::DoMove` writes `gameInfo_.lastMove` | **done** |
-| 5 | D3 — delete `ThreadData::info_seq` and `PlayerAiBase::m_infoSeq` + helpers; delete both probes | next |
-| 6 | FEN cleanup — `Game::SetGameParams` / `SetCustomGame` / `customGame_` out, `Config::ReadFEN` simplified | not started |
+| 5 | D3 — both `GameInfo` sequences deleted, with both probes | **done** |
+| 6 | FEN cleanup — `Game::SetGameParams` / `SetCustomGame` / `customGame_` out, `Config::ReadFEN` simplified | next |
 | 7 | D4/D10 — `SearchResult` to its own header + `game_state`; `GetMove(const SearchLimits&) -> SearchResult` | not started |
 | 8 | D5/D9/D6 — `Game::Run` retained-mover order, fifty-move adjudication, retire `EGameStateChanged` | not started |
 | 9 | D11 — `Game` test seam + transition tests | not started |
-| 10 | Validation sweep — perft, bench, Debug tests, self-play, `search-reviewer` | not started |
+| 10 | Validation sweep — perft, bench, `search-reviewer` | not started |
 | 11 | Harvest (CLAUDE.md / Docs) + PR | not started |
 
 ## What just completed
 
-**Step 1 (D7)** — `ThreadData::assert_info_matches_board(ply)` compares `info_seq[ply]` against
-`board.GetGameInfo()` (`epSquare`, `castlingRights`, `halfmoveClock`, plus `gameState` at ply 0);
-no-op in Release. Called at the top of `pvs()` and before `quiescence()`'s draw check, so it covers
-every node. Deleted together with `info_seq` in step 5.
+**Step 5 (D3)** — `ThreadData::info_seq` and `PlayerAiBase::m_infoSeq` are gone, with
+`get_last_info`/`GetLastBoardInfo`, `store_info_at_ply`/`StoreInfoAtPly`,
+`add_move_to_seq`/`AddMoveToSeq`, `add_null_move_to_seq`/`AddNullMoveToSeq`, and both temporary
+probes. Net −235 lines across 10 files. Specifically:
 
-**Steps 2-3 (D2, D1)** — the four `Board` accessors, and the `const GameInfo&` parameter gone from
-`ComputeLegalMoves`, `ComputeCaptures`, `GeneratePawnCaptures` and `AddCastleMoves`. 18 files. The
-subagent that did the plumbing also dropped the parameter from `PlayerHuman::IsAnyLegalMoves`, which
-is in the design's scope list: it only ever forwarded `info` into `ComputeLegalMoves`, so removing
-the argument left an unused parameter and a `/WX` failure.
+- `check_draws`/`checkDraws` take only a ply and read `board.halfmove_clock()`.
+- `update_game_state`/`UpdateGameState` write only `board.SetGameState` — the only-if-changed guard
+  went with the second copy it was guarding.
+- `GetParentMove()` lost its ply parameter; it is `m_Board.last_move()`.
+- `InitMoveVariables()` lost its `GameInfo` parameter in both the base and the iterative override.
+- `CheckGameOver` lost its `fromBoard` flag — only the `true` branch had callers.
+- `AIPerplex::init_search()` lost its parameter; `GetMove` reads the root state from the board.
+- `SearchTests.cpp`'s four fixture helpers no longer seed a sequence to match the ply under test.
 
-**Step 4 (D8)** — `Board::DoMove` writes `gameInfo_.lastMove`, next to the en-passant update, with a
-comment explaining why the store exists at all (move ordering is its only consumer) and why it needs
-no rollback handling. Added alongside it: `PlayerAiBase::assert_parent_move_matches_board(ply)`, a
-second temporary probe asserting `GetParentMove(ply) == m_Board.last_move()` at all three legacy
-sort sites. It is not in the design — the design accepts the legacy equivalence as "verified by
-argument plus one self-play game" — but it is the same discipline as D7 applied to the one claim D8
-rests on, and it costs nothing. Deleted with `m_infoSeq` in step 5.
+Earlier steps: the four `Board` accessors and the movegen parameter removal (steps 2-3, 18 files,
+including `PlayerHuman::IsAnyLegalMoves` which the design's scope list also names); `DoMove` writing
+`lastMove` (step 4).
 
 ### Evidence
 
 | Probe | Result |
 |---|---|
-| Debug suite incl. `[slow]`, step 1 | 7082 assertions / 439 cases, pass |
-| Debug suite incl. `[slow]`, step 4 | 7082 assertions / 439 cases, pass |
-| Debug AIPerplex game-mode self-play (`.exe game`, movetime 800) | 158 moves, 0 assertion failures |
+| `Compare-SearchEquivalence -BaselineRef origin/main`, after each of steps 3, 4 and 5 | IDENTICAL, 90 lines, 6 positions, depth 12 |
+| Release suite after step 5 | 7087 assertions / 440 cases, pass |
+| Debug suite after step 5 | 7082 assertions / 439 cases, pass |
+| Debug AIPerplex game-mode self-play, probe active | 158 moves, 0 assertion failures |
 | Debug UCI `Threads=4` — ep square, Kiwipete castling, `halfmoveClock 98`, 16-ply move list | clean |
-| Debug AIAgent (type 3) self-play | 129 moves → checkmate, 0 assertion failures |
-| Debug ABIterative (type 2) self-play | 130 moves → checkmate, 0 assertion failures |
-| Debug AIBasic (type 1) self-play | 140 moves → checkmate, 0 assertion failures |
-| `Compare-SearchEquivalence -BaselineRef origin/main`, after step 3 | IDENTICAL, 90 lines, 6 positions, depth 12 |
-| `Compare-SearchEquivalence -BaselineRef origin/main`, after step 4 | IDENTICAL, 90 lines, 6 positions, depth 12 |
+| Debug legacy self-play with the parent-move probe active | AIAgent 130 / ABIterative 130 / AIBasic 140 boards → checkmate, 0 failures |
+| Release legacy self-play after the deletion | AIAgent 130 / ABIterative 130 / AIBasic 140 boards → checkmate |
 
-Those three legacy self-play runs are what turn D8's equivalence table from a reading of the code
-into executed evidence, for all three agents rather than the one the design names.
+The legacy runs matched their pre-deletion game lengths and results exactly, which is a stronger
+statement than "still plays" — it is what the design could only argue for.
+
+The equivalence run is the D3 claim itself: identical `info` lines and `bestmove` at fixed depth,
+`Threads=1`. It has now held across every step that could have broken it.
 
 ## Key learnings
 
-- `Board` already maintains `epSquare`, `castlingRights`, `halfmoveClock` in `DoMove`/`UndoMove` and
-  saves/restores the whole `GameInfo` via `gameInfoHistory_`. It never set `lastMove` (now it does)
-  and never sets `DRAW_50_MOVES` — both design premises, confirmed.
-- **`DoMove`'s illegal-move rollback already covers `lastMove`.** When a move leaves the own king in
-  check, `DoMove` calls `UndoMove(m)`, which restores the whole `gameInfo_` from `gameInfoHistory_`.
-- **The FEN path clears `lastMove`.** `SetupFromFEN` → `setup_board` → `clear_board` →
-  `gameInfo_.Reset()`, which calls `lastMove.Clear()`. So a FEN load cannot inherit the previous
-  game's last move and change legacy move ordering on move 1.
-- `AIPerplex::GetMove` seeds `info_seq[0]` from the **caller's** `GameInfo`, not from `m_Board`
-  (`AIPerplex.cpp:157-165`, `:228-229` for helper threads) — the one place the two can diverge, which
-  is why the D7 probe checks root `gameState`. Game-mode self-play is what exercises it; under UCI
-  they agree by construction. The design's stated open assumption is now evidenced.
-- **`Config`'s `Game*` goes with `SetCustomGame` (step 6).** `pGame_` has exactly one use in the
-  codebase, `pGame_->SetCustomGame(info)` at `Config.cpp:82`. Once that goes the member is unused,
-  and clang's `-Wunused-private-field` is in `-Wall`, so `/WX` forces removing it and the
-  `explicit Config(Game*)` parameter with it — one step past the design's stated scope. It also
-  closes a latent null-deref: `ConfigTests.cpp:68` constructs `Config(nullptr)` while `ReadFEN`
-  dereferences `pGame_` unconditionally on its success path.
+- `Board` already maintained `epSquare`, `castlingRights`, `halfmoveClock` and saved/restored the
+  whole `GameInfo` via `gameInfoHistory_`. It never set `lastMove` (now it does) and never sets
+  `DRAW_50_MOVES` — both design premises, confirmed.
+- **`DoMove`'s illegal-move rollback already covers `lastMove`**: it calls `UndoMove(m)`, which
+  restores the whole `gameInfo_` from `gameInfoHistory_`.
+- **The FEN path clears `lastMove`**: `SetupFromFEN` → `setup_board` → `clear_board` →
+  `gameInfo_.Reset()`. So a FEN load cannot inherit the previous game's last move.
+- `AIPerplex::GetMove` seeded `info_seq[0]` from the **caller's** `GameInfo`, not from `m_Board` —
+  the one place the two could diverge, and why the D7 probe checked root `gameState`. Game-mode
+  self-play is what exercised it; under UCI they agree by construction. The design's stated open
+  assumption is now evidenced.
+- **One field the D7 probe did not cover: `fullMoveCount`.** `Game::gameInfo_`'s copy is stale (only
+  `SetGameParams` ever wrote it; `UpdateBoardInfo` does not touch it) while the board's increments.
+  So `info = m_Board.GetGameInfo()` in `GetMove` now writes a *different* — and correct —
+  `fullMoveCount` back to the caller than `info_seq.at(0)` did. Nothing reads it, and step 6 deletes
+  the field, but it is the one place this step is not literally value-preserving.
+- **`Config`'s `Game*` goes with `SetCustomGame` (step 6).** `pGame_` has exactly one use,
+  `pGame_->SetCustomGame(info)` at `Config.cpp:82`. Once that goes the member is unused, and clang's
+  `-Wunused-private-field` is in `-Wall`, so `/WX` forces removing it and the `explicit Config(Game*)`
+  parameter with it — one step past the design's stated scope. It also closes a latent null-deref:
+  `ConfigTests.cpp:68` constructs `Config(nullptr)` while `ReadFEN` dereferences `pGame_`
+  unconditionally on its success path.
 - **Driving a UCI probe needs a synchronous driver.** Piping a command file into the exe fails
   silently: stdin drains in one go, `go` is asynchronous, and every following `position` is answered
   with `info string position: ignored, a search is in progress`. It then searches *startpos* five
   times and prints five plausible-looking `bestmove` lines. Wait for the `bestmove`/`readyok` marker
-  before sending the next command (scratchpad `uci_drive.py`).
+  (scratchpad `uci_drive.py`).
 - Invocation traps in this session's shell: `"~[slow]"` is refused by the worktree guard (the `~`
   reads as a home-directory escape) — use Catch2's `"exclude:[slow]"`; `Run-Tests.ps1` has no
   `-Config`, so a Debug run means invoking `build/windows-clang-cl-debug/StratChessTests.exe`
   directly, from `StratChessEvolved/` so it finds `game_settings.json`.
 - Don't build or commit while `Compare-SearchEquivalence.ps1` is running — it drives the candidate
   exe in this worktree's `build/`, and the pre-commit hook rebuilds it underneath the comparison.
+- Release and Debug test counts differ by design (440/7087 vs 439/7082) — something is gated on
+  `NDEBUG`. Not a regression; it was true before this branch.
 
 ## For the harvest / PR body
 
 - `Perft.cpp` lost the comment *"MoveGenerator needs latest GameInfo, which only board has — so
-  ignore passed info"*. That was the design's own evidence for D1 and no longer describes anything,
-  so it belongs in the PR body rather than the tree.
-- `Config` losing its `Game*` dependency is a deviation from the design's stated scope (see above).
-- The extra legacy `assert_parent_move_matches_board` probe, and the three self-play runs it turned
-  into evidence, are an addition to D7's plan — worth a line, since the design explicitly flagged
-  legacy verification as a known thin spot.
+  ignore passed info"*. That was the design's own evidence for D1 and no longer describes anything.
+- `Config` losing its `Game*` dependency is a deviation from the design's stated scope.
+- The extra legacy `assert_parent_move_matches_board` probe and its three self-play runs are an
+  addition to D7's plan — worth a line, since the design flagged legacy verification as a thin spot,
+  and the matching game lengths are the result.
+- The `fullMoveCount` note above: the one field where step 5 changes a written value.
+- Why the two castling paths provably agreed (the unreachable rook gate) — the code is gone, so the
+  design's D3 argument only survives in the PR body.
 
 ## Next steps
 
-Step 5 — the deletion, and the largest step. Scope, mapped:
+Step 6, the FEN cleanup, is small and self-contained: delete `Game::SetGameParams`,
+`Game::SetCustomGame` and `customGame_`; reduce `Config::ReadFEN` to the `SetupFromFEN` call plus its
+fallback; drop `Config`'s `pGame_` and the `Game*` constructor parameter; simplify
+`ConfigTests.cpp:68`'s `MakeReader()`. `Game::gameInfo_` cannot collapse to a `GameStates` until
+step 7 changes the `GetMove` signature, so leave it a `GameInfo` for now.
 
-- `ThreadData.h`: `info_seq`, `get_last_info`, `store_info_at_ply`, `add_move_to_seq`,
-  `add_null_move_to_seq`, `assert_info_matches_board`; `check_draws` takes no `GameInfo` and reads
-  `board.halfmove_clock()`; `update_game_state` writes only `board.SetGameState`.
-- `PlayerAI.h:81-91,152-232`: `AddMoveToSeq`, `AddNullMoveToSeq`, `StoreInfoAtPly`,
-  `InitMoveVariables`'s seeding, `GetLastBoardInfo`, `UpdateGameState`, `CheckGameOver`,
-  `checkDraws`, `m_infoSeq`, `assert_parent_move_matches_board`; `GetParentMove(ply)` becomes
-  `m_Board.last_move()`.
-- `PlayerAiIterBase.h:15-23`, and consumers in `ABIterative.cpp`, `AIAgent.cpp`, `AIBasic.cpp`,
-  `PlayerAI.cpp`, `AIPerplex.cpp`.
-
-`AIPerplex::GetMove` still reads `td_.info_seq.at(0).gameState` at `:247` and `:294`; both become
-board reads. That is where step 5 meets step 7, so keep them separable.
-
-Re-run after it: full Debug suite, the equivalence gate, and one self-play per legacy agent — the
-probes are gone by then, so self-play is checking "still plays", and the equivalence gate is what
-carries the behaviour claim.
+Step 7 is the large one. `AIPerplex::GetMove` still ends with the out-parameter write
+(`info = m_Board.GetGameInfo()`, the `EGameStateChanged.fire`, and `info.UpdateBoardInfo`), and
+`PlayerAiIterBase::GetBestMove(GameInfo&)` does the same for the legacy agents — both become the
+returned `SearchResult`.

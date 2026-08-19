@@ -12,20 +12,17 @@ class PlayerAiIterBase : public PlayerAiBase {
 
   protected:
 	// Force use of factory by preventing constructor, copy-construction & operator=
-	explicit PlayerAiIterBase(Board& board, unsigned md) : PlayerAiBase(board, md) { m_infoSeq.reserve(32); }
+	explicit PlayerAiIterBase(Board& board, unsigned md) : PlayerAiBase(board, md) {}
 
 	// Iter classes store the currently best move in the PVL, so maintain the list there
-	void InitMoveVariables(const GameInfo& info) override
+	void InitMoveVariables() override
 	{
 		m_SearchCount = 0; // Clear search counter
-
-		m_infoSeq.clear();            // resets parent boardInfo sequence
-		m_infoSeq.emplace_back(info); // Store boardInfo from after last move
 
 		// remove the first two ply from the line in preparation for the next move
 		// we are not clearing due to we want this to seed our search (TODO: get data)
 		if (m_Line.size() >= 2) {
-			// TODO: Make sure that move no 2 IS the info.LastMove. Otherwise
+			// TODO: Make sure that move no 2 IS the board's last move. Otherwise
 			m_Line.erase(m_Line.begin(), m_Line.begin() + 2);
 		}
 	}

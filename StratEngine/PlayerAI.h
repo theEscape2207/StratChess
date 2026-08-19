@@ -5,7 +5,6 @@
 #include "SearchLimits.h"
 #include "Utils/TimeManager.h"
 #include "Utils/TimeUtils.h"
-#include <vector>
 #include <sstream>
 #include <chrono>
 
@@ -75,21 +74,6 @@ class PlayerAiBase : public PlayerBase {
 	// quiescence), not a single thread's ThreadData::nodes_searched.
 	std::chrono::milliseconds StopTimerAndAdjustVars(size_t node_count) const;
 
-	// Tilfoejer dette traek til nuvaerende traekfoelge
-	// Sletter eksisterende traek fra listen fra denne ply og ned
-	// Benyttes til Last Move sorting - Saetter parent node
-	void AddMoveToSeq(const Move& move, size_t ply);
-
-	// Null-move counterpart to AddMoveToSeq: no Move to derive info from, so
-	// snapshot the board's current GameInfo directly. Caller must call this
-	// AFTER m_Board.DoNullMove() has already been applied, using the pre-
-	// recursion ply (same convention as AddMoveToSeq(move, ply)).
-	void AddNullMoveToSeq(size_t ply);
-
-	// Shared m_infoSeq size-bookkeeping used by both AddMoveToSeq and
-	// AddNullMoveToSeq.
-	void StoreInfoAtPly(size_t ply, const GameInfo& info);
-
 	// Returns the best first move currently found
 	virtual Move GetBestMove(GameInfo& info) noexcept;
 
@@ -145,40 +129,20 @@ class PlayerAiBase : public PlayerBase {
 	// Description:
 	// FullName:    protected PlayerAiBase::InitMoveVariables
 	// Returns:     void -
-	// Parameter:   const GameInfo& info -
-	// Remark:      TODO: Burde flyttes ned som en template metode DoInit efter m_MoveSeq
+	// Remark:      TODO: Burde flyttes ned som en template metode DoInit
 	//	  		    Non Iter edition
 	// ************************************
-	virtual void InitMoveVariables(const GameInfo& info)
+	virtual void InitMoveVariables()
 	{
 		m_SearchCount = 0;
-
-		// nulstiller parent boardInfo-sekvensen
-		// Store boardInfo from after last move
-		m_infoSeq.clear();
-		m_infoSeq.emplace_back(info);
 
 		// Nulstiller best move
 		m_BestMove.Clear();
 	}
 
-	// Returns the Current Move's predecessor in the current move sequence tree
-	const Move& GetParentMove(size_t currentPly) const { return GetLastBoardInfo(currentPly).lastMove; }
-
-	// Temporary evidence probe, deleted together with m_infoSeq: the parent move the sorter reads
-	// out of the sequence must be the move the board itself last applied. Nothing but move ordering
-	// consumes it, so a difference here would be a silent change in the order the legacy agents
-	// search — the one thing no test in the suite asserts. Debug only.
-	void assert_parent_move_matches_board([[maybe_unused]] size_t currentPly) const
-	{
-		assert(GetParentMove(currentPly) == m_Board.last_move());
-	}
-
-	const GameInfo& GetLastBoardInfo(size_t currentPly) const
-	{
-		// This must always contain the last move, hence the one extra info
-		return m_infoSeq.at(currentPly);
-	}
+	// The move that led to the node being searched — the board is the only object that
+	// tracks it, and move ordering is its only consumer.
+	Move GetParentMove() const { return m_Board.last_move(); }
 
 	// ************************************
 	// Method:      UpdateGameState
@@ -191,22 +155,14 @@ class PlayerAiBase : public PlayerBase {
 	// ************************************
 	void UpdateGameState(size_t currentPly, GameStates newState)
 	{
-		if (currentPly == 0) {
-			GameInfo& info = m_infoSeq.at(currentPly);
-			if (newState != info.gameState) {
-				m_Board.SetGameState(newState); // AIPerplex uses board version
-				info.gameState = newState;
-			}
-		}
+		if (currentPly == 0)
+			m_Board.SetGameState(newState);
 	}
 
 	// TODO: rename to FireStateChanged. Also, investigate if refreshInfo is needed for old AI structure
-	void CheckGameOver(GameInfo& info, bool fromBoard = true)
+	void CheckGameOver(GameInfo& info)
 	{
-		if (fromBoard)
-			info = m_Board.GetGameInfo();
-		else
-			info = GetLastBoardInfo(0);
+		info = m_Board.GetGameInfo();
 		if (info.gameState != GameStates::STILL_PLAYING) {
 			EGameStateChanged.fire(this, info.gameState);
 		}
@@ -214,11 +170,11 @@ class PlayerAiBase : public PlayerBase {
 
 	// Threefold repetition and the fifty-move rule. Both are draws by position history, so
 	// neither applies at the root: the caller asked for a move, not for an adjudication.
-	bool checkDraws(const GameInfo& info, int ply) const noexcept
+	bool checkDraws(int ply) const noexcept
 	{
 		if (ply == 0)
 			return false;
-		return m_Board.is_repetition(ply) || info.halfmoveClock >= HALFMOVE_CLOCK_LIMIT;
+		return m_Board.is_repetition(ply) || m_Board.halfmove_clock() >= HALFMOVE_CLOCK_LIMIT;
 	}
 
 	/*
@@ -231,9 +187,6 @@ class PlayerAiBase : public PlayerBase {
 
 	// The embedded Eval object for per-player evaluation
 	std::unique_ptr<EvalManager> Eval;
-
-	// Store GameInfo sequence for Do/Undo TODO: Board is now handling those for AIPerplex - other algos needs to be moved
-	std::vector<GameInfo> m_infoSeq;
 
 	// Det bedste traek indtil nu
 	Move m_BestMove;

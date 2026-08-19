@@ -189,7 +189,6 @@ class AIPerlexTestFixture {
 	{
 		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
 		ai->td_.board = board_;
-		ai->td_.info_seq.assign(static_cast<size_t>(ply) + 1, board_.GetGameInfo());
 		return ai->pvs(ai->td_, depth, alpha, beta, ply, is_pv_node, *ai->_tt);
 	}
 
@@ -206,7 +205,6 @@ class AIPerlexTestFixture {
 		ai->time_manager_.start(std::chrono::milliseconds(60'000));
 		ai->td_.board = board_;
 		ai->td_.nodes_since_check_ = 0;
-		ai->td_.info_seq.assign(static_cast<size_t>(ply) + 1, board_.GetGameInfo());
 		return ai->quiescence(ai->td_, alpha, beta, qsearch_budget, ply, *ai->_tt);
 	}
 
@@ -219,7 +217,6 @@ class AIPerlexTestFixture {
 		ai->time_manager_.start(std::chrono::milliseconds(60'000));
 		ai->td_.board = board_;
 		ai->td_.nodes_since_check_ = 0;
-		ai->td_.info_seq.assign(static_cast<size_t>(ply) + 1, board_.GetGameInfo());
 		return ai->pvs(ai->td_, /*depth=*/0, alpha, beta, ply, /*is_pv_node=*/true, *ai->_tt);
 	}
 
@@ -231,23 +228,20 @@ class AIPerlexTestFixture {
 		               BoundType::EXACT, NodeType::PV_NODE, SearchPhase::QUIESCENCE);
 	}
 
-	// Replays a UCI move list onto td_.board, advancing info_seq in lockstep the way the
-	// search does, then runs one quiescence() node at the resulting ply. Lets a test place
-	// the node inside a line, with real repetition history behind it, rather than at a
-	// synthetic root.
+	// Replays a UCI move list onto td_.board, then runs one quiescence() node at the
+	// resulting ply. Lets a test place the node inside a line, with real repetition history
+	// behind it, rather than at a synthetic root.
 	int quiesce_after(std::initializer_list<const char*> moves, int alpha, int beta) const
 	{
 		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
 		ai->time_manager_.start(std::chrono::milliseconds(60'000));
 		ai->td_.board = board_;
 		ai->td_.nodes_since_check_ = 0;
-		ai->td_.info_seq.assign(1, board_.GetGameInfo());
 
 		int ply = 0;
 		for (const char* uci : moves) {
 			const Move move = MoveFormatter::FromUCI(uci, ai->td_.board);
 			REQUIRE(ai->td_.board.DoMove(move));
-			ai->td_.add_move_to_seq(move, static_cast<size_t>(ply));
 			++ply;
 		}
 		return ai->quiescence(ai->td_, alpha, beta, AIPerplex::QSEARCH_BUDGET, ply, *ai->_tt);

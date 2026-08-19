@@ -16,7 +16,7 @@
 // Fetches the next move
 Move AIBasic::GetMove(GameInfo& info, const SearchLimits& limits)
 {
-	InitMoveVariables(info);
+	InitMoveVariables();
 
 	ApplyLimits(limits);
 
@@ -38,10 +38,9 @@ int AIBasic::Search(size_t ply, int alpha, int beta)
 	if (StopRequested()) {
 		return GameValues::Draw;
 	}
-	const GameInfo& info = GetLastBoardInfo(ply);
 
 	// Test for 50 moves rule
-	if (checkDraws(info, static_cast<int>(ply)))
+	if (checkDraws(static_cast<int>(ply)))
 		return GameValues::Draw;
 
 	// Er vi naaet til bunden af traeet ?
@@ -59,9 +58,8 @@ int AIBasic::Search(size_t ply, int alpha, int beta)
 	MoveList moveList;
 	MoveGenerator::ComputeLegalMoves(m_Board, moveList);
 
-	assert_parent_move_matches_board(ply);
 	// Sorterer traekkene
-	MoveSorter::SortMoves(moveList, GetParentMove(ply), m_Board);
+	MoveSorter::SortMoves(moveList, GetParentMove(), m_Board);
 
 	bool moveFound = false;
 	size_t counter = 0;
@@ -71,9 +69,6 @@ int AIBasic::Search(size_t ply, int alpha, int beta)
 
 		// Foretag traekket hvis det er lovligt(Check for skak) - ellers proever vi naeste traek
 		if (m_Board.DoMove(curMove)) {
-			// Tilfoejer dette traek til nuvaerende traekfoelge
-			AddMoveToSeq(curMove, ply);
-
 			// rekursivt kald til Alpha-Beta
 			const int value = -Search(ply + 1, -beta, -alpha);
 
