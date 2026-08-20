@@ -216,46 +216,46 @@ TEST_CASE(
 TEST_CASE("Board::UndoMove restores fullMoveCount and FEN exactly after a Black move", "[board_api]")
 {
 	Board board(FEN_UNDO_BLACK);
-	const GameInfo before = board.GetGameInfo();
+	const int before = board.fullmove_count();
 	const std::string fenBefore = board.ExtractFEN();
 
 	auto m = MoveFactory::MakeQuiet(b8, c6);
 	REQUIRE(board.DoMove(m));
 	board.UndoMove(m);
 
-	CHECK(board.GetGameInfo().fullMoveCount == before.fullMoveCount);
+	CHECK(board.fullmove_count() == before);
 	CHECK(board.ExtractFEN() == fenBefore);
 }
 
 TEST_CASE("Board::UndoNullMove restores fullMoveCount and FEN exactly after a Black null move", "[board_api]")
 {
 	Board board(FEN_UNDO_BLACK);
-	const GameInfo before = board.GetGameInfo();
+	const int before = board.fullmove_count();
 	const std::string fenBefore = board.ExtractFEN();
 
 	board.DoNullMove();
 	board.UndoNullMove();
 
-	CHECK(board.GetGameInfo().fullMoveCount == before.fullMoveCount);
+	CHECK(board.fullmove_count() == before);
 	CHECK(board.ExtractFEN() == fenBefore);
 }
 
 TEST_CASE("Board::IsLegalMove leaves fullMoveCount and FEN unchanged for a Black move", "[board_api]")
 {
 	Board board(FEN_UNDO_BLACK);
-	const GameInfo before = board.GetGameInfo();
+	const int before = board.fullmove_count();
 	const std::string fenBefore = board.ExtractFEN();
 
 	REQUIRE(board.IsLegalMove(MoveFactory::MakeQuiet(b8, c6)));
 
-	CHECK(board.GetGameInfo().fullMoveCount == before.fullMoveCount);
+	CHECK(board.fullmove_count() == before);
 	CHECK(board.ExtractFEN() == fenBefore);
 }
 
 TEST_CASE("Board::UndoMove keeps fullMoveCount stable across repeated Black make/unmake cycles", "[board_api]")
 {
 	Board board(FEN_UNDO_BLACK);
-	const int expected = board.GetGameInfo().fullMoveCount;
+	const int expected = board.fullmove_count();
 	const std::string fenBefore = board.ExtractFEN();
 
 	auto m = MoveFactory::MakeQuiet(b8, c6);
@@ -264,6 +264,6 @@ TEST_CASE("Board::UndoMove keeps fullMoveCount stable across repeated Black make
 		board.UndoMove(m);
 	}
 
-	CHECK(board.GetGameInfo().fullMoveCount == expected);
+	CHECK(board.fullmove_count() == expected);
 	CHECK(board.ExtractFEN() == fenBefore);
 }

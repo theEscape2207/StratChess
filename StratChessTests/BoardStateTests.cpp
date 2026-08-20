@@ -1,4 +1,4 @@
-// BoardStateTests.cpp — Catch2 test suite for Board GameInfo state lifecycle.
+// BoardStateTests.cpp — Catch2 test suite for Board position-state lifecycle.
 //
 // Verifies that castling rights, EP square, game state, fifty-move counter,
 // material scores, and side-to-move are correctly updated by DoMove and fully
@@ -42,20 +42,20 @@ TEST_CASE("Board - Castling rights stripped after king move; UndoMove restores t
 	Board board(FEN_FULL_RIGHTS);
 
 	// Confirm full rights before move
-	REQUIRE((board.GetGameInfo().castlingRights & CastlingRights::WHITE_BOTH) == CastlingRights::WHITE_BOTH);
+	REQUIRE((board.castling_rights() & CastlingRights::WHITE_BOTH) == CastlingRights::WHITE_BOTH);
 
 	// White king e1 → e2 (quiet move, not a castling)
 	auto m = MoveFactory::MakeQuiet(e1, e2);
 	REQUIRE(board.DoMove(m));
 
 	// Both white castling rights must be gone
-	CHECK((board.GetGameInfo().castlingRights & CastlingRights::WHITE_BOTH) == CastlingRights::NONE);
+	CHECK((board.castling_rights() & CastlingRights::WHITE_BOTH) == CastlingRights::NONE);
 	// Black rights must be untouched
-	CHECK((board.GetGameInfo().castlingRights & CastlingRights::BLACK_BOTH) == CastlingRights::BLACK_BOTH);
+	CHECK((board.castling_rights() & CastlingRights::BLACK_BOTH) == CastlingRights::BLACK_BOTH);
 
 	board.UndoMove(m);
 
-	CHECK((board.GetGameInfo().castlingRights & CastlingRights::WHITE_BOTH) == CastlingRights::WHITE_BOTH);
+	CHECK((board.castling_rights() & CastlingRights::WHITE_BOTH) == CastlingRights::WHITE_BOTH);
 }
 
 TEST_CASE("Board - Queenside castling right stripped after rook moves; kingside right intact; UndoMove restores",
@@ -63,20 +63,20 @@ TEST_CASE("Board - Queenside castling right stripped after rook moves; kingside 
 {
 	Board board(FEN_FULL_RIGHTS);
 
-	REQUIRE((board.GetGameInfo().castlingRights & CastlingRights::WHITE_QUEENSIDE) != 0);
-	REQUIRE((board.GetGameInfo().castlingRights & CastlingRights::WHITE_KINGSIDE) != 0);
+	REQUIRE((board.castling_rights() & CastlingRights::WHITE_QUEENSIDE) != 0);
+	REQUIRE((board.castling_rights() & CastlingRights::WHITE_KINGSIDE) != 0);
 
 	// White rook a1 → a3 (quiet, clears WHITE_QUEENSIDE only)
 	auto m = MoveFactory::MakeQuiet(a1, a3);
 	REQUIRE(board.DoMove(m));
 
-	CHECK((board.GetGameInfo().castlingRights & CastlingRights::WHITE_QUEENSIDE) == 0);
-	CHECK((board.GetGameInfo().castlingRights & CastlingRights::WHITE_KINGSIDE) != 0);
+	CHECK((board.castling_rights() & CastlingRights::WHITE_QUEENSIDE) == 0);
+	CHECK((board.castling_rights() & CastlingRights::WHITE_KINGSIDE) != 0);
 
 	board.UndoMove(m);
 
-	CHECK((board.GetGameInfo().castlingRights & CastlingRights::WHITE_QUEENSIDE) != 0);
-	CHECK((board.GetGameInfo().castlingRights & CastlingRights::WHITE_KINGSIDE) != 0);
+	CHECK((board.castling_rights() & CastlingRights::WHITE_QUEENSIDE) != 0);
+	CHECK((board.castling_rights() & CastlingRights::WHITE_KINGSIDE) != 0);
 }
 
 TEST_CASE("Board - BLACK_KINGSIDE right stripped when rook h8 is captured; UndoMove restores", "[board_state]")
@@ -84,17 +84,17 @@ TEST_CASE("Board - BLACK_KINGSIDE right stripped when rook h8 is captured; UndoM
 	// FEN: white rook h7, black rook h8, kings on e1/e8; only k right
 	Board board(FEN_ROOK_CAPTURE);
 
-	REQUIRE((board.GetGameInfo().castlingRights & CastlingRights::BLACK_KINGSIDE) != 0);
+	REQUIRE((board.castling_rights() & CastlingRights::BLACK_KINGSIDE) != 0);
 
 	// White rook h7 × h8 (captures black rook on its starting square)
 	auto m = MoveFactory::MakeCapture(h7, h8);
 	REQUIRE(board.DoMove(m));
 
-	CHECK((board.GetGameInfo().castlingRights & CastlingRights::BLACK_KINGSIDE) == 0);
+	CHECK((board.castling_rights() & CastlingRights::BLACK_KINGSIDE) == 0);
 
 	board.UndoMove(m);
 
-	CHECK((board.GetGameInfo().castlingRights & CastlingRights::BLACK_KINGSIDE) != 0);
+	CHECK((board.castling_rights() & CastlingRights::BLACK_KINGSIDE) != 0);
 }
 
 // ── En-passant square ─────────────────────────────────────────────────────────
@@ -103,12 +103,12 @@ TEST_CASE("Board - EP square set to e3 after white double pawn push e2-e4", "[bo
 {
 	Board board(FEN_EP_SETUP);
 
-	REQUIRE(board.GetGameInfo().epSquare == NO_SQUARE);
+	REQUIRE(board.ep_square() == NO_SQUARE);
 
 	auto push = MoveFactory::MakeMove(e2, e4, MoveType::DOUBLE_PAWN_PUSH);
 	REQUIRE(board.DoMove(push));
 
-	CHECK(board.GetGameInfo().epSquare == e3);
+	CHECK(board.ep_square() == e3);
 
 	board.UndoMove(push);
 }
@@ -120,13 +120,13 @@ TEST_CASE("Board - EP square cleared after a non-EP follow-up move", "[board_sta
 	// White double push sets EP square
 	auto push = MoveFactory::MakeMove(e2, e4, MoveType::DOUBLE_PAWN_PUSH);
 	REQUIRE(board.DoMove(push));
-	REQUIRE(board.GetGameInfo().epSquare == e3);
+	REQUIRE(board.ep_square() == e3);
 
 	// Black king e8 → d8 (quiet; clears the EP square)
 	auto king_move = MoveFactory::MakeQuiet(e8, d8);
 	REQUIRE(board.DoMove(king_move));
 
-	CHECK(board.GetGameInfo().epSquare == NO_SQUARE);
+	CHECK(board.ep_square() == NO_SQUARE);
 
 	board.UndoMove(king_move);
 	board.UndoMove(push);
@@ -138,11 +138,11 @@ TEST_CASE("Board - EP square restored to NO_SQUARE after UndoMove of double push
 
 	auto push = MoveFactory::MakeMove(e2, e4, MoveType::DOUBLE_PAWN_PUSH);
 	REQUIRE(board.DoMove(push));
-	REQUIRE(board.GetGameInfo().epSquare == e3); // sanity
+	REQUIRE(board.ep_square() == e3); // sanity
 
 	board.UndoMove(push);
 
-	CHECK(board.GetGameInfo().epSquare == NO_SQUARE);
+	CHECK(board.ep_square() == NO_SQUARE);
 }
 
 // ── Side-to-move ──────────────────────────────────────────────────────────────
@@ -210,17 +210,17 @@ TEST_CASE("Board - Fifty-move counter resets to 0 on pawn move; UndoMove restore
 	// FEN halfmove clock field pre-sets halfmoveClock to 10
 	Board board("4k3/8/8/8/8/8/4P3/4K3 w - - 10 1");
 
-	REQUIRE(board.GetGameInfo().halfmoveClock == 10);
+	REQUIRE(board.halfmove_clock() == 10);
 
 	// Pawn move resets the counter
 	auto pawn = MoveFactory::MakeQuiet(e2, e3);
 	REQUIRE(board.DoMove(pawn));
 
-	CHECK(board.GetGameInfo().halfmoveClock == 0);
+	CHECK(board.halfmove_clock() == 0);
 
 	board.UndoMove(pawn);
 
-	CHECK(board.GetGameInfo().halfmoveClock == 10);
+	CHECK(board.halfmove_clock() == 10);
 }
 
 TEST_CASE("Board - Fifty-move counter increments by 1 on quiet non-pawn move; UndoMove restores", "[board_state]")
@@ -228,16 +228,16 @@ TEST_CASE("Board - Fifty-move counter increments by 1 on quiet non-pawn move; Un
 	// FEN halfmove clock pre-set to 5
 	Board board("8/8/3k4/8/8/3K4/8/R7 w - - 5 1");
 
-	REQUIRE(board.GetGameInfo().halfmoveClock == 5);
+	REQUIRE(board.halfmove_clock() == 5);
 
 	auto m = MoveFactory::MakeQuiet(a1, a2);
 	REQUIRE(board.DoMove(m));
 
-	CHECK(board.GetGameInfo().halfmoveClock == 6);
+	CHECK(board.halfmove_clock() == 6);
 
 	board.UndoMove(m);
 
-	CHECK(board.GetGameInfo().halfmoveClock == 5);
+	CHECK(board.halfmove_clock() == 5);
 }
 
 TEST_CASE("Board - halfmoveClock reaches 50 after quiet move from 49; UndoMove restores to 49", "[board_state]")
@@ -247,16 +247,16 @@ TEST_CASE("Board - halfmoveClock reaches 50 after quiet move from 49; UndoMove r
 	// FEN halfmove clock pre-set to 49 (one quiet move will reach 50)
 	Board board("8/8/3k4/8/8/3K4/8/R7 w - - 49 1");
 
-	REQUIRE(board.GetGameInfo().halfmoveClock == 49);
+	REQUIRE(board.halfmove_clock() == 49);
 
 	auto m = MoveFactory::MakeQuiet(a1, a2);
 	REQUIRE(board.DoMove(m));
 
-	CHECK(board.GetGameInfo().halfmoveClock == 50);
+	CHECK(board.halfmove_clock() == 50);
 
 	board.UndoMove(m);
 
-	CHECK(board.GetGameInfo().halfmoveClock == 49);
+	CHECK(board.halfmove_clock() == 49);
 }
 
 // ============================================================================

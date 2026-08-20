@@ -160,6 +160,7 @@ void AIPerplex::init_search()
 	td_.nodes_searched = 0;
 	td_.qnodes_searched = 0;
 	td_.pv_table = PVTable{}; // fresh PV, exactly like the former GetMove() local
+	td_.root_game_state = GameStates::STILL_PLAYING;
 }
 
 // Lazy SMP helper thread entry point (plain iterative deepening, no quality
@@ -227,6 +228,7 @@ SearchResult AIPerplex::GetMove(const SearchLimits& limits)
 			htd.clear_null_move_flags();
 			htd.nodes_searched = 0;
 			htd.qnodes_searched = 0;
+			htd.root_game_state = GameStates::STILL_PLAYING;
 			helpers.emplace_back([this, &htd, effective_depth, this_tt = _tt.get()] {
 				helper_loop(htd, static_cast<int>(effective_depth), *this_tt);
 			});
@@ -236,13 +238,7 @@ SearchResult AIPerplex::GetMove(const SearchLimits& limits)
 	SearchResult result = iterative_deepening(td_, static_cast<int>(effective_depth), *_tt);
 	last_result_ = result; // expose via GetLastResult()
 
-	// Propagate the searched game state (mate/stalemate detected at the root)
-	// back to the real game board. This is the only m_Board side effect the
-	// search has, now that it runs on the thread-local copy.
-	const GameStates searched_state = td_.board.GetGameInfo().gameState;
-	if (searched_state != m_Board.GetGameInfo().gameState)
-		m_Board.SetGameState(searched_state);
-	last_result_.game_state = searched_state;
+	last_result_.game_state = td_.root_game_state;
 
 	// Latch the abort signal so any still-running helpers collapse in O(depth)
 	// steps (they only ever poll IsAborted()), then join them — helpers.clear()
@@ -1140,9 +1136,8 @@ bool AIPerplex::handle_empty_move_emergency(ThreadData& td, SearchState& state)
 	}
 
 	// Check game state
-	const GameInfo current_info = td.board.GetGameInfo();
-	if (current_info.gameState != GameStates::STILL_PLAYING) {
-		log.info("No move needed - game over (state={})", static_cast<int>(current_info.gameState));
+	if (td.root_game_state != GameStates::STILL_PLAYING) {
+		log.info("No move needed - game over (state={})", static_cast<int>(td.root_game_state));
 		return false;
 	}
 

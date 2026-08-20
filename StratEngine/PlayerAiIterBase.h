@@ -48,7 +48,7 @@ class PlayerAiIterBase : public PlayerAiBase {
 			return m_Line.front(); // Henter det foerste traek fra PVL
 
 		// No moves found — the search must have adjudicated the root.
-		assert(m_Board.GetGameInfo().gameState != GameStates::STILL_PLAYING);
+		assert(root_game_state_ != GameStates::STILL_PLAYING);
 		return Move::EmptyMove();
 	}
 

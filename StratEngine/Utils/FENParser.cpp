@@ -138,6 +138,9 @@ std::optional<std::string> FENParser::ParseFENImpl(const std::string& fen, FENGa
 	if (parts.size() >= 5) {
 		try {
 			int half = std::stoi(parts[4]);
+			if (half > MAX_FEN_HALFMOVE_CLOCK) {
+				return std::string("invalid halfmove clock");
+			}
 			outState.halfMoveClock = std::max(0, half);
 		} catch (...) {
 			return std::string("invalid halfmove clock");
@@ -150,6 +153,9 @@ std::optional<std::string> FENParser::ParseFENImpl(const std::string& fen, FENGa
 	if (parts.size() >= 6) {
 		try {
 			int full = std::stoi(parts[5]);
+			if (full > MAX_FEN_FULLMOVE_COUNT) {
+				return std::string("invalid fullmove counter");
+			}
 			outState.fullMoveCounter = std::max(1, full);
 		} catch (...) {
 			return std::string("invalid fullmove counter");

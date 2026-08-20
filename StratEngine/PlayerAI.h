@@ -61,8 +61,6 @@ class PlayerAiBase : public PlayerBase {
 		// Create the Evaluation strategy - Right now only possible to select two: SIMPLE and COMPLEX ;-)
 	}
 
-	//virtual Move GetMove(GameInfo& info) = 0;
-
 	/* AI helper methods */
 
 	// Quiescent soegning modvirker horisont-effekten
@@ -82,8 +80,7 @@ class PlayerAiBase : public PlayerBase {
 	// these agents do not track the main and quiescence trees apart.
 	SearchResult MakeResult() noexcept
 	{
-		return {
-		    .best_move = GetBestMove(), .best_score = GetBestScore(), .game_state = m_Board.GetGameInfo().gameState};
+		return {.best_move = GetBestMove(), .best_score = GetBestScore(), .game_state = root_game_state_};
 	}
 
 	/// Resolves per-call SearchLimits against the configured defaults
@@ -165,7 +162,7 @@ class PlayerAiBase : public PlayerBase {
 	void UpdateGameState(size_t currentPly, GameStates newState)
 	{
 		if (currentPly == 0)
-			m_Board.SetGameState(newState);
+			root_game_state_ = newState;
 	}
 
 	// Threefold repetition and the fifty-move rule. Both are draws by position history, so
@@ -184,6 +181,10 @@ class PlayerAiBase : public PlayerBase {
 	size_t m_SearchCount{0};
 	// Lokal reference til Board
 	Board& m_Board;
+
+	// Game outcome adjudicated at the root of the current GetMove() call. Legacy agents are
+	// single-threaded, so unlike ThreadData::root_game_state a single member here is safe.
+	GameStates root_game_state_ = GameStates::STILL_PLAYING;
 
 	// The embedded Eval object for per-player evaluation
 	std::unique_ptr<EvalManager> Eval;
@@ -226,4 +227,11 @@ class PlayerAiBase : public PlayerBase {
 	static std::chrono::milliseconds m_TotalTime;
 	static size_t m_TotalCount;
 	//#endif	// PRINT_STATS
+
+#ifdef STRAT_ENABLE_TEST_ACCESS
+	// Grants a legacy-agent test fixture (StratChessTests/SearchTests.cpp) access to
+	// root_game_state_ so a test can prove it is reset per GetMove() call, mirroring
+	// AIPerlexTestFixture's access to AIPerplex::td_.root_game_state.
+	friend class LegacyAiTestFixture;
+#endif
 };

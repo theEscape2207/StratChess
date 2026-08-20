@@ -474,7 +474,7 @@ BITBOARD MoveGenerator::GetAttackBoard(const Board& board, eColor attackByColor)
 	}
 
 	// Add en passant target if it exists
-	const auto epSquare = board.GetGameInfo().epSquare;
+	const auto epSquare = board.ep_square();
 	if (epSquare != NO_SQUARE) {
 		// Check if attacking color has a pawn that can capture en passant
 		BITBOARD adjacentPawns = GetAnyEnPassantAttackingPawns(boards.data(), attackByColor, epSquare);

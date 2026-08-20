@@ -3,6 +3,7 @@
 #include "MoveHelper.h"
 #include "Move.h"
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 
 // Castling rights bit flags
@@ -27,75 +28,14 @@ enum class GameStates {
 	HUMAN_EXITED   // 5
 };
 
-// The rule is fifty moves by each side, and halfmoveClock counts halfmoves.
+// The rule is fifty moves by each side, and Board::halfmove_clock() counts halfmoves.
 inline constexpr int HALFMOVE_CLOCK_LIMIT = 100;
 
-// Contains information about the board situation
-struct GameInfo {
-	GameStates gameState{GameStates::STILL_PLAYING};
-	eSquare epSquare{NO_SQUARE};
-	uint8_t castlingRights{CastlingRights::ALL};
-	Move lastMove;
-	int halfmoveClock{0};
-	int fullMoveCount{0};
-
-	GameInfo() noexcept = default;
-	~GameInfo() noexcept = default;
-
-	void Reset() noexcept
-	{
-		gameState = GameStates::STILL_PLAYING;
-		epSquare = NO_SQUARE;
-		castlingRights = CastlingRights::ALL;
-		lastMove.Clear();
-		halfmoveClock = 0;
-		fullMoveCount = 1;
-	}
-	bool GameEnded() const noexcept { return gameState != GameStates::STILL_PLAYING; }
-
-	// Updates the BoardInfo with information about En Passant and castling possibilities
-	// For each move done, update as done above according to input move.
-	// movPiece: the effective moving piece (Board::GetEffectiveMovPiece or GetPiece(to) after DoMove)
-	void UpdateBoardInfo(const Move& move, ePiece movPiece) noexcept
-	{
-		// Set the En Passant square
-		epSquare = MoveHelper::GetEnPassantSquare(move, movPiece);
-		lastMove = move;
-
-		UpdateCastlingState(move, movPiece);
-
-		UpdateHalfmoveClock(move, movPiece);
-	}
-
-	void UpdateCastlingState(const Move& m, ePiece movPiece) noexcept
-	{
-		auto sideToMove = PieceHelper::Color(movPiece);
-		if (PieceHelper::IsKing(movPiece)) {
-			castlingRights &= ~(sideToMove == eColor::WHITE ? CastlingRights::WHITE_BOTH : CastlingRights::BLACK_BOTH);
-		}
-
-		// Strip rights based on from/to squares - covers rook moves,
-		// rook captures, and any other piece capturing a rook
-		static constexpr std::array<std::pair<eSquare, uint8_t>, 4> rookSquares = {
-		    {{a1, CastlingRights::WHITE_QUEENSIDE},
-		     {h1, CastlingRights::WHITE_KINGSIDE},
-		     {a8, CastlingRights::BLACK_QUEENSIDE},
-		     {h8, CastlingRights::BLACK_KINGSIDE}}};
-
-		for (const auto& [sq, flag] : rookSquares) {
-			if (m.from() == sq || m.to() == sq)
-				castlingRights &= ~flag;
-		}
-	}
-
-	void UpdateHalfmoveClock(const Move& move, ePiece movPiece) noexcept
-	{
-		if (MoveHelper::IsCapture(move) || MoveHelper::IsPawnMove(movPiece)) {
-			halfmoveClock = 0; // captures and pawn moves are irreversible
-			assert(gameState == GameStates::STILL_PLAYING);
-		} else {
-			if (++halfmoveClock >= HALFMOVE_CLOCK_LIMIT)
-				gameState = GameStates::DRAW_50_MOVES;
-		}
-	}
-};
+// Bounds on what a caller may supply, taken from the limits of the game rather than from the
+// storage type. The longest possible chess game is 5898.5 moves
+// (https://wismuth.com/chess/longest-game.html); the 75-move rule caps the halfmove clock at 150.
+// A value past these describes a game that cannot be played, so it is rejected, not repaired.
+// These bound the input only -- playing on from a position loaded at the limit is legal.
+inline constexpr int MAX_FEN_HALFMOVE_CLOCK = 150;
+inline constexpr int MAX_FEN_FULLMOVE_COUNT = 5899;
+inline constexpr size_t MAX_UCI_REPLAY_PLIES = 11797;

@@ -13,6 +13,7 @@
 #include "Utils/FenBatch.h"
 #include <sstream>
 #include <iostream>
+#include <iterator>
 #include <string>
 #include <vector>
 #include <algorithm>
@@ -988,10 +989,75 @@ TEST_CASE("Board::SetupFromFEN: 4-field FEN yields halfmoveClock 0", "[uci]")
 	// so without them a position that never landed would pass this test for the wrong reason.
 	REQUIRE(board.GetPiece(e1) == WHITE_KING);
 	REQUIRE(board.GetPiece(e8) == BLACK_KING);
-	CHECK(board.GetGameInfo().halfmoveClock == 0);
+	CHECK(board.halfmove_clock() == 0);
 }
 
-// cmd_go seeds the root GameInfo from the board, whose gameState is never DRAW_50_MOVES.
+// ---------------------------------------------------------------------------
+// Board::SetupFromFEN — halfmove/fullmove counter bounds (GameState.h's
+// MAX_FEN_HALFMOVE_CLOCK / MAX_FEN_FULLMOVE_COUNT). A value past these
+// describes a game that cannot be played, so it is rejected, not repaired.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Board::SetupFromFEN: halfmove clock past MAX_FEN_HALFMOVE_CLOCK is rejected", "[uci]")
+{
+	Board board;
+	REQUIRE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"));
+
+	REQUIRE_FALSE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 151 1"));
+
+	// Untouched means the previous position, not a reset and not an empty board.
+	CHECK(board.GetPiece(e1) == WHITE_KING);
+	CHECK(board.halfmove_clock() == 0);
+}
+
+TEST_CASE("Board::SetupFromFEN: halfmove clock at MAX_FEN_HALFMOVE_CLOCK loads", "[uci]")
+{
+	Board board;
+	REQUIRE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 150 1"));
+
+	std::istringstream fss(board.ExtractFEN());
+	std::vector<std::string> fenParts{std::istream_iterator<std::string>(fss), std::istream_iterator<std::string>()};
+	REQUIRE(fenParts.size() == 6);
+	CHECK(fenParts[4] == "150");
+}
+
+TEST_CASE("Board::SetupFromFEN: fullmove counter past MAX_FEN_FULLMOVE_COUNT is rejected", "[uci]")
+{
+	Board board;
+	REQUIRE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"));
+
+	REQUIRE_FALSE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 5900"));
+
+	CHECK(board.GetPiece(e1) == WHITE_KING);
+	CHECK(board.fullmove_count() == 1);
+}
+
+TEST_CASE("Board::SetupFromFEN: fullmove counter at MAX_FEN_FULLMOVE_COUNT loads", "[uci]")
+{
+	Board board;
+	REQUIRE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 5899"));
+
+	std::istringstream fss(board.ExtractFEN());
+	std::vector<std::string> fenParts{std::istream_iterator<std::string>(fss), std::istream_iterator<std::string>()};
+	REQUIRE(fenParts.size() == 6);
+	CHECK(fenParts[5] == "5899");
+}
+
+// Pins the deliberate repair: a FEN fullmove number is 1-based, so 0 is not out-of-range input,
+// it is a hand-authored position that meant "move one" -- std::max(1, full) fixes it up rather
+// than rejecting it.
+TEST_CASE("Board::SetupFromFEN: fullmove counter 0 is repaired to 1", "[uci]")
+{
+	Board board;
+	REQUIRE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 0"));
+
+	std::istringstream fss(board.ExtractFEN());
+	std::vector<std::string> fenParts{std::istream_iterator<std::string>(fss), std::istream_iterator<std::string>()};
+	REQUIRE(fenParts.size() == 6);
+	CHECK(fenParts[5] == "1");
+}
+
+// The board never carries DRAW_50_MOVES: Game::Run adjudicates the fifty-move rule.
 // A high clock therefore has to be handled by the search itself, not by the seed (#345).
 TEST_CASE("UCI: a high halfmove clock still yields a searched move", "[uci]")
 {
@@ -1002,7 +1068,7 @@ TEST_CASE("UCI: a high halfmove clock still yields a searched move", "[uci]")
 	fx.ucinewgame(); // constructs ai_, which run_search_directly needs
 	fx.position("position fen r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - " + std::to_string(clock) +
 	            " 4");
-	REQUIRE(fx.board().GetGameInfo().halfmoveClock == clock);
+	REQUIRE(fx.board().halfmove_clock() == clock);
 
 	const Move best = fx.run_search_directly(4);
 
@@ -1118,6 +1184,23 @@ TEST_CASE("cmd_position: legal promotion replay preserves the requested piece", 
 	CHECK(fx.board().GetPiece(b8) == WHITE_KNIGHT);
 }
 
+// A move list past the longest possible game (GameState.h's MAX_UCI_REPLAY_PLIES) describes no
+// real game and is refused whole, exactly like an illegal token: "position startpos" itself still
+// applies (same as the oversized-token and illegal-move cases above), but none of the move list
+// does -- the board is left at plain startpos, not partway through the (uncountably long) list.
+TEST_CASE("cmd_position: a move list longer than MAX_UCI_REPLAY_PLIES is refused whole", "[uci]")
+{
+	UciHandlerTestFixture fx;
+
+	const std::string tooLong = long_game_moves(static_cast<int>(MAX_UCI_REPLAY_PLIES) + 4);
+	const std::string output = capture_cout([&] { fx.position("position startpos moves " + tooLong); });
+
+	CHECK(output.find("move list too long") != std::string::npos);
+	CHECK(fx.board().GetPiece(e2) == WHITE_PAWN);
+	CHECK(fx.board().GetPiece(g1) == WHITE_KNIGHT);
+	CHECK(fx.board().GetCurrentColor() == WHITE);
+}
+
 // ---------------------------------------------------------------------------
 // Piece placement sanity: exactly one king per color (issue #163)
 //
@@ -1194,7 +1277,7 @@ TEST_CASE("cmd_position: en-passant square on a non-3/6 rank is repaired, not re
 
 	CHECK(fx.board().GetPiece(e1) == WHITE_KING);
 	CHECK(fx.board().GetPiece(e8) == BLACK_KING);
-	CHECK(fx.board().GetGameInfo().epSquare == NO_SQUARE);
+	CHECK(fx.board().ep_square() == NO_SQUARE);
 	CHECK(output.find("rejected FEN") == std::string::npos);
 	CHECK(output.find("info string position:") != std::string::npos);
 }
@@ -1207,7 +1290,7 @@ TEST_CASE("cmd_position: en-passant square inconsistent with side to move is rep
 	UciHandlerTestFixture fx;
 	const std::string output = capture_cout([&] { fx.position("position fen 4k3/8/8/8/8/8/8/4K3 w - a3 0 1"); });
 
-	CHECK(fx.board().GetGameInfo().epSquare == NO_SQUARE);
+	CHECK(fx.board().ep_square() == NO_SQUARE);
 	CHECK(output.find("rank inconsistent") != std::string::npos);
 }
 
@@ -1217,7 +1300,7 @@ TEST_CASE("cmd_position: en-passant square with no pawn to capture is repaired a
 	UciHandlerTestFixture fx;
 	const std::string output = capture_cout([&] { fx.position("position fen 4k3/8/8/8/8/8/8/4K3 b - e3 0 1"); });
 
-	CHECK(fx.board().GetGameInfo().epSquare == NO_SQUARE);
+	CHECK(fx.board().ep_square() == NO_SQUARE);
 	CHECK(output.find("no pawn") != std::string::npos);
 }
 
@@ -1228,7 +1311,7 @@ TEST_CASE("cmd_position: a legal en-passant square is preserved, not cleared", "
 	UciHandlerTestFixture fx;
 	const std::string output = capture_cout([&] { fx.position("position fen 8/8/8/3Pp3/8/8/8/4K2k w - e6 0 1"); });
 
-	CHECK(fx.board().GetGameInfo().epSquare == e6);
+	CHECK(fx.board().ep_square() == e6);
 	CHECK(output.find("info string") == std::string::npos);
 
 	// fx.board() is const; the capture itself is checked on an independently loaded board.
@@ -1245,8 +1328,8 @@ TEST_CASE("cmd_position: castling repair is reported via UCI (spdlog is off ther
 	UciHandlerTestFixture fx;
 	const std::string output = capture_cout([&] { fx.position("position fen 4k3/8/8/8/4P3/8/8/3K4 w Q e6 0 1"); });
 
-	CHECK(fx.board().GetGameInfo().castlingRights == CastlingRights::NONE);
-	CHECK(fx.board().GetGameInfo().epSquare == NO_SQUARE);
+	CHECK(fx.board().castling_rights() == CastlingRights::NONE);
+	CHECK(fx.board().ep_square() == NO_SQUARE);
 	CHECK(output.find("king not on") != std::string::npos);
 	CHECK(output.find("no pawn") != std::string::npos);
 }

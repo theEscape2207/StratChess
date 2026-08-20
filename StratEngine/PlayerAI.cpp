@@ -104,7 +104,7 @@ Move PlayerAiBase::GetBestMove() noexcept
 		return m_BestMove;
 
 	// No moves found — the search must have adjudicated the root.
-	assert(m_Board.GetGameInfo().gameState != GameStates::STILL_PLAYING);
+	assert(root_game_state_ != GameStates::STILL_PLAYING);
 	return Move::EmptyMove();
 }
 
@@ -162,5 +162,6 @@ unsigned PlayerAiBase::ApplyLimits(const SearchLimits& limits)
 	stop_search_.store(false, std::memory_order_relaxed);
 	effective_depth_ = r.effective_depth;
 	node_limit_ = r.node_limit;
+	root_game_state_ = GameStates::STILL_PLAYING;
 	return r.effective_depth;
 }

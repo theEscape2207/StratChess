@@ -13,6 +13,7 @@
 // See Docs/TestDesign.md §"AIPerplex Test Access" for the mechanism.
 
 #include <catch_amalgamated.hpp>
+#include "AIAgent.h"
 #include "AIPerplex.h"
 #include "Board.h"
 #include "MoveFormatter.h"
@@ -118,6 +119,12 @@ class AIPerlexTestFixture {
 
 	void start_new_game() const { ai->StartNewGame(); }
 
+	// --- root_game_state pokes, for proving init_search() resets the per-call carrier ---
+
+	void set_root_game_state(GameStates s) const { ai->td_.root_game_state = s; }
+	GameStates root_game_state() const { return ai->td_.root_game_state; }
+	void call_init_search() const { ai->init_search(); }
+
 	// --- Per-game state pokes, for proving StartNewGame() resets them ---
 
 	void poke_history() const { ai->td_.update_history(WHITE, AnyLegalMove(), 4); }
@@ -172,7 +179,7 @@ class AIPerlexTestFixture {
 	void search_depth_one()
 	{
 		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
-		REQUIRE(board_.GetGameInfo().fullMoveCount == 1);
+		REQUIRE(board_.fullmove_count() == 1);
 		const Move move = ai->GetMove(SearchLimits::fixed_depth(1)).best_move;
 		REQUIRE_FALSE(move.is_null());
 	}
@@ -310,6 +317,37 @@ class AIPerlexTestFixture {
 		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
 		return ai->GetMove(SearchLimits::fixed_nodes(nodes)).best_move;
 	}
+};
+
+// ============================================================================
+// Legacy-agent test fixture
+// ============================================================================
+// A minimal counterpart to AIPerlexTestFixture for the legacy (non-Lazy-SMP) agents, which
+// have no ThreadData and carry root_game_state_ directly on PlayerAiBase. Must be defined
+// here (not in a header) — the name must match the friend declaration inside PlayerAI.h:
+// friend class LegacyAiTestFixture;
+class LegacyAiTestFixture {
+  public:
+	// Must be declared (and thus constructed/destroyed) before ai_owner —
+	// ai_owner holds a Board& reference into it that must outlive it.
+	Board board_;
+	std::unique_ptr<PlayerBase> ai_owner;
+	AIAgent* ai = nullptr;
+
+	explicit LegacyAiTestFixture(const std::string& fen, unsigned max_depth = 4) : board_(fen)
+	{
+		ai_owner = PlayerBase::Create(PlayerBase::ePlayerTypes::AIAGENT, max_depth, board_);
+		ai = static_cast<AIAgent*>(ai_owner.get());
+		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
+	}
+
+	void set_root_game_state(GameStates s) const { ai->root_game_state_ = s; }
+	GameStates root_game_state() const { return ai->root_game_state_; }
+
+	// Calls the same reset point every legacy GetMove() calls before it does anything else.
+	void call_apply_limits() const { ai->ApplyLimits(SearchLimits::fixed_depth(1)); }
+
+	SearchResult get_move(int depth) const { return ai->GetMove(SearchLimits::fixed_depth(depth)); }
 };
 
 // ============================================================================
@@ -838,6 +876,41 @@ TEST_CASE("AIPerplex - a position with a move reports STILL_PLAYING", "[search]"
 
 	CHECK_FALSE(result.best_move.is_null());
 	CHECK(result.game_state == GameStates::STILL_PLAYING);
+}
+
+TEST_CASE("AIPerplex - td_.root_game_state does not leak a stale verdict across GetMove calls", "[search]")
+{
+	// Quiet position: a completed root search adjudicates STILL_PLAYING here, so any surviving
+	// BLACK_WON after GetMove() can only be the pre-search value that was never reset.
+	AIPerlexTestFixture fix("4k3/8/8/8/8/8/1R6/4K3 w - - 5 60");
+
+	// Non-vacuous half: init_search() itself performs the reset, before any search node runs.
+	fix.set_root_game_state(GameStates::BLACK_WON);
+	fix.call_init_search();
+	CHECK(fix.root_game_state() == GameStates::STILL_PLAYING);
+
+	// End-to-end half: a full GetMove() call observes the same reset.
+	fix.set_root_game_state(GameStates::BLACK_WON);
+	const SearchResult result = fix.get_move_at_threads(1, 3);
+	CHECK(result.game_state == GameStates::STILL_PLAYING);
+	CHECK(fix.root_game_state() == GameStates::STILL_PLAYING);
+}
+
+TEST_CASE("AIAgent - root_game_state_ does not leak a stale verdict across GetMove calls", "[search]")
+{
+	// Same shape as the AIPerplex case above, against the legacy per-agent carrier.
+	LegacyAiTestFixture fix("4k3/8/8/8/8/8/1R6/4K3 w - - 5 60");
+
+	// Non-vacuous half: ApplyLimits() itself performs the reset, before any search node runs.
+	fix.set_root_game_state(GameStates::BLACK_WON);
+	fix.call_apply_limits();
+	CHECK(fix.root_game_state() == GameStates::STILL_PLAYING);
+
+	// End-to-end half: a full GetMove() call observes the same reset.
+	fix.set_root_game_state(GameStates::BLACK_WON);
+	const SearchResult result = fix.get_move(3);
+	CHECK(result.game_state == GameStates::STILL_PLAYING);
+	CHECK(fix.root_game_state() == GameStates::STILL_PLAYING);
 }
 
 // ============================================================================
