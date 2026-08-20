@@ -1,7 +1,7 @@
 # #348 Stage 2 — implementation progress
 
 Design: `.claude/plans/gameinfo-position-record-split.md`.
-**Status: design review round 1 addressed. No implementation started.**
+**Status: design review rounds 1 and 2 addressed. No implementation started.**
 
 Stage 1 landed in PR #357. Its design doc and progress file are deleted by this branch — the Harvest
 was complete, which is the lifecycle's condition for removing them. Git history keeps both.
@@ -38,7 +38,7 @@ not the intention.)*
 | Self-play `type 6` / `type 3` | — |
 | `search-reviewer` | — |
 | CI | — |
-| Cross-agent design review | round 1 addressed (5 findings, above) |
+| Cross-agent design review | rounds 1–2 addressed (8 findings, above) |
 
 ## Design review round 1
 
@@ -47,7 +47,7 @@ target and the narrowing, keep D6 in this PR as its own commit, keep D8 and wide
 
 | Finding | Resolution |
 |---|---|
-| **P1** — clamping at the parser does not stop the narrowed counters wrapping on the next increment; a quiet move from 65,535 resets the clock to 0 and bypasses draw detection | The wrap is real; saturation was the wrong fix (see below). D4 now bounds the three *inputs* — both FEN counters and the UCI move list — at 1000, rejected with a diagnostic, and guards the increments with a Debug assert only |
+| **P1** — clamping at the parser does not stop the narrowed counters wrapping on the next increment; a quiet move from 65,535 resets the clock to 0 and bypasses draw detection | The wrap is real; saturation was the wrong fix (see below). D4 now bounds the three *inputs* — both FEN counters and the UCI move list — rejecting anything past them with a diagnostic, and guards the increments with a Debug assert only. Round 2 set the bounds themselves |
 | **P2** — D8's oracle compared only at unmake, so a broken *forward* update would be written into both representations, restore perfectly and pass | D8 now fires at four points: after `DoMove`, after `DoNullMove`, on `DoMove`'s illegal-move rollback path, and after both unmakes |
 | **P2** — D6 introduces two independent verdict carriers but proposed one test | One test per carrier, AIPerplex and AIAgent. D5 now states *why* there are two: a single player-level member would be written by every Lazy SMP helper at its own ply 0, which is #358's race |
 | `root_state` is ambiguous beside `PositionState` and `SearchState` | Renamed `root_game_state` / `root_game_state_`, after the `SearchResult::game_state` field it feeds |
@@ -64,15 +64,22 @@ against, so absorbing the runaway is the worse outcome, not the safe one.
 follows that precedent, and splits the question by kind of event: **malformed input** is rejected with
 a diagnostic; **an impossible runtime state** is a Debug assert. Net Release cost of D4: zero.
 
-Bounding the inputs at a sane chess value instead was the repo owner's suggestion, not the reviewer's
-and not the implementer's — recorded because the review table above would otherwise imply the design
-got there on its own. The bounds are set at chess-plausible values (1000 each), not at the `uint16_t`
-maximum — the two FEN
+Bounding the inputs instead was the repo owner's suggestion, not the reviewer's and not the
+implementer's — recorded because the review table above would otherwise imply the design got there on
+its own. The bounds cover the two FEN
 counters and, crucially, the `position … moves` list, which was the one genuinely unbounded path into
 the counters. Together they mean nothing a caller can send reaches the field maximum, which is what
 makes the assert an assert rather than a compromise. A scan of the whole tree for six-field FENs found
-a maximum halfmove clock of 120 and fullmove counter of 60, so the bounds clear everything committed
-by 8× and 16×; that retires the "grep the corpora first" precondition from the earlier draft.
+a maximum halfmove clock of 120 and fullmove counter of 60, so nothing committed is affected; that
+retires the "grep the corpora first" precondition from the earlier draft.
+
+## Design review round 2
+
+| Finding | Resolution |
+|---|---|
+| The 1000 bounds were guesses. Fullmove's theoretical maximum is 5898.5 moves; halfmove wants 150 to leave room for the 75-move FIDE rule and to clear the corpus maximum of 120; the move list is the same limit in plies | Bounds are now **150 / 5899 / 11,797 plies**, each taken from the game rather than from observed usage, with the source URL carried into the constants. Worst counter reachable through UCI is 11,947 — still 5.5× inside the field maximum |
+| **P2** — D4's numeric table and the round-trip invariant contradicted the parser: `FENParser.cpp:75`'s regex is `\s+\d+`, so negatives die at the regex and are never clamped, while fullmove `0` *is* accepted and repaired to 1 | Both verified against the source. The policy table is rewritten with zero and negative split out per counter, the round-trip invariant is narrowed to the parser's normalised domain (halfmove 0…150, fullmove 1…5899), and fullmove `0` gets its own test. `std::max(0, half)` is now noted as dead code rather than read as evidence |
+| **P2** — nothing stopped the input cap silently becoming a runtime invariant | New Debug test: load fullmove 5899 with Black to move, make a quiet move, confirm it reaches 5900 without asserting, undo, confirm 5899. D4 now states explicitly that the bounds govern *input* while the assert guards the *field maximum*, and why conflating the two is the easy mistake |
 
 ## Post-merge follow-ups
 
