@@ -178,9 +178,9 @@ Non-obvious API contracts — the rest of the layout is discoverable.
 - All changes must be thread-safe, especially around the transposition table.
 - No regressions in search accuracy or Elo without explicit justification; benchmark before and
   after any optimisation, and keep behaviour deterministic.
-- English, unambiguous naming and comments. **Comments describe the code as it stands** — not what
-  it replaced, not task/gate labels, not point-in-time measurements. Narrative belongs in the PR
-  body or `Docs/Changelog.md`.
+- English, unambiguous naming and comments. **Comments describe the code as it stands.** Keep them
+  to 1–2 lines unless they record a key fact or tripwire; put history in the PR body or
+  `Docs/Changelog.md`.
 - Run the exe from `StratChessEvolved/` — both for `game_settings.json` and so logs land in
   `StratChessEvolved/logs/`.
 - Before committing, check `game_settings.json` is back at the starting FEN; test sessions leave

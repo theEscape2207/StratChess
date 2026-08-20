@@ -1,6 +1,5 @@
 # StratChessEvolved — Test Design
 
-**Status**: Phase 0 bootstrapped (March 2026)
 **Owner**: Thees
 **Related**: `Docs/Roadmap.md` — consult before adding tests for a new area
 
@@ -10,7 +9,8 @@
 
 Tests are **protection tools for the roadmap**, not bureaucratic overhead.
 
-- **Fast feedback above all**: the full Catch2 suite must run in < 10 seconds (Release build). Slow tests do not get run.
+- **Fast feedback above all**: the fast Catch2 tier must run in < 10 seconds (Release build). The
+  `[slow]` tier is deliberate, and runs pre-PR and nightly.
 - **Tests protect the next change, not the last one**: write tests just before touching a component, especially for high-risk roadmap items (LMR, MoveSorter, parallel search).
 - **Direction over precision**: for evaluation and search, verify the *direction* and *relative magnitude* of results. Exact centipawn values are fragile and mislead.
 - **Perft is the ground truth for move generation**: do not replace it with unit tests — extend it with more positions.
@@ -21,14 +21,15 @@ Tests are **protection tools for the roadmap**, not bureaucratic overhead.
 
 | Tier | Executable | Tag / command | Max time | Trigger |
 |------|-----------|---------------|----------|---------|
-| Unit & fast integration | `StratChessTests.exe` | (all), or `[tag]` | < 10 s | Every build |
-| Deep perft | `StratChessEvolved.exe perft test` | — | Minutes | Pre-merge |
-| Full tactical suite | `StratChessEvolved.exe tactical stability 10` (single run: `tactical test`) | — | ~11 s | Pre-PR (automated: `Validate-PrePR.ps1` Step 3) |
+| Unit & fast integration | `StratChessTests.exe` | `~[slow]`, or `[tag]` | < 10 s | PR CI and local validation |
+| Extended Catch2 | `StratChessTests.exe` | all, including `[slow]` | Minutes | Pre-PR and nightly |
+| Deep perft | `StratChessEvolved.exe perft test` | — | Minutes | Release PR CI |
+| Tactical stability | `StratChessEvolved.exe tactical stability 10` | one run: `tactical test` | Seconds | Pre-PR; 100 runs nightly |
 | Corpus move-gen sweep | `Scripts\Run-PerftCheck.ps1` | — | ~25 min | On demand — see [the corpus sweep](#corpus-move-generation-sweep-perftcheck) |
 
 Run all fast tests at once:
 ```bash
-build/windows-clang-cl/StratChessTests.exe
+build/windows-clang-cl/StratChessTests.exe "~[slow]"
 ```
 
 Run by tag:
@@ -58,41 +59,39 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 
 ## Coverage Map
 
-| Component | Tag | Status | File |
-|-----------|-----|--------|------|
-| Move structure & sentinels | `[moves]` | ✅ done | `StratChessTests/MoveFieldTests.cpp` |
-| Repetition detection | `[repetition]` | ✅ done | `RepetitionTests.cpp` |
-| Move generation (perft d1–d4) | `[perft]` | ✅ done | `PerftTests.cpp` |
-| Move generation (deep perft d5+) | — | ✅ done | `StratChessEvolved.exe perft test` |
-| Move generation (142,953-position corpus, d1–d4) | — | ✅ swept clean 2026-08-05 | `Scripts\Run-PerftCheck.ps1` |
-| **MoveFormatter** | `[formatter]` | ✅ Phase 0 | `MoveFormatterTests.cpp` |
-| **TranspositionTable** | `[tt]` | ✅ Phase 0 | `TTTests.cpp` |
-| **Evaluation (EvalSimple/Complex)** | `[eval]` | ✅ Phase 0 | `EvalTests.cpp` |
-| **Search regression (tactical)** | `[tactical]` | ✅ Phase 0 | `TacticalTests.cpp` |
-| **Search regression (slow tier)** | `[tactical_full][slow]` | ✅ Phase 0 | `TacticalFullTests.cpp` |
-| Search helpers (assess_quality etc.) | `[search]` | ✅ Phase 1 | `SearchTests.cpp` |
-| Move ordering (Sort) | `[sort]` | ✅ Phase 1 | `SortTests.cpp` |
-| Board DoMove/UndoMove completeness | `[board]` | ✅ Phase 1 | `BoardTests.cpp` |
-| Board move-type round-trips (all types) | `[board_moves]` | ✅ Phase 1 | `BoardMoveTests.cpp` |
-| Board GameInfo state lifecycle | `[board_state]` | ✅ Phase 1 | `BoardStateTests.cpp` |
-| Fifty-move rule (threshold, root, draw reporting) | `[fifty_move]` | ✅ | `FiftyMoveRuleTests.cpp` |
-| Board public query APIs + FEN round-trip | `[board_api]` | ✅ Phase 1 | `BoardApiTests.cpp` |
-| Time management (TimeManager + compute_budget) | `[time_mgr]` | ✅ Phase 1 | `TimeManagerTests.cpp` |
-| Bitboard helpers | `[bitboard]` | ⏳ Phase 1 | `BitboardTests.cpp` (future) |
-| Sliding-piece attack generation (PEXT) | `[magic]` | ✅ Phase 1 | `MagicBitboardTests.cpp` |
-| UCI command loop | `[uci]` | ✅ Phase 1 | `UCITests.cpp` (+ `StratChessEvolved.exe uci` pipe smoke test) |
-| PV legality (`pv_replays_legally`) | `[pv]` | ✅ Phase 2 | `PVIntegrityTests.cpp` |
-| Full tactical suite (WAC/mate-in-N) | — | ✅ Phase 1 | `StratChessEvolved.exe tactical test` |
-| Board instance independence (post-de-singleton) | `[board_instance]` | ✅ Phase 2 | `BoardInstanceTests.cpp` |
-| Game loop outcome handling (`Game::Run`) | `[game]` | ✅ | `GameLoopTests.cpp` |
-| Human player's non-interactive terminal paths | `[player_human]` | ✅ | `PlayerHumanTests.cpp` |
-| External integer parsing (argv, JSON keys) | `[argparse]` | ✅ Phase 1 | `ArgParseTests.cpp` |
-| Settings-file parsing and its failure modes | `[config]` | ✅ Phase 1 | `ConfigTests.cpp` |
-| NPS / performance regression | — | ⏳ Phase 1 | — |
+| Component | Tag | File |
+|-----------|-----|------|
+| Move structure & sentinels | `[moves]` | `StratChessTests/MoveFieldTests.cpp` |
+| Repetition detection | `[repetition]` | `RepetitionTests.cpp` |
+| Move generation (perft d1–d4) | `[perft]` | `PerftTests.cpp` |
+| Move generation (deep perft d5+) | — | `StratChessEvolved.exe perft test` |
+| Move generation (142,953-position corpus, d1–d4) | — | `Scripts\Run-PerftCheck.ps1` |
+| **MoveFormatter** | `[formatter]` | `MoveFormatterTests.cpp` |
+| **TranspositionTable** | `[tt]` | `TTTests.cpp` |
+| **Evaluation (EvalSimple/Complex)** | `[eval]` | `EvalTests.cpp` |
+| **Search regression (tactical)** | `[tactical]` | `TacticalTests.cpp` |
+| **Search regression (slow tier)** | `[tactical_full][slow]` | `TacticalFullTests.cpp` |
+| Search helpers (assess_quality etc.) | `[search]` | `SearchTests.cpp` |
+| Move ordering (Sort) | `[sort]` | `SortTests.cpp` |
+| Board DoMove/UndoMove completeness | `[board]` | `BoardTests.cpp` |
+| Board move-type round-trips (all types) | `[board_moves]` | `BoardMoveTests.cpp` |
+| Board GameInfo state lifecycle | `[board_state]` | `BoardStateTests.cpp` |
+| Fifty-move rule (threshold, root, draw reporting) | `[fifty_move]` | `FiftyMoveRuleTests.cpp` |
+| Board public query APIs + FEN round-trip | `[board_api]` | `BoardApiTests.cpp` |
+| Time management (TimeManager + compute_budget) | `[time_mgr]` | `TimeManagerTests.cpp` |
+| Sliding-piece attack generation (PEXT) | `[magic]` | `MagicBitboardTests.cpp` |
+| UCI command loop | `[uci]` | `UCITests.cpp` (+ `StratChessEvolved.exe uci` pipe smoke test) |
+| PV legality (`pv_replays_legally`) | `[pv]` | `PVIntegrityTests.cpp` |
+| Full tactical suite (WAC/mate-in-N) | — | `StratChessEvolved.exe tactical test` |
+| Board instance independence (post-de-singleton) | `[board_instance]` | `BoardInstanceTests.cpp` |
+| Game loop outcome handling (`Game::Run`) | `[game]` | `GameLoopTests.cpp` |
+| Human player's non-interactive terminal paths | `[player_human]` | `PlayerHumanTests.cpp` |
+| External integer parsing (argv, JSON keys) | `[argparse]` | `ArgParseTests.cpp` |
+| Settings-file parsing and its failure modes | `[config]` | `ConfigTests.cpp` |
 
 ---
 
-## Phase 0 — Bootstrap (March 2026)
+## Existing component coverage
 
 ### TranspositionTable Tests (`[tt]`)
 
@@ -239,9 +238,6 @@ change.
 - Mate in 1 (queen delivers back-rank mate): engine plays Qd8# (`6k1/5ppp/8/8/8/8/3Q4/6K1`)
   — queen slides along the d-file; lands 3 squares from king (cannot be captured)
 - Capture hanging rook: engine captures undefended piece (`4k3/8/8/8/8/8/8/2rQK3`)
-- (QFORK-001 was removed in #235 — its best move was depth-dependent, so it tested nothing
-  stable. The null-move-pruning zugzwang guard it was written for, #66, is code-level in
-  `should_try_null_move()` and unaffected.)
 
 ### Slow Tactical Tier (`[tactical_full][slow]`)
 
@@ -256,7 +252,7 @@ change.
 
 ---
 
-## Phase 1 — Incremental (add when touching that area)
+## Component-specific coverage
 
 Each item below is a standalone task. Do it when the corresponding feature is being modified — not ahead of time.
 
@@ -477,118 +473,27 @@ for an in-repo-assets-only corpus, or see `--help` for `--pgn-dir`/`--every-n-pl
 
 ### Full tactical suite in main executable
 
-**Status**: ✅ **Done.** Tactical runner landed March 2026 (8 positions); expanded to 31
-positions July 2026 (WAC mate + tactical batches), then to **37** in August 2026 — QFORK-001
-removed and seven depth-verified WAC positions added (#235). **37/37 passing (100%).**
 **Files**: `StratEngine/Tests/TacticalTestRunner.h/cpp`, `Tests/tactical_test_cases.json`
 **Invocation**: run from `Tests/` directory: `StratChessEvolved.exe tactical test`
-(defaults to `tactical_test_cases.json`) or `StratChessEvolved.exe tactical test
-[filename]` to run an arbitrary JSON file — used for staging candidates, see
-"Growing the suite" below.
+(defaults to `tactical_test_cases.json`) or pass a staging filename. The JSON is the source of truth
+for the current cases and expected moves; do not duplicate its count or contents here.
 
 **Stability mode**: `StratChessEvolved.exe tactical stability [N] [filename] [threads]` (N
 defaults to 10, threads defaults to 1) runs the whole suite N consecutive times and fails
-on either (a) any run failing the normal gate policy or (b) any position whose pass/fail
-*flips* between runs. The flip rule means a consistently-failing tolerated position
-(within the 90% threshold) does not break stability, but a sometimes-failing one does —
-flips are the signal for nondeterministic search results, the primary intermittent-race-bug
-symptom once Lazy SMP threads share the TT. Policy is pure
-(`TacticalTestRunner::evaluate_stability()`) and unit-tested in `SuitePolicyTests.cpp`
-(`[suite_policy]`). Gated at N=10, threads=1 (default) in `Validate-PrePR.ps1` Step 3; on
-today's single-threaded fixed-depth search it is deterministic and therefore trivially
-green.
+when a run fails the normal gate policy or a position's pass/fail result *flips*. A consistent,
+tolerated non-mate failure does not break stability; a flip detects nondeterministic search. The
+policy is unit-tested in `SuitePolicyTests.cpp` (`[suite_policy]`). `Validate-PrePR.ps1` runs ten
+single-threaded repetitions; Nightly runs 100.
 
-**Threads argument (Lazy SMP Gate 2)**: the optional fourth positional argument is
-forwarded through `run_stability_suite` → `run_test_suite` → `run_position`, which applies
-it via `PlayerAiBase::SetThreads()` (a no-op on legacy AIs; `AIPerplex` clamps to `[1, 32]`
-— the CLI itself only rejects non-positive values, relying on `SetThreads`' own clamp for
-the upper bound) on the `AIPerplex` instance it constructs, before `GetMove()`. This is the
-mechanism for Lazy SMP's Gate 2 ("stable at N threads"): running
-`tactical stability 20 tactical_test_cases.json 4` must show 0 failing runs and 0 flipped
-positions — proof that helper threads sharing the TT do not introduce nondeterministic
-search results at the fixed depths the suite uses. Verified 2026-07-23 (see
-`.claude/plans/lazy-smp.md` Gate Results): 20/20 runs passed, 0 flips at threads=4.
+The optional `threads` argument reaches `AIPerplex::SetThreads()` before search; `AIPerplex` clamps
+it to `[1, 32]`. Use it to validate Lazy SMP—for example,
+`tactical stability 20 tactical_test_cases.json 4` must have no failing runs or flips.
 
 **Acceptance**: 90%+ overall pass rate, **and 100% pass rate in every category whose
 name starts with `mate`** (`mate_in_1`, `mate_in_2`, `mate_in_3`, `mate_in_4`). The
 100%-mate rule is enforced by `TacticalTestRunner::evaluate_results()` and unit-tested
 in `StratChessTests/SuitePolicyTests.cpp` (`[suite_policy]`) — a single mate-category
 failure fails the suite even if the overall pass rate is still above 90%.
-**Regression history**: QFORK-001 silently regressed to 7/8 when null-move pruning
-landed (PR #55) — the original zugzwang guard let a side with a lone rook "pass",
-hiding the domination win (issue #66). Fixed by requiring ≥ 2 non-pawn pieces in
-`should_try_null_move()`. Because no automated gate ran this suite, the failure was
-only found by hand months later; it now runs in `Validate-PrePR.ps1` (Step 3).
-
-QFORK-001 regressed a second time when the mop-up evaluation term landed (issue #70,
-2026-07-26): the position is a genuine razor-thin, depth-sensitive tie between two
-moves even without mop-up (the engine's own preferred move already drifts from
-`d1-b3` at depth 4-5 to `d1-g4` at depth 6+ with zero mop-up contribution), and
-mop-up's king-cornering bonus tips it toward `d1-g4` at every magnitude tried
-(confirmed down to ~19 cp). This is **not** a hard-suite failure — QFORK-001 isn't a
-mate-category position, so the 100%-mate rule doesn't trigger — but the exe suite's
-expected pass rate is now **30/31 (96%)**, not 31/31; a future drop to 29/31 or lower
-is a real regression, not this known case. The Catch2 mirror
-(`Tactical - QFORK-001...`) was hidden via Catch2's `[.]` tag rather than deleted, so
-the position, the reasoning, and an explicit re-run handle stay in-tree — tracked in
-issue #118 for re-enabling alongside a broader WAC-style tactical suite.
-
-**Current positions (31)**, total suite runtime **~1.1 s** (sum of per-position search
-time at Release build speed; wall-clock including process startup ~3 s — well under
-the 60 s budget):
-
-*Original 8 (hand-authored, kept from the March 2026 baseline):*
-- `M1-001` — Rook delivers back-rank checkmate (d4)
-- `M1-002` — Queen delivers back-rank checkmate along d-file (d4)
-- `HANG-001` — Queen captures undefended rook on c1 (d4)
-- `BACK-001` — White rook invades rank 7 or 8 to win material (d5)
-- `BACK-002` — White rook invades rank 7 or 8 to win material (d5)
-- `QFORK-001` — Queen wins rook: Qa4+ forks king and Rd5; Qb3 threatens Qxd5 (d4)
-- `BACK-003` — White rook captures black back-rank rook with check (d5)
-- `M2-001` — Rh7+ Kg8 Rb8# (or Rb8# immediately if Rh1 covers h7) (d5)
-
-*WAC mate-in-2 (8, depth 5):*
-- `WAC-001` — Qg6: queen sac decoy, Nxg6# follows
-- `WAC-004` — Qxh7+: queen sac, hxg6# follows
-- `WAC-005` — Qc4+ (Black): deflection, bxc4# follows
-- `WAC-012` — Qxf3+ (Black): queen sac on f3, Rg1# follows
-- `WAC-027` — Qf8+: deflect the knight, back-rank mate
-- `WAC-054` — Qh1+ (Black): corner check, mate on h-file
-- `WAC-099` — Rh5: rook lift, gxh5 Qxh5#
-- `WAC-246` — Qh5+: king hunt on the h-file
-
-*WAC mate-in-3 (8, depth 6):*
-- `WAC-050` — Rxb6+: rook sac rips the king shelter
-- `WAC-057` — Rf8+: deflection into back-rank mate
-- `WAC-064` — g4+: pawn check starts king hunt
-- `WAC-079` — Qxh2+ (Black): queen sac on h2, king hunt
-- `WAC-097` — Qa8+: long-diagonal switchback mate
-- `WAC-136` — Rc8+: back-rank breakthrough
-- `WAC-173` — Qh6+: queen invades, mate on the h-file/g7
-- `WAC-197` — Qf1+ (Black): deflection, promotion mate follows
-
-*WAC mate-in-4 (1, depth 8):*
-- `WAC-161` — Qxd8+: rook grab with forced mate behind it
-
-*WAC tactical wins, non-mate (5):*
-- `WAC-043` — Be7/Qxa8: skewer or direct rook win (d6)
-- `WAC-085` — Na6: quiet knight move, mating net + material (d6)
-- `WAC-045` — Qxa1 (Black): back-rank pin wins the rook (d6)
-- `WAC-148` — Rxg7: rook sac destroys king cover (d7)
-- `WAC-065` — Ne7+: royal fork setup (d7)
-
-**Dropped during verification** (candidates from the same WAC batches that the engine
-disagreed with at their target depth — kept here as known-hard positions for this
-engine, not filed as bugs):
-- `WAC-035`, `WAC-139`, `WAC-282` — mate-in-4 candidates; engine chose a different move
-  at depth 7–8 (mate key not confirmed by `verify_mate_key.py` for the engine's line)
-- `WAC-209`, `WAC-124`, `WAC-082`, `WAC-240` — non-mate tactical candidates; engine
-  chose a different (non-equivalent) move at depth 6–7
-- `WAC-041` — K+R+P zugzwang-adjacent endgame; engine chose a different move at depth
-  6–7. Notably this was the one candidate that would have added direct regression
-  coverage for the NMP zugzwang-guard class of bug (issue #66/QFORK-001) beyond
-  QFORK-001 itself — dropping it means that extra coverage did not land. A tighter or
-  hand-constructed zugzwang position is a good candidate for a future staging round.
 
 **Growing the suite**: new candidates never go straight into `tactical_test_cases.json`.
 Stage them in `Tests/tactical_staging.json` (same schema, transient — never committed),
@@ -600,99 +505,15 @@ engine's move must strictly match the EPD `bm`. Once a candidate is confirmed, m
 entry into `tactical_test_cases.json` and delete it from the staging file.
 
 **Depth stability is a hard requirement, not a preference.** A position whose best move changes
-with search depth is not a regression test. QFORK-001 was accepted on a single depth-4 check and
-then answered `d1-b3`, `d1-g4` and `d1e2` at different depths, sitting failed in the suite for over
-a month before anyone questioned it (#235). Before promoting a candidate, run it at several depths
-around its target — 4-8 is a reasonable band — and require the **same** expected move at every one.
+with search depth is not a regression test. Before promoting a candidate, run it at several depths
+around its target—4–8 is a reasonable band—and require the **same** expected move at every one.
 A position that only solves from depth 6 upward is fine; commit it with `depth: 6`, having verified
 6 through 9. Prefer positions decided by a decisive material or mating margin: the ones decided by
 a few centipawns are exactly what produces a razor-thin tie that any eval change can tip.
 
 **`best_moves` asserts any objectively equivalent decisive continuation, not only the puzzle's
-historical key move** (#237 stage 4) — the suite is checking chess truth, not this engine's
-preferences. A list is widened only on **external** evidence (a real engine, e.g. Lichess cloud
-eval); it is never widened because our own engine also scores a move highly, since that would make
-the suite assert our own evaluation function instead. Checked under this rule: `WAC-043`'s `h2h4`
-(the move the engine's own search preferred at depth 8, per `Docs/Changelog.md`) scored +793cp
-against +3567/+3715cp for the accepted `a3e7`/`d5a8` pair (Lichess cloud eval, depth 20) — not the
-same class, so the list is unchanged.
-`WAC-065`'s competing `h6f8` stays unverified and unchanged rather than added on no evidence. Both
-routes into that source are exhausted: `multiPv` on the position itself returns only `d5e7`, and the
-position after `h6f8` (`1r1r1Qk1/p2n1p1p/bp1Pn1p1/2pNp3/2P2P1N/1P5B/P6P/3R1RK1 b - - 0 1`, whose
-eval negates into a score for the move) is not cached either. Resolving it needs a different
-external engine, not another query here.
-
----
-
-## Phase 2 — With Board De-Singletonization
-
-**Status**: ✅ **Done.** Landed across 7 commits on `.claude/plans/de-singleton-board.md` (June-July 2026). `Board::Instance()` is gone; every test constructs its own local `Board`.
-
-**Impact on tests** (all landed):
-- Every `Board::Instance().SetupFromFEN(fen)` replaced with constructing a `Board` directly — mostly via the FEN constructor `Board board(fen);`, with the default ctor + explicit `SetupFromFEN` kept for tests that reconfigure one board across multiple `SECTION`s or sequential setups
-- All test fixtures updated to hold Board by reference (`AIPerlexTestFixture::board_`, `TacticalTestHelpers.h`'s `make_tactical_engine(Board&, unsigned)`)
-- `EvalTests.cpp`, `RepetitionTests.cpp`, `PerftTests.cpp`, and every other `Board::Instance()`-using test file updated
-- ~~New `[position]` tests for the `Position` class~~ — not applicable; the refactor was an incremental `Board` change per the plan's design decisions, not a from-scratch `Position` class
-- Performance regression test (NPS baseline stored in a file): still **open** — not part of the de-singleton scope; remains a candidate for a future Phase 1 infrastructure item
-
-**Migration rule**: all new test files should be written for the non-singleton Board from the start (already the only pattern available now that `Instance()` is deleted).
-
----
-
-## Lazy SMP Shared-State Audit (Task 1, `.claude/plans/lazy-smp.md`)
-
-**Status**: ✅ Done, 2026-07-22. Still single-threaded — no threads spawned, no
-search-behavior change. Validated byte-identical against the pre-SMP baseline:
-same fixed-depth-5
-AI-vs-AI self-play game to checkmate, 137 `GetMove complete` lines, identical
-move/score/depth/nodes/stable on every line.
-
-**Changes**:
-- `PlayerAiBase::nodes_since_check_` moved to `ThreadData::nodes_since_check_`
-  (`StratEngine/ThreadData.h`). The two increment/check sites in
-  `AIPerplex::pvs()` and `AIPerplex::quiescence()` (`StratEngine/AIPerplex.cpp`)
-  now gate the wall-clock `StopRequested()` call on `td.thread_id == 0`;
-  helper threads (once they exist, Task 3) rely solely on the existing
-  `IsAborted()` atomic fast-path already at the top of both functions.
-- Dead debug code removed: `AIPerplex::debug_tt_cache_misses()`,
-  `AIPerplex::assert_tt_store()`, and the `tt_misses` multimap. Both call
-  sites were already commented out (no live caller); prefer-deletion per the
-  task brief rather than gating dead code behind `thread_id == 0`.
-
-**Audit findings**:
-- **`EvalManager`/`EvalSimple`/`EvalComplex`** (`StratEngine/Eval.h/.cpp`):
-  confirmed stateless — no data members beyond compile-time constants,
-  `Evaluate()` is `const` and reads only its `const Board&` argument plus
-  `constexpr`/compile-time-initialized global tables (`g_Eval_Bitboards`,
-  `g_bbFileMask`, `g_bbFileUpMask`, `g_bbFileDownMask`). Safe to share a
-  single `EvalManager` instance, unsynchronized, across every Lazy SMP
-  helper thread — documented as a comment on the class in `Eval.h`. No
-  per-thread cloning needed.
-- **`PlayerAiBase::m_TotalTime`/`m_TotalCount`** and `StopTimerAndAdjustVars`
-  (`StratEngine/PlayerAI.h/.cpp`): written only once per `GetMove()` call, on
-  the calling thread, after that call's search has returned — i.e. strictly
-  after any helper threads for that move have joined under the Lazy SMP
-  design. No synchronization added; comment left in `PlayerAI.h` for Task 3
-  to re-verify once helper-thread join actually exists.
-- **spdlog logging** (`AIPerplex.cpp`'s `s_logger`, `Utils/Logger.cpp`'s
-  default/perf loggers): all sinks in use are the `_mt` (thread-safe)
-  variants (`stdout_color_sink_mt`, `basic_file_sink_mt`). The lazy-init
-  guard around `s_logger` itself (`ensure_logger_initialized()`) is a plain
-  `if (s_logger) return;` — not thread-safe if raced — but it is only ever
-  invoked from `AIPerplex::SetVerboseLogging()`, called once during
-  single-threaded setup before any search starts. Per the Lazy SMP plan,
-  helper threads do not log in v1, so this holds; flagged with a comment for
-  if that assumption ever changes.
-- **Static attack/Zobrist tables** (`BitBoardHelper.h`, `Magic.h`,
-  `Board.cpp`'s `zobrist::` namespace): PEXT sliding-piece attack tables in
-  `Magic.h` are `inline constexpr` — fully resolved at compile time, no
-  runtime initialization at all. The Zobrist key tables in `Board.cpp` use a
-  C++11 function-local `static const bool once = [] { ... }();` initializer
-  (a "magic static"), which the standard guarantees is thread-safe even if
-  raced by concurrent `Board` construction from multiple future helper
-  threads. No lazy/unguarded runtime init found anywhere in this set.
-
----
+historical key move** — the suite checks chess truth, not this engine's preferences. Widen a list
+only on external evidence, never because this engine also scores a move highly.
 
 ## Test Isolation Rules
 
@@ -815,46 +636,20 @@ To test private search helper methods, `AIPerplex.h` contains a conditional frie
 #endif
 ```
 
-To activate: add `STRAT_ENABLE_TEST_ACCESS` to the `StratChessTests` target in `CMakeLists.txt`. This is done when `SearchTests.cpp` is written (Phase 1 — do not enable before then).
+`CMakeLists.txt` defines `STRAT_ENABLE_TEST_ACCESS` for `StratChessTests` only; production does not
+receive it.
 
 The macro is intentionally absent from the `StratChessEvolved` target.
 
 ## Game Loop Test Access
 
-`Game::Run()` is where every game actually ends — it commits the mover's move, adopts the state that
-mover reported, adjudicates the fifty-move rule on the position that results, and decides whether to
-continue. Nothing else exercises that: a search test never reaches it, and self-play cannot arrive at
-the 99 → 100 transition deterministically or produce `HUMAN_EXITED` at all.
-
-`Game::TestAccess` (declared in `Game.h`, defined in `GameLoopTests.cpp`) is a nested class, so it
-reaches `Game`'s private members without a friend declaration and without a build macro. It builds a
-`Game` around an explicit FEN and two supplied players — skipping the settings file and log files
-`Init()` would create — and exposes the resulting state, the move count and the board.
-
-The players are scripted: each returns a prepared `SearchResult` per call, which makes every outcome
-path a deterministic test. Running off the end of a script returns a null move with the game still
-playing, which `Run()` treats as the human leaving, so a test that scripts too few results terminates
-instead of hanging.
-
-Deliberately narrow: it injects players and reads the outcome. It does not change who owns the board
-or constructs the players — decoupling that is #256.
-
-A `Game` built this way sets `owns_logging_ = false`. The normal destructor calls `spdlog::drop_all()`,
-which is correct for an application shutting down and fatal inside a test process: it nulls the
-default logger for every later test.
+`Game::TestAccess` (declared in `Game.h`, defined in `GameLoopTests.cpp`) builds a game around an
+explicit FEN and scripted players, avoiding settings and log files. It makes game-loop outcomes,
+including the fifty-move transition and `HUMAN_EXITED`, deterministic. Test-created games set
+`owns_logging_ = false` so their destruction cannot drop loggers used by later tests.
 
 ## The terminal-result contract
 
-A player reports the end of a game exactly one way: `GetMove()` returns a null `best_move` with the
-outcome in `SearchResult::game_state`. Both halves need covering and they live apart:
-
-- **Consumer** — `GameLoopTests.cpp` (`[game]`) drives `Game::Run()` with scripted results, so every
-  outcome path is deterministic. It also covers the score channel: the printed state message must
-  come from the returned result, never from `IPlayer::GetBestScore()`, which no engine is obliged to
-  refresh on an ordinary search.
-- **Producer** — `SearchTests.cpp` (`[search]`) calls `AIPerplex::GetMove()` on mate and stalemate
-  FENs, and `PlayerHumanTests.cpp` (`[player_human]`) does the same for the human player, whose
-  terminal paths return before the `std::cin` prompt an automated test cannot drive.
-
-Scripted players cannot prove the producer side, and a search test cannot reach the consumer side —
-without both, the contract holds only by inspection.
+A player reports a terminal result with a null `best_move` and `SearchResult::game_state`. Test both
+sides: `GameLoopTests.cpp` verifies `Game::Run()` consumes it (including the score channel), while
+`SearchTests.cpp` and `PlayerHumanTests.cpp` verify each producer reports it correctly.
