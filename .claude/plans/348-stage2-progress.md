@@ -17,7 +17,7 @@ was complete, which is the lifecycle's condition for removing them. Git history 
 | 5 | Per-call reset of the root verdict, plus one falsified regression test **per carrier** — AIPerplex and AIAgent (D6) | not started |
 | 6 | `GameInfo` deleted; 59 `GetGameInfo()` sites migrated; `fullmove_count()` added (D7) | not started |
 | 7 | `FiftyMoveRuleTests.cpp` rewritten against `Board` (D7) | not started |
-| 8 | FEN clamp **and saturating increments** for the narrowed fields, plus the load/increment/undo boundary test (D4) | not started |
+| 8 | FEN rejection for out-of-range counters + Debug asserts at the increments, plus the rejection/round-trip tests (D4). Grep the FEN corpora for an out-of-range counter **first** | not started |
 | 9 | Validation sweep — equivalence, perft, bench, self-play ×2, `search-reviewer` | not started |
 | 10 | Harvest — `CLAUDE.md:153` corrected, `Docs/TestDesign.md` row 78 renamed, `Move.h:16` + `MoveFactory.h:8` repointed, source comments, `Docs/Changelog.md`, issue comments | not started |
 
@@ -42,21 +42,29 @@ not the intention.)*
 
 ## Design review round 1
 
-Three open questions were put to the reviewer and all three came back confirmed: keep D4's clamp and
-the 24-byte target, keep D6 in this PR as its own commit, keep D8 and widen it. Five findings:
+Three open questions were put to the reviewer and all three came back confirmed: keep the 24-byte
+target and the narrowing, keep D6 in this PR as its own commit, keep D8 and widen it. Five findings:
 
 | Finding | Resolution |
 |---|---|
-| **P1** — clamping at the parser does not stop the narrowed counters wrapping on the next increment; a quiet move from 65,535 resets the clock to 0 and bypasses draw detection | D4 rewritten: saturating increments as well as the parse clamp, the parser's full numeric policy tabulated (including the pre-existing above-`INT_MAX` rejection), and a load/increment/undo boundary test replacing the clamp-only one |
+| **P1** — clamping at the parser does not stop the narrowed counters wrapping on the next increment; a quiet move from 65,535 resets the clock to 0 and bypasses draw detection | The wrap is real. The fix is not saturation (see below): D4 now **rejects** an out-of-range counter at the parser through its existing error channel, and guards the increments with a Debug assert only |
 | **P2** — D8's oracle compared only at unmake, so a broken *forward* update would be written into both representations, restore perfectly and pass | D8 now fires at four points: after `DoMove`, after `DoNullMove`, on `DoMove`'s illegal-move rollback path, and after both unmakes |
 | **P2** — D6 introduces two independent verdict carriers but proposed one test | One test per carrier, AIPerplex and AIAgent. D5 now states *why* there are two: a single player-level member would be written by every Lazy SMP helper at its own ply 0, which is #358's race |
 | `root_state` is ambiguous beside `PositionState` and `SearchState` | Renamed `root_game_state` / `root_game_state_`, after the `SearchResult::game_state` field it feeds |
 | `static_assert(sizeof == 24)` guarantees the footprint, not the stated offsets | Wording softened — the claim is *no padding*, which is exactly what the assert proves. Offsets are a consequence; nothing reads the record by offset |
 
-The reviewer's suggested alternative to P1 — "a lower cap avoids the saturation logic" — does not
-hold, and the doc now says why: nothing bounds the halfmoves a `Board` can be driven through
-(`ResetSearchDepth` decoupled `currentPly_` from game length, and a UCI `position … moves` list has no
-length limit), so increments run away from *any* cap. The real choice is saturate or do not narrow.
+**P1's first fix was wrong, and both reviewer and implementer had it wrong the same way.** Saturating
+every increment spends a per-node compare to make a 65,535-move game — an engine bug two hundred times
+past anything real — report a plausible number instead of failing loudly. The threat model lists "a
+silently wrong answer" as a failure mode alongside a crash, and there is no attacker to harden
+against, so absorbing the runaway is the worse outcome, not the safe one.
+
+`Board::DoMove` already answers this for the analogous bound, ten lines from where the counters live:
+`assert(currentPly_ < MAX_PLY)` with a "defense in depth" comment, and no Release check. D4 now
+follows that precedent. The counter question therefore splits by kind of event: **malformed input**
+(a FEN that names an unrepresentable counter) is rejected with the diagnostic the parser already has,
+which also removes the numeric policy's third band rather than adding one; **an impossible runtime
+state** is a Debug assert. Net Release cost of D4: zero.
 
 ## Post-merge follow-ups
 
