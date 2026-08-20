@@ -79,7 +79,6 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | Fifty-move rule (threshold, root, draw reporting) | `[fifty_move]` | `FiftyMoveRuleTests.cpp` |
 | Board public query APIs + FEN round-trip | `[board_api]` | `BoardApiTests.cpp` |
 | Time management (TimeManager + compute_budget) | `[time_mgr]` | `TimeManagerTests.cpp` |
-| Bitboard helpers | `[bitboard]` | `BitboardTests.cpp` |
 | Sliding-piece attack generation (PEXT) | `[magic]` | `MagicBitboardTests.cpp` |
 | UCI command loop | `[uci]` | `UCITests.cpp` (+ `StratChessEvolved.exe uci` pipe smoke test) |
 | PV legality (`pv_replays_legally`) | `[pv]` | `PVIntegrityTests.cpp` |
@@ -89,7 +88,6 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | Human player's non-interactive terminal paths | `[player_human]` | `PlayerHumanTests.cpp` |
 | External integer parsing (argv, JSON keys) | `[argparse]` | `ArgParseTests.cpp` |
 | Settings-file parsing and its failure modes | `[config]` | `ConfigTests.cpp` |
-| NPS / performance regression | — | — |
 
 ---
 
