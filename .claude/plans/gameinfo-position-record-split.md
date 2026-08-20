@@ -26,10 +26,11 @@ that absorbs all four arrays; the outcome half becomes a per-search value report
   `irreversiblePlyHistory_`, `gameInfoHistory_` and `capturedHistory_` with a single
   `std::array<PositionState, MAX_PLY> state_history_`, plus a live `state_` in place of `gameInfo_`.
 - Narrow `halfmove_clock` and `fullmove_count` to `uint16_t` and `last_irreversible_ply` to
-  `uint32_t`, clamping the two FEN-sourced fields at parse (D4).
-- Move the outcome out of `Board`: `ThreadData::root_state` and `PlayerAiBase::root_state_` replace
-  `Board::SetGameState` and `GameInfo::gameState`, which are both deleted (D5). The `m_Board`
-  write-back at `AIPerplex.cpp:242-244` goes with them.
+  `uint32_t`, clamping the two FEN-sourced fields at parse **and saturating them at every
+  increment** (D4).
+- Move the outcome out of `Board`: `ThreadData::root_game_state` and
+  `PlayerAiBase::root_game_state_` replace `Board::SetGameState` and `GameInfo::gameState`, which are
+  both deleted (D5). The `m_Board` write-back at `AIPerplex.cpp:242-244` goes with them.
 - Reset the root verdict per `GetMove` call, which changes behaviour on one reachable path (D6).
 - Delete `GameInfo`, including `UpdateBoardInfo`, `UpdateCastlingState`, `UpdateHalfmoveClock`,
   `Reset()`, `GameEnded()` and the defaulted constructor/destructor. `GameState.h` keeps `GameStates`,
@@ -38,8 +39,8 @@ that absorbs all four arrays; the outcome half becomes a per-search value report
   reads, five whole-struct copies, the declaration and one stale comment — to narrow accessors,
   adding `fullmove_count()` alongside Stage 1's four (D7).
 - Rewrite `FiftyMoveRuleTests.cpp`'s five `GameInfo`-level cases against `Board` (D7).
-- Land a transitional commit that keeps both representations and asserts they agree at every unmake,
-  deleted in the same PR (D8).
+- Land a transitional commit that keeps both representations and asserts they agree after every make
+  *and* unmake, deleted in the same PR (D8).
 
 **This change will not:**
 
@@ -82,22 +83,26 @@ assumes a uniform tense will index it wrong.
 ### D2: 24 bytes, with the layout fixed by the design rather than left to the compiler
 
 ```cpp
-struct PositionState {              // offset
-    uint64_t zobrist_hash;          //  0   was zobrist_history_
-    uint32_t last_irreversible_ply; //  8   was irreversiblePlyHistory_ (size_t)
-    eSquare  ep_square;             // 12   int-sized; unchanged (see D3)
-    Move     last_move;             // 16
-    uint16_t halfmove_clock;        // 18
-    uint16_t fullmove_count;        // 20
-    uint8_t  castling_rights;       // 22
-    ePiece   captured_piece;        // 23   uint8_t-backed
-};                                  // 24 bytes, alignment 8, zero padding
+struct PositionState {              // bytes
+    uint64_t zobrist_hash;          //  8   was zobrist_history_
+    uint32_t last_irreversible_ply; //  4   was irreversiblePlyHistory_ (size_t)
+    eSquare  ep_square;             //  4   int-sized; unchanged (see D3)
+    Move     last_move;             //  2
+    uint16_t halfmove_clock;        //  2
+    uint16_t fullmove_count;        //  2
+    uint8_t  castling_rights;       //  1
+    ePiece   captured_piece;        //  1   uint8_t-backed
+};                                  // 24 total, alignment 8
 ```
 
-Undo storage per `Board` goes from 256 × (8 + 8 + 20 + 1) = 9,472 bytes to 256 × 24 = 6,144. A
-`static_assert(sizeof(PositionState) == 24)` holds the layout, because "zero padding" is an arithmetic
-claim about a specific ABI, and the whole point of the field order is lost silently if it stops being
-true.
+Undo storage per `Board` goes from 256 × (8 + 8 + 20 + 1) = 9,472 bytes to 256 × 24 = 6,144.
+
+The claim the order buys is **no padding**, not a specific set of offsets — nothing reads this record
+by offset, so offsets are a consequence rather than a requirement.
+`static_assert(sizeof(PositionState) == 24)` is exactly the right guard for that claim: the member
+sizes sum to 24, so equality means no byte was inserted anywhere. It is deliberately fragile in one
+direction — if `eSquare` ever narrows (D3, #292) the assert fires, which forces that change to
+re-choose the field order rather than silently leaving four bytes of padding behind.
 
 `fullmove_count` stays in the reversible record rather than becoming a `Board` scalar. It is genuine
 reversible per-move state — `DoMove` increments it, `UndoMove` must put it back — and here it occupies
@@ -128,20 +133,55 @@ structural merge, measure it, and let #292 decide whether the last eight bytes a
 
 Rejected: doing both at once. Saves one PR; costs the ability to bisect the one gate that matters.
 
-### D4: `halfmove_clock` and `fullmove_count` are clamped at the FEN parser
+### D4: the narrowed counters saturate — at the parser *and* at every increment
 
-`uint16_t` caps both at 65,535. A FEN can name larger values, so `FENParser` clamps on load. This is
-not a new contract: `SetupFromFEN` already documents that a parseable FEN with inconsistent metadata
-gets **repaired** rather than rejected, and already repairs en-passant squares with no pawn behind
-them and castling rights with no rook to back them.
+`uint16_t` caps both at 65,535, so the narrowing needs two things, and clamping on load is only the
+first of them.
 
-Neither clamp is reachable from a legal game — the fifty-move rule caps the clock at 100, and 65,535
-full moves is some thousands of times the longest game on record — so the clamp exists to make the
-narrowing safe against hostile input, not to handle a real position. `ExtractFEN` round-trips every
-value below the cap unchanged, which is what the existing FEN tests check.
+**At the parser.** `FENParser` clamps a parsed value into the field range. This is not a new contract:
+`SetupFromFEN` already documents that a parseable FEN with inconsistent metadata gets **repaired**
+rather than rejected, and already repairs en-passant squares with no pawn behind them and castling
+rights with no rook to back them.
 
-Rejected: a wider field to avoid the question (D2's fallback). Rejected: rejecting such a FEN outright,
-which would contradict the repair contract and turn a cosmetic field into a load failure.
+The parser's full numeric policy has to be stated, because it is currently two different behaviours
+and the narrowing adds a third band:
+
+| Input | Today | After |
+|---|---|---|
+| negative | clamped (`std::max(0, half)` / `std::max(1, full)`) | unchanged |
+| 0 … 65,535 | accepted | unchanged |
+| 65,536 … `INT_MAX` | accepted | **clamped to 65,535** |
+| above `INT_MAX` | **rejected** — `std::stoi` throws, `FENParser` returns `"invalid halfmove clock"` / `"invalid fullmove counter"` | unchanged |
+
+The last row stays inconsistent with the row above it: a 10-digit counter is a load failure while a
+6-digit one is repaired. That is pre-existing, it is not worth widening this change to fix, and it is
+recorded here so the next reader does not mistake it for an oversight.
+
+**At every increment.** Clamping on load is not sufficient: `update_threefold_rep` increments the
+clock and both make paths increment the fullmove counter, so a position loaded at 65,535 wraps to 0
+on the next quiet move — silently resetting progress toward the fifty-move draw, and giving the
+fullmove counter a value below its legal minimum. Both increments therefore saturate.
+
+A lower cap does **not** avoid this. Nothing bounds the number of halfmoves a `Board` can be driven
+through: `ResetSearchDepth()` decoupled `currentPly_` from game length precisely so it would not, and
+a UCI `position … moves` list has no length limit. Increments run away from any cap, so the choice is
+between saturating and not narrowing at all.
+
+That costs one compare per make on each counter, in a change whose justification is per-node cost.
+The bench measures it like everything else; if it shows, D2's 32-byte fallback — no narrowing, no
+saturation — is the escape, and the eight bytes were not worth it.
+
+Neither cap is reachable from a legal game: the fifty-move rule caps the clock at 100, and 65,535
+full moves is some thousands of times the longest game on record. The saturation exists to make the
+narrowing safe against hostile or synthetic input, not to handle a real position. `ExtractFEN`
+round-trips every value below the cap unchanged, which is what the existing FEN tests check.
+
+Rejected: a wider field to avoid the question (D2's fallback). Rejected: rejecting an out-of-range FEN
+outright, which would contradict the repair contract and turn a cosmetic field into a load failure.
+
+`last_irreversible_ply` needs no equivalent: it is assigned from `position_history_.size()`, never
+incremented, and `uint32_t` is four billion plies. The narrowing cast is explicit, which `/WX`
+requires anyway.
 
 ### D5: The outcome leaves `Board` entirely
 
@@ -150,20 +190,31 @@ it is written only under a `ply == 0` guard (`ThreadData::update_game_state`,
 `PlayerAiBase::UpdateGameState`) — yet today it sits inside `gameInfo_` and is therefore saved and
 restored at every ply by both make paths.
 
-It becomes `ThreadData::root_state` and `PlayerAiBase::root_state_`. All six consumers are inside the
-player layer and were enumerated, not assumed:
+It becomes `ThreadData::root_game_state` and `PlayerAiBase::root_game_state_` — named for the
+`SearchResult::game_state` field they feed. Not `root_state`: this design already has a
+`PositionState` and the search already has a `SearchState`, and a third bare "state" beside them says
+nothing about which one it is.
+
+All six consumers are inside the player layer and were enumerated, not assumed:
 
 | Site | Today | After |
 |---|---|---|
-| `AIPerplex.cpp:242-244` | reads `td_.board`'s state, writes it to `m_Board` | reads `td_.root_state`; the `m_Board` write-back is deleted |
-| `AIPerplex.cpp:1143` (emergency path) | `td.board.GetGameInfo().gameState` | `td.root_state` |
-| `PlayerAI.h:86` (`MakeResult`) | `m_Board.GetGameInfo().gameState` | `root_state_` |
-| `PlayerAI.h:168` (`UpdateGameState`) | `m_Board.SetGameState` | `root_state_` |
-| `PlayerAI.cpp:107`, `PlayerAiIterBase.h:51` | asserts on `m_Board`'s state | asserts on `root_state_` |
-| `ThreadData.h:155` (`update_game_state`) | `board.SetGameState` | `root_state` |
+| `AIPerplex.cpp:242-244` | reads `td_.board`'s state, writes it to `m_Board` | reads `td_.root_game_state`; the `m_Board` write-back is deleted |
+| `AIPerplex.cpp:1143` (emergency path) | `td.board.GetGameInfo().gameState` | `td.root_game_state` |
+| `PlayerAI.h:86` (`MakeResult`) | `m_Board.GetGameInfo().gameState` | `root_game_state_` |
+| `PlayerAI.h:168` (`UpdateGameState`) | `m_Board.SetGameState` | `root_game_state_` |
+| `PlayerAI.cpp:107`, `PlayerAiIterBase.h:51` | asserts on `m_Board`'s state | asserts on `root_game_state_` |
+| `ThreadData.h:155` (`update_game_state`) | `board.SetGameState` | `root_game_state` |
 
 Nothing outside a player reads it. `Game` has carried its own `game_state_` since Stage 1, fed from
 `SearchResult::game_state`, and no test reads `Board`'s copy.
+
+**Two carriers, not one, and that is forced rather than chosen.** AIPerplex's has to be per-thread:
+`adjustScoreForGameState` runs on every Lazy SMP helper, so a single player-level member would be
+written concurrently by every helper at its own ply 0 — the exact defect #358 records for `_bestScore`
+one line away. Putting it on `ThreadData` is what keeps this change from adding a second instance of
+that race. The legacy agents are single-threaded and have no `ThreadData`, so theirs sits on
+`PlayerAiBase`. Two carriers means two independent reset paths, and therefore two tests (D6).
 
 Rejected: keeping it on `Board` as a non-reversible scalar with a `game_state()` accessor. Smaller
 diff, but it leaves `Board` owning something that is not a property of the position — and this issue
@@ -183,11 +234,20 @@ initialised to `STILL_PLAYING` reports "no verdict", which is the truth.
 
 This is the one place the change is not bit-identical, and it is stated rather than smuggled in. It
 does not weaken the equivalence gate: `game_state` is never emitted over UCI, and every `position`
-command rebuilds the board, so the stale path is unreachable under the protocol the gate drives. It
-needs its own test (Validation).
+command rebuilds the board, so the stale path is unreachable under the protocol the gate drives.
 
-Rejected: seeding `root_state` from the previous call to preserve the behaviour exactly. It preserves
-a bug whose blast radius Stage 1 increased.
+**Both carriers need covering.** D5's two members are reset independently, so one test proves one of
+them. `AIPerplex` (`ThreadData::root_game_state`) and one legacy agent — `AIAgent`, which has the
+richest `UpdateGameState` usage of the three — each get the two-call test. Self-play cannot substitute:
+it never issues a search that aborts before its first root call returns.
+
+Keeping it in its own commit, separate from the storage merge, is what lets the equivalence run
+before it stand as the proof for everything else.
+
+Rejected: seeding the carrier from the previous call to preserve the behaviour exactly. It preserves a
+bug whose blast radius Stage 1 increased. Rejected: centralising the reset so one mechanism covers
+both — the two carriers live on different types for the thread-safety reason in D5, and a shared base
+member would reintroduce exactly the race that separation avoids.
 
 ### D7: `GameInfo` is deleted, not kept as a facade
 
@@ -213,13 +273,25 @@ Two consequences are worth naming rather than discovering:
 ### D8: A transitional commit carries both representations and asserts they agree
 
 The first commit adds `PositionState` and writes it **alongside** the four existing arrays, with a
-Debug-only assert at every `UndoMove`/`UndoNullMove` that the record restores field-for-field what the
-arrays do. The commit that deletes the arrays deletes the assert.
+Debug-only field-for-field comparison against them. The commit that deletes the arrays deletes the
+comparison.
+
+**The comparison runs forward as well as backward.** Checking only at `UndoMove`/`UndoNullMove` proves
+the snapshot was saved and restored correctly and nothing else: a broken forward update of the
+en-passant square, castling rights, either counter, `last_move`, the hash or the irreversible ply
+would be written wrongly into *both* representations, restore perfectly, and pass. The oracle
+therefore fires at four points:
+
+- after `DoMove` completes, comparing the live record against the live `gameInfo_` and scalars;
+- after `DoNullMove`, which has its own forfeit-the-ep-square and fullmove-increment logic;
+- on `DoMove`'s rollback path, where a move that leaves its own king in check is undone before
+  `change_player()` — the one place make and unmake interleave;
+- after `UndoMove` / `UndoNullMove`, against the restored values.
+
+That is what makes the transitional commit a direct oracle rather than a check on half the mechanism.
 
 This is Stage 1's D7 pattern, which earned its keep there. `Compare-SearchEquivalence` is the stronger
-gate but drives UCI only; the dual-write assert also covers game mode, the legacy agents, and the
-rollback path inside `DoMove` where a move that leaves its own king in check is undone before
-`change_player()`.
+gate but drives UCI only; the dual-write comparison also covers game mode and the legacy agents.
 
 Rejected: an uncommitted local probe — same evidence, surviving only as prose in a PR body. Rejected:
 relying on the equivalence run alone, which cannot distinguish "the record is correct" from "the
@@ -241,9 +313,11 @@ if that ever becomes true it is a change worth noticing.
 
 - **The bench direction is unmeasured.** One contiguous 24-byte store replacing four scattered ones,
   and 3,328 fewer bytes copied per helper-thread `Board`, should be neutral-to-positive; Stage 1's
-  comparable change measured +3.0%. "Should" is not a measurement. `Run-Bench.ps1` before and after,
-  same compiler, matched thread counts; the number is reported, not predicted, and it is also the
-  input #292 needs.
+  comparable change measured +3.0%. Working against it, D4's saturation adds one compare per make on
+  each counter. "Should" is not a measurement. `Run-Bench.ps1` before and after, same compiler,
+  matched thread counts; the number is reported, not predicted, and it is also the input #292 needs.
+  If it comes out negative, D2's 32-byte fallback drops both the narrowing and the saturation and is
+  the first thing to try.
 - **D6's stale-verdict path is argued, not observed.** That an abort can return before the first root
   `pvs` completes is a reading of `iterative_deepening`; no test reaches it today. It is settled by
   the new test named in Validation, which drives two `GetMove` calls and asserts the second does not
@@ -263,8 +337,9 @@ if that ever becomes true it is a change worth noticing.
 - `UndoMove` and `UndoNullMove` restore the pre-move position exactly, including the Zobrist hash,
   the halfmove clock, the last-irreversible ply and `last_move` — the property D8's assert checks
   directly and the existing `[board_state]` / `[board_api]` cases check behaviourally.
-- `sizeof(PositionState) == 24`, asserted at compile time.
-- `ExtractFEN` round-trips every halfmove and fullmove value below the D4 clamp unchanged.
+- `sizeof(PositionState) == 24`, asserted at compile time — the no-padding claim, not an offset claim.
+- `ExtractFEN` round-trips every halfmove and fullmove value below the D4 cap unchanged.
+- Neither narrowed counter can wrap: at the cap, an increment leaves it at the cap (D4).
 - The root verdict reaches a caller through `SearchResult::game_state` and no other channel; no object
   outside a player holds a `GameStates` written by the search.
 - An aborted frame still mutates nothing — this change adds no store to the move loop.
@@ -280,14 +355,19 @@ Engine tier, so `Validate-PrePR.ps1` runs the full local gate. Beyond it:
   exercises. A clean sweep is the script's classification, not zero failures.
 - **`Run-Bench.ps1`** before and after, clang-cl both sides, matched thread counts. Reported as
   measured. This number is also #292's input.
-- **Debug-build test run with D8's dual-write assert in place**, before the deletion commit.
-- **A `[search]` test for D6**: two `GetMove` calls on one player where the first reaches a terminal
-  verdict and the second is aborted immediately; the second must report `STILL_PLAYING`. Falsify it
-  against current `main` — if it passes there, it is testing nothing.
+- **Debug-build test run with D8's dual-write oracle in place**, before the deletion commit. The
+  suite has to reach all four comparison points, including `DoMove`'s rollback path — `[board_state]`
+  already covers a move rejected for leaving the king in check.
+- **Two `[search]` tests for D6**, one per carrier: `AIPerplex` and `AIAgent`. Two `GetMove` calls on
+  one player where the first reaches a terminal verdict and the second is aborted immediately; the
+  second must report `STILL_PLAYING`. Falsify both against current `main` — if either passes there,
+  it is testing nothing.
 - **The rewritten `[fifty_move]` cases**, driving `Board::DoMove` rather than the deleted
   `GameInfo::UpdateBoardInfo`.
-- **A FEN clamp test** for D4: a FEN naming a halfmove or fullmove value above the field maximum loads
-  with the clamped value rather than a wrapped one.
+- **A D4 boundary test** covering load, increment and undo rather than the clamp alone: load a FEN at
+  exactly 65,535 and one above the field maximum, play a quiet Black move, check both counters are
+  still saturated rather than 0 or 1, undo it, and check `ExtractFEN` matches the loaded position.
+  The wrap this guards against is silent in Release and changes draw detection.
 - **Self-play twice**: AIPerplex vs AIPerplex (`"type": 6`) and AIAgent vs AIAgent (`"type": 3`),
   because `PlayerAiBase` changes.
 - **`search-reviewer` dispatch** — the diff touches `AIPerplex.cpp` and `ThreadData.h`.
@@ -306,12 +386,14 @@ Closes #355 and #356. Re-scopes #292 to a single measured question.
 | `Board` owns one reversible `PositionState` per ply; the outcome is not board state | `CLAUDE.md` → Key Source Facts (extends Stage 1's entry), comment on `PositionState` |
 | The record is pre-move state plus the move's own `captured_piece` — two tenses, deliberately | comment on `PositionState`; a reader who assumes one tense indexes it wrong |
 | `sizeof(PositionState) == 24` and why the field order is not arbitrary | `static_assert` plus a one-line comment — the assert is the durable form |
-| The root verdict travels only via `SearchResult::game_state`; no player writes it to a `Board` | `CLAUDE.md` → Key Source Facts |
-| D6's per-call reset, and the stale-verdict bug it fixes | `Docs/Changelog.md`, the PR body, and the test name |
-| D4's clamp as part of the existing FEN *repair* contract, not a new one | comment at the clamp, next to `SetupFromFEN`'s existing repair note |
+| The root verdict travels only via `SearchResult::game_state`; no player writes it to a `Board` | `CLAUDE.md` → Key Source Facts. **`CLAUDE.md:153` currently states the opposite** — "root state is propagated back in `GetMove()`" — and must be corrected, not merely extended |
+| Why the verdict lives on `ThreadData`, not `PlayerAiBase`, for AIPerplex | comment on `ThreadData::root_game_state` — it is a thread-safety constraint, and the obvious simplification reintroduces #358's race |
+| D6's per-call reset, and the stale-verdict bug it fixes | `Docs/Changelog.md`, the PR body, and the test names |
+| D4's saturation, and the parser's full numeric policy including the pre-existing above-`INT_MAX` rejection | comment at the increment sites and at the clamp, next to `SetupFromFEN`'s existing repair note |
 | #292's "reverted for unrecorded reasons" is false — it was validated locally and parked | comment on #292, with the measured 24-byte bench as its new input |
 | Measured bench before/after | `Docs/Changelog.md`, and the PR body |
 | Where the halfmove clock now lives, for #347 to build on | comment on #347 |
-| The rewritten fifty-move cases and what they now cover | `Docs/TestDesign.md` |
+| The rewritten fifty-move cases, the D4 boundary test and the two D6 stale-verdict tests | `Docs/TestDesign.md` — and its row 78, "Board GameInfo state lifecycle", is renamed: the type it names stops existing |
+| `Move.h:16` and `MoveFactory.h:8` both point at `Board::capturedHistory_[]` as where the captured piece is tracked | both comments, repointed at `PositionState::captured_piece` — they are the only documentation of that contract for a `Move` reader |
 
 **Approved decisions that changed during implementation.** *(Fill in before opening the PR.)*

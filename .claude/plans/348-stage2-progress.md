@@ -1,7 +1,7 @@
 # #348 Stage 2 — implementation progress
 
 Design: `.claude/plans/gameinfo-position-record-split.md`.
-**Status: design written, awaiting cross-agent design review. No implementation started.**
+**Status: design review round 1 addressed. No implementation started.**
 
 Stage 1 landed in PR #357. Its design doc and progress file are deleted by this branch — the Harvest
 was complete, which is the lifecycle's condition for removing them. Git history keeps both.
@@ -10,19 +10,19 @@ was complete, which is the lifecycle's condition for removing them. Git history 
 
 | # | Step | State |
 |---|---|---|
-| 1 | `PositionState` added and dual-written alongside the four arrays, with the D8 unmake assert | not started |
+| 1 | `PositionState` added and dual-written alongside the four arrays, with the D8 oracle at all four points — after `DoMove`, after `DoNullMove`, on the rollback path, after both unmakes | not started |
 | 2 | `Compare-SearchEquivalence` + Debug suite against the dual-write build | not started |
-| 3 | The four `MAX_PLY` arrays deleted; the D8 assert deleted with them | not started |
-| 4 | Outcome moved off `Board` — `ThreadData::root_state`, `PlayerAiBase::root_state_`, `SetGameState` gone (D5) | not started |
-| 5 | Per-call reset of the root verdict, plus its falsified regression test (D6) | not started |
+| 3 | The four `MAX_PLY` arrays deleted; the D8 oracle deleted with them | not started |
+| 4 | Outcome moved off `Board` — `ThreadData::root_game_state`, `PlayerAiBase::root_game_state_`, `SetGameState` gone (D5) | not started |
+| 5 | Per-call reset of the root verdict, plus one falsified regression test **per carrier** — AIPerplex and AIAgent (D6) | not started |
 | 6 | `GameInfo` deleted; 59 `GetGameInfo()` sites migrated; `fullmove_count()` added (D7) | not started |
 | 7 | `FiftyMoveRuleTests.cpp` rewritten against `Board` (D7) | not started |
-| 8 | FEN clamp for the narrowed clock/fullmove fields, plus its test (D4) | not started |
+| 8 | FEN clamp **and saturating increments** for the narrowed fields, plus the load/increment/undo boundary test (D4) | not started |
 | 9 | Validation sweep — equivalence, perft, bench, self-play ×2, `search-reviewer` | not started |
-| 10 | Harvest — `CLAUDE.md`, source comments, `Docs/Changelog.md`, `Docs/TestDesign.md`, issue comments | not started |
+| 10 | Harvest — `CLAUDE.md:153` corrected, `Docs/TestDesign.md` row 78 renamed, `Move.h:16` + `MoveFactory.h:8` repointed, source comments, `Docs/Changelog.md`, issue comments | not started |
 
-Steps 1–3 are ordered by D8: the assert only means something while both representations exist.
-Step 5 depends on step 4.
+Steps 1–3 are ordered by D8: the oracle only means something while both representations exist.
+Step 5 depends on step 4, and stays its own commit so step 2's equivalence run covers everything else.
 
 ## Evidence
 
@@ -38,16 +38,25 @@ not the intention.)*
 | Self-play `type 6` / `type 3` | — |
 | `search-reviewer` | — |
 | CI | — |
-| Cross-agent design review | pending |
+| Cross-agent design review | round 1 addressed (5 findings, above) |
 
-## Open questions for the design review
+## Design review round 1
 
-- D4's clamp touches `FENParser` to buy eight bytes per ply. D2's 32-byte fallback avoids it. Is the
-  clamp worth it, given no legal game can reach either cap?
-- D6 is the one non-bit-identical change in the PR. Confirm it belongs here rather than as its own
-  fix ahead of the restructure.
-- D8's dual-write commit doubles the make/unmake write path for one commit. Confirm the game-mode and
-  legacy-agent coverage it buys is worth that over relying on `Compare-SearchEquivalence` alone.
+Three open questions were put to the reviewer and all three came back confirmed: keep D4's clamp and
+the 24-byte target, keep D6 in this PR as its own commit, keep D8 and widen it. Five findings:
+
+| Finding | Resolution |
+|---|---|
+| **P1** — clamping at the parser does not stop the narrowed counters wrapping on the next increment; a quiet move from 65,535 resets the clock to 0 and bypasses draw detection | D4 rewritten: saturating increments as well as the parse clamp, the parser's full numeric policy tabulated (including the pre-existing above-`INT_MAX` rejection), and a load/increment/undo boundary test replacing the clamp-only one |
+| **P2** — D8's oracle compared only at unmake, so a broken *forward* update would be written into both representations, restore perfectly and pass | D8 now fires at four points: after `DoMove`, after `DoNullMove`, on `DoMove`'s illegal-move rollback path, and after both unmakes |
+| **P2** — D6 introduces two independent verdict carriers but proposed one test | One test per carrier, AIPerplex and AIAgent. D5 now states *why* there are two: a single player-level member would be written by every Lazy SMP helper at its own ply 0, which is #358's race |
+| `root_state` is ambiguous beside `PositionState` and `SearchState` | Renamed `root_game_state` / `root_game_state_`, after the `SearchResult::game_state` field it feeds |
+| `static_assert(sizeof == 24)` guarantees the footprint, not the stated offsets | Wording softened — the claim is *no padding*, which is exactly what the assert proves. Offsets are a consequence; nothing reads the record by offset |
+
+The reviewer's suggested alternative to P1 — "a lower cap avoids the saturation logic" — does not
+hold, and the doc now says why: nothing bounds the halfmoves a `Board` can be driven through
+(`ResetSearchDepth` decoupled `currentPly_` from game length, and a UCI `position … moves` list has no
+length limit), so increments run away from *any* cap. The real choice is saturate or do not narrow.
 
 ## Post-merge follow-ups
 
