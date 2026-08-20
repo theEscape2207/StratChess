@@ -265,8 +265,8 @@ without anyone noticing, a mitigation adopted because it sounded prudent. Mechan
 
 ## What validates what
 
-**Linux Debug plus the sanitizers is the primary correctness gate.** ASan, UBSan and
-`_GLIBCXX_DEBUG` — plus TSan (#184) and MSan (#189) as they land — catch strictly more, and more
+**Linux Debug plus the sanitizers is the primary correctness gate.** ASan, UBSan, TSan and
+`_GLIBCXX_DEBUG` — plus MSan (#189) as it lands — catch strictly more, and more
 precisely, than any Windows-side checking option. Cost is not a consideration: the repository is
 public, so standard-runner minutes are free.
 
@@ -287,14 +287,13 @@ different axis — *toolchain*, not bug class — and Linux cannot cover it by c
 
 So: Linux answers "is the code correct?", Windows answers "does the shipping toolchain build it?".
 
-**TSan runs per-PR and has no suppression file — the empty suppression list is the finding (#184).**
-The issue expected the shared TT to be racy-by-tolerance and to need suppressions. It is not:
+**TSan runs per-PR and has no suppression file — the empty suppression list is the finding.**
 `TranspositionTable` takes a `std::shared_mutex` per bucket, with atomics for the counters. A survey
 at `Threads=1/4/8` across six configurations plus the fast tier reported **zero races**, verified
 against a deliberately injected race that TSan did report. So the job gates on any finding at all. If
 a suppression is ever added it must name why that race is tolerated — a permanently suppressed
-sanitizer looks like coverage and is worse than none. A future lock-free TT reopens this question
-entirely.
+sanitizer looks like coverage and is worse than none. A future lock-free TT (#250) reopens this
+question entirely.
 
 **A change that claims to preserve behaviour is gated by fixed-depth equivalence, and the gate is
 `Scripts\Compare-SearchEquivalence.ps1`.** It compares every per-iteration `info` line and `bestmove`
@@ -312,9 +311,9 @@ worktree and caches it per commit; the first run costs a build, later ones are s
 counts change by design — an evaluation or ordering change — this answers nothing, and `Run-Bench`
 plus an SPRT is the route.
 
-**The perftcheck corpus stays a local instrument and is not a CI leg (#196).** The sweep of all
-142,953 positions found **zero disagreements on legally reachable input** (#198), so as a gate it
-would be a regression tripwire rather than a discovery tool — and that role is already filled by
+**The perftcheck corpus stays a local instrument and is not a CI leg.** The sweep of all 142,953
+positions found **zero disagreements on legally reachable input** (and flagged 73 illegal), so as a
+gate it would be a regression tripwire rather than a discovery tool. That role is already filled by
 `perft test` in the Build tier and the depth-7/depth-6 perft legs in `nightly.yml`. Against that it
 costs ~25 minutes and an 84 MB binary to fetch or cache per run. Run it from
 `Scripts\Run-PerftCheck.ps1` after `MoveGenerator`, make/unmake or FEN-parser work, and when a

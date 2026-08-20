@@ -180,10 +180,9 @@ Whole-tree Gate and both Deep platform runs belong to Nightly.
 merge. A SKIPPED leg reports success deliberately: a Docs-tier PR runs none of the build jobs, and a
 required check that never ran would block it forever.
 
-Dependencies come from `FetchContent` at the versions pinned in `CMakeLists.txt`, cached as
-`build/_deps` and shared by both matrix legs. The job runs `build.ps1 tests` (not `all`): CI never
-runs `StratChessEvolved.exe`, and only the engine target carries `INTERPROCEDURAL_OPTIMIZATION` for
-Release, so building `all` would spend most of the wall time on an LTO link of an unused binary.
+Dependencies come from `FetchContent` at the versions pinned in `CMakeLists.txt`; each job caches
+`build/_deps`. `build-linux` builds `all`, then runs the fast Catch2 tier and, in Release, the
+executable's `perft test` suite. Windows builds `all` in Release and Debug, then runs the fast tier.
 
 Runner image is pinned to `windows-2025-vs2026`, not `windows-latest`, so the toolchain moves only
 when it is changed deliberately — see `.claude/plans/full-build-test-ci-github-actions.md`.
@@ -191,8 +190,8 @@ when it is changed deliberately — see `.claude/plans/full-build-test-ci-github
 `Check starting FEN` is path-filtered to `StratChessEvolved/game_settings.json` and does not run
 otherwise.
 
-Extended `[slow]` tests and self-play stay local-only (`Validate-PrePR.ps1`) — self-play's
-timeout-based nondeterminism is not worth the CI flakiness.
+Self-play stays local-only (`Validate-PrePR.ps1`); its timeout-based nondeterminism is not worth CI
+flakiness. The `[slow]` Catch2 tier runs in `extended-tests` and `sanitize-extended` nightly jobs.
 
 ---
 
@@ -278,6 +277,6 @@ whatever went wrong, so pooling them would be a biased subset wearing a full bat
 Numbers land in `Docs/EloLog.md`'s **Linux ledger**, which must never be compared against the local
 clang-cl rows.
 
-**A full dispatch consumes the entire 20-job concurrent allowance for ~3 hours**, and
-`build-and-test` is a required check — so a strength run in flight will queue everyone else's merges.
-Worth knowing before starting one, and the reason the lab is not wired to trigger automatically.
+At the default 18 shards, a strength run occupies 18 of the 20 concurrent-job slots for ~3 hours.
+It can delay other CI, but leaves two slots; choosing 20 shards consumes the allowance. This is why
+the lab is not wired to trigger automatically.
