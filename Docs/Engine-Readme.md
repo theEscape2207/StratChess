@@ -555,8 +555,9 @@ fixed at construction.
 **Location**: `ThreadData.h`
 
 All per-search state, so a Lazy SMP helper can run without touching anything the main thread owns:
-its own `Board` copy, node counter, PV table, `GameInfo` sequence, killer moves, history table and
-null-move flags.
+its own `Board` copy, node counters, PV table, killer moves, history table and null-move flags. The
+position metadata a search needs — en-passant square, castling rights, halfmove clock, last move —
+lives on that `Board` and nowhere else, so there is no second sequence that can disagree with it.
 
 `ThreadData&` is the **first parameter of every search method**. The search runs on `td.board`, never
 on the game board. The transposition table stays a separate, explicitly passed shared parameter —
@@ -566,19 +567,28 @@ that is the one thing helpers deliberately share.
 
 ### SearchResult
 
-**Location**: `AIPerplex.h`
+**Location**: `SearchResult.h` — its own header because `IPlayer::GetMove()` returns it and cannot
+include a concrete engine.
 
 ```cpp
 struct SearchResult {
     Move best_move;           // Best move found
     int best_score;           // Evaluation score
     int depth_completed;      // Actual depth searched
-    int64_t nodes_searched;   // Node count
+    GameStates game_state;    // Outcome adjudicated at this player's own root
+    int64_t nodes_searched;   // Main-tree node count
+    int64_t qnodes_searched;  // Quiescence-tree node count, kept apart
     bool search_was_stable;   // Move unchanged in late depths
 };
 ```
 
-**Purpose**: Clean interface between `iterative_deepening()` and `GetMove()`, avoiding reliance on PV table state.
+**Purpose**: everything one `GetMove()` call produced, in one returned value. It is the only channel
+by which a player reports a move, a score or the end of a game — there is no side member to read
+back afterwards, and `GetBestScore()` is not refreshed on an ordinary search.
+
+`game_state` is never `DRAW_50_MOVES`: the fifty-move rule is a fact about the position after the
+move is committed, which only `Game::Run()` can see. The legacy agents and `PlayerHuman` fill
+`best_move` and `game_state` and leave the search counters at their defaults.
 
 ---
 

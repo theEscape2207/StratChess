@@ -84,6 +84,8 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | PV legality (`pv_replays_legally`) | `[pv]` | ✅ Phase 2 | `PVIntegrityTests.cpp` |
 | Full tactical suite (WAC/mate-in-N) | — | ✅ Phase 1 | `StratChessEvolved.exe tactical test` |
 | Board instance independence (post-de-singleton) | `[board_instance]` | ✅ Phase 2 | `BoardInstanceTests.cpp` |
+| Game loop outcome handling (`Game::Run`) | `[game]` | ✅ | `GameLoopTests.cpp` |
+| Human player's non-interactive terminal paths | `[player_human]` | ✅ | `PlayerHumanTests.cpp` |
 | External integer parsing (argv, JSON keys) | `[argparse]` | ✅ Phase 1 | `ArgParseTests.cpp` |
 | Settings-file parsing and its failure modes | `[config]` | ✅ Phase 1 | `ConfigTests.cpp` |
 | NPS / performance regression | — | ⏳ Phase 1 | — |
@@ -840,3 +842,19 @@ or constructs the players — decoupling that is #256.
 A `Game` built this way sets `owns_logging_ = false`. The normal destructor calls `spdlog::drop_all()`,
 which is correct for an application shutting down and fatal inside a test process: it nulls the
 default logger for every later test.
+
+## The terminal-result contract
+
+A player reports the end of a game exactly one way: `GetMove()` returns a null `best_move` with the
+outcome in `SearchResult::game_state`. Both halves need covering and they live apart:
+
+- **Consumer** — `GameLoopTests.cpp` (`[game]`) drives `Game::Run()` with scripted results, so every
+  outcome path is deterministic. It also covers the score channel: the printed state message must
+  come from the returned result, never from `IPlayer::GetBestScore()`, which no engine is obliged to
+  refresh on an ordinary search.
+- **Producer** — `SearchTests.cpp` (`[search]`) calls `AIPerplex::GetMove()` on mate and stalemate
+  FENs, and `PlayerHumanTests.cpp` (`[player_human]`) does the same for the human player, whose
+  terminal paths return before the `std::cin` prompt an automated test cannot drive.
+
+Scripted players cannot prove the producer side, and a search test cannot reach the consumer side —
+without both, the contract holds only by inspection.

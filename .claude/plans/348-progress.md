@@ -1,7 +1,7 @@
 # #348 Stage 1 — implementation progress
 
 Design: `.claude/plans/gameinfo-board-single-authority.md`.
-**PR #357 is open, CI green (9/9). Awaiting cross-agent review — not merged.**
+**PR #357 is open. Cross-agent review round 1 is addressed; awaiting re-review — not merged.**
 
 All eleven steps are done: the `Board` accessors and movegen change, `DoMove` writing `lastMove`,
 both `GameInfo` sequences deleted, the FEN cleanup, `GetMove` returning a `SearchResult`, `Game::Run`
@@ -17,6 +17,16 @@ adjudicating the fifty-move rule, the `Game` test seam, validation, and the harv
 | Release / Debug suites | 7140 / 454 and 7136 / 453, pass |
 | `search-reviewer` | LGTM, no correctness findings; 4 of 6 notes fixed |
 | CI | 9/9 green |
+| Cross-agent review round 1 | 4 findings, all addressed (below) |
+
+## Cross-agent review round 1
+
+| Finding | Resolution |
+|---|---|
+| P2 — `Game` printed `GetBestScore()`, stale on an ordinary search | `PrintStateMessage` takes the mover's `SearchResult`; two `[game]` tests, falsified against the old channel |
+| P2 — no end-to-end coverage of terminal-result *production* | `[search]` cases on mate/stalemate/still-playing roots, plus `PlayerHumanTests.cpp` (`[player_human]`) for the non-interactive terminal paths |
+| P3 — UCI discarded the returned result and re-read `AIPerplex::GetLastResult()` | The returned `SearchResult` is retained and drives every `info` line and `bestmove` |
+| P3 — stale harvest in `Docs/Engine-Readme.md` | `ThreadData` no longer claims a `GameInfo` sequence; `SearchResult` is documented at its real location with `game_state` and `qnodes_searched` |
 
 ## Next steps
 
