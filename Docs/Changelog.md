@@ -22,6 +22,36 @@ Newest first.
 
 ---
 
+## 2026-08-21 — One reversible position record; the outcome leaves the board (#348 stage 2)
+
+Design: `.claude/plans/gameinfo-position-record-split.md`.
+
+### Changed
+
+- `GameInfo` is deleted. A private `Board::PositionState` (24 bytes, `static_assert`ed padding-free)
+  replaces it and absorbs the four parallel `MAX_PLY` undo arrays — `zobrist_history_`,
+  `irreversiblePlyHistory_`, `gameInfoHistory_`, `capturedHistory_` — into one `state_history_`.
+  Undo storage per `Board` drops from 9,472 to 6,144 bytes, and each make writes one contiguous
+  record instead of four scattered stores.
+- The game outcome is no longer board state. `ThreadData::root_game_state` and
+  `PlayerAiBase::root_game_state_` replace `Board::SetGameState`; `SearchResult::game_state` is now
+  the only channel by which a verdict leaves a player. Two carriers, not one, because
+  `adjustScoreForGameState` runs on every Lazy SMP helper.
+- `Board::GetGameInfo()` is gone; its 59 call sites read narrow accessors, with `fullmove_count()`
+  added. Closes #355 and #356.
+
+### Fixed
+
+- A search that aborted before its first root node completed reported the *previous* call's verdict,
+  inherited via `td_.board = m_Board`. Since stage 1 made `Game::Run` terminate on that field, a
+  stale win could end a game on a move that decided nothing. The carrier is now reset per
+  `GetMove` call.
+- FEN halfmove/fullmove counters and the UCI `position ... moves` list are bounded at the limits of
+  the game itself (150 / 5899 / 11797 plies, `GameState.h`) and rejected with a diagnostic past
+  them, rather than accepted and silently truncated into the narrowed fields.
+
+---
+
 ## 2026-08-20 — Board is the single authority for position metadata (#348 stage 1)
 
 Design: `.claude/plans/gameinfo-board-single-authority.md`.

@@ -1,7 +1,7 @@
 # #348 Stage 2 — implementation progress
 
 Design: `.claude/plans/gameinfo-position-record-split.md`.
-**Status: design review rounds 1 and 2 addressed. No implementation started.**
+**Status: design approved (LGTM, 2026-08-21). Implementation in progress on PR #360.**
 
 Stage 1 landed in PR #357. Its design doc and progress file are deleted by this branch — the Harvest
 was complete, which is the lifecycle's condition for removing them. Git history keeps both.
@@ -10,19 +10,26 @@ was complete, which is the lifecycle's condition for removing them. Git history 
 
 | # | Step | State |
 |---|---|---|
-| 1 | `PositionState` added and dual-written alongside the four arrays, with the D8 oracle at all four points — after `DoMove`, after `DoNullMove`, on the rollback path, after both unmakes | not started |
-| 2 | `Compare-SearchEquivalence` + Debug suite against the dual-write build | not started |
-| 3 | The four `MAX_PLY` arrays deleted; the D8 oracle deleted with them | not started |
-| 4 | Outcome moved off `Board` — `ThreadData::root_game_state`, `PlayerAiBase::root_game_state_`, `SetGameState` gone (D5) | not started |
-| 5 | Per-call reset of the root verdict, plus one falsified regression test **per carrier** — AIPerplex and AIAgent (D6) | not started |
-| 6 | `GameInfo` deleted; 59 `GetGameInfo()` sites migrated; `fullmove_count()` added (D7) | not started |
-| 7 | `FiftyMoveRuleTests.cpp` rewritten against `Board` (D7) | not started |
-| 8 | D4's three input bounds (both FEN counters, the UCI move list) + Debug asserts at the increments, plus one bound test per input | not started |
-| 9 | Validation sweep — equivalence, perft, bench, self-play ×2, `search-reviewer` | not started |
-| 10 | Harvest — `CLAUDE.md:153` corrected, `Docs/TestDesign.md` row 78 renamed, `Move.h:16` + `MoveFactory.h:8` repointed, source comments, `Docs/Changelog.md`, issue comments | not started |
+| 1 | `PositionState` dual-written alongside the four arrays, oracle at all four points | done — see deviation note below |
+| 2 | Debug suite against the dual-write build | done — fast tier 7111/463, `[slow]` tier 7172/467, all green with the oracle live |
+| 3 | The four `MAX_PLY` arrays deleted; oracle deleted with them | done |
+| 4 | Outcome off `Board` — `ThreadData::root_game_state`, `PlayerAiBase::root_game_state_`, `SetGameState` gone | done |
+| 5 | Per-call reset of the root verdict + one falsified test per carrier | done — reset in `init_search()`, the Lazy SMP helper seeding loop, and `ApplyLimits()` |
+| 6 | `GameInfo` deleted; `GetGameInfo()` call sites migrated; `fullmove_count()` added | done — 48 field reads scripted, 5 whole-struct copies and 6 stale comments by hand |
+| 7 | `FiftyMoveRuleTests.cpp` rewritten against `Board` | done — 4 cases redriven through `DoMove`, plus an undo-across-threshold case |
+| 8 | FEN counter bounds, UCI move-list bound, Debug asserts, bound tests | done |
+| 9 | Validation sweep | equivalence, bench and both suites done; perft, self-play and `search-reviewer` outstanding |
+| 10 | Harvest | done except the measured bench number |
 
-Steps 1–3 are ordered by D8: the oracle only means something while both representations exist.
-Step 5 depends on step 4, and stays its own commit so step 2's equivalence run covers everything else.
+**Deviation from D8, recorded rather than glossed.** The oracle was built and exercised exactly as
+designed — dual-written record, comparison after `DoMove`, `DoNullMove`, the illegal-move rollback and
+both unmakes — and the full Debug `[slow]` tier passed with it live, which is millions of make/unmake
+cycles through perft. But it never became **its own commit**: steps 4-8 ran concurrently in one
+worktree and are not independently buildable, so the branch could not carry an intermediate commit
+that compiles. D8 asked for committed evidence rather than prose in a PR body, and that specific
+property was lost. The test output is real; the git-history artefact is not there. Reconstructing it
+would mean unwinding and replaying the whole change — worth doing only if the reviewer wants the
+commit itself.
 
 ## Evidence
 
@@ -31,13 +38,14 @@ not the intention.)*
 
 | Check | Result |
 |---|---|
-| `Compare-SearchEquivalence -BaselineRef origin/main` | — |
-| `Run-PerftCheck.ps1` | — |
-| `Run-Bench.ps1` before/after | — |
-| Release / Debug suites | — |
-| Self-play `type 6` / `type 3` | — |
-| `search-reviewer` | — |
-| CI | — |
+| `Compare-SearchEquivalence -BaselineRef origin/main` | **IDENTICAL** — 90 compared lines, 6 positions, depth 12, `Threads=1` |
+| `Run-Bench.ps1`, 4 alternating runs/side | **Neutral, not a win.** Node counts identical both sides (12,482,725 main / 8,974,597 q). Means 3,028,643 → 3,060,422 nps (+1.05%), but the before side's own spread is 4.26% against the after side's 0.41% — a single cold first sample. Dropping round 1 as warm-up puts both at ~3,058,900, a delta of −0.02%. The measurement cannot resolve a difference this small, so the honest reading is no measurable change |
+| Debug suite, `[slow]` tier | 7184 assertions / 470 cases, pass |
+| Release suite, `[slow]` tier | 7189 assertions / 471 cases, pass |
+| `Run-PerftCheck.ps1` | pending |
+| Self-play `type 6` / `type 3` | pending |
+| `search-reviewer` | pending |
+| CI | pending |
 | Cross-agent design review | rounds 1–2 addressed (8 findings, above) |
 
 ## Design review round 1
@@ -83,6 +91,10 @@ retires the "grep the corpora first" precondition from the earlier draft.
 
 ## Post-merge follow-ups
 
+- **#292 has its answer, and it is discouraging for the 16-byte step.** Collapsing four scattered
+  `MAX_PLY` arrays into one contiguous 24-byte record — and dropping 3,328 bytes per `Board` copy —
+  produced no measurable nps change. If that buys nothing, the remaining 8 bytes are very unlikely
+  to. Re-scope #292 accordingly rather than treating the shrink as pending upside.
 - Correct #292: the `eSquare : uint8_t` change was **never reverted** — it was validated locally and
   parked pending #292 itself. The issue's "reverted for unrecorded reasons" wording sends the next
   reader chasing a ghost. Re-scope #292 to the 16-byte step with this PR's bench as its input.

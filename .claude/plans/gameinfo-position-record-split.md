@@ -479,4 +479,26 @@ Closes #355 and #356. Re-scopes #292 to a single measured question.
 | The rewritten fifty-move cases, the D4 boundary test and the two D6 stale-verdict tests | `Docs/TestDesign.md` — and its row 78, "Board GameInfo state lifecycle", is renamed: the type it names stops existing |
 | `Move.h:16` and `MoveFactory.h:8` both point at `Board::capturedHistory_[]` as where the captured piece is tracked | both comments, repointed at `PositionState::captured_piece` — they are the only documentation of that contract for a `Move` reader |
 
-**Approved decisions that changed during implementation.** *(Fill in before opening the PR.)*
+**Approved decisions that changed during implementation.**
+
+- **D8's oracle ran but never became its own commit.** It was built exactly as designed and the full
+  Debug `[slow]` tier passed with it live — perft alone is millions of make/unmake cycles through all
+  four comparison points. But steps 4-8 ran concurrently in one worktree and are not independently
+  buildable, so no intermediate commit could compile. D8 specifically wanted evidence in git history
+  rather than prose in a PR body, and that property was lost even though the evidence itself is real.
+- **The bench came back neutral, not positive.** The design predicted neutral-to-positive and cited
+  Stage 1's +3.0%. Four alternating runs a side: the before side's spread (4.26%) exceeds the apparent
+  delta (1.05%), and with the cold first sample dropped both sides sit at ~3.058M nps. This is a
+  measured "no change", not a measured win — and it is the input #292 was waiting for, pointing away
+  from the 16-byte step rather than toward it.
+- **A second test seam landed in a production header.** `PlayerAI.h` gained a
+  `LegacyAiTestFixture` friend declaration under `STRAT_ENABLE_TEST_ACCESS`, mirroring
+  `AIPerplex.h`'s existing `AIPerlexTestFixture`. D6 required a falsified test per carrier and the
+  legacy carrier is protected, so this was the cost of the second test; it was not named in the
+  design.
+- **The legacy reset landed in `ApplyLimits()`**, not in each legacy `GetMove`. All three legacy
+  agents call it before any search work, so one reset point covers them — verified rather than
+  assumed.
+- **`std::max(0, half)` in `FENParser` was left in place.** D4 called it dead given the regex and
+  left removal open; it stays, with the policy table recording why it is not evidence that negatives
+  are clamped.
