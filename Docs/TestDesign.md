@@ -59,37 +59,37 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 
 ## Coverage Map
 
-| Component | Tag | Status | File |
-|-----------|-----|--------|------|
-| Move structure & sentinels | `[moves]` | ✅ done | `StratChessTests/MoveFieldTests.cpp` |
-| Repetition detection | `[repetition]` | ✅ done | `RepetitionTests.cpp` |
-| Move generation (perft d1–d4) | `[perft]` | ✅ done | `PerftTests.cpp` |
-| Move generation (deep perft d5+) | — | ✅ done | `StratChessEvolved.exe perft test` |
-| Move generation (142,953-position corpus, d1–d4) | — | ✅ swept clean 2026-08-05 | `Scripts\Run-PerftCheck.ps1` |
-| **MoveFormatter** | `[formatter]` | ✅ | `MoveFormatterTests.cpp` |
-| **TranspositionTable** | `[tt]` | ✅ | `TTTests.cpp` |
-| **Evaluation (EvalSimple/Complex)** | `[eval]` | ✅ | `EvalTests.cpp` |
-| **Search regression (tactical)** | `[tactical]` | ✅ | `TacticalTests.cpp` |
-| **Search regression (slow tier)** | `[tactical_full][slow]` | ✅ | `TacticalFullTests.cpp` |
-| Search helpers (assess_quality etc.) | `[search]` | ✅ | `SearchTests.cpp` |
-| Move ordering (Sort) | `[sort]` | ✅ | `SortTests.cpp` |
-| Board DoMove/UndoMove completeness | `[board]` | ✅ | `BoardTests.cpp` |
-| Board move-type round-trips (all types) | `[board_moves]` | ✅ | `BoardMoveTests.cpp` |
-| Board GameInfo state lifecycle | `[board_state]` | ✅ | `BoardStateTests.cpp` |
-| Fifty-move rule (threshold, root, draw reporting) | `[fifty_move]` | ✅ | `FiftyMoveRuleTests.cpp` |
-| Board public query APIs + FEN round-trip | `[board_api]` | ✅ | `BoardApiTests.cpp` |
-| Time management (TimeManager + compute_budget) | `[time_mgr]` | ✅ | `TimeManagerTests.cpp` |
-| Bitboard helpers | `[bitboard]` | ⏳ | `BitboardTests.cpp` (future) |
-| Sliding-piece attack generation (PEXT) | `[magic]` | ✅ | `MagicBitboardTests.cpp` |
-| UCI command loop | `[uci]` | ✅ | `UCITests.cpp` (+ `StratChessEvolved.exe uci` pipe smoke test) |
-| PV legality (`pv_replays_legally`) | `[pv]` | ✅ | `PVIntegrityTests.cpp` |
-| Full tactical suite (WAC/mate-in-N) | — | ✅ | `StratChessEvolved.exe tactical test` |
-| Board instance independence (post-de-singleton) | `[board_instance]` | ✅ | `BoardInstanceTests.cpp` |
-| Game loop outcome handling (`Game::Run`) | `[game]` | ✅ | `GameLoopTests.cpp` |
-| Human player's non-interactive terminal paths | `[player_human]` | ✅ | `PlayerHumanTests.cpp` |
-| External integer parsing (argv, JSON keys) | `[argparse]` | ✅ | `ArgParseTests.cpp` |
-| Settings-file parsing and its failure modes | `[config]` | ✅ | `ConfigTests.cpp` |
-| NPS / performance regression | — | ⏳ | — |
+| Component | Tag | File |
+|-----------|-----|------|
+| Move structure & sentinels | `[moves]` | `StratChessTests/MoveFieldTests.cpp` |
+| Repetition detection | `[repetition]` | `RepetitionTests.cpp` |
+| Move generation (perft d1–d4) | `[perft]` | `PerftTests.cpp` |
+| Move generation (deep perft d5+) | — | `StratChessEvolved.exe perft test` |
+| Move generation (142,953-position corpus, d1–d4) | — | `Scripts\Run-PerftCheck.ps1` |
+| **MoveFormatter** | `[formatter]` | `MoveFormatterTests.cpp` |
+| **TranspositionTable** | `[tt]` | `TTTests.cpp` |
+| **Evaluation (EvalSimple/Complex)** | `[eval]` | `EvalTests.cpp` |
+| **Search regression (tactical)** | `[tactical]` | `TacticalTests.cpp` |
+| **Search regression (slow tier)** | `[tactical_full][slow]` | `TacticalFullTests.cpp` |
+| Search helpers (assess_quality etc.) | `[search]` | `SearchTests.cpp` |
+| Move ordering (Sort) | `[sort]` | `SortTests.cpp` |
+| Board DoMove/UndoMove completeness | `[board]` | `BoardTests.cpp` |
+| Board move-type round-trips (all types) | `[board_moves]` | `BoardMoveTests.cpp` |
+| Board GameInfo state lifecycle | `[board_state]` | `BoardStateTests.cpp` |
+| Fifty-move rule (threshold, root, draw reporting) | `[fifty_move]` | `FiftyMoveRuleTests.cpp` |
+| Board public query APIs + FEN round-trip | `[board_api]` | `BoardApiTests.cpp` |
+| Time management (TimeManager + compute_budget) | `[time_mgr]` | `TimeManagerTests.cpp` |
+| Bitboard helpers | `[bitboard]` | `BitboardTests.cpp` |
+| Sliding-piece attack generation (PEXT) | `[magic]` | `MagicBitboardTests.cpp` |
+| UCI command loop | `[uci]` | `UCITests.cpp` (+ `StratChessEvolved.exe uci` pipe smoke test) |
+| PV legality (`pv_replays_legally`) | `[pv]` | `PVIntegrityTests.cpp` |
+| Full tactical suite (WAC/mate-in-N) | — | `StratChessEvolved.exe tactical test` |
+| Board instance independence (post-de-singleton) | `[board_instance]` | `BoardInstanceTests.cpp` |
+| Game loop outcome handling (`Game::Run`) | `[game]` | `GameLoopTests.cpp` |
+| Human player's non-interactive terminal paths | `[player_human]` | `PlayerHumanTests.cpp` |
+| External integer parsing (argv, JSON keys) | `[argparse]` | `ArgParseTests.cpp` |
+| Settings-file parsing and its failure modes | `[config]` | `ConfigTests.cpp` |
+| NPS / performance regression | — | — |
 
 ---
 
