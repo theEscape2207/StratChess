@@ -58,10 +58,9 @@ namespace Testing {
 		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
 		if (auto* ai_base = dynamic_cast<PlayerAiBase*>(ai.get()))
 			ai_base->SetThreads(threads);
-		GameInfo info = board.GetGameInfo();
 
 		const auto t0 = std::chrono::steady_clock::now();
-		Move m = ai->GetMove(info);
+		Move m = ai->GetMove().best_move;
 		const auto t1 = std::chrono::steady_clock::now();
 
 		result.time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();

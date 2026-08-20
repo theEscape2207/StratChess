@@ -448,6 +448,14 @@ bool Board::DoMove(const Move& m)
 	if (oldEpSquare != gameInfo_.epSquare)
 		update_zobrist_ep(oldEpSquare, gameInfo_.epSquare);
 
+	// The move that produced the position the board now holds. Move ordering is its only
+	// consumer: MoveSorter front-loads recaptures on the square the opponent just moved to,
+	// so a searcher needs "what was played to get here" at every ply, and the board is the
+	// only object that knows it for a position it has actually reached. It travels with the
+	// rest of gameInfo_ through gameInfoHistory_, so the rollback below and UndoMove both
+	// restore the preceding move without any handling of their own.
+	gameInfo_.lastMove = m;
+
 	update_threefold_rep(m, movPiece);
 
 	if (sideToMove_ == eColor::BLACK)

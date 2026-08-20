@@ -29,7 +29,11 @@ param(
     # disagrees with the classifier.
     [switch]$Force,
     # Ref the diff is computed against when choosing a validation tier.
-    [string]$BaseRef = 'origin/main'
+    [string]$BaseRef = 'origin/main',
+    # Acknowledge commits that touch 20+ sources but genuinely change code, so they are not
+    # added to .git-blame-ignore-revs. Forwarded to Run-Lint.ps1 -Check BlameIgnore, whose help
+    # names this as the answer for exactly that case.
+    [switch]$AllowUnlistedReformat
 )
 
 Set-StrictMode -Version Latest
@@ -167,7 +171,7 @@ $checkResults['clang-format'] = if ($lintFailed) { 'FAIL' } else { 'PASS' }
 # Pure git, so it costs nothing.
 Write-Host "`n==> Blame-ignore coverage (issue #175)" -ForegroundColor Cyan
 $blameFailed = $false
-try   { & $lintScript -Check BlameIgnore -BaseRef $BaseRef }
+try   { & $lintScript -Check BlameIgnore -BaseRef $BaseRef -AllowUnlistedReformat:$AllowUnlistedReformat }
 catch { $blameFailed = $true; Write-Host "Blame-ignore check threw: $_" -ForegroundColor DarkGray }
 if ($LASTEXITCODE -ne 0) { $blameFailed = $true }
 $checkResults['Blame-ignore'] = if ($blameFailed) { 'FAIL' } else { 'PASS' }

@@ -5,6 +5,7 @@
 
 #include "Move.h"
 #include "GameState.h"
+#include "SearchResult.h"
 #include "Config.h"
 #include "Board.h"
 #include "Utils/FENParser.h"
@@ -18,7 +19,6 @@ class Game final {
 	void Init();
 	void LoadConfigFileSettings();
 	std::unique_ptr<IPlayer> SetPlayerParams(const Config::PlayerConfig& config);
-	void SetGameParams(const GameInfo& info) noexcept;
 	void CreateGameMoveFile();
 
 	void PrintBoardAndMove(const Move& move) const;
@@ -30,12 +30,17 @@ class Game final {
 
 	IPlayer& GetCurrentPlayer() const noexcept;
 
-	void PrintStateMessage() const;
+	// Takes the player that just moved together with what its GetMove() returned:
+	// GetCurrentPlayer() keys off the side to move, which DoMove has already flipped by the
+	// time this runs, and the score to print is the one in that call's result. Reading it back
+	// off the player instead would report whatever GetBestScore() happens to hold — a member no
+	// engine is obliged to refresh on an ordinary search.
+	void PrintStateMessage(const IPlayer& mover, const SearchResult& result) const;
 
 	// Inline stuff
 	size_t GetBoardCount() const noexcept { return m_GameMoves.size(); }
 
-	bool IsStillPlaying() const noexcept { return !gameInfo_.GameEnded(); }
+	bool IsStillPlaying() const noexcept { return game_state_ == GameStates::STILL_PLAYING; }
 
 	static bool HasHumanExited(const Move& move) noexcept { return move.is_null(); }
 
@@ -60,34 +65,28 @@ class Game final {
 		spdlog::default_logger()->warn(sstream.str());
 	}
 
-	// ************************************
-	// Method:      OnGameStateChanged
-	// Description: Event receiver - gets called when the overall game state changes
-	// FullName:    private Game::OnGameStateChanged
-	// Returns:     void -
-	// Parameter:   const void*  - pointer to the sender object
-	// Parameter:   const GameInfo::GameStates& newState -
-	// Remark:
-	//************************************
-	void OnGameStateChanged(const void* /*pSender*/, const GameStates& newState) noexcept
-	{
-		gameInfo_.gameState = newState;
-	}
-
   public:
 	Game();
 	~Game();
 
-	void unsubscribePlayerEvents();
+	// Test seam. Run() is a console loop with no other automated coverage, and it is where
+	// the outcome of every game is decided — the returned state, the fifty-move
+	// adjudication and the termination test. TestAccess builds a Game around an explicit
+	// position and two supplied players, skipping the settings file and log files Init()
+	// would otherwise set up, so the loop can be driven with scripted results.
+	//
+	// Deliberately narrow: it injects players and reads the outcome. It does not change who
+	// owns the board or constructs the players — decoupling that is #256.
+	struct TestAccess;
 
-	void SetCustomGame(const GameInfo& info) noexcept
-	{
-		customGame_ = true;
-		SetGameParams(info);
-	}
+	void unsubscribePlayerEvents();
 
 	void Run();
 
+  private:
+	Game(const std::string& fen, std::unique_ptr<IPlayer> white, std::unique_ptr<IPlayer> black);
+
+  public:
 	Game(const Game&) = delete;
 	Game& operator=(const Game&) = delete;
 	Game(Game&&) = delete;
@@ -110,6 +109,11 @@ class Game final {
 
 	// For printing Game Moves to File
 	std::ofstream movesFile_;
-	GameInfo gameInfo_;
-	bool customGame_{false};
+	// Init() set the loggers up, so this Game tears them down. A Game built by the test seam
+	// did neither: dropping the registry from inside a test process leaves every later test
+	// with a null default logger.
+	bool owns_logging_{true};
+
+	// The outcome, as reported by the player that last moved or adjudicated by Run() itself.
+	GameStates game_state_{GameStates::STILL_PLAYING};
 };

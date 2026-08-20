@@ -84,6 +84,8 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | PV legality (`pv_replays_legally`) | `[pv]` | ✅ Phase 2 | `PVIntegrityTests.cpp` |
 | Full tactical suite (WAC/mate-in-N) | — | ✅ Phase 1 | `StratChessEvolved.exe tactical test` |
 | Board instance independence (post-de-singleton) | `[board_instance]` | ✅ Phase 2 | `BoardInstanceTests.cpp` |
+| Game loop outcome handling (`Game::Run`) | `[game]` | ✅ | `GameLoopTests.cpp` |
+| Human player's non-interactive terminal paths | `[player_human]` | ✅ | `PlayerHumanTests.cpp` |
 | External integer parsing (argv, JSON keys) | `[argparse]` | ✅ Phase 1 | `ArgParseTests.cpp` |
 | Settings-file parsing and its failure modes | `[config]` | ✅ Phase 1 | `ConfigTests.cpp` |
 | NPS / performance regression | — | ⏳ Phase 1 | — |
@@ -230,7 +232,7 @@ change.
 **File**: `StratChessTests/TacticalTests.cpp`
 **Rationale**: Direct regression tests for search correctness. If LMR, aspiration windows, or move ordering changes break tactical play, these catch it fast. Each test uses `AIPerplex` at depth 4 — fast on simple positions (< 100 ms each), finds forced results reliably.
 
-**Approach**: `PlayerBase::Create(AI_PERPLEX, 4)`, `SetEvalEngine(COMPLEX)`, `SetVerboseLogging(false)`, then `GetMove(info)`. Check `m.from()` and `m.to()`.
+**Approach**: `PlayerBase::Create(AI_PERPLEX, 4)`, `SetEvalEngine(COMPLEX)`, `SetVerboseLogging(false)`, then `GetMove(limits).best_move`. Check `m.from()` and `m.to()`.
 
 **Test cases**:
 - Mate in 1 (rook delivers back-rank mate): engine plays Ra8# (`6k1/5ppp/8/8/8/8/5PPP/R5K1`)
@@ -759,8 +761,7 @@ Board board(fen);                                   // before Create()
 auto ai = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, depth, board);
 AIPerplex::SetVerboseLogging(false);                // after Create()
 ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX); // before GetMove()
-GameInfo info = board.GetGameInfo();
-Move m = ai->GetMove(info);
+Move m = ai->GetMove().best_move;                   // GetMove() returns a SearchResult
 ```
 
 ### Deep perft
@@ -817,3 +818,43 @@ To test private search helper methods, `AIPerplex.h` contains a conditional frie
 To activate: add `STRAT_ENABLE_TEST_ACCESS` to the `StratChessTests` target in `CMakeLists.txt`. This is done when `SearchTests.cpp` is written (Phase 1 — do not enable before then).
 
 The macro is intentionally absent from the `StratChessEvolved` target.
+
+## Game Loop Test Access
+
+`Game::Run()` is where every game actually ends — it commits the mover's move, adopts the state that
+mover reported, adjudicates the fifty-move rule on the position that results, and decides whether to
+continue. Nothing else exercises that: a search test never reaches it, and self-play cannot arrive at
+the 99 → 100 transition deterministically or produce `HUMAN_EXITED` at all.
+
+`Game::TestAccess` (declared in `Game.h`, defined in `GameLoopTests.cpp`) is a nested class, so it
+reaches `Game`'s private members without a friend declaration and without a build macro. It builds a
+`Game` around an explicit FEN and two supplied players — skipping the settings file and log files
+`Init()` would create — and exposes the resulting state, the move count and the board.
+
+The players are scripted: each returns a prepared `SearchResult` per call, which makes every outcome
+path a deterministic test. Running off the end of a script returns a null move with the game still
+playing, which `Run()` treats as the human leaving, so a test that scripts too few results terminates
+instead of hanging.
+
+Deliberately narrow: it injects players and reads the outcome. It does not change who owns the board
+or constructs the players — decoupling that is #256.
+
+A `Game` built this way sets `owns_logging_ = false`. The normal destructor calls `spdlog::drop_all()`,
+which is correct for an application shutting down and fatal inside a test process: it nulls the
+default logger for every later test.
+
+## The terminal-result contract
+
+A player reports the end of a game exactly one way: `GetMove()` returns a null `best_move` with the
+outcome in `SearchResult::game_state`. Both halves need covering and they live apart:
+
+- **Consumer** — `GameLoopTests.cpp` (`[game]`) drives `Game::Run()` with scripted results, so every
+  outcome path is deterministic. It also covers the score channel: the printed state message must
+  come from the returned result, never from `IPlayer::GetBestScore()`, which no engine is obliged to
+  refresh on an ordinary search.
+- **Producer** — `SearchTests.cpp` (`[search]`) calls `AIPerplex::GetMove()` on mate and stalemate
+  FENs, and `PlayerHumanTests.cpp` (`[player_human]`) does the same for the human player, whose
+  terminal paths return before the `std::cin` prompt an automated test cannot drive.
+
+Scripted players cannot prove the producer side, and a search test cannot reach the consumer side —
+without both, the contract holds only by inspection.

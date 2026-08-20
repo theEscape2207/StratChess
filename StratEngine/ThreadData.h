@@ -5,7 +5,6 @@
 #include <cassert>
 #include <cstdint>
 #include <cstring>
-#include <vector>
 
 // Per-thread search state for AIPerplex, extracted so that a future Lazy SMP
 // helper thread is just "construct another ThreadData, call the same search
@@ -44,10 +43,6 @@ struct ThreadData {
 	// Thread-local principal variation.
 	PVTable pv_table;
 
-	// Thread-local GameInfo sequence for Do/Undo bookkeeping (replaces
-	// PlayerAiBase::m_infoSeq for AIPerplex).
-	std::vector<GameInfo> info_seq;
-
 	// For debugging/logging once helper threads exist; main thread is 0.
 	int thread_id = 0;
 
@@ -67,7 +62,6 @@ struct ThreadData {
 
 	ThreadData()
 	{
-		info_seq.reserve(32);
 		clear_killers();
 		clear_history();
 	}
@@ -98,7 +92,6 @@ struct ThreadData {
 		qnodes_searched = 0;
 		nodes_since_check_ = 0;
 		pv_table = PVTable();
-		info_seq.clear();
 		clear_killers();
 		clear_null_move_flags();
 		clear_history();
@@ -143,77 +136,22 @@ struct ThreadData {
 			entry = HISTORY_MAX;
 	}
 
-	// --- GameInfo sequence bookkeeping ---
-	// Mirrors PlayerAiBase::StoreInfoAtPly/AddMoveToSeq/AddNullMoveToSeq/
-	// GetLastBoardInfo/checkDraws, operating on the thread-local board and
-	// info_seq. The PlayerAiBase originals remain for the legacy AI agents.
-
-	const GameInfo& get_last_info(size_t ply) const
-	{
-		// This must always contain the last move, hence the one extra info
-		return info_seq.at(ply);
-	}
-
-	// Faelles bookkeeping for info_seq - holder vektoren i lockstep med
-	// search-traeets ply, uanset om GameInfo stammer fra et rigtigt traek
-	// (add_move_to_seq) eller et null-move (add_null_move_to_seq)
-	void store_info_at_ply(size_t ply, const GameInfo& info)
-	{
-		// where to add it? size er 2 efter foerste traek ved ply 0
-		const size_t infoSize = info_seq.size();
-
-		if (ply + 1 == infoSize) // foerste traek ved hver dybde
-			info_seq.emplace_back(info);
-		else if (infoSize == ply + 2) // 2. traek ved hver dybde og resten
-			info_seq[ply + 1] = info;
-		else if (infoSize > ply + 2) // Skal der slettes nogen? Dont delete the first!
-		{
-			info_seq.erase(info_seq.begin() + static_cast<int>(ply + 1), info_seq.end());
-			info_seq.emplace_back(info);
-		} else
-			assert(!"BoardInfo update - Somebody hasn't handled all cases");
-	}
-
-	void add_move_to_seq(const Move& move, size_t ply)
-	{
-		GameInfo info = get_last_info(ply);
-
-		// After DoMove the piece sits on move.to(); read it to obtain the moving piece.
-		info.UpdateBoardInfo(move, board.GetPiece(move.to()));
-
-		store_info_at_ply(ply, info);
-	}
-
-	// Null-move counterpart: no Move to derive info from, so snapshot the
-	// board's current GameInfo directly (the board has already had
-	// DoNullMove() applied by the caller before this is called).
-	// Note: unlike add_move_to_seq, this does not call UpdateBoardInfo, so the
-	// stored GameInfo::lastMove is whatever the parent ply's real move was,
-	// not a sentinel for "no move". Callers must not treat lastMove at a
-	// null-move ply as "the move that produced this ply".
-	void add_null_move_to_seq(size_t ply) { store_info_at_ply(ply, board.GetGameInfo()); }
-
 	// Threefold repetition and the fifty-move rule (thread-local board). Neither applies at
 	// the root: the caller asked for a move, not an adjudication, and a draw returned there
 	// leaves the search with nothing to report but the emergency move.
-	bool check_draws(const GameInfo& info, int ply) const noexcept
+	bool check_draws(int ply) const noexcept
 	{
 		if (ply == 0)
 			return false;
-		return board.is_repetition(ply) || info.halfmoveClock >= HALFMOVE_CLOCK_LIMIT;
+		return board.is_repetition(ply) || board.halfmove_clock() >= HALFMOVE_CLOCK_LIMIT;
 	}
 
-	// Updates the game state at the root of the search tree (thread-local
-	// board + info_seq[0]). AIPerplex::GetMove() propagates the result back
-	// to the real game board after the search returns.
+	// Updates the game state at the root of the search tree. It lands on the thread-local
+	// board; AIPerplex::GetMove() propagates it to the real game board after the search
+	// returns.
 	void update_game_state(size_t ply, GameStates newState)
 	{
-		if (ply == 0) {
-			GameInfo& info = info_seq.at(ply);
-			if (newState != info.gameState) {
-				board.SetGameState(newState);
-				info.gameState = newState;
-			}
-		}
+		if (ply == 0)
+			board.SetGameState(newState);
 	}
 };

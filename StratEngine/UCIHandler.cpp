@@ -42,7 +42,7 @@ namespace {
 			return Move{};
 
 		MoveList moves;
-		MoveGenerator::ComputeLegalMoves(board, board.GetGameInfo(), moves);
+		MoveGenerator::ComputeLegalMoves(board, moves);
 		for (const Move& move : moves) {
 			if (move == parsed) {
 				return move;
@@ -412,7 +412,6 @@ void UciHandler::cmd_go(std::string_view line)
 		init_ai();
 
 	GoParams p = parse_go(line);
-	GameInfo info = board_.GetGameInfo();
 	const bool white = (board_.GetCurrentColor() == WHITE);
 
 	// Build the per-call constraints — cmd_go no longer mutates AI state.
@@ -465,8 +464,12 @@ void UciHandler::cmd_go(std::string_view line)
 	// Raised on this thread, before the search exists, so a command arriving
 	// immediately after 'go' cannot observe a stale false.
 	searching_.store(true, std::memory_order_release);
-	search_thread_ = std::thread([this, info, start, limits, perplex]() mutable {
-		Move best = ai_->GetMove(info, limits);
+	search_thread_ = std::thread([this, start, limits, perplex]() mutable {
+		// The returned result is the authoritative one for this call — post-join and
+		// complete for any IPlayer, not just the concrete type this handler happens to
+		// hold. Re-reading it off AIPerplex would report defaults for anything else.
+		const SearchResult result = ai_->GetMove(limits);
+		const Move best = result.best_move;
 
 		auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
 
@@ -477,8 +480,6 @@ void UciHandler::cmd_go(std::string_view line)
 		// fire this stale closure.
 		if (perplex)
 			perplex->SetIterationObserver(nullptr);
-
-		SearchResult result = perplex ? perplex->GetLastResult() : SearchResult{};
 
 		const int cp = result.best_score;
 		const std::string score_str = format_uci_score(cp);

@@ -10,9 +10,9 @@ class Board;
 class MoveGenerator final {
   public:
 	// Computes all the pseudo legal piece capturing moves on the current board - no check for Check here!
-	static void ComputeCaptures(const Board& board, const GameInfo& info, MoveList& moveList);
+	static void ComputeCaptures(const Board& board, MoveList& moveList);
 	// Computes all the pseudo legal moves on the current board - no check for Check here!
-	static void ComputeLegalMoves(const Board& board, const GameInfo& info, MoveList& moveList);
+	static void ComputeLegalMoves(const Board& board, MoveList& moveList);
 
 	// Returns BITBOARD with all squares attacked by 'Color'
 	static BITBOARD GetAttackBoard(const Board& board, eColor) noexcept;
@@ -22,8 +22,8 @@ class MoveGenerator final {
   private:
 	MoveGenerator() = default;
 
-	static void GeneratePawnCaptures(const Board& board, const BITBOARD* const bbBitBoards, const GameInfo& info,
-	                                 MoveList& moveList, eColor color);
+	static void GeneratePawnCaptures(const Board& board, const BITBOARD* const bbBitBoards, MoveList& moveList,
+	                                 eColor color);
 
 	static void GeneratePawnNormalMoves(const BITBOARD* const bbBitBoards, eColor color, MoveList& moveList);
 
@@ -35,8 +35,7 @@ class MoveGenerator final {
 	// board is only referenced inside assert() checks — compiled out in Release (NDEBUG).
 	static void AddPawnCaptures([[maybe_unused]] const Board& board, MoveList& moveList, const BITBOARD*, Move pawnMove,
 	                            eColor color);
-	static void AddCastleMoves(const Board& board, MoveList& moveList, eColor color, const BITBOARD* bbBitBoards,
-	                           const GameInfo& info);
+	static void AddCastleMoves(const Board& board, MoveList& moveList, eColor color, const BITBOARD* bbBitBoards);
 
 	static BITBOARD GetAnyEnPassantAttackingPawns(const BITBOARD* bbBitBoards, eColor attackByColor,
 	                                              eSquare epSquare) noexcept;

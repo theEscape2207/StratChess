@@ -22,6 +22,65 @@ Newest first.
 
 ---
 
+## 2026-08-20 — Board is the single authority for position metadata (#348 stage 1)
+
+Design: `.claude/plans/gameinfo-board-single-authority.md`.
+
+### Changed
+
+- `Board` gains `ep_square()`, `castling_rights()`, `halfmove_clock()` and `last_move()`, and
+  `DoMove` now writes `lastMove` — the field the board had always saved and restored but never set.
+  `MoveGenerator::ComputeLegalMoves`/`ComputeCaptures`/`GeneratePawnCaptures`/`AddCastleMoves` and
+  `PlayerHuman::IsAnyLegalMoves` drop their `const GameInfo&` parameter and read the board they are
+  already given. Move generation and the Zobrist hash can no longer be keyed on different objects.
+- `IPlayer::GetMove(GameInfo&, const SearchLimits&) -> Move` becomes
+  `GetMove(const SearchLimits&) -> SearchResult`, with `SearchResult` moved to its own header and
+  given a `GameStates game_state`. The returned value is the post-join aggregate, indistinguishable
+  from `GetLastResult()` at any thread count.
+- `Game::Run` retains the mover and its result, commits the move, then adjudicates — the returned
+  state first, then the fifty-move rule on the position the board has actually reached. The draw can
+  never overwrite a mate, a stalemate or `HUMAN_EXITED`. `Game::gameInfo_` collapses to a
+  `GameStates`, and `IPlayer::EGameStateChanged` is retired: exactly one channel now reports the
+  outcome.
+
+### Removed
+
+- `ThreadData::info_seq` and `PlayerAiBase::m_infoSeq`, with `get_last_info`/`GetLastBoardInfo`,
+  `store_info_at_ply`/`StoreInfoAtPly`, `add_move_to_seq`/`AddMoveToSeq`,
+  `add_null_move_to_seq`/`AddNullMoveToSeq` and `CheckGameOver`'s `fromBoard` branch. The per-node
+  `GameInfo` copy is gone; the board's O(1) undo stack already held everything they carried.
+- `Game::SetGameParams`, `Game::SetCustomGame` and `customGame_`, which round-tripped the board's own
+  values back out of it. `Config` loses its `Game*` with them — its only use — which also closes a
+  latent null dereference on the FEN path.
+
+### Added
+
+- `GameLoopTests.cpp` and a narrow `Game::TestAccess` seam: `Game::Run` had no automated coverage at
+  all, and this change re-routes every outcome path through it. Covers the 99 → 100 transition and its
+  precedence rule, root mate, root stalemate, `HUMAN_EXITED`, and a high-clock custom FEN.
+  `Docs/TestDesign.md` → Game Loop Test Access.
+- A `Threads > 1` test that `GetMove`'s return value and `GetLastResult()` agree.
+
+### Validation
+
+- `Compare-SearchEquivalence.ps1 -BaselineRef origin/main`: **identical** across 90 compared lines,
+  6 positions, depth 12, `Threads=1` — re-run after each step that could have broken it. This is the
+  behaviour-preserving claim, not a formality.
+- Two temporary Debug asserts, committed and then deleted with the code they justified: one that
+  `info_seq[ply]` matched the board at every node, one that the legacy agents' parent move already
+  equalled `board.last_move()`. Both ran clean across the Debug suite, a 158-move game-mode self-play,
+  UCI at `Threads=4`, and one complete self-play game per legacy agent.
+- `Run-Bench.ps1`, clang-cl, `Threads=1`, 4 alternating runs per side: **2,981,112 → 3,071,809 nps
+  (+3.0% on means)**, every candidate run above every baseline run. Node counts identical
+  (21,457,322). Removing the per-node `GameInfo` copy and `UpdateBoardInfo` outweighs the 2-byte
+  `lastMove` store `DoMove` gained.
+- `Run-PerftCheck.ps1` clean, and `search-reviewer` dispatched on the search diff.
+
+Closes #308 — the dangling-reference hazard in `quiescence()` disappears with the vector it pointed
+into. Re-scopes #292: the per-node copy is gone, `gameInfoHistory_` remains.
+
+---
+
 ## 2026-08-17 — A same-key TT store now obeys the replacement policy (#319)
 
 ### Fixed

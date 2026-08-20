@@ -4,6 +4,7 @@
 #include "Move.h"
 #include "Eval.h"
 #include "GameState.h"
+#include "SearchResult.h"
 #include "SearchLimits.h"
 
 class IPlayer {
@@ -12,7 +13,7 @@ class IPlayer {
 	// NOLINTNEXTLINE(bugprone-exception-escape)
 	IPlayer() noexcept = default;
 	// Virtual functions
-	virtual Move GetMove(GameInfo& info, const SearchLimits& limits) = 0;
+	virtual SearchResult GetMove(const SearchLimits& limits) = 0;
 	//;virtual unsigned GetMaxDepth() = 0;
 	virtual const char* GetType() const = 0;
 	virtual std::string getDescription() const = 0;
@@ -26,8 +27,7 @@ class IPlayer {
 	/*
 	*	Events
 	*/
-	Event<const PVLine> ENewPVLineMove;        // A new Move is added to the Principal variation line
-	Event<const GameStates> EGameStateChanged; // The Game State has changed
+	Event<const PVLine> ENewPVLineMove; // A new Move is added to the Principal variation line
 
 	IPlayer(const IPlayer&) = delete;
 	IPlayer& operator=(const IPlayer&) = delete;

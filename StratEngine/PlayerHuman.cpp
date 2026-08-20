@@ -13,24 +13,21 @@
 
 // TODO: Add support for official input of castling moves (e.g. "0-0" or "0-0-0")
 // Right now its only possible through e1g1 (short) or e1-c1(long)
-Move PlayerHuman::GetMove(GameInfo& info, const SearchLimits&)
+SearchResult PlayerHuman::GetMove(const SearchLimits&)
 {
 	Board& board = board_;
 	MoveList moveList;
 
-	if (!IsAnyLegalMoves(board, info, moveList)) {
+	if (!IsAnyLegalMoves(board, moveList)) {
 		// No legal moves left, bye!
 		spdlog::default_logger()->info("Human has no legal moves left");
 		if (board.InCheck()) {
-			EGameStateChanged.fire(this,
-			                       board.GetCurrentColor() == WHITE ? GameStates::BLACK_WON : GameStates::WHITE_WON);
 			this->_bestScore = -GameValues::Mate;
-
-			return Move::EmptyMove();
+			return {.best_score = _bestScore,
+			        .game_state = board.GetCurrentColor() == WHITE ? GameStates::BLACK_WON : GameStates::WHITE_WON};
 		}
 		// Remis: Godt hvis vi er bagud, men skidt hvis vi er foran
-		EGameStateChanged.fire(this, GameStates::DRAW_PAT);
-		return Move::EmptyMove();
+		return {.game_state = GameStates::DRAW_PAT};
 	}
 
 	const bool bInCheck = board.InCheck();
@@ -51,8 +48,7 @@ Move PlayerHuman::GetMove(GameInfo& info, const SearchLimits&)
 		// mulighed for at skrive "quit" eller "exit" for at quitte
 		if (strMove == "exit" || strMove == "quit") {
 			spdlog::default_logger()->warn("User quitted");
-			EGameStateChanged.fire(this, GameStates::HUMAN_EXITED);
-			return Move::EmptyMove();
+			return {.game_state = GameStates::HUMAN_EXITED};
 		}
 
 		if (!ValidateInput(strMove)) {
@@ -105,10 +101,8 @@ Move PlayerHuman::GetMove(GameInfo& info, const SearchLimits&)
 
 		// Tjekker traekket for lovlighed(dvs ikke skak osv). Returnerer hvis OK
 		// TODO: IsLegalMove bliver kaldt i IsAnyLegalMoves(), men illegale traek bliver ikke fjernet
-		if (board.IsLegalMove(*moveIt)) {
-			info.UpdateBoardInfo(*moveIt, board.GetEffectiveMovPiece(*moveIt));
-			return *moveIt;
-		}
+		if (board.IsLegalMove(*moveIt))
+			return {.best_move = *moveIt};
 	}
 }
 
@@ -148,9 +142,9 @@ bool PlayerHuman::ParseInput(const std::string& input, Move& move, ePieceType& p
 
 // Returns true if any legal move is found, and false otherwise
 // TODO: Remove illegal moves from ComputeLegalMoves?
-bool PlayerHuman::IsAnyLegalMoves(Board& board, const GameInfo& info, MoveList& moveList)
+bool PlayerHuman::IsAnyLegalMoves(Board& board, MoveList& moveList)
 {
-	MoveGenerator::ComputeLegalMoves(board, info, moveList);
+	MoveGenerator::ComputeLegalMoves(board, moveList);
 
 	return std::any_of(moveList.begin(), moveList.end(),
 	                   [&board](const Move& move) { return board.IsLegalMove(move); });

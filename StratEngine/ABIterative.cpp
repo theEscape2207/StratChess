@@ -20,9 +20,9 @@
 // Returns:     Move - The best move found
 // Parameter:   BoardInfo& info -
 // ************************************
-Move ABIterative::GetMove(GameInfo& info, const SearchLimits& limits)
+SearchResult ABIterative::GetMove(const SearchLimits& limits)
 {
-	InitMoveVariables(info);
+	InitMoveVariables();
 
 	constexpr int alpha = -GameValues::Search_Init;
 	constexpr int beta = GameValues::Search_Init;
@@ -53,9 +53,7 @@ Move ABIterative::GetMove(GameInfo& info, const SearchLimits& limits)
 
 	StopTimerAndAdjustVars(m_SearchCount);
 
-	CheckGameOver(info);
-
-	return GetBestMove(info);
+	return MakeResult();
 }
 
 // ************************************
@@ -74,10 +72,9 @@ int ABIterative::Search(int ply, int alpha, int beta, PVLine& pline)
 	if (StopRequested()) {
 		return GameValues::Draw;
 	}
-	const GameInfo& info = GetLastBoardInfo(ply);
 
 	// Test for 50 moves rule
-	if (checkDraws(info, ply))
+	if (checkDraws(ply))
 		return GameValues::Draw;
 
 	// Er vi naaet til bunden af traeet - leaf nodes?
@@ -92,9 +89,9 @@ int ABIterative::Search(int ply, int alpha, int beta, PVLine& pline)
 	m_SearchCount++;
 
 	MoveList moveList;
-	MoveGenerator::ComputeLegalMoves(m_Board, info, moveList);
+	MoveGenerator::ComputeLegalMoves(m_Board, moveList);
 	// Sorterer traekkene - iterativt
-	MoveSorter::SortMovesIter(moveList, GetParentMove(ply), GetIterMove(ply), m_Board);
+	MoveSorter::SortMovesIter(moveList, GetParentMove(), GetIterMove(ply), m_Board);
 
 	bool moveFound = false;
 
@@ -105,9 +102,6 @@ int ABIterative::Search(int ply, int alpha, int beta, PVLine& pline)
 		counter++;
 		// Foretag traekket hvis det er lovligt - ellers proever vi naeste traek
 		if (m_Board.DoMove(curMove)) {
-			// Tilfoejer dette traek til nuvaerende traekfoelge - og opdaterer resten
-			AddMoveToSeq(curMove, ply);
-
 			// rekursivt kald til Alpha-Beta
 			const int value = -Search(ply + 1, -beta, -alpha, line);
 

@@ -154,14 +154,12 @@ void AIPerplex::StartNewGame()
 // Resets td_'s per-search state. Move-ordering state (killers, history) is
 // handled inside iterative_deepening(); history deliberately survives across
 // moves (aged, never cleared).
-void AIPerplex::init_search(const GameInfo& info)
+void AIPerplex::init_search()
 {
 	td_.board = m_Board; // thread-local copy — the search runs on this
 	td_.nodes_searched = 0;
 	td_.qnodes_searched = 0;
 	td_.pv_table = PVTable{}; // fresh PV, exactly like the former GetMove() local
-	td_.info_seq.clear();
-	td_.info_seq.emplace_back(info);
 }
 
 // Lazy SMP helper thread entry point (plain iterative deepening, no quality
@@ -187,9 +185,9 @@ void AIPerplex::helper_loop(ThreadData& td, int max_depth, TranspositionTable& t
 	}
 }
 
-Move AIPerplex::GetMove(GameInfo& info, const SearchLimits& limits)
+SearchResult AIPerplex::GetMove(const SearchLimits& limits)
 {
-	init_search(info);
+	init_search();
 	// Snapshot threads_ exactly once: UCI's cmd_setoption (unlike cmd_go/
 	// cmd_ucinewgame/cmd_stop) does not call stop_and_join() before writing
 	// threads_, so a client can mutate it on the UCI thread while this
@@ -225,8 +223,6 @@ Move AIPerplex::GetMove(GameInfo& info, const SearchLimits& limits)
 		for (size_t i = 0; i < threads - 1; ++i) {
 			ThreadData& htd = *helper_tds_[i];
 			htd.board = m_Board; // same seed as td_.board
-			htd.info_seq.clear();
-			htd.info_seq.emplace_back(info); // same root info as init_search gives td_
 			htd.clear_killers();
 			htd.clear_null_move_flags();
 			htd.nodes_searched = 0;
@@ -242,11 +238,11 @@ Move AIPerplex::GetMove(GameInfo& info, const SearchLimits& limits)
 
 	// Propagate the searched game state (mate/stalemate detected at the root)
 	// back to the real game board. This is the only m_Board side effect the
-	// search had before it ran on the thread-local copy; same only-if-changed
-	// condition as ThreadData::update_game_state().
-	const GameStates searched_state = td_.info_seq.at(0).gameState;
+	// search has, now that it runs on the thread-local copy.
+	const GameStates searched_state = td_.board.GetGameInfo().gameState;
 	if (searched_state != m_Board.GetGameInfo().gameState)
 		m_Board.SetGameState(searched_state);
+	last_result_.game_state = searched_state;
 
 	// Latch the abort signal so any still-running helpers collapse in O(depth)
 	// steps (they only ever poll IsAborted()), then join them — helpers.clear()
@@ -269,18 +265,12 @@ Move AIPerplex::GetMove(GameInfo& info, const SearchLimits& limits)
 	// the clock without ever crediting it to the count.
 	auto elapsed = StopTimerAndAdjustVars(static_cast<size_t>(total_nodes + total_qnodes));
 
-	Move bestMove = result.best_move;
+	const Move bestMove = result.best_move;
 
-	// Defensive check for game-over scenario
+	// Game over at the root: no move to play, and last_result_.game_state carries why.
 	if (bestMove.is_null()) {
-		info = m_Board.GetGameInfo();
-		//if ( !info.GameEnded())
-		/*ensure_logger_initialized();
-		if (s_logger) {
-			s_logger->error("No move from search - game is over (score={})", result.best_score);
-		}*/
 		_bestScore = result.best_score;
-		return Move::EmptyMove();
+		return last_result_;
 	}
 
 	// Success logging
@@ -289,15 +279,10 @@ Move AIPerplex::GetMove(GameInfo& info, const SearchLimits& limits)
 		               MoveFormatter::ToCoord(bestMove), result.best_score, result.depth_completed, elapsed.count(),
 		               total_nodes, result.search_was_stable ? "yes" : "NO");
 	}
-	// Equivalent of CheckGameOver(info, false), reading the thread-local
-	// info_seq root instead of the base-class m_infoSeq (unused by AIPerplex).
-	info = td_.info_seq.at(0);
-	if (info.gameState != GameStates::STILL_PLAYING) {
-		EGameStateChanged.fire(this, info.gameState);
-	}
-	info.UpdateBoardInfo(bestMove, m_Board.GetEffectiveMovPiece(bestMove));
-
-	return bestMove;
+	// last_result_, not the local `result`: the node counts above were aggregated across the
+	// joined helper threads, so the two differ at Threads > 1. GetLastResult() must be
+	// indistinguishable from what this returns for the same call.
+	return last_result_;
 }
 
 SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, TranspositionTable& tt)
@@ -466,11 +451,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	if (poll_search_limits(td))
 		return GameValues::Draw;
 
-	// We need the info on the current board state
-	GameInfo info = td.get_last_info(ply);
-
 	// Test for 50 moves rule and threefold repetition
-	if (td.check_draws(info, ply))
+	if (td.check_draws(ply))
 		return GameValues::Draw;
 
 	// Er vi naaet til bunden af traeet - evaluering?
@@ -519,7 +501,6 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		const int R = tuning_.null_move_reduction;
 		td.last_move_was_null[ply + 1] = true;
 		td.board.DoNullMove();
-		td.add_null_move_to_seq(ply);
 		int null_score = -pvs(td, depth - 1 - R, -beta, -beta + 1, ply + 1, false, tt);
 		td.board.UndoNullMove();
 		td.last_move_was_null[ply + 1] = false;
@@ -537,7 +518,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	}
 
 	MoveList moveList;
-	MoveGenerator::ComputeLegalMoves(td.board, info, moveList);
+	MoveGenerator::ComputeLegalMoves(td.board, moveList);
 
 	bool first_child = true;
 	Move best_move;
@@ -559,8 +540,6 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		td.nodes_searched++;
 
 		if (td.board.DoMove(move)) {
-			// Tilfoejer dette traek til nuvaerende traekfoelge - og opdaterer resten
-			td.add_move_to_seq(move, ply);
 			int value;
 
 			if (first_child) {
@@ -765,9 +744,8 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// The fifty-move counter becomes reachable the same way but is observed one ply later:
 	// a quiet evasion can push the count to the limit, and the node that results need not
 	// itself be in check. So this is deliberately not gated on in_check — gating it would
-	// leave a genuine fifty-move draw scored by material, and would trip the STILL_PLAYING
-	// assertion in GameState::UpdateHalfmoveClock on the next move made from that node.
-	if (td.check_draws(td.get_last_info(ply), ply))
+	// leave a genuine fifty-move draw scored by material.
+	if (td.check_draws(ply))
 		return GameValues::Draw;
 
 	// Absolute backstop. With the draw check above, a real search should never reach this —
@@ -802,9 +780,6 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 		}
 	}
 
-	// We need the info on the current board state
-	const GameInfo& info = td.get_last_info(ply);
-
 	// Stand-pat: the option of making no move at all. Out of check it is the node's baseline
 	// and can cut off on its own. In check it does not exist — the side to move is obliged to
 	// leave check — so neither the cutoff nor the baseline applies, and the static evaluation
@@ -838,10 +813,10 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 		// generator cannot answer this node. The list is pseudo-legal; DoMove() below rejects
 		// the moves that leave the king in check, which is what makes an empty survivor set
 		// mean checkmate.
-		MoveGenerator::ComputeLegalMoves(td.board, info, moveList);
+		MoveGenerator::ComputeLegalMoves(td.board, moveList);
 	} else {
 		// Generate only capture moves and promotions
-		MoveGenerator::ComputeCaptures(td.board, info, moveList);
+		MoveGenerator::ComputeCaptures(td.board, moveList);
 	}
 	// Sort the found captures
 	MoveSorter::SortMovesByValue(moveList, moveList.size(), td.board);
@@ -861,8 +836,6 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 
 		if (!td.board.DoMove(move))
 			continue;
-
-		td.add_move_to_seq(move, ply);
 
 		// Per searched edge, matching pvs(): counting entries here instead would re-count
 		// every quiescence root, whose incoming move the parent's loop already counted.
@@ -1183,7 +1156,7 @@ bool AIPerplex::handle_empty_move_emergency(ThreadData& td, SearchState& state)
 	td.pv_table.clear_ply(1);
 
 	MoveList emergency_moves;
-	MoveGenerator::ComputeLegalMoves(td.board, current_info, emergency_moves);
+	MoveGenerator::ComputeLegalMoves(td.board, emergency_moves);
 
 	if (emergency_moves.empty()) {
 		log.critical("No legal moves - game is over");

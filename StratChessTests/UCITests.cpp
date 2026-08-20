@@ -135,8 +135,7 @@ class UciHandlerTestFixture {
 	{
 		auto* perplex = dynamic_cast<AIPerplex*>(handler.ai_.get());
 		REQUIRE(perplex != nullptr);
-		GameInfo info = handler.board_.GetGameInfo();
-		return perplex->GetMove(info, SearchLimits::fixed_depth(depth));
+		return perplex->GetMove(SearchLimits::fixed_depth(depth)).best_move;
 	}
 
 	// Nodes from the last search. A non-null bestmove alone does not prove a search ran:
@@ -1864,7 +1863,7 @@ namespace {
 	{
 		for (const std::string& token : pv_tokens) {
 			MoveList moves;
-			MoveGenerator::ComputeLegalMoves(board, board.GetGameInfo(), moves);
+			MoveGenerator::ComputeLegalMoves(board, moves);
 
 			Move found;
 			bool matched = false;

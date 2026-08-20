@@ -42,9 +42,8 @@ static std::vector<std::string> CaptureMoves(const char* fen)
 	// accident.
 	REQUIRE(CountPieces(board) >= 2);
 
-	GameInfo info = board.GetGameInfo();
 	MoveList moves;
-	MoveGenerator::ComputeCaptures(board, info, moves);
+	MoveGenerator::ComputeCaptures(board, moves);
 
 	std::vector<std::string> out;
 	out.reserve(moves.size());
@@ -76,9 +75,8 @@ static void CheckEveryTargetHoldsAnEnemyPiece(const char* fen)
 	Board board(fen);
 	REQUIRE(CountPieces(board) >= 2);
 
-	GameInfo info = board.GetGameInfo();
 	MoveList moves;
-	MoveGenerator::ComputeCaptures(board, info, moves);
+	MoveGenerator::ComputeCaptures(board, moves);
 	REQUIRE(moves.size() > 0);
 
 	const eColor us = board.GetCurrentColor();
@@ -172,12 +170,11 @@ TEST_CASE("ComputeCaptures - captures are a subset of the legal move list", "[mo
 	// ComputeCaptures must never invent a move ComputeLegalMoves does not also produce.
 	constexpr const char* busy = "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 1";
 	Board board(busy);
-	GameInfo info = board.GetGameInfo();
 
 	MoveList captures;
-	MoveGenerator::ComputeCaptures(board, info, captures);
+	MoveGenerator::ComputeCaptures(board, captures);
 	MoveList legal;
-	MoveGenerator::ComputeLegalMoves(board, info, legal);
+	MoveGenerator::ComputeLegalMoves(board, legal);
 	REQUIRE(captures.size() > 0);
 
 	for (const auto& capture : captures) {

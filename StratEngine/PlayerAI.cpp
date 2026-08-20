@@ -30,8 +30,6 @@ int PlayerAiBase::Quiescent(size_t ply, int alpha, int beta)
 	// Increments counter
 	m_SearchCount++;
 
-	const GameInfo& info = GetLastBoardInfo(ply);
-
 	// 50 moves rules will never get hit as long we only have Captures in Quiescent moves
 	// first entry is tested in Search algorithms
 
@@ -52,7 +50,7 @@ int PlayerAiBase::Quiescent(size_t ply, int alpha, int beta)
 
 	MoveList moveList;
 	// Only work on the captures in Quiescent
-	MoveGenerator::ComputeCaptures(m_Board, info, moveList);
+	MoveGenerator::ComputeCaptures(m_Board, moveList);
 	// Sort the found captures
 	MoveSorter::SortMovesByValue(moveList, moveList.size(), m_Board);
 
@@ -64,9 +62,6 @@ int PlayerAiBase::Quiescent(size_t ply, int alpha, int beta)
 		// Foretag traekket
 		if (!m_Board.DoMove(curMove))
 			continue;
-
-		// Tilfoejer dette traek til nuvaerende traekfoelge
-		AddMoveToSeq(curMove, ply);
 
 		// rekursivt kald til Quiescent. Dette sker _rigtigt_ mange gange
 		value = -Quiescent(ply + 1, -beta, -alpha);
@@ -100,18 +95,16 @@ int PlayerAiBase::Quiescent(size_t ply, int alpha, int beta)
 // Description:
 // FullName:   protected PlayerAiBase::GetBestMove
 // Returns:    const Move - The best move or EmptyMove if game is over
-// Parameter:  BoardInfo& info -
 // Remark:
 // ************************************
-Move PlayerAiBase::GetBestMove(GameInfo& info) noexcept
+Move PlayerAiBase::GetBestMove() noexcept
 {
 	// Returner det bedste traek - hvis der er noget
-	if (!m_BestMove.is_null()) {
-		info.UpdateBoardInfo(m_BestMove, m_Board.GetEffectiveMovPiece(m_BestMove));
+	if (!m_BestMove.is_null())
 		return m_BestMove;
-	}
-	// No moves found!
-	assert(info.gameState != GameStates::STILL_PLAYING);
+
+	// No moves found — the search must have adjudicated the root.
+	assert(m_Board.GetGameInfo().gameState != GameStates::STILL_PLAYING);
 	return Move::EmptyMove();
 }
 
@@ -171,62 +164,3 @@ unsigned PlayerAiBase::ApplyLimits(const SearchLimits& limits)
 	node_limit_ = r.node_limit;
 	return r.effective_depth;
 }
-
-// ************************************
-// Method:      StoreInfoAtPly
-// Description: Faelles bookkeeping for m_infoSeq - holder vektoren i lockstep
-//				 med search-traeets ply, uanset om GameInfo stammer fra et
-//				 rigtigt traek (AddMoveToSeq) eller et null-move (AddNullMoveToSeq)
-// FullName:    protected PlayerAiBase::StoreInfoAtPly
-// Returns:     nothing
-// Parameter:   size_t ply -
-// Parameter:   const GameInfo& info -
-// Remark:
-// ************************************
-void PlayerAiBase::StoreInfoAtPly(size_t ply, const GameInfo& info)
-{
-	// where to add it? size er 2 efter foerste traek ved ply 0
-	const size_t infoSize = m_infoSeq.size();
-
-	if (ply + 1 == infoSize) // foerste traek ved hver dybde
-		m_infoSeq.emplace_back(info);
-	else if (infoSize == ply + 2) // 2. traek ved hver dybde og resten
-		m_infoSeq[ply + 1] = info;
-	else if (infoSize > ply + 2) // Skal der slettes nogen? Dont delete the first!
-	{
-		m_infoSeq.erase(m_infoSeq.begin() + static_cast<int>(ply + 1), m_infoSeq.end());
-		m_infoSeq.emplace_back(info);
-	} else
-		assert(!"BoardInfo update - Somebody hasn't handled all cases");
-}
-
-// ************************************
-// Method:      AddMoveToSeq
-// Description: Tilfoejer data omkring dette traek til nuvaerende BoardInfo struktur
-//				 Sletter eksisterende data fra sekvensen fra denne ply og ned
-// FullName:    protected PlayerAiBase::AddMoveToSeq
-// Returns:     nothing
-// Parameter:   const Move& move -
-// Parameter:   unsigned ply -
-// Remark:
-// ************************************
-void PlayerAiBase::AddMoveToSeq(const Move& move, size_t ply)
-{
-	GameInfo info = GetLastBoardInfo(ply);
-
-	// After DoMove the piece sits on move.to(); read it to obtain the moving piece.
-	info.UpdateBoardInfo(move, m_Board.GetPiece(move.to()));
-
-	StoreInfoAtPly(ply, info);
-}
-
-// Null-move counterpart: no Move to derive info from, so snapshot the
-// board's current GameInfo directly (the board has already had
-// DoNullMove() applied by the caller before this is called).
-// Note: unlike AddMoveToSeq, this does not call UpdateBoardInfo, so the
-// stored GameInfo::lastMove is whatever the parent ply's real move was,
-// not a sentinel for "no move". GetParentMove()/GetLastBoardInfo() callers
-// must not treat lastMove at a null-move ply as "the move that produced
-// this ply" — currently safe because only AIPerplex calls this method, and
-// AIPerplex never calls GetParentMove().
-void PlayerAiBase::AddNullMoveToSeq(size_t ply) { StoreInfoAtPly(ply, m_Board.GetGameInfo()); }

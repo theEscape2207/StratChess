@@ -91,7 +91,7 @@ TEST_CASE("Search from a high-but-legal halfmove clock still searches and return
 	GameInfo info = board.GetGameInfo();
 	REQUIRE(info.halfmoveClock == clock);
 
-	const Move move = ai->GetMove(info, SearchLimits::fixed_depth(4));
+	const Move move = ai->GetMove(SearchLimits::fixed_depth(4)).best_move;
 
 	CHECK_FALSE(move.is_null());
 	CHECK(as_perplex(ai).GetLastResult().nodes_searched > 0);
@@ -100,9 +100,9 @@ TEST_CASE("Search from a high-but-legal halfmove clock still searches and return
 // At or past the threshold the game is drawn, but a UCI engine is not the arbiter of that
 // and must still answer with a legal move rather than nothing.
 //
-// The position must keep a root capture available (Nxe5, Bxf7): that is what exercises the
-// clock-reset branch of UpdateHalfmoveClock at ply 0 with the clock already at the limit,
-// which is where its STILL_PLAYING assert would fire in Debug. Keep one when changing FENs.
+// The position deliberately keeps a root capture available (Nxe5, Bxf7), so the search has to
+// cope with the clock resetting at ply 0 while it is already at the limit. Keep one when
+// changing FENs.
 TEST_CASE("Search at or past the fifty-move threshold still returns a legal move", "[fifty_move]")
 {
 	const int clock = GENERATE(100, 120);
@@ -111,8 +111,7 @@ TEST_CASE("Search at or past the fifty-move threshold still returns a legal move
 	Board board(fen_with_clock(clock));
 	auto ai = make_tactical_engine(board, 4);
 
-	GameInfo info = board.GetGameInfo();
-	const Move move = ai->GetMove(info, SearchLimits::fixed_depth(4));
+	const Move move = ai->GetMove(SearchLimits::fixed_depth(4)).best_move;
 
 	REQUIRE_FALSE(move.is_null());
 
@@ -120,9 +119,10 @@ TEST_CASE("Search at or past the fifty-move threshold still returns a legal move
 	CHECK(replay.IsLegalMove(move));
 }
 
-// GetMove() reports the draw through the caller's GameInfo *and* returns the move that
-// caused it, so a caller that tests GameEnded() before applying the move ends the game on
-// a position the board never reached. Game::Run() commits first for this reason.
+// The search adjudicates its own root and nothing else. A fifty-move draw is a fact about
+// the position that exists only once the caller commits the move, so the returned
+// game_state stays STILL_PLAYING and the clock crosses the limit on the caller's board.
+// Turning that into DRAW_50_MOVES is Game::Run()'s job.
 //
 // KR vs K has no pawn move or capture available, so whatever the search picks pushes the
 // clock to the limit — the one case where the move and the draw arrive together.
@@ -131,17 +131,17 @@ TEST_CASE("The move that reaches the fifty-move threshold is returned, not withh
 	Board board("4k3/8/8/8/8/8/1R6/4K3 w - - 99 60");
 	auto ai = make_tactical_engine(board, 4);
 
-	GameInfo info = board.GetGameInfo();
-	REQUIRE(info.halfmoveClock == 99);
+	REQUIRE(board.halfmove_clock() == 99);
 
-	const Move move = ai->GetMove(info, SearchLimits::fixed_depth(4));
+	const SearchResult result = ai->GetMove(SearchLimits::fixed_depth(4));
 
-	REQUIRE_FALSE(move.is_null());
-	CHECK(info.halfmoveClock == 100);
-	CHECK(info.gameState == GameStates::DRAW_50_MOVES);
+	REQUIRE_FALSE(result.best_move.is_null());
+	CHECK(result.game_state == GameStates::STILL_PLAYING);
 
 	// Replayed on a fresh board so the check stays independent of anything the search
 	// may come to write back through the board it holds by reference.
 	Board replay("4k3/8/8/8/8/8/1R6/4K3 w - - 99 60");
-	CHECK(replay.IsLegalMove(move));
+	REQUIRE(replay.IsLegalMove(result.best_move));
+	REQUIRE(replay.DoMove(result.best_move));
+	CHECK(replay.halfmove_clock() == HALFMOVE_CLOCK_LIMIT);
 }

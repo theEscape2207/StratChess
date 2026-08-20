@@ -9,9 +9,9 @@
 #include "MoveFormatter.h"
 
 // Fetches the next move
-Move AIAgent::GetMove(GameInfo& info, const SearchLimits& limits)
+SearchResult AIAgent::GetMove(const SearchLimits& limits)
 {
-	InitMoveVariables(info);
+	InitMoveVariables();
 
 	// Aspiration Window Search - size +/- Half a pawn
 	const int windowSize = g_iPieceValues[PAWN] >> 1; // 50
@@ -62,9 +62,7 @@ Move AIAgent::GetMove(GameInfo& info, const SearchLimits& limits)
 
 	StopTimerAndAdjustVars(m_SearchCount);
 
-	CheckGameOver(info);
-
-	return GetBestMove(info);
+	return MakeResult();
 }
 
 // En iterativ alpha-beta with PVL and PVS
@@ -74,10 +72,9 @@ int AIAgent::Search(size_t ply, int alpha, int beta, PVLine& pline)
 	if (StopRequested()) {
 		return GameValues::Draw;
 	}
-	const GameInfo& info = GetLastBoardInfo(ply);
 
 	// Test for 50 moves rule
-	if (checkDraws(info, static_cast<int>(ply)))
+	if (checkDraws(static_cast<int>(ply)))
 		return GameValues::Draw;
 
 	// Er vi naaet til bunden af traeet - leaf nodes?
@@ -91,10 +88,10 @@ int AIAgent::Search(size_t ply, int alpha, int beta, PVLine& pline)
 
 	// Henter de lovlige traek
 	MoveList moveList;
-	MoveGenerator::ComputeLegalMoves(m_Board, info, moveList);
+	MoveGenerator::ComputeLegalMoves(m_Board, moveList);
 
 	// Sorterer traekkene
-	MoveSorter::SortMovesIter(moveList, GetParentMove(ply), // Last move
+	MoveSorter::SortMovesIter(moveList, GetParentMove(), // Last move
 	                          GetIterMove(ply), m_Board);
 	int score = 0;
 
@@ -111,9 +108,6 @@ int AIAgent::Search(size_t ply, int alpha, int beta, PVLine& pline)
 
 		// Foretag traekket hvis det er lovligt - ellers proever vi naeste traek
 		if (m_Board.DoMove(curMove)) {
-			// Tilfoejer dette traek til nuvaerende traekfoelge
-			AddMoveToSeq(curMove, ply);
-
 			// Proev foerste traek for at se om det er godt PVS - det burde vaere det bedste
 			if (curMove == moveList.front()) {
 				// rekursivt kald til Alpha-Beta

@@ -11,7 +11,7 @@ class Board;
 class PlayerHuman final : public PlayerBase {
   public:
 	/* IPlayer implementation */
-	Move GetMove(GameInfo& info, const SearchLimits&) override;
+	SearchResult GetMove(const SearchLimits&) override;
 	const char* GetType() const noexcept override { return "Human"; }
 
 	std::string getDescription() const override
@@ -69,5 +69,5 @@ class PlayerHuman final : public PlayerBase {
 
 	// Fetches the list of Moves for the Player
 	// Returns true if any legal move is found, and false otherwise
-	static bool IsAnyLegalMoves(Board& board, const GameInfo& info, MoveList& moveList);
+	static bool IsAnyLegalMoves(Board& board, MoveList& moveList);
 };

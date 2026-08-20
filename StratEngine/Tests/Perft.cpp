@@ -168,11 +168,8 @@ namespace Testing {
 			return 1;
 		}
 
-		// MoveGenerator needs latest GameInfo, which only board has - so ignore passed info
-		GameInfo curInfo = board.GetGameInfo();
-
 		MoveList moves;
-		MoveGenerator::ComputeLegalMoves(board, curInfo, moves);
+		MoveGenerator::ComputeLegalMoves(board, moves);
 
 		uint64_t nodes = 0;
 
@@ -201,9 +198,8 @@ namespace Testing {
 			return;
 		}
 
-		auto info = board.GetGameInfo();
 		MoveList moves;
-		MoveGenerator::ComputeLegalMoves(board, info, moves);
+		MoveGenerator::ComputeLegalMoves(board, moves);
 
 		for (const auto& move : moves) {
 			// Try to make the move
@@ -252,10 +248,9 @@ namespace Testing {
 				if (board.InCheck()) {
 					result.checks++;
 
-					auto currInfo = board.GetGameInfo();
 					// Check if it's checkmate
 					MoveList nextMoves;
-					MoveGenerator::ComputeLegalMoves(board, currInfo, nextMoves);
+					MoveGenerator::ComputeLegalMoves(board, nextMoves);
 					bool hasLegalMove = false;
 					for (const auto& nextMove : nextMoves) {
 						if (board.DoMove(nextMove)) {
@@ -319,9 +314,8 @@ namespace Testing {
 			return;
 		}
 
-		auto curInfo = board.GetGameInfo();
 		MoveList moves;
-		MoveGenerator::ComputeLegalMoves(board, curInfo, moves);
+		MoveGenerator::ComputeLegalMoves(board, moves);
 
 		uint64_t total_nodes = 0;
 

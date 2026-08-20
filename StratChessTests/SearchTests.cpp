@@ -36,9 +36,8 @@
 static Move AnyLegalMove()
 {
 	Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-	GameInfo info = board.GetGameInfo();
 	MoveList ml;
-	MoveGenerator::ComputeLegalMoves(board, info, ml);
+	MoveGenerator::ComputeLegalMoves(board, ml);
 	REQUIRE(!ml.empty());
 	return ml[0];
 }
@@ -150,15 +149,41 @@ class AIPerlexTestFixture {
 	void add_fake_helper() const { ai->helper_tds_.push_back(std::make_unique<ThreadData>()); }
 	size_t helper_count() const { return ai->helper_tds_.size(); }
 
+	// The helper threads' own counters, for checking GetMove()'s post-join aggregation exactly
+	// rather than by inequality — a helper that never got scheduled contributes a legitimate 0.
+	int64_t helper_nodes() const
+	{
+		int64_t total = 0;
+		for (const auto& htd : ai->helper_tds_)
+			total += htd->nodes_searched;
+		return total;
+	}
+
+	int64_t helper_qnodes() const
+	{
+		int64_t total = 0;
+		for (const auto& htd : ai->helper_tds_)
+			total += htd->qnodes_searched;
+		return total;
+	}
+
 	void set_last_result_depth(int depth) const { ai->last_result_.depth_completed = depth; }
 
 	void search_depth_one()
 	{
 		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
-		GameInfo info = board_.GetGameInfo();
-		REQUIRE(info.fullMoveCount == 1);
-		const Move move = ai->GetMove(info, SearchLimits::fixed_depth(1));
+		REQUIRE(board_.GetGameInfo().fullMoveCount == 1);
+		const Move move = ai->GetMove(SearchLimits::fixed_depth(1)).best_move;
 		REQUIRE_FALSE(move.is_null());
+	}
+
+	// One complete GetMove() at a chosen thread count — the only way to observe the aggregation
+	// GetMove() performs after joining its helpers.
+	SearchResult get_move_at_threads(unsigned threads, int depth) const
+	{
+		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
+		ai->SetThreads(threads);
+		return ai->GetMove(SearchLimits::fixed_depth(depth));
 	}
 
 	// --- Terminal-node helpers ---
@@ -169,9 +194,8 @@ class AIPerlexTestFixture {
 	int count_legal_moves() const
 	{
 		Board copy = board_;
-		GameInfo info = copy.GetGameInfo();
 		MoveList ml;
-		MoveGenerator::ComputeLegalMoves(copy, info, ml);
+		MoveGenerator::ComputeLegalMoves(copy, ml);
 
 		int legal = 0;
 		for (const auto& move : ml) {
@@ -191,7 +215,6 @@ class AIPerlexTestFixture {
 	{
 		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
 		ai->td_.board = board_;
-		ai->td_.info_seq.assign(static_cast<size_t>(ply) + 1, board_.GetGameInfo());
 		return ai->pvs(ai->td_, depth, alpha, beta, ply, is_pv_node, *ai->_tt);
 	}
 
@@ -208,7 +231,6 @@ class AIPerlexTestFixture {
 		ai->time_manager_.start(std::chrono::milliseconds(60'000));
 		ai->td_.board = board_;
 		ai->td_.nodes_since_check_ = 0;
-		ai->td_.info_seq.assign(static_cast<size_t>(ply) + 1, board_.GetGameInfo());
 		return ai->quiescence(ai->td_, alpha, beta, qsearch_budget, ply, *ai->_tt);
 	}
 
@@ -221,7 +243,6 @@ class AIPerlexTestFixture {
 		ai->time_manager_.start(std::chrono::milliseconds(60'000));
 		ai->td_.board = board_;
 		ai->td_.nodes_since_check_ = 0;
-		ai->td_.info_seq.assign(static_cast<size_t>(ply) + 1, board_.GetGameInfo());
 		return ai->pvs(ai->td_, /*depth=*/0, alpha, beta, ply, /*is_pv_node=*/true, *ai->_tt);
 	}
 
@@ -233,23 +254,20 @@ class AIPerlexTestFixture {
 		               BoundType::EXACT, NodeType::PV_NODE, SearchPhase::QUIESCENCE);
 	}
 
-	// Replays a UCI move list onto td_.board, advancing info_seq in lockstep the way the
-	// search does, then runs one quiescence() node at the resulting ply. Lets a test place
-	// the node inside a line, with real repetition history behind it, rather than at a
-	// synthetic root.
+	// Replays a UCI move list onto td_.board, then runs one quiescence() node at the
+	// resulting ply. Lets a test place the node inside a line, with real repetition history
+	// behind it, rather than at a synthetic root.
 	int quiesce_after(std::initializer_list<const char*> moves, int alpha, int beta) const
 	{
 		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
 		ai->time_manager_.start(std::chrono::milliseconds(60'000));
 		ai->td_.board = board_;
 		ai->td_.nodes_since_check_ = 0;
-		ai->td_.info_seq.assign(1, board_.GetGameInfo());
 
 		int ply = 0;
 		for (const char* uci : moves) {
 			const Move move = MoveFormatter::FromUCI(uci, ai->td_.board);
 			REQUIRE(ai->td_.board.DoMove(move));
-			ai->td_.add_move_to_seq(move, static_cast<size_t>(ply));
 			++ply;
 		}
 		return ai->quiescence(ai->td_, alpha, beta, AIPerplex::QSEARCH_BUDGET, ply, *ai->_tt);
@@ -281,8 +299,7 @@ class AIPerlexTestFixture {
 	Move search_to_depth(int depth) const
 	{
 		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
-		GameInfo info = board_.GetGameInfo();
-		return ai->GetMove(info, SearchLimits::fixed_depth(depth));
+		return ai->GetMove(SearchLimits::fixed_depth(depth)).best_move;
 	}
 
 	// Full search bounded by a node budget instead of a fixed depth. Requires the
@@ -291,8 +308,7 @@ class AIPerlexTestFixture {
 	Move search_with_nodes(int64_t nodes) const
 	{
 		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
-		GameInfo info = board_.GetGameInfo();
-		return ai->GetMove(info, SearchLimits::fixed_nodes(nodes));
+		return ai->GetMove(SearchLimits::fixed_nodes(nodes)).best_move;
 	}
 };
 
@@ -748,6 +764,80 @@ TEST_CASE("SMP - SetThreads default is 1", "[smp]")
 {
 	AIPerlexTestFixture fix;
 	REQUIRE(fix.threads() == 1u);
+}
+
+// GetMove() returns the result AFTER the helper threads are joined and their node counts folded
+// in, which is the same object GetLastResult() hands out. The two are only distinguishable at
+// Threads > 1: the pre-join result carries the main thread's counts alone, so returning it would
+// pass at Threads = 1 and silently under-report everywhere else.
+TEST_CASE("SMP - GetMove's return value matches GetLastResult at Threads > 1", "[smp]")
+{
+	AIPerlexTestFixture fix("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 6);
+
+	const SearchResult returned = fix.get_move_at_threads(4, 6);
+	const SearchResult last = fix.ai->GetLastResult();
+
+	REQUIRE_FALSE(returned.best_move.is_null());
+	CHECK(returned.best_move == last.best_move);
+	CHECK(returned.best_score == last.best_score);
+	CHECK(returned.depth_completed == last.depth_completed);
+	CHECK(returned.game_state == last.game_state);
+	CHECK(returned.nodes_searched == last.nodes_searched);
+	CHECK(returned.qnodes_searched == last.qnodes_searched);
+	CHECK(returned.search_was_stable == last.search_was_stable);
+
+	// The aggregate really is an aggregate. Stated as the exact sum rather than an inequality:
+	// a helper whose thread starts after the main search has already finished contributes a
+	// legitimate zero, so "greater than the main thread's count" is not guaranteed on a loaded
+	// or single-core machine. Without this, the equality checks above would pass on a pre-join
+	// result.
+	CHECK(returned.nodes_searched == fix.mainnodes() + fix.helper_nodes());
+	CHECK(returned.qnodes_searched == fix.qnodes() + fix.helper_qnodes());
+}
+
+// ============================================================================
+// Terminal results at the root
+// ============================================================================
+// The producer half of the contract GameLoopTests.cpp exercises from the consumer side: asked
+// for a move in a position that has none, a real player returns a null move and names the
+// outcome in game_state. That is the only channel left — the state-changed event is gone — so
+// nothing else reports the end of a game, and scripted players cannot prove a real one supplies
+// it.
+
+TEST_CASE("AIPerplex - a mated root returns no move and names the winner", "[search]")
+{
+	// Black to move and mated: Ra8 covers the back rank, f7/g7/h7 block every escape.
+	AIPerlexTestFixture fix("R5k1/5ppp/8/8/8/8/8/6K1 b - - 0 1");
+
+	const SearchResult result = fix.get_move_at_threads(1, 3);
+
+	CHECK(result.best_move.is_null());
+	CHECK(result.game_state == GameStates::WHITE_WON);
+}
+
+TEST_CASE("AIPerplex - a stalemated root returns no move and DRAW_PAT", "[search]")
+{
+	// Black to move, not in check, and every king move is covered: Qf7 takes g8, g7 and h7,
+	// with Kg6 covering the last two a second time.
+	AIPerlexTestFixture fix("7k/5Q2/6K1/8/8/8/8/8 b - - 0 1");
+	REQUIRE(fix.count_legal_moves() == 0);
+
+	const SearchResult result = fix.get_move_at_threads(1, 3);
+
+	CHECK(result.best_move.is_null());
+	CHECK(result.game_state == GameStates::DRAW_PAT);
+}
+
+TEST_CASE("AIPerplex - a position with a move reports STILL_PLAYING", "[search]")
+{
+	// The control for both cases above: without it, a GetMove() that reported a terminal state
+	// unconditionally would pass them.
+	AIPerlexTestFixture fix("4k3/8/8/8/8/8/1R6/4K3 w - - 5 60");
+
+	const SearchResult result = fix.get_move_at_threads(1, 3);
+
+	CHECK_FALSE(result.best_move.is_null());
+	CHECK(result.game_state == GameStates::STILL_PLAYING);
 }
 
 // ============================================================================
