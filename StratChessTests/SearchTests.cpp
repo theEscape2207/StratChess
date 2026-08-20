@@ -796,6 +796,51 @@ TEST_CASE("SMP - GetMove's return value matches GetLastResult at Threads > 1", "
 }
 
 // ============================================================================
+// Terminal results at the root
+// ============================================================================
+// The producer half of the contract GameLoopTests.cpp exercises from the consumer side: asked
+// for a move in a position that has none, a real player returns a null move and names the
+// outcome in game_state. That is the only channel left — the state-changed event is gone — so
+// nothing else reports the end of a game, and scripted players cannot prove a real one supplies
+// it.
+
+TEST_CASE("AIPerplex - a mated root returns no move and names the winner", "[search]")
+{
+	// Black to move and mated: Ra8 covers the back rank, f7/g7/h7 block every escape.
+	AIPerlexTestFixture fix("R5k1/5ppp/8/8/8/8/8/6K1 b - - 0 1");
+
+	const SearchResult result = fix.get_move_at_threads(1, 3);
+
+	CHECK(result.best_move.is_null());
+	CHECK(result.game_state == GameStates::WHITE_WON);
+}
+
+TEST_CASE("AIPerplex - a stalemated root returns no move and DRAW_PAT", "[search]")
+{
+	// Black to move, not in check, and every king move is covered: Qf7 takes g8, g7 and h7,
+	// with Kg6 covering the last two a second time.
+	AIPerlexTestFixture fix("7k/5Q2/6K1/8/8/8/8/8 b - - 0 1");
+	REQUIRE(fix.count_legal_moves() == 0);
+
+	const SearchResult result = fix.get_move_at_threads(1, 3);
+
+	CHECK(result.best_move.is_null());
+	CHECK(result.game_state == GameStates::DRAW_PAT);
+}
+
+TEST_CASE("AIPerplex - a position with a move reports STILL_PLAYING", "[search]")
+{
+	// The control for both cases above: without it, a GetMove() that reported a terminal state
+	// unconditionally would pass them.
+	AIPerlexTestFixture fix("4k3/8/8/8/8/8/1R6/4K3 w - - 5 60");
+
+	const SearchResult result = fix.get_move_at_threads(1, 3);
+
+	CHECK_FALSE(result.best_move.is_null());
+	CHECK(result.game_state == GameStates::STILL_PLAYING);
+}
+
+// ============================================================================
 // Terminal-node TT storage
 // ============================================================================
 // A node with no legal move leaves best_value at the -Search_Init sentinel.
