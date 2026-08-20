@@ -17,7 +17,7 @@ was complete, which is the lifecycle's condition for removing them. Git history 
 | 5 | Per-call reset of the root verdict, plus one falsified regression test **per carrier** — AIPerplex and AIAgent (D6) | not started |
 | 6 | `GameInfo` deleted; 59 `GetGameInfo()` sites migrated; `fullmove_count()` added (D7) | not started |
 | 7 | `FiftyMoveRuleTests.cpp` rewritten against `Board` (D7) | not started |
-| 8 | FEN rejection for out-of-range counters + Debug asserts at the increments, plus the rejection/round-trip tests (D4). Grep the FEN corpora for an out-of-range counter **first** | not started |
+| 8 | D4's three input bounds (both FEN counters, the UCI move list) + Debug asserts at the increments, plus one bound test per input | not started |
 | 9 | Validation sweep — equivalence, perft, bench, self-play ×2, `search-reviewer` | not started |
 | 10 | Harvest — `CLAUDE.md:153` corrected, `Docs/TestDesign.md` row 78 renamed, `Move.h:16` + `MoveFactory.h:8` repointed, source comments, `Docs/Changelog.md`, issue comments | not started |
 
@@ -47,7 +47,7 @@ target and the narrowing, keep D6 in this PR as its own commit, keep D8 and wide
 
 | Finding | Resolution |
 |---|---|
-| **P1** — clamping at the parser does not stop the narrowed counters wrapping on the next increment; a quiet move from 65,535 resets the clock to 0 and bypasses draw detection | The wrap is real. The fix is not saturation (see below): D4 now **rejects** an out-of-range counter at the parser through its existing error channel, and guards the increments with a Debug assert only |
+| **P1** — clamping at the parser does not stop the narrowed counters wrapping on the next increment; a quiet move from 65,535 resets the clock to 0 and bypasses draw detection | The wrap is real; saturation was the wrong fix (see below). D4 now bounds the three *inputs* — both FEN counters and the UCI move list — at 1000, rejected with a diagnostic, and guards the increments with a Debug assert only |
 | **P2** — D8's oracle compared only at unmake, so a broken *forward* update would be written into both representations, restore perfectly and pass | D8 now fires at four points: after `DoMove`, after `DoNullMove`, on `DoMove`'s illegal-move rollback path, and after both unmakes |
 | **P2** — D6 introduces two independent verdict carriers but proposed one test | One test per carrier, AIPerplex and AIAgent. D5 now states *why* there are two: a single player-level member would be written by every Lazy SMP helper at its own ply 0, which is #358's race |
 | `root_state` is ambiguous beside `PositionState` and `SearchState` | Renamed `root_game_state` / `root_game_state_`, after the `SearchResult::game_state` field it feeds |
@@ -61,10 +61,18 @@ against, so absorbing the runaway is the worse outcome, not the safe one.
 
 `Board::DoMove` already answers this for the analogous bound, ten lines from where the counters live:
 `assert(currentPly_ < MAX_PLY)` with a "defense in depth" comment, and no Release check. D4 now
-follows that precedent. The counter question therefore splits by kind of event: **malformed input**
-(a FEN that names an unrepresentable counter) is rejected with the diagnostic the parser already has,
-which also removes the numeric policy's third band rather than adding one; **an impossible runtime
-state** is a Debug assert. Net Release cost of D4: zero.
+follows that precedent, and splits the question by kind of event: **malformed input** is rejected with
+a diagnostic; **an impossible runtime state** is a Debug assert. Net Release cost of D4: zero.
+
+Bounding the inputs at a sane chess value instead was the repo owner's suggestion, not the reviewer's
+and not the implementer's — recorded because the review table above would otherwise imply the design
+got there on its own. The bounds are set at chess-plausible values (1000 each), not at the `uint16_t`
+maximum — the two FEN
+counters and, crucially, the `position … moves` list, which was the one genuinely unbounded path into
+the counters. Together they mean nothing a caller can send reaches the field maximum, which is what
+makes the assert an assert rather than a compromise. A scan of the whole tree for six-field FENs found
+a maximum halfmove clock of 120 and fullmove counter of 60, so the bounds clear everything committed
+by 8× and 16×; that retires the "grep the corpora first" precondition from the earlier draft.
 
 ## Post-merge follow-ups
 

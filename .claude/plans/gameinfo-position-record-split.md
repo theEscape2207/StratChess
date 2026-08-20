@@ -26,8 +26,9 @@ that absorbs all four arrays; the outcome half becomes a per-search value report
   `irreversiblePlyHistory_`, `gameInfoHistory_` and `capturedHistory_` with a single
   `std::array<PositionState, MAX_PLY> state_history_`, plus a live `state_` in place of `gameInfo_`.
 - Narrow `halfmove_clock` and `fullmove_count` to `uint16_t` and `last_irreversible_ply` to
-  `uint32_t`, rejecting an out-of-range counter at the FEN parser and asserting the bound in Debug at
-  the increments — no Release-time check (D4).
+  `uint32_t`, and bound the three inputs that feed them — the two FEN counters and the UCI
+  `position … moves` list — at chess-plausible values, rejected with a diagnostic. The increments get
+  a Debug assert and no Release-time check (D4).
 - Move the outcome out of `Board`: `ThreadData::root_game_state` and
   `PlayerAiBase::root_game_state_` replace `Board::SetGameState` and `GameInfo::gameState`, which are
   both deleted (D5). The `m_Board` write-back at `AIPerplex.cpp:242-244` goes with them.
@@ -133,34 +134,51 @@ structural merge, measure it, and let #292 decide whether the last eight bytes a
 
 Rejected: doing both at once. Saves one PR; costs the ability to bisect the one gate that matters.
 
-### D4: an out-of-range counter is rejected at the parser; the increments carry a Debug assert only
+### D4: bound the inputs at chess-plausible values; the increments carry a Debug assert only
 
-`uint16_t` caps both counters at 65,535. Two places could exceed that, and they get opposite
-treatments, because they are different kinds of event.
+`uint16_t` caps both counters at 65,535, and the question is what stops anything reaching it. The
+answer is not a check on the increment — it is a bound on the three inputs that feed it, set where
+they arrive and set at a value that means something in chess rather than something about `uint16_t`.
 
-**A FEN naming a value that does not fit is malformed input, and is rejected.** `FENParser` already
-has the error channel and already returns `"invalid halfmove clock"` / `"invalid fullmove counter"`
-when `std::stoi` throws on a value above `INT_MAX`. Extending that to the field range makes the policy
-one rule instead of two:
+| Input | Bound | Margin |
+|---|---|---|
+| FEN halfmove clock (field 5) | 1000 | 10× the 100-halfmove rule limit; 8× the largest committed value (120) |
+| FEN fullmove counter (field 6) | 1000 | ~3.7× the longest recorded game (269 moves); 16× the largest committed value (60) |
+| UCI `position … moves` list | 1000 plies | ~1.9× the longest recorded game |
 
-| Input | Today | After |
+Each is rejected with a diagnostic rather than repaired. `FENParser` already has the error channel and
+already returns `"invalid halfmove clock"` / `"invalid fullmove counter"` when `std::stoi` throws past
+`INT_MAX`, so the FEN half is a tightening of an existing rule rather than a new one, and it collapses
+the numeric policy to a single band:
+
+| FEN counter value | Today | After |
 |---|---|---|
 | negative | clamped (`std::max(0, half)` / `std::max(1, full)`) | unchanged |
-| 0 … 65,535 | accepted | unchanged |
-| 65,536 … `INT_MAX` | accepted | **rejected, with the existing diagnostic** |
-| above `INT_MAX` | rejected, with the existing diagnostic | unchanged |
+| 0 … 1000 | accepted | unchanged |
+| 1001 … `INT_MAX` | accepted | **rejected, with the existing diagnostic** |
+| above `INT_MAX` | rejected — `std::stoi` throws | unchanged |
+
+The UCI half reuses the move list's existing all-or-nothing semantics: an over-long list is refused
+whole, with an `info string`, exactly as an illegal token already is.
 
 This is the threat model's stated goal for external input — "a clear diagnostic and a clean exit" —
 and `SetupFromFEN` already guarantees the board is left exactly as it was on a rejected FEN. It does
 **not** belong under the *repair* contract: repairs exist for metadata inconsistent with the position
 (an en-passant square with no pawn behind it, castling rights with no rook), where the position is
-still legal and the fix is unambiguous. A counter that does not fit in its field is not a position
-problem, and silently substituting 65,535 for 900,000 would change what `ExtractFEN` reports without
-telling anyone.
+still legal and the fix is unambiguous. A counter of 900,000 is not a position problem, and silently
+substituting a plausible number for it would change what `ExtractFEN` reports without telling anyone.
 
-**An increment that reaches the cap is an engine bug, and gets a Debug assert.** Not a saturating
-check. `Board::DoMove` already answers this exact question for the analogous bound, ten lines above
-where the counters live:
+**What the three bounds buy together is the important part.** They close the last unbounded path into
+the counters. A `position` command rebuilds the board from scratch — `SetupFromFEN` then replay — so
+after these bounds a board reached through UCI carries a fullmove counter of at most 1000 + 500, three
+orders of magnitude below the field maximum. Game mode is bounded by `Game::Run` adjudicating the
+fifty-move rule at 100. Nothing a caller can send gets near 65,535 any more.
+
+Which is what settles the increment.
+
+**An increment that reaches the cap is now, by construction, an engine bug — so it gets a Debug
+assert.** Not a saturating check. `Board::DoMove` already answers this exact question for the
+analogous bound, ten lines above where the counters live:
 
 ```cpp
 // Defense in depth: currentPly_ should never reach MAX_PLY now that
@@ -168,18 +186,26 @@ where the counters live:
 assert(currentPly_ < MAX_PLY);
 ```
 
-The counters follow it. Reaching 65,535 needs a game some two hundred times longer than any position
-this engine should ever be driven through; a game past a few hundred moves is a defect to find, not a
-condition to absorb. Saturating would absorb it — and the threat model lists "a silently wrong
-answer" as a failure mode alongside a crash, which is precisely what a saturated counter reporting a
-plausible number is. The assert surfaces the runaway in Debug and costs nothing in Release, in a
-change whose entire justification is per-node cost.
+The counters follow it, and for the same reason: with the inputs bounded, a counter past 1000 means
+the engine drove itself there, which is a defect to find rather than a condition to absorb.
+Saturating would absorb it — and the threat model lists "a silently wrong answer" as a failure mode
+alongside a crash, which is precisely what a saturated counter reporting a plausible number is. The
+assert surfaces the runaway in Debug and costs nothing in Release, in a change whose entire
+justification is per-node cost.
 
 Rejected: saturating increments. They spend a compare per make on every node to convert a diagnosable
-bug into an undiagnosable one. Rejected: a wider field to sidestep the question (D2's fallback) —
-still available if something here proves wrong, but it buys nothing that the assert does not.
-Rejected: clamping the FEN value instead of rejecting it, which adds a third band to the numeric
-policy and hides the input problem rather than reporting it.
+bug into an undiagnosable one. Rejected: bounding the inputs at the field maximum (65,535) rather than
+at a chess-plausible value — representable is not the same as sensible, and a bound derived from
+`uint16_t` would have to move every time the field does. Rejected: a wider field to sidestep the
+question (D2's fallback) — still available if something here proves wrong, but it buys nothing the
+bounds and the assert do not. Rejected: clamping instead of rejecting, which hides the input problem
+rather than reporting it.
+
+**The move-list bound is the only one that could refuse legitimate input,** so it carries the thinnest
+margin and is the one to raise if a review disagrees. 1000 plies is 500 full moves against a recorded
+maximum of 269, and no test, match harness or corpus in this repo produces a list remotely near it —
+but unlike the two FEN bounds, where anything above 1000 is already nonsense, a long game is merely
+unlikely rather than impossible.
 
 `last_irreversible_ply` needs nothing at all: it is assigned from `position_history_.size()`, never
 incremented, and `uint32_t` is four billion plies. Its narrowing cast is explicit, which `/WX`
@@ -324,11 +350,15 @@ if that ever becomes true it is a change worth noticing.
   the new test named in Validation, which drives two `GetMove` calls and asserts the second does not
   inherit the first's verdict — that test is the verification, and it must fail against the current
   code or it is proving nothing.
-- **No committed FEN carries a halfmove or fullmove counter above 65,535.** Assumed from the fact
-  that none is reachable from a legal game. D4 now *rejects* such a FEN rather than repairing it, so
-  this stops being defensive: one in a corpus would fail to load and take its test with it. It is a
-  grep across the FEN corpora, the perft suite and the tactical suite, and it must run before D4
-  lands rather than after.
+- ~~No committed FEN exceeds D4's bounds.~~ **Checked, not assumed.** A scan of every `.cpp`, `.h`,
+  `.epd`, `.fen`, `.pgn`, `.txt`, `.json` and `.md` in the tree for six-field FENs found a maximum
+  halfmove clock of **120** and a maximum fullmove counter of **60** — 8× and 16× inside the 1000
+  bound. Nothing in the corpora, the perft suite or the tactical suite is affected.
+- **No match harness produces a `position … moves` list near 1000 plies.** Not verified directly;
+  argued from the longest recorded game being 269 moves and from fastchess's own move cap. This is
+  D4's one bound that could refuse valid input, so the self-play and `-Smoke` runs in Validation are
+  where it gets exercised — a false rejection would show as a refused position, not a silent wrong
+  answer.
 
 ## Invariants
 
@@ -342,9 +372,10 @@ if that ever becomes true it is a change worth noticing.
   directly and the existing `[board_state]` / `[board_api]` cases check behaviourally.
 - `sizeof(PositionState) == 24`, asserted at compile time — the no-padding claim, not an offset claim.
 - `ExtractFEN` round-trips every halfmove and fullmove value the parser accepts, unchanged.
-- A FEN whose halfmove or fullmove counter does not fit the field is rejected with a diagnostic and
-  leaves the board exactly as it was (D4) — no value is silently substituted.
-- No Release-time cost is added to any make path. D4's bound is a Debug assert.
+- Every input that can raise a counter is bounded at a chess-plausible value, and an input past it is
+  rejected with a diagnostic leaving the board exactly as it was (D4) — no value is silently
+  substituted, and no input path can drive a counter to its field maximum.
+- No Release-time cost is added to any make path. D4's runtime bound is a Debug assert.
 - The root verdict reaches a caller through `SearchResult::game_state` and no other channel; no object
   outside a player holds a `GameStates` written by the search.
 - An aborted frame still mutates nothing — this change adds no store to the move loop.
@@ -369,10 +400,11 @@ Engine tier, so `Validate-PrePR.ps1` runs the full local gate. Beyond it:
   it is testing nothing.
 - **The rewritten `[fifty_move]` cases**, driving `Board::DoMove` rather than the deleted
   `GameInfo::UpdateBoardInfo`.
-- **A D4 rejection test**: a FEN naming a halfmove or fullmove counter above the field maximum is
-  rejected, the diagnostic names which counter, and the board is unchanged — the contract
-  `SetupFromFEN` already documents. Plus a FEN at exactly the maximum, which must load and
-  `ExtractFEN` back identically.
+- **D4 bound tests**, one per input: a FEN above the halfmove bound and one above the fullmove bound
+  are each rejected with a diagnostic naming the counter and leave the board unchanged — the contract
+  `SetupFromFEN` already documents; a FEN at exactly the bound loads and `ExtractFEN`s back
+  identically; and a `position … moves` list past the ply bound is refused whole with an
+  `info string`, leaving the previous position in place, matching the illegal-token path beside it.
 - **Self-play twice**: AIPerplex vs AIPerplex (`"type": 6`) and AIAgent vs AIAgent (`"type": 3`),
   because `PlayerAiBase` changes.
 - **`search-reviewer` dispatch** — the diff touches `AIPerplex.cpp` and `ThreadData.h`.
@@ -394,7 +426,8 @@ Closes #355 and #356. Re-scopes #292 to a single measured question.
 | The root verdict travels only via `SearchResult::game_state`; no player writes it to a `Board` | `CLAUDE.md` → Key Source Facts. **`CLAUDE.md:153` currently states the opposite** — "root state is propagated back in `GetMove()`" — and must be corrected, not merely extended |
 | Why the verdict lives on `ThreadData`, not `PlayerAiBase`, for AIPerplex | comment on `ThreadData::root_game_state` — it is a thread-safety constraint, and the obvious simplification reintroduces #358's race |
 | D6's per-call reset, and the stale-verdict bug it fixes | `Docs/Changelog.md`, the PR body, and the test names |
-| D4: an out-of-range counter is rejected, not repaired — and why the increments get a Debug assert rather than a Release check | comment at the rejection, next to `SetupFromFEN`'s repair note (which it is deliberately *not* an instance of), and at the assert |
+| D4's three input bounds, as named constants with their chess justification — not `uint16_t` maxima | the constants themselves, sited with the parser and the UCI move-list handler; the numbers are meaningless without the reason |
+| D4: an out-of-range input is rejected, not repaired — and why the increments get a Debug assert rather than a Release check | comment at the rejection, next to `SetupFromFEN`'s repair note (which it is deliberately *not* an instance of), and at the assert |
 | #292's "reverted for unrecorded reasons" is false — it was validated locally and parked | comment on #292, with the measured 24-byte bench as its new input |
 | Measured bench before/after | `Docs/Changelog.md`, and the PR body |
 | Where the halfmove clock now lives, for #347 to build on | comment on #347 |
