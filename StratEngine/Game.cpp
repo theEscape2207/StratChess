@@ -280,7 +280,7 @@ void Game::Run()
 			game_state_ = GameStates::DRAW_50_MOVES;
 
 		// Prints out the current score message for AI players (score or "Mate in x moves")
-		PrintStateMessage(mover);
+		PrintStateMessage(mover, result);
 
 		if (committed)
 			// Print the board and last move to screen (and debug)
@@ -321,7 +321,7 @@ void Game::AddGameMove(const Move& move)
 // Returns:     void
 // Remark:      FIXME: Export the Max depth from the AIs to prevent hardcoding
 //***************************************
-void Game::PrintStateMessage(const IPlayer& mover) const
+void Game::PrintStateMessage(const IPlayer& mover, const SearchResult& result) const
 {
 	if (IsStillPlaying()) {
 		if (mover.IsHuman()) // score doesn't make sense
@@ -329,7 +329,7 @@ void Game::PrintStateMessage(const IPlayer& mover) const
 
 		std::stringstream sstream;
 		// AIs
-		const int score = mover.GetBestScore();
+		const int score = result.best_score;
 
 		// Can we see a mate?
 		if (score >= GameValues::Mate_Threshold || (-score >= GameValues::Mate_Threshold))

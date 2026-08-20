@@ -5,6 +5,7 @@
 
 #include "Move.h"
 #include "GameState.h"
+#include "SearchResult.h"
 #include "Config.h"
 #include "Board.h"
 #include "Utils/FENParser.h"
@@ -29,9 +30,12 @@ class Game final {
 
 	IPlayer& GetCurrentPlayer() const noexcept;
 
-	// Takes the player that just moved: GetCurrentPlayer() keys off the side to move, which
-	// DoMove has already flipped by the time this runs, and the score belongs to the mover.
-	void PrintStateMessage(const IPlayer& mover) const;
+	// Takes the player that just moved together with what its GetMove() returned:
+	// GetCurrentPlayer() keys off the side to move, which DoMove has already flipped by the
+	// time this runs, and the score to print is the one in that call's result. Reading it back
+	// off the player instead would report whatever GetBestScore() happens to hold — a member no
+	// engine is obliged to refresh on an ordinary search.
+	void PrintStateMessage(const IPlayer& mover, const SearchResult& result) const;
 
 	// Inline stuff
 	size_t GetBoardCount() const noexcept { return m_GameMoves.size(); }
