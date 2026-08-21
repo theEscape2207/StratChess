@@ -28,6 +28,43 @@
 #include <initializer_list>
 #include <optional>
 
+TEST_CASE("AIPerplex Search uses the board supplied for each call and does not retain observers", "[search][service_api]")
+{
+	Board first_board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+	Board second_board("6k1/5ppp/8/8/8/4R3/5PPP/6K1 w - - 0 1");
+	AIPerplex ai(AIPerplexConfig{.default_depth = 2, .verbose_logging = false});
+
+	int first_observations = 0;
+	const auto first = ai.Search(first_board, SearchLimits::fixed_depth(2),
+	                             [&](const IterationInfo&) { ++first_observations; });
+	int second_observations = 0;
+	const auto second = ai.Search(second_board, SearchLimits::fixed_depth(2),
+	                              [&](const IterationInfo&) { ++second_observations; });
+
+	CHECK_FALSE(first.best_move.is_null());
+	CHECK_FALSE(second.best_move.is_null());
+	CHECK(first_board.IsLegalMove(first.best_move));
+	CHECK(second_board.IsLegalMove(second.best_move));
+	CHECK(second.best_move.from() == e3);
+	CHECK(second.best_move.to() == e8);
+	CHECK(first_observations > 0);
+	CHECK(second_observations > 0);
+}
+
+TEST_CASE("AIPerplexConfig selects the evaluator used by Search", "[search][service_api]")
+{
+	Board board("4k3/pp6/8/8/8/P7/P7/4K3 w - - 0 1");
+	AIPerplex simple(AIPerplexConfig{.evaluator = EvalManager::EvalTypes::SIMPLE, .default_depth = 1});
+	AIPerplex complex(AIPerplexConfig{.evaluator = EvalManager::EvalTypes::COMPLEX, .default_depth = 1});
+
+	const SearchResult simple_result = simple.Search(board, SearchLimits::fixed_depth(1));
+	const SearchResult complex_result = complex.Search(board, SearchLimits::fixed_depth(1));
+
+	CHECK_FALSE(simple_result.best_move.is_null());
+	CHECK_FALSE(complex_result.best_move.is_null());
+	CHECK(simple_result.best_score != complex_result.best_score);
+}
+
 // ============================================================================
 // Helper
 // ============================================================================
@@ -318,7 +355,7 @@ class AIPerlexTestFixture {
 		return ai->GetMove(SearchLimits::fixed_nodes(nodes)).best_move;
 	}
 
-	bool search_is_aborted() const { return ai->IsAborted(); }
+	bool search_is_aborted() const { return ai->control_.IsAborted(); }
 
 	// The same search, but handing back the whole result. The abort tests need game_state and
 	// best_move together, and Threads=1 so the node poll is the only thing that stops it.

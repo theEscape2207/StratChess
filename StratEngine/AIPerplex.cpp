@@ -37,6 +37,11 @@
 // If a future revision lets helper threads log too, ensure_logger_initialized()
 // must be made safe to call concurrently (e.g. via std::call_once) first.
 static std::shared_ptr<spdlog::logger> s_logger = nullptr;
+static Board& compatibility_board()
+{
+	static Board board;
+	return board;
+}
 static void ensure_logger_initialized()
 {
 	// ensure the general default logger is initialized first (no-op if already)
@@ -88,14 +93,28 @@ void AIPerplex::SetVerboseLogging(bool enabled) noexcept
 	}
 }
 
-AIPerplex::AIPerplex(Board& board, unsigned md) : PlayerAiBase(board, md)
+AIPerplex::AIPerplex(AIPerplexConfig config)
+    : PlayerAiBase(compatibility_board(), config.default_depth),
+      evaluator_(EvalManager::Create(config.evaluator)),
+      control_(config.default_depth, config.default_time),
+      tuning_(config.tuning),
+      threads_(std::clamp(config.threads, 1u, 32u))
+{
+	_tt = std::make_unique<TranspositionTable>(std::clamp(config.hash_mb, MIN_HASH_MB, MAX_HASH_MB));
+	// PlayerAiBase still supplies metadata to unmigrated front ends. Search
+	// itself exclusively uses evaluator_, which is owned by this service.
+	Eval = EvalManager::Create(config.evaluator);
+	SetVerboseLogging(config.verbose_logging);
+}
+
+AIPerplex::AIPerplex(Board& board, unsigned md)
+    : PlayerAiBase(board, md),
+      evaluator_(EvalManager::Create(EvalManager::EvalTypes::COMPLEX)),
+      control_(md, std::chrono::seconds(15))
 {
 	_tt = std::make_unique<TranspositionTable>(DEFAULT_HASH_MB);
-
-	// Seed the thread-local board so td_ is valid from birth (init_search()
-	// re-copies before every search). Board-reading helpers must work without
-	// a prior GetMove() call — the [search] unit tests rely on that.
-	td_.board = m_Board;
+	Eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+	td_.board = board;
 
 	// td_'s constructor clears killers and history.
 	// Verbose logging is opt-in per call site:
@@ -154,14 +173,16 @@ void AIPerplex::StartNewGame()
 // Resets td_'s per-search state. Move-ordering state (killers, history) is
 // handled inside iterative_deepening(); history deliberately survives across
 // moves (aged, never cleared).
-void AIPerplex::init_search()
+void AIPerplex::init_search(const Board& root)
 {
-	td_.board = m_Board; // thread-local copy — the search runs on this
+	td_.board = root; // thread-local copy — the search runs on this
 	td_.nodes_searched = 0;
 	td_.qnodes_searched = 0;
 	td_.pv_table = PVTable{}; // fresh PV, exactly like the former GetMove() local
 	td_.root_game_state = GameStates::STILL_PLAYING;
 }
+
+void AIPerplex::init_search() { init_search(m_Board); }
 
 // Lazy SMP helper thread entry point (plain iterative deepening, no quality
 // gates — see the declaration comment in AIPerplex.h). Runs entirely on its
@@ -177,10 +198,10 @@ void AIPerplex::helper_loop(ThreadData& td, int max_depth, TranspositionTable& t
 {
 	int seed_score = 0;
 	for (int depth = 1; depth <= max_depth; ++depth) {
-		if (IsAborted())
+		if (control_.IsAborted() || compatibility_stop_requested())
 			break;
 		const int score = search_with_aspiration(td, depth, seed_score, tt);
-		if (IsAborted())
+		if (control_.IsAborted() || compatibility_stop_requested())
 			break; // partial iteration — discard score
 		seed_score = score;
 	}
@@ -188,7 +209,14 @@ void AIPerplex::helper_loop(ThreadData& td, int max_depth, TranspositionTable& t
 
 SearchResult AIPerplex::GetMove(const SearchLimits& limits)
 {
-	init_search();
+	// Task 5 deletes this inherited-board bridge once Game is a SearchPlayer.
+	PlayerAiBase::ApplyLimits(limits);
+	return Search(m_Board, limits, iteration_observer_);
+}
+
+SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, IterationObserver observer)
+{
+	init_search(root);
 	// Snapshot threads_ exactly once: UCI's cmd_setoption (unlike cmd_go/
 	// cmd_ucinewgame/cmd_stop) does not call stop_and_join() before writing
 	// threads_, so a client can mutate it on the UCI thread while this
@@ -201,7 +229,8 @@ SearchResult AIPerplex::GetMove(const SearchLimits& limits)
 	// function closes that window; a setoption arriving mid-search simply
 	// takes effect starting with the next GetMove() call.
 	const unsigned threads = threads_;
-	const unsigned effective_depth = ApplyLimits(limits);
+	control_.ApplyLimits(limits);
+	const unsigned effective_depth = control_.EffectiveDepth();
 
 	// Lazy SMP: spawn threads_ - 1 helper threads to warm the shared TT while
 	// the main search below runs on td_ (main-is-authoritative, see
@@ -223,7 +252,7 @@ SearchResult AIPerplex::GetMove(const SearchLimits& limits)
 		helpers.reserve(threads - 1);
 		for (size_t i = 0; i < threads - 1; ++i) {
 			ThreadData& htd = *helper_tds_[i];
-			htd.board = m_Board; // same seed as td_.board
+			htd.board = root; // same seed as td_.board
 			htd.clear_killers();
 			htd.clear_null_move_flags();
 			htd.nodes_searched = 0;
@@ -235,17 +264,15 @@ SearchResult AIPerplex::GetMove(const SearchLimits& limits)
 		}
 	}
 
-	SearchResult result = iterative_deepening(td_, static_cast<int>(effective_depth), *_tt);
-	last_result_ = result; // expose via GetLastResult()
-
-	last_result_.game_state = td_.root_game_state;
+	SearchResult result = iterative_deepening(td_, static_cast<int>(effective_depth), *_tt, observer);
+	result.game_state = td_.root_game_state;
 
 	// Latch the abort signal so any still-running helpers collapse in O(depth)
 	// steps (they only ever poll IsAborted()), then join them — helpers.clear()
 	// destroys each std::jthread, which joins automatically. This must happen
 	// before every subsequent return in this function, including the
 	// empty-move emergency path below, so a helper can never outlive GetMove().
-	StopSearch();
+	control_.Stop();
 	helpers.clear();
 
 	int64_t total_nodes = td_.nodes_searched;
@@ -254,31 +281,33 @@ SearchResult AIPerplex::GetMove(const SearchLimits& limits)
 		total_nodes += helper_tds_[i]->nodes_searched;
 		total_qnodes += helper_tds_[i]->qnodes_searched;
 	}
-	last_result_.nodes_searched = total_nodes;
-	last_result_.qnodes_searched = total_qnodes;
-	last_result_.elapsed = search_control_.Elapsed();
+	result.nodes_searched = total_nodes;
+	result.qnodes_searched = total_qnodes;
+	result.elapsed = control_.Elapsed();
+	last_result_ = result; // compatibility only; returned result is authoritative.
 
 	const Move bestMove = result.best_move;
 
 	// Game over at the root: no move to play, and last_result_.game_state carries why.
 	if (bestMove.is_null()) {
 		_bestScore = result.best_score;
-		return last_result_;
+		return result;
 	}
 
 	// Success logging
 	if (s_logger) {
 		s_logger->info("GetMove complete: move={}, score={}, depth={}, time={}ms, nodes={}, stable={}",
-		               MoveFormatter::ToCoord(bestMove), result.best_score, result.depth_completed, last_result_.elapsed.count(),
+		               MoveFormatter::ToCoord(bestMove), result.best_score, result.depth_completed, result.elapsed.count(),
 		               total_nodes, result.search_was_stable ? "yes" : "NO");
 	}
 	// last_result_, not the local `result`: the node counts above were aggregated across the
 	// joined helper threads, so the two differ at Threads > 1. GetLastResult() must be
 	// indistinguishable from what this returns for the same call.
-	return last_result_;
+	return result;
 }
 
-SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, TranspositionTable& tt)
+SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, TranspositionTable& tt,
+                                            const IterationObserver& observer)
 {
 	SearchState state;
 	td.nodes_since_check_ = 0;     // reset node counter for this search
@@ -310,7 +339,7 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 		metrics.current_score = currentBestScore;
 		metrics.nodes_searched = td.nodes_searched - nodes_at_start;
 		metrics.pv_length = td.pv_table.get_length(0);
-		metrics.interrupted = StopRequested(); // clock, node budget or UCI stop
+		metrics.interrupted = control_.StopRequested() || compatibility_stop_requested(); // clock, node budget or UCI stop
 		metrics.move_changed = (metrics.current_move != state.last_iteration_move);
 		metrics.score_delta = currentBestScore - state.best_score;
 		// node counts never realistically approach 2^53 (int64_t->double precision loss)
@@ -348,12 +377,12 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 			state.search_was_stable = !metrics.move_changed;
 
 			log_completed_iteration(metrics, td.pv_table);
-			emit_iteration_info(td, state.depth_completed, state.best_score);
+			emit_iteration_info(td, state.depth_completed, state.best_score, observer);
 
 			// Soft limit gate: stop after this depth if the allocated time budget
 			// is consumed.  Exception: if the best move just changed, allow one
 			// more depth to verify the new move (the hard limit will cut it off).
-			if (ShouldStopIteration()) {
+			if (control_.ShouldStopIteration()) {
 				if (!metrics.move_changed || extra_depth_used) {
 					continue_iteration = false;
 					break;
@@ -372,7 +401,7 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 			state.search_was_stable = !metrics.move_changed;
 
 			log_acceptance(metrics);
-			emit_iteration_info(td, state.depth_completed, state.best_score);
+			emit_iteration_info(td, state.depth_completed, state.best_score, observer);
 			continue_iteration = false;
 			break;
 
@@ -419,7 +448,7 @@ bool AIPerplex::poll_search_limits(ThreadData& td)
 	if (td.thread_id != 0 || (++td.nodes_since_check_ & 1023) != 0)
 		return false;
 
-	return StopRequested() || NodeLimitReached(td.nodes_searched + td.qnodes_searched);
+	return control_.StopRequested() || control_.NodeLimitReached(td.nodes_searched + td.qnodes_searched);
 }
 
 int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt)
@@ -438,7 +467,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// Fast early exit: IsAborted() reads only the latched atomic (no clock call).
 	// After the first StopRequested() fires and latches the flag, this collapses
 	// the entire call stack in O(depth) steps instead of O(tree_size).
-	if (IsAborted())
+	if (control_.IsAborted() || compatibility_stop_requested())
 		return GameValues::Draw;
 
 	if (poll_search_limits(td))
@@ -500,7 +529,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 		// Unwind invariant, see the move loop below: null_score comes from a search that was
 		// cut off, so the store it would justify is not ours to make.
-		if (IsAborted())
+		if (control_.IsAborted() || compatibility_stop_requested())
 			return best_value;
 
 		if (null_score >= beta) {
@@ -577,7 +606,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 					value = -pvs(td, depth - 1 - R, -alpha - 1, -alpha, ply + 1, false, tt);
 
 					// Re-search at full depth-1 null window if the reduced result beats alpha
-					if (value > alpha && !StopRequested())
+					if (value > alpha && !control_.StopRequested())
 						value = -pvs(td, depth - 1, -alpha - 1, -alpha, ply + 1, false, tt);
 				} else {
 					// Normal null-window search (unchanged)
@@ -604,7 +633,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			// The node counters are the one deliberate exception: they are incremented before
 			// this point and stay incremented, because they measure work done, not results
 			// kept.
-			if (IsAborted())
+			if (control_.IsAborted() || compatibility_stop_requested())
 				return best_value;
 
 			moveFound = true;
@@ -703,7 +732,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 {
 	// Fast early exit: IsAborted() reads only the latched atomic (no clock call).
 	// Mirrors pvs() — collapses quiescence chains in O(depth) after latch fires.
-	if (IsAborted())
+	if (control_.IsAborted() || compatibility_stop_requested())
 		return GameValues::Draw;
 
 	if (poll_search_limits(td))
@@ -720,7 +749,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// the draw and backstop checks below, not material: a quiet evasion may itself give
 	// check, so two sides can go on checking each other without a capture between them.
 	if (qsearch_budget < 0 && !in_check) {
-		return Eval->Evaluate(td.board);
+		return evaluator_->Evaluate(td.board);
 	}
 
 	// Repetition and fifty-move draws. pvs() checks these before it hands a node to
@@ -746,7 +775,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// positions can arise, and ply indexes fixed-size per-thread arrays elsewhere in the
 	// search. This is the one place a position is evaluated while still in check.
 	if (ply >= MAX_PLY - 1) {
-		return Eval->Evaluate(td.board);
+		return evaluator_->Evaluate(td.board);
 	}
 
 	int original_alpha = alpha;
@@ -787,7 +816,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	int stand_pat = 0;
 
 	if (!in_check) {
-		stand_pat = Eval->Evaluate(td.board);
+		stand_pat = evaluator_->Evaluate(td.board);
 		if (stand_pat >= beta) {
 			// Store and cutoff
 			tt.store(key, static_cast<int16_t>(beta), static_cast<int16_t>(qsearch_budget), static_cast<int16_t>(ply),
@@ -841,7 +870,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 		// cutoff store below and the final store after the loop are both unearned. Returning
 		// here is also what keeps the beta-cutoff store out of reach — it returns from inside
 		// the loop, so a check placed after the loop would never run for it.
-		if (IsAborted())
+		if (control_.IsAborted() || compatibility_stop_requested())
 			return best_value;
 
 		moveFound = true;
@@ -916,7 +945,7 @@ int AIPerplex::search_with_aspiration(ThreadData& td, int depth, int seed_score,
 	int score = seed_score; // safe fallback if interrupted before the first pvs() call
 
 	for (int retry = 0;; ++retry) {
-		if (StopRequested()) {
+		if (control_.StopRequested() || compatibility_stop_requested()) {
 			// Interrupt before entering pvs(): clear PV so iterative_deepening sees EmptyMove
 			// and triggers INCOMPLETE rejection rather than accepting a stale PV as valid.
 			td.pv_table.clear_ply(0);
@@ -925,7 +954,7 @@ int AIPerplex::search_with_aspiration(ThreadData& td, int depth, int seed_score,
 
 		score = pvs(td, depth, alpha, beta, 0, true, tt);
 
-		if (StopRequested())
+		if (control_.StopRequested() || compatibility_stop_requested())
 			return score;
 
 		// In-window: accept the score
@@ -936,7 +965,7 @@ int AIPerplex::search_with_aspiration(ThreadData& td, int depth, int seed_score,
 		if (retry >= tuning_.aspiration_max_retries) {
 			if (td.thread_id == 0)
 				log_aspiration_full_window(depth, tuning_.aspiration_max_retries);
-			if (!StopRequested())
+			if (!control_.StopRequested() && !compatibility_stop_requested())
 				score = pvs(td, depth, -GameValues::Search_Init, GameValues::Search_Init, 0, true, tt);
 			return score;
 		}
@@ -1221,7 +1250,7 @@ void AIPerplex::log_completed_iteration(const IterationMetrics& metrics, const P
 	               (metrics.move_changed && metrics.depth > 1) ? "(!)" : "");
 }
 
-void AIPerplex::emit_iteration_info(const ThreadData& td, int depth, int score) const
+void AIPerplex::emit_iteration_info(const ThreadData& td, int depth, int score, const IterationObserver& observer) const
 {
 	// The PV of an accepted iteration, asserted before anything reads it: a line spliced out
 	// of two different subtrees replays illegally at the ply where the positions diverge.
@@ -1234,7 +1263,7 @@ void AIPerplex::emit_iteration_info(const ThreadData& td, int depth, int score) 
 	assert(pv_replays_legally(td.board, std::span<const Move>(td.pv_table.get_line(0).data(),
 	                                                          static_cast<size_t>(td.pv_table.get_length(0)))));
 
-	if (!iteration_observer_)
+	if (!observer)
 		return;
 
 	// The reported figure is the main-search-thread's cumulative count of both trees as
@@ -1256,7 +1285,7 @@ void AIPerplex::emit_iteration_info(const ThreadData& td, int depth, int score) 
 	iter.nodes = td.nodes_searched + td.qnodes_searched;
 	iter.pv.assign(line.begin(), line.begin() + length);
 
-	iteration_observer_(iter);
+	observer(iter);
 }
 
 void AIPerplex::log_aspiration_retry(int depth, int retry, int score, int alpha, int beta, bool fail_low) const

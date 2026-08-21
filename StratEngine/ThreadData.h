@@ -19,7 +19,7 @@ struct ThreadData {
 	static constexpr int32_t HISTORY_MAX = 16'384;
 
 	// Thread-local board copy — the search runs on this, not on the game board.
-	// Copy-assigned from the game board at the start of every GetMove().
+	// Copy-assigned from the Search() root at the start of every search.
 	Board board;
 
 	// Game outcome adjudicated at this thread's root (ply 0). Thread-local rather than a
@@ -87,8 +87,8 @@ struct ThreadData {
 	// Killers and null-move flags are already cleared at the start of every
 	// move by iterative_deepening(), so clearing them again here is only for
 	// the (harmless) case of something reading them before the new game's
-	// first search runs. `board` is reset too even though every GetMove()
-	// copy-assigns it fresh from the real game board before searching: it
+	// first search runs. `board` is reset too even though every Search()
+	// copy-assigns it fresh from the supplied root before searching: it
 	// costs nothing and avoids a stale position sitting in thread-local
 	// state between games.
 	void reset_for_new_game()

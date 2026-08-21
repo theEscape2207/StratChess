@@ -2,14 +2,38 @@
 
 ## Current status
 
-Task 2 is complete on `codex/issue-256-design` in the isolated
-`.claude/worktrees/issue-256-design` worktree: completed searches return elapsed/node telemetry,
-and `Game` owns the combined-player six-column performance totals. Task 3, establishing the
-concrete `AIPerplex` service API, is next. The approved design is
+Task 3 is complete on `codex/issue-256-design` in the isolated
+`.claude/worktrees/issue-256-design` worktree: `AIPerplex` now has a concrete, root-per-call
+service API, while the legacy player surface remains only as a compatibility bridge. Task 4,
+giving UCI concrete ownership and per-call observation, is next. The approved design is
 `.claude/plans/aiperplex-production-search-boundary.md`; the executable plan is
 `Docs/superpowers/plans/2026-08-21-aiperplex-production-search-boundary.md`.
 
 ## Just completed
+
+- Completed Task 3: introduced `AIPerplexConfig`, namespace-level `SearchTuning`, and the
+  `Search(const Board&, const SearchLimits&, IterationObserver)` service API. Construction now
+  owns the evaluator, `SearchControl`, transposition table sizing, tuning, logging policy, and
+  clamped Lazy SMP thread count. `Search` copies only its supplied root into `ThreadData`, takes
+  its observer per call, snapshots `threads_`, joins helpers, aggregates both node counters, and
+  returns elapsed telemetry after the join.
+- The main thread remains authoritative under Lazy SMP; helper results are discarded except for
+  their post-join node totals. The exact 1024-entry limit polling and accepted-iteration-only
+  observer emission contracts are unchanged.
+- Direct tactical/full and fifty-move callers now construct concrete AIPerplex services and use
+  returned `SearchResult`s. New `[search][service_api]` coverage proves consecutive roots and
+  observers do not leak between calls, and that `AIPerplexConfig` selects the evaluator through
+  observable returned search scores.
+- Compatibility retained solely for Tasks 4-5: `PlayerAiBase` inheritance, `AIPerplex(Board&,
+  unsigned)`, `GetMove(m_Board, limits)`, inherited metadata/evaluator storage, the UCI setter
+  observer, `GetLastResult()`, and the narrow inherited stop-latch bridge. Task 4 migrates UCI;
+  Task 5 removes the final player/factory surface.
+- Task 3 TDD evidence: RED `./build.ps1 tests` failed with the intended missing
+  `AIPerplexConfig` and `AIPerplex::Search` symbols. GREEN build succeeded; focused
+  `[search],[tactical],[fifty_move]` passed 297 assertions in 68 cases and the full suite passed
+  7236 assertions in 485 cases. A bounded 30-second AIPerplex-vs-AIPerplex self-play completed
+  seven logged moves without a crash or missing move result before the validation timeout stopped
+  the still-running game.
 
 - Completed Task 2: `SearchResult` now carries each completed search's elapsed time. Legacy AIs
   return their complete `m_SearchCount` in `nodes_searched` and retain zero
@@ -75,14 +99,15 @@ concrete `AIPerplex` service API, is next. The approved design is
 
 ## Next steps
 
-1. Establish the concrete `AIPerplex` service API.
-2. Give UCI concrete ownership and per-call observation.
-3. Add `SearchPlayer` and the config-aware player factory.
-4. Remove stale surfaces and update durable documentation.
-5. Prove behavior, timing, and operational neutrality.
+1. Give UCI concrete ownership and per-call observation.
+2. Add `SearchPlayer` and the config-aware player factory.
+3. Remove stale surfaces and update durable documentation.
+4. Prove behavior, timing, and operational neutrality.
 
 ## Safe park point
 
-Safe to stop after the Task 2 commit. Search telemetry and combined-player performance totals are
-owned by `SearchResult` and `Game`; Task 3 can establish the concrete AIPerplex service API without
-reopening timer, abort-latch, effective-depth, node-budget, or Game perf-accounting ownership.
+Safe to stop after the Task 3 commit. Concrete `AIPerplex::Search` owns the supplied root,
+evaluator, control, tuning, TT, logging policy, and Lazy SMP aggregation; `SearchResult` and
+`Game` retain the Task 2 telemetry/performance boundary. Task 4 can migrate UCI from its retained
+setter observer and `GetMove` bridge to concrete ownership without reopening timer, abort-latch,
+effective-depth, node-budget, search polling, or Game perf-accounting ownership.

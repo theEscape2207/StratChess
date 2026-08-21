@@ -6,7 +6,9 @@
 #include "PVTable.h"
 #include "ThreadData.h"
 #include "SearchResult.h"
+#include "SearchControl.h"
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -35,8 +37,51 @@ struct IterationInfo {
 	std::vector<Move> pv;
 };
 
+using IterationObserver = std::function<void(const IterationInfo&)>;
+
+inline constexpr unsigned DEFAULT_AIPERPLEX_HASH_MB = 192;
+
+// Hand-aligned: this is the one tuning surface shared by the concrete
+// service configuration and the search implementation.
+struct SearchTuning {
+	int64_t min_nodes_threshold = 1000;
+	double min_completion_ratio = 0.10;
+	double min_pv_ratio = 0.33;
+	int score_draw_threshold = 20;
+
+	int delta_pruning_margin = 200;
+
+	int aspiration_initial_delta = 50;
+	int aspiration_max_retries = 4;
+	bool aspiration_enabled = true;
+
+	int lmr_min_depth = 3;
+	int lmr_min_move_index = 3;
+	bool lmr_enabled = true;
+
+	bool null_move_enabled = true;
+	int null_move_reduction = 3;
+	int null_move_min_depth = 3;
+};
+
+struct AIPerplexConfig {
+	EvalManager::EvalTypes evaluator{EvalManager::EvalTypes::COMPLEX};
+	unsigned default_depth{4};
+	std::chrono::milliseconds default_time{15000};
+	unsigned hash_mb{DEFAULT_AIPERPLEX_HASH_MB};
+	unsigned threads{1};
+	SearchTuning tuning{};
+	bool verbose_logging{false};
+};
+
 class AIPerplex final : public PlayerAiBase {
   public:
+	// Concrete search-service constructor. Search roots are supplied per call.
+	explicit AIPerplex(AIPerplexConfig config = {});
+	SearchResult Search(const Board& root, const SearchLimits& limits, IterationObserver observer = {});
+
+	// Compatibility bridge for Game/UCI until Tasks 4-5 remove PlayerAiBase
+	// ownership. All new callers must use Search(root, limits, observer).
 	SearchResult GetMove(const SearchLimits& limits) override;
 	const char* GetType() const noexcept override { return "Perplexity Transpositional AlphaBeta"; }
 
@@ -47,7 +92,7 @@ class AIPerplex final : public PlayerAiBase {
 	// MAX_HASH_MB = 1536 is a deliberate policy cap, not the largest exact fit.
 	// Steady-state total is about 1664 MiB on Windows or 2432 MiB on Linux including locks;
 	// construct-before-replace briefly holds old and new tables, roughly doubling the peak.
-	static constexpr unsigned DEFAULT_HASH_MB = 192;
+	static constexpr unsigned DEFAULT_HASH_MB = DEFAULT_AIPERPLEX_HASH_MB;
 	static constexpr unsigned MIN_HASH_MB = 1;
 	static constexpr unsigned MAX_HASH_MB = 1536;
 
@@ -62,7 +107,7 @@ class AIPerplex final : public PlayerAiBase {
 	// non-UCI callers that never register one are unaffected. UCIHandler::cmd_go
 	// is the only current caller — it registers before spawning the search thread
 	// and clears the observer once the search returns.
-	void SetIterationObserver(std::function<void(const IterationInfo&)> observer)
+	void SetIterationObserver(IterationObserver observer)
 	{
 		iteration_observer_ = std::move(observer);
 	}
@@ -78,34 +123,6 @@ class AIPerplex final : public PlayerAiBase {
 	AIPerplex& operator=(AIPerplex&&) = delete;
 
   private:
-	// TUNABLE SEARCH PARAMETERS
-	// clang-format off
-	// Hand-aligned: the values and their explanations line up in columns so the whole
-	// tuning surface can be read at once. Wrapping to a column limit tears initializers
-	// off their declarations and splits the explanations.
-	struct SearchTuning {
-		int64_t min_nodes_threshold = 1000;        // Minimum nodes for valid search
-		double min_completion_ratio = 0.10;        // Must search 10% of previous depth
-		double min_pv_ratio = 0.33;                // PV must be at least 1/3 of depth
-		int score_draw_threshold = 20;             // Score delta to detect suspicious 0
-
-		int delta_pruning_margin = 200;  // centipawns — added to stand_pat + capture_value before comparing to alpha in quiescence
-
-		int aspiration_initial_delta = 50;  // centipawns; initial half-width on each side
-		int aspiration_max_retries   = 4;   // widen iterations before opening full window
-		bool aspiration_enabled      = true; // runtime kill-switch for regression testing
-
-		int  lmr_min_depth      = 3;    // don't reduce at depth < 3
-		int  lmr_min_move_index = 3;    // don't reduce the first 3 moves (si 0, 1, 2)
-		bool lmr_enabled        = true; // kill-switch: set false to measure LMR impact via SimplePerfStats.txt
-
-		// Null-move pruning tuning
-		bool null_move_enabled  = true;  // enabled by default (validated via tests + self-play; see .claude/plans/null-move-pruning.md)
-		int  null_move_reduction = 3;    // reduction R used in null-move search (depth -> depth-1-R)
-		int  null_move_min_depth = 3;    // minimum depth to attempt null-move pruning
-	} tuning_;
-	// clang-format on
-
 	// INTERNAL STRUCTURES
 	struct IterationMetrics {
 		int depth;
@@ -148,8 +165,10 @@ class AIPerplex final : public PlayerAiBase {
 	// ThreadData is always the first parameter: the search runs entirely on the
 	// per-thread state it carries, while the TranspositionTable stays a separate
 	// explicit parameter because it is shared across threads under Lazy SMP.
-	void init_search();
-	SearchResult iterative_deepening(ThreadData& td, int max_depth, TranspositionTable& tt);
+	void init_search(const Board& root);
+	void init_search(); // test-only compatibility helper; Search always supplies its root.
+	SearchResult iterative_deepening(ThreadData& td, int max_depth, TranspositionTable& tt,
+	                                 const IterationObserver& observer = {});
 	int search_with_aspiration(ThreadData& td, int depth, int seed_score, TranspositionTable& tt);
 	int pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt);
 	int adjustScoreForGameState(ThreadData& td, bool moveFound, int ply, int best_value);
@@ -176,6 +195,9 @@ class AIPerplex final : public PlayerAiBase {
 	// quiescence edge). So the stop lands at the first poll at or past the budget, not at
 	// the first multiple of 1024 of the budget's own counter.
 	bool poll_search_limits(ThreadData& td);
+	// The deferred PlayerAiBase/UCI bridge may asynchronously call
+	// PlayerAiBase::StopSearch(). New Search callers use control_ exclusively.
+	bool compatibility_stop_requested() const noexcept { return PlayerAiBase::IsAborted(); }
 
 	// Lazy SMP helper thread entry point: plain iterative-deepening loop with
 	// no quality gates (no assess_iteration_quality, no emergency handling,
@@ -207,10 +229,13 @@ class AIPerplex final : public PlayerAiBase {
 	// iteration mutates it) and forwards it to iteration_observer_. No-op when no
 	// observer is registered. Called from both accept branches of
 	// iterative_deepening(), after `state` is updated for that iteration.
-	void emit_iteration_info(const ThreadData& td, int depth, int score) const;
+	void emit_iteration_info(const ThreadData& td, int depth, int score, const IterationObserver& observer) const;
 
 	// MEMBER VARIABLES
 	std::unique_ptr<TranspositionTable> _tt; // persistent transposition table
+	std::unique_ptr<EvalManager> evaluator_; // owned concrete-search evaluator
+	SearchControl control_;                  // owned limits, timer and abort latch
+	SearchTuning tuning_;
 
 	// Per-thread search state (board copy, node counter, PV, killers, history, ...).
 	// Persistent member — history is aged between moves, never cleared — and the
@@ -235,7 +260,7 @@ class AIPerplex final : public PlayerAiBase {
 	// Per-iteration UCI diagnostic hook (see SetIterationObserver). Default-constructed
 	// empty: emit_iteration_info() checks this before doing any work, so an unregistered
 	// observer costs a single bool check per accepted iteration.
-	std::function<void(const IterationInfo&)> iteration_observer_;
+	IterationObserver iteration_observer_;
 
 #ifdef STRAT_ENABLE_TEST_ACCESS
 	// Enable fine-grained unit tests for private search helpers.
