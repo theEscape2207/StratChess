@@ -53,14 +53,12 @@ Task 1 composes shared search control on `codex/issue-256-design` in the isolate
 
 ## Next steps
 
-1. Return elapsed/node telemetry and move cumulative performance accounting into `Game`.
-2. Convert `AIPerplex` into a concrete board-per-call search service with construction-time config
-   and a per-call iteration observer.
-3. Add the by-value `SearchPlayer`, config-aware player factory, and Game-owned perf accounting.
-4. Move UCI to concrete `AIPerplex`/`EvalComplex` ownership while preserving lifecycle and output.
-5. Remove obsolete player/result capability surfaces, migrate all construction sites, and update
-   durable documentation.
-6. Run equivalence, timed-UCI, benchmark, pre-PR, race/self-play, and search-review gates.
+1. Return elapsed time and move performance totals into `Game`.
+2. Establish the concrete `AIPerplex` service API.
+3. Give UCI concrete ownership and per-call observation.
+4. Add `SearchPlayer` and the config-aware player factory.
+5. Remove stale surfaces and update durable documentation.
+6. Prove behavior, timing, and operational neutrality.
 
 ## Safe park point
 
