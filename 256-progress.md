@@ -2,15 +2,68 @@
 
 ## Current status
 
-Task 6 is complete on `codex/issue-256-design` in the isolated
-`.claude/worktrees/issue-256-design` worktree: Game now owns type-erased players produced by the
-config-aware free factory, while `SearchPlayer` owns the concrete search service by value and
-supplies Game's live board on every call. `AIPerplex` no longer inherits any player class. The
-approved design is
+Task 7 implementation and local validation are complete on `codex/issue-256-design` in the isolated
+`.claude/worktrees/issue-256-design` worktree. Fixed-depth search is exactly equivalent to merge base
+`54d3e54dbac873cc6209646ff6a989991ffab1d2`; timed/node UCI, benchmark, smoke, race, TSan,
+repository, and game-mode gates are recorded below. No push, merge, or PR was performed. Root still
+owns the search-focused and broad whole-branch reviews. The approved design is
 `.claude/plans/aiperplex-production-search-boundary.md`; the executable plan is
 `Docs/superpowers/plans/2026-08-21-aiperplex-production-search-boundary.md`.
 
 ## Just completed
+
+- Completed Task 7's deferred UCI coverage strengthening without production changes. The concurrent
+  `go infinite`/`isready` test now captures output through a synchronized stream buffer, waits up to
+  five seconds for an observed `info depth` line instead of sleeping blindly, then requires at least
+  one `info` line, exact 20 `readyok` replies, and intact `info`/`readyok`/`bestmove` line shapes. The
+  separate immediate `go infinite`/`stop` no-sleep regression is unchanged. This was coverage
+  strengthening of existing correct behavior, not a production RED defect. Initial evidence was
+  20/20 focused runs (27 assertions each) and `[uci]` with 1,303 assertions / 106 cases. Final
+  post-format evidence was 20/20 combined `[output_integrity],[immediate_stop]` runs (31 assertions
+  / 2 cases each) and `[uci],[search]` with 1,547 assertions / 167 cases.
+- Exact equivalence: the first approved run exposed a validation-harness defect, not a search-tree
+  defect. Both fixed-depth drivers had batched `quit` immediately behind `go`; the candidate
+  correctly preserved that stop across its launch window while merge base lost it when
+  `TimeManager::start()` cleared the old latch. Commits `153915f` and `1d8956b` made both drivers
+  wait interactively for `bestmove`, drain stderr, and validate requested depth before sending
+  `quit`; focused review approved the repair. The exact merge-base comparison then passed all six
+  built-in positions, 90 compared lines, depth 12, Threads=1, with identical accepted iterations,
+  scores, nodes, PVs, final results, and best moves.
+- Bounded marker-wait UCI probes used fresh processes for both cached merge base and candidate from
+  `position startpos moves e2e4 e7e5 g1f3`. `go movetime 300` completed depth 9 in 304/302 ms;
+  `go wtime 5000 btime 5000 winc 100 binc 100` completed depth 10 in 368/369 ms; and
+  `go nodes 20000` completed depth 5 with 20,180 nodes on both builds. The 180-node overshoot is
+  inside the first documented 1,024-entry poll interval and the established +8,192 unwind bound.
+  Every command emitted exactly one `bestmove`; no timeout, stall, premature exit, or time loss.
+- Benchmark evidence: five depth-12, Threads=1 passes per binary over the same eight-position set
+  all visited exactly 21,457,322 nodes and returned the same eight best moves. Baseline aggregates
+  ranged 3.048-3.070M nps (mean 3.060M); candidate ranged 3.076-3.104M (mean 3.090M). Reverse-order
+  interleaving did not remove the approximately 1.0% favorable shift, but each side varied about
+  0.7-0.9% and one position was below the script's 200 ms timing floor. This is recorded as small,
+  noisy timing evidence only; it is not an nps, Elo, or strength gain claim.
+- Operational smoke: `Run-EloMatch.ps1 -Smoke` used the explicit cached merge-base executable and
+  SHA label for 20 games at `10+0.1`. It completed in 1:57 with 6 wins, 9 losses, 5 draws and no
+  illegal move, disconnect, stall, or time loss. The automatic `-52.51 +/- 126.90` row in
+  `Docs/EloLog.md` is pipeline evidence only; 20 games carry no strength conclusion.
+- Repository and concurrency gates: `./build.ps1 extended-tests` passed 7,267 assertions / 495
+  cases. `uci_race_probe.py` passed 2,000 iterations with zero position refusals. Ubuntu 24.04 WSL
+  supplied GCC 13.3, CMake, Ninja, Python and `setarch`; the exact Debug
+  `-DSTRAT_SANITIZE=thread` build completed and all six CI Lazy-SMP scenarios (Threads 4/8/16,
+  reconfiguration, sequence, movetime abort, oversubscription) passed with no ThreadSanitizer
+  report. AIPerplex-vs-AIPerplex and AIAgent-vs-AIAgent game mode logged 126 and 129 complete moves
+  with no crash/stall/illegal diagnostic; `game_settings.json` and pre-existing logs were restored
+  byte-for-byte (settings SHA-256 `0BE9449A89AF3B56D66D9C1E2B7294EF16D56C3897B71AE8B8EAE6C88DAE5EB5`).
+- The first forced pre-PR run correctly failed on 30 unformatted branch files, one genuine 21-source
+  refactor not listed as a pure reformat, and six clang-tidy findings. The reviewed lint repair
+  `b4566c8` formatted the exact scope and narrowly addressed two tactical unsigned conversions, the
+  observer's stable per-call move, and three redundant config moves without reopening search
+  behavior. The authoritative final
+  `Validate-PrePR.ps1 -Force -AllowUnlistedReformat` run passed format, acknowledged `df50017` as a
+  genuine refactor, passed all 59 clang-tidy translation units with no findings, full build, script
+  self-tests, the 7,267-assertion extended suite, 10x36 tactical stability, and 13-move self-play.
+  Final full Catch2 passed 7,267 assertions / 495 cases; pre-commit passed the starting-FEN check and
+  7,211 assertions / 492 non-slow cases; `git diff --check` and production stale/downcast scans were
+  clean.
 
 - Pre-PR lint repair: clang-format RED reported 30 unformatted C++ files against `origin/main`.
   Applied the repository formatter to that exact scope, while preserving Task 7's uncommitted UCI
@@ -18,11 +71,10 @@ approved design is
   test depths now make the `unsigned`-to-`int` conversion explicit; `AIPerplex::Search` moves its
   per-call observer into stable local storage; and redundant moves of trivially copyable
   `AIPerplexConfig` values were removed from the factory, adapter, and UCI construction paths.
-- Lint-fix evidence: format GREEN now reports every checked file formatted; blame-ignore GREEN
-  acknowledges the existing large Task 5 reformat commit; `[tactical],[uci]` GREEN passed 1,323
-  assertions in 107 cases after a clean test build; and `git diff --check` is clean. Gate
-  clang-tidy has been launched against the final formatted sources; its child analyzer processes
-  are allowed to complete before the final Task 7 validation record is closed. No search-tree,
+- Lint-fix evidence: format GREEN reports every checked file formatted; blame-ignore GREEN
+  acknowledges the genuine Task 5 refactor through `-AllowUnlistedReformat`; `[tactical],[uci]`
+  passed 1,323 assertions / 107 cases; direct Gate evidence and the authoritative final pre-PR run
+  both passed all 59 clang-tidy translation units; and `git diff --check` is clean. No search-tree,
   configuration, UCI lifecycle, or Game ownership behavior changed.
 
 - Task 7 harness repair: fixed the two custom UCI fixed-depth drivers rather than changing the
@@ -235,18 +287,15 @@ approved design is
 
 ## Next steps
 
-1. Complete Task 7 final timing and operational-neutrality validation. The repaired equivalence and
-   benchmark drivers are ready for the remaining validation work; Task 7 is still incomplete.
+1. Root performs the remaining search-focused and broad whole-branch reviews, then decides the
+   push/merge/PR handoff. No additional Task 7 implementation or local validation is pending.
 
 ## Safe park point
 
-Safe to stop after the Task 7 harness-fix commit. Game owns `unique_ptr<IPlayer>` instances from the free
-factory; an AIPerplex game player is `SearchPlayer { Board&, AIPerplex value, const description }`.
-The standalone service owns its evaluator, search control, tuning, TT, helper/thread state,
-logging policy, and stop handshake. UCI still owns its concrete AIPerplex directly and its tested
-pending-stop handshake is unchanged. Legacy players retain `PlayerAiBase` and the nonvirtual
-`PlayerBase::GetBestScore` aspiration seed only. Durable docs now match that boundary. Task 7 is the
-only remaining work: validate fixed-depth equivalence, timed/node UCI behavior, operational smoke,
-bench noise, full gates and self-play without reopening composition, search-tree behavior, UCI
-lifecycle, or Game perf ownership. The only outstanding work is Task 7's remaining full operational
-validation and final review; do not reintroduce batch `go`/`quit` validation drivers.
+Safe to stop after the Task 7 evidence commit. Implementation and local validation are complete:
+Game owns factory-produced type-erased players, `SearchPlayer` owns AIPerplex by value, UCI owns its
+concrete service directly, and the pending-stop handshake remains proven. Fixed-depth equivalence,
+timed/node UCI, operational smoke, benchmark identity/noise, extended/pre-PR/pre-commit, UCI race,
+Linux TSan, and both game-mode paths are covered. No push, merge, or PR was performed. Root still
+owns search-focused and broad whole-branch reviews; do not interpret the smoke row or small nps shift
+as strength evidence, and do not reintroduce batch `go`/`quit` validation drivers.

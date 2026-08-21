@@ -23,8 +23,10 @@
 #include <filesystem>
 #include <fstream>
 #include <random>
+#include <condition_variable>
 #include <mutex>
 #include <stdexcept>
+#include <string_view>
 #include <thread>
 #include <chrono>
 #include <spdlog/sinks/base_sink.h>
@@ -387,9 +389,52 @@ TEST_CASE("cmd_ucinewgame: a TT entry does not survive into the next game", "[uc
 // object; restores the original streambuf on destruction (including when
 // unwinding past a failed REQUIRE), so a single assertion failure can never
 // leave std::cout silently rewired for the rest of the test binary.
+class SynchronizedStringBuf final : public std::streambuf {
+  public:
+	std::string str() const
+	{
+		std::scoped_lock lock(mutex_);
+		return contents_;
+	}
+
+	bool wait_for(std::string_view needle, std::chrono::milliseconds timeout) const
+	{
+		std::unique_lock lock(mutex_);
+		return output_ready_.wait_for(lock, timeout, [&] { return contents_.find(needle) != std::string::npos; });
+	}
+
+  protected:
+	std::streamsize xsputn(const char* text, std::streamsize count) override
+	{
+		{
+			std::scoped_lock lock(mutex_);
+			contents_.append(text, static_cast<std::size_t>(count));
+		}
+		output_ready_.notify_all();
+		return count;
+	}
+
+	int_type overflow(int_type character) override
+	{
+		if (traits_type::eq_int_type(character, traits_type::eof()))
+			return traits_type::not_eof(character);
+		{
+			std::scoped_lock lock(mutex_);
+			contents_.push_back(traits_type::to_char_type(character));
+		}
+		output_ready_.notify_all();
+		return character;
+	}
+
+  private:
+	mutable std::mutex mutex_;
+	mutable std::condition_variable output_ready_;
+	std::string contents_;
+};
+
 class CoutRedirect {
   public:
-	CoutRedirect() : old_(std::cout.rdbuf(buffer_.rdbuf())) {}
+	CoutRedirect() : old_(std::cout.rdbuf(&buffer_)) {}
 	~CoutRedirect()
 	{
 		try {
@@ -402,9 +447,13 @@ class CoutRedirect {
 	CoutRedirect& operator=(const CoutRedirect&) = delete;
 
 	std::string str() const { return buffer_.str(); }
+	bool wait_for(std::string_view needle, std::chrono::milliseconds timeout) const
+	{
+		return buffer_.wait_for(needle, timeout);
+	}
 
   private:
-	std::ostringstream buffer_;
+	SynchronizedStringBuf buffer_;
 	std::streambuf* old_;
 };
 
@@ -2269,36 +2318,43 @@ TEST_CASE("cmd_go: immediate stop cannot be lost before Search arms", "[uci][imm
 	REQUIRE_FALSE(extract_bestmove(next_output).empty());
 }
 
-TEST_CASE("cmd_go: stop during go infinite preserves output lines under concurrent isready",
-          "[uci][output_integrity]")
+TEST_CASE("cmd_go: stop during go infinite preserves output lines under concurrent isready", "[uci][output_integrity]")
 {
-	// This is separate from the no-sleep immediate-stop regression above. The short wait here
-	// deliberately gives the search thread time to emit iteration lines, widening the overlap
-	// with command-thread readyok replies so this case exercises UciHandler::send() serialization.
+	// This is separate from the no-sleep immediate-stop regression above. Wait for observed search
+	// output before issuing ready replies so this case proves real output overlap without a blind
+	// scheduler delay.
 	UciHandlerTestFixture fix;
 	fix.position("position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
 
 	constexpr int kIsReadyCount = 20;
+	bool info_observed = false;
 	std::string output;
 	{
 		CoutRedirect redirect;
 		fix.dispatch("go infinite");
-		std::this_thread::sleep_for(std::chrono::milliseconds(200));
-		for (int i = 0; i < kIsReadyCount; ++i)
-			fix.dispatch("isready");
+		info_observed = redirect.wait_for("info depth ", std::chrono::seconds(5));
+		if (info_observed) {
+			for (int i = 0; i < kIsReadyCount; ++i)
+				fix.dispatch("isready");
+		}
 		fix.dispatch("stop");
 		output = redirect.str();
 	}
 
+	REQUIRE(info_observed);
 	const std::regex line_shape{R"(^(info|bestmove|readyok)\b)"};
+	int info_count = 0;
 	int readyok_count = 0;
 	for (const std::string& line : split_lines(output)) {
 		if (line.empty())
 			continue;
 		REQUIRE(std::regex_search(line, line_shape));
+		if (line.starts_with("info "))
+			++info_count;
 		if (line == "readyok")
 			++readyok_count;
 	}
+	REQUIRE(info_count >= 1);
 	REQUIRE(readyok_count == kIsReadyCount);
 }
 
