@@ -317,6 +317,20 @@ class AIPerlexTestFixture {
 		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
 		return ai->GetMove(SearchLimits::fixed_nodes(nodes)).best_move;
 	}
+
+	// The same search, but handing back the whole result. The abort tests need game_state and
+	// best_move together, and Threads=1 so the node poll is the only thing that stops it.
+	SearchResult result_with_nodes(int64_t nodes) const
+	{
+		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
+		ai->SetThreads(1);
+		return ai->GetMove(SearchLimits::fixed_nodes(nodes));
+	}
+
+	// Entries the poll gate counted for the last search: pvs() and quiescence() entries together,
+	// which is not nodes_searched + qnodes_searched (those increment past several early returns).
+	// iterative_deepening() zeroes it, so this is a per-search figure.
+	int64_t poll_ticks() const { return ai->td_.nodes_since_check_; }
 };
 
 // ============================================================================
@@ -348,6 +362,14 @@ class LegacyAiTestFixture {
 	void call_apply_limits() const { ai->ApplyLimits(SearchLimits::fixed_depth(1)); }
 
 	SearchResult get_move(int depth) const { return ai->GetMove(SearchLimits::fixed_depth(depth)); }
+
+	// A GetMove() whose budget is spent the moment it starts. The depth loop's StopRequested()
+	// gate sits in front of Search() with no node counter in the way, so the loop breaks before
+	// any root frame adjudicates -- the abort this agent can reach without racing a clock.
+	SearchResult get_move_with_spent_clock() const
+	{
+		return ai->GetMove(SearchLimits::fixed_time(std::chrono::milliseconds(0)));
+	}
 };
 
 // ============================================================================
@@ -878,39 +900,78 @@ TEST_CASE("AIPerplex - a position with a move reports STILL_PLAYING", "[search]"
 	CHECK(result.game_state == GameStates::STILL_PLAYING);
 }
 
-TEST_CASE("AIPerplex - td_.root_game_state does not leak a stale verdict across GetMove calls", "[search]")
+// The root verdict carrier is reset per GetMove() call, and an aborted search never writes it.
+// Both halves matter: any search that completes a root frame overwrites the carrier anyway, so an
+// abort is the only way a previous call's terminal verdict reaches the caller -- and a terminal
+// verdict makes handle_empty_move_emergency() return no move at all.
+
+// What one complete iteration at `depth` costs the poll gate on `fen`.
+static int64_t poll_ticks_at_depth(const std::string& fen, int depth)
 {
-	// Quiet position: a completed root search adjudicates STILL_PLAYING here, so any surviving
-	// BLACK_WON after GetMove() can only be the pre-search value that was never reset.
+	AIPerlexTestFixture probe(fen, static_cast<unsigned>(depth));
+	probe.search_to_depth(depth);
+	return probe.poll_ticks();
+}
+
+// Kiwipete: 48 root moves, and enough hanging material that quiescence keeps going under most of
+// them. Chosen because its depth-1 iteration costs more than one poll interval -- the only shape of
+// position where a node limit can abort before any root frame has adjudicated.
+static constexpr const char* BUSY_FEN = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+static constexpr int64_t POLL_INTERVAL = 1024; // poll_search_limits(): (++nodes_since_check_ & 1023)
+
+TEST_CASE("AIPerplex - init_search resets the root verdict before any node runs", "[search]")
+{
 	AIPerlexTestFixture fix("4k3/8/8/8/8/8/1R6/4K3 w - - 5 60");
 
-	// Non-vacuous half: init_search() itself performs the reset, before any search node runs.
 	fix.set_root_game_state(GameStates::BLACK_WON);
 	fix.call_init_search();
-	CHECK(fix.root_game_state() == GameStates::STILL_PLAYING);
 
-	// End-to-end half: a full GetMove() call observes the same reset.
-	fix.set_root_game_state(GameStates::BLACK_WON);
-	const SearchResult result = fix.get_move_at_threads(1, 3);
-	CHECK(result.game_state == GameStates::STILL_PLAYING);
 	CHECK(fix.root_game_state() == GameStates::STILL_PLAYING);
 }
 
-TEST_CASE("AIAgent - root_game_state_ does not leak a stale verdict across GetMove calls", "[search]")
+TEST_CASE("AIPerplex - a search aborted inside its first root frame drops the previous verdict", "[search]")
 {
-	// Same shape as the AIPerplex case above, against the legacy per-agent carrier.
+	// Black to move and mated: this call leaves WHITE_WON in the carrier.
+	AIPerlexTestFixture fix("R5k1/5ppp/8/8/8/8/8/6K1 b - - 0 1", /*max_depth=*/8);
+	REQUIRE(fix.get_move_at_threads(1, 3).game_state == GameStates::WHITE_WON);
+
+	// Asserted, not assumed: if depth 1 ever gets cheap enough to finish inside one poll interval,
+	// the abort below would land after a root frame adjudicated and this test would pass for the
+	// wrong reason. It goes red here instead.
+	REQUIRE(poll_ticks_at_depth(BUSY_FEN, 1) > POLL_INTERVAL);
+
+	REQUIRE(fix.board_.SetupFromFEN(BUSY_FEN));
+	const SearchResult aborted = fix.result_with_nodes(1);
+
+	CHECK(aborted.game_state == GameStates::STILL_PLAYING);
+	// The behaviour that depends on it: handle_empty_move_emergency() refuses to supply a move
+	// when the carrier names a finished game, so a stale WHITE_WON here costs the engine its move.
+	CHECK_FALSE(aborted.best_move.is_null());
+}
+
+TEST_CASE("AIAgent - ApplyLimits resets the root verdict before any node runs", "[search]")
+{
 	LegacyAiTestFixture fix("4k3/8/8/8/8/8/1R6/4K3 w - - 5 60");
 
-	// Non-vacuous half: ApplyLimits() itself performs the reset, before any search node runs.
 	fix.set_root_game_state(GameStates::BLACK_WON);
 	fix.call_apply_limits();
-	CHECK(fix.root_game_state() == GameStates::STILL_PLAYING);
 
-	// End-to-end half: a full GetMove() call observes the same reset.
-	fix.set_root_game_state(GameStates::BLACK_WON);
-	const SearchResult result = fix.get_move(3);
-	CHECK(result.game_state == GameStates::STILL_PLAYING);
 	CHECK(fix.root_game_state() == GameStates::STILL_PLAYING);
+}
+
+TEST_CASE("AIAgent - a search aborted before its first root frame drops the previous verdict", "[search]")
+{
+	// One real search first, so m_Line is populated: GetBestMove() asserts on an empty line unless
+	// the root was adjudicated, and the aborted call below never reaches Search().
+	LegacyAiTestFixture fix("4k3/8/8/8/8/8/1R6/4K3 w - - 5 60");
+	REQUIRE(fix.get_move(4).game_state == GameStates::STILL_PLAYING);
+
+	// What a terminal call would have left behind.
+	fix.set_root_game_state(GameStates::WHITE_WON);
+
+	// Only game_state is checked: the leftover line makes the returned move two ply stale, which is
+	// a legacy quirk of seeding each search from the last one, not what is under test.
+	CHECK(fix.get_move_with_spent_clock().game_state == GameStates::STILL_PLAYING);
 }
 
 // ============================================================================
