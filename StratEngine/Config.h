@@ -26,13 +26,12 @@ class Config final {
 
 	struct PlayerConfig {
 		unsigned type{DEFAULT_EVAL};
-		unsigned depth{DEFAULT_DEPTH}; // max_depth — mirrors search_limits.depth; still needed by PlayerBase::Create
+		unsigned depth{DEFAULT_DEPTH}; // default max depth mapped by CreatePlayer
 		unsigned eval{0};
 		SearchLimits
 		    search_limits; // per-move search constraints, parsed from "search_limits" (or legacy max_depth/time_limit)
 		std::optional<SearchTuningConfig> search_tuning; // only for AI_PERPLEX (type 6)
-		std::optional<unsigned>
-		    threads; // Lazy SMP thread count; applied via PlayerAiBase::SetThreads (clamped [1,32]; legacy AIs ignore)
+		std::optional<unsigned> threads; // Lazy SMP thread count; CreatePlayer clamps AIPerplex to [1,32]
 	};
 
 	struct GameConfig {

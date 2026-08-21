@@ -18,9 +18,12 @@
 #include "Board.h"
 #include "MoveFormatter.h"
 #include "MoveGenerator.h"
+#include "MoveFactory.h"
+#include "PlayerFactory.h"
 #include "PlayerBase.h"
 #include "PVIntegrity.h"
 #include "PVTable.h"
+#include "SearchPlayer.h"
 #include "MoveHelper.h"
 #include "TranspositionTable.h"
 #include "defines.h"
@@ -29,6 +32,53 @@
 #include <initializer_list>
 #include <optional>
 #include <thread>
+
+class SearchPlayerTestFixture {
+  public:
+	static AIPerplex& search(IPlayer& player) { return dynamic_cast<SearchPlayer&>(player).search_; }
+};
+
+TEST_CASE("SearchPlayer searches the Board's current position on every move", "[player][search_player]")
+{
+	Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+	Config::PlayerConfig config;
+	config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::AI_PERPLEX);
+	config.depth = 1;
+	config.eval = static_cast<unsigned>(EvalManager::EvalTypes::COMPLEX);
+	auto player = CreatePlayer(config, board, {.verbose_search_logging = false});
+
+	const SearchResult first = player->GetMove(SearchLimits::fixed_depth(1));
+	const Move e2e4 = MoveFactory::MakeMove(e2, e4, MoveType::DOUBLE_PAWN_PUSH);
+	REQUIRE(board.DoMove(e2e4));
+	board.ResetSearchDepth();
+	const SearchResult second = player->GetMove(SearchLimits::fixed_depth(1));
+
+	CHECK_FALSE(first.best_move.is_null());
+	CHECK_FALSE(second.best_move.is_null());
+	CHECK(board.IsLegalMove(second.best_move));
+}
+
+TEST_CASE("Player factory creates human and legacy players", "[player][factory]")
+{
+	Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+
+	Config::PlayerConfig human_config;
+	human_config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::HUMAN);
+	auto human = CreatePlayer(human_config, board);
+	CHECK(human->IsHuman());
+	CHECK(std::string(human->GetType()) == "Human");
+
+	Config::PlayerConfig legacy_config;
+	legacy_config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::AIAGENT);
+	legacy_config.depth = 1;
+	legacy_config.eval = static_cast<unsigned>(EvalManager::EvalTypes::SIMPLE);
+	auto legacy = CreatePlayer(legacy_config, board);
+	const SearchResult result = legacy->GetMove(SearchLimits::fixed_depth(1));
+	CHECK_FALSE(legacy->IsHuman());
+	CHECK(std::string(legacy->GetType()) == "AI Agent");
+	CHECK_FALSE(result.best_move.is_null());
+	CHECK(board.IsLegalMove(result.best_move));
+}
 
 TEST_CASE("AIPerplex Search uses the board supplied for each call and does not retain observers", "[search][service_api]")
 {
@@ -111,25 +161,24 @@ class AIPerlexTestFixture {
 	using Metrics = AIPerplex::IterationMetrics;
 	using State = AIPerplex::SearchState;
 
-	// Must be declared (and thus constructed/destroyed) before ai_owner —
-	// ai_owner holds a Board& reference into it that must outlive it.
 	Board board_;
-	std::unique_ptr<PlayerBase> ai_owner;
+	std::unique_ptr<AIPerplex> ai_owner;
 	AIPerplex* ai = nullptr;
 
 	explicit AIPerlexTestFixture(const std::string& fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
 	                             unsigned max_depth = 4)
 	    : board_(fen)
 	{
-		// max_depth sets max_depth_ (the IDS hard cap used if GetMove() is ever called).
+		// max_depth sets the IDS hard cap used if Search() receives empty limits.
 		// Defaults to 4, a don't-care for the many [search] tests that never call
-		// GetMove(); the node-limit tests below raise it so the node poll — not the
+		// Search(); the node-limit tests below raise it so the node poll — not the
 		// depth cap — is what stops the search.
-		ai_owner = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, max_depth, board_);
-		ai = static_cast<AIPerplex*>(ai_owner.get());
-		AIPerplex::SetVerboseLogging(false);
-		// Note: SetEvalEngine() is NOT called — the helper methods under test
-		// do not invoke Eval->Evaluate(), so this is safe.
+		ai_owner = std::make_unique<AIPerplex>(
+		    AIPerplexConfig{.evaluator = EvalManager::EvalTypes::COMPLEX,
+		                     .default_depth = max_depth,
+		                     .verbose_logging = false});
+		ai = ai_owner.get();
+		ai->td_.board = board_;
 	}
 
 	RejectionReason assess(const Metrics& m, const State& s) const { return ai->assess_iteration_quality(m, s); }
@@ -169,7 +218,7 @@ class AIPerlexTestFixture {
 
 	void set_root_game_state(GameStates s) const { ai->td_.root_game_state = s; }
 	GameStates root_game_state() const { return ai->td_.root_game_state; }
-	void call_init_search() const { ai->init_search(); }
+	void call_init_search() const { ai->init_search(board_); }
 
 	// --- Per-game state pokes, for proving StartNewGame() resets them ---
 
@@ -220,13 +269,10 @@ class AIPerlexTestFixture {
 		return total;
 	}
 
-	void set_last_result_depth(int depth) const { ai->last_result_.depth_completed = depth; }
-
 	void search_depth_one()
 	{
-		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
 		REQUIRE(board_.fullmove_count() == 1);
-		const Move move = ai->GetMove(SearchLimits::fixed_depth(1)).best_move;
+		const Move move = ai->Search(board_, SearchLimits::fixed_depth(1)).best_move;
 		REQUIRE_FALSE(move.is_null());
 	}
 
@@ -234,9 +280,8 @@ class AIPerlexTestFixture {
 	// GetMove() performs after joining its helpers.
 	SearchResult get_move_at_threads(unsigned threads, int depth) const
 	{
-		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
 		ai->SetThreads(threads);
-		return ai->GetMove(SearchLimits::fixed_depth(depth));
+		return ai->Search(board_, SearchLimits::fixed_depth(depth));
 	}
 
 	// --- Terminal-node helpers ---
@@ -266,7 +311,6 @@ class AIPerlexTestFixture {
 	int search_node(int depth, int ply, int alpha = -GameValues::Search_Init, int beta = GameValues::Search_Init,
 	                bool is_pv_node = true) const
 	{
-		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
 		ai->td_.board = board_;
 		return ai->pvs(ai->td_, depth, alpha, beta, ply, is_pv_node, *ai->_tt);
 	}
@@ -280,8 +324,7 @@ class AIPerlexTestFixture {
 	// TimeManager has its start_time_ at the epoch, which would latch an abort.
 	int quiesce_node(int alpha, int beta, int qsearch_budget, int ply) const
 	{
-		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
-		ai->ApplyLimits(SearchLimits::fixed_time(std::chrono::milliseconds(60'000)));
+		ai->control_.ApplyLimits(SearchLimits::fixed_time(std::chrono::milliseconds(60'000)));
 		ai->td_.board = board_;
 		ai->td_.nodes_since_check_ = 0;
 		return ai->quiescence(ai->td_, alpha, beta, qsearch_budget, ply, *ai->_tt);
@@ -292,8 +335,7 @@ class AIPerlexTestFixture {
 	// in directly would assert nothing about the unit it is expressed in.
 	int quiesce_via_pvs(int alpha, int beta, int ply) const
 	{
-		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
-		ai->ApplyLimits(SearchLimits::fixed_time(std::chrono::milliseconds(60'000)));
+		ai->control_.ApplyLimits(SearchLimits::fixed_time(std::chrono::milliseconds(60'000)));
 		ai->td_.board = board_;
 		ai->td_.nodes_since_check_ = 0;
 		return ai->pvs(ai->td_, /*depth=*/0, alpha, beta, ply, /*is_pv_node=*/true, *ai->_tt);
@@ -312,8 +354,7 @@ class AIPerlexTestFixture {
 	// behind it, rather than at a synthetic root.
 	int quiesce_after(std::initializer_list<const char*> moves, int alpha, int beta) const
 	{
-		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
-		ai->ApplyLimits(SearchLimits::fixed_time(std::chrono::milliseconds(60'000)));
+		ai->control_.ApplyLimits(SearchLimits::fixed_time(std::chrono::milliseconds(60'000)));
 		ai->td_.board = board_;
 		ai->td_.nodes_since_check_ = 0;
 
@@ -325,8 +366,6 @@ class AIPerlexTestFixture {
 		}
 		return ai->quiescence(ai->td_, alpha, beta, AIPerplex::QSEARCH_BUDGET, ply, *ai->_tt);
 	}
-
-	SearchResult last_result() const { return ai->GetLastResult(); }
 
 	int64_t qnodes() const { return ai->td_.qnodes_searched; }
 
@@ -343,26 +382,26 @@ class AIPerlexTestFixture {
 	// Static evaluation of the fixture's board — the value stand-pat would have used.
 	int evaluate() const
 	{
-		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
-		return ai->Eval->Evaluate(board_);
+		return ai->evaluator_->Evaluate(board_);
 	}
 
-	// Full fixed-depth search from the fixture's board. SetEvalEngine() is protected
-	// on PlayerAiBase, so only the fixture (a declared friend) can arm the evaluator.
+	// Full fixed-depth search from the fixture's board.
 	Move search_to_depth(int depth) const
 	{
-		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
-		return ai->GetMove(SearchLimits::fixed_depth(depth)).best_move;
+		return ai->Search(board_, SearchLimits::fixed_depth(depth)).best_move;
 	}
+	SearchResult result_to_depth(int depth) const { return ai->Search(board_, SearchLimits::fixed_depth(depth)); }
 
 	// Full search bounded by a node budget instead of a fixed depth. Requires the
 	// fixture to be constructed with a max_depth high enough that the node poll,
 	// not the IDS depth cap, is what stops the search.
 	Move search_with_nodes(int64_t nodes) const
 	{
-		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
-		return ai->GetMove(SearchLimits::fixed_nodes(nodes)).best_move;
+		return ai->Search(board_, SearchLimits::fixed_nodes(nodes)).best_move;
 	}
+	void set_null_move_enabled(bool enabled) const { ai->tuning_.null_move_enabled = enabled; }
+	void set_null_move_min_depth(int depth) const { ai->tuning_.null_move_min_depth = depth; }
+	bool null_move_enabled() const { return ai->tuning_.null_move_enabled; }
 
 	bool search_is_aborted() const { return ai->control_.IsAborted(); }
 
@@ -370,9 +409,8 @@ class AIPerlexTestFixture {
 	// best_move together, and Threads=1 so the node poll is the only thing that stops it.
 	SearchResult result_with_nodes(int64_t nodes) const
 	{
-		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
 		ai->SetThreads(1);
-		return ai->GetMove(SearchLimits::fixed_nodes(nodes));
+		return ai->Search(board_, SearchLimits::fixed_nodes(nodes));
 	}
 
 	// Entries the poll gate counted for the last search: pvs() and quiescence() entries together,
@@ -381,9 +419,61 @@ class AIPerlexTestFixture {
 	int64_t poll_ticks() const { return ai->td_.nodes_since_check_; }
 
 	static bool verbose_logging(const AIPerplex& ai) { return ai.verbose_logging_; }
+	static std::string evaluator_type(const AIPerplex& ai) { return ai.evaluator_->GetType(); }
+	static const SearchTuning& tuning(const AIPerplex& ai) { return ai.tuning_; }
+	static unsigned configured_threads(const AIPerplex& ai) { return ai.threads_; }
+	static uint64_t game_generation(const AIPerplex& ai) { return ai.game_generation_; }
 };
 
-TEST_CASE("AIPerplex compatibility stop does not abort the next direct Search", "[search][service_api]")
+TEST_CASE("Player factory maps AIPerplex evaluator tuning threads and logging before erasure",
+          "[player][search_player][factory]")
+{
+	Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+	Config::PlayerConfig config;
+	config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::AI_PERPLEX);
+	config.depth = 2;
+	config.eval = static_cast<unsigned>(EvalManager::EvalTypes::SIMPLE);
+	config.threads = 3;
+	config.search_tuning = Config::SearchTuningConfig{.min_nodes_threshold = 17,
+	                                                  .min_completion_ratio = 0.21,
+	                                                  .min_pv_ratio = 0.45,
+	                                                  .score_draw_threshold = 23,
+	                                                  .delta_pruning_margin = 211,
+	                                                  .aspiration_initial_delta = 61,
+	                                                  .aspiration_max_retries = 7,
+	                                                  .aspiration_enabled = false};
+
+	auto player = CreatePlayer(config, board, {.verbose_search_logging = true});
+	AIPerplex& search = SearchPlayerTestFixture::search(*player);
+	const SearchTuning& tuning = AIPerlexTestFixture::tuning(search);
+
+	CHECK(AIPerlexTestFixture::evaluator_type(search) == "Simple");
+	CHECK(AIPerlexTestFixture::configured_threads(search) == 3);
+	CHECK(AIPerlexTestFixture::verbose_logging(search));
+	CHECK(tuning.min_nodes_threshold == 17);
+	CHECK(tuning.min_completion_ratio == 0.21);
+	CHECK(tuning.min_pv_ratio == 0.45);
+	CHECK(tuning.score_draw_threshold == 23);
+	CHECK(tuning.delta_pruning_margin == 211);
+	CHECK(tuning.aspiration_initial_delta == 61);
+	CHECK(tuning.aspiration_max_retries == 7);
+	CHECK_FALSE(tuning.aspiration_enabled);
+	CHECK(player->getDescription() ==
+	      "\n\tEngine type:\tPerplexity Transpositional AlphaBeta\n\tDepth:\t\t2\n\tEvaluation:\tSimple\n");
+}
+
+TEST_CASE("Player factory starts the AIPerplex new-game lifecycle before returning",
+          "[player][search_player][factory]")
+{
+	Board board;
+	Config::PlayerConfig config;
+	config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::AI_PERPLEX);
+	auto player = CreatePlayer(config, board);
+
+	CHECK(AIPerlexTestFixture::game_generation(SearchPlayerTestFixture::search(*player)) == 1);
+}
+
+TEST_CASE("AIPerplex Stop does not abort the next direct Search", "[search][service_api]")
 {
 	Board board("rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2");
 	AIPerplex ai(AIPerplexConfig{.default_depth = 50, .verbose_logging = false});
@@ -400,8 +490,7 @@ TEST_CASE("AIPerplex compatibility stop does not abort the next direct Search", 
 	while (!accepted_iteration.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < deadline)
 		std::this_thread::yield();
 
-	PlayerAiBase& compatibility_surface = ai;
-	compatibility_surface.StopSearch();
+	ai.Stop();
 	search_thread.join();
 	REQUIRE(accepted_iteration.load(std::memory_order_acquire));
 	CHECK_FALSE(stopped_result.best_move.is_null());
@@ -433,14 +522,17 @@ class LegacyAiTestFixture {
 	// Must be declared (and thus constructed/destroyed) before ai_owner —
 	// ai_owner holds a Board& reference into it that must outlive it.
 	Board board_;
-	std::unique_ptr<PlayerBase> ai_owner;
+	std::unique_ptr<IPlayer> ai_owner;
 	AIAgent* ai = nullptr;
 
 	explicit LegacyAiTestFixture(const std::string& fen, unsigned max_depth = 4) : board_(fen)
 	{
-		ai_owner = PlayerBase::Create(PlayerBase::ePlayerTypes::AIAGENT, max_depth, board_);
+		Config::PlayerConfig config;
+		config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::AIAGENT);
+		config.depth = max_depth;
+		config.eval = static_cast<unsigned>(EvalManager::EvalTypes::COMPLEX);
+		ai_owner = CreatePlayer(config, board_);
 		ai = static_cast<AIAgent*>(ai_owner.get());
-		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
 	}
 
 	void set_root_game_state(GameStates s) const { ai->root_game_state_ = s; }
@@ -524,22 +616,11 @@ TEST_CASE("Search - StartNewGame does not reset tuning_", "[search]")
 	// on the same object -- if StartNewGame() reset tuning_, every configured
 	// override would be silently discarded before the first move is searched.
 	AIPerlexTestFixture fix;
-	fix.ai->tuning().null_move_enabled = false;
+	fix.set_null_move_enabled(false);
 
 	fix.start_new_game();
 
-	REQUIRE(fix.ai->tuning().null_move_enabled == false);
-}
-
-TEST_CASE("Search - StartNewGame resets last_result_", "[search]")
-{
-	AIPerlexTestFixture fix;
-	fix.set_last_result_depth(5);
-	REQUIRE(fix.ai->GetLastResult().depth_completed == 5);
-
-	fix.start_new_game();
-
-	REQUIRE(fix.ai->GetLastResult().depth_completed == 0);
+	REQUIRE_FALSE(fix.null_move_enabled());
 }
 
 // ============================================================================
@@ -784,7 +865,7 @@ TEST_CASE("Search - handle_empty_move_emergency: a stale row 1 is not spliced on
 TEST_CASE("Search - should_try_null_move: disabled returns false", "[search]")
 {
 	AIPerlexTestFixture fix; // default ctor sets up the starting position
-	fix.ai->tuning().null_move_enabled = false;
+	fix.set_null_move_enabled(false);
 
 	REQUIRE(fix.try_null_move(4, 0, 1, false, false) == false);
 }
@@ -792,7 +873,7 @@ TEST_CASE("Search - should_try_null_move: disabled returns false", "[search]")
 TEST_CASE("Search - should_try_null_move: PV node returns false", "[search]")
 {
 	AIPerlexTestFixture fix; // default ctor sets up the starting position
-	fix.ai->tuning().null_move_enabled = true;
+	fix.set_null_move_enabled(true);
 
 	REQUIRE(fix.try_null_move(4, 0, 1, /*is_pv_node=*/true, false) == false);
 }
@@ -800,7 +881,7 @@ TEST_CASE("Search - should_try_null_move: PV node returns false", "[search]")
 TEST_CASE("Search - should_try_null_move: in check returns false", "[search]")
 {
 	AIPerlexTestFixture fix; // default ctor sets up the starting position
-	fix.ai->tuning().null_move_enabled = true;
+	fix.set_null_move_enabled(true);
 
 	REQUIRE(fix.try_null_move(4, 0, 1, false, /*in_check=*/true) == false);
 }
@@ -808,8 +889,8 @@ TEST_CASE("Search - should_try_null_move: in check returns false", "[search]")
 TEST_CASE("Search - should_try_null_move: depth below minimum returns false", "[search]")
 {
 	AIPerlexTestFixture fix; // default ctor sets up the starting position
-	fix.ai->tuning().null_move_enabled = true;
-	fix.ai->tuning().null_move_min_depth = 3;
+	fix.set_null_move_enabled(true);
+	fix.set_null_move_min_depth(3);
 
 	REQUIRE(fix.try_null_move(/*depth=*/2, 0, 1, false, false) == false);
 }
@@ -817,7 +898,7 @@ TEST_CASE("Search - should_try_null_move: depth below minimum returns false", "[
 TEST_CASE("Search - should_try_null_move: mate-score beta returns false", "[search]")
 {
 	AIPerlexTestFixture fix; // default ctor sets up the starting position
-	fix.ai->tuning().null_move_enabled = true;
+	fix.set_null_move_enabled(true);
 
 	REQUIRE(fix.try_null_move(4, GameValues::Mate_Threshold, 1, false, false) == false);
 	REQUIRE(fix.try_null_move(4, -GameValues::Mate_Threshold, 1, false, false) == false);
@@ -828,7 +909,7 @@ TEST_CASE("Search - should_try_null_move: zugzwang (no non-pawn material) return
 	// White: king + pawn only. Black: king only. No non-pawn material for
 	// the side to move (white) -> zugzwang guard must refuse NMP.
 	AIPerlexTestFixture fix("8/8/8/3k4/8/3K4/3P4/8 w - - 0 1");
-	fix.ai->tuning().null_move_enabled = true;
+	fix.set_null_move_enabled(true);
 
 	REQUIRE(fix.try_null_move(4, 0, 1, false, false) == false);
 }
@@ -841,19 +922,19 @@ TEST_CASE("Search - should_try_null_move: single non-pawn piece returns false (i
 	// The zugzwang guard must refuse NMP whenever the side to move has fewer
 	// than two non-pawn pieces.
 	AIPerlexTestFixture black_to_move("8/8/8/3r4/4k3/8/8/3QK3 b - - 0 1");
-	black_to_move.ai->tuning().null_move_enabled = true;
+	black_to_move.set_null_move_enabled(true);
 	REQUIRE(black_to_move.try_null_move(4, 0, 1, false, false) == false);
 
 	// Same position, White to move: a lone queen is refused too.
 	AIPerlexTestFixture white_to_move("8/8/8/3r4/4k3/8/8/3QK3 w - - 0 1");
-	white_to_move.ai->tuning().null_move_enabled = true;
+	white_to_move.set_null_move_enabled(true);
 	REQUIRE(white_to_move.try_null_move(4, 0, 1, false, false) == false);
 
 	// One knight + six pawns is still refused: the guard counts non-pawn
 	// pieces, deliberately ignoring pawns (material-count-based, not
 	// phase-based).
 	AIPerlexTestFixture knight_and_pawns("4k3/8/8/8/8/8/PPPPPPN1/4K3 w - - 0 1");
-	knight_and_pawns.ai->tuning().null_move_enabled = true;
+	knight_and_pawns.set_null_move_enabled(true);
 	REQUIRE(knight_and_pawns.try_null_move(4, 0, 1, false, false) == false);
 }
 
@@ -862,7 +943,7 @@ TEST_CASE("Search - should_try_null_move: two non-pawn pieces returns true", "[s
 	// Queen + knight for the side to move: above the single-piece zugzwang
 	// guard threshold, so NMP stays available.
 	AIPerlexTestFixture fix("8/8/8/3r4/4k3/8/8/2NQK3 w - - 0 1");
-	fix.ai->tuning().null_move_enabled = true;
+	fix.set_null_move_enabled(true);
 
 	REQUIRE(fix.try_null_move(4, 0, 1, false, false) == true);
 }
@@ -870,7 +951,7 @@ TEST_CASE("Search - should_try_null_move: two non-pawn pieces returns true", "[s
 TEST_CASE("Search - should_try_null_move: consecutive null move returns false", "[search]")
 {
 	AIPerlexTestFixture fix; // default ctor sets up the starting position
-	fix.ai->tuning().null_move_enabled = true;
+	fix.set_null_move_enabled(true);
 	fix.set_last_move_was_null(2, true); // ply 2 was reached via a null move
 
 	REQUIRE(fix.try_null_move(4, 0, /*ply=*/2, false, false) == false);
@@ -879,8 +960,8 @@ TEST_CASE("Search - should_try_null_move: consecutive null move returns false", 
 TEST_CASE("Search - should_try_null_move: otherwise-eligible position returns true", "[search]")
 {
 	AIPerlexTestFixture fix; // default ctor sets up the starting position
-	fix.ai->tuning().null_move_enabled = true;
-	fix.ai->tuning().null_move_min_depth = 3;
+	fix.set_null_move_enabled(true);
+	fix.set_null_move_min_depth(3);
 
 	REQUIRE(fix.try_null_move(4, 0, 1, false, false) == true);
 }
@@ -917,27 +998,16 @@ TEST_CASE("SMP - SetThreads default is 1", "[smp]")
 	REQUIRE(fix.threads() == 1u);
 }
 
-// GetMove() returns the result AFTER the helper threads are joined and their node counts folded
-// in, which is the same object GetLastResult() hands out. The two are only distinguishable at
-// Threads > 1: the pre-join result carries the main thread's counts alone, so returning it would
-// pass at Threads = 1 and silently under-report everywhere else.
-TEST_CASE("SMP - GetMove's return value matches GetLastResult at Threads > 1", "[smp]")
+// Search() returns the result AFTER helper threads are joined and their node counts folded in.
+TEST_CASE("SMP - Search returns post-join aggregate telemetry at Threads > 1", "[smp]")
 {
 	AIPerlexTestFixture fix("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 6);
 
 	const SearchResult returned = fix.get_move_at_threads(4, 6);
-	const SearchResult last = fix.ai->GetLastResult();
 
 	REQUIRE_FALSE(returned.best_move.is_null());
-	CHECK(returned.best_move == last.best_move);
-	CHECK(returned.best_score == last.best_score);
-	CHECK(returned.depth_completed == last.depth_completed);
-	CHECK(returned.game_state == last.game_state);
-	CHECK(returned.nodes_searched == last.nodes_searched);
-	CHECK(returned.qnodes_searched == last.qnodes_searched);
-	CHECK(returned.search_was_stable == last.search_was_stable);
 
-	// The aggregate really is an aggregate. Stated as the exact sum rather than an inequality:
+	// Stated as the exact sum rather than an inequality:
 	// a helper whose thread starts after the main search has already finished contributes a
 	// legitimate zero, so "greater than the main thread's count" is not guaranteed on a loaded
 	// or single-core machine. Without this, the equality checks above would pass on a pre-join
@@ -1491,7 +1561,8 @@ TEST_CASE("Search - quiescence nodes are counted separately from main-tree nodes
 {
 	AIPerlexTestFixture fix("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
 
-	REQUIRE_FALSE(fix.search_to_depth(6).is_null());
+	const SearchResult result = fix.result_to_depth(6);
+	REQUIRE_FALSE(result.best_move.is_null());
 
 	// A zero on either side means a counter stopped being incremented — silent
 	// in every other test.
@@ -1500,7 +1571,6 @@ TEST_CASE("Search - quiescence nodes are counted separately from main-tree nodes
 
 	// At Threads=1 there are no helper counts to add, so the result's fields are exactly
 	// the main thread's, and the two are reported separately rather than pre-summed.
-	const SearchResult result = fix.last_result();
 	CHECK(result.nodes_searched == fix.mainnodes());
 	CHECK(result.qnodes_searched == fix.qnodes());
 }
@@ -1601,7 +1671,7 @@ TEST_CASE("Search - a pvs frame that aborts at entry leaves an empty pv row", "[
 	fix.seed_pv_row(0, AnyLegalMove());
 	REQUIRE(fix.pv_length(0) == 1); // the earlier retry's line, still standing
 
-	fix.ai->StopSearch(); // latch the abort flag, as UCI 'stop' or an expired clock would
+	fix.ai->Stop(); // latch the abort flag, as UCI 'stop' or an expired clock would
 
 	const int score = fix.search_node(/*depth=*/4, /*ply=*/0);
 

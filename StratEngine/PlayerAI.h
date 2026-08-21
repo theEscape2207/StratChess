@@ -51,6 +51,11 @@ class PlayerAiBase : public PlayerBase {
 	/// Legacy AIs have no persistent state that needs an explicit reset.
 	virtual void StartNewGame() {}
 
+	void SetEvalEngine(EvalManager::EvalTypes type)
+	{
+		Eval = EvalManager::Create(type); // create new eval
+	}
+
 	/// Signal the search to stop immediately (e.g. from UCI 'stop').
 	/// Thread-safe: may be called from any thread.
 	virtual void StopSearch() noexcept;
@@ -120,11 +125,6 @@ class PlayerAiBase : public PlayerBase {
 	bool ShouldStopIteration() const noexcept { return search_control_.ShouldStopIteration(); }
 
 	unsigned EffectiveDepth() const noexcept { return search_control_.EffectiveDepth(); }
-
-	void SetEvalEngine(EvalManager::EvalTypes type) override
-	{
-		Eval = EvalManager::Create(type); // create new eval
-	}
 
 	// ************************************
 	// Method:      InitMoveVariables

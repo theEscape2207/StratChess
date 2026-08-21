@@ -49,8 +49,8 @@ TEST_CASE("Tactical - fast suite", "[tactical]")
 
 	INFO(tc.label);
 	Board board(tc.fen);
-	auto ai = make_tactical_engine(board, tc.depth);
-	Move m = ai->GetMove().best_move;
+	auto ai = make_tactical_engine(tc.depth);
+	Move m = ai->Search(board, SearchLimits::fixed_depth(tc.depth)).best_move;
 
 	REQUIRE(m.from() == tc.expected_from);
 	REQUIRE(m.to() == tc.expected_to);

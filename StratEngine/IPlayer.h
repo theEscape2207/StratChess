@@ -2,10 +2,10 @@
 
 #include "Utils/Subscriber.h"
 #include "Move.h"
-#include "Eval.h"
 #include "GameState.h"
 #include "SearchResult.h"
 #include "SearchLimits.h"
+#include <string>
 
 class IPlayer {
   public:
@@ -18,9 +18,7 @@ class IPlayer {
 	virtual const char* GetType() const = 0;
 	virtual std::string getDescription() const = 0;
 
-	virtual int GetBestScore() const = 0;
 	virtual bool IsHuman() const = 0;
-	virtual void SetEvalEngine(EvalManager::EvalTypes) { /* Overridden where needed (AI's) */ }
 
 	virtual ~IPlayer() = default;
 

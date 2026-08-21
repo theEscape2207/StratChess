@@ -1,7 +1,7 @@
 #pragma once
 #include "defines.h"
+#include "Eval.h"
 #include "Move.h"
-#include "PlayerAI.h"
 #include "TranspositionTable.h"
 #include "PVTable.h"
 #include "ThreadData.h"
@@ -75,21 +75,23 @@ struct AIPerplexConfig {
 	bool verbose_logging{false};
 };
 
-class AIPerplex final : public PlayerAiBase {
+class AIPerplex final {
   public:
+	struct HashConfigurationResult {
+		bool success{false};
+		unsigned requested_mb{0};
+		size_t entry_mb{0};
+		size_t bucket_count{0};
+	};
+
 	// Concrete search-service constructor. Search roots are supplied per call.
 	explicit AIPerplex(AIPerplexConfig config = {});
 	SearchResult Search(const Board& root, const SearchLimits& limits, IterationObserver observer = {});
 
-	// Compatibility bridge for Game until Task 5 removes PlayerAiBase
-	// ownership. All new callers must use Search(root, limits, observer).
-	SearchResult GetMove(const SearchLimits& limits) override;
-	const char* GetType() const noexcept override { return "Perplexity Transpositional AlphaBeta"; }
-
 	// Configure the number of Lazy SMP search threads; clamps to [1, 32].
-	// GetMove() spawns threads_ - 1 helper std::jthreads sharing the
+	// Search() spawns threads_ - 1 helper std::jthreads sharing the
 	// transposition table with the main search.
-	void SetThreads(unsigned n) noexcept override { threads_ = std::clamp(n, 1u, 32u); }
+	void SetThreads(unsigned n) noexcept { threads_ = std::clamp(n, 1u, 32u); }
 	// MAX_HASH_MB = 1536 is a deliberate policy cap, not the largest exact fit.
 	// Steady-state total is about 1664 MiB on Windows or 2432 MiB on Linux including locks;
 	// construct-before-replace briefly holds old and new tables, roughly doubling the peak.
@@ -97,16 +99,12 @@ class AIPerplex final : public PlayerAiBase {
 	static constexpr unsigned MIN_HASH_MB = 1;
 	static constexpr unsigned MAX_HASH_MB = 1536;
 
-	HashConfigurationResult SetHash(unsigned mb) noexcept override;
-	void StartNewGame() override;
+	HashConfigurationResult SetHash(unsigned mb) noexcept;
+	void StartNewGame();
 	// Arms a launch before its Search call is scheduled. A concurrent Stop is
 	// remembered until Search has applied limits and can safely re-latch it.
 	void PrepareSearch() noexcept;
 	void Stop() noexcept;
-	void StopSearch() noexcept override;
-
-	// Note: NOT to be called directly - only through Factory method (needed to be public due to usage of make_unique)
-	explicit AIPerplex(Board& board, unsigned md);
 	~AIPerplex() = default;
 
 	// Force use of factory by preventing constructor, copy-construction & operator=
@@ -159,7 +157,6 @@ class AIPerplex final : public PlayerAiBase {
 	// per-thread state it carries, while the TranspositionTable stays a separate
 	// explicit parameter because it is shared across threads under Lazy SMP.
 	void init_search(const Board& root);
-	void init_search(); // test-only compatibility helper; Search always supplies its root.
 	SearchResult iterative_deepening(ThreadData& td, int max_depth, TranspositionTable& tt,
 	                                 const IterationObserver& observer = {});
 	int search_with_aspiration(ThreadData& td, int depth, int seed_score, TranspositionTable& tt);
@@ -192,7 +189,7 @@ class AIPerplex final : public PlayerAiBase {
 	// no quality gates (no assess_iteration_quality, no emergency handling,
 	// no game-state/root propagation, no logging). Result is discarded —
 	// the helper's only contribution is the TT entries it writes along the
-	// way and its node count (aggregated by GetMove() after join). Exits on
+	// way and its node count (aggregated by Search() after join). Exits on
 	// IsAborted() or when max_depth is reached.
 	void helper_loop(ThreadData& td, int max_depth, TranspositionTable& tt);
 
@@ -229,6 +226,7 @@ class AIPerplex final : public PlayerAiBase {
 	std::mutex stop_mutex_;
 	bool search_launch_active_{false};
 	bool stop_pending_{false};
+	uint64_t game_generation_{0};
 
 	// Per-thread search state (board copy, node counter, PV, killers, history, ...).
 	// Persistent member — history is aged between moves, never cleared — and the
@@ -237,14 +235,14 @@ class AIPerplex final : public PlayerAiBase {
 	ThreadData td_;
 
 	// Lazy SMP helper threads' per-thread state, one per helper (threads_ - 1
-	// entries). Sized lazily on first use in GetMove() and never shrunk, so
+	// entries). Sized lazily on first use in Search() and never shrunk, so
 	// history/killers age across moves per helper the same way td_'s does.
 	// Empty and untouched whenever threads_ == 1.
 	std::vector<std::unique_ptr<ThreadData>> helper_tds_;
 
 	// Configured number of search threads (Lazy SMP). Clamped to [1, 32] by
 	// SetThreads(). threads_ == 1 (the default) takes the exact pre-SMP code
-	// path in GetMove() — no helper_tds_ construction, no thread spawn.
+	// path in Search() — no helper_tds_ construction, no thread spawn.
 	unsigned threads_{1};
 
 	// Per-service logging policy. The shared logger is only a sink; every
@@ -263,23 +261,4 @@ class AIPerplex final : public PlayerAiBase {
 	friend class UciHandlerTestFixture;
 #endif
 
-  public:
-	// Compatibility no-op for unmigrated UCI/tactical callers. Task 4 removes it.
-	static void SetVerboseLogging(bool enabled) noexcept;
-	// Transitional per-instance policy setter used by Game until Task 5 moves
-	// front-end policy into the factory.
-	void SetVerboseLoggingForCompatibility(bool enabled) noexcept;
-	bool IsVerboseLoggingEnabled() const noexcept { return verbose_logging_; }
-
-	// Access to tuning parameters
-	SearchTuning& tuning() { return tuning_; }
-	const SearchTuning& tuning() const { return tuning_; }
-
-  private:
-	// Compatibility cache for the remaining PlayerAiBase bridge. Concrete callers
-	// use Search's returned result; Task 5 removes this bridge and its cache.
-	SearchResult last_result_{};
-
-  public:
-	[[nodiscard]] SearchResult GetLastResult() const noexcept { return last_result_; }
 };

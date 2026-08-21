@@ -36,8 +36,7 @@ class Game final {
 	// Takes the player that just moved together with what its GetMove() returned:
 	// GetCurrentPlayer() keys off the side to move, which DoMove has already flipped by the
 	// time this runs, and the score to print is the one in that call's result. Reading it back
-	// off the player instead would report whatever GetBestScore() happens to hold — a member no
-	// engine is obliged to refresh on an ordinary search.
+	// from any player-side state would reintroduce a second, potentially stale result channel.
 	void PrintStateMessage(const IPlayer& mover, const SearchResult& result) const;
 
 	// Inline stuff

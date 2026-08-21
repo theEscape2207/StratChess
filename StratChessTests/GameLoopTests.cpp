@@ -44,12 +44,6 @@ struct Game::TestAccess {
 
 namespace {
 
-	// What every scripted player reports from GetBestScore(). That member is the obsolete side
-	// channel: an engine is free to refresh it only on its own game-over path, so an ordinary
-	// search leaves whatever it last held. Giving it a value nothing else would print makes a
-	// state message sourced from it recognisable on sight.
-	constexpr int STALE_SIDE_CHANNEL_SCORE = -777;
-
 	// Returns a prepared result per call. Running off the end returns a null move with the game
 	// still playing, which Run() treats as "the human left" — so a test that scripts too few
 	// results terminates instead of looping forever.
@@ -66,7 +60,6 @@ namespace {
 
 		const char* GetType() const override { return "Scripted"; }
 		std::string getDescription() const override { return "scripted test player"; }
-		int GetBestScore() const override { return STALE_SIDE_CHANNEL_SCORE; }
 		bool IsHuman() const override { return false; }
 
 		size_t calls() const noexcept { return calls_; }
@@ -296,11 +289,9 @@ TEST_CASE("Game: play alternates and each mover's result is the one acted on", "
 	CHECK(Game::TestAccess::MovesPlayed(*game) == 1);
 }
 
-TEST_CASE("Game: the printed score is the mover's returned one, not its GetBestScore member", "[game]")
+TEST_CASE("Game: the printed score is the mover's returned score", "[game]")
 {
-	// The state message reads the score out of the SearchResult that GetMove() returned. Taking
-	// it off the player instead would print STALE_SIDE_CHANNEL_SCORE here — and in a real game
-	// whatever the engine last happened to leave in that member, typically zero.
+	// The state message reads the score out of the SearchResult that GetMove() returned.
 	constexpr int REPORTED_SCORE = 4242;
 
 	auto white = scripted(
@@ -313,7 +304,6 @@ TEST_CASE("Game: the printed score is the mover's returned one, not its GetBestS
 
 	const std::string log = capture.text();
 	CHECK(contains(log, "Score: " + std::to_string(REPORTED_SCORE)));
-	CHECK_FALSE(contains(log, std::to_string(STALE_SIDE_CHANNEL_SCORE)));
 }
 
 TEST_CASE("Game: a mate score in the mover's result is reported as a mate, not a number", "[game]")

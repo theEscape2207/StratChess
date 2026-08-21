@@ -78,14 +78,12 @@ TEST_CASE("Tactical (full) - null-move pruning guard is a no-op in K+P endgame",
 	constexpr unsigned depth = 5;
 
 	Board board_disabled(fen);
-	auto ai_disabled = make_tactical_engine(depth);
-	as_perplex(ai_disabled).tuning().null_move_enabled = false;
+	auto ai_disabled = make_tactical_engine(depth, false);
 	SearchResult result_disabled = ai_disabled->Search(board_disabled, SearchLimits::fixed_depth(depth));
 	Move move_disabled = result_disabled.best_move;
 
 	Board board_enabled(fen);
-	auto ai_enabled = make_tactical_engine(depth);
-	as_perplex(ai_enabled).tuning().null_move_enabled = true;
+	auto ai_enabled = make_tactical_engine(depth, true);
 	SearchResult result_enabled = ai_enabled->Search(board_enabled, SearchLimits::fixed_depth(depth));
 	Move move_enabled = result_enabled.best_move;
 
@@ -110,8 +108,7 @@ TEST_CASE("Tactical (full) - null-move pruning does not crash on a real recursio
 	Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 	constexpr unsigned depth = 7;
 
-	auto ai = make_tactical_engine(depth);
-	as_perplex(ai).tuning().null_move_enabled = true;
+	auto ai = make_tactical_engine(depth, true);
 
 	Move move = ai->Search(board, SearchLimits::fixed_depth(depth)).best_move;
 

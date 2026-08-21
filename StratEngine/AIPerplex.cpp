@@ -27,8 +27,8 @@
 // calls from multiple threads would be safe at the sink level. That said,
 // s_logger itself and ensure_logger_initialized()'s lazy-init (a plain
 // `if (s_logger) return;` check, not a magic static) are NOT safe to race:
-// initialization only ever happens from SetVerboseLogging(), invoked once
-// during single-threaded AIPerplex setup before any search (or future
+// initialization only ever happens from the constructor during
+// single-threaded AIPerplex setup before any search (or future
 // helper thread) starts. Helper threads run the same search_with_aspiration()
 // code path as the main thread and reach the same log_* call sites, but
 // those calls are gated on `td.thread_id == 0` (see search_with_aspiration()
@@ -37,11 +37,6 @@
 // If a future revision lets helper threads log too, ensure_logger_initialized()
 // must be made safe to call concurrently (e.g. via std::call_once) first.
 static std::shared_ptr<spdlog::logger> s_logger = nullptr;
-static Board& compatibility_board()
-{
-	static Board board;
-	return board;
-}
 static void ensure_logger_initialized()
 {
 	// ensure the general default logger is initialized first (no-op if already)
@@ -78,39 +73,22 @@ static void ensure_logger_initialized()
 	}
 }
 
-void AIPerplex::SetVerboseLogging(bool enabled) noexcept
+AIPerplex::AIPerplex(AIPerplexConfig config)
+    : evaluator_(EvalManager::Create(config.evaluator)),
+      control_(config.default_depth, config.default_time),
+      tuning_(config.tuning),
+      threads_(std::clamp(config.threads, 1u, 32u)),
+      verbose_logging_(config.verbose_logging)
 {
-	// Compatibility no-op: pre-Task-4 callers have no concrete AIPerplex
-	// instance at this call site. New construction and Game set policy on the
-	// instance, never on shared process state.
-	(void)enabled;
-}
-
-void AIPerplex::SetVerboseLoggingForCompatibility(bool enabled) noexcept
-{
-	verbose_logging_ = enabled;
+	_tt = std::make_unique<TranspositionTable>(std::clamp(config.hash_mb, MIN_HASH_MB, MAX_HASH_MB));
 	try {
-		if (enabled) {
+		if (verbose_logging_) {
 			ensure_logger_initialized();
 			if (s_logger)
 				s_logger->set_level(spdlog::level::debug);
 		}
-	} catch (...) { // NOLINT(bugprone-empty-catch) - best-effort logging toggle
+	} catch (...) { // NOLINT(bugprone-empty-catch) - best-effort logger setup
 	}
-}
-
-AIPerplex::AIPerplex(AIPerplexConfig config)
-    : PlayerAiBase(compatibility_board(), config.default_depth),
-      evaluator_(EvalManager::Create(config.evaluator)),
-      control_(config.default_depth, config.default_time),
-      tuning_(config.tuning),
-      threads_(std::clamp(config.threads, 1u, 32u))
-{
-	_tt = std::make_unique<TranspositionTable>(std::clamp(config.hash_mb, MIN_HASH_MB, MAX_HASH_MB));
-	// PlayerAiBase still supplies metadata to unmigrated front ends. Search
-	// itself exclusively uses evaluator_, which is owned by this service.
-	Eval = EvalManager::Create(config.evaluator);
-	SetVerboseLoggingForCompatibility(config.verbose_logging);
 }
 
 void AIPerplex::PrepareSearch() noexcept
@@ -130,8 +108,6 @@ void AIPerplex::Stop() noexcept
 	control_.Stop();
 }
 
-void AIPerplex::StopSearch() noexcept { Stop(); }
-
 void AIPerplex::finish_search_launch() noexcept
 {
 	std::lock_guard<std::mutex> lock(stop_mutex_);
@@ -139,26 +115,9 @@ void AIPerplex::finish_search_launch() noexcept
 	stop_pending_ = false;
 }
 
-AIPerplex::AIPerplex(Board& board, unsigned md)
-    : PlayerAiBase(board, md),
-      evaluator_(EvalManager::Create(EvalManager::EvalTypes::COMPLEX)),
-      control_(md, std::chrono::seconds(15))
-{
-	_tt = std::make_unique<TranspositionTable>(DEFAULT_HASH_MB);
-	Eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
-	td_.board = board;
-
-	// td_'s constructor clears killers and history.
-	// Verbose logging is opt-in per call site:
-	//   game mode  → Game::SetPlayerParams() calls SetVerboseLogging(true)
-	//   UCI mode   → UciHandler::init_ai()   calls SetVerboseLogging(false)
-	//   test mode  → test setup              calls SetVerboseLogging(false)
-	// Do NOT enable it here — constructors must not have stdout side-effects.
-}
-
 // Callers must ensure no search is using _tt. Constructing the replacement
 // before assigning it retains the old table if allocation fails.
-PlayerAiBase::HashConfigurationResult AIPerplex::SetHash(unsigned mb) noexcept
+AIPerplex::HashConfigurationResult AIPerplex::SetHash(unsigned mb) noexcept
 {
 	const unsigned requested = std::clamp(mb, MIN_HASH_MB, MAX_HASH_MB);
 	try {
@@ -189,12 +148,12 @@ void AIPerplex::StartNewGame()
 {
 	(void)_tt->clear();
 	td_.reset_for_new_game();
-	// Lazily resized in GetMove() (`if (helper_tds_.size() < threads - 1)`),
+	// Lazily resized in Search() (`if (helper_tds_.size() < threads - 1)`),
 	// so clearing it forces fresh ThreadData construction -- with the
 	// correct thread_id reassigned -- on the next search, rather than
 	// reusing helpers whose killers/history carry over from the last game.
 	helper_tds_.clear();
-	last_result_ = SearchResult{};
+	++game_generation_;
 }
 
 // PVS Iterative transpositional alpha beta search
@@ -207,11 +166,9 @@ void AIPerplex::init_search(const Board& root)
 	td_.board = root; // thread-local copy — the search runs on this
 	td_.nodes_searched = 0;
 	td_.qnodes_searched = 0;
-	td_.pv_table = PVTable{}; // fresh PV, exactly like the former GetMove() local
+	td_.pv_table = PVTable{}; // fresh PV for this call
 	td_.root_game_state = GameStates::STILL_PLAYING;
 }
-
-void AIPerplex::init_search() { init_search(m_Board); }
 
 // Lazy SMP helper thread entry point (plain iterative deepening, no quality
 // gates — see the declaration comment in AIPerplex.h). Runs entirely on its
@@ -234,12 +191,6 @@ void AIPerplex::helper_loop(ThreadData& td, int max_depth, TranspositionTable& t
 			break; // partial iteration — discard score
 		seed_score = score;
 	}
-}
-
-SearchResult AIPerplex::GetMove(const SearchLimits& limits)
-{
-	// Task 5 deletes this inherited-board bridge once Game is a SearchPlayer.
-	return Search(m_Board, limits);
 }
 
 SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, IterationObserver observer)
@@ -265,7 +216,7 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	// call), which is both a data race and a potential out-of-bounds
 	// helper_tds_[] access. Using one local snapshot everywhere in this
 	// function closes that window; a setoption arriving mid-search simply
-	// takes effect starting with the next GetMove() call.
+	// takes effect starting with the next Search() call.
 	const unsigned threads = threads_;
 	control_.ApplyLimits(limits);
 	{
@@ -314,7 +265,7 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	// steps (they only ever poll IsAborted()), then join them — helpers.clear()
 	// destroys each std::jthread, which joins automatically. This must happen
 	// before every subsequent return in this function, including the
-	// empty-move emergency path below, so a helper can never outlive GetMove().
+	// empty-move emergency path below, so a helper can never outlive Search().
 	control_.Stop();
 	helpers.clear();
 
@@ -327,12 +278,10 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	result.nodes_searched = total_nodes;
 	result.qnodes_searched = total_qnodes;
 	result.elapsed = control_.Elapsed();
-	last_result_ = result; // compatibility only; returned result is authoritative.
 	const Move bestMove = result.best_move;
 
 	// Game over at the root: no move to play, and result.game_state carries why.
 	if (bestMove.is_null()) {
-		_bestScore = result.best_score;
 		finish_search_launch();
 		return result;
 	}
@@ -752,10 +701,6 @@ int AIPerplex::adjustScoreForGameState(ThreadData& td, bool moveFound, int ply, 
 			// Oops - we are mate!!
 			td.update_game_state(ply,
 			                     td.board.GetCurrentColor() == WHITE ? GameStates::BLACK_WON : GameStates::WHITE_WON);
-			if (ply == 0) // Are we at root?
-			{
-				_bestScore = -GameValues::Mate;
-			}
 			// Checkmate - prefer shorter mates
 			return -GameValues::Mate + ply;
 		}
@@ -1209,7 +1154,8 @@ bool AIPerplex::handle_empty_move_emergency(ThreadData& td, SearchState& state)
 	}
 
 	// True emergency - generate any legal move
-	log.critical("EMERGENCY: No best move found (max_depth={}, last_completed={})", max_depth_, state.depth_completed);
+	log.critical("EMERGENCY: No best move found (max_depth={}, last_completed={})", control_.EffectiveDepth(),
+	             state.depth_completed);
 
 	// PVTable::update copies row ply + 1 onto the end of row ply. Row 1 here holds whatever the
 	// last subtree to reach ply 1 left behind — a different position entirely — so without this

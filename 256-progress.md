@@ -2,14 +2,40 @@
 
 ## Current status
 
-Task 4 is complete on `codex/issue-256-design` in the isolated
-`.claude/worktrees/issue-256-design` worktree: UCI now owns one concrete `AIPerplex` and passes
-its iteration observer to each `Search` call. The legacy player surface remains only for Game's
-Task 5 migration. The approved design is
+Task 5 is complete on `codex/issue-256-design` in the isolated
+`.claude/worktrees/issue-256-design` worktree: Game now owns type-erased players produced by the
+config-aware free factory, while `SearchPlayer` owns the concrete search service by value and
+supplies Game's live board on every call. `AIPerplex` no longer inherits any player class. The
+approved design is
 `.claude/plans/aiperplex-production-search-boundary.md`; the executable plan is
 `Docs/superpowers/plans/2026-08-21-aiperplex-production-search-boundary.md`.
 
 ## Just completed
+
+- Completed Task 5: added `SearchPlayer final : IPlayer` with a `Board&`, by-value `AIPerplex`,
+  immutable description, fixed type string, and inert generic PV event. `GetMove(limits)` calls
+  `search_.Search(board_, limits)`, so every move sees the current Game board instead of a retained
+  copy. `AIPerplex` is now a standalone non-copyable/non-movable service; its Board constructor,
+  inherited `GetMove`, player metadata, result cache, static logging bridge, instance compatibility
+  setter, and inherited stop bridge are gone.
+- Added the free `CreatePlayer(PlayerConfig, Board&, PlayerCreationOptions)` composition root.
+  AIPerplex evaluator/depth/tuning/threads and the instance verbose policy are mapped into
+  `AIPerplexConfig` before type erasure; legacy evaluators and lifecycle are configured while the
+  concrete `PlayerAiBase` pointer is still available. Both AI paths receive their initial
+  `StartNewGame()` before return. Game opts into verbose search logging and subscribes to the
+  generic event only after construction. UCI remains direct and unchanged.
+- Removed `IPlayer::GetBestScore` and `IPlayer::SetEvalEngine`; the nonvirtual legacy score helper
+  remains on `PlayerBase`, and the legacy evaluator setter remains concrete on `PlayerAiBase` for
+  the factory. Tactical runners now construct concrete AIPerplex services with requested threads
+  and call `Search(board, limits)` directly.
+- Task 5 TDD evidence: RED `./build.ps1 tests` failed at the intended missing
+  `PlayerFactory.h`/`SearchPlayer.h` boundary and because the removed-from-test
+  `GetBestScore` override still left `ScriptedPlayer` abstract. GREEN focused
+  `[player],[search_player],[game_loop],[search],[tactical]` passed 294 assertions in 66 cases;
+  the full suite passed 7234 assertions in 490 cases; pre-commit passed 7178 assertions in 487
+  non-slow cases. A bounded 30-second AIPerplex self-play logged eight completed moves; a bounded
+  AIAgent self-play committed two moves without a crash. Production scans find no
+  `PlayerBase::Create`, AIPerplex/PlayerAiBase downcast, or stale AIPerplex compatibility API.
 
 - Completed Task 4 fix round 1: UCI's immediate `stop` can no longer be lost between thread launch
   and `SearchControl::ApplyLimits()`. `AIPerplex::PrepareSearch()` arms a small mutex-protected
@@ -135,17 +161,15 @@ Task 5 migration. The approved design is
 
 ## Next steps
 
-1. Add `SearchPlayer` and the config-aware player factory.
-2. Remove stale surfaces and update durable documentation.
-3. Prove behavior, timing, and operational neutrality.
+1. Complete Task 6 durable documentation and stale-comment cleanup.
+2. Complete Task 7 final timing and operational-neutrality validation.
 
 ## Safe park point
 
-Safe to stop after the Task 4 commit. Concrete `AIPerplex::Search` owns the supplied root,
-evaluator, control, tuning, TT, logging policy, Lazy SMP aggregation, and per-call observer; UCI
-owns the concrete service and emits final telemetry from its returned `SearchResult`. The retained
-`PlayerAiBase` constructor, `GetMove`, `GetLastResult`, and `StopSearch` compatibility bridge are
-now Game-only. UCI's stop handshake covers pre-arm, in-search, and post-finish joins without
-carrying a stop into its next command. Task 5 can migrate Game/player factory ownership without
-reopening UCI lifecycle, timer, abort-latch, effective-depth, node-budget, search polling, or Game
-perf-accounting ownership.
+Safe to stop after the Task 5 commit. Game owns `unique_ptr<IPlayer>` instances from the free
+factory; an AIPerplex game player is `SearchPlayer { Board&, AIPerplex value, const description }`.
+The standalone service owns its evaluator, search control, tuning, TT, helper/thread state,
+logging policy, and stop handshake. UCI still owns its concrete AIPerplex directly and its tested
+pending-stop handshake is unchanged. Legacy players retain `PlayerAiBase` and the nonvirtual
+`PlayerBase::GetBestScore` aspiration seed only. Task 6 can update durable docs and stale comments
+without reopening composition, search-tree behavior, UCI lifecycle, or Game perf ownership.

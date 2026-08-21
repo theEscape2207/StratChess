@@ -22,7 +22,7 @@ class PlayerBase : public IPlayer {
 	// Non-virtual
 
 	/* IPlayer implementation */
-	int GetBestScore() const noexcept override { return _bestScore; }
+	int GetBestScore() const noexcept { return _bestScore; }
 
 	bool IsHuman() const noexcept override { return isHuman_; }
 	/* End IPlayer implementation */
@@ -38,9 +38,6 @@ class PlayerBase : public IPlayer {
 	// defaults (time_limit_, max_depth_). Not virtual; forwards to the real
 	// GetMove(limits) override.
 	SearchResult GetMove() { return GetMove(SearchLimits{}); }
-
-	// Factory constructor!
-	static std::unique_ptr<PlayerBase> Create(ePlayerTypes type, unsigned max_depth, Board& board);
 
 	PlayerBase(const PlayerBase&) = delete;
 	PlayerBase& operator=(const PlayerBase&) = delete;
