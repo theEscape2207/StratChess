@@ -12,6 +12,16 @@ approved design is
 
 ## Just completed
 
+- Completed Task 6 fix round 1: replaced the two stale `ai.tuning()` examples with compile-valid
+  `SearchTuning` values passed through `AIPerplexConfig` before construction. Corrected the service
+  ownership wording: it retains no caller Board/reference, but copies each supplied root into owned
+  `ThreadData`. Also updated stale AIPerplex `GetMove` comments to `Search` in the implementation
+  and shared include guidance.
+- Fix validation: `./build.ps1 tests` passed; `[search],[uci]` passed 1,552 assertions in 167 cases;
+  the full suite passed 7,272 assertions in 495 cases. Documentation/stale-API scans and
+  `git diff --check` were clean. The built executable is intentionally stale after the StdAfx comment
+  touch; Task 7 must run `build.ps1 all` before executable-based validation.
+
 - Completed Task 6: audited owned production surfaces after Task 5 and found no remaining
   AIPerplex player/result/observer compatibility state or production implementation downcasts to
   remove. Existing behavior coverage already proves independent returned results across later
@@ -197,7 +207,7 @@ approved design is
 
 ## Safe park point
 
-Safe to stop after the Task 6 commit. Game owns `unique_ptr<IPlayer>` instances from the free
+Safe to stop after the Task 6 fix-round commit. Game owns `unique_ptr<IPlayer>` instances from the free
 factory; an AIPerplex game player is `SearchPlayer { Board&, AIPerplex value, const description }`.
 The standalone service owns its evaluator, search control, tuning, TT, helper/thread state,
 logging policy, and stop handshake. UCI still owns its concrete AIPerplex directly and its tested

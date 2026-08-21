@@ -1262,7 +1262,7 @@ void AIPerplex::emit_iteration_info(const ThreadData& td, int depth, int score, 
 
 	// The reported figure is the main-search-thread's cumulative count of both trees as
 	// of this accepted iteration. It does not generally equal the final info/bestmove
-	// line's total (AIPerplex.cpp GetMove(), ~line 256): a rejected trailing
+	// line's total (AIPerplex.cpp Search(), ~line 256): a rejected trailing
 	// iteration (REJECT_AND_STOP, see iterative_deepening()) still adds its
 	// nodes to those counters before assess_iteration_quality() throws the
 	// iteration away, so the final line's count is typically strictly greater

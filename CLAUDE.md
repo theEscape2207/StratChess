@@ -160,8 +160,9 @@ Non-obvious API contracts — the rest of the layout is discoverable.
   captured piece.
 - `AIPerplex` is a standalone concrete search service: `Search(Board, limits, observer)` receives a
   root and observer per call and returns a `SearchResult` by value. It owns evaluator, TT, tuning and
-  composed `SearchControl`; it is not an `IPlayer`, retains neither a Board nor a result cache, and
-  has no compatibility player metadata. `SearchPlayer { Board&, AIPerplex value }` is the required
+  composed `SearchControl`; it is not an `IPlayer`, retains no caller Board or Board reference and
+  no result cache, and has no compatibility player metadata. Each call copies its supplied root into
+  owned `ThreadData` before search. `SearchPlayer { Board&, AIPerplex value }` is the required
   Game adapter; `CreatePlayer` maps config before type erasure. `ISearchEngine` is deliberately
   deferred until a second real implementation needs it.
 - `SearchResult` carries best move, score, elapsed time, split node counts and the `GameStates` the
