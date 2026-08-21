@@ -15,7 +15,8 @@ owns the search-focused and broad whole-branch reviews. The approved design is
 - Completed Task 7's deferred UCI coverage strengthening without production changes. The concurrent
   `go infinite`/`isready` test now captures output through a synchronized stream buffer, waits up to
   five seconds for an observed `info depth` line instead of sleeping blindly, then requires at least
-  one `info` line, exact 20 `readyok` replies, and intact `info`/`readyok`/`bestmove` line shapes. The
+  one `info` line, exact 20 `readyok` replies, and allowed `info`/`readyok`/`bestmove` line-prefix
+  integrity. The
   separate immediate `go infinite`/`stop` no-sleep regression is unchanged. This was coverage
   strengthening of existing correct behavior, not a production RED defect. Initial evidence was
   20/20 focused runs (27 assertions each) and `[uci]` with 1,303 assertions / 106 cases. Final
