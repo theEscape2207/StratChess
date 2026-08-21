@@ -15,7 +15,7 @@
 #include <vector>
 
 // Snapshot of one accepted iterative-deepening iteration, handed to the
-// iteration observer (see AIPerplex::SetIterationObserver). `nodes` is the
+// per-call iteration observer supplied to AIPerplex::Search(). `nodes` is the
 // CUMULATIVE main-search-thread node count at the end of this accepted
 // iteration, both trees summed (td.nodes_searched + td.qnodes_searched) — the
 // standard UCI convention for a per-iteration "nodes so far" figure, not the
@@ -24,7 +24,7 @@
 // starts one more iteration, gets interrupted, and has that iteration
 // rejected by assess_iteration_quality() (REJECT_AND_STOP emits nothing —
 // see iterative_deepening()), but the rejected iteration's nodes are already
-// in both counters by the time GetMove() reports the final total, so
+// in both counters by the time Search() reports the final total, so
 // that total is typically strictly greater than this field at Threads=1.
 // Under Lazy SMP the two also diverge because the final total sums helper
 // threads' nodes, which are never visible here. `pv` is a copy of the PV
@@ -80,7 +80,7 @@ class AIPerplex final : public PlayerAiBase {
 	explicit AIPerplex(AIPerplexConfig config = {});
 	SearchResult Search(const Board& root, const SearchLimits& limits, IterationObserver observer = {});
 
-	// Compatibility bridge for Game/UCI until Tasks 4-5 remove PlayerAiBase
+	// Compatibility bridge for Game until Task 5 removes PlayerAiBase
 	// ownership. All new callers must use Search(root, limits, observer).
 	SearchResult GetMove(const SearchLimits& limits) override;
 	const char* GetType() const noexcept override { return "Perplexity Transpositional AlphaBeta"; }
@@ -98,20 +98,8 @@ class AIPerplex final : public PlayerAiBase {
 
 	HashConfigurationResult SetHash(unsigned mb) noexcept override;
 	void StartNewGame() override;
+	void Stop() noexcept { control_.Stop(); }
 	void StopSearch() noexcept override;
-
-	// Registers a callback invoked once per accepted iterative-deepening iteration
-	// (both ACCEPT_AND_CONTINUE and ACCEPT_AND_STOP, never REJECT_AND_STOP), from
-	// whichever thread is running iterative_deepening() — the main search thread
-	// only; Lazy SMP helper threads run helper_loop() and never call this. Empty
-	// by default: no observer means no per-iteration work at all, so game mode and
-	// non-UCI callers that never register one are unaffected. UCIHandler::cmd_go
-	// is the only current caller — it registers before spawning the search thread
-	// and clears the observer once the search returns.
-	void SetIterationObserver(IterationObserver observer)
-	{
-		iteration_observer_ = std::move(observer);
-	}
 
 	// Note: NOT to be called directly - only through Factory method (needed to be public due to usage of make_unique)
 	explicit AIPerplex(Board& board, unsigned md);
@@ -223,8 +211,8 @@ class AIPerplex final : public PlayerAiBase {
 	void log_aspiration_full_window(int depth, int max_retries) const;
 
 	// Builds an IterationInfo snapshot (copying the PV out of td before the next
-	// iteration mutates it) and forwards it to iteration_observer_. No-op when no
-	// observer is registered. Called from both accept branches of
+	// iteration mutates it) and forwards it to the current call's observer. No-op
+	// when no observer was supplied. Called from both accept branches of
 	// iterative_deepening(), after `state` is updated for that iteration.
 	void emit_iteration_info(const ThreadData& td, int depth, int score, const IterationObserver& observer) const;
 
@@ -255,11 +243,6 @@ class AIPerplex final : public PlayerAiBase {
 	// AIPerplex instance decides independently whether to emit diagnostics.
 	bool verbose_logging_{false};
 
-	// Per-iteration UCI diagnostic hook (see SetIterationObserver). Default-constructed
-	// empty: emit_iteration_info() checks this before doing any work, so an unregistered
-	// observer costs a single bool check per accepted iteration.
-	IterationObserver iteration_observer_;
-
 #ifdef STRAT_ENABLE_TEST_ACCESS
 	// Enable fine-grained unit tests for private search helpers.
 	// Activated by defining STRAT_ENABLE_TEST_ACCESS in the test project
@@ -285,9 +268,10 @@ class AIPerplex final : public PlayerAiBase {
 	const SearchTuning& tuning() const { return tuning_; }
 
   private:
+	// Compatibility cache for the remaining PlayerAiBase bridge. Concrete callers
+	// use Search's returned result; Task 5 removes this bridge and its cache.
 	SearchResult last_result_{};
 
   public:
-	/// Returns the result of the most recent search (valid after GetMove() returns).
 	[[nodiscard]] SearchResult GetLastResult() const noexcept { return last_result_; }
 };

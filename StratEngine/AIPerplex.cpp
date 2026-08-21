@@ -113,7 +113,7 @@ AIPerplex::AIPerplex(AIPerplexConfig config)
 	SetVerboseLoggingForCompatibility(config.verbose_logging);
 }
 
-void AIPerplex::StopSearch() noexcept { control_.Stop(); }
+void AIPerplex::StopSearch() noexcept { Stop(); }
 
 AIPerplex::AIPerplex(Board& board, unsigned md)
     : PlayerAiBase(board, md),
@@ -161,9 +161,6 @@ PlayerAiBase::HashConfigurationResult AIPerplex::SetHash(unsigned mb) noexcept
 //   - the evaluator: EvalManager/EvalComplex are documented stateless and
 //                    thread-shared (see the Lazy SMP sharing contract
 //                    comment in Eval.h) -- recreating one changes nothing.
-//   - max_depth_ / time_limit_ (PlayerAiBase): unconditionally reset by
-//     UciHandler::stop_and_join(), called immediately before this in
-//     cmd_ucinewgame().
 void AIPerplex::StartNewGame()
 {
 	(void)_tt->clear();
@@ -218,7 +215,7 @@ void AIPerplex::helper_loop(ThreadData& td, int max_depth, TranspositionTable& t
 SearchResult AIPerplex::GetMove(const SearchLimits& limits)
 {
 	// Task 5 deletes this inherited-board bridge once Game is a SearchPlayer.
-	return Search(m_Board, limits, iteration_observer_);
+	return Search(m_Board, limits);
 }
 
 SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, IterationObserver observer)
@@ -292,10 +289,9 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	result.qnodes_searched = total_qnodes;
 	result.elapsed = control_.Elapsed();
 	last_result_ = result; // compatibility only; returned result is authoritative.
-
 	const Move bestMove = result.best_move;
 
-	// Game over at the root: no move to play, and last_result_.game_state carries why.
+	// Game over at the root: no move to play, and result.game_state carries why.
 	if (bestMove.is_null()) {
 		_bestScore = result.best_score;
 		return result;
@@ -307,9 +303,6 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 		               MoveFormatter::ToCoord(bestMove), result.best_score, result.depth_completed, result.elapsed.count(),
 		               total_nodes, result.search_was_stable ? "yes" : "NO");
 	}
-	// last_result_, not the local `result`: the node counts above were aggregated across the
-	// joined helper threads, so the two differ at Threads > 1. GetLastResult() must be
-	// indistinguishable from what this returns for the same call.
 	return result;
 }
 

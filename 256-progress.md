@@ -2,14 +2,32 @@
 
 ## Current status
 
-Task 3 is complete on `codex/issue-256-design` in the isolated
-`.claude/worktrees/issue-256-design` worktree: `AIPerplex` now has a concrete, root-per-call
-service API, while the legacy player surface remains only as a compatibility bridge. Task 4,
-giving UCI concrete ownership and per-call observation, is next. The approved design is
+Task 4 is complete on `codex/issue-256-design` in the isolated
+`.claude/worktrees/issue-256-design` worktree: UCI now owns one concrete `AIPerplex` and passes
+its iteration observer to each `Search` call. The legacy player surface remains only for Game's
+Task 5 migration. The approved design is
 `.claude/plans/aiperplex-production-search-boundary.md`; the executable plan is
 `Docs/superpowers/plans/2026-08-21-aiperplex-production-search-boundary.md`.
 
 ## Just completed
+
+- Completed Task 4: `UciHandler` owns `std::unique_ptr<AIPerplex>` and
+  `std::unique_ptr<EvalComplex>` directly. `init_ai()` constructs the configured concrete service
+  once; `ucinewgame` keeps that identity, stops/joins first, and clears its per-game state through
+  `StartNewGame()`. UCI's Hash and Threads options now target the concrete service directly.
+- UCI passes a fresh iteration observer into every `Search(board_, limits, observer)` invocation.
+  The stored `SetIterationObserver` state is deleted; final UCI time and node telemetry comes from
+  that call's returned `SearchResult`. UCI no longer downcasts either its evaluator or search
+  engine, and its direct-search test reads returned telemetry rather than `GetLastResult()`.
+- Lifecycle evidence remains end-to-end: the UCI fixture observes the same AIPerplex address
+  across repeated `ucinewgame`, while a seeded TT entry is cleared. A back-to-back `go` test
+  captures each command separately and proves both begin their own iteration stream at depth 1.
+- Task 4 TDD evidence: RED `./build.ps1 tests` failed at the intended boundary because
+  `UciHandler::ai_` was still `PlayerAiBase` and lacked concrete `threads_`, `_tt`, and `Search`.
+  GREEN rebuilt successfully; `[uci]` passed 1301 assertions in 105 cases, `[search]` passed 245
+  assertions in 61 cases, the full suite passed 7249 assertions in 487 cases, and pre-commit
+  passed 7191 assertions in 484 non-slow cases. The bounded concurrent UCI `stop`/`isready`
+  regression passed 32 assertions in one case.
 
 - Completed Task 3 fix round 1: `AIPerplex` is again the sole owner of its stop latch. `PlayerAiBase::StopSearch()` is virtual, and the AIPerplex override stops owned `SearchControl`; all inherited-control reads were removed from the concrete search internals. A real asynchronous regression stops one direct search through a `PlayerAiBase&`, then proves the next direct fixed-depth `Search` reaches depth 2 rather than inheriting the prior abort.
 - Made verbosity policy per AIPerplex instance. The shared logger is now only a sink; construction and Game's temporary cast branch configure the individual engine, so constructing an opposite-policy engine cannot alter an existing engine. The retained static verbosity call is a no-op source-compatibility bridge for deferred UCI/tactical callers, scheduled for Task 4/5 cleanup.
@@ -104,15 +122,16 @@ giving UCI concrete ownership and per-call observation, is next. The approved de
 
 ## Next steps
 
-1. Give UCI concrete ownership and per-call observation.
-2. Add `SearchPlayer` and the config-aware player factory.
-3. Remove stale surfaces and update durable documentation.
-4. Prove behavior, timing, and operational neutrality.
+1. Add `SearchPlayer` and the config-aware player factory.
+2. Remove stale surfaces and update durable documentation.
+3. Prove behavior, timing, and operational neutrality.
 
 ## Safe park point
 
-Safe to stop after the Task 3 commit. Concrete `AIPerplex::Search` owns the supplied root,
-evaluator, control, tuning, TT, logging policy, and Lazy SMP aggregation; `SearchResult` and
-`Game` retain the Task 2 telemetry/performance boundary. Task 4 can migrate UCI from its retained
-setter observer and `GetMove` bridge to concrete ownership without reopening timer, abort-latch,
-effective-depth, node-budget, search polling, or Game perf-accounting ownership.
+Safe to stop after the Task 4 commit. Concrete `AIPerplex::Search` owns the supplied root,
+evaluator, control, tuning, TT, logging policy, Lazy SMP aggregation, and per-call observer; UCI
+owns the concrete service and emits final telemetry from its returned `SearchResult`. The retained
+`PlayerAiBase` constructor, `GetMove`, `GetLastResult`, and `StopSearch` compatibility bridge are
+now Game-only. Task 5 can migrate Game/player factory ownership without reopening UCI lifecycle,
+timer, abort-latch, effective-depth, node-budget, search polling, or Game perf-accounting
+ownership.

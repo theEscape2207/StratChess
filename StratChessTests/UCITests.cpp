@@ -56,15 +56,13 @@ class UciHandlerTestFixture {
 	void set_searching(bool value) { handler.searching_.store(value); }
 	unsigned configured_threads() const { return handler.configured_threads_; }
 
-	// Reads threads_ off the live ai_ instance (via the AIPerplex friend
-	// declaration granted to this same fixture class name) — proves the
-	// fix actually reaches the freshly-constructed AIPerplex, not just
-	// UciHandler's own configured_threads_ bookkeeping.
+	// Reads threads_ off UCI's concretely-owned AIPerplex instance — proves
+	// the option reaches the search service rather than just the handler's
+	// configured_threads_ bookkeeping.
 	unsigned ai_threads() const
 	{
-		auto* perplex = dynamic_cast<AIPerplex*>(handler.ai_.get());
-		REQUIRE(perplex != nullptr);
-		return perplex->threads_;
+		REQUIRE(handler.ai_ != nullptr);
+		return handler.ai_->threads_;
 	}
 
 	// Identity of the live ai_ instance, for proving cmd_ucinewgame() no
@@ -75,45 +73,39 @@ class UciHandlerTestFixture {
 
 	void store_tt_marker() const
 	{
-		auto* perplex = dynamic_cast<AIPerplex*>(handler.ai_.get());
-		REQUIRE(perplex != nullptr);
-		perplex->_tt->store(TT_MARKER_KEY, 123, 1, 0, Move::EmptyMove(), BoundType::EXACT, NodeType::PV_NODE,
-		                    SearchPhase::MAIN);
+		REQUIRE(handler.ai_ != nullptr);
+		handler.ai_->_tt->store(TT_MARKER_KEY, 123, 1, 0, Move::EmptyMove(), BoundType::EXACT, NodeType::PV_NODE,
+		                        SearchPhase::MAIN);
 	}
 
 	bool has_tt_marker() const
 	{
-		auto* perplex = dynamic_cast<AIPerplex*>(handler.ai_.get());
-		REQUIRE(perplex != nullptr);
-		return perplex->_tt->probe(TT_MARKER_KEY, 0).has_value();
+		REQUIRE(handler.ai_ != nullptr);
+		return handler.ai_->_tt->probe(TT_MARKER_KEY, 0).has_value();
 	}
 
 	size_t ai_hash_requested_mb() const
 	{
-		auto* perplex = dynamic_cast<AIPerplex*>(handler.ai_.get());
-		REQUIRE(perplex != nullptr);
-		return perplex->_tt->requested_memory_mb();
+		REQUIRE(handler.ai_ != nullptr);
+		return handler.ai_->_tt->requested_memory_mb();
 	}
 
 	size_t ai_hash_memory_mb() const
 	{
-		auto* perplex = dynamic_cast<AIPerplex*>(handler.ai_.get());
-		REQUIRE(perplex != nullptr);
-		return perplex->_tt->memory_mb();
+		REQUIRE(handler.ai_ != nullptr);
+		return handler.ai_->_tt->memory_mb();
 	}
 
 	size_t ai_hash_bucket_count() const
 	{
-		auto* perplex = dynamic_cast<AIPerplex*>(handler.ai_.get());
-		REQUIRE(perplex != nullptr);
-		return perplex->_tt->bucket_count();
+		REQUIRE(handler.ai_ != nullptr);
+		return handler.ai_->_tt->bucket_count();
 	}
 
 	const void* tt_identity() const
 	{
-		auto* perplex = dynamic_cast<AIPerplex*>(handler.ai_.get());
-		REQUIRE(perplex != nullptr);
-		return perplex->_tt.get();
+		REQUIRE(handler.ai_ != nullptr);
+		return handler.ai_->_tt.get();
 	}
 
 	// cmd_go() runs the search on handler.search_thread_ and returns immediately;
@@ -128,24 +120,12 @@ class UciHandlerTestFixture {
 			handler.search_thread_.join();
 	}
 
-	// Calls AIPerplex::GetMove() directly, the way game mode (non-UCI) does --
-	// bypassing cmd_go entirely, so no iteration observer is ever registered.
-	// Used to pin that an unregistered observer means emit_iteration_info() does
-	// no work and prints nothing (issue #237 stage 0, item 3).
-	Move run_search_directly(int depth)
+	// Calls the concrete root-per-call service directly, bypassing cmd_go so no
+	// observer is supplied. The returned result is the authoritative telemetry.
+	SearchResult run_search_directly(int depth)
 	{
-		auto* perplex = dynamic_cast<AIPerplex*>(handler.ai_.get());
-		REQUIRE(perplex != nullptr);
-		return perplex->GetMove(SearchLimits::fixed_depth(depth)).best_move;
-	}
-
-	// Nodes from the last search. A non-null bestmove alone does not prove a search ran:
-	// the empty-move emergency path also returns one, having searched nothing.
-	int64_t last_main_nodes() const
-	{
-		auto* perplex = dynamic_cast<AIPerplex*>(handler.ai_.get());
-		REQUIRE(perplex != nullptr);
-		return perplex->GetLastResult().nodes_searched;
+		REQUIRE(handler.ai_ != nullptr);
+		return handler.ai_->Search(handler.board_, SearchLimits::fixed_depth(depth));
 	}
 };
 
@@ -1070,10 +1050,10 @@ TEST_CASE("UCI: a high halfmove clock still yields a searched move", "[uci]")
 	            " 4");
 	REQUIRE(fx.board().halfmove_clock() == clock);
 
-	const Move best = fx.run_search_directly(4);
+	const SearchResult result = fx.run_search_directly(4);
 
-	CHECK_FALSE(best.is_null());
-	CHECK(fx.last_main_nodes() > 0);
+	CHECK_FALSE(result.best_move.is_null());
+	CHECK(result.nodes_searched > 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -2207,11 +2187,10 @@ TEST_CASE("cmd_go: a forced mate reports 'mate N', not 'cp', in the score field"
 	REQUIRE(extract_bestmove(output) == "a1a8");
 }
 
-TEST_CASE("AIPerplex::GetMove: emits no per-iteration output when no observer is registered", "[uci]")
+TEST_CASE("AIPerplex::Search: emits no per-iteration output without a per-call observer", "[uci]")
 {
-	// Game mode and non-UCI callers never call SetIterationObserver -- this pins
-	// that emit_iteration_info() is a true no-op without one, so the default
-	// (non-UCI) search path is unaffected by this stage's addition.
+	// A direct concrete call has no observer argument. This pins that observer
+	// state lives only in that call, rather than on the AIPerplex service.
 	UciHandlerTestFixture fix;
 	fix.ucinewgame();
 	fix.position("position startpos");
@@ -2257,7 +2236,7 @@ TEST_CASE("cmd_go: 'go movetime 300' final info line's nodes are >= the last per
 	// interrupted and then rejected by assess_iteration_quality() -- REJECT_AND_STOP
 	// emits no per-iteration line for it (iterative_deepening(), AIPerplex.cpp), but
 	// that rejected iteration's nodes are already folded into td.nodes_searched by
-	// the time GetMove() reports the final total (AIPerplex.h's IterationInfo doc).
+	// the time Search() reports the final total (AIPerplex.h's IterationInfo doc).
 	REQUIRE(last_iteration.nodes <= final_line.nodes);
 }
 
@@ -2274,7 +2253,7 @@ TEST_CASE("cmd_go: 'stop' during 'go infinite' produces well-formed output under
 	// The sleep before issuing isready/stop is not about search progress -- it
 	// closes a separate, pre-existing race documented in TimeManager.h's own
 	// threading contract: StopSearch() (callable from any thread) and
-	// ApplyLimits()'s time_manager_.start() (called from inside GetMove(), on
+	// ApplyLimits()'s time_manager_.start() (called from inside Search(), on
 	// the search thread, only after it is scheduled) are unsynchronized, so a
 	// 'stop' arriving before the search thread reaches start() is silently
 	// overwritten and the search becomes unstoppable for the rest of this
@@ -2308,46 +2287,30 @@ TEST_CASE("cmd_go: 'stop' during 'go infinite' produces well-formed output under
 	REQUIRE(readyok_count == kIsReadyCount);
 }
 
-TEST_CASE("cmd_go: two back-to-back 'go depth 4' searches each produce one bestmove and restart depths at 1", "[uci]")
+TEST_CASE("cmd_go: back-to-back searches emit only their own per-call iterations", "[uci]")
 {
-	// Pins the observer register/clear lifecycle (UCIHandler.cpp cmd_go / search
-	// thread lambda) against a future refactor: the second search's per-iteration
-	// depths must restart at 1, not continue from wherever the first search's
-	// observer left off.
+	// The observer is passed into exactly one Search call. The second command must
+	// therefore start a fresh stream rather than retaining the first call's closure.
 	UciHandlerTestFixture fix;
 	fix.position("position startpos");
 
-	std::string output;
-	{
-		CoutRedirect redirect;
+	const std::string first_output = capture_cout([&] {
 		fix.dispatch("go depth 4");
 		fix.join_search();
+	});
+	const auto first_search_info = parse_info_depth_lines(first_output);
+	REQUIRE_FALSE(first_search_info.empty());
+	REQUIRE(first_search_info.front().depth == 1);
+	REQUIRE_FALSE(extract_bestmove(first_output).empty());
+
+	const std::string second_output = capture_cout([&] {
 		fix.dispatch("go depth 4");
 		fix.join_search();
-		output = redirect.str();
-	}
-
-	const auto lines = split_lines(output);
-	int bestmove_count = 0;
-	size_t first_bestmove_index = lines.size();
-	for (size_t i = 0; i < lines.size(); ++i) {
-		if (lines[i].starts_with("bestmove ")) {
-			++bestmove_count;
-			if (first_bestmove_index == lines.size())
-				first_bestmove_index = i;
-		}
-	}
-	REQUIRE(bestmove_count == 2);
-
-	// Info lines strictly after the first bestmove belong to the second search.
-	std::string tail;
-	for (size_t i = first_bestmove_index + 1; i < lines.size(); ++i) {
-		tail += lines[i];
-		tail += '\n';
-	}
-	const auto second_search_info = parse_info_depth_lines(tail);
+	});
+	const auto second_search_info = parse_info_depth_lines(second_output);
 	REQUIRE_FALSE(second_search_info.empty());
 	REQUIRE(second_search_info.front().depth == 1);
+	REQUIRE_FALSE(extract_bestmove(second_output).empty());
 }
 
 // ---------------------------------------------------------------------------

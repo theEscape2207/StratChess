@@ -5,12 +5,11 @@
 #include <string>
 #include <thread>
 #include <spdlog/spdlog.h>
-#include "PlayerBase.h"
-#include "PlayerAI.h"
 #include "GameState.h"
 #include "Board.h"
 
-class EvalManager;
+class AIPerplex;
+class EvalComplex;
 class UciHandler {
   public:
 	UciHandler();
@@ -75,8 +74,8 @@ class UciHandler {
 	// ai_ holds a Board& reference into it that must outlive it.
 	Board board_;
 
-	std::unique_ptr<PlayerAiBase> ai_;
-	std::unique_ptr<EvalManager> eval_;
+	std::unique_ptr<AIPerplex> ai_;
+	std::unique_ptr<EvalComplex> eval_;
 	std::thread search_thread_;
 
 	// Whether a search is actually running. search_thread_.joinable() cannot
