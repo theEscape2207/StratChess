@@ -297,8 +297,8 @@ TEST_CASE("Board: UndoNullMove restores a live en-passant square and the clock",
 	REQUIRE(board.ep_square() == c6);
 
 	board.DoNullMove();
-	CHECK(board.ep_square() == NO_SQUARE);   // forfeited for the null-move subtree
-	CHECK(board.halfmove_clock() == 3);      // a null move is not a halfmove
+	CHECK(board.ep_square() == NO_SQUARE); // forfeited for the null-move subtree
+	CHECK(board.halfmove_clock() == 3);    // a null move is not a halfmove
 
 	board.UndoNullMove();
 	CHECK(board.ep_square() == c6);
