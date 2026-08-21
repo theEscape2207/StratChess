@@ -635,10 +635,7 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 	    .material = {matScoreWhite, matScoreBlack},
 	    .phase = gamePhase,
 	    .mopup_active = {mopupActive[WHITE], mopupActive[BLACK]},
-	    // GetGameInfo() returns by value, but the whole-struct copy folds away here:
-	    // a dedicated single-field accessor measured identically (-2.01% vs -2.03%
-	    // nps against main), so it was not worth the extra Board API surface.
-	    .castling_rights = board.GetGameInfo().castlingRights,
+	    .castling_rights = board.castling_rights(),
 	};
 }
 

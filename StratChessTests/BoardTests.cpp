@@ -58,17 +58,17 @@ TEST_CASE("Board - DoNullMove clears pending en-passant right; UndoNullMove rest
 {
 	Board board(FEN_EP);
 
-	REQUIRE(board.GetGameInfo().epSquare == e6);
+	REQUIRE(board.ep_square() == e6);
 	const uint64_t hash_before = board.get_zobrist_hash();
 
 	board.DoNullMove();
 
-	REQUIRE(board.GetGameInfo().epSquare == NO_SQUARE);
+	REQUIRE(board.ep_square() == NO_SQUARE);
 	REQUIRE(board.get_zobrist_hash() != hash_before);
 
 	board.UndoNullMove();
 
-	REQUIRE(board.GetGameInfo().epSquare == e6);
+	REQUIRE(board.ep_square() == e6);
 	REQUIRE(board.get_zobrist_hash() == hash_before);
 }
 

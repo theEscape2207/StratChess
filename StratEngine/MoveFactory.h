@@ -5,7 +5,7 @@
 
 // Small collection of helpers to construct Moves in a clear, centralized way.
 // Neither the moving piece nor the captured piece is stored in the Move struct.
-//   Captured-piece information is tracked in Board::capturedHistory_[] during DoMove/UndoMove.
+//   Captured-piece information is tracked in the ply's Board::PositionState during DoMove/UndoMove.
 //   Whether a move captures is encoded in the MoveType flag (CAPTURE_BIT, bit 2).
 namespace MoveFactory {
 

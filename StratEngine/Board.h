@@ -55,8 +55,8 @@ class Board final {
 
 	// Depth of the in-flight (unmatched) DoMove/DoNullMove recursion since the
 	// last permanently-committed position. Call after any move that will never
-	// be undone (a real game move, or a UCI position replay) — the four
-	// ply-history arrays only need to span search recursion, not game length.
+	// be undone (a real game move, or a UCI position replay) — state_history_
+	// only needs to span search recursion, not game length.
 	size_t GetSearchDepth() const noexcept { return currentPly_; }
 	void ResetSearchDepth() noexcept;
 
@@ -104,16 +104,14 @@ class Board final {
 
 	int GetMaterialScore(eColor color) const noexcept { return material_score_[color]; }
 
-	GameInfo GetGameInfo() const noexcept { return gameInfo_; }
-	void SetGameState(GameStates state) noexcept { gameInfo_.gameState = state; }
-
 	// The board is the single authority for the position metadata below. Move generation, the
 	// Zobrist hash and the undo stack all read it from here, so there is no second object that
 	// could disagree with the position these accessors describe.
-	eSquare ep_square() const noexcept { return gameInfo_.epSquare; }
-	uint8_t castling_rights() const noexcept { return gameInfo_.castlingRights; }
-	int halfmove_clock() const noexcept { return gameInfo_.halfmoveClock; }
-	Move last_move() const noexcept { return gameInfo_.lastMove; }
+	eSquare ep_square() const noexcept { return state_.ep_square; }
+	uint8_t castling_rights() const noexcept { return state_.castling_rights; }
+	int halfmove_clock() const noexcept { return state_.halfmove_clock; }
+	int fullmove_count() const noexcept { return state_.fullmove_count; }
+	Move last_move() const noexcept { return state_.last_move; }
 
 	uint64_t get_zobrist_hash() const noexcept { return zobrist_hash_; }
 
@@ -133,6 +131,24 @@ class Board final {
 	using TBitboards = std::array<BITBOARD, ALL_BITBOARDS>;
 	using sqPieces = std::tuple<ePiece, eSquare>;
 	using squareCol = std::vector<sqPieces>;
+
+	// One ply's reversible state. Two tenses on purpose: every field is the state *before* the
+	// move, except captured_piece, which describes the move itself — the same split the four
+	// arrays this replaces already had. zobrist_hash, last_irreversible_ply and captured_piece
+	// are meaningful only in a history entry; the live state_ carries the position fields.
+	// Field order is chosen for size: the members sum to 24, so the static_assert below is what
+	// proves no padding was inserted.
+	struct PositionState {
+		uint64_t zobrist_hash{0};
+		uint32_t last_irreversible_ply{0};
+		eSquare ep_square{NO_SQUARE};
+		Move last_move;
+		uint16_t halfmove_clock{0};
+		uint16_t fullmove_count{1};
+		uint8_t castling_rights{CastlingRights::ALL};
+		ePiece captured_piece{ePiece::NO_PIECE};
+	};
+	static_assert(sizeof(PositionState) == 24, "PositionState must stay padding-free; see Board.h");
 
 	// --- Internal position setup ---
 	void setup_board(const squareCol&);
@@ -217,7 +233,6 @@ class Board final {
 	// ---- Member variables ----
 
 	eColor sideToMove_{eColor::WHITE};
-	GameInfo gameInfo_;
 
 	std::array<ePiece, ALL_SQUARES> mailbox_{};
 	TBitboards bitboards_{{0}};
@@ -231,10 +246,19 @@ class Board final {
 	int material_score_[NUM_COLORS]{0};
 
 	// Ply-indexed undo state (pre-allocated to MAX_PLY for O(1) unmake)
-	std::array<uint64_t, MAX_PLY> zobrist_history_{0};
-	std::array<size_t, MAX_PLY> irreversiblePlyHistory_{0};
-	std::array<GameInfo, MAX_PLY> gameInfoHistory_{};
-	std::array<ePiece, MAX_PLY> capturedHistory_{ePiece::NO_PIECE};
+	PositionState state_{};
+	std::array<PositionState, MAX_PLY> state_history_{};
+
+	void snapshot_state(ePiece capturedPiece) noexcept
+	{
+		PositionState& saved = state_history_[currentPly_];
+		saved = state_;
+		saved.zobrist_hash = zobrist_hash_;
+		saved.last_irreversible_ply = static_cast<uint32_t>(last_irreversible_ply_);
+		saved.captured_piece = capturedPiece;
+	}
+
+	void restore_state() noexcept { state_ = state_history_[currentPly_]; }
 
 	uint64_t zobrist_hash_{0};
 };

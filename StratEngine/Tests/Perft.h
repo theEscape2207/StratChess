@@ -6,7 +6,6 @@
 #include <chrono>
 
 class Board;
-struct GameInfo;
 class Move;
 
 namespace Testing {

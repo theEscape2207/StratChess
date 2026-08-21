@@ -379,7 +379,16 @@ void UciHandler::cmd_position(std::string_view line)
 		std::string moves_str(line.substr(moves_pos + 6));
 		std::istringstream ss(moves_str);
 		std::string token;
+		size_t moveCount = 0;
 		while (ss >> token) {
+			// Same all-or-nothing transaction as an illegal token below: a move list past the
+			// longest possible game (GameState.h) describes no real game, so board_ is left
+			// untouched rather than replaying a prefix of it.
+			if (++moveCount > MAX_UCI_REPLAY_PLIES) {
+				send("info string position: move list too long (> " + std::to_string(MAX_UCI_REPLAY_PLIES) +
+				     " plies), move list not applied");
+				return;
+			}
 			const Move move = find_replay_move(token, replay);
 			if (move.is_null() || !replay.DoMove(move)) {
 				// A position move list is one transaction: later tokens describe a
@@ -389,8 +398,8 @@ void UciHandler::cmd_position(std::string_view line)
 			}
 			// Each replayed move is permanent, never undone — reset per
 			// move (exactly like Game.cpp after every committed move), NOT
-			// once after the loop: the ply-indexed history arrays hold
-			// MAX_PLY entries, so a single post-loop reset lets DoMove
+			// once after the loop: state_history_ holds MAX_PLY entries,
+			// so a single post-loop reset lets DoMove
 			// write out of bounds during any replay longer than MAX_PLY
 			// plies (issue #53 follow-up; found by the first fastchess
 			// smoke match — 265-ply game, access violation in Release).

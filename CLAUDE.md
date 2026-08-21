@@ -150,11 +150,14 @@ Non-obvious API contracts — the rest of the layout is discoverable.
 - Most `MoveHelper` predicates (`IsCapture`, `IsPromote`, `Value`, ...) take a `const Move&`;
   `IsPawnMove` is the exception, taking a bare `ePiece`.
 - `ThreadData&` is the **first parameter of every search method**. The search runs on `td.board`,
-  never the game board; root state is propagated back in `GetMove()`. The TT is a separate shared
-  parameter — Lazy SMP helpers each get their own `ThreadData`.
+  never the game board, and writes nothing back to it: the root verdict leaves via
+  `SearchResult::game_state` and no other channel. The TT is a separate shared parameter — Lazy SMP
+  helpers each get their own `ThreadData`.
 - **`Board` is the sole authority for position metadata**: `ep_square()`, `castling_rights()`,
-  `halfmove_clock()`, `last_move()`. Move generation reads them from the board it is given and takes
-  no `GameInfo`, so nothing can hand it state that disagrees with the position's Zobrist hash.
+  `halfmove_clock()`, `fullmove_count()`, `last_move()`. Move generation reads them from the board it
+  is given, so nothing can hand it state that disagrees with the position's Zobrist hash. One private
+  `PositionState` per ply holds all of it plus the Zobrist hash, the last-irreversible ply and the
+  captured piece.
 - `GetMove(limits)` returns a `SearchResult` (`SearchResult.h`) — best move, score, node counts and
   the `GameStates` the player adjudicated at its own root. It is never `DRAW_50_MOVES`: the fifty-move
   rule is a fact about the committed position, and `Game::Run` adjudicates it. The returned value is

@@ -22,6 +22,12 @@ struct ThreadData {
 	// Copy-assigned from the game board at the start of every GetMove().
 	Board board;
 
+	// Game outcome adjudicated at this thread's root (ply 0). Thread-local rather than a
+	// single PlayerAiBase-level member because adjustScoreForGameState() runs on every Lazy
+	// SMP helper thread, each writing its own root at ply 0 concurrently — a shared member
+	// would be a data race.
+	GameStates root_game_state = GameStates::STILL_PLAYING;
+
 	// Thread-local main-tree node counter (replaces PlayerAiBase::m_SearchCount for
 	// AIPerplex). Counts pvs() move edges only. Keeping quiescence out is deliberate:
 	// assess_iteration_quality() and completion_ratio are calibrated against main-tree size,
@@ -146,12 +152,10 @@ struct ThreadData {
 		return board.is_repetition(ply) || board.halfmove_clock() >= HALFMOVE_CLOCK_LIMIT;
 	}
 
-	// Updates the game state at the root of the search tree. It lands on the thread-local
-	// board; AIPerplex::GetMove() propagates it to the real game board after the search
-	// returns.
+	// Updates the game state adjudicated at the root of the search tree.
 	void update_game_state(size_t ply, GameStates newState)
 	{
 		if (ply == 0)
-			board.SetGameState(newState);
+			root_game_state = newState;
 	}
 };

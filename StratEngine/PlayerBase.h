@@ -7,7 +7,6 @@
 // Forward declare
 class Move;
 class Board;
-//struct GameInfo;
 
 class PlayerBase : public IPlayer {
   public:
@@ -21,12 +20,6 @@ class PlayerBase : public IPlayer {
 		AI_PERPLEX,        // 6
 	};
 	// Non-virtual
-
-	// Returns the current GameState
-	/*GameInfo::GameStates GetGameState() const
-	{
-		return this->gameState_;
-	}*/
 
 	/* IPlayer implementation */
 	int GetBestScore() const noexcept override { return _bestScore; }

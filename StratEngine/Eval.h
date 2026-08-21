@@ -177,7 +177,7 @@ struct EvalContext {
 	// winner's king PST exactly when eval_mopup is paying for king placement
 	// (issue #118 item 4). Two readers of one gate, not two copies of it.
 	bool mopup_active[NUM_COLORS];
-	// GameInfo::castlingRights, the CastlingRights bit flags. This is a FEN
+	// Board::castling_rights(), the CastlingRights bit flags. This is a FEN
 	// field, so reading it keeps Evaluate() a pure function of the position --
 	// which whether a side has actually castled is not, since no FEN records it.
 	uint8_t castling_rights;

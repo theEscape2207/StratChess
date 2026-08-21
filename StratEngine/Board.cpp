@@ -74,11 +74,11 @@ void Board::clear_board()
 	mailbox_.fill(ePiece::NO_PIECE);
 
 	sideToMove_ = WHITE;
-	gameInfo_.Reset();
+	state_ = PositionState{};
 	reset_repetition_history();
 	currentPly_ = 0;
 
-	gameInfoHistory_.fill(GameInfo{});
+	state_history_.fill(PositionState{});
 	material_score_[WHITE] = material_score_[BLACK] = 0;
 	zobrist_hash_ = 0;
 }
@@ -172,16 +172,17 @@ bool Board::setup_from_fen_impl(const std::string& fen, std::vector<std::string>
 	setup_board(pieces);
 
 	sideToMove_ = state.sideToMove;
-	gameInfo_.epSquare = state.epSquare;
-	gameInfo_.castlingRights = state.castlingRights;
-	gameInfo_.halfmoveClock = state.halfMoveClock;
-	gameInfo_.fullMoveCount = state.fullMoveCounter;
+	state_.ep_square = state.epSquare;
+	state_.castling_rights = state.castlingRights;
+	state_.halfmove_clock = static_cast<uint16_t>(state.halfMoveClock);
+	state_.fullmove_count = static_cast<uint16_t>(state.fullMoveCounter);
+	state_.last_move.Clear();
 
 	// Validate parsed metadata and adjust castling/EP if inconsistent with actual pieces
 	FENParser::ValidatePositionAgainstFENMetadata(*this, state, repairs);
 
-	gameInfo_.epSquare = state.epSquare;
-	gameInfo_.castlingRights = state.castlingRights;
+	state_.ep_square = state.epSquare;
+	state_.castling_rights = state.castlingRights;
 
 	// Seed the repetition history with the position itself. push_position() is otherwise
 	// only reached from DoMove, so without this a board set up from a FEN carries an empty
@@ -229,37 +230,37 @@ std::string Board::ExtractFEN() const
 
 	// 3. Castling availability
 	fen += ' ';
-	if (gameInfo_.castlingRights == CastlingRights::NONE) {
+	if (state_.castling_rights == CastlingRights::NONE) {
 		fen += '-';
 	} else {
-		if (gameInfo_.castlingRights & CastlingRights::WHITE_KINGSIDE)
+		if (state_.castling_rights & CastlingRights::WHITE_KINGSIDE)
 			fen += 'K';
-		if (gameInfo_.castlingRights & CastlingRights::WHITE_QUEENSIDE)
+		if (state_.castling_rights & CastlingRights::WHITE_QUEENSIDE)
 			fen += 'Q';
-		if (gameInfo_.castlingRights & CastlingRights::BLACK_KINGSIDE)
+		if (state_.castling_rights & CastlingRights::BLACK_KINGSIDE)
 			fen += 'k';
-		if (gameInfo_.castlingRights & CastlingRights::BLACK_QUEENSIDE)
+		if (state_.castling_rights & CastlingRights::BLACK_QUEENSIDE)
 			fen += 'q';
 	}
 
 	// 4. En passant target square
 	fen += ' ';
-	if (gameInfo_.epSquare == NO_SQUARE) {
+	if (state_.ep_square == NO_SQUARE) {
 		fen += '-';
 	} else {
-		int file = File(gameInfo_.epSquare);
-		int rank = 7 - Rank(gameInfo_.epSquare);
+		int file = File(state_.ep_square);
+		int rank = 7 - Rank(state_.ep_square);
 		fen += static_cast<char>('a' + file);
 		fen += static_cast<char>('1' + rank);
 	}
 
 	// 5. Halfmove clock
 	fen += ' ';
-	fen += std::to_string(gameInfo_.halfmoveClock);
+	fen += std::to_string(state_.halfmove_clock);
 
 	// 6. Fullmove number
 	fen += ' ';
-	fen += std::to_string(gameInfo_.fullMoveCount);
+	fen += std::to_string(state_.fullmove_count);
 
 	return fen;
 }
@@ -307,16 +308,13 @@ bool Board::DoMove(const Move& m)
 
 	// capturedPiece must be computed before IsValid (which uses it) and before any board changes.
 	const auto capturedPiece = get_captured_piece(m);
-	capturedHistory_[currentPly_] = capturedPiece;
 
 	const ePiece movPiece = GetEffectiveMovPiece(m);
 	assert(MoveHelper::IsValid(m, movPiece, capturedPiece));
 	assert(GetCurrentColor() == PieceHelper::Color(movPiece));
 
 	// Save state for UndoMove
-	gameInfoHistory_[currentPly_] = gameInfo_;
-	irreversiblePlyHistory_[currentPly_] = last_irreversible_ply_;
-	zobrist_history_[currentPly_] = zobrist_hash_;
+	snapshot_state(capturedPiece);
 
 	const eSquare from = m.from();
 	const eSquare to = m.to();
@@ -409,57 +407,59 @@ bool Board::DoMove(const Move& m)
 	}
 
 	// Update castling rights
-	const uint8_t oldCastlingRights = gameInfo_.castlingRights;
+	const uint8_t oldCastlingRights = state_.castling_rights;
 
 	if (PieceHelper::IsKing(movPiece)) {
 		if (sideToMove_ == eColor::WHITE)
-			gameInfo_.castlingRights &= ~CastlingRights::WHITE_BOTH;
+			state_.castling_rights &= ~CastlingRights::WHITE_BOTH;
 		else
-			gameInfo_.castlingRights &= ~CastlingRights::BLACK_BOTH;
+			state_.castling_rights &= ~CastlingRights::BLACK_BOTH;
 	}
 
 	if (PieceHelper::IsOfType(movPiece, ROOK)) {
 		if (from == a1)
-			gameInfo_.castlingRights &= ~CastlingRights::WHITE_QUEENSIDE;
+			state_.castling_rights &= ~CastlingRights::WHITE_QUEENSIDE;
 		else if (from == h1)
-			gameInfo_.castlingRights &= ~CastlingRights::WHITE_KINGSIDE;
+			state_.castling_rights &= ~CastlingRights::WHITE_KINGSIDE;
 		else if (from == a8)
-			gameInfo_.castlingRights &= ~CastlingRights::BLACK_QUEENSIDE;
+			state_.castling_rights &= ~CastlingRights::BLACK_QUEENSIDE;
 		else if (from == h8)
-			gameInfo_.castlingRights &= ~CastlingRights::BLACK_KINGSIDE;
+			state_.castling_rights &= ~CastlingRights::BLACK_KINGSIDE;
 	}
 
 	// Capturing a rook on its starting square also revokes castling rights
 	if (to == a1)
-		gameInfo_.castlingRights &= ~CastlingRights::WHITE_QUEENSIDE;
+		state_.castling_rights &= ~CastlingRights::WHITE_QUEENSIDE;
 	else if (to == h1)
-		gameInfo_.castlingRights &= ~CastlingRights::WHITE_KINGSIDE;
+		state_.castling_rights &= ~CastlingRights::WHITE_KINGSIDE;
 	else if (to == a8)
-		gameInfo_.castlingRights &= ~CastlingRights::BLACK_QUEENSIDE;
+		state_.castling_rights &= ~CastlingRights::BLACK_QUEENSIDE;
 	else if (to == h8)
-		gameInfo_.castlingRights &= ~CastlingRights::BLACK_KINGSIDE;
+		state_.castling_rights &= ~CastlingRights::BLACK_KINGSIDE;
 
-	if (oldCastlingRights != gameInfo_.castlingRights)
-		update_zobrist_castling(oldCastlingRights, gameInfo_.castlingRights);
+	if (oldCastlingRights != state_.castling_rights)
+		update_zobrist_castling(oldCastlingRights, state_.castling_rights);
 
 	// Update en-passant square
-	const eSquare oldEpSquare = gameInfo_.epSquare;
-	gameInfo_.epSquare = MoveHelper::GetEnPassantSquare(m, movPiece);
-	if (oldEpSquare != gameInfo_.epSquare)
-		update_zobrist_ep(oldEpSquare, gameInfo_.epSquare);
+	const eSquare oldEpSquare = state_.ep_square;
+	state_.ep_square = MoveHelper::GetEnPassantSquare(m, movPiece);
+	if (oldEpSquare != state_.ep_square)
+		update_zobrist_ep(oldEpSquare, state_.ep_square);
 
 	// The move that produced the position the board now holds. Move ordering is its only
 	// consumer: MoveSorter front-loads recaptures on the square the opponent just moved to,
 	// so a searcher needs "what was played to get here" at every ply, and the board is the
 	// only object that knows it for a position it has actually reached. It travels with the
-	// rest of gameInfo_ through gameInfoHistory_, so the rollback below and UndoMove both
-	// restore the preceding move without any handling of their own.
-	gameInfo_.lastMove = m;
+	// rest of the ply's PositionState, so the rollback below and UndoMove both restore the
+	// preceding move without any handling of their own.
+	state_.last_move = m;
 
 	update_threefold_rep(m, movPiece);
 
-	if (sideToMove_ == eColor::BLACK)
-		gameInfo_.fullMoveCount++;
+	if (sideToMove_ == eColor::BLACK) {
+		assert(state_.fullmove_count < UINT16_MAX); // a game this long is a bug, not an input
+		state_.fullmove_count++;
+	}
 
 	currentPly_++;
 
@@ -489,13 +489,13 @@ void Board::UndoMove(const Move& m)
 	// The moving piece is currently on m.to() (placed there by DoMove); read before any state changes.
 	const ePiece movingPiece = GetPiece(m.to());
 	// capturedPiece is needed for IsValid and for restoring the board; read from history now.
-	const auto capturedPiece = capturedHistory_[currentPly_];
+	const auto capturedPiece = state_history_[currentPly_].captured_piece;
 	assert(MoveHelper::IsValid(m, movingPiece, capturedPiece));
 	assert(GetCurrentColor() != PieceHelper::Color(movingPiece));
 
 	// Restore saved state
-	gameInfo_ = gameInfoHistory_[currentPly_];
-	last_irreversible_ply_ = irreversiblePlyHistory_[currentPly_];
+	last_irreversible_ply_ = state_history_[currentPly_].last_irreversible_ply;
+	restore_state();
 	const auto from = m.from();
 	const auto to = m.to();
 
@@ -594,7 +594,7 @@ void Board::UndoMove(const Move& m)
 	// Restore hash last: move_piece/add_piece_to_board/remove_piece_from_board all XOR into
 	// zobrist_hash_ as a side-effect, so overwrite with the pre-move snapshot to get the
 	// correct hash back.
-	zobrist_hash_ = zobrist_history_[currentPly_];
+	zobrist_hash_ = state_history_[currentPly_].zobrist_hash;
 }
 
 // Returns the effective moving piece for a move that has NOT yet been applied.
@@ -676,9 +676,10 @@ void Board::update_threefold_rep(const Move& m, ePiece movPiece)
 {
 	if (MoveHelper::IsPawnMove(movPiece) || MoveHelper::IsCapture(m)) {
 		last_irreversible_ply_ = position_history_.size();
-		gameInfo_.halfmoveClock = 0;
+		state_.halfmove_clock = 0;
 	} else {
-		gameInfo_.halfmoveClock++;
+		assert(state_.halfmove_clock < UINT16_MAX); // a game this long is a bug, not an input
+		state_.halfmove_clock++;
 	}
 }
 
@@ -842,22 +843,21 @@ void Board::DoNullMove()
 	assert(currentPly_ < MAX_PLY);
 
 	// Record snapshot for undo
-	capturedHistory_[currentPly_] = ePiece::NO_PIECE;
-	gameInfoHistory_[currentPly_] = gameInfo_;
-	irreversiblePlyHistory_[currentPly_] = last_irreversible_ply_;
-	zobrist_history_[currentPly_] = zobrist_hash_;
+	snapshot_state(ePiece::NO_PIECE);
 
 	// A null move forfeits any pending en-passant right, exactly like any
 	// other non-double-push move does in DoMove() (see GetEnPassantSquare
 	// usage there) — otherwise a stale EP square would illegally survive
 	// one extra ply inside the null-move subtree.
-	if (gameInfo_.epSquare != NO_SQUARE) {
-		update_zobrist_ep(gameInfo_.epSquare, NO_SQUARE);
-		gameInfo_.epSquare = NO_SQUARE;
+	if (state_.ep_square != NO_SQUARE) {
+		update_zobrist_ep(state_.ep_square, NO_SQUARE);
+		state_.ep_square = NO_SQUARE;
 	}
 
-	if (sideToMove_ == eColor::BLACK)
-		gameInfo_.fullMoveCount++;
+	if (sideToMove_ == eColor::BLACK) {
+		assert(state_.fullmove_count < UINT16_MAX); // a game this long is a bug, not an input
+		state_.fullmove_count++;
+	}
 
 	currentPly_++;
 
@@ -871,8 +871,8 @@ void Board::UndoNullMove()
 	// Mirror UndoMove's ply handling: decrement currentPly_, restore saved state
 	currentPly_--;
 
-	gameInfo_ = gameInfoHistory_[currentPly_];
-	last_irreversible_ply_ = irreversiblePlyHistory_[currentPly_];
+	last_irreversible_ply_ = state_history_[currentPly_].last_irreversible_ply;
+	restore_state();
 
 	// Restore side-to-move (toggle)
 	sideToMove_ = (sideToMove_ == eColor::WHITE) ? eColor::BLACK : eColor::WHITE;
@@ -880,5 +880,5 @@ void Board::UndoNullMove()
 	pop_position();
 
 	// Restore zobrist hash from history
-	zobrist_hash_ = zobrist_history_[currentPly_];
+	zobrist_hash_ = state_history_[currentPly_].zobrist_hash;
 }

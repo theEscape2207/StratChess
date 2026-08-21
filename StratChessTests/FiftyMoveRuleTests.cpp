@@ -1,6 +1,6 @@
 // FiftyMoveRuleTests.cpp — Catch2 [fifty_move] tests for the fifty-move rule.
 //
-// The rule is 100 halfmoves. GameInfo::halfmoveClock counts halfmoves (loaded from the FEN
+// The rule is 100 halfmoves. Board::halfmove_clock() counts halfmoves (loaded from the FEN
 // halfmove field, incremented once per DoMove), so every threshold here is in halfmoves.
 
 #include <catch_amalgamated.hpp>
@@ -23,57 +23,63 @@ namespace {
 		return "r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - " + std::to_string(halfmoves) + " 4";
 	}
 
-	GameInfo info_at_clock(int halfmoves)
-	{
-		GameInfo info;
-		info.Reset();
-		info.halfmoveClock = halfmoves;
-		return info;
-	}
-
 } // namespace
 
 // ============================================================================
-// GameInfo threshold — the rule triggers at 100 halfmoves, not 50
+// Clock advance and reset, driven through the board that owns the counter
 // ============================================================================
 
-TEST_CASE("GameInfo: halfmove clock below 100 keeps the game running", "[fifty_move]")
+TEST_CASE("Board: a quiet move below 100 advances the halfmove clock", "[fifty_move]")
 {
 	const int start = GENERATE(49, 50, 98);
 	INFO("starting halfmove clock: " << start);
 
-	GameInfo info = info_at_clock(start);
-	info.UpdateBoardInfo(MoveFactory::MakeMove(g1, f3, MoveType::QUIET), ePiece::WHITE_KNIGHT);
+	Board board(fen_with_clock(start));
+	REQUIRE(board.halfmove_clock() == start);
 
-	CHECK(info.halfmoveClock == start + 1);
-	CHECK(info.gameState == GameStates::STILL_PLAYING);
+	REQUIRE(board.DoMove(MoveFactory::MakeQuiet(f3, g5)));
+
+	CHECK(board.halfmove_clock() == start + 1);
 }
 
-TEST_CASE("GameInfo: halfmove clock 99 -> 100 draws by the fifty-move rule", "[fifty_move]")
+TEST_CASE("Board: a quiet move takes the halfmove clock from 99 to the 100 threshold", "[fifty_move]")
 {
-	GameInfo info = info_at_clock(99);
-	info.UpdateBoardInfo(MoveFactory::MakeMove(g1, f3, MoveType::QUIET), ePiece::WHITE_KNIGHT);
+	Board board(fen_with_clock(99));
 
-	CHECK(info.halfmoveClock == 100);
-	CHECK(info.gameState == GameStates::DRAW_50_MOVES);
+	REQUIRE(board.DoMove(MoveFactory::MakeQuiet(f3, g5)));
+
+	// The board reports the fact; adjudicating the draw from it is Game::Run's job.
+	CHECK(board.halfmove_clock() == HALFMOVE_CLOCK_LIMIT);
 }
 
-TEST_CASE("GameInfo: a capture resets the halfmove clock", "[fifty_move]")
+TEST_CASE("Board: a capture resets the halfmove clock", "[fifty_move]")
 {
-	GameInfo info = info_at_clock(99);
-	info.UpdateBoardInfo(MoveFactory::MakeMove(g1, f3, MoveType::CAPTURE), ePiece::WHITE_KNIGHT);
+	Board board(fen_with_clock(99));
 
-	CHECK(info.halfmoveClock == 0);
-	CHECK(info.gameState == GameStates::STILL_PLAYING);
+	REQUIRE(board.DoMove(MoveFactory::MakeMove(c4, f7, MoveType::CAPTURE)));
+
+	CHECK(board.halfmove_clock() == 0);
 }
 
-TEST_CASE("GameInfo: a pawn move resets the halfmove clock", "[fifty_move]")
+TEST_CASE("Board: a pawn move resets the halfmove clock", "[fifty_move]")
 {
-	GameInfo info = info_at_clock(99);
-	info.UpdateBoardInfo(MoveFactory::MakeMove(e2, e3, MoveType::QUIET), ePiece::WHITE_PAWN);
+	Board board(fen_with_clock(99));
 
-	CHECK(info.halfmoveClock == 0);
-	CHECK(info.gameState == GameStates::STILL_PLAYING);
+	REQUIRE(board.DoMove(MoveFactory::MakeQuiet(d2, d3)));
+
+	CHECK(board.halfmove_clock() == 0);
+}
+
+TEST_CASE("Board: UndoMove restores the halfmove clock across the threshold", "[fifty_move]")
+{
+	Board board(fen_with_clock(99));
+	const auto m = MoveFactory::MakeQuiet(f3, g5);
+
+	REQUIRE(board.DoMove(m));
+	REQUIRE(board.halfmove_clock() == HALFMOVE_CLOCK_LIMIT);
+	board.UndoMove(m);
+
+	CHECK(board.halfmove_clock() == 99);
 }
 
 // ============================================================================
@@ -88,8 +94,7 @@ TEST_CASE("Search from a high-but-legal halfmove clock still searches and return
 	Board board(fen_with_clock(clock));
 	auto ai = make_tactical_engine(board, 4);
 
-	GameInfo info = board.GetGameInfo();
-	REQUIRE(info.halfmoveClock == clock);
+	REQUIRE(board.halfmove_clock() == clock);
 
 	const Move move = ai->GetMove(SearchLimits::fixed_depth(4)).best_move;
 

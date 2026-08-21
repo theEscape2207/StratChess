@@ -75,8 +75,8 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | Move ordering (Sort) | `[sort]` | `SortTests.cpp` |
 | Board DoMove/UndoMove completeness | `[board]` | `BoardTests.cpp` |
 | Board move-type round-trips (all types) | `[board_moves]` | `BoardMoveTests.cpp` |
-| Board GameInfo state lifecycle | `[board_state]` | `BoardStateTests.cpp` |
-| Fifty-move rule (threshold, root, draw reporting) | `[fifty_move]` | `FiftyMoveRuleTests.cpp` |
+| Board position-state lifecycle (ep, castling, clock, last move) | `[board_state]` | `BoardStateTests.cpp` |
+| Fifty-move rule (clock advance/reset via DoMove, root, draw reporting) | `[fifty_move]` | `FiftyMoveRuleTests.cpp` |
 | Board public query APIs + FEN round-trip | `[board_api]` | `BoardApiTests.cpp` |
 | Time management (TimeManager + compute_budget) | `[time_mgr]` | `TimeManagerTests.cpp` |
 | Sliding-piece attack generation (PEXT) | `[magic]` | `MagicBitboardTests.cpp` |
@@ -458,6 +458,13 @@ parser's regex actually demanded all six fields, and `ParseFEN` now counts field
 of its regex. The `[uci]` cases cover 4-, 5- and 6-field FENs, the halfmove/fullmove defaults
 (0 and 1) they imply, and that EPD operations remain rejected.
 
+They also cover the counter bounds (`GameState.h`): a halfmove clock past 150 or a fullmove counter
+past 5899 is rejected with a diagnostic and leaves the board untouched, a value exactly at either
+bound round-trips through `ExtractFEN`, and fullmove `0` loads as `1` — the one input the parser
+repairs rather than passes through. A `position ... moves` list past 11797 plies is refused whole,
+matching the illegal-token path. These bound the *input*; playing on from a position loaded at a
+bound is legal and is covered by `[board_api]`.
+
 The surrounding CLI plumbing (file I/O, stdout/stderr framing, line
 numbering) remains covered by manual validation, matching the existing convention for
 `perft`/`tactical` CLI runners in this file.
@@ -653,3 +660,10 @@ including the fifty-move transition and `HUMAN_EXITED`, deterministic. Test-crea
 A player reports a terminal result with a null `best_move` and `SearchResult::game_state`. Test both
 sides: `GameLoopTests.cpp` verifies `Game::Run()` consumes it (including the score channel), while
 `SearchTests.cpp` and `PlayerHumanTests.cpp` verify each producer reports it correctly.
+
+The verdict is per-call, and only an **aborted** search can carry the previous call's verdict out: any
+search that completes a root frame overwrites it anyway. So the `[search]` cases that matter abort
+before the first root frame finishes — `AIPerplex` via a node limit on a position whose depth-1
+iteration costs more than one 1024-visit poll interval (asserted in the test, not assumed), `AIAgent`
+via a budget already spent on entry. A stale terminal verdict makes
+`handle_empty_move_emergency()` return no move at all, so both cases check `best_move` as well.

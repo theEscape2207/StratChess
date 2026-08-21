@@ -13,7 +13,7 @@
 //
 // Neither the moving piece nor the captured piece is stored in the move:
 //   Moving piece  — obtain via Board::GetEffectiveMovPiece() before DoMove.
-//   Captured piece — Board::capturedHistory_[] stores it during DoMove for undo support;
+//   Captured piece — the ply's Board::PositionState stores it during DoMove for undo support;
 //                    obtain via Board::GetCapturedPiece(move) for MVV-LVA scoring.
 class Move final {
 	static constexpr uint16_t EMPTY_MOVE = 0xFFFF;
