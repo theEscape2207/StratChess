@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 // Snapshot of one accepted iterative-deepening iteration, handed to the
@@ -98,7 +99,10 @@ class AIPerplex final : public PlayerAiBase {
 
 	HashConfigurationResult SetHash(unsigned mb) noexcept override;
 	void StartNewGame() override;
-	void Stop() noexcept { control_.Stop(); }
+	// Arms a launch before its Search call is scheduled. A concurrent Stop is
+	// remembered until Search has applied limits and can safely re-latch it.
+	void PrepareSearch() noexcept;
+	void Stop() noexcept;
 	void StopSearch() noexcept override;
 
 	// Note: NOT to be called directly - only through Factory method (needed to be public due to usage of make_unique)
@@ -215,12 +219,16 @@ class AIPerplex final : public PlayerAiBase {
 	// when no observer was supplied. Called from both accept branches of
 	// iterative_deepening(), after `state` is updated for that iteration.
 	void emit_iteration_info(const ThreadData& td, int depth, int score, const IterationObserver& observer) const;
+	void finish_search_launch() noexcept;
 
 	// MEMBER VARIABLES
 	std::unique_ptr<TranspositionTable> _tt; // persistent transposition table
 	std::unique_ptr<EvalManager> evaluator_; // owned concrete-search evaluator
 	SearchControl control_;                  // owned limits, timer and abort latch
 	SearchTuning tuning_;
+	std::mutex stop_mutex_;
+	bool search_launch_active_{false};
+	bool stop_pending_{false};
 
 	// Per-thread search state (board copy, node counter, PV, killers, history, ...).
 	// Persistent member — history is aged between moves, never cleared — and the

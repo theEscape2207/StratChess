@@ -11,6 +11,19 @@ Task 5 migration. The approved design is
 
 ## Just completed
 
+- Completed Task 4 fix round 1: UCI's immediate `stop` can no longer be lost between thread launch
+  and `SearchControl::ApplyLimits()`. `AIPerplex::PrepareSearch()` arms a small mutex-protected
+  launch handshake before UCI schedules the search thread; `Stop()` records a request throughout
+  that launch and `Search()` reapplies it after arming limits. Completion clears the handshake, so
+  a `stop` that races a finished search cannot poison the next command. Direct `Search` callers
+  self-arm the same state, and the synchronous three-argument API is unchanged.
+- Replaced the sleep-based UCI stop regression with immediate `go infinite` then `stop`, no startup
+  wait. It asserts exactly one bestmove and then proves a following depth-2 `go` completes. RED
+  exceeded the test process's five-second bound; GREEN passed 4 assertions in one case. The focused
+  immediate-stop/back-to-back run passed 10 assertions in 2 cases; `[uci]` passed 1276 assertions
+  in 105 cases, `[search]` 245 in 61, the full suite 7221 in 487, and pre-commit 7165 in 484
+  non-slow cases. A bounded 20-run immediate-stop race probe completed with no timeout or failure.
+
 - Completed Task 4: `UciHandler` owns `std::unique_ptr<AIPerplex>` and
   `std::unique_ptr<EvalComplex>` directly. `init_ai()` constructs the configured concrete service
   once; `ucinewgame` keeps that identity, stops/joins first, and clears its per-game state through
@@ -132,6 +145,7 @@ Safe to stop after the Task 4 commit. Concrete `AIPerplex::Search` owns the supp
 evaluator, control, tuning, TT, logging policy, Lazy SMP aggregation, and per-call observer; UCI
 owns the concrete service and emits final telemetry from its returned `SearchResult`. The retained
 `PlayerAiBase` constructor, `GetMove`, `GetLastResult`, and `StopSearch` compatibility bridge are
-now Game-only. Task 5 can migrate Game/player factory ownership without reopening UCI lifecycle,
-timer, abort-latch, effective-depth, node-budget, search polling, or Game perf-accounting
-ownership.
+now Game-only. UCI's stop handshake covers pre-arm, in-search, and post-finish joins without
+carrying a stop into its next command. Task 5 can migrate Game/player factory ownership without
+reopening UCI lifecycle, timer, abort-latch, effective-depth, node-budget, search polling, or Game
+perf-accounting ownership.

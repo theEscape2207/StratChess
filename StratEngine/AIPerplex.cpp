@@ -113,7 +113,31 @@ AIPerplex::AIPerplex(AIPerplexConfig config)
 	SetVerboseLoggingForCompatibility(config.verbose_logging);
 }
 
+void AIPerplex::PrepareSearch() noexcept
+{
+	std::lock_guard<std::mutex> lock(stop_mutex_);
+	stop_pending_ = false;
+	search_launch_active_ = true;
+}
+
+void AIPerplex::Stop() noexcept
+{
+	{
+		std::lock_guard<std::mutex> lock(stop_mutex_);
+		if (search_launch_active_)
+			stop_pending_ = true;
+	}
+	control_.Stop();
+}
+
 void AIPerplex::StopSearch() noexcept { Stop(); }
+
+void AIPerplex::finish_search_launch() noexcept
+{
+	std::lock_guard<std::mutex> lock(stop_mutex_);
+	search_launch_active_ = false;
+	stop_pending_ = false;
+}
 
 AIPerplex::AIPerplex(Board& board, unsigned md)
     : PlayerAiBase(board, md),
@@ -220,6 +244,16 @@ SearchResult AIPerplex::GetMove(const SearchLimits& limits)
 
 SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, IterationObserver observer)
 {
+	{
+		std::lock_guard<std::mutex> lock(stop_mutex_);
+		// Direct callers have no launch phase. They begin a fresh search here;
+		// UCI has already armed the same handshake before scheduling its thread.
+		if (!search_launch_active_) {
+			stop_pending_ = false;
+			search_launch_active_ = true;
+		}
+	}
+
 	init_search(root);
 	// Snapshot threads_ exactly once: UCI's cmd_setoption (unlike cmd_go/
 	// cmd_ucinewgame/cmd_stop) does not call stop_and_join() before writing
@@ -234,6 +268,11 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	// takes effect starting with the next GetMove() call.
 	const unsigned threads = threads_;
 	control_.ApplyLimits(limits);
+	{
+		std::lock_guard<std::mutex> lock(stop_mutex_);
+		if (stop_pending_)
+			control_.Stop();
+	}
 	const unsigned effective_depth = control_.EffectiveDepth();
 
 	// Lazy SMP: spawn threads_ - 1 helper threads to warm the shared TT while
@@ -294,6 +333,7 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	// Game over at the root: no move to play, and result.game_state carries why.
 	if (bestMove.is_null()) {
 		_bestScore = result.best_score;
+		finish_search_launch();
 		return result;
 	}
 
@@ -303,6 +343,7 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 		               MoveFormatter::ToCoord(bestMove), result.best_score, result.depth_completed, result.elapsed.count(),
 		               total_nodes, result.search_was_stable ? "yes" : "NO");
 	}
+	finish_search_launch();
 	return result;
 }
 

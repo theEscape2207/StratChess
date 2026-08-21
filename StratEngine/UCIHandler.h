@@ -70,8 +70,8 @@ class UciHandler {
 
 	static void send(std::string_view msg); // writes line to stdout + flush
 
-	// Must be declared (and thus constructed/destroyed) before ai_ —
-	// ai_ holds a Board& reference into it that must outlive it.
+	// Search receives board_ as a per-call root. Declaring it before the search
+	// thread keeps that root alive until the handler destructor joins the thread.
 	Board board_;
 
 	std::unique_ptr<AIPerplex> ai_;

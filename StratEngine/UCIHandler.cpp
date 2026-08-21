@@ -413,6 +413,7 @@ void UciHandler::cmd_go(std::string_view line)
 	// which crashes the test binary with no diagnostic rather than failing an assertion.
 	if (!ai_)
 		init_ai();
+	ai_->PrepareSearch();
 
 	GoParams p = parse_go(line);
 	const bool white = (board_.GetCurrentColor() == WHITE);

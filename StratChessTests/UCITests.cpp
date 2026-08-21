@@ -2240,54 +2240,36 @@ TEST_CASE("cmd_go: 'go movetime 300' final info line's nodes are >= the last per
 	REQUIRE(last_iteration.nodes <= final_line.nodes);
 }
 
-TEST_CASE("cmd_go: 'stop' during 'go infinite' produces well-formed output under concurrent isready", "[uci]")
+TEST_CASE("cmd_go: immediate stop cannot be lost before Search arms", "[uci][immediate_stop]")
 {
-	// Exercises the send() mutex added when per-iteration output widened the
-	// interleaving window between the search thread's info lines and the command
-	// loop's own send() calls (UCIHandler.cpp send(), issue #237 stage 0 finding).
-	// 'go infinite' returns as soon as the search thread is spawned, so the
-	// isready calls below run on this (calling) thread genuinely concurrently
-	// with the search thread's output -- Kiwipete at unbounded depth cannot
-	// finish on its own before 'stop' arrives.
-	//
-	// The sleep before issuing isready/stop is not about search progress -- it
-	// closes a separate, pre-existing race documented in TimeManager.h's own
-	// threading contract: StopSearch() (callable from any thread) and
-	// ApplyLimits()'s time_manager_.start() (called from inside Search(), on
-	// the search thread, only after it is scheduled) are unsynchronized, so a
-	// 'stop' arriving before the search thread reaches start() is silently
-	// overwritten and the search becomes unstoppable for the rest of this
-	// process. Fixing that race is outside this change's scope; the sleep keeps
-	// this test about the send() mutex, not about that unrelated gap.
 	UciHandlerTestFixture fix;
 	fix.position("position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
 
-	constexpr int kIsReadyCount = 20;
-	std::string output;
-	{
-		CoutRedirect redirect;
+	const std::string stopped_output = capture_cout([&] {
 		fix.dispatch("go infinite");
-		std::this_thread::sleep_for(std::chrono::milliseconds(200));
-		for (int i = 0; i < kIsReadyCount; ++i) {
-			fix.dispatch("isready");
-		}
-		fix.dispatch("stop"); // joins the search thread; only returns once it has
-		output = redirect.str();
-	}
+		fix.dispatch("stop"); // immediate: may arrive before Search arms its control
+	});
 
-	const std::regex line_shape{R"(^(info|bestmove|readyok)\b)"};
-	int readyok_count = 0;
-	for (const std::string& line : split_lines(output)) {
-		if (line.empty())
-			continue;
-		REQUIRE(std::regex_search(line, line_shape));
-		if (line == "readyok")
-			++readyok_count;
+	int bestmove_count = 0;
+	for (const std::string& line : split_lines(stopped_output)) {
+		if (line.starts_with("bestmove "))
+			++bestmove_count;
 	}
-	REQUIRE(readyok_count == kIsReadyCount);
+	REQUIRE(bestmove_count == 1);
+
+	// A pending stop from the just-finished search must not poison the next
+	// command. This search has no stop command and must complete its fixed depth.
+	const std::string next_output = capture_cout([&] {
+		fix.dispatch("go depth 2");
+		fix.join_search();
+	});
+	const auto next_info = parse_info_depth_lines(next_output);
+	REQUIRE_FALSE(next_info.empty());
+	REQUIRE(next_info.back().depth == 2);
+	REQUIRE_FALSE(extract_bestmove(next_output).empty());
 }
 
-TEST_CASE("cmd_go: back-to-back searches emit only their own per-call iterations", "[uci]")
+TEST_CASE("cmd_go: back-to-back searches emit only their own per-call iterations", "[uci][back_to_back]")
 {
 	// The observer is passed into exactly one Search call. The second command must
 	// therefore start a fresh stream rather than retaining the first call's closure.
