@@ -158,13 +158,21 @@ Non-obvious API contracts — the rest of the layout is discoverable.
   is given, so nothing can hand it state that disagrees with the position's Zobrist hash. One private
   `PositionState` per ply holds all of it plus the Zobrist hash, the last-irreversible ply and the
   captured piece.
-- `GetMove(limits)` returns a `SearchResult` (`SearchResult.h`) — best move, score, node counts and
-  the `GameStates` the player adjudicated at its own root. It is never `DRAW_50_MOVES`: the fifty-move
-  rule is a fact about the committed position, and `Game::Run` adjudicates it. The returned value is
-  the **post-join aggregate**, indistinguishable from `GetLastResult()` for the same call.
+- `AIPerplex` is a standalone concrete search service: `Search(Board, limits, observer)` receives a
+  root and observer per call and returns a `SearchResult` by value. It owns evaluator, TT, tuning and
+  composed `SearchControl`; it is not an `IPlayer`, retains neither a Board nor a result cache, and
+  has no compatibility player metadata. `SearchPlayer { Board&, AIPerplex value }` is the required
+  Game adapter; `CreatePlayer` maps config before type erasure. `ISearchEngine` is deliberately
+  deferred until a second real implementation needs it.
+- `SearchResult` carries best move, score, elapsed time, split node counts and the `GameStates` the
+  player adjudicated at its own root. It is never `DRAW_50_MOVES`: the fifty-move rule is a fact about
+  the committed position, and `Game::Run` adjudicates it. The returned value is the **post-join
+  aggregate** and remains the authoritative record after later searches; Game owns combined totals.
 - `SearchLimits` carries every per-call constraint (clock/movetime/depth/infinite, all optional);
-  `Engine::resolve_limits()` resolves it and `PlayerAiBase::ApplyLimits()` arms the timer. Every
-  `GetMove(limits)` call is self-contained — there is no pre-call ordering contract.
+  `Engine::resolve_limits()` resolves it and composed `SearchControl` arms the timer and owns stop/
+  node-limit state. Every `Search(..., limits)` or `GetMove(limits)` call is self-contained — there
+  is no pre-call ordering contract. UCI owns its concrete service directly for one session and passes
+  a fresh observer per `go`; `ucinewgame` clears per-game state without rebuilding it.
 - `Engine::compute_budget(remaining, increment, moves_to_go)` → `TimeBudget{soft, hard}` is pure.
 - Null-move pruning is gated by `tuning_.null_move_enabled` via `should_try_null_move()` (covers
   zugzwang, mate-score contamination, consecutive nulls, PV/in-check, min-depth).

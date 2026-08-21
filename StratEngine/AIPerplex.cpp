@@ -144,11 +144,10 @@ AIPerplex::HashConfigurationResult AIPerplex::SetHash(unsigned mb) noexcept
 //   - threads_    : never discarded by anything now that ai_ persists across
 //                   games, so there is nothing to restore.
 //   - tuning_     : caller configuration, not accumulated search state --
-//                   the same reasoning as threads_. Game::SetPlayerParams()
-//                   applies game_settings.json's search_tuning overrides and
-//                   then unconditionally calls StartNewGame() on the same
-//                   object; resetting tuning_ here would silently discard
-//                   those overrides before the first move is searched.
+//                   CreatePlayer() applies game_settings.json's search_tuning
+//                   while constructing this service, then starts its first
+//                   game. Resetting tuning_ here would silently discard those
+//                   configured overrides.
 //   - the evaluator: EvalManager/EvalComplex are documented stateless and
 //                    thread-shared (see the Lazy SMP sharing contract
 //                    comment in Eval.h) -- recreating one changes nothing.

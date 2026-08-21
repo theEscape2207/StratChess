@@ -22,6 +22,32 @@ Newest first.
 
 ---
 
+## 2026-08-21 — Concrete production-search boundary (#256)
+
+### Changed
+
+- `AIPerplex` is a standalone concrete service: `Search(const Board&, const SearchLimits&,
+  IterationObserver)` takes its root and optional observer per call and returns completed telemetry
+  by value. It owns evaluator, TT, search control, tuning and per-game search state; it is no longer
+  an `IPlayer` or `PlayerAiBase` subclass and keeps no last-result cache.
+- Game mode uses the required by-value `SearchPlayer { Board&, AIPerplex value }` adapter to preserve
+  `IPlayer::GetMove`. The free, config-aware `CreatePlayer` factory maps concrete configuration and
+  starts lifecycle before erasing the player type. A generic `ISearchEngine` remains intentionally
+  deferred because there is only one production implementation.
+- `SearchControl` composes limit resolution, timer and stop/node state for concrete and legacy search.
+  Per-call iteration observers and returned `SearchResult` telemetry replace mutable capability state;
+  `Game` owns the combined elapsed/node performance totals. UCI owns one concrete service directly
+  across `ucinewgame` and preserves its stop/start lifecycle.
+
+### Validation
+
+- Boundary regressions cover returned-result lifetime, new-game TT/heuristic clearing, legacy
+  aspiration seeding, UCI `eval` breakdown consistency, immediate stop, and concurrent `isready`.
+  Fixed-depth equivalence and timed UCI probes remain required final validation; this refactor makes
+  no Elo or nps claim.
+
+---
+
 ## 2026-08-21 — One reversible position record; the outcome leaves the board (#348 stage 2)
 
 Design: `.claude/plans/gameinfo-position-record-split.md`.

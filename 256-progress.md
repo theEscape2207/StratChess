@@ -2,7 +2,7 @@
 
 ## Current status
 
-Task 5 is complete on `codex/issue-256-design` in the isolated
+Task 6 is complete on `codex/issue-256-design` in the isolated
 `.claude/worktrees/issue-256-design` worktree: Game now owns type-erased players produced by the
 config-aware free factory, while `SearchPlayer` owns the concrete search service by value and
 supplies Game's live board on every call. `AIPerplex` no longer inherits any player class. The
@@ -11,6 +11,21 @@ approved design is
 `Docs/superpowers/plans/2026-08-21-aiperplex-production-search-boundary.md`.
 
 ## Just completed
+
+- Completed Task 6: audited owned production surfaces after Task 5 and found no remaining
+  AIPerplex player/result/observer compatibility state or production implementation downcasts to
+  remove. Existing behavior coverage already proves independent returned results across later
+  searches, `StartNewGame()` TT/heuristic clearing, legacy aspiration's local score helper, and UCI
+  `eval` breakdown consistency, so no artificial RED change was warranted.
+- Updated durable architecture, test-design, changelog and contributor guidance for standalone
+  `AIPerplex`, the mandatory by-value `SearchPlayer` adapter, deferred `ISearchEngine`, config-aware
+  factory, composed `SearchControl`, per-call observers/returned telemetry, Game totals, and direct
+  UCI lifecycle. Corrected stale comments that still named the removed Game setup path.
+- Task 6 validation: focused search/UCI tests, `./build.ps1 tests`, full suite, stale-surface and
+  documentation scans, `git diff --check`, and pre-commit are recorded with exact results in the
+  Task 6 report. The concurrent `isready` overlap remains heuristic because it does not require an
+  observed `info` line; Task 7 must replace it with deterministic test-only synchronization or prove
+  interleaved output.
 
 - Completed Task 5 fix round 1: `AIPerplex` now rejects `EvalTypes::NONE` during concrete
   construction with `AIPerplex requires a SIMPLE or COMPLEX evaluator`, so neither direct callers
@@ -178,15 +193,16 @@ approved design is
 
 ## Next steps
 
-1. Complete Task 6 durable documentation and stale-comment cleanup.
-2. Complete Task 7 final timing and operational-neutrality validation.
+1. Complete Task 7 final timing and operational-neutrality validation.
 
 ## Safe park point
 
-Safe to stop after the Task 5 commit. Game owns `unique_ptr<IPlayer>` instances from the free
+Safe to stop after the Task 6 commit. Game owns `unique_ptr<IPlayer>` instances from the free
 factory; an AIPerplex game player is `SearchPlayer { Board&, AIPerplex value, const description }`.
 The standalone service owns its evaluator, search control, tuning, TT, helper/thread state,
 logging policy, and stop handshake. UCI still owns its concrete AIPerplex directly and its tested
 pending-stop handshake is unchanged. Legacy players retain `PlayerAiBase` and the nonvirtual
-`PlayerBase::GetBestScore` aspiration seed only. Task 6 can update durable docs and stale comments
-without reopening composition, search-tree behavior, UCI lifecycle, or Game perf ownership.
+`PlayerBase::GetBestScore` aspiration seed only. Durable docs now match that boundary. Task 7 is the
+only remaining work: validate fixed-depth equivalence, timed/node UCI behavior, operational smoke,
+bench noise, full gates and self-play without reopening composition, search-tree behavior, UCI
+lifecycle, or Game perf ownership.

@@ -67,22 +67,28 @@ Binaries land in `build/<preset>/`. See `CLAUDE.md` for the full build contract.
 Board board;
 board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 
-auto player = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, 20, board);
-auto* ai = dynamic_cast<PlayerAiBase*>(player.get());
-ai->SetThreads(4);                       // Lazy SMP; default is 1
+// AIPerplex is the standalone concrete search service. It retains search
+// resources, but never a caller's board, result, or observer.
+AIPerplex ai(AIPerplexConfig{.default_depth = 20, .threads = 4});
 
 SearchLimits limits;                     // every constraint is optional
 limits.movetime = std::chrono::milliseconds(5000);
 
-SearchResult result = ai->GetMove(limits);
-Move best = result.best_move;            // result also carries the root game state and node counts
+SearchResult result = ai.Search(board, limits);
+Move best = result.best_move;            // value also carries state, elapsed time and node counts
 ```
 
 `SearchLimits` carries every per-call constraint (clock / movetime / depth / infinite). Each
-`GetMove()` call is self-contained — there is no pre-call ordering contract to satisfy.
+`Search()` call is self-contained — there is no pre-call ordering contract to satisfy. An optional
+iteration observer belongs to that call and completed telemetry is returned by value, so a later
+search cannot overwrite a previous result.
 
-The `dynamic_cast` above is a known wart, not the intended design: `PlayerBase`'s interface does not
-expose the capabilities its consumers need. Tracked by the search-interface decoupling issue.
+Game mode keeps the stable `IPlayer::GetMove(const SearchLimits&)` contract through
+`SearchPlayer { Board&, AIPerplex value }`; it supplies the Game board to the concrete service on
+each move. `CreatePlayer(PlayerConfig, Board&, PlayerCreationOptions)` is the composition root: it
+maps evaluator, defaults, tuning, threads and per-instance logging before type erasure, then starts
+the player's new-game lifecycle. A generic `ISearchEngine` is deliberately deferred: the one real
+service keeps this boundary concrete without introducing an abstraction that has no second use.
 
 ### Configuration
 ```cpp
@@ -109,19 +115,17 @@ ai.tuning().score_draw_threshold = 20;       // Suspicious score=0 detection
             └──────────────┬───────────────┘
                            ▼
 ┌───────────────────────────────────────────────────────────┐
-│                    Player Interface                       │
-│                     (IPlayer.h)                           │
-└───────┬───────────────────────────────────────────────────┘
-        │
-        ├─── PlayerHuman ──────────────────────────────────┐
-        │                                                  │
-        └─── PlayerAiBase (Base Class)                     │
-                  │                                        │
-                  ├─── AIPerplex ★ (Production)            │
-                  ├─── AIAgent (Baseline)                  │
-                  ├─── ABIterative (Legacy)                │
-                  ├─── AIBasic (Legacy)                    │
-                  └─── [Archived: ABIterTrans, AITrans]    │
+│ Game: IPlayer                                               │
+│ ├─ PlayerHuman                                              │
+│ ├─ PlayerAiBase → legacy AIAgent / ABIterative / AIBasic    │
+│ └─ SearchPlayer { Board&, AIPerplex value }                 │
+└────────────────────────────┬──────────────────────────────┘
+                             │ board per GetMove()
+                             ▼
+┌─────────────────────────────────────────────────────────────┐
+│ AIPerplex concrete search service                            │
+│ UCI owns one directly; Game reaches one through SearchPlayer │
+└─────────────────────────────────────────────────────────────┘
                                                            │
 ┌──────────────────────────────────────────────────────────┴──┐
 │                   Search Components                         │
@@ -178,7 +182,7 @@ ai.tuning().score_draw_threshold = 20;       // Suspicious score=0 detection
 `AIPerplex::SetThreads(N)` selects Lazy SMP width; the shipping default is 1, and at 1 no helper
 threads are spawned at all — that path is byte-identical to the pre-SMP single-threaded code.
 
-Above 1, `GetMove()` spawns `N-1` `std::jthread` helpers for the duration of the call. Each helper
+Above 1, `Search()` spawns `N-1` `std::jthread` helpers for the duration of the call. Each helper
 owns its own `ThreadData` (its own `Board` copy, PV, killers, history and node counter) and shares
 only the transposition table and the atomic abort flag. Helpers never report a move: only the main
 thread's result is authoritative. They exist to warm the shared TT.
@@ -189,7 +193,7 @@ Over UCI the width is set with `setoption name Threads value N`; in game mode it
 ### Data Flow
 
 ```
-GetMove() Entry
+Search(root, limits, observer) Entry
     ↓
 Initialize ThreadData (board copy, PV, counters)
     ↓
@@ -567,8 +571,8 @@ that is the one thing helpers deliberately share.
 
 ### SearchResult
 
-**Location**: `SearchResult.h` — its own header because `IPlayer::GetMove()` returns it and cannot
-include a concrete engine.
+**Location**: `SearchResult.h` — its own header because both `IPlayer::GetMove()` and the concrete
+search service return it without exposing either implementation.
 
 ```cpp
 struct SearchResult {
@@ -578,13 +582,15 @@ struct SearchResult {
     GameStates game_state;    // Outcome adjudicated at this player's own root
     int64_t nodes_searched;   // Main-tree node count
     int64_t qnodes_searched;  // Quiescence-tree node count, kept apart
+    std::chrono::milliseconds elapsed; // Completed-search duration
     bool search_was_stable;   // Move unchanged in late depths
 };
 ```
 
-**Purpose**: everything one `GetMove()` call produced, in one returned value. It is the only channel
-by which a player reports a move, a score or the end of a game — there is no side member to read
-back afterwards, and `GetBestScore()` is not refreshed on an ordinary search.
+**Purpose**: everything one call produced, in one returned value. It is the only channel by which a
+player or concrete search service reports a move, score, root outcome and telemetry — there is no
+result cache to read afterwards. `Game` owns the combined elapsed/node totals used for its six-column
+performance rows; no player keeps cross-player accounting.
 
 `game_state` is never `DRAW_50_MOVES`: the fifty-move rule is a fact about the position after the
 move is committed, which only `Game::Run()` can see. The legacy agents and `PlayerHuman` fill
@@ -597,9 +603,9 @@ move is committed, which only `Game::Run()` can see. The legacy agents and `Play
 **Location**: `SearchLimits.h`
 
 Every per-call constraint, all optional: clock (with increment and moves-to-go), movetime, depth,
-infinite. `Engine::resolve_limits()` resolves it and `PlayerAiBase::ApplyLimits()` arms the timer.
-`Engine::compute_budget(remaining, increment, moves_to_go)` → `TimeBudget{soft, hard}` is a pure
-function and is unit-tested as one.
+infinite. `Engine::resolve_limits()` resolves it and composed `SearchControl` arms the timer and
+owns the abort/node-limit state for both concrete and legacy search. `Engine::compute_budget(remaining,
+increment, moves_to_go)` → `TimeBudget{soft, hard}` is a pure function and is unit-tested as one.
 
 ---
 
@@ -777,8 +783,6 @@ in both Debug and Release.
 - ⚠️ Move sorting done inline (should be in a `MoveSorter` class)
 - ⚠️ No counter-move history
 - ⚠️ No singular extensions
-- ⚠️ No UCI `Hash` option — transposition table size is fixed at 256 MB
-- ⚠️ Production search still inherits the legacy `PlayerAiBase` hierarchy
 - ⚠️ No tablebase support
 
 ### Other Algorithms
@@ -788,8 +792,8 @@ in both Debug and Release.
 | **AIAgent** | ✅ Active | Baseline for testing (aspiration windows) |
 | **ABIterative** | 🎭 Legacy | Historical reference (simple ID) |
 | **AIBasic** | 🎭 Legacy | Historical reference (basic alpha-beta) |
-| **ABIterTrans** | ❌ Archived | Old TT bug; `PlayerBase::Create()` throws |
-| **AITrans** | ❌ Archived | Old TT bug; `PlayerBase::Create()` throws |
+| **ABIterTrans** | ❌ Archived | Old TT bug; unavailable from `CreatePlayer()` |
+| **AITrans** | ❌ Archived | Old TT bug; unavailable from `CreatePlayer()` |
 
 ---
 
