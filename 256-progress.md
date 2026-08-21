@@ -20,6 +20,10 @@ Task 1 composes shared search control on `codex/issue-256-design` in the isolate
   `./build.ps1 tests` built successfully, `StratChessTests.exe "[search_control]"` passed 11
   assertions in 4 test cases, `StratChessTests.exe "[search]"` passed 219 assertions in 55 test
   cases, and the full `StratChessTests.exe` passed 7213 assertions in 479 test cases.
+- Follow-up correction: node-budget state remains engaged when the requested limit is zero. RED
+  `[search_control]` failed the explicit `nodes = 0` regression under the old sentinel conversion;
+  GREEN `[search_control]` passed 13 assertions in 5 test cases, `[search]` passed 219 assertions in
+  55 test cases, and the full suite passed 7215 assertions in 480 test cases.
 
 - Approved the revised production-search boundary design.
 - Verified the worktree is a linked worktree rather than the primary checkout.
@@ -35,6 +39,8 @@ Task 1 composes shared search control on `codex/issue-256-design` in the isolate
   `SearchControl::SetDefaults`; the per-call resolved state exists only in `SearchControl`.
 - Existing fixture helpers armed `TimeManager` directly. They now apply a fixed limit through the
   composed legacy interface, preserving the real poll path under test.
+- `SearchLimits::nodes` uses engagement to distinguish no node limit from an explicit zero-node
+  limit; `SearchControl` must retain that distinction rather than normalize zero to unlimited.
 
 - `SearchPlayer` is required by the unchanged `IPlayer::GetMove(const SearchLimits&)` contract and
   the board-per-search-call design; only `ISearchEngine` is deferred.

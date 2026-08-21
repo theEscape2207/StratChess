@@ -3,6 +3,7 @@
 #include "Utils/TimeManager.h"
 #include <chrono>
 #include <cstdint>
+#include <optional>
 
 class SearchControl final {
   public:
@@ -22,5 +23,5 @@ class SearchControl final {
 	unsigned default_depth_;
 	std::chrono::milliseconds default_time_;
 	unsigned effective_depth_{0};
-	int64_t node_limit_{0};
+	std::optional<int64_t> node_limit_;
 };

@@ -25,3 +25,14 @@ TEST_CASE("SearchControl latches the node budget at the first reached total", "[
 	CHECK(control.NodeLimitReached(2048));
 	CHECK(control.IsAborted());
 }
+
+TEST_CASE("SearchControl latches an explicit zero-node budget at the first poll", "[search_control]")
+{
+	SearchControl control(6, 15000ms);
+	SearchLimits limits;
+	limits.nodes = 0;
+	control.ApplyLimits(limits);
+
+	CHECK(control.NodeLimitReached(0));
+	CHECK(control.IsAborted());
+}

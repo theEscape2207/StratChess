@@ -17,7 +17,7 @@ void SearchControl::ApplyLimits(const SearchLimits& limits)
 	const auto resolved = Engine::resolve_limits(limits, default_time_, default_depth_);
 	time_manager_.start(resolved.budget.soft, resolved.budget.hard);
 	effective_depth_ = resolved.effective_depth;
-	node_limit_ = resolved.node_limit.value_or(0);
+	node_limit_ = resolved.node_limit;
 }
 
 void SearchControl::Stop() noexcept { time_manager_.stop(); }
@@ -28,7 +28,7 @@ bool SearchControl::ShouldStopIteration() const noexcept { return time_manager_.
 
 bool SearchControl::NodeLimitReached(int64_t searched_nodes) noexcept
 {
-	if (node_limit_ == 0 || searched_nodes < node_limit_)
+	if (!node_limit_ || searched_nodes < *node_limit_)
 		return false;
 	Stop();
 	return true;
