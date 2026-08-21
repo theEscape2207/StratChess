@@ -12,6 +12,23 @@ approved design is
 
 ## Just completed
 
+- Completed Task 5 fix round 1: `AIPerplex` now rejects `EvalTypes::NONE` during concrete
+  construction with `AIPerplex requires a SIMPLE or COMPLEX evaluator`, so neither direct callers
+  nor `CreatePlayer` can produce a service with a null evaluator. The factory again warns when
+  `search_tuning` is supplied to any non-AIPerplex player, matching the diagnostic Game provided
+  before Task 5 moved composition.
+- Added behavior coverage proving the factory-configured default depth is used when
+  `SearchLimits{}` is empty. Restored the reviewed concurrent `isready` line-integrity and exact
+  `readyok`-count regression alongside the unchanged no-sleep immediate-stop test; the separate
+  overlap test retains its short wait solely to make search-thread `info` output concurrent with
+  command-thread replies.
+- Fix-round TDD evidence: RED `[factory],[output_integrity],[immediate_stop]` ran 9 cases and failed
+  exactly 3 of 61 assertions: direct NONE construction did not throw, factory NONE construction
+  did not throw, and the legacy tuning warning was absent. The default-depth and both UCI tests
+  already passed. GREEN passed 61 assertions in 9 cases; broader
+  `[player],[search_player],[search],[uci]` passed 1580 assertions in 174 cases; the full suite passed 7272 assertions in
+  495 cases; and pre-commit passed 7216 assertions in 492 non-slow cases.
+
 - Completed Task 5: added `SearchPlayer final : IPlayer` with a `Board&`, by-value `AIPerplex`,
   immutable description, fixed type string, and inert generic PV event. `GetMove(limits)` calls
   `search_.Search(board_, limits)`, so every move sees the current Game board instead of a retained

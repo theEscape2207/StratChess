@@ -2269,6 +2269,39 @@ TEST_CASE("cmd_go: immediate stop cannot be lost before Search arms", "[uci][imm
 	REQUIRE_FALSE(extract_bestmove(next_output).empty());
 }
 
+TEST_CASE("cmd_go: stop during go infinite preserves output lines under concurrent isready",
+          "[uci][output_integrity]")
+{
+	// This is separate from the no-sleep immediate-stop regression above. The short wait here
+	// deliberately gives the search thread time to emit iteration lines, widening the overlap
+	// with command-thread readyok replies so this case exercises UciHandler::send() serialization.
+	UciHandlerTestFixture fix;
+	fix.position("position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+
+	constexpr int kIsReadyCount = 20;
+	std::string output;
+	{
+		CoutRedirect redirect;
+		fix.dispatch("go infinite");
+		std::this_thread::sleep_for(std::chrono::milliseconds(200));
+		for (int i = 0; i < kIsReadyCount; ++i)
+			fix.dispatch("isready");
+		fix.dispatch("stop");
+		output = redirect.str();
+	}
+
+	const std::regex line_shape{R"(^(info|bestmove|readyok)\b)"};
+	int readyok_count = 0;
+	for (const std::string& line : split_lines(output)) {
+		if (line.empty())
+			continue;
+		REQUIRE(std::regex_search(line, line_shape));
+		if (line == "readyok")
+			++readyok_count;
+	}
+	REQUIRE(readyok_count == kIsReadyCount);
+}
+
 TEST_CASE("cmd_go: back-to-back searches emit only their own per-call iterations", "[uci][back_to_back]")
 {
 	// The observer is passed into exactly one Search call. The second command must

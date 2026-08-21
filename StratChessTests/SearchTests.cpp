@@ -32,6 +32,31 @@
 #include <initializer_list>
 #include <optional>
 #include <thread>
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/ostream_sink.h>
+
+namespace {
+	class ScopedFactoryLogCapture {
+	  public:
+		ScopedFactoryLogCapture() : sink_(std::make_shared<spdlog::sinks::ostream_sink_mt>(output_))
+		{
+			sink_->set_pattern("%v");
+			spdlog::default_logger()->sinks().push_back(sink_);
+		}
+
+		~ScopedFactoryLogCapture()
+		{
+			auto& sinks = spdlog::default_logger()->sinks();
+			sinks.erase(std::remove(sinks.begin(), sinks.end(), sink_), sinks.end());
+		}
+
+		std::string text() const { return output_.str(); }
+
+	  private:
+		std::ostringstream output_;
+		std::shared_ptr<spdlog::sinks::ostream_sink_mt> sink_;
+	};
+} // namespace
 
 class SearchPlayerTestFixture {
   public:
@@ -78,6 +103,54 @@ TEST_CASE("Player factory creates human and legacy players", "[player][factory]"
 	CHECK(std::string(legacy->GetType()) == "AI Agent");
 	CHECK_FALSE(result.best_move.is_null());
 	CHECK(board.IsLegalMove(result.best_move));
+}
+
+TEST_CASE("AIPerplex rejects the NONE evaluator at construction", "[search][service_api][factory]")
+{
+	const AIPerplexConfig config{.evaluator = EvalManager::EvalTypes::NONE};
+	REQUIRE_THROWS_WITH(AIPerplex(config), "AIPerplex requires a SIMPLE or COMPLEX evaluator");
+}
+
+TEST_CASE("Player factory rejects NONE for an AIPerplex player", "[player][search_player][factory]")
+{
+	Board board;
+	Config::PlayerConfig config;
+	config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::AI_PERPLEX);
+	config.eval = static_cast<unsigned>(EvalManager::EvalTypes::NONE);
+
+	REQUIRE_THROWS_WITH(CreatePlayer(config, board), "AIPerplex requires a SIMPLE or COMPLEX evaluator");
+}
+
+TEST_CASE("Player factory configures the default depth used by empty SearchLimits", "[player][search_player][factory]")
+{
+	Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+	Config::PlayerConfig config;
+	config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::AI_PERPLEX);
+	config.depth = 2;
+	config.eval = static_cast<unsigned>(EvalManager::EvalTypes::COMPLEX);
+	auto player = CreatePlayer(config, board);
+
+	const SearchResult result = player->GetMove(SearchLimits{});
+
+	REQUIRE_FALSE(result.best_move.is_null());
+	REQUIRE(result.depth_completed == 2);
+}
+
+TEST_CASE("Player factory warns when search tuning is supplied to a legacy AI", "[player][factory]")
+{
+	Board board;
+	Config::PlayerConfig config;
+	config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::AIAGENT);
+	config.depth = 1;
+	config.eval = static_cast<unsigned>(EvalManager::EvalTypes::COMPLEX);
+	config.search_tuning = Config::SearchTuningConfig{};
+
+	const ScopedFactoryLogCapture capture;
+	auto player = CreatePlayer(config, board);
+
+	REQUIRE(player != nullptr);
+	REQUIRE(capture.text().find("search_tuning in game_settings.json is ignored for player type 3") !=
+	        std::string::npos);
 }
 
 TEST_CASE("AIPerplex Search uses the board supplied for each call and does not retain observers", "[search][service_api]")
@@ -468,6 +541,7 @@ TEST_CASE("Player factory starts the AIPerplex new-game lifecycle before returni
 	Board board;
 	Config::PlayerConfig config;
 	config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::AI_PERPLEX);
+	config.eval = static_cast<unsigned>(EvalManager::EvalTypes::COMPLEX);
 	auto player = CreatePlayer(config, board);
 
 	CHECK(AIPerlexTestFixture::game_generation(SearchPlayerTestFixture::search(*player)) == 1);

@@ -15,6 +15,7 @@
 #include <cstring>
 #include <iterator>
 #include <new>
+#include <stdexcept>
 #include <spdlog/common.h>
 #include <spdlog/logger.h>
 #include <spdlog/sinks/basic_file_sink.h>
@@ -37,6 +38,13 @@
 // If a future revision lets helper threads log too, ensure_logger_initialized()
 // must be made safe to call concurrently (e.g. via std::call_once) first.
 static std::shared_ptr<spdlog::logger> s_logger = nullptr;
+static std::unique_ptr<EvalManager> create_search_evaluator(EvalManager::EvalTypes type)
+{
+	if (type == EvalManager::EvalTypes::NONE)
+		throw std::invalid_argument("AIPerplex requires a SIMPLE or COMPLEX evaluator");
+	return EvalManager::Create(type);
+}
+
 static void ensure_logger_initialized()
 {
 	// ensure the general default logger is initialized first (no-op if already)
@@ -74,7 +82,7 @@ static void ensure_logger_initialized()
 }
 
 AIPerplex::AIPerplex(AIPerplexConfig config)
-    : evaluator_(EvalManager::Create(config.evaluator)),
+    : evaluator_(create_search_evaluator(config.evaluator)),
       control_(config.default_depth, config.default_time),
       tuning_(config.tuning),
       threads_(std::clamp(config.threads, 1u, 32u)),

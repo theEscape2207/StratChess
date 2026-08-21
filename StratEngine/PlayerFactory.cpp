@@ -9,6 +9,7 @@
 #include "SearchPlayer.h"
 
 #include <sstream>
+#include <spdlog/spdlog.h>
 #include <stdexcept>
 
 namespace {
@@ -63,6 +64,11 @@ namespace {
 std::unique_ptr<IPlayer> CreatePlayer(const Config::PlayerConfig& config, Board& board, PlayerCreationOptions options)
 {
 	const auto type = static_cast<PlayerBase::ePlayerTypes>(config.type);
+	if (config.search_tuning && type != PlayerBase::ePlayerTypes::AI_PERPLEX) {
+		spdlog::warn("search_tuning in game_settings.json is ignored for player type {} "
+		             "(only supported by AI_PERPLEX)",
+		             config.type);
+	}
 	if (type == PlayerBase::ePlayerTypes::HUMAN)
 		return std::make_unique<PlayerHuman>(board);
 
