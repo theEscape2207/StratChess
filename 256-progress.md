@@ -12,6 +12,20 @@ approved design is
 
 ## Just completed
 
+- Task 7 harness repair: fixed the two custom UCI fixed-depth drivers rather than changing the
+  correct immediate-stop production behavior. `Compare-SearchEquivalence.ps1` and `Run-Bench.ps1`
+  now leave stdin open after `go`, drain stderr asynchronously while they read stdout line-by-line,
+  wait for `bestmove`, then send `quit`, close stdin, and wait for clean shutdown under the existing
+  600-second overall ceiling. Timeout, premature-exit, and nonzero-exit errors now include the
+  captured stdout and stderr. Both reject a result without a `bestmove` or the requested depth.
+- Harness TDD evidence: the new comparator invariant was RED against the candidate with the old
+  driver at depth 2: `startpos` returned only `info depth 0 ... nodes 0` plus emergency
+  `bestmove a2a4`, so it failed the requested-depth check. GREEN: comparator self-test passed 21
+  cases (including depth-0 emergency and missing-bestmove transcripts); same-binary depth-2 compare
+  passed all six positions / 30 lines; `Run-Bench` depth 2 returned nonzero completed search rows
+  for all eight positions; and the final candidate versus merge-base `54d3e54dbac8` depth-12 gate
+  passed all six positions / 90 compared lines. `git diff --check` remained clean.
+
 - Completed Task 6 fix round 1: replaced the two stale `ai.tuning()` examples with compile-valid
   `SearchTuning` values passed through `AIPerplexConfig` before construction. Corrected the service
   ownership wording: it retains no caller Board/reference, but copies each supplied root into owned
@@ -200,14 +214,18 @@ approved design is
   existing `threads_` snapshot, and the six-column combined-player `SimplePerfStats.txt` contract.
 - Search-related production changes require test-first checkpoints, search-focused review, full
   test validation, and self-play validation before completion.
+- A fixed-depth UCI harness must not batch `quit` (or EOF) behind `go`: `quit` correctly stops and
+  joins the running search, including the intentional pending-stop launch window. Waiting for
+  `bestmove` is therefore part of the measurement protocol, not a timing workaround.
 
 ## Next steps
 
-1. Complete Task 7 final timing and operational-neutrality validation.
+1. Complete Task 7 final timing and operational-neutrality validation. The repaired equivalence and
+   benchmark drivers are ready for the remaining validation work; Task 7 is still incomplete.
 
 ## Safe park point
 
-Safe to stop after the Task 6 fix-round commit. Game owns `unique_ptr<IPlayer>` instances from the free
+Safe to stop after the Task 7 harness-fix commit. Game owns `unique_ptr<IPlayer>` instances from the free
 factory; an AIPerplex game player is `SearchPlayer { Board&, AIPerplex value, const description }`.
 The standalone service owns its evaluator, search control, tuning, TT, helper/thread state,
 logging policy, and stop handshake. UCI still owns its concrete AIPerplex directly and its tested
@@ -215,4 +233,5 @@ pending-stop handshake is unchanged. Legacy players retain `PlayerAiBase` and th
 `PlayerBase::GetBestScore` aspiration seed only. Durable docs now match that boundary. Task 7 is the
 only remaining work: validate fixed-depth equivalence, timed/node UCI behavior, operational smoke,
 bench noise, full gates and self-play without reopening composition, search-tree behavior, UCI
-lifecycle, or Game perf ownership.
+lifecycle, or Game perf ownership. The only outstanding work is Task 7's remaining full operational
+validation and final review; do not reintroduce batch `go`/`quit` validation drivers.

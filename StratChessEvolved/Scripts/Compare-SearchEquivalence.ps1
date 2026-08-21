@@ -206,6 +206,24 @@ function Remove-NodeSplitLines {
     return @($Lines | Where-Object { $_ -notmatch '^info string treenodes ' })
 }
 
+function Test-FixedDepthTranscript {
+    <#
+        A fixed-depth measurement is valid only if the engine actually reached
+        that depth and completed it with a best move.  In particular, a
+        transcript from a search aborted by an eagerly queued `quit` must not
+        compare as an apparently successful empty run.
+    #>
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Lines,
+        [Parameter(Mandatory)][int]$SearchDepth
+    )
+
+    return [pscustomobject]@{
+        ReachedDepth = @($Lines | Where-Object { $_ -match "^info depth $SearchDepth\b" }).Count -gt 0
+        HasBestMove  = @($Lines | Where-Object { $_ -match '^bestmove \S+' }).Count -gt 0
+    }
+}
+
 function Compare-Transcript {
     <#
         Two normalised transcripts. Returns the FIRST difference, because that is
@@ -327,6 +345,15 @@ if ($SelfTest) {
     $noSplit = Remove-NodeSplitLines (ConvertTo-ComparableLines $sampleOut)
     Assert-Case 'node-split lines can be dropped' ($noSplit.Count -eq 4)
 
+    $completion = Test-FixedDepthTranscript -Lines (ConvertTo-ComparableLines $sampleOut) -SearchDepth 2
+    Assert-Case 'fixed-depth transcript requires the requested depth and a bestmove' ($completion.ReachedDepth -and $completion.HasBestMove)
+    $aborted = ConvertTo-ComparableLines "info depth 0 score cp 0 nodes 0 time 0 pv a2a4`nbestmove a2a4"
+    $completion = Test-FixedDepthTranscript -Lines $aborted -SearchDepth 2
+    Assert-Case 'aborted transcript cannot satisfy a fixed-depth search' ((-not $completion.ReachedDepth) -and $completion.HasBestMove)
+    $missingBestMove = ConvertTo-ComparableLines 'info depth 2 score cp 24 nodes 97 time 5 pv e2e4 e7e5'
+    $completion = Test-FixedDepthTranscript -Lines $missingBestMove -SearchDepth 2
+    Assert-Case 'requested depth without bestmove is incomplete' ($completion.ReachedDepth -and (-not $completion.HasBestMove))
+
     Assert-Case 'FEN line becomes a fen spec' ((ConvertTo-PositionSpec '8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1') -eq 'fen 8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1')
     Assert-Case 'startpos passes through'      ((ConvertTo-PositionSpec 'startpos') -eq 'startpos')
     Assert-Case 'move list passes through'     ((ConvertTo-PositionSpec 'startpos moves e2e4 e7e5') -eq 'startpos moves e2e4 e7e5')
@@ -351,6 +378,98 @@ if ($SelfTest) {
 # Engine driving
 # ---------------------------------------------------------------------------
 
+function Invoke-UciSearchToBestMove {
+    <#
+        Send a fixed-depth UCI request, keeping stdin open until the engine has
+        answered it. Reading stdout line-by-line while stderr drains
+        asynchronously avoids both the historical queued-quit race and pipe
+        back-pressure deadlocks.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$ExePath,
+        [Parameter(Mandatory)][string]$WorkDir,
+        [Parameter(Mandatory)][string[]]$Commands,
+        [Parameter(Mandatory)][int]$SearchDepth,
+        [Parameter(Mandatory)][string]$Description
+    )
+
+    $psi = [System.Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName               = $ExePath
+    $psi.Arguments              = 'uci'
+    $psi.WorkingDirectory       = $WorkDir
+    $psi.RedirectStandardInput  = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError  = $true
+    $psi.UseShellExecute        = $false
+
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    $stderrTask = $proc.StandardError.ReadToEndAsync()
+    $out = [System.Text.StringBuilder]::new()
+    $timer = [System.Diagnostics.Stopwatch]::StartNew()
+
+    function Get-UciFailureMessage {
+        param([Parameter(Mandatory)][string]$Reason)
+
+        if (-not $proc.HasExited) {
+            $proc.Kill()
+            $proc.WaitForExit()
+        }
+        $stderr = $stderrTask.GetAwaiter().GetResult()
+        return "$Reason`nEngine stderr:`n$stderr`nEngine output:`n$out"
+    }
+
+    try {
+        foreach ($command in $Commands) {
+            $proc.StandardInput.WriteLine($command)
+        }
+        $proc.StandardInput.Flush()
+
+        $gotBestMove = $false
+        while (-not $gotBestMove) {
+            $remaining = 600000 - [int]$timer.ElapsedMilliseconds
+            if ($remaining -le 0) {
+                throw (Get-UciFailureMessage "Engine did not finish within 600s (depth $SearchDepth): $Description")
+            }
+
+            $lineTask = $proc.StandardOutput.ReadLineAsync()
+            if (-not $lineTask.Wait($remaining)) {
+                throw (Get-UciFailureMessage "Engine did not finish within 600s (depth $SearchDepth): $Description")
+            }
+            $line = $lineTask.GetAwaiter().GetResult()
+            if ($null -eq $line) { break }
+            [void]$out.AppendLine($line)
+            if ($line -match '^bestmove \S+') { $gotBestMove = $true }
+        }
+
+        if (-not $gotBestMove) {
+            throw (Get-UciFailureMessage "Engine exited before bestmove (depth $SearchDepth): $Description")
+        }
+
+        $proc.StandardInput.WriteLine('quit')
+        $proc.StandardInput.Flush()
+        $proc.StandardInput.Close()
+
+        $remaining = 600000 - [int]$timer.ElapsedMilliseconds
+        if ($remaining -le 0 -or -not $proc.WaitForExit($remaining)) {
+            throw (Get-UciFailureMessage "Engine did not exit within 600s after bestmove (depth $SearchDepth): $Description")
+        }
+
+        [void]$out.Append($proc.StandardOutput.ReadToEnd())
+        $stderr = $stderrTask.GetAwaiter().GetResult()
+        if ($proc.ExitCode -ne 0) {
+            throw "Engine exited with code $($proc.ExitCode) (depth $SearchDepth): $Description`nEngine stderr:`n$stderr`nEngine output:`n$out"
+        }
+        return $out.ToString()
+    }
+    finally {
+        if (-not $proc.HasExited) {
+            $proc.Kill()
+            $proc.WaitForExit()
+        }
+        $proc.Dispose()
+    }
+}
+
 function Invoke-FixedDepthSearch {
     <#
         One position in a FRESH engine process, so no transposition-table state
@@ -364,39 +483,27 @@ function Invoke-FixedDepthSearch {
         [Parameter(Mandatory)][int]$SearchDepth
     )
 
-    $script = @(
+    $commands = @(
         'uci'
         'isready'
         "setoption name Threads value $ThreadCount"
         "position $Spec"
         "go depth $SearchDepth"
-        'quit'
-    ) -join "`n"
+    )
 
-    $psi = [System.Diagnostics.ProcessStartInfo]::new()
-    $psi.FileName               = $ExePath
-    $psi.Arguments              = 'uci'
-    $psi.WorkingDirectory       = $WorkDir
-    $psi.RedirectStandardInput  = $true
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError  = $true
-    $psi.UseShellExecute        = $false
-
-    $proc = [System.Diagnostics.Process]::Start($psi)
-    $proc.StandardInput.Write($script + "`n")
-    $proc.StandardInput.Flush()
-    $proc.StandardInput.Close()
-
-    if (-not $proc.WaitForExit(600000)) {
-        $proc.Kill()
-        throw "Engine did not finish within 600s (depth $SearchDepth): $Spec"
-    }
-
-    $out = $proc.StandardOutput.ReadToEnd()
+    $out = Invoke-UciSearchToBestMove -ExePath $ExePath -WorkDir $WorkDir -Commands $commands `
+                                      -SearchDepth $SearchDepth -Description $Spec
 
     $lines = ConvertTo-ComparableLines -Output $out
     if ($lines.Count -eq 0) {
         throw "No 'info depth' or 'bestmove' output from $ExePath for position: $Spec`nEngine output:`n$out"
+    }
+
+    $completion = Test-FixedDepthTranscript -Lines $lines -SearchDepth $SearchDepth
+    if (-not $completion.ReachedDepth -or -not $completion.HasBestMove) {
+        throw ("Fixed-depth search did not complete depth $SearchDepth for position: $Spec" +
+               "`nReached requested depth: $($completion.ReachedDepth); emitted bestmove: $($completion.HasBestMove)." +
+               "`nEngine output:`n$out")
     }
     return $lines
 }
