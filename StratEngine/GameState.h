@@ -32,10 +32,15 @@ enum class GameStates {
 inline constexpr int HALFMOVE_CLOCK_LIMIT = 100;
 
 // Bounds on what a caller may supply, taken from the limits of the game rather than from the
-// storage type. The longest possible chess game is 5898.5 moves
-// (https://wismuth.com/chess/longest-game.html); the 75-move rule caps the halfmove clock at 150.
-// A value past these describes a game that cannot be played, so it is rejected, not repaired.
-// These bound the input only -- playing on from a position loaded at the limit is legal.
-inline constexpr int MAX_FEN_HALFMOVE_CLOCK = 150;
+// storage type: the longest possible chess game is 5898.5 moves, i.e. 11797 halfmoves
+// (https://wismuth.com/chess/longest-game.html). A value past these describes a game that cannot be
+// played, so it is rejected rather than repaired. They bound the input only -- playing on from a
+// position loaded at a bound is legal, and the increments assert against the field maximum instead.
+//
+// The halfmove clock is bounded by game length, NOT by the 50- or 75-move rule. Those are
+// adjudication thresholds, and this parser does not referee: it repairs rule-inconsistent castling
+// and en-passant metadata rather than rejecting it. A tighter bound also refuses synthetic test
+// positions -- the perft corpus carries clocks up to 253.
+inline constexpr int MAX_FEN_HALFMOVE_CLOCK = 11797;
 inline constexpr int MAX_FEN_FULLMOVE_COUNT = 5899;
 inline constexpr size_t MAX_UCI_REPLAY_PLIES = 11797;

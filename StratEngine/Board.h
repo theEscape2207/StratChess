@@ -246,7 +246,7 @@ class Board final {
 	int material_score_[NUM_COLORS]{0};
 
 	// Ply-indexed undo state (pre-allocated to MAX_PLY for O(1) unmake)
-	PositionState state_;
+	PositionState state_{};
 	std::array<PositionState, MAX_PLY> state_history_{};
 
 	void snapshot_state(ePiece capturedPiece) noexcept

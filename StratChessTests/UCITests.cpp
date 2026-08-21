@@ -1003,7 +1003,7 @@ TEST_CASE("Board::SetupFromFEN: halfmove clock past MAX_FEN_HALFMOVE_CLOCK is re
 	Board board;
 	REQUIRE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"));
 
-	REQUIRE_FALSE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 151 1"));
+	REQUIRE_FALSE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 11798 1"));
 
 	// Untouched means the previous position, not a reset and not an empty board.
 	CHECK(board.GetPiece(e1) == WHITE_KING);
@@ -1013,12 +1013,12 @@ TEST_CASE("Board::SetupFromFEN: halfmove clock past MAX_FEN_HALFMOVE_CLOCK is re
 TEST_CASE("Board::SetupFromFEN: halfmove clock at MAX_FEN_HALFMOVE_CLOCK loads", "[uci]")
 {
 	Board board;
-	REQUIRE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 150 1"));
+	REQUIRE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 11797 1"));
 
 	std::istringstream fss(board.ExtractFEN());
 	std::vector<std::string> fenParts{std::istream_iterator<std::string>(fss), std::istream_iterator<std::string>()};
 	REQUIRE(fenParts.size() == 6);
-	CHECK(fenParts[4] == "150");
+	CHECK(fenParts[4] == "11797");
 }
 
 TEST_CASE("Board::SetupFromFEN: fullmove counter past MAX_FEN_FULLMOVE_COUNT is rejected", "[uci]")

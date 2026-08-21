@@ -398,8 +398,8 @@ void UciHandler::cmd_position(std::string_view line)
 			}
 			// Each replayed move is permanent, never undone — reset per
 			// move (exactly like Game.cpp after every committed move), NOT
-			// once after the loop: the ply-indexed history arrays hold
-			// MAX_PLY entries, so a single post-loop reset lets DoMove
+			// once after the loop: state_history_ holds MAX_PLY entries,
+			// so a single post-loop reset lets DoMove
 			// write out of bounds during any replay longer than MAX_PLY
 			// plies (issue #53 follow-up; found by the first fastchess
 			// smoke match — 265-ply game, access violation in Release).

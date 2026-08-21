@@ -267,3 +267,61 @@ TEST_CASE("Board::UndoMove keeps fullMoveCount stable across repeated Black make
 	CHECK(board.fullmove_count() == expected);
 	CHECK(board.ExtractFEN() == fenBefore);
 }
+
+// ── The FEN input bound is not a runtime invariant ────────────────────────────
+
+TEST_CASE("Board: playing on from the fullmove input bound is legal", "[board_api]")
+{
+	// MAX_FEN_FULLMOVE_COUNT bounds what a caller may SUPPLY. The Debug assert on the increment
+	// guards the field maximum, not that bound, so a position loaded at the bound must play on
+	// without tripping it. Wiring the assert to the input bound instead would be silent in Release.
+	Board board("4k3/8/8/8/8/8/8/4K3 b - - 0 5899");
+	REQUIRE(board.fullmove_count() == MAX_FEN_FULLMOVE_COUNT);
+
+	const auto m = MoveFactory::MakeQuiet(e8, d8);
+	REQUIRE(board.DoMove(m));
+	CHECK(board.fullmove_count() == MAX_FEN_FULLMOVE_COUNT + 1);
+
+	board.UndoMove(m);
+	CHECK(board.fullmove_count() == MAX_FEN_FULLMOVE_COUNT);
+}
+
+// ── Null move round-trips the en-passant square ───────────────────────────────
+
+TEST_CASE("Board: UndoNullMove restores a live en-passant square and the clock", "[board_api]")
+{
+	// DoNullMove forfeits the EP square with its own bespoke logic, separate from DoMove's.
+	// The other null-move cases start from a position with no EP square, so nothing covers it.
+	Board board("rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6 3 2");
+	const std::string fenBefore = board.ExtractFEN();
+	REQUIRE(board.ep_square() == c6);
+
+	board.DoNullMove();
+	CHECK(board.ep_square() == NO_SQUARE);   // forfeited for the null-move subtree
+	CHECK(board.halfmove_clock() == 3);      // a null move is not a halfmove
+
+	board.UndoNullMove();
+	CHECK(board.ep_square() == c6);
+	CHECK(board.ExtractFEN() == fenBefore);
+}
+
+// ── The illegal-move rollback restores every field ──────────────────────────
+
+TEST_CASE("Board: a move rejected for leaving the king in check restores the whole record", "[board_api]")
+{
+	// DoMove's rollback is the one path where make and unmake interleave: change_player() and
+	// push_position() both run before UndoMove. Every field is non-default here — EP square set,
+	// partial castling rights, non-zero clock — so a wrong-index or partial restore cannot hide
+	// behind a zero. The knight on d2 is pinned by the b4 bishop against the king on e1, so
+	// Nd2-f3 is pseudolegal but leaves the king in check, and DoMove must reject it.
+	Board board("rnbqkbnr/pp1ppppp/8/2p5/1b2P3/8/PPPN1PPP/R1BQKBNR w KQk c6 3 3");
+	const std::string fenBefore = board.ExtractFEN();
+	const uint64_t hashBefore = board.get_zobrist_hash();
+	const Move lastMoveBefore = board.last_move();
+
+	REQUIRE_FALSE(board.DoMove(MoveFactory::MakeQuiet(d2, f3)));
+
+	CHECK(board.ExtractFEN() == fenBefore);
+	CHECK(board.get_zobrist_hash() == hashBefore);
+	CHECK(board.last_move() == lastMoveBefore);
+}
