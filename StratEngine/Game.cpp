@@ -187,8 +187,8 @@ std::unique_ptr<IPlayer> Game::SetPlayerParams(const Config::PlayerConfig& confi
 	player->SetEvalEngine(static_cast<EvalManager::EvalTypes>(config.eval));
 
 	// Enable AIPerplex verbose logging in game mode (opt-in here; UCI/test modes disable it).
-	if (dynamic_cast<AIPerplex*>(player.get())) {
-		AIPerplex::SetVerboseLogging(true);
+	if (auto* perplex = dynamic_cast<AIPerplex*>(player.get())) {
+		perplex->SetVerboseLoggingForCompatibility(true);
 	}
 
 	// Apply SearchTuning — only valid for AI_PERPLEX (type 6)

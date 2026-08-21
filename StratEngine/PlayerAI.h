@@ -53,7 +53,7 @@ class PlayerAiBase : public PlayerBase {
 
 	/// Signal the search to stop immediately (e.g. from UCI 'stop').
 	/// Thread-safe: may be called from any thread.
-	void StopSearch() noexcept;
+	virtual void StopSearch() noexcept;
 
 	PlayerAiBase(const PlayerAiBase&) = delete;
 	PlayerAiBase& operator=(const PlayerAiBase&) = delete;

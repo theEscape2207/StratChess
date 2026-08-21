@@ -11,6 +11,11 @@ giving UCI concrete ownership and per-call observation, is next. The approved de
 
 ## Just completed
 
+- Completed Task 3 fix round 1: `AIPerplex` is again the sole owner of its stop latch. `PlayerAiBase::StopSearch()` is virtual, and the AIPerplex override stops owned `SearchControl`; all inherited-control reads were removed from the concrete search internals. A real asynchronous regression stops one direct search through a `PlayerAiBase&`, then proves the next direct fixed-depth `Search` reaches depth 2 rather than inheriting the prior abort.
+- Made verbosity policy per AIPerplex instance. The shared logger is now only a sink; construction and Game's temporary cast branch configure the individual engine, so constructing an opposite-policy engine cannot alter an existing engine. The retained static verbosity call is a no-op source-compatibility bridge for deferred UCI/tactical callers, scheduled for Task 4/5 cleanup.
+- Strengthened direct observer-lifetime coverage: the first observer is unchanged by the second search, and a third observer-free search changes neither earlier counter. `ThreadData` now documents AIPerplex/SearchControl ownership instead of PlayerAiBase ownership.
+- Fix-round TDD evidence: RED `[search][service_api]` produced the intended failures — a direct search after a compatibility stop completed depth 0, and constructing verbose engine B flipped quiet engine A's policy. GREEN `[search]` passed 245 assertions in 61 cases; `[uci],[game_loop]` passed 1312 assertions in 106 cases; the full suite passed 7249 assertions in 487 cases; and pre-commit passed 7193 assertions in 484 non-slow cases. A bounded 30-second AIPerplex self-play completed eight logged moves without a crash or missing move result before timeout.
+
 - Completed Task 3: introduced `AIPerplexConfig`, namespace-level `SearchTuning`, and the
   `Search(const Board&, const SearchLimits&, IterationObserver)` service API. Construction now
   owns the evaluator, `SearchControl`, transposition table sizing, tuning, logging policy, and

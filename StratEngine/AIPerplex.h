@@ -98,6 +98,7 @@ class AIPerplex final : public PlayerAiBase {
 
 	HashConfigurationResult SetHash(unsigned mb) noexcept override;
 	void StartNewGame() override;
+	void StopSearch() noexcept override;
 
 	// Registers a callback invoked once per accepted iterative-deepening iteration
 	// (both ACCEPT_AND_CONTINUE and ACCEPT_AND_STOP, never REJECT_AND_STOP), from
@@ -195,10 +196,6 @@ class AIPerplex final : public PlayerAiBase {
 	// quiescence edge). So the stop lands at the first poll at or past the budget, not at
 	// the first multiple of 1024 of the budget's own counter.
 	bool poll_search_limits(ThreadData& td);
-	// The deferred PlayerAiBase/UCI bridge may asynchronously call
-	// PlayerAiBase::StopSearch(). New Search callers use control_ exclusively.
-	bool compatibility_stop_requested() const noexcept { return PlayerAiBase::IsAborted(); }
-
 	// Lazy SMP helper thread entry point: plain iterative-deepening loop with
 	// no quality gates (no assess_iteration_quality, no emergency handling,
 	// no game-state/root propagation, no logging). Result is discarded —
@@ -254,8 +251,9 @@ class AIPerplex final : public PlayerAiBase {
 	// path in GetMove() — no helper_tds_ construction, no thread spawn.
 	unsigned threads_{1};
 
-	// logging control: enable detailed logging when needed (default: false)
-	static inline bool s_verbose_logging = false;
+	// Per-service logging policy. The shared logger is only a sink; every
+	// AIPerplex instance decides independently whether to emit diagnostics.
+	bool verbose_logging_{false};
 
 	// Per-iteration UCI diagnostic hook (see SetIterationObserver). Default-constructed
 	// empty: emit_iteration_info() checks this before doing any work, so an unregistered
@@ -275,11 +273,12 @@ class AIPerplex final : public PlayerAiBase {
 #endif
 
   public:
-	// Configure logger verbosity at runtime (call before heavy runs if needed).
-	// When enabled, ensures the AIPerplex logger is initialized and sets its level to debug.
-	// When disabled, silences the logger via spdlog::level::off (log helpers need only a null-check).
+	// Compatibility no-op for unmigrated UCI/tactical callers. Task 4 removes it.
 	static void SetVerboseLogging(bool enabled) noexcept;
-	static bool IsVerboseLoggingEnabled() noexcept { return s_verbose_logging; }
+	// Transitional per-instance policy setter used by Game until Task 5 moves
+	// front-end policy into the factory.
+	void SetVerboseLoggingForCompatibility(bool enabled) noexcept;
+	bool IsVerboseLoggingEnabled() const noexcept { return verbose_logging_; }
 
 	// Access to tuning parameters
 	SearchTuning& tuning() { return tuning_; }

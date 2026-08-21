@@ -13,7 +13,7 @@
 // Deliberately NOT in here:
 //   - TranspositionTable  — shared across threads by design; passed explicitly
 //   - SearchTuning        — read-only configuration
-//   - time control        — control plane owned by PlayerAiBase
+//   - time control        — SearchControl owned by AIPerplex
 struct ThreadData {
 	static constexpr int MAX_KILLERS = 2;
 	static constexpr int32_t HISTORY_MAX = 16'384;
@@ -23,13 +23,13 @@ struct ThreadData {
 	Board board;
 
 	// Game outcome adjudicated at this thread's root (ply 0). Thread-local rather than a
-	// single PlayerAiBase-level member because adjustScoreForGameState() runs on every Lazy
+	// single AIPerplex-level member because adjustScoreForGameState() runs on every Lazy
 	// SMP helper thread, each writing its own root at ply 0 concurrently — a shared member
 	// would be a data race.
 	GameStates root_game_state = GameStates::STILL_PLAYING;
 
-	// Thread-local main-tree node counter (replaces PlayerAiBase::m_SearchCount for
-	// AIPerplex). Counts pvs() move edges only. Keeping quiescence out is deliberate:
+	// Thread-local main-tree node counter owned by AIPerplex. Counts pvs() move edges only.
+	// Keeping quiescence out is deliberate:
 	// assess_iteration_quality() and completion_ratio are calibrated against main-tree size,
 	// so folding it in here would change search behaviour, not just reporting.
 	int64_t nodes_searched = 0;
@@ -39,8 +39,7 @@ struct ThreadData {
 	// the main tree — and are reported both together (UCI 'nodes') and apart (Run-Bench.ps1).
 	int64_t qnodes_searched = 0;
 
-	// Node-based time-check counter (replaces PlayerAiBase::nodes_since_check_ for
-	// AIPerplex). Reset alongside nodes_searched. Under Lazy SMP each helper thread
+	// Node-based SearchControl polling counter. Reset alongside nodes_searched. Under Lazy SMP each helper thread
 	// increments its own copy — no cross-thread contention — but only thread 0 ever
 	// calls the wall-clock check (see pvs()/quiescence(): gated on thread_id == 0).
 	// Helper threads rely solely on the cheap atomic IsAborted() read instead.

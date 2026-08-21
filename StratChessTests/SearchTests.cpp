@@ -25,8 +25,10 @@
 #include "TranspositionTable.h"
 #include "defines.h"
 #include <chrono>
+#include <atomic>
 #include <initializer_list>
 #include <optional>
+#include <thread>
 
 TEST_CASE("AIPerplex Search uses the board supplied for each call and does not retain observers", "[search][service_api]")
 {
@@ -37,9 +39,13 @@ TEST_CASE("AIPerplex Search uses the board supplied for each call and does not r
 	int first_observations = 0;
 	const auto first = ai.Search(first_board, SearchLimits::fixed_depth(2),
 	                             [&](const IterationInfo&) { ++first_observations; });
+	const int first_observations_after_first_search = first_observations;
 	int second_observations = 0;
 	const auto second = ai.Search(second_board, SearchLimits::fixed_depth(2),
 	                              [&](const IterationInfo&) { ++second_observations; });
+	const int second_observations_after_second_search = second_observations;
+	CHECK(first_observations == first_observations_after_first_search);
+	const auto third = ai.Search(first_board, SearchLimits::fixed_depth(2));
 
 	CHECK_FALSE(first.best_move.is_null());
 	CHECK_FALSE(second.best_move.is_null());
@@ -49,6 +55,9 @@ TEST_CASE("AIPerplex Search uses the board supplied for each call and does not r
 	CHECK(second.best_move.to() == e8);
 	CHECK(first_observations > 0);
 	CHECK(second_observations > 0);
+	CHECK(first_observations == first_observations_after_first_search);
+	CHECK(second_observations == second_observations_after_second_search);
+	CHECK_FALSE(third.best_move.is_null());
 }
 
 TEST_CASE("AIPerplexConfig selects the evaluator used by Search", "[search][service_api]")
@@ -370,7 +379,47 @@ class AIPerlexTestFixture {
 	// which is not nodes_searched + qnodes_searched (those increment past several early returns).
 	// iterative_deepening() zeroes it, so this is a per-search figure.
 	int64_t poll_ticks() const { return ai->td_.nodes_since_check_; }
+
+	static bool verbose_logging(const AIPerplex& ai) { return ai.verbose_logging_; }
 };
+
+TEST_CASE("AIPerplex compatibility stop does not abort the next direct Search", "[search][service_api]")
+{
+	Board board("rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2");
+	AIPerplex ai(AIPerplexConfig{.default_depth = 50, .verbose_logging = false});
+	std::atomic<bool> accepted_iteration{false};
+	SearchResult stopped_result;
+
+	std::jthread search_thread([&] {
+		stopped_result = ai.Search(board, SearchLimits::fixed_depth(50), [&](const IterationInfo&) {
+			accepted_iteration.store(true, std::memory_order_release);
+		});
+	});
+
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+	while (!accepted_iteration.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < deadline)
+		std::this_thread::yield();
+
+	PlayerAiBase& compatibility_surface = ai;
+	compatibility_surface.StopSearch();
+	search_thread.join();
+	REQUIRE(accepted_iteration.load(std::memory_order_acquire));
+	CHECK_FALSE(stopped_result.best_move.is_null());
+
+	const SearchResult next = ai.Search(board, SearchLimits::fixed_depth(2));
+	CHECK_FALSE(next.best_move.is_null());
+	CHECK(next.depth_completed == 2);
+}
+
+TEST_CASE("AIPerplex verbosity configuration is isolated per engine", "[search][service_api]")
+{
+	AIPerplex quiet(AIPerplexConfig{.verbose_logging = false});
+	REQUIRE_FALSE(AIPerlexTestFixture::verbose_logging(quiet));
+
+	AIPerplex verbose(AIPerplexConfig{.verbose_logging = true});
+	CHECK_FALSE(AIPerlexTestFixture::verbose_logging(quiet));
+	CHECK(AIPerlexTestFixture::verbose_logging(verbose));
+}
 
 // ============================================================================
 // Legacy-agent test fixture

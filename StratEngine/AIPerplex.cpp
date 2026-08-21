@@ -80,14 +80,20 @@ static void ensure_logger_initialized()
 
 void AIPerplex::SetVerboseLogging(bool enabled) noexcept
 {
-	s_verbose_logging = enabled;
+	// Compatibility no-op: pre-Task-4 callers have no concrete AIPerplex
+	// instance at this call site. New construction and Game set policy on the
+	// instance, never on shared process state.
+	(void)enabled;
+}
+
+void AIPerplex::SetVerboseLoggingForCompatibility(bool enabled) noexcept
+{
+	verbose_logging_ = enabled;
 	try {
 		if (enabled) {
 			ensure_logger_initialized();
 			if (s_logger)
 				s_logger->set_level(spdlog::level::debug);
-		} else if (s_logger) {
-			s_logger->set_level(spdlog::level::off);
 		}
 	} catch (...) { // NOLINT(bugprone-empty-catch) - best-effort logging toggle
 	}
@@ -104,8 +110,10 @@ AIPerplex::AIPerplex(AIPerplexConfig config)
 	// PlayerAiBase still supplies metadata to unmigrated front ends. Search
 	// itself exclusively uses evaluator_, which is owned by this service.
 	Eval = EvalManager::Create(config.evaluator);
-	SetVerboseLogging(config.verbose_logging);
+	SetVerboseLoggingForCompatibility(config.verbose_logging);
 }
+
+void AIPerplex::StopSearch() noexcept { control_.Stop(); }
 
 AIPerplex::AIPerplex(Board& board, unsigned md)
     : PlayerAiBase(board, md),
@@ -198,10 +206,10 @@ void AIPerplex::helper_loop(ThreadData& td, int max_depth, TranspositionTable& t
 {
 	int seed_score = 0;
 	for (int depth = 1; depth <= max_depth; ++depth) {
-		if (control_.IsAborted() || compatibility_stop_requested())
+		if (control_.IsAborted())
 			break;
 		const int score = search_with_aspiration(td, depth, seed_score, tt);
-		if (control_.IsAborted() || compatibility_stop_requested())
+		if (control_.IsAborted())
 			break; // partial iteration — discard score
 		seed_score = score;
 	}
@@ -210,7 +218,6 @@ void AIPerplex::helper_loop(ThreadData& td, int max_depth, TranspositionTable& t
 SearchResult AIPerplex::GetMove(const SearchLimits& limits)
 {
 	// Task 5 deletes this inherited-board bridge once Game is a SearchPlayer.
-	PlayerAiBase::ApplyLimits(limits);
 	return Search(m_Board, limits, iteration_observer_);
 }
 
@@ -295,7 +302,7 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	}
 
 	// Success logging
-	if (s_logger) {
+	if (verbose_logging_ && s_logger) {
 		s_logger->info("GetMove complete: move={}, score={}, depth={}, time={}ms, nodes={}, stable={}",
 		               MoveFormatter::ToCoord(bestMove), result.best_score, result.depth_completed, result.elapsed.count(),
 		               total_nodes, result.search_was_stable ? "yes" : "NO");
@@ -339,7 +346,7 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 		metrics.current_score = currentBestScore;
 		metrics.nodes_searched = td.nodes_searched - nodes_at_start;
 		metrics.pv_length = td.pv_table.get_length(0);
-		metrics.interrupted = control_.StopRequested() || compatibility_stop_requested(); // clock, node budget or UCI stop
+		metrics.interrupted = control_.StopRequested(); // clock, node budget or UCI stop
 		metrics.move_changed = (metrics.current_move != state.last_iteration_move);
 		metrics.score_delta = currentBestScore - state.best_score;
 		// node counts never realistically approach 2^53 (int64_t->double precision loss)
@@ -467,7 +474,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// Fast early exit: IsAborted() reads only the latched atomic (no clock call).
 	// After the first StopRequested() fires and latches the flag, this collapses
 	// the entire call stack in O(depth) steps instead of O(tree_size).
-	if (control_.IsAborted() || compatibility_stop_requested())
+	if (control_.IsAborted())
 		return GameValues::Draw;
 
 	if (poll_search_limits(td))
@@ -529,7 +536,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 		// Unwind invariant, see the move loop below: null_score comes from a search that was
 		// cut off, so the store it would justify is not ours to make.
-		if (control_.IsAborted() || compatibility_stop_requested())
+		if (control_.IsAborted())
 			return best_value;
 
 		if (null_score >= beta) {
@@ -633,7 +640,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			// The node counters are the one deliberate exception: they are incremented before
 			// this point and stay incremented, because they measure work done, not results
 			// kept.
-			if (control_.IsAborted() || compatibility_stop_requested())
+			if (control_.IsAborted())
 				return best_value;
 
 			moveFound = true;
@@ -732,7 +739,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 {
 	// Fast early exit: IsAborted() reads only the latched atomic (no clock call).
 	// Mirrors pvs() — collapses quiescence chains in O(depth) after latch fires.
-	if (control_.IsAborted() || compatibility_stop_requested())
+	if (control_.IsAborted())
 		return GameValues::Draw;
 
 	if (poll_search_limits(td))
@@ -870,7 +877,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 		// cutoff store below and the final store after the loop are both unearned. Returning
 		// here is also what keeps the beta-cutoff store out of reach — it returns from inside
 		// the loop, so a check placed after the loop would never run for it.
-		if (control_.IsAborted() || compatibility_stop_requested())
+		if (control_.IsAborted())
 			return best_value;
 
 		moveFound = true;
@@ -945,7 +952,7 @@ int AIPerplex::search_with_aspiration(ThreadData& td, int depth, int seed_score,
 	int score = seed_score; // safe fallback if interrupted before the first pvs() call
 
 	for (int retry = 0;; ++retry) {
-		if (control_.StopRequested() || compatibility_stop_requested()) {
+		if (control_.StopRequested()) {
 			// Interrupt before entering pvs(): clear PV so iterative_deepening sees EmptyMove
 			// and triggers INCOMPLETE rejection rather than accepting a stale PV as valid.
 			td.pv_table.clear_ply(0);
@@ -954,7 +961,7 @@ int AIPerplex::search_with_aspiration(ThreadData& td, int depth, int seed_score,
 
 		score = pvs(td, depth, alpha, beta, 0, true, tt);
 
-		if (control_.StopRequested() || compatibility_stop_requested())
+		if (control_.StopRequested())
 			return score;
 
 		// In-window: accept the score
@@ -965,7 +972,7 @@ int AIPerplex::search_with_aspiration(ThreadData& td, int depth, int seed_score,
 		if (retry >= tuning_.aspiration_max_retries) {
 			if (td.thread_id == 0)
 				log_aspiration_full_window(depth, tuning_.aspiration_max_retries);
-			if (!control_.StopRequested() && !compatibility_stop_requested())
+			if (!control_.StopRequested())
 				score = pvs(td, depth, -GameValues::Search_Init, GameValues::Search_Init, 0, true, tt);
 			return score;
 		}
@@ -1027,7 +1034,7 @@ AIPerplex::RejectionReason AIPerplex::assess_iteration_quality(const IterationMe
 
 void AIPerplex::log_iteration_eval(const IterationMetrics& metrics, const PVTable& pv_table) const
 {
-	if (!s_logger)
+	if (!verbose_logging_ || !s_logger)
 		return;
 	if (!s_logger->should_log(spdlog::level::debug))
 		return;
@@ -1057,7 +1064,7 @@ void AIPerplex::log_iteration_eval(const IterationMetrics& metrics, const PVTabl
 void AIPerplex::log_rejection(int depth, RejectionReason reason, const IterationMetrics& metrics,
                               const SearchState& state) const
 {
-	if (!s_logger)
+	if (!verbose_logging_ || !s_logger)
 		return;
 
 	switch (reason) {
@@ -1095,7 +1102,7 @@ void AIPerplex::log_rejection(int depth, RejectionReason reason, const Iteration
 
 void AIPerplex::log_acceptance(const IterationMetrics& metrics) const
 {
-	if (!s_logger)
+	if (!verbose_logging_ || !s_logger)
 		return;
 
 	// Noteworthy so Info
@@ -1107,7 +1114,7 @@ bool AIPerplex::should_stop_early(int depth, int score, int pv_length) const
 {
 	// Mate found
 	if (std::abs(score) >= GameValues::Mate_Threshold) {
-		if (s_logger) {
+		if (verbose_logging_ && s_logger) {
 			s_logger->info("Mate found at depth {}, stopping iteration", depth);
 		}
 		return true;
@@ -1115,7 +1122,7 @@ bool AIPerplex::should_stop_early(int depth, int score, int pv_length) const
 
 	// Forced line (PV much shorter than depth)
 	if (depth > 1 && pv_length > 0 && pv_length < (depth - depth / 2)) {
-		if (s_logger) {
+		if (verbose_logging_ && s_logger) {
 			s_logger->info("Short PV ({} vs depth {}) indicates forced line, stopping", pv_length, depth);
 		}
 		return true;
@@ -1217,7 +1224,7 @@ bool AIPerplex::handle_empty_move_emergency(ThreadData& td, SearchState& state)
 
 void AIPerplex::log_search_complete(const SearchState& state, const PVTable& pv_table) const
 {
-	if (!s_logger)
+	if (!verbose_logging_ || !s_logger)
 		return;
 
 	if (state.best_move.is_null() || pv_table.get_length(0) == 0) {
@@ -1231,7 +1238,7 @@ void AIPerplex::log_search_complete(const SearchState& state, const PVTable& pv_
 
 void AIPerplex::log_completed_iteration(const IterationMetrics& metrics, const PVTable& pv_table) const
 {
-	if (!s_logger)
+	if (!verbose_logging_ || !s_logger)
 		return;
 	if (!s_logger->should_log(spdlog::level::info))
 		return;
@@ -1290,7 +1297,7 @@ void AIPerplex::emit_iteration_info(const ThreadData& td, int depth, int score, 
 
 void AIPerplex::log_aspiration_retry(int depth, int retry, int score, int alpha, int beta, bool fail_low) const
 {
-	if (!s_logger)
+	if (!verbose_logging_ || !s_logger)
 		return;
 
 	s_logger->debug("D{:>2} ASPIRATION: {} retry {} score={:>6} new window=[{:>7},{:>7}]", depth,
@@ -1299,7 +1306,7 @@ void AIPerplex::log_aspiration_retry(int depth, int retry, int score, int alpha,
 
 void AIPerplex::log_aspiration_full_window(int depth, int max_retries) const
 {
-	if (!s_logger)
+	if (!verbose_logging_ || !s_logger)
 		return;
 
 	s_logger->debug("D{:>2} ASPIRATION: max retries ({}) reached, opening full window", depth, max_retries);
