@@ -2,8 +2,10 @@
 
 ## Current status
 
-Task 1 composes shared search control on `codex/issue-256-design` in the isolated
-`.claude/worktrees/issue-256-design` worktree. The approved design is
+Task 2 is complete on `codex/issue-256-design` in the isolated
+`.claude/worktrees/issue-256-design` worktree: completed searches return elapsed/node telemetry,
+and `Game` owns the combined-player six-column performance totals. Task 3, establishing the
+concrete `AIPerplex` service API, is next. The approved design is
 `.claude/plans/aiperplex-production-search-boundary.md`; the executable plan is
 `Docs/superpowers/plans/2026-08-21-aiperplex-production-search-boundary.md`.
 
@@ -22,6 +24,12 @@ Task 1 composes shared search control on `codex/issue-256-design` in the isolate
   two-player Game perf row. The Task 2 plan's illustrative assertions named node columns as
   `fields[1]` and `fields[4]`; that conflicts with the preserved six-column contract, so the
   approved correction tests them at indices `0` and `3` and verifies all six fields.
+- Task 2 TDD evidence: RED used the configured-preset build command
+  `& 'C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' --build --preset windows-clang-cl --target StratChessTests`,
+  which failed before production edits because `SearchResult` had no `elapsed` member in the new
+  search and Game-loop tests. GREEN rebuilt with that command, then
+  `StratChessTests.exe "[game_loop],[search]"` passed 231 assertions in 58 test cases. The final
+  `Validate-PreCommit.ps1` GREEN run passed 7170 assertions in 480 non-slow test cases.
 
 - Completed Task 1: added `SearchControl` to own resolved limits, the timer, abort latch, effective
   depth, and node budget; `PlayerAiBase` now forwards legacy control access to its value member.
