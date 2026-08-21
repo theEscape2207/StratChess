@@ -47,7 +47,7 @@ Design: `.claude/plans/gameinfo-position-record-split.md`.
   stale win could end a game on a move that decided nothing. The carrier is now reset per
   `GetMove` call.
 - FEN halfmove/fullmove counters and the UCI `position ... moves` list are bounded at the limits of
-  the game itself (150 / 5899 / 11797 plies, `GameState.h`) and rejected with a diagnostic past
+  the game itself (11797 halfmoves / 5899 moves / 11797 plies, `GameState.h`) and rejected past
   them, rather than accepted and silently truncated into the narrowed fields.
 
 ---

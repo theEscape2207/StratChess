@@ -192,7 +192,7 @@ the worst case a caller can construct is the FEN bound plus a full-length move l
 | Counter | Worst reachable through UCI | Field maximum | Headroom |
 |---|---|---|---|
 | `fullmove_count` | 5899 + 11797/2 = 11,797 | 65,535 | 5.5× |
-| `halfmove_clock` | 150 + 11,797 = 11,947 | 65,535 | 5.5× |
+| `halfmove_clock` | 11797 + 11797 = 23,594 | 65,535 | 2.8× |
 
 Game mode is bounded far tighter, by `Game::Run` adjudicating the fifty-move rule at 100. Nothing a
 caller can send gets near the field maximum.
@@ -380,12 +380,14 @@ if that ever becomes true it is a change worth noticing.
   the new test named in Validation, which drives two `GetMove` calls and asserts the second does not
   inherit the first's verdict — that test is the verification, and it must fail against the current
   code or it is proving nothing.
-- ~~No committed FEN exceeds D4's bounds.~~ **Checked, not assumed.** A scan of every `.cpp`, `.h`,
-  `.epd`, `.fen`, `.pgn`, `.txt`, `.json` and `.md` in the tree for six-field FENs found a maximum
-  halfmove clock of **120** and a maximum fullmove counter of **60**, both inside D4's bounds.
-  Nothing in the corpora, the perft suite or the tactical suite is affected. The halfmove figure is
-  the close one — 120 against a bound of 150, and above the 100 this engine adjudicates at — which is
-  why the bound is 150 rather than 100.
+- ~~No committed FEN exceeds D4's bounds.~~ **Checked, and the first check was wrong.** A scan of the
+  repo tree for six-field FENs found a maximum halfmove clock of 120 and fullmove counter of 60 — but
+  the perft corpus is `EngineTesting/corpus.gctc.gz`, **outside the repo tree and compressed**, so the
+  scan never saw it. It carries halfmove clocks up to **253**, and the earlier 150 bound refused 14 of
+  its positions; the perft sweep caught it (129 failures against the documented 73). With the bound
+  rederived from game length the corpora clear it by three orders of magnitude. The lesson
+  generalises: a corpus scan has to cover the corpora the harnesses actually feed the engine, not only
+  the files in the tree.
 - **The cited 5898.5-move maximum is taken from a source, not derived here.** It is the standard
   construction under the 50-move and threefold rules; this design uses it only as an upper bound, so
   being wrong in the *conservative* direction is harmless and being wrong the other way would need the
