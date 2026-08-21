@@ -660,3 +660,10 @@ including the fifty-move transition and `HUMAN_EXITED`, deterministic. Test-crea
 A player reports a terminal result with a null `best_move` and `SearchResult::game_state`. Test both
 sides: `GameLoopTests.cpp` verifies `Game::Run()` consumes it (including the score channel), while
 `SearchTests.cpp` and `PlayerHumanTests.cpp` verify each producer reports it correctly.
+
+The verdict is per-call, and only an **aborted** search can carry the previous call's verdict out: any
+search that completes a root frame overwrites it anyway. So the `[search]` cases that matter abort
+before the first root frame finishes — `AIPerplex` via a node limit on a position whose depth-1
+iteration costs more than one 1024-visit poll interval (asserted in the test, not assumed), `AIAgent`
+via a budget already spent on entry. A stale terminal verdict makes
+`handle_empty_move_emergency()` return no move at all, so both cases check `best_move` as well.

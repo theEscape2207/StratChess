@@ -280,7 +280,8 @@ TEST_CASE("Board - SetupFromFEN clears lastMove", "[board_state]")
 
 TEST_CASE("Board - a move rejected for leaving the king in check leaves lastMove alone", "[board_state]")
 {
-	// DoMove rolls such a move back through UndoMove, which restores gameInfo_ wholesale.
+	// DoMove rolls such a move back through UndoMove, which restores the ply's PositionState
+	// wholesale.
 	// Without that, a rejected pseudo-legal move would become the parent move the sorter reads.
 	// White rook e2, black rook e7, kings on e1/e8 — everything on the e-file.
 	Board board("4k3/4r3/8/8/8/8/4R3/4K3 w - - 0 1");

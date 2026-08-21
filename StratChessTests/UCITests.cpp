@@ -980,7 +980,7 @@ TEST_CASE("FENParser::ValidatePositionAgainstFENMetadata: every correction still
 
 TEST_CASE("Board::SetupFromFEN: 4-field FEN yields halfmoveClock 0", "[uci]")
 {
-	// The halfmove default is not inert: SetupFromFEN feeds it into gameInfo_.halfmoveClock,
+	// The halfmove default is not inert: SetupFromFEN feeds it into Board::halfmove_clock(),
 	// which drives 50-move draw detection. Pin the value rather than leave it implicit.
 	Board board;
 	REQUIRE(board.SetupFromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -"));

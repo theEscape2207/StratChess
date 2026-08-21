@@ -157,7 +157,7 @@ Non-obvious API contracts — the rest of the layout is discoverable.
   `halfmove_clock()`, `fullmove_count()`, `last_move()`. Move generation reads them from the board it
   is given, so nothing can hand it state that disagrees with the position's Zobrist hash. One private
   `PositionState` per ply holds all of it plus the Zobrist hash, the last-irreversible ply and the
-  captured piece; the game outcome is not board state and does not live there.
+  captured piece.
 - `GetMove(limits)` returns a `SearchResult` (`SearchResult.h`) — best move, score, node counts and
   the `GameStates` the player adjudicated at its own root. It is never `DRAW_50_MOVES`: the fifty-move
   rule is a fact about the committed position, and `Game::Run` adjudicates it. The returned value is

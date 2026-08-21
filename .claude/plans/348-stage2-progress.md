@@ -141,6 +141,24 @@ Two things worth carrying forward:
 - **A validation script's PASS is not the whole signal.** `Run-PerftCheck.ps1` classifies failures and
   passes when none are unexplained; the documented failure *count* is the part that caught this.
 
+## Cross-agent review round (implementation)
+
+| Finding | Resolution |
+|---|---|
+| **P2** — the D6 tests wrote the carrier, called the reset directly, then ran a *completed* search, which proves the assignment exists but not the defect | **Rewritten.** Each carrier now has a reset test and a genuine pre-root-abort test. `AIPerplex`: a real mated `GetMove` leaves `WHITE_WON`, then a `fixed_nodes(1)` search on kiwipete aborts inside the first root move loop. `AIAgent`: a budget already spent on entry, whose `StopRequested()` gate sits in front of `Search()` with no node counter in the way. Both also assert `best_move` is non-null, pinning the emergency-path consumer the search reviewer found |
+| **P3** — three comments still named deleted state | Fixed: `FENParser.cpp`, `BoardStateTests.cpp`, `UCITests.cpp` now name `Board::halfmove_clock()` / `PositionState` |
+| Note — `CLAUDE.md` stated a historical fact about the outcome | Trimmed to what is true now |
+| Stale PR title | Retitled; the design-only title survived the implementation commits |
+
+**The AIPerplex abort test needed a position, not just a limit.** The poll gate only fires every 1024
+`pvs`/`quiescence` entries, so a stale verdict survives a real `GetMove` *only* if depth 1 alone
+costs more than that — otherwise depth 1 completes and adjudicates `STILL_PLAYING` on its own. The
+218-legal-move position costs 441 entries; kiwipete costs 2434. The test asserts that margin rather
+than assuming it, so it goes red instead of vacuously green if depth 1 ever gets cheaper.
+
+Falsified by deleting both reset lines: all four cases fail, including
+`CHECK_FALSE(aborted.best_move.is_null())`.
+
 ## Post-merge follow-ups
 
 - **#292 has its answer, and it is discouraging for the 16-byte step.** Collapsing four scattered
