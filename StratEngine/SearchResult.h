@@ -2,6 +2,7 @@
 
 #include "Move.h"
 #include "GameState.h"
+#include <chrono>
 #include <cstdint>
 
 // What one GetMove() call produced: the move to play, and everything the caller needs to know
@@ -26,4 +27,5 @@ struct SearchResult {
 	int64_t nodes_searched = 0;
 	int64_t qnodes_searched = 0;
 	bool search_was_stable = true;
+	std::chrono::milliseconds elapsed{0};
 };

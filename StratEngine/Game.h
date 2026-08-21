@@ -1,5 +1,7 @@
 #pragma once
 
+#include <chrono>
+#include <cstdint>
 #include <sstream>
 #include <fstream>
 
@@ -29,6 +31,7 @@ class Game final {
 	void AddFileHeader(std::ostream& file) const;
 
 	IPlayer& GetCurrentPlayer() const noexcept;
+	void RecordPerformance(const IPlayer& mover, const SearchResult& result);
 
 	// Takes the player that just moved together with what its GetMove() returned:
 	// GetCurrentPlayer() keys off the side to move, which DoMove has already flipped by the
@@ -116,4 +119,8 @@ class Game final {
 
 	// The outcome, as reported by the player that last moved or adjudicated by Run() itself.
 	GameStates game_state_{GameStates::STILL_PLAYING};
+
+	// Combined work from both AI players for this game's performance rows.
+	std::chrono::milliseconds total_elapsed_{0};
+	int64_t total_nodes_{0};
 };

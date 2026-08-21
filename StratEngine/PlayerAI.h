@@ -74,21 +74,18 @@ class PlayerAiBase : public PlayerBase {
 	// Quiescent soegning modvirker horisont-effekten
 	int Quiescent(size_t, int, int);
 
-	// Registers the amount of used time and prints out if PRINT_STATS is set.
-	// node_count: nodes searched this move — legacy AIs pass m_SearchCount,
-	// AIPerplex passes both trees summed across every search thread (main plus
-	// quiescence), not a single thread's ThreadData::nodes_searched.
-	std::chrono::milliseconds StopTimerAndAdjustVars(size_t node_count) const;
-
 	// Returns the best first move currently found
 	virtual Move GetBestMove() noexcept;
 
-	// What a legacy agent reports for one GetMove() call: the move it settled on and the
-	// root verdict the search left on the board. The search counters stay at their defaults —
-	// these agents do not track the main and quiescence trees apart.
+	// Legacy searches report all work as unsplit nodes because their shared counter includes
+	// both main and quiescence work.
 	SearchResult MakeResult() noexcept
 	{
-		return {.best_move = GetBestMove(), .best_score = GetBestScore(), .game_state = root_game_state_};
+		return {.best_move = GetBestMove(),
+		        .best_score = GetBestScore(),
+		        .game_state = root_game_state_,
+		        .nodes_searched = static_cast<int64_t>(m_SearchCount),
+		        .elapsed = search_control_.Elapsed()};
 	}
 
 	/// Resolves per-call SearchLimits against the configured defaults, arms the
@@ -196,20 +193,6 @@ class PlayerAiBase : public PlayerBase {
 	std::chrono::milliseconds time_limit_{std::chrono::seconds(15)};
 
 	SearchControl search_control_;
-
-	//#ifdef PRINT_STATS
-
-	// Samlet tid og antal nodes for begge computerspillere - TODO: Separer evt til per spiller. Human burde ogsaa have en klokke
-	// Lazy SMP: these statics are written only from StopTimerAndAdjustVars(),
-	// called once per GetMove() on the calling (single) thread, strictly
-	// after that call's search has returned — i.e. after any Lazy SMP
-	// helper threads for that move have already joined. No synchronization
-	// is needed as a result; if a future change makes StopTimerAndAdjustVars()
-	// run concurrently with an in-flight search, this invariant must be
-	// revisited.
-	static std::chrono::milliseconds m_TotalTime;
-	static size_t m_TotalCount;
-	//#endif	// PRINT_STATS
 
 #ifdef STRAT_ENABLE_TEST_ACCESS
 	// Grants a legacy-agent test fixture (StratChessTests/SearchTests.cpp) access to

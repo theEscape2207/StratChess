@@ -9,6 +9,20 @@ Task 1 composes shared search control on `codex/issue-256-design` in the isolate
 
 ## Just completed
 
+- Completed Task 2: `SearchResult` now carries each completed search's elapsed time. Legacy AIs
+  return their complete `m_SearchCount` in `nodes_searched` and retain zero
+  `qnodes_searched`; AIPerplex returns post-join aggregated main/quiescence counts together with
+  the composed `SearchControl` elapsed value.
+- Moved `SimplePerfStats` accounting into `Game`. Every AI `GetMove()` result is accumulated
+  immediately into Game-lifetime totals; each existing six-column row retains the ordering
+  `nodes, ms, nodes/ms, total nodes, total ms, total nodes/ms`, uses both players' combined
+  totals, and excludes human moves. The 0ms-to-1ms guard applies only to displayed/divisor values,
+  not the stored elapsed sum.
+- Added focused real-boundary tests for returned elapsed telemetry, legacy unsplit counts, and a
+  two-player Game perf row. The Task 2 plan's illustrative assertions named node columns as
+  `fields[1]` and `fields[4]`; that conflicts with the preserved six-column contract, so the
+  approved correction tests them at indices `0` and `3` and verifies all six fields.
+
 - Completed Task 1: added `SearchControl` to own resolved limits, the timer, abort latch, effective
   depth, and node budget; `PlayerAiBase` now forwards legacy control access to its value member.
 - Replaced every legacy `effective_depth_` read with `EffectiveDepth()` and moved AIPerplex's direct
@@ -53,14 +67,14 @@ Task 1 composes shared search control on `codex/issue-256-design` in the isolate
 
 ## Next steps
 
-1. Return elapsed time and move performance totals into `Game`.
-2. Establish the concrete `AIPerplex` service API.
-3. Give UCI concrete ownership and per-call observation.
-4. Add `SearchPlayer` and the config-aware player factory.
-5. Remove stale surfaces and update durable documentation.
-6. Prove behavior, timing, and operational neutrality.
+1. Establish the concrete `AIPerplex` service API.
+2. Give UCI concrete ownership and per-call observation.
+3. Add `SearchPlayer` and the config-aware player factory.
+4. Remove stale surfaces and update durable documentation.
+5. Prove behavior, timing, and operational neutrality.
 
 ## Safe park point
 
-Safe to stop after the Task 1 commit. Task 2 can consume elapsed telemetry without reopening ownership
-of the timer, abort latch, effective depth, or node budget.
+Safe to stop after the Task 2 commit. Search telemetry and combined-player performance totals are
+owned by `SearchResult` and `Game`; Task 3 can establish the concrete AIPerplex service API without
+reopening timer, abort-latch, effective-depth, node-budget, or Game perf-accounting ownership.

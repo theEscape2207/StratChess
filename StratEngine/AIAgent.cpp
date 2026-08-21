@@ -60,8 +60,6 @@ SearchResult AIAgent::GetMove(const SearchLimits& limits)
 		++depth_; // _Skal_ opdateres her, da "continue" bliver brugt ovenover
 	}
 
-	StopTimerAndAdjustVars(m_SearchCount);
-
 	return MakeResult();
 }
 

@@ -23,8 +23,6 @@ SearchResult AIBasic::GetMove(const SearchLimits& limits)
 	//Kalder den Almindelige rekursive alphabeta soegning
 	Search(0, -GameValues::Search_Init, GameValues::Search_Init);
 
-	StopTimerAndAdjustVars(m_SearchCount);
-
 	return MakeResult();
 }
 

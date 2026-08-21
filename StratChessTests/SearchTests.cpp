@@ -366,6 +366,7 @@ class LegacyAiTestFixture {
 	bool search_is_aborted() const { return ai->IsAborted(); }
 
 	SearchResult get_move(int depth) const { return ai->GetMove(SearchLimits::fixed_depth(depth)); }
+	int64_t search_count() const { return static_cast<int64_t>(ai->m_SearchCount); }
 
 	// A GetMove() whose budget is spent the moment it starts. The depth loop's StopRequested()
 	// gate sits in front of Search() with no node counter in the way, so the loop breaks before
@@ -857,6 +858,29 @@ TEST_CASE("SMP - GetMove's return value matches GetLastResult at Threads > 1", "
 	// result.
 	CHECK(returned.nodes_searched == fix.mainnodes() + fix.helper_nodes());
 	CHECK(returned.qnodes_searched == fix.qnodes() + fix.helper_qnodes());
+}
+
+TEST_CASE("AIPerplex - a completed result reports non-negative elapsed time", "[search]")
+{
+	// Catches GetMove() dropping the elapsed value from its completed SearchControl session.
+	AIPerlexTestFixture fix;
+
+	const SearchResult result = fix.get_move_at_threads(1, 1);
+
+	CHECK(result.elapsed >= std::chrono::milliseconds::zero());
+}
+
+TEST_CASE("AIAgent - a completed result reports its unsplit legacy node count", "[search]")
+{
+	// Catches MakeResult() leaving the legacy count at the SearchResult default, or incorrectly
+	// claiming that legacy nodes belong to the separately reported quiescence tree.
+	LegacyAiTestFixture fix("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+
+	const SearchResult result = fix.get_move(3);
+
+	REQUIRE(fix.search_count() > 0);
+	CHECK(result.nodes_searched == fix.search_count());
+	CHECK(result.qnodes_searched == 0);
 }
 
 // ============================================================================

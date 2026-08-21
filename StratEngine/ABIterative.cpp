@@ -51,8 +51,6 @@ SearchResult ABIterative::GetMove(const SearchLimits& limits)
 		ENewPVLineMove.fire(this, m_Line);
 	}
 
-	StopTimerAndAdjustVars(m_SearchCount);
-
 	return MakeResult();
 }
 

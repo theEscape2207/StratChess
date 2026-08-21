@@ -251,6 +251,7 @@ void Game::Run()
 		// and the score to report belongs to the player that just moved.
 		IPlayer& mover = GetCurrentPlayer();
 		const SearchResult result = mover.GetMove(player_limits_[board_.GetCurrentColor()]);
+		RecordPerformance(mover, result);
 
 		bool committed = false;
 		if (!result.best_move.is_null()) {
@@ -298,6 +299,34 @@ void Game::Run()
 
 	// FIXME: Add a menu allowing a new game to be played - including option to override from game-setup file
 	spdlog::default_logger()->warn("Spillet er slut\n\nTryk enter for at afslutte!");
+}
+
+void Game::RecordPerformance(const IPlayer& mover, const SearchResult& result)
+{
+	if (mover.IsHuman())
+		return;
+
+	const int64_t nodes = result.nodes_searched + result.qnodes_searched;
+	total_nodes_ += nodes;
+	total_elapsed_ += result.elapsed;
+
+	// Preserve the historic 0ms guard for the display and divisions while keeping the
+	// accumulated telemetry itself equal to the exact returned-search sums.
+	auto elapsed_for_display = result.elapsed;
+	if (elapsed_for_display == std::chrono::milliseconds::zero())
+		elapsed_for_display = std::chrono::milliseconds(1);
+	auto total_elapsed_for_display = total_elapsed_;
+	if (total_elapsed_for_display == std::chrono::milliseconds::zero())
+		total_elapsed_for_display = std::chrono::milliseconds(1);
+
+	auto perf = Engine::Logger::GetPerfLogger();
+	if (!perf)
+		return;
+
+	const int64_t nodes_per_ms = nodes / elapsed_for_display.count();
+	const int64_t total_nodes_per_ms = total_nodes_ / total_elapsed_for_display.count();
+	perf->info("{:>10} {:>13} {:>13} {:>19} {:>13} {:>13}", nodes, elapsed_for_display.count(), nodes_per_ms,
+	           total_nodes_, total_elapsed_for_display.count(), total_nodes_per_ms);
 }
 
 //***************************************

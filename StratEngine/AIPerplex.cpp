@@ -256,10 +256,7 @@ SearchResult AIPerplex::GetMove(const SearchLimits& limits)
 	}
 	last_result_.nodes_searched = total_nodes;
 	last_result_.qnodes_searched = total_qnodes;
-
-	// Both trees: an nps computed from the main tree alone charges quiescence work to
-	// the clock without ever crediting it to the count.
-	auto elapsed = StopTimerAndAdjustVars(static_cast<size_t>(total_nodes + total_qnodes));
+	last_result_.elapsed = search_control_.Elapsed();
 
 	const Move bestMove = result.best_move;
 
@@ -272,7 +269,7 @@ SearchResult AIPerplex::GetMove(const SearchLimits& limits)
 	// Success logging
 	if (s_logger) {
 		s_logger->info("GetMove complete: move={}, score={}, depth={}, time={}ms, nodes={}, stable={}",
-		               MoveFormatter::ToCoord(bestMove), result.best_score, result.depth_completed, elapsed.count(),
+		               MoveFormatter::ToCoord(bestMove), result.best_score, result.depth_completed, last_result_.elapsed.count(),
 		               total_nodes, result.search_was_stable ? "yes" : "NO");
 	}
 	// last_result_, not the local `result`: the node counts above were aggregated across the

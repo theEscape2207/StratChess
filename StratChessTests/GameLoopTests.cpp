@@ -14,13 +14,16 @@
 #include "Board.h"
 #include "MoveFactory.h"
 #include "SearchResult.h"
+#include "Utils/Logger.h"
 
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/base_sink.h>
 
 #include <algorithm>
+#include <chrono>
 #include <memory>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -138,6 +141,50 @@ namespace {
 	  private:
 		std::shared_ptr<CapturingSink> sink_;
 	};
+
+	// Runs the real Game -> PerfStats logger path. The logger is deliberately created here rather
+	// than reached through a test-only Game getter: Game's production boundary is responsible for
+	// choosing whether an existing perf logger receives the completed move's telemetry.
+	class ScopedPerfLogCapture {
+	  public:
+		ScopedPerfLogCapture()
+		    : perf_(Engine::Logger::EnsurePerfLogger("logs/GameLoopPerfStats.txt")), sink_(std::make_shared<CapturingSink>())
+		{
+			REQUIRE(perf_);
+			sink_->set_pattern("%v");
+			perf_->sinks().push_back(sink_);
+		}
+
+		~ScopedPerfLogCapture()
+		{
+			if (!perf_)
+				return;
+			auto& sinks = perf_->sinks();
+			sinks.erase(std::remove(sinks.begin(), sinks.end(), sink_), sinks.end());
+		}
+
+		std::string text() const { return sink_->text(); }
+
+		ScopedPerfLogCapture(const ScopedPerfLogCapture&) = delete;
+		ScopedPerfLogCapture& operator=(const ScopedPerfLogCapture&) = delete;
+		ScopedPerfLogCapture(ScopedPerfLogCapture&&) = delete;
+		ScopedPerfLogCapture& operator=(ScopedPerfLogCapture&&) = delete;
+
+	  private:
+		std::shared_ptr<spdlog::logger> perf_;
+		std::shared_ptr<CapturingSink> sink_;
+	};
+
+	std::vector<std::string> fields_in_last_line(const std::string& text)
+	{
+		const size_t line_start = text.find_last_of('\n', text.size() - 2);
+		std::istringstream line(line_start == std::string::npos ? text : text.substr(line_start + 1));
+		std::vector<std::string> fields;
+		std::string field;
+		while (line >> field)
+			fields.push_back(field);
+		return fields;
+	}
 
 	bool contains(const std::string& haystack, const std::string& needle)
 	{
@@ -282,4 +329,32 @@ TEST_CASE("Game: a mate score in the mover's result is reported as a mate, not a
 	game->Run();
 
 	CHECK(contains(capture.text(), "Check mate in 3 moves"));
+}
+
+TEST_CASE("Game: perf stats retain six current-and-cumulative result fields", "[game_loop]")
+{
+	// Catches move stats that remain in PlayerAiBase, a Game loop that never accumulates returned
+	// telemetry, and any regression to a per-player rather than combined-player total.
+	const SearchResult first{.best_move = MoveFactory::MakeMove(b2, b3, MoveType::QUIET),
+	                         .nodes_searched = 13,
+	                         .qnodes_searched = 5,
+	                         .elapsed = std::chrono::milliseconds(2)};
+	const SearchResult second{.game_state = GameStates::BLACK_WON,
+	                          .nodes_searched = 7,
+	                          .qnodes_searched = 11,
+	                          .elapsed = std::chrono::milliseconds(3)};
+
+	const ScopedPerfLogCapture capture;
+	auto game = Game::TestAccess::Make("4k3/8/8/8/8/8/1R6/4K3 w - - 5 60", scripted({first}), scripted({second}));
+	game->Run();
+
+	const std::vector<std::string> fields = fields_in_last_line(capture.text());
+	REQUIRE(fields.size() == 6);
+	CHECK(fields[0] == std::to_string(second.nodes_searched + second.qnodes_searched));
+	CHECK(fields[1] == std::to_string(second.elapsed.count()));
+	CHECK(fields[2] == "6");
+	CHECK(fields[3] == std::to_string(first.nodes_searched + first.qnodes_searched + second.nodes_searched +
+	                                  second.qnodes_searched));
+	CHECK(fields[4] == std::to_string(first.elapsed.count() + second.elapsed.count()));
+	CHECK(fields[5] == "7");
 }
