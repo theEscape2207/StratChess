@@ -61,6 +61,11 @@
     no lower bound to respect, since nothing is being timed. The cost is search
     time on both binaries, twelve searches for the built-in set.
 
+    Completion is strict: every position must emit both `info depth <Depth>` and
+    `bestmove`. A terminal, mate, or other early-stop custom position that ends
+    before -Depth is rejected rather than compared as a fixed-depth result.
+    Choose nonterminal positions or lower -Depth for custom suites.
+
 .PARAMETER Positions
     Optional file of positions, one per line; blank lines and lines starting with
     '#' are ignored. Each line is either a UCI position argument ('startpos',

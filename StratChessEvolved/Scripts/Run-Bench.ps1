@@ -43,6 +43,11 @@
     Raise it on faster hardware — the script warns per position when a search
     finishes too quickly to time reliably.
 
+    Completion is strict: every position must emit both `info depth <Depth>` and
+    `bestmove`. A terminal, mate, or other early-stop custom position that ends
+    before -Depth is rejected rather than benchmarked as a fixed-depth result.
+    Choose nonterminal positions or lower -Depth for custom suites.
+
 .PARAMETER Threads
     UCI Threads option. Default 1. Leave it at 1 for any comparison: Lazy SMP is
     non-deterministic, so node counts stop being reproducible and the equivalence
