@@ -8,7 +8,7 @@
 #include "IPlayer.h"
 #include "MoveFormatter.h"
 #include "PlayerFactory.h"
-#include <iomanip>      // std::put_time
+#include <iomanip> // std::put_time
 
 // ***************************************
 // Method:      Game

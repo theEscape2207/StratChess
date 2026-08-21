@@ -82,11 +82,8 @@ static void ensure_logger_initialized()
 }
 
 AIPerplex::AIPerplex(AIPerplexConfig config)
-    : evaluator_(create_search_evaluator(config.evaluator)),
-      control_(config.default_depth, config.default_time),
-      tuning_(config.tuning),
-      threads_(std::clamp(config.threads, 1u, 32u)),
-      verbose_logging_(config.verbose_logging)
+    : evaluator_(create_search_evaluator(config.evaluator)), control_(config.default_depth, config.default_time),
+      tuning_(config.tuning), threads_(std::clamp(config.threads, 1u, 32u)), verbose_logging_(config.verbose_logging)
 {
 	_tt = std::make_unique<TranspositionTable>(std::clamp(config.hash_mb, MIN_HASH_MB, MAX_HASH_MB));
 	try {
@@ -202,6 +199,7 @@ void AIPerplex::helper_loop(ThreadData& td, int max_depth, TranspositionTable& t
 
 SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, IterationObserver observer)
 {
+	const IterationObserver search_observer = std::move(observer);
 	{
 		std::lock_guard<std::mutex> lock(stop_mutex_);
 		// Direct callers have no launch phase. They begin a fresh search here;
@@ -265,7 +263,7 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 		}
 	}
 
-	SearchResult result = iterative_deepening(td_, static_cast<int>(effective_depth), *_tt, observer);
+	SearchResult result = iterative_deepening(td_, static_cast<int>(effective_depth), *_tt, search_observer);
 	result.game_state = td_.root_game_state;
 
 	// Latch the abort signal so any still-running helpers collapse in O(depth)
@@ -296,8 +294,8 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	// Success logging
 	if (verbose_logging_ && s_logger) {
 		s_logger->info("GetMove complete: move={}, score={}, depth={}, time={}ms, nodes={}, stable={}",
-		               MoveFormatter::ToCoord(bestMove), result.best_score, result.depth_completed, result.elapsed.count(),
-		               total_nodes, result.search_was_stable ? "yes" : "NO");
+		               MoveFormatter::ToCoord(bestMove), result.best_score, result.depth_completed,
+		               result.elapsed.count(), total_nodes, result.search_was_stable ? "yes" : "NO");
 	}
 	finish_search_launch();
 	return result;

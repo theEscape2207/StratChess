@@ -153,19 +153,20 @@ TEST_CASE("Player factory warns when search tuning is supplied to a legacy AI", 
 	        std::string::npos);
 }
 
-TEST_CASE("AIPerplex Search uses the board supplied for each call and does not retain observers", "[search][service_api]")
+TEST_CASE("AIPerplex Search uses the board supplied for each call and does not retain observers",
+          "[search][service_api]")
 {
 	Board first_board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 	Board second_board("6k1/5ppp/8/8/8/4R3/5PPP/6K1 w - - 0 1");
 	AIPerplex ai(AIPerplexConfig{.default_depth = 2, .verbose_logging = false});
 
 	int first_observations = 0;
-	const auto first = ai.Search(first_board, SearchLimits::fixed_depth(2),
-	                             [&](const IterationInfo&) { ++first_observations; });
+	const auto first =
+	    ai.Search(first_board, SearchLimits::fixed_depth(2), [&](const IterationInfo&) { ++first_observations; });
 	const int first_observations_after_first_search = first_observations;
 	int second_observations = 0;
-	const auto second = ai.Search(second_board, SearchLimits::fixed_depth(2),
-	                              [&](const IterationInfo&) { ++second_observations; });
+	const auto second =
+	    ai.Search(second_board, SearchLimits::fixed_depth(2), [&](const IterationInfo&) { ++second_observations; });
 	const int second_observations_after_second_search = second_observations;
 	CHECK(first_observations == first_observations_after_first_search);
 	const auto third = ai.Search(first_board, SearchLimits::fixed_depth(2));
@@ -246,10 +247,8 @@ class AIPerlexTestFixture {
 		// Defaults to 4, a don't-care for the many [search] tests that never call
 		// Search(); the node-limit tests below raise it so the node poll — not the
 		// depth cap — is what stops the search.
-		ai_owner = std::make_unique<AIPerplex>(
-		    AIPerplexConfig{.evaluator = EvalManager::EvalTypes::COMPLEX,
-		                     .default_depth = max_depth,
-		                     .verbose_logging = false});
+		ai_owner = std::make_unique<AIPerplex>(AIPerplexConfig{
+		    .evaluator = EvalManager::EvalTypes::COMPLEX, .default_depth = max_depth, .verbose_logging = false});
 		ai = ai_owner.get();
 		ai->td_.board = board_;
 	}
@@ -453,16 +452,10 @@ class AIPerlexTestFixture {
 	}
 
 	// Static evaluation of the fixture's board — the value stand-pat would have used.
-	int evaluate() const
-	{
-		return ai->evaluator_->Evaluate(board_);
-	}
+	int evaluate() const { return ai->evaluator_->Evaluate(board_); }
 
 	// Full fixed-depth search from the fixture's board.
-	Move search_to_depth(int depth) const
-	{
-		return ai->Search(board_, SearchLimits::fixed_depth(depth)).best_move;
-	}
+	Move search_to_depth(int depth) const { return ai->Search(board_, SearchLimits::fixed_depth(depth)).best_move; }
 	SearchResult result_to_depth(int depth) const { return ai->Search(board_, SearchLimits::fixed_depth(depth)); }
 
 	// Full search bounded by a node budget instead of a fixed depth. Requires the
@@ -535,8 +528,7 @@ TEST_CASE("Player factory maps AIPerplex evaluator tuning threads and logging be
 	      "\n\tEngine type:\tPerplexity Transpositional AlphaBeta\n\tDepth:\t\t2\n\tEvaluation:\tSimple\n");
 }
 
-TEST_CASE("Player factory starts the AIPerplex new-game lifecycle before returning",
-          "[player][search_player][factory]")
+TEST_CASE("Player factory starts the AIPerplex new-game lifecycle before returning", "[player][search_player][factory]")
 {
 	Board board;
 	Config::PlayerConfig config;

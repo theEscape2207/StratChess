@@ -260,5 +260,4 @@ class AIPerplex final {
 	// verify the fix end to end, not just via UciHandler's own private state.
 	friend class UciHandlerTestFixture;
 #endif
-
 };

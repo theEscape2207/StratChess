@@ -3,8 +3,7 @@
 
 SearchControl::SearchControl(unsigned default_depth, std::chrono::milliseconds default_time) noexcept
     : default_depth_(default_depth), default_time_(default_time), effective_depth_(default_depth)
-{
-}
+{}
 
 void SearchControl::SetDefaults(unsigned depth, std::chrono::milliseconds time) noexcept
 {

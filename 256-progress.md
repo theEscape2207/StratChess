@@ -12,6 +12,19 @@ approved design is
 
 ## Just completed
 
+- Pre-PR lint repair: clang-format RED reported 30 unformatted C++ files against `origin/main`.
+  Applied the repository formatter to that exact scope, while preserving Task 7's uncommitted UCI
+  synchronization coverage. The known six clang-tidy findings were resolved narrowly: tactical
+  test depths now make the `unsigned`-to-`int` conversion explicit; `AIPerplex::Search` moves its
+  per-call observer into stable local storage; and redundant moves of trivially copyable
+  `AIPerplexConfig` values were removed from the factory, adapter, and UCI construction paths.
+- Lint-fix evidence: format GREEN now reports every checked file formatted; blame-ignore GREEN
+  acknowledges the existing large Task 5 reformat commit; `[tactical],[uci]` GREEN passed 1,323
+  assertions in 107 cases after a clean test build; and `git diff --check` is clean. Gate
+  clang-tidy has been launched against the final formatted sources; its child analyzer processes
+  are allowed to complete before the final Task 7 validation record is closed. No search-tree,
+  configuration, UCI lifecycle, or Game ownership behavior changed.
+
 - Task 7 harness repair: fixed the two custom UCI fixed-depth drivers rather than changing the
   correct immediate-stop production behavior. `Compare-SearchEquivalence.ps1` and `Run-Bench.ps1`
   now leave stdin open after `go`, drain stderr asynchronously while they read stdout line-by-line,
@@ -217,6 +230,8 @@ approved design is
 - A fixed-depth UCI harness must not batch `quit` (or EOF) behind `go`: `quit` correctly stops and
   joins the running search, including the intentional pending-stop launch window. Waiting for
   `bestmove` is therefore part of the measurement protocol, not a timing workaround.
+- `IterationObserver` is deliberately still a by-value public `Search` argument: moving it into a
+  stable local documents and preserves per-call ownership without widening the approved service API.
 
 ## Next steps
 

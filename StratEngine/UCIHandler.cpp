@@ -146,7 +146,7 @@ void UciHandler::init_ai()
 	config.default_time = std::chrono::seconds(15);
 	config.threads = configured_threads_;
 	config.verbose_logging = false;
-	ai_ = std::make_unique<AIPerplex>(std::move(config));
+	ai_ = std::make_unique<AIPerplex>(config);
 }
 
 // ---------------------------------------------------------------------------

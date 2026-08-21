@@ -141,7 +141,8 @@ namespace {
 	class ScopedPerfLogCapture {
 	  public:
 		ScopedPerfLogCapture()
-		    : perf_(Engine::Logger::EnsurePerfLogger("logs/GameLoopPerfStats.txt")), sink_(std::make_shared<CapturingSink>())
+		    : perf_(Engine::Logger::EnsurePerfLogger("logs/GameLoopPerfStats.txt")),
+		      sink_(std::make_shared<CapturingSink>())
 		{
 			REQUIRE(perf_);
 			sink_->set_pattern("%v");

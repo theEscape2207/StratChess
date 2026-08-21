@@ -36,8 +36,8 @@ namespace {
 	std::string search_description(unsigned depth, EvalManager::EvalTypes evaluator)
 	{
 		std::ostringstream out;
-		out << "\n\tEngine type:\tPerplexity Transpositional AlphaBeta\n\tDepth:\t\t" << depth
-		    << "\n\tEvaluation:\t" << evaluator_name(evaluator) << '\n';
+		out << "\n\tEngine type:\tPerplexity Transpositional AlphaBeta\n\tDepth:\t\t" << depth << "\n\tEvaluation:\t"
+		    << evaluator_name(evaluator) << '\n';
 		return out.str();
 	}
 
@@ -81,8 +81,7 @@ std::unique_ptr<IPlayer> CreatePlayer(const Config::PlayerConfig& config, Board&
 		search_config.tuning = map_tuning(config.search_tuning);
 		search_config.verbose_logging = options.verbose_search_logging;
 
-		auto player = std::make_unique<SearchPlayer>(board, std::move(search_config),
-		                                             search_description(config.depth, evaluator));
+		auto player = std::make_unique<SearchPlayer>(board, search_config, search_description(config.depth, evaluator));
 		player->search_.StartNewGame();
 		return player;
 	}
