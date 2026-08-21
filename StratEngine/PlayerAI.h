@@ -3,8 +3,7 @@
 #include "Board.h" // includes Move
 #include "Eval.h"
 #include "SearchLimits.h"
-#include "Utils/TimeManager.h"
-#include "Utils/TimeUtils.h"
+#include "SearchControl.h"
 #include <sstream>
 #include <chrono>
 
@@ -21,8 +20,16 @@ class PlayerAiBase : public PlayerBase {
 	}
 	const char* GetType() const noexcept override { return "AI"; }
 
-	void SetMaxDepth(unsigned depth) noexcept { max_depth_ = depth; }
-	void SetTimeLimit(std::chrono::milliseconds ms) noexcept { time_limit_ = ms; }
+	void SetMaxDepth(unsigned depth) noexcept
+	{
+		max_depth_ = depth;
+		search_control_.SetDefaults(max_depth_, time_limit_);
+	}
+	void SetTimeLimit(std::chrono::milliseconds ms) noexcept
+	{
+		time_limit_ = ms;
+		search_control_.SetDefaults(max_depth_, time_limit_);
+	}
 
 	struct HashConfigurationResult {
 		bool success{false};
@@ -56,7 +63,8 @@ class PlayerAiBase : public PlayerBase {
   protected:
 	// Force use of factory by
 	// Preventing constructor, copy-construction & operator=
-	explicit PlayerAiBase(Board& board, unsigned md) : m_Board(board), max_depth_(md)
+	explicit PlayerAiBase(Board& board, unsigned md)
+	    : m_Board(board), max_depth_(md), search_control_(md, std::chrono::seconds(15))
 	{
 		// Create the Evaluation strategy - Right now only possible to select two: SIMPLE and COMPLEX ;-)
 	}
@@ -83,15 +91,8 @@ class PlayerAiBase : public PlayerBase {
 		return {.best_move = GetBestMove(), .best_score = GetBestScore(), .game_state = root_game_state_};
 	}
 
-	/// Resolves per-call SearchLimits against the configured defaults
-	/// (time_limit_, max_depth_), arms time_manager_ with the resulting
-	/// budget, and resets per-move search state (_startingTime,
-	/// stop_search_) — replaces the old StartTimer(). (nodes_since_check_ now
-	/// lives on ThreadData; see ThreadData.h.)
-	/// Also stores the result in effective_depth_ for legacy AIs whose
-	/// recursive Search()/Quiescent() methods read the depth bound as a
-	/// member rather than a parameter; AIPerplex uses the return value
-	/// directly. Returns the effective search depth for this call.
+	/// Resolves per-call SearchLimits against the configured defaults, arms the
+	/// composed search control, and resets the per-move root verdict.
 	unsigned ApplyLimits(const SearchLimits& limits);
 
 	/// Has anything asked this search to stop? True when the abort flag is
@@ -100,7 +101,7 @@ class PlayerAiBase : public PlayerBase {
 	/// just expired, which latches it. Deliberately not named for the clock: the
 	/// flag has carried more than one reason since UCI 'stop' existed, and a name
 	/// claiming otherwise is what a reader of the abort path would trust.
-	bool StopRequested() const noexcept { return time_manager_.should_stop_search(); }
+	bool StopRequested() const noexcept { return search_control_.StopRequested(); }
 
 	/// Node budget: has this search used its allowance? Latches the same abort
 	/// flag as the clock, so the stack collapse and every IsAborted() consumer
@@ -111,19 +112,17 @@ class PlayerAiBase : public PlayerBase {
 	/// a nodes-only search.
 	/// @param nodes  Nodes searched so far by the polling thread — under Lazy
 	///               SMP that is thread 0's count, matching the clock check.
-	bool NodeLimitReached(int64_t nodes) noexcept
-	{
-		if (!node_limit_ || nodes < *node_limit_)
-			return false;
-		time_manager_.stop();
-		return true;
-	}
+	bool NodeLimitReached(int64_t nodes) noexcept { return search_control_.NodeLimitReached(nodes); }
 
 	/// Cheap per-node guard: only reads the latched atomic, no clock call.
 	/// Use at the top of pvs()/quiescence() so the call stack collapses in O(depth)
 	/// steps after the first StopRequested() or NodeLimitReached() fires and
 	/// latches the flag.
-	bool IsAborted() const noexcept { return time_manager_.is_aborted(); }
+	bool IsAborted() const noexcept { return search_control_.IsAborted(); }
+
+	bool ShouldStopIteration() const noexcept { return search_control_.ShouldStopIteration(); }
+
+	unsigned EffectiveDepth() const noexcept { return search_control_.EffectiveDepth(); }
 
 	void SetEvalEngine(EvalManager::EvalTypes type) override
 	{
@@ -192,27 +191,11 @@ class PlayerAiBase : public PlayerBase {
 	// Det bedste traek indtil nu
 	Move m_BestMove;
 
-	std::chrono::time_point<std::chrono::high_resolution_clock> _startingTime;
-
-	// Time control
-	std::atomic<bool> stop_search_{false};
-	chess::TimeManager time_manager_;
-
 	// Search configuration — set from game_settings.json via SetMaxDepth / SetTimeLimit
 	unsigned max_depth_{15};
 	std::chrono::milliseconds time_limit_{std::chrono::seconds(15)};
 
-	// Set by ApplyLimits() every call: the resolved depth bound for the
-	// current GetMove() call (== max_depth_ unless SearchLimits overrides
-	// it). Legacy AIs (AIBasic/AIAgent/ABIterative) whose recursive
-	// Search()/Quiescent() methods read the depth bound as a member use
-	// this instead of max_depth_, which stays the unmodified configured
-	// default. AIPerplex uses ApplyLimits()'s return value directly instead.
-	unsigned effective_depth_{0};
-
-	// Set by ApplyLimits() every call: the resolved node budget, or nullopt for
-	// unlimited (the default, and what every clock- or depth-driven call gets).
-	std::optional<int64_t> node_limit_;
+	SearchControl search_control_;
 
 	//#ifdef PRINT_STATS
 

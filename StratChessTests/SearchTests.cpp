@@ -235,7 +235,7 @@ class AIPerlexTestFixture {
 	int quiesce_node(int alpha, int beta, int qsearch_budget, int ply) const
 	{
 		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
-		ai->time_manager_.start(std::chrono::milliseconds(60'000));
+		ai->ApplyLimits(SearchLimits::fixed_time(std::chrono::milliseconds(60'000)));
 		ai->td_.board = board_;
 		ai->td_.nodes_since_check_ = 0;
 		return ai->quiescence(ai->td_, alpha, beta, qsearch_budget, ply, *ai->_tt);
@@ -247,7 +247,7 @@ class AIPerlexTestFixture {
 	int quiesce_via_pvs(int alpha, int beta, int ply) const
 	{
 		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
-		ai->time_manager_.start(std::chrono::milliseconds(60'000));
+		ai->ApplyLimits(SearchLimits::fixed_time(std::chrono::milliseconds(60'000)));
 		ai->td_.board = board_;
 		ai->td_.nodes_since_check_ = 0;
 		return ai->pvs(ai->td_, /*depth=*/0, alpha, beta, ply, /*is_pv_node=*/true, *ai->_tt);
@@ -267,7 +267,7 @@ class AIPerlexTestFixture {
 	int quiesce_after(std::initializer_list<const char*> moves, int alpha, int beta) const
 	{
 		ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX);
-		ai->time_manager_.start(std::chrono::milliseconds(60'000));
+		ai->ApplyLimits(SearchLimits::fixed_time(std::chrono::milliseconds(60'000)));
 		ai->td_.board = board_;
 		ai->td_.nodes_since_check_ = 0;
 
@@ -318,6 +318,8 @@ class AIPerlexTestFixture {
 		return ai->GetMove(SearchLimits::fixed_nodes(nodes)).best_move;
 	}
 
+	bool search_is_aborted() const { return ai->IsAborted(); }
+
 	// The same search, but handing back the whole result. The abort tests need game_state and
 	// best_move together, and Threads=1 so the node poll is the only thing that stops it.
 	SearchResult result_with_nodes(int64_t nodes) const
@@ -360,6 +362,8 @@ class LegacyAiTestFixture {
 
 	// Calls the same reset point every legacy GetMove() calls before it does anything else.
 	void call_apply_limits() const { ai->ApplyLimits(SearchLimits::fixed_depth(1)); }
+	void stop_search() const { ai->StopSearch(); }
+	bool search_is_aborted() const { return ai->IsAborted(); }
 
 	SearchResult get_move(int depth) const { return ai->GetMove(SearchLimits::fixed_depth(depth)); }
 
@@ -959,6 +963,16 @@ TEST_CASE("AIAgent - ApplyLimits resets the root verdict before any node runs", 
 	CHECK(fix.root_game_state() == GameStates::STILL_PLAYING);
 }
 
+TEST_CASE("AIAgent - StopSearch latches the composed control for the legacy search guard", "[search_control]")
+{
+	LegacyAiTestFixture fix("4k3/8/8/8/8/8/1R6/4K3 w - - 5 60");
+
+	fix.call_apply_limits();
+	fix.stop_search();
+
+	CHECK(fix.search_is_aborted());
+}
+
 TEST_CASE("AIAgent - a search aborted before its first root frame drops the previous verdict", "[search]")
 {
 	// One real search first, so m_Line is populated: GetBestMove() asserts on an empty line unless
@@ -1420,7 +1434,7 @@ TEST_CASE("Search - node counters reset between searches", "[search][nodes]")
 // contract instead: it stops within one poll interval, and it does so the
 // same way every time.
 
-TEST_CASE("Search - fixed_nodes stops within one poll interval past the budget", "[search][nodes]")
+TEST_CASE("Search - fixed_nodes stops within one poll interval past the budget", "[search][nodes][search_control]")
 {
 	// After 1.e4 e5 2.Nf3, black to move. max_depth=8 is chosen so that this test
 	// fails rather than hangs if the poll ever stops firing: a full depth-8 search
@@ -1435,6 +1449,7 @@ TEST_CASE("Search - fixed_nodes stops within one poll interval past the budget",
 
 	const int64_t total_nodes = fix.mainnodes() + fix.qnodes();
 	CHECK(total_nodes >= node_budget);
+	CHECK(fix.search_is_aborted());
 	// Loose on purpose: the limit is observed only at multiples of 1024, and during
 	// the abort collapse the parent pvs()/quiescence() frames each add their own
 	// nodes before unwinding. Do not tighten without re-deriving the bound.

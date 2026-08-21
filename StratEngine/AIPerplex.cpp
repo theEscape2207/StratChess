@@ -245,7 +245,7 @@ SearchResult AIPerplex::GetMove(const SearchLimits& limits)
 	// destroys each std::jthread, which joins automatically. This must happen
 	// before every subsequent return in this function, including the
 	// empty-move emergency path below, so a helper can never outlive GetMove().
-	time_manager_.stop();
+	StopSearch();
 	helpers.clear();
 
 	int64_t total_nodes = td_.nodes_searched;
@@ -356,7 +356,7 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 			// Soft limit gate: stop after this depth if the allocated time budget
 			// is consumed.  Exception: if the best move just changed, allow one
 			// more depth to verify the new move (the hard limit will cut it off).
-			if (time_manager_.should_stop_iteration()) {
+			if (ShouldStopIteration()) {
 				if (!metrics.move_changed || extra_depth_used) {
 					continue_iteration = false;
 					break;

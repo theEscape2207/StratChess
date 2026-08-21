@@ -117,8 +117,7 @@ Move PlayerAiBase::GetBestMove() noexcept
 // ************************************
 std::chrono::milliseconds PlayerAiBase::StopTimerAndAdjustVars(size_t node_count) const
 {
-	auto end = std::chrono::high_resolution_clock::now();
-	auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(end - _startingTime);
+	auto elapsedMs = search_control_.Elapsed();
 	if (elapsedMs == std::chrono::milliseconds(0))
 		elapsedMs = std::chrono::milliseconds(1);
 	m_TotalTime += elapsedMs;
@@ -152,16 +151,11 @@ std::chrono::milliseconds PlayerAiBase::StopTimerAndAdjustVars(size_t node_count
 	return elapsedMs;
 }
 
-void PlayerAiBase::StopSearch() noexcept { time_manager_.stop(); }
+void PlayerAiBase::StopSearch() noexcept { search_control_.Stop(); }
 
 unsigned PlayerAiBase::ApplyLimits(const SearchLimits& limits)
 {
-	const auto r = Engine::resolve_limits(limits, time_limit_, max_depth_);
-	_startingTime = std::chrono::high_resolution_clock::now();
-	time_manager_.start(r.budget.soft, r.budget.hard);
-	stop_search_.store(false, std::memory_order_relaxed);
-	effective_depth_ = r.effective_depth;
-	node_limit_ = r.node_limit;
+	search_control_.ApplyLimits(limits);
 	root_game_state_ = GameStates::STILL_PLAYING;
-	return r.effective_depth;
+	return search_control_.EffectiveDepth();
 }
