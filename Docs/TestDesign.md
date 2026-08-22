@@ -71,7 +71,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | **Evaluation (EvalSimple/Complex)** | `[eval]` | `EvalTests.cpp` |
 | **Search regression (tactical)** | `[tactical]` | `TacticalTests.cpp` |
 | **Search regression (slow tier)** | `[tactical_full][slow]` | `TacticalFullTests.cpp` |
-| Search helpers (assess_quality etc.) | `[search]` | `SearchTests.cpp` |
+| Concrete search service, lifecycle and helpers | `[search]` | `SearchTests.cpp` |
 | Move ordering (Sort) | `[sort]` | `SortTests.cpp` |
 | Board DoMove/UndoMove completeness | `[board]` | `BoardTests.cpp` |
 | Board move-type round-trips (all types) | `[board_moves]` | `BoardMoveTests.cpp` |
@@ -231,7 +231,9 @@ change.
 **File**: `StratChessTests/TacticalTests.cpp`
 **Rationale**: Direct regression tests for search correctness. If LMR, aspiration windows, or move ordering changes break tactical play, these catch it fast. Each test uses `AIPerplex` at depth 4 — fast on simple positions (< 100 ms each), finds forced results reliably.
 
-**Approach**: `PlayerBase::Create(AI_PERPLEX, 4)`, `SetEvalEngine(COMPLEX)`, `SetVerboseLogging(false)`, then `GetMove(limits).best_move`. Check `m.from()` and `m.to()`.
+**Approach**: construct `AIPerplex(AIPerplexConfig{.evaluator = COMPLEX, .default_depth = 4,
+.verbose_logging = false})`, then call `Search(board, limits).best_move`. Check `m.from()` and
+`m.to()`.
 
 **Test cases**:
 - Mate in 1 (rook delivers back-rank mate): engine plays Ra8# (`6k1/5ppp/8/8/8/8/5PPP/R5K1`)
@@ -387,6 +389,12 @@ overflow regression), `cmd_setoption`'s Threads persistence across `ucinewgame`,
 advertisement, allocation reporting, replacement, persistence, malformed-input and in-search
 refusal contracts.
 
+The handler owns one concrete `AIPerplex` for its whole session. `ucinewgame` stops/joins any
+search, retains that service identity, and calls `StartNewGame()` to clear per-game TT and heuristics.
+Every `go` passes its own iteration observer to `Search()` and consumes the returned telemetry;
+there is no stored observer or last-result channel. The `eval` cases assert that the printed term
+breakdown sums to the same evaluator result, independently of the search service.
+
 Also covers the mid-search refusal (#178): `position` and `setoption` are rejected while a search
 runs. The fixture sets the `searching_` flag directly rather than starting a real search — the
 contract under test is the guard's, not the scheduler's, and racing a live search would make the
@@ -394,6 +402,16 @@ cases timing-dependent. One case exists specifically to pin *why* the flag is ne
 `search_thread_.joinable()` guard would look equivalent and would reject the `position` of every
 normal `go` → `bestmove` → `position` cycle, because a `std::thread` stays joinable after its
 function returns.
+
+### `[search]` — production search boundary
+
+`SearchTests.cpp` covers the concrete service rather than source shape: each `Search(root, limits,
+observer)` call uses its supplied Board, observers do not persist into later calls, and an earlier
+returned `SearchResult` remains usable after subsequent searches. New-game cases prove that
+`StartNewGame()` clears the TT and per-game history/killers while retaining configured tuning.
+Legacy aspiration coverage remains on the nonvirtual `PlayerBase::GetBestScore()` helper, so no
+generic player score capability is needed. Time/node abort checks stay deterministic where possible;
+clock-sensitive behavior is validated separately with timed UCI probes and fixed-depth equivalence.
 
 ### `[argparse]` — External integer parsing
 
@@ -582,14 +600,15 @@ Constructing FEN positions (all four are bugs that have actually bitten):
 
 ### Constructing AIPerplex in a test
 
-The constructor re-enables verbose logging and leaves `Eval` null, so the order matters:
+The concrete configuration is complete at construction. `EvalTypes::NONE` is invalid for this
+service; its Board is supplied to every search call:
 
 ```cpp
-Board board(fen);                                   // before Create()
-auto ai = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, depth, board);
-AIPerplex::SetVerboseLogging(false);                // after Create()
-ai->SetEvalEngine(EvalManager::EvalTypes::COMPLEX); // before GetMove()
-Move m = ai->GetMove().best_move;                   // GetMove() returns a SearchResult
+Board board(fen);
+AIPerplex ai(AIPerplexConfig{.evaluator = EvalManager::EvalTypes::COMPLEX,
+                             .default_depth = depth,
+                             .verbose_logging = false});
+Move m = ai.Search(board, SearchLimits::fixed_depth(depth)).best_move;
 ```
 
 ### Deep perft

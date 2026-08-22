@@ -9,6 +9,7 @@
 #include "Board.h"
 #include "GameState.h"
 #include "PlayerBase.h"
+#include "PlayerFactory.h"
 #include "SearchLimits.h"
 #include "SearchResult.h"
 #include "defines.h"
@@ -17,10 +18,11 @@
 
 namespace {
 
-	std::unique_ptr<PlayerBase> human(Board& board)
+	std::unique_ptr<IPlayer> human(Board& board)
 	{
-		// Depth is a don't-care: Create() passes it to the AIs and drops it for a human.
-		return PlayerBase::Create(PlayerBase::ePlayerTypes::HUMAN, 1, board);
+		Config::PlayerConfig config;
+		config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::HUMAN);
+		return CreatePlayer(config, board);
 	}
 
 } // namespace

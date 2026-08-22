@@ -30,7 +30,7 @@ SearchResult ABIterative::GetMove(const SearchLimits& limits)
 	ApplyLimits(limits);
 
 	// almindelig iterativ soegning
-	for (depth_ = 1; depth_ <= effective_depth_; ++depth_) {
+	for (depth_ = 1; depth_ <= EffectiveDepth(); ++depth_) {
 		if (StopRequested())
 			break;
 
@@ -50,8 +50,6 @@ SearchResult ABIterative::GetMove(const SearchLimits& limits)
 		// We've gotten a new move in the PVLine
 		ENewPVLineMove.fire(this, m_Line);
 	}
-
-	StopTimerAndAdjustVars(m_SearchCount);
 
 	return MakeResult();
 }
@@ -110,7 +108,7 @@ int ABIterative::Search(int ply, int alpha, int beta, PVLine& pline)
 
 			moveFound = true;
 
-			if (ply == 0 && depth_ == effective_depth_)
+			if (ply == 0 && depth_ == EffectiveDepth())
 				spdlog::default_logger()->debug("Root move {}/{}: {} score={}", counter, moveList.size(),
 				                                MoveFormatter::ToCoord(curMove), value);
 
@@ -156,7 +154,7 @@ int ABIterative::Search(int ply, int alpha, int beta, PVLine& pline)
 				}
 			}
 		} else {
-			if (ply == 0 && depth_ == effective_depth_)
+			if (ply == 0 && depth_ == EffectiveDepth())
 				spdlog::default_logger()->debug("Root move {}/{}: {} ILLEGAL", counter, moveList.size(),
 				                                MoveFormatter::ToCoord(curMove));
 		}

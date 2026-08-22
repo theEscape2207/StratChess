@@ -92,14 +92,15 @@ TEST_CASE("Search from a high-but-legal halfmove clock still searches and return
 	INFO("halfmove clock: " << clock);
 
 	Board board(fen_with_clock(clock));
-	auto ai = make_tactical_engine(board, 4);
+	auto ai = make_tactical_engine(4);
 
 	REQUIRE(board.halfmove_clock() == clock);
 
-	const Move move = ai->GetMove(SearchLimits::fixed_depth(4)).best_move;
+	const SearchResult result = ai->Search(board, SearchLimits::fixed_depth(4));
+	const Move move = result.best_move;
 
 	CHECK_FALSE(move.is_null());
-	CHECK(as_perplex(ai).GetLastResult().nodes_searched > 0);
+	CHECK(result.nodes_searched > 0);
 }
 
 // At or past the threshold the game is drawn, but a UCI engine is not the arbiter of that
@@ -114,9 +115,9 @@ TEST_CASE("Search at or past the fifty-move threshold still returns a legal move
 	INFO("halfmove clock: " << clock);
 
 	Board board(fen_with_clock(clock));
-	auto ai = make_tactical_engine(board, 4);
+	auto ai = make_tactical_engine(4);
 
-	const Move move = ai->GetMove(SearchLimits::fixed_depth(4)).best_move;
+	const Move move = ai->Search(board, SearchLimits::fixed_depth(4)).best_move;
 
 	REQUIRE_FALSE(move.is_null());
 
@@ -134,11 +135,11 @@ TEST_CASE("Search at or past the fifty-move threshold still returns a legal move
 TEST_CASE("The move that reaches the fifty-move threshold is returned, not withheld", "[fifty_move]")
 {
 	Board board("4k3/8/8/8/8/8/1R6/4K3 w - - 99 60");
-	auto ai = make_tactical_engine(board, 4);
+	auto ai = make_tactical_engine(4);
 
 	REQUIRE(board.halfmove_clock() == 99);
 
-	const SearchResult result = ai->GetMove(SearchLimits::fixed_depth(4));
+	const SearchResult result = ai->Search(board, SearchLimits::fixed_depth(4));
 
 	REQUIRE_FALSE(result.best_move.is_null());
 	CHECK(result.game_state == GameStates::STILL_PLAYING);

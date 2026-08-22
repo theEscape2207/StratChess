@@ -23,8 +23,6 @@ SearchResult AIBasic::GetMove(const SearchLimits& limits)
 	//Kalder den Almindelige rekursive alphabeta soegning
 	Search(0, -GameValues::Search_Init, GameValues::Search_Init);
 
-	StopTimerAndAdjustVars(m_SearchCount);
-
 	return MakeResult();
 }
 
@@ -45,7 +43,7 @@ int AIBasic::Search(size_t ply, int alpha, int beta)
 	// Modvirkning af Horisont effekt: singular extensions
 	// hvis der i bunden af traeet er slaaet en brik, saa fortsaettes soegningen
 	// indtil der ikke bliver slaaet en brik
-	if (ply == effective_depth_) {
+	if (ply == EffectiveDepth()) {
 		// Quiescent seach
 		return Quiescent(ply, alpha, beta);
 	}

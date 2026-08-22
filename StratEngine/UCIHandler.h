@@ -5,12 +5,11 @@
 #include <string>
 #include <thread>
 #include <spdlog/spdlog.h>
-#include "PlayerBase.h"
-#include "PlayerAI.h"
 #include "GameState.h"
 #include "Board.h"
 
-class EvalManager;
+class AIPerplex;
+class EvalComplex;
 class UciHandler {
   public:
 	UciHandler();
@@ -71,12 +70,12 @@ class UciHandler {
 
 	static void send(std::string_view msg); // writes line to stdout + flush
 
-	// Must be declared (and thus constructed/destroyed) before ai_ —
-	// ai_ holds a Board& reference into it that must outlive it.
+	// Search receives board_ as a per-call root. Declaring it before the search
+	// thread keeps that root alive until the handler destructor joins the thread.
 	Board board_;
 
-	std::unique_ptr<PlayerAiBase> ai_;
-	std::unique_ptr<EvalManager> eval_;
+	std::unique_ptr<AIPerplex> ai_;
+	std::unique_ptr<EvalComplex> eval_;
 	std::thread search_thread_;
 
 	// Whether a search is actually running. search_thread_.joinable() cannot

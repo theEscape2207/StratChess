@@ -126,29 +126,27 @@ bool UciHandler::EnableCommandLog(const std::string& filename)
 // ---------------------------------------------------------------------------
 
 UciHandler::UciHandler()
-    // eval_ is constructed here, not in init_ai(): EvalManager holds no
+    // eval_ is constructed here, not in init_ai(): EvalComplex holds no
     // per-game state (see the Lazy SMP sharing contract comment in Eval.h),
     // so there is nothing for it to reset between games regardless of where
     // it is constructed. Matches the COMPLEX type init_ai() configures for
     // the search evaluator.
-    : eval_(EvalManager::Create(EvalManager::EvalTypes::COMPLEX))
+    : eval_(std::make_unique<EvalComplex>())
 {}
 
 UciHandler::~UciHandler() { stop_and_join(); }
 
 void UciHandler::init_ai()
 {
-	auto base = PlayerBase::Create(PlayerBase::ePlayerTypes::AI_PERPLEX, UCI_DEFAULT_DEPTH, board_);
-	AIPerplex::SetVerboseLogging(false);
-	base->SetEvalEngine(EvalManager::EvalTypes::COMPLEX); // public via IPlayer; must be before downcast
-	ai_.reset(dynamic_cast<PlayerAiBase*>(base.release()));
-	// Apply any thread count set via 'setoption' before ai_ existed (a
-	// client may configure options before the first 'ucinewgame'). ai_ now
-	// persists across games — cmd_ucinewgame() calls StartNewGame() instead
-	// of rebuilding — so this only ever runs once per process, not on every
-	// new game.
 	if (ai_)
-		ai_->SetThreads(configured_threads_);
+		return;
+
+	AIPerplexConfig config;
+	config.default_depth = UCI_DEFAULT_DEPTH;
+	config.default_time = std::chrono::seconds(15);
+	config.threads = configured_threads_;
+	config.verbose_logging = false;
+	ai_ = std::make_unique<AIPerplex>(config);
 }
 
 // ---------------------------------------------------------------------------
@@ -252,11 +250,9 @@ static std::string eval_term_row(const char* name, int white, int black)
 // D5 in the plan. The White-POV line removes any need to mentally flip the
 // sign when Black is to move.
 //
-// Above them, phase 2 prints a per-term breakdown (D10). It is emitted only
-// for EvalComplex: the terms are its own, and EvalSimple has none to report,
-// so the base EvalManager interface was left alone rather than given a debug
-// method only one subclass could implement (D7). The downcast mirrors the one
-// init_ai() already performs.
+// Above them, phase 2 prints the concrete EvalComplex per-term breakdown
+// (D10). UCI owns that evaluator directly, so its debugging surface needs no
+// base-interface extension or runtime cast.
 //
 // When the breakdown is available, the totals below are taken from its `total`
 // field — which is Evaluate()'s own return value (D8) — rather than from a
@@ -269,8 +265,8 @@ void UciHandler::cmd_eval()
 	const bool white_to_move = (board_.GetCurrentColor() == WHITE);
 	int score = 0;
 
-	if (const auto* complex_eval = dynamic_cast<const EvalComplex*>(eval_.get())) {
-		const EvalBreakdown terms = complex_eval->Breakdown(board_);
+	{
+		const EvalBreakdown terms = eval_->Breakdown(board_);
 		const std::string rule = std::string(static_cast<size_t>(EVAL_TERM_COL), '-') + "+" +
 		                         std::string(static_cast<size_t>(EVAL_VALUE_COL) + 1, '-') + "+" +
 		                         std::string(static_cast<size_t>(EVAL_VALUE_COL) + 1, '-') + "+" +
@@ -311,8 +307,6 @@ void UciHandler::cmd_eval()
 		send("phase: " + std::to_string(terms.phase) + "/" + std::to_string(MAX_GAME_PHASE));
 
 		score = terms.total;
-	} else {
-		score = eval_->Evaluate(board_);
 	}
 
 	const int white_pov = white_to_move ? score : -score;
@@ -447,84 +441,62 @@ void UciHandler::cmd_go(std::string_view line)
 	                   ? std::optional<int>(p.depth)
 	                   : std::optional<int>((p.infinite || node_bounded) ? 50 : static_cast<int>(UCI_DEFAULT_DEPTH));
 
-	auto start = std::chrono::steady_clock::now();
-
-	// Reached the same way the final-line code below always has (dynamic_cast on
-	// ai_.get()), just earlier: the observer must be registered before the search
-	// thread starts, so this cast now happens here instead of inside the thread
-	// lambda. AIPerplex is the only PlayerAiBase concrete type that supports
-	// per-iteration reporting -- a non-AIPerplex ai_ (none currently exist) simply
-	// gets no per-iteration lines, same as leaving the observer unregistered.
-	auto* perplex = dynamic_cast<AIPerplex*>(ai_.get());
-	if (perplex) {
-		// Registered before search_thread_ spawns, so the observer is live for the
-		// entire search; cleared once GetMove() returns, from inside the thread
-		// lambda below, so a subsequent search under a fresh 'go' does not fire
-		// this stale closure before its own registration runs.
-		perplex->SetIterationObserver([start](const IterationInfo& iter) {
-			auto elapsed =
-			    std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
-			send("info depth " + std::to_string(iter.depth) + " score " + format_uci_score(iter.score) + " nodes " +
-			     std::to_string(iter.nodes) + " time " + std::to_string(elapsed.count()) + " pv " +
-			     format_uci_pv(iter.pv));
-		});
-	}
+	IterationObserver observer = [](const IterationInfo& iter) {
+		send("info depth " + std::to_string(iter.depth) + " score " + format_uci_score(iter.score) + " nodes " +
+		     std::to_string(iter.nodes) + " time " + std::to_string(iter.elapsed.count()) + " pv " +
+		     format_uci_pv(iter.pv));
+	};
 
 	// Raised on this thread, before the search exists, so a command arriving
 	// immediately after 'go' cannot observe a stale false.
+	ai_->arm_uci_search_launch();
 	searching_.store(true, std::memory_order_release);
-	search_thread_ = std::thread([this, start, limits, perplex]() mutable {
-		// The returned result is the authoritative one for this call — post-join and
-		// complete for any IPlayer, not just the concrete type this handler happens to
-		// hold. Re-reading it off AIPerplex would report defaults for anything else.
-		const SearchResult result = ai_->GetMove(limits);
-		const Move best = result.best_move;
+	try {
+		search_thread_ = std::thread([this, limits, observer = std::move(observer)]() mutable {
+			const SearchResult result = ai_->Search(board_, limits, std::move(observer));
+			const Move best = result.best_move;
 
-		auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
+			const int cp = result.best_score;
+			const std::string score_str = format_uci_score(cp);
 
-		// Search is over: no more iterations will fire the observer, and the next
-		// 'go' registers its own before spawning its thread. Clearing here rather
-		// than leaving the closure installed keeps "no observer registered" the
-		// resting state, so any future non-cmd_go path that calls GetMove() cannot
-		// fire this stale closure.
-		if (perplex)
-			perplex->SetIterationObserver(nullptr);
+			// 'nodes' covers both trees rather than the main tree alone, which is what the
+			// protocol means and what keeps the client's nps from charging quiescence work to
+			// the clock without counting it. See MEASUREMENT_CONTRACT for the unit.
+			send("info depth " + std::to_string(result.depth_completed) + " score " + score_str + " nodes " +
+			     std::to_string(result.nodes_searched + result.qnodes_searched) + " time " +
+			     std::to_string(result.elapsed.count()) + " pv " +
+			     (best.is_null() ? "0000" : MoveFormatter::ToUCI(best)));
 
-		const int cp = result.best_score;
-		const std::string score_str = format_uci_score(cp);
+			// The split, as an 'info string' so GUIs and match runners ignore it: without it a
+			// change that relocates work between the trees looks like one that simply got slower
+			// (#312). The two must sum to 'nodes' above -- Run-Bench.ps1 refuses a run if they
+			// do not. 'main' not 'pv' because pvs() searches PV and non-PV nodes alike.
+			send("info string treenodes main " + std::to_string(result.nodes_searched) + " qs " +
+			     std::to_string(result.qnodes_searched));
 
-		// 'nodes' covers both trees rather than the main tree alone, which is what the
-		// protocol means and what keeps the client's nps from charging quiescence work to
-		// the clock without counting it. See MEASUREMENT_CONTRACT for the unit.
-		send("info depth " + std::to_string(result.depth_completed) + " score " + score_str + " nodes " +
-		     std::to_string(result.nodes_searched + result.qnodes_searched) + " time " +
-		     std::to_string(elapsed.count()) + " pv " + (best.is_null() ? "0000" : MoveFormatter::ToUCI(best)));
-
-		// The split, as an 'info string' so GUIs and match runners ignore it: without it a
-		// change that relocates work between the trees looks like one that simply got slower
-		// (#312). The two must sum to 'nodes' above -- Run-Bench.ps1 refuses a run if they
-		// do not. 'main' not 'pv' because pvs() searches PV and non-PV nodes alike.
-		send("info string treenodes main " + std::to_string(result.nodes_searched) + " qs " +
-		     std::to_string(result.qnodes_searched));
-
-		const std::string bm = best.is_null() ? "0000" : MoveFormatter::ToUCI(best);
-		// Cleared BEFORE bestmove goes out, not after. `bestmove` is the only
-		// thing a client waits for, so it will send the next `position` the
-		// instant it reads that line -- and refuse_while_searching() silently
-		// refuses `position` while this flag is set, leaving board_ on the
-		// previous position. `go` is not refused, so the next search then runs
-		// on a stale board and returns a move that is illegal in the real one:
-		// typically the engine's own previous move, from a square it has already
-		// vacated. That forfeited two games in the 19,980-game run 31281221815
-		// (issue #245).
-		//
-		// Ordering it this way makes the window unreachable rather than narrow:
-		// by the time the client can possibly observe bestmove, the engine is
-		// already accepting commands. GetMove() has returned by here, so nothing
-		// below touches board_ and clearing early races with no search work.
+			const std::string bm = best.is_null() ? "0000" : MoveFormatter::ToUCI(best);
+			// Cleared BEFORE bestmove goes out, not after. `bestmove` is the only
+			// thing a client waits for, so it will send the next `position` the
+			// instant it reads that line -- and refuse_while_searching() silently
+			// refuses `position` while this flag is set, leaving board_ on the
+			// previous position. `go` is not refused, so the next search then runs
+			// on a stale board and returns a move that is illegal in the real one:
+			// typically the engine's own previous move, from a square it has already
+			// vacated. That forfeited two games in the 19,980-game run 31281221815
+			// (issue #245).
+			//
+			// Ordering it this way makes the window unreachable rather than narrow:
+			// by the time the client can possibly observe bestmove, the engine is
+			// already accepting commands. Search() has returned by here, so nothing
+			// below touches board_ and clearing early races with no search work.
+			searching_.store(false, std::memory_order_release);
+			send("bestmove " + bm);
+		});
+	} catch (...) {
 		searching_.store(false, std::memory_order_release);
-		send("bestmove " + bm);
-	});
+		ai_->finish_search_launch();
+		throw;
+	}
 }
 
 // UCI has no error channel, so the refusal goes out as 'info string' -- the
@@ -641,7 +613,7 @@ void UciHandler::cmd_setoption(std::string_view line)
 	if (!ai_)
 		return;
 
-	// searching_ can clear before bestmove, but only after GetMove() has joined
+	// searching_ can clear before bestmove, but only after Search() has joined
 	// helper threads and returned, so an accepted replacement has no concurrent
 	// transposition-table reader.
 	const auto result = ai_->SetHash(n);
@@ -662,17 +634,13 @@ void UciHandler::cmd_setoption(std::string_view line)
 void UciHandler::stop_and_join()
 {
 	if (ai_)
-		ai_->StopSearch();
+		ai_->Stop();
 	if (search_thread_.joinable())
 		search_thread_.join();
 	// Belt and braces: the search clears this itself, but a thread that ended
 	// without reaching that point must not leave the engine refusing commands
 	// for the rest of the session.
 	searching_.store(false, std::memory_order_release);
-	if (ai_)
-		ai_->SetMaxDepth(UCI_DEFAULT_DEPTH);
-	if (ai_)
-		ai_->SetTimeLimit(std::chrono::seconds(15));
 }
 
 UciHandler::GoParams UciHandler::parse_go(std::string_view line)

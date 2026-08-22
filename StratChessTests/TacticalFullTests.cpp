@@ -59,8 +59,8 @@ TEST_CASE("Tactical - slow suite", "[tactical_full][slow]")
 
 	INFO(tc.label);
 	Board board(tc.fen);
-	auto ai = make_tactical_engine(board, tc.depth);
-	Move m = ai->GetMove().best_move;
+	auto ai = make_tactical_engine(tc.depth);
+	Move m = ai->Search(board, SearchLimits::fixed_depth(static_cast<int>(tc.depth))).best_move;
 
 	REQUIRE(m.from() == tc.expected_from);
 	REQUIRE(m.to() == tc.expected_to);
@@ -78,16 +78,14 @@ TEST_CASE("Tactical (full) - null-move pruning guard is a no-op in K+P endgame",
 	constexpr unsigned depth = 5;
 
 	Board board_disabled(fen);
-	auto ai_disabled = make_tactical_engine(board_disabled, depth);
-	as_perplex(ai_disabled).tuning().null_move_enabled = false;
-	Move move_disabled = ai_disabled->GetMove().best_move;
-	SearchResult result_disabled = as_perplex(ai_disabled).GetLastResult();
+	auto ai_disabled = make_tactical_engine(depth, false);
+	SearchResult result_disabled = ai_disabled->Search(board_disabled, SearchLimits::fixed_depth(depth));
+	Move move_disabled = result_disabled.best_move;
 
 	Board board_enabled(fen);
-	auto ai_enabled = make_tactical_engine(board_enabled, depth);
-	as_perplex(ai_enabled).tuning().null_move_enabled = true;
-	Move move_enabled = ai_enabled->GetMove().best_move;
-	SearchResult result_enabled = as_perplex(ai_enabled).GetLastResult();
+	auto ai_enabled = make_tactical_engine(depth, true);
+	SearchResult result_enabled = ai_enabled->Search(board_enabled, SearchLimits::fixed_depth(depth));
+	Move move_enabled = result_enabled.best_move;
 
 	REQUIRE(move_disabled == move_enabled);
 	REQUIRE(result_disabled.best_score == result_enabled.best_score);
@@ -110,10 +108,9 @@ TEST_CASE("Tactical (full) - null-move pruning does not crash on a real recursio
 	Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 	constexpr unsigned depth = 7;
 
-	auto ai = make_tactical_engine(board, depth);
-	as_perplex(ai).tuning().null_move_enabled = true;
+	auto ai = make_tactical_engine(depth, true);
 
-	Move move = ai->GetMove().best_move;
+	Move move = ai->Search(board, SearchLimits::fixed_depth(depth)).best_move;
 
 	REQUIRE(!move.is_null());
 }
