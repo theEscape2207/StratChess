@@ -340,3 +340,27 @@ exact RED/GREEN evidence; focused, whole-suite, equivalence, timing, benchmark, 
 race, self-play, and WSL TSan gates pass. No push, merge, or PR was performed. On resume, use the
 post-fix `53202cf` / `b44fc9deadca` candidate evidence above, not Task 7's earlier `9a74a0f` binary,
 and do not reintroduce batch `go`/`quit` validation drivers.
+
+## Resumed and closed out (2026-08-22)
+
+A prior session parked this branch after tooling quota exhaustion blocked the two required
+independent re-reviews of commits `53202cf..708661d`. On resume:
+
+- Dispatched `search-reviewer` against the actual exception-safety fix diff (`99a7531..53202cf`,
+  the code substance of that commit range). Verdict: LGTM, no blocking issues -- confirmed the RAII
+  guard destruction order, idempotency, and the UCI launch/stop handshake against current source,
+  not just the diff.
+- Did an independent overall pass over the remaining production surface (`SearchControl`,
+  `SearchPlayer`, `PlayerFactory`) -- clean, no concerns.
+- Reran local verification fresh rather than trusting the parked report: `Run-Tests.ps1` (7,233/497,
+  matches), `Validate-PrePR.ps1 -Force -AllowUnlistedReformat` (full PASS, blame-ignore correctly
+  flags `df50017` as a genuine refactor and is acknowledged).
+- Pushed via `New-PullRequest.ps1 -AllowUnlistedReformat`: PR #362
+  (https://github.com/theEscape2207/StratChess/pull/362). CI running as of this update.
+
+## Updated next steps
+
+1. Wait for PR #362 CI to go green (`Get-PrChecks.ps1 -Wait`).
+2. Per CLAUDE.md's cross-agent review step, the user routes a second agent to review before merge --
+   the PR is *awaiting review*, not done, even once CI is green.
+3. After merge: `Remove-Worktree.ps1 -Name issue-256-design -SyncMaster`.
