@@ -2,12 +2,12 @@
 
 ## Current status
 
-Final whole-branch review remediation is implemented on `codex/issue-256-design` in the isolated
-`.claude/worktrees/issue-256-design` worktree. The observer-exception launch-state defect now has an
-exact RED/GREEN regression, UCI timing has one search-owned origin, SearchControl has focused direct
-coverage, and the stale boundary documentation is corrected. Focused gates are green; the
-post-remediation whole-branch, equivalence, timing, concurrency, and game-mode reruns remain before
-the final handoff. No push, merge, or PR was performed. The approved design is
+Final whole-branch review remediation and validation are complete on `codex/issue-256-design` in the
+isolated `.claude/worktrees/issue-256-design` worktree. The observer-exception launch-state defect
+has exact RED/GREEN coverage, UCI timing has one search-owned origin, SearchControl has focused
+direct coverage, and stale boundary documentation is corrected. The post-remediation production
+binary is exactly equivalent to merge base and all timing, concurrency, repository, and game-mode
+gates are green. No push, merge, or PR was performed. The approved design is
 `.claude/plans/aiperplex-production-search-boundary.md`; the executable plan is
 `Docs/superpowers/plans/2026-08-21-aiperplex-production-search-boundary.md`.
 
@@ -31,6 +31,26 @@ the final handoff. No push, merge, or PR was performed. The approved design is
   contract now states configuration and `StartNewGame()` may not overlap `Search()`; UCI continues
   to refuse `setoption` while searching. SearchResult, Engine-Readme, PlayerAI, and Game comments now
   describe the concrete-service/factory/legacy-node boundary that actually ships.
+- Post-fix candidate provenance is distinct from Task 7's earlier binary. Implementation commit
+  `53202cf377022faf4d6152b7ab59f419c4b26b0a` produced SHA-256
+  `B44FC9DEADCA36E57FAFB22E4281FE82F58D716DD55B90034FEBFEC0A7FC9D67` after the final formatting
+  rebuild; Task 7's pre-review
+  candidate was `9a74a0f` / `586c7338bf2f`. The final depth-12 comparison used the post-fix binary
+  against cached merge base `54d3e54` / `2775d2508fd7` and passed all six positions, 90 compared
+  lines, Threads=1, with no difference.
+- Fresh marker-wait probes passed for both binaries. Candidate `go movetime 300` completed depth 9
+  in 301 ms wall / 300 ms reported; clock search completed depth 10 in 375 ms wall / 367 ms
+  reported; `go nodes 20000` completed depth 5 in 8 ms wall with 20,180 nodes. Every candidate iteration/final
+  time sequence was monotonic (`0..300`, `0..367`, and `0..6` ms), each probe emitted one bestmove,
+  and no timeout, stall, premature exit, or time loss occurred.
+- Two fresh post-fix depth-12 benchmark passes each visited exactly 21,457,322 nodes and returned
+  the same eight best moves. Aggregate rates were 3.086M and 3.086M nps (6,953/6,954 ms). Together
+  with exact equivalence this is neutral repeatability evidence only, not an nps or strength claim.
+- Final repository/concurrency gates passed: `build.ps1 all`; full extended suite 7,289 assertions /
+  500 cases; pre-commit 7,233 / 497 non-slow cases; clang-tidy 59/59 with no findings; tactical
+  stability 10x36; forced pre-PR bounded AIPerplex self-play 13 moves; UCI command race 2,000/2,000
+  with zero refusals; and the rebuilt WSL TSan binary completed all six Threads=4/8/16 scenarios,
+  reconfiguration, warm sequence, movetime abort, and oversubscription with no sanitizer report.
 
 - Completed Task 7's deferred UCI coverage strengthening without production changes. The concurrent
   `go infinite`/`isready` test now captures output through a synchronized stream buffer, waits up to
@@ -308,17 +328,14 @@ the final handoff. No push, merge, or PR was performed. The approved design is
 
 ## Next steps
 
-1. Commit the focused remediation, rebuild both targets, and run the requested focused/full,
-   pre-commit, and forced pre-PR gates.
-2. Rerun exact depth-12 equivalence against merge base on the post-fix production binary; rerun timed
-   UCI/benchmark probes, bounded AIPerplex self-play, and the documented WSL TSan scenarios.
-3. Record exact post-fix evidence in this file, `Docs/Changelog.md`, and the ignored final-review
-   report; perform stale/downcast scans and `git diff --check`, then return the SHAs and concerns.
+1. Root reviews the final remediation diff/report and decides the push/merge/PR handoff.
+2. Preserve the ignored final-review probe, benchmark, and TSan evidence until review is complete.
+   No implementation or local validation gate remains pending.
 
 ## Safe park point
 
-Safe to stop after the focused remediation checkpoint. The one Important review defect is fixed with
-exact RED/GREEN evidence and the focused service/control/UCI tests pass. No push, merge, or PR was
-performed. On resume, begin with the commit and full validation sequence above; do not treat the
-earlier Task 7 candidate binary (`9a74a0f`, SHA prefix `586c7338bf2f`) as the post-remediation binary,
+Safe to stop after the final-review evidence commit. The one Important review defect is fixed with
+exact RED/GREEN evidence; focused, whole-suite, equivalence, timing, benchmark, pre-commit/pre-PR,
+race, self-play, and WSL TSan gates pass. No push, merge, or PR was performed. On resume, use the
+post-fix `53202cf` / `b44fc9deadca` candidate evidence above, not Task 7's earlier `9a74a0f` binary,
 and do not reintroduce batch `go`/`quit` validation drivers.

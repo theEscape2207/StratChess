@@ -43,8 +43,16 @@ Newest first.
 
 - Boundary regressions cover returned-result lifetime, new-game TT/heuristic clearing, legacy
   aspiration seeding, UCI `eval` breakdown consistency, immediate stop, and concurrent `isready`.
-  Fixed-depth equivalence and timed UCI probes remain required final validation; this refactor makes
-  no Elo or nps claim.
+- The post-review production binary (`b44fc9deadca`, implementation commit `53202cf`) is exactly
+  equivalent to merge base `54d3e54` at depth 12 and Threads=1: all six positions and 90 compared
+  iteration/final lines match. Marker-wait movetime, clock, and node probes completed without a
+  stall/time loss; candidate UCI times were monotonic through the final line.
+- Two repeated depth-12 benchmark passes each visited 21,457,322 nodes and returned the same eight
+  best moves as the original five-pass evidence. Aggregate rates were 3.086M and 3.086M nps, within
+  normal run noise; this refactor makes no Elo, nps, or strength-gain claim.
+- Full/pre-commit/pre-PR gates, 10x36 tactical stability, bounded AIPerplex self-play, the 2,000-run
+  UCI command race probe, and all six WSL ThreadSanitizer Lazy-SMP scenarios passed after the
+  exception-safe launch cleanup.
 
 ---
 
