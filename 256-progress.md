@@ -15,9 +15,10 @@ gates are green. No push, merge, or PR was performed. The approved design is
 
 - Final broad review found one Important defect: an exception from the per-call observer could skip
   `finish_search_launch()`, leave the UCI pending-stop handshake armed, and let Lazy SMP helpers join
-  without first latching their shared stop. Added a two-thread regression whose observer throws,
-  verifies the exception propagates, calls `Stop()`, and then requires a fresh depth-2 search to
-  complete. Exact RED was 25/26 assertions with `depth_completed == 0`; GREEN is 27/27 assertions.
+  without first latching their shared stop. The initial one-thread regression produced exact RED at
+  25/26 assertions with `depth_completed == 0`; it was then strengthened before implementation to
+  use two threads and bound helper unwind. Its observer throws, verifies propagation, calls `Stop()`,
+  and requires a fresh depth-2 search to complete. Final GREEN is 27/27 assertions.
 - `AIPerplex::Search` now uses destruction-order-specific scope guards: exceptional unwinding stops
   helpers before their `std::jthread` joins and clears launch/pending state afterwards. Normal search
   retains its explicit stop/join ordering. The launch arm is now a private UCI friend seam, moved to
