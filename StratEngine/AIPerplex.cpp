@@ -16,6 +16,7 @@
 #include <iterator>
 #include <new>
 #include <stdexcept>
+#include <utility>
 #include <spdlog/common.h>
 #include <spdlog/logger.h>
 #include <spdlog/sinks/basic_file_sink.h>
@@ -38,6 +39,21 @@
 // If a future revision lets helper threads log too, ensure_logger_initialized()
 // must be made safe to call concurrently (e.g. via std::call_once) first.
 static std::shared_ptr<spdlog::logger> s_logger = nullptr;
+
+namespace {
+	template <typename Function> class ScopeExit final {
+	  public:
+		explicit ScopeExit(Function function) noexcept : function_(std::move(function)) {}
+		~ScopeExit() noexcept { function_(); }
+
+		ScopeExit(const ScopeExit&) = delete;
+		ScopeExit& operator=(const ScopeExit&) = delete;
+
+	  private:
+		Function function_;
+	};
+} // namespace
+
 static std::unique_ptr<EvalManager> create_search_evaluator(EvalManager::EvalTypes type)
 {
 	if (type == EvalManager::EvalTypes::NONE)
@@ -96,7 +112,7 @@ AIPerplex::AIPerplex(AIPerplexConfig config)
 	}
 }
 
-void AIPerplex::PrepareSearch() noexcept
+void AIPerplex::arm_uci_search_launch() noexcept
 {
 	std::lock_guard<std::mutex> lock(stop_mutex_);
 	stop_pending_ = false;
@@ -209,19 +225,19 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 			search_launch_active_ = true;
 		}
 	}
+	// Destruction order is intentional on every exceptional path: stop_guard
+	// latches the shared control first, helper jthreads then join, and only then
+	// launch_guard clears the immediate-stop handshake for the next call.
+	auto launch_guard = ScopeExit([this]() noexcept { finish_search_launch(); });
+	std::vector<std::jthread> helpers;
+	auto stop_guard = ScopeExit([this]() noexcept { control_.Stop(); });
 
 	init_search(root);
-	// Snapshot threads_ exactly once: UCI's cmd_setoption (unlike cmd_go/
-	// cmd_ucinewgame/cmd_stop) does not call stop_and_join() before writing
-	// threads_, so a client can mutate it on the UCI thread while this
-	// function runs on the search thread. Re-reading the plain `unsigned`
-	// member at multiple points below could observe different values across
-	// reads (e.g. the spawn guard sees the old value while the aggregation
-	// loop sees a new, larger one after helper_tds_ was never resized this
-	// call), which is both a data race and a potential out-of-bounds
-	// helper_tds_[] access. Using one local snapshot everywhere in this
-	// function closes that window; a setoption arriving mid-search simply
-	// takes effect starting with the next Search() call.
+	// Snapshot threads_ exactly once so helper allocation, spawning and
+	// aggregation use one internally consistent value. This is not race
+	// synchronization: callers must obey the documented precondition that
+	// configuration and StartNewGame() do not overlap Search(); UCI enforces it
+	// by refusing setoption while a search is active.
 	const unsigned threads = threads_;
 	control_.ApplyLimits(limits);
 	{
@@ -238,7 +254,6 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	// threads_ == 1 (the default) leaves this block entirely unreached:
 	// `helpers` stays a default-constructed empty vector and helper_tds_ is
 	// never touched — byte-identical to the pre-SMP single-threaded code path.
-	std::vector<std::jthread> helpers;
 	if (threads > 1) {
 		if (helper_tds_.size() < threads - 1) {
 			const size_t old = helper_tds_.size();
@@ -286,10 +301,8 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	const Move bestMove = result.best_move;
 
 	// Game over at the root: no move to play, and result.game_state carries why.
-	if (bestMove.is_null()) {
-		finish_search_launch();
+	if (bestMove.is_null())
 		return result;
-	}
 
 	// Success logging
 	if (verbose_logging_ && s_logger) {
@@ -297,7 +310,6 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 		               MoveFormatter::ToCoord(bestMove), result.best_score, result.depth_completed,
 		               result.elapsed.count(), total_nodes, result.search_was_stable ? "yes" : "NO");
 	}
-	finish_search_launch();
 	return result;
 }
 
@@ -1275,6 +1287,7 @@ void AIPerplex::emit_iteration_info(const ThreadData& td, int depth, int score, 
 	iter.depth = depth;
 	iter.score = score;
 	iter.nodes = td.nodes_searched + td.qnodes_searched;
+	iter.elapsed = control_.Elapsed();
 	iter.pv.assign(line.begin(), line.begin() + length);
 
 	observer(iter);

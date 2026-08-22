@@ -413,7 +413,6 @@ void UciHandler::cmd_go(std::string_view line)
 	// which crashes the test binary with no diagnostic rather than failing an assertion.
 	if (!ai_)
 		init_ai();
-	ai_->PrepareSearch();
 
 	GoParams p = parse_go(line);
 	const bool white = (board_.GetCurrentColor() == WHITE);
@@ -442,56 +441,62 @@ void UciHandler::cmd_go(std::string_view line)
 	                   ? std::optional<int>(p.depth)
 	                   : std::optional<int>((p.infinite || node_bounded) ? 50 : static_cast<int>(UCI_DEFAULT_DEPTH));
 
-	auto start = std::chrono::steady_clock::now();
-
-	IterationObserver observer = [start](const IterationInfo& iter) {
-		auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
+	IterationObserver observer = [](const IterationInfo& iter) {
 		send("info depth " + std::to_string(iter.depth) + " score " + format_uci_score(iter.score) + " nodes " +
-		     std::to_string(iter.nodes) + " time " + std::to_string(elapsed.count()) + " pv " + format_uci_pv(iter.pv));
+		     std::to_string(iter.nodes) + " time " + std::to_string(iter.elapsed.count()) + " pv " +
+		     format_uci_pv(iter.pv));
 	};
 
 	// Raised on this thread, before the search exists, so a command arriving
 	// immediately after 'go' cannot observe a stale false.
+	ai_->arm_uci_search_launch();
 	searching_.store(true, std::memory_order_release);
-	search_thread_ = std::thread([this, limits, observer = std::move(observer)]() mutable {
-		const SearchResult result = ai_->Search(board_, limits, std::move(observer));
-		const Move best = result.best_move;
+	try {
+		search_thread_ = std::thread([this, limits, observer = std::move(observer)]() mutable {
+			const SearchResult result = ai_->Search(board_, limits, std::move(observer));
+			const Move best = result.best_move;
 
-		const int cp = result.best_score;
-		const std::string score_str = format_uci_score(cp);
+			const int cp = result.best_score;
+			const std::string score_str = format_uci_score(cp);
 
-		// 'nodes' covers both trees rather than the main tree alone, which is what the
-		// protocol means and what keeps the client's nps from charging quiescence work to
-		// the clock without counting it. See MEASUREMENT_CONTRACT for the unit.
-		send("info depth " + std::to_string(result.depth_completed) + " score " + score_str + " nodes " +
-		     std::to_string(result.nodes_searched + result.qnodes_searched) + " time " +
-		     std::to_string(result.elapsed.count()) + " pv " + (best.is_null() ? "0000" : MoveFormatter::ToUCI(best)));
+			// 'nodes' covers both trees rather than the main tree alone, which is what the
+			// protocol means and what keeps the client's nps from charging quiescence work to
+			// the clock without counting it. See MEASUREMENT_CONTRACT for the unit.
+			send("info depth " + std::to_string(result.depth_completed) + " score " + score_str + " nodes " +
+			     std::to_string(result.nodes_searched + result.qnodes_searched) + " time " +
+			     std::to_string(result.elapsed.count()) + " pv " +
+			     (best.is_null() ? "0000" : MoveFormatter::ToUCI(best)));
 
-		// The split, as an 'info string' so GUIs and match runners ignore it: without it a
-		// change that relocates work between the trees looks like one that simply got slower
-		// (#312). The two must sum to 'nodes' above -- Run-Bench.ps1 refuses a run if they
-		// do not. 'main' not 'pv' because pvs() searches PV and non-PV nodes alike.
-		send("info string treenodes main " + std::to_string(result.nodes_searched) + " qs " +
-		     std::to_string(result.qnodes_searched));
+			// The split, as an 'info string' so GUIs and match runners ignore it: without it a
+			// change that relocates work between the trees looks like one that simply got slower
+			// (#312). The two must sum to 'nodes' above -- Run-Bench.ps1 refuses a run if they
+			// do not. 'main' not 'pv' because pvs() searches PV and non-PV nodes alike.
+			send("info string treenodes main " + std::to_string(result.nodes_searched) + " qs " +
+			     std::to_string(result.qnodes_searched));
 
-		const std::string bm = best.is_null() ? "0000" : MoveFormatter::ToUCI(best);
-		// Cleared BEFORE bestmove goes out, not after. `bestmove` is the only
-		// thing a client waits for, so it will send the next `position` the
-		// instant it reads that line -- and refuse_while_searching() silently
-		// refuses `position` while this flag is set, leaving board_ on the
-		// previous position. `go` is not refused, so the next search then runs
-		// on a stale board and returns a move that is illegal in the real one:
-		// typically the engine's own previous move, from a square it has already
-		// vacated. That forfeited two games in the 19,980-game run 31281221815
-		// (issue #245).
-		//
-		// Ordering it this way makes the window unreachable rather than narrow:
-		// by the time the client can possibly observe bestmove, the engine is
-		// already accepting commands. Search() has returned by here, so nothing
-		// below touches board_ and clearing early races with no search work.
+			const std::string bm = best.is_null() ? "0000" : MoveFormatter::ToUCI(best);
+			// Cleared BEFORE bestmove goes out, not after. `bestmove` is the only
+			// thing a client waits for, so it will send the next `position` the
+			// instant it reads that line -- and refuse_while_searching() silently
+			// refuses `position` while this flag is set, leaving board_ on the
+			// previous position. `go` is not refused, so the next search then runs
+			// on a stale board and returns a move that is illegal in the real one:
+			// typically the engine's own previous move, from a square it has already
+			// vacated. That forfeited two games in the 19,980-game run 31281221815
+			// (issue #245).
+			//
+			// Ordering it this way makes the window unreachable rather than narrow:
+			// by the time the client can possibly observe bestmove, the engine is
+			// already accepting commands. Search() has returned by here, so nothing
+			// below touches board_ and clearing early races with no search work.
+			searching_.store(false, std::memory_order_release);
+			send("bestmove " + bm);
+		});
+	} catch (...) {
 		searching_.store(false, std::memory_order_release);
-		send("bestmove " + bm);
-	});
+		ai_->finish_search_launch();
+		throw;
+	}
 }
 
 // UCI has no error channel, so the refusal goes out as 'info string' -- the

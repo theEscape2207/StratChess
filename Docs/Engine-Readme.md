@@ -282,7 +282,8 @@ Move extracted and played
 | File | Description |
 |------|-------------|
 | `IPlayer.h` | Player interface (AI and Human) |
-| `PlayerBase.cpp/h` | Base player implementation + factory |
+| `PlayerBase.cpp/h` | Shared player implementation and legacy helpers |
+| `PlayerFactory.cpp/h` | Config-aware player construction before type erasure |
 | `PlayerAI.cpp/h` | AI player base class (`PlayerAiBase`) |
 | `PlayerAiIterBase.h` | Iterative AI base (time management) |
 | `PlayerHuman.cpp/h` | Human player input handling |
@@ -595,8 +596,9 @@ result cache to read afterwards. `Game` owns the combined elapsed/node totals us
 performance rows; no player keeps cross-player accounting.
 
 `game_state` is never `DRAW_50_MOVES`: the fifty-move rule is a fact about the position after the
-move is committed, which only `Game::Run()` can see. The legacy agents and `PlayerHuman` fill
-`best_move` and `game_state` and leave the search counters at their defaults.
+move is committed, which only `Game::Run()` can see. Legacy agents place their unsplit combined
+work in `nodes_searched` and leave `qnodes_searched` at zero; `PlayerHuman` leaves both counters at
+their defaults.
 
 ---
 

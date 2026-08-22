@@ -2,15 +2,35 @@
 
 ## Current status
 
-Task 7 implementation and local validation are complete on `codex/issue-256-design` in the isolated
-`.claude/worktrees/issue-256-design` worktree. Fixed-depth search is exactly equivalent to merge base
-`54d3e54dbac873cc6209646ff6a989991ffab1d2`; timed/node UCI, benchmark, smoke, race, TSan,
-repository, and game-mode gates are recorded below. No push, merge, or PR was performed. Root still
-owns the search-focused and broad whole-branch reviews. The approved design is
+Final whole-branch review remediation is implemented on `codex/issue-256-design` in the isolated
+`.claude/worktrees/issue-256-design` worktree. The observer-exception launch-state defect now has an
+exact RED/GREEN regression, UCI timing has one search-owned origin, SearchControl has focused direct
+coverage, and the stale boundary documentation is corrected. Focused gates are green; the
+post-remediation whole-branch, equivalence, timing, concurrency, and game-mode reruns remain before
+the final handoff. No push, merge, or PR was performed. The approved design is
 `.claude/plans/aiperplex-production-search-boundary.md`; the executable plan is
 `Docs/superpowers/plans/2026-08-21-aiperplex-production-search-boundary.md`.
 
 ## Just completed
+
+- Final broad review found one Important defect: an exception from the per-call observer could skip
+  `finish_search_launch()`, leave the UCI pending-stop handshake armed, and let Lazy SMP helpers join
+  without first latching their shared stop. Added a two-thread regression whose observer throws,
+  verifies the exception propagates, calls `Stop()`, and then requires a fresh depth-2 search to
+  complete. Exact RED was 25/26 assertions with `depth_completed == 0`; GREEN is 27/27 assertions.
+- `AIPerplex::Search` now uses destruction-order-specific scope guards: exceptional unwinding stops
+  helpers before their `std::jthread` joins and clears launch/pending state afterwards. Normal search
+  retains its explicit stop/join ordering. The launch arm is now a private UCI friend seam, moved to
+  the last pre-thread-launch point; thread-construction failure clears it before propagating.
+- `IterationInfo` now carries `SearchControl::Elapsed()`, so per-iteration and final UCI `time` fields
+  share the search-control origin. A focused UCI regression requires nondecreasing iteration/final
+  times. Direct SearchControl tests now cover default resolution, elapsed reset across repeated
+  sessions, explicit stop reset, node limits, and observable soft-before-hard clock behavior.
+- Focused post-fix gates passed: `[service_api]` 27 assertions / 6 cases, `[search_control]` 24 / 8,
+  `[timing]` 7 / 1, `[immediate_stop]` 4 / 1, and `[output_integrity]` 27 / 1. The public lifecycle
+  contract now states configuration and `StartNewGame()` may not overlap `Search()`; UCI continues
+  to refuse `setoption` while searching. SearchResult, Engine-Readme, PlayerAI, and Game comments now
+  describe the concrete-service/factory/legacy-node boundary that actually ships.
 
 - Completed Task 7's deferred UCI coverage strengthening without production changes. The concurrent
   `go infinite`/`isready` test now captures output through a synchronized stream buffer, waits up to
@@ -160,7 +180,7 @@ owns the search-focused and broad whole-branch reviews. The approved design is
   `PlayerBase::Create`, AIPerplex/PlayerAiBase downcast, or stale AIPerplex compatibility API.
 
 - Completed Task 4 fix round 1: UCI's immediate `stop` can no longer be lost between thread launch
-  and `SearchControl::ApplyLimits()`. `AIPerplex::PrepareSearch()` arms a small mutex-protected
+  and `SearchControl::ApplyLimits()`. A private UCI-only launch arm sets a small mutex-protected
   launch handshake before UCI schedules the search thread; `Stop()` records a request throughout
   that launch and `Search()` reapplies it after arming limits. Completion clears the handshake, so
   a `stop` that races a finished search cannot poison the next command. Direct `Search` callers
@@ -288,15 +308,17 @@ owns the search-focused and broad whole-branch reviews. The approved design is
 
 ## Next steps
 
-1. Root performs the remaining search-focused and broad whole-branch reviews, then decides the
-   push/merge/PR handoff. No additional Task 7 implementation or local validation is pending.
+1. Commit the focused remediation, rebuild both targets, and run the requested focused/full,
+   pre-commit, and forced pre-PR gates.
+2. Rerun exact depth-12 equivalence against merge base on the post-fix production binary; rerun timed
+   UCI/benchmark probes, bounded AIPerplex self-play, and the documented WSL TSan scenarios.
+3. Record exact post-fix evidence in this file, `Docs/Changelog.md`, and the ignored final-review
+   report; perform stale/downcast scans and `git diff --check`, then return the SHAs and concerns.
 
 ## Safe park point
 
-Safe to stop after the Task 7 evidence commit. Implementation and local validation are complete:
-Game owns factory-produced type-erased players, `SearchPlayer` owns AIPerplex by value, UCI owns its
-concrete service directly, and the pending-stop handshake remains proven. Fixed-depth equivalence,
-timed/node UCI, operational smoke, benchmark identity/noise, extended/pre-PR/pre-commit, UCI race,
-Linux TSan, and both game-mode paths are covered. No push, merge, or PR was performed. Root still
-owns search-focused and broad whole-branch reviews; do not interpret the smoke row or small nps shift
-as strength evidence, and do not reintroduce batch `go`/`quit` validation drivers.
+Safe to stop after the focused remediation checkpoint. The one Important review defect is fixed with
+exact RED/GREEN evidence and the focused service/control/UCI tests pass. No push, merge, or PR was
+performed. On resume, begin with the commit and full validation sequence above; do not treat the
+earlier Task 7 candidate binary (`9a74a0f`, SHA prefix `586c7338bf2f`) as the post-remediation binary,
+and do not reintroduce batch `go`/`quit` validation drivers.

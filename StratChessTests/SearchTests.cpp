@@ -184,6 +184,26 @@ TEST_CASE("AIPerplex Search uses the board supplied for each call and does not r
 	CHECK_FALSE(third.best_move.is_null());
 }
 
+TEST_CASE("AIPerplex clears launch state when an iteration observer throws", "[search][service_api]")
+{
+	Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+	AIPerplex ai(AIPerplexConfig{.default_depth = 2, .threads = 2, .verbose_logging = false});
+
+	const auto failed_search_started = std::chrono::steady_clock::now();
+	REQUIRE_THROWS_AS(ai.Search(board, SearchLimits::fixed_depth(50),
+	                            [](const IterationInfo&) { throw std::runtime_error("observer failure"); }),
+	                  std::runtime_error);
+	CHECK(std::chrono::steady_clock::now() - failed_search_started < std::chrono::seconds(2));
+
+	// A stop arriving after the failed call belongs to no search. It must not be
+	// remembered by a stale launch handshake and poison the next call.
+	ai.Stop();
+	const SearchResult recovered = ai.Search(board, SearchLimits::fixed_depth(2));
+
+	CHECK_FALSE(recovered.best_move.is_null());
+	CHECK(recovered.depth_completed == 2);
+}
+
 TEST_CASE("AIPerplexConfig selects the evaluator used by Search", "[search][service_api]")
 {
 	Board board("4k3/pp6/8/8/8/P7/P7/4K3 w - - 0 1");

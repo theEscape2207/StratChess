@@ -2026,6 +2026,26 @@ TEST_CASE("cmd_go: 'go depth 4' emits per-iteration info lines with strictly inc
 	REQUIRE(bestmove_lines == 1);
 }
 
+TEST_CASE("cmd_go: iteration and final info times share one monotonic origin", "[uci][timing]")
+{
+	UciHandlerTestFixture fix;
+	fix.position("position startpos");
+
+	std::string output;
+	{
+		CoutRedirect redirect;
+		fix.dispatch("go depth 5");
+		fix.join_search();
+		output = redirect.str();
+	}
+
+	const auto info_lines = parse_info_depth_lines(output);
+	REQUIRE(info_lines.size() >= 2);
+	for (size_t i = 1; i < info_lines.size(); ++i)
+		CHECK(info_lines[i].time_ms >= info_lines[i - 1].time_ms);
+	CHECK(info_lines.back().time_ms >= info_lines[info_lines.size() - 2].time_ms);
+}
+
 TEST_CASE("cmd_go: the last info line's pv and score agree with bestmove", "[uci]")
 {
 	// This is the guarantee item 6 (issue #237 stage 0) exists for: the final

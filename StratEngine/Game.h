@@ -77,8 +77,8 @@ class Game final {
 	// position and two supplied players, skipping the settings file and log files Init()
 	// would otherwise set up, so the loop can be driven with scripted results.
 	//
-	// Deliberately narrow: it injects players and reads the outcome. It does not change who
-	// owns the board or constructs the players — decoupling that is #256.
+	// Deliberately narrow: it injects players and reads the outcome without changing
+	// production board ownership or the config-aware player factory path.
 	struct TestAccess;
 
 	void unsubscribePlayerEvents();

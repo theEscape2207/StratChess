@@ -39,16 +39,16 @@ class PlayerAiBase : public PlayerBase {
 	};
 
 	/// Replace the transposition table for a client-supplied entry-memory budget.
-	/// Unsupported legacy AIs return failure; AIPerplex returns the actual allocation.
+	/// Legacy AIs do not own a configurable table and return failure. The standalone
+	/// AIPerplex service exposes its concrete SetHash() separately.
 	virtual HashConfigurationResult SetHash(unsigned) noexcept { return {}; }
 
-	/// Configure the number of search threads (Lazy SMP). Base no-op — legacy
-	/// AIs (AIBasic/AIAgent/ABIterative) ignore this; AIPerplex overrides and
-	/// clamps. No threading is actually spawned yet (config plumbing only).
+	/// Legacy-player compatibility no-op. AIBasic, AIAgent and ABIterative are
+	/// single-threaded; the standalone AIPerplex service owns Lazy SMP configuration.
 	virtual void SetThreads(unsigned) noexcept {}
 
 	/// Reset per-game search state before the first move of a new game.
-	/// Legacy AIs have no persistent state that needs an explicit reset.
+	/// These legacy AIs have no persistent state that needs an explicit reset.
 	virtual void StartNewGame() {}
 
 	void SetEvalEngine(EvalManager::EvalTypes type)
@@ -109,11 +109,10 @@ class PlayerAiBase : public PlayerBase {
 	/// flag as the clock, so the stack collapse and every IsAborted() consumer
 	/// need not know which limit stopped them. Unlimited unless the caller asked
 	/// for a node budget, in which case a false answer costs one optional test.
-	/// Only AIPerplex polls this; the legacy agents accept a node limit through
-	/// ApplyLimits() and then ignore it, so for them only the depth cap bounds
-	/// a nodes-only search.
-	/// @param nodes  Nodes searched so far by the polling thread — under Lazy
-	///               SMP that is thread 0's count, matching the clock check.
+	/// The legacy agents currently accept a node limit through ApplyLimits() and
+	/// then ignore it, so for them only the depth cap bounds a nodes-only search.
+	/// AIPerplex owns and polls its separate composed SearchControl.
+	/// @param nodes  Legacy agent's combined nodes searched so far.
 	bool NodeLimitReached(int64_t nodes) noexcept { return search_control_.NodeLimitReached(nodes); }
 
 	/// Cheap per-node guard: only reads the latched atomic, no clock call.

@@ -30,11 +30,13 @@
 // Under Lazy SMP the two also diverge because the final total sums helper
 // threads' nodes, which are never visible here. `pv` is a copy of the PV
 // table's root line, taken at emit time before the next iteration
-// overwrites it.
+// overwrites it. `elapsed` shares SearchResult's SearchControl origin, so a
+// caller can report iteration and final times on one monotonic timeline.
 struct IterationInfo {
 	int depth = 0;
 	int score = 0;
 	int64_t nodes = 0;
+	std::chrono::milliseconds elapsed{0};
 	std::vector<Move> pv;
 };
 
@@ -88,6 +90,9 @@ class AIPerplex final {
 	explicit AIPerplex(AIPerplexConfig config = {});
 	SearchResult Search(const Board& root, const SearchLimits& limits, IterationObserver observer = {});
 
+	// Configuration/lifecycle methods SetThreads(), SetHash(), and
+	// StartNewGame() must not overlap Search(). Stop() is the only method that
+	// may be called concurrently with Search().
 	// Configure the number of Lazy SMP search threads; clamps to [1, 32].
 	// Search() spawns threads_ - 1 helper std::jthreads sharing the
 	// transposition table with the main search.
@@ -101,9 +106,6 @@ class AIPerplex final {
 
 	HashConfigurationResult SetHash(unsigned mb) noexcept;
 	void StartNewGame();
-	// Arms a launch before its Search call is scheduled. A concurrent Stop is
-	// remembered until Search has applied limits and can safely re-latch it.
-	void PrepareSearch() noexcept;
 	void Stop() noexcept;
 	~AIPerplex() = default;
 
@@ -216,6 +218,10 @@ class AIPerplex final {
 	// when no observer was supplied. Called from both accept branches of
 	// iterative_deepening(), after `state` is updated for that iteration.
 	void emit_iteration_info(const ThreadData& td, int depth, int score, const IterationObserver& observer) const;
+	// UCI-only half of the immediate go/stop launch handshake. Kept private so
+	// ordinary Search callers have one synchronous operation and no pre-call
+	// ordering contract.
+	void arm_uci_search_launch() noexcept;
 	void finish_search_launch() noexcept;
 
 	// MEMBER VARIABLES
@@ -260,4 +266,5 @@ class AIPerplex final {
 	// verify the fix end to end, not just via UciHandler's own private state.
 	friend class UciHandlerTestFixture;
 #endif
+	friend class UciHandler;
 };
