@@ -80,6 +80,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | Board public query APIs + FEN round-trip | `[board_api]` | `BoardApiTests.cpp` |
 | Time management (TimeManager + compute_budget) | `[time_mgr]` | `TimeManagerTests.cpp` |
 | Sliding-piece attack generation (PEXT) | `[magic]` | `MagicBitboardTests.cpp` |
+| Bitboard helpers (set_bits/clear_bits/print_bitboard) | `[bitboard]` | `BitBoardHelperTests.cpp` |
 | UCI command loop | `[uci]` | `UCITests.cpp` (+ `StratChessEvolved.exe uci` pipe smoke test) |
 | FEN parsing (FenBatch, FENParser, Board::SetupFromFEN/Board(fen)) | `[fen]` | `FenParsingTests.cpp` |
 | PV legality (`pv_replays_legally`) | `[pv]` | `PVIntegrityTests.cpp` |
@@ -362,10 +363,18 @@ length 2 — which is the only reason they are worth having.
 
 ### `[bitboard]` — Bitboard helper tests
 
-**When**: opportunistically (low priority)
-**File**: `StratChessTests/BitboardTests.cpp`
+**Status**: ✅ **Done** (issue #104).
+**File**: `StratChessTests/BitBoardHelperTests.cpp`
 
-Basic operations from `defines.h`: set bit, clear bit, popcount, LSB extraction.
+`Bits::` (`StratEngine/Utils/BitTools.h`) already carries compile-time `static_assert` coverage
+for its bitwise primitives. These cases cover `BitBoardHelper` (`StratEngine/BitBoardHelper.h`),
+the mutating wrapper the rest of the engine actually calls: `set_bits`/`clear_bits` at runtime,
+including the precondition-violation paths (clearing unset bits, setting already-set bits), which
+only run in Release (`#ifdef NDEBUG`) since the precondition is an `assert` and aborts a
+Debug/sanitizer build — same pattern as the `Board(fen)` cases in `FenParsingTests.cpp`. Also
+covers `print_bitboard`'s row/column mapping directly (bit index `i` at row `i/8`, column `i%8`)
+for an empty board, a fully-set board, and single set bits, rather than relying on square-name
+semantics.
 
 ### `[magic]` — Sliding-piece attack generation tests
 
