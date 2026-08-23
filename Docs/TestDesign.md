@@ -81,7 +81,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | Time management (TimeManager + compute_budget) | `[time_mgr]` | `TimeManagerTests.cpp` |
 | Sliding-piece attack generation (PEXT) | `[magic]` | `MagicBitboardTests.cpp` |
 | Bitboard helpers (set_bits/clear_bits/print_bitboard) | `[bitboard]` | `BitBoardHelperTests.cpp` |
-| UCI command loop | `[uci]` | `UCITests.cpp` (+ `StratChessEvolved.exe uci` pipe smoke test) |
+| UCI command loop | `[uci]` | `UCITests.cpp`, `UCIReportingTests.cpp` (+ `StratChessEvolved.exe uci` pipe smoke test) |
 | FEN parsing (FenBatch, FENParser, Board::SetupFromFEN/Board(fen)) | `[fen]` | `FenParsingTests.cpp` |
 | PV legality (`pv_replays_legally`) | `[pv]` | `PVIntegrityTests.cpp` |
 | Full tactical suite (WAC/mate-in-N) | — | `StratChessEvolved.exe tactical test` |
@@ -262,7 +262,6 @@ Each item below is a standalone task. Do it when the corresponding feature is be
 
 ### `[search]` — AIPerplex helper unit tests
 
-**Status**: ✅ **Done.** LMR landed in March 2026; all 10 cases passing.
 **File**: `StratChessTests/SearchTests.cpp`
 **Activation**: `STRAT_ENABLE_TEST_ACCESS`, applied to the `StratChessTests` target only by `CMakeLists.txt`.
 
@@ -274,7 +273,6 @@ Tests for private helper methods exposed via `AIPerlexTestFixture` (friend class
 
 ### `[sort]` — Move ordering tests
 
-**Status**: ✅ **Done.** ScoreMoves extracted from pvs() inline loop; 5 test cases, all passing.
 **File**: `StratChessTests/SortTests.cpp`
 
 Verify ordering priority: hash move → captures (MVV-LVA) → killers → history scores.
@@ -286,8 +284,9 @@ an empty move at every node, so it matched nothing, ever.
 
 ### `[board]` — DoMove/UndoMove completeness
 
-**Status**: ✅ **Done.** Move layout Phases 3 & 4 landed in March 2026 (6 test cases, 33 assertions). Extended March 2026: `BoardMoveTests.cpp` (9 cases, `[board_moves]`), `BoardStateTests.cpp` (12 cases, `[board_state]`), `BoardApiTests.cpp` (11 cases, `[board_api]`) add full move-type, GameInfo state, and API coverage.
-**File**: `StratChessTests/BoardTests.cpp`
+**File**: `StratChessTests/BoardTests.cpp`. `BoardMoveTests.cpp` (`[board_moves]`), `BoardStateTests.cpp`
+(`[board_state]`) and `BoardApiTests.cpp` (`[board_api]`) extend it with full move-type, GameInfo
+state, and API coverage.
 
 - En passant DoMove/UndoMove: captured pawn restored correctly
 - Castling DoMove/UndoMove: rook and king both moved and restored
@@ -297,7 +296,6 @@ an empty move at every node, so it matched nothing, ever.
 
 ### `[time_mgr]` — Time management unit tests
 
-**Status**: ✅ **Done.** Clock-aware time management landed March 2026.
 **File**: `StratChessTests/TimeManagerTests.cpp`
 
 **Formula tests (6 cases, no sleep):**
@@ -363,7 +361,6 @@ length 2 — which is the only reason they are worth having.
 
 ### `[bitboard]` — Bitboard helper tests
 
-**Status**: ✅ **Done** (issue #104).
 **File**: `StratChessTests/BitBoardHelperTests.cpp`
 
 `Bits::` (`StratEngine/Utils/BitTools.h`) already carries compile-time `static_assert` coverage
@@ -378,9 +375,8 @@ semantics.
 
 ### `[magic]` — Sliding-piece attack generation tests
 
-**Status**: ✅ **Done.** Landed with the PEXT magic-bitboard refactor (July 2026), replacing
-rotated-bitboard attack generation. See `.claude/plans/magic-bitboards-sliding-piece-attacks.md`.
-**File**: `StratChessTests/MagicBitboardTests.cpp`
+**File**: `StratChessTests/MagicBitboardTests.cpp`. Landed with the PEXT magic-bitboard refactor,
+replacing rotated-bitboard attack generation — see `.claude/plans/magic-bitboards-sliding-piece-attacks.md`.
 
 Hand-verified `RookAttacks`/`BishopAttacks` bitboards for open cross/diagonal (empty board),
 corner squares with blockers, and fully-blocked-adjacent cases — independent of perft, which
@@ -389,7 +385,11 @@ attack bitboard is correct in isolation.
 
 ### `[uci]` — UCI command tests
 
-**File**: `StratChessTests/UCITests.cpp`
+**Files**: `StratChessTests/UCITests.cpp` (session/administrative commands: `parse_go`,
+`cmd_position`, `cmd_setoption`, `cmd_ucinewgame`, `dispatch`, the command log) and
+`StratChessTests/UCIReportingTests.cpp` (commands that run search and report on it: `cmd_go`,
+`cmd_eval`, `cmd_perft`). Shared infrastructure (`UciHandlerTestFixture`, stdout/stdin capture,
+the perft divide-line parser) lives in `StratChessTests/UCITestFixture.h`, included by both.
 **Access**: `UciHandlerTestFixture` (`STRAT_ENABLE_TEST_ACCESS`) drives private command
 handlers (`cmd_position`, `cmd_setoption`, `cmd_ucinewgame`, `cmd_eval`) directly, without a
 running `run()` loop or piped stdin.
@@ -405,7 +405,7 @@ Every `go` passes its own iteration observer to `Search()` and consumes the retu
 there is no stored observer or last-result channel. The `eval` cases assert that the printed term
 breakdown sums to the same evaluator result, independently of the search service.
 
-Also covers the mid-search refusal (#178): `position` and `setoption` are rejected while a search
+Also covers the mid-search refusal: `position` and `setoption` are rejected while a search
 runs. The fixture sets the `searching_` flag directly rather than starting a real search — the
 contract under test is the guard's, not the scheduler's, and racing a live search would make the
 cases timing-dependent. One case exists specifically to pin *why* the flag is needed: a
@@ -417,10 +417,9 @@ function returns.
 
 **File**: `StratChessTests/FenParsingTests.cpp`
 
-Split out of `UCITests.cpp` (issue #302): cases that exercise `FenBatch::ClassifyLine`,
-`FENParser::ParseFEN`/`ValidatePositionAgainstFENMetadata`, `Board::SetupFromFEN` and
-`Board(fen)` directly, with no `UciHandler` involved. Detail below, under "Batch-mode FEN
-scoring". `cmd_position`'s FEN handling (repair reporting, replay rejection) stays in
+Cases that exercise `FenBatch::ClassifyLine`, `FENParser::ParseFEN`/`ValidatePositionAgainstFENMetadata`,
+`Board::SetupFromFEN` and `Board(fen)` directly, with no `UciHandler` involved. Detail below, under
+"Batch-mode FEN scoring". `cmd_position`'s FEN handling (repair reporting, replay rejection) stays in
 `UCITests.cpp` under `[uci]`, since those cases go through the command layer.
 
 ### `[search]` — production search boundary
@@ -489,10 +488,10 @@ Batch-mode FEN scoring (`StratChessEvolved.exe eval <path>`) is a CLI subcommand
 command — see `.claude/plans/uci-eval-command-term-breakdown.md` (D4). `evalrunner`'s per-line
 classification (blank/comment/malformed/valid) is extracted into `FenBatch::ClassifyLine`
 (`StratEngine/Utils/FenBatch.h`, header-only) and covered by `[fen]` cases in `FenParsingTests.cpp`
-(issue #140) — this is what makes the guard a regression-tested invariant rather than a
-manually-verified one. The two-tier form (field-count pre-filter, then `FENParser::ParseFEN`)
-collapsed to a single tier in issue #143: the pre-filter advertised "need at least 4" while the
-parser's regex actually demanded all six fields, and `ParseFEN` now counts fields itself ahead
+— this is what makes the guard a regression-tested invariant rather than a manually-verified one.
+The two-tier form (field-count pre-filter, then `FENParser::ParseFEN`) collapsed to a single tier:
+the pre-filter advertised "need at least 4" while the parser's regex actually demanded all six
+fields, and `ParseFEN` now counts fields itself ahead
 of its regex. The `[fen]` cases cover 4-, 5- and 6-field FENs, the halfmove/fullmove defaults
 (0 and 1) they imply, and that EPD operations remain rejected.
 

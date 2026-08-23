@@ -1,7 +1,6 @@
 // FenParsingTests.cpp — Catch2 [fen] tests for FenBatch::ClassifyLine,
 // FENParser::ParseFEN/ValidatePositionAgainstFENMetadata, Board::SetupFromFEN
-// and Board(fen). Split out of UCITests.cpp (#302): these exercise FEN
-// parsing directly, with no UciHandler involved.
+// and Board(fen): these exercise FEN parsing directly, with no UciHandler involved.
 
 #include <catch_amalgamated.hpp>
 #include "Board.h"
@@ -20,17 +19,13 @@
 #include <spdlog/sinks/base_sink.h>
 
 // ---------------------------------------------------------------------------
-// FenBatch::ClassifyLine — batch-mode FEN validation (issue #140)
+// FenBatch::ClassifyLine — batch-mode FEN validation
 // ---------------------------------------------------------------------------
 //
-// evalrunner() (StratChessEvolved.cpp, issue #129 phase 1) is untestable
-// directly — it's a static function in a translation unit the test project
-// does not link. FenBatch::ClassifyLine (StratEngine/Utils/FenBatch.h) is
-// the extracted, header-only classification it now delegates to, so these
-// cases exercise the same two-tier guard evalrunner() relies on: without
-// it, a malformed line would silently score a fresh, empty Board as 0 —
-// plausible-looking garbage in a tuning corpus rather than an obvious
-// failure.
+// evalrunner() (StratChessEvolved.cpp) delegates its per-line classification to
+// FenBatch::ClassifyLine (StratEngine/Utils/FenBatch.h, header-only), so these cases exercise
+// the same two-tier guard it relies on: without it, a malformed line would silently score a
+// fresh, empty Board as 0 — plausible-looking garbage rather than an obvious failure.
 
 TEST_CASE("FenBatch::ClassifyLine: blank line is Skip", "[fen]")
 {
@@ -57,8 +52,7 @@ TEST_CASE("FenBatch::ClassifyLine: 2-field line is Malformed with the field-coun
 
 TEST_CASE("FenBatch::ClassifyLine: 4-field line is Valid", "[fen]")
 {
-	// EPD corpora and hand-authored positions are overwhelmingly 4-field, so this is the form
-	// #117's tuning work needs to ingest.
+	// EPD corpora and hand-authored positions are overwhelmingly 4-field.
 	auto r = FenBatch::ClassifyLine("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -");
 	REQUIRE(r.kind == FenBatch::LineKind::Valid);
 	REQUIRE(r.error.empty());
@@ -74,14 +68,14 @@ TEST_CASE("FenBatch::ClassifyLine: 5-field line is Valid", "[fen]")
 TEST_CASE("FenBatch::ClassifyLine: EPD operations are still rejected", "[fen]")
 {
 	// Accepting 4-6 fields is deliberately NOT the same as accepting EPD. Trailing operations
-	// are out of scope for the FEN grammar; #117's corpus loader owns them.
+	// are out of scope for the FEN grammar.
 	auto r = FenBatch::ClassifyLine(R"(rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - c9 "1-0";)");
 	REQUIRE(r.kind == FenBatch::LineKind::Malformed);
 	REQUIRE_FALSE(r.error.empty());
 }
 
 // ---------------------------------------------------------------------------
-// FENParser::ParseFEN — optional halfmove/fullmove fields (issue #143)
+// FENParser::ParseFEN — optional halfmove/fullmove fields
 // ---------------------------------------------------------------------------
 
 TEST_CASE("FENParser::ParseFEN: 4-field FEN defaults halfmove to 0 and fullmove to 1", "[fen]")
@@ -281,14 +275,10 @@ TEST_CASE("Board::SetupFromFEN: reports failure and leaves the board untouched",
 }
 
 // ---------------------------------------------------------------------------
-// Piece placement sanity: exactly one king per color (issue #163)
+// Piece placement sanity: exactly one king per color
 //
-// A board missing a king, or holding two of one color, is what let a generated
-// king-capturing move reach Board::DoMove and read one entry past
-// g_bbKingMoves' 64-entry table before #45 closed the only known route in. The
-// initial-position invariant was already enforced by FENParser::ParsePiecePlacementField.
-// UCI replay separately resolves every client token against generated moves before DoMove,
-// so malformed protocol input cannot remove a king after setup either.
+// A missing or duplicated king lets a king-capturing move reach Board::DoMove and read one
+// entry past g_bbKingMoves' 64-entry table.
 // ---------------------------------------------------------------------------
 
 TEST_CASE("Board::SetupFromFEN: rejects a FEN with no black king", "[fen]")
@@ -342,12 +332,11 @@ TEST_CASE("Board::SetupFromFEN: repairs overload replaces previous diagnostics",
 }
 
 // ---------------------------------------------------------------------------
-// Position legality: the side NOT to move may not be in check (issue #45)
+// Position legality: the side NOT to move may not be in check
 // ---------------------------------------------------------------------------
 
-// The issue's exact repro. White's rook on e1 attacks the black king on e8 with an empty file
-// between them, so Black — the waiting side — is in check. Searching such a position used to reach
-// a board with one king removed, where attack generation reads past its move table.
+// White's rook on e1 attacks the black king on e8 with an empty file between them, so Black --
+// the waiting side -- is in check.
 TEST_CASE("Board::SetupFromFEN: rejects a position with the waiting side in check", "[fen]")
 {
 	Board board;
