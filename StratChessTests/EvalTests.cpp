@@ -558,7 +558,7 @@ TEST_CASE("Eval - EvalComplex is color-symmetric: a position and its mirror scor
 // EvalComplex::Evaluate() is now a thin context-build-and-sum wrapper around
 // four private per-term functions (eval_pawns, eval_rooks, eval_pst,
 // eval_mopup), each taking (const EvalContext&, eColor) and returning that
-// color's contribution only — see .claude/plans/eval-context-restructure.md.
+// color's contribution only.
 // The term accessors return each term BLENDED at the position's own phase
 // (issue #99) — the value that term actually contributes to Evaluate() there.
 // Endpoint behaviour (mg vs eg) is asserted separately by the tapering tests,
@@ -673,10 +673,9 @@ TEST_CASE("Eval - eval_rooks: an enemy knight on the rook's file does not demote
 	REQUIRE(EvalComplexTestFixture::Rooks(knightOn, WHITE) == EvalComplexTestFixture::Rooks(knightOff, WHITE));
 }
 
-TEST_CASE("Eval - eval_rooks: an own pawn behind the rook leaves the file fully open (D5)", "[eval]")
+TEST_CASE("Eval - eval_rooks: an own pawn behind the rook leaves the file fully open", "[eval]")
 {
-	// Pins the deliberate D5 decision from
-	// .claude/plans/passed-and-backwards-pawn-terms.md. The rook is fixed on
+	// Pins a deliberate scope decision: the rook is fixed on
 	// e6 in both positions; only the White pawn moves, from d4 (off the file)
 	// to e4 (on the file, behind the rook). Its PST value is identical on both
 	// squares and it is isolated either way, so the file classification is the
@@ -1134,11 +1133,11 @@ TEST_CASE("Eval - the per-term functions sum exactly to EvalComplex::Evaluate()'
 // ── EvalComplex::Breakdown() (issue #129 phase 2) ─────────────────────────────
 //
 // Breakdown() is the public, production path to the per-term values that the
-// UCI 'eval' command prints (.claude/plans/uci-eval-command-term-breakdown.md,
-// D7). The tests below tie it to the terms that are already individually
-// asserted above, rather than testing it in isolation — the failure mode worth
-// guarding is Breakdown() quietly reporting something other than what
-// Evaluate() sums, which no amount of self-consistent output would reveal.
+// UCI 'eval' command prints. The tests below tie it to the terms that are
+// already individually asserted above, rather than testing it in isolation —
+// the failure mode worth guarding is Breakdown() quietly reporting something
+// other than what Evaluate() sums, which no amount of self-consistent output
+// would reveal.
 
 TEST_CASE("Eval - Breakdown(): every row equals the term function it reports", "[eval]")
 {

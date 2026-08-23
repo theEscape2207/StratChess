@@ -8,7 +8,7 @@
 
 // Per-thread search state for AIPerplex, extracted so that a future Lazy SMP
 // helper thread is just "construct another ThreadData, call the same search
-// functions" (see .claude/plans/extract-threaddata-structure.md).
+// functions".
 //
 // Deliberately NOT in here:
 //   - TranspositionTable  — shared across threads by design; passed explicitly

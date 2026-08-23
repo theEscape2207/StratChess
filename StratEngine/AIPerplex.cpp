@@ -198,8 +198,7 @@ void AIPerplex::init_search(const Board& root)
 // those log_* calls are gated on `td.thread_id == 0` inside
 // search_with_aspiration(), so helper threads never actually log. Never
 // reports a move — its result is discarded by design; only the main
-// thread's search result is authoritative (the "main-is-authoritative"
-// design decision, .claude/plans/lazy-smp.md).
+// thread's search result is authoritative (main-is-authoritative).
 void AIPerplex::helper_loop(ThreadData& td, int max_depth, TranspositionTable& tt)
 {
 	int seed_score = 0;
@@ -248,9 +247,8 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	const unsigned effective_depth = control_.EffectiveDepth();
 
 	// Lazy SMP: spawn threads_ - 1 helper threads to warm the shared TT while
-	// the main search below runs on td_ (main-is-authoritative, see
-	// .claude/plans/lazy-smp.md: helpers never report a move, only
-	// their node counts feed back in).
+	// the main search below runs on td_ (main-is-authoritative: helpers never
+	// report a move, only their node counts feed back in).
 	// threads_ == 1 (the default) leaves this block entirely unreached:
 	// `helpers` stays a default-constructed empty vector and helper_tds_ is
 	// never touched — byte-identical to the pre-SMP single-threaded code path.

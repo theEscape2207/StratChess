@@ -13,7 +13,6 @@
 // without making any of it easier to follow.
 
 // PEXT-based ("fancy magic") sliding-piece attack generation for rooks and bishops.
-// See .claude/plans/magic-bitboards-sliding-piece-attacks.md for the design rationale.
 //
 // All tables are generated at compile time. _pext_u64/_pdep_u64 are not constexpr-evaluable,
 // so table generation uses depositBits() — a manual bit-deposit that reproduces _pdep_u64's

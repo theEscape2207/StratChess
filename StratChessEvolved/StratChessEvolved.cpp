@@ -218,8 +218,7 @@ static int perftrunner(int argc, char** argv)
 
 // Batch-scores a file of FENs (one per line) and prints "<fen>\t<score>" to
 // stdout, one line per input FEN — machine-parseable for #117's tuner and
-// for #127's before/after score-identity check
-// (.claude/plans/uci-eval-command-term-breakdown.md, D4/D5).
+// for #127's before/after score-identity check.
 //
 // The printed score is the RAW value EvalManager::Evaluate() returns:
 // side-to-move-relative, no sign transformation. This preserves a single
@@ -367,7 +366,7 @@ int main(int argc, char** argv)
 		}
 		// Check for batch eval-scoring command — must come before the
 		// unconditional Game::Run() fallthrough below, or an unrecognised arg
-		// silently starts a game instead (D4, uci-eval-command-term-breakdown.md).
+		// silently starts a game instead.
 		if (argc > 1 && std::string(argv[1]) == "eval") {
 			return evalrunner(argc - 1, &argv[1]);
 		}

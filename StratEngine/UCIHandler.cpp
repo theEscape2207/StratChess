@@ -242,7 +242,7 @@ static std::string eval_term_row(const char* name, int white, int black)
 // Prints the static evaluation of the current position (board_), as set up
 // by the last 'position' command (startpos default if none has run yet).
 // Not a search response: no 'info'/'bestmove' output, so a GUI cannot
-// mistake this for one (D6, .claude/plans/uci-eval-command-term-breakdown.md).
+// mistake this for one.
 //
 // Two total lines are printed because the engine's score is side-to-move-
 // relative (positive = good for whoever moves next) and that sign convention
