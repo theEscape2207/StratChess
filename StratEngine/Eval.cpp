@@ -386,8 +386,8 @@ ScorePair EvalComplex::eval_pst(const EvalContext& ctx, eColor color) noexcept
 	// discontinuously. Blending them removes a cliff of up to 100 cp that a
 	// single capture could cross mid-search (the mg table is uniformly
 	// -40/-20/0 by rank; the eg table peaks at +60 centrally).
-	// Suppressed entirely while this color is mopping up (issue #118 item 4,
-	// D5(a) in the plan). Otherwise the endgame king table charges the winner
+	// Suppressed entirely while this color is mopping up (issue #118 item 4).
+	// Otherwise the endgame king table charges the winner
 	// 10 cp per step of centralization given up to walk toward the cornered
 	// loser, against the 4 cp per step mop-up pays for closing in — so
 	// approaching scored NEGATIVE overall, and mop-up only softened a
@@ -645,9 +645,9 @@ int EvalComplex::Evaluate(const Board& board) const noexcept
 	// Material is not tapered and is added after — a piece is worth its value
 	// regardless of how far along the game is; only positional judgements shift.
 	//
-	// Blended PER TERM rather than once over the accumulated pair, which is a
-	// deliberate departure from D2 in the plan file. Integer division truncates,
-	// so BlendPhase(a) + BlendPhase(b) and BlendPhase(a + b) can differ by up to
+	// Blended PER TERM rather than once over the accumulated pair -- a
+	// deliberate choice. Integer division truncates, so BlendPhase(a) +
+	// BlendPhase(b) and BlendPhase(a + b) can differ by up to
 	// one centipawn per term. Blending once is marginally more accurate, but it
 	// makes the per-term breakdown #129 prints unable to sum to the score it
 	// reports — and that reconstructibility is an asserted invariant, not a

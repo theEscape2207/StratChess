@@ -198,7 +198,7 @@ void AIPerplex::init_search(const Board& root)
 // those log_* calls are gated on `td.thread_id == 0` inside
 // search_with_aspiration(), so helper threads never actually log. Never
 // reports a move — its result is discarded by design; only the main
-// thread's search result is authoritative (main-is-authoritative).
+// thread's search result is authoritative.
 void AIPerplex::helper_loop(ThreadData& td, int max_depth, TranspositionTable& tt)
 {
 	int seed_score = 0;
