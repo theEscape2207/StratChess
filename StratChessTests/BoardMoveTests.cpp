@@ -4,7 +4,7 @@
 //   (white and black), double pawn push, under-promotions (knight, rook),
 //   and capture-promotion round-trip.
 
-#include <catch_amalgamated.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include "Board.h"
 #include "MoveFactory.h"
 #include "MoveHelper.h"

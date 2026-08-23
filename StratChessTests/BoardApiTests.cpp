@@ -6,7 +6,7 @@
 // for all FEN fields (side-to-move, castling, EP square, halfmove clock,
 // fullmove number).
 
-#include <catch_amalgamated.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include "Board.h"
 #include "MoveFactory.h"
 #include "MoveHelper.h"

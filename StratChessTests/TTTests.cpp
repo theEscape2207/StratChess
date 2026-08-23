@@ -6,7 +6,7 @@
 //
 // See Docs/TestDesign.md §Phase 0 for the rationale.
 
-#include <catch_amalgamated.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include "TranspositionTable.h"
 #include "defines.h"
 

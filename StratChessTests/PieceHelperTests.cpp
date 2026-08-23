@@ -3,7 +3,7 @@
 // Covers the bounds of g_iPieceValues against every ePiece that can index it, the piece values
 // themselves, and the AsPieceType/AsPiece round-trip.
 
-#include <catch_amalgamated.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include "PieceHelper.h"
 #include "defines.h"
 

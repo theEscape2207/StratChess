@@ -5,7 +5,8 @@
 // actually calls (set_bits/clear_bits assert their preconditions; print_bitboard formats a board
 // for debugging), so these cases exercise it at runtime instead of duplicating those static_asserts.
 
-#include <catch_amalgamated.hpp>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include "BitBoardHelper.h"
 #include <sstream>
 #include <string>

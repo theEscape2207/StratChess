@@ -3,7 +3,8 @@
 // The rule is 100 halfmoves. Board::halfmove_clock() counts halfmoves (loaded from the FEN
 // halfmove field, incremented once per DoMove), so every threshold here is in halfmoves.
 
-#include <catch_amalgamated.hpp>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include "AIPerplex.h"
 #include "Board.h"
 #include "GameState.h"

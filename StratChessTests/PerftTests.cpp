@@ -7,7 +7,7 @@
 // Deep perft (depth >= 5) remains in StratChessEvolved.exe:
 //     cd Tests && ../x64/Release/StratChessEvolved.exe perft test
 
-#include <catch_amalgamated.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include "Board.h"
 #include "Tests/Perft.h"
 

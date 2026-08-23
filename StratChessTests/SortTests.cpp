@@ -4,7 +4,7 @@
 //   hash move > winning captures > killer0 > killer1 > equal captures
 //   > quiet history > losing captures (none in this position)
 
-#include <catch_amalgamated.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include "Board.h"
 #include "Sort.h"
 #include "MoveFactory.h"

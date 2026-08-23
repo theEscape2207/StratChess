@@ -4,7 +4,7 @@
 // tests, 100% mate tests. evaluate_results enforces: overall pass rate >=
 // required threshold AND zero failures in any category starting with "mate".
 
-#include <catch_amalgamated.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include "Tests/TacticalTestRunner.h"
 
 using Testing::TacticalResult;

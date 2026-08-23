@@ -5,7 +5,7 @@
 // perft only proves attack generation is *consistent* with legal move counts, not that any
 // individual attack bitboard is correct in isolation. See Docs/TestDesign.md §Phase 1 [magic].
 
-#include <catch_amalgamated.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include "Magic.h"
 #include "defines.h"
 
