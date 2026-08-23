@@ -190,6 +190,12 @@ durable item has a discoverable destination. Plans for **unstarted** work are sp
 records whose rationale is too substantial to inline — `.claude/plans/tsan-lazy-smp.md` is one,
 cited from `Docs/CI.md` for survey and cost analysis with no other home.
 
+**`.claude/plans/not-started/`** holds specs confirmed unstarted (open issue, no matching code) during
+a prune pass. It exists so the next pass can skip re-deriving that verdict — write new plans at the
+top level as usual; move a plan here only once a sweep has actually checked it, not on a guess. Once
+the work starts, the file can stay put and go through the normal Harvest-then-delete flow from there
+when it lands — moving it back to the top level first is not required.
+
 ---
 
 ## Two ways to run a task

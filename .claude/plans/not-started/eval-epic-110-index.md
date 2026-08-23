@@ -20,14 +20,14 @@ Two depths, deliberately:
 
 | # | Issue | Plan | Depth | Tier |
 |---|---|---|---|---|
-| 1 | #130 | [`elomatch-sprt-support.md`](elomatch-sprt-support.md) | Full | prerequisite |
-| 2 | #125 | [`eval-color-symmetry-and-queen-pst-fix.md`](eval-color-symmetry-and-queen-pst-fix.md) | Full | 0 |
-| 3 | #129 | [`uci-eval-command-term-breakdown.md`](uci-eval-command-term-breakdown.md) | Full | 1 |
-| 4 | #127 | [`eval-context-restructure.md`](eval-context-restructure.md) | Full | 1 |
-| 5 | #99 (+#118 item 4) | [`tapered-evaluation.md`](tapered-evaluation.md) | Full | 1 |
-| 6 | #116 + #126 | [`passed-and-backwards-pawn-terms.md`](passed-and-backwards-pawn-terms.md) | Full | 3 |
-| 7 | #111, #114, #115 | [`eval-quick-win-terms.md`](eval-quick-win-terms.md) | Full | 3 |
-| 8 | #98 + #113 | [`mobility-evaluation.md`](mobility-evaluation.md) | Sketch | 2 |
+| 1 | #130 | `elomatch-sprt-support.md` (landed, deleted) | Full | prerequisite |
+| 2 | #125 | `eval-color-symmetry-and-queen-pst-fix.md` (landed, deleted) | Full | 0 |
+| 3 | #129 | `uci-eval-command-term-breakdown.md` (landed, deleted) | Full | 1 |
+| 4 | #127 | `eval-context-restructure.md` (landed, deleted) | Full | 1 |
+| 5 | #99 (+#118 item 4) | `tapered-evaluation.md` (landed, deleted) | Full | 1 |
+| 6 | #116 + #126 | `passed-and-backwards-pawn-terms.md` (landed, deleted) | Full | 3 |
+| 7 | #111, #114, #115 | `eval-quick-win-terms.md` (landed, deleted) | Full | 3 |
+| 8 | #98 + #113 | `mobility-evaluation.md` (landed, deleted) | Sketch | 2 |
 | 9 | #97 | [`king-safety-evaluation.md`](king-safety-evaluation.md) | Sketch | 2 |
 | 10 | #112 | [`minor-piece-outposts.md`](minor-piece-outposts.md) | Sketch | 4 |
 | 11 | #128 (+#118 items 2, 5) | [`endgame-scale-factors.md`](endgame-scale-factors.md) | Sketch | 4 |
@@ -35,13 +35,13 @@ Two depths, deliberately:
 | 13 | #117 | [`texel-tuning.md`](texel-tuning.md) | Sketch | 5 |
 | 14 | #76 | [`eval-progress-incentive.md`](eval-progress-incentive.md) | Sketch | 5 |
 
-**Landed**: #70 — [`mop-up-evaluation-pawnless-endgames.md`](mop-up-evaluation-pawnless-endgames.md).
-Measured `+15.94 ± 27.62` over 480 games (`Docs/EloLog.md`, 2026-07-26), inside its own error bar. Open
-follow-ups in #118, distributed across plans 5, 8 and 11 above.
+**Landed**: #70 — `mop-up-evaluation-pawnless-endgames.md` (deleted). Measured `+15.94 ± 27.62` over 480
+games (`Docs/EloLog.md`, 2026-07-26), inside its own error bar.
 
-**No plan of its own**: #118 is a follow-up register for mop-up, not a work item — its five items are
-absorbed by the plans noted above. #119 (ELO-match resume support) is done, PR #121,
-[`elomatch-resume-support.md`](elomatch-resume-support.md).
+**No plan of its own**: #118 (closed) was a follow-up register for mop-up, not a work item — its five
+items were absorbed by plans 5, 8 and 11 above; only plan 11's scope (`endgame-scale-factors.md`,
+#128) is still open. #119 (ELO-match resume support) is done, PR #121, `elomatch-resume-support.md`
+(deleted).
 
 ## Hard dependencies
 
