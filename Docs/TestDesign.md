@@ -81,6 +81,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | Time management (TimeManager + compute_budget) | `[time_mgr]` | `TimeManagerTests.cpp` |
 | Sliding-piece attack generation (PEXT) | `[magic]` | `MagicBitboardTests.cpp` |
 | UCI command loop | `[uci]` | `UCITests.cpp` (+ `StratChessEvolved.exe uci` pipe smoke test) |
+| FEN parsing (FenBatch, FENParser, Board::SetupFromFEN/Board(fen)) | `[fen]` | `FenParsingTests.cpp` |
 | PV legality (`pv_replays_legally`) | `[pv]` | `PVIntegrityTests.cpp` |
 | Full tactical suite (WAC/mate-in-N) | — | `StratChessEvolved.exe tactical test` |
 | Board instance independence (post-de-singleton) | `[board_instance]` | `BoardInstanceTests.cpp` |
@@ -403,6 +404,16 @@ cases timing-dependent. One case exists specifically to pin *why* the flag is ne
 normal `go` → `bestmove` → `position` cycle, because a `std::thread` stays joinable after its
 function returns.
 
+### `[fen]` — FEN parsing tests
+
+**File**: `StratChessTests/FenParsingTests.cpp`
+
+Split out of `UCITests.cpp` (issue #302): cases that exercise `FenBatch::ClassifyLine`,
+`FENParser::ParseFEN`/`ValidatePositionAgainstFENMetadata`, `Board::SetupFromFEN` and
+`Board(fen)` directly, with no `UciHandler` involved. Detail below, under "Batch-mode FEN
+scoring". `cmd_position`'s FEN handling (repair reporting, replay rejection) stays in
+`UCITests.cpp` under `[uci]`, since those cases go through the command layer.
+
 ### `[search]` — production search boundary
 
 `SearchTests.cpp` covers the concrete service rather than source shape: each `Search(root, limits,
@@ -468,20 +479,21 @@ turn these into no-ops.
 Batch-mode FEN scoring (`StratChessEvolved.exe eval <path>`) is a CLI subcommand, not a UCI
 command — see `.claude/plans/uci-eval-command-term-breakdown.md` (D4). `evalrunner`'s per-line
 classification (blank/comment/malformed/valid) is extracted into `FenBatch::ClassifyLine`
-(`StratEngine/Utils/FenBatch.h`, header-only) and covered by `[uci]` cases in `UCITests.cpp`
+(`StratEngine/Utils/FenBatch.h`, header-only) and covered by `[fen]` cases in `FenParsingTests.cpp`
 (issue #140) — this is what makes the guard a regression-tested invariant rather than a
 manually-verified one. The two-tier form (field-count pre-filter, then `FENParser::ParseFEN`)
 collapsed to a single tier in issue #143: the pre-filter advertised "need at least 4" while the
 parser's regex actually demanded all six fields, and `ParseFEN` now counts fields itself ahead
-of its regex. The `[uci]` cases cover 4-, 5- and 6-field FENs, the halfmove/fullmove defaults
+of its regex. The `[fen]` cases cover 4-, 5- and 6-field FENs, the halfmove/fullmove defaults
 (0 and 1) they imply, and that EPD operations remain rejected.
 
 They also cover the counter bounds (`GameState.h`): a halfmove clock past 150 or a fullmove counter
 past 5899 is rejected with a diagnostic and leaves the board untouched, a value exactly at either
 bound round-trips through `ExtractFEN`, and fullmove `0` loads as `1` — the one input the parser
 repairs rather than passes through. A `position ... moves` list past 11797 plies is refused whole,
-matching the illegal-token path. These bound the *input*; playing on from a position loaded at a
-bound is legal and is covered by `[board_api]`.
+matching the illegal-token path (covered by `[uci]` cases in `UCITests.cpp`, since that path goes
+through `cmd_position`). These bound the *input*; playing on from a position loaded at a bound is
+legal and is covered by `[board_api]`.
 
 The surrounding CLI plumbing (file I/O, stdout/stderr framing, line
 numbering) remains covered by manual validation, matching the existing convention for
