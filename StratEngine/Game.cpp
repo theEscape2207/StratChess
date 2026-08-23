@@ -5,11 +5,10 @@
 #include "StdAfx.h"
 #include "Game.h"
 #include "Board.h"
+#include "IPlayer.h"
 #include "MoveFormatter.h"
-#include "PlayerBase.h" // For factory create
-#include "PlayerAI.h"   // For PlayerAiBase setters
-#include "AIPerplex.h"  // For SearchTuning application
-#include <iomanip>      // std::put_time
+#include "PlayerFactory.h"
+#include <iomanip> // std::put_time
 
 // ***************************************
 // Method:      Game
@@ -183,46 +182,9 @@ void Game::LoadConfigFileSettings()
 
 std::unique_ptr<IPlayer> Game::SetPlayerParams(const Config::PlayerConfig& config)
 {
-	auto player = PlayerBase::Create(static_cast<PlayerBase::ePlayerTypes>(config.type), config.depth, board_);
-	player->SetEvalEngine(static_cast<EvalManager::EvalTypes>(config.eval));
+	auto player = CreatePlayer(config, board_, {.verbose_search_logging = true});
 
-	// Enable AIPerplex verbose logging in game mode (opt-in here; UCI/test modes disable it).
-	if (dynamic_cast<AIPerplex*>(player.get())) {
-		AIPerplex::SetVerboseLogging(true);
-	}
-
-	// Apply SearchTuning — only valid for AI_PERPLEX (type 6)
-	if (config.search_tuning.has_value()) {
-		constexpr unsigned kAiPerplex = static_cast<unsigned>(PlayerBase::ePlayerTypes::AI_PERPLEX);
-		if (config.type != kAiPerplex) {
-			spdlog::warn("search_tuning in game_settings.json is ignored for player type {} "
-			             "(only supported by AI_PERPLEX)",
-			             config.type);
-		} else if (auto* perplex = dynamic_cast<AIPerplex*>(player.get())) {
-			const auto& st = *config.search_tuning;
-			auto& t = perplex->tuning();
-			t.min_nodes_threshold = st.min_nodes_threshold;
-			t.min_completion_ratio = st.min_completion_ratio;
-			t.min_pv_ratio = st.min_pv_ratio;
-			t.score_draw_threshold = st.score_draw_threshold;
-			t.delta_pruning_margin = st.delta_pruning_margin;
-			t.aspiration_initial_delta = st.aspiration_initial_delta;
-			t.aspiration_max_retries = st.aspiration_max_retries;
-			t.aspiration_enabled = st.aspiration_enabled;
-		}
-	}
-
-	// Configure AI-only options and signal the new-game lifecycle before Run()
-	// can request a move. Legacy AIs inherit no-op implementations; non-AI
-	// players are skipped because the dynamic_cast fails.
-	if (auto* ai = dynamic_cast<PlayerAiBase*>(player.get())) {
-		if (config.threads.has_value()) {
-			ai->SetThreads(*config.threads);
-		}
-		ai->StartNewGame();
-	}
-
-	//Register events
+	// Register only after construction and initial lifecycle configuration are complete.
 	player->ENewPVLineMove.subscribe([this](const void* s, const PVLine& pvl) { onNewPVLineMove(s, pvl); });
 	return player;
 }
@@ -251,6 +213,7 @@ void Game::Run()
 		// and the score to report belongs to the player that just moved.
 		IPlayer& mover = GetCurrentPlayer();
 		const SearchResult result = mover.GetMove(player_limits_[board_.GetCurrentColor()]);
+		RecordPerformance(mover, result);
 
 		bool committed = false;
 		if (!result.best_move.is_null()) {
@@ -298,6 +261,34 @@ void Game::Run()
 
 	// FIXME: Add a menu allowing a new game to be played - including option to override from game-setup file
 	spdlog::default_logger()->warn("Spillet er slut\n\nTryk enter for at afslutte!");
+}
+
+void Game::RecordPerformance(const IPlayer& mover, const SearchResult& result)
+{
+	if (mover.IsHuman())
+		return;
+
+	const int64_t nodes = result.nodes_searched + result.qnodes_searched;
+	total_nodes_ += nodes;
+	total_elapsed_ += result.elapsed;
+
+	// Preserve the historic 0ms guard for the display and divisions while keeping the
+	// accumulated telemetry itself equal to the exact returned-search sums.
+	auto elapsed_for_display = result.elapsed;
+	if (elapsed_for_display == std::chrono::milliseconds::zero())
+		elapsed_for_display = std::chrono::milliseconds(1);
+	auto total_elapsed_for_display = total_elapsed_;
+	if (total_elapsed_for_display == std::chrono::milliseconds::zero())
+		total_elapsed_for_display = std::chrono::milliseconds(1);
+
+	auto perf = Engine::Logger::GetPerfLogger();
+	if (!perf)
+		return;
+
+	const int64_t nodes_per_ms = nodes / elapsed_for_display.count();
+	const int64_t total_nodes_per_ms = total_nodes_ / total_elapsed_for_display.count();
+	perf->info("{:>10} {:>13} {:>13} {:>19} {:>13} {:>13}", nodes, elapsed_for_display.count(), nodes_per_ms,
+	           total_nodes_, total_elapsed_for_display.count(), total_nodes_per_ms);
 }
 
 //***************************************

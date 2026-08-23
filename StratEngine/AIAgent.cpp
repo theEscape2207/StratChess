@@ -25,7 +25,7 @@ SearchResult AIAgent::GetMove(const SearchLimits& limits)
 	ApplyLimits(limits);
 
 	// iterativ search
-	for (depth_ = 1; depth_ <= effective_depth_;) // depth_ maa ikke opdateres her med aspiration search
+	for (depth_ = 1; depth_ <= EffectiveDepth();) // depth_ maa ikke opdateres her med aspiration search
 	{
 		if (StopRequested()) {
 			break;
@@ -59,8 +59,6 @@ SearchResult AIAgent::GetMove(const SearchLimits& limits)
 
 		++depth_; // _Skal_ opdateres her, da "continue" bliver brugt ovenover
 	}
-
-	StopTimerAndAdjustVars(m_SearchCount);
 
 	return MakeResult();
 }
@@ -127,7 +125,7 @@ int AIAgent::Search(size_t ply, int alpha, int beta, PVLine& pline)
 
 			moveFound = true;
 
-			if (ply == 0 && depth_ == effective_depth_)
+			if (ply == 0 && depth_ == EffectiveDepth())
 				spdlog::default_logger()->debug("Root move {}/{}: {} score={}", counter, moveList.size(),
 				                                MoveFormatter::ToCoord(curMove), score);
 
@@ -165,7 +163,7 @@ int AIAgent::Search(size_t ply, int alpha, int beta, PVLine& pline)
 					this->_bestScore = score;
 			}
 		} else {
-			if (ply == 0 && depth_ == effective_depth_)
+			if (ply == 0 && depth_ == EffectiveDepth())
 				spdlog::default_logger()->debug("Root move {}/{}: {} ILLEGAL", counter, moveList.size(),
 				                                MoveFormatter::ToCoord(curMove));
 		}

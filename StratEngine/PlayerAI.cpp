@@ -4,16 +4,10 @@
 
 #include "StdAfx.h"
 #include "PlayerAI.h"
-#include "Utils/TimeUtils.h"
 #include "Sort.h" // Different Move sorting heuristics
 #include "MoveGenerator.h"
-#include "Utils/Logger.h"
 #include <spdlog/spdlog.h>
 #include <iomanip> // setw() osv.
-
-// static variables
-std::chrono::milliseconds PlayerAiBase::m_TotalTime = std::chrono::milliseconds(0);
-size_t PlayerAiBase::m_TotalCount = 0;
 
 // ************************************
 // Method:      Quiescent
@@ -108,60 +102,11 @@ Move PlayerAiBase::GetBestMove() noexcept
 	return Move::EmptyMove();
 }
 
-// ************************************
-// Method:      StopTimer
-// Description: Updates time statistics - and prints it to file if PRINT_STATS is defined
-// FullName:    protected PlayerAiBase::StopTimer
-// Returns:     void -
-// Remark:
-// ************************************
-std::chrono::milliseconds PlayerAiBase::StopTimerAndAdjustVars(size_t node_count) const
-{
-	auto end = std::chrono::high_resolution_clock::now();
-	auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(end - _startingTime);
-	if (elapsedMs == std::chrono::milliseconds(0))
-		elapsedMs = std::chrono::milliseconds(1);
-	m_TotalTime += elapsedMs;
-	m_TotalCount += node_count;
-
-	//#ifdef PRINT_STATS
-	// Use the perf logger only if one already exists -- creating it here would write into the
-	// process CWD. Game::Init() is the sole creator, so in non-game contexts (tests, tactical
-	// runner, UCI) this is a no-op.
-	auto perf = Engine::Logger::GetPerfLogger();
-
-	if (perf) {
-		// preserve column layout using fmt width specifiers and spaces between columns
-		// Columns: node_count | elapsedMs.count() | nodes/ms | m_TotalCount | m_TotalTime.count() | total nodes/ms
-		// Use integer arithmetic for nodes per ms (same as original)
-		long nodes_per_ms = 0;
-		if (elapsedMs.count() != 0)
-			nodes_per_ms = static_cast<long>(node_count / elapsedMs.count());
-		long total_nodes_per_ms = 0;
-		if (m_TotalTime.count() != 0)
-			total_nodes_per_ms = static_cast<long>(m_TotalCount / m_TotalTime.count());
-
-		// Format with right-aligned columns similar to setw in original code
-		perf->info("{:>10} {:>13} {:>13} {:>19} {:>13} {:>13}", node_count, elapsedMs.count(), nodes_per_ms,
-		           m_TotalCount, m_TotalTime.count(), total_nodes_per_ms);
-	}
-	// If perf logger is unavailable (e.g. logs/ absent in UCI mode), skip silently.
-	// Writing to std::cout here would corrupt the UCI output stream.
-
-	//#endif // PRINT_STATS
-	return elapsedMs;
-}
-
-void PlayerAiBase::StopSearch() noexcept { time_manager_.stop(); }
+void PlayerAiBase::StopSearch() noexcept { search_control_.Stop(); }
 
 unsigned PlayerAiBase::ApplyLimits(const SearchLimits& limits)
 {
-	const auto r = Engine::resolve_limits(limits, time_limit_, max_depth_);
-	_startingTime = std::chrono::high_resolution_clock::now();
-	time_manager_.start(r.budget.soft, r.budget.hard);
-	stop_search_.store(false, std::memory_order_relaxed);
-	effective_depth_ = r.effective_depth;
-	node_limit_ = r.node_limit;
+	search_control_.ApplyLimits(limits);
 	root_game_state_ = GameStates::STILL_PLAYING;
-	return r.effective_depth;
+	return search_control_.EffectiveDepth();
 }

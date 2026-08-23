@@ -56,8 +56,8 @@ namespace Testing {
 		                                                         double required_pass_rate);
 
 		// Run all positions from the JSON file. Prints per-position results and summary.
-		// threads is forwarded to AIPerplex::SetThreads() (via PlayerAiBase) before each
-		// GetMove() call; default 1 keeps existing call sites' behavior unchanged.
+		// threads is supplied through AIPerplexConfig before each Search() call;
+		// default 1 keeps existing call sites' behavior unchanged.
 		// Returns true if pass_rate >= required_pass_rate.
 		[[nodiscard]] static bool run_test_suite(double required_pass_rate = 0.90, bool verbose = true,
 		                                         const std::string& json_filename = "tactical_test_cases.json",
@@ -78,7 +78,7 @@ namespace Testing {
 		[[nodiscard]] static std::vector<TacticalPosition> load_test_cases(const std::string& json_filename);
 
 		// Run a single position. Constructs its own local Board from pos.fen internally.
-		// threads is applied via PlayerAiBase::SetThreads() before GetMove(); default 1
+		// threads is supplied through AIPerplexConfig before Search(); default 1
 		// (single-threaded, matches pre-Gate-2 behavior) so existing callers are unaffected.
 		static TacticalResult run_position(const TacticalPosition& pos, unsigned threads = 1);
 	};

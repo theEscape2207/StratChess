@@ -43,6 +43,11 @@
     Raise it on faster hardware — the script warns per position when a search
     finishes too quickly to time reliably.
 
+    Completion is strict: every position must emit both `info depth <Depth>` and
+    `bestmove`. A terminal, mate, or other early-stop custom position that ends
+    before -Depth is rejected rather than benchmarked as a fixed-depth result.
+    Choose nonterminal positions or lower -Depth for custom suites.
+
 .PARAMETER Threads
     UCI Threads option. Default 1. Leave it at 1 for any comparison: Lazy SMP is
     non-deterministic, so node counts stop being reproducible and the equivalence
@@ -131,6 +136,97 @@ function Resolve-Positions {
     return $list
 }
 
+function Invoke-UciSearchToBestMove {
+    <#
+        Keep stdin open until a fixed-depth UCI search emits bestmove. Stdout is
+        read incrementally and stderr is drained asynchronously, so the driver
+        neither queues a premature `quit` nor blocks an engine on a full pipe.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$ExePath,
+        [Parameter(Mandatory)][string]$WorkDir,
+        [Parameter(Mandatory)][string[]]$Commands,
+        [Parameter(Mandatory)][int]$SearchDepth,
+        [Parameter(Mandatory)][string]$Description
+    )
+
+    $psi = [System.Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName               = $ExePath
+    $psi.Arguments              = 'uci'
+    $psi.WorkingDirectory       = $WorkDir
+    $psi.RedirectStandardInput  = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError  = $true
+    $psi.UseShellExecute        = $false
+
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    $stderrTask = $proc.StandardError.ReadToEndAsync()
+    $out = [System.Text.StringBuilder]::new()
+    $timer = [System.Diagnostics.Stopwatch]::StartNew()
+
+    function Get-UciFailureMessage {
+        param([Parameter(Mandatory)][string]$Reason)
+
+        if (-not $proc.HasExited) {
+            $proc.Kill()
+            $proc.WaitForExit()
+        }
+        $stderr = $stderrTask.GetAwaiter().GetResult()
+        return "$Reason`nEngine stderr:`n$stderr`nEngine output:`n$out"
+    }
+
+    try {
+        foreach ($command in $Commands) {
+            $proc.StandardInput.WriteLine($command)
+        }
+        $proc.StandardInput.Flush()
+
+        $gotBestMove = $false
+        while (-not $gotBestMove) {
+            $remaining = 600000 - [int]$timer.ElapsedMilliseconds
+            if ($remaining -le 0) {
+                throw (Get-UciFailureMessage "Engine did not finish within 600s (depth $SearchDepth): $Description")
+            }
+
+            $lineTask = $proc.StandardOutput.ReadLineAsync()
+            if (-not $lineTask.Wait($remaining)) {
+                throw (Get-UciFailureMessage "Engine did not finish within 600s (depth $SearchDepth): $Description")
+            }
+            $line = $lineTask.GetAwaiter().GetResult()
+            if ($null -eq $line) { break }
+            [void]$out.AppendLine($line)
+            if ($line -match '^bestmove \S+') { $gotBestMove = $true }
+        }
+
+        if (-not $gotBestMove) {
+            throw (Get-UciFailureMessage "Engine exited before bestmove (depth $SearchDepth): $Description")
+        }
+
+        $proc.StandardInput.WriteLine('quit')
+        $proc.StandardInput.Flush()
+        $proc.StandardInput.Close()
+
+        $remaining = 600000 - [int]$timer.ElapsedMilliseconds
+        if ($remaining -le 0 -or -not $proc.WaitForExit($remaining)) {
+            throw (Get-UciFailureMessage "Engine did not exit within 600s after bestmove (depth $SearchDepth): $Description")
+        }
+
+        [void]$out.Append($proc.StandardOutput.ReadToEnd())
+        $stderr = $stderrTask.GetAwaiter().GetResult()
+        if ($proc.ExitCode -ne 0) {
+            throw "Engine exited with code $($proc.ExitCode) (depth $SearchDepth): $Description`nEngine stderr:`n$stderr`nEngine output:`n$out"
+        }
+        return $out.ToString()
+    }
+    finally {
+        if (-not $proc.HasExited) {
+            $proc.Kill()
+            $proc.WaitForExit()
+        }
+        $proc.Dispose()
+    }
+}
+
 function Invoke-Search {
     <#
         Runs ONE position in a fresh engine process and returns its reported
@@ -145,37 +241,18 @@ function Invoke-Search {
         [int]$ThreadCount
     )
 
-    $script = @(
+    $commands = @(
         'uci'
         'isready'
         "setoption name Threads value $ThreadCount"
         "position fen $Fen"
         "go depth $SearchDepth"
-        'quit'
-    ) -join "`n"
-
-    $psi = [System.Diagnostics.ProcessStartInfo]::new()
-    $psi.FileName               = $ExePath
-    $psi.Arguments              = 'uci'
-    $psi.WorkingDirectory       = $WorkDir
-    $psi.RedirectStandardInput  = $true
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError  = $true
-    $psi.UseShellExecute        = $false
-
-    $proc = [System.Diagnostics.Process]::Start($psi)
-    $proc.StandardInput.Write($script + "`n")
-    $proc.StandardInput.Flush()
-    $proc.StandardInput.Close()
+    )
 
     # Generous ceiling: a deep search on a complex position is legitimately slow,
     # and killing it early would silently corrupt the aggregate.
-    if (-not $proc.WaitForExit(600000)) {
-        $proc.Kill()
-        throw "Engine did not finish within 600s (depth $SearchDepth): $Fen"
-    }
-
-    $out = $proc.StandardOutput.ReadToEnd()
+    $out = Invoke-UciSearchToBestMove -ExePath $ExePath -WorkDir $WorkDir -Commands $commands `
+                                      -SearchDepth $SearchDepth -Description $Fen
 
     # The engine emits one summary info line, then bestmove. Take the LAST info
     # line so this keeps working if per-iteration output is ever added.
@@ -184,6 +261,10 @@ function Invoke-Search {
 
     if ($info.Count -eq 0) {
         throw "No parseable 'info ... nodes N time T' line for FEN: $Fen`nEngine output:`n$out"
+    }
+    if (@($info | Where-Object { $_.Value -match "^info depth $SearchDepth\b" }).Count -eq 0 -or -not $best.Success) {
+        throw ("Fixed-depth search did not complete depth $SearchDepth for FEN: $Fen" +
+               "`nEngine output:`n$out")
     }
 
     # Main-tree/quiescence split (issue #312). Engines built before that change do not

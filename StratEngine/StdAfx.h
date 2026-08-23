@@ -34,7 +34,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
-#include <thread> // std::jthread — Lazy SMP helper threads (AIPerplex::GetMove)
+#include <thread> // std::jthread — Lazy SMP helper threads (AIPerplex::Search)
 #include <utility>
 #include <vector>
 

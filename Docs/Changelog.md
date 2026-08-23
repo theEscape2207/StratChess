@@ -22,6 +22,40 @@ Newest first.
 
 ---
 
+## 2026-08-21 — Concrete production-search boundary (#256)
+
+### Changed
+
+- `AIPerplex` is a standalone concrete service: `Search(const Board&, const SearchLimits&,
+  IterationObserver)` takes its root and optional observer per call and returns completed telemetry
+  by value. It owns evaluator, TT, search control, tuning and per-game search state; it is no longer
+  an `IPlayer` or `PlayerAiBase` subclass and keeps no last-result cache.
+- Game mode uses the required by-value `SearchPlayer { Board&, AIPerplex value }` adapter to preserve
+  `IPlayer::GetMove`. The free, config-aware `CreatePlayer` factory maps concrete configuration and
+  starts lifecycle before erasing the player type. A generic `ISearchEngine` remains intentionally
+  deferred because there is only one production implementation.
+- `SearchControl` composes limit resolution, timer and stop/node state for concrete and legacy search.
+  Per-call iteration observers and returned `SearchResult` telemetry replace mutable capability state;
+  `Game` owns the combined elapsed/node performance totals. UCI owns one concrete service directly
+  across `ucinewgame` and preserves its stop/start lifecycle.
+
+### Validation
+
+- Boundary regressions cover returned-result lifetime, new-game TT/heuristic clearing, legacy
+  aspiration seeding, UCI `eval` breakdown consistency, immediate stop, and concurrent `isready`.
+- The post-review production binary (`b44fc9deadca`, implementation commit `53202cf`) is exactly
+  equivalent to merge base `54d3e54` at depth 12 and Threads=1: all six positions and 90 compared
+  iteration/final lines match. Marker-wait movetime, clock, and node probes completed without a
+  stall/time loss; candidate UCI times were monotonic through the final line.
+- Two repeated depth-12 benchmark passes each visited 21,457,322 nodes and returned the same eight
+  best moves as the original five-pass evidence. Aggregate rates were 3.086M and 3.086M nps, within
+  normal run noise; this refactor makes no Elo, nps, or strength-gain claim.
+- Full/pre-commit/pre-PR gates, 10x36 tactical stability, bounded AIPerplex self-play, the 2,000-run
+  UCI command race probe, and all six WSL ThreadSanitizer Lazy-SMP scenarios passed after the
+  exception-safe launch cleanup.
+
+---
+
 ## 2026-08-21 — One reversible position record; the outcome leaves the board (#348 stage 2)
 
 Design: `.claude/plans/gameinfo-position-record-split.md`.
