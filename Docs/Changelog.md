@@ -22,6 +22,23 @@ Newest first.
 
 ---
 
+## 2026-08-23 — Dependency version bumps (#366, #367)
+
+### Changed
+
+- `spdlog` v1.16.0 → v1.17.0, `Catch2` v3.13.0 → v3.15.3 in `CMakeLists.txt`. Both still ship the
+  amalgamated/populate-only layout the build depends on, so no other source change was needed.
+  `nlohmann_json` stays at v3.12.0 — already current upstream.
+- Updated the thirteen `actions/cache` keys that spell the versions literally
+  (`build-and-test.yml` ×5, `nightly.yml` ×7, `strength.yml` ×1) so CI does not carry a stale
+  dependency cache.
+- Validated: search output identical to `origin/main` at depth 12/`Threads=1` across 6 positions
+  (`Compare-SearchEquivalence.ps1`), nps unchanged within noise, fast-tier suite unchanged at
+  505/7520, and a Linux/GCC build under WSL compiles and passes the same suite — covering the one
+  real risk in this bump, spdlog's bundled `{fmt}` major version jump.
+- Target-consumption migration (`spdlog::spdlog_header_only` etc., issue #166) is a separate,
+  follow-up PR — see `.claude/plans/not-started/dependency-updates-and-cmake-targets.md`.
+
 ## 2026-08-21 — Concrete production-search boundary (#256)
 
 ### Changed

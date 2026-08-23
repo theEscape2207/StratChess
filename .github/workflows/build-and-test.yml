@@ -112,7 +112,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: cmake-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
+          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
 
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.config }}
@@ -183,7 +183,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: cmake-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
+          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
 
       # STRAT_SANITIZE_RECOVER is left at its OFF default on purpose: sanitizers
       # report and continue otherwise, which exits 0 and would turn this job green
@@ -235,7 +235,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: cmake-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
+          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
 
       # STRAT_SANITIZE_RECOVER stays at its OFF default: a report must abort the
       # process and fail the job, not print and exit 0.
@@ -321,7 +321,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: win-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
+          key: win-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
 
       # "all", not tests-only: INTERPROCEDURAL_OPTIMIZATION_RELEASE is set on the
       # StratChessEvolved target alone, so a tests-only build never performs the
@@ -390,7 +390,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: cmake-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
+          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
 
       # Configured with clang, NOT the default GCC, and this is load-bearing.
       # strat_configure_target emits the GNU spelling -fconstexpr-ops-limit= for GCC
