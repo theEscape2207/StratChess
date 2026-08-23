@@ -10,6 +10,7 @@
 #include "MoveFactory.h"
 #include "MoveGenerator.h"
 #include "defines.h"
+#include <climits>
 
 // Rook endgame: White Ra1, Ke1 vs Black Ra2, Ke8.
 // Ra1xa2 is the only capture; all other legal white moves are quiet.
