@@ -22,6 +22,50 @@ Newest first.
 
 ---
 
+## 2026-08-23 — Dependencies consumed as CMake imported targets (#166)
+
+### Changed
+
+- The three dependencies are configured as real CMake subprojects and consumed through
+  `spdlog::spdlog_header_only`, `nlohmann_json::nlohmann_json` and `Catch2::Catch2WithMain`,
+  replacing `SOURCE_SUBDIR do-not-configure` populate-only mode and the hand-written include
+  directories. The build no longer knows any dependency's internal directory layout.
+- The 34 test files switch from `<catch_amalgamated.hpp>` to the modular Catch2 headers, and
+  `catch_amalgamated.cpp` is no longer compiled.
+- Catch2 is the one dependency that becomes a compiled library, and it passes `std::string` and
+  `std::vector` across the link boundary, so `STRAT_STDLIB_DEBUG` and `STRAT_SANITIZE` are applied
+  to its targets as well. Without that, the `sanitize-linux` job links a Catch2 built at project
+  defaults against test TUs built with `_GLIBCXX_DEBUG` — a binary that compiles, links and then
+  misbehaves inside Catch2's own string handling.
+- `SPDLOG_SYSTEM_INCLUDES`/`JSON_SystemInclude` are enabled and Catch2's interface include
+  directories are marked SYSTEM by hand (it has no option for it). Imported-target includes are
+  ordinary `-I` paths, and this build is `-Werror`/`/WX` everywhere.
+- spdlog's compiled library is excluded from the default target set: its CMakeLists defines it
+  unconditionally, and nothing links it.
+
+### Fixed
+
+- `SortTests.cpp` now includes `<climits>` for `INT_MIN`, which the amalgamated Catch2 header had
+  been supplying transitively. GCC-only — clang-cl's headers still provide it.
+
+### Validation
+
+- Search output identical to `origin/main` at depth 12/`Threads=1` across 6 positions
+  (`Compare-SearchEquivalence.ps1`), 90 compared lines.
+- Fast-tier suite unchanged: 505/7520 on Windows clang-cl and Linux/GCC Release, and 502/7515 under
+  the `sanitize-linux` configuration — matching the baseline in that configuration too.
+- The instrumented build (`-DSTRAT_SANITIZE=address,undefined -DSTRAT_STDLIB_DEBUG=ON`) was run
+  locally under WSL before pushing, with the Catch2 translation units confirmed to carry
+  `_GLIBCXX_DEBUG`, `-fsanitize=address,undefined` and `_GLIBCXX_ASSERTIONS`.
+- Clean build time is unresolvable on this machine: three interleaved runs per variant put the
+  Windows baseline itself between 28.4 s and 41.4 s, a spread wider than any difference between the
+  variants. Linux build time is likewise within noise (47.3 s vs 48.5 s mean). Linux fast-tier
+  *runtime* is the one consistent difference — 21.7–22.1 s against a 20.7–21.3 s baseline, roughly
+  5%, non-overlapping across three runs, cause not established. Windows shows no such effect. None
+  of this gates the change; build throughput is explicitly not this project's bottleneck (#81).
+
+---
+
 ## 2026-08-23 — Dependency version bumps (#366, #367)
 
 ### Changed
@@ -36,8 +80,8 @@ Newest first.
   (`Compare-SearchEquivalence.ps1`), nps unchanged within noise, fast-tier suite unchanged at
   505/7520, and a Linux/GCC build under WSL compiles and passes the same suite — covering the one
   real risk in this bump, spdlog's bundled `{fmt}` major version jump.
-- Target-consumption migration (`spdlog::spdlog_header_only` etc., issue #166) is a separate,
-  follow-up PR — see `.claude/plans/not-started/dependency-updates-and-cmake-targets.md`.
+- Target-consumption migration (`spdlog::spdlog_header_only` etc., issue #166) landed as a separate
+  follow-up PR — see the entry above.
 
 ## 2026-08-21 — Concrete production-search boundary (#256)
 

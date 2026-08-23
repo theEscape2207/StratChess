@@ -48,6 +48,11 @@ endif()
 # which defaults OFF, and spdlog keys its example and install targets off
 # SPDLOG_MASTER_PROJECT, which is OFF for a subproject. Only the settings below
 # differ from what a top-level build of each project would want.
+#
+# Deliberately no FIND_PACKAGE_ARGS: a system or vcpkg copy at a different
+# version would silently satisfy the pin -- and Catch2 is pinned exactly because
+# behaviour differs across versions -- while build/_deps is cached in every job
+# that builds, so there is no clone left to skip.
 # ---------------------------------------------------------------------------
 include(FetchContent)
 
