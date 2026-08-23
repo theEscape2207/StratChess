@@ -50,7 +50,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: cmake-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
+          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
 
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -86,7 +86,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: cmake-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
+          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
 
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.config }}
@@ -109,7 +109,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: cmake-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
+          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
 
       - name: Configure
         run: >
@@ -140,7 +140,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: cmake-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
+          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
 
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -179,7 +179,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: cmake-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
+          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
 
       # clang, not the default GCC: a GCC database carries -fconstexpr-ops-limit=,
       # which the clang driver rejects, and every TU then fails to parse. See the
@@ -240,7 +240,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: cmake-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
+          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
 
       - name: Configure lint database
         run: >
@@ -276,7 +276,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: cmake-deps-spdlog-v1.16.0-json-v3.12.0-catch2-v3.13.0
+          key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
 
       - name: Validate lint scripts
         shell: pwsh

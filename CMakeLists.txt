@@ -56,7 +56,7 @@ include(FetchContent)
 # (policy CMP0169) and warns on the CMake that ubuntu-latest ships.
 FetchContent_Declare(spdlog
     GIT_REPOSITORY https://github.com/gabime/spdlog
-    GIT_TAG        v1.16.0
+    GIT_TAG        v1.17.0
     GIT_SHALLOW    TRUE
     SOURCE_SUBDIR  do-not-configure)
 
@@ -68,7 +68,7 @@ FetchContent_Declare(nlohmann_json
 
 FetchContent_Declare(catch2
     GIT_REPOSITORY https://github.com/catchorg/Catch2
-    GIT_TAG        v3.13.0
+    GIT_TAG        v3.15.3
     GIT_SHALLOW    TRUE
     SOURCE_SUBDIR  do-not-configure)
 
