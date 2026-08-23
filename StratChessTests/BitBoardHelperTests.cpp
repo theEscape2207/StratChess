@@ -25,8 +25,7 @@ TEST_CASE("BitBoardHelper::clear_bits: clears the requested bits and returns tru
 	CHECK(board == 0b1010);
 }
 
-TEST_CASE("BitBoardHelper::clear_bits: a mask overlapping only some set bits still clears the whole mask",
-          "[bitboard]")
+TEST_CASE("BitBoardHelper::clear_bits: a mask overlapping only some set bits still clears the whole mask", "[bitboard]")
 {
 	// isAnyBitSet only requires the mask to overlap the board somewhere, not to match it exactly --
 	// bit 0 of the mask below is already clear, so this pins that clear_bits does not reject on that
@@ -74,8 +73,7 @@ namespace {
 	}
 } // namespace
 
-TEST_CASE("BitBoardHelper::print_bitboard: empty board prints 8 all-zero rows plus a trailing blank line",
-          "[bitboard]")
+TEST_CASE("BitBoardHelper::print_bitboard: empty board prints 8 all-zero rows plus a trailing blank line", "[bitboard]")
 {
 	std::ostringstream out;
 	BitBoardHelper::print_bitboard(out, EMPTY);
