@@ -2268,7 +2268,7 @@ Plan: `.claude/plans/logging-spdlog-gate-and-outlegalmoves-removal.md`.
 - **C++20 Adoption — `<bit>` and `<format>`** (PR #32): `std::countr_zero` replaces
   `_tzcnt_u64` `#ifdef` in `Board::GetFirstPiece`; `std::format` replaces
   `std::stringstream` in `Move::Output()`. C++23 upgrade path documented in
-  `.claude/plans/cpp23-upgrade.md`.
+  `.claude/plans/not-started/cpp23-upgrade.md`.
 - **Expand PCH Coverage in StdAfx.h** (PR #29): 9 STL headers added; redundant per-TU
   includes removed from 7 source files. Zero warnings enforced (`/WX`).
 

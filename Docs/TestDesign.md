@@ -145,8 +145,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 - Rook open-file definition (issue #126): an enemy knight sharing the rook's file must not
   demote an open file to half-open (`all_black`/`all_white` narrowed to `black_pawns`/`white_pawns`)
   — an enemy pawn on the file still demotes it (guard); an own pawn behind the rook still leaves
-  the file half-open/open, pinning the deliberate D5 decision in
-  `.claude/plans/passed-and-backwards-pawn-terms.md`
+  the file half-open/open, a deliberate scope decision
 - Color symmetry: the #126 knight-on-file and pawn-on-file positions added to the `MirrorFen`
   whole-position symmetry cases above, since the two new masks are the most likely place for a
   color asymmetry to be introduced
@@ -376,7 +375,7 @@ semantics.
 ### `[magic]` — Sliding-piece attack generation tests
 
 **File**: `StratChessTests/MagicBitboardTests.cpp`. Landed with the PEXT magic-bitboard refactor,
-replacing rotated-bitboard attack generation — see `.claude/plans/magic-bitboards-sliding-piece-attacks.md`.
+replacing rotated-bitboard attack generation.
 
 Hand-verified `RookAttacks`/`BishopAttacks` bitboards for open cross/diagonal (empty board),
 corner squares with blockers, and fully-blocked-adjacent cases — independent of perft, which
@@ -485,7 +484,7 @@ turn these into no-ops.
   independent information rather than both being derived from `net`.
 
 Batch-mode FEN scoring (`StratChessEvolved.exe eval <path>`) is a CLI subcommand, not a UCI
-command — see `.claude/plans/uci-eval-command-term-breakdown.md` (D4). `evalrunner`'s per-line
+command. `evalrunner`'s per-line
 classification (blank/comment/malformed/valid) is extracted into `FenBatch::ClassifyLine`
 (`StratEngine/Utils/FenBatch.h`, header-only) and covered by `[fen]` cases in `FenParsingTests.cpp`
 — this is what makes the guard a regression-tested invariant rather than a manually-verified one.

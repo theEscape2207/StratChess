@@ -69,8 +69,7 @@ int EvalSimple::Evaluate(const Board& board) const noexcept
 // Class EvalComplex implementation
 //
 
-// eval_pawns — doubled, isolated, passed and backwards pawns for one color
-// (issue #127 restructure — see .claude/plans/eval-context-restructure.md).
+// eval_pawns — doubled, isolated, passed and backwards pawns for one color.
 // Loops that color's own pawn bitboard directly.
 //
 // The passer bonus is the only tapered part: it is worth more as the endgame
@@ -181,26 +180,22 @@ ScorePair EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 }
 
 // eval_rooks — 7th-rank and half-open/open-file bonuses for one color's
-// rooks (issue #127 restructure — see
-// .claude/plans/eval-context-restructure.md). Loops that color's own rook
-// bitboard directly; per-rook logic is unchanged from the switch cases it
-// replaces.
+// rooks. Loops that color's own rook bitboard directly; per-rook logic is
+// unchanged from the switch cases it replaces.
 //
 // "Open" means no PAWNS of either colour on the file (issue #126 / PR #137)
 // — not "no enemy pieces at all". An enemy piece sharing the file is usually
 // a target for the rook, not a reason to demote the bonus. Preserving this
-// (the fixed form, not the pre-#137 all_black/all_white check) is required —
-// see the "Superseded note" for the rook terms in the plan file.
+// (the fixed form, not the pre-#137 all_black/all_white check) is required.
 //
 // Note the two file tests use different scopes: the own-pawn test is
 // FORWARD-ONLY (g_bbFileUpMask/g_bbFileDownMask), the enemy-pawn test is
 // WHOLE-FILE (g_bbFileMask). So an own pawn behind the rook still leaves the
 // file open, while an enemy pawn behind it does not. That asymmetry is
-// inherited, not principled — D5 in
-// .claude/plans/passed-and-backwards-pawn-terms.md keeps it deliberately,
-// because widening the own-pawn test would change far more positions than
-// issue #126's actual fix. The open question of whether to widen it is
-// recorded on issue #116, not settled here.
+// inherited, not principled — kept deliberately, because widening the
+// own-pawn test would change far more positions than issue #126's actual
+// fix. The open question of whether to widen it is recorded on issue #116,
+// not settled here.
 //
 // Connected rooks (issue #114) are scored here too: same rank or file with
 // nothing between, per connected pair.
@@ -291,8 +286,7 @@ ScorePair EvalComplex::eval_bishops(const EvalContext& ctx, eColor color) noexce
 // that depended on it would make Evaluate() a function of how a position was
 // reached rather than of the position -- two paths to one position would then
 // disagree about its score while sharing a transposition-table entry, and
-// #117's FEN corpus would score every position as never-castled. See D2 in
-// .claude/plans/eval-bishop-pair-connected-rooks-castling.md.
+// #117's FEN corpus would score every position as never-castled.
 //
 // While a right remains the side has decided nothing, so the term is silent.
 // Once both rights are gone, the king is either tucked away (bonus) or was
@@ -335,18 +329,17 @@ ScorePair EvalComplex::eval_castling(const EvalContext& ctx, eColor color) noexc
 	return ScorePair{-CASTLING_LOST_PENALTY, 0}; // d,e -- central
 }
 
-// eval_pst — piece-square-table contribution for one color's pieces (issue
-// #127 restructure — see .claude/plans/eval-context-restructure.md — D5's
+// eval_pst — piece-square-table contribution for one color's pieces:
 // per-piece-type bitboard loops, replacing an earlier mailbox-lookup
-// version). Every non-king piece type gets its own bitboard loop, so
+// version. Every non-king piece type gets its own bitboard loop, so
 // GetPositionalScore is called with a statically-known piece — no
 // board.GetPiece(square) mailbox lookup per square. The king is excluded
 // from those loops: g_Eval_Bitboards[5] (middlegame) and [6] (endgame) are
 // its mg and eg endpoints, blended by phase rather than selected (issue #99),
 // so it still receives exactly one PST contribution — just an interpolated
-// one. (D2 in eval-context-restructure.md, not this change's D2.) Reordering these per-type loops relative to each
-// other, or relative to the old single mailbox loop, cannot change the sum:
-// plain int addition over the same multiset of per-square PST values.
+// one. Reordering these per-type loops relative to each other, or relative
+// to the old single mailbox loop, cannot change the sum: plain int addition
+// over the same multiset of per-square PST values.
 ScorePair EvalComplex::eval_pst(const EvalContext& ctx, eColor color) noexcept
 {
 	int score = 0;
@@ -393,8 +386,8 @@ ScorePair EvalComplex::eval_pst(const EvalContext& ctx, eColor color) noexcept
 	// discontinuously. Blending them removes a cliff of up to 100 cp that a
 	// single capture could cross mid-search (the mg table is uniformly
 	// -40/-20/0 by rank; the eg table peaks at +60 centrally).
-	// Suppressed entirely while this color is mopping up (issue #118 item 4,
-	// D5(a) in the plan). Otherwise the endgame king table charges the winner
+	// Suppressed entirely while this color is mopping up (issue #118 item 4).
+	// Otherwise the endgame king table charges the winner
 	// 10 cp per step of centralization given up to walk toward the cornered
 	// loser, against the 4 cp per step mop-up pays for closing in — so
 	// approaching scored NEGATIVE overall, and mop-up only softened a
@@ -489,8 +482,7 @@ ScorePair EvalComplex::eval_mobility(const EvalContext& ctx, eColor color) noexc
 	return ScorePair{mg, eg};
 }
 
-// eval_mopup — mop-up evaluation for one color (issue #127 restructure — see
-// .claude/plans/eval-context-restructure.md; original term issue #70 /
+// eval_mopup — mop-up evaluation for one color (original term issue #70 /
 // epic #110). In decisively-won, pawnless endings, reward driving the losing
 // king to the edge/corner and closing the distance between the two kings —
 // the win may lie beyond the search horizon otherwise. Only the winning
@@ -520,8 +512,7 @@ ScorePair EvalComplex::eval_mopup(const EvalContext& ctx, eColor color) noexcept
 	return ScorePair{mopup, mopup};
 }
 
-// BuildContext — the one construction site for EvalContext (issue #127
-// restructure — see .claude/plans/eval-context-restructure.md). Both
+// BuildContext — the one construction site for EvalContext. Both
 // Evaluate() below and the term-level test fixture
 // (StratChessTests/EvalTests.cpp's EvalComplexTestFixture) call this, so
 // phase detection and every other context field can only be computed one
@@ -654,9 +645,9 @@ int EvalComplex::Evaluate(const Board& board) const noexcept
 	// Material is not tapered and is added after — a piece is worth its value
 	// regardless of how far along the game is; only positional judgements shift.
 	//
-	// Blended PER TERM rather than once over the accumulated pair, which is a
-	// deliberate departure from D2 in the plan file. Integer division truncates,
-	// so BlendPhase(a) + BlendPhase(b) and BlendPhase(a + b) can differ by up to
+	// Blended PER TERM rather than once over the accumulated pair -- a
+	// deliberate choice. Integer division truncates, so BlendPhase(a) +
+	// BlendPhase(b) and BlendPhase(a + b) can differ by up to
 	// one centipawn per term. Blending once is marginally more accurate, but it
 	// makes the per-term breakdown #129 prints unable to sum to the score it
 	// reports — and that reconstructibility is an asserted invariant, not a

@@ -8,7 +8,7 @@
 
 class Board;
 
-// Tapered evaluation (issue #99 — see .claude/plans/tapered-evaluation.md).
+// Tapered evaluation.
 //
 // Game phase is a single integer in [0, MAX_GAME_PHASE] computed from the
 // non-king, non-pawn material on the board: MAX_GAME_PHASE with a full set of
@@ -104,10 +104,8 @@ class EvalManager {
 	// `square ^ 63`), a 180-degree rotation: it flips the file bits too, not
 	// just the rank bits. That distinction is invisible for a file-symmetric
 	// PST (rotation and vertical flip agree there) but wrong the moment a
-	// table is file-asymmetric. See the plan file
-	// `.claude/plans/eval-color-symmetry-and-queen-pst-fix.md` for the queen-PST
-	// regression this caused and the test coverage added to guard it
-	// (`StratChessTests/EvalTests.cpp`).
+	// table is file-asymmetric — the queen-PST regression this caused is
+	// guarded by test coverage in `StratChessTests/EvalTests.cpp`.
 	static constexpr inline int getEvalBoard(ePiece piece, eSquare square) noexcept
 	{
 		return (PieceHelper::Color(piece) == eColor::BLACK) ? (square ^ 56) : square;
@@ -133,8 +131,7 @@ class EvalSimple final : public EvalManager {
 // by const reference into each term function; nothing in it is ever stored on
 // EvalManager/EvalComplex (see the Lazy SMP sharing-contract comment above).
 // Everything here is already computed or trivially available from Board — this
-// names shared work, it does not add any. See
-// `.claude/plans/eval-context-restructure.md` for the restructure this supports.
+// names shared work, it does not add any.
 struct EvalContext {
 	std::span<const BITBOARD> boards; // Board::GetBitBoards(), indexed by ePiece
 	BITBOARD all_pieces;              // boards[ALL_PIECES]
@@ -183,8 +180,7 @@ struct EvalContext {
 	uint8_t castling_rights;
 };
 
-// EvalBreakdown — per-term introspection output for the UCI 'eval' command
-// (issue #129 phase 2 — see .claude/plans/uci-eval-command-term-breakdown.md).
+// EvalBreakdown — per-term introspection output for the UCI 'eval' command.
 // Produced by EvalComplex::Breakdown(); read-only, never consulted by search.
 //
 // Every field is indexed by eColor, so a caller can show which side a term is
@@ -257,7 +253,7 @@ class EvalComplex final : public EvalManager {
 	// Castling (issue #115). Middlegame-only: in an endgame the king belongs in
 	// the centre, and the endgame king PST already says so -- a flat bonus here
 	// would fight it. Derived from castling rights plus king placement, never
-	// from move history; see .claude/plans/eval-bishop-pair-connected-rooks-castling.md D2.
+	// from move history.
 	static const short CASTLING_DONE_BONUS = 25;
 	static const short CASTLING_LOST_PENALTY = 20;
 
@@ -386,7 +382,7 @@ class EvalComplex final : public EvalManager {
 	// the one construction site, so phase detection and the rest of the
 	// context's fields can't drift out of sync between production and the
 	// term-level test fixture (StratChessTests/EvalTests.cpp) that also calls
-	// this. See .claude/plans/eval-context-restructure.md.
+	// this.
 	static EvalContext BuildContext(const Board& board) noexcept;
 
 	// Per-term evaluation functions (issue #127 restructure). Each returns
@@ -406,10 +402,9 @@ class EvalComplex final : public EvalManager {
 	int Evaluate(const Board& board) const noexcept override;
 	const char* GetType() const noexcept override { return "Complex"; }
 
-	// Per-term introspection for the UCI 'eval' command (issue #129 phase 2 —
-	// see .claude/plans/uci-eval-command-term-breakdown.md). Reports what the
-	// four private term functions above contribute, per color, for one
-	// position; changes nothing and is never called from search.
+	// Per-term introspection for the UCI 'eval' command. Reports what the four
+	// private term functions above contribute, per color, for one position;
+	// changes nothing and is never called from search.
 	//
 	// This is the only member made public for the breakdown: BuildContext and
 	// the eval_* functions stay private, and EvalManager's abstract interface
