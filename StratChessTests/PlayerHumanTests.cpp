@@ -5,7 +5,7 @@
 // which makes them the one part of this player a test can reach — and the part that matters, since
 // a returned SearchResult is now the only way a game ends.
 
-#include <catch_amalgamated.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include "Board.h"
 #include "GameState.h"
 #include "PlayerBase.h"

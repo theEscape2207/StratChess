@@ -4,12 +4,13 @@
 //   hash move > winning captures > killer0 > killer1 > equal captures
 //   > quiet history > losing captures (none in this position)
 
-#include <catch_amalgamated.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include "Board.h"
 #include "Sort.h"
 #include "MoveFactory.h"
 #include "MoveGenerator.h"
 #include "defines.h"
+#include <climits>
 
 // Rook endgame: White Ra1, Ke1 vs Black Ra2, Ke8.
 // Ra1xa2 is the only capture; all other legal white moves are quiet.

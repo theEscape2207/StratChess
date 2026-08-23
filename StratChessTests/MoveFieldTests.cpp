@@ -3,7 +3,7 @@
 // Covers the packed 16-bit representation (field round-trips), the identity rule, the empty
 // sentinel, and the ToCoord/ToUCI distinction.
 
-#include <catch_amalgamated.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include "Move.h"
 #include "MoveFactory.h"
 #include "MoveFormatter.h"

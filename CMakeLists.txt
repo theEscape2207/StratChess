@@ -39,40 +39,59 @@ endif()
 # ---------------------------------------------------------------------------
 # Dependencies
 #
-# Pinned to the versions the Windows CI job already uses. Populated and consumed
-# as include directories rather than via add_subdirectory: all three are
-# header-only in this project, and Catch2 is used through its amalgamated
-# distribution, so every existing #include line stays valid. Switching to real
-# imported targets is issue #166.
+# Configured as real CMake subprojects and consumed through their imported
+# targets, so each one carries its own include directories and usage
+# requirements instead of this file restating them per consuming target.
+#
+# The dependencies' own extra targets need no suppression: Catch2 gates its
+# tests, examples, fuzzers, benchmarks and -Werror behind CATCH_DEVELOPMENT_BUILD,
+# which defaults OFF, and spdlog keys its example and install targets off
+# SPDLOG_MASTER_PROJECT, which is OFF for a subproject. Only the settings below
+# differ from what a top-level build of each project would want.
+#
+# Deliberately no FIND_PACKAGE_ARGS: a system or vcpkg copy at a different
+# version would silently satisfy the pin -- and Catch2 is pinned exactly because
+# behaviour differs across versions -- while build/_deps is cached in every job
+# that builds, so there is no clone left to skip.
 # ---------------------------------------------------------------------------
 include(FetchContent)
 
-# SOURCE_SUBDIR points at a directory that does not exist in any of these repos.
-# That makes FetchContent_MakeAvailable download and populate the sources but
-# skip add_subdirectory(), because there is no CMakeLists.txt at that path -- so
-# none of the dependencies' own CMake projects are configured, and no extra
-# targets appear. This is the supported way to get populate-only behaviour:
-# the bare FetchContent_Populate(name) form is deprecated as of CMake 3.30
-# (policy CMP0169) and warns on the CMake that ubuntu-latest ships.
+# This build is -Werror and /WX everywhere, and an imported target's include
+# directories arrive as ordinary -I paths -- so every warning in a dependency's
+# headers would become our build error. Both projects offer an opt-in; Catch2
+# does not, and is handled after MakeAvailable below.
+set(SPDLOG_SYSTEM_INCLUDES ON)
+set(JSON_SystemInclude ON)
+
 FetchContent_Declare(spdlog
     GIT_REPOSITORY https://github.com/gabime/spdlog
     GIT_TAG        v1.17.0
-    GIT_SHALLOW    TRUE
-    SOURCE_SUBDIR  do-not-configure)
+    GIT_SHALLOW    TRUE)
 
 FetchContent_Declare(nlohmann_json
     GIT_REPOSITORY https://github.com/nlohmann/json
     GIT_TAG        v3.12.0
-    GIT_SHALLOW    TRUE
-    SOURCE_SUBDIR  do-not-configure)
+    GIT_SHALLOW    TRUE)
 
 FetchContent_Declare(catch2
     GIT_REPOSITORY https://github.com/catchorg/Catch2
     GIT_TAG        v3.15.3
-    GIT_SHALLOW    TRUE
-    SOURCE_SUBDIR  do-not-configure)
+    GIT_SHALLOW    TRUE)
 
 FetchContent_MakeAvailable(spdlog nlohmann_json catch2)
+
+# spdlog is consumed header-only, but its CMakeLists defines the compiled library
+# unconditionally. Left in the default target set it builds seven translation
+# units -- one of them the bundled {fmt} -- that nothing links.
+set_property(TARGET spdlog PROPERTY EXCLUDE_FROM_ALL TRUE)
+
+# Catch2 exposes its headers as plain PUBLIC include directories and has no
+# option to mark them SYSTEM, so it is done here by copying the interface list
+# onto the SYSTEM property. Only Catch2 declares them; Catch2WithMain inherits
+# both properties by linking it PUBLIC.
+get_target_property(strat_catch2_includes Catch2 INTERFACE_INCLUDE_DIRECTORIES)
+set_target_properties(Catch2 PROPERTIES
+    INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${strat_catch2_includes}")
 
 # ---------------------------------------------------------------------------
 # Engine sources
@@ -137,10 +156,7 @@ endif()
 # only) does not cover.
 #
 # It changes the ABI of the standard containers, so every translation unit in the
-# link must agree. That holds here because all three dependencies are
-# populate-only FetchContent sources compiled into our own targets with these
-# flags -- do not switch them to prebuilt imported targets without revisiting it
-# (#166).
+# link must agree -- see the Catch2 block below, which is what makes that hold.
 option(STRAT_STDLIB_DEBUG
        "Build against libstdc++ debug mode (_GLIBCXX_DEBUG). GCC/libstdc++ only." OFF)
 
@@ -150,6 +166,36 @@ if(STRAT_STDLIB_DEBUG AND (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
             "STRAT_STDLIB_DEBUG is libstdc++-only and does nothing against the MSVC "
             "standard library, which enables the equivalent checks through "
             "_ITERATOR_DEBUG_LEVEL in Debug builds already.")
+endif()
+
+# spdlog and nlohmann/json are INTERFACE targets whose headers compile inside our
+# own translation units, so they pick up these settings for free. Catch2 is the
+# exception: it is a compiled library, and it passes std::string and std::vector
+# across the link boundary.
+#
+# _GLIBCXX_DEBUG changes the layout of both, and -fsanitize= selects runtime
+# libraries the link needs -- so a Catch2 built at the project's defaults linked
+# against test TUs built with either one produces a binary that compiles, links,
+# and then misbehaves inside Catch2's own string handling. The sanitize-linux job
+# sets both at once, which is why this is not hypothetical. PRIVATE is the right
+# visibility: Catch2's own sources need the settings, and ours already have them
+# from strat_configure_target.
+if(STRAT_STDLIB_DEBUG OR STRAT_SANITIZE)
+    foreach(catch2_tgt IN ITEMS Catch2 Catch2WithMain)
+        if(STRAT_STDLIB_DEBUG)
+            target_compile_definitions(${catch2_tgt} PRIVATE
+                _GLIBCXX_DEBUG _GLIBCXX_DEBUG_PEDANTIC)
+        endif()
+        if(STRAT_SANITIZE)
+            set(catch2_san_flags -fsanitize=${STRAT_SANITIZE} -fno-omit-frame-pointer)
+            if(NOT STRAT_SANITIZE_RECOVER)
+                list(APPEND catch2_san_flags -fno-sanitize-recover=all)
+            endif()
+            target_compile_options(${catch2_tgt} PRIVATE ${catch2_san_flags})
+            target_link_options(${catch2_tgt} PRIVATE ${catch2_san_flags})
+            target_compile_definitions(${catch2_tgt} PRIVATE _GLIBCXX_ASSERTIONS)
+        endif()
+    endforeach()
 endif()
 
 function(strat_configure_target tgt)
@@ -227,10 +273,10 @@ function(strat_configure_target tgt)
 
     target_include_directories(${tgt} PRIVATE
         ${CMAKE_SOURCE_DIR}/StratEngine)
-    target_include_directories(${tgt} SYSTEM PRIVATE
-        ${spdlog_SOURCE_DIR}/include
-        ${nlohmann_json_SOURCE_DIR}/include)
-    target_link_libraries(${tgt} PRIVATE Threads::Threads)
+    target_link_libraries(${tgt} PRIVATE
+        Threads::Threads
+        spdlog::spdlog_header_only
+        nlohmann_json::nlohmann_json)
 endfunction()
 
 # ---------------------------------------------------------------------------
@@ -263,8 +309,7 @@ endif()
 
 add_executable(StratChessTests
     ${ENGINE_SOURCES}
-    ${TEST_SOURCES}
-    ${catch2_SOURCE_DIR}/extras/catch_amalgamated.cpp)
+    ${TEST_SOURCES})
 strat_configure_target(StratChessTests)
 target_compile_definitions(StratChessTests PRIVATE STRAT_ENABLE_TEST_ACCESS)
-target_include_directories(StratChessTests SYSTEM PRIVATE ${catch2_SOURCE_DIR}/extras)
+target_link_libraries(StratChessTests PRIVATE Catch2::Catch2WithMain)

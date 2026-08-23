@@ -5,7 +5,7 @@
 // restored by UndoMove. These are the fields De-Singleton Board will carry
 // per-thread, so correctness here is critical before that refactor.
 
-#include <catch_amalgamated.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include "Board.h"
 #include "GameState.h"
 #include "MoveFactory.h"

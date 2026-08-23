@@ -12,7 +12,9 @@
 // Requires STRAT_ENABLE_TEST_ACCESS in the test project preprocessor definitions.
 // See Docs/TestDesign.md §"AIPerplex Test Access" for the mechanism.
 
-#include <catch_amalgamated.hpp>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
+#include <catch2/matchers/catch_matchers.hpp> // REQUIRE_THROWS_WITH
 #include "AIAgent.h"
 #include "AIPerplex.h"
 #include "Board.h"

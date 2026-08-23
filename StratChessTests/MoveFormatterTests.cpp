@@ -5,7 +5,7 @@
 // then call the formatter with a Move whose from/to/flags match the played move.
 // This mirrors the production call site in Game::PrintBoardAndMove.
 
-#include <catch_amalgamated.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include "Board.h"
 #include "MoveFormatter.h"
 #include "MoveFactory.h"

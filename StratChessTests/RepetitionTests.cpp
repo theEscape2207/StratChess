@@ -9,7 +9,7 @@
 //   BUG-3: Twofold-in-search — fixed index comparison
 //   BUG-4: Castling rights and en-passant included in Zobrist hash
 
-#include <catch_amalgamated.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include "Board.h"
 #include "MoveFactory.h"
 #include "defines.h"

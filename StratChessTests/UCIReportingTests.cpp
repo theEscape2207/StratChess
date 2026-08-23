@@ -3,7 +3,8 @@
 // Session/administrative commands (parse_go, cmd_position, cmd_setoption,
 // dispatch, command log) are in UCITests.cpp.
 
-#include <catch_amalgamated.hpp>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include "UCITestFixture.h"
 #include "Board.h"
 #include "Eval.h"

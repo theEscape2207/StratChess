@@ -1,8 +1,13 @@
 // StratChessTests.cpp
-// main() is provided by catch_amalgamated.cpp (Catch2 v3).
+// main() is provided by Catch2::Catch2WithMain.
 // Test suites: one .cpp per area under StratChessTests/ (see Docs/TestDesign.md for the map).
 
-#include <catch_amalgamated.hpp>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_test_case_info.hpp>
+#include <catch2/catch_test_run_info.hpp>
+#include <catch2/interfaces/catch_interfaces_reporter.hpp>
+#include <catch2/reporters/catch_reporter_event_listener.hpp>
+#include <catch2/reporters/catch_reporter_registrars.hpp>
 #include "Utils/Logger.h"
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/base_sink.h>

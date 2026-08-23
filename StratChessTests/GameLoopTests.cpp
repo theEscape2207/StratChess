@@ -8,7 +8,8 @@
 // The players here are scripted: each returns a prepared SearchResult per call. That makes every
 // outcome path a deterministic three-line test.
 
-#include <catch_amalgamated.hpp>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include "Game.h"
 #include "IPlayer.h"
 #include "Board.h"

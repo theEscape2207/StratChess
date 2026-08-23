@@ -7,7 +7,7 @@
 // pawn push (legal from the starting position) is used instead to exercise
 // DoMove/UndoMove.
 
-#include <catch_amalgamated.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include "Board.h"
 #include "MoveFactory.h"
 

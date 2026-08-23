@@ -8,7 +8,9 @@
 //
 // See Docs/TestDesign.md §Phase 0 for rationale.
 
-#include <catch_amalgamated.hpp>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
+#include <catch2/generators/catch_generators_range.hpp>
 #include "TacticalTestHelpers.h"
 #include "Board.h"
 #include "MoveFormatter.h"

@@ -2,7 +2,7 @@
 // FENParser::ParseFEN/ValidatePositionAgainstFENMetadata, Board::SetupFromFEN
 // and Board(fen): these exercise FEN parsing directly, with no UciHandler involved.
 
-#include <catch_amalgamated.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include "Board.h"
 #include "Utils/FenBatch.h"
 #include <algorithm>

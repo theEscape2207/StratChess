@@ -9,7 +9,7 @@
 // that shares the function, and the two properties that make the result usable:
 // only enemy-occupied targets, and no quiet moves.
 
-#include <catch_amalgamated.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include "Board.h"
 #include "MoveFormatter.h"
 #include "MoveGenerator.h"
