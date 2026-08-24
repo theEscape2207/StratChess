@@ -121,7 +121,13 @@ So: **if the median run wall clock does not drop by at least 20 s, or the FetchC
 missing, revert.** The revert is the inverse of the landing diff, with no other consequences.
 
 A `gh cache list` inspection one week after landing is part of the work, not a follow-up someone
-might do. The number it produces is the only evidence that eviction is not happening.
+might do. The number it produces is the only evidence that eviction is not happening. The wall-clock
+verdict is read at the same sitting, from the same week of ordinary merges — see Validation.
+
+**The criterion has two arms, and they need different amounts of evidence.** A large regression
+announces itself: #372 was noticed by eye, and nothing here needs a sample floor to catch a run that
+got dramatically slower. Distinguishing a 20 s improvement from no improvement is the hard direction,
+and it is the only one the sample count below exists to serve.
 
 ### D6: a failed ccache install degrades the job, it does not fail it
 
@@ -201,12 +207,36 @@ download URL at a nonexistent asset on a throwaway commit and confirm every Linu
 green, emits the warning annotation, and builds at roughly its pre-ccache duration. A fallback path
 that has never run is an assumption, not a safety net.
 
-**The number.** Measured with #372's method, which is the only one shown to reproduce here: re-run
-merge commits on `main` one at a time, two samples each, reading `sanitize-linux` and
-`build-linux (Release)`. Do **not** batch `gh run rerun` — the runs share a concurrency group and
-each queued rerun cancels the previous one while reporting success (#372's method note). Do not
-quote #92's "~90 s": it was costed against `build-linux (Release)` as sole critical path, which
-#372 showed it is not.
+**The number, read from ordinary merges rather than from dedicated re-runs.** `main` took 113
+build-relevant merges in the six weeks to 2026-08-23 — about 19 a week — so one week after landing
+supplies more full-tier samples than a synthetic re-run campaign would, at zero cost in runs. The
+"before" half of the comparison already exists in the run history and needs no new work at all.
+
+Method, read at the same sitting as D5's `gh cache list` check:
+
+- **`sanitize-linux` only.** It reproduces to within ~13 s across pairs; `build-linux (Release)`
+  showed a 93 s spread on the same commit (#372, correction 2) and cannot resolve a 20 s effect.
+- **Merge runs on `main`, not PR runs** — same population as the "before" data, and free of the
+  concurrency-group interference that PR runs see.
+- **At least 8 warm-cache samples on each side**, medians compared against that ~13 s band.
+- **Every post-landing sample is labelled with its D7 hit rate.** This is what makes observational
+  data usable: a cold-cache run (the first after landing, or one after an eviction) is identifiable
+  rather than an unexplained outlier, and gets excluded from the warm-cache median instead of
+  quietly dragging it.
+
+The obvious objection is that real merges vary in content where re-runs of one commit do not, so
+this measures the *average* hit rate across the kinds of change actually made here rather than a
+best case. That is the number the decision needs; the best case was never in question.
+
+**If the samples are not there, extend the window — do not conclude.** An inconclusive week is not a
+measured zero. Hard stop at two weeks: no demonstrated ≥20 s median improvement by then means revert,
+so this cannot sit unresolved indefinitely. If the observational data comes out ambiguous rather than
+thin, #372's re-run method is the fallback: re-run merge commits one at a time, two samples each, and
+**do not batch `gh run rerun`** — the runs share a concurrency group and each queued re-run cancels
+the previous one while reporting success (#372's method note).
+
+Do not quote #92's "~90 s" at any point: it was costed against `build-linux (Release)` as sole
+critical path, which #372 showed it is not.
 
 ## Relationship to #281
 
@@ -259,8 +289,8 @@ The work splits cleanly by how much judgement each part needs, and most of it ne
 | `Docs/CI.md` and `Docs/Changelog.md` edits | Lower tier, same PR. |
 | The D6 degradation test — break the URL on a throwaway commit, confirm green + warning + normal duration | Lower tier to run. Judgement only if a job goes red, which is the finding itself. |
 | Cold-vs-warm hash comparison, reading the two runs | Lower tier to collect, controller to judge — a mismatch needs the D4/LTO reasoning to interpret. |
-| The wall-clock measurement and the kill-criterion call | Controller. #372's method has a trap that reports success while cancelling runs, and the verdict is a judgement about noise bands, not a threshold check. |
-| The one-week `gh cache list` eviction check | Lower tier to collect; one line of judgement to close. |
+| The one-week sitting: `gh cache list`, plus scraping `sanitize-linux` durations and D7 hit rates from that week's merge runs | Lower tier to collect — it is a `gh api` loop over merge runs on `main`, and the output is a table. |
+| The kill-criterion call on that table | Controller. The verdict is a judgement about noise bands and which samples were warm, not a threshold check. |
 
 One PR. Splitting the workflow edit from the docs would put a Build-tier change and a Docs-tier
 change through two full validation cycles for a diff of well under a hundred lines.
