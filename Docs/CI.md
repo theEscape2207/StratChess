@@ -77,15 +77,17 @@ if a `gh cache list` check one week after landing shows the FetchContent entry m
 wall-clock reading of `sanitize-linux` merge runs on `main` shows no median improvement of at least
 20 s, revert. Method and the measured reading: `Docs/Changelog.md` and `.claude/plans/ccache-linux-ci.md`.
 
-**Checking a cached build produced the right thing differs by platform.** On Linux the gate is a
-byte-identical binary, cold cache versus warm. That gate does not exist on Windows: the clang-cl
-build is not reproducible there in the first place, because every object carries a COFF
-`TimeDateStamp` — two clean builds of the same commit differ in 59 of 73 objects with ccache nowhere
-in the picture, and one translation unit compiled twice two seconds apart differs in exactly one
-byte, at offset 4. So the Windows gate is cold-versus-warm compared at the **object** level, which is
-the stronger claim anyway: ccache replays a stored object byte-for-byte, making the cached path more
-reproducible than the uncached one. Adding `/Brepro` would make the binary gate available and is
-deliberately not done here — it changes the objects the shipping binary is linked from.
+**Checking a cached build produced the right thing is the same gate on both platforms: a
+byte-identical binary, cold cache versus warm.** That holds on Windows only because
+`strat_configure_target` passes `/Brepro` to the compiler and the linker. Without it the clang-cl
+build is not reproducible at all — every COFF object carries a `TimeDateStamp` and every PE image a
+header timestamp, and two clean builds of one commit differ in 61 of 90 objects and both executables,
+with ccache nowhere in the picture.
+
+**Compare rebuilds in the same build directory.** `/Z7` embeds each object's own path in its
+`debug$S` record, so a Debug comparison across two differently-named build directories reports
+differences that a rebuild in place never has. That is a property of the measurement, not of the
+build.
 
 **Windows runs on every Build- and Engine-tier change**, same trigger as Linux. It is the only job
 that builds what ships — the clang-cl branch of `strat_configure_target`, the eight
