@@ -167,13 +167,6 @@ jobs:
         if: steps.ccache.outputs.available == 'true'
         run: ccache --show-stats
 
-      # TEMPORARY -- remove before merge. Evidence for the cold-versus-warm
-      # comparison that has to clear ccache before it is trusted: the same commit
-      # built with an empty cache and with a warm one must produce identical
-      # binaries. See .claude/plans/ccache-linux-ci.md -> Validation.
-      - name: Binary hashes (temporary)
-        run: sha256sum build/StratChessEvolved build/StratChessTests
-
       # Same '~[slow]' filter as the Windows job, deliberately: the legs must
       # cover the same cases. The fast tier is self-contained -- no Catch2 test
       # reads Tests/*.json -- so the working directory does not matter here.
@@ -284,13 +277,6 @@ jobs:
         if: steps.ccache.outputs.available == 'true'
         run: ccache --show-stats
 
-      # TEMPORARY -- remove before merge. Evidence for the cold-versus-warm
-      # comparison that has to clear ccache before it is trusted: the same commit
-      # built with an empty cache and with a warm one must produce identical
-      # binaries. See .claude/plans/ccache-linux-ci.md -> Validation.
-      - name: Binary hashes (temporary)
-        run: sha256sum build/StratChessTests
-
       # Same '~[slow]' filter as every other leg. The fast tier already runs perft
       # to depth 4 from the start position and depth 3 from Kiwipete, which is the
       # densest exercise of move generation in the suite.
@@ -370,13 +356,6 @@ jobs:
       - name: Show ccache stats
         if: steps.ccache.outputs.available == 'true'
         run: ccache --show-stats
-
-      # TEMPORARY -- remove before merge. Evidence for the cold-versus-warm
-      # comparison that has to clear ccache before it is trusted: the same commit
-      # built with an empty cache and with a warm one must produce identical
-      # binaries. See .claude/plans/ccache-linux-ci.md -> Validation.
-      - name: Binary hashes (temporary)
-        run: sha256sum build/StratChessEvolved
 
       # setarch -R disables ASLR. Ubuntu 24.04 raises vm.mmap_rnd_bits beyond what
       # TSan's shadow mapping tolerates, and without this the process dies with
