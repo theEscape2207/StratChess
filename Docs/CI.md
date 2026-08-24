@@ -35,57 +35,40 @@ is branch-scoped so a PR can only restore a cache saved there. This is safe beca
 and changes only on a dependency bump, which is a `CMakeLists.txt` edit and so still Build tier — and
 because eviction is seven days without *access*, which every PR restore refreshes.
 
-**The four Linux jobs also run through ccache** (`build-linux` Release and Debug, `sanitize-linux`,
-`tsan-linux`) — `-DCMAKE_CXX_COMPILER_LAUNCHER=ccache` on each job's configure line, when the install
-below succeeds.
+**ccache fronts the compiler on five jobs**: the four Linux ones (`build-linux` Release and Debug,
+`sanitize-linux`, `tsan-linux`) via `-DCMAKE_CXX_COMPILER_LAUNCHER=ccache` on the configure line, and
+`build-and-test (Release)` via the `CMAKE_CXX_COMPILER_LAUNCHER` environment variable — that leg goes
+through `build.ps1`, which takes no pass-through for cache variables, and CMake reads the variable at
+first configure. **Do not add a parameter to `build.ps1` for this.** Every call site must drop the
+launcher when the install reports unavailable: CMake does not check that a launcher exists, so it
+configures happily and then fails at the first Ninja edge.
 
-**`build-and-test (Release)` runs through it too; `build-and-test (Debug)` does not** (#377). ccache
-cannot cache `/Zi`, which needs debug information embedded in the object instead, and Debug carries
-`/Zi` on every translation unit. Release carries no debug-information flag at all, so it needs no
-decision about one — making Debug cacheable would mean `/Z7`, a change to how the shipping toolchain
-builds rather than an added cache. That leg reaches CMake differently from the Linux ones: it goes
-through `build.ps1`, which drives a preset and takes no pass-through for cache variables, so the
-launcher arrives as the `CMAKE_CXX_COMPILER_LAUNCHER` environment variable, which CMake reads at
-first configure. Do not add a parameter to `build.ps1` for this.
+`build-and-test (Debug)` is **not** cached: ccache cannot cache `/Zi`, which that leg carries on every
+TU, and `/Z7` is a toolchain change rather than an added cache (#380). Release carries no
+debug-information flag at all. Windows only leaves the critical path once both legs are cached.
 
-**What caching Release alone can buy is bounded by the Debug leg.** `build-and-test` is a two-leg
-matrix and both legs must finish, so the job's duration is the slower one. Across 27 merge runs on
-`main` the Build-step medians were 183 s Release against 156 s Debug, and the prize is that gap.
-#377's opening post costs the work against a "316 s → 175 s" ceiling that assumed Windows leaves the
-critical path entirely; it does not, and that figure should not be quoted.
+ccache is not on the `ubuntu-24.04` image and is installed from the upstream release archive rather
+than apt — an apt mirror on the critical path of every Linux job is what the standing decision above
+rules out. Both platforms install from the same composite action, so one bump moves every
+configuration. **A bump carries both pinned SHA-256 values forward** — never drop a hash to make an
+upgrade easier — and follows a read of the release notes for correctness regressions: a cache that
+serves a wrong object produces a wrong binary tests may not catch. A download or verification miss
+degrades rather than fails, with a `::warning::` annotation so it is visible.
 
-ccache is not on the `ubuntu-24.04` image, so it is installed from its upstream static release
-tarball rather than apt, for the same reason the standing decision above rules out an apt install
-anywhere else here: it would put an Ubuntu apt mirror on the critical path of every Linux job. The
-Windows leg installs the `windows-x86_64` asset of the same release the same way, from the same
-composite action, so one bump moves every configuration at once. A version bump carries **both**
-pinned SHA-256 values forward — never drop a hash to make an upgrade easier —
-and happens only after reading the release notes and open issues for correctness regressions, since a
-compiler cache that silently serves a wrong object produces a wrong binary that tests may not catch.
-The install degrades rather than fails the job on a download or verification miss: the required check
-stays green and merely as slow as it is without ccache, with a `::warning::` annotation on the run so
-the degradation is visible rather than silently eating the wall-clock saving for weeks.
+Each caching job keeps its own entry (`ccache-linux-release`, `-debug`, `-asan-ubsan-stdlibdebug`,
+`-tsan`, `ccache-windows-clang-cl-release`) at `CCACHE_MAXSIZE=400M`, about 2 GB against the
+repository-wide 10 GB budget shared with the deps cache. That sharing is the risk: entries are
+immutable, so every run writes a new one, and churn that evicts the FetchContent entry costs a fresh
+clone — net negative while every job still reports green. **Kill criterion:** revert if a `gh cache
+list` check one week after landing shows the FetchContent entry missing, or if `sanitize-linux` merge
+runs show no median improvement of at least 20 s. Method and readings: `Docs/Changelog.md`,
+`.claude/plans/ccache-linux-ci.md`, `.claude/plans/ccache-windows-ci.md`.
 
-Each caching job keeps its own `actions/cache` entry (`ccache-linux-release`, `-debug`,
-`-asan-ubsan-stdlibdebug`, `-tsan`, `ccache-windows-clang-cl-release`), capped at
-`CCACHE_MAXSIZE=400M` each — about 2 GB total against
-the repository-wide 10 GB budget shared with the deps cache above. That sharing is the eviction risk:
-`actions/cache` entries are immutable, so each ccache-carrying run writes a new entry per job, and if
-that churn evicts the FetchContent entry, its miss costs a fresh dependency clone of about a minute —
-which would make this change net negative while every job still reports green. The kill criterion:
-if a `gh cache list` check one week after landing shows the FetchContent entry missing, or a
-wall-clock reading of `sanitize-linux` merge runs on `main` shows no median improvement of at least
-20 s, revert. Method and the measured reading: `Docs/Changelog.md` and `.claude/plans/ccache-linux-ci.md`.
-
-**Checking a cached build produced the right thing differs by platform.** On Linux the gate is a
-byte-identical binary, cold cache versus warm. That gate does not exist on Windows: the clang-cl
-build is not reproducible there in the first place, because every object carries a COFF
-`TimeDateStamp` — two clean builds of the same commit differ in 59 of 73 objects with ccache nowhere
-in the picture, and one translation unit compiled twice two seconds apart differs in exactly one
-byte, at offset 4. So the Windows gate is cold-versus-warm compared at the **object** level, which is
-the stronger claim anyway: ccache replays a stored object byte-for-byte, making the cached path more
-reproducible than the uncached one. Adding `/Brepro` would make the binary gate available and is
-deliberately not done here — it changes the objects the shipping binary is linked from.
+**The gate on a cached build is a byte-identical binary, cold cache versus warm, on both platforms.**
+On Windows that works only because `strat_configure_target` passes `/Brepro` to compiler and linker;
+without it COFF and PE timestamps make two clean builds of one commit differ (#381). **Compare
+rebuilds in the same build directory** — `/Z7` embeds each object's path in its `debug$S` record, so
+comparing differently-named build directories reports differences a rebuild in place never has.
 
 **Windows runs on every Build- and Engine-tier change**, same trigger as Linux. It is the only job
 that builds what ships — the clang-cl branch of `strat_configure_target`, the eight

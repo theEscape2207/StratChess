@@ -22,6 +22,47 @@ Newest first.
 
 ---
 
+## 2026-08-24 — The Windows build is reproducible (#381)
+
+### Added
+
+- `/Brepro` on the compile and link lines of both MSVC-frontend branches of `strat_configure_target`.
+  ELF needs no equivalent — the GCC builds were already reproducible, which is what let #375 gate on
+  binary hashes in the first place.
+
+### Why
+
+- Every COFF object carries a `TimeDateStamp` and every PE image a header timestamp, so two clean
+  builds of one commit produced different bytes. That cost a validation gate: #375's byte-identical
+  cold-versus-warm comparison, the check that a ccache build produces what an uncached one does, was
+  simply unavailable on Windows — it would have gone red against an unmodified tree. PR #379 had to
+  fall back to comparing objects rather than binaries.
+- Both halves are load-bearing: the compile flag settles the objects, the link flag settles the
+  image, which the linker stamps independently of them.
+
+### Validation
+
+- **Two clean builds of one commit, same build directory, three configurations:**
+
+  | Configuration | Before | After |
+  |---|---|---|
+  | Release | 61/90 objects, 2/2 executables differ | **0 / 0** |
+  | Debug (`/Zi`) | 90/90, 2/2 | **0 / 0** |
+  | Debug (`/Z7`, as #380 will build it) | 90/90, 2/2 | **0 / 0** |
+
+- `Run-Bench.ps1` before/after, clang-cl Release, depth 12, `Threads=1`: **node counts and best moves
+  identical in every position** (21,457,322 total both), which is the equivalence check and rules out
+  any code-generation change. nps 2,884,436 → 2,930,127 and wall clock 7,439 → 7,323 ms, i.e. within
+  noise in the favourable direction.
+
+### Notes
+
+- **Compare rebuilds in the same build directory.** `/Z7` embeds each object's own path in its
+  `debug$S` record, so a Debug comparison across two differently-named build directories reports
+  differences a rebuild in place never has. This was measured wrongly that way first.
+
+---
+
 ## 2026-08-24 — ccache on the Windows Release build (#377)
 
 ### Added

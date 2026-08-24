@@ -262,6 +262,24 @@ function(strat_configure_target tgt)
         endif()
     endif()
 
+    # Windows only, and it buys a validation gate rather than anything at runtime.
+    # Every COFF object carries a TimeDateStamp and every PE image a header
+    # timestamp, so without this two clean builds of one commit differ -- measured at
+    # 59 of 73 objects, from a single byte at offset 4 of each. That made the
+    # byte-identical cold-vs-warm comparison the Linux ccache jobs use (#92) simply
+    # unavailable on Windows: it would have gone red against an unmodified tree.
+    #
+    # Both halves are load-bearing. The compile flag settles the objects; the link
+    # flag settles the image, which the linker stamps independently of them.
+    #
+    # ELF needs no equivalent -- the GCC builds are already reproducible, which is
+    # what let #375 gate on binary hashes in the first place.
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
+       OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+        target_compile_options(${tgt} PRIVATE /Brepro)
+        target_link_options(${tgt} PRIVATE /Brepro)
+    endif()
+
     if(STRAT_STDLIB_DEBUG)
         target_compile_definitions(${tgt} PRIVATE _GLIBCXX_DEBUG _GLIBCXX_DEBUG_PEDANTIC)
     endif()
