@@ -40,16 +40,24 @@ Newest first.
 - **Release only.** ccache cannot cache `/Zi`, and Debug carries it on every translation unit;
   Release carries no debug-information flag at all, so it needed no decision about one. Making Debug
   cacheable means `/Z7`, which is a change to how the shipping toolchain builds.
-- **The prize is bounded by the Debug leg**, and is smaller than #377 claims. `build-and-test` is a
-  two-leg matrix and both legs must finish, so caching Release moves the job down to Debug rather
-  than to a warm-cache build time. Build-step medians across 27 merge runs on `main`: 183 s Release,
-  156 s Debug. #377's "316 s → 175 s" ceiling assumed Windows leaves the critical path; it does not.
+- **The prize is bounded by the Debug leg**, and turned out to be almost nothing. `build-and-test` is
+  a two-leg matrix and both legs must finish, so caching Release moves the job down to Debug rather
+  than to a warm-cache build time — and #378, merged first, had already taken ~90 s off the Release
+  leg's cold build and closed the gap. Two attempts on one commit: cold ccache 148 s Release / 161 s
+  Debug, warm ccache **58 s** Release / 156 s Debug. The Release build falls by 90 s; the job falls by
+  about 5 s. #377's "316 s → 175 s" ceiling assumed Windows leaves the critical path. It does not, and
+  it will not until the Debug leg is cached too, which needs `/Z7`.
+- Landed on that basis rather than on wall clock: it is correct, free at runtime, degrades safely, and
+  it retires the one genuinely uncertain part of caching Windows. #92's ≥20 s criterion transfers to
+  the Debug follow-up, where it is the whole question. The eviction arm still applies here — a fifth
+  entry against the 10 GB budget, and the largest of them.
 
 ### Validation
 
 - clang-cl plus ccache — the combination #92 called "the least-trodden" and #377 recorded as untested
-  — verified locally before landing: **98 of 98 cacheable calls, 100% direct hits** on the warm pass,
-  35.2 s cold against 3.6 s warm.
+  — verified locally before landing (98 of 98 cacheable calls, 100% direct hits, 35.2 s cold against
+  3.6 s warm) and then on the runner image itself: **107 of 108 calls cacheable, 93.5% hits with 100
+  direct** on the second attempt of the same commit.
 - **The Linux byte-identical-binary gate does not transfer, and was replaced rather than skipped.**
   The clang-cl build is not reproducible on `main` today: two clean builds of the same commit differ
   in 59 of 73 objects, because each object carries a COFF `TimeDateStamp` — one translation unit

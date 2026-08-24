@@ -68,11 +68,28 @@ slower leg. Build-step durations across 27 successful merge runs on `main`:
 | `build-and-test (Debug)` | 27 | 156 s | 114–204 s |
 
 **Caching Release alone therefore moves the Windows job down to the Debug leg, not to a warm-cache
-build time.** The prize is the gap between the legs — on the order of 30–60 s — and no more.
+build time.** The prize is the gap between the legs, and no more.
 
 This is recorded because #377's opening post says otherwise: it costs the work against a ceiling of
 "316 s → 175 s", which assumes Windows leaves the critical path entirely. It does not, and that
 number should not be quoted again.
+
+**Measured after landing, and the gap turned out to be gone.** The table above is pre-#378 history.
+#378 (Catch2 unity units) merged first and took ~90 s off the Release leg's *cold* build, which is
+the leg this caches — so it removed most of the very gap this change exists to claim. Two attempts on
+one commit, this PR:
+
+| Attempt | Release Build | Debug Build | Job = slower leg |
+|---|---|---|---|
+| Cold ccache (0 % hits) | 148 s | 161 s | 161 s |
+| Warm ccache (93.5 % hits, 100 direct) | **58 s** | 156 s | **156 s** |
+
+ccache does what it claims — the Release build falls from 148 s to 58 s — and the job moves by about
+5 s, because Debug now bounds it. **Release-only caching is not expected to clear #92's ≥20 s
+criterion on its own, and it is being landed anyway**: it is correct, green, free at runtime, and it
+retires the open question of whether clang-cl plus ccache works at all, which is the only genuinely
+uncertain part of caching the Debug leg. Windows leaves the critical path when *both* legs are
+cached, and not before — which is **#380**.
 
 Release only is still the right first step, for the reason #377 gives: caching Debug requires
 `/Z7`, ccache cannot cache `/Zi`, and that is a change to how the shipping toolchain builds rather
@@ -135,15 +152,25 @@ rate over 98 cacheable calls.
 **Rejected:** adding `/Brepro` to make the byte-identical binary gate available. It would work, and a
 reproducible Windows build may well be worth having on its own merits — but it changes the objects
 the shipping binary is linked from, inside a change whose premise is that it cannot affect the
-binary. It is its own question and gets its own issue.
+binary. Filed as **#381**.
 
 ### D12: the kill criterion is inherited, and re-derived
 
 #92's criterion — revert if the median run wall clock does not drop by at least 20 s, or the
-FetchContent entry starts missing — applies unchanged, with one adjustment: it is read against the
-**Windows job's** duration, and the ceiling from D9 means the honest expectation is 30–60 s, not
-more. A result at the bottom of that band still clears 20 s; a result below it does not, and the
-revert is the inverse of the landing diff.
+FetchContent entry starts missing — **does not apply to this change on its own, and saying so is the
+point of this section.** D9's post-landing measurement puts the job-level saving at about 5 s,
+because Debug bounds the job. Read literally, the criterion says revert.
+
+It is landed regardless, deliberately, and the justification has to be something other than wall
+clock: this retires the last genuinely uncertain part of caching Windows (does clang-cl plus ccache
+work — yes, 93.5 % hits on the runner image), at no runtime cost and with a proven degradation path.
+The wall-clock criterion transfers to the Debug follow-up, where it is the whole question, and is
+read against **both** legs cached rather than one.
+
+What would make this change wrong rather than merely unspectacular is the eviction arm, and that arm
+does still apply: this adds a fifth ccache entry against the same repository-wide 10 GB budget, and
+the Windows entry is the largest of them. If the one-week `gh cache list` check shows the FetchContent
+entry missing, revert this — a change buying 5 s must not cost a dependency clone.
 
 The eviction arm matters more here than it did on Linux. This adds a fifth ccache entry against the
 same repository-wide 10 GB budget, and the Windows entry is the largest of them, so `gh cache list`
@@ -218,12 +245,15 @@ which are 54 % of the build (#83) — are exactly what a warm cache serves.
 | Release only, and that the ceiling is the Debug leg rather than a warm build (D9) | comment in `build-and-test.yml` beside the ccache step; `Docs/CI.md` |
 | Release carries no debug-info flag at all, so `/Z7` is a Debug-only problem (D9) | comment in `build-and-test.yml`; a note on #377 |
 | The launcher arrives as an environment variable so `build.ps1` stays out of it (D10) | comment in `build-and-test.yml`, beside the Build step's `env` |
-| The Windows build is not byte-reproducible (COFF `TimeDateStamp`), so the gate is object-level (D11) | this document until landed, then `Docs/CI.md`; a new issue for `/Brepro` |
+| The Windows build is not byte-reproducible (COFF `TimeDateStamp`), so the gate is object-level (D11) | `Docs/CI.md`; #381 for `/Brepro` |
+| Release-only caching moves the job ~5 s because Debug bounds it, and why it landed anyway (D9, D12) | `Docs/Changelog.md`; #380 |
 | Windows asset name and its pinned SHA-256; the bump policy covers both assets together (D8) | `.github/actions/setup-ccache/action.yml`; `Docs/CI.md` |
 | Measured before/after wall clock, and the cold-vs-warm object comparison | `Docs/Changelog.md` and the PR body |
 
 Delete this file once the row destinations above exist, the degradation test has been run, and the
-one-week reading has been recorded on #377.
+one-week `gh cache list` reading has been recorded on #377. D9's measurement and D11's method are the
+two things here that must outlive it — D9 because #380 is costed against it, D11 because it is the
+only record of why the Linux gate does not transfer.
 
 ## Execution notes
 
