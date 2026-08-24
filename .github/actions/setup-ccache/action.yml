@@ -1,7 +1,7 @@
 name: Set up ccache
 description: >
-  Install ccache from its upstream static release tarball and restore this build
-  configuration's object cache. Never fails the calling job: on any error it reports
+  Install ccache from its upstream release archive and restore this build configuration's
+  object cache, on Linux or Windows. Never fails the calling job: on any error it reports
   available=false, and the caller is required to drop the compiler launcher.
 
 # ccache is not part of the ubuntu-24.04 image -- the runner-images manifest lists Ninja
@@ -14,13 +14,15 @@ description: >
 #
 # It lives in one composite action rather than being repeated per job because the version
 # and its SHA-256 must move together across every configuration. Three copies would make a
-# partial bump possible, silently leaving configurations on different ccache versions.
+# partial bump possible, silently leaving configurations on different ccache versions. The
+# Windows asset arriving beside the Linux one strengthens that: they are two files cut from
+# one release, and they belong in one place.
 #
-# Bump policy: a version bump carries the pinned SHA-256 forward -- never drop the hash to
-# make an upgrade easier -- and happens only after reading the release notes and open issues
-# for correctness regressions. A compiler cache that silently serves a wrong object produces
-# a wrong binary that tests may not catch, which is the one failure mode here that is worse
-# than being slow.
+# Bump policy: a version bump carries BOTH pinned SHA-256 values forward -- never drop a
+# hash to make an upgrade easier -- and happens only after reading the release notes and
+# open issues for correctness regressions. A compiler cache that silently serves a wrong
+# object produces a wrong binary that tests may not catch, which is the one failure mode
+# here that is worse than being slow.
 
 inputs:
   key:
@@ -36,7 +38,9 @@ outputs:
       -DCMAKE_CXX_COMPILER_LAUNCHER=ccache on this: CMake does not check that a launcher
       exists, so configuring with the flag against a missing ccache succeeds and then fails
       at the first Ninja edge with "ccache: not found".
-    value: ${{ steps.install.outputs.available }}
+
+      Exactly one of the two install steps runs, so the other contributes an empty string.
+    value: ${{ steps.install.outputs.available || steps.install-windows.outputs.available }}
 
 runs:
   using: composite
@@ -50,19 +54,23 @@ runs:
     # Do not "fix" it by adding the job or matrix name to the key: that stores four identical
     # copies of the same binary against a shared budget. Same reasoning as the FetchContent
     # cache keys in build-and-test.yml.
+    #
+    # The key varies by runner OS and by nothing else: the two platforms need different
+    # binaries, every job on one platform needs the same one.
     - name: Restore ccache binary
       uses: actions/cache@v6
       with:
         path: ~/ccache-bin
-        key: ccache-bin-4.13.6-linux-x86_64-musl-static
+        key: ccache-bin-4.13.6-${{ runner.os }}
 
     # ccache is an accelerator, not a gate: a download or verification failure must not turn
     # a required check red over a transient GitHub hiccup, so every failure path warns and
     # continues rather than exiting non-zero. The warning matters as much as the continuing
     # -- a silent fallback would leave ccache quietly dead while the wall-clock measurement
     # this change exists to justify slowly reported that it bought nothing.
-    - name: Install ccache
+    - name: Install ccache (Linux)
       id: install
+      if: runner.os == 'Linux'
       shell: bash
       run: |
         set +e
@@ -108,6 +116,76 @@ runs:
         echo "$HOME/ccache-bin" >> "$GITHUB_PATH"
         echo "available=true" >> "$GITHUB_OUTPUT"
 
+    # The Windows half of the same policy, against the windows-x86_64 asset of the same
+    # release. It is PowerShell rather than bash deliberately: Windows runners do carry Git
+    # Bash, but not every tool the Linux step leans on comes with it -- sha256sum and an
+    # unzipper in particular -- whereas Invoke-WebRequest, Get-FileHash and Expand-Archive
+    # are built into the shell this job already uses. A required check should not rest on
+    # which utilities Git for Windows happens to ship.
+    #
+    # Every failure path warns and reports available=false, exactly as the Linux step does.
+    # $ErrorActionPreference stays at its default here on purpose: a throwing cmdlet must
+    # land in the catch below rather than terminating the step, which would fail the job
+    # over an accelerator.
+    - name: Install ccache (Windows)
+      id: install-windows
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $version = '4.13.6'
+        $sha256 = '3d7cebb05850ad704e197b3f1d3f0f924ab6c9fdfc561578e146184fe9d89380'
+        $binDir = Join-Path $HOME 'ccache-bin'
+        $bin = Join-Path $binDir 'ccache.exe'
+
+        function Write-Unavailable([string]$why) {
+            Write-Host "::warning::$why; building without ccache."
+            "available=false" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+        }
+
+        if (-not (Test-Path $bin)) {
+            $archive = "ccache-$version-windows-x86_64.zip"
+            $url = "https://github.com/ccache/ccache/releases/download/v$version/$archive"
+            $tmp = Join-Path $env:RUNNER_TEMP $archive
+            try {
+                Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing
+            } catch {
+                Write-Unavailable "ccache download failed ($url)"
+                exit 0
+            }
+
+            if ((Get-FileHash -Algorithm SHA256 $tmp).Hash -ine $sha256) {
+                Write-Unavailable 'ccache archive failed SHA-256 verification'
+                exit 0
+            }
+
+            try {
+                $extracted = Join-Path $env:RUNNER_TEMP 'ccache-extract'
+                Expand-Archive -Path $tmp -DestinationPath $extracted -Force
+                New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+                Copy-Item (Join-Path $extracted "ccache-$version-windows-x86_64\ccache.exe") $bin -Force
+            } catch {
+                Write-Unavailable 'ccache extraction failed'
+                exit 0
+            }
+        }
+
+        # Proves the binary actually runs before anything depends on it -- same reason as the
+        # Linux step: a cache entry can outlive the runner image it was built against, and a
+        # launcher that fails to exec is a build failure rather than a slow build.
+        try {
+            & $bin --version | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "exit $LASTEXITCODE" }
+        } catch {
+            Write-Unavailable 'ccache binary is present but will not run'
+            exit 0
+        }
+
+        # CCACHE_DIR is pinned rather than left at its %LOCALAPPDATA% default so the cache
+        # step below has a literal path to save, and one that matches the Linux entry's shape.
+        $binDir | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+        "CCACHE_DIR=$(Join-Path $HOME '.cache\ccache')" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+        "available=true" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+
     # One entry per configuration, never shared. The split is for hit rate and eviction, not
     # correctness: ccache hashes the full compiler command line, so the sanitizer and
     # _GLIBCXX_DEBUG flags already make a cross-configuration hit impossible even off a single
@@ -118,8 +196,11 @@ runs:
     # `actions/cache` entries are immutable, so a cache that grows across runs has no shape
     # other than a new key per run with `restore-keys` falling back to the newest earlier entry
     # for this configuration. Skipping this step when ccache is absent also skips its save.
+    # ~/.cache/ccache on both platforms: it is ccache's default on Linux, and the Windows
+    # install step pins CCACHE_DIR there rather than leaving it under %LOCALAPPDATA%, so one
+    # literal path serves both.
     - name: Cache ccache objects
-      if: steps.install.outputs.available == 'true'
+      if: steps.install.outputs.available == 'true' || steps.install-windows.outputs.available == 'true'
       uses: actions/cache@v6
       with:
         path: ~/.cache/ccache

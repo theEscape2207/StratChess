@@ -410,6 +410,10 @@ jobs:
     defaults:
       run:
         shell: pwsh
+    # Matches the per-configuration cap the Linux jobs use. Only the Release leg caches, so
+    # this adds a fifth 400M entry to the repository-wide 10 GB budget, not two.
+    env:
+      CCACHE_MAXSIZE: 400M
     steps:
       - uses: actions/checkout@v7
 
@@ -428,6 +432,28 @@ jobs:
           path: build/_deps
           key: win-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
 
+      # RELEASE ONLY (#377). ccache cannot cache /Zi -- it needs debug information
+      # embedded in the object -- and the Debug leg is /Zi on every translation
+      # unit. Release carries no debug-information flag at all, so it needs no
+      # decision about one; making Debug cacheable means /Z7, which is a change to
+      # how the shipping toolchain builds and is deliberately not in this change.
+      #
+      # What that bounds: this job is a two-leg matrix and both legs must finish,
+      # so caching Release moves the job down to the Debug leg, not to a warm-cache
+      # build time. Across 27 merge runs on main the Build-step medians are 183 s
+      # Release against 156 s Debug, so the prize is that gap. Do not quote #377's
+      # "316 s -> 175 s" ceiling: it assumed Windows leaves the critical path.
+      - name: Set up ccache
+        id: ccache
+        if: matrix.config == 'Release'
+        uses: ./.github/actions/setup-ccache
+        with:
+          key: ccache-windows-clang-cl-release
+
+      - name: Zero ccache stats
+        if: steps.ccache.outputs.available == 'true'
+        run: ccache --zero-stats
+
       # "all", not tests-only: INTERPROCEDURAL_OPTIMIZATION_RELEASE is set on the
       # StratChessEvolved target alone, so a tests-only build never performs the
       # ThinLTO link that ships.
@@ -436,8 +462,27 @@ jobs:
       # setup step is needed here. It defaults to clang-cl, which is what ships;
       # if a runner image ever lacks the VS Clang component, `-Compiler msvc` is
       # the one-word fallback and build.ps1 says so by name.
+      #
+      # The launcher reaches CMake as an environment variable rather than a -D,
+      # because build.ps1 drives a preset and takes no pass-through for cache
+      # variables -- CMake initialises CMAKE_<LANG>_COMPILER_LAUNCHER from the
+      # environment at first configure. Growing build.ps1's parameter surface for
+      # a CI-only need would be the worse trade: it is the wrapper every developer,
+      # the pre-commit hook and every measurement script goes through.
+      #
+      # The empty-string branch is the other half of the D6 fallback, not optional
+      # cleanup. CMake does not check that a launcher exists, so setting this
+      # against a missing ccache configures happily and then fails at the first
+      # Ninja edge with "ccache: not found" -- turning an accelerator outage into
+      # a build failure.
       - name: Build
+        env:
+          CMAKE_CXX_COMPILER_LAUNCHER: ${{ steps.ccache.outputs.available == 'true' && 'ccache' || '' }}
         run: .\build.ps1 all -Config ${{ matrix.config }}
+
+      - name: Show ccache stats
+        if: steps.ccache.outputs.available == 'true'
+        run: ccache --show-stats
 
       # Same '~[slow]' filter in both configs, deliberately: the two legs must
       # cover the same cases, since the point is that they disagree about which

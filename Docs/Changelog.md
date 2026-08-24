@@ -22,6 +22,47 @@ Newest first.
 
 ---
 
+## 2026-08-24 — ccache on the Windows Release build (#377)
+
+### Added
+
+- `build-and-test (Release)` runs clang-cl through ccache, with its own `actions/cache` entry
+  (`ccache-windows-clang-cl-release`) capped at 400M. `.github/actions/setup-ccache` gained a Windows
+  install step for the `windows-x86_64` asset of the same pinned release, so one action still holds
+  every version and hash.
+- The launcher reaches CMake as the `CMAKE_CXX_COMPILER_LAUNCHER` environment variable rather than a
+  `-D`, because the Windows leg goes through `build.ps1` and that wrapper takes no pass-through for
+  cache variables. `build.ps1`, `CMakeLists.txt` and the presets are untouched; a local build is
+  bit-for-bit the same command lines as before.
+
+### Notes
+
+- **Release only.** ccache cannot cache `/Zi`, and Debug carries it on every translation unit;
+  Release carries no debug-information flag at all, so it needed no decision about one. Making Debug
+  cacheable means `/Z7`, which is a change to how the shipping toolchain builds.
+- **The prize is bounded by the Debug leg**, and is smaller than #377 claims. `build-and-test` is a
+  two-leg matrix and both legs must finish, so caching Release moves the job down to Debug rather
+  than to a warm-cache build time. Build-step medians across 27 merge runs on `main`: 183 s Release,
+  156 s Debug. #377's "316 s → 175 s" ceiling assumed Windows leaves the critical path; it does not.
+
+### Validation
+
+- clang-cl plus ccache — the combination #92 called "the least-trodden" and #377 recorded as untested
+  — verified locally before landing: **98 of 98 cacheable calls, 100% direct hits** on the warm pass,
+  35.2 s cold against 3.6 s warm.
+- **The Linux byte-identical-binary gate does not transfer, and was replaced rather than skipped.**
+  The clang-cl build is not reproducible on `main` today: two clean builds of the same commit differ
+  in 59 of 73 objects, because each object carries a COFF `TimeDateStamp` — one translation unit
+  compiled twice, two seconds apart, differs in exactly one byte at offset 4, and is byte-identical
+  under `/Brepro`. The gate used instead is cold-versus-warm at the object level, where ccache cold
+  and warm agreed on every project translation unit (the single difference was CMake's own
+  compiler-probe artifact).
+- CMake's environment-variable initialisation of the launcher confirmed locally:
+  `CMAKE_CXX_COMPILER_LAUNCHER:STRING=ccache` in `CMakeCache.txt` and `LAUNCHER = ccache` in
+  `build.ninja` with no `-D` passed.
+
+---
+
 ## 2026-08-24 — Catch2 builds as unity units, recovering #371's Windows build cost (#372)
 
 ### Changed
