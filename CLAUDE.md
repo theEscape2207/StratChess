@@ -46,9 +46,11 @@ hard-code a VS path. Agent shells may omit `PROCESSOR_ARCHITECTURE`, leaving
 target. Do not pass `-D CMAKE_SYSTEM_PROCESSOR` instead — system detection overwrites it. The wrapper
 also sets `core.hooksPath` to `.githooks` on first run, so every worktree gets the tracked hook.
 
-**clang-cl is what ships**; MSVC is for development and debugging (it has Edit and Continue, which
-clang-cl does not). **Never measure with an MSVC build** — `Run-Bench` and `Run-EloMatch` compare
-only within one compiler, and mixing them shows the compiler gap as a phantom regression.
+**clang-cl is what ships**; MSVC is the supported second toolchain, for interactive debugging, as the
+one-word fallback if an install or runner image lacks the VS Clang component, and because it honours
+flags clang-cl accepts and silently drops. **Never measure with an MSVC build** — `Run-Bench` and
+`Run-EloMatch` compare only within one compiler, and mixing them shows the compiler gap as a phantom
+regression.
 `Get-BuildArtifact.ps1` defaults to the shipping build for that reason.
 
 **A fresh worktree's first build needs network**: it clones the pinned dependencies (~1 min). Visual

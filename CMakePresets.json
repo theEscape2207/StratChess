@@ -41,7 +41,7 @@
       "name": "windows-msvc",
       "inherits": "windows-base",
       "displayName": "Windows / MSVC + Ninja (Release)",
-      "description": "MSVC build, kept as a supported second toolchain for development and debugging - notably Edit and Continue, which clang-cl does not provide. It is NOT what ships, so do not measure with it: an MSVC candidate against a clang reference reads as a large phantom regression.",
+      "description": "MSVC build, kept as a supported second toolchain for development and debugging, and because it honours flags clang-cl accepts and silently drops. It is NOT what ships, so do not measure with it: an MSVC candidate against a clang reference reads as a large phantom regression.",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_CXX_COMPILER": "cl"
