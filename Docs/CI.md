@@ -35,6 +35,32 @@ is branch-scoped so a PR can only restore a cache saved there. This is safe beca
 and changes only on a dependency bump, which is a `CMakeLists.txt` edit and so still Build tier — and
 because eviction is seven days without *access*, which every PR restore refreshes.
 
+**The four Linux jobs also run through ccache** (`build-linux` Release and Debug, `sanitize-linux`,
+`tsan-linux`) — `-DCMAKE_CXX_COMPILER_LAUNCHER=ccache` on each job's configure line, when the install
+below succeeds. **Windows deliberately does not get this**: clang-cl plus ccache is the least-trodden
+combination of the pair, and the Windows leg already runs in parallel with the Linux ones, so caching
+it would move the run's wall clock only if it became the critical leg, which it is not.
+
+ccache is not on the `ubuntu-24.04` image, so it is installed from its upstream static release
+tarball rather than apt, for the same reason the standing decision above rules out an apt install
+anywhere else here: it would put an Ubuntu apt mirror on the critical path of every Linux job. A
+version bump carries the pinned SHA-256 forward — never drop the hash to make an upgrade easier —
+and happens only after reading the release notes and open issues for correctness regressions, since a
+compiler cache that silently serves a wrong object produces a wrong binary that tests may not catch.
+The install degrades rather than fails the job on a download or verification miss: the required check
+stays green and merely as slow as it is without ccache, with a `::warning::` annotation on the run so
+the degradation is visible rather than silently eating the wall-clock saving for weeks.
+
+Each of the four jobs keeps its own `actions/cache` entry (`ccache-linux-release`, `-debug`,
+`-asan-ubsan-stdlibdebug`, `-tsan`), capped at `CCACHE_MAXSIZE=400M` each — about 1.6 GB total against
+the repository-wide 10 GB budget shared with the deps cache above. That sharing is the eviction risk:
+`actions/cache` entries are immutable, so each ccache-carrying run writes a new entry per job, and if
+that churn evicts the FetchContent entry, its miss costs a fresh dependency clone of about a minute —
+which would make this change net negative while every job still reports green. The kill criterion:
+if a `gh cache list` check one week after landing shows the FetchContent entry missing, or a
+wall-clock reading of `sanitize-linux` merge runs on `main` shows no median improvement of at least
+20 s, revert. Method and the measured reading: `Docs/Changelog.md` and `.claude/plans/ccache-linux-ci.md`.
+
 **Windows runs on every Build- and Engine-tier change**, same trigger as Linux. It is the only job
 that builds what ships — the clang-cl branch of `strat_configure_target`, the eight
 `_MSC_VER`/`_WIN32` sites, the MSVC standard library, and the lld-link/ThinLTO link of

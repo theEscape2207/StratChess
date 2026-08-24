@@ -102,6 +102,11 @@ jobs:
       fail-fast: false
       matrix:
         config: [Release, Debug]
+    # Per-configuration ccache cap (D3 below); 400M x 4 configurations across the
+    # whole workflow totals about 1.6 GB against the repository-wide 10 GB cache
+    # budget.
+    env:
+      CCACHE_MAXSIZE: 400M
     steps:
       - uses: actions/checkout@v7
 
@@ -114,15 +119,53 @@ jobs:
           path: build/_deps
           key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
 
+      # ccache in front of the compiler. The install rationale, the bump policy and
+      # why the object cache is keyed per configuration all live in the composite
+      # action. Note the key varies by matrix leg where the FetchContent key above
+      # deliberately does not: those sources are identical across configurations,
+      # these compiler command lines are not.
+      - name: Set up ccache
+        id: ccache
+        uses: ./.github/actions/setup-ccache
+        with:
+          key: ccache-linux-${{ matrix.config == 'Release' && 'release' || 'debug' }}
+
+      # The launcher flag is appended only when the install step above succeeded.
+      # `-DCMAKE_CXX_COMPILER_LAUNCHER=ccache` configures happily even when ccache
+      # is missing -- CMake does not check that the launcher exists -- and only
+      # then fails at the first Ninja edge with "ccache: not found". Dropping the
+      # flag here is the other half of the D6 fallback, not optional cleanup:
+      # without it, a failed install turns an accelerator outage into a build
+      # failure.
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.config }}
+        run: |
+          LAUNCHER=""
+          if [ "${{ steps.ccache.outputs.available }}" = "true" ]; then
+            LAUNCHER="-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+          fi
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.config }} $LAUNCHER
+
+      # Zeroed immediately before the build, not read cold: ccache's counters are
+      # cumulative and are restored along with the cache directory above, so
+      # without this the numbers `show-stats` prints after the build would be the
+      # sum over every run that ever populated this entry, and the per-run hit
+      # rate could never be read out of them.
+      - name: Zero ccache stats
+        if: steps.ccache.outputs.available == 'true'
+        run: ccache --zero-stats
 
       # "all", matching the Windows job: StratChessEvolved.cpp -- main() and the
       # perft/tactical/eval runners -- is in no other target, so a tests-only
       # build never compiles it with GCC. It also exercises the GCC LTO link,
-      # since INTERPROCEDURAL_OPTIMIZATION_RELEASE is not MSVC-specific.
+      # since INTERPROCEDURAL_OPTIMIZATION_RELEASE is not MSVC-specific. ccache
+      # caches compilation, not that link, so on the Release leg the LTO link
+      # stays on the critical path in full and caps what ccache buys here.
       - name: Build
         run: cmake --build build --parallel
+
+      - name: Show ccache stats
+        if: steps.ccache.outputs.available == 'true'
+        run: ccache --show-stats
 
       # Same '~[slow]' filter as the Windows job, deliberately: the legs must
       # cover the same cases. The fast tier is self-contained -- no Catch2 test
@@ -174,6 +217,8 @@ jobs:
     if: needs.classify.outputs.is_full == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    env:
+      CCACHE_MAXSIZE: 400M
     steps:
       - uses: actions/checkout@v7
 
@@ -185,6 +230,15 @@ jobs:
           path: build/_deps
           key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
 
+      # ccache in front of the compiler. The install rationale, the bump policy and
+      # why the object cache is keyed per configuration all live in the composite
+      # action; the key below is this job's configuration.
+      - name: Set up ccache
+        id: ccache
+        uses: ./.github/actions/setup-ccache
+        with:
+          key: ccache-linux-asan-ubsan-stdlibdebug
+
       # STRAT_SANITIZE_RECOVER is left at its OFF default on purpose: sanitizers
       # report and continue otherwise, which exits 0 and would turn this job green
       # with the findings sitting in the log.
@@ -193,15 +247,35 @@ jobs:
       # container preconditions, which _GLIBCXX_ASSERTIONS (bounds only) misses.
       # The whole instrumented suite runs in ~25 s, so it is affordable on a
       # required check.
+      #
+      # The launcher flag is dropped when the install above failed -- see D6 on
+      # build-linux's Configure step for why this is not optional cleanup.
       - name: Configure
-        run: >
-          cmake -S . -B build -G Ninja
-          -DCMAKE_BUILD_TYPE=Debug
-          -DSTRAT_SANITIZE=address,undefined
-          -DSTRAT_STDLIB_DEBUG=ON
+        run: |
+          LAUNCHER=""
+          if [ "${{ steps.ccache.outputs.available }}" = "true" ]; then
+            LAUNCHER="-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+          fi
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DSTRAT_SANITIZE=address,undefined \
+            -DSTRAT_STDLIB_DEBUG=ON \
+            $LAUNCHER
+
+      # Zeroed before the build for the same reason as build-linux's equivalent
+      # step: ccache's counters are cumulative and restored with the cache
+      # directory, so without this the hit rate printed after the build is not
+      # readable as a per-run figure.
+      - name: Zero ccache stats
+        if: steps.ccache.outputs.available == 'true'
+        run: ccache --zero-stats
 
       - name: Build
         run: cmake --build build --target StratChessTests --parallel
+
+      - name: Show ccache stats
+        if: steps.ccache.outputs.available == 'true'
+        run: ccache --show-stats
 
       # Same '~[slow]' filter as every other leg. The fast tier already runs perft
       # to depth 4 from the start position and depth 3 from Kiwipete, which is the
@@ -228,6 +302,8 @@ jobs:
     if: needs.classify.outputs.is_full == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    env:
+      CCACHE_MAXSIZE: 400M
     steps:
       - uses: actions/checkout@v7
 
@@ -237,20 +313,49 @@ jobs:
           path: build/_deps
           key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
 
+      # ccache in front of the compiler. The install rationale, the bump policy and
+      # why the object cache is keyed per configuration all live in the composite
+      # action; the key below is this job's configuration.
+      - name: Set up ccache
+        id: ccache
+        uses: ./.github/actions/setup-ccache
+        with:
+          key: ccache-linux-tsan
+
       # STRAT_SANITIZE_RECOVER stays at its OFF default: a report must abort the
       # process and fail the job, not print and exit 0.
       #
       # STRAT_STDLIB_DEBUG is deliberately absent. It changes the container ABI,
       # and its value (checked iterators) is already covered by sanitize-linux;
       # adding it here would only slow the instrumented build.
+      #
+      # The launcher flag is dropped when the install above failed -- see D6 on
+      # build-linux's Configure step for why this is not optional cleanup.
       - name: Configure
-        run: >
-          cmake -S . -B build -G Ninja
-          -DCMAKE_BUILD_TYPE=Debug
-          -DSTRAT_SANITIZE=thread
+        run: |
+          LAUNCHER=""
+          if [ "${{ steps.ccache.outputs.available }}" = "true" ]; then
+            LAUNCHER="-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+          fi
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DSTRAT_SANITIZE=thread \
+            $LAUNCHER
+
+      # Zeroed before the build for the same reason as build-linux's equivalent
+      # step: ccache's counters are cumulative and restored with the cache
+      # directory, so without this the hit rate printed after the build is not
+      # readable as a per-run figure.
+      - name: Zero ccache stats
+        if: steps.ccache.outputs.available == 'true'
+        run: ccache --zero-stats
 
       - name: Build engine
         run: cmake --build build --target StratChessEvolved --parallel
+
+      - name: Show ccache stats
+        if: steps.ccache.outputs.available == 'true'
+        run: ccache --show-stats
 
       # setarch -R disables ASLR. Ubuntu 24.04 raises vm.mmap_rnd_bits beyond what
       # TSan's shadow mapping tolerates, and without this the process dies with
