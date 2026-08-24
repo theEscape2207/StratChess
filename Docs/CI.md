@@ -35,17 +35,18 @@ is branch-scoped so a PR can only restore a cache saved there. This is safe beca
 and changes only on a dependency bump, which is a `CMakeLists.txt` edit and so still Build tier — and
 because eviction is seven days without *access*, which every PR restore refreshes.
 
-**ccache fronts the compiler on five jobs**: the four Linux ones (`build-linux` Release and Debug,
-`sanitize-linux`, `tsan-linux`) via `-DCMAKE_CXX_COMPILER_LAUNCHER=ccache` on the configure line, and
-`build-and-test (Release)` via the `CMAKE_CXX_COMPILER_LAUNCHER` environment variable — that leg goes
-through `build.ps1`, which takes no pass-through for cache variables, and CMake reads the variable at
-first configure. **Do not add a parameter to `build.ps1` for this.** Every call site must drop the
-launcher when the install reports unavailable: CMake does not check that a launcher exists, so it
-configures happily and then fails at the first Ninja edge.
+**ccache fronts the compiler on all six build jobs**: the four Linux ones (`build-linux` Release and
+Debug, `sanitize-linux`, `tsan-linux`) via `-DCMAKE_CXX_COMPILER_LAUNCHER=ccache` on the configure
+line, and both `build-and-test` legs via the `CMAKE_CXX_COMPILER_LAUNCHER` environment variable —
+those go through `build.ps1`, which takes no pass-through for cache variables, and CMake reads the
+variable at first configure. **Do not add a parameter to `build.ps1` for this.** Every call site must
+drop the launcher when the install reports unavailable: CMake does not check that a launcher exists,
+so it configures happily and then fails at the first Ninja edge.
 
-`build-and-test (Debug)` is **not** cached: ccache cannot cache `/Zi`, which that leg carries on every
-TU, and `/Z7` is a toolchain change rather than an added cache (#380). Release carries no
-debug-information flag at all. Windows only leaves the critical path once both legs are cached.
+Caching the Windows Debug leg is why `CMakeLists.txt` sets `CMAKE_MSVC_DEBUG_INFORMATION_FORMAT` to
+`Embedded` (`/Z7`) and requires CMake 3.25 for CMP0141 — ccache cannot cache `/Zi`. Both legs matter
+because this is a two-leg matrix: the job takes the duration of the slower leg, so caching one alone
+moved it ~5 s (#377/#380).
 
 ccache is not on the `ubuntu-24.04` image and is installed from the upstream release archive rather
 than apt — an apt mirror on the critical path of every Linux job is what the standing decision above
@@ -56,7 +57,7 @@ serves a wrong object produces a wrong binary tests may not catch. A download or
 degrades rather than fails, with a `::warning::` annotation so it is visible.
 
 Each caching job keeps its own entry (`ccache-linux-release`, `-debug`, `-asan-ubsan-stdlibdebug`,
-`-tsan`, `ccache-windows-clang-cl-release`) at `CCACHE_MAXSIZE=400M`, about 2 GB against the
+`-tsan`, `ccache-windows-clang-cl-release`, `-debug`) at `CCACHE_MAXSIZE=400M`, about 2.4 GB against the
 repository-wide 10 GB budget shared with the deps cache. That sharing is the risk: entries are
 immutable, so every run writes a new one, and churn that evicts the FetchContent entry costs a fresh
 clone — net negative while every job still reports green. **Kill criterion:** revert if a `gh cache

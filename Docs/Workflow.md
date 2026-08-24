@@ -280,8 +280,7 @@ public, so standard-runner minutes are free.
 
 **Do not add a Windows Debug configuration to any gate.** Its unique checks are subsumed. MSVC's
 `/RTC1` finds uninitialised locals and stack-frame corruption; ASan finds the latter better and MSan
-the former far better. `windows-msvc-debug` exists for interactive debugging (Edit and Continue),
-not for validation.
+the former far better. `windows-msvc-debug` exists for interactive debugging, not for validation.
 
 **Windows CI is not redundant, and does not become redundant when TSan and MSan land.** It covers a
 different axis — *toolchain*, not bug class — and Linux cannot cover it by construction:

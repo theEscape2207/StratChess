@@ -1,4 +1,9 @@
-cmake_minimum_required(VERSION 3.24)
+# 3.25 for CMP0141, which is what makes CMAKE_MSVC_DEBUG_INFORMATION_FORMAT below
+# do anything at all -- with the policy unset the variable is inert and /Zi comes
+# from CMAKE_CXX_FLAGS_DEBUG instead. This is the minimum the build needs, not a
+# general modernisation: raising the baseline further flips every policy in
+# between at once and is issue #382.
+cmake_minimum_required(VERSION 3.25)
 project(StratChess CXX)
 
 # Builds on Linux (GCC/Clang) and on Windows via clang-cl + Ninja, configured by
@@ -28,6 +33,18 @@ endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)          # matches MSVC ConformanceMode=true
+
+# Debug information goes in the object, not a side PDB. ccache cannot cache /Zi --
+# a PDB is shared mutable state with nothing self-contained to store -- so this is
+# what lets the Windows Debug CI leg use the compiler cache (#380).
+#
+# Measured before adopting, because the objection to it was that it costs something:
+# build time, total object size and the linker-produced StratChessEvolved.pdb are
+# all unchanged, and the suite is identical. Debugging is unaffected -- /Z7 moves
+# debug info into the objects and the LINKER still emits the executable's PDB.
+#
+# Ignored by every non-MSVC-frontend toolchain, so the Linux builds do not see it.
+set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>")
 
 # Consumed by clangd, VS Code, Zed and coding agents. Costs nothing to emit.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)

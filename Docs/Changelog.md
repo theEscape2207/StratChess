@@ -22,6 +22,42 @@ Newest first.
 
 ---
 
+## 2026-08-24 — ccache on the Windows Debug build; `/Z7` (#380)
+
+### Changed
+
+- `CMAKE_MSVC_DEBUG_INFORMATION_FORMAT` is `Embedded`, so Windows Debug builds `/Z7` rather than
+  `/Zi`. ccache cannot cache `/Zi` — a PDB is shared mutable state with nothing self-contained to
+  store — and this is what lets the Debug CI leg use the compiler cache.
+- `cmake_minimum_required` 3.24 → **3.25**, the minimum for CMP0141. Without that policy
+  `CMAKE_MSVC_DEBUG_INFORMATION_FORMAT` is inert and `/Zi` arrives via `CMAKE_CXX_FLAGS_DEBUG`.
+  Deliberately no further: raising the baseline flips every policy in between at once (#382).
+- `build-and-test` runs both legs through ccache, one cache entry each.
+
+### Removed
+
+- Edit and Continue as a stated reason to keep MSVC (`CLAUDE.md`, `CMakePresets.json`,
+  `Docs/Workflow.md`). E&C requires `/ZI` and both compilers built Debug with `/Zi`, so it was never
+  enabled. MSVC stays for interactive debugging, as the fallback when the VS Clang component is
+  missing, and because it honours flags clang-cl accepts and silently drops.
+
+### Why
+
+- #377 cached Release alone and moved the Windows job by ~5 s: it is a two-leg matrix, both legs must
+  finish, so caching one hands the floor to the other. Debug was the floor at ~156 s.
+
+### Validation
+
+- `/Z7` costs nothing measurable, which is what made it unconditional rather than CI-only: build time,
+  total object size and the linker-produced `StratChessEvolved.pdb` are unchanged against `/Zi`, and
+  the suite is identical. Debugging is unaffected — the linker still emits the executable's PDB.
+- **The gate is the byte-identical comparison #381 restored, not #379's object-level substitute:**
+  Debug cold cache versus warm, **0 of 92 artifacts differ**, at a 98/98 hit rate. Local Debug build
+  28.7 s cold → 2.0 s warm; suite 502/7515 from the warm-cache binary.
+- Debug remains reproducible after the `/Z7` switch: 0 of 92 artifacts differ across a rebuild.
+
+---
+
 ## 2026-08-24 — The Windows build is reproducible (#381)
 
 ### Added

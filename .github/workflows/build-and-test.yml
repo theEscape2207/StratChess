@@ -410,8 +410,9 @@ jobs:
     defaults:
       run:
         shell: pwsh
-    # Matches the per-configuration cap the Linux jobs use. Only the Release leg caches, so
-    # this adds a fifth 400M entry to the repository-wide 10 GB budget, not two.
+    # Matches the per-configuration cap the Linux jobs use. Both legs cache, so the six
+    # entries across the workflow total about 2.4 GB against the repository-wide 10 GB
+    # budget shared with the FetchContent caches.
     env:
       CCACHE_MAXSIZE: 400M
     steps:
@@ -432,23 +433,19 @@ jobs:
           path: build/_deps
           key: win-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
 
-      # RELEASE ONLY (#377). ccache cannot cache /Zi -- it needs debug information
-      # embedded in the object -- and the Debug leg is /Zi on every translation
-      # unit. Release carries no debug-information flag at all, so it needs no
-      # decision about one; making Debug cacheable means /Z7, which is a change to
-      # how the shipping toolchain builds and is deliberately not in this change.
+      # BOTH legs (#380). Release was cached first (#377) and moved the job by only
+      # ~5 s, because this is a two-leg matrix and both legs must finish -- so the
+      # job's duration is the slower one, and caching one leg just hands the floor
+      # to the other. Debug became cacheable once CMakeLists.txt switched it to /Z7:
+      # ccache cannot cache /Zi.
       #
-      # What that bounds: this job is a two-leg matrix and both legs must finish,
-      # so caching Release moves the job down to the Debug leg, not to a warm-cache
-      # build time. Across 27 merge runs on main the Build-step medians are 183 s
-      # Release against 156 s Debug, so the prize is that gap. Do not quote #377's
-      # "316 s -> 175 s" ceiling: it assumed Windows leaves the critical path.
+      # One key per configuration, never shared, for the reason the composite action
+      # records: hit rate and eviction, not correctness.
       - name: Set up ccache
         id: ccache
-        if: matrix.config == 'Release'
         uses: ./.github/actions/setup-ccache
         with:
-          key: ccache-windows-clang-cl-release
+          key: ccache-windows-clang-cl-${{ matrix.config == 'Release' && 'release' || 'debug' }}
 
       - name: Zero ccache stats
         if: steps.ccache.outputs.available == 'true'
