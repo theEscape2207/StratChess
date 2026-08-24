@@ -85,6 +85,20 @@ FetchContent_MakeAvailable(spdlog nlohmann_json catch2)
 # units -- one of them the bundled {fmt} -- that nothing links.
 set_property(TARGET spdlog PROPERTY EXCLUDE_FROM_ALL TRUE)
 
+# Catch2's 107 sources are compiled as one unit per 16, not one each. They are
+# dominated by header parsing, not by their own code: the whole library as a
+# single translation unit costs 7 s of clang-cl, while the 107 separate ones cost
+# 232 s -- the same headers re-parsed 107 times. Batching recovers that without
+# giving up the imported target, and 16 rather than 0 (a single unit) because
+# seven units of ~6 s parallelise across a CI runner's cores where one 22 s unit
+# cannot.
+#
+# The tripwire is a Catch2 upgrade: unity units merge anonymous namespaces, so a
+# future version can collide on a name that was previously file-local. That is a
+# hard compile error, never a silent miscompile, and lowering the batch size is
+# the answer -- turning it off entirely gives back the 232 s.
+set_target_properties(Catch2 PROPERTIES UNITY_BUILD ON UNITY_BUILD_BATCH_SIZE 16)
+
 # Catch2 exposes its headers as plain PUBLIC include directories and has no
 # option to mark them SYSTEM, so it is done here by copying the interface list
 # onto the SYSTEM property. Only Catch2 declares them; Catch2WithMain inherits
