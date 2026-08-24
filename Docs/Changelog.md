@@ -22,6 +22,35 @@ Newest first.
 
 ---
 
+## 2026-08-24 — Catch2 builds as unity units, recovering #371's Windows build cost (#372)
+
+### Changed
+
+- `Catch2` carries `UNITY_BUILD ON` with `UNITY_BUILD_BATCH_SIZE 16`, so its 107 sources compile as
+  seven translation units rather than 107. Nothing about how the library is consumed changes; the
+  imported-target migration from #166 stands.
+
+### Why
+
+- #371 replaced Catch2's single amalgamated translation unit with the 107 modular ones, and #372
+  (correction 4) measured the result on Windows: `build-and-test (Release)`'s Build step went from a
+  185 s median to 246 s. Linux absorbed it and Windows did not.
+- Measured locally with clang-cl Release, the cost is header parsing, not code: the whole library as
+  one translation unit compiles in **7.1 s**, while the 107 separate ones cost **232 CPU-s** — the
+  same headers parsed 107 times over. Batching returns that to **40 CPU-s**, which is ~48 s of a
+  four-core runner's wall clock.
+- Batch size 16 rather than 0 (a single unit): seven units of ~6 s parallelise across a runner's
+  cores where one 22 s unit cannot, so the larger batch is worth 15 CPU-s to avoid a serial edge.
+
+### Validation
+
+- Fast-tier suite unchanged at 505 cases / 7520 assertions, Windows clang-cl Release.
+- Clean builds on this machine, Release: 34.4 s baseline → 31.7 s. Debug configures and builds
+  clean, so `/Zi` and `/RTC1` are unaffected.
+- Catch2 slab, from `.ninja_log`: 232.3 CPU-s over 109 edges → 39.7 CPU-s over 10.
+
+---
+
 ## 2026-08-24 — ccache on the Linux CI builds (#92)
 
 ### Added
