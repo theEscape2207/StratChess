@@ -22,6 +22,46 @@ Newest first.
 
 ---
 
+## 2026-08-24 — ccache on the Linux CI builds (#92)
+
+### Added
+
+- ccache in front of the compiler on `build-and-test.yml`'s four Linux configurations
+  (`build-linux` Release and Debug, `sanitize-linux`, `tsan-linux`) via
+  `-DCMAKE_CXX_COMPILER_LAUNCHER=ccache`. Installed from ccache's upstream static release tarball
+  (`ccache-4.13.6-linux-x86_64-musl-static`, SHA-256 pinned) rather than apt — the runner image
+  does not ship ccache, and an apt install would put an Ubuntu mirror on the critical path of every
+  Linux job, which the workflow's standing decision already rules out elsewhere.
+- A failed download or hash mismatch degrades the job instead of failing it: the install step
+  records an `available=false` output and emits a `::warning::` annotation, and the configure step drops
+  the launcher flag on that path — needed because the flag configures fine against a missing binary
+  and only then fails the build at the first Ninja edge.
+- The install, its pinned version and hash, and the per-configuration object cache live in one
+  composite action (`.github/actions/setup-ccache`) rather than being repeated in each job, so a
+  version bump cannot land partially and leave configurations on different ccache builds. This is
+  the first composite action in the repository, so `.gitignore`'s `.github` allowlist gained
+  `!/.github/actions/*/action.yml` — without it `git add` skips the file silently.
+- One `actions/cache` entry per configuration (`ccache-linux-release`, `-debug`,
+  `-asan-ubsan-stdlibdebug`, `-tsan`), never shared, capped at `CCACHE_MAXSIZE=400M` each. Each job
+  zeroes ccache's stats immediately before the build and prints them immediately after, so the
+  per-run hit rate is readable from the log instead of being cumulative across every run that
+  populated the entry.
+- Windows is deliberately untouched: clang-cl plus ccache is the least-trodden combination here, and
+  the Windows leg already runs in parallel with the Linux ones, so caching it would not move the
+  run's wall clock.
+
+### Validation
+
+- No Elo match or bench pass: ccache changes how the binary is produced, not what it is. The gate is
+  a byte-identical `build/StratChessEvolved` and `build/StratChessTests` cold versus warm, plus a
+  throwaway-commit test of the degradation path (broken download URL, confirming every Linux job
+  still goes green with the warning annotation).
+- The wall-clock verdict — a ≥20 s median drop on `sanitize-linux` merge runs, read alongside a
+  `gh cache list` check that ccache churn is not evicting the FetchContent dependency cache — is not
+  measured yet. Method and kill criterion: `.claude/plans/ccache-linux-ci.md` and `Docs/CI.md`. Do
+  not carry forward issue #92's original "~90 s" estimate; it was costed against `build-linux
+  (Release)` as sole critical path, which #372 showed it is not.
+
 ## 2026-08-23 — Dependencies consumed as CMake imported targets (#166)
 
 ### Changed

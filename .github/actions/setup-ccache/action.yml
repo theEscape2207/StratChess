@@ -1,0 +1,119 @@
+name: Set up ccache
+description: >
+  Install ccache from its upstream static release tarball and restore this build
+  configuration's object cache. Never fails the calling job: on any error it reports
+  available=false, and the caller is required to drop the compiler launcher.
+
+# ccache is not part of the ubuntu-24.04 image -- the runner-images manifest lists Ninja
+# and CMake, not ccache -- so build-and-test.yml's standing decision that `-G Ninja` needs
+# no install step does not cover it. The obvious fix, an apt install, runs straight into
+# that same decision: it would put an Ubuntu apt mirror on the critical path of every Linux
+# job, and a stalled mirror hangs indefinitely. This installs the upstream static release
+# tarball instead and caches the ~1.5 MB binary by version, so almost every run skips the
+# download entirely.
+#
+# It lives in one composite action rather than being repeated per job because the version
+# and its SHA-256 must move together across every configuration. Three copies would make a
+# partial bump possible, silently leaving configurations on different ccache versions.
+#
+# Bump policy: a version bump carries the pinned SHA-256 forward -- never drop the hash to
+# make an upgrade easier -- and happens only after reading the release notes and open issues
+# for correctness regressions. A compiler cache that silently serves a wrong object produces
+# a wrong binary that tests may not catch, which is the one failure mode here that is worse
+# than being slow.
+
+inputs:
+  key:
+    description: >
+      Cache key prefix identifying this build configuration. Never share one between
+      configurations -- see the object-cache step below.
+    required: true
+
+outputs:
+  available:
+    description: >
+      'true' when ccache is on PATH and its object cache is wired up. The caller MUST gate
+      -DCMAKE_CXX_COMPILER_LAUNCHER=ccache on this: CMake does not check that a launcher
+      exists, so configuring with the flag against a missing ccache succeeds and then fails
+      at the first Ninja edge with "ccache: not found".
+    value: ${{ steps.install.outputs.available }}
+
+runs:
+  using: composite
+  steps:
+    - name: Restore ccache binary
+      uses: actions/cache@v6
+      with:
+        path: ~/ccache-bin
+        key: ccache-bin-4.13.6-linux-x86_64-musl-static
+
+    # ccache is an accelerator, not a gate: a download or verification failure must not turn
+    # a required check red over a transient GitHub hiccup, so every failure path warns and
+    # continues rather than exiting non-zero. The warning matters as much as the continuing
+    # -- a silent fallback would leave ccache quietly dead while the wall-clock measurement
+    # this change exists to justify slowly reported that it bought nothing.
+    - name: Install ccache
+      id: install
+      shell: bash
+      run: |
+        set +e
+        VERSION=4.13.6
+        SHA256=156ec57c5198cc849d92834023d09910b83dc5504c6cf405d09e6ae7b208a3e5
+        BIN="$HOME/ccache-bin/ccache"
+
+        if [ ! -x "$BIN" ]; then
+          TARBALL="ccache-${VERSION}-linux-x86_64-musl-static.tar.xz"
+          URL="https://github.com/ccache/ccache/releases/download/v${VERSION}/${TARBALL}"
+
+          if ! curl -fsSL -o "/tmp/$TARBALL" "$URL"; then
+            echo "::warning::ccache download failed ($URL); building without ccache."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! echo "$SHA256  /tmp/$TARBALL" | sha256sum -c - >/dev/null 2>&1; then
+            echo "::warning::ccache tarball failed SHA-256 verification; building without ccache."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          mkdir -p "$HOME/ccache-bin"
+          if ! tar -xJf "/tmp/$TARBALL" -C "$HOME/ccache-bin" --strip-components=1 \
+              "ccache-${VERSION}-linux-x86_64-musl-static/ccache"; then
+            echo "::warning::ccache extraction failed; building without ccache."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          chmod +x "$BIN"
+        fi
+
+        # Proves the binary actually runs before anything depends on it: a cache entry can
+        # outlive the runner image it was built against, and a launcher that fails to exec
+        # is a build failure rather than a slow build.
+        if ! "$BIN" --version >/dev/null 2>&1; then
+          echo "::warning::ccache binary is present but will not run; building without ccache."
+          echo "available=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        echo "$HOME/ccache-bin" >> "$GITHUB_PATH"
+        echo "available=true" >> "$GITHUB_OUTPUT"
+
+    # One entry per configuration, never shared. The split is for hit rate and eviction, not
+    # correctness: ccache hashes the full compiler command line, so the sanitizer and
+    # _GLIBCXX_DEBUG flags already make a cross-configuration hit impossible even off a single
+    # shared entry. The FetchContent caches in build-and-test.yml are deliberately NOT
+    # matrix-scoped because their sources are identical across configurations; that reasoning
+    # does not carry over here.
+    #
+    # `actions/cache` entries are immutable, so a cache that grows across runs has no shape
+    # other than a new key per run with `restore-keys` falling back to the newest earlier entry
+    # for this configuration. Skipping this step when ccache is absent also skips its save.
+    - name: Cache ccache objects
+      if: steps.install.outputs.available == 'true'
+      uses: actions/cache@v6
+      with:
+        path: ~/.cache/ccache
+        key: ${{ inputs.key }}-${{ github.run_id }}
+        restore-keys: |
+          ${{ inputs.key }}-
