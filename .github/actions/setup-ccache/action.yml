@@ -66,7 +66,7 @@ runs:
       shell: bash
       run: |
         set +e
-        VERSION=4.13.6
+        VERSION=4.13.6-does-not-exist
         SHA256=156ec57c5198cc849d92834023d09910b83dc5504c6cf405d09e6ae7b208a3e5
         BIN="$HOME/ccache-bin/ccache"
 
