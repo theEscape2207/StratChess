@@ -1,6 +1,11 @@
 # ccache on the Windows CI build — Design
 
-**Issue:** #377 (split out of #92, whose Linux half landed as PR #375)
+**Issues:** #377 (Release leg, PR #379) and #380 (Debug leg). Split out of #92, whose Linux half
+landed as PR #375.
+
+**#380 supersedes the Release-only scope below.** D13 records what changed and why; where D9, the
+Scope list and the Invariants say the Debug leg is untouched, read them as the state at #379 and D13
+as current.
 
 ## Goal
 
@@ -103,6 +108,30 @@ flag on the Release command lines.** Verified by inspection of `compile_commands
 entries carry `/Z7`, `/Zi` or `/ZI`, against 105 of 105 in Debug. #377's `/Z7` problem is entirely a
 Debug problem.
 
+### D13: the Debug leg is cached too, and `/Z7` is unconditional (#380)
+
+D9 landed Release alone and measured the result: the job moved ~5 s, because a two-leg matrix takes
+the duration of its slower leg. Caching one leg hands the floor to the other. So the Debug leg is
+cached as well, which requires `/Z7` — ccache cannot cache `/Zi`.
+
+**`/Z7` is set unconditionally, not just for CI.** #377 assumed CI would need an override so local
+builds kept their PDBs. Measured, there is nothing to keep away from: build time, total object size
+and the linker-produced `StratChessEvolved.pdb` are all unchanged, and the suite is identical.
+Debugging is unaffected — `/Z7` moves debug information into the objects and the *linker* still emits
+the executable's PDB. That removes the awkward part: no CI-only seam, and no `build.ps1` parameter,
+which D10 exists to avoid.
+
+The other half of #377's objection — that `/Z7` costs Edit and Continue — was false in a different
+way. E&C requires `/ZI`, and both compilers built Debug with `/Zi`, so it was never enabled. The
+claim is removed from `CLAUDE.md`, `CMakePresets.json` and `Docs/Workflow.md` in the same PR.
+
+`cmake_minimum_required` goes 3.24 → **3.25**, the minimum for CMP0141, without which
+`CMAKE_MSVC_DEBUG_INFORMATION_FORMAT` is inert. Deliberately not further: raising the baseline flips
+every policy in between at once, which is #382 and wants its own equivalence and bench pass.
+
+The validation gate is the one #381 restored — a byte-identical comparison, cold cache versus warm,
+rather than #379's object-level substitute. That was the reason to sequence #381 first.
+
 ### D10: the launcher arrives as an environment variable, so `build.ps1` is untouched
 
 The Linux jobs call `cmake` directly and append `-DCMAKE_CXX_COMPILER_LAUNCHER=ccache`. The Windows
@@ -196,8 +225,8 @@ at the one-week sitting is checking a tighter budget than #92's was.
   object is byte-identical across the pair (D11).
 - A cache miss is a slowdown, never a failure. The same holds for a missing ccache binary, which is
   what D6's fallback exists for and what the degradation test exercises.
-- The Debug leg's command lines are untouched: `/Zi`, `/RTC1` and `_ITERATOR_DEBUG_LEVEL` are exactly
-  as they were.
+- The Debug leg keeps `/RTC1` and `_ITERATOR_DEBUG_LEVEL`. Its debug-information format changes from
+  `/Zi` to `/Z7` at #380 (D13), and nothing else about it moves.
 - No local build changes. `build.ps1`, the presets and `CMakeLists.txt` are not in the diff.
 - `build-and-test-result` semantics are untouched — no job added, none removed, no condition changed.
 
