@@ -69,6 +69,11 @@ tree, updated by hand).
 document. A required status check is not the place to be an early adopter of a compiler cache;
 4.13.6 has been out since 2026-05-04. Bumping it later is a one-line change plus a new hash.
 
+**Bump policy.** A version bump carries the pinned SHA-256 forward — never drop the hash to make an
+upgrade easier — and happens only after reading the release notes and open issues for correctness
+regressions. A compiler cache that serves a wrong object produces a wrong binary that tests may not
+catch, which is the one failure mode here that is worse than being slow.
+
 ### D2: `CMAKE_CXX_COMPILER_LAUNCHER`, not a `CC`/`CXX` wrapper
 
 `-DCMAKE_CXX_COMPILER_LAUNCHER=ccache` on each Linux configure line. It is the supported CMake
@@ -116,7 +121,47 @@ So: **if the median run wall clock does not drop by at least 20 s, or the FetchC
 missing, revert.** The revert is the inverse of the landing diff, with no other consequences.
 
 A `gh cache list` inspection one week after landing is part of the work, not a follow-up someone
-might do. The number it produces is the only evidence that eviction is not happening.
+might do. The number it produces is the only evidence that eviction is not happening. The wall-clock
+verdict is read at the same sitting, from the same week of ordinary merges — see Validation.
+
+**The criterion has two arms, and they need different amounts of evidence.** A large regression
+announces itself: #372 was noticed by eye, and nothing here needs a sample floor to catch a run that
+got dramatically slower. Distinguishing a 20 s improvement from no improvement is the hard direction,
+and it is the only one the sample count below exists to serve.
+
+### D6: a failed ccache install degrades the job, it does not fail it
+
+ccache is an accelerator, not a gate. If the download or the SHA-256 check fails, the job must build
+without it rather than turning a required check red over a transient GitHub hiccup — the run is then
+merely as slow as it is today.
+
+**The trap this decision exists to record:** "proceed without ccache" is not the default outcome of a
+failed install, it has to be built. `-DCMAKE_CXX_COMPILER_LAUNCHER=ccache` configures happily against
+a missing binary and then fails at the first Ninja edge with `ccache: not found`, so the fallback
+path must *also* drop the launcher flag. Implementation shape: the install step sets an output
+(`ccache=true|false`), the configure step appends the launcher argument only when it is true, and the
+cache save is skipped when it is false.
+
+Degradation must be **loud**. A silent fallback would leave ccache quietly dead for weeks while the
+wall-clock measurement in D5 slowly says the change was worthless, which is the wrong conclusion from
+the right number. The fallback path emits a `::warning::` annotation, which surfaces on the run
+summary without failing anything.
+
+Note this is not a security posture. Per the repository's threat model there is no attacker here; the
+pinned hash exists to catch a corrupted or silently re-cut release artifact, which is a robustness
+concern.
+
+### D7: every job reports its own cache statistics
+
+`ccache --zero-stats` immediately before the build and `ccache --show-stats` immediately after, in
+each of the four jobs. The `--zero-stats` half is the part that matters and the part that is easy to
+omit: ccache's counters are cumulative and are restored along with the cache directory, so without
+zeroing, the printed numbers are the sum over every run that ever populated that entry and the
+per-run hit rate cannot be read out of them.
+
+This is permanent, not a temporary diagnostic. It costs milliseconds, and it is the only in-run
+evidence for D5's verdict and for the degradation path in D6 — a job that quietly stopped hitting the
+cache looks exactly like a job that never had one.
 
 ## Assumptions I cannot verify from the code
 
@@ -139,7 +184,8 @@ might do. The number it produces is the only evidence that eviction is not happe
 - Every Linux job produces the same binary with a warm cache as with a cold one.
 - No Linux job gains a dependency on an Ubuntu apt mirror (D1).
 - A cache miss is a slowdown, never a failure: every job must still pass with the cache empty, which
-  is what the first run after landing demonstrates for free.
+  is what the first run after landing demonstrates for free. The same holds for a missing ccache
+  binary (D6), which the first run does *not* demonstrate and which therefore needs its own test.
 - `build-and-test-result` semantics are untouched — no job added, none removed, no condition changed.
 
 ## Validation
@@ -156,12 +202,41 @@ comparison, and the two sets of hashes go in the PR body. The step comes out bef
 evidence for landing the change, not a permanent check. Fallback if the Release binary differs, per
 the assumptions above: compare object files and say so explicitly.
 
-**The number.** Measured with #372's method, which is the only one shown to reproduce here: re-run
-merge commits on `main` one at a time, two samples each, reading `sanitize-linux` and
-`build-linux (Release)`. Do **not** batch `gh run rerun` — the runs share a concurrency group and
-each queued rerun cancels the previous one while reporting success (#372's method note). Do not
-quote #92's "~90 s": it was costed against `build-linux (Release)` as sole critical path, which
-#372 showed it is not.
+**The degradation path (D6) gets its own test**, because nothing else exercises it: point the
+download URL at a nonexistent asset on a throwaway commit and confirm every Linux job still goes
+green, emits the warning annotation, and builds at roughly its pre-ccache duration. A fallback path
+that has never run is an assumption, not a safety net.
+
+**The number, read from ordinary merges rather than from dedicated re-runs.** `main` took 113
+build-relevant merges in the six weeks to 2026-08-23 — about 19 a week — so one week after landing
+supplies more full-tier samples than a synthetic re-run campaign would, at zero cost in runs. The
+"before" half of the comparison already exists in the run history and needs no new work at all.
+
+Method, read at the same sitting as D5's `gh cache list` check:
+
+- **`sanitize-linux` only.** It reproduces to within ~13 s across pairs; `build-linux (Release)`
+  showed a 93 s spread on the same commit (#372, correction 2) and cannot resolve a 20 s effect.
+- **Merge runs on `main`, not PR runs** — same population as the "before" data, and free of the
+  concurrency-group interference that PR runs see.
+- **At least 8 warm-cache samples on each side**, medians compared against that ~13 s band.
+- **Every post-landing sample is labelled with its D7 hit rate.** This is what makes observational
+  data usable: a cold-cache run (the first after landing, or one after an eviction) is identifiable
+  rather than an unexplained outlier, and gets excluded from the warm-cache median instead of
+  quietly dragging it.
+
+The obvious objection is that real merges vary in content where re-runs of one commit do not, so
+this measures the *average* hit rate across the kinds of change actually made here rather than a
+best case. That is the number the decision needs; the best case was never in question.
+
+**If the samples are not there, extend the window — do not conclude.** An inconclusive week is not a
+measured zero. Hard stop at two weeks: no demonstrated ≥20 s median improvement by then means revert,
+so this cannot sit unresolved indefinitely. If the observational data comes out ambiguous rather than
+thin, #372's re-run method is the fallback: re-run merge commits one at a time, two samples each, and
+**do not batch `gh run rerun`** — the runs share a concurrency group and each queued re-run cancels
+the previous one while reporting success (#372's method note).
+
+Do not quote #92's "~90 s" at any point: it was costed against `build-linux (Release)` as sole
+critical path, which #372 showed it is not.
 
 ## Relationship to #281
 
@@ -191,6 +266,9 @@ otherwise has no way to obtain, which is a reason to do this one first.
 | ccache is not on the `ubuntu-24.04` image, so the apt standing decision applies — and how the tarball install sidesteps it (D1) | comment in `build-and-test.yml`, beside the install step |
 | Per-configuration keys are for hit rate, not correctness; the FetchContent "not matrix-scoped" note does not apply here (D3) | comment in `build-and-test.yml`, beside the first ccache cache step |
 | The LTO link is not cached and caps the Release saving (D4) | comment in `build-and-test.yml` |
+| The launcher flag must be dropped when ccache is absent, or the fallback fails at the first Ninja edge (D6) | comment in `build-and-test.yml`, beside the conditional configure argument |
+| `--zero-stats` before the build, or the printed hit rate is cumulative and meaningless (D7) | comment in `build-and-test.yml`, beside the stats step |
+| The bump policy: carry the hash forward, read the release notes first (D1) | `Docs/CI.md` |
 | Kill criterion and the eviction risk to the FetchContent entry (D5) | this document until landed, then `Docs/CI.md` |
 | What each Linux job actually caches, and that Windows deliberately does not | `Docs/CI.md` |
 | Measured before/after wall clock, and the cold-vs-warm hashes | `Docs/Changelog.md` and the PR body |
@@ -207,11 +285,12 @@ The work splits cleanly by how much judgement each part needs, and most of it ne
 
 | Part | Model |
 |---|---|
-| The workflow diff — install step, four launcher flags, four cache steps, comments from the Harvest table | Lower tier (Haiku/Sonnet). Mechanical once D1–D4 are fixed; the closed list is in this document. |
+| The workflow diff — install step, four conditional launcher flags, four cache steps, the stats steps, comments from the Harvest table | Lower tier (Haiku/Sonnet). Mechanical once D1–D7 are fixed; the closed list is in this document. |
 | `Docs/CI.md` and `Docs/Changelog.md` edits | Lower tier, same PR. |
+| The D6 degradation test — break the URL on a throwaway commit, confirm green + warning + normal duration | Lower tier to run. Judgement only if a job goes red, which is the finding itself. |
 | Cold-vs-warm hash comparison, reading the two runs | Lower tier to collect, controller to judge — a mismatch needs the D4/LTO reasoning to interpret. |
-| The wall-clock measurement and the kill-criterion call | Controller. #372's method has a trap that reports success while cancelling runs, and the verdict is a judgement about noise bands, not a threshold check. |
-| The one-week `gh cache list` eviction check | Lower tier to collect; one line of judgement to close. |
+| The one-week sitting: `gh cache list`, plus scraping `sanitize-linux` durations and D7 hit rates from that week's merge runs | Lower tier to collect — it is a `gh api` loop over merge runs on `main`, and the output is a table. |
+| The kill-criterion call on that table | Controller. The verdict is a judgement about noise bands and which samples were warm, not a threshold check. |
 
 One PR. Splitting the workflow edit from the docs would put a Build-tier change and a Docs-tier
 change through two full validation cycles for a diff of well under a hundred lines.
