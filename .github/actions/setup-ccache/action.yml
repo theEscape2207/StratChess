@@ -41,6 +41,15 @@ outputs:
 runs:
   using: composite
   steps:
+    # The binary cache is keyed on the version alone, deliberately shared by every job that
+    # calls this action. On a cold cache all four Linux configurations start together, all
+    # miss, all download, and all race to save the one key -- so three of them log "Unable to
+    # reserve cache ... another job may be creating this cache". That is a warning, not a
+    # failure, it happens only on the first run after a version bump, and the entry is
+    # content-identical whoever wins, since the version and its verified hash are pinned here.
+    # Do not "fix" it by adding the job or matrix name to the key: that stores four identical
+    # copies of the same binary against a shared budget. Same reasoning as the FetchContent
+    # cache keys in build-and-test.yml.
     - name: Restore ccache binary
       uses: actions/cache@v6
       with:
