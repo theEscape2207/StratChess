@@ -155,7 +155,8 @@ jobs:
           mkdir -p logs
           ../build/StratChessEvolved tactical stability 100
 
-  # Whole-tree format and fast Gate checks close the PR job's header-only gap.
+  # Whole-tree format and fast Gate checks, reaching what the PR job's
+  # one-unit-per-header cover does not.
   lint-tree:
     runs-on: ubuntu-24.04
     timeout-minutes: 60

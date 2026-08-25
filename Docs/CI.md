@@ -194,11 +194,19 @@ rejects the GNU spelling as an unknown argument. Against a GCC database every tr
 to parse. The runner fails that infrastructure error and reports completed invocation counts as a
 positive control.
 
-A header is not a translation unit, so a PR touching only `.h` files analyses nothing here. That gap
-is closed by the nightly `lint-tree` job rather than by header-to-TU mapping, which a change to
-`defines.h` or `StdAfx.h` would expand to a whole-tree run — the one shape capable of becoming the
-critical path. Changes to a lint config, `Run-Lint.ps1`, or the database normalizer deliberately
-expand to the whole tree so the gate machinery validates itself.
+A header is not a translation unit, so a changed `.h` is analysed through **one** translation unit
+that includes it, chosen from an include graph over the tracked sources. clang-tidy already reports
+findings inside a header through `HeaderFilterRegex`; what it needs is an includer to reach them
+from, and the header text is the same in every one, so the first is enough.
+
+One rather than all, because the dependent set of `defines.h` or `Move.h` is 44-55 of the 62 units —
+a whole-tree run, the one shape capable of making this the critical path. The cover is bounded
+instead: 14 units even if every header in the repository changed at once, and 1-3 for the changes
+that actually occur. Engine units are preferred over test units, which carry Catch2 and analyse
+more slowly. A header no unit includes is reported as uncovered and left to `lint-tree`.
+
+Changes to a lint config, `Run-Lint.ps1`, or the database normalizer deliberately expand to the
+whole tree so the gate machinery validates itself.
 
 Local Windows/clang-cl whole-tree measurements on 2026-08-13 show why the bounded defaults matter:
 
@@ -242,7 +250,7 @@ flakiness. The `[slow]` Catch2 tier runs in `extended-tests` and `sanitize-exten
 | `extended-tests` | The `[slow]` tier, Release and Debug |
 | `sanitize-extended` | That tier under ASan+UBSan plus `_GLIBCXX_DEBUG` |
 | `tactical-stability` | `tactical stability 100`, against the local run's 10 |
-| `lint-tree` | Failing clang-format and fast Gate over the whole tree, closing the per-PR job's header gap |
+| `lint-tree` | Failing clang-format and fast Gate over the whole tree, covering what the per-PR job's one-unit-per-header cover does not reach |
 | `lint-deep-linux` | Failing Deep profile over normalized shipping sources with Linux Clang |
 | `lint-deep-windows` | Failing Deep profile over normalized shipping sources with Windows clang-cl |
 

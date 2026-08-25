@@ -7,6 +7,8 @@
     profile block pull requests. Analyzer-heavy Deep checks block Nightly instead.
     clang-tidy uses a normalized database that selects shipping Engine commands and
     a bounded worker pool, then prints captured results in deterministic source order.
+    A changed header has no compile command of its own, so it is analysed through one
+    translation unit that includes it.
 
     Neither tool is on PATH on a normal Windows box. They ship inside Visual Studio
     next to clang-cl, so this script resolves them the same way build.ps1 resolves
@@ -226,9 +228,16 @@ function Select-LintTargets {
     return @($candidates | Where-Object { $Changed -contains $_ })
 }
 
+# Tracked, non-archived C++ sources. The single source of truth for what this repository
+# contains, shared by target selection and the include graph so the two cannot drift.
+function Get-TrackedSources {
+    param([Parameter(Mandatory)][string]$RepoDirectory)
+    return @(git -C $RepoDirectory ls-files '*.cpp' '*.h' 2>$null |
+             Where-Object { $_ -and $_ -notmatch '(^|/)Archived/' })
+}
+
 function Get-TargetFiles {
-    $tracked = @(git -C $RepoRoot ls-files '*.cpp' '*.h' 2>$null |
-                 Where-Object { $_ -and $_ -notmatch '(^|/)Archived/' })
+    $tracked = @(Get-TrackedSources -RepoDirectory $RepoRoot)
 
     # Ahead of the diff below on purpose: -All must work without a resolvable -BaseRef.
     if ($All) { return $tracked }
@@ -316,6 +325,123 @@ function Get-DefaultTidyJobs {
     return 2
 }
 
+# Which project header each file includes, keyed by repo-relative path. Quoted includes
+# only: angle-bracket includes are the toolchain's, and nothing in this repo is reachable
+# through one.
+function Get-IncludeGraph {
+    param(
+        [Parameter(Mandatory)][string]$RepoDirectory,
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Sources
+    )
+
+    $graph = @{}
+    foreach ($source in $Sources) {
+        $full = Join-Path $RepoDirectory $source
+        if (-not (Test-Path -LiteralPath $full -PathType Leaf)) { continue }
+        $names = foreach ($line in [IO.File]::ReadAllLines($full)) {
+            if ($line -match '^\s*#\s*include\s*"([^"]+)"') { [IO.Path]::GetFileName($Matches[1]) }
+        }
+        $graph[$source.Replace('\', '/')] = @($names)
+    }
+    return $graph
+}
+
+# One translation unit per changed header, enough to get that header analysed.
+#
+# clang-tidy is LibTooling, so a header has no compile command of its own: handed one as a
+# main file it reports '#pragma once in main file' and nothing else. Findings inside a
+# header reach the report through HeaderFilterRegex when a translation unit that includes
+# it is analysed, and this selects that translation unit.
+#
+# One includer is enough because the header text is identical in all of them. Analysing
+# every dependent instead would cost 44-55 units for a core header -- the whole tree, at
+# which point the changed-file scope has stopped meaning anything.
+function Select-HeaderCoverSources {
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Headers,
+        [Parameter(Mandatory)][hashtable]$IncludeGraph,
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Eligible
+    )
+
+    # Includes are matched on file name, because a name is what the directive carries: the
+    # same header is spelled 'Utils/StrHelper.h' from one directory and '../Utils/StrHelper.h'
+    # from another. No two project headers share a name, and a self-test asserts that; a
+    # collision would resolve to several headers and select a superset, costing time
+    # rather than coverage.
+    $byName = @{}
+    foreach ($path in $IncludeGraph.Keys) {
+        $name = [IO.Path]::GetFileName($path).ToLowerInvariant()
+        if (-not $byName.ContainsKey($name)) { $byName[$name] = @() }
+        $byName[$name] += $path
+    }
+
+    # Reverse the edges: header -> the files that include it.
+    $includers = @{}
+    foreach ($path in $IncludeGraph.Keys) {
+        foreach ($include in $IncludeGraph[$path]) {
+            foreach ($target in @($byName[$include.ToLowerInvariant()])) {
+                if (-not $target) { continue }
+                if (-not $includers.ContainsKey($target)) { $includers[$target] = @() }
+                $includers[$target] += $path
+            }
+        }
+    }
+
+    $eligibleSet = [System.Collections.Generic.HashSet[string]]::new(
+        [string[]]@($Eligible | ForEach-Object { $_.Replace('\', '/') }),
+        [StringComparer]::OrdinalIgnoreCase)
+
+    $selected = [System.Collections.Generic.List[string]]::new()
+    $uncovered = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($header in @($Headers | ForEach-Object { $_.Replace('\', '/') } | Sort-Object)) {
+        # Transitive: a header reaches a unit through any chain of headers, and being
+        # included only by other headers is the normal case for the leaf types here.
+        $seen = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        [void]$seen.Add($header)
+        $pending = [System.Collections.Generic.Stack[string]]::new()
+        $pending.Push($header)
+        $reachable = [System.Collections.Generic.List[string]]::new()
+        while ($pending.Count -gt 0) {
+            foreach ($includer in @($includers[$pending.Pop()])) {
+                if (-not $includer -or -not $seen.Add($includer)) { continue }
+                $pending.Push($includer)
+                if ($eligibleSet.Contains($includer)) { $reachable.Add($includer) }
+            }
+        }
+
+        if ($reachable.Count -eq 0) { $uncovered.Add($header); continue }
+
+        # Prefer a unit already selected, so a change touching several headers of one
+        # component costs one translation unit rather than one per header.
+        #
+        # Engine units come first: they carry no Catch2 and so analyse faster, and it
+        # keeps Gate on the same unit Deep would pick, which drops test units entirely.
+        $candidates = @($reachable | Sort-Object -Unique | Sort-Object `
+            @{ Expression = { $_ -match '(^|/)StratChessTests/' } }, @{ Expression = { $_ } })
+        if (@($candidates | Where-Object { $selected -contains $_ }).Count -gt 0) { continue }
+        $selected.Add($candidates[0])
+    }
+
+    return [pscustomobject]@{
+        Sources   = @($selected)
+        Uncovered = @($uncovered)
+    }
+}
+
+# Repo-relative path for an absolute one, or $null when it lies outside the repository.
+function Get-RelativeSource {
+    param(
+        [Parameter(Mandatory)][string]$RepoDirectory,
+        [Parameter(Mandatory)][string]$Path
+    )
+
+    $root = [IO.Path]::GetFullPath($RepoDirectory).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+    $full = [IO.Path]::GetFullPath($Path)
+    if (-not $full.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) { return $null }
+    return $full.Substring($root.Length).Replace('\', '/')
+}
+
 function Select-TidySources {
     param(
         [Parameter(Mandatory)][string]$RepoDirectory,
@@ -354,13 +480,41 @@ function Select-TidySources {
     if ($ProfileName -eq 'Deep') {
         $requested = @($requested | Where-Object { $_.Relative -notmatch '(^|/)StratChessTests/' })
     }
-    if ($requested.Count -eq 0) { return @() }
 
     $missing = @($requested | Where-Object { -not $databaseSources.ContainsKey($_.Absolute) })
     if ($missing.Count -gt 0) {
         throw "Requested translation unit(s) missing from normalized compilation database: $($missing.Relative -join ', ')"
     }
-    return @($requested.Absolute | Sort-Object -Unique)
+
+    $selected = @($requested | ForEach-Object { $_.Absolute })
+
+    # A changed header carries no compile command, so it is analysed through an includer.
+    $headers = @($Files | Where-Object { $_ -like '*.h' })
+    if ($headers.Count -gt 0) {
+        $eligible = @($databaseSources.Keys |
+            ForEach-Object { Get-RelativeSource -RepoDirectory $RepoDirectory -Path $_ } |
+            Where-Object { $_ })
+        if ($ProfileName -eq 'Deep') {
+            $eligible = @($eligible | Where-Object { $_ -notmatch '(^|/)StratChessTests/' })
+        }
+
+        $graph = Get-IncludeGraph -RepoDirectory $RepoDirectory `
+            -Sources (Get-TrackedSources -RepoDirectory $RepoDirectory)
+        $cover = Select-HeaderCoverSources -Headers $headers -IncludeGraph $graph -Eligible $eligible
+
+        # Not an error. A header no translation unit reaches cannot be analysed at all,
+        # and saying so beats reporting a scope that silently skipped it.
+        foreach ($header in $cover.Uncovered) {
+            Write-Host "  No translation unit in this profile includes $header; it is left to Nightly." `
+                -ForegroundColor Yellow
+        }
+
+        $selected += @($cover.Sources | ForEach-Object {
+            [IO.Path]::GetFullPath((Join-Path $RepoDirectory $_))
+        })
+    }
+
+    return @($selected | Sort-Object -Unique)
 }
 
 function Test-TidyWorkerResults {
@@ -774,7 +928,24 @@ exit 0
         Assert-Equal 'parses single-line clang version' 22 `
             (Get-LlvmMajorFromVersionText -VersionText 'clang-format version 22.1.3')
 
+        # Header cover reads the sources and asks git which of them are tracked, so the
+        # fixture is a real repository with real files rather than a set of paths.
         $repoFixture = Join-Path $root 'repo'
+        New-Item -ItemType Directory -Path (Join-Path $repoFixture 'StratEngine') | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $repoFixture 'StratChessTests') | Out-Null
+        Set-Content -LiteralPath (Join-Path $repoFixture 'StratEngine/A.h') `
+            -Value '#pragma once' -Encoding utf8NoBOM
+        Set-Content -LiteralPath (Join-Path $repoFixture 'StratEngine/Inner.h') `
+            -Value @('#pragma once', '#include "A.h"') -Encoding utf8NoBOM
+        Set-Content -LiteralPath (Join-Path $repoFixture 'StratEngine/A.cpp') `
+            -Value '#include "Inner.h"' -Encoding utf8NoBOM
+        Set-Content -LiteralPath (Join-Path $repoFixture 'StratChessTests/T.cpp') `
+            -Value '#include "../StratEngine/A.h"' -Encoding utf8NoBOM
+        Set-Content -LiteralPath (Join-Path $repoFixture 'StratEngine/Lonely.h') `
+            -Value '#pragma once' -Encoding utf8NoBOM
+        & git -C $repoFixture init -q 2>&1 | Out-Null
+        & git -C $repoFixture add -A 2>&1 | Out-Null
+
         $engineSource = Join-Path $repoFixture 'StratEngine/A.cpp'
         $testSource = Join-Path $repoFixture 'StratChessTests/T.cpp'
         $databaseEntries = @(
@@ -791,9 +962,81 @@ exit 0
             -CompilationEntries $databaseEntries -ProfileName Deep
         Assert-Equal 'Deep excludes test translation units' 'A.cpp' `
             (($deepSources | ForEach-Object { [IO.Path]::GetFileName($_) }) -join ',')
-        Assert-Equal 'header-only changed scope is a valid zero-TU selection' 0 `
-            @(Select-TidySources -RepoDirectory $repoFixture -Files @('StratEngine/A.h') `
-                -CompilationEntries $databaseEntries -ProfileName Gate).Count
+        # The reason this feature exists: a header-only change used to select nothing and
+        # report green, leaving the header to Nightly's whole-tree run.
+        Assert-Equal 'header-only changed scope selects a covering translation unit' 'A.cpp' `
+            ((Select-TidySources -RepoDirectory $repoFixture -Files @('StratEngine/A.h') `
+                -CompilationEntries $databaseEntries -ProfileName Gate |
+                ForEach-Object { [IO.Path]::GetFileName($_) }) -join ',')
+        Assert-Equal 'Deep header cover skips test translation units' 'A.cpp' `
+            ((Select-TidySources -RepoDirectory $repoFixture -Files @('StratEngine/A.h') `
+                -CompilationEntries $databaseEntries -ProfileName Deep |
+                ForEach-Object { [IO.Path]::GetFileName($_) }) -join ',')
+
+        # The pure selection, independent of the database and the file system.
+        $coverGraph = @{
+            'StratEngine/A.cpp'      = @('Inner.h')
+            'StratEngine/B.cpp'      = @('Inner.h')
+            'StratEngine/Inner.h'    = @('A.h', 'Leaf.h')
+            'StratEngine/A.h'        = @()
+            'StratEngine/Leaf.h'     = @()
+            'StratEngine/Orphan.h'   = @()
+            'StratChessTests/T.cpp'  = @('A.h')
+        }
+        $allUnits = @('StratEngine/A.cpp', 'StratEngine/B.cpp', 'StratChessTests/T.cpp')
+        Assert-Equal 'a transitively included header selects one unit' 'StratEngine/A.cpp' `
+            ((Select-HeaderCoverSources -Headers @('StratEngine/Leaf.h') `
+                -IncludeGraph $coverGraph -Eligible $allUnits).Sources -join ',')
+        Assert-Equal 'several headers of one component share a unit' 'StratEngine/A.cpp' `
+            ((Select-HeaderCoverSources -Headers @('StratEngine/Leaf.h', 'StratEngine/Inner.h') `
+                -IncludeGraph $coverGraph -Eligible $allUnits).Sources -join ',')
+        Assert-Equal 'engine units are preferred over test units' 'StratEngine/A.cpp' `
+            ((Select-HeaderCoverSources -Headers @('StratEngine/A.h') `
+                -IncludeGraph $coverGraph -Eligible $allUnits).Sources -join ',')
+        Assert-Equal 'cover honours the eligible set' 'StratChessTests/T.cpp' `
+            ((Select-HeaderCoverSources -Headers @('StratEngine/A.h') `
+                -IncludeGraph $coverGraph -Eligible @('StratChessTests/T.cpp')).Sources -join ',')
+        Assert-Equal 'a header no unit includes is reported, not silently dropped' 'StratEngine/Orphan.h' `
+            ((Select-HeaderCoverSources -Headers @('StratEngine/Orphan.h') `
+                -IncludeGraph $coverGraph -Eligible $allUnits).Uncovered -join ',')
+
+        # End to end, because this one does not live in any function: a selection that
+        # narrows to a single file unrolls to a bare string on return, and $files.Count
+        # then throws under StrictMode. Every function-level assertion above passed while
+        # that was broken, so the script itself has to be driven, against a change that
+        # touches exactly one file.
+        #
+        # The Format check is the cheapest route to that line -- a stub clang-format that
+        # reports the pinned version and approves everything keeps this test about file
+        # selection rather than about formatting.
+        $fakeFormat = Join-Path $root 'fake-format.ps1'
+        @'
+param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Rest)
+if ($Rest -contains '--version') { Write-Output 'clang-format version 22.1.0'; exit 0 }
+exit 0
+'@ | Set-Content -LiteralPath $fakeFormat -Encoding utf8NoBOM
+
+        $fixtureScripts = Join-Path $repoFixture 'StratChessEvolved/Scripts'
+        New-Item -ItemType Directory -Path $fixtureScripts -Force | Out-Null
+        Copy-Item -LiteralPath $PSCommandPath -Destination (Join-Path $fixtureScripts 'Run-Lint.ps1')
+        # Committed, so the copied script is not itself a changed file: a changed
+        # Run-Lint.ps1 escalates to the whole tree, which is not the case under test.
+        & git -C $repoFixture add -A 2>&1 | Out-Null
+        & git -C $repoFixture -c user.email='lint@self.test' -c user.name='lint' `
+            commit -q -m 'fixture' 2>&1 | Out-Null
+        Add-Content -LiteralPath (Join-Path $repoFixture 'StratEngine/A.cpp') -Value '// one changed file'
+        $singleFileRun = @(& $pwsh -NoProfile -File (Join-Path $fixtureScripts 'Run-Lint.ps1') `
+            -Check Format -ClangFormat $fakeFormat -BaseRef HEAD 2>&1)
+        Assert-Equal 'a change touching exactly one file does not crash the script' 0 $LASTEXITCODE
+        Assert-Equal 'the single changed file is what gets linted' 1 `
+            (@($singleFileRun | Where-Object { $_ -match 'checking 1 file' }).Count)
+
+        # Name-keyed reverse edges are only unambiguous while header names stay unique.
+        $duplicateNames = @(Get-TrackedSources -RepoDirectory $RepoRoot |
+            Where-Object { $_ -like '*.h' } |
+            Group-Object { [IO.Path]::GetFileName($_) } |
+            Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name })
+        Assert-Equal 'project header names are unique' '' ($duplicateNames -join ',')
         Assert-Throws 'requested translation unit missing from database fails closed' {
             Select-TidySources -RepoDirectory $repoFixture -Files @('StratEngine/Missing.cpp') `
                 -CompilationEntries $databaseEntries -ProfileName Gate
@@ -901,7 +1144,9 @@ if ($Check -in @('Tidy', 'Both')) {
     Assert-PinnedMajor -Exe $tidyExe -Name 'clang-tidy'
 }
 
-$files = Get-TargetFiles
+# Wrapped: PowerShell unrolls a one-element array on return, so a change touching a
+# single file arrives here as a bare string and .Count throws under StrictMode.
+$files = @(Get-TargetFiles)
 if ($files.Count -eq 0) {
     Write-Host "`nNo C++ sources in scope; nothing to lint." -ForegroundColor Green
     if (-not $blameOk) { Write-Host 'Lint FAILED (blame-ignore coverage).' -ForegroundColor Red; exit 1 }
