@@ -7,14 +7,14 @@
 #include "Sort.h" // Different Move sorting heuristics
 #include "MoveGenerator.h"
 #include <spdlog/spdlog.h>
-#include <iomanip> // setw() osv.
+#include <iomanip> // setw() etc.
 
 // ************************************
 // Method:      Quiescent
-// Description: Soegning udover horisonten - p.t. kun slagudvekslinger
+// Description: Search beyond the horizon - captures and promotions only
 // FullName:    protected PlayerAiBase::Quiescent
 // Returns:     int -
-// Parameter:   unsigned ply - depth
+// Parameter:   size_t ply - absolute search ply
 // Parameter:   int alpha -
 // Parameter:   int beta -
 // Parameter:   int qsearch_budget - capture plies still to come
@@ -22,16 +22,14 @@
 // ************************************
 int PlayerAiBase::Quiescent(size_t ply, int alpha, int beta, int qsearch_budget)
 {
-	// Increments counter
 	m_SearchCount++;
 
-	// 50 moves rules will never get hit as long we only have Captures in Quiescent moves
-	// first entry is tested in Search algorithms
+	// The fifty-move rule cannot trigger here: every move generated below is a capture or a
+	// promotion, both of which reset the halfmove clock. Draws are tested by the callers.
 
-	// Evaluerer paa stillingen
 	int value = Eval->Evaluate(m_Board);
 
-	// Begraenser quiescent til en maksimal dybde
+	// Out of capture budget - settle for the static evaluation.
 	if (qsearch_budget <= 0)
 		return value;
 
@@ -39,43 +37,34 @@ int PlayerAiBase::Quiescent(size_t ply, int alpha, int beta, int qsearch_budget)
 	if (ply == MAX_PLY - 10)
 		return value;
 
-	if (value > alpha) // Er det en bedre vaerdi?
-	{
-		if (value >= beta) // Cutoff !
+	if (value > alpha) {
+		if (value >= beta) // Cutoff
 			return beta;
 
 		alpha = value;
 	}
 
 	MoveList moveList;
-	// Only work on the captures in Quiescent
 	MoveGenerator::ComputeCaptures(m_Board, moveList);
-	// Sort the found captures
 	MoveSorter::SortMovesByValue(moveList, moveList.size(), m_Board);
 
-	// Tjek om der er lovlige brugbare traek her
 	bool moveFound = false;
 
-	// vi loeber dem allesammen igennem
 	for (const auto& curMove : moveList) {
-		// Foretag traekket
 		if (!m_Board.DoMove(curMove))
 			continue;
 
-		// rekursivt kald til Quiescent. Dette sker _rigtigt_ mange gange
 		value = -Quiescent(ply + 1, -beta, -alpha, qsearch_budget - 1);
 
-		// Vi er tilbage igen. Undo traekket igen
 		m_Board.UndoMove(curMove);
 
 		moveFound = true;
 
-		if (value > alpha) // Er det en bedre vaerdi?
-		{
-			if (value >= beta) // For hoej. Cutoff !
+		if (value > alpha) {
+			if (value >= beta) // Cutoff
 				return beta;
 
-			alpha = value; // Ny bedste vaerdi
+			alpha = value;
 		}
 	}
 	// Found no legal moves here
@@ -85,7 +74,6 @@ int PlayerAiBase::Quiescent(size_t ply, int alpha, int beta, int qsearch_budget)
 	if (!moveFound)
 		return value;
 
-	// return den bedste alpha-vaerdi
 	return alpha;
 }
 
@@ -98,7 +86,6 @@ int PlayerAiBase::Quiescent(size_t ply, int alpha, int beta, int qsearch_budget)
 // ************************************
 Move PlayerAiBase::GetBestMove() noexcept
 {
-	// Returner det bedste traek - hvis der er noget
 	if (!m_BestMove.is_null())
 		return m_BestMove;
 
