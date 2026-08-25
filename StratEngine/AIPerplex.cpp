@@ -797,8 +797,8 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// move across a phase change, so an entry can hold a quiet move this capture-only generator
 	// would never produce; reading it here would turn that inheritance from inert into a defect.
 	if (auto entry = tt.probe(key, ply)) {
-		const bool usable = (entry->phase == SearchPhase::MAIN) ? (entry->depth >= 1)
-		                                                        : (entry->depth >= qsearch_budget);
+		const bool usable =
+		    (entry->phase == SearchPhase::MAIN) ? (entry->depth >= 1) : (entry->depth >= qsearch_budget);
 		if (usable) {
 			if (entry->bound == BoundType::EXACT) {
 				return entry->value;
