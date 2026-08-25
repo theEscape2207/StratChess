@@ -76,8 +76,11 @@ class PlayerAiBase : public PlayerBase {
 
 	/* AI helper methods */
 
-	// Quiescent soegning modvirker horisont-effekten
-	int Quiescent(size_t, int, int);
+	// Quiescence search counters the horizon effect.
+	// qsearch_budget is the capture plies still to come, counted down towards zero, mirroring
+	// AIPerplex::QSEARCH_BUDGET. Without it a capture chain runs until material is exhausted.
+	static constexpr int QSEARCH_BUDGET = 15;
+	int Quiescent(size_t ply, int alpha, int beta, int qsearch_budget = QSEARCH_BUDGET);
 
 	// Returns the best first move currently found
 	virtual Move GetBestMove() noexcept;
@@ -184,7 +187,7 @@ class PlayerAiBase : public PlayerBase {
 	// The embedded Eval object for per-player evaluation
 	std::unique_ptr<EvalManager> Eval;
 
-	// Det bedste traek indtil nu
+	// The best move found so far
 	Move m_BestMove;
 
 	// Search configuration — set from game_settings.json via SetMaxDepth / SetTimeLimit
