@@ -1000,6 +1000,37 @@ exit 0
             ((Select-HeaderCoverSources -Headers @('StratEngine/Orphan.h') `
                 -IncludeGraph $coverGraph -Eligible $allUnits).Uncovered -join ',')
 
+        # End to end, because this one does not live in any function: a selection that
+        # narrows to a single file unrolls to a bare string on return, and $files.Count
+        # then throws under StrictMode. Every function-level assertion above passed while
+        # that was broken, so the script itself has to be driven, against a change that
+        # touches exactly one file.
+        #
+        # The Format check is the cheapest route to that line -- a stub clang-format that
+        # reports the pinned version and approves everything keeps this test about file
+        # selection rather than about formatting.
+        $fakeFormat = Join-Path $root 'fake-format.ps1'
+        @'
+param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Rest)
+if ($Rest -contains '--version') { Write-Output 'clang-format version 22.1.0'; exit 0 }
+exit 0
+'@ | Set-Content -LiteralPath $fakeFormat -Encoding utf8NoBOM
+
+        $fixtureScripts = Join-Path $repoFixture 'StratChessEvolved/Scripts'
+        New-Item -ItemType Directory -Path $fixtureScripts -Force | Out-Null
+        Copy-Item -LiteralPath $PSCommandPath -Destination (Join-Path $fixtureScripts 'Run-Lint.ps1')
+        # Committed, so the copied script is not itself a changed file: a changed
+        # Run-Lint.ps1 escalates to the whole tree, which is not the case under test.
+        & git -C $repoFixture add -A 2>&1 | Out-Null
+        & git -C $repoFixture -c user.email='lint@self.test' -c user.name='lint' `
+            commit -q -m 'fixture' 2>&1 | Out-Null
+        Add-Content -LiteralPath (Join-Path $repoFixture 'StratEngine/A.cpp') -Value '// one changed file'
+        $singleFileRun = @(& $pwsh -NoProfile -File (Join-Path $fixtureScripts 'Run-Lint.ps1') `
+            -Check Format -ClangFormat $fakeFormat -BaseRef HEAD 2>&1)
+        Assert-Equal 'a change touching exactly one file does not crash the script' 0 $LASTEXITCODE
+        Assert-Equal 'the single changed file is what gets linted' 1 `
+            (@($singleFileRun | Where-Object { $_ -match 'checking 1 file' }).Count)
+
         # Name-keyed reverse edges are only unambiguous while header names stay unique.
         $duplicateNames = @(Get-TrackedSources -RepoDirectory $RepoRoot |
             Where-Object { $_ -like '*.h' } |
