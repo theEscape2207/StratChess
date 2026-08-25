@@ -17,9 +17,10 @@
 // Parameter:   unsigned ply - depth
 // Parameter:   int alpha -
 // Parameter:   int beta -
+// Parameter:   int qsearch_budget - capture plies still to come
 // Remark:
 // ************************************
-int PlayerAiBase::Quiescent(size_t ply, int alpha, int beta)
+int PlayerAiBase::Quiescent(size_t ply, int alpha, int beta, int qsearch_budget)
 {
 	// Increments counter
 	m_SearchCount++;
@@ -31,6 +32,10 @@ int PlayerAiBase::Quiescent(size_t ply, int alpha, int beta)
 	int value = Eval->Evaluate(m_Board);
 
 	// Begraenser quiescent til en maksimal dybde
+	if (qsearch_budget <= 0)
+		return value;
+
+	// Backstop: ply indexes Board's fixed-size undo history, so it must never reach MAX_PLY.
 	if (ply == MAX_PLY - 10)
 		return value;
 
@@ -58,7 +63,7 @@ int PlayerAiBase::Quiescent(size_t ply, int alpha, int beta)
 			continue;
 
 		// rekursivt kald til Quiescent. Dette sker _rigtigt_ mange gange
-		value = -Quiescent(ply + 1, -beta, -alpha);
+		value = -Quiescent(ply + 1, -beta, -alpha, qsearch_budget - 1);
 
 		// Vi er tilbage igen. Undo traekket igen
 		m_Board.UndoMove(curMove);
