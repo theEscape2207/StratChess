@@ -443,6 +443,14 @@ class AIPerlexTestFixture {
 		               BoundType::EXACT, NodeType::PV_NODE, SearchPhase::QUIESCENCE);
 	}
 
+	// Plants a MAIN entry for the fixture's board, so a test can prove what quiescence() will
+	// and will not do with a main-search bound for the position in front of it.
+	void store_main_entry(int16_t value, int16_t depth, int ply, BoundType bound) const
+	{
+		ai->_tt->store(board_.get_zobrist_hash(), value, depth, static_cast<int16_t>(ply), Move::EmptyMove(), bound,
+		               NodeType::CUT_NODE, SearchPhase::MAIN);
+	}
+
 	// Replays a UCI move list onto td_.board, then runs one quiescence() node at the
 	// resulting ply. Lets a test place the node inside a line, with real repetition history
 	// behind it, rather than at a synthetic root.
@@ -1683,7 +1691,11 @@ TEST_CASE("Search - node counters reset between searches", "[search][nodes]")
 	CHECK(fix.mainnodes() < sentinel);
 	CHECK(fix.qnodes() < sentinel);
 	CHECK(fix.mainnodes() > 0);
-	CHECK(fix.qnodes() > 0);
+
+	// No qnodes lower bound here, deliberately. quiescence() may take a bound from a MAIN entry,
+	// so against a warm table every quiescence call can be served at the probe and the second
+	// search legitimately searches zero quiescence edges. The fresh fixture below still pins a
+	// non-zero count, on a cold table where the work has to happen.
 
 	// The exact-equality form of the same property, with the table taken out of it:
 	// an independent fixture is a fresh AI and a fresh TT, so a correctly reset
@@ -1766,4 +1778,45 @@ TEST_CASE("Search - a pvs frame that aborts at entry leaves an empty pv row", "[
 	REQUIRE(score == GameValues::Draw); // fabricated: nothing was searched
 	REQUIRE(fix.pv_length(0) == 0);     // ... and nothing is published alongside it
 	REQUIRE(fix.pv_move(0).is_null());
+}
+
+// A MAIN entry is strictly more search than a quiescence node at the same position, so
+// quiescence() may cut off on one. What it must not do is use one to narrow its window:
+// the classification at the bottom of quiescence() measures against the alpha captured
+// before the probe, so a narrowing that is invisible there lets the node return, and store
+// as EXACT, a value produced under a window the caller never asked for.
+TEST_CASE("Qsearch - a MAIN bound inside the window does not change the value", "[search][tt][qsearch]")
+{
+	// Enough hanging material that quiescence has real captures to resolve, so a changed
+	// window can actually change the outcome.
+	const std::string fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+
+	constexpr int alpha = -50;
+	constexpr int beta = 5000;
+
+	AIPerlexTestFixture clean(fen);
+	const int without_entry = clean.quiesce_node(alpha, beta, AIPerlexTestFixture::QSEARCH_BUDGET, /*ply=*/0);
+
+	// Strictly inside (alpha, beta), so it can never license a cutoff — only a narrowing.
+	REQUIRE(without_entry > alpha);
+	REQUIRE(without_entry < beta);
+
+	AIPerlexTestFixture seeded(fen);
+	seeded.store_main_entry(static_cast<int16_t>(without_entry + 200), /*depth=*/1, /*ply=*/0, BoundType::LOWER);
+	const int with_entry = seeded.quiesce_node(alpha, beta, AIPerlexTestFixture::QSEARCH_BUDGET, /*ply=*/0);
+
+	CHECK(with_entry == without_entry);
+}
+
+// The other half of the same contract: an entry that DOES resolve the node against the
+// caller's window is still used, so the fix above did not simply disable the cache.
+TEST_CASE("Qsearch - a MAIN bound at or beyond beta cuts off", "[search][tt][qsearch]")
+{
+	AIPerlexTestFixture fix("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+
+	constexpr int16_t stored = 4000;
+	fix.store_main_entry(stored, /*depth=*/1, /*ply=*/0, BoundType::LOWER);
+
+	CHECK(fix.quiesce_node(/*alpha=*/-50, /*beta=*/stored - 100, AIPerlexTestFixture::QSEARCH_BUDGET, /*ply=*/0) ==
+	      stored);
 }

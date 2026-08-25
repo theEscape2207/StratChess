@@ -307,8 +307,9 @@ class TranspositionTable {
 		if (incoming_score != stored_score)
 			return incoming_score > stored_score;
 
-		// pvs() mines main entries for a hash move and quiescence() cannot read one at all, so
-		// a cross-phase tie is not a tie: the main-search entry holds the slot either way. Only
+		// pvs() mines main entries for a hash move, and quiescence() reads one only for a bound
+		// it can cut off on, so a cross-phase tie is not a tie: the main-search entry holds the
+		// slot either way, and is the more useful of the two to both readers. Only
 		// one of those ways is reachable today -- an incoming main store carries at least depth
 		// 1 and so scores at least 256, while the quiescence band is capped at -256 -- but that
 		// is a property of the constants, not of this decision, so the step is written whole.
