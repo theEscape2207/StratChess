@@ -799,17 +799,19 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	if (auto entry = tt.probe(key, ply)) {
 		const bool usable =
 		    (entry->phase == SearchPhase::MAIN) ? (entry->depth >= 1) : (entry->depth >= qsearch_budget);
+		// Cutoff only: an entry is used when it already resolves this node against the caller's
+		// window, and never to narrow alpha or beta. Narrowing is invisible to the classification
+		// at the bottom of this function, which measures best_value against the original_alpha
+		// captured above, so the node would search under one window and report under another —
+		// returning, and storing as EXACT, a value the caller never asked about.
 		if (usable) {
 			if (entry->bound == BoundType::EXACT) {
 				return entry->value;
 			}
-			if (entry->bound == BoundType::LOWER) {
-				alpha = std::max(alpha, static_cast<int>(entry->value));
+			if (entry->bound == BoundType::LOWER && entry->value >= beta) {
+				return entry->value;
 			}
-			if (entry->bound == BoundType::UPPER) {
-				beta = std::min(beta, static_cast<int>(entry->value));
-			}
-			if (alpha >= beta) {
+			if (entry->bound == BoundType::UPPER && entry->value <= alpha) {
 				return entry->value;
 			}
 		}
