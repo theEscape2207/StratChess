@@ -783,11 +783,23 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 
 	auto key = td.board.get_zobrist_hash();
 
-	// Probe TT for cached info. Both sides of the comparison are remaining budget, so an entry
-	// is reusable exactly when it was produced with at least as much search left as this node
-	// has — the same invariant the main search relies on.
+	// Probe TT for cached info. Between two quiescence entries both sides of the comparison are
+	// remaining budget, so an entry is reusable exactly when it was produced with at least as much
+	// search left as this node has — the same invariant the main search relies on.
+	//
+	// A MAIN entry is usable at any depth it can actually carry. pvs() hands depth <= 0 to
+	// quiescence before it computes a key, so every main store covers a full-width ply plus the
+	// quiescence below it: strictly more search than this node performs, never less, and its bound
+	// is therefore a valid bound here. The depth >= 1 test asserts that invariant locally rather
+	// than importing it from pvs().
+	//
+	// best_move is deliberately not mined from either phase. store() inherits a same-key entry's
+	// move across a phase change, so an entry can hold a quiet move this capture-only generator
+	// would never produce; reading it here would turn that inheritance from inert into a defect.
 	if (auto entry = tt.probe(key, ply)) {
-		if (entry->phase == SearchPhase::QUIESCENCE && entry->depth >= qsearch_budget) {
+		const bool usable = (entry->phase == SearchPhase::MAIN) ? (entry->depth >= 1)
+		                                                        : (entry->depth >= qsearch_budget);
+		if (usable) {
 			if (entry->bound == BoundType::EXACT) {
 				return entry->value;
 			}

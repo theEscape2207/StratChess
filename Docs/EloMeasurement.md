@@ -95,7 +95,11 @@ The script appends one row to `EloLog.md` automatically and prints the same figu
   the script writes into the Notes column as `SPRT <preset> [elo0, elo1] — H1 accepted`.
 - **`inconclusive @ N games`** — a real outcome meaning "smaller than `elo1`, or the budget ran out".
   Not a failure, and **not a measurement of zero**. The script flags it in yellow rather than letting
-  it pass as a decision.
+  it pass as a decision. **An inconclusive `NonRegression` run whose interval excludes zero still
+  answers the question it was asked** — "is this worse?" — so it is normally enough to act on. Record
+  it as `inconclusive, interval [a, b]` and move on; that phrasing is the whole treatment the case
+  needs, and it does **not** license quoting the point estimate as the change's value. Deciding the
+  bounds properly is a separate spend, priced under [budget](#spending-the-budget).
 - **`FAILURES, discard`** — a time loss, illegal move, disconnect or stall. The script marks the row
   and exits 1. Discard the batch; do not read its Elo.
 - **`same binary and configuration — carries no strength information`** — both sides were the same

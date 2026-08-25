@@ -1683,7 +1683,11 @@ TEST_CASE("Search - node counters reset between searches", "[search][nodes]")
 	CHECK(fix.mainnodes() < sentinel);
 	CHECK(fix.qnodes() < sentinel);
 	CHECK(fix.mainnodes() > 0);
-	CHECK(fix.qnodes() > 0);
+
+	// No qnodes lower bound here, deliberately. quiescence() may take a bound from a MAIN entry,
+	// so against a warm table every quiescence call can be served at the probe and the second
+	// search legitimately searches zero quiescence edges. The fresh fixture below still pins a
+	// non-zero count, on a cold table where the work has to happen.
 
 	// The exact-equality form of the same property, with the table taken out of it:
 	// an independent fixture is a fresh AI and a fresh TT, so a correctly reset

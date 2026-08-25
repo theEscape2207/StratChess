@@ -22,6 +22,44 @@ Newest first.
 
 ---
 
+## 2026-08-25 — quiescence may use MAIN TT entries (#337)
+
+### Changed
+
+- `quiescence()` accepts a bound from a `SearchPhase::MAIN` entry at `depth >= 1`, where it
+  previously used `QUIESCENCE` entries only. Since #319 a quiescence store landing on a main entry
+  for the same key is declined, so at those keys quiescence had **no** cache at all: probe, refuse to
+  read, re-search, be declined, repeat — every visit, for the whole iteration. The keys affected are
+  the frontier nodes `pvs()` stores at depth 1, which is why the effect concentrated in endgames.
+- `best_move` is still not read from the TT by quiescence. `store()` inherits a same-key entry's move
+  across a phase change, so an entry can hold a quiet move a capture-only generator would never
+  produce; that inheritance stays inert only while nothing mines it.
+
+### Why
+
+- A `MAIN` entry covers a full-width ply plus the quiescence below it — strictly more search than a
+  quiescence node at the same position, never less — so its bound is valid there. `pvs()` hands
+  `depth <= 0` to quiescence before computing a key, so no depth-0 `MAIN` entries exist; the
+  `depth >= 1` test asserts that locally rather than importing it.
+
+### Validation
+
+- `Run-EloMatch.ps1 -Sprt NonRegression`, 500 games at 10+0.1 against `main` @ `3840612`:
+  **+35.56 +/- 23.25, LOS 99.87%, LLR 1.33** — inconclusive at the cap, interval [+12.3, +58.8].
+- `Run-Bench.ps1` depth 12, `Threads=1`: total nodes 21.46M -> 20.45M (-4.7%). The two positions #319
+  regressed are the two that recover — `rook-endgm` **-41.4%**, `tactical-5` **-23.2%** — which was
+  the falsification test for the issue's hypothesis, and it passed.
+- **`closed-mid` costs +163%**, reproduced at depths 10/11/12/13 with an unchanged best move, so it is
+  systematic rather than chaos at one depth. Shipped with it open as **#391** rather than tuned away:
+  four probe rules were compared and none removes it without giving back the endgame win.
+- The informative negative: `depth * 2 >= qsearch_budget` — the TT's own phase-equivalence scale, the
+  0.5 discount `quiescenceEquivalentDepth()` applies in `replacementScore()` — is a near-total no-op
+  (+0.1% total). The entire benefit comes from serving `MAIN` entries that scale ranks *below* the
+  quiescence node's budget. Making the probe "consistent with the replacement policy" would delete
+  the change.
+
+---
+
 ## 2026-08-24 — ccache on the Windows Debug build; `/Z7` (#380)
 
 ### Changed
