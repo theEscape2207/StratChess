@@ -1853,9 +1853,11 @@ TEST_CASE("Search - a TT bound inside the window does not change the value", "[s
 	clean.arm_clock();
 	const int without_entry = clean.search_node(depth, /*ply=*/0, alpha, beta, /*is_pv_node=*/false);
 
-	// Strictly inside (alpha, beta), so the planted entry can never license a cutoff.
+	// Strictly inside (alpha, beta), so the planted entry can never license a cutoff --
+	// asserted for the seeded value itself, not just for the node's own score, or an eval
+	// change that lifts without_entry could turn this into a cutoff test by accident.
 	REQUIRE(without_entry > alpha);
-	REQUIRE(without_entry < beta);
+	REQUIRE(without_entry + 200 < beta);
 
 	AIPerlexTestFixture seeded(fen);
 	seeded.arm_clock();
@@ -1882,5 +1884,19 @@ TEST_CASE("Search - a TT bound at or beyond beta cuts off", "[search][tt]")
 	fix.store_main_entry(stored, /*depth=*/3, /*ply=*/0, BoundType::LOWER);
 
 	CHECK(fix.search_node(/*depth=*/3, /*ply=*/0, /*alpha=*/-50, /*beta=*/stored - 100, /*is_pv_node=*/false) ==
+	      stored);
+}
+
+// The UPPER half of the same cutoff contract. Neither the pair above nor #392's qsearch pair
+// reaches it, so without this the branch is untested.
+TEST_CASE("Search - a TT bound at or below alpha cuts off", "[search][tt]")
+{
+	AIPerlexTestFixture fix("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+
+	constexpr int16_t stored = -4000;
+	fix.arm_clock();
+	fix.store_main_entry(stored, /*depth=*/3, /*ply=*/0, BoundType::UPPER);
+
+	CHECK(fix.search_node(/*depth=*/3, /*ply=*/0, /*alpha=*/stored + 100, /*beta=*/5000, /*is_pv_node=*/false) ==
 	      stored);
 }

@@ -40,8 +40,9 @@ Newest first.
   the defect was reachable through `pvs()`'s own signature but not through the search. No SPRT: an
   unchanged tree has nothing to measure.
 - Bench 2.92M → 2.94M nps, one run each, node totals identical.
-- Two regression tests, both falsified against the unfixed code — the seeded node returned and
-  stored 154, the planted bound, where its own search returns -46.
+- Three regression tests. One is a falsifier — against the unfixed code the seeded node returned
+  and stored 154, the planted bound, where its own search returns -46. The other two are
+  non-regression guards on the cutoffs the fix keeps, and pass either way by construction.
 
 ---
 
