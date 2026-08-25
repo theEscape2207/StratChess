@@ -297,6 +297,38 @@ if ($ResumeDir -ne '') {
     $dirty = (git -C $RepoRoot status --porcelain) ? '+dirty' : ''
     $candidateName = "candidate-$candidateSha$dirty"
 
+    # Label the EloLog row from the RESTORED state, never from this invocation's
+    # parameters. -ReferenceTag/-ReferenceExe/-Sprt are all ignored when resuming, so
+    # leaving them at their defaults records the pinned anchor as the opponent and drops
+    # the SPRT verdict entirely -- a row that reads as a plausible anchor comparison for
+    # a match that was neither (#388).
+    $resumedEngines = @($resumeState.engines)
+    if ($resumedEngines.Count -ge 2 -and $resumedEngines[1].name) {
+        $refName = $resumedEngines[1].name
+    }
+    # Likewise the candidate. Recomputing it from HEAD names whatever the tree happens to
+    # be on now, which after any commit is a revision that never played a game -- while
+    # fastchess relaunches the binary the saved path points at, not this one.
+    if ($resumedEngines.Count -ge 1 -and $resumedEngines[0].name) {
+        $candidateName = $resumedEngines[0].name
+    }
+
+    if ($resumeState.sprt -and $resumeState.sprt.enabled) {
+        $Elo0 = [int]$resumeState.sprt.elo0
+        $Elo1 = [int]$resumeState.sprt.elo1
+        # Recover the preset name from the bounds, so the row reads the way the original
+        # invocation would have written it. Anything else was -Sprt Custom by definition.
+        $Sprt = if ($Elo0 -eq -5 -and $Elo1 -eq 0) { 'NonRegression' }
+                elseif ($Elo0 -eq 0 -and $Elo1 -eq 10) { 'Gain' }
+                else { 'Custom' }
+
+        # -AnchorSprt is an intent, not state fastchess saves. An SPRT whose reference is
+        # the pinned anchor can only have been asked for with it -- the guard below refuses
+        # that pairing otherwise -- so infer it rather than silently dropping the
+        # "cumulative standing" caveat the row would otherwise carry.
+        if ($refName -eq $ReferenceTag) { $AnchorSprt = $true }
+    }
+
     Write-Host "==> Resuming match in $ResumeDir" -ForegroundColor Cyan
     Write-Host "    PGN: $pgnOut"
 
@@ -569,6 +601,13 @@ if ($Sprt -ne '') {
         Write-Host "WARNING: H1 accepted but the Elo estimate is negative ($eloText) — verdict parse is suspect." -ForegroundColor Red
     }
 }
+# A resumed row is assembled from two processes' output: the figures come from the
+# final fastchess summary (which covers every game, replayed ones included), but the
+# wall time printed above covers only the resuming half.
+if ($ResumeDir -ne '') {
+    $kind = "$kind — resumed from an interrupted run; wall time covers the resumed portion only"
+}
+
 # Applied last so it leads the cell whatever the run was -- an SPRT between two
 # identical binaries is every bit as uninformative as a fixed batch between them.
 if ($noStrengthData) {
