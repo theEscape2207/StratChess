@@ -496,18 +496,26 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		if (entry->phase == SearchPhase::MAIN) { // Avoid the Quiescence nodes to affect main search - just to make sure
 			hash_move = entry->best_move;
 
-			// Critical: Don't use TT cutoffs at PV nodes
+			// Critical: Don't use TT cutoffs at PV nodes.
+			//
+			// Cutoff only: an entry is used when it already resolves this node against the
+			// caller's window, and never to narrow alpha or beta. A narrowing is invisible to
+			// the classification at the bottom of this function, which measures best_value
+			// against the original_alpha captured above, so the node would search under one
+			// window and report under another -- returning, and storing as EXACT, a value the
+			// caller never asked about.
+			//
+			// It costs nothing: every call site that passes is_pv_node = false also passes a
+			// null window, so beta == alpha + 1 here and neither bound had room to move. The
+			// cutoffs below are what the old alpha >= beta test resolved to under that window.
 			if (!is_pv_node && entry->depth >= depth) {
 				if (entry->bound == BoundType::EXACT) {
 					return entry->value;
 				}
-				if (entry->bound == BoundType::LOWER) {
-					alpha = std::max(alpha, static_cast<int>(entry->value));
+				if (entry->bound == BoundType::LOWER && entry->value >= beta) {
+					return entry->value;
 				}
-				if (entry->bound == BoundType::UPPER) {
-					beta = std::min(beta, static_cast<int>(entry->value));
-				}
-				if (alpha >= beta) {
+				if (entry->bound == BoundType::UPPER && entry->value <= alpha) {
 					return entry->value;
 				}
 			}
