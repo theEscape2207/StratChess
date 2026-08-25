@@ -188,7 +188,9 @@ function Assert-PinnedMajor {
 # File selection
 # ---------------------------------------------------------------------------
 function Test-RequiresWholeTreeLint {
-    param([Parameter(Mandatory)][string[]]$ChangedFiles)
+    # AllowEmptyCollection: an empty diff is an ordinary answer ("nothing in scope"),
+    # not a caller error. Without it the binding failure crashes the run instead.
+    param([Parameter(Mandatory)][AllowEmptyCollection()][string[]]$ChangedFiles)
     foreach ($file in $ChangedFiles) {
         $path = $file.Replace('\', '/')
         if ($path -eq '.clang-format' -or $path -eq '.clang-tidy' -or
@@ -201,11 +203,35 @@ function Test-RequiresWholeTreeLint {
     return $false
 }
 
-function Get-TargetFiles {
-    $all = @(git -C $RepoRoot ls-files '*.cpp' '*.h' 2>$null |
-             Where-Object { $_ -and $_ -notmatch '(^|/)Archived/' })
+# Pure target selection, split from the git I/O below so the self-tests can pin it.
+#
+# Every local here is named so it cannot collide with a parameter of the caller.
+# PowerShell variable names are case-insensitive, so a local $all inside a function
+# that also takes a [switch]$All is the *same* variable: assigning the tracked-file
+# list silently turned the switch on, and whole-tree lint became unconditional.
+function Select-LintTargets {
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Tracked,
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Changed,
+        [AllowEmptyCollection()][string[]]$WorkingSources = @(),
+        [switch]$WholeTree
+    )
 
-    if ($All) { return $all }
+    if ($WholeTree) { return $Tracked }
+
+    # Changes to the lint machinery affect every TU and must validate themselves.
+    if (Test-RequiresWholeTreeLint -ChangedFiles $Changed) { return $Tracked }
+
+    $candidates = @($Tracked + $WorkingSources | Select-Object -Unique)
+    return @($candidates | Where-Object { $Changed -contains $_ })
+}
+
+function Get-TargetFiles {
+    $tracked = @(git -C $RepoRoot ls-files '*.cpp' '*.h' 2>$null |
+                 Where-Object { $_ -and $_ -notmatch '(^|/)Archived/' })
+
+    # Ahead of the diff below on purpose: -All must work without a resolvable -BaseRef.
+    if ($All) { return $tracked }
 
     $committed = @(git -C $RepoRoot diff --name-only "$BaseRef...HEAD" 2>$null | Where-Object { $_ })
     if ($LASTEXITCODE -ne 0) {
@@ -223,8 +249,6 @@ function Get-TargetFiles {
     })
 
     $changed = @($committed + $working | Where-Object { $_ } | Select-Object -Unique)
-    # Changes to the lint machinery affect every TU and must validate themselves.
-    if (Test-RequiresWholeTreeLint -ChangedFiles $changed) { return $all }
 
     # git ls-files omits a developer's new untracked source. Include existing
     # working-tree sources so local validation cannot report green without them.
@@ -232,8 +256,8 @@ function Get-TargetFiles {
         $_ -match '\.(cpp|h)$' -and $_ -notmatch '(^|/)Archived/' -and
             (Test-Path -LiteralPath (Join-Path $RepoRoot $_) -PathType Leaf)
     })
-    $candidates = @($all + $workingSources | Select-Object -Unique)
-    return @($candidates | Where-Object { $changed -contains $_ })
+
+    return Select-LintTargets -Tracked $tracked -Changed $changed -WorkingSources $workingSources
 }
 
 # ---------------------------------------------------------------------------
@@ -727,6 +751,23 @@ exit 0
             (Test-RequiresWholeTreeLint -ChangedFiles @('StratChessEvolved/Scripts/Run-Lint.ps1'))
         Assert-Equal 'ordinary source keeps changed-file scope' $false `
             (Test-RequiresWholeTreeLint -ChangedFiles @('StratEngine/Eval.cpp'))
+
+        # The selection itself, not just the escalation predicate. A regression here is
+        # silent -- whole-tree lint is slower but still green -- so it is asserted rather
+        # than left to the escalation tests above, which passed throughout the period the
+        # narrowing was broken.
+        $tree = @('StratEngine/A.cpp', 'StratEngine/B.cpp', 'StratEngine/A.h')
+        Assert-Equal 'changed-file scope selects only the changed files' 'StratEngine/A.cpp' `
+            ((Select-LintTargets -Tracked $tree -Changed @('StratEngine/A.cpp')) -join ',')
+        Assert-Equal 'changed-file scope drops files nothing touched' '' `
+            ((Select-LintTargets -Tracked $tree -Changed @()) -join ',')
+        Assert-Equal 'whole-tree switch selects the whole tree' ($tree -join ',') `
+            ((Select-LintTargets -Tracked $tree -Changed @('StratEngine/A.cpp') -WholeTree) -join ',')
+        Assert-Equal 'lint machinery escalates the selection to the whole tree' ($tree -join ',') `
+            ((Select-LintTargets -Tracked $tree -Changed @('.clang-tidy')) -join ',')
+        Assert-Equal 'untracked working source is selected' 'StratEngine/New.cpp' `
+            ((Select-LintTargets -Tracked $tree -Changed @('StratEngine/New.cpp') `
+                -WorkingSources @('StratEngine/New.cpp')) -join ',')
 
         Assert-Equal 'parses Visual Studio multiline LLVM version' 22 `
             (Get-LlvmMajorFromVersionText -VersionText "LLVM (http://llvm.org/):`n  LLVM version 22.1.3")
