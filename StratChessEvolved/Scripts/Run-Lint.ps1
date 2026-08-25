@@ -7,6 +7,8 @@
     profile block pull requests. Analyzer-heavy Deep checks block Nightly instead.
     clang-tidy uses a normalized database that selects shipping Engine commands and
     a bounded worker pool, then prints captured results in deterministic source order.
+    A changed header has no compile command of its own, so it is analysed through one
+    translation unit that includes it.
 
     Neither tool is on PATH on a normal Windows box. They ship inside Visual Studio
     next to clang-cl, so this script resolves them the same way build.ps1 resolves

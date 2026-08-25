@@ -22,6 +22,39 @@ Newest first.
 
 ---
 
+## 2026-08-26 — the lint Gate analyses changed headers
+
+### Added
+
+- A changed `.h` now selects **one** translation unit that includes it, from an include graph over
+  the tracked sources. Previously a header-only diff selected nothing, reported green, and waited
+  for Nightly `lint-tree`. clang-tidy already reports header findings through `HeaderFilterRegex`;
+  it just needed an includer to reach them from.
+- One unit rather than the dependent set: `defines.h` and `Move.h` reach 44-55 of 62 units, which is
+  a whole-tree run. The cover is 14 units with every header in the repository changed at once, and
+  1-3 for real changes. Engine units are preferred over test units (no Catch2, so faster). A header
+  no unit includes is reported as uncovered rather than silently skipped.
+
+### Fixed
+
+- `Run-Lint.ps1` crashed on any change touching exactly one file — PowerShell unrolls a one-element
+  array on return, so `$files.Count` threw under `Set-StrictMode -Version Latest`. Pre-existing, and
+  it only stayed hidden because most changes touch two or more files.
+
+### Validation
+
+- Falsified end to end: a `performance-unnecessary-value-param` trigger planted in `ArgParse.h` is
+  caught with the header as the only changed file (1 unit, 2.5 s, one finding); reverting it leaves
+  the same scope passing clean.
+- Nine self-tests, covering transitive includes, shared cover across headers of one component, the
+  engine-over-test preference, profile eligibility, uncovered headers, and the header-name
+  uniqueness the name-keyed graph depends on.
+- `.ninja_deps` was the obvious source for this mapping and does not work: the lint job configures
+  but never builds, so no deps log exists. `run-clang-tidy` and `clang-tidy-diff` do not solve it
+  either — see PR for why, and #282 for the `--fix` hazard found on the way.
+
+---
+
 ## 2026-08-25 — quiescence may use MAIN TT entries (#337, PR #392)
 
 ### Changed

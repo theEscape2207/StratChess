@@ -574,8 +574,9 @@ jobs:
             -Check Format -BaseRef $env:BASE_REF -ClangFormat $format
           exit $LASTEXITCODE
 
-      # Changed .cpp files only; header-only changes are covered by Nightly's
-      # whole-tree Gate. The runner fails closed on database or worker errors.
+      # Changed .cpp files, plus one translation unit per changed header so a
+      # header-only diff is analysed here rather than waiting for Nightly.
+      # The runner fails closed on database or worker errors.
       - name: clang-tidy Gate (blocking)
         shell: pwsh
         env:
