@@ -1111,7 +1111,9 @@ if ($Check -in @('Tidy', 'Both')) {
     Assert-PinnedMajor -Exe $tidyExe -Name 'clang-tidy'
 }
 
-$files = Get-TargetFiles
+# Wrapped: PowerShell unrolls a one-element array on return, so a change touching a
+# single file arrives here as a bare string and .Count throws under StrictMode.
+$files = @(Get-TargetFiles)
 if ($files.Count -eq 0) {
     Write-Host "`nNo C++ sources in scope; nothing to lint." -ForegroundColor Green
     if (-not $blameOk) { Write-Host 'Lint FAILED (blame-ignore coverage).' -ForegroundColor Red; exit 1 }
