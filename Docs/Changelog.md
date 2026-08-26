@@ -42,12 +42,19 @@ Newest first.
 - `SortMovesByValue`'s `captures` parameter renamed `count`, plus an assert that the sorted range
   really is captures-and-promotions. Nothing checked between #311 and #320, which is why the defect
   survived; the assert is what catches the next recurrence.
-- `MoveHelper::Value()` no longer subtracts the attacker from a **king** capture. A king capture is
-  legal only onto an undefended square, so it wins the victim outright and is never recaptured; the
-  LVA term modelled a recapture that cannot happen. At 10000 cp it scored `KxR` as -125, which
-  `ScoreMoves` filed in the *losing*-capture tier below every quiet evasion. The defect was already
-  live in `pvs()`; routing quiescence through `ScoreMoves` is what made it visible. Both sorters are
-  fixed together, so this PR is deliberately **not** node-identical with `main`.
+- `MoveHelper::Value()` caps a **king**'s LVA weight at a queen's instead of taking it from the
+  king's 10000 cp notional value. At 10000 it scored `KxR` as `500 - 625 = -125`, which `ScoreMoves`
+  filed in the *losing*-capture tier below every quiet evasion — the best move in the position,
+  searched last. Capped, `KxR` scores 444 and sits among the winning captures, behind an equally
+  valuable capture by a cheaper attacker.
+  It is capped rather than dropped, and the distinction matters: a *legal* king capture is unopposed
+  and would deserve the victim outright, but move generation is pseudo-legal — `GenerateOfficerMoves`
+  masks the king's destinations against own pieces only — so `Value()` is also reached for king
+  captures `DoMove` will reject, and it has no legality information with which to tell them apart.
+  Dropping the term entirely would order an illegal king capture ahead of every legal move.
+  The defect was already live in `pvs()`; routing quiescence through `ScoreMoves` is what made it
+  visible. Both sorters are fixed together, so this PR is deliberately **not** node-identical
+  with its base.
 - `ScoreMoves` now breaks score ties on generation order. `std::sort` is not stable and equal scores
   are common — an in-check node with a cold history table scores every quiet evasion 0 — so the
   whole tied block was permuted arbitrarily, and differently across stdlib versions.
@@ -63,10 +70,16 @@ Newest first.
 
 ### Validation
 
-- Four new `[qsearch]` tests, two of them **falsified first**: reverting the in-check branch to
-  `SortMovesByValue` fails exactly the ordering test and no other, and the king-capture test was
-  written against the unfixed code and watched to fail. Debug and Release suites green (514 tests,
-  511 under `~[slow]`).
+- Five new `[qsearch]` tests, three **falsified first** rather than written after the fact. The two
+  king-capture tests bracket the cap from both sides and neither alone pins it: dropping the cap
+  fails "a legal capture outranks an illegal king capture" (the illegal `Kxe2` displaces `Rxe2`),
+  and removing the king branch entirely fails "capturing a contact checker outranks fleeing" (`KxR`
+  sinks below every quiet). Reverting the in-check branch to `SortMovesByValue` fails exactly the
+  ordering test and no other. Debug and Release suites green.
+- This PR is **stacked on #401** and measured against it, not against `main`. Routing quiescence
+  through `ScoreMoves` moves an illegal king capture to the front of the sorted list, which — while
+  `pvs()` reduced by list index — also shifted every legal move's LMR reduction. Measuring against
+  `main` would have bundled an ordering change with an accidental pruning change.
 - Measurement: `-Sprt Custom -Elo0 -10 -Elo1 0`, 500-game cap. *(pending)*
 
 Design: `.claude/plans/in-progress/quiescence-move-ordering-and-see.md`. First of three PRs; #86

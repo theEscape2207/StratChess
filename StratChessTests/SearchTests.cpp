@@ -2002,6 +2002,28 @@ TEST_CASE("Search - in check, capturing a contact checker outranks fleeing", "[s
 	CHECK(capture == order.begin());
 }
 
+// Move generation is pseudo-legal: GenerateOfficerMoves masks the king's destinations against own
+// pieces only, so a king capture of a DEFENDED piece reaches the sorter and is rejected later by
+// DoMove. Ordering it first would put a move that cannot be played at the head of every such node.
+//
+// Ke1 is in check from Re2, which the d3 pawn defends, so Kxe2 is illegal. Rxe2 is legal and is the
+// move to search first. Capped, Kxe2 scores 500 - 56 = 444 against Rxe2's 500 - 31 = 469; uncapped
+// it would score 500 and displace it. Together with the contact-check test above this pins the cap
+// from both sides: that test fails if the king's LVA weight is left at 10000, this one fails if it
+// is dropped to nothing.
+TEST_CASE("Search - in check, a legal capture outranks an illegal king capture", "[search][qsearch]")
+{
+	AIPerlexTestFixture fix("4k3/8/8/8/8/3p4/R3r3/4K3 w - - 0 1");
+	REQUIRE(fix.board_.InCheck());
+
+	const std::vector<std::string> order = fix.quiescence_order();
+
+	// The illegal king capture really is in the list — otherwise this test proves nothing.
+	REQUIRE(std::find(order.begin(), order.end(), "e1e2") != order.end());
+
+	CHECK(order.front() == "a2e2");
+}
+
 TEST_CASE("Search - out of check, quiescence still orders captures by MVV-LVA", "[search][qsearch]")
 {
 	// White to move, not in check. Two captures of the d5 pawn are available: exd5 takes with

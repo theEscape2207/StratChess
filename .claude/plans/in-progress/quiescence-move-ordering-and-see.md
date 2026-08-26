@@ -212,14 +212,27 @@ Filled incrementally as each PR lands; the file is deleted in PR 3 once complete
   regression test has to exercise the branch the node itself takes, or reverting the fix would
   leave it passing. With the helper, the falsification check fails exactly the ordering test and
   nothing else — verified by reverting the in-check branch and re-running.
-- **PR 1**: `MoveHelper::Value()` was changed to drop the LVA term for a **king** capture. The
-  design scoped PR 1 to the in-check ordering path alone. Routing that path through `ScoreMoves`
-  exposed a pre-existing defect and would have shipped it as a regression: at 10000 cp the king's
-  LVA penalty scored `KxR` as -125, landing it in the *losing*-capture tier below every quiet
-  evasion, where the old flat sort had ranked it first. The fix is at `Value()` rather than inside
-  `ScoreMoves` because both sorters compute the same wrong number from the same helper, and the
-  cause is a modelling error, not a tuning choice: a king capture is legal only onto an undefended
-  square, so it is never recaptured and there is no attacker to subtract. Consequence for
-  validation: PR 1 also changes `pvs()` ordering, so it is **not** node-identical with `main` and
-  `Compare-SearchEquivalence.ps1` does not apply to it. The SPRT measures both halves together;
-  they push ordering the same direction, so the reading stays interpretable.
+- **PR 1**: `MoveHelper::Value()` caps a **king**'s LVA weight at a queen's. The design scoped PR 1
+  to the in-check ordering path alone. Routing that path through `ScoreMoves` exposed a pre-existing
+  defect and would otherwise have shipped it as a regression: at 10000 cp the king's LVA penalty
+  scored `KxR` as -125, landing it in the *losing*-capture tier below every quiet evasion. The fix
+  is at `Value()` rather than inside `ScoreMoves` because both sorters compute the same wrong number
+  from the same helper.
+  **Two earlier framings of this were wrong and are recorded because the second nearly shipped.**
+  The first was to leave it: that ships a regression, since the old flat sort ranked `KxR` above the
+  king walks whenever the king was the only piece that could move. The second was to drop the LVA
+  term outright, on the reasoning that a legal king capture is unopposed and therefore never
+  recaptured. That reasoning is true of a *legal* king capture but the premise fails at the call
+  site: `ComputeLegalMoves` is pseudo-legal, so `Value()` also scores king captures `DoMove` will
+  reject, and dropping the term ordered an illegal one ahead of every legal move. Capping keeps the
+  king behind cheaper attackers without asserting a legality the function cannot see.
+  Consequence for validation: PR 1 also changes `pvs()` ordering, so it is **not** node-identical
+  with its base and `Compare-SearchEquivalence.ps1` does not apply to it.
+- **Sequencing changed**: PR 1 is now stacked on #401 rather than forked from `main`. Routing
+  quiescence through `ScoreMoves` moves an illegal king capture from the back of the sorted list to
+  the front, which — while `pvs()` reduced by *list index* — silently shifted every legal move's LMR
+  reduction. Measuring PR 1 against `main` would therefore have measured an ordering change plus an
+  accidental pruning change. #401 fixes the index defect first; PR 1's SPRT is taken against a build
+  of #401 so it measures ordering alone. A partial run of the confounded bundle reached +43 Elo over
+  210 games (LLR +1.48 of +2.94) before being stopped — recorded here as the reason the split was
+  worth the extra measurement, not as a result.
