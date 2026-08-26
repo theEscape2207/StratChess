@@ -735,34 +735,46 @@ int AIPerplex::adjustScoreForGameState(ThreadData& td, bool moveFound, int ply, 
 	return score;
 }
 
-// Orders a quiescence node's move list and returns its size. Out of check the list is captures and
-// promotions only, which is exactly what SortMovesByValue's MVV-LVA is for, and it sorts in place —
-// scored_idx is left untouched and the caller reads the list directly.
+// Orders a quiescence node's move list in place, so the caller simply iterates it.
+//
+// Out of check the list is captures and promotions only, which is exactly what SortMovesByValue's
+// MVV-LVA is for.
 //
 // In check the list is every legal evasion, so that same sort would score each quiet evasion as
 // -piece/16 and sink the heaviest quiet to the bottom. The king is the heaviest piece that can move
 // and a king evasion is very often the only legal reply, so the move most likely to be best was
 // searched last (#320). ScoreMoves — the scorer pvs() already uses — scores quiet moves by history
-// instead, so a king evasion rises on measured merit rather than by fiat. It writes an order into
-// scored_idx rather than permuting the list.
+// instead, so a king evasion rises on measured merit rather than by fiat.
+//
+// ScoreMoves reports an order rather than permuting, so the scratch arrays that turn it into one
+// live here and not in quiescence(). That is deliberate: in check the node ignores qsearch_budget
+// and is bounded only by MAX_PLY, so anything held in its frame is multiplied by up to 256 nested
+// calls. This frame pops before quiescence() recurses.
 //
 // The hash move is deliberately EmptyMove(). Quiescence must not mine best_move from the table in
 // either phase: store() inherits a same-key entry's move across a phase change, so an entry can hold
 // a quiet move this node's generator would never produce (see TranspositionTable.h). Passing a hash
 // move here would turn that inheritance from inert into a defect.
-int AIPerplex::order_quiescence_moves(ThreadData& td, MoveList& moveList, bool in_check, int ply,
-                                      std::array<std::pair<int, int>, MoveList::MAX_MOVES>& scored_idx) const
+//
+// Killers and history are read, never written. A quiescence cutoff is measured against a far
+// shallower window than the main search's, so feeding it back would let qsearch noise steer tables
+// pvs() owns.
+void AIPerplex::order_quiescence_moves(ThreadData& td, MoveList& moveList, bool in_check, int ply) const
 {
-	const int move_count = static_cast<int>(moveList.size());
-
-	if (in_check) {
-		MoveSorter::ScoreMoves(moveList, move_count, td.board, td.board.GetCurrentColor(), Move::EmptyMove(),
-		                       td.killers[ply][0], td.killers[ply][1], td.history, scored_idx);
-	} else {
+	if (!in_check) {
 		MoveSorter::SortMovesByValue(moveList, moveList.size(), td.board);
+		return;
 	}
 
-	return move_count;
+	const int move_count = static_cast<int>(moveList.size());
+	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
+	MoveSorter::ScoreMoves(moveList, move_count, td.board, td.board.GetCurrentColor(), Move::EmptyMove(),
+	                       td.killers[ply][0], td.killers[ply][1], td.history, scored_idx);
+
+	MoveList ordered;
+	for (int i = 0; i < move_count; ++i)
+		ordered.push(moveList[static_cast<size_t>(scored_idx[static_cast<size_t>(i)].second)]);
+	moveList = ordered;
 }
 
 int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budget, int ply, TranspositionTable& tt)
@@ -891,16 +903,13 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 		// Generate only capture moves and promotions
 		MoveGenerator::ComputeCaptures(td.board, moveList);
 	}
-	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	const int move_count = order_quiescence_moves(td, moveList, in_check, ply, scored_idx);
+	order_quiescence_moves(td, moveList, in_check, ply);
 
 	// Tjek om der er lovlige brugbare traek her
 	bool moveFound = false;
 	Move best_move = Move::EmptyMove();
 
-	for (int move_index = 0; move_index < move_count; ++move_index) {
-		const Move& move = in_check ? moveList[scored_idx[move_index].second] : moveList[move_index];
-
+	for (const auto& move : moveList) {
 		// Promotions stay: their tactical value is not bounded by immediate material gain.
 		if (!in_check && !MoveHelper::IsPromote(move) &&
 		    stand_pat +

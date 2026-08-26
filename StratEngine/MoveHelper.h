@@ -174,6 +174,11 @@ namespace MoveHelper {
 		case MoveType::CAPTURE:
 		case MoveType::EP_CAPTURE:
 			captureScore = PieceHelper::Value(content);
+			// A king capture is never recaptured — the move is legal only onto an undefended square, so
+			// it wins the victim outright. Subtracting the attacker would model a recapture that cannot
+			// happen, and at 10000 cp for the king it sank KxR to -125, below every quiet move (#320).
+			if (PieceHelper::IsKing(movPiece))
+				return captureScore;
 			return captureScore - movingPieceScore;
 		case MoveType::PROMOTION_KNIGHT:
 		case MoveType::PROMOTION_BISHOP:

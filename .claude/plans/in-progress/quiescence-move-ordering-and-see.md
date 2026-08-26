@@ -212,3 +212,14 @@ Filled incrementally as each PR lands; the file is deleted in PR 3 once complete
   regression test has to exercise the branch the node itself takes, or reverting the fix would
   leave it passing. With the helper, the falsification check fails exactly the ordering test and
   nothing else — verified by reverting the in-check branch and re-running.
+- **PR 1**: `MoveHelper::Value()` was changed to drop the LVA term for a **king** capture. The
+  design scoped PR 1 to the in-check ordering path alone. Routing that path through `ScoreMoves`
+  exposed a pre-existing defect and would have shipped it as a regression: at 10000 cp the king's
+  LVA penalty scored `KxR` as -125, landing it in the *losing*-capture tier below every quiet
+  evasion, where the old flat sort had ranked it first. The fix is at `Value()` rather than inside
+  `ScoreMoves` because both sorters compute the same wrong number from the same helper, and the
+  cause is a modelling error, not a tuning choice: a king capture is legal only onto an undefended
+  square, so it is never recaptured and there is no attacker to subtract. Consequence for
+  validation: PR 1 also changes `pvs()` ordering, so it is **not** node-identical with `main` and
+  `Compare-SearchEquivalence.ps1` does not apply to it. The SPRT measures both halves together;
+  they push ordering the same direction, so the reading stays interpretable.

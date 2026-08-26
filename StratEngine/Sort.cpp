@@ -145,6 +145,10 @@ void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const Board& board,
 		out_scored_idx[i] = {s, i};
 	}
 
-	std::sort(out_scored_idx.begin(), out_scored_idx.begin() + n,
-	          [](const auto& a, const auto& b) { return a.first > b.first; });
+	// Ties break on generation order. std::sort is not stable, and equal scores are common — an
+	// in-check quiescence node with a cold history table scores every quiet evasion 0 — so without
+	// this the whole tied block is permuted arbitrarily, and differently across stdlib versions.
+	std::sort(out_scored_idx.begin(), out_scored_idx.begin() + n, [](const auto& a, const auto& b) {
+		return a.first != b.first ? a.first > b.first : a.second < b.second;
+	});
 }

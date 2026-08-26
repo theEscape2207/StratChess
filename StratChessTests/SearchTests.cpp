@@ -377,13 +377,12 @@ class AIPerlexTestFixture {
 		else
 			MoveGenerator::ComputeCaptures(ai->td_.board, list);
 
-		std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-		const int n = ai->order_quiescence_moves(ai->td_, list, in_check, 0, scored_idx);
+		ai->order_quiescence_moves(ai->td_, list, in_check, 0);
 
 		std::vector<std::string> order;
-		order.reserve(static_cast<size_t>(n));
-		for (int i = 0; i < n; ++i)
-			order.push_back(MoveFormatter::ToUCI(in_check ? list[scored_idx[i].second] : list[i]));
+		order.reserve(list.size());
+		for (const auto& move : list)
+			order.push_back(MoveFormatter::ToUCI(move));
 		return order;
 	}
 
@@ -1980,6 +1979,27 @@ TEST_CASE("Search - in check, capturing the attacker is still ordered first", "[
 	// Winning captures outrank every quiet regardless of history — ScoreMoves scores them in
 	// a tier above it, and history is only consulted on the quiet branch.
 	CHECK(order.front() == "a5e1");
+}
+
+// A contact check: the checking piece stands next to the king, so the king can take it. A knight
+// checker never can — a knight does not attack the squares adjacent to it — so this class is
+// rook, bishop, queen and pawn only.
+//
+// Kxe2 wins a whole rook and is plainly best. It is also the case that exposes what the LVA proxy
+// does to a king capture: MoveHelper::Value scores a capture as victim - mover/16, and the king is
+// worth 10000, so Kxe2 scores 500 - 625 = -125 and lands in ScoreMoves' *losing* capture tier,
+// below every quiet evasion (history is capped non-negative).
+TEST_CASE("Search - in check, capturing a contact checker outranks fleeing", "[search][qsearch]")
+{
+	AIPerlexTestFixture fix("4k3/8/8/8/8/8/4r3/4K3 w - - 0 1");
+	REQUIRE(fix.board_.InCheck());
+
+	const std::vector<std::string> order = fix.quiescence_order();
+	const auto capture = std::find(order.begin(), order.end(), "e1e2");
+	REQUIRE(capture != order.end());
+
+	// Taking the rook must be searched before walking away from it.
+	CHECK(capture == order.begin());
 }
 
 TEST_CASE("Search - out of check, quiescence still orders captures by MVV-LVA", "[search][qsearch]")
