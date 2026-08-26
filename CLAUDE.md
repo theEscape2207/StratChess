@@ -6,15 +6,8 @@ efficiency, and robustness.
 Reference detail is pointed at, not duplicated: `Docs/Workflow.md` (standing decisions — what
 validates what, speed/nps, threat model — plus validation tiers, review gate, runtime files,
 worktree gotchas), `Docs/CI.md` (what each workflow runs), `Docs/TestDesign.md` (coverage map +
-writing tests), `Docs/Changelog.md` (history). Live backlog is GitHub Issues.
-
-## Repository Structure
-- `StratChessEvolved/` – Application entry point, `game_settings.json`, `Scripts/`
-- `StratEngine/` – Core engine (search, evaluation, move generation, AI agents)
-- `StratEngine/Utils/` – `TimeManager` (soft/hard limits), `TimeUtils` (budget formula), `Logger`, `FENParser`
-- `StratEngine/Archived/` – Legacy algorithms kept for reference, not built
-- `StratChessTests/` – Catch2 v3 unit test project
-- `Docs/` – Design documents and reference
+writing tests), `Docs/Changelog.md` (history), `Docs/agents/` (issue tracker, triage labels and
+domain-doc layout for the engineering skills). Live backlog is GitHub Issues.
 
 ## Build
 - **Only `x64` builds work** — the x86/Win32 configuration is not maintained for C++20.
@@ -203,11 +196,8 @@ Non-obvious API contracts — the rest of the layout is discoverable.
 ## Testing
 
 `Docs/TestDesign.md` is the coverage map and the guide to writing tests — check it before adding
-any. Two rules matter enough to repeat here, because both are silent failures:
+any. One rule matters enough to repeat here, because it is a silent failure:
 
-- **Every tactical FEN needs its side-to-move field** (` w - - 0 1`). Omitting it drops below the
-  parser's four-field floor, so the FEN is rejected and the position is never applied — the board
-  keeps whatever it held and the engine answers for that instead.
 - **Never measure an MSVC-built binary against a clang-built one.** Both run and both look healthy;
   the compiler gap alone is worth tens of Elo and gets credited to whatever change is under test.
 
@@ -230,24 +220,22 @@ manual input) rather than skipping it silently.
   fresh branch from `origin/main` rather than PRing the branch directly.
 - Commit only what was explicitly asked for.
 
-### Pre-PR checklist
+### Before a PR
 
-`New-PullRequest.ps1` performs steps 1, 2 and 4 and stops at the first failure. Step 3 is manual by
-design.
+`New-PullRequest.ps1` does sync → validate → push → create/update, stopping at the first failure.
+Its validation step scopes itself to the change tier, so there is no judgement call to make there —
+tier table and fail-closed guarantees: `Docs/Workflow.md`. The one thing it cannot do for you:
 
-1. **Sync** — `git fetch origin main`, then `git merge origin/main`. When a conflict is just "two
-   PRs added unrelated declarations at the same anchor", keep both sides. Applies to docs too.
-2. **Validate** — run `Validate-PrePR.ps1`. It scopes itself to the change tier; there is no
-   judgement call to make. Tier table and its fail-closed guarantees: `Docs/Workflow.md`.
-3. **Dispatch a specialised reviewer** if the diff touches its domain
-   (`git diff --name-only origin/main...HEAD`):
-   - `Eval.cpp` → `eval-reviewer`
-   - `AIPerplex.cpp/.h`, `ThreadData.h` (killers/history), `Sort.cpp/.h` (MVV-LVA) → `search-reviewer`
+**Dispatch a specialised reviewer** before running it, if the diff
+(`git diff --name-only origin/main...HEAD`) touches that domain:
 
-   **Default is to dispatch.** A narrow self-certification carve-out exists for logging-only diffs;
-   its six conditions are in `Docs/Workflow.md` — read them before claiming a skip, and state the
-   skip in the PR body so it is auditable. Address findings before opening the PR.
-4. Only after 1-3 pass, create or update the PR.
+- `Eval.cpp` → `eval-reviewer`
+- `AIPerplex.cpp/.h`, `ThreadData.h` (killers/history), `Sort.cpp/.h` (MVV-LVA) → `search-reviewer`
+
+**Default is to dispatch**, and the script only reminds — it never blocks. A narrow
+self-certification carve-out exists for logging-only diffs; its six conditions are in
+`Docs/Workflow.md` — read them before claiming a skip, and state the skip in the PR body so it is
+auditable. Address findings before opening the PR.
 
 **Batch review follow-ups into one push.** `Get-ChangeTier.ps1` classifies the whole PR diff
 (`origin/main...HEAD`), not the latest commit, so a comment-only fix on an Engine PR still reruns the
@@ -255,8 +243,8 @@ full Engine tier locally and in CI. Collect the round's findings, address them t
 
 ### Cross-agent review
 
-Separate from step 3: a second agent reviews selected artifacts and comments on the PR or issue
-**before merge**. The user routes it — it is not dispatched from here — so a pushed PR is *awaiting
+Separate from the specialised reviewers: a second agent reviews selected artifacts and comments on
+the PR or issue **before merge**. The user routes it — it is not dispatched from here — so a pushed PR is *awaiting
 review*, not done. Say so when reporting one.
 
 Because the specialised reviewers read the **diff** while the cross-agent reviewer reads the **design
@@ -269,6 +257,19 @@ blocking finding needs: `Docs/Workflow.md` → Cross-agent review.
 `Remove-Worktree.ps1 -Name <task> -SyncMaster`, or `Remove-MergedBranches.ps1 -SyncMaster` when
 working in place. Treat cleanup as part of finishing the task, not an optional extra the user has to
 ask for. Squash-merges and locked directories need care — `Docs/Workflow.md`.
+
+## Agent skills
+
+Per-repo configuration the engineering skills read. Details in `Docs/agents/`.
+
+- **Issue tracker** — GitHub Issues (`theEscape2207/StratChess`) via `gh`, bodies always by
+  `--body-file`. PRs stay script-mediated: `New-PullRequest.ps1`, never `gh pr create` or a bare
+  push. See `Docs/agents/issue-tracker.md`.
+- **Triage labels** — the five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`,
+  `ready-for-human`, `wontfix`), deliberately outside the `category:`/`priority:` namespaces. See
+  `Docs/agents/triage-labels.md`.
+- **Domain docs** — single-context: `CONTEXT.md` at the repo root, ADRs in `Docs/adr/`. Neither
+  exists yet; both are created lazily. See `Docs/agents/domain.md`.
 
 ## Design Documents
 
