@@ -48,7 +48,11 @@ Newest first.
 - `Run-Bench.ps1` depth 12, `Threads=1`, both binaries clang-cl Release, measured in the same session
   because the host drifted ~3% between sessions: 20,458,694 -> 20,520,423 nodes (+0.3%), nps 2.973M
   -> 2.980M, best moves identical on all eight positions. The extra work is one `int` increment.
-- Measurement: `-Sprt Custom -Elo0 -10 -Elo1 0`, 500-game cap. *(pending)*
+- Measurement: `-Sprt Custom -Elo0 -10 -Elo1 0`, 500-game cap — **inconclusive**, -4.86 +/- 23.26,
+  LLR 0.01. The LLR never left zero because the observed score sits mid-band, which is what an
+  SPRT does when the true effect lies inside the tested interval; adding games would most likely
+  buy another inconclusive row. Not evidence of a regression, and not a measured zero either.
+  Full row in `Docs/EloLog.md`.
 
 ### Notes
 
