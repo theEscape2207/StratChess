@@ -555,7 +555,6 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	MoveList moveList;
 	MoveGenerator::ComputeLegalMoves(td.board, moveList);
 
-	bool first_child = true;
 	Move best_move;
 
 	// Stack-allocated scored index array — zero heap allocation per call.
@@ -582,15 +581,18 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		td.nodes_searched++;
 
 		if (td.board.DoMove(move)) {
-			// 0 for the first legal move, matching what first_child already tracks.
-			const int move_number = legal_moves_searched++;
+			const int move_number = legal_moves_searched++; // 0 for the first legal move
 			int value;
 
-			if (first_child) {
+			if (move_number == 0) {
 				// Full window search for first move
 				value = -pvs(td, depth - 1, -beta, -alpha, ply + 1, is_pv_node, tt);
-				first_child = false;
 			} else {
+				// Reaching here at all means a legal move has already been searched, which is what
+				// keeps sqrt(move_number - 1) below non-negative. That guarantee is this branch, not
+				// the lmr_min_move_index gate — the gate is tuning and can be set to anything.
+				assert(move_number >= 1);
+
 				const bool isCapture = MoveHelper::IsCapture(move);
 				const bool isPromotion = MoveHelper::IsPromote(move);
 				const bool isKiller = (move == td.killers[ply][0] || move == td.killers[ply][1]);
@@ -607,8 +609,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				// board, and every earlier term disqualifies far more moves than it admits.
 				const bool applyLMR = tuning_.lmr_enabled && !is_pv_node && !in_check && !isCapture && !isPromotion &&
 				                      !isKiller && move_number >= tuning_.lmr_min_move_index &&
-				                      depth >= tuning_.lmr_min_depth &&
-				                      !td.board.InCheck();
+				                      depth >= tuning_.lmr_min_depth && !td.board.InCheck();
 
 				if (applyLMR) {
 					// sqrt formula: scales naturally with depth and move index.
