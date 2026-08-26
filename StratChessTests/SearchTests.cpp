@@ -363,6 +363,38 @@ class AIPerlexTestFixture {
 		return total;
 	}
 
+	// --- Quiescence ordering helpers (#320) ---
+
+	// The order quiescence would search this position's moves in, as UCI strings. Calls the
+	// same private helper the node itself calls, so reverting that helper's in-check branch
+	// makes the ordering tests below fail.
+	std::vector<std::string> quiescence_order() const
+	{
+		MoveList list;
+		const bool in_check = ai->td_.board.InCheck();
+		if (in_check)
+			MoveGenerator::ComputeLegalMoves(ai->td_.board, list);
+		else
+			MoveGenerator::ComputeCaptures(ai->td_.board, list);
+
+		std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
+		const int n = ai->order_quiescence_moves(ai->td_, list, in_check, 0, scored_idx);
+
+		std::vector<std::string> order;
+		order.reserve(static_cast<size_t>(n));
+		for (int i = 0; i < n; ++i)
+			order.push_back(MoveFormatter::ToUCI(in_check ? list[scored_idx[i].second] : list[i]));
+		return order;
+	}
+
+	// Gives one quiet move the history score a real cutoff would have left behind.
+	void seed_history(std::string_view uci, int depth) const
+	{
+		const Move move = MoveFormatter::FromUCI(uci, ai->td_.board);
+		REQUIRE_FALSE(move.is_null());
+		ai->td_.update_history(ai->td_.board.GetCurrentColor(), move, depth);
+	}
+
 	void search_depth_one()
 	{
 		REQUIRE(board_.fullmove_count() == 1);
@@ -1899,4 +1931,65 @@ TEST_CASE("Search - a TT bound at or below alpha cuts off", "[search][tt]")
 
 	CHECK(fix.search_node(/*depth=*/3, /*ply=*/0, /*alpha=*/stored + 100, /*beta=*/5000, /*is_pv_node=*/false) ==
 	      stored);
+}
+
+// --- Quiescence in-check ordering (#320) -------------------------------------------------
+//
+// Position: black to move, in check from Re1 down the open e-file. The evasions are
+//   Qa5xe1          — a capture of the attacker
+//   Qa5-e5          — an interposition, quiet
+//   Ke8-d8/f8/d7/f7 — king evasions, quiet
+//
+// Under the capture-only MVV-LVA sort these tests replaced, a quiet move scored
+// -PieceHelper::Value(mover) / 16. The king is worth 10000 (defines.h) against the queen's
+// 900, so every king evasion scored -625 to the queen's -56 and sorted below it — the move
+// most likely to be best searched last.
+static constexpr const char* kRookChecksAlongOpenFile = "4k3/8/8/q7/8/8/8/4R1K1 b - - 0 1";
+
+TEST_CASE("Search - in check, a king evasion with history outranks a quiet interposition", "[search][qsearch]")
+{
+	AIPerlexTestFixture fix(kRookChecksAlongOpenFile);
+	REQUIRE(fix.board_.InCheck());
+
+	// What a real beta cutoff on the king walk would have left in the history table.
+	fix.seed_history("e8f7", /*depth=*/4);
+
+	const std::vector<std::string> order = fix.quiescence_order();
+	const auto king_walk = std::find(order.begin(), order.end(), "e8f7");
+	const auto interposition = std::find(order.begin(), order.end(), "a5e5");
+
+	REQUIRE(king_walk != order.end());
+	REQUIRE(interposition != order.end());
+
+	// The whole point of #320: history decides between two quiet evasions, so the king walk
+	// is no longer sunk below the queen purely for being the heavier piece.
+	CHECK(king_walk < interposition);
+}
+
+TEST_CASE("Search - in check, capturing the attacker is still ordered first", "[search][qsearch]")
+{
+	AIPerlexTestFixture fix(kRookChecksAlongOpenFile);
+	REQUIRE(fix.board_.InCheck());
+
+	// Seeded hard enough that a scorer consulting history for captures too would be caught.
+	fix.seed_history("e8f7", /*depth=*/64);
+
+	const std::vector<std::string> order = fix.quiescence_order();
+	REQUIRE_FALSE(order.empty());
+
+	// Winning captures outrank every quiet regardless of history — ScoreMoves scores them in
+	// a tier above it, and history is only consulted on the quiet branch.
+	CHECK(order.front() == "a5e1");
+}
+
+TEST_CASE("Search - out of check, quiescence still orders captures by MVV-LVA", "[search][qsearch]")
+{
+	// White to move, not in check. Two captures of the d5 pawn are available: exd5 takes with
+	// a pawn, Qxd5 with the queen. MVV-LVA prefers the cheaper attacker for the same victim.
+	AIPerlexTestFixture fix("4k3/8/8/3p4/4P3/8/8/3QK3 w - - 0 1");
+	REQUIRE_FALSE(fix.board_.InCheck());
+
+	const std::vector<std::string> order = fix.quiescence_order();
+	REQUIRE(order.size() >= 2);
+	CHECK(order.front() == "e4d5");
 }

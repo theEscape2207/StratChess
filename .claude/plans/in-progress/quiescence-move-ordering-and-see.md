@@ -191,11 +191,12 @@ Filled incrementally as each PR lands; the file is deleted in PR 3 once complete
 
 | Decision / rationale | Lands in | Status |
 |---|---|---|
-| D1 — why quiescence passes `EmptyMove()` as hash move | source comment at the `ScoreMoves` call | PR 1 |
-| D1 — evasion ordering goes through the shared scorer | `CLAUDE.md` → Key Source Facts | PR 1 |
-| `SortMovesByValue` precondition | the assert itself, plus `Sort.h` comment | PR 1 |
-| Glossary: capture / quiet move / king evasion / capture of the attacker / interposition | `CONTEXT.md` | PR 1 |
-| PR 1 SPRT result, recorded as inconclusive | `Docs/EloLog.md`, `Docs/Changelog.md` | PR 1 |
+| D1 — why quiescence passes `EmptyMove()` as hash move | comment on `order_quiescence_moves()` | **done** |
+| D1 — evasion ordering goes through the shared scorer | `CLAUDE.md` → Key Source Facts | **done** |
+| `SortMovesByValue` precondition | the assert itself, plus the `Sort.h` declaration comment | **done** |
+| Glossary: capture / quiet move / king evasion / capture of the attacker / interposition | `CONTEXT.md` | **done** |
+| #320's mechanism, with the 10000-vs-900 arithmetic | `Docs/Changelog.md`, and the test comment | **done** |
+| PR 1 SPRT result, recorded as inconclusive | `Docs/EloLog.md`, `Docs/Changelog.md` | PR 1, pending |
 | D3 — why `see_ge` is boolean | comment on `see_ge`'s declaration | PR 2 |
 | D5 — pins ignored, X-rays handled | source comment in `See.cpp` | PR 2 |
 | D6 — `AttackersTo` takes an occupancy so SEE can mutate it | comment on the declaration | PR 2 |
@@ -204,4 +205,10 @@ Filled incrementally as each PR lands; the file is deleted in PR 3 once complete
 | D9 — what `see_pruning_enabled` is for | comment on the field in `SearchTuning` | PR 3 |
 | PR 3 `Gain` result and measured effect | `Docs/EloLog.md`, `Docs/Changelog.md` | PR 3 |
 
-**Approved decisions that changed during implementation**: none yet.
+**Approved decisions that changed during implementation**
+
+- **PR 1**: the ordering was extracted into `AIPerplex::order_quiescence_moves()` rather than left
+  inline at the call site. Not in the design as approved. The reason is validation, not style: the
+  regression test has to exercise the branch the node itself takes, or reverting the fix would
+  leave it passing. With the helper, the falsification check fails exactly the ordering test and
+  nothing else — verified by reverting the in-check branch and re-running.

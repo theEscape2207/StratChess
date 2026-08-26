@@ -22,6 +22,45 @@ Newest first.
 
 ---
 
+## 2026-08-27 — quiescence orders evasions by history, not by piece weight
+
+### Fixed
+
+- Since #311 made quiescence legal while in check, an in-check node handed its **whole legal
+  evasion list** to `MoveSorter::SortMovesByValue`, whose second parameter is named `captures`.
+  `MoveHelper::Value()` scores a quiet move as `-PieceHelper::Value(mover) / 16`, so every quiet
+  evasion sorted below every capture and the heaviest quiet sorted last. The king is worth 10000
+  against the queen's 900, so a king evasion scored -625 to a queen interposition's -56 — and a
+  king walk is very often the only legal reply, so the move most likely to be best was searched
+  last. Closes #320.
+- The in-check path now orders through `MoveSorter::ScoreMoves`, the scorer `pvs()` already uses,
+  so quiet evasions are scored by **history** and a king evasion rises on measured merit. The hash
+  move is deliberately `Move::EmptyMove()`: quiescence must not mine `best_move` in either phase,
+  because `store()` inherits a same-key entry's move across a phase change (`TranspositionTable.h`).
+  Ordering is extracted into `AIPerplex::order_quiescence_moves()` so the decision is directly
+  testable.
+- `SortMovesByValue`'s `captures` parameter renamed `count`, plus an assert that the sorted range
+  really is captures-and-promotions. Nothing checked between #311 and #320, which is why the defect
+  survived; the assert is what catches the next recurrence.
+
+### Changed
+
+- `.claude/plans/in-progress/` added for plans whose implementation has started; both
+  `ccache-*-ci.md` moved there under #385. Naming the remaining top-level state is #400.
+- `CONTEXT.md` created at the repo root — a glossary, starting with move classification. The
+  categories overlap in ways that have already produced a defect: a king capture of the checking
+  piece is both a king evasion and a capture of the attacker, and an en passant capture of a
+  checking pawn does not land on the square its victim occupies.
+
+### Validation
+
+- Three new `[qsearch]` tests, the ordering one **falsified first**: reverting the in-check branch
+  to `SortMovesByValue` fails exactly that test and no other. Debug and Release suites green
+  (513 tests, 510 under `~[slow]`).
+- Measurement: `-Sprt Custom -Elo0 -10 -Elo1 0`, 500-game cap. *(pending)*
+
+Design: `.claude/plans/in-progress/quiescence-move-ordering-and-see.md`. First of three PRs; #86
+follows with SEE ordering and SEE pruning.
 ## 2026-08-27 — LMR reduces by legal moves searched, not by list index
 
 ### Fixed

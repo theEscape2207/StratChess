@@ -10,7 +10,11 @@ class MoveSorter final
   public:
 	static void SortMoves(MoveList& moveList, const Move& lastMove, const Board& board, size_t startIndex = 0);
 	static void SortMovesIter(MoveList& moveList, const Move& lastMove, const Move* pIterMove, const Board& board);
-	static void SortMovesByValue(MoveList& moveList, size_t captures, const Board& board, size_t start = 0);
+	// Sorts [start, start + count) by MVV-LVA. The caller must have partitioned that range to
+	// contain only captures and promotions — MoveHelper::Value() scores a quiet move as
+	// -piece/16, so a quiet in the range sorts below every capture and the heaviest quiet
+	// sorts last. Asserted, because passing a mixed list is silent in Release (#320).
+	static void SortMovesByValue(MoveList& moveList, size_t count, const Board& board, size_t start = 0);
 	// Score all moves in [0, n) into out_scored_idx as (score, original_index) pairs,
 	// sorted descending by score. Priority: hash move -> winning captures -> killer0 ->
 	// killer1 -> equal captures -> history (quiet) -> losing captures.
