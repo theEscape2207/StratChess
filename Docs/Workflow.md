@@ -17,6 +17,7 @@ what you do; this file holds the background you consult when something is unexpe
 | prove a refactor changed nothing | [What validates what](#what-validates-what) |
 | judge whether a hardening or mitigation is worth it | [Threat model](#threat-model) |
 | know why Linux and Windows validate different things | [What validates what](#what-validates-what) |
+| create, triage or close a GitHub issue | [`agents/issue-tracker.md`](agents/issue-tracker.md), [`agents/triage-labels.md`](agents/triage-labels.md) |
 | know what CI runs, and when | [`CI.md`](CI.md) |
 | set up Visual Studio | [Working in Visual Studio](#working-in-visual-studio) |
 | understand a first-build or network failure | [Dependency cache](#dependency-cache) |
