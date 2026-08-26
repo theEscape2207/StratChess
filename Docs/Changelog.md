@@ -327,7 +327,7 @@ Newest first.
   still goes green with the warning annotation).
 - The wall-clock verdict — a ≥20 s median drop on `sanitize-linux` merge runs, read alongside a
   `gh cache list` check that ccache churn is not evicting the FetchContent dependency cache — is not
-  measured yet. Method and kill criterion: `.claude/plans/ccache-linux-ci.md` and `Docs/CI.md`. Do
+  measured yet. Method and kill criterion: `.claude/plans/in-progress/ccache-linux-ci.md` and `Docs/CI.md`. Do
   not carry forward issue #92's original "~90 s" estimate; it was costed against `build-linux
   (Release)` as sole critical path, which #372 showed it is not.
 
