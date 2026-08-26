@@ -22,6 +22,44 @@ Newest first.
 
 ---
 
+## 2026-08-27 — LMR reduces by legal moves searched, not by list index
+
+### Fixed
+
+- `AIPerplex::pvs()` drove both halves of the LMR decision — the `lmr_min_move_index` gate and the
+  `sqrt(si - 1)` term in `R` — from the **sorted list index**. That list is pseudo-legal:
+  `ComputeLegalMoves` masks king moves against own pieces only (`MoveGenerator.cpp:215`) and does not
+  filter pins, so legality is decided by `DoMove()` returning false. Every illegal move sorted ahead
+  of a legal one therefore inflated that move's index, making LMR engage earlier and reduce harder —
+  the reduction a legal move received depended on what the generator emitted before it, not on the
+  position. A pinned piece capturing the enemy queen is the everyday case: scored a winning capture,
+  sorted to the front, rejected by `DoMove`, and every quiet move behind it pushed one index later.
+  Closes #401.
+- `si` is now used only to walk the list; `move_number` counts legal moves actually searched and is
+  what both LMR terms read. It is 0 for the first legal move, which is what `first_child` already
+  tracks.
+
+### Validation
+
+- Behaviour change by design, so `Compare-SearchEquivalence.ps1` is the wrong gate and reports what
+  it should: **DIFFERENT on 6 of 6** builtin positions at depth 12, `Threads=1`, with node deltas of
+  +17 to +1170 and identical PVs and scores at the compared depths. The defect is pervasive and
+  small, not rare and large.
+- `Run-Bench.ps1` depth 12, `Threads=1`, both binaries clang-cl Release, measured in the same session
+  because the host drifted ~3% between sessions: 20,458,694 -> 20,520,423 nodes (+0.3%), nps 2.973M
+  -> 2.980M, best moves identical on all eight positions. The extra work is one `int` increment.
+- Measurement: `-Sprt Custom -Elo0 -10 -Elo1 0`, 500-game cap. *(pending)*
+
+### Notes
+
+- **#363 is blocked on this** and must be assessed afterwards. It asks whether reducing to
+  `depth - 1 - R == 0` at the `lmr_min_depth` boundary is correctly tuned; this change alters which
+  nodes reach that boundary, so a reading taken beforehand answers the question against semantics
+  that no longer exist. Kept separate deliberately — this is a correctness defect in what the
+  variable means, #363 is a tuning question about the formula.
+
+---
+
 ## 2026-08-26 — pvs() uses a TT bound only to cut off
 
 ### Fixed
