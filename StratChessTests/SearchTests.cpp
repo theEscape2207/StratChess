@@ -409,6 +409,16 @@ class AIPerlexTestFixture {
 		return ai->pvs(ai->td_, depth, alpha, beta, ply, is_pv_node, *ai->_tt);
 	}
 
+	// Starts the clock the per-node poll reads, for a search_node() call deep enough to reach
+	// it: a default-constructed TimeManager sits at the epoch, so the 1024-node poll would
+	// latch an abort. Deliberately not folded into search_node(), which is also used to drive
+	// a frame whose abort flag the test latched on purpose.
+	void arm_clock() const
+	{
+		ai->control_.ApplyLimits(SearchLimits::fixed_time(std::chrono::milliseconds(60'000)));
+		ai->td_.nodes_since_check_ = 0;
+	}
+
 	std::optional<TTEntry> probe_tt(int ply) const { return ai->_tt->probe(board_.get_zobrist_hash(), ply); }
 
 	std::optional<TTEntry> probe_tt(uint64_t key, int ply) const { return ai->_tt->probe(key, ply); }
@@ -1818,5 +1828,75 @@ TEST_CASE("Qsearch - a MAIN bound at or beyond beta cuts off", "[search][tt][qse
 	fix.store_main_entry(stored, /*depth=*/1, /*ply=*/0, BoundType::LOWER);
 
 	CHECK(fix.quiesce_node(/*alpha=*/-50, /*beta=*/stored - 100, AIPerlexTestFixture::QSEARCH_BUDGET, /*ply=*/0) ==
+	      stored);
+}
+
+// pvs() carries the same contract quiescence() does, and had the same defect: original_alpha
+// is captured before the probe, so a window narrowed from a TT bound is invisible to the
+// classification at the bottom of the function. The node then searches under one window and
+// reports under another, and can store the result as EXACT.
+//
+// Driven through a non-PV node with a wide window, which is where the narrowing was enabled.
+// The search itself never produces that combination -- every !is_pv_node call site passes a
+// null window, which is why the fix costs no nodes -- but pvs() must not depend on the caller
+// for the property.
+TEST_CASE("Search - a TT bound inside the window does not change the value", "[search][tt]")
+{
+	// Enough hanging material for the window to actually change which children survive.
+	const std::string fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+
+	constexpr int depth = 3;
+	constexpr int alpha = -50;
+	constexpr int beta = 5000;
+
+	AIPerlexTestFixture clean(fen);
+	clean.arm_clock();
+	const int without_entry = clean.search_node(depth, /*ply=*/0, alpha, beta, /*is_pv_node=*/false);
+
+	// Strictly inside (alpha, beta), so the planted entry can never license a cutoff --
+	// asserted for the seeded value itself, not just for the node's own score, or an eval
+	// change that lifts without_entry could turn this into a cutoff test by accident.
+	REQUIRE(without_entry > alpha);
+	REQUIRE(without_entry + 200 < beta);
+
+	AIPerlexTestFixture seeded(fen);
+	seeded.arm_clock();
+	seeded.store_main_entry(static_cast<int16_t>(without_entry + 200), depth, /*ply=*/0, BoundType::LOWER);
+	const int with_entry = seeded.search_node(depth, /*ply=*/0, alpha, beta, /*is_pv_node=*/false);
+
+	CHECK(with_entry == without_entry);
+
+	// The stored bound is the other half of the damage: a value produced under a narrowed
+	// window classified EXACT is what a later probe would serve as the node's true score.
+	const auto entry = seeded.probe_tt(/*ply=*/0);
+	REQUIRE(entry.has_value());
+	CHECK(entry->value == static_cast<int16_t>(without_entry));
+}
+
+// The other half of the contract: an entry that DOES resolve the node against the caller's
+// window is still used, so the fix did not simply disable the cache.
+TEST_CASE("Search - a TT bound at or beyond beta cuts off", "[search][tt]")
+{
+	AIPerlexTestFixture fix("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+
+	constexpr int16_t stored = 4000;
+	fix.arm_clock();
+	fix.store_main_entry(stored, /*depth=*/3, /*ply=*/0, BoundType::LOWER);
+
+	CHECK(fix.search_node(/*depth=*/3, /*ply=*/0, /*alpha=*/-50, /*beta=*/stored - 100, /*is_pv_node=*/false) ==
+	      stored);
+}
+
+// The UPPER half of the same cutoff contract. Neither the pair above nor #392's qsearch pair
+// reaches it, so without this the branch is untested.
+TEST_CASE("Search - a TT bound at or below alpha cuts off", "[search][tt]")
+{
+	AIPerlexTestFixture fix("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+
+	constexpr int16_t stored = -4000;
+	fix.arm_clock();
+	fix.store_main_entry(stored, /*depth=*/3, /*ply=*/0, BoundType::UPPER);
+
+	CHECK(fix.search_node(/*depth=*/3, /*ply=*/0, /*alpha=*/stored + 100, /*beta=*/5000, /*is_pv_node=*/false) ==
 	      stored);
 }

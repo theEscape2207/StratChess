@@ -22,6 +22,30 @@ Newest first.
 
 ---
 
+## 2026-08-26 — pvs() uses a TT bound only to cut off
+
+### Fixed
+
+- `pvs()` narrowed `alpha`/`beta` from a TT bound but classified the result against the
+  `original_alpha` captured before the probe, so a node could search under one window, report
+  under another, and store the bound itself as `EXACT`. The same defect PR #392 fixed in
+  `quiescence()`; the fix is the same shape — an entry is used when it already resolves the node
+  against the caller's window, never to narrow it. Closes #393.
+
+### Validation
+
+- `Compare-SearchEquivalence.ps1` against `origin/main`: **identical** across 90 compared lines,
+  6 positions at depth 12. Every call site passing `is_pv_node = false` also passes a null window,
+  so `beta == alpha + 1` wherever the narrowing was enabled and neither bound had room to move —
+  the defect was reachable through `pvs()`'s own signature but not through the search. No SPRT: an
+  unchanged tree has nothing to measure.
+- Bench 2.92M → 2.94M nps, one run each, node totals identical.
+- Three regression tests. One is a falsifier — against the unfixed code the seeded node returned
+  and stored 154, the planted bound, where its own search returns -46. The other two are
+  non-regression guards on the cutoffs the fix keeps, and pass either way by construction.
+
+---
+
 ## 2026-08-26 — the lint Gate analyses changed headers
 
 ### Added
