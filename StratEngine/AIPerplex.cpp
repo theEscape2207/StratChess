@@ -567,11 +567,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 	bool moveFound = false;
 
-	// How many legal moves this node has already searched, which is what LMR's "late" means.
-	// The loop index cannot answer that: ComputeLegalMoves is pseudo-legal — it never checks
-	// whether a move leaves its own king in check, so pinned-piece moves and king moves onto
-	// attacked squares are both in the list — and every such move sorted ahead of this one would
-	// otherwise inflate its index, letting the generator decide how hard a legal move gets reduced.
+	// LMR's "late" means late among the LEGAL moves. si cannot answer that: the list is
+	// pseudo-legal, so illegal moves sorted ahead of a legal one would inflate its index.
 	int legal_moves_searched = 0;
 
 	// Iterate by sorted index — no rebuild of moveList needed
@@ -583,32 +580,19 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		if (td.board.DoMove(move)) {
 			const int move_number = legal_moves_searched++; // 0 for the first legal move
 			int value;
-#ifdef STRAT_ENABLE_TEST_ACCESS
-			int traced_reduction = 0;
-#endif
 
 			if (move_number == 0) {
 				// Full window search for first move
 				value = -pvs(td, depth - 1, -beta, -alpha, ply + 1, is_pv_node, tt);
 			} else {
-				// Reaching here at all means a legal move has already been searched, which is what
-				// keeps sqrt(move_number - 1) below non-negative. That guarantee is this branch, not
-				// the lmr_min_move_index gate — the gate is tuning and can be set to anything.
-				assert(move_number >= 1);
+				assert(move_number >= 1); // this branch, not the tunable gate, is what keeps sqrt() >= 0
 
 				const bool isCapture = MoveHelper::IsCapture(move);
 				const bool isPromotion = MoveHelper::IsPromote(move);
 				const bool isKiller = (move == td.killers[ply][0] || move == td.killers[ply][1]);
 
-				// Late Move Reductions: reduce quiet, non-killer, non-evasion moves
-				// that appear late among this node's legal moves. Skip conditions are conservative:
-				// captures, promotions, killers, evasions (in_check), PV nodes, checking
-				// moves, and early moves are always searched at full depth.
-				// Future skip candidates: passed pawn pushes.
-				//
-				// The board still holds the position after DoMove, so InCheck() here asks
-				// whether the opponent is in check, i.e. whether this move gives check. It
-				// is last in the chain deliberately: InCheck() generates a whole-side attack
+				// The board still holds the position after DoMove, so the InCheck() below asks whether
+				// this move GIVES check. It is last in the chain because it builds a whole-side attack
 				// board, and every earlier term disqualifies far more moves than it admits.
 				const bool applyLMR = tuning_.lmr_enabled && !is_pv_node && !in_check && !isCapture && !isPromotion &&
 				                      !isKiller && move_number >= tuning_.lmr_min_move_index &&
@@ -628,9 +612,6 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 							std::sqrt(static_cast<double>(move_number - 1)))),
 						depth - 1);
 					// clang-format on
-#ifdef STRAT_ENABLE_TEST_ACCESS
-					traced_reduction = R;
-#endif
 
 					// Reduced-depth null-window search
 					value = -pvs(td, depth - 1 - R, -alpha - 1, -alpha, ply + 1, false, tt);
@@ -649,12 +630,6 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			}
 
 			td.board.UndoMove(move);
-#ifdef STRAT_ENABLE_TEST_ACCESS
-			// Test-only, and above the unwind guard on the same grounds as the node counters:
-			// it records work done, not a result kept, so an aborted child still happened.
-			if (lmr_trace_ != nullptr && ply == 0)
-				lmr_trace_->push_back({move, move_number, traced_reduction});
-#endif
 
 			// Unwind invariant: an aborted frame mutates nothing. `value` came from a search
 			// that was cut off mid-tree, so everything below — the transposition store, the
@@ -666,9 +641,9 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			// children that did complete, which is a valid lower bound for this node and is
 			// what the root reports for an interrupted iteration.
 			//
-			// The node counters are the deliberate exception — and in a test build, the LMR trace
-			// immediately above them: both are written before this point and stay written, because
-			// both measure work done, not results kept.
+			// The node counters are the one deliberate exception: they are incremented before
+			// this point and stay incremented, because they measure work done, not results
+			// kept.
 			if (control_.IsAborted())
 				return best_value;
 

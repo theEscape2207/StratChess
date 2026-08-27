@@ -26,55 +26,24 @@ Newest first.
 
 ### Fixed
 
-- `AIPerplex::pvs()` drove both halves of the LMR decision — the `lmr_min_move_index` gate and the
-  `sqrt(si - 1)` term in `R` — from the **sorted list index**. That list is pseudo-legal:
-  `ComputeLegalMoves` masks king moves against own pieces only (`MoveGenerator.cpp:215`) and does not
-  filter pins, so legality is decided by `DoMove()` returning false. Every illegal move sorted ahead
-  of a legal one therefore inflated that move's index, making LMR engage earlier and reduce harder —
-  the reduction a legal move received depended on what the generator emitted before it, not on the
-  position. A pinned piece capturing the enemy queen is the everyday case: scored a winning capture,
-  sorted to the front, rejected by `DoMove`, and every quiet move behind it pushed one index later.
-  Closes #401.
-- `si` is now used only to walk the list; `move_number` counts legal moves actually searched and is
-  what both LMR terms read. It is 0 for the first legal move, which is what `first_child` already
-  tracks.
-
-### Tests
-
-- `[search][lmr]` "LMR counts legal moves, not sorted list indices" drives one non-PV `pvs()` node
-  through a new test-only trace (`AIPerplex::lmr_trace_`, `STRAT_ENABLE_TEST_ACCESS` only) and checks
-  the two halves of the claim per legal move: only ordinals at or past `lmr_min_move_index` are
-  reduced, and the reduction is the one that ordinal produces. The ordinal is a loop-local with no
-  other observer, so nodes, scores and best moves cannot distinguish it from the list index — the
-  `assert(move_number >= 1)` added with the fix guards only the square root's precondition and
-  survives a revert to `si`. Runs at depth 4 and 6, because the clamp to `[1, depth - 1]` makes
-  adjacent ordinals share a reduction at low depth.
-- Falsified against each half of the fix separately: reverting only the gate fails the
-  "reduced implies ordinal >= `lmr_min_move_index`" assertion at both depths; reverting only the
-  `sqrt` term fails the reduction assertion at both depths (once at depth 4, twice at depth 6).
+- `pvs()` drove both LMR terms — the `lmr_min_move_index` gate and `sqrt(si - 1)` — from the sorted
+  list index. That list is pseudo-legal, so every illegal move sorted ahead of a legal one inflated
+  its index and made LMR engage earlier and reduce harder: how hard a move was reduced depended on
+  what the generator emitted before it. A new `move_number` counts legal moves searched and is what
+  both terms read; `si` only walks the list. Closes #401.
 
 ### Validation
 
-- Behaviour change by design, so `Compare-SearchEquivalence.ps1` is the wrong gate and reports what
-  it should: **DIFFERENT on 6 of 6** builtin positions at depth 12, `Threads=1`, with node deltas of
-  +17 to +1170 and identical PVs and scores at the compared depths. The defect is pervasive and
-  small, not rare and large.
-- `Run-Bench.ps1` depth 12, `Threads=1`, both binaries clang-cl Release, measured in the same session
-  because the host drifted ~3% between sessions: 20,458,694 -> 20,520,423 nodes (+0.3%), nps 2.973M
-  -> 2.980M, best moves identical on all eight positions. The extra work is one `int` increment.
-- Measurement: `-Sprt Custom -Elo0 -10 -Elo1 0`, 500-game cap — **inconclusive**, -4.86 +/- 23.26,
-  LLR 0.01. The LLR never left zero because the observed score sits mid-band, which is what an
-  SPRT does when the true effect lies inside the tested interval; adding games would most likely
-  buy another inconclusive row. Not evidence of a regression, and not a measured zero either.
-  Full row in `Docs/EloLog.md`.
+- A deliberate behaviour change, so equivalence is not the gate. `Compare-SearchEquivalence.ps1` at
+  depth 12 is DIFFERENT on 6 of 6 positions with node deltas +17 to +1170 and identical PVs and
+  scores — the defect was pervasive and small. `Run-Bench.ps1` +0.3% nodes, nps flat.
+- SPRT `[-10, 0]`, 500-game cap: inconclusive, -4.86 +/- 23.26, LLR never left zero — read as "not
+  resolvable at this sample size", not as a measured regression. Row in `Docs/EloLog.md`.
 
 ### Notes
 
-- **#363 is blocked on this** and must be assessed afterwards. It asks whether reducing to
-  `depth - 1 - R == 0` at the `lmr_min_depth` boundary is correctly tuned; this change alters which
-  nodes reach that boundary, so a reading taken beforehand answers the question against semantics
-  that no longer exist. Kept separate deliberately — this is a correctness defect in what the
-  variable means, #363 is a tuning question about the formula.
+- #363 is blocked on this: it asks whether the reduction is correctly tuned at the `lmr_min_depth`
+  boundary, and this change alters which nodes reach that boundary.
 
 ---
 
