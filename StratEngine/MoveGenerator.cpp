@@ -456,13 +456,12 @@ BITBOARD MoveGenerator::AttackersTo(const BITBOARD* bbBitBoards, eSquare square,
 {
 	const BITBOARD target = g_bbMask[square];
 
-	const BITBOARD pawnAttackers =
-	    ((((target & ~g_bbFileMask[eFileNames::LEFT_FILE]) << 7) |
-	      ((target & ~g_bbFileMask[eFileNames::RIGHT_FILE]) << 9)) &
-	     bbBitBoards[ePiece::WHITE_PAWN]) |
-	    ((((target & ~g_bbFileMask[eFileNames::LEFT_FILE]) >> 9) |
-	      ((target & ~g_bbFileMask[eFileNames::RIGHT_FILE]) >> 7)) &
-	     bbBitBoards[ePiece::BLACK_PAWN]);
+	const BITBOARD pawnAttackers = ((((target & ~g_bbFileMask[eFileNames::LEFT_FILE]) << 7) |
+	                                 ((target & ~g_bbFileMask[eFileNames::RIGHT_FILE]) << 9)) &
+	                                bbBitBoards[ePiece::WHITE_PAWN]) |
+	                               ((((target & ~g_bbFileMask[eFileNames::LEFT_FILE]) >> 9) |
+	                                 ((target & ~g_bbFileMask[eFileNames::RIGHT_FILE]) >> 7)) &
+	                                bbBitBoards[ePiece::BLACK_PAWN]);
 
 	const BITBOARD bishopsAndQueens = bbBitBoards[ePiece::WHITE_BISHOP] | bbBitBoards[ePiece::BLACK_BISHOP] |
 	                                  bbBitBoards[ePiece::WHITE_QUEEN] | bbBitBoards[ePiece::BLACK_QUEEN];

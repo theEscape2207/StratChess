@@ -127,10 +127,14 @@ void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const Board& board,
 			// to say about two captures that land in the same tier, so MoveHelper::Value() stays
 			// as the secondary score — it is what ranks PxQ above QxQ.
 			//
-			// Placing the SEE-equal tier *below* the killers is a chosen policy, not a standard
-			// one; the common alternative ranks every SEE >= 0 capture above them. It is what the
-			// tier constants here already encoded, so this change moves one thing and not two.
-			// #398 is where it gets revisited.
+			// Two capture tiers, split at SEE >= 0, and the losing tier stays *above* the quiets.
+			// Both placements were measured and both are load-bearing: demoting losing captures
+			// below the quiets, or splitting SEE-equal into a third tier under the killers, each
+			// cost tens of percent in nodes. Captures are never LMR-reduced wherever they sit, so
+			// postponing one saves no depth, while every quiet it steps over gets a lower
+			// legal-move number and a weaker reduction. Killers are the exception — already
+			// LMR-exempt — so letting them alone jump a losing capture reorders cutoffs without
+			// moving any ordinary quiet.
 			//
 			// A non-capturing promotion is tactical and bypasses SEE entirely. It has no tier at
 			// all otherwise: it fails IsCapture(), so it would fall through to history and be
@@ -139,18 +143,9 @@ void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const Board& board,
 			// 800 - 900 and files it below the quiets, when the pawn was promoting anyway.
 			// MoveHelper::Value() already ranks promotions by promotion gain, so under-promotions
 			// stay beneath a queen promotion without a second rule.
-			//
-			// The losing tier sits below every quiet without a further guard: history is clamped
-			// to [0, HISTORY_MAX] and has no penalty path, and every capture's MVV-LVA is at
-			// least 44, so this tier tops out below -99'000.
 			const int mvv_lva = MoveHelper::Value(mv, board.GetEffectiveMovPiece(mv), board.GetCapturedPiece(mv));
 
-			if (!MoveHelper::IsCapture(mv) || See::see_ge(board, mv, 1))
-				s = 1'000'000 + mvv_lva;
-			else if (See::see_ge(board, mv, 0))
-				s = 700'000 + mvv_lva;
-			else
-				s = -100'000 + mvv_lva;
+			s = (!MoveHelper::IsCapture(mv) || See::see_ge(board, mv, 0)) ? 1'000'000 + mvv_lva : 700'000 + mvv_lva;
 		} else if (mv == killer0) {
 			s = 900'000;
 		} else if (mv == killer1) {

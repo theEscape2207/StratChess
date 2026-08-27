@@ -90,8 +90,8 @@ bool See::see_ge(const Board& board, const Move& move, int threshold) noexcept
 			if ((swap = value_of(PAWN) - swap) < result)
 				break;
 			occupied = Bits::clearBits(occupied, lowest_bit(next));
-			attackers |= BishopAttacks(to, occupied) & (bb[WHITE_BISHOP] | bb[BLACK_BISHOP] | bb[WHITE_QUEEN] |
-			                                            bb[BLACK_QUEEN]);
+			attackers |=
+			    BishopAttacks(to, occupied) & (bb[WHITE_BISHOP] | bb[BLACK_BISHOP] | bb[WHITE_QUEEN] | bb[BLACK_QUEEN]);
 		} else if ((next = stmAttackers & bb[KNIGHT + static_cast<int>(stm)]) != 0) {
 			if ((swap = value_of(KNIGHT) - swap) < result)
 				break;
@@ -100,8 +100,8 @@ bool See::see_ge(const Board& board, const Move& move, int threshold) noexcept
 			if ((swap = value_of(BISHOP) - swap) < result)
 				break;
 			occupied = Bits::clearBits(occupied, lowest_bit(next));
-			attackers |= BishopAttacks(to, occupied) & (bb[WHITE_BISHOP] | bb[BLACK_BISHOP] | bb[WHITE_QUEEN] |
-			                                            bb[BLACK_QUEEN]);
+			attackers |=
+			    BishopAttacks(to, occupied) & (bb[WHITE_BISHOP] | bb[BLACK_BISHOP] | bb[WHITE_QUEEN] | bb[BLACK_QUEEN]);
 		} else if ((next = stmAttackers & bb[ROOK + static_cast<int>(stm)]) != 0) {
 			if ((swap = value_of(ROOK) - swap) < result)
 				break;
@@ -112,10 +112,10 @@ bool See::see_ge(const Board& board, const Move& move, int threshold) noexcept
 			if ((swap = value_of(QUEEN) - swap) < result)
 				break;
 			occupied = Bits::clearBits(occupied, lowest_bit(next));
-			attackers |= (BishopAttacks(to, occupied) &
-			              (bb[WHITE_BISHOP] | bb[BLACK_BISHOP] | bb[WHITE_QUEEN] | bb[BLACK_QUEEN])) |
-			             (RookAttacks(to, occupied) &
-			              (bb[WHITE_ROOK] | bb[BLACK_ROOK] | bb[WHITE_QUEEN] | bb[BLACK_QUEEN]));
+			attackers |=
+			    (BishopAttacks(to, occupied) &
+			     (bb[WHITE_BISHOP] | bb[BLACK_BISHOP] | bb[WHITE_QUEEN] | bb[BLACK_QUEEN])) |
+			    (RookAttacks(to, occupied) & (bb[WHITE_ROOK] | bb[BLACK_ROOK] | bb[WHITE_QUEEN] | bb[BLACK_QUEEN]));
 		} else {
 			// A king attacker terminates the swap rather than entering the arithmetic, where its
 			// 10000 cp notional value would dominate everything else on the list. If the other

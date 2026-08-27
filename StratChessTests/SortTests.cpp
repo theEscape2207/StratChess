@@ -1,12 +1,12 @@
 // SortTests.cpp — Catch2 tests for MoveSorter::ScoreMoves() priority ordering
 //
 // Tests that moves are scored in the expected priority order:
-//   hash move > SEE-winning captures and all promotions > killer0 > killer1 > SEE-equal captures
-//   > quiet history > SEE-losing captures
+//   hash move > SEE >= 0 captures and all promotions > killer0 > killer1 > SEE < 0 captures
+//   > quiet history
 //
-// SEE selects the tier and MoveHelper::Value() scores within it. Before SEE the equal and losing
-// tiers were unreachable in every position, not just this one: Value() weights the attacker at
-// 1/16, so a capture's victim contributes at least 100 while the attacker deducts at most 56.
+// SEE selects the tier and MoveHelper::Value() scores within it. Before SEE the losing tier was
+// unreachable in every position, not just this one: Value() weights the attacker at 1/16, so a
+// capture's victim contributes at least 100 while the attacker deducts at most 56.
 
 #include <catch2/catch_test_macros.hpp>
 #include "Board.h"
@@ -149,13 +149,15 @@ TEST_CASE("Sort - Killer0 scores 900'000; beats quiet move with no history", "[s
 //   Ra1xa5 / b4xa5 — the knight is undefended, so both are SEE-winning
 //   b4xc5      — the d6 pawn recaptures, so this is SEE-equal (+100 - 100)
 //   Qd1xd6     — the c7 pawn recaptures, so this is SEE-losing (+100 - 900)
+// The equal capture is here to pin that it shares the top tier with the winning ones rather
+// than getting a third tier of its own; a third tier measured 18% more nodes.
 // Everything else is quiet.
 static constexpr const char* FEN_SEE_TIERS = "6k1/2p5/3p4/n1p5/1P6/8/8/R2QK3 w - - 0 1";
 
 static Move FindBySquares(const MoveList& moveList, eSquare from, eSquare to)
 {
-	const auto it = std::find_if(moveList.begin(), moveList.end(),
-	                             [&](const Move& m) { return m.from() == from && m.to() == to; });
+	const auto it =
+	    std::find_if(moveList.begin(), moveList.end(), [&](const Move& m) { return m.from() == from && m.to() == to; });
 	REQUIRE(it != moveList.end());
 	return *it;
 }
@@ -168,11 +170,11 @@ TEST_CASE("Sort - the SEE tier chain, winning capture down to losing capture", "
 	MoveGenerator::ComputeLegalMoves(board, moveList);
 	const int n = static_cast<int>(moveList.size());
 
-	const Move winning = FindBySquares(moveList, a1, a5);   // RxN, undefended
-	const Move equal = FindBySquares(moveList, b4, c5);     // PxP, recaptured by a pawn
-	const Move losing = FindBySquares(moveList, d1, d6);    // QxP, recaptured by a pawn
-	const Move killer0 = FindBySquares(moveList, a1, a4);   // quiet rook move
-	const Move quiet = FindBySquares(moveList, e1, e2);     // quiet king move, given history below
+	const Move winning = FindBySquares(moveList, a1, a5); // RxN, undefended
+	const Move equal = FindBySquares(moveList, b4, c5);   // PxP, recaptured by a pawn
+	const Move losing = FindBySquares(moveList, d1, d6);  // QxP, recaptured by a pawn
+	const Move killer0 = FindBySquares(moveList, a1, a4); // quiet rook move
+	const Move quiet = FindBySquares(moveList, e1, e2);   // quiet king move, given history below
 
 	const Move null_move, killer1;
 	int32_t history[2][64][64] = {};
@@ -188,18 +190,18 @@ TEST_CASE("Sort - the SEE tier chain, winning capture down to losing capture", "
 	const int losing_score = FindScore(scored_idx, moveList, n, losing);
 
 	REQUIRE(winning_score > killer_score);
-	REQUIRE(killer_score > equal_score);
-	REQUIRE(equal_score > quiet_score);
-	REQUIRE(quiet_score > losing_score);
+	REQUIRE(equal_score > killer_score);
+	REQUIRE(killer_score > losing_score);
+	REQUIRE(losing_score > quiet_score);
 
 	// The tier bases, so a change that reorders the chain by accident is distinguishable from one
 	// that reorders it on purpose.
 	REQUIRE(winning_score >= 1'000'000);
+	REQUIRE(equal_score >= 1'000'000);
 	REQUIRE(killer_score == 900'000);
-	REQUIRE(equal_score >= 700'000);
-	REQUIRE(equal_score < 800'000);
+	REQUIRE(losing_score >= 700'000);
+	REQUIRE(losing_score < 800'000);
 	REQUIRE(quiet_score == 500);
-	REQUIRE(losing_score < 0);
 }
 
 TEST_CASE("Sort - two SEE-winning captures order by MVV-LVA within the tier", "[sort]")

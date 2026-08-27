@@ -22,8 +22,8 @@ namespace {
 	{
 		MoveList list;
 		MoveGenerator::ComputeLegalMoves(board, list);
-		const auto it = std::find_if(list.begin(), list.end(),
-		                             [&](const Move& m) { return m.from() == from && m.to() == to; });
+		const auto it =
+		    std::find_if(list.begin(), list.end(), [&](const Move& m) { return m.from() == from && m.to() == to; });
 		REQUIRE(it != list.end());
 		return *it;
 	}
