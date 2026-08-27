@@ -555,7 +555,6 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	MoveList moveList;
 	MoveGenerator::ComputeLegalMoves(td.board, moveList);
 
-	bool first_child = true;
 	Move best_move;
 
 	// Stack-allocated scored index array — zero heap allocation per call.
@@ -568,6 +567,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 	bool moveFound = false;
 
+	// LMR's "late" means late among the LEGAL moves. si cannot answer that: the list is
+	// pseudo-legal, so illegal moves sorted ahead of a legal one would inflate its index.
+	int legal_moves_searched = 0;
+
 	// Iterate by sorted index — no rebuild of moveList needed
 	for (int si = 0; si < n; ++si) {
 		const Move& move = moveList[scored_idx[si].second];
@@ -575,30 +578,25 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		td.nodes_searched++;
 
 		if (td.board.DoMove(move)) {
+			const int move_number = legal_moves_searched++; // 0 for the first legal move
 			int value;
 
-			if (first_child) {
+			if (move_number == 0) {
 				// Full window search for first move
 				value = -pvs(td, depth - 1, -beta, -alpha, ply + 1, is_pv_node, tt);
-				first_child = false;
 			} else {
+				assert(move_number >= 1); // this branch, not the tunable gate, is what keeps sqrt() >= 0
+
 				const bool isCapture = MoveHelper::IsCapture(move);
 				const bool isPromotion = MoveHelper::IsPromote(move);
 				const bool isKiller = (move == td.killers[ply][0] || move == td.killers[ply][1]);
 
-				// Late Move Reductions: reduce quiet, non-killer, non-evasion moves
-				// that appear late in the sorted order. Skip conditions are conservative:
-				// captures, promotions, killers, evasions (in_check), PV nodes, checking
-				// moves, and early moves are always searched at full depth.
-				// Future skip candidates: passed pawn pushes.
-				//
-				// The board still holds the position after DoMove, so InCheck() here asks
-				// whether the opponent is in check, i.e. whether this move gives check. It
-				// is last in the chain deliberately: InCheck() generates a whole-side attack
+				// The board still holds the position after DoMove, so the InCheck() below asks whether
+				// this move GIVES check. It is last in the chain because it builds a whole-side attack
 				// board, and every earlier term disqualifies far more moves than it admits.
 				const bool applyLMR = tuning_.lmr_enabled && !is_pv_node && !in_check && !isCapture && !isPromotion &&
-				                      !isKiller && si >= tuning_.lmr_min_move_index && depth >= tuning_.lmr_min_depth &&
-				                      !td.board.InCheck();
+				                      !isKiller && move_number >= tuning_.lmr_min_move_index &&
+				                      depth >= tuning_.lmr_min_depth && !td.board.InCheck();
 
 				if (applyLMR) {
 					// sqrt formula: scales naturally with depth and move index.
@@ -611,7 +609,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 					const int R = std::min(
 						std::max(1, static_cast<int>(
 							std::sqrt(static_cast<double>(depth - 1)) *
-							std::sqrt(static_cast<double>(si - 1)))),
+							std::sqrt(static_cast<double>(move_number - 1)))),
 						depth - 1);
 					// clang-format on
 

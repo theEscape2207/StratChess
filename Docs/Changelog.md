@@ -22,6 +22,31 @@ Newest first.
 
 ---
 
+## 2026-08-27 — LMR reduces by legal moves searched, not by list index
+
+### Fixed
+
+- `pvs()` drove both LMR terms — the `lmr_min_move_index` gate and `sqrt(si - 1)` — from the sorted
+  list index. That list is pseudo-legal, so every illegal move sorted ahead of a legal one inflated
+  its index and made LMR engage earlier and reduce harder: how hard a move was reduced depended on
+  what the generator emitted before it. A new `move_number` counts legal moves searched and is what
+  both terms read; `si` only walks the list. Closes #401.
+
+### Validation
+
+- A deliberate behaviour change, so equivalence is not the gate. `Compare-SearchEquivalence.ps1` at
+  depth 12 is DIFFERENT on 6 of 6 positions with node deltas +17 to +1170 and identical PVs and
+  scores — the defect was pervasive and small. `Run-Bench.ps1` +0.3% nodes, nps flat.
+- SPRT `[-10, 0]`, 500-game cap: inconclusive, -4.86 +/- 23.26, LLR never left zero — read as "not
+  resolvable at this sample size", not as a measured regression. Row in `Docs/EloLog.md`.
+
+### Notes
+
+- #363 is blocked on this: it asks whether the reduction is correctly tuned at the `lmr_min_depth`
+  boundary, and this change alters which nodes reach that boundary.
+
+---
+
 ## 2026-08-26 — pvs() uses a TT bound only to cut off
 
 ### Fixed
