@@ -8,6 +8,7 @@
 //                                 in-check, depth, mate-score, zugzwang,
 //                                 single-piece zugzwang, two-piece eligible,
 //                                 consecutive-null, otherwise-eligible)
+//   pvs() LMR ordinal         — 1 case, via the test-only LMR trace on AIPerplex
 //
 // Requires STRAT_ENABLE_TEST_ACCESS in the test project preprocessor definitions.
 // See Docs/TestDesign.md §"AIPerplex Test Access" for the mechanism.
@@ -26,10 +27,13 @@
 #include "PVIntegrity.h"
 #include "PVTable.h"
 #include "SearchPlayer.h"
+#include "Sort.h"
 #include "MoveHelper.h"
 #include "TranspositionTable.h"
 #include "defines.h"
+#include <array>
 #include <chrono>
+#include <cmath>
 #include <atomic>
 #include <initializer_list>
 #include <optional>
@@ -256,6 +260,7 @@ class AIPerlexTestFixture {
 	using RejectionReason = AIPerplex::RejectionReason;
 	using Metrics = AIPerplex::IterationMetrics;
 	using State = AIPerplex::SearchState;
+	using LmrTrace = AIPerplex::LmrTraceEntry;
 
 	Board board_;
 	std::unique_ptr<AIPerplex> ai_owner;
@@ -407,6 +412,22 @@ class AIPerlexTestFixture {
 	{
 		ai->td_.board = board_;
 		return ai->pvs(ai->td_, depth, alpha, beta, ply, is_pv_node, *ai->_tt);
+	}
+
+	// Runs one non-PV pvs() node on the fixture's board with the LMR trace armed, and returns
+	// what LMR decided for each legal move that node searched. Non-PV because LMR skips PV
+	// nodes; full window because a beta cutoff would truncate the trace, and because
+	// should_try_null_move() refuses a beta at mate range, so the loop is reached at all.
+	std::vector<LmrTrace> trace_lmr(int depth) const
+	{
+		std::vector<LmrTrace> trace;
+		arm_clock();
+		ai->td_.board = board_;
+		ai->lmr_trace_ = &trace;
+		ai->pvs(ai->td_, depth, -GameValues::Search_Init, GameValues::Search_Init, /*ply=*/0,
+		        /*is_pv_node=*/false, *ai->_tt);
+		ai->lmr_trace_ = nullptr;
+		return trace;
 	}
 
 	// Starts the clock the per-node poll reads, for a search_node() call deep enough to reach
@@ -1899,4 +1920,92 @@ TEST_CASE("Search - a TT bound at or below alpha cuts off", "[search][tt]")
 
 	CHECK(fix.search_node(/*depth=*/3, /*ply=*/0, /*alpha=*/stored + 100, /*beta=*/5000, /*is_pv_node=*/false) ==
 	      stored);
+}
+
+// ============================================================================
+// LMR ordinal
+// ============================================================================
+// pvs() feeds LMR the number of LEGAL moves it has already searched at this node, not the index
+// into the sorted pseudo-legal list. The two differ by every move DoMove rejects that sorts
+// ahead, and nothing else in the engine observes the ordinal — it is a loop-local — so the
+// test-only trace on AIPerplex is the only place the distinction can be pinned.
+
+namespace {
+
+	// The reduction pvs() must apply for a given ordinal. Restated here deliberately: the defect was
+	// which value went into this formula, so a test that read the ordinal back out of the engine's
+	// own reduction would assert nothing.
+	int expected_lmr_reduction(int depth, int move_number)
+	{
+		const int r = static_cast<int>(std::sqrt(static_cast<double>(depth - 1)) *
+		                               std::sqrt(static_cast<double>(move_number - 1)));
+		return std::min(std::max(1, r), depth - 1);
+	}
+
+} // namespace
+
+TEST_CASE("Search - LMR counts legal moves, not sorted list indices", "[search][lmr]")
+{
+	// The white bishop on e2 is pinned to e1 by the rook on e8, so Bxd3 is generated, sorts as a
+	// queen capture behind only the equally valuable but cheaper cxd3, and is then rejected by
+	// DoMove. Every legal move after it has an ordinal one below its index.
+	constexpr const char* fen = "4r2k/8/8/8/8/3q4/PPP1B1PP/4K1NR w K - 0 1";
+	constexpr int depth = 4;
+
+	AIPerlexTestFixture fix(fen);
+	const SearchTuning& tuning = AIPerlexTestFixture::tuning(*fix.ai);
+	REQUIRE(tuning.lmr_enabled);
+
+	// Independently derived expectation: score the same pseudo-legal list the node scores, then
+	// walk it in sorted order marking each move legal or not. Killers and history are untouched
+	// on a fresh fixture and the TT holds nothing for this position, so this is the order pvs()
+	// iterated.
+	Board board(fen);
+	MoveList moves;
+	MoveGenerator::ComputeLegalMoves(board, moves);
+	const int n = static_cast<int>(moves.size());
+	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
+	int32_t history[2][64][64] = {};
+	MoveSorter::ScoreMoves(moves, n, board, board.GetCurrentColor(), Move::EmptyMove(), Move::EmptyMove(),
+	                       Move::EmptyMove(), history, scored_idx);
+
+	std::vector<Move> legal_in_order;
+	int first_illegal_index = -1;
+	for (int si = 0; si < n; ++si) {
+		const Move& move = moves[scored_idx[si].second];
+		if (board.DoMove(move)) {
+			board.UndoMove(move);
+			legal_in_order.push_back(move);
+		} else if (first_illegal_index < 0) {
+			first_illegal_index = si;
+		}
+	}
+
+	// Preconditions on the position, so this test cannot quietly stop testing anything if move
+	// generation or ordering changes: an illegal move has to sort early enough that ordinals and
+	// indices diverge on both sides of the LMR gate.
+	REQUIRE(first_illegal_index >= 0);
+	REQUIRE(first_illegal_index < tuning.lmr_min_move_index);
+	REQUIRE(static_cast<int>(legal_in_order.size()) > tuning.lmr_min_move_index + 1);
+
+	const auto trace = fix.trace_lmr(depth);
+	REQUIRE(trace.size() == legal_in_order.size());
+
+	bool any_reduced = false;
+	for (size_t i = 0; i < trace.size(); ++i) {
+		INFO("trace entry " << i << ": " << MoveFormatter::ToCoord(trace[i].move));
+		CHECK(trace[i].move == legal_in_order[i]);
+		CHECK(trace[i].move_number == static_cast<int>(i));
+
+		// The claim, in two halves: only late LEGAL moves are reduced, and the reduction is the
+		// one that ordinal produces. Carrying the list index into either instead reduces an
+		// ordinal-2 move here, and hands the ordinal-3 move the ordinal-4 reduction.
+		if (trace[i].reduction != 0) {
+			any_reduced = true;
+			CHECK(trace[i].move_number >= tuning.lmr_min_move_index);
+			CHECK(trace[i].reduction == expected_lmr_reduction(depth, trace[i].move_number));
+		}
+	}
+
+	CHECK(any_reduced);
 }

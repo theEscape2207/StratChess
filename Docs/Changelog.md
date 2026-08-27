@@ -39,6 +39,17 @@ Newest first.
   what both LMR terms read. It is 0 for the first legal move, which is what `first_child` already
   tracks.
 
+### Tests
+
+- `[search][lmr]` "LMR counts legal moves, not sorted list indices" drives one non-PV `pvs()` node
+  through a new test-only trace (`AIPerplex::lmr_trace_`, `STRAT_ENABLE_TEST_ACCESS` only) and checks
+  the two halves of the claim per legal move: only ordinals at or past `lmr_min_move_index` are
+  reduced, and the reduction is the one that ordinal produces. The ordinal is a loop-local with no
+  other observer, so nodes, scores and best moves cannot distinguish it from the list index — the
+  `assert(move_number >= 1)` added with the fix guards only the square root's precondition and
+  survives a revert to `si`. Verified by reverting both LMR uses to `si`: three assertions fail, one
+  for an ordinal-2 move reduced and two for reductions computed a step too hard.
+
 ### Validation
 
 - Behaviour change by design, so `Compare-SearchEquivalence.ps1` is the wrong gate and reports what

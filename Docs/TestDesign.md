@@ -269,6 +269,7 @@ Tests for private helper methods exposed via `AIPerlexTestFixture` (friend class
 - `assess_iteration_quality()`: 6 cases — one per `RejectionReason` branch (INCOMPLETE×2, TOO_FEW_NODES, SHORT_PV, SCORE_DROP, MOVE_CHANGED)
 - `should_stop_early()`: 2 cases — mate score path; short-PV forced-line path
 - `handle_empty_move_emergency()`: 2 cases — mate-detected path (returns false); true-emergency path on a real starting-position board (returns true, sets legal move)
+- `pvs()` LMR ordinal: 1 case — drives one non-PV node through the test-only LMR trace and checks that only late **legal** moves are reduced, and by the reduction their legal ordinal produces. The position sorts an illegal pinned-piece capture second, so ordinals and list indices diverge across the `lmr_min_move_index` gate; the test asserts that divergence as a precondition so it cannot silently stop testing anything
 
 ### `[sort]` — Move ordering tests
 
@@ -685,6 +686,13 @@ To test private search helper methods, `AIPerplex.h` contains a conditional frie
 receive it.
 
 The macro is intentionally absent from the `StratChessEvolved` target.
+
+The same macro guards the only test-only *state* in the search: `AIPerplex::lmr_trace_`, a pointer
+the fixture arms before calling `pvs()` directly. It exists because the LMR ordinal is a loop-local
+with no other observer — a test that could only see nodes, scores or best moves cannot tell the
+legal-move count apart from the sorted list index, which is the defect it guards (#401). Prefer this
+shape over widening a production interface: a pointer that is null in every shipping build, written
+at one site, read at one site.
 
 ## Game Loop Test Access
 

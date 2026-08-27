@@ -568,10 +568,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	bool moveFound = false;
 
 	// How many legal moves this node has already searched, which is what LMR's "late" means.
-	// The loop index cannot answer that: ComputeLegalMoves is pseudo-legal (its king moves are
-	// only masked against own pieces), so the list holds moves DoMove will reject, and every one
-	// of them sorted ahead of this move would otherwise inflate its index — letting the generator
-	// decide how hard a legal move gets reduced.
+	// The loop index cannot answer that: ComputeLegalMoves is pseudo-legal — it never checks
+	// whether a move leaves its own king in check, so pinned-piece moves and king moves onto
+	// attacked squares are both in the list — and every such move sorted ahead of this one would
+	// otherwise inflate its index, letting the generator decide how hard a legal move gets reduced.
 	int legal_moves_searched = 0;
 
 	// Iterate by sorted index — no rebuild of moveList needed
@@ -583,6 +583,9 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		if (td.board.DoMove(move)) {
 			const int move_number = legal_moves_searched++; // 0 for the first legal move
 			int value;
+#ifdef STRAT_ENABLE_TEST_ACCESS
+			int traced_reduction = 0;
+#endif
 
 			if (move_number == 0) {
 				// Full window search for first move
@@ -625,6 +628,9 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 							std::sqrt(static_cast<double>(move_number - 1)))),
 						depth - 1);
 					// clang-format on
+#ifdef STRAT_ENABLE_TEST_ACCESS
+					traced_reduction = R;
+#endif
 
 					// Reduced-depth null-window search
 					value = -pvs(td, depth - 1 - R, -alpha - 1, -alpha, ply + 1, false, tt);
@@ -643,6 +649,12 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			}
 
 			td.board.UndoMove(move);
+#ifdef STRAT_ENABLE_TEST_ACCESS
+			// Test-only, and above the unwind guard on the same grounds as the node counters:
+			// it records work done, not a result kept, so an aborted child still happened.
+			if (lmr_trace_ != nullptr && ply == 0)
+				lmr_trace_->push_back({move, move_number, traced_reduction});
+#endif
 
 			// Unwind invariant: an aborted frame mutates nothing. `value` came from a search
 			// that was cut off mid-tree, so everything below — the transposition store, the
