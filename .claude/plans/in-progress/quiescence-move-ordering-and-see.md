@@ -269,7 +269,11 @@ Would be settled by re-running the interleaved depth-12 comparison with a tempor
   unreachable and PR 2 is what first populates it (D2).
 - `MoveHelper::Value()` never exceeds 1,694, so the losing-capture tier at `700'000 + mvv_lva` stays
   below killer1 at `800'000` (D2).
-- No promotion is reachable by SEE pruning (D11).
+- No promotion is reachable by SEE pruning (D11). For capture-promotions this is unconditional: the
+  promotion is credited at the root, so the post-root swap is `100 - victim <= 0` and `see_ge(m, 0)`
+  is always true. Non-capturing promotions are a different case — `see_ge` on one *can* return false
+  (a queen promotion onto a defended square does) and they are safe only because `ScoreMoves`
+  short-circuits on `!IsCapture()`. **PR 3's pruning site needs that same guard.**
 
 ## Validation
 

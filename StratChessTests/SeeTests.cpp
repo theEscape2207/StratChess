@@ -75,6 +75,18 @@ TEST_CASE("See - an x-ray battery is counted: rook behind rook", "[see]")
 	REQUIRE_FALSE(See::see_ge(board, move, 1)); // the tier a battery-blind SEE would get wrong
 }
 
+TEST_CASE("See - an x-ray battery is counted: bishop behind a recapturing pawn", "[see]")
+{
+	// The swap loop's PAWN arm, which the rook battery above never reaches. On e4:
+	// fxe4, d5xe4, Rxe4, and only now Bc6xe4 — the bishop was blocked by its own pawn on d5
+	// until that pawn recaptured. 500 - 100 + 100 - 500 + 300, minimaxed, is +400.
+	//
+	// Blind to the pawn's x-ray the bishop never joins, Black's recapture looks unanswerable,
+	// and SEE reports +500 — a whole rook too optimistic.
+	const Board board("4k3/8/2b5/3p4/4r3/5P2/8/4R1K1 w - - 0 1");
+	RequireSeeExactly(board, FindMove(board, f3, e4), 400);
+}
+
 TEST_CASE("See - en passant removes the victim, which is not on the destination square", "[see]")
 {
 	// exd6 e.p. takes the d5 pawn, and Rd4 can only reach d6 through the square that pawn

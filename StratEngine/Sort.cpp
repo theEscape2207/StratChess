@@ -123,26 +123,17 @@ void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const Board& board,
 		if (mv == hash_move) {
 			s = 1'900'000;
 		} else if (MoveHelper::IsCapture(mv) || MoveHelper::IsPromote(mv)) {
-			// SEE selects the tier; MVV-LVA scores within it. see_ge is boolean and has nothing
-			// to say about two captures that land in the same tier, so MoveHelper::Value() stays
-			// as the secondary score — it is what ranks PxQ above QxQ.
+			// SEE picks the tier, MVV-LVA scores within it. Two tripwires, both measured:
 			//
-			// Two capture tiers, split at SEE >= 0, and the losing tier stays *above* the quiets.
-			// Both placements were measured and both are load-bearing: demoting losing captures
-			// below the quiets, or splitting SEE-equal into a third tier under the killers, each
-			// cost tens of percent in nodes. Captures are never LMR-reduced wherever they sit, so
-			// postponing one saves no depth, while every quiet it steps over gets a lower
-			// legal-move number and a weaker reduction. Killers are the exception — already
-			// LMR-exempt — so letting them alone jump a losing capture reorders cutoffs without
-			// moving any ordinary quiet.
+			// Demoting the losing tier below the quiets is the tempting change and costs tens of
+			// percent in nodes. Captures are never LMR-reduced wherever they sit, so postponing
+			// one saves no depth while lowering the move number — and weakening the reduction —
+			// of every quiet it steps over. Killers may jump it; they are LMR-exempt already.
 			//
-			// A non-capturing promotion is tactical and bypasses SEE entirely. It has no tier at
-			// all otherwise: it fails IsCapture(), so it would fall through to history and be
-			// ranked against ordinary quiets with no credit for the queen it makes. SEE would be
-			// worse than nothing here — it scores a queen promotion onto a defended square as
-			// 800 - 900 and files it below the quiets, when the pawn was promoting anyway.
-			// MoveHelper::Value() already ranks promotions by promotion gain, so under-promotions
-			// stay beneath a queen promotion without a second rule.
+			// The !IsCapture() short-circuit is what keeps promotions out of SEE, not an
+			// optimisation: see_ge scores a queen promotion onto a defended square as losing,
+			// when the pawn was promoting anyway. MoveHelper::Value() ranks promotions by
+			// promotion gain, so under-promotions stay below a queen promotion unaided.
 			const int mvv_lva = MoveHelper::Value(mv, board.GetEffectiveMovPiece(mv), board.GetCapturedPiece(mv));
 
 			s = (!MoveHelper::IsCapture(mv) || See::see_ge(board, mv, 0)) ? 1'000'000 + mvv_lva : 700'000 + mvv_lva;

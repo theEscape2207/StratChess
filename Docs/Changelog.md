@@ -48,9 +48,11 @@ Newest first.
   Deliberately not SEE-tested: SEE scores a queen promotion onto a defended square at -100 and would
   file it below the quiets, when the pawn was promoting anyway.
 
-Depth-12 bench, 8 positions, `Threads=1`, against `main` @ `6a265bc`: **-14.1% nodes**
-(17,610,351 → 15,119,653), -12.0% at depth 10 and -8.9% at depth 11, with all eight best moves
-preserved at every depth. nps flat, so the tree is smaller rather than the code faster.
+Bench over 8 positions, `Threads=1`, against `main` @ `6a265bc`: **9-14% fewer nodes** (-12.0% at
+depth 10, -8.9% at 11, -14.1% at 12). The series is not monotone, so the range is the estimate and
+the depth-12 figure is not. nps flat, so the tree is smaller rather than the code faster. All eight
+best moves are preserved at every depth — a stability signal that the reordering did not destabilise
+the search, not evidence of the gain.
 
 The order landed here is **not** the one the design approved. That order — SEE-equal captures below
 the killers, SEE-losing below the quiets — was implemented and measured at **+56%** nodes. Captures
@@ -65,7 +67,11 @@ Validation: three falsification-checked `see_ge` cases (mid-swap x-ray, en-passa
 destination square, king-terminates-swap), three ordering cases in `SortTests.cpp`, and a throwaway
 python-chess fuzz over 54,513 **pseudo-legal** captures and promotions with 0 mismatches — including
 2,251 moves that are pseudo-legal only, which is the class `ScoreMoves` actually receives and a
-legal-moves-only fuzz never reaches. No `Run-PerftCheck`: `AttackersTo` adds no generated move.
+legal-moves-only fuzz never reaches. python-chess supplies no SEE, so the fuzz reference is an
+independent *implementation*, not an independent *specification*: it catches board-representation
+bugs, and a shared misreading of king-termination or en-passant semantics would appear in both. The
+falsification-checked hand cases are what cover that. No `Run-PerftCheck`: `AttackersTo` adds no
+generated move.
 
 ---
 

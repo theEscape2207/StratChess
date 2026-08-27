@@ -14,6 +14,7 @@
 #include "MoveFactory.h"
 #include "MoveGenerator.h"
 #include "MoveHelper.h"
+#include "See.h"
 #include "defines.h"
 #include <climits>
 
@@ -227,6 +228,58 @@ TEST_CASE("Sort - two SEE-winning captures order by MVV-LVA within the tier", "[
 	REQUIRE(FindScore(scored_idx, moveList, n, by_pawn) >= 1'000'000);
 	REQUIRE(FindScore(scored_idx, moveList, n, by_rook) >= 1'000'000);
 	REQUIRE(FindScore(scored_idx, moveList, n, by_pawn) > FindScore(scored_idx, moveList, n, by_rook));
+}
+
+TEST_CASE("Sort - a promotion onto a defended square is still tactical", "[sort]")
+{
+	// The D11 constraint #398 and PR 3's pruning both rest on, pinned in both directions.
+	//
+	// Non-capturing: a7-a8=Q with Rb8 covering a8 is see_ge(.., 0) == false — SEE sees 800 - 900.
+	// Only the !IsCapture() short-circuit keeps it out of the losing tier, so the SEE verdict is
+	// asserted too: without it this test would still pass after the short-circuit was removed and
+	// SEE happened to agree.
+	{
+		Board board("1r5k/P7/8/8/8/8/8/4K3 w - - 0 1");
+		MoveList moveList;
+		MoveGenerator::ComputeLegalMoves(board, moveList);
+		const int n = static_cast<int>(moveList.size());
+
+		const auto it = std::find_if(moveList.begin(), moveList.end(), [](const Move& m) {
+			return m.from() == a7 && m.to() == a8 && MoveHelper::AsType(m) == MoveType::PROMOTION_QUEEN;
+		});
+		REQUIRE(it != moveList.end());
+		REQUIRE_FALSE(See::see_ge(board, *it, 0)); // what the short-circuit is protecting against
+
+		const Move null_move, killer0, killer1;
+		int32_t history[2][64][64] = {};
+		std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
+		MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, killer0, killer1, history, scored_idx);
+
+		REQUIRE(FindScore(scored_idx, moveList, n, *it) >= 1'000'000);
+	}
+
+	// Capture-promotion: b7xa8=Q, recaptured by the king. These go through SEE and pass it
+	// unconditionally — the promotion is credited at the root, so the swap can never take back
+	// more than the pawn. That is why no promotion is prunable at threshold zero.
+	{
+		Board board("nk6/1P6/8/8/8/8/8/4K3 w - - 0 1");
+		MoveList moveList;
+		MoveGenerator::ComputeLegalMoves(board, moveList);
+		const int n = static_cast<int>(moveList.size());
+
+		const auto it = std::find_if(moveList.begin(), moveList.end(), [](const Move& m) {
+			return m.from() == b7 && m.to() == a8 && MoveHelper::AsType(m) == MoveType::PROMOTION_QUEEN_CAPTURE;
+		});
+		REQUIRE(it != moveList.end());
+		REQUIRE(See::see_ge(board, *it, 0));
+
+		const Move null_move, killer0, killer1;
+		int32_t history[2][64][64] = {};
+		std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
+		MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, killer0, killer1, history, scored_idx);
+
+		REQUIRE(FindScore(scored_idx, moveList, n, *it) >= 1'000'000);
+	}
 }
 
 TEST_CASE("Sort - a non-capturing promotion is tactical, not a quiet", "[sort]")
