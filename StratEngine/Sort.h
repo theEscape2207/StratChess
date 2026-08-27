@@ -16,8 +16,9 @@ class MoveSorter final
 	// sorts last. Asserted, because passing a mixed list is silent in Release (#320).
 	static void SortMovesByValue(MoveList& moveList, size_t count, const Board& board, size_t start = 0);
 	// Score all moves in [0, n) into out_scored_idx as (score, original_index) pairs,
-	// sorted descending by score. Priority: hash move -> winning captures -> killer0 ->
-	// killer1 -> equal captures -> history (quiet) -> losing captures.
+	// sorted descending by score. Priority: hash move -> SEE >= 0 captures and all promotions
+	// -> killer0 -> killer1 -> SEE < 0 captures -> history (quiet), with generation order as
+	// the final tie-break.
 	static void ScoreMoves(const MoveList& moveList, int n, const Board& board, eColor side, const Move& hash_move,
 	                       const Move& killer0, const Move& killer1, const int32_t (&history)[2][64][64],
 	                       std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx);

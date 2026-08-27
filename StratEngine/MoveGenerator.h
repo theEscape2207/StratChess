@@ -17,6 +17,18 @@ class MoveGenerator final {
 	// Returns BITBOARD with all squares attacked by 'Color'
 	static BITBOARD GetAttackBoard(const Board& board, eColor) noexcept;
 
+	// Returns the pieces of BOTH colours attacking `square`, with sliders traced through the
+	// supplied `occupancy` rather than through the board's own. The occupancy is a parameter
+	// because SEE walks a swap list on a mutated copy of it, uncovering x-ray attackers as each
+	// piece leaves the board. Callers that only care about the position as it stands pass
+	// bbBitBoards[ALL_PIECES].
+	//
+	// The result is not masked by `occupancy`: a piece already removed from it is still listed
+	// if its bitboard says it attacks the square. Callers that mutate the occupancy must mask.
+	// En passant is not modelled — the pawn that could capture en passant does not attack the
+	// square its victim stands on.
+	static BITBOARD AttackersTo(const BITBOARD* bbBitBoards, eSquare square, BITBOARD occupancy) noexcept;
+
 	~MoveGenerator() = default;
 
   private:

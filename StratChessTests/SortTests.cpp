@@ -1,18 +1,20 @@
 // SortTests.cpp — Catch2 tests for MoveSorter::ScoreMoves() priority ordering
 //
 // Tests that moves are scored in the expected priority order:
-//   hash move > winning captures > killer0 > killer1 > equal captures
-//   > quiet history > losing captures
+//   hash move > SEE >= 0 captures and all promotions > killer0 > killer1 > SEE < 0 captures
+//   > quiet history
 //
-// The last two tiers are unreachable in every position, not just this one: MoveHelper::Value()
-// weights the attacker at 1/16, so a capture's victim contributes at least 100 while the attacker
-// deducts at most 56, and no capture can score <= 0. SEE (#86) is what populates them.
+// SEE selects the tier and MoveHelper::Value() scores within it. Before SEE the losing tier was
+// unreachable in every position, not just this one: Value() weights the attacker at 1/16, so a
+// capture's victim contributes at least 100 while the attacker deducts at most 56.
 
 #include <catch2/catch_test_macros.hpp>
 #include "Board.h"
 #include "Sort.h"
 #include "MoveFactory.h"
 #include "MoveGenerator.h"
+#include "MoveHelper.h"
+#include "See.h"
 #include "defines.h"
 #include <climits>
 
@@ -142,6 +144,178 @@ TEST_CASE("Sort - Killer0 scores 900'000; beats quiet move with no history", "[s
 	REQUIRE(FindScore(scored_idx, moveList, n, killer0) == 900'000);
 	REQUIRE(FindScore(scored_idx, moveList, n, quiet_no_history) == 0);
 	REQUIRE(FindScore(scored_idx, moveList, n, killer0) > FindScore(scored_idx, moveList, n, quiet_no_history));
+}
+
+// The whole tier chain in one position, White to move:
+//   Ra1xa5 / b4xa5 — the knight is undefended, so both are SEE-winning
+//   b4xc5      — the d6 pawn recaptures, so this is SEE-equal (+100 - 100)
+//   Qd1xd6     — the c7 pawn recaptures, so this is SEE-losing (+100 - 900)
+// The equal capture is here to pin that it shares the top tier with the winning ones rather
+// than getting a third tier of its own; a third tier measured 18% more nodes.
+// Everything else is quiet.
+static constexpr const char* FEN_SEE_TIERS = "6k1/2p5/3p4/n1p5/1P6/8/8/R2QK3 w - - 0 1";
+
+static Move FindBySquares(const MoveList& moveList, eSquare from, eSquare to)
+{
+	const auto it =
+	    std::find_if(moveList.begin(), moveList.end(), [&](const Move& m) { return m.from() == from && m.to() == to; });
+	REQUIRE(it != moveList.end());
+	return *it;
+}
+
+TEST_CASE("Sort - the SEE tier chain, winning capture down to losing capture", "[sort]")
+{
+	Board board(FEN_SEE_TIERS);
+
+	MoveList moveList;
+	MoveGenerator::ComputeLegalMoves(board, moveList);
+	const int n = static_cast<int>(moveList.size());
+
+	const Move winning = FindBySquares(moveList, a1, a5); // RxN, undefended
+	const Move equal = FindBySquares(moveList, b4, c5);   // PxP, recaptured by a pawn
+	const Move losing = FindBySquares(moveList, d1, d6);  // QxP, recaptured by a pawn
+	const Move killer0 = FindBySquares(moveList, a1, a4); // quiet rook move
+	const Move quiet = FindBySquares(moveList, e1, e2);   // quiet king move, given history below
+
+	const Move null_move, killer1;
+	int32_t history[2][64][64] = {};
+	history[WHITE][e1][e2] = 500;
+
+	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
+	MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, killer0, killer1, history, scored_idx);
+
+	const int winning_score = FindScore(scored_idx, moveList, n, winning);
+	const int killer_score = FindScore(scored_idx, moveList, n, killer0);
+	const int equal_score = FindScore(scored_idx, moveList, n, equal);
+	const int quiet_score = FindScore(scored_idx, moveList, n, quiet);
+	const int losing_score = FindScore(scored_idx, moveList, n, losing);
+
+	REQUIRE(winning_score > killer_score);
+	REQUIRE(equal_score > killer_score);
+	REQUIRE(killer_score > losing_score);
+	REQUIRE(losing_score > quiet_score);
+
+	// The tier bases, so a change that reorders the chain by accident is distinguishable from one
+	// that reorders it on purpose.
+	REQUIRE(winning_score >= 1'000'000);
+	REQUIRE(equal_score >= 1'000'000);
+	REQUIRE(killer_score == 900'000);
+	REQUIRE(losing_score >= 700'000);
+	REQUIRE(losing_score < 800'000);
+	REQUIRE(quiet_score == 500);
+}
+
+TEST_CASE("Sort - two SEE-winning captures order by MVV-LVA within the tier", "[sort]")
+{
+	// The contract a boolean SEE would silently drop: see_ge cannot separate two captures that
+	// share a tier, so MoveHelper::Value() has to. Both take the same undefended knight on a5;
+	// the pawn is the cheaper attacker and must come first.
+	Board board(FEN_SEE_TIERS);
+
+	MoveList moveList;
+	MoveGenerator::ComputeLegalMoves(board, moveList);
+	const int n = static_cast<int>(moveList.size());
+
+	const Move by_pawn = FindBySquares(moveList, b4, a5);
+	const Move by_rook = FindBySquares(moveList, a1, a5);
+
+	const Move null_move, killer0, killer1;
+	int32_t history[2][64][64] = {};
+
+	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
+	MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, killer0, killer1, history, scored_idx);
+
+	REQUIRE(FindScore(scored_idx, moveList, n, by_pawn) >= 1'000'000);
+	REQUIRE(FindScore(scored_idx, moveList, n, by_rook) >= 1'000'000);
+	REQUIRE(FindScore(scored_idx, moveList, n, by_pawn) > FindScore(scored_idx, moveList, n, by_rook));
+}
+
+TEST_CASE("Sort - a promotion onto a defended square is still tactical", "[sort]")
+{
+	// The D11 constraint #398 and PR 3's pruning both rest on, pinned in both directions.
+	//
+	// Non-capturing: a7-a8=Q with Rb8 covering a8 is see_ge(.., 0) == false — SEE sees 800 - 900.
+	// Only the !IsCapture() short-circuit keeps it out of the losing tier, so the SEE verdict is
+	// asserted too: without it this test would still pass after the short-circuit was removed and
+	// SEE happened to agree.
+	{
+		Board board("1r5k/P7/8/8/8/8/8/4K3 w - - 0 1");
+		MoveList moveList;
+		MoveGenerator::ComputeLegalMoves(board, moveList);
+		const int n = static_cast<int>(moveList.size());
+
+		const auto it = std::find_if(moveList.begin(), moveList.end(), [](const Move& m) {
+			return m.from() == a7 && m.to() == a8 && MoveHelper::AsType(m) == MoveType::PROMOTION_QUEEN;
+		});
+		REQUIRE(it != moveList.end());
+		REQUIRE_FALSE(See::see_ge(board, *it, 0)); // what the short-circuit is protecting against
+
+		const Move null_move, killer0, killer1;
+		int32_t history[2][64][64] = {};
+		std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
+		MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, killer0, killer1, history, scored_idx);
+
+		REQUIRE(FindScore(scored_idx, moveList, n, *it) >= 1'000'000);
+	}
+
+	// Capture-promotion: b7xa8=Q, recaptured by the king. These go through SEE and pass it
+	// unconditionally — the promotion is credited at the root, so the swap can never take back
+	// more than the pawn. That is why no promotion is prunable at threshold zero.
+	{
+		Board board("nk6/1P6/8/8/8/8/8/4K3 w - - 0 1");
+		MoveList moveList;
+		MoveGenerator::ComputeLegalMoves(board, moveList);
+		const int n = static_cast<int>(moveList.size());
+
+		const auto it = std::find_if(moveList.begin(), moveList.end(), [](const Move& m) {
+			return m.from() == b7 && m.to() == a8 && MoveHelper::AsType(m) == MoveType::PROMOTION_QUEEN_CAPTURE;
+		});
+		REQUIRE(it != moveList.end());
+		REQUIRE(See::see_ge(board, *it, 0));
+
+		const Move null_move, killer0, killer1;
+		int32_t history[2][64][64] = {};
+		std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
+		MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, killer0, killer1, history, scored_idx);
+
+		REQUIRE(FindScore(scored_idx, moveList, n, *it) >= 1'000'000);
+	}
+}
+
+TEST_CASE("Sort - a non-capturing promotion is tactical, not a quiet", "[sort]")
+{
+	// a7-a8 promotions are not captures, so without a tier of their own they fall through to
+	// history and rank against ordinary quiets with no credit for the queen they make. SEE is
+	// deliberately not consulted: it would score a promotion onto a defended square below them.
+	Board board("4k3/P7/8/8/8/8/8/4K3 w - - 0 1");
+
+	MoveList moveList;
+	MoveGenerator::ComputeLegalMoves(board, moveList);
+	const int n = static_cast<int>(moveList.size());
+
+	const auto find_promotion = [&](MoveType type) {
+		const auto it = std::find_if(moveList.begin(), moveList.end(), [&](const Move& m) {
+			return m.from() == a7 && m.to() == a8 && MoveHelper::AsType(m) == type;
+		});
+		REQUIRE(it != moveList.end());
+		return *it;
+	};
+	const Move queen_promotion = find_promotion(MoveType::PROMOTION_QUEEN);
+	const Move knight_promotion = find_promotion(MoveType::PROMOTION_KNIGHT);
+
+	const Move null_move, killer0, killer1;
+	int32_t history[2][64][64] = {};
+
+	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
+	MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, killer0, killer1, history, scored_idx);
+
+	const int queen_score = FindScore(scored_idx, moveList, n, queen_promotion);
+	const int knight_score = FindScore(scored_idx, moveList, n, knight_promotion);
+
+	REQUIRE(queen_score >= 1'000'000);
+	REQUIRE(knight_score >= 1'000'000);
+	REQUIRE(queen_score > knight_score); // Value() ranks them by promotion gain, with no second rule
+	REQUIRE(moveList[scored_idx[0].second] == queen_promotion);
 }
 
 TEST_CASE("Sort - Quiet move with positive history scores exactly that history value", "[sort]")

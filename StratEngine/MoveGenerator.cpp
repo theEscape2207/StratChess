@@ -443,6 +443,37 @@ BITBOARD MoveGenerator::GetBishopBitboard(const BITBOARD* bbBitBoards, eSquare f
 	return Bits::clearBits(bbAttack, bbBitBoards[ALL_FROM_COLOR + static_cast<int>(color)]);
 }
 
+// Attackers of one square, against a supplied occupancy — the query SEE needs and the one
+// GetAttackBoard cannot answer: that builds a whole-side attack board and says nothing about
+// which piece attacks what.
+//
+// The pawn terms are GeneratePawnCaptures run backwards. A white pawn on `p` attacks `p - 7`
+// (when p is not on the H file) and `p - 9` (when p is not on the A file), so the pawns attacking
+// `square` sit at `square + 7` and `square + 9`, and the file guards move onto `square`: the
+// first source exists only when `square` is off the A file, the second only when it is off the H
+// file. Black mirrors it.
+BITBOARD MoveGenerator::AttackersTo(const BITBOARD* bbBitBoards, eSquare square, BITBOARD occupancy) noexcept
+{
+	const BITBOARD target = g_bbMask[square];
+
+	const BITBOARD pawnAttackers = ((((target & ~g_bbFileMask[eFileNames::LEFT_FILE]) << 7) |
+	                                 ((target & ~g_bbFileMask[eFileNames::RIGHT_FILE]) << 9)) &
+	                                bbBitBoards[ePiece::WHITE_PAWN]) |
+	                               ((((target & ~g_bbFileMask[eFileNames::LEFT_FILE]) >> 9) |
+	                                 ((target & ~g_bbFileMask[eFileNames::RIGHT_FILE]) >> 7)) &
+	                                bbBitBoards[ePiece::BLACK_PAWN]);
+
+	const BITBOARD bishopsAndQueens = bbBitBoards[ePiece::WHITE_BISHOP] | bbBitBoards[ePiece::BLACK_BISHOP] |
+	                                  bbBitBoards[ePiece::WHITE_QUEEN] | bbBitBoards[ePiece::BLACK_QUEEN];
+	const BITBOARD rooksAndQueens = bbBitBoards[ePiece::WHITE_ROOK] | bbBitBoards[ePiece::BLACK_ROOK] |
+	                                bbBitBoards[ePiece::WHITE_QUEEN] | bbBitBoards[ePiece::BLACK_QUEEN];
+
+	return pawnAttackers |
+	       (g_bbKnightMoves[square] & (bbBitBoards[ePiece::WHITE_KNIGHT] | bbBitBoards[ePiece::BLACK_KNIGHT])) |
+	       (g_bbKingMoves[square] & (bbBitBoards[ePiece::WHITE_KING] | bbBitBoards[ePiece::BLACK_KING])) |
+	       (BishopAttacks(square, occupancy) & bishopsAndQueens) | (RookAttacks(square, occupancy) & rooksAndQueens);
+}
+
 //***************************************
 // Method:      GetAttackBoard
 // Description: Generates all possible CAPTURE type moves for the color and combines the attacked squares into the returned BTBOARD.

@@ -73,6 +73,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | **Search regression (slow tier)** | `[tactical_full][slow]` | `TacticalFullTests.cpp` |
 | Concrete search service, lifecycle and helpers | `[search]` | `SearchTests.cpp` |
 | Move ordering (Sort) | `[sort]` | `SortTests.cpp` |
+| Static exchange evaluation | `[see]` | `SeeTests.cpp` |
 | Board DoMove/UndoMove completeness | `[board]` | `BoardTests.cpp` |
 | Board move-type round-trips (all types) | `[board_moves]` | `BoardMoveTests.cpp` |
 | Board position-state lifecycle (ep, castling, clock, last move) | `[board_state]` | `BoardStateTests.cpp` |
@@ -274,12 +275,31 @@ Tests for private helper methods exposed via `AIPerlexTestFixture` (friend class
 
 **File**: `StratChessTests/SortTests.cpp`
 
-Verify ordering priority: hash move → captures (MVV-LVA) → killers → history scores.
+Verify ordering priority: hash move → SEE >= 0 captures and promotions → killers → SEE < 0
+captures → history scores, with MVV-LVA ordering within each capture tier.
 
 The hash move is the top tier, and one case asserts that an *empty* hash move promotes nothing. That
 is not a trivial case: an empty `Move` reads as `h1 → h1` under `Move`'s from/to equality, and it is
 what made the removed previous-iteration PV tier provably dead rather than merely unused — it was fed
 an empty move at every node, so it matched nothing, ever.
+
+### `[see]` — Static exchange evaluation
+
+**File**: `StratChessTests/SeeTests.cpp`
+
+`See::see_ge` is boolean, so each case asserts a *bracket* — `see_ge(m, v)` true and `see_ge(m, v+1)`
+false — which pins the exact exchange value through the boolean interface. A one-sided assertion
+would pass against a `see_ge` that returned a constant.
+
+Cases cover the mistakes hand-picked positions miss by construction: a **mid-swap** x-ray (the back
+rook must be uncovered by a *recapture*, not by the root move — an x-ray test where the root move
+does the uncovering passes against a battery-blind SEE), an en-passant victim that is not on the
+destination square, and both directions of the rule that a king attacker terminates the swap.
+
+Development used a throwaway python-chess fuzz over **pseudo-legal** captures and promotions, not
+legal ones: `ScoreMoves` is fed `MoveGenerator::ComputeLegalMoves`, which is pseudo-legal despite the
+name, so pinned-piece captures and king captures onto defended squares are live inputs. Not
+committed — no Python dependency in the suite.
 
 ### `[board]` — DoMove/UndoMove completeness
 

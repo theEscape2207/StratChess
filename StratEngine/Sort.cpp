@@ -6,6 +6,7 @@
 
 #include "Board.h"
 #include "MoveHelper.h"
+#include "See.h"
 
 // Her foretages en findes traekket fra PVLine og rykkes forrest
 void MoveSorter::SortMovesIter(MoveList& moveList,   // traeklisten
@@ -121,26 +122,28 @@ void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const Board& board,
 
 		if (mv == hash_move) {
 			s = 1'900'000;
-		} else {
-			const bool isCapture = MoveHelper::IsCapture(mv);
-			const bool isKiller0 = !isCapture && (mv == killer0);
-			const bool isKiller1 = !isKiller0 && !isCapture && (mv == killer1);
+		} else if (MoveHelper::IsCapture(mv) || MoveHelper::IsPromote(mv)) {
+			// SEE picks the tier, MVV-LVA scores within it. Two tripwires, both measured:
+			//
+			// Demoting the losing tier below the quiets is the tempting change and costs tens of
+			// percent in nodes. Captures are never LMR-reduced wherever they sit, so postponing
+			// one saves no depth while lowering the move number — and weakening the reduction —
+			// of every quiet it steps over. Killers may jump it; they are LMR-exempt already.
+			//
+			// The !IsCapture() short-circuit is what keeps promotions out of SEE, not an
+			// optimisation: see_ge scores a queen promotion onto a defended square as losing,
+			// when the pawn was promoting anyway. MoveHelper::Value() ranks promotions by
+			// promotion gain, so under-promotions stay below a queen promotion unaided.
 			const int mvv_lva = MoveHelper::Value(mv, board.GetEffectiveMovPiece(mv), board.GetCapturedPiece(mv));
 
-			if (isKiller0)
-				s = 900'000;
-			else if (isKiller1)
-				s = 800'000;
-			else if (isCapture && mvv_lva > 0)
-				s = 1'000'000 + mvv_lva;
-			else if (isCapture && mvv_lva == 0)
-				s = 700'000 + mvv_lva;
-			else if (isCapture)
-				s = -100'000 + mvv_lva;
-			else {
-				assert(static_cast<int>(side) >= 0 && static_cast<int>(side) < 2);
-				s = history[static_cast<int>(side)][mv.from()][mv.to()];
-			}
+			s = (!MoveHelper::IsCapture(mv) || See::see_ge(board, mv, 0)) ? 1'000'000 + mvv_lva : 700'000 + mvv_lva;
+		} else if (mv == killer0) {
+			s = 900'000;
+		} else if (mv == killer1) {
+			s = 800'000;
+		} else {
+			assert(static_cast<int>(side) >= 0 && static_cast<int>(side) < 2);
+			s = history[static_cast<int>(side)][mv.from()][mv.to()];
 		}
 		out_scored_idx[i] = {s, i};
 	}
