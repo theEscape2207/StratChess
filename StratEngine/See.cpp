@@ -13,6 +13,26 @@ namespace {
 	[[nodiscard]] constexpr BITBOARD lowest_bit(BITBOARD value) noexcept { return value & (~value + 1); }
 
 	[[nodiscard]] constexpr int value_of(ePieceType type) noexcept { return g_iPieceValues[type >> 1]; }
+
+	// Which rays a departing attacker can uncover behind itself.
+	constexpr unsigned UNCOVERS_NONE = 0;
+	constexpr unsigned UNCOVERS_DIAGONAL = 1;
+	constexpr unsigned UNCOVERS_ORTHOGONAL = 2;
+
+	struct LeastValuableAttacker {
+		ePieceType type;
+		unsigned uncovers;
+	};
+
+	// Least valuable attacker first. The king is deliberately absent — it terminates the swap
+	// instead of entering it, which is why the loop below treats "no entry matched" as its own case.
+	constexpr std::array<LeastValuableAttacker, 5> LVA_ORDER = {{
+	    {PAWN, UNCOVERS_DIAGONAL},
+	    {KNIGHT, UNCOVERS_NONE},
+	    {BISHOP, UNCOVERS_DIAGONAL},
+	    {ROOK, UNCOVERS_ORTHOGONAL},
+	    {QUEEN, UNCOVERS_DIAGONAL | UNCOVERS_ORTHOGONAL},
+	}};
 } // namespace
 
 // Static exchange evaluation as a swap list on a mutated occupancy: each side recaptures on
@@ -82,48 +102,38 @@ bool See::see_ge(const Board& board, const Move& move, int threshold) noexcept
 
 		result ^= 1;
 
-		// Least valuable attacker first, and re-query only the ray the departing piece vacated:
-		// a diagonal mover can uncover a bishop or queen behind it, an orthogonal one a rook or
-		// queen, and a knight can uncover nothing.
-		BITBOARD next = stmAttackers & bb[PAWN + static_cast<int>(stm)];
-		if (next != 0) {
-			if ((swap = value_of(PAWN) - swap) < result)
+		// Least valuable attacker first.
+		const LeastValuableAttacker* lva = nullptr;
+		BITBOARD next = 0;
+		for (const auto& candidate : LVA_ORDER) {
+			next = stmAttackers & bb[candidate.type + static_cast<int>(stm)];
+			if (next != 0) {
+				lva = &candidate;
 				break;
-			occupied = Bits::clearBits(occupied, lowest_bit(next));
-			attackers |=
-			    BishopAttacks(to, occupied) & (bb[WHITE_BISHOP] | bb[BLACK_BISHOP] | bb[WHITE_QUEEN] | bb[BLACK_QUEEN]);
-		} else if ((next = stmAttackers & bb[KNIGHT + static_cast<int>(stm)]) != 0) {
-			if ((swap = value_of(KNIGHT) - swap) < result)
-				break;
-			occupied = Bits::clearBits(occupied, lowest_bit(next));
-		} else if ((next = stmAttackers & bb[BISHOP + static_cast<int>(stm)]) != 0) {
-			if ((swap = value_of(BISHOP) - swap) < result)
-				break;
-			occupied = Bits::clearBits(occupied, lowest_bit(next));
-			attackers |=
-			    BishopAttacks(to, occupied) & (bb[WHITE_BISHOP] | bb[BLACK_BISHOP] | bb[WHITE_QUEEN] | bb[BLACK_QUEEN]);
-		} else if ((next = stmAttackers & bb[ROOK + static_cast<int>(stm)]) != 0) {
-			if ((swap = value_of(ROOK) - swap) < result)
-				break;
-			occupied = Bits::clearBits(occupied, lowest_bit(next));
-			attackers |=
-			    RookAttacks(to, occupied) & (bb[WHITE_ROOK] | bb[BLACK_ROOK] | bb[WHITE_QUEEN] | bb[BLACK_QUEEN]);
-		} else if ((next = stmAttackers & bb[QUEEN + static_cast<int>(stm)]) != 0) {
-			if ((swap = value_of(QUEEN) - swap) < result)
-				break;
-			occupied = Bits::clearBits(occupied, lowest_bit(next));
-			attackers |=
-			    (BishopAttacks(to, occupied) &
-			     (bb[WHITE_BISHOP] | bb[BLACK_BISHOP] | bb[WHITE_QUEEN] | bb[BLACK_QUEEN])) |
-			    (RookAttacks(to, occupied) & (bb[WHITE_ROOK] | bb[BLACK_ROOK] | bb[WHITE_QUEEN] | bb[BLACK_QUEEN]));
-		} else {
-			// A king attacker terminates the swap rather than entering the arithmetic, where its
-			// 10000 cp notional value would dominate everything else on the list. If the other
-			// side still attacks the square, this recapture is illegal and simply is not
+			}
+		}
+
+		if (lva == nullptr) {
+			// Only the king is left. It terminates the swap rather than entering the arithmetic,
+			// where its 10000 cp notional value would dominate everything else on the list. If the
+			// other side still attacks the square, this recapture is illegal and simply is not
 			// available, so the exchange ends one capture earlier than the loop assumed.
 			return (attackers & occupied & ~bb[ALL_FROM_COLOR + static_cast<int>(stm)]) != 0 ? (result ^ 1) != 0
 			                                                                                 : result != 0;
 		}
+
+		swap = value_of(lva->type) - swap;
+		if (swap < result)
+			break;
+
+		// Re-query only the ray the departing piece vacated, so the piece behind it joins the swap.
+		occupied = Bits::clearBits(occupied, lowest_bit(next));
+		if ((lva->uncovers & UNCOVERS_DIAGONAL) != 0)
+			attackers |=
+			    BishopAttacks(to, occupied) & (bb[WHITE_BISHOP] | bb[BLACK_BISHOP] | bb[WHITE_QUEEN] | bb[BLACK_QUEEN]);
+		if ((lva->uncovers & UNCOVERS_ORTHOGONAL) != 0)
+			attackers |=
+			    RookAttacks(to, occupied) & (bb[WHITE_ROOK] | bb[BLACK_ROOK] | bb[WHITE_QUEEN] | bb[BLACK_QUEEN]);
 	}
 
 	return result != 0;
