@@ -80,10 +80,19 @@ Newest first.
   through `ScoreMoves` moves an illegal king capture to the front of the sorted list, which — while
   `pvs()` reduced by list index — also shifted every legal move's LMR reduction. Measuring against
   `main` would have bundled an ordering change with an accidental pruning change.
-- Measurement: `-Sprt Custom -Elo0 -10 -Elo1 0`, 500-game cap. *(pending)*
+- Measurement, both against the #401 branch tip @ 22572d5, 10+0.1, `Threads=1`:
+  - `-Sprt Custom -Elo0 -10 -Elo1 0` — **H1 accepted at 1082 games**, +12.53 +/- 15.06. A decision,
+    not a size: it says "not a regression", and its interval still contains zero.
+  - CI strength lab, **19,980 games** (18 shards x 1110, pooled over 9990 pairs) — **+24.47 +/- 3.66
+    Elo**, score 53.52%. This is the estimate. Both rows in `Docs/EloLog.md`.
+
+  The reference is the #401 tip rather than `main` for the reason above. It has since gained two
+  test-only commits, which changed the candidate's SHA under a rebase but not the shipping binary.
 
 Design: `.claude/plans/in-progress/quiescence-move-ordering-and-see.md`. First of three PRs; #86
 follows with SEE ordering and SEE pruning.
+
+---
 ## 2026-08-27 — LMR reduces by legal moves searched, not by list index
 
 ### Fixed
