@@ -5,6 +5,7 @@
 #include "AIPerplex.h"
 #include "MoveGenerator.h"
 #include "PVIntegrity.h"
+#include "See.h"
 #include "Sort.h"
 #include "Utils/Logger.h"
 #include "defines.h"
@@ -916,6 +917,21 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 		            MoveHelper::DeltaGain(move, td.board.GetEffectiveMovPiece(move), td.board.GetCapturedPiece(move)) +
 		            tuning_.delta_pruning_margin <
 		        alpha)
+			continue;
+
+		// A capture that loses material by static exchange is not worth a node here. Threshold is
+		// exactly zero: a margin is a second tunable and would confound this change's own SPRT.
+		//
+		// `!in_check` is correctness, not tuning, which is why it sits outside see_pruning_enabled.
+		// In check the list is every legal evasion and an empty survivor set is what the code below
+		// reads as checkmate, so pruning one could return a false mate score.
+		//
+		// IsCapture() is load-bearing for the same reason it is in ScoreMoves: see_ge scores a queen
+		// promotion onto a defended square as losing, when the pawn was promoting anyway. Capture-
+		// promotions stay in and are never pruned — the promotion is credited at the root of the
+		// swap, so the worst one scores 0.
+		if (!in_check && tuning_.see_pruning_enabled && MoveHelper::IsCapture(move) &&
+		    !See::see_ge(td.board, move, 0))
 			continue;
 
 		if (!td.board.DoMove(move))

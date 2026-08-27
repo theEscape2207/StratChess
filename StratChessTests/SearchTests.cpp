@@ -293,6 +293,10 @@ class AIPerlexTestFixture {
 	// TEST_CASE functions.
 	void set_last_move_was_null(int ply, bool value) const { ai->td_.last_move_was_null[ply] = value; }
 
+	// Reaches the private tuning_ member. Used by the poll-gate tests, which need a search whose
+	// cost does not move every time pruning improves.
+	void set_see_pruning(bool enabled) const { ai->tuning_.see_pruning_enabled = enabled; }
+
 	// Reads the private threads_ member — set (clamped) via the public
 	// SetThreads() override; needs friend access because threads_ itself
 	// is private. Used by the [smp] clamp tests below.
@@ -1226,10 +1230,12 @@ TEST_CASE("AIPerplex - a position with a move reports STILL_PLAYING", "[search]"
 // abort is the only way a previous call's terminal verdict reaches the caller -- and a terminal
 // verdict makes handle_empty_move_emergency() return no move at all.
 
-// What one complete iteration at `depth` costs the poll gate on `fen`.
+// What one complete iteration at `depth` costs the poll gate on `fen`, with SEE pruning off for
+// the reason given at BUSY_FEN.
 static int64_t poll_ticks_at_depth(const std::string& fen, int depth)
 {
 	AIPerlexTestFixture probe(fen, static_cast<unsigned>(depth));
+	probe.set_see_pruning(false);
 	probe.search_to_depth(depth);
 	return probe.poll_ticks();
 }
@@ -1237,6 +1243,11 @@ static int64_t poll_ticks_at_depth(const std::string& fen, int depth)
 // Kiwipete: 48 root moves, and enough hanging material that quiescence keeps going under most of
 // them. Chosen because its depth-1 iteration costs more than one poll interval -- the only shape of
 // position where a node limit can abort before any root frame has adjudicated.
+//
+// The tests below pin see_pruning_enabled off, because with it on this iteration costs 1008 ticks
+// and no legal position in the repository's corpora is dearer. The flag is irrelevant to what they
+// assert -- they are about the verdict carrier, not about pruning -- so pinning it stops a search
+// that gets cheaper from silently converting these into tests of something else.
 static constexpr const char* BUSY_FEN = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
 static constexpr int64_t POLL_INTERVAL = 1024; // poll_search_limits(): (++nodes_since_check_ & 1023)
 
@@ -1262,6 +1273,7 @@ TEST_CASE("AIPerplex - a search aborted inside its first root frame drops the pr
 	REQUIRE(poll_ticks_at_depth(BUSY_FEN, 1) > POLL_INTERVAL);
 
 	REQUIRE(fix.board_.SetupFromFEN(BUSY_FEN));
+	fix.set_see_pruning(false);
 	const SearchResult aborted = fix.result_with_nodes(1);
 
 	CHECK(aborted.game_state == GameStates::STILL_PLAYING);
