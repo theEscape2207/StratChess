@@ -936,8 +936,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 		// verdict. It costs one ply of horizon — the parent searches the move full-width and its
 		// child resolves the pin — which is the standard trade for this pruning. It does mean the
 		// no-survivor store below records a value this node did not prove; see the note there.
-		if (!in_check && tuning_.see_pruning_enabled && MoveHelper::IsCapture(move) &&
-		    !See::see_ge(td.board, move, 0))
+		if (!in_check && tuning_.see_pruning_enabled && MoveHelper::IsCapture(move) && !See::see_ge(td.board, move, 0))
 			continue;
 
 		if (!td.board.DoMove(move))
