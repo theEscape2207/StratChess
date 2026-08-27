@@ -54,6 +54,13 @@ the depth-12 figure is not. nps flat, so the tree is smaller rather than the cod
 best moves are preserved at every depth — a stability signal that the reordering did not destabilise
 the search, not evidence of the gain.
 
+Strength: `-Sprt Gain [0, 10]`, 500 games at 10+0.1 against the same reference, **inconclusive at the
+game cap** — +32.05 +/- 22.83, LLR 1.99 of 2.94. Unlike the #401 row it is not a stalled test: the
+LLR climbed steadily, the 95% interval [+9.2, +54.9] excludes zero and LOS is 99.7%, all of which is
+what an SPRT looks like when the true effect sits at or above the tested band. Merged on that
+evidence plus the node reduction, without buying the ~1000 further games a verdict would cost. The
+point estimate is not a size and must not be quoted as one. Row in `Docs/EloLog.md`.
+
 The order landed here is **not** the one the design approved. That order — SEE-equal captures below
 the killers, SEE-losing below the quiets — was implemented and measured at **+56%** nodes. Captures
 are never LMR-reduced wherever they sit, so demoting one saves no depth while lowering the

@@ -420,11 +420,21 @@ against a baseline whose move ordering is about to change.**
   are live inputs to `see_ge` and an earlier legal-moves-only fuzz never reached them. The harness is
   not committed; no Python dependency is added to the suite.
 
-### Still outstanding
+### Strength
 
-A −14% tree at fixed depth is roughly 0.2 of a doubling — on the usual rule of thumb worth single
-figures of Elo, which is below what a 500-game batch can resolve. The node evidence earns the SPRT
-but does not substitute for it: PR 2 still needs `-Sprt Gain` before it can claim strength.
+`-Sprt Gain [0, 10]`, 500 games at 10+0.1 against the same `6a265bc` build: **inconclusive at the
+game cap**, +32.05 +/- 22.83, LLR 1.99 of 2.94, LOS 99.72%, 159W/113L/228D.
+
+The prediction above was that a −14% tree is roughly 0.2 of a doubling and therefore worth single
+figures of Elo, below what 500 games can resolve. The observed score is well above that, and the
+LLR climbed steadily rather than stalling — the shape of an SPRT whose true effect sits at or above
+the tested band, which is why the cap was reached with a positive lean rather than with nothing.
+The 95% interval [+9.2, +54.9] excludes zero.
+
+It is recorded as inconclusive regardless: a cap-stopped SPRT is a stopped test, not a verdict, and
+the interval is far too wide to size the change from. PR 2 merges on the node reduction plus this
+lean, not on a claimed Elo number. Resolving it would cost roughly another 1000 games (~80 min);
+sizing it needs the fixed batch, which the plan defers to after PR 3 lands.
 
 ## Harvest
 
@@ -437,7 +447,7 @@ Filled incrementally as each PR lands; the file is deleted in PR 3 once complete
 | `SortMovesByValue` precondition | the assert itself, plus the `Sort.h` declaration comment | **done** |
 | Glossary: capture / quiet move / king evasion / capture of the attacker / interposition | `CONTEXT.md` | **done** |
 | #320's mechanism, with the 10000-vs-900 arithmetic | `Docs/Changelog.md`, and the test comment | **done** |
-| PR 1 SPRT result, recorded as inconclusive | `Docs/EloLog.md`, `Docs/Changelog.md` | PR 1, pending |
+| PR 1 SPRT result (H1 accepted) plus the fixed-batch estimate | `Docs/EloLog.md`, `Docs/Changelog.md` | **done** |
 | D2 — the tier order, and that SEE selects the tier while MVV-LVA scores within it | comment above `ScoreMoves`' tier chain | **done** |
 | D2 — why losing captures stay above the quiets, and equal captures above the killers | same comment, plus the PR 2 body | **done** |
 | D3 — why `see_ge` is boolean | comment on `see_ge`'s declaration | **done** |
@@ -448,7 +458,7 @@ Filled incrementally as each PR lands; the file is deleted in PR 3 once complete
 | D5 — pins ignored, X-rays handled | source comment in `See.cpp` | **done** |
 | D6 — `AttackersTo` takes an occupancy so SEE can mutate it | comment on the declaration | **done** |
 | SEE test coverage | `Docs/TestDesign.md` | **done** |
-| PR 2 `Gain` SPRT result | `Docs/EloLog.md`, `Docs/Changelog.md` | PR 2, running |
+| PR 2 `Gain` SPRT result, recorded as inconclusive | `Docs/EloLog.md`, `Docs/Changelog.md` | **done** |
 | D8 — `!in_check` is correctness, not tuning | source comment at the pruning site | PR 3 |
 | D9 — what `see_pruning_enabled` is for | comment on the field in `SearchTuning` | PR 3 |
 | PR 3 `Gain` result and measured effect | `Docs/EloLog.md`, `Docs/Changelog.md` | PR 3 |
