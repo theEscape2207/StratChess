@@ -930,6 +930,12 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 		// promotion onto a defended square as losing, when the pawn was promoting anyway. Capture-
 		// promotions stay in and are never pruned — the promotion is credited at the root of the
 		// swap, so the worst one scores 0.
+		//
+		// Unlike a delta-pruned move, a move pruned here carries no proof it cannot beat alpha: SEE
+		// ignores pins, so a capture whose defender cannot legally recapture is discarded on a false
+		// verdict. It costs one ply of horizon — the parent searches the move full-width and its
+		// child resolves the pin — which is the standard trade for this pruning. It does mean the
+		// no-survivor store below records a value this node did not prove; see the note there.
 		if (!in_check && tuning_.see_pruning_enabled && MoveHelper::IsCapture(move) &&
 		    !See::see_ge(td.board, move, 0))
 			continue;
@@ -991,6 +997,12 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	if (!moveFound) {
 		// No captures were available to search
 		// This is ALL_NODE regardless of whether stand_pat improved alpha
+		//
+		// "No move found" now also covers "every move was pruned". Delta pruning keeps EXACT
+		// honest here, since a delta-pruned move provably cannot reach alpha; SEE pruning does
+		// not, so on a fully SEE-pruned node this entry is really a lower bound. Left EXACT
+		// deliberately: it is the standard cost of quiescence pruning, and the alternative
+		// weakens every genuinely quiet node to keep one class of pruned node honest.
 		node_type = NodeType::ALL_NODE;
 		bound = (best_value > original_alpha) ? BoundType::EXACT : BoundType::UPPER;
 	} else if (best_value <= original_alpha) {

@@ -2036,6 +2036,43 @@ TEST_CASE("Search - in check, a legal capture outranks an illegal king capture",
 	CHECK(order.front() == "a2e2");
 }
 
+TEST_CASE("Search - in check, SEE pruning cannot prune the only evasion", "[search][qsearch][see]")
+{
+	// White is in check from Ng3 and Rxg3 is the ONLY legal move. It is also a losing capture --
+	// hxg3 recaptures, so SEE is 300 - 500 = -200 -- which is exactly the shape the out-of-check
+	// prune discards. Pruning it here would leave no survivor, and an empty survivor set is what
+	// quiescence reads as checkmate: the node would store a fabricated mate score EXACT into the
+	// table. The `!in_check` term at the pruning site is the only thing preventing that, which is
+	// why it is not behind see_pruning_enabled.
+	AIPerlexTestFixture fix("1k6/8/8/8/3b3p/6n1/r7/6RK w - - 0 1");
+	REQUIRE(fix.board_.InCheck());
+	REQUIRE(fix.count_legal_moves() == 1);
+	fix.set_see_pruning(true);
+
+	const int score = fix.quiesce_node(-GameValues::Mate, GameValues::Mate, AIPerlexTestFixture::QSEARCH_BUDGET, 0);
+
+	CHECK(score > -GameValues::Mate_Threshold);
+}
+
+TEST_CASE("Search - see_pruning_enabled actually reaches the quiescence loop", "[search][qsearch][see]")
+{
+	// Guards against the flag becoming dead code: a position whose only capture plainly loses
+	// material must search fewer quiescence edges with pruning on. Rxd5 takes a defended knight
+	// and exd5 recaptures, so SEE is 300 - 500 = -200. The defender has to be the e6 pawn: from
+	// e7 it attacks d6 and f6, and the knight would be hanging rather than defended.
+	const char* fen = "4k3/8/4p3/3n4/8/8/8/3RK3 w - - 0 1";
+
+	AIPerlexTestFixture off(fen);
+	off.set_see_pruning(false);
+	off.quiesce_node(-GameValues::Mate, GameValues::Mate, AIPerlexTestFixture::QSEARCH_BUDGET, 0);
+
+	AIPerlexTestFixture on(fen);
+	on.set_see_pruning(true);
+	on.quiesce_node(-GameValues::Mate, GameValues::Mate, AIPerlexTestFixture::QSEARCH_BUDGET, 0);
+
+	CHECK(on.qnodes() < off.qnodes());
+}
+
 TEST_CASE("Search - out of check, quiescence still orders captures by MVV-LVA", "[search][qsearch]")
 {
 	// White to move, not in check. Two captures of the d5 pawn are available: exd5 takes with
