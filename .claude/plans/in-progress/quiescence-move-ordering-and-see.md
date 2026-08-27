@@ -96,6 +96,9 @@ order is chosen because it is what the existing constants already encode (700'00
 900'000/800'000), so PR 2 does not move two things at once — but the tier was empty, so this is a
 new placement in practice and PR 2's SPRT is what judges it. #398 is where it gets revisited.
 
+**Measured, and it does not hold** — see `PR 2 measurement` below. The bench answered ahead of
+the SPRT: this order costs +56% nodes, the standard alternative +33%. D2 is open for re-decision.
+
 The tier separation is safe against history without further work: `update_history` clamps to
 `[0, 16'384]` and has no penalty path (`ThreadData.h`), so a newly-populated losing tier at
 `-100'000 + mvv_lva` genuinely sits below every quiet.
@@ -298,6 +301,127 @@ one, and at ~3 h it is not the first tool to reach for.
 
 No `Run-PerftCheck` on any of the three (D6). `Run-Bench` on PR 2 and PR 3, which add per-node work.
 
+## PR 2 measurement — D2's tier order is a measured regression
+
+PR 2 is implemented and committed on `worktree-see-ordering` (`b39711e`). **No PR is open**, because
+the ordering D2 approved costs 56% more nodes than the baseline it replaces. This section records
+the measurement so D2 and D11 can be re-decided on evidence rather than on the reasoning that
+produced them.
+
+### Method
+
+`Run-Bench.ps1`, fixed depth 12, the 8 bench positions, `Threads=1`, clang-cl Release. Baseline is
+`origin/main` @ `6a265bc` (PR 1 merged), built in its own worktree — same compiler, so the
+mixed-toolchain trap does not apply.
+
+Node counts are the measure here, not nps. Nodes at fixed depth are normally an *equivalence* check
+and not a performance one, but that is precisely because they are a property of the search rather
+than of the machine code: an ordering change is a change to the search, so tree size is its effect.
+nps is the separate question of what SEE costs per node, and it is answered below.
+
+### Variants
+
+| variant | main nodes | qs nodes | total | wall | nps | vs base |
+|---|---|---|---|---|---|---|
+| baseline, no SEE | 10,597,060 | 7,013,291 | 17,610,351 | 6,000 ms | 2,935,058 | — |
+| **D2 as designed** | 16,063,605 | 11,449,909 | 27,513,514 | 9,470 ms | 2,905,334 | **+56%** |
+| equal above killers, losing below quiets | 14,390,419 | 8,995,002 | 23,385,421 | 8,095 ms | 2,888,872 | +33% |
+| ditto, promotions not hoisted (D11 reverted) | 14,368,694 | 8,945,293 | 23,313,987 | 8,062 ms | 2,891,837 | +32% |
+| design tiers, losing tier at `600'000` (above quiets) | 11,300,015 | 8,149,249 | 19,449,264 | 6,633 ms | 2,932,197 | +10% |
+
+**nps is flat across every variant** — worst case −1.0%. So `see_ge` and `AttackersTo` cost
+essentially nothing per node, D12's concern is settled, and every difference in the table is tree
+size and nothing else.
+
+Attribution, reading the table as a chain: sinking SEE-losing captures below the quiets is worth
+about **+41%**; placing SEE-equal captures below the killers adds a further **+18%**; D11's
+promotion hoist is worth **≈ 0** (32% vs 33%, within the noise of a single fixed-depth run).
+
+### Where the growth is
+
+Main tree **+51.6%** (10.60M → 16.06M), quiescence **+63.3%** (7.01M → 11.45M); quiescence's share
+of all nodes moves from 39.8% to 41.6%. Per position, baseline → D2-as-designed, in thousands of
+nodes:
+
+| position | base main | base qs | D2 main | D2 qs | total Δ |
+|---|---|---|---|---|---|
+| startpos | 927 | 595 | 1,020 | 765 | +17% |
+| kiwipete | 3,334 | 2,619 | 5,951 | 4,567 | **+77%** |
+| rook-endgm | 570 | 137 | 2,280 | 852 | **+343%** ⚠ |
+| tactical-4 | 627 | 549 | 654 | 532 | +1% |
+| tactical-5 | 1,000 | 472 | 996 | 368 | −7% |
+| open-mid | 2,323 | 1,528 | 1,856 | 1,718 | −7% |
+| closed-mid | 1,343 | 982 | 2,624 | 2,434 | **+118%** |
+| piece-endgm | 473 | 131 | 684 | 214 | +49% ⚠ |
+
+⚠ marks the two positions whose best move changed: `rook-endgm` a2a4 → f2e2, `piece-endgm`
+c3a2 → c3e2. Three positions of eight are flat or slightly better; three supply +9.7M of the +9.9M.
+
+The quiescence growth is **downstream, not direct**. Out-of-check quiescence still sorts through
+`SortMovesByValue`, which PR 2 does not touch; SEE reaches quiescence only on the in-check path
+(D10). Quiescence grows because a worse main-tree order visits different leaves, and each leaf
+spawns a quiescence root. The one variant that separates the two is the last row — main nearly flat
+at +6.6% while quiescence still runs +16.2%.
+
+### Mechanism
+
+The suspected cause is engine-specific and is written into D2 as a *safety* argument: `update_history`
+clamps to `[0, 16'384]` and has **no penalty path**, so at a cold node every untried quiet scores
+exactly 0. D2 cites that to show the losing-capture tier genuinely sits below every quiet. It also
+means a demoted losing capture lands behind an arbitrary pile of zero-scored quiets in generation
+order — not behind *good* quiets, behind *unmeasured* ones. In an engine whose history goes negative,
+a losing capture would sort above the quiets history has actually condemned. Here there are none.
+
+That fits where the damage lands: `rook-endgm` and `closed-mid` are the positions with the coldest
+history and the most quiets per node.
+
+### What PR 2 is, and what it therefore cannot be worth on its own
+
+PR 2 is **ordering only**. `AttackersTo` is a new query and changes no move generation; `see_ge` is a
+new pure function; `ScoreMoves` changes scores and nothing else. Nothing here can produce an illegal
+or unsound result.
+
+It is **not score-preserving**, though. `applyLMR` reduces by legal-move index, and a reduced search
+that fails low is never re-searched, so reordering changes which moves are reduced and by how much —
+which is why two bench positions return a different best move. This is why the tree-size number is
+the honest measure and not an artifact.
+
+The consequence for the decision: on this evidence PR 2 buys no measurable ordering improvement at
+any of the four tier policies tried, and its remaining value is as the `see_ge` primitive PR 3 needs.
+An SPRT on PR 2 as designed would be spending ~40 minutes to confirm a 56% larger tree is not free.
+
+### Validation actually performed
+
+- Full fast suite green (527 cases, 7,605 assertions), Release and Debug.
+- The three hand-written `see_ge` cases that pin decisions — mid-swap x-ray, en-passant victim off
+  the destination square, king-terminates-swap — were each **falsified**: breaking the corresponding
+  code fails exactly that test and nothing else. The first x-ray FEN did not falsify and was
+  replaced (the white back rook is uncovered by the root move, before the swap starts; the black one
+  is only uncovered mid-swap).
+- Independent fuzz against a python-chess reference SEE: **54,513 pseudo-legal capture and promotion
+  moves, 0 mismatches** — including 76 en passant, 660 promotions, 1,157 king movers, and 2,251
+  moves that are pseudo-legal only (1,553 leaving the king in check, 377 king-into-attack, 321
+  pinned-piece). Pseudo-legal coverage matters because `ScoreMoves` is fed
+  `MoveGenerator::ComputeLegalMoves`, which is pseudo-legal despite its name, so those three classes
+  are live inputs to `see_ge` and an earlier legal-moves-only fuzz never reached them. The harness
+  is not committed; no Python dependency is added to the suite.
+
+### Open question for review
+
+D2 recorded the tier order as "chosen policy, not a standard one … PR 2's SPRT is what judges it",
+with #398 as the place to revisit it. The bench has judged it ahead of the SPRT. The candidates:
+
+1. **Adopt the standard order** — every `SEE >= 0` capture above the killers, losing captures below
+   the quiets. Still +33%. Does not rescue PR 2.
+2. **Keep the design tiers but leave losing captures above the quiets** (`600'000`). +10%, the
+   cheapest variant measured, and the only one plausibly inside SPRT resolution. It concedes D2's
+   claim that a losing capture belongs below a quiet, which was reasoned from history's clamp and is
+   what the clamp actually argues against.
+3. **Fold PR 2 into PR 3** — land `See.h`/`See.cpp`/`AttackersTo` with no `ScoreMoves` change at all,
+   and let the pruning PR carry the whole measurement. Removes the ordering regression entirely and
+   costs the ability to attribute PR 3's result between ordering and pruning; D2's tier work then
+   becomes a follow-up measured against a baseline that already prunes.
+
 ## Harvest
 
 Filled incrementally as each PR lands; the file is deleted in PR 3 once complete.
@@ -347,6 +471,9 @@ Filled incrementally as each PR lands; the file is deleted in PR 3 once complete
   king behind cheaper attackers without asserting a legality the function cannot see.
   Consequence for validation: PR 1 also changes `pvs()` ordering, so it is **not** node-identical
   with its base and `Compare-SearchEquivalence.ps1` does not apply to it.
+- **PR 2 is held, not opened.** Implemented and committed on `worktree-see-ordering` (`b39711e`),
+  awaiting a re-decision on D2 and D11. The measurement is above; the code is complete and validated
+  and needs no rework to ship whichever tier policy is chosen.
 - **Sequencing changed**: PR 1 is now stacked on #401 rather than forked from `main`. Routing
   quiescence through `ScoreMoves` moves an illegal king capture from the back of the sorted list to
   the front, which — while `pvs()` reduced by *list index* — silently shifted every legal move's LMR
