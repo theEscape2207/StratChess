@@ -434,16 +434,17 @@ Filled incrementally as each PR lands; the file is deleted in PR 3 once complete
 | Glossary: capture / quiet move / king evasion / capture of the attacker / interposition | `CONTEXT.md` | **done** |
 | #320's mechanism, with the 10000-vs-900 arithmetic | `Docs/Changelog.md`, and the test comment | **done** |
 | PR 1 SPRT result, recorded as inconclusive | `Docs/EloLog.md`, `Docs/Changelog.md` | PR 1, pending |
-| D2 — the tier order, and that SEE selects the tier while MVV-LVA scores within it | comment above `ScoreMoves`' tier chain | PR 2 |
-| D2 — why losing captures stay above the quiets, and equal captures above the killers | same comment, plus the PR 2 body | PR 2 |
-| D3 — why `see_ge` is boolean | comment on `see_ge`'s declaration | PR 2 |
-| D5 — a king attacker terminates the swap | source comment in `See.cpp` | PR 2 |
-| D10 — one tier policy for both `ScoreMoves` callers | `CLAUDE.md` → Key Source Facts (extends the #320 entry) | PR 2 |
-| D11 — non-capturing promotions are tactical and bypass SEE | comment at the promotion branch in `ScoreMoves` | PR 2 |
-| D11 — no promotion is prunable; the constraint on a future margin | #398's issue body | PR 2 |
-| D5 — pins ignored, X-rays handled | source comment in `See.cpp` | PR 2 |
-| D6 — `AttackersTo` takes an occupancy so SEE can mutate it | comment on the declaration | PR 2 |
-| SEE test coverage | `Docs/TestDesign.md` | PR 2 |
+| D2 — the tier order, and that SEE selects the tier while MVV-LVA scores within it | comment above `ScoreMoves`' tier chain | **done** |
+| D2 — why losing captures stay above the quiets, and equal captures above the killers | same comment, plus the PR 2 body | **done** |
+| D3 — why `see_ge` is boolean | comment on `see_ge`'s declaration | **done** |
+| D5 — a king attacker terminates the swap | source comment in `See.cpp` | **done** |
+| D10 — one tier policy for both `ScoreMoves` callers | `CLAUDE.md` → Key Source Facts (extends the #320 entry) | **done** |
+| D11 — non-capturing promotions are tactical and bypass SEE | comment at the promotion branch in `ScoreMoves` | **done** |
+| D11 — no promotion is prunable; the constraint on a future margin | #398's issue body | **done** |
+| D5 — pins ignored, X-rays handled | source comment in `See.cpp` | **done** |
+| D6 — `AttackersTo` takes an occupancy so SEE can mutate it | comment on the declaration | **done** |
+| SEE test coverage | `Docs/TestDesign.md` | **done** |
+| PR 2 `Gain` SPRT result | `Docs/EloLog.md`, `Docs/Changelog.md` | PR 2, running |
 | D8 — `!in_check` is correctness, not tuning | source comment at the pruning site | PR 3 |
 | D9 — what `see_pruning_enabled` is for | comment on the field in `SearchTuning` | PR 3 |
 | PR 3 `Gain` result and measured effect | `Docs/EloLog.md`, `Docs/Changelog.md` | PR 3 |

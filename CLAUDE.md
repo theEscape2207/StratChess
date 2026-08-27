@@ -177,6 +177,12 @@ Non-obvious API contracts — the rest of the layout is discoverable.
   it is every legal evasion and `MoveSorter::ScoreMoves` writes an order into a `scored_idx` array
   instead, so quiet evasions are ranked by history rather than by `-piece/16` (#320). Quiescence
   passes `Move::EmptyMove()` as the hash move in both phases and must keep doing so.
+- **`ScoreMoves` applies one capture-tier policy to both its callers** — main `pvs()` and in-check
+  quiescence. `See::see_ge(board, mv, 0)` splits captures into SEE >= 0 (above the killers, with all
+  promotions) and SEE < 0 (below the killers, still above every quiet); `MoveHelper::Value()` scores
+  within each. Moving the losing tier below the quiets is the tempting change and costs tens of
+  percent in nodes: captures are never LMR-reduced, so it only lowers the move number of every quiet
+  it steps over.
 - **An aborted frame mutates nothing.** `pvs()`/`quiescence()` check `IsAborted()` immediately after
   each recursive call returns and the board is restored, so no store, PV update or killer/history
   write is reachable from a child that never finished. A store added below that guard is covered by

@@ -22,6 +22,53 @@ Newest first.
 
 ---
 
+## 2026-08-27 — SEE-based capture ordering
+
+### Added
+
+- `See::see_ge(board, move, threshold)` (`StratEngine/See.{h,cpp}`) — static exchange evaluation as a
+  swap list on a mutated occupancy. Boolean rather than int-valued: both consumers want the same
+  predicate, and the boolean form stops as soon as the answer is decided. X-rays are traced, pins are
+  ignored (standard), a king attacker terminates the swap, promotions are credited once at the root,
+  and en passant clears the victim rather than toggling `move.to()`.
+- `MoveGenerator::AttackersTo(bitboards, square, occupancy)` — attackers of one square of both
+  colours against a *supplied* occupancy, which is what lets SEE uncover x-rays as pieces leave.
+  `GetAttackBoard` could not answer this: it builds a whole-side board and says nothing about which
+  piece attacks what. A new query, not a new generator, so move generation is unchanged.
+
+### Changed
+
+- `MoveSorter::ScoreMoves` selects the capture tier with `see_ge(board, mv, 0)` instead of the sign of
+  `MoveHelper::Value()`. Two of the three old tiers were unreachable in every position — `Value()`
+  weights the attacker at 1/16, so every capture scored at least 44 — so this populates the losing
+  tier for the first time rather than sharpening a heuristic. Order is now hash → SEE >= 0 captures
+  and all promotions → killer0 → killer1 → SEE < 0 captures → history quiets.
+- Non-capturing promotions get the tactical tier explicitly. They fail `IsCapture()`, so they were
+  falling through to history and ranking against ordinary quiets with no credit for the queen made.
+  Deliberately not SEE-tested: SEE scores a queen promotion onto a defended square at -100 and would
+  file it below the quiets, when the pawn was promoting anyway.
+
+Depth-12 bench, 8 positions, `Threads=1`, against `main` @ `6a265bc`: **-14.1% nodes**
+(17,610,351 → 15,119,653), -12.0% at depth 10 and -8.9% at depth 11, with all eight best moves
+preserved at every depth. nps flat, so the tree is smaller rather than the code faster.
+
+The order landed here is **not** the one the design approved. That order — SEE-equal captures below
+the killers, SEE-losing below the quiets — was implemented and measured at **+56%** nodes. Captures
+are never LMR-reduced wherever they sit, so demoting one saves no depth while lowering the
+legal-move number, and so weakening the reduction, of every quiet it steps over. `update_history`
+clamping to `[0, HISTORY_MAX]` with no penalty path makes this worse rather than safe: a zero-scored
+quiet is unmeasured, not judged better than a losing capture. Killers are the exception — already
+LMR-exempt — so letting them alone jump a losing capture reorders cutoffs without moving any
+ordinary quiet. Full matrix in `.claude/plans/in-progress/quiescence-move-ordering-and-see.md`.
+
+Validation: three falsification-checked `see_ge` cases (mid-swap x-ray, en-passant victim off the
+destination square, king-terminates-swap), three ordering cases in `SortTests.cpp`, and a throwaway
+python-chess fuzz over 54,513 **pseudo-legal** captures and promotions with 0 mismatches — including
+2,251 moves that are pseudo-legal only, which is the class `ScoreMoves` actually receives and a
+legal-moves-only fuzz never reaches. No `Run-PerftCheck`: `AttackersTo` adds no generated move.
+
+---
+
 ## 2026-08-27 — quiescence orders evasions by history, not by piece weight
 
 ### Fixed
