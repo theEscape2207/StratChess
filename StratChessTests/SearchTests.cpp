@@ -262,6 +262,18 @@ class AIPerlexTestFixture {
 	using State = AIPerplex::SearchState;
 	using LmrTrace = AIPerplex::LmrTraceEntry;
 
+	// Owns the window in which AIPerplex::lmr_trace_ points at a caller's vector.
+	class ArmedLmrTrace {
+	  public:
+		ArmedLmrTrace(AIPerplex& ai, std::vector<LmrTrace>& sink) : ai_(ai) { ai_.lmr_trace_ = &sink; }
+		~ArmedLmrTrace() { ai_.lmr_trace_ = nullptr; }
+		ArmedLmrTrace(const ArmedLmrTrace&) = delete;
+		ArmedLmrTrace& operator=(const ArmedLmrTrace&) = delete;
+
+	  private:
+		AIPerplex& ai_;
+	};
+
 	Board board_;
 	std::unique_ptr<AIPerplex> ai_owner;
 	AIPerplex* ai = nullptr;
@@ -423,10 +435,13 @@ class AIPerlexTestFixture {
 		std::vector<LmrTrace> trace;
 		arm_clock();
 		ai->td_.board = board_;
-		ai->lmr_trace_ = &trace;
-		ai->pvs(ai->td_, depth, -GameValues::Search_Init, GameValues::Search_Init, /*ply=*/0,
-		        /*is_pv_node=*/false, *ai->_tt);
-		ai->lmr_trace_ = nullptr;
+		{
+			// Scoped so the member cannot outlive the vector: left dangling, the next test's
+			// pvs() would write through it.
+			const ArmedLmrTrace armed(*ai, trace);
+			ai->pvs(ai->td_, depth, -GameValues::Search_Init, GameValues::Search_Init, /*ply=*/0,
+			        /*is_pv_node=*/false, *ai->_tt);
+		}
 		return trace;
 	}
 
@@ -1946,11 +1961,19 @@ namespace {
 
 TEST_CASE("Search - LMR counts legal moves, not sorted list indices", "[search][lmr]")
 {
-	// The white bishop on e2 is pinned to e1 by the rook on e8, so Bxd3 is generated, sorts as a
-	// queen capture behind only the equally valuable but cheaper cxd3, and is then rejected by
-	// DoMove. Every legal move after it has an ordinal one below its index.
+	// The white bishop on e2 is pinned to e1 by the rook on e8, so every bishop move is generated
+	// and then rejected by DoMove. Bxd3 is the one that matters: scored a queen capture, it sorts
+	// second, behind only the equally valuable but cheaper cxd3, which is what pushes ordinals and
+	// indices apart at the front of the list. The bishop's eight quiet moves and the two illegal
+	// king moves score 0 like every other quiet, so they interleave among the quiets and widen the
+	// gap further down; the test recomputes the order rather than assuming any particular shift.
 	constexpr const char* fen = "4r2k/8/8/8/8/3q4/PPP1B1PP/4K1NR w K - 0 1";
-	constexpr int depth = 4;
+
+	// Two depths, because the clamp to [1, depth - 1] flattens the ordinal-to-reduction map: at
+	// depth 4 several adjacent ordinals share a reduction, so a one-step shift is invisible at
+	// those ordinals and only the gate half of the claim bites there.
+	const int depth = GENERATE(4, 6);
+	CAPTURE(depth);
 
 	AIPerlexTestFixture fix(fen);
 	const SearchTuning& tuning = AIPerlexTestFixture::tuning(*fix.ai);

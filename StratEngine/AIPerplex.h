@@ -267,7 +267,8 @@ class AIPerplex final {
 	friend class UciHandlerTestFixture;
 
 	// One LMR decision, as pvs() made it: the move, the ordinal LMR was given for it, and the
-	// reduction that ordinal produced (0 when LMR did not fire). Nothing else observes the
+	// reduction that ordinal produced. 0 unambiguously means LMR did not fire, because the
+	// reduction is clamped below at 1 whenever it does. Nothing else observes the
 	// ordinal — it is a loop-local — so without this a test cannot tell the legal-move count
 	// apart from the sorted list index, which is the whole of the defect it guards.
 	struct LmrTraceEntry {
@@ -277,6 +278,11 @@ class AIPerplex final {
 	};
 	// Non-null makes pvs() append one entry per legal move it searches at ply 0. Ply 0 only,
 	// so a test drives exactly one node and the subtree below it adds nothing.
+	//
+	// Valid only around a direct, single-threaded pvs() call. It is a plain member every search
+	// thread would read, so arming it across Search() under Lazy SMP would have each helper's
+	// ply-0 frame push into the same vector concurrently — a data race the ply guard does not
+	// prevent, because every helper has a ply 0 of its own.
 	std::vector<LmrTraceEntry>* lmr_trace_{nullptr};
 #endif
 	friend class UciHandler;

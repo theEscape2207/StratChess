@@ -47,8 +47,11 @@ Newest first.
   reduced, and the reduction is the one that ordinal produces. The ordinal is a loop-local with no
   other observer, so nodes, scores and best moves cannot distinguish it from the list index — the
   `assert(move_number >= 1)` added with the fix guards only the square root's precondition and
-  survives a revert to `si`. Verified by reverting both LMR uses to `si`: three assertions fail, one
-  for an ordinal-2 move reduced and two for reductions computed a step too hard.
+  survives a revert to `si`. Runs at depth 4 and 6, because the clamp to `[1, depth - 1]` makes
+  adjacent ordinals share a reduction at low depth.
+- Falsified against each half of the fix separately: reverting only the gate fails the
+  "reduced implies ordinal >= `lmr_min_move_index`" assertion at both depths; reverting only the
+  `sqrt` term fails the reduction assertion at both depths (once at depth 4, twice at depth 6).
 
 ### Validation
 

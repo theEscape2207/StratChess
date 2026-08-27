@@ -666,9 +666,9 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			// children that did complete, which is a valid lower bound for this node and is
 			// what the root reports for an interrupted iteration.
 			//
-			// The node counters are the one deliberate exception: they are incremented before
-			// this point and stay incremented, because they measure work done, not results
-			// kept.
+			// The node counters are the deliberate exception — and in a test build, the LMR trace
+			// immediately above them: both are written before this point and stay written, because
+			// both measure work done, not results kept.
 			if (control_.IsAborted())
 				return best_value;
 
