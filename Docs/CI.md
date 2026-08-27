@@ -63,7 +63,7 @@ immutable, so every run writes a new one, and churn that evicts the FetchContent
 clone — net negative while every job still reports green. **Kill criterion:** revert if a `gh cache
 list` check one week after landing shows the FetchContent entry missing, or if `sanitize-linux` merge
 runs show no median improvement of at least 20 s. Method and readings: `Docs/Changelog.md`,
-`.claude/plans/ccache-linux-ci.md`, `.claude/plans/ccache-windows-ci.md`.
+`.claude/plans/in-progress/ccache-linux-ci.md`, `.claude/plans/in-progress/ccache-windows-ci.md`.
 
 **The gate on a cached build is a byte-identical binary, cold cache versus warm, on both platforms.**
 On Windows that works only because `strat_configure_target` passes `/Brepro` to compiler and linker;

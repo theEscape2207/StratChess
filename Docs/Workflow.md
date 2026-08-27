@@ -199,6 +199,10 @@ on a guess. Its payoff is sparing a future prune pass from re-deriving that verd
 starts, the file can stay put and go through the normal Harvest-then-delete flow from there when it
 lands — moving it back to the top level first is not required.
 
+**`.claude/plans/in-progress/`** holds plans whose implementation has started. A plan is moved here
+(or written directly here) when work on it begins. Naming the remaining top-level state — plans
+retained because something still cites them — is #400.
+
 ---
 
 ## Two ways to run a task

@@ -2,7 +2,11 @@
 //
 // Tests that moves are scored in the expected priority order:
 //   hash move > winning captures > killer0 > killer1 > equal captures
-//   > quiet history > losing captures (none in this position)
+//   > quiet history > losing captures
+//
+// The last two tiers are unreachable in every position, not just this one: MoveHelper::Value()
+// weights the attacker at 1/16, so a capture's victim contributes at least 100 while the attacker
+// deducts at most 56, and no capture can score <= 0. SEE (#86) is what populates them.
 
 #include <catch2/catch_test_macros.hpp>
 #include "Board.h"
@@ -15,9 +19,9 @@
 // Rook endgame: White Ra1, Ke1 vs Black Ra2, Ke8.
 // Ra1xa2 is the only capture; all other legal white moves are quiet.
 //
-// Deliberately promotion-free. FindScore() below matches on Move equality, which ignores flags,
-// so two promotions on the same squares would alias and a test picking moveList[k] by index
-// could designate a move it did not mean.
+// Deliberately promotion-free: the tiers under test are the capture and quiet ones, and a
+// promotion belongs to neither. Promotions do not alias in FindScore() below -- Move equality is
+// data == rhs.data, the full encoding including flags -- so a test that wants them can add them.
 static constexpr const char* FEN_SORT = "4k3/8/8/8/8/8/r7/R3K3 w - - 0 1";
 
 // Helper: find the score assigned to a specific move in out_scored_idx.
@@ -56,9 +60,9 @@ TEST_CASE("Sort - Hash move scores 1'900'000 and sorts first", "[sort]")
 
 TEST_CASE("Sort - an empty hash move promotes nothing", "[sort]")
 {
-	// An empty Move reads as h1 -> h1 under Move's from/to equality, which move generation
-	// never produces -- so "no hash move" cannot accidentally match a real one. This is the
-	// property that made the removed PV tier provably dead rather than merely unused.
+	// An empty Move encodes h1 -> h1, which move generation never produces -- so "no hash move"
+	// cannot accidentally match a real one. This is the property that made the removed PV tier
+	// provably dead rather than merely unused.
 	Board board(FEN_SORT);
 
 	MoveList moveList;

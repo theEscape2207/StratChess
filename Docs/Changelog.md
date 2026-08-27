@@ -22,6 +22,77 @@ Newest first.
 
 ---
 
+## 2026-08-27 — quiescence orders evasions by history, not by piece weight
+
+### Fixed
+
+- Since #311 made quiescence legal while in check, an in-check node handed its **whole legal
+  evasion list** to `MoveSorter::SortMovesByValue`, whose second parameter is named `captures`.
+  `MoveHelper::Value()` scores a quiet move as `-PieceHelper::Value(mover) / 16`, so every quiet
+  evasion sorted below every capture and the heaviest quiet sorted last. The king is worth 10000
+  against the queen's 900, so a king evasion scored -625 to a queen interposition's -56 — and a
+  king walk is very often the only legal reply, so the move most likely to be best was searched
+  last. Closes #320.
+- The in-check path now orders through `MoveSorter::ScoreMoves`, the scorer `pvs()` already uses,
+  so quiet evasions are scored by **history** and a king evasion rises on measured merit. The hash
+  move is deliberately `Move::EmptyMove()`: quiescence must not mine `best_move` in either phase,
+  because `store()` inherits a same-key entry's move across a phase change (`TranspositionTable.h`).
+  Ordering is extracted into `AIPerplex::order_quiescence_moves()` so the decision is directly
+  testable.
+- `SortMovesByValue`'s `captures` parameter renamed `count`, plus an assert that the sorted range
+  really is captures-and-promotions. Nothing checked between #311 and #320, which is why the defect
+  survived; the assert is what catches the next recurrence.
+- `MoveHelper::Value()` caps a **king**'s LVA weight at a queen's instead of taking it from the
+  king's 10000 cp notional value. At 10000 it scored `KxR` as `500 - 625 = -125`, which `ScoreMoves`
+  filed in the *losing*-capture tier below every quiet evasion — the best move in the position,
+  searched last. Capped, `KxR` scores 444 and sits among the winning captures, behind an equally
+  valuable capture by a cheaper attacker.
+  It is capped rather than dropped, and the distinction matters: a *legal* king capture is unopposed
+  and would deserve the victim outright, but move generation is pseudo-legal — `GenerateOfficerMoves`
+  masks the king's destinations against own pieces only — so `Value()` is also reached for king
+  captures `DoMove` will reject, and it has no legality information with which to tell them apart.
+  Dropping the term entirely would order an illegal king capture ahead of every legal move.
+  The defect was already live in `pvs()`; routing quiescence through `ScoreMoves` is what made it
+  visible. Both sorters are fixed together, so this PR is deliberately **not** node-identical
+  with its base.
+- `ScoreMoves` now breaks score ties on generation order. `std::sort` is not stable and equal scores
+  are common — an in-check node with a cold history table scores every quiet evasion 0 — so the
+  whole tied block was permuted arbitrarily, and differently across stdlib versions.
+
+### Changed
+
+- `.claude/plans/in-progress/` added for plans whose implementation has started; both
+  `ccache-*-ci.md` moved there under #385. Naming the remaining top-level state is #400.
+- `CONTEXT.md` created at the repo root — a glossary, starting with move classification. The
+  categories overlap in ways that have already produced a defect: a king capture of the checking
+  piece is both a king evasion and a capture of the attacker, and an en passant capture of a
+  checking pawn does not land on the square its victim occupies.
+
+### Validation
+
+- Five new `[qsearch]` tests, three **falsified first** rather than written after the fact. The two
+  king-capture tests bracket the cap from both sides and neither alone pins it: dropping the cap
+  fails "a legal capture outranks an illegal king capture" (the illegal `Kxe2` displaces `Rxe2`),
+  and removing the king branch entirely fails "capturing a contact checker outranks fleeing" (`KxR`
+  sinks below every quiet). Reverting the in-check branch to `SortMovesByValue` fails exactly the
+  ordering test and no other. Debug and Release suites green.
+- This PR is **stacked on #401** and measured against it, not against `main`. Routing quiescence
+  through `ScoreMoves` moves an illegal king capture to the front of the sorted list, which — while
+  `pvs()` reduced by list index — also shifted every legal move's LMR reduction. Measuring against
+  `main` would have bundled an ordering change with an accidental pruning change.
+- Measurement, both against the #401 branch tip @ 22572d5, 10+0.1, `Threads=1`:
+  - `-Sprt Custom -Elo0 -10 -Elo1 0` — **H1 accepted at 1082 games**, +12.53 +/- 15.06. A decision,
+    not a size: it says "not a regression", and its interval still contains zero.
+  - CI strength lab, **19,980 games** (18 shards x 1110, pooled over 9990 pairs) — **+24.47 +/- 3.66
+    Elo**, score 53.52%. This is the estimate. Both rows in `Docs/EloLog.md`.
+
+  The reference is the #401 tip rather than `main` for the reason above. It has since gained two
+  test-only commits, which changed the candidate's SHA under a rebase but not the shipping binary.
+
+Design: `.claude/plans/in-progress/quiescence-move-ordering-and-see.md`. First of three PRs; #86
+follows with SEE ordering and SEE pruning.
+
+---
 ## 2026-08-27 — LMR reduces by legal moves searched, not by list index
 
 ### Fixed
@@ -327,7 +398,7 @@ Newest first.
   still goes green with the warning annotation).
 - The wall-clock verdict — a ≥20 s median drop on `sanitize-linux` merge runs, read alongside a
   `gh cache list` check that ccache churn is not evicting the FetchContent dependency cache — is not
-  measured yet. Method and kill criterion: `.claude/plans/ccache-linux-ci.md` and `Docs/CI.md`. Do
+  measured yet. Method and kill criterion: `.claude/plans/in-progress/ccache-linux-ci.md` and `Docs/CI.md`. Do
   not carry forward issue #92's original "~90 s" estimate; it was costed against `build-linux
   (Release)` as sole critical path, which #372 showed it is not.
 

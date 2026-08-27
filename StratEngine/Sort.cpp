@@ -82,12 +82,16 @@ void MoveSorter::SortMoves(MoveList& moveList,   // traeklisten
 // Dvs ikke at ofre sin dronning for at faa den #%&!! bonde ;-)
 // Bemaerk: start er default 0
 // TODO: Why dont the callers supply iterators instead?
-void MoveSorter::SortMovesByValue(MoveList& moveList, size_t captures, const Board& board, size_t start)
+void MoveSorter::SortMovesByValue(MoveList& moveList, size_t count, const Board& board, size_t start)
 {
+	// The range really must be captures and promotions only — see the declaration.
+	assert(std::all_of(moveList.begin() + static_cast<int>(start), moveList.begin() + static_cast<int>(start + count),
+	                   [](const Move& m) { return MoveHelper::IsCapture(m) || MoveHelper::IsPromote(m); }));
+
 	// Sort captures by MVV-LVA: captured piece value minus (moving piece value / 16).
 	// board supplies the moving piece (Phase 3) and captured piece (Phase 4) for each move.
-	if (captures >= 2) // Mindst 2 for at sortere
-		std::sort(moveList.begin() + static_cast<int>(start), moveList.begin() + static_cast<int>(start + captures),
+	if (count >= 2) // Mindst 2 for at sortere
+		std::sort(moveList.begin() + static_cast<int>(start), moveList.begin() + static_cast<int>(start + count),
 		          [&board](const Move& a, const Move& b) {
 			          return MoveHelper::Value(a, board.GetEffectiveMovPiece(a), board.GetCapturedPiece(a)) >
 			                 MoveHelper::Value(b, board.GetEffectiveMovPiece(b), board.GetCapturedPiece(b));
@@ -141,6 +145,10 @@ void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const Board& board,
 		out_scored_idx[i] = {s, i};
 	}
 
-	std::sort(out_scored_idx.begin(), out_scored_idx.begin() + n,
-	          [](const auto& a, const auto& b) { return a.first > b.first; });
+	// Ties break on generation order. std::sort is not stable, and equal scores are common — an
+	// in-check quiescence node with a cold history table scores every quiet evasion 0 — so without
+	// this the whole tied block is permuted arbitrarily, and differently across stdlib versions.
+	std::sort(out_scored_idx.begin(), out_scored_idx.begin() + n, [](const auto& a, const auto& b) {
+		return a.first != b.first ? a.first > b.first : a.second < b.second;
+	});
 }

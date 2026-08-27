@@ -174,6 +174,15 @@ namespace MoveHelper {
 		case MoveType::CAPTURE:
 		case MoveType::EP_CAPTURE:
 			captureScore = PieceHelper::Value(content);
+			// The king's LVA weight is capped at a queen's rather than taken from its 10000 cp
+			// notional value, which scored KxR at 500 - 625 = -125 and filed the best move in the
+			// position below every quiet one (#320). It is capped, not dropped: a legal king capture
+			// is unopposed and would deserve the victim outright, but move generation is
+			// pseudo-legal, so this is also reached for king captures DoMove will reject. Capping
+			// keeps a king capture among the winning captures and behind an equally valuable one by
+			// a cheaper attacker, without asserting a legality this function cannot see.
+			if (PieceHelper::IsKing(movPiece))
+				return captureScore - static_cast<int>(PieceHelper::Value(ePiece::WHITE_QUEEN) >> 4);
 			return captureScore - movingPieceScore;
 		case MoveType::PROMOTION_KNIGHT:
 		case MoveType::PROMOTION_BISHOP:

@@ -172,6 +172,11 @@ Non-obvious API contracts — the rest of the layout is discoverable.
 - `Engine::compute_budget(remaining, increment, moves_to_go)` → `TimeBudget{soft, hard}` is pure.
 - Null-move pruning is gated by `tuning_.null_move_enabled` via `should_try_null_move()` (covers
   zugzwang, mate-score contamination, consecutive nulls, PV/in-check, min-depth).
+- **Quiescence orders its two move lists differently**, via `AIPerplex::order_quiescence_moves()`.
+  Out of check the list is captures and promotions and `SortMovesByValue` sorts it in place; in check
+  it is every legal evasion and `MoveSorter::ScoreMoves` writes an order into a `scored_idx` array
+  instead, so quiet evasions are ranked by history rather than by `-piece/16` (#320). Quiescence
+  passes `Move::EmptyMove()` as the hash move in both phases and must keep doing so.
 - **An aborted frame mutates nothing.** `pvs()`/`quiescence()` check `IsAborted()` immediately after
   each recursive call returns and the board is restored, so no store, PV update or killer/history
   write is reachable from a child that never finished. A store added below that guard is covered by

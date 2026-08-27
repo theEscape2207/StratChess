@@ -13,7 +13,7 @@ as current.
 four Linux configurations to 41–59 s on a warm cache. This puts ccache in front of clang-cl on that
 one leg.
 
-`.claude/plans/ccache-linux-ci.md` is the parent document. D1 (pinned upstream release, not a package
+`.claude/plans/in-progress/ccache-linux-ci.md` is the parent document. D1 (pinned upstream release, not a package
 manager), D2 (`CMAKE_CXX_COMPILER_LAUNCHER`, not a compiler wrapper), D3 (one cache entry per
 configuration), D6 (a failed install degrades the job rather than failing it) and D7 (per-job
 statistics with `--zero-stats`) carry over unchanged and are not restated here. Only what differs on

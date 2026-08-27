@@ -174,6 +174,10 @@ class AIPerplex final {
 	// carries the same "remaining search" unit as pvs()'s depth and the TT entries both store.
 	int quiescence(ThreadData& td, int alpha, int beta, int qsearch_budget, int ply, TranspositionTable& tt);
 
+	// Orders a quiescence node's moves in place. The two phases order on different criteria and
+	// keep their scratch buffers off the caller's frame — see the definition.
+	void order_quiescence_moves(ThreadData& td, MoveList& moveList, bool in_check, int ply) const;
+
 	// The per-node limit poll shared by pvs() and quiescence(): true means this search must
 	// stop now. Only thread 0 polls, and only every 1024 node entries, so the chrono::now()
 	// behind the clock check is amortised; a helper thread returns false without even
