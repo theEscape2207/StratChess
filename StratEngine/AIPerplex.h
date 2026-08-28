@@ -66,11 +66,9 @@ struct SearchTuning {
 	int null_move_reduction = 3;
 	int null_move_min_depth = 3;
 
-	// Gates SEE pruning in quiescence only, never the SEE capture tiers in ScoreMoves. Turning it
-	// off must leave the search node-identical, which is what makes Compare-SearchEquivalence a
-	// real gate on the pruning: ordering legitimately changes the tree, so nothing else here can
-	// be proved that way. The !in_check guard at the pruning site is correctness, not tuning, and
-	// is deliberately outside this flag.
+	// Gates SEE pruning in quiescence only, never the SEE capture tiers in ScoreMoves, and turning
+	// it off must leave the search node-identical. The !in_check guard at the pruning site is
+	// correctness, not tuning, and is deliberately outside this flag.
 	bool see_pruning_enabled = true;
 };
 

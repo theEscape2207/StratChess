@@ -52,12 +52,13 @@ Strength: **+18.41 +/- 3.62 Elo** over 19,980 games at 10+0.1 against the merge 
 winning pairs than losing ones, so no slice carries it. Row in `Docs/EloLog.md`. A concurrent local
 SPRT was interrupted at 946 of 2000 games and is recorded as stopped, not as a second number.
 
-**The depth-12 bench row is not this change's cost.** At fixed depth the two builds sit at different
-points on the same convergence curve — at depth 12 they return different scores and therefore seed
-different aspiration windows and root orders, and the candidate reads +3.8% nodes. By depth 14 they
-agree on the move and by depth 16 on move, score and PV, and there the candidate is **35-40%
-cheaper** (21.5M nodes against 36.0M on `open-mid` at depth 16). Quoting the depth-12 figure alone
-reports a cost the change does not have.
+**The fixed-depth bench rows are confounded and measure neither a cost nor a gain.** The candidate
+reads +3.8% nodes at depth 12, but the two builds return different scores there and so seed
+different aspiration windows and root orders — the rows compare two different searches, not one
+search with and without pruning. A control run with `aspiration_enabled = false` narrows the
+depth-12 gap sharply and reverses the depth-16 one, which is what disqualifies these rows in either
+direction. The isolated pruning effect is a large reduction in quiescence nodes at a small increase
+in main-search nodes; the strength number above is the measurement that decided the change.
 
 Validation: two falsification-checked tests. One pins the in-check exemption on a position with
 exactly one legal move, itself a losing capture — deleting `!in_check &&` makes quiescence prune the
