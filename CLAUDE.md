@@ -78,19 +78,18 @@ target the repo of their own `$PSScriptRoot`.
 | `Run-Lint.ps1` | Blocking clang-format and clang-tidy (`-Fix` to auto-fix) |
 | `Validate-PreCommit.ps1` | Before every commit — the pre-commit hook runs it |
 | `Validate-PrePR.ps1` | Before a PR — scopes itself to the change tier |
-| `Run-EloMatch.ps1` | Strength vs the pinned reference — after search/eval/time changes |
-| `Run-Bench.ps1 -Exe <path>` | Search speed (nps) at fixed depth |
 | `Compare-SearchEquivalence.ps1 -After <exe>` | The gate for a change claiming to preserve behaviour |
 | `Measure-UciLatency.ps1 -Command <cmd>` | Protocol-level round-trip cost of one UCI command |
 | `Run-PerftCheck.ps1` | Move generation vs a 142,953-position corpus (~25 min) |
 | `New-Worktree.ps1 -Name <task>` | Start a task needing its own directory |
 | `New-TaskBranch.ps1 -Name <task>` | Start a task **in the current worktree** |
-| `New-PullRequest.ps1 -Title "…"` | Sync → validate → push → create/update PR |
-| `Remove-Worktree.ps1 -Name <task> -SyncMaster` | After a PR merges |
-| `Remove-MergedBranches.ps1 [-SyncMaster]` | After PRs merge, working in-place |
 | `Get-Worktrees.ps1` | Session start, or before resuming an idle worktree |
 | `Get-PrChecks.ps1 [-Pr n] [-Wait]` | "Is the PR green?" — exit 0 green / 1 failed / 2 running |
 | `Sync-Master.ps1` | Bring `master` up to `origin/main` |
+
+Measuring (`Run-EloMatch.ps1`, `Run-Bench.ps1`) → skill `measure-strength`. Opening a PR and
+cleaning up after a merge (`New-PullRequest.ps1`, `Remove-Worktree.ps1`,
+`Remove-MergedBranches.ps1`) → skill `open-pull-request`.
 
 ## Standing rules
 
