@@ -31,20 +31,8 @@ while maintaining clarity, efficiency, and robustness in design and implementati
   * Catch2 (unit testing)
 - Do not introduce new dependencies unless justified and reviewed through design documentation.
 
-## Current Engine Features
-- Iterative Deepening Search (IDS)
-- Principal Variation Search (PVS)
-- Quiescence Search
-- Transposition Tables
-- Killer Move Heuristic
-- History Heuristic
-- Threefold / Twofold Repetition Detection
-### Key Data Structures
-- Bitboards
-- Zobrist Hashing
-- Move Representation (currently 32-bit, with plans to optimize to 16-bit for better cache performance)
-- Transposition Table Entries (fixed size, optimized layout)
-- Search Stack (for move ordering and pruning heuristics)
+Engine features and data structures: `Docs/Engine-Readme.md`. Non-obvious API contracts:
+`Docs/EngineContracts.md`.
 
 ## Development Constraints
 - Must maintain or improve search accuracy and ELO; any regression must be explicitly justified.

@@ -3,20 +3,30 @@
 A modern C++20 chess engine focused on improving playing strength (Elo) while maintaining clarity,
 efficiency, and robustness.
 
-Reference detail is pointed at, not duplicated: `Docs/Workflow.md` (standing decisions — what
-validates what, speed/nps, threat model — plus validation tiers, review gate, runtime files,
-worktree gotchas), `Docs/CI.md` (what each workflow runs), `Docs/TestDesign.md` (coverage map +
-writing tests), `Docs/Changelog.md` (history), `Docs/agents/` (issue tracker, triage labels and
-domain-doc layout for the engineering skills). Live backlog is GitHub Issues.
+This file holds the rules that change what you do. Detail is pointed at, not duplicated:
+
+| Need | Read |
+|---|---|
+| non-obvious API contracts before an engine edit | `Docs/EngineContracts.md` |
+| validation tiers, standing decisions, worktree gotchas | `Docs/Workflow.md` |
+| what each CI workflow runs, and when | `Docs/CI.md` |
+| coverage map + how to write a test | `Docs/TestDesign.md` |
+| measuring Elo or nps | skill `measure-strength` |
+| opening or updating a PR | skill `open-pull-request` |
+| issue tracker, triage labels, domain docs | `Docs/agents/` |
+| history | `Docs/Changelog.md` |
+
+Live backlog is GitHub Issues (`theEscape2207/StratChess`) via `gh`, bodies always `--body-file`.
 
 ## Build
+
 - **Only `x64` builds work** — the x86/Win32 configuration is not maintained for C++20.
 - **Warnings are errors everywhere** — `/W4 /WX` on MSVC and clang-cl, `-Wall -Wextra -Werror` on
   GCC, in both Debug and Release. Approved suppressions: `[[maybe_unused]]` for params used only in
   `assert()`; `static_cast<>` for intentional narrowing. Never `#pragma warning(disable)` in source.
 - Dependencies (spdlog, nlohmann/json, Catch2) are fetched and pinned by `FetchContent` into
-  `build/_deps`, shared by every preset. There is nothing to install and no sibling checkout to keep
-  in step.
+  `build/_deps`, shared by every preset. Nothing to install, no sibling checkout to keep in step. A
+  fresh worktree's first build needs network (~1 min).
 - `StratEngine/StdAfx.h` is the shared common-include header (no build precompiles it) — add
   frequently-used STL headers there, alphabetically inside the `#pragma warning push/pop` block, not
   in individual `.cpp` files.
@@ -32,255 +42,121 @@ domain-doc layout for the engineering skills). Live backlog is GitHub Issues.
 .\build.ps1 main -Compiler msvc      # MSVC instead of clang-cl
 ```
 
-`build.ps1` drives the presets in `CMakePresets.json` and imports the VS developer environment
-itself via `vswhere`, so it works from a plain shell, a git hook or an agent session — never
-hard-code a VS path. Agent shells may omit `PROCESSOR_ARCHITECTURE`, leaving
-`CMAKE_SYSTEM_PROCESSOR` blank on fresh configuration; the wrapper restores it from the VS x64
-target. Do not pass `-D CMAKE_SYSTEM_PROCESSOR` instead — system detection overwrites it. The wrapper
-also sets `core.hooksPath` to `.githooks` on first run, so every worktree gets the tracked hook.
+`build.ps1` imports the VS developer environment itself via `vswhere`, so it works from a plain
+shell, a git hook or an agent session — never hard-code a VS path. It also sets `core.hooksPath` to
+`.githooks` on first run, so every worktree gets the tracked hook.
 
 **clang-cl is what ships**; MSVC is the supported second toolchain, for interactive debugging, as the
-one-word fallback if an install or runner image lacks the VS Clang component, and because it honours
-flags clang-cl accepts and silently drops. **Never measure with an MSVC build** — `Run-Bench` and
-`Run-EloMatch` compare only within one compiler, and mixing them shows the compiler gap as a phantom
-regression.
-`Get-BuildArtifact.ps1` defaults to the shipping build for that reason.
+one-word fallback if an install lacks the VS Clang component, and because it honours flags clang-cl
+accepts and silently drops. **Never measure with an MSVC build** — the compiler gap shows up as a
+phantom regression. `Get-BuildArtifact.ps1` defaults to the shipping build for that reason.
 
-**A fresh worktree's first build needs network**: it clones the pinned dependencies (~1 min). Visual
-Studio setup, the `/clang:` flag traps, and the shared deps cache that avoids re-cloning per
-worktree: `Docs/Workflow.md`.
+Visual Studio setup, `/clang:` flag traps, the shared deps cache and raw CMake: `Docs/Workflow.md`
+→ Part 3.
 
 ## Scripts
 
-In `StratChessEvolved/Scripts/`. They resolve working directory and build-output paths internally.
+In `StratChessEvolved/Scripts/`; they resolve working directory and build-output paths internally.
 **They require PowerShell 7** — `powershell` (Windows PowerShell 5) fails on PS7 syntax. Invoke
-`pwsh` directly with `-File` and an **absolute** script path:
+`pwsh` with `-File` and an **absolute** path. Never dot-source (`$PSScriptRoot` is `$null` under
+dot-source), and never wrap in `cmd.exe /c "..."` — that swallows output, so a failing script looks
+like a silent no-op.
 
 ```
 pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\<name>.ps1
 ```
 
-Never dot-source (`$PSScriptRoot` is `$null` under dot-source), and do not wrap the call in
-`cmd.exe /c "..."` — that form swallows script output in some shells, so a failing script looks like
-a silent no-op.
+Each script's `-?` help carries its flags and traps. Use the one in **your own worktree** — they
+target the repo of their own `$PSScriptRoot`.
 
 | Script | When |
 |---|---|
 | `Run-Tests.ps1 [tag]` | Any test verification |
-| `Run-Lint.ps1 [-Check Format\|Tidy\|BlameIgnore] [-Profile Gate\|Deep] [-All] [-Jobs n] [-Fix]` | Blocking clang-format and clang-tidy. Gate defaults to 4 workers and runs in PrePR/required CI; analyzer-heavy Deep defaults to 2 and runs in Nightly. Resolves LLVM via `vswhere`; `-Fix` iterates clang-format to a fixpoint |
-| `Validate-PreCommit.ps1` | Before every commit — FEN check + fast tests (the pre-commit hook runs this) |
-| `Validate-PrePR.ps1` | Before a PR — scopes itself to the change tier; `-Force` to run everything |
-| `Run-EloMatch.ps1 [-Smoke]` | After search/eval/time changes — strength vs the pinned reference (method: `Docs/EloMeasurement.md`, results: `Docs/EloLog.md`) |
-| `Run-Bench.ps1 -Exe <path>` | Search speed (nps) at fixed depth — before/after any optimisation, or comparing two builds |
-| `Compare-SearchEquivalence.ps1 -After <exe> [-Before <exe>\|-BaselineRef <ref>]` | The gate for a change that claims to preserve behaviour — every per-iteration `info` line and `bestmove` compared at fixed depth, `Threads=1`. `-BaselineRef origin/main` builds and caches the baseline itself |
-| `Measure-UciLatency.ps1 -Command <cmd>` | Round-trip cost of one UCI command against a control case — protocol-level latency, not search speed. Its help carries the two traps (drive past move 1; `go` needs `-CompletionMarker bestmove`) |
-| `Run-PerftCheck.ps1` | Move generation against a 142,953-position corpus (~25 min) — after `MoveGenerator`, make/unmake or FEN-parser work. A clean sweep is not zero failures; the script classifies them (`Docs/TestDesign.md`) |
-| `New-Worktree.ps1 -Name <task>` | Starting a task that needs its own directory — forks fresh from `origin/main` at the correct path |
-| `New-TaskBranch.ps1 -Name <task>` | Starting a task **in the current worktree** — forks a branch from `origin/main`, refusing on a dirty tree |
-| `New-PullRequest.ps1 -Title "…"` | Sync → validate → push → create/update PR. `-Draft`, `-NoPr`, `-BodyFile` |
-| `Remove-Worktree.ps1 -Name <task> -SyncMaster` | After a PR merges — worktree, local and remote branch, then syncs `master` |
-| `Remove-MergedBranches.ps1 [-SyncMaster]` | After PRs merge, working in-place — deletes branches **verified** merged into `origin/main` |
-| `Get-Worktrees.ps1` | Session start, or before resuming an idle worktree — drift, PR state, and unregistered directories |
-| `Get-PrChecks.ps1 [-Pr n] [-Wait]` | "Is the PR green?" — one line when it is, and when it is not, the failing step and its errors without a second call. `-Wait` polls to completion. Exit 0 green / 1 failed / 2 still running |
-| `Sync-Master.ps1` | Bring `master` up to `origin/main` — runs from anywhere; finds the worktree holding `master` |
+| `Run-Lint.ps1` | Blocking clang-format and clang-tidy (`-Fix` to auto-fix) |
+| `Validate-PreCommit.ps1` | Before every commit — the pre-commit hook runs it |
+| `Validate-PrePR.ps1` | Before a PR — scopes itself to the change tier |
+| `Run-EloMatch.ps1` | Strength vs the pinned reference — after search/eval/time changes |
+| `Run-Bench.ps1 -Exe <path>` | Search speed (nps) at fixed depth |
+| `Compare-SearchEquivalence.ps1 -After <exe>` | The gate for a change claiming to preserve behaviour |
+| `Measure-UciLatency.ps1 -Command <cmd>` | Protocol-level round-trip cost of one UCI command |
+| `Run-PerftCheck.ps1` | Move generation vs a 142,953-position corpus (~25 min) |
+| `New-Worktree.ps1 -Name <task>` | Start a task needing its own directory |
+| `New-TaskBranch.ps1 -Name <task>` | Start a task **in the current worktree** |
+| `New-PullRequest.ps1 -Title "…"` | Sync → validate → push → create/update PR |
+| `Remove-Worktree.ps1 -Name <task> -SyncMaster` | After a PR merges |
+| `Remove-MergedBranches.ps1 [-SyncMaster]` | After PRs merge, working in-place |
+| `Get-Worktrees.ps1` | Session start, or before resuming an idle worktree |
+| `Get-PrChecks.ps1 [-Pr n] [-Wait]` | "Is the PR green?" — exit 0 green / 1 failed / 2 running |
+| `Sync-Master.ps1` | Bring `master` up to `origin/main` |
 
-**Measurement**: use `-Sprt NonRegression` / `-Sprt Gain` for anything expected to be worth less
-than ~25 Elo — a fixed 500-game batch cannot resolve it, and recording the resulting "±26" row as a
-measurement is how false confidence accumulates. An SPRT that hits the `-Games` cap without crossing
-a bound is **inconclusive**, not a measured zero; record it as such. An SPRT needs a reference that
-isolates the change, so `Run-EloMatch.ps1` refuses `-Sprt` against the fixed anchor (`-AnchorSprt`
-overrides it for a deliberate cumulative reading). A full 500-game batch is ≈40 min
-unattended at the default `-Concurrency 6`. Measurement budget is the user's call — report what
-deciding would cost and let them choose.
+## Standing rules
 
-**Opening book**: 250 openings = 500 distinct games, so a 500-game batch exhausts the committed book
-exactly and anything larger replays openings. `Run-EloMatch.ps1` prints the count and warns. For
-bigger batches drop a large book at `EngineTesting\openings-large.pgn|.epd` (not committed — public
-repo, third-party data) or pass `-Book`.
+**Speed serves strength; the goal is measured positive Elo, not nps.** Anything adding per-node work
+— evaluation terms as much as compiler flags — gets a bench pass, and a measured slowdown needs a
+stated benefit that outweighs it. Compare **nps**, never node counts at fixed depth: node count is a
+property of the search, not the machine code, which is what makes it the right *equivalence* check
+(two builds of identical source must visit identical nodes at `Threads=1`). Choosing an instrument
+and reading its error bar: skill `measure-strength`.
 
-**Never bypass `New-PullRequest.ps1` with a bare `git push`** to update an open PR: the push
-succeeds but `Validate-PrePR.ps1` never runs, leaving the merged state covered only by the
-pre-commit hook (this happened on PR #148).
-
-CI is a **gate** — `build-and-test-result` is a required check on `main` and a red run blocks the
-merge. A SKIPPED leg reports success on purpose, so Docs and Tooling PRs are not blocked by jobs that
-correctly never ran. Build/Engine tiers only; Docs and Tooling skip the build jobs on PRs and merges
-alike. Self-play stays local. What each workflow runs, and when: `Docs/CI.md`.
-
-**Linux Debug + sanitizers is the primary correctness gate; Windows CI covers the shipping
-toolchain.** They answer different questions and neither replaces the other — clang-cl silently drops
-flags Linux can never observe. Do not add a Windows Debug configuration to a gate. The reasoning, and
-what would change it: `Docs/Workflow.md` → Standing decisions.
-
-**Speed vs strength, and the goal is measured positive Elo — not nps.** `Run-Bench.ps1` measures
-nps, `Run-EloMatch.ps1` measures strength; below ~5% nps an Elo match cannot resolve the effect at
-any affordable game count. Compare **nps**, never node counts at fixed depth — the node count is a
-property of the search, not the machine code, which is exactly what makes it the right *equivalence*
-check: two builds of identical source must visit identical nodes and return identical best moves at
-`Threads=1`. Anything adding per-node work — evaluation terms as much as compiler flags — gets a
-bench pass, and a measured slowdown needs a stated benefit that outweighs it. Effect sizing, repeat
-runs, and why an eval change needs the per-position column: `Docs/Workflow.md` → Speed and nps.
+**CI is a gate** — `build-and-test-result` is required on `main` and a red run blocks the merge. A
+SKIPPED leg reports success on purpose, so Docs and Tooling PRs are not blocked by jobs that
+correctly never ran. **Linux Debug + sanitizers is the primary correctness gate; Windows CI covers
+the shipping toolchain.** Neither replaces the other — clang-cl silently drops flags Linux can never
+observe — so do not add a Windows Debug configuration to a gate. Details: `Docs/CI.md`.
 
 **Threat model**: not network-facing, no privilege boundary, no attacker. External-input work aims at
 robustness — a clear diagnostic and a clean exit — not security. Exploit mitigations need a reason
 beyond sounding prudent; CFG was declined on exactly that basis (#218). Full statement:
 `Docs/Workflow.md` → Threat model.
 
-## Engine Summary
-IDS + PVS + quiescence; Zobrist-hashed TT; bitboards with PEXT magic sliding attacks; killers
-(2/ply) + history; null-move pruning; LMR; tapered evaluation; Lazy SMP.
+## Engine contracts
 
-## Key Source Facts
+`Docs/EngineContracts.md` carries the non-obvious API contracts, indexed by what you are editing —
+read the relevant section before touching moves, `Board`, the search service or search internals.
+Three tripwires are repeated here because violating them fails *silently*:
 
-Non-obvious API contracts — the rest of the layout is discoverable.
-
-- `Move` is a pure 2-byte value (from/to/flags). The moving and captured pieces are **not** stored:
-  use `Board::GetEffectiveMovPiece(m)` (pre-move only) and `Board::GetCapturedPiece(m)`. After
-  `DoMove`, identify the moved piece with `board.GetPiece(m.to())`.
-- `Move` equality is exact (compares the raw 2-byte encoding, flags included) — two moves differing
-  only in promotion piece, or a quiet move vs. a capture on the same squares, compare unequal.
-- Move formatting lives entirely in `MoveFormatter`: `ToCoord` (coordinate-only, no board),
-  `ToShort` (piece-prefixed; the `Board` overload appends `+` and reads the board, so never call it
-  after a failed or unpaired `DoMove`), `ToUCI`, `ToVerbose`, `FromUCI`.
-- Most `MoveHelper` predicates (`IsCapture`, `IsPromote`, `Value`, ...) take a `const Move&`;
-  `IsPawnMove` is the exception, taking a bare `ePiece`.
-- `ThreadData&` is the **first parameter of every search method**. The search runs on `td.board`,
-  never the game board, and writes nothing back to it: the root verdict leaves via
-  `SearchResult::game_state` and no other channel. The TT is a separate shared parameter — Lazy SMP
-  helpers each get their own `ThreadData`.
-- **`Board` is the sole authority for position metadata**: `ep_square()`, `castling_rights()`,
-  `halfmove_clock()`, `fullmove_count()`, `last_move()`. Move generation reads them from the board it
-  is given, so nothing can hand it state that disagrees with the position's Zobrist hash. One private
-  `PositionState` per ply holds all of it plus the Zobrist hash, the last-irreversible ply and the
-  captured piece.
-- `AIPerplex` is a standalone concrete search service: `Search(Board, limits, observer)` receives a
-  root and observer per call and returns a `SearchResult` by value. It owns evaluator, TT, tuning and
-  composed `SearchControl`; it is not an `IPlayer`, retains no caller Board or Board reference and
-  no result cache, and has no compatibility player metadata. Each call copies its supplied root into
-  owned `ThreadData` before search. `SearchPlayer { Board&, AIPerplex value }` is the required
-  Game adapter; `CreatePlayer` maps config before type erasure. `ISearchEngine` is deliberately
-  deferred until a second real implementation needs it.
-- `SearchResult` carries best move, score, elapsed time, split node counts and the `GameStates` the
-  player adjudicated at its own root. It is never `DRAW_50_MOVES`: the fifty-move rule is a fact about
-  the committed position, and `Game::Run` adjudicates it. The returned value is the **post-join
-  aggregate** and remains the authoritative record after later searches; Game owns combined totals.
-- `SearchLimits` carries every per-call constraint (clock/movetime/depth/infinite, all optional);
-  `Engine::resolve_limits()` resolves it and composed `SearchControl` arms the timer and owns stop/
-  node-limit state. Every `Search(..., limits)` or `GetMove(limits)` call is self-contained — there
-  is no pre-call ordering contract. UCI owns its concrete service directly for one session and passes
-  a fresh observer per `go`; `ucinewgame` clears per-game state without rebuilding it.
-- `Engine::compute_budget(remaining, increment, moves_to_go)` → `TimeBudget{soft, hard}` is pure.
-- Null-move pruning is gated by `tuning_.null_move_enabled` via `should_try_null_move()` (covers
-  zugzwang, mate-score contamination, consecutive nulls, PV/in-check, min-depth).
-- **Quiescence orders its two move lists differently**, via `AIPerplex::order_quiescence_moves()`.
-  Out of check the list is captures and promotions and `SortMovesByValue` sorts it in place; in check
-  it is every legal evasion and `MoveSorter::ScoreMoves` writes an order into a `scored_idx` array
-  instead, so quiet evasions are ranked by history rather than by `-piece/16` (#320). Quiescence
-  passes `Move::EmptyMove()` as the hash move in both phases and must keep doing so.
-- **`ScoreMoves` applies one capture-tier policy to both its callers** — main `pvs()` and in-check
-  quiescence. `See::see_ge(board, mv, 0)` splits captures into SEE >= 0 (above the killers, with all
-  promotions) and SEE < 0 (below the killers, still above every quiet); `MoveHelper::Value()` scores
-  within each. Moving the losing tier below the quiets is the tempting change and costs tens of
-  percent in nodes: captures are never LMR-reduced, so it only lowers the move number of every quiet
-  it steps over.
+- **`Move` equality is exact** — it compares the raw 2 bytes, flags included. Moves differing only in
+  promotion piece, or quiet vs. capture on the same squares, compare unequal.
+- **`ThreadData&` is the first parameter of every search method.** Search runs on `td.board`, never
+  the game board, and writes nothing back to it.
 - **An aborted frame mutates nothing.** `pvs()`/`quiescence()` check `IsAborted()` immediately after
-  each recursive call returns and the board is restored, so no store, PV update or killer/history
-  write is reachable from a child that never finished. A store added below that guard is covered by
-  it; one added above it has to justify itself the way the three exempt stores do in comments there.
-- `game_settings.json` holds per-player `"search_limits"`; it accepts C-style `/* */` comments via
-  nlohmann, but PowerShell's `ConvertFrom-Json` does not.
+  each recursive call returns; a store added above that guard must justify itself.
 
 ## Development Guidelines
+
 - C++20; favour `constexpr`, RAII, move semantics, strong types.
-- Approved external dependencies only: `spdlog`, `nlohmann/json`.
+- Current external dependencies are `spdlog`, `nlohmann/json` and `Catch2`. **No new external
+  dependency without explicit approval from the project owner** — ask, with a rationale.
 - All changes must be thread-safe, especially around the transposition table.
-- No regressions in search accuracy or Elo without explicit justification; benchmark before and
-  after any optimisation, and keep behaviour deterministic.
-- English, unambiguous naming and comments. **Comments describe the code as it stands.** Keep them
-  to 1–2 lines unless they record a key fact or tripwire; put history in the PR body or
+- No regressions in search accuracy or Elo without explicit justification; keep behaviour
+  deterministic.
+- English, unambiguous naming and comments. **Comments describe the code as it stands** — no task or
+  PR references, no point-in-time measurements, no describing what the code used to be. Keep them to
+  1–2 lines unless they record a key fact or tripwire; history goes in the PR body or
   `Docs/Changelog.md`.
-- Run the exe from `StratChessEvolved/` — both for `game_settings.json` and so logs land in
-  `StratChessEvolved/logs/`.
-- Before committing, check `game_settings.json` is back at the starting FEN; test sessions leave
-  custom positions behind.
 
 ## Testing
 
-`Docs/TestDesign.md` is the coverage map and the guide to writing tests — check it before adding
-any. One rule matters enough to repeat here, because it is a silent failure:
-
-- **Never measure an MSVC-built binary against a clang-built one.** Both run and both look healthy;
-  the compiler gap alone is worth tens of Elo and gets credited to whatever change is under test.
-
-Execute validation steps autonomously; flag any step needing user assistance (interactive GUI,
-manual input) rather than skipping it silently.
+`Docs/TestDesign.md` is the coverage map and the guide to writing tests — check it before adding any.
+Execute validation steps autonomously; flag any step needing user assistance (interactive GUI, manual
+input) rather than skipping it silently.
 
 ## Commit & PR Conventions
+
+Opening or updating a PR, reviewer dispatch and post-merge cleanup: skill `open-pull-request`.
+PRs stay script-mediated — `New-PullRequest.ps1`, never `gh pr create` or a bare push.
 
 - Every task forks fresh from `origin/main`; PRs target `main`. Two ways to run one, both enforcing
   that: a **per-task worktree** (`New-Worktree.ps1`) when work must be parked or run alongside
   another task, or a **task branch in the current worktree** (`New-TaskBranch.ps1`) for a run of
-  small sequential PRs. In-place is sequential only — one worktree holds one branch — and the script
-  refuses to start a task on a tree with uncommitted tracked changes, which is the guard separate
-  directories give for free. Details: `Docs/Workflow.md`.
+  small sequential PRs. In-place is sequential only — one worktree holds one branch.
 - Local `master` is a personal scratch branch — safe to commit to, safe to let drift. Never fork a
   worktree from it. `origin/master` is retired; nothing should reference it.
-- Keep PRs small and logically scoped; include motivation, design reasoning and expected impact for
-  anything non-trivial. Keep commit messages short — detail goes in the PR body or chat.
-- If a worktree branch carries commits unrelated to the task, cherry-pick the relevant ones onto a
-  fresh branch from `origin/main` rather than PRing the branch directly.
-- Commit only what was explicitly asked for.
-
-### Before a PR
-
-`New-PullRequest.ps1` does sync → validate → push → create/update, stopping at the first failure.
-Its validation step scopes itself to the change tier, so there is no judgement call to make there —
-tier table and fail-closed guarantees: `Docs/Workflow.md`. The one thing it cannot do for you:
-
-**Dispatch a specialised reviewer** before running it, if the diff
-(`git diff --name-only origin/main...HEAD`) touches that domain:
-
-- `Eval.cpp` → `eval-reviewer`
-- `AIPerplex.cpp/.h`, `ThreadData.h` (killers/history), `Sort.cpp/.h` (MVV-LVA) → `search-reviewer`
-
-**Default is to dispatch**, and the script only reminds — it never blocks. A narrow
-self-certification carve-out exists for logging-only diffs; its six conditions are in
-`Docs/Workflow.md` — read them before claiming a skip, and state the skip in the PR body so it is
-auditable. Address findings before opening the PR.
-
-**Batch review follow-ups into one push.** `Get-ChangeTier.ps1` classifies the whole PR diff
-(`origin/main...HEAD`), not the latest commit, so a comment-only fix on an Engine PR still reruns the
-full Engine tier locally and in CI. Collect the round's findings, address them together, push once.
-
-### Cross-agent review
-
-Separate from the specialised reviewers: a second agent reviews selected artifacts and comments on
-the PR or issue **before merge**. The user routes it — it is not dispatched from here — so a pushed PR is *awaiting
-review*, not done. Say so when reporting one.
-
-Because the specialised reviewers read the **diff** while the cross-agent reviewer reads the **design
-doc**, nothing checks that the two still agree — so **the PR body must state which approved decisions
-changed during implementation, and why**. What to send, how to rank findings, and the evidence a
-blocking finding needs: `Docs/Workflow.md` → Cross-agent review.
-
-### After a PR merges
-
-`Remove-Worktree.ps1 -Name <task> -SyncMaster`, or `Remove-MergedBranches.ps1 -SyncMaster` when
-working in place. Treat cleanup as part of finishing the task, not an optional extra the user has to
-ask for. Squash-merges and locked directories need care — `Docs/Workflow.md`.
-
-## Agent skills
-
-Per-repo configuration the engineering skills read. Details in `Docs/agents/`.
-
-- **Issue tracker** — GitHub Issues (`theEscape2207/StratChess`) via `gh`, bodies always by
-  `--body-file`. PRs stay script-mediated: `New-PullRequest.ps1`, never `gh pr create` or a bare
-  push. See `Docs/agents/issue-tracker.md`.
-- **Triage labels** — the five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`,
-  `ready-for-human`, `wontfix`), deliberately outside the `category:`/`priority:` namespaces. See
-  `Docs/agents/triage-labels.md`.
-- **Domain docs** — single-context: `CONTEXT.md` at the repo root, ADRs in `Docs/adr/`. Neither
-  exists yet; both are created lazily. See `Docs/agents/domain.md`.
+- Keep PRs small and logically scoped. Keep commit messages short — detail goes in the PR body or
+  chat. Commit each fix as it lands rather than reverse-splitting a combined diff at the end.
+- Stage named files, never `git add -A` — it sweeps tool-downloaded trees into the commit.
+- Commit only what was explicitly asked for. If a branch carries unrelated commits, cherry-pick the
+  relevant ones onto a fresh branch from `origin/main`.
 
 ## Design Documents
 
@@ -289,19 +165,13 @@ that could reasonably go more than one way *and* materially affects a contract, 
 correctness, strength, performance or maintenance cost, or it rests on an assumption you cannot
 verify from the code in front of you. File count is not the trigger: a ten-file mechanical rename
 needs nothing, a one-line change to `replacementScore()` needs one. Start from
-`.claude/plans/TEMPLATE.md`, and **name the file after its content**, never an auto-generated string.
+`.claude/plans/TEMPLATE.md` and **name the file after its content**.
 
-**Write for a future maintainer arriving cold**, not for the agent doing the work, and keep it
-proportional — a document longer than the diff it describes means either the change is riskier than
-it looks or the document is padding.
-
-**Durable decisions and rationale get committed; execution detail does not.** Ordering, file-by-file
-edit lists and implementation checklists belong in the scratchpad unless the task is complex, paused,
-or handed to someone else. A separate implementation plan is rarely worth writing and almost never
-worth committing.
-
-Landing the doc, the Harvest section, and the three conditions for deleting one:
-`Docs/Workflow.md` → Design document lifecycle.
+**Write for a future maintainer arriving cold**, and keep it proportional — a document longer than
+the diff it describes means either the change is riskier than it looks or the document is padding.
+**Durable decisions and rationale get committed; execution detail does not** — ordering, file-by-file
+edit lists and checklists belong in the scratchpad. Landing the doc, the Harvest section and the
+three conditions for deleting one: `Docs/Workflow.md` → Design document lifecycle.
 
 ## Subagent Dispatch
 
@@ -309,10 +179,9 @@ Landing the doc, the Harvest section, and the three conditions for deleting one:
   closed list. Don't delegate open-ended exploration.
 - **Always give an explicit worktree-relative binary path.** A `..` path pointing outside the
   worktree can be satisfied by the main repo's stale binary while producing wrong results, and
-  "file not found" guards do not catch a stale one.
-- Build from current sources before dispatching anything that verifies against binary output.
-- **Long background waits do not reliably resume a subagent's turn.** Check in every 15-20 minutes
-  on anything long-running rather than waiting for a notification.
+  "file not found" guards do not catch a stale one. Build from current sources first.
+- **Long background waits do not reliably resume a subagent's turn.** Check in every 15–20 minutes
+  rather than waiting for a notification.
 
 ## Shell Notes
 

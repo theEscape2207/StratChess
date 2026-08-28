@@ -904,7 +904,8 @@ The live backlog is GitHub Issues; `Docs/Roadmap.md` carries the larger themes.
 - [Transposition Tables](https://www.chessprogramming.org/Transposition_Table)
 
 ### Related Documentation
-- `CLAUDE.md` - Build, scripts, conventions and key source facts
+- `CLAUDE.md` - Build, scripts and conventions
+- `Docs/EngineContracts.md` - Non-obvious API contracts, indexed by what you are editing
 - `Docs/Workflow.md` - Standing decisions, validation tiers, review gate
 - `Docs/CI.md` - What each CI workflow runs
 - `Docs/TestDesign.md` - Coverage map and guide to writing tests
