@@ -601,17 +601,19 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 				if (applyLMR) {
 					// sqrt formula: scales naturally with depth and move index.
-					// Clamped to [1, depth-1]; when R == depth-1 the recursive call is
-					// at depth 0 (falls into quiescence). The re-search below restores
-					// full depth if alpha is beaten.
+					// Clamped to [1, depth-2] so the reduced search keeps a main-tree ply
+					// rather than dropping straight into quiescence; the re-search below
+					// restores full depth if alpha is beaten. The upper bound carries its
+					// own max(1, ...) because R == 0 would make that re-search repeat an
+					// identical search, reachable if lmr_min_depth is ever lowered to 2.
 					// clang-format off
 					// Hand-wrapped so the sqrt(depth) * sqrt(move index) product and the
-					// clamp to [1, depth-1] stay visible as separate steps.
+					// clamp to [1, depth-2] stay visible as separate steps.
 					const int R = std::min(
 						std::max(1, static_cast<int>(
 							std::sqrt(static_cast<double>(depth - 1)) *
 							std::sqrt(static_cast<double>(move_number - 1)))),
-						depth - 1);
+						std::max(1, depth - 2));
 					// clang-format on
 
 					// Reduced-depth null-window search
