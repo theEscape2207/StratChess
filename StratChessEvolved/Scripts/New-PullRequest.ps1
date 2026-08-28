@@ -25,7 +25,8 @@
     This script deliberately does NOT dispatch the specialised reviewers (eval-reviewer,
     search-reviewer). That is step 3 of the checklist and is a judgement call about what
     the diff touches -- it prints a reminder naming the relevant reviewer when the diff
-    includes Eval.cpp/Eval.h or AIPerplex.cpp/.h, and leaves the call to you.
+    includes Eval.cpp/Eval.h, AIPerplex.cpp/.h, or the PST/material tables in defines.h,
+    and leaves the call to you.
 
 .PARAMETER Title
     PR title. Required when creating; ignored when updating an existing PR.
@@ -166,6 +167,32 @@ if ($changed -match 'StratEngine/Eval\.(cpp|h)$')      { $reviewers += 'eval-rev
 # and MVV-LVA ordering in Sort.cpp. Reminding on any touch is deliberate -- see CLAUDE.md step 3
 # for the criteria under which a human may self-certify a skip. Do not add suppression logic here.
 if ($changed -match 'StratEngine/(AIPerplex\.(cpp|h)|ThreadData\.h|Sort\.(cpp|h))$') { $reviewers += 'search-reviewer' }
+# defines.h is not an eval file in general, but the PSTs (g_Eval_Bitboards) and the material
+# values (g_iPieceValues) live there, so a retune can land without touching Eval.cpp/.h at all.
+# Match on touched line ranges rather than on the diff text: a retune edits table *values*, and
+# those +/- lines never contain the symbol name.
+if ($changed -match 'StratEngine/defines\.h$') {
+    $definesLines = Get-Content -LiteralPath (Join-Path $RepoRoot 'StratEngine/defines.h')
+    $spans = @()
+    for ($i = 0; $i -lt $definesLines.Count; $i++) {
+        if ($definesLines[$i] -match '\b(g_Eval_Bitboards|g_iPieceValues)\b') {
+            $end = $i
+            while ($end -lt $definesLines.Count - 1 -and $definesLines[$end] -notmatch '^\s*\};') { $end++ }
+            $spans += , @(($i + 1), ($end + 1))
+        }
+    }
+    foreach ($hunk in (& git -C $RepoRoot diff -U0 origin/main...HEAD -- 'StratEngine/defines.h')) {
+        if ($hunk -notmatch '^@@ .* \+(\d+)(?:,(\d+))? @@') { continue }
+        $first = [int]$Matches[1]
+        $count = if ($Matches[2]) { [int]$Matches[2] } else { 1 }
+        # A pure deletion reports +N,0; treat it as touching line N so it is not missed.
+        $last = $first + [Math]::Max($count, 1) - 1
+        foreach ($span in $spans) {
+            if ($first -le $span[1] -and $last -ge $span[0]) { $reviewers += 'eval-reviewer'; break }
+        }
+    }
+}
+$reviewers = @($reviewers | Select-Object -Unique)
 if ($reviewers.Count -gt 0) {
     Write-Host "`nREMINDER: this diff touches a reviewed area." -ForegroundColor Yellow
     foreach ($r in $reviewers) { Write-Host "  dispatch the '$r' subagent before merging (CLAUDE.md step 3)." -ForegroundColor Yellow }

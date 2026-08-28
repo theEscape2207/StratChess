@@ -98,6 +98,7 @@ default.
 | Document | Contents |
 |---|---|
 | [Docs/Engine-Readme.md](Docs/Engine-Readme.md) | Engine internals: search, evaluation, data structures |
+| [Docs/EngineContracts.md](Docs/EngineContracts.md) | Non-obvious API contracts to read before an engine edit |
 | [Docs/Workflow.md](Docs/Workflow.md) | Standing decisions (validation strategy, speed/nps, threat model), validation tiers, review gates, runtime files |
 | [Docs/CI.md](Docs/CI.md) | What each GitHub Actions workflow runs, and when |
 | [Docs/TestDesign.md](Docs/TestDesign.md) | Test coverage map and how to write new tests |
