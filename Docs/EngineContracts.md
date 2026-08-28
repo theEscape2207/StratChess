@@ -66,10 +66,13 @@ whose violation is silent.
 
 ## Search internals
 
-- **An aborted frame keeps no results.** `pvs()`/`quiescence()` check `IsAborted()` immediately after
-  each recursive call returns **and the board is restored** — that ordering is the invariant, since
-  returning before `UndoMove` would leave the board corrupt. So no TT store, PV row, killer or
-  history write is reachable from a child that never finished; `best_value` (the best score over the
+- **An aborted frame keeps no results.** The guard is **per move iteration, not per recursive call**:
+  `pvs()` may run a reduced null-window search, a full-depth re-search and a PV re-search for a
+  single move before reaching `UndoMove` and the one `IsAborted()` check that follows it. The
+  invariant is that the board is restored and `IsAborted()` checked after that whole sequence and
+  before any persistent write — the ordering against `UndoMove` matters because returning first
+  would leave the board corrupt. So no TT store, PV row, killer or history write is reachable from a
+  child that never finished; `best_value` (the best score over the
   children that *did* complete) is a valid lower bound and is what the root reports for an
   interrupted iteration. A write added below that guard is covered by it; one added above it has to
   justify itself the way the two documented exemptions do in comments there:

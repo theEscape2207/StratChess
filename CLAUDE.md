@@ -121,10 +121,11 @@ Three tripwires are repeated here because violating them fails *silently*:
   promotion piece, or quiet vs. capture on the same squares, compare unequal.
 - **`ThreadData&` is the first parameter of every search method.** Search runs on `td.board`, never
   the game board, and writes nothing back to it.
-- **An aborted frame keeps no results.** `pvs()`/`quiescence()` check `IsAborted()` immediately after
-  each recursive call returns **and the board is restored**, so no TT store, PV row, killer or
-  history write survives a child that never finished. Node counters are the deliberate exception —
-  they measure work done, not results kept. A write added above that guard must justify itself.
+- **An aborted frame keeps no results.** Once a move's recursive search sequence is done — `pvs()`
+  may run a reduced, a full-depth and a PV re-search first — the board is restored and `IsAborted()`
+  checked, before any persistent write. So no TT store, PV row, killer or history write survives a
+  child that never finished. Node counters are the deliberate exception — they measure work done,
+  not results kept. A write added above that guard must justify itself.
 
 ## Development Guidelines
 
