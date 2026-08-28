@@ -13,7 +13,12 @@ The one thing the script cannot do for you. Check the diff and dispatch if it to
 git diff --name-only origin/main...HEAD
 ```
 
-- `Eval.cpp` → `eval-reviewer`
+- `Eval.cpp/.h` → `eval-reviewer`. **`Eval.h` counts** — every term weight lives there
+  (`PASSED_PAWN_*`, `BISHOP_PAIR_*`, `CONNECTED_ROOKS_*`, `CASTLING_*`, the mobility weights,
+  `PASSED_PAWN_RANK_SCALE`), so the whole evaluation can be retuned without touching `Eval.cpp`.
+- `defines.h` → `eval-reviewer` **when the diff touches `g_Eval_Bitboards` (the PSTs) or
+  `g_iPieceValues` (material values)**. They live there, not in `Eval.cpp`. Other `defines.h` edits
+  do not need it.
 - `AIPerplex.cpp/.h`, `ThreadData.h` (killers/history), `Sort.cpp/.h` (MVV-LVA) → `search-reviewer`
 
 **Default is to dispatch**; the script only reminds, it never blocks. A narrow self-certification
@@ -72,8 +77,11 @@ The user merges via the GitHub web UI. Cleanup is part of finishing the task, no
 should have to ask for:
 
 ```
-Remove-Worktree.ps1 -Name <task> -SyncMaster [-FromInside]     # per-task worktree
-Remove-MergedBranches.ps1 -SyncMaster                          # working in place
+# per-task worktree
+pwsh -ExecutionPolicy Bypass -File <abs>\StratChessEvolved\Scripts\Remove-Worktree.ps1 -Name <task> -SyncMaster [-FromInside]
+
+# working in place
+pwsh -ExecutionPolicy Bypass -File <abs>\StratChessEvolved\Scripts\Remove-MergedBranches.ps1 -SyncMaster
 ```
 
 Both verify the merge before deleting. Squash-merges and locked directories need care:
