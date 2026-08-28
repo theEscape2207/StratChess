@@ -5,6 +5,7 @@
 #include "AIPerplex.h"
 #include "MoveGenerator.h"
 #include "PVIntegrity.h"
+#include "See.h"
 #include "Sort.h"
 #include "Utils/Logger.h"
 #include "defines.h"
@@ -918,6 +919,15 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 		        alpha)
 			continue;
 
+		// Drop captures that lose material by static exchange. Three guards, all load-bearing:
+		// `!in_check` sits outside the tuning flag because in check the list is every legal evasion
+		// and an empty survivor set reads as checkmate below — pruning one fabricates a mate score.
+		// `IsCapture()` keeps capture-promotions, which see_ge scores as losing on a defended square
+		// though the pawn was promoting anyway. And SEE ignores pins, so a pruned move carries no
+		// proof it cannot beat alpha, unlike a delta-pruned one; see the store note below.
+		if (!in_check && tuning_.see_pruning_enabled && MoveHelper::IsCapture(move) && !See::see_ge(td.board, move, 0))
+			continue;
+
 		if (!td.board.DoMove(move))
 			continue;
 
@@ -973,8 +983,10 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	BoundType bound;
 
 	if (!moveFound) {
-		// No captures were available to search
-		// This is ALL_NODE regardless of whether stand_pat improved alpha
+		// ALL_NODE regardless of whether stand_pat improved alpha. "No move found" also covers
+		// "every move was pruned", where the score is exact for the tree quiescence searches but
+		// only a lower bound against an unpruned one. Left EXACT: the alternative weakens every
+		// genuinely quiet node to keep one class of pruned node honest.
 		node_type = NodeType::ALL_NODE;
 		bound = (best_value > original_alpha) ? BoundType::EXACT : BoundType::UPPER;
 	} else if (best_value <= original_alpha) {

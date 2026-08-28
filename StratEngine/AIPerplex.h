@@ -65,6 +65,11 @@ struct SearchTuning {
 	bool null_move_enabled = true;
 	int null_move_reduction = 3;
 	int null_move_min_depth = 3;
+
+	// Gates SEE pruning in quiescence only, never the SEE capture tiers in ScoreMoves, and turning
+	// it off must leave the search node-identical. The !in_check guard at the pruning site is
+	// correctness, not tuning, and is deliberately outside this flag.
+	bool see_pruning_enabled = true;
 };
 
 struct AIPerplexConfig {

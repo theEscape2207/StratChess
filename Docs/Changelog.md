@@ -22,6 +22,56 @@ Newest first.
 
 ---
 
+## 2026-08-28 — SEE pruning in quiescence
+
+### Added
+
+- Quiescence prunes a capture whose static exchange is losing, out of check only. The guard sits
+  immediately after delta pruning in the move loop and reads
+  `!in_check && tuning_.see_pruning_enabled && MoveHelper::IsCapture(move) && !See::see_ge(td.board, move, 0)`.
+  Threshold is exactly zero — no margin, which #398 owns. `IsCapture()` is load-bearing rather than an
+  optimisation: it keeps non-capturing promotions out of the test, which SEE scores at -100 on a
+  defended square.
+- `SearchTuning::see_pruning_enabled`, gating the pruning only and never the SEE capture tiers in
+  `ScoreMoves`. Turning it off must leave the search node-identical, which is what makes
+  `Compare-SearchEquivalence` a real gate here: ordering legitimately changes the tree, so nothing
+  else in this area can be proved that way. The `!in_check` guard is correctness rather than tuning
+  and is deliberately outside the flag.
+
+### Changed
+
+- The poll-gate and abort tests pin `see_pruning_enabled = false` in their fixture. `BUSY_FEN` had
+  ~1024 poll ticks of headroom at depth 1 and the pruning cut it to 1008, so the tests began failing
+  on their own tripwire rather than on a defect. Pinning the flag makes the production path they
+  exercise independent of search tuning; the shipping engine is now within 2% of making that path
+  unreachable regardless.
+
+Strength: **+18.41 +/- 3.62 Elo** over 19,980 games at 10+0.1 against the merge base, 18 shards x
+555 pairs, pooled Ptnml(0-2) [694, 2073, 3696, 2535, 992], score 52.65%. The 95% interval
+**[+14.8, +22.0]** excludes zero by five standard errors, and every one of the 18 shards has more
+winning pairs than losing ones, so no slice carries it. Row in `Docs/EloLog.md`. A concurrent local
+SPRT was interrupted at 946 of 2000 games and is recorded as stopped, not as a second number.
+
+**The fixed-depth bench rows are confounded and measure neither a cost nor a gain.** The candidate
+reads +3.8% nodes at depth 12, but the two builds return different scores there and so seed
+different aspiration windows and root orders — the rows compare two different searches, not one
+search with and without pruning. A control run with `aspiration_enabled = false` narrows the
+depth-12 gap sharply and reverses the depth-16 one, which is what disqualifies these rows in either
+direction. The isolated pruning effect is a large reduction in quiescence nodes at a small increase
+in main-search nodes; the strength number above is the measurement that decided the change.
+
+Validation: two falsification-checked tests. One pins the in-check exemption on a position with
+exactly one legal move, itself a losing capture — deleting `!in_check &&` makes quiescence prune the
+only evasion and store a fabricated mate as EXACT, and that test alone goes red. The other pins that
+the flag reaches the quiescence loop, so it cannot decay into dead code. A capture-promotion can
+never be pruned by arithmetic rather than by the `IsCapture()` guard alone: the destination is the
+back rank, any victim there is worth >= 300, so `swap = 100 - victim <= 0` always.
+
+Known limitation, recorded rather than fixed: SEE ignores pins, so a pruned move carries no proof it
+could not beat alpha. On `4k3/8/4p3/3n4/8/8/8/3RK3 w - - 0 1` the recapturing pawn is pinned and
+`Rxd5` wins a piece, but SEE scores it losing and quiescence skips it — costing one ply of horizon,
+recovered by the main search at the next depth.
+
 ## 2026-08-27 — SEE-based capture ordering
 
 ### Added
