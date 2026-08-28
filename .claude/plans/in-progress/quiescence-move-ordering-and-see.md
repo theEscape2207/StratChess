@@ -459,9 +459,9 @@ Filled incrementally as each PR lands; the file is deleted in PR 3 once complete
 | D6 — `AttackersTo` takes an occupancy so SEE can mutate it | comment on the declaration | **done** |
 | SEE test coverage | `Docs/TestDesign.md` | **done** |
 | PR 2 `Gain` SPRT result, recorded as inconclusive | `Docs/EloLog.md`, `Docs/Changelog.md` | **done** |
-| D8 — `!in_check` is correctness, not tuning | source comment at the pruning site | PR 3 |
-| D9 — what `see_pruning_enabled` is for | comment on the field in `SearchTuning` | PR 3 |
-| PR 3 `Gain` result and measured effect | `Docs/EloLog.md`, `Docs/Changelog.md` | PR 3 |
+| D8 — `!in_check` is correctness, not tuning | source comment at the pruning site, plus a falsified test | **done** |
+| D9 — what `see_pruning_enabled` is for | comment on the field in `SearchTuning` | **done** |
+| PR 3 result and measured effect | `Docs/EloLog.md`, `Docs/Changelog.md` | **done** |
 
 **Approved decisions that changed during implementation**
 
@@ -491,6 +491,11 @@ Filled incrementally as each PR lands; the file is deleted in PR 3 once complete
   that shipped measures −14%. D2 and D3 above are rewritten to the order actually implemented, and
   `PR 2 measurement` records the full matrix. The primitive itself — `see_ge`, `AttackersTo` and
   their tests — was unaffected and needed no rework. D11 is unchanged and measured ~neutral.
+- **PR 3's instrument changed, not its design.** The plan deferred a fixed batch until after PR 3
+  and expected another local SPRT. PR 3 was instead measured on the CI strength lab at 19,980 games:
+  **+18.41 +/- 3.62**, which is the fixed batch the plan wanted and resolves the change outright
+  rather than leaning at a cap the way PR 1's and PR 2's SPRTs did. Nothing in D7-D9 changed. The
+  concurrent local SPRT was interrupted at 946 games and carries no verdict.
 - **Sequencing changed**: PR 1 is now stacked on #401 rather than forked from `main`. Routing
   quiescence through `ScoreMoves` moves an illegal king capture from the back of the sorted list to
   the front, which — while `pvs()` reduced by *list index* — silently shifted every legal move's LMR
