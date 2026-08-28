@@ -42,6 +42,9 @@ Live backlog is GitHub Issues (`theEscape2207/StratChess`) via `gh`, bodies alwa
 .\build.ps1 main -Compiler msvc      # MSVC instead of clang-cl
 ```
 
+The `.\` form above is the interactive one; from an agent shell invoke it the same way as everything
+in `Scripts/` — `pwsh -ExecutionPolicy Bypass -File <abs>\build.ps1 <target>`.
+
 `build.ps1` imports the VS developer environment itself via `vswhere`, so it works from a plain
 shell, a git hook or an agent session — never hard-code a VS path. It also sets `core.hooksPath` to
 `.githooks` on first run, so every worktree gets the tracked hook.
@@ -119,8 +122,10 @@ Three tripwires are repeated here because violating them fails *silently*:
   promotion piece, or quiet vs. capture on the same squares, compare unequal.
 - **`ThreadData&` is the first parameter of every search method.** Search runs on `td.board`, never
   the game board, and writes nothing back to it.
-- **An aborted frame mutates nothing.** `pvs()`/`quiescence()` check `IsAborted()` immediately after
-  each recursive call returns; a store added above that guard must justify itself.
+- **An aborted frame keeps no results.** `pvs()`/`quiescence()` check `IsAborted()` immediately after
+  each recursive call returns **and the board is restored**, so no TT store, PV row, killer or
+  history write survives a child that never finished. Node counters are the deliberate exception —
+  they measure work done, not results kept. A write added above that guard must justify itself.
 
 ## Development Guidelines
 

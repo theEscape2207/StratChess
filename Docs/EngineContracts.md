@@ -66,10 +66,18 @@ whose violation is silent.
 
 ## Search internals
 
-- **An aborted frame mutates nothing.** `pvs()`/`quiescence()` check `IsAborted()` immediately after
-  each recursive call returns and the board is restored, so no store, PV update or killer/history
-  write is reachable from a child that never finished. A store added below that guard is covered by
-  it; one added above it has to justify itself the way the three exempt stores do in comments there.
+- **An aborted frame keeps no results.** `pvs()`/`quiescence()` check `IsAborted()` immediately after
+  each recursive call returns **and the board is restored** — that ordering is the invariant, since
+  returning before `UndoMove` would leave the board corrupt. So no TT store, PV row, killer or
+  history write is reachable from a child that never finished; `best_value` (the best score over the
+  children that *did* complete) is a valid lower bound and is what the root reports for an
+  interrupted iteration. A write added below that guard is covered by it; one added above it has to
+  justify itself the way the two documented exemptions do in comments there:
+  - **Node counters** are incremented before the guard and stay incremented — they measure work
+    done, not results kept.
+  - **The quiescence stand-pat cutoff store** is reached before the node searches anything, so what
+    it records owes nothing to a child; an impending abort does not make a static evaluation less
+    true.
 - Null-move pruning is gated by `tuning_.null_move_enabled` via `should_try_null_move()` (covers
   zugzwang, mate-score contamination, consecutive nulls, PV/in-check, min-depth).
 - **Quiescence orders its two move lists differently**, via `AIPerplex::order_quiescence_moves()`.

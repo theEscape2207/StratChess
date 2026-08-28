@@ -670,7 +670,7 @@ oracle across **142,953 positions at depths 1–4** — roughly a thousand times
 committed suite, which is where move-generation faults are actually found (#195).
 
 ```powershell
-cmd.exe /c "pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Run-PerftCheck.ps1"
+pwsh -ExecutionPolicy Bypass -File <abs>\StratChessEvolved\Scripts\Run-PerftCheck.ps1
 ... Run-PerftCheck.ps1 -Limit 5000                       # bounded sanity run, seconds
 ... Run-PerftCheck.ps1 -ClassifyReport <report.json>      # re-read a past run, no engine needed
 ```
