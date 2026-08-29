@@ -25,11 +25,18 @@ Artifacts are retained 90 days, ~1 MB per shard. A production run is 18 shards.
 gh run download <run_id> --repo theEscape2207/StratChess -p 'strength-<run_id>-shard-*' -D pgn
 python StratChessEvolved/Scripts/analyze_move_quality.py pgn --self-check
 python StratChessEvolved/Scripts/analyze_move_quality.py pgn --json stats.json
+python StratChessEvolved/Scripts/analyze_move_quality.py --self-test   # no corpus needed
 ```
 
 `--self-check` is the gate: it asserts the parse covered every game and every annotation, and that
-the score perspective is the one every formula assumes. Run it before reading any number. The full
-scan is about 6 seconds over 18 shards on 18 workers.
+the score perspective is the one every formula assumes. Run it before reading any number.
+`--self-test` is the other half — fixture games covering every annotation shape, and a deliberately
+corrupt game that must be counted once, not as both parsed and skipped. The full scan is about 6
+seconds over 18 shards on 18 workers.
+
+**Every rate carries a game-clustered interval.** Plies inside one game share its opening, its two
+builds and its result, so a per-ply confidence interval is several times too tight to believe. The
+report bootstraps by resampling whole games; where it prints `[lo, hi]`, that is the 95% interval.
 
 ## Method
 
@@ -121,21 +128,40 @@ move of the game:
 Self-swing ≥ 150 cp, restricted to positions the mover scored within ±150 cp. Pooled over both builds;
 the two builds differ by under 0.05 percentage points in every cell.
 
-| Phase | Moves | mean \|swing\| | ≥150 cp | ≥300 cp |
+| Phase | Moves | mean \|swing\| | ≥150 cp (95% clustered) | ≥300 cp |
 |---|---|---|---|---|
-| opening | 522,989 | 11.1 | 0.15% | 0.03% |
-| middlegame | 522,161 | 12.8 | 0.29% | 0.09% |
-| endgame | 393,243 | 9.9 | 0.22% | 0.07% |
+| opening | 522,989 | 11.1 | 0.154% [0.144, 0.165] | 0.03% |
+| middlegame | 522,161 | 12.8 | 0.293% [0.277, 0.308] | 0.09% |
+| endgame | 393,243 | 9.9 | 0.215% [0.200, 0.231] | 0.07% |
 
-By moved piece the rate is flat at 0.2–0.3% for every piece type. By remaining clock, within a phase:
+The three intervals are disjoint: the middlegame rate is genuinely 1.9× the opening rate. All three
+sit inside the same 0.15–0.30% band, which is the point — but the band is not one flat rate.
+
+By moved piece, same treatment:
+
+| Piece | Moves | ≥150 cp (95% clustered) |
+|---|---|---|
+| bishop | 227,637 | 0.160% [0.144, 0.178] |
+| knight | 195,017 | 0.200% [0.180, 0.220] |
+| pawn | 289,165 | 0.204% [0.188, 0.220] |
+| king | 241,601 | 0.216% [0.198, 0.236] |
+| queen | 175,410 | 0.262% [0.238, 0.287] |
+| rook | 309,563 | 0.277% [0.258, 0.295] |
+
+Bishop and rook do not overlap either, so this is not flat; it is a 1.7× spread inside a narrow band,
+with the heavy pieces at the top. Nothing here resembles the 34%-of-blunders king-move story the
+unrestricted scan tells.
+
+By the clock the mover **had when it started thinking** — not what was left afterwards; the two
+differ for 5.0% of moves, and the band is a property of the decision, not of its aftermath:
 
 | Phase | > 8 s | 5–8 s | 2–5 s | < 2 s |
 |---|---|---|---|---|
-| opening | 0.03% | 0.14% | 0.40% | 0.30% |
-| middlegame | 0.03% | 0.10% | 0.29% | **0.46%** |
-| endgame | — | 0.13% † | 0.11% | 0.25% |
+| opening | 0.03% | 0.17% | 0.41% | 0.30% |
+| middlegame | 0.04% | 0.11% | 0.30% | **0.47%** |
+| endgame | — | 0.00% † | 0.12% | 0.25% |
 
-† one blunder in 765 moves — the engine is almost never in an endgame with that much clock left.
+† zero blunders in 1,293 moves — the engine is almost never in an endgame with that much clock left.
 
 ### Eval calibration
 
@@ -167,14 +193,19 @@ at least three pawns. This split is the control that separates "the endgame eval
 Counted once per game, at the first position that reaches the class, against what the stronger side
 reported there. Games, not plies — plies over-weight exactly the long drawn games.
 
-| Class | Reported | Games | Of all | Observed | W/D/L |
+**The score bands are exclusive.** `+100–249` does not include `≥ +250`; the cumulative row is listed
+separately, and it is the one to quote for "the engine thought it was winning".
+
+| Class | Reported | Games | Of all | Observed (95% clustered) | W/D/L |
 |---|---|---|---|---|---|
-| K + minor vs K | ≥ +250 | 656 | 3.3% | **0.500** | 0/656/0 |
-| KR+minor vs KR (pawnless) | ≥ +250 | 262 | 1.3% | **0.645** | 76/186/0 |
-| KR vs K+minor (pawnless) | ≥ +100 | 58 | 0.3% | **0.509** | 1/57/0 |
-| KR vs K+minor (pawnless) | ≥ +250 | 151 | 0.8% | 0.801 | 91/60/0 |
-| Opposite-coloured bishops | ≥ +250 | 143 | 0.7% | 0.881 | 109/34/0 |
-| Opposite-coloured bishops | ≥ +100 | 279 | 1.4% | 0.642 | 82/194/3 |
+| K + minor vs K | ≥ +250 | 656 | 3.3% | **0.500** [0.500, 0.500] | 0/656/0 |
+| KR+minor vs KR (pawnless) | ≥ +250 | 262 | 1.3% | **0.645** [0.618, 0.672] | 76/186/0 |
+| KR vs K+minor (pawnless) | +100–249 | 58 | 0.3% | **0.509** [0.500, 0.526] | 1/57/0 |
+| KR vs K+minor (pawnless) | ≥ +250 | 151 | 0.8% | 0.801 [0.762, 0.838] | 91/60/0 |
+| KR vs K+minor (pawnless) | ≥ +100 cumulative | 209 | 1.0% | 0.720 [0.684, 0.751] | 92/117/0 |
+| Opposite-coloured bishops | ≥ +250 | 143 | 0.7% | 0.881 [0.846, 0.916] | 109/34/0 |
+| Opposite-coloured bishops | +100–249 | 279 | 1.4% | 0.642 [0.615, 0.668] | 82/194/3 |
+| Opposite-coloured bishops | ≥ +100 cumulative | 422 | 2.1% | 0.723 [0.697, 0.748] | 191/228/3 |
 
 ### Cross-build noise floor
 
@@ -182,15 +213,32 @@ Mean `|s_X(t) + s_Y(t+1)|` between two builds differing only by the LMR depth cl
 opening, **14.8 cp** middlegame, **17.8 cp** endgame. A future run whose builds differ in evaluation
 should exceed this; a run that does not has not changed what the engine believes.
 
+**This is an upper bound, not an estimate of disagreement.** The two scores are one ply apart: X
+reports the value of the position it is handing over, Y reports its own value for that position with
+its own search and its own clock. Under the negamax identity the sum is zero when the builds agree —
+X plays its own PV move, so the *move* contributes nothing — but the two searches are not the same
+search, and that residual is inside the number. Read it as a noise floor to exceed.
+
+The clean version is available for a subset: positions with an identical FEN that **both** builds
+actually scored, no ply offset. Within a shard there are 46,389 of them and the gap is **5.4 cp** —
+but 93% are opening positions and only 469 are endgames, because the two builds rarely reach the same
+middlegame. It cross-checks the opening row of the table above (9.1 cp against 5.4 cp, the difference
+being the one-ply offset); it cannot replace it.
+
 ---
 
 ## Findings
 
-**1. There is no general blunder weakness to find.** In contested positions the rate is 0.15–0.29%
-and is flat across phase and across moved piece. The unrestricted numbers say the opposite —
-endgame 1.7%, king moves 34% of all blunders — and both of those are artifacts of already-lost
+**1. There is no general blunder weakness to find.** In contested positions every rate sits between
+0.15% and 0.30%, by phase and by moved piece alike. The unrestricted numbers say something else
+entirely — endgame 1.7%, king moves 34% of all blunders — and both are artifacts of already-lost
 positions, where the losing side flails and the swings cost nothing. Any future reading of this
 report should use the contested rows.
+
+Inside that band the rates are *not* equal, and the game-clustered intervals are tight enough to say
+so: middlegame 0.293% against opening 0.154%, rook 0.277% against bishop 0.160%. That 1.9× ratio is
+worth knowing, but it is not the shape of a defect either — middlegame worst and heavy pieces worst
+is what a search that is depth-limited in the most complex positions should look like.
 
 **2. The evaluation is well calibrated except when the pawns are gone.** With three pawns a side the
 three phases agree to within noise, and the endgame is marginally *better* calibrated than the
@@ -200,8 +248,9 @@ tapering or phase-calibration defect; it is the absence of drawish-material know
 
 **3. The dips have names, and they are not the ones #128 predicted.** The +300–350 dip is dominated by
 **rook + minor vs rook**, a fortress the evaluator scores a full piece up: 262 games reach it with the
-stronger side reporting ≥ +250, and it scores 0.645. Rook vs minor at ≥ +100 is a dead draw in
-practice (0.509 over 58 games). And 656 games — **3.3% of the entire run** — end in K + minor vs K
+stronger side reporting ≥ +250, and it scores 0.645. Rook vs minor at +100–249 is a dead draw in
+practice (0.509 over 58 games); across the whole ≥ +100 range it is 0.720 over 209 games, because the
+≥ +250 half is often a real win. And 656 games — **3.3% of the entire run** — end in K + minor vs K
 with the stronger side still reporting ≥ +250; every single one is a draw. In 26.8% of the
 insufficient-material draws the claiming side still had a pawn two plies earlier and 44.1% six plies
 earlier, so it is trading its last pawn into a dead draw while reporting a piece up.
@@ -214,8 +263,8 @@ zero would more likely cost Elo than gain it.
 99.9% of them both sides' last reported score was under 50 cp. The engine repeats from positions it
 believes are equal, so this is a contempt/playing-on decision (#76 direction 3), not a defect.
 
-**6. Time pressure is real but second-order.** 23% of contested middlegame decisions are taken
-with under 2 s remaining, and the blunder rate there is 0.46% against 0.10% at 5–8 s. Causality runs
+**6. Time pressure is real but second-order.** 21% of contested middlegame decisions are *started*
+with under 2 s on the clock, and the blunder rate there is 0.47% against 0.11% at 5–8 s. Causality runs
 both ways — long complex games both consume clock and contain more mistakes — so this bounds the
 prize rather than measuring it (#103).
 

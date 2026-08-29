@@ -44,13 +44,21 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import re
 import sys
 from collections import Counter, defaultdict
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
-import chess
+try:
+    import chess
+except ImportError as exc:  # pragma: no cover - environment guard, not test logic
+    sys.exit(
+        "analyze_move_quality.py requires the 'python-chess' package.\n"
+        "Install it with: pip install python-chess\n"
+        f"(import failed: {exc})"
+    )
 
 # Game phase mirrors Eval.h (PHASE_KNIGHT/BISHOP/ROOK/QUEEN, MAX_GAME_PHASE) --
 # Eval.h is the source of truth; a drifted copy here shifts bucket boundaries,
@@ -75,6 +83,10 @@ BLUNDER_CP = 150          # self-swing at or above this is a "blunder" here
 BIG_BLUNDER_CP = 300
 ADVANTAGE_CP = 150        # "held a winning-ish edge" threshold for squander stats
 CONTESTED_CP = 150        # a position is contested while the mover reports no more than this
+BOOT_SAMPLES = 2000       # game-clustered bootstrap resamples behind every +/- in the report
+PAWN_LOOKBACK = (2, 4, 6)  # plies to look back for "still had a pawn" before a dead draw
+SCORE_OF = {"win": 1.0, "draw": 0.5, "loss": 0.0}
+PIECES = ("pawn", "knight", "bishop", "rook", "queen", "king")
 CLOCK_BANDS = ((8.0, "clock>8s"), (5.0, "clock5-8s"), (2.0, "clock2-5s"), (0.0, "clock<2s"))
 
 
@@ -238,6 +250,18 @@ def new_stats() -> dict:
         # first position that reaches each class. Plies would over-weight the
         # long games, which are exactly the drawn ones.
         "material_class": Counter(),  # (class, score bucket, outcome) -> n
+        # Per-GAME rows, kept so every headline rate can carry a game-clustered
+        # bootstrap interval. Plies within one game are strongly correlated, so a
+        # per-ply interval would be far too tight to believe.
+        "class_games": [],           # [class, bucket, score] per game reaching a class
+        "boot_games": [],            # [n_open, b_open, n_mid, b_mid, n_end, b_end] per game
+        "boot_pieces": [],           # [n, blunders] per piece in PIECES order, per game
+        # Same position, both builds, no ply offset -- the clean cross-build check.
+        # Matched within a shard only, and overwhelmingly opening positions.
+        "fen_gap": defaultdict(lambda: [0, 0.0]),
+        # The two claims the report makes about how dead draws are reached.
+        "fifty_clock": Counter(),         # halfmove clock when a fifty-move draw fired
+        "pawn_before_draw": defaultdict(lambda: [0, 0]),  # plies back -> seen, still had a pawn
         # --self-check: signed self-swing summed per eventual outcome. A build
         # that loses must, on aggregate, have watched its own score fall.
         "swing_by_result": defaultdict(lambda: [0, 0.0]),
@@ -272,6 +296,7 @@ def score_bucket(cp: int) -> str:
 def analyse_file(path_str: str) -> dict:
     path = Path(path_str)
     st = new_stats()
+    seen_fens: dict = {}
     shard = path.parent.name
     for headers, movetext in parse_games(path):
         where = f"{shard} round {headers.get('Round', '?')}"
@@ -281,28 +306,36 @@ def analyse_file(path_str: str) -> dict:
             st["games_skipped"] += 1
             continue
         try:
-            analyse_game(headers, moves, st, where)
+            analyse_game(headers, moves, st, where, seen_fens)
         except ParseError:
             raise
         except ValueError as exc:  # illegal SAN etc. -- truncated/corrupt game
             st["games_skipped"] += 1
             print(f"warning: {where}: {exc}", file=sys.stderr)
+    for scored in seen_fens.values():
+        if len(scored) == 2:
+            (a, ba), (b, _bb) = scored.values()
+            cell = st["fen_gap"][ba]
+            cell[0] += 1
+            cell[1] += abs(a - b)
     return finalise(st)
 
 
-def analyse_game(headers, moves, st, where):
+def analyse_game(headers, moves, st, where, seen_fens=None):
+    if seen_fens is None:
+        seen_fens = {}
     fen = headers.get("FEN")
     board = chess.Board(fen) if fen else chess.Board()
     builds = {chess.WHITE: headers.get("White", "?"), chess.BLACK: headers.get("Black", "?")}
     result = headers.get("Result")
-    st["games"] += 1
-    st["results"][result] += 1
-    st["terminations"][headers.get("Termination", "?")] += 1
 
     base, inc = time_control(headers)
     remaining = {chess.WHITE: base, chess.BLACK: base}
 
     recs = []  # per ply: dict
+    book_moves = 0
+    pawn_history = []  # pawns per colour before each push, so the loser's last
+                       # pawn can be found N plies before a dead draw
     reached: dict = {}   # material class -> (stronger colour, score reported there)
     for idx, (san, comment) in enumerate(moves):
         mover = board.turn
@@ -311,7 +344,10 @@ def analyse_game(headers, moves, st, where):
         if comment is not None:
             cp, mate, depth, secs, note = parse_comment(comment, f"{where} move {idx}")
         if note == "book":
-            st["book_moves"] += 1
+            book_moves += 1
+        if cp is not None:
+            key = (board.board_fen(), "w" if mover == chess.WHITE else "b")
+            seen_fens.setdefault(key, {})[builds[mover]] = (cp, phase_bucket(phase))
         signed = cp if cp is not None else (
             (100000 if mate > 0 else -100000) if mate is not None else None)
         if signed is not None:
@@ -332,19 +368,30 @@ def analyse_game(headers, moves, st, where):
         gives_check = board.gives_check(move)
         is_capture = board.is_capture(move)
         piece = board.piece_type_at(move.from_square)
-        pawn_rich = (len(board.pieces(chess.PAWN, chess.WHITE)) >= PAWN_RICH
-                     and len(board.pieces(chess.PAWN, chess.BLACK)) >= PAWN_RICH)
+        pawns = {chess.WHITE: len(board.pieces(chess.PAWN, chess.WHITE)),
+                 chess.BLACK: len(board.pieces(chess.PAWN, chess.BLACK))}
+        pawn_history.append(pawns)
+        pawn_rich = pawns[chess.WHITE] >= PAWN_RICH and pawns[chess.BLACK] >= PAWN_RICH
+        # The band is the clock the mover had when it started thinking, not what
+        # was left afterwards: the question is what time pressure the decision was
+        # made under. The two differ for ~5% of moves.
+        band = clock_band(remaining[mover]) if (secs is not None and base) else None
         board.push(move)
-        band = None
         if secs is not None and base:
             remaining[mover] = remaining[mover] - secs + inc
-            band = clock_band(remaining[mover])
         recs.append(
             dict(ply=idx, mover=mover, build=builds[mover], phase=phase,
                  bucket=phase_bucket(phase), cp=cp, mate=mate, depth=depth,
                  secs=secs, note=note, band=band, san=san, check=gives_check,
                  capture=is_capture, piece=piece, pawn_rich=pawn_rich)
         )
+
+    # Nothing above writes to st: a game that raises mid-replay must contribute
+    # nothing at all, or it is counted as both parsed and skipped.
+    st["games"] += 1
+    st["book_moves"] += book_moves
+    st["results"][result] += 1
+    st["terminations"][headers.get("Termination", "?")] += 1
 
     # The final position is reached by the last push, so the loop above never
     # classified it -- and that is exactly where KminorK lives, since fastchess
@@ -384,6 +431,8 @@ def analyse_game(headers, moves, st, where):
         return "win" if won else "loss"
 
     peak = {chess.WHITE: None, chess.BLACK: None}
+    boot = {"opening": [0, 0], "middlegame": [0, 0], "endgame": [0, 0]}
+    boot_p = {p: [0, 0] for p in PIECES}
     for i, r in enumerate(recs):
         if r["cp"] is None and r["mate"] is None:
             continue
@@ -438,13 +487,17 @@ def analyse_game(headers, moves, st, where):
         if contested:
             if r["piece"]:
                 st["piece_moves"][chess.piece_name(r["piece"])] += 1
+                boot_p[chess.piece_name(r["piece"])][0] += 1
             c = st["swing_contested"][(r["build"], r["bucket"])]
             c[0] += 1
             c[4] += abs(swing)
+            boot[r["bucket"]][0] += 1
             if swing >= BLUNDER_CP:
                 c[1] += 1
+                boot[r["bucket"]][1] += 1
                 if r["piece"]:
                     st["piece_blunders"][chess.piece_name(r["piece"])] += 1
+                    boot_p[chess.piece_name(r["piece"])][1] += 1
             if swing >= BIG_BLUNDER_CP:
                 c[2] += 1
             if r["band"]:
@@ -483,8 +536,11 @@ def analyse_game(headers, moves, st, where):
         st["squander"][(score_bucket(min(pk[0], 99999)), pk[1], outcome_for(color))] += 1
 
     for cls, (color, cp) in reached.items():
-        bucket = ">=250" if cp >= 250 else (">=100" if cp >= 100 else "<100")
+        # Exclusive bands. ">=100" would read as cumulative and is not; the
+        # report adds the cumulative row itself.
+        bucket = ">=250" if cp >= 250 else ("+100-249" if cp >= 100 else "<100")
         st["material_class"][(cls, bucket, outcome_for(color))] += 1
+        st["class_games"].append([cls, bucket, SCORE_OF[outcome_for(color)]])
 
     # A build that announced forced mate and then did not win the game.
     for color in (chess.WHITE, chess.BLACK):
@@ -513,6 +569,23 @@ def analyse_game(headers, moves, st, where):
 
     if recs and recs[0]["cp"] is not None:
         st["score_start"][score_bucket(recs[0]["cp"])] += 1
+
+    st["boot_games"].append(
+        boot["opening"] + boot["middlegame"] + boot["endgame"])
+    st["boot_pieces"].append([v for p in PIECES for v in boot_p[p]])
+
+    # How the dead draws were reached. `board` is the final position and
+    # `pawn_history` the pawn counts before each push, newest last.
+    if final_note and "fifty" in final_note:
+        st["fifty_clock"][str(board.halfmove_clock)] += 1
+    if final_note and "insufficient" in final_note and last:
+        better = max(last, key=lambda c: last[c])
+        if ADVANTAGE_CP <= last[better] < 100000:
+            for back in PAWN_LOOKBACK:
+                cell = st["pawn_before_draw"][str(back)]
+                cell[0] += 1
+                if len(pawn_history) >= back and pawn_history[-back][better]:
+                    cell[1] += 1
 
 
 def finalise(st: dict) -> dict:
@@ -545,6 +618,38 @@ def merge(a: dict, b: dict) -> dict:
                 else:
                     dst[key] = dst.get(key, 0) + val
     return a
+
+
+def bootstrap(rows, stat, samples=BOOT_SAMPLES, seed=12345):
+    """95% interval for `stat` over a list of per-GAME rows, resampling games.
+
+    Plies inside one game share its opening, its builds and its result, so they
+    are nothing like independent draws. Resampling whole games is what keeps the
+    interval honest; a per-ply interval would be several times too tight.
+    """
+    point = stat(rows)
+    if point is None or len(rows) < 2:
+        return point, None, None
+    rng = random.Random(seed)
+    n = len(rows)
+    vals = []
+    for _ in range(samples):
+        sample = [rows[rng.randrange(n)] for _ in range(n)]
+        v = stat(sample)
+        if v is not None:
+            vals.append(v)
+    if not vals:
+        return point, None, None
+    vals.sort()
+    lo = vals[int(0.025 * (len(vals) - 1))]
+    hi = vals[int(0.975 * (len(vals) - 1))]
+    return point, lo, hi
+
+
+def ci(point, lo, hi, places=3):
+    if lo is None:
+        return f"{point:.{places}f}"
+    return f"{point:.{places}f} [{lo:.{places}f}, {hi:.{places}f}]"
 
 
 def pct(n, d):
@@ -594,17 +699,37 @@ def report(st: dict, out=sys.stdout) -> None:
         w(f"  {build:22s} {phase:12s} {n:9d} {sa / n if n else 0:11.1f} "
           f"{bl:9d} {pct(bl, n)} {big:9d} {pct(big, n)}\n")
 
-    w("\nContested blunder rate by phase x remaining clock (both builds pooled)\n")
+    rows = st["boot_games"]
+    if rows:
+        w("\nContested blunder rate by phase, with a game-clustered 95% bootstrap interval\n")
+        w("  These are all in the 0.15-0.30% band but they are NOT equal: the\n"
+          "  intervals are disjoint. Report the ordering, not one flat rate.\n")
+        for i, phase in enumerate(("opening", "middlegame", "endgame")):
+            def rate(sample, i=i):
+                n = sum(r[2 * i] for r in sample)
+                return 100.0 * sum(r[2 * i + 1] for r in sample) / n if n else None
+            p, lo, hi = bootstrap(rows, rate)
+            moves = sum(r[2 * i] for r in rows)
+            w(f"  {phase:12s} contested moves {moves:9d}  blunder rate "
+              f"{ci(p, lo, hi, 3)} %\n")
+
+    w("\nContested blunder rate by phase x clock available for the decision\n")
     for key in sorted(st["phase_clock"]):
         n, bl, sa = st["phase_clock"][key]
         phase, band = key.split("|")
         w(f"  {phase:12s} {band:12s} {n:9d} mean|swing| {sa / n if n else 0:6.1f} "
           f"blunders {bl:7d} {pct(bl, n)}\n")
 
-    w("\nContested blunder rate by moved piece (rate, not share)\n")
-    for p, n in sorted(st["piece_moves"].items(), key=lambda kv: -kv[1]):
-        b = st["piece_blunders"].get(p, 0)
-        w(f"  {p:8s} moves {n:9d}  blunders {b:7d}  {pct(b, n)}\n")
+    w("\nContested blunder rate by moved piece (rate, not share), 95% clustered\n")
+    prows = st["boot_pieces"]
+    for i, p in enumerate(PIECES):
+        n = sum(r[2 * i] for r in prows)
+        b = sum(r[2 * i + 1] for r in prows)
+        def rate(sample, i=i):
+            tot = sum(r[2 * i] for r in sample)
+            return 100.0 * sum(r[2 * i + 1] for r in sample) / tot if tot else None
+        pt, lo, hi = bootstrap(prows, rate)
+        w(f"  {p:8s} moves {n:9d}  blunders {b:7d}  {ci(pt, lo, hi, 3):>26s} %\n")
 
     w("\nSelf-swing by remaining clock\n")
     for key in sorted(st["swing_clock"]):
@@ -613,11 +738,37 @@ def report(st: dict, out=sys.stdout) -> None:
         w(f"  {build:22s} {band:12s} {n:9d} mean|swing| {sa / n if n else 0:7.1f} "
           f"blunders {bl:7d} {pct(bl, n)}\n")
 
-    w("\nCross-build disagreement (|s_X(t) + s_Y(t+1)|)\n")
+    w("\nCross-build residual |s_X(t) + s_Y(t+1)| -- adjacent plies, so an upper bound\n")
+    w("  X scores the position it is about to hand over; Y scores that same position\n"
+      "  one ply later, with its own search and its own clock. Under agreement the sum\n"
+      "  is zero, so this is a noise FLOOR to exceed, not an estimate of disagreement.\n")
     for key in sorted(st["gap"]):
         n, s = st["gap"][key]
         build, phase = key.split("|")
         w(f"  {build:22s} {phase:12s} {n:9d} mean {s / n if n else 0:7.1f} cp\n")
+
+    if st["fen_gap"]:
+        w("\nSame, on positions BOTH builds actually scored (identical FEN, no ply offset)\n")
+        w("  Matched within a shard. Nearly all are opening positions -- the two builds\n"
+          "  rarely reach the same middlegame -- so this cannot replace the table above,\n"
+          "  it cross-checks its opening row.\n")
+        for k in sorted(st["fen_gap"]):
+            n, tot = st["fen_gap"][k]
+            w(f"  {k:12s} positions {n:7d} mean {tot / n if n else 0:7.2f} cp\n")
+
+    if st["fifty_clock"] or st["pawn_before_draw"]:
+        w("\nHow the dead draws were reached\n")
+        if st["fifty_clock"]:
+            tot = sum(st["fifty_clock"].values())
+            odd = {k: v for k, v in st["fifty_clock"].items() if int(k) != 100}
+            w(f"  fifty-move draws {tot:7d}, halfmove clock exactly 100 in "
+              f"{tot - sum(odd.values()):7d}"
+              + (f"  OTHER: {odd}" if odd else "  (all)") + "\n")
+        for k in sorted(st["pawn_before_draw"], key=int):
+            seen, had = st["pawn_before_draw"][k]
+            w(f"  insufficient-material draws, better side still reporting >= "
+              f"{ADVANTAGE_CP}cp: it still had a pawn {int(k):2d} plies earlier in "
+              f"{had:6d} of {seen:6d}  {pct(had, seen)}\n")
 
     w("\nSearch depth / time by phase\n")
     for k in sorted(st["depth_by_phase"]):
@@ -703,11 +854,20 @@ def report(st: dict, out=sys.stdout) -> None:
         mc[(cls, bucket)][outcome] += n
     w(f"  {'class':10s} {'stronger side reported':24s} {'games':>7s} {'of all':>7s} "
       f"{'observed':>9s}   W/D/L\n")
-    for (cls, bucket) in sorted(mc):
-        c = mc[(cls, bucket)]
-        tot = sum(c.values())
-        w(f"  {cls:10s} {bucket:24s} {tot:7d} {pct(tot, st['games'])} "
-          f"{(c['win'] + 0.5 * c['draw']) / tot:9.3f}   {c['win']}/{c['draw']}/{c['loss']}\n")
+    w("  Bands are exclusive; the >=100 row is the cumulative one. Observed scores\n"
+      "  carry a game-clustered 95% interval.\n")
+    cls_rows = st["class_games"]
+    for (cls, bucket) in sorted(mc) + sorted({(c, ">=100 (cumulative)") for c, _b in mc}):
+        want = {">=250", "+100-249"} if bucket.startswith(">=100") else {bucket}
+        rows = [r for r in cls_rows if r[0] == cls and r[1] in want]
+        if not rows:
+            continue
+        c = Counter({"win": sum(1 for r in rows if r[2] == 1.0),
+                     "draw": sum(1 for r in rows if r[2] == 0.5),
+                     "loss": sum(1 for r in rows if r[2] == 0.0)})
+        p, lo, hi = bootstrap(rows, lambda sm: sum(r[2] for r in sm) / len(sm) if sm else None)
+        w(f"  {cls:10s} {bucket:24s} {len(rows):7d} {pct(len(rows), st['games'])} "
+          f"{ci(p, lo, hi):>22s}   {c['win']}/{c['draw']}/{c['loss']}\n")
 
     w("\nSquandered advantages: peak reported score of a side vs its result\n")
     sq = defaultdict(lambda: Counter())
@@ -793,15 +953,92 @@ def self_check(st: dict, files: list[str], out=sys.stdout) -> bool:
     return ok
 
 
+SELF_TEST_PGN = """\
+[Event "self-test"]
+[White "A"]
+[Black "B"]
+[Result "1-0"]
+[TimeControl "10+0.1"]
+
+1. e4 {+0.20/10 0.500s} e5 {-0.15/10 0.400s} 2. Qh5 {+0.30/11 0.600s}
+Ke7 {-9.00/12 0.300s} 3. Qxe5# {+M1/13 0.100s, Win by checkmate} 1-0
+
+[Event "self-test"]
+[White "A"]
+[Black "B"]
+[Result "0-1"]
+[TimeControl "10+0.1"]
+
+1. e4 {+0.20/10 0.500s} Nc6 {-0.10/10 0.400s} 2. Zz9 {+0.30/11 0.600s} 0-1
+"""
+
+
+def self_test(out=sys.stdout) -> bool:
+    """Fixture checks for the parser and the per-game accounting.
+
+    The second fixture game is corrupt on purpose. A game that fails mid-replay
+    must contribute nothing: counting it as both parsed and skipped is the exact
+    regression this guards.
+    """
+    import tempfile
+
+    failures = []
+
+    def check(name, passed, detail):
+        out.write(f"  [{'PASS' if passed else 'FAIL'}] {name}: {detail}\n")
+        if not passed:
+            failures.append(name)
+
+    # parse_comment covers every annotation shape the corpus actually contains.
+    cases = [
+        ("+1.22/11 0.415s", (122, None, 11, 0.415, None)),
+        ("0.00/12 0.161s", (0, None, 12, 0.161, None)),          # sign is optional
+        ("-0.35/9 0.020s", (-35, None, 9, 0.020, None)),
+        ("+M13/14 0.900s", (None, 13, 14, 0.900, None)),
+        ("-M4/20 0.010s", (None, -4, 20, 0.010, None)),
+        ("0.00/3 0.000s, Draw by 3-fold repetition",
+         (0, None, 3, 0.0, "Draw by 3-fold repetition")),
+    ]
+    for text, want in cases:
+        got = parse_comment(text, "self-test")
+        check(f"parse_comment {text!r}", got == want, f"{got}")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "match.pgn"
+        path.write_text(SELF_TEST_PGN, encoding="utf-8")
+        st = analyse_file(str(path))
+
+    events = SELF_TEST_PGN.count("[Event ")
+    check("corrupt game counted once",
+          st["games"] + st["games_skipped"] == events,
+          f"parsed {st['games']} + skipped {st['games_skipped']} vs {events} [Event ] tags")
+    check("corrupt game contributes no stats", st["games"] == 1,
+          f"parsed {st['games']} of {events}")
+    check("clock band is the pre-move clock",
+          st.get("phase_clock") is not None and "clock>8s" in str(st["swing_clock"]),
+          "first moves are banded above 8s, which only holds before the move time "
+          "is subtracted")
+    return not failures
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("root", help="directory holding strength-<run>-shard-*/match.pgn")
+    ap.add_argument("root", nargs="?",
+                    help="directory holding strength-<run>-shard-*/match.pgn")
     ap.add_argument("--json", help="also write the merged raw stats here")
     ap.add_argument("--jobs", type=int, default=min(os.cpu_count() or 4, 18))
     ap.add_argument("--self-check", action="store_true",
                     help="verify the parser invariants and exit non-zero if any fails")
+    ap.add_argument("--self-test", action="store_true",
+                    help="run the built-in parser fixtures (no corpus needed) and exit")
     args = ap.parse_args()
+
+    if args.self_test:
+        print("self-test")
+        return 0 if self_test() else 1
+    if not args.root:
+        ap.error("root is required unless --self-test is given")
 
     files = sorted(str(p) for p in Path(args.root).rglob("*.pgn"))
     if not files:
