@@ -22,6 +22,21 @@ Newest first.
 
 ---
 
+## 2026-08-29 — LMR depth clamp keeps one main-tree ply
+
+### Changed
+
+- The LMR reduction is clamped to `max(1, depth - 2)` instead of `depth - 1`, so the reduced
+  null-window search always keeps at least one main-tree ply rather than dropping straight into
+  quiescence. `max(1, ...)` on the bound keeps `R >= 1` independent of `lmr_min_depth`: `R == 0`
+  would make the alpha re-search repeat an identical search.
+- The clamp is not a corner case. `R_raw = floor(sqrt((depth - 1) * (move_number - 1)))` saturates
+  the old bound whenever `move_number >= depth` — every LMR-eligible move at depth 3, the 9th move
+  onward at depth 8 — so the reduced tree changes shape at nearly every node. Node counts cannot
+  read this: the sign flips between depth 10 and depth 12.
+- Worth **+9.64 +/- 3.63 Elo** over the merge base (19,980 games, 10+0.1, run `33215162562`);
+  `Docs/EloLog.md` carries the row. Closes #363.
+
 ## 2026-08-28 — SEE pruning in quiescence
 
 ### Added
