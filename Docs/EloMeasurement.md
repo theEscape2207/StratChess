@@ -337,6 +337,10 @@ Two deliberate differences from the local setup:
 The workflow warns when either side is given an increment under 0.1 s, for the reason in
 [the 100 ms floor](#the-100-ms-per-move-floor).
 
+Every run also uploads the annotated PGN of every game it played, retained 90 days.
+[`MoveQuality.md`](MoveQuality.md) is the method and baseline for reading them: the pooled Elo says
+whether a change helped, that scan says where.
+
 **Calibrated 2026-08-05**, by the two runs recorded at the top of `EloLog.md`:
 
 - **Null test** — identical commit and clock on both sides, 1000 games: **-3.47 ± 18.21**, an
