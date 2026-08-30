@@ -14,10 +14,16 @@
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
     pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\Validate-PreCommit.ps1
 
+.PARAMETER SelfTest
+    Run the FEN-check cases and exit. Pure: no build, no test suite, no filesystem.
+
 .NOTES
     Must be invoked with -File, not dot-sourced -- a dot-sourced script runs in the
     caller's scope, where its variables collide and its exit ends the caller's session.
 #>
+param(
+    [switch]$SelfTest
+)
 
 Set-StrictMode -Version Latest
 # Do NOT set $ErrorActionPreference = 'Stop' — this script deliberately accumulates
@@ -30,12 +36,81 @@ $settingsFile = Join-Path $GameDir 'game_settings.json'
 $startingFen  = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 $failed       = $false
 
+# game_settings.json is JSONC, and its "Alternative FEN positions" block is a commented
+# copy of the active "FEN": line. Stripping comments first is what makes this a check of
+# the ACTIVE field: matching the raw text finds the commented copy and passes whatever the
+# active FEN says, which is the one situation the check exists to catch.
+function Test-ActiveStartingFen {
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Content,
+        [Parameter(Mandatory)][string]$StartingFen
+    )
+
+    $active = [regex]::Replace($Content, '/\*.*?\*/', '', 'Singleline')
+    $active = [regex]::Replace($active, '(?m)//.*$', '')
+    return $active -match ('"FEN"\s*:\s*"' + [regex]::Escape($StartingFen) + '"')
+}
+
+if ($SelfTest) {
+    $commented = @'
+    /* Default FEN board setup */
+    "FEN": "{ACTIVE}"
+
+    /* Alternative FEN positions:
+    "FEN": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+    */
+'@
+    $cases = @(
+        @{ Name = 'active starting FEN passes'
+           Content = '"FEN": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"'
+           Expect = $true }
+        @{ Name = 'whitespace around the colon is tolerated'
+           Content = '"FEN"  :   "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"'
+           Expect = $true }
+        @{ Name = 'active starting FEN beside a commented copy passes'
+           Content = $commented.Replace('{ACTIVE}', 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')
+           Expect = $true }
+        # The falsification. Before comments were stripped this returned true, so an edited
+        # active FEN committed cleanly: the commented copy alone satisfied the match.
+        @{ Name = 'FALSIFY: edited active FEN is caught despite the commented copy'
+           Content = $commented.Replace('{ACTIVE}', '8/8/8/4k3/8/8/4K3/8 w - - 0 1')
+           Expect = $false }
+        @{ Name = 'starting FEN only in a line comment does not count'
+           Content = '// "FEN": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"'
+           Expect = $false }
+        @{ Name = 'no FEN key at all fails'
+           Content = '{ "setup": "FEN" }'
+           Expect = $false }
+        @{ Name = 'a different key ending in FEN does not count'
+           Content = '"startFEN": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"'
+           Expect = $false }
+    )
+
+    $failedCases = 0
+    foreach ($case in $cases) {
+        $actual = Test-ActiveStartingFen -Content $case.Content -StartingFen $startingFen
+        if ($actual -eq $case.Expect) {
+            Write-Host "  PASS  $($case.Name)" -ForegroundColor Green
+        }
+        else {
+            $failedCases++
+            Write-Host "  FAIL  $($case.Name): got $actual, expected $($case.Expect)" -ForegroundColor Red
+        }
+    }
+
+    Write-Host ''
+    if ($failedCases -gt 0) {
+        Write-Host "$failedCases self-test case(s) FAILED." -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "All $($cases.Count) self-test cases passed." -ForegroundColor Green
+    exit 0
+}
+
 # --- Step 1: FEN check ---
 Write-Host "`n==> Checking FEN in game_settings.json" -ForegroundColor Cyan
 $content = Get-Content $settingsFile -Raw
-# Match only the active "FEN": field, not comment blocks that also contain the starting FEN
-$fenPattern = '"FEN"\s*:\s*"' + [regex]::Escape($startingFen) + '"'
-if ($content -notmatch $fenPattern) {
+if (-not (Test-ActiveStartingFen -Content $content -StartingFen $startingFen)) {
     Write-Host "FAIL: game_settings.json active FEN is not the starting position." -ForegroundColor Red
     Write-Host "      Reset the FEN to: $startingFen" -ForegroundColor Yellow
     $failed = $true

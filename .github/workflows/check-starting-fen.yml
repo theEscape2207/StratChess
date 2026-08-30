@@ -24,7 +24,12 @@ jobs:
         run: |
           FEN='rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
           FILE='StratChessEvolved/game_settings.json'
-          if ! grep -qE "\"FEN\"[[:space:]]*:[[:space:]]*\"${FEN}\"" "$FILE"; then
+          # The file is JSONC and its "Alternative FEN positions" block is a commented
+          # copy of the active "FEN": line. Strip comments first: matching the raw text
+          # finds that copy and passes whatever the active FEN says, which is the one
+          # situation this check exists to catch. Mirrors Validate-PreCommit.ps1.
+          ACTIVE=$(perl -0777 -pe 's{/\*.*?\*/}{}gs; s{//.*$}{}gm' "$FILE")
+          if ! printf '%s' "$ACTIVE" | grep -qE "\"FEN\"[[:space:]]*:[[:space:]]*\"${FEN}\""; then
             echo "::error file=$FILE::Active FEN is not the starting position. Expected: $FEN"
             exit 1
           fi
