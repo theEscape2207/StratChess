@@ -15,8 +15,8 @@
     pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\Validate-PreCommit.ps1
 
 .NOTES
-    Must be invoked with -File, not dot-sourced. $PSScriptRoot is $null under dot-source,
-    which causes Split-Path to throw under Set-StrictMode -Version Latest.
+    Must be invoked with -File, not dot-sourced -- a dot-sourced script runs in the
+    caller's scope, where its variables collide and its exit ends the caller's session.
 #>
 
 Set-StrictMode -Version Latest

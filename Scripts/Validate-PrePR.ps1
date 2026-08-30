@@ -21,7 +21,8 @@
 
 .NOTES
     Prerequisite: game_settings.json must have "type": 6 for both players (AIPerplex vs AIPerplex).
-    Must be invoked with -File, not dot-sourced. $PSScriptRoot is $null under dot-source.
+    Must be invoked with -File, not dot-sourced -- a dot-sourced script runs in the
+    caller's scope, where its variables collide and its exit ends the caller's session.
 #>
 
 param(

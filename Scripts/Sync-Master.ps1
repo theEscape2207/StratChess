@@ -39,7 +39,8 @@
     tree it was invoked from, it refuses on a dirty target instead of stashing -- the
     stash stack is shared across worktrees, and those changes are not this script's to
     move.
-    Must be invoked with -File, not dot-sourced ($PSScriptRoot is $null under dot-source).
+    Must be invoked with -File, not dot-sourced -- a dot-sourced script runs in the
+    caller's scope, where its variables collide and its exit ends the caller's session.
 #>
 
 Set-StrictMode -Version Latest

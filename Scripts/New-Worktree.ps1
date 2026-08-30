@@ -38,7 +38,8 @@
 
 .NOTES
     Safe to run from the main checkout or from inside any existing worktree.
-    Must be invoked with -File, not dot-sourced ($PSScriptRoot is $null under dot-source).
+    Must be invoked with -File, not dot-sourced -- a dot-sourced script runs in the
+    caller's scope, where its variables collide and its exit ends the caller's session.
 #>
 
 [CmdletBinding()]

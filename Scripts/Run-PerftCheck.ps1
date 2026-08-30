@@ -31,7 +31,8 @@
     pwsh ... Run-PerftCheck.ps1 -ClassifyReport <path to report.json>
 
 .NOTES
-    Must be invoked with -File, not dot-sourced. $PSScriptRoot is $null under dot-source.
+    Must be invoked with -File, not dot-sourced -- a dot-sourced script runs in the
+    caller's scope, where its variables collide and its exit ends the caller's session.
     Build the engine first -- this script does not build it, and the binary must
     carry the UCI `go perft` command and the reset-on-rejected-FEN behaviour.
     Cost per case is superlinear (the corpus is ordered roughly simplest-first), so
