@@ -23,9 +23,9 @@ Artifacts are retained 90 days, ~1 MB per shard. A production run is 18 shards.
 
 ```sh
 gh run download <run_id> --repo theEscape2207/StratChess -p 'strength-<run_id>-shard-*' -D pgn
-python StratChessEvolved/Scripts/analyze_move_quality.py pgn --self-check
-python StratChessEvolved/Scripts/analyze_move_quality.py pgn --json stats.json
-python StratChessEvolved/Scripts/analyze_move_quality.py --self-test   # no corpus needed
+python Scripts/analyze_move_quality.py pgn --self-check
+python Scripts/analyze_move_quality.py pgn --json stats.json
+python Scripts/analyze_move_quality.py --self-test   # no corpus needed
 ```
 
 `--self-check` is the gate: it asserts the parse covered every game and every annotation, and that

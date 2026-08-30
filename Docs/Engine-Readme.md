@@ -864,7 +864,7 @@ Verbose logging is opt-in per call site; the constructor does not enable it.
 
 ### Validation
 
-`Docs/TestDesign.md` is the coverage map. The scripts in `StratChessEvolved/Scripts/` cover unit
+`Docs/TestDesign.md` is the coverage map. The scripts in `Scripts/` cover unit
 tests, pre-commit and pre-PR validation, perft against a 142,953-position corpus, tactical stability,
 benchmarking and Elo measurement. `Docs/Workflow.md` describes which validation tier applies to which
 kind of change.

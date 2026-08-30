@@ -29,7 +29,7 @@ body so it is auditable. Address findings before opening the PR.
 ## 2. Open it
 
 ```
-pwsh -ExecutionPolicy Bypass -File <abs>\StratChessEvolved\Scripts\New-PullRequest.ps1 -Title "…" [-Draft] [-NoPr] [-BodyFile <path>]
+pwsh -ExecutionPolicy Bypass -File <abs>\Scripts\New-PullRequest.ps1 -Title "…" [-Draft] [-NoPr] [-BodyFile <path>]
 ```
 
 Sync → validate → push → create/update, stopping at the first failure. Its validation step scopes
@@ -78,10 +78,10 @@ should have to ask for:
 
 ```
 # per-task worktree
-pwsh -ExecutionPolicy Bypass -File <abs>\StratChessEvolved\Scripts\Remove-Worktree.ps1 -Name <task> -SyncMaster [-FromInside]
+pwsh -ExecutionPolicy Bypass -File <abs>\Scripts\Remove-Worktree.ps1 -Name <task> -SyncMaster [-FromInside]
 
 # working in place
-pwsh -ExecutionPolicy Bypass -File <abs>\StratChessEvolved\Scripts\Remove-MergedBranches.ps1 -SyncMaster
+pwsh -ExecutionPolicy Bypass -File <abs>\Scripts\Remove-MergedBranches.ps1 -SyncMaster
 ```
 
 Both verify the merge before deleting. Squash-merges and locked directories need care:

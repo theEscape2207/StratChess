@@ -30,8 +30,8 @@ Two failures to avoid:
   [Sizing the batch](#sizing-the-batch). The local book supports 69,400 distinct games.
 
 ```
-pwsh -ExecutionPolicy Bypass -File <abs>\StratChessEvolved\Scripts\Run-EloMatch.ps1 [-Smoke] [-Sprt NonRegression|Gain]
-pwsh -ExecutionPolicy Bypass -File <abs>\StratChessEvolved\Scripts\Run-Bench.ps1 -Exe <path>
+pwsh -ExecutionPolicy Bypass -File <abs>\Scripts\Run-EloMatch.ps1 [-Smoke] [-Sprt NonRegression|Gain]
+pwsh -ExecutionPolicy Bypass -File <abs>\Scripts\Run-Bench.ps1 -Exe <path>
 ```
 
 ## The rule that silently invalidates everything
