@@ -178,8 +178,7 @@ scope with no `.cpp` is the only valid zero-TU result; whole-tree lint selecting
 `New-TidyCompileDatabase.ps1` canonicalizes source paths and writes a separate database for each
 profile. CMake builds every Engine source for both `StratChessEvolved` and `StratChessTests`; the
 normalizer retains the shipping `StratChessEvolved` command and rejects ambiguous or missing shipping
-candidates. The Windows database currently reports **74 inputs, 50 canonical sources, 50 selected
-commands, and 24 duplicate target entries removed**. The original build database is never changed.
+candidates. The original build database is never changed.
 
 The runner starts one clang-tidy process per selected TU through a bounded pool. Gate defaults to four
 workers and Deep to two; required/Nightly CI passes those values explicitly. `-Jobs 1` is the serial
