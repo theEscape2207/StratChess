@@ -197,7 +197,7 @@ class PlayerAiBase : public PlayerBase {
 	SearchControl search_control_;
 
 #ifdef STRAT_ENABLE_TEST_ACCESS
-	// Grants a legacy-agent test fixture (StratChessTests/SearchTests.cpp) access to
+	// Grants a legacy-agent test fixture (StratChessTests/SearchTestFixture.h) access to
 	// root_game_state_ so a test can prove it is reset per GetMove() call, mirroring
 	// AIPerlexTestFixture's access to AIPerplex::td_.root_game_state.
 	friend class LegacyAiTestFixture;

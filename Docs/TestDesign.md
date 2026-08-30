@@ -71,7 +71,11 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | **Evaluation (EvalSimple/Complex)** | `[eval]` | `EvalTests.cpp` |
 | **Search regression (tactical)** | `[tactical]` | `TacticalTests.cpp` |
 | **Search regression (slow tier)** | `[tactical_full][slow]` | `TacticalFullTests.cpp` |
-| Concrete search service, lifecycle and helpers | `[search]` | `SearchTests.cpp` |
+| Concrete search service, lifecycle and factory | `[search]` | `SearchServiceTests.cpp` |
+| Per-iteration decision helpers (assess, stop-early, null move) | `[search]` | `SearchIterationTests.cpp` |
+| Search telemetry (thread clamp, terminal verdicts, node counters) | `[search]` | `SearchTelemetryTests.cpp` |
+| Search/TT contract (terminal stores, probed-bound cutoffs) | `[search][tt]` | `SearchTTContractTests.cpp` |
+| Quiescence (delta pruning, in-check evasions, ordering) | `[search][qsearch]` | `QuiescenceTests.cpp` |
 | Move ordering (Sort) | `[sort]` | `SortTests.cpp` |
 | Static exchange evaluation | `[see]` | `SeeTests.cpp` |
 | Board DoMove/UndoMove completeness | `[board]` | `BoardTests.cpp` |
@@ -262,8 +266,12 @@ Each item below is a standalone task. Do it when the corresponding feature is be
 
 ### `[search]` — AIPerplex helper unit tests
 
-**File**: `StratChessTests/SearchTests.cpp`
+**File**: `StratChessTests/SearchIterationTests.cpp`
 **Activation**: `STRAT_ENABLE_TEST_ACCESS`, applied to the `StratChessTests` target only by `CMakeLists.txt`.
+
+Shared infrastructure (`AIPerlexTestFixture`, `LegacyAiTestFixture`, `SearchPlayerTestFixture`) lives
+in `StratChessTests/SearchTestFixture.h`, included by every `[search]` file. Each fixture name must
+match a `friend` declaration in the engine header it reaches into, so none of them can be renamed.
 
 Tests for private helper methods exposed via `AIPerlexTestFixture` (friend class):
 
@@ -337,8 +345,8 @@ reproducible point and a test can assert on what the interrupted search produced
 that. A zero budget is passed through verbatim and latches on its first check, but that check is
 either the 1024-node poll or the end of depth 1 — always too shallow to reach the behaviour worth
 asserting — and any non-zero budget is wall-clock dependent. Related: `[nodes]` cases in
-`SearchTests.cpp`, whose upper bound is deliberately loose because the poll cadence and the node
-budget count different things (see the comment on the poll in `pvs()`).
+`SearchTelemetryTests.cpp`, whose upper bound is deliberately loose because the poll cadence and the
+node budget count different things (see the comment on the poll in `pvs()`).
 
 A node-limit test must fail rather than hang when the mechanism regresses. Choose a depth cap the
 search can actually finish: with no working limit, the only remaining bound is the one-hour fallback
@@ -364,16 +372,16 @@ king in check, and `DoMove` executes any from/to/flags triple it is handed, so p
 prove the position offered it. The flag cases are not padding — `Move` equality ignores flags, so a
 membership test written with `==` passes every one of them.
 
-Two `[search][pv]` cases in `SearchTests.cpp` cover the abort paths the end-to-end UCI test cannot
-force deterministically, both through `AIPerlexTestFixture`:
+Two `[search][pv]` cases cover the abort paths the end-to-end UCI test cannot force
+deterministically, both through `AIPerlexTestFixture`:
 
-- **A `pvs()` frame that aborts at entry leaves an empty row 0.** Seed row 0 (standing in for a
-  completed aspiration retry), latch the abort with `StopSearch()`, run one node. The entry exit
-  returns a fabricated `GameValues::Draw`, and an empty row is what makes `iterative_deepening()`
-  reject it as INCOMPLETE instead of reporting `score cp 0`.
-- **A stale row 1 is not spliced onto the emergency move.** `PVTable::update` copies row `ply + 1`,
-  so `handle_empty_move_emergency()` must clear row 1 first or publish a two-move line whose tail
-  came from another position.
+- **A `pvs()` frame that aborts at entry leaves an empty row 0** (`SearchTelemetryTests.cpp`). Seed
+  row 0 (standing in for a completed aspiration retry), latch the abort with `StopSearch()`, run one
+  node. The entry exit returns a fabricated `GameValues::Draw`, and an empty row is what makes
+  `iterative_deepening()` reject it as INCOMPLETE instead of reporting `score cp 0`.
+- **A stale row 1 is not spliced onto the emergency move** (`SearchIterationTests.cpp`).
+  `PVTable::update` copies row `ply + 1`, so `handle_empty_move_emergency()` must clear row 1 first
+  or publish a two-move line whose tail came from another position.
 
 Both are red against the code before their fix — row 0 keeps its seeded move, and row 0 comes out
 length 2 — which is the only reason they are worth having.
@@ -443,9 +451,9 @@ Cases that exercise `FenBatch::ClassifyLine`, `FENParser::ParseFEN`/`ValidatePos
 
 ### `[search]` — production search boundary
 
-`SearchTests.cpp` covers the concrete service rather than source shape: each `Search(root, limits,
-observer)` call uses its supplied Board, observers do not persist into later calls, and an earlier
-returned `SearchResult` remains usable after subsequent searches. New-game cases prove that
+`SearchServiceTests.cpp` covers the concrete service rather than source shape: each `Search(root,
+limits, observer)` call uses its supplied Board, observers do not persist into later calls, and an
+earlier returned `SearchResult` remains usable after subsequent searches. New-game cases prove that
 `StartNewGame()` clears the TT and per-game history/killers while retaining configured tuning.
 Legacy aspiration coverage remains on the nonvirtual `PlayerBase::GetBestScore()` helper, so no
 generic player score capability is needed. Time/node abort checks stay deterministic where possible;
@@ -717,7 +725,7 @@ including the fifty-move transition and `HUMAN_EXITED`, deterministic. Test-crea
 
 A player reports a terminal result with a null `best_move` and `SearchResult::game_state`. Test both
 sides: `GameLoopTests.cpp` verifies `Game::Run()` consumes it (including the score channel), while
-`SearchTests.cpp` and `PlayerHumanTests.cpp` verify each producer reports it correctly.
+`SearchTelemetryTests.cpp` and `PlayerHumanTests.cpp` verify each producer reports it correctly.
 
 The verdict is per-call, and only an **aborted** search can carry the previous call's verdict out: any
 search that completes a root frame overwrites it anyway. So the `[search]` cases that matter abort
