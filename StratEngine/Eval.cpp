@@ -570,25 +570,14 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 	// MAX_GAME_PHASE (three queens on one side is 12 from queens alone), and an
 	// unclamped phase would extrapolate outside the interpolation range instead
 	// of saturating at "opening".
-	const PieceCounts countsWhite{
-	    .pawns = std::popcount(boardsSpan[ePiece::WHITE_PAWN]),
-	    .knights = std::popcount(boardsSpan[ePiece::WHITE_KNIGHT]),
-	    .bishops = std::popcount(boardsSpan[ePiece::WHITE_BISHOP]),
-	    .rooks = std::popcount(boardsSpan[ePiece::WHITE_ROOK]),
-	    .queens = std::popcount(boardsSpan[ePiece::WHITE_QUEEN]),
-	};
-	const PieceCounts countsBlack{
-	    .pawns = std::popcount(boardsSpan[ePiece::BLACK_PAWN]),
-	    .knights = std::popcount(boardsSpan[ePiece::BLACK_KNIGHT]),
-	    .bishops = std::popcount(boardsSpan[ePiece::BLACK_BISHOP]),
-	    .rooks = std::popcount(boardsSpan[ePiece::BLACK_ROOK]),
-	    .queens = std::popcount(boardsSpan[ePiece::BLACK_QUEEN]),
-	};
-
-	const int phaseWhite = PHASE_KNIGHT * countsWhite.knights + PHASE_BISHOP * countsWhite.bishops +
-	                       PHASE_ROOK * countsWhite.rooks + PHASE_QUEEN * countsWhite.queens;
-	const int phaseBlack = PHASE_KNIGHT * countsBlack.knights + PHASE_BISHOP * countsBlack.bishops +
-	                       PHASE_ROOK * countsBlack.rooks + PHASE_QUEEN * countsBlack.queens;
+	const int phaseWhite = PHASE_KNIGHT * std::popcount(boardsSpan[ePiece::WHITE_KNIGHT]) +
+	                       PHASE_BISHOP * std::popcount(boardsSpan[ePiece::WHITE_BISHOP]) +
+	                       PHASE_ROOK * std::popcount(boardsSpan[ePiece::WHITE_ROOK]) +
+	                       PHASE_QUEEN * std::popcount(boardsSpan[ePiece::WHITE_QUEEN]);
+	const int phaseBlack = PHASE_KNIGHT * std::popcount(boardsSpan[ePiece::BLACK_KNIGHT]) +
+	                       PHASE_BISHOP * std::popcount(boardsSpan[ePiece::BLACK_BISHOP]) +
+	                       PHASE_ROOK * std::popcount(boardsSpan[ePiece::BLACK_ROOK]) +
+	                       PHASE_QUEEN * std::popcount(boardsSpan[ePiece::BLACK_QUEEN]);
 	const int rawPhase = phaseWhite + phaseBlack;
 	const int gamePhase = (rawPhase > MAX_GAME_PHASE) ? MAX_GAME_PHASE : rawPhase;
 
@@ -637,7 +626,7 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 	    .material = {matScoreWhite, matScoreBlack},
 	    .phase = gamePhase,
 	    .mopup_active = {mopupActive[WHITE], mopupActive[BLACK]},
-	    .endgame_scale = EndgameScale(countsWhite, countsBlack),
+	    .endgame_scale = EndgameScale(boardsSpan),
 	    .castling_rights = board.castling_rights(),
 	};
 }
@@ -655,37 +644,41 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 // wrongly scaled to zero is a won ending the search will not enter, so the bar
 // for adding one is that no defence loses, not that most draw.
 //
-int EvalComplex::EndgameScale(const PieceCounts& white, const PieceCounts& black) noexcept
+int EvalComplex::EndgameScale(std::span<const BITBOARD> boards) noexcept
 {
 	// A pawn promotes and a heavy piece mates on its own, so neither side can
-	// be short of mating material while it holds one. This is also the early
-	// out for every position that is not a bare endgame, which is nearly all
-	// of them.
-	if (white.pawns != 0 || black.pawns != 0 || white.rooks != 0 || black.rooks != 0 || white.queens != 0 ||
-	    black.queens != 0)
+	// be short of mating material while it holds one. Every position that is
+	// not a bare endgame — nearly all of them — leaves here, on one OR of
+	// bitboards the caller has already loaded, before anything is counted.
+	if ((boards[ePiece::WHITE_PAWN] | boards[ePiece::BLACK_PAWN] | boards[ePiece::WHITE_ROOK] |
+	     boards[ePiece::BLACK_ROOK] | boards[ePiece::WHITE_QUEEN] | boards[ePiece::BLACK_QUEEN]) != 0ULL)
 		return ENDGAME_SCALE_MAX;
 
-	const int whiteMinors = white.knights + white.bishops;
-	const int blackMinors = black.knights + black.bishops;
+	const BITBOARD whiteMinors = boards[ePiece::WHITE_KNIGHT] | boards[ePiece::WHITE_BISHOP];
+	const BITBOARD blackMinors = boards[ePiece::BLACK_KNIGHT] | boards[ePiece::BLACK_BISHOP];
 
-	if (whiteMinors == 0 && blackMinors == 0)
+	if (whiteMinors == 0ULL && blackMinors == 0ULL)
 		return 0; // Bare kings.
 
 	// Minors on both sides. Drawish, but the defender's piece is also what lets
 	// the attacker mate by stalemating it, and no measurement covers these; out
 	// of scope rather than assumed drawn.
-	if (whiteMinors != 0 && blackMinors != 0)
+	if (whiteMinors != 0ULL && blackMinors != 0ULL)
 		return ENDGAME_SCALE_MAX;
 
-	const PieceCounts& attacker = (whiteMinors != 0) ? white : black;
+	// Exactly one side has minors by here, so these are the attacker's counts
+	// whichever color it is — the classifier has no orientation to get wrong.
+	const bool whiteAttacks = (whiteMinors != 0ULL);
+	const int knights = std::popcount(boards[whiteAttacks ? ePiece::WHITE_KNIGHT : ePiece::BLACK_KNIGHT]);
+	const int bishops = std::popcount(boards[whiteAttacks ? ePiece::WHITE_BISHOP : ePiece::BLACK_BISHOP]);
 
 	// A lone minor cannot mate at all. Two knights can mate but cannot force
 	// it: with nothing to move, the defender is stalemated before it can be
 	// mated. Both are draws whatever the king placement, which is what makes
 	// them a piece-count rule.
-	if (attacker.knights + attacker.bishops == 1)
+	if (knights + bishops == 1)
 		return 0;
-	if (attacker.knights == 2 && attacker.bishops == 0)
+	if (knights == 2 && bishops == 0)
 		return 0;
 
 	// Bishop and knight, two bishops, and three or more minors all mate.
@@ -736,6 +729,13 @@ int EvalComplex::RawWhitePov(const EvalContext& ctx) noexcept
 int EvalComplex::Evaluate(const Board& board) const noexcept
 {
 	const EvalContext ctx = BuildContext(board);
+
+	// Nothing positional can move a score that is about to be multiplied by
+	// zero, so the terms are not computed at all. This is the path the engine
+	// takes through exactly the endings it now has to play out, which is where
+	// the saving is worth having.
+	if (ctx.endgame_scale == 0)
+		return GameValues::Draw;
 
 	// The position's score, in White's point of view: the one value that is a
 	// property of the position rather than of whose turn it is.

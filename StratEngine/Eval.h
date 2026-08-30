@@ -133,16 +133,6 @@ class EvalSimple final : public EvalManager {
 	EvalSimple() = default;
 };
 
-// Piece counts for one color. Kings are absent on purpose: there is always
-// exactly one of each, so a count carries no information.
-struct PieceCounts {
-	int pawns = 0;
-	int knights = 0;
-	int bishops = 0;
-	int rooks = 0;
-	int queens = 0;
-};
-
 // EvalContext — shared, per-call intermediates for EvalComplex::Evaluate().
 // Built once by EvalComplex::BuildContext() as a plain stack local and passed
 // by const reference into each term function; nothing in it is ever stored on
@@ -421,7 +411,7 @@ class EvalComplex final : public EvalManager {
 	// Deliberately a piece-count rule and nothing more. It is not a tablebase
 	// (#101) and does not try to judge fortresses or pawn races: every class it
 	// recognises is drawn by what is on the board, whatever the squares are.
-	static int EndgameScale(const PieceCounts& white, const PieceCounts& black) noexcept;
+	static int EndgameScale(std::span<const BITBOARD> boards) noexcept;
 
 	// Applies a scale to a white-POV score. Split out so Evaluate() and
 	// Breakdown() cannot hold two versions of the arithmetic.

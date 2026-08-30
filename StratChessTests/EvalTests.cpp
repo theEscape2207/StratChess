@@ -160,6 +160,11 @@ TEST_CASE("Eval - EvalComplex: a kingless board evaluates to 0 (pre-#127 behavio
 	// bounds. EvalContext::king_sq is NO_SQUARE for a color with no king
 	// (see the comment on that field in Eval.h), and eval_pst/eval_mopup
 	// both check for it, restoring the pre-#127 "always 0" result exactly.
+	//
+	// Evaluate() now settles a piece-less board through the endgame classifier
+	// before any term runs, so this assertion alone no longer reaches the
+	// guard. The term-level case further down ("a kingless board reaches the
+	// terms") is what keeps it covered.
 	Board board;
 
 	REQUIRE(EvalManager::Create(EvalManager::EvalTypes::COMPLEX)->Evaluate(board) == 0);
@@ -1700,10 +1705,10 @@ TEST_CASE("Eval - material that cannot mate scores exactly a draw", "[eval]")
 	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
 
 	// Four positions per entry: the attacker as White and as Black, each with
-	// either side to move. The scale is applied to the white-POV score before
-	// the side-to-move sign, so all four must be exactly zero — applying it
-	// after the sign would still zero the White-to-move cases and leave the
-	// others untouched.
+	// either side to move. The mirrored half is what catches a classifier that
+	// reads one color's pieces where it means the other's; the side-to-move
+	// half is cheap and keeps the cases uniform with the scaled classes to
+	// come, where the sign does distinguish them.
 	for (const std::string& colored : {std::string(fen), MirrorFen(fen)}) {
 		for (const char stm : {'w', 'b'}) {
 			std::string position = colored;
@@ -1724,13 +1729,35 @@ TEST_CASE("Eval - material that still mates keeps its score", "[eval]")
 	const char* fen = GENERATE(from_range(kWinningEndgameFens));
 	CAPTURE(fen);
 
-	Board board(fen);
 	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
 	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
 	REQUIRE(complexEval != nullptr);
 
-	REQUIRE(eval->Evaluate(board) > 400);
-	REQUIRE(complexEval->Breakdown(board).endgame_adjustment == 0);
+	// Mirrored as well, for the same reason the drawn cases are: a classifier
+	// that lost a win would do it in one orientation only.
+	for (const std::string& colored : {std::string(fen), MirrorFen(fen)}) {
+		CAPTURE(colored);
+		Board board(colored);
+
+		REQUIRE(eval->Evaluate(board) > 400);
+		REQUIRE(complexEval->Breakdown(board).endgame_adjustment == 0);
+	}
+}
+
+TEST_CASE("Eval - the defender's pawn keeps a drawn class unscaled", "[eval]")
+{
+	// K+NN vs K is drawn; K+NN vs K+P is the Troitsky win, because the pawn
+	// gives the defender a move and takes the stalemate away. The pawn belongs
+	// to the *defender* here, which is the half of the pawn test that the
+	// attacker-side case cannot reach.
+	Board defenderHasPawn("8/8/8/3k4/8/4p3/2NN4/3K4 w - - 0 1");
+
+	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
+	REQUIRE(complexEval != nullptr);
+
+	REQUIRE(complexEval->Breakdown(defenderHasPawn).endgame_scale == ENDGAME_SCALE_MAX);
+	REQUIRE(eval->Evaluate(defenderHasPawn) > 400);
 }
 
 TEST_CASE("Eval - a pawn keeps a lone minor out of the drawn classes", "[eval]")
@@ -1760,6 +1787,25 @@ TEST_CASE("Eval - minors on both sides are left unscaled", "[eval]")
 	REQUIRE(complexEval != nullptr);
 
 	REQUIRE(complexEval->Breakdown(knightVsBishop).endgame_scale == ENDGAME_SCALE_MAX);
+}
+
+TEST_CASE("Eval - a kingless board reaches the terms that guard against it", "[eval]")
+{
+	// Companion to the whole-position kingless case near the top of this file,
+	// which the classifier now short-circuits before any term runs. The defect
+	// that case exists for is a NO_SQUARE king square being dereferenced in
+	// eval_pst or eval_mopup — asserted here directly, on the two terms that
+	// read king_sq, so it stays covered whatever Evaluate() does first.
+	//
+	// The production path still reaches them: UciHandler::cmd_eval calls
+	// Breakdown(), which computes every term regardless of the scale.
+	Board board;
+
+	for (const eColor color : {WHITE, BLACK}) {
+		CAPTURE(static_cast<int>(color));
+		REQUIRE(EvalComplexTestFixture::Pst(board, color) == 0);
+		REQUIRE(EvalComplexTestFixture::Mopup(board, color) == 0);
+	}
 }
 
 TEST_CASE("Eval - Breakdown(): the endgame row accounts for the whole scale", "[eval]")
