@@ -23,25 +23,25 @@
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 
-// Lazy SMP thread-safety: s_logger's sinks
-// (stdout_color_sink_mt, basic_file_sink_mt — see ensure_logger_initialized()
-// below, and the equivalent _mt sinks in Utils/Logger.cpp's default/perf
-// loggers) are all spdlog "_mt" thread-safe variants, so concurrent log
-// calls from multiple threads would be safe at the sink level. That said,
-// s_logger itself and ensure_logger_initialized()'s lazy-init (a plain
-// `if (s_logger) return;` check, not a magic static) are NOT safe to race:
-// initialization only ever happens from the constructor during
-// single-threaded AIPerplex setup before any search (or future
-// helper thread) starts. Helper threads run the same search_with_aspiration()
-// code path as the main thread and reach the same log_* call sites, but
-// those calls are gated on `td.thread_id == 0` (see search_with_aspiration()
-// below), so only the main thread ever actually logs; s_logger remains
-// read-only (already-initialized-or-null) from every thread's perspective.
-// If a future revision lets helper threads log too, ensure_logger_initialized()
-// must be made safe to call concurrently (e.g. via std::call_once) first.
-static std::shared_ptr<spdlog::logger> s_logger = nullptr;
-
 namespace {
+	// Lazy SMP thread-safety: s_logger's sinks
+	// (stdout_color_sink_mt, basic_file_sink_mt — see ensure_logger_initialized()
+	// below, and the equivalent _mt sinks in Utils/Logger.cpp's default/perf
+	// loggers) are all spdlog "_mt" thread-safe variants, so concurrent log
+	// calls from multiple threads would be safe at the sink level. That said,
+	// s_logger itself and ensure_logger_initialized()'s lazy-init (a plain
+	// `if (s_logger) return;` check, not a magic static) are NOT safe to race:
+	// initialization only ever happens from the constructor during
+	// single-threaded AIPerplex setup before any search (or future
+	// helper thread) starts. Helper threads run the same search_with_aspiration()
+	// code path as the main thread and reach the same log_* call sites, but
+	// those calls are gated on `td.thread_id == 0` (see search_with_aspiration()
+	// below), so only the main thread ever actually logs; s_logger remains
+	// read-only (already-initialized-or-null) from every thread's perspective.
+	// If a future revision lets helper threads log too, ensure_logger_initialized()
+	// must be made safe to call concurrently (e.g. via std::call_once) first.
+	std::shared_ptr<spdlog::logger> s_logger = nullptr;
+
 	template <typename Function> class ScopeExit final {
 	  public:
 		explicit ScopeExit(Function function) noexcept : function_(std::move(function)) {}
@@ -53,50 +53,50 @@ namespace {
 	  private:
 		Function function_;
 	};
-} // namespace
 
-static std::unique_ptr<EvalManager> create_search_evaluator(EvalManager::EvalTypes type)
-{
-	if (type == EvalManager::EvalTypes::NONE)
-		throw std::invalid_argument("AIPerplex requires a SIMPLE or COMPLEX evaluator");
-	return EvalManager::Create(type);
-}
+	std::unique_ptr<EvalManager> create_search_evaluator(EvalManager::EvalTypes type)
+	{
+		if (type == EvalManager::EvalTypes::NONE)
+			throw std::invalid_argument("AIPerplex requires a SIMPLE or COMPLEX evaluator");
+		return EvalManager::Create(type);
+	}
 
-static void ensure_logger_initialized()
-{
-	// ensure the general default logger is initialized first (no-op if already)
-	Engine::Logger::InitDefault();
-	if (s_logger)
-		return;
+	void ensure_logger_initialized()
+	{
+		// ensure the general default logger is initialized first (no-op if already)
+		Engine::Logger::InitDefault();
+		if (s_logger)
+			return;
 
-	// create AIPerplex specific logger if desired
-	// Use spdlog directly via Engine::Logger utilities
-	if (!Engine::Logger::GetLogger("AIPerplex")) {
-		try {
-			// create an async logger specifically for AIPerplex diagnostics - small thread pool (queue size 8192, 1 backing thread)
-			//spdlog::init_thread_pool(8192, 1);
-			//auto tp = spdlog::thread_pool();
+		// create AIPerplex specific logger if desired
+		// Use spdlog directly via Engine::Logger utilities
+		if (!Engine::Logger::GetLogger("AIPerplex")) {
+			try {
+				// create an async logger specifically for AIPerplex diagnostics - small thread pool (queue size 8192, 1 backing thread)
+				//spdlog::init_thread_pool(8192, 1);
+				//auto tp = spdlog::thread_pool();
 
-			// add both console and file sinks (file sink keeps a record for diagnostics)
-			auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-			console_sink->set_level(spdlog::level::info);
-			console_sink->set_pattern(("%T.%e %^%l%$: %v"));
-			auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("logs/aiperplex.log", true);
-			file_sink->set_level(spdlog::level::debug);
-			file_sink->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
+				// add both console and file sinks (file sink keeps a record for diagnostics)
+				auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+				console_sink->set_level(spdlog::level::info);
+				console_sink->set_pattern(("%T.%e %^%l%$: %v"));
+				auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("logs/aiperplex.log", true);
+				file_sink->set_level(spdlog::level::debug);
+				file_sink->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
 
-			s_logger = std::make_shared<spdlog::logger>( // was spdlog:async_logger
-			    "AIPerplex", spdlog::sinks_init_list{console_sink, file_sink});
-			//tp,
-			//spdlog::async_overflow_policy::block);
+				s_logger = std::make_shared<spdlog::logger>( // was spdlog:async_logger
+				    "AIPerplex", spdlog::sinks_init_list{console_sink, file_sink});
+				//tp,
+				//spdlog::async_overflow_policy::block);
 
-			spdlog::register_logger(s_logger);
-			s_logger->set_level(spdlog::level::debug);
-			s_logger->flush_on(spdlog::level::debug);
-		} catch (...) { // NOLINT(bugprone-empty-catch) - best-effort logger init
+				spdlog::register_logger(s_logger);
+				s_logger->set_level(spdlog::level::debug);
+				s_logger->flush_on(spdlog::level::debug);
+			} catch (...) { // NOLINT(bugprone-empty-catch) - best-effort logger init
+			}
 		}
 	}
-}
+} // namespace
 
 AIPerplex::AIPerplex(AIPerplexConfig config)
     : evaluator_(create_search_evaluator(config.evaluator)), control_(config.default_depth, config.default_time),

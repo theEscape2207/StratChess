@@ -23,12 +23,14 @@
 #	include <unistd.h>
 #endif
 
-static constexpr std::string_view STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-static constexpr unsigned UCI_DEFAULT_DEPTH = 20;
+namespace {
+	constexpr std::string_view STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+	constexpr unsigned UCI_DEFAULT_DEPTH = 20;
 
-// Same bound the 'perft' CLI subcommand enforces, so a mistyped depth cannot
-// start a run that will never finish.
-static constexpr int PERFT_MAX_DEPTH = 10;
+	// Same bound the 'perft' CLI subcommand enforces, so a mistyped depth cannot
+	// start a run that will never finish.
+	constexpr int PERFT_MAX_DEPTH = 10;
+} // namespace
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -101,14 +103,16 @@ void UciHandler::send(std::string_view msg)
 	std::cout.flush();
 }
 
-static int current_process_id()
-{
+namespace {
+	int current_process_id()
+	{
 #ifdef _WIN32
-	return _getpid();
+		return _getpid();
 #else
-	return static_cast<int>(getpid());
+		return static_cast<int>(getpid());
 #endif
-}
+	}
+} // namespace
 
 std::string UciHandler::DefaultCommandLogPath()
 {
@@ -153,22 +157,24 @@ void UciHandler::init_ai()
 // Command implementations
 // ---------------------------------------------------------------------------
 
-// Measurement contract version. Bump ONLY when something changes what a reported
-// measurement means — what counts as a node, which trees are included, what nps is
-// computed from. Two bench tables are comparable only if this matches; a run that
-// reports no contract at all predates the split and counted main-tree nodes only.
-// This is not a build id and not an engine version: refactors and strength changes
-// leave it alone, because they do not change what the numbers mean.
-//
-//   1 — UCI 'nodes' is the main tree plus the quiescence tree (#312), both counted in
-//       MOVE EDGES, so the two sum with nothing counted twice. It is NOT a complete
-//       census of nodes visited, and the gaps are unmeasured: null-move edges (pvs()
-//       ~line 509) and LMR/PV re-searches of an already-counted edge belong to neither
-//       column, and the loops straddle DoMove() differently — pvs() counts a move
-//       before it can be rejected as illegal, quiescence after. Aligning that last one
-//       means moving pvs()'s increment, which changes search behaviour
-//       (assess_iteration_quality) rather than reporting.
-static constexpr int MEASUREMENT_CONTRACT = 1;
+namespace {
+	// Measurement contract version. Bump ONLY when something changes what a reported
+	// measurement means — what counts as a node, which trees are included, what nps is
+	// computed from. Two bench tables are comparable only if this matches; a run that
+	// reports no contract at all predates the split and counted main-tree nodes only.
+	// This is not a build id and not an engine version: refactors and strength changes
+	// leave it alone, because they do not change what the numbers mean.
+	//
+	//   1 — UCI 'nodes' is the main tree plus the quiescence tree (#312), both counted in
+	//       MOVE EDGES, so the two sum with nothing counted twice. It is NOT a complete
+	//       census of nodes visited, and the gaps are unmeasured: null-move edges (pvs()
+	//       ~line 509) and LMR/PV re-searches of an already-counted edge belong to neither
+	//       column, and the loops straddle DoMove() differently — pvs() counts a move
+	//       before it can be rejected as illegal, quiescence after. Aligning that last one
+	//       means moving pvs()'s increment, which changes search behaviour
+	//       (assess_iteration_quality) rather than reporting.
+	constexpr int MEASUREMENT_CONTRACT = 1;
+} // namespace
 
 void UciHandler::cmd_uci()
 {
@@ -205,39 +211,41 @@ void UciHandler::cmd_ucinewgame()
 	assert(ok && "STARTING_FEN failed to parse");
 }
 
-// Column layout for the per-term breakdown table (issue #129 phase 2). The
-// widths are shared by the header, the rules and every row so the columns line
-// up, and are named here rather than repeated as literals in each format call.
-static constexpr int EVAL_TERM_COL = 11; // term name, left-aligned
-static constexpr int EVAL_VALUE_COL = 7; // each of white / black / net, right-aligned
-// Total printed width of one row: the term column, the first '|', then three
-// value columns of which the last two are each preceded by " |". The 'sum'
-// line is right-aligned to this so its figure lands under the net column.
-static constexpr int EVAL_TABLE_WIDTH = EVAL_TERM_COL + 1 + EVAL_VALUE_COL + 2 * (2 + EVAL_VALUE_COL);
+namespace {
+	// Column layout for the per-term breakdown table (issue #129 phase 2). The
+	// widths are shared by the header, the rules and every row so the columns line
+	// up, and are named here rather than repeated as literals in each format call.
+	constexpr int EVAL_TERM_COL = 11; // term name, left-aligned
+	constexpr int EVAL_VALUE_COL = 7; // each of white / black / net, right-aligned
+	// Total printed width of one row: the term column, the first '|', then three
+	// value columns of which the last two are each preceded by " |". The 'sum'
+	// line is right-aligned to this so its figure lands under the net column.
+	constexpr int EVAL_TABLE_WIDTH = EVAL_TERM_COL + 1 + EVAL_VALUE_COL + 2 * (2 + EVAL_VALUE_COL);
 
-// Right-align `text` in a field of `width`; returns it unpadded if it is
-// already wider, so an implausibly large score widens the table rather than
-// being truncated into a wrong number.
-static std::string pad_left(const std::string& text, int width)
-{
-	const int fill = width - static_cast<int>(text.size());
-	return (fill > 0) ? std::string(static_cast<size_t>(fill), ' ') + text : text;
-}
+	// Right-align `text` in a field of `width`; returns it unpadded if it is
+	// already wider, so an implausibly large score widens the table rather than
+	// being truncated into a wrong number.
+	std::string pad_left(const std::string& text, int width)
+	{
+		const int fill = width - static_cast<int>(text.size());
+		return (fill > 0) ? std::string(static_cast<size_t>(fill), ' ') + text : text;
+	}
 
-static std::string pad_right(const std::string& text, int width)
-{
-	const int fill = width - static_cast<int>(text.size());
-	return (fill > 0) ? text + std::string(static_cast<size_t>(fill), ' ') : text;
-}
+	std::string pad_right(const std::string& text, int width)
+	{
+		const int fill = width - static_cast<int>(text.size());
+		return (fill > 0) ? text + std::string(static_cast<size_t>(fill), ' ') : text;
+	}
 
-// One table row: "<name> | <white> | <black> | <net>", with net always
-// white-minus-black — the direction in which Evaluate() combines the two.
-static std::string eval_term_row(const char* name, int white, int black)
-{
-	return pad_right(name, EVAL_TERM_COL) + "|" + pad_left(std::to_string(white), EVAL_VALUE_COL) + " |" +
-	       pad_left(std::to_string(black), EVAL_VALUE_COL) + " |" +
-	       pad_left(std::to_string(white - black), EVAL_VALUE_COL);
-}
+	// One table row: "<name> | <white> | <black> | <net>", with net always
+	// white-minus-black — the direction in which Evaluate() combines the two.
+	std::string eval_term_row(const char* name, int white, int black)
+	{
+		return pad_right(name, EVAL_TERM_COL) + "|" + pad_left(std::to_string(white), EVAL_VALUE_COL) + " |" +
+		       pad_left(std::to_string(black), EVAL_VALUE_COL) + " |" +
+		       pad_left(std::to_string(white - black), EVAL_VALUE_COL);
+	}
+} // namespace
 
 // Prints the static evaluation of the current position (board_), as set up
 // by the last 'position' command (startpos default if none has run yet).

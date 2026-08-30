@@ -1,8 +1,11 @@
 # Catch2 REQUIRE controls optional access but is not modeled by clang-tidy.
 # Test code also favors clarity over micro-optimizations, and const on a local that a
-# test never reassigns is noise rather than intent.
+# test never reassigns is noise rather than intent. Likewise a file-scope `static`
+# FEN fixture: an anonymous namespace buys a debugger symbol and template-argument
+# usability, and a test needs neither.
 InheritParentConfig: true
 Checks: >
   -bugprone-unchecked-optional-access,
   -performance-*,
-  -misc-const-correctness
+  -misc-const-correctness,
+  -misc-use-anonymous-namespace

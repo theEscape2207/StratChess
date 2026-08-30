@@ -5,6 +5,7 @@ Checks: >
   bugprone-*,
   performance-*,
   misc-const-correctness,
+  misc-use-anonymous-namespace,
   -bugprone-throwing-static-initialization,
   -bugprone-easily-swappable-parameters,
   -bugprone-exception-escape,
