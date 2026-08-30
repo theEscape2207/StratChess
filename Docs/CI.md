@@ -173,19 +173,12 @@ Both profiles set `WarningsAsErrors: '*'`. A finding, non-zero worker, missing w
 malformed/missing database, failed diff, or normalization ambiguity fails the invocation. A changed
 scope with no `.cpp` is the only valid zero-TU result; whole-tree lint selecting zero TUs fails.
 
-### Compilation database and workers
+### Compilation database
 
-`New-TidyCompileDatabase.ps1` canonicalizes source paths and writes a separate database for each
-profile. CMake builds every Engine source for both `StratChessEvolved` and `StratChessTests`; the
-normalizer retains the shipping `StratChessEvolved` command and rejects ambiguous or missing shipping
-candidates. The original build database is never changed.
-
-The runner starts one clang-tidy process per selected TU through a bounded pool. Gate defaults to four
-workers and Deep to two; required/Nightly CI passes those values explicitly. `-Jobs 1` is the serial
-diagnostic baseline, and any positive `-Jobs` value is accepted. Each worker's stdout, stderr, and exit
-code are captured separately, then non-empty results are printed in canonical source order. The summary
-includes tool/version, profile/config, normalized and selected counts, requested/effective workers,
-completed invocations, elapsed time, and findings grouped by check.
+`New-TidyCompileDatabase.ps1` writes a normalized database per profile and never modifies the build's
+own. CMake compiles every Engine source for both `StratChessEvolved` and `StratChessTests`; the
+normalizer retains the **shipping** command, so lint sees Release engine flags rather than test ones,
+and fails on an ambiguous or missing candidate.
 
 **LLVM is pinned to major 22**, installed from apt.llvm.org rather than using the image's
 `clang-tidy-18`. The check inventory differs between clang-tidy majors, so an unpinned runner
@@ -206,39 +199,22 @@ that includes it, chosen from an include graph over the tracked sources. clang-t
 findings inside a header through `HeaderFilterRegex`; what it needs is an includer to reach them
 from, and the header text is the same in every one, so the first is enough.
 
-One rather than all, because the dependent set of `defines.h` or `Move.h` is 44-55 of the 62 units —
-a whole-tree run, the one shape capable of making this the critical path. The cover is bounded
-instead: 14 units even if every header in the repository changed at once, and 1-3 for the changes
-that actually occur. Engine units are preferred over test units, which carry Catch2 and analyse
-more slowly. A header no unit includes is reported as uncovered and left to `lint-tree`.
+One rather than all, because the dependent set of a widely-included header is most of the tree, and a
+whole-tree run is the one shape capable of making lint the critical path. Engine units are preferred
+over test units, which carry Catch2 and analyse more slowly. A header no unit includes is reported as
+uncovered and left to `lint-tree`.
 
 Changes to a lint config, `Run-Lint.ps1`, or the database normalizer deliberately expand to the
 whole tree so the gate machinery validates itself.
-
-Local Windows/clang-cl whole-tree measurements on 2026-08-13 show why the bounded defaults matter:
-
-| Profile | TUs | Workers | Findings | Elapsed |
-|---|---:|---:|---:|---:|
-| Gate | 49 | 1 | 0 | 86.0 s |
-| Gate | 49 | 4 | 0 | 24.7 s |
-| Deep | 25 | 1 | 0 | 154.8 s |
-| Deep | 25 | 2 | 0 | 71.8 s |
-
-Required PR CI analyzes only changed TUs, so it normally stays below the existing build critical path.
-Whole-tree Gate and both Deep platform runs belong to Nightly.
 
 **CI is a gate.** `build-and-test-result` is a required check on `main`, so a red run blocks the
 merge. A SKIPPED leg reports success deliberately: a Docs-tier PR runs none of the build jobs, and a
 required check that never ran would block it forever.
 
-Dependencies come from `FetchContent` at the versions pinned in `CMakeLists.txt`; each job caches
-`build/_deps`. `build-linux` builds `all`, then runs the fast Catch2 tier and, in Release, the
-executable's `perft test` suite. Windows builds `all` in Release and Debug, then runs the fast tier.
-
 Runner image is pinned to `windows-2025-vs2026`, not `windows-latest`, so the toolchain moves only
 when it is changed deliberately — see `.claude/plans/full-build-test-ci-github-actions.md`.
 
-`Check starting FEN` is path-filtered to `StratChessEvolved/game_settings.json` and does not run
+`check-starting-fen.yml` is path-filtered to `StratChessEvolved/game_settings.json` and does not run
 otherwise.
 
 Self-play stays local-only (`Validate-PrePR.ps1`); its timeout-based nondeterminism is not worth CI
