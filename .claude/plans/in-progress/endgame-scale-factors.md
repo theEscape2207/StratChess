@@ -155,6 +155,10 @@ into, which bounds the blast radius of this change to qsearch leaves and the sta
 
 - **Step 1 (refactor):** `Compare-SearchEquivalence.ps1 -After <exe>` — identical node counts and best
   moves at `Threads=1`. No Elo match: the diff cannot change a score.
+- **Cost, measured in part 1:** the classifier is free (+0.25% nps, seven interleaved pairs) once it
+  reads the bitboards and counts nothing until past its own early-out. The first version cost 1.0–1.3%
+  by materialising two count structs at every leaf. Worth knowing before parts 2 and 3 add work here:
+  in this function, *what gets built per call* dominates *what gets compared*.
 - **Step 2 (exact-draw classes):** `[eval]` regression cases for both colors and both sides to move,
   covering every exact-zero class under varying king/PST placement; the won-ending cases above; the
   mirror cases; and the UCI `eval` table reproducing `total`. Plus `Run-Bench.ps1` — the classifier
