@@ -209,6 +209,25 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
     4 for K+Q vs bare king, 0 for bare kings, unchanged by adding a full pawn set (pawns carry no
     phase weight), and clamped rather than extrapolating on a three-queens-a-side promotion overshoot
 
+**Drawish material (`[eval]`, issue #128)**. The evaluator scales positions that cannot be won by
+material to exactly `GameValues::Draw`, so these assert an exact value rather than a direction — any
+nonzero score in one of those classes *is* the defect.
+
+- Each drawn class (bare kings, K+minor vs K, K+NN vs K) is asserted four ways: the attacking
+  material as White and as Black, each with either side to move. All four must be exactly 0. The
+  scale is applied to the white-POV score before the side-to-move sign, and applying it after would
+  still pass the White-to-move half — which is why the side-to-move axis is here at all
+- Kings are placed differently in each entry, since a piece-count rule must not depend on where they
+  stand
+- The complement, which is what stops the whole thing being satisfied by scaling every pawnless
+  ending to zero: K+B+N, K+B+B, K+R, K+Q and three knights against a bare king keep their score, and
+  report a zero endgame adjustment
+- One pawn keeps K+B+P vs K out of the drawn class it is a single capture away from
+- Minors on both sides (K+N vs K+B) are asserted *unscaled*, recording an exclusion from the first
+  cut so that widening the classifier later is a visible change
+- The #129 honesty invariant extended: on a scaled position, the printed rows plus the endgame
+  adjustment still reproduce `total` exactly
+
 **Tapered evaluation (`[eval]`, issue #99)**. The taper is asserted on its *endpoints* wherever
 possible rather than on a blended value at one position's particular phase — a blended assertion
 silently depends on the phase weights, so it would start testing something else the moment those
