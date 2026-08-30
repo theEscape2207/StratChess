@@ -228,7 +228,7 @@ if ($SelfTest) {
         [pscustomobject]@{ Path = 'build.ps1';                    Tier = 'Build';   HasSelfTest = $true }
         [pscustomobject]@{ Path = 'Scripts/Validate-PrePR.ps1';   Tier = 'Build';   HasSelfTest = $true }
         [pscustomobject]@{ Path = 'Scripts/BuildFreshness.ps1';   Tier = 'Build';   HasSelfTest = $false }
-        [pscustomobject]@{ Path = 'Scripts/Run-Bench.ps1';        Tier = 'Tooling'; HasSelfTest = $false }
+        [pscustomobject]@{ Path = 'Scripts/Run-Bench.ps1';        Tier = 'Tooling'; HasSelfTest = $true }
     )
     $exempt = @{ 'Scripts/BuildFreshness.ps1' = 'build.ps1' }
 

@@ -35,7 +35,7 @@
     reported time is the engine's own, not wall clock.
 
 .PARAMETER Exe
-    Path to StratChessEvolved.exe. Required.
+    Path to StratChessEvolved.exe. Required for a benchmark run.
 
 .PARAMETER Depth
     Fixed search depth. Default 12, calibrated on the current dev machine to keep
@@ -66,8 +66,15 @@
     Warn when a position completes faster than this, since short searches make
     nps unreliable. Default 200.
 
+.PARAMETER SelfTest
+    Assert the transcript parsing and position resolution against synthetic input and
+    exit. Runs no engine. Exits 1 on any failure.
+
 .EXAMPLE
     .\Run-Bench.ps1 -Exe (.\Scripts\Get-BuildArtifact.ps1)
+
+.EXAMPLE
+    .\Run-Bench.ps1 -SelfTest
 
 .EXAMPLE
     # Comparing two builds. Both must come from the same compiler unless the
@@ -78,8 +85,10 @@
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
-    [string]$Exe,
+    # Not Mandatory, so -SelfTest can run without one. A missing -Exe is rejected
+    # explicitly in the main section instead: a mandatory parameter would prompt, and
+    # the validation gate runs this script in a child pwsh with no console to prompt on.
+    [string]$Exe = '',
 
     [ValidateRange(1, 30)]
     [int]$Depth = 12,
@@ -91,7 +100,9 @@ param(
 
     [string]$Csv = '',
 
-    [int]$MinTimeMs = 200
+    [int]$MinTimeMs = 200,
+
+    [switch]$SelfTest
 )
 
 Set-StrictMode -Version Latest
@@ -134,6 +145,69 @@ function Resolve-Positions {
 
     if (-not $list) { throw "No FENs found in $Path" }
     return $list
+}
+
+function ConvertTo-BenchResult {
+    <#
+        Turn one engine transcript into the row the table is built from. Pure, so
+        -SelfTest can assert both the parsing and the refusals without an engine.
+    #>
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Output,
+        [Parameter(Mandatory)][int]$SearchDepth,
+        [Parameter(Mandatory)][string]$Fen
+    )
+
+    # The engine emits one summary info line, then bestmove. Take the LAST info
+    # line so this keeps working if per-iteration output is ever added.
+    $info = [regex]::Matches($Output, 'info depth \d+.*?nodes (\d+) time (\d+)')
+    $best = [regex]::Match($Output, 'bestmove (\S+)')
+
+    if ($info.Count -eq 0) {
+        throw "No parseable 'info ... nodes N time T' line for FEN: $Fen`nEngine output:`n$Output"
+    }
+    if (@($info | Where-Object { $_.Value -match "^info depth $SearchDepth\b" }).Count -eq 0 -or -not $best.Success) {
+        throw ("Fixed-depth search did not complete depth $SearchDepth for FEN: $Fen" +
+               "`nEngine output:`n$Output")
+    }
+
+    # Main-tree/quiescence split (issue #312). Engines built before that change do not
+    # emit it, and comparing against such a build is the normal case for a before/after
+    # run, so its absence is reported as unknown rather than as zero.
+    $contract = [regex]::Match($Output, 'info string benchcontract (\d+)')
+    $split    = [regex]::Matches($Output, 'info string treenodes main (\d+) qs (\d+)')
+    $contractNo = if ($contract.Success) { [int]$contract.Groups[1].Value } else { 0 }
+    $nodes     = [int64]$info[$info.Count - 1].Groups[1].Value
+    $mainNodes = $null
+    $qsNodes   = $null
+    if ($split.Count -gt 0) {
+        $lastSplit = $split[$split.Count - 1]
+        $mainNodes = [int64]$lastSplit.Groups[1].Value
+        $qsNodes   = [int64]$lastSplit.Groups[2].Value
+    }
+
+    # A contract >= 1 build promises the split on every search, and that it sums to the
+    # total. Either failing means engine and parser have drifted, so refuse the run.
+    if ($contractNo -ge 1 -and $split.Count -eq 0) {
+        throw ("Contract $contractNo build emitted no 'info string treenodes' line for FEN: $Fen" +
+               "`nThe engine and this script disagree about the measurement contract." +
+               "`nEngine output:`n$Output")
+    }
+    if ($null -ne $mainNodes -and ($mainNodes + $qsNodes) -ne $nodes) {
+        throw ("Node split does not sum to the reported total for FEN: $Fen" +
+               "`n  main $mainNodes + qs $qsNodes = $($mainNodes + $qsNodes), but 'nodes' says $nodes." +
+               "`nEngine output:`n$Output")
+    }
+
+    $last = $info[$info.Count - 1]
+    return [pscustomobject]@{
+        Nodes     = $nodes
+        MainNodes = $mainNodes
+        QsNodes   = $qsNodes
+        Ms        = [int64]$last.Groups[2].Value
+        Best      = if ($best.Success) { $best.Groups[1].Value } else { '(none)' }
+        Contract  = $contractNo
+    }
 }
 
 function Invoke-UciSearchToBestMove {
@@ -254,59 +328,144 @@ function Invoke-Search {
     $out = Invoke-UciSearchToBestMove -ExePath $ExePath -WorkDir $WorkDir -Commands $commands `
                                       -SearchDepth $SearchDepth -Description $Fen
 
-    # The engine emits one summary info line, then bestmove. Take the LAST info
-    # line so this keeps working if per-iteration output is ever added.
-    $info = [regex]::Matches($out, 'info depth \d+.*?nodes (\d+) time (\d+)')
-    $best = [regex]::Match($out, 'bestmove (\S+)')
+    ConvertTo-BenchResult -Output $out -SearchDepth $SearchDepth -Fen $Fen
+}
 
-    if ($info.Count -eq 0) {
-        throw "No parseable 'info ... nodes N time T' line for FEN: $Fen`nEngine output:`n$out"
-    }
-    if (@($info | Where-Object { $_.Value -match "^info depth $SearchDepth\b" }).Count -eq 0 -or -not $best.Success) {
-        throw ("Fixed-depth search did not complete depth $SearchDepth for FEN: $Fen" +
-               "`nEngine output:`n$out")
-    }
+# ---------------------------------------------------------------------------
+# Self-test — covers the pure halves: transcript parsing and position resolution.
+# The UCI driver above is NOT covered; it spawns a real engine, and nothing here
+# substitutes for an actual bench pass.
+# ---------------------------------------------------------------------------
 
-    # Main-tree/quiescence split (issue #312). Engines built before that change do not
-    # emit it, and comparing against such a build is the normal case for a before/after
-    # run, so its absence is reported as unknown rather than as zero.
-    $contract = [regex]::Match($out, 'info string benchcontract (\d+)')
-    $split    = [regex]::Matches($out, 'info string treenodes main (\d+) qs (\d+)')
-    $contractNo = if ($contract.Success) { [int]$contract.Groups[1].Value } else { 0 }
-    $nodes     = [int64]$info[$info.Count - 1].Groups[1].Value
-    $mainNodes = $null
-    $qsNodes   = $null
-    if ($split.Count -gt 0) {
-        $lastSplit = $split[$split.Count - 1]
-        $mainNodes = [int64]$lastSplit.Groups[1].Value
-        $qsNodes   = [int64]$lastSplit.Groups[2].Value
+if ($SelfTest) {
+    $failures = 0
+
+    function Assert-Case {
+        param([string]$Name, [bool]$Ok, [string]$Detail = '')
+        if ($Ok) {
+            Write-Host ("  PASS  {0}" -f $Name) -ForegroundColor Green
+        } else {
+            Write-Host ("  FAIL  {0}{1}" -f $Name, $(if ($Detail) { " — $Detail" } else { '' })) -ForegroundColor Red
+            $script:failures++
+        }
     }
 
-    # A contract >= 1 build promises the split on every search, and that it sums to the
-    # total. Either failing means engine and parser have drifted, so refuse the run.
-    if ($contractNo -ge 1 -and $split.Count -eq 0) {
-        throw ("Contract $contractNo build emitted no 'info string treenodes' line for FEN: $Fen" +
-               "`nThe engine and this script disagree about the measurement contract." +
-               "`nEngine output:`n$out")
-    }
-    if ($null -ne $mainNodes -and ($mainNodes + $qsNodes) -ne $nodes) {
-        throw ("Node split does not sum to the reported total for FEN: $Fen" +
-               "`n  main $mainNodes + qs $qsNodes = $($mainNodes + $qsNodes), but 'nodes' says $nodes." +
-               "`nEngine output:`n$out")
+    # -Match is not decoration: several refusals overlap, so asserting only "it threw"
+    # would let a guard be deleted while a later one still throws something else. The
+    # pattern pins which diagnostic the caller actually gets.
+    function Test-Refuses {
+        param([scriptblock]$Action, [Parameter(Mandatory)][string]$Match)
+        try { & $Action | Out-Null; return $false }
+        catch { return $_.Exception.Message -match $Match }
     }
 
-    $last = $info[$info.Count - 1]
-    [pscustomobject]@{
-        Nodes     = $nodes
-        MainNodes = $mainNodes
-        QsNodes   = $qsNodes
-        Ms        = [int64]$last.Groups[2].Value
-        Best      = if ($best.Success) { $best.Groups[1].Value } else { '(none)' }
-        Contract  = $contractNo
+    $contract1 = @(
+        'id name StratChessEvolved'
+        'uciok'
+        'readyok'
+        'info string benchcontract 1'
+        'info depth 1 score cp 24 nodes 21 time 3 pv e2e4'
+        'info depth 2 score cp 12 nodes 140 time 9 pv e2e4 e7e5'
+        'info string treenodes main 100 qs 40'
+        'bestmove e2e4'
+    ) -join "`n"
+
+    $r = ConvertTo-BenchResult -Output $contract1 -SearchDepth 2 -Fen 'startpos'
+    Assert-Case 'nodes, time, best move and contract are parsed' `
+        ($r.Nodes -eq 140 -and $r.Ms -eq 9 -and $r.Best -eq 'e2e4' -and $r.Contract -eq 1) `
+        "got nodes $($r.Nodes) ms $($r.Ms) best $($r.Best) contract $($r.Contract)"
+    Assert-Case 'main/qs split is parsed' ($r.MainNodes -eq 100 -and $r.QsNodes -eq 40) `
+        "got main $($r.MainNodes) qs $($r.QsNodes)"
+
+    # A build predating #312: no contract line, no split. Reported as unknown, not zero,
+    # because comparing against such a build is the normal before/after case.
+    $contract0 = @(
+        'info depth 1 score cp 24 nodes 21 time 3 pv e2e4'
+        'info depth 2 score cp 12 nodes 140 time 9 pv e2e4 e7e5'
+        'bestmove e2e4'
+    ) -join "`n"
+    $r = ConvertTo-BenchResult -Output $contract0 -SearchDepth 2 -Fen 'startpos'
+    Assert-Case 'a pre-#312 build reports the split as unknown' `
+        ($null -eq $r.MainNodes -and $null -eq $r.QsNodes -and $r.Contract -eq 0)
+
+    # The last info line wins, so per-iteration output cannot make an early iteration
+    # the reported result. Same for the split.
+    $twoFinals = $contract1 -replace 'bestmove e2e4', @(
+        'info depth 2 score cp 12 nodes 150 time 11 pv e2e4 e7e5'
+        'info string treenodes main 110 qs 40'
+        'bestmove e2e4'
+    ) -join "`n"
+    $r = ConvertTo-BenchResult -Output $twoFinals -SearchDepth 2 -Fen 'startpos'
+    Assert-Case 'the LAST info and split lines are the reported result' `
+        ($r.Nodes -eq 150 -and $r.MainNodes -eq 110) "got nodes $($r.Nodes) main $($r.MainNodes)"
+
+    # The refusals. Each is a drift between engine and parser that would otherwise be
+    # averaged into an aggregate and reported as a measurement.
+    Assert-Case 'FALSIFY: contract 1 without a treenodes line is refused' `
+        (Test-Refuses -Match "no 'info string treenodes' line" `
+            { ConvertTo-BenchResult -Output ($contract1 -replace 'info string treenodes main 100 qs 40\r?\n', '') -SearchDepth 2 -Fen 'x' })
+    Assert-Case 'FALSIFY: a split that does not sum to the total is refused' `
+        (Test-Refuses -Match 'does not sum to the reported total' `
+            { ConvertTo-BenchResult -Output ($contract1 -replace 'qs 40', 'qs 39') -SearchDepth 2 -Fen 'x' })
+    Assert-Case 'FALSIFY: not reaching the requested depth is refused' `
+        (Test-Refuses -Match 'did not complete depth 3' `
+            { ConvertTo-BenchResult -Output $contract1 -SearchDepth 3 -Fen 'x' })
+    Assert-Case 'FALSIFY: a missing bestmove is refused' `
+        (Test-Refuses -Match 'did not complete depth 2' `
+            { ConvertTo-BenchResult -Output ($contract1 -replace 'bestmove e2e4', '') -SearchDepth 2 -Fen 'x' })
+    Assert-Case 'FALSIFY: output with no info line is refused, by name' `
+        (Test-Refuses -Match 'No parseable' `
+            { ConvertTo-BenchResult -Output 'uciok' -SearchDepth 2 -Fen 'x' })
+
+    # Position resolution, against real files -- the parsing is file-shaped.
+    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) "run-bench-selftest-$([guid]::NewGuid().ToString('N'))"
+    New-Item -ItemType Directory -Path $tmp -Force | Out-Null
+    try {
+        Assert-Case 'no -Positions uses the built-in set' `
+            (@(Resolve-Positions -Path '').Count -eq $DefaultPositions.Count)
+
+        $multi = Join-Path $tmp 'multi.txt'
+        Set-Content $multi @(
+            '# a comment'
+            ''
+            '8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1'
+            '   '
+            '2r3k1/pp3pp1/4p2p/3n4/3P4/P1NBP3/1P3PPP/2R3K1 w - - 0 1'
+        )
+        $list = @(Resolve-Positions -Path $multi)
+        Assert-Case 'comments and blank lines are skipped' ($list.Count -eq 2) "got $($list.Count)"
+        Assert-Case 'positions are named in file order' `
+            ($list[0].Name -eq 'pos-1' -and $list[1].Name -eq 'pos-2')
+
+        # A one-element result unrolls on return, so the call site's @() is what makes
+        # .Count safe. Assert the shape the caller actually sees.
+        $single = Join-Path $tmp 'single.txt'
+        Set-Content $single '8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1'
+        Assert-Case 'a single-FEN file is still a collection of one' `
+            (@(Resolve-Positions -Path $single).Count -eq 1)
+
+        $empty = Join-Path $tmp 'empty.txt'
+        Set-Content $empty @('# nothing but a comment', '')
+        Assert-Case 'FALSIFY: a file with no FENs is refused' `
+            (Test-Refuses -Match 'No FENs found' { Resolve-Positions -Path $empty })
+        Assert-Case 'FALSIFY: a missing positions file is refused' `
+            (Test-Refuses -Match 'Positions file not found' { Resolve-Positions -Path (Join-Path $tmp 'absent.txt') })
+    } finally {
+        Remove-Item -Path $tmp -Recurse -Force -ErrorAction SilentlyContinue
     }
+
+    Write-Host ''
+    if ($failures -gt 0) {
+        Write-Host "$failures self-test case(s) FAILED." -ForegroundColor Red
+        exit 1
+    }
+    Write-Host 'All self-test cases passed.' -ForegroundColor Green
+    exit 0
 }
 
 # --- main ------------------------------------------------------------------
+
+if (-not $Exe) { throw "-Exe is required (the engine binary to benchmark)." }
 
 $exePath = (Resolve-Path $Exe).Path
 if (-not (Test-Path $exePath)) { throw "Engine not found: $Exe" }
