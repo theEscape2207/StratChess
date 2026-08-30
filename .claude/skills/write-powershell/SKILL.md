@@ -129,10 +129,21 @@ dot-sourced by `build.ps1` and `Get-BuildArtifact.ps1` via `Join-Path $PSScriptR
 
 ## 7. The `-SelfTest` convention
 
-Seven scripts carry a `-SelfTest` switch. `Validate-PrePR.ps1` discovers them by parameter
-introspection and runs the self-test of any script your change touches, so a new one is picked up
-with no registration step. Keep them **pure and toolchain-free** — that property is why the
-pre-commit hook can run them.
+Scripts carry a `-SelfTest` switch. `Validate-PrePR.ps1` discovers them by parameter introspection
+and runs the self-test of any script your change touches, so a new one is picked up with no
+registration step. Keep them **pure and toolchain-free** — that property is why the pre-commit hook
+can run them.
+
+Two rules are enforced rather than suggested:
+
+- **Every Build-tier script must have one.** Those scripts gate validation itself, so a bug in one
+  can exempt a change from the checks and then decline to report it. `Validate-PrePR.ps1` fails on a
+  Build-tier script without a `-SelfTest`, on every tier including the Docs and Tooling fast paths.
+  A dot-sourced library that has no `param()` block to hang a switch on needs an exemption entry
+  naming the script that covers it — and that covering script is checked too.
+- **The whole set runs nightly**, via `Validate-PrePR.ps1 -AllSelfTests`. The PR gate only reaches
+  the scripts a diff touched, so a script broken from elsewhere would otherwise stay broken until
+  someone next edited it.
 
 The dominant idiom is a table of cases plus one comparison loop, not assertion helpers:
 

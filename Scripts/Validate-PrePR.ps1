@@ -38,7 +38,12 @@ param(
     # names this as the answer for exactly that case.
     [switch]$AllowUnlistedReformat,
     # Run this script's own cases and exit. Pure: no build, no git, no toolchain.
-    [switch]$SelfTest
+    [switch]$SelfTest,
+    # Run the -SelfTest of every script that carries one, ignoring the diff, and exit.
+    # The nightly entry point: the PR gate runs only the self-tests of scripts a change
+    # touched, which is right for a PR but leaves a script broken from elsewhere -- a
+    # renamed parameter, an altered shared helper -- unnoticed until someone edits it.
+    [switch]$AllSelfTests
 )
 
 Set-StrictMode -Version Latest
@@ -190,6 +195,32 @@ function Get-ScriptSelfTestFact {
         }
     }
     return @($facts)
+}
+
+if ($AllSelfTests) {
+    Write-Host "`n==> Every script self-test" -ForegroundColor Cyan
+    $facts = @(Get-ScriptSelfTestFact -Root $RepoRoot | Where-Object { $_.HasSelfTest })
+    $failed = @()
+    foreach ($fact in $facts) {
+        Write-Host "`n--- $($fact.Path)" -ForegroundColor Cyan
+        # A child pwsh, not dot-sourcing: these scripts exit rather than return.
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot $fact.Path) -SelfTest | Out-Host
+        if ($LASTEXITCODE -ne 0) { $failed += $fact.Path }
+    }
+
+    Write-Host ''
+    if ($failed.Count -gt 0) {
+        $failed | ForEach-Object { Write-Host "FAIL  $_" -ForegroundColor Red }
+        Write-Host "$($failed.Count) of $($facts.Count) script self-test(s) FAILED." -ForegroundColor Red
+        exit 1
+    }
+    # An empty set means discovery broke, not that everything passed.
+    if ($facts.Count -eq 0) {
+        Write-Host 'FAIL: no script carries a -SelfTest -- discovery is broken.' -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "All $($facts.Count) script self-tests passed." -ForegroundColor Green
+    exit 0
 }
 
 if ($SelfTest) {
