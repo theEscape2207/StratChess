@@ -210,96 +210,10 @@ function ConvertTo-BenchResult {
     }
 }
 
-function Invoke-UciSearchToBestMove {
-    <#
-        Keep stdin open until a fixed-depth UCI search emits bestmove. Stdout is
-        read incrementally and stderr is drained asynchronously, so the driver
-        neither queues a premature `quit` nor blocks an engine on a full pipe.
-    #>
-    param(
-        [Parameter(Mandatory)][string]$ExePath,
-        [Parameter(Mandatory)][string]$WorkDir,
-        [Parameter(Mandatory)][string[]]$Commands,
-        [Parameter(Mandatory)][int]$SearchDepth,
-        [Parameter(Mandatory)][string]$Description
-    )
-
-    $psi = [System.Diagnostics.ProcessStartInfo]::new()
-    $psi.FileName               = $ExePath
-    $psi.Arguments              = 'uci'
-    $psi.WorkingDirectory       = $WorkDir
-    $psi.RedirectStandardInput  = $true
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError  = $true
-    $psi.UseShellExecute        = $false
-
-    $proc = [System.Diagnostics.Process]::Start($psi)
-    $stderrTask = $proc.StandardError.ReadToEndAsync()
-    $out = [System.Text.StringBuilder]::new()
-    $timer = [System.Diagnostics.Stopwatch]::StartNew()
-
-    function Get-UciFailureMessage {
-        param([Parameter(Mandatory)][string]$Reason)
-
-        if (-not $proc.HasExited) {
-            $proc.Kill()
-            $proc.WaitForExit()
-        }
-        $stderr = $stderrTask.GetAwaiter().GetResult()
-        return "$Reason`nEngine stderr:`n$stderr`nEngine output:`n$out"
-    }
-
-    try {
-        foreach ($command in $Commands) {
-            $proc.StandardInput.WriteLine($command)
-        }
-        $proc.StandardInput.Flush()
-
-        $gotBestMove = $false
-        while (-not $gotBestMove) {
-            $remaining = 600000 - [int]$timer.ElapsedMilliseconds
-            if ($remaining -le 0) {
-                throw (Get-UciFailureMessage "Engine did not finish within 600s (depth $SearchDepth): $Description")
-            }
-
-            $lineTask = $proc.StandardOutput.ReadLineAsync()
-            if (-not $lineTask.Wait($remaining)) {
-                throw (Get-UciFailureMessage "Engine did not finish within 600s (depth $SearchDepth): $Description")
-            }
-            $line = $lineTask.GetAwaiter().GetResult()
-            if ($null -eq $line) { break }
-            [void]$out.AppendLine($line)
-            if ($line -match '^bestmove \S+') { $gotBestMove = $true }
-        }
-
-        if (-not $gotBestMove) {
-            throw (Get-UciFailureMessage "Engine exited before bestmove (depth $SearchDepth): $Description")
-        }
-
-        $proc.StandardInput.WriteLine('quit')
-        $proc.StandardInput.Flush()
-        $proc.StandardInput.Close()
-
-        $remaining = 600000 - [int]$timer.ElapsedMilliseconds
-        if ($remaining -le 0 -or -not $proc.WaitForExit($remaining)) {
-            throw (Get-UciFailureMessage "Engine did not exit within 600s after bestmove (depth $SearchDepth): $Description")
-        }
-
-        [void]$out.Append($proc.StandardOutput.ReadToEnd())
-        $stderr = $stderrTask.GetAwaiter().GetResult()
-        if ($proc.ExitCode -ne 0) {
-            throw "Engine exited with code $($proc.ExitCode) (depth $SearchDepth): $Description`nEngine stderr:`n$stderr`nEngine output:`n$out"
-        }
-        return $out.ToString()
-    }
-    finally {
-        if (-not $proc.HasExited) {
-            $proc.Kill()
-            $proc.WaitForExit()
-        }
-        $proc.Dispose()
-    }
-}
+# Invoke-UciSearchToBestMove lives in the shared library because
+# Compare-SearchEquivalence.ps1 drives the engine the same way; a fix to the shutdown
+# sequence has to reach both.
+. (Join-Path $PSScriptRoot 'UciDriver.ps1')
 
 function Invoke-Search {
     <#

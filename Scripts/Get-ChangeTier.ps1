@@ -145,6 +145,10 @@ function Get-TierForPath {
     if ($p -like '*Scripts/build_corpus.py')                { return 'Tooling' }
     if ($p -like '*Scripts/uci_race_probe.py')              { return 'Tooling' }
     if ($p -like '*Scripts/Measure-UciLatency.ps1')         { return 'Tooling' }
+    # Dot-sourced by Compare-SearchEquivalence.ps1 and Run-Bench.ps1, both Tooling. Unlike
+    # BuildFreshness.ps1 it gates nothing: it drives an engine and reports what it said,
+    # so a bug in it makes a measurement fail loudly rather than pass wrongly.
+    if ($p -like '*Scripts/UciDriver.ps1')                  { return 'Tooling' }
     # Branch/worktree management. These create, list and tear down worktrees and
     # branches; none of them compiles anything or is invoked by the engine, so a
     # change to one cannot alter build or test behaviour.
@@ -219,6 +223,7 @@ if ($SelfTest) {
         @{ Name = 'bench tool -> Tooling';      Files = @('Scripts/Run-Bench.ps1');          Expect = 'Tooling' }
         @{ Name = 'perftcheck tool -> Tooling'; Files = @('Scripts/Run-PerftCheck.ps1');     Expect = 'Tooling' }
         @{ Name = 'equivalence tool -> Tooling'; Files = @('Scripts/Compare-SearchEquivalence.ps1'); Expect = 'Tooling' }
+        @{ Name = 'UCI driver lib -> Tooling';  Files = @('Scripts/UciDriver.ps1');           Expect = 'Tooling' }
         @{ Name = 'docs + tooling -> Tooling';  Files = @('CLAUDE.md', 'Scripts/Run-Tests.ps1'); Expect = 'Tooling' }
         @{ Name = 'docs + cpp -> Engine';       Files = @('CLAUDE.md', 'StratEngine/Eval.cpp');                 Expect = 'Engine' }
         @{ Name = 'build.ps1 -> Build';         Files = @('build.ps1');                                          Expect = 'Build' }
