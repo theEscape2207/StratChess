@@ -34,7 +34,7 @@
     Starting any new task that will produce a PR.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
-    pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\New-Worktree.ps1 -Name eval-mobility-term
+    pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\New-Worktree.ps1 -Name eval-mobility-term
 
 .NOTES
     Safe to run from the main checkout or from inside any existing worktree.
@@ -111,4 +111,4 @@ Write-Host "`nNext:" -ForegroundColor Cyan
 Write-Host "  cd `"$TargetPath`""
 Write-Host "  .\build.ps1 all                 # also installs the pre-commit hook on first run"
 Write-Host "  ... work ..."
-Write-Host "  .\StratChessEvolved\Scripts\New-PullRequest.ps1 -Title `"...`""
+Write-Host "  .\Scripts\New-PullRequest.ps1 -Title `"...`""

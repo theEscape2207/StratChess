@@ -12,7 +12,7 @@
     Before every git commit. Always run this before Validate-PrePR.ps1.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
-    pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\Validate-PreCommit.ps1
+    pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\Validate-PreCommit.ps1
 
 .NOTES
     Must be invoked with -File, not dot-sourced. $PSScriptRoot is $null under dot-source,
@@ -23,8 +23,8 @@ Set-StrictMode -Version Latest
 # Do NOT set $ErrorActionPreference = 'Stop' — this script deliberately accumulates
 # failures across both checks before exiting. Each step checks $LASTEXITCODE directly.
 
-$GameDir      = Split-Path $PSScriptRoot -Parent
-$RepoRoot     = Split-Path $GameDir -Parent
+$RepoRoot     = Split-Path $PSScriptRoot -Parent
+$GameDir      = Join-Path $RepoRoot 'StratChessEvolved'
 $buildScript  = Join-Path $RepoRoot 'build.ps1'
 $settingsFile = Join-Path $GameDir 'game_settings.json'
 $startingFen  = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'

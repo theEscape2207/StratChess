@@ -23,9 +23,9 @@ the pre-restructure evaluator). It is not #127-specific:
   - Any future refactor asserting behaviour preservation can reuse it.
 
 Usage:
-    python StratChessEvolved/Scripts/build_corpus.py
-    python StratChessEvolved/Scripts/build_corpus.py --out /tmp/corpus.fen
-    python StratChessEvolved/Scripts/build_corpus.py \
+    python Scripts/build_corpus.py
+    python Scripts/build_corpus.py --out /tmp/corpus.fen
+    python Scripts/build_corpus.py \
         --pgn-dir StratChessEvolved/logs/elo --pgn-dir /path/to/more/pgns \
         --every-n-plies 7
 
@@ -137,7 +137,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument(
         "--repo-root", type=Path, default=None,
         help="Repository root. Defaults to the checkout containing this script "
-             "(<repo>/StratChessEvolved/Scripts/build_corpus.py -> <repo>).",
+             "(<repo>/Scripts/build_corpus.py -> <repo>).",
     )
     parser.add_argument(
         "--out", type=Path, default=None,

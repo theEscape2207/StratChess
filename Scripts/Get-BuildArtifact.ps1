@@ -18,8 +18,8 @@
     preset directory it landed in.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
-    pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\Get-BuildArtifact.ps1
-    ... -File C:\...\StratChessEvolved\Scripts\Get-BuildArtifact.ps1 -Target StratChessTests -Config Debug
+    pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\Get-BuildArtifact.ps1
+    ... -File C:\...\Scripts\Get-BuildArtifact.ps1 -Target StratChessTests -Config Debug
 
 .PARAMETER Target
     StratChessEvolved (default) or StratChessTests.
@@ -59,9 +59,7 @@ param(
 
 Set-StrictMode -Version Latest
 
-$GameDir  = Split-Path $PSScriptRoot -Parent
-$RepoRoot = Split-Path $GameDir -Parent
-
+$RepoRoot = Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'BuildFreshness.ps1')
 
 $preset = "windows-$Compiler"

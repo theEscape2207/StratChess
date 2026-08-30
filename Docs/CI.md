@@ -142,9 +142,9 @@ validation share file selection, normalization, checks, worker behavior, and fai
 local invocations are:
 
 ```powershell
-pwsh -File StratChessEvolved/Scripts/Run-Lint.ps1 -Check Tidy -Profile Gate
-pwsh -File StratChessEvolved/Scripts/Run-Lint.ps1 -Check Tidy -Profile Gate -All
-pwsh -File StratChessEvolved/Scripts/Run-Lint.ps1 -Check Tidy -Profile Deep -All
+pwsh -File Scripts/Run-Lint.ps1 -Check Tidy -Profile Gate
+pwsh -File Scripts/Run-Lint.ps1 -Check Tidy -Profile Gate -All
+pwsh -File Scripts/Run-Lint.ps1 -Check Tidy -Profile Deep -All
 ```
 
 ### clang-tidy profiles

@@ -20,7 +20,7 @@
     the Gate profile automatically.
 
 .HOW TO INVOKE
-    pwsh -ExecutionPolicy Bypass -File StratChessEvolved\Scripts\Run-Lint.ps1
+    pwsh -ExecutionPolicy Bypass -File Scripts\Run-Lint.ps1
     ... -Check Format            # formatting only, what CI blocks on
     ... -Check Tidy -Profile Gate # required static analysis
     ... -Check Tidy -Profile Deep # analyzer-heavy Nightly profile
@@ -120,9 +120,7 @@ $ErrorActionPreference = 'Stop'
 # and clang-tidy's check inventory certainly does.
 $PinnedMajor = 22
 
-$GameDir  = Split-Path $PSScriptRoot -Parent
-$RepoRoot = Split-Path $GameDir -Parent
-
+$RepoRoot = Split-Path $PSScriptRoot -Parent
 # ---------------------------------------------------------------------------
 # Tool resolution: explicit parameter, then PATH, then Visual Studio.
 # ---------------------------------------------------------------------------
@@ -197,8 +195,8 @@ function Test-RequiresWholeTreeLint {
         $path = $file.Replace('\', '/')
         if ($path -eq '.clang-format' -or $path -eq '.clang-tidy' -or
             $path -eq '.clang-tidy-deep' -or $path -like '*/.clang-tidy' -or
-            $path -like '*/Scripts/Run-Lint.ps1' -or
-            $path -like '*/Scripts/New-TidyCompileDatabase.ps1') {
+            $path -like '*Scripts/Run-Lint.ps1' -or
+            $path -like '*Scripts/New-TidyCompileDatabase.ps1') {
             return $true
         }
     }
@@ -312,7 +310,7 @@ function Invoke-FormatCheck {
     if ($bad.Count -gt 0) {
         Write-Host "FAIL: $($bad.Count) file(s) are not formatted:" -ForegroundColor Red
         $bad | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
-        Write-Host "`nFix them with: pwsh -File StratChessEvolved\Scripts\Run-Lint.ps1 -Check Format -Fix" -ForegroundColor Yellow
+        Write-Host "`nFix them with: pwsh -File Scripts\Run-Lint.ps1 -Check Format -Fix" -ForegroundColor Yellow
         return $false
     }
     Write-Host 'PASS: all checked files are correctly formatted.' -ForegroundColor Green
@@ -902,7 +900,7 @@ exit 0
         Assert-True 'test tidy config expands lint to whole tree' `
             (Test-RequiresWholeTreeLint -ChangedFiles @('StratChessTests/.clang-tidy'))
         Assert-True 'lint runner expands lint to whole tree' `
-            (Test-RequiresWholeTreeLint -ChangedFiles @('StratChessEvolved/Scripts/Run-Lint.ps1'))
+            (Test-RequiresWholeTreeLint -ChangedFiles @('Scripts/Run-Lint.ps1'))
         Assert-Equal 'ordinary source keeps changed-file scope' $false `
             (Test-RequiresWholeTreeLint -ChangedFiles @('StratEngine/Eval.cpp'))
 
@@ -1016,7 +1014,7 @@ if ($Rest -contains '--version') { Write-Output 'clang-format version 22.1.0'; e
 exit 0
 '@ | Set-Content -LiteralPath $fakeFormat -Encoding utf8NoBOM
 
-        $fixtureScripts = Join-Path $repoFixture 'StratChessEvolved/Scripts'
+        $fixtureScripts = Join-Path $repoFixture 'Scripts'
         New-Item -ItemType Directory -Path $fixtureScripts -Force | Out-Null
         Copy-Item -LiteralPath $PSCommandPath -Destination (Join-Path $fixtureScripts 'Run-Lint.ps1')
         # Committed, so the copied script is not itself a changed file: a changed

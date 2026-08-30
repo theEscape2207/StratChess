@@ -51,7 +51,7 @@
       remove the worktree you are standing in).
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
-    pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\Get-Worktrees.ps1
+    pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\Get-Worktrees.ps1
 
 .NOTES
     Must be invoked with -File, not dot-sourced ($PSScriptRoot is $null under dot-source).

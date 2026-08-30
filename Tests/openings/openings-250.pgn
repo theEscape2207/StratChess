@@ -1,6 +1,6 @@
 % Source: official-stockfish/books, 8moves_v3.pgn (public Stockfish testing book)
 % Slice: first 250 games, sequential; downloaded 2026-07-03
-% Used by StratChessEvolved/Scripts/Run-EloMatch.ps1 (see Docs/EloLog.md)
+% Used by Scripts/Run-EloMatch.ps1 (see Docs/EloLog.md)
 
 [Event "?"]
 [Site "?"]

@@ -33,7 +33,7 @@
     and come back -- this mode is sequential, since one worktree holds one branch at a time.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
-    pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\New-TaskBranch.ps1 -Name eval-mobility-term
+    pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\New-TaskBranch.ps1 -Name eval-mobility-term
 
 .NOTES
     Must be invoked with -File, not dot-sourced ($PSScriptRoot is $null under dot-source).
@@ -115,4 +115,4 @@ Write-Host "`nPASS: on '$BranchName', forked from origin/main ($base)." -Foregro
 Write-Host "`nNext:" -ForegroundColor Cyan
 Write-Host "  .\build.ps1 all"
 Write-Host "  ... work ..."
-Write-Host "  .\StratChessEvolved\Scripts\New-PullRequest.ps1 -Title `"...`""
+Write-Host "  .\Scripts\New-PullRequest.ps1 -Title `"...`""

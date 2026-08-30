@@ -526,7 +526,7 @@ The surrounding CLI plumbing (file I/O, stdout/stderr framing, line
 numbering) remains covered by manual validation, matching the existing convention for
 `perft`/`tactical` CLI runners in this file.
 
-**Corpus tooling**: `StratChessEvolved/Scripts/build_corpus.py` harvests, validates and
+**Corpus tooling**: `Scripts/build_corpus.py` harvests, validates and
 deduplicates FENs from perft/tactical JSON, `StratChessTests/*.cpp` literals, the openings PGN,
 and optional self-play PGNs (`--pgn-dir`) into a single file consumable by `eval <path>` above.
 It is the tool behind #127's score-identity corpus (8574 positions, byte-identical scores
@@ -670,7 +670,7 @@ oracle across **142,953 positions at depths 1–4** — roughly a thousand times
 committed suite, which is where move-generation faults are actually found (#195).
 
 ```powershell
-pwsh -ExecutionPolicy Bypass -File <abs>\StratChessEvolved\Scripts\Run-PerftCheck.ps1
+pwsh -ExecutionPolicy Bypass -File <abs>\Scripts\Run-PerftCheck.ps1
 ... Run-PerftCheck.ps1 -Limit 5000                       # bounded sanity run, seconds
 ... Run-PerftCheck.ps1 -ClassifyReport <report.json>      # re-read a past run, no engine needed
 ```

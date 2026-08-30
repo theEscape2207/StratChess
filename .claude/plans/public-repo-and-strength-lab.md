@@ -716,7 +716,7 @@ policy choice this plan does not make for them.
 | `.github/workflows/nightly.yml` | M2 | New — perft matrix, extended tier, tactical stability |
 | `.github/workflows/strength.yml` | M4, M5, M6 | New — single job, then matrix + aggregation, then triggers |
 | `Tests/openings/` | M3 | Large book added |
-| `StratChessEvolved/Scripts/Run-EloMatch.ps1` | M3 | Book becomes a parameter |
+| `Scripts/Run-EloMatch.ps1` | M3 | Book becomes a parameter |
 | `Docs/EloLog.md` | M3, M4, M6 | Book-change note; CI calibration runs; separate Linux ledger |
 | `Docs/Workflow.md` | M1, M2, M6 | CI section rewritten for the new shape |
 | `CLAUDE.md` | M1, M6 | CI paragraph: label gate gone, gate not advisory, strength lab exists |

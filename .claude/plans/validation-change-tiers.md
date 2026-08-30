@@ -88,8 +88,8 @@ behaviourally rather than in `-SelfTest`, since `-SelfTest` deliberately bypasse
 
 | File | Change |
 |---|---|
-| `StratChessEvolved/Scripts/Get-ChangeTier.ps1` | **New** — the shared classifier + `-SelfTest` |
-| `StratChessEvolved/Scripts/Validate-PrePR.ps1` | Classify, gate the four steps, `-Force` / `-BaseRef`, report |
+| `Scripts/Get-ChangeTier.ps1` | **New** — the shared classifier + `-SelfTest` |
+| `Scripts/Validate-PrePR.ps1` | Classify, gate the four steps, `-Force` / `-BaseRef`, report |
 | `.github/workflows/build-and-test.yml` | New `classify` job; `build-and-test` gated on its output |
 | `CLAUDE.md` | Pre-PR checklist step 2 → the tier table (it is the doc both consumers cite) |
 | `Docs/Changelog.md` | Dated entry |

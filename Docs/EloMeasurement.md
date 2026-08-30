@@ -53,7 +53,7 @@ defaults to the shipping clang-cl build, which is the only one comparable agains
 
 ```
 # fixed batch against the default anchor — "where do we stand"
-pwsh -ExecutionPolicy Bypass -File <abs>\StratChessEvolved\Scripts\Run-EloMatch.ps1
+pwsh -ExecutionPolicy Bypass -File <abs>\Scripts\Run-EloMatch.ps1
 
 # against main rather than the anchor — see rule 4
 ... Run-EloMatch.ps1 -ReferenceExe <merge-base build> -ReferenceTag <commit>

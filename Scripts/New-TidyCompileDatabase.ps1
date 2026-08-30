@@ -20,10 +20,10 @@
     Run synthetic normalization tests and exit.
 
 .HOW TO INVOKE
-    pwsh -File StratChessEvolved/Scripts/New-TidyCompileDatabase.ps1 `
+    pwsh -File Scripts/New-TidyCompileDatabase.ps1 `
         -InputPath build/windows-clang-cl/compile_commands.json `
         -OutputDirectory build/windows-clang-cl/tidy-gate
-    pwsh -File StratChessEvolved/Scripts/New-TidyCompileDatabase.ps1 -SelfTest
+    pwsh -File Scripts/New-TidyCompileDatabase.ps1 -SelfTest
 #>
 
 [CmdletBinding(DefaultParameterSetName = 'Run')]

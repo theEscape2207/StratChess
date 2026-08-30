@@ -59,14 +59,14 @@ Visual Studio setup, `/clang:` flag traps, the shared deps cache and raw CMake: 
 
 ## Scripts
 
-In `StratChessEvolved/Scripts/`; they resolve working directory and build-output paths internally.
+In `Scripts/`; they resolve working directory and build-output paths internally.
 **They require PowerShell 7** — `powershell` (Windows PowerShell 5) fails on PS7 syntax. Invoke
 `pwsh` with `-File` and an **absolute** path. Never dot-source (`$PSScriptRoot` is `$null` under
 dot-source), and never wrap in `cmd.exe /c "..."` — that swallows output, so a failing script looks
 like a silent no-op.
 
 ```
-pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\<name>.ps1
+pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\<name>.ps1
 ```
 
 Each script's `-?` help carries its flags and traps. Use the one in **your own worktree** — they

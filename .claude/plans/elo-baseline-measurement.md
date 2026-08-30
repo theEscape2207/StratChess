@@ -56,7 +56,7 @@ lose 30 ELO; this closes that gap. The documented "baseline" is the harness-sani
 
 | File | Change |
 |---|---|
-| `StratChessEvolved/Scripts/Run-EloMatch.ps1` | **New** — the one-command match runner |
+| `Scripts/Run-EloMatch.ps1` | **New** — the one-command match runner |
 | `Tests/openings/openings-250.pgn` (or `.epd`, per book format) | **New** — committed opening slice |
 | `Docs/EloLog.md` | **New** — append-only measurement history + setup record |
 | `Docs/Roadmap.md` | Item status + pointer to the re-measure procedure |
