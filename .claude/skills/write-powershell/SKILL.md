@@ -124,8 +124,13 @@ pwsh -ExecutionPolicy Bypass -File C:\...\<your-worktree>\Scripts\<name>.ps1
 
 The reason to prefer `-File` over dot-sourcing is scope, not paths: a dot-sourced script runs in the
 caller's scope, so its variables and functions collide with yours and its `exit` terminates *your*
-session. Dot-source only a deliberate shared library — `BuildFreshness.ps1` is the existing one,
-dot-sourced by `build.ps1` and `Get-BuildArtifact.ps1` via `Join-Path $PSScriptRoot`.
+session. Dot-source only a deliberate shared library. There are two — `BuildFreshness.ps1`
+(`build.ps1`, `Get-BuildArtifact.ps1`) and `UciDriver.ps1` (`Compare-SearchEquivalence.ps1`,
+`Run-Bench.ps1`) — both taken via `Join-Path $PSScriptRoot`.
+
+Keep a new one **flat in `Scripts/`**, not in a subdirectory. The Build-tier self-test census is
+`Get-ChildItem Scripts -Filter *.ps1` with no `-Recurse`, so a library one level down is never asked
+whether it needs a `-SelfTest` — it does not fail that check, it escapes it.
 
 ## 7. The `-SelfTest` convention
 
