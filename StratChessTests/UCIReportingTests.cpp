@@ -185,6 +185,26 @@ static EvalTermRow extract_term_row(const std::string& output, const std::string
 	return row;
 }
 
+// The "endgame" row, which prints a net figure only — the scale acts on the
+// white-minus-black score, so its per-color columns are dashes and the row
+// parser above cannot read it. Lines without a column separator are skipped so
+// the "endgame scale:" line below the table cannot be mistaken for the row.
+static int extract_endgame_net(const std::string& output)
+{
+	for (const std::string& line : split_lines(output)) {
+		std::istringstream head(line);
+		std::string first;
+		if (!(head >> first) || first != "endgame" || line.find('|') == std::string::npos)
+			continue;
+
+		const auto last_bar = line.rfind('|');
+		return std::stoi(line.substr(last_bar + 1));
+	}
+
+	FAIL("the printed breakdown has no endgame row");
+	return 0;
+}
+
 // The "sum (white pov)" line: the label followed by the right-aligned figure.
 static int extract_sum_white_pov(const std::string& output)
 {
@@ -208,6 +228,9 @@ static int extract_sum_white_pov(const std::string& output)
 // the invariant vacuous rather than failing loudly -- it passed for a while
 // with `bishops` and `castling` absent only because both were zero in the
 // positions tested here.
+//
+// The endgame row is absent here on purpose: it is net-only and is added to the
+// sum through extract_endgame_net above.
 static const char* const kBreakdownTerms[] = {"material", "pawns",   "rooks",    "pst",
                                               "mopup",    "bishops", "castling", "mobility"};
 
@@ -223,7 +246,8 @@ TEST_CASE("cmd_eval: printed breakdown nets are white-minus-black and sum to the
 	             "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",             // startpos, symmetric
 	             "8/8/8/3r4/4k3/8/8/3QK3 w - - 0 1",                                     // endgame, White to move
 	             "r3k3/8/8/8/8/8/8/4K3 b - - 0 1",  // Black to move, Black up a rook
-	             "8/8/8/4k3/8/8/8/3QK3 w - - 0 1"); // pawnless K+Q vs K — mop-up active
+	             "8/8/8/4k3/8/8/8/3QK3 w - - 0 1",  // pawnless K+Q vs K — mop-up active
+	             "8/8/8/3k4/8/8/3N4/3K4 w - - 0 1"); // K+N vs K — scaled to a draw
 	CAPTURE(fen);
 
 	UciHandlerTestFixture fix;
@@ -240,6 +264,7 @@ TEST_CASE("cmd_eval: printed breakdown nets are white-minus-black and sum to the
 		REQUIRE(row.net == row.white - row.black);
 		net_sum += row.net;
 	}
+	net_sum += extract_endgame_net(out);
 
 	REQUIRE(net_sum == extract_sum_white_pov(out));
 	REQUIRE(net_sum == extract_cp_score(out, "white pov:"));

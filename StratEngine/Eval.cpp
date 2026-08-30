@@ -570,14 +570,25 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 	// MAX_GAME_PHASE (three queens on one side is 12 from queens alone), and an
 	// unclamped phase would extrapolate outside the interpolation range instead
 	// of saturating at "opening".
-	const int phaseWhite = PHASE_KNIGHT * std::popcount(boardsSpan[ePiece::WHITE_KNIGHT]) +
-	                       PHASE_BISHOP * std::popcount(boardsSpan[ePiece::WHITE_BISHOP]) +
-	                       PHASE_ROOK * std::popcount(boardsSpan[ePiece::WHITE_ROOK]) +
-	                       PHASE_QUEEN * std::popcount(boardsSpan[ePiece::WHITE_QUEEN]);
-	const int phaseBlack = PHASE_KNIGHT * std::popcount(boardsSpan[ePiece::BLACK_KNIGHT]) +
-	                       PHASE_BISHOP * std::popcount(boardsSpan[ePiece::BLACK_BISHOP]) +
-	                       PHASE_ROOK * std::popcount(boardsSpan[ePiece::BLACK_ROOK]) +
-	                       PHASE_QUEEN * std::popcount(boardsSpan[ePiece::BLACK_QUEEN]);
+	const PieceCounts countsWhite{
+	    .pawns = std::popcount(boardsSpan[ePiece::WHITE_PAWN]),
+	    .knights = std::popcount(boardsSpan[ePiece::WHITE_KNIGHT]),
+	    .bishops = std::popcount(boardsSpan[ePiece::WHITE_BISHOP]),
+	    .rooks = std::popcount(boardsSpan[ePiece::WHITE_ROOK]),
+	    .queens = std::popcount(boardsSpan[ePiece::WHITE_QUEEN]),
+	};
+	const PieceCounts countsBlack{
+	    .pawns = std::popcount(boardsSpan[ePiece::BLACK_PAWN]),
+	    .knights = std::popcount(boardsSpan[ePiece::BLACK_KNIGHT]),
+	    .bishops = std::popcount(boardsSpan[ePiece::BLACK_BISHOP]),
+	    .rooks = std::popcount(boardsSpan[ePiece::BLACK_ROOK]),
+	    .queens = std::popcount(boardsSpan[ePiece::BLACK_QUEEN]),
+	};
+
+	const int phaseWhite = PHASE_KNIGHT * countsWhite.knights + PHASE_BISHOP * countsWhite.bishops +
+	                       PHASE_ROOK * countsWhite.rooks + PHASE_QUEEN * countsWhite.queens;
+	const int phaseBlack = PHASE_KNIGHT * countsBlack.knights + PHASE_BISHOP * countsBlack.bishops +
+	                       PHASE_ROOK * countsBlack.rooks + PHASE_QUEEN * countsBlack.queens;
 	const int rawPhase = phaseWhite + phaseBlack;
 	const int gamePhase = (rawPhase > MAX_GAME_PHASE) ? MAX_GAME_PHASE : rawPhase;
 
@@ -626,21 +637,69 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 	    .material = {matScoreWhite, matScoreBlack},
 	    .phase = gamePhase,
 	    .mopup_active = {mopupActive[WHITE], mopupActive[BLACK]},
+	    .counts = {countsWhite, countsBlack},
+	    .endgame_scale = EndgameScale(countsWhite, countsBlack),
 	    .castling_rights = board.castling_rights(),
 	};
 }
 
 //
-//	Evaluate() :
-//	Description: Sums up the material value from both colors. Adds additional bonuses according to heuristics
-//	Returns:	 The value of the player in turn subtracted the oppositions value
-// FIXME:		 Evaluate does not know about Check Mate - this is strictly only an evaluation of the current position
-//				 - this means that we miss the first (and best, maybe even only?) opportunity to do check mate!
+//	EndgameScale() :
+//	Description: Classifies the position's material and returns what fraction of
+//	             the assembled score it is worth, over ENDGAME_SCALE_MAX.
+//	Returns:	 0 for material that cannot win at all, ENDGAME_SCALE_MAX otherwise.
 //
-int EvalComplex::Evaluate(const Board& board) const noexcept
+// Only classes drawn by material alone are recognised, and only against a
+// defender with nothing. Everything else — including opposite-coloured bishops,
+// which convert often enough that discounting them costs strength, and minor
+// against minor, which nothing has measured — is left at full value. A class
+// wrongly scaled to zero is a won ending the search will not enter, so the bar
+// for adding one is that no defence loses, not that most draw.
+//
+int EvalComplex::EndgameScale(const PieceCounts& white, const PieceCounts& black) noexcept
 {
-	const EvalContext ctx = BuildContext(board);
+	// A pawn promotes and a heavy piece mates on its own, so neither side can
+	// be short of mating material while it holds one. This is also the early
+	// out for every position outside a bare endgame, which is nearly all of
+	// them.
+	if (white.pawns != 0 || black.pawns != 0 || white.rooks != 0 || black.rooks != 0 || white.queens != 0 ||
+	    black.queens != 0)
+		return ENDGAME_SCALE_MAX;
 
+	const int whiteMinors = white.knights + white.bishops;
+	const int blackMinors = black.knights + black.bishops;
+
+	if (whiteMinors == 0 && blackMinors == 0)
+		return 0; // Bare kings.
+
+	// Minors on both sides. Drawish, but the defender's piece is also what lets
+	// the attacker mate by stalemating it, and no measurement covers these; out
+	// of scope rather than assumed drawn.
+	if (whiteMinors != 0 && blackMinors != 0)
+		return ENDGAME_SCALE_MAX;
+
+	const PieceCounts& attacker = (whiteMinors != 0) ? white : black;
+
+	// A lone minor cannot mate at all. Two knights can mate but cannot force
+	// it: with nothing to move, the defender is stalemated before it can be
+	// mated. Both are draws whatever the king placement, which is what makes
+	// them a piece-count rule.
+	if (attacker.knights + attacker.bishops == 1)
+		return 0;
+	if (attacker.knights == 2 && attacker.bishops == 0)
+		return 0;
+
+	// Bishop and knight, two bishops, and three or more minors all mate.
+	return ENDGAME_SCALE_MAX;
+}
+
+//
+//	RawWhitePov() :
+//	Description: Material plus every blended term, summed white-minus-black.
+//	Returns:	 The unscaled score of the position in White's point of view.
+//
+int EvalComplex::RawWhitePov(const EvalContext& ctx) noexcept
+{
 	// Interpolate each term at this position's phase and sum the results.
 	// Material is not tapered and is added after — a piece is worth its value
 	// regardless of how far along the game is; only positional judgements shift.
@@ -665,9 +724,29 @@ int EvalComplex::Evaluate(const Board& board) const noexcept
 		             BlendPhase(eval_mobility(ctx, c), ctx.phase);
 	}
 
+	return (ctx.material[WHITE] + blended[WHITE]) - (ctx.material[BLACK] + blended[BLACK]);
+}
+
+//
+//	Evaluate() :
+//	Description: Sums up the material value from both colors. Adds additional bonuses according to heuristics
+//	Returns:	 The value of the player in turn subtracted the oppositions value
+// FIXME:		 Evaluate does not know about Check Mate - this is strictly only an evaluation of the current position
+//				 - this means that we miss the first (and best, maybe even only?) opportunity to do check mate!
+//
+int EvalComplex::Evaluate(const Board& board) const noexcept
+{
+	const EvalContext ctx = BuildContext(board);
+
 	// The position's score, in White's point of view: the one value that is a
 	// property of the position rather than of whose turn it is.
-	const int white_pov = (ctx.material[WHITE] + blended[WHITE]) - (ctx.material[BLACK] + blended[BLACK]);
+	//
+	// The scale acts on the whole score, material included — in a class scored
+	// 0 the bishop is not worth 300 cp less, the position is drawn — so the
+	// result at scale 0 is exactly GameValues::Draw. Mate scores never reach
+	// here: this function only ever produces a static centipawn score, and
+	// search constructs mate values around it.
+	const int white_pov = ApplyEndgameScale(RawWhitePov(ctx), ctx.endgame_scale);
 
 	// Side-to-move sign, applied in exactly one place.
 	return (board.GetCurrentColor() == WHITE) ? white_pov : -white_pov;
@@ -692,6 +771,12 @@ EvalBreakdown EvalComplex::Breakdown(const Board& board) const noexcept
 {
 	const EvalContext ctx = BuildContext(board);
 
+	// The adjustment is derived through the same helper Evaluate() applies, from
+	// the scale BuildContext already decided — so the reported figure cannot be
+	// a second opinion about either.
+	const int raw = RawWhitePov(ctx);
+	const int adjustment = ApplyEndgameScale(raw, ctx.endgame_scale) - raw;
+
 	// Rows are reported BLENDED at this position's phase — i.e. the number each
 	// term actually contributes to `total`, not its mg or eg endpoint. That is
 	// what keeps the printed table summing to the score (the #129 honesty
@@ -709,6 +794,8 @@ EvalBreakdown EvalComplex::Breakdown(const Board& board) const noexcept
 		.castling = { BlendPhase(eval_castling(ctx, WHITE), ctx.phase), BlendPhase(eval_castling(ctx, BLACK), ctx.phase) },
 		.mobility = { BlendPhase(eval_mobility(ctx, WHITE), ctx.phase), BlendPhase(eval_mobility(ctx, BLACK), ctx.phase) },
 		.phase    = ctx.phase,
+		.endgame_scale      = ctx.endgame_scale,
+		.endgame_adjustment = adjustment,
 		.total    = Evaluate(board),
 	};
 	// clang-format on

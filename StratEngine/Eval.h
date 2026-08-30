@@ -23,6 +23,13 @@ class Board;
 // replaces. Phase is a property of the position, not of who is ahead.
 inline constexpr int MAX_GAME_PHASE = 24;
 
+// Denominator of the endgame material scale: a score is worth
+// scale/ENDGAME_SCALE_MAX of what material and position say it is. A scale of
+// ENDGAME_SCALE_MAX leaves the score alone, and 0 makes it GameValues::Draw.
+// Fixed point rather than a float so evaluation stays integer-exact and
+// reproducible across builds, and a power of two so the division is cheap.
+inline constexpr int ENDGAME_SCALE_MAX = 16;
+
 // A phase-dependent score: `mg` applies at MAX_GAME_PHASE, `eg` at phase 0.
 // A term with no phase sensitivity sets both to the same value, which makes it
 // invariant under the blend.
@@ -126,6 +133,16 @@ class EvalSimple final : public EvalManager {
 	EvalSimple() = default;
 };
 
+// Piece counts for one color. Kings are absent on purpose: there is always
+// exactly one of each, so a count carries no information.
+struct PieceCounts {
+	int pawns = 0;
+	int knights = 0;
+	int bishops = 0;
+	int rooks = 0;
+	int queens = 0;
+};
+
 // EvalContext — shared, per-call intermediates for EvalComplex::Evaluate().
 // Built once by EvalComplex::BuildContext() as a plain stack local and passed
 // by const reference into each term function; nothing in it is ever stored on
@@ -174,6 +191,17 @@ struct EvalContext {
 	// winner's king PST exactly when eval_mopup is paying for king placement
 	// (issue #118 item 4). Two readers of one gate, not two copies of it.
 	bool mopup_active[NUM_COLORS];
+	// Per-color piece counts. The popcounts behind them are taken while the
+	// game phase is computed, so naming them here costs nothing and gives the
+	// endgame classifier and the mop-up gate one material model instead of
+	// two that can disagree about what force a defender still has.
+	PieceCounts counts[NUM_COLORS];
+	// How much of the assembled score this position's material is worth, as a
+	// numerator over ENDGAME_SCALE_MAX. Computed here for the same reason
+	// mopup_active is: Evaluate() applies it and Breakdown() reports it, and a
+	// breakdown reporting a scale the score was not computed with would be a
+	// debugging tool that lies.
+	int endgame_scale;
 	// Board::castling_rights(), the CastlingRights bit flags. This is a FEN
 	// field, so reading it keeps Evaluate() a pure function of the position --
 	// which whether a side has actually castled is not, since no FEN records it.
@@ -206,6 +234,13 @@ struct EvalBreakdown {
 	// Included because it is not derivable from the rows: it sets where between
 	// the mg and eg endpoints every tapered term landed, and gates eval_mopup.
 	int phase;
+	// The endgame material scale that was applied, over ENDGAME_SCALE_MAX.
+	int endgame_scale;
+	// What that scale did to the score, white-POV: scaled minus unscaled, so a
+	// consumer adds it to the summed rows and lands on `total`. Reported as one
+	// net figure rather than spread across the per-color rows, which would make
+	// every row a number no part of the evaluator computes.
+	int endgame_adjustment;
 	// Side-to-move-relative, exactly as Evaluate() returns it — this field is
 	// Evaluate()'s return value, not a re-derivation of it (D8). Material plus
 	// the four terms, summed white-minus-black, reproduces it up to the
@@ -384,6 +419,27 @@ class EvalComplex final : public EvalManager {
 	// term-level test fixture (StratChessTests/EvalTests.cpp) that also calls
 	// this.
 	static EvalContext BuildContext(const Board& board) noexcept;
+
+	// Recognises material configurations that are worth less than they weigh.
+	// Returns a numerator over ENDGAME_SCALE_MAX; 0 is a dead draw.
+	//
+	// Deliberately a piece-count rule and nothing more. It is not a tablebase
+	// (#101) and does not try to judge fortresses or pawn races: every class it
+	// recognises is drawn by what is on the board, whatever the squares are.
+	static int EndgameScale(const PieceCounts& white, const PieceCounts& black) noexcept;
+
+	// Applies a scale to a white-POV score. Split out so Evaluate() and
+	// Breakdown() cannot hold two versions of the arithmetic.
+	static constexpr int ApplyEndgameScale(int white_pov, int scale) noexcept
+	{
+		// Integer division truncates toward zero, so this is odd-symmetric:
+		// scaling the mirror of a position still yields the mirror of its
+		// score, which is what keeps the color-symmetry property intact.
+		return (scale == ENDGAME_SCALE_MAX) ? white_pov : (white_pov * scale) / ENDGAME_SCALE_MAX;
+	}
+
+	// Material plus every blended term, summed white-minus-black and unscaled.
+	static int RawWhitePov(const EvalContext& ctx) noexcept;
 
 	// Per-term evaluation functions (issue #127 restructure). Each returns
 	// only the named term's contribution for one color; Evaluate() sums the
