@@ -259,7 +259,7 @@ flakiness. The `[slow]` Catch2 tier runs in `extended-tests` and `sanitize-exten
 | `tactical-stability` | `tactical stability 100`, against the local run's 10 |
 | `lint-tree` | Failing clang-format and fast Gate over the whole tree, covering what the per-PR job's one-unit-per-header cover does not reach |
 | `lint-deep-linux` | Failing Deep profile over normalized shipping sources with Linux Clang |
-| `lint-deep-windows` | Failing Deep profile over normalized shipping sources with Windows clang-cl |
+| `lint-deep-windows` | Failing Deep profile over normalized shipping sources with Windows clang-cl, and `Validate-PrePR.ps1 -AllSelfTests` — every script self-test, against the PR gate's "only the ones the diff touched" |
 
 `perft run <depth> [fen]` prints a count but does not verify it, so the workflow does the comparison.
 Runners measure **~22.5 Mnps** (startpos depth 7 in 140 s, Kiwipete depth 6 in 364 s — 2.2× slower

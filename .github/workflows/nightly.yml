@@ -279,12 +279,16 @@ jobs:
           path: build/_deps
           key: cmake-deps-spdlog-v1.17.0-json-v3.12.0-catch2-v3.15.3
 
-      - name: Validate lint scripts
+      - name: Every script self-test
+        # Validate-PrePR runs only the self-tests of scripts a change touched, which is
+        # right for a PR gate but leaves a script broken from elsewhere -- a renamed
+        # parameter, an altered shared helper -- unnoticed until someone next edits it.
+        # Windows rather than Linux because these are Windows developer tooling;
+        # lint-tree keeps running the two lint-machinery self-tests it needs for its own
+        # work. Pure PowerShell, so it costs seconds and fails before the heavy step.
         shell: pwsh
         run: |
-          pwsh -NoProfile -File Scripts/New-TidyCompileDatabase.ps1 -SelfTest
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          pwsh -NoProfile -File Scripts/Run-Lint.ps1 -SelfTest
+          pwsh -NoProfile -File Scripts/Validate-PrePR.ps1 -AllSelfTests
           exit $LASTEXITCODE
 
       - name: Configure shipping clang-cl database
