@@ -92,6 +92,14 @@ function Get-TierForPath {
     # fail-closed default, which would call it Engine -- stricter than a script that
     # compiles nothing and is never invoked by the engine deserves.
     if ($p -like '*Scripts/Test-WorkflowTimeouts.ps1')      { return 'Build' }
+    # Decides whether a build artifact counts as stale, and which binary a measurement
+    # reads. Both reach Build anyway through the fail-closed default, but only as
+    # "unrecognised", which costs every PR that touches them the Engine tier. The hazard
+    # is the familiar one and it is why they are Build rather than Tooling: a bug in
+    # either lets a validation or a measurement run against the wrong binary while
+    # reporting success.
+    if ($p -like '*Scripts/BuildFreshness.ps1')             { return 'Build' }
+    if ($p -like '*Scripts/Get-BuildArtifact.ps1')          { return 'Build' }
     # Lint configuration decides what CI enforces about every source file. It reaches
     # Build tier anyway through the fail-closed default, but only as "unrecognised";
     # naming it makes the classification deliberate and the self-test able to assert it.
@@ -218,6 +226,10 @@ if ($SelfTest) {
         @{ Name = 'test tidy config -> Build';  Files = @('StratChessTests/.clang-tidy');                         Expect = 'Build' }
         @{ Name = 'tidy DB normalizer -> Build'; Files = @('Scripts/New-TidyCompileDatabase.ps1'); Expect = 'Build' }
         @{ Name = 'timeout guard -> Build';     Files = @('Scripts/Test-WorkflowTimeouts.ps1');  Expect = 'Build' }
+        # Both decided which binary a build or a measurement reads while classified only by
+        # the fail-closed default. Named now, so the classification is a decision.
+        @{ Name = 'freshness lib -> Build';     Files = @('Scripts/BuildFreshness.ps1');        Expect = 'Build' }
+        @{ Name = 'artifact picker -> Build';   Files = @('Scripts/Get-BuildArtifact.ps1');     Expect = 'Build' }
         @{ Name = 'blame-ignore -> Build';      Files = @('.git-blame-ignore-revs');                             Expect = 'Build' }
         @{ Name = 'workflow -> Build';          Files = @('.github/workflows/build-and-test.yml');               Expect = 'Build' }
         @{ Name = 'hook -> Build';              Files = @('.githooks/pre-commit');                               Expect = 'Build' }
