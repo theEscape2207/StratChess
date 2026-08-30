@@ -8,7 +8,8 @@
 
     Tiers, weakest to strictest (a mixed diff always takes the STRICTEST tier present):
 
-      Docs     *.md, Docs/**, .claude/plans/**
+      Docs     *.md, Docs/**, .claude/plans/**,
+               .claude/skills/**.md, .claude/agents/**.md
                -> nothing beyond the pre-commit hook's fast tests.
 
       Tooling  measurement/helper scripts that are never compiled and never invoked
@@ -117,9 +118,17 @@ function Get-TierForPath {
     if ($p -like 'CMakePresets.json' -or $p -like '*/CMakePresets.json') { return 'Build' }
 
     # --- Docs -----------------------------------------------------------------
+    # Skill and agent definitions are named ahead of the '*.md' rule so their tier is a
+    # decision rather than an extension match. Docs is what that decision is today: the
+    # stricter tiers add a PowerShell parse and a build, neither of which says anything
+    # about a Markdown definition file. Scoped to '*.md' deliberately -- a skill directory
+    # can hold executable content, and that stays with the fail-closed default.
+    if ($p -like '.claude/skills/*.md')                      { return 'Docs' }
+    if ($p -like '.claude/agents/*.md')                      { return 'Docs' }
+    # Plans are prose whatever the extension, so this one is not '*.md'-scoped.
+    if ($p -like '.claude/plans/*')                          { return 'Docs' }
     if ($p -like '*.md')                                     { return 'Docs' }
     if ($p -like 'Docs/*')                                   { return 'Docs' }
-    if ($p -like '.claude/plans/*')                           { return 'Docs' }
 
     # --- Tooling: engine-inert helper scripts ---------------------------------
     # Enumerated explicitly rather than matched as 'Scripts/*.ps1'. A wildcard
@@ -198,6 +207,12 @@ function Get-ChangeTier {
 if ($SelfTest) {
     $cases = @(
         @{ Name = 'docs only';                  Files = @('README.md', 'Docs/EloLog.md', '.claude/plans/x.md'); Expect = 'Docs' }
+        # Named rules, not the '*.md' fallthrough -- and only the Markdown inside those
+        # directories; anything else there is still an unfamiliar path.
+        @{ Name = 'skill definition -> Docs';   Files = @('.claude/skills/measure-strength/SKILL.md');           Expect = 'Docs' }
+        @{ Name = 'agent definition -> Docs';   Files = @('.claude/agents/eval-reviewer.md');                    Expect = 'Docs' }
+        @{ Name = 'FAIL CLOSED: skill script';  Files = @('.claude/skills/measure-strength/helper.ps1');         Expect = 'Engine' }
+        @{ Name = 'FAIL CLOSED: skill dir';     Files = @('.claude/skills/measure-strength/');                   Expect = 'Engine' }
         @{ Name = 'tooling only';               Files = @('Scripts/Run-EloMatch.ps1');        Expect = 'Tooling' }
         @{ Name = 'corpus tool -> Tooling';     Files = @('Scripts/build_corpus.py');         Expect = 'Tooling' }
         @{ Name = 'race probe -> Tooling';      Files = @('Scripts/uci_race_probe.py');       Expect = 'Tooling' }
