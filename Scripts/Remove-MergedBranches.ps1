@@ -28,7 +28,7 @@
     Remove-Worktree.ps1 instead, which also removes the directory.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
-    pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\Remove-MergedBranches.ps1 -SyncMaster
+    pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\Remove-MergedBranches.ps1 -SyncMaster
 
 .NOTES
     Must be invoked with -File, not dot-sourced ($PSScriptRoot is $null under dot-source).

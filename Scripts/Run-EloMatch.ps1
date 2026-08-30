@@ -21,9 +21,9 @@
     Docs/EloLog.md.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
-    pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\Run-EloMatch.ps1
+    pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\Run-EloMatch.ps1
     Smoke run (pipeline check, 20 games):
-    pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\Run-EloMatch.ps1 -Smoke
+    pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\Run-EloMatch.ps1 -Smoke
     SPRT (stops as soon as the result is decisive; -Games becomes an upper bound).
     Needs a reference that isolates the change, so build the merge base first:
     pwsh ... Run-EloMatch.ps1 -Sprt NonRegression -ReferenceExe <mb.exe> -ReferenceTag <commit>
@@ -190,8 +190,8 @@ if ($Sprt -ne '') {
     }
 }
 
-$GameDir  = Split-Path $PSScriptRoot -Parent
-$RepoRoot = Split-Path $GameDir -Parent
+$RepoRoot = Split-Path $PSScriptRoot -Parent
+$GameDir  = Join-Path $RepoRoot 'StratChessEvolved'
 
 # --- Locate EngineTesting\ ---------------------------------------------------
 # fastchess and the cached reference binaries live beside the MAIN checkout, so

@@ -67,7 +67,7 @@
     nps unreliable. Default 200.
 
 .EXAMPLE
-    .\Run-Bench.ps1 -Exe (.\StratChessEvolved\Scripts\Get-BuildArtifact.ps1)
+    .\Run-Bench.ps1 -Exe (.\Scripts\Get-BuildArtifact.ps1)
 
 .EXAMPLE
     # Comparing two builds. Both must come from the same compiler unless the

@@ -10,8 +10,8 @@
     Any time you want to build and run tests — with or without a tag filter.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
-    pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\Run-Tests.ps1
-    pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\Run-Tests.ps1 [tactical]
+    pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\Run-Tests.ps1
+    pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\Run-Tests.ps1 [tactical]
 
 .PARAMETER Tag
     Optional Catch2 tag filter, e.g. "[tactical]" or "[eval]". Omit for full fast suite (~[slow]).
@@ -20,8 +20,7 @@ param([string]$Tag = '')
 
 Set-StrictMode -Version Latest
 
-$GameDir     = Split-Path $PSScriptRoot -Parent
-$RepoRoot    = Split-Path $GameDir -Parent
+$RepoRoot    = Split-Path $PSScriptRoot -Parent
 $buildScript = Join-Path $RepoRoot 'build.ps1'
 
 if ($Tag) {

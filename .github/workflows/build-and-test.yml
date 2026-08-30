@@ -25,7 +25,7 @@ concurrency:
 # are well above normal runtime -- they exist to catch a hang, not a slow runner.
 jobs:
   # Decide how much validation this diff is worth, using the SAME classifier the
-  # local pre-PR script uses (StratChessEvolved/Scripts/Get-ChangeTier.ps1) -- one
+  # local pre-PR script uses (Scripts/Get-ChangeTier.ps1) -- one
   # definition, so CI and the local convention cannot drift apart. See issue #124
   # and .claude/plans/validation-change-tiers.md.
   #
@@ -52,9 +52,9 @@ jobs:
       # instead of passing everything.
       - name: Check workflow job timeouts
         run: |
-          pwsh -NoProfile -File StratChessEvolved/Scripts/Test-WorkflowTimeouts.ps1 -SelfTest
+          pwsh -NoProfile -File Scripts/Test-WorkflowTimeouts.ps1 -SelfTest
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          pwsh -NoProfile -File StratChessEvolved/Scripts/Test-WorkflowTimeouts.ps1
+          pwsh -NoProfile -File Scripts/Test-WorkflowTimeouts.ps1
           exit $LASTEXITCODE
 
       - name: Classify changed files
@@ -76,7 +76,7 @@ jobs:
           # guesses something cheaper.
           BASE_REF: ${{ github.event_name == 'push' && github.event.before || 'origin/main' }}
         run: |
-          $c = & .\StratChessEvolved\Scripts\Get-ChangeTier.ps1 -BaseRef $env:BASE_REF
+          $c = & .\Scripts\Get-ChangeTier.ps1 -BaseRef $env:BASE_REF
           Write-Host "Change tier: $($c.Tier) (decided by: $($c.DecidingFile))"
           Write-Host "Changed files:"
           $c.ChangedFiles | ForEach-Object { Write-Host "  $_" }
@@ -486,7 +486,7 @@ jobs:
       # of those cases fail, not about which run.
       - name: Run fast tests
         run: |
-          $exe = .\StratChessEvolved\Scripts\Get-BuildArtifact.ps1 -Target StratChessTests -Config ${{ matrix.config }}
+          $exe = .\Scripts\Get-BuildArtifact.ps1 -Target StratChessTests -Config ${{ matrix.config }}
           & $exe '~[slow]'
           exit $LASTEXITCODE
 
@@ -559,9 +559,9 @@ jobs:
       - name: Validate lint scripts
         shell: pwsh
         run: |
-          pwsh -NoProfile -File StratChessEvolved/Scripts/New-TidyCompileDatabase.ps1 -SelfTest
+          pwsh -NoProfile -File Scripts/New-TidyCompileDatabase.ps1 -SelfTest
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          pwsh -NoProfile -File StratChessEvolved/Scripts/Run-Lint.ps1 -SelfTest
+          pwsh -NoProfile -File Scripts/Run-Lint.ps1 -SelfTest
           exit $LASTEXITCODE
 
       - name: clang-format (blocking)
@@ -570,7 +570,7 @@ jobs:
           BASE_REF: ${{ github.event_name == 'push' && github.event.before || 'origin/main' }}
         run: |
           $format = (Get-Command "clang-format-$env:LLVM_MAJOR").Source
-          pwsh -NoProfile -File StratChessEvolved/Scripts/Run-Lint.ps1 `
+          pwsh -NoProfile -File Scripts/Run-Lint.ps1 `
             -Check Format -BaseRef $env:BASE_REF -ClangFormat $format
           exit $LASTEXITCODE
 
@@ -583,7 +583,7 @@ jobs:
           BASE_REF: ${{ github.event_name == 'push' && github.event.before || 'origin/main' }}
         run: |
           $tidy = (Get-Command "clang-tidy-$env:LLVM_MAJOR").Source
-          pwsh -NoProfile -File StratChessEvolved/Scripts/Run-Lint.ps1 `
+          pwsh -NoProfile -File Scripts/Run-Lint.ps1 `
             -Check Tidy -Profile Gate -BaseRef $env:BASE_REF `
             -BuildDirectory build -ClangTidy $tidy -Jobs 4
           exit $LASTEXITCODE

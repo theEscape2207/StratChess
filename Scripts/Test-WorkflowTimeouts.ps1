@@ -27,8 +27,8 @@
     which a green run over already-compliant files does not.
 
 .HOW TO INVOKE
-    pwsh -File StratChessEvolved/Scripts/Test-WorkflowTimeouts.ps1
-    pwsh -File StratChessEvolved/Scripts/Test-WorkflowTimeouts.ps1 -SelfTest
+    pwsh -File Scripts/Test-WorkflowTimeouts.ps1
+    pwsh -File Scripts/Test-WorkflowTimeouts.ps1 -SelfTest
 #>
 
 [CmdletBinding(DefaultParameterSetName = 'Run')]
@@ -275,9 +275,9 @@ if ($SelfTest) {
 }
 
 if (-not $WorkflowDirectory) {
-    # Scripts/ -> StratChessEvolved/ -> repository root. Resolving from the script's
-    # own location keeps this correct in every worktree.
-    $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+    # Scripts/ -> repository root. Resolving from the script's own
+    # location keeps this correct in every worktree.
+    $repoRoot = Split-Path $PSScriptRoot -Parent
     $WorkflowDirectory = Join-Path $repoRoot '.github/workflows'
 }
 

@@ -17,7 +17,7 @@
     Before opening a pull request.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
-    pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\Validate-PrePR.ps1
+    pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\Validate-PrePR.ps1
 
 .NOTES
     Prerequisite: game_settings.json must have "type": 6 for both players (AIPerplex vs AIPerplex).
@@ -40,8 +40,8 @@ Set-StrictMode -Version Latest
 # Do NOT set $ErrorActionPreference = 'Stop' — this script runs all three checks before
 # exiting so the summary table is always printed. Each step checks $LASTEXITCODE directly.
 
-$GameDir     = Split-Path $PSScriptRoot -Parent
-$RepoRoot    = Split-Path $GameDir -Parent
+$RepoRoot    = Split-Path $PSScriptRoot -Parent
+$GameDir     = Join-Path $RepoRoot 'StratChessEvolved'
 $buildScript = Join-Path $RepoRoot 'build.ps1'
 # -AllowMissing: this resolves the path before Step 1 builds it, so on a fresh
 # worktree nothing is there yet.

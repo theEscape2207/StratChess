@@ -59,7 +59,7 @@
     When a worktree branch is ready to become a PR, or to update one already open.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell), from inside the worktree
-    pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\New-PullRequest.ps1 -Title "Add mobility eval term (#98)"
+    pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\New-PullRequest.ps1 -Title "Add mobility eval term (#98)"
 
 .NOTES
     Refuses to run on `master` -- that branch is personal scratch and is not the source
@@ -85,16 +85,14 @@ if ($BodyFile -and $Body) {
     exit 1
 }
 
-$GameDir  = Split-Path $PSScriptRoot -Parent
-$RepoRoot = Split-Path $GameDir -Parent
-
+$RepoRoot = Split-Path $PSScriptRoot -Parent
 $branch = (& git -C $RepoRoot rev-parse --abbrev-ref HEAD)
 if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: not a git repository." -ForegroundColor Red; exit 1 }
 
 if ($branch -eq 'master' -or $branch -eq 'main') {
     Write-Host "FAIL: refusing to open a PR from '$branch'." -ForegroundColor Red
     Write-Host "      PRs come from a per-task worktree branched off origin/main." -ForegroundColor Yellow
-    Write-Host "      Create one: StratChessEvolved\Scripts\New-Worktree.ps1 -Name <task>" -ForegroundColor Yellow
+    Write-Host "      Create one: Scripts\New-Worktree.ps1 -Name <task>" -ForegroundColor Yellow
     exit 1
 }
 

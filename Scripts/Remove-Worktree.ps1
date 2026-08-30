@@ -59,7 +59,7 @@
     known worktree.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell) -- run from the MAIN checkout
-    pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\Remove-Worktree.ps1 -Name eval-mobility-term -SyncMaster
+    pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\Remove-Worktree.ps1 -Name eval-mobility-term -SyncMaster
 
     An agent session whose shell is pinned inside the worktree being removed and cannot
     cd elsewhere should add -FromInside.
@@ -235,7 +235,7 @@ if ($SyncMaster) {
     # $PSScriptRoot is unsafe here: when the executing script is the removed worktree's
     # own copy, Trap 3 above may have just deleted this directory's contents (including
     # this script's sibling Sync-Master.ps1). $MainCheckout's copy always survives.
-    & pwsh -ExecutionPolicy Bypass -File (Join-Path $MainCheckout 'StratChessEvolved\Scripts\Sync-Master.ps1')
+    & pwsh -ExecutionPolicy Bypass -File (Join-Path $MainCheckout 'Scripts\Sync-Master.ps1')
 }
 
 if ($script:DirLeftBehind) {

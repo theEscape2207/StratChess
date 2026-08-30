@@ -79,7 +79,7 @@ $TestExe  = Join-Path $BuildDir 'StratChessTests.exe'
 
 # Test-ArtifactFreshness and Get-BuildRelevantSources: shared with
 # Get-BuildArtifact.ps1, which needs the same verdict at read time.
-. (Join-Path $RepoRoot 'StratChessEvolved\Scripts\BuildFreshness.ps1')
+. (Join-Path $RepoRoot 'Scripts\BuildFreshness.ps1')
 
 function Resolve-ProcessorArchitecture {
     param(

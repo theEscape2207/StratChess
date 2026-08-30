@@ -31,7 +31,7 @@
     - Safe to run unconditionally / repeatedly -- it's a no-op if already up to date.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
-    pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\Sync-Master.ps1
+    pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\Sync-Master.ps1
 
 .NOTES
     Runs from anywhere in the repository. `master` can be checked out in only one
@@ -45,9 +45,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$GameDir   = Split-Path $PSScriptRoot -Parent
-$LocalRoot = Split-Path $GameDir -Parent
-
+$LocalRoot = Split-Path $PSScriptRoot -Parent
 # A branch can be checked out in only one worktree, so `master` has exactly one home and
 # the sync has to happen there. Refs and objects are shared, so nothing else cares where
 # it runs from. Finding that home is what lets this script run from anywhere: git refuses

@@ -195,16 +195,16 @@ jobs:
       - name: Validate lint scripts
         shell: pwsh
         run: |
-          pwsh -NoProfile -File StratChessEvolved/Scripts/New-TidyCompileDatabase.ps1 -SelfTest
+          pwsh -NoProfile -File Scripts/New-TidyCompileDatabase.ps1 -SelfTest
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          pwsh -NoProfile -File StratChessEvolved/Scripts/Run-Lint.ps1 -SelfTest
+          pwsh -NoProfile -File Scripts/Run-Lint.ps1 -SelfTest
           exit $LASTEXITCODE
 
       - name: clang-format over the whole tree (blocking)
         shell: pwsh
         run: |
           $format = (Get-Command "clang-format-$env:LLVM_MAJOR").Source
-          pwsh -NoProfile -File StratChessEvolved/Scripts/Run-Lint.ps1 `
+          pwsh -NoProfile -File Scripts/Run-Lint.ps1 `
             -Check Format -All -ClangFormat $format
           exit $LASTEXITCODE
 
@@ -212,7 +212,7 @@ jobs:
         shell: pwsh
         run: |
           $tidy = (Get-Command "clang-tidy-$env:LLVM_MAJOR").Source
-          pwsh -NoProfile -File StratChessEvolved/Scripts/Run-Lint.ps1 `
+          pwsh -NoProfile -File Scripts/Run-Lint.ps1 `
             -Check Tidy -Profile Gate -All -BuildDirectory build `
             -ClangTidy $tidy -Jobs 4
           exit $LASTEXITCODE
@@ -253,16 +253,16 @@ jobs:
       - name: Validate lint scripts
         shell: pwsh
         run: |
-          pwsh -NoProfile -File StratChessEvolved/Scripts/New-TidyCompileDatabase.ps1 -SelfTest
+          pwsh -NoProfile -File Scripts/New-TidyCompileDatabase.ps1 -SelfTest
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          pwsh -NoProfile -File StratChessEvolved/Scripts/Run-Lint.ps1 -SelfTest
+          pwsh -NoProfile -File Scripts/Run-Lint.ps1 -SelfTest
           exit $LASTEXITCODE
 
       - name: clang-tidy Deep on shipping sources (blocking)
         shell: pwsh
         run: |
           $tidy = (Get-Command "clang-tidy-$env:LLVM_MAJOR").Source
-          pwsh -NoProfile -File StratChessEvolved/Scripts/Run-Lint.ps1 `
+          pwsh -NoProfile -File Scripts/Run-Lint.ps1 `
             -Check Tidy -Profile Deep -All -BuildDirectory build `
             -ClangTidy $tidy -Jobs 2
           exit $LASTEXITCODE
@@ -282,9 +282,9 @@ jobs:
       - name: Validate lint scripts
         shell: pwsh
         run: |
-          pwsh -NoProfile -File StratChessEvolved/Scripts/New-TidyCompileDatabase.ps1 -SelfTest
+          pwsh -NoProfile -File Scripts/New-TidyCompileDatabase.ps1 -SelfTest
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          pwsh -NoProfile -File StratChessEvolved/Scripts/Run-Lint.ps1 -SelfTest
+          pwsh -NoProfile -File Scripts/Run-Lint.ps1 -SelfTest
           exit $LASTEXITCODE
 
       - name: Configure shipping clang-cl database
@@ -297,7 +297,7 @@ jobs:
           $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
           $vsRoot = & $vswhere -latest -prerelease -products * -property installationPath | Select-Object -First 1
           $tidy = Join-Path $vsRoot 'VC\Tools\Llvm\x64\bin\clang-tidy.exe'
-          pwsh -NoProfile -File StratChessEvolved/Scripts/Run-Lint.ps1 `
+          pwsh -NoProfile -File Scripts/Run-Lint.ps1 `
             -Check Tidy -Profile Deep -All `
             -BuildDirectory build/windows-clang-cl -ClangTidy $tidy -Jobs 2
           exit $LASTEXITCODE

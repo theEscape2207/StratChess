@@ -44,10 +44,10 @@
     Run synthetic tests over the parsing and summarising logic and exit.
 
 .HOW TO INVOKE
-    pwsh -File StratChessEvolved/Scripts/Get-PrChecks.ps1
-    pwsh -File StratChessEvolved/Scripts/Get-PrChecks.ps1 -Pr 352
-    pwsh -File StratChessEvolved/Scripts/Get-PrChecks.ps1 -Wait
-    pwsh -File StratChessEvolved/Scripts/Get-PrChecks.ps1 -SelfTest
+    pwsh -File Scripts/Get-PrChecks.ps1
+    pwsh -File Scripts/Get-PrChecks.ps1 -Pr 352
+    pwsh -File Scripts/Get-PrChecks.ps1 -Wait
+    pwsh -File Scripts/Get-PrChecks.ps1 -SelfTest
 #>
 
 [CmdletBinding(DefaultParameterSetName = 'Run')]

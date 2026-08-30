@@ -24,7 +24,7 @@
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
     Full corpus including edge cases -- the exhaustive pass, ~25 minutes:
-    pwsh -ExecutionPolicy Bypass -File C:\...\StratChessEvolved\Scripts\Run-PerftCheck.ps1
+    pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\Run-PerftCheck.ps1
     Bounded sanity run, well under a minute:
     pwsh ... Run-PerftCheck.ps1 -Limit 5000
     Re-read a past run without repeating it:
@@ -76,8 +76,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$GameDir  = Split-Path $PSScriptRoot -Parent
-$RepoRoot = Split-Path $GameDir -Parent
+$RepoRoot = Split-Path $PSScriptRoot -Parent
+$GameDir  = Join-Path $RepoRoot 'StratChessEvolved'
 
 # --- Locate EngineTesting\ ---------------------------------------------------
 # Resolved through git rather than by probing for a marker file: a worktree's

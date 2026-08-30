@@ -626,9 +626,7 @@ if (-not $After)                        { throw "-After is required (the candida
 if ($Before -and $BaselineRef)          { throw "-Before and -BaselineRef are mutually exclusive: pick a baseline binary or a ref to build one from." }
 if (-not $Before -and -not $BaselineRef) { throw "Supply a baseline: -Before <exe>, or -BaselineRef origin/main to build one." }
 
-$GameDir  = Split-Path $PSScriptRoot -Parent
-$RepoRoot = Split-Path $GameDir -Parent
-
+$RepoRoot = Split-Path $PSScriptRoot -Parent
 $afterPath = (Resolve-Path $After).Path
 $afterFlavour = Get-BuildFlavour $afterPath
 
