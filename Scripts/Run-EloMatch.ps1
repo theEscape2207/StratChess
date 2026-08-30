@@ -30,7 +30,8 @@
     pwsh ... Run-EloMatch.ps1 -Sprt Gain -ReferenceExe <mb.exe> -ReferenceTag <commit>
 
 .NOTES
-    Must be invoked with -File, not dot-sourced. $PSScriptRoot is $null under dot-source.
+    Must be invoked with -File, not dot-sourced -- a dot-sourced script runs in the
+    caller's scope, where its variables collide and its exit ends the caller's session.
     Losses on illegal moves / disconnects / stalls are harness or engine BUGS, not
     strength data — the script exits 1 when fastchess reports any.
     Every run appends a row to Docs/EloLog.md; there is no way to suppress that.

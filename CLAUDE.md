@@ -13,6 +13,7 @@ This file holds the rules that change what you do. Detail is pointed at, not dup
 | coverage map + how to write a test | `Docs/TestDesign.md` |
 | measuring Elo or nps | skill `measure-strength` |
 | opening or updating a PR | skill `open-pull-request` |
+| writing or changing a PowerShell script | skill `write-powershell` |
 | issue tracker, triage labels, domain docs | `Docs/agents/` |
 | history | `Docs/Changelog.md` |
 
@@ -61,9 +62,9 @@ Visual Studio setup, `/clang:` flag traps, the shared deps cache and raw CMake: 
 
 In `Scripts/`; they resolve working directory and build-output paths internally.
 **They require PowerShell 7** — `powershell` (Windows PowerShell 5) fails on PS7 syntax. Invoke
-`pwsh` with `-File` and an **absolute** path. Never dot-source (`$PSScriptRoot` is `$null` under
-dot-source), and never wrap in `cmd.exe /c "..."` — that swallows output, so a failing script looks
-like a silent no-op.
+`pwsh` with `-File` and an **absolute** path. Never dot-source (a dot-sourced script runs in your
+scope, where its variables collide with yours and its `exit` ends your session), and never wrap in
+`cmd.exe /c "..."` — that swallows output, so a failing script looks like a silent no-op.
 
 ```
 pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\<name>.ps1
@@ -89,7 +90,8 @@ target the repo of their own `$PSScriptRoot`.
 
 Measuring (`Run-EloMatch.ps1`, `Run-Bench.ps1`) → skill `measure-strength`. Opening a PR and
 cleaning up after a merge (`New-PullRequest.ps1`, `Remove-Worktree.ps1`,
-`Remove-MergedBranches.ps1`) → skill `open-pull-request`.
+`Remove-MergedBranches.ps1`) → skill `open-pull-request`. **Writing or changing one → skill
+`write-powershell`**, which carries the language traps that fail silently.
 
 ## Standing rules
 
