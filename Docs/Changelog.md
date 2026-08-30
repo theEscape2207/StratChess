@@ -22,6 +22,47 @@ Newest first.
 
 ---
 
+## 2026-08-30 — ccache close-out: kill criterion read, degradation path tested (#385)
+
+Closes #92 and #377. No functional change — this is the evidence the ccache work was justified, plus
+the one fallback path that had never run.
+
+### Validation
+
+- **Eviction arm: pass.** Both FetchContent entries survived the week on `refs/heads/main`, accessed
+  the same day they were checked. LRU eviction is active — per-run ccache entries from six days back
+  are gone — and it takes those rather than the deps entries, because `restore-keys` touches a deps
+  entry on every Build-tier run and an object cache only on the run after the one that wrote it. The
+  risk was real and the ordering is what defused it.
+- **Wall-clock arm: pass.** Build-step medians on `main` merge runs, warm samples only, each labelled
+  with its `--show-stats` hit rate:
+
+  | Job | Before | After | Δ |
+  |---|---|---|---|
+  | `sanitize-linux` | 235 s | 20 s | −215 s |
+  | `build-and-test (Release)` | 198 s | 49 s | −149 s |
+  | `build-and-test (Debug)` | 167 s | 37 s | −130 s |
+
+  Threshold was ≥20 s on `sanitize-linux`. Summed job seconds for a Build-tier run fell from
+  ~1500–1850 to ~520–650. Warm hit rates run 64–100%; the two or three cold runs per job (0–38%) are
+  wide `.cpp`/header changes, excluded rather than averaged in. The Linux "before" pool is 5 samples
+  and the Windows one 7 — 3 post-#378 plus 4 pre-#371, whose medians agree — short of the 8 the
+  method asked for, which is stated rather than papered over.
+- **Windows degradation path: pass** (throwaway PR #422, closed unmerged). The download pointed at a
+  nonexistent asset with the `ccache-bin-…` cache key busted alongside it, so the download was
+  actually attempted rather than skipped over a restored binary. Both legs green, `::warning::ccache
+  download failed …` emitted, both stats steps skipped, builds back at 241 s and 187 s, no object
+  cache written. The five Linux jobs were the control and stayed warm.
+
+### Changed
+
+- `Docs/CI.md` records the measured verdict in place of the "revert if…" criterion, corrects the
+  footprint arithmetic (six new entries per run, not one 2.4 GB generation), and carries the
+  vacuous-test trap for anyone re-running the degradation test.
+- Both ccache design documents deleted. Their Harvest rows were re-verified present in
+  `.github/`, `Docs/CI.md`, `Docs/Changelog.md` and #281 first; #380 and #383 superseded the
+  Release-only and not-byte-reproducible rows, and `Docs/CI.md` carries the superseding facts.
+
 ## 2026-08-29 — LMR depth clamp keeps one main-tree ply
 
 ### Changed
@@ -522,10 +563,10 @@ follows with SEE ordering and SEE pruning.
   throwaway-commit test of the degradation path (broken download URL, confirming every Linux job
   still goes green with the warning annotation).
 - The wall-clock verdict — a ≥20 s median drop on `sanitize-linux` merge runs, read alongside a
-  `gh cache list` check that ccache churn is not evicting the FetchContent dependency cache — is not
-  measured yet. Method and kill criterion: `.claude/plans/in-progress/ccache-linux-ci.md` and `Docs/CI.md`. Do
-  not carry forward issue #92's original "~90 s" estimate; it was costed against `build-linux
-  (Release)` as sole critical path, which #372 showed it is not.
+  `gh cache list` check that ccache churn is not evicting the FetchContent dependency cache — was
+  measured a week later and recorded under #385 below. Do not carry forward issue #92's original
+  "~90 s" estimate; it was costed against `build-linux (Release)` as sole critical path, which #372
+  showed it is not.
 
 ## 2026-08-23 — Dependencies consumed as CMake imported targets (#166)
 

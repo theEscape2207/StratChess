@@ -54,16 +54,28 @@ rules out. Both platforms install from the same composite action, so one bump mo
 configuration. **A bump carries both pinned SHA-256 values forward** — never drop a hash to make an
 upgrade easier — and follows a read of the release notes for correctness regressions: a cache that
 serves a wrong object produces a wrong binary tests may not catch. A download or verification miss
-degrades rather than fails, with a `::warning::` annotation so it is visible.
+degrades rather than fails, with a `::warning::` annotation so it is visible. Both halves of that
+fallback have been exercised against a broken download — Linux at #375, Windows at #385 — and the
+proof it worked is the **stats steps reporting skipped**, since they are the only thing gated on
+`available` reaching the caller. A test that breaks the download URL must bust the `ccache-bin-…`
+cache key too, or the binary restores, the download is never attempted, and the test passes vacuously.
 
 Each caching job keeps its own entry (`ccache-linux-release`, `-debug`, `-asan-ubsan-stdlibdebug`,
-`-tsan`, `ccache-windows-clang-cl-release`, `-debug`) at `CCACHE_MAXSIZE=400M`, about 2.4 GB against the
-repository-wide 10 GB budget shared with the deps cache. That sharing is the risk: entries are
-immutable, so every run writes a new one, and churn that evicts the FetchContent entry costs a fresh
-clone — net negative while every job still reports green. **Kill criterion:** revert if a `gh cache
-list` check one week after landing shows the FetchContent entry missing, or if `sanitize-linux` merge
-runs show no median improvement of at least 20 s. Method and readings: `Docs/Changelog.md`,
-`.claude/plans/in-progress/ccache-linux-ci.md`, `.claude/plans/in-progress/ccache-windows-ci.md`.
+`-tsan`, `ccache-windows-clang-cl-release`, `-debug`) at `CCACHE_MAXSIZE=400M`. `actions/cache`
+entries are immutable, so **every run writes six new ones** and the store carries a generation per
+run until LRU trims it — an order of magnitude more than one generation, against a budget shared with
+the FetchContent deps cache. That sharing was the risk this change was gated on: churn evicting a
+deps entry costs a fresh clone, turning ccache net negative while every job still reports green.
+
+**The gate was read a week after landing and the change kept** (#385). LRU does evict, and it evicts
+the right entries — an object cache is read once by the next run through `restore-keys` and never
+again, while the deps entries are touched by every Build-tier run, which puts them at the top of the
+LRU list rather than the bottom. Both survived. Build-step medians on `main` merge runs fell from
+235 s to 20 s on `sanitize-linux`, and from 198 s and 167 s to 49 s and 37 s on the `build-and-test`
+Release and Debug legs, against a 20 s revert threshold. Roughly one merge run in six is genuinely
+cold: a wide `.cpp` or header change drops the hit rate under 40% and the build back to its uncached
+duration, so **read `--show-stats` beside a duration** before blaming the cache for a slow run.
+Readings: `Docs/Changelog.md`.
 
 **The gate on a cached build is a byte-identical binary, cold cache versus warm, on both platforms.**
 On Windows that works only because `strat_configure_target` passes `/Brepro` to compiler and linker;
@@ -108,9 +120,9 @@ Windows build look instrumented when it is not.
 **`tsan-linux`** builds `StratChessEvolved` with `-fsanitize=thread` and runs
 `.github/scripts/tsan_smp_drive.py`, which drives six multi-threaded scenarios over UCI at
 `Threads=4`, `8` and `16` — including a time-managed `movetime` abort, the one path where a search
-ends on something other than its own depth limit. The job takes **197 s** (85 s build, 86 s drive),
-under the `build-linux (Release)` critical path, so it adds no wall-clock time to a PR. Same trigger
-as the two jobs above, for the same reason.
+ends on something other than its own depth limit. The drive, not the build, is what the job costs;
+it runs under the longest Build-tier job either way, so it adds no wall-clock time to a PR. Same
+trigger as the two jobs above, for the same reason.
 
 There is no `stop` scenario: a TSan-instrumented engine never answers `stop` with a `bestmove`, while
 a clean build of the same commit answers in 0.00 s (#243). So the abort-on-request path is out of
