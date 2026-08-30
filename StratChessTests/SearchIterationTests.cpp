@@ -1,0 +1,357 @@
+// SearchIterationTests.cpp — Catch2 tests for the per-iteration decision helpers inside
+// AIPerplex:
+//   assess_iteration_quality()    — 6 cases, one per RejectionReason branch
+//   should_stop_early()           — 2 cases (mate score, forced-line short-circuit)
+//   handle_empty_move_emergency() — 3 cases (mate path, emergency path, stale PV row)
+//   should_try_null_move()        — 11 cases, one per guard branch (disabled, PV, in-check,
+//                                   depth, mate-score, zugzwang, single-piece zugzwang,
+//                                   two-piece eligible, consecutive-null, otherwise-eligible)
+
+#include "SearchTestFixture.h"
+#include <catch2/catch_test_macros.hpp>
+#include "PVIntegrity.h"
+#include "PVTable.h"
+#include "defines.h"
+
+// ============================================================================
+// assess_iteration_quality tests
+// ============================================================================
+
+TEST_CASE("Search - assess: null current_move yields INCOMPLETE", "[search]")
+{
+	AIPerlexTestFixture fix;
+
+	AIPerlexTestFixture::Metrics m{};
+	m.depth = 4;
+	m.current_move = Move{}; // null — triggers CASE 1
+	m.current_score = 100;
+	m.nodes_searched = 5000;
+	m.pv_length = 2;
+	m.interrupted = true;
+	m.move_changed = false;
+	m.score_delta = 10;
+	m.completion_ratio = 0.5;
+
+	AIPerlexTestFixture::State s{};
+	s.depth_completed = 0;
+	s.best_score = 100;
+	s.nodes_at_completed_depth = 0;
+
+	REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::INCOMPLETE);
+}
+
+TEST_CASE("Search - assess: too few nodes yields INCOMPLETE", "[search]")
+{
+	AIPerlexTestFixture fix;
+	const Move any = AnyLegalMove();
+
+	AIPerlexTestFixture::Metrics m{};
+	m.depth = 4;
+	m.current_move = any;
+	m.current_score = 100;
+	m.nodes_searched = 10; // below min_nodes_threshold (default 1000) — CASE 1
+	m.pv_length = 2;
+	m.interrupted = true;
+	m.move_changed = false;
+	m.score_delta = 10;
+	m.completion_ratio = 0.5;
+
+	AIPerlexTestFixture::State s{};
+	s.depth_completed = 0;
+	s.best_score = 100;
+	s.nodes_at_completed_depth = 0;
+
+	REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::INCOMPLETE);
+}
+
+TEST_CASE("Search - assess: low completion ratio yields TOO_FEW_NODES", "[search]")
+{
+	AIPerlexTestFixture fix;
+	const Move any = AnyLegalMove();
+
+	// Pass CASE 1 (move ok, nodes ok) but fail CASE 2 (completion ratio)
+	AIPerlexTestFixture::Metrics m{};
+	m.depth = 4;
+	m.current_move = any;
+	m.current_score = 100;
+	m.nodes_searched = 5000;
+	m.pv_length = 2;
+	m.interrupted = true;
+	m.move_changed = false;
+	m.score_delta = 10;
+	m.completion_ratio = 0.01; // below min_completion_ratio (default 0.10)
+
+	AIPerlexTestFixture::State s{};
+	s.depth_completed = 3; // > 0: previous depth exists
+	s.best_score = 100;
+	s.nodes_at_completed_depth = 5000; // > 0: denominator present
+
+	REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::TOO_FEW_NODES);
+}
+
+TEST_CASE("Search - assess: pv too short yields SHORT_PV", "[search]")
+{
+	AIPerlexTestFixture fix;
+	const Move any = AnyLegalMove();
+
+	// depth=9, min_pv_ratio=0.33 → min required pv = max(1, int(9*0.33)) = max(1, 2) = 2
+	// pv_length=1 < 2 → SHORT_PV
+	AIPerlexTestFixture::Metrics m{};
+	m.depth = 9;
+	m.current_move = any;
+	m.current_score = 100;
+	m.nodes_searched = 5000;
+	m.pv_length = 1; // too short (< 2)
+	m.interrupted = true;
+	m.move_changed = false;
+	m.score_delta = 10;
+	m.completion_ratio = 0.5; // passes CASE 2
+
+	AIPerlexTestFixture::State s{};
+	s.depth_completed = 8;
+	s.best_score = 100;
+	s.nodes_at_completed_depth = 5000;
+
+	REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::SHORT_PV);
+}
+
+TEST_CASE("Search - assess: score drops to 0 from large value yields SCORE_DROP", "[search]")
+{
+	AIPerlexTestFixture fix;
+	const Move any = AnyLegalMove();
+
+	// current_score == 0, previous was 300 (abs > score_draw_threshold=20) → SCORE_DROP
+	AIPerlexTestFixture::Metrics m{};
+	m.depth = 4;
+	m.current_move = any;
+	m.current_score = 0; // suspicious zero
+	m.nodes_searched = 5000;
+	m.pv_length = 3;
+	m.interrupted = true;
+	m.move_changed = false;
+	m.score_delta = -300;
+	m.completion_ratio = 0.5;
+
+	AIPerlexTestFixture::State s{};
+	s.depth_completed = 3;
+	s.best_score = 300; // abs > score_draw_threshold (20)
+	s.nodes_at_completed_depth = 5000;
+
+	REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::SCORE_DROP);
+}
+
+TEST_CASE("Search - assess: move changed on interrupt yields MOVE_CHANGED", "[search]")
+{
+	AIPerlexTestFixture fix;
+	const Move any = AnyLegalMove();
+
+	AIPerlexTestFixture::Metrics m{};
+	m.depth = 4;
+	m.current_move = any;
+	m.current_score = 100;
+	m.nodes_searched = 5000;
+	m.pv_length = 3;
+	m.interrupted = true;
+	m.move_changed = true; // different from last iteration
+	m.score_delta = 10;
+	m.completion_ratio = 0.5;
+
+	AIPerlexTestFixture::State s{};
+	s.depth_completed = 3;
+	s.best_score = 90;
+	s.nodes_at_completed_depth = 5000;
+	s.last_iteration_move = Move{}; // not read by assess_iteration_quality;
+	                                // CASE 5 fires on metrics.move_changed == true
+	                                // && state.depth_completed > 0
+
+	REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::MOVE_CHANGED);
+}
+
+// ============================================================================
+// should_stop_early tests
+// ============================================================================
+
+TEST_CASE("Search - should_stop_early: mate score returns true", "[search]")
+{
+	AIPerlexTestFixture fix;
+	// GameValues::Mate_Threshold == 29900; mate score is >= this
+	REQUIRE(fix.stop_early(5, GameValues::Mate_Threshold, 4) == true);
+	REQUIRE(fix.stop_early(5, GameValues::Mate_Threshold + 100, 4) == true);
+	REQUIRE(fix.stop_early(5, -(GameValues::Mate_Threshold), 4) == true);
+}
+
+TEST_CASE("Search - should_stop_early: short PV relative to depth returns true", "[search]")
+{
+	AIPerlexTestFixture fix;
+	// Condition: depth > 1 && pv_length > 0 && pv_length < (depth - depth/2)
+	// depth=6, pv_length=2 → 2 < (6-3)=3 → true
+	REQUIRE(fix.stop_early(6, 100, 2) == true);
+	// depth=4, pv_length=1 → 1 < (4-2)=2 → true
+	REQUIRE(fix.stop_early(4, 100, 1) == true);
+	// depth=4, pv_length=2 → 2 == (4-2)=2, not < → false
+	REQUIRE(fix.stop_early(4, 100, 2) == false);
+	// depth=1: condition requires depth > 1 → false
+	REQUIRE(fix.stop_early(1, 100, 0) == false);
+}
+
+// ============================================================================
+// handle_empty_move_emergency tests
+// ============================================================================
+
+TEST_CASE("Search - handle_empty_move_emergency: mate score returns false (no move needed)", "[search]")
+{
+	AIPerlexTestFixture fix; // default ctor sets up the starting position
+
+	AIPerlexTestFixture::State s{};
+	s.best_move = Move{};                           // null — no move found
+	s.best_score = GameValues::Mate_Threshold + 50; // mate detected
+
+	REQUIRE(fix.emergency(s) == false); // game is over, no move needed
+	// best_move remains null — caller must not play
+	REQUIRE(s.best_move.is_null());
+}
+
+TEST_CASE("Search - handle_empty_move_emergency: non-mate emergency sets a legal move", "[search]")
+{
+	// default ctor sets up a real, playable starting position so the
+	// emergency path finds legal moves
+	AIPerlexTestFixture fix;
+
+	AIPerlexTestFixture::State s{};
+	s.best_move = Move{}; // null — emergency condition
+	s.best_score = 0;     // not a mate score
+
+	const bool result = fix.emergency(s);
+
+	REQUIRE(result == true);         // emergency move was found
+	REQUIRE(!s.best_move.is_null()); // a move was set
+}
+
+TEST_CASE("Search - handle_empty_move_emergency: a stale row 1 is not spliced onto the emergency move", "[search][pv]")
+{
+	// PVTable::update copies row ply + 1 onto the end of row ply, and row 1 at this point holds
+	// whatever subtree last reached ply 1 — a different position. Without clearing it first the
+	// emergency move is published with a tail that describes nothing, which is #310's defect
+	// arriving by another route.
+	AIPerlexTestFixture fix;
+	fix.seed_pv_row(1, AnyLegalMove());
+	REQUIRE(fix.pv_length(1) == 1); // the stale row the emergency path must not read
+
+	AIPerlexTestFixture::State s{};
+	s.best_move = Move{};
+	s.best_score = 0;
+
+	REQUIRE(fix.emergency(s));
+
+	REQUIRE(fix.pv_length(0) == 1); // exactly the emergency move, nothing spliced on
+	REQUIRE(fix.pv_move(0) == s.best_move);
+	REQUIRE(pv_replays_legally(fix.board_, fix.pv_line(0)));
+}
+
+// ============================================================================
+// should_try_null_move tests
+// ============================================================================
+
+TEST_CASE("Search - should_try_null_move: disabled returns false", "[search]")
+{
+	AIPerlexTestFixture fix; // default ctor sets up the starting position
+	fix.set_null_move_enabled(false);
+
+	REQUIRE(fix.try_null_move(4, 0, 1, false, false) == false);
+}
+
+TEST_CASE("Search - should_try_null_move: PV node returns false", "[search]")
+{
+	AIPerlexTestFixture fix; // default ctor sets up the starting position
+	fix.set_null_move_enabled(true);
+
+	REQUIRE(fix.try_null_move(4, 0, 1, /*is_pv_node=*/true, false) == false);
+}
+
+TEST_CASE("Search - should_try_null_move: in check returns false", "[search]")
+{
+	AIPerlexTestFixture fix; // default ctor sets up the starting position
+	fix.set_null_move_enabled(true);
+
+	REQUIRE(fix.try_null_move(4, 0, 1, false, /*in_check=*/true) == false);
+}
+
+TEST_CASE("Search - should_try_null_move: depth below minimum returns false", "[search]")
+{
+	AIPerlexTestFixture fix; // default ctor sets up the starting position
+	fix.set_null_move_enabled(true);
+	fix.set_null_move_min_depth(3);
+
+	REQUIRE(fix.try_null_move(/*depth=*/2, 0, 1, false, false) == false);
+}
+
+TEST_CASE("Search - should_try_null_move: mate-score beta returns false", "[search]")
+{
+	AIPerlexTestFixture fix; // default ctor sets up the starting position
+	fix.set_null_move_enabled(true);
+
+	REQUIRE(fix.try_null_move(4, GameValues::Mate_Threshold, 1, false, false) == false);
+	REQUIRE(fix.try_null_move(4, -GameValues::Mate_Threshold, 1, false, false) == false);
+}
+
+TEST_CASE("Search - should_try_null_move: zugzwang (no non-pawn material) returns false", "[search]")
+{
+	// White: king + pawn only. Black: king only. No non-pawn material for
+	// the side to move (white) -> zugzwang guard must refuse NMP.
+	AIPerlexTestFixture fix("8/8/8/3k4/8/3K4/3P4/8 w - - 0 1");
+	fix.set_null_move_enabled(true);
+
+	REQUIRE(fix.try_null_move(4, 0, 1, false, false) == false);
+}
+
+TEST_CASE("Search - should_try_null_move: single non-pawn piece returns false (issue #66)", "[search]")
+{
+	// QFORK-001 (issue #66): KQ vs KR is won via domination/zugzwang — Black
+	// loses only because he must move. Letting the side with a lone rook
+	// "pass" makes the null search report that Black holds, hiding the win.
+	// The zugzwang guard must refuse NMP whenever the side to move has fewer
+	// than two non-pawn pieces.
+	AIPerlexTestFixture black_to_move("8/8/8/3r4/4k3/8/8/3QK3 b - - 0 1");
+	black_to_move.set_null_move_enabled(true);
+	REQUIRE(black_to_move.try_null_move(4, 0, 1, false, false) == false);
+
+	// Same position, White to move: a lone queen is refused too.
+	AIPerlexTestFixture white_to_move("8/8/8/3r4/4k3/8/8/3QK3 w - - 0 1");
+	white_to_move.set_null_move_enabled(true);
+	REQUIRE(white_to_move.try_null_move(4, 0, 1, false, false) == false);
+
+	// One knight + six pawns is still refused: the guard counts non-pawn
+	// pieces, deliberately ignoring pawns (material-count-based, not
+	// phase-based).
+	AIPerlexTestFixture knight_and_pawns("4k3/8/8/8/8/8/PPPPPPN1/4K3 w - - 0 1");
+	knight_and_pawns.set_null_move_enabled(true);
+	REQUIRE(knight_and_pawns.try_null_move(4, 0, 1, false, false) == false);
+}
+
+TEST_CASE("Search - should_try_null_move: two non-pawn pieces returns true", "[search]")
+{
+	// Queen + knight for the side to move: above the single-piece zugzwang
+	// guard threshold, so NMP stays available.
+	AIPerlexTestFixture fix("8/8/8/3r4/4k3/8/8/2NQK3 w - - 0 1");
+	fix.set_null_move_enabled(true);
+
+	REQUIRE(fix.try_null_move(4, 0, 1, false, false) == true);
+}
+
+TEST_CASE("Search - should_try_null_move: consecutive null move returns false", "[search]")
+{
+	AIPerlexTestFixture fix; // default ctor sets up the starting position
+	fix.set_null_move_enabled(true);
+	fix.set_last_move_was_null(2, true); // ply 2 was reached via a null move
+
+	REQUIRE(fix.try_null_move(4, 0, /*ply=*/2, false, false) == false);
+}
+
+TEST_CASE("Search - should_try_null_move: otherwise-eligible position returns true", "[search]")
+{
+	AIPerlexTestFixture fix; // default ctor sets up the starting position
+	fix.set_null_move_enabled(true);
+	fix.set_null_move_min_depth(3);
+
+	REQUIRE(fix.try_null_move(4, 0, 1, false, false) == true);
+}
