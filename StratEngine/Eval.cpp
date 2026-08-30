@@ -637,7 +637,6 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 	    .material = {matScoreWhite, matScoreBlack},
 	    .phase = gamePhase,
 	    .mopup_active = {mopupActive[WHITE], mopupActive[BLACK]},
-	    .counts = {countsWhite, countsBlack},
 	    .endgame_scale = EndgameScale(countsWhite, countsBlack),
 	    .castling_rights = board.castling_rights(),
 	};
@@ -660,8 +659,8 @@ int EvalComplex::EndgameScale(const PieceCounts& white, const PieceCounts& black
 {
 	// A pawn promotes and a heavy piece mates on its own, so neither side can
 	// be short of mating material while it holds one. This is also the early
-	// out for every position outside a bare endgame, which is nearly all of
-	// them.
+	// out for every position that is not a bare endgame, which is nearly all
+	// of them.
 	if (white.pawns != 0 || black.pawns != 0 || white.rooks != 0 || black.rooks != 0 || white.queens != 0 ||
 	    black.queens != 0)
 		return ENDGAME_SCALE_MAX;

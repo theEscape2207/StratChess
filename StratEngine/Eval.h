@@ -191,11 +191,6 @@ struct EvalContext {
 	// winner's king PST exactly when eval_mopup is paying for king placement
 	// (issue #118 item 4). Two readers of one gate, not two copies of it.
 	bool mopup_active[NUM_COLORS];
-	// Per-color piece counts. The popcounts behind them are taken while the
-	// game phase is computed, so naming them here costs nothing and gives the
-	// endgame classifier and the mop-up gate one material model instead of
-	// two that can disagree about what force a defender still has.
-	PieceCounts counts[NUM_COLORS];
 	// How much of the assembled score this position's material is worth, as a
 	// numerator over ENDGAME_SCALE_MAX. Computed here for the same reason
 	// mopup_active is: Evaluate() applies it and Breakdown() reports it, and a
