@@ -203,8 +203,8 @@ std::string Board::ExtractFEN() const
 		int emptyCount = 0;
 
 		for (int file = 0; file < 8; ++file) {
-			eSquare square = static_cast<eSquare>((rank << 3) + file);
-			ePiece piece = GetPiece(square);
+			const eSquare square = static_cast<eSquare>((rank << 3) + file);
+			const ePiece piece = GetPiece(square);
 
 			if (piece == ePiece::NO_PIECE) {
 				emptyCount++;
@@ -248,8 +248,8 @@ std::string Board::ExtractFEN() const
 	if (state_.ep_square == NO_SQUARE) {
 		fen += '-';
 	} else {
-		int file = File(state_.ep_square);
-		int rank = 7 - Rank(state_.ep_square);
+		const int file = File(state_.ep_square);
+		const int rank = 7 - Rank(state_.ep_square);
 		fen += static_cast<char>('a' + file);
 		fen += static_cast<char>('1' + rank);
 	}

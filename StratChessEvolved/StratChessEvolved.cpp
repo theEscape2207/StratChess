@@ -41,7 +41,7 @@ static void test_fen_integration()
 		eColor expectedSide;
 	};
 
-	std::vector<TestCase> quick_tests = {
+	const std::vector<TestCase> quick_tests = {
 	    {"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "Starting position", 32, WHITE},
 	    {"r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", "Kiwipete", 30, WHITE},
 	    {"8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", "Endgame position", 10, WHITE}};
@@ -68,13 +68,13 @@ static void test_fen_integration()
 		}
 
 		// Extract FEN back
-		std::string extracted = board.ExtractFEN();
+		const std::string extracted = board.ExtractFEN();
 		std::cout << " Extracted: " << extracted << "\n";
 
 		// Round-trip test (piece placement should match)
 		// Note: We compare only the first field (piece placement)
-		std::string origPlacement = test.fen.substr(0, test.fen.find(' '));
-		std::string extrPlacement = extracted.substr(0, extracted.find(' '));
+		const std::string origPlacement = test.fen.substr(0, test.fen.find(' '));
+		const std::string extrPlacement = extracted.substr(0, extracted.find(' '));
 
 		if (origPlacement == extrPlacement) {
 			std::cout << "PASS: Round-trip successful\n";
@@ -152,12 +152,12 @@ static int perftrunner(int argc, char** argv)
 		return 1;
 	}
 
-	std::string command = argv[1];
+	const std::string command = argv[1];
 
 	if (command == "test") {
 		// Run full test suite
-		bool verbose = true;
-		bool all_passed = Testing::Perft::run_test_suite(verbose);
+		const bool verbose = true;
+		const bool all_passed = Testing::Perft::run_test_suite(verbose);
 		return all_passed ? 0 : 1;
 	} else if (command == "run" || command == "divide" || command == "detailed") {
 		if (argc < 3) {
@@ -181,7 +181,7 @@ static int perftrunner(int argc, char** argv)
 
 		if (argc > 3) //custom fen
 		{
-			std::string fen = argv[3];
+			const std::string fen = argv[3];
 			// Custom fen: Kiwipete
 			//const std::string fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
 			std::cout << "Running perft with custom board setup from FEN at depth " << depth << "\nFEN: " << fen

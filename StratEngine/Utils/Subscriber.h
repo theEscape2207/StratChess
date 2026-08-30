@@ -13,7 +13,7 @@ template <typename T> class Event {
 	// Returns handle for unsubscription
 	size_t subscribe(std::function<void(const void*, T&)> callback)
 	{
-		size_t id = next_id++;
+		const size_t id = next_id++;
 		callbacks[id] = std::move(callback);
 		return id;
 	}

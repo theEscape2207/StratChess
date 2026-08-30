@@ -115,7 +115,7 @@ AIPerplex::AIPerplex(AIPerplexConfig config)
 
 void AIPerplex::arm_uci_search_launch() noexcept
 {
-	std::lock_guard<std::mutex> lock(stop_mutex_);
+	const std::lock_guard<std::mutex> lock(stop_mutex_);
 	stop_pending_ = false;
 	search_launch_active_ = true;
 }
@@ -123,7 +123,7 @@ void AIPerplex::arm_uci_search_launch() noexcept
 void AIPerplex::Stop() noexcept
 {
 	{
-		std::lock_guard<std::mutex> lock(stop_mutex_);
+		const std::lock_guard<std::mutex> lock(stop_mutex_);
 		if (search_launch_active_)
 			stop_pending_ = true;
 	}
@@ -132,7 +132,7 @@ void AIPerplex::Stop() noexcept
 
 void AIPerplex::finish_search_launch() noexcept
 {
-	std::lock_guard<std::mutex> lock(stop_mutex_);
+	const std::lock_guard<std::mutex> lock(stop_mutex_);
 	search_launch_active_ = false;
 	stop_pending_ = false;
 }
@@ -217,7 +217,7 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 {
 	const IterationObserver search_observer = std::move(observer);
 	{
-		std::lock_guard<std::mutex> lock(stop_mutex_);
+		const std::lock_guard<std::mutex> lock(stop_mutex_);
 		// Direct callers have no launch phase. They begin a fresh search here;
 		// UCI has already armed the same handshake before scheduling its thread.
 		if (!search_launch_active_) {
@@ -241,7 +241,7 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	const unsigned threads = threads_;
 	control_.ApplyLimits(limits);
 	{
-		std::lock_guard<std::mutex> lock(stop_mutex_);
+		const std::lock_guard<std::mutex> lock(stop_mutex_);
 		if (stop_pending_)
 			control_.Stop();
 	}
@@ -489,7 +489,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		return quiescence(td, alpha, beta, QSEARCH_BUDGET, ply, tt);
 
 	auto key = td.board.get_zobrist_hash();
-	int original_alpha = alpha;
+	const int original_alpha = alpha;
 	Move hash_move;
 
 	// TT probe
@@ -537,7 +537,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		const int R = tuning_.null_move_reduction;
 		td.last_move_was_null[ply + 1] = true;
 		td.board.DoNullMove();
-		int null_score = -pvs(td, depth - 1 - R, -beta, -beta + 1, ply + 1, false, tt);
+		const int null_score = -pvs(td, depth - 1 - R, -beta, -beta + 1, ply + 1, false, tt);
 		td.board.UndoNullMove();
 		td.last_move_was_null[ply + 1] = false;
 
@@ -830,7 +830,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 		return evaluator_->Evaluate(td.board);
 	}
 
-	int original_alpha = alpha;
+	const int original_alpha = alpha;
 
 	auto key = td.board.get_zobrist_hash();
 
@@ -937,7 +937,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 		// every quiescence root, whose incoming move the parent's loop already counted.
 		td.qnodes_searched++;
 
-		int score = -quiescence(td, -beta, -alpha, qsearch_budget - 1, ply + 1, tt);
+		const int score = -quiescence(td, -beta, -alpha, qsearch_budget - 1, ply + 1, tt);
 		td.board.UndoMove(move);
 
 		// Unwind invariant, as in pvs(): `score` came from a search that was cut off, so the

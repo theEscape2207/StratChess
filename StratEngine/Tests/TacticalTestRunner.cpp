@@ -52,7 +52,7 @@ namespace Testing {
 		result.category = pos.category;
 		result.description = pos.description;
 
-		Board board(pos.fen);
+		const Board board(pos.fen);
 		AIPerplex ai(AIPerplexConfig{.evaluator = EvalManager::EvalTypes::COMPLEX,
 		                             .default_depth = static_cast<unsigned>(pos.depth),
 		                             .threads = threads,
@@ -60,7 +60,7 @@ namespace Testing {
 		ai.StartNewGame();
 
 		const auto t0 = std::chrono::steady_clock::now();
-		Move m = ai.Search(board, SearchLimits::fixed_depth(pos.depth)).best_move;
+		const Move m = ai.Search(board, SearchLimits::fixed_depth(pos.depth)).best_move;
 		const auto t1 = std::chrono::steady_clock::now();
 
 		result.time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
@@ -145,7 +145,7 @@ namespace Testing {
 				std::cout.flush();
 			}
 
-			TacticalResult result = run_position(pos, threads);
+			const TacticalResult result = run_position(pos, threads);
 
 			const char* verdict = result.passed ? "PASS" : "FAIL";
 			if (verbose) {

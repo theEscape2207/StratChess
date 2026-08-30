@@ -121,10 +121,10 @@ void Config::ReadConfigFile(const std::string& filename, Board& board)
 	// branch and does not in the v3.12.0 release -- so relying on that default makes
 	// whether the engine can read its own settings depend on which copy of the
 	// header the build picked up.
-	nlohmann::json config = nlohmann::json::parse(configFile,
-	                                              /*cb*/ nullptr,
-	                                              /*allow_exceptions*/ true,
-	                                              /*ignore_comments*/ true);
+	const nlohmann::json config = nlohmann::json::parse(configFile,
+	                                                    /*cb*/ nullptr,
+	                                                    /*allow_exceptions*/ true,
+	                                                    /*ignore_comments*/ true);
 
 	SetupPlayerConfig(config);
 

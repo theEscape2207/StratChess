@@ -25,7 +25,7 @@ void Engine::Logger::InitDefault()
 			file_sink->set_level(spdlog::level::trace);
 			file_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
 
-			spdlog::sinks_init_list sink_list = {file_sink, console_sink};
+			const spdlog::sinks_init_list sink_list = {file_sink, console_sink};
 
 			auto multi = std::make_shared<spdlog::logger>("multi_sink", sink_list.begin(), sink_list.end());
 			multi->set_level(spdlog::level::debug);

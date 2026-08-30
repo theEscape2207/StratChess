@@ -324,7 +324,7 @@ namespace Testing {
 				continue;
 			}
 
-			uint64_t nodes = perft_recursive(board, depth - 1);
+			const uint64_t nodes = perft_recursive(board, depth - 1);
 			total_nodes += nodes;
 
 			std::cout << MoveFormatter::ToUCI(move) << ": " << nodes << "\n";
@@ -381,7 +381,7 @@ namespace Testing {
 			}
 
 			// Test each depth (limit to reasonable depths for speed)
-			int max_test_depth = std::min(5, static_cast<int>(pos.expected_nodes.size()) - 1);
+			const int max_test_depth = std::min(5, static_cast<int>(pos.expected_nodes.size()) - 1);
 #ifdef DEBUG
 			max_test_depth = std::min(4, static_cast<int>(pos.expected_nodes.size()) - 1); // Debug builds are slower
 #endif                                                                                     // DEBUG
@@ -395,9 +395,9 @@ namespace Testing {
 				}
 
 				auto result = run(board, depth, false);
-				uint64_t expected = pos.expected_nodes[depth];
+				const uint64_t expected = pos.expected_nodes[depth];
 
-				bool passed = (result.nodes == expected);
+				const bool passed = (result.nodes == expected);
 				if (passed) {
 					passed_count++;
 					if (verbose) {

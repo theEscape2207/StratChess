@@ -4,6 +4,7 @@ Checks: >
   -*,
   bugprone-*,
   performance-*,
+  misc-const-correctness,
   -bugprone-throwing-static-initialization,
   -bugprone-easily-swappable-parameters,
   -bugprone-exception-escape,

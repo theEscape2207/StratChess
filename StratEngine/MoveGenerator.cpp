@@ -90,13 +90,13 @@ void MoveGenerator::GeneratePawnCaptures(const Board& board, const BITBOARD* con
 	// Foerst tager vi slagene to the left
 	while (bbAttackLeft) {
 		// Find first field
-		eSquare to = Board::GetFirstPiece(bbAttackLeft);
+		const eSquare to = Board::GetFirstPiece(bbAttackLeft);
 		// Bonden kom fra op-og-til-hoejre
-		eSquare from =
+		const eSquare from =
 		    static_cast<eSquare>(to + (color == eColor::BLACK ? -7 : 9)); //FIXME: Add defines, constants whatever
 
 		// Construct a call-owned move and forward to AddPawnCaptures
-		Move temp = MoveFactory::MakeMove(from, to, MoveType::CAPTURE);
+		const Move temp = MoveFactory::MakeMove(from, to, MoveType::CAPTURE);
 		AddPawnCaptures(board, moveList, bbBitBoards, temp, color);
 
 		bbAttackLeft = Bits::clearLsb(bbAttackLeft);
@@ -111,7 +111,7 @@ void MoveGenerator::GeneratePawnCaptures(const Board& board, const BITBOARD* con
 		auto from =
 		    static_cast<eSquare>(to + (color == eColor::BLACK ? -9 : 7)); //FIXME: Add defines, constants whatever
 
-		Move temp = MoveFactory::MakeMove(from, to, MoveType::CAPTURE);
+		const Move temp = MoveFactory::MakeMove(from, to, MoveType::CAPTURE);
 		AddPawnCaptures(board, moveList, bbBitBoards, temp, color);
 		bbAttackRight = Bits::clearLsb(bbAttackRight);
 	}
@@ -194,7 +194,7 @@ void MoveGenerator::GenerateOfficerMoves(const Board& board, const BITBOARD* con
 // FIXME: This method is called a lot - maybe cache results per move generation?
 BITBOARD MoveGenerator::GetOfficerAttackBoard(const BITBOARD* bbBitBoards, eSquare from, ePiece piece) noexcept
 {
-	eColor color = PieceHelper::Color(piece);
+	const eColor color = PieceHelper::Color(piece);
 	switch (piece) {
 	case ePiece::WHITE_KNIGHT:
 	case ePiece::BLACK_KNIGHT:
@@ -508,7 +508,7 @@ BITBOARD MoveGenerator::GetAttackBoard(const Board& board, eColor attackByColor)
 	const auto epSquare = board.ep_square();
 	if (epSquare != NO_SQUARE) {
 		// Check if attacking color has a pawn that can capture en passant
-		BITBOARD adjacentPawns = GetAnyEnPassantAttackingPawns(boards.data(), attackByColor, epSquare);
+		const BITBOARD adjacentPawns = GetAnyEnPassantAttackingPawns(boards.data(), attackByColor, epSquare);
 		if (adjacentPawns) {
 			bbAttackBoard |= g_bbMask[epSquare];
 		}

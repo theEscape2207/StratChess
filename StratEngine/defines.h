@@ -478,8 +478,8 @@ constexpr std::array<BITBOARD, ALL_SQUARES> makeKnightMoves()
 		// Liste af alle potensielle afvigelser (rankΔ, fileΔ)
 
 		for (const auto& offset : knightOffsets) {
-			int r = rank + offset[0];
-			int f = file + offset[1];
+			const int r = rank + offset[0];
+			const int f = file + offset[1];
 			if (r >= 0 && r < 8 && f >= 0 && f < 8)
 				moves |= (UNIT << static_cast<unsigned int>(r * 8 + f));
 		}

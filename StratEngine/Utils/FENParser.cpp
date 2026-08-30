@@ -92,7 +92,7 @@ std::optional<std::string> FENParser::ParseFENImpl(const std::string& fen, FENGa
 		}
 		for (size_t i = 0; i < ranks.size(); ++i) {
 			int files = 0;
-			for (char c : ranks[i]) {
+			for (const char c : ranks[i]) {
 				if (std::isdigit(static_cast<unsigned char>(c)))
 					files += c - '0';
 				else
@@ -137,7 +137,7 @@ std::optional<std::string> FENParser::ParseFENImpl(const std::string& fen, FENGa
 	// unlike a missing side-to-move field, it cannot change whose move it is (cf. issue #46).
 	if (parts.size() >= 5) {
 		try {
-			int half = std::stoi(parts[4]);
+			const int half = std::stoi(parts[4]);
 			if (half > MAX_FEN_HALFMOVE_CLOCK) {
 				return std::string("invalid halfmove clock");
 			}
@@ -152,7 +152,7 @@ std::optional<std::string> FENParser::ParseFENImpl(const std::string& fen, FENGa
 	// only; nothing in search reads it.
 	if (parts.size() >= 6) {
 		try {
-			int full = std::stoi(parts[5]);
+			const int full = std::stoi(parts[5]);
 			if (full > MAX_FEN_FULLMOVE_COUNT) {
 				return std::string("invalid fullmove counter");
 			}
@@ -179,7 +179,7 @@ std::optional<std::string> FENParser::PopulateCastlingFlags(const std::string& c
 
 	uint8_t rights = CastlingRights::NONE;
 
-	for (char c : castling) {
+	for (const char c : castling) {
 		uint8_t bit = CastlingRights::NONE;
 		for (const auto& [ch, flag] : charToRight) {
 			if (c == ch) {
@@ -229,9 +229,9 @@ std::optional<std::string> FENParser::ParsePiecePlacementField(const std::string
 		const std::string& rstr = ranks[rank];
 		int fileIndex = 0; // 0..7
 
-		for (char c : rstr) {
+		for (const char c : rstr) {
 			if (std::isdigit(static_cast<unsigned char>(c))) {
-				int n = c - '0';
+				const int n = c - '0';
 				if (n < 1 || n > 8) {
 					return std::string("invalid digit in rank expansion");
 				}
@@ -372,7 +372,7 @@ bool FENParser::ValidatePositionAgainstFENMetadata(const Board& board, FENGameSt
 	     {e8, BLACK, CastlingRights::BLACK_KINGSIDE, CastlingRights::BLACK_QUEENSIDE, h8, a8}}};
 
 	for (const auto& [kingSq, color, kingsideFlag, queensideFlag, rookKingSq, rookQueenSq] : sides) {
-		uint8_t sideMask = kingsideFlag | queensideFlag;
+		const uint8_t sideMask = kingsideFlag | queensideFlag;
 
 		// Skip if neither right is claimed for this side
 		if (!(state.castlingRights & sideMask))
@@ -410,7 +410,7 @@ bool FENParser::ValidatePositionAgainstFENMetadata(const Board& board, FENGameSt
 		const int file = epIndex % 8;
 		const int epRankIndex = epIndex / 8;
 
-		eColor lastMover = (state.sideToMove == WHITE) ? BLACK : WHITE;
+		const eColor lastMover = (state.sideToMove == WHITE) ? BLACK : WHITE;
 		int pawnRankIndex = -1;
 
 		if (lastMover == WHITE) {

@@ -30,7 +30,7 @@ class PVTable {
 		pv_lines_[ply][0] = move;
 
 		// Copy child PV
-		int child_len = (ply + 1 < MAX_PLY) ? pv_lengths_[ply + 1] : 0;
+		const int child_len = (ply + 1 < MAX_PLY) ? pv_lengths_[ply + 1] : 0;
 		for (int i = 0; i < child_len && i + 1 < MAX_PV_LENGTH; ++i) {
 			pv_lines_[ply][i + 1] = pv_lines_[ply + 1][i];
 		}
