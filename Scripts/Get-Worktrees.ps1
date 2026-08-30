@@ -54,7 +54,8 @@
     pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\Get-Worktrees.ps1
 
 .NOTES
-    Must be invoked with -File, not dot-sourced ($PSScriptRoot is $null under dot-source).
+    Must be invoked with -File, not dot-sourced -- a dot-sourced script runs in the
+    caller's scope, where its variables collide and its exit ends the caller's session.
 #>
 
 [CmdletBinding(SupportsShouldProcess)]
