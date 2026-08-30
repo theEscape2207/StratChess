@@ -146,3 +146,18 @@ No Elo match: no engine source changes, so search behaviour is untouched by cons
 | Why the sweep is Windows-only (D5) | comment on the nightly step |
 | That the coverage rule exists at all, and where it runs | `.claude/skills/write-powershell/SKILL.md` → the `-SelfTest` convention |
 | The Linux-portability assumption, if it is ever wanted | #395 as a comment |
+| Why the FEN check strips comments before matching | source comment in `Validate-PreCommit.ps1` and in `check-starting-fen.yml` |
+
+**Changed during implementation:**
+
+- **A real bug turned up while writing `Validate-PreCommit.ps1`'s self-test, and was fixed here.**
+  Its FEN check matched the raw file, and the "Alternative FEN positions" comment block is a
+  commented copy of the active `"FEN":` line — so the check passed whatever the active field said,
+  which is the one situation it exists to catch. `check-starting-fen.yml` had the identical hole.
+  Both now strip comments first. Out of the original scope, but writing the self-test around the
+  broken behaviour would have pinned it.
+- **`-AllSelfTests` landed as a switch on `Validate-PrePR.ps1`, not a new script.** Same reasoning as
+  D1: a new script would itself be Build tier and need a self-test, and the discovery logic it needs
+  already lives there.
+- **`Get-BuildArtifact.ps1`'s self-test asserts the clang-cl default** rather than only the preset
+  mapping. The default is documented as load-bearing for measurement and nothing checked it.
