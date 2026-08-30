@@ -45,7 +45,7 @@ Four things are non-negotiable and are the reason most of this file exists:
 
 | Tier | Matches | What runs |
 |---|---|---|
-| `Docs` | `*.md`, `Docs/**`, `.claude/plans/**` | Nothing — the pre-commit hook's fast tests already cover it |
+| `Docs` | `*.md`, `Docs/**`, `.claude/plans/**`, `.claude/skills/**.md`, `.claude/agents/**.md` | Nothing — the pre-commit hook's fast tests already cover it |
 | `Tooling` | `Scripts\Run-EloMatch.ps1`, `Run-Tests.ps1`, `Sync-Master.ps1`, `verify_mate_key.py`, `build_corpus.py`, `New-Worktree.ps1`, `Remove-Worktree.ps1`, `Get-Worktrees.ps1` | PowerShell syntax parse only — never compiled, never invoked by the engine |
 | `Build` | `build.ps1`, `Scripts\Validate-*.ps1`, `New-PullRequest.ps1`, `Get-ChangeTier.ps1`, `Run-Lint.ps1`, `.githooks/**`, `.github/**`, `CMakeLists.txt`, `*.cmake`, `CMakePresets.json`, `.clang-format`, `.clang-tidy`, `.git-blame-ignore-revs` | Full: build + extended `[slow]` tests + tactical suite + self-play, preceded by the clang-format check |
 | `Engine` | `*.cpp`, `*.h`, `*.json`, **and anything unrecognised** | Full |

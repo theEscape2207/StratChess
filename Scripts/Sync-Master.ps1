@@ -16,12 +16,14 @@
     push, open a PR.)
 
     A dirty working tree does not block the sync: uncommitted changes (tracked and
-    untracked) are stashed first and popped back at the end, on whichever branch they
-    started on. If the pop hits a conflict, git leaves the stash entry in place rather
-    than dropping it -- nothing is lost, you just resolve the conflict and `git stash
-    drop` yourself once satisfied. Restores whatever branch was checked out before the
-    script ran, if it had to switch to master first -- this always happens, even if the
-    sync itself fails partway through.
+    untracked) are stashed first and restored at the end, on whichever branch they
+    started on. The entry is addressed by its commit SHA, never by its position on the
+    stack -- the stash stack is shared by every worktree in the repository, so `stash@{0}`
+    at restore time need not be the entry this script pushed. If the restore hits a
+    conflict, the entry stays on the stack rather than being dropped -- nothing is lost,
+    you just resolve the conflict and `git stash drop` yourself once satisfied. Restores
+    whatever branch was checked out before the script ran, if it had to switch to master
+    first -- this always happens, even if the sync itself fails partway through.
 
 .WHEN TO USE
     - At the start of a session that will work directly in the main checkout (not a
@@ -30,8 +32,13 @@
     - Any time a PR merges into main and local master needs to catch up.
     - Safe to run unconditionally / repeatedly -- it's a no-op if already up to date.
 
+.PARAMETER SelfTest
+    Run the stash-restore assertions against a throwaway fixture repository and exit.
+    Touches nothing outside the fixture. Exits 1 on any failure.
+
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
     pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\Sync-Master.ps1
+    pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\Sync-Master.ps1 -SelfTest
 
 .NOTES
     Runs from anywhere in the repository. `master` can be checked out in only one
@@ -42,6 +49,10 @@
     Must be invoked with -File, not dot-sourced -- a dot-sourced script runs in the
     caller's scope, where its variables collide and its exit ends the caller's session.
 #>
+
+param(
+    [switch]$SelfTest
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -89,6 +100,39 @@ function Write-GitOutput {
     if ($Output) { Write-Host (($Output | Out-String).Trim()) }
 }
 
+# Current position of a stash entry, identified by its commit SHA. -1 when the entry is
+# no longer on the stack. Positions shift: an entry pushed by a concurrent session in
+# another worktree lands on top and renumbers everything below it.
+function Get-StashIndex {
+    param([Parameter(Mandatory)][string]$Sha)
+    $entries = @((Invoke-Git @('stash', 'list', '--format=%H')).Output | Where-Object { $_ })
+    for ($i = 0; $i -lt $entries.Count; $i++) {
+        if ("$($entries[$i])".Trim() -eq $Sha) { return $i }
+    }
+    return -1
+}
+
+# Restores one stash entry by SHA and drops it, rather than `git stash pop`. The stash
+# stack is shared by every worktree in the repository, so `stash@{0}` is whatever sits on
+# top at that moment -- pop would apply a concurrent session's entry into this tree and
+# leave that session's changes gone. Apply-then-drop is two steps precisely so a conflict
+# leaves the entry on the stack.
+function Restore-StashBySha {
+    param([Parameter(Mandatory)][string]$Sha)
+
+    $apply = Invoke-Git @('stash', 'apply', $Sha)
+    if ($apply.ExitCode -ne 0) {
+        return @{ Applied = $false; Dropped = $false; Output = $apply.Output }
+    }
+    $index   = Get-StashIndex -Sha $Sha
+    $dropped = $false
+    if ($index -ge 0) {
+        $drop    = Invoke-Git @('stash', 'drop', "stash@{$index}")
+        $dropped = ($drop.ExitCode -eq 0)
+    }
+    return @{ Applied = $true; Dropped = $dropped; Output = $apply.Output }
+}
+
 # Restores whatever this run changed (branch, stash) and exits. Called from every exit
 # point instead of a bare `exit N` so cleanup always runs, success or failure -- a raw
 # `exit` does not reliably trigger try/finally in a plain script, so this is explicit.
@@ -99,7 +143,7 @@ function Restore-AndExit {
         [string]$OriginalCommit,
         [bool]$WasDetached,
         [bool]$SwitchedBranch,
-        [bool]$Stashed
+        [string]$StashSha
     )
     if ($SwitchedBranch) {
         # A detached HEAD reports as the literal string 'HEAD' from
@@ -120,13 +164,16 @@ function Restore-AndExit {
             }
         }
     }
-    if ($Stashed) {
+    if ($StashSha) {
         Write-Host "`n==> Restoring stashed changes" -ForegroundColor Cyan
-        $pop = Invoke-Git @('stash', 'pop')
-        if ($pop.ExitCode -ne 0) {
-            Write-Host "WARNING: stash pop hit a conflict -- your changes are safely preserved in the stash (not dropped)." -ForegroundColor Yellow
-            Write-GitOutput $pop.Output
-            Write-Host "Resolve the conflict, then run 'git stash drop' once you're satisfied nothing was lost." -ForegroundColor Yellow
+        $restore = Restore-StashBySha -Sha $StashSha
+        if (-not $restore.Applied) {
+            Write-Host "WARNING: restoring the autostash hit a conflict -- your changes are safely preserved in the stash (not dropped)." -ForegroundColor Yellow
+            Write-GitOutput $restore.Output
+            Write-Host "Resolve the conflict, then drop entry $StashSha -- 'git stash list' to find its index, 'git stash drop stash@{n}'." -ForegroundColor Yellow
+        } elseif (-not $restore.Dropped) {
+            Write-Host "PASS: stashed changes restored." -ForegroundColor Green
+            Write-Host "WARNING: could not drop the applied entry $StashSha -- 'git stash list' to find its index, 'git stash drop stash@{n}'." -ForegroundColor Yellow
         } else {
             Write-Host "PASS: stashed changes restored." -ForegroundColor Green
         }
@@ -134,12 +181,95 @@ function Restore-AndExit {
     exit $Code
 }
 
+# ---------------------------------------------------------------------------
+# Self-test
+# ---------------------------------------------------------------------------
+if ($SelfTest) {
+    # A fixture repository rather than mocks: what is under test is *which* entry comes
+    # back off a shared stash stack, and only real git plumbing can get that wrong.
+    $fixtureRoot = Join-Path ([System.IO.Path]::GetTempPath()) "sync-master-selftest-$([guid]::NewGuid().ToString('N'))"
+    New-Item -ItemType Directory -Path $fixtureRoot -Force | Out-Null
+    $RepoRoot = $fixtureRoot
+    $mineFile  = Join-Path $fixtureRoot 'mine.txt'
+    $decoyFile = Join-Path $fixtureRoot 'decoy.txt'
+
+    try {
+        Invoke-Git @('init', '--quiet', '--initial-branch=master') | Out-Null
+        Invoke-Git @('config', 'user.email', 'selftest@example.invalid') | Out-Null
+        Invoke-Git @('config', 'user.name', 'Sync-Master self-test') | Out-Null
+        Set-Content $mineFile  'base' -NoNewline
+        Set-Content $decoyFile 'base' -NoNewline
+        Invoke-Git @('add', 'mine.txt', 'decoy.txt') | Out-Null
+        Invoke-Git @('-c', 'commit.gpgsign=false', 'commit', '--quiet', '--no-verify', '-m', 'base') | Out-Null
+
+        # The falsification case. Our entry is pushed first, a concurrent session's entry
+        # lands on top of it, and only then do we restore. A bare `git stash pop` takes
+        # stash@{0}, so it would apply the decoy into this tree and leave our own changes
+        # stashed -- exactly the failure this addressing-by-SHA exists to prevent.
+        Set-Content $mineFile 'mine' -NoNewline
+        Invoke-Git @('stash', 'push', '-u', '-m', 'Sync-Master.ps1 autostash') | Out-Null
+        $ourSha = "$((Invoke-Git @('rev-parse', 'stash@{0}')).Output)".Trim()
+        Set-Content $decoyFile 'decoy' -NoNewline
+        Invoke-Git @('stash', 'push', '-u', '-m', 'another session') | Out-Null
+
+        # Read the tree back before the next case rewrites it -- the assertion table below
+        # runs once, at the end, over facts captured as each case produced them.
+        $restored     = Restore-StashBySha -Sha $ourSha
+        $remaining    = @((Invoke-Git @('stash', 'list', '--format=%gs')).Output | Where-Object { $_ })
+        $mineAfter    = Get-Content $mineFile -Raw
+        $decoyAfter   = Get-Content $decoyFile -Raw
+
+        # Clean tree, empty stack, for the next case.
+        Invoke-Git @('reset', '--hard', '--quiet') | Out-Null
+        Invoke-Git @('stash', 'drop', 'stash@{0}') | Out-Null
+
+        # An entry no longer on the stack must fail loudly, not apply something else.
+        Set-Content $mineFile 'untouched' -NoNewline
+        $missing        = Restore-StashBySha -Sha ('0' * 40)
+        $mineAfterMiss  = Get-Content $mineFile -Raw
+
+        $cases = @(
+            @{ Name = 'own entry applied';             Expect = 'True';      Actual = $restored.Applied }
+            @{ Name = 'own entry dropped after apply'; Expect = 'True';      Actual = $restored.Dropped }
+            @{ Name = 'own changes restored';          Expect = 'mine';      Actual = $mineAfter }
+            @{ Name = 'decoy NOT applied';             Expect = 'base';      Actual = $decoyAfter }
+            @{ Name = 'decoy left on the stack';       Expect = 'True';
+               Actual = ($remaining.Count -eq 1 -and $remaining[0] -like '*another session*') }
+            @{ Name = 'missing entry: not applied';    Expect = 'False';     Actual = $missing.Applied }
+            @{ Name = 'missing entry: tree untouched'; Expect = 'untouched'; Actual = $mineAfterMiss }
+        )
+
+        $failed = 0
+        foreach ($c in $cases) {
+            $got = "$($c.Actual)"
+            if ($got -eq $c.Expect) {
+                Write-Host ("  PASS  {0,-32} -> {1}" -f $c.Name, $got) -ForegroundColor Green
+            } else {
+                Write-Host ("  FAIL  {0,-32} -> {1} (expected {2})" -f $c.Name, $got, $c.Expect) -ForegroundColor Red
+                $failed++
+            }
+        }
+        Write-Host ''
+        if ($failed -gt 0) {
+            Write-Host "$failed self-test case(s) FAILED." -ForegroundColor Red
+            exit 1
+        }
+        Write-Host "All $($cases.Count) self-test cases passed." -ForegroundColor Green
+    } finally {
+        Remove-Item -Path $fixtureRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    exit 0
+}
+
 Write-Host "`n==> Checking working tree" -ForegroundColor Cyan
 $originalBranch = (Invoke-Git @('rev-parse', '--abbrev-ref', 'HEAD')).Output
 $originalCommit = (Invoke-Git @('rev-parse', 'HEAD')).Output
 $wasDetached    = ($originalBranch -eq 'HEAD')
 $switchedBranch = $false
-$stashed = $false
+# SHA of the entry this run pushed, '' when nothing was stashed. Deliberately not named
+# $stashSha: variable names are case-insensitive, so it would shadow Restore-AndExit's
+# own $StashSha parameter.
+$autostashSha = ''
 
 $status = Invoke-Git @('status', '--porcelain')
 if ($Delegated) {
@@ -170,10 +300,18 @@ if ($Delegated) {
     if ($stash.ExitCode -ne 0) {
         Write-Host "FAIL: could not stash uncommitted changes." -ForegroundColor Red
         Write-GitOutput $stash.Output
-        Restore-AndExit -Code 1 -OriginalBranch $originalBranch -OriginalCommit $originalCommit -WasDetached $wasDetached -SwitchedBranch $switchedBranch -Stashed $stashed
+        Restore-AndExit -Code 1 -OriginalBranch $originalBranch -OriginalCommit $originalCommit -WasDetached $wasDetached -SwitchedBranch $switchedBranch -StashSha $autostashSha
     }
-    $stashed = $true
-    Write-Host "PASS: uncommitted changes stashed." -ForegroundColor Green
+    # Identify the entry now, while it is still on top. Everything after this addresses it
+    # by SHA, so a concurrent session pushing its own entry cannot misdirect the restore.
+    $pushed = "$((Invoke-Git @('rev-parse', 'stash@{0}')).Output)".Trim()
+    if ($pushed -notmatch '^[0-9a-f]{40}$') {
+        Write-Host "FAIL: stashed, but could not identify the pushed entry -- refusing to restore blindly." -ForegroundColor Red
+        Write-Host "Your changes are in the stash tagged 'Sync-Master.ps1 autostash'; recover them with 'git stash list'." -ForegroundColor Yellow
+        exit 1
+    }
+    $autostashSha = $pushed
+    Write-Host "PASS: uncommitted changes stashed ($($autostashSha.Substring(0,7)))." -ForegroundColor Green
 } else {
     Write-Host "PASS: working tree is clean." -ForegroundColor Green
 }
@@ -183,7 +321,7 @@ $fetch = Invoke-Git @('fetch', 'origin', 'main')
 if ($fetch.ExitCode -ne 0) {
     Write-Host "FAIL: git fetch origin main failed." -ForegroundColor Red
     Write-GitOutput $fetch.Output
-    Restore-AndExit -Code 1 -OriginalBranch $originalBranch -OriginalCommit $originalCommit -WasDetached $wasDetached -SwitchedBranch $switchedBranch -Stashed $stashed
+    Restore-AndExit -Code 1 -OriginalBranch $originalBranch -OriginalCommit $originalCommit -WasDetached $wasDetached -SwitchedBranch $switchedBranch -StashSha $autostashSha
 }
 Write-Host "PASS: fetched." -ForegroundColor Green
 
@@ -199,7 +337,7 @@ if ($originalBranch -ne 'master') {
             $masterPath = ($masterLine -split '\s+')[0]
             Write-Host "master is checked out at: $masterPath -- run this script from there instead." -ForegroundColor Yellow
         }
-        Restore-AndExit -Code 1 -OriginalBranch $originalBranch -OriginalCommit $originalCommit -WasDetached $wasDetached -SwitchedBranch $switchedBranch -Stashed $stashed
+        Restore-AndExit -Code 1 -OriginalBranch $originalBranch -OriginalCommit $originalCommit -WasDetached $wasDetached -SwitchedBranch $switchedBranch -StashSha $autostashSha
     }
     $switchedBranch = $true
 }
@@ -223,11 +361,11 @@ if ($ff.ExitCode -eq 0) {
         Invoke-Git @('merge', '--abort') | Out-Null
         Write-GitOutput $merge.Output
         Write-Host "Resolve manually: git checkout master; git merge origin/main" -ForegroundColor Yellow
-        Restore-AndExit -Code 1 -OriginalBranch $originalBranch -OriginalCommit $originalCommit -WasDetached $wasDetached -SwitchedBranch $switchedBranch -Stashed $stashed
+        Restore-AndExit -Code 1 -OriginalBranch $originalBranch -OriginalCommit $originalCommit -WasDetached $wasDetached -SwitchedBranch $switchedBranch -StashSha $autostashSha
     }
     $mergeSha = (Invoke-Git @('rev-parse', '--short', 'HEAD')).Output
     Write-Host "PASS: merged origin/main into master (new commit $mergeSha); local-only commits preserved." -ForegroundColor Green
 }
 
 Write-Host "`nSync complete." -ForegroundColor Green
-Restore-AndExit -Code 0 -OriginalBranch $originalBranch -OriginalCommit $originalCommit -WasDetached $wasDetached -SwitchedBranch $switchedBranch -Stashed $stashed
+Restore-AndExit -Code 0 -OriginalBranch $originalBranch -OriginalCommit $originalCommit -WasDetached $wasDetached -SwitchedBranch $switchedBranch -StashSha $autostashSha
