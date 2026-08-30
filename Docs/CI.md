@@ -151,15 +151,23 @@ pwsh -File Scripts/Run-Lint.ps1 -Check Tidy -Profile Deep -All
 
 | Profile | Checks | Source scope | Where it blocks | Workers |
 |---|---|---|---|---:|
-| Gate | `bugprone-*`, `performance-*` | Engine, application, and tests | PrePR and required PR CI; whole tree Nightly | 4 |
+| Gate | `bugprone-*`, `performance-*`, `misc-const-correctness` | Engine, application, and tests | PrePR and required PR CI; whole tree Nightly | 4 |
 | Deep | `clang-analyzer-*`, `bugprone-exception-escape` | Shipping Engine/application only | Nightly Linux and Windows | 2 |
 
 Gate excludes `bugprone-throwing-static-initialization` (Catch2 registration),
 `bugprone-easily-swappable-parameters` (the move API intentionally has adjacent same-typed values),
 and the checks assigned to Deep. `StratChessTests/.clang-tidy` additionally disables
-`bugprone-unchecked-optional-access`, because clang-tidy does not model Catch2 `REQUIRE`, and
-`performance-*`, because test code favors clarity over micro-optimization. Deep does not analyze
-test translation units.
+`bugprone-unchecked-optional-access`, because clang-tidy does not model Catch2 `REQUIRE`,
+`performance-*`, because test code favors clarity over micro-optimization, and
+`misc-const-correctness`, because `const` on a local a test never reassigns is noise rather than
+intent. Deep does not analyze test translation units.
+
+`misc-const-correctness` is the one Gate check with a mass `--fix`, and it has two traps. Run it
+**one translation unit at a time**: parallel `--fix` processes rewrite a shared header from their
+own buffers, applying the same edit several times and dropping most of the others — observed as
+`MoveType const const const type` and an insertion landing mid-identifier. Its fix-its are also
+east-const, and it places `const` wrongly for arrays of pointers
+(`const char* x[]` becomes `const char const* x[]`, which does not compile).
 
 Both profiles set `WarningsAsErrors: '*'`. A finding, non-zero worker, missing worker result,
 malformed/missing database, failed diff, or normalization ambiguity fails the invocation. A changed
