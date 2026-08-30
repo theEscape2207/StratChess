@@ -61,6 +61,9 @@
 .HOW TO INVOKE (from bash, cmd, or PowerShell), from inside the worktree
     pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\New-PullRequest.ps1 -Title "Add mobility eval term (#98)"
 
+.PARAMETER SelfTest
+    Run the guard cases and exit. Pure: no git, no gh, no network.
+
 .NOTES
     Refuses to run on `master` -- that branch is personal scratch and is not the source
     of PRs (see CLAUDE.md). Must be invoked with -File, not dot-sourced.
@@ -74,11 +77,71 @@ param(
     [switch]$Draft,
     [switch]$SkipValidation,
     [switch]$NoPr,
-    [switch]$AllowUnlistedReformat
+    [switch]$AllowUnlistedReformat,
+    [switch]$SelfTest
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# The two guards that decide whether this script will push at all, split out so they can
+# be asserted without a repository.
+function Test-BranchAllowedForPr {
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Branch)
+    return $Branch -ne 'master' -and $Branch -ne 'main'
+}
+
+# Would this untracked file plausibly be an omitted build input? A source file anywhere,
+# or anything at all under a project directory. Deliberately wider than "*.cpp": PR #244
+# swept 2,726 tool-downloaded files in, and the cost of a false block is one -- explicit --
+# `git add`, while the cost of a miss is a build that compiles different code than the PR.
+function Test-UntrackedBlocksPr {
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Path)
+    return $Path -match '\.(cpp|h)$' -or
+           $Path -match '^(StratEngine|StratChessEvolved|StratChessTests)(/|\\)'
+}
+
+if ($SelfTest) {
+    $branchCases = @(
+        @{ Name = 'master is refused';               Branch = 'master';                    Expect = $false }
+        @{ Name = 'main is refused';                 Branch = 'main';                      Expect = $false }
+        @{ Name = 'a task branch is allowed';        Branch = 'worktree-mobility-eval';    Expect = $true }
+        @{ Name = 'a branch merely containing main'; Branch = 'worktree-main-line-fix';    Expect = $true }
+        @{ Name = 'detached HEAD is not master';     Branch = 'HEAD';                      Expect = $true }
+    )
+    $untrackedCases = @(
+        @{ Name = 'a stray .cpp blocks';             Path = 'scratch/Probe.cpp';                    Expect = $true }
+        @{ Name = 'a stray .h blocks';               Path = 'Probe.h';                              Expect = $true }
+        @{ Name = 'anything under StratEngine blocks'; Path = 'StratEngine/notes.txt';              Expect = $true }
+        @{ Name = 'backslash paths are matched too'; Path = 'StratChessTests\new.txt';              Expect = $true }
+        @{ Name = 'a doc does not block';            Path = 'Docs/Workflow.md';                     Expect = $false }
+        @{ Name = 'a scratch note does not block';   Path = 'scratch/notes.txt';                    Expect = $false }
+        # Named for the failure it guards: a directory whose name merely starts with a
+        # project name is not inside one, so it must not be swept in by the prefix rule.
+        @{ Name = 'a lookalike prefix does not block'; Path = 'StratEngineNotes/readme.txt';        Expect = $false }
+    )
+
+    $failed = 0
+    foreach ($case in $branchCases) {
+        $actual = Test-BranchAllowedForPr -Branch $case.Branch
+        if ($actual -eq $case.Expect) { Write-Host "  PASS  $($case.Name)" -ForegroundColor Green }
+        else { $failed++; Write-Host "  FAIL  $($case.Name): got $actual, expected $($case.Expect)" -ForegroundColor Red }
+    }
+    foreach ($case in $untrackedCases) {
+        $actual = Test-UntrackedBlocksPr -Path $case.Path
+        if ($actual -eq $case.Expect) { Write-Host "  PASS  $($case.Name)" -ForegroundColor Green }
+        else { $failed++; Write-Host "  FAIL  $($case.Name): got $actual, expected $($case.Expect)" -ForegroundColor Red }
+    }
+
+    Write-Host ''
+    if ($failed -gt 0) {
+        Write-Host "$failed self-test case(s) FAILED." -ForegroundColor Red
+        exit 1
+    }
+    $total = $branchCases.Count + $untrackedCases.Count
+    Write-Host "All $total self-test cases passed." -ForegroundColor Green
+    exit 0
+}
 
 if ($BodyFile -and $Body) {
     Write-Host "FAIL: -Body and -BodyFile are mutually exclusive." -ForegroundColor Red
@@ -89,7 +152,7 @@ $RepoRoot = Split-Path $PSScriptRoot -Parent
 $branch = (& git -C $RepoRoot rev-parse --abbrev-ref HEAD)
 if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: not a git repository." -ForegroundColor Red; exit 1 }
 
-if ($branch -eq 'master' -or $branch -eq 'main') {
+if (-not (Test-BranchAllowedForPr -Branch $branch)) {
     Write-Host "FAIL: refusing to open a PR from '$branch'." -ForegroundColor Red
     Write-Host "      PRs come from a per-task worktree branched off origin/main." -ForegroundColor Yellow
     Write-Host "      Create one: Scripts\New-Worktree.ps1 -Name <task>" -ForegroundColor Yellow
@@ -110,9 +173,7 @@ if ($tracked.Count -gt 0) {
 # `git status` collapses an untracked directory to one entry, which would hide an untracked
 # .cpp/.h nested under an otherwise harmless directory. `ls-files --others` lists every file.
 $untracked = @(& git -C $RepoRoot ls-files --others --exclude-standard)
-$blockingUntracked = @($untracked | Where-Object {
-    $_ -match '\.(cpp|h)$' -or $_ -match '^(StratEngine|StratChessEvolved|StratChessTests)(/|\\)'
-})
+$blockingUntracked = @($untracked | Where-Object { Test-UntrackedBlocksPr -Path $_ })
 if ($blockingUntracked.Count -gt 0) {
     Write-Host "FAIL: working tree has untracked files that could be omitted from the build or commit." -ForegroundColor Red
     $blockingUntracked | ForEach-Object { Write-Host "      $_" -ForegroundColor Yellow }
