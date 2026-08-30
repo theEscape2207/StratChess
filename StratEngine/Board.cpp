@@ -672,9 +672,10 @@ void Board::move_piece(ePiece piece, eSquare from, eSquare to)
 // ============================================================================
 
 // Marks a move as irreversible (pawn move or capture) and updates the fifty-move counter.
+// movPiece is the promoted piece for a promotion, so the explicit flag carries the pawn move.
 void Board::update_threefold_rep(const Move& m, ePiece movPiece)
 {
-	if (MoveHelper::IsPawnMove(movPiece) || MoveHelper::IsCapture(m)) {
+	if (MoveHelper::IsPawnMove(movPiece) || MoveHelper::IsCapture(m) || MoveHelper::IsPromote(m)) {
 		last_irreversible_ply_ = position_history_.size();
 		state_.halfmove_clock = 0;
 	} else {

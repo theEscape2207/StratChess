@@ -83,6 +83,38 @@ TEST_CASE("Board: UndoMove restores the halfmove clock across the threshold", "[
 	CHECK(board.halfmove_clock() == 99);
 }
 
+// A promotion is a pawn move, but the effective moving piece is already the promoted piece,
+// so only the move's promotion flag can tell the clock to reset.
+TEST_CASE("Board: a quiet promotion resets the halfmove clock", "[fifty_move]")
+{
+	Board board("8/P7/8/8/8/8/8/K6k w - - 40 1");
+
+	REQUIRE(board.DoMove(MoveFactory::MakePromotion(a7, a8, WHITE_QUEEN)));
+
+	CHECK(board.halfmove_clock() == 0);
+	CHECK(board.ExtractFEN().find(" 0 1") != std::string::npos);
+}
+
+TEST_CASE("Board: a capture promotion resets the halfmove clock", "[fifty_move]")
+{
+	Board board("1r6/P7/8/8/8/8/8/K6k w - - 40 1");
+
+	REQUIRE(board.DoMove(MoveFactory::MakePromotion(a7, b8, WHITE_QUEEN, true)));
+
+	CHECK(board.halfmove_clock() == 0);
+}
+
+TEST_CASE("Board: UndoMove restores the halfmove clock across a promotion", "[fifty_move]")
+{
+	Board board("8/P7/8/8/8/8/8/K6k w - - 40 1");
+	const auto m = MoveFactory::MakePromotion(a7, a8, WHITE_QUEEN);
+
+	REQUIRE(board.DoMove(m));
+	board.UndoMove(m);
+
+	CHECK(board.halfmove_clock() == 40);
+}
+
 // ============================================================================
 // The root must still search — a high clock is not a reason to return no move
 // ============================================================================
