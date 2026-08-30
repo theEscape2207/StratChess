@@ -312,12 +312,12 @@ void UciHandler::cmd_eval()
 		// The sum of the net column. It must equal the 'white pov' line below;
 		// both are printed so a drift between the terms and Evaluate() is
 		// visible on inspection, and asserted on in StratChessTests (D9).
-		const int net_sum =
-		    (terms.material[WHITE] - terms.material[BLACK]) + (terms.pawns[WHITE] - terms.pawns[BLACK]) +
-		    (terms.rooks[WHITE] - terms.rooks[BLACK]) + (terms.pst[WHITE] - terms.pst[BLACK]) +
-		    (terms.mopup[WHITE] - terms.mopup[BLACK]) + (terms.bishops[WHITE] - terms.bishops[BLACK]) +
-		    (terms.castling[WHITE] - terms.castling[BLACK]) + (terms.mobility[WHITE] - terms.mobility[BLACK]) +
-		    terms.endgame_adjustment;
+		const int net_sum = (terms.material[WHITE] - terms.material[BLACK]) +
+		                    (terms.pawns[WHITE] - terms.pawns[BLACK]) + (terms.rooks[WHITE] - terms.rooks[BLACK]) +
+		                    (terms.pst[WHITE] - terms.pst[BLACK]) + (terms.mopup[WHITE] - terms.mopup[BLACK]) +
+		                    (terms.bishops[WHITE] - terms.bishops[BLACK]) +
+		                    (terms.castling[WHITE] - terms.castling[BLACK]) +
+		                    (terms.mobility[WHITE] - terms.mobility[BLACK]) + terms.endgame_adjustment;
 		const std::string sum_label = "sum (white pov)";
 		send(sum_label + pad_left(std::to_string(net_sum), EVAL_TABLE_WIDTH - static_cast<int>(sum_label.size())));
 

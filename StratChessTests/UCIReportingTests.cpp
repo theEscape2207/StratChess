@@ -245,8 +245,8 @@ TEST_CASE("cmd_eval: printed breakdown nets are white-minus-black and sum to the
 	    GENERATE("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", // Kiwipete, middlegame
 	             "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",             // startpos, symmetric
 	             "8/8/8/3r4/4k3/8/8/3QK3 w - - 0 1",                                     // endgame, White to move
-	             "r3k3/8/8/8/8/8/8/4K3 b - - 0 1",  // Black to move, Black up a rook
-	             "8/8/8/4k3/8/8/8/3QK3 w - - 0 1",  // pawnless K+Q vs K — mop-up active
+	             "r3k3/8/8/8/8/8/8/4K3 b - - 0 1",   // Black to move, Black up a rook
+	             "8/8/8/4k3/8/8/8/3QK3 w - - 0 1",   // pawnless K+Q vs K — mop-up active
 	             "8/8/8/3k4/8/8/3N4/3K4 w - - 0 1"); // K+N vs K — scaled to a draw
 	CAPTURE(fen);
 
