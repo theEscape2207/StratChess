@@ -1,0 +1,64 @@
+name: PR closed cleanup
+
+# Housekeeping when a pull request closes. Both jobs gate nothing and are
+# independent of each other; a failure here never blocks a merge.
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  delete-branch:
+    if: github.event.pull_request.merged == true && !contains(fromJSON('["master", "main"]'), github.event.pull_request.head.ref)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - run: gh api -X DELETE repos/${{ github.repository }}/git/refs/heads/${{ github.event.pull_request.head.ref }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # A cache written on refs/pull/N/merge can only ever be restored by another run
+  # on that same PR -- actions/cache reads from the run's own ref or from the
+  # default branch, nothing in between -- so closing the PR strands every entry
+  # it wrote until LRU or the 7-day TTL happens to reach it. A Build-tier run
+  # writes six, at 150-400 MB each.
+  #
+  # Unconditional, unlike delete-branch: an abandoned PR strands exactly as much
+  # as a merged one.
+  prune-caches:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REF: refs/pull/${{ github.event.pull_request.number }}/merge
+    steps:
+      - name: Delete caches scoped to this PR
+        run: |
+          set -euo pipefail
+
+          # Delete by cache id. There is no delete-by-ref endpoint: DELETE
+          # .../actions/caches requires a `key` and answers 422 without one, and
+          # deleting by key prefix would take the refs/heads/main entries that
+          # serve every future run through restore-keys. The ref is re-asserted
+          # per entry so that scoping does not rest on the query parameter alone.
+          entries=$(gh api --paginate \
+            "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100&ref=$REF" \
+            --jq '.actions_caches[] | select(.ref == env.REF) | "\(.id)\t\(.size_in_bytes)"')
+
+          if [ -z "$entries" ]; then
+            echo "No caches on $REF."
+            exit 0
+          fi
+
+          # gh reads stdin, which here is the loop's here-string; without
+          # </dev/null the first call swallows the remaining entries.
+          bytes=0
+          while IFS=$'\t' read -r id size; do
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" </dev/null
+            bytes=$((bytes + size))
+          done <<< "$entries"
+
+          echo "Deleted $(wc -l <<< "$entries") entries on $REF, $((bytes / 1048576)) MB."

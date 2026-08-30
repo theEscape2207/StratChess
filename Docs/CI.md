@@ -67,6 +67,12 @@ run until LRU trims it — an order of magnitude more than one generation, again
 the FetchContent deps cache. That sharing was the risk this change was gated on: churn evicting a
 deps entry costs a fresh clone, turning ccache net negative while every job still reports green.
 
+Cache **scope** makes much of that churn avoidable. A run on a PR writes its six entries to
+`refs/pull/N/merge`, and `actions/cache` reads only from the run's own ref or from the default
+branch — so no other PR, and no run on `main`, can ever restore them. `pr-closed-cleanup.yml`
+deletes them when the PR closes. What accumulates on `refs/heads/main` is the part `restore-keys`
+can still reach.
+
 **The gate was read a week after landing and the change kept** (#385). LRU does evict, and it evicts
 the right entries — an object cache is read once by the next run through `restore-keys` and never
 again, while the deps entries are touched by every Build-tier run, which puts them at the top of the
@@ -227,7 +233,8 @@ Runner image is pinned to `windows-2025-vs2026`, not `windows-latest`, so the to
 when it is changed deliberately — see `.claude/plans/full-build-test-ci-github-actions.md`.
 
 `check-starting-fen.yml` is path-filtered to `StratChessEvolved/game_settings.json` and does not run
-otherwise.
+otherwise. `pr-closed-cleanup.yml` fires once per closed PR — deleting the head branch if it merged,
+and the caches scoped to its ref either way. Both gate nothing.
 
 Self-play stays local-only (`Validate-PrePR.ps1`); its timeout-based nondeterminism is not worth CI
 flakiness. The `[slow]` Catch2 tier runs in `extended-tests` and `sanitize-extended` nightly jobs.

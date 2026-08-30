@@ -22,6 +22,36 @@ Newest first.
 
 ---
 
+## 2026-08-30 — Prune PR-scoped caches when the PR closes (#427)
+
+`delete-merged-branch.yml` renamed to `pr-closed-cleanup.yml` and given a second job. Nothing
+referenced the old filename.
+
+A cache written on `refs/pull/N/merge` is restorable only by another run on that same PR, so at
+close it becomes unreachable and waits for LRU or the 7-day TTL. Measured before the change: **122
+entries, 21.7 GB — 56% of a 39 GB store — against 101 reachable entries on `refs/heads/main`, with
+every one of the 16 PRs holding them already merged or closed.** That backlog was deleted by hand in
+the same piece of work; the job keeps it from returning.
+
+The job runs on every close, not merges only: PR #422 was closed unmerged and still held 1.0 GB.
+
+### Validation
+
+- The endpoint the issue proposed does not exist. `DELETE /actions/caches?ref=…` answers **422
+  Missing required query parameter key** — `key` is required, and deleting by key prefix would take
+  the `refs/heads/main` entries that serve `restore-keys`. The job lists by `ref` and deletes by
+  cache **id** instead, re-asserting `.ref` per entry so scoping does not rest on the query
+  parameter alone.
+- Pipeline run verbatim against live refs before landing: 122 entries deleted across 16 PRs, then
+  re-run on an emptied ref to confirm a clean `exit 0` rather than a failure — the case of a
+  Docs-tier PR that writes no caches at all.
+- Scoping check after the sweep: 101 entries left, all on `refs/heads/main`, `cmake-deps-…` and
+  `win-deps-…` among them.
+- `actions/cache/usage` lags — it still reported the pre-sweep total afterwards. Enumerate
+  `/actions/caches` for a current figure.
+
+---
+
 ## 2026-08-30 — ccache close-out: kill criterion read, degradation path tested (#385)
 
 Closes #92 and #377. No functional change — this is the evidence the ccache work was justified, plus
