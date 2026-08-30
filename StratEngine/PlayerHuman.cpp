@@ -126,8 +126,8 @@ bool PlayerHuman::ParseInput(const std::string& input, Move& move, ePieceType& p
 {
 	auto curIt = input.begin();
 	const auto end = input.end();
-	eSquare from = GetSquare(curIt, end);
-	eSquare to = GetSquare(curIt, end);
+	const eSquare from = GetSquare(curIt, end);
+	const eSquare to = GetSquare(curIt, end);
 	move.SetMove(from, to, MoveType::QUIET); // Generic type for now
 
 	// No promotion this time?
@@ -135,7 +135,7 @@ bool PlayerHuman::ParseInput(const std::string& input, Move& move, ePieceType& p
 		return false;
 
 	// What did he ask for? We must have it in our map! Otherwise should be stopped by regex earlier
-	MapPieces::const_iterator cit = PlayerHuman::GetPromoteMap().find(*curIt);
+	const MapPieces::const_iterator cit = PlayerHuman::GetPromoteMap().find(*curIt);
 	promotedType = cit->second;
 	return true;
 }

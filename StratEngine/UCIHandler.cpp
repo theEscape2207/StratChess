@@ -58,8 +58,8 @@ namespace {
 	{
 		const bool is_mate = std::abs(cp) >= GameValues::Mate_Threshold;
 		if (is_mate) {
-			int plies = GameValues::Mate - std::abs(cp);
-			int mate_n = (plies + 1) / 2;
+			const int plies = GameValues::Mate - std::abs(cp);
+			const int mate_n = (plies + 1) / 2;
 			return "mate " + std::to_string(cp > 0 ? mate_n : -mate_n);
 		}
 		return "cp " + std::to_string(cp);
@@ -96,7 +96,7 @@ void UciHandler::send(std::string_view msg)
 	// Building the string happens on the caller's stack before this call, so it
 	// needs no synchronisation of its own -- only the shared stdout write does.
 	static std::mutex send_mutex;
-	std::lock_guard<std::mutex> lock(send_mutex);
+	const std::lock_guard<std::mutex> lock(send_mutex);
 	std::cout << msg << '\n';
 	std::cout.flush();
 }
@@ -333,9 +333,9 @@ void UciHandler::cmd_position(std::string_view line)
 		if (fen_pos != std::string_view::npos) {
 			auto fen_start = fen_pos + 4;
 			auto moves_pos = line.find(" moves", fen_start);
-			std::string fen = (moves_pos != std::string_view::npos)
-			                      ? std::string(line.substr(fen_start, moves_pos - fen_start))
-			                      : std::string(line.substr(fen_start));
+			const std::string fen = (moves_pos != std::string_view::npos)
+			                            ? std::string(line.substr(fen_start, moves_pos - fen_start))
+			                            : std::string(line.substr(fen_start));
 
 			// A rejected FEN resets to the starting position and says so. Both of
 			// those matter:
@@ -370,7 +370,7 @@ void UciHandler::cmd_position(std::string_view line)
 	auto moves_pos = line.find("moves ");
 	if (moves_pos != std::string_view::npos) {
 		Board replay = board_;
-		std::string moves_str(line.substr(moves_pos + 6));
+		const std::string moves_str(line.substr(moves_pos + 6));
 		std::istringstream ss(moves_str);
 		std::string token;
 		size_t moveCount = 0;
@@ -588,7 +588,7 @@ void UciHandler::cmd_setoption(std::string_view line)
 	const std::string_view value_str = trim(line.substr(value_pos + 5));
 	if (value_str.empty())
 		return;
-	for (char c : value_str) {
+	for (const char c : value_str) {
 		if (c < '0' || c > '9')
 			return; // non-numeric — ignore malformed value
 	}
@@ -646,7 +646,7 @@ void UciHandler::stop_and_join()
 UciHandler::GoParams UciHandler::parse_go(std::string_view line)
 {
 	GoParams p;
-	std::string line_str(line);
+	const std::string line_str(line);
 	std::istringstream ss(line_str);
 	std::string token;
 	while (ss >> token) {

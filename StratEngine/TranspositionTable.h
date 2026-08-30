@@ -124,7 +124,7 @@ class TranspositionTable {
 			num_buckets = 1;
 
 		// use power-of-two bucket count for fast mask indexing
-		size_t buckets = floor_pow2(num_buckets);
+		const size_t buckets = floor_pow2(num_buckets);
 		table.resize(buckets);
 		bucket_locks = std::make_unique<std::shared_mutex[]>(buckets);
 		index_mask = buckets - 1;
@@ -169,11 +169,11 @@ class TranspositionTable {
 
 	std::optional<TTEntry> probe(std::uint64_t key, int current_ply) const
 	{
-		size_t index = static_cast<size_t>(key) & index_mask;
+		const size_t index = static_cast<size_t>(key) & index_mask;
 		const auto& bucket = table[index];
 
 		// shared lock permits many concurrent probes
-		std::shared_lock lock(bucket_locks[index]);
+		const std::shared_lock lock(bucket_locks[index]);
 
 		for (const auto& entry : bucket.entries) {
 			if (entry.key == key) {
@@ -191,13 +191,13 @@ class TranspositionTable {
 	void store(std::uint64_t key, int16_t value, int16_t depth, int16_t ply, Move best_move, BoundType bound,
 	           NodeType node_type, SearchPhase phase)
 	{
-		size_t index = static_cast<size_t>(key) & index_mask;
+		const size_t index = static_cast<size_t>(key) & index_mask;
 		auto& bucket = table[index];
 
 		// exclusive lock per-bucket
-		std::unique_lock lock(bucket_locks[index]);
+		const std::unique_lock lock(bucket_locks[index]);
 
-		uint8_t age = current_age.load(std::memory_order_relaxed);
+		const uint8_t age = current_age.load(std::memory_order_relaxed);
 		size_t replaceIndex = 0;
 		int worst_score = std::numeric_limits<int>::max();
 		bool found_empty = false;
@@ -229,7 +229,7 @@ class TranspositionTable {
 				continue;
 			}
 
-			int score = replacementScore(entry, age);
+			const int score = replacementScore(entry, age);
 			if (score < worst_score) {
 				worst_score = score;
 				replaceIndex = i;
@@ -265,8 +265,8 @@ class TranspositionTable {
 		}
 
 		// Track counts: was entry empty? was it PV before?
-		bool was_empty = (entry.key == 0);
-		NodeType old_node = entry.node_type;
+		const bool was_empty = (entry.key == 0);
+		const NodeType old_node = entry.node_type;
 
 		entry.key = key;
 		entry.value = normalize_for_storage(value, ply);
@@ -361,11 +361,11 @@ class TranspositionTable {
 	int replacementScore(int16_t depth, SearchPhase phase, NodeType node_type, int age_diff) const noexcept
 	{
 		// PV nodes are more valuable to keep
-		int pv_bonus = (node_type == NodeType::PV_NODE) ? 512 : 0;
+		const int pv_bonus = (node_type == NodeType::PV_NODE) ? 512 : 0;
 
 		// depth is remaining search in both phases; quiescence plies are discounted to
 		// the main scale before they compete, so the entry that kept more search wins.
-		int adjusted_depth = (phase == SearchPhase::MAIN) ? depth : quiescenceEquivalentDepth(depth);
+		const int adjusted_depth = (phase == SearchPhase::MAIN) ? depth : quiescenceEquivalentDepth(depth);
 
 		// A quiescence entry resolves captures from a single node; a main-search entry of the
 		// same nominal depth resolves a full-width subtree, and pvs() mines main entries for a
@@ -415,16 +415,16 @@ class TranspositionTable {
 	// Returns whether stored entries were removed.
 	bool clear()
 	{
-		std::scoped_lock g(tt_mutex);
+		const std::scoped_lock g(tt_mutex);
 		if (entry_count.load(std::memory_order_relaxed) == 0) {
 			// With no entries, current_age need not be reset: replacementScore()
 			// compares only age differences, and the next entry adopts this age.
 			return false;
 		}
 
-		size_t buckets = table.size();
+		const size_t buckets = table.size();
 		for (size_t idx = 0; idx < buckets; ++idx) {
-			std::unique_lock lock(bucket_locks[idx]);
+			const std::unique_lock lock(bucket_locks[idx]);
 			for (auto& entry : table[idx].entries) {
 				entry.key = 0;
 				entry.value = 0;

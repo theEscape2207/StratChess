@@ -1,6 +1,8 @@
 # Catch2 REQUIRE controls optional access but is not modeled by clang-tidy.
-# Test code also favors clarity over micro-optimizations.
+# Test code also favors clarity over micro-optimizations, and const on a local that a
+# test never reassigns is noise rather than intent.
 InheritParentConfig: true
 Checks: >
   -bugprone-unchecked-optional-access,
-  -performance-*
+  -performance-*,
+  -misc-const-correctness

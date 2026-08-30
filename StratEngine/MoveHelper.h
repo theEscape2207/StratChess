@@ -79,7 +79,7 @@ namespace MoveHelper {
 
 	[[nodiscard]] static inline bool IsCastling(const Move& move) noexcept
 	{
-		MoveType type = AsType(move);
+		const MoveType type = AsType(move);
 		return (type == MoveType::QUEEN_CASTLE) || (type == MoveType::KING_CASTLE);
 	}
 
@@ -105,7 +105,7 @@ namespace MoveHelper {
 			return false;                 // Cannot capture own piece
 		if (PieceHelper::IsKing(content)) // Cannot take a King
 			return false;
-		MoveType type = AsType(move);
+		const MoveType type = AsType(move);
 		if (((type == MoveType::EP_CAPTURE) || (type == MoveType::DOUBLE_PAWN_PUSH)) && !IsPawnMove(movPiece))
 			return false;
 		switch (type) {

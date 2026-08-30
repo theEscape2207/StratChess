@@ -425,7 +425,7 @@ void Game::AddFileHeader(std::ostream& file) const
 *      Version: 0.8             *
 *********************************
 )";
-	bool ok = STRAT_LOCALTIME(&timeinfo, &now_c); // plain localtime() is not thread-safe
+	const bool ok = STRAT_LOCALTIME(&timeinfo, &now_c); // plain localtime() is not thread-safe
 	// Print the current time -  // RFC 1123 format is like: "Sun, 06 Nov 1994 08:49:37 GMT"
 	if (ok) {
 		file << "Time: " << std::put_time(&timeinfo, "%a, %d %b %Y %H:%M:%S %Z") << "\n\n";
