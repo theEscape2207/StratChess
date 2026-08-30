@@ -61,7 +61,7 @@ runs:
       uses: actions/cache@v6
       with:
         path: ~/ccache-bin
-        key: ccache-bin-4.13.6-${{ runner.os }}
+        key: ccache-bin-4.13.6-D6-THROWAWAY-${{ runner.os }}
 
     # ccache is an accelerator, not a gate: a download or verification failure must not turn
     # a required check red over a transient GitHub hiccup, so every failure path warns and
@@ -143,7 +143,7 @@ runs:
         }
 
         if (-not (Test-Path $bin)) {
-            $archive = "ccache-$version-windows-x86_64.zip"
+            $archive = "ccache-$version-windows-x86_64-D6-THROWAWAY-DOES-NOT-EXIST.zip"
             $url = "https://github.com/ccache/ccache/releases/download/v$version/$archive"
             $tmp = Join-Path $env:RUNNER_TEMP $archive
             try {
