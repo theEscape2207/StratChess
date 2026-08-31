@@ -20,10 +20,10 @@ namespace CastlingRights {
 
 // Possible game states
 enum class GameStates {
-	STILL_PLAYING, // 0
-	WHITE_WON,     // 1
-	BLACK_WON,     // 2
-	DRAW_PAT,      // 3
+	STILL_PLAYING,  // 0
+	WHITE_WON,      // 1
+	BLACK_WON,      // 2
+	DRAW_PAT,       // 3
 	DRAW_50_MOVES,  // 4
 	WHITE_RESIGNED, // 5
 	BLACK_RESIGNED  // 6

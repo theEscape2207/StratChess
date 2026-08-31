@@ -257,9 +257,8 @@ TEST_CASE("Game: an already-high clock cannot overwrite an outcome the mover rep
 {
 	// The precondition on the fifty-move check. A position loaded from a FEN whose clock is past
 	// the limit must not turn a mate, a stalemate or a resignation into a draw.
-	const GameStates reported =
-	    GENERATE(GameStates::WHITE_WON, GameStates::BLACK_WON, GameStates::DRAW_PAT, GameStates::WHITE_RESIGNED,
-	             GameStates::BLACK_RESIGNED);
+	const GameStates reported = GENERATE(GameStates::WHITE_WON, GameStates::BLACK_WON, GameStates::DRAW_PAT,
+	                                     GameStates::WHITE_RESIGNED, GameStates::BLACK_RESIGNED);
 	INFO("reported state: " << static_cast<int>(reported));
 
 	auto game = Game::TestAccess::Make(KR_VS_K_CLOCK_120, scripted({SearchResult{.game_state = reported}}), silent());

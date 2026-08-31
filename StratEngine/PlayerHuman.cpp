@@ -50,8 +50,8 @@ SearchResult PlayerHuman::GetMove(const SearchLimits&)
 			spdlog::default_logger()->warn("User quitted");
 			// Leaving is a resignation, so it names the side that left and the winner follows
 			// from it — both players can be human, and then "the opponent" names nobody.
-			return {.game_state = board.GetCurrentColor() == WHITE ? GameStates::WHITE_RESIGNED
-			                                                      : GameStates::BLACK_RESIGNED};
+			return {.game_state =
+			            board.GetCurrentColor() == WHITE ? GameStates::WHITE_RESIGNED : GameStates::BLACK_RESIGNED};
 		}
 
 		if (!ValidateInput(strMove)) {
