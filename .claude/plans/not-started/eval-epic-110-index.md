@@ -30,7 +30,7 @@ Two depths, deliberately:
 | 8 | #98 + #113 | `mobility-evaluation.md` (landed, deleted) | Sketch | 2 |
 | 9 | #97 | [`king-safety-evaluation.md`](king-safety-evaluation.md) | Sketch | 2 |
 | 10 | #112 | [`minor-piece-outposts.md`](minor-piece-outposts.md) | Sketch | 4 |
-| 11 | #128 (+#118 items 2, 5) | [`endgame-scale-factors.md`](endgame-scale-factors.md) | Sketch | 4 |
+| 11 | #128 (+#118 items 2, 5) | [`endgame-scale-factors.md`](../in-progress/endgame-scale-factors.md) | Full, in progress | 4 |
 | 12 | #131 | [`pawn-hash-table.md`](pawn-hash-table.md) | Sketch | 4 |
 | 13 | #117 | [`texel-tuning.md`](texel-tuning.md) | Sketch | 5 |
 | 14 | #76 | [`eval-progress-incentive.md`](eval-progress-incentive.md) | Sketch | 5 |

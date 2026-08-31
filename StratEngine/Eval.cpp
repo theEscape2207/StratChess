@@ -665,12 +665,12 @@ int EvalComplex::Evaluate(const Board& board) const noexcept
 		             BlendPhase(eval_mobility(ctx, c), ctx.phase);
 	}
 
-	const eColor color = board.GetCurrentColor();
+	// The position's score, in White's point of view: the one value that is a
+	// property of the position rather than of whose turn it is.
+	const int white_pov = (ctx.material[WHITE] + blended[WHITE]) - (ctx.material[BLACK] + blended[BLACK]);
 
-	if (color == WHITE) {
-		return (ctx.material[WHITE] + blended[WHITE]) - (ctx.material[BLACK] + blended[BLACK]);
-	}
-	return (ctx.material[BLACK] + blended[BLACK]) - (ctx.material[WHITE] + blended[WHITE]);
+	// Side-to-move sign, applied in exactly one place.
+	return (board.GetCurrentColor() == WHITE) ? white_pov : -white_pov;
 }
 
 //
