@@ -3,7 +3,7 @@
 // Run() is where a game actually ends: it commits the mover's move, adopts the state that mover
 // reported, adjudicates the fifty-move rule on the position that results, and decides whether to
 // keep going. None of that is reachable from a search test, and self-play cannot reach it either —
-// it cannot deterministically arrive at 99 -> 100, and it can never produce HUMAN_EXITED.
+// it cannot deterministically arrive at 99 -> 100, and it can never produce a resignation.
 //
 // The players here are scripted: each returns a prepared SearchResult per call. That makes every
 // outcome path a deterministic three-line test.
@@ -236,25 +236,30 @@ TEST_CASE("Game: a stalemate reported at the root ends the game", "[game]")
 	CHECK(Game::TestAccess::MovesPlayed(*game) == 0);
 }
 
-TEST_CASE("Game: a human leaving ends the game", "[game]")
+TEST_CASE("Game: a resignation ends the game", "[game]")
 {
-	// HUMAN_EXITED reaches Game as a returned state now that the state-changed event is gone.
-	// Self-play can never produce this one.
+	// A resignation reaches Game as a returned state now that the state-changed event is gone.
+	// Self-play can never produce this one. Both sides are covered because the state names the
+	// resigning side, and only the mover can resign.
+	const GameStates resigned = GENERATE(GameStates::WHITE_RESIGNED, GameStates::BLACK_RESIGNED);
+	INFO("resigned state: " << static_cast<int>(resigned));
+
 	auto game = Game::TestAccess::Make("4k3/8/8/8/8/8/1R6/4K3 w - - 5 60",
-	                                   scripted({SearchResult{.game_state = GameStates::HUMAN_EXITED}}), silent());
+	                                   scripted({SearchResult{.game_state = resigned}}), silent());
 
 	game->Run();
 
-	CHECK(Game::TestAccess::State(*game) == GameStates::HUMAN_EXITED);
+	CHECK(Game::TestAccess::State(*game) == resigned);
 	CHECK(Game::TestAccess::MovesPlayed(*game) == 0);
 }
 
 TEST_CASE("Game: an already-high clock cannot overwrite an outcome the mover reported", "[game]")
 {
 	// The precondition on the fifty-move check. A position loaded from a FEN whose clock is past
-	// the limit must not turn a mate, a stalemate or a human leaving into a draw.
+	// the limit must not turn a mate, a stalemate or a resignation into a draw.
 	const GameStates reported =
-	    GENERATE(GameStates::WHITE_WON, GameStates::BLACK_WON, GameStates::DRAW_PAT, GameStates::HUMAN_EXITED);
+	    GENERATE(GameStates::WHITE_WON, GameStates::BLACK_WON, GameStates::DRAW_PAT, GameStates::WHITE_RESIGNED,
+	             GameStates::BLACK_RESIGNED);
 	INFO("reported state: " << static_cast<int>(reported));
 
 	auto game = Game::TestAccess::Make(KR_VS_K_CLOCK_120, scripted({SearchResult{.game_state = reported}}), silent());

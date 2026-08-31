@@ -237,7 +237,7 @@ void Game::Run()
 
 		// The fifty-move rule is a fact about the position the board now holds, so it is
 		// adjudicated here rather than by a search that never visits that position. It can
-		// only turn a still-running game into a draw: a mate, a stalemate or HUMAN_EXITED
+		// only turn a still-running game into a draw: a mate, a stalemate or a resignation
 		// already reported by the mover takes precedence and is never overwritten.
 		if (committed && game_state_ == GameStates::STILL_PLAYING && board_.halfmove_clock() >= HALFMOVE_CLOCK_LIMIT)
 			game_state_ = GameStates::DRAW_50_MOVES;
@@ -344,8 +344,11 @@ void Game::PrintStateMessage(const IPlayer& mover, const SearchResult& result) c
 		case GameStates::DRAW_50_MOVES:
 			spdlog::default_logger()->info("Its a Draw ! 50 moves has passed since last Capture or peasant move!");
 			break;
-		case GameStates::HUMAN_EXITED:
-			spdlog::default_logger()->info("Human player exited game. Opponent is the Winner!");
+		case GameStates::WHITE_RESIGNED:
+			spdlog::default_logger()->info("White resigned. Black is the Winner!");
+			break;
+		case GameStates::BLACK_RESIGNED:
+			spdlog::default_logger()->info("Black resigned. White is the Winner!");
 			break;
 		case GameStates::STILL_PLAYING:
 		default:

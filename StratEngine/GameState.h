@@ -24,8 +24,9 @@ enum class GameStates {
 	WHITE_WON,     // 1
 	BLACK_WON,     // 2
 	DRAW_PAT,      // 3
-	DRAW_50_MOVES, // 4
-	HUMAN_EXITED   // 5
+	DRAW_50_MOVES,  // 4
+	WHITE_RESIGNED, // 5
+	BLACK_RESIGNED  // 6
 };
 
 // The rule is fifty moves by each side, and Board::halfmove_clock() counts halfmoves.

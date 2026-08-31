@@ -48,7 +48,10 @@ SearchResult PlayerHuman::GetMove(const SearchLimits&)
 		// mulighed for at skrive "quit" eller "exit" for at quitte
 		if (strMove == "exit" || strMove == "quit") {
 			spdlog::default_logger()->warn("User quitted");
-			return {.game_state = GameStates::HUMAN_EXITED};
+			// Leaving is a resignation, so it names the side that left and the winner follows
+			// from it — both players can be human, and then "the opponent" names nobody.
+			return {.game_state = board.GetCurrentColor() == WHITE ? GameStates::WHITE_RESIGNED
+			                                                      : GameStates::BLACK_RESIGNED};
 		}
 
 		if (!ValidateInput(strMove)) {

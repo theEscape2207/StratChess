@@ -9,9 +9,9 @@
 // about how it was reached. It lives in its own header because IPlayer returns it and cannot
 // include a concrete engine.
 //
-// game_state is the outcome the player adjudicated at its own root — a mate or stalemate it
-// found there, or HUMAN_EXITED. It is never DRAW_50_MOVES: the fifty-move rule is a fact about
-// the position after the move is committed, which only the game controller can see.
+// game_state is the outcome the player adjudicated at its own root — a mate, a stalemate or a
+// resignation. It is never DRAW_50_MOVES: the fifty-move rule is a fact about the position
+// after the move is committed, which only the game controller can see.
 //
 // Legacy agents report their unsplit combined work in nodes_searched and leave
 // qnodes_searched at its default; the human player leaves both counters at their defaults.
