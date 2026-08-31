@@ -49,13 +49,16 @@ namespace {
 	// enters or leaves a scaled class moves the child by a fraction of the position's value
 	// instead, in either direction. Both pruners then discard moves they have no bound for.
 	//
-	// Piece count is what the scaled classes have in common, so it is what the guard tests:
-	// the largest of them is six men (a wrong-bishop fortress with three rook pawns), and one
-	// capture above that is seven. A fortress with four or more rook pawns sits outside the
-	// guard -- reaching it needs three captures onto a single file, and no finite count covers
-	// it, since the class admits arbitrarily many doubled pawns.
+	// Piece count is what the scaled classes have in common, so it is what the guard tests. A
+	// class must be inside the guard to be scored safely, and its PARENT must be too, or the
+	// capture that enters it is pruned. The rook classes are at most five men, so parent six,
+	// and eight leaves a ply of slack. The wrong-bishop fortress is 3 + p men for p rook pawns
+	// and has none: p <= 3 is covered on both sides, p == 4 is seven men so only LEAVING it is
+	// covered, and p >= 5 is outside entirely. No finite count fixes that -- the class admits
+	// arbitrarily many doubled pawns -- and raising the threshold would disable pruning in the
+	// eight-man positions that are far more common than a quadrupled rook pawn.
 	//
-	// Pruning is worth little here anyway: a seven-man position has almost no captures to
+	// Pruning is worth little down here anyway: a seven-man position has almost no captures to
 	// prune. The cost is measured in the bench, not assumed.
 	constexpr int MATERIAL_PRUNING_MIN_MEN = 8;
 
