@@ -132,6 +132,16 @@ rather than moving the boundary.
   Paid deliberately either way: the alternative is a transposition table that can be handed a bound
   no position ever had.
 
+### Measured
+
+All of #128 against `b3ab55a`, the last commit before any of it: **+1.98 +/- 3.48 Elo** over 19,980
+games at 10+0.1 (run `33429454765`, `Docs/EloLog.md`). The interval contains zero, so this is a
+non-regression and not a gain — which is the result the change was sized for. The exact-draw classes
+are a rules correction and were never conditional on a match; what needed showing is that they, the
+two rook factors, the narrowed mop-up gate and the disabled quiescence pruners together cost nothing,
+and the row bounds any regression at about 1.5 Elo. The gain the 3.3%-of-games figure suggests does
+not appear at this time control: a correct score at a leaf is worth what the search does with it.
+
 ## 2026-08-31 — Score material that cannot mate as a draw (#128, part 1)
 
 `EvalComplex` had no concept of drawish material: a bare minor against a lone king scored ~+300 and
