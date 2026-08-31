@@ -11,6 +11,7 @@
 #include "defines.h"
 #include "MoveHelper.h"
 #include "MoveFormatter.h"
+#include <bit> // std::popcount
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -41,6 +42,22 @@ namespace {
 	// If a future revision lets helper threads log too, ensure_logger_initialized()
 	// must be made safe to call concurrently (e.g. via std::call_once) first.
 	std::shared_ptr<spdlog::logger> s_logger = nullptr;
+
+	// Both quiescence pruners -- delta and SEE -- assume the evaluation is ADDITIVE IN
+	// MATERIAL: that a child's value is this node's score plus the material the move wins.
+	// The endgame scale (issue #128) is a MULTIPLIER on the whole score, so a capture that
+	// enters or leaves a scaled class moves the child by a fraction of the position's value
+	// instead, in either direction. Both pruners then discard moves they have no bound for.
+	//
+	// Piece count is what the scaled classes have in common, so it is what the guard tests:
+	// the largest of them is six men (a wrong-bishop fortress with three rook pawns), and one
+	// capture above that is seven. A fortress with four or more rook pawns sits outside the
+	// guard -- reaching it needs three captures onto a single file, and no finite count covers
+	// it, since the class admits arbitrarily many doubled pawns.
+	//
+	// Pruning is worth little here anyway: a seven-man position has almost no captures to
+	// prune. The cost is measured in the bench, not assumed.
+	constexpr int MATERIAL_PRUNING_MIN_MEN = 8;
 
 	template <typename Function> class ScopeExit final {
 	  public:
@@ -912,24 +929,15 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	bool moveFound = false;
 	Move best_move = Move::EmptyMove();
 
-	// Delta pruning needs `stand_pat + gain + margin` to bound the child from ABOVE. A
-	// fractional endgame scale (issue #128) breaks that: the stand-pat is discounted while
-	// DeltaGain stays raw material, so a capture that LEAVES the scaled class restores the
-	// full multiplier and the child overshoots the bound by far more than any margin.
-	// Pruning it then stores a bound the position never had, because a node whose every
-	// move was pruned is written EXACT/UPPER below.
-	//
-	// Every fractional scale is a PAWNLESS class, which is the cheap thing to test here and
-	// keeps search from carrying a second copy of the material classification. The scaled
-	// classes that keep pawns are exact zeros against a bare king, where only the defender
-	// has captures and leaving the class lowers its score -- the safe direction, since delta
-	// pruning only ever discards moves for being too small.
-	const auto qboards = td.board.GetBitBoards();
-	const bool pawnless = (qboards[ePiece::WHITE_PAWN] | qboards[ePiece::BLACK_PAWN]) == 0ULL;
+	// Neither pruner has a valid bound near an endgame-scaled class, in either direction --
+	// see MATERIAL_PRUNING_MIN_MEN. A pruned move leaves no trace of the doubt: a node whose
+	// every move was pruned is stored EXACT or UPPER below, so the fabricated score is served
+	// to every later probe.
+	const bool material_bounds_hold = std::popcount(td.board.GetBitBoards()[ALL_PIECES]) >= MATERIAL_PRUNING_MIN_MEN;
 
 	for (const auto& move : moveList) {
 		// Promotions stay: their tactical value is not bounded by immediate material gain.
-		if (!in_check && !pawnless && !MoveHelper::IsPromote(move) &&
+		if (!in_check && material_bounds_hold && !MoveHelper::IsPromote(move) &&
 		    stand_pat +
 		            MoveHelper::DeltaGain(move, td.board.GetEffectiveMovPiece(move), td.board.GetCapturedPiece(move)) +
 		            tuning_.delta_pruning_margin <
@@ -942,7 +950,13 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 		// `IsCapture()` keeps capture-promotions, which see_ge scores as losing on a defended square
 		// though the pawn was promoting anyway. And SEE ignores pins, so a pruned move carries no
 		// proof it cannot beat alpha, unlike a delta-pruned one; see the store note below.
-		if (!in_check && tuning_.see_pruning_enabled && MoveHelper::IsCapture(move) && !See::see_ge(td.board, move, 0))
+		// A fourth guard, `material_bounds_hold`, for the same reason delta pruning carries it:
+		// SEE is a pure-material test, so near a scaled class it discards exactly the sacrifices
+		// whose value IS the class change -- RxN into a drawn K vs K+N reads as -180 and is the
+		// only drawing resource. That case predates the scale factors: the exact-draw classes
+		// alone are enough to produce it.
+		if (!in_check && material_bounds_hold && tuning_.see_pruning_enabled && MoveHelper::IsCapture(move) &&
+		    !See::see_ge(td.board, move, 0))
 			continue;
 
 		if (!td.board.DoMove(move))

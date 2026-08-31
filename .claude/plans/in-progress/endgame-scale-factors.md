@@ -191,22 +191,32 @@ into, which bounds the blast radius of this change to qsearch leaves and the sta
   The hole is new with the fractional scales: every scale-0 class has a bare defender, so no
   class-exiting capture exists to mispredict.
 
-  **Fixed, after first being deferred.** The argument for deferring — that `pvs()` prunes no captures,
-  so the error is confined to the deepest ply — was wrong about the consequence. A quiescence node
-  whose every move is pruned is stored EXACT or UPPER (`AIPerplex.cpp`, the `!moveFound` branch), so
-  the false bound enters the transposition table and is served to other nodes. That is not confined
-  to anything.
+  **Fixed, after two wrong answers.** The first was to defer it, on the argument that `pvs()` prunes
+  no captures so the error is confined to the deepest ply. That was wrong about the consequence: a
+  quiescence node whose every move is pruned is stored EXACT or UPPER (`AIPerplex.cpp`, the
+  `!moveFound` branch), so the false bound enters the transposition table and is served to other
+  nodes. Confined to nothing.
 
-  `quiescence()` now skips delta pruning in **pawnless** positions. Every fractional scale is a
-  pawnless class, so that one test on bitboards already in cache restores the bound's soundness
-  without search carrying a second copy of the material classification — the coupling is recorded on
-  the scale constants in `Eval.h`, since a future fractional scale for a class with pawns would
-  silently reopen it. The scaled classes that keep pawns are exact zeros against a bare king, where
-  only the defender has captures and leaving the class *lowers* its score, which is the safe
-  direction for a rule that only ever discards moves for being too small.
+  The second was to skip delta pruning in **pawnless** positions, reasoning that every fractional
+  scale is a pawnless class. True, and irrelevant — it guards the wrong side of the transition. The
+  dangerous move is the one that *enters* a scaled class, whose parent still has the pawn it is about
+  to capture. Scaling pulls a score toward zero, so for the side that is behind, entering a scaled
+  class is a large *gain*: `8/8/8/3k4/7r/5n2/p7/R1K5 w` bounds `Rxa2` at -226 against a true -84.
+  The same holds for the fortress, and the pawnless guard's own comment certified a safety property
+  that case disproves.
 
-  Regression: `4k3/8/8/8/7r/5N2/8/R3K3 w - - 0 1` with alpha one centipawn above the delta bound —
-  stand-pat 76, alpha 777, and the node must exceed alpha rather than returning 76.
+  What actually holds is broader than delta pruning and broader than the fractional scales: **both
+  quiescence pruners assume the evaluation is additive in material, and any scale is a multiplier.**
+  SEE has the same hole and needs the same guard — `4k3/8/8/8/1n6/3n4/8/3R2K1 w` prunes `Rxd3` at
+  SEE -180 though it is the only drawing resource, and that case is reachable from the exact-draw
+  classes alone, so it has been live since part 1.
+
+  `quiescence()` now disables both pruners below `MATERIAL_PRUNING_MIN_MEN` men. Piece count is what
+  the scaled classes have in common, so it covers both directions and both pruners without search
+  carrying a second copy of the material classification.
+
+  Regressions: one per direction, plus the SEE case, each with alpha one centipawn above the bound
+  that would discard the move.
 
 ## Validation
 

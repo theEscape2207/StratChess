@@ -56,19 +56,30 @@ K+R that turned a +4 cp reward for walking the winning king toward the cornered 
 penalty — the item 4 defect reinstated across K+R+R vs K+R, K+Q+R vs K+R and K+R+B+N vs K+R, all won
 by exactly that walk. A rook cannot check a queen away from a corner; only a queen can.
 
-**Quiescence stops delta-pruning in pawnless positions.** A fractional scale breaks delta pruning's
-premise that `stand_pat + DeltaGain + margin` bounds the child from above: the stand-pat is
-discounted while `DeltaGain` stays raw material, so a capture that *leaves* the scaled class restores
-the full multiplier and overshoots the bound. In `4k3/8/8/8/7r/5N2/8/R3K3 w - - 0 1` the stand-pat is
-+76 and `Nxh4` is worth +824, against a bound of 776 — so with alpha between them the winning capture
-is discarded, and because a node whose every move was pruned is stored EXACT/UPPER, the false bound
-reaches the transposition table. Every fractional scale is a pawnless class, so one test on bitboards
-already in cache restores soundness without search carrying a second material classification. The
-coupling is recorded on the scale constants in `Eval.h`.
+**Quiescence stops delta and SEE pruning near a scaled class.** Both pruners assume the evaluation is
+*additive in material* — that a child's value is this node's score plus the material the move wins. A
+scale is a *multiplier* on the whole score, so a capture that enters or leaves a scaled class moves
+the child by a fraction of the position's value instead, in either direction, and neither pruner has
+a bound. A pruned move leaves no trace: a node whose every move was pruned is stored EXACT or UPPER,
+so the fabricated score is served to every later probe.
 
-The exact-zero classes that keep pawns are unaffected: they are fortresses against a bare king, where
-only the defender has captures and leaving the class lowers its score — the safe direction for a rule
-that only discards moves for being too small.
+Four reachable cases, all verified against the built engine:
+
+| Position (side to move) | Move | Bound | True value | Class entered/left |
+|---|---|---:|---:|---|
+| `4k3/8/8/8/7r/5N2/8/R3K3 w` | `Nxh4` | 776 | 824 | leaves KR+minor vs KR |
+| `8/8/8/3k4/7r/5n2/p7/R1K5 w` | `Rxa2` | -226 | -84 | enters KR vs KR+minor |
+| `k7/1N6/8/P1K1B3/8/8/8/8 b` | `Kxb7` | -269 | 0 | enters the fortress |
+| `4k3/8/8/8/1n6/3n4/8/3R2K1 w` | `Rxd3` | SEE -180 | 0 | enters K vs K+N |
+
+The last needs no scale factors at all — the exact-draw classes from part 1 are enough to produce it,
+so that one has been live on `main` since then.
+
+The guard is a piece count, `MATERIAL_PRUNING_MIN_MEN`, because piece count is what the scaled
+classes have in common and it covers both directions without search carrying a second copy of the
+material classification. The largest scaled class is six men (a fortress with three rook pawns) and
+one capture above that is seven. A fortress with four or more rook pawns sits outside it; no finite
+count covers that, since the class admits arbitrarily many doubled pawns.
 
 ### Validation
 
@@ -86,15 +97,19 @@ that only discards moves for being too small.
 - Falsified: each of the three changes stubbed out in turn makes its own cases fail and nothing
   else's.
 - Release and Debug suites both pass.
-- The delta-pruning fix is falsified: neutering the pawnless flag makes the new qsearch case return
-  its stand-pat of 76 against an alpha of 777, and nothing else in the suite moves.
-- `Run-Bench.ps1` at depth 12, interleaved before/after, seven pairs: **2,914k vs 2,883k nps
-  (-1.04%)**, six of seven pairs negative. Node counts and best moves are identical — every bench
-  position has pawns, so the pruning guard changes no search there and this stays a clean speed
-  comparison. Roughly half the cost is the classifier's early-out becoming three branches instead of
-  one (queens leave first, then pawns); the other half is the guard's per-node test. Paid
-  deliberately: the alternative is a transposition table that can be handed a bound no position
-  ever had.
+- Four `[qsearch]` cases, one per row of the table above, each placing alpha one centipawn above the
+  bound that would discard the move. All four fail with the guard neutered and pass with it. Two
+  existing quiescence fixtures moved above the man count so they keep exercising the pruners they
+  were written for.
+- `Run-Bench.ps1` at depth 12, interleaved before/after, **fourteen pairs: 2,921k vs 2,890k nps,
+  mean -1.08%, median -0.85%, 13 of 14 negative.** The mean is dragged by a single -6.3% pair; the
+  second batch of seven was uniform at -0.79%, which is the figure to believe. Both are reported
+  because either batch alone would have misled.
+  Five of the bench's six positions keep identical node counts and best moves; `rook-endgm` gains
+  four quiescence nodes out of 1.56M and keeps its best move — the guard doing its job in the one
+  genuinely small endgame in the set. Roughly half the cost is the classifier's early-out becoming
+  three branches instead of one; the rest is the guard. Paid deliberately: the alternative is a
+  transposition table that can be handed a bound no position ever had.
 
 ## 2026-08-31 — Score material that cannot mate as a draw (#128, part 1)
 
