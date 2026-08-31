@@ -65,10 +65,16 @@ namespace {
 	// ADDING A SCALED CLASS whose smaller side holds three or more men invalidates the
 	// threshold -- see the note on the scale constants in Eval.h.
 	//
-	// Promotions need no thought here: a promotion puts a queen on the board and EndgameScale
-	// leaves on the first queen it sees, so no promotion can enter a scaled class, and the one
-	// scaled class holding pawns has a bare defender, so it offers no capture-promotion to
-	// leave by.
+	// Promotions are covered by the same count, and by nothing else: underpromotion reaches a
+	// scaled class with no queen anywhere (K+R+P vs K+R+R, bxa8=N gives K+R+N vs K+R), so any
+	// argument resting on "a promotion puts a queen on the board" is false. It does not need
+	// one -- a promotion changes no man count and a capture-promotion removes exactly one, so
+	// the bound above already holds for them.
+	//
+	// Three would very likely do: the side a scale HELPS is the side that is behind, and in
+	// every class that side holds at most two men, which it keeps across its own capture. That
+	// is a property of which side benefits rather than of which side is smaller, and it is the
+	// more fragile of the two to hang a pruning guard on, so this keeps the coarser bound.
 	//
 	// Pruning is worth little down here anyway: a side reduced to three men has almost no
 	// captures to prune. Two popcounts cost fractionally more than one, and the real cost is
@@ -949,14 +955,18 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// see MATERIAL_PRUNING_MIN_PIECES. A pruned move leaves no trace of the doubt: a node whose
 	// every move was pruned is stored EXACT or UPPER below, so the fabricated score is served
 	// to every later probe.
-	const auto qboards = td.board.GetBitBoards();
-	const bool material_bounds_hold =
-	    std::min(std::popcount(qboards[ePiece::ALL_WHITE_PIECES]), std::popcount(qboards[ePiece::ALL_BLACK_PIECES])) >=
-	    MATERIAL_PRUNING_MIN_PIECES;
+	//
+	// Short-circuited on `!in_check` because both pruners already are, so an evasion node pays
+	// nothing for a count it cannot read.
+	const bool material_bounds_hold = !in_check && [&] {
+		const auto qboards = td.board.GetBitBoards();
+		return std::min(std::popcount(qboards[ePiece::ALL_WHITE_PIECES]),
+		                std::popcount(qboards[ePiece::ALL_BLACK_PIECES])) >= MATERIAL_PRUNING_MIN_PIECES;
+	}();
 
 	for (const auto& move : moveList) {
 		// Promotions stay: their tactical value is not bounded by immediate material gain.
-		if (!in_check && material_bounds_hold && !MoveHelper::IsPromote(move) &&
+		if (material_bounds_hold && !MoveHelper::IsPromote(move) &&
 		    stand_pat +
 		            MoveHelper::DeltaGain(move, td.board.GetEffectiveMovPiece(move), td.board.GetCapturedPiece(move)) +
 		            tuning_.delta_pruning_margin <
@@ -964,17 +974,18 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 			continue;
 
 		// Drop captures that lose material by static exchange. Three guards, all load-bearing:
-		// `!in_check` sits outside the tuning flag because in check the list is every legal evasion
-		// and an empty survivor set reads as checkmate below — pruning one fabricates a mate score.
+		// `material_bounds_hold` carries the `!in_check` this used to test directly, and it must
+		// stay outside the tuning flag: in check the list is every legal evasion and an empty
+		// survivor set reads as checkmate below — pruning one fabricates a mate score.
 		// `IsCapture()` keeps capture-promotions, which see_ge scores as losing on a defended square
 		// though the pawn was promoting anyway. And SEE ignores pins, so a pruned move carries no
 		// proof it cannot beat alpha, unlike a delta-pruned one; see the store note below.
-		// A fourth guard, `material_bounds_hold`, for the same reason delta pruning carries it:
+		// The rest of `material_bounds_hold` is there for the same reason delta pruning carries it:
 		// SEE is a pure-material test, so near a scaled class it discards exactly the sacrifices
 		// whose value IS the class change -- RxN into a drawn K vs K+N reads as -180 and is the
 		// only drawing resource. That case predates the scale factors: the exact-draw classes
 		// alone are enough to produce it.
-		if (!in_check && material_bounds_hold && tuning_.see_pruning_enabled && MoveHelper::IsCapture(move) &&
+		if (material_bounds_hold && tuning_.see_pruning_enabled && MoveHelper::IsCapture(move) &&
 		    !See::see_ge(td.board, move, 0))
 			continue;
 

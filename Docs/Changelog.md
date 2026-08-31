@@ -108,6 +108,10 @@ rather than moving the boundary.
   asserting it survives — so a scale retune fails on the premise rather than looking like a pruning
   bug. All five fail with the guard neutered. The eight-man fortress case fails specifically under a
   man-count guard while the other four pass, which is what pins the choice of metric.
+- The threshold itself is pinned from **both** sides, which the survival cases alone cannot do —
+  every one of them has a smaller side of one or two men, so lowering the constant would have left
+  the suite green. Raising it to five fails the two boundary cases; lowering it to three fails the
+  case one man below the boundary; four passes everything.
 - Two existing quiescence fixtures were below the guard and would have gone vacuous; both moved
   above it so they keep exercising the pruners they were written for.
 - `Run-Bench.ps1` at depth 12, interleaved before/after, **twenty-four pairs over two batches: nps
@@ -119,6 +123,12 @@ rather than moving the boundary.
   difference of 38 out of 14.2M, all in `rook-endgm`, which keeps its best move. Seven of the
   eight bench positions are identical. So the tree is effectively unchanged on this set and the
   time column is the whole story.
+  What the bench does **not** cover is the region the guard actually acts on. Its footprint is the
+  sparse-but-lopsided ending — a side down to three men — and the bench is almost entirely above
+  that, so the bound above says the change is cheap where the engine spends its time, not that it is
+  cheap where the guard fires. Positions like KR+3P vs KR or KQ vs KR now run quiescence with both
+  pruners off despite scoring at full scale; that is wider than safety strictly requires, and it is
+  the deliberate price of keying on a count rather than on the class list.
   Paid deliberately either way: the alternative is a transposition table that can be handed a bound
   no position ever had.
 

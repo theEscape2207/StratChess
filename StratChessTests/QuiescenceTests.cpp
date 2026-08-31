@@ -26,7 +26,7 @@ TEST_CASE("Qsearch - delta pruning keeps a king capture that wins a pawn", "[sea
 {
 	// Kxd2 wins an undefended pawn. It is the only capture available, and the rooks
 	// keep the position clear of insufficient-material handling so the gain shows up.
-	// The four flank pawns put the position above MATERIAL_PRUNING_MIN_MEN, which is
+	// The four flank pawns bring each side to exactly MATERIAL_PRUNING_MIN_PIECES, which is
 	// what keeps delta pruning switched on and this case discriminating. They stand on
 	// the kingside because the a4 rook would answer Kxd2 with Rxa2, making the line
 	// material-neutral and leaving the assertion resting on a PST remainder.
@@ -65,7 +65,16 @@ namespace {
 	// anything about pruning: both scale magnitudes are tuning parameters Eval.h reserves
 	// the right to change, and a retune that erased the discontinuity would otherwise fail
 	// in the pruning assertion and read as a search bug.
-	int capture_value(const char* resulting_fen) { return -AIPerlexTestFixture(resulting_fen).evaluate(); }
+	int capture_value(const char* resulting_fen)
+	{
+		const AIPerlexTestFixture after(resulting_fen);
+		// A FEN Board rejects -- an illegal one included -- leaves an empty board, which scores
+		// zero and so satisfies every premise these are used for. Release does not assert on the
+		// rejection, so without this the case passes while testing nothing.
+		REQUIRE(after.board_.GetMaterialScore(WHITE) + after.board_.GetMaterialScore(BLACK) >
+		        2 * g_iPieceValues[ePiece::WHITE_KING >> 1]);
+		return -after.evaluate();
+	}
 } // namespace
 
 TEST_CASE("Qsearch - a capture that leaves a scaled endgame class is not pruned", "[search][qsearch]")
@@ -111,10 +120,11 @@ TEST_CASE("Qsearch - a capture that enters the wrong-bishop fortress is not prun
 	REQUIRE_FALSE(fix.board_.InCheck());
 
 	const int alpha = pruning_threshold_alpha(fix, ePiece::WHITE_KNIGHT);
+	INFO("stand_pat = " << fix.evaluate() << ", alpha = " << alpha);
+	REQUIRE(capture_value("8/1k6/8/P1K1B3/8/8/8/8 w - - 0 1") > alpha); // premise: Kxb7 beats the bound
+
 	const int score = fix.quiesce_node(alpha, GameValues::Search_Init, AIPerlexTestFixture::QSEARCH_BUDGET,
 	                                   /*ply=*/0);
-
-	INFO("stand_pat = " << fix.evaluate() << ", alpha = " << alpha << ", qsearch = " << score);
 	CHECK(score > alpha);
 }
 
@@ -162,6 +172,31 @@ TEST_CASE("Qsearch - delta pruning is still enabled at the guard's boundary", "[
 
 	INFO("qnodes with pruning = " << on.qnodes() << ", without = " << off.qnodes());
 	CHECK(on.qnodes() < off.qnodes());
+}
+
+TEST_CASE("Qsearch - the guard is still off one man below its boundary", "[search][qsearch]")
+{
+	// Pins MATERIAL_PRUNING_MIN_PIECES from BELOW. Every other case here has a smaller side of
+	// one or two men, so lowering the constant to three would leave the whole suite green while
+	// breaking the margin the proof relies on.
+	//
+	// Three men a side, and Nxh4 reaches K+R+N vs K+R -- a scaled class one capture away, which
+	// is exactly the configuration the threshold exists to keep pruning away from. Alpha sits
+	// above the delta bound, so a node that prunes returns its stand-pat untouched.
+	//
+	// Nxh4 must be the ONLY capture: any second one whose gain clears the bound is searched
+	// whatever the guard does, and the case stops discriminating. Black's rook sits on c8 for
+	// that reason, out of reach of both white pieces.
+	AIPerlexTestFixture fix("2r1k3/8/8/8/7b/5N2/8/R2K4 w - - 0 1");
+	REQUIRE_FALSE(fix.board_.InCheck());
+
+	const int stand_pat = fix.evaluate();
+	const int alpha = pruning_threshold_alpha(fix, ePiece::WHITE_BISHOP);
+	const int score = fix.quiesce_node(alpha, GameValues::Search_Init, AIPerlexTestFixture::QSEARCH_BUDGET,
+	                                   /*ply=*/0);
+
+	INFO("stand_pat = " << stand_pat << ", alpha = " << alpha << ", qsearch = " << score);
+	CHECK(score > stand_pat);
 }
 
 TEST_CASE("Qsearch - SEE does not discard a sacrifice into a drawn class", "[search][qsearch]")
@@ -545,7 +580,7 @@ TEST_CASE("Search - see_pruning_enabled actually reaches the quiescence loop", "
 	// material must search fewer quiescence edges with pruning on. Rxd5 takes a defended knight
 	// and exd5 recaptures, so SEE is 300 - 500 = -200. The defender has to be the e6 pawn: from
 	// e7 it attacks d6 and f6, and the knight would be hanging rather than defended. The four
-	// flank pawns put the position above MATERIAL_PRUNING_MIN_MEN, where SEE pruning runs; none
+	// flank pawns bring White to exactly MATERIAL_PRUNING_MIN_PIECES, where SEE pruning runs; none
 	// of them is reachable by a black piece, so White's only capture is still Rxd5.
 	const char* fen = "4k3/6pp/4p3/3n4/8/8/PP6/3RK3 w - - 0 1";
 
