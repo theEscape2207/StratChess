@@ -215,7 +215,14 @@ TEST_CASE("Player factory maps AIPerplex evaluator tuning threads and logging be
 	                                                  .delta_pruning_margin = 211,
 	                                                  .aspiration_initial_delta = 61,
 	                                                  .aspiration_max_retries = 7,
-	                                                  .aspiration_enabled = false};
+	                                                  .aspiration_enabled = false,
+	                                                  .lmr_min_depth = 5,
+	                                                  .lmr_min_move_index = 6,
+	                                                  .lmr_enabled = false,
+	                                                  .null_move_enabled = false,
+	                                                  .null_move_reduction = 4,
+	                                                  .null_move_min_depth = 7,
+	                                                  .see_pruning_enabled = false};
 
 	auto player = CreatePlayer(config, board, {.verbose_search_logging = true});
 	AIPerplex& search = SearchPlayerTestFixture::search(*player);
@@ -232,6 +239,13 @@ TEST_CASE("Player factory maps AIPerplex evaluator tuning threads and logging be
 	CHECK(tuning.aspiration_initial_delta == 61);
 	CHECK(tuning.aspiration_max_retries == 7);
 	CHECK_FALSE(tuning.aspiration_enabled);
+	CHECK(tuning.lmr_min_depth == 5);
+	CHECK(tuning.lmr_min_move_index == 6);
+	CHECK_FALSE(tuning.lmr_enabled);
+	CHECK_FALSE(tuning.null_move_enabled);
+	CHECK(tuning.null_move_reduction == 4);
+	CHECK(tuning.null_move_min_depth == 7);
+	CHECK_FALSE(tuning.see_pruning_enabled);
 	CHECK(player->getDescription() ==
 	      "\n\tEngine type:\tPerplexity Transpositional AlphaBeta\n\tDepth:\t\t2\n\tEvaluation:\tSimple\n");
 }

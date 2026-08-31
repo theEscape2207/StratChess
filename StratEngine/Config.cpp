@@ -196,6 +196,13 @@ namespace {
 			t.aspiration_initial_delta = st.value("aspiration_initial_delta", 50);
 			t.aspiration_max_retries = st.value("aspiration_max_retries", 4);
 			t.aspiration_enabled = st.value("aspiration_enabled", true);
+			t.lmr_min_depth = st.value("lmr_min_depth", 3);
+			t.lmr_min_move_index = st.value("lmr_min_move_index", 3);
+			t.lmr_enabled = st.value("lmr_enabled", true);
+			t.null_move_enabled = st.value("null_move_enabled", true);
+			t.null_move_reduction = st.value("null_move_reduction", 3);
+			t.null_move_min_depth = st.value("null_move_min_depth", 3);
+			t.see_pruning_enabled = st.value("see_pruning_enabled", true);
 			cfg.search_tuning = t;
 		}
 

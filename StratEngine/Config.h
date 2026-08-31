@@ -22,6 +22,13 @@ class Config final {
 		int aspiration_initial_delta{50};
 		int aspiration_max_retries{4};
 		bool aspiration_enabled{true};
+		int lmr_min_depth{3};
+		int lmr_min_move_index{3};
+		bool lmr_enabled{true};
+		bool null_move_enabled{true};
+		int null_move_reduction{3};
+		int null_move_min_depth{3};
+		bool see_pruning_enabled{true};
 	};
 
 	struct PlayerConfig {
