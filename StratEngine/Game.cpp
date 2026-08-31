@@ -252,9 +252,13 @@ void Game::Run()
 		if (!IsStillPlaying()) // Test om spillet er slut
 			break;
 
-		// A null move with the game still running means the user typed "exit" or "quit".
-		if (HasHumanExited(result.best_move)) {
-			spdlog::default_logger()->warn("User has exited the game\n");
+		// A running game whose mover produced no move. PlayerAiBase::GetBestMove asserts against
+		// it, so in a Debug build this is unreachable; a limit in game_settings.json tight enough
+		// to stop a search before its first root move reaches it in Release. Stopping matters
+		// because the side to move is unchanged, so the loop would ask the same player for the
+		// same move forever.
+		if (MoverProducedNoMove(result.best_move)) {
+			spdlog::default_logger()->error("Player returned no move in a running game - stopping the game");
 			break;
 		}
 	}
