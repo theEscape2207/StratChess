@@ -72,11 +72,11 @@ by exactly that walk. A rook cannot check a queen away from a corner; only a que
 - Falsified: each of the three changes stubbed out in turn makes its own cases fail and nothing
   else's.
 - Release and Debug suites both pass.
-- `Run-Bench.ps1` at depth 12, interleaved before/after, seven pairs: **2,932k vs 2,915k nps
-  (-0.55%)**, every pair negative. Node counts and best moves are identical, so this is a clean
-  speed comparison and the bench positions never reach a scaled class. The cost is the classifier's
-  early-out becoming three branches instead of one: queens leave first, then pawns, and only a
-  pawnless position or a knight- and rook-less one goes further.
+- `Run-Bench.ps1` at depth 12, interleaved before/after, seven pairs: **2,951k vs 2,937k nps
+  (-0.47%)**, six of seven pairs negative. Node counts and best moves are identical, so this is a
+  clean speed comparison and the bench positions never reach a scaled class. The cost is the
+  classifier's early-out becoming three branches instead of one: queens leave first, then pawns, and
+  only a pawnless position or a knight- and rook-less one goes further.
 
 ## 2026-08-31 — Score material that cannot mate as a draw (#128, part 1)
 
