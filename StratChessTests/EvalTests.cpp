@@ -1872,6 +1872,60 @@ TEST_CASE("Eval - the scaled rook classes are stated as exact counts", "[eval]")
 	}
 }
 
+// ── Wrong-coloured-bishop fortress (issue #128) ──────────────────────────────
+//
+// The one class the classifier decides from a square rather than from a count,
+// so it needs the complements a piece-count rule does not: the same material
+// with the defending king out of the corner, with the other bishop, and with the
+// pawn off the rook file are all still wins and are asserted as such.
+
+TEST_CASE("Eval - the wrong-coloured-bishop fortress scores exactly a draw", "[eval]")
+{
+	// White's bishop cannot cover the promotion square and the black king is
+	// already standing on it. Both rook files, since the promotion squares are
+	// opposite colours and the bishop that draws differs between them.
+	const char* fen = GENERATE("k7/8/P7/2K1B3/8/8/8/8 w - - 0 1",  // a-pawn, a8 light, dark bishop
+	                           "7k/8/7P/5K2/4B3/8/8/8 w - - 0 1"); // h-pawn, h8 dark, light bishop
+	CAPTURE(fen);
+
+	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+
+	for (const std::string& colored : {std::string(fen), MirrorFen(fen)}) {
+		for (const char stm : {'w', 'b'}) {
+			std::string position = colored;
+			position[position.find(' ') + 1] = stm;
+			CAPTURE(position);
+
+			Board board(position);
+			REQUIRE(eval->Evaluate(board) == GameValues::Draw);
+		}
+	}
+}
+
+TEST_CASE("Eval - the fortress condition is the defending king, not the material", "[eval]")
+{
+	// Each of these is one detail away from the drawn case above and is won.
+	// Without them a piece-count-only rule would pass the case above while
+	// clamping every one of these to zero.
+	const char* fen = GENERATE("4k3/8/P7/2K1B3/8/8/8/8 w - - 0 1",   // king out of the corner
+	                           "k7/8/P7/2K2B2/8/8/8/8 w - - 0 1",    // the bishop that covers a8
+	                           "k7/8/1P6/2K1B3/8/8/8/8 w - - 0 1",   // knight pawn, not a rook pawn
+	                           "k7/8/P7/2K1BB2/8/8/8/8 w - - 0 1");  // a second bishop covers a8
+	CAPTURE(fen);
+
+	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
+	REQUIRE(complexEval != nullptr);
+
+	for (const std::string& colored : {std::string(fen), MirrorFen(fen)}) {
+		CAPTURE(colored);
+		Board board(colored);
+
+		REQUIRE(complexEval->Breakdown(board).endgame_scale == ENDGAME_SCALE_MAX);
+		REQUIRE(eval->Evaluate(board) > 300);
+	}
+}
+
 TEST_CASE("Eval - a kingless board reaches the terms that guard against it", "[eval]")
 {
 	// Companion to the whole-position kingless case near the top of this file,

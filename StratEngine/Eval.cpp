@@ -9,6 +9,13 @@
 
 #include <bit> // std::popcount
 
+// Square 0 is a8, a LIGHT square, and bit 0 of this mask is clear -- so the mask
+// holds the DARK squares. Named for what it actually contains: eval_bishops' pair
+// test is invariant under swapping the two, but the wrong-coloured-bishop
+// fortress asks which colour a specific square is, and a mislabelled constant
+// would put the fortress in the wrong corner.
+static constexpr BITBOARD DARK_SQUARES = 0x55AA55AA55AA55AAULL;
+
 // static Factory constructor
 std::unique_ptr<EvalManager> EvalManager::Create(EvalTypes type)
 {
@@ -260,13 +267,6 @@ ScorePair EvalComplex::eval_rooks(const EvalContext& ctx, eColor color) noexcept
 // for them anyway. One mask and two tests, so correctness is free here.
 ScorePair EvalComplex::eval_bishops(const EvalContext& ctx, eColor color) noexcept
 {
-	// Square 0 is a8, a LIGHT square, and bit 0 of this mask is clear -- so the
-	// mask holds the DARK squares. Named for what it actually contains: the
-	// pair test is invariant under swapping the two, but a mislabelled constant
-	// would mislead the next term that needs square colour for real (bishop-on
-	// -own-pawn-colour, opposite-coloured-bishop draw scaling).
-	static constexpr BITBOARD DARK_SQUARES = 0x55AA55AA55AA55AAULL;
-
 	const ePiece bishopPiece = (color == WHITE) ? ePiece::WHITE_BISHOP : ePiece::BLACK_BISHOP;
 	const BITBOARD bishops = ctx.boards[bishopPiece];
 
@@ -652,10 +652,18 @@ int EvalComplex::EndgameScale(std::span<const BITBOARD> boards) noexcept
 		return ENDGAME_SCALE_MAX;
 
 	// A pawn promotes, so no piece count can call a position holding one drawn.
-	// Together with the queen test above this is the exit for nearly every
-	// position the engine evaluates, and nothing has been counted yet.
-	if ((boards[ePiece::WHITE_PAWN] | boards[ePiece::BLACK_PAWN]) != 0ULL)
-		return ENDGAME_SCALE_MAX;
+	// The single exception is the wrong-coloured-bishop fortress, and that class
+	// has nothing on the board but kings, one bishop and rook pawns — so the
+	// inner test sends every position still holding a knight or a rook out of
+	// here. Together with the queen test above these ORs are the exit for nearly
+	// every position the engine evaluates, and nothing has been counted yet.
+	if ((boards[ePiece::WHITE_PAWN] | boards[ePiece::BLACK_PAWN]) != 0ULL) {
+		if ((boards[ePiece::WHITE_KNIGHT] | boards[ePiece::BLACK_KNIGHT] | boards[ePiece::WHITE_ROOK] |
+		     boards[ePiece::BLACK_ROOK]) != 0ULL)
+			return ENDGAME_SCALE_MAX;
+
+		return WrongBishopFortress(boards);
+	}
 
 	// Pawnless from here.
 	if ((boards[ePiece::WHITE_ROOK] | boards[ePiece::BLACK_ROOK]) != 0ULL)
@@ -690,6 +698,68 @@ int EvalComplex::EndgameScale(std::span<const BITBOARD> boards) noexcept
 
 	// Bishop and knight, two bishops, and three or more minors all mate.
 	return ENDGAME_SCALE_MAX;
+}
+
+//
+//	WrongBishopFortress() :
+//	Description: The pawns-on-the-board branch of EndgameScale(), reached only
+//	             once queens, knights and rooks are known absent.
+//	Returns:	 0 for the canonical wrong-coloured-bishop rook-pawn fortress,
+//	             ENDGAME_SCALE_MAX otherwise.
+//
+// The one class here that is not a piece-count rule, and the reason is that the
+// same material is winning when the defending king stands outside the corner:
+// the bishop cannot cover the promotion square, but it does not need to if the
+// king can be kept away from it. So the counts below only say which corner to
+// look at, and the king test is what decides.
+//
+int EvalComplex::WrongBishopFortress(std::span<const BITBOARD> boards) noexcept
+{
+	const BITBOARD whitePawns = boards[ePiece::WHITE_PAWN];
+	const BITBOARD blackPawns = boards[ePiece::BLACK_PAWN];
+
+	// Pawns on both sides: the defender has a passer of its own to play for.
+	if (whitePawns != 0ULL && blackPawns != 0ULL)
+		return ENDGAME_SCALE_MAX;
+
+	const bool whiteAttacks = (whitePawns != 0ULL);
+	const BITBOARD attackerPawns = whiteAttacks ? whitePawns : blackPawns;
+	const BITBOARD attackerBishops = boards[whiteAttacks ? ePiece::WHITE_BISHOP : ePiece::BLACK_BISHOP];
+
+	// The defender is a bare king, and the attacker holds exactly one bishop —
+	// two of them cover both square colours between them and win.
+	if (boards[whiteAttacks ? ePiece::BLACK_BISHOP : ePiece::WHITE_BISHOP] != 0ULL)
+		return ENDGAME_SCALE_MAX;
+	if (std::popcount(attackerBishops) != 1)
+		return ENDGAME_SCALE_MAX;
+
+	// Every pawn on ONE rook file. Doubled rook pawns are still a single
+	// promotion square, which is what the fortress is about; pawns on both rook
+	// files promote on opposite square colours, so one of the two would always
+	// be the bishop's.
+	const bool onLeftFile = (attackerPawns & ~g_bbFileMask[eFileNames::LEFT_FILE]) == 0ULL;
+	const bool onRightFile = (attackerPawns & ~g_bbFileMask[eFileNames::RIGHT_FILE]) == 0ULL;
+	if (!onLeftFile && !onRightFile)
+		return ENDGAME_SCALE_MAX;
+
+	// That file's square on the rank the attacker promotes on.
+	const int promoFile = onLeftFile ? eFileNames::LEFT_FILE : eFileNames::RIGHT_FILE;
+	const int promoRank = whiteAttacks ? eRowNames::BLACK_BACK_ROW : eRowNames::WHITE_BACK_ROW;
+	const auto promoSquare = static_cast<eSquare>(promoRank * ONE_ROW + promoFile);
+
+	const bool promoIsDark = ((UNIT << promoSquare) & DARK_SQUARES) != 0ULL;
+	const bool bishopIsDark = (attackerBishops & DARK_SQUARES) != 0ULL;
+	if (promoIsDark == bishopIsDark)
+		return ENDGAME_SCALE_MAX;
+
+	// Wrong bishop confirmed; the fortress holds while the defending king is on
+	// the promotion square or next to it, from where it can always step back
+	// onto it. Nothing the attacker has can evict it, so no defence loses.
+	const BITBOARD defenderKing = boards[whiteAttacks ? ePiece::BLACK_KING : ePiece::WHITE_KING];
+	if (defenderKing == 0ULL)
+		return ENDGAME_SCALE_MAX; // Kingless board — see EvalContext::king_sq.
+
+	return (KingDistance(Board::GetFirstPiece(defenderKing), promoSquare) <= 1) ? 0 : ENDGAME_SCALE_MAX;
 }
 
 //

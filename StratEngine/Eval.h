@@ -424,10 +424,13 @@ class EvalComplex final : public EvalManager {
 	// Recognises material configurations that are worth less than they weigh.
 	// Returns a numerator over ENDGAME_SCALE_MAX; 0 is a dead draw.
 	//
-	// Deliberately a piece-count rule and nothing more. It is not a tablebase
-	// (#101) and does not try to judge fortresses or pawn races: every class it
-	// recognises is drawn by what is on the board, whatever the squares are.
+	// Piece counts decide every class but one. It is not a tablebase (#101) and
+	// does not judge pawn races; the wrong-coloured-bishop fortress is the sole
+	// place a square, rather than a count, is what makes the position drawn.
 	static int EndgameScale(std::span<const BITBOARD> boards) noexcept;
+
+	// The pawns-on-the-board branch of the classifier.
+	static int WrongBishopFortress(std::span<const BITBOARD> boards) noexcept;
 
 	// The pawnless-with-rooks branch of the classifier. Split out because it is
 	// the one branch that has to count both sides' pieces, and inlining it into
