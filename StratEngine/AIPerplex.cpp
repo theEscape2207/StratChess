@@ -11,6 +11,7 @@
 #include "defines.h"
 #include "MoveHelper.h"
 #include "MoveFormatter.h"
+#include <bit> // std::popcount
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -41,6 +42,44 @@ namespace {
 	// If a future revision lets helper threads log too, ensure_logger_initialized()
 	// must be made safe to call concurrently (e.g. via std::call_once) first.
 	std::shared_ptr<spdlog::logger> s_logger = nullptr;
+
+	// Both quiescence pruners -- delta and SEE -- assume the evaluation is ADDITIVE IN
+	// MATERIAL: that a child's value is this node's score plus the material the move wins.
+	// The endgame scale (issue #128) is a MULTIPLIER on the whole score, so a capture that
+	// enters or leaves a scaled class moves the child by a fraction of the position's value
+	// instead, in either direction. Both pruners then discard moves they have no bound for.
+	//
+	// The guard counts the men on the SIDE THAT HAS FEWER -- not material, which can disagree,
+	// and not the men on the board -- because that is what every scaled class constrains. Each
+	// strips one side to a king plus at most one man: a bare king for the drawn classes and
+	// for the wrong-bishop fortress, king and rook for the two scaled rook endings. So every
+	// scaled position has min(white, black) <= 2, one capture removes at most one man, and
+	// every parent of one therefore has min <= 3. Four is the first safe value, and it covers
+	// entering and leaving alike.
+	//
+	// Counting total men instead looks equivalent and is not: rook pawns inflate it without
+	// touching the defender, so a fortress with four of them reaches eight men and escapes a
+	// man-count guard while still being one capture from a scale of zero. The defending king
+	// is bare at any pawn count, so this formulation closes the whole family.
+	//
+	// ADDING A SCALED CLASS whose smaller side holds three or more men invalidates the
+	// threshold -- see the note on the scale constants in Eval.h.
+	//
+	// Promotions are covered by the same count, and by nothing else: underpromotion reaches a
+	// scaled class with no queen anywhere (K+R+P vs K+R+R, bxa8=N gives K+R+N vs K+R), so any
+	// argument resting on "a promotion puts a queen on the board" is false. It does not need
+	// one -- a promotion changes no man count and a capture-promotion removes exactly one, so
+	// the bound above already holds for them.
+	//
+	// Three would very likely do: the side a scale HELPS is the side that is behind, and in
+	// every class that side holds at most two men, which it keeps across its own capture. That
+	// is a property of which side benefits rather than of which side is smaller, and it is the
+	// more fragile of the two to hang a pruning guard on, so this keeps the coarser bound.
+	//
+	// Pruning is worth little down here anyway: a side reduced to three men has almost no
+	// captures to prune. Two popcounts cost fractionally more than one, and the real cost is
+	// the extra quiescence edges -- both measured in the bench, not assumed.
+	constexpr int MATERIAL_PRUNING_MIN_PIECES = 4;
 
 	template <typename Function> class ScopeExit final {
 	  public:
@@ -912,9 +951,22 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	bool moveFound = false;
 	Move best_move = Move::EmptyMove();
 
+	// Neither pruner has a valid bound near an endgame-scaled class, in either direction --
+	// see MATERIAL_PRUNING_MIN_PIECES. A pruned move leaves no trace of the doubt: a node whose
+	// every move was pruned is stored EXACT or UPPER below, so the fabricated score is served
+	// to every later probe.
+	//
+	// Short-circuited on `!in_check` because both pruners already are, so an evasion node pays
+	// nothing for a count it cannot read.
+	const bool material_bounds_hold = !in_check && [&] {
+		const auto qboards = td.board.GetBitBoards();
+		return std::min(std::popcount(qboards[ePiece::ALL_WHITE_PIECES]),
+		                std::popcount(qboards[ePiece::ALL_BLACK_PIECES])) >= MATERIAL_PRUNING_MIN_PIECES;
+	}();
+
 	for (const auto& move : moveList) {
 		// Promotions stay: their tactical value is not bounded by immediate material gain.
-		if (!in_check && !MoveHelper::IsPromote(move) &&
+		if (material_bounds_hold && !MoveHelper::IsPromote(move) &&
 		    stand_pat +
 		            MoveHelper::DeltaGain(move, td.board.GetEffectiveMovPiece(move), td.board.GetCapturedPiece(move)) +
 		            tuning_.delta_pruning_margin <
@@ -922,12 +974,19 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 			continue;
 
 		// Drop captures that lose material by static exchange. Three guards, all load-bearing:
-		// `!in_check` sits outside the tuning flag because in check the list is every legal evasion
-		// and an empty survivor set reads as checkmate below — pruning one fabricates a mate score.
+		// `material_bounds_hold` carries the `!in_check` this used to test directly, and it must
+		// stay outside the tuning flag: in check the list is every legal evasion and an empty
+		// survivor set reads as checkmate below — pruning one fabricates a mate score.
 		// `IsCapture()` keeps capture-promotions, which see_ge scores as losing on a defended square
 		// though the pawn was promoting anyway. And SEE ignores pins, so a pruned move carries no
 		// proof it cannot beat alpha, unlike a delta-pruned one; see the store note below.
-		if (!in_check && tuning_.see_pruning_enabled && MoveHelper::IsCapture(move) && !See::see_ge(td.board, move, 0))
+		// The rest of `material_bounds_hold` is there for the same reason delta pruning carries it:
+		// SEE is a pure-material test, so near a scaled class it discards exactly the sacrifices
+		// whose value IS the class change -- RxN into a drawn K vs K+N reads as -180 and is the
+		// only drawing resource. That case predates the scale factors: the exact-draw classes
+		// alone are enough to produce it.
+		if (material_bounds_hold && tuning_.see_pruning_enabled && MoveHelper::IsCapture(move) &&
+		    !See::see_ge(td.board, move, 0))
 			continue;
 
 		if (!td.board.DoMove(move))

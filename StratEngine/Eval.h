@@ -375,13 +375,53 @@ class EvalComplex final : public EvalManager {
 	// positional idea, and fading it in at half strength mid-game would be
 	// meaningless.
 	//
-	// Keyed on the LOSING side's phase, not the total. The retired stage gate
-	// was min(material) <= 11500, i.e. a statement about the weaker side alone;
-	// keying on total phase instead would let extra material on the WINNING
-	// side switch mop-up off. That loses exactly the cases mop-up exists for:
-	// KQQ vs K is total phase 8, and is reached by promoting a second queen —
-	// so the engine would lose its mating guidance at the moment it queens.
-	static const short MOPUP_MAX_LOSER_PHASE = 6; // gate: loser's own phase <= this
+	// The gate asks what force the DEFENDER still has, not how much of it there
+	// is (issue #118 item 5). A phase budget could not express that: a lone
+	// queen is phase 4 and passed the old `loser phase <= 6` gate, so Q+R vs Q
+	// was paid for chasing a king that was never going to be cornered. The
+	// defender may therefore hold anything but a queen, which is the one piece
+	// that can check the winner's king away from the corner indefinitely and
+	// leave the plan permanently unfinished. Everything mop-up exists for still
+	// qualifies, KQQ vs K included, however much material the winner has.
+	//
+	// Widening this to "no queen and no rook" is a mistake worth recording,
+	// because the second-order effect runs the other way: eval_pst suppresses
+	// the winner's king PST exactly when mop-up is active (item 4), so removing
+	// a class from the gate does not withdraw a bonus, it re-enables a
+	// CENTRALIZING king table. On K+Q vs K+R that turns a reward for walking
+	// toward the cornered king into a penalty — the item 4 defect, reinstated
+	// for a family of endings won by exactly that walk.
+
+	// Pawnless rook endings (#128), as numerators over ENDGAME_SCALE_MAX.
+	//
+	// Unlike the classes scaled to zero, neither of these is drawn by material:
+	// they are drawn by tendency, which is why they are scaled rather than
+	// clamped. That distinction is the whole reason for a fractional scale — a
+	// clamp would throw away the versions of the ending that do convert, while a
+	// factor still leaves the search preferring the better one. They are
+	// therefore ordinary strength parameters, retained, adjusted or dropped on
+	// match evidence, where the exact-draw classes ship on the rules of chess.
+	//
+	// The extra minor rarely produces more than a stalemate trick against a rook
+	// that is free to give itself up for it, hence the heavy discount. A rook
+	// against a bare minor is a different case and gets a light one: it is
+	// drawish taken as a whole, but the subset where the evaluation already
+	// claims a real advantage converts most of the time, and that subset is
+	// exactly the one a scale acts on. Discounting it hard would be reading the
+	// aggregate number as if it applied to the positions it does not describe.
+	//
+	// A scale of any kind is load-bearing outside this file: it multiplies the
+	// score instead of adding to it, which is what quiescence's delta and SEE
+	// pruning both assume it cannot do. AIPerplex::quiescence() disables both
+	// near a scaled class, keyed on piece count rather than on the class list.
+	//
+	// That keying rests on a property of the classes below, which is stated here
+	// because this is where it would be broken: EVERY SCALED CLASS LEAVES ITS
+	// SMALLER SIDE AT MOST TWO MEN. Recognising one whose smaller side holds
+	// three or more silently defeats MATERIAL_PRUNING_MIN_PIECES, and that
+	// threshold must be raised in the same change.
+	static const short ROOK_AND_MINOR_VS_ROOK_SCALE = 4;
+	static const short ROOK_VS_MINOR_SCALE = 12;
 
 	// Distance helpers for mop-up scoring — plain grid math, orientation-independent
 	// (works the same whether the square belongs to White or Black).
@@ -408,10 +448,19 @@ class EvalComplex final : public EvalManager {
 	// Recognises material configurations that are worth less than they weigh.
 	// Returns a numerator over ENDGAME_SCALE_MAX; 0 is a dead draw.
 	//
-	// Deliberately a piece-count rule and nothing more. It is not a tablebase
-	// (#101) and does not try to judge fortresses or pawn races: every class it
-	// recognises is drawn by what is on the board, whatever the squares are.
+	// Piece counts decide every class but one. It is not a tablebase (#101) and
+	// does not judge pawn races; the wrong-coloured-bishop fortress is the sole
+	// place a square, rather than a count, is what makes the position drawn.
 	static int EndgameScale(std::span<const BITBOARD> boards) noexcept;
+
+	// The pawns-on-the-board branch of the classifier.
+	static int WrongBishopFortress(std::span<const BITBOARD> boards) noexcept;
+
+	// The pawnless-with-rooks branch of the classifier. Split out because it is
+	// the one branch that has to count both sides' pieces, and inlining it into
+	// EndgameScale would put those counts textually in front of the early-outs
+	// that exist to avoid them.
+	static int PawnlessRookScale(std::span<const BITBOARD> boards) noexcept;
 
 	// Applies a scale to a white-POV score. Split out so Evaluate() and
 	// Breakdown() cannot hold two versions of the arithmetic.
