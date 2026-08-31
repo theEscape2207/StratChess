@@ -737,7 +737,7 @@ The macro is intentionally absent from the `StratChessEvolved` target.
 
 `Game::TestAccess` (declared in `Game.h`, defined in `GameLoopTests.cpp`) builds a game around an
 explicit FEN and scripted players, avoiding settings and log files. It makes game-loop outcomes,
-including the fifty-move transition and `HUMAN_EXITED`, deterministic. Test-created games set
+including the fifty-move transition and a resignation, deterministic. Test-created games set
 `owns_logging_ = false` so their destruction cannot drop loggers used by later tests.
 
 ## The terminal-result contract

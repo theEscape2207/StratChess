@@ -237,7 +237,7 @@ void Game::Run()
 
 		// The fifty-move rule is a fact about the position the board now holds, so it is
 		// adjudicated here rather than by a search that never visits that position. It can
-		// only turn a still-running game into a draw: a mate, a stalemate or HUMAN_EXITED
+		// only turn a still-running game into a draw: a mate, a stalemate or a resignation
 		// already reported by the mover takes precedence and is never overwritten.
 		if (committed && game_state_ == GameStates::STILL_PLAYING && board_.halfmove_clock() >= HALFMOVE_CLOCK_LIMIT)
 			game_state_ = GameStates::DRAW_50_MOVES;
@@ -252,9 +252,13 @@ void Game::Run()
 		if (!IsStillPlaying()) // Test om spillet er slut
 			break;
 
-		// A null move with the game still running means the user typed "exit" or "quit".
-		if (HasHumanExited(result.best_move)) {
-			spdlog::default_logger()->warn("User has exited the game\n");
+		// A running game whose mover produced no move. PlayerAiBase::GetBestMove asserts against
+		// it, so in a Debug build this is unreachable; a limit in game_settings.json tight enough
+		// to stop a search before its first root move reaches it in Release. Stopping matters
+		// because the side to move is unchanged, so the loop would ask the same player for the
+		// same move forever.
+		if (MoverProducedNoMove(result.best_move)) {
+			spdlog::default_logger()->error("Player returned no move in a running game - stopping the game");
 			break;
 		}
 	}
@@ -344,8 +348,11 @@ void Game::PrintStateMessage(const IPlayer& mover, const SearchResult& result) c
 		case GameStates::DRAW_50_MOVES:
 			spdlog::default_logger()->info("Its a Draw ! 50 moves has passed since last Capture or peasant move!");
 			break;
-		case GameStates::HUMAN_EXITED:
-			spdlog::default_logger()->info("Human player exited game. Opponent is the Winner!");
+		case GameStates::WHITE_RESIGNED:
+			spdlog::default_logger()->info("White resigned. Black is the Winner!");
+			break;
+		case GameStates::BLACK_RESIGNED:
+			spdlog::default_logger()->info("Black resigned. White is the Winner!");
 			break;
 		case GameStates::STILL_PLAYING:
 		default:

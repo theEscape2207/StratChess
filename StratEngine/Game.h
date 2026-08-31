@@ -44,7 +44,7 @@ class Game final {
 
 	bool IsStillPlaying() const noexcept { return game_state_ == GameStates::STILL_PLAYING; }
 
-	static bool HasHumanExited(const Move& move) noexcept { return move.is_null(); }
+	static bool MoverProducedNoMove(const Move& move) noexcept { return move.is_null(); }
 
 	/*
 	* Event Methods
