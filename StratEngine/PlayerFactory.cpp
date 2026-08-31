@@ -56,6 +56,13 @@ namespace {
 		tuning.aspiration_initial_delta = source.aspiration_initial_delta;
 		tuning.aspiration_max_retries = source.aspiration_max_retries;
 		tuning.aspiration_enabled = source.aspiration_enabled;
+		tuning.lmr_min_depth = source.lmr_min_depth;
+		tuning.lmr_min_move_index = source.lmr_min_move_index;
+		tuning.lmr_enabled = source.lmr_enabled;
+		tuning.null_move_enabled = source.null_move_enabled;
+		tuning.null_move_reduction = source.null_move_reduction;
+		tuning.null_move_min_depth = source.null_move_min_depth;
+		tuning.see_pruning_enabled = source.see_pruning_enabled;
 		return tuning;
 	}
 

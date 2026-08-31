@@ -85,6 +85,57 @@ TEST_CASE("Config: a well-formed document parses", "[config]")
 	REQUIRE(reader.GetPlayerFromConfig(false).search_limits.depth == 3);
 }
 
+TEST_CASE("Config: every search_tuning key reaches SearchTuningConfig", "[config]")
+{
+	TempConfig cfg(R"({
+        "game": { "players": {
+            "white": { "type": 6, "search_tuning": {
+                "min_nodes_threshold": 17,
+                "min_completion_ratio": 0.21,
+                "min_pv_ratio": 0.45,
+                "score_draw_threshold": 23,
+                "delta_pruning_margin": 211,
+                "aspiration_initial_delta": 61,
+                "aspiration_max_retries": 7,
+                "aspiration_enabled": false,
+                "lmr_min_depth": 5,
+                "lmr_min_move_index": 6,
+                "lmr_enabled": false,
+                "null_move_enabled": false,
+                "null_move_reduction": 4,
+                "null_move_min_depth": 7,
+                "see_pruning_enabled": false
+            } },
+            "black": { "type": 6 }
+        } }
+    })");
+
+	Board board;
+	Config reader = MakeReader();
+	REQUIRE_NOTHROW(reader.ReadConfigFile(cfg.path(), board));
+
+	const auto tuning = reader.GetPlayerFromConfig(true).search_tuning;
+	REQUIRE(tuning.has_value());
+	CHECK(tuning->min_nodes_threshold == 17);
+	CHECK(tuning->min_completion_ratio == 0.21);
+	CHECK(tuning->min_pv_ratio == 0.45);
+	CHECK(tuning->score_draw_threshold == 23);
+	CHECK(tuning->delta_pruning_margin == 211);
+	CHECK(tuning->aspiration_initial_delta == 61);
+	CHECK(tuning->aspiration_max_retries == 7);
+	CHECK_FALSE(tuning->aspiration_enabled);
+	CHECK(tuning->lmr_min_depth == 5);
+	CHECK(tuning->lmr_min_move_index == 6);
+	CHECK_FALSE(tuning->lmr_enabled);
+	CHECK_FALSE(tuning->null_move_enabled);
+	CHECK(tuning->null_move_reduction == 4);
+	CHECK(tuning->null_move_min_depth == 7);
+	CHECK_FALSE(tuning->see_pruning_enabled);
+
+	// An absent block stays absent; the defaults then come from SearchTuning itself.
+	CHECK_FALSE(reader.GetPlayerFromConfig(false).search_tuning.has_value());
+}
+
 TEST_CASE("Config: truncated JSON is reported, not silently accepted", "[config]")
 {
 	TempConfig cfg(R"({ "game": { "players": )");

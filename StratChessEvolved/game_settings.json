@@ -33,7 +33,14 @@
           "delta_pruning_margin": 200,
           "aspiration_initial_delta": 50,
           "aspiration_max_retries": 4,
-          "aspiration_enabled": true
+          "aspiration_enabled": true,
+          "lmr_min_depth": 3,
+          "lmr_min_move_index": 3,
+          "lmr_enabled": true,
+          "null_move_enabled": true,
+          "null_move_reduction": 3,
+          "null_move_min_depth": 3,
+          "see_pruning_enabled": true
         },
         /* threads: Lazy SMP search thread count. Helper threads are real and
            ELO-validated (Gate 3: +128.55 +/- 28.36 Elo at threads=4 vs 1,
@@ -57,7 +64,14 @@
           "delta_pruning_margin": 200,
           "aspiration_initial_delta": 50,
           "aspiration_max_retries": 4,
-          "aspiration_enabled": true
+          "aspiration_enabled": true,
+          "lmr_min_depth": 3,
+          "lmr_min_move_index": 3,
+          "lmr_enabled": true,
+          "null_move_enabled": true,
+          "null_move_reduction": 3,
+          "null_move_min_depth": 3,
+          "see_pruning_enabled": true
         },
         /* threads: Lazy SMP search thread count. Helper threads are real and
            ELO-validated (Gate 3: +128.55 +/- 28.36 Elo at threads=4 vs 1,
