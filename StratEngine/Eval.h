@@ -413,9 +413,13 @@ class EvalComplex final : public EvalManager {
 	// A scale of any kind is load-bearing outside this file: it multiplies the
 	// score instead of adding to it, which is what quiescence's delta and SEE
 	// pruning both assume it cannot do. AIPerplex::quiescence() disables both
-	// near a scaled class, keyed on piece count rather than on the class list --
-	// see MATERIAL_PRUNING_MIN_MEN there before recognising a class with more
-	// material than the ones below.
+	// near a scaled class, keyed on piece count rather than on the class list.
+	//
+	// That keying rests on a property of the classes below, which is stated here
+	// because this is where it would be broken: EVERY SCALED CLASS LEAVES ITS
+	// SMALLER SIDE AT MOST TWO MEN. Recognising one whose smaller side holds
+	// three or more silently defeats MATERIAL_PRUNING_MIN_PIECES, and that
+	// threshold must be raised in the same change.
 	static const short ROOK_AND_MINOR_VS_ROOK_SCALE = 4;
 	static const short ROOK_VS_MINOR_SCALE = 12;
 

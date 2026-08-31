@@ -122,7 +122,7 @@ TEST_CASE("Qsearch - the fortress is guarded however many rook pawns it has", "[
 {
 	// Same transition as the case above, with four rook pawns and a spare bishop. Those put
 	// eight men on the board while leaving the defender a bare king, which is why the guard
-	// counts the weaker side rather than the men: a man count admits this position and then
+	// counts the smaller side rather than the men: a man count admits this position and then
 	// prunes Kxb7, whose true value is the draw.
 	AIPerlexTestFixture fix("8/kB6/8/P1K5/P7/P7/P2B4/8 b - - 0 1");
 	REQUIRE_FALSE(fix.board_.InCheck());
@@ -134,6 +134,34 @@ TEST_CASE("Qsearch - the fortress is guarded however many rook pawns it has", "[
 	const int score = fix.quiesce_node(alpha, GameValues::Search_Init, AIPerlexTestFixture::QSEARCH_BUDGET,
 	                                   /*ply=*/0);
 	CHECK(score > alpha);
+}
+
+TEST_CASE("Qsearch - delta pruning is still enabled at the guard's boundary", "[search][qsearch]")
+{
+	// The complement of the cases above, and asserted BEHAVIOURALLY -- by the edges the pruner
+	// stops the search visiting -- rather than by counting men in a fixture. At exactly
+	// MATERIAL_PRUNING_MIN_PIECES a side the pruner must still fire, or the guard has quietly
+	// switched quiescence pruning off across the endgame.
+	//
+	// A move surviving cannot show this: in an unscaled position the delta bound is an
+	// over-estimate by construction, so no capture ever beats it and the score is the same
+	// either way. The node count is the only visible difference.
+	//
+	// Four men a side, Rxd8 available and undefended. Alpha sits above its delta bound, so the
+	// pruner discards it; a margin large enough to make the bound unreachable is the off switch.
+	const char* fen = "3r2k1/5pp1/8/8/8/8/5PP1/3R2K1 w - - 0 1";
+	const int alpha = 800;
+
+	AIPerlexTestFixture on(fen);
+	REQUIRE_FALSE(on.board_.InCheck());
+	on.quiesce_node(alpha, GameValues::Search_Init, AIPerlexTestFixture::QSEARCH_BUDGET, /*ply=*/0);
+
+	AIPerlexTestFixture off(fen);
+	off.set_delta_pruning_margin(100000);
+	off.quiesce_node(alpha, GameValues::Search_Init, AIPerlexTestFixture::QSEARCH_BUDGET, /*ply=*/0);
+
+	INFO("qnodes with pruning = " << on.qnodes() << ", without = " << off.qnodes());
+	CHECK(on.qnodes() < off.qnodes());
 }
 
 TEST_CASE("Qsearch - SEE does not discard a sacrifice into a drawn class", "[search][qsearch]")

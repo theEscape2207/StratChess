@@ -352,6 +352,10 @@ class AIPerlexTestFixture {
 	// test can place alpha exactly at the pruning threshold without pinning a
 	// tuning value it does not care about.
 	int delta_pruning_margin() const { return ai->tuning_.delta_pruning_margin; }
+	// Raising the margin far enough makes the bound unreachable, which is the only
+	// way to switch delta pruning off -- it has no enable flag the way SEE does.
+	// Lets a test show the pruner is live by the edges it stops the search visiting.
+	void set_delta_pruning_margin(int margin) const { ai->tuning_.delta_pruning_margin = margin; }
 
 	// Full fixed-depth search from the fixture's board.
 	Move search_to_depth(int depth) const { return ai->Search(board_, SearchLimits::fixed_depth(depth)).best_move; }

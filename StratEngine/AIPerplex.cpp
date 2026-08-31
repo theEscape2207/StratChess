@@ -49,20 +49,30 @@ namespace {
 	// enters or leaves a scaled class moves the child by a fraction of the position's value
 	// instead, in either direction. Both pruners then discard moves they have no bound for.
 	//
-	// The guard counts the WEAKER SIDE's pieces, not the men on the board, because that is
-	// what every scaled class actually constrains. Each of them strips one side to a king
-	// plus at most one piece: a bare king for the drawn classes and for the wrong-bishop
-	// fortress, king and rook for the two scaled rook endings. A class must be inside the
-	// guard to be scored safely and its PARENT must be too, or the capture that enters it is
-	// pruned -- and a parent is one piece above, so three. Four is the first safe value.
+	// The guard counts the men on the SIDE THAT HAS FEWER -- not material, which can disagree,
+	// and not the men on the board -- because that is what every scaled class constrains. Each
+	// strips one side to a king plus at most one man: a bare king for the drawn classes and
+	// for the wrong-bishop fortress, king and rook for the two scaled rook endings. So every
+	// scaled position has min(white, black) <= 2, one capture removes at most one man, and
+	// every parent of one therefore has min <= 3. Four is the first safe value, and it covers
+	// entering and leaving alike.
 	//
 	// Counting total men instead looks equivalent and is not: rook pawns inflate it without
 	// touching the defender, so a fortress with four of them reaches eight men and escapes a
 	// man-count guard while still being one capture from a scale of zero. The defending king
 	// is bare at any pawn count, so this formulation closes the whole family.
 	//
-	// Pruning is worth little down here anyway: a side reduced to three pieces has almost no
-	// captures to prune. The cost is measured in the bench, not assumed.
+	// ADDING A SCALED CLASS whose smaller side holds three or more men invalidates the
+	// threshold -- see the note on the scale constants in Eval.h.
+	//
+	// Promotions need no thought here: a promotion puts a queen on the board and EndgameScale
+	// leaves on the first queen it sees, so no promotion can enter a scaled class, and the one
+	// scaled class holding pawns has a bare defender, so it offers no capture-promotion to
+	// leave by.
+	//
+	// Pruning is worth little down here anyway: a side reduced to three men has almost no
+	// captures to prune. Two popcounts cost fractionally more than one, and the real cost is
+	// the extra quiescence edges -- both measured in the bench, not assumed.
 	constexpr int MATERIAL_PRUNING_MIN_PIECES = 4;
 
 	template <typename Function> class ScopeExit final {
