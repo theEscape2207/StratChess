@@ -644,6 +644,10 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 // at full value. A class wrongly scaled to zero is a won ending the search will
 // not enter, so the bar for a zero is that no defence loses, not that most draw.
 //
+// Deliberately an evaluation scale and not a draw rule in ThreadData::check_draws():
+// a scale of zero already yields GameValues::Draw at the leaf, while a search-side
+// rule would put a score that is not depth-bounded into the transposition table.
+//
 int EvalComplex::EndgameScale(std::span<const BITBOARD> boards) noexcept
 {
 	// A queen mates on its own from every class below, so a board holding one is
