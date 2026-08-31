@@ -49,18 +49,21 @@ namespace {
 	// enters or leaves a scaled class moves the child by a fraction of the position's value
 	// instead, in either direction. Both pruners then discard moves they have no bound for.
 	//
-	// Piece count is what the scaled classes have in common, so it is what the guard tests. A
-	// class must be inside the guard to be scored safely, and its PARENT must be too, or the
-	// capture that enters it is pruned. The rook classes are at most five men, so parent six,
-	// and eight leaves a ply of slack. The wrong-bishop fortress is 3 + p men for p rook pawns
-	// and has none: p <= 3 is covered on both sides, p == 4 is seven men so only LEAVING it is
-	// covered, and p >= 5 is outside entirely. No finite count fixes that -- the class admits
-	// arbitrarily many doubled pawns -- and raising the threshold would disable pruning in the
-	// eight-man positions that are far more common than a quadrupled rook pawn.
+	// The guard counts the WEAKER SIDE's pieces, not the men on the board, because that is
+	// what every scaled class actually constrains. Each of them strips one side to a king
+	// plus at most one piece: a bare king for the drawn classes and for the wrong-bishop
+	// fortress, king and rook for the two scaled rook endings. A class must be inside the
+	// guard to be scored safely and its PARENT must be too, or the capture that enters it is
+	// pruned -- and a parent is one piece above, so three. Four is the first safe value.
 	//
-	// Pruning is worth little down here anyway: a seven-man position has almost no captures to
-	// prune. The cost is measured in the bench, not assumed.
-	constexpr int MATERIAL_PRUNING_MIN_MEN = 8;
+	// Counting total men instead looks equivalent and is not: rook pawns inflate it without
+	// touching the defender, so a fortress with four of them reaches eight men and escapes a
+	// man-count guard while still being one capture from a scale of zero. The defending king
+	// is bare at any pawn count, so this formulation closes the whole family.
+	//
+	// Pruning is worth little down here anyway: a side reduced to three pieces has almost no
+	// captures to prune. The cost is measured in the bench, not assumed.
+	constexpr int MATERIAL_PRUNING_MIN_PIECES = 4;
 
 	template <typename Function> class ScopeExit final {
 	  public:
@@ -933,10 +936,13 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	Move best_move = Move::EmptyMove();
 
 	// Neither pruner has a valid bound near an endgame-scaled class, in either direction --
-	// see MATERIAL_PRUNING_MIN_MEN. A pruned move leaves no trace of the doubt: a node whose
+	// see MATERIAL_PRUNING_MIN_PIECES. A pruned move leaves no trace of the doubt: a node whose
 	// every move was pruned is stored EXACT or UPPER below, so the fabricated score is served
 	// to every later probe.
-	const bool material_bounds_hold = std::popcount(td.board.GetBitBoards()[ALL_PIECES]) >= MATERIAL_PRUNING_MIN_MEN;
+	const auto qboards = td.board.GetBitBoards();
+	const bool material_bounds_hold =
+	    std::min(std::popcount(qboards[ePiece::ALL_WHITE_PIECES]), std::popcount(qboards[ePiece::ALL_BLACK_PIECES])) >=
+	    MATERIAL_PRUNING_MIN_PIECES;
 
 	for (const auto& move : moveList) {
 		// Promotions stay: their tactical value is not bounded by immediate material gain.

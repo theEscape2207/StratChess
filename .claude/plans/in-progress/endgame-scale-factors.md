@@ -211,12 +211,19 @@ into, which bounds the blast radius of this change to qsearch leaves and the sta
   SEE -180 though it is the only drawing resource, and that case is reachable from the exact-draw
   classes alone, so it has been live since part 1.
 
-  `quiescence()` now disables both pruners below `MATERIAL_PRUNING_MIN_MEN` men. Piece count is what
-  the scaled classes have in common, so it covers both directions and both pruners without search
+  `quiescence()` now disables both pruners when the WEAKER SIDE holds fewer than
+  `MATERIAL_PRUNING_MIN_PIECES` pieces. That covers both directions and both pruners without search
   carrying a second copy of the material classification.
 
-  Regressions: one per direction, plus the SEE case, each with alpha one centipawn above the bound
-  that would discard the move.
+  A third wrong answer sat in between, worth recording because it looked right: a guard on the total
+  men on the board. Rook pawns inflate that count without touching the defender, so a fortress with
+  four of them is eight men and escapes, while still being one capture from a scale of zero
+  (`8/kB6/8/P1K5/P7/P7/P2B4/8 b`, `Kxb7` bounded at -547 against a true 0). Every scaled class strips
+  one side to a king plus at most one piece, at any pawn count — so counting the weaker side closes
+  the family, where counting men only moves the boundary.
+
+  Regressions: one per direction, one for the eight-man fortress, plus the SEE case, each with alpha
+  one centipawn above the bound that would discard the move.
 
 ## Validation
 

@@ -63,23 +63,29 @@ the child by a fraction of the position's value instead, in either direction, an
 a bound. A pruned move leaves no trace: a node whose every move was pruned is stored EXACT or UPPER,
 so the fabricated score is served to every later probe.
 
-Four reachable cases, all verified against the built engine:
+Five reachable cases, all verified against the built engine:
 
 | Position (side to move) | Move | Bound | True value | Class entered/left |
 |---|---|---:|---:|---|
 | `4k3/8/8/8/7r/5N2/8/R3K3 w` | `Nxh4` | 776 | 824 | leaves KR+minor vs KR |
 | `8/8/8/3k4/7r/5n2/p7/R1K5 w` | `Rxa2` | -226 | -84 | enters KR vs KR+minor |
 | `k7/1N6/8/P1K1B3/8/8/8/8 b` | `Kxb7` | -269 | 0 | enters the fortress |
+| `8/kB6/8/P1K5/P7/P7/P2B4/8 b` | `Kxb7` | -547 | 0 | enters the fortress, eight men |
 | `4k3/8/8/8/1n6/3n4/8/3R2K1 w` | `Rxd3` | SEE -180 | 0 | enters K vs K+N |
 
 The last needs no scale factors at all — the exact-draw classes from part 1 are enough to produce it,
 so that one has been live on `main` since then.
 
-The guard is a piece count, `MATERIAL_PRUNING_MIN_MEN`, because piece count is what the scaled
-classes have in common and it covers both directions without search carrying a second copy of the
-material classification. The largest scaled class is six men (a fortress with three rook pawns) and
-one capture above that is seven. A fortress with four or more rook pawns sits outside it; no finite
-count covers that, since the class admits arbitrarily many doubled pawns.
+The guard counts the **weaker side's pieces**, `MATERIAL_PRUNING_MIN_PIECES`, because that is what
+every scaled class constrains: each strips one side to a king plus at most one piece — a bare king
+for the drawn classes and the fortress, king and rook for the scaled rook endings. A parent is one
+piece above that, so four is the first safe value.
+
+Counting total men instead looks equivalent and is not, which is what the fourth row above shows:
+rook pawns inflate the man count without touching the defender, so a fortress with four of them
+reaches eight men and escapes a man-count guard while still sitting one capture from a scale of zero.
+The defending king is bare at any pawn count, so counting the weaker side closes the whole family
+rather than moving the boundary.
 
 ### Validation
 
@@ -97,19 +103,22 @@ count covers that, since the class admits arbitrarily many doubled pawns.
 - Falsified: each of the three changes stubbed out in turn makes its own cases fail and nothing
   else's.
 - Release and Debug suites both pass.
-- Four `[qsearch]` cases, one per row of the table above, each placing alpha one centipawn above the
-  bound that would discard the move. All four fail with the guard neutered and pass with it. Two
-  existing quiescence fixtures moved above the man count so they keep exercising the pruners they
-  were written for.
-- `Run-Bench.ps1` at depth 12, interleaved before/after, **fourteen pairs: 2,921k vs 2,890k nps,
-  mean -1.08%, median -0.85%, 13 of 14 negative.** The mean is dragged by a single -6.3% pair; the
-  second batch of seven was uniform at -0.79%, which is the figure to believe. Both are reported
-  because either batch alone would have misled.
+- Five `[qsearch]` cases, one per row of the table above, each placing alpha one centipawn above the
+  bound that would discard the move, and each asserting the capture beats that bound before
+  asserting it survives — so a scale retune fails on the premise rather than looking like a pruning
+  bug. All five fail with the guard neutered. The eight-man fortress case fails specifically under a
+  man-count guard while the other four pass, which is what pins the choice of metric.
+- Two existing quiescence fixtures were below the guard and would have gone vacuous; both moved
+  above it so they keep exercising the pruners they were written for.
+- `Run-Bench.ps1` at depth 12, interleaved before/after, **twelve pairs: median -0.26%, mean -0.70%,
+  spread -4.45% to +2.04%.** The spread is wider than the effect, so this bounds the cost rather
+  than measuring it: below roughly 1%, and not separable from the classifier's own -0.47%. Earlier
+  batches on a quieter machine put the same guard near -0.85%. Quoting a single mean here would be
+  false precision — the machine was drifting enough that individual pairs ran both ways.
   Five of the bench's six positions keep identical node counts and best moves; `rook-endgm` gains
-  four quiescence nodes out of 1.56M and keeps its best move — the guard doing its job in the one
-  genuinely small endgame in the set. Roughly half the cost is the classifier's early-out becoming
-  three branches instead of one; the rest is the guard. Paid deliberately: the alternative is a
-  transposition table that can be handed a bound no position ever had.
+  38 quiescence nodes out of 1.56M and keeps its best move — the guard doing its job in the one
+  genuinely small endgame in the set. Paid deliberately: the alternative is a transposition table
+  that can be handed a bound no position ever had.
 
 ## 2026-08-31 — Score material that cannot mate as a draw (#128, part 1)
 

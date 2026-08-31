@@ -118,6 +118,24 @@ TEST_CASE("Qsearch - a capture that enters the wrong-bishop fortress is not prun
 	CHECK(score > alpha);
 }
 
+TEST_CASE("Qsearch - the fortress is guarded however many rook pawns it has", "[search][qsearch]")
+{
+	// Same transition as the case above, with four rook pawns and a spare bishop. Those put
+	// eight men on the board while leaving the defender a bare king, which is why the guard
+	// counts the weaker side rather than the men: a man count admits this position and then
+	// prunes Kxb7, whose true value is the draw.
+	AIPerlexTestFixture fix("8/kB6/8/P1K5/P7/P7/P2B4/8 b - - 0 1");
+	REQUIRE_FALSE(fix.board_.InCheck());
+
+	const int alpha = pruning_threshold_alpha(fix, ePiece::WHITE_BISHOP);
+	INFO("stand_pat = " << fix.evaluate() << ", alpha = " << alpha);
+	REQUIRE(capture_value("8/1k6/8/P1K5/P7/P7/P2B4/8 w - - 0 1") > alpha); // premise: Kxb7 beats the bound
+
+	const int score = fix.quiesce_node(alpha, GameValues::Search_Init, AIPerlexTestFixture::QSEARCH_BUDGET,
+	                                   /*ply=*/0);
+	CHECK(score > alpha);
+}
+
 TEST_CASE("Qsearch - SEE does not discard a sacrifice into a drawn class", "[search][qsearch]")
 {
 	// Rxd3 is SEE-negative -- a rook for a knight -- and is the only drawing resource: after
