@@ -245,6 +245,16 @@ namespace {
 		       pad_left(std::to_string(black), EVAL_VALUE_COL) + " |" +
 		       pad_left(std::to_string(white - black), EVAL_VALUE_COL);
 	}
+
+	// A row that exists only in the net column. The endgame scale applies to the
+	// white-minus-black score rather than to either side's pieces, so there is
+	// no white or black figure to print — a dash says that, where a 0 would read
+	// as a term that happened to score nothing.
+	std::string eval_net_row(const char* name, int net)
+	{
+		return pad_right(name, EVAL_TERM_COL) + "|" + pad_left("-", EVAL_VALUE_COL) + " |" +
+		       pad_left("-", EVAL_VALUE_COL) + " |" + pad_left(std::to_string(net), EVAL_VALUE_COL);
+	}
 } // namespace
 
 // Prints the static evaluation of the current position (board_), as set up
@@ -296,16 +306,18 @@ void UciHandler::cmd_eval()
 		send(eval_term_row("bishops", terms.bishops[WHITE], terms.bishops[BLACK]));
 		send(eval_term_row("castling", terms.castling[WHITE], terms.castling[BLACK]));
 		send(eval_term_row("mobility", terms.mobility[WHITE], terms.mobility[BLACK]));
+		send(eval_net_row("endgame", terms.endgame_adjustment));
 		send(rule);
 
 		// The sum of the net column. It must equal the 'white pov' line below;
 		// both are printed so a drift between the terms and Evaluate() is
 		// visible on inspection, and asserted on in StratChessTests (D9).
-		const int net_sum =
-		    (terms.material[WHITE] - terms.material[BLACK]) + (terms.pawns[WHITE] - terms.pawns[BLACK]) +
-		    (terms.rooks[WHITE] - terms.rooks[BLACK]) + (terms.pst[WHITE] - terms.pst[BLACK]) +
-		    (terms.mopup[WHITE] - terms.mopup[BLACK]) + (terms.bishops[WHITE] - terms.bishops[BLACK]) +
-		    (terms.castling[WHITE] - terms.castling[BLACK]) + (terms.mobility[WHITE] - terms.mobility[BLACK]);
+		const int net_sum = (terms.material[WHITE] - terms.material[BLACK]) +
+		                    (terms.pawns[WHITE] - terms.pawns[BLACK]) + (terms.rooks[WHITE] - terms.rooks[BLACK]) +
+		                    (terms.pst[WHITE] - terms.pst[BLACK]) + (terms.mopup[WHITE] - terms.mopup[BLACK]) +
+		                    (terms.bishops[WHITE] - terms.bishops[BLACK]) +
+		                    (terms.castling[WHITE] - terms.castling[BLACK]) +
+		                    (terms.mobility[WHITE] - terms.mobility[BLACK]) + terms.endgame_adjustment;
 		const std::string sum_label = "sum (white pov)";
 		send(sum_label + pad_left(std::to_string(net_sum), EVAL_TABLE_WIDTH - static_cast<int>(sum_label.size())));
 
@@ -313,6 +325,10 @@ void UciHandler::cmd_eval()
 		// has a middlegame/endgame boolean, and how far through the taper a
 		// position sits is what actually explains the pst row.
 		send("phase: " + std::to_string(terms.phase) + "/" + std::to_string(MAX_GAME_PHASE));
+
+		// Printed alongside phase for the same reason: it is not derivable from
+		// the rows, and it is what explains the endgame row above them.
+		send("endgame scale: " + std::to_string(terms.endgame_scale) + "/" + std::to_string(ENDGAME_SCALE_MAX));
 
 		score = terms.total;
 	}

@@ -160,6 +160,11 @@ TEST_CASE("Eval - EvalComplex: a kingless board evaluates to 0 (pre-#127 behavio
 	// bounds. EvalContext::king_sq is NO_SQUARE for a color with no king
 	// (see the comment on that field in Eval.h), and eval_pst/eval_mopup
 	// both check for it, restoring the pre-#127 "always 0" result exactly.
+	//
+	// Evaluate() now settles a piece-less board through the endgame classifier
+	// before any term runs, so this assertion alone no longer reaches the
+	// guard. The term-level case further down ("a kingless board reaches the
+	// terms") is what keeps it covered.
 	Board board;
 
 	REQUIRE(EvalManager::Create(EvalManager::EvalTypes::COMPLEX)->Evaluate(board) == 0);
@@ -1125,9 +1130,17 @@ TEST_CASE("Eval - the per-term functions sum exactly to EvalComplex::Evaluate()'
 	                       EvalComplexTestFixture::Castling(board, BLACK) +
 	                       EvalComplexTestFixture::Mobility(board, BLACK);
 
+	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
+	REQUIRE(complexEval != nullptr);
+
+	// The endgame scale is not a term, so it cannot be rebuilt from the term
+	// functions; it is taken from the breakdown, whose own agreement with
+	// Evaluate() is asserted separately.
+	const int adjustment = complexEval->Breakdown(board).endgame_adjustment;
+
 	const eColor toMove = board.GetCurrentColor();
-	const int expected = (toMove == WHITE) ? (matWhite + bonusWhite) - (matBlack + bonusBlack)
-	                                       : (matBlack + bonusBlack) - (matWhite + bonusWhite);
+	const int whitePov = (matWhite + bonusWhite) - (matBlack + bonusBlack) + adjustment;
+	const int expected = (toMove == WHITE) ? whitePov : -whitePov;
 
 	REQUIRE(eval->Evaluate(board) == expected);
 }
@@ -1195,7 +1208,7 @@ TEST_CASE("Eval - Breakdown(): total agrees with Evaluate(), and the rows reprod
 	                     (terms.rooks[WHITE] - terms.rooks[BLACK]) + (terms.pst[WHITE] - terms.pst[BLACK]) +
 	                     (terms.mopup[WHITE] - terms.mopup[BLACK]) + (terms.bishops[WHITE] - terms.bishops[BLACK]) +
 	                     (terms.castling[WHITE] - terms.castling[BLACK]) +
-	                     (terms.mobility[WHITE] - terms.mobility[BLACK]);
+	                     (terms.mobility[WHITE] - terms.mobility[BLACK]) + terms.endgame_adjustment;
 
 	const int expectedTotal = (board.GetCurrentColor() == WHITE) ? whitePov : -whitePov;
 	REQUIRE(terms.total == expectedTotal);
@@ -1647,4 +1660,175 @@ TEST_CASE("Eval - EvalComplex does not score the rear pawn of a doubled pair as 
 	// them when the rear pawn was scored as a passer too.
 	CAPTURE(doubledScore, separatedScore);
 	REQUIRE(separatedScore > doubledScore + 50);
+}
+
+// ── Drawish material recognition (issue #128) ─────────────────────────────────
+//
+// The evaluator scored a bare minor against a lone king at roughly +300 and a
+// pair of knights at +580. Those are draws by material whatever the kings are
+// doing, so the assertions below are on the exact value rather than on a
+// direction: any nonzero score in these classes is the defect.
+//
+// Every case is stated for both colors and both sides to move. Reading one
+// color's counts where the other's is meant is the obvious way to get a
+// classifier wrong, and it is invisible in a single-orientation test.
+
+namespace {
+	// The exact-draw classes. Kings are placed differently in each entry — a
+	// piece-count rule must not care where they stand.
+	constexpr const char* kDrawnByMaterialFens[] = {
+	    "8/8/8/3k4/8/8/8/3K4 w - - 0 1",    // bare kings
+	    "8/8/8/8/8/8/8/K6k w - - 0 1",      // bare kings, both on the back rank
+	    "8/8/8/3k4/8/8/3N4/3K4 w - - 0 1",  // K+N vs K
+	    "7k/8/8/8/8/8/8/K1N5 w - - 0 1",    // K+N vs K, defender in the corner
+	    "8/8/8/3k4/8/8/3B4/3K4 w - - 0 1",  // K+B vs K
+	    "7k/8/8/8/4B3/8/8/K7 w - - 0 1",    // K+B vs K, defender in the corner
+	    "8/8/8/3k4/8/8/2NN4/3K4 w - - 0 1", // K+NN vs K
+	    "7k/8/8/8/3N1N2/8/8/K7 w - - 0 1",  // K+NN vs K, defender in the corner
+	};
+
+	// Material that still mates, and must keep its score.
+	constexpr const char* kWinningEndgameFens[] = {
+	    "8/8/8/3k4/8/8/2BN4/3K4 w - - 0 1",  // K+B+N vs K
+	    "8/8/8/3k4/8/8/2BB4/3K4 w - - 0 1",  // K+B+B vs K
+	    "8/8/8/3k4/8/8/4R3/3K4 w - - 0 1",   // K+R vs K
+	    "8/8/8/3k4/8/8/4Q3/3K4 w - - 0 1",   // K+Q vs K
+	    "8/8/8/3k4/8/8/2NNN3/3K4 w - - 0 1", // K+NNN vs K — three knights force mate
+	};
+} // namespace
+
+TEST_CASE("Eval - material that cannot mate scores exactly a draw", "[eval]")
+{
+	const char* fen = GENERATE(from_range(kDrawnByMaterialFens));
+	CAPTURE(fen);
+
+	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+
+	// Four positions per entry: the attacker as White and as Black, each with
+	// either side to move. The mirrored half is what catches a classifier that
+	// reads one color's pieces where it means the other's; the side-to-move
+	// half is cheap and keeps the cases uniform with the scaled classes to
+	// come, where the sign does distinguish them.
+	for (const std::string& colored : {std::string(fen), MirrorFen(fen)}) {
+		for (const char stm : {'w', 'b'}) {
+			std::string position = colored;
+			position[position.find(' ') + 1] = stm;
+			CAPTURE(position);
+
+			Board board(position);
+			REQUIRE(eval->Evaluate(board) == GameValues::Draw);
+		}
+	}
+}
+
+TEST_CASE("Eval - material that still mates keeps its score", "[eval]")
+{
+	// The complement of the case above, and what stops it being satisfied by
+	// scaling every pawnless ending to zero. Each of these is a forced win, so
+	// the search must still see the whole material lead.
+	const char* fen = GENERATE(from_range(kWinningEndgameFens));
+	CAPTURE(fen);
+
+	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
+	REQUIRE(complexEval != nullptr);
+
+	// Mirrored as well, for the same reason the drawn cases are: a classifier
+	// that lost a win would do it in one orientation only.
+	for (const std::string& colored : {std::string(fen), MirrorFen(fen)}) {
+		CAPTURE(colored);
+		Board board(colored);
+
+		REQUIRE(eval->Evaluate(board) > 400);
+		REQUIRE(complexEval->Breakdown(board).endgame_adjustment == 0);
+	}
+}
+
+TEST_CASE("Eval - the defender's pawn keeps a drawn class unscaled", "[eval]")
+{
+	// K+NN vs K is drawn; K+NN vs K+P is the Troitsky win, because the pawn
+	// gives the defender a move and takes the stalemate away. The pawn belongs
+	// to the *defender* here, which is the half of the pawn test that the
+	// attacker-side case cannot reach.
+	Board defenderHasPawn("8/8/8/3k4/8/4p3/2NN4/3K4 w - - 0 1");
+
+	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
+	REQUIRE(complexEval != nullptr);
+
+	REQUIRE(complexEval->Breakdown(defenderHasPawn).endgame_scale == ENDGAME_SCALE_MAX);
+	REQUIRE(eval->Evaluate(defenderHasPawn) > 400);
+}
+
+TEST_CASE("Eval - a pawn keeps a lone minor out of the drawn classes", "[eval]")
+{
+	// K+B+P vs K is won, and it is one capture away from K+B vs K. The pawn is
+	// the whole difference, so a classifier looking only at the minors would
+	// clamp this to zero — and the engine would see no reason to keep the pawn.
+	Board withPawn("8/8/8/3k4/8/4P3/3B4/3K4 w - - 0 1");
+	Board withoutPawn("8/8/8/3k4/8/8/3B4/3K4 w - - 0 1");
+
+	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+
+	REQUIRE(eval->Evaluate(withPawn) > 300);
+	REQUIRE(eval->Evaluate(withoutPawn) == GameValues::Draw);
+}
+
+TEST_CASE("Eval - minors on both sides are left unscaled", "[eval]")
+{
+	// Deliberately outside the first cut: K+N vs K+B is drawish in practice but
+	// not by material, and nothing has measured it. This records the exclusion,
+	// so widening the classifier to cover it is a visible change and not a
+	// silent one.
+	Board knightVsBishop(FEN_MOPUP_MARGINAL_CORNER);
+
+	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
+	REQUIRE(complexEval != nullptr);
+
+	REQUIRE(complexEval->Breakdown(knightVsBishop).endgame_scale == ENDGAME_SCALE_MAX);
+}
+
+TEST_CASE("Eval - a kingless board reaches the terms that guard against it", "[eval]")
+{
+	// Companion to the whole-position kingless case near the top of this file,
+	// which the classifier now short-circuits before any term runs. The defect
+	// that case exists for is a NO_SQUARE king square being dereferenced in
+	// eval_pst or eval_mopup — asserted here directly, on the two terms that
+	// read king_sq, so it stays covered whatever Evaluate() does first.
+	//
+	// The production path still reaches them: UciHandler::cmd_eval calls
+	// Breakdown(), which computes every term regardless of the scale.
+	Board board;
+
+	for (const eColor color : {WHITE, BLACK}) {
+		CAPTURE(static_cast<int>(color));
+		REQUIRE(EvalComplexTestFixture::Pst(board, color) == 0);
+		REQUIRE(EvalComplexTestFixture::Mopup(board, color) == 0);
+	}
+}
+
+TEST_CASE("Eval - Breakdown(): the endgame row accounts for the whole scale", "[eval]")
+{
+	// The #129 honesty invariant extended to the scale: the rows plus the
+	// adjustment must still reproduce `total` exactly. Asserted on a scaled
+	// position, where the adjustment is the largest number in the table.
+	Board board("8/8/8/3k4/8/8/3N4/3K4 w - - 0 1");
+
+	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
+	REQUIRE(complexEval != nullptr);
+
+	const EvalBreakdown terms = complexEval->Breakdown(board);
+
+	REQUIRE(terms.endgame_scale == 0);
+	REQUIRE(terms.endgame_adjustment != 0);
+
+	const int whitePov = (terms.material[WHITE] - terms.material[BLACK]) + (terms.pawns[WHITE] - terms.pawns[BLACK]) +
+	                     (terms.rooks[WHITE] - terms.rooks[BLACK]) + (terms.pst[WHITE] - terms.pst[BLACK]) +
+	                     (terms.mopup[WHITE] - terms.mopup[BLACK]) + (terms.bishops[WHITE] - terms.bishops[BLACK]) +
+	                     (terms.castling[WHITE] - terms.castling[BLACK]) +
+	                     (terms.mobility[WHITE] - terms.mobility[BLACK]) + terms.endgame_adjustment;
+
+	REQUIRE(terms.total == whitePov);
 }

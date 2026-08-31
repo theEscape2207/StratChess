@@ -626,21 +626,72 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 	    .material = {matScoreWhite, matScoreBlack},
 	    .phase = gamePhase,
 	    .mopup_active = {mopupActive[WHITE], mopupActive[BLACK]},
+	    .endgame_scale = EndgameScale(boardsSpan),
 	    .castling_rights = board.castling_rights(),
 	};
 }
 
 //
-//	Evaluate() :
-//	Description: Sums up the material value from both colors. Adds additional bonuses according to heuristics
-//	Returns:	 The value of the player in turn subtracted the oppositions value
-// FIXME:		 Evaluate does not know about Check Mate - this is strictly only an evaluation of the current position
-//				 - this means that we miss the first (and best, maybe even only?) opportunity to do check mate!
+//	EndgameScale() :
+//	Description: Classifies the position's material and returns what fraction of
+//	             the assembled score it is worth, over ENDGAME_SCALE_MAX.
+//	Returns:	 0 for material that cannot win at all, ENDGAME_SCALE_MAX otherwise.
 //
-int EvalComplex::Evaluate(const Board& board) const noexcept
+// Only classes drawn by material alone are recognised, and only against a
+// defender with nothing. Everything else — including opposite-coloured bishops,
+// which convert often enough that discounting them costs strength, and minor
+// against minor, which nothing has measured — is left at full value. A class
+// wrongly scaled to zero is a won ending the search will not enter, so the bar
+// for adding one is that no defence loses, not that most draw.
+//
+int EvalComplex::EndgameScale(std::span<const BITBOARD> boards) noexcept
 {
-	const EvalContext ctx = BuildContext(board);
+	// A pawn promotes and a heavy piece mates on its own, so neither side can
+	// be short of mating material while it holds one. Every position that is
+	// not a bare endgame — nearly all of them — leaves here, on one OR of
+	// bitboards the caller has already loaded, before anything is counted.
+	if ((boards[ePiece::WHITE_PAWN] | boards[ePiece::BLACK_PAWN] | boards[ePiece::WHITE_ROOK] |
+	     boards[ePiece::BLACK_ROOK] | boards[ePiece::WHITE_QUEEN] | boards[ePiece::BLACK_QUEEN]) != 0ULL)
+		return ENDGAME_SCALE_MAX;
 
+	const BITBOARD whiteMinors = boards[ePiece::WHITE_KNIGHT] | boards[ePiece::WHITE_BISHOP];
+	const BITBOARD blackMinors = boards[ePiece::BLACK_KNIGHT] | boards[ePiece::BLACK_BISHOP];
+
+	if (whiteMinors == 0ULL && blackMinors == 0ULL)
+		return 0; // Bare kings.
+
+	// Minors on both sides. Drawish, but the defender's piece is also what lets
+	// the attacker mate by stalemating it, and no measurement covers these; out
+	// of scope rather than assumed drawn.
+	if (whiteMinors != 0ULL && blackMinors != 0ULL)
+		return ENDGAME_SCALE_MAX;
+
+	// Exactly one side has minors by here, so these are the attacker's counts
+	// whichever color it is — the classifier has no orientation to get wrong.
+	const bool whiteAttacks = (whiteMinors != 0ULL);
+	const int knights = std::popcount(boards[whiteAttacks ? ePiece::WHITE_KNIGHT : ePiece::BLACK_KNIGHT]);
+	const int bishops = std::popcount(boards[whiteAttacks ? ePiece::WHITE_BISHOP : ePiece::BLACK_BISHOP]);
+
+	// A lone minor cannot mate at all. Two knights can mate but cannot force
+	// it: with nothing to move, the defender is stalemated before it can be
+	// mated. Both are draws whatever the king placement, which is what makes
+	// them a piece-count rule.
+	if (knights + bishops == 1)
+		return 0;
+	if (knights == 2 && bishops == 0)
+		return 0;
+
+	// Bishop and knight, two bishops, and three or more minors all mate.
+	return ENDGAME_SCALE_MAX;
+}
+
+//
+//	RawWhitePov() :
+//	Description: Material plus every blended term, summed white-minus-black.
+//	Returns:	 The unscaled score of the position in White's point of view.
+//
+int EvalComplex::RawWhitePov(const EvalContext& ctx) noexcept
+{
 	// Interpolate each term at this position's phase and sum the results.
 	// Material is not tapered and is added after — a piece is worth its value
 	// regardless of how far along the game is; only positional judgements shift.
@@ -665,9 +716,36 @@ int EvalComplex::Evaluate(const Board& board) const noexcept
 		             BlendPhase(eval_mobility(ctx, c), ctx.phase);
 	}
 
+	return (ctx.material[WHITE] + blended[WHITE]) - (ctx.material[BLACK] + blended[BLACK]);
+}
+
+//
+//	Evaluate() :
+//	Description: Sums up the material value from both colors. Adds additional bonuses according to heuristics
+//	Returns:	 The value of the player in turn subtracted the oppositions value
+// FIXME:		 Evaluate does not know about Check Mate - this is strictly only an evaluation of the current position
+//				 - this means that we miss the first (and best, maybe even only?) opportunity to do check mate!
+//
+int EvalComplex::Evaluate(const Board& board) const noexcept
+{
+	const EvalContext ctx = BuildContext(board);
+
+	// Nothing positional can move a score that is about to be multiplied by
+	// zero, so the terms are not computed at all. This is the path the engine
+	// takes through exactly the endings it now has to play out, which is where
+	// the saving is worth having.
+	if (ctx.endgame_scale == 0)
+		return GameValues::Draw;
+
 	// The position's score, in White's point of view: the one value that is a
 	// property of the position rather than of whose turn it is.
-	const int white_pov = (ctx.material[WHITE] + blended[WHITE]) - (ctx.material[BLACK] + blended[BLACK]);
+	//
+	// The scale acts on the whole score, material included — in a class scored
+	// 0 the bishop is not worth 300 cp less, the position is drawn — so the
+	// result at scale 0 is exactly GameValues::Draw. Mate scores never reach
+	// here: this function only ever produces a static centipawn score, and
+	// search constructs mate values around it.
+	const int white_pov = ApplyEndgameScale(RawWhitePov(ctx), ctx.endgame_scale);
 
 	// Side-to-move sign, applied in exactly one place.
 	return (board.GetCurrentColor() == WHITE) ? white_pov : -white_pov;
@@ -692,6 +770,12 @@ EvalBreakdown EvalComplex::Breakdown(const Board& board) const noexcept
 {
 	const EvalContext ctx = BuildContext(board);
 
+	// The adjustment is derived through the same helper Evaluate() applies, from
+	// the scale BuildContext already decided — so the reported figure cannot be
+	// a second opinion about either.
+	const int raw = RawWhitePov(ctx);
+	const int adjustment = ApplyEndgameScale(raw, ctx.endgame_scale) - raw;
+
 	// Rows are reported BLENDED at this position's phase — i.e. the number each
 	// term actually contributes to `total`, not its mg or eg endpoint. That is
 	// what keeps the printed table summing to the score (the #129 honesty
@@ -709,6 +793,8 @@ EvalBreakdown EvalComplex::Breakdown(const Board& board) const noexcept
 		.castling = { BlendPhase(eval_castling(ctx, WHITE), ctx.phase), BlendPhase(eval_castling(ctx, BLACK), ctx.phase) },
 		.mobility = { BlendPhase(eval_mobility(ctx, WHITE), ctx.phase), BlendPhase(eval_mobility(ctx, BLACK), ctx.phase) },
 		.phase    = ctx.phase,
+		.endgame_scale      = ctx.endgame_scale,
+		.endgame_adjustment = adjustment,
 		.total    = Evaluate(board),
 	};
 	// clang-format on

@@ -36,6 +36,10 @@ pawns are gone, which is what points at material classes rather than at tapering
 - add a search-side draw rule, touch `ThreadData::check_draws()`, the TT or repetition detection;
 - solve KPK or fortresses generally, or approach Syzygy (#101);
 - retune unrelated evaluation terms (#117);
+- recognise two same-coloured bishops against a bare king, which also cannot mate. It is the same
+  kind of rule as K+NN vs K and `eval_bishops` already has the square-colour machinery, but it is
+  reachable only by promotion — frequency near zero, so it is a follow-up rather than part of the
+  first cut;
 - teach mop-up which corner a KBN mate must be driven into (#118 item 2). The epic index attributes
   it to this plan because the bishop's square colour is the shared ingredient, but it is a mating
   *technique* improvement, not drawish-material recognition, and nothing here needs it. It stays
@@ -63,13 +67,20 @@ Because integer division truncates toward zero, `(-n)/d == -(n/d)`, so a single 
 on the white-POV value is odd-symmetric and preserves the mirror property by construction rather than
 by test.
 
-### D3: Piece counts move into `EvalContext`
+### D3: Piece counts move into `EvalContext` — deferred to the mop-up step
 
 `BuildContext()` already popcounts knights, bishops, rooks and queens per color to compute the game
-phase, and throws the counts away. Storing them costs nothing and gives the classifier and the
-re-expressed mop-up gate a *single* material model, which is what the issue asks for — the alternative
-is a second material test growing inside the mop-up gate, which is how the current phase-keyed gate
-came to disagree with what "the defender can still hold" means.
+phase, and throws the counts away. Storing them gives the classifier and the re-expressed mop-up gate
+a *single* material model, which is what the issue asks for — the alternative is a second material
+test growing inside the mop-up gate, which is how the current phase-keyed gate came to disagree with
+what "the defender can still hold" means.
+
+**Changed during implementation.** Part 1 was built with the field and then took it out again: the
+classifier and the mop-up gate are both computed *inside* `BuildContext`, so they share one model
+through locals and the context field had a single reader in the same function. It bought nothing and
+made the per-call context larger. The classifier now reads the bitboards directly and counts only
+what it needs, past its own early-out. The decision stands for the mop-up re-expression, which is
+where a second consumer actually appears; the field comes back then.
 
 ### D4: No `Mate_Threshold` guard
 
@@ -144,6 +155,10 @@ into, which bounds the blast radius of this change to qsearch leaves and the sta
 
 - **Step 1 (refactor):** `Compare-SearchEquivalence.ps1 -After <exe>` — identical node counts and best
   moves at `Threads=1`. No Elo match: the diff cannot change a score.
+- **Cost, measured in part 1:** the classifier is free (+0.25% nps, seven interleaved pairs) once it
+  reads the bitboards and counts nothing until past its own early-out. The first version cost 1.0–1.3%
+  by materialising two count structs at every leaf. Worth knowing before parts 2 and 3 add work here:
+  in this function, *what gets built per call* dominates *what gets compared*.
 - **Step 2 (exact-draw classes):** `[eval]` regression cases for both colors and both sides to move,
   covering every exact-zero class under varying king/PST placement; the won-ending cases above; the
   mirror cases; and the UCI `eval` table reproducing `total`. Plus `Run-Bench.ps1` — the classifier
@@ -158,7 +173,7 @@ into, which bounds the blast radius of this change to qsearch leaves and the sta
 |---|---|
 | Why the classifier is in eval and not a search draw rule (D1) | source comment at the classifier |
 | Why one white-POV assembly, and the odd-symmetry argument (D2) | source comment in `Evaluate()` |
-| Why piece counts live in `EvalContext` (D3) | source comment on the new field |
+| Why piece counts live in `EvalContext` (D3) | deferred with the field — nothing to harvest in part 1 |
 | Why there is no `Mate_Threshold` guard (D4) | source comment at the scale application |
 | Exact-draw vs. parameter split (D5, D6) | source comment on the scale constants |
 | The wrong-bishop fortress condition (D7) | source comment at that classifier branch |

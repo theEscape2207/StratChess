@@ -22,6 +22,53 @@ Newest first.
 
 ---
 
+## 2026-08-31 — Score material that cannot mate as a draw (#128, part 1)
+
+`EvalComplex` had no concept of drawish material: a bare minor against a lone king scored ~+300 and
+two knights ~+580. `EndgameScale()` (`StratEngine/Eval.cpp`) classifies the position from per-color
+piece counts and returns a fixed-point scale over `ENDGAME_SCALE_MAX`; `Evaluate()` applies it to the
+white-POV score before the side-to-move sign, so a scale of 0 yields exactly `GameValues::Draw`.
+Recognised as drawn: bare kings, K+minor vs K, and K+NN vs K, in either orientation.
+
+Everything else is left at full value, including opposite-coloured bishops and minor-versus-minor.
+Scaled rook endings, the wrong-coloured-bishop fortress and the mop-up gate re-expression (#118 item
+5) are the remaining parts of #128.
+
+Why this first: measured over 19,980 games (run `33215162562`, `Docs/MoveQuality.md`), **656 games
+(3.3%) reach K+minor vs K with the stronger side reporting >= +250, and all 656 are drawn**. 7.0% of
+games end by insufficient material, and in 665 of those the better side's last reported score was
+>= +150 — with a pawn still on the board six plies earlier in 44.1% of them.
+
+`Evaluate()` returns `GameValues::Draw` before computing any term when the scale is zero — nothing
+positional can move a score about to be multiplied by nothing, and these are the endings the engine
+now has to play out. `Breakdown()` still computes every term, so the UCI table is unaffected.
+
+`EvalBreakdown` gained `endgame_scale` and `endgame_adjustment`, and the UCI `eval` table an
+`endgame` row plus a scale line. The row is net-only: the scale acts on the white-minus-black score,
+not on either side's pieces, so its per-color columns print dashes.
+
+### Validation
+
+- `[eval]` regression cases per `Docs/TestDesign.md`, each drawn class asserted for both colors and
+  both sides to move. Falsified against the unfixed code: with the classifier stubbed out, three of
+  the new cases fail.
+- Release and Debug suites both pass.
+- `Run-Bench.ps1` at depth 12, interleaved before/after, seven pairs: **3,007k vs 3,014k nps
+  (+0.25%)** — no measurable cost. Bench node counts are identical, so this is a clean speed
+  comparison; the bench positions never reach a scaled class.
+
+  The first implementation did cost 1.0–1.3%, and where that went is the useful part. It was not the
+  classification: it was building two 5-`int` count structs in `BuildContext` on every leaf, adding
+  register pressure to an already-large hot function. Reading the bitboards directly, testing
+  `pawns|rooks|queens` first and popcounting only past that early-out, removes the materialisation
+  and the cost with it. Two short-circuits tried *before* that diagnosis — a bitboard early-out
+  guarding the call, and a single comparison on the already-computed phase — both measured no better,
+  because both still built the structs.
+
+  A probe that stubbed the classifier to a constant appeared to show the cost was elsewhere. It was
+  not evidence: a constant scale lets the compiler fold the entire scale application away, so the
+  probe measured a build with both halves gone.
+
 ## 2026-08-30 — Prune PR-scoped caches when the PR closes (#427)
 
 `delete-merged-branch.yml` renamed to `pr-closed-cleanup.yml` and given a second job. Nothing
