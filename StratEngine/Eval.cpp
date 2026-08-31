@@ -583,9 +583,9 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 
 	// Mop-up gate, evaluated here rather than inside eval_mopup so eval_pst can
 	// consult the same answer (issue #118 item 4): pawnless, both kings present,
-	// a decisive material lead, and the LOSER reduced to little material. Only
-	// the leader is active. Gating on the loser's phase rather than the total is
-	// what keeps KQQ-vs-K in scope — see MOPUP_MAX_LOSER_PHASE in Eval.h.
+	// a decisive material lead, and the LOSER holding no heavy piece. Only the
+	// leader is active. The defender's force is the condition, not its phase —
+	// see the comment above MOPUP_MATERIAL_THRESHOLD in Eval.h.
 	//
 	// The kingless guard is load-bearing and is why this cannot simply fall out
 	// of the material check: a default-constructed or failed-parse Board is
@@ -598,8 +598,10 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 		const int absMatDiff = (matDiff >= 0) ? matDiff : -matDiff;
 		if (absMatDiff >= MOPUP_MATERIAL_THRESHOLD) {
 			const eColor winner = (matDiff > 0) ? WHITE : BLACK;
-			const int loserPhase = (winner == WHITE) ? phaseBlack : phaseWhite;
-			if (loserPhase <= MOPUP_MAX_LOSER_PHASE)
+			const BITBOARD loserHeavies = (winner == WHITE)
+			                                  ? (boardsSpan[ePiece::BLACK_QUEEN] | boardsSpan[ePiece::BLACK_ROOK])
+			                                  : (boardsSpan[ePiece::WHITE_QUEEN] | boardsSpan[ePiece::WHITE_ROOK]);
+			if (loserHeavies == 0ULL)
 				mopupActive[winner] = true;
 		}
 	}
@@ -778,10 +780,8 @@ int EvalComplex::PawnlessRookScale(std::span<const BITBOARD> boards) noexcept
 {
 	const int whiteRooks = std::popcount(boards[ePiece::WHITE_ROOK]);
 	const int blackRooks = std::popcount(boards[ePiece::BLACK_ROOK]);
-	const int whiteMinors =
-	    std::popcount(boards[ePiece::WHITE_KNIGHT]) + std::popcount(boards[ePiece::WHITE_BISHOP]);
-	const int blackMinors =
-	    std::popcount(boards[ePiece::BLACK_KNIGHT]) + std::popcount(boards[ePiece::BLACK_BISHOP]);
+	const int whiteMinors = std::popcount(boards[ePiece::WHITE_KNIGHT]) + std::popcount(boards[ePiece::WHITE_BISHOP]);
+	const int blackMinors = std::popcount(boards[ePiece::BLACK_KNIGHT]) + std::popcount(boards[ePiece::BLACK_BISHOP]);
 
 	// KR+minor vs KR. Orientation-free: with one rook each, the side holding the
 	// extra minor is the one the sum identifies, whichever color it is.

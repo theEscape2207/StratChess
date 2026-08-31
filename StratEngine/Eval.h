@@ -375,13 +375,14 @@ class EvalComplex final : public EvalManager {
 	// positional idea, and fading it in at half strength mid-game would be
 	// meaningless.
 	//
-	// Keyed on the LOSING side's phase, not the total. The retired stage gate
-	// was min(material) <= 11500, i.e. a statement about the weaker side alone;
-	// keying on total phase instead would let extra material on the WINNING
-	// side switch mop-up off. That loses exactly the cases mop-up exists for:
-	// KQQ vs K is total phase 8, and is reached by promoting a second queen —
-	// so the engine would lose its mating guidance at the moment it queens.
-	static const short MOPUP_MAX_LOSER_PHASE = 6; // gate: loser's own phase <= this
+	// The gate asks what force the DEFENDER still has, not how much of it there
+	// is (issue #118 item 5). A phase budget could not express that: a lone
+	// queen is phase 4 and passed the old `loser phase <= 6` gate, so Q+R vs Q
+	// was paid for chasing a king that was never going to be cornered. Driving
+	// the losing king to the edge only wins when nothing can interpose or check
+	// from a distance, which is a statement about heavy pieces — so the defender
+	// may hold minors and nothing else. Everything mop-up exists for still
+	// qualifies, KQQ vs K included, however much material the winner has.
 
 	// Pawnless rook endings (#128), as numerators over ENDGAME_SCALE_MAX.
 	//
