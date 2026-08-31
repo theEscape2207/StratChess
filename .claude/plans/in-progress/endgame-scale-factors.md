@@ -75,12 +75,17 @@ a *single* material model, which is what the issue asks for — the alternative 
 test growing inside the mop-up gate, which is how the current phase-keyed gate came to disagree with
 what "the defender can still hold" means.
 
-**Changed during implementation.** Part 1 was built with the field and then took it out again: the
-classifier and the mop-up gate are both computed *inside* `BuildContext`, so they share one model
-through locals and the context field had a single reader in the same function. It bought nothing and
-made the per-call context larger. The classifier now reads the bitboards directly and counts only
-what it needs, past its own early-out. The decision stands for the mop-up re-expression, which is
-where a second consumer actually appears; the field comes back then.
+**Changed during implementation, and then rejected.** Part 1 was built with the field and then took
+it out again: the classifier and the mop-up gate are both computed *inside* `BuildContext`, so they
+share one model through locals and the context field had a single reader in the same function. It
+bought nothing and made the per-call context larger. The classifier now reads the bitboards directly
+and counts only what it needs, past its own early-out.
+
+The field was expected back with the mop-up re-expression, as the second consumer. It was not
+needed: "the loser holds no heavy piece" is `(loser queens | loser rooks) == 0`, two bitboards
+`BuildContext` has already loaded, and no count at all. The decision's premise — that a second
+material test would grow inside the gate — was right; its conclusion, that the shared model has to
+be a stored count, was not. There is no `EvalContext` piece-count field, and nothing now wants one.
 
 ### D4: No `Mate_Threshold` guard
 
@@ -109,6 +114,22 @@ The safe first cut is the canonical case only: no attacker material besides the 
 pawn(s), and the defending king already standing in the promotion corner. The same material with the
 defending king outside that corner is winning, so a piece-count-only rule would clamp won positions to
 zero. This is also the class with no frequency measurement behind it, so it lands last and separately.
+
+**Settled during implementation.** "In the promotion corner" is `KingDistance(defender, promotion
+square) <= 1`. From any of those four squares the defender can always step back onto the promotion
+square, and nothing the attacker holds can take it away, so the "no defence loses" bar is met; the
+promotion square alone would have been safe too but would fire in one placement only, which is
+almost no guidance for the search. Doubled rook pawns are still one promotion square and stay in the
+class; pawns on *both* rook files are not, since their promotion squares are opposite colours.
+
+### D9: The mop-up gate keys on heavy pieces, not on a count
+
+`#118` item 5 asks for the defender's force. The rule is that it holds no queen and no rook. Mop-up
+pays for driving the losing king to the edge, and that only wins when nothing can check from a
+distance or interpose — which is a statement about heavy pieces, not about how much material is
+left. Rejected: a defender-material threshold, which is the phase gate's mistake in another unit;
+rejected: excluding only the queen, which would leave K+Q vs K+R collecting a bonus for cornering a
+king the rook can check away, the same defect one piece down.
 
 ### D8: The breakdown gets a scale row, not redistributed rows
 

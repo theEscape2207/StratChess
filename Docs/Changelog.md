@@ -22,6 +22,49 @@ Newest first.
 
 ---
 
+## 2026-08-31 — Scaled rook endings, the wrong-bishop fortress and the mop-up gate (#128, part 2)
+
+The rest of #128, on top of the exact-draw classes below.
+
+**Scaled pawnless rook endings.** `PawnlessRookScale()` gives KR+minor vs KR a scale of 4/16 and KR
+vs K+minor 8/16. Neither is drawn by material, so both are scaled rather than clamped — the search
+should still prefer the better version of the ending. Measured over 19,980 games (run `33215162562`,
+`Docs/MoveQuality.md`): 262 games (1.3%) reach pawnless KR+minor vs KR at >= +250 and score 0.645;
+209 (1.0%) reach pawnless KR vs K+minor at >= +100 and score 0.720, but the >= +250 subset scores
+0.801 — which is why that one keeps half its value rather than being clamped. Both factors are
+strength parameters, not rules, and are subject to the SPRT.
+
+**The wrong-coloured-bishop rook-pawn fortress.** `WrongBishopFortress()` returns a scale of 0 for
+the canonical case: the attacker's only pieces are one bishop and pawns on a single rook file, the
+defender is a bare king, the bishop cannot cover the promotion square, and the defending king already
+stands on it or beside it. The only class in the classifier decided by a square rather than a count,
+and the reason is that the same material is a win with that king outside the corner — a
+piece-count-only rule would clamp won positions to zero.
+
+**The mop-up gate now asks what force the defender has (#118 item 5).** `MOPUP_MAX_LOSER_PHASE` is
+gone: a lone queen is phase 4, so pawnless Q+R vs Q passed the old gate and was paid for chasing a
+king it could never corner. The defender may now hold minors and nothing else. Everything mop-up
+exists for still qualifies, KQQ vs K included. `EvalContext` did not need the piece-count field the
+design deferred to this step — the gate is two bitboard tests on boards `BuildContext` has already
+loaded.
+
+### Validation
+
+- `[eval]` regression cases for each new class, both colors and both sides to move, plus the
+  complements that must keep their score: the fortress with the defending king out of the corner,
+  with the other bishop, with a knight pawn, and with a second bishop; KRR vs KR, KR+BN vs KR,
+  KR+N vs KR+N and KR+N+P vs KR against the scaled classes. Both scaled FENs joined the #125 mirror
+  battery — they are the only entries whose score passes through a *fractional* scale, so a sign
+  error in the scaling arithmetic has nowhere else to show up.
+- Falsified: each of the three changes stubbed out in turn makes its own cases fail and nothing
+  else's.
+- Release and Debug suites both pass.
+- `Run-Bench.ps1` at depth 12, interleaved before/after, seven pairs: **2,932k vs 2,915k nps
+  (-0.55%)**, every pair negative. Node counts and best moves are identical, so this is a clean
+  speed comparison and the bench positions never reach a scaled class. The cost is the classifier's
+  early-out becoming three branches instead of one: queens leave first, then pawns, and only a
+  pawnless position or a knight- and rook-less one goes further.
+
 ## 2026-08-31 — Score material that cannot mate as a draw (#128, part 1)
 
 `EvalComplex` had no concept of drawish material: a bare minor against a lone king scored ~+300 and
