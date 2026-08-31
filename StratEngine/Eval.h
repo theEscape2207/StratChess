@@ -383,6 +383,22 @@ class EvalComplex final : public EvalManager {
 	// so the engine would lose its mating guidance at the moment it queens.
 	static const short MOPUP_MAX_LOSER_PHASE = 6; // gate: loser's own phase <= this
 
+	// Pawnless rook endings (#128), as numerators over ENDGAME_SCALE_MAX.
+	//
+	// Unlike the classes scaled to zero, neither of these is drawn by material:
+	// they are drawn by tendency, which is why they are scaled rather than
+	// clamped. That distinction is the whole reason for a fractional scale — a
+	// clamp would throw away the versions of the ending that do convert, while a
+	// factor still leaves the search preferring the better one. They are
+	// therefore ordinary strength parameters, retained, adjusted or dropped on
+	// match evidence, where the exact-draw classes ship on the rules of chess.
+	//
+	// The extra minor rarely produces more than a stalemate trick against a rook
+	// that is free to give itself up for it, hence the heavier discount; a rook
+	// against a bare minor keeps real winning chances and is only halved.
+	static const short ROOK_AND_MINOR_VS_ROOK_SCALE = 4;
+	static const short ROOK_VS_MINOR_SCALE = 8;
+
 	// Distance helpers for mop-up scoring — plain grid math, orientation-independent
 	// (works the same whether the square belongs to White or Black).
 	static constexpr int CenterAxisDistance(int coord) noexcept { return (coord <= 3) ? (3 - coord) : (coord - 4); }
@@ -412,6 +428,12 @@ class EvalComplex final : public EvalManager {
 	// (#101) and does not try to judge fortresses or pawn races: every class it
 	// recognises is drawn by what is on the board, whatever the squares are.
 	static int EndgameScale(std::span<const BITBOARD> boards) noexcept;
+
+	// The pawnless-with-rooks branch of the classifier. Split out because it is
+	// the one branch that has to count both sides' pieces, and inlining it into
+	// EndgameScale would put those counts textually in front of the early-outs
+	// that exist to avoid them.
+	static int PawnlessRookScale(std::span<const BITBOARD> boards) noexcept;
 
 	// Applies a scale to a white-POV score. Split out so Evaluate() and
 	// Breakdown() cannot hold two versions of the arithmetic.

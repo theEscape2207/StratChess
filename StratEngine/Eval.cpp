@@ -637,22 +637,29 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 //	             the assembled score it is worth, over ENDGAME_SCALE_MAX.
 //	Returns:	 0 for material that cannot win at all, ENDGAME_SCALE_MAX otherwise.
 //
-// Only classes drawn by material alone are recognised, and only against a
-// defender with nothing. Everything else — including opposite-coloured bishops,
-// which convert often enough that discounting them costs strength, and minor
-// against minor, which nothing has measured — is left at full value. A class
-// wrongly scaled to zero is a won ending the search will not enter, so the bar
-// for adding one is that no defence loses, not that most draw.
+// Classes drawn by material alone are scaled to zero; the pawnless rook endings
+// are drawish rather than drawn and get a fraction. Everything else — including
+// opposite-coloured bishops, which convert often enough that discounting them
+// costs strength, and minor against minor, which nothing has measured — is left
+// at full value. A class wrongly scaled to zero is a won ending the search will
+// not enter, so the bar for a zero is that no defence loses, not that most draw.
 //
 int EvalComplex::EndgameScale(std::span<const BITBOARD> boards) noexcept
 {
-	// A pawn promotes and a heavy piece mates on its own, so neither side can
-	// be short of mating material while it holds one. Every position that is
-	// not a bare endgame — nearly all of them — leaves here, on one OR of
-	// bitboards the caller has already loaded, before anything is counted.
-	if ((boards[ePiece::WHITE_PAWN] | boards[ePiece::BLACK_PAWN] | boards[ePiece::WHITE_ROOK] |
-	     boards[ePiece::BLACK_ROOK] | boards[ePiece::WHITE_QUEEN] | boards[ePiece::BLACK_QUEEN]) != 0ULL)
+	// A queen mates on its own from every class below, so a board holding one is
+	// never in scope — and this is the cheapest test that says so.
+	if ((boards[ePiece::WHITE_QUEEN] | boards[ePiece::BLACK_QUEEN]) != 0ULL)
 		return ENDGAME_SCALE_MAX;
+
+	// A pawn promotes, so no piece count can call a position holding one drawn.
+	// Together with the queen test above this is the exit for nearly every
+	// position the engine evaluates, and nothing has been counted yet.
+	if ((boards[ePiece::WHITE_PAWN] | boards[ePiece::BLACK_PAWN]) != 0ULL)
+		return ENDGAME_SCALE_MAX;
+
+	// Pawnless from here.
+	if ((boards[ePiece::WHITE_ROOK] | boards[ePiece::BLACK_ROOK]) != 0ULL)
+		return PawnlessRookScale(boards);
 
 	const BITBOARD whiteMinors = boards[ePiece::WHITE_KNIGHT] | boards[ePiece::WHITE_BISHOP];
 	const BITBOARD blackMinors = boards[ePiece::BLACK_KNIGHT] | boards[ePiece::BLACK_BISHOP];
@@ -682,6 +689,42 @@ int EvalComplex::EndgameScale(std::span<const BITBOARD> boards) noexcept
 		return 0;
 
 	// Bishop and knight, two bishops, and three or more minors all mate.
+	return ENDGAME_SCALE_MAX;
+}
+
+//
+//	PawnlessRookScale() :
+//	Description: Scale for a pawnless position with at least one rook and no
+//	             queens — the branch of EndgameScale() reached only after its
+//	             early-outs, so it is free to count pieces.
+//	Returns:	 A fractional scale for the two drawish rook classes,
+//	             ENDGAME_SCALE_MAX for everything else.
+//
+// Both classes are stated as exact counts rather than as inequalities. A second
+// rook or a second minor changes the ending: KRR vs KR wins, and so does KR+BN
+// vs KR often enough that lumping it in here would discount a real advantage.
+//
+int EvalComplex::PawnlessRookScale(std::span<const BITBOARD> boards) noexcept
+{
+	const int whiteRooks = std::popcount(boards[ePiece::WHITE_ROOK]);
+	const int blackRooks = std::popcount(boards[ePiece::BLACK_ROOK]);
+	const int whiteMinors =
+	    std::popcount(boards[ePiece::WHITE_KNIGHT]) + std::popcount(boards[ePiece::WHITE_BISHOP]);
+	const int blackMinors =
+	    std::popcount(boards[ePiece::BLACK_KNIGHT]) + std::popcount(boards[ePiece::BLACK_BISHOP]);
+
+	// KR+minor vs KR. Orientation-free: with one rook each, the side holding the
+	// extra minor is the one the sum identifies, whichever color it is.
+	if (whiteRooks == 1 && blackRooks == 1)
+		return (whiteMinors + blackMinors == 1) ? ROOK_AND_MINOR_VS_ROOK_SCALE : ENDGAME_SCALE_MAX;
+
+	// KR vs K+minor, both orientations. The rook's side must be otherwise empty:
+	// KR+minor vs K+minor is a different, winning ending.
+	if (whiteRooks == 1 && blackRooks == 0 && whiteMinors == 0 && blackMinors == 1)
+		return ROOK_VS_MINOR_SCALE;
+	if (blackRooks == 1 && whiteRooks == 0 && blackMinors == 0 && whiteMinors == 1)
+		return ROOK_VS_MINOR_SCALE;
+
 	return ENDGAME_SCALE_MAX;
 }
 

@@ -65,6 +65,11 @@ static constexpr const char* FEN_MOPUP_LOSER_KING_CENTER_WITH_PAWNS = "7r/p7/2k5
 static constexpr const char* FEN_MOPUP_MARGINAL_CORNER = "7k/8/8/8/5N2/8/8/b3K3 w - - 0 1";
 static constexpr const char* FEN_MOPUP_MARGINAL_CENTER = "8/8/2k5/8/5N2/8/8/b3K3 w - - 0 1";
 
+// The two scaled pawnless rook classes (issue #128), White the stronger side:
+// K+R+N vs K+R and K+R vs K+N. Nothing attacks either king in either.
+static constexpr const char* FEN_ROOK_AND_MINOR_VS_ROOK = "4k2r/8/8/8/8/5N2/3R4/4K3 w - - 0 1";
+static constexpr const char* FEN_ROOK_VS_MINOR = "4k2n/8/8/8/8/8/3R4/4K3 w - - 0 1";
+
 // Color-symmetry regression cases (issue #125) — see MirrorFen below.
 
 // White queen on c6: the case that exposes the pre-fix getEvalBoard defect.
@@ -534,6 +539,11 @@ static constexpr const char* kSymmetryFens[] = {
     // file, which is where a wraparound asymmetry would hide.
     FEN_EDGE_FILE_PASSERS,
     FEN_BLOCKADED_PASSER,
+    // Issue #128: the only entries whose score passes through a FRACTIONAL
+    // endgame scale. The exact-draw classes are zero on both sides of the
+    // mirror and so cannot discriminate a sign error in the scaling arithmetic.
+    FEN_ROOK_AND_MINOR_VS_ROOK,
+    FEN_ROOK_VS_MINOR,
 };
 
 TEST_CASE("Eval - EvalSimple is color-symmetric: a position and its mirror score equally", "[eval]")
@@ -611,6 +621,12 @@ struct EvalComplexTestFixture {
 		const EvalContext ctx = BuildContext(board);
 		return BlendPhase(EvalComplex::eval_castling(ctx, color), ctx.phase);
 	}
+
+	// The scaled-class factors are private tuning parameters; naming them here
+	// keeps the tests asserting the classification rather than restating the
+	// numbers, which a sweep is expected to change.
+	static constexpr int RookAndMinorVsRookScale = EvalComplex::ROOK_AND_MINOR_VS_ROOK_SCALE;
+	static constexpr int RookVsMinorScale = EvalComplex::ROOK_VS_MINOR_SCALE;
 
 	static ScorePair BishopsPair(const Board& board, eColor color)
 	{
@@ -1787,6 +1803,73 @@ TEST_CASE("Eval - minors on both sides are left unscaled", "[eval]")
 	REQUIRE(complexEval != nullptr);
 
 	REQUIRE(complexEval->Breakdown(knightVsBishop).endgame_scale == ENDGAME_SCALE_MAX);
+}
+
+// ── Scaled pawnless rook endings (issue #128) ────────────────────────────────
+//
+// Unlike the classes above these are not draws, so the assertions are on the
+// scale and on the direction of the score, never on an exact value: the point
+// is that a piece-sized lead is reported as much less than a piece while still
+// being reported as a lead.
+
+TEST_CASE("Eval - pawnless rook endings are scaled, not clamped", "[eval]")
+{
+	struct ScaledCase {
+		const char* fen;
+		int scale;
+		int rawLead; // the material lead the unscaled evaluator would report
+	};
+
+	const ScaledCase scaled =
+	    GENERATE(ScaledCase{FEN_ROOK_AND_MINOR_VS_ROOK, EvalComplexTestFixture::RookAndMinorVsRookScale, 300},
+	             ScaledCase{FEN_ROOK_VS_MINOR, EvalComplexTestFixture::RookVsMinorScale, 200});
+	CAPTURE(scaled.fen, scaled.scale, scaled.rawLead);
+
+	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
+	REQUIRE(complexEval != nullptr);
+
+	// Both orientations: MirrorFen flips the side to move as well, so the
+	// stronger side is the side to move in each, and the score is positive.
+	for (const std::string& colored : {std::string(scaled.fen), MirrorFen(scaled.fen)}) {
+		CAPTURE(colored);
+		Board board(colored);
+
+		const EvalBreakdown terms = complexEval->Breakdown(board);
+		REQUIRE(terms.endgame_scale == scaled.scale);
+		// White-POV, so the adjustment is negative only when White is the side
+		// being discounted; the mirror flips its sign along with the score.
+		REQUIRE(terms.endgame_adjustment != 0);
+
+		// Still a lead, and under the material it is made of — the two halves of
+		// "scaled rather than clamped". A clamp would fail the first assertion
+		// and the unscaled evaluator the second.
+		const int score = eval->Evaluate(board);
+		REQUIRE(score > 0);
+		REQUIRE(score < scaled.rawLead);
+	}
+}
+
+TEST_CASE("Eval - the scaled rook classes are stated as exact counts", "[eval]")
+{
+	// A second rook or a second minor is a different ending, and a pawn takes
+	// the position out of the class entirely. Each of these is one piece away
+	// from a scaled case above and must keep its full score.
+	const char* fen = GENERATE("4k2r/8/8/8/8/8/3R1R2/4K3 w - - 0 1",   // KRR vs KR
+	                           "4k2r/8/8/8/8/5N2/3R1B2/4K3 w - - 0 1", // KR+BN vs KR
+	                           "4k1nr/8/8/8/8/5N2/3R4/4K3 w - - 0 1",  // KR+N vs KR+N
+	                           "4k2r/8/8/8/8/5N2/3R3P/4K3 w - - 0 1"); // KR+N+P vs KR
+	CAPTURE(fen);
+
+	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
+	REQUIRE(complexEval != nullptr);
+
+	for (const std::string& colored : {std::string(fen), MirrorFen(fen)}) {
+		CAPTURE(colored);
+		Board board(colored);
+		REQUIRE(complexEval->Breakdown(board).endgame_scale == ENDGAME_SCALE_MAX);
+	}
 }
 
 TEST_CASE("Eval - a kingless board reaches the terms that guard against it", "[eval]")
