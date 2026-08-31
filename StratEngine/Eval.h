@@ -378,11 +378,19 @@ class EvalComplex final : public EvalManager {
 	// The gate asks what force the DEFENDER still has, not how much of it there
 	// is (issue #118 item 5). A phase budget could not express that: a lone
 	// queen is phase 4 and passed the old `loser phase <= 6` gate, so Q+R vs Q
-	// was paid for chasing a king that was never going to be cornered. Driving
-	// the losing king to the edge only wins when nothing can interpose or check
-	// from a distance, which is a statement about heavy pieces — so the defender
-	// may hold minors and nothing else. Everything mop-up exists for still
+	// was paid for chasing a king that was never going to be cornered. The
+	// defender may therefore hold anything but a queen, which is the one piece
+	// that can check the winner's king away from the corner indefinitely and
+	// leave the plan permanently unfinished. Everything mop-up exists for still
 	// qualifies, KQQ vs K included, however much material the winner has.
+	//
+	// Widening this to "no queen and no rook" is a mistake worth recording,
+	// because the second-order effect runs the other way: eval_pst suppresses
+	// the winner's king PST exactly when mop-up is active (item 4), so removing
+	// a class from the gate does not withdraw a bonus, it re-enables a
+	// CENTRALIZING king table. On K+Q vs K+R that turns a reward for walking
+	// toward the cornered king into a penalty — the item 4 defect, reinstated
+	// for a family of endings won by exactly that walk.
 
 	// Pawnless rook endings (#128), as numerators over ENDGAME_SCALE_MAX.
 	//
@@ -395,10 +403,14 @@ class EvalComplex final : public EvalManager {
 	// match evidence, where the exact-draw classes ship on the rules of chess.
 	//
 	// The extra minor rarely produces more than a stalemate trick against a rook
-	// that is free to give itself up for it, hence the heavier discount; a rook
-	// against a bare minor keeps real winning chances and is only halved.
+	// that is free to give itself up for it, hence the heavy discount. A rook
+	// against a bare minor is a different case and gets a light one: it is
+	// drawish taken as a whole, but the subset where the evaluation already
+	// claims a real advantage converts most of the time, and that subset is
+	// exactly the one a scale acts on. Discounting it hard would be reading the
+	// aggregate number as if it applied to the positions it does not describe.
 	static const short ROOK_AND_MINOR_VS_ROOK_SCALE = 4;
-	static const short ROOK_VS_MINOR_SCALE = 8;
+	static const short ROOK_VS_MINOR_SCALE = 12;
 
 	// Distance helpers for mop-up scoring — plain grid math, orientation-independent
 	// (works the same whether the square belongs to White or Black).

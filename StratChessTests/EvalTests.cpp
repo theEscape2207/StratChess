@@ -48,22 +48,21 @@ static constexpr const char* FEN_WHITE_NORMAL = "4k3/pp6/8/8/8/1P6/P7/4K3 w - - 
 // attack it — legal. No pawns of either colour, so the e-file counts as open.
 static constexpr const char* FEN_ROOK_ON_7TH = "6k1/4R3/8/8/8/8/8/4K3 w - - 0 1";
 
-// Mop-up evaluation (issue #70 / epic #110): White King+Queen vs a bare Black
-// King, pawnless, decisive material lead. Black king cornered (a8) vs centered
-// (c6) — everything else identical. White to move.
-static constexpr const char* FEN_MOPUP_LOSER_KING_CORNER = "k7/8/8/8/3Q4/8/8/4K3 w - - 0 1";
-static constexpr const char* FEN_MOPUP_LOSER_KING_CENTER = "8/8/2k5/8/3Q4/8/8/4K3 w - - 0 1";
+// Mop-up evaluation (issue #70 / epic #110): White King+Queen vs Black King+Rook,
+// pawnless, decisive material lead (900 - 500 = 400 cp). Black king cornered (a8)
+// vs centered (c6) — everything else identical. White to move.
+static constexpr const char* FEN_MOPUP_LOSER_KING_CORNER = "k6r/8/8/8/3Q4/8/8/4K3 w - - 0 1";
+static constexpr const char* FEN_MOPUP_LOSER_KING_CENTER = "7r/8/2k5/8/3Q4/8/8/4K3 w - - 0 1";
 
 // Same as above, but with one pawn each (Pa2/pa7) — mop-up must be gated off
 // once pawns are on the board.
-static constexpr const char* FEN_MOPUP_LOSER_KING_CORNER_WITH_PAWNS = "k7/p7/8/8/3Q4/8/P7/4K3 w - - 0 1";
-static constexpr const char* FEN_MOPUP_LOSER_KING_CENTER_WITH_PAWNS = "8/p7/2k5/8/3Q4/8/P7/4K3 w - - 0 1";
+static constexpr const char* FEN_MOPUP_LOSER_KING_CORNER_WITH_PAWNS = "k6r/p7/8/8/3Q4/8/P7/4K3 w - - 0 1";
+static constexpr const char* FEN_MOPUP_LOSER_KING_CENTER_WITH_PAWNS = "7r/p7/2k5/8/3Q4/8/P7/4K3 w - - 0 1";
 
 // The defender-force gate (issue #118 item 5): a defending QUEEN, whose phase of
 // 4 passed the retired phase-keyed gate. Same pawnless, decisive-lead shape as
 // the cases above, so only the defender's force distinguishes it.
 static constexpr const char* FEN_MOPUP_DEFENDER_HAS_QUEEN = "k7/1q6/8/8/3Q4/8/8/4K2R w - - 0 1";
-static constexpr const char* FEN_MOPUP_DEFENDER_HAS_ROOK = "k6r/8/8/8/3Q4/8/8/4K3 w - - 0 1";
 
 // White King+Knight vs Black King+Bishop, pawnless, materially EQUAL (300 - 300 = 0).
 // Same corner/center king placement idea — mop-up must be gated off below the
@@ -633,6 +632,11 @@ struct EvalComplexTestFixture {
 	// numbers, which a sweep is expected to change.
 	static constexpr int RookAndMinorVsRookScale = EvalComplex::ROOK_AND_MINOR_VS_ROOK_SCALE;
 	static constexpr int RookVsMinorScale = EvalComplex::ROOK_VS_MINOR_SCALE;
+
+	// The score before any endgame scale — what Evaluate() would have returned
+	// without the classifier. Lets a scaled case assert the discount reached the
+	// returned score, rather than only that it was reported in the breakdown.
+	static int RawWhitePov(const Board& board) { return EvalComplex::RawWhitePov(BuildContext(board)); }
 
 	static ScorePair BishopsPair(const Board& board, eColor color)
 	{
@@ -1403,15 +1407,21 @@ TEST_CASE("Eval - mop-up: walking the winning king toward the loser must raise t
 	// ever *softened* a disincentive to approach — it never reversed it. That is
 	// the most likely reason #70 measured ≈0 Elo.
 	//
-	// Pawnless K+Q vs a bare K, so mop-up is gated on. The Black king is
-	// cornered on a8; White's king moves from d4 to c5, strictly closer to it
-	// (Chebyshev 4 -> 3) and no other piece moves.
+	// Pawnless K+Q vs K+R: a 400 cp lead (exactly MOPUP_MATERIAL_THRESHOLD), so
+	// mop-up is gated on. The Black king is cornered on a8; White's king moves
+	// from d4 to c5, strictly closer to it (Chebyshev 4 -> 3) and no other piece
+	// moves.
+	//
+	// The defending ROOK is load-bearing: it is what keeps the item 5 gate open
+	// here, and with mop-up off eval_pst stops suppressing the winner's
+	// centralizing king table, so approaching the corner would cost centipawns
+	// instead of earning them.
 	//
 	// Legality checked: with White to move the Black king on a8 is attacked by
 	// nothing (Qd1 covers the d-file, rank 1, and the d1-a4/d1-h5 diagonals),
 	// and the kings are never adjacent.
-	Board farther("k7/8/8/8/3K4/8/8/3Q4 w - - 0 1");
-	Board closer("k7/8/8/2K5/8/8/8/3Q4 w - - 0 1");
+	Board farther("k6r/8/8/8/3K4/8/8/3Q4 w - - 0 1");
+	Board closer("k6r/8/8/2K5/8/8/8/3Q4 w - - 0 1");
 
 	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
 	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
@@ -1687,20 +1697,18 @@ TEST_CASE("Eval - EvalComplex mop-up: gated on the defender's force, not its pha
 {
 	// Q+R vs Q is the case issue #118 item 5 named: a lone queen is phase 4 and
 	// passed the retired `loser phase <= 6` gate, so the winner was paid for
-	// chasing a king its opponent could always check away from. The rook case is
-	// the same argument one piece down.
-	const char* fen = GENERATE(FEN_MOPUP_DEFENDER_HAS_QUEEN, FEN_MOPUP_DEFENDER_HAS_ROOK);
-	CAPTURE(fen);
-
-	Board defended(fen);
+	// chasing a king its opponent could always check away from.
+	Board defendingQueen(FEN_MOPUP_DEFENDER_HAS_QUEEN);
 	for (const eColor color : {WHITE, BLACK})
-		REQUIRE(EvalComplexTestFixture::Mopup(defended, color) == 0);
+		REQUIRE(EvalComplexTestFixture::Mopup(defendingQueen, color) == 0);
 
 	// The complement, and what stops the gate being satisfied by switching
-	// mop-up off entirely: the same lead against a bare king still pays.
-	Board bareDefender(FEN_MOPUP_LOSER_KING_CORNER);
-	REQUIRE(EvalComplexTestFixture::Mopup(bareDefender, WHITE) > 0);
-	REQUIRE(EvalComplexTestFixture::Mopup(bareDefender, BLACK) == 0);
+	// mop-up off for every defended ending: a rook cannot check the winner's
+	// king away for ever, so K+Q vs K+R is won by cornering and keeps its
+	// mop-up.
+	Board defendingRook(FEN_MOPUP_LOSER_KING_CORNER);
+	REQUIRE(EvalComplexTestFixture::Mopup(defendingRook, WHITE) > 0);
+	REQUIRE(EvalComplexTestFixture::Mopup(defendingRook, BLACK) == 0);
 }
 
 // ── Drawish material recognition (issue #128) ─────────────────────────────────
@@ -1842,13 +1850,12 @@ TEST_CASE("Eval - pawnless rook endings are scaled, not clamped", "[eval]")
 	struct ScaledCase {
 		const char* fen;
 		int scale;
-		int rawLead; // the material lead the unscaled evaluator would report
 	};
 
 	const ScaledCase scaled =
-	    GENERATE(ScaledCase{FEN_ROOK_AND_MINOR_VS_ROOK, EvalComplexTestFixture::RookAndMinorVsRookScale, 300},
-	             ScaledCase{FEN_ROOK_VS_MINOR, EvalComplexTestFixture::RookVsMinorScale, 200});
-	CAPTURE(scaled.fen, scaled.scale, scaled.rawLead);
+	    GENERATE(ScaledCase{FEN_ROOK_AND_MINOR_VS_ROOK, EvalComplexTestFixture::RookAndMinorVsRookScale},
+	             ScaledCase{FEN_ROOK_VS_MINOR, EvalComplexTestFixture::RookVsMinorScale});
+	CAPTURE(scaled.fen, scaled.scale);
 
 	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
 	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
@@ -1866,12 +1873,16 @@ TEST_CASE("Eval - pawnless rook endings are scaled, not clamped", "[eval]")
 		// being discounted; the mirror flips its sign along with the score.
 		REQUIRE(terms.endgame_adjustment != 0);
 
-		// Still a lead, and under the material it is made of — the two halves of
-		// "scaled rather than clamped". A clamp would fail the first assertion
-		// and the unscaled evaluator the second.
+		// Still a lead, and strictly smaller than the unscaled evaluator's — the
+		// two halves of "scaled rather than clamped". A clamp fails the first
+		// assertion; a scale reported in the breakdown but never applied to the
+		// returned score fails the second. Both sides are magnitudes: the mirror
+		// runs the same case with the signs reversed.
 		const int score = eval->Evaluate(board);
+		const int raw = std::abs(EvalComplexTestFixture::RawWhitePov(board));
+		CAPTURE(score, raw);
 		REQUIRE(score > 0);
-		REQUIRE(score < scaled.rawLead);
+		REQUIRE(score < raw);
 	}
 }
 
@@ -1909,7 +1920,18 @@ TEST_CASE("Eval - the wrong-coloured-bishop fortress scores exactly a draw", "[e
 	// White's bishop cannot cover the promotion square and the black king is
 	// already standing on it. Both rook files, since the promotion squares are
 	// opposite colours and the bishop that draws differs between them.
-	const char* fen = GENERATE("k7/8/P7/2K1B3/8/8/8/8 w - - 0 1",  // a-pawn, a8 light, dark bishop
+	//
+	// The defending king is placed on the promotion square AND on each of the
+	// squares beside it: all four attack the promotion square, so the pawn can
+	// never get there, and all four must classify as drawn.
+	// The a-file cases share one layout — Pa5, Kc5, dark Bd2 — because neither
+	// the pawn nor the bishop may attack any of the four corner squares: with a
+	// king standing on one, either side to move would otherwise be in check.
+	const char* fen = GENERATE("k7/8/8/P1K5/8/8/3B4/8 w - - 0 1",  // a-pawn, a8 light, dark bishop
+	                           "1k6/8/8/P1K5/8/8/3B4/8 w - - 0 1", // defending king beside it, on b8
+	                           "8/k7/8/P1K5/8/8/3B4/8 w - - 0 1",  // and on a7
+	                           "8/1k6/8/P1K5/8/8/3B4/8 w - - 0 1", // and on b7
+	                           "k7/8/8/P1K5/P7/8/3B4/8 w - - 0 1", // doubled rook pawns, still one corner
 	                           "7k/8/7P/5K2/4B3/8/8/8 w - - 0 1"); // h-pawn, h8 dark, light bishop
 	CAPTURE(fen);
 
@@ -1922,6 +1944,13 @@ TEST_CASE("Eval - the wrong-coloured-bishop fortress scores exactly a draw", "[e
 			CAPTURE(position);
 
 			Board board(position);
+
+			// Guard the premise: a FEN Board rejects leaves the board empty,
+			// which is bare kings, which is a draw — satisfying the assertion
+			// below without testing anything.
+			REQUIRE(board.GetMaterialScore(WHITE) + board.GetMaterialScore(BLACK) >
+			        2 * g_iPieceValues[ePiece::WHITE_KING >> 1]);
+
 			REQUIRE(eval->Evaluate(board) == GameValues::Draw);
 		}
 	}

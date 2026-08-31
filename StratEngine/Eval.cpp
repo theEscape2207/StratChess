@@ -583,9 +583,9 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 
 	// Mop-up gate, evaluated here rather than inside eval_mopup so eval_pst can
 	// consult the same answer (issue #118 item 4): pawnless, both kings present,
-	// a decisive material lead, and the LOSER holding no heavy piece. Only the
-	// leader is active. The defender's force is the condition, not its phase —
-	// see the comment above MOPUP_MATERIAL_THRESHOLD in Eval.h.
+	// a decisive material lead, and the LOSER holding no queen. Only the leader
+	// is active. The defender's force is the condition, not its phase — see the
+	// comment above MOPUP_MATERIAL_THRESHOLD in Eval.h.
 	//
 	// The kingless guard is load-bearing and is why this cannot simply fall out
 	// of the material check: a default-constructed or failed-parse Board is
@@ -598,10 +598,8 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 		const int absMatDiff = (matDiff >= 0) ? matDiff : -matDiff;
 		if (absMatDiff >= MOPUP_MATERIAL_THRESHOLD) {
 			const eColor winner = (matDiff > 0) ? WHITE : BLACK;
-			const BITBOARD loserHeavies = (winner == WHITE)
-			                                  ? (boardsSpan[ePiece::BLACK_QUEEN] | boardsSpan[ePiece::BLACK_ROOK])
-			                                  : (boardsSpan[ePiece::WHITE_QUEEN] | boardsSpan[ePiece::WHITE_ROOK]);
-			if (loserHeavies == 0ULL)
+			const BITBOARD loserQueens = boardsSpan[(winner == WHITE) ? ePiece::BLACK_QUEEN : ePiece::WHITE_QUEEN];
+			if (loserQueens == 0ULL)
 				mopupActive[winner] = true;
 		}
 	}

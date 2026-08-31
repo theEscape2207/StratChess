@@ -122,14 +122,26 @@ promotion square alone would have been safe too but would fire in one placement 
 almost no guidance for the search. Doubled rook pawns are still one promotion square and stay in the
 class; pawns on *both* rook files are not, since their promotion squares are opposite colours.
 
-### D9: The mop-up gate keys on heavy pieces, not on a count
+### D9: The mop-up gate keys on the defending QUEEN, and nothing else
 
-`#118` item 5 asks for the defender's force. The rule is that it holds no queen and no rook. Mop-up
-pays for driving the losing king to the edge, and that only wins when nothing can check from a
-distance or interpose — which is a statement about heavy pieces, not about how much material is
-left. Rejected: a defender-material threshold, which is the phase gate's mistake in another unit;
-rejected: excluding only the queen, which would leave K+Q vs K+R collecting a bonus for cornering a
-king the rook can check away, the same defect one piece down.
+`#118` item 5 asks for the defender's force. The rule is that it holds no queen. Mop-up pays for
+driving the losing king to the edge; a queen is the one piece that can check the winner's king away
+from the corner indefinitely and leave that plan permanently unfinished. Rejected: a
+defender-material threshold, which is the phase gate's mistake in another unit.
+
+**Also rejected, after being built and measured: "no queen and no rook."** It is the more natural
+reading of "what force the defender has", and it is wrong, because switching mop-up off is not a
+neutral withdrawal of a bonus. `eval_pst` suppresses the winner's king PST exactly when mop-up is
+active (item 4), so every class removed from the gate gets its **centralizing** endgame king table
+back. On K+Q vs K+R, walking the winning king toward the cornered loser went from +4 cp to -8 cp — a
+12 cp swing into a disincentive, which is the item 4 defect reinstated for a family of endings whose
+winning method is precisely that walk (K+R+R vs K+R, K+Q+R vs K+R and K+R+B+N vs K+R go with it).
+A rook cannot check a queen away from the corner, and those endings are won by cornering, so they
+keep their mop-up.
+
+The general lesson, worth more than the rule: **the mop-up gate has two consumers and they are not
+symmetric.** Narrowing it withdraws a bonus *and* re-enables a term pulling the other way, so any
+future change to it has to be argued at both call sites, not just at `eval_mopup`.
 
 ### D8: The breakdown gets a scale row, not redistributed rows
 
@@ -166,11 +178,24 @@ into, which bounds the blast radius of this change to qsearch leaves and the sta
   gated on `Compare-SearchEquivalence.ps1` reporting identical nodes at `Threads=1`.
 - **Won endings stay won.** K+B+N vs K, K+R vs K and K+Q vs K+R are not scaled; K+Q+R vs K+Q loses its
   mop-up term but not its material.
-- **Delta pruning stays sound.** `quiescence()` compares `stand_pat + DeltaGain(move) + margin` against
-  alpha, mixing a scaled stand-pat with a raw material gain. A capture that leaves a scaled class does
-  so by removing defender material, and the raw gain over-states its value relative to the scaled
-  baseline, so such a move is never pruned for being too small. Asserted here as reasoning, tested by
-  the equivalence and bench runs rather than by a unit test.
+- **Delta pruning is NOT sound once a scale is fractional, and this document said the opposite.** The
+  claim was that a capture leaving a scaled class removes defender material, so the raw gain
+  over-states its value against the scaled baseline and such a move is never pruned for being too
+  small. That is backwards. `quiescence()` compares `stand_pat + DeltaGain(move) + margin` against
+  alpha, mixing a **scaled** stand-pat with a **raw** material gain. Leaving a scaled class raises the
+  multiplier, so the child's true value *exceeds* the estimate and the raw gain **under**-states it.
+  The deficit is `raw * (1 - scale/ENDGAME_SCALE_MAX)` — in K+R+minor vs K+R at 4/16 that is three
+  quarters of the raw score, larger than the whole delta margin, so a winning capture of the
+  defender's rook can be pruned when alpha already sits near the won value.
+
+  The hole is new with the fractional scales: every scale-0 class has a bare defender, so no
+  class-exiting capture exists to mispredict.
+
+  Left unfixed deliberately, with the bound stated rather than a guard added. `pvs()` never calls
+  `Evaluate()` and prunes no captures, so the error is confined to the deepest ply — the same capture
+  is searched normally one ply up — and it needs alpha inside a window roughly one delta margin wide
+  in a class reaching ~1-3% of games. A runtime guard would cost a classifier call at every quiescence
+  node to close it. Tracked as a follow-up rather than paid for here.
 
 ## Validation
 

@@ -27,12 +27,14 @@ Newest first.
 The rest of #128, on top of the exact-draw classes below.
 
 **Scaled pawnless rook endings.** `PawnlessRookScale()` gives KR+minor vs KR a scale of 4/16 and KR
-vs K+minor 8/16. Neither is drawn by material, so both are scaled rather than clamped — the search
+vs K+minor 12/16. Neither is drawn by material, so both are scaled rather than clamped — the search
 should still prefer the better version of the ending. Measured over 19,980 games (run `33215162562`,
 `Docs/MoveQuality.md`): 262 games (1.3%) reach pawnless KR+minor vs KR at >= +250 and score 0.645;
-209 (1.0%) reach pawnless KR vs K+minor at >= +100 and score 0.720, but the >= +250 subset scores
-0.801 — which is why that one keeps half its value rather than being clamped. Both factors are
-strength parameters, not rules, and are subject to the SPRT.
+209 (1.0%) reach pawnless KR vs K+minor at >= +100 and score 0.720. The second gets much the lighter
+discount because a scale acts on the positions where the evaluation already claims an advantage, and
+that subset — >= +250 — scores 0.801, i.e. usually converts. Reading the cumulative 0.720 as if it
+described those positions is how the first cut arrived at 8/16. Both factors are strength
+parameters, not rules, and are subject to the SPRT.
 
 **The wrong-coloured-bishop rook-pawn fortress.** `WrongBishopFortress()` returns a scale of 0 for
 the canonical case: the attacker's only pieces are one bishop and pawns on a single rook file, the
@@ -43,10 +45,16 @@ piece-count-only rule would clamp won positions to zero.
 
 **The mop-up gate now asks what force the defender has (#118 item 5).** `MOPUP_MAX_LOSER_PHASE` is
 gone: a lone queen is phase 4, so pawnless Q+R vs Q passed the old gate and was paid for chasing a
-king it could never corner. The defender may now hold minors and nothing else. Everything mop-up
-exists for still qualifies, KQQ vs K included. `EvalContext` did not need the piece-count field the
-design deferred to this step — the gate is two bitboard tests on boards `BuildContext` has already
-loaded.
+king it could never corner. The defender may now hold anything but a queen. Everything mop-up exists
+for still qualifies, KQQ vs K included. `EvalContext` did not need the piece-count field the design
+deferred to this step — the gate is one bitboard test on boards `BuildContext` has already loaded.
+
+The obvious wider rule, "no queen and no rook", was built first and reverted. Switching mop-up off is
+not a neutral withdrawal: `eval_pst` suppresses the winner's king PST exactly when mop-up is active
+(item 4), so removing a class from the gate hands it back a **centralizing** king table. On K+Q vs
+K+R that turned a +4 cp reward for walking the winning king toward the cornered loser into an 8 cp
+penalty — the item 4 defect reinstated across K+R+R vs K+R, K+Q+R vs K+R and K+R+B+N vs K+R, all won
+by exactly that walk. A rook cannot check a queen away from a corner; only a queen can.
 
 ### Validation
 
@@ -56,6 +64,11 @@ loaded.
   KR+N vs KR+N and KR+N+P vs KR against the scaled classes. Both scaled FENs joined the #125 mirror
   battery — they are the only entries whose score passes through a *fractional* scale, so a sign
   error in the scaling arithmetic has nowhere else to show up.
+- The fortress cases place the defending king on the promotion square *and* on each square beside
+  it, and include doubled rook pawns. Those are what the widened `KingDistance <= 1` condition
+  bought over "on the promotion square", so narrowing it back has to fail.
+- The #118 item 4 test keeps its defending rook, which is what makes it fail if the item 5 gate is
+  ever widened past the queen.
 - Falsified: each of the three changes stubbed out in turn makes its own cases fail and nothing
   else's.
 - Release and Debug suites both pass.
