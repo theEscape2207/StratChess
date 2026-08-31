@@ -348,6 +348,11 @@ class AIPerlexTestFixture {
 	// Static evaluation of the fixture's board — the value stand-pat would have used.
 	int evaluate() const { return ai->evaluator_->Evaluate(board_); }
 
+	// The margin delta pruning adds to its bound. Read rather than hardcoded so a
+	// test can place alpha exactly at the pruning threshold without pinning a
+	// tuning value it does not care about.
+	int delta_pruning_margin() const { return ai->tuning_.delta_pruning_margin; }
+
 	// Full fixed-depth search from the fixture's board.
 	Move search_to_depth(int depth) const { return ai->Search(board_, SearchLimits::fixed_depth(depth)).best_move; }
 	SearchResult result_to_depth(int depth) const { return ai->Search(board_, SearchLimits::fixed_depth(depth)); }

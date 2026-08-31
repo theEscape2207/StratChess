@@ -912,9 +912,24 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	bool moveFound = false;
 	Move best_move = Move::EmptyMove();
 
+	// Delta pruning needs `stand_pat + gain + margin` to bound the child from ABOVE. A
+	// fractional endgame scale (issue #128) breaks that: the stand-pat is discounted while
+	// DeltaGain stays raw material, so a capture that LEAVES the scaled class restores the
+	// full multiplier and the child overshoots the bound by far more than any margin.
+	// Pruning it then stores a bound the position never had, because a node whose every
+	// move was pruned is written EXACT/UPPER below.
+	//
+	// Every fractional scale is a PAWNLESS class, which is the cheap thing to test here and
+	// keeps search from carrying a second copy of the material classification. The scaled
+	// classes that keep pawns are exact zeros against a bare king, where only the defender
+	// has captures and leaving the class lowers its score -- the safe direction, since delta
+	// pruning only ever discards moves for being too small.
+	const auto qboards = td.board.GetBitBoards();
+	const bool pawnless = (qboards[ePiece::WHITE_PAWN] | qboards[ePiece::BLACK_PAWN]) == 0ULL;
+
 	for (const auto& move : moveList) {
 		// Promotions stay: their tactical value is not bounded by immediate material gain.
-		if (!in_check && !MoveHelper::IsPromote(move) &&
+		if (!in_check && !pawnless && !MoveHelper::IsPromote(move) &&
 		    stand_pat +
 		            MoveHelper::DeltaGain(move, td.board.GetEffectiveMovPiece(move), td.board.GetCapturedPiece(move)) +
 		            tuning_.delta_pruning_margin <

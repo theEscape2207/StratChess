@@ -191,11 +191,22 @@ into, which bounds the blast radius of this change to qsearch leaves and the sta
   The hole is new with the fractional scales: every scale-0 class has a bare defender, so no
   class-exiting capture exists to mispredict.
 
-  Left unfixed deliberately, with the bound stated rather than a guard added. `pvs()` never calls
-  `Evaluate()` and prunes no captures, so the error is confined to the deepest ply — the same capture
-  is searched normally one ply up — and it needs alpha inside a window roughly one delta margin wide
-  in a class reaching ~1-3% of games. A runtime guard would cost a classifier call at every quiescence
-  node to close it. Tracked as a follow-up rather than paid for here.
+  **Fixed, after first being deferred.** The argument for deferring — that `pvs()` prunes no captures,
+  so the error is confined to the deepest ply — was wrong about the consequence. A quiescence node
+  whose every move is pruned is stored EXACT or UPPER (`AIPerplex.cpp`, the `!moveFound` branch), so
+  the false bound enters the transposition table and is served to other nodes. That is not confined
+  to anything.
+
+  `quiescence()` now skips delta pruning in **pawnless** positions. Every fractional scale is a
+  pawnless class, so that one test on bitboards already in cache restores the bound's soundness
+  without search carrying a second copy of the material classification — the coupling is recorded on
+  the scale constants in `Eval.h`, since a future fractional scale for a class with pawns would
+  silently reopen it. The scaled classes that keep pawns are exact zeros against a bare king, where
+  only the defender has captures and leaving the class *lowers* its score, which is the safe
+  direction for a rule that only ever discards moves for being too small.
+
+  Regression: `4k3/8/8/8/7r/5N2/8/R3K3 w - - 0 1` with alpha one centipawn above the delta bound —
+  stand-pat 76, alpha 777, and the node must exceed alpha rather than returning 76.
 
 ## Validation
 

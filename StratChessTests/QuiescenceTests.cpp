@@ -39,6 +39,33 @@ TEST_CASE("Qsearch - delta pruning keeps a king capture that wins a pawn", "[sea
 	CHECK(score > stand_pat);
 }
 
+TEST_CASE("Qsearch - a capture that leaves a scaled endgame class is not delta-pruned", "[search][qsearch]")
+{
+	// K+R+N vs K+R is pawnless and scaled to a quarter (issue #128), so the stand-pat is
+	// a fraction of the material. Nxh4 takes the defender's rook and LEAVES the class,
+	// restoring the full multiplier, so the child is worth far more than
+	// stand_pat + rook + margin — the bound delta pruning assumes.
+	//
+	// Alpha is placed one centipawn above that bound: high enough that pruning would
+	// discard the capture, low enough that the capture genuinely beats it. Without the
+	// pawnless guard the node returns its stand-pat and stores it as a bound the
+	// position never had.
+	AIPerlexTestFixture fix("4k3/8/8/8/7r/5N2/8/R3K3 w - - 0 1");
+	REQUIRE_FALSE(fix.board_.InCheck());
+
+	const int stand_pat = fix.evaluate();
+	const int rook = g_iPieceValues[ePiece::WHITE_ROOK >> 1];
+	const int alpha = stand_pat + rook + fix.delta_pruning_margin() + 1;
+
+	const int score = fix.quiesce_node(alpha, GameValues::Search_Init, AIPerlexTestFixture::QSEARCH_BUDGET,
+	                                   /*ply=*/0);
+
+	// Guard the premise: the capture must actually beat the bound, or the case proves
+	// nothing about pruning.
+	INFO("stand_pat = " << stand_pat << ", alpha = " << alpha << ", qsearch = " << score);
+	CHECK(score > alpha);
+}
+
 TEST_CASE("MoveHelper - DeltaGain bounds the material a move can win", "[search][qsearch]")
 {
 	Board board("7k/8/8/8/r7/8/3p4/3KR3 w - - 0 1");

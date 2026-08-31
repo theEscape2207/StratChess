@@ -409,6 +409,12 @@ class EvalComplex final : public EvalManager {
 	// claims a real advantage converts most of the time, and that subset is
 	// exactly the one a scale acts on. Discounting it hard would be reading the
 	// aggregate number as if it applied to the positions it does not describe.
+	//
+	// Both classes are PAWNLESS, and that is load-bearing outside this file:
+	// AIPerplex::quiescence() skips delta pruning in pawnless positions because
+	// a fractional scale makes its upper bound unsound, and it tests for pawns
+	// rather than re-deriving the classes. A fractional scale introduced for a
+	// class with pawns on the board would silently reopen that hole.
 	static const short ROOK_AND_MINOR_VS_ROOK_SCALE = 4;
 	static const short ROOK_VS_MINOR_SCALE = 12;
 

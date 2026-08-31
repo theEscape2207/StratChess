@@ -56,6 +56,20 @@ K+R that turned a +4 cp reward for walking the winning king toward the cornered 
 penalty — the item 4 defect reinstated across K+R+R vs K+R, K+Q+R vs K+R and K+R+B+N vs K+R, all won
 by exactly that walk. A rook cannot check a queen away from a corner; only a queen can.
 
+**Quiescence stops delta-pruning in pawnless positions.** A fractional scale breaks delta pruning's
+premise that `stand_pat + DeltaGain + margin` bounds the child from above: the stand-pat is
+discounted while `DeltaGain` stays raw material, so a capture that *leaves* the scaled class restores
+the full multiplier and overshoots the bound. In `4k3/8/8/8/7r/5N2/8/R3K3 w - - 0 1` the stand-pat is
++76 and `Nxh4` is worth +824, against a bound of 776 — so with alpha between them the winning capture
+is discarded, and because a node whose every move was pruned is stored EXACT/UPPER, the false bound
+reaches the transposition table. Every fractional scale is a pawnless class, so one test on bitboards
+already in cache restores soundness without search carrying a second material classification. The
+coupling is recorded on the scale constants in `Eval.h`.
+
+The exact-zero classes that keep pawns are unaffected: they are fortresses against a bare king, where
+only the defender has captures and leaving the class lowers its score — the safe direction for a rule
+that only discards moves for being too small.
+
 ### Validation
 
 - `[eval]` regression cases for each new class, both colors and both sides to move, plus the
@@ -72,11 +86,15 @@ by exactly that walk. A rook cannot check a queen away from a corner; only a que
 - Falsified: each of the three changes stubbed out in turn makes its own cases fail and nothing
   else's.
 - Release and Debug suites both pass.
-- `Run-Bench.ps1` at depth 12, interleaved before/after, seven pairs: **2,951k vs 2,937k nps
-  (-0.47%)**, six of seven pairs negative. Node counts and best moves are identical, so this is a
-  clean speed comparison and the bench positions never reach a scaled class. The cost is the
-  classifier's early-out becoming three branches instead of one: queens leave first, then pawns, and
-  only a pawnless position or a knight- and rook-less one goes further.
+- The delta-pruning fix is falsified: neutering the pawnless flag makes the new qsearch case return
+  its stand-pat of 76 against an alpha of 777, and nothing else in the suite moves.
+- `Run-Bench.ps1` at depth 12, interleaved before/after, seven pairs: **2,914k vs 2,883k nps
+  (-1.04%)**, six of seven pairs negative. Node counts and best moves are identical — every bench
+  position has pawns, so the pruning guard changes no search there and this stays a clean speed
+  comparison. Roughly half the cost is the classifier's early-out becoming three branches instead of
+  one (queens leave first, then pawns); the other half is the guard's per-node test. Paid
+  deliberately: the alternative is a transposition table that can be handed a bound no position
+  ever had.
 
 ## 2026-08-31 — Score material that cannot mate as a draw (#128, part 1)
 
