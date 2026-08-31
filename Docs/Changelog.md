@@ -110,15 +110,17 @@ rather than moving the boundary.
   man-count guard while the other four pass, which is what pins the choice of metric.
 - Two existing quiescence fixtures were below the guard and would have gone vacuous; both moved
   above it so they keep exercising the pruners they were written for.
-- `Run-Bench.ps1` at depth 12, interleaved before/after, **twelve pairs: median -0.26%, mean -0.70%,
-  spread -4.45% to +2.04%.** The spread is wider than the effect, so this bounds the cost rather
-  than measuring it: below roughly 1%, and not separable from the classifier's own -0.47%. Earlier
-  batches on a quieter machine put the same guard near -0.85%. Quoting a single mean here would be
-  false precision — the machine was drifting enough that individual pairs ran both ways.
-  Five of the bench's six positions keep identical node counts and best moves; `rook-endgm` gains
-  38 quiescence nodes out of 1.56M and keeps its best move — the guard doing its job in the one
-  genuinely small endgame in the set. Paid deliberately: the alternative is a transposition table
-  that can be handed a bound no position ever had.
+- `Run-Bench.ps1` at depth 12, interleaved before/after, **twenty-four pairs over two batches: nps
+  medians -0.26% and +0.32%, elapsed-time median -0.32%, per-pair spread about +/-5%.** Both medians
+  sit inside that spread, so this **bounds** the cost rather than measuring it: below what this
+  machine resolves, and well under 1%.
+  Node count is reported alongside nps deliberately — disabling a pruner changes the tree, so nps
+  alone would not capture the whole cost. It does here: **14,173,767 vs 14,173,805 nodes**, a
+  difference of 38 out of 14.2M, all in `rook-endgm`, which keeps its best move. Seven of the
+  eight bench positions are identical. So the tree is effectively unchanged on this set and the
+  time column is the whole story.
+  Paid deliberately either way: the alternative is a transposition table that can be handed a bound
+  no position ever had.
 
 ## 2026-08-31 — Score material that cannot mate as a draw (#128, part 1)
 
