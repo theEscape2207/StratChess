@@ -561,6 +561,8 @@ before/after the `EvalContext` restructure) and is the reusable form of that wor
 future refactor claiming behaviour preservation (#131), as well as the seed of #117's Texel
 tuning corpus. Requires `pip install python-chess`; run with no arguments from a clean checkout
 for an in-repo-assets-only corpus, or see `--help` for `--pgn-dir`/`--every-n-plies`/`--out`.
+`Scripts/test_build_corpus.py` invokes that real default-root path from a temporary working
+directory and requires at least one non-blank FEN, guarding against silently harvesting the wrong checkout level.
 
 ### Full tactical suite in main executable
 
