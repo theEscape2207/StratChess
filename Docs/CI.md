@@ -283,7 +283,7 @@ uploads every shard's PGN; it gates nothing and is triggered by nobody automatic
 Dispatch-only is not a stepping stone to be skipped past. A measurement harness that is wrong is
 worse than none, because its output looks exactly like a measurement — so it stays manual, and its
 numbers are only trusted because the null test and the known-sign control were run first. Both are
-in `Docs/EloLog.md`'s Linux ledger.
+in `Measurements/ci-calibration.md`.
 
 **Four jobs.** `setup` turns the requested game count into a shard plan and self-tests the pooling
 formula before anything expensive runs. `build` compiles both engines and stages them with fastchess
@@ -320,8 +320,19 @@ same rule as `Run-EloMatch.ps1`, and on a shared runner a time loss most likely 
 oversubscribed, which invalidates the whole batch rather than the one game. **A failed shard
 discards the whole batch**, not just itself: the survivors are the ones that happened to avoid
 whatever went wrong, so pooling them would be a biased subset wearing a full batch's error bar.
-Numbers land in `Docs/EloLog.md`'s **Linux ledger**, which must never be compared against the local
-clang-cl rows.
+Numbers land in `Measurements/ci-per-change.md` or `ci-anchor.md`, which must never be compared
+against the local clang-cl rows. **Ratios transfer between the two instruments; absolute values
+do not.**
+
+**Two deliberate differences from the local setup.** The book is `UHO_4060_v3.epd` (242,201
+openings — 4060 names the evaluation band the positions were selected from, not their count),
+downloaded per run from a pinned commit of `official-stockfish/books` rather than committed. And
+the lab runs a **fixed N with no SPRT**: a sequential test does not shard across runners, so it
+buys resolution with games instead, which is affordable because the minutes are free.
+
+Every run uploads the annotated PGN of every game it played, retained 90 days.
+[`MoveQuality.md`](MoveQuality.md) is the method for reading them: the pooled Elo says whether a
+change helped, that scan says where.
 
 At the default 18 shards, a strength run occupies 18 of the 20 concurrent-job slots for ~3 hours.
 It can delay other CI, but leaves two slots; choosing 20 shards consumes the allowance. This is why

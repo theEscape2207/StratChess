@@ -911,7 +911,7 @@ The live backlog is GitHub Issues; `Docs/Roadmap.md` carries the larger themes.
 - `Docs/TestDesign.md` - Coverage map and guide to writing tests
 - `Docs/Changelog.md` - Version history
 - `Docs/Roadmap.md` - Future development themes
-- `Docs/EloMeasurement.md` / `Docs/EloLog.md` - Strength measurement method and results
+- `Measurements/` - Strength measurement records, and the setup they were taken with
 
 ---
 

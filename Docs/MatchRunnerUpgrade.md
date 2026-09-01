@@ -1,7 +1,8 @@
 # Upgrading the match runner
 
 How to move the pinned fastchess release forward. Roughly a twice-a-year procedure; the pin itself
-and everything else about the instrument live in [`EloMeasurement.md`](EloMeasurement.md).
+and everything else about the instrument live in
+[`../Measurements/README.md`](../Measurements/README.md).
 
 Every automated use of fastchess is text-scraping its console output: `Run-EloMatch.ps1`'s Elo,
 game-count, LLR and SPRT-verdict patterns, both harnesses' diagnostic classification, and
@@ -30,13 +31,15 @@ gated on the new binary's output, not on its changelog.
    binary as well as the new one, so that any difference is attributable to the version.
 
 Then update the pin in `.github/workflows/strength.yml`, the pinned-components table in
-`EloMeasurement.md`, and the local `EngineTesting\fastchess.exe`.
+[`../Measurements/README.md`](../Measurements/README.md), and the local
+`EngineTesting\fastchess.exe`.
 
 ## Traps
 
 - The Windows zip and the Linux tar both extract to a **subdirectory**. The CI fetch step depends on
   that and breaks quietly if a release changes it.
-- The calibration runs append rows to [`EloLog.md`](EloLog.md). Revert them — both sides are the
+- The calibration runs append rows to a ledger — [`../Measurements/local.md`](../Measurements/local.md)
+  locally, [`ci-calibration.md`](../Measurements/ci-calibration.md) in CI. Revert them: both sides are the
   same binary, so they carry no strength information.
 - Elo history stays comparable only while the time control and adjudication settings are untouched.
   That is why they are their own rows in the pinned-components table.

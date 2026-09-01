@@ -103,8 +103,7 @@ default.
 | [Docs/CI.md](Docs/CI.md) | What each GitHub Actions workflow runs, and when |
 | [Docs/TestDesign.md](Docs/TestDesign.md) | Test coverage map and how to write new tests |
 | [Docs/Changelog.md](Docs/Changelog.md) | What changed and when |
-| [Docs/EloMeasurement.md](Docs/EloMeasurement.md) | How strength is measured: setup, interpretation, SPRT |
-| [Docs/EloLog.md](Docs/EloLog.md) | The measurements themselves, local and CI |
+| [Measurements/](Measurements/) | Every strength measurement taken, plus the setup and the recording convention |
 | [Docs/Roadmap.md](Docs/Roadmap.md) | Direction; the live backlog is GitHub Issues |
 | [Docs/Developer Guidelines.md](Docs/Developer%20Guidelines.md) | Coding conventions |
 

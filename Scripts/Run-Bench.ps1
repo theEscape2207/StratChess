@@ -17,7 +17,7 @@
     EQUIVALENCE check — two builds of identical source must visit identical nodes
     and return identical best moves. A node-count difference means code
     generation changed search behaviour, and any nps comparison is then
-    meaningless. See Docs/EloMeasurement.md and issue #161 for why node counts
+    meaningless. See the measure-strength skill and issue #161 for why node counts
     alone have misled this project before.
 
     Why the main/qs split: nps is only meaningful when the node count covers all the

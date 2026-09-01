@@ -5,8 +5,8 @@
 .DESCRIPTION
     Runs a fastchess match (color-swapped opening pairs, draw/resign adjudication)
     between a candidate StratChessEvolved.exe and the pinned reference build, then
-    reports the ELO difference with its error bound and appends a record line to
-    Docs/EloLog.md.
+    reports the ELO difference with its error bound and appends a row to
+    Measurements/local.md.
 
     The reference exe is cached in EngineTesting\ beside the main checkout and is
     rebuilt on demand from its git tag via a temporary worktree, so the procedure
@@ -17,8 +17,8 @@
 .WHEN TO USE
     After any change that can affect playing strength (search, evaluation, move
     ordering, time management) — tactical suites verify correctness only.
-    Setup and interpretation guide: Docs/EloMeasurement.md. Past results:
-    Docs/EloLog.md.
+    Setup, anchors and the recording convention: Measurements/README.md.
+    Past results: Measurements/local.md.
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell)
     pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\Run-EloMatch.ps1
@@ -34,14 +34,15 @@
     caller's scope, where its variables collide and its exit ends the caller's session.
     Losses on illegal moves / disconnects / stalls are harness or engine BUGS, not
     strength data — the script exits 1 when fastchess reports any.
-    Every run appends a row to Docs/EloLog.md; there is no way to suppress that.
+    Every run appends a row to Measurements/local.md; there is no way to suppress
+    that.
     Runs whose two sides are the same binary AND the same options are detected and
     the row says so, since their true difference is zero by construction. Same
     binary with DIFFERENT options is a configuration comparison and a real
     measurement — it is recorded as one.
     A fixed 500-game batch resolves only ±25 Elo on this setup, so anything expected
     to be worth less than that needs -Sprt to be decidable at all. See the
-    "Choosing SPRT vs a fixed batch" section in Docs/EloMeasurement.md.
+    measure-strength skill, "Sizing the batch".
     -Sprt is refused against a tag-resolved reference: a fixed anchor turns the
     hypothesis into one about cumulative standing rather than about the change.
     Pass -AnchorSprt when that cumulative verdict is what is actually wanted.
@@ -53,7 +54,7 @@ param(
     # Git tag of the pinned reference build. v2 is clang-cl/CMake built, matching
     # what ships, so day-to-day measurements compare like with like. Pass
     # -ReferenceTag elo-reference-v1 for the long-run epic comparison; that binary
-    # is MSVC-built, so the delta includes the compiler change (see Docs/EloMeasurement.md).
+    # is MSVC-built, so the delta includes the compiler change (Measurements/README.md).
     [string]$ReferenceTag = 'elo-reference-v2',
     # Explicit path to a reference exe. When set, skips the tag-based cache/rebuild
     # lookup entirely and uses this exe directly as the reference side. Pass
@@ -63,10 +64,10 @@ param(
     # binary (e.g. threads=4 vs threads=1), or a merge-base build against HEAD.
     [string]$ReferenceExe = '',
     # Total games (2 games per opening pair). Default resolves ≈ ±25 Elo at 95%
-    # -- the figure every 500-game row in Docs/EloLog.md actually came back with
+    # -- the figure every 500-game row in Measurements/local.md actually came back with
     # (±25.70, ±27.62, ±28.36), and the one the .NOTES block above quotes. Under
     # -Sprt this is only an upper bound, not a resolution target; see
-    # "Adjusting -Games" in Docs/EloMeasurement.md before changing it.
+    # the measure-strength skill's sizing guidance before changing it.
     [int]$Games = 500,
     # Opening book. Empty auto-resolves: a large book in EngineTesting\ if one is
     # present, otherwise the committed 250-position smoke book. Accepts .pgn or
@@ -110,7 +111,7 @@ param(
     # Sequential Probability Ratio Test: stop as soon as the result is decisive
     # instead of always playing -Games games. Most eval terms in epic #110 are
     # worth 5-20 Elo, i.e. INSIDE the +/-25 Elo noise floor of a 500-game batch --
-    # a fixed batch simply cannot resolve them (see Docs/EloMeasurement.md).
+    # a fixed batch simply cannot resolve them (measure-strength skill).
     #   NonRegression : elo0=-5 elo1=0  -- "prove it did not make things worse"
     #                   (refactors, restructures, anything expected neutral)
     #   Gain          : elo0=0  elo1=10 -- "prove it is worth >= ~10 Elo"
@@ -128,16 +129,183 @@ param(
     [double]$Alpha = 0.05,
     [double]$Beta = 0.05,
     # fastchess SPRT model. Pinned to 'logistic' so -Elo0/-Elo1 mean literal Elo,
-    # the same scale Docs/EloLog.md records everywhere. fastchess's own default is
+    # the same scale Measurements/local.md records everywhere. fastchess's own default is
     # 'normalized' (nElo) -- a DIFFERENT scale, on which "elo1=10" would silently
     # mean something else entirely. Override only if you know which scale you want.
     [ValidateSet('logistic', 'normalized', 'bayesian')]
     [string]$SprtModel = 'logistic',
     # Opt out of the fixed-anchor SPRT guard below, declaring that a verdict about
-    # cumulative standing is the one wanted. The EloLog row is labelled as such, so
+    # cumulative standing is the one wanted. The ledger row is labelled as such, so
     # a deliberate anchor SPRT stays distinguishable from a per-change one.
-    [switch]$AnchorSprt
+    [switch]$AnchorSprt,
+
+    # Runs the ledger-row unit cases and exits. Pure: touches no binary, no
+    # network and no file, so the pre-commit hook can run it.
+    [switch]$SelfTest
 )
+
+# --- Ledger row assembly ------------------------------------------------------
+# Verdict is a closed vocabulary; Measurements/README.md defines it. Classifying
+# here rather than leaving it to whoever reads the console output is the point --
+# a row written by hand is a row that can quote a cap-stopped point estimate as a
+# result, which is the mistake this format exists to prevent.
+function Get-MatchVerdict {
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$EloText,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$SprtPreset,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$SprtVerdict,
+        [Parameter(Mandatory)][int]$GameCount,
+        [switch]$IsSmoke,
+        [switch]$NoStrengthData,
+        [switch]$HardFail
+    )
+    if ($HardFail)       { return 'discarded' }
+    if ($NoStrengthData) { return 'calibration' }
+    if ($IsSmoke)        { return 'smoke' }
+
+    if ($SprtPreset -ne '') {
+        if ($SprtVerdict -like 'H1 accepted*') {
+            # H1 on NonRegression bounds says "not worse", which is a weaker claim
+            # than "better" and must not be recorded as a gain.
+            return ($SprtPreset -eq 'NonRegression') ? 'non-regression' : 'gain'
+        }
+        if ($SprtVerdict -like 'H0 accepted*') { return 'regression' }
+        return "inconclusive @ $GameCount"
+    }
+
+    # Fixed batch: the interval decides, not the sign of the point estimate. An
+    # error bar spanning zero settles nothing however large the estimate looks.
+    if ($EloText -match '^\s*(-?[0-9.]+)\s*\+/-\s*([0-9.]+)') {
+        $point = [double]$Matches[1]
+        $bound = [double]$Matches[2]
+        if (($point - $bound) -gt 0) { return 'gain' }
+        if (($point + $bound) -lt 0) { return 'regression' }
+    }
+    return "inconclusive @ $GameCount"
+}
+
+# Inserts the table row after the last existing row and appends the detail block
+# at the end, so the table and its detail sections stay in the same order.
+function Add-LedgerRow {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Row,
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Detail,
+        [Parameter(Mandatory)][string]$Heading
+    )
+    if (-not (Test-Path $Path)) { return $false }
+    $lines = @(Get-Content -Path $Path)
+
+    $detailIdx = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i].Trim() -eq '## Row detail') { $detailIdx = $i; break }
+    }
+    $limit = ($detailIdx -ge 0) ? $detailIdx : $lines.Count
+
+    $insertAt = -1
+    for ($i = $limit - 1; $i -ge 0; $i--) {
+        if ($lines[$i].TrimStart().StartsWith('|')) { $insertAt = $i + 1; break }
+    }
+    if ($insertAt -lt 1) { return $false }
+
+    $out = @()
+    $out += $lines[0..($insertAt - 1)]
+    $out += $Row
+    if ($insertAt -lt $lines.Count) { $out += $lines[$insertAt..($lines.Count - 1)] }
+
+    if ($Detail.Count -gt 0) {
+        if ($detailIdx -lt 0) {
+            $out += @('', '## Row detail', '',
+                      'Same order as the table above. A row with nothing to add beyond its verdict has no section here.')
+        }
+        $out += @('', $Heading, '', ($Detail -join ' '))
+    }
+
+    Set-Content -Path $Path -Value $out
+    return $true
+}
+
+
+if ($SelfTest) {
+    Set-StrictMode -Version Latest
+    $failures = 0
+
+    # Verdict classification. The falsification cases are the ones that matter:
+    # a cap-stopped SPRT and a fixed batch whose error bar spans zero must NOT
+    # come out as gains, however positive their point estimates look.
+    $cases = @(
+        @{ Name = 'hard failure outranks everything'; Elo = '40.00 +/- 3.00'; Preset = 'Gain'; Verdict = 'H1 accepted'; N = 500; Fail = $true;  Expect = 'discarded' }
+        @{ Name = 'same binary -> calibration';       Elo = '-3.47 +/- 18.21'; Preset = '';    Verdict = '';            N = 1000; None = $true; Expect = 'calibration' }
+        @{ Name = 'smoke -> smoke';                   Elo = '70.44 +/- 131.59'; Preset = '';   Verdict = '';            N = 20;  Smoke = $true; Expect = 'smoke' }
+        @{ Name = 'H1 on Gain -> gain';               Elo = '46.82 +/- 23.14'; Preset = 'Gain'; Verdict = 'H1 accepted'; N = 530; Expect = 'gain' }
+        @{ Name = 'H1 on NonRegression is NOT a gain'; Elo = '36.48 +/- 15.82'; Preset = 'NonRegression'; Verdict = 'H1 accepted'; N = 1434; Expect = 'non-regression' }
+        @{ Name = 'H0 -> regression';                 Elo = '-20.00 +/- 9.00'; Preset = 'Gain'; Verdict = 'H0 accepted'; N = 800; Expect = 'regression' }
+        @{ Name = 'cap-stopped SPRT is NOT a gain';   Elo = '32.05 +/- 22.83'; Preset = 'Gain'; Verdict = 'inconclusive'; N = 500; Expect = 'inconclusive @ 500' }
+        @{ Name = 'fixed batch, interval clears zero'; Elo = '40.28 +/- 9.81'; Preset = ''; Verdict = ''; N = 3500; Expect = 'gain' }
+        @{ Name = 'fixed batch, interval spans zero'; Elo = '15.94 +/- 27.62'; Preset = ''; Verdict = ''; N = 480; Expect = 'inconclusive @ 480' }
+        @{ Name = 'fixed batch, clearly negative';    Elo = '-11.52 +/- 4.36'; Preset = ''; Verdict = ''; N = 19980; Expect = 'regression' }
+        @{ Name = 'unparseable Elo is not a verdict'; Elo = 'n/a'; Preset = ''; Verdict = ''; N = 20; Expect = 'inconclusive @ 20' }
+    )
+    foreach ($c in $cases) {
+        $got = Get-MatchVerdict -EloText $c.Elo -SprtPreset $c.Preset -SprtVerdict $c.Verdict `
+            -GameCount $c.N -IsSmoke:([bool]$c.Smoke) -NoStrengthData:([bool]$c.None) -HardFail:([bool]$c.Fail)
+        if ($got -eq $c.Expect) {
+            Write-Host "  ok    $($c.Name)" -ForegroundColor DarkGray
+        } else {
+            Write-Host "  FAIL  $($c.Name): expected '$($c.Expect)', got '$got'" -ForegroundColor Red
+            $failures++
+        }
+    }
+
+    # Add-LedgerRow places the row after the last table row rather than at the end
+    # of the file, which is the whole reason the "local table stays last" rule
+    # could be dropped. Falsification: a file with no table must be refused, not
+    # silently appended to.
+    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) "elomatch-selftest-$PID.md"
+    try {
+        Set-Content -Path $tmp -Value @(
+            '# Local measurements', '', 'preamble',
+            '| Date | Candidate | Reference | Games | TC | Elo +/- err | Verdict |',
+            '|---|---|---|---|---|---|---|',
+            '| 2026-01-01 | old | ref | 500 | 10+0.1 | 1.00 +/- 2.00 | inconclusive @ 500 |',
+            '', '## Row detail', '', 'note', '', '### 2026-01-01 -- old (500 games)', '', 'existing detail')
+        $ok = Add-LedgerRow -Path $tmp -Row '| 2026-02-02 | new | ref | 20 | 10+0.1 | n/a | smoke |' `
+            -Detail @('Detail sentence.') -Heading '### 2026-02-02 -- new (20 games)'
+        $after = @(Get-Content -Path $tmp)
+        $rowIdx = [array]::IndexOf($after, '| 2026-02-02 | new | ref | 20 | 10+0.1 | n/a | smoke |')
+        $hdrIdx = [array]::IndexOf($after, '## Row detail')
+
+        $checks = @(
+            @{ Name = 'Add-LedgerRow reports success'; Cond = $ok }
+            @{ Name = 'row lands inside the table';    Cond = ($rowIdx -ge 0 -and $rowIdx -lt $hdrIdx) }
+            @{ Name = 'row follows the existing row';  Cond = ($rowIdx -ge 0 -and $after[$rowIdx - 1] -like '| 2026-01-01 *') }
+            @{ Name = 'detail appends at the end';     Cond = ($after[-1] -eq 'Detail sentence.') }
+            @{ Name = 'existing detail survives';      Cond = ($after -contains 'existing detail') }
+        )
+        foreach ($c in $checks) {
+            if ($c.Cond) { Write-Host "  ok    $($c.Name)" -ForegroundColor DarkGray }
+            else { Write-Host "  FAIL  $($c.Name)" -ForegroundColor Red; $failures++ }
+        }
+
+        Set-Content -Path $tmp -Value @('# No table here', '', 'just prose')
+        if (Add-LedgerRow -Path $tmp -Row '| x |' -Detail @() -Heading '### x') {
+            Write-Host '  FAIL  a file with no table must be refused' -ForegroundColor Red
+            $failures++
+        } else {
+            Write-Host '  ok    a file with no table is refused' -ForegroundColor DarkGray
+        }
+    } finally {
+        Remove-Item -Path $tmp -ErrorAction SilentlyContinue
+    }
+
+    if ($failures) {
+        Write-Host "FAIL: $failures self-test case(s) failed." -ForegroundColor Red
+        exit 1
+    }
+    Write-Host 'PASS: Run-EloMatch self-test.' -ForegroundColor Green
+    exit 0
+}
+
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -185,8 +353,8 @@ if ($Sprt -ne '') {
         Write-Host 'To measure THIS change:' -ForegroundColor Yellow
         Write-Host '  - dispatch .github/workflows/strength.yml with reference_ref=merge-base (resolves +/-4 Elo), or' -ForegroundColor Yellow
         Write-Host '  - build the merge base and pass -ReferenceExe <exe> -ReferenceTag <commit> here.' -ForegroundColor Yellow
-        Write-Host 'For a deliberate cumulative reading, re-run with -AnchorSprt; the EloLog row is labelled as one.' -ForegroundColor Yellow
-        Write-Host 'Background: Docs/EloMeasurement.md -- "The anchor measures the sum, not your change".' -ForegroundColor Yellow
+        Write-Host 'For a deliberate cumulative reading, re-run with -AnchorSprt; the ledger row is labelled as one.' -ForegroundColor Yellow
+        Write-Host 'Background: measure-strength skill -- "The anchor measures the sum, not your change".' -ForegroundColor Yellow
         exit 1
     }
 }
@@ -235,7 +403,7 @@ $refExe        = Join-Path $EngineTesting "StratChess-$ReferenceTag.exe"
 if ($ReferenceExe -ne '') { $refExe = $ReferenceExe }
 
 # What names the reference side in fastchess's engine list, the console banner
-# and the EloLog.md row. -ReferenceTag names it correctly by construction when
+# and the ledger row. -ReferenceTag names it correctly by construction when
 # it drove the tag-based cache/rebuild lookup above. Pointing -ReferenceExe at
 # an arbitrary binary while leaving -ReferenceTag at its default would still
 # read as the pinned anchor, so it falls back to the exe's own basename instead
@@ -261,7 +429,7 @@ if (-not (Test-Path $fastchess)) {
     Write-Host "MISSING: $fastchess" -ForegroundColor Red
     Write-Host 'One-time setup: download the fastchess Windows x64 release from'
     Write-Host '  https://github.com/Disservin/fastchess/releases'
-    Write-Host "and place fastchess.exe in $EngineTesting (see Docs/EloMeasurement.md for the pinned version)."
+    Write-Host "and place fastchess.exe in $EngineTesting (Measurements/README.md pins the version)."
     exit 1
 }
 
@@ -298,7 +466,7 @@ if ($ResumeDir -ne '') {
     $dirty = (git -C $RepoRoot status --porcelain) ? '+dirty' : ''
     $candidateName = "candidate-$candidateSha$dirty"
 
-    # Label the EloLog row from the RESTORED state, never from this invocation's
+    # Label the ledger row from the RESTORED state, never from this invocation's
     # parameters. -ReferenceTag/-ReferenceExe/-Sprt are all ignored when resuming, so
     # leaving them at their defaults records the pinned anchor as the opponent and drops
     # the SPRT verdict entirely -- a row that reads as a plausible anchor comparison for
@@ -451,7 +619,7 @@ if ($ResumeDir -ne '') {
     #
     # Differing options are NOT this case. Pointing -ReferenceExe at the same binary
     # is the documented way to compare two CONFIGURATIONS -- threads=4 vs threads=1 --
-    # and that is a real measurement: Docs/EloLog.md's Lazy SMP row (+128.55 Elo) is
+    # and that is a real measurement: Measurements/local.md's Lazy SMP row (+128.55 Elo) is
     # one. Comparison is order-sensitive, so a reordered but equivalent option string
     # reads as a measurement; that is the safe direction to err, since mislabelling
     # genuine data as carrying none is the worse mistake.
@@ -599,47 +767,43 @@ if ($Sprt -ne '') {
     }
 }
 
-# --- Append to Docs/EloLog.md -------------------------------------------------
+# --- Row for Measurements/local.md -------------------------------------------
 $eloText = if ($eloLine) { ($eloLine.Line -replace '^\s*Elo:\s*', '' -replace ',\s*nElo.*$', '').Trim() } else { 'n/a' }
-$kind = $Smoke ? 'smoke' : 'match'
 $actualGames = $Games
-if ($scoreLine -and ($scoreLine.Line -match 'Games:\s*(\d+)')) { $actualGames = $Matches[1] }
-if ($Sprt -ne '') {
-    # Re-render now that $actualGames is known, so an inconclusive row states the
-    # game count it gave up at rather than a placeholder.
-    if ($sprtVerdict -like 'inconclusive*') { $sprtVerdict = "inconclusive @ $actualGames games" }
-    $kind = "SPRT $Sprt [$Elo0, $Elo1] — $sprtVerdict"
-    # The guard above only lets an anchor SPRT through when -AnchorSprt asked for
-    # one, so say in the row which quantity the verdict is about; a reader months
-    # later has no other way to tell the two apart.
-    if ($AnchorSprt) {
-        $kind = "$kind — **against a fixed anchor: cumulative standing, not the value of this change**"
-    }
-    # Sanity check: an accepted H1 alongside a negative point estimate means the
-    # parse latched onto the wrong line. Better a loud warning than a wrong row.
-    if ($sprtVerdict -eq 'H1 accepted' -and $eloText -match '^\s*-') {
-        Write-Host "WARNING: H1 accepted but the Elo estimate is negative ($eloText) — verdict parse is suspect." -ForegroundColor Red
-    }
-}
-# A resumed row is assembled from two processes' output: the figures come from the
-# final fastchess summary (which covers every game, replayed ones included), but the
-# wall time printed above covers only the resuming half.
-if ($ResumeDir -ne '') {
-    $kind = "$kind — resumed from an interrupted run; wall time covers the resumed portion only"
+if ($scoreLine -and ($scoreLine.Line -match 'Games:\s*(\d+)')) { $actualGames = [int]$Matches[1] }
+
+if ($Sprt -ne '' -and $sprtVerdict -eq 'H1 accepted' -and $eloText -match '^\s*-') {
+    # An accepted H1 alongside a negative point estimate means the parse latched
+    # onto the wrong line. Better a loud warning than a wrong row.
+    Write-Host "WARNING: H1 accepted but the Elo estimate is negative ($eloText) -- verdict parse is suspect." -ForegroundColor Red
 }
 
-# Applied last so it leads the cell whatever the run was -- an SPRT between two
-# identical binaries is every bit as uninformative as a fixed batch between them.
-if ($noStrengthData) {
-    $kind = "**same binary and configuration — carries no strength information.** $kind"
+$verdict = Get-MatchVerdict -EloText $eloText -SprtPreset $Sprt -SprtVerdict $sprtVerdict `
+    -GameCount $actualGames -IsSmoke:$Smoke -NoStrengthData:$noStrengthData -HardFail:$hardFail
+
+# The detail block carries what the columns cannot. It must never restate the
+# verdict -- see Measurements/README.md.
+$detail = @()
+if ($Sprt -ne '') {
+    # $sprtVerdict's inconclusive form carries a placeholder for the game count,
+    # which is only known here -- and the verdict column already states it, so the
+    # detail reports the decision rather than repeating the count.
+    $decision = ($sprtVerdict -like 'inconclusive*') ? 'no bound crossed before the cap' : $sprtVerdict
+    $detail += "SPRT $Sprt, bounds [$Elo0, $Elo1]; fastchess reported $decision."
 }
-$row = "| $(Get-Date -Format 'yyyy-MM-dd') | $candidateName | $refName | $actualGames | $Tc | $eloText | $kind$($hardFail ? ' — FAILURES, discard' : '') |"
-$eloLog = Join-Path $RepoRoot 'Docs\EloLog.md'
-if (Test-Path $eloLog) {
-    Add-Content -Path $eloLog -Value $row
-    Write-Host "Recorded in Docs/EloLog.md"
+if ($AnchorSprt)       { $detail += 'Against a fixed anchor, so this is cumulative standing, not the value of this change.' }
+if ($ResumeDir -ne '') { $detail += 'Resumed from an interrupted run: wall time covers the resumed portion only, and the reference label comes from the resuming invocation rather than the restored config (#388) -- verify it by hand.' }
+if ($noStrengthData)   { $detail += 'Both sides are the same binary and the same options, so the true difference is zero by construction.' }
+if ($hardFail)         { $detail += 'fastchess reported a time loss, illegal move, disconnect or stall. Discard the batch; do not read its Elo.' }
+
+$row = "| $(Get-Date -Format 'yyyy-MM-dd') | $candidateName | $refName | $actualGames | $Tc | $eloText | $verdict |"
+$heading = "### $(Get-Date -Format 'yyyy-MM-dd') -- $candidateName ($actualGames games)"
+
+$ledger = Join-Path $RepoRoot 'Measurements\local.md'
+if (Add-LedgerRow -Path $ledger -Row $row -Detail $detail -Heading $heading) {
+    Write-Host "Recorded in Measurements/local.md"
 } else {
-    Write-Host "Docs/EloLog.md not found — record manually: $row" -ForegroundColor Yellow
+    Write-Host "Measurements/local.md not found or has no table -- record manually: $row" -ForegroundColor Yellow
 }
 
 if ($hardFail) { exit 1 }

@@ -202,7 +202,7 @@ function Get-ChangeTier {
 # ---------------------------------------------------------------------------
 if ($SelfTest) {
     $cases = @(
-        @{ Name = 'docs only';                  Files = @('README.md', 'Docs/EloLog.md', '.claude/plans/x.md'); Expect = 'Docs' }
+        @{ Name = 'docs only';                  Files = @('README.md', 'Measurements/local.md', '.claude/plans/x.md'); Expect = 'Docs' }
         # Named rules, not the '*.md' fallthrough -- and only the Markdown inside those
         # directories; anything else there is still an unfamiliar path.
         @{ Name = 'skill definition -> Docs';   Files = @('.claude/skills/measure-strength/SKILL.md');           Expect = 'Docs' }
@@ -258,7 +258,7 @@ if ($SelfTest) {
         @{ Name = 'empty diff';                 Files = @();                                                     Expect = 'Docs' }
         # Real PRs this issue was filed over.
         @{ Name = 'PR #123 (CLAUDE.md only)';   Files = @('CLAUDE.md');                                          Expect = 'Docs' }
-        @{ Name = 'PR #133 (SPRT)';             Files = @('Scripts/Run-EloMatch.ps1', 'Docs/EloLog.md', 'CLAUDE.md', 'Docs/Changelog.md', '.claude/plans/elomatch-sprt-support.md'); Expect = 'Tooling' }
+        @{ Name = 'PR #133 (SPRT)';             Files = @('Scripts/Run-EloMatch.ps1', 'Measurements/local.md', 'CLAUDE.md', 'Docs/Changelog.md', '.claude/plans/elomatch-sprt-support.md'); Expect = 'Tooling' }
     )
 
     $failed = 0

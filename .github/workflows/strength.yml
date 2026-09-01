@@ -3,7 +3,7 @@ name: Strength lab
 # Differential Elo measurement in CI: candidate (the dispatched ref) against a
 # reference ref, both built here from source by the same toolchain. This is a
 # SECOND instrument, not a replacement for Run-EloMatch.ps1 -- Linux/GCC numbers
-# are not comparable with the clang-cl rows in Docs/EloLog.md, so they are
+# are not comparable with the clang-cl rows in Measurements/local.md, so they are
 # recorded in a separate ledger. Ratios transfer, absolute values do not.
 #
 # The batch is sharded across parallel matrix jobs and pooled at the end. Each
@@ -14,7 +14,7 @@ name: Strength lab
 # worse than none, because its output looks exactly like a measurement. It gets
 # calibrated against a null test and a known-sign control before anything
 # triggers it automatically. Calibration runs are recorded in
-# .claude/plans/public-repo-and-strength-lab.md and Docs/EloLog.md.
+# .claude/plans/public-repo-and-strength-lab.md and Measurements/README.md.
 on:
   workflow_dispatch:
     inputs:
@@ -102,7 +102,7 @@ jobs:
       #
       # Measuring against a fixed tag cannot separate this change's delta from
       # the margin main had already accumulated, which is why the merge base is
-      # the default -- see Docs/EloLog.md.
+      # the default -- see Measurements/ci-per-change.md.
       - name: Resolve the reference
         id: reference
         env:
