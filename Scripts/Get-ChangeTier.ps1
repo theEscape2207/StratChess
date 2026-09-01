@@ -135,38 +135,30 @@ function Get-TierForPath {
     # here would silently absorb any NEW script added to that folder, including
     # one that does affect the build — fail-closed means new files land in
     # Engine until someone deliberately classifies them.
-    if ($p -like '*Scripts/Run-EloMatch.ps1')               { return 'Tooling' }
-    if ($p -like '*Scripts/Run-Bench.ps1')                  { return 'Tooling' }
+    # PowerShell helpers, alphabetically. New-PullRequest.ps1 is deliberately absent:
+    # it gates whether validation runs and has its own Build rule above. UciDriver.ps1 is
+    # engine-inert despite being dot-sourced by two measurement helpers. The branch/worktree
+    # helpers and Get-PrChecks.ps1 are likewise advisory and gate nothing.
     if ($p -like '*Scripts/Compare-SearchEquivalence.ps1')  { return 'Tooling' }
+    if ($p -like '*Scripts/Get-PrChecks.ps1')               { return 'Tooling' }
+    if ($p -like '*Scripts/Get-Worktrees.ps1')              { return 'Tooling' }
+    if ($p -like '*Scripts/Measure-UciLatency.ps1')         { return 'Tooling' }
+    if ($p -like '*Scripts/New-TaskBranch.ps1')             { return 'Tooling' }
+    if ($p -like '*Scripts/New-Worktree.ps1')               { return 'Tooling' }
+    if ($p -like '*Scripts/Remove-MergedBranches.ps1')      { return 'Tooling' }
+    if ($p -like '*Scripts/Remove-Worktree.ps1')            { return 'Tooling' }
+    if ($p -like '*Scripts/Run-Bench.ps1')                  { return 'Tooling' }
+    if ($p -like '*Scripts/Run-EloMatch.ps1')               { return 'Tooling' }
     if ($p -like '*Scripts/Run-PerftCheck.ps1')             { return 'Tooling' }
     if ($p -like '*Scripts/Run-Tests.ps1')                  { return 'Tooling' }
     if ($p -like '*Scripts/Sync-Master.ps1')                { return 'Tooling' }
-    if ($p -like '*Scripts/verify_mate_key.py')             { return 'Tooling' }
-    if ($p -like '*Scripts/build_corpus.py')                { return 'Tooling' }
-    if ($p -like '*Scripts/uci_race_probe.py')              { return 'Tooling' }
-    if ($p -like '*Scripts/Measure-UciLatency.ps1')         { return 'Tooling' }
-    # Dot-sourced by Compare-SearchEquivalence.ps1 and Run-Bench.ps1, both Tooling. Unlike
-    # BuildFreshness.ps1 it gates nothing: it drives an engine and reports what it said,
-    # so a bug in it makes a measurement fail loudly rather than pass wrongly.
     if ($p -like '*Scripts/UciDriver.ps1')                  { return 'Tooling' }
-    # Branch/worktree management. These create, list and tear down worktrees and
-    # branches; none of them compiles anything or is invoked by the engine, so a
-    # change to one cannot alter build or test behaviour.
-    #
-    # New-PullRequest.ps1 is deliberately NOT here — it has its own Build rule above,
-    # because it gates whether validation runs.
-    if ($p -like '*Scripts/New-Worktree.ps1')               { return 'Tooling' }
-    if ($p -like '*Scripts/Remove-Worktree.ps1')            { return 'Tooling' }
-    if ($p -like '*Scripts/Get-Worktrees.ps1')              { return 'Tooling' }
-    # The in-place counterparts: a task branch in the current worktree instead of a
-    # worktree of its own. Same reasoning — neither compiles anything nor is invoked by
-    # the engine.
-    if ($p -like '*Scripts/New-TaskBranch.ps1')             { return 'Tooling' }
-    if ($p -like '*Scripts/Remove-MergedBranches.ps1')      { return 'Tooling' }
-    # Reports a pull request's check state. Read-only and advisory: it gates nothing,
-    # so unlike New-PullRequest.ps1 above there is no self-concealment hazard to guard
-    # against. Same shape as Get-Worktrees.ps1.
-    if ($p -like '*Scripts/Get-PrChecks.ps1')               { return 'Tooling' }
+
+    # Python helpers, alphabetically.
+    if ($p -like '*Scripts/build_corpus.py')                { return 'Tooling' }
+    if ($p -like '*Scripts/test_build_corpus.py')           { return 'Tooling' }
+    if ($p -like '*Scripts/uci_race_probe.py')              { return 'Tooling' }
+    if ($p -like '*Scripts/verify_mate_key.py')             { return 'Tooling' }
 
     # --- Fail closed ----------------------------------------------------------
     # Everything else, INCLUDING anything unrecognised. Do not add an
@@ -217,14 +209,15 @@ if ($SelfTest) {
         @{ Name = 'agent definition -> Docs';   Files = @('.claude/agents/eval-reviewer.md');                    Expect = 'Docs' }
         @{ Name = 'FAIL CLOSED: skill script';  Files = @('.claude/skills/measure-strength/helper.ps1');         Expect = 'Engine' }
         @{ Name = 'FAIL CLOSED: skill dir';     Files = @('.claude/skills/measure-strength/');                   Expect = 'Engine' }
-        @{ Name = 'tooling only';               Files = @('Scripts/Run-EloMatch.ps1');        Expect = 'Tooling' }
-        @{ Name = 'corpus tool -> Tooling';     Files = @('Scripts/build_corpus.py');         Expect = 'Tooling' }
-        @{ Name = 'race probe -> Tooling';      Files = @('Scripts/uci_race_probe.py');       Expect = 'Tooling' }
-        @{ Name = 'bench tool -> Tooling';      Files = @('Scripts/Run-Bench.ps1');          Expect = 'Tooling' }
-        @{ Name = 'perftcheck tool -> Tooling'; Files = @('Scripts/Run-PerftCheck.ps1');     Expect = 'Tooling' }
         @{ Name = 'equivalence tool -> Tooling'; Files = @('Scripts/Compare-SearchEquivalence.ps1'); Expect = 'Tooling' }
-        @{ Name = 'UCI driver lib -> Tooling';  Files = @('Scripts/UciDriver.ps1');           Expect = 'Tooling' }
+        @{ Name = 'bench tool -> Tooling';      Files = @('Scripts/Run-Bench.ps1');          Expect = 'Tooling' }
+        @{ Name = 'tooling only';               Files = @('Scripts/Run-EloMatch.ps1');        Expect = 'Tooling' }
+        @{ Name = 'perftcheck tool -> Tooling'; Files = @('Scripts/Run-PerftCheck.ps1');     Expect = 'Tooling' }
         @{ Name = 'docs + tooling -> Tooling';  Files = @('CLAUDE.md', 'Scripts/Run-Tests.ps1'); Expect = 'Tooling' }
+        @{ Name = 'UCI driver lib -> Tooling';  Files = @('Scripts/UciDriver.ps1');           Expect = 'Tooling' }
+        @{ Name = 'corpus tool -> Tooling';     Files = @('Scripts/build_corpus.py');         Expect = 'Tooling' }
+        @{ Name = 'corpus test -> Tooling';     Files = @('Scripts/test_build_corpus.py');    Expect = 'Tooling' }
+        @{ Name = 'race probe -> Tooling';      Files = @('Scripts/uci_race_probe.py');       Expect = 'Tooling' }
         @{ Name = 'docs + cpp -> Engine';       Files = @('CLAUDE.md', 'StratEngine/Eval.cpp');                 Expect = 'Engine' }
         @{ Name = 'build.ps1 -> Build';         Files = @('build.ps1');                                          Expect = 'Build' }
         @{ Name = 'validator -> Build NOT Tooling'; Files = @('Scripts/Validate-PrePR.ps1');   Expect = 'Build' }
