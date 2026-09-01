@@ -271,3 +271,24 @@ prize rather than measuring it (#103).
 **7. Two invariants confirmed in production data.** All 507 fifty-move draws fire at a halfmove clock
 of exactly 100, so #345's fix holds at scale. And no build ever announced a forced mate and failed to
 win the game: 1,462 and 1,344 such games, all won.
+
+---
+
+## Addendum: run 33429454765 — level-material rook endings
+
+The `RvsR` class (pawnless K+R vs K+R) was added to `material_classes()` after the baseline above, so
+these rows come from a later run, post-#128, and are not comparable ply-for-ply with the table in
+[Baseline](#baseline-run-33215162562). 19,980 games.
+
+| Class | Reported | Games | Of all | Observed (95% clustered) | W/D/L |
+|---|---|---|---|---|---|
+| KR vs KR (pawnless) | < +100 | 592 | 3.0% | **0.500** [0.500, 0.500] | 0/592/0 |
+| KR vs KR (pawnless) | ≥ +250 | 309 | 1.5% | **1.000** [1.000, 1.000] | 309/0/0 |
+
+The class separates completely, and the band that matters is the low one — the reverse of every other
+class here. Below +100 the reported edge is phantom: 592 games, not one of them decisive. At ≥ +250 the
+score is real, because it comes from a leaf where the rook has already fallen and the material is no
+longer this class. Nothing lands in between.
+
+This is the evidence behind #436: the phantom is the PST, rook-file and mobility terms surviving on a
+level-material board, a median of 22 cp and a maximum of 64 over 400 positions sampled from this run.

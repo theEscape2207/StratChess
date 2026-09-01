@@ -168,6 +168,10 @@ def parse_comment(comment: str, where: str):
 
 PAWN_RICH = 3  # both sides holding this many pawns => no fortress / bare-piece ending
 
+# Classes where the two sides hold the same material, so the colour returned
+# below is a placeholder and the reported score is what names the stronger side.
+SYMMETRIC_CLASSES = {"OCB", "RvsR"}
+
 
 def material_classes(board: chess.Board):
     """Drawish material configurations, as (class, stronger colour) pairs.
@@ -177,6 +181,7 @@ def material_classes(board: chess.Board):
       KminorK   K + one minor vs bare K -- drawn by insufficient material
       RvsMinor  KR vs KB / KR vs KN, pawnless -- the defender normally holds
       RminorR   KRB / KRN vs KR, pawnless -- a fortress the eval scores a piece up
+      RvsR      KR vs KR, pawnless -- material is level, so read the <100 band
       OCB       one bishop each on opposite colours, pawns allowed, nothing else
     """
     def counts(c):
@@ -194,6 +199,8 @@ def material_classes(board: chess.Board):
             found.append(("RvsMinor", color))
         if (p, r, q) == (0, 0, 0) and n + b == 1 and weak == (0, 0, 0, 0, 0):
             found.append(("KminorK", color))
+    if white == (0, 0, 0, 1, 0) and black == (0, 0, 0, 1, 0):
+        found.append(("RvsR", chess.WHITE))  # stronger side resolved from the score
     if (white[1], black[1], white[3], black[3], white[4], black[4]) == (0, 0, 0, 0, 0, 0) \
             and white[2] == black[2] == 1:
         wb = board.pieces(chess.BISHOP, chess.WHITE)
@@ -354,8 +361,8 @@ def analyse_game(headers, moves, st, where, seen_fens=None):
             for cls, color in material_classes(board):
                 if cls in reached:
                     continue
-                if cls == "OCB":
-                    # Symmetric class: the score decides which side is stronger.
+                if cls in SYMMETRIC_CLASSES:
+                    # Level material: the score decides which side is stronger.
                     white_view = signed if mover == chess.WHITE else -signed
                     reached[cls] = ((chess.WHITE if white_view >= 0 else chess.BLACK),
                                     abs(white_view))
@@ -405,7 +412,7 @@ def analyse_game(headers, moves, st, where, seen_fens=None):
     for cls, color in material_classes(board):
         if cls in reached:
             continue
-        if cls == "OCB":
+        if cls in SYMMETRIC_CLASSES:
             view = last_seen.get(chess.WHITE)
             if view is not None:
                 reached[cls] = ((chess.WHITE if view >= 0 else chess.BLACK), abs(view))
@@ -1002,6 +1009,20 @@ def self_test(out=sys.stdout) -> bool:
     for text, want in cases:
         got = parse_comment(text, "self-test")
         check(f"parse_comment {text!r}", got == want, f"{got}")
+
+    # The classifier, including the near-misses each class must NOT swallow: one
+    # extra rook or one extra minor is a different, winning ending.
+    material_cases = [
+        ("3k4/8/2K5/R7/1r6/8/8/8 w - - 0 1", {"RvsR"}),
+        ("3k4/8/2K5/R7/1r6/6N1/8/8 w - - 0 1", {"RminorR"}),      # KRN vs KR
+        ("3k4/8/2K5/R7/1r6/8/8/7R w - - 0 1", set()),             # KRR vs KR
+        ("3k4/8/2K5/R7/8/6n1/8/8 w - - 0 1", {"RvsMinor"}),       # KR vs KN
+        ("3k4/8/2K5/R7/1r6/8/7P/8 w - - 0 1", set()),             # a pawn is not pawnless
+        ("3k4/8/2K5/8/8/6N1/8/8 w - - 0 1", {"KminorK"}),
+    ]
+    for fen, want in material_cases:
+        got = {cls for cls, _color in material_classes(chess.Board(fen))}
+        check(f"material_classes {fen.split()[0]}", got == want, f"{sorted(got)}")
 
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "match.pgn"
