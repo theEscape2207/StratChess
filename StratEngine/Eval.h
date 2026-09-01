@@ -423,6 +423,12 @@ class EvalComplex final : public EvalManager {
 	static const short ROOK_AND_MINOR_VS_ROOK_SCALE = 4;
 	static const short ROOK_VS_MINOR_SCALE = 12;
 
+	// Rook against rook is level material, so every cent of the score is positional.
+	// Discounted rather than zeroed: the class is drawn as a resting place but not as
+	// a path — it is left by winning the rook — and a zero removes the king- and
+	// rook-activity gradient that steers toward the position where the defence breaks.
+	static const short ROOK_VS_ROOK_SCALE = 4;
+
 	// Distance helpers for mop-up scoring — plain grid math, orientation-independent
 	// (works the same whether the square belongs to White or Black).
 	static constexpr int CenterAxisDistance(int coord) noexcept { return (coord <= 3) ? (3 - coord) : (coord - 4); }
