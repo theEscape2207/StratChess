@@ -540,20 +540,39 @@ $scoreLine = ($log -split "`n" | Select-String -Pattern 'Games: \d+' | Select-Ob
 $llrLine     = ($log -split "`n" | Select-String -Pattern '^\s*LLR:' | Select-Object -Last 1)
 $verdictLine = ($log -split "`n" | Select-String -Pattern 'SPRT\s*\(.*\)\s*completed\s*-\s*(H0|H1) was accepted' | Select-Object -Last 1)
 
-# 'illegal' alone also matches "Warning; Illegal PV move" -- fastchess's own
-# report that an engine's reported PV contained an illegal move, which it
-# tolerates and plays through from bestmove (see the Reference-column note
-# above; this is the reporting defect fastchess 1.8 emits on both engines
-# roughly once a game and is not a played illegal move). The negative lookahead
-# excludes only that phrasing, so an actual played illegal move -- any other
-# wording containing 'illegal' -- still trips the guard.
-$disasters = ($log -split "`n" | Select-String -Pattern 'illegal(?!\s+pv\s+move)|disconnect|stall|loses on time' )
+# Both scans key on fastchess's own wordings rather than on keywords like
+# 'illegal', which also occur in engine output echoed into the log. They are the
+# complete set of PV-compliance and engine-failure messages fastchess emits, and
+# are kept in step with the same two alternations in .github/workflows/strength.yml.
+$pvWarnRe = 'Warning; (Illegal PV move|PV continues after (checkmate|stalemate|threefold repetition|fifty-move rule)|Incomplete mating PV|Mating PV does not end|Too long mating PV|Bestmove does not match beginning of last PV|Sign mismatch in mate scores)'
+$fatalRe  = 'Illegal move .* played by|Move does not match uci move format|disconnects|connection stalls|Engine .* stalls|loses on time|stalled / disconnected|is not responsive|No output from|respond to uci'
+
+# A PV-compliance warning says the reported PV is defective; fastchess plays the
+# game on from bestmove, so the result stands. Reported, never fatal.
+$logLines     = $log -split "`n"
+$pvWarnings   = @($logLines | Select-String -Pattern $pvWarnRe)
+$disasters    = @($logLines | Select-String -Pattern $fatalRe)
+$unclassified = @($logLines | Select-String -Pattern 'Warning;|Error;' |
+    Where-Object { $_.Line -notmatch $pvWarnRe -and $_.Line -notmatch $fatalRe })
+
 $hardFail = $false
 if ($fcExit -ne 0) { Write-Host "fastchess exited with code $fcExit" -ForegroundColor Red; $hardFail = $true }
+if ($pvWarnings) {
+    Write-Host "`n$($pvWarnings.Count) PV-compliance warnings (reported PV only, games unaffected):" -ForegroundColor DarkYellow
+    $pvWarnings | ForEach-Object { [regex]::Match($_.Line, $pvWarnRe).Value } |
+        Group-Object | Sort-Object Count -Descending |
+        ForEach-Object { Write-Host "  $($_.Count)  $($_.Name)" }
+}
 if ($disasters) {
     Write-Host "`nHARNESS/ENGINE FAILURES DETECTED (not strength data):" -ForegroundColor Red
     $disasters | Select-Object -First 10 | ForEach-Object { Write-Host "  $($_.Line)" }
     $hardFail = $true
+}
+# A wording added by a future fastchess release must not pass silently as
+# neither tolerated nor fatal.
+if ($unclassified) {
+    Write-Host "`nUnclassified fastchess diagnostics:" -ForegroundColor DarkYellow
+    $unclassified | Select-Object -First 5 | ForEach-Object { Write-Host "  $($_.Line.Trim())" }
 }
 
 Write-Host "`n--- Result ---" -ForegroundColor Cyan

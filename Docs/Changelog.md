@@ -22,6 +22,31 @@ Newest first.
 
 ---
 
+## 2026-09-01 — The match harness classifies fastchess diagnostics by wording
+
+Both harnesses scanned the match log for the keywords `illegal|disconnect|stall|loses on time`,
+minus a negative filter for `Illegal PV move`. Two defects followed. The tolerated class was named
+after #310's defect, which is fixed, so `strength.yml`'s `pv_warnings` counter has read 0 for
+months while the PV warnings the engine does emit — 52 and 29 `PV continues after threefold
+repetition` in two shards of run 33429454765 — went unreported. And the keyword sweep matches engine
+output echoed into the log, so an `info string` containing the word "illegal" would fail a shard and
+discard 1110 sound games.
+
+Both scans now key on fastchess's own message strings, read out of the release tarball's `app/src`
+and identical in `strength.yml` and `Run-EloMatch.ps1`: a PV-compliance list (reported, never fatal)
+and a failure list (fatal), the latter also covering malformed moves and unresponsive engines, which
+the keyword sweep missed. A third scan reports anything else fastchess flagged, so a wording added by
+a future release cannot pass as neither tolerated nor fatal — the failure mode the first defect was.
+
+Verified against two real 1110-game shard logs, four mock-engine logs provoking each class under
+both fastchess versions, and a synthetic log carrying one of each: PV warnings counted (52/29, was
+0), real failures caught, the benign `info string` no longer fatal, the unknown wording surfaced.
+
+The mock engine is committed as `.github/scripts/fastchess_probe_engine.py`, because the wordings
+cannot be checked by a run that happens not to emit them. `Docs/MatchRunnerUpgrade.md` records the
+four output checks a version bump is gated on and the traps found running them; `EloMeasurement.md`
+carries a pointer to it rather than the procedure, which is read far more often than it applies.
+
 ## 2026-09-01 — fastchess pinned to v1.8.2-alpha
 
 The match runner moves from v1.8.0-alpha (Jan 2026) to v1.8.2-alpha, in the strength-lab workflow

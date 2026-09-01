@@ -386,25 +386,44 @@ jobs:
           echo "fastchess exit: $fc_exit"
           echo "elapsed_min=$(( (SECONDS - start_s) / 60 ))" >> "$GITHUB_OUTPUT"
 
-          # An illegal PV move is a defect in the `pv` field of an info line
-          # (#310). fastchess warns and plays the game on from `bestmove`, so
-          # the result is unaffected and the batch stays measurable. Surfaced as
-          # a warning because a PV that does not replay is still worthless as
-          # evidence -- it just is not a reason to discard 1110 sound games.
-          pv_warnings=$(grep -ci 'Illegal PV move' match.log || true)
+          # Both scans below key on fastchess's own wordings rather than on
+          # keywords like "illegal", which also occur in engine output echoed
+          # into the log. The alternations are the complete set of PV-compliance
+          # and engine-failure messages fastchess emits.
+          #
+          # A PV-compliance warning says the engine's reported `pv` is
+          # defective. fastchess plays the game on from `bestmove`, so the
+          # result stands and the batch stays measurable. Reported rather than
+          # fatal: a PV that does not replay is worthless as evidence, but that
+          # is no reason to discard 1110 sound games.
+          pv_warn_re='Warning; (Illegal PV move|PV continues after (checkmate|stalemate|threefold repetition|fifty-move rule)|Incomplete mating PV|Mating PV does not end|Too long mating PV|Bestmove does not match beginning of last PV|Sign mismatch in mate scores)'
+          pv_warnings=$(grep -cE "$pv_warn_re" match.log || true)
           if [ "$pv_warnings" -gt 0 ]; then
-            echo "::warning::Shard $SHARD: $pv_warnings illegal-PV warnings (#310) -- reported PV only, games unaffected."
+            echo "::warning::Shard $SHARD: $pv_warnings PV-compliance warnings -- reported PV only, games unaffected."
+            grep -oE "$pv_warn_re" match.log | sort | uniq -c | sort -rn
           fi
 
-          # A time loss, an illegal move PLAYED or a disconnect is a harness or
-          # engine BUG, not strength data. On a shared runner it most likely
-          # means the box was oversubscribed, which invalidates every game in
-          # the shard, not just the one that lost. Fail the shard; the
-          # aggregator then refuses to pool the batch at all.
-          if grep -Ei 'illegal|disconnect|stall|loses on time' match.log | grep -qvi 'Illegal PV move'; then
+          # A time loss, an illegal or malformed move PLAYED, or an engine that
+          # disconnects or stops answering is a harness or engine BUG, not
+          # strength data. On a shared runner it most likely means the box was
+          # oversubscribed, which invalidates every game in the shard, not just
+          # the one that lost. Fail the shard; the aggregator then refuses to
+          # pool the batch at all.
+          fatal_re='Illegal move .* played by|Move does not match uci move format|disconnects|connection stalls|Engine .* stalls|loses on time|stalled / disconnected|is not responsive|No output from|respond to uci'
+          if grep -qE "$fatal_re" match.log; then
             echo "::error::Shard $SHARD: harness/engine failures detected -- batch is not measurable."
-            grep -Ei 'illegal|disconnect|stall|loses on time' match.log | grep -vi 'Illegal PV move' | head -10
+            grep -E "$fatal_re" match.log | head -10
             exit 1
+          fi
+
+          # Anything else fastchess flagged is unclassified. Surfaced so that a
+          # wording added by a future release cannot pass silently as neither
+          # tolerated nor fatal -- the failure mode this accounting is built to
+          # avoid.
+          if grep -E 'Warning;|Error;' match.log | grep -qvE "$pv_warn_re|$fatal_re"; then
+            echo "::warning::Shard $SHARD: unclassified fastchess diagnostics:"
+            grep -E 'Warning;|Error;' match.log | grep -vE "$pv_warn_re|$fatal_re" \
+              | sort | uniq -c | sort -rn | head -10
           fi
           test "$fc_exit" = "0"
 

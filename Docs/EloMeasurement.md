@@ -139,6 +139,10 @@ bias. The two batches individually hit opposite ±2σ edges, which is what calib
 noise quoted throughout this document. That run used `elo-reference-v1`, but it measures the
 *instrument* rather than the anchor, so it carries over to v2 unchanged.
 
+**Moving the match runner forward** is gated on the new binary's output rather than on its
+changelog, because every automated use of fastchess is text-scraping that output. The procedure and
+its traps: [`MatchRunnerUpgrade.md`](MatchRunnerUpgrade.md).
+
 ### The two anchors
 
 There are two pinned references, and picking the wrong one produces a number that looks real and is
