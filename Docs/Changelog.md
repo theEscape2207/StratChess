@@ -36,8 +36,13 @@ each version: the result block is unchanged, every pattern still matches, and 1.
 
 Notable upstream fixes: a deadlock/crash when engines report node counts, tightened `bestmove`
 extraction, `-march=native` gating, and a new `-strict` flag (nonzero exit on any warning) that is
-deliberately *not* enabled — the harness-failure scan already tolerates fastchess's spurious
-"Illegal PV move" warning, which `-strict` would turn into a failed match.
+deliberately *not* enabled — the engine draws PV-compliance warnings (`PV continues after threefold
+repetition`) that the harness-failure scan tolerates on purpose, and `-strict` would turn every one
+of them into a failed match.
+
+The warning wordings the scan keys on were checked against the release's own `app/src`, unchanged
+since 1.8.0, and provoked directly under both binaries with a mock UCI engine: an illegal reported
+PV is tolerated, an illegal move played is a hard failure, on both versions alike.
 
 ---
 
