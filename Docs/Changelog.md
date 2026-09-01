@@ -43,9 +43,9 @@ both fastchess versions, and a synthetic log carrying one of each: PV warnings c
 0), real failures caught, the benign `info string` no longer fatal, the unknown wording surfaced.
 
 The mock engine is committed as `.github/scripts/fastchess_probe_engine.py`, because the wordings
-cannot be checked by a run that happens not to emit them, and `Docs/EloMeasurement.md` gains an
-*Upgrading the match runner* section: the four output checks a version bump is gated on, and the
-traps found running them.
+cannot be checked by a run that happens not to emit them. `Docs/MatchRunnerUpgrade.md` records the
+four output checks a version bump is gated on and the traps found running them; `EloMeasurement.md`
+carries a pointer to it rather than the procedure, which is read far more often than it applies.
 
 ## 2026-09-01 — fastchess pinned to v1.8.2-alpha
 
