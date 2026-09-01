@@ -527,7 +527,7 @@ if ($ResumeDir -ne '') {
 #
 # With -sprt the same block gains an LLR line, and a verdict line is printed once
 # a bound is crossed. Both patterns below were derived from the actual output of
-# the pinned fastchess 1.8.0 build (calibration run 20260726-175952), NOT written
+# the pinned fastchess build (calibration runs 20260726-175952 and 20260901-151814), NOT written
 # from the documentation -- the exact wording varies across fastchess versions and
 # a pattern that silently matches nothing would degrade every run to
 # "inconclusive", a failure mode that looks like a result:

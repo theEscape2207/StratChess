@@ -54,7 +54,7 @@ concurrency:
 
 env:
   # Pinned, like every other external asset this project measures with.
-  FASTCHESS_VERSION: v1.8.0-alpha
+  FASTCHESS_VERSION: v1.8.2-alpha
   # UHO_4060_v3: 242,201 unbalanced human openings (the 4060 in the name is the
   # evaluation band the positions were selected from, not their count), i.e.
   # 484,402 distinct games -- no batch this plan contemplates can exhaust it.
@@ -240,7 +240,7 @@ jobs:
           tar -xf fastchess.tar
           # The archive's layout has changed between releases; locate the binary
           # rather than assuming a name, so a version bump fails loudly here
-          # instead of silently later. v1.8.0-alpha extracts to a SUBDIRECTORY,
+          # instead of silently later. The pinned release extracts to a SUBDIRECTORY,
           # so compare the full path -- a basename test passes on
           # ./fastchess-linux-x86-64/fastchess and then leaves ./fastchess absent.
           bin=$(find . -type f -name 'fastchess*' ! -name '*.tar' | head -1)
