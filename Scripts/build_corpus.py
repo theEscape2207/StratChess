@@ -168,7 +168,7 @@ def main(argv=None) -> int:
 
     script_dir = Path(__file__).resolve().parent
     repo_root = (args.repo_root.resolve() if args.repo_root
-                 else script_dir.parent.parent)
+                 else script_dir.parent)
     out_path = (args.out.resolve() if args.out
                 else repo_root / "corpus.fen")
 
