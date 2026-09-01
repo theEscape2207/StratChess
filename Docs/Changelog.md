@@ -22,6 +22,32 @@ Newest first.
 
 ---
 
+## 2026-09-01 — Elo ledgers move to `Measurements/`, one file per table
+
+`Docs/EloLog.md` held four tables whose only structural separation was a heading, and every row
+buried its data — games, LLR, bounds, book, verdict — inside a paragraph that then restated the
+verdict in prose. Two rows written the day before had to be edited twice to remove sentences that
+`INCONCLUSIVE` and the error bar already said.
+
+The four tables are now four files under a top-level `Measurements/`, because a measurement record
+is append-only data written by a script, not documentation. A row is a narrow table row carrying
+only the mechanical facts plus a verdict from a closed vocabulary, and its forensics live in a dated
+section beneath the table. The existing 44 rows were converted mechanically with their Notes text
+preserved verbatim — the historical prose is the record — and a check asserted that every Notes,
+candidate, reference and Elo cell survived the split.
+
+`Run-EloMatch.ps1` classifies the verdict itself rather than leaving it to whoever reads the console
+output, and inserts the row into the table rather than appending to the file, which is what let the
+"the local table stays at the end of this file" rule be dropped. A new `-SelfTest` covers the
+classification, including the two cases the format exists to prevent: a cap-stopped SPRT and a fixed
+batch whose error bar spans zero must not come out as gains.
+
+`Docs/EloMeasurement.md` is deleted. Its setup record and anchors are `Measurements/README.md`
+alongside the recording convention; its interpretation and sizing material folds into the
+`measure-strength` skill, which is what actually gets loaded before a measurement, with the depth in
+two `reference/` files. `Docs/MatchRunnerUpgrade.md` stays in `Docs/` — it is a chore procedure a
+person follows, not a record — with its links repointed. Closes #227, closes #437.
+
 ## 2026-09-01 — The match harness classifies fastchess diagnostics by wording
 
 Both harnesses scanned the match log for the keywords `illegal|disconnect|stall|loses on time`,

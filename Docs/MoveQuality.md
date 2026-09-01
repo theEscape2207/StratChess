@@ -5,7 +5,7 @@ one number from it — the pooled Elo — which decides *whether* a change helpe
 *where*. `Scripts/analyze_move_quality.py` reads the same PGNs and answers the second question.
 
 This file is the method and the ledger; the tool is the instrument. Like
-[`EloLog.md`](EloLog.md) it is a measurement record and is appended to, not rewritten — and like it,
+[`../Measurements/`](../Measurements/) it is a measurement record and is appended to, not rewritten — and like it,
 it is in scope of #227 if the ledgers move out of `Docs/`.
 
 | Need | Section |

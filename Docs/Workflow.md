@@ -363,7 +363,7 @@ bench suite at depth 12 — reached the nps denominator's time but never its num
 alone understated nps by 13.8%. Any node count or nps recorded before 2026-08-16 is main-tree only
 and is not comparable with one taken after; wall clock is unaffected and comparable throughout.
 Never *derive* a time-to-depth as `nodes / nps` across two runs: that error put two wrong figures
-into `Docs/EloLog.md`'s #237 row, one of them sign-inverted.
+into `Measurements/local.md`'s #237 rows, one of them sign-inverted.
 
 Read the `main nodes` column as *the main tree including its frontier*: a quiescence root is a
 `pvs()` call at depth 0, so the edge into it is a main-tree edge and only the capture chain below it
