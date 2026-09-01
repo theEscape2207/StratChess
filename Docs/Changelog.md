@@ -22,6 +22,30 @@ Newest first.
 
 ---
 
+## 2026-09-01 — fastchess pinned to v1.8.2-alpha
+
+The match runner moves from v1.8.0-alpha (Jan 2026) to v1.8.2-alpha, in the strength-lab workflow
+and in the local `EngineTesting\fastchess.exe` the `Docs/EloMeasurement.md` setup record pins.
+
+Everything this project does with fastchess is text-scraping: `Run-EloMatch.ps1`'s Elo/Games/LLR/
+verdict patterns and its harness-failure scan, and `pool_pentanomial.py`'s `Ptnml(0-2)` parse. All
+were calibrated against 1.8.0 output, so the bump was gated on a 20-game self-play SPRT run under
+each version: the result block is unchanged, every pattern still matches, and 1.8.2's own
+`Elo: 29.02 +/- 52.57` is reproduced exactly by the pooling formula. That triple joins the
+`--self-test` cases. The Linux tar still extracts to a subdirectory, so the fetch step is unchanged.
+
+Notable upstream fixes: a deadlock/crash when engines report node counts, tightened `bestmove`
+extraction, `-march=native` gating, and a new `-strict` flag (nonzero exit on any warning) that is
+deliberately *not* enabled — the engine draws PV-compliance warnings (`PV continues after threefold
+repetition`) that the harness-failure scan tolerates on purpose, and `-strict` would turn every one
+of them into a failed match.
+
+The warning wordings the scan keys on were checked against the release's own `app/src`, unchanged
+since 1.8.0, and provoked directly under both binaries with a mock UCI engine: an illegal reported
+PV is tolerated, an illegal move played is a hard failure, on both versions alike.
+
+---
+
 ## 2026-08-31 — Scaled rook endings, the wrong-bishop fortress and the mop-up gate (#128, part 2)
 
 The rest of #128, on top of the exact-draw classes below.
