@@ -68,7 +68,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | Move generation (142,953-position corpus, d1–d4) | — | `Scripts\Run-PerftCheck.ps1` |
 | **MoveFormatter** | `[formatter]` | `MoveFormatterTests.cpp` |
 | **TranspositionTable** | `[tt]` | `TTTests.cpp` |
-| **Evaluation (EvalSimple/Complex)** | `[eval]` | `EvalTests.cpp` |
+| **Evaluation (EvalSimple/Complex)** | `[eval]` | `EvalBasicTests.cpp`, `EvalSymmetryTests.cpp`, `EvalTermTests.cpp`, `EvalPawnAndTaperTests.cpp`, `EvalEndgameTests.cpp` |
 | **Search regression (tactical)** | `[tactical]` | `TacticalTests.cpp` |
 | **Search regression (slow tier)** | `[tactical_full][slow]` | `TacticalFullTests.cpp` |
 | Concrete search service, lifecycle and factory | `[search]` | `SearchServiceTests.cpp` |
