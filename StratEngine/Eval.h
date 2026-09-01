@@ -394,7 +394,7 @@ class EvalComplex final : public EvalManager {
 
 	// Pawnless rook endings (#128), as numerators over ENDGAME_SCALE_MAX.
 	//
-	// Unlike the classes scaled to zero, neither of these is drawn by material:
+	// Unlike the classes scaled to zero, none of these is drawn by material:
 	// they are drawn by tendency, which is why they are scaled rather than
 	// clamped. That distinction is the whole reason for a fractional scale — a
 	// clamp would throw away the versions of the ending that do convert, while a
@@ -410,6 +410,14 @@ class EvalComplex final : public EvalManager {
 	// exactly the one a scale acts on. Discounting it hard would be reading the
 	// aggregate number as if it applied to the positions it does not describe.
 	//
+	// Rook against rook inverts that reasoning and so takes the heavy discount:
+	// material is level, the whole score is positional, and the band a scale acts
+	// on is the low one, which is the band that never converts. It is discounted
+	// rather than zeroed because the class is left by winning the rook, and a zero
+	// removes the king- and rook-activity ordering that steers toward the position
+	// where the defence breaks. The scale truncates toward zero, so what survives
+	// is that ordering, coarsened into plateaus — not a smooth gradient.
+	//
 	// A scale of any kind is load-bearing outside this file: it multiplies the
 	// score instead of adding to it, which is what quiescence's delta and SEE
 	// pruning both assume it cannot do. AIPerplex::quiescence() disables both
@@ -419,14 +427,10 @@ class EvalComplex final : public EvalManager {
 	// because this is where it would be broken: EVERY SCALED CLASS LEAVES ITS
 	// SMALLER SIDE AT MOST TWO MEN. Recognising one whose smaller side holds
 	// three or more silently defeats MATERIAL_PRUNING_MIN_PIECES, and that
-	// threshold must be raised in the same change.
+	// threshold must be raised in the same change. Rook against rook sits exactly
+	// on that bound at two men a side, so there is no headroom left in it.
 	static const short ROOK_AND_MINOR_VS_ROOK_SCALE = 4;
 	static const short ROOK_VS_MINOR_SCALE = 12;
-
-	// Rook against rook is level material, so every cent of the score is positional.
-	// Discounted rather than zeroed: the class is drawn as a resting place but not as
-	// a path — it is left by winning the rook — and a zero removes the king- and
-	// rook-activity gradient that steers toward the position where the defence breaks.
 	static const short ROOK_VS_ROOK_SCALE = 4;
 
 	// Distance helpers for mop-up scoring — plain grid math, orientation-independent
