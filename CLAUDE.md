@@ -14,6 +14,7 @@ This file holds the rules that change what you do. Detail is pointed at, not dup
 | measuring Elo or nps | skill `measure-strength` |
 | opening or updating a PR | skill `open-pull-request` |
 | writing or changing a PowerShell script | skill `write-powershell` |
+| triaging, refining or recommending closure of an issue | skill `triage-issue` |
 | issue tracker, triage labels, domain docs | `Docs/agents/` |
 | history | `Docs/Changelog.md` |
 

@@ -10,7 +10,10 @@ Before doing repository work, read `CLAUDE.md` completely. Its project rules are
   `measure-strength`.
 - Creating or changing PowerShell under `Scripts/`, `build.ps1`, or `.githooks/`: use skill
   `write-powershell`.
-- Triaging or editing GitHub issues: read the applicable files under `Docs/agents/` first.
+- Triaging, refining, scoping, labelling, or recommending closure of a GitHub issue: use skill
+  `triage-issue` before the first related action.
+- Reading or editing GitHub issues outside triage: read the applicable files under `Docs/agents/`
+  first.
 
 Repository skills are exposed to Codex under `.agents/skills/`; their canonical instructions remain
 under `.claude/skills/`. If a required skill cannot be loaded, report the discovery failure instead
