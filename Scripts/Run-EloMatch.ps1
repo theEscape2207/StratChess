@@ -227,6 +227,7 @@ function Add-LedgerRow {
 
 
 if ($SelfTest) {
+    Set-StrictMode -Version Latest
     $failures = 0
 
     # Verdict classification. The falsification cases are the ones that matter:
@@ -783,7 +784,13 @@ $verdict = Get-MatchVerdict -EloText $eloText -SprtPreset $Sprt -SprtVerdict $sp
 # The detail block carries what the columns cannot. It must never restate the
 # verdict -- see Measurements/README.md.
 $detail = @()
-if ($Sprt -ne '')      { $detail += "SPRT $Sprt, bounds [$Elo0, $Elo1], fastchess reported ``$sprtVerdict``." }
+if ($Sprt -ne '') {
+    # $sprtVerdict's inconclusive form carries a placeholder for the game count,
+    # which is only known here -- and the verdict column already states it, so the
+    # detail reports the decision rather than repeating the count.
+    $decision = ($sprtVerdict -like 'inconclusive*') ? 'no bound crossed before the cap' : $sprtVerdict
+    $detail += "SPRT $Sprt, bounds [$Elo0, $Elo1]; fastchess reported $decision."
+}
 if ($AnchorSprt)       { $detail += 'Against a fixed anchor, so this is cumulative standing, not the value of this change.' }
 if ($ResumeDir -ne '') { $detail += 'Resumed from an interrupted run: wall time covers the resumed portion only, and the reference label comes from the resuming invocation rather than the restored config (#388) -- verify it by hand.' }
 if ($noStrengthData)   { $detail += 'Both sides are the same binary and the same options, so the true difference is zero by construction.' }
