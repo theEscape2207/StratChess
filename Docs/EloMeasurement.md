@@ -133,6 +133,14 @@ Changing any of these starts a new setup record.
 | Machine | Windows 11 Pro x64 (theEscape2207 dev machine) — results are machine-relative; re-establish the sanity row when measuring on different hardware |
 | Concurrency | 6 concurrent games (`-Concurrency`) — sized off physical cores (12) ÷ 2 single-threaded engine processes per game, not the 24 logical/SMT threads; re-tune alongside the Machine row |
 
+**A version bump re-checks the diagnostic wordings.** Both harnesses classify fastchess's console
+output by its exact message strings — `$pvWarnRe`/`$fatalRe` in `Run-EloMatch.ps1` and the identical
+`pv_warn_re`/`fatal_re` in `strength.yml` — because a keyword sweep also matches engine output
+echoed into the log. The release tarball ships `app/src`, so the authoritative list is one grep away:
+`grep -rhoE '"(Warning|Error);[^"]*"' app/src`. A wording neither list names is reported as an
+unclassified diagnostic rather than silently tolerated, but that report is a prompt to update the
+lists, not a substitute for doing so.
+
 **The instrument has been calibrated.** Identical builds (candidate byte-identical to the reference,
 SHA256-verified) over 2×500 games pooled to **−1.4 Elo** (378W/382L/240D, 49.80%): zero measurable
 bias. The two batches individually hit opposite ±2σ edges, which is what calibrates the per-batch
