@@ -42,6 +42,11 @@ Verified against two real 1110-game shard logs, four mock-engine logs provoking 
 both fastchess versions, and a synthetic log carrying one of each: PV warnings counted (52/29, was
 0), real failures caught, the benign `info string` no longer fatal, the unknown wording surfaced.
 
+The mock engine is committed as `.github/scripts/fastchess_probe_engine.py`, because the wordings
+cannot be checked by a run that happens not to emit them, and `Docs/EloMeasurement.md` gains an
+*Upgrading the match runner* section: the four output checks a version bump is gated on, and the
+traps found running them.
+
 ## 2026-09-01 — fastchess pinned to v1.8.2-alpha
 
 The match runner moves from v1.8.0-alpha (Jan 2026) to v1.8.2-alpha, in the strength-lab workflow

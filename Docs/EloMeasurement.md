@@ -133,19 +133,48 @@ Changing any of these starts a new setup record.
 | Machine | Windows 11 Pro x64 (theEscape2207 dev machine) — results are machine-relative; re-establish the sanity row when measuring on different hardware |
 | Concurrency | 6 concurrent games (`-Concurrency`) — sized off physical cores (12) ÷ 2 single-threaded engine processes per game, not the 24 logical/SMT threads; re-tune alongside the Machine row |
 
-**A version bump re-checks the diagnostic wordings.** Both harnesses classify fastchess's console
-output by its exact message strings — `$pvWarnRe`/`$fatalRe` in `Run-EloMatch.ps1` and the identical
-`pv_warn_re`/`fatal_re` in `strength.yml` — because a keyword sweep also matches engine output
-echoed into the log. The release tarball ships `app/src`, so the authoritative list is one grep away:
-`grep -rhoE '"(Warning|Error);[^"]*"' app/src`. A wording neither list names is reported as an
-unclassified diagnostic rather than silently tolerated, but that report is a prompt to update the
-lists, not a substitute for doing so.
-
 **The instrument has been calibrated.** Identical builds (candidate byte-identical to the reference,
 SHA256-verified) over 2×500 games pooled to **−1.4 Elo** (378W/382L/240D, 49.80%): zero measurable
 bias. The two batches individually hit opposite ±2σ edges, which is what calibrates the per-batch
 noise quoted throughout this document. That run used `elo-reference-v1`, but it measures the
 *instrument* rather than the anchor, so it carries over to v2 unchanged.
+
+### Upgrading the match runner
+
+Every automated use of fastchess is text-scraping its console output: `Run-EloMatch.ps1`'s Elo,
+game-count, LLR and SPRT-verdict patterns, both harnesses' diagnostic classification, and
+`pool_pentanomial.py`'s `Ptnml(0-2)` parse. A release that rewords a line degrades a run to
+"inconclusive" or refuses to pool a shard — failure modes that look like results. The bump is gated
+on the new binary's output, not on its changelog.
+
+1. **Run the same short SPRT under both binaries**, same build on both sides:
+   `-Games 20 -Sprt Custom -Elo0 0 -Elo1 200` (`-Sprt` cannot be combined with `-Smoke`). All four
+   result patterns must still match — one that silently stops matching reports "inconclusive"
+   rather than failing.
+2. **Make the new build check the pooling arithmetic.** Feed its printed `Ptnml(0-2)` to
+   `.github/scripts/pool_pentanomial.py` and require the pooled figure to reproduce the
+   `Elo: x +/- y` the binary printed itself. Add that triple to `--self-test`.
+3. **Re-extract the diagnostic wordings.** Both harnesses classify by fastchess's exact message
+   strings, because a keyword sweep also matches engine output echoed into the log. The release
+   archive ships `app/src`, so the authoritative list is one grep away:
+   `grep -rhoE '"(Warning|Error);[^"]*"' app/src`. Keep `$pvWarnRe`/`$fatalRe` in `Run-EloMatch.ps1`
+   byte-identical to `pv_warn_re`/`fatal_re` in `strength.yml`. A wording neither names is reported
+   as an unclassified diagnostic rather than silently tolerated — a prompt to update the lists, not
+   a substitute for doing it.
+4. **Provoke the warning classes rather than hoping a match emits them.**
+   `.github/scripts/fastchess_probe_engine.py` is a mock UCI engine that reports an illegal PV
+   (`badpv`) or plays an illegal move (`illegalmove`); two of them playing each other over two games
+   is enough. The first must be counted and tolerated, the second must fail the run — under the old
+   binary as well as the new one, so that any difference is attributable to the version.
+
+Traps:
+
+- The Windows zip and the Linux tar both extract to a **subdirectory**. The CI fetch step depends on
+  that and breaks quietly if a release changes it.
+- The calibration runs append rows to `Docs/EloLog.md`. Revert them — both sides are the same
+  binary, so they carry no strength information.
+- Elo history stays comparable only while the time control and adjudication settings are untouched.
+  That is why they are their own rows in the table above.
 
 ### The two anchors
 
