@@ -29,10 +29,39 @@ Two failures to avoid:
 - **Assuming 500 games is a ceiling.** It is the default, not a limit — see
   [Sizing the batch](#sizing-the-batch). The local book supports 69,400 distinct games.
 
+Build the candidate first (`.\build.ps1 main`) — `Run-EloMatch.ps1` does not build it, and
+`build.ps1` defaults to the shipping clang-cl build, the only one comparable against the reference.
+
 ```
-pwsh -ExecutionPolicy Bypass -File <abs>\Scripts\Run-EloMatch.ps1 [-Smoke] [-Sprt NonRegression|Gain]
 pwsh -ExecutionPolicy Bypass -File <abs>\Scripts\Run-Bench.ps1 -Exe <path>
+
+# fixed batch against the default anchor — "where do we stand"
+pwsh -ExecutionPolicy Bypass -File <abs>\Scripts\Run-EloMatch.ps1
+
+# does the pipeline work at all — 20 games, ~2 min, resolves nothing
+... Run-EloMatch.ps1 -Smoke
+
+# against the merge base rather than the anchor — the only way to attribute a delta to one change.
+# Every -Sprt form needs that same isolating reference, so build the merge base first.
+... Run-EloMatch.ps1 -ReferenceExe <merge-base build> -ReferenceTag <commit>
+... Run-EloMatch.ps1 -Sprt NonRegression -ReferenceExe <...> -ReferenceTag <...>   # "not worse"
+... Run-EloMatch.ps1 -Sprt Gain         -ReferenceExe <...> -ReferenceTag <...>   # "worth >= ~10"
+... Run-EloMatch.ps1 -Sprt Custom -Elo0 0 -Elo1 5 -ReferenceExe <...> -ReferenceTag <...>
+
+# a cumulative verdict, asked for deliberately — "how far ahead of the anchor are we"
+... Run-EloMatch.ps1 -Sprt Custom -Elo0 0 -Elo1 20 -AnchorSprt
 ```
+
+`-Sprt Custom` requires both `-Elo0` and `-Elo1`. `-Sprt` cannot be combined with `-Smoke`: a
+20-game run can never reach a decision, so the result would always read "inconclusive", which looks
+like a measurement and is not one.
+
+**Deeper reference, read when the situation calls for it:**
+
+- [`reference/reading-a-result.md`](reference/reading-a-result.md) — what each outcome licenses you
+  to claim, and whether more games would help.
+- [`reference/why-measurement-is-hard.md`](reference/why-measurement-is-hard.md) — resolution at a
+  given N, why the anchor cannot measure your change, the 100 ms floor, bundling terms.
 
 ## The rule that silently invalidates everything
 
@@ -118,12 +147,19 @@ colour-swapped pairs. Full input table and internals: `Docs/CI.md` → Strength 
 - **A failed shard discards the whole batch**, not just itself: the survivors are the ones that
   happened to avoid whatever went wrong, so pooling them would be a biased subset wearing a full
   batch's error bar.
-- Results go in `Docs/EloLog.md`'s **Linux ledger**, which must **never** be compared against the
-  local clang-cl rows — same trap as the MSVC rule above, different axis.
+- Results go in `Measurements/ci-per-change.md` or `ci-anchor.md`, which must **never** be compared
+  against the local clang-cl rows — same trap as the MSVC rule above, different axis.
 
 ## Recording
 
-Method: `Docs/EloMeasurement.md`. Results: `Docs/EloLog.md` (local clang-cl rows and the Linux ledger
-are separate and non-comparable). A batch reporting a time loss, illegal move or disconnect is
-discarded, never reported — on a shared runner a time loss most likely means the box was
-oversubscribed, which invalidates the batch rather than the one game.
+**`Measurements/README.md` is the recording convention** — the verdict vocabulary, the discard
+rules, and what belongs in a row's detail section. Read it before writing a row; a row is easy to
+write in a way that cannot later be un-misread.
+
+The ledgers are `Measurements/{ci-calibration,ci-per-change,ci-anchor,local}.md`, one per
+instrument-and-reference kind, and **a row is only ever read against others in its own file**.
+`Run-EloMatch.ps1` appends to `local.md` automatically; CI-lab rows are written by hand.
+
+A batch reporting a time loss, illegal move or disconnect is discarded, never reported — on a shared
+runner a time loss most likely means the box was oversubscribed, which invalidates the batch rather
+than the one game.
