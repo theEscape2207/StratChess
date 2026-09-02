@@ -458,18 +458,21 @@ class EvalComplex final : public EvalManager {
 	// directly blocked by our own shield pawn -- our nearest pawn on that file
 	// standing at exactly r' - 1 -- is halved.
 	//
-	// Literature-standard shapes, deliberately NOT fitted here: issue #117
-	// (Texel-style tuning) owns these values.
+	// Literature-standard shapes at half the usual magnitude, deliberately NOT
+	// fitted here: issue #117 (Texel-style tuning) owns the values. The halved
+	// scale is because shelter, king-file openness and ISOLATED_PAWN_PENALTY all
+	// fire on one missing shelter pawn without knowing about each other, so the
+	// full-magnitude tables price that pawn close to twice over.
 	// clang-format off
 	static constexpr short KING_SHELTER[2][8] = {
 	    // r:   -   1    2    3    4   5   6   7
-	    {     -18,  0,  30,  20,  10,  4,  0,  0}, // king's own file
-	    {     -12,  0,  24,  16,   8,  3,  0,  0}, // adjacent files
+	    {      -9,  0,  15,  10,   5,  2,  0,  0}, // king's own file
+	    {      -6,  0,  12,   8,   4,  2,  0,  0}, // adjacent files
 	};
 	static constexpr short KING_STORM[2][8] = {
 	    // r':  -   1    2    3    4   5   6   7
-	    {       0,  0,  30,  24,  14,  7,  2,  0}, // king's own file
-	    {       0,  0,  24,  18,  11,  5,  2,  0}, // adjacent files
+	    {       0,  0,  15,  12,   7,  4,  1,  0}, // king's own file
+	    {       0,  0,  12,   9,   6,  3,  1,  0}, // adjacent files
 	};
 	// clang-format on
 
@@ -479,8 +482,8 @@ class EvalComplex final : public EvalManager {
 	// eval_rooks' forward-span-for-own-pawns asymmetry: what this prices is a
 	// lane an enemy rook can use, and that is a whole-file property. See
 	// eval_king_files.
-	static constexpr short KING_FILE_HALF_OPEN[2] = {12, 6};
-	static constexpr short KING_FILE_OPEN[2] = {22, 11};
+	static constexpr short KING_FILE_HALF_OPEN[2] = {6, 3};
+	static constexpr short KING_FILE_OPEN[2] = {11, 6};
 
 	// The largest magnitude one colour's combined king-safety contribution can
 	// reach at the middlegame endpoint, in either direction. Absolute and per
