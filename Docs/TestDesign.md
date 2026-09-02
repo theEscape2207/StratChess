@@ -174,8 +174,11 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
     outscores one boxed in behind its own pawns; a square covered by an enemy pawn stops counting
     (the safe-mobility mask); an own piece blocks a bishop's diagonal while an enemy piece on the
     same square does not (pinning the capture-target convention); a lone queen scores nonzero (#113,
-    so the queen cannot be silently skipped); and a bare king scores exactly 0 (king mobility is
-    #97's, not this term's)
+    so the queen cannot be silently skipped); a bare king scores exactly 0 (king mobility is
+    #97's, not this term's); and a dead-drawn material class scores 0 because `BuildContext` skips
+    the attack pass entirely for one. That last case is why several of these positions carry an idle
+    pawn: without it they are K+N vs K, which `EndgameScale` scores 0, and the term would be
+    comparing two zeroes
   - Passed and backwards pawns (#116): the span masks are asserted for **content** before any term
     consumes them — `g_bbPassedMaskWhite[d4]` is exactly the c/d/e files ahead, an a- or h-file pawn's
     span never reaches the opposite edge (the wraparound bug this kind of generator invites), and a

@@ -133,6 +133,44 @@ class EvalSimple final : public EvalManager {
 	EvalSimple() = default;
 };
 
+// Dense index for the per-piece-type aggregates in EvalContext below. The
+// pieces that get their attacks generated, in the order the generation loop
+// visits them. Deliberately not ePiece or ePieceType: those are sparse
+// (PAWN = 0, KNIGHT = 2, ... KING = 10, defines.h) and carry no count
+// constant, so an array indexed by them would need eleven entries to hold
+// four values.
+enum eMobilePiece : std::uint8_t {
+	MOB_KNIGHT = 0,
+	MOB_BISHOP,
+	MOB_ROOK,
+	MOB_QUEEN,
+	NUM_MOBILE_PIECES,
+};
+
+// What one pass over the knights, bishops, rooks and queens reduces to.
+// Produced by EvalComplex::ComputePieceAggregates() and carried in EvalContext
+// below, so no term has to generate an attack set a previous one already had.
+//
+// Counts, never weighted scores: the term functions own the weights, which is
+// what keeps them pure and lets issue #117 retune without touching
+// BuildContext.
+//
+// ALL ZERO when endgame_scale is 0 — no attacks are generated at all for a
+// dead-drawn material class, because Evaluate() returns GameValues::Draw for
+// one without asking any term anything. Only Breakdown() can observe the
+// difference, and only on a position whose total is Draw regardless.
+struct PieceAggregates {
+	// Per type, the sum over that color's pieces of (safe squares reached minus
+	// MOBILITY_BASE_*) — exactly what eval_mobility multiplies by its per-type
+	// weight. "Safe" is the mask eval_mobility documents: not our own pieces,
+	// not covered by an enemy pawn.
+	int mobility_count[NUM_COLORS][NUM_MOBILE_PIECES];
+	// Pairs of that color's rooks that see each other along a rank or file with
+	// nothing between (issue #114), counted in the same loop that generates the
+	// rook attacks so eval_rooks does not regenerate them.
+	int connected_rook_pairs[NUM_COLORS];
+};
+
 // EvalContext — shared, per-call intermediates for EvalComplex::Evaluate().
 // Built once by EvalComplex::BuildContext() as a plain stack local and passed
 // by const reference into each term function; nothing in it is ever stored on
@@ -191,6 +229,10 @@ struct EvalContext {
 	// field, so reading it keeps Evaluate() a pure function of the position --
 	// which whether a side has actually castled is not, since no FEN records it.
 	uint8_t castling_rights;
+
+	// Reductions of the one non-pawn attack generation pass. All zero when
+	// endgame_scale is 0 — see PieceAggregates.
+	PieceAggregates attacks;
 };
 
 // EvalBreakdown — per-term introspection output for the UCI 'eval' command.
@@ -454,6 +496,21 @@ class EvalComplex final : public EvalManager {
 	// term-level test fixture (StratChessTests/EvalTests.cpp) that also calls
 	// this.
 	static EvalContext BuildContext(const Board& board) noexcept;
+
+	// Generates every non-pawn piece's attack set once and reduces it to counts.
+	// Called by BuildContext, and only when endgame_scale is nonzero.
+	//
+	// Consolidated here rather than left in eval_mobility because more than one
+	// term needs the same attack sets: mobility counts them, eval_rooks needs
+	// the rook attacks for connected rooks (issue #114), and king safety
+	// (issue #97) needs all of them. Generating them per term costs one PEXT
+	// lookup per slider per consumer.
+	//
+	// Takes the bitboards it reads rather than the half-built EvalContext, and
+	// returns its result rather than writing through a reference: that is what
+	// lets the optimizer keep the whole pass in registers.
+	static PieceAggregates ComputePieceAggregates(std::span<const BITBOARD> boards, BITBOARD whitePawnAttacks,
+	                                              BITBOARD blackPawnAttacks) noexcept;
 
 	// Recognises material configurations that are worth less than they weigh.
 	// Returns a numerator over ENDGAME_SCALE_MAX; 0 is a dead draw.

@@ -5,7 +5,7 @@
 #include "Eval.h"
 
 #include "Board.h"
-#include "Magic.h" // RookAttacks, for connected rooks (issue #114)
+#include "Magic.h" // RookAttacks/BishopAttacks, for ComputePieceAggregates
 
 #include <bit> // std::popcount
 
@@ -208,9 +208,11 @@ ScorePair EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 // nothing between, per connected pair.
 ScorePair EvalComplex::eval_rooks(const EvalContext& ctx, eColor color) noexcept
 {
-	int score = 0;          // phase-independent: open/half-open file bonuses
-	int seventhRankEg = 0;  // endgame-only contribution
-	int connectedPairs = 0; // tapered separately -- see the return below
+	int score = 0;         // phase-independent: open/half-open file bonuses
+	int seventhRankEg = 0; // endgame-only contribution
+	// Counted in BuildContext's one attack pass, where the rook's attack set is
+	// generated for mobility anyway. Tapered separately -- see the return below.
+	const int connectedPairs = ctx.attacks.connected_rook_pairs[color];
 	const ePiece rookPiece = (color == WHITE) ? ePiece::WHITE_ROOK : ePiece::BLACK_ROOK;
 	const int seventhRank = (color == WHITE) ? WHITE_7TH_ROW : BLACK_7TH_ROW;
 	const BITBOARD ownPawns = ctx.pawns[color];
@@ -241,16 +243,6 @@ ScorePair EvalComplex::eval_rooks(const EvalContext& ctx, eColor color) noexcept
 			if (!(g_bbFileMask[file] & enemyPawns))
 				score += OPEN_FILE - HALF_OPEN_FILE;
 		}
-
-		// Connected rooks: does this rook see another of its own along a rank or
-		// file with nothing in between? RookAttacks already accounts for blockers
-		// (PEXT magics, issue #108), so no separate between-mask is needed.
-		//
-		// `remaining` has had every earlier rook cleared, so testing only against
-		// the later ones counts each PAIR exactly once -- no halving needed.
-		const BITBOARD laterRooks = Bits::clearLsb(remaining);
-		if (laterRooks)
-			connectedPairs += std::popcount(RookAttacks(square, ctx.all_pieces) & laterRooks);
 
 		remaining = Bits::clearLsb(remaining);
 	}
@@ -421,8 +413,8 @@ ScorePair EvalComplex::eval_pst(const EvalContext& ctx, eColor color) noexcept
 //
 // Enemy-OCCUPIED squares are INCLUDED -- a piece that can capture is active, and
 // this needs one mask rather than two. Both conventions exist in the literature;
-// what matters is that every piece type below uses the same one, which is why
-// the mask is computed once here rather than per type.
+// what matters is that every piece type uses the same one, which is why the mask
+// is built once in ComputePieceAggregates rather than per type.
 //
 // The king is deliberately absent: king mobility is a king-safety signal and
 // belongs with issue #97, where it can be weighed against attacker counts rather
@@ -434,52 +426,16 @@ ScorePair EvalComplex::eval_pst(const EvalContext& ctx, eColor color) noexcept
 // making the term a piece-value adjustment across trades -- see the constants.
 ScorePair EvalComplex::eval_mobility(const EvalContext& ctx, eColor color) noexcept
 {
-	const eColor enemy = (color == WHITE) ? BLACK : WHITE;
-	const BITBOARD usable = ~ctx.occupied[color] & ~ctx.pawn_attacks[enemy];
+	// The squares themselves are counted once per position in
+	// ComputePieceAggregates; this applies the weights. Multiplying the
+	// per-type sum here is the same integer as multiplying each piece's count
+	// individually and adding, because the weight is a property of the type.
+	const int* const count = ctx.attacks.mobility_count[color];
 
-	int mg = 0;
-	int eg = 0;
-
-	auto knights = ctx.boards[(color == WHITE) ? ePiece::WHITE_KNIGHT : ePiece::BLACK_KNIGHT];
-	while (knights) {
-		const eSquare square = Board::GetFirstPiece(knights);
-		const int count = std::popcount(g_bbKnightMoves[square] & usable) - MOBILITY_BASE_KNIGHT;
-		mg += count * MOBILITY_KNIGHT_MG;
-		eg += count * MOBILITY_KNIGHT_EG;
-		knights = Bits::clearLsb(knights);
-	}
-
-	auto bishops = ctx.boards[(color == WHITE) ? ePiece::WHITE_BISHOP : ePiece::BLACK_BISHOP];
-	while (bishops) {
-		const eSquare square = Board::GetFirstPiece(bishops);
-		const int count = std::popcount(BishopAttacks(square, ctx.all_pieces) & usable) - MOBILITY_BASE_BISHOP;
-		mg += count * MOBILITY_BISHOP_MG;
-		eg += count * MOBILITY_BISHOP_EG;
-		bishops = Bits::clearLsb(bishops);
-	}
-
-	auto rooks = ctx.boards[(color == WHITE) ? ePiece::WHITE_ROOK : ePiece::BLACK_ROOK];
-	while (rooks) {
-		const eSquare square = Board::GetFirstPiece(rooks);
-		const int count = std::popcount(RookAttacks(square, ctx.all_pieces) & usable) - MOBILITY_BASE_ROOK;
-		mg += count * MOBILITY_ROOK_MG;
-		eg += count * MOBILITY_ROOK_EG;
-		rooks = Bits::clearLsb(rooks);
-	}
-
-	// A queen is a rook and a bishop on the same square; there is no separate
-	// PEXT table for it (Magic.h), and the union is what every generator uses.
-	auto queens = ctx.boards[(color == WHITE) ? ePiece::WHITE_QUEEN : ePiece::BLACK_QUEEN];
-	while (queens) {
-		const eSquare square = Board::GetFirstPiece(queens);
-		const BITBOARD attacks = RookAttacks(square, ctx.all_pieces) | BishopAttacks(square, ctx.all_pieces);
-		const int count = std::popcount(attacks & usable) - MOBILITY_BASE_QUEEN;
-		mg += count * MOBILITY_QUEEN_MG;
-		eg += count * MOBILITY_QUEEN_EG;
-		queens = Bits::clearLsb(queens);
-	}
-
-	return ScorePair{mg, eg};
+	return ScorePair{count[MOB_KNIGHT] * MOBILITY_KNIGHT_MG + count[MOB_BISHOP] * MOBILITY_BISHOP_MG +
+	                     count[MOB_ROOK] * MOBILITY_ROOK_MG + count[MOB_QUEEN] * MOBILITY_QUEEN_MG,
+	                 count[MOB_KNIGHT] * MOBILITY_KNIGHT_EG + count[MOB_BISHOP] * MOBILITY_BISHOP_EG +
+	                     count[MOB_ROOK] * MOBILITY_ROOK_EG + count[MOB_QUEEN] * MOBILITY_QUEEN_EG};
 }
 
 // eval_mopup — mop-up evaluation for one color (original term issue #70 /
@@ -616,6 +572,10 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 	const BITBOARD blackPawnAttacks = (Bits::clearBits(blackPawnsBb, g_bbFileMask[eFileNames::RIGHT_FILE]) << 9) |
 	                                  (Bits::clearBits(blackPawnsBb, g_bbFileMask[eFileNames::LEFT_FILE]) << 7);
 
+	// Decided before the aggregates because it decides whether they are computed
+	// at all.
+	const int endgameScale = EndgameScale(boardsSpan);
+
 	return EvalContext{
 	    .boards = boardsSpan,
 	    .all_pieces = boardsSpan[ALL_PIECES],
@@ -626,9 +586,94 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 	    .material = {matScoreWhite, matScoreBlack},
 	    .phase = gamePhase,
 	    .mopup_active = {mopupActive[WHITE], mopupActive[BLACK]},
-	    .endgame_scale = EndgameScale(boardsSpan),
+	    .endgame_scale = endgameScale,
 	    .castling_rights = board.castling_rights(),
+	    // Left zeroed for a dead-drawn material class: Evaluate() returns
+	    // GameValues::Draw for one without calling a single term, so generating
+	    // attacks would put the cost back on exactly the path that early-out
+	    // exists to make cheap.
+	    .attacks = (endgameScale != 0) ? ComputePieceAggregates(boardsSpan, whitePawnAttacks, blackPawnAttacks)
+	                                   : PieceAggregates{},
 	};
+}
+
+// ComputePieceAggregates — one attack generation pass, reduced to counts.
+//
+// Everything here was previously computed inside eval_mobility, plus the
+// connected-rook count eval_rooks derived from a second RookAttacks() call on
+// the same square. The reduction is exact rather than approximate: mobility
+// weights are per piece TYPE, so summing (count - base) across a type's pieces
+// here and multiplying once in the term gives the same integer as multiplying
+// per piece did.
+PieceAggregates EvalComplex::ComputePieceAggregates(std::span<const BITBOARD> boards, BITBOARD whitePawnAttacks,
+                                                    BITBOARD blackPawnAttacks) noexcept
+{
+	PieceAggregates aggregates{};
+
+	const BITBOARD occupancy = boards[ALL_PIECES];
+	const BITBOARD occupied[NUM_COLORS] = {boards[ePiece::ALL_WHITE_PIECES], boards[ePiece::ALL_BLACK_PIECES]};
+	const BITBOARD pawnAttacks[NUM_COLORS] = {whitePawnAttacks, blackPawnAttacks};
+
+	for (const eColor color : {WHITE, BLACK}) {
+		const eColor enemy = (color == WHITE) ? BLACK : WHITE;
+		// The safe-mobility mask, unchanged: own pieces block, enemy-occupied
+		// squares count as reachable, squares an enemy pawn covers do not.
+		const BITBOARD usable = ~occupied[color] & ~pawnAttacks[enemy];
+
+		int knightCount = 0;
+		int bishopCount = 0;
+		int rookCount = 0;
+		int queenCount = 0;
+		int rookPairs = 0;
+
+		auto knights = boards[(color == WHITE) ? ePiece::WHITE_KNIGHT : ePiece::BLACK_KNIGHT];
+		while (knights) {
+			const eSquare square = Board::GetFirstPiece(knights);
+			knightCount += std::popcount(g_bbKnightMoves[square] & usable) - MOBILITY_BASE_KNIGHT;
+			knights = Bits::clearLsb(knights);
+		}
+
+		auto bishops = boards[(color == WHITE) ? ePiece::WHITE_BISHOP : ePiece::BLACK_BISHOP];
+		while (bishops) {
+			const eSquare square = Board::GetFirstPiece(bishops);
+			bishopCount += std::popcount(BishopAttacks(square, occupancy) & usable) - MOBILITY_BASE_BISHOP;
+			bishops = Bits::clearLsb(bishops);
+		}
+
+		auto rooks = boards[(color == WHITE) ? ePiece::WHITE_ROOK : ePiece::BLACK_ROOK];
+		while (rooks) {
+			const eSquare square = Board::GetFirstPiece(rooks);
+			const BITBOARD attacks = RookAttacks(square, occupancy);
+			rookCount += std::popcount(attacks & usable) - MOBILITY_BASE_ROOK;
+
+			// Connected rooks (issue #114): the attack set already accounts for
+			// blockers, so seeing another rook in it means nothing stands
+			// between. `rooks` has every earlier rook cleared, so testing only
+			// the later ones counts each PAIR exactly once -- no halving needed.
+			const BITBOARD laterRooks = Bits::clearLsb(rooks);
+			rookPairs += std::popcount(attacks & laterRooks);
+
+			rooks = laterRooks;
+		}
+
+		// A queen is a rook and a bishop on the same square; there is no separate
+		// PEXT table for it (Magic.h), and the union is what every generator uses.
+		auto queens = boards[(color == WHITE) ? ePiece::WHITE_QUEEN : ePiece::BLACK_QUEEN];
+		while (queens) {
+			const eSquare square = Board::GetFirstPiece(queens);
+			const BITBOARD attacks = RookAttacks(square, occupancy) | BishopAttacks(square, occupancy);
+			queenCount += std::popcount(attacks & usable) - MOBILITY_BASE_QUEEN;
+			queens = Bits::clearLsb(queens);
+		}
+
+		aggregates.mobility_count[color][MOB_KNIGHT] = knightCount;
+		aggregates.mobility_count[color][MOB_BISHOP] = bishopCount;
+		aggregates.mobility_count[color][MOB_ROOK] = rookCount;
+		aggregates.mobility_count[color][MOB_QUEEN] = queenCount;
+		aggregates.connected_rook_pairs[color] = rookPairs;
+	}
+
+	return aggregates;
 }
 
 //
