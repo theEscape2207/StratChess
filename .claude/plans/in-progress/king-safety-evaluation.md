@@ -194,8 +194,18 @@ which the codebase does not have — `Board::GetFirstPiece` is lsb-only. Add a `
 
 Removing the g2 pawn in front of a castled White Kg1 costs, from three terms that do not know about
 each other: about 48 from `KING_SHELTER` (best entry to absence entry), 12 to 22 from king-file
-openness, and up to 40 from `ISOLATED_PAWN_PENALTY` newly applying to f2 and h2. Roughly **110 cp for
-one pawn**, larger than any other positional signal in the evaluator outside material.
+openness, and 20 from `ISOLATED_PAWN_PENALTY` newly applying to h2. Roughly **80-90 cp for one pawn**,
+larger than any other positional signal in the evaluator outside material, and up to 110 in the corner
+case where the e-pawn is already gone so f2 goes isolated too. (Only h2 is isolated in the normal case:
+`eval_pawns` requires BOTH adjacent files empty, and f2 still has e2.) `KING_STORM` is not part of this
+overlap — a storm pawn is the enemy's, and an enemy pawn on the file makes it half-open rather than
+open, so storm and openness partially cancel.
+
+**PR 2 ships every table at half these values**, which leaves the same three-term stack at ~50 cp
+typical and ~75 worst. That damps the signal rather than removing the overlap, so it is a holding
+position, not the fix: after halving, `ISOLATED_PAWN_PENALTY` at 20-40 is the LARGEST single piece of
+the residual, bigger than shelter's own 24. The fourth ablation below is still the remedy that keeps
+the signal, and PR 4 should not treat the halved values as settled before measuring it.
 
 That is not necessarily wrong — a shattered castled king often is worth that — but it is not a
 decision anyone made, and PR 4's ablation set does not reach it: it covers `eval_castling` and the
@@ -389,10 +399,13 @@ function of the pawns plus the king square, which is exactly what that cache exi
 live in `ThreadData` rather than on `EvalManager`, so the Lazy SMP contract survives. Whether that is
 worth doing is a question for the SPRT below, which measures the term NET of its own speed cost.
 
-**Delta pruning headroom.** `AIPerplex.h`'s `delta_pruning_margin = 200` now has less room under it:
-one pawn capture beside a king can move the positional score by 50-100 cp in a ply (shelter 48,
-files 22, storm up to 30), against roughly 35 before. 200 still covers a pawn plus that, but a #117
-retune upward should re-examine the margin rather than assume it.
+**Delta pruning headroom.** `AIPerplex.h`'s `delta_pruning_margin = 200` has less room under it than
+before this series, but the halved tables restore it. One pawn capture beside a king moves the
+positional score by ~50 cp typical and ~82 worst (shelter 24, files ≤ 11, storm un-halving ≤ 7,
+isolated 20-40), against roughly 35 before the series. A pawn plus the worst case is 182 against the
+200 margin. At full magnitude the worst case was 125 — the same four terms, since the isolated penalty
+fires on exactly that capture — so a pawn plus that already exceeded the margin. No change is needed
+at the shipped scale, but a #117 retune upward must re-examine it rather than assume it.
 
 **PRs 2 and 3 — strength.** `Run-Bench.ps1` first: the incremental budget for the whole feature is
 2% nps (≈3.4 Elo of speed). Then a local SPRT against a **merge-base build** (never the anchor):
@@ -463,9 +476,11 @@ intuitive term.
 | `GetLastPiece` helper contract (D4) | comment beside `Board::GetFirstPiece` |
 | Storm and king-file entries are penalty MAGNITUDES, and the bound depends on their sign (D7) | `static_assert` in `Eval.h` |
 | `distance` is measured from the CLAMPED file, so `Kh1` scores the h-file as adjacent (D3) | comment in `eval_king_pawn_cover` |
-| The ~110 cp three-term overlap on one shield pawn, and the fourth ablation it argues for (D5a) | issue #97 and PR 4's ablation set |
+| The ~80-90 cp three-term overlap on one shield pawn, that halving only damps it, and the fourth ablation it argues for (D5a) | issue #97 and PR 4's ablation set |
 | Shelter does not subsume `eval_castling` (D5a) | PR 4's PR body, before any decision to drop it |
-| Delta-pruning headroom shrank; re-examine on a #117 retune | comment beside `delta_pruning_margin`, if PR 4 keeps the term |
+| Delta-pruning headroom: restored by the halved scale, re-examine on a #117 retune upward | comment beside `delta_pruning_margin`, if PR 4 keeps the term |
+| Shelter ranks 5-6 collapse to equal values at the halved scale; the shape is no longer expressible there | issue #117 |
+| PR 3's attack term must land at a scale consistent with the halved pawn-cover tables, or PR 4 measures shelter in its shadow | PR 3's PR body |
 
 Delete this file once PR 4 lands and the table above is discharged. Nothing durable should survive
 only here.

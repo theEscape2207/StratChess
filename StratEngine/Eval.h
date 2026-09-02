@@ -459,10 +459,18 @@ class EvalComplex final : public EvalManager {
 	// standing at exactly r' - 1 -- is halved.
 	//
 	// Literature-standard shapes at half the usual magnitude, deliberately NOT
-	// fitted here: issue #117 (Texel-style tuning) owns the values. The halved
-	// scale is because shelter, king-file openness and ISOLATED_PAWN_PENALTY all
-	// fire on one missing shelter pawn without knowing about each other, so the
-	// full-magnitude tables price that pawn close to twice over.
+	// fitted here: issue #117 (Texel-style tuning) owns the values.
+	//
+	// What sets the level: shelter, king-file openness and ISOLATED_PAWN_PENALTY
+	// all fire on one missing shield pawn without knowing about each other, so at
+	// full magnitude that pawn was priced close to twice over. What sets the
+	// uniformity: rescaling every table by the same factor keeps the intra-term
+	// shape, including shelter-to-storm ratio. KING_STORM is NOT part of that
+	// overlap -- a storm pawn is the enemy's, so the isolated penalty cannot see
+	// it, and an enemy pawn on the file makes it half-open rather than open, which
+	// cancels rather than compounds. Halving shelter alone would leave storm the
+	// louder half, inverting the usual ordering. Odd entries round up, so the far
+	// ranks are marginally louder than an exact halving.
 	// clang-format off
 	static constexpr short KING_SHELTER[2][8] = {
 	    // r:   -   1    2    3    4   5   6   7
