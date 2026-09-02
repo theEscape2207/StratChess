@@ -170,6 +170,10 @@ PAWN_RICH = 3  # both sides holding this many pawns => no fortress / bare-piece 
 
 # Classes where the two sides hold the same material, so the colour returned
 # below is a placeholder and the reported score is what names the stronger side.
+# That makes their rows POOLED-ONLY: naming a side from a score biases toward
+# White, which takes every exact zero, and a build that scales the class reports
+# more of them, so splitting such a row by build measures the scale rather than
+# the play. Docs/MoveQuality.md carries the worked case.
 SYMMETRIC_CLASSES = {"OCB", "RvsR"}
 
 

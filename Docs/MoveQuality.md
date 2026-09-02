@@ -292,3 +292,36 @@ longer this class. Nothing lands in between.
 
 This is the evidence behind #436: the phantom is the PST, rook-file and mobility terms surviving on a
 level-material board, a median of 22 cp and a maximum of 64 over 400 positions sampled from this run.
+
+It **replicates** on run `33568346899`, a fresh 19,980 games in which one side carries the resulting
+scale and the other does not:
+
+| Class | Reported | Games | Of all | Observed (95% clustered) | W/D/L |
+|---|---|---|---|---|---|
+| KR vs KR (pawnless) | < +100 | 650 | 3.3% | **0.500** [0.500, 0.500] | 0/650/0 |
+| KR vs KR (pawnless) | ≥ +250 | 307 | 1.5% | **1.000** [1.000, 1.000] | 307/0/0 |
+
+Same total separation on a corpus that shares no games with the one above. That run also shows the
+scale itself in the annotations: |score| reported from inside the class has p90 **13** for the
+unscaled build and **3** for the scaled one, which is 4/16 to the digit. **No steering effect is
+visible** — the two builds enter the class 777 and 784 times and spend 6.6 and 6.8 plies in it — and
+the low band offers none to find, since it was already saturated at 0.500.
+
+### Symmetric classes cannot be attributed to a build
+
+`RvsR` and `OCB` hold level material, so `material_classes()` returns a placeholder colour and the
+**sign of the entry score** names the stronger side. Two consequences, both of which have produced a
+false signal:
+
+- **It is White-biased.** An entry scored exactly 0 falls to White under the `>= 0` rule, and roughly
+  a quarter to a third of `RvsR` entries are exactly 0 — White is named the stronger side about 2.5
+  times as often as Black in both runs above.
+- **It is invalid across a build that scales the class.** Scaling truncates small scores toward zero,
+  so entries move out of the low magnitude bands into the exact zero the rule hands to White. Split
+  by build, run `33568346899`'s `< +100` band reads 295/355 — 2.3 standard errors, and it looks
+  exactly like the intended effect. It is not: the whole skew sits in the `|cp| 1–24` bucket the
+  scale compresses, above `|cp| >= 25` it is 150/143, and the control run, where neither build scaled
+  the class, carries a skew of the same size pointing the other way.
+
+Use the pooled rows for a symmetric class. A per-build split of one is only readable when both builds
+value the class identically, which is the case the split is least often wanted for.
