@@ -68,7 +68,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | Move generation (142,953-position corpus, d1–d4) | — | `Scripts\Run-PerftCheck.ps1` |
 | **MoveFormatter** | `[formatter]` | `MoveFormatterTests.cpp` |
 | **TranspositionTable** | `[tt]` | `TTTests.cpp` |
-| **Evaluation (EvalSimple/Complex)** | `[eval]` | `EvalBasicTests.cpp`, `EvalSymmetryTests.cpp`, `EvalTermTests.cpp`, `EvalPawnAndTaperTests.cpp`, `EvalEndgameTests.cpp` |
+| **Evaluation (EvalSimple/Complex)** | `[eval]` | `EvalBasicTests.cpp`, `EvalSymmetryTests.cpp`, `EvalTermTests.cpp`, `EvalPawnAndTaperTests.cpp`, `EvalEndgameTests.cpp`, `EvalKingSafetyTests.cpp` |
 | **Search regression (tactical)** | `[tactical]` | `TacticalTests.cpp` |
 | **Search regression (slow tier)** | `[tactical_full][slow]` | `TacticalFullTests.cpp` |
 | Concrete search service, lifecycle and factory | `[search]` | `SearchServiceTests.cpp` |
@@ -233,6 +233,33 @@ nonzero score in one of those classes *is* the defect.
   scoring zero cannot tell a scale from a clamp
 - The #129 honesty invariant extended: on a scaled position, the printed rows plus the endgame
   adjustment still reproduce `total` exactly
+
+**King safety (`[eval]`, issue #97, `EvalKingSafetyTests.cpp`)**. Shelter, storm and king-file
+openness. Every case keeps a queen on each side: all three contributions are middlegame-only, so a
+bare-king position sits at phase 0 where each blends to exactly 0 and any assertion is vacuous.
+
+- **The zone anchor** is pinned by enumerated squares, not by a property: `Kg1`, `Kh1` and `Kg2` must
+  all anchor on `g2`, and the queenside and Black mirrors likewise. That is the g1->h1 discontinuity
+  the file clamp exists to prevent, asserted directly instead of inferred from a count. A sweep adds
+  the two invariants over all 64 squares — anchor on the b..g files, off the outermost rows, never
+  more than one square from the king
+- **Shelter** orders intact > pushed > absent with the *same three pawns* on the board in all three,
+  so placement is the only variable; a king with no cover scores below zero rather than merely small
+- **The absence sentinel**: a pawn LEVEL with the king outscores no pawn on that file. Indexing by
+  distance-from-the-king would have given a level pawn distance 0, colliding with the sentinel — this
+  is the case that separates them. Own pawns BEHIND the king score equal to an empty file
+- A rank sweep covers every reachable shelter bucket and checks each against its color mirror, which
+  is what pins the defender-relative rank index
+- **Storm** is zero for an enemy pawn behind the king and negative for the same pawn ahead of it. The
+  blocked case asserts the exact halving on the unblended `mg` endpoints, where it is exact —
+  the same enemy pawn with our own pawn either in its path or one file off it
+- **King files** order open < half-open < closed, isolated on one file, and an own pawn behind the
+  king still closes the file — the deliberate difference from `eval_rooks`' forward-span rule
+- **Invariants**: every contribution's `eg` endpoint is exactly 0; all three blend to 0 at phase 0;
+  a kingless board contributes nothing; and the combined per-color `mg` stays inside
+  `KING_SAFETY_MAX_PENALTY` over the corpus. The constant is tied to the tables by a `static_assert`,
+  which proves the arithmetic — the corpus case proves the other half, that the bound is right about
+  which entries are reachable
 
 **Tapered evaluation (`[eval]`, issue #99)**. The taper is asserted on its *endpoints* wherever
 possible rather than on a blended value at one position's particular phase — a blended assertion

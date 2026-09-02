@@ -164,8 +164,10 @@ king are no shelter; enemy pawns behind it are not storming it):
 
 - the nearest **own** pawn gives `r ∈ [2, 7]`, indexing `SHELTER[d][r]`;
 - the nearest **enemy** pawn gives `r' ∈ [2, 7]`, indexing `STORM[d][r']`;
-- `d = |file - kf| ∈ {0, 1, 2}`; **index 0 means "no such pawn on this file"** in both tables, which
-  is unambiguous because no pawn can ever stand on rank 1 or rank 8.
+- `d = |file - kf| ∈ {0, 1}` — three files means the king's own and one either side, so there is no
+  distance 2 and the tables have two rows, not three. (The draft said `{0, 1, 2}`, which does not
+  follow from the three-file scan it describes.) **Index 0 means "no such pawn on this file"** in
+  both tables, which is unambiguous because no pawn can ever stand on rank 1 or rank 8.
 - A storm pawn is **blocked** when the nearest own pawn on the same file sits at exactly `r' - 1` —
   directly in the storming pawn's path. Its `STORM` value is halved (integer division) in that case.
 
@@ -187,6 +189,35 @@ above them says so rather than implying a provenance they do not have.
 "Nearest ahead" needs a most-significant-bit scan for White (forward is decreasing square index),
 which the codebase does not have — `Board::GetFirstPiece` is lsb-only. Add a `Bits`-level
 `GetLastPiece`/`countl_zero` helper alongside it rather than open-coding a reverse scan in `Eval.cpp`.
+
+### D5a: The overlap this term has with `eval_pawns` is larger than the one D5 names
+
+Removing the g2 pawn in front of a castled White Kg1 costs, from three terms that do not know about
+each other: about 48 from `KING_SHELTER` (best entry to absence entry), 12 to 22 from king-file
+openness, and 20 from `ISOLATED_PAWN_PENALTY` newly applying to h2. Roughly **80-90 cp for one pawn**,
+larger than any other positional signal in the evaluator outside material, and up to 110 in the corner
+case where the e-pawn is already gone so f2 goes isolated too. (Only h2 is isolated in the normal case:
+`eval_pawns` requires BOTH adjacent files empty, and f2 still has e2.) `KING_STORM` is not part of this
+overlap — a storm pawn is the enemy's, and an enemy pawn on the file makes it half-open rather than
+open, so storm and openness partially cancel.
+
+**PR 2 ships every table at half these values**, which leaves the same three-term stack at ~50 cp
+typical and ~75 worst. That damps the signal rather than removing the overlap, so it is a holding
+position, not the fix: after halving, `ISOLATED_PAWN_PENALTY` at 20-40 is the LARGEST single piece of
+the residual, bigger than shelter's own 24. The fourth ablation below is still the remedy that keeps
+the signal, and PR 4 should not treat the halved values as settled before measuring it.
+
+That is not necessarily wrong — a shattered castled king often is worth that — but it is not a
+decision anyone made, and PR 4's ablation set does not reach it: it covers `eval_castling` and the
+mg king PST, not `eval_pawns`. If PR 2 or PR 3 regresses, "the isolated-pawn penalty is being paid
+twice on the king's files" belongs on the suspect list, and a fourth ablation configuration
+(suppress `ISOLATED_PAWN_PENALTY` on the king's three files) is the way to test it.
+
+A related correction to PR 4's premise, which the ablation cannot discover on its own: **shelter does
+not subsume `eval_castling`.** An uncastled Ke1 with d2/e2/f2 intact scores the same shelter as a
+castled Kg1 with f2/g2/h2 intact. Dropping `eval_castling` because "shelter now covers it" would be
+dropping the only middlegame signal that distinguishes the two, since the mg king PST is rank-only.
+Drop it on match evidence or not at all.
 
 ### D5: King-file openness uses whole-file, pawn-only definitions, stated here rather than inherited
 
@@ -259,10 +290,16 @@ correct arithmetically and wrong about which entries are reachable.
 
 ### D8: Four separately-attributable contributions and four breakdown rows
 
-`king_shelter`, `king_storm`, `king_files`, `king_attack` — four `EvalBreakdown` rows. Shelter and
-storm come out of one pawn scan (D4) and may be produced by one function returning two `ScorePair`s
-rather than two functions rescanning the same three files; what matters is that the two land in
-separate rows and can be zeroed independently.
+`king_shelter`, `king_storm`, `king_files`, `king_attack` — four `EvalBreakdown` rows. The first
+three come out of ONE pawn scan over the king's three files, produced by one function
+(`eval_king_pawn_cover`) returning three `ScorePair`s; what matters is that they land in separate
+rows and can be zeroed independently, not that each has its own loop.
+
+The file-openness sub-term was folded into that scan rather than given its own, on measurement: it
+walks the same three files and needs the same clamped king file, and splitting it out cost about
+1.8% of nps for nothing. `eval_king_pawn_cover` also returns early at phase 0, which is exact rather
+than an approximation — every contribution is a `{x, 0}` pair, and `BlendPhase` of one at phase 0 is
+0 for every `x`.
 
 The ablation in PR 4 is the whole point of the split. Merging shelter and storm into one row would
 leave a PR 2 regression unattributable between a mis-scaled shield table and an over-weighted storm
@@ -275,7 +312,7 @@ price of a reconstructible breakdown.
 | PR | Content | Gate |
 |---|---|---|
 | 1 | Attack aggregates in `EvalContext`; mobility, rooks rewired | Exact equivalence + nps. **No Elo run.** |
-| 2 | Shelter, storm and king-file openness (3 rows) | Local SPRT `NonRegression`, then `Gain` |
+| 2 | Shelter, storm and king-file openness (3 rows) | Local SPRT `NonRegression`, then `Gain` — **revised, see below** |
 | 3 | `eval_king_attack` + cap | Local SPRT `NonRegression`, then `Gain` |
 | 4 | Ablation of `eval_castling` and the mg king PST | See Validation |
 
@@ -287,15 +324,45 @@ ladder triples PR 2's match budget to buy attribution for a regression that may 
 four separate rows (D8) mean the information is still recoverable if it does: on a failure or an
 inconclusive result, fall back to the ladder then, with the row that moved as the first suspect.
 
+#### PR 2's gate as written was not met, and is deliberately revised
+
+**What happened.** Two local SPRTs against the merge base, `NonRegression` [-5, 0], 700 games each,
+both INCONCLUSIVE at the cap: full magnitude -10.92 ± 21.46 (LLR -0.35), half magnitude +9.43 ± 19.49
+(LLR +0.60). The `Gain` leg was never reached. Rows and full detail in `Measurements/local.md`.
+
+**Why more local games do not fix it.** The half-scale LLR plateaued rather than drifted — +0.68 at
+~500 games, then wandering 0.48-0.68 over the last 200 — giving ~3,400 games (~4.5 h) to cross a bound
+on the optimistic reading that the plateau resumes climbing. The full-scale run wandered the same way.
+~1,400 games have now been spent without either run resolving, which is itself the finding: **the
+effect is below what the local instrument can see at any affordable N.** The `Gain` leg, testing a
+larger elo1, is further out of reach than the `NonRegression` leg that already failed to resolve.
+The gate as written assumed this term was locally resolvable. It is not, and no amount of adhering to
+it produces a verdict.
+
+**The revised gate.** PR 2 merges on the balance argument plus exact-behaviour tests, with sizing
+deferred to **one CI strength-lab run after PR 3** against the `king-safety-pre` tag (`7efbe95`),
+which resolves ~±5 Elo over ~20k games and measures shelter, storm, openness and the attack term as
+the one feature they are. That run, not a local SPRT, is the strength gate for the series. The
+balance argument is the one recorded in D5a and checked by `eval-reviewer`: at full magnitude
+shelter's best-to-worst swing was 2.7× `eval_castling`'s and 2.4 king-PST rank steps for one pawn;
+at half it is 1.3× and 1.2. Note that halving was the **pre-registered** response to a failing
+`NonRegression` SPRT (see Assumptions below), not a fit chosen after seeing the result.
+
+**What this costs, stated plainly.** PR 2 merges without demonstrated net non-regression, carrying a
+measured -5.5% nps against a 2% budget for the whole feature (see Validation). If the lab run comes
+back negative, PRs 2 and 3 revert together — that is the accepted downside, and the reason the lab
+run is scheduled before PR 4 rather than after it. The alternative, blocking PR 2 on a local verdict,
+buys nothing: the instrument cannot produce one.
+
 ## Assumptions I cannot verify from the code
 
 - **The edge-file discontinuity is worth fixing.** Taken from Stockfish PR #1512, not measured here,
   and their remedy is not the zone shape adopted in D3. Verified instead by construction: tests pin
   the exact zone mask for `Kg1`, `Kh1`, `Kg2`, a central king and their mirrors, so the g1→h1 failure
   mode cannot exist regardless of whether their measurement transfers.
-- **Literature-standard shelter/storm magnitudes are a sane starting point.** Not verified. If PR 2's
-  `NonRegression` SPRT fails, the first response is to halve the tables, not to abandon the term —
-  a mis-scaled structural table is the expected failure, not a wrong idea.
+- **Literature-standard shelter/storm magnitudes are a sane starting point.** Not verified, and it did
+  not hold. The pre-registered response — halve the tables rather than abandon the term — was applied
+  and is what PR 2 ships. A mis-scaled structural table was indeed the failure mode, not a wrong idea.
 - **The planning band (+10 to +40 Elo) is a hypothesis, not a claim.** It rests on mobility's
   measured +38.34 ± 4.26 for a comparably absent whole-board term. Settled only by PRs 2–3.
 - **The ~1.7 Elo per 1% nps conversion** is the project's existing calibration, reused rather than
@@ -345,9 +412,39 @@ That premise looks wrong: within one inlined `RawWhitePov` the compiler could al
 two calls on the same square, so there was little duplicate left to remove. The refactor's value is
 what it makes possible in PR 3, not a speed-up here.
 
+**PR 2 measured: about -5.5% nps**, well outside the ~1% run-to-run spread (two order-balanced
+sessions of 5 and 3 alternating runs per side: medians 3.010 M vs 2.844 M, then 2.961 M vs 2.785 M).
+That is roughly -9 Elo of speed at the project's 1.7 Elo per 1% conversion, and it overruns the 2%
+budget below on PR 2 alone, before PR 3 adds anything.
+
+Two rounds of optimisation bound what is recoverable without changing the algorithm. Folding the
+file-openness loop into the shelter scan recovered 1.8 of an original -7.3%. A second round —
+`g_bbFileMask` made `constexpr` so the file loop is not indexing a runtime array, and the
+`& ahead` intersections hoisted out of the loop — recovered **nothing measurable**. What is left is
+the scan itself: three files, both colours, at every leaf.
+
+So the honest cost of this shape is ~5.5% nps, and the only route that removes rather than shaves it
+is a pawn hash (#131, `not-started/pawn-hash-table.md`) — shelter, storm and openness are a pure
+function of the pawns plus the king square, which is exactly what that cache exists for, and it can
+live in `ThreadData` rather than on `EvalManager`, so the Lazy SMP contract survives. Whether that is
+worth doing is a question for the SPRT below, which measures the term NET of its own speed cost.
+
+**Delta pruning headroom.** `AIPerplex.h`'s `delta_pruning_margin = 200` has less room under it than
+before this series, but the halved tables restore it. One pawn capture beside a king moves the
+positional score by ~50 cp typical and ~82 worst (shelter 24, files ≤ 11, storm un-halving ≤ 7,
+isolated 20-40), against roughly 35 before the series. A pawn plus the worst case is 182 against the
+200 margin. At full magnitude the worst case was 125 — the same four terms, since the isolated penalty
+fires on exactly that capture — so a pawn plus that already exceeded the margin. No change is needed
+at the shipped scale, but a #117 retune upward must re-examine it rather than assume it.
+
 **PRs 2 and 3 — strength.** `Run-Bench.ps1` first: the incremental budget for the whole feature is
-2% nps (≈3.4 Elo of speed). Then a local SPRT against a **merge-base build** (never the anchor):
-`NonRegression` first, `Gain` second. New `[eval]` cases, with matching `Docs/TestDesign.md` entries:
+2% nps (≈3.4 Elo of speed). **PR 2 alone breaches that budget at -5.5%, and the breach is accepted
+rather than the budget revised** — the budget stays the standard PR 3 is held to, and the overrun is
+carried on the expectation that a king-square-tagged pawn cache (#131) recovers most of it. If that
+cache fails its own +2% nps gate, the cost is structural and PR 4's ablation decides whether these
+terms earn it. Then a local SPRT against a **merge-base build** (never the anchor): `NonRegression`
+first, `Gain` second — **for PR 2 this gate was not met and is revised in D9; PR 3 is still held to
+it.** New `[eval]` cases, with matching `Docs/TestDesign.md` entries:
 
 - **exact zone masks** for `Kg1`, `Kh1`, `Kg2`, a central king and their mirrors — the enumerated
   table in D3, not merely "three files wide";
@@ -412,6 +509,13 @@ intuitive term.
 | Which sub-terms and overlap ablations survived, with measured Elo | `Docs/Changelog.md`, issue #97, `Measurements/ci-per-change.md` |
 | New `[eval]` coverage | `Docs/TestDesign.md` |
 | `GetLastPiece` helper contract (D4) | comment beside `Board::GetFirstPiece` |
+| Storm and king-file entries are penalty MAGNITUDES, and the bound depends on their sign (D7) | `static_assert` in `Eval.h` |
+| `distance` is measured from the CLAMPED file, so `Kh1` scores the h-file as adjacent (D3) | comment in `eval_king_pawn_cover` |
+| The ~80-90 cp three-term overlap on one shield pawn, that halving only damps it, and the fourth ablation it argues for (D5a) | issue #97 and PR 4's ablation set |
+| Shelter does not subsume `eval_castling` (D5a) | PR 4's PR body, before any decision to drop it |
+| Delta-pruning headroom: restored by the halved scale, re-examine on a #117 retune upward | comment beside `delta_pruning_margin`, if PR 4 keeps the term |
+| Shelter ranks 5-6 collapse to equal values at the halved scale; the shape is no longer expressible there | issue #117 |
+| PR 3's attack term must land at a scale consistent with the halved pawn-cover tables, or PR 4 measures shelter in its shadow | PR 3's PR body |
 
 Delete this file once PR 4 lands and the table above is discharged. Nothing durable should survive
 only here.

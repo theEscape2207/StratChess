@@ -125,6 +125,19 @@ class Board final {
 		return static_cast<eSquare>(std::countr_zero(mask));
 	}
 
+	// Returns the index of the most-significant set bit. Precondition: mask != 0.
+	// std::countl_zero compiles to LZCNT on x64.
+	//
+	// "First" and "last" are square-INDEX order (a8 = 0 ... h1 = 63), not board
+	// direction, so which of the two picks the piece nearest a given square
+	// depends on the colour whose forward direction is being scanned: White's
+	// forward is decreasing index, Black's increasing.
+	static STRAT_FORCEINLINE eSquare GetLastPiece(BITBOARD mask) noexcept
+	{
+		assert(mask != 0);
+		return static_cast<eSquare>(63 - std::countl_zero(mask));
+	}
+
 	// --- Test setup helpers (prefer SetupFromFEN for new tests) ---
 
   private:

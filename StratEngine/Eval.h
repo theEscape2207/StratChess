@@ -250,13 +250,16 @@ struct EvalBreakdown {
 	// is the documented home for that fact — which is why the UCI 'eval' output
 	// does not restate it on every call.
 	int material[NUM_COLORS];
-	int pawns[NUM_COLORS];    // eval_pawns
-	int rooks[NUM_COLORS];    // eval_rooks (incl. connected rooks)
-	int pst[NUM_COLORS];      // eval_pst
-	int mopup[NUM_COLORS];    // eval_mopup
-	int bishops[NUM_COLORS];  // eval_bishops
-	int castling[NUM_COLORS]; // eval_castling
-	int mobility[NUM_COLORS]; // eval_mobility
+	int pawns[NUM_COLORS];        // eval_pawns
+	int rooks[NUM_COLORS];        // eval_rooks (incl. connected rooks)
+	int pst[NUM_COLORS];          // eval_pst
+	int mopup[NUM_COLORS];        // eval_mopup
+	int bishops[NUM_COLORS];      // eval_bishops
+	int castling[NUM_COLORS];     // eval_castling
+	int mobility[NUM_COLORS];     // eval_mobility
+	int king_shelter[NUM_COLORS]; // eval_king_pawn_cover, shelter
+	int king_storm[NUM_COLORS];   // eval_king_pawn_cover, storm
+	int king_files[NUM_COLORS];   // eval_king_pawn_cover, file openness
 	// Included because it is not derivable from the rows: it sets where between
 	// the mg and eg endpoints every tapered term landed, and gates eval_mopup.
 	int phase;
@@ -272,6 +275,41 @@ struct EvalBreakdown {
 	// the four terms, summed white-minus-black, reproduces it up to the
 	// side-to-move sign; that identity is asserted in StratChessTests.
 	int total;
+};
+
+// Extrema of one row of a king shelter/storm table. They exist so
+// EvalComplex::KING_SAFETY_MAX_PENALTY can be derived from the tables at
+// compile time instead of restated beside them: a retune that pushes a table
+// past the declared bound then fails to build. Free functions rather than
+// members because a static_assert inside the class body cannot call a member
+// function of the class it is still defining.
+constexpr int EvalRowMin(const short (&row)[8]) noexcept
+{
+	int lowest = row[0];
+	for (const short value : row)
+		if (value < lowest)
+			lowest = value;
+	return lowest;
+}
+
+constexpr int EvalRowMax(const short (&row)[8]) noexcept
+{
+	int highest = row[0];
+	for (const short value : row)
+		if (value > highest)
+			highest = value;
+	return highest;
+}
+
+// Everything one scan over the king's three files produces (issue #97).
+// Separate ScorePairs rather than a sum: each is its own breakdown row and each
+// is separately ablatable, because a regression in a mis-scaled shield table,
+// one in an over-weighted storm table and one in an open-file penalty that
+// double-counts shelter are corrected in completely different ways.
+struct KingPawnCover {
+	ScorePair shelter;
+	ScorePair storm;
+	ScorePair files;
 };
 
 class EvalComplex final : public EvalManager {
@@ -393,6 +431,99 @@ class EvalComplex final : public EvalManager {
 	static const short MOBILITY_BASE_ROOK = 7;
 	static const short MOBILITY_BASE_QUEEN = 14;
 
+	// King shelter and pawn storm (issue #97). One scan over the king's own
+	// file and its two neighbours produces both, so both are indexed the same
+	// way:
+	//
+	//   [d] is the file's distance from the king's file, 0 or 1. Only two rows
+	//       exist because only three files are scanned -- the king's own and
+	//       one either side.
+	//   [r] is the RELATIVE RANK of the nearest pawn on that file at or ahead
+	//       of the king, from the DEFENDER's point of view: 1 is the defending
+	//       side's back rank, 8 the enemy's. That is what lets one table serve
+	//       both colours, and it is why the tables are not indexed by the
+	//       pawn's distance from the king -- a pawn level with the king has
+	//       distance 0, which would collide with the absence sentinel below,
+	//       and "a pawn on its start square shelters best" stops being
+	//       expressible the moment the king steps off its own back rank.
+	//
+	// INDEX 0 MEANS "NO SUCH PAWN ON THIS FILE", in both tables. It is
+	// unambiguous because no pawn can stand on rank 1 or rank 8, so a real pawn
+	// always indexes 2..7. Index [1] is the only unreachable entry -- [7] is a
+	// real bucket (a White pawn on g7 in front of Kg1 reaches it), so a tuner
+	// must not treat its zero as free padding.
+	//
+	// SHELTER is a bonus (a missing shield pawn is the negative entry at index
+	// 0); STORM is a penalty magnitude, subtracted by the term. A storm pawn
+	// directly blocked by our own shield pawn -- our nearest pawn on that file
+	// standing at exactly r' - 1 -- is halved.
+	//
+	// Literature-standard shapes at half the usual magnitude, deliberately NOT
+	// fitted here: issue #117 (Texel-style tuning) owns the values.
+	//
+	// What sets the level: shelter, king-file openness and ISOLATED_PAWN_PENALTY
+	// all fire on one missing shield pawn without knowing about each other, so at
+	// full magnitude that pawn was priced close to twice over. What sets the
+	// uniformity: rescaling every table by the same factor keeps the intra-term
+	// shape, including shelter-to-storm ratio. KING_STORM is NOT part of that
+	// overlap -- a storm pawn is the enemy's, so the isolated penalty cannot see
+	// it, and an enemy pawn on the file makes it half-open rather than open, which
+	// cancels rather than compounds. Halving shelter alone would leave storm the
+	// louder half, inverting the usual ordering. Odd entries round up, so the far
+	// ranks are marginally louder than an exact halving.
+	// clang-format off
+	static constexpr short KING_SHELTER[2][8] = {
+	    // r:   -   1    2    3    4   5   6   7
+	    {      -9,  0,  15,  10,   5,  2,  0,  0}, // king's own file
+	    {      -6,  0,  12,   8,   4,  2,  0,  0}, // adjacent files
+	};
+	static constexpr short KING_STORM[2][8] = {
+	    // r':  -   1    2    3    4   5   6   7
+	    {       0,  0,  15,  12,   7,  4,  1,  0}, // king's own file
+	    {       0,  0,  12,   9,   6,  3,  1,  0}, // adjacent files
+	};
+	// clang-format on
+
+	// King-file openness (issue #97), indexed by the same [d] as the tables
+	// above. Half-open means WE have no pawn anywhere on the file; open means
+	// neither side has. Whole-file and pawns-only, which is deliberately NOT
+	// eval_rooks' forward-span-for-own-pawns asymmetry: what this prices is a
+	// lane an enemy rook can use, and that is a whole-file property. See
+	// eval_king_files.
+	static constexpr short KING_FILE_HALF_OPEN[2] = {6, 3};
+	static constexpr short KING_FILE_OPEN[2] = {11, 6};
+
+	// The largest magnitude one colour's combined king-safety contribution can
+	// reach at the middlegame endpoint, in either direction. Absolute and per
+	// colour, not an average: three files, each able to hit its table extreme
+	// at once.
+	//
+	// Derived from the tables rather than stated beside them, so a retune that
+	// outgrows the declared bound fails to compile. EvalTermTests asserts the
+	// same bound over the eval corpus, which is what catches a bound that is
+	// arithmetically right and wrong about which entries are reachable.
+	static constexpr int KING_SAFETY_WORST_PENALTY = -(EvalRowMin(KING_SHELTER[0]) + 2 * EvalRowMin(KING_SHELTER[1])) +
+	                                                 (EvalRowMax(KING_STORM[0]) + 2 * EvalRowMax(KING_STORM[1])) +
+	                                                 (KING_FILE_OPEN[0] + 2 * KING_FILE_OPEN[1]);
+	static constexpr int KING_SAFETY_BEST_BONUS = EvalRowMax(KING_SHELTER[0]) + 2 * EvalRowMax(KING_SHELTER[1]);
+	static constexpr int KING_SAFETY_MAX_PENALTY =
+	    (KING_SAFETY_WORST_PENALTY > KING_SAFETY_BEST_BONUS) ? KING_SAFETY_WORST_PENALTY : KING_SAFETY_BEST_BONUS;
+
+	// KING_SAFETY_MAX_PENALTY bounds the positive direction by the shelter
+	// extremum alone, which is only correct while the storm and king-file entries
+	// are penalty MAGNITUDES. A negative one among them would turn that sub-term
+	// into a bonus and step outside the declared bound without failing anything
+	// below, so the sign is asserted rather than assumed.
+	static_assert(EvalRowMin(KING_STORM[0]) >= 0 && EvalRowMin(KING_STORM[1]) >= 0 && KING_FILE_OPEN[0] >= 0 &&
+	                  KING_FILE_OPEN[1] >= 0 && KING_FILE_HALF_OPEN[0] >= 0 && KING_FILE_HALF_OPEN[1] >= 0,
+	              "Storm and king-file entries are penalty magnitudes -- a negative one breaks the bound below");
+
+	// One colour's swing is bounded here; the swing BETWEEN the two sides is
+	// twice it, so this ceiling still permits a king-safety difference above a
+	// minor piece. It is a tripwire against a retune going an order of magnitude
+	// wrong, not a claim that the term cannot decide a game.
+	static_assert(KING_SAFETY_MAX_PENALTY < 300, "King safety outweighs a piece per colour -- rescale the tables");
+
 	// Mop-up evaluation (won pawnless endgames) — see issue #70 / epic #110.
 	// Gated on: pawnless + decisive material lead. Rewards pushing the losing
 	// king to the edge/corner and closing the distance between the two kings.
@@ -482,6 +613,36 @@ class EvalComplex final : public EvalManager {
 		return CenterAxisDistance(File(square)) + CenterAxisDistance(Rank(square));
 	}
 	static constexpr int AbsDiff(int a, int b) noexcept { return (a > b) ? (a - b) : (b - a); }
+	static constexpr int Clamp(int value, int low, int high) noexcept
+	{
+		return (value < low) ? low : ((value > high) ? high : value);
+	}
+
+	// The anchor of the king's safety zone: the king's own square pulled onto
+	// the b..g files and off the two outermost rows.
+	//
+	// BOTH clamps are load-bearing. The FILE clamp is what makes everything
+	// keyed on the zone constant-width: without it a king stepping g1->h1 loses
+	// a third of its surroundings, every count taken over them drops, and
+	// retreating into the corner reads as safer. The RANK clamp keeps the 3x3
+	// block around the anchor wholly on the board, so it is always exactly nine
+	// squares.
+	//
+	// Kg1, Kh1 and Kg2 all anchor on g2 and are therefore treated identically,
+	// which is the point.
+	static constexpr eSquare KingZoneAnchor(eSquare kingSq) noexcept
+	{
+		return static_cast<eSquare>(Clamp(Rank(kingSq), 1, 6) * ONE_ROW + Clamp(File(kingSq), 1, 6));
+	}
+
+	// A square's rank from `color`'s point of view: 1 is that colour's back
+	// rank, 8 the enemy's. The board's own Rank() is 0 = rank 8 ... 7 = rank 1,
+	// i.e. White's forward direction is DECREASING. See KING_SHELTER.
+	static constexpr int RelativeRank(eSquare square, eColor color) noexcept
+	{
+		const int row = Rank(square);
+		return (color == WHITE) ? (8 - row) : (row + 1);
+	}
 	static constexpr int KingDistance(eSquare a, eSquare b) noexcept
 	{
 		const int fileDiff = AbsDiff(File(a), File(b));
@@ -553,6 +714,11 @@ class EvalComplex final : public EvalManager {
 	static ScorePair eval_bishops(const EvalContext& ctx, eColor color) noexcept;
 	static ScorePair eval_castling(const EvalContext& ctx, eColor color) noexcept;
 	static ScorePair eval_mobility(const EvalContext& ctx, eColor color) noexcept;
+	// The one exception to the ScorePair signature above: all three king-safety
+	// contributions fall out of a single scan over the king's three files, and
+	// rescanning them to keep three identical signatures cost measurable nps for
+	// nothing. They stay separate all the way to their own breakdown rows.
+	static KingPawnCover eval_king_pawn_cover(const EvalContext& ctx, eColor color) noexcept;
 
   public:
 	int Evaluate(const Board& board) const noexcept override;
