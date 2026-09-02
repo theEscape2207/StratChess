@@ -234,9 +234,10 @@ nonzero score in one of those classes *is* the defect.
 - The #129 honesty invariant extended: on a scaled position, the printed rows plus the endgame
   adjustment still reproduce `total` exactly
 
-**King safety (`[eval]`, issue #97, `EvalKingSafetyTests.cpp`)**. Shelter, storm and king-file
-openness. Every case keeps a queen on each side: all three contributions are middlegame-only, so a
-bare-king position sits at phase 0 where each blends to exactly 0 and any assertion is vacuous.
+**King safety (`[eval]`, issue #97, `EvalKingSafetyTests.cpp`)**. Shelter, storm, king-file
+openness and attack pressure. Every case keeps a queen on each side: all four contributions are
+middlegame-only, so a bare-king position sits at phase 0 where each blends to exactly 0 and any
+assertion is vacuous.
 
 - **The zone anchor** is pinned by enumerated squares, not by a property: `Kg1`, `Kh1` and `Kg2` must
   all anchor on `g2`, and the queenside and Black mirrors likewise. That is the g1->h1 discontinuity
@@ -255,11 +256,31 @@ bare-king position sits at phase 0 where each blends to exactly 0 and any assert
   the same enemy pawn with our own pawn either in its path or one file off it
 - **King files** order open < half-open < closed, isolated on one file, and an own pawn behind the
   king still closes the file — the deliberate difference from `eval_rooks`' forward-span rule
-- **Invariants**: every contribution's `eg` endpoint is exactly 0; all three blend to 0 at phase 0;
+- **The zone mask** is pinned as the enumerated square lists of D3, per colour — a zone of the right
+  width and the wrong height, or shifted the wrong way for one colour, passes every count-based
+  assertion in the file. A sweep adds the size invariant over all 64 squares and both colours:
+  twelve squares, or nine where the forward rank falls off the board
+- **The danger curve** is tested as a pure function of its input rather than through positions,
+  which is what makes a *sweep* possible: monotone non-decreasing from -200 to 800, exactly 0 for
+  every negative input (the clamp is about sign, not overflow — squaring first would turn a king's
+  spare flight squares into a penalty), and saturating at `KING_DANGER_CAP` from below rather than
+  only at an absurd input
+- **Attack pressure** asserts inequalities, never tuned values: two attackers cost more than one,
+  and a lone queen beside the king costs something — the case the rejected minimum-attacker gate
+  would have scored at exactly zero. Both hold the flight count fixed across the pair so the
+  attacker is the only variable. A third pair holds the pressure fixed and varies only the king's
+  own flight squares
+- **The pseudo-safe blind spot** is *documented*, not asserted away: a king in check from a rook
+  counts the square directly behind it along the ray as safe, because the shared slider attacks are
+  generated against an occupancy that still holds that king. The case pins the resulting count so
+  the approximation cannot change silently, and states that stepping there is illegal
+- **Invariants**: every contribution's `eg` endpoint is exactly 0; all four blend to 0 at phase 0;
   a kingless board contributes nothing; and the combined per-color `mg` stays inside
   `KING_SAFETY_MAX_PENALTY` over the corpus. The constant is tied to the tables by a `static_assert`,
   which proves the arithmetic — the corpus case proves the other half, that the bound is right about
-  which entries are reachable
+  which entries are reachable. Reachability is checked against the two halves separately: no pawn
+  structure can approach the attack cap, so a shelter case measured against the combined figure
+  would assert almost nothing
 
 **Tapered evaluation (`[eval]`, issue #99)**. The taper is asserted on its *endpoints* wherever
 possible rather than on a blended value at one position's particular phase — a blended assertion

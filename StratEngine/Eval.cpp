@@ -549,6 +549,53 @@ KingPawnCover EvalComplex::eval_king_pawn_cover(const EvalContext& ctx, eColor c
 	return KingPawnCover{ScorePair{shelter, 0}, ScorePair{storm, 0}, ScorePair{files, 0}};
 }
 
+// eval_king_attack -- what the enemy pieces bearing down on this colour's king
+// are worth, as a penalty (issue #97).
+//
+// Quadratic in a weighted danger count, capped, rather than a hand-written
+// danger table: non-linear by construction, which is the property the term
+// exists for -- two attackers cost four times one, not twice -- monotone after
+// the clamp, and three tunables instead of a hundred. Fitting a table's extra
+// shape needs data this project does not yet have; #117 can replace the formula
+// with one if it ever does.
+//
+// THE CLAMP TO ZERO IS ABOUT SIGN, NOT OVERFLOW. A king with more flight squares
+// than KING_FLIGHT_BASE contributes a negative flight term, which is a safety
+// bonus; squaring it would turn that straight back into a penalty and make the
+// curve fold back on itself at the safe end. Clamping first is what makes the
+// penalty monotone non-decreasing in `danger`. KING_DANGER_MAX bounds the
+// multiplication separately.
+//
+// There is deliberately NO minimum-attacker gate. By the point one could fire,
+// generation, zone intersection and aggregation have all already happened, so it
+// would save a multiply and a divide while introducing a discontinuity and
+// scoring a lone queen beside the king at zero. The quadratic already makes a
+// single small attacker nearly free, which is what such a gate is reaching for.
+ScorePair EvalComplex::eval_king_attack(const EvalContext& ctx, eColor color) noexcept
+{
+	// Kingless board (default-constructed or failed-parse only) -- same guard as
+	// eval_king_pawn_cover. The phase-0 return is exact: this is a {x, 0} pair.
+	if (ctx.king_sq[color] == NO_SQUARE || ctx.phase == 0)
+		return ScorePair{};
+
+	// Zeroed aggregates are not a safe king. pseudo_safe_king_moves at 0 reads as
+	// a king with nowhere to go, so the flight term alone would invent danger for
+	// a position no attack pass ever ran on. BuildContext zeroes them exactly when
+	// endgame_scale is 0, so that is what is tested rather than the counts.
+	if (ctx.endgame_scale == 0)
+		return ScorePair{};
+
+	const eColor enemy = (color == WHITE) ? BLACK : WHITE;
+	const int* const attackers = ctx.attacks.zone_attackers[enemy];
+
+	int danger = KING_ZONE_SQUARE_WEIGHT * ctx.attacks.zone_attacks[enemy] +
+	             KING_FLIGHT_WEIGHT * (KING_FLIGHT_BASE - ctx.attacks.pseudo_safe_king_moves[color]);
+	for (int type = 0; type < NUM_MOBILE_PIECES; ++type)
+		danger += KING_ATTACK_WEIGHT[type] * attackers[type];
+
+	return ScorePair{-KingDangerPenalty(danger), 0};
+}
+
 // eval_mopup — mop-up evaluation for one color (original term issue #70 /
 // epic #110). In decisively-won, pawnless endings, reward driving the losing
 // king to the edge/corner and closing the distance between the two kings —
@@ -687,6 +734,10 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 	// at all.
 	const int endgameScale = EndgameScale(boardsSpan);
 
+	// The aggregates need both king squares -- the zone counts are taken over
+	// the ENEMY king's zone, and the flight count over this colour's own ring.
+	const eSquare kingSquares[NUM_COLORS] = {whiteKingSq, blackKingSq};
+
 	return EvalContext{
 	    .boards = boardsSpan,
 	    .pawns = {whitePawnsBb, blackPawnsBb},
@@ -702,8 +753,9 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 	    // GameValues::Draw for one without calling a single term, so generating
 	    // attacks would put the cost back on exactly the path that early-out
 	    // exists to make cheap.
-	    .attacks = (endgameScale != 0) ? ComputePieceAggregates(boardsSpan, whitePawnAttacks, blackPawnAttacks)
-	                                   : PieceAggregates{},
+	    .attacks = (endgameScale != 0)
+	                   ? ComputePieceAggregates(boardsSpan, whitePawnAttacks, blackPawnAttacks, kingSquares)
+	                   : PieceAggregates{},
 	};
 }
 
@@ -716,7 +768,8 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 // here and multiplying once in the term gives the same integer as multiplying
 // per piece did.
 PieceAggregates EvalComplex::ComputePieceAggregates(std::span<const BITBOARD> boards, BITBOARD whitePawnAttacks,
-                                                    BITBOARD blackPawnAttacks) noexcept
+                                                    BITBOARD blackPawnAttacks,
+                                                    const eSquare (&kingSq)[NUM_COLORS]) noexcept
 {
 	PieceAggregates aggregates{};
 
@@ -724,8 +777,23 @@ PieceAggregates EvalComplex::ComputePieceAggregates(std::span<const BITBOARD> bo
 	const BITBOARD occupied[NUM_COLORS] = {boards[ePiece::ALL_WHITE_PIECES], boards[ePiece::ALL_BLACK_PIECES]};
 	const BITBOARD pawnAttacks[NUM_COLORS] = {whitePawnAttacks, blackPawnAttacks};
 
+	// Empty for a colour with no king, which zeroes that colour's zone counts by
+	// intersection rather than by a branch inside the piece loops.
+	const BITBOARD kingZone[NUM_COLORS] = {
+	    (kingSq[WHITE] != NO_SQUARE) ? KingZone(kingSq[WHITE], WHITE) : 0ULL,
+	    (kingSq[BLACK] != NO_SQUARE) ? KingZone(kingSq[BLACK], BLACK) : 0ULL,
+	};
+	// Every square each colour attacks, pawns and king included. A local rather
+	// than a context field: its only reader is the flight-square count below, and
+	// this context is close enough to a cache-line budget that one unused 8-byte
+	// field measured as nps.
+	BITBOARD attacksAll[NUM_COLORS] = {whitePawnAttacks, blackPawnAttacks};
+
 	for (const eColor color : {WHITE, BLACK}) {
 		const eColor enemy = (color == WHITE) ? BLACK : WHITE;
+		// Pressure is counted on the ENEMY king's zone -- this colour attacking it.
+		const BITBOARD targetZone = kingZone[enemy];
+		int zoneSquares = 0;
 		// The safe-mobility mask, unchanged: own pieces block, enemy-occupied
 		// squares count as reachable, squares an enemy pawn covers do not.
 		const BITBOARD usable = ~occupied[color] & ~pawnAttacks[enemy];
@@ -736,17 +804,30 @@ PieceAggregates EvalComplex::ComputePieceAggregates(std::span<const BITBOARD> bo
 		int queenCount = 0;
 		int rookPairs = 0;
 
+		// Zone pressure reads the RAW attack set, not the mobility-masked one: a
+		// square beside the enemy king is dangerous whether or not a pawn covers it
+		// or one of our own pieces already stands on it.
 		auto knights = boards[(color == WHITE) ? ePiece::WHITE_KNIGHT : ePiece::BLACK_KNIGHT];
 		while (knights) {
 			const eSquare square = Board::GetFirstPiece(knights);
-			knightCount += std::popcount(g_bbKnightMoves[square] & usable) - MOBILITY_BASE_KNIGHT;
+			const BITBOARD attacks = g_bbKnightMoves[square];
+			knightCount += std::popcount(attacks & usable) - MOBILITY_BASE_KNIGHT;
+			attacksAll[color] |= attacks;
+			const int zoneHits = std::popcount(attacks & targetZone);
+			zoneSquares += zoneHits;
+			aggregates.zone_attackers[color][MOB_KNIGHT] += (zoneHits != 0) ? 1 : 0;
 			knights = Bits::clearLsb(knights);
 		}
 
 		auto bishops = boards[(color == WHITE) ? ePiece::WHITE_BISHOP : ePiece::BLACK_BISHOP];
 		while (bishops) {
 			const eSquare square = Board::GetFirstPiece(bishops);
-			bishopCount += std::popcount(BishopAttacks(square, occupancy) & usable) - MOBILITY_BASE_BISHOP;
+			const BITBOARD attacks = BishopAttacks(square, occupancy);
+			bishopCount += std::popcount(attacks & usable) - MOBILITY_BASE_BISHOP;
+			attacksAll[color] |= attacks;
+			const int zoneHits = std::popcount(attacks & targetZone);
+			zoneSquares += zoneHits;
+			aggregates.zone_attackers[color][MOB_BISHOP] += (zoneHits != 0) ? 1 : 0;
 			bishops = Bits::clearLsb(bishops);
 		}
 
@@ -755,6 +836,10 @@ PieceAggregates EvalComplex::ComputePieceAggregates(std::span<const BITBOARD> bo
 			const eSquare square = Board::GetFirstPiece(rooks);
 			const BITBOARD attacks = RookAttacks(square, occupancy);
 			rookCount += std::popcount(attacks & usable) - MOBILITY_BASE_ROOK;
+			attacksAll[color] |= attacks;
+			const int zoneHits = std::popcount(attacks & targetZone);
+			zoneSquares += zoneHits;
+			aggregates.zone_attackers[color][MOB_ROOK] += (zoneHits != 0) ? 1 : 0;
 
 			// Connected rooks (issue #114): the attack set already accounts for
 			// blockers, so seeing another rook in it means nothing stands
@@ -773,6 +858,10 @@ PieceAggregates EvalComplex::ComputePieceAggregates(std::span<const BITBOARD> bo
 			const eSquare square = Board::GetFirstPiece(queens);
 			const BITBOARD attacks = RookAttacks(square, occupancy) | BishopAttacks(square, occupancy);
 			queenCount += std::popcount(attacks & usable) - MOBILITY_BASE_QUEEN;
+			attacksAll[color] |= attacks;
+			const int zoneHits = std::popcount(attacks & targetZone);
+			zoneSquares += zoneHits;
+			aggregates.zone_attackers[color][MOB_QUEEN] += (zoneHits != 0) ? 1 : 0;
 			queens = Bits::clearLsb(queens);
 		}
 
@@ -781,6 +870,21 @@ PieceAggregates EvalComplex::ComputePieceAggregates(std::span<const BITBOARD> bo
 		aggregates.mobility_count[color][MOB_ROOK] = rookCount;
 		aggregates.mobility_count[color][MOB_QUEEN] = queenCount;
 		aggregates.connected_rook_pairs[color] = rookPairs;
+		aggregates.zone_attacks[color] = zoneSquares;
+
+		if (kingSq[color] != NO_SQUARE)
+			attacksAll[color] |= g_bbKingMoves[kingSq[color]];
+	}
+
+	// A second pass, because one colour's flight squares depend on the OTHER
+	// colour's completed attack set. See PieceAggregates for what pseudo-safe
+	// does and does not mean.
+	for (const eColor color : {WHITE, BLACK}) {
+		if (kingSq[color] == NO_SQUARE)
+			continue;
+		const eColor enemy = (color == WHITE) ? BLACK : WHITE;
+		aggregates.pseudo_safe_king_moves[color] =
+		    std::popcount(g_bbKingMoves[kingSq[color]] & ~occupied[color] & ~attacksAll[enemy]);
 	}
 
 	return aggregates;
@@ -993,7 +1097,8 @@ int EvalComplex::RawWhitePov(const EvalContext& ctx) noexcept
 		             BlendPhase(eval_pst(ctx, c), ctx.phase) + BlendPhase(eval_mopup(ctx, c), ctx.phase) +
 		             BlendPhase(eval_bishops(ctx, c), ctx.phase) + BlendPhase(eval_castling(ctx, c), ctx.phase) +
 		             BlendPhase(eval_mobility(ctx, c), ctx.phase) + BlendPhase(cover.shelter, ctx.phase) +
-		             BlendPhase(cover.storm, ctx.phase) + BlendPhase(cover.files, ctx.phase);
+		             BlendPhase(cover.storm, ctx.phase) + BlendPhase(cover.files, ctx.phase) +
+		             BlendPhase(eval_king_attack(ctx, c), ctx.phase);
 	}
 
 	return (ctx.material[WHITE] + blended[WHITE]) - (ctx.material[BLACK] + blended[BLACK]);
@@ -1078,6 +1183,7 @@ EvalBreakdown EvalComplex::Breakdown(const Board& board) const noexcept
 		.king_shelter = { BlendPhase(coverWhite.shelter, ctx.phase), BlendPhase(coverBlack.shelter, ctx.phase) },
 		.king_storm   = { BlendPhase(coverWhite.storm,   ctx.phase), BlendPhase(coverBlack.storm,   ctx.phase) },
 		.king_files   = { BlendPhase(coverWhite.files,   ctx.phase), BlendPhase(coverBlack.files,   ctx.phase) },
+		.king_attack  = { BlendPhase(eval_king_attack(ctx, WHITE), ctx.phase), BlendPhase(eval_king_attack(ctx, BLACK), ctx.phase) },
 		.phase    = ctx.phase,
 		.endgame_scale      = ctx.endgame_scale,
 		.endgame_adjustment = adjustment,

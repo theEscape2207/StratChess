@@ -231,8 +231,8 @@ static int extract_sum_white_pov(const std::string& output)
 //
 // The endgame row is absent here on purpose: it is net-only and is added to the
 // sum through extract_endgame_net above.
-static const char* const kBreakdownTerms[] = {"material", "pawns",    "rooks",   "pst",   "mopup",    "bishops",
-                                              "castling", "mobility", "shelter", "storm", "kingfiles"};
+static const char* const kBreakdownTerms[] = {"material", "pawns",    "rooks",   "pst",   "mopup",     "bishops",
+                                              "castling", "mobility", "shelter", "storm", "kingfiles", "kingattack"};
 
 TEST_CASE("cmd_eval: printed breakdown nets are white-minus-black and sum to the evaluator's score", "[uci]")
 {

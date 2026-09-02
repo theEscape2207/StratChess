@@ -169,6 +169,31 @@ struct PieceAggregates {
 	// nothing between (issue #114), counted in the same loop that generates the
 	// rook attacks so eval_rooks does not regenerate them.
 	int connected_rook_pairs[NUM_COLORS];
+	// Per type, how many of that color's pieces attack at least one square of
+	// the ENEMY king zone (EvalComplex::KingZone). One count per piece; the
+	// squares themselves are zone_attacks below.
+	int zone_attackers[NUM_COLORS][NUM_MOBILE_PIECES];
+	// ENEMY king-zone squares this color attacks, counting OVERLAPS: a square
+	// two pieces both hit contributes twice, which is the concentration signal
+	// a union would throw away. Same four piece types as zone_attackers, so the
+	// two aggregates always describe the same set of pieces -- pawns and the
+	// king are in neither.
+	int zone_attacks[NUM_COLORS];
+	// King-ring squares this color's king could step to that hold none of its
+	// own pieces and that no enemy piece attacks.
+	//
+	// PSEUDO-safe, not safe, and the name is the warning: the shared slider
+	// attacks are generated against an occupancy that still contains this very
+	// king, so a square directly behind it along a checking ray reads as
+	// unattacked. The error is one-directional -- it can only ever UNDER-state
+	// danger -- and removing it costs a second unconditional sliding pass with
+	// the king lifted off. This is not a legal king-move count and must not be
+	// used as one.
+	//
+	// Unlike the counts above, 0 here is not a neutral value: it reads as a king
+	// with nowhere to go. eval_king_attack therefore gates on endgame_scale
+	// rather than on the aggregates, so a zeroed pass cannot invent danger.
+	int pseudo_safe_king_moves[NUM_COLORS];
 };
 
 // EvalContext — shared, per-call intermediates for EvalComplex::Evaluate().
@@ -260,6 +285,7 @@ struct EvalBreakdown {
 	int king_shelter[NUM_COLORS]; // eval_king_pawn_cover, shelter
 	int king_storm[NUM_COLORS];   // eval_king_pawn_cover, storm
 	int king_files[NUM_COLORS];   // eval_king_pawn_cover, file openness
+	int king_attack[NUM_COLORS];  // eval_king_attack
 	// Included because it is not derivable from the rows: it sets where between
 	// the mg and eg endpoints every tapered term landed, and gates eval_mopup.
 	int phase;
@@ -277,13 +303,14 @@ struct EvalBreakdown {
 	int total;
 };
 
-// Extrema of one row of a king shelter/storm table. They exist so
+// Extrema of one row of a king-safety weight table. They exist so
 // EvalComplex::KING_SAFETY_MAX_PENALTY can be derived from the tables at
 // compile time instead of restated beside them: a retune that pushes a table
 // past the declared bound then fails to build. Free functions rather than
 // members because a static_assert inside the class body cannot call a member
-// function of the class it is still defining.
-constexpr int EvalRowMin(const short (&row)[8]) noexcept
+// function of the class it is still defining. Templated on the row length so
+// the same pair serves the 8-entry rank tables and the 4-entry attack weights.
+template <std::size_t N> constexpr int EvalRowMin(const short (&row)[N]) noexcept
 {
 	int lowest = row[0];
 	for (const short value : row)
@@ -292,7 +319,7 @@ constexpr int EvalRowMin(const short (&row)[8]) noexcept
 	return lowest;
 }
 
-constexpr int EvalRowMax(const short (&row)[8]) noexcept
+template <std::size_t N> constexpr int EvalRowMax(const short (&row)[N]) noexcept
 {
 	int highest = row[0];
 	for (const short value : row)
@@ -493,18 +520,60 @@ class EvalComplex final : public EvalManager {
 	static constexpr short KING_FILE_HALF_OPEN[2] = {6, 3};
 	static constexpr short KING_FILE_OPEN[2] = {11, 6};
 
+	// Attack pressure on the king zone (issue #97). Weights per attacking
+	// piece type, indexed by the same dense eMobilePiece index as the
+	// aggregates, plus one weight per attacked zone square and one on the
+	// king's lost flight squares. Counts come from ComputePieceAggregates;
+	// these are the whole of the term's tuning surface -- see eval_king_attack
+	// for the curve they feed.
+	// clang-format off
+	static constexpr short KING_ATTACK_WEIGHT[NUM_MOBILE_PIECES] = {
+	    2, // knight
+	    2, // bishop
+	    3, // rook
+	    5, // queen
+	};
+	// clang-format on
+	static constexpr short KING_ZONE_SQUARE_WEIGHT = 1;
+	static constexpr short KING_FLIGHT_WEIGHT = 2;
+	// The flight-square count a king is scored against. Below it the king is
+	// short of squares and danger rises; above it the difference is negative,
+	// which is what the clamp in eval_king_attack exists to absorb.
+	static constexpr short KING_FLIGHT_BASE = 3;
+
+	// The quadratic's divisor and its ceiling. The CAP is what keeps this term
+	// commensurate with the pawn-cover tables above rather than dwarfing them:
+	// literature danger ceilings sit at 300-500 on their own, which beside a
+	// halved shelter table would make shelter a tiebreaker in the attack term's
+	// shadow and leave the ablation measuring the wrong thing. At this size a
+	// fully committed attack is worth about what a shattered shield is.
+	static constexpr int KING_DANGER_DIVISOR = 16;
+	static constexpr int KING_DANGER_CAP = 120;
+	// An arithmetic bound on the squaring, not a tuning knob: the cap above
+	// binds from a danger of 44 upward, far below this. It is here so the
+	// multiplication is bounded by the CODE rather than by the current weights,
+	// which a retune can change without anyone rechecking the arithmetic.
+	static constexpr int KING_DANGER_MAX = 512;
+	static_assert(KING_DANGER_MAX < 46341, "KING_DANGER_MAX squared must fit in an int");
+	static_assert(KING_DANGER_MAX * KING_DANGER_MAX / KING_DANGER_DIVISOR >= KING_DANGER_CAP,
+	              "The clamp binds before the cap -- the cap is then unreachable and not the ceiling");
+	static_assert(EvalRowMin(KING_ATTACK_WEIGHT) >= 0 && KING_ZONE_SQUARE_WEIGHT >= 0 && KING_FLIGHT_WEIGHT >= 0,
+	              "A negative danger weight makes the penalty non-monotone in the attack it measures");
+
 	// The largest magnitude one colour's combined king-safety contribution can
 	// reach at the middlegame endpoint, in either direction. Absolute and per
-	// colour, not an average: three files, each able to hit its table extreme
-	// at once.
+	// colour, not an average: three files each able to hit its table extreme at
+	// once, plus a fully capped attack. The attack term only ever penalises, so
+	// it enters the worst case and not the best one.
 	//
 	// Derived from the tables rather than stated beside them, so a retune that
 	// outgrows the declared bound fails to compile. EvalTermTests asserts the
 	// same bound over the eval corpus, which is what catches a bound that is
 	// arithmetically right and wrong about which entries are reachable.
-	static constexpr int KING_SAFETY_WORST_PENALTY = -(EvalRowMin(KING_SHELTER[0]) + 2 * EvalRowMin(KING_SHELTER[1])) +
-	                                                 (EvalRowMax(KING_STORM[0]) + 2 * EvalRowMax(KING_STORM[1])) +
-	                                                 (KING_FILE_OPEN[0] + 2 * KING_FILE_OPEN[1]);
+	static constexpr int KING_PAWN_COVER_WORST = -(EvalRowMin(KING_SHELTER[0]) + 2 * EvalRowMin(KING_SHELTER[1])) +
+	                                             (EvalRowMax(KING_STORM[0]) + 2 * EvalRowMax(KING_STORM[1])) +
+	                                             (KING_FILE_OPEN[0] + 2 * KING_FILE_OPEN[1]);
+	static constexpr int KING_SAFETY_WORST_PENALTY = KING_PAWN_COVER_WORST + KING_DANGER_CAP;
 	static constexpr int KING_SAFETY_BEST_BONUS = EvalRowMax(KING_SHELTER[0]) + 2 * EvalRowMax(KING_SHELTER[1]);
 	static constexpr int KING_SAFETY_MAX_PENALTY =
 	    (KING_SAFETY_WORST_PENALTY > KING_SAFETY_BEST_BONUS) ? KING_SAFETY_WORST_PENALTY : KING_SAFETY_BEST_BONUS;
@@ -635,6 +704,26 @@ class EvalComplex final : public EvalManager {
 		return static_cast<eSquare>(Clamp(Rank(kingSq), 1, 6) * ONE_ROW + Clamp(File(kingSq), 1, 6));
 	}
 
+	// The king's safety zone: the 3x3 block around that anchor, plus the same
+	// block shifted one rank in `color`'s forward direction. g_bbKingMoves is
+	// the eight-square ring WITHOUT its centre, hence the explicit centre bit.
+	//
+	// Twelve squares everywhere except where the forward rank falls off the
+	// board -- a king on its own 7th or 8th rank -- where it is nine. That
+	// exception is left standing rather than clamped away: a king on the enemy
+	// back rank has nothing in front of it, and inventing squares for it would
+	// be worse than a smaller zone. The anchor's rank clamp is what keeps the
+	// 3x3 block itself always exactly nine squares.
+	//
+	// Forward is DECREASING square index for White (a8 = 0 ... h1 = 63), so the
+	// shifts read backwards from the colours they serve.
+	static constexpr BITBOARD KingZone(eSquare kingSq, eColor color) noexcept
+	{
+		const eSquare anchor = KingZoneAnchor(kingSq);
+		const BITBOARD block = g_bbKingMoves[anchor] | (UNIT << anchor);
+		return block | ((color == WHITE) ? (block >> ONE_ROW) : (block << ONE_ROW));
+	}
+
 	// A square's rank from `color`'s point of view: 1 is that colour's back
 	// rank, 8 the enemy's. The board's own Rank() is 0 = rank 8 ... 7 = rank 1,
 	// i.e. White's forward direction is DECREASING. See KING_SHELTER.
@@ -670,7 +759,8 @@ class EvalComplex final : public EvalManager {
 	// returns its result rather than writing through a reference: that is what
 	// lets the optimizer keep the whole pass in registers.
 	static PieceAggregates ComputePieceAggregates(std::span<const BITBOARD> boards, BITBOARD whitePawnAttacks,
-	                                              BITBOARD blackPawnAttacks) noexcept;
+	                                              BITBOARD blackPawnAttacks,
+	                                              const eSquare (&kingSq)[NUM_COLORS]) noexcept;
 
 	// Recognises material configurations that are worth less than they weigh.
 	// Returns a numerator over ENDGAME_SCALE_MAX; 0 is a dead draw.
@@ -719,6 +809,17 @@ class EvalComplex final : public EvalManager {
 	// rescanning them to keep three identical signatures cost measurable nps for
 	// nothing. They stay separate all the way to their own breakdown rows.
 	static KingPawnCover eval_king_pawn_cover(const EvalContext& ctx, eColor color) noexcept;
+	static ScorePair eval_king_attack(const EvalContext& ctx, eColor color) noexcept;
+
+	// The danger curve of D6 as a pure function of the weighted count that
+	// feeds it, split out so a monotonicity sweep can drive it directly instead
+	// of hunting for positions that happen to produce each input -- including
+	// the negative ones, which are the reason the first clamp exists.
+	static constexpr int KingDangerPenalty(int danger) noexcept
+	{
+		const int clamped = Clamp(danger, 0, KING_DANGER_MAX);
+		return Clamp(clamped * clamped / KING_DANGER_DIVISOR, 0, KING_DANGER_CAP);
+	}
 
   public:
 	int Evaluate(const Board& board) const noexcept override;

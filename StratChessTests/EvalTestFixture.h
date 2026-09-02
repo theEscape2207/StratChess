@@ -127,6 +127,32 @@ static constexpr const char* FEN_KING_FILE_CLOSED = "3q2k1/5ppp/8/8/8/8/5PPP/3Q2
 static constexpr const char* FEN_KING_FILE_HALF_OPEN = "3q2k1/5ppp/8/8/8/8/4PP1P/3Q2K1 w - - 0 1";
 static constexpr const char* FEN_KING_FILE_OPEN = "3q2k1/4pp1p/8/8/8/8/4PP1P/3Q2K1 w - - 0 1";
 
+// Attack pressure (D6). One frame throughout: Black Kg8 behind f7/g7/h7, White
+// Kg1, and a Black queen on d8 so the phase stays high. Only what White has
+// pointed at the black king changes, so the king-attack row is the only thing
+// that can move -- Black's own shelter, storm and file rows are identical in
+// every one of them.
+//
+// White's Qh5 is not a check: h6/h7 stops on the pawn and the h5-e8 diagonal
+// stops on f7. The knight on a1 in the one-attacker case reaches nothing inside
+// the zone, which is what makes it, rather than an empty square, the control.
+static constexpr const char* FEN_KING_ATTACK_NONE = "3q2k1/5ppp/8/8/8/8/8/6K1 w - - 0 1";
+static constexpr const char* FEN_KING_ATTACK_QUEEN = "3q2k1/5ppp/8/7Q/8/8/8/6K1 w - - 0 1";
+static constexpr const char* FEN_KING_ATTACK_ONE = "3q2k1/5ppp/8/7Q/8/8/8/N5K1 w - - 0 1";
+static constexpr const char* FEN_KING_ATTACK_TWO = "3q2k1/5ppp/8/6NQ/8/8/8/6K1 w - - 0 1";
+
+// Flight squares: FEN_KING_ATTACK_QUEEN is the boxed side of the pair, with
+// Black's g7 pawn removed here so its king gains g7 to step to. Nothing on
+// Qh5's rays passes through g7, so the zone counts are identical and only the
+// flight term moves.
+static constexpr const char* FEN_KING_FLIGHT_AIRY = "3q2k1/5p1p/8/7Q/8/8/8/6K1 w - - 0 1";
+
+// The pseudo-safe blind spot (D6). Black Kd5 is in check from Rd1, Black to move.
+// The rook's attack set stops ON the king, so d6 -- the square directly behind it
+// along the checking ray -- is not in that set and reads as safe, though stepping
+// there stays in check. The error is one-directional: it can only ever count too
+// MANY squares, so it under-states danger.
+static constexpr const char* FEN_KING_XRAY_BLIND_SPOT = "3q4/8/8/3k4/8/8/8/3RK2Q b - - 0 1";
 // The worst king this evaluator can be handed: no White pawn on f, g or h, and
 // Black pawns on f3, g3 and h3 — every shelter file at its absence entry, every
 // storm file near its maximum, and the three files still penalised for
@@ -353,7 +379,7 @@ inline int BreakdownWhitePov(const EvalBreakdown& terms)
 	       (terms.castling[WHITE] - terms.castling[BLACK]) + (terms.mobility[WHITE] - terms.mobility[BLACK]) +
 	       (terms.king_shelter[WHITE] - terms.king_shelter[BLACK]) +
 	       (terms.king_storm[WHITE] - terms.king_storm[BLACK]) + (terms.king_files[WHITE] - terms.king_files[BLACK]) +
-	       terms.endgame_adjustment;
+	       (terms.king_attack[WHITE] - terms.king_attack[BLACK]) + terms.endgame_adjustment;
 }
 
 // EvalComplexTestFixture is a friend of EvalComplex (STRAT_ENABLE_TEST_ACCESS,
@@ -418,9 +444,37 @@ struct EvalComplexTestFixture {
 	{
 		return EvalComplex::eval_king_pawn_cover(BuildContext(board), color);
 	}
+	static int KingAttack(const Board& board, eColor color)
+	{
+		const EvalContext ctx = BuildContext(board);
+		return BlendPhase(EvalComplex::eval_king_attack(ctx, color), ctx.phase);
+	}
+	// Unblended, so a case can compare two positions of different phase, or
+	// assert the eg endpoint is 0 rather than infer it from a low-phase board.
+	static ScorePair KingAttackPair(const Board& board, eColor color)
+	{
+		return EvalComplex::eval_king_attack(BuildContext(board), color);
+	}
+	static int PseudoSafeKingMoves(const Board& board, eColor color)
+	{
+		return BuildContext(board).attacks.pseudo_safe_king_moves[color];
+	}
+	static int ZoneAttackers(const Board& board, eColor color, eMobilePiece type)
+	{
+		return BuildContext(board).attacks.zone_attackers[color][type];
+	}
+	static int ZoneAttacks(const Board& board, eColor color) { return BuildContext(board).attacks.zone_attacks[color]; }
 	static constexpr eSquare KingZoneAnchor(eSquare kingSq) { return EvalComplex::KingZoneAnchor(kingSq); }
+	static constexpr BITBOARD KingZone(eSquare kingSq, eColor color) { return EvalComplex::KingZone(kingSq, color); }
+	static constexpr int KingDangerPenalty(int danger) { return EvalComplex::KingDangerPenalty(danger); }
 	static constexpr int KingDistanceProbe(eSquare a, eSquare b) { return EvalComplex::KingDistance(a, b); }
 	static constexpr int KingSafetyMaxPenalty = EvalComplex::KING_SAFETY_MAX_PENALTY;
+	// The pawn-cover half of that bound on its own. A case asserting the shelter
+	// tables are REACHABLE has to measure against this, not against the combined
+	// figure, which no pawn structure alone can approach.
+	static constexpr int KingPawnCoverWorst = EvalComplex::KING_PAWN_COVER_WORST;
+	static constexpr int KingDangerCap = EvalComplex::KING_DANGER_CAP;
+	static constexpr int KingDangerDivisor = EvalComplex::KING_DANGER_DIVISOR;
 
 	// The scaled-class factors are private tuning parameters; naming them here
 	// keeps the tests asserting the classification rather than restating the

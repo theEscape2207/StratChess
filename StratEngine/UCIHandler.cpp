@@ -309,6 +309,7 @@ void UciHandler::cmd_eval()
 		send(eval_term_row("shelter", terms.king_shelter[WHITE], terms.king_shelter[BLACK]));
 		send(eval_term_row("storm", terms.king_storm[WHITE], terms.king_storm[BLACK]));
 		send(eval_term_row("kingfiles", terms.king_files[WHITE], terms.king_files[BLACK]));
+		send(eval_term_row("kingattack", terms.king_attack[WHITE], terms.king_attack[BLACK]));
 		send(eval_net_row("endgame", terms.endgame_adjustment));
 		send(rule);
 
@@ -322,7 +323,7 @@ void UciHandler::cmd_eval()
 		    (terms.castling[WHITE] - terms.castling[BLACK]) + (terms.mobility[WHITE] - terms.mobility[BLACK]) +
 		    (terms.king_shelter[WHITE] - terms.king_shelter[BLACK]) +
 		    (terms.king_storm[WHITE] - terms.king_storm[BLACK]) + (terms.king_files[WHITE] - terms.king_files[BLACK]) +
-		    terms.endgame_adjustment;
+		    (terms.king_attack[WHITE] - terms.king_attack[BLACK]) + terms.endgame_adjustment;
 		const std::string sum_label = "sum (white pov)";
 		send(sum_label + pad_left(std::to_string(net_sum), EVAL_TABLE_WIDTH - static_cast<int>(sum_label.size())));
 
