@@ -54,8 +54,14 @@ TEST_CASE("Eval - eval_mobility: a central knight outscores a cornered one", "[e
 {
 	// The canonical mobility case: a knight on d4 reaches 8 squares, one on a1
 	// reaches 2. Nothing else differs between the positions.
-	Board central("4k3/8/8/8/3N4/8/8/4K3 w - - 0 1");
-	Board cornered("4k3/8/8/8/8/8/8/N3K3 w - - 0 1");
+	//
+	// The idle Black h7 pawn is what keeps K+N vs K off the board: that class is
+	// scored 0 by EndgameScale, and BuildContext generates no attacks at all for
+	// a dead-drawn class, so every mobility count would be 0. It covers only g6,
+	// which neither knight reaches, so it changes nothing else. Same reason in
+	// the two cases below.
+	Board central("4k3/7p/8/8/3N4/8/8/4K3 w - - 0 1");
+	Board cornered("4k3/7p/8/8/8/8/8/N3K3 w - - 0 1");
 
 	REQUIRE(EvalComplexTestFixture::Mobility(central, WHITE) > EvalComplexTestFixture::Mobility(cornered, WHITE));
 }
@@ -77,8 +83,9 @@ TEST_CASE("Eval - eval_mobility: squares covered by an enemy pawn do not count (
 	//
 	// A pawn on d6 would prove nothing: it covers c5 and e5, and a knight on d4
 	// reaches neither.
-	Board unguarded("4k3/8/8/8/3N4/8/8/4K3 w - - 0 1");
-	Board guarded("4k3/3p4/8/8/3N4/8/8/4K3 w - - 0 1");
+	// The h7 pawn stands in both and covers only g6, out of the knight's reach.
+	Board unguarded("4k3/7p/8/8/3N4/8/8/4K3 w - - 0 1");
+	Board guarded("4k3/3p3p/8/8/3N4/8/8/4K3 w - - 0 1");
 
 	REQUIRE(EvalComplexTestFixture::Mobility(guarded, WHITE) < EvalComplexTestFixture::Mobility(unguarded, WHITE));
 }
@@ -110,8 +117,10 @@ TEST_CASE("Eval - eval_mobility: the safe-mobility mask is colour-symmetric", "[
 	REQUIRE(EvalComplexTestFixture::Mobility(whiteSide, WHITE) == EvalComplexTestFixture::Mobility(blackSide, BLACK));
 
 	// ...and the mask must actually be biting, or the equality above is vacuous.
-	Board whiteUnmasked("4k3/8/8/3N4/8/8/8/4K3 w - - 0 1");
-	Board blackUnmasked("4k3/8/8/8/3n4/8/8/4K3 b - - 0 1");
+	// Idle pawns again, mirrored: Black's h7 covers g6, White's h2 covers g3,
+	// and neither knight reaches either square.
+	Board whiteUnmasked("4k3/7p/8/3N4/8/8/8/4K3 w - - 0 1");
+	Board blackUnmasked("4k3/8/8/8/3n4/8/7P/4K3 b - - 0 1");
 	REQUIRE(EvalComplexTestFixture::Mobility(whiteSide, WHITE) <
 	        EvalComplexTestFixture::Mobility(whiteUnmasked, WHITE));
 	REQUIRE(EvalComplexTestFixture::Mobility(blackSide, BLACK) <
@@ -143,10 +152,34 @@ TEST_CASE("Eval - eval_mobility: a bare king contributes nothing", "[eval]")
 {
 	// The king is deliberately excluded -- king mobility belongs to #97, where
 	// it can be weighed against attacker counts rather than paid per square.
-	Board kings("4k3/8/8/8/8/8/8/4K3 w - - 0 1");
+	//
+	// The idle pawn is load-bearing: bare kings are a dead-drawn class, and the
+	// attack pass is skipped entirely for one, so a bare-kings position would
+	// score 0 whatever the generation loop does -- including if it started
+	// counting the king. With the pawn the loop actually runs, and only its
+	// piece selection can produce the 0.
+	Board kings("4k3/7p/8/8/8/8/8/4K3 w - - 0 1");
 
 	REQUIRE(EvalComplexTestFixture::Mobility(kings, WHITE) == 0);
 	REQUIRE(EvalComplexTestFixture::Mobility(kings, BLACK) == 0);
+}
+
+TEST_CASE("Eval - eval_mobility: a dead-drawn material class is not counted at all", "[eval]")
+{
+	// BuildContext skips the whole attack generation pass when endgame_scale is
+	// 0, because Evaluate() returns GameValues::Draw for such a position without
+	// consulting a single term. The two positions differ only by an idle Black
+	// pawn on h7 -- which covers nothing the knight reaches, so the ONLY thing
+	// separating a full count from no count is the material class.
+	//
+	// Pinned as a test because it is otherwise invisible: nothing the engine
+	// plays can see it, and a later change generating attacks unconditionally
+	// would put the cost back on exactly the endings the early-out exists for.
+	Board deadDrawn("4k3/8/8/8/3N4/8/8/4K3 w - - 0 1");
+	Board scorable("4k3/7p/8/8/3N4/8/8/4K3 w - - 0 1");
+
+	REQUIRE(EvalComplexTestFixture::Mobility(deadDrawn, WHITE) == 0);
+	REQUIRE(EvalComplexTestFixture::Mobility(scorable, WHITE) > 0);
 }
 
 TEST_CASE("Eval - eval_pawns: doubled and isolated a-file pawns score exactly -(doubled + 2*isolated)", "[eval]")
