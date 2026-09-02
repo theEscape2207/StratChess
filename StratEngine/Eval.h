@@ -505,12 +505,11 @@ class EvalComplex final : public EvalManager {
 	static constexpr short KING_FILE_HALF_OPEN[2] = {6, 3};
 	static constexpr short KING_FILE_OPEN[2] = {11, 6};
 
-	// Attack pressure on the king zone (issue #97). Weights per attacking
-	// piece type, indexed by the same dense eMobilePiece index as the
-	// aggregates, plus one weight per attacked zone square and one on the
-	// king's lost flight squares. Counts come from ComputePieceAggregates;
-	// these are the whole of the term's tuning surface -- see eval_king_attack
-	// for the curve they feed.
+	// Attack pressure on the king zone (issue #97). Weights per attacking piece
+	// type, indexed by the same dense eMobilePiece index as the aggregates, plus
+	// one weight per attacked zone square. Those two are the whole of the danger
+	// count; the counts come from ComputePieceAggregates and the curve they feed
+	// is in eval_king_attack.
 	// clang-format off
 	static constexpr short KING_ATTACK_WEIGHT[NUM_MOBILE_PIECES] = {
 	    2, // knight
@@ -694,6 +693,11 @@ class EvalComplex final : public EvalManager {
 	// back rank has nothing in front of it, and inventing squares for it would
 	// be worse than a smaller zone. The anchor's rank clamp is what keeps the
 	// 3x3 block itself always exactly nine squares.
+	//
+	// Note what the smaller zone does downstream: fewer squares to attack means
+	// strictly less measured danger, so an advanced king reads as marginally
+	// safer. The middlegame king PST outweighs that comfortably, and the
+	// alternative is inventing squares that are not there.
 	//
 	// Forward is DECREASING square index for White (a8 = 0 ... h1 = 63), so the
 	// shifts read backwards from the colours they serve.

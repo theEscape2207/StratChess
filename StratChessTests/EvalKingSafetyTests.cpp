@@ -416,10 +416,18 @@ TEST_CASE("Eval - king danger: a negative count is a safe king, not a squared on
 TEST_CASE("Eval - king danger: the curve saturates at the cap and never above it", "[eval]")
 {
 	CHECK(EvalComplexTestFixture::KingDangerPenalty(10000) == EvalComplexTestFixture::KingDangerCap);
-	// Reached from below rather than only at an absurd input, so the cap is a
-	// real ceiling on the curve and not just a guard against overflow.
-	CHECK(EvalComplexTestFixture::KingDangerPenalty(60) == EvalComplexTestFixture::KingDangerCap);
 	CHECK(EvalComplexTestFixture::KingDangerPenalty(20) < EvalComplexTestFixture::KingDangerCap);
+
+	// Where the cap starts binding, found from the curve rather than restated:
+	// the knee is a consequence of the divisor and the cap, and pinning it here
+	// is what lets the positional case below assert a bound instead of an exact
+	// value it would only reach by a margin of one.
+	int knee = 0;
+	while (EvalComplexTestFixture::KingDangerPenalty(knee) < EvalComplexTestFixture::KingDangerCap)
+		++knee;
+	CAPTURE(knee);
+	CHECK(knee == 44);
+	CHECK(EvalComplexTestFixture::KingDangerPenalty(knee - 1) < EvalComplexTestFixture::KingDangerCap);
 }
 
 // ── Attack pressure (D6) ──────────────────────────────────────────────────────
@@ -472,6 +480,25 @@ TEST_CASE("Eval - eval_king_attack: more attacked zone squares cost more", "[eva
 	      EvalComplexTestFixture::KingAttackPair(farQueen, BLACK).mg);
 }
 
+TEST_CASE("Eval - eval_king_attack: the same attack mirrors between the colors", "[eval]")
+{
+	// Shelter and storm each get an explicit mirror case above; without this one
+	// the attack term is covered only transitively, through whichever
+	// whole-position symmetry FEN happens to put a piece near a king. The zone is
+	// direction-dependent -- it extends one rank FORWARD -- so a sign or shift
+	// error there would survive every count-based assertion in this file.
+	const char* fen = GENERATE(FEN_KING_ATTACK_ONE, FEN_KING_ATTACK_TWO, FEN_KING_ATTACK_QUEEN);
+	CAPTURE(fen);
+
+	Board board(fen);
+	Board mirrored(MirrorFen(fen));
+
+	CHECK(EvalComplexTestFixture::KingAttackPair(board, BLACK).mg ==
+	      EvalComplexTestFixture::KingAttackPair(mirrored, WHITE).mg);
+	CHECK(EvalComplexTestFixture::KingAttackPair(board, WHITE).mg ==
+	      EvalComplexTestFixture::KingAttackPair(mirrored, BLACK).mg);
+}
+
 TEST_CASE("Eval - eval_king_attack: middlegame-only, kingless-safe, and inside the cap", "[eval]")
 {
 	SECTION("the endgame endpoint is exactly 0")
@@ -492,10 +519,12 @@ TEST_CASE("Eval - eval_king_attack: middlegame-only, kingless-safe, and inside t
 
 	SECTION("the penalty never escapes its cap")
 	{
-		// Seven queens is not a position anyone will reach; it is the cheapest
-		// way to drive the danger count past anything a legal game produces and
-		// see the ceiling hold.
-		Board board("6k1/5ppp/8/8/8/8/8/QQQQQQKQ w - - 0 1");
+		// Eight queens on the fourth rank is not a position anyone will reach; it
+		// is the cheapest way to drive the danger count well past anything a legal
+		// game produces and watch the ceiling hold. Well past on purpose: an
+		// example that only just crosses the knee would break on any downward
+		// retune of the weights, for a reason that has nothing to do with the cap.
+		Board board("6k1/5ppp/8/8/QQQQQQQQ/8/8/6K1 w - - 0 1");
 		const int penalty = EvalComplexTestFixture::KingAttackPair(board, BLACK).mg;
 		CAPTURE(penalty);
 		CHECK(penalty == -EvalComplexTestFixture::KingDangerCap);

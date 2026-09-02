@@ -141,8 +141,9 @@ static constexpr const char* FEN_KING_ATTACK_QUEEN = "3q2k1/5ppp/8/7Q/8/8/8/6K1 
 static constexpr const char* FEN_KING_ATTACK_ONE = "3q2k1/5ppp/8/7Q/8/8/8/N5K1 w - - 0 1";
 static constexpr const char* FEN_KING_ATTACK_TWO = "3q2k1/5ppp/8/6NQ/8/8/8/6K1 w - - 0 1";
 // One queen again, but on a1, where the long diagonal stops on Black's g7 pawn.
-// The attacker count is still 1; the number of zone squares it covers is 1 rather
-// than 6, which is what isolates the second half of the danger count.
+// The attacker count is still 1; the number of zone squares it covers drops from
+// six to two (f6 and g7 itself, which is attacked though occupied), which is what
+// isolates the second half of the danger count.
 static constexpr const char* FEN_KING_ATTACK_QUEEN_FAR = "3q2k1/5ppp/8/8/8/8/8/Q5K1 w - - 0 1";
 
 // The worst king this evaluator can be handed: no White pawn on f, g or h, and
@@ -160,6 +161,10 @@ static constexpr const char* FEN_KING_SAFETY_WORST = "3q2k1/8/8/8/8/5ppp/1PPP4/3
 // and its color-mirror (a Black queen on c3) scored 1 cp apart. Black king
 // on h8 is not attacked: c6's rank/file/diagonals reach a6-h6, c1-c8, a8, b7,
 // d7, e8, d5, e4, f3, g2, h1, b5, a4 — not h8. White to move.
+//
+// It is not attacked, but it IS zone-attacked: c6's rank reaches f6, g6 and h6,
+// three squares of Kh8's king zone. So this position drives eval_king_attack too,
+// which is what makes the whole-position symmetry case non-vacuous for that term.
 //
 // This is the ONLY whole-position case below that discriminates: the others
 // contain no queen at all, or (FEN_MOPUP_LOSER_KING_CORNER) a queen whose

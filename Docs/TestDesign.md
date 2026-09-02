@@ -237,7 +237,9 @@ nonzero score in one of those classes *is* the defect.
 **King safety (`[eval]`, issue #97, `EvalKingSafetyTests.cpp`)**. Shelter, storm, king-file
 openness and attack pressure. Every case keeps a queen on each side: all four contributions are
 middlegame-only, so a bare-king position sits at phase 0 where each blends to exactly 0 and any
-assertion is vacuous.
+assertion is vacuous. The attack cases are the exception: several hold a queen on one side only —
+removing White's queen is how one of them isolates the attacker — and they assert on the unblended
+`mg` endpoint rather than the blended row, so a lower phase cannot make them vacuous.
 
 - **The zone anchor** is pinned by enumerated squares, not by a property: `Kg1`, `Kh1` and `Kg2` must
   all anchor on `g2`, and the queenside and Black mirrors likewise. That is the g1->h1 discontinuity

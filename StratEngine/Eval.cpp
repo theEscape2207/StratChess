@@ -555,9 +555,9 @@ KingPawnCover EvalComplex::eval_king_pawn_cover(const EvalContext& ctx, eColor c
 // Quadratic in a weighted danger count, capped, rather than a hand-written
 // danger table: non-linear by construction, which is the property the term
 // exists for -- two attackers cost four times one, not twice -- monotone after
-// the clamp, and three tunables instead of a hundred. Fitting a table's extra
-// shape needs data this project does not yet have; #117 can replace the formula
-// with one if it ever does.
+// the clamp, and a handful of weights instead of a hundred table entries.
+// Fitting a table's extra shape needs data this project does not yet have; #117
+// can replace the formula with one if it ever does.
 //
 // The danger count is attackers and attacked squares only. A third input, the
 // king's own remaining flight squares, was designed in and left out on
@@ -729,8 +729,8 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 	// at all.
 	const int endgameScale = EndgameScale(boardsSpan);
 
-	// The aggregates need both king squares -- the zone counts are taken over
-	// the ENEMY king's zone, and the flight count over this colour's own ring.
+	// The aggregates need both king squares: every zone count is taken over the
+	// ENEMY king's zone, so each colour's loop needs the other colour's king.
 	const eSquare kingSquares[NUM_COLORS] = {whiteKingSq, blackKingSq};
 
 	return EvalContext{
