@@ -151,7 +151,8 @@ function Invoke-ChangedScriptSelfTest {
 #
 # The map is read twice: as the exemption list for the Build-tier rule below, and by
 # Invoke-ChangedScriptSelfTest, which runs the coverer when the changed file has no
-# -SelfTest of its own.
+# -SelfTest of its own. Every entry's coverer is verified whatever the covered file's
+# tier -- an unverified entry silently covers nothing once its coverer loses the switch.
 $script:SelfTestCoverers = @{
     # Dot-sourced by build.ps1 and Get-BuildArtifact.ps1, so it has no param() block
     # to hang a switch on. build.ps1 -SelfTest asserts its freshness verdicts.
@@ -181,25 +182,27 @@ function Test-SelfTestCoverage {
         if ($f.HasSelfTest) { continue }
         if (-not $Exemption.ContainsKey($f.Path)) {
             $violations += "$($f.Path) is Build tier and carries no -SelfTest."
-            continue
-        }
-        # An exemption is a claim that another script covers this one. Check the claim,
-        # or the exemption becomes a silent hole the moment the coverer loses its own.
-        $coverer = $Exemption[$f.Path]
-        if (-not $byPath.ContainsKey($coverer)) {
-            $violations += "$($f.Path) is exempt via '$coverer', which does not exist."
-        }
-        elseif (-not $byPath[$coverer].HasSelfTest) {
-            $violations += "$($f.Path) is exempt via '$coverer', which has no -SelfTest of its own."
         }
     }
 
+    # Every entry is a claim that another script covers this one, and the claim is checked
+    # whatever the covered file's tier -- most entries are Tooling, so gating this on Build
+    # would leave them unchecked, and an unchecked entry becomes a silent hole the moment
+    # its coverer loses its own -SelfTest.
     foreach ($path in $Exemption.Keys) {
         if (-not $byPath.ContainsKey($path)) {
             $violations += "Exemption for '$path' is stale: no such script."
+            continue
         }
-        elseif ($byPath[$path].HasSelfTest) {
+        if ($byPath[$path].HasSelfTest) {
             $violations += "Exemption for '$path' is stale: it now carries its own -SelfTest."
+        }
+        $coverer = $Exemption[$path]
+        if (-not $byPath.ContainsKey($coverer)) {
+            $violations += "'$path' is covered by '$coverer', which does not exist."
+        }
+        elseif (-not $byPath[$coverer].HasSelfTest) {
+            $violations += "'$path' is covered by '$coverer', which has no -SelfTest of its own."
         }
     }
 
@@ -274,8 +277,15 @@ if ($SelfTest) {
         [pscustomobject]@{ Path = 'Scripts/Validate-PrePR.ps1';   Tier = 'Build';   HasSelfTest = $true }
         [pscustomobject]@{ Path = 'Scripts/BuildFreshness.ps1';   Tier = 'Build';   HasSelfTest = $false }
         [pscustomobject]@{ Path = 'Scripts/Run-Bench.ps1';        Tier = 'Tooling'; HasSelfTest = $true }
+        [pscustomobject]@{ Path = 'Scripts/UciDriver.ps1';        Tier = 'Tooling'; HasSelfTest = $false }
+        [pscustomobject]@{ Path = 'Scripts/Test-UciDriver.ps1';   Tier = 'Tooling'; HasSelfTest = $true }
     )
-    $exempt = @{ 'Scripts/BuildFreshness.ps1' = 'build.ps1' }
+    # Both shapes the map holds: a Build-tier library, and a Tooling-tier one whose
+    # coverer is checked only because every entry is checked.
+    $exempt = @{
+        'Scripts/BuildFreshness.ps1' = 'build.ps1'
+        'Scripts/UciDriver.ps1'      = 'Scripts/Test-UciDriver.ps1'
+    }
 
     function New-Fixture {
         param([object[]]$Base, [string]$Path, [string]$Property, [object]$Value)
@@ -300,6 +310,12 @@ if ($SelfTest) {
         @{ Name = 'an exemption whose coverer loses its -SelfTest is caught'
            Fact = (New-Fixture $fixture 'build.ps1' 'HasSelfTest' $false)
            Exempt = $exempt; ExpectViolations = 2 }
+        # The same claim, for a coverer of a Tooling-tier file. Checking only the
+        # Build-tier entries would leave this one unverified, and the driver's coverage
+        # would disappear the moment its test lost the switch.
+        @{ Name = 'FALSIFY: a Tooling coverer losing its -SelfTest is caught'
+           Fact = (New-Fixture $fixture 'Scripts/Test-UciDriver.ps1' 'HasSelfTest' $false)
+           Exempt = $exempt; ExpectViolations = 1 }
         @{ Name = 'an exemption naming a script that does not exist is caught'
            Fact = $fixture; Exempt = @{ 'Scripts/BuildFreshness.ps1' = 'Scripts/Gone.ps1' }
            ExpectViolations = 1 }

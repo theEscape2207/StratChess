@@ -49,7 +49,10 @@ fixture's lifetime is now the test's to set.
 `Validate-PrePR.ps1` ran the `-SelfTest` of a changed script and nothing else, so editing a
 dot-sourced library ran nothing at all. Its exemption table is now `$SelfTestCoverers`, read both as
 the Build-tier exemption list and to resolve a changed file to the script that covers it — which
-also means `BuildFreshness.ps1` edits now run `build.ps1 -SelfTest`.
+also means `BuildFreshness.ps1` edits now run `build.ps1 -SelfTest`. Each entry is a claim that
+another script covers this one, and the claim is now verified whatever the covered file's tier: the
+check had been reachable only for Build-tier entries, so a Tooling coverer losing its `-SelfTest`
+would have removed coverage without a word.
 
 ## 2026-09-01 — Elo ledgers move to `Measurements/`, one file per table
 

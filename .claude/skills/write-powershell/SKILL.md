@@ -168,7 +168,9 @@ Two rules are enforced rather than suggested:
   A dot-sourced library that has no `param()` block to hang a switch on needs an entry in
   `$SelfTestCoverers` naming the script that covers it. That entry is read twice: it exempts the
   library from this rule, and it is what makes a change to the library run the coverer's
-  `-SelfTest` rather than nothing. The covering script is checked too. Do **not** give the library
+  `-SelfTest` rather than nothing. The coverer named by an entry is itself checked to exist and
+  carry a `-SelfTest`, whatever tier the covered file is — otherwise the entry quietly covers
+  nothing the moment the coverer loses the switch. Do **not** give the library
   a `$SelfTest` parameter instead — dot-sourcing runs in the caller's scope, so it would overwrite
   the caller's own switch and turn that script's `-SelfTest` into a silent no-op.
 - **The whole set runs nightly**, via `Validate-PrePR.ps1 -AllSelfTests`. The PR gate only reaches
