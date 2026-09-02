@@ -578,7 +578,6 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 
 	return EvalContext{
 	    .boards = boardsSpan,
-	    .all_pieces = boardsSpan[ALL_PIECES],
 	    .pawns = {whitePawnsBb, blackPawnsBb},
 	    .occupied = {boardsSpan[ePiece::ALL_WHITE_PIECES], boardsSpan[ePiece::ALL_BLACK_PIECES]},
 	    .pawn_attacks = {whitePawnAttacks, blackPawnAttacks},

@@ -179,7 +179,6 @@ struct PieceAggregates {
 // names shared work, it does not add any.
 struct EvalContext {
 	std::span<const BITBOARD> boards; // Board::GetBitBoards(), indexed by ePiece
-	BITBOARD all_pieces;              // boards[ALL_PIECES]
 	BITBOARD pawns[NUM_COLORS];       // boards[WHITE_PAWN] / boards[BLACK_PAWN]
 	// boards[ALL_WHITE_PIECES] / boards[ALL_BLACK_PIECES]. Read by eval_mobility
 	// to mask off squares occupied by the side's own pieces (issue #98).

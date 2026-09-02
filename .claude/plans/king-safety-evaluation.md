@@ -30,7 +30,10 @@ two existing proxies by measurement rather than by assumption.
 **This change will not:**
 
 - Add a 64-entry per-square attack board or any per-node heap allocation.
-- Change any existing term's score. PR 1 is behaviour-preserving and gated on exact equivalence.
+- Change what any existing term contributes to a **searched** score. PR 1 is behaviour-preserving
+  for `Evaluate()` and gated on exact equivalence. The one exception is deliberate and is not a
+  scored path: on a dead-drawn material class the `Breakdown()` mobility and rooks rows now read 0
+  (D2), for a position `Evaluate()` scores `Draw` without consulting either term.
 - Add a king-tropism (pure distance) bonus. Concrete attacks first; distance only if an ablation
   asks for it.
 - Re-generate slider attacks with the king removed from occupancy to get a legal flight-square
@@ -303,8 +306,10 @@ inconclusive result, fall back to the ladder then, with the row that moved as th
 
 ## Invariants
 
-- **PR 1 changes no score.** Identical evaluation on the corpus, and identical node counts and best
-  moves at `Threads=1`.
+- **PR 1 changes no searched score.** Identical evaluation on the corpus, and identical node counts
+  and best moves at `Threads=1`. The contract is over `Evaluate()`, not over `Breakdown()`: for a
+  dead-drawn class the mobility and rooks rows change from the counts nothing consumed to 0, which
+  D2 accepts rather than making the debug path compute something the search never did.
 - Color symmetry: mirroring a position negates the score, including with the file-asymmetric shelter
   and storm tables (#125's mirror property, which is why those tables are safe to introduce here).
 - `EvalContext` remains a per-call stack local; `Evaluate()` stays `const` and allocation-free, and
@@ -324,17 +329,21 @@ inconclusive result, fall back to the ladder then, with the row that moved as th
 and best moves at `Threads=1`), the `[eval]` suite, and alternating `Run-Bench.ps1` runs with the
 per-position spread. An Elo run here would be measuring nothing and is explicitly not done.
 
-**Measured: identical on all six equivalence positions, and about 0.6% nps slower** (8 runs per side,
-order-balanced against thermal drift; per-side spread ~0.4%). The predicted small *gain* from
-removing `eval_rooks`' duplicate `RookAttacks()` did not appear, and the premise looks wrong: within
-one inlined `RawWhitePov` the compiler could already common up the two calls on the same square, so
-there was little duplicate left to remove. What remains is the cost of storing the counts and
-carrying a larger `EvalContext`.
+**Measured: identical on all six equivalence positions, and no reproducible nps difference** (10 runs
+per side, order-balanced against thermal drift; medians within 0.1%, means within 0.3%, both inside
+the run-to-run spread).
 
-That is ~1 Elo by the project's conversion, spent to make PR 3 affordable: a king-safety term
-reached through its own generation pass would regenerate every slider's attacks a second time, which
-is far more than 0.6%. The alternative reading — that the refactor should be abandoned and PR 3 pay
-for its own generation — is worth stating, and is settled by PR 3's bench, not here.
+Getting there took one wrong turn worth recording. An intermediate version filled the aggregates
+through an `EvalContext&` and left `all_pieces` in the context after its last reader had gone; that
+measured ~0.6% *slower*, order-balanced and well outside the spread. Returning `PieceAggregates` by
+value and deleting the dead field removed the deficit. The lesson is that this context is close
+enough to a cache-line budget for a single unused 8-byte field to be measurable — worth remembering
+when PR 3 adds the zone aggregates.
+
+The predicted small *gain* from removing `eval_rooks`' duplicate `RookAttacks()` also did not appear.
+That premise looks wrong: within one inlined `RawWhitePov` the compiler could already common up the
+two calls on the same square, so there was little duplicate left to remove. The refactor's value is
+what it makes possible in PR 3, not a speed-up here.
 
 **PRs 2 and 3 — strength.** `Run-Bench.ps1` first: the incremental budget for the whole feature is
 2% nps (≈3.4 Elo of speed). Then a local SPRT against a **merge-base build** (never the anchor):
