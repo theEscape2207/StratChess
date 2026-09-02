@@ -22,6 +22,38 @@ Newest first.
 
 ---
 
+## 2026-09-02 — A fake engine for `UciDriver.ps1`, and self-tests that reach a covered file
+
+`Invoke-UciSearchToBestMove` is the only code in `Scripts/` that talks to a live engine, and a
+successful bench pass exercised exactly one of its paths: the happy one. The 600 s ceilings, the
+"exited before bestmove" break, the async stderr drain and the non-zero exit check were reached by
+nothing. The failure that made this worth fixing is quiet — a regression in the shutdown sequence
+repaired during #256 Task 7, where `quit` batched behind `go` loses the pending-stop race, yields a
+truncated measurement while reporting success.
+
+`FakeUciEngine.ps1` speaks enough UCI to be driven and misbehaves on demand, selected by an
+environment variable. It is launched through a two-line `.cmd` shim because the driver sets
+`ProcessStartInfo.FileName` to its `ExePath` and the arguments to a fixed `uci`, and .NET refuses a
+`.ps1` as an executable. `Test-UciDriver.ps1` asserts the diagnostic for each of six modes, and then
+mutates a copy of the driver — deleting the stderr drain, deleting the end-of-output break, batching
+`quit` behind `go` — and asserts each case then fails, each mutation first checking that the text it
+replaces is still there. `Invoke-UciSearchToBestMove` gained a defaulted `-TimeoutMs` so a timeout
+case costs seconds; no caller changed. The whole self-test runs in ~22 s against no engine build.
+
+Two things the fixture found. `[Console]::In` is a *synchronized* reader whose `ReadLineAsync` runs
+synchronously, so a timed poll on it silently becomes an untimed one — the fixture reads from a
+plain `StreamReader` over the raw handle instead. And the driver's failure path reads the engine's
+stderr to end of stream, which any surviving grandchild holds open; a real engine has none, but the
+fixture's lifetime is now the test's to set.
+
+`Validate-PrePR.ps1` ran the `-SelfTest` of a changed script and nothing else, so editing a
+dot-sourced library ran nothing at all. Its exemption table is now `$SelfTestCoverers`, read both as
+the Build-tier exemption list and to resolve a changed file to the script that covers it — which
+also means `BuildFreshness.ps1` edits now run `build.ps1 -SelfTest`. Each entry is a claim that
+another script covers this one, and the claim is now verified whatever the covered file's tier: the
+check had been reachable only for Build-tier entries, so a Tooling coverer losing its `-SelfTest`
+would have removed coverage without a word.
+
 ## 2026-09-01 — Elo ledgers move to `Measurements/`, one file per table
 
 `Docs/EloLog.md` held four tables whose only structural separation was a heading, and every row

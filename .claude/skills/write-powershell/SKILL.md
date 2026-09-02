@@ -132,20 +132,47 @@ Keep a new one **flat in `Scripts/`**, not in a subdirectory. The Build-tier sel
 `Get-ChildItem Scripts -Filter *.ps1` with no `-Recurse`, so a library one level down is never asked
 whether it needs a `-SelfTest` — it does not fail that check, it escapes it.
 
-## 7. The `-SelfTest` convention
+## 7. `[Console]::In.ReadLineAsync()` is not asynchronous
+
+`Console.In` is a *synchronized* `TextReader`, and its async methods run the read on the
+calling thread and hand back an already-completed task. So a timed poll silently becomes an
+untimed one:
+
+```powershell
+$t = [Console]::In.ReadLineAsync()
+$t.Wait(300)      # blocks until a line arrives, however long that takes
+```
+
+Read from the handle instead — a plain `StreamReader` is genuinely async:
+
+```powershell
+$stdin = [System.IO.StreamReader]::new([Console]::OpenStandardInput())
+```
+
+`FakeUciEngine.ps1` needs this to model an engine noticing a stop mid-search. The
+`$proc.StandardOutput` of a redirected child process is already a plain `StreamReader`, so
+`UciDriver.ps1` is unaffected.
+
+## 8. The `-SelfTest` convention
 
 Scripts carry a `-SelfTest` switch. `Validate-PrePR.ps1` discovers them by parameter introspection
 and runs the self-test of any script your change touches, so a new one is picked up with no
 registration step. Keep them **pure and toolchain-free** — that property is why the pre-commit hook
-can run them.
+can run them. `Test-UciDriver.ps1` is the one exception, and it spawns `pwsh`, never a compiler.
 
 Two rules are enforced rather than suggested:
 
 - **Every Build-tier script must have one.** Those scripts gate validation itself, so a bug in one
   can exempt a change from the checks and then decline to report it. `Validate-PrePR.ps1` fails on a
   Build-tier script without a `-SelfTest`, on every tier including the Docs and Tooling fast paths.
-  A dot-sourced library that has no `param()` block to hang a switch on needs an exemption entry
-  naming the script that covers it — and that covering script is checked too.
+  A dot-sourced library that has no `param()` block to hang a switch on needs an entry in
+  `$SelfTestCoverers` naming the script that covers it. That entry is read twice: it exempts the
+  library from this rule, and it is what makes a change to the library run the coverer's
+  `-SelfTest` rather than nothing. The coverer named by an entry is itself checked to exist and
+  carry a `-SelfTest`, whatever tier the covered file is — otherwise the entry quietly covers
+  nothing the moment the coverer loses the switch. Do **not** give the library
+  a `$SelfTest` parameter instead — dot-sourcing runs in the caller's scope, so it would overwrite
+  the caller's own switch and turn that script's `-SelfTest` into a silent no-op.
 - **The whole set runs nightly**, via `Validate-PrePR.ps1 -AllSelfTests`. The PR gate only reaches
   the scripts a diff touched, so a script broken from elsewhere would otherwise stay broken until
   someone next edited it.

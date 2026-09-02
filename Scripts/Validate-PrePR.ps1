@@ -9,7 +9,8 @@
        Tests/tactical_test_cases.json, 90% threshold per run + no pass/fail flips).
     4. Runs a headless AIPerplex vs AIPerplex self-play game (60s timeout).
     Preceded by cheap text-only gates: clang-format, blame-ignore coverage, workflow
-    job timeouts, and the -SelfTest of any changed script that carries one.
+    job timeouts, and the -SelfTest of any changed script that carries one -- or of the
+    script that covers it, for a dot-sourced library or a fixture that cannot carry one.
     On every tier, including the Docs and Tooling fast paths, it also checks that every
     Build-tier script carries a -SelfTest at all.
     Every check runs before exit so all failures are visible at once.
@@ -65,42 +66,73 @@ $checkResults = [ordered]@{}
 # next one, and the ones most likely to be forgotten are the newest. Detecting the
 # switch from the parsed AST instead means a script that grows tests gets them run
 # from the commit that adds them.
+# Pure: which self-test a changed file maps to, or $null for none. A file with no
+# -SelfTest of its own can still be covered by one -- a dot-sourced library has no
+# param() block to hang the switch on, and a fixture is not a script at all. Without
+# the coverer step, a change that breaks one reaches the PR gate having run nothing.
+function Resolve-SelfTestFile {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][bool]$HasOwnSelfTest,
+        [Parameter(Mandatory)][hashtable]$Coverer
+    )
+
+    if ($HasOwnSelfTest) { return $Path }
+    if ($Coverer.ContainsKey($Path)) { return $Coverer[$Path] }
+    return $null
+}
+
 function Invoke-ChangedScriptSelfTest {
     param([Parameter(Mandatory)][AllowEmptyCollection()][string[]]$ChangedFile)
 
     $anyFailed = $false
-    $ran = 0
+    $ran = @()
     foreach ($f in $ChangedFile) {
-        if ($f -notlike '*.ps1') { continue }
         $full = Join-Path $RepoRoot $f
-        # A deleted script still appears in the diff.
+        # A deleted file still appears in the diff.
         if (-not (Test-Path -LiteralPath $full)) { continue }
 
-        $tokens = $null; $errors = $null
-        $ast = [System.Management.Automation.Language.Parser]::ParseInput(
-            (Get-Content -LiteralPath $full -Raw), [ref]$tokens, [ref]$errors)
-        if ($errors.Count -gt 0) {
-            Write-Host "  FAIL  $f (syntax)" -ForegroundColor Red
-            $errors | ForEach-Object { Write-Host "        $($_.Message)" -ForegroundColor Red }
-            $anyFailed = $true
-            continue
+        $hasOwnSelfTest = $false
+        if ($f -like '*.ps1') {
+            $tokens = $null; $errors = $null
+            $ast = [System.Management.Automation.Language.Parser]::ParseInput(
+                (Get-Content -LiteralPath $full -Raw), [ref]$tokens, [ref]$errors)
+            if ($errors.Count -gt 0) {
+                Write-Host "  FAIL  $f (syntax)" -ForegroundColor Red
+                $errors | ForEach-Object { Write-Host "        $($_.Message)" -ForegroundColor Red }
+                $anyFailed = $true
+                continue
+            }
+            Write-Host "  PASS  $f (syntax)" -ForegroundColor Green
+
+            if ($ast.ParamBlock) {
+                $names = @($ast.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath })
+                $hasOwnSelfTest = $names -contains 'SelfTest'
+            }
         }
-        Write-Host "  PASS  $f (syntax)" -ForegroundColor Green
 
-        if (-not $ast.ParamBlock) { continue }
-        $names = @($ast.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath })
-        if ($names -notcontains 'SelfTest') { continue }
+        $selfTestFile = Resolve-SelfTestFile -Path $f -HasOwnSelfTest $hasOwnSelfTest `
+            -Coverer $script:SelfTestCoverers
+        if ($null -eq $selfTestFile) { continue }
+        if ($selfTestFile -ne $f) {
+            Write-Host "  ....  $f is covered by $selfTestFile" -ForegroundColor DarkGray
+        }
 
-        $ran++
+        # Two changed files can name one coverer; it only needs running once.
+        if ($ran -contains $selfTestFile) { continue }
+        $selfTestPath = Join-Path $RepoRoot $selfTestFile
+        if (-not (Test-Path -LiteralPath $selfTestPath)) { continue }
+
+        $ran += $selfTestFile
         # A child pwsh, not dot-sourcing: these scripts exit rather than return, and
         # dot-sourcing one would take this script down with it.
-        & pwsh -NoProfile -ExecutionPolicy Bypass -File $full -SelfTest | Out-Host
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File $selfTestPath -SelfTest | Out-Host
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "  FAIL  $f (-SelfTest exited $LASTEXITCODE)" -ForegroundColor Red
+            Write-Host "  FAIL  $selfTestFile (-SelfTest exited $LASTEXITCODE)" -ForegroundColor Red
             $anyFailed = $true
         }
     }
-    return [pscustomobject]@{ Failed = $anyFailed; SelfTestsRun = $ran }
+    return [pscustomobject]@{ Failed = $anyFailed; SelfTestsRun = $ran.Count }
 }
 
 # --- Self-test coverage rule -------------------------------------------------
@@ -110,16 +142,27 @@ function Invoke-ChangedScriptSelfTest {
 # The discovery above only runs the self-test of a script the diff touched, which is
 # right for a PR gate but means nothing ever requires the switch to exist.
 #
-# Exemptions are enumerated, each naming the script that covers it, rather than
-# derived from a structural rule. The obvious structural rule -- "no param() block
-# means it is a dot-sourced library" -- is wrong here: Validate-PreCommit.ps1 and
-# Sync-Master.ps1 have no param() block either and are ordinary top-level scripts.
-# Fail closed, as Get-ChangeTier.ps1's own allowlist does: a new library fails this
-# check until someone classifies it deliberately.
-$script:SelfTestExemptions = @{
+# Coverers are enumerated, each naming the script that tests the one on the left,
+# rather than derived from a structural rule. The obvious structural rule -- "no
+# param() block means it is a dot-sourced library" -- is wrong here:
+# Validate-PreCommit.ps1 and Sync-Master.ps1 have no param() block either and are
+# ordinary top-level scripts. Fail closed, as Get-ChangeTier.ps1's own allowlist does:
+# a new library fails this check until someone classifies it deliberately.
+#
+# The map is read twice: as the exemption list for the Build-tier rule below, and by
+# Invoke-ChangedScriptSelfTest, which runs the coverer when the changed file has no
+# -SelfTest of its own. Every entry's coverer is verified whatever the covered file's
+# tier -- an unverified entry silently covers nothing once its coverer loses the switch.
+$script:SelfTestCoverers = @{
     # Dot-sourced by build.ps1 and Get-BuildArtifact.ps1, so it has no param() block
     # to hang a switch on. build.ps1 -SelfTest asserts its freshness verdicts.
     'Scripts/BuildFreshness.ps1' = 'build.ps1'
+
+    # Dot-sourced by Compare-SearchEquivalence.ps1 and Run-Bench.ps1, and likewise
+    # param()-less. Test-UciDriver.ps1 drives it against the fake engine below.
+    'Scripts/UciDriver.ps1'      = 'Scripts/Test-UciDriver.ps1'
+    'Scripts/FakeUciEngine.ps1'  = 'Scripts/Test-UciDriver.ps1'
+    'Scripts/FakeUciEngine.cmd'  = 'Scripts/Test-UciDriver.ps1'
 }
 
 # Pure: takes the facts, returns the violations. The walk that produces the facts is
@@ -139,25 +182,27 @@ function Test-SelfTestCoverage {
         if ($f.HasSelfTest) { continue }
         if (-not $Exemption.ContainsKey($f.Path)) {
             $violations += "$($f.Path) is Build tier and carries no -SelfTest."
-            continue
-        }
-        # An exemption is a claim that another script covers this one. Check the claim,
-        # or the exemption becomes a silent hole the moment the coverer loses its own.
-        $coverer = $Exemption[$f.Path]
-        if (-not $byPath.ContainsKey($coverer)) {
-            $violations += "$($f.Path) is exempt via '$coverer', which does not exist."
-        }
-        elseif (-not $byPath[$coverer].HasSelfTest) {
-            $violations += "$($f.Path) is exempt via '$coverer', which has no -SelfTest of its own."
         }
     }
 
+    # Every entry is a claim that another script covers this one, and the claim is checked
+    # whatever the covered file's tier -- most entries are Tooling, so gating this on Build
+    # would leave them unchecked, and an unchecked entry becomes a silent hole the moment
+    # its coverer loses its own -SelfTest.
     foreach ($path in $Exemption.Keys) {
         if (-not $byPath.ContainsKey($path)) {
             $violations += "Exemption for '$path' is stale: no such script."
+            continue
         }
-        elseif ($byPath[$path].HasSelfTest) {
+        if ($byPath[$path].HasSelfTest) {
             $violations += "Exemption for '$path' is stale: it now carries its own -SelfTest."
+        }
+        $coverer = $Exemption[$path]
+        if (-not $byPath.ContainsKey($coverer)) {
+            $violations += "'$path' is covered by '$coverer', which does not exist."
+        }
+        elseif (-not $byPath[$coverer].HasSelfTest) {
+            $violations += "'$path' is covered by '$coverer', which has no -SelfTest of its own."
         }
     }
 
@@ -169,21 +214,24 @@ function Get-ScriptSelfTestFact {
     param([Parameter(Mandatory)][string]$Root)
 
     $tierScript = Join-Path $Root 'Scripts\Get-ChangeTier.ps1'
-    $files = @(Get-ChildItem -LiteralPath (Join-Path $Root 'Scripts') -Filter *.ps1) +
+    # .cmd as well as .ps1: a coverer entry naming a file this walk cannot see reads as
+    # a stale exemption, so the census has to cover everything the map may name.
+    $files = @(Get-ChildItem -LiteralPath (Join-Path $Root 'Scripts') -Include *.ps1, *.cmd -File -Recurse -Depth 0) +
              @(Get-Item -LiteralPath (Join-Path $Root 'build.ps1'))
 
     $facts = @()
     foreach ($file in $files) {
         $rel = if ($file.Name -eq 'build.ps1') { 'build.ps1' } else { "Scripts/$($file.Name)" }
 
-        $tokens = $null; $errors = $null
-        $ast = [System.Management.Automation.Language.Parser]::ParseInput(
-            (Get-Content -LiteralPath $file.FullName -Raw), [ref]$tokens, [ref]$errors)
-
         $hasSelfTest = $false
-        if ($ast.ParamBlock) {
-            $names = @($ast.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath })
-            $hasSelfTest = $names -contains 'SelfTest'
+        if ($file.Extension -eq '.ps1') {
+            $tokens = $null; $errors = $null
+            $ast = [System.Management.Automation.Language.Parser]::ParseInput(
+                (Get-Content -LiteralPath $file.FullName -Raw), [ref]$tokens, [ref]$errors)
+            if ($ast.ParamBlock) {
+                $names = @($ast.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath })
+                $hasSelfTest = $names -contains 'SelfTest'
+            }
         }
 
         # In-process, so this is 23 script invocations rather than 23 child processes,
@@ -229,8 +277,15 @@ if ($SelfTest) {
         [pscustomobject]@{ Path = 'Scripts/Validate-PrePR.ps1';   Tier = 'Build';   HasSelfTest = $true }
         [pscustomobject]@{ Path = 'Scripts/BuildFreshness.ps1';   Tier = 'Build';   HasSelfTest = $false }
         [pscustomobject]@{ Path = 'Scripts/Run-Bench.ps1';        Tier = 'Tooling'; HasSelfTest = $true }
+        [pscustomobject]@{ Path = 'Scripts/UciDriver.ps1';        Tier = 'Tooling'; HasSelfTest = $false }
+        [pscustomobject]@{ Path = 'Scripts/Test-UciDriver.ps1';   Tier = 'Tooling'; HasSelfTest = $true }
     )
-    $exempt = @{ 'Scripts/BuildFreshness.ps1' = 'build.ps1' }
+    # Both shapes the map holds: a Build-tier library, and a Tooling-tier one whose
+    # coverer is checked only because every entry is checked.
+    $exempt = @{
+        'Scripts/BuildFreshness.ps1' = 'build.ps1'
+        'Scripts/UciDriver.ps1'      = 'Scripts/Test-UciDriver.ps1'
+    }
 
     function New-Fixture {
         param([object[]]$Base, [string]$Path, [string]$Property, [object]$Value)
@@ -255,6 +310,12 @@ if ($SelfTest) {
         @{ Name = 'an exemption whose coverer loses its -SelfTest is caught'
            Fact = (New-Fixture $fixture 'build.ps1' 'HasSelfTest' $false)
            Exempt = $exempt; ExpectViolations = 2 }
+        # The same claim, for a coverer of a Tooling-tier file. Checking only the
+        # Build-tier entries would leave this one unverified, and the driver's coverage
+        # would disappear the moment its test lost the switch.
+        @{ Name = 'FALSIFY: a Tooling coverer losing its -SelfTest is caught'
+           Fact = (New-Fixture $fixture 'Scripts/Test-UciDriver.ps1' 'HasSelfTest' $false)
+           Exempt = $exempt; ExpectViolations = 1 }
         @{ Name = 'an exemption naming a script that does not exist is caught'
            Fact = $fixture; Exempt = @{ 'Scripts/BuildFreshness.ps1' = 'Scripts/Gone.ps1' }
            ExpectViolations = 1 }
@@ -282,11 +343,37 @@ if ($SelfTest) {
         }
     }
 
+    # Which self-test a changed file maps to. The coverer cases are the ones that matter:
+    # before they existed, editing UciDriver.ps1 ran nothing at all.
+    $coverer = @{ 'Scripts/UciDriver.ps1' = 'Scripts/Test-UciDriver.ps1' }
+    $resolutions = @(
+        @{ Name = 'a script with its own -SelfTest runs itself'
+           Path = 'Scripts/Run-Bench.ps1'; Own = $true;  Expect = 'Scripts/Run-Bench.ps1' }
+        @{ Name = 'a covered library runs its coverer'
+           Path = 'Scripts/UciDriver.ps1'; Own = $false; Expect = 'Scripts/Test-UciDriver.ps1' }
+        @{ Name = 'an uncovered script without one runs nothing'
+           Path = 'Scripts/Sync-Master.ps1'; Own = $false; Expect = $null }
+        # Own beats the map: a library that grew a switch tests itself, and the stale
+        # check below is what then retires the entry.
+        @{ Name = 'a covered file that gained its own -SelfTest runs itself'
+           Path = 'Scripts/UciDriver.ps1'; Own = $true;  Expect = 'Scripts/UciDriver.ps1' }
+    )
+    foreach ($case in $resolutions) {
+        $got = Resolve-SelfTestFile -Path $case.Path -HasOwnSelfTest $case.Own -Coverer $coverer
+        if ($got -eq $case.Expect) {
+            Write-Host "  PASS  $($case.Name)" -ForegroundColor Green
+        }
+        else {
+            $failed++
+            Write-Host ("  FAIL  {0}: got '{1}', expected '{2}'" -f $case.Name, $got, $case.Expect) -ForegroundColor Red
+        }
+    }
+
     # The fixture above asserts the rule; this asserts the rule against the real tree,
     # so the switch cannot pass while the repository itself violates it.
     Write-Host ''
     $realViolations = @(Test-SelfTestCoverage -Fact (Get-ScriptSelfTestFact -Root $RepoRoot) `
-            -Exemption $script:SelfTestExemptions)
+            -Exemption $script:SelfTestCoverers)
     if ($realViolations.Count -eq 0) {
         Write-Host '  PASS  every Build-tier script in the tree carries a -SelfTest' -ForegroundColor Green
     }
@@ -301,7 +388,7 @@ if ($SelfTest) {
         Write-Host "$failed self-test case(s) FAILED." -ForegroundColor Red
         exit 1
     }
-    Write-Host "All $($cases.Count + 1) self-test cases passed." -ForegroundColor Green
+    Write-Host "All $($cases.Count + $resolutions.Count + 1) self-test cases passed." -ForegroundColor Green
     exit 0
 }
 
@@ -333,7 +420,7 @@ if ($Force) {
 # Pure AST parsing and in-process classification, so it costs about a second.
 Write-Host "`n==> Self-test coverage" -ForegroundColor Cyan
 $coverageViolations = @(Test-SelfTestCoverage -Fact (Get-ScriptSelfTestFact -Root $RepoRoot) `
-        -Exemption $script:SelfTestExemptions)
+        -Exemption $script:SelfTestCoverers)
 if ($coverageViolations.Count -gt 0) {
     $coverageViolations | ForEach-Object { Write-Host "  FAIL  $_" -ForegroundColor Red }
     Write-Host ''
