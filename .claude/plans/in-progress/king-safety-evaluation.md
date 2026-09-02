@@ -312,7 +312,7 @@ price of a reconstructible breakdown.
 | PR | Content | Gate |
 |---|---|---|
 | 1 | Attack aggregates in `EvalContext`; mobility, rooks rewired | Exact equivalence + nps. **No Elo run.** |
-| 2 | Shelter, storm and king-file openness (3 rows) | Local SPRT `NonRegression`, then `Gain` |
+| 2 | Shelter, storm and king-file openness (3 rows) | Local SPRT `NonRegression`, then `Gain` — **revised, see below** |
 | 3 | `eval_king_attack` + cap | Local SPRT `NonRegression`, then `Gain` |
 | 4 | Ablation of `eval_castling` and the mg king PST | See Validation |
 
@@ -324,15 +324,45 @@ ladder triples PR 2's match budget to buy attribution for a regression that may 
 four separate rows (D8) mean the information is still recoverable if it does: on a failure or an
 inconclusive result, fall back to the ladder then, with the row that moved as the first suspect.
 
+#### PR 2's gate as written was not met, and is deliberately revised
+
+**What happened.** Two local SPRTs against the merge base, `NonRegression` [-5, 0], 700 games each,
+both INCONCLUSIVE at the cap: full magnitude -10.92 ± 21.46 (LLR -0.35), half magnitude +9.43 ± 19.49
+(LLR +0.60). The `Gain` leg was never reached. Rows and full detail in `Measurements/local.md`.
+
+**Why more local games do not fix it.** The half-scale LLR plateaued rather than drifted — +0.68 at
+~500 games, then wandering 0.48-0.68 over the last 200 — giving ~3,400 games (~4.5 h) to cross a bound
+on the optimistic reading that the plateau resumes climbing. The full-scale run wandered the same way.
+~1,400 games have now been spent without either run resolving, which is itself the finding: **the
+effect is below what the local instrument can see at any affordable N.** The `Gain` leg, testing a
+larger elo1, is further out of reach than the `NonRegression` leg that already failed to resolve.
+The gate as written assumed this term was locally resolvable. It is not, and no amount of adhering to
+it produces a verdict.
+
+**The revised gate.** PR 2 merges on the balance argument plus exact-behaviour tests, with sizing
+deferred to **one CI strength-lab run after PR 3** against the `king-safety-pre` tag (`7efbe95`),
+which resolves ~±5 Elo over ~20k games and measures shelter, storm, openness and the attack term as
+the one feature they are. That run, not a local SPRT, is the strength gate for the series. The
+balance argument is the one recorded in D5a and checked by `eval-reviewer`: at full magnitude
+shelter's best-to-worst swing was 2.7× `eval_castling`'s and 2.4 king-PST rank steps for one pawn;
+at half it is 1.3× and 1.2. Note that halving was the **pre-registered** response to a failing
+`NonRegression` SPRT (see Assumptions below), not a fit chosen after seeing the result.
+
+**What this costs, stated plainly.** PR 2 merges without demonstrated net non-regression, carrying a
+measured -5.5% nps against a 2% budget for the whole feature (see Validation). If the lab run comes
+back negative, PRs 2 and 3 revert together — that is the accepted downside, and the reason the lab
+run is scheduled before PR 4 rather than after it. The alternative, blocking PR 2 on a local verdict,
+buys nothing: the instrument cannot produce one.
+
 ## Assumptions I cannot verify from the code
 
 - **The edge-file discontinuity is worth fixing.** Taken from Stockfish PR #1512, not measured here,
   and their remedy is not the zone shape adopted in D3. Verified instead by construction: tests pin
   the exact zone mask for `Kg1`, `Kh1`, `Kg2`, a central king and their mirrors, so the g1→h1 failure
   mode cannot exist regardless of whether their measurement transfers.
-- **Literature-standard shelter/storm magnitudes are a sane starting point.** Not verified. If PR 2's
-  `NonRegression` SPRT fails, the first response is to halve the tables, not to abandon the term —
-  a mis-scaled structural table is the expected failure, not a wrong idea.
+- **Literature-standard shelter/storm magnitudes are a sane starting point.** Not verified, and it did
+  not hold. The pre-registered response — halve the tables rather than abandon the term — was applied
+  and is what PR 2 ships. A mis-scaled structural table was indeed the failure mode, not a wrong idea.
 - **The planning band (+10 to +40 Elo) is a hypothesis, not a claim.** It rests on mobility's
   measured +38.34 ± 4.26 for a comparably absent whole-board term. Settled only by PRs 2–3.
 - **The ~1.7 Elo per 1% nps conversion** is the project's existing calibration, reused rather than
@@ -408,8 +438,13 @@ fires on exactly that capture — so a pawn plus that already exceeded the margi
 at the shipped scale, but a #117 retune upward must re-examine it rather than assume it.
 
 **PRs 2 and 3 — strength.** `Run-Bench.ps1` first: the incremental budget for the whole feature is
-2% nps (≈3.4 Elo of speed). Then a local SPRT against a **merge-base build** (never the anchor):
-`NonRegression` first, `Gain` second. New `[eval]` cases, with matching `Docs/TestDesign.md` entries:
+2% nps (≈3.4 Elo of speed). **PR 2 alone breaches that budget at -5.5%, and the breach is accepted
+rather than the budget revised** — the budget stays the standard PR 3 is held to, and the overrun is
+carried on the expectation that a king-square-tagged pawn cache (#131) recovers most of it. If that
+cache fails its own +2% nps gate, the cost is structural and PR 4's ablation decides whether these
+terms earn it. Then a local SPRT against a **merge-base build** (never the anchor): `NonRegression`
+first, `Gain` second — **for PR 2 this gate was not met and is revised in D9; PR 3 is still held to
+it.** New `[eval]` cases, with matching `Docs/TestDesign.md` entries:
 
 - **exact zone masks** for `Kg1`, `Kh1`, `Kg2`, a central king and their mirrors — the enumerated
   table in D3, not merely "three files wide";
