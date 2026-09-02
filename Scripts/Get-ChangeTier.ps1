@@ -153,6 +153,11 @@ function Get-TierForPath {
     if ($p -like '*Scripts/Run-Tests.ps1')                  { return 'Tooling' }
     if ($p -like '*Scripts/Sync-Master.ps1')                { return 'Tooling' }
     if ($p -like '*Scripts/UciDriver.ps1')                  { return 'Tooling' }
+    # The driver's test and the fake engine it drives. Test-UciDriver.ps1 gates nothing:
+    # it is the covered script, not a validator, and Validate-PrePR.ps1 reaches it.
+    if ($p -like '*Scripts/Test-UciDriver.ps1')             { return 'Tooling' }
+    if ($p -like '*Scripts/FakeUciEngine.ps1')              { return 'Tooling' }
+    if ($p -like '*Scripts/FakeUciEngine.cmd')              { return 'Tooling' }
 
     # Python helpers, alphabetically.
     if ($p -like '*Scripts/build_corpus.py')                { return 'Tooling' }
@@ -215,6 +220,9 @@ if ($SelfTest) {
         @{ Name = 'perftcheck tool -> Tooling'; Files = @('Scripts/Run-PerftCheck.ps1');     Expect = 'Tooling' }
         @{ Name = 'docs + tooling -> Tooling';  Files = @('CLAUDE.md', 'Scripts/Run-Tests.ps1'); Expect = 'Tooling' }
         @{ Name = 'UCI driver lib -> Tooling';  Files = @('Scripts/UciDriver.ps1');           Expect = 'Tooling' }
+        @{ Name = 'UCI driver test -> Tooling'; Files = @('Scripts/Test-UciDriver.ps1');      Expect = 'Tooling' }
+        @{ Name = 'fake engine -> Tooling';     Files = @('Scripts/FakeUciEngine.ps1');       Expect = 'Tooling' }
+        @{ Name = 'fake engine shim -> Tooling'; Files = @('Scripts/FakeUciEngine.cmd');      Expect = 'Tooling' }
         @{ Name = 'corpus tool -> Tooling';     Files = @('Scripts/build_corpus.py');         Expect = 'Tooling' }
         @{ Name = 'corpus test -> Tooling';     Files = @('Scripts/test_build_corpus.py');    Expect = 'Tooling' }
         @{ Name = 'race probe -> Tooling';      Files = @('Scripts/uci_race_probe.py');       Expect = 'Tooling' }
