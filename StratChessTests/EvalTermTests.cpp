@@ -152,7 +152,13 @@ TEST_CASE("Eval - eval_mobility: a bare king contributes nothing", "[eval]")
 {
 	// The king is deliberately excluded -- king mobility belongs to #97, where
 	// it can be weighed against attacker counts rather than paid per square.
-	Board kings("4k3/8/8/8/8/8/8/4K3 w - - 0 1");
+	//
+	// The idle pawn is load-bearing: bare kings are a dead-drawn class, and the
+	// attack pass is skipped entirely for one, so a bare-kings position would
+	// score 0 whatever the generation loop does -- including if it started
+	// counting the king. With the pawn the loop actually runs, and only its
+	// piece selection can produce the 0.
+	Board kings("4k3/7p/8/8/8/8/8/4K3 w - - 0 1");
 
 	REQUIRE(EvalComplexTestFixture::Mobility(kings, WHITE) == 0);
 	REQUIRE(EvalComplexTestFixture::Mobility(kings, BLACK) == 0);
