@@ -164,8 +164,10 @@ king are no shelter; enemy pawns behind it are not storming it):
 
 - the nearest **own** pawn gives `r ∈ [2, 7]`, indexing `SHELTER[d][r]`;
 - the nearest **enemy** pawn gives `r' ∈ [2, 7]`, indexing `STORM[d][r']`;
-- `d = |file - kf| ∈ {0, 1, 2}`; **index 0 means "no such pawn on this file"** in both tables, which
-  is unambiguous because no pawn can ever stand on rank 1 or rank 8.
+- `d = |file - kf| ∈ {0, 1}` — three files means the king's own and one either side, so there is no
+  distance 2 and the tables have two rows, not three. (The draft said `{0, 1, 2}`, which does not
+  follow from the three-file scan it describes.) **Index 0 means "no such pawn on this file"** in
+  both tables, which is unambiguous because no pawn can ever stand on rank 1 or rank 8.
 - A storm pawn is **blocked** when the nearest own pawn on the same file sits at exactly `r' - 1` —
   directly in the storming pawn's path. Its `STORM` value is halved (integer division) in that case.
 
@@ -259,10 +261,16 @@ correct arithmetically and wrong about which entries are reachable.
 
 ### D8: Four separately-attributable contributions and four breakdown rows
 
-`king_shelter`, `king_storm`, `king_files`, `king_attack` — four `EvalBreakdown` rows. Shelter and
-storm come out of one pawn scan (D4) and may be produced by one function returning two `ScorePair`s
-rather than two functions rescanning the same three files; what matters is that the two land in
-separate rows and can be zeroed independently.
+`king_shelter`, `king_storm`, `king_files`, `king_attack` — four `EvalBreakdown` rows. The first
+three come out of ONE pawn scan over the king's three files, produced by one function
+(`eval_king_pawn_cover`) returning three `ScorePair`s; what matters is that they land in separate
+rows and can be zeroed independently, not that each has its own loop.
+
+The file-openness sub-term was folded into that scan rather than given its own, on measurement: it
+walks the same three files and needs the same clamped king file, and splitting it out cost about
+1.8% of nps for nothing. `eval_king_pawn_cover` also returns early at phase 0, which is exact rather
+than an approximation — every contribution is a `{x, 0}` pair, and `BlendPhase` of one at phase 0 is
+0 for every `x`.
 
 The ablation in PR 4 is the whole point of the split. Merging shelter and storm into one row would
 leave a PR 2 regression unattributable between a mis-scaled shield table and an over-weighted storm
@@ -344,6 +352,16 @@ The predicted small *gain* from removing `eval_rooks`' duplicate `RookAttacks()`
 That premise looks wrong: within one inlined `RawWhitePov` the compiler could already common up the
 two calls on the same square, so there was little duplicate left to remove. The refactor's value is
 what it makes possible in PR 3, not a speed-up here.
+
+**PR 2 measured: -5.4% nps** (5 alternating runs per side; before median 3.010 M, after 2.844 M,
+means -5.4%, well outside the ~1% run-to-run spread). That is roughly -9 Elo of speed at the
+project's 1.7 Elo per 1% conversion, and it overruns the 2% budget below on PR 2 alone — before PR 3
+adds anything. Folding the file-openness loop into the shelter scan recovered 1.8 of the original
+7.3%; what remains is the scan itself, run for both colours at every leaf. The two ways out are a
+pawn hash (#131, `not-started/pawn-hash-table.md`) — shelter is a pure function of the pawns and the
+king square, which is exactly what that cache exists for — or dropping sub-terms the PR 4 ablation
+cannot justify. Which of those, and whether the SPRT runs before or after, is the project owner's
+call.
 
 **PRs 2 and 3 — strength.** `Run-Bench.ps1` first: the incremental budget for the whole feature is
 2% nps (≈3.4 Elo of speed). Then a local SPRT against a **merge-base build** (never the anchor):

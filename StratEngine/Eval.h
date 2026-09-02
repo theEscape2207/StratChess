@@ -257,9 +257,9 @@ struct EvalBreakdown {
 	int bishops[NUM_COLORS];      // eval_bishops
 	int castling[NUM_COLORS];     // eval_castling
 	int mobility[NUM_COLORS];     // eval_mobility
-	int king_shelter[NUM_COLORS]; // eval_king_shelter_storm, shelter half
-	int king_storm[NUM_COLORS];   // eval_king_shelter_storm, storm half
-	int king_files[NUM_COLORS];   // eval_king_files
+	int king_shelter[NUM_COLORS]; // eval_king_pawn_cover, shelter
+	int king_storm[NUM_COLORS];   // eval_king_pawn_cover, storm
+	int king_files[NUM_COLORS];   // eval_king_pawn_cover, file openness
 	// Included because it is not derivable from the rows: it sets where between
 	// the mg and eg endpoints every tapered term landed, and gates eval_mopup.
 	int phase;
@@ -301,14 +301,15 @@ constexpr int EvalRowMax(const short (&row)[8]) noexcept
 	return highest;
 }
 
-// The two halves one scan over the king's three files produces (issue #97).
-// Separate ScorePairs rather than a sum: shelter and storm are separately
-// attributable breakdown rows and separately ablatable, because a regression in
-// a mis-scaled shield table and one in an over-weighted storm table are
-// corrected in completely different ways.
-struct KingPawnShield {
+// Everything one scan over the king's three files produces (issue #97).
+// Separate ScorePairs rather than a sum: each is its own breakdown row and each
+// is separately ablatable, because a regression in a mis-scaled shield table,
+// one in an over-weighted storm table and one in an open-file penalty that
+// double-counts shelter are corrected in completely different ways.
+struct KingPawnCover {
 	ScorePair shelter;
 	ScorePair storm;
+	ScorePair files;
 };
 
 class EvalComplex final : public EvalManager {
@@ -689,13 +690,11 @@ class EvalComplex final : public EvalManager {
 	static ScorePair eval_bishops(const EvalContext& ctx, eColor color) noexcept;
 	static ScorePair eval_castling(const EvalContext& ctx, eColor color) noexcept;
 	static ScorePair eval_mobility(const EvalContext& ctx, eColor color) noexcept;
-	// The one exception to the ScorePair signature above: shelter and storm
-	// both fall out of a single scan over the king's three files, and rescanning
-	// them to keep two identical signatures would double a per-node cost for
-	// nothing. The two halves stay separate all the way to their own breakdown
-	// rows.
-	static KingPawnShield eval_king_shelter_storm(const EvalContext& ctx, eColor color) noexcept;
-	static ScorePair eval_king_files(const EvalContext& ctx, eColor color) noexcept;
+	// The one exception to the ScorePair signature above: all three king-safety
+	// contributions fall out of a single scan over the king's three files, and
+	// rescanning them to keep three identical signatures cost measurable nps for
+	// nothing. They stay separate all the way to their own breakdown rows.
+	static KingPawnCover eval_king_pawn_cover(const EvalContext& ctx, eColor color) noexcept;
 
   public:
 	int Evaluate(const Board& board) const noexcept override;

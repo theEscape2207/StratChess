@@ -392,27 +392,23 @@ struct EvalComplexTestFixture {
 	static int KingShelter(const Board& board, eColor color)
 	{
 		const EvalContext ctx = BuildContext(board);
-		return BlendPhase(EvalComplex::eval_king_shelter_storm(ctx, color).shelter, ctx.phase);
+		return BlendPhase(EvalComplex::eval_king_pawn_cover(ctx, color).shelter, ctx.phase);
 	}
 	static int KingStorm(const Board& board, eColor color)
 	{
 		const EvalContext ctx = BuildContext(board);
-		return BlendPhase(EvalComplex::eval_king_shelter_storm(ctx, color).storm, ctx.phase);
+		return BlendPhase(EvalComplex::eval_king_pawn_cover(ctx, color).storm, ctx.phase);
 	}
 	static int KingFiles(const Board& board, eColor color)
 	{
 		const EvalContext ctx = BuildContext(board);
-		return BlendPhase(EvalComplex::eval_king_files(ctx, color), ctx.phase);
+		return BlendPhase(EvalComplex::eval_king_pawn_cover(ctx, color).files, ctx.phase);
 	}
-	// Unblended, so a test can assert the eg endpoint is 0 rather than infer it
-	// from a low-phase position.
-	static KingPawnShield KingShieldPair(const Board& board, eColor color)
+	// Unblended, so a test can assert the eg endpoints are 0 rather than infer
+	// it from a low-phase position.
+	static KingPawnCover KingCover(const Board& board, eColor color)
 	{
-		return EvalComplex::eval_king_shelter_storm(BuildContext(board), color);
-	}
-	static ScorePair KingFilesPair(const Board& board, eColor color)
-	{
-		return EvalComplex::eval_king_files(BuildContext(board), color);
+		return EvalComplex::eval_king_pawn_cover(BuildContext(board), color);
 	}
 	static constexpr eSquare KingZoneAnchor(eSquare kingSq) { return EvalComplex::KingZoneAnchor(kingSq); }
 	static constexpr int KingDistanceProbe(eSquare a, eSquare b) { return EvalComplex::KingDistance(a, b); }

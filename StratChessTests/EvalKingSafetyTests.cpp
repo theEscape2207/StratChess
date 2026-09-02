@@ -160,8 +160,8 @@ TEST_CASE("Eval - eval_king_storm: a blocked storm pawn counts half", "[eval]")
 	// pawn either directly in its path (g2) or one file off it (f2). Asserted on
 	// the unblended mg endpoints, because the halving is exact there and the
 	// phase blend truncates.
-	const int blocked = EvalComplexTestFixture::KingShieldPair(Board(FEN_KING_STORM_BLOCKED), WHITE).storm.mg;
-	const int unblocked = EvalComplexTestFixture::KingShieldPair(Board(FEN_KING_STORM_UNBLOCKED), WHITE).storm.mg;
+	const int blocked = EvalComplexTestFixture::KingCover(Board(FEN_KING_STORM_BLOCKED), WHITE).storm.mg;
+	const int unblocked = EvalComplexTestFixture::KingCover(Board(FEN_KING_STORM_UNBLOCKED), WHITE).storm.mg;
 
 	REQUIRE(unblocked < 0);
 	CHECK(blocked == unblocked / 2);
@@ -207,10 +207,10 @@ TEST_CASE("Eval - king safety: every contribution has an endgame endpoint of exa
 	Board board(fen);
 
 	for (const eColor color : {WHITE, BLACK}) {
-		const KingPawnShield shield = EvalComplexTestFixture::KingShieldPair(board, color);
-		CHECK(shield.shelter.eg == 0);
-		CHECK(shield.storm.eg == 0);
-		CHECK(EvalComplexTestFixture::KingFilesPair(board, color).eg == 0);
+		const KingPawnCover cover = EvalComplexTestFixture::KingCover(board, color);
+		CHECK(cover.shelter.eg == 0);
+		CHECK(cover.storm.eg == 0);
+		CHECK(cover.files.eg == 0);
 	}
 }
 
@@ -252,9 +252,8 @@ TEST_CASE("Eval - king safety: the combined contribution stays inside its declar
 
 	Board board(fen);
 	for (const eColor color : {WHITE, BLACK}) {
-		const KingPawnShield shield = EvalComplexTestFixture::KingShieldPair(board, color);
-		const int combined =
-		    shield.shelter.mg + shield.storm.mg + EvalComplexTestFixture::KingFilesPair(board, color).mg;
+		const KingPawnCover cover = EvalComplexTestFixture::KingCover(board, color);
+		const int combined = cover.shelter.mg + cover.storm.mg + cover.files.mg;
 		CAPTURE(combined);
 		CHECK(combined <= EvalComplexTestFixture::KingSafetyMaxPenalty);
 		CHECK(combined >= -EvalComplexTestFixture::KingSafetyMaxPenalty);
