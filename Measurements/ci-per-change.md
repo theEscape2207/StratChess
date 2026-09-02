@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-09-02 | 0e5e9c3 (pawnless K+R vs K+R scaled to 4/16, #436) | 8fd70c3 | 19980 | 10+0.1 | **+1.32 +/- 3.54** | non-regression |
 | 2026-09-01 | e792a81 (all of #128: exact-draw classes, scaled rook endings, the wrong-bishop fortress, the mop-up gate and the quiescence guard) | b3ab55a (fork point of the arc, not of one change) | 19980 | 10+0.1 | **+1.98 +/- 3.48** | non-regression |
 | 2026-08-29 | ff5d2f5 (LMR depth clamp keeps one main-tree ply, #363) | be5ca11 | 19980 | 10+0.1 | **+9.64 +/- 3.63** | gain |
 | 2026-08-28 | a7a49d4 (SEE pruning in quiescence, #86 PR 3) | 643dcd0 | 19980 | 10+0.1 | **+18.41 +/- 3.62** | gain |
@@ -23,6 +24,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-09-02 — 0e5e9c3 (pawnless K+R vs K+R scaled to 4/16, #436) (19980 games)
+
+18 shards x 555 pairs, pooled Ptnml(0-2) [780, 2237, 3878, 2317, 778], score 50.19%, run `33568346899`, 3 h 05 min wall-clock. 95% interval **[-2.2, +4.9]**. Not uniform, and at this effect size it could not be: 10 shards favour the candidate, 7 the reference and shard 12 is an exact tie, with the pooled winning buckets ahead by 78 pairs of 9990. **What it settles**: scaling a class reached in 4.5% of games costs nothing measurable — any regression is bounded at about 2.2 Elo, which is the question the run was dispatched to answer, since the class boundary was established from the corpus (`Docs/MoveQuality.md`: 0 of 592 games entering below +100 were decisive, 309 of 309 entering at >= +250 were won) rather than from a match. **What it does not settle**: the value of the constant. Post-scale magnitudes top out at 16 cp, so `ROOK_VS_ROOK_SCALE = 4` and an exact zero are not separable by this instrument at any affordable game count; the choice between them rests on the ordering argument in `Eval.h`. Bench found identical node counts and best moves on all 8 positions, so no part of this is a search-speed effect. Interval width 3.54 against the instrument's calibrated 4.15 at the same game count — narrower because a near-null result produces fewer decisive pairs. Zero illegal moves, zero time losses, zero disconnects, zero illegal-PV warnings (#310); all 18 shards green
 
 ### 2026-09-01 — e792a81 (all of #128: exact-draw classes, scaled rook endings, the wrong-bishop fortress, the mop-up gate and the quiescence guard) (19980 games)
 
