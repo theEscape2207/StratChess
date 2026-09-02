@@ -168,15 +168,19 @@ def parse_comment(comment: str, where: str):
 
 PAWN_RICH = 3  # both sides holding this many pawns => no fortress / bare-piece ending
 
-
 def material_classes(board: chess.Board):
     """Drawish material configurations, as (class, stronger colour) pairs.
+
+    The colour is None for a class holding level material, where nothing in the
+    position names a stronger side. The caller resolves one from the sign of the
+    reported score, and an exactly level score resolves to no side at all.
 
     Named for what the defender can hold, which is what the evaluator has no
     concept of (issue #128):
       KminorK   K + one minor vs bare K -- drawn by insufficient material
       RvsMinor  KR vs KB / KR vs KN, pawnless -- the defender normally holds
       RminorR   KRB / KRN vs KR, pawnless -- a fortress the eval scores a piece up
+      RvsR      KR vs KR, pawnless -- material is level, so read the <100 band
       OCB       one bishop each on opposite colours, pawns allowed, nothing else
     """
     def counts(c):
@@ -194,14 +198,29 @@ def material_classes(board: chess.Board):
             found.append(("RvsMinor", color))
         if (p, r, q) == (0, 0, 0) and n + b == 1 and weak == (0, 0, 0, 0, 0):
             found.append(("KminorK", color))
+    if white == (0, 0, 0, 1, 0) and black == (0, 0, 0, 1, 0):
+        found.append(("RvsR", None))  # level material: no side is stronger
     if (white[1], black[1], white[3], black[3], white[4], black[4]) == (0, 0, 0, 0, 0, 0) \
             and white[2] == black[2] == 1:
         wb = board.pieces(chess.BISHOP, chess.WHITE)
         bb = board.pieces(chess.BISHOP, chess.BLACK)
         dark = chess.SquareSet(chess.BB_DARK_SQUARES)
         if (next(iter(wb)) in dark) != (next(iter(bb)) in dark):
-            found.append(("OCB", chess.WHITE))  # stronger side resolved from the score
+            found.append(("OCB", None))  # level material: no side is stronger
     return found
+
+
+def level_entry(white_view: int):
+    """-> (stronger colour, |score|) for a level-material class, or (None, 0).
+
+    None means the reporting build saw no edge at all. Handing those to White --
+    which a `>= 0` test does, and roughly a third of the entries are exactly 0 --
+    credits its colour advantage to a side that does not exist, so they are
+    counted on their own side-free line instead.
+    """
+    if white_view == 0:
+        return (None, 0)
+    return ((chess.WHITE if white_view > 0 else chess.BLACK), abs(white_view))
 
 
 def board_phase(board: chess.Board) -> int:
@@ -250,6 +269,9 @@ def new_stats() -> dict:
         # first position that reaches each class. Plies would over-weight the
         # long games, which are exactly the drawn ones.
         "material_class": Counter(),  # (class, score bucket, outcome) -> n
+        # Level-material classes entered on a score of exactly 0. No side is
+        # stronger, so these carry a result but no conversion rate.
+        "class_level": Counter(),     # (class, drawn|decisive) -> n
         # Per-GAME rows, kept so every headline rate can carry a game-clustered
         # bootstrap interval. Plies within one game are strongly correlated, so a
         # per-ply interval would be far too tight to believe.
@@ -354,11 +376,9 @@ def analyse_game(headers, moves, st, where, seen_fens=None):
             for cls, color in material_classes(board):
                 if cls in reached:
                     continue
-                if cls == "OCB":
-                    # Symmetric class: the score decides which side is stronger.
+                if color is None:
                     white_view = signed if mover == chess.WHITE else -signed
-                    reached[cls] = ((chess.WHITE if white_view >= 0 else chess.BLACK),
-                                    abs(white_view))
+                    reached[cls] = level_entry(white_view)
                 elif color == mover:
                     reached[cls] = (color, signed)
         try:
@@ -405,10 +425,10 @@ def analyse_game(headers, moves, st, where, seen_fens=None):
     for cls, color in material_classes(board):
         if cls in reached:
             continue
-        if cls == "OCB":
+        if color is None:
             view = last_seen.get(chess.WHITE)
             if view is not None:
-                reached[cls] = ((chess.WHITE if view >= 0 else chess.BLACK), abs(view))
+                reached[cls] = level_entry(view)
         elif color in last_seen:
             reached[cls] = (color, last_seen[color])
 
@@ -536,6 +556,9 @@ def analyse_game(headers, moves, st, where, seen_fens=None):
         st["squander"][(score_bucket(min(pk[0], 99999)), pk[1], outcome_for(color))] += 1
 
     for cls, (color, cp) in reached.items():
+        if color is None:
+            st["class_level"][(cls, "drawn" if result == "1/2-1/2" else "decisive")] += 1
+            continue
         # Exclusive bands. ">=100" would read as cumulative and is not; the
         # report adds the cumulative row itself.
         bucket = ">=250" if cp >= 250 else ("+100-249" if cp >= 100 else "<100")
@@ -868,6 +891,17 @@ def report(st: dict, out=sys.stdout) -> None:
         p, lo, hi = bootstrap(rows, lambda sm: sum(r[2] for r in sm) / len(sm) if sm else None)
         w(f"  {cls:10s} {bucket:24s} {len(rows):7d} {pct(len(rows), st['games'])} "
           f"{ci(p, lo, hi):>22s}   {c['win']}/{c['draw']}/{c['loss']}\n")
+    lvl = defaultdict(lambda: Counter())
+    for key, n in st["class_level"].items():
+        cls, kind = key.split("|")
+        lvl[cls][kind] += n
+    if lvl:
+        w("  Entered on a score of exactly 0, where no side is the stronger one and a\n"
+          "  conversion rate is undefined -- reported as the drawn rate instead.\n")
+        for cls in sorted(lvl):
+            tot = sum(lvl[cls].values())
+            w(f"  {cls:10s} {'level (no side)':24s} {tot:7d} {pct(tot, st['games'])} "
+              f"{'drawn ' + pct(lvl[cls]['drawn'], tot).strip():>22s}\n")
 
     w("\nSquandered advantages: peak reported score of a side vs its result\n")
     sq = defaultdict(lambda: Counter())
@@ -973,6 +1007,39 @@ Ke7 {-9.00/12 0.300s} 3. Qxe5# {+M1/13 0.100s, Win by checkmate} 1-0
 """
 
 
+LEVEL_TEST_PGN = """\
+[Event "level-white-ahead"]
+[White "A"]
+[Black "B"]
+[Result "1-0"]
+[TimeControl "10+0.1"]
+[SetUp "1"]
+[FEN "r3k3/8/8/8/8/8/8/R3K3 w - - 0 1"]
+
+1. Ra2 {+0.25/10 0.100s} Ra7 {-0.20/10 0.100s} 1-0
+
+[Event "level-black-ahead"]
+[White "A"]
+[Black "B"]
+[Result "1-0"]
+[TimeControl "10+0.1"]
+[SetUp "1"]
+[FEN "r3k3/8/8/8/8/8/8/R3K3 w - - 0 1"]
+
+1. Ra2 {-0.25/10 0.100s} Ra7 {+0.20/10 0.100s} 1-0
+
+[Event "level-dead-level"]
+[White "A"]
+[Black "B"]
+[Result "1-0"]
+[TimeControl "10+0.1"]
+[SetUp "1"]
+[FEN "r3k3/8/8/8/8/8/8/R3K3 w - - 0 1"]
+
+1. Ra2 {0.00/10 0.100s} Ra7 {0.00/10 0.100s} 1-0
+"""
+
+
 def self_test(out=sys.stdout) -> bool:
     """Fixture checks for the parser and the per-game accounting.
 
@@ -1003,6 +1070,20 @@ def self_test(out=sys.stdout) -> bool:
         got = parse_comment(text, "self-test")
         check(f"parse_comment {text!r}", got == want, f"{got}")
 
+    # The classifier, including the near-misses each class must NOT swallow: one
+    # extra rook or one extra minor is a different, winning ending.
+    material_cases = [
+        ("3k4/8/2K5/R7/1r6/8/8/8 w - - 0 1", {"RvsR"}),
+        ("3k4/8/2K5/R7/1r6/6N1/8/8 w - - 0 1", {"RminorR"}),      # KRN vs KR
+        ("3k4/8/2K5/R7/1r6/8/8/7R w - - 0 1", set()),             # KRR vs KR
+        ("3k4/8/2K5/R7/8/6n1/8/8 w - - 0 1", {"RvsMinor"}),       # KR vs KN
+        ("3k4/8/2K5/R7/1r6/8/7P/8 w - - 0 1", set()),             # a pawn is not pawnless
+        ("3k4/8/2K5/8/8/6N1/8/8 w - - 0 1", {"KminorK"}),
+    ]
+    for fen, want in material_cases:
+        got = {cls for cls, _color in material_classes(chess.Board(fen))}
+        check(f"material_classes {fen.split()[0]}", got == want, f"{sorted(got)}")
+
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "match.pgn"
         path.write_text(SELF_TEST_PGN, encoding="utf-8")
@@ -1018,6 +1099,24 @@ def self_test(out=sys.stdout) -> bool:
           st.get("phase_clock") is not None and "clock>8s" in str(st["swing_clock"]),
           "first moves are banded above 8s, which only holds before the move time "
           "is subtracted")
+
+    # Attribution in a level-material class, which no colour in the position can
+    # settle. All three games are won by White: crediting the dead-level one to
+    # White would show up below as a second win rather than a decisive level row.
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "match.pgn"
+        path.write_text(LEVEL_TEST_PGN, encoding="utf-8")
+        lv = analyse_file(str(path))
+
+    mc = lv["material_class"]          # analyse_file returns joined keys
+    check("level class: a positive score names White",
+          mc.get("RvsR|<100|win") == 1, f"{mc}")
+    check("level class: a negative score names Black",
+          mc.get("RvsR|<100|loss") == 1, f"{mc}")
+    check("level class: an exact zero names no side",
+          sum(mc.values()) == 2, f"{sum(mc.values())} attributed rows, expected 2")
+    check("level class: the exact zero keeps its result",
+          lv["class_level"].get("RvsR|decisive") == 1, f"{lv['class_level']}")
     return not failures
 
 

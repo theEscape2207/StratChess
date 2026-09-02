@@ -771,10 +771,10 @@ int EvalComplex::WrongBishopFortress(std::span<const BITBOARD> boards) noexcept
 //	Description: Scale for a pawnless position with at least one rook and no
 //	             queens — the branch of EndgameScale() reached only after its
 //	             early-outs, so it is free to count pieces.
-//	Returns:	 A fractional scale for the two drawish rook classes,
+//	Returns:	 A fractional scale for the three drawish rook classes,
 //	             ENDGAME_SCALE_MAX for everything else.
 //
-// Both classes are stated as exact counts rather than as inequalities. A second
+// Every class is stated as exact counts rather than as inequalities. A second
 // rook or a second minor changes the ending: KRR vs KR wins, and so does KR+BN
 // vs KR often enough that lumping it in here would discount a real advantage.
 //
@@ -785,10 +785,15 @@ int EvalComplex::PawnlessRookScale(std::span<const BITBOARD> boards) noexcept
 	const int whiteMinors = std::popcount(boards[ePiece::WHITE_KNIGHT]) + std::popcount(boards[ePiece::WHITE_BISHOP]);
 	const int blackMinors = std::popcount(boards[ePiece::BLACK_KNIGHT]) + std::popcount(boards[ePiece::BLACK_BISHOP]);
 
-	// KR+minor vs KR. Orientation-free: with one rook each, the side holding the
-	// extra minor is the one the sum identifies, whichever color it is.
-	if (whiteRooks == 1 && blackRooks == 1)
-		return (whiteMinors + blackMinors == 1) ? ROOK_AND_MINOR_VS_ROOK_SCALE : ENDGAME_SCALE_MAX;
+	// KR+minor vs KR, and bare KR vs KR. Orientation-free: with one rook each, the
+	// side holding the extra minor is the one the sum identifies, whichever color it
+	// is, and with no minors at all there is no stronger side to identify.
+	if (whiteRooks == 1 && blackRooks == 1) {
+		const int minors = whiteMinors + blackMinors;
+		if (minors == 0)
+			return ROOK_VS_ROOK_SCALE;
+		return (minors == 1) ? ROOK_AND_MINOR_VS_ROOK_SCALE : ENDGAME_SCALE_MAX;
+	}
 
 	// KR vs K+minor, both orientations. The rook's side must be otherwise empty:
 	// KR+minor vs K+minor is a different, winning ending.

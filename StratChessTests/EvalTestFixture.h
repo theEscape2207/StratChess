@@ -76,6 +76,12 @@ static constexpr const char* FEN_MOPUP_MARGINAL_CENTER = "8/8/2k5/8/5N2/8/8/b3K3
 static constexpr const char* FEN_ROOK_AND_MINOR_VS_ROOK = "4k2r/8/8/8/8/5N2/3R4/4K3 w - - 0 1";
 static constexpr const char* FEN_ROOK_VS_MINOR = "4k2n/8/8/8/8/8/3R4/4K3 w - - 0 1";
 
+// Level material, so the class has no stronger side and the whole score is
+// positional (#436). White's rook is on the 7th and Black's is passive on its
+// own back rank, which is what makes the unscaled score non-zero — a position
+// scoring zero could not tell a scale from a clamp.
+static constexpr const char* FEN_ROOK_VS_ROOK = "r3k3/3R4/8/8/8/8/8/4K3 w - - 0 1";
+
 // Color-symmetry regression cases (issue #125) — see MirrorFen below.
 
 // White queen on c6: the case that exposes the pre-fix getEvalBoard defect.
@@ -194,6 +200,7 @@ static constexpr const char* kSymmetryFens[] = {
     // mirror and so cannot discriminate a sign error in the scaling arithmetic.
     FEN_ROOK_AND_MINOR_VS_ROOK,
     FEN_ROOK_VS_MINOR,
+    FEN_ROOK_VS_ROOK,
 };
 
 // Swaps the case of a single character; digits and other characters pass
@@ -323,6 +330,7 @@ struct EvalComplexTestFixture {
 	// numbers, which a sweep is expected to change.
 	static constexpr int RookAndMinorVsRookScale = EvalComplex::ROOK_AND_MINOR_VS_ROOK_SCALE;
 	static constexpr int RookVsMinorScale = EvalComplex::ROOK_VS_MINOR_SCALE;
+	static constexpr int RookVsRookScale = EvalComplex::ROOK_VS_ROOK_SCALE;
 
 	// The score before any endgame scale — what Evaluate() would have returned
 	// without the classifier. Lets a scaled case assert the discount reached the

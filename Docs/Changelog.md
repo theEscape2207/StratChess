@@ -54,6 +54,33 @@ another script covers this one, and the claim is now verified whatever the cover
 check had been reachable only for Build-tier entries, so a Tooling coverer losing its `-SelfTest`
 would have removed coverage without a word.
 
+## 2026-09-02 — Pawnless rook against rook is a scaled class
+
+`EndgameScale()` walked past pawnless K+R vs K+R: with one rook each and no minors,
+`PawnlessRookScale()` fell through to `ENDGAME_SCALE_MAX`. Material is level in that class, so the
+whole surviving score is positional — PST, rook file and mobility on a four-man board — and over 400
+positions taken from strength run `33429454765` it read a median of 22 cp and a maximum of 64.
+
+That run also settled what the score is worth. The class is reached in 901 of 19,980 games (4.5%),
+and it separates completely: not one of the 368 games entering it below +100 was decisive, nor was
+any of the 224 entered dead level, while all 309 entering at ≥ +250 were won — the latter scored
+from a leaf where the rook has already fallen and the material is no longer the class. So the low
+band, the one a scale acts on, is the one whose magnitude predicts nothing.
+
+`ROOK_VS_ROOK_SCALE` is a quarter, joining the two existing drawish rook classes rather than clamping
+to zero: #128's bar for an exact zero is that no defence loses, and a third of the games passing
+through this class are decisive. It is left by winning the rook, so a zero would remove the activity
+ordering that gets there. The same 400 positions now read a median of 5 cp. Node counts and best moves
+on the bench suite are unchanged, so the classifier costs nothing measurable.
+
+`Scripts/analyze_move_quality.py` gained the class as `RvsR`. A level-material class names no
+stronger side, so `material_classes()` now returns `None` for one and the caller resolves it from the
+sign of the entry score; an exact zero resolves to no side at all and is counted on its own line,
+where the drawn rate is the only defined statistic. The rule it replaces gave every zero to White,
+along with White's colour advantage. `Docs/MoveQuality.md` carries the numbers as a dated addendum,
+their replication on run `33568346899`, and why a level class's rows stay pooled-only even so: split
+by build they measure the builds' scales rather than their play. Closes #436.
+
 ## 2026-09-01 — Elo ledgers move to `Measurements/`, one file per table
 
 `Docs/EloLog.md` held four tables whose only structural separation was a heading, and every row

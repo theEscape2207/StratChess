@@ -174,6 +174,38 @@ TEST_CASE("Eval - pawnless rook endings are scaled, not clamped", "[eval]")
 	}
 }
 
+TEST_CASE("Eval - rook against rook is discounted, keeping the sign of the positional score", "[eval]")
+{
+	// The class the other two cannot cover: material is level, so there is no
+	// stronger side and no material floor under the score. Everything left is
+	// positional, and the assertion is that it survives the scale with its sign
+	// intact — a clamp to zero would lose the activity gradient the ending is
+	// actually decided by.
+	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
+	REQUIRE(complexEval != nullptr);
+
+	for (const std::string& colored : {std::string(FEN_ROOK_VS_ROOK), MirrorFen(FEN_ROOK_VS_ROOK)}) {
+		CAPTURE(colored);
+		Board board(colored);
+
+		REQUIRE(complexEval->Breakdown(board).endgame_scale == EvalComplexTestFixture::RookVsRookScale);
+
+		// The fixture FEN is chosen so the unscaled score is not zero; without
+		// that the two assertions below would both hold trivially.
+		const int raw = EvalComplexTestFixture::RawWhitePov(board);
+		REQUIRE(raw != 0);
+
+		// Side-to-move POV against white POV, so compare magnitudes and take the
+		// sign from the side to move. MirrorFen flips both, so the mirror runs
+		// the same assertions with every sign reversed.
+		const int score = eval->Evaluate(board);
+		CAPTURE(score, raw);
+		REQUIRE(score > 0);
+		REQUIRE(score < std::abs(raw));
+	}
+}
+
 TEST_CASE("Eval - the scaled rook classes are stated as exact counts", "[eval]")
 {
 	// A second rook or a second minor is a different ending, and a pawn takes
@@ -182,7 +214,8 @@ TEST_CASE("Eval - the scaled rook classes are stated as exact counts", "[eval]")
 	const char* fen = GENERATE("4k2r/8/8/8/8/8/3R1R2/4K3 w - - 0 1",   // KRR vs KR
 	                           "4k2r/8/8/8/8/5N2/3R1B2/4K3 w - - 0 1", // KR+BN vs KR
 	                           "4k1nr/8/8/8/8/5N2/3R4/4K3 w - - 0 1",  // KR+N vs KR+N
-	                           "4k2r/8/8/8/8/5N2/3R3P/4K3 w - - 0 1"); // KR+N+P vs KR
+	                           "4k2r/8/8/8/8/5N2/3R3P/4K3 w - - 0 1",  // KR+N+P vs KR
+	                           "r3k3/3R4/8/8/8/8/7P/4K3 w - - 0 1");   // KR+P vs KR
 	CAPTURE(fen);
 
 	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);

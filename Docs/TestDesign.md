@@ -225,6 +225,9 @@ nonzero score in one of those classes *is* the defect.
 - One pawn keeps K+B+P vs K out of the drawn class it is a single capture away from
 - Minors on both sides (K+N vs K+B) are asserted *unscaled*, recording an exclusion from the first
   cut so that widening the classifier later is a visible change
+- Rook against rook is level material, so it is the one scaled class with no stronger side and no
+  material floor: its case asserts that the unscaled score is nonzero to begin with, since a position
+  scoring zero cannot tell a scale from a clamp
 - The #129 honesty invariant extended: on a scaled position, the printed rows plus the endgame
   adjustment still reproduce `total` exactly
 
