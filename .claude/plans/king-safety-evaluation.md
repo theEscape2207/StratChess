@@ -379,7 +379,8 @@ approve rather than for an agent to start:
   default `reference_ref = merge-base` is *wrong* for this run and would silently answer a different
   question: by then PRs 1 and 2 are already in `main`, so the merge base contains them and the run
   would measure PR 3's attack term alone while being recorded as the feature's Elo
-  (`Docs/CI.md` → `reference_ref`). Tag the pre-series commit in PR 1 so it cannot be lost. The tag
+  (`Docs/CI.md` → `reference_ref`). The tag is **`king-safety-pre`**, cut in PR 1 at `e0eb564` — the
+  `main` this series forked from — so it cannot be lost. It
   also means unrelated `main` commits landing during the series contaminate the comparison; note in
   the row what else merged in between.
 - **One lab run in PR 4** for the single most promising ablation — with `reference_ref` set to the
