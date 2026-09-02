@@ -239,27 +239,47 @@ earns its place on top of shelter.
 ```
 danger    = Σ_type ATTACK_WEIGHT[type] * zone_attackers[enemy][type]
           + ZONE_SQUARE_WEIGHT * zone_attacks[enemy]
-          + FLIGHT_WEIGHT * (FLIGHT_BASE - pseudo_safe_king_moves)
 clamped   = clamp(danger, 0, KING_DANGER_MAX)
 penalty   = min(KING_DANGER_CAP, clamped * clamped / KING_DANGER_DIVISOR)
 ```
 
-**The clamp to zero is load-bearing, and not for overflow.** `FLIGHT_BASE -
-pseudo_safe_king_moves` goes negative for a king with more flight squares than the base, which is a
-safety *bonus*; squaring it would turn that straight back into a penalty and make the curve
-non-monotone at the safe end. Clamping first is what makes `penalty` a monotone non-decreasing
-function of `danger`. `KING_DANGER_MAX` additionally bounds the multiplication, which with sane
-weights is unreachable in `int` — it is there so the bound is a property of the code rather than of
-the current table values.
+#### The third input, king flight squares, was designed in and left out on measurement
 
-`pseudo_safe_king_moves` = king ring squares neither occupied by our own pieces nor in
-`attacks_all[enemy]` — the only reader of `attacks_all`, and the only use of the enemy king's
-attacks, which is otherwise not a weighted attacker. **It is pseudo-safe, not safe**: the shared
-slider attacks are generated against the current occupancy, which still contains our own king, so a
-square *behind* the king along a checking ray reads as unattacked. The error is one-directional — it
-under-states danger, never over-states it — and the alternative is a second unconditional sliding
-pass with the king removed, at a cost the signal does not justify. The name carries the caveat so no
-later reader mistakes this for a legal king-move count.
+The draft added `FLIGHT_WEIGHT * (FLIGHT_BASE - pseudo_safe_king_moves)`, with
+`pseudo_safe_king_moves` = king-ring squares neither occupied by our own pieces nor attacked by
+the enemy. It was implemented, tested and benched, and then removed: **it cost about 3% of nps on
+its own — as much as the two surviving inputs together.** The whole term is -6.2% with it and
+-3.1% without (five interleaved runs a side, ~0.4% spread; PR 3's full bench table is in
+Validation). Against a 2% budget for the feature that is not a component to keep on the strength
+of an intuition nothing has measured.
+
+The cost is structural rather than an implementation detail, which is why it was cut instead of
+optimised. The count needs the union of **every** enemy attack set, so it puts a 64-bit OR with a
+loop-carried dependency inside the per-piece loop, on every piece, at every leaf. Three attempts
+moved it by nothing: restricting the union to the enemy king's zone (the ring is a subset of the
+zone, so this is exact) measured -6.5%, hoisting it into a scalar local -6.2%, and accumulating
+the zone counts in locals instead of writing them through the aggregates struct made the whole
+term *worse*, at -8.9%. That last one is worth recording on its own: it is the opposite of what
+PR 1's aliasing lesson predicted, and it was measured twice.
+
+What is lost is real and should not be glossed: a king with no escape squares is the signal this
+term is most obviously missing, and the count was also the only reader of the enemy king's own
+attacks. What is gained besides the nps is that the **pseudo-safe approximation disappears rather
+than being documented** — it was never a legal king-move count (the shared slider attacks are
+generated against an occupancy that still contains our own king, so a square *behind* the king
+along a checking ray read as unattacked, one-directionally under-stating danger), and that caveat
+no longer has to be carried by a name.
+
+Reintroducing it is a change that must carry its own measured benefit against a ~3% nps bill —
+either from #117, or on the back of a pawn/king-square cache (#131) that has already bought the
+headroom. It is not a follow-up to be picked up on the grounds that it was in the original design.
+
+**The clamp to zero survives the removal, deliberately.** With no negative input left it is
+unreachable today, and that is exactly why it is easy to delete later by someone who does not know
+why it was there: it is what makes monotonicity a property of the curve rather than of its
+callers, and the first term to contribute a safety *bonus* — flight squares were precisely that —
+would otherwise be squared straight back into a penalty. `KING_DANGER_MAX` separately bounds the
+multiplication, so that bound is a property of the code rather than of the current weights.
 
 Quadratic-with-cap rather than a hand-written danger table: it is non-linear by construction (two
 attackers cost four times one, which is the property the term exists for), monotone after the clamp,
@@ -282,7 +302,10 @@ to nothing as pieces come off — the reason #99 was a hard prerequisite.
 
 Each is bounded, and the bound is **absolute and per color**, not an average: shelter and storm by
 their table extrema times three files, king files by its two penalties times three files, attack
-pressure by `KING_DANGER_CAP`. `KING_SAFETY_MAX_PENALTY` is their sum, declared in `Eval.h` beside
+pressure by `KING_DANGER_CAP`. The pawn-cover half is named separately as `KING_PAWN_COVER_WORST`,
+because only that half is reachable by a pawn structure and a test asserting the tables are
+reachable has to measure against it rather than against the sum.
+`KING_SAFETY_MAX_PENALTY` is their sum, declared in `Eval.h` beside
 the constants and tied to the tables by `static_assert` over the table extrema — so a later retune
 that pushes past the declared bound fails to compile rather than quietly outweighing a piece. A
 runtime test asserts the same bound over the eval corpus, which is what catches a bound that is

@@ -267,13 +267,9 @@ assertion is vacuous.
   only at an absurd input
 - **Attack pressure** asserts inequalities, never tuned values: two attackers cost more than one,
   and a lone queen beside the king costs something — the case the rejected minimum-attacker gate
-  would have scored at exactly zero. Both hold the flight count fixed across the pair so the
-  attacker is the only variable. A third pair holds the pressure fixed and varies only the king's
-  own flight squares
-- **The pseudo-safe blind spot** is *documented*, not asserted away: a king in check from a rook
-  counts the square directly behind it along the ray as safe, because the shared slider attacks are
-  generated against an occupancy that still holds that king. The case pins the resulting count so
-  the approximation cannot change silently, and states that stepping there is illegal
+  would have scored at exactly zero. A third pair isolates the danger count's other half, holding
+  the attacker count at one and varying only how much of the zone that one queen covers. Each pair
+  changes exactly one White piece, so nothing else in the position can move the row
 - **Invariants**: every contribution's `eg` endpoint is exactly 0; all four blend to 0 at phase 0;
   a kingless board contributes nothing; and the combined per-color `mg` stays inside
   `KING_SAFETY_MAX_PENALTY` over the corpus. The constant is tied to the tables by a `static_assert`,

@@ -179,21 +179,6 @@ struct PieceAggregates {
 	// two aggregates always describe the same set of pieces -- pawns and the
 	// king are in neither.
 	int zone_attacks[NUM_COLORS];
-	// King-ring squares this color's king could step to that hold none of its
-	// own pieces and that no enemy piece attacks.
-	//
-	// PSEUDO-safe, not safe, and the name is the warning: the shared slider
-	// attacks are generated against an occupancy that still contains this very
-	// king, so a square directly behind it along a checking ray reads as
-	// unattacked. The error is one-directional -- it can only ever UNDER-state
-	// danger -- and removing it costs a second unconditional sliding pass with
-	// the king lifted off. This is not a legal king-move count and must not be
-	// used as one.
-	//
-	// Unlike the counts above, 0 here is not a neutral value: it reads as a king
-	// with nowhere to go. eval_king_attack therefore gates on endgame_scale
-	// rather than on the aggregates, so a zeroed pass cannot invent danger.
-	int pseudo_safe_king_moves[NUM_COLORS];
 };
 
 // EvalContext — shared, per-call intermediates for EvalComplex::Evaluate().
@@ -535,11 +520,6 @@ class EvalComplex final : public EvalManager {
 	};
 	// clang-format on
 	static constexpr short KING_ZONE_SQUARE_WEIGHT = 1;
-	static constexpr short KING_FLIGHT_WEIGHT = 2;
-	// The flight-square count a king is scored against. Below it the king is
-	// short of squares and danger rises; above it the difference is negative,
-	// which is what the clamp in eval_king_attack exists to absorb.
-	static constexpr short KING_FLIGHT_BASE = 3;
 
 	// The quadratic's divisor and its ceiling. The CAP is what keeps this term
 	// commensurate with the pawn-cover tables above rather than dwarfing them:
@@ -557,7 +537,7 @@ class EvalComplex final : public EvalManager {
 	static_assert(KING_DANGER_MAX < 46341, "KING_DANGER_MAX squared must fit in an int");
 	static_assert(KING_DANGER_MAX * KING_DANGER_MAX / KING_DANGER_DIVISOR >= KING_DANGER_CAP,
 	              "The clamp binds before the cap -- the cap is then unreachable and not the ceiling");
-	static_assert(EvalRowMin(KING_ATTACK_WEIGHT) >= 0 && KING_ZONE_SQUARE_WEIGHT >= 0 && KING_FLIGHT_WEIGHT >= 0,
+	static_assert(EvalRowMin(KING_ATTACK_WEIGHT) >= 0 && KING_ZONE_SQUARE_WEIGHT >= 0,
 	              "A negative danger weight makes the penalty non-monotone in the attack it measures");
 
 	// The largest magnitude one colour's combined king-safety contribution can
@@ -811,10 +791,16 @@ class EvalComplex final : public EvalManager {
 	static KingPawnCover eval_king_pawn_cover(const EvalContext& ctx, eColor color) noexcept;
 	static ScorePair eval_king_attack(const EvalContext& ctx, eColor color) noexcept;
 
-	// The danger curve of D6 as a pure function of the weighted count that
-	// feeds it, split out so a monotonicity sweep can drive it directly instead
-	// of hunting for positions that happen to produce each input -- including
-	// the negative ones, which are the reason the first clamp exists.
+	// The danger curve of D6 as a pure function of the weighted count that feeds
+	// it, split out so a monotonicity sweep can drive it directly instead of
+	// hunting for positions that happen to produce each input.
+	//
+	// Every weight is non-negative and every count is a population count, so a
+	// negative `danger` is unreachable today. The lower clamp is kept anyway:
+	// it is what makes monotonicity a property of THIS function rather than of
+	// its callers, and a later term contributing a safety BONUS -- king flight
+	// squares were exactly that, before their cost took them out -- would
+	// otherwise be squared straight back into a penalty.
 	static constexpr int KingDangerPenalty(int danger) noexcept
 	{
 		const int clamped = Clamp(danger, 0, KING_DANGER_MAX);

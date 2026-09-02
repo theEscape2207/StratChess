@@ -402,9 +402,10 @@ TEST_CASE("Eval - king danger: the penalty is monotone non-decreasing in the dan
 
 TEST_CASE("Eval - king danger: a negative count is a safe king, not a squared one", "[eval]")
 {
-	// The failure this pins: a king with more flight squares than
-	// KING_FLIGHT_BASE produces a negative danger, and squaring before clamping
-	// would turn that safety bonus straight back into a large penalty.
+	// No weight is negative and no count can be, so nothing reaches this branch
+	// today. It is asserted anyway: the clamp is what makes monotonicity a
+	// property of the curve rather than of its callers, and the first term to
+	// contribute a safety BONUS would otherwise be squared back into a penalty.
 	CHECK(EvalComplexTestFixture::KingDangerPenalty(-40) == 0);
 	CHECK(EvalComplexTestFixture::KingDangerPenalty(-1) == 0);
 	CHECK(EvalComplexTestFixture::KingDangerPenalty(0) == 0);
@@ -441,53 +442,34 @@ TEST_CASE("Eval - eval_king_attack: two attackers cost more than one", "[eval]")
 TEST_CASE("Eval - eval_king_attack: a lone queen beside the king is not free", "[eval]")
 {
 	// The case the rejected two-attacker gate would have scored at exactly zero.
-	// Both positions leave Black's king the same two flight squares, so the
-	// queen is the only thing that differs.
+	// White's queen is the only piece that differs between the two positions, so
+	// it is the only thing that can move the row.
 	Board withQueen(FEN_KING_ATTACK_QUEEN);
 	Board without(FEN_KING_ATTACK_NONE);
 
-	REQUIRE(EvalComplexTestFixture::PseudoSafeKingMoves(withQueen, BLACK) ==
-	        EvalComplexTestFixture::PseudoSafeKingMoves(without, BLACK));
 	REQUIRE(EvalComplexTestFixture::ZoneAttackers(withQueen, WHITE, MOB_QUEEN) == 1);
+	REQUIRE(EvalComplexTestFixture::ZoneAttackers(without, WHITE, MOB_QUEEN) == 0);
 
 	CHECK(EvalComplexTestFixture::KingAttackPair(withQueen, BLACK).mg < 0);
 	CHECK(EvalComplexTestFixture::KingAttackPair(withQueen, BLACK).mg <
 	      EvalComplexTestFixture::KingAttackPair(without, BLACK).mg);
 }
 
-TEST_CASE("Eval - eval_king_attack: losing a flight square costs, at equal pressure", "[eval]")
+TEST_CASE("Eval - eval_king_attack: more attacked zone squares cost more", "[eval]")
 {
-	// Same White queen, same zone counts; Black's g7 pawn is the only difference,
-	// and it is in its own king's way rather than an attacker's.
-	Board boxed(FEN_KING_ATTACK_QUEEN);
-	Board airy(FEN_KING_FLIGHT_AIRY);
+	// The second half of the danger count, isolated from the first: one White
+	// queen in both positions, so the attacker count is identical, and only how
+	// much of the zone it covers differs.
+	Board nearQueen(FEN_KING_ATTACK_QUEEN);
+	Board farQueen(FEN_KING_ATTACK_QUEEN_FAR);
 
-	REQUIRE(EvalComplexTestFixture::ZoneAttacks(boxed, WHITE) == EvalComplexTestFixture::ZoneAttacks(airy, WHITE));
-	REQUIRE(EvalComplexTestFixture::PseudoSafeKingMoves(airy, BLACK) >
-	        EvalComplexTestFixture::PseudoSafeKingMoves(boxed, BLACK));
+	REQUIRE(EvalComplexTestFixture::ZoneAttackers(nearQueen, WHITE, MOB_QUEEN) ==
+	        EvalComplexTestFixture::ZoneAttackers(farQueen, WHITE, MOB_QUEEN));
+	REQUIRE(EvalComplexTestFixture::ZoneAttacks(nearQueen, WHITE) >
+	        EvalComplexTestFixture::ZoneAttacks(farQueen, WHITE));
 
-	CHECK(EvalComplexTestFixture::KingAttackPair(boxed, BLACK).mg <
-	      EvalComplexTestFixture::KingAttackPair(airy, BLACK).mg);
-}
-
-TEST_CASE("Eval - pseudo-safe king moves: the x-ray blind spot is counted, by design", "[eval]")
-{
-	// Documents the approximation rather than asserting legality. Black Kd5 is
-	// checked by Rd1; the shared slider attacks are generated against an
-	// occupancy that still holds that king, so the rook's set stops on d5 and d6
-	// behind it reads as unattacked. Stepping to d6 is illegal, and this count
-	// includes it.
-	Board board(FEN_KING_XRAY_BLIND_SPOT);
-	REQUIRE(board.GetPiece(d5) == ePiece::BLACK_KING);
-	REQUIRE(board.GetPiece(d1) == ePiece::WHITE_ROOK);
-
-	// The ring is c4-e4, c5/e5, c6-e6. White's rook covers d4 and its queen on
-	// h1 covers e4 along the long diagonal; nothing else is reached. So six
-	// squares are counted -- and d6 is one of them.
-	CHECK(EvalComplexTestFixture::PseudoSafeKingMoves(board, BLACK) == 6);
-	// If the generation ever starts lifting the king off the occupancy, this
-	// becomes 5 and the comment above becomes wrong -- fail here, not silently.
-	CHECK(EvalComplexTestFixture::PseudoSafeKingMoves(board, BLACK) != 5);
+	CHECK(EvalComplexTestFixture::KingAttackPair(nearQueen, BLACK).mg <
+	      EvalComplexTestFixture::KingAttackPair(farQueen, BLACK).mg);
 }
 
 TEST_CASE("Eval - eval_king_attack: middlegame-only, kingless-safe, and inside the cap", "[eval]")

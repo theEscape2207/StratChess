@@ -140,19 +140,11 @@ static constexpr const char* FEN_KING_ATTACK_NONE = "3q2k1/5ppp/8/8/8/8/8/6K1 w 
 static constexpr const char* FEN_KING_ATTACK_QUEEN = "3q2k1/5ppp/8/7Q/8/8/8/6K1 w - - 0 1";
 static constexpr const char* FEN_KING_ATTACK_ONE = "3q2k1/5ppp/8/7Q/8/8/8/N5K1 w - - 0 1";
 static constexpr const char* FEN_KING_ATTACK_TWO = "3q2k1/5ppp/8/6NQ/8/8/8/6K1 w - - 0 1";
+// One queen again, but on a1, where the long diagonal stops on Black's g7 pawn.
+// The attacker count is still 1; the number of zone squares it covers is 1 rather
+// than 6, which is what isolates the second half of the danger count.
+static constexpr const char* FEN_KING_ATTACK_QUEEN_FAR = "3q2k1/5ppp/8/8/8/8/8/Q5K1 w - - 0 1";
 
-// Flight squares: FEN_KING_ATTACK_QUEEN is the boxed side of the pair, with
-// Black's g7 pawn removed here so its king gains g7 to step to. Nothing on
-// Qh5's rays passes through g7, so the zone counts are identical and only the
-// flight term moves.
-static constexpr const char* FEN_KING_FLIGHT_AIRY = "3q2k1/5p1p/8/7Q/8/8/8/6K1 w - - 0 1";
-
-// The pseudo-safe blind spot (D6). Black Kd5 is in check from Rd1, Black to move.
-// The rook's attack set stops ON the king, so d6 -- the square directly behind it
-// along the checking ray -- is not in that set and reads as safe, though stepping
-// there stays in check. The error is one-directional: it can only ever count too
-// MANY squares, so it under-states danger.
-static constexpr const char* FEN_KING_XRAY_BLIND_SPOT = "3q4/8/8/3k4/8/8/8/3RK2Q b - - 0 1";
 // The worst king this evaluator can be handed: no White pawn on f, g or h, and
 // Black pawns on f3, g3 and h3 — every shelter file at its absence entry, every
 // storm file near its maximum, and the three files still penalised for
@@ -454,10 +446,6 @@ struct EvalComplexTestFixture {
 	static ScorePair KingAttackPair(const Board& board, eColor color)
 	{
 		return EvalComplex::eval_king_attack(BuildContext(board), color);
-	}
-	static int PseudoSafeKingMoves(const Board& board, eColor color)
-	{
-		return BuildContext(board).attacks.pseudo_safe_king_moves[color];
 	}
 	static int ZoneAttackers(const Board& board, eColor color, eMobilePiece type)
 	{
