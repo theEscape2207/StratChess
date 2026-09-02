@@ -82,6 +82,49 @@ static constexpr const char* FEN_ROOK_VS_MINOR = "4k2n/8/8/8/8/8/3R4/4K3 w - - 0
 // scoring zero could not tell a scale from a clamp.
 static constexpr const char* FEN_ROOK_VS_ROOK = "r3k3/3R4/8/8/8/8/8/4K3 w - - 0 1";
 
+// King safety (issue #97). Every case below keeps a queen on each side so the
+// phase is nonzero — all four king-safety contributions are middlegame-only and
+// blend to exactly 0 at phase 0, which would make a bare-king case vacuous.
+//
+// The frame is White Qd1 against Black Qd8/Kg8, so only the White king and the
+// pawns distinguish one case from the next. The queens sit on the d-file rather
+// than the a-file because a queen on a1 attacks h8 along the long diagonal,
+// which makes any case wanting a king in that corner an illegal position — and
+// Board falls back to the starting position for one rather than failing loudly.
+
+// Shield states, all three with the same three White pawns on the board so the
+// comparison is of placement only: on their starting squares, pushed one rank,
+// and moved off the king's three files entirely.
+static constexpr const char* FEN_KING_SHIELD_INTACT = "3q2k1/5ppp/8/8/8/8/5PPP/3Q2K1 w - - 0 1";
+static constexpr const char* FEN_KING_SHIELD_PUSHED = "3q2k1/5ppp/8/8/8/5P1P/6P1/3Q2K1 w - - 0 1";
+static constexpr const char* FEN_KING_SHIELD_ABSENT = "3q2k1/5ppp/8/8/8/8/1PPP4/3Q2K1 w - - 0 1";
+
+// The absence sentinel (D4). A pawn LEVEL with the king is a real pawn and must
+// not read as "no pawn on this file", which indexing by distance-from-the-king
+// would have made indistinguishable. White Ke4 with a pawn on d4 against the
+// same pawn moved to a4, off the king's files.
+static constexpr const char* FEN_KING_PAWN_LEVEL = "3q2k1/8/8/8/3PK3/8/8/3Q4 w - - 0 1";
+static constexpr const char* FEN_KING_PAWN_OFF_FILE = "3q2k1/8/8/8/P3K3/8/8/3Q4 w - - 0 1";
+
+// Storm direction: an enemy pawn BEHIND the king is not storming it. White Kg4
+// with a Black pawn ahead of it on g5, against the same pawn behind it on g3.
+static constexpr const char* FEN_KING_STORM_AHEAD = "3q2k1/8/8/6p1/6K1/8/8/3Q4 w - - 0 1";
+static constexpr const char* FEN_KING_STORM_BEHIND = "3q2k1/8/8/8/6K1/6p1/8/3Q4 w - - 0 1";
+
+// The blocked-storm condition (D4): our shield pawn stands at exactly the
+// storming pawn's rank minus one. Same Black pawn on g3 in both; White's pawn
+// is on g2 (directly in its path) or on f2 (not).
+static constexpr const char* FEN_KING_STORM_BLOCKED = "3q2k1/8/8/8/8/6p1/6P1/3Q2K1 w - - 0 1";
+static constexpr const char* FEN_KING_STORM_UNBLOCKED = "3q2k1/8/8/8/8/6p1/5P2/3Q2K1 w - - 0 1";
+
+// King-file openness (D5), isolated on the g-file. White has no g-pawn in the
+// half-open and open cases, and Black's g-pawn is the only difference between
+// them — a Black pawn on g7 is too far away to contribute any storm, so the
+// king-files row is the only thing that moves.
+static constexpr const char* FEN_KING_FILE_CLOSED = "3q2k1/5ppp/8/8/8/8/5PPP/3Q2K1 w - - 0 1";
+static constexpr const char* FEN_KING_FILE_HALF_OPEN = "3q2k1/5ppp/8/8/8/8/4PP1P/3Q2K1 w - - 0 1";
+static constexpr const char* FEN_KING_FILE_OPEN = "3q2k1/4pp1p/8/8/8/8/4PP1P/3Q2K1 w - - 0 1";
+
 // Color-symmetry regression cases (issue #125) — see MirrorFen below.
 
 // White queen on c6: the case that exposes the pre-fix getEvalBoard defect.
@@ -201,6 +244,12 @@ static constexpr const char* kSymmetryFens[] = {
     FEN_ROOK_AND_MINOR_VS_ROOK,
     FEN_ROOK_VS_MINOR,
     FEN_ROOK_VS_ROOK,
+    // Issue #97: the king-safety terms are direction-aware through a
+    // defender-relative rank index, and every case above is either shield-
+    // symmetric or at phase 0, where all four contributions are 0 anyway.
+    FEN_KING_SHIELD_PUSHED,
+    FEN_KING_STORM_BLOCKED,
+    FEN_KING_FILE_HALF_OPEN,
 };
 
 // Swaps the case of a single character; digits and other characters pass
@@ -284,6 +333,21 @@ inline std::string MirrorFen(std::string_view fen)
 	return MirrorPlacement(placement) + ' ' + (active == "w" ? "b" : "w") + ' ' + MirrorCastling(castling) + ' ' +
 	       MirrorEnPassant(ep) + ' ' + halfmove + ' ' + fullmove;
 }
+// The reconstruction identity every breakdown must satisfy: the per-term net
+// columns plus the endgame adjustment equal the white-POV score. Written once
+// here rather than per test, so a new term is added to it in exactly one place
+// and cannot be silently omitted from a test that would then still pass.
+inline int BreakdownWhitePov(const EvalBreakdown& terms)
+{
+	return (terms.material[WHITE] - terms.material[BLACK]) + (terms.pawns[WHITE] - terms.pawns[BLACK]) +
+	       (terms.rooks[WHITE] - terms.rooks[BLACK]) + (terms.pst[WHITE] - terms.pst[BLACK]) +
+	       (terms.mopup[WHITE] - terms.mopup[BLACK]) + (terms.bishops[WHITE] - terms.bishops[BLACK]) +
+	       (terms.castling[WHITE] - terms.castling[BLACK]) + (terms.mobility[WHITE] - terms.mobility[BLACK]) +
+	       (terms.king_shelter[WHITE] - terms.king_shelter[BLACK]) +
+	       (terms.king_storm[WHITE] - terms.king_storm[BLACK]) + (terms.king_files[WHITE] - terms.king_files[BLACK]) +
+	       terms.endgame_adjustment;
+}
+
 // EvalComplexTestFixture is a friend of EvalComplex (STRAT_ENABLE_TEST_ACCESS,
 // same mechanism as AIPerplex/UciHandler's fixtures) that builds an
 // EvalContext from a Board and forwards to each term, so terms can be
@@ -324,6 +388,35 @@ struct EvalComplexTestFixture {
 		const EvalContext ctx = BuildContext(board);
 		return BlendPhase(EvalComplex::eval_castling(ctx, color), ctx.phase);
 	}
+
+	static int KingShelter(const Board& board, eColor color)
+	{
+		const EvalContext ctx = BuildContext(board);
+		return BlendPhase(EvalComplex::eval_king_shelter_storm(ctx, color).shelter, ctx.phase);
+	}
+	static int KingStorm(const Board& board, eColor color)
+	{
+		const EvalContext ctx = BuildContext(board);
+		return BlendPhase(EvalComplex::eval_king_shelter_storm(ctx, color).storm, ctx.phase);
+	}
+	static int KingFiles(const Board& board, eColor color)
+	{
+		const EvalContext ctx = BuildContext(board);
+		return BlendPhase(EvalComplex::eval_king_files(ctx, color), ctx.phase);
+	}
+	// Unblended, so a test can assert the eg endpoint is 0 rather than infer it
+	// from a low-phase position.
+	static KingPawnShield KingShieldPair(const Board& board, eColor color)
+	{
+		return EvalComplex::eval_king_shelter_storm(BuildContext(board), color);
+	}
+	static ScorePair KingFilesPair(const Board& board, eColor color)
+	{
+		return EvalComplex::eval_king_files(BuildContext(board), color);
+	}
+	static constexpr eSquare KingZoneAnchor(eSquare kingSq) { return EvalComplex::KingZoneAnchor(kingSq); }
+	static constexpr int KingDistanceProbe(eSquare a, eSquare b) { return EvalComplex::KingDistance(a, b); }
+	static constexpr int KingSafetyMaxPenalty = EvalComplex::KING_SAFETY_MAX_PENALTY;
 
 	// The scaled-class factors are private tuning parameters; naming them here
 	// keeps the tests asserting the classification rather than restating the

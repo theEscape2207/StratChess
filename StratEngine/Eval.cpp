@@ -438,6 +438,118 @@ ScorePair EvalComplex::eval_mobility(const EvalContext& ctx, eColor color) noexc
 	                     count[MOB_ROOK] * MOBILITY_ROOK_EG + count[MOB_QUEEN] * MOBILITY_QUEEN_EG};
 }
 
+// The pawn nearest the king among those on one file at or ahead of it. Forward
+// is decreasing square index for White, so "nearest" is the most-significant
+// set bit for White and the least-significant one for Black.
+//
+// Precondition: onFile != 0, already masked to the squares at or ahead of the
+// king -- both are the caller's business, and GetFirst/GetLastPiece's
+// assert(mask != 0) is a Release no-op.
+namespace {
+	eSquare NearestPawnToKing(BITBOARD onFile, eColor color) noexcept
+	{
+		return (color == WHITE) ? Board::GetLastPiece(onFile) : Board::GetFirstPiece(onFile);
+	}
+} // namespace
+
+// eval_king_shelter_storm — the pawn cover in front of one color's king, and
+// the enemy pawns coming at it (issue #97).
+//
+// One scan over the king's own file and its two neighbours produces both. The
+// king's file is the CLAMPED one (KingZoneAnchor), so a king in the corner is
+// scored on the same three files as one on the adjacent file and all three
+// files are always on the board.
+//
+// Only squares at or ahead of the king count: our own pawns behind the king are
+// no shelter, and enemy pawns behind it are not storming it.
+//
+// Middlegame-only, like every other king-safety contribution: with the pieces
+// gone there is nothing left to attack through a hole in the shield, and the
+// endgame king wants to walk forward through its own pawns.
+KingPawnShield EvalComplex::eval_king_shelter_storm(const EvalContext& ctx, eColor color) noexcept
+{
+	// Kingless board (default-constructed or failed-parse only) -- same guard as
+	// eval_pst, eval_mopup and eval_castling.
+	const eSquare kingSq = ctx.king_sq[color];
+	if (kingSq == NO_SQUARE)
+		return KingPawnShield{};
+
+	const eColor enemy = (color == WHITE) ? BLACK : WHITE;
+	const int kingFile = File(KingZoneAnchor(kingSq));
+	const int kingRow = Rank(kingSq);
+
+	// Every square at or ahead of the king's rank, in this color's direction.
+	// White's forward is decreasing index, so its mask is the low
+	// (kingRow + 1) * 8 bits; Black's is everything from its own rank up. Both
+	// shift amounts stay within [0, 56], so neither can hit the shift-by-64
+	// undefined behaviour a "bits above/below the king" formulation invites.
+	const BITBOARD ahead = (color == WHITE) ? (~0ULL >> (56 - kingRow * ONE_ROW)) : (~0ULL << (kingRow * ONE_ROW));
+
+	const BITBOARD ownPawnsAhead = ctx.pawns[color] & ahead;
+	const BITBOARD enemyPawnsAhead = ctx.pawns[enemy] & ahead;
+
+	int shelter = 0;
+	int storm = 0;
+
+	for (int file = kingFile - 1; file <= kingFile + 1; ++file) {
+		const int distance = (file == kingFile) ? 0 : 1;
+		const BITBOARD fileMask = g_bbFileMask[file];
+
+		// 0 -- the absence sentinel -- when this file holds no shield pawn.
+		const BITBOARD ownOnFile = ownPawnsAhead & fileMask;
+		const int shieldRank = ownOnFile ? RelativeRank(NearestPawnToKing(ownOnFile, color), color) : 0;
+		shelter += KING_SHELTER[distance][shieldRank];
+
+		const BITBOARD enemyOnFile = enemyPawnsAhead & fileMask;
+		if (enemyOnFile) {
+			const int stormRank = RelativeRank(NearestPawnToKing(enemyOnFile, color), color);
+			int penalty = KING_STORM[distance][stormRank];
+			// Blocked: our shield pawn stands directly in the storming pawn's
+			// path, so the pawn cannot advance without being exchanged first.
+			if (shieldRank == stormRank - 1)
+				penalty /= 2;
+			storm -= penalty;
+		}
+	}
+
+	return KingPawnShield{ScorePair{shelter, 0}, ScorePair{storm, 0}};
+}
+
+// eval_king_files — penalty for open and half-open files beside one color's
+// king (issue #97). Same three clamped files as the shelter scan.
+//
+// Half-open means WE have no pawn anywhere on the file, open means neither side
+// does. WHOLE-FILE and pawns-only, which deliberately does NOT inherit
+// eval_rooks' forward-span-for-own-pawns / whole-file-for-enemy asymmetry: a
+// pawn behind the king is no shelter, but shelter is what the tables above
+// already measure. What this sub-term prices is a lane an enemy rook can use,
+// and that is a property of the whole file.
+//
+// The overlap with the shelter table -- "no own pawn on this file" scores in
+// both -- is real and deliberate. Keeping it a separate, separately-ablatable
+// row is what lets it be measured on top of shelter rather than assumed.
+ScorePair EvalComplex::eval_king_files(const EvalContext& ctx, eColor color) noexcept
+{
+	const eSquare kingSq = ctx.king_sq[color];
+	if (kingSq == NO_SQUARE)
+		return ScorePair{};
+
+	const eColor enemy = (color == WHITE) ? BLACK : WHITE;
+	const int kingFile = File(KingZoneAnchor(kingSq));
+
+	int penalty = 0;
+	for (int file = kingFile - 1; file <= kingFile + 1; ++file) {
+		const BITBOARD fileMask = g_bbFileMask[file];
+		if (ctx.pawns[color] & fileMask)
+			continue;
+
+		const int distance = (file == kingFile) ? 0 : 1;
+		penalty += (ctx.pawns[enemy] & fileMask) ? KING_FILE_HALF_OPEN[distance] : KING_FILE_OPEN[distance];
+	}
+
+	return ScorePair{-penalty, 0};
+}
+
 // eval_mopup — mop-up evaluation for one color (original term issue #70 /
 // epic #110). In decisively-won, pawnless endings, reward driving the losing
 // king to the edge/corner and closing the distance between the two kings —
@@ -874,10 +986,15 @@ int EvalComplex::RawWhitePov(const EvalContext& ctx) noexcept
 	// breakdown whose rows do not add up is a debugging tool that lies.
 	int blended[2] = {0, 0};
 	for (const eColor c : {WHITE, BLACK}) {
+		// Shelter and storm are two rows out of one scan, blended separately so
+		// each stays the literal addend its breakdown row reports.
+		const KingPawnShield shield = eval_king_shelter_storm(ctx, c);
+
 		blended[c] = BlendPhase(eval_pawns(ctx, c), ctx.phase) + BlendPhase(eval_rooks(ctx, c), ctx.phase) +
 		             BlendPhase(eval_pst(ctx, c), ctx.phase) + BlendPhase(eval_mopup(ctx, c), ctx.phase) +
 		             BlendPhase(eval_bishops(ctx, c), ctx.phase) + BlendPhase(eval_castling(ctx, c), ctx.phase) +
-		             BlendPhase(eval_mobility(ctx, c), ctx.phase);
+		             BlendPhase(eval_mobility(ctx, c), ctx.phase) + BlendPhase(shield.shelter, ctx.phase) +
+		             BlendPhase(shield.storm, ctx.phase) + BlendPhase(eval_king_files(ctx, c), ctx.phase);
 	}
 
 	return (ctx.material[WHITE] + blended[WHITE]) - (ctx.material[BLACK] + blended[BLACK]);
@@ -940,6 +1057,9 @@ EvalBreakdown EvalComplex::Breakdown(const Board& board) const noexcept
 	const int raw = RawWhitePov(ctx);
 	const int adjustment = ApplyEndgameScale(raw, ctx.endgame_scale) - raw;
 
+	const KingPawnShield shieldWhite = eval_king_shelter_storm(ctx, WHITE);
+	const KingPawnShield shieldBlack = eval_king_shelter_storm(ctx, BLACK);
+
 	// Rows are reported BLENDED at this position's phase — i.e. the number each
 	// term actually contributes to `total`, not its mg or eg endpoint. That is
 	// what keeps the printed table summing to the score (the #129 honesty
@@ -956,6 +1076,9 @@ EvalBreakdown EvalComplex::Breakdown(const Board& board) const noexcept
 		.bishops  = { BlendPhase(eval_bishops(ctx, WHITE), ctx.phase), BlendPhase(eval_bishops(ctx, BLACK), ctx.phase) },
 		.castling = { BlendPhase(eval_castling(ctx, WHITE), ctx.phase), BlendPhase(eval_castling(ctx, BLACK), ctx.phase) },
 		.mobility = { BlendPhase(eval_mobility(ctx, WHITE), ctx.phase), BlendPhase(eval_mobility(ctx, BLACK), ctx.phase) },
+		.king_shelter = { BlendPhase(shieldWhite.shelter, ctx.phase), BlendPhase(shieldBlack.shelter, ctx.phase) },
+		.king_storm   = { BlendPhase(shieldWhite.storm,   ctx.phase), BlendPhase(shieldBlack.storm,   ctx.phase) },
+		.king_files   = { BlendPhase(eval_king_files(ctx, WHITE), ctx.phase), BlendPhase(eval_king_files(ctx, BLACK), ctx.phase) },
 		.phase    = ctx.phase,
 		.endgame_scale      = ctx.endgame_scale,
 		.endgame_adjustment = adjustment,

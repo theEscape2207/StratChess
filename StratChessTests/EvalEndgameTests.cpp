@@ -336,11 +336,7 @@ TEST_CASE("Eval - Breakdown(): the endgame row accounts for the whole scale", "[
 	REQUIRE(terms.endgame_scale == 0);
 	REQUIRE(terms.endgame_adjustment != 0);
 
-	const int whitePov = (terms.material[WHITE] - terms.material[BLACK]) + (terms.pawns[WHITE] - terms.pawns[BLACK]) +
-	                     (terms.rooks[WHITE] - terms.rooks[BLACK]) + (terms.pst[WHITE] - terms.pst[BLACK]) +
-	                     (terms.mopup[WHITE] - terms.mopup[BLACK]) + (terms.bishops[WHITE] - terms.bishops[BLACK]) +
-	                     (terms.castling[WHITE] - terms.castling[BLACK]) +
-	                     (terms.mobility[WHITE] - terms.mobility[BLACK]) + terms.endgame_adjustment;
+	const int whitePov = BreakdownWhitePov(terms);
 
 	REQUIRE(terms.total == whitePov);
 }

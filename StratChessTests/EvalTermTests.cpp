@@ -497,16 +497,18 @@ TEST_CASE("Eval - the per-term functions sum exactly to EvalComplex::Evaluate()'
 	const int matWhite = board.GetMaterialScore(WHITE);
 	const int matBlack = board.GetMaterialScore(BLACK);
 
-	const int bonusWhite = EvalComplexTestFixture::Pawns(board, WHITE) + EvalComplexTestFixture::Rooks(board, WHITE) +
-	                       EvalComplexTestFixture::Pst(board, WHITE) + EvalComplexTestFixture::Mopup(board, WHITE) +
-	                       EvalComplexTestFixture::Bishops(board, WHITE) +
-	                       EvalComplexTestFixture::Castling(board, WHITE) +
-	                       EvalComplexTestFixture::Mobility(board, WHITE);
-	const int bonusBlack = EvalComplexTestFixture::Pawns(board, BLACK) + EvalComplexTestFixture::Rooks(board, BLACK) +
-	                       EvalComplexTestFixture::Pst(board, BLACK) + EvalComplexTestFixture::Mopup(board, BLACK) +
-	                       EvalComplexTestFixture::Bishops(board, BLACK) +
-	                       EvalComplexTestFixture::Castling(board, BLACK) +
-	                       EvalComplexTestFixture::Mobility(board, BLACK);
+	const int bonusWhite =
+	    EvalComplexTestFixture::Pawns(board, WHITE) + EvalComplexTestFixture::Rooks(board, WHITE) +
+	    EvalComplexTestFixture::Pst(board, WHITE) + EvalComplexTestFixture::Mopup(board, WHITE) +
+	    EvalComplexTestFixture::Bishops(board, WHITE) + EvalComplexTestFixture::Castling(board, WHITE) +
+	    EvalComplexTestFixture::Mobility(board, WHITE) + EvalComplexTestFixture::KingShelter(board, WHITE) +
+	    EvalComplexTestFixture::KingStorm(board, WHITE) + EvalComplexTestFixture::KingFiles(board, WHITE);
+	const int bonusBlack =
+	    EvalComplexTestFixture::Pawns(board, BLACK) + EvalComplexTestFixture::Rooks(board, BLACK) +
+	    EvalComplexTestFixture::Pst(board, BLACK) + EvalComplexTestFixture::Mopup(board, BLACK) +
+	    EvalComplexTestFixture::Bishops(board, BLACK) + EvalComplexTestFixture::Castling(board, BLACK) +
+	    EvalComplexTestFixture::Mobility(board, BLACK) + EvalComplexTestFixture::KingShelter(board, BLACK) +
+	    EvalComplexTestFixture::KingStorm(board, BLACK) + EvalComplexTestFixture::KingFiles(board, BLACK);
 
 	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
 	REQUIRE(complexEval != nullptr);
@@ -582,11 +584,7 @@ TEST_CASE("Eval - Breakdown(): total agrees with Evaluate(), and the rows reprod
 
 	REQUIRE(terms.total == eval->Evaluate(board));
 
-	const int whitePov = (terms.material[WHITE] - terms.material[BLACK]) + (terms.pawns[WHITE] - terms.pawns[BLACK]) +
-	                     (terms.rooks[WHITE] - terms.rooks[BLACK]) + (terms.pst[WHITE] - terms.pst[BLACK]) +
-	                     (terms.mopup[WHITE] - terms.mopup[BLACK]) + (terms.bishops[WHITE] - terms.bishops[BLACK]) +
-	                     (terms.castling[WHITE] - terms.castling[BLACK]) +
-	                     (terms.mobility[WHITE] - terms.mobility[BLACK]) + terms.endgame_adjustment;
+	const int whitePov = BreakdownWhitePov(terms);
 
 	const int expectedTotal = (board.GetCurrentColor() == WHITE) ? whitePov : -whitePov;
 	REQUIRE(terms.total == expectedTotal);
