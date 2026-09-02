@@ -190,6 +190,25 @@ above them says so rather than implying a provenance they do not have.
 which the codebase does not have — `Board::GetFirstPiece` is lsb-only. Add a `Bits`-level
 `GetLastPiece`/`countl_zero` helper alongside it rather than open-coding a reverse scan in `Eval.cpp`.
 
+### D5a: The overlap this term has with `eval_pawns` is larger than the one D5 names
+
+Removing the g2 pawn in front of a castled White Kg1 costs, from three terms that do not know about
+each other: about 48 from `KING_SHELTER` (best entry to absence entry), 12 to 22 from king-file
+openness, and up to 40 from `ISOLATED_PAWN_PENALTY` newly applying to f2 and h2. Roughly **110 cp for
+one pawn**, larger than any other positional signal in the evaluator outside material.
+
+That is not necessarily wrong — a shattered castled king often is worth that — but it is not a
+decision anyone made, and PR 4's ablation set does not reach it: it covers `eval_castling` and the
+mg king PST, not `eval_pawns`. If PR 2 or PR 3 regresses, "the isolated-pawn penalty is being paid
+twice on the king's files" belongs on the suspect list, and a fourth ablation configuration
+(suppress `ISOLATED_PAWN_PENALTY` on the king's three files) is the way to test it.
+
+A related correction to PR 4's premise, which the ablation cannot discover on its own: **shelter does
+not subsume `eval_castling`.** An uncastled Ke1 with d2/e2/f2 intact scores the same shelter as a
+castled Kg1 with f2/g2/h2 intact. Dropping `eval_castling` because "shelter now covers it" would be
+dropping the only middlegame signal that distinguishes the two, since the mg king PST is rank-only.
+Drop it on match evidence or not at all.
+
 ### D5: King-file openness uses whole-file, pawn-only definitions, stated here rather than inherited
 
 A king file is **half-open** when our side has no pawn anywhere on it, and **open** when neither side
@@ -353,15 +372,27 @@ That premise looks wrong: within one inlined `RawWhitePov` the compiler could al
 two calls on the same square, so there was little duplicate left to remove. The refactor's value is
 what it makes possible in PR 3, not a speed-up here.
 
-**PR 2 measured: -5.4% nps** (5 alternating runs per side; before median 3.010 M, after 2.844 M,
-means -5.4%, well outside the ~1% run-to-run spread). That is roughly -9 Elo of speed at the
-project's 1.7 Elo per 1% conversion, and it overruns the 2% budget below on PR 2 alone — before PR 3
-adds anything. Folding the file-openness loop into the shelter scan recovered 1.8 of the original
-7.3%; what remains is the scan itself, run for both colours at every leaf. The two ways out are a
-pawn hash (#131, `not-started/pawn-hash-table.md`) — shelter is a pure function of the pawns and the
-king square, which is exactly what that cache exists for — or dropping sub-terms the PR 4 ablation
-cannot justify. Which of those, and whether the SPRT runs before or after, is the project owner's
-call.
+**PR 2 measured: about -5.5% nps**, well outside the ~1% run-to-run spread (two order-balanced
+sessions of 5 and 3 alternating runs per side: medians 3.010 M vs 2.844 M, then 2.961 M vs 2.785 M).
+That is roughly -9 Elo of speed at the project's 1.7 Elo per 1% conversion, and it overruns the 2%
+budget below on PR 2 alone, before PR 3 adds anything.
+
+Two rounds of optimisation bound what is recoverable without changing the algorithm. Folding the
+file-openness loop into the shelter scan recovered 1.8 of an original -7.3%. A second round —
+`g_bbFileMask` made `constexpr` so the file loop is not indexing a runtime array, and the
+`& ahead` intersections hoisted out of the loop — recovered **nothing measurable**. What is left is
+the scan itself: three files, both colours, at every leaf.
+
+So the honest cost of this shape is ~5.5% nps, and the only route that removes rather than shaves it
+is a pawn hash (#131, `not-started/pawn-hash-table.md`) — shelter, storm and openness are a pure
+function of the pawns plus the king square, which is exactly what that cache exists for, and it can
+live in `ThreadData` rather than on `EvalManager`, so the Lazy SMP contract survives. Whether that is
+worth doing is a question for the SPRT below, which measures the term NET of its own speed cost.
+
+**Delta pruning headroom.** `AIPerplex.h`'s `delta_pruning_margin = 200` now has less room under it:
+one pawn capture beside a king can move the positional score by 50-100 cp in a ply (shelter 48,
+files 22, storm up to 30), against roughly 35 before. 200 still covers a pawn plus that, but a #117
+retune upward should re-examine the margin rather than assume it.
 
 **PRs 2 and 3 — strength.** `Run-Bench.ps1` first: the incremental budget for the whole feature is
 2% nps (≈3.4 Elo of speed). Then a local SPRT against a **merge-base build** (never the anchor):
@@ -430,6 +461,11 @@ intuitive term.
 | Which sub-terms and overlap ablations survived, with measured Elo | `Docs/Changelog.md`, issue #97, `Measurements/ci-per-change.md` |
 | New `[eval]` coverage | `Docs/TestDesign.md` |
 | `GetLastPiece` helper contract (D4) | comment beside `Board::GetFirstPiece` |
+| Storm and king-file entries are penalty MAGNITUDES, and the bound depends on their sign (D7) | `static_assert` in `Eval.h` |
+| `distance` is measured from the CLAMPED file, so `Kh1` scores the h-file as adjacent (D3) | comment in `eval_king_pawn_cover` |
+| The ~110 cp three-term overlap on one shield pawn, and the fourth ablation it argues for (D5a) | issue #97 and PR 4's ablation set |
+| Shelter does not subsume `eval_castling` (D5a) | PR 4's PR body, before any decision to drop it |
+| Delta-pruning headroom shrank; re-examine on a #117 retune | comment beside `delta_pruning_margin`, if PR 4 keeps the term |
 
 Delete this file once PR 4 lands and the table above is discharged. Nothing durable should survive
 only here.
