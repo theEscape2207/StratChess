@@ -462,7 +462,7 @@ namespace {
 //
 // One function rather than three because the file loop, the clamped file and
 // the shield rank are shared -- the shield rank IS the blocked-storm test, and
-// splitting the scan measured about 3% of nps for nothing. The three results
+// splitting the scan measured about 2% of nps for nothing. The three results
 // stay separate all the way to their own breakdown rows, which is what the
 // ablation in PR 4 needs; only the loop is shared.
 //
@@ -492,6 +492,10 @@ KingPawnCover EvalComplex::eval_king_pawn_cover(const EvalContext& ctx, eColor c
 
 	const BITBOARD ownPawns = ctx.pawns[color];
 	const BITBOARD enemyPawns = ctx.pawns[enemy];
+	// Shelter and storm see only the part of the board at or ahead of the king;
+	// openness below is a whole-file property and reads the unmasked sets.
+	const BITBOARD ownPawnsAhead = ownPawns & ahead;
+	const BITBOARD enemyPawnsAhead = enemyPawns & ahead;
 
 	int shelter = 0;
 	int storm = 0;
@@ -503,14 +507,18 @@ KingPawnCover EvalComplex::eval_king_pawn_cover(const EvalContext& ctx, eColor c
 		const BITBOARD ownOnFile = ownPawns & fileMask;
 		const BITBOARD enemyOnFile = enemyPawns & fileMask;
 
-		// Shelter and storm see only the part of the file at or ahead of the
-		// king: our own pawns behind it are no cover, and enemy pawns behind it
+		// `distance` is measured from the CLAMPED file, so for a king on h1 the
+		// h-file -- the one actually in front of it -- takes the adjacent row and
+		// the g-file takes the own-file row. That is the price of the clamp, not
+		// a mix-up.
+
+		// Our own pawns behind the king are no cover, and enemy pawns behind it
 		// are not storming it. 0 -- the absence sentinel -- when there is none.
-		const BITBOARD ownAhead = ownOnFile & ahead;
+		const BITBOARD ownAhead = ownPawnsAhead & fileMask;
 		const int shieldRank = ownAhead ? RelativeRank(NearestPawnToKing(ownAhead, color), color) : 0;
 		shelter += KING_SHELTER[distance][shieldRank];
 
-		const BITBOARD enemyAhead = enemyOnFile & ahead;
+		const BITBOARD enemyAhead = enemyPawnsAhead & fileMask;
 		if (enemyAhead) {
 			const int stormRank = RelativeRank(NearestPawnToKing(enemyAhead, color), color);
 			int penalty = KING_STORM[distance][stormRank];

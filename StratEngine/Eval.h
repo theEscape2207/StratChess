@@ -449,7 +449,9 @@ class EvalComplex final : public EvalManager {
 	//
 	// INDEX 0 MEANS "NO SUCH PAWN ON THIS FILE", in both tables. It is
 	// unambiguous because no pawn can stand on rank 1 or rank 8, so a real pawn
-	// always indexes 2..7 and entries [1] and [8-1] are unreachable padding.
+	// always indexes 2..7. Index [1] is the only unreachable entry -- [7] is a
+	// real bucket (a White pawn on g7 in front of Kg1 reaches it), so a tuner
+	// must not treat its zero as free padding.
 	//
 	// SHELTER is a bonus (a missing shield pawn is the negative entry at index
 	// 0); STORM is a penalty magnitude, subtracted by the term. A storm pawn
@@ -496,9 +498,20 @@ class EvalComplex final : public EvalManager {
 	static constexpr int KING_SAFETY_MAX_PENALTY =
 	    (KING_SAFETY_WORST_PENALTY > KING_SAFETY_BEST_BONUS) ? KING_SAFETY_WORST_PENALTY : KING_SAFETY_BEST_BONUS;
 
-	// A king-safety swing that can outweigh a minor piece is a retune that has
-	// gone wrong, not a stronger term.
-	static_assert(KING_SAFETY_MAX_PENALTY < 300, "King safety can outweigh a piece -- rescale the tables");
+	// KING_SAFETY_MAX_PENALTY bounds the positive direction by the shelter
+	// extremum alone, which is only correct while the storm and king-file entries
+	// are penalty MAGNITUDES. A negative one among them would turn that sub-term
+	// into a bonus and step outside the declared bound without failing anything
+	// below, so the sign is asserted rather than assumed.
+	static_assert(EvalRowMin(KING_STORM[0]) >= 0 && EvalRowMin(KING_STORM[1]) >= 0 && KING_FILE_OPEN[0] >= 0 &&
+	                  KING_FILE_OPEN[1] >= 0 && KING_FILE_HALF_OPEN[0] >= 0 && KING_FILE_HALF_OPEN[1] >= 0,
+	              "Storm and king-file entries are penalty magnitudes -- a negative one breaks the bound below");
+
+	// One colour's swing is bounded here; the swing BETWEEN the two sides is
+	// twice it, so this ceiling still permits a king-safety difference above a
+	// minor piece. It is a tripwire against a retune going an order of magnitude
+	// wrong, not a claim that the term cannot decide a game.
+	static_assert(KING_SAFETY_MAX_PENALTY < 300, "King safety outweighs a piece per colour -- rescale the tables");
 
 	// Mop-up evaluation (won pawnless endgames) — see issue #70 / epic #110.
 	// Gated on: pawnless + decisive material lead. Rewards pushing the losing

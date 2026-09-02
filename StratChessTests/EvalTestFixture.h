@@ -119,11 +119,19 @@ static constexpr const char* FEN_KING_STORM_UNBLOCKED = "3q2k1/8/8/8/8/6p1/5P2/3
 
 // King-file openness (D5), isolated on the g-file. White has no g-pawn in the
 // half-open and open cases, and Black's g-pawn is the only difference between
-// them — a Black pawn on g7 is too far away to contribute any storm, so the
-// king-files row is the only thing that moves.
+// them. That pawn IS inside White's storm scan and does index the storm table —
+// the row it lands in is zero today, which is why the king-files row is the only
+// thing that moves. The test asserts that zero rather than assuming it, so a
+// #117 retune breaks it loudly instead of silently ending the isolation.
 static constexpr const char* FEN_KING_FILE_CLOSED = "3q2k1/5ppp/8/8/8/8/5PPP/3Q2K1 w - - 0 1";
 static constexpr const char* FEN_KING_FILE_HALF_OPEN = "3q2k1/5ppp/8/8/8/8/4PP1P/3Q2K1 w - - 0 1";
 static constexpr const char* FEN_KING_FILE_OPEN = "3q2k1/4pp1p/8/8/8/8/4PP1P/3Q2K1 w - - 0 1";
+
+// The worst king this evaluator can be handed: no White pawn on f, g or h, and
+// Black pawns on f3, g3 and h3 — every shelter file at its absence entry, every
+// storm file near its maximum, and the three files still penalised for
+// openness. The declared bound has to hold here or it is not a bound.
+static constexpr const char* FEN_KING_SAFETY_WORST = "3q2k1/8/8/8/8/5ppp/1PPP4/3Q2K1 w - - 0 1";
 
 // Color-symmetry regression cases (issue #125) — see MirrorFen below.
 

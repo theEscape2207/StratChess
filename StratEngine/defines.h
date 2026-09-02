@@ -144,7 +144,10 @@ inline constexpr BITBOARD MASK_RANK_6 = 0x0000000000ff0000;
 inline constexpr BITBOARD MASK_RANK_7 = 0x000000000000ff00;
 inline constexpr BITBOARD MASK_RANK_8 = 0x00000000000000ff;
 
-inline const BITBOARD g_bbFileMask[] = {
+// constexpr, not const: Eval.h's Lazy SMP sharing contract already claims this
+// table is compile-time-initialised, and a runtime-initialised array is also a
+// memory load the optimiser cannot fold into a file loop over it.
+inline constexpr BITBOARD g_bbFileMask[] = {
     0x0101010101010101, 0x0202020202020202, 0x0404040404040404, 0x0808080808080808,
     0x1010101010101010, 0x2020202020202020, 0x4040404040404040, 0x8080808080808080U,
 };

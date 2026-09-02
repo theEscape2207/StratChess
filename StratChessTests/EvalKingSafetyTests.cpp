@@ -102,6 +102,10 @@ TEST_CASE("Eval - eval_king_shelter: own pawns behind the king are no shelter", 
 	RequireWhiteKingOn(empty, e4);
 
 	CHECK(EvalComplexTestFixture::KingShelter(behind, WHITE) == EvalComplexTestFixture::KingShelter(empty, WHITE));
+	// Both must be the no-cover result, not merely equal to each other — an
+	// equality alone would also hold for a term that returned a constant.
+	CHECK(EvalComplexTestFixture::KingShelter(behind, WHITE) <
+	      EvalComplexTestFixture::KingShelter(Board(FEN_KING_SHIELD_INTACT), WHITE));
 }
 
 TEST_CASE("Eval - eval_king_shelter: every reachable shield rank mirrors between the colors", "[eval]")
@@ -167,6 +171,42 @@ TEST_CASE("Eval - eval_king_storm: a blocked storm pawn counts half", "[eval]")
 	CHECK(blocked == unblocked / 2);
 }
 
+TEST_CASE("Eval - eval_king_storm: every reachable storm rank mirrors between the colors", "[eval]")
+{
+	// The storm counterpart of the shelter sweep. A Black pawn on g2..g7 in
+	// front of White's Kg1 covers the whole reachable index range, and each is
+	// checked against its color mirror — a defender-relative sign error confined
+	// to the far ranks would survive the ahead/behind and blocked cases alone.
+	const int rank = GENERATE(range(2, 8));
+	CAPTURE(rank);
+
+	std::string placement;
+	for (int row = 8; row >= 1; --row) {
+		if (!placement.empty())
+			placement += '/';
+		if (row == 8)
+			placement += "3q2k1";
+		else if (row == 1)
+			placement += "3Q2K1";
+		else if (row == rank)
+			placement += "6p1";
+		else
+			placement += "8";
+	}
+	const std::string fen = placement + " w - - 0 1";
+	CAPTURE(fen);
+
+	Board board(fen);
+	RequireWhiteKingOn(board, g1);
+	Board mirrored(MirrorFen(fen));
+
+	const int white = EvalComplexTestFixture::KingStorm(board, WHITE);
+	CHECK(white == EvalComplexTestFixture::KingStorm(mirrored, BLACK));
+	// Storm is a penalty or nothing, never a bonus — the sign the bound in
+	// KING_SAFETY_MAX_PENALTY depends on.
+	CHECK(white <= 0);
+}
+
 // ── King-file openness (D5) ───────────────────────────────────────────────────
 
 TEST_CASE("Eval - eval_king_files: open is worse than half-open, which is worse than closed", "[eval]")
@@ -179,6 +219,11 @@ TEST_CASE("Eval - eval_king_files: open is worse than half-open, which is worse 
 	const int open = EvalComplexTestFixture::KingFiles(Board(FEN_KING_FILE_OPEN), WHITE);
 
 	CHECK(closed == 0);
+	// The isolation rests on Black's g7 pawn scoring no storm: it IS inside
+	// White's scan and does index the storm table, at a row that is zero today.
+	// Asserted so a #117 retune breaks this loudly rather than quietly making
+	// the comparison below measure two terms at once.
+	CHECK(EvalComplexTestFixture::KingStorm(Board(FEN_KING_FILE_HALF_OPEN), WHITE) == 0);
 	CHECK(halfOpen < closed);
 	CHECK(open < halfOpen);
 }
@@ -247,7 +292,11 @@ TEST_CASE("Eval - king safety: the combined contribution stays inside its declar
 	// KING_SAFETY_MAX_PENALTY is derived from the table extrema by a
 	// static_assert, which proves the arithmetic. This proves the other half:
 	// that the bound is right about which entries are actually reachable.
-	const char* fen = GENERATE(from_range(kSymmetryFens));
+	// The corpus alone does not reach the extremes — its most shattered king is
+	// nowhere near the bound, so it would pass against one three times too
+	// large. FEN_KING_SAFETY_WORST is the case that makes the claim mean
+	// something, and its own margin is asserted below.
+	const char* fen = GENERATE(from_range(kSymmetryFens), FEN_KING_SAFETY_WORST);
 	CAPTURE(fen);
 
 	Board board(fen);
@@ -258,4 +307,24 @@ TEST_CASE("Eval - king safety: the combined contribution stays inside its declar
 		CHECK(combined <= EvalComplexTestFixture::KingSafetyMaxPenalty);
 		CHECK(combined >= -EvalComplexTestFixture::KingSafetyMaxPenalty);
 	}
+}
+
+TEST_CASE("Eval - king safety: the worst reachable king gets most of the way to the bound", "[eval]")
+{
+	// The other half of the bound claim. The static_assert proves the arithmetic
+	// over the table extrema; this proves those extrema are reachable, so the
+	// constant is a real ceiling rather than one inflated by entries no legal
+	// position can index. White has no f/g/h pawn and Black has three on the
+	// third rank.
+	Board board(FEN_KING_SAFETY_WORST);
+	RequireWhiteKingOn(board, g1);
+
+	const KingPawnCover cover = EvalComplexTestFixture::KingCover(board, WHITE);
+	const int combined = cover.shelter.mg + cover.storm.mg + cover.files.mg;
+	CAPTURE(combined);
+
+	CHECK(combined >= -EvalComplexTestFixture::KingSafetyMaxPenalty);
+	// Within a third of the ceiling. A looser assertion would not distinguish a
+	// tight bound from one that is merely never approached.
+	CHECK(combined < -(EvalComplexTestFixture::KingSafetyMaxPenalty * 2) / 3);
 }
