@@ -282,15 +282,22 @@ these rows come from a later run, post-#128, and are not comparable ply-for-ply 
 
 | Class | Reported | Games | Of all | Observed (95% clustered) | W/D/L |
 |---|---|---|---|---|---|
-| KR vs KR (pawnless) | < +100 | 592 | 3.0% | **0.500** [0.500, 0.500] | 0/592/0 |
+| KR vs KR (pawnless) | < +100 | 368 | 1.8% | **0.500** [0.500, 0.500] | 0/368/0 |
 | KR vs KR (pawnless) | ≥ +250 | 309 | 1.5% | **1.000** [1.000, 1.000] | 309/0/0 |
+| KR vs KR (pawnless) | level, no side | 224 | 1.1% | drawn 100.0% | — |
 
 The class separates completely, and the band that matters is the low one — the reverse of every other
-class here. Below +100 the reported edge is phantom: 592 games, not one of them decisive. At ≥ +250 the
-score is real, because it comes from a leaf where the rook has already fallen and the material is no
-longer this class. Nothing lands in between.
+class here. **Below +100 the reported edge did not predict a decisive result once in 368 games**, and
+the 224 games entered dead level were drawn as well. At ≥ +250 the score does predict one, because it
+comes from a leaf where the rook has already fallen and the material is no longer this class. Nothing
+lands in between.
 
-This is the evidence behind #436: the phantom is the PST, rook-file and mobility terms surviving on a
+Read that as calibration, not as an absence of information. What is established is that the magnitude
+in the low band carries no signal about the result; whether the ordering inside it still steers the
+search usefully is a separate question these rows cannot answer, and it is why #436 discounts the
+class rather than zeroing it.
+
+This is the evidence behind #436: the low band is the PST, rook-file and mobility terms surviving on a
 level-material board, a median of 22 cp and a maximum of 64 over 400 positions sampled from this run.
 
 It **replicates** on run `33568346899`, a fresh 19,980 games in which one side carries the resulting
@@ -298,8 +305,9 @@ scale and the other does not:
 
 | Class | Reported | Games | Of all | Observed (95% clustered) | W/D/L |
 |---|---|---|---|---|---|
-| KR vs KR (pawnless) | < +100 | 650 | 3.3% | **0.500** [0.500, 0.500] | 0/650/0 |
+| KR vs KR (pawnless) | < +100 | 361 | 1.8% | **0.500** [0.500, 0.500] | 0/361/0 |
 | KR vs KR (pawnless) | ≥ +250 | 307 | 1.5% | **1.000** [1.000, 1.000] | 307/0/0 |
+| KR vs KR (pawnless) | level, no side | 289 | 1.4% | drawn 100.0% | — |
 
 Same total separation on a corpus that shares no games with the one above. That run also shows the
 scale itself in the annotations: |score| reported from inside the class has p90 **13** for the
@@ -307,21 +315,28 @@ unscaled build and **3** for the scaled one, which is 4/16 to the digit. **No st
 visible** — the two builds enter the class 777 and 784 times and spend 6.6 and 6.8 plies in it — and
 the low band offers none to find, since it was already saturated at 0.500.
 
-### Symmetric classes cannot be attributed to a build
+### Level-material classes name no stronger side
 
-`RvsR` and `OCB` hold level material, so `material_classes()` returns a placeholder colour and the
-**sign of the entry score** names the stronger side. Two consequences, both of which have produced a
-false signal:
+`RvsR` and `OCB` hold the same material on both sides, so nothing in the position says who is
+better. `material_classes()` returns `None` for their colour and the caller resolves one from the
+**sign of the entry score** — which works only while that score is not zero. Roughly a quarter to a
+third of `RvsR` entries are exactly 0, and a `>= 0` test hands every one of them to White; White then
+appears as the stronger side about 2.5 times as often as Black, and its colour advantage is credited
+to a side that does not exist. Those games are now counted on their own **level, no side** line,
+which reports the drawn rate — the only statistic that is defined without a stronger side.
 
-- **It is White-biased.** An entry scored exactly 0 falls to White under the `>= 0` rule, and roughly
-  a quarter to a third of `RvsR` entries are exactly 0 — White is named the stronger side about 2.5
-  times as often as Black in both runs above.
-- **It is invalid across a build that scales the class.** Scaling truncates small scores toward zero,
-  so entries move out of the low magnitude bands into the exact zero the rule hands to White. Split
-  by build, run `33568346899`'s `< +100` band reads 295/355 — 2.3 standard errors, and it looks
-  exactly like the intended effect. It is not: the whole skew sits in the `|cp| 1–24` bucket the
-  scale compresses, above `|cp| >= 25` it is 150/143, and the control run, where neither build scaled
-  the class, carries a skew of the same size pointing the other way.
+It happens that no exact-zero entry in either run above was decisive (557 games across both classes
+and both runs, all drawn), so the published rows lost nothing to the old rule beyond the games the
+level line now separates out. The guard is in `--self-test`: three level-material games, all won by
+White, one entered at each sign. Restore the `>= 0` rule and the dead-level game reappears as a
+second White win in the conversion row.
 
-Use the pooled rows for a symmetric class. A per-build split of one is only readable when both builds
-value the class identically, which is the case the split is least often wanted for.
+**The rows stay pooled-only even so.** A per-build split of a level-material class measures the
+builds' scales, not their play: scaling compresses small scores toward zero, moving entries down the
+magnitude bands. Run `33568346899`'s `< +100` band splits **145 candidate / 216 reference** — 3.7
+standard errors, and it looks exactly like the change's intended effect. It is not. The skew sits
+entirely in the `|cp| 1–24` bucket the scale compresses; from `|cp| >= 25` up it is 150/142, and the
+control run, where neither build scaled the class, splits 202/166 the other way.
+
+The [Baseline](#baseline-run-33215162562) table above predates the level line, so its `OCB` `< +100`
+row still folds in that run's dead-level entries.
