@@ -452,13 +452,45 @@ function of the pawns plus the king square, which is exactly what that cache exi
 live in `ThreadData` rather than on `EvalManager`, so the Lazy SMP contract survives. Whether that is
 worth doing is a question for the SPRT below, which measures the term NET of its own speed cost.
 
+**PR 3 measured: about -2.5% nps** (two order-balanced sessions of five interleaved runs a side at
+depth 12, medians 2.845 M vs 2.776 M then 2.849 M vs 2.776 M, against a ~0.4% run-to-run spread — a
+tighter spread than PR 2's ~1%, because depth 12 rather than the default depth removes the
+too-fast-to-time positions the script warns about). The shape as designed measured -6.2%; the table
+below is what the ablation bought, and the reasoning is in D6.
+
+| Danger inputs | nps vs `9cdd52e` |
+|---|---|
+| attacker counts only | -2.1% |
+| + attacked zone squares | -3.1% |
+| + king flight squares (as designed) | -6.2% |
+| **shipped** (attackers + zone squares) | **-2.5%** |
+
+That still misses the 2% budget, by less than the measurement's own resolution is wide but not by
+nothing, and the series total against `king-safety-pre` is now roughly **-8%**. Two things follow.
+The king-square-tagged pawn cache left as a follow-up decision after PR 2 is no longer
+optional-feeling: it is the only route that removes rather than shaves this. And PR 4's ablation now
+has a concrete per-sub-term price to weigh, which is a better position to ablate from than PR 2 was
+in.
+
 **Delta pruning headroom.** `AIPerplex.h`'s `delta_pruning_margin = 200` has less room under it than
-before this series, but the halved tables restore it. One pawn capture beside a king moves the
-positional score by ~50 cp typical and ~82 worst (shelter 24, files ≤ 11, storm un-halving ≤ 7,
-isolated 20-40), against roughly 35 before the series. A pawn plus the worst case is 182 against the
-200 margin. At full magnitude the worst case was 125 — the same four terms, since the isolated penalty
-fires on exactly that capture — so a pawn plus that already exceeded the margin. No change is needed
-at the shipped scale, but a #117 retune upward must re-examine it rather than assume it.
+before this series. One pawn capture beside a king moves the positional score by ~50 cp typical and
+~82 worst from PR 2's terms alone (shelter 24, files ≤ 11, storm un-halving ≤ 7, isolated 20-40),
+against roughly 35 before the series. A pawn plus that worst case is 182 against the 200 margin, and
+this paragraph originally stopped there and concluded that no change was needed.
+
+**PR 3 spends what PR 2's halving restored, so that conclusion is re-scoped rather than reused.** The
+same capture now also moves the attack row: the capturing piece lands in or leaves the king zone, and
+the lines it opens or blocks change the zone-square count. Realistically 5-25 cp for one capture — not
+the 120 cap, which takes a whole attacking force — so the worst case goes to roughly 107, and a pawn
+plus that is about 207 against the 200 margin.
+
+The margin is nonetheless **left alone here**, on two grounds. It is not a new class of problem: at the
+pre-PR-2 full magnitude the worst case was already 125, so a pawn plus that exceeded the margin before
+any of this landed. And raising `delta_pruning_margin` is a search change with its own Elo
+consequences, which an evaluation PR's arithmetic cannot justify — it needs its own measurement. What
+is recorded here is that the headroom is negative again in the worst case, so a #117 retune upward, or
+PR 4 keeping all four terms, has to face that rather than inherit a "no change needed" written before
+the attack term existed.
 
 **PRs 2 and 3 — strength.** `Run-Bench.ps1` first: the incremental budget for the whole feature is
 2% nps (≈3.4 Elo of speed). **PR 2 alone breaches that budget at -5.5%, and the breach is accepted
@@ -538,7 +570,10 @@ intuitive term.
 | Shelter does not subsume `eval_castling` (D5a) | PR 4's PR body, before any decision to drop it |
 | Delta-pruning headroom: restored by the halved scale, re-examine on a #117 retune upward | comment beside `delta_pruning_margin`, if PR 4 keeps the term |
 | Shelter ranks 5-6 collapse to equal values at the halved scale; the shape is no longer expressible there | issue #117 |
-| PR 3's attack term must land at a scale consistent with the halved pawn-cover tables, or PR 4 measures shelter in its shadow | PR 3's PR body |
+| PR 3's attack term must land at a scale consistent with the halved pawn-cover tables, or PR 4 measures shelter in its shadow | PR 3's PR body — discharged: `KING_DANGER_CAP` is 120, not the literature's 300-500 |
+| King flight squares cost ~3% nps for an unmeasured signal, so reintroducing them needs their own measured benefit rather than a ticket citing the original design (D6) | comment on `eval_king_attack`, and issue #97 |
+| Accumulating the zone counts in locals measured ~3% SLOWER than writing them through the aggregates struct — the opposite of PR 1's aliasing lesson, and measured twice (D6) | this document only; it is a negative result about the compiler, not about the engine |
+| Delta-pruning headroom is negative again in the worst case once the attack term is counted | comment beside `delta_pruning_margin`, if PR 4 keeps the term |
 
 Delete this file once PR 4 lands and the table above is discharged. Nothing durable should survive
 only here.
