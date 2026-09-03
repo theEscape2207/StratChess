@@ -388,6 +388,21 @@ compiler flags. Eval terms are where nps actually goes; scrutinising a 1% flag w
 unmeasured is the wrong emphasis. Take repeat runs: a single pass has already produced a 12% outlier
 on this hardware, and per-config spread is normally 0.27-1.11%.
 
+**Pricing one term, and what a cache has to beat.** To ask what a single term costs per node, make
+the build compute it **twice** per call and read the delta — the tree is unchanged, so node counts
+stay identical and the aggregate stays valid. Route an argument through a `volatile` first, or the
+optimizer proves the second call redundant and prices half of it (measured on #131: 2.35% before
+defeating CSE, 3.81% after). The figure brackets rather than pins the cost — the second call runs
+with warm caches, which understates, and with an opaque argument the compiler cannot constant-fold,
+which overstates.
+
+What that method established, and what it is worth carrying: **a cache here must remove more than
+~4% of total work to break even.** #131 cached `eval_king_pawn_cover` on an exact pawn + king-square
+tag, hit 67-78%, and measured **-0.7% to -0.3%** — two probes per evaluation into a table larger
+than L1 cost about what the scan they replaced cost (~2-3% of runtime). Our terms are single
+bitboard loops of a few dozen cycles, so the payload has to be much larger than one term before a
+probe amortises. Price the term first; propose the cache second.
+
 **Building the "before" binary.** A bench comparison needs two binaries, and two builds of the same
 worktree cannot coexist — the second overwrites the first in `build/<preset>/`. `Run-EloMatch.ps1`
 solves this internally for tag-resolved references; by hand, for `origin/main` or any other ref:

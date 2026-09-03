@@ -476,11 +476,18 @@ file-openness loop into the shelter scan recovered 1.8 of an original -7.3%. A s
 `& ahead` intersections hoisted out of the loop — recovered **nothing measurable**. What is left is
 the scan itself: three files, both colours, at every leaf.
 
-So the honest cost of this shape is ~5.5% nps, and the only route that removes rather than shaves it
-is a pawn hash (#131, `in-progress/pawn-king-cover-cache.md`) — shelter, storm and openness are a pure
-function of the pawns plus the king square, which is exactly what that cache exists for, and it can
-live in `ThreadData` rather than on `EvalManager`, so the Lazy SMP contract survives. Whether that is
-worth doing is a question for the SPRT below, which measures the term NET of its own speed cost.
+So the honest cost of this shape is ~5.5% nps. A pawn/king-square cache was the route expected to
+remove rather than shave it — shelter, storm and openness are a pure function of the pawns plus the
+king square. **That route is now closed: #131's spike measured it and found nothing.**
+
+Two things the spike settles, both of which this section had wrong. The -5.5% above is an
+**aggregate** nps figure across two builds whose evaluation differs, which `Docs/Workflow.md` →
+Speed and nps warns measures tree shape as much as per-node cost. Priced directly instead — the
+scan computed twice per call at identical node counts — `eval_king_pawn_cover` costs **~2.3% to
+3.8%**, not 5.5%. And a cache over it, at a measured 67-78% hit rate, returned **-0.7% to -0.3%**:
+two probes per evaluation into a table larger than L1 cost about as much as the scan they replace.
+The cost of this shape is therefore structural in the sense PR 4 needs — nothing is coming to
+recover it.
 
 **PR 3 measured: about -2.5% nps** (two order-balanced sessions of five interleaved runs a side at
 depth 12, medians 2.845 M vs 2.776 M then 2.849 M vs 2.776 M, against a ~0.4% run-to-run spread — a
@@ -496,11 +503,10 @@ below is what the ablation bought, and the reasoning is in D6.
 | **shipped** (attackers + zone squares) | **-2.5%** |
 
 That still misses the 2% budget, by less than the measurement's own resolution is wide but not by
-nothing, and the series total against `king-safety-pre` is now roughly **-8%**. Two things follow.
-The king-square-tagged pawn cache left as a follow-up decision after PR 2 is no longer
-optional-feeling: it is the only route that removes rather than shaves this. And PR 4's ablation now
-has a concrete per-sub-term price to weigh, which is a better position to ablate from than PR 2 was
-in.
+nothing, and the series total against `king-safety-pre` is now roughly **-8%**. PR 4's ablation has a
+concrete per-sub-term price to weigh, which is a better position to ablate from than PR 2 was in —
+and it now weighs that price against terms measured at +32.81 Elo together, with **no cache coming
+to refund any of it** (#131, closed on its own measurements).
 
 **Delta pruning headroom.** `AIPerplex.h`'s `delta_pruning_margin = 200` has less room under it than
 before this series. One pawn capture beside a king moves the positional score by ~50 cp typical and
@@ -525,11 +531,12 @@ the attack term existed.
 **PRs 2 and 3 — strength.** `Run-Bench.ps1` first: the incremental budget for the whole feature is
 2% nps (≈3.4 Elo of speed). **PR 2 alone breaches that budget at -5.5%, and the breach is accepted
 rather than the budget revised** — the budget stays the standard PR 3 is held to, and the overrun is
-carried on the expectation that a king-square-tagged pawn cache (#131) recovers most of it. If that
-cache fails its own +2% nps gate, the cost is structural and PR 4's ablation decides whether these
-terms earn it. Then a local SPRT against a **merge-base build** (never the anchor): `NonRegression`
-first, `Gain` second — **for PR 2 this gate was not met and is revised in D9; PR 3 is still held to
-it.** New `[eval]` cases, with matching `Docs/TestDesign.md` entries:
+carried on the expectation that a king-square-tagged pawn cache (#131) recovers most of it. **That
+expectation did not survive: #131 measured the cache at -0.7% to -0.3% and is closed, so the cost is
+structural and PR 4's ablation decides whether these terms earn it.** Then a local SPRT against a
+**merge-base build** (never the anchor): `NonRegression` first, `Gain` second — **for PR 2 this gate
+was not met and is revised in D9; PR 3 is still held to it.** New `[eval]` cases, with matching
+`Docs/TestDesign.md` entries:
 
 - **exact zone masks** for `Kg1`, `Kh1`, `Kg2`, a central king and their mirrors — the enumerated
   table in D3, not merely "three files wide";
