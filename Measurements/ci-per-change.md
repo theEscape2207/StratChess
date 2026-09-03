@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-09-03 | e73d3f2 (ABLATION: `eval_castling` zeroed, #460) | 65e3f76 | 19980 | 10+0.1 | **-9.98 +/- 3.73** | regression |
 | 2026-09-03 | 40d62b1 (middlegame king PST flattened to zero, #97 PR 4) | 0eb981a (the #455 merge; the true merge base 41f6f2a differs from it by documentation only) | 19980 | 10+0.1 | **+18.54 +/- 3.62** | gain |
 | 2026-09-03 | 62c12eb (king safety: shelter, storm, king-file openness and attack pressure, #97 PRs 1-3) | e0eb564 (`king-safety-pre`, fork point of the series, not of one change) | 19980 | 10+0.1 | **+32.81 +/- 3.79** | gain |
 | 2026-09-02 | 0e5e9c3 (pawnless K+R vs K+R scaled to 4/16, #436) | 8fd70c3 | 19980 | 10+0.1 | **+1.32 +/- 3.54** | non-regression |
@@ -26,6 +27,14 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-09-03 -- e73d3f2 (ABLATION: `eval_castling` zeroed, #460) (19980 games)
+
+**An ablation, so the sign is inverted: removing the term costs ~10 Elo, therefore `eval_castling` is worth about +10 and stays.** 18 shards x 555 pairs, pooled Ptnml(0-2) [1040, 2299, 3716, 2065, 870], score 48.56%, run `33781814837`, 3 h 04 min wall-clock. 95% interval **[-13.7, -6.3]**, excluding zero on the negative side by about 2.7 standard errors. The candidate is `main` with `CASTLING_DONE_BONUS` and `CASTLING_LOST_PENALTY` set to 0 -- the function and its call site are untouched, so the ablation changes the term's value and nothing about the code path. **The candidate branch is a measurement artefact and was never merged**; it is deleted, and this row plus the run link are the only record.
+
+**What it settles.** #97 PR 4's row above flattened the middlegame king PST to zero and left `eval_castling` in place, which made it the only square-based signal for the middlegame king. The open question was whether a term derived from castling rights and king file is still paying for itself once the table is flat. It is, decisively, and #460's proposal to drop it on match evidence is answered in the negative. Together with that row this discharges the design document's three-configuration ablation. Zero illegal moves, zero time losses, zero disconnects; all 18 shards green.
+
+**What it does not settle.** The term's *magnitude*: 25/20 was measured against 0/0, not against any other pair of values, so nothing here says the current weights are the best ones -- that is #117's tuning question. Nor does it separate the bonus from the penalty; both were zeroed together.
 
 ### 2026-09-03 -- 40d62b1 (middlegame king PST flattened, #97 PR 4) (19980 games)
 
