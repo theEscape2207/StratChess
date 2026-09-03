@@ -17,9 +17,9 @@ two existing proxies by measurement rather than by assumption.
 **This change will:**
 
 - Move non-pawn piece attack generation into `BuildContext` and keep compact aggregates in
-  `EvalContext` (one all-attacks union per color, per-type mobility counts, per-type king-zone
-  attacker counts, connected-rook pairs), so mobility, `eval_rooks` and king safety all read one
-  generation pass.
+  `EvalContext` (per-type mobility counts, connected-rook pairs, per-type king-zone attacker counts,
+  attacked-zone-square counts), so mobility, `eval_rooks` and king safety all read one generation
+  pass.
 - Add four per-color contributions — `king_shelter`, `king_storm`, `king_files`, `king_attack` —
   each with its own `EvalBreakdown` row.
 - Normalize the king zone so a king on an edge file does not look safer for having a smaller ring.
@@ -36,8 +36,8 @@ two existing proxies by measurement rather than by assumption.
   (D2), for a position `Evaluate()` scores `Draw` without consulting either term.
 - Add a king-tropism (pure distance) bonus. Concrete attacks first; distance only if an ablation
   asks for it.
-- Re-generate slider attacks with the king removed from occupancy to get a legal flight-square
-  count, or generate safe checks. The first version accepts the pseudo-safe approximation (D6).
+- Count the king's flight squares at all, by any approximation, or generate safe checks. The
+  approximation was designed in and cut on measurement (D6).
 - Add pawn-hash caching (the `not-started/pawn-hash-table.md` sketch) — shelter is recomputed per
   node like every other pawn term today. If nps says otherwise, that is a separate change.
 - Delete `eval_castling` or the king PST speculatively. PR 4 decides that on evidence.
@@ -51,20 +51,23 @@ two existing proxies by measurement rather than by assumption.
 `BuildContext` runs one loop per piece type per color and accumulates:
 
 ```
-BITBOARD attacks_all[NUM_COLORS];        // every piece's attacks, pawns and king included
-int      mobility_count[NUM_COLORS][4];  // sum of (popcount(att & usable) - BASE), by type
-int      zone_attackers[NUM_COLORS][4];  // pieces of that type attacking the ENEMY king zone
-int      zone_attacks[NUM_COLORS];       // total zone squares attacked, counting overlaps
-int      connected_rook_pairs[NUM_COLORS];
-BITBOARD king_zone[NUM_COLORS];          // normalized, see D3
+int mobility_count[NUM_COLORS][4];  // sum of (popcount(att & usable) - BASE), by type
+int connected_rook_pairs[NUM_COLORS];
+int zone_attackers[NUM_COLORS][4];  // pieces of that type attacking the ENEMY king zone
+int zone_attacks[NUM_COLORS];       // total zone squares attacked, counting overlaps
 ```
 
 They arrive with their consumers, not all at once. **PR 1 adds only
 `mobility_count` and `connected_rook_pairs`** — the two that have a reader the
 moment they exist — as a `PieceAggregates` struct held by `EvalContext`. The
-remaining four are computed in the same loop when PR 3 introduces the term that
-reads them, so their per-node cost is measured against the signal that pays for
-it rather than banked in a refactor that cannot show a benefit.
+other two are computed in the same loop when PR 3 introduces the term that reads
+them, so their per-node cost is measured against the signal that pays for it
+rather than banked in a refactor that cannot show a benefit.
+
+Every field is a **count**. The draft also held an all-attacks union per color and a stored king
+zone; neither survived. The union had exactly one reader, the flight-square count D6 cut, and the
+zone is cheap enough to recompute where it is used (`EvalComplex::KingZone`) that storing a bitboard
+per color per node to avoid it is not worth the write.
 
 `PieceAggregates` is returned by value from a function taking the bitboards it
 reads, rather than filled through an `EvalContext&`. That is not style: writing
@@ -75,8 +78,8 @@ the same context.
 **Per-type attack unions are deliberately absent.** The issue text asks for them, but no consumer
 in this design reads one: mobility counts, zone-attacker counts and connected-rook pairs are all
 accumulated inside the generation loop, where the per-piece attack board is still in a register, and
-the only union anything reads back is `attacks_all` (for pseudo-safe king moves, D6). Storing six
-more bitboards per color per node buys nothing. If a later term needs them, they are one line to add.
+nothing reads an attack set back afterwards. Storing six more bitboards per color per node buys
+nothing. If a later term needs them, they are one line to add.
 
 The `[4]` arrays are indexed by a **dense, eval-local** knight/bishop/rook/queen index, not by
 `ePieceType` — that enum is sparse (`PAWN = 0, KNIGHT = 2, … KING = 10`, `defines.h`) and has no
@@ -283,8 +286,8 @@ multiplication, so that bound is a property of the code rather than of the curre
 
 Quadratic-with-cap rather than a hand-written danger table: it is non-linear by construction (two
 attackers cost four times one, which is the property the term exists for), monotone after the clamp,
-and has three tunables instead of a hundred. A table's extra shape is not something we can currently
-fit — #117 can replace the formula with one later if the data supports it.
+and has a handful of weights instead of a hundred table entries. A table's extra shape is not
+something we can currently fit — #117 can replace the formula with one later if the data supports it.
 
 Rejected: a hard "fewer than two attackers scores zero" gate, which the earlier draft justified on
 nps. That justification does not survive: by the time the gate could fire, generation, zone
@@ -538,9 +541,11 @@ it.** New `[eval]` cases, with matching `Docs/TestDesign.md` entries:
 - open versus half-open versus pawn-closed king file;
 - one versus two attackers (assert the inequality, not tuned values), and **queen-only pressure**
   scoring nonzero — the case the rejected two-attacker gate would have zeroed;
+- each half of the danger count isolated against the other: equal attacker counts with different
+  zone coverage, and **equal zone coverage with different attacker types**, one position per piece
+  bucket. Without the second, deleting the weighted-attacker term outright passes every other attack
+  case in the file, since coverage moves with the attacker count everywhere else;
 - monotonicity of the danger curve across a sweep, including a negative pre-clamp `danger`;
-- flight-square loss, and a `pseudo_safe_king_moves` case documenting the x-ray blind spot rather
-  than asserting legality;
 - every reachable `SHELTER`/`STORM` bucket and its color mirror;
 - phase fading, `KING_SAFETY_MAX_PENALTY`, kingless board, mirror symmetry, breakdown
   reconstruction.
@@ -586,7 +591,6 @@ intuitive term.
 | Shelter/storm tables are unfitted literature shapes owned by #117 (D4) | comment above the tables in `Eval.h` |
 | King-file definition differs from `eval_rooks` on purpose (D5) | comment on `eval_king_files` |
 | Quadratic-with-cap over a danger table; why the clamp is about sign, not overflow (D6) | comment on `eval_king_attack` |
-| `pseudo_safe_king_moves` is not a legal king-move count, and the error is one-directional (D6) | the value's name plus a comment where it is computed |
 | `KING_SAFETY_MAX_PENALTY` and its derivation from the table extrema | `Eval.h` constant + `static_assert` + corpus assert in `EvalTermTests.cpp` |
 | Which sub-terms and overlap ablations survived, with measured Elo | `Docs/Changelog.md`, issue #97, `Measurements/ci-per-change.md` |
 | New `[eval]` coverage | `Docs/TestDesign.md` |
@@ -598,7 +602,7 @@ intuitive term.
 | Delta-pruning headroom: restored by the halved scale, re-examine on a #117 retune upward | comment beside `delta_pruning_margin`, if PR 4 keeps the term |
 | Shelter ranks 5-6 collapse to equal values at the halved scale; the shape is no longer expressible there | issue #117 |
 | PR 3's attack term must land at a scale consistent with the halved pawn-cover tables, or PR 4 measures shelter in its shadow | PR 3's PR body — discharged: `KING_DANGER_CAP` is 120, not the literature's 300-500 |
-| King flight squares cost ~3% nps for an unmeasured signal, so reintroducing them needs their own measured benefit rather than a ticket citing the original design (D6) | comment on `eval_king_attack`, and issue #97 |
+| King flight squares cost ~3% nps for an unmeasured signal, so reintroducing them needs their own measured benefit rather than a ticket citing the original design (D6) | issue #97 — deliberately NOT a source comment: it is a point-in-time measurement about code that is not there |
 | Accumulating the zone counts in locals measured ~3% SLOWER than writing them through the aggregates struct — the opposite of PR 1's aliasing lesson, and measured twice (D6) | this document only; it is a negative result about the compiler, not about the engine |
 | Delta-pruning headroom is negative again in the worst case once the attack term is counted | comment beside `delta_pruning_margin`, if PR 4 keeps the term |
 

@@ -264,14 +264,18 @@ removing White's queen is how one of them isolates the attacker — and they ass
   twelve squares, or nine where the forward rank falls off the board
 - **The danger curve** is tested as a pure function of its input rather than through positions,
   which is what makes a *sweep* possible: monotone non-decreasing from -200 to 800, exactly 0 for
-  every negative input (the clamp is about sign, not overflow — squaring first would turn a king's
-  spare flight squares into a penalty), and saturating at `KING_DANGER_CAP` from below rather than
+  every negative input (the clamp is about sign, not overflow — squaring first would turn any future
+  safety *bonus* into a penalty), and saturating at `KING_DANGER_CAP` from below rather than
   only at an absurd input
 - **Attack pressure** asserts inequalities, never tuned values: two attackers cost more than one,
   and a lone queen beside the king costs something — the case the rejected minimum-attacker gate
-  would have scored at exactly zero. A third pair isolates the danger count's other half, holding
-  the attacker count at one and varying only how much of the zone that one queen covers. Each pair
-  changes exactly one White piece, so nothing else in the position can move the row
+  would have scored at exactly zero. The danger count's two halves are then isolated against each
+  other in both directions: one queen covering more or less of the zone at a fixed attacker count,
+  and one attacker of each type — knight, bishop, rook, queen — placed to cover the SAME three zone
+  squares, where only the weight can still differ (knight equals bishop, rook worse, queen worst).
+  The second direction is the one that bites: coverage moves with the attacker count in every other
+  case, so without it the weighted-attacker term can be deleted outright and the file still passes.
+  Each case changes exactly one White piece, so nothing else in the position can move the row
 - **Invariants**: every contribution's `eg` endpoint is exactly 0; all four blend to 0 at phase 0;
   a kingless board contributes nothing; and the combined per-color `mg` stays inside
   `KING_SAFETY_MAX_PENALTY` over the corpus. The constant is tied to the tables by a `static_assert`,
