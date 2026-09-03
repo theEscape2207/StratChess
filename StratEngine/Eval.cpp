@@ -310,9 +310,9 @@ ScorePair EvalComplex::eval_castling(const EvalContext& ctx, eColor color) noexc
 	//
 	// Three levels, not two. A binary test puts a full bonus-to-penalty cliff on
 	// one quiet king step (g1->f1), and nothing smooths it: the middlegame king
-	// PST is rank-only (defines.h), so this term is the only file signal in the
-	// middlegame. f is neither sheltered nor exposed, so it scores zero and the
-	// worst single-step swing is halved.
+	// PST is flat (defines.h), so this term is the only square-based signal for
+	// the middlegame king. f is neither sheltered nor exposed, so it scores
+	// zero and the worst single-step swing is halved.
 	const int file = File(kingSq);
 	if (file <= 2 || file >= 6) // a,b,c | g,h -- sheltered
 		return ScorePair{CASTLING_DONE_BONUS, 0};
