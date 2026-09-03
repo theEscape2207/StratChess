@@ -28,7 +28,7 @@ Two depths, deliberately:
 | 6 | #116 + #126 | `passed-and-backwards-pawn-terms.md` (landed, deleted) | Full | 3 |
 | 7 | #111, #114, #115 | `eval-quick-win-terms.md` (landed, deleted) | Full | 3 |
 | 8 | #98 + #113 | `mobility-evaluation.md` (landed, deleted) | Sketch | 2 |
-| 9 | #97 | [`king-safety-evaluation.md`](../in-progress/king-safety-evaluation.md) (in progress) | Full | 2 |
+| 9 | #97 | `king-safety-evaluation.md` (landed, deleted) | Full | 2 |
 | 10 | #112 | [`minor-piece-outposts.md`](minor-piece-outposts.md) | Sketch | 4 |
 | 11 | #128 (+#118 items 2, 5) | `endgame-scale-factors.md` (landed, deleted) | Full | 4 |
 | 12 | #131 | closed on measurement — a cache cannot pay here yet (see issue) | — | — |

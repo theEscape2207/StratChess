@@ -296,16 +296,19 @@ inline constexpr short g_Eval_Bitboards[][ALL_SQUARES] =
 		-2, -1,  0,  0,  0,  0, -1, -2,
 		-3, -2, -1,  0,  0, -1, -2, -3 },
 
-		/* King positional values - opening and middlegame*/
+		/* King positional values - opening and middlegame.
+		   Flat: middlegame king placement is priced by the king-safety terms
+		   (shelter, storm, file openness, attack pressure), which read the pawns
+		   actually in front of the king rather than its rank alone. */
 
 	{
-		-40, -40, -40, -40, -40, -40, -40, -40,
-		-40, -40, -40, -40, -40, -40, -40, -40,
-		-40, -40, -40, -40, -40, -40, -40, -40,
-		-40, -40, -40, -40, -40, -40, -40, -40,
-		-40, -40, -40, -40, -40, -40, -40, -40,
-		-40, -40, -40, -40, -40, -40, -40, -40,
-		-20, -20, -20, -20, -20, -20, -20, -20,
+		0,   0,   0,   0,   0,   0,   0,   0,
+		0,   0,   0,   0,   0,   0,   0,   0,
+		0,   0,   0,   0,   0,   0,   0,   0,
+		0,   0,   0,   0,   0,   0,   0,   0,
+		0,   0,   0,   0,   0,   0,   0,   0,
+		0,   0,   0,   0,   0,   0,   0,   0,
+		0,   0,   0,   0,   0,   0,   0,   0,
 		0,   0,   0,   0,   0,   0,   0,   0 },
 
 

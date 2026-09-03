@@ -434,7 +434,7 @@ TEST_CASE("Eval - eval_castling: the f-file is neutral, softening the one-step c
 {
 	// A binary sheltered/exposed test made Kg1->Kf1 swing the full bonus-to-
 	// penalty distance on one quiet king move, with nothing to smooth it -- the
-	// middlegame king PST is rank-only, so this term is the only file signal
+	// middlegame king PST is flat, so this term is the only square-based signal
 	// there. f scores zero instead, halving the worst single-step swing.
 	Board f1("4k3/8/8/8/8/8/8/5K2 w - - 0 1");
 	Board g1("4k3/8/8/8/8/8/8/6K1 w - - 0 1");

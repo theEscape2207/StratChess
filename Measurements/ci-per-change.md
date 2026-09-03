@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-09-03 | 40d62b1 (middlegame king PST flattened to zero, #97 PR 4) | 0eb981a (the #455 merge; the true merge base 41f6f2a differs from it by documentation only) | 19980 | 10+0.1 | **+18.54 +/- 3.62** | gain |
 | 2026-09-03 | 62c12eb (king safety: shelter, storm, king-file openness and attack pressure, #97 PRs 1-3) | e0eb564 (`king-safety-pre`, fork point of the series, not of one change) | 19980 | 10+0.1 | **+32.81 +/- 3.79** | gain |
 | 2026-09-02 | 0e5e9c3 (pawnless K+R vs K+R scaled to 4/16, #436) | 8fd70c3 | 19980 | 10+0.1 | **+1.32 +/- 3.54** | non-regression |
 | 2026-09-01 | e792a81 (all of #128: exact-draw classes, scaled rook endings, the wrong-bishop fortress, the mop-up gate and the quiescence guard) | b3ab55a (fork point of the arc, not of one change) | 19980 | 10+0.1 | **+1.98 +/- 3.48** | non-regression |
@@ -25,6 +26,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-09-03 -- 40d62b1 (middlegame king PST flattened, #97 PR 4) (19980 games)
+
+**The ablation, and the old table was costing Elo.** 18 shards x 555 pairs, pooled Ptnml(0-2) [711, 1997, 3789, 2502, 991], score 52.67%, run `33752507529`, 3 h 06 min wall-clock. 95% interval **[+14.9, +22.2]**, excluding zero by about five standard errors. The middlegame king table was rank-only -- -40 on ranks 3-8, -20 on the second, 0 on the back rank -- and is now zero everywhere, so middlegame king placement is priced solely by the terms that read the pawns actually in front of the king. `reference_ref` was pinned to `0eb981a` rather than left to resolve the merge base, because the two differ only in `.claude/plans` and `Docs/Workflow.md`; the figure is attributable to the flattening alone. **What it does not separate**: the table is one knob with two readings -- the rank penalty is gone, and with the middlegame endpoint flat the endgame table's centralization is no longer opposed as the phase tapers. No run distinguishes them, and none was bought; the same games cannot. `eval_castling` was left in place and is therefore unmeasured, so the design document's three-configuration ablation is only partly discharged. Zero illegal moves, zero time losses, zero disconnects; all 18 shards green
 
 ### 2026-09-03 -- 62c12eb (king safety, #97 PRs 1-3) (19980 games)
 

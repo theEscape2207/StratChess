@@ -56,6 +56,10 @@ int EvalSimple::Evaluate(const Board& board) const noexcept
 		//hvis staar en brik paa feltet
 		if (PieceHelper::IsActual(piece)) {
 			//Add the eval-tabelvalue to the score. Rotates if Black.
+			// GetPositionalScore indexes the mg table for every piece, so the
+			// king reaches the flat one at every phase: EvalSimple has no
+			// opinion on king placement at all, and no king-safety term to
+			// supply one. EvalComplex is what ships.
 			// Hvem er i tur og er det paagaeldendes brik		+ material value
 			const int pieceScore = GetPositionalScore(square, piece) + PieceHelper::Value(piece);
 
@@ -310,9 +314,9 @@ ScorePair EvalComplex::eval_castling(const EvalContext& ctx, eColor color) noexc
 	//
 	// Three levels, not two. A binary test puts a full bonus-to-penalty cliff on
 	// one quiet king step (g1->f1), and nothing smooths it: the middlegame king
-	// PST is rank-only (defines.h), so this term is the only file signal in the
-	// middlegame. f is neither sheltered nor exposed, so it scores zero and the
-	// worst single-step swing is halved.
+	// PST is flat (defines.h), so this term is the only square-based signal for
+	// the middlegame king. f is neither sheltered nor exposed, so it scores
+	// zero and the worst single-step swing is halved.
 	const int file = File(kingSq);
 	if (file <= 2 || file >= 6) // a,b,c | g,h -- sheltered
 		return ScorePair{CASTLING_DONE_BONUS, 0};
@@ -373,11 +377,10 @@ ScorePair EvalComplex::eval_pst(const EvalContext& ctx, eColor color) noexcept
 	// outcome instead of indexing g_Eval_Bitboards with GetFirstPiece(0),
 	// which is undefined (Debug: assert trips; Release: reads out of bounds).
 	// The king is the first genuinely tapered term (D3, issue #99). The two
-	// tables were always an (mg, eg) pair — g_Eval_Bitboards[5] wants the king
-	// tucked away, [6] wants it centralized — they were just selected
-	// discontinuously. Blending them removes a cliff of up to 100 cp that a
-	// single capture could cross mid-search (the mg table is uniformly
-	// -40/-20/0 by rank; the eg table peaks at +60 centrally).
+	// tables are an (mg, eg) pair — g_Eval_Bitboards[5] is flat, so middlegame
+	// king placement is left to the king-safety terms, and [6] wants the king
+	// centralized — and they are blended rather than selected discontinuously,
+	// which removes a cliff a single capture could cross mid-search.
 	// Suppressed entirely while this color is mopping up (issue #118 item 4).
 	// Otherwise the endgame king table charges the winner
 	// 10 cp per step of centralization given up to walk toward the cornered

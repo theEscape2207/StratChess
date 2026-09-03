@@ -696,8 +696,9 @@ class EvalComplex final : public EvalManager {
 	//
 	// Note what the smaller zone does downstream: fewer squares to attack means
 	// strictly less measured danger, so an advanced king reads as marginally
-	// safer. The middlegame king PST outweighs that comfortably, and the
-	// alternative is inventing squares that are not there.
+	// safer. The shelter, storm and open-file terms still price such a king --
+	// that far up it has no pawn cover left -- and the alternative is inventing
+	// squares that are not there.
 	//
 	// Forward is DECREASING square index for White (a8 = 0 ... h1 = 63), so the
 	// shifts read backwards from the colours they serve.

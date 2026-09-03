@@ -52,6 +52,16 @@ struct SearchTuning {
 	double min_pv_ratio = 0.33;
 	int score_draw_threshold = 20;
 
+	// This covers the POSITIONAL swing only: the quiescence guard adds
+	// MoveHelper::DeltaGain, so the captured material is already counted and
+	// must not be counted again here. King safety is what consumes the room --
+	// one capture beside a king moves shelter (24), king-file openness (11) or
+	// storm (15), the isolated-pawn penalty (20, twice in the corner case) and
+	// the attack row (5-25), so roughly 110 cp worst case at the middlegame
+	// endpoint against ~35 before those terms existed. Still inside 200, with
+	// perhaps half the room there used to be: a king-safety retune upward
+	// (#117) has to re-derive this rather than inherit it. Raising the margin
+	// is a SEARCH change needing its own measurement.
 	int delta_pruning_margin = 200;
 
 	int aspiration_initial_delta = 50;
