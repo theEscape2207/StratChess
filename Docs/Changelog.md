@@ -22,6 +22,35 @@ Newest first.
 
 ---
 
+## 2026-09-03 — King safety: shelter, storm, king-file openness and attack pressure (#97)
+
+Four middlegame-only terms, landed as four PRs. PR 1 (#453) moved the non-pawn attack generation into
+one pass reduced to counts in `EvalContext::attacks`, behaviour-preserving and exactly equivalent.
+PR 2 (#454) added shelter, storm and king-file openness — one scan over the king's three clamped
+files, indexed by the pawn's own relative rank with index 0 reserved for "no such pawn", tables at
+half the literature magnitude because shelter, king-file openness and `ISOLATED_PAWN_PENALTY` all
+fire on the same missing shield pawn without knowing about each other. PR 3 (#455) added
+`eval_king_attack`: a quadratic in a weighted attacker/zone-square count, capped at 120 rather than
+the literature's 300-500 so the attack term cannot dwarf the halved pawn-cover tables. PR 4 (this
+one) ablated the middlegame king PST, which the four terms made redundant.
+
+**Measured**: the feature is **+32.81 +/- 3.79** Elo against `king-safety-pre` (run `33708253431`),
+and flattening the mg king PST on top is a further **+18.54 +/- 3.62** (run `33752507529`). Both rows,
+with what they do and do not attribute, are in `Measurements/ci-per-change.md`. Local SPRTs could not
+resolve any of it: ~5,900 games across four runs, all inconclusive.
+
+The cost is structural and was accepted: **-5.5% nps for PR 2, -3.1% for PR 3's surviving inputs**,
+against a 2% budget for the whole feature. King flight squares were designed in, implemented,
+benched at ~3% nps on their own — as much as the two surviving attack inputs together — and cut on
+that measurement. A king-square-tagged pawn cache was expected to refund most of the overrun; #131
+measured it at -0.7% to -0.3% and closed, so nothing refunds it. The ablation is what decides the
+terms earn it, and it says they do.
+
+`eval_castling` survives unmeasured: shelter does not subsume it (an uncastled Ke1 with d2/e2/f2
+scores the same shelter as a castled Kg1 with f2/g2/h2), so it was not dropped on an argument. What
+remains open is tracked in #460 — the three-term overlap on one shield pawn, and the two ablation
+configurations no run covered.
+
 ## 2026-09-02 — A fake engine for `UciDriver.ps1`, and self-tests that reach a covered file
 
 `Invoke-UciSearchToBestMove` is the only code in `Scripts/` that talks to a live engine, and a

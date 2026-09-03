@@ -52,6 +52,14 @@ struct SearchTuning {
 	double min_pv_ratio = 0.33;
 	int score_draw_threshold = 20;
 
+	// Headroom is negative in the worst case, and knowingly so. One pawn capture
+	// beside a king moves the positional score by ~50 cp typical and ~107 worst
+	// (shelter, king files, storm, the isolated-pawn penalty, and the attack row
+	// the capture shifts), so a pawn plus that worst case is ~207 against this
+	// 200. Raising it is a SEARCH change needing its own measurement, which an
+	// evaluation PR's arithmetic cannot justify -- but a king-safety retune
+	// upward (#117) has to face this rather than inherit a margin sized before
+	// those terms existed.
 	int delta_pruning_margin = 200;
 
 	int aspiration_initial_delta = 50;
