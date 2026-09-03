@@ -795,16 +795,15 @@ class EvalComplex final : public EvalManager {
 	static KingPawnCover eval_king_pawn_cover(const EvalContext& ctx, eColor color) noexcept;
 	static ScorePair eval_king_attack(const EvalContext& ctx, eColor color) noexcept;
 
-	// The danger curve of D6 as a pure function of the weighted count that feeds
-	// it, split out so a monotonicity sweep can drive it directly instead of
-	// hunting for positions that happen to produce each input.
+	// The danger curve as a pure function of the weighted count that feeds it,
+	// split out so a monotonicity sweep can drive it directly instead of hunting
+	// for positions that happen to produce each input.
 	//
 	// Every weight is non-negative and every count is a population count, so a
 	// negative `danger` is unreachable today. The lower clamp is kept anyway:
 	// it is what makes monotonicity a property of THIS function rather than of
-	// its callers, and a later term contributing a safety BONUS -- king flight
-	// squares were exactly that, before their cost took them out -- would
-	// otherwise be squared straight back into a penalty.
+	// its callers: a later term contributing a safety BONUS would otherwise be
+	// squared straight back into a penalty.
 	static constexpr int KingDangerPenalty(int danger) noexcept
 	{
 		const int clamped = Clamp(danger, 0, KING_DANGER_MAX);

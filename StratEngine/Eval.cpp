@@ -559,12 +559,10 @@ KingPawnCover EvalComplex::eval_king_pawn_cover(const EvalContext& ctx, eColor c
 // Fitting a table's extra shape needs data this project does not yet have; #117
 // can replace the formula with one if it ever does.
 //
-// The danger count is attackers and attacked squares only. A third input, the
-// king's own remaining flight squares, was designed in and left out on
-// measurement: it needs a union of every enemy attack set, and that union alone
-// cost about 3% of nps -- as much as the rest of the term together. The search
-// finds a smothered king by searching; what this term is for is steering toward
-// the positions where that search pays.
+// Two inputs, deliberately measuring different things: WHICH enemy pieces bear
+// on the zone, weighted by type, and HOW MUCH of the zone they cover between
+// them. One queen raking four zone squares is not four attackers, and four
+// pieces touching one square each are not one attacker.
 //
 // There is deliberately NO minimum-attacker gate. By the point one could fire,
 // generation, zone intersection and aggregation have all already happened, so it
