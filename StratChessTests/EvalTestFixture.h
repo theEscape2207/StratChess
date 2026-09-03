@@ -183,9 +183,10 @@ static constexpr const char* FEN_KING_SAFETY_WORST = "3q2k1/8/8/8/8/5ppp/1PPP4/3
 // with the position tests".
 static constexpr const char* FEN_QUEEN_C6 = "7k/8/2Q5/8/8/8/8/4K3 w - - 0 1";
 
-// Middlegame with rooks on open/half-open files: both sides have 11800 material
-// (iMinScore > 11500 -> MIDDLEGAME), exercising the rook open/half-open-file
-// terms and the middlegame king PST under color mirroring.
+// Middlegame with rooks on open/half-open files: both sides have 11800
+// material, exercising the rook open/half-open-file terms under color
+// mirroring. It says nothing about king placement: the middlegame king PST is
+// flat, so only the endgame endpoint bleeding through the taper is nonzero.
 static constexpr const char* FEN_MIDDLEGAME_ROOKS = "2rr2k1/pp3ppp/5n2/8/8/2N5/PP3PPP/3RR1K1 w - - 0 1";
 
 // Endgame with pawns: 10100 material each side trips the ENDGAME stage (and so

@@ -165,9 +165,10 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
   - `eval_rooks`: a 7th-rank rook on a fully open file scores exactly `ROOK_ON_7TH_BONUS + OPEN_FILE`;
     the issue #126 knight-on-file case and the D5 own-pawn-behind case are re-asserted as exact
     term-level equalities, not just whole-position deltas
-  - `eval_pst`: the king receives exactly one PST contribution, from the stage-selected table —
-    verified against an independently-computed expected value (`EvalProbe::GetPositionalScore`
-    plus a direct `g_Eval_Bitboards` lookup) for both the middlegame and endgame tables
+  - `eval_pst`: the king receives exactly one PST contribution, blended from the (mg, eg) table
+    pair — verified against an independently-computed expected value (`EvalProbe::GetPositionalScore`
+    plus a direct `g_Eval_Bitboards` lookup). The middlegame table is flat, so that leg of the
+    check is a tautology and the orientation logic is covered by the endgame table alone
   - `eval_mopup`: only the winning color gets a nonzero contribution; both colors get 0 below the
     decisive-material threshold
   - `eval_mobility` (#98, #113): a central knight outscores a cornered one; an open-file rook
