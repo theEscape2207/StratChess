@@ -480,6 +480,48 @@ TEST_CASE("Eval - eval_king_attack: more attacked zone squares cost more", "[eva
 	      EvalComplexTestFixture::KingAttackPair(farQueen, BLACK).mg);
 }
 
+TEST_CASE("Eval - eval_king_attack: who attacks matters, not just how much is attacked", "[eval]")
+{
+	// The first half of the danger count, isolated the way the test above
+	// isolates the second. Every other attack case in this file moves the
+	// attacker count and the covered-square count together, so dropping the
+	// weighted-attacker term outright would leave them all passing: here the
+	// coverage is held equal and only the attacker's type varies.
+	//
+	// Ordering, not values -- the weights themselves are #117's to tune. A
+	// knight and a bishop are deliberately equal, which is a claim about the
+	// table and not an accident of these positions.
+	struct Bucket
+	{
+		const char* fen;
+		eMobilePiece type;
+	};
+	const Bucket buckets[] = {
+	    {FEN_KING_ATTACK_BUCKET_KNIGHT, MOB_KNIGHT},
+	    {FEN_KING_ATTACK_BUCKET_BISHOP, MOB_BISHOP},
+	    {FEN_KING_ATTACK_BUCKET_ROOK, MOB_ROOK},
+	    {FEN_KING_ATTACK_BUCKET_QUEEN, MOB_QUEEN},
+	};
+
+	int penalty[NUM_MOBILE_PIECES] = {};
+	for (const Bucket& bucket : buckets) {
+		CAPTURE(bucket.fen, bucket.type);
+		Board board(bucket.fen);
+
+		// The premise. Without it the comparison below measures geometry.
+		REQUIRE(EvalComplexTestFixture::ZoneAttacks(board, WHITE) == 3);
+		REQUIRE(EvalComplexTestFixture::ZoneAttackers(board, WHITE, bucket.type) == 1);
+
+		penalty[bucket.type] = EvalComplexTestFixture::KingAttackPair(board, BLACK).mg;
+		CHECK(penalty[bucket.type] < 0);
+	}
+
+	CAPTURE(penalty[MOB_KNIGHT], penalty[MOB_BISHOP], penalty[MOB_ROOK], penalty[MOB_QUEEN]);
+	CHECK(penalty[MOB_KNIGHT] == penalty[MOB_BISHOP]);
+	CHECK(penalty[MOB_ROOK] < penalty[MOB_KNIGHT]);
+	CHECK(penalty[MOB_QUEEN] < penalty[MOB_ROOK]);
+}
+
 TEST_CASE("Eval - eval_king_attack: the same attack mirrors between the colors", "[eval]")
 {
 	// Shelter and storm each get an explicit mirror case above; without this one

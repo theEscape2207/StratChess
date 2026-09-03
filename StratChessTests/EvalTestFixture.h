@@ -146,6 +146,16 @@ static constexpr const char* FEN_KING_ATTACK_TWO = "3q2k1/5ppp/8/6NQ/8/8/8/6K1 w
 // isolates the second half of the danger count.
 static constexpr const char* FEN_KING_ATTACK_QUEEN_FAR = "3q2k1/5ppp/8/8/8/8/8/Q5K1 w - - 0 1";
 
+// The same frame again, with one White piece placed so that each piece type
+// covers exactly THREE zone squares -- Ne6 hits f8/g5/g7, Be4 hits f5/g6/h7,
+// Ra5 and Qa5 hit f5/g5/h5 along the fifth rank while the queen's diagonals
+// leave the zone entirely. Equal coverage and one attacker each is what makes
+// the remaining difference between them the attacker's WEIGHT and nothing else.
+static constexpr const char* FEN_KING_ATTACK_BUCKET_KNIGHT = "3q2k1/5ppp/4N3/8/8/8/8/6K1 w - - 0 1";
+static constexpr const char* FEN_KING_ATTACK_BUCKET_BISHOP = "3q2k1/5ppp/8/8/4B3/8/8/6K1 w - - 0 1";
+static constexpr const char* FEN_KING_ATTACK_BUCKET_ROOK = "3q2k1/5ppp/8/R7/8/8/8/6K1 w - - 0 1";
+static constexpr const char* FEN_KING_ATTACK_BUCKET_QUEEN = "3q2k1/5ppp/8/Q7/8/8/8/6K1 w - - 0 1";
+
 // The worst king this evaluator can be handed: no White pawn on f, g or h, and
 // Black pawns on f3, g3 and h3 — every shelter file at its absence entry, every
 // storm file near its maximum, and the three files still penalised for
