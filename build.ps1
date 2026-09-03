@@ -49,6 +49,7 @@
     .\build.ps1 main -Compiler msvc
     .\build.ps1 -SelfTest
 #>
+[CmdletBinding()]
 param(
     [Parameter(Position=0)]
     [ValidateSet('main', 'tests', 'all', 'run-tests', 'extended-tests')]

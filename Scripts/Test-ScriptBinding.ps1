@@ -27,9 +27,10 @@
     the parser can tell those apart from the real attribute on the script's own
     param block.
 
-.PARAMETER ScriptDirectory
-    Directory of scripts to check. Defaults to this script's own directory, so it is
-    correct in every worktree.
+.PARAMETER Root
+    Repository to check. Every tracked `.ps1` under it is checked, wherever it lives
+    -- `build.ps1` sits at the root, not in `Scripts/`. Defaults to the repository
+    containing this script, so it is correct in every worktree.
 
 .PARAMETER SelfTest
     Run synthetic parser cases and exit. Verifies the detector actually detects,
@@ -43,7 +44,7 @@
 [CmdletBinding(DefaultParameterSetName = 'Run')]
 param(
     [Parameter(ParameterSetName = 'Run')]
-    [string]$ScriptDirectory,
+    [string]$Root,
 
     [Parameter(Mandatory, ParameterSetName = 'SelfTest')]
     [switch]$SelfTest
@@ -194,30 +195,34 @@ if ($SelfTest) {
     exit 1
 }
 
-if (-not $ScriptDirectory) { $ScriptDirectory = $PSScriptRoot }
+if (-not $Root) { $Root = Split-Path -Parent $PSScriptRoot }
 
-if (-not (Test-Path -LiteralPath $ScriptDirectory -PathType Container)) {
-    Write-Host "FAIL: no script directory at $ScriptDirectory" -ForegroundColor Red
+if (-not (Test-Path -LiteralPath $Root -PathType Container)) {
+    Write-Host "FAIL: no directory at $Root" -ForegroundColor Red
     exit 1
 }
 
-$files = @(Get-ChildItem -LiteralPath $ScriptDirectory -Filter '*.ps1' -File | Sort-Object Name)
-if ($files.Count -eq 0) {
-    Write-Host "FAIL: no scripts in $ScriptDirectory" -ForegroundColor Red
+# Tracked files rather than a directory walk, for both halves of the scope: the
+# scripts are in two places (`Scripts/` and `build.ps1` at the root), and a walk
+# would also reach the .ps1 files that FetchContent and tool downloads leave under
+# build/, which are not ours to fix.
+$scripts = @(& git -C $Root ls-files '*.ps1' | Where-Object { $_ } | Sort-Object)
+if ($scripts.Count -eq 0) {
+    Write-Host "FAIL: git listed no tracked .ps1 files under $Root" -ForegroundColor Red
     exit 1
 }
 
-Write-Host "==> Script parameter binding ($($files.Count) script(s))" -ForegroundColor Cyan
+Write-Host "==> Script parameter binding ($($scripts.Count) script(s))" -ForegroundColor Cyan
 
 $violations = 0
 $exempt = 0
-foreach ($file in $files) {
-    $text = Get-Content -LiteralPath $file.FullName -Raw
+foreach ($script in $scripts) {
+    $text = Get-Content -LiteralPath (Join-Path $Root $script) -Raw
     try {
-        $verdict = Test-ScriptText -Text $text -Label $file.Name
+        $verdict = Test-ScriptText -Text $text -Label $script
     }
     catch {
-        Write-Host "  FAIL  $($file.Name): $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "  FAIL  ${script}: $($_.Exception.Message)" -ForegroundColor Red
         $violations++
         continue
     }
@@ -226,7 +231,7 @@ foreach ($file in $files) {
         'ok' { }
         'no-param' { $exempt++ }
         'unbound' {
-            Write-Host "  FAIL  $($file.Name): param() block without [CmdletBinding()]" -ForegroundColor Red
+            Write-Host "  FAIL  ${script}: param() block without [CmdletBinding()]" -ForegroundColor Red
             $violations++
         }
     }
