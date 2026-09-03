@@ -54,6 +54,7 @@
     caller's scope, where its variables collide and its exit ends the caller's session.
 #>
 
+[CmdletBinding()]
 param(
     [string]$BaseRef = 'origin/main',
     [string[]]$Paths,

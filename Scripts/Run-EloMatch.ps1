@@ -48,6 +48,7 @@
     Pass -AnchorSprt when that cumulative verdict is what is actually wanted.
 #>
 
+[CmdletBinding()]
 param(
     # Candidate exe. Default: this repo's Release build (must already exist).
     [string]$CandidateExe = '',

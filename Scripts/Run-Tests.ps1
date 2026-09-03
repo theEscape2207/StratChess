@@ -16,6 +16,7 @@
 .PARAMETER Tag
     Optional Catch2 tag filter, e.g. "[tactical]" or "[eval]". Omit for full fast suite (~[slow]).
 #>
+[CmdletBinding()]
 param([string]$Tag = '')
 
 Set-StrictMode -Version Latest
