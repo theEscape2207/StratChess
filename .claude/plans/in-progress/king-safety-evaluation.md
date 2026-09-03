@@ -366,7 +366,8 @@ The gate as written assumed this term was locally resolvable. It is not, and no 
 it produces a verdict.
 
 **The revised gate.** PR 2 merges on the balance argument plus exact-behaviour tests, with sizing
-deferred to **one CI strength-lab run after PR 3** against the `king-safety-pre` tag (`7efbe95`),
+deferred to **one CI strength-lab run after PR 3** against the `king-safety-pre` tag (annotated tag
+object `7efbe95`, commit `e0eb564` — both SHAs appear below and name the same point),
 which resolves ~±5 Elo over ~20k games and measures shelter, storm, openness and the attack term as
 the one feature they are. That run, not a local SPRT, is the strength gate for the series. The
 balance argument is the one recorded in D5a and checked by `eval-reviewer`: at full magnitude
