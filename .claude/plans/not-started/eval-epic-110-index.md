@@ -31,7 +31,7 @@ Two depths, deliberately:
 | 9 | #97 | [`king-safety-evaluation.md`](../in-progress/king-safety-evaluation.md) (in progress) | Full | 2 |
 | 10 | #112 | [`minor-piece-outposts.md`](minor-piece-outposts.md) | Sketch | 4 |
 | 11 | #128 (+#118 items 2, 5) | `endgame-scale-factors.md` (landed, deleted) | Full | 4 |
-| 12 | #131 | [`pawn-hash-table.md`](pawn-hash-table.md) | Sketch | 4 |
+| 12 | #131 | closed on measurement — a cache cannot pay here yet (see issue) | — | — |
 | 13 | #117 | [`texel-tuning.md`](texel-tuning.md) | Sketch | 5 |
 | 14 | #76 | [`eval-progress-incentive.md`](eval-progress-incentive.md) | Sketch | 5 |
 
