@@ -50,6 +50,7 @@
     caller's scope, where its variables collide and its exit ends the caller's session.
 #>
 
+[CmdletBinding()]
 param(
     [switch]$SelfTest
 )

@@ -57,6 +57,17 @@ jobs:
           pwsh -NoProfile -File Scripts/Test-WorkflowTimeouts.ps1
           exit $LASTEXITCODE
 
+      # Here for the same reason as the timeout guard above: a script that binds
+      # its parameters loosely swallows an argument it does not recognise and
+      # runs its defaults instead of failing, and the scripts with the most
+      # expensive defaults are exactly the ones nobody runs on a PR.
+      - name: Check script parameter binding
+        run: |
+          pwsh -NoProfile -File Scripts/Test-ScriptBinding.ps1 -SelfTest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pwsh -NoProfile -File Scripts/Test-ScriptBinding.ps1
+          exit $LASTEXITCODE
+
       - name: Classify changed files
         id: tier
         env:

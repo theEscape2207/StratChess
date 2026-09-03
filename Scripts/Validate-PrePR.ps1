@@ -28,6 +28,7 @@
     caller's scope, where its variables collide and its exit ends the caller's session.
 #>
 
+[CmdletBinding()]
 param(
     # Run every gate regardless of what the diff contains. Use when your judgement
     # disagrees with the classifier.
@@ -507,6 +508,18 @@ try   { & $timeoutScript }
 catch { $timeoutFailed = $true; Write-Host "Timeout guard threw: $_" -ForegroundColor DarkGray }
 if ($LASTEXITCODE -ne 0) { $timeoutFailed = $true }
 $checkResults['Workflow timeouts'] = if ($timeoutFailed) { 'FAIL' } else { 'PASS' }
+
+# --- Step 0d2: script parameter binding ---
+# Same reasoning as the timeout guard above, for the same reason it is cheap:
+# pure text. A script that binds loosely discards an argument it does not know
+# and runs its defaults, which for Run-EloMatch.ps1 meant a 500-game match.
+Write-Host "`n==> Script parameter binding" -ForegroundColor Cyan
+$bindingScript = Join-Path $PSScriptRoot 'Test-ScriptBinding.ps1'
+$bindingFailed = $false
+try   { & $bindingScript }
+catch { $bindingFailed = $true; Write-Host "Binding guard threw: $_" -ForegroundColor DarkGray }
+if ($LASTEXITCODE -ne 0) { $bindingFailed = $true }
+$checkResults['Script binding'] = if ($bindingFailed) { 'FAIL' } else { 'PASS' }
 
 # --- Step 0e: self-tests of any changed script ---
 # Also run here, not only on the Tooling fast path: a Build- or Engine-tier diff can

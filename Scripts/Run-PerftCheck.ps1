@@ -42,6 +42,7 @@
     main checkout with fastchess and the reference builds, shared by every worktree.
 #>
 
+[CmdletBinding()]
 param(
     # Engine under test. Default: this repo's shipping (clang-cl Release) build,
     # resolved by Get-BuildArtifact.ps1 rather than hardcoded -- a literal path
