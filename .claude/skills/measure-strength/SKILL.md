@@ -17,15 +17,42 @@ it is not the objective.
 |---|---|---|---|
 | Is it faster? | `Run-Bench.ps1` (nps) | seconds | a speed delta, not Elo |
 | Did behaviour change at all? | `Compare-SearchEquivalence.ps1` | minutes | exact node/bestmove equality |
-| Is it better — yes/no? | local **SPRT** (`-Sprt`) | 40 min – 2.5 h | a verdict, not a number |
+| **Is a new eval term worth shipping?** | **CI strength lab** (`strength.yml`) | ~3 h, free minutes, 18 of 20 CI slots | **±4 Elo** — a number, decisive |
+| Did I break something? (expected neutral) | local **SPRT** `NonRegression` | 40 min – 1 h | a verdict, if the effect is big enough |
 | How much better? (> ~25 Elo) | local fixed batch, 500 games | ~40 min | ±25 Elo |
-| How much better? (< ~25 Elo) | CI strength lab (`strength.yml`) | ~3 h, 18 of 20 CI slots | ±5 Elo at ~20k games |
 | < ~5% nps difference | none — an Elo match cannot resolve it at any affordable game count |||
+
+### The default for a new evaluation term is the lab, not a local SPRT
+
+This is the correction the ledgers argue for, and it is worth stating as evidence rather than as
+preference. Counting every row ever recorded:
+
+- **`Measurements/local.md`: 15 inconclusive against 11 decisive.** Seven of the last ten are
+  inconclusive. #97 alone spent ~5,900 games across four SPRTs and resolved nothing.
+- **`Measurements/ci-per-change.md`: 9 of 9 decisive.** Every lab run this project has dispatched
+  produced a verdict, including on features the local instrument had already failed on.
+
+The reason is arithmetic, not luck. A local SPRT runs ~12 games/min on one box, so a night is
+~2,500 games and **±10 Elo is its floor**. Most eval terms are worth 5-25 Elo, i.e. inside that
+floor, and `NonRegression`'s `[-5, 0]` region is narrower still. The lab plays 20,000 games in
+parallel and pools pentanomially, so it resolves ±4.
+
+**Cost is not the tie-breaker people assume, either.** The repository is public, so the lab's
+runner minutes are free; what it spends is wall-clock and 18 of 20 CI slots. A local SPRT spends
+the *user's own machine, exclusively* — no builds, no tests, no second match — and any of those
+started alongside it invalidates the batch. Between a 3 h lab run and a 3 h local SPRT, the lab is
+cheaper in the resource that is actually scarce, and it is the one that answers.
+
+So: **reach for the lab when the deliverable is "is this term worth shipping"**, and reach for a
+local SPRT when the question is "did I break something" or when the change is a search change
+expected to clear 25 Elo. Run the cheap local SPRT first if you like — as a smoke test that catches
+a disaster in 40 minutes — but plan the lab run as the actual gate from the start, rather than
+arriving at it after two inconclusive sessions.
 
 Two failures to avoid:
 
 - **Reporting a fixed batch's point estimate as a measurement.** "+8 ±26" is not a measurement of +8;
-  recording it as one is how false confidence accumulates. Below ~25 Elo, use SPRT.
+  recording it as one is how false confidence accumulates. Below ~25 Elo, use SPRT or the lab.
 - **Assuming 500 games is a ceiling.** It is the default, not a limit — see
   [Sizing the batch](#sizing-the-batch). The local book supports 69,400 distinct games.
 
@@ -81,9 +108,16 @@ that outweighs it. Effect sizing, repeat runs, and why an eval change needs the 
 
 ## SPRT
 
-- Use `-Sprt NonRegression` / `-Sprt Gain` for anything expected to be worth **less than ~25 Elo**.
+- Use `-Sprt NonRegression` / `-Sprt Gain` for anything expected to be worth **less than ~25 Elo** —
+  but see the instrument table: for a new eval term the lab is the gate and this is the smoke test.
 - An SPRT that hits the `-Games` cap without crossing a bound is **inconclusive**, not a measured
   zero. Record it as such — and see the LLR formula under Sizing for what it would have needed.
+- **An inconclusive row is still worth reading.** An interval that excludes zero, plus an LLR that
+  *drifts monotonically* rather than plateauing, is real evidence even without a crossed bound. A
+  plateaued LLR is the opposite signal: more games will most likely buy another inconclusive row.
+- **Two runs of the same comparison do not simply pool.** Both are conditioned on having failed to
+  cross a bound, which biases a pooled estimate toward the indifference region. Say "both intervals
+  sit in the same place", not the average.
 - An SPRT needs a reference that isolates the change, so `Run-EloMatch.ps1` refuses `-Sprt` against
   the fixed anchor (`-AnchorSprt` overrides it for a deliberate cumulative reading).
 
@@ -92,11 +126,9 @@ that outweighs it. Effect sizing, repeat runs, and why an eval change needs the 
 **`-Games 500` means two different things, and conflating them is the trap:**
 
 - **Fixed batch — 500 *is* the measurement.** An expensive dial (precision scales 1/√N). Raise it
-  only when a point estimate is the deliverable — a new reference baseline, or fitting data for
-  #117 — not to make a verdict "more certain", which is what SPRT is for.
+  only when a point estimate is the deliverable, not to make a verdict "more certain".
 - **SPRT — 500 is only the give-up point**, with no bearing on the answer's quality. Raising it is
   **statistically free** and costs wall-clock only in runs that would otherwise return inconclusive.
-  The 500 default was chosen as a fixed-batch resolution target and merely inherited as the SPRT cap.
 
 **The book is not the constraint.** A large book is already present and auto-resolved by
 `Run-EloMatch.ps1` — `EngineTesting\openings-large.pgn`, 34,700 openings = **69,400 distinct
@@ -130,20 +162,32 @@ and if the true effect sits *inside* the indifference region it may not converge
 - A completed capped run **cannot be extended** — resume restores the original `-Games`. Decide the
   cap up front.
 - **Measurement budget is the user's call.** Report what deciding would cost and let them choose;
-  never start a multi-hour match unilaterally.
+  never start a multi-hour match unilaterally. That applies to a local SPRT exactly as much as to a
+  lab run — it is the one that takes their machine away — so it is not a reason to prefer one.
+- **Do not hold the session open across a long match.** Start it, report that it is running, and end
+  the turn. Polling it with a monitor or a background wait keeps a large context alive for hours,
+  the prompt cache expires underneath it, and the whole context is re-read at full price on wake.
 
 ## The CI strength lab (`strength.yml`)
 
-`workflow_dispatch` only — it gates nothing and nothing triggers it automatically. Both sides are
-built from source by the same GCC, sharded (default 18), pooled **pentanomially** over
-colour-swapped pairs. Full input table and internals: `Docs/CI.md` → Strength lab.
+**The instrument to reach for on a new eval term** (see the table above for why). `workflow_dispatch`
+only — it gates nothing and nothing triggers it automatically. Both sides are built from source by
+the same GCC, sharded (default 18), pooled **pentanomially** over colour-swapped pairs. Full input
+table and internals: `Docs/CI.md` → Strength lab.
+
+```
+gh workflow run strength.yml --ref <branch> -f reference_ref=<merge-base|tag|sha>
+```
+
+`--ref` supplies the **workflow file** as well as the candidate source, so dispatching against an
+old commit runs that commit's harness too.
 
 - `reference_ref` defaults to `merge-base` — the commit this branch forked from `main`, so the result
   is attributable to **this change alone**. A tag like `elo-reference-v2` measures cumulative
   strength instead; the candidate's own SHA is a null test.
-- **One run at a time, repository-wide**, occupying 18 of 20 concurrent job slots for ~3 h. It can
-  delay every other PR, so dispatching one is the user's decision — surface the cost, don't just
-  start it.
+- **One run at a time, repository-wide**, occupying 18 of 20 concurrent job slots for ~3 h, so it can
+  delay every other PR. Say that when proposing one — but as the cost it is, not as a reason to fall
+  back on an instrument that will not answer.
 - **A failed shard discards the whole batch**, not just itself: the survivors are the ones that
   happened to avoid whatever went wrong, so pooling them would be a biased subset wearing a full
   batch's error bar.
