@@ -38,7 +38,7 @@ two existing proxies by measurement rather than by assumption.
   asks for it.
 - Count the king's flight squares at all, by any approximation, or generate safe checks. The
   approximation was designed in and cut on measurement (D6).
-- Add pawn-hash caching (the `not-started/pawn-hash-table.md` sketch) — shelter is recomputed per
+- Add pawn-hash caching (`in-progress/pawn-king-cover-cache.md`, #131) — shelter is recomputed per
   node like every other pawn term today. If nps says otherwise, that is a separate change.
 - Delete `eval_castling` or the king PST speculatively. PR 4 decides that on evidence.
 - Retune the tables. #117 (Texel) owns weights; the values shipped here are literature-standard
@@ -477,7 +477,7 @@ file-openness loop into the shelter scan recovered 1.8 of an original -7.3%. A s
 the scan itself: three files, both colours, at every leaf.
 
 So the honest cost of this shape is ~5.5% nps, and the only route that removes rather than shaves it
-is a pawn hash (#131, `not-started/pawn-hash-table.md`) — shelter, storm and openness are a pure
+is a pawn hash (#131, `in-progress/pawn-king-cover-cache.md`) — shelter, storm and openness are a pure
 function of the pawns plus the king square, which is exactly what that cache exists for, and it can
 live in `ThreadData` rather than on `EvalManager`, so the Lazy SMP contract survives. Whether that is
 worth doing is a question for the SPRT below, which measures the term NET of its own speed cost.
