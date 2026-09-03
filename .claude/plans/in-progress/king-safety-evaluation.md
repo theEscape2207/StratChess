@@ -219,8 +219,9 @@ twice on the king's files" belongs on the suspect list, and a fourth ablation co
 A related correction to PR 4's premise, which the ablation cannot discover on its own: **shelter does
 not subsume `eval_castling`.** An uncastled Ke1 with d2/e2/f2 intact scores the same shelter as a
 castled Kg1 with f2/g2/h2 intact. Dropping `eval_castling` because "shelter now covers it" would be
-dropping the only middlegame signal that distinguishes the two, since the mg king PST is rank-only.
-Drop it on match evidence or not at all.
+dropping the only middlegame signal that distinguishes the two. PR 4 flattened the mg king PST to
+zero on match evidence, which strengthens this: `eval_castling` is now the only middlegame
+king-placement term at all. Drop it on match evidence or not at all.
 
 ### D5: King-file openness uses whole-file, pawn-only definitions, stated here rather than inherited
 
@@ -340,7 +341,7 @@ price of a reconstructible breakdown.
 | 1 | Attack aggregates in `EvalContext`; mobility, rooks rewired | Exact equivalence + nps. **No Elo run.** |
 | 2 | Shelter, storm and king-file openness (3 rows) | Local SPRT `NonRegression`, then `Gain` — **revised, see below** |
 | 3 | `eval_king_attack` + cap | Local SPRT `NonRegression`, then `Gain` — **both inconclusive at their caps; superseded by the lab run below** |
-| 4 | Ablation of `eval_castling` and the mg king PST | See Validation |
+| 4 | Ablation of `eval_castling` and the mg king PST | See Validation — **one configuration run, the mg king PST flattened: +18.54 +/- 3.62 (run `33752507529`). It ships; `eval_castling` stays and is unmeasured.** |
 
 Bundling 2 and 3 would make a regression unattributable between a mis-tuned pawn table and a
 mis-tuned danger curve, which are fixed in completely different ways.
