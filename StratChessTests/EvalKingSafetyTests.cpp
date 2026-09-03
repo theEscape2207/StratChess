@@ -491,8 +491,7 @@ TEST_CASE("Eval - eval_king_attack: who attacks matters, not just how much is at
 	// Ordering, not values -- the weights themselves are #117's to tune. A
 	// knight and a bishop are deliberately equal, which is a claim about the
 	// table and not an accident of these positions.
-	struct Bucket
-	{
+	struct Bucket {
 		const char* fen;
 		eMobilePiece type;
 	};
