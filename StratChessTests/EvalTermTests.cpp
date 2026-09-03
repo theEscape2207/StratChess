@@ -502,13 +502,15 @@ TEST_CASE("Eval - the per-term functions sum exactly to EvalComplex::Evaluate()'
 	    EvalComplexTestFixture::Pst(board, WHITE) + EvalComplexTestFixture::Mopup(board, WHITE) +
 	    EvalComplexTestFixture::Bishops(board, WHITE) + EvalComplexTestFixture::Castling(board, WHITE) +
 	    EvalComplexTestFixture::Mobility(board, WHITE) + EvalComplexTestFixture::KingShelter(board, WHITE) +
-	    EvalComplexTestFixture::KingStorm(board, WHITE) + EvalComplexTestFixture::KingFiles(board, WHITE);
+	    EvalComplexTestFixture::KingStorm(board, WHITE) + EvalComplexTestFixture::KingFiles(board, WHITE) +
+	    EvalComplexTestFixture::KingAttack(board, WHITE);
 	const int bonusBlack =
 	    EvalComplexTestFixture::Pawns(board, BLACK) + EvalComplexTestFixture::Rooks(board, BLACK) +
 	    EvalComplexTestFixture::Pst(board, BLACK) + EvalComplexTestFixture::Mopup(board, BLACK) +
 	    EvalComplexTestFixture::Bishops(board, BLACK) + EvalComplexTestFixture::Castling(board, BLACK) +
 	    EvalComplexTestFixture::Mobility(board, BLACK) + EvalComplexTestFixture::KingShelter(board, BLACK) +
-	    EvalComplexTestFixture::KingStorm(board, BLACK) + EvalComplexTestFixture::KingFiles(board, BLACK);
+	    EvalComplexTestFixture::KingStorm(board, BLACK) + EvalComplexTestFixture::KingFiles(board, BLACK) +
+	    EvalComplexTestFixture::KingAttack(board, BLACK);
 
 	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
 	REQUIRE(complexEval != nullptr);

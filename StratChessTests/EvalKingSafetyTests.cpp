@@ -302,7 +302,8 @@ TEST_CASE("Eval - king safety: the combined contribution stays inside its declar
 	Board board(fen);
 	for (const eColor color : {WHITE, BLACK}) {
 		const KingPawnCover cover = EvalComplexTestFixture::KingCover(board, color);
-		const int combined = cover.shelter.mg + cover.storm.mg + cover.files.mg;
+		const int combined = cover.shelter.mg + cover.storm.mg + cover.files.mg +
+		                     EvalComplexTestFixture::KingAttackPair(board, color).mg;
 		CAPTURE(combined);
 		CHECK(combined <= EvalComplexTestFixture::KingSafetyMaxPenalty);
 		CHECK(combined >= -EvalComplexTestFixture::KingSafetyMaxPenalty);
@@ -316,6 +317,10 @@ TEST_CASE("Eval - king safety: the worst reachable king gets most of the way to 
 	// constant is a real ceiling rather than one inflated by entries no legal
 	// position can index. White has no f/g/h pawn and Black has three on the
 	// third rank.
+	//
+	// Measured against the PAWN-COVER half of the bound, not the combined one:
+	// no pawn structure can reach the attack cap, and comparing against the sum
+	// would only assert that this position is not the worst possible one.
 	Board board(FEN_KING_SAFETY_WORST);
 	RequireWhiteKingOn(board, g1);
 
@@ -323,8 +328,246 @@ TEST_CASE("Eval - king safety: the worst reachable king gets most of the way to 
 	const int combined = cover.shelter.mg + cover.storm.mg + cover.files.mg;
 	CAPTURE(combined);
 
-	CHECK(combined >= -EvalComplexTestFixture::KingSafetyMaxPenalty);
+	CHECK(combined >= -EvalComplexTestFixture::KingPawnCoverWorst);
 	// Within a third of the ceiling. A looser assertion would not distinguish a
 	// tight bound from one that is merely never approached.
-	CHECK(combined < -(EvalComplexTestFixture::KingSafetyMaxPenalty * 2) / 3);
+	CHECK(combined < -(EvalComplexTestFixture::KingPawnCoverWorst * 2) / 3);
+}
+
+// ── The zone mask (D3) ────────────────────────────────────────────────────────
+
+// The exact enumerated masks of D3, not merely "three files wide". A zone that
+// is the right width and the wrong height, or shifted the wrong way for one
+// colour, passes every count-based assertion in this file.
+static BITBOARD MaskOf(std::initializer_list<eSquare> squares)
+{
+	BITBOARD mask = 0ULL;
+	for (const eSquare square : squares)
+		mask |= (UNIT << square);
+	return mask;
+}
+
+TEST_CASE("Eval - king zone: the mask is the enumerated 3x3 block plus one rank forward", "[eval]")
+{
+	// Kg1, Kh1 and Kg2 share an anchor, so they share a mask outright — the
+	// corner is not a smaller, safer-looking neighbourhood.
+	const BITBOARD kingside = MaskOf({f1, g1, h1, f2, g2, h2, f3, g3, h3, f4, g4, h4});
+	CHECK(EvalComplexTestFixture::KingZone(g1, WHITE) == kingside);
+	CHECK(EvalComplexTestFixture::KingZone(h1, WHITE) == kingside);
+	CHECK(EvalComplexTestFixture::KingZone(g2, WHITE) == kingside);
+
+	// Black's forward is the other way, so its mirror extends toward rank 5.
+	const BITBOARD kingsideBlack = MaskOf({f8, g8, h8, f7, g7, h7, f6, g6, h6, f5, g5, h5});
+	CHECK(EvalComplexTestFixture::KingZone(g8, BLACK) == kingsideBlack);
+	CHECK(EvalComplexTestFixture::KingZone(h8, BLACK) == kingsideBlack);
+
+	// A central king, where neither clamp does anything.
+	CHECK(EvalComplexTestFixture::KingZone(e4, WHITE) == MaskOf({d3, e3, f3, d4, e4, f4, d5, e5, f5, d6, e6, f6}));
+}
+
+TEST_CASE("Eval - king zone: twelve squares, or nine where the forward rank is off the board", "[eval]")
+{
+	for (int sq = a8; sq < NUM_SQUARES; ++sq) {
+		const auto square = static_cast<eSquare>(sq);
+		CAPTURE(sq);
+		for (const eColor color : {WHITE, BLACK}) {
+			const int size = std::popcount(EvalComplexTestFixture::KingZone(square, color));
+			// The rank clamp guarantees the 3x3 block itself is always whole;
+			// only the forward rank can fall off, and only for a king on its own
+			// 7th or 8th rank. Nine is stated rather than clamped away: a king
+			// on the enemy back rank has nothing in front of it.
+			CHECK((size == 12 || size == 9));
+		}
+	}
+	// The two ends of that exception, named rather than left to the sweep.
+	CHECK(std::popcount(EvalComplexTestFixture::KingZone(g1, WHITE)) == 12);
+	CHECK(std::popcount(EvalComplexTestFixture::KingZone(g8, WHITE)) == 9);
+}
+
+// ── The danger curve (D6) ─────────────────────────────────────────────────────
+
+TEST_CASE("Eval - king danger: the penalty is monotone non-decreasing in the danger count", "[eval]")
+{
+	// Monotonicity is the property the first clamp exists to give. Swept from
+	// well below zero so the negative branch is covered, and past the cap so the
+	// saturating one is.
+	int previous = EvalComplexTestFixture::KingDangerPenalty(-200);
+	for (int danger = -199; danger <= 800; ++danger) {
+		CAPTURE(danger);
+		const int penalty = EvalComplexTestFixture::KingDangerPenalty(danger);
+		REQUIRE(penalty >= previous);
+		previous = penalty;
+	}
+}
+
+TEST_CASE("Eval - king danger: a negative count is a safe king, not a squared one", "[eval]")
+{
+	// No weight is negative and no count can be, so nothing reaches this branch
+	// today. It is asserted anyway: the clamp is what makes monotonicity a
+	// property of the curve rather than of its callers, and the first term to
+	// contribute a safety BONUS would otherwise be squared back into a penalty.
+	CHECK(EvalComplexTestFixture::KingDangerPenalty(-40) == 0);
+	CHECK(EvalComplexTestFixture::KingDangerPenalty(-1) == 0);
+	CHECK(EvalComplexTestFixture::KingDangerPenalty(0) == 0);
+	// Without the clamp this would be 100.
+	CHECK(EvalComplexTestFixture::KingDangerPenalty(-40) < 40 * 40 / EvalComplexTestFixture::KingDangerDivisor);
+}
+
+TEST_CASE("Eval - king danger: the curve saturates at the cap and never above it", "[eval]")
+{
+	CHECK(EvalComplexTestFixture::KingDangerPenalty(10000) == EvalComplexTestFixture::KingDangerCap);
+	CHECK(EvalComplexTestFixture::KingDangerPenalty(20) < EvalComplexTestFixture::KingDangerCap);
+
+	// Where the cap starts binding, found from the curve rather than restated:
+	// the knee is a consequence of the divisor and the cap, and pinning it here
+	// is what lets the positional case below assert a bound instead of an exact
+	// value it would only reach by a margin of one.
+	int knee = 0;
+	while (EvalComplexTestFixture::KingDangerPenalty(knee) < EvalComplexTestFixture::KingDangerCap)
+		++knee;
+	CAPTURE(knee);
+	CHECK(knee == 44);
+	CHECK(EvalComplexTestFixture::KingDangerPenalty(knee - 1) < EvalComplexTestFixture::KingDangerCap);
+}
+
+// ── Attack pressure (D6) ──────────────────────────────────────────────────────
+
+TEST_CASE("Eval - eval_king_attack: two attackers cost more than one", "[eval]")
+{
+	// The inequality, not the values: what the term exists for is that pressure
+	// is worth more than the sum of its parts, and the tuned numbers are #117's.
+	Board one(FEN_KING_ATTACK_ONE);
+	Board two(FEN_KING_ATTACK_TWO);
+
+	const int oneAttacker = EvalComplexTestFixture::KingAttackPair(one, BLACK).mg;
+	const int twoAttackers = EvalComplexTestFixture::KingAttackPair(two, BLACK).mg;
+	CAPTURE(oneAttacker, twoAttackers);
+
+	CHECK(twoAttackers < oneAttacker);
+	CHECK(oneAttacker < 0);
+}
+
+TEST_CASE("Eval - eval_king_attack: a lone queen beside the king is not free", "[eval]")
+{
+	// The case the rejected two-attacker gate would have scored at exactly zero.
+	// White's queen is the only piece that differs between the two positions, so
+	// it is the only thing that can move the row.
+	Board withQueen(FEN_KING_ATTACK_QUEEN);
+	Board without(FEN_KING_ATTACK_NONE);
+
+	REQUIRE(EvalComplexTestFixture::ZoneAttackers(withQueen, WHITE, MOB_QUEEN) == 1);
+	REQUIRE(EvalComplexTestFixture::ZoneAttackers(without, WHITE, MOB_QUEEN) == 0);
+
+	CHECK(EvalComplexTestFixture::KingAttackPair(withQueen, BLACK).mg < 0);
+	CHECK(EvalComplexTestFixture::KingAttackPair(withQueen, BLACK).mg <
+	      EvalComplexTestFixture::KingAttackPair(without, BLACK).mg);
+}
+
+TEST_CASE("Eval - eval_king_attack: more attacked zone squares cost more", "[eval]")
+{
+	// The second half of the danger count, isolated from the first: one White
+	// queen in both positions, so the attacker count is identical, and only how
+	// much of the zone it covers differs.
+	Board nearQueen(FEN_KING_ATTACK_QUEEN);
+	Board farQueen(FEN_KING_ATTACK_QUEEN_FAR);
+
+	REQUIRE(EvalComplexTestFixture::ZoneAttackers(nearQueen, WHITE, MOB_QUEEN) ==
+	        EvalComplexTestFixture::ZoneAttackers(farQueen, WHITE, MOB_QUEEN));
+	REQUIRE(EvalComplexTestFixture::ZoneAttacks(nearQueen, WHITE) >
+	        EvalComplexTestFixture::ZoneAttacks(farQueen, WHITE));
+
+	CHECK(EvalComplexTestFixture::KingAttackPair(nearQueen, BLACK).mg <
+	      EvalComplexTestFixture::KingAttackPair(farQueen, BLACK).mg);
+}
+
+TEST_CASE("Eval - eval_king_attack: who attacks matters, not just how much is attacked", "[eval]")
+{
+	// The first half of the danger count, isolated the way the test above
+	// isolates the second. Every other attack case in this file moves the
+	// attacker count and the covered-square count together, so dropping the
+	// weighted-attacker term outright would leave them all passing: here the
+	// coverage is held equal and only the attacker's type varies.
+	//
+	// Ordering, not values -- the weights themselves are #117's to tune. A
+	// knight and a bishop are deliberately equal, which is a claim about the
+	// table and not an accident of these positions.
+	struct Bucket {
+		const char* fen;
+		eMobilePiece type;
+	};
+	const Bucket buckets[] = {
+	    {FEN_KING_ATTACK_BUCKET_KNIGHT, MOB_KNIGHT},
+	    {FEN_KING_ATTACK_BUCKET_BISHOP, MOB_BISHOP},
+	    {FEN_KING_ATTACK_BUCKET_ROOK, MOB_ROOK},
+	    {FEN_KING_ATTACK_BUCKET_QUEEN, MOB_QUEEN},
+	};
+
+	int penalty[NUM_MOBILE_PIECES] = {};
+	for (const Bucket& bucket : buckets) {
+		CAPTURE(bucket.fen, bucket.type);
+		Board board(bucket.fen);
+
+		// The premise. Without it the comparison below measures geometry.
+		REQUIRE(EvalComplexTestFixture::ZoneAttacks(board, WHITE) == 3);
+		REQUIRE(EvalComplexTestFixture::ZoneAttackers(board, WHITE, bucket.type) == 1);
+
+		penalty[bucket.type] = EvalComplexTestFixture::KingAttackPair(board, BLACK).mg;
+		CHECK(penalty[bucket.type] < 0);
+	}
+
+	CAPTURE(penalty[MOB_KNIGHT], penalty[MOB_BISHOP], penalty[MOB_ROOK], penalty[MOB_QUEEN]);
+	CHECK(penalty[MOB_KNIGHT] == penalty[MOB_BISHOP]);
+	CHECK(penalty[MOB_ROOK] < penalty[MOB_KNIGHT]);
+	CHECK(penalty[MOB_QUEEN] < penalty[MOB_ROOK]);
+}
+
+TEST_CASE("Eval - eval_king_attack: the same attack mirrors between the colors", "[eval]")
+{
+	// Shelter and storm each get an explicit mirror case above; without this one
+	// the attack term is covered only transitively, through whichever
+	// whole-position symmetry FEN happens to put a piece near a king. The zone is
+	// direction-dependent -- it extends one rank FORWARD -- so a sign or shift
+	// error there would survive every count-based assertion in this file.
+	const char* fen = GENERATE(FEN_KING_ATTACK_ONE, FEN_KING_ATTACK_TWO, FEN_KING_ATTACK_QUEEN);
+	CAPTURE(fen);
+
+	Board board(fen);
+	Board mirrored(MirrorFen(fen));
+
+	CHECK(EvalComplexTestFixture::KingAttackPair(board, BLACK).mg ==
+	      EvalComplexTestFixture::KingAttackPair(mirrored, WHITE).mg);
+	CHECK(EvalComplexTestFixture::KingAttackPair(board, WHITE).mg ==
+	      EvalComplexTestFixture::KingAttackPair(mirrored, BLACK).mg);
+}
+
+TEST_CASE("Eval - eval_king_attack: middlegame-only, kingless-safe, and inside the cap", "[eval]")
+{
+	SECTION("the endgame endpoint is exactly 0")
+	{
+		const char* fen = GENERATE(FEN_KING_ATTACK_ONE, FEN_KING_ATTACK_TWO, FEN_KING_ATTACK_QUEEN);
+		CAPTURE(fen);
+		Board board(fen);
+		for (const eColor color : {WHITE, BLACK})
+			CHECK(EvalComplexTestFixture::KingAttackPair(board, color).eg == 0);
+	}
+
+	SECTION("a kingless board contributes nothing")
+	{
+		Board board;
+		for (const eColor color : {WHITE, BLACK})
+			CHECK(EvalComplexTestFixture::KingAttack(board, color) == 0);
+	}
+
+	SECTION("the penalty never escapes its cap")
+	{
+		// Eight queens on the fourth rank is not a position anyone will reach; it
+		// is the cheapest way to drive the danger count well past anything a legal
+		// game produces and watch the ceiling hold. Well past on purpose: an
+		// example that only just crosses the knee would break on any downward
+		// retune of the weights, for a reason that has nothing to do with the cap.
+		Board board("6k1/5ppp/8/8/QQQQQQQQ/8/8/6K1 w - - 0 1");
+		const int penalty = EvalComplexTestFixture::KingAttackPair(board, BLACK).mg;
+		CAPTURE(penalty);
+		CHECK(penalty == -EvalComplexTestFixture::KingDangerCap);
+	}
 }

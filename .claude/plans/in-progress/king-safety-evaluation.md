@@ -17,9 +17,9 @@ two existing proxies by measurement rather than by assumption.
 **This change will:**
 
 - Move non-pawn piece attack generation into `BuildContext` and keep compact aggregates in
-  `EvalContext` (one all-attacks union per color, per-type mobility counts, per-type king-zone
-  attacker counts, connected-rook pairs), so mobility, `eval_rooks` and king safety all read one
-  generation pass.
+  `EvalContext` (per-type mobility counts, connected-rook pairs, per-type king-zone attacker counts,
+  attacked-zone-square counts), so mobility, `eval_rooks` and king safety all read one generation
+  pass.
 - Add four per-color contributions — `king_shelter`, `king_storm`, `king_files`, `king_attack` —
   each with its own `EvalBreakdown` row.
 - Normalize the king zone so a king on an edge file does not look safer for having a smaller ring.
@@ -36,8 +36,8 @@ two existing proxies by measurement rather than by assumption.
   (D2), for a position `Evaluate()` scores `Draw` without consulting either term.
 - Add a king-tropism (pure distance) bonus. Concrete attacks first; distance only if an ablation
   asks for it.
-- Re-generate slider attacks with the king removed from occupancy to get a legal flight-square
-  count, or generate safe checks. The first version accepts the pseudo-safe approximation (D6).
+- Count the king's flight squares at all, by any approximation, or generate safe checks. The
+  approximation was designed in and cut on measurement (D6).
 - Add pawn-hash caching (the `not-started/pawn-hash-table.md` sketch) — shelter is recomputed per
   node like every other pawn term today. If nps says otherwise, that is a separate change.
 - Delete `eval_castling` or the king PST speculatively. PR 4 decides that on evidence.
@@ -51,20 +51,23 @@ two existing proxies by measurement rather than by assumption.
 `BuildContext` runs one loop per piece type per color and accumulates:
 
 ```
-BITBOARD attacks_all[NUM_COLORS];        // every piece's attacks, pawns and king included
-int      mobility_count[NUM_COLORS][4];  // sum of (popcount(att & usable) - BASE), by type
-int      zone_attackers[NUM_COLORS][4];  // pieces of that type attacking the ENEMY king zone
-int      zone_attacks[NUM_COLORS];       // total zone squares attacked, counting overlaps
-int      connected_rook_pairs[NUM_COLORS];
-BITBOARD king_zone[NUM_COLORS];          // normalized, see D3
+int mobility_count[NUM_COLORS][4];  // sum of (popcount(att & usable) - BASE), by type
+int connected_rook_pairs[NUM_COLORS];
+int zone_attackers[NUM_COLORS][4];  // pieces of that type attacking the ENEMY king zone
+int zone_attacks[NUM_COLORS];       // total zone squares attacked, counting overlaps
 ```
 
 They arrive with their consumers, not all at once. **PR 1 adds only
 `mobility_count` and `connected_rook_pairs`** — the two that have a reader the
 moment they exist — as a `PieceAggregates` struct held by `EvalContext`. The
-remaining four are computed in the same loop when PR 3 introduces the term that
-reads them, so their per-node cost is measured against the signal that pays for
-it rather than banked in a refactor that cannot show a benefit.
+other two are computed in the same loop when PR 3 introduces the term that reads
+them, so their per-node cost is measured against the signal that pays for it
+rather than banked in a refactor that cannot show a benefit.
+
+Every field is a **count**. The draft also held an all-attacks union per color and a stored king
+zone; neither survived. The union had exactly one reader, the flight-square count D6 cut, and the
+zone is cheap enough to recompute where it is used (`EvalComplex::KingZone`) that storing a bitboard
+per color per node to avoid it is not worth the write.
 
 `PieceAggregates` is returned by value from a function taking the bitboards it
 reads, rather than filled through an `EvalContext&`. That is not style: writing
@@ -75,8 +78,8 @@ the same context.
 **Per-type attack unions are deliberately absent.** The issue text asks for them, but no consumer
 in this design reads one: mobility counts, zone-attacker counts and connected-rook pairs are all
 accumulated inside the generation loop, where the per-piece attack board is still in a register, and
-the only union anything reads back is `attacks_all` (for pseudo-safe king moves, D6). Storing six
-more bitboards per color per node buys nothing. If a later term needs them, they are one line to add.
+nothing reads an attack set back afterwards. Storing six more bitboards per color per node buys
+nothing. If a later term needs them, they are one line to add.
 
 The `[4]` arrays are indexed by a **dense, eval-local** knight/bishop/rook/queen index, not by
 `ePieceType` — that enum is sparse (`PAWN = 0, KNIGHT = 2, … KING = 10`, `defines.h`) and has no
@@ -239,32 +242,52 @@ earns its place on top of shelter.
 ```
 danger    = Σ_type ATTACK_WEIGHT[type] * zone_attackers[enemy][type]
           + ZONE_SQUARE_WEIGHT * zone_attacks[enemy]
-          + FLIGHT_WEIGHT * (FLIGHT_BASE - pseudo_safe_king_moves)
 clamped   = clamp(danger, 0, KING_DANGER_MAX)
 penalty   = min(KING_DANGER_CAP, clamped * clamped / KING_DANGER_DIVISOR)
 ```
 
-**The clamp to zero is load-bearing, and not for overflow.** `FLIGHT_BASE -
-pseudo_safe_king_moves` goes negative for a king with more flight squares than the base, which is a
-safety *bonus*; squaring it would turn that straight back into a penalty and make the curve
-non-monotone at the safe end. Clamping first is what makes `penalty` a monotone non-decreasing
-function of `danger`. `KING_DANGER_MAX` additionally bounds the multiplication, which with sane
-weights is unreachable in `int` — it is there so the bound is a property of the code rather than of
-the current table values.
+#### The third input, king flight squares, was designed in and left out on measurement
 
-`pseudo_safe_king_moves` = king ring squares neither occupied by our own pieces nor in
-`attacks_all[enemy]` — the only reader of `attacks_all`, and the only use of the enemy king's
-attacks, which is otherwise not a weighted attacker. **It is pseudo-safe, not safe**: the shared
-slider attacks are generated against the current occupancy, which still contains our own king, so a
-square *behind* the king along a checking ray reads as unattacked. The error is one-directional — it
-under-states danger, never over-states it — and the alternative is a second unconditional sliding
-pass with the king removed, at a cost the signal does not justify. The name carries the caveat so no
-later reader mistakes this for a legal king-move count.
+The draft added `FLIGHT_WEIGHT * (FLIGHT_BASE - pseudo_safe_king_moves)`, with
+`pseudo_safe_king_moves` = king-ring squares neither occupied by our own pieces nor attacked by
+the enemy. It was implemented, tested and benched, and then removed: **it cost about 3% of nps on
+its own — as much as the two surviving inputs together.** The whole term is -6.2% with it and
+-3.1% without (five interleaved runs a side, ~0.4% spread; PR 3's full bench table is in
+Validation). Against a 2% budget for the feature that is not a component to keep on the strength
+of an intuition nothing has measured.
+
+The cost is structural rather than an implementation detail, which is why it was cut instead of
+optimised. The count needs the union of **every** enemy attack set, so it puts a 64-bit OR with a
+loop-carried dependency inside the per-piece loop, on every piece, at every leaf. Three attempts
+moved it by nothing: restricting the union to the enemy king's zone (the ring is a subset of the
+zone, so this is exact) measured -6.5%, hoisting it into a scalar local -6.2%, and accumulating
+the zone counts in locals instead of writing them through the aggregates struct made the whole
+term *worse*, at -8.9%. That last one is worth recording on its own: it is the opposite of what
+PR 1's aliasing lesson predicted, and it was measured twice.
+
+What is lost is real and should not be glossed: a king with no escape squares is the signal this
+term is most obviously missing, and the count was also the only reader of the enemy king's own
+attacks. What is gained besides the nps is that the **pseudo-safe approximation disappears rather
+than being documented** — it was never a legal king-move count (the shared slider attacks are
+generated against an occupancy that still contains our own king, so a square *behind* the king
+along a checking ray read as unattacked, one-directionally under-stating danger), and that caveat
+no longer has to be carried by a name.
+
+Reintroducing it is a change that must carry its own measured benefit against a ~3% nps bill —
+either from #117, or on the back of a pawn/king-square cache (#131) that has already bought the
+headroom. It is not a follow-up to be picked up on the grounds that it was in the original design.
+
+**The clamp to zero survives the removal, deliberately.** With no negative input left it is
+unreachable today, and that is exactly why it is easy to delete later by someone who does not know
+why it was there: it is what makes monotonicity a property of the curve rather than of its
+callers, and the first term to contribute a safety *bonus* — flight squares were precisely that —
+would otherwise be squared straight back into a penalty. `KING_DANGER_MAX` separately bounds the
+multiplication, so that bound is a property of the code rather than of the current weights.
 
 Quadratic-with-cap rather than a hand-written danger table: it is non-linear by construction (two
 attackers cost four times one, which is the property the term exists for), monotone after the clamp,
-and has three tunables instead of a hundred. A table's extra shape is not something we can currently
-fit — #117 can replace the formula with one later if the data supports it.
+and has a handful of weights instead of a hundred table entries. A table's extra shape is not
+something we can currently fit — #117 can replace the formula with one later if the data supports it.
 
 Rejected: a hard "fewer than two attackers scores zero" gate, which the earlier draft justified on
 nps. That justification does not survive: by the time the gate could fire, generation, zone
@@ -282,7 +305,10 @@ to nothing as pieces come off — the reason #99 was a hard prerequisite.
 
 Each is bounded, and the bound is **absolute and per color**, not an average: shelter and storm by
 their table extrema times three files, king files by its two penalties times three files, attack
-pressure by `KING_DANGER_CAP`. `KING_SAFETY_MAX_PENALTY` is their sum, declared in `Eval.h` beside
+pressure by `KING_DANGER_CAP`. The pawn-cover half is named separately as `KING_PAWN_COVER_WORST`,
+because only that half is reachable by a pawn structure and a test asserting the tables are
+reachable has to measure against it rather than against the sum.
+`KING_SAFETY_MAX_PENALTY` is their sum, declared in `Eval.h` beside
 the constants and tied to the tables by `static_assert` over the table extrema — so a later retune
 that pushes past the declared bound fails to compile rather than quietly outweighing a piece. A
 runtime test asserts the same bound over the eval corpus, which is what catches a bound that is
@@ -313,7 +339,7 @@ price of a reconstructible breakdown.
 |---|---|---|
 | 1 | Attack aggregates in `EvalContext`; mobility, rooks rewired | Exact equivalence + nps. **No Elo run.** |
 | 2 | Shelter, storm and king-file openness (3 rows) | Local SPRT `NonRegression`, then `Gain` — **revised, see below** |
-| 3 | `eval_king_attack` + cap | Local SPRT `NonRegression`, then `Gain` |
+| 3 | `eval_king_attack` + cap | Local SPRT `NonRegression`, then `Gain` — **both inconclusive at their caps; superseded by the lab run below** |
 | 4 | Ablation of `eval_castling` and the mg king PST | See Validation |
 
 Bundling 2 and 3 would make a regression unattributable between a mis-tuned pawn table and a
@@ -353,6 +379,33 @@ measured -5.5% nps against a 2% budget for the whole feature (see Validation). I
 back negative, PRs 2 and 3 revert together — that is the accepted downside, and the reason the lab
 run is scheduled before PR 4 rather than after it. The alternative, blocking PR 2 on a local verdict,
 buys nothing: the instrument cannot produce one.
+
+#### The revised gate was met: +32.81 +/- 3.79 Elo
+
+The CI strength-lab run the section above made PR 2's merge conditional on has been dispatched and has
+returned. Candidate `62c12eb` (PRs 1-3) against `king-safety-pre` (`e0eb564`), 19,980 games in 18 shards,
+run `33708253431`: **+32.81 +/- 3.79 Elo**, 95% interval **[+29.0, +36.6]**, score 54.71%. Uniform across
+all 18 shards. Zero illegal moves, time losses or disconnects. Full detail in
+`Measurements/ci-per-change.md`.
+
+**PRs 2 and 3 therefore do not revert**, and the conditional attached to PR 2's merge is discharged. Three
+further things follow, and they matter more than the headline:
+
+- **The +10 to +40 planning band held, at its top.** It was extrapolated from mobility's +38.34 +/- 4.26
+  for a comparably absent whole-board term, and that extrapolation is now the one assumption in this
+  document that was both unverifiable and load-bearing and turned out right.
+- **The two contested sizing decisions are vindicated together and cannot be separated.** Halving the
+  shelter/storm tables (D5a) and capping the attack term at 120 rather than the literature's 300-500 were
+  both made against literature practice, the first on a balance argument after two inconclusive SPRTs and
+  the second to keep PR 4's ablation measurable. The run says the combination is worth +32.8; it says
+  nothing about either alone.
+- **The local instrument was the problem, not the term.** About 5,900 games across four local SPRTs
+  produced four inconclusive rows on a feature that resolves at nine standard errors in one lab dispatch.
+  That is worth carrying forward past this issue: for an eval term of this size, a local SPRT is a smoke
+  test, and reaching for one as the gate is what cost this series two sessions.
+
+What the run does **not** settle is the split between the three PRs or the worth of any single sub-term.
+That is PR 4's ablation, and this row is the baseline it measures against.
 
 ## Assumptions I cannot verify from the code
 
@@ -429,13 +482,45 @@ function of the pawns plus the king square, which is exactly what that cache exi
 live in `ThreadData` rather than on `EvalManager`, so the Lazy SMP contract survives. Whether that is
 worth doing is a question for the SPRT below, which measures the term NET of its own speed cost.
 
+**PR 3 measured: about -2.5% nps** (two order-balanced sessions of five interleaved runs a side at
+depth 12, medians 2.845 M vs 2.776 M then 2.849 M vs 2.776 M, against a ~0.4% run-to-run spread — a
+tighter spread than PR 2's ~1%, because depth 12 rather than the default depth removes the
+too-fast-to-time positions the script warns about). The shape as designed measured -6.2%; the table
+below is what the ablation bought, and the reasoning is in D6.
+
+| Danger inputs | nps vs `9cdd52e` |
+|---|---|
+| attacker counts only | -2.1% |
+| + attacked zone squares | -3.1% |
+| + king flight squares (as designed) | -6.2% |
+| **shipped** (attackers + zone squares) | **-2.5%** |
+
+That still misses the 2% budget, by less than the measurement's own resolution is wide but not by
+nothing, and the series total against `king-safety-pre` is now roughly **-8%**. Two things follow.
+The king-square-tagged pawn cache left as a follow-up decision after PR 2 is no longer
+optional-feeling: it is the only route that removes rather than shaves this. And PR 4's ablation now
+has a concrete per-sub-term price to weigh, which is a better position to ablate from than PR 2 was
+in.
+
 **Delta pruning headroom.** `AIPerplex.h`'s `delta_pruning_margin = 200` has less room under it than
-before this series, but the halved tables restore it. One pawn capture beside a king moves the
-positional score by ~50 cp typical and ~82 worst (shelter 24, files ≤ 11, storm un-halving ≤ 7,
-isolated 20-40), against roughly 35 before the series. A pawn plus the worst case is 182 against the
-200 margin. At full magnitude the worst case was 125 — the same four terms, since the isolated penalty
-fires on exactly that capture — so a pawn plus that already exceeded the margin. No change is needed
-at the shipped scale, but a #117 retune upward must re-examine it rather than assume it.
+before this series. One pawn capture beside a king moves the positional score by ~50 cp typical and
+~82 worst from PR 2's terms alone (shelter 24, files ≤ 11, storm un-halving ≤ 7, isolated 20-40),
+against roughly 35 before the series. A pawn plus that worst case is 182 against the 200 margin, and
+this paragraph originally stopped there and concluded that no change was needed.
+
+**PR 3 spends what PR 2's halving restored, so that conclusion is re-scoped rather than reused.** The
+same capture now also moves the attack row: the capturing piece lands in or leaves the king zone, and
+the lines it opens or blocks change the zone-square count. Realistically 5-25 cp for one capture — not
+the 120 cap, which takes a whole attacking force — so the worst case goes to roughly 107, and a pawn
+plus that is about 207 against the 200 margin.
+
+The margin is nonetheless **left alone here**, on two grounds. It is not a new class of problem: at the
+pre-PR-2 full magnitude the worst case was already 125, so a pawn plus that exceeded the margin before
+any of this landed. And raising `delta_pruning_margin` is a search change with its own Elo
+consequences, which an evaluation PR's arithmetic cannot justify — it needs its own measurement. What
+is recorded here is that the headroom is negative again in the worst case, so a #117 retune upward, or
+PR 4 keeping all four terms, has to face that rather than inherit a "no change needed" written before
+the attack term existed.
 
 **PRs 2 and 3 — strength.** `Run-Bench.ps1` first: the incremental budget for the whole feature is
 2% nps (≈3.4 Elo of speed). **PR 2 alone breaches that budget at -5.5%, and the breach is accepted
@@ -456,9 +541,11 @@ it.** New `[eval]` cases, with matching `Docs/TestDesign.md` entries:
 - open versus half-open versus pawn-closed king file;
 - one versus two attackers (assert the inequality, not tuned values), and **queen-only pressure**
   scoring nonzero — the case the rejected two-attacker gate would have zeroed;
+- each half of the danger count isolated against the other: equal attacker counts with different
+  zone coverage, and **equal zone coverage with different attacker types**, one position per piece
+  bucket. Without the second, deleting the weighted-attacker term outright passes every other attack
+  case in the file, since coverage moves with the attacker count everywhere else;
 - monotonicity of the danger curve across a sweep, including a negative pre-clamp `danger`;
-- flight-square loss, and a `pseudo_safe_king_moves` case documenting the x-ray blind spot rather
-  than asserting legality;
 - every reachable `SHELTER`/`STORM` bucket and its color mirror;
 - phase fading, `KING_SAFETY_MAX_PENALTY`, kingless board, mirror symmetry, breakdown
   reconstruction.
@@ -504,7 +591,6 @@ intuitive term.
 | Shelter/storm tables are unfitted literature shapes owned by #117 (D4) | comment above the tables in `Eval.h` |
 | King-file definition differs from `eval_rooks` on purpose (D5) | comment on `eval_king_files` |
 | Quadratic-with-cap over a danger table; why the clamp is about sign, not overflow (D6) | comment on `eval_king_attack` |
-| `pseudo_safe_king_moves` is not a legal king-move count, and the error is one-directional (D6) | the value's name plus a comment where it is computed |
 | `KING_SAFETY_MAX_PENALTY` and its derivation from the table extrema | `Eval.h` constant + `static_assert` + corpus assert in `EvalTermTests.cpp` |
 | Which sub-terms and overlap ablations survived, with measured Elo | `Docs/Changelog.md`, issue #97, `Measurements/ci-per-change.md` |
 | New `[eval]` coverage | `Docs/TestDesign.md` |
@@ -515,7 +601,10 @@ intuitive term.
 | Shelter does not subsume `eval_castling` (D5a) | PR 4's PR body, before any decision to drop it |
 | Delta-pruning headroom: restored by the halved scale, re-examine on a #117 retune upward | comment beside `delta_pruning_margin`, if PR 4 keeps the term |
 | Shelter ranks 5-6 collapse to equal values at the halved scale; the shape is no longer expressible there | issue #117 |
-| PR 3's attack term must land at a scale consistent with the halved pawn-cover tables, or PR 4 measures shelter in its shadow | PR 3's PR body |
+| PR 3's attack term must land at a scale consistent with the halved pawn-cover tables, or PR 4 measures shelter in its shadow | PR 3's PR body — discharged: `KING_DANGER_CAP` is 120, not the literature's 300-500 |
+| King flight squares cost ~3% nps for an unmeasured signal, so reintroducing them needs their own measured benefit rather than a ticket citing the original design (D6) | issue #97 — deliberately NOT a source comment: it is a point-in-time measurement about code that is not there |
+| Accumulating the zone counts in locals measured ~3% SLOWER than writing them through the aggregates struct — the opposite of PR 1's aliasing lesson, and measured twice (D6) | this document only; it is a negative result about the compiler, not about the engine |
+| Delta-pruning headroom is negative again in the worst case once the attack term is counted | comment beside `delta_pruning_margin`, if PR 4 keeps the term |
 
 Delete this file once PR 4 lands and the table above is discharged. Nothing durable should survive
 only here.
