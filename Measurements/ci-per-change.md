@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-09-03 | 62c12eb (king safety: shelter, storm, king-file openness and attack pressure, #97 PRs 1-3) | e0eb564 (`king-safety-pre`, fork point of the series, not of one change) | 19980 | 10+0.1 | **+32.81 +/- 3.79** | gain |
 | 2026-09-02 | 0e5e9c3 (pawnless K+R vs K+R scaled to 4/16, #436) | 8fd70c3 | 19980 | 10+0.1 | **+1.32 +/- 3.54** | non-regression |
 | 2026-09-01 | e792a81 (all of #128: exact-draw classes, scaled rook endings, the wrong-bishop fortress, the mop-up gate and the quiescence guard) | b3ab55a (fork point of the arc, not of one change) | 19980 | 10+0.1 | **+1.98 +/- 3.48** | non-regression |
 | 2026-08-29 | ff5d2f5 (LMR depth clamp keeps one main-tree ply, #363) | be5ca11 | 19980 | 10+0.1 | **+9.64 +/- 3.63** | gain |
@@ -24,6 +25,20 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-09-03 -- 62c12eb (king safety, #97 PRs 1-3) (19980 games)
+
+**The sizing for the whole king-safety feature, and it is a gain.** 18 shards x 555 pairs, pooled Ptnml(0-2) [726, 1823, 3592, 2542, 1307], score 54.71%, run `33708253431`, 3 h 05 min wall-clock. 95% interval **[+29.0, +36.6]**, excluding zero by about nine standard errors. Uniform: in **every one of the 18 shards** the two winning buckets outnumber the two losing ones (200-235 against 124-152), so no slice carries the result. Reference is the pre-series tag rather than a merge base, so the row covers PR 1 (#453, the attack-aggregate refactor, behaviour-preserving), PR 2 (#454, shelter/storm/king-file openness at half the literature magnitude) and PR 3 (#455, attack pressure) against their common fork point. It is attributable to that arc, not to any one of the three.
+
+**What it settles.** The local instrument spent about 5,900 games across four SPRTs on this feature and returned four inconclusive rows (local table); this run answers in one dispatch what none of them could. It also discharges the revised gate in the design doc's D9, which made PR 2's merge conditional on this result and said PRs 2 and 3 revert together if it came back negative. They do not.
+
+**It settles two arguments the local rows could only gesture at.** The halved shelter/storm tables were shipped on a balance argument after a full-magnitude configuration measured -10.9 and a halved one +9.4, both inconclusive at 700 games -- the pre-registered response to a failing SPRT rather than a fit chosen after seeing the numbers. And PR 3's attack term shipped with `KING_DANGER_CAP` at 120 rather than the literature's 300-500, deliberately sized to stay commensurate with those halved tables. Neither choice can be separated from the other by this row, but the combination is worth +32.8.
+
+**What it does not settle.** The split between the three PRs, and the value of any individual sub-term: that is what PR 4's ablation is for, and this row is the baseline it will measure against. Nor does it settle the -8% nps the feature costs against this same reference -- an Elo run measures a term net of its own speed cost, so about 14 Elo of speed is already subtracted here, and a pawn/king-square cache (#131) that recovered it would be worth roughly that much again on top.
+
+For scale, the closest comparable row is mobility (#98 + #113) at **+38.34 +/- 4.26** -- the row the design doc's +10 to +40 planning band was extrapolated from. King safety lands at the top of that band, which is the hypothesis holding rather than a surprise.
+
+Interval width 3.79 against the instrument's calibrated 4.15 at the same game count. Zero illegal moves, zero time losses, zero disconnects; all 18 shards green and the opening slices verified disjoint
 
 ### 2026-09-02 — 0e5e9c3 (pawnless K+R vs K+R scaled to 4/16, #436) (19980 games)
 

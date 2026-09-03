@@ -336,7 +336,7 @@ price of a reconstructible breakdown.
 |---|---|---|
 | 1 | Attack aggregates in `EvalContext`; mobility, rooks rewired | Exact equivalence + nps. **No Elo run.** |
 | 2 | Shelter, storm and king-file openness (3 rows) | Local SPRT `NonRegression`, then `Gain` — **revised, see below** |
-| 3 | `eval_king_attack` + cap | Local SPRT `NonRegression`, then `Gain` |
+| 3 | `eval_king_attack` + cap | Local SPRT `NonRegression`, then `Gain` — **both inconclusive at their caps; superseded by the lab run below** |
 | 4 | Ablation of `eval_castling` and the mg king PST | See Validation |
 
 Bundling 2 and 3 would make a regression unattributable between a mis-tuned pawn table and a
@@ -376,6 +376,33 @@ measured -5.5% nps against a 2% budget for the whole feature (see Validation). I
 back negative, PRs 2 and 3 revert together — that is the accepted downside, and the reason the lab
 run is scheduled before PR 4 rather than after it. The alternative, blocking PR 2 on a local verdict,
 buys nothing: the instrument cannot produce one.
+
+#### The revised gate was met: +32.81 +/- 3.79 Elo
+
+The CI strength-lab run the section above made PR 2's merge conditional on has been dispatched and has
+returned. Candidate `62c12eb` (PRs 1-3) against `king-safety-pre` (`e0eb564`), 19,980 games in 18 shards,
+run `33708253431`: **+32.81 +/- 3.79 Elo**, 95% interval **[+29.0, +36.6]**, score 54.71%. Uniform across
+all 18 shards. Zero illegal moves, time losses or disconnects. Full detail in
+`Measurements/ci-per-change.md`.
+
+**PRs 2 and 3 therefore do not revert**, and the conditional attached to PR 2's merge is discharged. Three
+further things follow, and they matter more than the headline:
+
+- **The +10 to +40 planning band held, at its top.** It was extrapolated from mobility's +38.34 +/- 4.26
+  for a comparably absent whole-board term, and that extrapolation is now the one assumption in this
+  document that was both unverifiable and load-bearing and turned out right.
+- **The two contested sizing decisions are vindicated together and cannot be separated.** Halving the
+  shelter/storm tables (D5a) and capping the attack term at 120 rather than the literature's 300-500 were
+  both made against literature practice, the first on a balance argument after two inconclusive SPRTs and
+  the second to keep PR 4's ablation measurable. The run says the combination is worth +32.8; it says
+  nothing about either alone.
+- **The local instrument was the problem, not the term.** About 5,900 games across four local SPRTs
+  produced four inconclusive rows on a feature that resolves at nine standard errors in one lab dispatch.
+  That is worth carrying forward past this issue: for an eval term of this size, a local SPRT is a smoke
+  test, and reaching for one as the gate is what cost this series two sessions.
+
+What the run does **not** settle is the split between the three PRs or the worth of any single sub-term.
+That is PR 4's ablation, and this row is the baseline it measures against.
 
 ## Assumptions I cannot verify from the code
 

@@ -43,6 +43,7 @@ comparable with a Linux CI row**: different compiler, different machine, differe
 | 2026-09-02 | candidate-2aafd6f (#97 PR 2) | f6e9cfb | 700 | 10+0.1 | -10.92 +/- 21.46 | inconclusive @ 700 |
 | 2026-09-02 | candidate-b38d390 (#97 PR 2, half table scale) | f6e9cfb | 700 | 10+0.1 | 9.43 +/- 19.49 | inconclusive @ 700 |
 | 2026-09-03 | candidate-0b5f3fb (#97 PR 3: king attack pressure) | 9cdd52e (merge-base) | 2000 | 10+0.1 | 12.69 +/- 11.04 | inconclusive @ 2000 |
+| 2026-09-03 | candidate-62c12eb (#97 PR 3, Gain leg) | 9cdd52e (merge-base) | 2500 | 10+0.1 | 7.64 +/- 10.03 | inconclusive @ 2500 |
 
 ## Row detail
 
@@ -185,3 +186,15 @@ The `Gain` leg [0, 10] was therefore not reached. It is the leg the point estima
 Speed context, because an SPRT measures a term net of its own cost: the three king-attack aggregates cost **-2.5% nps** against this same reference (two order-balanced sessions of five interleaved depth-12 runs a side, ~0.4% spread), which at the project's ~1.7 Elo per 1% is about -4 Elo of speed. A point estimate of +12.7 net of that implies roughly +17 Elo of positional value before the cost -- a figure worth stating only as the arithmetic it is, not as a measurement.
 
 Reference is the merge-base build passed as `-ReferenceExe` with `-ReferenceTag 9cdd52e` so the label stays honest under **#309**; `EngineTesting\openings-large.pgn`, `Threads=1`, 192 MB hash, both sides clang-cl. The `+dirty` suffix in the raw candidate label is an untracked `bench/` directory holding the before/after binaries, not a modified tracked file. fastchess emitted 80 "PV continues after threefold repetition" compliance warnings; those concern the reported PV only and are not in the discard set (no time loss, illegal move, disconnect or stall). **An earlier attempt at this comparison (logs `20260903-012938`, `20260903-013509`) was discarded unreported**: `Run-EloMatch.ps1 -?` does not print help under `pwsh -File` but starts a real 500-game anchor match, which ran concurrently with the SPRT for six minutes. Both were killed and neither wrote a row -- the same accident, from the same cause, as the one recorded in the `candidate-2aafd6f` row above
+
+### 2026-09-03 -- candidate-62c12eb (#97 PR 3, Gain leg) (2500 games)
+
+**SPRT Gain [0, 10] -- INCONCLUSIVE, hit the 2500-game cap** (LLR +1.01, 34.3% toward H1). 742W/687L/1071D (51.10%), LOS 93.25%, DrawRatio 36.08%, PairsRatio 1.10, Ptnml(0-2) [84, 297, 451, 316, 102], WL/DD 0.97, nElo +10.38 +/- 13.62, wall time 03:21:05 at `-Concurrency 6`. No time losses, illegal moves or disconnects; 57 "PV continues after threefold repetition" compliance warnings, which concern the reported PV only and are not in the discard set. The 95% interval is [-2.4, +17.7], which contains zero -- so unlike the `NonRegression` row above, **this one does not exclude it**.
+
+**The second leg of PR 3's gate, and the honest reading is that it is a weaker result than the first.** These are two independent samples of the same comparison against the same reference: +12.69 +/- 11.04 over 2,000 games, then +7.64 +/- 10.03 over 2,500. The second is lower, and nothing distinguishes them but sampling -- same binaries, same book, same machine, same settings. Naively pooling them (4,500 games, 51.42%, about +9.9) is tempting and slightly wrong: both runs are conditioned on having failed to cross a bound, which biases a pooled estimate toward the indifference region. The defensible statement is that both intervals sit in the same place and the term is positive but probably worth **less than the +10 this leg tested for**.
+
+**More local games would not settle it.** `N * 2.94 / LLR` gives ~7,300 games, about 10 hours, and that is the optimistic reading -- if the true effect is inside [0, 10], which is exactly what these two rows suggest, the test may not converge at any practical N. That is the same wall the four #97 rows above ran into, and it is why the CI strength-lab row dated the same day supersedes all of them: **+32.81 +/- 3.79 for the whole feature** (`ci-per-change.md`), which no local budget could have produced.
+
+The two numbers are not in tension. The lab row measures PRs 1-3 against the pre-series fork point; this row measures PR 3 alone against a merge base that already contains PRs 1 and 2. A feature worth +32.8 whose last component is worth under +10 is an ordinary shape.
+
+Reference is the merge-base build passed as `-ReferenceExe` with `-ReferenceTag 9cdd52e` so the label stays honest under **#309**; `EngineTesting\openings-large.pgn`, `Threads=1`, 192 MB hash, both sides clang-cl. The `+dirty` suffix in the raw candidate label is an untracked `bench/` directory holding the before/after binaries, not a modified tracked file
