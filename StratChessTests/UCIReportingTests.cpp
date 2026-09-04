@@ -137,7 +137,7 @@ TEST_CASE("cmd_eval: white-pov line matches the stated sign convention", "[uci]"
 // A breakdown that is right internally and mis-rendered is still a debugging
 // tool that lies, and #117 (Texel tuning) will be reading the output, not the
 // struct. The struct-level check that the rows really are the same terms
-// Evaluator::Evaluate() sums lives in EvalTests.cpp ([eval]).
+// Evaluator::Evaluate() sums lives in EvalTermTests.cpp ([eval]).
 
 struct EvalTermRow {
 	int white;

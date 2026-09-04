@@ -309,9 +309,8 @@ change.
 **File**: `StratChessTests/TacticalTests.cpp`
 **Rationale**: Direct regression tests for search correctness. If LMR, aspiration windows, or move ordering changes break tactical play, these catch it fast. Each test uses `AIPerplex` at depth 4 — fast on simple positions (< 100 ms each), finds forced results reliably.
 
-**Approach**: construct `AIPerplex(AIPerplexConfig{.evaluator = COMPLEX, .default_depth = 4,
-.verbose_logging = false})`, then call `Search(board, limits).best_move`. Check `m.from()` and
-`m.to()`.
+**Approach**: construct `AIPerplex(AIPerplexConfig{.default_depth = 4, .verbose_logging = false})`,
+then call `Search(board, limits).best_move`. Check `m.from()` and `m.to()`.
 
 **Test cases**:
 - Mate in 1 (rook delivers back-rank mate): engine plays Ra8# (`6k1/5ppp/8/8/8/8/5PPP/R5K1`)

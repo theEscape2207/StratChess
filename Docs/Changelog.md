@@ -34,9 +34,13 @@ stateless type and removes a null state nothing could ever produce. `AIPerplexCo
 ignored under the parser's existing unknown-key policy rather than read into an enum. `GetType()`
 stays `static constexpr` and keeps returning `"Complex"`, so `getDescription()` and
 `search_description()` are byte-identical. Tests lost their SIMPLE/NONE-selection-only cases;
-`EvalProbe` now derives from `Evaluator` directly to reach the protected PST helpers. Pure refactor:
-`Compare-SearchEquivalence.ps1` against `origin/main` confirms identical per-iteration output and
-best moves at `Threads=1`.
+`EvalProbe` now derives from `Evaluator` directly to reach the protected PST helpers. `PlayerConfig::eval`
+defaulted to `0` (`NONE`), so a legacy AI built from a config block with no `"eval"` key got a null
+`Eval` pointer and crashed the first time `Quiescent()` dereferenced it; the value member makes that
+state unrepresentable, fixing a real latent crash rather than only refactoring around it. An out-of-tree
+config still carrying `"eval": 1` now silently runs the Complex evaluator instead of Simple. Pure
+refactor otherwise: `Compare-SearchEquivalence.ps1` against `origin/main` confirms identical
+per-iteration output and best moves at `Threads=1`.
 
 ---
 

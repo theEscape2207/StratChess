@@ -280,7 +280,7 @@ class Evaluator {
 	// just the rank bits. That distinction is invisible for a file-symmetric
 	// PST (rotation and vertical flip agree there) but wrong the moment a
 	// table is file-asymmetric — the queen-PST regression this caused is
-	// guarded by test coverage in `StratChessTests/EvalTests.cpp`.
+	// guarded by test coverage in `StratChessTests/EvalSymmetryTests.cpp`.
 	static constexpr inline int getEvalBoard(ePiece piece, eSquare square) noexcept
 	{
 		return (PieceHelper::Color(piece) == eColor::BLACK) ? (square ^ 56) : square;

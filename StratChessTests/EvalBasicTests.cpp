@@ -44,7 +44,12 @@ TEST_CASE("Eval - Evaluator: a kingless board evaluates to 0 (pre-#127 behaviour
 
 TEST_CASE("Eval - Evaluator: side with extra queen scores > 500 cp", "[eval]")
 {
-	Board board(FEN_WHITE_EXTRA_QUEEN);
+	// Both colors: the score is side-to-move-relative, so this exercises the
+	// sign as well as the magnitude — Black's extra queen with Black to move
+	// must score positively too, not just White's.
+	const char* fen = GENERATE(FEN_WHITE_EXTRA_QUEEN, FEN_BLACK_EXTRA_QUEEN);
+	CAPTURE(fen);
+	Board board(fen);
 
 	REQUIRE(Evaluator().Evaluate(board) > 500);
 }

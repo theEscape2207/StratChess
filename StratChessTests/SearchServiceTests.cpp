@@ -84,6 +84,23 @@ TEST_CASE("Player factory creates human and legacy players", "[player][factory]"
 	CHECK(board.IsLegalMove(result.best_move));
 }
 
+TEST_CASE("Player factory gives a legacy AI the Complex evaluator with no evaluator field configured",
+          "[player][factory]")
+{
+	// Pins a real behaviour change from #457: PlayerConfig::eval used to default to 0 (NONE), so a
+	// config block with no "eval" key left a legacy AI's Eval pointer null -- a latent crash the
+	// first Quiescent() call would have hit. The value member makes that state unrepresentable;
+	// this asserts the legacy AI now gets a working Complex evaluator by default instead.
+	Board board;
+	Config::PlayerConfig config;
+	config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::AIAGENT);
+	config.depth = 1;
+	auto legacy = CreatePlayer(config, board);
+
+	const std::string description = legacy->getDescription();
+	CHECK(description.ends_with("Evaluation:\tComplex\n"));
+}
+
 TEST_CASE("Player factory configures the default depth used by empty SearchLimits", "[player][search_player][factory]")
 {
 	Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
