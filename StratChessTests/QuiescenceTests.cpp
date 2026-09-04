@@ -1,6 +1,6 @@
 // QuiescenceTests.cpp — Catch2 tests for quiescence(): the bound delta pruning is allowed to
-// use, the legal evasions a node in check has to consider, the unit its TT depth field is
-// expressed in, and the order it searches its moves in.
+// use, the legal evasions a node in check has to consider, the terminal states it can and cannot
+// prove, the unit its TT depth field is expressed in, and the order it searches its moves in.
 
 #include "SearchTestFixture.h"
 #include <catch2/catch_test_macros.hpp>

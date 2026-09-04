@@ -22,6 +22,18 @@ Newest first.
 
 ---
 
+## 2026-09-04 — Stalemate at the quiescence horizon (#234)
+
+Out of check, quiescence generates captures only, so an empty move list said nothing about legality
+and a stalemate at the horizon kept the static score of a position that is a draw. In KQ vs K at
+depth 1 that made Kd1-c1 — stalemate — the best-scoring move, three centipawns of mop-up ahead of
+the alternatives; the engine now plays Qf2-c5. `quiescence()` runs an exact legal-move probe before
+stand-pat, gated on the side to move having nothing but its king, so the list is at most eight king
+steps. Bench over six alternating runs a side: -0.9% nps, inside the +/-1.3% run-to-run spread, with
+identical node counts on every bench position.
+
+---
+
 ## 2026-09-03 — King safety: shelter, storm, king-file openness and attack pressure (#97)
 
 Four middlegame-only terms, landed as four PRs. PR 1 (#453) moved the non-pawn attack generation into
