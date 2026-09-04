@@ -29,8 +29,10 @@ and a stalemate at the horizon kept the static score of a position that is a dra
 depth 1 that made Kd1-c1 — stalemate — the best-scoring move, three centipawns of mop-up ahead of
 the alternatives; the engine now plays Qf2-c5. `quiescence()` runs an exact legal-move probe before
 stand-pat, gated on the side to move having nothing but its king, so the list is at most eight king
-steps. Bench over six alternating runs a side: -0.9% nps, inside the +/-1.3% run-to-run spread, with
-identical node counts on every bench position.
+steps. Both halves of that shape are load-bearing: reading the gate off the incremental material
+score rather than the occupancy bitboard, and keeping the MoveList out of quiescence's frame, are
+each worth about 2% of nps. As landed the bench is unchanged over 16 paired runs (median +0.05%,
+8 of 16 negative), with identical node counts on every position.
 
 ---
 

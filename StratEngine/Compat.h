@@ -8,12 +8,16 @@
 
 #	define STRAT_FORCEINLINE __forceinline
 
+#	define STRAT_NOINLINE __declspec(noinline)
+
 // localtime_s takes (tm*, time_t*) and reports success via a 0 return.
 #	define STRAT_LOCALTIME(tm_out, time_in) (localtime_s((tm_out), (time_in)) == 0)
 
 #else
 
 #	define STRAT_FORCEINLINE inline __attribute__((always_inline))
+
+#	define STRAT_NOINLINE __attribute__((noinline))
 
 #	include <ctime>
 // POSIX localtime_r takes its arguments in the opposite order to localtime_s

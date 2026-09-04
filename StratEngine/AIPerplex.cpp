@@ -821,20 +821,24 @@ void AIPerplex::order_quiescence_moves(ThreadData& td, MoveList& moveList, bool 
 
 namespace {
 
-	// Exact stalemate test for the one class of position where quiescence can afford one: the side
-	// to move has nothing but its king, so the move list is at most eight king steps and the answer
-	// costs a DoMove() each. Out of check the node generates captures only, and an empty capture
-	// list says nothing about whether a move exists at all.
-	bool bare_king_is_stalemated(Board& board)
+	// The gate on the exact test below, and the only half a quiet node pays for. Material is
+	// maintained incrementally, so a side worth exactly its king is one load and a compare; the
+	// same question asked of the occupancy bitboard is not, because reaching the bitboards is an
+	// out-of-line call. On a hot path entered millions of times per second that spelling is worth
+	// about 2% of nps, which is more than this whole probe is worth.
+	bool is_bare_king(const Board& board)
 	{
-		// What this computes is "no move survives DoMove()"; only the caller's !in_check makes that
-		// stalemate rather than checkmate, and the two verdicts are a full point apart.
-		assert(!board.InCheck());
+		return board.GetMaterialScore(board.GetCurrentColor()) == PieceHelper::Value(ePiece::WHITE_KING);
+	}
 
-		const auto boards = board.GetBitBoards();
-		const auto mover = (board.GetCurrentColor() == WHITE) ? ePiece::ALL_WHITE_PIECES : ePiece::ALL_BLACK_PIECES;
-		if (std::popcount(boards[mover]) != 1)
-			return false;
+	// Deliberately out of line. It owns a MoveList, and inlining puts those 400-odd bytes on the
+	// frame of every quiescence node rather than the few that are a bare king -- the other half of
+	// the 2% above. Behind the gate the list is at most eight king steps.
+	STRAT_NOINLINE bool has_no_legal_move(Board& board)
+	{
+		// Out of check this is stalemate; in check it would be checkmate, and the two verdicts are a
+		// full point apart. The caller owns that distinction.
+		assert(!board.InCheck());
 
 		// ComputeLegalMoves() is pseudo-legal, so DoMove() is what decides -- the same notion of
 		// "has a move" the search itself uses.
@@ -947,7 +951,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	//
 	// Exempt from the unwind invariant for the same reason as the checkmate store below: the score
 	// follows from the position alone, and no child was searched to produce it.
-	if (!in_check && bare_king_is_stalemated(td.board)) {
+	if (!in_check && is_bare_king(td.board) && has_no_legal_move(td.board)) {
 		tt.store(key, static_cast<int16_t>(GameValues::Draw), static_cast<int16_t>(qsearch_budget),
 		         static_cast<int16_t>(ply), Move::EmptyMove(), BoundType::EXACT, NodeType::PV_NODE,
 		         SearchPhase::QUIESCENCE);
