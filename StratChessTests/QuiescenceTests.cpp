@@ -606,3 +606,80 @@ TEST_CASE("Search - out of check, quiescence still orders captures by MVV-LVA", 
 	REQUIRE(order.size() >= 2);
 	CHECK(order.front() == "e4d5");
 }
+
+// ============================================================================
+// Terminal states at the quiescence horizon
+// ============================================================================
+// In check, the node generates every evasion, so an empty survivor set is checkmate and the node
+// says so. Out of check it generates captures only: an empty list carries no information about
+// legality, and a stalemate at the horizon keeps the static score of a position that is a draw.
+// Mop-up makes that concrete -- it pays the winning king for closing on the loser, including the
+// step that takes the last escape square away.
+
+// Whether the side to move has a move that survives DoMove(). ComputeLegalMoves() is
+// pseudo-legal at the edges, so DoMove() is what decides, exactly as the search does.
+static bool has_legal_move(const Board& position)
+{
+	Board copy = position;
+	MoveList ml;
+	MoveGenerator::ComputeLegalMoves(copy, ml);
+
+	for (const auto& move : ml) {
+		if (copy.DoMove(move)) {
+			copy.UndoMove(move);
+			return true;
+		}
+	}
+	return false;
+}
+
+TEST_CASE("Qsearch - a stalemated quiet node is a draw, not a static win", "[search][qsearch]")
+{
+	// KQ vs K with the black king on a1: Kc1 covers b1 and b2, Qf2 covers the second rank.
+	// Black is not in check and has no move, and no capture exists for the node to generate.
+	AIPerlexTestFixture fix("8/8/8/8/8/8/5Q2/k1K5 b - - 1 1");
+	REQUIRE_FALSE(fix.board_.InCheck());
+	REQUIRE(fix.count_legal_moves() == 0);
+
+	const int stand_pat = fix.evaluate();
+	const int score = fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init,
+	                                   AIPerlexTestFixture::QSEARCH_BUDGET, /*ply=*/0);
+
+	INFO("stand_pat = " << stand_pat << ", qsearch = " << score);
+	REQUIRE(stand_pat < -500); // premise: the static score is a lost queen, not a draw
+	CHECK(score == GameValues::Draw);
+}
+
+TEST_CASE("Qsearch - a quiet node one escape square short of stalemate keeps its score", "[search][qsearch]")
+{
+	// The control for the case above, and the reason the probe has to be exact rather than a
+	// material heuristic: the same men, the black king one file across, and b1 still free.
+	// A node that answered "bare king, close to the enemy king, no captures" with a draw would
+	// throw away a won queen here.
+	AIPerlexTestFixture fix("8/8/8/8/8/8/5Q2/k2K4 b - - 1 1");
+	REQUIRE_FALSE(fix.board_.InCheck());
+	REQUIRE(fix.count_legal_moves() > 0);
+
+	const int score = fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init,
+	                                   AIPerlexTestFixture::QSEARCH_BUDGET, /*ply=*/0);
+
+	INFO("qsearch = " << score);
+	CHECK(score < -500);
+}
+
+TEST_CASE("Qsearch - a depth-1 search does not play into stalemate", "[search][qsearch]")
+{
+	// The end-to-end case: at depth 1 every root move is settled by quiescence, so a horizon
+	// that cannot see stalemate makes Kd1-c1 -- which throws the win away -- the best-scoring
+	// move on the board, three centipawns of mop-up ahead of the alternatives.
+	AIPerlexTestFixture fix("8/8/8/8/8/8/5Q2/k2K4 w - - 0 1");
+
+	const Move best = fix.search_to_depth(1);
+	REQUIRE_FALSE(best.is_null());
+
+	Board after = fix.board_;
+	REQUIRE(after.DoMove(best));
+
+	INFO("depth-1 best move = " << MoveFormatter::ToUCI(best));
+	CHECK((after.InCheck() || has_legal_move(after)));
+}
