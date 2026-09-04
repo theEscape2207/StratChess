@@ -88,8 +88,7 @@ class AIPerlexTestFixture {
 		// Defaults to 4, a don't-care for the many [search] tests that never call
 		// Search(); the node-limit tests below raise it so the node poll — not the
 		// depth cap — is what stops the search.
-		ai_owner = std::make_unique<AIPerplex>(AIPerplexConfig{
-		    .evaluator = EvalManager::EvalTypes::COMPLEX, .default_depth = max_depth, .verbose_logging = false});
+		ai_owner = std::make_unique<AIPerplex>(AIPerplexConfig{.default_depth = max_depth, .verbose_logging = false});
 		ai = ai_owner.get();
 		ai->td_.board = board_;
 	}
@@ -346,7 +345,7 @@ class AIPerlexTestFixture {
 	}
 
 	// Static evaluation of the fixture's board — the value stand-pat would have used.
-	int evaluate() const { return ai->evaluator_->Evaluate(board_); }
+	int evaluate() const { return ai->evaluator_.Evaluate(board_); }
 
 	// The margin delta pruning adds to its bound. Read rather than hardcoded so a
 	// test can place alpha exactly at the pruning threshold without pinning a
@@ -388,7 +387,6 @@ class AIPerlexTestFixture {
 	int64_t poll_ticks() const { return ai->td_.nodes_since_check_; }
 
 	static bool verbose_logging(const AIPerplex& ai) { return ai.verbose_logging_; }
-	static std::string evaluator_type(const AIPerplex& ai) { return ai.evaluator_->GetType(); }
 	static const SearchTuning& tuning(const AIPerplex& ai) { return ai.tuning_; }
 	static unsigned configured_threads(const AIPerplex& ai) { return ai.threads_; }
 	static uint64_t game_generation(const AIPerplex& ai) { return ai.game_generation_; }
@@ -414,7 +412,6 @@ class LegacyAiTestFixture {
 		Config::PlayerConfig config;
 		config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::AIAGENT);
 		config.depth = max_depth;
-		config.eval = static_cast<unsigned>(EvalManager::EvalTypes::COMPLEX);
 		ai_owner = CreatePlayer(config, board_);
 		ai = static_cast<AIAgent*>(ai_owner.get());
 	}

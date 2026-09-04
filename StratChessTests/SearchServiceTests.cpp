@@ -50,7 +50,6 @@ TEST_CASE("SearchPlayer searches the Board's current position on every move", "[
 	Config::PlayerConfig config;
 	config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::AI_PERPLEX);
 	config.depth = 1;
-	config.eval = static_cast<unsigned>(EvalManager::EvalTypes::COMPLEX);
 	auto player = CreatePlayer(config, board, {.verbose_search_logging = false});
 
 	const SearchResult first = player->GetMove(SearchLimits::fixed_depth(1));
@@ -77,7 +76,6 @@ TEST_CASE("Player factory creates human and legacy players", "[player][factory]"
 	Config::PlayerConfig legacy_config;
 	legacy_config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::AIAGENT);
 	legacy_config.depth = 1;
-	legacy_config.eval = static_cast<unsigned>(EvalManager::EvalTypes::SIMPLE);
 	auto legacy = CreatePlayer(legacy_config, board);
 	const SearchResult result = legacy->GetMove(SearchLimits::fixed_depth(1));
 	CHECK_FALSE(legacy->IsHuman());
@@ -86,29 +84,12 @@ TEST_CASE("Player factory creates human and legacy players", "[player][factory]"
 	CHECK(board.IsLegalMove(result.best_move));
 }
 
-TEST_CASE("AIPerplex rejects the NONE evaluator at construction", "[search][service_api][factory]")
-{
-	const AIPerplexConfig config{.evaluator = EvalManager::EvalTypes::NONE};
-	REQUIRE_THROWS_WITH(AIPerplex(config), "AIPerplex requires a SIMPLE or COMPLEX evaluator");
-}
-
-TEST_CASE("Player factory rejects NONE for an AIPerplex player", "[player][search_player][factory]")
-{
-	Board board;
-	Config::PlayerConfig config;
-	config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::AI_PERPLEX);
-	config.eval = static_cast<unsigned>(EvalManager::EvalTypes::NONE);
-
-	REQUIRE_THROWS_WITH(CreatePlayer(config, board), "AIPerplex requires a SIMPLE or COMPLEX evaluator");
-}
-
 TEST_CASE("Player factory configures the default depth used by empty SearchLimits", "[player][search_player][factory]")
 {
 	Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 	Config::PlayerConfig config;
 	config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::AI_PERPLEX);
 	config.depth = 2;
-	config.eval = static_cast<unsigned>(EvalManager::EvalTypes::COMPLEX);
 	auto player = CreatePlayer(config, board);
 
 	const SearchResult result = player->GetMove(SearchLimits{});
@@ -123,7 +104,6 @@ TEST_CASE("Player factory warns when search tuning is supplied to a legacy AI", 
 	Config::PlayerConfig config;
 	config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::AIAGENT);
 	config.depth = 1;
-	config.eval = static_cast<unsigned>(EvalManager::EvalTypes::COMPLEX);
 	config.search_tuning = Config::SearchTuningConfig{};
 
 	const ScopedFactoryLogCapture capture;
@@ -185,20 +165,6 @@ TEST_CASE("AIPerplex clears launch state when an iteration observer throws", "[s
 	CHECK(recovered.depth_completed == 2);
 }
 
-TEST_CASE("AIPerplexConfig selects the evaluator used by Search", "[search][service_api]")
-{
-	Board board("4k3/pp6/8/8/8/P7/P7/4K3 w - - 0 1");
-	AIPerplex simple(AIPerplexConfig{.evaluator = EvalManager::EvalTypes::SIMPLE, .default_depth = 1});
-	AIPerplex complex(AIPerplexConfig{.evaluator = EvalManager::EvalTypes::COMPLEX, .default_depth = 1});
-
-	const SearchResult simple_result = simple.Search(board, SearchLimits::fixed_depth(1));
-	const SearchResult complex_result = complex.Search(board, SearchLimits::fixed_depth(1));
-
-	CHECK_FALSE(simple_result.best_move.is_null());
-	CHECK_FALSE(complex_result.best_move.is_null());
-	CHECK(simple_result.best_score != complex_result.best_score);
-}
-
 TEST_CASE("Player factory maps AIPerplex evaluator tuning threads and logging before erasure",
           "[player][search_player][factory]")
 {
@@ -206,7 +172,6 @@ TEST_CASE("Player factory maps AIPerplex evaluator tuning threads and logging be
 	Config::PlayerConfig config;
 	config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::AI_PERPLEX);
 	config.depth = 2;
-	config.eval = static_cast<unsigned>(EvalManager::EvalTypes::SIMPLE);
 	config.threads = 3;
 	config.search_tuning = Config::SearchTuningConfig{.min_nodes_threshold = 17,
 	                                                  .min_completion_ratio = 0.21,
@@ -228,7 +193,6 @@ TEST_CASE("Player factory maps AIPerplex evaluator tuning threads and logging be
 	AIPerplex& search = SearchPlayerTestFixture::search(*player);
 	const SearchTuning& tuning = AIPerlexTestFixture::tuning(search);
 
-	CHECK(AIPerlexTestFixture::evaluator_type(search) == "Simple");
 	CHECK(AIPerlexTestFixture::configured_threads(search) == 3);
 	CHECK(AIPerlexTestFixture::verbose_logging(search));
 	CHECK(tuning.min_nodes_threshold == 17);
@@ -247,7 +211,7 @@ TEST_CASE("Player factory maps AIPerplex evaluator tuning threads and logging be
 	CHECK(tuning.null_move_min_depth == 7);
 	CHECK_FALSE(tuning.see_pruning_enabled);
 	CHECK(player->getDescription() ==
-	      "\n\tEngine type:\tPerplexity Transpositional AlphaBeta\n\tDepth:\t\t2\n\tEvaluation:\tSimple\n");
+	      "\n\tEngine type:\tPerplexity Transpositional AlphaBeta\n\tDepth:\t\t2\n\tEvaluation:\tComplex\n");
 }
 
 TEST_CASE("Player factory starts the AIPerplex new-game lifecycle before returning", "[player][search_player][factory]")
@@ -255,7 +219,6 @@ TEST_CASE("Player factory starts the AIPerplex new-game lifecycle before returni
 	Board board;
 	Config::PlayerConfig config;
 	config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::AI_PERPLEX);
-	config.eval = static_cast<unsigned>(EvalManager::EvalTypes::COMPLEX);
 	auto player = CreatePlayer(config, board);
 
 	CHECK(AIPerlexTestFixture::game_generation(SearchPlayerTestFixture::search(*player)) == 1);

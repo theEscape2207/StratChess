@@ -56,7 +56,7 @@ TEST_CASE("cmd_eval: works before any position command, does not crash", "[uci]"
 	REQUIRE(out.find("white pov:") != std::string::npos);
 }
 
-TEST_CASE("cmd_eval: printed score matches EvalManager::Evaluate() directly (honesty invariant)", "[uci]")
+TEST_CASE("cmd_eval: printed score matches Evaluator::Evaluate() directly (honesty invariant)", "[uci]")
 {
 	// The property that makes this tool trustworthy for #117 (Texel tuning)
 	// and #127 (EvalContext restructure's byte-identity check): 'eval' must
@@ -71,9 +71,9 @@ TEST_CASE("cmd_eval: printed score matches EvalManager::Evaluate() directly (hon
 	fix.eval();
 	const int printed = extract_cp_score(redirect.str(), "static eval:");
 
-	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+	const Evaluator eval;
 	Board board(fen);
-	const int expected = eval->Evaluate(board);
+	const int expected = eval.Evaluate(board);
 
 	REQUIRE(printed == expected);
 }
@@ -137,7 +137,7 @@ TEST_CASE("cmd_eval: white-pov line matches the stated sign convention", "[uci]"
 // A breakdown that is right internally and mis-rendered is still a debugging
 // tool that lies, and #117 (Texel tuning) will be reading the output, not the
 // struct. The struct-level check that the rows really are the same terms
-// EvalComplex::Evaluate() sums lives in EvalTests.cpp ([eval]).
+// Evaluator::Evaluate() sums lives in EvalTests.cpp ([eval]).
 
 struct EvalTermRow {
 	int white;
@@ -240,7 +240,7 @@ TEST_CASE("cmd_eval: printed breakdown nets are white-minus-black and sum to the
 	// has failed in some engine at some point: each row's net is consistent
 	// with its own two columns; the net column sums to the printed total; and
 	// that total is the score the search would actually see, computed here
-	// from a fresh Board through a separate EvalManager instance.
+	// from a fresh Board through a separate Evaluator instance.
 	const char* fen =
 	    GENERATE("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", // Kiwipete, middlegame
 	             "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",             // startpos, symmetric
@@ -269,9 +269,9 @@ TEST_CASE("cmd_eval: printed breakdown nets are white-minus-black and sum to the
 	REQUIRE(net_sum == extract_sum_white_pov(out));
 	REQUIRE(net_sum == extract_cp_score(out, "white pov:"));
 
-	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+	const Evaluator eval;
 	Board board(fen);
-	const int side_to_move_score = eval->Evaluate(board);
+	const int side_to_move_score = eval.Evaluate(board);
 	const int expected_white_pov = (board.GetCurrentColor() == WHITE) ? side_to_move_score : -side_to_move_score;
 
 	REQUIRE(net_sum == expected_white_pov);

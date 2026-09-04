@@ -481,7 +481,7 @@ TEST_CASE("Eval - eval_mopup: gated off for both colors below the decisive mater
 	REQUIRE(EvalComplexTestFixture::Mopup(board, BLACK) == 0);
 }
 
-TEST_CASE("Eval - the per-term functions sum exactly to EvalComplex::Evaluate()'s result", "[eval]")
+TEST_CASE("Eval - the per-term functions sum exactly to Evaluator::Evaluate()'s result", "[eval]")
 {
 	// Structural regression check: rebuilds Evaluate()'s side-to-move-relative
 	// formula from the independently-tested terms plus raw material, and
@@ -492,7 +492,7 @@ TEST_CASE("Eval - the per-term functions sum exactly to EvalComplex::Evaluate()'
 	CAPTURE(fen);
 
 	Board board(fen);
-	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+	const Evaluator eval;
 
 	const int matWhite = board.GetMaterialScore(WHITE);
 	const int matBlack = board.GetMaterialScore(BLACK);
@@ -512,22 +512,19 @@ TEST_CASE("Eval - the per-term functions sum exactly to EvalComplex::Evaluate()'
 	    EvalComplexTestFixture::KingStorm(board, BLACK) + EvalComplexTestFixture::KingFiles(board, BLACK) +
 	    EvalComplexTestFixture::KingAttack(board, BLACK);
 
-	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
-	REQUIRE(complexEval != nullptr);
-
 	// The endgame scale is not a term, so it cannot be rebuilt from the term
 	// functions; it is taken from the breakdown, whose own agreement with
 	// Evaluate() is asserted separately.
-	const int adjustment = complexEval->Breakdown(board).endgame_adjustment;
+	const int adjustment = eval.Breakdown(board).endgame_adjustment;
 
 	const eColor toMove = board.GetCurrentColor();
 	const int whitePov = (matWhite + bonusWhite) - (matBlack + bonusBlack) + adjustment;
 	const int expected = (toMove == WHITE) ? whitePov : -whitePov;
 
-	REQUIRE(eval->Evaluate(board) == expected);
+	REQUIRE(eval.Evaluate(board) == expected);
 }
 
-// ── EvalComplex::Breakdown() (issue #129 phase 2) ─────────────────────────────
+// ── Evaluator::Breakdown() (issue #129 phase 2) ───────────────────────────────
 //
 // Breakdown() is the public, production path to the per-term values that the
 // UCI 'eval' command prints. The tests below tie it to the terms that are
@@ -542,11 +539,9 @@ TEST_CASE("Eval - Breakdown(): every row equals the term function it reports", "
 	CAPTURE(fen);
 
 	Board board(fen);
-	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
-	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
-	REQUIRE(complexEval != nullptr);
+	const Evaluator eval;
 
-	const EvalBreakdown terms = complexEval->Breakdown(board);
+	const EvalBreakdown terms = eval.Breakdown(board);
 
 	for (const eColor color : {WHITE, BLACK}) {
 		CAPTURE(static_cast<int>(color));
@@ -578,13 +573,11 @@ TEST_CASE("Eval - Breakdown(): total agrees with Evaluate(), and the rows reprod
 	CAPTURE(fen);
 
 	Board board(fen);
-	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
-	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
-	REQUIRE(complexEval != nullptr);
+	const Evaluator eval;
 
-	const EvalBreakdown terms = complexEval->Breakdown(board);
+	const EvalBreakdown terms = eval.Breakdown(board);
 
-	REQUIRE(terms.total == eval->Evaluate(board));
+	REQUIRE(terms.total == eval.Evaluate(board));
 
 	const int whitePov = BreakdownWhitePov(terms);
 
@@ -598,26 +591,24 @@ TEST_CASE("Eval - Breakdown(): phase matches the context Evaluate() builds", "[e
 	// what places every tapered term between its mg and eg endpoints. Asserting
 	// it against Breakdown() keeps the reported value pinned to the one
 	// construction site (BuildContext) rather than to a duplicated formula.
-	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
-	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
-	REQUIRE(complexEval != nullptr);
+	const Evaluator eval;
 
 	SECTION("full starting material is MAX_GAME_PHASE")
 	{
 		Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-		REQUIRE(complexEval->Breakdown(board).phase == MAX_GAME_PHASE);
+		REQUIRE(eval.Breakdown(board).phase == MAX_GAME_PHASE);
 	}
 
 	SECTION("bare kings plus a queen is the queen's weight alone")
 	{
 		Board board("4k3/8/8/8/8/8/8/3QK3 w - - 0 1");
-		REQUIRE(complexEval->Breakdown(board).phase == 4);
+		REQUIRE(eval.Breakdown(board).phase == 4);
 	}
 
 	SECTION("bare kings are phase 0")
 	{
 		Board board("4k3/8/8/8/8/8/8/4K3 w - - 0 1");
-		REQUIRE(complexEval->Breakdown(board).phase == 0);
+		REQUIRE(eval.Breakdown(board).phase == 0);
 	}
 
 	SECTION("pawns do not contribute to phase")
@@ -626,7 +617,7 @@ TEST_CASE("Eval - Breakdown(): phase matches the context Evaluate() builds", "[e
 		// not move, or the taper would drift with pawn trades rather than with
 		// the piece material that actually defines the game's stage.
 		Board board("4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1");
-		REQUIRE(complexEval->Breakdown(board).phase == 0);
+		REQUIRE(eval.Breakdown(board).phase == 0);
 	}
 
 	SECTION("promotion overshoot clamps rather than extrapolating")
@@ -636,6 +627,6 @@ TEST_CASE("Eval - Breakdown(): phase matches the context Evaluate() builds", "[e
 		// (Three queens a side alone is exactly 24 and would leave the clamp a
 		// no-op — the test would then pass with the clamp deleted.)
 		Board board("qqq1k2r/8/8/8/8/8/8/QQQ1K2R w - - 0 1");
-		REQUIRE(complexEval->Breakdown(board).phase == MAX_GAME_PHASE);
+		REQUIRE(eval.Breakdown(board).phase == MAX_GAME_PHASE);
 	}
 }

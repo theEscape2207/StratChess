@@ -43,12 +43,10 @@ TEST_CASE("Eval - king centralization is worth more as the phase drops", "[eval]
 	Board opening("3qk2r/8/8/8/3K4/8/8/3Q4 w - - 0 1"); // queens + a rook: high phase
 	Board ending("4k3/8/8/8/3K4/8/8/8 w - - 0 1");      // bare kings: phase 0
 
-	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
-	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
-	REQUIRE(complexEval != nullptr);
+	const Evaluator eval;
 
-	const EvalBreakdown high = complexEval->Breakdown(opening);
-	const EvalBreakdown low = complexEval->Breakdown(ending);
+	const EvalBreakdown high = eval.Breakdown(opening);
+	const EvalBreakdown low = eval.Breakdown(ending);
 
 	// Subtract White's queen PST explicitly rather than relying on it being 0.
 	// It happens to be 0 on d1 today, but #117 is a PST-tuning issue: a queen
@@ -83,12 +81,10 @@ TEST_CASE("Eval - crossing the old stage threshold no longer produces a cliff", 
 	Board before("1n1qk2r/8/8/8/3K4/8/8/1N1Q3R w - - 0 1");
 	Board after("3qk2r/8/8/8/3K4/8/8/1N1Q3R w - - 0 1");
 
-	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
-	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
-	REQUIRE(complexEval != nullptr);
+	const Evaluator eval;
 
-	const EvalBreakdown b = complexEval->Breakdown(before);
-	const EvalBreakdown a = complexEval->Breakdown(after);
+	const EvalBreakdown b = eval.Breakdown(before);
+	const EvalBreakdown a = eval.Breakdown(after);
 
 	// Guard the premise: the two positions must actually differ in phase, and
 	// both must be well clear of the endpoints, or there is no taper to test.
@@ -134,16 +130,14 @@ TEST_CASE("Eval - mop-up: walking the winning king toward the loser must raise t
 	Board farther("k6r/8/8/8/3K4/8/8/3Q4 w - - 0 1");
 	Board closer("k6r/8/8/2K5/8/8/8/3Q4 w - - 0 1");
 
-	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
-	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
-	REQUIRE(complexEval != nullptr);
+	const Evaluator eval;
 
 	// Named farBreakdown/nearBreakdown, not far/near: those are macros from
 	// <windows.h> (minwindef.h defines both as empty), so a plain `far`/`near`
 	// local silently breaks the moment any header in this translation unit
 	// starts transitively including it.
-	const EvalBreakdown farBreakdown = complexEval->Breakdown(farther);
-	const EvalBreakdown nearBreakdown = complexEval->Breakdown(closer);
+	const EvalBreakdown farBreakdown = eval.Breakdown(farther);
+	const EvalBreakdown nearBreakdown = eval.Breakdown(closer);
 
 	// Guard the premise: if either position stopped being a gated mop-up
 	// position this test would pass vacuously.
@@ -211,7 +205,7 @@ TEST_CASE("PassedMask - nothing is ahead of a pawn on the promotion rank", "[eva
 	REQUIRE(g_bbPassedMaskBlack[d1] == 0);
 }
 
-TEST_CASE("Eval - EvalComplex rewards a passed pawn over a blocked one", "[eval]")
+TEST_CASE("Eval - Evaluator rewards a passed pawn over a blocked one", "[eval]")
 {
 	// Identical but for the black pawn on d7, which stands in the white e5
 	// pawn's adjacent-file span and so denies it passed status.
@@ -225,7 +219,7 @@ TEST_CASE("Eval - EvalComplex rewards a passed pawn over a blocked one", "[eval]
 	REQUIRE(passedScore > blockedScore);
 }
 
-TEST_CASE("Eval - EvalComplex passer bonus grows as the pawn advances", "[eval]")
+TEST_CASE("Eval - Evaluator passer bonus grows as the pawn advances", "[eval]")
 {
 	// Both kings on a8/a-file, deliberately off the pawn's file: with the black
 	// king on e8 the seventh-rank pawn would be BLOCKADED, so the pair would vary
@@ -241,7 +235,7 @@ TEST_CASE("Eval - EvalComplex passer bonus grows as the pawn advances", "[eval]"
 	REQUIRE(seventhScore > thirdScore);
 }
 
-TEST_CASE("Eval - EvalComplex passer is worth more in the endgame than the middlegame", "[eval]")
+TEST_CASE("Eval - Evaluator passer is worth more in the endgame than the middlegame", "[eval]")
 {
 	// Same pawn structure. The queens and rooks only move the phase, and
 	// eval_pawns reads no piece other than pawns, so any difference here is the
@@ -256,7 +250,7 @@ TEST_CASE("Eval - EvalComplex passer is worth more in the endgame than the middl
 	REQUIRE(endgameScore > middlegameScore);
 }
 
-TEST_CASE("Eval - EvalComplex detects an a-file passer", "[eval]")
+TEST_CASE("Eval - Evaluator detects an a-file passer", "[eval]")
 {
 	// Guards the wraparound case end to end: a black h-pawn must not stop the
 	// white a-pawn from counting as passed, while a black b-pawn must.
@@ -270,7 +264,7 @@ TEST_CASE("Eval - EvalComplex detects an a-file passer", "[eval]")
 	REQUIRE(passerScore > blockedScore);
 }
 
-TEST_CASE("Eval - EvalComplex penalises a backwards pawn", "[eval]")
+TEST_CASE("Eval - Evaluator penalises a backwards pawn", "[eval]")
 {
 	// White b2 is backwards: its only neighbour (c3) has advanced past it, and
 	// its stop square b3 is attacked by the black a4 pawn and defended by no
@@ -292,7 +286,7 @@ TEST_CASE("Eval - EvalComplex penalises a backwards pawn", "[eval]")
 	REQUIRE(backwardsScore < notAttackedScore);
 }
 
-TEST_CASE("Eval - EvalComplex does not penalise a pawn its neighbour is level with", "[eval]")
+TEST_CASE("Eval - Evaluator does not penalise a pawn its neighbour is level with", "[eval]")
 {
 	// Clause (a) only. The two positions differ by the white a2 pawn and nothing
 	// else: it sits LEVEL with b2 on an adjacent file, so b2 is no longer behind
@@ -313,7 +307,7 @@ TEST_CASE("Eval - EvalComplex does not penalise a pawn its neighbour is level wi
 	REQUIRE(levelScore > backwardsScore);
 }
 
-TEST_CASE("Eval - EvalComplex passer bonus is monotonic across every rank", "[eval]")
+TEST_CASE("Eval - Evaluator passer bonus is monotonic across every rank", "[eval]")
 {
 	// The bonus is scaled by rank and then again by the blockade factor, and each
 	// scaling truncates. Truncation cannot be reasoned about in general -- it has
@@ -365,7 +359,7 @@ TEST_CASE("Eval - EvalComplex passer bonus is monotonic across every rank", "[ev
 	}
 }
 
-TEST_CASE("Eval - EvalComplex discounts a passer whose stop square is blockaded", "[eval]")
+TEST_CASE("Eval - Evaluator discounts a passer whose stop square is blockaded", "[eval]")
 {
 	// Same white passer on e6 both times; the black king either sits on its stop
 	// square e7, where the pawn cannot move at all until it is dislodged, or stands
@@ -385,7 +379,7 @@ TEST_CASE("Eval - EvalComplex discounts a passer whose stop square is blockaded"
 	REQUIRE(freeScore > blockadedScore);
 }
 
-TEST_CASE("Eval - EvalComplex does not score the rear pawn of a doubled pair as passed", "[eval]")
+TEST_CASE("Eval - Evaluator does not score the rear pawn of a doubled pair as passed", "[eval]")
 {
 	// The rear pawn can never advance past its own partner, so only the front
 	// pawn of the pair is passed. Both positions have the same two white pawns
@@ -404,7 +398,7 @@ TEST_CASE("Eval - EvalComplex does not score the rear pawn of a doubled pair as 
 	REQUIRE(separatedScore > doubledScore + 50);
 }
 
-TEST_CASE("Eval - EvalComplex mop-up: gated on the defender's force, not its phase", "[eval]")
+TEST_CASE("Eval - Evaluator mop-up: gated on the defender's force, not its phase", "[eval]")
 {
 	// Q+R vs Q is the case issue #118 item 5 named: a lone queen is phase 4 and
 	// passed the retired `loser phase <= 6` gate, so the winner was paid for

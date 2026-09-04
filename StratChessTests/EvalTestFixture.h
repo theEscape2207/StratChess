@@ -1,11 +1,11 @@
 #pragma once
-// EvalTestFixture.h — shared helpers for EvalSimple and EvalComplex tests
+// EvalTestFixture.h — shared helpers for Evaluator tests
 //
 // Validates the direction and relative magnitude of evaluation scores.
 // Exact centipawn values are intentionally NOT tested — positional tables
 // and future evaluation changes would make exact-value tests fragile.
 //
-// Pattern: Board board(fen); then EvalManager::Create(type)->Evaluate(board)
+// Pattern: Board board(fen); then Evaluator().Evaluate(board)
 //
 // See Docs/TestDesign.md §Phase 0 for rationale.
 
@@ -219,11 +219,12 @@ static constexpr const char* FEN_ROOK_OWN_PAWN_AHEAD = "6k1/8/8/8/4P3/8/4R3/6K1 
 static constexpr const char* FEN_ROOK_OWN_PAWN_OFF_FILE = "6k1/8/4R3/8/3P4/8/8/6K1 w - - 0 1";
 static constexpr const char* FEN_ROOK_OWN_PAWN_BEHIND_SAME_ROOK = "6k1/8/4R3/8/4P3/8/8/6K1 w - - 0 1";
 
-struct EvalProbe final : EvalManager {
-	int Evaluate(const Board&) const override { return 0; }
-	const char* GetType() const override { return "Probe"; }
-	using EvalManager::getEvalBoard;
-	using EvalManager::GetPositionalScore;
+// Derives rather than widening Evaluator's protected PST helpers to public,
+// which would open them to every production caller just to reach them from a
+// test.
+struct EvalProbe final : Evaluator {
+	using Evaluator::getEvalBoard;
+	using Evaluator::GetPositionalScore;
 };
 // Castling asymmetry (issue #115). Neither side has rights left; White's king
 // is tucked on g1 while Black's sits on e8, so eval_castling pays White and
@@ -390,7 +391,7 @@ inline int BreakdownWhitePov(const EvalBreakdown& terms)
 	       (terms.king_attack[WHITE] - terms.king_attack[BLACK]) + terms.endgame_adjustment;
 }
 
-// EvalComplexTestFixture is a friend of EvalComplex (STRAT_ENABLE_TEST_ACCESS,
+// EvalComplexTestFixture is a friend of Evaluator (STRAT_ENABLE_TEST_ACCESS,
 // same mechanism as AIPerplex/UciHandler's fixtures) that builds an
 // EvalContext from a Board and forwards to each term, so terms can be
 // asserted on directly instead of only inferred from whole-position deltas.
@@ -398,139 +399,139 @@ struct EvalComplexTestFixture {
 	static int Pawns(const Board& board, eColor color)
 	{
 		const EvalContext ctx = BuildContext(board);
-		return BlendPhase(EvalComplex::eval_pawns(ctx, color), ctx.phase);
+		return BlendPhase(Evaluator::eval_pawns(ctx, color), ctx.phase);
 	}
 	static int Rooks(const Board& board, eColor color)
 	{
 		const EvalContext ctx = BuildContext(board);
-		return BlendPhase(EvalComplex::eval_rooks(ctx, color), ctx.phase);
+		return BlendPhase(Evaluator::eval_rooks(ctx, color), ctx.phase);
 	}
 	static int Pst(const Board& board, eColor color)
 	{
 		const EvalContext ctx = BuildContext(board);
-		return BlendPhase(EvalComplex::eval_pst(ctx, color), ctx.phase);
+		return BlendPhase(Evaluator::eval_pst(ctx, color), ctx.phase);
 	}
 	static int Mopup(const Board& board, eColor color)
 	{
 		const EvalContext ctx = BuildContext(board);
-		return BlendPhase(EvalComplex::eval_mopup(ctx, color), ctx.phase);
+		return BlendPhase(Evaluator::eval_mopup(ctx, color), ctx.phase);
 	}
 	static int Bishops(const Board& board, eColor color)
 	{
 		const EvalContext ctx = BuildContext(board);
-		return BlendPhase(EvalComplex::eval_bishops(ctx, color), ctx.phase);
+		return BlendPhase(Evaluator::eval_bishops(ctx, color), ctx.phase);
 	}
 	static int Mobility(const Board& board, eColor color)
 	{
 		const EvalContext ctx = BuildContext(board);
-		return BlendPhase(EvalComplex::eval_mobility(ctx, color), ctx.phase);
+		return BlendPhase(Evaluator::eval_mobility(ctx, color), ctx.phase);
 	}
 	static int Castling(const Board& board, eColor color)
 	{
 		const EvalContext ctx = BuildContext(board);
-		return BlendPhase(EvalComplex::eval_castling(ctx, color), ctx.phase);
+		return BlendPhase(Evaluator::eval_castling(ctx, color), ctx.phase);
 	}
 
 	static int KingShelter(const Board& board, eColor color)
 	{
 		const EvalContext ctx = BuildContext(board);
-		return BlendPhase(EvalComplex::eval_king_pawn_cover(ctx, color).shelter, ctx.phase);
+		return BlendPhase(Evaluator::eval_king_pawn_cover(ctx, color).shelter, ctx.phase);
 	}
 	static int KingStorm(const Board& board, eColor color)
 	{
 		const EvalContext ctx = BuildContext(board);
-		return BlendPhase(EvalComplex::eval_king_pawn_cover(ctx, color).storm, ctx.phase);
+		return BlendPhase(Evaluator::eval_king_pawn_cover(ctx, color).storm, ctx.phase);
 	}
 	static int KingFiles(const Board& board, eColor color)
 	{
 		const EvalContext ctx = BuildContext(board);
-		return BlendPhase(EvalComplex::eval_king_pawn_cover(ctx, color).files, ctx.phase);
+		return BlendPhase(Evaluator::eval_king_pawn_cover(ctx, color).files, ctx.phase);
 	}
 	// Unblended, so a test can assert the eg endpoints are 0 rather than infer
 	// it from a low-phase position.
 	static KingPawnCover KingCover(const Board& board, eColor color)
 	{
-		return EvalComplex::eval_king_pawn_cover(BuildContext(board), color);
+		return Evaluator::eval_king_pawn_cover(BuildContext(board), color);
 	}
 	static int KingAttack(const Board& board, eColor color)
 	{
 		const EvalContext ctx = BuildContext(board);
-		return BlendPhase(EvalComplex::eval_king_attack(ctx, color), ctx.phase);
+		return BlendPhase(Evaluator::eval_king_attack(ctx, color), ctx.phase);
 	}
 	// Unblended, so a case can compare two positions of different phase, or
 	// assert the eg endpoint is 0 rather than infer it from a low-phase board.
 	static ScorePair KingAttackPair(const Board& board, eColor color)
 	{
-		return EvalComplex::eval_king_attack(BuildContext(board), color);
+		return Evaluator::eval_king_attack(BuildContext(board), color);
 	}
 	static int ZoneAttackers(const Board& board, eColor color, eMobilePiece type)
 	{
 		return BuildContext(board).attacks.zone_attackers[color][type];
 	}
 	static int ZoneAttacks(const Board& board, eColor color) { return BuildContext(board).attacks.zone_attacks[color]; }
-	static constexpr eSquare KingZoneAnchor(eSquare kingSq) { return EvalComplex::KingZoneAnchor(kingSq); }
-	static constexpr BITBOARD KingZone(eSquare kingSq, eColor color) { return EvalComplex::KingZone(kingSq, color); }
-	static constexpr int KingDangerPenalty(int danger) { return EvalComplex::KingDangerPenalty(danger); }
-	static constexpr int KingDistanceProbe(eSquare a, eSquare b) { return EvalComplex::KingDistance(a, b); }
-	static constexpr int KingSafetyMaxPenalty = EvalComplex::KING_SAFETY_MAX_PENALTY;
+	static constexpr eSquare KingZoneAnchor(eSquare kingSq) { return Evaluator::KingZoneAnchor(kingSq); }
+	static constexpr BITBOARD KingZone(eSquare kingSq, eColor color) { return Evaluator::KingZone(kingSq, color); }
+	static constexpr int KingDangerPenalty(int danger) { return Evaluator::KingDangerPenalty(danger); }
+	static constexpr int KingDistanceProbe(eSquare a, eSquare b) { return Evaluator::KingDistance(a, b); }
+	static constexpr int KingSafetyMaxPenalty = Evaluator::KING_SAFETY_MAX_PENALTY;
 	// The pawn-cover half of that bound on its own. A case asserting the shelter
 	// tables are REACHABLE has to measure against this, not against the combined
 	// figure, which no pawn structure alone can approach.
-	static constexpr int KingPawnCoverWorst = EvalComplex::KING_PAWN_COVER_WORST;
-	static constexpr int KingDangerCap = EvalComplex::KING_DANGER_CAP;
-	static constexpr int KingDangerDivisor = EvalComplex::KING_DANGER_DIVISOR;
+	static constexpr int KingPawnCoverWorst = Evaluator::KING_PAWN_COVER_WORST;
+	static constexpr int KingDangerCap = Evaluator::KING_DANGER_CAP;
+	static constexpr int KingDangerDivisor = Evaluator::KING_DANGER_DIVISOR;
 
 	// The scaled-class factors are private tuning parameters; naming them here
 	// keeps the tests asserting the classification rather than restating the
 	// numbers, which a sweep is expected to change.
-	static constexpr int RookAndMinorVsRookScale = EvalComplex::ROOK_AND_MINOR_VS_ROOK_SCALE;
-	static constexpr int RookVsMinorScale = EvalComplex::ROOK_VS_MINOR_SCALE;
-	static constexpr int RookVsRookScale = EvalComplex::ROOK_VS_ROOK_SCALE;
+	static constexpr int RookAndMinorVsRookScale = Evaluator::ROOK_AND_MINOR_VS_ROOK_SCALE;
+	static constexpr int RookVsMinorScale = Evaluator::ROOK_VS_MINOR_SCALE;
+	static constexpr int RookVsRookScale = Evaluator::ROOK_VS_ROOK_SCALE;
 
 	// The score before any endgame scale — what Evaluate() would have returned
 	// without the classifier. Lets a scaled case assert the discount reached the
 	// returned score, rather than only that it was reported in the breakdown.
-	static int RawWhitePov(const Board& board) { return EvalComplex::RawWhitePov(BuildContext(board)); }
+	static int RawWhitePov(const Board& board) { return Evaluator::RawWhitePov(BuildContext(board)); }
 
 	static ScorePair BishopsPair(const Board& board, eColor color)
 	{
-		return EvalComplex::eval_bishops(BuildContext(board), color);
+		return Evaluator::eval_bishops(BuildContext(board), color);
 	}
 	static ScorePair CastlingPair(const Board& board, eColor color)
 	{
-		return EvalComplex::eval_castling(BuildContext(board), color);
+		return Evaluator::eval_castling(BuildContext(board), color);
 	}
 
 	static ScorePair MobilityPair(const Board& board, eColor color)
 	{
-		return EvalComplex::eval_mobility(BuildContext(board), color);
+		return Evaluator::eval_mobility(BuildContext(board), color);
 	}
 
 	// Raw (mg, eg) pairs, for asserting a tapered term's ENDPOINTS rather
 	// than its value at one position's particular phase.
 	static ScorePair RooksPair(const Board& board, eColor color)
 	{
-		return EvalComplex::eval_rooks(BuildContext(board), color);
+		return Evaluator::eval_rooks(BuildContext(board), color);
 	}
 	static ScorePair PstPair(const Board& board, eColor color)
 	{
-		return EvalComplex::eval_pst(BuildContext(board), color);
+		return Evaluator::eval_pst(BuildContext(board), color);
 	}
 	static int Phase(const Board& board) { return BuildContext(board).phase; }
 
 	// Named constants, exposed so term-level tests can express exact
 	// expected values without duplicating magic numbers.
-	static int DoubledPawnPenalty() { return EvalComplex::DOUBLED_PAWN_PENALTY; }
-	static int IsolatedPawnPenalty() { return EvalComplex::ISOLATED_PAWN_PENALTY; }
-	static int RookOn7thBonus() { return EvalComplex::ROOK_ON_7TH_BONUS; }
-	static int OpenFile() { return EvalComplex::OPEN_FILE; }
-	static int HalfOpenFile() { return EvalComplex::HALF_OPEN_FILE; }
+	static int DoubledPawnPenalty() { return Evaluator::DOUBLED_PAWN_PENALTY; }
+	static int IsolatedPawnPenalty() { return Evaluator::ISOLATED_PAWN_PENALTY; }
+	static int RookOn7thBonus() { return Evaluator::ROOK_ON_7TH_BONUS; }
+	static int OpenFile() { return Evaluator::OPEN_FILE; }
+	static int HalfOpenFile() { return Evaluator::HALF_OPEN_FILE; }
 
   private:
-	// Forwards to EvalComplex::BuildContext — the production construction
+	// Forwards to Evaluator::BuildContext — the production construction
 	// site (Eval.cpp) — rather than reimplementing it here. Issue #99 will
 	// eventually replace the `11500` phase threshold BuildContext uses
 	// internally; having only one construction site means that change can't
 	// leave this fixture silently testing the old threshold.
-	static EvalContext BuildContext(const Board& board) { return EvalComplex::BuildContext(board); }
+	static EvalContext BuildContext(const Board& board) { return Evaluator::BuildContext(board); }
 };

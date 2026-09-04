@@ -1,8 +1,8 @@
 #include "EvalTestFixture.h"
 // ── Color-mirroring correctness (issue #125) ──────────────────────────────────
 //
-// Exposes EvalManager's protected mirroring/PST helpers for direct testing —
-// no production visibility change; both stay protected on EvalManager. Also
+// Exposes Evaluator's protected mirroring/PST helpers for direct testing —
+// no production visibility change; both stay protected on Evaluator. Also
 // used by the term-level tests below (issue #127 restructure) to compute an
 // independently-derived expected PST value.
 TEST_CASE("Eval - getEvalBoard mirrors a Black piece's square vertically, not by 180-degree rotation", "[eval]")
@@ -78,33 +78,21 @@ TEST_CASE("Eval - MirrorFen self-test: castling rights and en-passant square are
 // both the original and the mirror — the scores must be EQUAL, not negated.
 // This is the single most likely thing for a future reader to get backwards.
 
-TEST_CASE("Eval - EvalSimple is color-symmetric: a position and its mirror score equally", "[eval]")
+TEST_CASE("Eval - Evaluator is color-symmetric: a position and its mirror score equally", "[eval]")
 {
 	const char* fen = GENERATE(from_range(kSymmetryFens));
 	CAPTURE(fen);
 
-	auto eval = EvalManager::Create(EvalManager::EvalTypes::SIMPLE);
+	const Evaluator eval;
 	Board board(fen);
 	Board mirrored(MirrorFen(fen));
 
-	REQUIRE(eval->Evaluate(board) == eval->Evaluate(mirrored));
-}
-
-TEST_CASE("Eval - EvalComplex is color-symmetric: a position and its mirror score equally", "[eval]")
-{
-	const char* fen = GENERATE(from_range(kSymmetryFens));
-	CAPTURE(fen);
-
-	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
-	Board board(fen);
-	Board mirrored(MirrorFen(fen));
-
-	REQUIRE(eval->Evaluate(board) == eval->Evaluate(mirrored));
+	REQUIRE(eval.Evaluate(board) == eval.Evaluate(mirrored));
 }
 
 // ── Term-level tests (issue #127 restructure) ─────────────────────────────────
 //
-// EvalComplex::Evaluate() is now a thin context-build-and-sum wrapper around
+// Evaluator::Evaluate() is now a thin context-build-and-sum wrapper around
 // four private per-term functions (eval_pawns, eval_rooks, eval_pst,
 // eval_mopup), each taking (const EvalContext&, eColor) and returning that
 // color's contribution only.
