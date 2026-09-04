@@ -819,6 +819,42 @@ void AIPerplex::order_quiescence_moves(ThreadData& td, MoveList& moveList, bool 
 	moveList = ordered;
 }
 
+namespace {
+
+	// The gate on the exact test below, and the only half a quiet node pays for. Material is
+	// maintained incrementally, so a side worth exactly its king is one load and a compare; the
+	// same question asked of the occupancy bitboard is not, because reaching the bitboards is an
+	// out-of-line call. On a hot path entered millions of times per second that spelling is worth
+	// about 2% of nps, which is more than this whole probe is worth.
+	bool is_bare_king(const Board& board)
+	{
+		return board.GetMaterialScore(board.GetCurrentColor()) == PieceHelper::Value(ePiece::WHITE_KING);
+	}
+
+	// Deliberately out of line. It owns a MoveList, and inlining puts those 400-odd bytes on the
+	// frame of every quiescence node rather than the few that are a bare king -- the other half of
+	// the 2% above. Behind the gate the list is at most eight king steps.
+	STRAT_NOINLINE bool has_no_legal_move(Board& board)
+	{
+		// Out of check this is stalemate; in check it would be checkmate, and the two verdicts are a
+		// full point apart. The caller owns that distinction.
+		assert(!board.InCheck());
+
+		// ComputeLegalMoves() is pseudo-legal, so DoMove() is what decides -- the same notion of
+		// "has a move" the search itself uses.
+		MoveList moves;
+		MoveGenerator::ComputeLegalMoves(board, moves);
+		for (const auto& move : moves) {
+			if (board.DoMove(move)) {
+				board.UndoMove(move);
+				return false;
+			}
+		}
+		return true;
+	}
+
+} // namespace
+
 int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budget, int ply, TranspositionTable& tt)
 {
 	// Fast early exit: IsAborted() reads only the latched atomic (no clock call).
@@ -905,6 +941,21 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 				return entry->value;
 			}
 		}
+	}
+
+	// A stalemated node is a draw whatever the men on the board say, and static evaluation does not
+	// adjudicate terminal positions: mop-up pays the winning king for closing on the loser,
+	// including the step that takes the last escape square away. In check the empty survivor set
+	// below already carries the terminal verdict; out of check nothing does. Gated on a bare king
+	// so a quiet node pays one popcount for it -- widening that gate needs an nps measurement.
+	//
+	// Exempt from the unwind invariant for the same reason as the checkmate store below: the score
+	// follows from the position alone, and no child was searched to produce it.
+	if (!in_check && is_bare_king(td.board) && has_no_legal_move(td.board)) {
+		tt.store(key, static_cast<int16_t>(GameValues::Draw), static_cast<int16_t>(qsearch_budget),
+		         static_cast<int16_t>(ply), Move::EmptyMove(), BoundType::EXACT, NodeType::PV_NODE,
+		         SearchPhase::QUIESCENCE);
+		return GameValues::Draw;
 	}
 
 	// Stand-pat: the option of making no move at all. Out of check it is the node's baseline
@@ -1035,9 +1086,9 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 		return mate_value;
 	}
 
-	// Out of check, no move found means no capture was available — not stalemate. Whether the
-	// position could have been avoided is invisible from here, so the node keeps its stand-pat
-	// evaluation rather than claiming a draw.
+	// Out of check, no move found means no capture was available — not stalemate. The one
+	// stalemate this node can prove was settled by the bare-king probe above; beyond that gate the
+	// node keeps its stand-pat evaluation rather than claiming a draw it cannot demonstrate.
 
 	// Classify node type correctly
 	NodeType node_type;
