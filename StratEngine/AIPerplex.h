@@ -83,7 +83,6 @@ struct SearchTuning {
 };
 
 struct AIPerplexConfig {
-	EvalManager::EvalTypes evaluator{EvalManager::EvalTypes::COMPLEX};
 	unsigned default_depth{4};
 	std::chrono::milliseconds default_time{15000};
 	unsigned hash_mb{DEFAULT_AIPERPLEX_HASH_MB};
@@ -245,7 +244,7 @@ class AIPerplex final {
 
 	// MEMBER VARIABLES
 	std::unique_ptr<TranspositionTable> _tt; // persistent transposition table
-	std::unique_ptr<EvalManager> evaluator_; // owned concrete-search evaluator
+	Evaluator evaluator_;                    // stateless, safe to share unsynchronized across threads
 	SearchControl control_;                  // owned limits, timer and abort latch
 	SearchTuning tuning_;
 	std::mutex stop_mutex_;

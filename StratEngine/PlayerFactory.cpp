@@ -4,6 +4,7 @@
 #include "ABIterative.h"
 #include "AIAgent.h"
 #include "AIBasic.h"
+#include "Eval.h"
 #include "PlayerBase.h"
 #include "PlayerHuman.h"
 #include "SearchPlayer.h"
@@ -14,30 +15,11 @@
 
 namespace {
 
-	EvalManager::EvalTypes evaluator_type(unsigned configured)
-	{
-		return static_cast<EvalManager::EvalTypes>(configured);
-	}
-
-	const char* evaluator_name(EvalManager::EvalTypes type)
-	{
-		switch (type) {
-		case EvalManager::EvalTypes::NONE:
-			return "None";
-		case EvalManager::EvalTypes::SIMPLE:
-			return "Simple";
-		case EvalManager::EvalTypes::COMPLEX:
-			return "Complex";
-		default:
-			throw std::invalid_argument("Unknown Eval type");
-		}
-	}
-
-	std::string search_description(unsigned depth, EvalManager::EvalTypes evaluator)
+	std::string search_description(unsigned depth)
 	{
 		std::ostringstream out;
 		out << "\n\tEngine type:\tPerplexity Transpositional AlphaBeta\n\tDepth:\t\t" << depth << "\n\tEvaluation:\t"
-		    << evaluator_name(evaluator) << '\n';
+		    << Evaluator::GetType() << '\n';
 		return out.str();
 	}
 
@@ -80,15 +62,13 @@ std::unique_ptr<IPlayer> CreatePlayer(const Config::PlayerConfig& config, Board&
 		return std::make_unique<PlayerHuman>(board);
 
 	if (type == PlayerBase::ePlayerTypes::AI_PERPLEX) {
-		const EvalManager::EvalTypes evaluator = evaluator_type(config.eval);
 		AIPerplexConfig search_config;
-		search_config.evaluator = evaluator;
 		search_config.default_depth = config.depth;
 		search_config.threads = config.threads.value_or(1);
 		search_config.tuning = map_tuning(config.search_tuning);
 		search_config.verbose_logging = options.verbose_search_logging;
 
-		auto player = std::make_unique<SearchPlayer>(board, search_config, search_description(config.depth, evaluator));
+		auto player = std::make_unique<SearchPlayer>(board, search_config, search_description(config.depth));
 		player->search_.StartNewGame();
 		return player;
 	}
@@ -117,7 +97,6 @@ std::unique_ptr<IPlayer> CreatePlayer(const Config::PlayerConfig& config, Board&
 
 	if (!player)
 		throw std::invalid_argument("Unknown Player type");
-	player->SetEvalEngine(evaluator_type(config.eval));
 	if (config.threads)
 		player->SetThreads(*config.threads);
 	player->StartNewGame();

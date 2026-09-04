@@ -93,13 +93,6 @@ namespace {
 		Function function_;
 	};
 
-	std::unique_ptr<EvalManager> create_search_evaluator(EvalManager::EvalTypes type)
-	{
-		if (type == EvalManager::EvalTypes::NONE)
-			throw std::invalid_argument("AIPerplex requires a SIMPLE or COMPLEX evaluator");
-		return EvalManager::Create(type);
-	}
-
 	void ensure_logger_initialized()
 	{
 		// ensure the general default logger is initialized first (no-op if already)
@@ -138,8 +131,8 @@ namespace {
 } // namespace
 
 AIPerplex::AIPerplex(AIPerplexConfig config)
-    : evaluator_(create_search_evaluator(config.evaluator)), control_(config.default_depth, config.default_time),
-      tuning_(config.tuning), threads_(std::clamp(config.threads, 1u, 32u)), verbose_logging_(config.verbose_logging)
+    : control_(config.default_depth, config.default_time), tuning_(config.tuning),
+      threads_(std::clamp(config.threads, 1u, 32u)), verbose_logging_(config.verbose_logging)
 {
 	_tt = std::make_unique<TranspositionTable>(std::clamp(config.hash_mb, MIN_HASH_MB, MAX_HASH_MB));
 	try {
@@ -201,9 +194,9 @@ AIPerplex::HashConfigurationResult AIPerplex::SetHash(unsigned mb) noexcept
 //                   while constructing this service, then starts its first
 //                   game. Resetting tuning_ here would silently discard those
 //                   configured overrides.
-//   - the evaluator: EvalManager/EvalComplex are documented stateless and
-//                    thread-shared (see the Lazy SMP sharing contract
-//                    comment in Eval.h) -- recreating one changes nothing.
+//   - the evaluator: Evaluator is documented stateless and thread-shared
+//                    (see the Lazy SMP sharing contract comment in Eval.h)
+//                    -- recreating one changes nothing.
 void AIPerplex::StartNewGame()
 {
 	(void)_tt->clear();
@@ -876,7 +869,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// the draw and backstop checks below, not material: a quiet evasion may itself give
 	// check, so two sides can go on checking each other without a capture between them.
 	if (qsearch_budget < 0 && !in_check) {
-		return evaluator_->Evaluate(td.board);
+		return evaluator_.Evaluate(td.board);
 	}
 
 	// Repetition and fifty-move draws. pvs() checks these before it hands a node to
@@ -902,7 +895,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// positions can arise, and ply indexes fixed-size per-thread arrays elsewhere in the
 	// search. This is the one place a position is evaluated while still in check.
 	if (ply >= MAX_PLY - 1) {
-		return evaluator_->Evaluate(td.board);
+		return evaluator_.Evaluate(td.board);
 	}
 
 	const int original_alpha = alpha;
@@ -972,7 +965,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	int stand_pat = 0;
 
 	if (!in_check) {
-		stand_pat = evaluator_->Evaluate(td.board);
+		stand_pat = evaluator_.Evaluate(td.board);
 		if (stand_pat >= beta) {
 			// Store and cutoff
 			tt.store(key, static_cast<int16_t>(beta), static_cast<int16_t>(qsearch_budget), static_cast<int16_t>(ply),

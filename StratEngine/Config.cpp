@@ -155,7 +155,6 @@ namespace {
 	{
 		Config::PlayerConfig cfg;
 		cfg.type = p.value("type", defaultEval);
-		cfg.eval = p.value("eval", 0);
 
 		if (p.contains("search_limits")) {
 			cfg.search_limits = ParseSearchLimitsBlock(p["search_limits"]);

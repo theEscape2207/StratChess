@@ -129,14 +129,11 @@ bool UciHandler::EnableCommandLog(const std::string& filename)
 // Lifecycle
 // ---------------------------------------------------------------------------
 
-UciHandler::UciHandler()
-    // eval_ is constructed here, not in init_ai(): EvalComplex holds no
-    // per-game state (see the Lazy SMP sharing contract comment in Eval.h),
-    // so there is nothing for it to reset between games regardless of where
-    // it is constructed. Matches the COMPLEX type init_ai() configures for
-    // the search evaluator.
-    : eval_(std::make_unique<EvalComplex>())
-{}
+// eval_ default-constructs here rather than in init_ai(): Evaluator holds no
+// per-game state (see the Lazy SMP sharing contract comment in Eval.h), so
+// there is nothing for it to reset between games regardless of where it is
+// constructed.
+UciHandler::UciHandler() = default;
 
 UciHandler::~UciHandler() { stop_and_join(); }
 
@@ -268,7 +265,7 @@ namespace {
 // White-POV line removes any need to mentally flip the sign when Black is to
 // move.
 //
-// Above them, phase 2 prints the concrete EvalComplex per-term breakdown
+// Above them, phase 2 prints the concrete Evaluator per-term breakdown
 // (D10). UCI owns that evaluator directly, so its debugging surface needs no
 // base-interface extension or runtime cast.
 //
@@ -284,7 +281,7 @@ void UciHandler::cmd_eval()
 	int score = 0;
 
 	{
-		const EvalBreakdown terms = eval_->Breakdown(board_);
+		const EvalBreakdown terms = eval_.Breakdown(board_);
 		const std::string rule = std::string(static_cast<size_t>(EVAL_TERM_COL), '-') + "+" +
 		                         std::string(static_cast<size_t>(EVAL_VALUE_COL) + 1, '-') + "+" +
 		                         std::string(static_cast<size_t>(EVAL_VALUE_COL) + 1, '-') + "+" +

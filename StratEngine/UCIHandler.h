@@ -7,9 +7,9 @@
 #include <spdlog/spdlog.h>
 #include "GameState.h"
 #include "Board.h"
+#include "Eval.h"
 
 class AIPerplex;
-class EvalComplex;
 class UciHandler {
   public:
 	UciHandler();
@@ -75,7 +75,7 @@ class UciHandler {
 	Board board_;
 
 	std::unique_ptr<AIPerplex> ai_;
-	std::unique_ptr<EvalComplex> eval_;
+	Evaluator eval_; // stateless, safe to share unsynchronized across threads
 	std::thread search_thread_;
 
 	// Whether a search is actually running. search_thread_.joinable() cannot

@@ -34,7 +34,6 @@ class Config final {
 	struct PlayerConfig {
 		unsigned type{DEFAULT_EVAL};
 		unsigned depth{DEFAULT_DEPTH}; // default max depth mapped by CreatePlayer
-		unsigned eval{0};
 		SearchLimits
 		    search_limits; // per-move search constraints, parsed from "search_limits" (or legacy max_depth/time_limit)
 		std::optional<SearchTuningConfig> search_tuning; // only for AI_PERPLEX (type 6)

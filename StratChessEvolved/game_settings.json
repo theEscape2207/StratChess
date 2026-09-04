@@ -18,12 +18,6 @@
           "depth": 15,
           "movetime": 15000
         },
-        /* Eval:
-           0 - None (Human)
-           1 - Simple Eval
-           2 - More Complex Eval
-        */
-        "eval": 2,
         /* search_tuning: AIPerplex-specific parameters (ignored for other player types) */
         "search_tuning": {
           "min_nodes_threshold": 1000,
@@ -55,7 +49,6 @@
           "depth": 15,
           "movetime": 15000
         },
-        "eval": 2,
         "search_tuning": {
           "min_nodes_threshold": 1000,
           "min_completion_ratio": 0.10,

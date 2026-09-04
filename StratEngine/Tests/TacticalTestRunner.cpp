@@ -53,10 +53,8 @@ namespace Testing {
 		result.description = pos.description;
 
 		const Board board(pos.fen);
-		AIPerplex ai(AIPerplexConfig{.evaluator = EvalManager::EvalTypes::COMPLEX,
-		                             .default_depth = static_cast<unsigned>(pos.depth),
-		                             .threads = threads,
-		                             .verbose_logging = false});
+		AIPerplex ai(AIPerplexConfig{
+		    .default_depth = static_cast<unsigned>(pos.depth), .threads = threads, .verbose_logging = false});
 		ai.StartNewGame();
 
 		const auto t0 = std::chrono::steady_clock::now();

@@ -2,7 +2,6 @@
 
 #include "PieceHelper.h"
 #include <cstdint>
-#include <memory>
 #include <span>
 #include "defines.h"
 
@@ -60,79 +59,6 @@ constexpr int BlendPhase(const ScorePair& s, int phase) noexcept
 	return (s.mg * phase + s.eg * (MAX_GAME_PHASE - phase)) / MAX_GAME_PHASE;
 }
 
-// Lazy SMP sharing contract: EvalManager and its
-// derived classes (EvalSimple, EvalComplex) hold no mutable state of any
-// kind — no data members beyond compile-time-constant enums/statics, and
-// Evaluate() is `const`, reading only its `const Board&` argument plus the
-// read-only global tables in defines.h (g_Eval_Bitboards, g_bbFileMask,
-// g_bbFileUpMask, g_bbFileDownMask — all `constexpr`/compile-time-initialized,
-// no lazy/runtime init). A single EvalManager instance is therefore safe to
-// share, unsynchronized, across every Lazy SMP helper thread's concurrent
-// Evaluate() calls — no per-thread clone is needed. EvalContext below (used
-// by EvalComplex) does not change this: it is always a per-call stack local,
-// never a member of EvalManager or EvalComplex. The same holds for
-// EvalComplex::Breakdown() and its EvalBreakdown result (issue #129 phase 2):
-// also `const`, also per-call stack locals — though it is a debug path that no
-// search thread calls.
-class EvalManager {
-  public:
-	enum class EvalTypes {
-		NONE,    // No eval engine, i.e. human
-		SIMPLE,  // Simple engine
-		COMPLEX, // Complex engine
-	};
-
-	virtual int Evaluate(const Board& board) const = 0;
-	virtual const char* GetType() const = 0;
-	// Factory constructor!
-	static std::unique_ptr<EvalManager> Create(EvalTypes type);
-
-	EvalManager() = default;
-	virtual ~EvalManager() = default;
-	EvalManager(const EvalManager&) = delete;
-
-	EvalManager& operator=(const EvalManager&) = delete;
-	EvalManager(EvalManager&&) = delete;
-	EvalManager& operator=(EvalManager&&) = delete;
-
-  protected:
-	static inline int GetPositionalScore(eSquare squareType, ePiece piece) noexcept
-	{
-		return g_Eval_Bitboards[piece >> 1][getEvalBoard(piece, squareType)];
-	}
-	// Maps a piece's board square to its PST lookup index. White uses the
-	// square directly; Black needs a vertical mirror (rank r <-> rank 9 - r,
-	// file unchanged) since every PST in defines.h is written from White's
-	// point of view. `square ^ 56` is that vertical flip: given the board
-	// layout in defines.h (a8 = 0 ... h1 = 63), XOR-ing with 56 (0b111000)
-	// flips the three rank bits and leaves the three file bits untouched.
-	//
-	// The previous implementation used `63 - square` (equivalently
-	// `square ^ 63`), a 180-degree rotation: it flips the file bits too, not
-	// just the rank bits. That distinction is invisible for a file-symmetric
-	// PST (rotation and vertical flip agree there) but wrong the moment a
-	// table is file-asymmetric — the queen-PST regression this caused is
-	// guarded by test coverage in `StratChessTests/EvalTests.cpp`.
-	static constexpr inline int getEvalBoard(ePiece piece, eSquare square) noexcept
-	{
-		return (PieceHelper::Color(piece) == eColor::BLACK) ? (square ^ 56) : square;
-	}
-};
-
-class EvalSimple final : public EvalManager {
-  public:
-	int Evaluate(const Board& board) const noexcept override;
-	const char* GetType() const noexcept override { return "Simple"; }
-
-	// Force use of factory by
-	// preventing constructor, copy-construction & operator=
-	EvalSimple(const EvalSimple&) = delete;
-	EvalSimple& operator=(const EvalSimple&) = delete;
-
-	// Not to be used directly - only needed for make_unique
-	EvalSimple() = default;
-};
-
 // Dense index for the per-piece-type aggregates in EvalContext below. The
 // pieces that get their attacks generated, in the order the generation loop
 // visits them. Deliberately not ePiece or ePieceType: those are sparse
@@ -148,7 +74,7 @@ enum eMobilePiece : std::uint8_t {
 };
 
 // What one pass over the knights, bishops, rooks and queens reduces to.
-// Produced by EvalComplex::ComputePieceAggregates() and carried in EvalContext
+// Produced by Evaluator::ComputePieceAggregates() and carried in EvalContext
 // below, so no term has to generate an attack set a previous one already had.
 //
 // Counts, never weighted scores: the term functions own the weights, which is
@@ -170,7 +96,7 @@ struct PieceAggregates {
 	// rook attacks so eval_rooks does not regenerate them.
 	int connected_rook_pairs[NUM_COLORS];
 	// Per type, how many of that color's pieces attack at least one square of
-	// the ENEMY king zone (EvalComplex::KingZone). One count per piece; the
+	// the ENEMY king zone (Evaluator::KingZone). One count per piece; the
 	// squares themselves are zone_attacks below.
 	int zone_attackers[NUM_COLORS][NUM_MOBILE_PIECES];
 	// ENEMY king-zone squares this color attacks, counting OVERLAPS: a square
@@ -181,10 +107,10 @@ struct PieceAggregates {
 	int zone_attacks[NUM_COLORS];
 };
 
-// EvalContext — shared, per-call intermediates for EvalComplex::Evaluate().
-// Built once by EvalComplex::BuildContext() as a plain stack local and passed
+// EvalContext — shared, per-call intermediates for Evaluator::Evaluate().
+// Built once by Evaluator::BuildContext() as a plain stack local and passed
 // by const reference into each term function; nothing in it is ever stored on
-// EvalManager/EvalComplex (see the Lazy SMP sharing-contract comment above).
+// Evaluator (see the Lazy SMP sharing-contract comment on its declaration).
 // Everything here is already computed or trivially available from Board — this
 // names shared work, it does not add any.
 struct EvalContext {
@@ -245,7 +171,7 @@ struct EvalContext {
 };
 
 // EvalBreakdown — per-term introspection output for the UCI 'eval' command.
-// Produced by EvalComplex::Breakdown(); read-only, never consulted by search.
+// Produced by Evaluator::Breakdown(); read-only, never consulted by search.
 //
 // Every field is indexed by eColor, so a caller can show which side a term is
 // actually acting on rather than only the net effect — the per-color split is
@@ -289,7 +215,7 @@ struct EvalBreakdown {
 };
 
 // Extrema of one row of a king-safety weight table. They exist so
-// EvalComplex::KING_SAFETY_MAX_PENALTY can be derived from the tables at
+// Evaluator::KING_SAFETY_MAX_PENALTY can be derived from the tables at
 // compile time instead of restated beside them: a retune that pushes a table
 // past the declared bound then fails to build. Free functions rather than
 // members because a static_assert inside the class body cannot call a member
@@ -324,7 +250,43 @@ struct KingPawnCover {
 	ScorePair files;
 };
 
-class EvalComplex final : public EvalManager {
+// Lazy SMP sharing contract: Evaluator holds no mutable state of any kind —
+// no data members beyond compile-time-constant enums/statics, and Evaluate()
+// is `const`, reading only its `const Board&` argument plus the read-only
+// global tables in defines.h (g_Eval_Bitboards, g_bbFileMask, g_bbFileUpMask,
+// g_bbFileDownMask — all `constexpr`/compile-time-initialized, no
+// lazy/runtime init). A single Evaluator instance is therefore safe to share,
+// unsynchronized, across every Lazy SMP helper thread's concurrent Evaluate()
+// calls — no per-thread clone is needed. EvalContext does not change this: it
+// is always a per-call stack local, never a member of Evaluator. The same
+// holds for Breakdown() and its EvalBreakdown result (issue #129 phase 2):
+// also `const`, also per-call stack locals — though it is a debug path that
+// no search thread calls.
+class Evaluator {
+  protected:
+	static inline int GetPositionalScore(eSquare squareType, ePiece piece) noexcept
+	{
+		return g_Eval_Bitboards[piece >> 1][getEvalBoard(piece, squareType)];
+	}
+	// Maps a piece's board square to its PST lookup index. White uses the
+	// square directly; Black needs a vertical mirror (rank r <-> rank 9 - r,
+	// file unchanged) since every PST in defines.h is written from White's
+	// point of view. `square ^ 56` is that vertical flip: given the board
+	// layout in defines.h (a8 = 0 ... h1 = 63), XOR-ing with 56 (0b111000)
+	// flips the three rank bits and leaves the three file bits untouched.
+	//
+	// The previous implementation used `63 - square` (equivalently
+	// `square ^ 63`), a 180-degree rotation: it flips the file bits too, not
+	// just the rank bits. That distinction is invisible for a file-symmetric
+	// PST (rotation and vertical flip agree there) but wrong the moment a
+	// table is file-asymmetric — the queen-PST regression this caused is
+	// guarded by test coverage in `StratChessTests/EvalTests.cpp`.
+	static constexpr inline int getEvalBoard(ePiece piece, eSquare square) noexcept
+	{
+		return (PieceHelper::Color(piece) == eColor::BLACK) ? (square ^ 56) : square;
+	}
+
+  private:
 	// Bonuses and penalties for eval
 	static const short DOUBLED_PAWN_PENALTY = 10;
 	static const short ISOLATED_PAWN_PENALTY = 20;
@@ -812,17 +774,15 @@ class EvalComplex final : public EvalManager {
 	}
 
   public:
-	int Evaluate(const Board& board) const noexcept override;
-	const char* GetType() const noexcept override { return "Complex"; }
+	int Evaluate(const Board& board) const noexcept;
+	static constexpr const char* GetType() noexcept { return "Complex"; }
 
 	// Per-term introspection for the UCI 'eval' command. Reports what the four
 	// private term functions above contribute, per color, for one position;
 	// changes nothing and is never called from search.
 	//
 	// This is the only member made public for the breakdown: BuildContext and
-	// the eval_* functions stay private, and EvalManager's abstract interface
-	// is left alone rather than growing a debug method EvalSimple could never
-	// implement (D7).
+	// the eval_* term functions stay private.
 	//
 	// The rows come from the same BuildContext + eval_* calls Evaluate() makes
 	// — never a parallel computation — and `total` is Evaluate()'s own return
@@ -830,15 +790,6 @@ class EvalComplex final : public EvalManager {
 	// costs a second BuildContext per call, which is free on a path invoked
 	// once per interactive command.
 	EvalBreakdown Breakdown(const Board& board) const noexcept;
-
-	// Force use of factory by
-	// preventing constructor, copy-construction & operator=
-	EvalComplex(const EvalComplex&) = delete;
-	EvalComplex& operator=(const EvalComplex&) = delete;
-	EvalComplex& operator=(const EvalComplex&&) = delete;
-
-	// NOT to be used directly - only to allow make_unique to access the Factory creator
-	EvalComplex() = default;
 
 #ifdef STRAT_ENABLE_TEST_ACCESS
 	// Enables term-level unit tests (StratChessTests/EvalTests.cpp) to call

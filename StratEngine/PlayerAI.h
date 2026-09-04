@@ -15,7 +15,7 @@ class PlayerAiBase : public PlayerBase {
 	{
 		std::stringstream str;
 		str << "\n\tEngine type:\t" << GetType() << "\n\tDepth:\t\t" << max_depth_ << "\n\tEvaluation:\t"
-		    << Eval->GetType() << '\n';
+		    << eval_.GetType() << '\n';
 		return str.str();
 	}
 	const char* GetType() const noexcept override { return "AI"; }
@@ -51,11 +51,6 @@ class PlayerAiBase : public PlayerBase {
 	/// These legacy AIs have no persistent state that needs an explicit reset.
 	virtual void StartNewGame() {}
 
-	void SetEvalEngine(EvalManager::EvalTypes type)
-	{
-		Eval = EvalManager::Create(type); // create new eval
-	}
-
 	/// Signal the search to stop immediately (e.g. from UCI 'stop').
 	/// Thread-safe: may be called from any thread.
 	virtual void StopSearch() noexcept;
@@ -70,9 +65,7 @@ class PlayerAiBase : public PlayerBase {
 	// Preventing constructor, copy-construction & operator=
 	explicit PlayerAiBase(Board& board, unsigned md)
 	    : m_Board(board), max_depth_(md), search_control_(md, std::chrono::seconds(15))
-	{
-		// Create the Evaluation strategy - Right now only possible to select two: SIMPLE and COMPLEX ;-)
-	}
+	{}
 
 	/* AI helper methods */
 
@@ -184,8 +177,9 @@ class PlayerAiBase : public PlayerBase {
 	// single-threaded, so unlike ThreadData::root_game_state a single member here is safe.
 	GameStates root_game_state_ = GameStates::STILL_PLAYING;
 
-	// The embedded Eval object for per-player evaluation
-	std::unique_ptr<EvalManager> Eval;
+	// Stateless, safe to share unsynchronized across threads (see the Lazy
+	// SMP sharing contract comment on Evaluator in Eval.h).
+	Evaluator eval_;
 
 	// The best move found so far
 	Move m_BestMove;
