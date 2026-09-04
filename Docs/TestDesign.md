@@ -68,7 +68,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | Move generation (142,953-position corpus, d1–d4) | — | `Scripts\Run-PerftCheck.ps1` |
 | **MoveFormatter** | `[formatter]` | `MoveFormatterTests.cpp` |
 | **TranspositionTable** | `[tt]` | `TTTests.cpp` |
-| **Evaluation (EvalSimple/Complex)** | `[eval]` | `EvalBasicTests.cpp`, `EvalSymmetryTests.cpp`, `EvalTermTests.cpp`, `EvalPawnAndTaperTests.cpp`, `EvalEndgameTests.cpp`, `EvalKingSafetyTests.cpp` |
+| **Evaluation (Evaluator)** | `[eval]` | `EvalBasicTests.cpp`, `EvalSymmetryTests.cpp`, `EvalTermTests.cpp`, `EvalPawnAndTaperTests.cpp`, `EvalEndgameTests.cpp`, `EvalKingSafetyTests.cpp` |
 | **Search regression (tactical)** | `[tactical]` | `TacticalTests.cpp` |
 | **Search regression (slow tier)** | `[tactical_full][slow]` | `TacticalFullTests.cpp` |
 | Concrete search service, lifecycle and factory | `[search]` | `SearchServiceTests.cpp` |
@@ -125,17 +125,13 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 **File**: `StratChessTests/EvalTests.cpp`
 **Rationale**: Evaluation has zero tests today. The roadmap plans King Safety and Mobility evaluation — these tests establish a baseline that regressions will break.
 
-**Approach**: `Board::Instance().SetupFromFEN(fen)` then `EvalManager::Create(type)->Evaluate()` — same pattern as RepetitionTests.
+**Approach**: `Board::Instance().SetupFromFEN(fen)` then `Evaluator().Evaluate()` — same pattern as RepetitionTests.
 
 **Test cases**:
-- Starting position: EvalSimple within ±200 cp (symmetric, tables may not sum to exactly 0)
-- Starting position: EvalComplex within ±200 cp
-- White extra queen (black has no queen), white to move: EvalSimple > 500 cp
-- Black extra queen (white has no queen), black to move: EvalSimple > 500 cp
-- White extra queen: EvalComplex > 500 cp
-- Both engines agree: both positive when white has material advantage
-- EvalComplex doubled pawn penalty: score lower with doubled pawns than without
-- EvalComplex rook on 7th: endgame position with rook on 7th scores positively
+- Starting position: within ±200 cp (symmetric, tables may not sum to exactly 0)
+- White extra queen: > 500 cp
+- Doubled pawn penalty: score lower with doubled pawns than without
+- Rook on 7th: endgame position with rook on 7th scores positively
 - Mop-up evaluation (issue #70): decisively-won pawnless ending scores higher with the losing
   king cornered vs. centered
 - Mop-up evaluation: gated off once either side has a pawn on the board
@@ -146,7 +142,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 - Color symmetry: whole-position cases via a file-local `MirrorFen` FEN color-mirror helper —
   starting position, a queen-PST asymmetry regression (queen on c6), a middlegame with
   rooks on open/half-open files, an endgame that trips the king-PST switch, and a pawnless
-  mop-up ending — `Evaluate(fen) == Evaluate(MirrorFen(fen))` for both evaluators
+  mop-up ending — `Evaluate(fen) == Evaluate(MirrorFen(fen))`
 - Rook open-file definition (issue #126): an enemy knight sharing the rook's file must not
   demote an open file to half-open (`all_black`/`all_white` narrowed to `black_pawns`/`white_pawns`)
   — an enemy pawn on the file still demotes it (guard); an own pawn behind the rook still leaves
@@ -154,7 +150,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 - Color symmetry: the #126 knight-on-file and pawn-on-file positions added to the `MirrorFen`
   whole-position symmetry cases above, since the two new masks are the most likely place for a
   color asymmetry to be introduced
-- Term-level tests (issue #127 restructure): `EvalComplex::Evaluate()` now builds an
+- Term-level tests (issue #127 restructure): `Evaluator::Evaluate()` now builds an
   `EvalContext` and sums four private per-term functions (`eval_pawns`, `eval_rooks`, `eval_pst`,
   `eval_mopup`), each `(const EvalContext&, eColor) -> int`. `EvalComplexTestFixture` (a
   `STRAT_ENABLE_TEST_ACCESS` friend, same mechanism as the AIPerplex/UciHandler fixtures) builds
@@ -198,7 +194,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
   - Structural check: the four terms plus raw material, summed the same way `Evaluate()` sums
     them, reproduce `Evaluate()`'s result exactly across every whole-position FEN used by the
     color-symmetry cases above
-  - `EvalComplex::Breakdown()` (issue #129 phase 2 — the public production path the UCI `eval`
+  - `Evaluator::Breakdown()` (issue #129 phase 2 — the public production path the UCI `eval`
     command reads): every row equals the corresponding `EvalComplexTestFixture` term call, and
     `material` equals `Board::GetMaterialScore`, across the same FEN set. Tied to the already-
     tested terms rather than asserted in isolation — the failure mode worth guarding is
@@ -562,9 +558,9 @@ commented, so a regression in `ignore_comments` would break the shipped file rat
 **`cmd_eval` (issue #129 phase 1 — static-eval introspection)**:
 - Works before any `position` command (default-constructed, empty `board_`) without crashing.
 - **Honesty invariant**: the printed `static eval:` score is a real parse of the emitted
-  number, asserted equal to `EvalManager::Create(COMPLEX)->Evaluate(Board(fen))` for the same
-  FEN — the property that makes the tool trustworthy for #117's tuner and #127's byte-identity
-  check, since it proves `eval` never computes a parallel score.
+  number, asserted equal to `Evaluator().Evaluate(Board(fen))` for the same FEN — the property
+  that makes the tool trustworthy for #117's tuner and #127's byte-identity check, since it
+  proves `eval` never computes a parallel score.
 - Output contains neither `bestmove` nor `info` — `eval` must not look like a search response.
 - `white pov:` matches the stated sign convention: equals the side-to-move score when White is
   to move, equals its negation when Black is to move — checked against two positions with a
@@ -725,14 +721,12 @@ Constructing FEN positions (all four are bugs that have actually bitten):
 
 ### Constructing AIPerplex in a test
 
-The concrete configuration is complete at construction. `EvalTypes::NONE` is invalid for this
-service; its Board is supplied to every search call:
+The concrete configuration is complete at construction; its Board is supplied to every search
+call:
 
 ```cpp
 Board board(fen);
-AIPerplex ai(AIPerplexConfig{.evaluator = EvalManager::EvalTypes::COMPLEX,
-                             .default_depth = depth,
-                             .verbose_logging = false});
+AIPerplex ai(AIPerplexConfig{.default_depth = depth, .verbose_logging = false});
 Move m = ai.Search(board, SearchLimits::fixed_depth(depth)).best_move;
 ```
 

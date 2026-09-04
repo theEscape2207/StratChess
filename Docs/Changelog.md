@@ -22,6 +22,24 @@ Newest first.
 
 ---
 
+## 2026-09-05 — Collapse evaluator selection to one concrete evaluator (#457)
+
+`EvalManager` (the `EvalTypes` enum, its factory) and the unused `EvalSimple` evaluator are gone;
+`EvalComplex` is renamed `Evaluator`, a standalone, non-`final` concrete class holding the same
+material-plus-PST-plus-terms behaviour verbatim. `AIPerplex`, `PlayerAiBase` and `UciHandler` now
+own their evaluator by value instead of through a `unique_ptr` to the old base, which is free for a
+stateless type and removes a null state nothing could ever produce. `AIPerplexConfig::evaluator`,
+`PlayerAiBase::SetEvalEngine`, `Config::PlayerConfig::eval`, and both shipped `"eval": 2` keys in
+`game_settings.json` are removed; a stale `"eval"` key in an external config file is now silently
+ignored under the parser's existing unknown-key policy rather than read into an enum. `GetType()`
+stays `static constexpr` and keeps returning `"Complex"`, so `getDescription()` and
+`search_description()` are byte-identical. Tests lost their SIMPLE/NONE-selection-only cases;
+`EvalProbe` now derives from `Evaluator` directly to reach the protected PST helpers. Pure refactor:
+`Compare-SearchEquivalence.ps1` against `origin/main` confirms identical per-iteration output and
+best moves at `Threads=1`.
+
+---
+
 ## 2026-09-04 — Stalemate at the quiescence horizon (#234)
 
 Out of check, quiescence generates captures only, so an empty move list said nothing about legality
