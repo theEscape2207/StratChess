@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-09-03 | 0c64b7f (EXPERIMENT: middlegame `ISOLATED_PAWN_PENALTY` suppressed on the king's three files, #460) | 65e3f76 | 19980 | 10+0.1 | **+0.23 +/- 3.62** | no effect |
 | 2026-09-03 | e73d3f2 (ABLATION: `eval_castling` zeroed, #460) | 65e3f76 | 19980 | 10+0.1 | **-9.98 +/- 3.73** | regression |
 | 2026-09-03 | 40d62b1 (middlegame king PST flattened to zero, #97 PR 4) | 0eb981a (the #455 merge; the true merge base 41f6f2a differs from it by documentation only) | 19980 | 10+0.1 | **+18.54 +/- 3.62** | gain |
 | 2026-09-03 | 62c12eb (king safety: shelter, storm, king-file openness and attack pressure, #97 PRs 1-3) | e0eb564 (`king-safety-pre`, fork point of the series, not of one change) | 19980 | 10+0.1 | **+32.81 +/- 3.79** | gain |
@@ -27,6 +28,14 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-09-03 -- 0c64b7f (EXPERIMENT: middlegame isolated penalty off the king's files, #460) (19980 games)
+
+**A null, and the sign is not inverted -- this is a candidate change, not an ablation, so nothing here says a shipped term is worth anything. It says the suppression buys nothing.** 18 shards x 555 pairs, pooled Ptnml(0-2) [824, 2301, 3750, 2268, 847], score 50.03%, run `33802622783`, 3 h 06 min wall-clock. 95% interval **[-3.4, +3.9]**, centred on zero about as exactly as this instrument can manage. Not uniform, and at this effect size it could not be: 10 shards favour the candidate, 7 the reference and shard 7 is an exact 0.00. The pooled buckets sit the same way -- the two winning buckets total 3115 against 3125 losing, 10 pairs behind, while the score is 50.03% because the candidate's whole edge is in the outer 2-0 bucket (847 v 824) against a deficit in the 1.5 bucket. **The candidate branch is a measurement artefact and was never merged**; it is deleted, and this row plus the run link are the only record.
+
+**What it settles.** #460 item 1 argued that three terms independently price one missing shield pawn -- `KING_SHELTER`, king-file openness and `ISOLATED_PAWN_PENALTY` newly applying to the pawn beside the hole -- stacking to ~50 cp typical at the shipped halved magnitudes, with the isolated penalty the largest single residual piece at 20 against shelter's 24. The candidate suppresses that penalty on the king's own file and the two beside it at the middlegame endpoint only, tapering back to full as the endgame approaches, since the other two terms are middlegame-only and the claimed overlap exists only there. Removing the largest disputed piece of the stack changes nothing measurable, so **the overlap is real but is not a mispricing**: the three terms together are pricing a shattered castled king about right. The issue's own reading was pre-registered -- at or below zero means leave it alone -- so this closes item 1 without opening the #117 tuning question a positive result would have.
+
+**What it does not settle.** Any effect below about 3.4 Elo, which is what the instrument can see at this game count; and nothing about the corner case where a second pawn goes isolated (~40 cp), which is rare enough that no affordable match isolates it. Interval width 3.62 against the instrument's calibrated 4.15 at the same game count -- narrower because a near-null result produces fewer decisive pairs, not because resolution was gained. Zero illegal moves, zero time losses, zero disconnects, zero illegal-PV warnings (#310); all 18 shards green.
 
 ### 2026-09-03 -- e73d3f2 (ABLATION: `eval_castling` zeroed, #460) (19980 games)
 
