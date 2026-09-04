@@ -827,6 +827,10 @@ namespace {
 	// list says nothing about whether a move exists at all.
 	bool bare_king_is_stalemated(Board& board)
 	{
+		// What this computes is "no move survives DoMove()"; only the caller's !in_check makes that
+		// stalemate rather than checkmate, and the two verdicts are a full point apart.
+		assert(!board.InCheck());
+
 		const auto boards = board.GetBitBoards();
 		const auto mover = (board.GetCurrentColor() == WHITE) ? ePiece::ALL_WHITE_PIECES : ePiece::ALL_BLACK_PIECES;
 		if (std::popcount(boards[mover]) != 1)

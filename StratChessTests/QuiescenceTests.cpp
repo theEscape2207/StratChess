@@ -650,6 +650,22 @@ TEST_CASE("Qsearch - a stalemated quiet node is a draw, not a static win", "[sea
 	CHECK(score == GameValues::Draw);
 }
 
+TEST_CASE("Qsearch - a mated bare king is a mate, not a stalemate draw", "[search][qsearch]")
+{
+	// The gate's negative case: a bare king with no legal move is stalemate only out of check.
+	// Qg7 mates -- it is defended by Kg6, and it covers g8 and h7 -- so a probe that ran here, or a
+	// caller that dropped the !in_check guard, would turn a won game into a draw.
+	AIPerlexTestFixture fix("7k/6Q1/6K1/8/8/8/8/8 b - - 0 1");
+	REQUIRE(fix.board_.InCheck());
+	REQUIRE(fix.count_legal_moves() == 0);
+
+	const int score = fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init,
+	                                   AIPerlexTestFixture::QSEARCH_BUDGET, /*ply=*/0);
+
+	INFO("qsearch = " << score);
+	CHECK(score == -GameValues::Mate);
+}
+
 TEST_CASE("Qsearch - a quiet node one escape square short of stalemate keeps its score", "[search][qsearch]")
 {
 	// The control for the case above, and the reason the probe has to be exact rather than a
