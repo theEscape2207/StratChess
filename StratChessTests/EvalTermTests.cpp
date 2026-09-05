@@ -444,15 +444,34 @@ TEST_CASE("Eval - eval_outposts: pawn support is required, and is geometric", "[
 TEST_CASE("Eval - eval_outposts: a same-file or already-passed enemy pawn does not disqualify", "[eval]")
 {
 	// The d7 pawn shares the knight's file and can only ever block it; the c5
-	// pawn is level with the knight and can no longer reach c6. Both are inside
-	// the raw passed-pawn span, so both would disqualify without the file mask
-	// and the span's orientation respectively.
+	// pawn is level with the knight and can no longer reach c6. The d7 pawn is
+	// inside the raw passed-pawn span and would disqualify without the file
+	// mask. The c5 pawn is in NEITHER colour's span from d5, so what it guards
+	// against is a detector widened to the whole adjacent file rather than a
+	// reversed one -- the span's orientation is pinned by the Black-side case
+	// below.
 	const char* fen = GENERATE(FEN_OUTPOST_SAME_FILE_PAWN, FEN_OUTPOST_PAWN_PAST_SPAN);
 	CAPTURE(fen);
 
 	Board board(fen);
 
 	REQUIRE(EvaluatorTestFixture::Outposts(board, WHITE) == EvaluatorTestFixture::OutpostKnight(5));
+}
+
+TEST_CASE("Eval - eval_outposts: Black's challenge span runs the other way", "[eval]")
+{
+	// Every case above scores White, and the White frame does not discriminate
+	// the span's DIRECTION: a detector that used the White span for both colours
+	// would compute c5-c8/e5-e8 for a Black knight on d4, find nothing there in
+	// any mirrored fixture, and still pay the bonus. Mirroring the challenged
+	// case is what closes that -- the White pawn lands on e2, which is inside
+	// Black's span from d4 and outside White's.
+	Board outpost(MirrorFen(FEN_OUTPOST_KNIGHT_D5));
+	REQUIRE(EvaluatorTestFixture::Outposts(outpost, BLACK) == EvaluatorTestFixture::OutpostKnight(5));
+	REQUIRE(EvaluatorTestFixture::Outposts(outpost, WHITE) == 0);
+
+	Board challenged(MirrorFen(FEN_OUTPOST_CHALLENGED_E7));
+	REQUIRE(EvaluatorTestFixture::Outposts(challenged, BLACK) == 0);
 }
 
 TEST_CASE("Eval - eval_outposts: the challenge span does not wrap around the board edge", "[eval]")

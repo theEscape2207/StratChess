@@ -184,7 +184,9 @@ assertion or an `EvaluatorTestFixture` static for a single term.
     from one frame (a pawn-supported White Nd5 with idle Black pawns on a7/h7) — a challenger on
     either adjacent file disqualifies although it does not attack the square yet, a same-file pawn
     and a pawn already level with the knight do not, a blocked or pinned challenger still does, a
-    pinned supporting pawn still supports, the a-file case does not wrap, relative ranks 3 and 7
+    pinned supporting pawn still supports, the a-file case does not wrap, the same frame mirrored
+    pins the span's DIRECTION (a White-only span would score a Black knight on d4 identically in
+    every other case), relative ranks 3 and 7
     score zero while 4/5/6 rise, a bishop scores from its own smaller table, and two knights on
     outposts are both paid. Every one of these FENs is round-tripped through `Board::ExtractFEN`
     first: an illegal FEN leaves the board **empty**, whose outpost score is zero — which is what

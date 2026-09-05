@@ -369,6 +369,11 @@ static constexpr const char* kSymmetryFens[] = {
     // advanced square -- so without this the term is inactive in every mirror
     // and breakdown case, and merely running them would prove nothing about it.
     FEN_OUTPOST_KNIGHT_D5,
+    // The challenged case as well, because the clean one does not discriminate
+    // the span's direction: mirrored, its White pawns land on a2/h2, which are
+    // outside both colours' spans from d4. This one's White pawn lands on e2,
+    // inside Black's span and outside White's.
+    FEN_OUTPOST_CHALLENGED_E7,
 };
 
 // Swaps the case of a single character; digits and other characters pass
