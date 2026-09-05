@@ -391,11 +391,11 @@ inline int BreakdownWhitePov(const EvalBreakdown& terms)
 	       (terms.king_attack[WHITE] - terms.king_attack[BLACK]) + terms.endgame_adjustment;
 }
 
-// EvalComplexTestFixture is a friend of Evaluator (STRAT_ENABLE_TEST_ACCESS,
+// EvaluatorTestFixture is a friend of Evaluator (STRAT_ENABLE_TEST_ACCESS,
 // same mechanism as AIPerplex/UciHandler's fixtures) that builds an
 // EvalContext from a Board and forwards to each term, so terms can be
 // asserted on directly instead of only inferred from whole-position deltas.
-struct EvalComplexTestFixture {
+struct EvaluatorTestFixture {
 	static int Pawns(const Board& board, eColor color)
 	{
 		const EvalContext ctx = BuildContext(board);

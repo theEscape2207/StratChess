@@ -565,7 +565,7 @@ ScorePair Evaluator::eval_mopup(const EvalContext& ctx, eColor color) noexcept
 
 // BuildContext — the one construction site for EvalContext. Both
 // Evaluate() below and the term-level test fixture
-// (StratChessTests/EvalTestFixture.h's EvalComplexTestFixture) call this, so
+// (StratChessTests/EvalTestFixture.h's EvaluatorTestFixture) call this, so
 // phase detection and every other context field can only be computed one
 // way — no risk of the test fixture silently drifting onto a stale copy of
 // the `11500` threshold or similar (see issue #99, which will eventually

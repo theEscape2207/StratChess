@@ -84,21 +84,20 @@ TEST_CASE("Player factory creates human and legacy players", "[player][factory]"
 	CHECK(board.IsLegalMove(result.best_move));
 }
 
-TEST_CASE("Player factory gives a legacy AI the Complex evaluator with no evaluator field configured",
-          "[player][factory]")
+TEST_CASE("Player factory gives a legacy AI a usable evaluator with no evaluator field configured", "[player][factory]")
 {
-	// Pins a real behaviour change from #457: PlayerConfig::eval used to default to 0 (NONE), so a
-	// config block with no "eval" key left a legacy AI's Eval pointer null -- a latent crash the
-	// first Quiescent() call would have hit. The value member makes that state unrepresentable;
-	// this asserts the legacy AI now gets a working Complex evaluator by default instead.
-	Board board;
+	// A PlayerConfig carrying no evaluator selection still produces a player whose search reaches a
+	// working evaluator: the evaluator is a value member, so there is no unconfigured state to hit.
+	Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 	Config::PlayerConfig config;
 	config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::AIAGENT);
 	config.depth = 1;
 	auto legacy = CreatePlayer(config, board);
 
-	const std::string description = legacy->getDescription();
-	CHECK(description.ends_with("Evaluation:\tComplex\n"));
+	const SearchResult result = legacy->GetMove(SearchLimits::fixed_depth(1));
+
+	CHECK_FALSE(result.best_move.is_null());
+	CHECK(board.IsLegalMove(result.best_move));
 }
 
 TEST_CASE("Player factory configures the default depth used by empty SearchLimits", "[player][search_player][factory]")
@@ -227,8 +226,7 @@ TEST_CASE("Player factory maps AIPerplex evaluator tuning threads and logging be
 	CHECK(tuning.null_move_reduction == 4);
 	CHECK(tuning.null_move_min_depth == 7);
 	CHECK_FALSE(tuning.see_pruning_enabled);
-	CHECK(player->getDescription() ==
-	      "\n\tEngine type:\tPerplexity Transpositional AlphaBeta\n\tDepth:\t\t2\n\tEvaluation:\tComplex\n");
+	CHECK(player->getDescription() == "\n\tEngine type:\tPerplexity Transpositional AlphaBeta\n\tDepth:\t\t2\n");
 }
 
 TEST_CASE("Player factory starts the AIPerplex new-game lifecycle before returning", "[player][search_player][factory]")

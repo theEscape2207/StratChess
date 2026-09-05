@@ -14,8 +14,7 @@ class PlayerAiBase : public PlayerBase {
 	std::string getDescription() const override
 	{
 		std::stringstream str;
-		str << "\n\tEngine type:\t" << GetType() << "\n\tDepth:\t\t" << max_depth_ << "\n\tEvaluation:\t"
-		    << eval_.GetType() << '\n';
+		str << "\n\tEngine type:\t" << GetType() << "\n\tDepth:\t\t" << max_depth_ << '\n';
 		return str.str();
 	}
 	const char* GetType() const noexcept override { return "AI"; }

@@ -59,12 +59,17 @@ repo's member convention while it is being touched.
 
 Rejected: keeping `unique_ptr<Evaluator>`. It would preserve a null state that nothing can produce.
 
-### D3: `GetType()` survives as a non-virtual `"Complex"`
+### D3: `Evaluator::GetType()` goes, and with it the `Evaluation:` description row
 
-Two user-visible strings read it (`PlayerAiBase::getDescription`, and `search_description` in
-`PlayerFactory.cpp`, which currently routes through `evaluator_name`). Keeping
-`static constexpr const char* GetType()` returning `"Complex"` keeps both strings byte-identical,
-which is an acceptance criterion, and lets `search_description` drop its enum parameter.
+Two user-visible strings read the evaluator's name (`PlayerAiBase::getDescription`, and
+`search_description` in `PlayerFactory.cpp`, which routes through `evaluator_name`). Both drop the
+`Evaluation:` row entirely rather than naming the one evaluator that can appear: the row reported a
+*choice*, and no choice remains. Keeping the accessor would leave the two call sites printing a
+class name — `"Complex"` — that no longer exists anywhere in the tree.
+
+This revises an earlier decision to keep `GetType()` returning `"Complex"` so the strings stayed
+byte-identical. Byte-identical output is not an acceptance criterion for the description; a stale
+name is a maintenance cost, so the row goes and the two tests pinning it are updated.
 
 ### D4: A stale `"eval"` key in an external JSON file is ignored, not rejected
 
@@ -98,7 +103,8 @@ for test convenience) and a `STRAT_ENABLE_TEST_ACCESS` friend (more machinery fo
 
 - The production evaluator's score is bit-identical for every position and setting: `Evaluate()`,
   `Breakdown()`, the UCI `eval` rows, and search results all unchanged.
-- `getDescription()` still ends `\n\tEvaluation:\tComplex\n` for both the AIPerplex and legacy paths.
+- `getDescription()` ends after the `Depth:` row for both the AIPerplex and legacy paths, and no
+  user-visible string names an evaluator.
 - The evaluator remains stateless — no data members beyond compile-time constants, `Evaluate()` and
   `Breakdown()` `const` — so one instance stays safe to share unsynchronized across Lazy SMP threads.
 - No active source, test, shipped config, or current doc mentions `EvalTypes`, `NONE`, `SIMPLE`,

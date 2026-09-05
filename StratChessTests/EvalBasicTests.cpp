@@ -1,7 +1,7 @@
 #include "EvalTestFixture.h"
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-TEST_CASE("Eval - Evaluator: starting position is near-symmetric (within 200 cp)", "[eval]")
+TEST_CASE("Eval - starting position is near-symmetric (within 200 cp)", "[eval]")
 {
 	Board board(FEN_START);
 
@@ -11,7 +11,7 @@ TEST_CASE("Eval - Evaluator: starting position is near-symmetric (within 200 cp)
 	REQUIRE(score <= 200);
 }
 
-TEST_CASE("Eval - Evaluator: a kingless board evaluates to 0 (pre-#127 behaviour, regression)", "[eval]")
+TEST_CASE("Eval - a kingless board evaluates to 0 (pre-#127 behaviour, regression)", "[eval]")
 {
 	// Default-constructed Board has an empty mailbox and zeroed bitboards —
 	// no kings, no pieces at all. UciHandler::board_ is exactly this: it is
@@ -42,7 +42,7 @@ TEST_CASE("Eval - Evaluator: a kingless board evaluates to 0 (pre-#127 behaviour
 	REQUIRE(Evaluator().Evaluate(board) == 0);
 }
 
-TEST_CASE("Eval - Evaluator: side with extra queen scores > 500 cp", "[eval]")
+TEST_CASE("Eval - side with extra queen scores > 500 cp", "[eval]")
 {
 	// Both colors: the score is side-to-move-relative, so this exercises the
 	// sign as well as the magnitude — Black's extra queen with Black to move
@@ -54,7 +54,7 @@ TEST_CASE("Eval - Evaluator: side with extra queen scores > 500 cp", "[eval]")
 	REQUIRE(Evaluator().Evaluate(board) > 500);
 }
 
-TEST_CASE("Eval - Evaluator penalises doubled pawns relative to normal structure", "[eval]")
+TEST_CASE("Eval - penalises doubled pawns relative to normal structure", "[eval]")
 {
 	Board board;
 
@@ -68,7 +68,7 @@ TEST_CASE("Eval - Evaluator penalises doubled pawns relative to normal structure
 	REQUIRE(normal_score > doubled_score);
 }
 
-TEST_CASE("Eval - Evaluator awards rook-on-7th bonus: position scores positively for white", "[eval]")
+TEST_CASE("Eval - awards rook-on-7th bonus: position scores positively for white", "[eval]")
 {
 	// White has a rook on the 7th rank in an endgame. Black has only a king.
 	// Evaluator should award a rook-on-7th bonus and the material edge,
@@ -80,8 +80,7 @@ TEST_CASE("Eval - Evaluator awards rook-on-7th bonus: position scores positively
 	REQUIRE(score > 0);
 }
 
-TEST_CASE("Eval - Evaluator mop-up: decisively-won pawnless ending scores higher with the losing king cornered",
-          "[eval]")
+TEST_CASE("Eval - mop-up: decisively-won pawnless ending scores higher with the losing king cornered", "[eval]")
 {
 	const Evaluator eval;
 
@@ -96,7 +95,7 @@ TEST_CASE("Eval - Evaluator mop-up: decisively-won pawnless ending scores higher
 	REQUIRE(cornerScore > centerScore);
 }
 
-TEST_CASE("Eval - Evaluator mop-up: gated off once pawns are on the board", "[eval]")
+TEST_CASE("Eval - mop-up: gated off once pawns are on the board", "[eval]")
 {
 	const Evaluator eval;
 
@@ -113,7 +112,7 @@ TEST_CASE("Eval - Evaluator mop-up: gated off once pawns are on the board", "[ev
 	REQUIRE(pawnlessDelta > withPawnsDelta);
 }
 
-TEST_CASE("Eval - Evaluator mop-up: gated off below the decisive material threshold", "[eval]")
+TEST_CASE("Eval - mop-up: gated off below the decisive material threshold", "[eval]")
 {
 	const Evaluator eval;
 
@@ -132,7 +131,7 @@ TEST_CASE("Eval - Evaluator mop-up: gated off below the decisive material thresh
 
 // ── Rook open-file definition (issue #126) ────────────────────────────────────
 
-TEST_CASE("Eval - Evaluator: an enemy pawn on the rook's file still demotes it to half-open", "[eval]")
+TEST_CASE("Eval - an enemy pawn on the rook's file still demotes it to half-open", "[eval]")
 {
 	// Guard: the fix must narrow the open-file test to pawns only, not remove
 	// it. An enemy pawn on the file is still the defining case for half-open.
@@ -147,7 +146,7 @@ TEST_CASE("Eval - Evaluator: an enemy pawn on the rook's file still demotes it t
 	REQUIRE(eval.Evaluate(pawnOff) > eval.Evaluate(pawnOn));
 }
 
-TEST_CASE("Eval - Evaluator: an own pawn ahead of the rook blocks the file bonus", "[eval]")
+TEST_CASE("Eval - an own pawn ahead of the rook blocks the file bonus", "[eval]")
 {
 	// The half-open test looks only at own pawns AHEAD of the rook
 	// (g_bbFileUpMask), so moving the rook from behind its own pawn to in

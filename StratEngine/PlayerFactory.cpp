@@ -18,8 +18,7 @@ namespace {
 	std::string search_description(unsigned depth)
 	{
 		std::ostringstream out;
-		out << "\n\tEngine type:\tPerplexity Transpositional AlphaBeta\n\tDepth:\t\t" << depth << "\n\tEvaluation:\t"
-		    << Evaluator::GetType() << '\n';
+		out << "\n\tEngine type:\tPerplexity Transpositional AlphaBeta\n\tDepth:\t\t" << depth << '\n';
 		return out.str();
 	}
 

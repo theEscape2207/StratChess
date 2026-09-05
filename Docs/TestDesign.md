@@ -152,7 +152,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
   color asymmetry to be introduced
 - Term-level tests (issue #127 restructure): `Evaluator::Evaluate()` now builds an
   `EvalContext` and sums four private per-term functions (`eval_pawns`, `eval_rooks`, `eval_pst`,
-  `eval_mopup`), each `(const EvalContext&, eColor) -> int`. `EvalComplexTestFixture` (a
+  `eval_mopup`), each `(const EvalContext&, eColor) -> int`. `EvaluatorTestFixture` (a
   `STRAT_ENABLE_TEST_ACCESS` friend, same mechanism as the AIPerplex/UciHandler fixtures) builds
   an `EvalContext` from a `Board` and forwards to each term, so terms are asserted on directly
   instead of only inferred from whole-position deltas:
@@ -195,7 +195,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
     them, reproduce `Evaluate()`'s result exactly across every whole-position FEN used by the
     color-symmetry cases above
   - `Evaluator::Breakdown()` (issue #129 phase 2 — the public production path the UCI `eval`
-    command reads): every row equals the corresponding `EvalComplexTestFixture` term call, and
+    command reads): every row equals the corresponding `EvaluatorTestFixture` term call, and
     `material` equals `Board::GetMaterialScore`, across the same FEN set. Tied to the already-
     tested terms rather than asserted in isolation — the failure mode worth guarding is
     `Breakdown()` reporting something other than what `Evaluate()` sums, which self-consistent

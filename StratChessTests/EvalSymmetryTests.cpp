@@ -78,7 +78,7 @@ TEST_CASE("Eval - MirrorFen self-test: castling rights and en-passant square are
 // both the original and the mirror — the scores must be EQUAL, not negated.
 // This is the single most likely thing for a future reader to get backwards.
 
-TEST_CASE("Eval - Evaluator is color-symmetric: a position and its mirror score equally", "[eval]")
+TEST_CASE("Eval - color symmetry: a position and its mirror score equally", "[eval]")
 {
 	const char* fen = GENERATE(from_range(kSymmetryFens));
 	CAPTURE(fen);

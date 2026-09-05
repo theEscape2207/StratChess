@@ -205,21 +205,21 @@ TEST_CASE("PassedMask - nothing is ahead of a pawn on the promotion rank", "[eva
 	REQUIRE(g_bbPassedMaskBlack[d1] == 0);
 }
 
-TEST_CASE("Eval - Evaluator rewards a passed pawn over a blocked one", "[eval]")
+TEST_CASE("Eval - rewards a passed pawn over a blocked one", "[eval]")
 {
 	// Identical but for the black pawn on d7, which stands in the white e5
 	// pawn's adjacent-file span and so denies it passed status.
 	Board passed("4k3/8/8/4P3/8/8/8/4K3 w - - 0 1");
 	Board blocked("4k3/3p4/8/4P3/8/8/8/4K3 w - - 0 1");
 
-	const int passedScore = EvalComplexTestFixture::Pawns(passed, WHITE);
-	const int blockedScore = EvalComplexTestFixture::Pawns(blocked, WHITE);
+	const int passedScore = EvaluatorTestFixture::Pawns(passed, WHITE);
+	const int blockedScore = EvaluatorTestFixture::Pawns(blocked, WHITE);
 
 	CAPTURE(passedScore, blockedScore);
 	REQUIRE(passedScore > blockedScore);
 }
 
-TEST_CASE("Eval - Evaluator passer bonus grows as the pawn advances", "[eval]")
+TEST_CASE("Eval - passer bonus grows as the pawn advances", "[eval]")
 {
 	// Both kings on a8/a-file, deliberately off the pawn's file: with the black
 	// king on e8 the seventh-rank pawn would be BLOCKADED, so the pair would vary
@@ -228,14 +228,14 @@ TEST_CASE("Eval - Evaluator passer bonus grows as the pawn advances", "[eval]")
 	Board third("k7/8/8/8/8/4P3/8/4K3 w - - 0 1");
 	Board seventh("k7/4P3/8/8/8/8/8/4K3 w - - 0 1");
 
-	const int thirdScore = EvalComplexTestFixture::Pawns(third, WHITE);
-	const int seventhScore = EvalComplexTestFixture::Pawns(seventh, WHITE);
+	const int thirdScore = EvaluatorTestFixture::Pawns(third, WHITE);
+	const int seventhScore = EvaluatorTestFixture::Pawns(seventh, WHITE);
 
 	CAPTURE(thirdScore, seventhScore);
 	REQUIRE(seventhScore > thirdScore);
 }
 
-TEST_CASE("Eval - Evaluator passer is worth more in the endgame than the middlegame", "[eval]")
+TEST_CASE("Eval - passer is worth more in the endgame than the middlegame", "[eval]")
 {
 	// Same pawn structure. The queens and rooks only move the phase, and
 	// eval_pawns reads no piece other than pawns, so any difference here is the
@@ -243,28 +243,28 @@ TEST_CASE("Eval - Evaluator passer is worth more in the endgame than the middleg
 	Board middlegame("rq2k3/8/8/4P3/8/8/8/RQ2K3 w - - 0 1");
 	Board endgame("4k3/8/8/4P3/8/8/8/4K3 w - - 0 1");
 
-	const int middlegameScore = EvalComplexTestFixture::Pawns(middlegame, WHITE);
-	const int endgameScore = EvalComplexTestFixture::Pawns(endgame, WHITE);
+	const int middlegameScore = EvaluatorTestFixture::Pawns(middlegame, WHITE);
+	const int endgameScore = EvaluatorTestFixture::Pawns(endgame, WHITE);
 
 	CAPTURE(middlegameScore, endgameScore);
 	REQUIRE(endgameScore > middlegameScore);
 }
 
-TEST_CASE("Eval - Evaluator detects an a-file passer", "[eval]")
+TEST_CASE("Eval - detects an a-file passer", "[eval]")
 {
 	// Guards the wraparound case end to end: a black h-pawn must not stop the
 	// white a-pawn from counting as passed, while a black b-pawn must.
 	Board aFilePasser("4k3/7p/8/P7/8/8/8/4K3 w - - 0 1");
 	Board aFileBlocked("4k3/1p6/8/P7/8/8/8/4K3 w - - 0 1");
 
-	const int passerScore = EvalComplexTestFixture::Pawns(aFilePasser, WHITE);
-	const int blockedScore = EvalComplexTestFixture::Pawns(aFileBlocked, WHITE);
+	const int passerScore = EvaluatorTestFixture::Pawns(aFilePasser, WHITE);
+	const int blockedScore = EvaluatorTestFixture::Pawns(aFileBlocked, WHITE);
 
 	CAPTURE(passerScore, blockedScore);
 	REQUIRE(passerScore > blockedScore);
 }
 
-TEST_CASE("Eval - Evaluator penalises a backwards pawn", "[eval]")
+TEST_CASE("Eval - penalises a backwards pawn", "[eval]")
 {
 	// White b2 is backwards: its only neighbour (c3) has advanced past it, and
 	// its stop square b3 is attacked by the black a4 pawn and defended by no
@@ -279,14 +279,14 @@ TEST_CASE("Eval - Evaluator penalises a backwards pawn", "[eval]")
 	Board backwards("4k3/8/8/8/p7/2P5/1P6/4K3 w - - 0 1");
 	Board notAttacked("4k3/8/8/p7/8/2P5/1P6/4K3 w - - 0 1");
 
-	const int backwardsScore = EvalComplexTestFixture::Pawns(backwards, WHITE);
-	const int notAttackedScore = EvalComplexTestFixture::Pawns(notAttacked, WHITE);
+	const int backwardsScore = EvaluatorTestFixture::Pawns(backwards, WHITE);
+	const int notAttackedScore = EvaluatorTestFixture::Pawns(notAttacked, WHITE);
 
 	CAPTURE(backwardsScore, notAttackedScore);
 	REQUIRE(backwardsScore < notAttackedScore);
 }
 
-TEST_CASE("Eval - Evaluator does not penalise a pawn its neighbour is level with", "[eval]")
+TEST_CASE("Eval - does not penalise a pawn its neighbour is level with", "[eval]")
 {
 	// Clause (a) only. The two positions differ by the white a2 pawn and nothing
 	// else: it sits LEVEL with b2 on an adjacent file, so b2 is no longer behind
@@ -300,14 +300,14 @@ TEST_CASE("Eval - Evaluator does not penalise a pawn its neighbour is level with
 	Board levelNeighbour("4k3/8/8/8/p7/2P5/PP6/4K3 w - - 0 1");
 	Board backwards("4k3/8/8/8/p7/2P5/1P6/4K3 w - - 0 1");
 
-	const int levelScore = EvalComplexTestFixture::Pawns(levelNeighbour, WHITE);
-	const int backwardsScore = EvalComplexTestFixture::Pawns(backwards, WHITE);
+	const int levelScore = EvaluatorTestFixture::Pawns(levelNeighbour, WHITE);
+	const int backwardsScore = EvaluatorTestFixture::Pawns(backwards, WHITE);
 
 	CAPTURE(levelScore, backwardsScore);
 	REQUIRE(levelScore > backwardsScore);
 }
 
-TEST_CASE("Eval - Evaluator passer bonus is monotonic across every rank", "[eval]")
+TEST_CASE("Eval - passer bonus is monotonic across every rank", "[eval]")
 {
 	// The bonus is scaled by rank and then again by the blockade factor, and each
 	// scaling truncates. Truncation cannot be reasoned about in general -- it has
@@ -332,7 +332,7 @@ TEST_CASE("Eval - Evaluator passer bonus is monotonic across every rank", "[eval
 	int previous = std::numeric_limits<int>::min();
 	for (const char* fen : byRank) {
 		Board board(fen);
-		const int score = EvalComplexTestFixture::Pawns(board, WHITE);
+		const int score = EvaluatorTestFixture::Pawns(board, WHITE);
 		CAPTURE(fen, score, previous);
 		REQUIRE(score >= previous);
 		previous = score;
@@ -352,14 +352,14 @@ TEST_CASE("Eval - Evaluator passer bonus is monotonic across every rank", "[eval
 	previous = std::numeric_limits<int>::min();
 	for (const char* fen : byRankBlockaded) {
 		Board board(fen);
-		const int score = EvalComplexTestFixture::Pawns(board, WHITE);
+		const int score = EvaluatorTestFixture::Pawns(board, WHITE);
 		CAPTURE(fen, score, previous);
 		REQUIRE(score >= previous);
 		previous = score;
 	}
 }
 
-TEST_CASE("Eval - Evaluator discounts a passer whose stop square is blockaded", "[eval]")
+TEST_CASE("Eval - discounts a passer whose stop square is blockaded", "[eval]")
 {
 	// Same white passer on e6 both times; the black king either sits on its stop
 	// square e7, where the pawn cannot move at all until it is dislodged, or stands
@@ -372,14 +372,14 @@ TEST_CASE("Eval - Evaluator discounts a passer whose stop square is blockaded", 
 	Board blockaded("4k3/4P3/8/8/8/8/8/4K3 w - - 0 1");
 	Board freeToRun("k7/4P3/8/8/8/8/8/4K3 w - - 0 1");
 
-	const int blockadedScore = EvalComplexTestFixture::Pawns(blockaded, WHITE);
-	const int freeScore = EvalComplexTestFixture::Pawns(freeToRun, WHITE);
+	const int blockadedScore = EvaluatorTestFixture::Pawns(blockaded, WHITE);
+	const int freeScore = EvaluatorTestFixture::Pawns(freeToRun, WHITE);
 
 	CAPTURE(blockadedScore, freeScore);
 	REQUIRE(freeScore > blockadedScore);
 }
 
-TEST_CASE("Eval - Evaluator does not score the rear pawn of a doubled pair as passed", "[eval]")
+TEST_CASE("Eval - does not score the rear pawn of a doubled pair as passed", "[eval]")
 {
 	// The rear pawn can never advance past its own partner, so only the front
 	// pawn of the pair is passed. Both positions have the same two white pawns
@@ -388,8 +388,8 @@ TEST_CASE("Eval - Evaluator does not score the rear pawn of a doubled pair as pa
 	Board doubled("4k3/8/4P3/4P3/8/8/8/4K3 w - - 0 1");
 	Board separated("4k3/8/4P3/2P5/8/8/8/4K3 w - - 0 1");
 
-	const int doubledScore = EvalComplexTestFixture::Pawns(doubled, WHITE);
-	const int separatedScore = EvalComplexTestFixture::Pawns(separated, WHITE);
+	const int doubledScore = EvaluatorTestFixture::Pawns(doubled, WHITE);
+	const int separatedScore = EvaluatorTestFixture::Pawns(separated, WHITE);
 
 	// Separated wins by two passer bonuses against one, minus the doubled and
 	// isolated penalties -- a margin far larger than the 10 cp that separated
@@ -398,20 +398,20 @@ TEST_CASE("Eval - Evaluator does not score the rear pawn of a doubled pair as pa
 	REQUIRE(separatedScore > doubledScore + 50);
 }
 
-TEST_CASE("Eval - Evaluator mop-up: gated on the defender's force, not its phase", "[eval]")
+TEST_CASE("Eval - mop-up: gated on the defender's force, not its phase", "[eval]")
 {
 	// Q+R vs Q is the case issue #118 item 5 named: a lone queen is phase 4 and
 	// passed the retired `loser phase <= 6` gate, so the winner was paid for
 	// chasing a king its opponent could always check away from.
 	Board defendingQueen(FEN_MOPUP_DEFENDER_HAS_QUEEN);
 	for (const eColor color : {WHITE, BLACK})
-		REQUIRE(EvalComplexTestFixture::Mopup(defendingQueen, color) == 0);
+		REQUIRE(EvaluatorTestFixture::Mopup(defendingQueen, color) == 0);
 
 	// The complement, and what stops the gate being satisfied by switching
 	// mop-up off for every defended ending: a rook cannot check the winner's
 	// king away for ever, so K+Q vs K+R is won by cornering and keeps its
 	// mop-up.
 	Board defendingRook(FEN_MOPUP_LOSER_KING_CORNER);
-	REQUIRE(EvalComplexTestFixture::Mopup(defendingRook, WHITE) > 0);
-	REQUIRE(EvalComplexTestFixture::Mopup(defendingRook, BLACK) == 0);
+	REQUIRE(EvaluatorTestFixture::Mopup(defendingRook, WHITE) > 0);
+	REQUIRE(EvaluatorTestFixture::Mopup(defendingRook, BLACK) == 0);
 }

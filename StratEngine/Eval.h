@@ -775,7 +775,6 @@ class Evaluator {
 
   public:
 	int Evaluate(const Board& board) const noexcept;
-	static constexpr const char* GetType() noexcept { return "Complex"; }
 
 	// Per-term introspection for the UCI 'eval' command. Reports what the four
 	// private term functions above contribute, per color, for one position;
@@ -797,6 +796,6 @@ class Evaluator {
 	// callable units. Same mechanism as AIPerplex/UciHandler's test fixtures.
 	// Activated only by StratChessTests.vcxproj's preprocessor definitions —
 	// never in production.
-	friend struct EvalComplexTestFixture;
+	friend struct EvaluatorTestFixture;
 #endif
 };

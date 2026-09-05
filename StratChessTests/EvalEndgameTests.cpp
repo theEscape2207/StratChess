@@ -135,8 +135,8 @@ TEST_CASE("Eval - pawnless rook endings are scaled, not clamped", "[eval]")
 	};
 
 	const ScaledCase scaled =
-	    GENERATE(ScaledCase{FEN_ROOK_AND_MINOR_VS_ROOK, EvalComplexTestFixture::RookAndMinorVsRookScale},
-	             ScaledCase{FEN_ROOK_VS_MINOR, EvalComplexTestFixture::RookVsMinorScale});
+	    GENERATE(ScaledCase{FEN_ROOK_AND_MINOR_VS_ROOK, EvaluatorTestFixture::RookAndMinorVsRookScale},
+	             ScaledCase{FEN_ROOK_VS_MINOR, EvaluatorTestFixture::RookVsMinorScale});
 	CAPTURE(scaled.fen, scaled.scale);
 
 	const Evaluator eval;
@@ -159,7 +159,7 @@ TEST_CASE("Eval - pawnless rook endings are scaled, not clamped", "[eval]")
 		// returned score fails the second. Both sides are magnitudes: the mirror
 		// runs the same case with the signs reversed.
 		const int score = eval.Evaluate(board);
-		const int raw = std::abs(EvalComplexTestFixture::RawWhitePov(board));
+		const int raw = std::abs(EvaluatorTestFixture::RawWhitePov(board));
 		CAPTURE(score, raw);
 		REQUIRE(score > 0);
 		REQUIRE(score < raw);
@@ -179,11 +179,11 @@ TEST_CASE("Eval - rook against rook is discounted, keeping the sign of the posit
 		CAPTURE(colored);
 		Board board(colored);
 
-		REQUIRE(eval.Breakdown(board).endgame_scale == EvalComplexTestFixture::RookVsRookScale);
+		REQUIRE(eval.Breakdown(board).endgame_scale == EvaluatorTestFixture::RookVsRookScale);
 
 		// The fixture FEN is chosen so the unscaled score is not zero; without
 		// that the two assertions below would both hold trivially.
-		const int raw = EvalComplexTestFixture::RawWhitePov(board);
+		const int raw = EvaluatorTestFixture::RawWhitePov(board);
 		REQUIRE(raw != 0);
 
 		// Side-to-move POV against white POV, so compare magnitudes and take the
@@ -301,8 +301,8 @@ TEST_CASE("Eval - a kingless board reaches the terms that guard against it", "[e
 
 	for (const eColor color : {WHITE, BLACK}) {
 		CAPTURE(static_cast<int>(color));
-		REQUIRE(EvalComplexTestFixture::Pst(board, color) == 0);
-		REQUIRE(EvalComplexTestFixture::Mopup(board, color) == 0);
+		REQUIRE(EvaluatorTestFixture::Pst(board, color) == 0);
+		REQUIRE(EvaluatorTestFixture::Mopup(board, color) == 0);
 	}
 }
 
