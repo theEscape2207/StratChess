@@ -16,68 +16,9 @@
 // would put the fortress in the wrong corner.
 static constexpr BITBOARD DARK_SQUARES = 0x55AA55AA55AA55AAULL;
 
-// static Factory constructor
-std::unique_ptr<EvalManager> EvalManager::Create(EvalTypes type)
-{
-	switch (type) {
-	case EvalTypes::NONE:
-		return nullptr;
-	case EvalTypes::SIMPLE:
-		return std::make_unique<EvalSimple>();
-	case EvalTypes::COMPLEX:
-		return std::make_unique<EvalComplex>();
-	default:
-		throw std::invalid_argument("Unknown Eval type"); // Oops... another eval
-	}
-}
-
-////////////////////////////
-//
-// Class EvalSimple
-//
-/*
- *	Evaluate() :
- *	Description: Sums up the material value from both colors + their positional value
- *	Returns:	 The value of the player in turn subtracted the oppositions value
- */
-int EvalSimple::Evaluate(const Board& board) const noexcept
-{
-	const eColor inTurn = board.GetCurrentColor();
-
-	int totalScore = 0;
-
-	//Check every field in the Board array if the piece is there.
-	for (int temp = a8; temp < NUM_SQUARES; ++temp) // Hmm... iterator instead?
-	{
-		const auto square = static_cast<eSquare>(temp);
-		// Henter Briktype fra BoardArray; enten NO_PIECE eller briktype
-		const ePiece piece = board.GetPiece(square);
-
-		//hvis staar en brik paa feltet
-		if (PieceHelper::IsActual(piece)) {
-			//Add the eval-tabelvalue to the score. Rotates if Black.
-			// GetPositionalScore indexes the mg table for every piece, so the
-			// king reaches the flat one at every phase: EvalSimple has no
-			// opinion on king placement at all, and no king-safety term to
-			// supply one. EvalComplex is what ships.
-			// Hvem er i tur og er det paagaeldendes brik		+ material value
-			const int pieceScore = GetPositionalScore(square, piece) + PieceHelper::Value(piece);
-
-			if (PieceHelper::Color(piece) == inTurn) //-V1051
-			{
-				totalScore += pieceScore;
-			} else {
-				totalScore -= pieceScore;
-			}
-		}
-	}
-
-	return totalScore;
-}
-
 /////////////////////////////////////////////////////////
 //
-// Class EvalComplex implementation
+// Class Evaluator implementation
 //
 
 // eval_pawns — doubled, isolated, passed and backwards pawns for one color.
@@ -86,7 +27,7 @@ int EvalSimple::Evaluate(const Board& board) const noexcept
 // The passer bonus is the only tapered part: it is worth more as the endgame
 // approaches, so this function returns unequal mg/eg endpoints. Everything else
 // here is phase-neutral (issue #116).
-ScorePair EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
+ScorePair Evaluator::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 {
 	// Doubled, isolated and backwards are phase-neutral and accumulate here;
 	// the passer bonus is the one term in this function that tapers, so it is
@@ -210,7 +151,7 @@ ScorePair EvalComplex::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 //
 // Connected rooks (issue #114) are scored here too: same rank or file with
 // nothing between, per connected pair.
-ScorePair EvalComplex::eval_rooks(const EvalContext& ctx, eColor color) noexcept
+ScorePair Evaluator::eval_rooks(const EvalContext& ctx, eColor color) noexcept
 {
 	int score = 0;         // phase-independent: open/half-open file bonuses
 	int seventhRankEg = 0; // endgame-only contribution
@@ -261,7 +202,7 @@ ScorePair EvalComplex::eval_rooks(const EvalContext& ctx, eColor color) noexcept
 // The term exists because the pair covers both colours; two same-coloured
 // bishops (reachable by underpromotion) do not, and a plain count would pay
 // for them anyway. One mask and two tests, so correctness is free here.
-ScorePair EvalComplex::eval_bishops(const EvalContext& ctx, eColor color) noexcept
+ScorePair Evaluator::eval_bishops(const EvalContext& ctx, eColor color) noexcept
 {
 	const ePiece bishopPiece = (color == WHITE) ? ePiece::WHITE_BISHOP : ePiece::BLACK_BISHOP;
 	const BITBOARD bishops = ctx.boards[bishopPiece];
@@ -290,7 +231,7 @@ ScorePair EvalComplex::eval_bishops(const EvalContext& ctx, eColor color) noexce
 //
 // Middlegame-only: the endgame king belongs in the centre and eval_pst's
 // endgame table already pays for that, so a flat bonus would fight it.
-ScorePair EvalComplex::eval_castling(const EvalContext& ctx, eColor color) noexcept
+ScorePair Evaluator::eval_castling(const EvalContext& ctx, eColor color) noexcept
 {
 	const uint8_t sideRights = (color == WHITE) ? CastlingRights::WHITE_BOTH : CastlingRights::BLACK_BOTH;
 
@@ -336,7 +277,7 @@ ScorePair EvalComplex::eval_castling(const EvalContext& ctx, eColor color) noexc
 // one. Reordering these per-type loops relative to each other, or relative
 // to the old single mailbox loop, cannot change the sum: plain int addition
 // over the same multiset of per-square PST values.
-ScorePair EvalComplex::eval_pst(const EvalContext& ctx, eColor color) noexcept
+ScorePair Evaluator::eval_pst(const EvalContext& ctx, eColor color) noexcept
 {
 	int score = 0;
 
@@ -427,7 +368,7 @@ ScorePair EvalComplex::eval_pst(const EvalContext& ctx, eColor color) noexcept
 // so a cramped piece scores negative rather than merely small. An absolute count
 // would be strictly positive and would only cancel while material is symmetric,
 // making the term a piece-value adjustment across trades -- see the constants.
-ScorePair EvalComplex::eval_mobility(const EvalContext& ctx, eColor color) noexcept
+ScorePair Evaluator::eval_mobility(const EvalContext& ctx, eColor color) noexcept
 {
 	// The squares themselves are counted once per position in
 	// ComputePieceAggregates; this applies the weights. Multiplying the
@@ -474,7 +415,7 @@ namespace {
 // king wants to walk forward through its own pawns. The phase-0 early return is
 // therefore exact, not an approximation -- BlendPhase of a {x, 0} pair at phase
 // 0 is 0 for every x.
-KingPawnCover EvalComplex::eval_king_pawn_cover(const EvalContext& ctx, eColor color) noexcept
+KingPawnCover Evaluator::eval_king_pawn_cover(const EvalContext& ctx, eColor color) noexcept
 {
 	// Kingless board (default-constructed or failed-parse only) -- same guard as
 	// eval_pst, eval_mopup and eval_castling.
@@ -572,7 +513,7 @@ KingPawnCover EvalComplex::eval_king_pawn_cover(const EvalContext& ctx, eColor c
 // would save a multiply and a divide while introducing a discontinuity and
 // scoring a lone queen beside the king at zero. The quadratic already makes a
 // single small attacker nearly free, which is what such a gate is reaching for.
-ScorePair EvalComplex::eval_king_attack(const EvalContext& ctx, eColor color) noexcept
+ScorePair Evaluator::eval_king_attack(const EvalContext& ctx, eColor color) noexcept
 {
 	// Kingless board (default-constructed or failed-parse only) -- same guard as
 	// eval_king_pawn_cover. The phase-0 return is exact: this is a {x, 0} pair.
@@ -599,7 +540,7 @@ ScorePair EvalComplex::eval_king_attack(const EvalContext& ctx, eColor color) no
 // color receives a nonzero contribution; the losing color, and both colors
 // when the gating conditions aren't met, get 0 — matching the original
 // bonusScore[winner]-only update this replaces.
-ScorePair EvalComplex::eval_mopup(const EvalContext& ctx, eColor color) noexcept
+ScorePair Evaluator::eval_mopup(const EvalContext& ctx, eColor color) noexcept
 {
 	// The gate — pawnless, decisive material lead, both kings on the board, and
 	// the loser stripped down — is evaluated once in BuildContext, and only the leading color is
@@ -624,12 +565,12 @@ ScorePair EvalComplex::eval_mopup(const EvalContext& ctx, eColor color) noexcept
 
 // BuildContext — the one construction site for EvalContext. Both
 // Evaluate() below and the term-level test fixture
-// (StratChessTests/EvalTests.cpp's EvalComplexTestFixture) call this, so
+// (StratChessTests/EvalTestFixture.h's EvaluatorTestFixture) call this, so
 // phase detection and every other context field can only be computed one
 // way — no risk of the test fixture silently drifting onto a stale copy of
 // the `11500` threshold or similar (see issue #99, which will eventually
 // replace that threshold).
-EvalContext EvalComplex::BuildContext(const Board& board) noexcept
+EvalContext Evaluator::BuildContext(const Board& board) noexcept
 {
 	const int matScoreWhite = board.GetMaterialScore(WHITE);
 	const int matScoreBlack = board.GetMaterialScore(BLACK);
@@ -763,9 +704,9 @@ EvalContext EvalComplex::BuildContext(const Board& board) noexcept
 // weights are per piece TYPE, so summing (count - base) across a type's pieces
 // here and multiplying once in the term gives the same integer as multiplying
 // per piece did.
-PieceAggregates EvalComplex::ComputePieceAggregates(std::span<const BITBOARD> boards, BITBOARD whitePawnAttacks,
-                                                    BITBOARD blackPawnAttacks,
-                                                    const eSquare (&kingSq)[NUM_COLORS]) noexcept
+PieceAggregates Evaluator::ComputePieceAggregates(std::span<const BITBOARD> boards, BITBOARD whitePawnAttacks,
+                                                  BITBOARD blackPawnAttacks,
+                                                  const eSquare (&kingSq)[NUM_COLORS]) noexcept
 {
 	PieceAggregates aggregates{};
 
@@ -880,7 +821,7 @@ PieceAggregates EvalComplex::ComputePieceAggregates(std::span<const BITBOARD> bo
 // a scale of zero already yields GameValues::Draw at the leaf, while a search-side
 // rule would put a score that is not depth-bounded into the transposition table.
 //
-int EvalComplex::EndgameScale(std::span<const BITBOARD> boards) noexcept
+int Evaluator::EndgameScale(std::span<const BITBOARD> boards) noexcept
 {
 	// A queen mates on its own from every class below, so a board holding one is
 	// never in scope — and this is the cheapest test that says so.
@@ -949,7 +890,7 @@ int EvalComplex::EndgameScale(std::span<const BITBOARD> boards) noexcept
 // king can be kept away from it. So the counts below only say which corner to
 // look at, and the king test is what decides.
 //
-int EvalComplex::WrongBishopFortress(std::span<const BITBOARD> boards) noexcept
+int Evaluator::WrongBishopFortress(std::span<const BITBOARD> boards) noexcept
 {
 	const BITBOARD whitePawns = boards[ePiece::WHITE_PAWN];
 	const BITBOARD blackPawns = boards[ePiece::BLACK_PAWN];
@@ -1010,7 +951,7 @@ int EvalComplex::WrongBishopFortress(std::span<const BITBOARD> boards) noexcept
 // rook or a second minor changes the ending: KRR vs KR wins, and so does KR+BN
 // vs KR often enough that lumping it in here would discount a real advantage.
 //
-int EvalComplex::PawnlessRookScale(std::span<const BITBOARD> boards) noexcept
+int Evaluator::PawnlessRookScale(std::span<const BITBOARD> boards) noexcept
 {
 	const int whiteRooks = std::popcount(boards[ePiece::WHITE_ROOK]);
 	const int blackRooks = std::popcount(boards[ePiece::BLACK_ROOK]);
@@ -1042,7 +983,7 @@ int EvalComplex::PawnlessRookScale(std::span<const BITBOARD> boards) noexcept
 //	Description: Material plus every blended term, summed white-minus-black.
 //	Returns:	 The unscaled score of the position in White's point of view.
 //
-int EvalComplex::RawWhitePov(const EvalContext& ctx) noexcept
+int Evaluator::RawWhitePov(const EvalContext& ctx) noexcept
 {
 	// Interpolate each term at this position's phase and sum the results.
 	// Material is not tapered and is added after — a piece is worth its value
@@ -1084,7 +1025,7 @@ int EvalComplex::RawWhitePov(const EvalContext& ctx) noexcept
 // FIXME:		 Evaluate does not know about Check Mate - this is strictly only an evaluation of the current position
 //				 - this means that we miss the first (and best, maybe even only?) opportunity to do check mate!
 //
-int EvalComplex::Evaluate(const Board& board) const noexcept
+int Evaluator::Evaluate(const Board& board) const noexcept
 {
 	const EvalContext ctx = BuildContext(board);
 
@@ -1124,7 +1065,7 @@ int EvalComplex::Evaluate(const Board& board) const noexcept
 // would disagree with. The cost is a second BuildContext + term pass per call
 // — irrelevant at one call per interactive 'eval' command.
 //
-EvalBreakdown EvalComplex::Breakdown(const Board& board) const noexcept
+EvalBreakdown Evaluator::Breakdown(const Board& board) const noexcept
 {
 	const EvalContext ctx = BuildContext(board);
 

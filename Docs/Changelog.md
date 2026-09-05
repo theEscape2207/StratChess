@@ -22,6 +22,30 @@ Newest first.
 
 ---
 
+## 2026-09-05 — Collapse evaluator selection to one concrete evaluator (#457)
+
+`EvalManager` (the `EvalTypes` enum, its factory) and the unused `EvalSimple` evaluator are gone;
+`EvalComplex` is renamed `Evaluator`, a standalone, non-`final` concrete class holding the same
+material-plus-PST-plus-terms behaviour verbatim. `AIPerplex`, `PlayerAiBase` and `UciHandler` now
+own their evaluator by value instead of through a `unique_ptr` to the old base, which is free for a
+stateless type and removes a null state nothing could ever produce. `AIPerplexConfig::evaluator`,
+`PlayerAiBase::SetEvalEngine`, `Config::PlayerConfig::eval`, and both shipped `"eval": 2` keys in
+`game_settings.json` are removed; a stale `"eval"` key in an external config file is now silently
+ignored under the parser's existing unknown-key policy rather than read into an enum. The
+evaluator's `GetType()` goes too, and with it the `Evaluation:` row `getDescription()` and
+`search_description()` printed: the row reported a choice that no longer exists, and keeping it
+would have meant printing a class name nothing in the tree defines. Both descriptions now end after
+the `Depth:` row. Tests lost their SIMPLE/NONE-selection-only cases;
+`EvalProbe` now derives from `Evaluator` directly to reach the protected PST helpers. `PlayerConfig::eval`
+defaulted to `0` (`NONE`), so a legacy AI built from a config block with no `"eval"` key got a null
+`Eval` pointer and crashed the first time `Quiescent()` dereferenced it; the value member makes that
+state unrepresentable, fixing a real latent crash rather than only refactoring around it. An out-of-tree
+config still carrying `"eval": 1` now silently runs the Complex evaluator instead of Simple. Pure
+refactor otherwise: `Compare-SearchEquivalence.ps1` against `origin/main` confirms identical
+per-iteration output and best moves at `Threads=1`.
+
+---
+
 ## 2026-09-04 — Stalemate at the quiescence horizon (#234)
 
 Out of check, quiescence generates captures only, so an empty move list said nothing about legality

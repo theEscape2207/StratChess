@@ -221,7 +221,7 @@ namespace {
 	// stdout, one line per input FEN — machine-parseable for #117's tuner and
 	// for #127's before/after score-identity check.
 	//
-	// The printed score is the RAW value EvalManager::Evaluate() returns:
+	// The printed score is the RAW value Evaluator::Evaluate() returns:
 	// side-to-move-relative, no sign transformation. This preserves a single
 	// source of truth (the search calls the same Evaluate()), and it is exactly
 	// the value #127's byte-identity check needs to diff. A consumer that wants
@@ -249,7 +249,7 @@ namespace {
 		// onto stdout and break the "only <fen>\t<score> lines" contract above.
 		spdlog::set_level(spdlog::level::off);
 
-		auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+		const Evaluator eval;
 
 		std::string line;
 		int line_no = 0;
@@ -277,7 +277,7 @@ namespace {
 				          << " (illegal position?), skipped: '" << line << "'\n";
 				continue;
 			}
-			const int score = eval->Evaluate(board);
+			const int score = eval.Evaluate(board);
 			std::cout << line << '\t' << score << '\n';
 		}
 

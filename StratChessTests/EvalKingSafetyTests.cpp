@@ -24,21 +24,21 @@ TEST_CASE("Eval - king zone: the file clamp makes the corner indistinguishable f
 	// g1 -> h1 loses a third of its surroundings, every count taken over them
 	// drops, and walking into the corner reads as SAFER. Kg1, Kh1 and Kg2 must
 	// therefore anchor on the same square.
-	REQUIRE(EvalComplexTestFixture::KingZoneAnchor(g1) == g2);
-	REQUIRE(EvalComplexTestFixture::KingZoneAnchor(h1) == g2);
-	REQUIRE(EvalComplexTestFixture::KingZoneAnchor(g2) == g2);
+	REQUIRE(EvaluatorTestFixture::KingZoneAnchor(g1) == g2);
+	REQUIRE(EvaluatorTestFixture::KingZoneAnchor(h1) == g2);
+	REQUIRE(EvaluatorTestFixture::KingZoneAnchor(g2) == g2);
 
 	// The queenside mirror of the same three.
-	REQUIRE(EvalComplexTestFixture::KingZoneAnchor(a1) == b2);
-	REQUIRE(EvalComplexTestFixture::KingZoneAnchor(b1) == b2);
+	REQUIRE(EvaluatorTestFixture::KingZoneAnchor(a1) == b2);
+	REQUIRE(EvaluatorTestFixture::KingZoneAnchor(b1) == b2);
 
 	// A central king is its own anchor: both clamps are no-ops there.
-	REQUIRE(EvalComplexTestFixture::KingZoneAnchor(e4) == e4);
+	REQUIRE(EvaluatorTestFixture::KingZoneAnchor(e4) == e4);
 
 	// Black's back rank, the vertical mirror of the first group.
-	REQUIRE(EvalComplexTestFixture::KingZoneAnchor(g8) == g7);
-	REQUIRE(EvalComplexTestFixture::KingZoneAnchor(h8) == g7);
-	REQUIRE(EvalComplexTestFixture::KingZoneAnchor(a8) == b7);
+	REQUIRE(EvaluatorTestFixture::KingZoneAnchor(g8) == g7);
+	REQUIRE(EvaluatorTestFixture::KingZoneAnchor(h8) == g7);
+	REQUIRE(EvaluatorTestFixture::KingZoneAnchor(a8) == b7);
 }
 
 TEST_CASE("Eval - king zone: the anchor is on the b..g files and off the outermost rows, everywhere", "[eval]")
@@ -46,7 +46,7 @@ TEST_CASE("Eval - king zone: the anchor is on the b..g files and off the outermo
 	for (int sq = a8; sq < NUM_SQUARES; ++sq) {
 		const auto square = static_cast<eSquare>(sq);
 		CAPTURE(sq);
-		const eSquare anchor = EvalComplexTestFixture::KingZoneAnchor(square);
+		const eSquare anchor = EvaluatorTestFixture::KingZoneAnchor(square);
 		// Both clamps hold for every square, which is what keeps the 3x3 block
 		// around the anchor wholly on the board.
 		CHECK(File(anchor) >= 1);
@@ -54,7 +54,7 @@ TEST_CASE("Eval - king zone: the anchor is on the b..g files and off the outermo
 		CHECK(Rank(anchor) >= 1);
 		CHECK(Rank(anchor) <= 6);
 		// The anchor never moves more than one square from the king itself.
-		CHECK(EvalComplexTestFixture::KingDistanceProbe(square, anchor) <= 1);
+		CHECK(EvaluatorTestFixture::KingDistanceProbe(square, anchor) <= 1);
 	}
 }
 
@@ -68,9 +68,9 @@ TEST_CASE("Eval - eval_king_shelter: an intact shield beats a pushed one, which 
 
 	// The same three White pawns in all three positions — only where they stand
 	// differs, so nothing but shelter can explain the ordering.
-	const int shelterIntact = EvalComplexTestFixture::KingShelter(intact, WHITE);
-	const int shelterPushed = EvalComplexTestFixture::KingShelter(pushed, WHITE);
-	const int shelterAbsent = EvalComplexTestFixture::KingShelter(absent, WHITE);
+	const int shelterIntact = EvaluatorTestFixture::KingShelter(intact, WHITE);
+	const int shelterPushed = EvaluatorTestFixture::KingShelter(pushed, WHITE);
+	const int shelterAbsent = EvaluatorTestFixture::KingShelter(absent, WHITE);
 
 	CHECK(shelterIntact > shelterPushed);
 	CHECK(shelterPushed > shelterAbsent);
@@ -89,7 +89,7 @@ TEST_CASE("Eval - eval_king_shelter: a pawn level with the king is a pawn, not a
 	RequireWhiteKingOn(level, e4);
 	RequireWhiteKingOn(offFile, e4);
 
-	CHECK(EvalComplexTestFixture::KingShelter(level, WHITE) > EvalComplexTestFixture::KingShelter(offFile, WHITE));
+	CHECK(EvaluatorTestFixture::KingShelter(level, WHITE) > EvaluatorTestFixture::KingShelter(offFile, WHITE));
 }
 
 TEST_CASE("Eval - eval_king_shelter: own pawns behind the king are no shelter", "[eval]")
@@ -101,11 +101,11 @@ TEST_CASE("Eval - eval_king_shelter: own pawns behind the king are no shelter", 
 	RequireWhiteKingOn(behind, e4);
 	RequireWhiteKingOn(empty, e4);
 
-	CHECK(EvalComplexTestFixture::KingShelter(behind, WHITE) == EvalComplexTestFixture::KingShelter(empty, WHITE));
+	CHECK(EvaluatorTestFixture::KingShelter(behind, WHITE) == EvaluatorTestFixture::KingShelter(empty, WHITE));
 	// Both must be the no-cover result, not merely equal to each other — an
 	// equality alone would also hold for a term that returned a constant.
-	CHECK(EvalComplexTestFixture::KingShelter(behind, WHITE) <
-	      EvalComplexTestFixture::KingShelter(Board(FEN_KING_SHIELD_INTACT), WHITE));
+	CHECK(EvaluatorTestFixture::KingShelter(behind, WHITE) <
+	      EvaluatorTestFixture::KingShelter(Board(FEN_KING_SHIELD_INTACT), WHITE));
 }
 
 TEST_CASE("Eval - eval_king_shelter: every reachable shield rank mirrors between the colors", "[eval]")
@@ -137,11 +137,11 @@ TEST_CASE("Eval - eval_king_shelter: every reachable shield rank mirrors between
 	Board board(fen);
 	Board mirrored(MirrorFen(fen));
 
-	const int white = EvalComplexTestFixture::KingShelter(board, WHITE);
-	CHECK(white == EvalComplexTestFixture::KingShelter(mirrored, BLACK));
+	const int white = EvaluatorTestFixture::KingShelter(board, WHITE);
+	CHECK(white == EvaluatorTestFixture::KingShelter(mirrored, BLACK));
 	// A shield pawn is never worse than no pawn at all on that file, and the
 	// nearer ranks are worth more — the shape the table exists to express.
-	CHECK(white > EvalComplexTestFixture::KingShelter(Board(FEN_KING_SHIELD_ABSENT), WHITE));
+	CHECK(white > EvaluatorTestFixture::KingShelter(Board(FEN_KING_SHIELD_ABSENT), WHITE));
 }
 
 // ── Storm (D4) ────────────────────────────────────────────────────────────────
@@ -154,8 +154,8 @@ TEST_CASE("Eval - eval_king_storm: an enemy pawn behind the king is not storming
 	RequireWhiteKingOn(behind, g4);
 
 	// Same Black pawn, one rank either side of White's king on g4.
-	CHECK(EvalComplexTestFixture::KingStorm(ahead, WHITE) < 0);
-	CHECK(EvalComplexTestFixture::KingStorm(behind, WHITE) == 0);
+	CHECK(EvaluatorTestFixture::KingStorm(ahead, WHITE) < 0);
+	CHECK(EvaluatorTestFixture::KingStorm(behind, WHITE) == 0);
 }
 
 TEST_CASE("Eval - eval_king_storm: a blocked storm pawn counts half", "[eval]")
@@ -164,8 +164,8 @@ TEST_CASE("Eval - eval_king_storm: a blocked storm pawn counts half", "[eval]")
 	// pawn either directly in its path (g2) or one file off it (f2). Asserted on
 	// the unblended mg endpoints, because the halving is exact there and the
 	// phase blend truncates.
-	const int blocked = EvalComplexTestFixture::KingCover(Board(FEN_KING_STORM_BLOCKED), WHITE).storm.mg;
-	const int unblocked = EvalComplexTestFixture::KingCover(Board(FEN_KING_STORM_UNBLOCKED), WHITE).storm.mg;
+	const int blocked = EvaluatorTestFixture::KingCover(Board(FEN_KING_STORM_BLOCKED), WHITE).storm.mg;
+	const int unblocked = EvaluatorTestFixture::KingCover(Board(FEN_KING_STORM_UNBLOCKED), WHITE).storm.mg;
 
 	REQUIRE(unblocked < 0);
 	CHECK(blocked == unblocked / 2);
@@ -200,8 +200,8 @@ TEST_CASE("Eval - eval_king_storm: every reachable storm rank mirrors between th
 	RequireWhiteKingOn(board, g1);
 	Board mirrored(MirrorFen(fen));
 
-	const int white = EvalComplexTestFixture::KingStorm(board, WHITE);
-	CHECK(white == EvalComplexTestFixture::KingStorm(mirrored, BLACK));
+	const int white = EvaluatorTestFixture::KingStorm(board, WHITE);
+	CHECK(white == EvaluatorTestFixture::KingStorm(mirrored, BLACK));
 	// Storm is a penalty or nothing, never a bonus — the sign the bound in
 	// KING_SAFETY_MAX_PENALTY depends on.
 	CHECK(white <= 0);
@@ -214,16 +214,16 @@ TEST_CASE("Eval - eval_king_files: open is worse than half-open, which is worse 
 	// Isolated on the g-file: White has no g-pawn in either of the last two, and
 	// Black's g-pawn — too far from White's king to storm it — is the only
 	// difference between half-open and open.
-	const int closed = EvalComplexTestFixture::KingFiles(Board(FEN_KING_FILE_CLOSED), WHITE);
-	const int halfOpen = EvalComplexTestFixture::KingFiles(Board(FEN_KING_FILE_HALF_OPEN), WHITE);
-	const int open = EvalComplexTestFixture::KingFiles(Board(FEN_KING_FILE_OPEN), WHITE);
+	const int closed = EvaluatorTestFixture::KingFiles(Board(FEN_KING_FILE_CLOSED), WHITE);
+	const int halfOpen = EvaluatorTestFixture::KingFiles(Board(FEN_KING_FILE_HALF_OPEN), WHITE);
+	const int open = EvaluatorTestFixture::KingFiles(Board(FEN_KING_FILE_OPEN), WHITE);
 
 	CHECK(closed == 0);
 	// The isolation rests on Black's g7 pawn scoring no storm: it IS inside
 	// White's scan and does index the storm table, at a row that is zero today.
 	// Asserted so a #117 retune breaks this loudly rather than quietly making
 	// the comparison below measure two terms at once.
-	CHECK(EvalComplexTestFixture::KingStorm(Board(FEN_KING_FILE_HALF_OPEN), WHITE) == 0);
+	CHECK(EvaluatorTestFixture::KingStorm(Board(FEN_KING_FILE_HALF_OPEN), WHITE) == 0);
 	CHECK(halfOpen < closed);
 	CHECK(open < halfOpen);
 }
@@ -239,7 +239,7 @@ TEST_CASE("Eval - eval_king_files: an own pawn behind the king still closes the 
 	RequireWhiteKingOn(behind, e4);
 	RequireWhiteKingOn(empty, e4);
 
-	CHECK(EvalComplexTestFixture::KingFiles(behind, WHITE) > EvalComplexTestFixture::KingFiles(empty, WHITE));
+	CHECK(EvaluatorTestFixture::KingFiles(behind, WHITE) > EvaluatorTestFixture::KingFiles(empty, WHITE));
 }
 
 // ── Invariants (D7) ───────────────────────────────────────────────────────────
@@ -252,7 +252,7 @@ TEST_CASE("Eval - king safety: every contribution has an endgame endpoint of exa
 	Board board(fen);
 
 	for (const eColor color : {WHITE, BLACK}) {
-		const KingPawnCover cover = EvalComplexTestFixture::KingCover(board, color);
+		const KingPawnCover cover = EvaluatorTestFixture::KingCover(board, color);
 		CHECK(cover.shelter.eg == 0);
 		CHECK(cover.storm.eg == 0);
 		CHECK(cover.files.eg == 0);
@@ -267,10 +267,10 @@ TEST_CASE("Eval - king safety: fades to nothing as the pieces come off", "[eval]
 	Board middlegame(FEN_KING_SHIELD_ABSENT);
 	Board endgame("6k1/5ppp/8/8/8/8/1PPP4/6K1 w - - 0 1");
 
-	CHECK(EvalComplexTestFixture::KingShelter(middlegame, WHITE) < 0);
-	CHECK(EvalComplexTestFixture::KingShelter(endgame, WHITE) == 0);
-	CHECK(EvalComplexTestFixture::KingStorm(endgame, WHITE) == 0);
-	CHECK(EvalComplexTestFixture::KingFiles(endgame, WHITE) == 0);
+	CHECK(EvaluatorTestFixture::KingShelter(middlegame, WHITE) < 0);
+	CHECK(EvaluatorTestFixture::KingShelter(endgame, WHITE) == 0);
+	CHECK(EvaluatorTestFixture::KingStorm(endgame, WHITE) == 0);
+	CHECK(EvaluatorTestFixture::KingFiles(endgame, WHITE) == 0);
 }
 
 TEST_CASE("Eval - king safety: a kingless board contributes nothing", "[eval]")
@@ -281,9 +281,9 @@ TEST_CASE("Eval - king safety: a kingless board contributes nothing", "[eval]")
 	// index a table out of bounds rather than trap.
 	Board board;
 	for (const eColor color : {WHITE, BLACK}) {
-		CHECK(EvalComplexTestFixture::KingShelter(board, color) == 0);
-		CHECK(EvalComplexTestFixture::KingStorm(board, color) == 0);
-		CHECK(EvalComplexTestFixture::KingFiles(board, color) == 0);
+		CHECK(EvaluatorTestFixture::KingShelter(board, color) == 0);
+		CHECK(EvaluatorTestFixture::KingStorm(board, color) == 0);
+		CHECK(EvaluatorTestFixture::KingFiles(board, color) == 0);
 	}
 }
 
@@ -301,12 +301,12 @@ TEST_CASE("Eval - king safety: the combined contribution stays inside its declar
 
 	Board board(fen);
 	for (const eColor color : {WHITE, BLACK}) {
-		const KingPawnCover cover = EvalComplexTestFixture::KingCover(board, color);
-		const int combined = cover.shelter.mg + cover.storm.mg + cover.files.mg +
-		                     EvalComplexTestFixture::KingAttackPair(board, color).mg;
+		const KingPawnCover cover = EvaluatorTestFixture::KingCover(board, color);
+		const int combined =
+		    cover.shelter.mg + cover.storm.mg + cover.files.mg + EvaluatorTestFixture::KingAttackPair(board, color).mg;
 		CAPTURE(combined);
-		CHECK(combined <= EvalComplexTestFixture::KingSafetyMaxPenalty);
-		CHECK(combined >= -EvalComplexTestFixture::KingSafetyMaxPenalty);
+		CHECK(combined <= EvaluatorTestFixture::KingSafetyMaxPenalty);
+		CHECK(combined >= -EvaluatorTestFixture::KingSafetyMaxPenalty);
 	}
 }
 
@@ -324,14 +324,14 @@ TEST_CASE("Eval - king safety: the worst reachable king gets most of the way to 
 	Board board(FEN_KING_SAFETY_WORST);
 	RequireWhiteKingOn(board, g1);
 
-	const KingPawnCover cover = EvalComplexTestFixture::KingCover(board, WHITE);
+	const KingPawnCover cover = EvaluatorTestFixture::KingCover(board, WHITE);
 	const int combined = cover.shelter.mg + cover.storm.mg + cover.files.mg;
 	CAPTURE(combined);
 
-	CHECK(combined >= -EvalComplexTestFixture::KingPawnCoverWorst);
+	CHECK(combined >= -EvaluatorTestFixture::KingPawnCoverWorst);
 	// Within a third of the ceiling. A looser assertion would not distinguish a
 	// tight bound from one that is merely never approached.
-	CHECK(combined < -(EvalComplexTestFixture::KingPawnCoverWorst * 2) / 3);
+	CHECK(combined < -(EvaluatorTestFixture::KingPawnCoverWorst * 2) / 3);
 }
 
 // ── The zone mask (D3) ────────────────────────────────────────────────────────
@@ -352,17 +352,17 @@ TEST_CASE("Eval - king zone: the mask is the enumerated 3x3 block plus one rank 
 	// Kg1, Kh1 and Kg2 share an anchor, so they share a mask outright — the
 	// corner is not a smaller, safer-looking neighbourhood.
 	const BITBOARD kingside = MaskOf({f1, g1, h1, f2, g2, h2, f3, g3, h3, f4, g4, h4});
-	CHECK(EvalComplexTestFixture::KingZone(g1, WHITE) == kingside);
-	CHECK(EvalComplexTestFixture::KingZone(h1, WHITE) == kingside);
-	CHECK(EvalComplexTestFixture::KingZone(g2, WHITE) == kingside);
+	CHECK(EvaluatorTestFixture::KingZone(g1, WHITE) == kingside);
+	CHECK(EvaluatorTestFixture::KingZone(h1, WHITE) == kingside);
+	CHECK(EvaluatorTestFixture::KingZone(g2, WHITE) == kingside);
 
 	// Black's forward is the other way, so its mirror extends toward rank 5.
 	const BITBOARD kingsideBlack = MaskOf({f8, g8, h8, f7, g7, h7, f6, g6, h6, f5, g5, h5});
-	CHECK(EvalComplexTestFixture::KingZone(g8, BLACK) == kingsideBlack);
-	CHECK(EvalComplexTestFixture::KingZone(h8, BLACK) == kingsideBlack);
+	CHECK(EvaluatorTestFixture::KingZone(g8, BLACK) == kingsideBlack);
+	CHECK(EvaluatorTestFixture::KingZone(h8, BLACK) == kingsideBlack);
 
 	// A central king, where neither clamp does anything.
-	CHECK(EvalComplexTestFixture::KingZone(e4, WHITE) == MaskOf({d3, e3, f3, d4, e4, f4, d5, e5, f5, d6, e6, f6}));
+	CHECK(EvaluatorTestFixture::KingZone(e4, WHITE) == MaskOf({d3, e3, f3, d4, e4, f4, d5, e5, f5, d6, e6, f6}));
 }
 
 TEST_CASE("Eval - king zone: twelve squares, or nine where the forward rank is off the board", "[eval]")
@@ -371,7 +371,7 @@ TEST_CASE("Eval - king zone: twelve squares, or nine where the forward rank is o
 		const auto square = static_cast<eSquare>(sq);
 		CAPTURE(sq);
 		for (const eColor color : {WHITE, BLACK}) {
-			const int size = std::popcount(EvalComplexTestFixture::KingZone(square, color));
+			const int size = std::popcount(EvaluatorTestFixture::KingZone(square, color));
 			// The rank clamp guarantees the 3x3 block itself is always whole;
 			// only the forward rank can fall off, and only for a king on its own
 			// 7th or 8th rank. Nine is stated rather than clamped away: a king
@@ -380,8 +380,8 @@ TEST_CASE("Eval - king zone: twelve squares, or nine where the forward rank is o
 		}
 	}
 	// The two ends of that exception, named rather than left to the sweep.
-	CHECK(std::popcount(EvalComplexTestFixture::KingZone(g1, WHITE)) == 12);
-	CHECK(std::popcount(EvalComplexTestFixture::KingZone(g8, WHITE)) == 9);
+	CHECK(std::popcount(EvaluatorTestFixture::KingZone(g1, WHITE)) == 12);
+	CHECK(std::popcount(EvaluatorTestFixture::KingZone(g8, WHITE)) == 9);
 }
 
 // ── The danger curve (D6) ─────────────────────────────────────────────────────
@@ -391,10 +391,10 @@ TEST_CASE("Eval - king danger: the penalty is monotone non-decreasing in the dan
 	// Monotonicity is the property the first clamp exists to give. Swept from
 	// well below zero so the negative branch is covered, and past the cap so the
 	// saturating one is.
-	int previous = EvalComplexTestFixture::KingDangerPenalty(-200);
+	int previous = EvaluatorTestFixture::KingDangerPenalty(-200);
 	for (int danger = -199; danger <= 800; ++danger) {
 		CAPTURE(danger);
-		const int penalty = EvalComplexTestFixture::KingDangerPenalty(danger);
+		const int penalty = EvaluatorTestFixture::KingDangerPenalty(danger);
 		REQUIRE(penalty >= previous);
 		previous = penalty;
 	}
@@ -406,28 +406,28 @@ TEST_CASE("Eval - king danger: a negative count is a safe king, not a squared on
 	// today. It is asserted anyway: the clamp is what makes monotonicity a
 	// property of the curve rather than of its callers, and the first term to
 	// contribute a safety BONUS would otherwise be squared back into a penalty.
-	CHECK(EvalComplexTestFixture::KingDangerPenalty(-40) == 0);
-	CHECK(EvalComplexTestFixture::KingDangerPenalty(-1) == 0);
-	CHECK(EvalComplexTestFixture::KingDangerPenalty(0) == 0);
+	CHECK(EvaluatorTestFixture::KingDangerPenalty(-40) == 0);
+	CHECK(EvaluatorTestFixture::KingDangerPenalty(-1) == 0);
+	CHECK(EvaluatorTestFixture::KingDangerPenalty(0) == 0);
 	// Without the clamp this would be 100.
-	CHECK(EvalComplexTestFixture::KingDangerPenalty(-40) < 40 * 40 / EvalComplexTestFixture::KingDangerDivisor);
+	CHECK(EvaluatorTestFixture::KingDangerPenalty(-40) < 40 * 40 / EvaluatorTestFixture::KingDangerDivisor);
 }
 
 TEST_CASE("Eval - king danger: the curve saturates at the cap and never above it", "[eval]")
 {
-	CHECK(EvalComplexTestFixture::KingDangerPenalty(10000) == EvalComplexTestFixture::KingDangerCap);
-	CHECK(EvalComplexTestFixture::KingDangerPenalty(20) < EvalComplexTestFixture::KingDangerCap);
+	CHECK(EvaluatorTestFixture::KingDangerPenalty(10000) == EvaluatorTestFixture::KingDangerCap);
+	CHECK(EvaluatorTestFixture::KingDangerPenalty(20) < EvaluatorTestFixture::KingDangerCap);
 
 	// Where the cap starts binding, found from the curve rather than restated:
 	// the knee is a consequence of the divisor and the cap, and pinning it here
 	// is what lets the positional case below assert a bound instead of an exact
 	// value it would only reach by a margin of one.
 	int knee = 0;
-	while (EvalComplexTestFixture::KingDangerPenalty(knee) < EvalComplexTestFixture::KingDangerCap)
+	while (EvaluatorTestFixture::KingDangerPenalty(knee) < EvaluatorTestFixture::KingDangerCap)
 		++knee;
 	CAPTURE(knee);
 	CHECK(knee == 44);
-	CHECK(EvalComplexTestFixture::KingDangerPenalty(knee - 1) < EvalComplexTestFixture::KingDangerCap);
+	CHECK(EvaluatorTestFixture::KingDangerPenalty(knee - 1) < EvaluatorTestFixture::KingDangerCap);
 }
 
 // ── Attack pressure (D6) ──────────────────────────────────────────────────────
@@ -439,8 +439,8 @@ TEST_CASE("Eval - eval_king_attack: two attackers cost more than one", "[eval]")
 	Board one(FEN_KING_ATTACK_ONE);
 	Board two(FEN_KING_ATTACK_TWO);
 
-	const int oneAttacker = EvalComplexTestFixture::KingAttackPair(one, BLACK).mg;
-	const int twoAttackers = EvalComplexTestFixture::KingAttackPair(two, BLACK).mg;
+	const int oneAttacker = EvaluatorTestFixture::KingAttackPair(one, BLACK).mg;
+	const int twoAttackers = EvaluatorTestFixture::KingAttackPair(two, BLACK).mg;
 	CAPTURE(oneAttacker, twoAttackers);
 
 	CHECK(twoAttackers < oneAttacker);
@@ -455,12 +455,12 @@ TEST_CASE("Eval - eval_king_attack: a lone queen beside the king is not free", "
 	Board withQueen(FEN_KING_ATTACK_QUEEN);
 	Board without(FEN_KING_ATTACK_NONE);
 
-	REQUIRE(EvalComplexTestFixture::ZoneAttackers(withQueen, WHITE, MOB_QUEEN) == 1);
-	REQUIRE(EvalComplexTestFixture::ZoneAttackers(without, WHITE, MOB_QUEEN) == 0);
+	REQUIRE(EvaluatorTestFixture::ZoneAttackers(withQueen, WHITE, MOB_QUEEN) == 1);
+	REQUIRE(EvaluatorTestFixture::ZoneAttackers(without, WHITE, MOB_QUEEN) == 0);
 
-	CHECK(EvalComplexTestFixture::KingAttackPair(withQueen, BLACK).mg < 0);
-	CHECK(EvalComplexTestFixture::KingAttackPair(withQueen, BLACK).mg <
-	      EvalComplexTestFixture::KingAttackPair(without, BLACK).mg);
+	CHECK(EvaluatorTestFixture::KingAttackPair(withQueen, BLACK).mg < 0);
+	CHECK(EvaluatorTestFixture::KingAttackPair(withQueen, BLACK).mg <
+	      EvaluatorTestFixture::KingAttackPair(without, BLACK).mg);
 }
 
 TEST_CASE("Eval - eval_king_attack: more attacked zone squares cost more", "[eval]")
@@ -471,13 +471,12 @@ TEST_CASE("Eval - eval_king_attack: more attacked zone squares cost more", "[eva
 	Board nearQueen(FEN_KING_ATTACK_QUEEN);
 	Board farQueen(FEN_KING_ATTACK_QUEEN_FAR);
 
-	REQUIRE(EvalComplexTestFixture::ZoneAttackers(nearQueen, WHITE, MOB_QUEEN) ==
-	        EvalComplexTestFixture::ZoneAttackers(farQueen, WHITE, MOB_QUEEN));
-	REQUIRE(EvalComplexTestFixture::ZoneAttacks(nearQueen, WHITE) >
-	        EvalComplexTestFixture::ZoneAttacks(farQueen, WHITE));
+	REQUIRE(EvaluatorTestFixture::ZoneAttackers(nearQueen, WHITE, MOB_QUEEN) ==
+	        EvaluatorTestFixture::ZoneAttackers(farQueen, WHITE, MOB_QUEEN));
+	REQUIRE(EvaluatorTestFixture::ZoneAttacks(nearQueen, WHITE) > EvaluatorTestFixture::ZoneAttacks(farQueen, WHITE));
 
-	CHECK(EvalComplexTestFixture::KingAttackPair(nearQueen, BLACK).mg <
-	      EvalComplexTestFixture::KingAttackPair(farQueen, BLACK).mg);
+	CHECK(EvaluatorTestFixture::KingAttackPair(nearQueen, BLACK).mg <
+	      EvaluatorTestFixture::KingAttackPair(farQueen, BLACK).mg);
 }
 
 TEST_CASE("Eval - eval_king_attack: who attacks matters, not just how much is attacked", "[eval]")
@@ -508,10 +507,10 @@ TEST_CASE("Eval - eval_king_attack: who attacks matters, not just how much is at
 		Board board(bucket.fen);
 
 		// The premise. Without it the comparison below measures geometry.
-		REQUIRE(EvalComplexTestFixture::ZoneAttacks(board, WHITE) == 3);
-		REQUIRE(EvalComplexTestFixture::ZoneAttackers(board, WHITE, bucket.type) == 1);
+		REQUIRE(EvaluatorTestFixture::ZoneAttacks(board, WHITE) == 3);
+		REQUIRE(EvaluatorTestFixture::ZoneAttackers(board, WHITE, bucket.type) == 1);
 
-		penalty[bucket.type] = EvalComplexTestFixture::KingAttackPair(board, BLACK).mg;
+		penalty[bucket.type] = EvaluatorTestFixture::KingAttackPair(board, BLACK).mg;
 		CHECK(penalty[bucket.type] < 0);
 	}
 
@@ -534,10 +533,10 @@ TEST_CASE("Eval - eval_king_attack: the same attack mirrors between the colors",
 	Board board(fen);
 	Board mirrored(MirrorFen(fen));
 
-	CHECK(EvalComplexTestFixture::KingAttackPair(board, BLACK).mg ==
-	      EvalComplexTestFixture::KingAttackPair(mirrored, WHITE).mg);
-	CHECK(EvalComplexTestFixture::KingAttackPair(board, WHITE).mg ==
-	      EvalComplexTestFixture::KingAttackPair(mirrored, BLACK).mg);
+	CHECK(EvaluatorTestFixture::KingAttackPair(board, BLACK).mg ==
+	      EvaluatorTestFixture::KingAttackPair(mirrored, WHITE).mg);
+	CHECK(EvaluatorTestFixture::KingAttackPair(board, WHITE).mg ==
+	      EvaluatorTestFixture::KingAttackPair(mirrored, BLACK).mg);
 }
 
 TEST_CASE("Eval - eval_king_attack: middlegame-only, kingless-safe, and inside the cap", "[eval]")
@@ -548,14 +547,14 @@ TEST_CASE("Eval - eval_king_attack: middlegame-only, kingless-safe, and inside t
 		CAPTURE(fen);
 		Board board(fen);
 		for (const eColor color : {WHITE, BLACK})
-			CHECK(EvalComplexTestFixture::KingAttackPair(board, color).eg == 0);
+			CHECK(EvaluatorTestFixture::KingAttackPair(board, color).eg == 0);
 	}
 
 	SECTION("a kingless board contributes nothing")
 	{
 		Board board;
 		for (const eColor color : {WHITE, BLACK})
-			CHECK(EvalComplexTestFixture::KingAttack(board, color) == 0);
+			CHECK(EvaluatorTestFixture::KingAttack(board, color) == 0);
 	}
 
 	SECTION("the penalty never escapes its cap")
@@ -566,8 +565,8 @@ TEST_CASE("Eval - eval_king_attack: middlegame-only, kingless-safe, and inside t
 		// example that only just crosses the knee would break on any downward
 		// retune of the weights, for a reason that has nothing to do with the cap.
 		Board board("6k1/5ppp/8/8/QQQQQQQQ/8/8/6K1 w - - 0 1");
-		const int penalty = EvalComplexTestFixture::KingAttackPair(board, BLACK).mg;
+		const int penalty = EvaluatorTestFixture::KingAttackPair(board, BLACK).mg;
 		CAPTURE(penalty);
-		CHECK(penalty == -EvalComplexTestFixture::KingDangerCap);
+		CHECK(penalty == -EvaluatorTestFixture::KingDangerCap);
 	}
 }

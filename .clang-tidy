@@ -18,4 +18,4 @@ ExcludeHeaderFilterRegex: '.*[\\/]_deps[\\/].*'
 FormatStyle: file
 CheckOptions:
   performance-enum-size.EnumIgnoreList: >-
-    eRowNames;eSquare;GameValues;AIPerplex::IterationDecision;AIPerplex::RejectionReason;EvalManager::EvalTypes;GameStates;PlayerBase::ePlayerTypes;FenBatch::LineKind
+    eRowNames;eSquare;GameValues;AIPerplex::IterationDecision;AIPerplex::RejectionReason;GameStates;PlayerBase::ePlayerTypes;FenBatch::LineKind

@@ -27,7 +27,7 @@ int PlayerAiBase::Quiescent(size_t ply, int alpha, int beta, int qsearch_budget)
 	// The fifty-move rule cannot trigger here: every move generated below is a capture or a
 	// promotion, both of which reset the halfmove clock. Draws are tested by the callers.
 
-	int value = Eval->Evaluate(m_Board);
+	int value = eval_.Evaluate(m_Board);
 
 	// Out of capture budget - settle for the static evaluation.
 	if (qsearch_budget <= 0)

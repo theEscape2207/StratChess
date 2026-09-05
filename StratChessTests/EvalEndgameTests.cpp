@@ -39,7 +39,7 @@ TEST_CASE("Eval - material that cannot mate scores exactly a draw", "[eval]")
 	const char* fen = GENERATE(from_range(kDrawnByMaterialFens));
 	CAPTURE(fen);
 
-	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+	const Evaluator eval;
 
 	// Four positions per entry: the attacker as White and as Black, each with
 	// either side to move. The mirrored half is what catches a classifier that
@@ -53,7 +53,7 @@ TEST_CASE("Eval - material that cannot mate scores exactly a draw", "[eval]")
 			CAPTURE(position);
 
 			Board board(position);
-			REQUIRE(eval->Evaluate(board) == GameValues::Draw);
+			REQUIRE(eval.Evaluate(board) == GameValues::Draw);
 		}
 	}
 }
@@ -66,9 +66,7 @@ TEST_CASE("Eval - material that still mates keeps its score", "[eval]")
 	const char* fen = GENERATE(from_range(kWinningEndgameFens));
 	CAPTURE(fen);
 
-	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
-	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
-	REQUIRE(complexEval != nullptr);
+	const Evaluator eval;
 
 	// Mirrored as well, for the same reason the drawn cases are: a classifier
 	// that lost a win would do it in one orientation only.
@@ -76,8 +74,8 @@ TEST_CASE("Eval - material that still mates keeps its score", "[eval]")
 		CAPTURE(colored);
 		Board board(colored);
 
-		REQUIRE(eval->Evaluate(board) > 400);
-		REQUIRE(complexEval->Breakdown(board).endgame_adjustment == 0);
+		REQUIRE(eval.Evaluate(board) > 400);
+		REQUIRE(eval.Breakdown(board).endgame_adjustment == 0);
 	}
 }
 
@@ -89,12 +87,10 @@ TEST_CASE("Eval - the defender's pawn keeps a drawn class unscaled", "[eval]")
 	// attacker-side case cannot reach.
 	Board defenderHasPawn("8/8/8/3k4/8/4p3/2NN4/3K4 w - - 0 1");
 
-	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
-	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
-	REQUIRE(complexEval != nullptr);
+	const Evaluator eval;
 
-	REQUIRE(complexEval->Breakdown(defenderHasPawn).endgame_scale == ENDGAME_SCALE_MAX);
-	REQUIRE(eval->Evaluate(defenderHasPawn) > 400);
+	REQUIRE(eval.Breakdown(defenderHasPawn).endgame_scale == ENDGAME_SCALE_MAX);
+	REQUIRE(eval.Evaluate(defenderHasPawn) > 400);
 }
 
 TEST_CASE("Eval - a pawn keeps a lone minor out of the drawn classes", "[eval]")
@@ -105,10 +101,10 @@ TEST_CASE("Eval - a pawn keeps a lone minor out of the drawn classes", "[eval]")
 	Board withPawn("8/8/8/3k4/8/4P3/3B4/3K4 w - - 0 1");
 	Board withoutPawn("8/8/8/3k4/8/8/3B4/3K4 w - - 0 1");
 
-	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+	const Evaluator eval;
 
-	REQUIRE(eval->Evaluate(withPawn) > 300);
-	REQUIRE(eval->Evaluate(withoutPawn) == GameValues::Draw);
+	REQUIRE(eval.Evaluate(withPawn) > 300);
+	REQUIRE(eval.Evaluate(withoutPawn) == GameValues::Draw);
 }
 
 TEST_CASE("Eval - minors on both sides are left unscaled", "[eval]")
@@ -119,11 +115,9 @@ TEST_CASE("Eval - minors on both sides are left unscaled", "[eval]")
 	// silent one.
 	Board knightVsBishop(FEN_MOPUP_MARGINAL_CORNER);
 
-	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
-	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
-	REQUIRE(complexEval != nullptr);
+	const Evaluator eval;
 
-	REQUIRE(complexEval->Breakdown(knightVsBishop).endgame_scale == ENDGAME_SCALE_MAX);
+	REQUIRE(eval.Breakdown(knightVsBishop).endgame_scale == ENDGAME_SCALE_MAX);
 }
 
 // ── Scaled pawnless rook endings (issue #128) ────────────────────────────────
@@ -141,13 +135,11 @@ TEST_CASE("Eval - pawnless rook endings are scaled, not clamped", "[eval]")
 	};
 
 	const ScaledCase scaled =
-	    GENERATE(ScaledCase{FEN_ROOK_AND_MINOR_VS_ROOK, EvalComplexTestFixture::RookAndMinorVsRookScale},
-	             ScaledCase{FEN_ROOK_VS_MINOR, EvalComplexTestFixture::RookVsMinorScale});
+	    GENERATE(ScaledCase{FEN_ROOK_AND_MINOR_VS_ROOK, EvaluatorTestFixture::RookAndMinorVsRookScale},
+	             ScaledCase{FEN_ROOK_VS_MINOR, EvaluatorTestFixture::RookVsMinorScale});
 	CAPTURE(scaled.fen, scaled.scale);
 
-	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
-	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
-	REQUIRE(complexEval != nullptr);
+	const Evaluator eval;
 
 	// Both orientations: MirrorFen flips the side to move as well, so the
 	// stronger side is the side to move in each, and the score is positive.
@@ -155,7 +147,7 @@ TEST_CASE("Eval - pawnless rook endings are scaled, not clamped", "[eval]")
 		CAPTURE(colored);
 		Board board(colored);
 
-		const EvalBreakdown terms = complexEval->Breakdown(board);
+		const EvalBreakdown terms = eval.Breakdown(board);
 		REQUIRE(terms.endgame_scale == scaled.scale);
 		// White-POV, so the adjustment is negative only when White is the side
 		// being discounted; the mirror flips its sign along with the score.
@@ -166,8 +158,8 @@ TEST_CASE("Eval - pawnless rook endings are scaled, not clamped", "[eval]")
 		// assertion; a scale reported in the breakdown but never applied to the
 		// returned score fails the second. Both sides are magnitudes: the mirror
 		// runs the same case with the signs reversed.
-		const int score = eval->Evaluate(board);
-		const int raw = std::abs(EvalComplexTestFixture::RawWhitePov(board));
+		const int score = eval.Evaluate(board);
+		const int raw = std::abs(EvaluatorTestFixture::RawWhitePov(board));
 		CAPTURE(score, raw);
 		REQUIRE(score > 0);
 		REQUIRE(score < raw);
@@ -181,25 +173,23 @@ TEST_CASE("Eval - rook against rook is discounted, keeping the sign of the posit
 	// positional, and the assertion is that it survives the scale with its sign
 	// intact — a clamp to zero would lose the activity gradient the ending is
 	// actually decided by.
-	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
-	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
-	REQUIRE(complexEval != nullptr);
+	const Evaluator eval;
 
 	for (const std::string& colored : {std::string(FEN_ROOK_VS_ROOK), MirrorFen(FEN_ROOK_VS_ROOK)}) {
 		CAPTURE(colored);
 		Board board(colored);
 
-		REQUIRE(complexEval->Breakdown(board).endgame_scale == EvalComplexTestFixture::RookVsRookScale);
+		REQUIRE(eval.Breakdown(board).endgame_scale == EvaluatorTestFixture::RookVsRookScale);
 
 		// The fixture FEN is chosen so the unscaled score is not zero; without
 		// that the two assertions below would both hold trivially.
-		const int raw = EvalComplexTestFixture::RawWhitePov(board);
+		const int raw = EvaluatorTestFixture::RawWhitePov(board);
 		REQUIRE(raw != 0);
 
 		// Side-to-move POV against white POV, so compare magnitudes and take the
 		// sign from the side to move. MirrorFen flips both, so the mirror runs
 		// the same assertions with every sign reversed.
-		const int score = eval->Evaluate(board);
+		const int score = eval.Evaluate(board);
 		CAPTURE(score, raw);
 		REQUIRE(score > 0);
 		REQUIRE(score < std::abs(raw));
@@ -218,14 +208,12 @@ TEST_CASE("Eval - the scaled rook classes are stated as exact counts", "[eval]")
 	                           "r3k3/3R4/8/8/8/8/7P/4K3 w - - 0 1");   // KR+P vs KR
 	CAPTURE(fen);
 
-	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
-	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
-	REQUIRE(complexEval != nullptr);
+	const Evaluator eval;
 
 	for (const std::string& colored : {std::string(fen), MirrorFen(fen)}) {
 		CAPTURE(colored);
 		Board board(colored);
-		REQUIRE(complexEval->Breakdown(board).endgame_scale == ENDGAME_SCALE_MAX);
+		REQUIRE(eval.Breakdown(board).endgame_scale == ENDGAME_SCALE_MAX);
 	}
 }
 
@@ -256,7 +244,7 @@ TEST_CASE("Eval - the wrong-coloured-bishop fortress scores exactly a draw", "[e
 	                           "7k/8/7P/5K2/4B3/8/8/8 w - - 0 1"); // h-pawn, h8 dark, light bishop
 	CAPTURE(fen);
 
-	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
+	const Evaluator eval;
 
 	for (const std::string& colored : {std::string(fen), MirrorFen(fen)}) {
 		for (const char stm : {'w', 'b'}) {
@@ -272,7 +260,7 @@ TEST_CASE("Eval - the wrong-coloured-bishop fortress scores exactly a draw", "[e
 			REQUIRE(board.GetMaterialScore(WHITE) + board.GetMaterialScore(BLACK) >
 			        2 * g_iPieceValues[ePiece::WHITE_KING >> 1]);
 
-			REQUIRE(eval->Evaluate(board) == GameValues::Draw);
+			REQUIRE(eval.Evaluate(board) == GameValues::Draw);
 		}
 	}
 }
@@ -288,16 +276,14 @@ TEST_CASE("Eval - the fortress condition is the defending king, not the material
 	                           "k7/8/P7/2K1BB2/8/8/8/8 w - - 0 1"); // a second bishop covers a8
 	CAPTURE(fen);
 
-	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
-	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
-	REQUIRE(complexEval != nullptr);
+	const Evaluator eval;
 
 	for (const std::string& colored : {std::string(fen), MirrorFen(fen)}) {
 		CAPTURE(colored);
 		Board board(colored);
 
-		REQUIRE(complexEval->Breakdown(board).endgame_scale == ENDGAME_SCALE_MAX);
-		REQUIRE(eval->Evaluate(board) > 300);
+		REQUIRE(eval.Breakdown(board).endgame_scale == ENDGAME_SCALE_MAX);
+		REQUIRE(eval.Evaluate(board) > 300);
 	}
 }
 
@@ -315,8 +301,8 @@ TEST_CASE("Eval - a kingless board reaches the terms that guard against it", "[e
 
 	for (const eColor color : {WHITE, BLACK}) {
 		CAPTURE(static_cast<int>(color));
-		REQUIRE(EvalComplexTestFixture::Pst(board, color) == 0);
-		REQUIRE(EvalComplexTestFixture::Mopup(board, color) == 0);
+		REQUIRE(EvaluatorTestFixture::Pst(board, color) == 0);
+		REQUIRE(EvaluatorTestFixture::Mopup(board, color) == 0);
 	}
 }
 
@@ -327,11 +313,9 @@ TEST_CASE("Eval - Breakdown(): the endgame row accounts for the whole scale", "[
 	// position, where the adjustment is the largest number in the table.
 	Board board("8/8/8/3k4/8/8/3N4/3K4 w - - 0 1");
 
-	auto eval = EvalManager::Create(EvalManager::EvalTypes::COMPLEX);
-	auto* complexEval = dynamic_cast<EvalComplex*>(eval.get());
-	REQUIRE(complexEval != nullptr);
+	const Evaluator eval;
 
-	const EvalBreakdown terms = complexEval->Breakdown(board);
+	const EvalBreakdown terms = eval.Breakdown(board);
 
 	REQUIRE(terms.endgame_scale == 0);
 	REQUIRE(terms.endgame_adjustment != 0);

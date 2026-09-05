@@ -79,5 +79,5 @@ Every plan in this set carries these; they are recorded once here so a reader ca
   per-color eval bugs.
 - **FEN hygiene in every test**: full side-to-move field (a missing one silently defaults to Black, #46)
   and verified-legal positions (illegal FENs are silently accepted, #45).
-- **`EvalManager` stays stateless** unless #131 explicitly decides otherwise — the `Eval.h` class comment
+- **`Evaluator` stays stateless** unless #131 explicitly decides otherwise — the `Eval.h` class comment
   documents the Lazy SMP sharing contract that #109's review established.
