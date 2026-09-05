@@ -24,7 +24,7 @@
 
 // ── FEN constants ─────────────────────────────────────────────────────────────
 
-// Symmetric starting position — should evaluate to ~0 for both evaluators.
+// Symmetric starting position — should evaluate to ~0.
 static constexpr const char* FEN_START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 // White has all pawns + queen + king; black has all pawns + king only (no queen).

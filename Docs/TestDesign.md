@@ -122,10 +122,13 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 
 ### Evaluation Tests (`[eval]`)
 
-**File**: `StratChessTests/EvalTests.cpp`
-**Rationale**: Evaluation has zero tests today. The roadmap plans King Safety and Mobility evaluation — these tests establish a baseline that regressions will break.
+**Files**: `EvalBasicTests.cpp`, `EvalSymmetryTests.cpp`, `EvalTermTests.cpp`,
+`EvalPawnAndTaperTests.cpp`, `EvalEndgameTests.cpp`, `EvalKingSafetyTests.cpp`, over the FEN
+constants and fixtures shared in `EvalTestFixture.h`. The list below is the accumulated coverage
+across all six, not one file's contents; the table above maps a term to the file that owns it.
 
-**Approach**: `Board::Instance().SetupFromFEN(fen)` then `Evaluator().Evaluate()` — same pattern as RepetitionTests.
+**Approach**: `Board board(fen)`, then either `Evaluator().Evaluate(board)` for a whole-position
+assertion or an `EvaluatorTestFixture` static for a single term.
 
 **Test cases**:
 - Starting position: within ±200 cp (symmetric, tables may not sum to exactly 0)

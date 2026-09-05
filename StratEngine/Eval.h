@@ -133,7 +133,7 @@ struct EvalContext {
 	// square: Board::GetFirstPiece's assert(mask != 0) precondition is a
 	// Release no-op, so calling it on an empty king bitboard silently reads
 	// past the end of g_Eval_Bitboards rather than trapping. See eval_pst and
-	// eval_mopup, and the kingless-board regression test in EvalTests.cpp.
+	// eval_mopup, and the kingless-board regression test in EvalBasicTests.cpp.
 	eSquare king_sq[NUM_COLORS];
 	// Board::GetMaterialScore(color) — includes the king at 10000 cp
 	// (g_iPieceValues, defines.h). That inclusion cancels in Evaluate()'s
@@ -689,8 +689,8 @@ class Evaluator {
 	// Builds the EvalContext Evaluate() and every term function read from —
 	// the one construction site, so phase detection and the rest of the
 	// context's fields can't drift out of sync between production and the
-	// term-level test fixture (StratChessTests/EvalTests.cpp) that also calls
-	// this.
+	// term-level test fixture (StratChessTests/EvalTestFixture.h) that also
+	// calls this.
 	static EvalContext BuildContext(const Board& board) noexcept;
 
 	// Generates every non-pawn piece's attack set once and reduces it to counts.
@@ -791,7 +791,7 @@ class Evaluator {
 	EvalBreakdown Breakdown(const Board& board) const noexcept;
 
 #ifdef STRAT_ENABLE_TEST_ACCESS
-	// Enables term-level unit tests (StratChessTests/EvalTests.cpp) to call
+	// Enables term-level unit tests (StratChessTests/EvalTestFixture.h) to call
 	// the private eval_* functions directly now that they exist as separately
 	// callable units. Same mechanism as AIPerplex/UciHandler's test fixtures.
 	// Activated only by StratChessTests.vcxproj's preprocessor definitions —
