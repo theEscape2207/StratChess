@@ -257,6 +257,77 @@ static constexpr const char* FEN_EDGE_FILE_PASSERS = "4k3/8/8/p7/8/7P/8/4K3 w - 
 // Legal: the kings are not adjacent and neither is in check.
 static constexpr const char* FEN_BLOCKADED_PASSER = "4k3/4P3/8/8/8/8/8/4K3 w - - 0 1";
 
+// Minor-piece outposts (issue #112). One frame throughout: White Ke1 and a
+// knight on d5 supported by a pawn on c4, Black Ke8 with two idle pawns on a7
+// and h7 that are on neither adjacent file. Each case below changes exactly one
+// thing about that frame, so the outpost term is the only thing that can move.
+static constexpr const char* FEN_OUTPOST_KNIGHT_D5 = "4k3/p6p/8/3N4/2P5/8/8/4K3 w - - 0 1";
+// A Black pawn on e7 or c7 can still step to e6/c6 and attack d5, so either
+// disqualifies -- although neither attacks d5 today, which is exactly what
+// safe mobility cannot see.
+static constexpr const char* FEN_OUTPOST_CHALLENGED_E7 = "4k3/p3p3/8/3N4/2P5/8/8/4K3 w - - 0 1";
+static constexpr const char* FEN_OUTPOST_CHALLENGED_C7 = "4k3/p1p4p/8/3N4/2P5/8/8/4K3 w - - 0 1";
+// The White pawn moved to b4, which covers a5 and c5 but not d5.
+static constexpr const char* FEN_OUTPOST_UNSUPPORTED = "4k3/p6p/8/3N4/1P6/8/8/4K3 w - - 0 1";
+// A Black pawn on d7 shares the knight's file: it can block the knight but can
+// never attack it, so it must not disqualify.
+static constexpr const char* FEN_OUTPOST_SAME_FILE_PAWN = "4k3/p2p3p/8/3N4/2P5/8/8/4K3 w - - 0 1";
+// A Black pawn on c5 is level with the knight -- past any chance of stepping to
+// c6 and attacking it, so it must not disqualify either.
+static constexpr const char* FEN_OUTPOST_PAWN_PAST_SPAN = "4k3/p6p/8/2pN4/2P5/8/8/4K3 w - - 0 1";
+// A Black pawn already on c6 attacks d5 right now, and is inside the span.
+static constexpr const char* FEN_OUTPOST_PAWN_ATTACKING = "4k3/p6p/2p5/3N4/2P5/8/8/4K3 w - - 0 1";
+// The e7 challenger with a White pawn on e6 in front of it, and the same
+// challenger pinned to its king by a White rook on e1. The detector models a
+// pawn advancing down its own file and nothing else, so both still disqualify.
+static constexpr const char* FEN_OUTPOST_BLOCKED_CHALLENGER = "4k3/p3p2p/4P3/3N4/2P5/8/8/4K3 w - - 0 1";
+static constexpr const char* FEN_OUTPOST_PINNED_CHALLENGER = "4k3/p3p3/8/3N4/2P5/8/8/4R1K1 w - - 0 1";
+// The mirror of that: support is geometric too, so a White c3 pawn pinned to e1
+// by a Black bishop on a5 still supports the knight on d4.
+static constexpr const char* FEN_OUTPOST_PINNED_SUPPORT = "4k3/7p/8/b7/3N4/2P5/8/4K3 w - - 0 1";
+// The edge file, where a mask that wrapped would pick up the Black h7 pawn as a
+// challenger of the a5 knight. The second case puts a real challenger on b7.
+static constexpr const char* FEN_OUTPOST_EDGE_FILE = "4k3/7p/8/N7/1P6/8/8/4K3 w - - 0 1";
+static constexpr const char* FEN_OUTPOST_EDGE_FILE_CHALLENGED = "4k3/1p5p/8/N7/1P6/8/8/4K3 w - - 0 1";
+// A bishop on the same square, scored from the bishop table.
+static constexpr const char* FEN_OUTPOST_BISHOP_D5 = "4k3/p6p/8/3B4/2P5/8/8/4K3 w - - 0 1";
+// The rank ladder: the same supported knight on relative ranks 3 through 7.
+static constexpr const char* FEN_OUTPOST_RANK_3 = "4k3/p6p/8/8/8/3N4/2P5/4K3 w - - 0 1";
+static constexpr const char* FEN_OUTPOST_RANK_4 = "4k3/p6p/8/8/3N4/2P5/8/4K3 w - - 0 1";
+// The Black king moves to g8 for this one: a knight on d6 attacks e8, and a FEN
+// with the side not to move in check is rejected outright -- leaving an EMPTY
+// board, whose outpost score is a very convincing zero.
+static constexpr const char* FEN_OUTPOST_RANK_6 = "6k1/p6p/3N4/2P5/8/8/8/4K3 w - - 0 1";
+static constexpr const char* FEN_OUTPOST_RANK_7 = "4k3/3N4/2P5/8/8/8/8/4K3 w - - 0 1";
+// Two knights on outposts at once, so the term cannot be scoring "an outpost
+// exists" rather than summing over the pieces that have one.
+static constexpr const char* FEN_OUTPOST_TWO_KNIGHTS = "4k3/p6p/8/3N1N2/2P1P3/8/8/4K3 w - - 0 1";
+
+// Every outpost FEN above, so one case can prove they all describe the position
+// they claim to. An illegal FEN leaves the Board EMPTY rather than falling back
+// to anything, and an empty board scores zero outposts -- which is what most of
+// these cases assert, so a typo would pass silently.
+static constexpr const char* kOutpostFens[] = {
+    FEN_OUTPOST_KNIGHT_D5,
+    FEN_OUTPOST_CHALLENGED_E7,
+    FEN_OUTPOST_CHALLENGED_C7,
+    FEN_OUTPOST_UNSUPPORTED,
+    FEN_OUTPOST_SAME_FILE_PAWN,
+    FEN_OUTPOST_PAWN_PAST_SPAN,
+    FEN_OUTPOST_PAWN_ATTACKING,
+    FEN_OUTPOST_BLOCKED_CHALLENGER,
+    FEN_OUTPOST_PINNED_CHALLENGER,
+    FEN_OUTPOST_PINNED_SUPPORT,
+    FEN_OUTPOST_EDGE_FILE,
+    FEN_OUTPOST_EDGE_FILE_CHALLENGED,
+    FEN_OUTPOST_BISHOP_D5,
+    FEN_OUTPOST_RANK_3,
+    FEN_OUTPOST_RANK_4,
+    FEN_OUTPOST_RANK_6,
+    FEN_OUTPOST_RANK_7,
+    FEN_OUTPOST_TWO_KNIGHTS,
+};
+
 static constexpr const char* kSymmetryFens[] = {
     FEN_START,
     FEN_QUEEN_C6,
@@ -293,6 +364,11 @@ static constexpr const char* kSymmetryFens[] = {
     FEN_KING_SHIELD_PUSHED,
     FEN_KING_STORM_BLOCKED,
     FEN_KING_FILE_HALF_OPEN,
+    // Issue #112: the outpost term is direction-aware through the passed-pawn
+    // span it borrows, and no other FEN here has a pawn-supported minor on an
+    // advanced square -- so without this the term is inactive in every mirror
+    // and breakdown case, and merely running them would prove nothing about it.
+    FEN_OUTPOST_KNIGHT_D5,
 };
 
 // Swaps the case of a single character; digits and other characters pass
@@ -386,7 +462,7 @@ inline int BreakdownWhitePov(const EvalBreakdown& terms)
 	       (terms.rooks[WHITE] - terms.rooks[BLACK]) + (terms.pst[WHITE] - terms.pst[BLACK]) +
 	       (terms.mopup[WHITE] - terms.mopup[BLACK]) + (terms.bishops[WHITE] - terms.bishops[BLACK]) +
 	       (terms.castling[WHITE] - terms.castling[BLACK]) + (terms.mobility[WHITE] - terms.mobility[BLACK]) +
-	       (terms.king_shelter[WHITE] - terms.king_shelter[BLACK]) +
+	       (terms.outposts[WHITE] - terms.outposts[BLACK]) + (terms.king_shelter[WHITE] - terms.king_shelter[BLACK]) +
 	       (terms.king_storm[WHITE] - terms.king_storm[BLACK]) + (terms.king_files[WHITE] - terms.king_files[BLACK]) +
 	       (terms.king_attack[WHITE] - terms.king_attack[BLACK]) + terms.endgame_adjustment;
 }
@@ -425,6 +501,11 @@ struct EvaluatorTestFixture {
 	{
 		const EvalContext ctx = BuildContext(board);
 		return BlendPhase(Evaluator::eval_mobility(ctx, color), ctx.phase);
+	}
+	static int Outposts(const Board& board, eColor color)
+	{
+		const EvalContext ctx = BuildContext(board);
+		return BlendPhase(Evaluator::eval_outposts(ctx, color), ctx.phase);
 	}
 	static int Castling(const Board& board, eColor color)
 	{
@@ -507,6 +588,11 @@ struct EvaluatorTestFixture {
 		return Evaluator::eval_mobility(BuildContext(board), color);
 	}
 
+	static ScorePair OutpostsPair(const Board& board, eColor color)
+	{
+		return Evaluator::eval_outposts(BuildContext(board), color);
+	}
+
 	// Raw (mg, eg) pairs, for asserting a tapered term's ENDPOINTS rather
 	// than its value at one position's particular phase.
 	static ScorePair RooksPair(const Board& board, eColor color)
@@ -526,6 +612,11 @@ struct EvaluatorTestFixture {
 	static int RookOn7thBonus() { return Evaluator::ROOK_ON_7TH_BONUS; }
 	static int OpenFile() { return Evaluator::OPEN_FILE; }
 	static int HalfOpenFile() { return Evaluator::HALF_OPEN_FILE; }
+	// Indexed by relative rank, exactly as eval_outposts indexes them. One case
+	// asserts the literal table values; every other case names them through
+	// these, so a retune moves one set of numbers.
+	static int OutpostKnight(int relativeRank) { return Evaluator::OUTPOST_KNIGHT[relativeRank]; }
+	static int OutpostBishop(int relativeRank) { return Evaluator::OUTPOST_BISHOP[relativeRank]; }
 
   private:
 	// Forwards to Evaluator::BuildContext — the production construction

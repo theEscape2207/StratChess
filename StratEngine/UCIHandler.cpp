@@ -303,6 +303,7 @@ void UciHandler::cmd_eval()
 		send(eval_term_row("bishops", terms.bishops[WHITE], terms.bishops[BLACK]));
 		send(eval_term_row("castling", terms.castling[WHITE], terms.castling[BLACK]));
 		send(eval_term_row("mobility", terms.mobility[WHITE], terms.mobility[BLACK]));
+		send(eval_term_row("outposts", terms.outposts[WHITE], terms.outposts[BLACK]));
 		send(eval_term_row("shelter", terms.king_shelter[WHITE], terms.king_shelter[BLACK]));
 		send(eval_term_row("storm", terms.king_storm[WHITE], terms.king_storm[BLACK]));
 		send(eval_term_row("kingfiles", terms.king_files[WHITE], terms.king_files[BLACK]));
@@ -318,7 +319,7 @@ void UciHandler::cmd_eval()
 		    (terms.rooks[WHITE] - terms.rooks[BLACK]) + (terms.pst[WHITE] - terms.pst[BLACK]) +
 		    (terms.mopup[WHITE] - terms.mopup[BLACK]) + (terms.bishops[WHITE] - terms.bishops[BLACK]) +
 		    (terms.castling[WHITE] - terms.castling[BLACK]) + (terms.mobility[WHITE] - terms.mobility[BLACK]) +
-		    (terms.king_shelter[WHITE] - terms.king_shelter[BLACK]) +
+		    (terms.outposts[WHITE] - terms.outposts[BLACK]) + (terms.king_shelter[WHITE] - terms.king_shelter[BLACK]) +
 		    (terms.king_storm[WHITE] - terms.king_storm[BLACK]) + (terms.king_files[WHITE] - terms.king_files[BLACK]) +
 		    (terms.king_attack[WHITE] - terms.king_attack[BLACK]) + terms.endgame_adjustment;
 		const std::string sum_label = "sum (white pov)";

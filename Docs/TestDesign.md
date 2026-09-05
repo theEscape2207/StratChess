@@ -179,6 +179,16 @@ assertion or an `EvaluatorTestFixture` static for a single term.
     the attack pass entirely for one. That last case is why several of these positions carry an idle
     pawn: without it they are K+N vs K, which `EndgameScale` scores 0, and the term would be
     comparing two zeroes
+  - `eval_outposts` (#112): the weight tables are pinned to their literal values in one case and
+    named through the fixture everywhere else; the detector is then driven condition by condition
+    from one frame (a pawn-supported White Nd5 with idle Black pawns on a7/h7) — a challenger on
+    either adjacent file disqualifies although it does not attack the square yet, a same-file pawn
+    and a pawn already level with the knight do not, a blocked or pinned challenger still does, a
+    pinned supporting pawn still supports, the a-file case does not wrap, relative ranks 3 and 7
+    score zero while 4/5/6 rise, a bishop scores from its own smaller table, and two knights on
+    outposts are both paid. Every one of these FENs is round-tripped through `Board::ExtractFEN`
+    first: an illegal FEN leaves the board **empty**, whose outpost score is zero — which is what
+    most of these cases assert, so a typo would otherwise pass silently
   - Passed and backwards pawns (#116): the span masks are asserted for **content** before any term
     consumes them — `g_bbPassedMaskWhite[d4]` is exactly the c/d/e files ahead, an a- or h-file pawn's
     span never reaches the opposite edge (the wraparound bug this kind of generator invites), and a

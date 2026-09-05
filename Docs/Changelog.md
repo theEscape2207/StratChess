@@ -22,6 +22,50 @@ Newest first.
 
 ---
 
+## 2026-09-05 — Minor-piece outposts (#112)
+
+`Evaluator::eval_outposts` pays a knight or bishop for standing on a square a friendly pawn defends
+that no enemy pawn on an adjacent file can still advance to attack. Nothing else in the evaluator
+asked that question: the PST sees only piece type and square, and safe mobility prices the squares a
+piece can move *to* while removing only what enemy pawns cover right now — so a supported white
+knight on d5 with no black c/e-pawn scored the same as one a black e7-pawn can challenge with ...e6.
+
+The detector is three tests: relative rank 4-6, `ctx.pawn_attacks[us]` covers the square, and no
+enemy pawn sits in the piece's own passed-pawn span minus its own file. The span is taken in the
+PIECE's forward direction, so a pawn already level with or behind the minor cannot disqualify it,
+and the file mask drops same-file pawns, which can block the piece but never attack it. It is a
+structural proxy, not a proof of safety: it models a pawn advancing down its own file and nothing
+else, so a blocked or pinned challenger still disqualifies and a pinned friendly pawn still
+supports. No new table, cache, attack generation or mutable state — the support test is applied to
+the knight and bishop bitboards before the scan, so the loop body usually runs zero or one times per
+side.
+
+Weights are phase-neutral and untuned: 15/20/25 cp for a knight on relative rank 4/5/6, 8/12/16 cp
+for a bishop. They are a first-cut hypothesis, deliberately without a second mg/eg axis; #117 owns
+tuning. The term is its own `EvalBreakdown` row and its own UCI `eval` table row, so it cannot hide
+inside mobility.
+
+Validation: term-level cases in `EvalTermTests.cpp` drive each condition from one frame, including
+both adjacent files, the same-file and already-passed pawns, blocked and pinned challengers, a
+pinned supporting pawn, the a-file no-wrap case, both boundary ranks and two knights summing. Two
+deliberate mutations — dropping the file mask, and using the enemy's span — were each caught by the
+suite. Every outpost FEN is round-tripped through `Board::ExtractFEN` first: an illegal FEN leaves
+the board EMPTY, which scores zero outposts and would have satisfied most of these cases for the
+wrong reason (it did, once, before the guard). Full fast suite, Debug suite and lint pass.
+
+Speed: four interleaved same-toolchain Release `Run-Bench.ps1` passes at `Threads=1`, aggregate nps
+2.73M before and after — inside the ±0.4% spread of the runs themselves, so the detector's cost is
+below what this instrument resolves. Node counts differ between the two builds, as they must for an
+evaluation change, so wall clock is quoted alongside: 6,572 ms before against 6,482 ms after over
+1.26% fewer nodes.
+
+Strength is **not** measured by any of that. The 19,980-game CI strength lab against the merge base
+is the gate for a new evaluation term, and its result belongs in `Measurements/ci-per-change.md`;
+until it is run, the weights above are a hypothesis and the epic's 5-20 Elo figure remains a roadmap
+guess rather than a measurement of this engine.
+
+Design: `.claude/plans/minor-piece-outposts.md`. Part of the #110 eval epic.
+
 ## 2026-09-05 — Collapse evaluator selection to one concrete evaluator (#457)
 
 `EvalManager` (the `EvalTypes` enum, its factory) and the unused `EvalSimple` evaluator are gone;
