@@ -27,7 +27,7 @@ jobs:
   # Decide how much validation this diff is worth, using the SAME classifier the
   # local pre-PR script uses (Scripts/Get-ChangeTier.ps1) -- one
   # definition, so CI and the local convention cannot drift apart. See issue #124
-  # and .claude/plans/validation-change-tiers.md.
+  # and .claude/plans/retained/validation-change-tiers.md.
   #
   # Needs fetch-depth: 0 because the default shallow single-commit checkout makes
   # the base-ref diff impossible. This is why classification is its own small job:
@@ -305,7 +305,7 @@ jobs:
   # only the engine keeps this inside the wall-clock set by build-linux (Release),
   # so it costs runner minutes rather than PR feedback time.
   #
-  # Survey, positive control and the cost measurements: .claude/plans/tsan-lazy-smp.md.
+  # Survey, positive control and the cost measurements: .claude/plans/retained/tsan-lazy-smp.md.
   tsan-linux:
     needs: classify
     # Same condition as build-linux and sanitize-linux, for the same reason: a
@@ -389,7 +389,7 @@ jobs:
     if: needs.classify.outputs.is_full == 'true'
     # Pinned to the explicit VS2026 image (not the moving windows-latest label) —
     # keeps the toolchain fixed until it is changed deliberately.
-    # See .claude/plans/full-build-test-ci-github-actions.md.
+    # See .claude/plans/retained/full-build-test-ci-github-actions.md.
     runs-on: windows-2025-vs2026
     timeout-minutes: 30
     # Release and Debug are NOT redundant -- each catches a class of failure the

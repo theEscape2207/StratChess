@@ -145,7 +145,7 @@ Two mechanics that are easy to get wrong, both of which produce a *falsely clean
 before `main` on Ubuntu 24.04 and reports nothing; and the driver waits for `uciok`/`readyok`/
 `bestmove` rather than piping commands, which would otherwise arrive mid-search and be refused by the
 UCI guards. TSan cannot be combined with ASan, hence a separate job. Survey, positive control, cost
-and contention analysis: `.claude/plans/tsan-lazy-smp.md`.
+and contention analysis: `.claude/plans/retained/tsan-lazy-smp.md`.
 
 **`lint-linux`** runs the shared `Run-Lint.ps1` entry point over files the PR touches, on the same
 tier condition as the jobs above:
@@ -230,7 +230,7 @@ merge. A SKIPPED leg reports success deliberately: a Docs-tier PR runs none of t
 required check that never ran would block it forever.
 
 Runner image is pinned to `windows-2025-vs2026`, not `windows-latest`, so the toolchain moves only
-when it is changed deliberately — see `.claude/plans/full-build-test-ci-github-actions.md`.
+when it is changed deliberately — see `.claude/plans/retained/full-build-test-ci-github-actions.md`.
 
 `check-starting-fen.yml` is path-filtered to `StratChessEvolved/game_settings.json` and does not run
 otherwise. `pr-closed-cleanup.yml` fires once per closed PR — deleting the head branch if it merged,
