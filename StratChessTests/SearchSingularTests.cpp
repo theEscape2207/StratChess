@@ -16,20 +16,30 @@ namespace {
 	// Quiet middlegame position with plenty of legal moves, used as the eligibility baseline.
 	constexpr const char* kBaselineFen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
 
-	// Depth and TT depth chosen to clear the default gate (min_depth 8, tt_depth_margin 3).
-	constexpr int kDepth = 8;
-	constexpr int16_t kTtDepth = 8;
+	// The gates below are all depth-independent, so these searches run shallower than the
+	// shipped singular_min_depth of 8 and arm() lowers the gate to match. Depth is this
+	// file's whole cost, and it is the fast tier's most expensive tag — more so under the
+	// sanitizers that gate correctness.
+	constexpr int kDepth = 4;
+	constexpr int16_t kTtDepth = kDepth;
 
 	// Comfortably above anything the alternatives will score, so the verification fails low
 	// and the extension is granted. Well below Mate_Threshold, so the mate-score gate passes.
 	constexpr int16_t kTtValue = 900;
 
-	// Arms the fixture at the baseline: feature on, a LOWER entry naming the first sorted
-	// move, and a clock so the per-node poll does not latch an abort.
-	void arm_baseline(const AIPerlexTestFixture& fix)
+	// Feature on, the depth gate lowered to kDepth, and a clock so the per-node poll does not
+	// latch an abort. Every case here starts from this.
+	void arm(const AIPerlexTestFixture& fix)
 	{
 		fix.set_singular_enabled(true);
+		fix.set_singular_min_depth(kDepth);
 		fix.arm_clock();
+	}
+
+	// Adds the baseline's TT entry: a LOWER bound naming the first sorted move.
+	void arm_baseline(const AIPerlexTestFixture& fix)
+	{
+		arm(fix);
 		fix.store_main_entry_with_move(kTtValue, kTtDepth, /*ply=*/1, BoundType::LOWER, fix.first_sorted_move_uci());
 		fix.clear_singular_telemetry();
 	}
@@ -64,6 +74,12 @@ TEST_CASE("Singular: the extension reaches the child search", "[search][singular
 	// The lever is singular_margin_factor. A huge factor drives singular_beta far below anything
 	// the alternatives score, so the verification fails high and no extension is granted; the
 	// verification still runs, which is what keeps the two runs comparable.
+	//
+	// The two verifications search the same tree at different windows, so they do not cost the
+	// same, and their difference is on the same order as the extension's. Comparing raw node
+	// counts therefore compares two effects at once — it happened to come out the right way, but
+	// for a reason that has nothing to do with the extension. The verification's own nodes are
+	// counted, so subtracting them leaves only the work the extra ply caused.
 	AIPerlexTestFixture extended(kBaselineFen);
 	arm_baseline(extended);
 	extended.search_node(kDepth, /*ply=*/1);
@@ -78,7 +94,10 @@ TEST_CASE("Singular: the extension reaches the child search", "[search][singular
 
 	// Searching the first move at `depth` instead of `depth - 1` is strictly more work. If
 	// child_depth ever stops honouring the extension, these collapse to equal.
-	CHECK(extended.mainnodes() > plain.mainnodes());
+	const auto work_outside_verification = [](const AIPerlexTestFixture& f) {
+		return f.mainnodes() + f.qnodes() - f.singular_verification_nodes();
+	};
+	CHECK(work_outside_verification(extended) > work_outside_verification(plain));
 }
 
 TEST_CASE("Singular: disabled by default", "[search][singular]")
@@ -118,8 +137,7 @@ TEST_CASE("Singular: not eligible at the root", "[search][singular]")
 TEST_CASE("Singular: an UPPER-bound entry is not a candidate", "[search][singular]")
 {
 	AIPerlexTestFixture fix(kBaselineFen);
-	fix.set_singular_enabled(true);
-	fix.arm_clock();
+	arm(fix);
 	// An UPPER bound says the value is at most this — it never claims the move is good.
 	fix.store_main_entry_with_move(kTtValue, kTtDepth, /*ply=*/1, BoundType::UPPER, fix.first_sorted_move_uci());
 	fix.clear_singular_telemetry();
@@ -132,9 +150,12 @@ TEST_CASE("Singular: an UPPER-bound entry is not a candidate", "[search][singula
 TEST_CASE("Singular: an entry with no best move is not a candidate", "[search][singular]")
 {
 	AIPerlexTestFixture fix(kBaselineFen);
-	fix.set_singular_enabled(true);
-	fix.arm_clock();
+	arm(fix);
 	// store_main_entry() plants an empty move — there is nothing to extend.
+	//
+	// This pins the behaviour, not the `hash_move != EmptyMove()` term: with an empty hash move
+	// the eligibility conjunction's `first sorted move == hash_move` term is false anyway, so
+	// removing that term leaves this test green. Both are wanted; only the pair is falsifiable.
 	fix.store_main_entry(kTtValue, kTtDepth, /*ply=*/1, BoundType::LOWER);
 	fix.clear_singular_telemetry();
 
@@ -146,8 +167,7 @@ TEST_CASE("Singular: an entry with no best move is not a candidate", "[search][s
 TEST_CASE("Singular: a mate-score entry is not a candidate", "[search][singular]")
 {
 	AIPerlexTestFixture fix(kBaselineFen);
-	fix.set_singular_enabled(true);
-	fix.arm_clock();
+	arm(fix);
 	// The margin arithmetic is meaningless against a mate score, and the TT normalises those
 	// by ply — subtracting a depth-scaled margin from one produces a bound with no meaning.
 	fix.store_main_entry_with_move(static_cast<int16_t>(GameValues::Mate_Threshold + 10), kTtDepth, /*ply=*/1,
@@ -162,10 +182,11 @@ TEST_CASE("Singular: a mate-score entry is not a candidate", "[search][singular]
 TEST_CASE("Singular: a too-shallow entry is not a candidate", "[search][singular]")
 {
 	AIPerlexTestFixture fix(kBaselineFen);
-	fix.set_singular_enabled(true);
-	fix.arm_clock();
-	// One ply shallower than the margin allows: depth - tt_depth_margin - 1.
-	fix.store_main_entry_with_move(kTtValue, static_cast<int16_t>(kDepth - 4), /*ply=*/1, BoundType::LOWER,
+	arm(fix);
+	// The margin is narrowed so the boundary sits on a real entry depth: under the default
+	// margin of 3 the deepest entry kDepth still rejects is 0. Accepted from 3 up; this is 2.
+	fix.set_singular_tt_depth_margin(1);
+	fix.store_main_entry_with_move(kTtValue, static_cast<int16_t>(kDepth - 2), /*ply=*/1, BoundType::LOWER,
 	                               fix.first_sorted_move_uci());
 	fix.clear_singular_telemetry();
 

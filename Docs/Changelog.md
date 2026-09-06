@@ -22,6 +22,32 @@ Newest first.
 
 ---
 
+## 2026-09-06 — Singular tests searched deeper than they assert (#479)
+
+`SearchSingularTests.cpp` ran its eligibility cases at depth 8, which is what `singular_min_depth`
+ships as — not what any of them asserts. Every one of those gates is depth-independent, and the
+fixture can lower the gate, so they now run at depth 4 with `singular_min_depth` lowered to match.
+The tag was the fast tier's most expensive by an order of magnitude: **~19 s to 1.7 s** locally in
+Debug, and no singular case is in the tier's ten slowest any more. It cost more under the sanitizers
+that gate correctness — `sanitize-linux` spent **+71 s** in "Run fast tests" once this file landed —
+which is where the saving actually matters, since it is paid on every PR.
+
+Every eligibility gate was re-falsified at the new depth: patch the gate out, confirm the matching
+test goes red, against an unmutated control that must stay green. Two came back green, both
+pre-existing rather than caused by the shallower search:
+
+- **The extension test was confounded.** It compared node counts between a run granted the extension
+  and one denied it via a huge `singular_margin_factor`, but that factor also changes the
+  verification's window, so the two verifications cost different amounts and the comparison summed
+  two effects. It passed at depth 8 because the extension's share happened to be the larger one.
+  `singular_verification_nodes` is now subtracted from both sides, leaving only the work the extra
+  ply caused — and the test now fails when `child_depth` stops honouring the extension, which the
+  depth-8 version did only by luck of magnitude.
+- **`hash_move != EmptyMove()` in the eligibility conjunction is unfalsifiable**, because the
+  `first sorted move == hash_move` term next to it already excludes an empty hash move. Both terms
+  are wanted; only the pair can be tested. Noted at the test, as with the three hardening changes
+  already documented there.
+
 ## 2026-09-06 — Singular extensions, compiled out of the shipping engine (#95)
 
 `AIPerplex::pvs()` can search a transposition-table move one ply deeper when a reduced-depth
