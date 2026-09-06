@@ -50,8 +50,12 @@ it is GPL-3, and keeping it out keeps the repo free of that obligation. `--engin
 scoring inverts every loss it reports without failing anything else, so four of its checks exist only
 to catch that, and they need the binary to run.
 
-Cost is real but not prohibitive: 18 shards at depth 12 is about 1.5 M positions, ~4 hours on 20
-workers. Tier 1's six seconds buys a different question, not a worse one — run Tier 1 first.
+Cost is the reason to think before running it. One shard is ~165,000 oracle searches, about 45
+minutes on a handful of workers, and all 18 shards is most of a day. `--shards N` takes the first N — shards
+are independent samples of one match, so a prefix is a smaller run of the same experiment, not a
+biased one. Each worker is one busy core and the scan runs for hours, so the default deliberately
+claims a quarter of the machine rather than all of it; raise `--jobs` only on a box nobody is using.
+Tier 1's six seconds buys a different question, not a worse one — run Tier 1 first.
 
 **Every rate carries a game-clustered interval.** Plies inside one game share its opening, its two
 builds and its result, so a per-ply confidence interval is several times too tight to believe. The

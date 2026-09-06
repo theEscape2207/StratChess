@@ -261,7 +261,7 @@ def report(cells, per_game, worst, depth, samples, out=sys.stdout) -> None:
         w(f"  -{loss:>4}cp  self {swing:>+5}  {build} {bucket:<11} {played}  {fen}\n")
 
 
-def analyse(root: Path, engine_path: str, depth: int, jobs: int, limit: int):
+def analyse(root: Path, engine_path: str, depth: int, jobs: int, limit: int, shards: int):
     cells: dict = defaultdict(lambda: [0, 0, 0.0, 0, 0.0, 0, 0.0])
     per_game: list = []
     worst: list = []
@@ -269,6 +269,10 @@ def analyse(root: Path, engine_path: str, depth: int, jobs: int, limit: int):
     if not files:
         print(f"no .pgn under {root}", file=sys.stderr)
         return None, None, None
+    # Shards are independent samples of the same match, so a prefix of them is a
+    # smaller run of the same experiment, not a biased one.
+    if shards:
+        files = files[:shards]
     with ProcessPoolExecutor(max_workers=jobs, initializer=_init_worker,
                              initargs=(engine_path, depth)) as ex:
         # One shard at a time: the whole corpus of FENs at once is gigabytes, and
@@ -379,8 +383,14 @@ def main() -> int:
     ap.add_argument("--engine", default="",
                     help=f"oracle binary (default: ../{ENGINE_DIR}/{ENGINE_EXE})")
     ap.add_argument("--depth", type=int, default=12, help="fixed oracle search depth (default 12)")
-    ap.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 4) - 4))
+    # A quarter of the box by default. This runs for hours on an interactive
+    # machine, and one worker is one busy engine process: a default sized to the
+    # core count makes the machine unusable for as long as the scan lasts.
+    ap.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 4) // 4),
+                    help="parallel oracle processes, each one busy core (default: a quarter)")
     ap.add_argument("--games", type=int, default=0, help="cap games per shard (0 = all)")
+    ap.add_argument("--shards", type=int, default=0,
+                    help="scan only the first N shards (0 = all); each is an independent sample")
     ap.add_argument("--samples", type=int, default=amq.BOOT_SAMPLES,
                     help="bootstrap resamples behind every interval")
     ap.add_argument("--json", help="also write the merged raw counters here")
@@ -402,7 +412,7 @@ def main() -> int:
     print(f"oracle {engine_path} at depth {args.depth}, {args.jobs} worker(s)", file=sys.stderr)
 
     cells, per_game, worst = analyse(Path(args.root), engine_path, args.depth,
-                                     args.jobs, args.games)
+                                     args.jobs, args.games, args.shards)
     if cells is None:
         return 2
     if not cells:
