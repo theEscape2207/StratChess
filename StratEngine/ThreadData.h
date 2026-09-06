@@ -60,6 +60,23 @@ struct ThreadData {
 	// each null-move attempt completes (see AIPerplex::pvs()).
 	bool last_move_was_null[MAX_PLY]{};
 
+	// Singular-extension exclusion state: excluded_move[ply] is the move a verification
+	// search at this ply must pretend does not exist. Empty for every ordinary node, which
+	// is what every guard in pvs() tests against. Indexed like killers.
+	//
+	// A verification search re-enters pvs() at the SAME ply as the frame that launched it,
+	// so this is the only thing distinguishing the two — an exclusion frame must not probe
+	// or store the transposition table, clear the PV row, try a null move, or adjudicate a
+	// moveless position as mate. Set and restored by ExcludedMoveGuard, never by hand.
+	Move excluded_move[MAX_PLY];
+
+	// Singular-extension telemetry. Only touched inside the eligibility-gated block, so a
+	// build with the feature disabled never writes them. Counts are per-thread and summed
+	// by the caller; they measure trigger rate, not correctness.
+	int64_t singular_eligible = 0;      // nodes passing the eligibility gate
+	int64_t singular_verifications = 0; // verification searches actually run
+	int64_t singular_extensions = 0;    // verifications that granted the extra ply
+
 	// History heuristic: accumulated score for quiet moves that caused beta cutoffs,
 	// indexed by [side-to-move][from-square][to-square].
 	// int32 gives plenty of headroom before the depth^2 increments overflow.
@@ -68,6 +85,7 @@ struct ThreadData {
 	ThreadData()
 	{
 		clear_killers();
+		clear_excluded_moves();
 		clear_history();
 	}
 
@@ -79,6 +97,19 @@ struct ThreadData {
 	}
 
 	void clear_null_move_flags() noexcept { std::memset(last_move_was_null, 0, sizeof(last_move_was_null)); }
+
+	void clear_excluded_moves() noexcept
+	{
+		for (auto& m : excluded_move)
+			m = Move::EmptyMove();
+	}
+
+	void clear_singular_telemetry() noexcept
+	{
+		singular_eligible = 0;
+		singular_verifications = 0;
+		singular_extensions = 0;
+	}
 
 	// Resets everything that must not leak into a new game. History is
 	// deliberately aged, never cleared, WITHIN a game (see the class comment
@@ -99,6 +130,8 @@ struct ThreadData {
 		pv_table = PVTable();
 		clear_killers();
 		clear_null_move_flags();
+		clear_excluded_moves();
+		clear_singular_telemetry();
 		clear_history();
 	}
 
@@ -157,4 +190,29 @@ struct ThreadData {
 		if (ply == 0)
 			root_game_state = newState;
 	}
+};
+
+// Sets td.excluded_move[ply] for the duration of a singular verification search and restores
+// it on every exit. RAII rather than a set/call/clear sequence because the verification can
+// return through the abort path: a slot left populated would silently disable the
+// transposition table and null-move pruning for every later node at that ply, with no
+// symptom beyond a slower search.
+class ExcludedMoveGuard {
+  public:
+	ExcludedMoveGuard(ThreadData& td, int ply, const Move& move) noexcept : td_(td), ply_(ply)
+	{
+		assert(ply >= 0 && ply < MAX_PLY);
+		assert(td.excluded_move[ply] == Move::EmptyMove() && "nested verification at one ply");
+		td_.excluded_move[ply_] = move;
+	}
+	~ExcludedMoveGuard() noexcept { td_.excluded_move[ply_] = Move::EmptyMove(); }
+
+	ExcludedMoveGuard(const ExcludedMoveGuard&) = delete;
+	ExcludedMoveGuard& operator=(const ExcludedMoveGuard&) = delete;
+	ExcludedMoveGuard(ExcludedMoveGuard&&) = delete;
+	ExcludedMoveGuard& operator=(ExcludedMoveGuard&&) = delete;
+
+  private:
+	ThreadData& td_;
+	int ply_;
 };

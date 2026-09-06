@@ -491,6 +491,27 @@ bool AIPerplex::poll_search_limits(ThreadData& td)
 
 int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt)
 {
+	// Absolute backstop, first because it is what bounds every ply-indexed access below --
+	// including the excluded_move[ply] read the PV clear is now guarded on. Until singular
+	// extensions existed, depth fell by at least one on every recursive call and terminated
+	// the recursion long before ply could reach here; an extension searches a child at the
+	// parent's depth, so that argument is gone and the recursion has to bound itself. The
+	// limit is MAX_PLY - 1 rather than MAX_PLY because the null-move attempt below writes
+	// last_move_was_null[ply + 1].
+	//
+	// A verification search can never reach this: it runs at its parent's ply, and that
+	// parent returned from this same test before it could launch one. So there is no row
+	// another frame is building, and the clear is unconditional.
+	if (ply >= MAX_PLY - 1) {
+		td.pv_table.clear_ply(ply);
+		return evaluator_.Evaluate(td.board);
+	}
+
+	// This frame is a singular verification search when the slot is set: it re-enters pvs()
+	// at the ply its parent is still working on, so it must leave that parent's PV row alone.
+	// Everything else the exclusion state suppresses is guarded further down.
+	const bool is_exclusion_frame = td.excluded_move[ply] != Move::EmptyMove();
+
 	// Cleared before the two abort exits below, not after them. A frame that returns from either
 	// has searched nothing, and its return value is the fabricated GameValues::Draw — safe for a
 	// parent frame, which discards it at its own unwind guard, but not for the root: the value
@@ -500,7 +521,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// the machinery already has — the same signal search_with_aspiration() publishes explicitly
 	// when it is interrupted before entering pvs() at all. Nothing else changes: on a normal
 	// entry the clear happens exactly where it did.
-	td.pv_table.clear_ply(ply);
+	if (!is_exclusion_frame)
+		td.pv_table.clear_ply(ply);
 
 	// Fast early exit: IsAborted() reads only the latched atomic (no clock call).
 	// After the first StopRequested() fires and latches the flag, this collapses
@@ -524,33 +546,54 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	const int original_alpha = alpha;
 	Move hash_move;
 
-	// TT probe
-	if (auto entry = tt.probe(key, ply)) {
-		if (entry->phase == SearchPhase::MAIN) { // Avoid the Quiescence nodes to affect main search - just to make sure
-			hash_move = entry->best_move;
+	// Singular eligibility inputs, filled from the same probe that supplies hash_move so the
+	// entry is read once. Meaningless unless tt_usable_for_singular is true.
+	bool tt_usable_for_singular = false;
+	int tt_value_for_singular = 0;
 
-			// Critical: Don't use TT cutoffs at PV nodes.
-			//
-			// Cutoff only: an entry is used when it already resolves this node against the
-			// caller's window, and never to narrow alpha or beta. A narrowing is invisible to
-			// the classification at the bottom of this function, which measures best_value
-			// against the original_alpha captured above, so the node would search under one
-			// window and report under another -- returning, and storing as EXACT, a value the
-			// caller never asked about.
-			//
-			// It costs nothing: every call site that passes is_pv_node = false also passes a
-			// null window, so beta == alpha + 1 here and neither bound had room to move. The
-			// cutoffs below are what the old alpha >= beta test resolved to under that window.
-			if (!is_pv_node && entry->depth >= depth) {
-				if (entry->bound == BoundType::EXACT) {
-					return entry->value;
+	// TT probe. Skipped entirely for a verification search: this key describes the position
+	// with every legal move available, and an exclusion search is asking about a strictly
+	// smaller move set. Taking a cutoff from it would answer the wrong question, and the
+	// store side is suppressed for the same reason at the bottom of this function.
+	if (!is_exclusion_frame) {
+		if (auto entry = tt.probe(key, ply)) {
+			if (entry->phase ==
+			    SearchPhase::MAIN) { // Avoid the Quiescence nodes to affect main search - just to make sure
+				hash_move = entry->best_move;
+
+				// Critical: Don't use TT cutoffs at PV nodes.
+				//
+				// Cutoff only: an entry is used when it already resolves this node against the
+				// caller's window, and never to narrow alpha or beta. A narrowing is invisible to
+				// the classification at the bottom of this function, which measures best_value
+				// against the original_alpha captured above, so the node would search under one
+				// window and report under another -- returning, and storing as EXACT, a value the
+				// caller never asked about.
+				//
+				// It costs nothing: every call site that passes is_pv_node = false also passes a
+				// null window, so beta == alpha + 1 here and neither bound had room to move. The
+				// cutoffs below are what the old alpha >= beta test resolved to under that window.
+				if (!is_pv_node && entry->depth >= depth) {
+					if (entry->bound == BoundType::EXACT) {
+						return entry->value;
+					}
+					if (entry->bound == BoundType::LOWER && entry->value >= beta) {
+						return entry->value;
+					}
+					if (entry->bound == BoundType::UPPER && entry->value <= alpha) {
+						return entry->value;
+					}
 				}
-				if (entry->bound == BoundType::LOWER && entry->value >= beta) {
-					return entry->value;
-				}
-				if (entry->bound == BoundType::UPPER && entry->value <= alpha) {
-					return entry->value;
-				}
+
+				// A singular candidate needs an entry that already claims this move is at
+				// least as good as its value (LOWER or EXACT), is not a mate score -- the
+				// margin arithmetic below is meaningless against one -- and was searched
+				// to nearly this depth.
+				tt_usable_for_singular = hash_move != Move::EmptyMove() &&
+				                         (entry->bound == BoundType::LOWER || entry->bound == BoundType::EXACT) &&
+				                         std::abs(static_cast<int>(entry->value)) < GameValues::Mate_Threshold &&
+				                         entry->depth >= depth - tuning_.singular_tt_depth_margin;
+				tt_value_for_singular = entry->value;
 			}
 		}
 	}
@@ -598,6 +641,52 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	MoveSorter::ScoreMoves(moveList, n, td.board, side, hash_move, td.killers[ply][0], td.killers[ply][1], td.history,
 	                       scored_idx);
 
+	// Singular extension: if the transposition table's move is much better than every
+	// alternative, search it one ply deeper. The verification runs HERE, before the move
+	// loop, because the loop only learns a move is legal from DoMove() returning true --
+	// by the time it can name a "first legal move" the board already holds the child, and
+	// the verification has to search this position, at this ply.
+	//
+	// Hoisting costs the exactness of "first legal move", so eligibility instead requires
+	// the hash move to be sorted first (ScoreMoves guarantees that whenever one exists) and
+	// the loop re-checks that it was also the first LEGAL one before applying the extension.
+	// A hash move that fails legality wastes one verification and grants nothing.
+	int singular_extension = 0;
+	const bool singular_eligible = tuning_.singular_extensions_enabled && ply > 0 && !in_check && !is_exclusion_frame &&
+	                               depth >= tuning_.singular_min_depth && tt_usable_for_singular && n > 0 &&
+	                               moveList[scored_idx[0].second] == hash_move;
+
+	if (singular_eligible) {
+		td.singular_eligible++;
+
+		const int singular_beta = tt_value_for_singular - tuning_.singular_margin_factor * depth;
+		const int verify_depth = (depth - 1) / 2;
+		// singular_min_depth >= 3 is what keeps this positive. A verification that fell
+		// through to quiescence() would be worthless and wrong: quiescence carries no
+		// exclusion state, so it would search the excluded move and use the normal TT.
+		assert(verify_depth >= 1 && "singular_min_depth too low: verification would reach quiescence");
+
+		td.singular_verifications++;
+
+		int verify_value;
+		{
+			const ExcludedMoveGuard guard(td, ply, hash_move);
+			verify_value = pvs(td, verify_depth, singular_beta - 1, singular_beta, ply, false, tt);
+		}
+
+		// Unwind invariant: the verification was cut off mid-tree, so its result is not
+		// ours to act on. No move has been searched yet, so best_value is still the
+		// sentinel -- the board was never touched, and there is nothing to restore.
+		if (control_.IsAborted())
+			return best_value;
+
+		// Strict fail-low: no alternative reached the margin, so the hash move stands alone.
+		if (verify_value < singular_beta) {
+			singular_extension = 1;
+			td.singular_extensions++;
+		}
+	}
+
 	bool moveFound = false;
 
 	// LMR's "late" means late among the LEGAL moves. si cannot answer that: the list is
@@ -608,6 +697,12 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	for (int si = 0; si < n; ++si) {
 		const Move& move = moveList[scored_idx[si].second];
 
+		// The move a verification search is proving the alternatives against is not one of
+		// them. Skipped before nodes_searched so an exclusion search's node count reflects
+		// the moves it actually considered.
+		if (is_exclusion_frame && move == td.excluded_move[ply])
+			continue;
+
 		td.nodes_searched++;
 
 		if (td.board.DoMove(move)) {
@@ -615,8 +710,13 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			int value;
 
 			if (move_number == 0) {
+				// The hash-move re-check is the other half of the eligibility test: the
+				// verification above only established that this move sorted first, and
+				// this is where it is confirmed to be the first move that was also legal.
+				const int child_depth = (singular_extension != 0 && move == hash_move) ? depth : depth - 1;
+
 				// Full window search for first move
-				value = -pvs(td, depth - 1, -beta, -alpha, ply + 1, is_pv_node, tt);
+				value = -pvs(td, child_depth, -beta, -alpha, ply + 1, is_pv_node, tt);
 			} else {
 				assert(move_number >= 1); // this branch, not the tunable gate, is what keeps sqrt() >= 0
 
@@ -720,6 +820,15 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// so this value derives from InCheck() and ply alone and is as true after an abort as
 	// before one. The guard in the loop cannot have been passed on the way here.
 	if (!moveFound) {
+		// Under exclusion, "no move" means "no move OTHER than the excluded one", which is
+		// not checkmate or stalemate -- the position has a legal move, this search was
+		// forbidden to play it. Adjudicating here would be a lie about the real position,
+		// and storing it would poison the key for every later probe. Failing low is also
+		// the answer the caller wants: no alternative reached the margin, so the excluded
+		// move is singular.
+		if (is_exclusion_frame)
+			return alpha;
+
 		const int terminal_value = adjustScoreForGameState(td, moveFound, ply, best_value);
 		tt.store(key, static_cast<int16_t>(terminal_value), static_cast<int16_t>(depth), static_cast<int16_t>(ply),
 		         Move::EmptyMove(), BoundType::EXACT, is_pv_node ? NodeType::PV_NODE : NodeType::ALL_NODE,
@@ -742,8 +851,13 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		node_type = is_pv_node ? NodeType::PV_NODE : NodeType::ALL_NODE;
 	}
 
-	tt.store(key, static_cast<int16_t>(best_value), static_cast<int16_t>(depth), static_cast<int16_t>(ply), best_move,
-	         bound, node_type, SearchPhase::MAIN);
+	// Suppressed under exclusion, the mirror of the skipped probe: this result describes a
+	// search that was denied one legal move, and storing it under the position's own key
+	// would cache a partial move set as if it were the whole.
+	if (!is_exclusion_frame) {
+		tt.store(key, static_cast<int16_t>(best_value), static_cast<int16_t>(depth), static_cast<int16_t>(ply),
+		         best_move, bound, node_type, SearchPhase::MAIN);
+	}
 
 	return adjustScoreForGameState(td, moveFound, ply, best_value);
 }
@@ -1307,6 +1421,11 @@ bool AIPerplex::should_try_null_move(const ThreadData& td, int depth, int beta, 
                                      bool in_check) const
 {
 	if (!tuning_.null_move_enabled)
+		return false;
+	// A verification search is proving that every alternative MOVE fails below a margin.
+	// Passing is not one of those alternatives, so a null-move cutoff here would answer a
+	// different question and could call a move singular on the strength of a pass.
+	if (td.excluded_move[ply] != Move::EmptyMove())
 		return false;
 	if (is_pv_node || in_check)
 		return false;

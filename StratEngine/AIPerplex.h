@@ -80,6 +80,21 @@ struct SearchTuning {
 	// it off must leave the search node-identical. The !in_check guard at the pruning site is
 	// correctness, not tuning, and is deliberately outside this flag.
 	bool see_pruning_enabled = true;
+
+	// Singular extensions. Disabled: the mechanism is implemented and tested, but no measured
+	// Elo result justifies enabling it yet, and with the flag off the search is node-identical
+	// to a build without it. These knobs are NOT reachable over UCI — UciHandler::init_ai()
+	// builds its AIPerplexConfig from hardcoded values and never consults game_settings.json,
+	// so a UCI-driven harness sees only what a build's defaults set.
+	bool singular_extensions_enabled = false;
+	// Minimum remaining depth before a node is worth a verification search. Also what keeps
+	// the verification depth positive — see the assert at the call site.
+	int singular_min_depth = 8;
+	// How much shallower than this node the transposition entry may be and still be trusted.
+	int singular_tt_depth_margin = 3;
+	// Verification window offset, scaled by depth: a move is singular when every alternative
+	// fails below tt_value - singular_margin_factor * depth.
+	int singular_margin_factor = 2;
 };
 
 struct AIPerplexConfig {
