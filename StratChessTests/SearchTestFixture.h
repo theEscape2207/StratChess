@@ -134,6 +134,9 @@ class AIPerlexTestFixture {
 	int64_t singular_eligible() const { return ai->td_.singular_eligible; }
 	int64_t singular_verifications() const { return ai->td_.singular_verifications; }
 	int64_t singular_extensions() const { return ai->td_.singular_extensions; }
+	// Main + quiescence edges spent inside verification searches, on the same scale as
+	// mainnodes() + qnodes(), so it can be subtracted from them.
+	int64_t singular_verification_nodes() const { return ai->td_.singular_verification_nodes; }
 	void clear_singular_telemetry() const { ai->td_.clear_singular_telemetry(); }
 
 	// A MAIN entry carrying a real best_move. store_main_entry() plants an empty one, which
