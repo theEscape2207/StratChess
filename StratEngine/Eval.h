@@ -377,7 +377,7 @@ class Evaluator {
 	// its full value with the enemy king parked in front of it.
 	static constexpr short PASSED_PAWN_BLOCKADED_SCALE = 8; // half
 
-	// Minor-piece outposts (issue #112): a knight or bishop standing on a square
+	// Minor-piece outposts: a knight or bishop standing on a square
 	// a friendly pawn defends, with no enemy pawn left on an adjacent file ahead
 	// of it. Indexed by the piece's RELATIVE RANK (1 = own back rank, 8 = the
 	// enemy's), so the tables have nine entries and need no bounds test.

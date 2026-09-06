@@ -64,7 +64,7 @@ Strength: **+8.05 ± 3.63 Elo** against the merge base over 19,980 games at 10+0
 the 18 shards scoring above 50%. The untuned weights above are net positive as they stand; the
 knight/bishop split and the `mg == eg` choice are unmeasured and left to #117.
 
-Design: `.claude/plans/minor-piece-outposts.md`. Part of the #110 eval epic.
+Part of the #110 eval epic.
 
 ## 2026-09-05 — Collapse evaluator selection to one concrete evaluator (#457)
 
