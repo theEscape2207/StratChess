@@ -48,10 +48,11 @@ because the loop learns a move is legal only from `DoMove()` returning true — 
 holds the child, and the verification must search the parent.
 
 Measured, shipping build: **node-identical** to the fork point (`Compare-SearchEquivalence.ps1`,
-90 lines, 6 positions, depth 12). The nps cost went −3.44% (as first written) → −1.33% (enable flag
-made the first term of every hot-path test, since `excluded_move[MAX_PLY]` is otherwise cold and was
-being read per node by searches that can never have an exclusion frame) → nothing left to execute
-once the feature is compiled out.
+90 lines, 6 positions, depth 12) at **−0.40% nps**. The cost went −3.44% (as first written) →
+−1.33% (enable flag made the first term of every hot-path test, since `excluded_move[MAX_PLY]` is
+otherwise cold and was being read per node by searches that can never have an exclusion frame) →
+−0.40% (feature compiled out). The remainder is the unconditional ply backstop below: one compare
+per node, kept because it is a recursion bound in its own right, not part of the feature.
 
 Measured, flag on (recorded here because it decides what the follow-up must fix, not because it
 ships): the trigger is selective — 0.18 verifications per 1000 nodes, extension granted on 7.9% —

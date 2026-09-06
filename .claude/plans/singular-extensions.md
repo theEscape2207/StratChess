@@ -368,7 +368,7 @@ Engine tier.
 | Check | Result |
 |---|---|
 | Equivalence vs fork point `9708c65`, flag off | **IDENTICAL**, 90 lines, 6 positions, depth 12, `Threads=1` |
-| nps, flag off vs fork point (warm, n=6, interleaved) | **−1.33%** (2,660,348 vs 2,696,172), spreads 0.28%/0.62%, no overlap |
+| nps, shipping build vs fork point (warm, n=6, interleaved, idle machine) | **−0.40%** (2,719,282 vs 2,730,262), spreads 0.17%/0.40%, no overlap |
 | Full + extended suites, flag on | pass (599 cases) |
 | Tactical suite, flag on | 36/36 |
 | Tactical depth-stability, flag on, `Threads=1` and `4` | 3 runs each, 0 flips |
@@ -384,10 +384,28 @@ verification depth — not the margin, which is already selective at 7.9%. A +43
 means a fixed-time search reaches meaningfully less depth, which is a high bar for 212 extensions to
 clear; that must be measured, not argued.
 
-**nps measurement note.** The first run of each binary is reliably slow (cold caches), and including
-it made one pass report "inside run-to-run noise" when its own warm runs separated cleanly. Warm-up
-is discarded. The measurement also resolved a code-shape question the eye could not: extracting the
-verification into a helper cost 0.42% (−1.75% vs −1.33%), so it stays an inline block.
+**The −0.40% residual is the ply backstop, and it stays.** With the feature compiled out nothing
+else executes: the `if constexpr` leaves no code, every predicate folds, and the extra `ThreadData`
+bytes are never read. What remains is one predictable compare per node for the `MAX_PLY` bound.
+That is a stated benefit outweighing a measured slowdown, per the project rule — it is an absolute
+recursion bound matching the one `quiescence()` already carries, justified independently of this
+feature. Gating it on the experimental constant would reach ~0% but would make the bound conditional
+on a flag that is meant to disappear.
+
+Cost trajectory across the three shapes: **−3.44%** (as first written) → **−1.33%** (enable flag
+leading every hot-path test) → **−0.40%** (feature compiled out).
+
+**nps measurement notes.** Three things had to be right before any of these numbers meant anything:
+
+- *Warm-up.* The first run of each binary is reliably slow, and including it made one pass report
+  "inside run-to-run noise" when its own warm runs separated cleanly. Discarded.
+- *Contention.* Two runs were rejected outright — the unchanged baseline binary measured 3.9% slower
+  than on an idle machine, with spread ten times larger, and they disagreed with each other
+  (−1.75%, then +2.31%). The harness now treats the baseline's absolute nps as a thermometer and
+  refuses to report when it drifts more than 2% from a quiet-machine reference. A harness that
+  cannot detect its own failure reports a number regardless.
+- *Resolution.* The measurement settled a code-shape question the eye could not: extracting the
+  verification into a helper cost 0.42%, so it stays an inline block.
 
 **No Elo match is run for this PR.** The shipped configuration is node-identical to `main`, so the
 only thing a match could detect is the per-node cost of branches that are never taken — and repeated
