@@ -346,6 +346,20 @@ add_executable(StratChessEvolved
     ${CMAKE_SOURCE_DIR}/StratChessEvolved/StratChessEvolved.cpp)
 strat_configure_target(StratChessEvolved)
 
+# Singular extensions (#95) are experimental and OFF for the shipping engine: carrying them
+# compiled-but-disabled measured -1.33% nps, and the end state is unconditional-on or deleted,
+# so nothing should pay for them indefinitely. Turn on for an experimental build to measure:
+#   cmake --preset windows-clang-cl -DSTRAT_SINGULAR_EXTENSIONS=ON
+# The test target below always defines it -- the tests are what exercise the feature.
+option(STRAT_SINGULAR_EXTENSIONS "Compile in singular extensions (#95, experimental)" OFF)
+if(STRAT_SINGULAR_EXTENSIONS)
+    # Both defines here: UCI cannot set the runtime flag, so an engine that compiled the feature
+    # in but started with it off would measure nothing.
+    target_compile_definitions(StratChessEvolved PRIVATE
+        STRAT_SINGULAR_EXTENSIONS=1 STRAT_SINGULAR_DEFAULT_ON=1)
+    message(STATUS "Singular extensions: COMPILED IN AND ENABLED (experimental build)")
+endif()
+
 include(CheckIPOSupported)
 check_ipo_supported(RESULT STRAT_IPO_SUPPORTED OUTPUT STRAT_IPO_ERROR)
 if(STRAT_IPO_SUPPORTED)
@@ -360,5 +374,9 @@ add_executable(StratChessTests
     ${ENGINE_SOURCES}
     ${TEST_SOURCES})
 strat_configure_target(StratChessTests)
-target_compile_definitions(StratChessTests PRIVATE STRAT_ENABLE_TEST_ACCESS)
+# STRAT_SINGULAR_EXTENSIONS is unconditional here, independent of the option above: the feature's
+# tests have nothing to test unless it is compiled in, and they drive it through the runtime flag.
+# STRAT_SINGULAR_DEFAULT_ON is deliberately NOT set -- every other search test must keep seeing the
+# shipped configuration, so the singular tests enable it for themselves.
+target_compile_definitions(StratChessTests PRIVATE STRAT_ENABLE_TEST_ACCESS STRAT_SINGULAR_EXTENSIONS=1)
 target_link_libraries(StratChessTests PRIVATE Catch2::Catch2WithMain)

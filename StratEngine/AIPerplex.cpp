@@ -525,11 +525,13 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// at the ply its parent is still working on, so it must leave that parent's PV row alone.
 	// Everything else the exclusion state suppresses is guarded further down.
 	//
-	// The flag is tested FIRST so that a build with the feature off never reads
-	// excluded_move[] at all. That array is otherwise cold, and touching a fresh line of it
-	// on every node cost 3.4% nps when this read was unconditional -- paid by a search that
-	// can never have an exclusion frame, since only the enabled feature creates one.
-	const bool is_exclusion_frame = tuning_.singular_extensions_enabled && td.excluded_move[ply] != Move::EmptyMove();
+	// The gates are tested FIRST so a build without the feature never reads excluded_move[] at
+	// all. That array is otherwise cold, and touching a fresh line of it on every node cost
+	// 3.4% nps when the read was unconditional -- paid by a search that can never have an
+	// exclusion frame, since only the enabled feature creates one. With the compile-time
+	// constant leading, the whole conjunction folds away in the shipping build.
+	const bool is_exclusion_frame = kSingularExtensionsCompiled && tuning_.singular_extensions_enabled &&
+	                                td.excluded_move[ply] != Move::EmptyMove();
 
 	// Cleared before the two abort exits below, not after them. A frame that returns from either
 	// has searched nothing, and its return value is the fabricated GameValues::Draw — safe for a
@@ -610,7 +612,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				// to nearly this depth.
 				// Flag first: this runs on every node that finds a MAIN entry, which is most
 				// of them, and none of it means anything to a disabled build.
-				tt_usable_for_singular = tuning_.singular_extensions_enabled && hash_move != Move::EmptyMove() &&
+				tt_usable_for_singular = kSingularExtensionsCompiled && tuning_.singular_extensions_enabled &&
+				                         hash_move != Move::EmptyMove() &&
 				                         (entry->bound == BoundType::LOWER || entry->bound == BoundType::EXACT) &&
 				                         std::abs(static_cast<int>(entry->value)) < GameValues::Mate_Threshold &&
 				                         entry->depth >= depth - tuning_.singular_tt_depth_margin;
@@ -672,43 +675,49 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// the hash move to be sorted first (ScoreMoves guarantees that whenever one exists) and
 	// the loop re-checks that it was also the first LEGAL one before applying the extension.
 	// A hash move that fails legality wastes one verification and grants nothing.
+	// `if constexpr` rather than #ifdef: the discarded branch is still parsed and type-checked
+	// here, so this cannot rot while the feature is compiled out, and nothing below it needs a
+	// second spelling. In the shipping build it leaves no code at all, and `singular_extension`
+	// stays a constant 0 that folds the child-depth choice in the move loop away with it.
 	int singular_extension = 0;
-	// !is_exclusion_frame is defence in depth, not the thing that stops a nested verification:
-	// an exclusion frame skipped the TT probe, so it has no hash move and no usable entry and
-	// fails the gate on those terms first. Kept so the intent survives a future change to what
-	// an exclusion frame is allowed to read.
-	const bool singular_eligible = tuning_.singular_extensions_enabled && ply > 0 && !in_check && !is_exclusion_frame &&
-	                               depth >= tuning_.singular_min_depth && tt_usable_for_singular && n > 0 &&
-	                               moveList[scored_idx[0].second] == hash_move;
+	if constexpr (kSingularExtensionsCompiled) {
+		// !is_exclusion_frame is defence in depth, not the thing that stops a nested
+		// verification: an exclusion frame skipped the TT probe, so it has no hash move and no
+		// usable entry and fails the gate on those terms first. Kept so the intent survives a
+		// future change to what an exclusion frame is allowed to read.
+		const bool singular_eligible = tuning_.singular_extensions_enabled && ply > 0 && !in_check &&
+		                               !is_exclusion_frame && depth >= tuning_.singular_min_depth &&
+		                               tt_usable_for_singular && n > 0 && moveList[scored_idx[0].second] == hash_move;
 
-	if (singular_eligible) {
-		td.singular_eligible++;
+		if (singular_eligible) {
+			td.singular_eligible++;
 
-		const int singular_beta = tt_value_for_singular - tuning_.singular_margin_factor * depth;
-		const int verify_depth = (depth - 1) / 2;
-		// singular_min_depth >= 3 is what keeps this positive. A verification that fell
-		// through to quiescence() would be worthless and wrong: quiescence carries no
-		// exclusion state, so it would search the excluded move and use the normal TT.
-		assert(verify_depth >= 1 && "singular_min_depth too low: verification would reach quiescence");
+			const int singular_beta = tt_value_for_singular - tuning_.singular_margin_factor * depth;
+			const int verify_depth = (depth - 1) / 2;
+			// singular_min_depth >= 3 is what keeps this positive. A verification that fell
+			// through to quiescence() would be worthless and wrong: quiescence carries no
+			// exclusion state, so it would search the excluded move and use the normal TT.
+			assert(verify_depth >= 1 && "singular_min_depth too low: verification would reach quiescence");
 
-		td.singular_verifications++;
+			td.singular_verifications++;
 
-		int verify_value;
-		{
-			const ExcludedMoveGuard guard(td, ply, hash_move);
-			verify_value = pvs(td, verify_depth, singular_beta - 1, singular_beta, ply, false, tt);
-		}
+			int verify_value;
+			{
+				const ExcludedMoveGuard guard(td, ply, hash_move);
+				verify_value = pvs(td, verify_depth, singular_beta - 1, singular_beta, ply, false, tt);
+			}
 
-		// Unwind invariant: the verification was cut off mid-tree, so its result is not
-		// ours to act on. No move has been searched yet, so best_value is still the
-		// sentinel -- the board was never touched, and there is nothing to restore.
-		if (control_.IsAborted())
-			return best_value;
+			// Unwind invariant: the verification was cut off mid-tree, so its result is not
+			// ours to act on. No move has been searched yet, so best_value is still the
+			// sentinel -- the board was never touched, and there is nothing to restore.
+			if (control_.IsAborted())
+				return best_value;
 
-		// Strict fail-low: no alternative reached the margin, so the hash move stands alone.
-		if (verify_value < singular_beta) {
-			singular_extension = 1;
-			td.singular_extensions++;
+			// Strict fail-low: no alternative reached the margin, so the hash move stands alone.
+			if (verify_value < singular_beta) {
+				singular_extension = 1;
+				td.singular_extensions++;
+			}
 		}
 	}
 
@@ -1450,8 +1459,9 @@ bool AIPerplex::should_try_null_move(const ThreadData& td, int depth, int beta, 
 	// A verification search is proving that every alternative MOVE fails below a margin.
 	// Passing is not one of those alternatives, so a null-move cutoff here would answer a
 	// different question and could call a move singular on the strength of a pass.
-	// Flag first, for the cold-array reason given at the top of pvs().
-	if (tuning_.singular_extensions_enabled && td.excluded_move[ply] != Move::EmptyMove())
+	// Gates first, for the cold-array reason given at the top of pvs().
+	if (kSingularExtensionsCompiled && tuning_.singular_extensions_enabled &&
+	    td.excluded_move[ply] != Move::EmptyMove())
 		return false;
 	if (is_pv_node || in_check)
 		return false;
