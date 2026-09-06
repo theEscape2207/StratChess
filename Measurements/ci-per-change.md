@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-09-05 | 86877f7 (minor-piece outposts, #112) | 9708c65 | 19980 | 10+0.1 | **+8.05 +/- 3.63** | gain |
 | 2026-09-03 | 0c64b7f (EXPERIMENT: middlegame `ISOLATED_PAWN_PENALTY` suppressed on the king's three files, #460) | 65e3f76 | 19980 | 10+0.1 | **+0.23 +/- 3.62** | no effect |
 | 2026-09-03 | e73d3f2 (ABLATION: `eval_castling` zeroed, #460) | 65e3f76 | 19980 | 10+0.1 | **-9.98 +/- 3.73** | regression |
 | 2026-09-03 | 40d62b1 (middlegame king PST flattened to zero, #97 PR 4) | 0eb981a (the #455 merge; the true merge base 41f6f2a differs from it by documentation only) | 19980 | 10+0.1 | **+18.54 +/- 3.62** | gain |
@@ -28,6 +29,14 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-09-05 -- 86877f7 (minor-piece outposts, #112) (19980 games)
+
+**The gate for the term, and it ships.** 18 shards x 555 pairs, pooled Ptnml(0-2) [772, 2225, 3665, 2424, 904], score 51.16%, run `33989392373`, 3 h 06 min wall-clock. 95% interval **[+4.4, +11.7]**, excluding zero by about 2.2 standard errors. **16 of the 18 shards** put the two winning buckets ahead of the two losing ones; shards 3 and 17 invert, which is what a real effect of this size looks like at 555 pairs rather than a defect. Zero illegal moves, zero time losses, zero disconnects, zero stalls; all 18 shards green.
+
+**What it settles.** That an explicit outpost term is worth shipping at all -- the question the epic's 5-20 Elo sketch could only guess at -- and that the phase-neutral first-cut weights (knight 15/20/25, bishop 8/12/16 by relative rank 4/5/6) are already net positive before any tuning. The nps cost measured at or below the local bench's +/-0.4% run-to-run spread, so essentially none of the gain is paid back in speed.
+
+**What it does not settle.** The split between the knight and bishop halves, measured together here: the bishop table has no colour-complex or own-pawn-blocking condition behind it and is the least-supported part of the payload, but separating it needs a knight-only ablation and its own 3 h. Nor the weights themselves, nor the `mg == eg` choice -- the detector's condition gets *easier* to satisfy as pawns leave the board, so a phase-neutral bonus fires most often in endings where an outpost is worth least, and an `eg` taper is the first retune to try (#117).
 
 ### 2026-09-03 -- 0c64b7f (EXPERIMENT: middlegame isolated penalty off the king's files, #460) (19980 games)
 
