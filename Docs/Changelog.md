@@ -22,6 +22,23 @@ Newest first.
 
 ---
 
+## 2026-09-06 — Retained-plan state named (#400)
+
+`.claude/plans/retained/` holds plans kept because something still cites them: `TEMPLATE.md`,
+`tsan-lazy-smp.md`, `public-repo-and-strength-lab.md`, `elo-baseline-measurement.md`,
+`full-build-test-ci-github-actions.md` and `validation-change-tiers.md`. With `not-started/` and
+`in-progress/` already carrying their own verdicts, the top level had come to mean
+"retained-by-definition" without saying so, leaving a future prune pass to re-derive it per file.
+
+16 inbound references rewritten across `CLAUDE.md`, `Docs/Changelog.md`, `Docs/CI.md`,
+`Docs/Workflow.md` and `.github/workflows/{build-and-test,strength}.yml` — audited, not
+bulk-rewritten, since most plan paths cited from the changelog point at harvested files that are
+deliberately git-history links. `Docs/Workflow.md` → Design document lifecycle now describes all
+four states plus deletion in one table, and states that a retained plan becomes deletable again once
+its last citation goes.
+
+---
+
 ## 2026-09-05 — Minor-piece outposts (#112)
 
 `Evaluator::eval_outposts` pays a knight or bishop for standing on a square a friendly pawn defends
@@ -1794,7 +1811,7 @@ within each build.
 - **`.github/scripts/tsan_smp_drive.py`** — the driver, committed rather than inlined in YAML so a CI
   failure reproduces locally. It waits for each command's completion token and treats an early exit
   as failure, which is what a race looks like under `-fno-sanitize-recover`.
-- `.claude/plans/tsan-lazy-smp.md` — survey, positive control, cost measurements and the CI
+- `.claude/plans/retained/tsan-lazy-smp.md` — survey, positive control, cost measurements and the CI
   contention analysis.
 
 ### Notes
@@ -2136,7 +2153,7 @@ constrains how that trigger can be designed.
 `.gitignore` blanket-ignores `/.github/*` behind an allowlist, so the new script was silently skipped
 by `git add -A` and the first dispatch died at the aggregate step on a file that was never committed.
 The allowlist now covers `.github/scripts/`. Design:
-`.claude/plans/public-repo-and-strength-lab.md`.
+`.claude/plans/retained/public-repo-and-strength-lab.md`.
 
 ---
 
@@ -2225,7 +2242,7 @@ belongs to the UCI layer, which is what owns the session.
 
 ## 2026-08-05 — Opening book is selectable, and book exhaustion is now visible
 
-M3 of `.claude/plans/public-repo-and-strength-lab.md`.
+M3 of `.claude/plans/retained/public-repo-and-strength-lab.md`.
 
 ### Added
 
@@ -2298,7 +2315,7 @@ perft allocates nothing per node. Reasoning recorded in `Docs/Workflow.md`.
 
 ## 2026-08-04 — Nightly correctness workflow
 
-M2 of `.claude/plans/public-repo-and-strength-lab.md`. `nightly.yml` runs at 03:00 UTC and on
+M2 of `.claude/plans/retained/public-repo-and-strength-lab.md`. `nightly.yml` runs at 03:00 UTC and on
 `workflow_dispatch`; it gates nothing.
 
 ### Added
@@ -2325,7 +2342,7 @@ Growing it belongs to #156.
 
 ## 2026-08-04 — Repository made public; CI un-gated and promoted to a merge gate
 
-Milestone M1 of `.claude/plans/public-repo-and-strength-lab.md`. Public standard runners are free and
+Milestone M1 of `.claude/plans/retained/public-repo-and-strength-lab.md`. Public standard runners are free and
 required status checks are available, so the rationing the private repository needed is reversed.
 
 ### Changed
@@ -2913,7 +2930,7 @@ compiled and never invoked by the engine.
 ### Files
 - `StratChessEvolved/Scripts/Get-ChangeTier.ps1` (new), `Scripts/Validate-PrePR.ps1`,
   `.github/workflows/build-and-test.yml`, `CLAUDE.md`
-- Plan: `.claude/plans/validation-change-tiers.md`
+- Plan: `.claude/plans/retained/validation-change-tiers.md`
 
 ---
 
@@ -3130,7 +3147,7 @@ smoke tests across all `go` modes. Plan: `.claude/plans/getmove-searchlimits-ref
 
 Sanity baseline: identical builds (SHA256-verified) pooled −1.4 ELO over 2×500 games — no
 instrument bias; measured per-batch noise ±25 ELO at this draw ratio. Plan:
-`.claude/plans/elo-baseline-measurement.md`; full setup/interpretation: `Docs/EloLog.md`.
+`.claude/plans/retained/elo-baseline-measurement.md`; full setup/interpretation: `Docs/EloLog.md`.
 
 ## 2026-07-03 — Extract ThreadData Structure (PR #74)
 

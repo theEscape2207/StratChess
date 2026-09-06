@@ -187,21 +187,41 @@ detail but is editable and lives outside Git, so important measurements should a
 from the tree. Anything durable living only in the plan has not been harvested yet.
 
 **Delete only when all three hold**: no inbound references, no deliberate spec/ADR role, and every
-durable item has a discoverable destination. Plans for **unstarted** work are specs and stay. So do
-records whose rationale is too substantial to inline — `.claude/plans/tsan-lazy-smp.md` is one,
-cited from `Docs/CI.md` for survey and cost analysis with no other home.
+durable item has a discoverable destination. Anything that fails one of those tests belongs in a
+named state instead.
 
-**`.claude/plans/not-started/`** holds plans that are designed but not yet started — the write-up is
-done, the issue is open, and no matching code exists yet. Write a new plan at the top level as usual;
-move it here once it's confirmed genuinely unstarted, which does not have to wait for a prune pass — a
-plan can move the moment it's written well ahead of when work on it begins. Verify before moving, not
-on a guess. Its payoff is sparing a future prune pass from re-deriving that verdict. Once the work
-starts, the file can stay put and go through the normal Harvest-then-delete flow from there when it
-lands — moving it back to the top level first is not required.
+### Plan states
 
-**`.claude/plans/in-progress/`** holds plans whose implementation has started. A plan is moved here
-(or written directly here) when work on it begins. Naming the remaining top-level state — plans
-retained because something still cites them — is #400.
+A plan lives in exactly one of these, and the directory is the verdict — so a prune pass reads the
+path instead of re-deriving why each file survived.
+
+| State | Where | Meaning |
+|---|---|---|
+| New | `.claude/plans/` | Written for work about to start, or in design review. Transient. |
+| Not started | `.claude/plans/not-started/` | Designed, issue open, no matching code yet. It is a spec. |
+| In progress | `.claude/plans/in-progress/` | Implementation has started but has not fully landed. |
+| Retained | `.claude/plans/retained/` | Harvested or finished, but something still cites it. |
+| Deleted | — | Harvest complete and nothing cites it. Git history keeps it resolvable. |
+
+**Not started** — move a plan here once it is confirmed genuinely unstarted; that does not have to
+wait for a prune pass, and a plan written well ahead of its work can move the moment it is written.
+Verify before moving, not on a guess. Once the work starts, the file may move to `in-progress/` or
+simply stay put and go through the normal Harvest-then-delete flow from there.
+
+**In progress** — a plan is moved here (or written directly here) when work on it begins. It leaves
+by being deleted after Harvest, or by moving to `retained/` if something still cites it.
+
+**Retained** — the residue: a document whose rationale is too substantial to inline anywhere else,
+so a doc, a workflow comment or CLAUDE.md points at the file itself.
+`.claude/plans/retained/tsan-lazy-smp.md` is the type case, cited from `Docs/CI.md` for its survey
+and cost analysis with no other home. `TEMPLATE.md` lives here too — CLAUDE.md cites it.
+
+A retained plan is not permanent. When its last inbound reference goes away — the citing doc is
+rewritten, or the rationale is inlined where it is read — it becomes deletable under the three
+conditions above. **Moving a file into `retained/` means fixing every path that names it**;
+`Docs/Changelog.md`, `Docs/CI.md` and `.github/workflows/*.yml` all cite plan paths. Most cited
+plans are already deleted and those links are git-history pointers that stay as they are, so audit
+the references before editing rather than bulk-rewriting them.
 
 ---
 
