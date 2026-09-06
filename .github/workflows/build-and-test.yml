@@ -100,9 +100,11 @@ jobs:
     # or Tooling merge to main runs nothing, because by definition nothing it
     # contains can affect the build.
     if: needs.classify.outputs.is_full == 'true'
-    # Pinned to the exact image (not the moving ubuntu-latest label) — the code
-    # needs GCC >= 13 for std::format, matching the Windows job's pinning approach.
-    runs-on: ubuntu-24.04
+    # THROWAWAY PROBE (issue #465) -- do not merge. Off ubuntu-24.04/GCC 13.3 and
+    # onto ubuntu-26.04, whose default toolchain is GCC 15.2.0, to read what its
+    # -Wall -Wextra -Werror output finds. sanitize-linux and tsan-linux stay on
+    # ubuntu-24.04, so they are the same-run control.
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     # Release and Debug are not redundant -- the same asymmetry documented for the
     # Windows job in issue #146 is compiler-independent. Debug keeps assert() and
