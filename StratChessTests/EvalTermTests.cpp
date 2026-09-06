@@ -333,6 +333,208 @@ TEST_CASE("Eval - eval_bishops: pair requires opposite square colours", "[eval]"
 
 // ── connected rooks (issue #114, inside eval_rooks) ──────────────────────────
 
+// ── eval_outposts (issue #112) ───────────────────────────────────────────────
+//
+// Asserted directly on the term rather than through whole-position deltas: the
+// positions below differ by a pawn or a piece square, which legitimately moves
+// PST, mobility and pawn-structure rows as well, so a total-score comparison
+// would be measuring several terms at once.
+
+TEST_CASE("Eval - eval_outposts: every outpost fixture describes the position it claims to", "[eval]")
+{
+	// Board leaves itself EMPTY for a FEN it rejects -- and an illegal position
+	// is rejected, with the assert compiled out of a Release build. Most cases
+	// below expect zero, so an empty board would satisfy them for the wrong
+	// reason. Round-tripping the placement is what rules that out.
+	const char* fen = GENERATE(from_range(kOutpostFens));
+	CAPTURE(fen);
+
+	Board board(fen);
+	const std::string placement = board.ExtractFEN().substr(0, board.ExtractFEN().find(' '));
+
+	REQUIRE(placement == std::string(fen).substr(0, std::string(fen).find(' ')));
+}
+
+TEST_CASE("Eval - eval_outposts: the weight tables are the values this experiment ships", "[eval]")
+{
+	// The one case that restates the literals. Every other case names them
+	// through the fixture, so a retune moves numbers in exactly one place --
+	// but a retune should still have to come past a failing test here, because
+	// the measured Elo result these weights are attached to is only valid for
+	// these weights.
+	REQUIRE(EvaluatorTestFixture::OutpostKnight(4) == 15);
+	REQUIRE(EvaluatorTestFixture::OutpostKnight(5) == 20);
+	REQUIRE(EvaluatorTestFixture::OutpostKnight(6) == 25);
+	REQUIRE(EvaluatorTestFixture::OutpostBishop(4) == 8);
+	REQUIRE(EvaluatorTestFixture::OutpostBishop(5) == 12);
+	REQUIRE(EvaluatorTestFixture::OutpostBishop(6) == 16);
+
+	// Relative ranks 1-3 and 7-8 are the gate, expressed as zero table entries.
+	for (const int relativeRank : {0, 1, 2, 3, 7, 8}) {
+		CAPTURE(relativeRank);
+		REQUIRE(EvaluatorTestFixture::OutpostKnight(relativeRank) == 0);
+		REQUIRE(EvaluatorTestFixture::OutpostBishop(relativeRank) == 0);
+	}
+}
+
+TEST_CASE("Eval - eval_outposts: a supported knight with no adjacent-file challenger scores its rank value", "[eval]")
+{
+	Board board(FEN_OUTPOST_KNIGHT_D5);
+
+	REQUIRE(EvaluatorTestFixture::Outposts(board, WHITE) == EvaluatorTestFixture::OutpostKnight(5));
+	REQUIRE(EvaluatorTestFixture::Outposts(board, BLACK) == 0);
+}
+
+TEST_CASE("Eval - eval_outposts: the term is phase-neutral", "[eval]")
+{
+	// Both endpoints equal, so the value cannot depend on how far through the
+	// taper a position sits. Asserted on the raw pair rather than inferred from
+	// two positions of different phase, which would also change the pieces.
+	const ScorePair pair = EvaluatorTestFixture::OutpostsPair(Board(FEN_OUTPOST_KNIGHT_D5), WHITE);
+
+	REQUIRE(pair.mg == EvaluatorTestFixture::OutpostKnight(5));
+	REQUIRE(pair.eg == pair.mg);
+}
+
+TEST_CASE("Eval - eval_outposts: an enemy pawn on either adjacent file ahead disqualifies", "[eval]")
+{
+	// Neither the e7 nor the c7 pawn attacks d5 today, so safe mobility sees no
+	// difference between these and the clean outpost. That future challenge is
+	// the whole content of the term.
+	const char* fen = GENERATE(FEN_OUTPOST_CHALLENGED_E7, FEN_OUTPOST_CHALLENGED_C7);
+	CAPTURE(fen);
+
+	Board board(fen);
+
+	REQUIRE(EvaluatorTestFixture::Outposts(board, WHITE) == 0);
+}
+
+TEST_CASE("Eval - eval_outposts: an enemy pawn already attacking the square disqualifies", "[eval]")
+{
+	Board board(FEN_OUTPOST_PAWN_ATTACKING);
+
+	REQUIRE(EvaluatorTestFixture::Outposts(board, WHITE) == 0);
+}
+
+TEST_CASE("Eval - eval_outposts: a blocked or pinned challenger still disqualifies", "[eval]")
+{
+	// The detector is a structural proxy, not a proof of safety: it models a
+	// pawn advancing down its own file and asks nothing about whether that
+	// advance is available this move. Pinning these cases keeps a later
+	// "improvement" from quietly widening the term without measuring it.
+	const char* fen = GENERATE(FEN_OUTPOST_BLOCKED_CHALLENGER, FEN_OUTPOST_PINNED_CHALLENGER);
+	CAPTURE(fen);
+
+	Board board(fen);
+
+	REQUIRE(EvaluatorTestFixture::Outposts(board, WHITE) == 0);
+}
+
+TEST_CASE("Eval - eval_outposts: pawn support is required, and is geometric", "[eval]")
+{
+	Board unsupported(FEN_OUTPOST_UNSUPPORTED);
+	REQUIRE(EvaluatorTestFixture::Outposts(unsupported, WHITE) == 0);
+
+	// A pinned supporting pawn still counts, for the same reason a pinned
+	// challenger still disqualifies: ctx.pawn_attacks is geometric.
+	Board pinnedSupport(FEN_OUTPOST_PINNED_SUPPORT);
+	REQUIRE(EvaluatorTestFixture::Outposts(pinnedSupport, WHITE) == EvaluatorTestFixture::OutpostKnight(4));
+}
+
+TEST_CASE("Eval - eval_outposts: a same-file or already-passed enemy pawn does not disqualify", "[eval]")
+{
+	// The d7 pawn shares the knight's file and can only ever block it; the c5
+	// pawn is level with the knight and can no longer reach c6. The d7 pawn is
+	// inside the raw passed-pawn span and would disqualify without the file
+	// mask. The c5 pawn is in NEITHER colour's span from d5, so what it guards
+	// against is a detector widened to the whole adjacent file rather than a
+	// reversed one -- the span's orientation is pinned by the Black-side case
+	// below.
+	const char* fen = GENERATE(FEN_OUTPOST_SAME_FILE_PAWN, FEN_OUTPOST_PAWN_PAST_SPAN);
+	CAPTURE(fen);
+
+	Board board(fen);
+
+	REQUIRE(EvaluatorTestFixture::Outposts(board, WHITE) == EvaluatorTestFixture::OutpostKnight(5));
+}
+
+TEST_CASE("Eval - eval_outposts: Black's challenge span runs the other way", "[eval]")
+{
+	// Every case above scores White, and the White frame does not discriminate
+	// the span's DIRECTION: a detector that used the White span for both colours
+	// would compute c5-c8/e5-e8 for a Black knight on d4, find nothing there in
+	// any mirrored fixture, and still pay the bonus. Mirroring the challenged
+	// case is what closes that -- the White pawn lands on e2, which is inside
+	// Black's span from d4 and outside White's.
+	Board outpost(MirrorFen(FEN_OUTPOST_KNIGHT_D5));
+	REQUIRE(EvaluatorTestFixture::Outposts(outpost, BLACK) == EvaluatorTestFixture::OutpostKnight(5));
+	REQUIRE(EvaluatorTestFixture::Outposts(outpost, WHITE) == 0);
+
+	Board challenged(MirrorFen(FEN_OUTPOST_CHALLENGED_E7));
+	REQUIRE(EvaluatorTestFixture::Outposts(challenged, BLACK) == 0);
+}
+
+TEST_CASE("Eval - eval_outposts: the challenge span does not wrap around the board edge", "[eval]")
+{
+	// A knight on a5 has exactly one adjacent file. The Black pawn sits on h7 in
+	// the first case, which a wrapped mask would read as a challenger.
+	Board edge(FEN_OUTPOST_EDGE_FILE);
+	REQUIRE(EvaluatorTestFixture::Outposts(edge, WHITE) == EvaluatorTestFixture::OutpostKnight(5));
+
+	Board challenged(FEN_OUTPOST_EDGE_FILE_CHALLENGED);
+	REQUIRE(EvaluatorTestFixture::Outposts(challenged, WHITE) == 0);
+}
+
+TEST_CASE("Eval - eval_outposts: the bonus rises with relative rank and stops outside 4-6", "[eval]")
+{
+	// The same supported knight walked up the board. Ranks 3 and 7 are the two
+	// boundaries; a gate that was off by one in either direction pays one of
+	// them.
+	Board rank3(FEN_OUTPOST_RANK_3);
+	Board rank4(FEN_OUTPOST_RANK_4);
+	Board rank5(FEN_OUTPOST_KNIGHT_D5);
+	Board rank6(FEN_OUTPOST_RANK_6);
+	Board rank7(FEN_OUTPOST_RANK_7);
+
+	REQUIRE(EvaluatorTestFixture::Outposts(rank3, WHITE) == 0);
+	REQUIRE(EvaluatorTestFixture::Outposts(rank4, WHITE) == EvaluatorTestFixture::OutpostKnight(4));
+	REQUIRE(EvaluatorTestFixture::Outposts(rank5, WHITE) == EvaluatorTestFixture::OutpostKnight(5));
+	REQUIRE(EvaluatorTestFixture::Outposts(rank6, WHITE) == EvaluatorTestFixture::OutpostKnight(6));
+	REQUIRE(EvaluatorTestFixture::Outposts(rank7, WHITE) == 0);
+
+	REQUIRE(EvaluatorTestFixture::Outposts(rank4, WHITE) < EvaluatorTestFixture::Outposts(rank5, WHITE));
+	REQUIRE(EvaluatorTestFixture::Outposts(rank5, WHITE) < EvaluatorTestFixture::Outposts(rank6, WHITE));
+}
+
+TEST_CASE("Eval - eval_outposts: a bishop scores from its own, smaller table", "[eval]")
+{
+	Board bishop(FEN_OUTPOST_BISHOP_D5);
+	Board knight(FEN_OUTPOST_KNIGHT_D5);
+
+	REQUIRE(EvaluatorTestFixture::Outposts(bishop, WHITE) == EvaluatorTestFixture::OutpostBishop(5));
+	REQUIRE(EvaluatorTestFixture::Outposts(bishop, WHITE) < EvaluatorTestFixture::Outposts(knight, WHITE));
+}
+
+TEST_CASE("Eval - eval_outposts: every minor on an outpost is paid, not just one", "[eval]")
+{
+	// Loops the bitboards, so nothing here assumes two knights per side -- an
+	// underpromoted third would be scored the same way.
+	Board board(FEN_OUTPOST_TWO_KNIGHTS);
+
+	REQUIRE(EvaluatorTestFixture::Outposts(board, WHITE) == 2 * EvaluatorTestFixture::OutpostKnight(5));
+}
+
+TEST_CASE("Eval - eval_outposts: a pawnless scaled ending has no outposts to score", "[eval]")
+{
+	// Support is a pawn attack, so a pawnless class necessarily scores zero.
+	// That is the boundary worth asserting; a pawn-supported pawnless position
+	// does not exist to write a fixture for.
+	Board board(FEN_ROOK_AND_MINOR_VS_ROOK);
+
+	REQUIRE(EvaluatorTestFixture::Outposts(board, WHITE) == 0);
+	REQUIRE(EvaluatorTestFixture::Outposts(board, BLACK) == 0);
+}
+
 TEST_CASE("Eval - eval_rooks: connected rooks require a clear line between them", "[eval]")
 {
 	// Same back rank, nothing between, versus the same two rooks with a piece
@@ -498,16 +700,16 @@ TEST_CASE("Eval - the per-term functions sum exactly to Evaluator::Evaluate()'s 
 	    EvaluatorTestFixture::Pawns(board, WHITE) + EvaluatorTestFixture::Rooks(board, WHITE) +
 	    EvaluatorTestFixture::Pst(board, WHITE) + EvaluatorTestFixture::Mopup(board, WHITE) +
 	    EvaluatorTestFixture::Bishops(board, WHITE) + EvaluatorTestFixture::Castling(board, WHITE) +
-	    EvaluatorTestFixture::Mobility(board, WHITE) + EvaluatorTestFixture::KingShelter(board, WHITE) +
-	    EvaluatorTestFixture::KingStorm(board, WHITE) + EvaluatorTestFixture::KingFiles(board, WHITE) +
-	    EvaluatorTestFixture::KingAttack(board, WHITE);
+	    EvaluatorTestFixture::Mobility(board, WHITE) + EvaluatorTestFixture::Outposts(board, WHITE) +
+	    EvaluatorTestFixture::KingShelter(board, WHITE) + EvaluatorTestFixture::KingStorm(board, WHITE) +
+	    EvaluatorTestFixture::KingFiles(board, WHITE) + EvaluatorTestFixture::KingAttack(board, WHITE);
 	const int bonusBlack =
 	    EvaluatorTestFixture::Pawns(board, BLACK) + EvaluatorTestFixture::Rooks(board, BLACK) +
 	    EvaluatorTestFixture::Pst(board, BLACK) + EvaluatorTestFixture::Mopup(board, BLACK) +
 	    EvaluatorTestFixture::Bishops(board, BLACK) + EvaluatorTestFixture::Castling(board, BLACK) +
-	    EvaluatorTestFixture::Mobility(board, BLACK) + EvaluatorTestFixture::KingShelter(board, BLACK) +
-	    EvaluatorTestFixture::KingStorm(board, BLACK) + EvaluatorTestFixture::KingFiles(board, BLACK) +
-	    EvaluatorTestFixture::KingAttack(board, BLACK);
+	    EvaluatorTestFixture::Mobility(board, BLACK) + EvaluatorTestFixture::Outposts(board, BLACK) +
+	    EvaluatorTestFixture::KingShelter(board, BLACK) + EvaluatorTestFixture::KingStorm(board, BLACK) +
+	    EvaluatorTestFixture::KingFiles(board, BLACK) + EvaluatorTestFixture::KingAttack(board, BLACK);
 
 	// The endgame scale is not a term, so it cannot be rebuilt from the term
 	// functions; it is taken from the breakdown, whose own agreement with
@@ -549,6 +751,7 @@ TEST_CASE("Eval - Breakdown(): every row equals the term function it reports", "
 		REQUIRE(terms.mopup[color] == EvaluatorTestFixture::Mopup(board, color));
 		REQUIRE(terms.bishops[color] == EvaluatorTestFixture::Bishops(board, color));
 		REQUIRE(terms.castling[color] == EvaluatorTestFixture::Castling(board, color));
+		REQUIRE(terms.outposts[color] == EvaluatorTestFixture::Outposts(board, color));
 	}
 }
 

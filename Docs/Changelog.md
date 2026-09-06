@@ -22,7 +22,7 @@ Newest first.
 
 ---
 
-## 2026-09-06 — Singular extensions, disabled by default (#95)
+## 2026-09-06 — Singular extensions, compiled out of the shipping engine (#95)
 
 `AIPerplex::pvs()` can search a transposition-table move one ply deeper when a reduced-depth
 verification search proves every alternative fails below a depth-scaled margin. **The feature is
@@ -66,6 +66,72 @@ now carries one at `ply >= MAX_PLY - 1` (matching `quiescence()`'s), placed firs
 `excluded_move[ply]` read — `pvs()` writes `last_move_was_null[ply + 1]`, which is what sets the
 limit at `MAX_PLY - 1`. `Docs/EngineContracts.md` gains the fact that `SearchTuning` is unreachable
 over UCI, which is why the two configurations are two builds rather than a setoption.
+## 2026-09-06 — Retained-plan state named (#400)
+
+`.claude/plans/retained/` holds plans kept because something still cites them:
+`tsan-lazy-smp.md`, `public-repo-and-strength-lab.md`, `elo-baseline-measurement.md`,
+`full-build-test-ci-github-actions.md` and `validation-change-tiers.md`. With `not-started/` and
+`in-progress/` already carrying their own verdicts, the top level had come to mean
+"retained-by-definition" without saying so, leaving a future prune pass to re-derive it per file.
+It now holds only `TEMPLATE.md` and plans in flight.
+
+15 inbound references rewritten across `Docs/Changelog.md`, `Docs/CI.md`, `Docs/Workflow.md` and
+`.github/workflows/{build-and-test,strength}.yml` — audited, not bulk-rewritten, since most plan
+paths cited from the changelog point at harvested files that are deliberately git-history links.
+`Docs/Workflow.md` → Design document lifecycle now describes all four states plus deletion in one
+table, and states that a retained plan becomes deletable again once its last citation goes.
+
+`in-progress/` is materialised with a `.gitkeep` so all three states exist in the tree rather than
+appearing only when first used. `selftest-coverage-rule.md` is deleted: #395 is closed, nothing
+cites it, and every Harvest row was verified in place — the one item with no destination in the
+tree, D5's unverified assumption that the self-test set would pass on Linux, is now a comment on
+#395.
+
+---
+
+## 2026-09-05 — Minor-piece outposts (#112)
+
+`Evaluator::eval_outposts` pays a knight or bishop for standing on a square a friendly pawn defends
+that no enemy pawn on an adjacent file can still advance to attack. Nothing else in the evaluator
+asked that question: the PST sees only piece type and square, and safe mobility prices the squares a
+piece can move *to* while removing only what enemy pawns cover right now — so a supported white
+knight on d5 with no black c/e-pawn scored the same as one a black e7-pawn can challenge with ...e6.
+
+The detector is three tests: relative rank 4-6, `ctx.pawn_attacks[us]` covers the square, and no
+enemy pawn sits in the piece's own passed-pawn span minus its own file. The span is taken in the
+PIECE's forward direction, so a pawn already level with or behind the minor cannot disqualify it,
+and the file mask drops same-file pawns, which can block the piece but never attack it. It is a
+structural proxy, not a proof of safety: it models a pawn advancing down its own file and nothing
+else, so a blocked or pinned challenger still disqualifies and a pinned friendly pawn still
+supports. No new table, cache, attack generation or mutable state — the support test is applied to
+the knight and bishop bitboards before the scan, so the loop body usually runs zero or one times per
+side.
+
+Weights are phase-neutral and untuned: 15/20/25 cp for a knight on relative rank 4/5/6, 8/12/16 cp
+for a bishop. They are a first-cut hypothesis, deliberately without a second mg/eg axis; #117 owns
+tuning. The term is its own `EvalBreakdown` row and its own UCI `eval` table row, so it cannot hide
+inside mobility.
+
+Validation: term-level cases in `EvalTermTests.cpp` drive each condition from one frame, including
+both adjacent files, the same-file and already-passed pawns, blocked and pinned challengers, a
+pinned supporting pawn, the a-file no-wrap case, both boundary ranks and two knights summing. Two
+deliberate mutations — dropping the file mask, and using the enemy's span — were each caught by the
+suite. Every outpost FEN is round-tripped through `Board::ExtractFEN` first: an illegal FEN leaves
+the board EMPTY, which scores zero outposts and would have satisfied most of these cases for the
+wrong reason (it did, once, before the guard). Full fast suite, Debug suite and lint pass.
+
+Speed: four interleaved same-toolchain Release `Run-Bench.ps1` passes at `Threads=1`, aggregate nps
+2.73M before and after — inside the ±0.4% spread of the runs themselves, so the detector's cost is
+below what this instrument resolves. Node counts differ between the two builds, as they must for an
+evaluation change, so wall clock is quoted alongside: 6,572 ms before against 6,482 ms after over
+1.26% fewer nodes.
+
+Strength: **+8.05 ± 3.63 Elo** against the merge base over 19,980 games at 10+0.1 (run
+`33989392373`, row in `Measurements/ci-per-change.md`) — a 95% interval of [+4.4, +11.7], with 14 of
+the 18 shards scoring above 50%. The untuned weights above are net positive as they stand; the
+knight/bishop split and the `mg == eg` choice are unmeasured and left to #117.
+
+Part of the #110 eval epic.
 
 ## 2026-09-05 — Collapse evaluator selection to one concrete evaluator (#457)
 
@@ -1795,7 +1861,7 @@ within each build.
 - **`.github/scripts/tsan_smp_drive.py`** — the driver, committed rather than inlined in YAML so a CI
   failure reproduces locally. It waits for each command's completion token and treats an early exit
   as failure, which is what a race looks like under `-fno-sanitize-recover`.
-- `.claude/plans/tsan-lazy-smp.md` — survey, positive control, cost measurements and the CI
+- `.claude/plans/retained/tsan-lazy-smp.md` — survey, positive control, cost measurements and the CI
   contention analysis.
 
 ### Notes
@@ -2137,7 +2203,7 @@ constrains how that trigger can be designed.
 `.gitignore` blanket-ignores `/.github/*` behind an allowlist, so the new script was silently skipped
 by `git add -A` and the first dispatch died at the aggregate step on a file that was never committed.
 The allowlist now covers `.github/scripts/`. Design:
-`.claude/plans/public-repo-and-strength-lab.md`.
+`.claude/plans/retained/public-repo-and-strength-lab.md`.
 
 ---
 
@@ -2226,7 +2292,7 @@ belongs to the UCI layer, which is what owns the session.
 
 ## 2026-08-05 — Opening book is selectable, and book exhaustion is now visible
 
-M3 of `.claude/plans/public-repo-and-strength-lab.md`.
+M3 of `.claude/plans/retained/public-repo-and-strength-lab.md`.
 
 ### Added
 
@@ -2299,7 +2365,7 @@ perft allocates nothing per node. Reasoning recorded in `Docs/Workflow.md`.
 
 ## 2026-08-04 — Nightly correctness workflow
 
-M2 of `.claude/plans/public-repo-and-strength-lab.md`. `nightly.yml` runs at 03:00 UTC and on
+M2 of `.claude/plans/retained/public-repo-and-strength-lab.md`. `nightly.yml` runs at 03:00 UTC and on
 `workflow_dispatch`; it gates nothing.
 
 ### Added
@@ -2326,7 +2392,7 @@ Growing it belongs to #156.
 
 ## 2026-08-04 — Repository made public; CI un-gated and promoted to a merge gate
 
-Milestone M1 of `.claude/plans/public-repo-and-strength-lab.md`. Public standard runners are free and
+Milestone M1 of `.claude/plans/retained/public-repo-and-strength-lab.md`. Public standard runners are free and
 required status checks are available, so the rationing the private repository needed is reversed.
 
 ### Changed
@@ -2914,7 +2980,7 @@ compiled and never invoked by the engine.
 ### Files
 - `StratChessEvolved/Scripts/Get-ChangeTier.ps1` (new), `Scripts/Validate-PrePR.ps1`,
   `.github/workflows/build-and-test.yml`, `CLAUDE.md`
-- Plan: `.claude/plans/validation-change-tiers.md`
+- Plan: `.claude/plans/retained/validation-change-tiers.md`
 
 ---
 
@@ -3131,7 +3197,7 @@ smoke tests across all `go` modes. Plan: `.claude/plans/getmove-searchlimits-ref
 
 Sanity baseline: identical builds (SHA256-verified) pooled −1.4 ELO over 2×500 games — no
 instrument bias; measured per-batch noise ±25 ELO at this draw ratio. Plan:
-`.claude/plans/elo-baseline-measurement.md`; full setup/interpretation: `Docs/EloLog.md`.
+`.claude/plans/retained/elo-baseline-measurement.md`; full setup/interpretation: `Docs/EloLog.md`.
 
 ## 2026-07-03 — Extract ThreadData Structure (PR #74)
 

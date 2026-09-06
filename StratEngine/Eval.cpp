@@ -216,6 +216,57 @@ ScorePair Evaluator::eval_bishops(const EvalContext& ctx, eColor color) noexcept
 	return ScorePair{BISHOP_PAIR_BONUS_MG, BISHOP_PAIR_BONUS_EG};
 }
 
+// eval_outposts -- knights and bishops on secure advanced squares (issue #112).
+//
+// A minor scores when three things hold at once: it stands on relative rank 4-6,
+// a friendly pawn defends the square it occupies, and no enemy pawn remains on an
+// ADJACENT file ahead of it. Nothing else in the evaluator asks that question --
+// the PST sees only piece type and square, and mobility prices the squares a
+// piece can move TO while removing only what enemy pawns cover right now.
+//
+// The third test reuses the passed-pawn spans, which cover a square's own file
+// plus both neighbours ahead of it, with the own file masked off: a same-file
+// pawn can block the piece but can never attack it. The span is taken in the
+// PIECE's forward direction, so for a white knight on d5 it selects black pawns
+// on c6-c8 and e6-e8 -- exactly the pawns that can still step to c6 or e6 and
+// attack d5. A black pawn on c5 or e4 is already past that chance and must not
+// disqualify the outpost.
+//
+// This is a structural proxy, not a proof of permanent safety: it models a pawn
+// advancing down its own file and nothing else, so it ignores blockers, pins,
+// tempo, and captures that move a pawn onto another file. A blocked or pinned
+// adjacent pawn still disqualifies; a pawn that could later capture onto an
+// adjacent file does not. ctx.pawn_attacks is geometric for the same reason, so
+// a pinned friendly pawn still counts as support.
+ScorePair Evaluator::eval_outposts(const EvalContext& ctx, eColor color) noexcept
+{
+	const eColor enemy = (color == WHITE) ? BLACK : WHITE;
+	const ePiece knightPiece = (color == WHITE) ? ePiece::WHITE_KNIGHT : ePiece::BLACK_KNIGHT;
+	const ePiece bishopPiece = (color == WHITE) ? ePiece::WHITE_BISHOP : ePiece::BLACK_BISHOP;
+	const BITBOARD knights = ctx.boards[knightPiece];
+	const BITBOARD enemyPawns = ctx.pawns[enemy];
+
+	// The support test is applied to the whole set before the scan, not once per
+	// piece: on most positions that leaves nothing to iterate at all, and the
+	// loop body never runs for a minor that could not have scored anyway.
+	int score = 0;
+	auto remaining = (knights | ctx.boards[bishopPiece]) & ctx.pawn_attacks[color];
+	while (remaining) {
+		const eSquare square = Board::GetFirstPiece(remaining);
+		remaining = Bits::clearLsb(remaining);
+
+		const BITBOARD forwardSpan = (color == WHITE) ? g_bbPassedMaskWhite[square] : g_bbPassedMaskBlack[square];
+		if (enemyPawns & forwardSpan & ~g_bbFileMask[File(square)])
+			continue;
+
+		const int relativeRank = RelativeRank(square, color);
+		score += (knights & (UNIT << square)) ? OUTPOST_KNIGHT[relativeRank] : OUTPOST_BISHOP[relativeRank];
+	}
+
+	// Phase-neutral by design -- see the weight tables in Eval.h.
+	return ScorePair{score, score};
+}
+
 // eval_castling -- king-shelter proxy for one color (issue #115).
 //
 // Derived from castling RIGHTS plus king placement, never from move history.
@@ -1010,9 +1061,9 @@ int Evaluator::RawWhitePov(const EvalContext& ctx) noexcept
 		blended[c] = BlendPhase(eval_pawns(ctx, c), ctx.phase) + BlendPhase(eval_rooks(ctx, c), ctx.phase) +
 		             BlendPhase(eval_pst(ctx, c), ctx.phase) + BlendPhase(eval_mopup(ctx, c), ctx.phase) +
 		             BlendPhase(eval_bishops(ctx, c), ctx.phase) + BlendPhase(eval_castling(ctx, c), ctx.phase) +
-		             BlendPhase(eval_mobility(ctx, c), ctx.phase) + BlendPhase(cover.shelter, ctx.phase) +
-		             BlendPhase(cover.storm, ctx.phase) + BlendPhase(cover.files, ctx.phase) +
-		             BlendPhase(eval_king_attack(ctx, c), ctx.phase);
+		             BlendPhase(eval_mobility(ctx, c), ctx.phase) + BlendPhase(eval_outposts(ctx, c), ctx.phase) +
+		             BlendPhase(cover.shelter, ctx.phase) + BlendPhase(cover.storm, ctx.phase) +
+		             BlendPhase(cover.files, ctx.phase) + BlendPhase(eval_king_attack(ctx, c), ctx.phase);
 	}
 
 	return (ctx.material[WHITE] + blended[WHITE]) - (ctx.material[BLACK] + blended[BLACK]);
@@ -1094,6 +1145,7 @@ EvalBreakdown Evaluator::Breakdown(const Board& board) const noexcept
 		.bishops  = { BlendPhase(eval_bishops(ctx, WHITE), ctx.phase), BlendPhase(eval_bishops(ctx, BLACK), ctx.phase) },
 		.castling = { BlendPhase(eval_castling(ctx, WHITE), ctx.phase), BlendPhase(eval_castling(ctx, BLACK), ctx.phase) },
 		.mobility = { BlendPhase(eval_mobility(ctx, WHITE), ctx.phase), BlendPhase(eval_mobility(ctx, BLACK), ctx.phase) },
+		.outposts = { BlendPhase(eval_outposts(ctx, WHITE), ctx.phase), BlendPhase(eval_outposts(ctx, BLACK), ctx.phase) },
 		.king_shelter = { BlendPhase(coverWhite.shelter, ctx.phase), BlendPhase(coverBlack.shelter, ctx.phase) },
 		.king_storm   = { BlendPhase(coverWhite.storm,   ctx.phase), BlendPhase(coverBlack.storm,   ctx.phase) },
 		.king_files   = { BlendPhase(coverWhite.files,   ctx.phase), BlendPhase(coverBlack.files,   ctx.phase) },

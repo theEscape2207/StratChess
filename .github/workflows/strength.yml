@@ -14,7 +14,7 @@ name: Strength lab
 # worse than none, because its output looks exactly like a measurement. It gets
 # calibrated against a null test and a known-sign control before anything
 # triggers it automatically. Calibration runs are recorded in
-# .claude/plans/public-repo-and-strength-lab.md and Measurements/README.md.
+# .claude/plans/retained/public-repo-and-strength-lab.md and Measurements/README.md.
 on:
   workflow_dispatch:
     inputs:
@@ -61,7 +61,7 @@ env:
   # Pinned to a commit rather than master so a re-run measures the same book.
   # Not committed to this repository: it is third-party data, and external test
   # assets live outside the checkout by convention (see M3 in
-  # .claude/plans/public-repo-and-strength-lab.md).
+  # .claude/plans/retained/public-repo-and-strength-lab.md).
   BOOK_URL: https://raw.githubusercontent.com/official-stockfish/books/04738d057446e749cb071d58bac39df7f13efb47/UHO_4060_v3.epd.zip
   BOOK_FILE: UHO_4060_v3.epd
 
