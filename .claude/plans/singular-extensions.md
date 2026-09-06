@@ -295,8 +295,14 @@ Guards applied inside a frame whose `td.excluded_move[ply]` is non-empty:
   consequence of a tunable's default.
 - **No exclusion search ever probes or stores the MAIN TT under its position's key.** A partial move
   set must never be cached as if all legal moves were available.
-- **A frame does not re-enter verification at its own ply.** This is what the per-ply flag enforces,
-  and it is the whole of the guarantee: nodes *below* an exclusion frame carry an empty slot and may
+- **A frame does not re-enter verification at its own ply.** What enforces this is the **skipped TT
+  probe**, not the `!is_exclusion_frame` term in the eligibility conjunction: with no probe an
+  exclusion frame has no hash move and no usable entry, so the gate cannot pass however the rest of
+  it is written. Removing that term alone changes no behaviour — established by falsification, which
+  left the suite green until a test was written against the probe skip itself. The term is kept as
+  defence in depth and labelled as such in the source.
+
+  The guarantee is per-frame only: nodes *below* an exclusion frame carry an empty slot and may
   trigger their own verifications. That is intended — they are ordinary nodes in a real subtree —
   and it is why the cost is bounded by the eligibility gate rather than by a nesting rule.
 - **Null-move pruning is off inside an exclusion search.** A pass is not one of the alternatives
@@ -314,7 +320,7 @@ Engine tier.
 |---|---|
 | The mechanism changes today's search tree | `Compare-SearchEquivalence.ps1 -After <exe>`: identical node counts and best moves at `Threads=1`, flag off |
 | The added branches cost speed even when off | Repeated `Run-Bench.ps1` passes, flag-off build vs. `main`, compared on **nps**. Equivalence proves the tree is the same; only nps proves the same tree is not reached more slowly under a clock |
-| Exclusion semantics are wrong | Unit tests per guard, each falsified against the unfixed code before being trusted |
+| Exclusion semantics are wrong | Unit tests per guard, each falsified by patching the guard out and confirming the suite goes red, with an unmutated control run that must stay green — a harness whose rebuild is broken reports every mutation red for the wrong reason |
 | Unbounded ply / OOB per-thread array access | A test driving repeated extensions toward the boundary; Debug-build run (Release passes OOB reads silently); Linux Debug + sanitizers in CI |
 | Enabled path crashes, hangs, or loses tactics | Tactical suite at `Threads=1` and `Threads=4` on the flag-on build, including the killer/LMR interaction in the assumptions above |
 | Enabled path's cost is unacceptable | Repeated `Run-Bench.ps1` on the flag-on build, reported as per-position wall clock plus MAIN/QS node movement — not aggregate nps, since the tree changes when the flag is on |

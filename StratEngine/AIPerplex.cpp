@@ -652,6 +652,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// the loop re-checks that it was also the first LEGAL one before applying the extension.
 	// A hash move that fails legality wastes one verification and grants nothing.
 	int singular_extension = 0;
+	// !is_exclusion_frame is defence in depth, not the thing that stops a nested verification:
+	// an exclusion frame skipped the TT probe, so it has no hash move and no usable entry and
+	// fails the gate on those terms first. Kept so the intent survives a future change to what
+	// an exclusion frame is allowed to read.
 	const bool singular_eligible = tuning_.singular_extensions_enabled && ply > 0 && !in_check && !is_exclusion_frame &&
 	                               depth >= tuning_.singular_min_depth && tt_usable_for_singular && n > 0 &&
 	                               moveList[scored_idx[0].second] == hash_move;

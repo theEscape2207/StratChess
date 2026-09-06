@@ -22,6 +22,29 @@ Newest first.
 
 ---
 
+## 2026-09-06 — Singular extensions, disabled by default (#95)
+
+`AIPerplex::pvs()` can now search a transposition-table move one ply deeper when a reduced-depth
+verification search proves every alternative fails below a depth-scaled margin. **The feature ships
+off** (`SearchTuning::singular_extensions_enabled = false`): the mechanism and its tests are here,
+but no measured Elo result justifies enabling it, and with the flag off the search is node-identical
+to the previous build. Flipping it on is a separate change that cannot merge without a match.
+
+The exclusion state is `ThreadData::excluded_move[ply]`, mirroring the existing
+`last_move_was_null[ply]`, set only by an RAII `ExcludedMoveGuard`. A verification search re-enters
+`pvs()` at the *same* ply, so an exclusion frame skips the PV-row clear, the TT probe and store,
+null-move pruning, and the excluded move itself; a node whose only legal move was excluded fails low
+instead of adjudicating checkmate or stalemate. The verification is issued before the move loop,
+because the loop learns a move is legal only from `DoMove()` returning true — by then the board
+holds the child, and the verification must search the parent.
+
+Also fixes a latent bug independent of the feature: `pvs()` had no absolute ply backstop, relying on
+depth falling on every recursive call to bound the recursion. An extension holds depth flat, so it
+now carries one at `ply >= MAX_PLY - 1` (matching `quiescence()`'s), placed first so it bounds the
+`excluded_move[ply]` read — `pvs()` writes `last_move_was_null[ply + 1]`, which is what sets the
+limit at `MAX_PLY - 1`. `Docs/EngineContracts.md` gains the fact that `SearchTuning` is unreachable
+over UCI, which is why the two configurations are two builds rather than a setoption.
+
 ## 2026-09-05 — Collapse evaluator selection to one concrete evaluator (#457)
 
 `EvalManager` (the `EvalTypes` enum, its factory) and the unused `EvalSimple` evaluator are gone;
