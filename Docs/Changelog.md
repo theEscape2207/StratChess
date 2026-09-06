@@ -60,8 +60,8 @@ evaluation change, so wall clock is quoted alongside: 6,572 ms before against 6,
 1.26% fewer nodes.
 
 Strength: **+8.05 ± 3.63 Elo** against the merge base over 19,980 games at 10+0.1 (run
-`33989392373`, row in `Measurements/ci-per-change.md`) — a 95% interval of [+4.4, +11.7], with 16 of
-the 18 shards on the same side. The untuned weights above are net positive as they stand; the
+`33989392373`, row in `Measurements/ci-per-change.md`) — a 95% interval of [+4.4, +11.7], with 14 of
+the 18 shards scoring above 50%. The untuned weights above are net positive as they stand; the
 knight/bishop split and the `mg == eg` choice are unmeasured and left to #117.
 
 Design: `.claude/plans/minor-piece-outposts.md`. Part of the #110 eval epic.
