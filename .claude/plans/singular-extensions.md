@@ -20,10 +20,12 @@ Elo result.
 
 **This change will:**
 
-- Add a per-ply exclusion state to `AIPerplex::pvs()` and the six guards that make an exclusion
-  search safe (no PV row clear, no TT probe, no TT store, no null move, no terminal adjudication).
+- Add a per-ply exclusion state to `AIPerplex::pvs()` and the guards that make an exclusion search
+  safe (no PV row clear, no TT probe, no TT store, no null move, no terminal adjudication).
+- Add an absolute ply backstop to `pvs()`. It has none today (D6), and an extension removes the
+  depth-decreases-monotonically argument that stands in for one.
 - Add a conservative singular trigger at the hash move, gated behind `SearchTuning` knobs.
-- Add regression coverage for the exclusion semantics and the eligibility boundaries.
+- Add regression coverage for the exclusion semantics, the eligibility boundaries and the backstop.
 - Add three per-thread telemetry counters so the trigger rate and cost can be measured.
 
 **This change will not:**
@@ -32,8 +34,10 @@ Elo result.
   node-identical to `main`.
 - Add double extensions, negative extensions or multi-cut pruning. Those are the tuned refinements
   Stockfish layers *on top* of a working singular check, and each needs its own measurement.
-- Tune the knobs. The defaults below are starting points chosen to be conservative, not tuned
-  values.
+- Build a runtime configuration route for `SearchTuning` (D5). The two configurations this PR needs
+  are covered by two builds; a route is a prerequisite for the tuning follow-up, not for this merge.
+- Fix #305 (D7). The change makes deeper plies reachable in principle but does not bring ply 100
+  within reach.
 - Produce an Elo verdict. Bench cost and trigger rate are reported; the measurement budget beyond
   that is the project owner's call.
 
@@ -50,6 +54,12 @@ readability. The precedent in `ThreadData` is what makes the implicit version le
 surprising: a reader who understands `last_move_was_null` understands this immediately.
 
 Rejected: a `SearchFrame` aggregate. One field does not justify a new type.
+
+**Lifetime.** The array is value-initialised to empty moves with the rest of `ThreadData`, and the
+slot is set and restored by an RAII guard around the verification call — not by a bare
+set/call/clear sequence. The verification search can return through the abort path, and a scope
+guard makes restoration independent of how the call returns. A leaked non-empty slot would silently
+disable the TT and null move for every later node at that ply.
 
 ### D2: The verification search re-enters `pvs()` at the *same* ply
 
@@ -83,12 +93,98 @@ exclusion that is a lie about the real position, and storing it would poison the
 subsequent probe. The exclusion branch returns `alpha` — a fail-low, i.e. "no alternative reached
 the margin", which is exactly the answer a verification search wants — and writes nothing.
 
-### D5: Knobs live on `SearchTuning` while experimenting
+### D5: Two builds, not a runtime configuration route
 
-`singular_extensions_enabled` (false), `singular_min_depth` (8), `singular_tt_depth_margin` (3),
-`singular_margin_factor` (2). Putting them on `SearchTuning` is what makes the follow-up measurable
-without a rebuild per candidate. Only the knobs a measurement justifies survive into the enabled
-version; the rest collapse to constants.
+The knobs are `SearchTuning` fields: `singular_extensions_enabled` (false), `singular_min_depth`
+(8), `singular_tt_depth_margin` (3), `singular_margin_factor` (2).
+
+**`SearchTuning` is not reachable from a UCI search.** `UciHandler::init_ai()` builds
+`AIPerplexConfig` from hardcoded values and never consults `game_settings.json` or `PlayerFactory`;
+`search_tuning` reaches only the `game`-mode path, and `cmd_setoption` recognises just `Threads` and
+`Hash`. Since `Run-Bench.ps1`, `Compare-SearchEquivalence.ps1` and every match harness drive the
+engine over UCI, adding C++ fields alone configures nothing they can see.
+
+This PR needs exactly two configurations — flag off and flag on — so it uses **two builds**, with
+the default flipped in the second. Rejected for this PR: adding setoption cases (scope-creeps a
+deliberately minimal parser) and wiring `game_settings.json` into `init_ai()` (would make every
+existing knob live over UCI for the first time — a behavioural change for all users, buried inside a
+singular-extensions PR).
+
+A runtime route *is* a prerequisite for the tuning follow-up, which sweeps rather than compares two
+points. That follow-up should pick the mechanism knowing what the sweep needs. Recorded on #95.
+
+### D6: `pvs()` gets an absolute ply backstop
+
+`pvs()` has no ply bound today. It is bounded only by depth decreasing on every recursive call,
+which terminates the recursion long before `ply` can index past `MAX_PLY`. An extension searches a
+child at the parent's depth, so that argument no longer holds: a line in which every node extends
+never reduces depth.
+
+Draw detection bounds such a line in practice, but that is exactly the reasoning `quiescence()`
+already rejects for itself — *"the recursion must terminate on its own rather than on an argument
+about what positions can arise, and ply indexes fixed-size per-thread arrays elsewhere in the
+search"* (`AIPerplex.cpp` ~L893). `pvs()` indexes `td.killers[ply]`, `td.last_move_was_null[ply]`
+and the PV table, and **writes `td.last_move_was_null[ply + 1]`**, so its bound must be
+`ply >= MAX_PLY - 1` to keep that write in range.
+
+The backstop returns a static evaluation, matching `quiescence()`'s. It is placed after the abort
+and draw checks and before any ply-indexed access.
+
+This is a latent-bug fix, not a feature: it is correct on `main` too. It ships here because this is
+the change that makes it live, and it is three lines.
+
+### D7: #305's mate-score ply limit is acknowledged, not fixed
+
+TT mate-score normalisation silently breaks beyond ply 100 (#305), and extensions make deeper plies
+reachable in principle. It stays out of scope because the reach is not there: extensions grant one
+ply each, are gated at `depth >= 8`, and do not nest within a frame, so ply 100 needs roughly fifty
+extensions on a single line. The backstop in D6 caps `ply` at `MAX_PLY - 1`, which is well above
+#305's cliff — D6 bounds memory safety, not #305. If the follow-up widens eligibility or adds double
+extensions, #305 must be re-examined before it does.
+
+## Verification algorithm
+
+```
+// At the node, before the move loop. `tt_value`/`tt_depth` are from the MAIN entry.
+eligible =  tuning.singular_extensions_enabled          // first term: short-circuits when off
+         && ply > 0 && !in_check
+         && td.excluded_move[ply].IsEmpty()             // not already an exclusion frame
+         && depth >= tuning.singular_min_depth
+         && tt_entry.has_value() && tt_entry.phase == MAIN
+         && !tt_entry.best_move.IsEmpty()
+         && (tt_entry.bound == LOWER || tt_entry.bound == EXACT)
+         && abs(tt_value) < GameValues::Mate_Threshold
+         && tt_depth >= depth - tuning.singular_tt_depth_margin
+
+// Inside the move loop, at the first legal move only:
+if (eligible && move_number == 0 && move == hash_move) {
+    singular_beta = tt_value - tuning.singular_margin_factor * depth;
+    verify_depth  = (depth - 1) / 2;                    // asserted >= 1; 3 at the default gate
+    {
+        ExcludedMoveGuard guard(td, ply, move);         // RAII, restores on every exit
+        value = pvs(td, verify_depth, singular_beta - 1, singular_beta, ply, false, tt);
+    }
+    if (control_.IsAborted()) return best_value;        // existing unwind contract
+    if (value < singular_beta && ply + 1 < MAX_PLY)
+        extension = 1;                                  // child searched at `depth`, not `depth - 1`
+}
+```
+
+The window is a null window `[singular_beta - 1, singular_beta]`, so the verification is the cheap
+one-bit question "does any alternative reach `singular_beta`?" and the comparison that answers it is
+`value < singular_beta` — a strict fail-low. `singular_beta` is not clamped: `tt_value` is already
+below `Mate_Threshold` by the eligibility gate, and the margin only moves it further from mate.
+
+Guards applied inside a frame whose `td.excluded_move[ply]` is non-empty:
+
+| Site | Behaviour under exclusion |
+|---|---|
+| `pv_table.clear_ply(ply)` (L503) | skipped — must not wipe the parent's row it is re-entering |
+| TT probe (L528) | skipped — no probe, no cutoff |
+| `should_try_null_move()` | returns false — a pass is not one of the alternatives being disproved |
+| move loop | skips the excluded move |
+| `!moveFound` (L722) | returns a fail-low `alpha`, **not** mate/stalemate, and stores nothing |
+| final `tt.store()` (L745) | skipped |
 
 ## Assumptions I cannot verify from the code
 
@@ -99,25 +195,37 @@ version; the rest collapse to constants.
   standard formulation, not from measurement here. The bench and trigger-rate pass will say whether
   they produce a plausible trigger rate (a rate near 0% or near 100% means the defaults are wrong,
   independent of Elo).
-- **That re-entering `pvs()` at the same ply is safe for `td.killers[ply]`.** The verification search
-  will store killers at the parent's ply from its own cutoffs. This is deliberate in the standard
-  formulation — those moves are refutations in the same position — but it is a real mutation of the
-  parent's ordering state, not a no-op. It cannot affect correctness (killers only order moves), and
-  with the flag off it never happens. Not otherwise verified.
+- **That the verification search's effect on `td.killers[ply]` is acceptable.** It will store
+  killers into the parent's own ply slots from its own cutoffs. This is deliberate in the standard
+  formulation — those moves are refutations in the same position — but it is **not** confined to
+  move ordering: `isKiller` disables LMR (`AIPerplex.cpp:625,630`), so a killer written by the
+  verification search can change the *depth* at which the parent later searches that move. The
+  effect is second-order and cannot make a result incorrect, and with the flag off it never happens,
+  but it means the enabled path is not "same tree plus one ply". Not otherwise verified; the
+  tactical suite with the flag on is what would expose it going wrong.
 
 ## Invariants
 
 - **Flag off ⇒ node-identical.** `Compare-SearchEquivalence.ps1` must report identical node counts
   and best moves at `Threads=1`. This is the property that makes an unmeasured merge safe.
+- **`ply <= MAX_PLY - 2` at every ply-indexed access in `pvs()`**, so the `last_move_was_null[ply + 1]`
+  write stays in range (D6). Holds regardless of how many extensions a line has been granted.
+- **`verify_depth >= 1`.** A verification search must not fall through to `quiescence()`, which has
+  no exclusion state and would both search the excluded move and use the normal TT. With
+  `singular_min_depth >= 3` the formula gives at least 1; this is asserted rather than left as a
+  consequence of a tunable's default.
 - **No exclusion search ever probes or stores the MAIN TT under its position's key.** A partial move
   set must never be cached as if all legal moves were available.
-- **No nested singular verification.** An exclusion search does not itself trigger one.
+- **A frame does not re-enter verification at its own ply.** This is what the per-ply flag enforces,
+  and it is the whole of the guarantee: nodes *below* an exclusion frame carry an empty slot and may
+  trigger their own verifications. That is intended — they are ordinary nodes in a real subtree —
+  and it is why the cost is bounded by the eligibility gate rather than by a nesting rule.
 - **Null-move pruning is off inside an exclusion search.** A pass is not one of the alternatives
   being proved inferior, so a null-move cutoff would answer a different question.
+- **`td.excluded_move[ply]` is empty on every path out of the verification call**, including abort.
 - **The abort contract is unchanged.** An incomplete frame writes no TT entry, PV row, killer or
   history. The verification search runs before `DoMove`, so the board is intact at the existing
   guard and no new unwind path is introduced.
-- **The extension respects `MAX_PLY`.** `ply + 1 < MAX_PLY` gates the extra ply.
 
 ## Validation
 
@@ -125,16 +233,24 @@ Engine tier.
 
 | Risk | Evidence that closes it |
 |---|---|
-| The mechanism changes today's search | `Compare-SearchEquivalence.ps1 -After <exe>`: identical node counts and best moves at `Threads=1`, flag off |
+| The mechanism changes today's search tree | `Compare-SearchEquivalence.ps1 -After <exe>`: identical node counts and best moves at `Threads=1`, flag off |
+| The added branches cost speed even when off | Repeated `Run-Bench.ps1` passes, flag-off build vs. `main`, compared on **nps**. Equivalence proves the tree is the same; only nps proves the same tree is not reached more slowly under a clock |
 | Exclusion semantics are wrong | Unit tests per guard, each falsified against the unfixed code before being trusted |
-| Out-of-bounds or uninitialised per-ply state | Debug-build test run (Release passes OOB reads silently); Linux Debug + sanitizers in CI |
-| Enabled path crashes or hangs | Tactical suite at `Threads=1` and `Threads=4` with the flag forced on |
-| Cost is unacceptable | Repeated `Run-Bench.ps1` passes, flag off *and* on, reported as per-position wall clock plus MAIN/QS node movement — not aggregate nps, since the tree changes when the flag is on |
+| Unbounded ply / OOB per-thread array access | A test driving repeated extensions toward the boundary; Debug-build run (Release passes OOB reads silently); Linux Debug + sanitizers in CI |
+| Enabled path crashes, hangs, or loses tactics | Tactical suite at `Threads=1` and `Threads=4` on the flag-on build, including the killer/LMR interaction in the assumptions above |
+| Enabled path's cost is unacceptable | Repeated `Run-Bench.ps1` on the flag-on build, reported as per-position wall clock plus MAIN/QS node movement — not aggregate nps, since the tree changes when the flag is on |
 | Trigger is degenerate | Telemetry counters: eligible nodes, verification searches, extensions granted |
 
-**No Elo match is run for this PR**, and it is not needed for it: the shipped configuration is
-node-identical to `main`, so there is nothing for a match to measure. The follow-up that flips the
+**No Elo match is run for this PR.** The shipped configuration is node-identical to `main`, so the
+only thing a match could detect is the per-node cost of branches that are never taken — and repeated
+bench nps measures that directly, at a fraction of the wall time and with a tighter error bar. A
+fixed-time match is the right instrument for the *enabled* path, and the follow-up that flips the
 flag cannot merge without one.
+
+Telemetry is read two ways: unit tests assert the counters directly through the existing
+`STRAT_ENABLE_TEST_ACCESS` friend, and the flag-on build emits one `info string` summary line at the
+end of a search, which is what makes the counters visible to the UCI-driven bench harness. The line
+is emitted only when the flag is enabled, so the shipped configuration is byte-identical on stdout.
 
 ## Harvest
 
@@ -143,6 +259,10 @@ flag cannot merge without one.
 | Why the PV-row clear is skipped under exclusion (D2) | source comment at the guard in `pvs()` |
 | Why an excluded-only-legal-move fails low rather than adjudicating (D4) | source comment at the `!moveFound` branch |
 | Why null move is off under exclusion | source comment in `should_try_null_move()` |
+| Why `pvs()` needs its own backstop once depth can stay flat (D6) | source comment at the backstop |
+| That killers gate LMR, so verification writes can change later depths | source comment where the verification call sits |
+| `SearchTuning` is unreachable from a UCI search (D5) | `Docs/EngineContracts.md` — a cross-cutting fact that outlives this change |
 | That the flag ships off and why | `Docs/Changelog.md`, and the PR body |
+| The backstop as a latent-bug fix independent of the feature | `Docs/Changelog.md` |
 | Trigger rate and bench cost figures | PR body and issue #95 — point-in-time, so not source comments |
-| Remaining work: tune, measure, flip the flag | issue #95, updated on merge |
+| Remaining work: config route, tune, measure, flip the flag; re-examine #305 if eligibility widens | issue #95, updated on merge |
