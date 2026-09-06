@@ -30,12 +30,14 @@ Elo result.
 
 **This change will not:**
 
-- Enable the feature. `singular_extensions_enabled` defaults to `false`; with it off the search is
-  node-identical to `main`.
+- Ship the feature. It is compiled out of the shipping engine entirely (D9), so that build is
+  node-identical to `main` and pays nothing for carrying it.
 - Add double extensions, negative extensions or multi-cut pruning. Those are the tuned refinements
   Stockfish layers *on top* of a working singular check, and each needs its own measurement.
 - Build a runtime configuration route for `SearchTuning` (D5). The two configurations this PR needs
   are covered by two builds; a route is a prerequisite for the tuning follow-up, not for this merge.
+- Remove the gates. That is the follow-up's job: delete both defines and the `option()` if the
+  feature wins its match, delete the feature if it loses. Neither outcome leaves a permanent flag.
 - Fix #305 (D7). The change makes deeper plies reachable in principle but does not bring ply 100
   within reach.
 - Produce an Elo verdict. Bench cost and trigger rate are reported; the measurement budget beyond
@@ -92,6 +94,38 @@ false. The existing code path adjudicates that as mate or stalemate and stores i
 exclusion that is a lie about the real position, and storing it would poison the key for every
 subsequent probe. The exclusion branch returns `alpha` — a fail-low, i.e. "no alternative reached
 the margin", which is exactly the answer a verification search wants — and writes nothing.
+
+### D9: The feature is compiled out of the shipping engine, not merely disabled
+
+A runtime flag alone still costs the shipping build: measured **−1.33% nps** for code that never
+executes. Since the end state is unconditional-on or deleted, nothing should pay for it
+indefinitely.
+
+`STRAT_SINGULAR_EXTENSIONS` (CMake `option`, OFF) drives a `constexpr bool`, and every use is
+`if constexpr` or the leading term of a conjunction. **Not `#ifdef`**: the discarded branch of an
+`if constexpr` in a non-template context is still parsed and type-checked, so the disabled code
+cannot rot — which is the standing objection to preprocessor branches in a hot path.
+
+**Two defines, because the two targets want opposite answers.** `STRAT_SINGULAR_EXTENSIONS`
+compiles the code in; `STRAT_SINGULAR_DEFAULT_ON` starts it enabled.
+
+| Target | compiled in | default on | why |
+|---|---|---|---|
+| shipping engine | no | no | pays nothing |
+| experimental engine (`-DSTRAT_SINGULAR_EXTENSIONS=ON`) | yes | yes | UCI cannot set the runtime flag, so compiled-in-but-off would measure nothing |
+| test binary | yes (always) | **no** | every other search test must keep exercising the SHIPPED configuration; the singular tests enable it for themselves |
+
+That third row is the one worth pausing on. The test binary compiles the feature in, so defaulting
+it on there would have quietly turned every tactical, quiescence and TT-contract test into a test of
+a configuration that does not ship.
+
+The runtime flag survives inside a compiled-in build so tests can toggle it and the follow-up can
+sweep parameters without a rebuild per candidate.
+
+**What this costs in coverage, stated plainly:** the shipped binary no longer contains the feature,
+so the tests only ever exercise the compiled-in build. The claim "the shipped build is unaffected"
+now rests on the equivalence gate rather than on unit tests. That is a stronger guarantee than a
+runtime flag reading false, but it is a real shift in what covers what.
 
 ### D5: Two builds, not a runtime configuration route
 
@@ -281,8 +315,10 @@ Guards applied inside a frame whose `td.excluded_move[ply]` is non-empty:
 
 ## Invariants
 
-- **Flag off ⇒ node-identical.** `Compare-SearchEquivalence.ps1` must report identical node counts
-  and best moves at `Threads=1`. This is the property that makes an unmeasured merge safe.
+- **Shipping build ⇒ node-identical.** `Compare-SearchEquivalence.ps1` must report identical node
+  counts and best moves at `Threads=1`. This is the property that makes an unmeasured merge safe,
+  and since D9 compiles the feature out it is now the *only* thing covering the shipped
+  configuration — the tests all run against a build that has the feature compiled in.
 - **`ply <= MAX_PLY - 2` at every ply-indexed access in `pvs()`**, so the `last_move_was_null[ply + 1]`
   write stays in range (D6). Holds regardless of how many extensions a line has been granted.
 - **The PV row clear still precedes the abort exits for every non-exclusion frame.** `AIPerplex.cpp:494-502`
@@ -319,7 +355,8 @@ Engine tier.
 | Risk | Evidence that closes it |
 |---|---|
 | The mechanism changes today's search tree | `Compare-SearchEquivalence.ps1 -After <exe>`: identical node counts and best moves at `Threads=1`, flag off |
-| The added branches cost speed even when off | Repeated `Run-Bench.ps1` passes, flag-off build vs. `main`, compared on **nps**. Equivalence proves the tree is the same; only nps proves the same tree is not reached more slowly under a clock |
+| The feature costs speed even when not in use | Repeated `Run-Bench.ps1` passes, shipping build vs. the fork point, compared on **nps**. Equivalence proves the tree is the same; only nps proves the same tree is not reached more slowly under a clock. This is the check that caught the −3.44% and then the −1.33%, neither of which equivalence could see |
+| The experimental build is broken and nobody notices | Build it (`-DSTRAT_SINGULAR_EXTENSIONS=ON`) and confirm over UCI that it emits telemetry and searches a different tree. Compiled-in-but-disabled would look identical to a working build from the outside |
 | Exclusion semantics are wrong | Unit tests per guard, each falsified by patching the guard out and confirming the suite goes red, with an unmutated control run that must stay green — a harness whose rebuild is broken reports every mutation red for the wrong reason |
 | Unbounded ply / OOB per-thread array access | A test driving repeated extensions toward the boundary; Debug-build run (Release passes OOB reads silently); Linux Debug + sanitizers in CI |
 | Enabled path crashes, hangs, or loses tactics | Tactical suite at `Threads=1` and `Threads=4` on the flag-on build, including the killer/LMR interaction in the assumptions above |
@@ -373,6 +410,8 @@ is emitted only when the flag is enabled, so the shipped configuration is byte-i
 | Why `pvs()` needs its own backstop once depth can stay flat (D6) | source comment at the backstop |
 | Why the backstop precedes the pre-abort PV clear, and why that clear stays above the abort exits (D6) | source comment at the entry sequence |
 | Why the verification cannot sit at the first legal move (D8) | source comment where the verification call sits |
+| Why the feature is compiled out, and why two defines (D9) | source comment on the constant in `AIPerplex.h`, and the `option()` block in `CMakeLists.txt` |
+| That the test target compiles it in but leaves it off (D9) | source comment at `target_compile_definitions(StratChessTests ...)` |
 | That killers gate LMR, so verification writes can change later depths | source comment where the verification call sits |
 | `SearchTuning` is unreachable from a UCI search (D5) | `Docs/EngineContracts.md` — a cross-cutting fact that outlives this change |
 | That the flag ships off and why | `Docs/Changelog.md`, and the PR body |

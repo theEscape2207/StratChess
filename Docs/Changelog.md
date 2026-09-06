@@ -24,11 +24,20 @@ Newest first.
 
 ## 2026-09-06 — Singular extensions, disabled by default (#95)
 
-`AIPerplex::pvs()` can now search a transposition-table move one ply deeper when a reduced-depth
-verification search proves every alternative fails below a depth-scaled margin. **The feature ships
-off** (`SearchTuning::singular_extensions_enabled = false`): the mechanism and its tests are here,
-but no measured Elo result justifies enabling it, and with the flag off the search is node-identical
-to the previous build. Flipping it on is a separate change that cannot merge without a match.
+`AIPerplex::pvs()` can search a transposition-table move one ply deeper when a reduced-depth
+verification search proves every alternative fails below a depth-scaled margin. **The feature is
+compiled out of the shipping engine** — `option(STRAT_SINGULAR_EXTENSIONS)`, OFF — so that build is
+node-identical to the previous one and pays nothing for carrying it. A runtime flag alone measured
+−1.33% nps for code that never ran, and the end state is unconditional-on or deleted, so a permanent
+flag would be the wrong shape. Every gate is `if constexpr` rather than `#ifdef`, so the disabled
+branch stays parsed and type-checked and cannot rot.
+
+Two defines, because the targets want opposite answers: `STRAT_SINGULAR_EXTENSIONS` compiles the
+code in (experimental engine, and always the test binary), `STRAT_SINGULAR_DEFAULT_ON` starts it
+enabled (experimental engine only). The test binary deliberately gets the first without the second,
+so every existing search test keeps exercising the shipped configuration while the singular tests
+enable it for themselves. Enabling it for real is a separate change that cannot merge without a
+match.
 
 The exclusion state is `ThreadData::excluded_move[ply]`, mirroring the existing
 `last_move_was_null[ply]`, set only by an RAII `ExcludedMoveGuard`. A verification search re-enters
@@ -38,10 +47,11 @@ instead of adjudicating checkmate or stalemate. The verification is issued befor
 because the loop learns a move is legal only from `DoMove()` returning true — by then the board
 holds the child, and the verification must search the parent.
 
-Measured, flag off: **node-identical** to the fork point (`Compare-SearchEquivalence.ps1`, 90 lines,
-6 positions, depth 12) at a cost of **−1.33% nps**. That cost was −3.44% before the enable flag was
-made the first term of every hot-path test — `excluded_move[MAX_PLY]` is otherwise cold, and reading
-it on every node was being charged to searches that can never have an exclusion frame.
+Measured, shipping build: **node-identical** to the fork point (`Compare-SearchEquivalence.ps1`,
+90 lines, 6 positions, depth 12). The nps cost went −3.44% (as first written) → −1.33% (enable flag
+made the first term of every hot-path test, since `excluded_move[MAX_PLY]` is otherwise cold and was
+being read per node by searches that can never have an exclusion frame) → nothing left to execute
+once the feature is compiled out.
 
 Measured, flag on (recorded here because it decides what the follow-up must fix, not because it
 ships): the trigger is selective — 0.18 verifications per 1000 nodes, extension granted on 7.9% —
