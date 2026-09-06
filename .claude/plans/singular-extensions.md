@@ -127,11 +127,40 @@ search"* (`AIPerplex.cpp` ~L893). `pvs()` indexes `td.killers[ply]`, `td.last_mo
 and the PV table, and **writes `td.last_move_was_null[ply + 1]`**, so its bound must be
 `ply >= MAX_PLY - 1` to keep that write in range.
 
-The backstop returns a static evaluation, matching `quiescence()`'s. It is placed after the abort
-and draw checks and before any ply-indexed access.
+The backstop returns a static evaluation, matching `quiescence()`'s. **It is the first statement in
+the function**, above the PV clear:
+
+```
+// (1) Absolute backstop. First, because it is what bounds every ply-indexed access
+//     below — including the excluded_move[ply] read that the PV guard in (2) needs.
+//     An exclusion frame can never reach here: it runs at its parent's ply, and that
+//     parent returned from this same test before it could launch a verification. So
+//     the clear is unconditional and cannot wipe a row another frame is building.
+if (ply >= MAX_PLY - 1) {
+    td.pv_table.clear_ply(ply);
+    return evaluator_.Evaluate(td.board);
+}
+
+// (2) PV clear — same position relative to the abort exits as today, so L494-502's
+//     rationale is untouched; now skipped for exclusion frames per D2.
+if (td.excluded_move[ply].IsEmpty())
+    td.pv_table.clear_ply(ply);
+
+// (3) abort / poll_search_limits / check_draws / depth <= 0 — all unchanged.
+```
+
+Ordering here is load-bearing in two directions. `td.pv_table.clear_ply(ply)` must stay **above** the
+abort exits: the comment at `AIPerplex.cpp:494-502` explains that a frame returning from an abort
+would otherwise leave a stale row 0 populated, letting an aborted aspiration retry look like a
+completed iteration at the root. But the D2 guard in front of it reads `td.excluded_move[ply]`, and
+that read is unbounded — which is why the backstop goes above it rather than after the abort checks
+as the previous revision of this document said. `PVTable::clear_ply` bounds-checks internally
+(`PVTable.h:19`), so it is not the access that needs protecting; the new array is.
+
+Cost is one predictable compare per `pvs()` node, on a path that already does a table write.
 
 This is a latent-bug fix, not a feature: it is correct on `main` too. It ships here because this is
-the change that makes it live, and it is three lines.
+the change that makes it live.
 
 ### D7: #305's mate-score ply limit is acknowledged, not fixed
 
@@ -142,10 +171,29 @@ extensions on a single line. The backstop in D6 caps `ply` at `MAX_PLY - 1`, whi
 #305's cliff — D6 bounds memory safety, not #305. If the follow-up widens eligibility or adds double
 extensions, #305 must be re-examined before it does.
 
+### D8: The verification is hoisted above the move loop
+
+`pvs()` learns that a move is legal only from `DoMove()` returning true, and assigns `move_number`
+inside that branch (`AIPerplex.cpp:613-614`) — at which point the board holds the child position.
+"At the first legal move" is therefore not a place where a search of the *parent* position can be
+issued.
+
+The verification is hoisted to just after `ScoreMoves()`, where the board is unambiguously the
+parent, and its result is applied as an `extension` variable consumed at `move_number == 0`.
+Eligibility gains one term — the hash move must be the first *sorted* move — and the in-loop
+`move == hash_move` check supplies the first-*legal* half. Details and the rejected undo/remake
+alternative are in the Verification algorithm section below.
+
 ## Verification algorithm
 
+**The verification runs before the move loop, not inside it** (D8). `pvs()` establishes legality by
+`DoMove()` returning true and assigns `move_number` inside that branch (`AIPerplex.cpp:613-614`), so
+by the time a "first legal move" is identified the board already holds the *child* position. A
+verification search placed there would search the wrong position.
+
 ```
-// At the node, before the move loop. `tt_value`/`tt_depth` are from the MAIN entry.
+// (a) After ScoreMoves(), before the move loop. Board holds the parent position.
+//     `tt_value`/`tt_depth` are from the MAIN entry probed at the top of the node.
 eligible =  tuning.singular_extensions_enabled          // first term: short-circuits when off
          && ply > 0 && !in_check
          && td.excluded_move[ply].IsEmpty()             // not already an exclusion frame
@@ -155,20 +203,47 @@ eligible =  tuning.singular_extensions_enabled          // first term: short-cir
          && (tt_entry.bound == LOWER || tt_entry.bound == EXACT)
          && abs(tt_value) < GameValues::Mate_Threshold
          && tt_depth >= depth - tuning.singular_tt_depth_margin
+         && n > 0 && moveList[scored_idx[0].second] == hash_move;   // hash move sorted first
 
-// Inside the move loop, at the first legal move only:
-if (eligible && move_number == 0 && move == hash_move) {
+int extension = 0;
+if (eligible) {
     singular_beta = tt_value - tuning.singular_margin_factor * depth;
     verify_depth  = (depth - 1) / 2;                    // asserted >= 1; 3 at the default gate
     {
-        ExcludedMoveGuard guard(td, ply, move);         // RAII, restores on every exit
+        ExcludedMoveGuard guard(td, ply, hash_move);    // RAII, restores on every exit
         value = pvs(td, verify_depth, singular_beta - 1, singular_beta, ply, false, tt);
     }
-    if (control_.IsAborted()) return best_value;        // existing unwind contract
-    if (value < singular_beta && ply + 1 < MAX_PLY)
-        extension = 1;                                  // child searched at `depth`, not `depth - 1`
+    if (control_.IsAborted())
+        return -GameValues::Search_Init;                // no child completed; see below
+    if (value < singular_beta)
+        extension = 1;
+}
+
+// (b) Inside the move loop, at the first legal move:
+if (move_number == 0) {
+    const int child_depth = (extension && move == hash_move && ply + 1 < MAX_PLY)
+                          ? depth : depth - 1;
+    value = -pvs(td, child_depth, -beta, -alpha, ply + 1, is_pv_node, tt);
 }
 ```
+
+Two properties make the hoist exact rather than approximate. The last eligibility term checks that
+the hash move is the **first sorted** move, which `MoveSorter::ScoreMoves` guarantees whenever a
+hash move exists; and the in-loop `move_number == 0 && move == hash_move` re-check is what confirms
+it was also the first *legal* one. If the hash move turns out to be illegal, the verification search
+is wasted but harmless — it excluded a move that was not in the list — and no extension is applied.
+That case costs one search on a TT move that failed legality, which is rare enough not to warrant
+avoiding.
+
+The abort return is `-GameValues::Search_Init` rather than `best_value` only because no move has
+been searched yet at this point, so the two are the same value; it is written explicitly to make the
+"no child completed" case obvious at the call site. The board is untouched — verification runs
+before any `DoMove()` — so no unwinding is needed beyond the return itself.
+
+Rejected: verifying inside the loop via `DoMove` → `UndoMove` → verify → `DoMove` again, as the
+review suggested. It works, but it needs its own abort handling between the undo and the remake, and
+it needs the remake to be assumed infallible — a determinism contract on `DoMove` that does not
+currently exist and that nothing else in the search depends on. Hoisting removes the question.
 
 The window is a null window `[singular_beta - 1, singular_beta]`, so the verification is the cheap
 one-bit question "does any alternative reach `singular_beta`?" and the comparison that answers it is
@@ -179,7 +254,7 @@ Guards applied inside a frame whose `td.excluded_move[ply]` is non-empty:
 
 | Site | Behaviour under exclusion |
 |---|---|
-| `pv_table.clear_ply(ply)` (L503) | skipped — must not wipe the parent's row it is re-entering |
+| `pv_table.clear_ply(ply)` (L503) | skipped — must not wipe the parent's row it is re-entering. Unreachable at the D6 backstop's own clear, which stays unconditional |
 | TT probe (L528) | skipped — no probe, no cutoff |
 | `should_try_null_move()` | returns false — a pass is not one of the alternatives being disproved |
 | move loop | skips the excluded move |
@@ -210,6 +285,10 @@ Guards applied inside a frame whose `td.excluded_move[ply]` is non-empty:
   and best moves at `Threads=1`. This is the property that makes an unmeasured merge safe.
 - **`ply <= MAX_PLY - 2` at every ply-indexed access in `pvs()`**, so the `last_move_was_null[ply + 1]`
   write stays in range (D6). Holds regardless of how many extensions a line has been granted.
+- **The PV row clear still precedes the abort exits for every non-exclusion frame.** `AIPerplex.cpp:494-502`
+  is a contract about root aspiration retries, not an implementation detail, and the backstop and D2
+  guard are both inserted around it rather than through it.
+- **The verification search is issued while the board holds the parent position** (D8).
 - **`verify_depth >= 1`.** A verification search must not fall through to `quiescence()`, which has
   no exclusion state and would both search the excluded move and use the normal TT. With
   `singular_min_depth >= 3` the formula gives at least 1; this is asserted rather than left as a
@@ -260,6 +339,8 @@ is emitted only when the flag is enabled, so the shipped configuration is byte-i
 | Why an excluded-only-legal-move fails low rather than adjudicating (D4) | source comment at the `!moveFound` branch |
 | Why null move is off under exclusion | source comment in `should_try_null_move()` |
 | Why `pvs()` needs its own backstop once depth can stay flat (D6) | source comment at the backstop |
+| Why the backstop precedes the pre-abort PV clear, and why that clear stays above the abort exits (D6) | source comment at the entry sequence |
+| Why the verification cannot sit at the first legal move (D8) | source comment where the verification call sits |
 | That killers gate LMR, so verification writes can change later depths | source comment where the verification call sits |
 | `SearchTuning` is unreachable from a UCI search (D5) | `Docs/EngineContracts.md` — a cross-cutting fact that outlives this change |
 | That the flag ships off and why | `Docs/Changelog.md`, and the PR body |
