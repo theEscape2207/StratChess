@@ -57,6 +57,11 @@ biased one. Each worker is one busy core and the scan runs for hours, so the def
 claims a quarter of the machine rather than all of it; raise `--jobs` only on a box nobody is using.
 Tier 1's six seconds buys a different question, not a worse one — run Tier 1 first.
 
+**Redirect its output to a file.** The scan prints progress as it goes, and a run left writing to a
+pipe nobody drains blocks on a full buffer partway through: the workers go idle, the engine processes
+stay alive, and it looks exactly like a finished run until you notice the CPU is flat. If a run seems
+done too early, check that the oracle processes are still burning CPU before believing it.
+
 **Every rate carries a game-clustered interval.** Plies inside one game share its opening, its two
 builds and its result, so a per-ply confidence interval is several times too tight to believe. The
 report bootstraps by resampling whole games; where it prints `[lo, hi]`, that is the 95% interval.
