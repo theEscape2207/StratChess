@@ -50,17 +50,23 @@ it is GPL-3, and keeping it out keeps the repo free of that obligation. `--engin
 scoring inverts every loss it reports without failing anything else, so four of its checks exist only
 to catch that, and they need the binary to run.
 
-Cost is the reason to think before running it. One shard is ~165,000 oracle searches, about 45
-minutes on a handful of workers, and all 18 shards is most of a day. `--shards N` takes the first N — shards
-are independent samples of one match, so a prefix is a smaller run of the same experiment, not a
-biased one. Each worker is one busy core and the scan runs for hours, so the default deliberately
-claims a quarter of the machine rather than all of it; raise `--jobs` only on a box nobody is using.
-Tier 1's six seconds buys a different question, not a worse one — run Tier 1 first.
+Cost is the reason to think before running it, and the scan reports its own: every progress line is
+stamped with elapsed time, and each shard prints how long it took to score. One shard is ~165,000
+oracle searches at roughly 25 ms each — about 1.2 core-hours, so a little over ten minutes on the
+default quarter of a 24-core box, and a few hours for all 18. Read those figures off a real run
+rather than trusting this paragraph: they are extrapolated from a six-game sample and they move with
+depth and hardware. `--shards N` takes the first N — shards are independent samples of one match, so
+a prefix is a smaller run of the same experiment, not a biased one. Each worker is one busy core, so
+the default deliberately claims a quarter of the machine rather than all of it; raise `--jobs` only
+on a box nobody is using. Tier 1's six seconds buys a different question, not a worse one — run
+Tier 1 first.
 
-**Redirect its output to a file.** The scan prints progress as it goes, and a run left writing to a
-pipe nobody drains blocks on a full buffer partway through: the workers go idle, the engine processes
-stay alive, and it looks exactly like a finished run until you notice the CPU is flat. If a run seems
-done too early, check that the oracle processes are still burning CPU before believing it.
+**One oracle process per game, closed when the game is done.** It costs about 15% against holding a
+process open for the life of a worker, and buys two things: a cleared hash, so a position's score
+cannot depend on which games that worker happened to score first, and a pool that shuts down. A
+worker still holding a live engine never exits, and the parent waits for it forever — which looks
+exactly like a finished run, with the report never printed and the engines idling at the top of the
+process list.
 
 **Every rate carries a game-clustered interval.** Plies inside one game share its opening, its two
 builds and its result, so a per-ply confidence interval is several times too tight to believe. The

@@ -37,6 +37,7 @@ import atexit
 import json
 import os
 import sys
+import time
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
@@ -68,6 +69,16 @@ ENGINE_EXE = "stockfish.exe" if os.name == "nt" else "stockfish"
 _ENGINE = None
 _ENGINE_PATH = ""
 _DEPTH = 12
+_START = time.monotonic()
+
+
+def _log(message: str) -> None:
+    """Progress line stamped with elapsed time, flushed as it is written.
+
+    The scan runs long enough that its cost has to be read off its own output;
+    inferring it afterwards from process CPU gets the answer wrong.
+    """
+    print(f"[{time.monotonic() - _START:7.1f}s] {message}", file=sys.stderr, flush=True)
 
 
 def find_engine() -> str:
@@ -92,7 +103,7 @@ def _engine():
     if _ENGINE is None:
         _ENGINE = chess.engine.SimpleEngine.popen_uci(_ENGINE_PATH)
         _ENGINE.configure({"Threads": 1, "Hash": 64})
-        atexit.register(_close_engine)
+        atexit.register(_close_engine)   # backstop only; the scan closes explicitly
     return _ENGINE
 
 
@@ -186,6 +197,20 @@ def score_game(rows):
     cache: dict[str, tuple] = {}
     cells: dict = defaultdict(lambda: [0, 0, 0.0, 0, 0.0, 0, 0.0])
     worst = []
+    try:
+        _score_rows(rows, cache, cells, worst)
+    finally:
+        # One engine per game, closed here rather than left to interpreter exit.
+        # It buys reproducibility -- a fresh process is a cleared hash, so a
+        # position's score cannot depend on which games this worker saw first --
+        # and it is what keeps the pool shutdown from blocking: a worker holding a
+        # live engine does not exit, and the parent waits for it forever.
+        _close_engine()
+    worst.sort(reverse=True)
+    return dict(cells), worst[:5]
+
+
+def _score_rows(rows, cache, cells, worst) -> None:
     for build, bucket, mover, self_swing, before, after, played in rows:
         if before not in cache:
             # Keyed by full FEN, and the FEN fixes the side to move, so a cached
@@ -205,8 +230,6 @@ def score_game(rows):
             c[6] += loss
         if loss >= REPORT_LOSS_CP and self_swing < amq.BLUNDER_CP:
             worst.append((loss, self_swing, build, bucket, before, played))
-    worst.sort(reverse=True)
-    return dict(cells), worst[:5]
 
 
 def merge_cells(dst, src) -> None:
@@ -247,6 +270,10 @@ def report(cells, per_game, worst, depth, samples, out=sys.stdout) -> None:
           f"{rate(per_game, key, 5):>9.1f}"
           f"{(mean(per_game, key, 6, 5) or 0.0):>8.1f}\n")
 
+    # The bootstrap is single-threaded and takes minutes on a full corpus, with
+    # every oracle process sitting idle: without this line that stretch looks
+    # exactly like a hang.
+    _log(f"resampling {len(per_game)} games x {samples} for intervals")
     w("\nExternal blunder rate, 95% interval (games resampled)\n")
     for key in sorted(cells):
         point, lo, hi = amq.bootstrap(per_game, lambda g, k=key: rate(g, k, 3), samples=samples)
@@ -277,16 +304,18 @@ def analyse(root: Path, engine_path: str, depth: int, jobs: int, limit: int, sha
                              initargs=(engine_path, depth)) as ex:
         # One shard at a time: the whole corpus of FENs at once is gigabytes, and
         # a shard is already wide enough to keep every worker busy.
-        for path in files:
+        for n, path in enumerate(files, 1):
+            started = time.monotonic()
             games = extract(path)
             if limit:
                 games = games[:limit]
+            _log(f"shard {n}/{len(files)} {path.parent.name}: {len(games)} games extracted")
             for part, part_worst in ex.map(score_game, games, chunksize=4):
                 merge_cells(cells, part)
                 per_game.append(part)
                 worst.extend(part_worst)
-            print(f"  {path.parent.name}: {len(games)} games, "
-                  f"{sum(c[0] for c in cells.values())} rows so far", file=sys.stderr, flush=True)
+            _log(f"shard {n}/{len(files)} scored in {time.monotonic() - started:.0f}s, "
+                 f"{sum(c[0] for c in cells.values())} rows so far")
     return dict(cells), per_game, worst
 
 
@@ -409,7 +438,7 @@ def main() -> int:
         print(f"no oracle binary: put one in {ENGINE_DIR}/{ENGINE_EXE} beside the repo, "
               "or pass --engine / set STOCKFISH_PATH", file=sys.stderr)
         return 2
-    print(f"oracle {engine_path} at depth {args.depth}, {args.jobs} worker(s)", file=sys.stderr)
+    _log(f"oracle {engine_path} at depth {args.depth}, {args.jobs} worker(s)")
 
     cells, per_game, worst = analyse(Path(args.root), engine_path, args.depth,
                                      args.jobs, args.games, args.shards)
@@ -420,11 +449,15 @@ def main() -> int:
         return 1
 
     report(cells, per_game, worst, args.depth, args.samples)
+    # stdout is block-buffered when it is a file or a pipe, so an interpreter that
+    # never reaches its own exit loses the whole report.
+    sys.stdout.flush()
     if args.json:
         Path(args.json).write_text(
             json.dumps({"depth": args.depth, "games": len(per_game),
                         "cells": {"|".join(k): v for k, v in cells.items()}}, indent=1),
             encoding="utf-8")
+    _log("done")
     return 0
 
 
