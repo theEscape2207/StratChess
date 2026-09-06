@@ -266,10 +266,10 @@ Guards applied inside a frame whose `td.excluded_move[ply]` is non-empty:
 - **That a singular extension is worth its node cost in this engine.** Explicitly not assumed — it
   is why the flag ships off. Settled only by an Elo match against the immediate pre-change
   reference, which this change does not run.
-- **That the margin and reduction defaults are in a sane range.** Taken from the shape of the
-  standard formulation, not from measurement here. The bench and trigger-rate pass will say whether
-  they produce a plausible trigger rate (a rate near 0% or near 100% means the defaults are wrong,
-  independent of Elo).
+- ~~**That the margin and reduction defaults are in a sane range.**~~ **Settled, and it split.** The
+  *margin* is fine: the extension fires on 7.9% of verifications, nowhere near 0% or 100%. The
+  *verification depth and eligibility* are not: they produce 2,688 verifications costing +43.5% wall
+  clock at fixed depth. Sane trigger selectivity, unaffordable trigger frequency.
 - **That the verification search's effect on `td.killers[ply]` is acceptable.** It will store
   killers into the parent's own ply slots from its own cutoffs. This is deliberate in the standard
   formulation — those moves are refutations in the same position — but it is **not** confined to
@@ -325,6 +325,32 @@ Engine tier.
 | Enabled path crashes, hangs, or loses tactics | Tactical suite at `Threads=1` and `Threads=4` on the flag-on build, including the killer/LMR interaction in the assumptions above |
 | Enabled path's cost is unacceptable | Repeated `Run-Bench.ps1` on the flag-on build, reported as per-position wall clock plus MAIN/QS node movement — not aggregate nps, since the tree changes when the flag is on |
 | Trigger is degenerate | Telemetry counters: eligible nodes, verification searches, extensions granted |
+
+### Results
+
+| Check | Result |
+|---|---|
+| Equivalence vs fork point `9708c65`, flag off | **IDENTICAL**, 90 lines, 6 positions, depth 12, `Threads=1` |
+| nps, flag off vs fork point (warm, n=6, interleaved) | **−1.33%** (2,660,348 vs 2,696,172), spreads 0.28%/0.62%, no overlap |
+| Full + extended suites, flag on | pass (599 cases) |
+| Tactical suite, flag on | 36/36 |
+| Tactical depth-stability, flag on, `Threads=1` and `4` | 3 runs each, 0 flips |
+| Debug build (asserts live), flag off and singular tag | pass (593 cases; 16 singular) |
+| Trigger rate, flag on, depth 12 | 0.18 verifications per 1000 nodes; extension on **7.9%** of them (2.6–21.5% by position) |
+| Enabled-path cost at fixed depth | **+43.5% wall clock**, +28.5% main nodes, +33.1% qs nodes |
+
+**The enabled path is too expensive at these defaults, and the cost is entirely verification.**
+2,688 verification searches × ~1,400 nodes each ≈ 3.76M nodes, which is the whole +3.75M main-node
+growth; the 212 extensions granted contribute almost nothing to it. So the lever for the follow-up
+is the number and depth of verifications — `singular_min_depth` and the `(depth - 1) / 2`
+verification depth — not the margin, which is already selective at 7.9%. A +43.5% fixed-depth cost
+means a fixed-time search reaches meaningfully less depth, which is a high bar for 212 extensions to
+clear; that must be measured, not argued.
+
+**nps measurement note.** The first run of each binary is reliably slow (cold caches), and including
+it made one pass report "inside run-to-run noise" when its own warm runs separated cleanly. Warm-up
+is discarded. The measurement also resolved a code-shape question the eye could not: extracting the
+verification into a helper cost 0.42% (−1.75% vs −1.33%), so it stays an inline block.
 
 **No Elo match is run for this PR.** The shipped configuration is node-identical to `main`, so the
 only thing a match could detect is the per-node cost of branches that are never taken — and repeated

@@ -60,14 +60,26 @@ struct ThreadData {
 	// each null-move attempt completes (see AIPerplex::pvs()).
 	bool last_move_was_null[MAX_PLY]{};
 
-	// Singular-extension exclusion state: excluded_move[ply] is the move a verification
-	// search at this ply must pretend does not exist. Empty for every ordinary node, which
-	// is what every guard in pvs() tests against. Indexed like killers.
+	// History heuristic: accumulated score for quiet moves that caused beta cutoffs,
+	// indexed by [side-to-move][from-square][to-square].
+	// int32 gives plenty of headroom before the depth^2 increments overflow.
+	int32_t history[2][64][64];
+
+	// --- Singular extensions (#95) ---
+	// Deliberately LAST. Everything above is touched on the hot path; these are not, and
+	// inserting them higher shifted the offsets of the members that are.
+
+	// excluded_move[ply] is the move a verification search at this ply must pretend does not
+	// exist. Empty for every ordinary node, which is what every guard in pvs() tests against.
+	// Indexed like killers.
 	//
 	// A verification search re-enters pvs() at the SAME ply as the frame that launched it,
 	// so this is the only thing distinguishing the two — an exclusion frame must not probe
 	// or store the transposition table, clear the PV row, try a null move, or adjudicate a
 	// moveless position as mate. Set and restored by ExcludedMoveGuard, never by hand.
+	//
+	// Cold by construction: pvs() tests the enable flag before indexing this, so a build with
+	// singular extensions off never touches the array.
 	Move excluded_move[MAX_PLY];
 
 	// Singular-extension telemetry. Only touched inside the eligibility-gated block, so a
@@ -76,11 +88,6 @@ struct ThreadData {
 	int64_t singular_eligible = 0;      // nodes passing the eligibility gate
 	int64_t singular_verifications = 0; // verification searches actually run
 	int64_t singular_extensions = 0;    // verifications that granted the extra ply
-
-	// History heuristic: accumulated score for quiet moves that caused beta cutoffs,
-	// indexed by [side-to-move][from-square][to-square].
-	// int32 gives plenty of headroom before the depth^2 increments overflow.
-	int32_t history[2][64][64];
 
 	ThreadData()
 	{

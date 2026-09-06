@@ -501,6 +501,15 @@ void UciHandler::cmd_go(std::string_view line)
 			send("info string treenodes main " + std::to_string(result.nodes_searched) + " qs " +
 			     std::to_string(result.qnodes_searched));
 
+			// Singular-extension trigger rate, for sizing the heuristic's cost against how
+			// often it fires. Emitted only when it fired at all, so a build with the feature
+			// disabled -- the shipped one -- produces byte-identical output to one without it.
+			if (result.singular_eligible != 0) {
+				send("info string singular eligible " + std::to_string(result.singular_eligible) + " verified " +
+				     std::to_string(result.singular_verifications) + " extended " +
+				     std::to_string(result.singular_extensions));
+			}
+
 			const std::string bm = best.is_null() ? "0000" : MoveFormatter::ToUCI(best);
 			// Cleared BEFORE bestmove goes out, not after. `bestmove` is the only
 			// thing a client waits for, so it will send the next `position` the

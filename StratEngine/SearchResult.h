@@ -30,4 +30,12 @@ struct SearchResult {
 	int64_t qnodes_searched = 0;
 	bool search_was_stable = true;
 	std::chrono::milliseconds elapsed{0};
+
+	// Singular-extension trigger counts for this search, summed over every thread. All zero
+	// unless the feature is enabled, which is what lets the reporting side stay silent in the
+	// shipped configuration. They measure how often the heuristic fires, not whether it helped:
+	// only a match can answer that.
+	int64_t singular_eligible = 0;
+	int64_t singular_verifications = 0;
+	int64_t singular_extensions = 0;
 };

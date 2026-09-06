@@ -176,8 +176,14 @@ class AIPerlexTestFixture {
 
 	// Runs one pvs() node as a verification search would see it: the exclusion slot set for
 	// the duration of the call, through the same guard the search uses.
+	//
+	// Turns the feature on, because pvs() tests the enable flag before it reads the exclusion
+	// slot at all (a cold-array read on every node is worth 3.4% nps, and a disabled build can
+	// never have an exclusion frame). So an exclusion frame is only reachable with the flag
+	// set, and a test that left it off would be driving a state the search cannot produce.
 	int search_node_excluding(int depth, int ply, std::string_view uci, int alpha, int beta) const
 	{
+		set_singular_enabled(true);
 		ai->control_.ApplyLimits(SearchLimits::fixed_time(std::chrono::milliseconds(60'000)));
 		ai->td_.board = board_;
 		ai->td_.nodes_since_check_ = 0;

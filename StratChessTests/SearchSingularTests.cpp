@@ -227,6 +227,9 @@ TEST_CASE("Singular: a verification search stores nothing under the position's k
 TEST_CASE("Singular: null-move pruning is off inside a verification search", "[search][singular]")
 {
 	AIPerlexTestFixture fix(kBaselineFen);
+	// pvs() tests the enable flag before reading the exclusion slot, so the guard only has an
+	// effect with the feature on — see search_node_excluding().
+	fix.set_singular_enabled(true);
 
 	// Same arguments both times; only the exclusion slot differs.
 	CHECK(fix.try_null_move(/*depth=*/6, /*beta=*/100, /*ply=*/1, /*is_pv_node=*/false, /*in_check=*/false));

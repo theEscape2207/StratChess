@@ -38,6 +38,17 @@ instead of adjudicating checkmate or stalemate. The verification is issued befor
 because the loop learns a move is legal only from `DoMove()` returning true — by then the board
 holds the child, and the verification must search the parent.
 
+Measured, flag off: **node-identical** to the fork point (`Compare-SearchEquivalence.ps1`, 90 lines,
+6 positions, depth 12) at a cost of **−1.33% nps**. That cost was −3.44% before the enable flag was
+made the first term of every hot-path test — `excluded_move[MAX_PLY]` is otherwise cold, and reading
+it on every node was being charged to searches that can never have an exclusion frame.
+
+Measured, flag on (recorded here because it decides what the follow-up must fix, not because it
+ships): the trigger is selective — 0.18 verifications per 1000 nodes, extension granted on 7.9% —
+but **fixed-depth wall clock rises 43.5%**, and 2,688 verifications × ~1,400 nodes accounts for the
+entire +28.5% main-node growth. The 212 extensions are nearly free; the verifications are not.
+Tuning must cut verification frequency or depth before any Elo match is worth running.
+
 Also fixes a latent bug independent of the feature: `pvs()` had no absolute ply backstop, relying on
 depth falling on every recursive call to bound the recursion. An extension holds depth flat, so it
 now carries one at `ply >= MAX_PLY - 1` (matching `quiescence()`'s), placed first so it bounds the

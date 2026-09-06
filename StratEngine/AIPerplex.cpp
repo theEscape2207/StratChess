@@ -221,6 +221,8 @@ void AIPerplex::init_search(const Board& root)
 	td_.qnodes_searched = 0;
 	td_.pv_table = PVTable{}; // fresh PV for this call
 	td_.root_game_state = GameStates::STILL_PLAYING;
+	// Per-call like the node counters: the reported trigger rate belongs to this search.
+	td_.clear_singular_telemetry();
 }
 
 // Lazy SMP helper thread entry point (plain iterative deepening, no quality
@@ -302,6 +304,7 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 			htd.clear_null_move_flags();
 			htd.nodes_searched = 0;
 			htd.qnodes_searched = 0;
+			htd.clear_singular_telemetry();
 			htd.root_game_state = GameStates::STILL_PLAYING;
 			helpers.emplace_back([this, &htd, effective_depth, this_tt = _tt.get()] {
 				helper_loop(htd, static_cast<int>(effective_depth), *this_tt);
@@ -322,12 +325,23 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 
 	int64_t total_nodes = td_.nodes_searched;
 	int64_t total_qnodes = td_.qnodes_searched;
+	// Summed the same way as the node counters, and for the same reason: a helper thread's
+	// triggers are work this search did, whether or not its result was the one reported.
+	int64_t total_sing_eligible = td_.singular_eligible;
+	int64_t total_sing_verifications = td_.singular_verifications;
+	int64_t total_sing_extensions = td_.singular_extensions;
 	for (size_t i = 0; i + 1 < static_cast<size_t>(threads); ++i) {
 		total_nodes += helper_tds_[i]->nodes_searched;
 		total_qnodes += helper_tds_[i]->qnodes_searched;
+		total_sing_eligible += helper_tds_[i]->singular_eligible;
+		total_sing_verifications += helper_tds_[i]->singular_verifications;
+		total_sing_extensions += helper_tds_[i]->singular_extensions;
 	}
 	result.nodes_searched = total_nodes;
 	result.qnodes_searched = total_qnodes;
+	result.singular_eligible = total_sing_eligible;
+	result.singular_verifications = total_sing_verifications;
+	result.singular_extensions = total_sing_extensions;
 	result.elapsed = control_.Elapsed();
 	const Move bestMove = result.best_move;
 
@@ -510,7 +524,12 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// This frame is a singular verification search when the slot is set: it re-enters pvs()
 	// at the ply its parent is still working on, so it must leave that parent's PV row alone.
 	// Everything else the exclusion state suppresses is guarded further down.
-	const bool is_exclusion_frame = td.excluded_move[ply] != Move::EmptyMove();
+	//
+	// The flag is tested FIRST so that a build with the feature off never reads
+	// excluded_move[] at all. That array is otherwise cold, and touching a fresh line of it
+	// on every node cost 3.4% nps when this read was unconditional -- paid by a search that
+	// can never have an exclusion frame, since only the enabled feature creates one.
+	const bool is_exclusion_frame = tuning_.singular_extensions_enabled && td.excluded_move[ply] != Move::EmptyMove();
 
 	// Cleared before the two abort exits below, not after them. A frame that returns from either
 	// has searched nothing, and its return value is the fabricated GameValues::Draw — safe for a
@@ -589,7 +608,9 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				// least as good as its value (LOWER or EXACT), is not a mate score -- the
 				// margin arithmetic below is meaningless against one -- and was searched
 				// to nearly this depth.
-				tt_usable_for_singular = hash_move != Move::EmptyMove() &&
+				// Flag first: this runs on every node that finds a MAIN entry, which is most
+				// of them, and none of it means anything to a disabled build.
+				tt_usable_for_singular = tuning_.singular_extensions_enabled && hash_move != Move::EmptyMove() &&
 				                         (entry->bound == BoundType::LOWER || entry->bound == BoundType::EXACT) &&
 				                         std::abs(static_cast<int>(entry->value)) < GameValues::Mate_Threshold &&
 				                         entry->depth >= depth - tuning_.singular_tt_depth_margin;
@@ -1429,7 +1450,8 @@ bool AIPerplex::should_try_null_move(const ThreadData& td, int depth, int beta, 
 	// A verification search is proving that every alternative MOVE fails below a margin.
 	// Passing is not one of those alternatives, so a null-move cutoff here would answer a
 	// different question and could call a move singular on the strength of a pass.
-	if (td.excluded_move[ply] != Move::EmptyMove())
+	// Flag first, for the cold-array reason given at the top of pvs().
+	if (tuning_.singular_extensions_enabled && td.excluded_move[ply] != Move::EmptyMove())
 		return false;
 	if (is_pv_node || in_check)
 		return false;
