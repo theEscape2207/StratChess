@@ -465,3 +465,9 @@ FENParser::FENGameState FENParser::FromGameConfig(const Config::GameConfig& conf
 	state.fullMoveCounter = config.fullMoveCounter;
 	return state;
 }
+
+#if defined(__GNUC__) && !defined(__clang__)
+// TEMPORARY tripwire (issue #465 probe) -- proves -Werror is live on the GCC legs.
+// GCC-only so the clang-cl pre-commit build stays clean. MUST be reverted.
+static void strat_probe_tripwire() { int unusedProbeValue = 0; }
+#endif
