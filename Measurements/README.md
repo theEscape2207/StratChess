@@ -51,6 +51,12 @@ change. Pass `-ReferenceTag` naming the commit whose binary is really on the oth
 **Never compare across ledgers.** A Linux-lab row and a local clang-cl row differ in compiler,
 machine and book at once. Same trap as the MSVC rule, different axis.
 
+**Count shard agreement by score, not by buckets.** A lab shard favours the candidate when its
+points -- `n1 + 2*n2 + 3*n3 + 4*n4` out of `4 x pairs` -- exceed the neutral half. Comparing losing
+pairs against winning ones (`n0 + n1` against `n3 + n4`) weights a 2-0 pair the same as a 1.5-0.5
+one, so the two tests disagree on close shards and the bucket count reads high. Both #112 and #363
+were recorded that way and recounted on 2026-09-06.
+
 **The detail section is for what the table cannot hold** — which shards disagreed, why a figure
 supersedes an earlier one, what a run does *not* settle, a hand-correction and its evidence. It is
 not for restating the verdict. If a sentence would still be true with the numbers deleted, it is
