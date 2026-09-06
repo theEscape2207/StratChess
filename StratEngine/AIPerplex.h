@@ -44,6 +44,31 @@ using IterationObserver = std::function<void(const IterationInfo&)>;
 
 inline constexpr unsigned DEFAULT_AIPERPLEX_HASH_MB = 192;
 
+// Singular extensions (#95) are compiled out unless a build asks for them. The end state is
+// unconditional-on or deleted, so the shipping engine must not carry the cost of carrying them
+// disabled: gating at runtime alone measured -1.33% nps for code that never executed.
+//
+// Set by CMake: -DSTRAT_SINGULAR_EXTENSIONS=ON for an experimental engine build. The test target
+// always defines it, because the tests are what exercise the feature.
+//
+// Every use is `if constexpr` or the first term of a conjunction, never #ifdef. The discarded
+// branch of an `if constexpr` in a non-template context is still parsed and type-checked, so the
+// disabled code cannot rot -- which is the usual objection to preprocessor branches in a hot path.
+#ifndef STRAT_SINGULAR_EXTENSIONS
+#	define STRAT_SINGULAR_EXTENSIONS 0
+#endif
+inline constexpr bool kSingularExtensionsCompiled = STRAT_SINGULAR_EXTENSIONS != 0;
+
+// Whether a build that HAS the feature also starts with it on. Deliberately separate from
+// compiling it in, because the two targets want opposite answers:
+//   - the experimental engine defines both, since UCI cannot set the runtime flag and a build
+//     that compiled the feature in but left it off would measure nothing;
+//   - the test binary defines only the first, so every existing search test keeps exercising the
+//     SHIPPED configuration; the singular tests turn it on for themselves.
+#ifndef STRAT_SINGULAR_DEFAULT_ON
+#	define STRAT_SINGULAR_DEFAULT_ON 0
+#endif
+
 // Hand-aligned: this is the one tuning surface shared by the concrete
 // service configuration and the search implementation.
 struct SearchTuning {
@@ -80,6 +105,24 @@ struct SearchTuning {
 	// it off must leave the search node-identical. The !in_check guard at the pruning site is
 	// correctness, not tuning, and is deliberately outside this flag.
 	bool see_pruning_enabled = true;
+
+	// Singular extensions. The RUNTIME half of the gate — it only means anything in a build
+	// compiled with STRAT_SINGULAR_EXTENSIONS (see kSingularExtensionsCompiled above); the
+	// shipping engine has the whole feature compiled out and never reads these.
+	//
+	// It exists so a build that HAS the feature can still toggle it without recompiling, which
+	// is what the tests and the follow-up's parameter sweep need. These knobs are NOT reachable
+	// over UCI — UciHandler::init_ai() builds its AIPerplexConfig from hardcoded values and
+	// never consults game_settings.json — so a UCI-driven harness sees only a build's defaults.
+	bool singular_extensions_enabled = STRAT_SINGULAR_DEFAULT_ON != 0;
+	// Minimum remaining depth before a node is worth a verification search. Also what keeps
+	// the verification depth positive — see the assert at the call site.
+	int singular_min_depth = 8;
+	// How much shallower than this node the transposition entry may be and still be trusted.
+	int singular_tt_depth_margin = 3;
+	// Verification window offset, scaled by depth: a move is singular when every alternative
+	// fails below tt_value - singular_margin_factor * depth.
+	int singular_margin_factor = 2;
 };
 
 struct AIPerplexConfig {

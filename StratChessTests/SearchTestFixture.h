@@ -17,8 +17,11 @@
 #include "PlayerFactory.h"
 #include "PlayerBase.h"
 #include "SearchPlayer.h"
+#include "Sort.h"
+#include "ThreadData.h"
 #include "TranspositionTable.h"
 #include "defines.h"
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <initializer_list>
@@ -119,6 +122,78 @@ class AIPerlexTestFixture {
 	// SetThreads() override; needs friend access because threads_ itself
 	// is private. Used by the [smp] clamp tests below.
 	unsigned threads() const { return ai->threads_; }
+
+	// --- Singular-extension pokes (#95) ---
+	// The feature ships disabled, so every test that exercises it has to turn it on first;
+	// the eligibility-boundary tests then move one knob at a time off a known-good baseline.
+	void set_singular_enabled(bool enabled) const { ai->tuning_.singular_extensions_enabled = enabled; }
+	void set_singular_min_depth(int depth) const { ai->tuning_.singular_min_depth = depth; }
+	void set_singular_tt_depth_margin(int margin) const { ai->tuning_.singular_tt_depth_margin = margin; }
+	void set_singular_margin_factor(int factor) const { ai->tuning_.singular_margin_factor = factor; }
+
+	int64_t singular_eligible() const { return ai->td_.singular_eligible; }
+	int64_t singular_verifications() const { return ai->td_.singular_verifications; }
+	int64_t singular_extensions() const { return ai->td_.singular_extensions; }
+	void clear_singular_telemetry() const { ai->td_.clear_singular_telemetry(); }
+
+	// A MAIN entry carrying a real best_move. store_main_entry() plants an empty one, which
+	// can never be a singular candidate — the gate requires a move to extend.
+	void store_main_entry_with_move(int16_t value, int16_t depth, int ply, BoundType bound, std::string_view uci) const
+	{
+		const Move move = MoveFormatter::FromUCI(uci, board_);
+		REQUIRE_FALSE(move.is_null());
+		ai->_tt->store(board_.get_zobrist_hash(), value, depth, static_cast<int16_t>(ply), move, bound,
+		               NodeType::CUT_NODE, SearchPhase::MAIN);
+	}
+
+	// The first move ScoreMoves would put in front of the search. Eligibility requires the
+	// hash move to be sorted first, so a test that wants the gate to pass has to name this one.
+	std::string first_sorted_move_uci() const { return MoveFormatter::ToUCI(first_sorted_move()); }
+
+	Move first_sorted_move() const
+	{
+		MoveList list;
+		MoveGenerator::ComputeLegalMoves(board_, list);
+		REQUIRE(!list.empty());
+
+		std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored{};
+		const int n = static_cast<int>(list.size());
+		MoveSorter::ScoreMoves(list, n, board_, board_.GetCurrentColor(), Move::EmptyMove(), Move::EmptyMove(),
+		                       Move::EmptyMove(), ai->td_.history, scored);
+		return list[scored[0].second];
+	}
+
+	Move excluded_move(int ply) const { return ai->td_.excluded_move[ply]; }
+
+	// The private per-thread state itself, for tests that need to hold an ExcludedMoveGuard
+	// across several calls rather than around a single search.
+	ThreadData& thread_data() const { return ai->td_; }
+
+	// Latches the abort flag up front, so the next search frame takes its early-exit path.
+	// search_node_excluding() arms a 60s clock of its own, so waiting for the node poll to
+	// fire would never abort anything.
+	void request_stop() const { ai->Stop(); }
+
+	// Runs one pvs() node as a verification search would see it: the exclusion slot set for
+	// the duration of the call, through the same guard the search uses.
+	//
+	// Turns the feature on, because pvs() tests the enable flag before it reads the exclusion
+	// slot at all (a cold-array read on every node is worth 3.4% nps, and a disabled build can
+	// never have an exclusion frame). So an exclusion frame is only reachable with the flag
+	// set, and a test that left it off would be driving a state the search cannot produce.
+	int search_node_excluding(int depth, int ply, std::string_view uci, int alpha, int beta) const
+	{
+		set_singular_enabled(true);
+		ai->control_.ApplyLimits(SearchLimits::fixed_time(std::chrono::milliseconds(60'000)));
+		ai->td_.board = board_;
+		ai->td_.nodes_since_check_ = 0;
+
+		const Move excluded = MoveFormatter::FromUCI(uci, board_);
+		REQUIRE_FALSE(excluded.is_null());
+
+		const ExcludedMoveGuard guard(ai->td_, ply, excluded);
+		return ai->pvs(ai->td_, depth, alpha, beta, ply, /*is_pv_node=*/false, *ai->_tt);
+	}
 
 	void store_tt_marker() const
 	{

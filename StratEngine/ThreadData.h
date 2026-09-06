@@ -65,9 +65,41 @@ struct ThreadData {
 	// int32 gives plenty of headroom before the depth^2 increments overflow.
 	int32_t history[2][64][64];
 
+	// --- Singular extensions (#95) ---
+	// Deliberately LAST. Everything above is touched on the hot path; these are not, and
+	// inserting them higher shifted the offsets of the members that are.
+
+	// excluded_move[ply] is the move a verification search at this ply must pretend does not
+	// exist. Empty for every ordinary node, which is what every guard in pvs() tests against.
+	// Indexed like killers.
+	//
+	// A verification search re-enters pvs() at the SAME ply as the frame that launched it,
+	// so this is the only thing distinguishing the two — an exclusion frame must not probe
+	// or store the transposition table, clear the PV row, try a null move, or adjudicate a
+	// moveless position as mate. Set and restored by ExcludedMoveGuard, never by hand.
+	//
+	// Cold by construction: pvs() tests the enable flag before indexing this, so a build with
+	// singular extensions off never touches the array.
+	Move excluded_move[MAX_PLY];
+
+	// Singular-extension telemetry. Only touched inside the eligibility-gated block, so a
+	// build with the feature disabled never writes them. Counts are per-thread and summed
+	// by the caller; they measure trigger rate, not correctness.
+	int64_t singular_eligible = 0;      // nodes passing the eligibility gate
+	int64_t singular_verifications = 0; // verification searches actually run
+	int64_t singular_extensions = 0;    // verifications that granted the extra ply
+
+	// Node edges consumed INSIDE verification searches, measured across each verification call
+	// rather than inferred. Without it, "verification is what costs" can only be argued by
+	// dividing the total node growth by the verification count and calling the quotient a
+	// per-verification cost -- which is an identity, not evidence, and cannot separate
+	// verification from the deeper subtrees the extensions themselves produce.
+	int64_t singular_verification_nodes = 0;
+
 	ThreadData()
 	{
 		clear_killers();
+		clear_excluded_moves();
 		clear_history();
 	}
 
@@ -79,6 +111,20 @@ struct ThreadData {
 	}
 
 	void clear_null_move_flags() noexcept { std::memset(last_move_was_null, 0, sizeof(last_move_was_null)); }
+
+	void clear_excluded_moves() noexcept
+	{
+		for (auto& m : excluded_move)
+			m = Move::EmptyMove();
+	}
+
+	void clear_singular_telemetry() noexcept
+	{
+		singular_eligible = 0;
+		singular_verifications = 0;
+		singular_extensions = 0;
+		singular_verification_nodes = 0;
+	}
 
 	// Resets everything that must not leak into a new game. History is
 	// deliberately aged, never cleared, WITHIN a game (see the class comment
@@ -99,6 +145,8 @@ struct ThreadData {
 		pv_table = PVTable();
 		clear_killers();
 		clear_null_move_flags();
+		clear_excluded_moves();
+		clear_singular_telemetry();
 		clear_history();
 	}
 
@@ -157,4 +205,37 @@ struct ThreadData {
 		if (ply == 0)
 			root_game_state = newState;
 	}
+};
+
+// Sets td.excluded_move[ply] for the duration of a singular verification search and restores
+// it on every exit. RAII rather than a set/call/clear sequence because the verification can
+// return through the abort path: a slot left populated would silently disable the
+// transposition table and null-move pruning for every later node at that ply, with no
+// symptom beyond a slower search.
+class ExcludedMoveGuard {
+  public:
+	ExcludedMoveGuard(ThreadData& td, int ply, const Move& move) noexcept
+	    : td_(td), ply_(ply), previous_(td.excluded_move[ply])
+	{
+		assert(ply >= 0 && ply < MAX_PLY);
+		assert(td.excluded_move[ply] == Move::EmptyMove() && "nested verification at one ply");
+		td_.excluded_move[ply_] = move;
+	}
+	// Restores the PREVIOUS value, not Empty. The two coincide while nesting at one ply is
+	// unreachable, and the assert above catches nesting in Debug -- but in Release an inner guard
+	// clearing an outer one's slot would leave the outer frame searching the excluded move while
+	// no longer recognising itself as an exclusion frame, and it would then store that partial
+	// search to the transposition table under the position's own key. One Move member closes
+	// that structurally instead of by argument.
+	~ExcludedMoveGuard() noexcept { td_.excluded_move[ply_] = previous_; }
+
+	ExcludedMoveGuard(const ExcludedMoveGuard&) = delete;
+	ExcludedMoveGuard& operator=(const ExcludedMoveGuard&) = delete;
+	ExcludedMoveGuard(ExcludedMoveGuard&&) = delete;
+	ExcludedMoveGuard& operator=(ExcludedMoveGuard&&) = delete;
+
+  private:
+	ThreadData& td_;
+	int ply_;
+	Move previous_;
 };

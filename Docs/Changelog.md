@@ -22,6 +22,57 @@ Newest first.
 
 ---
 
+## 2026-09-06 — Singular extensions, compiled out of the shipping engine (#95)
+
+`AIPerplex::pvs()` can search a transposition-table move one ply deeper when a reduced-depth
+verification search proves every alternative fails below a depth-scaled margin. **The feature is
+compiled out of the shipping engine** — `option(STRAT_SINGULAR_EXTENSIONS)`, OFF — so that build is
+node-identical to the previous one and pays nothing for carrying it. A runtime flag alone measured
+−1.33% nps for code that never ran, and the end state is unconditional-on or deleted, so a permanent
+flag would be the wrong shape. Every gate is `if constexpr` rather than `#ifdef`, so the disabled
+branch stays parsed and type-checked and cannot rot.
+
+Two defines, because the targets want opposite answers: `STRAT_SINGULAR_EXTENSIONS` compiles the
+code in (experimental engine, and always the test binary), `STRAT_SINGULAR_DEFAULT_ON` starts it
+enabled (experimental engine only). The test binary deliberately gets the first without the second,
+so every existing search test keeps exercising the shipped configuration while the singular tests
+enable it for themselves. Enabling it for real is a separate change that cannot merge without a
+match.
+
+The exclusion state is `ThreadData::excluded_move[ply]`, mirroring the existing
+`last_move_was_null[ply]`, set only by an RAII `ExcludedMoveGuard`. A verification search re-enters
+`pvs()` at the *same* ply, so an exclusion frame skips the PV-row clear, the TT probe and store,
+null-move pruning, and the excluded move itself; a node whose only legal move was excluded fails low
+instead of adjudicating checkmate or stalemate. The verification is issued before the move loop,
+because the loop learns a move is legal only from `DoMove()` returning true — by then the board
+holds the child, and the verification must search the parent.
+
+Measured, shipping build: **node-identical** to the fork point (`Compare-SearchEquivalence.ps1`,
+90 lines, 6 positions, depth 12) at **−0.40% nps**. The cost went −3.44% (as first written) →
+−1.33% (enable flag made the first term of every hot-path test, since `excluded_move[MAX_PLY]` is
+otherwise cold and was being read per node by searches that can never have an exclusion frame) →
+−0.40% (feature compiled out). The remainder is the unconditional ply backstop below: one compare
+per node, kept because it is a recursion bound in its own right, not part of the feature.
+
+Measured, flag on (recorded here because it decides what the follow-up must fix, not because it
+ships): the trigger is selective — 0.18 verifications per 1000 nodes, extension granted on 7.9% —
+but fixed-depth cost rises sharply: **+23.8% nodes** over the six bench positions, and **+43.5% wall
+clock** when measured before the `origin/main` merge.
+
+`singular_verification_nodes` counts the node edges spent inside verification searches directly, so
+the split is measured rather than inferred: **verification is 20.9% of the added nodes; the extended
+subtrees and their knock-on effects are the other 79.1%.** The cost is therefore dominated by the
+extensions themselves, not by proving them — so tuning must target how many extensions are granted
+(the margin) at least as much as how many verifications run. The effect is not uniformly additive
+either: one position searched ~797k *fewer* nodes with the feature on, the extensions having changed
+ordering in its favour.
+
+Also fixes a latent bug independent of the feature: `pvs()` had no absolute ply backstop, relying on
+depth falling on every recursive call to bound the recursion. An extension holds depth flat, so it
+now carries one at `ply >= MAX_PLY - 1` (matching `quiescence()`'s), placed first so it bounds the
+`excluded_move[ply]` read — `pvs()` writes `last_move_was_null[ply + 1]`, which is what sets the
+limit at `MAX_PLY - 1`. `Docs/EngineContracts.md` gains the fact that `SearchTuning` is unreachable
+over UCI, which is why the two configurations are two builds rather than a setoption.
 ## 2026-09-06 — Retained-plan state named (#400)
 
 `.claude/plans/retained/` holds plans kept because something still cites them:
