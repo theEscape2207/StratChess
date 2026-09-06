@@ -197,7 +197,7 @@ path instead of re-deriving why each file survived.
 
 | State | Where | Meaning |
 |---|---|---|
-| New | `.claude/plans/` | Written for work about to start, or in design review. Transient. |
+| New | `.claude/plans/` | Written for work about to start, or in design review. Transient — `TEMPLATE.md` is the only permanent resident. |
 | Not started | `.claude/plans/not-started/` | Designed, issue open, no matching code yet. It is a spec. |
 | In progress | `.claude/plans/in-progress/` | Implementation has started but has not fully landed. |
 | Retained | `.claude/plans/retained/` | Harvested or finished, but something still cites it. |
@@ -212,9 +212,9 @@ simply stay put and go through the normal Harvest-then-delete flow from there.
 by being deleted after Harvest, or by moving to `retained/` if something still cites it.
 
 **Retained** — the residue: a document whose rationale is too substantial to inline anywhere else,
-so a doc, a workflow comment or CLAUDE.md points at the file itself.
+so a doc or a workflow comment points at the file itself.
 `.claude/plans/retained/tsan-lazy-smp.md` is the type case, cited from `Docs/CI.md` for its survey
-and cost analysis with no other home. `TEMPLATE.md` lives here too — CLAUDE.md cites it.
+and cost analysis with no other home.
 
 A retained plan is not permanent. When its last inbound reference goes away — the citing doc is
 rewritten, or the rationale is inlined where it is read — it becomes deletable under the three

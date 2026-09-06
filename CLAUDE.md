@@ -174,7 +174,7 @@ that could reasonably go more than one way *and* materially affects a contract, 
 correctness, strength, performance or maintenance cost, or it rests on an assumption you cannot
 verify from the code in front of you. File count is not the trigger: a ten-file mechanical rename
 needs nothing, a one-line change to `replacementScore()` needs one. Start from
-`.claude/plans/retained/TEMPLATE.md` and **name the file after its content**.
+`.claude/plans/TEMPLATE.md` and **name the file after its content**.
 
 **Write for a future maintainer arriving cold**, and keep it proportional — a document longer than
 the diff it describes means either the change is riskier than it looks or the document is padding.

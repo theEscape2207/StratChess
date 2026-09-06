@@ -24,18 +24,24 @@ Newest first.
 
 ## 2026-09-06 — Retained-plan state named (#400)
 
-`.claude/plans/retained/` holds plans kept because something still cites them: `TEMPLATE.md`,
+`.claude/plans/retained/` holds plans kept because something still cites them:
 `tsan-lazy-smp.md`, `public-repo-and-strength-lab.md`, `elo-baseline-measurement.md`,
 `full-build-test-ci-github-actions.md` and `validation-change-tiers.md`. With `not-started/` and
 `in-progress/` already carrying their own verdicts, the top level had come to mean
 "retained-by-definition" without saying so, leaving a future prune pass to re-derive it per file.
+It now holds only `TEMPLATE.md` and plans in flight.
 
-16 inbound references rewritten across `CLAUDE.md`, `Docs/Changelog.md`, `Docs/CI.md`,
-`Docs/Workflow.md` and `.github/workflows/{build-and-test,strength}.yml` — audited, not
-bulk-rewritten, since most plan paths cited from the changelog point at harvested files that are
-deliberately git-history links. `Docs/Workflow.md` → Design document lifecycle now describes all
-four states plus deletion in one table, and states that a retained plan becomes deletable again once
-its last citation goes.
+15 inbound references rewritten across `Docs/Changelog.md`, `Docs/CI.md`, `Docs/Workflow.md` and
+`.github/workflows/{build-and-test,strength}.yml` — audited, not bulk-rewritten, since most plan
+paths cited from the changelog point at harvested files that are deliberately git-history links.
+`Docs/Workflow.md` → Design document lifecycle now describes all four states plus deletion in one
+table, and states that a retained plan becomes deletable again once its last citation goes.
+
+`in-progress/` is materialised with a `.gitkeep` so all three states exist in the tree rather than
+appearing only when first used. `selftest-coverage-rule.md` is deleted: #395 is closed, nothing
+cites it, and every Harvest row was verified in place — the one item with no destination in the
+tree, D5's unverified assumption that the self-test set would pass on Linux, is now a comment on
+#395.
 
 ---
 
