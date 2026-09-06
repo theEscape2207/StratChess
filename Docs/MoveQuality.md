@@ -2,7 +2,9 @@
 
 Every strength-lab run writes a fully annotated PGN of every game it plays. The run summary consumes
 one number from it — the pooled Elo — which decides *whether* a change helped and is silent on
-*where*. `Scripts/analyze_move_quality.py` reads the same PGNs and answers the second question.
+*where*. `Scripts/analyze_move_quality.py` reads the same PGNs and answers the second question from
+the engine's own annotations; `Scripts/analyze_external_quality.py` answers it again with an outside
+engine as the judge, which is the only way to see the mistakes the engine does not know it made.
 
 This file is the method and the ledger; the tool is the instrument. Like
 [`../Measurements/`](../Measurements/) it is a measurement record and is appended to, not rewritten — and like it,
@@ -14,6 +16,7 @@ it is in scope of #227 if the ledgers move out of `Docs/`.
 | know what the numbers mean and what they cannot see | [Method](#method) · [Limits](#limits) |
 | the current numbers | [Baseline: run 33215162562](#baseline-run-33215162562) |
 | what the baseline established | [Findings](#findings) |
+| what an outside engine says about the same moves | [Tier 2](#tier-2-external-adjudication) |
 
 ---
 
@@ -33,6 +36,22 @@ the score perspective is the one every formula assumes. Run it before reading an
 `--self-test` is the other half — fixture games covering every annotation shape, and a deliberately
 corrupt game that must be counted once, not as both parsed and skipped. The full scan is about 6
 seconds over 18 shards on 18 workers.
+
+Tier 2 reads the same corpus and swaps the judge for an outside engine:
+
+```sh
+python Scripts/analyze_external_quality.py --self-test   # needs the oracle, not a corpus
+python Scripts/analyze_external_quality.py pgn --depth 12 --json external.json
+```
+
+The oracle is a Stockfish binary in `EngineTesting/` beside `fastchess.exe`, outside the checkout —
+it is GPL-3, and keeping it out keeps the repo free of that obligation. `--engine` or
+`STOCKFISH_PATH` override the search. Its `--self-test` is not optional: a point-of-view slip in the
+scoring inverts every loss it reports without failing anything else, so four of its checks exist only
+to catch that, and they need the binary to run.
+
+Cost is real but not prohibitive: 18 shards at depth 12 is about 1.5 M positions, ~4 hours on 20
+workers. Tier 1's six seconds buys a different question, not a worse one — run Tier 1 first.
 
 **Every rate carries a game-clustered interval.** Plies inside one game share its opening, its two
 builds and its result, so a per-ply confidence interval is several times too tight to believe. The
@@ -80,8 +99,10 @@ book does emit them, and they are excluded.
 
 ## Limits
 
-- **It grades its own homework.** A position both builds misjudge the same way produces no swing at
-  all. That blind spot is the entire reason #77 also proposes external adjudication.
+- **It grades its own homework, and the blind spot is large.** A position both builds misjudge the
+  same way produces no swing at all. [Tier 2](#tier-2-external-adjudication) has now measured that
+  spot against an outside engine: the blunder rates below are the ones the engine can see, roughly a
+  twentieth of the ones it makes. Read Tier 2 before treating any rate below as a defect profile.
 - **The endgame is censored by adjudication.** 68% of the baseline's games ended by adjudication under
   `-draw movenumber=40 movecount=8 score=10` / `-resign movecount=4 score=800`. "Endgame" numbers mean
   *the position at the moment of adjudication*, not played-out technique, and the calibration table is
