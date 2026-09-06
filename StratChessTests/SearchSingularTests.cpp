@@ -278,6 +278,63 @@ TEST_CASE("Singular: the exclusion slot is restored when the search aborts", "[s
 	CHECK(fix.excluded_move(kPly) == Move::EmptyMove());
 }
 
+TEST_CASE("Singular: a low min-depth still runs a real verification search", "[search][singular]")
+{
+	// singular_min_depth is a mutable tuning field and the follow-up is a parameter sweep, so the
+	// verification depth is clamped rather than left to the default's value plus a Debug assert.
+	// This pins the reachable half: the gate still fires at the lowest depth a sweep might set,
+	// and the search completes. The clamp ITSELF is not falsifiable from here -- see the note
+	// below the tests.
+	AIPerlexTestFixture fix(kBaselineFen);
+	fix.set_singular_enabled(true);
+	fix.arm_clock();
+	fix.set_singular_min_depth(2); // (depth - 1) / 2 == 0 at depth 2 before clamping
+	fix.store_main_entry_with_move(kTtValue, /*depth=*/2, /*ply=*/1, BoundType::LOWER, fix.first_sorted_move_uci());
+	fix.clear_singular_telemetry();
+
+	fix.search_node(/*depth=*/2, /*ply=*/1);
+
+	CHECK(fix.singular_verifications() == 1);
+}
+
+TEST_CASE("Singular: a verification search does not clear the parent's PV row", "[search][singular]")
+{
+	// The exclusion frame re-enters pvs() at its parent's ply, where pvs() opens by clearing the
+	// PV row -- which would wipe the row that parent is midway through building. Falsified: with
+	// the guard removed this test goes red.
+	//
+	// It does NOT pin the matching guard on the PV *write*; that one is unfalsifiable here because
+	// the only call site passes is_pv_node = false, so the write never executes either way.
+	AIPerlexTestFixture fix(kBaselineFen);
+	fix.arm_clock();
+	constexpr int kPly = 1;
+
+	const Move seeded = fix.first_sorted_move();
+	fix.seed_pv_row(kPly, seeded);
+	REQUIRE(fix.pv_move(kPly) == seeded);
+
+	fix.search_node_excluding(/*depth=*/4, kPly, fix.first_sorted_move_uci(), -GameValues::Search_Init,
+	                          GameValues::Search_Init);
+
+	// Untouched: neither cleared nor overwritten with a move the parent is forbidden to play.
+	CHECK(fix.pv_move(kPly) == seeded);
+}
+
+// THREE HARDENING CHANGES ARE DELIBERATELY NOT TESTED HERE, because each guards a state that
+// something else already makes unreachable -- so a test of it could only pass, and a test that
+// cannot fail disguises the gap instead of closing it. Each was checked by patching it out and
+// confirming the suite stays green, which is how they were identified as unfalsifiable:
+//
+//   1. verify_depth clamped to >= 1. Removing the clamp changes nothing observable from outside:
+//      the verification silently falls into quiescence and returns a meaningless answer, but no
+//      contract is violated and no counter moves. It guards a parameter sweep, not this suite.
+//   2. The PV *write* guarded on !is_exclusion_frame. Unreachable while the only call site passes
+//      is_pv_node = false, and an assert now forbids a PV exclusion frame outright.
+//   3. ExcludedMoveGuard restoring the previous slot rather than Empty. Differs only when guards
+//      nest at one ply, which the constructor asserts against.
+//
+// All three are Release-only hardening against future change. See the source comments at each site.
+
 // ============================================================================
 // Ply backstop
 // ============================================================================

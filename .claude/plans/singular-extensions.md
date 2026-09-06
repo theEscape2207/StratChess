@@ -12,9 +12,9 @@ reduced-depth search confirms every alternative fails below a margin.
 
 Whether this is worth its cost in this engine is unknown and cannot be assumed from other engines'
 published gains — the trade depends on this search's ordering, this evaluation and this time
-management. This change therefore lands the mechanism **disabled by default**, so it is provably
-node-identical to today's search, and leaves the flip-to-enabled to a follow-up backed by a measured
-Elo result.
+management. This change therefore lands the mechanism **compiled out of the shipping engine** (D9),
+so that build is provably node-identical to today's search and pays nothing for carrying the code,
+and leaves enabling it to a follow-up backed by a measured Elo result.
 
 ## Scope
 
@@ -92,8 +92,10 @@ that short-circuits — the flag is the first term of the eligibility conjunctio
 If the excluded move is the position's only legal move, the loop finds nothing and `moveFound` stays
 false. The existing code path adjudicates that as mate or stalemate and stores it as `EXACT`. Under
 exclusion that is a lie about the real position, and storing it would poison the key for every
-subsequent probe. The exclusion branch returns `alpha` — a fail-low, i.e. "no alternative reached
-the margin", which is exactly the answer a verification search wants — and writes nothing.
+subsequent probe. The exclusion branch returns `original_alpha` — a fail-low, i.e. "no alternative
+reached the margin", which is exactly the answer a verification search wants — and writes nothing.
+`original_alpha` rather than `alpha`: the two are equal on this path, since alpha only moves inside
+the `moveFound` branch, but the equality is three nesting levels away from the return.
 
 ### D9: The feature is compiled out of the shipping engine, not merely disabled
 
@@ -242,21 +244,21 @@ eligible =  tuning.singular_extensions_enabled          // first term: short-cir
 int extension = 0;
 if (eligible) {
     singular_beta = tt_value - tuning.singular_margin_factor * depth;
-    verify_depth  = (depth - 1) / 2;                    // asserted >= 1; 3 at the default gate
+    verify_depth  = max(1, (depth - 1) / 2);            // clamped, not asserted -- see below
     {
-        ExcludedMoveGuard guard(td, ply, hash_move);    // RAII, restores on every exit
+        ExcludedMoveGuard guard(td, ply, hash_move);    // RAII, restores the previous slot value
         value = pvs(td, verify_depth, singular_beta - 1, singular_beta, ply, false, tt);
     }
     if (control_.IsAborted())
-        return -GameValues::Search_Init;                // no child completed; see below
+        return best_value;                              // still the sentinel; nothing searched yet
     if (value < singular_beta)
         extension = 1;
 }
 
-// (b) Inside the move loop, at the first legal move:
+// (b) Inside the move loop, at the first legal move. No ply bound needed here: the backstop at
+//     the top of pvs() (D6) already guarantees ply <= MAX_PLY - 2 for any frame that gets here.
 if (move_number == 0) {
-    const int child_depth = (extension && move == hash_move && ply + 1 < MAX_PLY)
-                          ? depth : depth - 1;
+    const int child_depth = (extension && move == hash_move) ? depth : depth - 1;
     value = -pvs(td, child_depth, -beta, -alpha, ply + 1, is_pv_node, tt);
 }
 ```
@@ -269,10 +271,12 @@ is wasted but harmless — it excluded a move that was not in the list — and n
 That case costs one search on a TT move that failed legality, which is rare enough not to warrant
 avoiding.
 
-The abort return is `-GameValues::Search_Init` rather than `best_value` only because no move has
-been searched yet at this point, so the two are the same value; it is written explicitly to make the
-"no child completed" case obvious at the call site. The board is untouched — verification runs
-before any `DoMove()` — so no unwinding is needed beyond the return itself.
+The abort return is `best_value`, which is still the `-Search_Init` sentinel at this point since no
+move has been searched. The board is untouched — verification runs before any `DoMove()` — so no
+unwinding is needed beyond the return itself. `poll_search_limits()` can only return true by
+latching the abort flag, so there is no path where the verification returns a fabricated
+`GameValues::Draw` and the `IsAborted()` check fails to fire; that matters, because a stale
+`verify_value == 0` against a typical `singular_beta` would have granted a spurious extension.
 
 Rejected: verifying inside the loop via `DoMove` → `UndoMove` → verify → `DoMove` again, as the
 review suggested. It works, but it needs its own abort handling between the undo and the remake, and
@@ -288,12 +292,12 @@ Guards applied inside a frame whose `td.excluded_move[ply]` is non-empty:
 
 | Site | Behaviour under exclusion |
 |---|---|
-| `pv_table.clear_ply(ply)` (L503) | skipped — must not wipe the parent's row it is re-entering. Unreachable at the D6 backstop's own clear, which stays unconditional |
-| TT probe (L528) | skipped — no probe, no cutoff |
+| `pv_table.clear_ply(ply)` at the top | skipped — must not wipe the parent's row it is re-entering. Unreachable at the D6 backstop's own clear, which stays unconditional |
+| TT probe | skipped — no probe, no cutoff |
 | `should_try_null_move()` | returns false — a pass is not one of the alternatives being disproved |
 | move loop | skips the excluded move |
-| `!moveFound` (L722) | returns a fail-low `alpha`, **not** mate/stalemate, and stores nothing |
-| final `tt.store()` (L745) | skipped |
+| the `!moveFound` branch | returns a fail-low `original_alpha`, **not** mate/stalemate, and stores nothing |
+| the final `tt.store()` | skipped |
 
 ## Assumptions I cannot verify from the code
 
@@ -417,6 +421,32 @@ Telemetry is read two ways: unit tests assert the counters directly through the 
 `STRAT_ENABLE_TEST_ACCESS` friend, and the flag-on build emits one `info string` summary line at the
 end of a search, which is what makes the counters visible to the UCI-driven bench harness. The line
 is emitted only when the flag is enabled, so the shipped configuration is byte-identical on stdout.
+
+## Changed during implementation, after the search-reviewer round
+
+Recorded here because the diff review and the design review look at different artifacts, and
+nothing else reconciles them.
+
+- **`verify_depth` is clamped, not asserted.** The doc listed `verify_depth >= 1` as an invariant of
+  the code; it was an invariant of `singular_min_depth`'s *default* plus a Debug-only assert, in a
+  feature whose stated follow-up is a parameter sweep. Now `std::max(1, (depth - 1) / 2)`.
+- **The PV *write* gained the `!is_exclusion_frame` guard** that D2 gave the *clear*, plus an assert
+  that an exclusion frame is never a PV node. D2's own argument — that a caller-side property must
+  not carry a safety invariant — applied to the write too, and was not applied.
+- **`ExcludedMoveGuard` restores the previous slot value**, not Empty. Identical while nesting is
+  unreachable; structurally safe if it ever is not.
+- **The `!moveFound` exclusion return is `original_alpha`**, not `alpha`. Same value; no longer
+  depends on the alpha update three nesting levels away.
+
+Three of these are unfalsifiable by construction — removing the guard leaves the suite green,
+because something else already makes the state unreachable. They are listed as such in
+`SearchSingularTests.cpp` rather than covered by tests that could only pass. Two tests written for
+this round were **deleted for exactly that reason**; the third survived and pins the PV clear, which
+had no test before.
+
+The doc's own pseudocode was stale in three places (a `ply + 1 < MAX_PLY` term the backstop makes
+redundant, an abort-return spelling the code improved on, and guard-table line numbers) — corrected
+above rather than left to contradict the code.
 
 ## Harvest
 

@@ -533,6 +533,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	const bool is_exclusion_frame = kSingularExtensionsCompiled && tuning_.singular_extensions_enabled &&
 	                                td.excluded_move[ply] != Move::EmptyMove();
 
+	// A verification search is a null-window probe by construction; a PV exclusion frame would
+	// mean the caller asked for a principal variation from a search forbidden a legal move.
+	assert(!(is_exclusion_frame && is_pv_node) && "exclusion frame must not be a PV node");
+
 	// Cleared before the two abort exits below, not after them. A frame that returns from either
 	// has searched nothing, and its return value is the fabricated GameValues::Draw — safe for a
 	// parent frame, which discards it at its own unwind guard, but not for the root: the value
@@ -690,14 +694,19 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		                               tt_usable_for_singular && n > 0 && moveList[scored_idx[0].second] == hash_move;
 
 		if (singular_eligible) {
+			// These two are incremented before the abort guard below, the same exemption the
+			// node counters take: they measure work attempted, not results kept.
+			// singular_extensions is deliberately below it, because that one IS a result.
 			td.singular_eligible++;
 
 			const int singular_beta = tt_value_for_singular - tuning_.singular_margin_factor * depth;
-			const int verify_depth = (depth - 1) / 2;
-			// singular_min_depth >= 3 is what keeps this positive. A verification that fell
-			// through to quiescence() would be worthless and wrong: quiescence carries no
-			// exclusion state, so it would search the excluded move and use the normal TT.
-			assert(verify_depth >= 1 && "singular_min_depth too low: verification would reach quiescence");
+			// Clamped, not asserted. A verification that fell through to quiescence() would be
+			// worthless and wrong -- quiescence carries no exclusion state, so it would search
+			// the excluded move and use the normal transposition table -- and singular_min_depth
+			// is a mutable tuning field that a parameter sweep is expected to lower. Leaving
+			// this to the default value plus a Debug assert would make a Release sweep binary
+			// silently produce garbage extension decisions.
+			const int verify_depth = std::max(1, (depth - 1) / 2);
 
 			td.singular_verifications++;
 
@@ -756,6 +765,12 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 				const bool isCapture = MoveHelper::IsCapture(move);
 				const bool isPromotion = MoveHelper::IsPromote(move);
+				// Read live, so a killer stored by a singular verification search at this same
+				// ply lands here: it exempts the move from LMR and changes the DEPTH this node
+				// searches it at. That is why an enabled build is not "the same tree plus one
+				// ply". It cannot make a result wrong -- the killer is a genuine refutation in
+				// this position, and the value still comes from a real search at whatever depth
+				// it ends up using -- and it is deterministic at Threads=1.
 				const bool isKiller = (move == td.killers[ply][0] || move == td.killers[ply][1]);
 
 				// The board still holds the position after DoMove, so the InCheck() below asks whether
@@ -825,8 +840,13 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				if (value > alpha) {
 					alpha = value;
 
-					// Update PV when alpha improves
-					if (is_pv_node) {
+					// Update PV when alpha improves. The !is_exclusion_frame term mirrors the
+					// clear at the top of the function: a verification frame re-enters at its
+					// parent's ply, so writing here would overwrite the row that parent is
+					// building -- with a move the parent is forbidden to play. Today the only
+					// call site passes is_pv_node = false, but that is a caller-side property,
+					// and the same reasoning that guarded the clear applies to the write.
+					if (is_pv_node && !is_exclusion_frame) {
 						td.pv_table.update(ply, move);
 					}
 					// Update history for non-capture moves
@@ -860,8 +880,11 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		// and storing it would poison the key for every later probe. Failing low is also
 		// the answer the caller wants: no alternative reached the margin, so the excluded
 		// move is singular.
+		// original_alpha, not alpha: they are equal here (alpha only moves inside the
+		// moveFound branch, three levels down) but saying so explicitly keeps this correct if
+		// that update is ever hoisted. It is the singular_beta - 1 the verification asked for.
 		if (is_exclusion_frame)
-			return alpha;
+			return original_alpha;
 
 		const int terminal_value = adjustScoreForGameState(td, moveFound, ply, best_value);
 		tt.store(key, static_cast<int16_t>(terminal_value), static_cast<int16_t>(depth), static_cast<int16_t>(ply),

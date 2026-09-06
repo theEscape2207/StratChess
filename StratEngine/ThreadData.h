@@ -206,13 +206,20 @@ struct ThreadData {
 // symptom beyond a slower search.
 class ExcludedMoveGuard {
   public:
-	ExcludedMoveGuard(ThreadData& td, int ply, const Move& move) noexcept : td_(td), ply_(ply)
+	ExcludedMoveGuard(ThreadData& td, int ply, const Move& move) noexcept
+	    : td_(td), ply_(ply), previous_(td.excluded_move[ply])
 	{
 		assert(ply >= 0 && ply < MAX_PLY);
 		assert(td.excluded_move[ply] == Move::EmptyMove() && "nested verification at one ply");
 		td_.excluded_move[ply_] = move;
 	}
-	~ExcludedMoveGuard() noexcept { td_.excluded_move[ply_] = Move::EmptyMove(); }
+	// Restores the PREVIOUS value, not Empty. The two coincide while nesting at one ply is
+	// unreachable, and the assert above catches nesting in Debug -- but in Release an inner guard
+	// clearing an outer one's slot would leave the outer frame searching the excluded move while
+	// no longer recognising itself as an exclusion frame, and it would then store that partial
+	// search to the transposition table under the position's own key. One Move member closes
+	// that structurally instead of by argument.
+	~ExcludedMoveGuard() noexcept { td_.excluded_move[ply_] = previous_; }
 
 	ExcludedMoveGuard(const ExcludedMoveGuard&) = delete;
 	ExcludedMoveGuard& operator=(const ExcludedMoveGuard&) = delete;
@@ -222,4 +229,5 @@ class ExcludedMoveGuard {
   private:
 	ThreadData& td_;
 	int ply_;
+	Move previous_;
 };
