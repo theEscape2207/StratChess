@@ -366,6 +366,7 @@ Engine tier.
 | Enabled path crashes, hangs, or loses tactics | Tactical suite at `Threads=1` and `Threads=4` on the flag-on build, including the killer/LMR interaction in the assumptions above |
 | Enabled path's cost is unacceptable | Repeated `Run-Bench.ps1` on the flag-on build, reported as per-position wall clock plus MAIN/QS node movement — not aggregate nps, since the tree changes when the flag is on |
 | Trigger is degenerate | Telemetry counters: eligible nodes, verification searches, extensions granted |
+| Cost is attributed to the wrong cause | `singular_verification_nodes`, counted across each verification call. Aggregate node counts and trigger counts cannot separate verification from the extended subtrees it authorises -- dividing growth by verification count yields an identity, and the first version of this document drew the wrong conclusion from exactly that |
 
 ### Results
 
@@ -378,15 +379,32 @@ Engine tier.
 | Tactical depth-stability, flag on, `Threads=1` and `4` | 3 runs each, 0 flips |
 | Debug build (asserts live), flag off and singular tag | pass (593 cases; 16 singular) |
 | Trigger rate, flag on, depth 12 | 0.18 verifications per 1000 nodes; extension on **7.9%** of them (2.6–21.5% by position) |
-| Enabled-path cost at fixed depth | **+43.5% wall clock**, +28.5% main nodes, +33.1% qs nodes |
+| Enabled-path cost at fixed depth | **+43.5% wall clock** (pre-merge), **+23.8% nodes** |
+| Where that cost goes | verification **20.9%**, extended subtrees + knock-on **79.1%** (measured via `singular_verification_nodes`, not inferred) |
 
-**The enabled path is too expensive at these defaults, and the cost is entirely verification.**
-2,688 verification searches × ~1,400 nodes each ≈ 3.76M nodes, which is the whole +3.75M main-node
-growth; the 212 extensions granted contribute almost nothing to it. So the lever for the follow-up
-is the number and depth of verifications — `singular_min_depth` and the `(depth - 1) / 2`
-verification depth — not the margin, which is already selective at 7.9%. A +43.5% fixed-depth cost
-means a fixed-time search reaches meaningfully less depth, which is a high bar for 212 extensions to
-clear; that must be measured, not argued.
+**The enabled path is too expensive at these defaults, and the cost is dominated by the extensions,
+not by verifying them.** `singular_verification_nodes` measures the node edges spent inside
+verification searches directly:
+
+| | nodes | share of growth |
+|---|---|---|
+| total growth, feature on vs off | 2,924,149 | — |
+| inside verification searches | 610,266 | **20.9%** |
+| extended subtrees + TT/killer knock-on | 2,313,883 | **79.1%** |
+
+So the follow-up's lever is the **extension rate** — the margin — at least as much as the number and
+depth of verifications. Cutting verifications entirely would recover about a fifth of the cost.
+
+The effect is not uniformly additive: `startpos` searched ~797k *fewer* nodes with the feature on,
+the extensions having improved its ordering. Aggregate growth hides that, which is another reason
+the per-position column matters.
+
+**This corrects an earlier claim in this document, and the correction is the point.** The first
+version asserted the cost was *entirely* verification, reasoning "2,688 verifications × ~1,400 nodes
+≈ the whole growth". That per-verification figure was itself obtained by dividing the growth by the
+verification count, so the arithmetic was an identity that would hold for any split — it could not
+distinguish verification from extended subtrees, and it happened to be wrong by a factor of four.
+The counter exists because a reviewer asked for the supporting measurement and there wasn't one.
 
 **The −0.40% residual is the ply backstop, and it stays.** With the feature compiled out nothing
 else executes: the `if constexpr` leaves no code, every predicate folds, and the extra `ThreadData`

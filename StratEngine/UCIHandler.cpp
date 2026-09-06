@@ -508,7 +508,8 @@ void UciHandler::cmd_go(std::string_view line)
 			if (result.singular_eligible != 0) {
 				send("info string singular eligible " + std::to_string(result.singular_eligible) + " verified " +
 				     std::to_string(result.singular_verifications) + " extended " +
-				     std::to_string(result.singular_extensions));
+				     std::to_string(result.singular_extensions) + " verifynodes " +
+				     std::to_string(result.singular_verification_nodes));
 			}
 
 			const std::string bm = best.is_null() ? "0000" : MoveFormatter::ToUCI(best);

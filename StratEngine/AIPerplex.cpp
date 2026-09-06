@@ -330,18 +330,21 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	int64_t total_sing_eligible = td_.singular_eligible;
 	int64_t total_sing_verifications = td_.singular_verifications;
 	int64_t total_sing_extensions = td_.singular_extensions;
+	int64_t total_sing_verify_nodes = td_.singular_verification_nodes;
 	for (size_t i = 0; i + 1 < static_cast<size_t>(threads); ++i) {
 		total_nodes += helper_tds_[i]->nodes_searched;
 		total_qnodes += helper_tds_[i]->qnodes_searched;
 		total_sing_eligible += helper_tds_[i]->singular_eligible;
 		total_sing_verifications += helper_tds_[i]->singular_verifications;
 		total_sing_extensions += helper_tds_[i]->singular_extensions;
+		total_sing_verify_nodes += helper_tds_[i]->singular_verification_nodes;
 	}
 	result.nodes_searched = total_nodes;
 	result.qnodes_searched = total_qnodes;
 	result.singular_eligible = total_sing_eligible;
 	result.singular_verifications = total_sing_verifications;
 	result.singular_extensions = total_sing_extensions;
+	result.singular_verification_nodes = total_sing_verify_nodes;
 	result.elapsed = control_.Elapsed();
 	const Move bestMove = result.best_move;
 
@@ -712,8 +715,11 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 			int verify_value;
 			{
+				// Both trees, because a verification's cost includes the quiescence it reaches.
+				const int64_t nodes_before = td.nodes_searched + td.qnodes_searched;
 				const ExcludedMoveGuard guard(td, ply, hash_move);
 				verify_value = pvs(td, verify_depth, singular_beta - 1, singular_beta, ply, false, tt);
+				td.singular_verification_nodes += (td.nodes_searched + td.qnodes_searched) - nodes_before;
 			}
 
 			// Unwind invariant: the verification was cut off mid-tree, so its result is not

@@ -53,6 +53,34 @@ TEST_CASE("Singular: baseline position triggers a verification and extends", "[s
 	CHECK(fix.singular_extensions() == 1);
 }
 
+TEST_CASE("Singular: the extension reaches the child search", "[search][singular]")
+{
+	// The counters above are incremented in the verification block, BEFORE the child is searched,
+	// so they say a decision was taken -- not that the child actually got the extra ply. This
+	// compares two runs that differ ONLY in whether the extension is granted: the eligibility gate
+	// and the verification search are identical in both, so the node difference is the extra ply
+	// and nothing else.
+	//
+	// The lever is singular_margin_factor. A huge factor drives singular_beta far below anything
+	// the alternatives score, so the verification fails high and no extension is granted; the
+	// verification still runs, which is what keeps the two runs comparable.
+	AIPerlexTestFixture extended(kBaselineFen);
+	arm_baseline(extended);
+	extended.search_node(kDepth, /*ply=*/1);
+	REQUIRE(extended.singular_extensions() == 1); // the extension really was granted
+
+	AIPerlexTestFixture plain(kBaselineFen);
+	arm_baseline(plain);
+	plain.set_singular_margin_factor(10'000);
+	plain.search_node(kDepth, /*ply=*/1);
+	REQUIRE(plain.singular_verifications() == 1); // same verification cost
+	REQUIRE(plain.singular_extensions() == 0);    // but no extra ply
+
+	// Searching the first move at `depth` instead of `depth - 1` is strictly more work. If
+	// child_depth ever stops honouring the extension, these collapse to equal.
+	CHECK(extended.mainnodes() > plain.mainnodes());
+}
+
 TEST_CASE("Singular: disabled by default", "[search][singular]")
 {
 	AIPerlexTestFixture fix(kBaselineFen);

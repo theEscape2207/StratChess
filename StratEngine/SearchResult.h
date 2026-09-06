@@ -38,4 +38,6 @@ struct SearchResult {
 	int64_t singular_eligible = 0;
 	int64_t singular_verifications = 0;
 	int64_t singular_extensions = 0;
+	// Node edges spent inside verification searches, measured rather than inferred.
+	int64_t singular_verification_nodes = 0;
 };

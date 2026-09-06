@@ -56,9 +56,16 @@ per node, kept because it is a recursion bound in its own right, not part of the
 
 Measured, flag on (recorded here because it decides what the follow-up must fix, not because it
 ships): the trigger is selective — 0.18 verifications per 1000 nodes, extension granted on 7.9% —
-but **fixed-depth wall clock rises 43.5%**, and 2,688 verifications × ~1,400 nodes accounts for the
-entire +28.5% main-node growth. The 212 extensions are nearly free; the verifications are not.
-Tuning must cut verification frequency or depth before any Elo match is worth running.
+but fixed-depth cost rises sharply: **+23.8% nodes** over the six bench positions, and **+43.5% wall
+clock** when measured before the `origin/main` merge.
+
+`singular_verification_nodes` counts the node edges spent inside verification searches directly, so
+the split is measured rather than inferred: **verification is 20.9% of the added nodes; the extended
+subtrees and their knock-on effects are the other 79.1%.** The cost is therefore dominated by the
+extensions themselves, not by proving them — so tuning must target how many extensions are granted
+(the margin) at least as much as how many verifications run. The effect is not uniformly additive
+either: one position searched ~797k *fewer* nodes with the feature on, the extensions having changed
+ordering in its favour.
 
 Also fixes a latent bug independent of the feature: `pvs()` had no absolute ply backstop, relying on
 depth falling on every recursive call to bound the recursion. An extension holds depth flat, so it

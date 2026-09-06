@@ -89,6 +89,13 @@ struct ThreadData {
 	int64_t singular_verifications = 0; // verification searches actually run
 	int64_t singular_extensions = 0;    // verifications that granted the extra ply
 
+	// Node edges consumed INSIDE verification searches, measured across each verification call
+	// rather than inferred. Without it, "verification is what costs" can only be argued by
+	// dividing the total node growth by the verification count and calling the quotient a
+	// per-verification cost -- which is an identity, not evidence, and cannot separate
+	// verification from the deeper subtrees the extensions themselves produce.
+	int64_t singular_verification_nodes = 0;
+
 	ThreadData()
 	{
 		clear_killers();
@@ -116,6 +123,7 @@ struct ThreadData {
 		singular_eligible = 0;
 		singular_verifications = 0;
 		singular_extensions = 0;
+		singular_verification_nodes = 0;
 	}
 
 	// Resets everything that must not leak into a new game. History is
