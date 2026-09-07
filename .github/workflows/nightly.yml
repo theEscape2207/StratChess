@@ -291,6 +291,32 @@ jobs:
           pwsh -NoProfile -File Scripts/Validate-PrePR.ps1 -AllSelfTests
           exit $LASTEXITCODE
 
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Python fixture dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check python-chess==1.999 chess==1.11.2
+          exit $LASTEXITCODE
+
+      # unittest discover exits 0 even when its pattern matches nothing, so a
+      # renamed or unglobbed test file would otherwise stop running silently.
+      - name: Python fixture suite (unittest discovery)
+        shell: pwsh
+        run: |
+          $count = python -c "import unittest; print(unittest.defaultTestLoader.discover('Scripts', pattern='test_*.py').countTestCases())"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Write-Host "discovered $count test case(s)"
+          if ([int]$count -eq 0) {
+            Write-Host "no tests discovered under Scripts/test_*.py" -ForegroundColor Red
+            exit 1
+          }
+          python -m unittest discover -s Scripts -p "test_*.py" -v
+          exit $LASTEXITCODE
+
       - name: Configure shipping clang-cl database
         shell: pwsh
         run: .\build.ps1 main
