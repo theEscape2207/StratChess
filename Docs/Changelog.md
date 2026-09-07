@@ -22,6 +22,37 @@ Newest first.
 
 ---
 
+## 2026-09-07 — Tier 2: external-engine ACPL adjudication of strength-lab PGNs (#414)
+
+`Scripts/analyze_external_quality.py` replays a strength-lab corpus under an outside engine
+(Stockfish 19 at depth 12, kept in `EngineTesting/` outside the checkout because it is GPL-3) and
+reports ACPL and blunder rate per phase per build against *its* judgement. It imports Tier 1's
+parser, phase buckets, blunder threshold and contested filter from `analyze_move_quality.py`, so
+both tiers' tables describe the same rows and differ only in who grades them. Loss per move is
+`max(0, oracle(before) − oracle(after))` from the mover's view, clamped to ±1000 cp so a mate score
+cannot saturate a mean, with game-clustered bootstrap intervals. A `noise` column — mean loss over
+rows where the played move *was* the oracle's first choice — gives the oracle's error bar on itself.
+
+One oracle process per game, closed in a `finally`: it clears the hash between games and, more
+importantly, lets the process pool shut down. A worker still holding a live `SimpleEngine` never
+exits and the parent waits for it forever, which is indistinguishable from a finished run whose
+report never prints.
+
+`--batch N` scores N games per process, sending `ucinewgame` between them instead of restarting.
+Six one-shard runs alternating `--batch 1` and `--batch 24` produced byte-identical reports, so the
+two are the same experiment — but batching measured **18% slower** (mean 340 s against 288 s) and
+fourteen times more variable, because a few chunky work units leave workers idle at the tail.
+Removing 96% of the NNUE loads cost time, which rules process startup out as the reason the scan
+scales sublinearly with `--jobs`. The default is therefore one process per game; the knob stays so a
+different machine can be measured rather than assumed.
+
+First full pass, run 33989392373, 1,492,860 contested plies: **it retracts Finding 1 of
+`Docs/MoveQuality.md`**. Self-reported blunder rates understate the oracle's by 13× to 48×, and the
+phase profile inverts — external ACPL climbs 16.9 → 33.9 → 40.3 from endgame to opening, so the
+engine plays worst where its own annotations say it is strongest. Numbers, intervals and the
+Tier 2-specific limits are in `Docs/MoveQuality.md`; #481 tracks the opening result and the
+selection-effect confound that has to be excluded before acting on it.
+
 ## 2026-09-06 — Singular tests searched deeper than they assert (#479)
 
 `SearchSingularTests.cpp` ran its eligibility cases at depth 8, which is what `singular_min_depth`
