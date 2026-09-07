@@ -14,8 +14,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import chess.engine as engine  # noqa: E402  (path must be set first)
+import chess  # noqa: E402  (path must be set first)
+import chess.engine as engine  # noqa: E402
 
+import analyze_external_quality as aeq  # noqa: E402
+import analyze_move_quality as amq  # noqa: E402
 import external_quality_export as exp  # noqa: E402
 
 
@@ -760,6 +763,224 @@ class SerializationTests(unittest.TestCase):
         raw = self.path.read_text(encoding="utf-8")
         self.assertIn("Zürich", raw)
         self.assertNotIn("\\u", raw)
+
+
+class ExtractionTests(unittest.TestCase):
+    """Fixtures for scan_games() and the extract() projection built on it."""
+
+    SKIP_THEN_SURVIVE_PGN = """\
+[Event "no-result"]
+[White "A"]
+[Black "B"]
+[Result "*"]
+
+1. e4 e5 *
+
+[Event "survivor"]
+[White "A"]
+[Black "B"]
+[Result "1-0"]
+
+1. e4 {+0.10/10 0.100s} e5 {-0.10/10 0.100s} 2. Nf3 {+0.20/10 0.100s} Nc6 {-0.20/10 0.100s} 1-0
+"""
+
+    CORRUPT_THEN_SURVIVE_PGN = """\
+[Event "corrupt"]
+[White "A"]
+[Black "B"]
+[Result "1-0"]
+
+1. e4 {+0.10/10 0.100s} Zz9 {+0.10/10 0.100s} 1-0
+
+[Event "survivor"]
+[White "A"]
+[Black "B"]
+[Result "1-0"]
+
+1. e4 {+0.10/10 0.100s} e5 {-0.10/10 0.100s} 2. Nf3 {+0.20/10 0.100s} Nc6 {-0.20/10 0.100s} 1-0
+"""
+
+    BOOK_PREFIX_PGN = """\
+[Event "book-prefix"]
+[White "A"]
+[Black "B"]
+[Result "1-0"]
+
+1. e4 {book} e5 {book} 2. Nf3 {+0.10/10 0.100s} Nc6 {-0.10/10 0.100s}
+3. Bb5 {+0.20/10 0.100s} a6 {-0.20/10 0.100s} 1-0
+"""
+
+    # A non-standard setup, so the replay invariant exercises a real setup_fen
+    # rather than one that happens to equal the standard start.
+    SETUP_ASSUMED_PGN = """\
+[Event "setup-assumed"]
+[White "A"]
+[Black "B"]
+[Result "1-0"]
+[SetUp "1"]
+[FEN "r3k3/8/8/8/8/8/8/R3K3 w - - 0 1"]
+
+1. Ra2 {+0.10/10 0.100s} Ra7 {-0.10/10 0.100s} 2. Ra3 {+0.20/10 0.100s} Ra6 {-0.20/10 0.100s} 1-0
+"""
+
+    MATE_SCORE_PGN = """\
+[Event "mate-score"]
+[White "A"]
+[Black "B"]
+[Result "1-0"]
+
+1. e4 {+0.10/10 0.100s} e5 {-0.10/10 0.100s} 2. Qh5 {+M3/12 0.100s} Nc6 {-0.10/10 0.100s}
+3. Bc4 {+0.20/10 0.100s} Nf6 {-0.20/10 0.100s} 1-0
+"""
+
+    PLAIN_PGN = """\
+[Event "plain"]
+[White "A"]
+[Black "B"]
+[Result "1-0"]
+
+1. e4 {+0.10/10 0.100s} e5 {-0.10/10 0.100s} 2. Nf3 {+0.20/10 0.100s} Nc6 {-0.20/10 0.100s} 1-0
+"""
+
+    LATE_BOOK_PGN = """\
+[Event "late-book"]
+[White "A"]
+[Black "B"]
+[Result "1-0"]
+
+1. e4 {+0.10/10 0.100s} e5 {-0.10/10 0.100s} 2. Nf3 {book} Nc6 {-0.20/10 0.100s}
+3. Bb5 {+0.20/10 0.100s} a6 {-0.20/10 0.100s} 1-0
+"""
+
+    @staticmethod
+    def _write(tmp, text):
+        path = Path(tmp) / "match.pgn"
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def _scan(self, text):
+        with tempfile.TemporaryDirectory() as tmp:
+            return aeq.scan_games(self._write(tmp, text))
+
+    def _extract(self, text):
+        with tempfile.TemporaryDirectory() as tmp:
+            return aeq.extract(self._write(tmp, text))
+
+    # Captured from extract() before it was reprojected onto scan_games(). The
+    # literal rows are the point: a shape assertion would survive the very change
+    # this guards against.
+    SELF_TEST_ROWS = [[
+        ("A", "opening", True, -10,
+         "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+         "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1", "e2e4"),
+        ("B", "opening", False, 885,
+         "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
+         "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2", "e7e5"),
+    ]]
+
+    def test_extract_rows_are_unchanged(self):
+        self.assertEqual(self._extract(amq.SELF_TEST_PGN), self.SELF_TEST_ROWS)
+
+    def test_extract_equals_projection_of_scan_games(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write(tmp, amq.SELF_TEST_PGN)
+            extracted = aeq.extract(path)
+            scans = aeq.scan_games(path)
+        expected = []
+        for scan in scans:
+            rows = []
+            for i in scan.eligible:
+                ply, ply_next = scan.plies[i], scan.plies[i + 2]
+                rows.append((ply.build, ply.bucket, ply.mover, ply.cp - ply_next.cp,
+                             ply.before_fen, ply.after_fen, ply.played_uci))
+            expected.append(rows)
+        self.assertEqual(extracted, expected)
+
+    def test_game_index_counts_a_skipped_no_result_game(self):
+        scans = self._scan(self.SKIP_THEN_SURVIVE_PGN)
+        self.assertEqual(len(scans), 1)
+        self.assertEqual(scans[0].game_index, 1)
+
+    def test_game_index_counts_a_corrupt_game(self):
+        scans = self._scan(self.CORRUPT_THEN_SURVIVE_PGN)
+        self.assertEqual(len(scans), 1)
+        self.assertEqual(scans[0].game_index, 1)
+
+    def test_replay_invariant_for_every_eligible_row(self):
+        fixtures = (amq.SELF_TEST_PGN, self.BOOK_PREFIX_PGN, self.SETUP_ASSUMED_PGN,
+                    self.PLAIN_PGN, self.LATE_BOOK_PGN, self.MATE_SCORE_PGN)
+        checked = 0
+        for text in fixtures:
+            for scan in self._scan(text):
+                for i in scan.eligible:
+                    ply = scan.plies[i]
+                    board = chess.Board(scan.setup_fen)
+                    for uci in aeq.moves_before(scan, i):
+                        board.push_uci(uci)
+                    self.assertEqual(board.fen(), ply.before_fen)
+                    board.push_uci(ply.played_uci)
+                    self.assertEqual(board.fen(), ply.after_fen)
+                    checked += 1
+        self.assertGreater(checked, 0)
+
+    def test_book_exit_explicit_prefix(self):
+        scan = self._scan(self.BOOK_PREFIX_PGN)[0]
+        self.assertEqual(scan.book_exit_basis, "explicit_book_prefix")
+        self.assertEqual(scan.book_exit_ply, 2)
+        self.assertEqual(aeq.ply_since_book_exit(scan, 2), 0)
+
+    def test_book_exit_setup_assumed(self):
+        scan = self._scan(self.SETUP_ASSUMED_PGN)[0]
+        self.assertEqual(scan.book_exit_basis, "setup_assumed")
+        self.assertEqual(scan.book_exit_ply, 0)
+        self.assertEqual(scan.setup_fen, "r3k3/8/8/8/8/8/8/R3K3 w - - 0 1")
+        self.assertTrue(scan.eligible)
+        for i in scan.eligible:
+            self.assertEqual(aeq.ply_since_book_exit(scan, i), i)
+
+    def test_book_exit_unknown_when_neither_signal_present(self):
+        scan = self._scan(self.PLAIN_PGN)[0]
+        self.assertEqual(scan.book_exit_basis, "unknown")
+        self.assertIsNone(scan.book_exit_ply)
+        self.assertIsNone(aeq.ply_since_book_exit(scan, 0))
+
+    def test_book_exit_unknown_when_book_annotation_follows_real_play(self):
+        scan = self._scan(self.LATE_BOOK_PGN)[0]
+        self.assertEqual(scan.book_exit_basis, "unknown")
+        self.assertIsNone(scan.book_exit_ply)
+
+    def test_annotation_matches_raw_comment_and_parse_comment_fields(self):
+        scan = self._scan(amq.SELF_TEST_PGN)[0]
+        mate_ply = scan.plies[4]
+        self.assertEqual(mate_ply.annotation, "+M1/13 0.100s, Win by checkmate")
+        cp, _mate, depth, seconds, note = amq.parse_comment(mate_ply.annotation, "x")
+        self.assertIsNone(cp)
+        self.assertEqual(mate_ply.cp, cp)
+        self.assertEqual(mate_ply.depth, depth)
+        self.assertEqual(mate_ply.seconds, seconds)
+        self.assertEqual(mate_ply.note, note)
+        self.assertEqual(mate_ply.note, "Win by checkmate")
+
+    def test_book_plies_are_never_eligible(self):
+        scan = self._scan(self.BOOK_PREFIX_PGN)[0]
+        book_indices = {i for i, p in enumerate(scan.plies) if p.note == "book"}
+        self.assertTrue(book_indices)
+        self.assertFalse(book_indices & set(scan.eligible))
+
+    def test_mate_scored_ply_is_never_eligible(self):
+        # Ply 2 has two plies after it, so only its null cp can disqualify it.
+        # Ply 0 falls with it: the contested filter reads the score two plies on.
+        scan = self._scan(self.MATE_SCORE_PGN)[0]
+        self.assertIsNone(scan.plies[2].cp)
+        self.assertEqual(len(scan.plies), 6)
+        self.assertEqual(scan.eligible, (1, 3))
+
+    def test_unreadable_annotation_raises_parse_error(self):
+        bad = amq.SELF_TEST_PGN.replace("{+0.20/10 0.500s}", "{+0.20/10 500ms}", 1)
+        with self.assertRaises(amq.ParseError):
+            self._scan(bad)
+        with self.assertRaises(amq.ParseError):
+            self._extract(bad)
 
 
 if __name__ == "__main__":

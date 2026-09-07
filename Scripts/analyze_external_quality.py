@@ -42,6 +42,7 @@ import sys
 import time
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
+from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
 
@@ -153,36 +154,87 @@ def oracle_eval(board: chess.Board, pov: chess.Color):
     return max(-CLAMP_CP, min(CLAMP_CP, cp)), (pv[0] if pv else None)
 
 
-def extract(path: Path):
-    """-> [[row, ...], ...], one list of contested rows per game.
+@dataclass(frozen=True)
+class PlyMeta:
+    """One played ply: the state before it and the annotation that judged it."""
 
-    A row survives exactly the conditions Tier 1's contested self-swing needs: an
-    annotation on this move and on the same mover's next one, and |own cp| within
-    CONTESTED_CP. Grouping by game is what lets the bootstrap resample games.
+    ply_index: int
+    mover: chess.Color
+    build: str
+    bucket: str
+    cp: int | None
+    depth: int | None
+    seconds: float | None
+    note: str | None
+    annotation: str | None
+    before_fen: str
+    after_fen: str
+    played_uci: str
+
+
+@dataclass(frozen=True)
+class GameScan:
+    """One parsed game: its header context, every ply and which rows qualify."""
+
+    game_index: int
+    headers: dict
+    setup_fen: str
+    plies: tuple[PlyMeta, ...]
+    eligible: tuple[int, ...]
+    book_exit_ply: int | None
+    book_exit_basis: str
+
+
+def _book_exit(plies: tuple[PlyMeta, ...], headers: dict) -> tuple[int | None, str]:
+    """-> (book_exit_ply, basis), derived once per game from ply notes.
+
+    A `{book}` annotation seen after real play makes the boundary unknowable
+    rather than guessed at, because the prefix rule no longer holds.
     """
-    games = []
+    prefix = 0
+    for ply in plies:
+        if ply.note != "book":
+            break
+        prefix += 1
+    if any(ply.note == "book" for ply in plies[prefix:]):
+        return None, "unknown"
+    if prefix > 0:
+        return prefix, "explicit_book_prefix"
+    if headers.get("SetUp") == "1" and "FEN" in headers:
+        return 0, "setup_assumed"
+    return None, "unknown"
+
+
+def scan_games(path: Path) -> list[GameScan]:
+    """Parse one PGN into per-game context, per-ply metadata and eligible row indices."""
+    scans = []
     shard = path.parent.name
-    for headers, movetext in amq.parse_games(path):
+    for game_index, (headers, movetext) in enumerate(amq.parse_games(path)):
         where = f"{shard} round {headers.get('Round', '?')}"
         moves, saw_result = amq.split_movetext(movetext, where)
         if not saw_result or headers.get("Result", "*") == "*":
             continue
         fen = headers.get("FEN")
         board = chess.Board(fen) if fen else chess.Board()
+        setup_fen = board.fen()
         builds = {chess.WHITE: headers.get("White", "?"), chess.BLACK: headers.get("Black", "?")}
-        recs = []
+        plies: list[PlyMeta] = []
         try:
             for idx, (san, comment) in enumerate(moves):
                 mover = board.turn
                 bucket = amq.phase_bucket(amq.board_phase(board))
-                cp = None
+                cp = depth = seconds = note = None
                 if comment is not None:
-                    cp, _mate, _depth, _secs, _note = amq.parse_comment(
+                    cp, _mate, depth, seconds, note = amq.parse_comment(
                         comment, f"{where} move {idx}")
                 before = board.fen()
                 move = board.parse_san(san)
                 board.push(move)
-                recs.append((mover, builds[mover], bucket, cp, before, board.fen(), move.uci()))
+                plies.append(PlyMeta(
+                    ply_index=idx, mover=mover, build=builds[mover], bucket=bucket, cp=cp,
+                    depth=depth, seconds=seconds, note=note, annotation=comment,
+                    before_fen=before, after_fen=board.fen(), played_uci=move.uci(),
+                ))
         except ValueError as exc:               # truncated or corrupt game
             # ValueError only, so that amq.ParseError propagates. An annotation
             # shape the parser does not recognise means a changed fastchess
@@ -191,17 +243,59 @@ def extract(path: Path):
             print(f"warning: {where}: {exc}", file=sys.stderr)
             continue
 
+        eligible = tuple(
+            i for i in range(len(plies))
+            if i + 2 < len(plies)
+            and plies[i].cp is not None
+            and plies[i + 2].cp is not None
+            and abs(plies[i].cp) <= amq.CONTESTED_CP
+        )
+        if not eligible:
+            continue
+        book_exit_ply, book_exit_basis = _book_exit(plies, headers)
+        scans.append(GameScan(
+            game_index=game_index, headers=dict(headers), setup_fen=setup_fen,
+            plies=tuple(plies), eligible=eligible,
+            book_exit_ply=book_exit_ply, book_exit_basis=book_exit_basis,
+        ))
+    return scans
+
+
+def extract(path: Path):
+    """-> [[row, ...], ...], one list of contested rows per game.
+
+    A row survives exactly the conditions Tier 1's contested self-swing needs: an
+    annotation on this move and on the same mover's next one, and |own cp| within
+    CONTESTED_CP. Grouping by game is what lets the bootstrap resample games.
+    """
+    games = []
+    for scan in scan_games(path):
         rows = []
-        for i, (mover, build, bucket, cp, before, after, played) in enumerate(recs):
-            if i + 2 >= len(recs):
-                continue
-            cp_next = recs[i + 2][3]
-            if cp is None or cp_next is None or abs(cp) > amq.CONTESTED_CP:
-                continue
-            rows.append((build, bucket, mover, cp - cp_next, before, after, played))
-        if rows:
-            games.append(rows)
+        for i in scan.eligible:
+            ply, ply_next = scan.plies[i], scan.plies[i + 2]
+            rows.append((ply.build, ply.bucket, ply.mover, ply.cp - ply_next.cp,
+                         ply.before_fen, ply.after_fen, ply.played_uci))
+        games.append(rows)
     return games
+
+
+def moves_before(scan: GameScan, ply_index: int) -> list[str]:
+    """The UCI moves played before this decision, book moves included."""
+    return [p.played_uci for p in scan.plies[:ply_index]]
+
+
+def ply_since_book_exit(scan: GameScan, ply_index: int) -> int | None:
+    """Plies since the game left book, or None when the exit is unknown."""
+    if scan.book_exit_ply is None:
+        return None
+    delta = ply_index - scan.book_exit_ply
+    assert delta >= 0, "an eligible ply cannot precede its own game's book exit"
+    return delta
+
+
+def mover_name(color: chess.Color) -> str:
+    """-> "white" | "black"."""
+    return "white" if color == chess.WHITE else "black"
 
 
 def score_batch(games):
