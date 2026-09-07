@@ -617,14 +617,16 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				// least as good as its value (LOWER or EXACT), is not a mate score -- the
 				// margin arithmetic below is meaningless against one -- and was searched
 				// to nearly this depth.
-				// Flag first: this runs on every node that finds a MAIN entry, which is most
-				// of them, and none of it means anything to a disabled build.
-				tt_usable_for_singular = kSingularExtensionsCompiled && tuning_.singular_extensions_enabled &&
-				                         hash_move != Move::EmptyMove() &&
-				                         (entry->bound == BoundType::LOWER || entry->bound == BoundType::EXACT) &&
-				                         std::abs(static_cast<int>(entry->value)) < GameValues::Mate_Threshold &&
-				                         entry->depth >= depth - tuning_.singular_tt_depth_margin;
-				tt_value_for_singular = entry->value;
+				// Guarded by the same if constexpr as the read at the eligibility check below:
+				// in a build with the feature compiled out, that read is discarded, which would
+				// leave these writes dead.
+				if constexpr (kSingularExtensionsCompiled) {
+					tt_usable_for_singular = tuning_.singular_extensions_enabled && hash_move != Move::EmptyMove() &&
+					                         (entry->bound == BoundType::LOWER || entry->bound == BoundType::EXACT) &&
+					                         std::abs(static_cast<int>(entry->value)) < GameValues::Mate_Threshold &&
+					                         entry->depth >= depth - tuning_.singular_tt_depth_margin;
+					tt_value_for_singular = entry->value;
+				}
 			}
 		}
 	}
