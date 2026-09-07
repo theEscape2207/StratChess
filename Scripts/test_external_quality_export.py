@@ -10,6 +10,8 @@ import json
 import sys
 import tempfile
 import unittest
+import unittest.mock
+from collections import defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -1027,6 +1029,232 @@ Nc6 {-0.20/10 0.100s} 1-0
             self._scan(bad)
         with self.assertRaises(amq.ParseError):
             self._extract(bad)
+
+
+class _FakeOracle:
+    """Stands in for Stockfish: scripted White-POV scores, and a log of every call.
+
+    Scores are scripted from White's point of view precisely so the tests can
+    tell a point-of-view slip from a correct read: the module must flip them for
+    a Black mover, on the after-position as much as the before-position.
+    """
+
+    def __init__(self, scores):
+        self.scores = scores
+        self.calls = []
+
+    def analyse(self, board, limit, game=None):
+        fen = board.fen()
+        self.calls.append(fen)
+        score = self.scores[fen]
+        pv = [next(iter(board.legal_moves))] if board.legal_moves else []
+        return {"score": engine.PovScore(score, chess.WHITE), "pv": pv}
+
+
+class ScoringIntegrationTests(unittest.TestCase):
+    """The scoring path: unchanged searches and counters, plus the export rows."""
+
+    PGN = ExtractionTests.PLAIN_PGN
+
+    def _scan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "match.pgn"
+            path.write_text(self.PGN, encoding="utf-8")
+            return aeq.scan_games(path, input_index=3)[0]
+
+    def _run(self, scan, white_cp, records=None):
+        """Score `scan` against a fake oracle; -> (fake, cells, worst)."""
+        scores = {fen: engine.Cp(cp) for fen, cp in white_cp.items()}
+        fake = _FakeOracle(scores)
+        cells = defaultdict(aeq.new_cell)
+        worst = []
+        with unittest.mock.patch.object(aeq, "_engine", lambda: fake):
+            aeq._score_rows(scan, {}, cells, worst, records)
+        return fake, dict(cells), worst
+
+    @staticmethod
+    def _fens(scan):
+        """-> (start, after White's first move, after Black's reply)."""
+        return (scan.plies[0].before_fen, scan.plies[0].after_fen, scan.plies[1].after_fen)
+
+    def test_oracle_eval_projects_the_endpoint_legacy_cp(self):
+        board = chess.Board()
+        fake = _FakeOracle({board.fen(): engine.Cp(1200)})
+        with unittest.mock.patch.object(aeq, "_engine", lambda: fake):
+            endpoint, best = aeq.oracle_endpoint(board, chess.WHITE)
+            legacy_cp, eval_best = aeq.oracle_eval(board, chess.WHITE)
+        self.assertEqual(endpoint.score.value, 1200)      # raw score survives
+        self.assertEqual(endpoint.legacy_cp, 1000)        # legacy projection clamps
+        self.assertTrue(endpoint.finite_clipped)
+        self.assertEqual(legacy_cp, endpoint.legacy_cp)
+        self.assertEqual(eval_best, best)
+
+    def test_export_off_and_on_issue_the_same_searches_and_counters(self):
+        scan = self._scan()
+        start, after_e4, after_e5 = self._fens(scan)
+        cp = {start: 20, after_e4: 30, after_e5: 900}
+        off_fake, off_cells, off_worst = self._run(scan, cp, records=None)
+        records = []
+        on_fake, on_cells, on_worst = self._run(scan, cp, records=records)
+        self.assertEqual(off_fake.calls, on_fake.calls)
+        self.assertEqual(off_cells, on_cells)
+        self.assertEqual(off_worst, on_worst)
+        self.assertTrue(records)  # the run did have something to export
+
+    def test_the_before_position_is_searched_once_per_distinct_fen(self):
+        scan = self._scan()
+        start, after_e4, after_e5 = self._fens(scan)
+        fake, _cells, _worst = self._run(scan, {start: 20, after_e4: 30, after_e5: 25})
+        # Two rows: each searches its own before and after position. The middle
+        # FEN is row 0's after and row 1's before, and is not cached across those
+        # roles -- only repeated `before` lookups are.
+        self.assertEqual(fake.calls, [start, after_e4, after_e4, after_e5])
+
+    def test_the_after_endpoint_uses_the_original_movers_point_of_view(self):
+        scan = self._scan()
+        start, after_e4, after_e5 = self._fens(scan)
+        # White is fine throughout; Black's reply walks into +900 for White,
+        # which is a 870cp loss for Black and nothing at all read from White's side.
+        records = []
+        _fake, cells, _worst = self._run(scan, {start: 20, after_e4: 30, after_e5: 900}, records)
+        black_cell = cells[("B", "opening")]
+        self.assertEqual(black_cell[3], 1)
+        self.assertEqual(black_cell[4], 870.0)
+        self.assertEqual(cells[("A", "opening")][3], 0)
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]["mover"], "black")
+        self.assertEqual(records[0]["oracle_before"]["score"], {"kind": "cp", "value": -30})
+        self.assertEqual(records[0]["oracle_after"]["score"], {"kind": "cp", "value": -900})
+        self.assertEqual(records[0]["legacy_loss_cp"], 870)
+
+    def test_every_exported_row_is_a_blunder_count_event(self):
+        scan = self._scan()
+        start, after_e4, after_e5 = self._fens(scan)
+        for label, cp in (("both", {start: 900, after_e4: -900, after_e5: 900}),
+                          ("neither", {start: 20, after_e4: 30, after_e5: 25}),
+                          ("black only", {start: 20, after_e4: 30, after_e5: 900})):
+            with self.subTest(label):
+                records = []
+                _fake, cells, _worst = self._run(scan, cp, records)
+                self.assertEqual(len(records), sum(c[3] for c in cells.values()))
+
+    def test_finite_clipping_misses_are_counted_but_never_exported(self):
+        scan = self._scan()
+        start, after_e4, after_e5 = self._fens(scan)
+        # White: +1200 -> +1100 raw, both clamped to +1000, so the legacy loss is
+        # 0 while the finite loss is 100 -- below the threshold, not a miss.
+        # Black: -1100 -> -1400 raw (White +1100 -> +1400), legacy 0 and finite 300.
+        records = []
+        _fake, cells, _worst = self._run(scan, {start: 1200, after_e4: 1100, after_e5: 1400},
+                                          records)
+        self.assertEqual(cells[("A", "opening")][7], 0)
+        self.assertEqual(cells[("B", "opening")][7], 1)
+        self.assertEqual(records, [])
+        for cell in cells.values():
+            self.assertLessEqual(cell[7], cell[0] - cell[3])
+
+    def test_terminal_positions_are_scored_without_a_search(self):
+        # Fool's mate: White is to move and mated, so White reads -1000 and the
+        # mate is scored for Black in zero moves.
+        mated = "rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3"
+        cases = (
+            (mated, chess.WHITE, "checkmate", -1000, {"kind": "mate", "moves": 0,
+                                                       "winner": "opponent"}),
+            (mated, chess.BLACK, "checkmate", 1000, {"kind": "mate", "moves": 0,
+                                                      "winner": "mover"}),
+            ("7k/8/8/8/8/8/5q2/7K w - - 0 1", chess.WHITE, "stalemate", 0,
+             {"kind": "cp", "value": 0}),
+            ("4k3/8/8/8/8/8/8/4K3 w - - 0 1", chess.WHITE, "insufficient_material", 0,
+             {"kind": "cp", "value": 0}),
+        )
+        for fen, pov, source, legacy, raw in cases:
+            with self.subTest(source=source, pov="white" if pov else "black"):
+                fake = _FakeOracle({})
+                board = chess.Board(fen)
+                with unittest.mock.patch.object(aeq, "_engine", lambda: fake):
+                    endpoint, best = aeq.oracle_endpoint(board, pov)
+                self.assertEqual(fake.calls, [])
+                self.assertEqual(endpoint.source, source)
+                self.assertEqual(endpoint.legacy_cp, legacy)
+                self.assertEqual(endpoint.score.to_json(), raw)
+                self.assertFalse(endpoint.finite_clipped)
+                self.assertIsNone(best)
+                self.assertIsNone(endpoint.best_move_uci)
+
+    def test_exported_record_carries_its_source_metadata(self):
+        scan = self._scan()
+        start, after_e4, after_e5 = self._fens(scan)
+        records = []
+        self._run(scan, {start: 20, after_e4: 30, after_e5: 900}, records)
+        row = records[0]
+        self.assertEqual(row["row_id"], f"3:{scan.game_index}:1")
+        self.assertEqual(row["input_index"], 3)
+        self.assertEqual(row["ply_index"], 1)
+        self.assertEqual(row["build"], "B")
+        self.assertEqual(row["phase"], "opening")
+        self.assertEqual(row["setup_fen"], scan.setup_fen)
+        self.assertEqual(row["moves_before_uci"], [scan.plies[0].played_uci])
+        self.assertEqual(row["played_move_uci"], scan.plies[1].played_uci)
+        self.assertEqual(row["annotation"], scan.plies[1].annotation)
+        self.assertEqual(row["engine_score_cp"], scan.plies[1].cp)
+        self.assertEqual(row["next_annotation"], scan.plies[3].annotation)
+        self.assertEqual(row["next_engine_score_cp"], scan.plies[3].cp)
+        self.assertEqual(row["self_swing_cp"], scan.plies[1].cp - scan.plies[3].cp)
+        self.assertEqual(row["book_exit_basis"], "unknown")
+        self.assertIsNone(row["ply_since_book_exit"])
+        self.assertEqual(row["headers"]["Event"], "plain")
+
+    # An eight-ply game and a fixed score sequence spanning the clamp, captured
+    # from _score_rows() before the export existed. The counters are the contract:
+    # the export may add slot 7 and its records, and must move nothing else.
+    PARITY_PGN = """\
+[Event "parity"]
+[White "A"]
+[Black "B"]
+[Result "1-0"]
+
+1. e4 {+0.10/10 0.100s} e5 {-0.10/10 0.100s} 2. Nf3 {+0.20/10 0.100s} Nc6 {-0.20/10 0.100s}
+3. Bb5 {+0.30/10 0.100s} a6 {-1.20/10 0.100s} 4. Ba4 {+0.25/10 0.100s} Nf6 {-0.30/10 0.100s} 1-0
+"""
+    PARITY_SCORES = (50, -400, 900, 1200, 1100, -1500, 20, 60, 1400, 1250, -90, 700)
+    PARITY_CELLS = {("A", "opening"): [3, 0, 25.0, 2, 2450.0, 0, 0.0],
+                    ("B", "opening"): [3, 0, 200.0, 1, 930.0, 0, 0.0]}
+
+    def test_counters_and_searches_match_the_pre_export_run(self):
+        scores = iter(self.PARITY_SCORES)
+
+        class _Sequenced(_FakeOracle):
+            def analyse(self, board, limit, game=None):
+                self.calls.append(board.fen())
+                pv = [next(iter(board.legal_moves))] if board.legal_moves else []
+                return {"score": engine.PovScore(engine.Cp(next(scores)), chess.WHITE), "pv": pv}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "match.pgn"
+            path.write_text(self.PARITY_PGN, encoding="utf-8")
+            scan = aeq.scan_games(path)[0]
+        fake = _Sequenced({})
+        cells, worst, records = defaultdict(aeq.new_cell), [], []
+        with unittest.mock.patch.object(aeq, "_engine", lambda: fake):
+            aeq._score_rows(scan, {}, cells, worst, records)
+        self.assertEqual(len(fake.calls), 12)
+        self.assertEqual({k: v[:7] for k, v in cells.items()}, self.PARITY_CELLS)
+        self.assertEqual(len(worst), 3)
+        self.assertEqual([r["row_id"] for r in records], ["0:0:0", "0:0:2", "0:0:5"])
+        self.assertEqual(sum(c[7] for c in cells.values()), 2)
+
+    def test_a_record_replays_to_its_own_before_position(self):
+        scan = self._scan()
+        start, after_e4, after_e5 = self._fens(scan)
+        records = []
+        self._run(scan, {start: 20, after_e4: 30, after_e5: 900}, records)
+        for row in records:
+            board = chess.Board(row["setup_fen"])
+            for uci in row["moves_before_uci"]:
+                board.push_uci(uci)
+            self.assertEqual(board.fen(), row["before_fen"])
+            board.push_uci(row["played_move_uci"])
+            self.assertEqual(board.fen(), row["after_fen"])
 
 
 if __name__ == "__main__":
