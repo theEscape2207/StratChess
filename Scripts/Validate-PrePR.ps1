@@ -13,7 +13,10 @@
     script that covers it, for a dot-sourced library or a fixture that cannot carry one.
     On every tier, including the Docs and Tooling fast paths, it also checks that every
     Build-tier script carries a -SelfTest at all.
-    Every check runs before exit so all failures are visible at once.
+    clang-format alone short-circuits (issue #478): its fix is already known and
+    cannot be changed by anything later, so a failure there exits immediately,
+    before blame-ignore, the build, or any other gate runs. Every other check keeps
+    aggregating so all remaining failures are visible in one pass.
     Exits with code 1 if any check fails. Run Validate-PreCommit.ps1 first.
 
 .WHEN TO USE
@@ -81,6 +84,17 @@ function Resolve-SelfTestFile {
     if ($HasOwnSelfTest) { return $Path }
     if ($Coverer.ContainsKey($Path)) { return $Coverer[$Path] }
     return $null
+}
+
+# Pure: which cheap gates short-circuit rather than join $checkResults. Reserved
+# for a check that is cheap, deterministic, auto-fixable, and whose remedy cannot
+# be changed by any later result -- clang-format is the only one that currently
+# qualifies (issue #478). Blame-ignore, workflow timeouts and script binding stay
+# aggregated: each can still call for judgement (-AllowUnlistedReformat, which
+# workflow to fix) that a later result could add to.
+function Test-IsFastFailCheck {
+    param([Parameter(Mandatory)][string]$CheckName)
+    return $CheckName -eq 'clang-format'
 }
 
 function Invoke-ChangedScriptSelfTest {
@@ -384,12 +398,32 @@ if ($SelfTest) {
         $realViolations | ForEach-Object { Write-Host "          $_" -ForegroundColor Yellow }
     }
 
+    # FALSIFY: before this rule existed, every cheap gate aggregated -- a
+    # formatting-only failure still paid for the full build before it was reported.
+    Write-Host ''
+    $fastFailCases = @(
+        @{ Name = 'clang-format is fail-fast'; CheckName = 'clang-format'; Expect = $true }
+        @{ Name = 'FALSIFY: blame-ignore is not fail-fast'; CheckName = 'Blame-ignore'; Expect = $false }
+        @{ Name = 'FALSIFY: workflow timeouts is not fail-fast'; CheckName = 'Workflow timeouts'; Expect = $false }
+        @{ Name = 'FALSIFY: script binding is not fail-fast'; CheckName = 'Script binding'; Expect = $false }
+    )
+    foreach ($case in $fastFailCases) {
+        $actual = Test-IsFastFailCheck -CheckName $case.CheckName
+        if ($actual -eq $case.Expect) {
+            Write-Host "  PASS  $($case.Name)" -ForegroundColor Green
+        }
+        else {
+            $failed++
+            Write-Host ("  FAIL  {0}: got {1}, expected {2}" -f $case.Name, $actual, $case.Expect) -ForegroundColor Red
+        }
+    }
+
     Write-Host ''
     if ($failed -gt 0) {
         Write-Host "$failed self-test case(s) FAILED." -ForegroundColor Red
         exit 1
     }
-    Write-Host "All $($cases.Count + $resolutions.Count + 1) self-test cases passed." -ForegroundColor Green
+    Write-Host "All $($cases.Count + $resolutions.Count + $fastFailCases.Count + 1) self-test cases passed." -ForegroundColor Green
     exit 0
 }
 
@@ -476,6 +510,10 @@ $checkResults['Build wrapper self-test'] = if ($buildSelfTestFailed) { 'FAIL' } 
 # to be reachable before pushing -- otherwise this is the only gate in the repo that
 # can only be discovered after a push. It runs first because it is by far the
 # cheapest: seconds against several minutes for the build.
+# Short-circuits on failure (issue #478): the remedy is already known and fixed --
+# `Run-Lint.ps1 -Check Format -Fix` -- and no later gate can change that, so this is
+# the one check in the whole run that exits immediately instead of joining
+# $checkResults.
 Write-Host "`n==> clang-format (issue #175)" -ForegroundColor Cyan
 $lintScript = Join-Path $PSScriptRoot 'Run-Lint.ps1'
 $lintFailed = $false
@@ -483,6 +521,15 @@ try   { & $lintScript -Check Format -BaseRef $BaseRef }
 catch { $lintFailed = $true; Write-Host "Lint threw: $_" -ForegroundColor DarkGray }
 if ($LASTEXITCODE -ne 0) { $lintFailed = $true }
 $checkResults['clang-format'] = if ($lintFailed) { 'FAIL' } else { 'PASS' }
+if ($lintFailed -and (Test-IsFastFailCheck -CheckName 'clang-format')) {
+    Write-Host ''
+    Write-Host 'Pre-PR validation FAILED (clang-format).' -ForegroundColor Red
+    Write-Host '      Fix with: pwsh -File Scripts\Run-Lint.ps1 -Check Format -Fix' -ForegroundColor Yellow
+    Write-Host '      Formatting is a decided, auto-fixable rule -- nothing later in this' -ForegroundColor Yellow
+    Write-Host '      run can change that, so blame-ignore, the build, extended tests,' -ForegroundColor Yellow
+    Write-Host '      tactical suite and self-play never ran.' -ForegroundColor Yellow
+    exit 1
+}
 
 # --- Step 0c: blame-ignore coverage ---
 # A clang-format configuration change re-runs the formatter over the whole tree,
