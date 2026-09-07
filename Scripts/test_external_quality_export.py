@@ -823,6 +823,28 @@ class ExtractionTests(unittest.TestCase):
 1. Ra2 {+0.10/10 0.100s} Ra7 {-0.10/10 0.100s} 2. Ra3 {+0.20/10 0.100s} Ra6 {-0.20/10 0.100s} 1-0
 """
 
+    # A scored ply whose adjudication note reads "book". It is not a book move:
+    # it carries a real score and stays eligible.
+    BOOK_NOTE_PGN = """\
+[Event "book-note"]
+[White "A"]
+[Black "B"]
+[Result "1-0"]
+
+1. e4 {+0.10/10 0.100s, book} e5 {-0.10/10 0.100s, book} 2. Nf3 {+0.20/10 0.100s}
+Nc6 {-0.20/10 0.100s} 1-0
+"""
+
+    BOOK_PREFIX_THEN_NOTE_PGN = """\
+[Event "book-prefix-then-note"]
+[White "A"]
+[Black "B"]
+[Result "1-0"]
+
+1. e4 {book} e5 {book} 2. Nf3 {+0.10/10 0.100s} Nc6 {-0.10/10 0.100s}
+3. Bb5 {+0.20/10 0.100s, book} a6 {-0.20/10 0.100s} 1-0
+"""
+
     MATE_SCORE_PGN = """\
 [Event "mate-score"]
 [White "A"]
@@ -908,7 +930,8 @@ class ExtractionTests(unittest.TestCase):
 
     def test_replay_invariant_for_every_eligible_row(self):
         fixtures = (amq.SELF_TEST_PGN, self.BOOK_PREFIX_PGN, self.SETUP_ASSUMED_PGN,
-                    self.PLAIN_PGN, self.LATE_BOOK_PGN, self.MATE_SCORE_PGN)
+                    self.PLAIN_PGN, self.LATE_BOOK_PGN, self.MATE_SCORE_PGN,
+                    self.BOOK_NOTE_PGN, self.BOOK_PREFIX_THEN_NOTE_PGN)
         checked = 0
         for text in fixtures:
             for scan in self._scan(text):
@@ -944,6 +967,29 @@ class ExtractionTests(unittest.TestCase):
         self.assertIsNone(scan.book_exit_ply)
         self.assertIsNone(aeq.ply_since_book_exit(scan, 0))
 
+    def test_a_scored_ply_with_a_book_note_is_not_a_book_move(self):
+        # parse_comment returns note="book" here as well, so classifying by the
+        # note would place the book exit after a row that stays eligible and
+        # give that row a negative ply_since_book_exit.
+        scan = self._scan(self.BOOK_NOTE_PGN)[0]
+        self.assertEqual(scan.plies[0].note, "book")
+        self.assertEqual(scan.plies[0].cp, 10)
+        self.assertFalse(scan.plies[0].is_book)
+        self.assertIn(0, scan.eligible)
+        self.assertIsNone(scan.book_exit_ply)
+        self.assertEqual(scan.book_exit_basis, "unknown")
+        for i in scan.eligible:
+            self.assertIsNone(aeq.ply_since_book_exit(scan, i))
+
+    def test_book_note_after_a_book_prefix_does_not_reopen_the_exit(self):
+        scan = self._scan(self.BOOK_PREFIX_THEN_NOTE_PGN)[0]
+        self.assertEqual(scan.book_exit_basis, "explicit_book_prefix")
+        self.assertEqual(scan.book_exit_ply, 2)
+        self.assertEqual(scan.plies[4].note, "book")
+        self.assertFalse(scan.plies[4].is_book)
+        for i in scan.eligible:
+            self.assertGreaterEqual(aeq.ply_since_book_exit(scan, i), 0)
+
     def test_book_exit_unknown_when_book_annotation_follows_real_play(self):
         scan = self._scan(self.LATE_BOOK_PGN)[0]
         self.assertEqual(scan.book_exit_basis, "unknown")
@@ -963,7 +1009,7 @@ class ExtractionTests(unittest.TestCase):
 
     def test_book_plies_are_never_eligible(self):
         scan = self._scan(self.BOOK_PREFIX_PGN)[0]
-        book_indices = {i for i, p in enumerate(scan.plies) if p.note == "book"}
+        book_indices = {i for i, p in enumerate(scan.plies) if p.is_book}
         self.assertTrue(book_indices)
         self.assertFalse(book_indices & set(scan.eligible))
 

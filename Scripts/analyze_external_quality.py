@@ -167,6 +167,9 @@ class PlyMeta:
     seconds: float | None
     note: str | None
     annotation: str | None
+    # A bare `{book}` comment, not `note == "book"`: an adjudication note may
+    # also read "book" on a ply that carries a real score and stays eligible.
+    is_book: bool
     before_fen: str
     after_fen: str
     played_uci: str
@@ -186,17 +189,17 @@ class GameScan:
 
 
 def _book_exit(plies: tuple[PlyMeta, ...], headers: dict) -> tuple[int | None, str]:
-    """-> (book_exit_ply, basis), derived once per game from ply notes.
+    """-> (book_exit_ply, basis), derived once per game from the book plies.
 
     A `{book}` annotation seen after real play makes the boundary unknowable
     rather than guessed at, because the prefix rule no longer holds.
     """
     prefix = 0
     for ply in plies:
-        if ply.note != "book":
+        if not ply.is_book:
             break
         prefix += 1
-    if any(ply.note == "book" for ply in plies[prefix:]):
+    if any(ply.is_book for ply in plies[prefix:]):
         return None, "unknown"
     if prefix > 0:
         return prefix, "explicit_book_prefix"
@@ -233,6 +236,7 @@ def scan_games(path: Path) -> list[GameScan]:
                 plies.append(PlyMeta(
                     ply_index=idx, mover=mover, build=builds[mover], bucket=bucket, cp=cp,
                     depth=depth, seconds=seconds, note=note, annotation=comment,
+                    is_book=comment == "book",
                     before_fen=before, after_fen=board.fen(), played_uci=move.uci(),
                 ))
         except ValueError as exc:               # truncated or corrupt game
