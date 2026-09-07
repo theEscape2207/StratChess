@@ -22,6 +22,26 @@ Newest first.
 
 ---
 
+## 2026-09-07 — MoveQuality.md: record the oracle-reuse result, and trim (#414 follow-up)
+
+Adds the third oracle-lifetime architecture to the cost section and shortens the document by 76
+lines, from 502 to 426, without dropping a number.
+
+**Persistent workers lose too.** Twelve long-lived worker processes, one Stockfish each, pulling
+games one at a time from a shared queue with `ucinewgame` between them, scored a shard in 310 s and
+330 s against the per-game restart's 288 s — at **96% worker occupancy**, ~10 s idle per worker. The
+earlier `--batch 24` result confounded engine lifetime with scheduling granularity; this one holds
+granularity fixed, so it rules scheduling out and leaves engine reuse itself as the ~13% cost. All
+three architectures produce byte-identical reports. Removing 99% of the NNUE loads made the scan
+slower, so process startup is not why it scales sublinearly with `--jobs`; the unmeasured candidate
+is `ucinewgame` clearing a 64 MB hash against the memory bandwidth twelve NNUE searches saturate.
+
+The trim targets restatement, not content. The three separate process-lifetime paragraphs collapse
+into one subsection and one table; Tier 2's two tables merge into one with the intervals inline; the
+level-material addendum's two runs share a table instead of repeating their prose; the two eval
+calibration tables become one; and Finding 1's retraction stops restating what Tier 2's T1 and T2
+already say. Every measurement, interval and issue reference is preserved.
+
 ## 2026-09-07 — Tier 2: external-engine ACPL adjudication of strength-lab PGNs (#414)
 
 `Scripts/analyze_external_quality.py` replays a strength-lab corpus under an outside engine
