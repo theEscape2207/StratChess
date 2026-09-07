@@ -59,17 +59,33 @@ N; shards are independent samples of one match, so a prefix is a smaller run of 
 not a biased one. Tier 1's six seconds buys a different question, not a worse one — run Tier 1 first.
 
 **It does not scale with `--jobs`.** Doubling 6 workers to 12 cut the per-shard time from 422 s to
-278 s — 1.43×, not 2×. Each worker spends a large share of its time starting an oracle process and
-waiting for the NNUE net to load, which is single-threaded and I/O-bound, so added workers contend
-rather than stack. The default is a quarter of the machine; raise `--jobs` only on a box nobody is
-using, and expect less than you paid for.
+278 s — 1.43×, not 2×. The cause is not measured; the obvious suspect is ruled out below. The default
+is a quarter of the machine; raise `--jobs` only on a box nobody is using, and expect less than you
+paid for.
 
-**One oracle process per game, closed when the game is done.** That restart is what the paragraph
-above is describing, and it buys two things: a cleared hash, so a position's score cannot depend on
-which games that worker happened to score first, and a pool that shuts down. A worker still holding a
-live engine never exits, and the parent waits for it forever — which looks exactly like a finished
-run, with the report never printed and the engines idling at the top of the process list. Its price
-at corpus scale has never been isolated; the sublinear scaling above is the only measurement of it.
+**One oracle process per game, closed when the game is done.** It buys a cleared hash, so a
+position's score cannot depend on which games that worker scored first, and it buys a pool that
+shuts down: a worker still holding a live engine never exits, and the parent waits for it forever —
+which looks exactly like a finished run, with the report never printed and the engines idling at the
+top of the process list. Every oracle process is closed inside the task that opened it, never left
+to interpreter exit.
+
+**Batching games into one process is slower, which was not the expected answer.** `--batch N` scores
+N games per oracle process, sending `ucinewgame` between them instead of restarting; at N = 24 that
+is 47 process starts per shard instead of 1,109. Measured on one shard at `--jobs 12`, alternating
+the two settings so run order could not carry the result:
+
+| `--batch` | processes per shard | per-shard time | spread |
+|---|---|---|---|
+| 1 (default) | 1,109 | 290 s, 288 s, 287 s | 3 s |
+| 24 | 47 | 333 s, 365 s, 322 s | 43 s |
+
+Removing 96% of the NNUE loads cost 18%, and made the run fourteen times more variable — the
+signature of a few chunky work units leaving workers idle at the tail. **So the sublinear `--jobs`
+scaling above is not process startup**, whatever else it is. All six runs produced byte-identical
+reports, which is the useful half of the result: `ucinewgame` reproduces a fresh process exactly, so
+the choice is purely about speed. The knob stays for measuring a different box; the default does not
+use it.
 
 **Every rate carries a game-clustered interval.** Plies inside one game share its opening, its two
 builds and its result, so a per-ply confidence interval is several times too tight to believe. The

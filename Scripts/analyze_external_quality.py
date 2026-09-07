@@ -43,7 +43,6 @@ import time
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
 from itertools import chain
-from math import ceil
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -67,7 +66,6 @@ except ImportError as exc:  # pragma: no cover - environment guard, not test log
 CLAMP_CP = 1000
 MATE_CP = 100000          # what python-chess substitutes before we clamp
 REPORT_LOSS_CP = 300      # a row this bad that Tier 1 scored clean gets listed
-BATCHES_PER_WORKER = 4    # batches each worker is expected to get, for balance
 ENGINE_DIR = "EngineTesting"
 ENGINE_EXE = "stockfish.exe" if os.name == "nt" else "stockfish"
 
@@ -357,7 +355,7 @@ def analyse(root: Path, engine_path: str, depth: int, jobs: int, limit: int, sha
             games = extract(path)
             if limit:
                 games = games[:limit]
-            groups = batches(games, batch or ceil(len(games) / (jobs * BATCHES_PER_WORKER)))
+            groups = batches(games, batch)
             _log(f"shard {n}/{len(files)} {path.parent.name}: {len(games)} games extracted, "
                  f"{len(groups)} batch(es)")
             for part, part_worst in chain.from_iterable(ex.map(score_batch, groups)):
@@ -491,12 +489,12 @@ def main() -> int:
     ap.add_argument("--games", type=int, default=0, help="cap games per shard (0 = all)")
     ap.add_argument("--shards", type=int, default=0,
                     help="scan only the first N shards (0 = all); each is an independent sample")
-    # One oracle process per batch, so this trades NNUE loads against how evenly
-    # the pool can balance. --batch 1 is one process per game, the slow reference
-    # the batched path must reproduce counter for counter.
-    ap.add_argument("--batch", type=int, default=0,
-                    help="games per oracle process "
-                         f"(0 = auto, ~{BATCHES_PER_WORKER} batches per worker)")
+    # One oracle process per batch. Batching saves NNUE loads and costs balance,
+    # and the balance is worth more: 24 games per process measured 18% slower
+    # than one, over runs whose reports were byte-identical. The knob stays so a
+    # different box can be measured rather than assumed.
+    ap.add_argument("--batch", type=int, default=1,
+                    help="games per oracle process (default 1; larger measured slower)")
     ap.add_argument("--samples", type=int, default=amq.BOOT_SAMPLES,
                     help="bootstrap resamples behind every interval")
     ap.add_argument("--json", help="also write the merged raw counters here")

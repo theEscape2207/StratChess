@@ -38,6 +38,14 @@ importantly, lets the process pool shut down. A worker still holding a live `Sim
 exits and the parent waits for it forever, which is indistinguishable from a finished run whose
 report never prints.
 
+`--batch N` scores N games per process, sending `ucinewgame` between them instead of restarting.
+Six one-shard runs alternating `--batch 1` and `--batch 24` produced byte-identical reports, so the
+two are the same experiment — but batching measured **18% slower** (mean 340 s against 288 s) and
+fourteen times more variable, because a few chunky work units leave workers idle at the tail.
+Removing 96% of the NNUE loads cost time, which rules process startup out as the reason the scan
+scales sublinearly with `--jobs`. The default is therefore one process per game; the knob stays so a
+different machine can be measured rather than assumed.
+
 First full pass, run 33989392373, 1,492,860 contested plies: **it retracts Finding 1 of
 `Docs/MoveQuality.md`**. Self-reported blunder rates understate the oracle's by 13× to 48×, and the
 phase profile inverts — external ACPL climbs 16.9 → 33.9 → 40.3 from endgame to opening, so the
