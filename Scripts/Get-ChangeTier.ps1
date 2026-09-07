@@ -161,10 +161,16 @@ function Get-TierForPath {
     if ($p -like '*Scripts/FakeUciEngine.cmd')              { return 'Tooling' }
 
     # Python helpers, alphabetically.
-    if ($p -like '*Scripts/build_corpus.py')                { return 'Tooling' }
-    if ($p -like '*Scripts/test_build_corpus.py')           { return 'Tooling' }
-    if ($p -like '*Scripts/uci_race_probe.py')              { return 'Tooling' }
-    if ($p -like '*Scripts/verify_mate_key.py')             { return 'Tooling' }
+    # The move-quality analyzers and their export helper are engine-inert PGN readers:
+    # they compile nothing and the engine never invokes them.
+    if ($p -like '*Scripts/analyze_external_quality.py')     { return 'Tooling' }
+    if ($p -like '*Scripts/analyze_move_quality.py')         { return 'Tooling' }
+    if ($p -like '*Scripts/build_corpus.py')                 { return 'Tooling' }
+    if ($p -like '*Scripts/external_quality_export.py')      { return 'Tooling' }
+    if ($p -like '*Scripts/test_build_corpus.py')            { return 'Tooling' }
+    if ($p -like '*Scripts/test_external_quality_export.py') { return 'Tooling' }
+    if ($p -like '*Scripts/uci_race_probe.py')               { return 'Tooling' }
+    if ($p -like '*Scripts/verify_mate_key.py')              { return 'Tooling' }
 
     # --- Fail closed ----------------------------------------------------------
     # Everything else, INCLUDING anything unrecognised. Do not add an
@@ -227,6 +233,10 @@ if ($SelfTest) {
         @{ Name = 'corpus tool -> Tooling';     Files = @('Scripts/build_corpus.py');         Expect = 'Tooling' }
         @{ Name = 'corpus test -> Tooling';     Files = @('Scripts/test_build_corpus.py');    Expect = 'Tooling' }
         @{ Name = 'race probe -> Tooling';      Files = @('Scripts/uci_race_probe.py');       Expect = 'Tooling' }
+        @{ Name = 'external quality analyzer -> Tooling'; Files = @('Scripts/analyze_external_quality.py'); Expect = 'Tooling' }
+        @{ Name = 'move quality analyzer -> Tooling';     Files = @('Scripts/analyze_move_quality.py');     Expect = 'Tooling' }
+        @{ Name = 'quality export -> Tooling';            Files = @('Scripts/external_quality_export.py'); Expect = 'Tooling' }
+        @{ Name = 'quality export test -> Tooling';       Files = @('Scripts/test_external_quality_export.py'); Expect = 'Tooling' }
         @{ Name = 'docs + cpp -> Engine';       Files = @('CLAUDE.md', 'StratEngine/Eval.cpp');                 Expect = 'Engine' }
         @{ Name = 'build.ps1 -> Build';         Files = @('build.ps1');                                          Expect = 'Build' }
         @{ Name = 'validator -> Build NOT Tooling'; Files = @('Scripts/Validate-PrePR.ps1');   Expect = 'Build' }
@@ -254,6 +264,7 @@ if ($SelfTest) {
         @{ Name = 'artifact picker -> Build';   Files = @('Scripts/Get-BuildArtifact.ps1');     Expect = 'Build' }
         @{ Name = 'blame-ignore -> Build';      Files = @('.git-blame-ignore-revs');                             Expect = 'Build' }
         @{ Name = 'workflow -> Build';          Files = @('.github/workflows/build-and-test.yml');               Expect = 'Build' }
+        @{ Name = 'nightly workflow -> Build';  Files = @('.github/workflows/nightly.yml');                      Expect = 'Build' }
         @{ Name = 'hook -> Build';              Files = @('.githooks/pre-commit');                               Expect = 'Build' }
         @{ Name = 'vcxproj -> Build';           Files = @('StratChessTests/StratChessTests.vcxproj');            Expect = 'Build' }
         @{ Name = 'CMakeLists -> Build';        Files = @('CMakeLists.txt');                                     Expect = 'Build' }
@@ -261,6 +272,7 @@ if ($SelfTest) {
         @{ Name = 'CMakePresets -> Build';      Files = @('CMakePresets.json');                                  Expect = 'Build' }
         @{ Name = 'FAIL CLOSED: unknown ext';   Files = @('foo/bar.xyz');                                        Expect = 'Engine' }
         @{ Name = 'FAIL CLOSED: new script';    Files = @('Scripts/Brand-New.ps1');            Expect = 'Engine' }
+        @{ Name = 'FAIL CLOSED: unlisted python script'; Files = @('Scripts/some_new_tool.py'); Expect = 'Engine' }
         @{ Name = 'json -> Engine';             Files = @('StratChessEvolved/game_settings.json');               Expect = 'Engine' }
         @{ Name = 'header -> Engine';           Files = @('StratEngine/Eval.h');                                 Expect = 'Engine' }
         @{ Name = 'backslash paths normalise';  Files = @('Scripts\Run-EloMatch.ps1');         Expect = 'Tooling' }
