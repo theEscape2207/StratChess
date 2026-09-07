@@ -51,22 +51,25 @@ scoring inverts every loss it reports without failing anything else, so four of 
 to catch that, and they need the binary to run.
 
 Cost is the reason to think before running it, and the scan reports its own: every progress line is
-stamped with elapsed time, and each shard prints how long it took to score. One shard is ~165,000
-oracle searches at roughly 25 ms each — about 1.2 core-hours, so a little over ten minutes on the
-default quarter of a 24-core box, and a few hours for all 18. Read those figures off a real run
-rather than trusting this paragraph: they are extrapolated from a six-game sample and they move with
-depth and hardware. `--shards N` takes the first N — shards are independent samples of one match, so
-a prefix is a smaller run of the same experiment, not a biased one. Each worker is one busy core, so
-the default deliberately claims a quarter of the machine rather than all of it; raise `--jobs` only
-on a box nobody is using. Tier 1's six seconds buys a different question, not a worse one — run
-Tier 1 first.
+stamped with elapsed time, and each shard prints how long it took to score. On a 24-core box at
+`--jobs 12` one shard of ~83,000 contested rows scores in about 280 s; the full 18-shard corpus took
+5,125 s to score and a further 584 s to bootstrap, so **about 95 minutes end to end**. Depth and
+hardware move all of that — read it off the run, not off this paragraph. `--shards N` takes the first
+N; shards are independent samples of one match, so a prefix is a smaller run of the same experiment,
+not a biased one. Tier 1's six seconds buys a different question, not a worse one — run Tier 1 first.
 
-**One oracle process per game, closed when the game is done.** It costs about 15% against holding a
-process open for the life of a worker, and buys two things: a cleared hash, so a position's score
-cannot depend on which games that worker happened to score first, and a pool that shuts down. A
-worker still holding a live engine never exits, and the parent waits for it forever — which looks
-exactly like a finished run, with the report never printed and the engines idling at the top of the
-process list.
+**It does not scale with `--jobs`.** Doubling 6 workers to 12 cut the per-shard time from 422 s to
+278 s — 1.43×, not 2×. Each worker spends a large share of its time starting an oracle process and
+waiting for the NNUE net to load, which is single-threaded and I/O-bound, so added workers contend
+rather than stack. The default is a quarter of the machine; raise `--jobs` only on a box nobody is
+using, and expect less than you paid for.
+
+**One oracle process per game, closed when the game is done.** That restart is what the paragraph
+above is describing, and it buys two things: a cleared hash, so a position's score cannot depend on
+which games that worker happened to score first, and a pool that shuts down. A worker still holding a
+live engine never exits, and the parent waits for it forever — which looks exactly like a finished
+run, with the report never printed and the engines idling at the top of the process list. Its price
+at corpus scale has never been isolated; the sublinear scaling above is the only measurement of it.
 
 **Every rate carries a game-clustered interval.** Plies inside one game share its opening, its two
 builds and its result, so a per-ply confidence interval is several times too tight to believe. The
@@ -116,8 +119,9 @@ book does emit them, and they are excluded.
 
 - **It grades its own homework, and the blind spot is large.** A position both builds misjudge the
   same way produces no swing at all. [Tier 2](#tier-2-external-adjudication) has now measured that
-  spot against an outside engine: the blunder rates below are the ones the engine can see, roughly a
-  twentieth of the ones it makes. Read Tier 2 before treating any rate below as a defect profile.
+  spot against an outside engine: the blunder rates below are the ones the engine can see, between a
+  thirteenth and a fiftieth of the ones it makes, the fraction falling as the phase gets earlier.
+  Read Tier 2 before treating any rate below as a defect profile.
 - **The endgame is censored by adjudication.** 68% of the baseline's games ended by adjudication under
   `-draw movenumber=40 movecount=8 score=10` / `-resign movecount=4 score=800`. "Endgame" numbers mean
   *the position at the moment of adjudication*, not played-out technique, and the calibration table is
@@ -265,16 +269,21 @@ being the one-ply offset); it cannot replace it.
 
 ## Findings
 
-**1. There is no general blunder weakness to find.** In contested positions every rate sits between
-0.15% and 0.30%, by phase and by moved piece alike. The unrestricted numbers say something else
-entirely — endgame 1.7%, king moves 34% of all blunders — and both are artifacts of already-lost
-positions, where the losing side flails and the swings cost nothing. Any future reading of this
-report should use the contested rows.
+**1. ~~There is no general blunder weakness to find.~~ Retracted — see
+[Tier 2](#tier-2-external-adjudication).** The claim rested on the engine grading its own homework.
+Against an outside judge the same contested positions blunder at 2.8% in the endgame, 5.7% in the
+middlegame and 6.3% in the opening: 13× to 48× the self-reported rates, and the ratio widens as the
+phase gets earlier. The phase profile is not flat either, it rises steadily toward the opening —
+which is the reverse of what the rows below say.
 
-Inside that band the rates are *not* equal, and the game-clustered intervals are tight enough to say
-so: middlegame 0.293% against opening 0.154%, rook 0.277% against bishop 0.160%. That 1.9× ratio is
-worth knowing, but it is not the shape of a defect either — middlegame worst and heavy pieces worst
-is what a search that is depth-limited in the most complex positions should look like.
+What survives is a narrower statement about self-knowledge rather than about play. *Of the mistakes
+the engine can see*, every rate sits between 0.15% and 0.30% by phase and by moved piece alike, and
+the game-clustered intervals are tight enough to order them: middlegame 0.293% against opening
+0.154%, rook 0.277% against bishop 0.160%. Middlegame worst and heavy pieces worst is what a
+depth-limited search should look like. The unrestricted numbers say something else entirely — endgame
+1.7%, king moves 34% of all blunders — and both are artifacts of already-lost positions, where the
+losing side flails and the swings cost nothing; any reading of the tables above should still use the
+contested rows.
 
 **2. The evaluation is well calibrated except when the pawns are gone.** With three pawns a side the
 three phases agree to within noise, and the endgame is marginally *better* calibrated than the
@@ -376,3 +385,88 @@ control run, where neither build scaled the class, splits 202/166 the other way.
 
 The [Baseline](#baseline-run-33215162562) table above predates the level line, so its `OCB` `< +100`
 row still folds in that run's dead-level entries.
+
+---
+
+## Tier 2: External adjudication
+
+Run [33989392373](https://github.com/theEscape2207/StratChess/actions/runs/33989392373), 2026-09-05,
+`candidate-86877f7` (`worktree-minor-piece-outposts`) vs `reference-9708c65` (merge-base), pooled
+**+8.05 ± 3.63 Elo** over 9,990 pairs. Oracle: Stockfish 19 at depth 12. 19,958 games, **1,492,860
+contested rows**, 2,000 game-clustered resamples. Same corpus, same parser, same phase buckets and
+the same ±150 cp contested filter as Tier 1 — only the judge changes.
+
+Loss for one move is `max(0, oracle(before) − oracle(after))` from the mover's point of view, clamped
+to ±1000 cp so a mate score cannot saturate a mean. `agree%` is how often the played move was the
+oracle's own first choice, and `noise` is the mean loss over exactly those rows: with the played move
+and the best move identical, whatever loss remains can only be the oracle's depth-12 instability.
+**It is the error bar on the oracle, and a signal near it is not a signal.**
+
+| build | phase | n | self ACPL | self blu% | ext ACPL | ext blu% | agree% | noise |
+|---|---|---|---|---|---|---|---|---|
+| candidate-86877f7 | opening | 258,372 | 11.3 | 0.13 | **40.3** | **6.30** | 41.7 | 4.5 |
+| candidate-86877f7 | middlegame | 272,400 | 12.9 | 0.28 | 33.9 | 5.70 | 47.9 | 4.4 |
+| candidate-86877f7 | endgame | 214,381 | 9.9 | 0.21 | 16.9 | 2.83 | 42.3 | 2.8 |
+| reference-9708c65 | opening | 258,835 | 11.1 | 0.12 | **40.9** | **6.43** | 41.2 | 4.6 |
+| reference-9708c65 | middlegame | 273,660 | 12.7 | 0.27 | 34.2 | 5.70 | 47.7 | 4.6 |
+| reference-9708c65 | endgame | 215,212 | 9.9 | 0.24 | 16.9 | 2.86 | 42.4 | 2.8 |
+
+95% game-clustered intervals, external columns only:
+
+| build | phase | ext ACPL | ext blu% |
+|---|---|---|---|
+| candidate-86877f7 | opening | 40.3 [39.9, 40.6] | 6.30 [6.18, 6.41] |
+| candidate-86877f7 | middlegame | 33.9 [33.6, 34.3] | 5.70 [5.60, 5.81] |
+| candidate-86877f7 | endgame | 16.9 [16.5, 17.3] | 2.83 [2.73, 2.93] |
+| reference-9708c65 | opening | 40.9 [40.6, 41.2] | 6.43 [6.32, 6.55] |
+| reference-9708c65 | middlegame | 34.2 [33.9, 34.6] | 5.70 [5.59, 5.81] |
+| reference-9708c65 | endgame | 16.9 [16.5, 17.3] | 2.86 [2.75, 2.96] |
+
+### Findings
+
+**T1. The self-reported blunder rate understates the real one by 13× to 48×.** Endgame 2.83% against
+0.21%, middlegame 5.70% against 0.28%, opening 6.30% against 0.13%. This is the size of the blind
+spot named in [Limits](#limits), measured rather than assumed, and it is what retracts
+[Finding 1](#findings).
+
+**T2. The profile is monotone, and it points the wrong way.** Self-ACPL is nearly constant across the
+three phases (11.3 / 12.9 / 9.9); external ACPL climbs 16.9 → 33.9 → 40.3 from endgame to opening,
+and the blunder rate climbs with it. **The engine plays worst where it is most confident.** Tier 1
+read the opening as its *best* phase; against an outside judge it is the worst, by both measures, on
+disjoint intervals.
+
+That inversion is the single most useful thing in this table, and it has a mundane candidate
+explanation that must be excluded before any other: the opening bucket is where the engine's own
+score is least informative about the position, so the ±150 cp contested filter admits nearly every
+opening move while filtering the endgame hard. #481 is the follow-up, and step 1 of it is the
+filter-independent re-run that settles this.
+
+**T3. The signal is well clear of the oracle's noise floor.** External ACPL is 6× the noise in the
+endgame, 7.7× in the middlegame and 9× in the opening. The noise floor itself behaves as it should —
+2.8 cp where positions are simple, 4.4–4.6 where they are not — which is a check on the oracle, not
+on the engine.
+
+**T4. Agreement is under half, and it does not track quality.** The played move is the oracle's own
+first choice 41.7% of the time in the opening and 47.9% in the middlegame — the phase with the
+*worse* ACPL agrees *more*. Agreement measures how narrow the position is, not how well it was
+played, and should not be read as a quality metric.
+
+**T5. Candidate beats reference in the opening only.** Opening ACPL 40.3 [39.9, 40.6] against
+40.9 [40.6, 41.2] — disjoint, roughly 0.6 cp. Middlegame overlaps, endgame is identical to the
+decimal. Blunder-rate intervals overlap in every phase, opening included. So the one separated cell
+is worth about 1.5% of the opening's ACPL, and both builds' rows come from the same games (each build
+plays each opening once, with colours reversed), which is what makes a difference this small
+readable at all. It is consistent with the run's +8.05 Elo without being evidence for it.
+
+### Limits specific to Tier 2
+
+- **Depth 12 is a judge, not the truth.** It is roughly the engine's own search depth. Losses under
+  ~30 cp are within its instability; only the aggregate is meaningful.
+- **The ±1000 cp clamp compresses the tail.** Most of the report's worst rows sit exactly at −1000,
+  which means "lost or mated", not "lost by exactly ten pawns". Counts of clamped rows are
+  interpretable; their mean is not.
+- **`before` is cached per position, `after` is not.** Both are depth-12 searches from a cleared
+  hash, so the pair is consistent, but a row's loss is a difference of two independent searches and
+  carries both their errors.
+- **The contested filter is the engine's own.** It selects on the mover's reported score, so it is
+  not independent of the quantity being measured. T2's caveat is the concrete consequence.
