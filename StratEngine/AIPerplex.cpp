@@ -621,8 +621,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				// in a build with the feature compiled out, that read is discarded, which would
 				// leave these writes dead.
 				if constexpr (kSingularExtensionsCompiled) {
-					tt_usable_for_singular = tuning_.singular_extensions_enabled &&
-					                         hash_move != Move::EmptyMove() &&
+					tt_usable_for_singular = tuning_.singular_extensions_enabled && hash_move != Move::EmptyMove() &&
 					                         (entry->bound == BoundType::LOWER || entry->bound == BoundType::EXACT) &&
 					                         std::abs(static_cast<int>(entry->value)) < GameValues::Mate_Threshold &&
 					                         entry->depth >= depth - tuning_.singular_tt_depth_margin;
