@@ -101,3 +101,9 @@ whose violation is silent.
   nlohmann, but PowerShell's `ConvertFrom-Json` does not.
 - Run the exe from `StratChessEvolved/` — both so `game_settings.json` resolves and so logs land in
   `StratChessEvolved/logs/`.
+- **`SearchTuning` is unreachable from a UCI search.** `UciHandler::init_ai()` builds its
+  `AIPerplexConfig` from hardcoded values and never consults `game_settings.json` or
+  `PlayerFactory`, and `cmd_setoption` recognises only `Threads` and `Hash`. The JSON
+  `"search_tuning"` block reaches `AIPerplex` on the `game`-mode path alone. Since `Run-Bench.ps1`,
+  `Compare-SearchEquivalence.ps1` and every match harness drive the engine over UCI, a new tuning
+  knob is configurable **only by rebuilding with a different default** until something wires a route.

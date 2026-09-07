@@ -193,6 +193,7 @@ struct EvalBreakdown {
 	int bishops[NUM_COLORS];      // eval_bishops
 	int castling[NUM_COLORS];     // eval_castling
 	int mobility[NUM_COLORS];     // eval_mobility
+	int outposts[NUM_COLORS];     // eval_outposts
 	int king_shelter[NUM_COLORS]; // eval_king_pawn_cover, shelter
 	int king_storm[NUM_COLORS];   // eval_king_pawn_cover, storm
 	int king_files[NUM_COLORS];   // eval_king_pawn_cover, file openness
@@ -375,6 +376,24 @@ class Evaluator {
 	// measured version had no blockade awareness at all and paid a 7th-rank passer
 	// its full value with the enemy king parked in front of it.
 	static constexpr short PASSED_PAWN_BLOCKADED_SCALE = 8; // half
+
+	// Minor-piece outposts: a knight or bishop standing on a square
+	// a friendly pawn defends, with no enemy pawn left on an adjacent file ahead
+	// of it. Indexed by the piece's RELATIVE RANK (1 = own back rank, 8 = the
+	// enemy's), so the tables have nine entries and need no bounds test.
+	//
+	// Ranks 4-6 only. A supported minor on its own third rank is not an outpost,
+	// and one on the 7th or 8th is usually near-trapped rather than dominant --
+	// the PSTs and mobility already price both cases.
+	//
+	// The knight is paid more than the bishop because a knight's worth depends far
+	// more on holding an advanced square nothing can chase it off; a bishop acts at
+	// range from wherever it stands.
+	//
+	// Phase-neutral and UNTUNED: a first-cut hypothesis, deliberately without a
+	// second mg/eg axis, so one experiment moves one thing. #117 owns the values.
+	static constexpr short OUTPOST_KNIGHT[9] = {0, 0, 0, 0, 15, 20, 25, 0, 0};
+	static constexpr short OUTPOST_BISHOP[9] = {0, 0, 0, 0, 8, 12, 16, 0, 0};
 
 	static const short MOBILITY_KNIGHT_MG = 4;
 	static const short MOBILITY_KNIGHT_EG = 4;
@@ -751,6 +770,7 @@ class Evaluator {
 	static ScorePair eval_bishops(const EvalContext& ctx, eColor color) noexcept;
 	static ScorePair eval_castling(const EvalContext& ctx, eColor color) noexcept;
 	static ScorePair eval_mobility(const EvalContext& ctx, eColor color) noexcept;
+	static ScorePair eval_outposts(const EvalContext& ctx, eColor color) noexcept;
 	// The one exception to the ScorePair signature above: all three king-safety
 	// contributions fall out of a single scan over the king's three files, and
 	// rescanning them to keep three identical signatures cost measurable nps for

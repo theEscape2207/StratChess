@@ -45,6 +45,150 @@ engine plays worst where its own annotations say it is strongest. Numbers, inter
 Tier 2-specific limits are in `Docs/MoveQuality.md`; #481 tracks the opening result and the
 selection-effect confound that has to be excluded before acting on it.
 
+## 2026-09-06 — Singular tests searched deeper than they assert (#479)
+
+`SearchSingularTests.cpp` ran its eligibility cases at depth 8, which is what `singular_min_depth`
+ships as — not what any of them asserts. Every one of those gates is depth-independent, and the
+fixture can lower the gate, so they now run at depth 4 with `singular_min_depth` lowered to match.
+The tag was the fast tier's most expensive by an order of magnitude: **~19 s to 1.7 s** locally in
+Debug, and no singular case is in the tier's ten slowest any more. It cost more under the sanitizers
+that gate correctness — `sanitize-linux` spent **+71 s** in "Run fast tests" once this file landed —
+which is where the saving actually matters, since it is paid on every PR.
+
+Every eligibility gate was re-falsified at the new depth: patch the gate out, confirm the matching
+test goes red, against an unmutated control that must stay green. Two came back green, both
+pre-existing rather than caused by the shallower search:
+
+- **The extension test was confounded.** It compared node counts between a run granted the extension
+  and one denied it via a huge `singular_margin_factor`, but that factor also changes the
+  verification's window, so the two verifications cost different amounts and the comparison summed
+  two effects. It passed at depth 8 because the extension's share happened to be the larger one.
+  `singular_verification_nodes` is now subtracted from both sides, leaving only the work the extra
+  ply caused — and the test now fails when `child_depth` stops honouring the extension, which the
+  depth-8 version did only by luck of magnitude.
+- **`hash_move != EmptyMove()` in the eligibility conjunction is unfalsifiable**, because the
+  `first sorted move == hash_move` term next to it already excludes an empty hash move. Both terms
+  are wanted; only the pair can be tested. Noted at the test, as with the three hardening changes
+  already documented there.
+
+## 2026-09-06 — Singular extensions, compiled out of the shipping engine (#95)
+
+`AIPerplex::pvs()` can search a transposition-table move one ply deeper when a reduced-depth
+verification search proves every alternative fails below a depth-scaled margin. **The feature is
+compiled out of the shipping engine** — `option(STRAT_SINGULAR_EXTENSIONS)`, OFF — so that build is
+node-identical to the previous one and pays nothing for carrying it. A runtime flag alone measured
+−1.33% nps for code that never ran, and the end state is unconditional-on or deleted, so a permanent
+flag would be the wrong shape. Every gate is `if constexpr` rather than `#ifdef`, so the disabled
+branch stays parsed and type-checked and cannot rot.
+
+Two defines, because the targets want opposite answers: `STRAT_SINGULAR_EXTENSIONS` compiles the
+code in (experimental engine, and always the test binary), `STRAT_SINGULAR_DEFAULT_ON` starts it
+enabled (experimental engine only). The test binary deliberately gets the first without the second,
+so every existing search test keeps exercising the shipped configuration while the singular tests
+enable it for themselves. Enabling it for real is a separate change that cannot merge without a
+match.
+
+The exclusion state is `ThreadData::excluded_move[ply]`, mirroring the existing
+`last_move_was_null[ply]`, set only by an RAII `ExcludedMoveGuard`. A verification search re-enters
+`pvs()` at the *same* ply, so an exclusion frame skips the PV-row clear, the TT probe and store,
+null-move pruning, and the excluded move itself; a node whose only legal move was excluded fails low
+instead of adjudicating checkmate or stalemate. The verification is issued before the move loop,
+because the loop learns a move is legal only from `DoMove()` returning true — by then the board
+holds the child, and the verification must search the parent.
+
+Measured, shipping build: **node-identical** to the fork point (`Compare-SearchEquivalence.ps1`,
+90 lines, 6 positions, depth 12) at **−0.40% nps**. The cost went −3.44% (as first written) →
+−1.33% (enable flag made the first term of every hot-path test, since `excluded_move[MAX_PLY]` is
+otherwise cold and was being read per node by searches that can never have an exclusion frame) →
+−0.40% (feature compiled out). The remainder is the unconditional ply backstop below: one compare
+per node, kept because it is a recursion bound in its own right, not part of the feature.
+
+Measured, flag on (recorded here because it decides what the follow-up must fix, not because it
+ships): the trigger is selective — 0.18 verifications per 1000 nodes, extension granted on 7.9% —
+but fixed-depth cost rises sharply: **+23.8% nodes** over the six bench positions, and **+43.5% wall
+clock** when measured before the `origin/main` merge.
+
+`singular_verification_nodes` counts the node edges spent inside verification searches directly, so
+the split is measured rather than inferred: **verification is 20.9% of the added nodes; the extended
+subtrees and their knock-on effects are the other 79.1%.** The cost is therefore dominated by the
+extensions themselves, not by proving them — so tuning must target how many extensions are granted
+(the margin) at least as much as how many verifications run. The effect is not uniformly additive
+either: one position searched ~797k *fewer* nodes with the feature on, the extensions having changed
+ordering in its favour.
+
+Also fixes a latent bug independent of the feature: `pvs()` had no absolute ply backstop, relying on
+depth falling on every recursive call to bound the recursion. An extension holds depth flat, so it
+now carries one at `ply >= MAX_PLY - 1` (matching `quiescence()`'s), placed first so it bounds the
+`excluded_move[ply]` read — `pvs()` writes `last_move_was_null[ply + 1]`, which is what sets the
+limit at `MAX_PLY - 1`. `Docs/EngineContracts.md` gains the fact that `SearchTuning` is unreachable
+over UCI, which is why the two configurations are two builds rather than a setoption.
+## 2026-09-06 — Retained-plan state named (#400)
+
+`.claude/plans/retained/` holds plans kept because something still cites them:
+`tsan-lazy-smp.md`, `public-repo-and-strength-lab.md`, `elo-baseline-measurement.md`,
+`full-build-test-ci-github-actions.md` and `validation-change-tiers.md`. With `not-started/` and
+`in-progress/` already carrying their own verdicts, the top level had come to mean
+"retained-by-definition" without saying so, leaving a future prune pass to re-derive it per file.
+It now holds only `TEMPLATE.md` and plans in flight.
+
+15 inbound references rewritten across `Docs/Changelog.md`, `Docs/CI.md`, `Docs/Workflow.md` and
+`.github/workflows/{build-and-test,strength}.yml` — audited, not bulk-rewritten, since most plan
+paths cited from the changelog point at harvested files that are deliberately git-history links.
+`Docs/Workflow.md` → Design document lifecycle now describes all four states plus deletion in one
+table, and states that a retained plan becomes deletable again once its last citation goes.
+
+`in-progress/` is materialised with a `.gitkeep` so all three states exist in the tree rather than
+appearing only when first used. `selftest-coverage-rule.md` is deleted: #395 is closed, nothing
+cites it, and every Harvest row was verified in place — the one item with no destination in the
+tree, D5's unverified assumption that the self-test set would pass on Linux, is now a comment on
+#395.
+
+---
+
+## 2026-09-05 — Minor-piece outposts (#112)
+
+`Evaluator::eval_outposts` pays a knight or bishop for standing on a square a friendly pawn defends
+that no enemy pawn on an adjacent file can still advance to attack. Nothing else in the evaluator
+asked that question: the PST sees only piece type and square, and safe mobility prices the squares a
+piece can move *to* while removing only what enemy pawns cover right now — so a supported white
+knight on d5 with no black c/e-pawn scored the same as one a black e7-pawn can challenge with ...e6.
+
+The detector is three tests: relative rank 4-6, `ctx.pawn_attacks[us]` covers the square, and no
+enemy pawn sits in the piece's own passed-pawn span minus its own file. The span is taken in the
+PIECE's forward direction, so a pawn already level with or behind the minor cannot disqualify it,
+and the file mask drops same-file pawns, which can block the piece but never attack it. It is a
+structural proxy, not a proof of safety: it models a pawn advancing down its own file and nothing
+else, so a blocked or pinned challenger still disqualifies and a pinned friendly pawn still
+supports. No new table, cache, attack generation or mutable state — the support test is applied to
+the knight and bishop bitboards before the scan, so the loop body usually runs zero or one times per
+side.
+
+Weights are phase-neutral and untuned: 15/20/25 cp for a knight on relative rank 4/5/6, 8/12/16 cp
+for a bishop. They are a first-cut hypothesis, deliberately without a second mg/eg axis; #117 owns
+tuning. The term is its own `EvalBreakdown` row and its own UCI `eval` table row, so it cannot hide
+inside mobility.
+
+Validation: term-level cases in `EvalTermTests.cpp` drive each condition from one frame, including
+both adjacent files, the same-file and already-passed pawns, blocked and pinned challengers, a
+pinned supporting pawn, the a-file no-wrap case, both boundary ranks and two knights summing. Two
+deliberate mutations — dropping the file mask, and using the enemy's span — were each caught by the
+suite. Every outpost FEN is round-tripped through `Board::ExtractFEN` first: an illegal FEN leaves
+the board EMPTY, which scores zero outposts and would have satisfied most of these cases for the
+wrong reason (it did, once, before the guard). Full fast suite, Debug suite and lint pass.
+
+Speed: four interleaved same-toolchain Release `Run-Bench.ps1` passes at `Threads=1`, aggregate nps
+2.73M before and after — inside the ±0.4% spread of the runs themselves, so the detector's cost is
+below what this instrument resolves. Node counts differ between the two builds, as they must for an
+evaluation change, so wall clock is quoted alongside: 6,572 ms before against 6,482 ms after over
+1.26% fewer nodes.
+
+Strength: **+8.05 ± 3.63 Elo** against the merge base over 19,980 games at 10+0.1 (run
+`33989392373`, row in `Measurements/ci-per-change.md`) — a 95% interval of [+4.4, +11.7], with 14 of
+the 18 shards scoring above 50%. The untuned weights above are net positive as they stand; the
+knight/bishop split and the `mg == eg` choice are unmeasured and left to #117.
+
+Part of the #110 eval epic.
+
 ## 2026-09-05 — Collapse evaluator selection to one concrete evaluator (#457)
 
 `EvalManager` (the `EvalTypes` enum, its factory) and the unused `EvalSimple` evaluator are gone;
@@ -1773,7 +1917,7 @@ within each build.
 - **`.github/scripts/tsan_smp_drive.py`** — the driver, committed rather than inlined in YAML so a CI
   failure reproduces locally. It waits for each command's completion token and treats an early exit
   as failure, which is what a race looks like under `-fno-sanitize-recover`.
-- `.claude/plans/tsan-lazy-smp.md` — survey, positive control, cost measurements and the CI
+- `.claude/plans/retained/tsan-lazy-smp.md` — survey, positive control, cost measurements and the CI
   contention analysis.
 
 ### Notes
@@ -2115,7 +2259,7 @@ constrains how that trigger can be designed.
 `.gitignore` blanket-ignores `/.github/*` behind an allowlist, so the new script was silently skipped
 by `git add -A` and the first dispatch died at the aggregate step on a file that was never committed.
 The allowlist now covers `.github/scripts/`. Design:
-`.claude/plans/public-repo-and-strength-lab.md`.
+`.claude/plans/retained/public-repo-and-strength-lab.md`.
 
 ---
 
@@ -2204,7 +2348,7 @@ belongs to the UCI layer, which is what owns the session.
 
 ## 2026-08-05 — Opening book is selectable, and book exhaustion is now visible
 
-M3 of `.claude/plans/public-repo-and-strength-lab.md`.
+M3 of `.claude/plans/retained/public-repo-and-strength-lab.md`.
 
 ### Added
 
@@ -2277,7 +2421,7 @@ perft allocates nothing per node. Reasoning recorded in `Docs/Workflow.md`.
 
 ## 2026-08-04 — Nightly correctness workflow
 
-M2 of `.claude/plans/public-repo-and-strength-lab.md`. `nightly.yml` runs at 03:00 UTC and on
+M2 of `.claude/plans/retained/public-repo-and-strength-lab.md`. `nightly.yml` runs at 03:00 UTC and on
 `workflow_dispatch`; it gates nothing.
 
 ### Added
@@ -2304,7 +2448,7 @@ Growing it belongs to #156.
 
 ## 2026-08-04 — Repository made public; CI un-gated and promoted to a merge gate
 
-Milestone M1 of `.claude/plans/public-repo-and-strength-lab.md`. Public standard runners are free and
+Milestone M1 of `.claude/plans/retained/public-repo-and-strength-lab.md`. Public standard runners are free and
 required status checks are available, so the rationing the private repository needed is reversed.
 
 ### Changed
@@ -2892,7 +3036,7 @@ compiled and never invoked by the engine.
 ### Files
 - `StratChessEvolved/Scripts/Get-ChangeTier.ps1` (new), `Scripts/Validate-PrePR.ps1`,
   `.github/workflows/build-and-test.yml`, `CLAUDE.md`
-- Plan: `.claude/plans/validation-change-tiers.md`
+- Plan: `.claude/plans/retained/validation-change-tiers.md`
 
 ---
 
@@ -3109,7 +3253,7 @@ smoke tests across all `go` modes. Plan: `.claude/plans/getmove-searchlimits-ref
 
 Sanity baseline: identical builds (SHA256-verified) pooled −1.4 ELO over 2×500 games — no
 instrument bias; measured per-batch noise ±25 ELO at this draw ratio. Plan:
-`.claude/plans/elo-baseline-measurement.md`; full setup/interpretation: `Docs/EloLog.md`.
+`.claude/plans/retained/elo-baseline-measurement.md`; full setup/interpretation: `Docs/EloLog.md`.
 
 ## 2026-07-03 — Extract ThreadData Structure (PR #74)
 

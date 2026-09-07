@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-09-05 | 86877f7 (minor-piece outposts, #112) | 9708c65 | 19980 | 10+0.1 | **+8.05 +/- 3.63** | gain |
 | 2026-09-03 | 0c64b7f (EXPERIMENT: middlegame `ISOLATED_PAWN_PENALTY` suppressed on the king's three files, #460) | 65e3f76 | 19980 | 10+0.1 | **+0.23 +/- 3.62** | no effect |
 | 2026-09-03 | e73d3f2 (ABLATION: `eval_castling` zeroed, #460) | 65e3f76 | 19980 | 10+0.1 | **-9.98 +/- 3.73** | regression |
 | 2026-09-03 | 40d62b1 (middlegame king PST flattened to zero, #97 PR 4) | 0eb981a (the #455 merge; the true merge base 41f6f2a differs from it by documentation only) | 19980 | 10+0.1 | **+18.54 +/- 3.62** | gain |
@@ -28,6 +29,14 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-09-05 -- 86877f7 (minor-piece outposts, #112) (19980 games)
+
+**The gate for the term, and it ships.** 18 shards x 555 pairs, pooled Ptnml(0-2) [772, 2225, 3665, 2424, 904], score 51.16%, run `33989392373`, 3 h 06 min wall-clock. 95% interval **[+4.4, +11.7]**, excluding zero by about 4.4 standard errors -- the +/- 3.63 is the 95% half-width, so the standard error behind it is ~1.85. **14 of the 18 shards** score above 50%; shards 3, 4, 12 and 17 land negative, which is what a real effect of this size looks like at 555 pairs rather than a defect. Counting outer-bucket wins against losses is a different test and overstates the agreement -- it puts shards 4 and 12 on the positive side, where their scores are not. Zero illegal moves, zero time losses, zero disconnects, zero stalls; all 18 shards green.
+
+**What it settles.** That an explicit outpost term is worth shipping at all -- the question the epic's 5-20 Elo sketch could only guess at -- and that the phase-neutral first-cut weights (knight 15/20/25, bishop 8/12/16 by relative rank 4/5/6) are already net positive before any tuning. The nps cost measured at or below the local bench's +/-0.4% run-to-run spread, so essentially none of the gain is paid back in speed.
+
+**What it does not settle.** The split between the knight and bishop halves, measured together here: the bishop table has no colour-complex or own-pawn-blocking condition behind it and is the least-supported part of the payload, but separating it needs a knight-only ablation and its own 3 h. Nor the weights themselves, nor the `mg == eg` choice -- the detector's condition gets *easier* to satisfy as pawns leave the board, so a phase-neutral bonus fires most often in endings where an outpost is worth least, and an `eg` taper is the first retune to try (#117).
 
 ### 2026-09-03 -- 0c64b7f (EXPERIMENT: middlegame isolated penalty off the king's files, #460) (19980 games)
 
@@ -73,7 +82,7 @@ Interval width 3.79 against the instrument's calibrated 4.15 at the same game co
 
 ### 2026-08-29 — ff5d2f5 (LMR depth clamp keeps one main-tree ply, #363) (19980 games)
 
-18 shards x 555 pairs, pooled Ptnml(0-2) [763, 2175, 3723, 2403, 926], score 51.39%, run `33215162562`, 3 h 04 min wall-clock. 95% interval **[+6.0, +13.3]**, excluding zero by about five standard errors. The reduced null-window search is clamped to `max(1, depth - 2)` instead of `depth - 1`, so it always keeps a main-tree ply rather than dropping straight into quiescence. **The clamp is not the corner case #363 described**: `R_raw = floor(sqrt((depth - 1) * (move_number - 1)))` saturates the old bound whenever `move_number >= depth`, which at depth 3 is every LMR-eligible move and at depth 8 the 9th onward -- so the reduced tree changes shape at nearly every node, and the figure is a search-shape result, not a corner-case patch. Not uniform the way the larger rows are: **16 of 18 shards** favour the candidate, shards 1 and 12 land marginally negative (161 v 181 and 172 v 174 in the outer buckets) -- expected at this effect size, since a 9.6 Elo edge is about 1.2 standard errors within a single 555-pair shard. Interval width 3.63 against the instrument's calibrated 4.15 at the same game count. **Node counts could not have settled this**: the sign flips between depth 10 (+4.9%) and depth 12 (-9.7%) with per-position spread -45.7% to +133.0%, which is why no bench figure is quoted here. Zero illegal moves, zero time losses, zero disconnects -- the shard guard fails the job on any of them and all 18 were green
+18 shards x 555 pairs, pooled Ptnml(0-2) [763, 2175, 3723, 2403, 926], score 51.39%, run `33215162562`, 3 h 04 min wall-clock. 95% interval **[+6.0, +13.3]**, excluding zero by about five standard errors. The reduced null-window search is clamped to `max(1, depth - 2)` instead of `depth - 1`, so it always keeps a main-tree ply rather than dropping straight into quiescence. **The clamp is not the corner case #363 described**: `R_raw = floor(sqrt((depth - 1) * (move_number - 1)))` saturates the old bound whenever `move_number >= depth`, which at depth 3 is every LMR-eligible move and at depth 8 the 9th onward -- so the reduced tree changes shape at nearly every node, and the figure is a search-shape result, not a corner-case patch. Not uniform the way the larger rows are: **15 of 18 shards** score above 50%, shards 1, 11 and 12 landing marginally negative (1095, 1108 and 1107 points against the 1110 neutral) -- expected at this effect size, since a 9.6 Elo edge is about 1.2 standard errors within a single 555-pair shard. Interval width 3.63 against the instrument's calibrated 4.15 at the same game count. **Node counts could not have settled this**: the sign flips between depth 10 (+4.9%) and depth 12 (-9.7%) with per-position spread -45.7% to +133.0%, which is why no bench figure is quoted here. Zero illegal moves, zero time losses, zero disconnects -- the shard guard fails the job on any of them and all 18 were green
 
 ### 2026-08-28 — a7a49d4 (SEE pruning in quiescence, #86 PR 3) (19980 games)
 

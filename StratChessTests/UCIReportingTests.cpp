@@ -231,8 +231,9 @@ static int extract_sum_white_pov(const std::string& output)
 //
 // The endgame row is absent here on purpose: it is net-only and is added to the
 // sum through extract_endgame_net above.
-static const char* const kBreakdownTerms[] = {"material", "pawns",    "rooks",   "pst",   "mopup",     "bishops",
-                                              "castling", "mobility", "shelter", "storm", "kingfiles", "kingattack"};
+static const char* const kBreakdownTerms[] = {"material", "pawns",     "rooks",     "pst",      "mopup",
+                                              "bishops",  "castling",  "mobility",  "outposts", "shelter",
+                                              "storm",    "kingfiles", "kingattack"};
 
 TEST_CASE("cmd_eval: printed breakdown nets are white-minus-black and sum to the evaluator's score", "[uci]")
 {
@@ -245,9 +246,13 @@ TEST_CASE("cmd_eval: printed breakdown nets are white-minus-black and sum to the
 	    GENERATE("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", // Kiwipete, middlegame
 	             "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",             // startpos, symmetric
 	             "8/8/8/3r4/4k3/8/8/3QK3 w - - 0 1",                                     // endgame, White to move
-	             "r3k3/8/8/8/8/8/8/4K3 b - - 0 1",   // Black to move, Black up a rook
-	             "8/8/8/4k3/8/8/8/3QK3 w - - 0 1",   // pawnless K+Q vs K — mop-up active
-	             "8/8/8/3k4/8/8/3N4/3K4 w - - 0 1"); // K+N vs K — scaled to a draw
+	             "r3k3/8/8/8/8/8/8/4K3 b - - 0 1",  // Black to move, Black up a rook
+	             "8/8/8/4k3/8/8/8/3QK3 w - - 0 1",  // pawnless K+Q vs K — mop-up active
+	             "8/8/8/3k4/8/8/3N4/3K4 w - - 0 1", // K+N vs K — scaled to a draw
+	             // A pawn-supported White knight on d5 that no Black pawn can
+	             // challenge: the outposts row is zero in every case above, which
+	             // would leave the sum invariant unable to see it (issue #112).
+	             "4k3/p6p/8/3N4/2P5/8/8/4K3 w - - 0 1");
 	CAPTURE(fen);
 
 	UciHandlerTestFixture fix;

@@ -61,7 +61,7 @@ lose 30 ELO; this closes that gap. The documented "baseline" is the harness-sani
 | `Docs/EloLog.md` | **New** — append-only measurement history + setup record |
 | `Docs/Roadmap.md` | Item status + pointer to the re-measure procedure |
 | `CLAUDE.md` | Row in the validation-scripts table for `Run-EloMatch.ps1` |
-| `.claude/plans/elo-baseline-measurement.md` | This plan |
+| `.claude/plans/retained/elo-baseline-measurement.md` | This plan |
 
 Git tag `elo-reference-v1` on `8f2f789`, pushed to origin (not a file, listed for completeness).
 

@@ -303,6 +303,7 @@ void UciHandler::cmd_eval()
 		send(eval_term_row("bishops", terms.bishops[WHITE], terms.bishops[BLACK]));
 		send(eval_term_row("castling", terms.castling[WHITE], terms.castling[BLACK]));
 		send(eval_term_row("mobility", terms.mobility[WHITE], terms.mobility[BLACK]));
+		send(eval_term_row("outposts", terms.outposts[WHITE], terms.outposts[BLACK]));
 		send(eval_term_row("shelter", terms.king_shelter[WHITE], terms.king_shelter[BLACK]));
 		send(eval_term_row("storm", terms.king_storm[WHITE], terms.king_storm[BLACK]));
 		send(eval_term_row("kingfiles", terms.king_files[WHITE], terms.king_files[BLACK]));
@@ -318,7 +319,7 @@ void UciHandler::cmd_eval()
 		    (terms.rooks[WHITE] - terms.rooks[BLACK]) + (terms.pst[WHITE] - terms.pst[BLACK]) +
 		    (terms.mopup[WHITE] - terms.mopup[BLACK]) + (terms.bishops[WHITE] - terms.bishops[BLACK]) +
 		    (terms.castling[WHITE] - terms.castling[BLACK]) + (terms.mobility[WHITE] - terms.mobility[BLACK]) +
-		    (terms.king_shelter[WHITE] - terms.king_shelter[BLACK]) +
+		    (terms.outposts[WHITE] - terms.outposts[BLACK]) + (terms.king_shelter[WHITE] - terms.king_shelter[BLACK]) +
 		    (terms.king_storm[WHITE] - terms.king_storm[BLACK]) + (terms.king_files[WHITE] - terms.king_files[BLACK]) +
 		    (terms.king_attack[WHITE] - terms.king_attack[BLACK]) + terms.endgame_adjustment;
 		const std::string sum_label = "sum (white pov)";
@@ -500,6 +501,16 @@ void UciHandler::cmd_go(std::string_view line)
 			// do not. 'main' not 'pv' because pvs() searches PV and non-PV nodes alike.
 			send("info string treenodes main " + std::to_string(result.nodes_searched) + " qs " +
 			     std::to_string(result.qnodes_searched));
+
+			// Singular-extension trigger rate, for sizing the heuristic's cost against how
+			// often it fires. Emitted only when it fired at all, so a build with the feature
+			// disabled -- the shipped one -- produces byte-identical output to one without it.
+			if (result.singular_eligible != 0) {
+				send("info string singular eligible " + std::to_string(result.singular_eligible) + " verified " +
+				     std::to_string(result.singular_verifications) + " extended " +
+				     std::to_string(result.singular_extensions) + " verifynodes " +
+				     std::to_string(result.singular_verification_nodes));
+			}
 
 			const std::string bm = best.is_null() ? "0000" : MoveFormatter::ToUCI(best);
 			// Cleared BEFORE bestmove goes out, not after. `bestmove` is the only
