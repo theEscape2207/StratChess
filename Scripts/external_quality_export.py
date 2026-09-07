@@ -32,6 +32,16 @@ def _clamp(value: int) -> int:
     return max(-CLAMP_CP, min(CLAMP_CP, value))
 
 
+def _is_int(value) -> bool:
+    """True for a genuine int. `bool` is an `int` subclass and is rejected here."""
+    return type(value) is int
+
+
+def _reject_json_constant(token: str):
+    """`json` accepts NaN/Infinity by default; the format is JSON, which does not."""
+    raise ValueError(f"{token} is not valid JSON")
+
+
 @dataclass(frozen=True)
 class RawScore:
     """A finite centipawn score or a mate distance, never both."""
@@ -41,16 +51,33 @@ class RawScore:
     moves: int | None = None  # mate only, nonnegative
     winner: str | None = None # mate only, "mover" or "opponent"
 
+    def __post_init__(self) -> None:
+        # Direct construction is part of the surface, so the union is enforced here
+        # rather than in the factories: an unvalidated field reaches to_json() and
+        # then the artifact, where nothing downstream can tell it from a real score.
+        if self.kind == "cp":
+            if not _is_int(self.value):
+                raise ValueError(f"cp score needs an integer value, got {self.value!r}")
+            if self.moves is not None or self.winner is not None:
+                raise ValueError("cp score must not carry mate fields")
+        elif self.kind == "mate":
+            if not _is_int(self.moves) or self.moves < 0:
+                raise ValueError(f"mate moves must be a nonnegative integer, got {self.moves!r}")
+            if self.winner not in _VALID_MATE_WINNERS:
+                raise ValueError(
+                    f"winner must be one of {_VALID_MATE_WINNERS}, got {self.winner!r}"
+                )
+            if self.value is not None:
+                raise ValueError("mate score must not carry a cp value")
+        else:
+            raise ValueError(f"kind must be 'cp' or 'mate', got {self.kind!r}")
+
     @classmethod
     def cp(cls, value: int) -> "RawScore":
         return cls(kind="cp", value=value)
 
     @classmethod
     def mate(cls, moves: int, winner: str) -> "RawScore":
-        if moves < 0:
-            raise ValueError(f"mate moves must be nonnegative, got {moves}")
-        if winner not in _VALID_MATE_WINNERS:
-            raise ValueError(f"winner must be one of {_VALID_MATE_WINNERS}, got {winner!r}")
         return cls(kind="mate", moves=moves, winner=winner)
 
     @property
@@ -170,7 +197,9 @@ def blunder_record(*, input_index, game_index, ply_index, headers, build, mover,
     if mover not in _VALID_MOVERS:
         raise ValueError(f"mover must be one of {_VALID_MOVERS}, got {mover!r}")
     if book_exit_basis not in _VALID_BOOK_BASIS:
-        raise ValueError(f"book_exit_basis must be one of {_VALID_BOOK_BASIS}, got {book_exit_basis!r}")
+        raise ValueError(
+            f"book_exit_basis must be one of {_VALID_BOOK_BASIS}, got {book_exit_basis!r}"
+        )
     return {
         "type": "blunder",
         "schema_version": SCHEMA_VERSION,
@@ -205,18 +234,35 @@ def blunder_record(*, input_index, game_index, ply_index, headers, build, mover,
 
 def complete_record(*, eligible_rows: int, exported_rows: int, finite_clipping_misses: int,
                     scored_games: int, cells: list[dict]) -> dict:
+    named_counts = [
+        ("eligible_rows", eligible_rows),
+        ("exported_rows", exported_rows),
+        ("finite_clipping_misses", finite_clipping_misses),
+        ("scored_games", scored_games),
+    ]
+    for n, c in enumerate(cells):
+        named_counts.extend(
+            (f"cell {n} {field}", c[field])
+            for field in ("eligible_rows", "exported_rows", "finite_clipping_misses")
+        )
+    for name, value in named_counts:
+        # A float or bool count survives json.dumps and reads back as a plausible
+        # number, so the type is checked here rather than left to the reader.
+        if not _is_int(value):
+            raise ValueError(f"{name} must be an int, got {value!r}")
+    if any(v < 0 for _, v in named_counts):
+        raise ValueError("all counts must be nonnegative")
     sum_eligible = sum(c["eligible_rows"] for c in cells)
     sum_exported = sum(c["exported_rows"] for c in cells)
     sum_misses = sum(c["finite_clipping_misses"] for c in cells)
-    all_counts = [eligible_rows, exported_rows, finite_clipping_misses, scored_games]
-    for c in cells:
-        all_counts.extend((c["eligible_rows"], c["exported_rows"], c["finite_clipping_misses"]))
-    if any(v < 0 for v in all_counts):
-        raise ValueError("all counts must be nonnegative")
     if sum_eligible != eligible_rows:
-        raise ValueError(f"cell eligible_rows sum {sum_eligible} != global eligible_rows {eligible_rows}")
+        raise ValueError(
+            f"cell eligible_rows sum {sum_eligible} != global eligible_rows {eligible_rows}"
+        )
     if sum_exported != exported_rows:
-        raise ValueError(f"cell exported_rows sum {sum_exported} != global exported_rows {exported_rows}")
+        raise ValueError(
+            f"cell exported_rows sum {sum_exported} != global exported_rows {exported_rows}"
+        )
     if sum_misses != finite_clipping_misses:
         raise ValueError(
             f"cell finite_clipping_misses sum {sum_misses} != global finite_clipping_misses "
@@ -304,9 +350,11 @@ class ExportWriter:
 def read_artifact(path: Path) -> tuple[dict, list[dict], dict]:
     """Parse and validate a written artifact, returning (manifest, blunders, complete).
 
-    Rejects malformed JSON, an unsupported schema version, a missing or
-    duplicated manifest/complete record, any record after completion, an
-    unknown record type, and counts that fail to reconcile.
+    Rejects malformed JSON (including the NaN/Infinity tokens `json` would
+    otherwise accept), an unsupported schema version, a missing or duplicated
+    manifest/complete record, any record after completion, an unknown record
+    type, a footer whose counts are missing or not integers, and rows that fail
+    to reconcile against those counts.
     """
     manifest: dict | None = None
     complete: dict | None = None
@@ -317,8 +365,8 @@ def read_artifact(path: Path) -> tuple[dict, list[dict], dict]:
             if not line:
                 continue
             try:
-                record = json.loads(line)
-            except json.JSONDecodeError as exc:
+                record = json.loads(line, parse_constant=_reject_json_constant)
+            except ValueError as exc:  # JSONDecodeError, or a rejected NaN/Infinity token
                 raise ValueError(f"malformed JSON on line {line_no}: {exc}") from exc
             version = record.get("schema_version")
             if version != SCHEMA_VERSION:
@@ -350,19 +398,70 @@ def read_artifact(path: Path) -> tuple[dict, list[dict], dict]:
     for field in (*counters, "scored_games", "cells"):
         if field not in complete:
             raise ValueError(f"completion record is missing {field!r}")
+    for field in (*counters, "scored_games"):
+        if not _is_int(complete[field]):
+            raise ValueError(f"completion {field} must be an int, got {complete[field]!r}")
+    seen_cells = set()
     for n, cell in enumerate(complete["cells"]):
         missing = [f for f in ("build", "phase", *counters) if f not in cell]
         if missing:
             raise ValueError(f"cell {n} is missing {', '.join(missing)}")
+        for field in counters:
+            if not _is_int(cell[field]):
+                raise ValueError(f"cell {n} {field} must be an int, got {cell[field]!r}")
+        key = (cell["build"], cell["phase"])
+        if key in seen_cells:
+            raise ValueError(f"duplicate cell for build {key[0]!r} phase {key[1]!r}")
+        seen_cells.add(key)
     if complete["exported_rows"] != len(blunders):
         raise ValueError(
-            f"exported_rows {complete['exported_rows']} does not match {len(blunders)} blunder records"
+            f"exported_rows {complete['exported_rows']} does not match "
+            f"{len(blunders)} blunder records"
         )
     for field in counters:
         cell_sum = sum(c[field] for c in complete["cells"])
         if cell_sum != complete[field]:
-            raise ValueError(f"cell {field} sum {cell_sum} does not match global {field} {complete[field]}")
+            raise ValueError(
+                f"cell {field} sum {cell_sum} does not match global {field} {complete[field]}"
+            )
+    _reconcile_blunders(blunders, complete["cells"])
     return manifest, blunders, complete
+
+
+def _reconcile_blunders(blunders: list[dict], cells: list[dict]) -> None:
+    """Check the emitted rows against each other and against the per-cell counts.
+
+    Footer sums alone cannot see a row filed under the wrong build/phase or a
+    duplicated row_id, both of which break the identity the schema promises.
+    """
+    identity = ("row_id", "input_index", "game_index", "ply_index", "build", "phase")
+    seen_ids = set()
+    per_cell: dict[tuple, int] = {}
+    for n, row in enumerate(blunders):
+        missing = [f for f in identity if f not in row]
+        if missing:
+            raise ValueError(f"blunder {n} is missing {', '.join(missing)}")
+        expected_id = f"{row['input_index']}:{row['game_index']}:{row['ply_index']}"
+        if row["row_id"] != expected_id:
+            raise ValueError(
+                f"blunder {n} row_id {row['row_id']!r} does not match its indices {expected_id!r}"
+            )
+        if row["row_id"] in seen_ids:
+            raise ValueError(f"duplicate row_id {row['row_id']!r} on blunder {n}")
+        seen_ids.add(row["row_id"])
+        per_cell[(row["build"], row["phase"])] = per_cell.get((row["build"], row["phase"]), 0) + 1
+    declared = {(c["build"], c["phase"]): c["exported_rows"] for c in cells}
+    for key in sorted(set(per_cell) | set(declared), key=repr):
+        found, claimed = per_cell.get(key, 0), declared.get(key)
+        if claimed is None:
+            raise ValueError(
+                f"{found} blunder(s) for build {key[0]!r} phase {key[1]!r} have no cell"
+            )
+        if found != claimed:
+            raise ValueError(
+                f"build {key[0]!r} phase {key[1]!r} declares {claimed} exported row(s) "
+                f"but {found} were written"
+            )
 
 
 def check_output_path(path: Path, json_path: Path | None = None) -> None:

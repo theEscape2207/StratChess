@@ -71,6 +71,23 @@ class RawScoreTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             exp.RawScore.mate(1, "nobody")
 
+    def test_rejects_unknown_kind(self):
+        with self.assertRaises(ValueError):
+            exp.RawScore(kind="invalid")
+
+    def test_cp_rejects_non_integer_value(self):
+        for value in (None, 1.5, True, "100"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                exp.RawScore.cp(value)
+
+    def test_cp_rejects_mate_fields(self):
+        with self.assertRaises(ValueError):
+            exp.RawScore(kind="cp", value=0, winner="mover")
+
+    def test_mate_rejects_cp_value(self):
+        with self.assertRaises(ValueError):
+            exp.RawScore(kind="mate", moves=1, winner="mover", value=0)
+
 
 class EndpointConstructorTests(unittest.TestCase):
     def test_finite_within_clamp_not_clipped(self):
@@ -335,6 +352,23 @@ class CompleteRecordTests(unittest.TestCase):
             exp.complete_record(eligible_rows=-1, exported_rows=0, finite_clipping_misses=0,
                                  scored_games=0, cells=[])
 
+    def test_rejects_non_integer_global_count(self):
+        # 0.0 and True still reconcile against the sums, so only the type check catches them.
+        for field, value in (("eligible_rows", 0.0), ("scored_games", True)):
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                counts = dict(eligible_rows=0, exported_rows=0, finite_clipping_misses=0,
+                              scored_games=0, cells=[])
+                counts[field] = value
+                exp.complete_record(**counts)
+
+    def test_rejects_non_integer_cell_count(self):
+        with self.assertRaises(ValueError):
+            exp.complete_record(eligible_rows=1, exported_rows=0, finite_clipping_misses=0,
+                                 scored_games=1, cells=[{"build": "a", "phase": "opening",
+                                                          "eligible_rows": 1.0,
+                                                          "exported_rows": 0,
+                                                          "finite_clipping_misses": 0}])
+
     def test_zero_row_complete_is_valid(self):
         record = exp.complete_record(eligible_rows=0, exported_rows=0, finite_clipping_misses=0,
                                       scored_games=0, cells=[])
@@ -456,6 +490,22 @@ class ReadArtifactDefectTests(unittest.TestCase):
                                                finite_clipping_misses=0, scored_games=exported,
                                                cells=cells))
 
+    @staticmethod
+    def _blunder_line(**overrides):
+        before, after = _sample_oracle()
+        return json.dumps(exp.blunder_record(**_blunder_kwargs(before, after, **overrides)))
+
+    @staticmethod
+    def _cell(build="a", phase="opening", exported=1):
+        return {"build": build, "phase": phase, "eligible_rows": exported,
+                "exported_rows": exported, "finite_clipping_misses": 0}
+
+    def _footer_line(self, cells):
+        total = sum(c["exported_rows"] for c in cells)
+        return json.dumps(exp.complete_record(eligible_rows=total, exported_rows=total,
+                                               finite_clipping_misses=0, scored_games=total,
+                                               cells=cells))
+
     def test_malformed_json_rejected(self):
         self._write_lines([self._manifest_line(), "{not json", self._complete_line()])
         with self.assertRaises(ValueError):
@@ -542,6 +592,90 @@ class ReadArtifactDefectTests(unittest.TestCase):
         self._write_lines([self._manifest_line(), json.dumps(complete)])
         with self.assertRaises(ValueError):
             exp.read_artifact(self.path)
+
+    def test_nan_and_infinity_tokens_rejected(self):
+        # json.loads accepts these by default; the artifact format is JSON, which does not.
+        for token in ("NaN", "Infinity", "-Infinity"):
+            with self.subTest(token=token):
+                row = '{"type":"blunder","schema_version":1,"legacy_loss_cp":' + token + '}'
+                self._write_lines([self._manifest_line(), row, self._complete_line(1)])
+                with self.assertRaises(ValueError):
+                    exp.read_artifact(self.path)
+
+    def test_non_integer_footer_count_rejected(self):
+        complete = json.loads(self._complete_line())
+        # Both reconcile against the empty cell list; only the type is wrong.
+        complete["eligible_rows"] = 0.0
+        complete["scored_games"] = True
+        self._write_lines([self._manifest_line(), json.dumps(complete)])
+        with self.assertRaises(ValueError):
+            exp.read_artifact(self.path)
+
+    def test_duplicate_row_id_rejected(self):
+        row = self._blunder_line()
+        self._write_lines([self._manifest_line(), row, row,
+                            self._footer_line([self._cell(exported=2)])])
+        with self.assertRaises(ValueError):
+            exp.read_artifact(self.path)
+
+    def test_row_id_disagreeing_with_indices_rejected(self):
+        row = json.loads(self._blunder_line())
+        row["row_id"] = "9:9:9"
+        self._write_lines([self._manifest_line(), json.dumps(row),
+                            self._footer_line([self._cell()])])
+        with self.assertRaises(ValueError):
+            exp.read_artifact(self.path)
+
+    def test_row_missing_an_identity_field_rejected(self):
+        row = json.loads(self._blunder_line())
+        del row["phase"]
+        self._write_lines([self._manifest_line(), json.dumps(row),
+                            self._footer_line([self._cell()])])
+        with self.assertRaises(ValueError):
+            exp.read_artifact(self.path)
+
+    def test_row_filed_under_the_wrong_build_rejected(self):
+        # The defect the footer sums cannot see: totals reconcile (2 rows, 2 claimed)
+        # while one row sits in a build the single declared cell does not cover.
+        self._write_lines([self._manifest_line(),
+                            self._blunder_line(),
+                            self._blunder_line(build="b", ply_index=1),
+                            self._footer_line([self._cell(exported=2)])])
+        with self.assertRaises(ValueError):
+            exp.read_artifact(self.path)
+
+    def test_row_outside_every_declared_cell_rejected(self):
+        rows = [self._blunder_line(build="A"), self._blunder_line(build="A", ply_index=1)]
+        self._write_lines([self._manifest_line(), *rows,
+                            self._footer_line([self._cell(exported=2)])])
+        with self.assertRaisesRegex(ValueError, "have no cell"):
+            exp.read_artifact(self.path)
+
+    def test_per_cell_exported_count_mismatch_rejected(self):
+        # Both rows are build "a"; the footer splits them one per build.
+        self._write_lines([self._manifest_line(),
+                            self._blunder_line(),
+                            self._blunder_line(ply_index=1),
+                            self._footer_line([self._cell(), self._cell(build="b")])])
+        with self.assertRaises(ValueError):
+            exp.read_artifact(self.path)
+
+    def test_duplicate_cell_rejected(self):
+        complete = json.loads(self._footer_line([self._cell(exported=2)]))
+        complete["cells"] = [self._cell(), self._cell()]
+        self._write_lines([self._manifest_line(), self._blunder_line(),
+                            self._blunder_line(ply_index=1), json.dumps(complete)])
+        with self.assertRaises(ValueError):
+            exp.read_artifact(self.path)
+
+    def test_rows_across_two_cells_round_trip(self):
+        self._write_lines([self._manifest_line(),
+                            self._blunder_line(),
+                            self._blunder_line(build="b", ply_index=1),
+                            self._footer_line([self._cell(), self._cell(build="b")])])
+        _, blunders, complete = exp.read_artifact(self.path)
+        self.assertEqual(len(blunders), 2)
+        self.assertEqual(complete["exported_rows"], 2)
 
     def test_valid_artifact_round_trips(self):
         before, after = _sample_oracle()
