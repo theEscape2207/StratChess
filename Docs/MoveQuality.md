@@ -5,8 +5,10 @@ a fully annotated PGN of every game; two tools read it. `Scripts/analyze_move_qu
 "where" from the engine's own annotations. `Scripts/analyze_external_quality.py` answers it again
 with an outside engine as judge — the only way to see mistakes the engine does not know it made.
 
-This file is the method and the ledger. It is appended to, not rewritten, and is in scope of #227 if
-the ledgers move out of `Docs/`.
+**This file is still both the method and the ledger, and that is the thing about it most in need of
+fixing.** #448 separated the Elo measurements the same way — `Measurements/` holds the append-only
+data, `Docs/EloMeasurement.md` holds the instrument — and the same split belongs here. #486 tracks
+it. Until then the run tables below are appended to, not rewritten.
 
 | Need | Section |
 |---|---|
