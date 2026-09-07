@@ -1,11 +1,16 @@
 <#
 .SYNOPSIS
-    Pre-commit validation: FEN check + fast test suite.
+    Pre-commit validation: clang-format + FEN check + fast test suite.
 
 .DESCRIPTION
-    1. Verifies StratChessEvolved/game_settings.json contains the chess starting position FEN.
-    2. Builds and runs the fast test suite (excludes [slow]).
-    Both checks always run before exit so all failures are reported at once.
+    1. Checks clang-format on the changed files and exits immediately on failure,
+       naming `Run-Lint.ps1 -Check Format -Fix`. Short-circuits (issue #478) because
+       the fix is already known and cannot be changed by the FEN check or the test
+       suite -- running them first only defers a result that is already decided.
+    2. Verifies StratChessEvolved/game_settings.json contains the chess starting position FEN.
+    3. Builds and runs the fast test suite (excludes [slow]).
+    Steps 2 and 3 always both run before exit so their failures are reported together;
+    step 1 alone short-circuits.
     Exits with code 1 if any check fails.
 
 .WHEN TO USE
@@ -15,7 +20,8 @@
     pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\Validate-PreCommit.ps1
 
 .PARAMETER SelfTest
-    Run the FEN-check cases and exit. Pure: no build, no test suite, no filesystem.
+    Run the FEN-check and fail-fast-classification cases and exit. Pure: no build,
+    no test suite, no filesystem.
 
 .NOTES
     Must be invoked with -File, not dot-sourced -- a dot-sourced script runs in the
@@ -27,12 +33,15 @@ param(
 )
 
 Set-StrictMode -Version Latest
-# Do NOT set $ErrorActionPreference = 'Stop' — this script deliberately accumulates
-# failures across both checks before exiting. Each step checks $LASTEXITCODE directly.
+# Do NOT set $ErrorActionPreference = 'Stop' — the FEN check and the test suite
+# deliberately accumulate before exiting so both failures are reported at once.
+# clang-format is the exception: it short-circuits below. Each step checks
+# $LASTEXITCODE directly.
 
 $RepoRoot     = Split-Path $PSScriptRoot -Parent
 $GameDir      = Join-Path $RepoRoot 'StratChessEvolved'
 $buildScript  = Join-Path $RepoRoot 'build.ps1'
+$lintScript   = Join-Path $PSScriptRoot 'Run-Lint.ps1'
 $settingsFile = Join-Path $GameDir 'game_settings.json'
 $startingFen  = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 $failed       = $false
@@ -50,6 +59,16 @@ function Test-ActiveStartingFen {
     $active = [regex]::Replace($Content, '/\*.*?\*/', '', 'Singleline')
     $active = [regex]::Replace($active, '(?m)//.*$', '')
     return $active -match ('"FEN"\s*:\s*"' + [regex]::Escape($StartingFen) + '"')
+}
+
+# Pure: which pre-commit checks short-circuit rather than accumulate. Reserved for a
+# check that is cheap, deterministic, auto-fixable, and whose remedy cannot be changed
+# by any later result -- clang-format is the only one that currently qualifies (issue
+# #478). The FEN check and the test suite need judgement (what changed, which test)
+# that later results could still add to, so they keep aggregating into $failed.
+function Test-IsFastFailCheck {
+    param([Parameter(Mandatory)][string]$CheckName)
+    return $CheckName -eq 'clang-format'
 }
 
 if ($SelfTest) {
@@ -99,16 +118,50 @@ if ($SelfTest) {
         }
     }
 
+    # FALSIFY: before this rule existed, every check aggregated -- a formatting-only
+    # failure still paid for the full build and test suite before reporting it.
+    $fastFailCases = @(
+        @{ Name = 'clang-format is fail-fast'; CheckName = 'clang-format'; Expect = $true }
+        @{ Name = 'FALSIFY: the FEN check is not fail-fast'; CheckName = 'FEN check'; Expect = $false }
+        @{ Name = 'FALSIFY: the test suite is not fail-fast'; CheckName = 'fast test suite'; Expect = $false }
+    )
+    foreach ($case in $fastFailCases) {
+        $actual = Test-IsFastFailCheck -CheckName $case.CheckName
+        if ($actual -eq $case.Expect) {
+            Write-Host "  PASS  $($case.Name)" -ForegroundColor Green
+        }
+        else {
+            $failedCases++
+            Write-Host "  FAIL  $($case.Name): got $actual, expected $($case.Expect)" -ForegroundColor Red
+        }
+    }
+
     Write-Host ''
     if ($failedCases -gt 0) {
         Write-Host "$failedCases self-test case(s) FAILED." -ForegroundColor Red
         exit 1
     }
-    Write-Host "All $($cases.Count) self-test cases passed." -ForegroundColor Green
+    Write-Host "All $($cases.Count + $fastFailCases.Count) self-test cases passed." -ForegroundColor Green
     exit 0
 }
 
-# --- Step 1: FEN check ---
+# --- Step 1: clang-format (issue #478) ---
+# Short-circuits: the fix (Run-Lint.ps1 -Check Format -Fix) is already known and
+# nothing the FEN check or the test suite could find would change it, so there is
+# no reason to pay for either before reporting it.
+Write-Host "`n==> clang-format" -ForegroundColor Cyan
+$lintFailed = $false
+try   { & $lintScript -Check Format }
+catch { $lintFailed = $true; Write-Host "Lint threw: $_" -ForegroundColor DarkGray }
+if ($LASTEXITCODE -ne 0) { $lintFailed = $true }
+if ($lintFailed -and (Test-IsFastFailCheck -CheckName 'clang-format')) {
+    Write-Host ''
+    Write-Host 'Pre-commit validation FAILED (clang-format).' -ForegroundColor Red
+    Write-Host '      Fix with: pwsh -File Scripts\Run-Lint.ps1 -Check Format -Fix' -ForegroundColor Yellow
+    exit 1
+}
+
+# --- Step 2: FEN check ---
 Write-Host "`n==> Checking FEN in game_settings.json" -ForegroundColor Cyan
 $content = Get-Content $settingsFile -Raw
 if (-not (Test-ActiveStartingFen -Content $content -StartingFen $startingFen)) {
@@ -119,7 +172,7 @@ if (-not (Test-ActiveStartingFen -Content $content -StartingFen $startingFen)) {
     Write-Host "PASS: FEN is at starting position." -ForegroundColor Green
 }
 
-# --- Step 2: Fast test suite ---
+# --- Step 3: Fast test suite ---
 Write-Host "`n==> Running fast test suite" -ForegroundColor Cyan
 & $buildScript run-tests
 if ($LASTEXITCODE -ne 0) {
