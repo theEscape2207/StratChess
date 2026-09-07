@@ -24,10 +24,12 @@ already live outside the repo; --engine or STOCKFISH_PATH override the search.
     python analyze_external_quality.py --self-test
     python analyze_external_quality.py <dir> --depth 12 --json out.json
 
-Read the `noise` column before believing any other number. It is the mean loss
-over rows where the played move IS the oracle's own first choice, so it can only
-be depth-limited search instability -- the oracle's error bar on itself. A signal
-close to it is not a signal.
+The `noise` column is the mean loss over rows where the played move IS the
+oracle's own first choice, where the residual can only be search instability.
+Read it as what it is: a *conditional* residual over the rows the oracle already
+agreed with, which are the narrower positions. It is a lower bound on the
+oracle's error, not a bound on it, and it says nothing about the disagreement
+rows that carry the report's signal (#483). See Docs/MoveQuality.md.
 """
 
 from __future__ import annotations
@@ -40,6 +42,8 @@ import sys
 import time
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
+from itertools import chain
+from math import ceil
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -63,12 +67,14 @@ except ImportError as exc:  # pragma: no cover - environment guard, not test log
 CLAMP_CP = 1000
 MATE_CP = 100000          # what python-chess substitutes before we clamp
 REPORT_LOSS_CP = 300      # a row this bad that Tier 1 scored clean gets listed
+BATCHES_PER_WORKER = 4    # batches each worker is expected to get, for balance
 ENGINE_DIR = "EngineTesting"
 ENGINE_EXE = "stockfish.exe" if os.name == "nt" else "stockfish"
 
 _ENGINE = None
 _ENGINE_PATH = ""
 _DEPTH = 12
+_GAME = None              # `ucinewgame` scope; a new object per game
 _START = time.monotonic()
 
 
@@ -110,16 +116,25 @@ def _engine():
 def _close_engine() -> None:
     global _ENGINE
     if _ENGINE is not None:
+        engine, _ENGINE = _ENGINE, None
         try:
-            _ENGINE.quit()
+            engine.quit()
         except Exception:                       # pragma: no cover - shutdown race
             pass
-        _ENGINE = None
+        finally:
+            # quit() normally takes the transport down with it, but if it raised
+            # the event-loop thread is still waiting on a live subprocess, and a
+            # worker holding one of those never exits.
+            try:
+                engine.close()
+            except Exception:                   # pragma: no cover - shutdown race
+                pass
 
 
 def _init_worker(engine_path: str, depth: int) -> None:
     global _ENGINE_PATH, _DEPTH
     _ENGINE_PATH, _DEPTH = engine_path, depth
+    _new_game()
 
 
 def oracle_eval(board: chess.Board, pov: chess.Color):
@@ -134,7 +149,7 @@ def oracle_eval(board: chess.Board, pov: chess.Color):
         return (-CLAMP_CP if board.turn == pov else CLAMP_CP), None
     if board.is_stalemate() or board.is_insufficient_material():
         return 0, None
-    info = _engine().analyse(board, chess.engine.Limit(depth=_DEPTH))
+    info = _engine().analyse(board, chess.engine.Limit(depth=_DEPTH), game=_GAME)
     cp = info["score"].pov(pov).score(mate_score=MATE_CP)
     pv = info.get("pv")
     return max(-CLAMP_CP, min(CLAMP_CP, cp)), (pv[0] if pv else None)
@@ -170,7 +185,11 @@ def extract(path: Path):
                 move = board.parse_san(san)
                 board.push(move)
                 recs.append((mover, builds[mover], bucket, cp, before, board.fen(), move.uci()))
-        except Exception as exc:                # truncated or corrupt game
+        except ValueError as exc:               # truncated or corrupt game
+            # ValueError only, so that amq.ParseError propagates. An annotation
+            # shape the parser does not recognise means a changed fastchess
+            # version; skipping those games would silently drop whatever it now
+            # spells differently and bias every cell in the report.
             print(f"warning: {where}: {exc}", file=sys.stderr)
             continue
 
@@ -187,27 +206,44 @@ def extract(path: Path):
     return games
 
 
-def score_game(rows):
-    """-> ({(build, phase): counters}, worst oracle-only losses in this game).
+def score_batch(games):
+    """-> [(cells, worst), ...], one entry per game, scored by one oracle process.
 
     Counters are per game so the bootstrap can resample whole games; plies inside
     one game share its opening, its builds and its result, so they are nothing
     like independent draws.
+
+    **The engine's lifetime ends inside the task, never at interpreter exit.**
+    python-chess runs the engine on a background event loop whose thread waits on
+    the subprocess, so a pool worker still holding one does not exit and the
+    parent waits for it forever -- which looks exactly like a finished run whose
+    report never prints.
+
+    Games stay independent of each other because each is scored under its own
+    `game` token: python-chess sends `ucinewgame` and waits for `readyok` when
+    the token changes, and Stockfish clears its hash there. Scoring a batch is
+    therefore the same experiment as scoring its games one process at a time,
+    for a fraction of the NNUE loads.
     """
-    cache: dict[str, tuple] = {}
-    cells: dict = defaultdict(lambda: [0, 0, 0.0, 0, 0.0, 0, 0.0])
-    worst = []
+    results = []
     try:
-        _score_rows(rows, cache, cells, worst)
+        for rows in games:
+            _new_game()
+            cache: dict[str, tuple] = {}
+            cells: dict = defaultdict(lambda: [0, 0, 0.0, 0, 0.0, 0, 0.0])
+            worst = []
+            _score_rows(rows, cache, cells, worst)
+            worst.sort(reverse=True)
+            results.append((dict(cells), worst[:5]))
     finally:
-        # One engine per game, closed here rather than left to interpreter exit.
-        # It buys reproducibility -- a fresh process is a cleared hash, so a
-        # position's score cannot depend on which games this worker saw first --
-        # and it is what keeps the pool shutdown from blocking: a worker holding a
-        # live engine does not exit, and the parent waits for it forever.
         _close_engine()
-    worst.sort(reverse=True)
-    return dict(cells), worst[:5]
+    return results
+
+
+def _new_game() -> None:
+    """Start a fresh `ucinewgame` scope, so hash state does not cross games."""
+    global _GAME
+    _GAME = object()
 
 
 def _score_rows(rows, cache, cells, worst) -> None:
@@ -288,7 +324,19 @@ def report(cells, per_game, worst, depth, samples, out=sys.stdout) -> None:
         w(f"  -{loss:>4}cp  self {swing:>+5}  {build} {bucket:<11} {played}  {fen}\n")
 
 
-def analyse(root: Path, engine_path: str, depth: int, jobs: int, limit: int, shards: int):
+def batches(games, size: int):
+    """-> [[game, ...], ...], `size` games each. One oracle process per batch.
+
+    Sized so every worker gets several, because a batch is the unit of work the
+    pool can hand out: one batch per worker would leave workers idle behind the
+    slowest game in their share.
+    """
+    size = max(1, size)
+    return [games[i:i + size] for i in range(0, len(games), size)]
+
+
+def analyse(root: Path, engine_path: str, depth: int, jobs: int, limit: int, shards: int,
+            batch: int):
     cells: dict = defaultdict(lambda: [0, 0, 0.0, 0, 0.0, 0, 0.0])
     per_game: list = []
     worst: list = []
@@ -309,8 +357,10 @@ def analyse(root: Path, engine_path: str, depth: int, jobs: int, limit: int, sha
             games = extract(path)
             if limit:
                 games = games[:limit]
-            _log(f"shard {n}/{len(files)} {path.parent.name}: {len(games)} games extracted")
-            for part, part_worst in ex.map(score_game, games, chunksize=4):
+            groups = batches(games, batch or ceil(len(games) / (jobs * BATCHES_PER_WORKER)))
+            _log(f"shard {n}/{len(files)} {path.parent.name}: {len(games)} games extracted, "
+                 f"{len(groups)} batch(es)")
+            for part, part_worst in chain.from_iterable(ex.map(score_batch, groups)):
                 merge_cells(cells, part)
                 per_game.append(part)
                 worst.extend(part_worst)
@@ -342,6 +392,20 @@ def self_test(out=sys.stdout) -> bool:
         games = extract(path)
     rows = [r for g in games for r in g]
     check("extract skips the corrupt fixture game", len(games) == 1, f"{len(games)} game(s)")
+
+    # An illegal move is one game lost; an unreadable annotation is a changed
+    # fastchess version, and must stop the run rather than quietly shrink it.
+    bad_comment = amq.SELF_TEST_PGN.replace("{+0.20/10 0.500s}", "{+0.20/10 500ms}", 1)
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "match.pgn"
+        path.write_text(bad_comment, encoding="utf-8")
+        try:
+            extract(path)
+            raised = False
+        except amq.ParseError:
+            raised = True
+    check("an unreadable annotation aborts instead of skipping the game", raised,
+          "ParseError" if raised else "no exception")
     check("row phases are Tier 1 buckets",
           bool(rows) and {r[1] for r in rows} <= {name for name, _low in amq.PHASE_BUCKETS},
           f"{sorted({r[1] for r in rows})}")
@@ -355,6 +419,13 @@ def self_test(out=sys.stdout) -> bool:
     check("bootstrap recovers a known rate",
           point == 25.0 and lo is not None and lo < 25.0 < hi,
           f"{amq.ci(point, lo, hi, 1)}%")
+    # Batching must partition, not sample: every game exactly once, in order.
+    split = batches(list(range(10)), 4)
+    check("batches partition the shard", [g for b in split for g in b] == list(range(10))
+          and [len(b) for b in split] == [4, 4, 2], f"{split}")
+    check("a batch size of zero is still one game per batch",
+          len(batches(list(range(3)), 0)) == 3, f"{batches(list(range(3)), 0)}")
+
     check("ACPL is a per-row mean, not a per-game one",
           mean(synthetic, ("b", "middlegame"), 4) == 100.0,
           f"{mean(synthetic, ('b', 'middlegame'), 4)}")
@@ -420,6 +491,12 @@ def main() -> int:
     ap.add_argument("--games", type=int, default=0, help="cap games per shard (0 = all)")
     ap.add_argument("--shards", type=int, default=0,
                     help="scan only the first N shards (0 = all); each is an independent sample")
+    # One oracle process per batch, so this trades NNUE loads against how evenly
+    # the pool can balance. --batch 1 is one process per game, the slow reference
+    # the batched path must reproduce counter for counter.
+    ap.add_argument("--batch", type=int, default=0,
+                    help="games per oracle process "
+                         f"(0 = auto, ~{BATCHES_PER_WORKER} batches per worker)")
     ap.add_argument("--samples", type=int, default=amq.BOOT_SAMPLES,
                     help="bootstrap resamples behind every interval")
     ap.add_argument("--json", help="also write the merged raw counters here")
@@ -441,7 +518,7 @@ def main() -> int:
     _log(f"oracle {engine_path} at depth {args.depth}, {args.jobs} worker(s)")
 
     cells, per_game, worst = analyse(Path(args.root), engine_path, args.depth,
-                                     args.jobs, args.games, args.shards)
+                                     args.jobs, args.games, args.shards, args.batch)
     if cells is None:
         return 2
     if not cells:

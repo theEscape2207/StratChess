@@ -399,8 +399,13 @@ the same ±150 cp contested filter as Tier 1 — only the judge changes.
 Loss for one move is `max(0, oracle(before) − oracle(after))` from the mover's point of view, clamped
 to ±1000 cp so a mate score cannot saturate a mean. `agree%` is how often the played move was the
 oracle's own first choice, and `noise` is the mean loss over exactly those rows: with the played move
-and the best move identical, whatever loss remains can only be the oracle's depth-12 instability.
-**It is the error bar on the oracle, and a signal near it is not a signal.**
+and the best move identical, whatever loss remains is search instability rather than a mistake.
+
+**`noise` is a conditional residual, not the oracle's error bar.** The rows it averages are the ones
+the oracle already agreed with — the narrower positions, by [T4](#findings-1) — and narrow positions
+are the stable ones. So it is a *lower bound* on the oracle's error, and it is silent about the
+disagreement rows that carry the entire signal. Read it as a floor. #483 is the measurement that
+would replace it: mean `|loss(d) − loss(d+1)|` over a sample drawn regardless of agreement.
 
 | build | phase | n | self ACPL | self blu% | ext ACPL | ext blu% | agree% | noise |
 |---|---|---|---|---|---|---|---|---|
@@ -441,10 +446,15 @@ score is least informative about the position, so the ±150 cp contested filter 
 opening move while filtering the endgame hard. #481 is the follow-up, and step 1 of it is the
 filter-independent re-run that settles this.
 
-**T3. The signal is well clear of the oracle's noise floor.** External ACPL is 6× the noise in the
-endgame, 7.7× in the middlegame and 9× in the opening. The noise floor itself behaves as it should —
-2.8 cp where positions are simple, 4.4–4.6 where they are not — which is a check on the oracle, not
-on the engine.
+**T3. The blunder rates are safe to quote; the ACPL means carry a floor of unmeasured size.**
+External ACPL is 6× to 9× the `noise` column, but that column is a lower bound, so the ratio is an
+*upper* bound on the signal-to-noise and not the reassurance it looks like. What does not depend on
+it: 6.3% of opening rows lose at least 150 cp, measured as a difference of two searches at the same
+depth, and no plausible amount of depth-12 instability manufactures a 150 cp gap at that rate. Prefer
+the blunder-rate rows until #483 has measured the wobble on the rows that actually carry the signal.
+
+The floor does behave as a floor should — 2.8 cp where positions are simple, 4.4–4.6 where they are
+not — which is at least a check that the oracle is not misconfigured.
 
 **T4. Agreement is under half, and it does not track quality.** The played move is the oracle's own
 first choice 41.7% of the time in the opening and 47.9% in the middlegame — the phase with the
@@ -465,8 +475,12 @@ readable at all. It is consistent with the run's +8.05 Elo without being evidenc
 - **The ±1000 cp clamp compresses the tail.** Most of the report's worst rows sit exactly at −1000,
   which means "lost or mated", not "lost by exactly ten pawns". Counts of clamped rows are
   interpretable; their mean is not.
-- **`before` is cached per position, `after` is not.** Both are depth-12 searches from a cleared
-  hash, so the pair is consistent, but a row's loss is a difference of two independent searches and
-  carries both their errors.
+- **Scores are path-dependent inside a game, independent across games.** One oracle process serves a
+  batch of games and each game opens with `ucinewgame`, which clears the hash — so a game's numbers
+  cannot depend on which games preceded it. Within a game nothing is cleared: the `after` search
+  inherits the hash the `before` search just warmed, and later rows inherit earlier ones. That is
+  deliberate, and it mirrors how the position was actually reached, but it means a row's loss is a
+  difference of two *correlated* searches, not two independent ones. Re-scoring a single row in
+  isolation will not always reproduce it.
 - **The contested filter is the engine's own.** It selects on the mover's reported score, so it is
   not independent of the quantity being measured. T2's caveat is the concrete consequence.
