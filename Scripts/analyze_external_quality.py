@@ -49,6 +49,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import analyze_move_quality as amq  # noqa: E402  (path must be set first)
+import external_quality_export as exp  # noqa: E402
 
 try:
     import chess
@@ -67,6 +68,15 @@ except ImportError as exc:  # pragma: no cover - environment guard, not test log
 CLAMP_CP = 1000
 MATE_CP = 100000          # what python-chess substitutes before we clamp
 REPORT_LOSS_CP = 300      # a row this bad that Tier 1 scored clean gets listed
+
+if (exp.CLAMP_CP, exp.MATE_CP) != (CLAMP_CP, MATE_CP):
+    raise RuntimeError("the export helper's clamp constants have drifted from this module's")
+
+# The export filter is the blunder counter, not a second threshold beside it:
+# every exported row is one c[3] event, which is what lets the footer reconcile.
+if exp.MIN_LEGACY_LOSS_CP != amq.BLUNDER_CP:
+    raise RuntimeError("the export threshold has drifted from the blunder threshold")
+
 ENGINE_DIR = "EngineTesting"
 ENGINE_EXE = "stockfish.exe" if os.name == "nt" else "stockfish"
 
@@ -74,7 +84,17 @@ _ENGINE = None
 _ENGINE_PATH = ""
 _DEPTH = 12
 _GAME = None              # `ucinewgame` scope; a new object per game
+_EXPORT = False           # workers collect blunder records only when asked to
 _START = time.monotonic()
+
+
+def new_cell() -> list:
+    """A per-(build, phase) counter row.
+
+    [rows, self blunders, self swing sum, oracle blunders, loss sum,
+     agreed rows, agreed loss sum, finite clipping misses]
+    """
+    return [0, 0, 0.0, 0, 0.0, 0, 0.0, 0]
 
 
 def _log(message: str) -> None:
@@ -130,28 +150,40 @@ def _close_engine() -> None:
                 pass
 
 
-def _init_worker(engine_path: str, depth: int) -> None:
-    global _ENGINE_PATH, _DEPTH
-    _ENGINE_PATH, _DEPTH = engine_path, depth
+def _init_worker(engine_path: str, depth: int, export: bool = False) -> None:
+    global _ENGINE_PATH, _DEPTH, _EXPORT
+    _ENGINE_PATH, _DEPTH, _EXPORT = engine_path, depth, export
     _new_game()
 
 
-def oracle_eval(board: chess.Board, pov: chess.Color):
-    """-> (clamped score in centipawns from `pov`, the oracle's best move or None).
+def oracle_endpoint(board: chess.Board, pov: chess.Color):
+    """-> (typed endpoint from `pov`, the oracle's best move or None).
 
     Terminal positions are scored without asking the engine: a search on a
     finished game returns no principal variation, and mate/stalemate have exact
     values anyway.
+
+    One `analyse()` per non-terminal call, exactly as before: the typed score is
+    read off the same info dictionary, never a second search.
     """
     if board.is_checkmate():
         # The side to move is the side that was mated.
-        return (-CLAMP_CP if board.turn == pov else CLAMP_CP), None
-    if board.is_stalemate() or board.is_insufficient_material():
-        return 0, None
+        return exp.checkmate_endpoint(board.turn == pov), None
+    if board.is_stalemate():
+        return exp.drawn_endpoint("stalemate"), None
+    if board.is_insufficient_material():
+        return exp.drawn_endpoint("insufficient_material"), None
     info = _engine().analyse(board, chess.engine.Limit(depth=_DEPTH), game=_GAME)
-    cp = info["score"].pov(pov).score(mate_score=MATE_CP)
     pv = info.get("pv")
-    return max(-CLAMP_CP, min(CLAMP_CP, cp)), (pv[0] if pv else None)
+    best = pv[0] if pv else None
+    score = exp.endpoint_from_score(info["score"].pov(pov), best.uci() if best else None)
+    return score, best
+
+
+def oracle_eval(board: chess.Board, pov: chess.Color):
+    """-> (clamped score in centipawns from `pov`, the oracle's best move or None)."""
+    endpoint, best = oracle_endpoint(board, pov)
+    return endpoint.legacy_cp, best
 
 
 @dataclass(frozen=True)
@@ -186,6 +218,7 @@ class GameScan:
     eligible: tuple[int, ...]
     book_exit_ply: int | None
     book_exit_basis: str
+    input_index: int = 0      # this PGN's position in the manifest's input list
 
 
 def _book_exit(plies: tuple[PlyMeta, ...], headers: dict) -> tuple[int | None, str]:
@@ -208,7 +241,7 @@ def _book_exit(plies: tuple[PlyMeta, ...], headers: dict) -> tuple[int | None, s
     return None, "unknown"
 
 
-def scan_games(path: Path) -> list[GameScan]:
+def scan_games(path: Path, input_index: int = 0) -> list[GameScan]:
     """Parse one PGN into per-game context, per-ply metadata and eligible row indices."""
     scans = []
     shard = path.parent.name
@@ -261,6 +294,7 @@ def scan_games(path: Path) -> list[GameScan]:
             game_index=game_index, headers=dict(headers), setup_fen=setup_fen,
             plies=tuple(plies), eligible=eligible,
             book_exit_ply=book_exit_ply, book_exit_basis=book_exit_basis,
+            input_index=input_index,
         ))
     return scans
 
@@ -323,14 +357,15 @@ def score_batch(games):
     """
     results = []
     try:
-        for rows in games:
+        for scan in games:
             _new_game()
             cache: dict[str, tuple] = {}
-            cells: dict = defaultdict(lambda: [0, 0, 0.0, 0, 0.0, 0, 0.0])
+            cells: dict = defaultdict(new_cell)
             worst = []
-            _score_rows(rows, cache, cells, worst)
+            records: list | None = [] if _EXPORT else None
+            _score_rows(scan, cache, cells, worst, records)
             worst.sort(reverse=True)
-            results.append((dict(cells), worst[:5]))
+            results.append((dict(cells), worst[:5], records or []))
     finally:
         _close_engine()
     return results
@@ -342,26 +377,58 @@ def _new_game() -> None:
     _GAME = object()
 
 
-def _score_rows(rows, cache, cells, worst) -> None:
-    for build, bucket, mover, self_swing, before, after, played in rows:
+def _score_rows(scan, cache, cells, worst, records=None) -> None:
+    """Score one game's eligible rows, optionally collecting their export records.
+
+    `records` is None when the export is off, and the arithmetic below is then
+    exactly what it was before the export existed: same searches, same order,
+    same counters. An exported row is a c[3] event, so the two can never disagree.
+    """
+    for i in scan.eligible:
+        ply, ply_next = scan.plies[i], scan.plies[i + 2]
+        mover, before, after = ply.mover, ply.before_fen, ply.after_fen
+        self_swing = ply.cp - ply_next.cp
         if before not in cache:
             # Keyed by full FEN, and the FEN fixes the side to move, so a cached
             # score is always from the same point of view as its reader.
-            cache[before] = oracle_eval(chess.Board(before), mover)
-        cp_before, best = cache[before]
-        cp_after, _ = oracle_eval(chess.Board(after), mover)
-        loss = max(0, cp_before - cp_after)
-        c = cells[(build, bucket)]
+            cache[before] = oracle_endpoint(chess.Board(before), mover)
+        endpoint_before, best = cache[before]
+        endpoint_after, _ = oracle_endpoint(chess.Board(after), mover)
+        loss = exp.legacy_loss_cp(endpoint_before, endpoint_after)
+        c = cells[(ply.build, ply.bucket)]
         c[0] += 1
         c[1] += 1 if self_swing >= amq.BLUNDER_CP else 0
         c[2] += abs(self_swing)
         c[3] += 1 if loss >= amq.BLUNDER_CP else 0
         c[4] += loss
-        if best is not None and best.uci() == played:
+        if best is not None and best.uci() == ply.played_uci:
             c[5] += 1
             c[6] += loss
+        # Counted over every eligible row, exported or not, so it measures rows
+        # the clamp hid rather than rows the export happened to keep.
+        if exp.is_finite_clipping_miss(endpoint_before, endpoint_after):
+            c[7] += 1
         if loss >= REPORT_LOSS_CP and self_swing < amq.BLUNDER_CP:
-            worst.append((loss, self_swing, build, bucket, before, played))
+            worst.append((loss, self_swing, ply.build, ply.bucket, before, ply.played_uci))
+        if records is not None and exp.is_exported(endpoint_before, endpoint_after):
+            records.append(_blunder_record(scan, i, endpoint_before, endpoint_after))
+
+
+def _blunder_record(scan, i: int, endpoint_before, endpoint_after) -> dict:
+    """Build one exported row. The move prefix is materialized only here."""
+    ply, ply_next = scan.plies[i], scan.plies[i + 2]
+    return exp.blunder_record(
+        input_index=scan.input_index, game_index=scan.game_index, ply_index=ply.ply_index,
+        headers=scan.headers, build=ply.build, mover=mover_name(ply.mover),
+        setup_fen=scan.setup_fen, moves_before_uci=moves_before(scan, i),
+        before_fen=ply.before_fen, after_fen=ply.after_fen, played_move_uci=ply.played_uci,
+        phase=ply.bucket, ply_since_book_exit=ply_since_book_exit(scan, i),
+        book_exit_basis=scan.book_exit_basis, annotation=ply.annotation,
+        engine_score_cp=ply.cp, engine_depth=ply.depth, engine_time_s=ply.seconds,
+        next_annotation=ply_next.annotation, next_engine_score_cp=ply_next.cp,
+        self_swing_cp=ply.cp - ply_next.cp,
+        oracle_before=endpoint_before, oracle_after=endpoint_after,
+    )
 
 
 def merge_cells(dst, src) -> None:
@@ -433,7 +500,7 @@ def batches(games, size: int):
 
 def analyse(root: Path, engine_path: str, depth: int, jobs: int, limit: int, shards: int,
             batch: int):
-    cells: dict = defaultdict(lambda: [0, 0, 0.0, 0, 0.0, 0, 0.0])
+    cells: dict = defaultdict(new_cell)
     per_game: list = []
     worst: list = []
     files = sorted(root.rglob("*.pgn")) if root.is_dir() else [root]
@@ -450,13 +517,13 @@ def analyse(root: Path, engine_path: str, depth: int, jobs: int, limit: int, sha
         # a shard is already wide enough to keep every worker busy.
         for n, path in enumerate(files, 1):
             started = time.monotonic()
-            games = extract(path)
+            games = scan_games(path, n - 1)
             if limit:
                 games = games[:limit]
             groups = batches(games, batch)
             _log(f"shard {n}/{len(files)} {path.parent.name}: {len(games)} games extracted, "
                  f"{len(groups)} batch(es)")
-            for part, part_worst in chain.from_iterable(ex.map(score_batch, groups)):
+            for part, part_worst, _records in chain.from_iterable(ex.map(score_batch, groups)):
                 merge_cells(cells, part)
                 per_game.append(part)
                 worst.extend(part_worst)
