@@ -1,12 +1,12 @@
 """JSONL export contract for Tier 2 blunder evidence.
 
 Defines the typed oracle scores, loss arithmetic, record builders and the
-manifest/blunder*/complete stream writer/reader that `analyze_external_quality.py`
-will use to persist every eligible contested row whose legacy clamped loss is at
-least `MIN_LEGACY_LOSS_CP`. The schema, eligibility and score-perspective rules
-are fixed by `.claude/plans/not-started/tier2-blunder-evidence-export.md`;
-consult that design, and `Docs/MoveQuality.md` for the surrounding method, before
-changing anything here. This module does no PGN parsing and launches no engine.
+manifest/blunder*/complete stream writer/reader. `analyze_external_quality.py`
+uses them to persist every eligible contested row whose legacy clamped loss is at
+least `MIN_LEGACY_LOSS_CP`. `Docs/MoveQualityExport.md` is the artifact contract
+this implements, and `Docs/MoveQuality.md` the surrounding method; read both
+before changing anything here, since a consumer reads what this writes. This
+module does no PGN parsing and launches no engine.
 """
 
 from __future__ import annotations

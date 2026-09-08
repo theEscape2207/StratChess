@@ -22,6 +22,42 @@ Newest first.
 
 ---
 
+## 2026-09-08 — Tier 2 blunder evidence export (#484)
+
+`Scripts/analyze_external_quality.py --worst-jsonl PATH` writes every row it counts as an oracle
+blunder as a JSONL record, instead of only the twenty the report prints. The point is attribution:
+a later stage needs to *replay* the mistakes, and re-running a 95-minute corpus to find them again is
+the thing this removes. `--source-run` records a run identifier in the manifest; it is never inferred
+from a directory name. `Docs/MoveQualityExport.md` is the artifact contract.
+
+**Every exported row is one blunder event the report already counted**, and the module fails its own
+import if that stops being true — the export threshold is asserted equal to `amq.BLUNDER_CP`, and the
+clamp constants to the analyzer's. That identity is what lets the file's footer reconcile against the
+report rather than merely accompany it: `eligible_rows`, `exported_rows` and the per-`{build, phase}`
+cells are read off the same counters the table is built from. Report and `--json` output are
+byte-identical with the option on and off, and no oracle search is added.
+
+Failure ordering is the part worth knowing. The destination is checked before the oracle starts, so
+hours of searching cannot end on a path that was unusable from the outset. The footer means "scoring
+finished" and is written before the report is built — so an interrupted scan leaves a footer-less
+file the reader rejects, while a failed report leaves a complete, usable one. There is no overwrite,
+resume or append; the file is opened with exclusive creation.
+
+One counter records what the export cannot see. `finite_clipping_misses` counts eligible rows where
+the ±1000 cp clamp hid a loss that would otherwise have qualified — the size of the blind spot, which
+by construction cannot be recovered from the artifact itself. The last two plies of every game remain
+outside the population, unchanged.
+
+Scores are typed rather than projected: each endpoint carries the raw `cp`-or-`mate` score alongside
+the legacy clamped value, both from the *original mover's* point of view. That perspective is the
+failure this work could hide — a slip inverts every loss without failing anything else — so it is
+pinned by a fixture asserting a Black row reads `-30 → -900`, which the wrong side reads as no loss
+at all. Each record replays: `setup_fen` plus `moves_before_uci` reproduces `before_fen` exactly.
+
+Landed as five packages (A0–A4) against a design retained in `.claude/plans/retained/` for the
+sampling and replay stages it also scopes. 136 Python tests; verified against the real oracle for
+export-on/off parity.
+
 ## 2026-09-07 — MoveQuality.md: record the oracle-reuse result, and trim (#414 follow-up)
 
 Adds the third oracle-lifetime architecture to the cost section and shortens the document by 76
