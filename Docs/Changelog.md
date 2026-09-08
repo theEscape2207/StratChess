@@ -22,6 +22,35 @@ Newest first.
 
 ---
 
+## 2026-09-08 — Futility cost probe (#498)
+
+Stage 0 of #87. `pvs()` computes no static evaluation on an ordinary node, so every futility variant
+would have to add one, and that cost is first-order enough to decide whether the feature is worth
+building at all. This lands the instrument that answers it, not the feature.
+
+`option(STRAT_FUTILITY_PROBE)` has three levels: `0` compiles nothing and is what ships, `1` counts
+the nodes and moves a futility guard could act on, `2` also performs the `Evaluate()` call one would
+need, accumulating the result into a sink so the optimiser cannot delete the work being timed. The
+two live levels exist to separate the cost of *deciding* from the cost of *evaluating* — only the
+second is a cost a real guard inherits.
+
+**The probe decides nothing, and that is checked rather than asserted**:
+`Compare-SearchEquivalence.ps1` reports IDENTICAL against `origin/main` for all three levels, six
+positions at depth 12. Counters reach the harness as one `info string futilityprobe` line, emitted
+only when the probe fired, so the shipped build's output is unchanged.
+
+What it measured, at depth 12 and `Threads=1` over the `Run-Bench.ps1` set (13,004,919 main nodes):
+**22.7% of main-tree nodes are reverse-futility eligible**, 84% of them at depth 1, and only 3.0% of
+those are already resolved by a null-move cutoff. Frontier-eligible quiet moves number 4,467,251 at
+parent depth 1 alone. The added `Evaluate()` call costs **4.1% nps** (paired per-round median over 9
+interleaved rounds, range 2.0-8.7%). Reading the two numbers together is what the stage was for: the
+eligible surface is large and barely overlaps what null-move and LMR already handle, so the cost
+looks affordable — and #87 Stage 1 is worth running.
+
+The measurement is per-round paired, not build-by-build. This box drifts several percent over
+minutes, and an earlier build-by-build pass put a slow period entirely on one build, which reads as
+that build's cost.
+
 ## 2026-09-08 — Tier 2 blunder evidence export (#484)
 
 `Scripts/analyze_external_quality.py --worst-jsonl PATH` writes every row it counts as an oracle
