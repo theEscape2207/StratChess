@@ -16,6 +16,7 @@ it. Until then the run tables below are appended to, not rewritten.
 | what the numbers mean, and cannot see | [Method](#method) · [Limits](#limits) |
 | the numbers | [Baseline](#baseline-run-33215162562) · [Tier 2](#tier-2-external-adjudication) |
 | what they established | [Findings](#findings) · [Tier 2 findings](#findings-1) |
+| the exported blunder evidence | [MoveQualityExport.md](MoveQualityExport.md) |
 
 ---
 
@@ -28,6 +29,7 @@ gh run download <run_id> --repo theEscape2207/StratChess -p 'strength-<run_id>-s
 python Scripts/analyze_move_quality.py pgn --self-check      # the gate; run it first
 python Scripts/analyze_move_quality.py pgn --json stats.json
 python Scripts/analyze_external_quality.py pgn --depth 12 --json external.json
+python Scripts/analyze_external_quality.py pgn --depth 12 --worst-jsonl evidence.jsonl
 ```
 
 **`--self-check` before reading any number.** It asserts the parse covered every game and every
@@ -40,6 +42,12 @@ checkout: it is GPL-3, and keeping it out keeps the repo free of that obligation
 `STOCKFISH_PATH` override the search. **Its `--self-test` is not optional** — a point-of-view slip
 inverts every loss it reports without failing anything else, so four of its checks exist only to
 catch that, and they need the binary to run.
+
+`--worst-jsonl` writes one record per faulted row — the evidence a later attribution stage replays,
+rather than the twenty rows the report prints. The footer is written the moment scoring finishes, so
+an interrupted scan leaves a footer-less file that the reader rejects, and a failed report still
+leaves a usable one. The destination must not already exist; there is no resume. Schema, population
+and retry rules: [MoveQualityExport.md](MoveQualityExport.md).
 
 ### Cost
 

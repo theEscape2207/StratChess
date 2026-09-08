@@ -1,11 +1,11 @@
 """Unit tests for external_quality_export.py (no engine, no network).
 
-Exercises the fixture table pinned by the Tier 2 blunder evidence export design
-(.claude/plans/not-started/tier2-blunder-evidence-export.md), for the
-package that owns the score/format contract: typed scores, loss arithmetic,
-record field order and the manifest/blunder*/complete stream.
+Covers the score/format contract and the analyzer's use of it: typed scores, loss
+arithmetic, record field order, the manifest/blunder*/complete stream and the
+failure ordering around it. Docs/MoveQualityExport.md is the format itself.
 """
 
+import io
 import json
 import sys
 import tempfile
@@ -1256,6 +1256,317 @@ class ScoringIntegrationTests(unittest.TestCase):
             board.push_uci(row["played_move_uci"])
             self.assertEqual(board.fen(), row["after_fen"])
 
+
+class _InProcessPool:
+    """Stands in for the process pool: same initializer contract, no subprocess.
+
+    Export is a worker initarg, so keeping that contract exactly is what makes an
+    in-process run a faithful test of the parent's writing.
+    """
+
+    created: list = []
+
+    def __init__(self, max_workers=None, initializer=None, initargs=()):
+        self.max_workers = max_workers
+        self.shut_down = False
+        _InProcessPool.created.append(self)
+        initializer(*initargs)
+
+    def map(self, fn, iterable):
+        return [fn(item) for item in iterable]
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.shut_down = True
+
+
+class _SequencedOracle(_FakeOracle):
+    """Answers in call order rather than by position, for the parity fixture."""
+
+    def __init__(self, scores):
+        super().__init__({})
+        self._scores = iter(scores)
+
+    def analyse(self, board, limit, game=None):
+        self.calls.append(board.fen())
+        pv = [next(iter(board.legal_moves))] if board.legal_moves else []
+        return {"score": engine.PovScore(engine.Cp(next(self._scores)), chess.WHITE), "pv": pv}
+
+
+class _SideToMoveOracle(_FakeOracle):
+    """Scores by side to move alone, so every eligible row is a blunder.
+
+    Order-independent by construction, which is what lets it compare runs whose
+    scheduling differs.
+    """
+
+    def __init__(self):
+        super().__init__({})
+
+    def analyse(self, board, limit, game=None):
+        self.calls.append(board.fen())
+        pv = [next(iter(board.legal_moves))] if board.legal_moves else []
+        cp = engine.Cp(900 if board.turn == chess.WHITE else 0)
+        return {"score": engine.PovScore(cp, chess.WHITE), "pv": pv}
+
+
+class ExportRunTests(unittest.TestCase):
+    """analyse() and main() end to end: preflight, writing, and completion."""
+
+    PGN = ScoringIntegrationTests.PARITY_PGN
+    SCORES = ScoringIntegrationTests.PARITY_SCORES
+
+    QUIET_PGN = """\
+[Event "quiet"]
+[White "A"]
+[Black "B"]
+[Result "1-0"]
+
+1. e4 {+9.00/10 0.100s} e5 {-9.00/10 0.100s} 2. Nf3 {+9.00/10 0.100s} Nc6 {-9.00/10 0.100s} 1-0
+"""
+
+    def setUp(self):
+        self._globals = (aeq._ENGINE_PATH, aeq._DEPTH, aeq._EXPORT)
+        _InProcessPool.created = []
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name) / "corpus"
+        (self.root / "shard-1").mkdir(parents=True)
+        self.pgn = self.root / "shard-1" / "match.pgn"
+        self.pgn.write_text(self.PGN, encoding="utf-8")
+        self.out = Path(self._tmp.name) / "evidence.jsonl"
+
+    def tearDown(self):
+        aeq._ENGINE_PATH, aeq._DEPTH, aeq._EXPORT = self._globals
+        self._tmp.cleanup()
+
+    def _analyse(self, oracle, *, export_path=None, source_run=None, root=None, batch=1,
+                 jobs=1, limit=0, shards=0):
+        """Run analyse() over `root` against `oracle`; -> its three results."""
+        with unittest.mock.patch.object(aeq, "ProcessPoolExecutor", _InProcessPool), \
+                unittest.mock.patch.object(aeq, "_engine", lambda: oracle), \
+                unittest.mock.patch.object(aeq, "_log", lambda message: None):
+            return aeq.analyse(root or self.root, str(self.pgn), 12, jobs, limit, shards,
+                               batch, export_path, source_run)
+
+    # --- option-off compatibility ------------------------------------------
+
+    def test_export_off_writes_nothing_and_reports_the_same_numbers(self):
+        off = self._analyse(_SequencedOracle(self.SCORES))
+        on = self._analyse(_SequencedOracle(self.SCORES), export_path=self.out)
+        self.assertEqual(off, on)
+        self.assertFalse((Path(self._tmp.name) / "evidence-off.jsonl").exists())
+
+    def test_export_off_leaves_workers_uninitialized_for_export(self):
+        self._analyse(_SequencedOracle(self.SCORES))
+        self.assertFalse(aeq._EXPORT)
+        self._analyse(_SequencedOracle(self.SCORES), export_path=self.out)
+        self.assertTrue(aeq._EXPORT)
+
+    def test_the_pool_is_shut_down_on_both_paths(self):
+        self._analyse(_SequencedOracle(self.SCORES))
+        self._analyse(_SequencedOracle(self.SCORES), export_path=self.out)
+        self.assertEqual([pool.shut_down for pool in _InProcessPool.created], [True, True])
+
+    # --- a successful scan --------------------------------------------------
+
+    def test_a_successful_scan_reconciles(self):
+        cells, per_game, _worst = self._analyse(_SequencedOracle(self.SCORES),
+                                                export_path=self.out)
+        manifest, blunders, complete = exp.read_artifact(self.out)
+        self.assertEqual(manifest["type"], "manifest")
+        self.assertEqual([row["row_id"] for row in blunders], ["0:0:0", "0:0:2", "0:0:5"])
+        self.assertEqual(complete["eligible_rows"], sum(c[0] for c in cells.values()))
+        self.assertEqual(complete["exported_rows"], sum(c[3] for c in cells.values()))
+        self.assertEqual((complete["eligible_rows"], complete["exported_rows"]), (6, 3))
+        self.assertEqual(complete["finite_clipping_misses"], 2)
+        self.assertEqual(complete["scored_games"], len(per_game))
+        self.assertEqual([(c["build"], c["phase"], c["exported_rows"]) for c in complete["cells"]],
+                         [("A", "opening", 2), ("B", "opening", 1)])
+
+    def test_zero_eligible_rows_still_completes(self):
+        self.pgn.write_text(self.QUIET_PGN, encoding="utf-8")
+        cells, _per_game, _worst = self._analyse(_SideToMoveOracle(), export_path=self.out)
+        self.assertEqual(cells, {})
+        _manifest, blunders, complete = exp.read_artifact(self.out)
+        self.assertEqual(blunders, [])
+        self.assertEqual(complete["cells"], [])
+        self.assertEqual((complete["eligible_rows"], complete["exported_rows"]), (0, 0))
+        # A game with no eligible row is dropped before scoring, so it is not one
+        # of the games scored -- the same count the report prints.
+        self.assertEqual(complete["scored_games"], 0)
+
+    def test_jobs_and_batch_variants_export_identical_rows(self):
+        (self.root / "shard-2").mkdir()
+        (self.root / "shard-2" / "match.pgn").write_text(self.PGN, encoding="utf-8")
+        rows = []
+        for index, (jobs, batch) in enumerate(((1, 1), (4, 1), (2, 8))):
+            out = Path(self._tmp.name) / f"variant-{index}.jsonl"
+            self._analyse(_SideToMoveOracle(), export_path=out, jobs=jobs, batch=batch)
+            _manifest, blunders, complete = exp.read_artifact(out)
+            rows.append((blunders, complete))
+        for blunders, complete in rows[1:]:
+            self.assertEqual(blunders, rows[0][0])
+            self.assertEqual(complete, rows[0][1])
+        self.assertEqual(len(rows[0][0]), 12)      # every eligible row, both shards
+
+    # --- the manifest -------------------------------------------------------
+
+    def test_manifest_identifies_its_inputs_and_its_oracle(self):
+        self._analyse(_SequencedOracle(self.SCORES), export_path=self.out,
+                      source_run="33989392373")
+        manifest, _blunders, _complete = exp.read_artifact(self.out)
+        self.assertEqual(manifest["source_run"], "33989392373")
+        self.assertEqual(manifest["source_root"], str(self.root.resolve()))
+        self.assertEqual(manifest["inputs"],
+                         [{"relative_path": "shard-1/match.pgn",
+                           "sha256": aeq._sha256(self.pgn)}])
+        self.assertEqual(manifest["oracle"],
+                         {"binary": self.pgn.name, "sha256": aeq._sha256(self.pgn),
+                          "depth": 12, "threads": 1, "hash_mb": 64})
+        self.assertEqual(manifest["scan"], {"jobs": 1, "batch": 1, "shards": 0, "games": 0})
+        producer = manifest["producer"]
+        self.assertEqual(producer["python_chess"], chess.__version__)
+        self.assertEqual(producer["external_quality_export_sha256"],
+                         aeq._sha256(Path(exp.__file__).resolve()))
+        self.assertEqual(producer["analyze_external_quality_sha256"],
+                         aeq._sha256(Path(aeq.__file__).resolve()))
+
+    def test_manifest_records_the_oracle_options_actually_configured(self):
+        self.assertEqual((aeq.ORACLE_THREADS, aeq.ORACLE_HASH_MB), (1, 64))
+        source = Path(aeq.__file__).read_text(encoding="utf-8")
+        self.assertIn('_ENGINE.configure({"Threads": ORACLE_THREADS, "Hash": ORACLE_HASH_MB})',
+                      source)
+
+    def test_manifest_records_the_batch_size_that_ran(self):
+        # batches() floors the size at one, so a manifest echoing the request
+        # would describe a run that never happened.
+        self._analyse(_SequencedOracle(self.SCORES), export_path=self.out, batch=0)
+        manifest, _blunders, _complete = exp.read_artifact(self.out)
+        self.assertEqual(manifest["scan"]["batch"], 1)
+
+    def test_a_single_file_root_is_identified_by_its_name(self):
+        self._analyse(_SequencedOracle(self.SCORES), export_path=self.out, root=self.pgn)
+        manifest, _blunders, _complete = exp.read_artifact(self.out)
+        self.assertEqual([entry["relative_path"] for entry in manifest["inputs"]], ["match.pgn"])
+
+    def test_only_the_scanned_shards_are_listed(self):
+        (self.root / "shard-2").mkdir()
+        (self.root / "shard-2" / "match.pgn").write_text(self.PGN, encoding="utf-8")
+        self._analyse(_SideToMoveOracle(), export_path=self.out, shards=1)
+        manifest, _blunders, _complete = exp.read_artifact(self.out)
+        self.assertEqual([entry["relative_path"] for entry in manifest["inputs"]],
+                         ["shard-1/match.pgn"])
+        self.assertEqual(manifest["scan"]["shards"], 1)
+
+    # --- failure ordering ---------------------------------------------------
+
+    def test_an_interrupted_scan_leaves_no_completion(self):
+        (self.root / "shard-2").mkdir()
+        (self.root / "shard-2" / "match.pgn").write_text(self.PGN, encoding="utf-8")
+        real_score_batch = aeq.score_batch
+        seen = []
+
+        def failing(games):
+            seen.append(games)
+            if len(seen) > 1:
+                raise RuntimeError("worker died")
+            return real_score_batch(games)
+
+        with unittest.mock.patch.object(aeq, "score_batch", failing):
+            with self.assertRaises(RuntimeError):
+                self._analyse(_SideToMoveOracle(), export_path=self.out)
+        lines = self.out.read_text(encoding="utf-8").splitlines()
+        kinds = [json.loads(line)["type"] for line in lines]
+        self.assertEqual(kinds, ["manifest"] + ["blunder"] * 6)
+        with self.assertRaises(ValueError):
+            exp.read_artifact(self.out)
+
+    def test_a_report_failure_keeps_the_completion(self):
+        def explode(*args, **kwargs):
+            raise ZeroDivisionError("bootstrap failed")
+
+        with self.assertRaises(ZeroDivisionError):
+            self._main(_SequencedOracle(self.SCORES), ["--worst-jsonl", str(self.out)],
+                       report=explode)
+        _manifest, blunders, complete = exp.read_artifact(self.out)
+        self.assertEqual(len(blunders), complete["exported_rows"])
+
+    # --- the CLI ------------------------------------------------------------
+
+    def _main(self, oracle, extra, report=None):
+        """Run main() over the fixture corpus; the report is still built, into a buffer.
+
+        `report` replaces it outright, which is how the failure-ordering test puts
+        an exception after scoring has finished.
+        """
+        real_report = aeq.report
+
+        def quiet(cells, per_game, worst, depth, samples, out=None):
+            real_report(cells, per_game, worst, depth, samples, out=io.StringIO())
+
+        argv = ["analyze_external_quality.py", str(self.root), "--engine", str(self.pgn),
+                "--jobs", "1", "--samples", "10", *extra]
+        with unittest.mock.patch.object(sys, "argv", argv), \
+                unittest.mock.patch.object(aeq, "ProcessPoolExecutor", _InProcessPool), \
+                unittest.mock.patch.object(aeq, "_engine", lambda: oracle), \
+                unittest.mock.patch.object(aeq, "_log", lambda message: None), \
+                unittest.mock.patch.object(aeq, "report", report or quiet):
+            return aeq.main()
+
+    def test_main_writes_a_reconciling_artifact(self):
+        self.assertEqual(self._main(_SequencedOracle(self.SCORES),
+                                    ["--worst-jsonl", str(self.out)]), 0)
+        _manifest, blunders, complete = exp.read_artifact(self.out)
+        self.assertEqual(len(blunders), 3)
+        self.assertEqual(complete["exported_rows"], 3)
+
+    def test_preflight_rejects_an_existing_output_before_any_search(self):
+        self.out.write_text("previous partial\n", encoding="utf-8")
+        self.assertEqual(self._main(_SequencedOracle(self.SCORES),
+                                    ["--worst-jsonl", str(self.out)]), 2)
+        self.assertEqual(self.out.read_text(encoding="utf-8"), "previous partial\n")
+        self.assertEqual(_InProcessPool.created, [])
+
+    def test_preflight_rejects_a_missing_output_directory(self):
+        missing = Path(self._tmp.name) / "absent" / "evidence.jsonl"
+        self.assertEqual(self._main(_SequencedOracle(self.SCORES),
+                                    ["--worst-jsonl", str(missing)]), 2)
+        self.assertEqual(_InProcessPool.created, [])
+
+    def test_preflight_rejects_a_collision_with_the_json_path(self):
+        self.assertEqual(self._main(_SequencedOracle(self.SCORES),
+                                    ["--worst-jsonl", str(self.out),
+                                     "--json", str(self.out)]), 2)
+        self.assertFalse(self.out.exists())
+        self.assertEqual(_InProcessPool.created, [])
+
+    def test_source_run_without_an_export_path_is_rejected(self):
+        with self.assertRaises(SystemExit) as raised:
+            with unittest.mock.patch.object(sys, "stderr", io.StringIO()):
+                self._main(_SequencedOracle(self.SCORES), ["--source-run", "33989392373"])
+        self.assertEqual(raised.exception.code, 2)
+        self.assertEqual(_InProcessPool.created, [])
+
+    def test_source_run_is_rejected_before_the_self_test_runs(self):
+        def unreachable():
+            raise AssertionError("the self-test ran despite an option it ignores")
+
+        argv = ["analyze_external_quality.py", "--self-test", "--source-run", "33989392373"]
+        with unittest.mock.patch.object(sys, "argv", argv), \
+                unittest.mock.patch.object(aeq, "self_test", unreachable), \
+                unittest.mock.patch.object(sys, "stderr", io.StringIO()), \
+                self.assertRaises(SystemExit) as raised:
+            aeq.main()
+        self.assertEqual(raised.exception.code, 2)
+
+    def test_no_eligible_rows_keeps_its_cli_error_and_its_artifact(self):
+        self.pgn.write_text(self.QUIET_PGN, encoding="utf-8")
+        self.assertEqual(self._main(_SideToMoveOracle(),
+                                    ["--worst-jsonl", str(self.out)]), 1)
+        _manifest, blunders, complete = exp.read_artifact(self.out)
+        self.assertEqual((blunders, complete["exported_rows"]), ([], 0))
 
 if __name__ == "__main__":
     unittest.main()

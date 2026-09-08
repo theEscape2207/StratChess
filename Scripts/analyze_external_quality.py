@@ -24,6 +24,10 @@ already live outside the repo; --engine or STOCKFISH_PATH override the search.
     python analyze_external_quality.py --self-test
     python analyze_external_quality.py <dir> --depth 12 --json out.json
 
+`--worst-jsonl` additionally writes one record per faulted row, the evidence a
+later attribution stage replays. Its format, and what an interrupted run leaves
+behind, are in Docs/MoveQualityExport.md.
+
 The `noise` column is the mean loss over rows where the played move IS the
 oracle's own first choice, where the residual can only be search instability.
 Read it as what it is: a *conditional* residual over the rows the oracle already
@@ -36,12 +40,15 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import hashlib
 import json
 import os
+import platform
 import sys
 import time
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
+from contextlib import ExitStack
 from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
@@ -79,6 +86,12 @@ if exp.MIN_LEGACY_LOSS_CP != amq.BLUNDER_CP:
 
 ENGINE_DIR = "EngineTesting"
 ENGINE_EXE = "stockfish.exe" if os.name == "nt" else "stockfish"
+
+# The oracle's UCI options, applied in _engine() and recorded in the export
+# manifest. They are named once so a run can never be described by settings it
+# was not actually scored under.
+ORACLE_THREADS = 1
+ORACLE_HASH_MB = 64
 
 _ENGINE = None
 _ENGINE_PATH = ""
@@ -127,7 +140,7 @@ def _engine():
     global _ENGINE
     if _ENGINE is None:
         _ENGINE = chess.engine.SimpleEngine.popen_uci(_ENGINE_PATH)
-        _ENGINE.configure({"Threads": 1, "Hash": 64})
+        _ENGINE.configure({"Threads": ORACLE_THREADS, "Hash": ORACLE_HASH_MB})
         atexit.register(_close_engine)   # backstop only; the scan closes explicitly
     return _ENGINE
 
@@ -498,8 +511,76 @@ def batches(games, size: int):
     return [games[i:i + size] for i in range(0, len(games), size)]
 
 
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _input_entries(root: Path, files: list) -> list:
+    """Identify each scanned PGN by path and content, in manifest order.
+
+    The relative path is POSIX-separated so an artifact reads the same on either
+    platform; a single-file root has nothing to be relative to and uses its name.
+    """
+    return [{"relative_path": path.relative_to(root).as_posix() if root.is_dir() else path.name,
+             "sha256": _sha256(path)}
+            for path in files]
+
+
+def _manifest(root: Path, files: list, engine_path: str, depth: int, jobs: int, limit: int,
+              shards: int, batch: int, source_run: str | None) -> dict:
+    """Everything needed to identify what was scanned, and by what.
+
+    Hashes rather than a checkout state: the artifact must stay verifiable after
+    the branch that produced it is gone.
+    """
+    return exp.manifest_record(
+        source_run=source_run,
+        source_root=str(root.resolve()),
+        inputs=_input_entries(root, files),
+        producer={
+            "python": platform.python_version(),
+            "python_chess": chess.__version__,
+            "analyze_external_quality_sha256": _sha256(Path(__file__).resolve()),
+            "analyze_move_quality_sha256": _sha256(Path(amq.__file__).resolve()),
+            "external_quality_export_sha256": _sha256(Path(exp.__file__).resolve()),
+        },
+        oracle={
+            "binary": Path(engine_path).name,
+            "sha256": _sha256(Path(engine_path)),
+            "depth": depth,
+            "threads": ORACLE_THREADS,
+            "hash_mb": ORACLE_HASH_MB,
+        },
+        scan={"jobs": jobs, "batch": batch, "shards": shards, "games": limit},
+    )
+
+
+def _completion(cells: dict, scored_games: int) -> dict:
+    """The footer, read straight off the counters the report is built from.
+
+    Same slots, so a footer that reconciles is a footer describing this report:
+    eligible rows are c[0], exported rows the c[3] blunders, misses c[7].
+    """
+    return exp.complete_record(
+        eligible_rows=sum(c[0] for c in cells.values()),
+        exported_rows=sum(c[3] for c in cells.values()),
+        finite_clipping_misses=sum(c[7] for c in cells.values()),
+        scored_games=scored_games,
+        cells=[{"build": build, "phase": phase, "eligible_rows": c[0],
+                "exported_rows": c[3], "finite_clipping_misses": c[7]}
+               for (build, phase), c in cells.items()],
+    )
+
+
 def analyse(root: Path, engine_path: str, depth: int, jobs: int, limit: int, shards: int,
-            batch: int):
+            batch: int, export_path: Path | None = None, source_run: str | None = None):
+    # `batches()` floors the size at one, so normalize here: the manifest must
+    # record the batch size that ran, not the one that was asked for.
+    batch = max(1, batch)
     cells: dict = defaultdict(new_cell)
     per_game: list = []
     worst: list = []
@@ -511,8 +592,15 @@ def analyse(root: Path, engine_path: str, depth: int, jobs: int, limit: int, sha
     # smaller run of the same experiment, not a biased one.
     if shards:
         files = files[:shards]
-    with ProcessPoolExecutor(max_workers=jobs, initializer=_init_worker,
-                             initargs=(engine_path, depth)) as ex:
+    with ExitStack() as stack:
+        writer = None
+        if export_path is not None:
+            writer = stack.enter_context(exp.ExportWriter(export_path))
+            writer.write_manifest(_manifest(root, files, engine_path, depth, jobs, limit,
+                                            shards, batch, source_run))
+        ex = stack.enter_context(ProcessPoolExecutor(
+            max_workers=jobs, initializer=_init_worker,
+            initargs=(engine_path, depth, writer is not None)))
         # One shard at a time: the whole corpus of FENs at once is gigabytes, and
         # a shard is already wide enough to keep every worker busy.
         for n, path in enumerate(files, 1):
@@ -523,12 +611,21 @@ def analyse(root: Path, engine_path: str, depth: int, jobs: int, limit: int, sha
             groups = batches(games, batch)
             _log(f"shard {n}/{len(files)} {path.parent.name}: {len(games)} games extracted, "
                  f"{len(groups)} batch(es)")
-            for part, part_worst, _records in chain.from_iterable(ex.map(score_batch, groups)):
+            for part, part_worst, records in chain.from_iterable(ex.map(score_batch, groups)):
                 merge_cells(cells, part)
                 per_game.append(part)
                 worst.extend(part_worst)
+                # Written and released as each result arrives: holding the corpus
+                # of records to write at the end would defeat the shard loop.
+                for record in records:
+                    writer.write_blunder(record)
             _log(f"shard {n}/{len(files)} scored in {time.monotonic() - started:.0f}s, "
                  f"{sum(c[0] for c in cells.values())} rows so far")
+        # The footer means "scoring finished", so it is written here rather than
+        # after the report: a failed report leaves a complete, valid artifact,
+        # and an interrupted scan leaves a footer-less one.
+        if writer is not None:
+            writer.write_complete(_completion(cells, len(per_game)))
     return dict(cells), per_game, worst
 
 
@@ -663,15 +760,35 @@ def main() -> int:
     ap.add_argument("--samples", type=int, default=amq.BOOT_SAMPLES,
                     help="bootstrap resamples behind every interval")
     ap.add_argument("--json", help="also write the merged raw counters here")
+    ap.add_argument("--worst-jsonl",
+                    help="write the blunder-evidence export here (see Docs/MoveQualityExport.md)")
+    ap.add_argument("--source-run", default=None,
+                    help="run identifier recorded in the export manifest")
     ap.add_argument("--self-test", action="store_true",
                     help="run the built-in fixtures (no corpus needed) and exit")
     args = ap.parse_args()
+
+    # Never inferred from the corpus directory: a run id is a claim about where
+    # the games came from, and only the operator can make it. Checked ahead of
+    # --self-test, so no mode silently accepts a provenance option it ignores.
+    if args.source_run is not None and not args.worst_jsonl:
+        ap.error("--source-run only applies to --worst-jsonl")
 
     if args.self_test:
         print("self-test")
         return 0 if self_test() else 1
     if not args.root:
         ap.error("root is required unless --self-test is given")
+
+    export_path = Path(args.worst_jsonl) if args.worst_jsonl else None
+    if export_path is not None:
+        # Before the oracle starts: hours of searches must not end on a
+        # destination that was unusable from the outset.
+        try:
+            exp.check_output_path(export_path, Path(args.json) if args.json else None)
+        except (FileExistsError, ValueError) as exc:
+            print(exc, file=sys.stderr)
+            return 2
 
     engine_path = args.engine or find_engine()
     if not engine_path or not Path(engine_path).is_file():
@@ -681,7 +798,8 @@ def main() -> int:
     _log(f"oracle {engine_path} at depth {args.depth}, {args.jobs} worker(s)")
 
     cells, per_game, worst = analyse(Path(args.root), engine_path, args.depth,
-                                     args.jobs, args.games, args.shards, args.batch)
+                                     args.jobs, args.games, args.shards, args.batch,
+                                     export_path, args.source_run)
     if cells is None:
         return 2
     if not cells:

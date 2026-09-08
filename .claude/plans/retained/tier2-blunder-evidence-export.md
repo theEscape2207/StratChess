@@ -2,13 +2,13 @@
 
 **Issue:** #484
 
-**Status:** Approved after cross-agent review on 2026-09-07; implementation not started. No implementation or measurement authorized by this document.
+**Status:** Export A is implemented (packages A0-A4); its contract now lives in `Docs/MoveQualityExport.md`. Retained for the B/C scope boundaries below, which have no code yet. No measurement is authorized by this document.
 
 **Scope agreed:** Fully specify export A; define the boundaries of B/C.
 
 **Code inspected:** main `da974148cebdb92e1fc08ae3781a6ca5608c46e7`.
 
-**Location:** `.claude/plans/not-started/tier2-blunder-evidence-export.md`.
+**Location:** `.claude/plans/retained/tier2-blunder-evidence-export.md`.
 
 ## Goal
 
