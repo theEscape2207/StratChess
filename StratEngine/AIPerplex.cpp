@@ -722,8 +722,13 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	if constexpr (kReverseFutilityCompiled) {
 		if (reverse_futility_eligible(td, depth, beta, is_pv_node, in_check, is_exclusion_frame)) {
 			// Fail-hard, and no transposition store. The evidence is one static evaluation and not
-			// a search: returning the evaluation would hand the parent a score nothing produced,
-			// and storing it would let a speculative bound answer a later, deeper probe.
+			// a search, so storing it would let a speculative bound answer a later, deeper probe.
+			//
+			// Returning beta rather than the evaluation is load-bearing, not a style choice. Every
+			// caller that can reach this guard passes a null window, so beta lands back at the parent
+			// as exactly its alpha -- no improvement, hence no killer, history or PV write, and a
+			// null-move child returns beta - 1, one below the cutoff that would otherwise store a
+			// LOWER bound. A fail-soft return would break all of that at once.
 			if (evaluator_.Evaluate(td.board) - tuning_.reverse_futility_margin * depth >= beta)
 				return beta;
 		}
@@ -1637,8 +1642,10 @@ bool AIPerplex::reverse_futility_eligible(const ThreadData& td, int depth, int b
 {
 	if (!tuning_.reverse_futility_enabled)
 		return false;
-	// A verification search's fail-low is what grants a singular extension, so a futility cutoff
-	// inside one would make the extension follow from this margin rather than from a search.
+	// A verification search's fail-low is what grants a singular extension. Under the fail-hard
+	// return above, a cutoff here would yield exactly singular_beta and grant nothing, so this is
+	// defence in depth rather than a live bug -- it is what keeps the extension a property of the
+	// search if the return value is ever made fail-soft.
 	if (is_exclusion_frame)
 		return false;
 	if (is_pv_node || in_check)

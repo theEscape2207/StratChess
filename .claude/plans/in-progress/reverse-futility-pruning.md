@@ -59,6 +59,13 @@ persistent instead of local, and Stage 1 is trying to measure one variable.
 The absence of a store also removes any interaction with singular extensions through the TT: a
 depth ≤ 3 futility bound would sit below singular's depth ≥ 5 trust floor even if it were written.
 
+**The fail-hard return is what makes the rest of the guarantees hold**, which the search review
+traced and which anyone attempting fail-soft must read first. Every caller that can reach the guard
+passes a null window, so `beta` arrives at the parent as exactly its `alpha`: no improvement, so no
+killer, history or PV write; and a null-move child returns `beta - 1`, one below the cutoff that
+would otherwise reach `tt.store(... LOWER, CUT_NODE)`. "No TT store" is therefore a property of the
+return value, not only of the guard.
+
 ### D3: Candidate parameters — margin `100 * depth`, `depth <= 3`
 
 The margin is one pawn per remaining ply, on the engine's centipawn scale (`g_iPieceValues[0] ==
@@ -83,6 +90,19 @@ fail-low, the extension is granted because futility said so, not because the sea
 probe already excludes exclusion frames and every number quoted above is outside them, so keeping
 the exclusion also keeps the measurement applicable. The 8.0% extension rate measured on #95's tree
 is the tripwire for anyone who later wants to revisit this.
+
+### D6: The cutoff runs before move generation, so a stalemate node can be cut
+
+The guard sits above `ComputeLegalMoves()`, so a node with no legal move returns `beta` instead of a
+terminal score. Accepted, on four grounds: checkmate is unreachable (the in-check guard); the
+stalemated side must also hold two non-pawn pieces and evaluate above beta plus the margin, which is
+a composed-position class rather than a game one; nothing is stored, so the wrong value cannot
+outlive the visit; and the node is searched properly once iterative deepening passes the depth band.
+Rejected: generating moves before the cutoff, which is the entire cost the cutoff exists to avoid.
+
+**Both knobs in D3 enlarge this hole** — a wider band or a lower material floor makes it more
+reachable. `SearchFutilityTests.cpp` pins the behaviour with a composed stalemate (verified against
+python-chess) so that whoever moves them has to read about it.
 
 ## Assumptions I cannot verify from the code
 
@@ -146,6 +166,12 @@ over 90 compared lines. All 626 fast-tier tests pass in the shipped configuratio
 forced on, the only failure is the test that asserts the shipped configuration does not prune, and
 the 36-position tactical suite still passes. Every one of the six guards was falsified by removing
 it and watching the suite fail.
+
+The search review returned LGTM with no correctness defect. Its non-blocking observations, parked
+rather than actioned here: `has_two_non_pawn_pieces()` now runs twice on a node that is eligible for
+both guards, worth a bench pass and a hoist in Stage 2; the zugzwang floor is arguably too strong for
+reverse futility, since it hands the opponent no free move, and a softer floor is its own experiment;
+and the tactical suite is worth one run above the depth band before any decision to ship.
 
 What remains is the SPRT, which is the project owner's budget call. Nothing measured here is a
 strength result: a smaller tree at fixed depth is the *precondition* this candidate had to meet, not
