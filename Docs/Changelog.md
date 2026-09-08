@@ -22,6 +22,41 @@ Newest first.
 
 ---
 
+## 2026-09-08 — Reverse futility pruning, behind its own gate (#87 Stage 1)
+
+A shallow non-PV node whose static evaluation stands a margin above beta is now reported as a
+fail-high without being searched. Stage 0 (#498) said the surface was worth the evaluation it costs;
+this is the candidate built against it.
+
+The guard sits exactly where the probe measured — after the TT probe, after `in_check`, before the
+null-move attempt — and every gate that makes it safe is in one testable predicate: non-PV, not in
+check, **not an exclusion frame**, depth inside the band, beta outside the mate range, and the same
+two-non-pawn-piece zugzwang floor null move already uses (#66), now a shared helper rather than two
+copies. The exclusion-frame gate is the one that is not obvious: a singular verification search's
+fail-low is what grants the extension, so a futility cutoff inside one would make the extension
+follow from the margin rather than from a search.
+
+It returns **beta and stores nothing**. The evidence is one static evaluation, not a search, so a
+fail-soft return would hand the parent a score nothing produced and a TT store would let a
+speculative bound answer a later, deeper probe.
+
+Candidate parameters: margin `100 * depth`, band `depth <= 3`. The band is where the surface is —
+#498 found 95.4% of eligible frames at depths 1-3 — and holding both knobs still is what keeps a
+strength result attributable.
+
+**Measured at fixed depth 12, `Threads=1`, clang-cl, over the `Run-Bench.ps1` set: wall clock
+-38.5%** (paired per-round median over 9 interleaved rounds, range -41.5 to -37.2%). Main-tree nodes
+13,004,919 → 9,229,827; quiescence nodes 4,691,063 → 2,620,683. Wall clock rather than nps, because
+the change alters the node count on purpose and an nps comparison would be comparing two different
+searches. That is the cheap falsification this feature had to survive; it is **not** a strength
+result, and the SPRT it still needs has not been run.
+
+`option(STRAT_REVERSE_FUTILITY)` has three levels: `0` ships and leaves no code at all, `1` compiles
+the feature in with the runtime flag off, `2` also starts with it on. Level 1 exists because "the
+flag off is node-identical" is a claim about a build that *has* the branch and does not take it —
+`Compare-SearchEquivalence.ps1` reports IDENTICAL against `origin/main` across 90 compared lines, six
+positions at depth 12. The whole 36-position tactical suite also passes with the feature **on**.
+
 ## 2026-09-08 — Futility cost probe (#498)
 
 Stage 0 of #87. `pvs()` computes no static evaluation on an ordinary node, so every futility variant

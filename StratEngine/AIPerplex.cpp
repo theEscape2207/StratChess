@@ -128,6 +128,19 @@ namespace {
 			}
 		}
 	}
+
+	// The zugzwang floor shared by null-move pruning and reverse futility: below two non-pawn pieces,
+	// "the side to move is not obliged to worsen its position" stops being true, and both heuristics
+	// rest on it.
+	bool has_two_non_pawn_pieces(const Board& board)
+	{
+		const eColor side = board.GetCurrentColor();
+		const auto boards = board.GetBitBoards();
+		const BITBOARD non_pawn_material =
+		    boards[static_cast<BITBOARD>(KNIGHT) + side] | boards[static_cast<BITBOARD>(BISHOP) + side] |
+		    boards[static_cast<BITBOARD>(ROOK) + side] | boards[static_cast<BITBOARD>(QUEEN) + side];
+		return std::popcount(non_pawn_material) >= 2;
+	}
 } // namespace
 
 AIPerplex::AIPerplex(AIPerplexConfig config)
@@ -696,6 +709,28 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				td.futility_probe_eval_sink += evaluator_.Evaluate(td.board);
 				td.futility_probe_evals++;
 			}
+		}
+	}
+
+	// Reverse futility pruning (#87). A shallow non-PV node whose static evaluation already stands
+	// a margin above beta is reported as a fail-high without being searched. It sits exactly where
+	// the probe above measured this surface, and for the same reasons: a node the transposition
+	// table already resolved never reaches here, and in_check is free by now.
+	//
+	// The compile-time constant leads, as it does for the exclusion test at the top of this
+	// function. Here it guards the Evaluate() call, which is the feature's entire first-order cost.
+	if constexpr (kReverseFutilityCompiled) {
+		if (reverse_futility_eligible(td, depth, beta, is_pv_node, in_check, is_exclusion_frame)) {
+			// Fail-hard, and no transposition store. The evidence is one static evaluation and not
+			// a search, so storing it would let a speculative bound answer a later, deeper probe.
+			//
+			// Returning beta rather than the evaluation is load-bearing, not a style choice. Every
+			// caller that can reach this guard passes a null window, so beta lands back at the parent
+			// as exactly its alpha -- no improvement, hence no killer, history or PV write, and a
+			// null-move child returns beta - 1, one below the cutoff that would otherwise store a
+			// LOWER bound. A fail-soft return would break all of that at once.
+			if (evaluator_.Evaluate(td.board) - tuning_.reverse_futility_margin * depth >= beta)
+				return beta;
 		}
 	}
 
@@ -1599,12 +1634,31 @@ bool AIPerplex::should_try_null_move(const ThreadData& td, int depth, int beta, 
 	// better than moving") is false in king+pawn endgames AND in
 	// single-piece endgames won by domination/zugzwang (issue #66: KQ vs KR,
 	// where the lone rook loses only because its side must move).
-	const eColor side = td.board.GetCurrentColor();
-	const auto boards = td.board.GetBitBoards();
-	const BITBOARD non_pawn_material =
-	    boards[static_cast<BITBOARD>(KNIGHT) + side] | boards[static_cast<BITBOARD>(BISHOP) + side] |
-	    boards[static_cast<BITBOARD>(ROOK) + side] | boards[static_cast<BITBOARD>(QUEEN) + side];
-	return std::popcount(non_pawn_material) >= 2;
+	return has_two_non_pawn_pieces(td.board);
+}
+
+bool AIPerplex::reverse_futility_eligible(const ThreadData& td, int depth, int beta, bool is_pv_node, bool in_check,
+                                          bool is_exclusion_frame) const
+{
+	if (!tuning_.reverse_futility_enabled)
+		return false;
+	// A verification search's fail-low is what grants a singular extension. Under the fail-hard
+	// return above, a cutoff here would yield exactly singular_beta and grant nothing, so this is
+	// defence in depth rather than a live bug -- it is what keeps the extension a property of the
+	// search if the return value is ever made fail-soft.
+	if (is_exclusion_frame)
+		return false;
+	if (is_pv_node || in_check)
+		return false;
+	if (depth > tuning_.reverse_futility_max_depth)
+		return false;
+	// The margin arithmetic is meaningless against a mate score, and a fail-high fabricated near
+	// one would claim a mate no search found.
+	if (std::abs(beta) >= GameValues::Mate_Threshold)
+		return false;
+	// Same zugzwang floor as null move, for the same reason: "this side is already doing well
+	// enough" is exactly what a side in zugzwang cannot rely on.
+	return has_two_non_pawn_pieces(td.board);
 }
 
 bool AIPerplex::handle_empty_move_emergency(ThreadData& td, SearchState& state)

@@ -131,6 +131,23 @@ class AIPerlexTestFixture {
 	void set_singular_tt_depth_margin(int margin) const { ai->tuning_.singular_tt_depth_margin = margin; }
 	void set_singular_margin_factor(int factor) const { ai->tuning_.singular_margin_factor = factor; }
 
+	// --- Reverse futility pokes (#87) ---
+	// The feature ships disabled, so every test that exercises it turns it on first and then moves
+	// one guard at a time off a known-good baseline.
+	void set_reverse_futility(bool enabled) const { ai->tuning_.reverse_futility_enabled = enabled; }
+	void set_reverse_futility_max_depth(int depth) const { ai->tuning_.reverse_futility_max_depth = depth; }
+	void set_reverse_futility_margin(int margin) const { ai->tuning_.reverse_futility_margin = margin; }
+
+	// Every guard except the static evaluation, which is what pvs() calls before evaluating.
+	bool reverse_futility_eligible(int depth, int beta, bool is_pv_node, bool in_check, bool is_exclusion_frame) const
+	{
+		return ai->reverse_futility_eligible(ai->td_, depth, beta, is_pv_node, in_check, is_exclusion_frame);
+	}
+
+	// The same static evaluation the guard compares against beta, so a test can compute the exact
+	// margin boundary instead of guessing at one.
+	int static_eval() const { return ai->evaluator_.Evaluate(ai->td_.board); }
+
 	int64_t singular_eligible() const { return ai->td_.singular_eligible; }
 	int64_t singular_verifications() const { return ai->td_.singular_verifications; }
 	int64_t singular_extensions() const { return ai->td_.singular_extensions; }
