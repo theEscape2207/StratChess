@@ -123,10 +123,12 @@ moves would bias every statistic toward whatever fastchess still spells the old 
 **The remaining clock is derived, not read.** fastchess writes the time *spent*; remaining clock is
 reconstructed per side from `TimeControl` minus that side's running total, plus one increment a move.
 
-**CI games start from an EPD book position** at fullmove 9, with `[SetUp "1"]` + `[FEN]`, so ply
-counts run from the setup position, not the true game start. A CI PGN has zero `{book}` comments —
-every move present is an engine move. A local `Run-EloMatch.ps1` run against a `.pgn` book does emit
-them, and they are excluded.
+**CI games start from an EPD book position** at fullmove 9, with `[SetUp "1"]` + `[FEN]`, so the
+movetext is short of the plies that led there. Game length adds them back — the histogram and the
+over-200 counter are **total plies**, so a CI game and a normal-start game are the same measurement.
+A CI PGN has zero `{book}` comments — every move present is an engine move. A local
+`Run-EloMatch.ps1` run against a `.pgn` book does emit them; they are excluded from the move
+statistics but present in the movetext, so the length never double-counts a book.
 
 ## Limits
 
@@ -158,7 +160,12 @@ them, and they are excluded.
 ### Game outcomes
 
 Decisive 12,550 (62.8%, White 41.1% / Black 21.7%) · drawn 7,430 (37.2%) · ended by adjudication
-13,589 (68.0%) · over 200 plies 1,204 (6.0%).
+13,589 (68.0%) · over 200 total plies **1,615 (8.1%)**.
+
+*Correction 2026-09-08:* the long-game figure was published as 1,204 (6.0%), which counted recorded
+moves and so silently required over 216 total plies for this fullmove-9 corpus. Recounted over the
+same run with the setup offset included; the superseded value is not comparable to the 6.6% and 7.3%
+tracers, the corrected one is.
 
 Draws by the reason fastchess recorded, against what the better-placed side reported on its **last**
 move:

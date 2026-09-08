@@ -348,6 +348,11 @@ def analyse_game(headers, moves, st, where, seen_fens=None):
         seen_fens = {}
     fen = headers.get("FEN")
     board = chess.Board(fen) if fen else chess.Board()
+    # CI games are set up from an EPD book position, so the recorded movetext is
+    # short of the plies that led there. Game length is only comparable across
+    # corpora if those count too; a normal-start PGN contributes zero here and
+    # carries its book moves in the movetext, so neither shape double-counts.
+    setup_plies = board.ply()
     builds = {chess.WHITE: headers.get("White", "?"), chess.BLACK: headers.get("Black", "?")}
     result = headers.get("Result")
 
@@ -432,7 +437,7 @@ def analyse_game(headers, moves, st, where, seen_fens=None):
         elif color in last_seen:
             reached[cls] = (color, last_seen[color])
 
-    total_plies = len(moves)
+    total_plies = setup_plies + len(moves)
     st["plies"][min(total_plies // 20 * 20, 260)] += 1
     if total_plies > 200:
         st["long_games"] += 1
@@ -700,7 +705,7 @@ def report(st: dict, out=sys.stdout) -> None:
     for k, n in sorted(st["win_reasons"].items(), key=lambda kv: -kv[1]):
         w(f"  {k:44s} {n:7d}  {pct(n, wins)}\n")
     w(f"\nGames over 200 plies: {st['long_games']}  ({pct(st['long_games'], st['games'])})\n")
-    w("Game-length histogram (plies from the book position)\n")
+    w("Game-length histogram (total plies, setup position included)\n")
     for k in sorted(st["plies"], key=lambda x: int(x)):
         w(f"  {int(k):3d}+ {st['plies'][k]:7d}  {pct(st['plies'][k], st['games'])}\n")
 
@@ -1040,6 +1045,26 @@ LEVEL_TEST_PGN = """\
 """
 
 
+def _length_fixture(fen, count):
+    """One synthetic game of <count> recorded knight shuffles from <fen>.
+
+    Returns (total plies the counter should see, stats). CI games start from a
+    book position, so the setup plies are part of the length and the movetext is
+    not; a normal-start fixture (fen=None) pins the offset-zero case.
+    """
+    board = chess.Board(fen) if fen else chess.Board()
+    cycle = (["Nf3", "Nf6", "Ng1", "Ng8"] if board.turn == chess.WHITE
+             else ["Nf6", "Nf3", "Ng8", "Ng1"])
+    headers = {"White": "A", "Black": "B", "Result": "1/2-1/2",
+               "TimeControl": "10+0.1"}
+    if fen:
+        headers["FEN"] = fen
+    moves = [(cycle[i % 4], "0.00/1 0.001s") for i in range(count)]
+    st = new_stats()
+    analyse_game(headers, moves, st, "length-fixture")
+    return board.ply() + count, st
+
+
 def self_test(out=sys.stdout) -> bool:
     """Fixture checks for the parser and the per-game accounting.
 
@@ -1117,6 +1142,28 @@ def self_test(out=sys.stdout) -> bool:
           sum(mc.values()) == 2, f"{sum(mc.values())} attributed rows, expected 2")
     check("level class: the exact zero keeps its result",
           lv["class_level"].get("RvsR|decisive") == 1, f"{lv['class_level']}")
+
+    # Game length counts the plies that reached the book position, so "over 200
+    # plies" means over 200 total -- not over 200 recorded moves, which for a
+    # fullmove-9 CI setup would silently mean over 216.
+    START_W = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 9"
+    START_B = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 9"
+    length_cases = [
+        (START_W, 184, 200, 0, 200),
+        (START_W, 185, 201, 1, 200),
+        (START_B, 183, 200, 0, 200),
+        (START_B, 184, 201, 1, 200),
+        (START_W, 183, 199, 0, 180),      # histogram boundary, one ply short
+        (None, 200, 200, 0, 200),         # normal start: no offset to add
+        (None, 201, 201, 1, 200),
+    ]
+    for fen, count, want_total, want_long, want_bucket in length_cases:
+        total, lst = _length_fixture(fen, count)
+        setup = "start" if fen is None else f"fullmove 9 {fen.split()[1]}"
+        check(f"length {setup} +{count} moves = {want_total} plies",
+              total == want_total and lst["long_games"] == want_long
+              and lst["plies"][want_bucket] == 1,
+              f"total {total}, long {lst['long_games']}, buckets {dict(lst['plies'])}")
     return not failures
 
 
