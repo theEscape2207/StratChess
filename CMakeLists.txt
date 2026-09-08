@@ -363,7 +363,8 @@ endif()
 # Futility cost probe (#498, Stage 0 of #87). Measurement only -- it changes no search decision, so
 # every level must stay node-identical to the shipping build. Three levels, because the cost of
 # deciding and the cost of evaluating have to be separated:
-#   0  off, the shipping engine, no code compiled
+#   0  off, the shipping engine: no probe code runs, though the counters remain as cold
+#      trailing members of ThreadData and SearchResult (see AIPerplex.h for why)
 #   1  count eligible nodes and moves
 #   2  also make the Evaluate() call a real futility guard would need
 #   cmake --preset windows-clang-cl -DSTRAT_FUTILITY_PROBE=2

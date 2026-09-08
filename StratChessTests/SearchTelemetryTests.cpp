@@ -367,10 +367,14 @@ TEST_CASE("Search - the shipping build reports no futility-probe counters", "[se
 
 	for (const int64_t bucket : result.futility_probe_nodes)
 		CHECK(bucket == 0);
+	for (const int64_t nullcut : result.futility_probe_null_cutoffs)
+		CHECK(nullcut == 0);
 	for (const int64_t quiet : result.futility_probe_quiet_moves)
 		CHECK(quiet == 0);
-	CHECK(result.futility_probe_null_cutoffs == 0);
-	CHECK(result.futility_probe_lmr_overlap == 0);
-	CHECK(result.futility_probe_checking_moves == 0);
+	for (const int64_t lmr : result.futility_probe_lmr_overlap)
+		CHECK(lmr == 0);
+	for (const int64_t checking : result.futility_probe_checking_moves)
+		CHECK(checking == 0);
 	CHECK(result.futility_probe_evals == 0);
+	CHECK(result.futility_probe_eval_sink == 0);
 }

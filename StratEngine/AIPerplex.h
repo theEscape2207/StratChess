@@ -76,7 +76,13 @@ inline constexpr bool kSingularExtensionsCompiled = STRAT_SINGULAR_EXTENSIONS !=
 //
 // Set by CMake: -DSTRAT_FUTILITY_PROBE=1 counts eligible nodes and moves; =2 also performs the
 // Evaluate() call a real guard would need, so the two builds separate the cost of deciding from
-// the cost of evaluating. The shipping engine leaves it at 0 and compiles none of it.
+// the cost of evaluating.
+//
+// At level 0 the engine executes NO probe code -- not per node, not per search. What remains is
+// data: ThreadData and SearchResult still carry the counters as trailing members nothing touches.
+// They are kept rather than #if'd out because a discarded `if constexpr` branch in a non-template
+// function is still type-checked, which is what stops the probe rotting while compiled out;
+// removing the members would mean removing the code that names them, and with it that protection.
 #ifndef STRAT_FUTILITY_PROBE
 #	define STRAT_FUTILITY_PROBE 0
 #endif

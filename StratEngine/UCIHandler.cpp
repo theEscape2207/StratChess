@@ -512,29 +512,51 @@ void UciHandler::cmd_go(std::string_view line)
 				     std::to_string(result.singular_verification_nodes));
 			}
 
-			// Futility cost probe (#498). One line per search, emitted only when the probe was
-			// compiled in and found something, so the shipped build's output is unchanged.
-			// Ordered so a reader gets the totals first and the depth histogram last.
+			// Futility cost probe (#498). Compiled out entirely at probe level 0 -- the scan below
+			// would otherwise run once per search in the shipping build, which the feature's
+			// contract says it does not.
 			//
-			// "Found something" means ANY counter moved, not the depth-1 bucket: at probe level 1
-			// there are no evals, and a shallow search whose eligible nodes all sit at depth >= 2
-			// would otherwise drop its quiet-move and null-cutoff totals silently.
-			int64_t probe_total = result.futility_probe_evals;
-			for (const int64_t bucket : result.futility_probe_nodes)
-				probe_total += bucket;
-			for (const int64_t quiet : result.futility_probe_quiet_moves)
-				probe_total += quiet;
-			if (probe_total != 0) {
-				std::string probe = "info string futilityprobe evals " + std::to_string(result.futility_probe_evals) +
-				                    " nullcut " + std::to_string(result.futility_probe_null_cutoffs) + " lmrovl " +
-				                    std::to_string(result.futility_probe_lmr_overlap) + " givescheck " +
-				                    std::to_string(result.futility_probe_checking_moves);
-				for (int d = 0; d < 3; ++d)
-					probe +=
-					    " quiet" + std::to_string(d + 1) + " " + std::to_string(result.futility_probe_quiet_moves[d]);
-				for (int b = 0; b < SearchResult::FUTILITY_PROBE_DEPTH_BUCKETS; ++b)
-					probe += " d" + std::to_string(b + 1) + " " + std::to_string(result.futility_probe_nodes[b]);
-				send(probe);
+			// Every counter is per band, because the overlaps this exists to size are
+			// depth-dependent: null move only runs at depth >= 3, so a single scalar cannot say
+			// which bands it competes for. 'sink' is the summed Evaluate() result, printed rather
+			// than merely accumulated so the call producing it cannot be optimised away.
+			if constexpr (kFutilityProbeCompiled) {
+				// "Found something" means ANY counter moved, not the depth-1 bucket: at level 1
+				// there are no evals, and a shallow search whose eligible nodes all sit at
+				// depth >= 2 would otherwise drop its quiet-move and null-cutoff totals silently.
+				int64_t probe_total = result.futility_probe_evals;
+				for (const int64_t bucket : result.futility_probe_nodes)
+					probe_total += bucket;
+				for (const int64_t quiet : result.futility_probe_quiet_moves)
+					probe_total += quiet;
+
+				if (probe_total != 0) {
+					// Built with append() rather than chained operator+: the concatenation runs
+					// per band and the temporaries are what clang-tidy's
+					// performance-inefficient-string-concatenation objects to.
+					const auto append_field = [](std::string& out, std::string_view name, int band, int64_t value) {
+						out.append(" ")
+						    .append(name)
+						    .append(std::to_string(band))
+						    .append(" ")
+						    .append(std::to_string(value));
+					};
+
+					std::string probe = "info string futilityprobe evals ";
+					probe.append(std::to_string(result.futility_probe_evals))
+					    .append(" sink ")
+					    .append(std::to_string(result.futility_probe_eval_sink));
+					for (int d = 0; d < SearchResult::FUTILITY_PROBE_FRONTIER_BANDS; ++d) {
+						append_field(probe, "quiet", d + 1, result.futility_probe_quiet_moves[d]);
+						append_field(probe, "lmrovl", d + 1, result.futility_probe_lmr_overlap[d]);
+						append_field(probe, "givescheck", d + 1, result.futility_probe_checking_moves[d]);
+					}
+					for (int b = 0; b < SearchResult::FUTILITY_PROBE_DEPTH_BUCKETS; ++b) {
+						append_field(probe, "d", b + 1, result.futility_probe_nodes[b]);
+						append_field(probe, "nullcut", b + 1, result.futility_probe_null_cutoffs[b]);
+					}
+					send(probe);
+				}
 			}
 
 			const std::string bm = best.is_null() ? "0000" : MoveFormatter::ToUCI(best);

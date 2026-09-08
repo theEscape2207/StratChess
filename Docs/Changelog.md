@@ -28,11 +28,13 @@ Stage 0 of #87. `pvs()` computes no static evaluation on an ordinary node, so ev
 would have to add one, and that cost is first-order enough to decide whether the feature is worth
 building at all. This lands the instrument that answers it, not the feature.
 
-`option(STRAT_FUTILITY_PROBE)` has three levels: `0` compiles nothing and is what ships, `1` counts
+`option(STRAT_FUTILITY_PROBE)` has three levels: `0` runs no probe code and is what ships, `1` counts
 the nodes and moves a futility guard could act on, `2` also performs the `Evaluate()` call one would
-need, accumulating the result into a sink so the optimiser cannot delete the work being timed. The
-two live levels exist to separate the cost of *deciding* from the cost of *evaluating* — only the
-second is a cost a real guard inherits.
+need, summing the results into a counter the harness **prints** — an accumulator nothing observes
+may be deleted along with the call feeding it, turning a cost measurement into a measurement of
+nothing. The two live levels exist to separate the cost of *deciding* from the cost of *evaluating*;
+only the second is a cost a real guard inherits. Level 0 measures at **+0.24% nps against
+`origin/main`** (median of 9 interleaved rounds, range −0.57 to +1.77%), i.e. inside the noise.
 
 **The probe decides nothing, and that is checked rather than asserted**:
 `Compare-SearchEquivalence.ps1` reports IDENTICAL against `origin/main` for all three levels, six
@@ -40,14 +42,19 @@ positions at depth 12. Counters reach the harness as one `info string futilitypr
 only when the probe fired, so the shipped build's output is unchanged.
 
 What it measured, at depth 12 and `Threads=1` over the `Run-Bench.ps1` set: **2,956,678
-reverse-futility-eligible frames**, 84% of them at depth 1, of which only 3.0% are already resolved
-by a null-move cutoff; and 4,467,251 frontier-eligible quiet moves at parent depth 1 alone. Against
-the run's 13,004,919 counted main-tree edges that is **0.227 added evaluations per counted node** —
-stated as a ratio, not as a fraction of frames, because `nodes_searched` counts move edges before
-legality while the probe counts `pvs()` frames. The added `Evaluate()` call costs **4.1% nps** (paired
-per-round median over 9 interleaved rounds, range 2.0-8.7%). Reading the two together is what the
-stage was for: the eligible surface is large and barely overlaps what null-move and LMR already
-handle, so the cost looks affordable — and #87 Stage 1 is worth running.
+reverse-futility-eligible frames**, 84% of them at depth 1, and 4,467,251 frontier-eligible quiet
+moves at parent depth 1 alone. Against the run's 13,004,919 counted main-tree edges that is **0.227
+added evaluations per counted node** — a ratio, not a fraction of frames, because `nodes_searched`
+counts move edges before legality while the probe counts `pvs()` frames. The added `Evaluate()` call
+costs **3.8% nps** (paired per-round median over 9 interleaved rounds).
+
+**Counting the overlaps per band rather than in total is what made them readable**, and it reversed
+two conclusions a single scalar had produced. Null-move overlap is not 3% — it is **zero at depths
+1-2, where null move cannot run, and 30-36% in every band from depth 3 up**. LMR overlap is not 5.7%
+spread thinly — it is **zero at depths 1-2 and 94.75% at depth 3**, because `lmr_min_depth` is 3. So
+frontier futility's opportunity is depths 1-2, where 6.12M candidate moves have no LMR overlap at
+all; at depth 3 it would mostly re-prune what LMR already reduces. That is a Stage 1 design input the
+aggregate figures actively hid.
 
 The measurement is per-round paired, not build-by-build. This box drifts several percent over
 minutes, and an earlier build-by-build pass put a slow period entirely on one build, which reads as

@@ -104,21 +104,29 @@ struct ThreadData {
 	// "that depth or deeper". depth >= 1 is guaranteed at the counting site: pvs() hands depth <= 0
 	// to quiescence() before reaching it.
 	static constexpr int FUTILITY_PROBE_DEPTH_BUCKETS = 8;
+	// Frontier counters are indexed by PARENT depth 1, 2, 3.
+	static constexpr int FUTILITY_PROBE_FRONTIER_BANDS = 3;
+
 	// Nodes where a reverse-futility guard could fire: non-PV, not in check, not an exclusion
-	// frame, beta outside the mate range.
+	// frame, BETA outside the mate range.
 	int64_t futility_probe_nodes[FUTILITY_PROBE_DEPTH_BUCKETS]{};
 	// Of those, the ones a null-move cutoff already resolved -- the overlap a reverse-futility
-	// gain would have to come on top of.
-	int64_t futility_probe_null_cutoffs = 0;
-	// Moves a frontier-futility guard could skip, by PARENT depth 1, 2, 3: quiet, non-promotion,
-	// not the hash move, at an eligible node, and not the first legal move searched.
-	int64_t futility_probe_quiet_moves[3]{};
+	// gain would have to come on top of. Bucketed like the nodes, because the overlap is
+	// depth-dependent: null move only runs at depth >= null_move_min_depth, so a single scalar
+	// cannot say which bands it actually competes for.
+	int64_t futility_probe_null_cutoffs[FUTILITY_PROBE_DEPTH_BUCKETS]{};
+	// Moves a frontier-futility guard could skip, by parent depth: quiet, non-promotion, not the
+	// hash move, at a node whose ALPHA is outside the mate range, and not the first legal move
+	// searched.
+	int64_t futility_probe_quiet_moves[FUTILITY_PROBE_FRONTIER_BANDS]{};
 	// Of those, how many LMR already reduces, and how many give check -- the guard would have to
-	// exclude the latter, so they are counted apart rather than netted out.
-	int64_t futility_probe_lmr_overlap = 0;
-	int64_t futility_probe_checking_moves = 0;
-	// Evaluate() calls the probe made, and a sink for their results. The sink exists only so the
-	// call cannot be optimised away as dead: nothing reads it back.
+	// exclude the latter, so they are counted apart rather than netted out. Bucketed by the same
+	// parent depth, so each band's overlap can be read against that band's move count.
+	int64_t futility_probe_lmr_overlap[FUTILITY_PROBE_FRONTIER_BANDS]{};
+	int64_t futility_probe_checking_moves[FUTILITY_PROBE_FRONTIER_BANDS]{};
+	// Evaluate() calls the probe made, and the sum of their results. The sum is REPORTED, not
+	// merely written: a value nothing observes may be deleted along with the call producing it,
+	// which would silently turn the cost measurement into a measurement of nothing.
 	int64_t futility_probe_evals = 0;
 	int64_t futility_probe_eval_sink = 0;
 
@@ -155,10 +163,10 @@ struct ThreadData {
 	void clear_futility_probe() noexcept
 	{
 		std::memset(futility_probe_nodes, 0, sizeof(futility_probe_nodes));
+		std::memset(futility_probe_null_cutoffs, 0, sizeof(futility_probe_null_cutoffs));
 		std::memset(futility_probe_quiet_moves, 0, sizeof(futility_probe_quiet_moves));
-		futility_probe_null_cutoffs = 0;
-		futility_probe_lmr_overlap = 0;
-		futility_probe_checking_moves = 0;
+		std::memset(futility_probe_lmr_overlap, 0, sizeof(futility_probe_lmr_overlap));
+		std::memset(futility_probe_checking_moves, 0, sizeof(futility_probe_checking_moves));
 		futility_probe_evals = 0;
 		futility_probe_eval_sink = 0;
 	}

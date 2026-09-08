@@ -223,7 +223,10 @@ void AIPerplex::init_search(const Board& root)
 	td_.root_game_state = GameStates::STILL_PLAYING;
 	// Per-call like the node counters: the reported trigger rate belongs to this search.
 	td_.clear_singular_telemetry();
-	td_.clear_futility_probe();
+	// Guarded, not unconditional: at probe level 0 there is nothing to clear, and the contract
+	// this feature advertises is that the shipping build runs none of its code.
+	if constexpr (kFutilityProbeCompiled)
+		td_.clear_futility_probe();
 }
 
 // Lazy SMP helper thread entry point (plain iterative deepening, no quality
@@ -306,7 +309,8 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 			htd.nodes_searched = 0;
 			htd.qnodes_searched = 0;
 			htd.clear_singular_telemetry();
-			htd.clear_futility_probe();
+			if constexpr (kFutilityProbeCompiled)
+				htd.clear_futility_probe();
 			htd.root_game_state = GameStates::STILL_PLAYING;
 			helpers.emplace_back([this, &htd, effective_depth, this_tt = _tt.get()] {
 				helper_loop(htd, static_cast<int>(effective_depth), *this_tt);
@@ -355,15 +359,20 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 		// array. They are declared in two headers, so nothing but this ties them together.
 		static_assert(ThreadData::FUTILITY_PROBE_DEPTH_BUCKETS == SearchResult::FUTILITY_PROBE_DEPTH_BUCKETS,
 		              "probe bucket counts must match; widening one alone writes out of bounds");
+		static_assert(ThreadData::FUTILITY_PROBE_FRONTIER_BANDS == SearchResult::FUTILITY_PROBE_FRONTIER_BANDS,
+		              "probe frontier band counts must match; widening one alone writes out of bounds");
 		auto accumulate_probe = [&result](const ThreadData& source) {
-			for (int b = 0; b < ThreadData::FUTILITY_PROBE_DEPTH_BUCKETS; ++b)
+			for (int b = 0; b < ThreadData::FUTILITY_PROBE_DEPTH_BUCKETS; ++b) {
 				result.futility_probe_nodes[b] += source.futility_probe_nodes[b];
-			for (int d = 0; d < 3; ++d)
+				result.futility_probe_null_cutoffs[b] += source.futility_probe_null_cutoffs[b];
+			}
+			for (int d = 0; d < ThreadData::FUTILITY_PROBE_FRONTIER_BANDS; ++d) {
 				result.futility_probe_quiet_moves[d] += source.futility_probe_quiet_moves[d];
-			result.futility_probe_null_cutoffs += source.futility_probe_null_cutoffs;
-			result.futility_probe_lmr_overlap += source.futility_probe_lmr_overlap;
-			result.futility_probe_checking_moves += source.futility_probe_checking_moves;
+				result.futility_probe_lmr_overlap[d] += source.futility_probe_lmr_overlap[d];
+				result.futility_probe_checking_moves[d] += source.futility_probe_checking_moves[d];
+			}
 			result.futility_probe_evals += source.futility_probe_evals;
+			result.futility_probe_eval_sink += source.futility_probe_eval_sink;
 		};
 		accumulate_probe(td_);
 		for (size_t i = 0; i + 1 < static_cast<size_t>(threads); ++i)
@@ -663,22 +672,26 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// resolved never reaches it, and in_check is free by this point, which is the whole reason
 	// build 2's Evaluate() call is the only first-order cost this measures.
 	//
-	// It decides nothing. `futility_probe_node` is read by the counting sites below and by
-	// nothing else, so a probe build must stay node-identical to the shipping one.
+	// It decides nothing. The two flags below are read by the counting sites and by nothing else,
+	// so a probe build must stay node-identical to the shipping one.
 	//
-	// The mate-window test uses beta for both counters, though frontier futility keys on alpha:
-	// every eligible node is non-PV and therefore searched with a null window, where
-	// beta == alpha + 1 makes the two tests equivalent. A guard that can run at a PV node must
-	// test the bound it actually compares against.
-	[[maybe_unused]] bool futility_probe_node = false;
+	// TWO predicates, because the two variants compare against different bounds: reverse futility
+	// tests a static evaluation against beta, frontier futility tests it against alpha. A null
+	// window does NOT make them interchangeable at the boundary -- with Mate_Threshold at 29900,
+	// alpha = 29899 / beta = 29900 passes one test and fails the other.
+	[[maybe_unused]] bool futility_probe_reverse = false;
+	[[maybe_unused]] bool futility_probe_frontier = false;
 	if constexpr (kFutilityProbeCompiled) {
-		futility_probe_node =
-		    !is_pv_node && !in_check && !is_exclusion_frame && std::abs(beta) < GameValues::Mate_Threshold;
-		if (futility_probe_node) {
+		const bool shared = !is_pv_node && !in_check && !is_exclusion_frame;
+		futility_probe_reverse = shared && std::abs(beta) < GameValues::Mate_Threshold;
+		futility_probe_frontier = shared && std::abs(alpha) < GameValues::Mate_Threshold;
+		if (futility_probe_reverse) {
 			td.futility_probe_nodes[std::min(depth, ThreadData::FUTILITY_PROBE_DEPTH_BUCKETS) - 1]++;
 
-			// The call a reverse-futility guard would have to make. Accumulated into a sink
-			// nothing reads, which is what stops the optimiser deleting the work being timed.
+			// The call a reverse-futility guard would have to make. Its result is summed into a
+			// counter the harness PRINTS -- an unread accumulator would let the optimiser drop
+			// both the addition and the side-effect-free Evaluate() feeding it, leaving a cost
+			// measurement of nothing.
 			if constexpr (kFutilityProbeEvaluates) {
 				td.futility_probe_eval_sink += evaluator_.Evaluate(td.board);
 				td.futility_probe_evals++;
@@ -709,10 +722,11 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 		if (null_score >= beta) {
 			// Probe overlap: this node was reverse-futility eligible and null-move pruning
-			// already resolved it, so a futility cutoff here would win nothing.
+			// already resolved it, so a futility cutoff here would win nothing. Bucketed by the
+			// same depth as the eligible count, so the two are readable against each other.
 			if constexpr (kFutilityProbeCompiled) {
-				if (futility_probe_node)
-					td.futility_probe_null_cutoffs++;
+				if (futility_probe_reverse)
+					td.futility_probe_null_cutoffs[std::min(depth, ThreadData::FUTILITY_PROBE_DEPTH_BUCKETS) - 1]++;
 			}
 
 			tt.store(key, static_cast<int16_t>(null_score), static_cast<int16_t>(depth), static_cast<int16_t>(ply),
@@ -855,12 +869,13 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				// but it is recomputed rather than borrowed: applyLMR short-circuits, so its
 				// value does not imply the test ran.
 				if constexpr (kFutilityProbeCompiled) {
-					if (futility_probe_node && depth <= 3 && !isCapture && !isPromotion && move != hash_move) {
+					if (futility_probe_frontier && depth <= ThreadData::FUTILITY_PROBE_FRONTIER_BANDS && !isCapture &&
+					    !isPromotion && move != hash_move) {
 						td.futility_probe_quiet_moves[depth - 1]++;
 						if (applyLMR)
-							td.futility_probe_lmr_overlap++;
+							td.futility_probe_lmr_overlap[depth - 1]++;
 						if (td.board.InCheck())
-							td.futility_probe_checking_moves++;
+							td.futility_probe_checking_moves[depth - 1]++;
 					}
 				}
 
