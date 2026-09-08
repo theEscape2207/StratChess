@@ -354,3 +354,27 @@ TEST_CASE("Search - a pvs frame that aborts at entry leaves an empty pv row", "[
 	REQUIRE(fix.pv_length(0) == 0);     // ... and nothing is published alongside it
 	REQUIRE(fix.pv_move(0).is_null());
 }
+
+TEST_CASE("Search - the shipping build reports no futility-probe counters", "[search][telemetry]")
+{
+	// The #498 probe is compiled out everywhere except a deliberate measurement build, and the
+	// test binary is not one. Nothing here can exercise the counting itself; what it pins is the
+	// silence -- if the gate is ever defaulted on, or a counter written outside it, these stop
+	// being zero and the shipped engine starts emitting an 'info string futilityprobe' line.
+	AIPerlexTestFixture fix;
+	const SearchResult result = fix.result_to_depth(4);
+	REQUIRE_FALSE(result.best_move.is_null());
+
+	for (const int64_t bucket : result.futility_probe_nodes)
+		CHECK(bucket == 0);
+	for (const int64_t nullcut : result.futility_probe_null_cutoffs)
+		CHECK(nullcut == 0);
+	for (const int64_t quiet : result.futility_probe_quiet_moves)
+		CHECK(quiet == 0);
+	for (const int64_t lmr : result.futility_probe_lmr_overlap)
+		CHECK(lmr == 0);
+	for (const int64_t checking : result.futility_probe_checking_moves)
+		CHECK(checking == 0);
+	CHECK(result.futility_probe_evals == 0);
+	CHECK(result.futility_probe_eval_sink == 0);
+}
