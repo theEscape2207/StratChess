@@ -1439,6 +1439,13 @@ class ExportRunTests(unittest.TestCase):
         self.assertIn('_ENGINE.configure({"Threads": ORACLE_THREADS, "Hash": ORACLE_HASH_MB})',
                       source)
 
+    def test_manifest_records_the_batch_size_that_ran(self):
+        # batches() floors the size at one, so a manifest echoing the request
+        # would describe a run that never happened.
+        self._analyse(_SequencedOracle(self.SCORES), export_path=self.out, batch=0)
+        manifest, _blunders, _complete = exp.read_artifact(self.out)
+        self.assertEqual(manifest["scan"]["batch"], 1)
+
     def test_a_single_file_root_is_identified_by_its_name(self):
         self._analyse(_SequencedOracle(self.SCORES), export_path=self.out, root=self.pgn)
         manifest, _blunders, _complete = exp.read_artifact(self.out)
@@ -1541,6 +1548,18 @@ class ExportRunTests(unittest.TestCase):
                 self._main(_SequencedOracle(self.SCORES), ["--source-run", "33989392373"])
         self.assertEqual(raised.exception.code, 2)
         self.assertEqual(_InProcessPool.created, [])
+
+    def test_source_run_is_rejected_before_the_self_test_runs(self):
+        def unreachable():
+            raise AssertionError("the self-test ran despite an option it ignores")
+
+        argv = ["analyze_external_quality.py", "--self-test", "--source-run", "33989392373"]
+        with unittest.mock.patch.object(sys, "argv", argv), \
+                unittest.mock.patch.object(aeq, "self_test", unreachable), \
+                unittest.mock.patch.object(sys, "stderr", io.StringIO()), \
+                self.assertRaises(SystemExit) as raised:
+            aeq.main()
+        self.assertEqual(raised.exception.code, 2)
 
     def test_no_eligible_rows_keeps_its_cli_error_and_its_artifact(self):
         self.pgn.write_text(self.QUIET_PGN, encoding="utf-8")

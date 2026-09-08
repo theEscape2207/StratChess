@@ -578,6 +578,9 @@ def _completion(cells: dict, scored_games: int) -> dict:
 
 def analyse(root: Path, engine_path: str, depth: int, jobs: int, limit: int, shards: int,
             batch: int, export_path: Path | None = None, source_run: str | None = None):
+    # `batches()` floors the size at one, so normalize here: the manifest must
+    # record the batch size that ran, not the one that was asked for.
+    batch = max(1, batch)
     cells: dict = defaultdict(new_cell)
     per_game: list = []
     worst: list = []
@@ -765,15 +768,17 @@ def main() -> int:
                     help="run the built-in fixtures (no corpus needed) and exit")
     args = ap.parse_args()
 
+    # Never inferred from the corpus directory: a run id is a claim about where
+    # the games came from, and only the operator can make it. Checked ahead of
+    # --self-test, so no mode silently accepts a provenance option it ignores.
+    if args.source_run is not None and not args.worst_jsonl:
+        ap.error("--source-run only applies to --worst-jsonl")
+
     if args.self_test:
         print("self-test")
         return 0 if self_test() else 1
     if not args.root:
         ap.error("root is required unless --self-test is given")
-    # Never inferred from the corpus directory: a run id is a claim about where
-    # the games came from, and only the operator can make it.
-    if args.source_run is not None and not args.worst_jsonl:
-        ap.error("--source-run only applies to --worst-jsonl")
 
     export_path = Path(args.worst_jsonl) if args.worst_jsonl else None
     if export_path is not None:
