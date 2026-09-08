@@ -351,6 +351,10 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	// Futility probe (#498), summed exactly like the counters above. Compiled out with the probe
 	// itself, so the shipping build does not walk thread state to add up zeros.
 	if constexpr (kFutilityProbeCompiled) {
+		// The loop below walks the source's bucket count while writing into the destination's
+		// array. They are declared in two headers, so nothing but this ties them together.
+		static_assert(ThreadData::FUTILITY_PROBE_DEPTH_BUCKETS == SearchResult::FUTILITY_PROBE_DEPTH_BUCKETS,
+		              "probe bucket counts must match; widening one alone writes out of bounds");
 		auto accumulate_probe = [&result](const ThreadData& source) {
 			for (int b = 0; b < ThreadData::FUTILITY_PROBE_DEPTH_BUCKETS; ++b)
 				result.futility_probe_nodes[b] += source.futility_probe_nodes[b];
@@ -661,6 +665,11 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	//
 	// It decides nothing. `futility_probe_node` is read by the counting sites below and by
 	// nothing else, so a probe build must stay node-identical to the shipping one.
+	//
+	// The mate-window test uses beta for both counters, though frontier futility keys on alpha:
+	// every eligible node is non-PV and therefore searched with a null window, where
+	// beta == alpha + 1 makes the two tests equivalent. A guard that can run at a PV node must
+	// test the bound it actually compares against.
 	[[maybe_unused]] bool futility_probe_node = false;
 	if constexpr (kFutilityProbeCompiled) {
 		futility_probe_node =

@@ -515,7 +515,16 @@ void UciHandler::cmd_go(std::string_view line)
 			// Futility cost probe (#498). One line per search, emitted only when the probe was
 			// compiled in and found something, so the shipped build's output is unchanged.
 			// Ordered so a reader gets the totals first and the depth histogram last.
-			if (result.futility_probe_evals != 0 || result.futility_probe_nodes[0] != 0) {
+			//
+			// "Found something" means ANY counter moved, not the depth-1 bucket: at probe level 1
+			// there are no evals, and a shallow search whose eligible nodes all sit at depth >= 2
+			// would otherwise drop its quiet-move and null-cutoff totals silently.
+			int64_t probe_total = result.futility_probe_evals;
+			for (const int64_t bucket : result.futility_probe_nodes)
+				probe_total += bucket;
+			for (const int64_t quiet : result.futility_probe_quiet_moves)
+				probe_total += quiet;
+			if (probe_total != 0) {
 				std::string probe = "info string futilityprobe evals " + std::to_string(result.futility_probe_evals) +
 				                    " nullcut " + std::to_string(result.futility_probe_null_cutoffs) + " lmrovl " +
 				                    std::to_string(result.futility_probe_lmr_overlap) + " givescheck " +

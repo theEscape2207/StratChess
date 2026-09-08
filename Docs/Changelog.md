@@ -39,13 +39,15 @@ second is a cost a real guard inherits.
 positions at depth 12. Counters reach the harness as one `info string futilityprobe` line, emitted
 only when the probe fired, so the shipped build's output is unchanged.
 
-What it measured, at depth 12 and `Threads=1` over the `Run-Bench.ps1` set (13,004,919 main nodes):
-**22.7% of main-tree nodes are reverse-futility eligible**, 84% of them at depth 1, and only 3.0% of
-those are already resolved by a null-move cutoff. Frontier-eligible quiet moves number 4,467,251 at
-parent depth 1 alone. The added `Evaluate()` call costs **4.1% nps** (paired per-round median over 9
-interleaved rounds, range 2.0-8.7%). Reading the two numbers together is what the stage was for: the
-eligible surface is large and barely overlaps what null-move and LMR already handle, so the cost
-looks affordable — and #87 Stage 1 is worth running.
+What it measured, at depth 12 and `Threads=1` over the `Run-Bench.ps1` set: **2,956,678
+reverse-futility-eligible frames**, 84% of them at depth 1, of which only 3.0% are already resolved
+by a null-move cutoff; and 4,467,251 frontier-eligible quiet moves at parent depth 1 alone. Against
+the run's 13,004,919 counted main-tree edges that is **0.227 added evaluations per counted node** —
+stated as a ratio, not as a fraction of frames, because `nodes_searched` counts move edges before
+legality while the probe counts `pvs()` frames. The added `Evaluate()` call costs **4.1% nps** (paired
+per-round median over 9 interleaved rounds, range 2.0-8.7%). Reading the two together is what the
+stage was for: the eligible surface is large and barely overlaps what null-move and LMR already
+handle, so the cost looks affordable — and #87 Stage 1 is worth running.
 
 The measurement is per-round paired, not build-by-build. This box drifts several percent over
 minutes, and an earlier build-by-build pass put a slow period entirely on one build, which reads as
