@@ -94,11 +94,21 @@ is the tripwire for anyone who later wants to revisit this.
 ### D6: The cutoff runs before move generation, so a stalemate node can be cut
 
 The guard sits above `ComputeLegalMoves()`, so a node with no legal move returns `beta` instead of a
-terminal score. Accepted, on four grounds: checkmate is unreachable (the in-check guard); the
+terminal score. Accepted, on three grounds: checkmate is unreachable (the in-check guard); the
 stalemated side must also hold two non-pawn pieces and evaluate above beta plus the margin, which is
-a composed-position class rather than a game one; nothing is stored, so the wrong value cannot
-outlive the visit; and the node is searched properly once iterative deepening passes the depth band.
-Rejected: generating moves before the cutoff, which is the entire cost the cutoff exists to avoid.
+a composed-position class rather than a game one; and the node is searched properly once iterative
+deepening passes the depth band. Rejected: generating moves before the cutoff, which is the entire
+cost the cutoff exists to avoid.
+
+**The error propagates, and it is not confined to this visit.** The cut node itself stores nothing,
+but its caller can: every caller reaching the guard passes a null window, so `beta` arrives at the
+parent as exactly its `alpha`, and a parent no sibling improves stores an `UPPER` bound at that
+`alpha`. Where the true value is the draw score 0 and the parent's `alpha` sits below it, that bound
+is false and can hide a drawing move from a later probe. This is what an incorrect fail-high from
+*any* pruning heuristic does in this search — null move included — rather than something stalemate
+introduces; what stalemate contributes is a case where the gap between the returned score and the
+truth is not bounded by the margin. Accepted as a heuristic risk and written down rather than
+mitigated, because mitigation means generating moves at the node.
 
 **Both knobs in D3 enlarge this hole** — a wider band or a lower material floor makes it more
 reachable. `SearchFutilityTests.cpp` pins the behaviour with a composed stalemate (verified against

@@ -159,10 +159,12 @@ TEST_CASE("Reverse futility: a stalemate node returns beta, not a draw score", "
 
 	// PINS A KNOWN, ACCEPTED HOLE rather than a desired behaviour. The guard runs before move
 	// generation, so a node with no legal move is cut before anything can discover it is terminal.
-	// Checkmate is unreachable (the in-check guard), the value is never stored, and the node is
-	// searched properly once iterative deepening reaches it above the depth band -- so the error is
-	// local and short-lived. Closing it would mean generating moves before the cutoff, which is the
-	// entire cost the cutoff exists to avoid.
+	// Checkmate is unreachable (the in-check guard), and the node is searched properly once
+	// iterative deepening reaches it above the depth band. The error is not confined to this node:
+	// beta reaches the parent as exactly its alpha, so a parent no sibling improves can store an
+	// UPPER bound that is false when the truth is a draw. That is what a wrong fail-high from any
+	// pruning heuristic does here; closing it would mean generating moves before the cutoff, which
+	// is the entire cost the cutoff exists to avoid.
 	//
 	// Widening reverse_futility_max_depth or lowering the material floor enlarges this hole. This
 	// test is here so whoever does that has to read about it first.
