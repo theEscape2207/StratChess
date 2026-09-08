@@ -21,23 +21,17 @@ resolves ±4.
 
 ## Cost is not the tie-breaker people assume
 
-The repository is public, so the lab's runner minutes are free; what it spends is wall-clock and 18
-of 20 CI slots. A local SPRT spends the **user's own machine, exclusively** — no builds, no tests,
-no second match — and any of those started alongside it invalidates the batch. Between a 3 h lab run
+What a lab run spends is wall-clock and 18 of 20 CI slots — runner minutes have never been the
+constraint. A local SPRT spends the **user's own machine, exclusively** — no builds, no tests, no
+second match — and any of those started alongside it invalidates the batch. Between a 3 h lab run
 and a 3 h local SPRT, the lab is cheaper in the resource that is actually scarce, and it is the one
 that answers.
 
-## The resulting rule
+## The exception
 
-Reach for the lab when the deliverable is "is this term worth shipping". Reach for a local SPRT when
-the question is "did I break something", or when the change is a search change expected to clear
-25 Elo. Running the cheap local SPRT first is fine — as a smoke test that catches a disaster in
-40 minutes — but plan the lab run as the actual gate from the start, rather than arriving at it
-after two inconclusive sessions.
+A search change expected to clear 25 Elo is above the local floor, so a local SPRT can settle it.
+That is the only case where the lab is not the better instrument for a gain.
 
-## Two failures to avoid
-
-- **Reporting a fixed batch's point estimate as a measurement.** "+8 ±26" is not a measurement of
-  +8; recording it as one is how false confidence accumulates. Below ~25 Elo, use SPRT or the lab.
-- **Assuming 500 games is a ceiling.** It is the default, not a limit — see
-  [`sizing-a-batch.md`](sizing-a-batch.md). The local book supports 69,400 distinct games.
+Note that "raise `-Games`" is not a way out: 500 is the default, not a limit — the local book
+supports 69,400 distinct games ([`sizing-a-batch.md`](sizing-a-batch.md)) — but a night's worth of
+games is still ~2,500, which is where the ±10 Elo floor comes from.
