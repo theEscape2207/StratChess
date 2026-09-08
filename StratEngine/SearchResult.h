@@ -40,4 +40,15 @@ struct SearchResult {
 	int64_t singular_extensions = 0;
 	// Node edges spent inside verification searches, measured rather than inferred.
 	int64_t singular_verification_nodes = 0;
+
+	// Futility cost probe (#498), summed over every thread. All zero unless the probe was
+	// compiled in, which is what keeps the shipped build's reporting silent. Field meanings are
+	// on the ThreadData counters they are summed from.
+	static constexpr int FUTILITY_PROBE_DEPTH_BUCKETS = 8;
+	int64_t futility_probe_nodes[FUTILITY_PROBE_DEPTH_BUCKETS]{};
+	int64_t futility_probe_null_cutoffs = 0;
+	int64_t futility_probe_quiet_moves[3]{};
+	int64_t futility_probe_lmr_overlap = 0;
+	int64_t futility_probe_checking_moves = 0;
+	int64_t futility_probe_evals = 0;
 };

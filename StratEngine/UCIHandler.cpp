@@ -512,6 +512,22 @@ void UciHandler::cmd_go(std::string_view line)
 				     std::to_string(result.singular_verification_nodes));
 			}
 
+			// Futility cost probe (#498). One line per search, emitted only when the probe was
+			// compiled in and found something, so the shipped build's output is unchanged.
+			// Ordered so a reader gets the totals first and the depth histogram last.
+			if (result.futility_probe_evals != 0 || result.futility_probe_nodes[0] != 0) {
+				std::string probe = "info string futilityprobe evals " + std::to_string(result.futility_probe_evals) +
+				                    " nullcut " + std::to_string(result.futility_probe_null_cutoffs) + " lmrovl " +
+				                    std::to_string(result.futility_probe_lmr_overlap) + " givescheck " +
+				                    std::to_string(result.futility_probe_checking_moves);
+				for (int d = 0; d < 3; ++d)
+					probe +=
+					    " quiet" + std::to_string(d + 1) + " " + std::to_string(result.futility_probe_quiet_moves[d]);
+				for (int b = 0; b < SearchResult::FUTILITY_PROBE_DEPTH_BUCKETS; ++b)
+					probe += " d" + std::to_string(b + 1) + " " + std::to_string(result.futility_probe_nodes[b]);
+				send(probe);
+			}
+
 			const std::string bm = best.is_null() ? "0000" : MoveFormatter::ToUCI(best);
 			// Cleared BEFORE bestmove goes out, not after. `bestmove` is the only
 			// thing a client waits for, so it will send the next `position` the

@@ -69,6 +69,20 @@ inline constexpr bool kSingularExtensionsCompiled = STRAT_SINGULAR_EXTENSIONS !=
 #	define STRAT_SINGULAR_DEFAULT_ON 0
 #endif
 
+// Futility-pruning cost probe (#498, Stage 0 of #87). MEASUREMENT ONLY: it changes no search
+// decision, so a probe build must stay node-identical to the shipping one. It exists to answer
+// what a futility guard would cost before one is written, because pvs() computes no static
+// evaluation on an ordinary node and every futility variant would have to add one.
+//
+// Set by CMake: -DSTRAT_FUTILITY_PROBE=1 counts eligible nodes and moves; =2 also performs the
+// Evaluate() call a real guard would need, so the two builds separate the cost of deciding from
+// the cost of evaluating. The shipping engine leaves it at 0 and compiles none of it.
+#ifndef STRAT_FUTILITY_PROBE
+#	define STRAT_FUTILITY_PROBE 0
+#endif
+inline constexpr bool kFutilityProbeCompiled = STRAT_FUTILITY_PROBE != 0;
+inline constexpr bool kFutilityProbeEvaluates = STRAT_FUTILITY_PROBE >= 2;
+
 // Hand-aligned: this is the one tuning surface shared by the concrete
 // service configuration and the search implementation.
 struct SearchTuning {

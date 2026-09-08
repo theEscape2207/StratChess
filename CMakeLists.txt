@@ -360,6 +360,20 @@ if(STRAT_SINGULAR_EXTENSIONS)
     message(STATUS "Singular extensions: COMPILED IN AND ENABLED (experimental build)")
 endif()
 
+# Futility cost probe (#498, Stage 0 of #87). Measurement only -- it changes no search decision, so
+# every level must stay node-identical to the shipping build. Three levels, because the cost of
+# deciding and the cost of evaluating have to be separated:
+#   0  off, the shipping engine, no code compiled
+#   1  count eligible nodes and moves
+#   2  also make the Evaluate() call a real futility guard would need
+#   cmake --preset windows-clang-cl -DSTRAT_FUTILITY_PROBE=2
+set(STRAT_FUTILITY_PROBE 0 CACHE STRING "Futility cost probe level (#498): 0 off, 1 count, 2 count+evaluate")
+set_property(CACHE STRAT_FUTILITY_PROBE PROPERTY STRINGS 0 1 2)
+if(NOT STRAT_FUTILITY_PROBE STREQUAL "0")
+    target_compile_definitions(StratChessEvolved PRIVATE STRAT_FUTILITY_PROBE=${STRAT_FUTILITY_PROBE})
+    message(STATUS "Futility cost probe: LEVEL ${STRAT_FUTILITY_PROBE} (measurement build, not for play)")
+endif()
+
 include(CheckIPOSupported)
 check_ipo_supported(RESULT STRAT_IPO_SUPPORTED OUTPUT STRAT_IPO_ERROR)
 if(STRAT_IPO_SUPPORTED)

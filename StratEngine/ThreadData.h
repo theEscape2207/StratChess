@@ -96,6 +96,32 @@ struct ThreadData {
 	// verification from the deeper subtrees the extensions themselves produce.
 	int64_t singular_verification_nodes = 0;
 
+	// --- Futility cost probe (#498) ---
+	// Also last, and for the same reason as the singular block above. Written only from inside
+	// blocks the probe's compile-time gate discards, so a shipping build never touches them.
+	//
+	// Depth buckets are indexed min(depth, FUTILITY_PROBE_DEPTH_BUCKETS) - 1, so the last one is
+	// "that depth or deeper". depth >= 1 is guaranteed at the counting site: pvs() hands depth <= 0
+	// to quiescence() before reaching it.
+	static constexpr int FUTILITY_PROBE_DEPTH_BUCKETS = 8;
+	// Nodes where a reverse-futility guard could fire: non-PV, not in check, not an exclusion
+	// frame, beta outside the mate range.
+	int64_t futility_probe_nodes[FUTILITY_PROBE_DEPTH_BUCKETS]{};
+	// Of those, the ones a null-move cutoff already resolved -- the overlap a reverse-futility
+	// gain would have to come on top of.
+	int64_t futility_probe_null_cutoffs = 0;
+	// Moves a frontier-futility guard could skip, by PARENT depth 1, 2, 3: quiet, non-promotion,
+	// not the hash move, at an eligible node, and not the first legal move searched.
+	int64_t futility_probe_quiet_moves[3]{};
+	// Of those, how many LMR already reduces, and how many give check -- the guard would have to
+	// exclude the latter, so they are counted apart rather than netted out.
+	int64_t futility_probe_lmr_overlap = 0;
+	int64_t futility_probe_checking_moves = 0;
+	// Evaluate() calls the probe made, and a sink for their results. The sink exists only so the
+	// call cannot be optimised away as dead: nothing reads it back.
+	int64_t futility_probe_evals = 0;
+	int64_t futility_probe_eval_sink = 0;
+
 	ThreadData()
 	{
 		clear_killers();
@@ -126,6 +152,17 @@ struct ThreadData {
 		singular_verification_nodes = 0;
 	}
 
+	void clear_futility_probe() noexcept
+	{
+		std::memset(futility_probe_nodes, 0, sizeof(futility_probe_nodes));
+		std::memset(futility_probe_quiet_moves, 0, sizeof(futility_probe_quiet_moves));
+		futility_probe_null_cutoffs = 0;
+		futility_probe_lmr_overlap = 0;
+		futility_probe_checking_moves = 0;
+		futility_probe_evals = 0;
+		futility_probe_eval_sink = 0;
+	}
+
 	// Resets everything that must not leak into a new game. History is
 	// deliberately aged, never cleared, WITHIN a game (see the class comment
 	// above) -- this is what draws that line at the game boundary instead.
@@ -147,6 +184,7 @@ struct ThreadData {
 		clear_null_move_flags();
 		clear_excluded_moves();
 		clear_singular_telemetry();
+		clear_futility_probe();
 		clear_history();
 	}
 
