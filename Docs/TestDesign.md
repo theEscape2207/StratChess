@@ -655,6 +655,15 @@ name starts with `mate`** (`mate_in_1`, `mate_in_2`, `mate_in_3`, `mate_in_4`). 
 in `StratChessTests/SuitePolicyTests.cpp` (`[suite_policy]`) — a single mate-category
 failure fails the suite even if the overall pass rate is still above 90%.
 
+**A position's `depth` is calibrated against the search, and pruning can move it.** The invariant is
+"the target depth at which this engine finds the move", not a fixed property of the position, so a
+pruning heuristic that trades shallow accuracy for depth can push a case one ply out. WAC-001 is the
+worked example: reverse futility pruning (#87) costs exactly one ply on it — found at depth 6 and
+above, missed at 5 — so its `depth` is 6. **Raising a depth is only legitimate when the move is still
+found reliably just above the old one, and the cost is bounded and understood.** A case that needs
+two or more extra plies, or that fails at every depth, is a search regression wearing a calibration
+costume: leave the depth alone and fix the search.
+
 **Growing the suite**: new candidates never go straight into `tactical_test_cases.json`.
 Stage them in `Tests/tactical_staging.json` (same schema, transient — never committed),
 run `StratChessEvolved.exe tactical test tactical_staging.json` from `Tests/`, and

@@ -181,8 +181,11 @@ Step 1 passed decisively: **wall clock -38.5%** at fixed depth 12, `Threads=1` (
 median over 9 interleaved rounds, range -41.5 to -37.2%), main nodes 13,004,919 → 9,229,827 and
 quiescence nodes 4,691,063 → 2,620,683. Node identity at level 1 is IDENTICAL against `origin/main`
 over 90 compared lines. All 626 fast-tier tests pass in the shipped configuration; with the feature
-forced on, the only failure is the test that asserts the shipped configuration does not prune, and
-the 36-position tactical suite still passes. Every one of the six guards was falsified by removing
+forced on, the only failure is the test that asserts the shipped configuration does not prune.
+**The claim originally made here — that the 36-position tactical suite also passes with the feature
+on — was wrong and unverified**: WAC-001 (mate in 2) is missed at its then-target depth of 5, a
+mate-category failure and therefore fatal to the suite. It surfaced when the feature shipped; see
+the strength-result section below. Every one of the six guards was falsified by removing
 it and watching the suite fail.
 
 The search review returned LGTM with no correctness defect. Its non-blocking observations, parked

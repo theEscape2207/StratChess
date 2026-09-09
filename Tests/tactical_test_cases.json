@@ -59,10 +59,10 @@
     {
       "id": "WAC-001",
       "category": "mate_in_2",
-      "description": "WAC.001 Qg6: queen sac decoy, Nxg6# follows",
+      "description": "WAC.001 Qg6: queen sac decoy, Nxg6# follows. Depth 6 -- reverse futility pruning costs exactly one ply here",
       "fen": "2rr3k/pp3pp1/1nnqbN1p/3pN3/2pP4/2P3Q1/PPB4P/R4RK1 w - - 0 1",
       "best_moves": ["g3g6"],
-      "depth": 5
+      "depth": 6
     },
     {
       "id": "WAC-004",

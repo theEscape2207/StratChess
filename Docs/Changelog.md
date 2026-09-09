@@ -43,6 +43,16 @@ is no longer a configuration in which the guard is meant to be inert.
 Margin `100 * depth` and band `depth <= 3` ship exactly as measured. Neither was swept, and a sweep
 is its own experiment against this row rather than a refinement of it.
 
+**The tactical suite found a cost the earlier entry missed.** With the guard on, WAC-001 — a mate in
+2 — is missed at depth 5 and found at depth 6 and above, so the suite's `depth` for that position is
+now 6. The delay is exactly one ply: verified at depths 5 through 9, and the move is found reliably
+at every depth above the old target. A local sweep places the boundary precisely — band `<= 1` or
+margin `>= 200` keeps depth 5 green, while band `<= 2`, band `<= 3` and margin `150` do not — so this
+is the aggressiveness of the shipped parameters, not a defect in the guard. Both alternatives prune
+strictly less than what the lab measured, which is why neither was adopted here: the shipped binary
+is the measured one. Which positions and depths the guard costs, and whether a different margin buys
+them back without giving up the gain, is its own investigation.
+
 ## 2026-09-08 — Reverse futility pruning, behind its own gate (#87 Stage 1)
 
 A shallow non-PV node whose static evaluation stands a margin above beta is now reported as a
@@ -76,7 +86,13 @@ result, and the SPRT it still needs has not been run.
 the feature in with the runtime flag off, `2` also starts with it on. Level 1 exists because "the
 flag off is node-identical" is a claim about a build that *has* the branch and does not take it —
 `Compare-SearchEquivalence.ps1` reports IDENTICAL against `origin/main` across 90 compared lines, six
-positions at depth 12. The whole 36-position tactical suite also passes with the feature **on**.
+positions at depth 12. The whole 36-position tactical suite passes in the shipped configuration.
+
+**Correction (2026-09-09):** this entry originally claimed the tactical suite also passed with the
+feature **on**. It did not. With the guard enabled, WAC-001 — a mate in 2 — fails at its then-target
+depth of 5, which is a mate-category failure and therefore fatal to the suite. The claim was not
+verified when it was written. See the entry above for what the failure actually is and how it was
+resolved.
 
 ## 2026-09-08 — Futility cost probe (#498)
 
