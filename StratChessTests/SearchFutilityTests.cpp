@@ -1,4 +1,4 @@
-// SearchFutilityTests.cpp — reverse futility pruning (#87, Stage 1).
+// SearchFutilityTests.cpp — reverse futility pruning (#87).
 //
 // Two groups. The eligibility tests move one guard at a time off a baseline that is known to
 // pass, so a failure names the guard that broke; removing any single guard from
@@ -6,7 +6,8 @@
 // whole pvs() node and check what the guard is allowed to do once it fires: return beta, search
 // no children, and store nothing.
 //
-// The feature ships disabled, so every case here turns it on first.
+// The feature ships enabled. Cases still set the flag explicitly rather than leaning on the
+// default, so each one names the configuration it is asserting about.
 
 #include <catch2/catch_test_macros.hpp>
 #include "SearchTestFixture.h"
@@ -42,12 +43,19 @@ namespace {
 // Eligibility
 // ============================================================================
 
-TEST_CASE("Reverse futility: shipped configuration never prunes", "[search][futility]")
+TEST_CASE("Reverse futility: shipped configuration prunes", "[search][futility]")
 {
 	AIPerlexTestFixture fix(kBaselineFen);
 
-	// No set_reverse_futility(true): this is what the shipping engine's tuning looks like, and a
-	// build that compiled the feature in must still leave the search alone until it is asked.
+	// No set_reverse_futility call: this is what the shipping engine's tuning looks like.
+	CHECK(eligible(fix));
+}
+
+TEST_CASE("Reverse futility: the runtime flag off makes a node ineligible", "[search][futility]")
+{
+	AIPerlexTestFixture fix(kBaselineFen);
+	fix.set_reverse_futility(false);
+
 	CHECK_FALSE(eligible(fix));
 }
 

@@ -22,6 +22,27 @@ Newest first.
 
 ---
 
+## 2026-09-09 — Reverse futility pruning ships (#87)
+
+The CI strength lab measured the feature at **+44.62 +/- 3.66 Elo** against its merge base `12d5e19`
+— 19,980 games at 10+0.1, GCC/Linux both sides, `Threads=1`, run `34288048348`, all 18 shards
+favouring the candidate on score. That is the strength result the gate below was waiting for, so the
+gate is gone: `STRAT_REVERSE_FUTILITY`, `kReverseFutilityCompiled` and
+`STRAT_REVERSE_FUTILITY_DEFAULT_ON` are all removed and the guard is unconditional.
+
+What survives is `SearchTuning::reverse_futility_enabled`, now defaulting to `true`. It is not
+reachable over UCI; it exists so a test can turn the guard off and search the same node normally,
+which is what several cases in `SearchFutilityTests.cpp` do. The test target no longer needs a
+compile definition to see the feature.
+
+Removing the three-level option also removes the level-1 build, which was the only thing
+`Compare-SearchEquivalence.ps1` could compare a disabled-but-compiled-in binary against. That check
+has served its purpose: it proved the guard added no behaviour before it was switched on, and there
+is no longer a configuration in which the guard is meant to be inert.
+
+Margin `100 * depth` and band `depth <= 3` ship exactly as measured. Neither was swept, and a sweep
+is its own experiment against this row rather than a refinement of it.
+
 ## 2026-09-08 — Reverse futility pruning, behind its own gate (#87 Stage 1)
 
 A shallow non-PV node whose static evaluation stands a margin above beta is now reported as a

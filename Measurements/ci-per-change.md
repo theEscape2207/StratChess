@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-09-09 | d51803a (reverse futility pruning enabled, #87) | 12d5e19 | 19980 | 10+0.1 | **+44.62 +/- 3.66** | gain |
 | 2026-09-05 | 86877f7 (minor-piece outposts, #112) | 9708c65 | 19980 | 10+0.1 | **+8.05 +/- 3.63** | gain |
 | 2026-09-03 | 0c64b7f (EXPERIMENT: middlegame `ISOLATED_PAWN_PENALTY` suppressed on the king's three files, #460) | 65e3f76 | 19980 | 10+0.1 | **+0.23 +/- 3.62** | no effect |
 | 2026-09-03 | e73d3f2 (ABLATION: `eval_castling` zeroed, #460) | 65e3f76 | 19980 | 10+0.1 | **-9.98 +/- 3.73** | regression |
@@ -29,6 +30,16 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-09-09 -- d51803a (reverse futility pruning enabled, #87) (19980 games)
+
+**The gate for the feature, and it ships.** 18 shards x 555 pairs, pooled Ptnml(0-2) [531, 1757, 3614, 2805, 1283], score 56.39%, run `34288048348`, 3 h 05 min wall-clock. 95% interval **[+40.96, +48.28]** -- the +/- 3.66 is the 95% half-width, so the standard error behind it is ~1.87 and the estimate stands about 24 standard errors clear of zero. **All 18 shards favour the candidate on score**, from 53.96% to 58.56%; there is no shard-level disagreement to weigh. All 18 green, so the workflow's fatal check found no time loss, illegal move played, disconnect or stall in any batch.
+
+**Both sides were built from a plain `cmake -DCMAKE_BUILD_TYPE=Release`, so the comparison rests on the compile-time gate.** The candidate branch's only commit flipped `STRAT_REVERSE_FUTILITY` to 2; the build log confirms `Reverse futility pruning: LEVEL 2` on the candidate and no such line on `12d5e19`, which is the merge base and therefore level 0. A run dispatched on `main` would have compiled the feature out of both binaries and returned a null test.
+
+**What it settles.** That the candidate parameters -- margin `100 * depth`, band `depth <= 3` -- are worth shipping as they stand, which is what PR #500 deliberately left open. It also converts the earlier -38.5% wall clock at fixed depth 12 from a precondition into a paid-off one: the smaller tree buys real strength rather than trading accuracy for speed.
+
+**What it does not settle.** The margin and the depth band, held fixed here so the result would be attributable to the feature rather than to a sweep. Nor whether the zugzwang floor inherited from null move is right for this guard, which hands the opponent no free move -- a softer floor is its own experiment. And the figure includes the duplicated `has_two_non_pawn_pieces()` call on nodes eligible for both guards, so a later hoist can only move it upward.
 
 ### 2026-09-05 -- 86877f7 (minor-piece outposts, #112) (19980 games)
 
