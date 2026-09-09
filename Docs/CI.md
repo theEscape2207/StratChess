@@ -79,10 +79,10 @@ deps entry costs a fresh clone, turning ccache net negative while every job stil
 **No CI job sets `base_dir` or `hash_dir`, and `Test-WorkflowCcachePaths.ps1` fails the run if one
 ever does.** Both are local-workflow levers for cross-*worktree* hits (#510, #511); CI has no such
 problem, because every job builds at a stable path and restores an entry produced at that same path,
-so cached depfile paths and embedded CodeView paths match the consuming tree by construction. Setting
-either to chase a cross-job hit rate would trade that guarantee for a hazard whose failure mode is a
-stale artifact on a green build — which is why the tripwire is an assertion rather than this
-paragraph.
+so the compile command lines — and the paths embedded in the objects they produce — match the
+consuming tree by construction. Setting either to chase a cross-job hit rate would trade that
+guarantee for a hazard whose failure mode is a stale artifact on a green build — which is why the
+tripwire is an assertion rather than this paragraph.
 
 Cache **scope** makes much of that churn avoidable. A run on a PR writes its six entries to
 `refs/pull/N/merge`, and `actions/cache` reads only from the run's own ref or from the default
