@@ -22,6 +22,38 @@ Newest first.
 
 ---
 
+## 2026-09-10 — ccache `base_dir` probed and rejected; a hit erases Ninja's dependency record (#510)
+
+`base_dir` is not adopted, and the probe that settled it turned up a larger defect in the wiring
+#515 had just landed. Both are recorded in `Docs/Workflow.md` → Compiler cache; the defect is #519.
+
+Three findings against `base_dir`, on ccache 4.14, two worktrees under `.claude/worktrees/`:
+
+- **It delivers nothing alone.** The working directory stays in the hash, so cross-worktree hits are
+  0 of 24 with `base_dir` set and 24 of 24 once `hash_dir = false` joins it (12.7 s → 6.7 s). #510
+  and #511 are therefore one decision, not the independent pair the epic assumed.
+- **Its `/FI` rewrite is wrong for clang-cl.** ccache rewrites the forced include relative to the
+  source file's directory; clang-cl resolves it against the working directory and `-I` paths. The
+  translation units under `StratEngine/Tests/` and `StratEngine/Utils/` get `/FI..\Compat.h`, which
+  resolves to nothing — 6 of 30 fail preprocessing and are never cached.
+- **The depfile 2×2 the issue specified is moot.** There is no cached dependency file at all.
+
+That last one is the defect. CMake passes the depfile flags as `-clang:-MD -clang:-MF<path>` and
+ccache's parser does not decode the `-clang:` prefix, so it stores `embedded entry #0 .o` and nothing
+else. Every hit therefore replays the object and leaves Ninja with an empty dependency record, with
+no diagnostic — reproduced in one worktree with no `base_dir`, i.e. the shipped configuration. Fresh
+tree, fresh cache: changing `BISHOP_PAIR_BONUS_MG` from 30 to 77 recompiled 11 translation units and
+changed the executable; reverting it served 11 hits; making the *same* edit again recompiled nothing,
+reported `ninja: no work to do` and left the executable at its baseline. `build.ps1` fails such a
+tree — `Assert-ArtifactFresh` exits 1 — so the sanctioned path is loud rather than wrong, but the
+failure is stuck until the build directory is deleted, and `ninja` driven directly skips the check.
+
+Step 1 of the probe cleared the blocking question it was there to answer: the `/FI` header reaches
+the dependency channel by content like any other include, so the speculative wrong-hit class does not
+exist. `Docs/CI.md` records separately that CI is unaffected (#514).
+
+---
+
 ## 2026-09-10 — ccache fronts the local clang-cl build, with a self-repairing launcher lifecycle (#515)
 
 `build.ps1` now compiles the clang-cl presets through ccache when it is installed. Measured on a full

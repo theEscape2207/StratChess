@@ -515,8 +515,32 @@ the workflows have their own ccache setup with their own keys (`Docs/CI.md`).
 **What actually hits.** `$in` and `$INCLUDES` reach the compiler as absolute paths and are hashed, so
 reuse is within one source path, not across worktrees: deleting `build/`, reconfiguring, switching
 branches and rebuilding, or bisecting all come back warm, while a **new worktree's first build is a
-full cold compile** like today. Sharing across worktrees needs `base_dir`, which is a separate
-question (#516).
+full cold compile** like today.
+
+**A hit costs the object's dependency record, and that is a live defect (#519).** ccache never stores
+a dependency file for these command lines — CMake passes the flags as `-clang:-MD -clang:-MF<path>`
+and ccache's parser does not decode the `-clang:` prefix — so a hit replays the object and nothing
+else. Ninja is left with no dependencies for that object and says nothing. A later header change then
+does not rebuild it. `build.ps1` catches the result: `Assert-ArtifactFresh` compares the executable
+against the newest source and exits 1, so the sanctioned path fails loudly rather than handing over a
+wrong binary. But the failure is **stuck** — nothing will rebuild the object — and the cure is to
+delete the build directory. Driving `ninja` or `cmake --build` yourself skips the check entirely.
+
+**Sharing across worktrees via `base_dir` was probed and rejected** (#510, ccache 4.14). Three
+findings, any one of which would be enough:
+
+- **It delivers nothing on its own.** The working directory stays in the hash, so two worktrees still
+  miss: 0 of 24 across worktrees with `base_dir` alone, 24 of 24 once `hash_dir = false` joins it.
+  That makes it one decision with #511, not two, and #511's lever is what lets a hit carry another
+  tree's absolute paths into `/Z7` CodeView records.
+- **Its `/FI` rewrite is wrong for clang-cl.** ccache rewrites the forced include relative to the
+  source file's directory; clang-cl resolves it against the working directory and `-I` paths. The
+  translation units under `StratEngine/Tests/` and `StratEngine/Utils/` get `/FI..\Compat.h`, which
+  resolves to nothing, so 6 of 30 fail preprocessing and are never cached at all.
+- **It cannot fix the dependency record**, because there is no cached dependency file to carry paths
+  in — see #519 above.
+
+Upstream skips its entire `base_dir` suite on Windows, so none of this had a regression net.
 
 Three things about it are non-obvious:
 
