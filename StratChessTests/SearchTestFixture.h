@@ -103,10 +103,15 @@ class AIPerlexTestFixture {
 	// The PV written by the emergency path now lives in ai->td_.pv_table.
 	bool emergency(State& s) const { return ai->handle_empty_move_emergency(ai->td_, s); }
 
+	// pvs() establishes the zugzwang floor once per node and hands it to both pruning guards, so
+	// the fixture computes it from the same board the way the search does. That keeps the material
+	// cases below driven by the position rather than by a flag the test passes in.
 	bool try_null_move(int depth, int beta, int ply, bool is_pv_node, bool in_check) const
 	{
-		return ai->should_try_null_move(ai->td_, depth, beta, ply, is_pv_node, in_check);
+		return ai->should_try_null_move(ai->td_, depth, beta, ply, is_pv_node, in_check, zugzwang_safe());
 	}
+
+	bool zugzwang_safe() const { return AIPerplex::has_two_non_pawn_pieces(ai->td_.board); }
 
 	// Pokes the consecutive-null-move guard array inside the private td_
 	// member. Needed because td_ is private on AIPerplex — only
@@ -141,7 +146,7 @@ class AIPerlexTestFixture {
 	// Every guard except the static evaluation, which is what pvs() calls before evaluating.
 	bool reverse_futility_eligible(int depth, int beta, bool is_pv_node, bool in_check, bool is_exclusion_frame) const
 	{
-		return ai->reverse_futility_eligible(ai->td_, depth, beta, is_pv_node, in_check, is_exclusion_frame);
+		return ai->reverse_futility_eligible(depth, beta, is_pv_node, in_check, is_exclusion_frame, zugzwang_safe());
 	}
 
 	// The same static evaluation the guard compares against beta, so a test can compute the exact

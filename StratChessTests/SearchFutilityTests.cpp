@@ -185,6 +185,66 @@ TEST_CASE("Reverse futility: a stalemate node returns beta, not a draw score", "
 	CHECK(fix.search_node(/*depth=*/1, /*ply=*/1, /*alpha=*/-1000, kBeta, /*is_pv_node=*/false) == kBeta);
 }
 
+// ============================================================================
+// What the fail-hard return buys the rest of the search
+// ============================================================================
+// Both cases below pin consequences of returning beta rather than the static evaluation. They
+// are here so a later fail-soft conversion -- returning eval - margin * depth, which is what
+// several engines do -- fails loudly instead of quietly changing what the surrounding search
+// may conclude.
+
+TEST_CASE("Reverse futility: a cut null-move child cannot fail high", "[search][futility]")
+{
+	AIPerlexTestFixture fix(kWinningFen);
+	fix.set_reverse_futility(true);
+	fix.arm_clock();
+
+	// The exact frame null-move pruning opens: -pvs(td, ..., -beta, -beta + 1) for a parent at
+	// alpha 0, beta 1. The child's own beta is therefore 0.
+	constexpr int kParentBeta = 1;
+	constexpr int kChildAlpha = -kParentBeta;
+	constexpr int kChildBeta = -kParentBeta + 1;
+	REQUIRE(fix.static_eval() - 100 >= kChildBeta); // the cutoff does fire here
+
+	const int child = fix.search_node(/*depth=*/1, /*ply=*/2, kChildAlpha, kChildBeta, /*is_pv_node=*/false);
+	const int null_score = -child;
+
+	// Fail-hard makes this exactly beta - 1, one below the cutoff that would otherwise reach
+	// tt.store(... LOWER, CUT_NODE). A fail-soft return hands back the evaluation instead, and
+	// this position's is a queen and a bishop clear of the window.
+	CHECK(child == kChildBeta);
+	CHECK(null_score == kParentBeta - 1);
+	CHECK(null_score < kParentBeta);
+}
+
+TEST_CASE("Reverse futility: cut children leave no killer or history behind", "[search][futility]")
+{
+	AIPerlexTestFixture fix(kBaselineFen);
+	fix.set_reverse_futility(true);
+	fix.arm_clock();
+
+	REQUIRE_FALSE(fix.has_killer(1));
+	REQUIRE(fix.history_is_clear());
+
+	// A window far above anything this quiet position can reach, so nothing the move loop
+	// searches can fail high either. Every child is a depth-1 node whose evaluation clears
+	// -kAlpha by more than the margin, so every child is cut.
+	constexpr int kAlpha = 5000;
+	const int score = fix.search_node(/*depth=*/2, /*ply=*/1, kAlpha, kAlpha + 1, /*is_pv_node=*/false);
+
+	// beta arrives from each cut child as exactly this node's alpha: no improvement, so no
+	// cutoff, and the two move-ordering tables a cutoff would have written stay untouched.
+	CHECK(score == kAlpha);
+	CHECK_FALSE(fix.has_killer(1));
+	CHECK_FALSE(fix.has_killer(2));
+	CHECK(fix.history_is_clear());
+
+	// And the node cannot claim a lower bound it never searched for.
+	const auto entry = fix.probe_tt(/*ply=*/1);
+	if (entry.has_value())
+		CHECK(entry->bound != BoundType::LOWER);
+}
+
 TEST_CASE("Reverse futility: a static evaluation inside the margin does not cut", "[search][futility]")
 {
 	AIPerlexTestFixture fix(kWinningFen);

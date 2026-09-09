@@ -293,11 +293,16 @@ class AIPerplex final {
 	RejectionReason assess_iteration_quality(const IterationMetrics& metrics, const SearchState& state) const;
 	bool should_stop_early(int depth, int score, int pv_length) const;    // Early termination checks
 	bool handle_empty_move_emergency(ThreadData& td, SearchState& state); // Emergency handling
-	bool should_try_null_move(const ThreadData& td, int depth, int beta, int ply, bool is_pv_node, bool in_check) const;
+	// The zugzwang floor null-move pruning and reverse futility share: below two non-pawn pieces,
+	// "the side to move is not obliged to worsen its position" stops being true, and both
+	// heuristics rest on it. pvs() establishes it once per node and hands it to both guards.
+	static bool has_two_non_pawn_pieces(const Board& board);
+	bool should_try_null_move(const ThreadData& td, int depth, int beta, int ply, bool is_pv_node, bool in_check,
+	                          bool zugzwang_safe) const;
 	// Every reverse-futility guard except the static evaluation itself, so pvs() only pays for
 	// that evaluation on a node a cutoff could actually apply to.
-	bool reverse_futility_eligible(const ThreadData& td, int depth, int beta, bool is_pv_node, bool in_check,
-	                               bool is_exclusion_frame) const;
+	bool reverse_futility_eligible(int depth, int beta, bool is_pv_node, bool in_check, bool is_exclusion_frame,
+	                               bool zugzwang_safe) const;
 
 	// Logging helpers
 	void log_iteration_eval(const IterationMetrics& metrics, const PVTable& pv_table) const;
