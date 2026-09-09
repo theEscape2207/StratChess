@@ -535,6 +535,9 @@ Three things about it are non-obvious:
 - **`CCACHE_COMPILERCHECK=content` must stay a value ccache recognises.** An unknown one is run as a
   *command*: it fails once per compile, ccache exits 0, and the build stays green while caching
   nothing — 42 s instead of 12 s, with nothing said anywhere.
+- **`CCACHE_DISABLE` is yours.** `build.ps1` sets it for the configure step alone, because CMake's
+  per-configure `TryCompile-<random>` probes leave entries nothing can ever hit, and restores
+  whatever you had. Export it and the whole build honours it.
 
 ---
 
