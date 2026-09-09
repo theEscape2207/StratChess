@@ -406,8 +406,10 @@ intervals.
 One mundane explanation must be excluded before any other: the ±150 cp contested filter selects on
 the engine's own score, and in the opening that score is least informative, so the filter admits
 nearly every opening move while filtering the endgame hard. #481 tracks it; step 1 there is the
-filter-independent re-run that settles it. **#484** is the work that turns this into an attribution —
-search or evaluation — rather than a rate.
+filter-independent re-run that settles it. #484 added a lossless export for later diagnostic replay;
+it did not make that replay a search-versus-evaluation classifier. A move improving with additional
+search establishes budget sensitivity, while one that does not remains unresolved. Attribution needs
+separate evidence for a specific mechanism.
 
 **T3. Quote the blunder rates; the ACPL means carry a floor of unmeasured size.** External ACPL is 6×
 to 9× the `noise` column, but that column is a lower bound, so the ratio is an *upper* bound on the
