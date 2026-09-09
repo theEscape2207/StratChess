@@ -701,8 +701,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	}
 
 	// The zugzwang floor both pruning guards below rest on, established once per node rather than
-	// once per guard. The two cheap preconditions lead so a node neither guard can reach -- a PV
-	// node or one in check -- never pays for the popcount.
+	// once per guard. The two preconditions lead only as an ordering optimisation, so a PV node or
+	// one in check never pays for the popcount; both guards still test them for themselves. A node
+	// that clears those two but bails on a later guard -- an exclusion frame, a mate-range beta, a
+	// null-move child -- now pays a popcount it used to short-circuit past.
 	const bool zugzwang_safe = !is_pv_node && !in_check && has_two_non_pawn_pieces(td.board);
 
 	// Reverse futility pruning (#87). A shallow non-PV node whose static evaluation already stands

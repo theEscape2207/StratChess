@@ -103,6 +103,22 @@ TEST_CASE("Reverse futility: the depth band is a closed interval", "[search][fut
 	CHECK_FALSE(eligible(fix, /*depth=*/4));
 }
 
+TEST_CASE("Reverse futility: the band abuts null move's floor", "[search][futility]")
+{
+	AIPerlexTestFixture fix(kBaselineFen);
+	fix.set_reverse_futility(true);
+	fix.set_reverse_futility_max_depth(3);
+	fix.set_null_move_min_depth(3);
+
+	// The two guards share a zugzwang floor that pvs() establishes once, ahead of both. That
+	// costs nothing extra only while the bands abut: the first depth above the futility band is
+	// already inside null move's, so no depth is left where the floor is computed for a node
+	// neither guard can use. Moving either knob opens such a gap.
+	CHECK(eligible(fix, /*depth=*/3));
+	CHECK_FALSE(eligible(fix, /*depth=*/4));
+	CHECK(fix.try_null_move(/*depth=*/4, /*beta=*/1, /*ply=*/1, /*is_pv_node=*/false, /*in_check=*/false));
+}
+
 TEST_CASE("Reverse futility: a mate-range beta is never pruned", "[search][futility]")
 {
 	AIPerlexTestFixture fix(kBaselineFen);
@@ -199,8 +215,9 @@ TEST_CASE("Reverse futility: a cut null-move child cannot fail high", "[search][
 	fix.set_reverse_futility(true);
 	fix.arm_clock();
 
-	// The exact frame null-move pruning opens: -pvs(td, ..., -beta, -beta + 1) for a parent at
-	// alpha 0, beta 1. The child's own beta is therefore 0.
+	// The exact window null-move pruning opens: -pvs(td, ..., -beta, -beta + 1) for a parent at
+	// alpha 0, beta 1. The child's own beta is therefore 0. The position is this fixture's rather
+	// than a real null-move child's, which changes nothing the guard reads.
 	constexpr int kParentBeta = 1;
 	constexpr int kChildAlpha = -kParentBeta;
 	constexpr int kChildBeta = -kParentBeta + 1;
@@ -228,21 +245,28 @@ TEST_CASE("Reverse futility: cut children leave no killer or history behind", "[
 
 	// A window far above anything this quiet position can reach, so nothing the move loop
 	// searches can fail high either. Every child is a depth-1 node whose evaluation clears
-	// -kAlpha by more than the margin, so every child is cut.
+	// -kAlpha by more than the margin, so every child is cut -- and no move here gives check,
+	// which is the one thing that would make a child search normally instead.
 	constexpr int kAlpha = 5000;
 	const int score = fix.search_node(/*depth=*/2, /*ply=*/1, kAlpha, kAlpha + 1, /*is_pv_node=*/false);
 
-	// beta arrives from each cut child as exactly this node's alpha: no improvement, so no
-	// cutoff, and the two move-ordering tables a cutoff would have written stay untouched.
+	// beta arrives from each cut child as exactly this node's alpha. This is the assertion that
+	// discriminates: a fail-soft child would hand back its own evaluation, which negates to a few
+	// hundred centipawns at this node rather than kAlpha.
 	CHECK(score == kAlpha);
+
+	// No improvement, so no cutoff, and the two move-ordering tables a cutoff would have written
+	// stay untouched. Both hold under either return convention at this window -- they pin the
+	// property rather than falsify a change to it.
 	CHECK_FALSE(fix.has_killer(1));
 	CHECK_FALSE(fix.has_killer(2));
 	CHECK(fix.history_is_clear());
 
-	// And the node cannot claim a lower bound it never searched for.
+	// And the node stores what it actually established: every move failed low, so an upper bound,
+	// never the lower bound a cutoff would have written.
 	const auto entry = fix.probe_tt(/*ply=*/1);
-	if (entry.has_value())
-		CHECK(entry->bound != BoundType::LOWER);
+	REQUIRE(entry.has_value());
+	CHECK(entry->bound == BoundType::UPPER);
 }
 
 TEST_CASE("Reverse futility: a static evaluation inside the margin does not cut", "[search][futility]")
