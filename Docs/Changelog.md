@@ -22,6 +22,72 @@ Newest first.
 
 ---
 
+## 2026-09-10 — ccache fronts the local clang-cl build, with a self-repairing launcher lifecycle (#515)
+
+`build.ps1` now compiles the clang-cl presets through ccache when it is installed. Measured on a full
+`all` build of this branch: **44.1 s** with ccache off PATH, **12.5 s** on a wiped tree against a warm
+cache. The wiring itself is one cache variable — CMake already emits `${LAUNCHER}` into every compile
+edge — so the payoff needed nothing from #510 or #511, which the epic had framed as prerequisites.
+They are upside (cross-worktree hits), not gates.
+
+The work is the lifecycle. A tree records the launcher decision at configure time and `build.ps1`
+configures only when `CMakeCache.txt` is missing, so installing ccache never reached an existing tree
+— it silently kept not caching, which is the state this repository was in — and removing ccache would
+leave a configured tree failing on its first compile edge. `Docs/CI.md` forbids a `build.ps1`
+parameter for this, so the transition is detected: every build compares tree against machine and
+reconfigures in place when they disagree, saying why. Ninja then rebuilds once, because the launcher
+is part of every command line — 12 s warm, not 45 s. All four states are covered as a pure decision
+function in `build.ps1 -SelfTest`, and both repairs were exercised end to end.
+
+The launcher is recorded as the **bare string `ccache`**, never a resolved path. `Get-SharedDepsCache`
+— the function `Get-SharedCompilerCache` is modelled on — returns a resolved absolute path, so
+copying it faithfully was the way to get this wrong: the ccache install is a versioned WinGet package
+directory with no shim, and a 4.14 → 4.15 upgrade would strand every configured tree on a path that
+no longer exists.
+
+Three smaller findings, all measured rather than assumed:
+
+- `CCACHE_COMPILERCHECK=content` costs +1.4 s of a 12 s warm build — ccache has no inode cache on
+  Windows, so hashing the compiler is not amortised across the 121 invocations. Taken anyway, because
+  `mtime` can serve objects from a compiler replaced in place.
+- An **invalid** `compiler_check` value is far worse than any valid one: ccache runs an unrecognised
+  value as a *command*, fails it once per compile, exits 0 and caches nothing — 42 s with no error
+  anywhere the build shows. Same silent-degradation class as the clang-cl flag mistranslations.
+- `CCACHE_DISABLE=1` around the configure call alone: CMake's `TryCompile-<random>` directories are
+  named freshly each time, so their ~14 entries could never be hit again (+0 cache files with it set,
+  +2 without).
+
+`windows-msvc` is deliberately not wired — conservatism plus 78.5 MB per generation, not a
+correctness requirement, since #511's MSVC mangling hazard is cross-worktree only. CI is untouched:
+`Get-SharedCompilerCache` returns `$null` under `GITHUB_ACTIONS` and the workflows keep their own
+ccache setup and keys. Cap is `CCACHE_MAXSIZE=1G`, roughly 18 generations of the two presets.
+
+Correctness was gated on artifacts, not on wall time: SHA-256 over every `.obj`/`.lib`/`.exe` of a
+cache-served build matches a build configured with no launcher, 112 of 112. The three excluded files
+are CMake's own configure probes, which are regenerated per configure and reproducible in neither
+build.
+
+Cross-agent review found one real ownership bug and it is fixed here: reconciling on *whether* a
+launcher was configured, rather than on which one, meant that removing ccache from PATH would have
+unset a developer's own `sccache` or wrapper. The comparison is now by value — only the exact string
+`ccache` is owned, anything else is reported once and left alone — with both foreign cases in
+`-SelfTest` and exercised end to end. Three smaller ones with it: discovery requires
+`-CommandType Application`, since Ninja runs the launcher directly and a PowerShell alias or function
+named `ccache` would satisfy a bare `Get-Command` and then fail on every edge; a caller's
+`CCACHE_DISABLE` is restored rather than deleted, verified by a build that stays uncached at 43.9 s;
+and the reuse claim is narrowed to what was measured — a wiped or reconfigured tree at the same
+source path, **not** a new worktree, whose absolute `$in` and `$INCLUDES` paths still miss.
+
+The review's fourth point, that `CCACHE_DISABLE` misses the CMake regeneration Ninja launches from
+inside `cmake --build`, did not survive measurement: CMake keeps `try_compile` results in its cache,
+so a touched `CMakeLists.txt` regenerates with 0 new probe directories and 0 new ccache files. Every
+configure that actually runs the probes goes through the wrapped path.
+
+`.claude/plans/ccache-launcher-lifecycle.md` is deleted with this PR. Every durable item it held now
+lives in `build.ps1` comments, in `Docs/Workflow.md` → Compiler cache, or in this entry.
+
+---
+
 ## 2026-09-09 — Reverse futility follow-ups: one zugzwang floor, two fail-hard regression tests (#87)
 
 The two `search-reviewer` observations deliberately held out of the shipping PR, so that the binary

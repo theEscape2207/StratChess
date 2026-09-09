@@ -30,7 +30,8 @@
 
 .PARAMETER SelfTest
     Run build-wrapper regression tests without configuring or building. Covers the
-    processor-architecture fallback and the artifact-freshness verdict.
+    processor-architecture fallback, the artifact-freshness verdict and the ccache
+    launcher lifecycle.
 
 .NOTES
     After building, each artifact is checked against the newest source the build
@@ -135,6 +136,33 @@ function Assert-ArtifactFresh {
     Write-Host "         Rebuild it with: .\build.ps1 all" -ForegroundColor Yellow
 }
 
+# Which way an already-configured build tree has to move to match this machine. A tree
+# records the launcher decision at configure time and this script reconfigures only when
+# there is no cache at all, so neither mismatch repairs itself:
+#
+#                       | PATH has ccache | PATH lacks ccache
+#   cache says ccache   | steady state    | hard failure at the first compile edge
+#   cache says none     | silent no-op    | steady state
+#
+# A launcher this script did not set is a third case, not a fourth cell: something else
+# configured that tree, so it is reported and left exactly as it is. Repairing by value --
+# 'ccache' and nothing else -- is what keeps an unset from deleting a developer's own
+# sccache or compiler wrapper.
+#
+# The launcher is recorded as the bare string 'ccache', never a resolved path, so a ccache
+# upgrade that moves the executable -- the WinGet package directory is versioned, with no
+# shim -- stays inside the left column rather than leaving a stored path that is gone.
+#
+# Kept here, beside Resolve-ProcessorArchitecture, because -SelfTest runs before the ccache
+# functions further down are defined.
+function Get-CompilerLauncherAction {
+    param([AllowEmptyString()][string]$CachedLauncher, [bool]$LauncherWanted)
+
+    if ($CachedLauncher -eq 'ccache') { return $LauncherWanted ? 'none' : 'remove' }
+    if ($CachedLauncher) { return $LauncherWanted ? 'foreign' : 'none' }
+    return $LauncherWanted ? 'add' : 'none'
+}
+
 function Invoke-SelfTest {
     $cases = @(
         @{ Name = 'existing architecture is preserved'; Current = 'AMD64'; Target = 'x64'; Expected = 'AMD64' }
@@ -190,7 +218,31 @@ function Invoke-SelfTest {
            Artifact = 'Tests'; Excluded = 'StratChessEvolved'; Included = @('StratEngine', 'StratChessTests') }
     )
 
+    # Every launcher-lifecycle state. The two repairs are the point: without them a tree
+    # configured before ccache was installed caches nothing while looking healthy, and one
+    # configured with it fails on its first compile edge once ccache goes.
+    # The two foreign-launcher cases are the falsification: repairing on a boolean instead
+    # of on the recorded value silently deletes a developer's own sccache or wrapper.
+    $launcherCases = @(
+        @{ Name = 'ccache present and already recorded is left alone'; Recorded = 'ccache';  Wanted = $true;  Expected = 'none' }
+        @{ Name = 'ccache absent and not recorded is left alone';      Recorded = '';        Wanted = $false; Expected = 'none' }
+        @{ Name = 'ccache present but not recorded is added';          Recorded = '';        Wanted = $true;  Expected = 'add' }
+        @{ Name = 'ccache recorded but no longer present is removed';  Recorded = 'ccache';  Wanted = $false; Expected = 'remove' }
+        @{ Name = 'a foreign launcher is never replaced by ccache';    Recorded = 'sccache'; Wanted = $true;  Expected = 'foreign' }
+        @{ Name = 'a foreign launcher is never unset';                 Recorded = 'sccache'; Wanted = $false; Expected = 'none' }
+    )
+
     $failures = 0
+    foreach ($case in $launcherCases) {
+        $actual = Get-CompilerLauncherAction -CachedLauncher $case.Recorded -LauncherWanted $case.Wanted
+        if ($actual -eq $case.Expected) {
+            Write-Host "PASS: $($case.Name)" -ForegroundColor Green
+        } else {
+            Write-Host "FAIL: $($case.Name) (expected '$($case.Expected)', got '$actual')" -ForegroundColor Red
+            $failures++
+        }
+    }
+
     foreach ($case in $partitionCases) {
         $set = Get-BuildRelevantSources -Root $RepoRoot -Artifact $case.Artifact
         $excludedDir = (Join-Path $RepoRoot $case.Excluded) + [IO.Path]::DirectorySeparatorChar
@@ -258,7 +310,7 @@ function Invoke-SelfTest {
         }
     }
 
-    $total = $cases.Count + $freshnessCases.Count + $partitionCases.Count
+    $total = $cases.Count + $freshnessCases.Count + $partitionCases.Count + $launcherCases.Count
     if ($failures) { Write-Host "$failures self-test case(s) FAILED." -ForegroundColor Red }
     else { Write-Host "$total self-test cases passed." -ForegroundColor Green }
     return $failures -eq 0
@@ -369,6 +421,100 @@ function Get-SharedDepsCache {
     return (Join-Path (Split-Path $mainCheckout -Parent) 'StratChessDeps') -replace '\\', '/'
 }
 
+# ccache turns a repeated compile into a cache read: a full clang-cl build measured
+# 44.7 s cold and 11.7 s warm, for ~1% overhead when nothing hits. The cache is shared
+# by every worktree on the machine, beside the checkout, for the same reason the deps
+# cache is.
+#
+# Returns the bare directory, or $null when caching is off: in CI (a runner is discarded
+# after every job) or when ccache is not installed. The caller treats $null as "no
+# launcher", which is also what removes one from a tree that has it recorded.
+function Get-SharedCompilerCache {
+    if ($env:GITHUB_ACTIONS -eq 'true') { return $null }
+    # -CommandType Application: only a real executable on PATH is usable here. A
+    # PowerShell alias, function or .ps1 named ccache would satisfy a bare Get-Command
+    # and then fail on every compile edge, since Ninja runs the launcher directly.
+    if (-not (Get-Command ccache -CommandType Application -ErrorAction SilentlyContinue)) { return $null }
+
+    $commonDir = & git -C $RepoRoot rev-parse --path-format=absolute --git-common-dir 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $commonDir) { return $null }
+
+    $mainCheckout = $commonDir -replace '[\\/]\.git[\\/]?$', ''
+    return (Join-Path (Split-Path $mainCheckout -Parent) 'StratChessCcache')
+}
+
+# What launcher, if any, this build tree already compiles through. Returns the recorded
+# value rather than a yes/no: the repair below owns 'ccache' and nothing else, so it has
+# to be able to tell a launcher it configured from one a developer did. An empty value is
+# none -- CMake keeps the variable with an empty value once it is unset.
+function Get-CMakeCacheLauncher {
+    param([string]$CachePath)
+
+    if (-not (Test-Path $CachePath)) { return '' }
+    $match = Select-String -Path $CachePath -Pattern '^CMAKE_CXX_COMPILER_LAUNCHER:\w+=(.*)$'
+    if (-not $match) { return '' }
+    return $match.Matches.Groups[1].Value.Trim()
+}
+
+# Repairs one of the two off-diagonal cells in place. Ninja then rebuilds the tree once,
+# because the launcher is part of every compile command line -- warm, that is the 12 s
+# build, not the 45 s one.
+#
+# 'foreign' is not repaired at all: something else configured that tree, and unsetting a
+# launcher this script never set would silently disable a developer's own sccache or
+# wrapper. It is reported once and left alone.
+function Repair-CompilerLauncher {
+    param([string]$Action, [string]$CachedLauncher)
+
+    if ($Action -eq 'foreign') {
+        Write-Warning "$Preset compiles through '$CachedLauncher', not ccache - leaving it alone. Builds will not be cached."
+        return
+    }
+
+    $why = if ($Action -eq 'add') {
+        'ccache is installed but this build tree was configured without it'
+    } else {
+        'this build tree was configured for ccache, which is no longer on PATH'
+    }
+    Write-Host "`n==> Reconfiguring $Preset ($why)" -ForegroundColor Cyan
+
+    $launcherArg = if ($Action -eq 'add') {
+        @('-D', 'CMAKE_CXX_COMPILER_LAUNCHER:STRING=ccache')
+    } else {
+        @('-U', 'CMAKE_CXX_COMPILER_LAUNCHER')
+    }
+    Invoke-CMakeConfigure -Arguments (@('-S', $RepoRoot, '-B', $BuildDir, '--log-level=WARNING') + $launcherArg)
+}
+
+# CMake's TryCompile-<random> probe directories are named freshly on every fresh configure,
+# so their cache entries can never be hit again -- roughly 14 dead files each time.
+# CCACHE_DISABLE stops them at source rather than sizing the cap around them.
+#
+# Every configure that runs the probes goes through here. The regeneration Ninja launches
+# from inside `cmake --build` does not: CMake keeps try_compile results in the cache, so a
+# touched CMakeLists.txt regenerates with 0 new probe directories and 0 new ccache files.
+function Invoke-CMakeConfigure {
+    param([string[]]$Arguments)
+
+    # Restored rather than removed: a developer who exported CCACHE_DISABLE to bypass the
+    # cache for one session must still have it set after the configure step. ccache reads
+    # the environment in preference to its config file, so clearing it would silently
+    # re-enable caching.
+    $previous = $env:CCACHE_DISABLE
+    $env:CCACHE_DISABLE = '1'
+    try {
+        & cmake @Arguments
+    } finally {
+        if ($null -eq $previous) { Remove-Item Env:\CCACHE_DISABLE -ErrorAction SilentlyContinue }
+        else { $env:CCACHE_DISABLE = $previous }
+    }
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Configure failed (exit $LASTEXITCODE): $Preset"
+        exit $LASTEXITCODE
+    }
+}
+
 function Invoke-CMakeBuild {
     param([string[]]$Targets)
 
@@ -381,22 +527,40 @@ function Invoke-CMakeBuild {
     # commit's copy of this file).
     Push-Location $RepoRoot
     try {
+        # Only clang-cl, the shipping toolchain, compiles through ccache: MSVC would add
+        # another ~78 MB per generation to the cache for a compiler nothing measures with.
+        $compilerCache = if ($Compiler -eq 'clang-cl') { Get-SharedCompilerCache } else { $null }
+        if ($compilerCache) {
+            $env:CCACHE_DIR = $compilerCache
+            # ~55 MB per generation of the two clang-cl presets, so 1G holds ~18 of them.
+            $env:CCACHE_MAXSIZE = '1G'
+            # Hash the compiler itself rather than trusting its mtime, which a rebuilt or
+            # replaced clang-cl leaves untouched. Costs ~1.4 s of an 11.7 s warm build.
+            # This value must be one ccache recognises: an unknown one is run as a COMMAND,
+            # fails once per compile, and leaves the build green, uncached and 3.6x slower.
+            $env:CCACHE_COMPILERCHECK = 'content'
+        }
+
         # Configure only when there is no cache: Ninja re-runs CMake by itself when
         # CMakeLists.txt or CMakePresets.json change, so configuring every time only
-        # adds latency.
-        if (-not (Test-Path (Join-Path $BuildDir 'CMakeCache.txt'))) {
+        # adds latency. An existing tree still has its launcher decision reconciled --
+        # that one is recorded at configure time and never revisited.
+        $cmakeCache = Join-Path $BuildDir 'CMakeCache.txt'
+        if (-not (Test-Path $cmakeCache)) {
             Write-Host "`n==> Configuring $Preset" -ForegroundColor Cyan
             # --log-level=WARNING drops the ~20 lines of compiler-ABI/pthread probing
             # CMake emits on every reconfigure; warnings and errors still surface.
             $configureArgs = @('--preset', $Preset, '--log-level=WARNING')
             $depsCache = Get-SharedDepsCache
             if ($depsCache) { $configureArgs += @('-D', "FETCHCONTENT_BASE_DIR=$depsCache") }
+            if ($compilerCache) { $configureArgs += @('-D', 'CMAKE_CXX_COMPILER_LAUNCHER:STRING=ccache') }
 
-            & cmake @configureArgs
-            if ($LASTEXITCODE -ne 0) {
-                Write-Error "Configure failed (exit $LASTEXITCODE): $Preset"
-                exit $LASTEXITCODE
-            }
+            Invoke-CMakeConfigure -Arguments $configureArgs
+        } else {
+            $cachedLauncher = Get-CMakeCacheLauncher $cmakeCache
+            $action = Get-CompilerLauncherAction -CachedLauncher $cachedLauncher `
+                                                 -LauncherWanted ([bool]$compilerCache)
+            if ($action -ne 'none') { Repair-CompilerLauncher -Action $action -CachedLauncher $cachedLauncher }
         }
 
         $label = if ($Targets) { $Targets -join ', ' } else { 'all targets' }

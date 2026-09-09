@@ -21,6 +21,7 @@ what you do; this file holds the background you consult when something is unexpe
 | know what CI runs, and when | [`CI.md`](CI.md) |
 | set up Visual Studio | [Working in Visual Studio](#working-in-visual-studio) |
 | understand a first-build or network failure | [Dependency cache](#dependency-cache) |
+| know why a build reconfigured itself, or make builds faster | [Compiler cache](#compiler-cache) |
 | drive CMake directly | [Raw CMake invocation](#raw-cmake-invocation-fallback) |
 | clean up a worktree that will not go away | [Worktree removal gotchas](#worktree-removal-gotchas) |
 | reproduce an ASan/UBSan finding | [Reproducing a sanitizer finding](#reproducing-a-sanitizer-finding) |
@@ -235,7 +236,7 @@ directory.
 | Start | `New-Worktree.ps1 -Name x` | `New-TaskBranch.ps1 -Name x` |
 | Finish | `Remove-Worktree.ps1 -Name x -SyncMaster` | `Remove-MergedBranches.ps1 -SyncMaster` |
 | Parallel tasks | Yes — park one, switch to another | No, sequential only |
-| Build directory | Cold per worktree; first build needs network | Stays warm across tasks |
+| Build directory | Cold per worktree; first build needs network, and ccache cannot help it | Stays warm across tasks |
 | Cleanup failure mode | Orphaned directories, unregistered worktrees | `git branch -D` |
 
 Use a worktree when work must be parked half-finished or run alongside another task. Use in-place for
@@ -500,6 +501,43 @@ Done via `-D` rather than a preset because `CMakeUserPresets.json` cannot redefi
 name would change `binaryDir` too, which `Get-BuildArtifact.ps1` depends on. `CMakeUserPresets.json`
 is gitignored regardless: it is CMake's per-developer override file and is machine-specific by
 definition.
+
+---
+
+## Compiler cache
+
+When `ccache` is on PATH, `build.ps1` configures the clang-cl presets with
+`-D CMAKE_CXX_COMPILER_LAUNCHER=ccache` and points `CCACHE_DIR` at `<repos>/StratChessCcache`, beside
+the main checkout like the dependency cache. Measured on a full `all` build: 44.1 s cold, **12.5 s
+warm**, with ~1% overhead when nothing hits. Nothing changes if it is absent, and CI never uses it —
+the workflows have their own ccache setup with their own keys (`Docs/CI.md`).
+
+**What actually hits.** `$in` and `$INCLUDES` reach the compiler as absolute paths and are hashed, so
+reuse is within one source path, not across worktrees: deleting `build/`, reconfiguring, switching
+branches and rebuilding, or bisecting all come back warm, while a **new worktree's first build is a
+full cold compile** like today. Sharing across worktrees needs `base_dir`, which is a separate
+question (#516).
+
+Three things about it are non-obvious:
+
+- **The launcher decision is recorded at configure time**, and `build.ps1` configures only when
+  `CMakeCache.txt` is missing. So installing or removing ccache does not reach an existing build tree
+  on its own: `build.ps1` compares the tree against the machine on every build and reconfigures in
+  place when they disagree, printing why. Ninja then rebuilds once, since the launcher is part of
+  every compile command line.
+- **It is recorded as the bare string `ccache`, never a resolved path**, so a ccache upgrade that
+  moves the executable — the WinGet package directory is versioned and ships no shim — does not
+  strand every configured tree on a path that is gone.
+- **Only the launcher `build.ps1` set is ever touched.** If a tree is configured for `sccache` or a
+  wrapper of your own, that is reported and left exactly as it is — the reconcile compares the
+  recorded value, not merely whether a launcher is present, so removing ccache from PATH cannot
+  unset somebody else's.
+- **`CCACHE_COMPILERCHECK=content` must stay a value ccache recognises.** An unknown one is run as a
+  *command*: it fails once per compile, ccache exits 0, and the build stays green while caching
+  nothing — 42 s instead of 12 s, with nothing said anywhere.
+- **`CCACHE_DISABLE` is yours.** `build.ps1` sets it for the configure step alone, because CMake's
+  per-configure `TryCompile-<random>` probes leave entries nothing can ever hit, and restores
+  whatever you had. Export it and the whole build honours it.
 
 ---
 
