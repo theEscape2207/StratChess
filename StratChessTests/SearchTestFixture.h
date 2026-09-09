@@ -132,8 +132,8 @@ class AIPerlexTestFixture {
 	void set_singular_margin_factor(int factor) const { ai->tuning_.singular_margin_factor = factor; }
 
 	// --- Reverse futility pokes (#87) ---
-	// The feature ships disabled, so every test that exercises it turns it on first and then moves
-	// one guard at a time off a known-good baseline.
+	// The feature ships enabled. Its tests still set the flag explicitly, so each one names the
+	// configuration it asserts about, and then move one guard at a time off a known-good baseline.
 	void set_reverse_futility(bool enabled) const { ai->tuning_.reverse_futility_enabled = enabled; }
 	void set_reverse_futility_max_depth(int depth) const { ai->tuning_.reverse_futility_max_depth = depth; }
 	void set_reverse_futility_margin(int margin) const { ai->tuning_.reverse_futility_margin = margin; }
