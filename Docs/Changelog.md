@@ -22,6 +22,37 @@ Newest first.
 
 ---
 
+## 2026-09-09 — Reverse futility follow-ups: one zugzwang floor, two fail-hard regression tests (#87)
+
+The two `search-reviewer` observations deliberately held out of the shipping PR, so that the binary
+which merged was byte-for-byte the one the strength lab measured.
+
+`has_two_non_pawn_pieces()` ran twice on any node eligible for both null-move pruning and reverse
+futility. `pvs()` now establishes that zugzwang floor once and hands it to both guards, which take it
+as a parameter instead of recomputing it. The two cheap preconditions both guards share — not a PV
+node, not in check — lead the expression, so a node neither guard can reach still never pays for the
+popcount. `Compare-SearchEquivalence.ps1` reports IDENTICAL across 90 compared lines at depth 12, and
+the bench pass over 6 positions at depth 13 finds no measurable nps change: median 2.843 Mnps before
+against 2.832 Mnps after, a 0.4% gap inside a 2% round-to-round spread. The value is one call site
+and one stated concept, not speed.
+
+The two regression tests pin what the fail-hard return buys the rest of the search, so a later
+fail-soft conversion — returning `eval - margin * depth`, which is what several engines do — fails
+loudly rather than quietly changing what a parent may conclude. One drives the exact frame null-move
+pruning opens and shows the cut child hands back `beta - 1`, one below the cutoff that would
+otherwise reach `tt.store(... LOWER, CUT_NODE)`. The other drives a node whose children are all cut
+and shows the killer and history tables untouched, and no `LOWER` bound stored. Both were falsified
+against a temporary fail-soft build: both fail there, alongside the two cutoff tests that already
+existed.
+
+With those landed, `.claude/plans/in-progress/reverse-futility-pruning.md` is deleted. Every durable
+item it held now lives in source comments, in this changelog, in `Measurements/ci-per-change.md` or
+in an issue (#502 for the margin and depth band, #504 for #87's unlanded Stage 2). The remaining
+review observation — that the zugzwang floor may be too strong for a guard that hands the opponent no
+free move — is recorded in the measurement row as something the lab run does not settle.
+
+---
+
 ## 2026-09-09 — Reverse futility pruning ships (#87)
 
 The CI strength lab measured the feature at **+44.62 +/- 3.66 Elo** against its merge base `12d5e19`

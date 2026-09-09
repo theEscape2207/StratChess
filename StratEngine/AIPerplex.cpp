@@ -129,18 +129,6 @@ namespace {
 		}
 	}
 
-	// The zugzwang floor shared by null-move pruning and reverse futility: below two non-pawn pieces,
-	// "the side to move is not obliged to worsen its position" stops being true, and both heuristics
-	// rest on it.
-	bool has_two_non_pawn_pieces(const Board& board)
-	{
-		const eColor side = board.GetCurrentColor();
-		const auto boards = board.GetBitBoards();
-		const BITBOARD non_pawn_material =
-		    boards[static_cast<BITBOARD>(KNIGHT) + side] | boards[static_cast<BITBOARD>(BISHOP) + side] |
-		    boards[static_cast<BITBOARD>(ROOK) + side] | boards[static_cast<BITBOARD>(QUEEN) + side];
-		return std::popcount(non_pawn_material) >= 2;
-	}
 } // namespace
 
 AIPerplex::AIPerplex(AIPerplexConfig config)
@@ -712,13 +700,20 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		}
 	}
 
+	// The zugzwang floor both pruning guards below rest on, established once per node rather than
+	// once per guard. The two preconditions lead only as an ordering optimisation, so a PV node or
+	// one in check never pays for the popcount; both guards still test them for themselves. A node
+	// that clears those two but bails on a later guard -- an exclusion frame, a mate-range beta, a
+	// null-move child -- now pays a popcount it used to short-circuit past.
+	const bool zugzwang_safe = !is_pv_node && !in_check && has_two_non_pawn_pieces(td.board);
+
 	// Reverse futility pruning (#87). A shallow non-PV node whose static evaluation already stands
 	// a margin above beta is reported as a fail-high without being searched. It sits exactly where
 	// the probe above measured this surface, and for the same reasons: a node the transposition
 	// table already resolved never reaches here, and in_check is free by now. The eligibility test
 	// leads so the Evaluate() call -- the feature's entire first-order cost -- is paid only on a
 	// node that could actually be cut.
-	if (reverse_futility_eligible(td, depth, beta, is_pv_node, in_check, is_exclusion_frame)) {
+	if (reverse_futility_eligible(depth, beta, is_pv_node, in_check, is_exclusion_frame, zugzwang_safe)) {
 		// Fail-hard, and no transposition store. The evidence is one static evaluation and not
 		// a search, so storing it would let a speculative bound answer a later, deeper probe.
 		//
@@ -739,7 +734,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// Null-move pruning: cheap cutoff attempt before move generation.
 	// should_try_null_move() centralises every guard (zugzwang, mate-score,
 	// consecutive-null, PV/in-check/depth) so it can be unit tested directly.
-	if (should_try_null_move(td, depth, beta, ply, is_pv_node, in_check)) {
+	if (should_try_null_move(td, depth, beta, ply, is_pv_node, in_check, zugzwang_safe)) {
 		const int R = tuning_.null_move_reduction;
 		td.last_move_was_null[ply + 1] = true;
 		td.board.DoNullMove();
@@ -1605,8 +1600,18 @@ bool AIPerplex::should_stop_early(int depth, int score, int pv_length) const
 	return false;
 }
 
-bool AIPerplex::should_try_null_move(const ThreadData& td, int depth, int beta, int ply, bool is_pv_node,
-                                     bool in_check) const
+bool AIPerplex::has_two_non_pawn_pieces(const Board& board)
+{
+	const eColor side = board.GetCurrentColor();
+	const auto boards = board.GetBitBoards();
+	const BITBOARD non_pawn_material =
+	    boards[static_cast<BITBOARD>(KNIGHT) + side] | boards[static_cast<BITBOARD>(BISHOP) + side] |
+	    boards[static_cast<BITBOARD>(ROOK) + side] | boards[static_cast<BITBOARD>(QUEEN) + side];
+	return std::popcount(non_pawn_material) >= 2;
+}
+
+bool AIPerplex::should_try_null_move(const ThreadData& td, int depth, int beta, int ply, bool is_pv_node, bool in_check,
+                                     bool zugzwang_safe) const
 {
 	if (!tuning_.null_move_enabled)
 		return false;
@@ -1631,11 +1636,11 @@ bool AIPerplex::should_try_null_move(const ThreadData& td, int depth, int beta, 
 	// better than moving") is false in king+pawn endgames AND in
 	// single-piece endgames won by domination/zugzwang (issue #66: KQ vs KR,
 	// where the lone rook loses only because its side must move).
-	return has_two_non_pawn_pieces(td.board);
+	return zugzwang_safe;
 }
 
-bool AIPerplex::reverse_futility_eligible(const ThreadData& td, int depth, int beta, bool is_pv_node, bool in_check,
-                                          bool is_exclusion_frame) const
+bool AIPerplex::reverse_futility_eligible(int depth, int beta, bool is_pv_node, bool in_check, bool is_exclusion_frame,
+                                          bool zugzwang_safe) const
 {
 	if (!tuning_.reverse_futility_enabled)
 		return false;
@@ -1655,7 +1660,7 @@ bool AIPerplex::reverse_futility_eligible(const ThreadData& td, int depth, int b
 		return false;
 	// Same zugzwang floor as null move, for the same reason: "this side is already doing well
 	// enough" is exactly what a side in zugzwang cannot rely on.
-	return has_two_non_pawn_pieces(td.board);
+	return zugzwang_safe;
 }
 
 bool AIPerplex::handle_empty_move_emergency(ThreadData& td, SearchState& state)
