@@ -42,6 +42,22 @@ Two exclusions are properties of the population, not of the export, and any conc
 this file must state them: the last two plies of every game are never eligible, and a row whose loss
 is hidden by the ±1000 cp clamp is not selected — see the clipping counter below.
 
+## Interpretation boundary
+
+This is a selected-positive diagnostic artifact, not a tuning corpus. It contains blunders but no
+row-level sample of the eligible positions that did not cross the threshold. The footer's aggregate
+eligible counts therefore cannot supply denominators for a feature or motif. Use exported rows to
+replay observations, form stratified diagnostic samples and test falsifiable mechanisms; do not use
+their proportions as prevalence, relative-risk or evaluation-weight evidence. Parameter fitting
+needs a separately labelled, denominator-bearing corpus split by whole game.
+
+More search is an intervention, not a causal classifier. A replay selecting an oracle-acceptable move
+at a larger budget establishes that the outcome is budget-sensitive; failure to do so leaves the cause
+unresolved. Likewise, fixed-node best-move flips under small evaluation changes can be discontinuous
+and non-monotone as the changed score alters the searched tree. They can falsify a proposed mechanism,
+but they are not an ordinal tuning objective. Re-adjudicate distinct replay moves by their loss rather
+than requiring exact agreement with the oracle's first move.
+
 ## Scores
 
 Both endpoints are from the **original mover's** point of view, including the after-position. Each
