@@ -55,16 +55,22 @@ worth converting a routine upgrade into a broken tree.
 
 ### D2: A mismatched tree is repaired in place, not deleted or reported
 
-The four lifecycle states, given a tree that already has a `CMakeCache.txt`:
+The lifecycle states, given a tree that already has a `CMakeCache.txt`:
 
-|                        | PATH has ccache | PATH lacks ccache        |
-|------------------------|-----------------|--------------------------|
-| **cache says launcher**| steady state    | hard failure at first edge|
-| **cache says none**    | silent no-op    | steady state              |
+|                       | PATH has ccache | PATH lacks ccache          |
+|-----------------------|-----------------|----------------------------|
+| **cache says ccache** | steady state    | hard failure at first edge  |
+| **cache says none**   | silent no-op    | steady state                |
+| **cache says other**  | reported, kept  | left alone                  |
 
 Both off-diagonal cells are repaired by `cmake -D` (or `-U`) on the existing tree, which is cheap and
 needs no wipe. Ninja then rebuilds everything once, because `LAUNCHER` is part of the command line —
-an 11.7 s event with a warm cache, 45 s without. The repair prints a line saying what it did and why.
+a 12 s event with a warm cache, 45 s without. The repair prints a line saying what it did and why.
+
+**The comparison is by value, not by presence.** A launcher this script did not set — `sccache`, a
+distcc wrapper, a developer's own script — belongs to whoever set it: repairing on "is a launcher
+configured" would answer "remove it" the moment ccache left PATH, silently disabling someone else's
+cache. Only the exact string `ccache` is owned; anything else is reported once and kept.
 
 Rejected: deleting the tree (throws away link artifacts and the `_deps` configure for no gain), and
 reporting without repairing (leaves the "silent no-op" cell exactly as broken as it is today, which
@@ -87,15 +93,22 @@ with no error anywhere the build shows. The value is a literal in one place for 
 
 ### D4: `CCACHE_DISABLE=1` around configure only
 
-CMake's `TryCompile-<random>` probe directories are named freshly per configure, so their ~14 cache
-entries can never be hit again. Disabling the cache for the configure call stops them at source
+CMake's `TryCompile-<random>` probe directories are named freshly per fresh configure, so their ~14
+cache entries can never be hit again. Disabling the cache for the configure call stops them at source
 rather than sizing the cap around them. Verified: +0 cache files with the variable set, +2 without.
+
+The regeneration Ninja launches from inside `cmake --build` is *not* wrapped, and does not need to
+be: CMake keeps `try_compile` results in the cache, so a touched `CMakeLists.txt` regenerates with 0
+new probe directories and 0 new ccache files (measured). Every configure that actually runs the
+probes goes through `Invoke-CMakeConfigure`.
 
 ## Assumptions I cannot verify from the code
 
 - **ccache resolves through PATH at build time on every edge.** Verified: `build.ninja` contains
   `LAUNCHER = ccache` with no path, and builds succeed with only the WinGet package directory on
-  PATH.
+  PATH. Discovery requires `-CommandType Application` for the same reason: Ninja runs the launcher
+  directly, so a PowerShell alias, function or `.ps1` named `ccache` would satisfy a bare
+  `Get-Command` and then fail on every compile edge.
 - **`ccache` on PATH is 4.14 or newer.** Not verified at runtime; earlier versions predate the
   clang-cl support this depends on. Not guarded — an older ccache degrades to misses, not to wrong
   output, and this is a single-developer machine.
@@ -110,6 +123,8 @@ rather than sizing the cap around them. Verified: +0 cache files with the variab
 - A build with ccache absent behaves exactly as it does today.
 - `GITHUB_ACTIONS` builds are untouched — no launcher, no ccache environment.
 - The launcher recorded in `CMakeCache.txt` is the bare string `ccache` (D1).
+- A launcher this script did not set is never modified or removed (D2).
+- An externally set `CCACHE_DISABLE` survives a build unchanged.
 - `windows-msvc` trees never gain a launcher.
 - The cache directory lives beside the main checkout, shared by every worktree.
 
@@ -122,8 +137,8 @@ Tooling tier. Two gates, because they fail differently:
 - **Correctness:** SHA-256 over every `.obj`/`.lib`/`.exe` of a cache-served build matches a build
   configured with no launcher. This is what catches a wrong hit, which no timing can see.
 
-Plus `build.ps1 -SelfTest` for the four lifecycle states as a pure decision function, and
-`Validate-PrePR.ps1`.
+Plus `build.ps1 -SelfTest` for the six lifecycle states as a pure decision function -- including the
+two foreign-launcher cases, which are the falsification for D2 -- and `Validate-PrePR.ps1`.
 
 No Elo match: the compiler, its flags and the sources are unchanged, and the byte-identity gate is a
 stronger statement than any match could make.

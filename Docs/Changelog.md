@@ -67,6 +67,22 @@ cache-served build matches a build configured with no launcher, 112 of 112. The 
 are CMake's own configure probes, which are regenerated per configure and reproducible in neither
 build.
 
+Cross-agent review found one real ownership bug and it is fixed here: reconciling on *whether* a
+launcher was configured, rather than on which one, meant that removing ccache from PATH would have
+unset a developer's own `sccache` or wrapper. The comparison is now by value — only the exact string
+`ccache` is owned, anything else is reported once and left alone — with both foreign cases in
+`-SelfTest` and exercised end to end. Three smaller ones with it: discovery requires
+`-CommandType Application`, since Ninja runs the launcher directly and a PowerShell alias or function
+named `ccache` would satisfy a bare `Get-Command` and then fail on every edge; a caller's
+`CCACHE_DISABLE` is restored rather than deleted, verified by a build that stays uncached at 43.9 s;
+and the reuse claim is narrowed to what was measured — a wiped or reconfigured tree at the same
+source path, **not** a new worktree, whose absolute `$in` and `$INCLUDES` paths still miss.
+
+The review's fourth point, that `CCACHE_DISABLE` misses the CMake regeneration Ninja launches from
+inside `cmake --build`, did not survive measurement: CMake keeps `try_compile` results in its cache,
+so a touched `CMakeLists.txt` regenerates with 0 new probe directories and 0 new ccache files. Every
+configure that actually runs the probes goes through the wrapped path.
+
 `.claude/plans/ccache-launcher-lifecycle.md` is deleted with this PR. Every durable item it held now
 lives in `build.ps1` comments, in `Docs/Workflow.md` → Compiler cache, or in this entry.
 
