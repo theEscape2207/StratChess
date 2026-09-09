@@ -31,6 +31,11 @@
     action that installs and configures ccache lives in `.github/actions/` and is
     where such a setting would most naturally be written.
 
+    The match is textual and does not exempt comments -- inside a `run:` block scalar
+    a `#` line is shell, not YAML, so "is this a comment" is not a question a
+    line-based scanner can answer. A workflow comment that needs to discuss these
+    options must therefore name them indirectly and point here.
+
 .PARAMETER Root
     Directory to scan. Defaults to the repository's .github, resolved from this
     script's own location.
