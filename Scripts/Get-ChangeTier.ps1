@@ -89,11 +89,13 @@ function Get-TierForPath {
     # Tooling, despite living beside the engine-inert helper scripts.
     if ($p -like '*Scripts/Run-Lint.ps1')                   { return 'Build' }
     if ($p -like '*Scripts/New-TidyCompileDatabase.ps1')    { return 'Build' }
-    # Enforces that every CI job states a timeout, from inside CI. Same hazard once
-    # more: a bug here disarms a guard silently. Named rather than left to the
-    # fail-closed default, which would call it Engine -- stricter than a script that
-    # compiles nothing and is never invoked by the engine deserves.
-    if ($p -like '*Scripts/Test-WorkflowTimeouts.ps1')      { return 'Build' }
+    # The workflow guards, which enforce properties of CI from inside CI. Same hazard
+    # once more: a bug here disarms a guard silently. Named rather than left to the
+    # fail-closed default, which would call them Engine -- stricter than scripts that
+    # compile nothing and are never invoked by the engine deserve. The prefix match
+    # covers guards added later, which would otherwise land at the wrong tier by
+    # omission.
+    if ($p -like '*Scripts/Test-Workflow*.ps1')             { return 'Build' }
     # Decides whether a build artifact counts as stale, and which binary a measurement
     # reads. Both reach Build anyway through the fail-closed default, but only as
     # "unrecognised", which costs every PR that touches them the Engine tier. The hazard
@@ -258,6 +260,7 @@ if ($SelfTest) {
         @{ Name = 'test tidy config -> Build';  Files = @('StratChessTests/.clang-tidy');                         Expect = 'Build' }
         @{ Name = 'tidy DB normalizer -> Build'; Files = @('Scripts/New-TidyCompileDatabase.ps1'); Expect = 'Build' }
         @{ Name = 'timeout guard -> Build';     Files = @('Scripts/Test-WorkflowTimeouts.ps1');  Expect = 'Build' }
+        @{ Name = 'ccache path guard -> Build'; Files = @('Scripts/Test-WorkflowCcachePaths.ps1'); Expect = 'Build' }
         # Both decided which binary a build or a measurement reads while classified only by
         # the fail-closed default. Named now, so the classification is a decision.
         @{ Name = 'freshness lib -> Build';     Files = @('Scripts/BuildFreshness.ps1');        Expect = 'Build' }

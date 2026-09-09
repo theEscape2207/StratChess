@@ -27,8 +27,10 @@ Docs regardless of content (#185). Pushes therefore diff against `github.event.b
 branch creation — `Get-ChangeTier.ps1` fails closed to Engine tier. Leave that path alone.
 
 `classify` also runs `Test-WorkflowTimeouts.ps1`, which fails the run if any job in any workflow
-omits `timeout-minutes`. It lives here because `classify` is the only job with no tier condition, and
-`Validate-PrePR.ps1` runs the same script so the answer is reachable before pushing.
+omits `timeout-minutes`, and `Test-WorkflowCcachePaths.ps1`, which fails it if any workflow or
+composite action sets ccache's `base_dir` or `hash_dir` (see below). Both live here because
+`classify` is the only job with no tier condition, and `Validate-PrePR.ps1` runs the same scripts so
+the answer is reachable before pushing.
 
 Consequence for the deps cache: `main` now only builds on Build/Engine merges, and `actions/cache`
 is branch-scoped so a PR can only restore a cache saved there. This is safe because the key is static
@@ -48,6 +50,13 @@ Caching the Windows Debug leg is why `CMakeLists.txt` sets `CMAKE_MSVC_DEBUG_INF
 because this is a two-leg matrix: the job takes the duration of the slower leg, so caching one alone
 moved it ~5 s (#377/#380).
 
+**Debug is the slower leg, and its Build step is not why** (#514, 14 paired `main` merge runs). Means
+per leg: Build 75 s Release against 70 s Debug — indistinguishable beside a per-run spread of 33-148 s
+that tracks cache warmth, not configuration — while `Run fast tests` costs 34 s in Debug against 14 s
+in Release. That 20 s is most of the 17 s median gap in job total. So the lever on this job is test
+execution in Debug, not the compile; ccache already caches the compile, and there is no
+Release-specific attribution left to chase.
+
 ccache is not on the `ubuntu-24.04` image and is installed from the upstream release archive rather
 than apt — an apt mirror on the critical path of every Linux job is what the standing decision above
 rules out. Both platforms install from the same composite action, so one bump moves every
@@ -66,6 +75,14 @@ entries are immutable, so **every run writes six new ones** and the store carrie
 run until LRU trims it — an order of magnitude more than one generation, against a budget shared with
 the FetchContent deps cache. That sharing was the risk this change was gated on: churn evicting a
 deps entry costs a fresh clone, turning ccache net negative while every job still reports green.
+
+**No CI job sets `base_dir` or `hash_dir`, and `Test-WorkflowCcachePaths.ps1` fails the run if one
+ever does.** Both are local-workflow levers for cross-*worktree* hits (#510, #511); CI has no such
+problem, because every job builds at a stable path and restores an entry produced at that same path,
+so cached depfile paths and embedded CodeView paths match the consuming tree by construction. Setting
+either to chase a cross-job hit rate would trade that guarantee for a hazard whose failure mode is a
+stale artifact on a green build — which is why the tripwire is an assertion rather than this
+paragraph.
 
 Cache **scope** makes much of that churn avoidable. A run on a PR writes its six entries to
 `refs/pull/N/merge`, and `actions/cache` reads only from the run's own ref or from the default
