@@ -33,6 +33,8 @@ Live backlog is GitHub Issues (`theEscape2207/StratChess`) via `gh`, bodies alwa
 - `StratEngine/StdAfx.h` is the shared common-include header (no build precompiles it) — add
   frequently-used STL headers there, alphabetically inside the `#pragma warning push/pop` block, not
   in individual `.cpp` files.
+- **ccache is optional and worth installing** — `build.ps1` picks it up from PATH by itself and a
+  repeat full build drops from ~45 s to ~12 s. `Docs/Workflow.md` → Compiler cache.
 - **Adding a `.cpp` needs no project edit.** `CMakeLists.txt` globs with `CONFIGURE_DEPENDS`; just
   create the file. `StratEngine/Archived/` is excluded and never built.
 
