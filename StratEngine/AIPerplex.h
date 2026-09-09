@@ -89,27 +89,6 @@ inline constexpr bool kSingularExtensionsCompiled = STRAT_SINGULAR_EXTENSIONS !=
 inline constexpr bool kFutilityProbeCompiled = STRAT_FUTILITY_PROBE != 0;
 inline constexpr bool kFutilityProbeEvaluates = STRAT_FUTILITY_PROBE >= 2;
 
-// Reverse futility pruning (#87, Stage 1). Compiled out unless a build asks for it, on the same
-// reasoning as singular extensions above: the static evaluation this guard needs is not free --
-// #498 measured 4.1% nps for it across the eligible surface -- so a build that does not use the
-// feature must not carry the branch that leads to it. Every use is `if constexpr` or the first
-// term of a conjunction, so the whole test folds away while the disabled code stays type-checked.
-//
-// Set by CMake: -DSTRAT_REVERSE_FUTILITY=1 compiles the feature in with the runtime flag off (the
-// build the node-identity proof needs), =2 also starts with it on. The test target always defines
-// it, because the tests are what exercise the feature.
-#ifndef STRAT_REVERSE_FUTILITY
-#	define STRAT_REVERSE_FUTILITY 0
-#endif
-inline constexpr bool kReverseFutilityCompiled = STRAT_REVERSE_FUTILITY != 0;
-
-// Whether a build that HAS the feature also starts with it on -- separate for the same reason as
-// STRAT_SINGULAR_DEFAULT_ON: the experimental engine wants it on (UCI cannot set the runtime flag),
-// while the test binary wants every existing search test to keep seeing the shipped configuration.
-#ifndef STRAT_REVERSE_FUTILITY_DEFAULT_ON
-#	define STRAT_REVERSE_FUTILITY_DEFAULT_ON 0
-#endif
-
 // Hand-aligned: this is the one tuning surface shared by the concrete
 // service configuration and the search implementation.
 struct SearchTuning {
@@ -165,10 +144,10 @@ struct SearchTuning {
 	// fails below tt_value - singular_margin_factor * depth.
 	int singular_margin_factor = 2;
 
-	// Reverse futility pruning. The RUNTIME half of the gate; it only means anything in a build
-	// compiled with STRAT_REVERSE_FUTILITY (see kReverseFutilityCompiled above), and like the
-	// singular knobs it is not reachable over UCI.
-	bool reverse_futility_enabled = STRAT_REVERSE_FUTILITY_DEFAULT_ON != 0;
+	// Reverse futility pruning, on for the shipping engine. Like the singular knobs it is not
+	// reachable over UCI; the flag exists so the tests can turn the guard off and search the same
+	// node normally.
+	bool reverse_futility_enabled = true;
 	// Depth band. Shallow because that is where the surface is: #498 found 95.4% of eligible
 	// frames at depths 1-3, so a wider band adds almost nothing while trusting a static
 	// evaluation further from the leaves.

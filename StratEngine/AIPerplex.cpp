@@ -715,23 +715,20 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// Reverse futility pruning (#87). A shallow non-PV node whose static evaluation already stands
 	// a margin above beta is reported as a fail-high without being searched. It sits exactly where
 	// the probe above measured this surface, and for the same reasons: a node the transposition
-	// table already resolved never reaches here, and in_check is free by now.
-	//
-	// The compile-time constant leads, as it does for the exclusion test at the top of this
-	// function. Here it guards the Evaluate() call, which is the feature's entire first-order cost.
-	if constexpr (kReverseFutilityCompiled) {
-		if (reverse_futility_eligible(td, depth, beta, is_pv_node, in_check, is_exclusion_frame)) {
-			// Fail-hard, and no transposition store. The evidence is one static evaluation and not
-			// a search, so storing it would let a speculative bound answer a later, deeper probe.
-			//
-			// Returning beta rather than the evaluation is load-bearing, not a style choice. Every
-			// caller that can reach this guard passes a null window, so beta lands back at the parent
-			// as exactly its alpha -- no improvement, hence no killer, history or PV write, and a
-			// null-move child returns beta - 1, one below the cutoff that would otherwise store a
-			// LOWER bound. A fail-soft return would break all of that at once.
-			if (evaluator_.Evaluate(td.board) - tuning_.reverse_futility_margin * depth >= beta)
-				return beta;
-		}
+	// table already resolved never reaches here, and in_check is free by now. The eligibility test
+	// leads so the Evaluate() call -- the feature's entire first-order cost -- is paid only on a
+	// node that could actually be cut.
+	if (reverse_futility_eligible(td, depth, beta, is_pv_node, in_check, is_exclusion_frame)) {
+		// Fail-hard, and no transposition store. The evidence is one static evaluation and not
+		// a search, so storing it would let a speculative bound answer a later, deeper probe.
+		//
+		// Returning beta rather than the evaluation is load-bearing, not a style choice. Every
+		// caller that can reach this guard passes a null window, so beta lands back at the parent
+		// as exactly its alpha -- no improvement, hence no killer, history or PV write, and a
+		// null-move child returns beta - 1, one below the cutoff that would otherwise store a
+		// LOWER bound. A fail-soft return would break all of that at once.
+		if (evaluator_.Evaluate(td.board) - tuning_.reverse_futility_margin * depth >= beta)
+			return beta;
 	}
 
 	// Declared before the null-move search so the unwind guard below it has the same value

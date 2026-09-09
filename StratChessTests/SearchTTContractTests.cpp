@@ -170,6 +170,10 @@ TEST_CASE("Qsearch - a MAIN bound at or beyond beta cuts off", "[search][tt][qse
 // The search itself never produces that combination -- every !is_pv_node call site passes a
 // null window, which is why the fix costs no nodes -- but pvs() must not depend on the caller
 // for the property.
+//
+// The root cannot be reverse-futility pruned (it would need a static eval above beta = 5000), but
+// its subtree is, so `without_entry` moves if the guard's margin or depth band changes. That is a
+// second variable, not a regression: what this case asserts is that the two searches agree.
 TEST_CASE("Search - a TT bound inside the window does not change the value", "[search][tt]")
 {
 	// Enough hanging material for the window to actually change which children survive.

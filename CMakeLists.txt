@@ -375,28 +375,6 @@ if(NOT STRAT_FUTILITY_PROBE STREQUAL "0")
     message(STATUS "Futility cost probe: LEVEL ${STRAT_FUTILITY_PROBE} (measurement build, not for play)")
 endif()
 
-# Reverse futility pruning (#87, Stage 1). Experimental and OFF for the shipping engine until a
-# strength result says otherwise: the static evaluation it needs measured 4.1% nps (#498), so a
-# build that does not use the feature must not carry the branch leading to it. Three levels, because
-# the node-identity proof needs a binary the shipping one cannot supply:
-#   0  off, the shipping engine: the feature leaves no code at all
-#   1  compiled in but disabled -- what Compare-SearchEquivalence.ps1 runs, since "the flag off is
-#      node-identical" is a claim about a build that HAS the branch and does not take it
-#   2  compiled in and enabled, the candidate under measurement
-#   cmake --preset windows-clang-cl -DSTRAT_REVERSE_FUTILITY=2
-# The test target below always builds at level 1 -- the tests drive the runtime flag themselves.
-set(STRAT_REVERSE_FUTILITY 0 CACHE STRING "Reverse futility (#87): 0 off, 1 compiled-in disabled, 2 enabled")
-set_property(CACHE STRAT_REVERSE_FUTILITY PROPERTY STRINGS 0 1 2)
-if(NOT STRAT_REVERSE_FUTILITY STREQUAL "0")
-    target_compile_definitions(StratChessEvolved PRIVATE STRAT_REVERSE_FUTILITY=1)
-    if(STRAT_REVERSE_FUTILITY STREQUAL "2")
-        # UCI cannot set the runtime flag, so an engine that compiled the feature in but started
-        # with it off would measure nothing -- the same reason the singular pair above ships together.
-        target_compile_definitions(StratChessEvolved PRIVATE STRAT_REVERSE_FUTILITY_DEFAULT_ON=1)
-    endif()
-    message(STATUS "Reverse futility pruning: LEVEL ${STRAT_REVERSE_FUTILITY} (experimental build)")
-endif()
-
 include(CheckIPOSupported)
 check_ipo_supported(RESULT STRAT_IPO_SUPPORTED OUTPUT STRAT_IPO_ERROR)
 if(STRAT_IPO_SUPPORTED)
@@ -415,9 +393,6 @@ strat_configure_target(StratChessTests)
 # tests have nothing to test unless it is compiled in, and they drive it through the runtime flag.
 # STRAT_SINGULAR_DEFAULT_ON is deliberately NOT set -- every other search test must keep seeing the
 # shipped configuration, so the singular tests enable it for themselves.
-# STRAT_REVERSE_FUTILITY follows the same split, and for the same reason: compiled in so its tests
-# can drive it, with the DEFAULT_ON half left unset so every other search test keeps seeing the
-# shipped configuration.
 target_compile_definitions(StratChessTests PRIVATE
-    STRAT_ENABLE_TEST_ACCESS STRAT_SINGULAR_EXTENSIONS=1 STRAT_REVERSE_FUTILITY=1)
+    STRAT_ENABLE_TEST_ACCESS STRAT_SINGULAR_EXTENSIONS=1)
 target_link_libraries(StratChessTests PRIVATE Catch2::Catch2WithMain)

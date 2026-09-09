@@ -48,6 +48,11 @@ every conjunction so the whole test folds away at level 0.
 Level 1 — compiled in, runtime flag off — exists because the node-identity claim is about a build
 that *has* the branch and does not take it, and a two-state option cannot produce that binary.
 
+**Removed after the strength result.** The whole compile-time gate — `STRAT_REVERSE_FUTILITY`,
+`kReverseFutilityCompiled` and `STRAT_REVERSE_FUTILITY_DEFAULT_ON` — is gone; the guard is
+unconditional and `reverse_futility_enabled` defaults to `true`. The reasoning above is why the gate
+existed while the feature was unmeasured, not a description of the code today.
+
 ### D2: Return `beta`, fail-hard, and store nothing
 
 The cutoff's evidence is a static evaluation, not a search. Returning `static_eval - margin` would
@@ -127,10 +132,13 @@ python-chess) so that whoever moves them has to read about it.
 
 ## Invariants
 
-- At `STRAT_REVERSE_FUTILITY=0` the engine is behaviourally the baseline: no
-  evaluation call, no branch on the hot path.
-- With the feature compiled in and `reverse_futility_enabled = false`, the search is
-  **node-identical** to the baseline at `Threads=1` (`Compare-SearchEquivalence.ps1`).
+The first two held while the gate existed and were what licensed the measurement; both are now
+historical, since there is no build in which the guard is meant to be inert.
+
+- ~~At `STRAT_REVERSE_FUTILITY=0` the engine is behaviourally the baseline: no
+  evaluation call, no branch on the hot path.~~
+- ~~With the feature compiled in and `reverse_futility_enabled = false`, the search is
+  **node-identical** to the baseline at `Threads=1` (`Compare-SearchEquivalence.ps1`).~~
 - No futility cutoff is ever taken at a PV node, in check, in an exclusion frame, against a
   mate-range beta, above the depth band, or below the zugzwang material floor.
 - No TT entry is written by the cutoff.
@@ -173,8 +181,11 @@ Step 1 passed decisively: **wall clock -38.5%** at fixed depth 12, `Threads=1` (
 median over 9 interleaved rounds, range -41.5 to -37.2%), main nodes 13,004,919 → 9,229,827 and
 quiescence nodes 4,691,063 → 2,620,683. Node identity at level 1 is IDENTICAL against `origin/main`
 over 90 compared lines. All 626 fast-tier tests pass in the shipped configuration; with the feature
-forced on, the only failure is the test that asserts the shipped configuration does not prune, and
-the 36-position tactical suite still passes. Every one of the six guards was falsified by removing
+forced on, the only failure is the test that asserts the shipped configuration does not prune.
+**The claim originally made here — that the 36-position tactical suite also passes with the feature
+on — was wrong and unverified**: WAC-001 (mate in 2) is missed at its then-target depth of 5, a
+mate-category failure and therefore fatal to the suite. It surfaced when the feature shipped; see
+the strength-result section below. Every one of the six guards was falsified by removing
 it and watching the suite fail.
 
 The search review returned LGTM with no correctness defect. Its non-blocking observations, parked
@@ -183,6 +194,22 @@ both guards, worth a bench pass and a hoist in Stage 2; the zugzwang floor is ar
 reverse futility, since it hands the opponent no free move, and a softer floor is its own experiment;
 and the tactical suite is worth one run above the depth band before any decision to ship.
 
-What remains is the SPRT, which is the project owner's budget call. Nothing measured here is a
-strength result: a smaller tree at fixed depth is the *precondition* this candidate had to meet, not
-evidence that the moves it now makes are better.
+### The strength result
+
+The CI strength lab, not an SPRT: run `34288048348`, **+44.62 +/- 3.66 Elo** over 19,980 games at
+10+0.1 against merge base `12d5e19`, all 18 shards favouring the candidate on score. An SPRT was
+considered and rejected as the wrong instrument — its floor is around +/- 10 Elo against this
+project's ledger, and reverse futility was plausibly worth less than that in either direction. The
+row and what it does and does not settle are in `Measurements/ci-per-change.md`.
+
+The measurement ran from a throwaway branch whose only commit flipped the CMake default to 2,
+because the lab builds both sides with a plain `cmake -DCMAKE_BUILD_TYPE=Release` and a run
+dispatched on `main` would have compiled the feature out of both binaries. A `cmake_defines` input on
+`strength.yml` would remove the need for such a branch for any future gated feature.
+
+On that result the gate was removed and the feature made unconditional. What is left of the design
+here is the reasoning behind the guard's placement, its fail-hard return and its eligibility
+predicate — all of which now live in source comments — plus the two search-review observations still
+unactioned: the duplicated `has_two_non_pawn_pieces()` call on a node eligible for both guards, and
+the two regression tests that would make a future fail-soft conversion fail loudly. **This document
+stays until those land.**
