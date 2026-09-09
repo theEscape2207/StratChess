@@ -128,12 +128,21 @@ Plus `build.ps1 -SelfTest` for the four lifecycle states as a pure decision func
 No Elo match: the compiler, its flags and the sources are unchanged, and the byte-identity gate is a
 stronger statement than any match could make.
 
+Run on the finished branch: 44.1 s reference, 9.4 s repair-and-rebuild, **12.5 s** warm on a wiped
+tree, 112 of 112 artifacts identical, both repairs reported, `Validate-PrePR.ps1` PASSED at Build
+tier. The warm figure is 0.8 s above the design-time 11.7 s, which was measured before
+`compiler_check = content` was adopted (D3).
+
 ## Harvest
 
 | Decision / rationale | Lands in |
 |---|---|
-| Bare string, never a resolved path (D1) | source comment on `Get-SharedCompilerCache` |
-| The four lifecycle states and the in-place repair (D2) | source comment + `-SelfTest` cases |
-| `compiler_check` cost and the invalid-value trap (D3) | source comment on the environment block |
-| Measured 44.7 s → 11.7 s, and the cache convention | `Docs/Workflow.md` → Part 3, PR body |
-| `CCACHE_DISABLE` around configure (D4) | source comment at the configure call |
+| Bare string, never a resolved path (D1) | comment on `Get-CompilerLauncherAction`; `Docs/Workflow.md` → Compiler cache |
+| The four lifecycle states and the in-place repair (D2) | same comment, plus the four `-SelfTest` cases |
+| `compiler_check` cost and the invalid-value trap (D3) | comment on the environment block; `Docs/Workflow.md`; `Docs/Changelog.md` |
+| The measured before/after and the cache convention | `Docs/Workflow.md` → Compiler cache; `Docs/Changelog.md`; `CLAUDE.md` one-liner |
+| `CCACHE_DISABLE` around configure (D4) | comment on `Invoke-CMakeConfigure`; `Docs/Changelog.md` |
+| #510/#511 are upside, not prerequisites | `Docs/Changelog.md`, and #509's children table |
+
+Harvest is complete, nothing in the tree cites this file, and it holds no spec or ADR role — the
+work has landed. It is deleted in this PR once design review is done.
