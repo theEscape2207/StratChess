@@ -22,6 +22,35 @@ Newest first.
 
 ---
 
+## 2026-09-10 — clang-cl dependency records survive a ccache hit again (#519)
+
+The defect #510 found is fixed. When ccache sits in front of clang-cl under Ninja, `CMakeLists.txt`
+now sets `CMAKE_DEPFILE_FLAGS_CXX=/showIncludes` and `CMAKE_CXX_DEPFILE_FORMAT=msvc` — the path CMake
+itself used for clang-cl until commit `ed0f48e` (13 February 2026) switched to GCC-style depfiles for
+`#embed`. Include notes then travel on the compiler's stdout, which a cache hit replays, instead of
+in a depfile ccache never stores (ccache #1775; PR #1780 is an incomplete draft). Nothing else is
+scoped: no launcher, no MSVC, no Linux build sees it, and this project cannot compile `#embed`
+anyway — `/W4 /WX` rejects it as a C23 extension.
+
+`cmake/CheckNinjaDepsRules.cmake` runs from the build graph, ahead of both executables' object
+compiles, and fails the build unless the generated clang-cl C++ rules have `deps = msvc`,
+`/showIncludes` in the command and no `depfile =` binding. It asserts what CMake *generated*, not the
+variables we set, because the internals it rides are undocumented and a silent return to GCC depfiles
+looks exactly like the defect. It is in the graph rather than in a validation script because bare
+`ninja` and `cmake --build` — the invocations that bypass `Assert-ArtifactFresh` — are precisely the
+ones that need it. `build.ps1` is unchanged.
+
+Measured on both clang-cl presets, all three entry points: 112/112 ccache hits on a warm clean build,
+112 Ninja dependency records with **zero** empty ones, both `Eval.cpp.obj` rows retaining 51
+dependencies, and the cached executables byte-identical to the uncached ones. The reported
+edit → revert → same-edit-again sequence now recompiles 96 objects on each leg and returns the
+executable to the matching hash each time. Warm clean builds land at 5 s (Release) and 3 s (Debug)
+against a ~31–37 s uncached baseline; the durable claim is preserving #515/#517's saving, not those
+numbers. Residual risk and the three removal conditions:
+`.claude/plans/retained/ccache-showincludes-dependency-records.md`.
+
+---
+
 ## 2026-09-10 — ccache `base_dir` probed and rejected; a hit erases Ninja's dependency record (#510)
 
 `base_dir` is not adopted, and the probe that settled it turned up a larger defect in the wiring
