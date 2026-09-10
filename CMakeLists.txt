@@ -49,6 +49,32 @@ set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:Embedd
 # Consumed by clangd, VS Code, Zed and coding agents. Costs nothing to emit.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Dependency records that survive a compiler-cache hit.
+#
+# CMake asks clang-cl for GCC-style depfiles (-clang:-MD -clang:-MF<path>). ccache does not
+# decode the -clang: prefix, so it stores no dependency file: a cache hit replays the object
+# and leaves Ninja with an *empty* dependency record for it, and a later header edit then
+# never rebuilds it. /showIncludes instead reports includes on the compiler's stdout, which a
+# cache hit does replay -- so the msvc dependency path keeps the record intact either way.
+#
+# Scoped to a cache in front of clang-cl: without a launcher CMake's own depfile path works
+# and is the better-supported one. Remove this, and the rule-shape check below, once the
+# compiler cache records dependencies for -clang:-MF command lines -- or if this project ever
+# compiles #embed, whose dependencies only the GCC-style path reports (today /WX rejects it
+# as a C23 extension, so nothing here can use it).
+#
+# Only the CXX variables: this project enables no other language. Set before the dependencies
+# are added so every target in the build agrees on one dependency mechanism.
+if(CMAKE_GENERATOR MATCHES "Ninja"
+   AND CMAKE_CXX_COMPILER_ID MATCHES "Clang"
+   AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"
+   AND CMAKE_CXX_COMPILER_LAUNCHER MATCHES "(^|;)ccache$")
+    set(CMAKE_DEPFILE_FLAGS_CXX "/showIncludes")
+    set(CMAKE_CXX_DEPFILE_FORMAT "msvc")
+    set(STRAT_CHECK_MSVC_DEPS TRUE)
+    message(STATUS "Dependency records: /showIncludes (msvc) -- keeps deps across compiler-cache hits")
+endif()
+
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
 endif()
@@ -396,3 +422,26 @@ strat_configure_target(StratChessTests)
 target_compile_definitions(StratChessTests PRIVATE
     STRAT_ENABLE_TEST_ACCESS STRAT_SINGULAR_EXTENSIONS=1)
 target_link_libraries(StratChessTests PRIVATE Catch2::Catch2WithMain)
+
+# The depfile override above sets CMake variables; this asserts what CMake generated from
+# them. It sits in the build graph, ahead of both executables' object compiles, because
+# `ninja` and `cmake --build` are exactly the invocations that bypass build.ps1's freshness
+# assertion -- and a silent return to GCC-style depfiles is otherwise invisible until a stale
+# object hands over a wrong binary. The stamp keeps it to once per rules.ninja change.
+if(STRAT_CHECK_MSVC_DEPS)
+    set(strat_deps_stamp ${CMAKE_BINARY_DIR}/CMakeFiles/strat_depfile_rules.stamp)
+    add_custom_command(
+        OUTPUT ${strat_deps_stamp}
+        COMMAND ${CMAKE_COMMAND}
+                -D RULES_FILE=${CMAKE_BINARY_DIR}/CMakeFiles/rules.ninja
+                -D RULE_TARGETS=StratChessEvolved,StratChessTests
+                -P ${CMAKE_SOURCE_DIR}/cmake/CheckNinjaDepsRules.cmake
+        COMMAND ${CMAKE_COMMAND} -E touch ${strat_deps_stamp}
+        DEPENDS ${CMAKE_BINARY_DIR}/CMakeFiles/rules.ninja
+                ${CMAKE_SOURCE_DIR}/cmake/CheckNinjaDepsRules.cmake
+        COMMENT "Checking clang-cl dependency rule shape"
+        VERBATIM)
+    add_custom_target(strat_check_depfile_rules DEPENDS ${strat_deps_stamp})
+    add_dependencies(StratChessEvolved strat_check_depfile_rules)
+    add_dependencies(StratChessTests strat_check_depfile_rules)
+endif()
