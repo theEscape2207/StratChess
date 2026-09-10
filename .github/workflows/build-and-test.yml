@@ -57,6 +57,20 @@ jobs:
           pwsh -NoProfile -File Scripts/Test-WorkflowTimeouts.ps1
           exit $LASTEXITCODE
 
+      # Same placement, same reason: a guard that a tier condition can skip is not a
+      # guard. This one asserts that no workflow or composite action sets either of
+      # ccache's two path-rewriting options -- local-workflow levers whose failure
+      # mode is a stale artifact on a green build, and which CI gains nothing from
+      # because every job already builds at a stable path. The match is textual, so
+      # this comment deliberately does not spell the option names; Docs/CI.md and the
+      # script's own header carry them. See issues #510, #511 and #514.
+      - name: Check ccache path settings in CI configuration
+        run: |
+          pwsh -NoProfile -File Scripts/Test-WorkflowCcachePaths.ps1 -SelfTest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pwsh -NoProfile -File Scripts/Test-WorkflowCcachePaths.ps1
+          exit $LASTEXITCODE
+
       # Here for the same reason as the timeout guard above: a script that binds
       # its parameters loosely swallows an argument it does not recognise and
       # runs its defaults instead of failing, and the scripts with the most

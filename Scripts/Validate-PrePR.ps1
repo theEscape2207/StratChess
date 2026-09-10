@@ -556,6 +556,18 @@ catch { $timeoutFailed = $true; Write-Host "Timeout guard threw: $_" -Foreground
 if ($LASTEXITCODE -ne 0) { $timeoutFailed = $true }
 $checkResults['Workflow timeouts'] = if ($timeoutFailed) { 'FAIL' } else { 'PASS' }
 
+# --- Step 0d1: ccache path settings in CI configuration ---
+# Same asymmetry as the timeout guard above. base_dir and hash_dir are local-workflow
+# levers whose failure mode is a stale artifact on a green build, so CI must not
+# acquire either by copy-paste from a local experiment.
+Write-Host "`n==> ccache path settings in CI configuration" -ForegroundColor Cyan
+$ccachePathScript = Join-Path $PSScriptRoot 'Test-WorkflowCcachePaths.ps1'
+$ccachePathFailed = $false
+try   { & $ccachePathScript }
+catch { $ccachePathFailed = $true; Write-Host "ccache path guard threw: $_" -ForegroundColor DarkGray }
+if ($LASTEXITCODE -ne 0) { $ccachePathFailed = $true }
+$checkResults['ccache path settings'] = if ($ccachePathFailed) { 'FAIL' } else { 'PASS' }
+
 # --- Step 0d2: script parameter binding ---
 # Same reasoning as the timeout guard above, for the same reason it is cheap:
 # pure text. A script that binds loosely discards an argument it does not know
