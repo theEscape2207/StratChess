@@ -47,7 +47,7 @@ edit → revert → same-edit-again sequence now recompiles 96 objects on each l
 executable to the matching hash each time. Warm clean builds land at 5 s (Release) and 3 s (Debug)
 against a ~31–37 s uncached baseline; the durable claim is preserving #515/#517's saving, not those
 numbers. Residual risk and the three removal conditions:
-`.claude/plans/ccache-showincludes-dependency-records.md`.
+`.claude/plans/retained/ccache-showincludes-dependency-records.md`.
 
 ---
 

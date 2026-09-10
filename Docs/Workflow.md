@@ -526,7 +526,7 @@ notes travel on the stdout a hit does replay, so the record survives either way.
 the build graph (`cmake/CheckNinjaDepsRules.cmake`) fails the build if a CMake upgrade quietly
 restores the GCC-style path — and it runs for bare `ninja` and `cmake --build` too, which is the
 point: those two bypass `build.ps1`'s `Assert-ArtifactFresh`, which stays as defence in depth. When
-to remove the override again: `.claude/plans/ccache-showincludes-dependency-records.md`.
+to remove the override again: `.claude/plans/retained/ccache-showincludes-dependency-records.md`.
 
 **Sharing across worktrees via `base_dir` was probed and rejected** (#510, ccache 4.14). Three
 findings, any one of which would be enough:
