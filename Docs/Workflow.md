@@ -517,14 +517,16 @@ reuse is within one source path, not across worktrees: deleting `build/`, reconf
 branches and rebuilding, or bisecting all come back warm, while a **new worktree's first build is a
 full cold compile** like today.
 
-**A hit costs the object's dependency record, and that is a live defect (#519).** ccache never stores
-a dependency file for these command lines — CMake passes the flags as `-clang:-MD -clang:-MF<path>`
-and ccache's parser does not decode the `-clang:` prefix — so a hit replays the object and nothing
-else. Ninja is left with no dependencies for that object and says nothing. A later header change then
-does not rebuild it. `build.ps1` catches the result: `Assert-ArtifactFresh` compares the executable
-against the newest source and exits 1, so the sanctioned path fails loudly rather than handing over a
-wrong binary. But the failure is **stuck** — nothing will rebuild the object — and the cure is to
-delete the build directory. Driving `ninja` or `cmake --build` yourself skips the check entirely.
+**A hit would cost the object's dependency record, so the build does not use CMake's depfiles here.**
+CMake passes clang-cl `-clang:-MD -clang:-MF<path>`; ccache does not decode the `-clang:` prefix and
+stores no dependency file, so a hit replayed the object and left Ninja with **no** dependencies for
+it — silently, and a later header change then did not rebuild it (#519). `CMakeLists.txt` puts the
+build back on `/showIncludes` and `deps = msvc` whenever ccache sits in front of clang-cl: include
+notes travel on the stdout a hit does replay, so the record survives either way. A check wired into
+the build graph (`cmake/CheckNinjaDepsRules.cmake`) fails the build if a CMake upgrade quietly
+restores the GCC-style path — and it runs for bare `ninja` and `cmake --build` too, which is the
+point: those two bypass `build.ps1`'s `Assert-ArtifactFresh`, which stays as defence in depth. When
+to remove the override again: `.claude/plans/ccache-showincludes-dependency-records.md`.
 
 **Sharing across worktrees via `base_dir` was probed and rejected** (#510, ccache 4.14). Three
 findings, any one of which would be enough:
@@ -537,12 +539,13 @@ findings, any one of which would be enough:
   source file's directory; clang-cl resolves it against the working directory and `-I` paths. The
   translation units under `StratEngine/Tests/` and `StratEngine/Utils/` get `/FI..\Compat.h`, which
   resolves to nothing, so 6 of 30 fail preprocessing and are never cached at all.
-- **It cannot fix the dependency record**, because there is no cached dependency file to carry paths
-  in — see #519 above.
+- **It does not extend to the dependency record.** ccache 4.14 ties its `/showIncludes` path
+  rewriting to its MSVC compiler type, and clang-cl is classified separately — so a replayed hit can
+  still carry the absolute paths of the tree that populated it.
 
 Upstream skips its entire `base_dir` suite on Windows, so none of this had a regression net.
 
-Three things about it are non-obvious:
+The rest of it is non-obvious in these ways:
 
 - **The launcher decision is recorded at configure time**, and `build.ps1` configures only when
   `CMakeCache.txt` is missing. So installing or removing ccache does not reach an existing build tree
@@ -559,6 +562,12 @@ Three things about it are non-obvious:
 - **`CCACHE_COMPILERCHECK=content` must stay a value ccache recognises.** An unknown one is run as a
   *command*: it fails once per compile, ccache exits 0, and the build stays green while caching
   nothing — 42 s instead of 12 s, with nothing said anywhere.
+- **A winget install is not on `PATH`, and the cache is then silently inert.** `winget install
+  Ccache.Ccache` unpacks into a **version-pinned** package directory
+  (`%LOCALAPPDATA%\Microsoft\WinGet\Packages\Ccache.Ccache_<source>\ccache-<version>-windows-x86_64`)
+  and lays down no shim in `WinGet\Links`, so `build.ps1` correctly reports ccache absent and strips
+  the launcher — with the tool installed. Add that directory to `PATH` to fix it, and expect to
+  update the entry on the next ccache upgrade, since the version is part of the path.
 - **`CCACHE_DISABLE` is yours.** `build.ps1` sets it for the configure step alone, because CMake's
   per-configure `TryCompile-<random>` probes leave entries nothing can ever hit, and restores
   whatever you had. Export it and the whole build honours it.
