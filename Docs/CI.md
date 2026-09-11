@@ -11,6 +11,7 @@ the mechanics.
 | understand a nightly failure | [Nightly](#nightly-nightlyyml) |
 | measure strength in CI | [Strength lab](#strength-lab-strengthyml) |
 | know why validation is split across platforms | `Workflow.md` → Standing decisions |
+| know what else scans the repo | [Repository services](#repository-services) |
 
 ---
 
@@ -355,3 +356,16 @@ change helped, that scan says where.
 At the default 18 shards, a strength run occupies 18 of the 20 concurrent-job slots for ~3 hours.
 It can delay other CI, but leaves two slots; choosing 20 shards consumes the allowance. This is why
 the lab is not wired to trigger automatically.
+
+---
+
+## Repository services
+
+These are configured outside the workflows, and none of them uses a runner slot.
+
+- **Dependabot** (`.github/dependabot.yml`) opens one grouped PR a month that bumps the workflow
+  actions. It covers nothing else, because it can't read the C++ dependencies pinned by
+  `FetchContent`. Bump those by hand.
+- **Secret scanning and push protection** are enabled in the repo settings.
+- **CodeQL is off.** Its default setup took runner slots ahead of `classify`, which delayed the
+  whole gate, and it found nothing the threat model cares about.
