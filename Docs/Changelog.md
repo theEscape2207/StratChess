@@ -22,12 +22,13 @@ Newest first.
 
 ---
 
-## 2026-09-11 — Frontier futility pruning at depth 1, behind its own gate (#504)
+## 2026-09-11 — Frontier futility pruning at depth 1 ships (#504)
 
 At a depth-1 non-PV node, a quiet later move is now skipped when the parent's static evaluation plus
 200 cp still does not reach alpha. This is #87's Stage 2, the move-level alpha-side counterpart of
-reverse futility. It ships **compiled out**, pending a strength run. "Extended" (depth-2) futility is
-a separate experiment and is not part of this change.
+reverse futility. The CI strength lab measured it at **+23.39 +/- 3.46 Elo** against its merge base
+`0d9ae52` (19,980 games at 10+0.1, run `34596140552`, all 18 shards favouring the candidate).
+"Extended" (depth-2) futility is a separate experiment and is not part of this change.
 
 The guard sits in the `pvs()` move loop in two halves:
 
@@ -52,13 +53,12 @@ fail-low child already hands the node exactly alpha. It matters when a searched 
 alpha: a draw, or a TT hit whose stored value lies past the child's bound. Storing that floored UPPER bound is a selective-search heuristic, like
 null-move's stored bound, not a reproducibility guarantee: a skipped move can later become a killer.
 
-`STRAT_FRONTIER_FUTILITY` has three levels:
-
-- `0` ships and compiles no guard;
-- `1` compiles it in with `SearchTuning::frontier_futility_enabled` off;
-- `2` also turns it on.
-
-The test binary builds level 1.
+The guard was developed behind a three-level `STRAT_FRONTIER_FUTILITY` gate: `0` compiled no guard,
+`1` compiled it in with `SearchTuning::frontier_futility_enabled` off, and `2` turned it on. After
+the strength result the gate was removed, as reverse futility's was, and the guard is unconditional.
+`SearchTuning::frontier_futility_enabled` survives, defaulting to `true` and unreachable over UCI, so
+tests can turn the guard off. The level rows below are the equivalence and wall-clock checks run
+while the gate existed.
 
 **Measured at fixed depth 12, `Threads=1`, clang-cl, over the `Run-Bench.ps1` set.**
 
@@ -87,8 +87,7 @@ To make the guard visible, the engine now prints `info string frontier skips N` 
 should treat skipped and illegal moves is left to #402.
 
 The tactical suite passes 36/36, and stability mode (10 runs, and 20 runs at 4 threads) has no
-failing run and no flip. This is a tree-size precondition, **not a strength result**: whether it
-ships is a strength-lab decision.
+failing run and no flip.
 
 ---
 

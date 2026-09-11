@@ -36,7 +36,7 @@ Same order as the table above. A row with nothing to add beyond its verdict has 
 
 **The gate for the feature, and it passes.** 18 shards x 555 pairs, pooled Ptnml(0-2) [547, 1998, 3898, 2659, 888], score 53.36%, run `34596140552`, 3 h 07 min wall-clock. 95% interval **[+19.9, +26.9]** -- standard error ~1.77, so the estimate stands about 13 standard errors clear of zero. **All 18 shards favour the candidate on score**, from 51.53% to 55.50%. All 18 green, so the fatal check found no time loss, illegal move played, disconnect or stall.
 
-**The comparison rests on `cmake_defines`, not on the branch default.** The PR compiles the feature out (`STRAT_FRONTIER_FUTILITY` defaults to 0), so the run passed `-DSTRAT_FRONTIER_FUTILITY=2` to both builds. The candidate log shows `Frontier futility: LEVEL 2`; the reference `0d9ae52` predates the option and CMake lists it as an unused variable, so the reference ran without the feature. Merging the PR as it stands ships none of this gain -- that needs the default flipped to 2.
+**The comparison rests on `cmake_defines`, not on the branch default.** The PR compiles the feature out (`STRAT_FRONTIER_FUTILITY` defaults to 0), so the run passed `-DSTRAT_FRONTIER_FUTILITY=2` to both builds. The candidate log shows `Frontier futility: LEVEL 2`; the reference `0d9ae52` predates the option and CMake lists it as an unused variable, so the reference ran without the feature. The same PR then removed the gate, so the shipped guard is unconditional and matches this candidate's level 2.
 
 **What it does not settle.** The 200 cp margin and the D4 fail-low floor, held fixed so the result is attributable to the feature. Nor depth-2 ("extended") futility, which stays a separate experiment in #504.
 

@@ -865,8 +865,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 	// Frontier futility pruning: at a depth-1 node, a quiet move is skipped when the parent's
 	// static evaluation stands a margin below alpha. Node-level guards here, move-level ones below.
-	const bool frontier_node =
-	    kFrontierFutilityCompiled && frontier_futility_eligible(depth, alpha, is_pv_node, in_check, is_exclusion_frame);
+	const bool frontier_node = frontier_futility_eligible(depth, alpha, is_pv_node, in_check, is_exclusion_frame);
 	bool frontier_skipped = false;
 
 	// Iterate by sorted index — no rebuild of moveList needed
@@ -886,13 +885,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		// legal_moves_searched >= 1 keeps the first legal move searched, so a skip can never leave
 		// the node without a move and fabricate a mate or stalemate. The hash move sorts first, so
 		// excluding it is defence in depth behind that same term.
-		bool frontier_candidate = false;
-		if constexpr (kFrontierFutilityCompiled) {
-			frontier_candidate = frontier_node && legal_moves_searched >= 1 && !MoveHelper::IsCapture(move) &&
-			                     !MoveHelper::IsPromote(move) && move != td.killers[ply][0] &&
-			                     move != td.killers[ply][1] && move != hash_move &&
-			                     node_eval() + tuning_.frontier_futility_margin <= alpha;
-		}
+		const bool frontier_candidate = frontier_node && legal_moves_searched >= 1 && !MoveHelper::IsCapture(move) &&
+		                                !MoveHelper::IsPromote(move) && move != td.killers[ply][0] &&
+		                                move != td.killers[ply][1] && move != hash_move &&
+		                                node_eval() + tuning_.frontier_futility_margin <= alpha;
 
 		if (td.board.DoMove(move)) {
 			const int move_number = legal_moves_searched++; // 0 for the first legal move

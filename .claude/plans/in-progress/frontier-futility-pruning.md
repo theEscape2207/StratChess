@@ -124,6 +124,11 @@ This follows the Stage 1 reverse-futility precedent. `STRAT_FRONTIER_FUTILITY` h
 The test target compiles it in with the flag off, and the tests turn it on themselves. Level 1 exists
 so that "flag off is node-identical" is checked on a binary that has the branch and does not take it.
 
+**Superseded once the strength lab measured level 2 at +23.39 +/- 3.46 Elo** (run `34596140552`).
+As with reverse futility, the compile-time gate is removed and the guard is unconditional. Only
+`SearchTuning::frontier_futility_enabled` survives, defaulting to `true`, so tests can turn it off.
+A depth-2 experiment gets its own gate; these levels could not have switched it.
+
 ## Assumptions I cannot verify from the code
 
 - **The strength effect is unknown.** Reverse futility's +44.6 Elo is no forecast. This design settles
@@ -165,7 +170,8 @@ so that "flag off is node-identical" is checked on a binary that has the branch 
 | Decision / rationale | Lands in |
 |---|---|
 | D2 eligibility, D4 floor rationale | source comments at the guard |
-| D5 gate levels | `CMakeLists.txt` option comment, `AIPerplex.h` |
+| D5 gate levels, and their removal | `Docs/Changelog.md` |
 | wall-clock result | `Docs/Changelog.md`, PR body |
+| strength-lab result | `Measurements/ci-per-change.md`, `Docs/Changelog.md` |
 | depth-2 follow-up | stays in #504 |
 | floor binds only below-alpha children (quiescence fails high at exactly beta) — found in implementation | source comment at the floor, floor test comment |
