@@ -21,6 +21,9 @@ on:
       reference_ref:
         description: "Reference side. 'merge-base' measures this ref against where it forked from main, so the result is attributable to this change alone. A tag such as elo-reference-v2 measures cumulative strength instead; the candidate's own SHA is a null test"
         default: merge-base
+      cmake_defines:
+        description: "Whitespace-separated -DNAME=VALUE arguments applied identically to both engine builds"
+        default: ""
       games:
         description: "Total games across all shards (2 per opening pair; rounded down to fit the shards evenly)"
         default: "20000"
@@ -95,6 +98,17 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - name: Validate CMake defines
+        env:
+          CMAKE_DEFINES: ${{ inputs.cmake_defines }}
+        run: |
+          set -euo pipefail
+          define_re='-D[A-Za-z_][A-Za-z0-9_]*=[A-Za-z0-9_./:+,@%=-]+'
+          if [ -n "$CMAKE_DEFINES" ] && [[ ! "$CMAKE_DEFINES" =~ ^${define_re}([[:blank:]]+${define_re})*$ ]]; then
+            echo "::error::cmake_defines must be whitespace-separated -DNAME=VALUE arguments; values may contain letters, digits, and . / : + , @ % = -"
+            exit 1
+          fi
 
       # Resolving here rather than in `build` follows the same rule as the
       # pooling self-test below: a reference that does not exist costs seconds
@@ -214,8 +228,13 @@ jobs:
       # on -- a candidate and reference built by different toolchains show the
       # compiler gap as a phantom strength change (issue #84).
       - name: Build candidate
+        env:
+          CMAKE_DEFINES: ${{ inputs.cmake_defines }}
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          set -euo pipefail
+          cmake_args=()
+          if [ -n "$CMAKE_DEFINES" ]; then read -r -a cmake_args <<< "$CMAKE_DEFINES"; fi
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release "${cmake_args[@]}"
           cmake --build build --target StratChessEvolved --parallel
 
       # The reference is built from its own source tree, not from a cached
@@ -224,10 +243,13 @@ jobs:
       - name: Build reference (${{ inputs.reference_ref }} = ${{ needs.setup.outputs.reference_sha }})
         env:
           REFERENCE_REF: ${{ needs.setup.outputs.reference_sha }}
+          CMAKE_DEFINES: ${{ inputs.cmake_defines }}
         run: |
           set -euo pipefail
           git worktree add --detach "$RUNNER_TEMP/reference" "$REFERENCE_REF"
-          cmake -S "$RUNNER_TEMP/reference" -B "$RUNNER_TEMP/reference/build" -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake_args=()
+          if [ -n "$CMAKE_DEFINES" ]; then read -r -a cmake_args <<< "$CMAKE_DEFINES"; fi
+          cmake -S "$RUNNER_TEMP/reference" -B "$RUNNER_TEMP/reference/build" -G Ninja -DCMAKE_BUILD_TYPE=Release "${cmake_args[@]}"
           cmake --build "$RUNNER_TEMP/reference/build" --target StratChessEvolved --parallel
 
       - name: Fetch fastchess and the opening book
@@ -531,6 +553,8 @@ jobs:
       # the job summary cannot drift apart.
       - name: Report
         if: always()
+        env:
+          CMAKE_DEFINES: ${{ inputs.cmake_defines }}
         run: |
           {
             echo "## Strength lab"
@@ -542,6 +566,7 @@ jobs:
             echo "| Games | ${{ needs.setup.outputs.actual_games }} = ${{ inputs.shards }} shards x ${{ needs.setup.outputs.games_per_shard }}, concurrency ${{ inputs.concurrency }} per shard |"
             echo "| Book | \`$BOOK_FILE\` (${{ needs.build.outputs.openings }} openings) |"
             echo "| Toolchain | GCC on ubuntu-24.04, Release, Threads=1 |"
+            echo "| CMake defines | \`${CMAKE_DEFINES:-none}\` (applied to both engines) |"
             echo
             cat /tmp/pooled.md
             echo
