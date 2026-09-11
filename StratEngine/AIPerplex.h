@@ -154,6 +154,12 @@ struct SearchTuning {
 	int reverse_futility_max_depth = 3;
 	// Centipawns of slack per remaining ply, on g_iPieceValues' scale -- one pawn per ply.
 	int reverse_futility_margin = 100;
+
+	// Frontier futility pruning at depth 1, on for the shipping engine. Not reachable over UCI; the
+	// flag exists so the tests can turn the guard off and search the same node normally.
+	bool frontier_futility_enabled = true;
+	// Centipawns one quiet move may gain positionally, the room delta_pruning_margin also trusts.
+	int frontier_futility_margin = 200;
 };
 
 struct AIPerplexConfig {
@@ -303,6 +309,10 @@ class AIPerplex final {
 	// that evaluation on a node a cutoff could actually apply to.
 	bool reverse_futility_eligible(int depth, int beta, bool is_pv_node, bool in_check, bool is_exclusion_frame,
 	                               bool zugzwang_safe) const;
+	// The node-level frontier-futility guards. The move-level ones live in the pvs() move loop,
+	// where the move, the live killers and the made move's check status are at hand.
+	bool frontier_futility_eligible(int depth, int alpha, bool is_pv_node, bool in_check,
+	                                bool is_exclusion_frame) const;
 
 	// Logging helpers
 	void log_iteration_eval(const IterationMetrics& metrics, const PVTable& pv_table) const;

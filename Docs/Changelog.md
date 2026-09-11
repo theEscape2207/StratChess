@@ -22,6 +22,75 @@ Newest first.
 
 ---
 
+## 2026-09-11 — Frontier futility pruning at depth 1 ships (#504)
+
+At a depth-1 non-PV node, a quiet later move is now skipped when the parent's static evaluation plus
+200 cp still does not reach alpha. This is #87's Stage 2, the move-level alpha-side counterpart of
+reverse futility. The CI strength lab measured it at **+23.39 +/- 3.46 Elo** against its merge base
+`0d9ae52` (19,980 games at 10+0.1, run `34596140552`, all 18 shards favouring the candidate).
+"Extended" (depth-2) futility is a separate experiment and is not part of this change.
+
+The guard sits in the `pvs()` move loop in two halves:
+
+- **Before `DoMove()`**, on the parent position: at least one legal move already searched, not a
+  capture, not a promotion, not either live killer, not the hash move. Only this half reads the
+  static evaluation, because after the move `td.board` holds the child.
+- **After `DoMove()`**: a checking move is never skipped, and neither is one that draws on the spot
+  by repetition or the fifty-move rule. Without that second exemption, a side the margin calls lost
+  could have every drawing move skipped and fail low where it really holds a draw. The board is
+  restored before the skip.
+
+Excluded outright: PV nodes, nodes in check, exclusion frames, depth above 1, and mate-range alpha.
+There is no zugzwang floor. A pruned quiet move is assumed to gain little, and zugzwang only makes
+that more true.
+
+The static evaluation is now a lazy node-local value shared with reverse futility, so a node that
+reaches both guards evaluates once.
+
+A node that skipped a move floors its fail-low at `eval + margin` before its return and its TT
+store. The floor binds less often than it looks: quiescence fails high at exactly its beta, so a
+fail-low child already hands the node exactly alpha. It matters when a searched child returns below
+alpha: a draw, or a TT hit whose stored value lies past the child's bound. Storing that floored UPPER bound is a selective-search heuristic, like
+null-move's stored bound, not a reproducibility guarantee: a skipped move can later become a killer.
+
+The guard was developed behind a three-level `STRAT_FRONTIER_FUTILITY` gate: `0` compiled no guard,
+`1` compiled it in with `SearchTuning::frontier_futility_enabled` off, and `2` turned it on. After
+the strength result the gate was removed, as reverse futility's was, and the guard is unconditional.
+`SearchTuning::frontier_futility_enabled` survives, defaulting to `true` and unreachable over UCI, so
+tests can turn the guard off. The level rows below are the equivalence and wall-clock checks run
+while the gate existed.
+
+**Measured at fixed depth 12, `Threads=1`, clang-cl, over the `Run-Bench.ps1` set.**
+
+| Build vs merge base `ff702a7` | Compare-SearchEquivalence | Wall clock |
+|---|---|---|
+| level 0 | IDENTICAL | median +0.00% (5 rounds) |
+| level 1 | IDENTICAL | median +0.05% (5 rounds) |
+| level 2 | 3 of 6 positions diverge | **median −7.72%** (9 interleaved rounds, range −17.4% to −5.4%, all 9 faster) |
+
+The level-2 row is the final binary, with the draw exemption. Before that exemption the same gate
+measured −9.29%, with nearly the same skip count, so the exemption's `check_draws()` call costs
+about 1.5 points of the gain.
+
+That passes the pre-registered gate: median −3% or better, and at least 8 of 9 rounds faster.
+
+Node counts barely move: main 9,229,827 → 9,223,698, quiescence 2,620,683 → 2,618,907. **That is
+expected, and it is why wall clock is the verdict.** A skipped move is still counted as a main-tree
+node, because `pvs()` counts before `DoMove()`. The quiescence call it avoids is not a q-node either;
+it would have stood pat and returned alpha. So the saving is real work that neither column can show, and
+bench nps is inflated by roughly the same amount. Quote the fixed-depth wall clock, not nps.
+
+To make the guard visible, the engine now prints `info string frontier skips N` when it fired, and
+`Run-Bench.ps1` shows the count per position and in total. The guard skips about 18% of main nodes:
+1,652,819 of 9,223,698 at depth 12. At depth 16 (measured before the draw exemption) it was
+12,291,463 of 68,982,297, with a 3-round interleaved wall-clock median of −11.8%. How the node counters
+should treat skipped and illegal moves is left to #402.
+
+The tactical suite passes 36/36, and stability mode (10 runs, and 20 runs at 4 threads) has no
+failing run and no flip.
+
+---
+
 ## 2026-09-11 — Strength runs accept shared, validated CMake defines (#505)
 
 The manually dispatched strength lab now accepts whitespace-separated `-DNAME=VALUE` arguments,

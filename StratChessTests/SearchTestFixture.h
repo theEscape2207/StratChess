@@ -14,6 +14,7 @@
 #include "Board.h"
 #include "MoveFormatter.h"
 #include "MoveGenerator.h"
+#include "MoveHelper.h"
 #include "PlayerFactory.h"
 #include "PlayerBase.h"
 #include "SearchPlayer.h"
@@ -147,6 +148,64 @@ class AIPerlexTestFixture {
 	bool reverse_futility_eligible(int depth, int beta, bool is_pv_node, bool in_check, bool is_exclusion_frame) const
 	{
 		return ai->reverse_futility_eligible(depth, beta, is_pv_node, in_check, is_exclusion_frame, zugzwang_safe());
+	}
+
+	// --- Frontier futility pokes (#504) ---
+	// Compiled into the test binary with the runtime flag off; each test turns it on for itself.
+	void set_frontier_futility(bool enabled) const { ai->tuning_.frontier_futility_enabled = enabled; }
+	int frontier_futility_margin() const { return ai->tuning_.frontier_futility_margin; }
+	int64_t frontier_skips() const { return ai->td_.frontier_futility_skips; }
+	// Whether the search board is back on the fixture's position after a search_node() call.
+	bool search_board_restored() const { return ai->td_.board.get_zobrist_hash() == board_.get_zobrist_hash(); }
+
+	bool frontier_futility_eligible(int depth, int alpha, bool is_pv_node, bool in_check, bool is_exclusion_frame) const
+	{
+		return ai->frontier_futility_eligible(depth, alpha, is_pv_node, in_check, is_exclusion_frame);
+	}
+
+	void store_killer_uci(int ply, std::string_view uci) const
+	{
+		const Move move = MoveFormatter::FromUCI(uci, board_);
+		REQUIRE_FALSE(move.is_null());
+		ai->td_.store_killer(ply, move);
+	}
+
+	// An independent tally of the moves frontier futility may skip at a depth-1 node on an empty
+	// TT: legal, not the first legal move in search order, not a capture or promotion, not a live
+	// killer at `ply`, not giving check, and not drawing on the spot. Tests hold the engine's skip
+	// count against it.
+	int count_frontier_candidates(int ply) const
+	{
+		Board copy = board_;
+		MoveList list;
+		MoveGenerator::ComputeLegalMoves(copy, list);
+
+		const Move k0 = ai->td_.killers[ply][0];
+		const Move k1 = ai->td_.killers[ply][1];
+		std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored{};
+		const int n = static_cast<int>(list.size());
+		MoveSorter::ScoreMoves(list, n, copy, copy.GetCurrentColor(), Move::EmptyMove(), k0, k1, ai->td_.history,
+		                       scored);
+
+		int candidates = 0;
+		bool first_legal = true;
+		for (int i = 0; i < n; ++i) {
+			const Move move = list[scored[i].second];
+			if (!copy.DoMove(move))
+				continue;
+			const bool gives_check = copy.InCheck();
+			const bool draws = copy.is_repetition(ply + 1) || copy.halfmove_clock() >= HALFMOVE_CLOCK_LIMIT;
+			copy.UndoMove(move);
+
+			if (first_legal) {
+				first_legal = false;
+				continue;
+			}
+			if (!MoveHelper::IsCapture(move) && !MoveHelper::IsPromote(move) && move != k0 && move != k1 &&
+			    !gives_check && !draws)
+				++candidates;
+		}
+		return candidates;
 	}
 
 	// The same static evaluation the guard compares against beta, so a test can compute the exact

@@ -220,6 +220,7 @@ void AIPerplex::init_search(const Board& root)
 	td_.board = root; // thread-local copy — the search runs on this
 	td_.nodes_searched = 0;
 	td_.qnodes_searched = 0;
+	td_.frontier_futility_skips = 0;
 	td_.pv_table = PVTable{}; // fresh PV for this call
 	td_.root_game_state = GameStates::STILL_PLAYING;
 	// Per-call like the node counters: the reported trigger rate belongs to this search.
@@ -309,6 +310,7 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 			htd.clear_null_move_flags();
 			htd.nodes_searched = 0;
 			htd.qnodes_searched = 0;
+			htd.frontier_futility_skips = 0;
 			htd.clear_singular_telemetry();
 			if constexpr (kFutilityProbeCompiled)
 				htd.clear_futility_probe();
@@ -338,9 +340,11 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	int64_t total_sing_verifications = td_.singular_verifications;
 	int64_t total_sing_extensions = td_.singular_extensions;
 	int64_t total_sing_verify_nodes = td_.singular_verification_nodes;
+	int64_t total_frontier_skips = td_.frontier_futility_skips;
 	for (size_t i = 0; i + 1 < static_cast<size_t>(threads); ++i) {
 		total_nodes += helper_tds_[i]->nodes_searched;
 		total_qnodes += helper_tds_[i]->qnodes_searched;
+		total_frontier_skips += helper_tds_[i]->frontier_futility_skips;
 		total_sing_eligible += helper_tds_[i]->singular_eligible;
 		total_sing_verifications += helper_tds_[i]->singular_verifications;
 		total_sing_extensions += helper_tds_[i]->singular_extensions;
@@ -352,6 +356,7 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	result.singular_verifications = total_sing_verifications;
 	result.singular_extensions = total_sing_extensions;
 	result.singular_verification_nodes = total_sing_verify_nodes;
+	result.frontier_futility_skips = total_frontier_skips;
 
 	// Futility probe (#498), summed exactly like the counters above. Compiled out with the probe
 	// itself, so the shipping build does not walk thread state to add up zeros.
@@ -707,6 +712,19 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// null-move child -- now pays a popcount it used to short-circuit past.
 	const bool zugzwang_safe = !is_pv_node && !in_check && has_two_non_pawn_pieces(td.board);
 
+	// This node's static evaluation, computed at most once and shared by both futility guards.
+	// Only ever call it while td.board holds THIS position: after DoMove() it holds a child, whose
+	// evaluation is a different number from the other side's point of view.
+	int static_eval = 0;
+	bool static_eval_known = false;
+	const auto node_eval = [&] {
+		if (!static_eval_known) {
+			static_eval = evaluator_.Evaluate(td.board);
+			static_eval_known = true;
+		}
+		return static_eval;
+	};
+
 	// Reverse futility pruning (#87). A shallow non-PV node whose static evaluation already stands
 	// a margin above beta is reported as a fail-high without being searched. It sits exactly where
 	// the probe above measured this surface, and for the same reasons: a node the transposition
@@ -722,7 +740,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		// as exactly its alpha -- no improvement, hence no killer, history or PV write, and a
 		// null-move child returns beta - 1, one below the cutoff that would otherwise store a
 		// LOWER bound. A fail-soft return would break all of that at once.
-		if (evaluator_.Evaluate(td.board) - tuning_.reverse_futility_margin * depth >= beta)
+		if (node_eval() - tuning_.reverse_futility_margin * depth >= beta)
 			return beta;
 	}
 
@@ -845,6 +863,11 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// pseudo-legal, so illegal moves sorted ahead of a legal one would inflate its index.
 	int legal_moves_searched = 0;
 
+	// Frontier futility pruning: at a depth-1 node, a quiet move is skipped when the parent's
+	// static evaluation stands a margin below alpha. Node-level guards here, move-level ones below.
+	const bool frontier_node = frontier_futility_eligible(depth, alpha, is_pv_node, in_check, is_exclusion_frame);
+	bool frontier_skipped = false;
+
 	// Iterate by sorted index — no rebuild of moveList needed
 	for (int si = 0; si < n; ++si) {
 		const Move& move = moveList[scored_idx[si].second];
@@ -857,9 +880,30 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 		td.nodes_searched++;
 
+		// The pre-move half of the frontier guards, tested while td.board still holds this node,
+		// so the evaluation read is the parent's. Only a move passing every cheap term pays for it.
+		// legal_moves_searched >= 1 keeps the first legal move searched, so a skip can never leave
+		// the node without a move and fabricate a mate or stalemate. The hash move sorts first, so
+		// excluding it is defence in depth behind that same term.
+		const bool frontier_candidate = frontier_node && legal_moves_searched >= 1 && !MoveHelper::IsCapture(move) &&
+		                                !MoveHelper::IsPromote(move) && move != td.killers[ply][0] &&
+		                                move != td.killers[ply][1] && move != hash_move &&
+		                                node_eval() + tuning_.frontier_futility_margin <= alpha;
+
 		if (td.board.DoMove(move)) {
 			const int move_number = legal_moves_searched++; // 0 for the first legal move
 			int value;
+
+			// The post-move half: a checking move is never skipped, nor one that draws on the spot
+			// by repetition or the fifty-move rule -- the child would return a draw score, which a
+			// side the margin calls lost may badly need. The board is restored before the skip,
+			// and the skip precedes every PV, killer and history write below.
+			if (frontier_candidate && !td.check_draws(ply + 1) && !td.board.InCheck()) {
+				td.board.UndoMove(move);
+				td.frontier_futility_skips++;
+				frontier_skipped = true;
+				continue;
+			}
 
 			if (move_number == 0) {
 				// The hash-move re-check is the other half of the eligibility test: the
@@ -988,6 +1032,15 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			}
 		}
 	}
+
+	// A skipped move was not searched, only judged unable to beat static_eval + margin, so the node
+	// may claim no less. Quiescence fails high at exactly its beta, so a fail-low here is usually
+	// exactly alpha already; this binds when a searched child returned below alpha -- a draw, or a
+	// transposition hit whose stored value lies past the child's bound.
+	// Still <= alpha, so the bound stays UPPER. Like null move's stored bound it comes from a
+	// selective search and is not reproducible: a skipped move may later be a killer and searched.
+	if (frontier_skipped)
+		best_value = std::max(best_value, static_eval + tuning_.frontier_futility_margin);
 
 	// Terminal node: no legal move could be played, so this position is checkmate or
 	// stalemate and best_value is still the -Search_Init sentinel. Resolve the true
@@ -1637,6 +1690,24 @@ bool AIPerplex::should_try_null_move(const ThreadData& td, int depth, int beta, 
 	// single-piece endgames won by domination/zugzwang (issue #66: KQ vs KR,
 	// where the lone rook loses only because its side must move).
 	return zugzwang_safe;
+}
+
+bool AIPerplex::frontier_futility_eligible(int depth, int alpha, bool is_pv_node, bool in_check,
+                                           bool is_exclusion_frame) const
+{
+	if (!tuning_.frontier_futility_enabled)
+		return false;
+	// A verification search's fail-low grants a singular extension, so it must come from a
+	// search, not from this margin. Unreachable at depth 1 today; kept for the same reason as
+	// reverse futility's.
+	if (is_exclusion_frame)
+		return false;
+	if (is_pv_node || in_check)
+		return false;
+	if (depth > 1)
+		return false;
+	// The margin arithmetic is meaningless against a mate score.
+	return std::abs(alpha) < GameValues::Mate_Threshold;
 }
 
 bool AIPerplex::reverse_futility_eligible(int depth, int beta, bool is_pv_node, bool in_check, bool is_exclusion_frame,

@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-09-11 | 91de4e7 (depth-1 frontier futility, level 2, #504) | 0d9ae52 | 19980 | 10+0.1 | **+23.39 +/- 3.46** | gain |
 | 2026-09-09 | d51803a (reverse futility pruning enabled, #87) | 12d5e19 | 19980 | 10+0.1 | **+44.62 +/- 3.66** | gain |
 | 2026-09-05 | 86877f7 (minor-piece outposts, #112) | 9708c65 | 19980 | 10+0.1 | **+8.05 +/- 3.63** | gain |
 | 2026-09-03 | 0c64b7f (EXPERIMENT: middlegame `ISOLATED_PAWN_PENALTY` suppressed on the king's three files, #460) | 65e3f76 | 19980 | 10+0.1 | **+0.23 +/- 3.62** | no effect |
@@ -30,6 +31,14 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-09-11 -- 91de4e7 (depth-1 frontier futility, level 2, #504) (19980 games)
+
+**The gate for the feature, and it passes.** 18 shards x 555 pairs, pooled Ptnml(0-2) [547, 1998, 3898, 2659, 888], score 53.36%, run `34596140552`, 3 h 07 min wall-clock. 95% interval **[+19.9, +26.9]** -- standard error ~1.77, so the estimate stands about 13 standard errors clear of zero. **All 18 shards favour the candidate on score**, from 51.53% to 55.50%. All 18 green, so the fatal check found no time loss, illegal move played, disconnect or stall.
+
+**The comparison rests on `cmake_defines`, not on the branch default.** The PR compiles the feature out (`STRAT_FRONTIER_FUTILITY` defaults to 0), so the run passed `-DSTRAT_FRONTIER_FUTILITY=2` to both builds. The candidate log shows `Frontier futility: LEVEL 2`; the reference `0d9ae52` predates the option and CMake lists it as an unused variable, so the reference ran without the feature. The same PR then removed the gate, so the shipped guard is unconditional and matches this candidate's level 2.
+
+**What it does not settle.** The 200 cp margin and the D4 fail-low floor, held fixed so the result is attributable to the feature. Nor depth-2 ("extended") futility, which stays a separate experiment in #504.
 
 ### 2026-09-09 -- d51803a (reverse futility pruning enabled, #87) (19980 games)
 
