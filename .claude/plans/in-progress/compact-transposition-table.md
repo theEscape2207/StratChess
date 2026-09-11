@@ -1,10 +1,11 @@
 # Compact transposition-table storage — Design
 
 **Issue:** [#442](https://github.com/theEscape2207/StratChess/issues/442)
-**Status:** Approved; prototype in progress. Adoption evidence outstanding.
+**Status:** Approved; prototype implemented. Layout, portability, equivalence and timing evidence
+(equal- and doubled-capacity) complete. Strength assessment and adoption decision outstanding.
 **Baseline:** `0d9ae52`; branch updated through `b53d457` (#524/#525, workflow-only).
-Prototype implemented; equal-capacity search and eviction evidence recorded on 2026-09-11 in the
-[experiment protocol](compact-transposition-table-experiments.md). Timing and adoption remain open.
+See the [experiment protocol](compact-transposition-table-experiments.md) for E1-E4 evidence recorded
+2026-09-11. A strength-gain claim requires the CI lab with an owner-approved budget; none has run.
 
 ## Goal and scope
 

@@ -2,7 +2,8 @@
 
 **Issue:** [#442](https://github.com/theEscape2207/StratChess/issues/442)
 **Design:** [representation decisions](compact-transposition-table.md)
-**Status:** Prototype in progress; initial equivalence and eviction checks passed. See evidence below.
+**Status:** E1-E4 complete. Layout/equal-capacity evidence supports adoption; Hash=256/1 capacity growth
+is documented but unassessed for strength. No strength (Elo) evidence exists; adoption is not decided.
 **Source baseline:** `0d9ae52`; updates through `b53d457` change workflow only.
 
 ## Controls
@@ -147,3 +148,108 @@ TT/search, abort, SMP and lifecycle checks. MSVC Release engine/tests build and 
 and `git diff --check` passed. The initial test build exposed unsupported chained Catch2 assertions;
 those were split into individual checks before these successful runs. The witness counter and
 temporary test are absent from the final source and shipping binary.
+
+## Second-session evidence — 2026-09-11
+
+### E1 Linux portability complete
+
+The user supplied WSL `Ubuntu-24.04`. Commit `36e8aab` was exported with `git archive` to
+`build/compact-tt-experiment/linux-validation-36e8aab.tar`, then extracted onto native ext4 at
+`/tmp/strat-compact-tt-442.RJQMdc`. Nothing was built under `/mnt/c` or from the Windows worktree.
+Toolchain: GCC 13.3.0, CMake 3.28.3 and Ninja 1.11.1.
+
+- GCC Release full build and fast suite: 15,099 assertions / 638 cases passed.
+- GCC Debug full build and fast suite: 15,094 assertions / 635 cases passed.
+- Debug ASan + UBSan + `_GLIBCXX_DEBUG` test build and fast suite: 15,094 assertions / 635 cases passed.
+- Debug TSan engine build and repository SMP driver: six scenarios passed with no TSan report.
+- Expected injected `sink failure (test)` logging appeared during the passing Catch2 suites.
+
+### E3 paired timing complete
+
+The ignored Python driver reuses `Run-Bench.ps1`'s exact eight positions. It launches a fresh process
+per position, applies and verifies Hash/Threads, requires the tree-node split, enforces the 200 ms
+floor, alternates A/B order, preserves raw rows, and reports aggregate nps plus paired and per-position
+spread. One full warm-up per binary preceded each ten-pair campaign. Both binaries are the preserved
+shipping clang-cl Release artifacts and retain the hashes listed above. No builds or other searches ran
+concurrently. Single-thread pairs also enforced node/split/bestmove equality.
+
+| Hash | Threads | Depth | Aggregate candidate nps delta, 10 pairs | Interpretation |
+|---:|---:|---:|---:|---|
+| 192 | 1 | 13 | median **+1.101%**, mean +1.389%, range +0.519% to +3.519%, SD 0.892 pp | Equal capacity; all pairs positive. |
+| 3 | 1 | 14 | median **+6.559%**, mean +7.792%, range +4.400% to +13.016%, SD 2.862 pp | Equal capacity, eviction-heavy; all pairs positive. |
+| 192 | 4 | 15 | median +2.600%, mean +0.381%, range -16.608% to +10.905%, SD 8.564 pp | Lazy SMP is very noisy; no equivalence or Elo claim. |
+
+The complete JSON contains per-position medians/ranges and every raw row. This establishes a repeatable
+single-thread speed improvement at equal capacity, not a strength gain.
+
+### E3 direct lifecycle and memory complete
+
+A temporary Catch2 experiment (removed after use) compared both headers in one clang-cl Release process.
+Each of five alternating pairs measured construction, clear after seeding every bucket, and one million
+empty clears; one warm-up per layout preceded sampling. Raw data is `lifecycle-h192.csv`.
+
+- Windows `sizeof(std::shared_mutex)`: 8 bytes.
+- Hash=192 baseline: 2,097,152 buckets, 192 MiB entries + 16 MiB locks = 208 MiB.
+- Hash=192 candidate: same buckets, 128 MiB entries + 16 MiB locks = 144 MiB.
+- Construction median paired delta is about -35.6% (candidate faster).
+- Populated clear median paired delta is approximately zero; there is no demonstrated improvement.
+- Empty clear is approximately 10 ns/call for both and indistinguishable at this resolution.
+
+### E4 complete — Hash=256 paired timing
+
+Restarted from scratch per the handoff's instruction not to extend the cancelled five-pair run. One
+warm-up plus ten alternating pairs, Hash=256, Threads=1, depth 13, same preserved shipping clang-cl
+Release binaries (hashes unchanged, re-verified before the run). Output:
+`build/compact-tt-experiment/timing-h256-t1-d13-full/`. The earlier five-pair cancelled run remains at
+`timing-h256-t1-d13/` as interrupted-run provenance only, per the handoff, and is not used below.
+
+**Aggregate candidate nps delta, 10 pairs: median +1.215%, mean +1.750%, range -1.474% to +5.544%,
+SD 2.182 pp.** Total node counts differ negligibly between binaries (e.g. 21,513,817 vs 21,514,916 at
+Hash=256, Threads=1, depth 13, summed over the eight-position suite) and every pair's per-position
+bestmove matched at this depth — but this is **not an equivalence result**: candidate capacity is
+4,194,304 buckets against baseline's 2,097,152 (D3's doubling case), so collisions differ and node/
+bestmove agreement here is observation, not a guarantee E2 makes only at matching capacity.
+
+### E4 complete — Hash=256 direct lifecycle and memory
+
+Reconstructed the removed temporary Catch2 lifecycle experiment (E3's approach) for Hash=256, since no
+source survived the prior session's cleanup — rebuilt from the E3 CSV schema and the design's D2/D3
+narrative, preserved this time at `build/compact-tt-experiment/TTLifecycleExperimentTests-h256.cpp`
+before removal. Same method: one warm-up per layout, five alternating pairs, construction / clear-
+after-seeding-every-bucket / one million empty clears. Raw data is `lifecycle-h256.csv`
+(`build/compact-tt-experiment/`).
+
+| Metric | Baseline | Candidate |
+|---|---:|---:|
+| Buckets | 2,097,152 | 4,194,304 |
+| Entry bytes | 192 MiB | 256 MiB |
+| Lock bytes | 16 MiB | 32 MiB |
+| Allocated bytes | 208 MiB | 288 MiB |
+| Construction, median of 5 | 28,960 us | 37,529 us |
+| Populated clear, median of 5 | 22,260 us | 44,440 us |
+| Empty clear, median of 5 | 9.787 ns/call | 9.770 ns/call |
+
+At this doubled-capacity Hash, **both entry and lock allocations grow for the candidate**, matching the
+design's D3 table exactly. Construction and populated clear both track bucket count rather than byte
+layout: the candidate is slower on both at Hash=256 (roughly 2x, matching its 2x bucket count) where it
+was faster at matching-capacity Hash=192 (E3's -35.6% construction delta). This is expected, not a
+regression in the packed code path — the H=192 result isolates the layout change; H=256 additionally
+changes how much table exists. Empty clear remains indistinguishable at this resolution for both.
+
+One run had a same-process outlier at pair 5 (candidate: 72,965 us populated clear, 17.14 ns/call empty
+clear, versus ~44,000-45,000 us / ~9.7-9.8 ns/call on every other candidate sample in both runs); a
+repeat clean run reproduced the same pair-5-candidate anomaly (this document reports the second, clean
+run's data above). The first attempt overlapped the tail of the concurrent E4 timing campaign and was
+discarded for that reason; the second had no other process running. The anomaly's repeatability across
+both runs suggests a real effect — plausibly allocator/heap fragmentation from repeated large (~300 MiB)
+alloc/free cycles rather than system noise — but it was not root-caused, consistent with not extending
+sampling past what the protocol requires. It does not change the interpretation above.
+
+### Interpretation after E4
+
+Equal-capacity results (Hash=192 and 3) support the layout: less memory at unchanged capacity, faster
+single-thread search, faster construction, no populated-clear regression. Hash=256 shows a net-positive
+but noisier single-thread search delta (median +1.2%) bought at roughly double total memory and roughly
+double construction/clear cost — a capacity-changing outcome, not a free win, exactly as D3 anticipates
+and the design's adoption criteria require flagging. No strength (Elo) evidence exists at any Hash; the
+CI lab run required for a gain claim has not been authorized or launched.
