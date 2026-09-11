@@ -1,0 +1,11 @@
+# Only the workflow actions are tracked: Dependabot cannot read CMake FetchContent pins, and the
+# repo has no pip manifest. Major-tag pins break when GitHub retires the Node runtime they use.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
