@@ -9,7 +9,7 @@ what you do; this file holds the background you consult when something is unexpe
 |---|---|
 | know what validation my change needs | [Validation tiers](#validation-tiers) |
 | decide whether to dispatch `search-reviewer` | [When `search-reviewer` may be skipped](#when-search-reviewer-may-be-skipped) |
-| send an artifact to the cross-agent reviewer, or rank findings | [Cross-agent review](#cross-agent-review) |
+| decide what to send the cross-agent reviewer | [Cross-agent review](#cross-agent-review); running a round: skill `cross-agent-review` |
 | know what happens to a design doc after review | [Design document lifecycle](#design-document-lifecycle) |
 | start a task, or clean one up afterwards | [Two ways to run a task](#two-ways-to-run-a-task) |
 | run an AI-vs-AI game by hand | [Self-play validation](#self-play-validation) |
@@ -148,26 +148,12 @@ added signal. That split leaves a seam — nobody checks the diff still matches 
 why CLAUDE.md requires the PR body to state which approved decisions changed during implementation.
 The Harvest table is the natural place to notice it.
 
-**One round per artifact** unless it finds something blocking. Signal density falls off sharply
-after the first pass.
-
-**Rank findings.** Unranked findings force the author to re-triage before acting.
-
-| Rank | Meaning |
-|---|---|
-| **Blocking** | Merging without it risks a wrong or unverifiable result |
-| **Add** | A real gap worth closing, but the change is sound without it |
-| **Clarify** | Wording or framing, no behaviour at stake |
-
-**A blocking finding is closed with evidence proportionate to the claim**, not with an assertion.
-Measurement when the claim is about runtime or external behaviour — as PR #263 did for fastchess's
-`ucinewgame` — but source inspection, an authoritative specification, a focused test or explicit
-reasoning all qualify where they actually settle the question.
-
-The reviewer's strengths are provenance (who actually measured a number) and logical form
-(dichotomies that do not hold); it is weak at judging what is worth changing versus leaving alone.
-**Adjudicate on the merits** — push back with reasoning where a point does not hold rather than
-complying with all of them, and record the disposition so the exchange stays auditable.
+**How to run a round** — the `*.review.md` channel, ranks, dispositions, lifecycle — is skill
+`cross-agent-review`, so a fresh reviewer session loads it by trigger rather than by finding this
+section. The reasons behind its rules: ranking, because unranked findings force the author to
+re-triage before acting; one round, because signal density falls off sharply after the first pass;
+recorded dispositions, because the reviewer is strong on provenance and logical form but weak at
+judging what is worth changing, so the author must be free to reject a finding with reasons.
 
 ---
 

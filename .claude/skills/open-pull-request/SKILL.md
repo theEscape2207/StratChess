@@ -69,7 +69,7 @@ Check green with `Get-PrChecks.ps1 [-Pr n] [-Wait]` (exit 0 green / 1 failed / 2
 
 A **cross-agent review** — a second agent reviewing the design doc and commenting on the PR before
 merge — is routed by the user, not dispatched from here. So report a pushed PR as **awaiting
-review**, not done. What to send and how to rank findings: `Docs/Workflow.md` → Cross-agent review.
+review**, not done. Answering it: skill `cross-agent-review`.
 
 ## 5. After it merges
 
