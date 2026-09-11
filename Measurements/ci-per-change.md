@@ -12,6 +12,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
 | 2026-09-12 | ad7a422 (BUNDLED: compact TT + `Hash` default 192->256, #442) | c191d08 | 20000 | 18+0.18 | **+0.09 +/- 3.34** | no effect |
+| 2026-09-11 | d7458e3 (compact TT: 16-byte packed entries, aligned 64-byte buckets, equal-capacity case, #442) | b53d457 | 19980 | 10+0.1 | **+5.69 +/- 3.42** | gain |
 | 2026-09-11 | 91de4e7 (depth-1 frontier futility, level 2, #504) | 0d9ae52 | 19980 | 10+0.1 | **+23.39 +/- 3.46** | gain |
 | 2026-09-09 | d51803a (reverse futility pruning enabled, #87) | 12d5e19 | 19980 | 10+0.1 | **+44.62 +/- 3.66** | gain |
 | 2026-09-05 | 86877f7 (minor-piece outposts, #112) | 9708c65 | 19980 | 10+0.1 | **+8.05 +/- 3.63** | gain |
@@ -38,6 +39,18 @@ Same order as the table above. A row with nothing to add beyond its verdict has 
 **Two variables at once, so attributable to neither.** 20 shards, pooled Ptnml(0-2) [627, 2293, 4173, 2262, 645], score 50.01%, run `34657777302`, all green. 95% interval [-3.25, +3.43] -- about as centred on zero as this instrument produces. The candidate carried a throwaway commit raising `DEFAULT_AIPERPLEX_HASH_MB` to 256 and patching the two UCI tests that pin that default; it was never merged.
 
 **What it settles, and what it does not.** "Compact layout configured at Hash=256" does not beat current `main` at Hash=192 by anything this instrument can see. It does **not** isolate the capacity effect -- that needs compact-at-256 vs compact-at-192 -- and the longer TC shrinks a speed-type gain independently of capacity. Kept here despite being bundled because 20,000 games otherwise leave no trace.
+
+### 2026-09-11 -- d7458e3 (compact TT: 16-byte packed entries, aligned 64-byte buckets, #442) (19980 games)
+
+**The gate for the equal-capacity case, and it ships.** 18 shards x 555 pairs, pooled Ptnml(0-2) [641, 2210, 4059, 2341, 739], score 50.82%, run `34637995614`, 3 h 06 min wall-clock. 95% interval **[+2.27, +9.11]**, excluding zero by about 3.3 standard errors -- the +/- 3.42 is the 95% half-width, so the standard error behind it is ~1.75. The winning buckets (3080) outnumber the losing buckets (2851) by 229 pairs; a modest but real edge, not the shard-by-shard landslide a bigger effect would show. All 18 shards green -- no time loss, illegal move, disconnect or stall.
+
+**`strength.yml` never sets a UCI `Hash` option, so both sides ran at the default 192 MB** -- 2,097,152 buckets under either the old and new layouts, the equal-capacity case and the best-evidenced part of the design (E1-E4 covered portability, equivalence, timing and lifecycle; this is the first strength evidence). Reference is the merge base `b53d457`, isolating the packed-entry/bucket-alignment change from whatever else has landed on `main` since.
+
+**What it settles.** That the compact layout is not merely equivalent (E2) but a small measured gain at matched capacity -- most plausibly better cache behaviour from the smaller, aligned buckets rather than any search-behaviour change, since E2 already established identical node counts. #442 is ready to ship for the equal-capacity case on this evidence.
+
+**What it does not settle.** Whether +5.69 holds at other time controls or thread counts, and the doubled-capacity case the layout was partly motivated by -- the row above tried that and came back null, bundled. Isolating capacity needs compact-at-256 vs compact-at-192, or the probe counters of #532 for far less.
+
+**Superseded in one respect: this was measured before frontier futility pruning (#504).** The merge base `b53d457` predates it, and futility pruning cuts the TT's share of total work, so the shipping state is worth less than +5.69. Re-measured post-rebase with `Run-Bench.ps1` at depth 13, four alternating reps per build, clang-cl both sides: **+1.59% nps** (3.153M vs 3.103M), non-overlapping spreads, node counts identical (16,694,735 main / 4,824,635 qs), so the layout is still behaviour-preserving and still faster. At this project's ~1.7 Elo per 1% nps that is roughly +2.7 Elo -- below what a 20,000-game lab run resolves, which is why no second run was bought.
 
 ### 2026-09-11 -- 91de4e7 (depth-1 frontier futility, level 2, #504) (19980 games)
 
