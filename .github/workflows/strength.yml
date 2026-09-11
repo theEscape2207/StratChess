@@ -352,7 +352,7 @@ jobs:
         shard: ${{ fromJSON(needs.setup.outputs.shard_list) }}
     steps:
       - name: Download the toolkit
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: strength-${{ github.run_id }}-toolkit
           path: ${{ runner.temp }}/tools
@@ -513,7 +513,7 @@ jobs:
           exit 1
 
       - name: Download every shard
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: strength-${{ github.run_id }}-shard-*
           path: shards
