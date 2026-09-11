@@ -94,8 +94,12 @@ narrower than either:
 - it can only cut at an alpha at or above the floored value, and that is where the frontier guard
   would already be pruning quiet moves on the same static evaluation.
 
-The floor still does real work. It stops the return value, and the store, from claiming the skipped
-moves score as low as the searched ones did. The floored value is still `<= alpha`, so the bound type
+The floor binds less often than it looks. Quiescence fails high at exactly its beta, so at depth 1 a
+fail-low child hands this node exactly alpha. `best_value` is then already alpha, and the floor
+(`<= alpha`) changes nothing. It binds only when a searched child returns *below* alpha, which in
+practice means a draw (repetition or fifty-move). There it stops the return value, and the store,
+from claiming that the skipped moves score as low as the searched draws. It would become
+load-bearing everywhere if quiescence went fail-soft. The floored value is still `<= alpha`, so the bound type
 does not change. A LOWER bound can only come from a searched move that failed high, which is genuine
 whatever else was skipped. EXACT is unreachable because PV nodes are excluded.
 
@@ -160,3 +164,4 @@ so that "flag off is node-identical" is checked on a binary that has the branch 
 | D5 gate levels | `CMakeLists.txt` option comment, `AIPerplex.h` |
 | wall-clock result | `Docs/Changelog.md`, PR body |
 | depth-2 follow-up | stays in #504 |
+| floor binds only below-alpha children (quiescence fails high at exactly beta) — found in implementation | source comment at the floor, floor test comment |

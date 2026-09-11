@@ -89,6 +89,14 @@ inline constexpr bool kSingularExtensionsCompiled = STRAT_SINGULAR_EXTENSIONS !=
 inline constexpr bool kFutilityProbeCompiled = STRAT_FUTILITY_PROBE != 0;
 inline constexpr bool kFutilityProbeEvaluates = STRAT_FUTILITY_PROBE >= 2;
 
+// Frontier futility pruning, experimental. Set by CMake: 0 compiles no guard at all, 1 compiles it
+// in with SearchTuning::frontier_futility_enabled off (the build that proves the flag-off path is
+// node-identical), 2 also starts with it on, because UCI cannot set the runtime flag.
+#ifndef STRAT_FRONTIER_FUTILITY
+#	define STRAT_FRONTIER_FUTILITY 0
+#endif
+inline constexpr bool kFrontierFutilityCompiled = STRAT_FRONTIER_FUTILITY != 0;
+
 // Hand-aligned: this is the one tuning surface shared by the concrete
 // service configuration and the search implementation.
 struct SearchTuning {
@@ -154,6 +162,12 @@ struct SearchTuning {
 	int reverse_futility_max_depth = 3;
 	// Centipawns of slack per remaining ply, on g_iPieceValues' scale -- one pawn per ply.
 	int reverse_futility_margin = 100;
+
+	// Frontier futility pruning at depth 1. The RUNTIME half of the gate: meaningful only in a build
+	// compiled with STRAT_FRONTIER_FUTILITY (kFrontierFutilityCompiled above).
+	bool frontier_futility_enabled = STRAT_FRONTIER_FUTILITY >= 2;
+	// Centipawns one quiet move may gain positionally, the room delta_pruning_margin also trusts.
+	int frontier_futility_margin = 200;
 };
 
 struct AIPerplexConfig {
@@ -303,6 +317,10 @@ class AIPerplex final {
 	// that evaluation on a node a cutoff could actually apply to.
 	bool reverse_futility_eligible(int depth, int beta, bool is_pv_node, bool in_check, bool is_exclusion_frame,
 	                               bool zugzwang_safe) const;
+	// The node-level frontier-futility guards. The move-level ones live in the pvs() move loop,
+	// where the move, the live killers and the made move's check status are at hand.
+	bool frontier_futility_eligible(int depth, int alpha, bool is_pv_node, bool in_check,
+	                                bool is_exclusion_frame) const;
 
 	// Logging helpers
 	void log_iteration_eval(const IterationMetrics& metrics, const PVTable& pv_table) const;

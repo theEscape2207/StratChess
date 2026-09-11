@@ -401,6 +401,20 @@ if(NOT STRAT_FUTILITY_PROBE STREQUAL "0")
     message(STATUS "Futility cost probe: LEVEL ${STRAT_FUTILITY_PROBE} (measurement build, not for play)")
 endif()
 
+# Frontier futility pruning (#504), experimental and absent from the shipping engine until a strength
+# run earns it. Three levels, because "flag off is node-identical" is a claim about a build that HAS
+# the branch and does not take it:
+#   0  off, the shipping engine: no guard compiled
+#   1  compiled in, runtime flag off -- the Compare-SearchEquivalence build
+#   2  compiled in and on -- the build to measure
+#   cmake --preset windows-clang-cl -DSTRAT_FRONTIER_FUTILITY=2
+set(STRAT_FRONTIER_FUTILITY 0 CACHE STRING "Frontier futility pruning (#504): 0 off, 1 compiled in, 2 compiled in and on")
+set_property(CACHE STRAT_FRONTIER_FUTILITY PROPERTY STRINGS 0 1 2)
+if(NOT STRAT_FRONTIER_FUTILITY STREQUAL "0")
+    target_compile_definitions(StratChessEvolved PRIVATE STRAT_FRONTIER_FUTILITY=${STRAT_FRONTIER_FUTILITY})
+    message(STATUS "Frontier futility: LEVEL ${STRAT_FRONTIER_FUTILITY} (experimental build)")
+endif()
+
 include(CheckIPOSupported)
 check_ipo_supported(RESULT STRAT_IPO_SUPPORTED OUTPUT STRAT_IPO_ERROR)
 if(STRAT_IPO_SUPPORTED)
@@ -418,9 +432,10 @@ strat_configure_target(StratChessTests)
 # STRAT_SINGULAR_EXTENSIONS is unconditional here, independent of the option above: the feature's
 # tests have nothing to test unless it is compiled in, and they drive it through the runtime flag.
 # STRAT_SINGULAR_DEFAULT_ON is deliberately NOT set -- every other search test must keep seeing the
-# shipped configuration, so the singular tests enable it for themselves.
+# shipped configuration, so the singular tests enable it for themselves. Frontier futility is
+# compiled in at level 1 for the same reason: its tests turn the runtime flag on themselves.
 target_compile_definitions(StratChessTests PRIVATE
-    STRAT_ENABLE_TEST_ACCESS STRAT_SINGULAR_EXTENSIONS=1)
+    STRAT_ENABLE_TEST_ACCESS STRAT_SINGULAR_EXTENSIONS=1 STRAT_FRONTIER_FUTILITY=1)
 target_link_libraries(StratChessTests PRIVATE Catch2::Catch2WithMain)
 
 # The depfile override above sets CMake variables; this asserts what CMake generated from

@@ -96,6 +96,9 @@ struct ThreadData {
 	// verification from the deeper subtrees the extensions themselves produce.
 	int64_t singular_verification_nodes = 0;
 
+	// Moves frontier futility skipped. A work counter like nodes_searched, so it survives an abort.
+	int64_t frontier_futility_skips = 0;
+
 	// --- Futility cost probe (#498) ---
 	// Also last, and for the same reason as the singular block above. Written only from inside
 	// blocks the probe's compile-time gate discards, so a shipping build never touches them.
@@ -186,6 +189,7 @@ struct ThreadData {
 		board = Board();
 		nodes_searched = 0;
 		qnodes_searched = 0;
+		frontier_futility_skips = 0;
 		nodes_since_check_ = 0;
 		pv_table = PVTable();
 		clear_killers();
