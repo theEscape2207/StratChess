@@ -22,7 +22,7 @@ on:
         description: "Reference side. 'merge-base' measures this ref against where it forked from main, so the result is attributable to this change alone. A tag such as elo-reference-v2 measures cumulative strength instead; the candidate's own SHA is a null test"
         default: merge-base
       cmake_defines:
-        description: "Whitespace-separated -DNAME=VALUE arguments applied identically to both engine builds"
+        description: "Whitespace-separated -DNAME=VALUE arguments applied identically to both engine builds; CMAKE_* variables are reserved"
         default: ""
       games:
         description: "Total games across all shards (2 per opening pair; rounded down to fit the shards evenly)"
@@ -92,6 +92,7 @@ jobs:
       games_per_shard: ${{ steps.plan.outputs.games_per_shard }}
       actual_games: ${{ steps.plan.outputs.actual_games }}
       reference_sha: ${{ steps.reference.outputs.reference_sha }}
+      cmake_defines_validated: ${{ steps.defines.outputs.validated }}
     steps:
       # fetch-depth: 0 because the reference is resolved and verified here: a
       # merge base needs history, and a tag or SHA needs its objects present.
@@ -100,6 +101,7 @@ jobs:
           fetch-depth: 0
 
       - name: Validate CMake defines
+        id: defines
         env:
           CMAKE_DEFINES: ${{ inputs.cmake_defines }}
         run: |
@@ -109,6 +111,18 @@ jobs:
             echo "::error::cmake_defines must be whitespace-separated -DNAME=VALUE arguments; values may contain letters, digits, and . / : + , @ % = -"
             exit 1
           fi
+          if [ -n "$CMAKE_DEFINES" ]; then
+            read -r -a cmake_args <<< "$CMAKE_DEFINES"
+            for define in "${cmake_args[@]}"; do
+              name=${define#-D}
+              name=${name%%=*}
+              if [[ "$name" == CMAKE_* ]]; then
+                echo "::error::cmake_defines may not set reserved CMAKE_* variables ('$name')."
+                exit 1
+              fi
+            done
+          fi
+          echo "validated=true" >> "$GITHUB_OUTPUT"
 
       # Resolving here rather than in `build` follows the same rule as the
       # pooling self-test below: a reference that does not exist costs seconds
@@ -555,6 +569,8 @@ jobs:
         if: always()
         env:
           CMAKE_DEFINES: ${{ inputs.cmake_defines }}
+          CMAKE_DEFINES_VALIDATED: ${{ needs.setup.outputs.cmake_defines_validated }}
+          BUILD_RESULT: ${{ needs.build.result }}
         run: |
           {
             echo "## Strength lab"
@@ -566,7 +582,13 @@ jobs:
             echo "| Games | ${{ needs.setup.outputs.actual_games }} = ${{ inputs.shards }} shards x ${{ needs.setup.outputs.games_per_shard }}, concurrency ${{ inputs.concurrency }} per shard |"
             echo "| Book | \`$BOOK_FILE\` (${{ needs.build.outputs.openings }} openings) |"
             echo "| Toolchain | GCC on ubuntu-24.04, Release, Threads=1 |"
-            echo "| CMake defines | \`${CMAKE_DEFINES:-none}\` (applied to both engines) |"
+            if [ "$CMAKE_DEFINES_VALIDATED" != "true" ]; then
+              echo "| CMake defines | Not accepted by setup; no engine was built |"
+            elif [ "$BUILD_RESULT" = "success" ]; then
+              echo "| CMake defines | \`${CMAKE_DEFINES:-none}\` (applied to both engines) |"
+            else
+              echo "| CMake defines | \`${CMAKE_DEFINES:-none}\` (accepted; both builds did not complete) |"
+            fi
             echo
             cat /tmp/pooled.md
             echo
