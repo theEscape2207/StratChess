@@ -1,7 +1,8 @@
 # Handoff: #442 compact transposition table
 
-Checkpoint: 2026-09-11. Paused at the user's request to conserve token budget.
-The prototype is implemented and initial correctness experiments pass; it is **not approved for adoption**.
+Checkpoint: 2026-09-11, second pause. Paused at the user's request to conserve the 5-hour token budget.
+The prototype is implemented; portability, equivalence and equal-capacity timing experiments pass. It is
+**not approved for adoption** because Hash=256 and strength/adoption assessment remain incomplete.
 
 ## Resume efficiently
 
@@ -67,6 +68,12 @@ Preserve `build/compact-tt-experiment/` in this workspace. It contains:
 - `equivalence-depth12/result.json` and raw transcripts: four passing comparison cells.
 - `TTExperimentTests.cpp`, `prototype-with-witness.patch`, `eviction-witness.txt`: temporary counter evidence.
 - `prototype.patch`: engine diff without instrumentation; `BaselineTranspositionTable.h`: old header.
+- `linux-validation-36e8aab.tar`: committed checkpoint exported for native-ext4 WSL validation.
+- `compact_tt_bench.py`, `test_compact_tt_bench.py`: paired timing driver and its 12 passing self-tests.
+- `timing-h192-t1-d13/`, `timing-h3-t1-d14/`, `timing-h192-t4-d15/`: completed E3 raw JSON/CSV.
+- `lifecycle-h192.csv`: completed five-pair direct-TT lifecycle data.
+- `timing-h256-t1-d13/`: five-pair **cancelled partial** E4 run; preserve but do not report as the
+  protocol's ten-pair result. Use a new output directory when restarting E4.
 
 SHA256:
 
@@ -82,26 +89,76 @@ The experiment protocol records the exact driver command. Existing evidence need
 the source, harness or controls change. If moving to another workspace, copy ignored artifacts explicitly
 or reconstruct them; the tracked source and result summary alone do not preserve the driver.
 
+## Second-session evidence — 2026-09-11
+
+### E1 Linux portability complete
+
+The user supplied WSL `Ubuntu-24.04`. Commit `36e8aab` was exported with `git archive` to
+`build/compact-tt-experiment/linux-validation-36e8aab.tar`, then extracted onto native ext4 at
+`/tmp/strat-compact-tt-442.RJQMdc`. Nothing was built under `/mnt/c` or from the Windows worktree.
+Toolchain: GCC 13.3.0, CMake 3.28.3 and Ninja 1.11.1.
+
+- GCC Release full build and fast suite: 15,099 assertions / 638 cases passed.
+- GCC Debug full build and fast suite: 15,094 assertions / 635 cases passed.
+- Debug ASan + UBSan + `_GLIBCXX_DEBUG` test build and fast suite: 15,094 assertions / 635 cases passed.
+- Debug TSan engine build and repository SMP driver: six scenarios passed with no TSan report.
+- Expected injected `sink failure (test)` logging appeared during the passing Catch2 suites.
+
+### E3 paired timing complete
+
+The ignored Python driver reuses `Run-Bench.ps1`'s exact eight positions. It launches a fresh process
+per position, applies and verifies Hash/Threads, requires the tree-node split, enforces the 200 ms
+floor, alternates A/B order, preserves raw rows, and reports aggregate nps plus paired and per-position
+spread. One full warm-up per binary preceded each ten-pair campaign. Both binaries are the preserved
+shipping clang-cl Release artifacts and retain the hashes listed above. No builds or other searches ran
+concurrently. Single-thread pairs also enforced node/split/bestmove equality.
+
+| Hash | Threads | Depth | Aggregate candidate nps delta, 10 pairs | Interpretation |
+|---:|---:|---:|---:|---|
+| 192 | 1 | 13 | median **+1.101%**, mean +1.389%, range +0.519% to +3.519%, SD 0.892 pp | Equal capacity; all pairs positive. |
+| 3 | 1 | 14 | median **+6.559%**, mean +7.792%, range +4.400% to +13.016%, SD 2.862 pp | Equal capacity, eviction-heavy; all pairs positive. |
+| 192 | 4 | 15 | median +2.600%, mean +0.381%, range -16.608% to +10.905%, SD 8.564 pp | Lazy SMP is very noisy; no equivalence or Elo claim. |
+
+The complete JSON contains per-position medians/ranges and every raw row. This establishes a repeatable
+single-thread speed improvement at equal capacity, not a strength gain.
+
+### E3 direct lifecycle and memory complete
+
+A temporary Catch2 experiment (removed after use) compared both headers in one clang-cl Release process.
+Each of five alternating pairs measured construction, clear after seeding every bucket, and one million
+empty clears; one warm-up per layout preceded sampling. Raw data is `lifecycle-h192.csv`.
+
+- Windows `sizeof(std::shared_mutex)`: 8 bytes.
+- Hash=192 baseline: 2,097,152 buckets, 192 MiB entries + 16 MiB locks = 208 MiB.
+- Hash=192 candidate: same buckets, 128 MiB entries + 16 MiB locks = 144 MiB.
+- Construction median paired delta is about -35.6% (candidate faster).
+- Populated clear median paired delta is approximately zero; there is no demonstrated improvement.
+- Empty clear is approximately 10 ns/call for both and indistinguishable at this resolution.
+
+### E4 partial, not accepted
+
+The driver now understands Hash=256's unequal expected capacities and disables equivalence enforcement
+only for this declared capacity-changing case. A depth-13 pilot met the timing floor. The full campaign
+was stopped at the user's request after five of ten pairs: -0.122%, +0.335%, +2.042%, +0.285%, +0.087%.
+These adaptive partial results are preserved only as interrupted-run provenance and must not be treated
+as the E4 result. No Hash=256 lifecycle campaign has run.
+
 ## Next steps, in order
 
-1. Complete E1 portability: Linux GCC / Debug sanitizers remain outstanding. No usable WSL distribution
-   was found locally. Do not claim Windows tests replace Linux validation. Remaining Engine-tier gates,
-   including full lint/tidy and pre-PR checks, must run before adoption/PR completion.
-2. E3: prepare the bounded timing campaign from the approved protocol. Reuse Run-Bench's eight positions;
-   the existing experiment driver currently covers equivalence only. Add Hash control, timing capture and
-   paired reporting in the ignored experiment harness or narrowly extend supported tooling (PowerShell
-   edits require `write-powershell`). No permanent general-purpose harness refactor is needed.
-3. Run one warm-up and ten alternating paired samples at Hash=192 and 3, Threads=1. Enforce the 200 ms
-   position timing floor, report per-position and aggregate nps plus paired spread. No concurrent builds
-   or searches while timing. Add ten default-Hash SMP pairs at Threads=4 and five direct-TT lifecycle
-   pairs (construction, populated clear, empty clear). Measure actual mutex size and payload allocations.
-   Counter instrumentation stays disabled; hardware counters are optional and currently unavailable evidence.
-4. E4 after equal-capacity gates: paired bench/lifecycle at Hash=256, explicitly explaining changed capacity
-   and lock/total memory. Search equivalence at the default does not settle this case.
-5. Strength assessment needs a separately agreed budget and controls. No local SPRT or CI lab has run.
+1. Finish E4 from scratch in a **new output directory**: one warm-up and ten alternating pairs at
+   Hash=256, Threads=1, depth 13. Do not append to or summarize the cancelled five-pair directory.
+   Report node/wall-time changes as capacity-changing search behavior, not equivalence. Then reconstruct
+   the temporary direct-TT experiment for five Hash=256 lifecycle pairs; candidate capacity is 4,194,304
+   buckets versus baseline 2,097,152, so entry and lock allocations both change.
+2. Record E1/E3/E4 evidence in the approved experiment document. Run remaining Engine-tier gates,
+   including full lint/tidy and `Validate-PrePR.ps1`, before adoption or PR completion. The temporary
+   lifecycle test source is already removed and `git status` is clean.
+3. Interpret adoption only after E4. Equal-capacity results support the layout, but natural sizing also
+   changes capacity at Hash=256/1. Retain or defer if the total evidence does not justify that behavior.
+4. Strength assessment needs a separately agreed budget and controls. No local SPRT or CI lab has run.
    A gain claim requires the CI lab (~3 hours, 18/20 slots); do not launch it unilaterally. No speed or Elo
-   gain is established yet. Defer/reject adoption if evidence remains insufficient.
-6. Harvest results to the destinations listed in the design, then follow `open-pull-request` if authorized.
+   gain claim is licensed from the timing campaign alone. Defer/reject adoption if evidence remains insufficient.
+5. Harvest results to the destinations listed in the design, then follow `open-pull-request` if authorized.
    Retain the in-progress plans until lifecycle conditions permit removal. Remove this execution handoff
    once consumed; durable decisions belong in the design/contracts and measured evidence destinations.
 
