@@ -66,11 +66,15 @@ The test binary builds level 1.
 |---|---|---|
 | level 0 | IDENTICAL | median +0.00% (5 rounds) |
 | level 1 | IDENTICAL | median +0.05% (5 rounds) |
-| level 2 | 3 of 6 positions diverge | **median −9.29%** (9 interleaved rounds, range −11.6% to −7.7%, all 9 faster) |
+| level 2 | 3 of 6 positions diverge | **median −7.72%** (9 interleaved rounds, range −17.4% to −5.4%, all 9 faster) |
+
+The level-2 row is the final binary, with the draw exemption. Before that exemption the same gate
+measured −9.29%, with nearly the same skip count, so the exemption's `check_draws()` call costs
+about 1.5 points of the gain.
 
 That passes the pre-registered gate: median −3% or better, and at least 8 of 9 rounds faster.
 
-Node counts barely move: main 9,229,827 → 9,223,553, quiescence 2,620,683 → 2,618,882. **That is
+Node counts barely move: main 9,229,827 → 9,223,698, quiescence 2,620,683 → 2,618,907. **That is
 expected, and it is why wall clock is the verdict.** A skipped move is still counted as a main-tree
 node, because `pvs()` counts before `DoMove()`. The quiescence call it avoids is not a q-node either;
 it would have stood pat and returned alpha. So the saving is real work that neither column can show, and
@@ -78,7 +82,8 @@ bench nps is inflated by roughly the same amount. Quote the fixed-depth wall clo
 
 To make the guard visible, the engine now prints `info string frontier skips N` when it fired, and
 `Run-Bench.ps1` shows the count per position and in total. The guard skips about 18% of main nodes:
-1,653,019 of 9,223,553 at depth 12, and 12,291,463 of 68,982,297 at depth 16. How the node counters
+1,652,819 of 9,223,698 at depth 12. At depth 16 (measured before the draw exemption) it was
+12,291,463 of 68,982,297, with a 3-round interleaved wall-clock median of −11.8%. How the node counters
 should treat skipped and illegal moves is left to #402.
 
 The tactical suite passes 36/36, and stability mode (10 runs, and 20 runs at 4 threads) has no
