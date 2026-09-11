@@ -84,6 +84,18 @@ ships is a strength-lab decision.
 
 ---
 
+## 2026-09-11 — Strength runs accept shared, validated CMake defines (#505)
+
+The manually dispatched strength lab now accepts whitespace-separated `-DNAME=VALUE` arguments,
+validates them before any build, and passes the same argument array to the candidate and reference
+configure steps. The job summary records the exact defines (or `none`), so a measurement of a
+compile-time-gated feature no longer needs a throwaway branch or a build-log audit to establish what
+was compiled. Reserved `CMAKE_*` variables cannot override the reported GCC/Release toolchain, and a
+failed setup or build is reported without claiming that rejected or incomplete configuration was
+applied to both engines.
+
+---
+
 ## 2026-09-10 — clang-cl dependency records survive a ccache hit again (#519)
 
 The defect #510 found is fixed. When ccache sits in front of clang-cl under Ninja, `CMakeLists.txt`
