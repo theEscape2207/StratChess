@@ -16,6 +16,7 @@ This file holds the rules that change what you do. Detail is pointed at, not dup
 | opening or updating a PR | skill `open-pull-request` |
 | writing or changing a PowerShell script | skill `write-powershell` |
 | triaging, refining or recommending closure of an issue | skill `triage-issue` |
+| reviewing another agent's artifact, or answering a review | skill `cross-agent-review` |
 | issue tracker, triage labels, domain docs | `Docs/agents/` |
 | history | `Docs/Changelog.md` |
 

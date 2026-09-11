@@ -12,6 +12,8 @@ Before doing repository work, read `CLAUDE.md` completely. Its project rules are
   `write-powershell`.
 - Triaging, refining, scoping, labelling, or recommending closure of a GitHub issue: use skill
   `triage-issue` before the first related action.
+- Reviewing another agent's artifact, or answering a review of yours: use skill
+  `cross-agent-review` before the first related action.
 - Reading or editing GitHub issues outside triage: read the applicable files under `Docs/agents/`
   first.
 
