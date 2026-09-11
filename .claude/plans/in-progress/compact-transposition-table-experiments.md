@@ -2,8 +2,8 @@
 
 **Issue:** [#442](https://github.com/theEscape2207/StratChess/issues/442)
 **Design:** [representation decisions](compact-transposition-table.md)
-**Status:** Revised after review; all prototype/measurement gates below are **not run**.
-**Source baseline:** `0d9ae52`; #524 at `c5c3502` changes workflow only.
+**Status:** Prototype in progress; initial equivalence and eviction checks passed. See evidence below.
+**Source baseline:** `0d9ae52`; updates through `b53d457` change workflow only.
 
 ## Controls
 
@@ -104,3 +104,46 @@ capacity/strength assessment. A slowdown needs an explicit accepted benefit; an 
 effect is not zero. Retain current storage or defer if evidence/budget is insufficient. Record raw
 samples and reasons, following `Measurements/README.md`; do not extend sampling until significance
 appears. Harvest findings as specified in the design. This protocol authorizes no paid run.
+
+## Initial prototype evidence — 2026-09-11
+
+Design commit: `317e3e5`. Prototype source is the working engine diff on `4b425cf`, preserved locally
+as `build/compact-tt-experiment/prototype.patch`. Both binaries use shipping clang-cl Release on
+Windows 11 Pro 10.0.26200, AMD Ryzen AI 9 HX 370 (12 cores / 24 logical processors).
+
+| Binary | SHA256 |
+|---|---|
+| Baseline | `9ed6c89d79fd74294f8bca53b6a89c386e5cf3cdfe16be313ddf28987f3e613e` |
+| Packed | `b14cce4db5d61061ba41d56a1298f737cb231373de0729c5c5655850ed65f9a3` |
+
+E2's experiment-local Python driver passed seven self-tests. At depth 12, Threads=1, every compared
+iteration's depth, score, nodes and PV, final bestmove and main/quiescence split matched in all four
+cells: Hash=192 and 3, each fresh and retained. Allocation diagnostics confirmed 2,097,152 and
+32,768 buckets respectively. Each sequence includes seven searches, with startpos repeated; retained
+sessions send no intervening resets. Corpus SHA256 (compact JSON of ordered name/position pairs):
+`eb21055e5586bcfdc530dc104c5792fca9e990ac3f524ea33ce848e0edff01b2`.
+
+Reproduce from the repository root:
+
+```text
+python build/compact-tt-experiment/compact_tt_driver.py --baseline build/compact-tt-experiment/baseline-clang-cl.exe --candidate build/windows-clang-cl/StratChessEvolved.exe --output build/compact-tt-experiment/equivalence-depth12 --depth 12 --hash 192 3 --mode both --timeout 300
+```
+
+Raw transcripts and structured comparisons remain in the ignored
+`build/compact-tt-experiment/equivalence-depth12/` directory. A separate temporary test-only atomic
+counter incremented on accepted stores where the replaced slot was occupied by a different key.
+Startpos, Hash=3, Threads=1, depth 12 produced **1,118,858 occupied-slot evictions** twice. Witness
+source, patch and log are preserved under `build/compact-tt-experiment/`; instrumentation was removed
+after verification. The rebuilt shipping binary retained the recorded packed SHA256.
+
+Focused TT/search diff review found no actionable correctness issue. These results establish only
+the exercised equivalence checkpoint. They do not establish speed or Elo; E3/E4 and Linux Debug
+sanitizer validation remain outstanding.
+
+E1 local validation: clang-cl Release engine/tests build and the full extended suite passed
+(15,155 assertions / 641 cases), including the permanent packed-layout/metadata, capacity-domain,
+TT/search, abort, SMP and lifecycle checks. MSVC Release engine/tests build and fast suite also passed
+(15,099 assertions / 638 cases). Formatting
+and `git diff --check` passed. The initial test build exposed unsupported chained Catch2 assertions;
+those were split into individual checks before these successful runs. The witness counter and
+temporary test are absent from the final source and shipping binary.

@@ -241,7 +241,7 @@ TEST_CASE("cmd_ucinewgame: a TT entry does not survive into the next game", "[uc
 	REQUIRE_FALSE(fix.has_tt_marker());
 }
 
-TEST_CASE("cmd_uci: advertises Hash exact-fit default and policy bounds", "[uci][tt]")
+TEST_CASE("cmd_uci: advertises the Hash default and policy bounds", "[uci][tt]")
 {
 	UciHandlerTestFixture fix;
 	const std::string output = capture_cout([&] { fix.uci(); });
@@ -249,14 +249,14 @@ TEST_CASE("cmd_uci: advertises Hash exact-fit default and policy bounds", "[uci]
 	REQUIRE(output.find("option name Hash type spin default 192 min 1 max 1536\n") != std::string::npos);
 }
 
-TEST_CASE("AIPerplex default Hash has the documented exact-fit geometry", "[uci][tt]")
+TEST_CASE("AIPerplex default Hash reports its packed geometry", "[uci][tt]")
 {
 	UciHandlerTestFixture fix;
 	fix.ucinewgame();
 
 	REQUIRE(fix.ai_hash_requested_mb() == AIPerplex::DEFAULT_HASH_MB);
 	REQUIRE(fix.ai_hash_bucket_count() == 2097152u);
-	REQUIRE(fix.ai_hash_memory_mb() == 192);
+	REQUIRE(fix.ai_hash_memory_mb() == 128);
 }
 
 TEST_CASE("cmd_setoption: Hash replaces and reports the live table, then survives ucinewgame", "[uci][tt]")
@@ -268,35 +268,36 @@ TEST_CASE("cmd_setoption: Hash replaces and reports the live table, then survive
 
 	const std::string output = capture_cout([&] { fix.setoption("setoption name Hash value 6"); });
 
-	REQUIRE(output == "info string hash 6 MiB (65536 buckets)\n");
+	REQUIRE(output == "info string hash 4 MiB (65536 buckets)\n");
 	REQUIRE(fix.tt_identity() != original);
 	REQUIRE_FALSE(fix.has_tt_marker());
 	REQUIRE(fix.ai_hash_requested_mb() == 6);
-	REQUIRE(fix.ai_hash_memory_mb() == 6);
+	REQUIRE(fix.ai_hash_memory_mb() == 4);
 	REQUIRE(fix.ai_hash_bucket_count() == 65536u);
 
 	const void* configured = fix.tt_identity();
 	fix.ucinewgame();
 	REQUIRE(fix.tt_identity() == configured);
 	REQUIRE(fix.ai_hash_requested_mb() == 6);
-	REQUIRE(fix.ai_hash_memory_mb() == 6);
+	REQUIRE(fix.ai_hash_memory_mb() == 4);
 }
 
-TEST_CASE("cmd_setoption: Hash reports round-down and the sub-MiB minimum", "[uci][tt]")
+TEST_CASE("cmd_setoption: Hash reports round-down and the clamped minimum", "[uci][tt]")
 {
 	UciHandlerTestFixture fix;
 	fix.ucinewgame();
 
 	const std::string rounded = capture_cout([&] { fix.setoption("setoption name Hash value 5"); });
-	REQUIRE(rounded == "info string hash 3 MiB (32768 buckets)\n");
+	REQUIRE(rounded == "info string hash 4 MiB (65536 buckets)\n");
 	REQUIRE(fix.ai_hash_requested_mb() == 5);
-	REQUIRE(fix.ai_hash_memory_mb() == 3);
+	REQUIRE(fix.ai_hash_memory_mb() == 4);
+	REQUIRE(fix.ai_hash_bucket_count() == 65536u);
 
 	const std::string minimum = capture_cout([&] { fix.setoption("setoption name Hash value 0"); });
-	REQUIRE(minimum == "info string hash 0 MiB (8192 buckets)\n");
+	REQUIRE(minimum == "info string hash 1 MiB (16384 buckets)\n");
 	REQUIRE(fix.ai_hash_requested_mb() == 1);
-	REQUIRE(fix.ai_hash_memory_mb() == 0);
-	REQUIRE(fix.ai_hash_bucket_count() == 8192u);
+	REQUIRE(fix.ai_hash_memory_mb() == 1);
+	REQUIRE(fix.ai_hash_bucket_count() == 16384u);
 }
 
 TEST_CASE("cmd_setoption: malformed Hash leaves the live table unchanged", "[uci][tt]")

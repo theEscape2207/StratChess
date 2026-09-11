@@ -6,7 +6,9 @@
 #include <limits>
 #include <optional>
 #include <cstdint>
+#include <cstddef>
 #include <memory>
+#include <type_traits>
 #include <cassert>
 #include "Move.h"
 
@@ -50,14 +52,6 @@ struct TTEntry {
 	{}
 };
 
-// Pinned deliberately. The bucket count is derived from sizeof(TTEntry), so
-// growing an entry shrinks the table for the same megabyte request -- which
-// changes which positions collide, and therefore changes search results. That
-// must be a decision someone makes, not a side effect of adding a field: a
-// failure here means re-running the search-change validation tier, not bumping
-// the number.
-static_assert(sizeof(TTEntry) == 24, "TTEntry size change alters the bucket count and search behaviour");
-
 // Transposition Table class
 // Thread-safe with per-bucket locks for concurrent access
 // Uses a simple replacement strategy based on depth and age
@@ -66,6 +60,10 @@ static_assert(sizeof(TTEntry) == 24, "TTEntry size change alters the bucket coun
 // clear() is protected by a global mutex
 // Probes use shared locks for concurrent reads
 class TranspositionTable {
+#ifdef STRAT_ENABLE_TEST_ACCESS
+	friend class TranspositionTableTestFixture;
+#endif
+
   private:
 	// Global mutex for whole-table operations, so they cannot interleave with
 	// each other. Only clear() takes it today; there is no resize().
@@ -73,12 +71,80 @@ class TranspositionTable {
 
 	static constexpr size_t BUCKET_SIZE = 4;
 
-	struct Bucket {
-		TTEntry entries[BUCKET_SIZE];
+	// Only storage is packed; callers receive a decoded value independent of this layout.
+	struct PackedEntry {
+		std::uint64_t key{0};
+		int16_t value{0};
+		int16_t depth{0};
+		Move best_move;
+		uint8_t metadata{0x10}; // MAIN / EXACT / ALL_NODE; upper three bits reserved.
+		uint8_t age{0};
+
+		static constexpr uint8_t PHASE_MASK = 0x01;
+		static constexpr uint8_t BOUND_MASK = 0x06;
+		static constexpr uint8_t NODE_MASK = 0x18;
+		static constexpr unsigned BOUND_SHIFT = 1;
+		static constexpr unsigned NODE_SHIFT = 3;
+
+		constexpr SearchPhase phase() const noexcept { return static_cast<SearchPhase>(metadata & PHASE_MASK); }
+		constexpr BoundType bound() const noexcept
+		{
+			return static_cast<BoundType>((metadata & BOUND_MASK) >> BOUND_SHIFT);
+		}
+		constexpr NodeType node_type() const noexcept
+		{
+			return static_cast<NodeType>((metadata & NODE_MASK) >> NODE_SHIFT);
+		}
+
+		constexpr void set_phase(SearchPhase phase) noexcept
+		{
+			metadata = static_cast<uint8_t>((metadata & ~PHASE_MASK) | (static_cast<uint8_t>(phase) & PHASE_MASK));
+		}
+		constexpr void set_bound(BoundType bound) noexcept
+		{
+			metadata = static_cast<uint8_t>((metadata & ~BOUND_MASK) |
+			                                ((static_cast<uint8_t>(bound) << BOUND_SHIFT) & BOUND_MASK));
+		}
+		constexpr void set_node_type(NodeType node_type) noexcept
+		{
+			metadata = static_cast<uint8_t>((metadata & ~NODE_MASK) |
+			                                ((static_cast<uint8_t>(node_type) << NODE_SHIFT) & NODE_MASK));
+		}
+
+		TTEntry unpack() const noexcept
+		{
+			TTEntry result;
+			result.key = key;
+			result.value = value;
+			result.depth = depth;
+			result.best_move = best_move;
+			result.phase = phase();
+			result.bound = bound();
+			result.node_type = node_type();
+			result.age = age;
+			return result;
+		}
 	};
 
-	static_assert(sizeof(Bucket) == BUCKET_SIZE * sizeof(TTEntry),
+	static_assert(static_cast<uint8_t>(SearchPhase::MAIN) == 0 && static_cast<uint8_t>(SearchPhase::QUIESCENCE) == 1);
+	static_assert(static_cast<uint8_t>(BoundType::EXACT) == 0 && static_cast<uint8_t>(BoundType::LOWER) == 1 &&
+	              static_cast<uint8_t>(BoundType::UPPER) == 2);
+	static_assert(static_cast<uint8_t>(NodeType::PV_NODE) == 0 && static_cast<uint8_t>(NodeType::CUT_NODE) == 1 &&
+	              static_cast<uint8_t>(NodeType::ALL_NODE) == 2);
+	// Storage size controls capacity and collisions; changing it requires search-change validation.
+	static_assert(sizeof(PackedEntry) == 16, "PackedEntry size change alters capacity and search behaviour");
+	static_assert(alignof(PackedEntry) == 8 && std::is_standard_layout_v<PackedEntry>);
+	static_assert(offsetof(PackedEntry, key) == 0 && offsetof(PackedEntry, value) == 8 &&
+	              offsetof(PackedEntry, depth) == 10 && offsetof(PackedEntry, best_move) == 12 &&
+	              offsetof(PackedEntry, metadata) == 14 && offsetof(PackedEntry, age) == 15);
+
+	struct alignas(64) Bucket {
+		PackedEntry entries[BUCKET_SIZE];
+	};
+
+	static_assert(sizeof(Bucket) == BUCKET_SIZE * sizeof(PackedEntry),
 	              "Bucket must be exactly BUCKET_SIZE entries with no padding");
+	static_assert(sizeof(Bucket) == 64 && alignof(Bucket) == 64);
 
 	std::vector<Bucket> table;
 	// per-bucket shared mutexes to allow concurrent probes
@@ -96,7 +162,7 @@ class TranspositionTable {
 	std::atomic<size_t> pv_count{0};
 
 	// helper: round down to nearest power of two >=1
-	static size_t floor_pow2(size_t v)
+	static constexpr size_t floor_pow2(size_t v)
 	{
 		if (v == 0)
 			return 1;
@@ -107,6 +173,11 @@ class TranspositionTable {
 	}
 
   public:
+	static constexpr size_t bucket_count_for(size_t mb) noexcept
+	{
+		return floor_pow2((mb * 1024 * 1024) / sizeof(Bucket));
+	}
+
 	// The bucket count is a power of two so probe/store can index with a mask
 	// instead of a modulo, and it is rounded DOWN rather than to the nearest
 	// power of two. Down is deliberate: the argument is a memory budget, so
@@ -114,18 +185,15 @@ class TranspositionTable {
 	// for a constrained machine must not get a larger one than it asked for.
 	//
 	// The cost is that the allocation is generally smaller than the request, by
-	// up to half. At the 256 MiB default: 268435456 / 96 = 2796202 buckets,
-	// rounded down to 2^21 = 2097152, so 192 MiB of entries rather than 256.
+	// up to half. The engine's 192 MiB request rounds down to 2^21 buckets,
+	// so 128 MiB of entries. The constructor's 256 MiB default fits exactly.
 	// memory_mb() reports what was actually allocated for exactly this reason.
 	explicit TranspositionTable(size_t mb = 256) : requested_mb(mb)
 	{
-		size_t num_buckets = (mb * 1024 * 1024) / sizeof(Bucket);
-		if (num_buckets == 0)
-			num_buckets = 1;
-
 		// use power-of-two bucket count for fast mask indexing
-		const size_t buckets = floor_pow2(num_buckets);
+		const size_t buckets = bucket_count_for(mb);
 		table.resize(buckets);
+		assert(reinterpret_cast<uintptr_t>(table.data()) % alignof(Bucket) == 0);
 		bucket_locks = std::make_unique<std::shared_mutex[]>(buckets);
 		index_mask = buckets - 1;
 
@@ -177,7 +245,7 @@ class TranspositionTable {
 
 		for (const auto& entry : bucket.entries) {
 			if (entry.key == key) {
-				TTEntry result = entry;
+				TTEntry result = entry.unpack();
 				// Denormalize mate scores for current ply
 				if (is_mate_score(result.value)) {
 					result.value = denormalize_from_storage(result.value, current_ply);
@@ -229,7 +297,7 @@ class TranspositionTable {
 				continue;
 			}
 
-			const int score = replacementScore(entry, age);
+			const int score = replacementScore(entry.unpack(), age);
 			if (score < worst_score) {
 				worst_score = score;
 				replaceIndex = i;
@@ -245,7 +313,7 @@ class TranspositionTable {
 			// A declined store is dropped whole. Nothing is merged into the retained entry and
 			// its age is not refreshed, so keeping it here does not also keep it alive against
 			// the other keys in the bucket -- that would be a change to the eviction path.
-			if (!sameKeyStoreWins(entry, depth, phase, node_type, bound, age))
+			if (!sameKeyStoreWins(entry.unpack(), depth, phase, node_type, bound, age))
 				return;
 
 			// The stored move is a pure ordering hint for this same position, and several
@@ -266,16 +334,16 @@ class TranspositionTable {
 
 		// Track counts: was entry empty? was it PV before?
 		const bool was_empty = (entry.key == 0);
-		const NodeType old_node = entry.node_type;
+		const NodeType old_node = entry.node_type();
 
 		entry.key = key;
 		entry.value = normalize_for_storage(value, ply);
 		entry.depth = depth;
 		entry.best_move = best_move;
-		entry.bound = bound;
-		entry.node_type = node_type;
+		entry.set_bound(bound);
+		entry.set_node_type(node_type);
 		entry.age = age;
-		entry.phase = phase;
+		entry.set_phase(phase);
 
 		// update atomic counters (relaxed is sufficient under bucket lock)
 		if (was_empty) {
@@ -426,14 +494,7 @@ class TranspositionTable {
 		for (size_t idx = 0; idx < buckets; ++idx) {
 			const std::unique_lock lock(bucket_locks[idx]);
 			for (auto& entry : table[idx].entries) {
-				entry.key = 0;
-				entry.value = 0;
-				entry.depth = 0;
-				entry.best_move = Move::EmptyMove();
-				entry.bound = BoundType::EXACT;
-				entry.node_type = NodeType::ALL_NODE;
-				entry.age = 0;
-				entry.phase = SearchPhase::MAIN;
+				entry = PackedEntry{};
 			}
 		}
 		current_age.store(0, std::memory_order_relaxed);

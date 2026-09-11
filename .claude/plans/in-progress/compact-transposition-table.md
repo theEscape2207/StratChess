@@ -1,9 +1,10 @@
 # Compact transposition-table storage — Design
 
 **Issue:** [#442](https://github.com/theEscape2207/StratChess/issues/442)
-**Status:** Review findings addressed; prototype and adoption evidence outstanding.
-**Baseline:** `0d9ae52`; branch updated through `c5c3502` (#524, workflow-only).
-Source and capacity arithmetic verified on 2026-09-11; no prototype or timing results yet.
+**Status:** Approved; prototype in progress. Adoption evidence outstanding.
+**Baseline:** `0d9ae52`; branch updated through `b53d457` (#524/#525, workflow-only).
+Prototype implemented; equal-capacity search and eviction evidence recorded on 2026-09-11 in the
+[experiment protocol](compact-transposition-table-experiments.md). Timing and adoption remain open.
 
 ## Goal and scope
 
@@ -118,5 +119,5 @@ inconclusive result neutral. No paid experiment is authorized by this document.
 | Measured adoption or rejection evidence | `Measurements/` convention and `Docs/Changelog.md` |
 | Three-bit budget and later clock choice | #347's eventual design/contract |
 
-Review changed D1 to private storage and D3 to natural sizing; no implementation has started.
+Review changed D1 to private storage and D3 to natural sizing; prototype implementation has started.
 Retain the designs until results are harvested and reference/spec lifecycle checks permit deletion.

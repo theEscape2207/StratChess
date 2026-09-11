@@ -10,6 +10,13 @@
 #include "TranspositionTable.h"
 #include "defines.h"
 
+class TranspositionTableTestFixture {
+  public:
+	using Entry = TranspositionTable::PackedEntry;
+
+	static const Entry& first_entry(const TranspositionTable& table) { return table.table[0].entries[0]; }
+};
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 static Move no_move() { return Move::EmptyMove(); }
@@ -23,6 +30,113 @@ static void do_store(TranspositionTable& tt, uint64_t key, int16_t value, int16_
 static constexpr uint64_t KEY_A = 1'000'001;
 static constexpr uint64_t KEY_B = 2'000'002;
 static constexpr uint64_t KEY_MISS = 9'876'543;
+
+// ── Packed storage ────────────────────────────────────────────────────────────
+
+TEST_CASE("TT - packed metadata represents every valid enum combination", "[tt]")
+{
+	using Entry = TranspositionTableTestFixture::Entry;
+
+	for (const SearchPhase phase : {SearchPhase::MAIN, SearchPhase::QUIESCENCE}) {
+		for (const BoundType bound : {BoundType::EXACT, BoundType::LOWER, BoundType::UPPER}) {
+			for (const NodeType node_type : {NodeType::PV_NODE, NodeType::CUT_NODE, NodeType::ALL_NODE}) {
+				Entry entry;
+				entry.set_phase(phase);
+				entry.set_bound(bound);
+				entry.set_node_type(node_type);
+
+				INFO("phase " << static_cast<int>(phase) << " bound " << static_cast<int>(bound) << " node "
+				              << static_cast<int>(node_type));
+				CHECK(entry.phase() == phase);
+				CHECK(entry.bound() == bound);
+				CHECK(entry.node_type() == node_type);
+				const TTEntry unpacked = entry.unpack();
+				CHECK(unpacked.phase == phase);
+				CHECK(unpacked.bound == bound);
+				CHECK(unpacked.node_type == node_type);
+			}
+		}
+	}
+}
+
+TEST_CASE("TT - packed metadata setters preserve unrelated and reserved bits", "[tt]")
+{
+	using Entry = TranspositionTableTestFixture::Entry;
+	Entry entry;
+	entry.metadata = 0xF8;
+
+	const uint8_t before_phase = entry.metadata;
+	entry.set_phase(SearchPhase::QUIESCENCE);
+	CHECK((entry.metadata & ~Entry::PHASE_MASK) == (before_phase & ~Entry::PHASE_MASK));
+
+	const uint8_t before_bound = entry.metadata;
+	entry.set_bound(BoundType::LOWER);
+	CHECK((entry.metadata & ~Entry::BOUND_MASK) == (before_bound & ~Entry::BOUND_MASK));
+
+	const uint8_t before_node = entry.metadata;
+	entry.set_node_type(NodeType::PV_NODE);
+	CHECK((entry.metadata & ~Entry::NODE_MASK) == (before_node & ~Entry::NODE_MASK));
+}
+
+TEST_CASE("TT - packed entry defaults and table clear reset reserved metadata", "[tt]")
+{
+	using Entry = TranspositionTableTestFixture::Entry;
+	const Entry initial;
+	CHECK(initial.key == 0);
+	CHECK(initial.value == 0);
+	CHECK(initial.depth == 0);
+	CHECK(initial.best_move.is_null());
+	CHECK(initial.metadata == 0x10);
+	CHECK(initial.age == 0);
+
+	TranspositionTable tt(0);
+	tt.newSearchIteration();
+	tt.store(KEY_A, 123, 4, 0, Move(e2, e4, MoveFlags::QUIET), BoundType::UPPER, NodeType::PV_NODE,
+	         SearchPhase::QUIESCENCE);
+	REQUIRE(tt.clear());
+
+	const Entry& cleared = TranspositionTableTestFixture::first_entry(tt);
+	CHECK(cleared.key == 0);
+	CHECK(cleared.value == 0);
+	CHECK(cleared.depth == 0);
+	CHECK(cleared.best_move.is_null());
+	CHECK(cleared.metadata == 0x10);
+	CHECK(cleared.age == 0);
+}
+
+TEST_CASE("TT - packed entry preserves every age and wraps from 255 to 0", "[tt]")
+{
+	using Entry = TranspositionTableTestFixture::Entry;
+	Entry entry;
+	for (unsigned age = 0; age < 256; ++age) {
+		entry.age = static_cast<uint8_t>(age);
+		INFO("age " << age);
+		CHECK(entry.unpack().age == age);
+	}
+
+	TranspositionTable tt(0);
+	for (int iteration = 0; iteration < 255; ++iteration)
+		tt.newSearchIteration();
+	tt.store(KEY_A, 1, 1, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
+	REQUIRE(tt.probe(KEY_A, 0).has_value());
+	CHECK(tt.probe(KEY_A, 0)->age == 255);
+
+	tt.newSearchIteration();
+	tt.store(KEY_B, 2, 1, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
+	REQUIRE(tt.probe(KEY_B, 0).has_value());
+	CHECK(tt.probe(KEY_B, 0)->age == 0);
+}
+
+TEST_CASE("TT - store and probe preserve all Move encoding bits", "[tt]")
+{
+	TranspositionTable tt(0);
+	const Move move(h7, g8, MoveFlags::PROMOTION_QUEEN_CAPTURE);
+	tt.store(KEY_A, 321, 7, 0, move, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+
+	const auto result = tt.probe(KEY_A, 0);
+	REQUIRE(result.has_value());
+	CHECK(result->best_move == move);
+}
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -191,15 +305,55 @@ TEST_CASE("TT - repeated clear reports no work after the table is empty", "[tt]"
 // that acceptable: the diagnostic must describe the allocation rather than the
 // request, and the allocation must never exceed the request.
 
-TEST_CASE("TT - memory_mb reports what was allocated, not what was requested", "[tt]")
+TEST_CASE("TT - memory_mb reports the non-exact allocation, not the request", "[tt]")
 {
-	// 256 MiB / 96-byte buckets = 2796202, floored to 2^21 = 2097152 buckets,
-	// which is 192 MiB of entries. Reporting 256 here would hide a 25% shortfall.
+	// 192 MiB / 64-byte buckets = 3145728, floored to 2^21 = 2097152 buckets,
+	// which is 128 MiB of entries. Reporting 192 would hide that shortfall.
+	TranspositionTable tt(192);
+
+	REQUIRE(tt.requested_memory_mb() == 192);
+	REQUIRE(tt.bucket_count() == 2097152u);
+	REQUIRE(tt.memory_mb() == 128);
+}
+
+TEST_CASE("TT - a 256 MiB request uses the packed table capacity", "[tt]")
+{
 	TranspositionTable tt(256);
 
-	REQUIRE(tt.requested_memory_mb() == 256);
-	REQUIRE(tt.bucket_count() == 2097152u);
-	REQUIRE(tt.memory_mb() == 192);
+	REQUIRE(tt.bucket_count() == 4194304u);
+	REQUIRE(tt.memory_mb() == 256);
+}
+
+TEST_CASE("TT - bucket_count_for matches the packed geometry across the UCI range", "[tt]")
+{
+	constexpr size_t MIB = size_t{1024} * 1024;
+	auto floor_pow2 = [](size_t value) constexpr {
+		size_t power = 1;
+		while ((power << 1) <= value)
+			power <<= 1;
+		return power;
+	};
+
+	size_t same_capacity = 0;
+	size_t doubled_capacity = 0;
+	for (size_t requested = 0; requested <= 1536; ++requested) {
+		const size_t packed = TranspositionTable::bucket_count_for(requested);
+		const size_t expected_packed = floor_pow2((requested * MIB) / 64);
+		const size_t old = floor_pow2((requested * MIB) / 96);
+		const bool same = packed == old;
+		const bool doubled = packed == old * 2;
+
+		INFO("requested " << requested << " MiB");
+		CHECK(packed == expected_packed);
+		CHECK((same || doubled));
+		if (requested != 0)
+			CHECK(packed * size_t{64} <= requested * MIB);
+		same_capacity += same;
+		doubled_capacity += doubled;
+	}
+
+	REQUIRE(same_capacity == 513);
+	REQUIRE(doubled_capacity == 1024);
 }
 
 TEST_CASE("TT - allocation never exceeds the requested budget", "[tt]")
@@ -221,7 +375,7 @@ TEST_CASE("TT - byte accounting is self-consistent", "[tt]")
 	TranspositionTable tt(16);
 
 	REQUIRE(tt.bucket_count() > 0);
-	REQUIRE(tt.entry_bytes() == tt.bucket_count() * 96); // 4 x 24-byte entries
+	REQUIRE(tt.entry_bytes() == tt.bucket_count() * 64); // 4 x 16-byte packed entries
 	REQUIRE(tt.lock_bytes() == tt.bucket_count() * sizeof(std::shared_mutex));
 	REQUIRE(tt.allocated_bytes() == tt.entry_bytes() + tt.lock_bytes());
 	REQUIRE(tt.memory_mb() == tt.entry_bytes() / (size_t{1024} * 1024));

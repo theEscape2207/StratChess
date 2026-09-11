@@ -179,7 +179,7 @@ void UciHandler::cmd_uci()
 	send("id author Thees");
 	send("option name Threads type spin default 1 min 1 max 32");
 	// Hash budgets TT entry bytes. Arbitrary values round down to a power-of-two
-	// bucket count; exact-fit values include 192 / 384 / 768 / 1536. The
+	// bucket count; exact-fit values include 128 / 256 / 512 / 1024. The
 	// separately queryable lock_bytes() is additional memory.
 	send("option name Hash type spin default " + std::to_string(AIPerplex::DEFAULT_HASH_MB) + " min " +
 	     std::to_string(AIPerplex::MIN_HASH_MB) + " max " + std::to_string(AIPerplex::MAX_HASH_MB));
