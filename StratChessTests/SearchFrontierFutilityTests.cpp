@@ -22,9 +22,14 @@ namespace {
 	// material, so a window a little above the static evaluation fails low.
 	constexpr const char* kRookUpFen = "7k/8/8/8/8/8/8/R3K3 w - - 0 1";
 
-	// kRookUpFen one half-move from the fifty-move limit. White has no pawn move and no capture, so
-	// every searched child is a fifty-move draw: a fail-low whose searched value sits below alpha.
-	constexpr const char* kRookUpDrawnFen = "7k/8/8/8/8/8/8/R3K3 w - - 99 1";
+	// A rook and a pawn up, one half-move from the fifty-move limit. Every king and rook move
+	// draws on the spot, so it is searched and returns a draw, below alpha. The two pawn pushes
+	// reset the clock, so they are the only quiet moves the guard may skip.
+	constexpr const char* kFiftyMoveEdgeFen = "7k/8/8/8/8/8/P7/R3K3 w - - 99 1";
+
+	// White a queen and a pawn down, one half-move from the fifty-move limit, with no pawn and no
+	// capture: every legal move draws on the spot. Skipping them would turn a draw into a loss.
+	constexpr const char* kDrawingMovesFen = "7k/p6q/8/8/8/8/8/R3K3 w - - 99 1";
 
 	// White's only legal move is Kb1, quiet and not a check, and White is a queen down.
 	constexpr const char* kOneMoveFen = "q6k/8/8/8/8/p7/P7/K7 w - - 0 1";
@@ -264,6 +269,23 @@ TEST_CASE("Frontier futility: the first legal move is always searched", "[search
 	CHECK(score != GameValues::Draw);
 }
 
+TEST_CASE("Frontier futility: a move that draws on the spot is never skipped", "[search][futility]")
+{
+	// Down a queen, the margin calls every quiet move hopeless; but each one completes the
+	// fifty-move rule, and a draw is far above this window. Skipping them all would fail low at
+	// alpha where the node really holds a draw.
+	AIPerlexTestFixture fix(kDrawingMovesFen);
+	fix.set_frontier_futility(true);
+	fix.arm_clock();
+	constexpr int kAlpha = -100;
+	REQUIRE(fix.static_eval() + fix.frontier_futility_margin() <= kAlpha);
+
+	const int score = search_depth1(fix, kAlpha);
+
+	CHECK(fix.frontier_skips() == 0);
+	CHECK(score == GameValues::Draw);
+}
+
 TEST_CASE("Frontier futility: the board is restored after every skip", "[search][futility]")
 {
 	AIPerlexTestFixture fix(kMixedFen);
@@ -284,25 +306,22 @@ TEST_CASE("Frontier futility: a fail-low is floored at eval + margin and stored 
 {
 	// Quiescence fails high at exactly its beta, so a fail-low child normally hands this node
 	// exactly alpha and the floor, which is <= alpha, changes nothing. It binds when a searched
-	// child returns below alpha, as a draw does. Here every searched move draws, so without the
-	// floor the node would report and store the draw score, a claim the skipped moves were never
-	// searched to support.
-	AIPerlexTestFixture off(kRookUpDrawnFen);
-	off.set_frontier_futility(false);
-	off.arm_clock();
-	const int floor = off.static_eval() + off.frontier_futility_margin();
-	const int alpha = floor + 100;
-
-	// Every move searched scores below the floor, so the searched subset does too.
-	REQUIRE(search_depth1(off, alpha) < floor);
-
-	AIPerlexTestFixture on(kRookUpDrawnFen);
+	// child returns below alpha, as a draw does. Here every searched move draws and the two pawn
+	// pushes are skipped, so without the floor the node would report and store the draw score, a
+	// claim the skipped pushes were never searched to support.
+	AIPerlexTestFixture on(kFiftyMoveEdgeFen);
 	on.set_frontier_futility(true);
 	on.arm_clock();
+	const int floor = on.static_eval() + on.frontier_futility_margin();
+	const int alpha = floor + 100;
+	REQUIRE(floor > GameValues::Draw);
+	// A killer sorts ahead of both pushes, so the first legal move searched is a drawing one.
+	on.store_killer_uci(/*ply=*/1, "e1e2");
 
 	const int score = search_depth1(on, alpha);
 
-	REQUIRE(on.frontier_skips() > 0);
+	// Both pushes skipped means neither was the first legal move, so every searched child drew.
+	REQUIRE(on.frontier_skips() == 2);
 	CHECK(score == floor);
 	const auto entry = on.probe_tt(/*ply=*/1);
 	REQUIRE(entry.has_value());
@@ -311,7 +330,7 @@ TEST_CASE("Frontier futility: a fail-low is floored at eval + margin and stored 
 
 	// Nothing failed high, so no move-ordering write. This pins the property; the skip cannot
 	// reach those writes in any window, because it continues before them.
-	CHECK_FALSE(on.has_killer(1));
+	CHECK_FALSE(on.has_killer(2));
 	CHECK(on.history_is_clear());
 }
 

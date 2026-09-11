@@ -898,9 +898,11 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			const int move_number = legal_moves_searched++; // 0 for the first legal move
 			int value;
 
-			// The post-move half: a checking move is never skipped. The board is restored before
-			// the skip, and the skip precedes every PV, killer and history write below.
-			if (frontier_candidate && !td.board.InCheck()) {
+			// The post-move half: a checking move is never skipped, nor one that draws on the spot
+			// by repetition or the fifty-move rule -- the child would return a draw score, which a
+			// side the margin calls lost may badly need. The board is restored before the skip,
+			// and the skip precedes every PV, killer and history write below.
+			if (frontier_candidate && !td.check_draws(ply + 1) && !td.board.InCheck()) {
 				td.board.UndoMove(move);
 				td.frontier_futility_skips++;
 				frontier_skipped = true;

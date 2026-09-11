@@ -39,7 +39,9 @@ Node level, computed once before the move loop: non-PV, not in check, not an exc
 `depth == 1`, and `|alpha| < Mate_Threshold`. Move level, in two halves. Before `DoMove()`, on the
 parent position: at least one legal move already searched, not a capture, not a promotion, not either
 live killer, not the hash move, then the eval test. After `DoMove()`, before the `move_number == 0`
-branch (which `legal_moves_searched >= 1` already rules out): the move does not give check.
+branch (which `legal_moves_searched >= 1` already rules out): the move does not give check, and does
+not draw on the spot by repetition or the fifty-move rule (`check_draws(ply + 1)`). A cross-agent
+review found the draw case: a side the margin calls lost may hold a draw only through quiet moves.
 `InCheck()` is last because it is the expensive term, and it can only be asked of the child. The
 board is restored with `UndoMove(move)` before `continue`.
 

@@ -172,7 +172,8 @@ class AIPerlexTestFixture {
 
 	// An independent tally of the moves frontier futility may skip at a depth-1 node on an empty
 	// TT: legal, not the first legal move in search order, not a capture or promotion, not a live
-	// killer at `ply`, and not giving check. Tests hold the engine's skip count against it.
+	// killer at `ply`, not giving check, and not drawing on the spot. Tests hold the engine's skip
+	// count against it.
 	int count_frontier_candidates(int ply) const
 	{
 		Board copy = board_;
@@ -193,6 +194,7 @@ class AIPerlexTestFixture {
 			if (!copy.DoMove(move))
 				continue;
 			const bool gives_check = copy.InCheck();
+			const bool draws = copy.is_repetition(ply + 1) || copy.halfmove_clock() >= HALFMOVE_CLOCK_LIMIT;
 			copy.UndoMove(move);
 
 			if (first_legal) {
@@ -200,7 +202,7 @@ class AIPerlexTestFixture {
 				continue;
 			}
 			if (!MoveHelper::IsCapture(move) && !MoveHelper::IsPromote(move) && move != k0 && move != k1 &&
-			    !gives_check)
+			    !gives_check && !draws)
 				++candidates;
 		}
 		return candidates;

@@ -34,7 +34,10 @@ The guard sits in the `pvs()` move loop in two halves:
 - **Before `DoMove()`**, on the parent position: at least one legal move already searched, not a
   capture, not a promotion, not either live killer, not the hash move. Only this half reads the
   static evaluation, because after the move `td.board` holds the child.
-- **After `DoMove()`**: a checking move is never skipped, and the board is restored before the skip.
+- **After `DoMove()`**: a checking move is never skipped, and neither is one that draws on the spot
+  by repetition or the fifty-move rule. Without that second exemption, a side the margin calls lost
+  could have every drawing move skipped and fail low where it really holds a draw. The board is
+  restored before the skip.
 
 Excluded outright: PV nodes, nodes in check, exclusion frames, depth above 1, and mate-range alpha.
 There is no zugzwang floor. A pruned quiet move is assumed to gain little, and zugzwang only makes
