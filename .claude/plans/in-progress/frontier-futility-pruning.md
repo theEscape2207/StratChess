@@ -38,9 +38,10 @@ the wall-clock pass and any strength run.
 Node level, computed once before the move loop: non-PV, not in check, not an exclusion frame,
 `depth == 1`, and `|alpha| < Mate_Threshold`. Move level, in two halves. Before `DoMove()`, on the
 parent position: at least one legal move already searched, not a capture, not a promotion, not either
-live killer, not the hash move. After `DoMove()`, in the `move_number >= 1` branch: the move does not
-give check, then the eval test. `InCheck()` is last because it is the expensive term, and it can only
-be asked of the child. The board is restored with `UndoMove(move)` before `continue`.
+live killer, not the hash move, then the eval test. After `DoMove()`, before the `move_number == 0`
+branch (which `legal_moves_searched >= 1` already rules out): the move does not give check.
+`InCheck()` is last because it is the expensive term, and it can only be asked of the child. The
+board is restored with `UndoMove(move)` before `continue`.
 
 - **First legal move.** It is always searched, so pruning cannot fabricate mate or stalemate.
 - **Exclusion frames.** Unreachable at depth 1 today, because verification depth is at least 3, but
@@ -90,14 +91,15 @@ The engine already accepts this kind of risk. A null-move cutoff stores a full-d
 a reduced search, and LMR results are stored as if searched at full depth. The exposure here is
 narrower than either:
 
-- the entry has depth 1, so only depth-1 probes can use it;
+- the entry has depth 1, so only depth-1 probes can use it, plus quiescence, which also reads MAIN
+  entries;
 - it can only cut at an alpha at or above the floored value, and that is where the frontier guard
   would already be pruning quiet moves on the same static evaluation.
 
 The floor binds less often than it looks. Quiescence fails high at exactly its beta, so at depth 1 a
 fail-low child hands this node exactly alpha. `best_value` is then already alpha, and the floor
-(`<= alpha`) changes nothing. It binds only when a searched child returns *below* alpha, which in
-practice means a draw (repetition or fifty-move). There it stops the return value, and the store,
+(`<= alpha`) changes nothing. It binds only when a searched child returns *below* alpha. Two cases do
+that: a draw (repetition or fifty-move), and a TT hit whose stored value lies past the child's bound. There it stops the return value, and the store,
 from claiming that the skipped moves score as low as the searched draws. It would become
 load-bearing everywhere if quiescence went fail-soft. The floored value is still `<= alpha`, so the bound type
 does not change. A LOWER bound can only come from a searched move that failed high, which is genuine

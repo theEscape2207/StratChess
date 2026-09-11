@@ -22,6 +22,63 @@ Newest first.
 
 ---
 
+## 2026-09-11 — Frontier futility pruning at depth 1, behind its own gate (#504)
+
+At a depth-1 non-PV node, a quiet later move is now skipped when the parent's static evaluation plus
+200 cp still does not reach alpha. This is #87's Stage 2, the move-level alpha-side counterpart of
+reverse futility. It ships **compiled out**, pending a strength run. "Extended" (depth-2) futility is
+a separate experiment and is not part of this change.
+
+The guard sits in the `pvs()` move loop in two halves:
+
+- **Before `DoMove()`**, on the parent position: at least one legal move already searched, not a
+  capture, not a promotion, not either live killer, not the hash move. Only this half reads the
+  static evaluation, because after the move `td.board` holds the child.
+- **After `DoMove()`**: a checking move is never skipped, and the board is restored before the skip.
+
+Excluded outright: PV nodes, nodes in check, exclusion frames, depth above 1, and mate-range alpha.
+There is no zugzwang floor. A pruned quiet move is assumed to gain little, and zugzwang only makes
+that more true.
+
+The static evaluation is now a lazy node-local value shared with reverse futility, so a node that
+reaches both guards evaluates once.
+
+A node that skipped a move floors its fail-low at `eval + margin` before its return and its TT
+store. The floor binds less often than it looks: quiescence fails high at exactly its beta, so a
+fail-low child already hands the node exactly alpha. It matters when a searched child returns below
+alpha: a draw, or a TT hit whose stored value lies past the child's bound. Storing that floored UPPER bound is a selective-search heuristic, like
+null-move's stored bound, not a reproducibility guarantee: a skipped move can later become a killer.
+
+`STRAT_FRONTIER_FUTILITY` has three levels:
+
+- `0` ships and compiles no guard;
+- `1` compiles it in with `SearchTuning::frontier_futility_enabled` off;
+- `2` also turns it on.
+
+The test binary builds level 1.
+
+**Measured at fixed depth 12, `Threads=1`, clang-cl, over the `Run-Bench.ps1` set.**
+
+| Build vs merge base `ff702a7` | Compare-SearchEquivalence | Wall clock |
+|---|---|---|
+| level 0 | IDENTICAL | median +0.00% (5 rounds) |
+| level 1 | IDENTICAL | median +0.05% (5 rounds) |
+| level 2 | 3 of 6 positions diverge | **median −9.29%** (9 interleaved rounds, range −11.6% to −7.7%, all 9 faster) |
+
+That passes the pre-registered gate: median −3% or better, and at least 8 of 9 rounds faster.
+
+Node counts barely move: main 9,229,827 → 9,223,553, quiescence 2,620,683 → 2,618,882. **That is
+expected, and it is why wall clock is the verdict.** A skipped move is still counted as a main-tree
+node, because `pvs()` counts before `DoMove()`. The quiescence call it avoids is not a q-node either;
+it would have stood pat and returned alpha. So the saving is real work that neither column can show, and
+bench nps is inflated by roughly the same amount. Quote the fixed-depth wall clock, not nps.
+
+The tactical suite passes 36/36, and stability mode (10 runs, and 20 runs at 4 threads) has no
+failing run and no flip. This is a tree-size precondition, **not a strength result**: whether it
+ships is a strength-lab decision.
+
+---
+
 ## 2026-09-10 — clang-cl dependency records survive a ccache hit again (#519)
 
 The defect #510 found is fixed. When ccache sits in front of clang-cl under Ninja, `CMakeLists.txt`

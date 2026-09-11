@@ -29,6 +29,10 @@ namespace {
 	// White's only legal move is Kb1, quiet and not a check, and White is a queen down.
 	constexpr const char* kOneMoveFen = "q6k/8/8/8/8/p7/P7/K7 w - - 0 1";
 
+	// White in check from an unprotected rook: evasions Kxe2 plus two quiet king moves, Kd1 and
+	// Kf1, neither giving check. Verified against python-chess.
+	constexpr const char* kInCheckFen = "4k3/8/8/8/8/8/4r3/4K3 w - - 0 1";
+
 	// Far above anything these positions reach and outside the mate range: no searched move
 	// fails high, and every candidate clears the margin.
 	constexpr int kHighAlpha = 5000;
@@ -109,6 +113,69 @@ TEST_CASE("Frontier futility: a mate-range alpha is never pruned", "[search][fut
 	CHECK_FALSE(eligible(fix, 1, /*alpha=*/GameValues::Mate_Threshold));
 	CHECK_FALSE(eligible(fix, 1, /*alpha=*/-GameValues::Mate_Threshold));
 	CHECK(eligible(fix, 1, /*alpha=*/GameValues::Mate_Threshold - 1));
+}
+
+// ============================================================================
+// The node-level guards as pvs() wires them
+// ============================================================================
+// The cases above call frontier_futility_eligible() directly, so they cannot see pvs() passing
+// it the wrong argument. Each case below drives a whole node that would skip moves if its one
+// excluding property were lost on the way in.
+
+TEST_CASE("Frontier futility: a node in check skips nothing", "[search][futility]")
+{
+	AIPerlexTestFixture fix(kInCheckFen);
+	fix.set_frontier_futility(true);
+	fix.arm_clock();
+
+	search_depth1(fix, kHighAlpha);
+
+	CHECK(fix.frontier_skips() == 0);
+}
+
+TEST_CASE("Frontier futility: a PV node skips nothing", "[search][futility]")
+{
+	AIPerlexTestFixture fix(kMixedFen);
+	fix.set_frontier_futility(true);
+	fix.arm_clock();
+
+	fix.search_node(/*depth=*/1, /*ply=*/1, kHighAlpha, kHighAlpha + 100, /*is_pv_node=*/true);
+
+	CHECK(fix.frontier_skips() == 0);
+}
+
+TEST_CASE("Frontier futility: a depth-2 node skips nothing", "[search][futility]")
+{
+	AIPerlexTestFixture fix(kMixedFen);
+	fix.set_frontier_futility(true);
+	fix.arm_clock();
+
+	// The children are depth-1 nodes too, but their alpha is -kHighAlpha - 1, far below any
+	// evaluation plus the margin, so none of them skips either.
+	fix.search_node(/*depth=*/2, /*ply=*/1, kHighAlpha, kHighAlpha + 1, /*is_pv_node=*/false);
+
+	CHECK(fix.frontier_skips() == 0);
+}
+
+TEST_CASE("Frontier futility: an exclusion frame skips nothing", "[search][futility]")
+{
+	AIPerlexTestFixture fix(kMixedFen);
+	fix.set_frontier_futility(true);
+
+	fix.search_node_excluding(/*depth=*/1, /*ply=*/1, "c3d5", kHighAlpha, kHighAlpha + 1);
+
+	CHECK(fix.frontier_skips() == 0);
+}
+
+TEST_CASE("Frontier futility: a mate-range alpha skips nothing", "[search][futility]")
+{
+	AIPerlexTestFixture fix(kMixedFen);
+	fix.set_frontier_futility(true);
+	fix.arm_clock();
+
+	search_depth1(fix, GameValues::Mate_Threshold);
+
+	CHECK(fix.frontier_skips() == 0);
 }
 
 // ============================================================================
@@ -246,4 +313,20 @@ TEST_CASE("Frontier futility: a fail-low is floored at eval + margin and stored 
 	// reach those writes in any window, because it continues before them.
 	CHECK_FALSE(on.has_killer(1));
 	CHECK(on.history_is_clear());
+}
+
+TEST_CASE("Frontier futility: the floor only ever raises the value", "[search][futility]")
+{
+	// The ordinary case: the searched children fail high in quiescence at exactly their beta, so
+	// this node's value is already alpha, above the floor. The floor must leave it there.
+	AIPerlexTestFixture fix(kRookUpFen);
+	fix.set_frontier_futility(true);
+	fix.arm_clock();
+	const int floor = fix.static_eval() + fix.frontier_futility_margin();
+	const int alpha = floor + 100;
+
+	const int score = search_depth1(fix, alpha);
+
+	REQUIRE(fix.frontier_skips() > 0);
+	CHECK(score == alpha);
 }

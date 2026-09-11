@@ -1032,7 +1032,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 	// A skipped move was not searched, only judged unable to beat static_eval + margin, so the node
 	// may claim no less. Quiescence fails high at exactly its beta, so a fail-low here is usually
-	// exactly alpha already; this binds when a searched child returned below alpha, such as a draw.
+	// exactly alpha already; this binds when a searched child returned below alpha -- a draw, or a
+	// transposition hit whose stored value lies past the child's bound.
 	// Still <= alpha, so the bound stays UPPER. Like null move's stored bound it comes from a
 	// selective search and is not reproducible: a skipped move may later be a killer and searched.
 	if (frontier_skipped)
