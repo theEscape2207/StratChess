@@ -73,6 +73,11 @@ node, because `pvs()` counts before `DoMove()`. The quiescence call it avoids is
 it would have stood pat and returned alpha. So the saving is real work that neither column can show, and
 bench nps is inflated by roughly the same amount. Quote the fixed-depth wall clock, not nps.
 
+To make the guard visible, the engine now prints `info string frontier skips N` when it fired, and
+`Run-Bench.ps1` shows the count per position and in total. The guard skips about 18% of main nodes:
+1,653,019 of 9,223,553 at depth 12, and 12,291,463 of 68,982,297 at depth 16. How the node counters
+should treat skipped and illegal moves is left to #402.
+
 The tactical suite passes 36/36, and stability mode (10 runs, and 20 runs at 4 threads) has no
 failing run and no flip. This is a tree-size precondition, **not a strength result**: whether it
 ships is a strength-lab decision.

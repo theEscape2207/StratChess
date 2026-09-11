@@ -220,6 +220,7 @@ void AIPerplex::init_search(const Board& root)
 	td_.board = root; // thread-local copy — the search runs on this
 	td_.nodes_searched = 0;
 	td_.qnodes_searched = 0;
+	td_.frontier_futility_skips = 0;
 	td_.pv_table = PVTable{}; // fresh PV for this call
 	td_.root_game_state = GameStates::STILL_PLAYING;
 	// Per-call like the node counters: the reported trigger rate belongs to this search.
@@ -309,6 +310,7 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 			htd.clear_null_move_flags();
 			htd.nodes_searched = 0;
 			htd.qnodes_searched = 0;
+			htd.frontier_futility_skips = 0;
 			htd.clear_singular_telemetry();
 			if constexpr (kFutilityProbeCompiled)
 				htd.clear_futility_probe();
@@ -338,9 +340,11 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	int64_t total_sing_verifications = td_.singular_verifications;
 	int64_t total_sing_extensions = td_.singular_extensions;
 	int64_t total_sing_verify_nodes = td_.singular_verification_nodes;
+	int64_t total_frontier_skips = td_.frontier_futility_skips;
 	for (size_t i = 0; i + 1 < static_cast<size_t>(threads); ++i) {
 		total_nodes += helper_tds_[i]->nodes_searched;
 		total_qnodes += helper_tds_[i]->qnodes_searched;
+		total_frontier_skips += helper_tds_[i]->frontier_futility_skips;
 		total_sing_eligible += helper_tds_[i]->singular_eligible;
 		total_sing_verifications += helper_tds_[i]->singular_verifications;
 		total_sing_extensions += helper_tds_[i]->singular_extensions;
@@ -352,6 +356,7 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	result.singular_verifications = total_sing_verifications;
 	result.singular_extensions = total_sing_extensions;
 	result.singular_verification_nodes = total_sing_verify_nodes;
+	result.frontier_futility_skips = total_frontier_skips;
 
 	// Futility probe (#498), summed exactly like the counters above. Compiled out with the probe
 	// itself, so the shipping build does not walk thread state to add up zeros.

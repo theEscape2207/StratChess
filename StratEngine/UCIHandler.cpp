@@ -512,6 +512,11 @@ void UciHandler::cmd_go(std::string_view line)
 				     std::to_string(result.singular_verification_nodes));
 			}
 
+			// Frontier futility skips. Emitted only when the guard fired, so a build without it
+			// running produces byte-identical output, as with the singular line above.
+			if (result.frontier_futility_skips != 0)
+				send("info string frontier skips " + std::to_string(result.frontier_futility_skips));
+
 			// Futility cost probe (#498). Compiled out entirely at probe level 0 -- the scan below
 			// would otherwise run once per search in the shipping build, which the feature's
 			// contract says it does not.

@@ -199,14 +199,21 @@ function ConvertTo-BenchResult {
                "`nEngine output:`n$Output")
     }
 
+    # Frontier futility skips. The engine prints the line only when the guard fired, so its
+    # absence means zero. A skipped move stays in 'main' and its avoided quiescence entry is in
+    # no counter, so this is the only column that shows how often the guard fired.
+    $skipLines = [regex]::Matches($Output, 'info string frontier skips (\d+)')
+    $skips = if ($skipLines.Count -gt 0) { [int64]$skipLines[$skipLines.Count - 1].Groups[1].Value } else { [int64]0 }
+
     $last = $info[$info.Count - 1]
     return [pscustomobject]@{
-        Nodes     = $nodes
-        MainNodes = $mainNodes
-        QsNodes   = $qsNodes
-        Ms        = [int64]$last.Groups[2].Value
-        Best      = if ($best.Success) { $best.Groups[1].Value } else { '(none)' }
-        Contract  = $contractNo
+        Nodes         = $nodes
+        MainNodes     = $mainNodes
+        QsNodes       = $qsNodes
+        FrontierSkips = $skips
+        Ms            = [int64]$last.Groups[2].Value
+        Best          = if ($best.Success) { $best.Groups[1].Value } else { '(none)' }
+        Contract      = $contractNo
     }
 }
 
@@ -290,6 +297,11 @@ if ($SelfTest) {
         "got nodes $($r.Nodes) ms $($r.Ms) best $($r.Best) contract $($r.Contract)"
     Assert-Case 'main/qs split is parsed' ($r.MainNodes -eq 100 -and $r.QsNodes -eq 40) `
         "got main $($r.MainNodes) qs $($r.QsNodes)"
+    Assert-Case 'no frontier skips line means zero skips' ($r.FrontierSkips -eq 0) "got $($r.FrontierSkips)"
+
+    $withSkips = $contract1 -replace 'bestmove e2e4', "info string frontier skips 17`nbestmove e2e4"
+    $r = ConvertTo-BenchResult -Output $withSkips -SearchDepth 2 -Fen 'startpos'
+    Assert-Case 'frontier skips are parsed' ($r.FrontierSkips -eq 17) "got $($r.FrontierSkips)"
 
     # A build predating #312: no contract line, no split. Reported as unknown, not zero,
     # because comparing against such a build is the normal before/after case.
@@ -425,6 +437,7 @@ $totalMain   = [int64]0
 $totalQs     = [int64]0
 $haveSplit   = $true
 $totalMs     = [int64]0
+$totalSkips  = [int64]0
 $fastCount   = 0
 $contracts   = [System.Collections.Generic.HashSet[int]]::new()
 
@@ -450,9 +463,12 @@ foreach ($p in $positionList) {
 
     $flag = ''
     if ($r.Ms -lt $MinTimeMs) { $flag = ' (too fast to time)'; $fastCount++ }
+    # Trailing rather than a column, so the table is unchanged for a build without the guard.
+    $totalSkips += $r.FrontierSkips
+    $skipsCell = if ($r.FrontierSkips -gt 0) { '  skips {0:N0}' -f $r.FrontierSkips } else { '' }
 
-    Write-Host ("{0,-12} {1,13} {2,13} {3,13:N0} {4,8:N0} {5,12:N0}  {6}{7}" -f `
-                $p.Name, $mainCell, $qsCell, $r.Nodes, $r.Ms, $nps, $r.Best, $flag)
+    Write-Host ("{0,-12} {1,13} {2,13} {3,13:N0} {4,8:N0} {5,12:N0}  {6}{7}{8}" -f `
+                $p.Name, $mainCell, $qsCell, $r.Nodes, $r.Ms, $nps, $r.Best, $flag, $skipsCell)
 
     $rows.Add([pscustomobject]@{
         Position  = $p.Name
@@ -460,6 +476,7 @@ foreach ($p in $positionList) {
         MainNodes = $r.MainNodes
         QsNodes   = $r.QsNodes
         Nodes     = $r.Nodes
+        FrontierSkips = $r.FrontierSkips
         Ms        = $r.Ms
         Nps       = $nps
         Best      = $r.Best
@@ -481,6 +498,9 @@ Write-Host "Aggregate nps: $('{0:N0}' -f $aggregate)    Wall clock: $('{0:N0}' -
 if ($haveSplit -and $totalNodes -gt 0) {
     $qsShare = [math]::Round(100.0 * $totalQs / $totalNodes, 1)
     Write-Host "Quiescence share of nodes: $qsShare%"
+}
+if ($totalSkips -gt 0) {
+    Write-Host "Frontier futility skips: $('{0:N0}' -f $totalSkips) (counted in main; their quiescence entries in no column)"
 }
 
 if ($contracts.Count -gt 1) {
