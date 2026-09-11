@@ -172,8 +172,9 @@ TEST_CASE("Qsearch - a MAIN bound at or beyond beta cuts off", "[search][tt][qse
 // for the property.
 //
 // The root cannot be reverse-futility pruned (it would need a static eval above beta = 5000), but
-// its subtree is, so `without_entry` moves if the guard's margin or depth band changes. That is a
-// second variable, not a regression: what this case asserts is that the two searches agree.
+// its subtree is, and frontier futility prunes inside it too, so `without_entry` moves if either
+// guard's margin or depth band changes. That is a second variable, not a regression: what this
+// case asserts is that the two searches agree.
 TEST_CASE("Search - a TT bound inside the window does not change the value", "[search][tt]")
 {
 	// Enough hanging material for the window to actually change which children survive.

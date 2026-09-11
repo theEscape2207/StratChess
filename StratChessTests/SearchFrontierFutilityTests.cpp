@@ -1,10 +1,12 @@
 // SearchFrontierFutilityTests.cpp — frontier futility pruning (#504).
 //
-// The test binary compiles the guard in with its runtime flag off, so every case turns it on.
 // The eligibility tests move one node-level guard at a time off a passing baseline. The node tests
 // hold the engine's skip count against an independent tally, so removing a move-level guard shows
 // up as extra skips. The hash-move term is the exception: it is redundant behind the
 // first-legal-move term while the hash move sorts first, so no case claims it.
+//
+// The feature ships enabled. Cases still set the flag explicitly rather than leaning on the
+// default, so each one names the configuration it is asserting about.
 
 #include <catch2/catch_test_macros.hpp>
 #include "SearchTestFixture.h"
@@ -60,6 +62,14 @@ namespace {
 // ============================================================================
 // Eligibility
 // ============================================================================
+
+TEST_CASE("Frontier futility: shipped configuration prunes", "[search][futility]")
+{
+	AIPerlexTestFixture fix(kBaselineFen);
+
+	// No set_frontier_futility call: this is what the shipping engine's tuning looks like.
+	CHECK(eligible(fix));
+}
 
 TEST_CASE("Frontier futility: the runtime flag off makes a node ineligible", "[search][futility]")
 {
