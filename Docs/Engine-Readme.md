@@ -272,7 +272,7 @@ Move extracted and played
 
 | File | Description |
 |------|-------------|
-| `TranspositionTable.h/cpp` | Hash table for position caching (256 MB requested) |
+| `TranspositionTable.h/cpp` | Hash table for position caching (192 MB requested by default) |
 | `ThreadData.h` | Per-search state: board copy, PV, killers, history, counters |
 | `SearchLimits.h` | Per-call search constraints (clock / movetime / depth / infinite) |
 | `PVTable.h` | Principal variation storage |
@@ -520,7 +520,12 @@ struct TTEntry {
 };
 ```
 
-**Layout**: four entries per bucket, power-of-two bucket count for mask indexing.
+**Layout**: four entries per **64-byte `alignas(64)` bucket**, so one probe touches one cache line,
+with a power-of-two bucket count for mask indexing. Storage is a private 16-byte `PackedEntry` — key
+8, value 2, depth 2, move 2, metadata 1, age 1 — where phase, bound and node type share the metadata
+byte and three bits stay reserved. `probe()` returns the unpacked `TTEntry` above, so nothing outside
+the table sees the packed form. Static assertions pin every offset, the 16-byte size and the 64/64
+bucket size and alignment: changing any of them changes capacity, and therefore search results.
 
 **Concurrency**: one `std::shared_mutex` per bucket — probes take a shared lock, stores take the
 exclusive side. Whether that cost is worth removing is an open measurement question.
@@ -533,10 +538,13 @@ discard a deeper one. An equal score is settled on the raw phase, depth and boun
 away, and only a store that nothing separates from the entry it lands on overwrites. A store that
 wins the slot but carries no move keeps the one already there.
 
-**Size**: 256 MB requested. Note that the bucket count is rounded *down* to a power of two, so the
-allocation is smaller than the request and `memory_mb()` reports the request rather than the
-allocation — a known bug, tracked separately. There is currently no UCI `Hash` option; the size is
-fixed at construction.
+**Size**: the UCI `Hash` option budgets *entry* bytes (default 192 MB, min 1, max 1536); the
+per-bucket locks are additional. `requested_memory_mb()` reports what was asked for and `memory_mb()`
+what was actually allocated — they differ because the bucket count is rounded *down* to a power of
+two, so a request that is not an exact fit allocates less than it asks for. With 64-byte buckets
+every power of two from 1 to 1024 MB is an exact fit. **The 192 default is not one**: it lands on
+2^21 buckets using 128 MB — the same bucket count the old 96-byte layout got at that request, so
+identical capacity for 64 MB less memory. The 1536 cap is not one either, and allocates 1024 MB.
 
 ---
 
