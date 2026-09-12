@@ -77,7 +77,10 @@ class TranspositionTable {
 		int16_t value{0};
 		int16_t depth{0};
 		Move best_move;
-		uint8_t metadata{0x10}; // MAIN / EXACT / ALL_NODE; upper three bits reserved.
+		// MAIN / EXACT / ALL_NODE; upper three bits reserved. A new enumerator in any of the three
+		// packed enums must be re-checked against the asserts below: the setters mask, so a value that
+		// overruns its field is stored as a different one instead of failing.
+		uint8_t metadata{0x10};
 		uint8_t age{0};
 
 		static constexpr uint8_t PHASE_MASK = 0x01;
@@ -131,6 +134,13 @@ class TranspositionTable {
 	              static_cast<uint8_t>(BoundType::UPPER) == 2);
 	static_assert(static_cast<uint8_t>(NodeType::PV_NODE) == 0 && static_cast<uint8_t>(NodeType::CUT_NODE) == 1 &&
 	              static_cast<uint8_t>(NodeType::ALL_NODE) == 2);
+	// Each enum must still fit the field it is packed into; the widest value is the tripwire.
+	static_assert(static_cast<uint8_t>(SearchPhase::QUIESCENCE) <= PackedEntry::PHASE_MASK);
+	static_assert(static_cast<uint8_t>(BoundType::UPPER) <= (PackedEntry::BOUND_MASK >> PackedEntry::BOUND_SHIFT));
+	static_assert(static_cast<uint8_t>(NodeType::ALL_NODE) <= (PackedEntry::NODE_MASK >> PackedEntry::NODE_SHIFT));
+	// unpack() must set every TTEntry field. A field added to TTEntry and not to PackedEntry compiles
+	// clean and reads back its default from every probe, so pin the size that would change.
+	static_assert(sizeof(TTEntry) == 24, "TTEntry gained a field -- pack it, and set it in unpack()");
 	// Storage size controls capacity and collisions; changing it requires search-change validation.
 	static_assert(sizeof(PackedEntry) == 16, "PackedEntry size change alters capacity and search behaviour");
 	static_assert(alignof(PackedEntry) == 8 && std::is_standard_layout_v<PackedEntry>);
@@ -185,8 +195,12 @@ class TranspositionTable {
 	// for a constrained machine must not get a larger one than it asked for.
 	//
 	// The cost is that the allocation is generally smaller than the request, by
-	// up to half. The engine's 192 MiB request rounds down to 2^21 buckets,
-	// so 128 MiB of entries. The constructor's 256 MiB default fits exactly.
+	// up to half. The engine's 192 MiB request rounds down to 2^21 buckets, so
+	// 128 MiB of entries -- the same bucket count the 96-byte layout got at that
+	// request, which is why the two are capacity-equivalent at the default.
+	// The constructor's 256 MiB default below fits exactly and so yields 2^22
+	// buckets, double the engine's; only tests use it, since AIPerplex always
+	// passes a size explicitly.
 	// memory_mb() reports what was actually allocated for exactly this reason.
 	explicit TranspositionTable(size_t mb = 256) : requested_mb(mb)
 	{

@@ -191,8 +191,9 @@ class AIPerplex final {
 	// Search() spawns threads_ - 1 helper std::jthreads sharing the
 	// transposition table with the main search.
 	void SetThreads(unsigned n) noexcept { threads_ = std::clamp(n, 1u, 32u); }
-	// MAX_HASH_MB = 1536 is a deliberate policy cap, not the largest exact fit.
-	// Steady-state total is about 1664 MiB on Windows or 2432 MiB on Linux including locks;
+	// MAX_HASH_MB = 1536 is a deliberate policy cap, not an exact fit: 64-byte buckets make the
+	// exact fits powers of two, so 1536 rounds down to 2^24 buckets and allocates 1024 MiB.
+	// Steady-state total is about 1152 MiB on Windows or 1920 MiB on Linux including locks;
 	// construct-before-replace briefly holds old and new tables, roughly doubling the peak.
 	static constexpr unsigned DEFAULT_HASH_MB = DEFAULT_AIPERPLEX_HASH_MB;
 	static constexpr unsigned MIN_HASH_MB = 1;

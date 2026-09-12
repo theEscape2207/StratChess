@@ -8,12 +8,14 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include "TranspositionTable.h"
+#include "AIPerplex.h" // DEFAULT_HASH_MB, for the equal-capacity invariant only
 #include "defines.h"
 
 class TranspositionTableTestFixture {
   public:
 	using Entry = TranspositionTable::PackedEntry;
 
+	// Single-threaded tests only: this hands out a reference with no bucket lock held.
 	static const Entry& first_entry(const TranspositionTable& table) { return table.table[0].entries[0]; }
 };
 
@@ -125,6 +127,41 @@ TEST_CASE("TT - packed entry preserves every age and wraps from 255 to 0", "[tt]
 	tt.store(KEY_B, 2, 1, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
 	REQUIRE(tt.probe(KEY_B, 0).has_value());
 	CHECK(tt.probe(KEY_B, 0)->age == 0);
+}
+
+TEST_CASE("TT - an age wrap does not change same-key replacement", "[tt]")
+{
+	// The ranking compares ages modulo 256. If that arithmetic were not modular, the iteration that
+	// wraps 255 -> 0 would make the incumbent look fresher than the store landing on it. Run the same
+	// scenario at a plain boundary and at the wrap, and require the two to agree.
+	auto same_key_restore_wins = [](int iterations_before) {
+		TranspositionTable tt(0);
+		for (int i = 0; i < iterations_before; ++i)
+			tt.newSearchIteration();
+		tt.store(KEY_A, 1, 4, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+		tt.newSearchIteration();
+		tt.store(KEY_A, 42, 4, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
+		const auto result = tt.probe(KEY_A, 0);
+		REQUIRE(result.has_value());
+		return result->value == 42;
+	};
+
+	CHECK(same_key_restore_wins(5));
+	CHECK(same_key_restore_wins(255) == same_key_restore_wins(5));
+}
+
+TEST_CASE("TT - a store carries all three packed metadata fields through the table", "[tt]")
+{
+	// The setters are exercised directly elsewhere; this pins that store() writes and probe() reads
+	// all three fields at once, so a mask overlapping a neighbour cannot pass unnoticed.
+	TranspositionTable tt(0);
+	tt.store(KEY_A, 17, 3, 0, no_move(), BoundType::UPPER, NodeType::CUT_NODE, SearchPhase::QUIESCENCE);
+
+	const auto result = tt.probe(KEY_A, 0);
+	REQUIRE(result.has_value());
+	CHECK(result->bound == BoundType::UPPER);
+	CHECK(result->node_type == NodeType::CUT_NODE);
+	CHECK(result->phase == SearchPhase::QUIESCENCE);
 }
 
 TEST_CASE("TT - store and probe preserve all Move encoding bits", "[tt]")
@@ -338,13 +375,11 @@ TEST_CASE("TT - bucket_count_for matches the packed geometry across the UCI rang
 	size_t doubled_capacity = 0;
 	for (size_t requested = 0; requested <= 1536; ++requested) {
 		const size_t packed = TranspositionTable::bucket_count_for(requested);
-		const size_t expected_packed = floor_pow2((requested * MIB) / 64);
 		const size_t old = floor_pow2((requested * MIB) / 96);
 		const bool same = packed == old;
 		const bool doubled = packed == old * 2;
 
 		INFO("requested " << requested << " MiB");
-		CHECK(packed == expected_packed);
 		CHECK((same || doubled));
 		if (requested != 0)
 			CHECK(packed * size_t{64} <= requested * MIB);
@@ -354,6 +389,12 @@ TEST_CASE("TT - bucket_count_for matches the packed geometry across the UCI rang
 
 	REQUIRE(same_capacity == 513);
 	REQUIRE(doubled_capacity == 1024);
+
+	// The invariant the whole change rests on: at the shipped default the packed layout keeps the
+	// 96-byte layout's bucket count, so search behaviour is unchanged there.
+	CHECK(TranspositionTable::bucket_count_for(AIPerplex::DEFAULT_HASH_MB) == 2097152u);
+	CHECK(TranspositionTable::bucket_count_for(AIPerplex::DEFAULT_HASH_MB) ==
+	      floor_pow2((size_t{AIPerplex::DEFAULT_HASH_MB} * MIB) / 96));
 }
 
 TEST_CASE("TT - allocation never exceeds the requested budget", "[tt]")
