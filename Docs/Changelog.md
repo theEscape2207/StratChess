@@ -22,6 +22,31 @@ Newest first.
 
 ---
 
+## 2026-09-12 — Compact transposition-table storage (#442)
+
+The four-way TT bucket drops from 96 to 64 bytes and is now `alignas(64)`, so a probe touches one
+cache line instead of two or three. Storage becomes a private 16-byte `PackedEntry` — key 8, value 2,
+depth 2, move 2, metadata 1, age 1 — with phase, bound and node type sharing the metadata byte and
+three bits left reserved for #347. `TTEntry`, `probe()` and `store()` are unchanged, so no search
+call site sees the packed form; the old `sizeof(TTEntry)==24` capacity tripwire moves to
+`sizeof(PackedEntry)==16`, joined by assertions on every offset and on the bucket's 64/64 size and
+alignment.
+
+**Capacity is unchanged at the shipped default, and that is why this is a pure speed change.** `Hash`
+budgets entry bytes and rounds the bucket count *down* to a power of two, so the 192 MB default lands
+on 2^21 buckets under both layouts — identical entries, 64 MB less memory. Capacity only moves at
+requests that cross a power of two (1, 256, …), which is the case the evidence below does not cover.
+Exact-fit requests are now 128 / 256 / 512 / 1024; 192 no longer is one.
+
+**Evidence.** The CI strength lab measured **+5.69 +/- 3.42 Elo** at equal capacity against merge base
+`b53d457` (19,980 games at 10+0.1, run `34637995614`). That merge base predates frontier futility
+pruning (#504), which cuts the TT's share of total work, so the shipping value is lower: re-measured
+after the rebase, `Run-Bench.ps1` at depth 13 shows **+1.59% nps** with identical node counts —
+roughly +2.7 Elo at this project's ~1.7 Elo per 1% nps, below what a 20,000-game lab run resolves, so
+no second run was bought. A separate run bundling the layout with `Hash=256` came back
+**+0.09 +/- 3.34** and isolates nothing; both rows are in `Measurements/ci-per-change.md`. Whether
+extra capacity is worth anything is left to the probe counters of #532, not to more games.
+
 ## 2026-09-11 — Frontier futility pruning at depth 1 ships (#504)
 
 At a depth-1 non-PV node, a quiet later move is now skipped when the parent's static evaluation plus
