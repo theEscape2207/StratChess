@@ -83,7 +83,7 @@ SearchResult PlayerHuman::GetMove(const SearchLimits&)
 		// Special: Er det en Promotion? Saa er der 4 valgmuligheder!
 		if (MoveHelper::IsPromote(*moveIt)) {
 			// Map a ePieceType to the corresponding promotion MoveType flag
-			auto toPromotionType = [](ePieceType pt) -> MoveType {
+			const auto toPromotionType = [](ePieceType pt) -> MoveType {
 				switch (pt) {
 				case QUEEN:
 					return MoveType::PROMOTION_QUEEN;

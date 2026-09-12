@@ -278,7 +278,7 @@ namespace Testing {
 	{
 		PerftResult result;
 
-		auto start = std::chrono::high_resolution_clock::now();
+		const auto start = std::chrono::high_resolution_clock::now();
 
 		if (divide_mode) {
 			divide(board, depth);
@@ -286,7 +286,7 @@ namespace Testing {
 			result.nodes = perft_recursive(board, depth);
 		}
 
-		auto end = std::chrono::high_resolution_clock::now();
+		const auto end = std::chrono::high_resolution_clock::now();
 		result.duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
 
 		return result;
@@ -297,9 +297,9 @@ namespace Testing {
 	{
 		PerftResult result;
 
-		auto start = std::chrono::high_resolution_clock::now();
+		const auto start = std::chrono::high_resolution_clock::now();
 		perft_detailed_recursive(board, depth, result);
-		auto end = std::chrono::high_resolution_clock::now();
+		const auto end = std::chrono::high_resolution_clock::now();
 
 		result.duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
 
@@ -353,7 +353,7 @@ namespace Testing {
 	bool Perft::run_test_suite(bool extended, bool verbose)
 	{
 
-		auto positions = get_test_positions(extended);
+		const auto positions = get_test_positions(extended);
 		bool all_passed = true;
 		int test_count = 0;
 		int passed_count = 0;
@@ -362,7 +362,7 @@ namespace Testing {
 		std::cout << "Running Perft Test Suite\n";
 		std::cout << "========================================\n\n";
 
-		auto start = std::chrono::high_resolution_clock::now();
+		const auto start = std::chrono::high_resolution_clock::now();
 
 		for (const auto& pos : positions) {
 			std::cout << "Testing: " << pos.description << "\n";
@@ -394,7 +394,7 @@ namespace Testing {
 					std::cout.flush();
 				}
 
-				auto result = run(board, depth, false);
+				const auto result = run(board, depth, false);
 				const uint64_t expected = pos.expected_nodes[depth];
 
 				const bool passed = (result.nodes == expected);
@@ -422,7 +422,7 @@ namespace Testing {
 			std::cout << "NO! SOME TESTS FAILED\n";
 		}
 		std::cout << "========================================\n\n";
-		auto end = std::chrono::high_resolution_clock::now();
+		const auto end = std::chrono::high_resolution_clock::now();
 		std::cout << "Time spent: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
 		          << " seconds\n";
 

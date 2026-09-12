@@ -478,8 +478,8 @@ constexpr std::array<BITBOARD, ALL_SQUARES> makeKnightMoves()
 	std::array<BITBOARD, ALL_SQUARES> result{};
 
 	for (unsigned int i = 0; i < ALL_SQUARES; ++i) {
-		auto rank = static_cast<int>(Rank(i));
-		auto file = static_cast<int>(File(i));
+		const auto rank = static_cast<int>(Rank(i));
+		const auto file = static_cast<int>(File(i));
 		BITBOARD moves = 0;
 		// Liste af alle potensielle afvigelser (rankΔ, fileΔ)
 

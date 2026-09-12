@@ -127,7 +127,7 @@ namespace Testing {
 	bool TacticalTestRunner::run_test_suite(double required_pass_rate, bool verbose, const std::string& json_filename,
 	                                        unsigned threads)
 	{
-		auto positions = load_test_cases(json_filename);
+		const auto positions = load_test_cases(json_filename);
 
 		std::cout << "\n========================================\n";
 		std::cout << "Tactical Test Suite (" << positions.size() << " positions, " << json_filename << ")\n";
@@ -181,7 +181,7 @@ namespace Testing {
 	bool TacticalTestRunner::run_stability_suite(int n_runs, double required_pass_rate,
 	                                             const std::string& json_filename, unsigned threads)
 	{
-		auto positions = load_test_cases(json_filename);
+		const auto positions = load_test_cases(json_filename);
 
 		std::cout << "\n========================================\n";
 		std::cout << "Tactical Stability Suite (" << positions.size() << " positions x " << n_runs << " runs, "

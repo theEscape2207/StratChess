@@ -109,10 +109,10 @@ namespace {
 				//auto tp = spdlog::thread_pool();
 
 				// add both console and file sinks (file sink keeps a record for diagnostics)
-				auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+				const auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
 				console_sink->set_level(spdlog::level::info);
 				console_sink->set_pattern(("%T.%e %^%l%$: %v"));
-				auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("logs/aiperplex.log", true);
+				const auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("logs/aiperplex.log", true);
 				file_sink->set_level(spdlog::level::debug);
 				file_sink->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
 
@@ -268,9 +268,9 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	// Destruction order is intentional on every exceptional path: stop_guard
 	// latches the shared control first, helper jthreads then join, and only then
 	// launch_guard clears the immediate-stop handshake for the next call.
-	auto launch_guard = ScopeExit([this]() noexcept { finish_search_launch(); });
+	const auto launch_guard = ScopeExit([this]() noexcept { finish_search_launch(); });
 	std::vector<std::jthread> helpers;
-	auto stop_guard = ScopeExit([this]() noexcept { control_.Stop(); });
+	const auto stop_guard = ScopeExit([this]() noexcept { control_.Stop(); });
 
 	init_search(root);
 	// Snapshot threads_ exactly once so helper allocation, spawning and
@@ -367,7 +367,7 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 		              "probe bucket counts must match; widening one alone writes out of bounds");
 		static_assert(ThreadData::FUTILITY_PROBE_FRONTIER_BANDS == SearchResult::FUTILITY_PROBE_FRONTIER_BANDS,
 		              "probe frontier band counts must match; widening one alone writes out of bounds");
-		auto accumulate_probe = [&result](const ThreadData& source) {
+		const auto accumulate_probe = [&result](const ThreadData& source) {
 			for (int b = 0; b < ThreadData::FUTILITY_PROBE_DEPTH_BUCKETS; ++b) {
 				result.futility_probe_nodes[b] += source.futility_probe_nodes[b];
 				result.futility_probe_null_cutoffs[b] += source.futility_probe_null_cutoffs[b];
@@ -610,7 +610,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	if (depth <= 0)
 		return quiescence(td, alpha, beta, QSEARCH_BUDGET, ply, tt);
 
-	auto key = td.board.get_zobrist_hash();
+	const auto key = td.board.get_zobrist_hash();
 	const int original_alpha = alpha;
 	Move hash_move;
 
@@ -1250,7 +1250,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 
 	const int original_alpha = alpha;
 
-	auto key = td.board.get_zobrist_hash();
+	const auto key = td.board.get_zobrist_hash();
 
 	// Probe TT for cached info. Between two quiescence entries both sides of the comparison are
 	// remaining budget, so an entry is reusable exactly when it was produced with at least as much

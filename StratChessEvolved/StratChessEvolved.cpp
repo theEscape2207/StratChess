@@ -95,7 +95,7 @@ namespace {
 		std::cout << "========================================\n\n";
 	}
 
-	int tacticalrunner(int argc, char** argv)
+	int tacticalrunner(int argc, char* const* argv)
 	{
 		if (argc < 2) {
 			std::cout << "Usage: tactical test [filename] | tactical stability [N] [filename] [threads]\n";
@@ -146,7 +146,7 @@ namespace {
 		return 1;
 	}
 
-	int perftrunner(int argc, char** argv)
+	int perftrunner(int argc, char* const* argv)
 	{
 		if (argc < 2) {
 			print_usage();
@@ -198,14 +198,14 @@ namespace {
 			}
 
 			if (command == "run") {
-				auto result = Testing::Perft::run(board, depth, false);
+				const auto result = Testing::Perft::run(board, depth, false);
 				std::cout << "Nodes: " << result.nodes << "\n";
 				std::cout << "Time:  " << result.duration.count() << " ms\n";
 				std::cout << "NPS:   " << result.nps() << "\n";
 			} else if (command == "divide") {
 				Testing::Perft::divide(board, depth);
 			} else if (command == "detailed") {
-				auto result = Testing::Perft::run_detailed(board, depth);
+				const auto result = Testing::Perft::run_detailed(board, depth);
 				result.print();
 			}
 
@@ -230,7 +230,7 @@ namespace {
 	//
 	// stdout carries only "<fen>\t<score>" lines (no banner, no progress) so the
 	// output file is directly consumable; all diagnostics go to stderr.
-	int evalrunner(int argc, char** argv)
+	int evalrunner(int argc, char* const* argv)
 	{
 		if (argc < 2) {
 			std::cerr << "Usage: eval <path-to-fen-file>\n";
@@ -300,7 +300,7 @@ namespace {
 	// Diagnostics go to stderr: stdout is the protocol channel.
 	//
 	// Returns false when an argument was malformed; the caller exits non-zero.
-	bool parse_uci_args(int argc, char** argv, std::optional<std::string>& log_path)
+	bool parse_uci_args(int argc, char* const* argv, std::optional<std::string>& log_path)
 	{
 		static constexpr std::string_view FLAG = "--log-commands";
 

@@ -105,10 +105,10 @@ void MoveGenerator::GeneratePawnCaptures(const Board& board, const BITBOARD* con
 	// Then we take the captures to the right
 	while (bbAttackRight) {
 		// Find first field
-		auto to = Board::GetFirstPiece(bbAttackRight);
+		const auto to = Board::GetFirstPiece(bbAttackRight);
 
 		// Bonden kom fra op-og-til-venstre
-		auto from =
+		const auto from =
 		    static_cast<eSquare>(to + (color == eColor::BLACK ? -9 : 7)); //FIXME: Add defines, constants whatever
 
 		const Move temp = MoveFactory::MakeMove(from, to, MoveType::CAPTURE);

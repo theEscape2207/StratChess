@@ -256,7 +256,7 @@ Move MoveFormatter::FromUCI(std::string_view uci, const Board& board)
 	// The characters are validated, not just the length: this parses whatever a
 	// GUI sends. "zzzz" would otherwise compute file 25, rank -66 and index the
 	// mailbox at -503 (#200).
-	auto parse_sq = [](char file_ch, char rank_ch) -> eSquare {
+	const auto parse_sq = [](char file_ch, char rank_ch) -> eSquare {
 		if (file_ch < 'a' || file_ch > 'h' || rank_ch < '1' || rank_ch > '8')
 			return NO_SQUARE;
 		const int file = file_ch - 'a'; // 0-7
