@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-09-12 | ad7a422 (BUNDLED: compact TT + `Hash` default 192->256, #442) | c191d08 | 20000 | 18+0.18 | **+0.09 +/- 3.34** | no effect |
 | 2026-09-11 | 91de4e7 (depth-1 frontier futility, level 2, #504) | 0d9ae52 | 19980 | 10+0.1 | **+23.39 +/- 3.46** | gain |
 | 2026-09-09 | d51803a (reverse futility pruning enabled, #87) | 12d5e19 | 19980 | 10+0.1 | **+44.62 +/- 3.66** | gain |
 | 2026-09-05 | 86877f7 (minor-piece outposts, #112) | 9708c65 | 19980 | 10+0.1 | **+8.05 +/- 3.63** | gain |
@@ -31,6 +32,12 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-09-12 -- ad7a422 (BUNDLED: compact TT + `Hash` default 192->256, #442) (20000 games)
+
+**Two variables at once, so attributable to neither.** 20 shards, pooled Ptnml(0-2) [627, 2293, 4173, 2262, 645], score 50.01%, run `34657777302`, all green. 95% interval [-3.25, +3.43] -- about as centred on zero as this instrument produces. The candidate carried a throwaway commit raising `DEFAULT_AIPERPLEX_HASH_MB` to 256 and patching the two UCI tests that pin that default; it was never merged.
+
+**What it settles, and what it does not.** "Compact layout configured at Hash=256" does not beat current `main` at Hash=192 by anything this instrument can see. It does **not** isolate the capacity effect -- that needs compact-at-256 vs compact-at-192 -- and the longer TC shrinks a speed-type gain independently of capacity. Kept here despite being bundled because 20,000 games otherwise leave no trace.
 
 ### 2026-09-11 -- 91de4e7 (depth-1 frontier futility, level 2, #504) (19980 games)
 
