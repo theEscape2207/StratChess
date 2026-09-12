@@ -1,12 +1,12 @@
 ---
 name: triage-issue
-description: Investigate and refine a GitHub issue in this repository, clarify its correctness, playing-strength, and performance impact with an honest magnitude, recommend an implementation plan or closure, and reconcile priority, category, and readiness labels. Use when asked to triage, clarify, scope, label, make ready, or recommend closing an issue.
+description: Investigate and refine a GitHub issue in this repository, clarify its correctness, playing-strength, and performance impact with an honest magnitude, recommend an implementation plan, a spike, or closure, and reconcile priority, category, and readiness labels. Use when asked to triage, clarify, scope, label, make ready, or recommend closing an issue.
 ---
 
 # Triage a repository issue
 
-Finish with either an evidence-backed issue and reviewable plan, or a documented recommendation to
-close. Labels must agree with that outcome.
+Finish with an evidence-backed issue and reviewable plan, a spike that bounds the opportunity before
+anyone builds, or a documented recommendation to close. Labels must agree with that outcome.
 
 ## Start with repository evidence
 
@@ -20,9 +20,14 @@ Fetch the issue body, comments, state, and labels, plus the live label catalog. 
 tests, docs, issues, PRs, and relevant history far enough to establish whether the problem still
 exists, who owns it, what blocks it, and whether each claim is measured, estimated, or speculative.
 
-A cheap local probe may replace speculation; record its command, input, result, and limitation. Triage
-may name an Elo match, SPRT, or other paid measurement, but never starts one—the measurement budget is
-the project owner's call. Use `measure-strength` to choose and interpret the instrument.
+Four ways to replace speculation, separated by how the work is packaged and by who pays for it. A
+**probe** is cheap enough to run inside this triage: record its command, input, result, and
+limitation, and fold it into the finding. A **spike** is a separate bounded work item that resolves
+one named uncertainty before anyone commits to the full implementation (below). An **implementation
+plan** is the right outcome once the opportunity is credible and the production decisions are
+settled. A **paid measurement** — Elo match, SPRT, lab run — a triage or a spike may propose, but
+neither starts one: the measurement budget is the project owner's call. Use `measure-strength` to
+choose and interpret the instrument.
 
 ## Make the Why concrete
 
@@ -37,6 +42,30 @@ the project owner's call. Use `measure-strength` to choose and interpret the ins
 Call a result **measured** only with a reproducible result and uncertainty or spread; call it a
 **bounded estimate** only when code or a probe supports a range; otherwise say **unknown until
 measured** and name the needed benchmark.
+
+## Recommend a spike when the opportunity is unmeasured
+
+When the honest answer is **unknown until measured** and the unknown is *whether there is headroom at
+all*, the outcome is a spike, not an implementation plan. Where a probe sharpens *this* triage, a
+spike is the work item that answers "is it worth building" for the next one — its result either parks
+the change or sizes the approach and estimate that follow. Reach for the cheapest credible way to
+bound the opportunity before the change that would exploit it exists — stock `main`, an existing
+tuning knob, throwaway instrumentation, a disposable prototype, in that order:
+
+- **Speed:** the share of runtime spent on the path you would speed up is the ceiling.
+- **Capacity or size:** vary the existing knob on stock `main` and read the curve before repacking
+  anything.
+- **Pruning:** count what a guard *would* prune without pruning it — `futility_probe_*` in
+  `AIPerplex.cpp`.
+- **Eval term:** how often it fires, and whether it correlates with result in existing lab PGNs.
+
+File it as its own `Spike:` issue (#398, #498, #529). State **before it runs**: the question, the
+method and its time or CI cost, the park threshold, and what each possible result would decide — and
+say so explicitly if the method needs an owner-approved paid measurement. A spike only saves work if
+a bad number parks the change instead of being explained away, so keep its artifacts throwaway — a
+polished prototype makes parking feel like waste. #442 is the worked case: half its rationale was
+"more entries per MB", testable on stock `main` by sweeping `Hash` with zero lines written, and it
+went unisolated through two full lab runs.
 
 ## Publish without erasing history
 
@@ -63,7 +92,8 @@ reason and state residual risk. Do not close unless the user explicitly asked fo
 
 - Remove `needs-triage` once investigation is complete.
 - Add `ready-for-agent` only when scope, dependencies, choices, acceptance criteria, and validation are
-  settled; remove it when a material decision remains.
+  settled; remove it when a material decision remains. Add `ready-for-human` otherwise — the issue
+  needs the project owner for implementation, cost, direction, or another call only they can make.
 - `priority:critical` requires the issue to be blocking or explicit agreement from the project owner.
 - Apply every materially owning category; remove stale category, priority, readiness, type, and
   disposition labels.
