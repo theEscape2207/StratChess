@@ -358,10 +358,10 @@ void UciHandler::cmd_position(std::string_view line)
 		[[maybe_unused]] const bool ok = board_.SetupFromFEN(std::string(STARTING_FEN));
 		assert(ok && "STARTING_FEN failed to parse");
 	} else {
-		auto fen_pos = line.find("fen ");
+		const auto fen_pos = line.find("fen ");
 		if (fen_pos != std::string_view::npos) {
-			auto fen_start = fen_pos + 4;
-			auto moves_pos = line.find(" moves", fen_start);
+			const auto fen_start = fen_pos + 4;
+			const auto moves_pos = line.find(" moves", fen_start);
 			const std::string fen = (moves_pos != std::string_view::npos)
 			                            ? std::string(line.substr(fen_start, moves_pos - fen_start))
 			                            : std::string(line.substr(fen_start));
@@ -396,7 +396,7 @@ void UciHandler::cmd_position(std::string_view line)
 	}
 
 	// Apply move list if present
-	auto moves_pos = line.find("moves ");
+	const auto moves_pos = line.find("moves ");
 	if (moves_pos != std::string_view::npos) {
 		Board replay = board_;
 		const std::string moves_str(line.substr(moves_pos + 6));
@@ -656,7 +656,7 @@ void UciHandler::cmd_setoption(std::string_view line)
 	// ignored (standard UCI convention — same as unknown top-level commands
 	// in run()). Case-sensitive matches on "Threads" and "Hash", matching the
 	// convention used by Stockfish and other engines.
-	auto trim = [](std::string_view s) {
+	const auto trim = [](std::string_view s) {
 		const size_t b = s.find_first_not_of(' ');
 		if (b == std::string_view::npos)
 			return std::string_view{};

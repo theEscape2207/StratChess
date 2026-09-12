@@ -48,7 +48,7 @@ namespace chess {
 		{
 			if (should_stop_.load(std::memory_order_relaxed))
 				return true;
-			auto el = std::chrono::steady_clock::now() - start_time_;
+			const auto el = std::chrono::steady_clock::now() - start_time_;
 			if (el >= allocated_time_) {
 				should_stop_.store(true, std::memory_order_relaxed); // latch
 				return true;
@@ -62,7 +62,7 @@ namespace chess {
 		{
 			if (should_stop_.load(std::memory_order_relaxed))
 				return true;
-			auto el = std::chrono::steady_clock::now() - start_time_;
+			const auto el = std::chrono::steady_clock::now() - start_time_;
 			return el >= soft_limit_;
 		}
 

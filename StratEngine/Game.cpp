@@ -112,7 +112,7 @@ void Game::Init()
 
 		// Create performance logger
 		Engine::Logger::EnsurePerfLogger("logs/SimplePerfStats.txt");
-		auto perf = Engine::Logger::GetPerfLogger();
+		const auto perf = Engine::Logger::GetPerfLogger();
 		if (perf) {
 			perf->info(
 			    "No. of nodes  |  Ms used  |  Nodes pr. ms  |  Total nodes  |  Total time  |  Total nodes pr. ms");
@@ -147,7 +147,7 @@ void Game::Init()
 
 void Game::CreateGameMoveFile()
 {
-	auto logger = spdlog::default_logger();
+	const auto logger = spdlog::default_logger();
 	logger->debug("Creating Moves Log File: 'logs/gamelist.txt'");
 	movesFile_.open("logs/gamelist.txt", std::ios::trunc | std::ios::out);
 	AddFileHeader(movesFile_);
@@ -285,7 +285,7 @@ void Game::RecordPerformance(const IPlayer& mover, const SearchResult& result)
 	if (total_elapsed_for_display == std::chrono::milliseconds::zero())
 		total_elapsed_for_display = std::chrono::milliseconds(1);
 
-	auto perf = Engine::Logger::GetPerfLogger();
+	const auto perf = Engine::Logger::GetPerfLogger();
 	if (!perf)
 		return;
 
@@ -421,7 +421,7 @@ void Game::PrintGameMoves()
 void Game::AddFileHeader(std::ostream& file) const
 {
 	using namespace std::chrono;
-	auto now = system_clock::now();
+	const auto now = system_clock::now();
 	std::time_t now_c = system_clock::to_time_t(now);
 
 	std::tm timeinfo{};

@@ -289,7 +289,7 @@ class TranspositionTable {
 		bool same_key = false;
 
 		for (size_t i = 0; i < BUCKET_SIZE; ++i) {
-			auto& entry = bucket.entries[i];
+			const auto& entry = bucket.entries[i];
 
 			if (entry.key == key) {
 				// Exact same position: this slot is the only candidate, but whether the

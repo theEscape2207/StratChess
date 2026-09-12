@@ -16,18 +16,18 @@ void Engine::Logger::InitDefault()
 	std::call_once(g_default_init_flag, []() {
 		try {
 			// create console sink
-			auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+			const auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
 			console_sink->set_level(spdlog::level::info);
 			console_sink->set_pattern(("%T.%e %^%l%$: %v"));
 
 			// create file sink for general logs
-			auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("logs/multisink.txt", true);
+			const auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("logs/multisink.txt", true);
 			file_sink->set_level(spdlog::level::trace);
 			file_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
 
 			const spdlog::sinks_init_list sink_list = {file_sink, console_sink};
 
-			auto multi = std::make_shared<spdlog::logger>("multi_sink", sink_list.begin(), sink_list.end());
+			const auto multi = std::make_shared<spdlog::logger>("multi_sink", sink_list.begin(), sink_list.end());
 			multi->set_level(spdlog::level::debug);
 
 			// set as default logger so existing code that uses spdlog::info() continues to work
@@ -52,9 +52,9 @@ std::shared_ptr<spdlog::logger> Engine::Logger::EnsurePerfLogger(const std::stri
 			// does not need to pre-create logs/.
 			// Create a synchronous file sink that truncates the file on startup (match previous behavior)
 			// If you want async perf logging later, switch to init_thread_pool + async logger here.
-			auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(filename, true);
+			const auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(filename, true);
 			file_sink->set_level(spdlog::level::info);
-			auto perf_logger = std::make_shared<spdlog::logger>(PERF_LOGGER_NAME, file_sink);
+			const auto perf_logger = std::make_shared<spdlog::logger>(PERF_LOGGER_NAME, file_sink);
 			perf_logger->set_level(spdlog::level::info);
 			perf_logger->flush_on(spdlog::level::info);
 			spdlog::register_logger(perf_logger);
@@ -70,7 +70,7 @@ std::shared_ptr<spdlog::logger> Engine::Logger::CreateUciCommandLogger(const std
 {
 	try {
 		// Truncate on open: one file per engine process, describing that session only.
-		auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(filename, true);
+		const auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(filename, true);
 		auto logger = std::make_shared<spdlog::logger>("UciCommands", file_sink);
 		logger->set_level(spdlog::level::debug);
 		logger->set_pattern("[%Y-%m-%d %H:%M:%S.%e] %v");
