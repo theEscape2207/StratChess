@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <vector>
 #include <atomic>
 #include <mutex>
@@ -251,6 +252,33 @@ class TranspositionTable {
 	}
 
 	void newSearchIteration() { current_age.fetch_add(1, std::memory_order_relaxed); }
+
+	uint8_t currentAge() const noexcept { return current_age.load(std::memory_order_relaxed); }
+
+	// UCI hashfull: permille of a fixed front-table sample written since this search
+	// began. Iterative-deepening ages stay distinct for replacement but all count here.
+	int hashfull(uint8_t search_start_age) const
+	{
+		constexpr size_t sample_size = 1000;
+		const size_t entries_to_sample = std::min(sample_size, table.size() * BUCKET_SIZE);
+		const size_t buckets_to_sample = (entries_to_sample + BUCKET_SIZE - 1) / BUCKET_SIZE;
+		const int search_age_span = (currentAge() - search_start_age) & 0xFF;
+		size_t occupied = 0;
+		size_t sampled = 0;
+
+		for (size_t idx = 0; idx < buckets_to_sample; ++idx) {
+			const std::shared_lock lock(bucket_locks[idx]);
+			for (const auto& entry : table[idx].entries) {
+				if (sampled == entries_to_sample)
+					break;
+				const int entry_age = (entry.age - search_start_age) & 0xFF;
+				occupied += entry.key != 0 && entry_age > 0 && entry_age <= search_age_span;
+				++sampled;
+			}
+		}
+
+		return static_cast<int>(occupied * 1000 / entries_to_sample);
+	}
 
 	std::optional<TTEntry> probe(std::uint64_t key, int current_ply) const
 	{

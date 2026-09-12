@@ -28,6 +28,7 @@ struct SearchResult {
 	// so /W4 /WX does not catch the shift.
 	int64_t nodes_searched = 0;
 	int64_t qnodes_searched = 0;
+	int hashfull = 0;
 	bool search_was_stable = true;
 	std::chrono::milliseconds elapsed{0};
 

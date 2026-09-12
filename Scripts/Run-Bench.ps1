@@ -160,7 +160,7 @@ function ConvertTo-BenchResult {
 
     # The engine emits one summary info line, then bestmove. Take the LAST info
     # line so this keeps working if per-iteration output is ever added.
-    $info = [regex]::Matches($Output, 'info depth \d+.*?nodes (\d+) time (\d+)')
+    $info = [regex]::Matches($Output, 'info depth \d+.*?nodes (\d+)(?: hashfull \d+)? time (\d+)')
     $best = [regex]::Match($Output, 'bestmove (\S+)')
 
     if ($info.Count -eq 0) {
@@ -285,8 +285,8 @@ if ($SelfTest) {
         'uciok'
         'readyok'
         'info string benchcontract 1'
-        'info depth 1 score cp 24 nodes 21 time 3 pv e2e4'
-        'info depth 2 score cp 12 nodes 140 time 9 pv e2e4 e7e5'
+        'info depth 1 score cp 24 nodes 21 hashfull 0 time 3 pv e2e4'
+        'info depth 2 score cp 12 nodes 140 hashfull 17 time 9 pv e2e4 e7e5'
         'info string treenodes main 100 qs 40'
         'bestmove e2e4'
     ) -join "`n"
