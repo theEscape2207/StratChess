@@ -36,7 +36,8 @@ alignment.
 budgets entry bytes and rounds the bucket count *down* to a power of two, so the 192 MB default lands
 on 2^21 buckets under both layouts — identical entries, 64 MB less memory. Capacity only moves at
 requests that cross a power of two (1, 256, …), which is the case the evidence below does not cover.
-Exact-fit requests are now 128 / 256 / 512 / 1024; 192 no longer is one.
+Exact-fit requests are now every power of two from 1 to 1024 MB; the 192 default is not one of them,
+and neither is the 1536 cap, which allocates 1024 MB.
 
 **Evidence.** The CI strength lab measured **+5.69 +/- 3.42 Elo** at equal capacity against merge base
 `b53d457` (19,980 games at 10+0.1, run `34637995614`). That merge base predates frontier futility

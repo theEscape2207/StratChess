@@ -539,12 +539,12 @@ away, and only a store that nothing separates from the entry it lands on overwri
 wins the slot but carries no move keeps the one already there.
 
 **Size**: the UCI `Hash` option budgets *entry* bytes (default 192 MB, min 1, max 1536); the
-per-bucket locks are additional, and `memory_mb()` reports the request rather than the allocation — a
-known bug, tracked separately. The bucket count is rounded *down* to a power of two, so a request
-that is not an exact fit allocates less than it asks for. With 64-byte buckets the exact fits are
-128 / 256 / 512 / 1024. **The 192 default is not one of them**: it lands on 2^21 buckets using
-128 MB — the same bucket count the old 96-byte layout got at that request, so identical capacity for
-64 MB less memory.
+per-bucket locks are additional. `requested_memory_mb()` reports what was asked for and `memory_mb()`
+what was actually allocated — they differ because the bucket count is rounded *down* to a power of
+two, so a request that is not an exact fit allocates less than it asks for. With 64-byte buckets
+every power of two from 1 to 1024 MB is an exact fit. **The 192 default is not one**: it lands on
+2^21 buckets using 128 MB — the same bucket count the old 96-byte layout got at that request, so
+identical capacity for 64 MB less memory. The 1536 cap is not one either, and allocates 1024 MB.
 
 ---
 

@@ -114,6 +114,8 @@ class TranspositionTable {
 			                                ((static_cast<uint8_t>(node_type) << NODE_SHIFT) & NODE_MASK));
 		}
 
+		// Must set every TTEntry field: one left out is not a compile error, it is a default read back
+		// from every probe.
 		TTEntry unpack() const noexcept
 		{
 			TTEntry result;
@@ -138,11 +140,12 @@ class TranspositionTable {
 	static_assert(static_cast<uint8_t>(SearchPhase::QUIESCENCE) <= PackedEntry::PHASE_MASK);
 	static_assert(static_cast<uint8_t>(BoundType::UPPER) <= (PackedEntry::BOUND_MASK >> PackedEntry::BOUND_SHIFT));
 	static_assert(static_cast<uint8_t>(NodeType::ALL_NODE) <= (PackedEntry::NODE_MASK >> PackedEntry::NODE_SHIFT));
-	// unpack() must set every TTEntry field. A field added to TTEntry and not to PackedEntry compiles
-	// clean and reads back its default from every probe, so pin the size that would change.
-	static_assert(sizeof(TTEntry) == 24, "TTEntry gained a field -- pack it, and set it in unpack()");
 	// Storage size controls capacity and collisions; changing it requires search-change validation.
-	static_assert(sizeof(PackedEntry) == 16, "PackedEntry size change alters capacity and search behaviour");
+	// It is also where a new TTEntry field lands: storing one means adding it here and to store(),
+	// which this assertion then catches. What nothing catches is adding it here and forgetting the
+	// line in unpack() -- every probe would read back its default, silently. See unpack().
+	static_assert(sizeof(PackedEntry) == 16, "PackedEntry size change alters capacity and search behaviour; "
+	                                         "a new field must also be set in unpack()");
 	static_assert(alignof(PackedEntry) == 8 && std::is_standard_layout_v<PackedEntry>);
 	static_assert(offsetof(PackedEntry, key) == 0 && offsetof(PackedEntry, value) == 8 &&
 	              offsetof(PackedEntry, depth) == 10 && offsetof(PackedEntry, best_move) == 12 &&
