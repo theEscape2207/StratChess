@@ -5,8 +5,8 @@ description: Investigate and refine a GitHub issue in this repository, clarify i
 
 # Triage a repository issue
 
-Finish with either an evidence-backed issue and reviewable plan, or a documented recommendation to
-close. Labels must agree with that outcome.
+Finish with an evidence-backed issue and reviewable plan, a spike that bounds the opportunity before
+anyone builds, or a documented recommendation to close. Labels must agree with that outcome.
 
 ## Start with repository evidence
 
@@ -37,6 +37,26 @@ the project owner's call. Use `measure-strength` to choose and interpret the ins
 Call a result **measured** only with a reproducible result and uncertainty or spread; call it a
 **bounded estimate** only when code or a probe supports a range; otherwise say **unknown until
 measured** and name the needed benchmark.
+
+## Recommend a spike when the opportunity is unmeasured
+
+When the honest answer is **unknown until measured** and the unknown is *whether there is headroom at
+all*, the outcome is a spike, not an implementation plan. (A probe cheap enough to run inside the
+triage belongs in the finding instead.) A spike sizes the opportunity on the **unmodified** engine,
+before the change that would exploit it exists:
+
+- **Speed:** the share of runtime spent on the path you would speed up is the ceiling.
+- **Capacity or size:** vary the existing knob on stock `main` and read the curve before repacking
+  anything.
+- **Pruning:** count what a guard *would* prune without pruning it — `futility_probe_*` in
+  `AIPerplex.cpp`.
+- **Eval term:** how often it fires, and whether it correlates with result in existing lab PGNs.
+
+File it as its own `Spike:` issue (#398, #498, #529) and state the park threshold **before** it runs;
+a spike only saves work if a bad number parks the change instead of being explained away. Keep its
+artifacts throwaway — a polished prototype makes parking feel like waste. #442 is the worked case:
+half its rationale was "more entries per MB", testable on stock `main` by sweeping `Hash` with zero
+lines written, and after 40,000 lab games that half is still not isolated.
 
 ## Publish without erasing history
 
