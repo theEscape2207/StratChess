@@ -36,6 +36,7 @@ struct IterationInfo {
 	int depth = 0;
 	int score = 0;
 	int64_t nodes = 0;
+	int hashfull = 0;
 	std::chrono::milliseconds elapsed{0};
 	std::vector<Move> pv;
 };
@@ -254,7 +255,7 @@ class AIPerplex final {
 	// per-thread state it carries, while the TranspositionTable stays a separate
 	// explicit parameter because it is shared across threads under Lazy SMP.
 	void init_search(const Board& root);
-	SearchResult iterative_deepening(ThreadData& td, int max_depth, TranspositionTable& tt,
+	SearchResult iterative_deepening(ThreadData& td, int max_depth, TranspositionTable& tt, uint8_t search_start_age,
 	                                 const IterationObserver& observer = {});
 	int search_with_aspiration(ThreadData& td, int depth, int seed_score, TranspositionTable& tt);
 	int pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt);
@@ -329,7 +330,8 @@ class AIPerplex final {
 	// iteration mutates it) and forwards it to the current call's observer. No-op
 	// when no observer was supplied. Called from both accept branches of
 	// iterative_deepening(), after `state` is updated for that iteration.
-	void emit_iteration_info(const ThreadData& td, int depth, int score, const IterationObserver& observer) const;
+	void emit_iteration_info(const ThreadData& td, int depth, int score, uint8_t search_start_age,
+	                         const IterationObserver& observer) const;
 	// UCI-only half of the immediate go/stop launch handshake. Kept private so
 	// ordinary Search callers have one synchronous operation and no pre-call
 	// ordering contract.

@@ -129,6 +129,32 @@ TEST_CASE("TT - packed entry preserves every age and wraps from 255 to 0", "[tt]
 	CHECK(tt.probe(KEY_B, 0)->age == 0);
 }
 
+TEST_CASE("TT - hashfull samples every generation written during one search", "[tt]")
+{
+	TranspositionTable tt(1);
+	const uint8_t search_start_age = tt.currentAge();
+	CHECK(tt.hashfull(search_start_age) == 0);
+
+	// Split one quarter of the fixed sample across two iterative-deepening ages.
+	// Bucket zero needs a nonzero key that still maps there.
+	for (uint64_t bucket = 0; bucket < 250; ++bucket) {
+		if (bucket == 0 || bucket == 125)
+			tt.newSearchIteration();
+		const uint64_t key = (bucket == 0) ? tt.bucket_count() : bucket;
+		do_store(tt, key, 1);
+	}
+	CHECK(tt.hashfull(search_start_age) == 250);
+
+	// A partially started next iteration does not hide the completed depths.
+	tt.newSearchIteration();
+	CHECK(tt.hashfull(search_start_age) == 250);
+
+	// The same entries are stale from the next search's starting age.
+	const uint8_t next_search_start_age = tt.currentAge();
+	tt.newSearchIteration();
+	CHECK(tt.hashfull(next_search_start_age) == 0);
+}
+
 TEST_CASE("TT - an age wrap does not change same-key replacement", "[tt]")
 {
 	// The ranking compares ages modulo 256. If that arithmetic were not modular, the iteration that

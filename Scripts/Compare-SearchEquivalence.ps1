@@ -10,8 +10,8 @@
 
     Per position, at Threads=1 and a fixed depth, it compares EVERY per-iteration
     'info depth' line — depth, score, nodes and the full PV — plus the final line
-    and 'bestmove', with only the wall-clock 'time' field stripped, since that is
-    the one field that legitimately varies between runs. Comparing just the last
+    and 'bestmove', with the wall-clock 'time' and reporting-only 'hashfull'
+    fields stripped, since neither describes search behaviour. Comparing just the last
     line is a weaker check: two builds can agree on the answer and disagree on how
     they reached it, and for a refactor the path is exactly what is under test.
 
@@ -188,8 +188,9 @@ function ConvertTo-ComparableLines {
         Engine output into the lines that carry search behaviour, normalised.
 
         'time' is stripped because it is wall clock and legitimately differs
-        between two runs of the SAME binary; every other field on these lines is a
-        property of the search. Everything else the engine prints — the 'uci'
+        between two runs of the SAME binary. 'hashfull' is sampled telemetry and
+        can differ without the search tree changing; every other field on these
+        lines is a property of the search. Everything else the engine prints — the 'uci'
         banner, option echoes, position diagnostics — is dropped: it says nothing
         about the tree that was searched.
     #>
@@ -200,7 +201,7 @@ function ConvertTo-ComparableLines {
         if ($line -match '^info depth \d+' -or
             $line -match '^bestmove ' -or
             $line -match '^info string treenodes ') {
-            $line -replace ' time \d+', ''
+            ($line -replace ' hashfull \d+', '') -replace ' time \d+', ''
         }
     }
     return @($kept)
@@ -305,8 +306,8 @@ if ($SelfTest) {
         'uciok'
         'readyok'
         'info string position: ok'
-        'info depth 1 score cp 24 nodes 21 time 3 pv e2e4'
-        'info depth 2 score cp 12 nodes 97 time 5 pv e2e4 e7e5'
+        'info depth 1 score cp 24 nodes 21 hashfull 0 time 3 pv e2e4'
+        'info depth 2 score cp 12 nodes 97 hashfull 14 time 5 pv e2e4 e7e5'
         'info depth 2 score cp 12 nodes 140 time 9 pv e2e4 e7e5'
         'info string treenodes main 100 qs 40'
         'bestmove e2e4'
@@ -314,12 +315,12 @@ if ($SelfTest) {
 
     $lines = ConvertTo-ComparableLines -Output $sampleOut
     Assert-Case 'keeps only info depth / treenodes / bestmove lines' ($lines.Count -eq 5) "got $($lines.Count)"
-    Assert-Case 'strips the time field' ($lines[0] -eq 'info depth 1 score cp 24 nodes 21 pv e2e4')
+    Assert-Case 'strips time and hashfull fields' ($lines[0] -eq 'info depth 1 score cp 24 nodes 21 pv e2e4')
 
-    # The whole point of stripping time: two runs of ONE binary differ there.
-    $slower = $sampleOut -replace ' time 5 ', ' time 5000 '
-    $r = Compare-Transcript (ConvertTo-ComparableLines $sampleOut) (ConvertTo-ComparableLines $slower)
-    Assert-Case 'time-only difference compares identical' $r.Identical "first diff at line $($r.Index)"
+    # Both fields vary without changing the searched tree.
+    $telemetryDiff = ($sampleOut -replace ' time 5 ', ' time 5000 ') -replace ' hashfull 14 ', ' hashfull 999 '
+    $r = Compare-Transcript (ConvertTo-ComparableLines $sampleOut) (ConvertTo-ComparableLines $telemetryDiff)
+    Assert-Case 'telemetry-only differences compare identical' $r.Identical "first diff at line $($r.Index)"
 
     $r = Compare-Transcript (ConvertTo-ComparableLines $sampleOut) (ConvertTo-ComparableLines $sampleOut)
     Assert-Case 'identical output compares identical' $r.Identical
