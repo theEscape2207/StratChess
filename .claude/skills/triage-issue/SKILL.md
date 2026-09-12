@@ -20,9 +20,11 @@ Fetch the issue body, comments, state, and labels, plus the live label catalog. 
 tests, docs, issues, PRs, and relevant history far enough to establish whether the problem still
 exists, who owns it, what blocks it, and whether each claim is measured, estimated, or speculative.
 
-A cheap local probe may replace speculation; record its command, input, result, and limitation. Triage
-may name an Elo match, SPRT, or other paid measurement, but never starts one—the measurement budget is
-the project owner's call. Use `measure-strength` to choose and interpret the instrument.
+Three escalating ways to replace speculation, and only the first happens here. A **probe** is cheap
+enough to run inside the triage: record its command, input, result, and limitation, and fold it into
+the finding. A **spike** is its own unit of work, filed rather than run (below). A **paid
+measurement** — Elo match, SPRT, lab run — triage may name but never starts; the measurement budget
+is the project owner's call. Use `measure-strength` to choose and interpret the instrument.
 
 ## Make the Why concrete
 
@@ -41,9 +43,10 @@ measured** and name the needed benchmark.
 ## Recommend a spike when the opportunity is unmeasured
 
 When the honest answer is **unknown until measured** and the unknown is *whether there is headroom at
-all*, the outcome is a spike, not an implementation plan. (A probe cheap enough to run inside the
-triage belongs in the finding instead.) A spike sizes the opportunity on the **unmodified** engine,
-before the change that would exploit it exists:
+all*, the outcome is a spike, not an implementation plan. Where a probe sharpens *this* triage, a
+spike is the work item that answers "is it worth building" for the next one — its result either
+parks the change or sizes the approach and estimate that follow. A spike measures the opportunity on
+the **unmodified** engine, before the change that would exploit it exists:
 
 - **Speed:** the share of runtime spent on the path you would speed up is the ceiling.
 - **Capacity or size:** vary the existing knob on stock `main` and read the curve before repacking
@@ -83,7 +86,8 @@ reason and state residual risk. Do not close unless the user explicitly asked fo
 
 - Remove `needs-triage` once investigation is complete.
 - Add `ready-for-agent` only when scope, dependencies, choices, acceptance criteria, and validation are
-  settled; remove it when a material decision remains.
+  settled; remove it when a material decision remains. Add `ready-for-human` otherwise — the issue
+  needs the project owner for implementation, cost, direction, or another call only they can make.
 - `priority:critical` requires the issue to be blocking or explicit agreement from the project owner.
 - Apply every materially owning category; remove stale category, priority, readiness, type, and
   disposition labels.
