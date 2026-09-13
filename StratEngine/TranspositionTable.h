@@ -12,6 +12,7 @@
 #include <type_traits>
 #include <cassert>
 #include "Move.h"
+#include "TTStats.h"
 
 enum class BoundType : uint8_t { EXACT = 0, LOWER = 1, UPPER = 2 };
 
@@ -167,6 +168,9 @@ class TranspositionTable {
 
 	std::atomic<uint8_t> current_age{0};
 
+	// Read only by a stats build, to classify evictions; set before any thread of the search stores.
+	uint8_t stats_search_start_age{0};
+
 	// What the caller asked for. Kept only so requested_memory_mb() can report
 	// it -- it is NOT what was allocated. See memory_mb().
 	size_t requested_mb;
@@ -255,6 +259,16 @@ class TranspositionTable {
 
 	uint8_t currentAge() const noexcept { return current_age.load(std::memory_order_relaxed); }
 
+	void setStatsSearchStartAge(uint8_t search_start_age) noexcept { stats_search_start_age = search_start_age; }
+
+	// Whether an entry was written since the search that began at search_start_age, whose ages now
+	// span search_age_span generations. The one window hashfull and eviction stats both count.
+	static constexpr bool writtenThisSearch(uint8_t entry_age, uint8_t search_start_age, int search_age_span) noexcept
+	{
+		const int entry_distance = ageDistance(entry_age, search_start_age);
+		return entry_distance > 0 && entry_distance <= search_age_span;
+	}
+
 	// UCI hashfull: permille of a fixed front-table sample written since this search
 	// began. Iterative-deepening ages stay distinct for replacement but all count here.
 	int hashfull(uint8_t search_start_age) const
@@ -268,10 +282,8 @@ class TranspositionTable {
 
 		for (size_t idx = 0; idx < buckets_to_sample; ++idx) {
 			const std::shared_lock lock(bucket_locks[idx]);
-			for (const auto& entry : table[idx].entries) {
-				const int entry_age = ageDistance(entry.age, search_start_age);
-				occupied += entry.key != 0 && entry_age > 0 && entry_age <= search_age_span;
-			}
+			for (const auto& entry : table[idx].entries)
+				occupied += entry.key != 0 && writtenThisSearch(entry.age, search_start_age, search_age_span);
 		}
 
 		return static_cast<int>(occupied * 1000 / entries_to_sample);
@@ -298,8 +310,8 @@ class TranspositionTable {
 		return std::nullopt;
 	}
 
-	void store(std::uint64_t key, int16_t value, int16_t depth, int16_t ply, Move best_move, BoundType bound,
-	           NodeType node_type, SearchPhase phase)
+	TTStoreOutcome store(std::uint64_t key, int16_t value, int16_t depth, int16_t ply, Move best_move, BoundType bound,
+	                     NodeType node_type, SearchPhase phase)
 	{
 		const size_t index = static_cast<size_t>(key) & index_mask;
 		auto& bucket = table[index];
@@ -356,7 +368,7 @@ class TranspositionTable {
 			// its age is not refreshed, so keeping it here does not also keep it alive against
 			// the other keys in the bucket -- that would be a change to the eviction path.
 			if (!sameKeyStoreWins(entry.unpack(), depth, phase, node_type, bound, age))
-				return;
+				return TTStoreOutcome::Declined;
 
 			// The stored move is a pure ordering hint for this same position, and several
 			// stores that legitimately win here carry none: pvs()'s null-move cutoff and its
@@ -377,6 +389,13 @@ class TranspositionTable {
 		// Track counts: was entry empty? was it PV before?
 		const bool was_empty = (entry.key == 0);
 		const NodeType old_node = entry.node_type();
+		TTStoreOutcome outcome =
+		    same_key ? TTStoreOutcome::Refreshed : (was_empty ? TTStoreOutcome::Filled : TTStoreOutcome::Evicted);
+		if constexpr (kTTStatsCompiled) {
+			if (outcome == TTStoreOutcome::Evicted &&
+			    writtenThisSearch(entry.age, stats_search_start_age, ageDistance(age, stats_search_start_age)))
+				outcome = TTStoreOutcome::EvictedCurrentSearch;
+		}
 
 		entry.key = key;
 		entry.value = normalize_for_storage(value, ply);
@@ -400,6 +419,7 @@ class TranspositionTable {
 				pv_count.fetch_add(1, std::memory_order_relaxed);
 			}
 		}
+		return outcome;
 	}
 
 	// Whether an incoming store takes the slot from the entry already holding its key.

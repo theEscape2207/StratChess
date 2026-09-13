@@ -565,6 +565,22 @@ void UciHandler::cmd_go(std::string_view line)
 				}
 			}
 
+			// TT probe/store counters, compiled out unless STRAT_TT_STATS; see TTStats.h.
+			if constexpr (kTTStatsCompiled) {
+				const TTStats& tt = result.tt_stats;
+				const std::pair<std::string_view, int64_t> fields[] = {
+				    {"mainprobes", tt.main_probes},   {"mainhits", tt.main_hits},
+				    {"maincutoffs", tt.main_cutoffs}, {"qsprobes", tt.qs_probes},
+				    {"qshits", tt.qs_hits},           {"qscutoffs", tt.qs_cutoffs},
+				    {"stores", tt.stores()},          {"declined", tt.stores_declined},
+				    {"filled", tt.stores_filled},     {"refreshed", tt.stores_refreshed},
+				    {"evictstale", tt.evicted_stale}, {"evictcurrent", tt.evicted_current}};
+				std::string line = "info string ttstats";
+				for (const auto& [name, value] : fields)
+					line.append(" ").append(name).append(" ").append(std::to_string(value));
+				send(line);
+			}
+
 			const std::string bm = best.is_null() ? "0000" : MoveFormatter::ToUCI(best);
 			// Cleared BEFORE bestmove goes out, not after. `bestmove` is the only
 			// thing a client waits for, so it will send the next `position` the

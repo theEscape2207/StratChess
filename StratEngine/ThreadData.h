@@ -2,6 +2,7 @@
 #include "Board.h"
 #include "PVTable.h"
 #include "MoveHelper.h"
+#include "TTStats.h"
 #include <cassert>
 #include <cstdint>
 #include <cstring>
@@ -133,6 +134,9 @@ struct ThreadData {
 	int64_t futility_probe_evals = 0;
 	int64_t futility_probe_eval_sink = 0;
 
+	// TT probe/store counters. Written only inside kTTStatsCompiled blocks; see TTStats.h.
+	TTStats tt_stats{};
+
 	ThreadData()
 	{
 		clear_killers();
@@ -197,6 +201,7 @@ struct ThreadData {
 		clear_excluded_moves();
 		clear_singular_telemetry();
 		clear_futility_probe();
+		tt_stats = TTStats{};
 		clear_history();
 	}
 

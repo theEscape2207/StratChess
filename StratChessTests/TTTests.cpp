@@ -155,6 +155,31 @@ TEST_CASE("TT - hashfull samples every generation written during one search", "[
 	CHECK(tt.hashfull(next_search_start_age) == 0);
 }
 
+TEST_CASE("TT - store reports its outcome, splitting evictions at the search start", "[tt]")
+{
+	// The test binary compiles the stats in; without them EvictedCurrentSearch is never reported.
+	REQUIRE(kTTStatsCompiled);
+
+	TranspositionTable tt(0); // one bucket: every key competes for the same four slots
+	const auto store_at_depth = [&tt](uint64_t key, int16_t depth) {
+		return tt.store(key, 1, depth, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
+	};
+
+	tt.setStatsSearchStartAge(tt.currentAge());
+	tt.newSearchIteration();
+	CHECK(store_at_depth(1, 4) == TTStoreOutcome::Filled);
+	CHECK(store_at_depth(1, 6) == TTStoreOutcome::Refreshed);
+	CHECK(store_at_depth(1, 2) == TTStoreOutcome::Declined);
+	for (uint64_t key = 2; key <= 4; ++key)
+		CHECK(store_at_depth(key, 4) == TTStoreOutcome::Filled);
+	CHECK(store_at_depth(5, 8) == TTStoreOutcome::EvictedCurrentSearch);
+
+	// Everything in the bucket now predates the next search.
+	tt.setStatsSearchStartAge(tt.currentAge());
+	tt.newSearchIteration();
+	CHECK(store_at_depth(6, 8) == TTStoreOutcome::Evicted);
+}
+
 TEST_CASE("TT - an age wrap does not change same-key replacement", "[tt]")
 {
 	// The ranking compares ages modulo 256. If that arithmetic were not modular, the iteration that
