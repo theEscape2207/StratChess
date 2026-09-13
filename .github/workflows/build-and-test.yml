@@ -243,7 +243,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      CCACHE_MAXSIZE: 400M
+      CCACHE_MAXSIZE: 800M
+      CCACHE_LOGFILE: /tmp/ccache-sanitize.log
     steps:
       - uses: actions/checkout@v7
 
@@ -301,6 +302,32 @@ jobs:
       - name: Show ccache stats
         if: steps.ccache.outputs.available == 'true'
         run: ccache --show-stats
+
+      - name: Collect sanitizer cache diagnostics
+        if: steps.ccache.outputs.available == 'true'
+        run: |
+          ninja -C build -t deps > build/ninja-deps.txt
+          ccache --show-config > build/ccache-config.txt
+          ccache --show-stats --verbose > build/ccache-stats-verbose.txt
+          {
+            echo "github_sha=${{ github.sha }}"
+            echo "head_sha=${{ github.event.pull_request.head.sha }}"
+            echo "base_sha=${{ github.event.pull_request.base.sha }}"
+          } > build/cache-context.txt
+
+      - name: Upload sanitizer cache diagnostics
+        if: steps.ccache.outputs.available == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: sanitize-cache-diagnostics-${{ github.run_id }}
+          path: |
+            /tmp/ccache-sanitize.log
+            build/ninja-deps.txt
+            build/ccache-config.txt
+            build/ccache-stats-verbose.txt
+            build/cache-context.txt
+          if-no-files-found: error
+          retention-days: 7
 
       # Same '~[slow]' filter as every other leg. The fast tier already runs perft
       # to depth 4 from the start position and depth 3 from Kiwipete, which is the
