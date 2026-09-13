@@ -500,7 +500,7 @@ if ($haveSplit -and $totalNodes -gt 0) {
     Write-Host "Quiescence share of nodes: $qsShare%"
 }
 if ($totalSkips -gt 0) {
-    Write-Host "Frontier futility skips: $('{0:N0}' -f $totalSkips) (counted in main; their quiescence entries in no column)"
+    Write-Host "Frontier futility skips: $('{0:N0}' -f $totalSkips) (in no column, nor their quiescence entries)"
 }
 
 if ($contracts.Count -gt 1) {
@@ -513,7 +513,7 @@ if ($contracts.Count -gt 1) {
     Write-Host ""
     Write-Host "NOTE: contract 0 -- this build predates issue #312 and counts main-tree"  -ForegroundColor Yellow
     Write-Host "      nodes only, so its 'nodes' and 'nps' are NOT comparable with a"      -ForegroundColor Yellow
-    Write-Host "      contract 1 build. Compare wall clock, which is unaffected."          -ForegroundColor Yellow
+    Write-Host "      later build. Compare wall clock, which is unaffected."               -ForegroundColor Yellow
 }
 
 Write-Host ""

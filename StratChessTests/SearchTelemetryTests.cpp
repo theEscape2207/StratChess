@@ -225,8 +225,8 @@ TEST_CASE("AIAgent - a search aborted before its first root frame drops the prev
 // ============================================================================
 // Quiescence node accounting
 // ============================================================================
-// nodes_searched counts pvs() edges only, so quiescence work reached the nps
-// denominator's time but never its numerator's count. These pin the split.
+// Both counters count legal move edges actually searched: nodes_searched in pvs(), qnodes_searched
+// in quiescence(). These pin the split and the unit.
 
 TEST_CASE("Search - quiescence nodes are counted separately from main-tree nodes", "[search][nodes]")
 {
@@ -279,6 +279,38 @@ TEST_CASE("Search - node counters reset between searches", "[search][nodes]")
 	REQUIRE_FALSE(fresh.search_to_depth(5).is_null());
 	CHECK(fresh.mainnodes() == first_main);
 	CHECK(fresh.qnodes() == first_q);
+}
+
+// A depth-1 node's children are quiescence roots, which add no main node of their own, and a
+// window no move can fail high against searches every move. So its main count is its edge count.
+TEST_CASE("Search - a main node is a legal move, not a pseudo-legal one DoMove rejects", "[search][nodes]")
+{
+	// The e7 rook pins the e2 knight: six knight moves the generator emits and DoMove rejects,
+	// four legal king moves. Verified against python-chess.
+	AIPerlexTestFixture fix("7k/4r3/8/8/8/8/4N3/4K3 w - - 0 1");
+	fix.set_frontier_futility(false);
+	fix.arm_clock();
+	REQUIRE(fix.count_legal_moves() == 4);
+
+	constexpr int kHighAlpha = 5000;
+	fix.search_node(/*depth=*/1, /*ply=*/1, kHighAlpha, kHighAlpha + 1, /*is_pv_node=*/false);
+
+	CHECK(fix.mainnodes() == 4);
+}
+
+TEST_CASE("Search - a move frontier futility skips is not a main node", "[search][nodes][futility]")
+{
+	// Two captures, four promotions, two quiet checks and 21 plain quiet moves; the guard skips
+	// the 21 at this window.
+	AIPerlexTestFixture fix("7k/1P6/8/3p4/8/2N5/8/3QK3 w - - 0 1");
+	fix.set_frontier_futility(true);
+	fix.arm_clock();
+
+	constexpr int kHighAlpha = 5000;
+	fix.search_node(/*depth=*/1, /*ply=*/1, kHighAlpha, kHighAlpha + 1, /*is_pv_node=*/false);
+
+	REQUIRE(fix.frontier_skips() > 0);
+	CHECK(fix.mainnodes() == fix.count_legal_moves() - fix.frontier_skips());
 }
 
 // ============================================================================

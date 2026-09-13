@@ -22,6 +22,23 @@ Newest first.
 
 ---
 
+## 2026-09-13 — Main nodes count only searched moves; measurement contract 2 (#402)
+
+`pvs()` incremented `nodes_searched` before `DoMove()`, so it counted pseudo-legal moves `DoMove()`
+rejects and moves frontier futility skips; `quiescence()` counted only legal searched edges. The
+increment now sits after the skip, so both trees count one legal move edge actually searched, and
+`MEASUREMENT_CONTRACT` is 2. Contract 1 and 2 node counts and nps are not comparable.
+
+Run-Bench at depth 12, Threads=1: best moves, qnodes and skip counts identical; main nodes −15.6% to
+−42.7% per position (−27.5% overall: 9,223,698 → 6,689,834, of which 1,652,819 skips); wall clock
+flat over four interleaved pairs (3,647–3,714 ms before, 3,637–3,656 ms after, one 4,262 ms
+outlier). Reported nps falls mechanically. With node counts stripped, every `info depth` score and PV,
+`bestmove` and qs count matched on `Compare-SearchEquivalence`'s six positions. `go nodes` and
+`assess_iteration_quality()`'s `min_nodes_threshold` read the new unit, so node-limited and
+interrupted searches can stop at a different point.
+
+---
+
 ## 2026-09-13 — TT capacity sweep: `Scripts/measure_tt_capacity.py` (#442)
 
 Replays strength-lab PGN games through a `-DSTRAT_TT_STATS=1` build at several `Hash` sizes and
