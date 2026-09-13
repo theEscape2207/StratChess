@@ -458,9 +458,10 @@ class TranspositionTable {
 		// so exactness is not traded for freshness. In the main search an exact score means a
 		// PV node, since a null window cannot produce one, so the scores meet here only when
 		// one generation of age has cancelled the PV bonus: the trade is that the previous
-		// iteration's exact value outlives a same-depth bound by one generation, after which
-		// the ranking retires it on age. In quiescence the two meet within a generation, where
-		// the exact score is a stand-pat and the bound searched a capture that failed low.
+		// search's exact value outlives a same-depth bound for one more search, after which
+		// the ranking retires it on age; within a search the PV bonus decides before this step.
+		// In quiescence the two meet within a generation, where the exact score is a stand-pat
+		// and the bound searched a capture that failed low.
 		if ((bound == BoundType::EXACT) != (stored.bound == BoundType::EXACT))
 			return bound == BoundType::EXACT;
 

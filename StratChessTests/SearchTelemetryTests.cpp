@@ -68,17 +68,21 @@ TEST_CASE("AIPerplex - one Search() advances the TT age by exactly one generatio
 {
 	AIPerlexTestFixture fix("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 64);
 
-	const auto advance_of = [&fix](unsigned threads, const SearchLimits& limits) {
+	SearchResult result;
+	const auto advance_of = [&fix, &result](unsigned threads, const SearchLimits& limits) {
 		fix.ai->SetThreads(threads);
 		const uint8_t before = fix.tt_age();
-		REQUIRE_FALSE(fix.ai->Search(fix.board_, limits).best_move.is_null());
+		result = fix.ai->Search(fix.board_, limits);
+		REQUIRE_FALSE(result.best_move.is_null());
 		return static_cast<uint8_t>(fix.tt_age() - before);
 	};
 
 	CHECK(advance_of(1, SearchLimits::fixed_depth(6)) == 1);
 	CHECK(advance_of(4, SearchLimits::fixed_depth(6)) == 1);
-	// Stopped by the node poll partway through an iteration.
+	// Stopped by the node poll partway through an iteration, after several completed depths.
 	CHECK(advance_of(1, SearchLimits::fixed_nodes(20'000)) == 1);
+	CHECK(fix.search_is_aborted());
+	CHECK(result.depth_completed > 1);
 }
 
 TEST_CASE("AIPerplex - a completed result reports non-negative elapsed time", "[search]")
