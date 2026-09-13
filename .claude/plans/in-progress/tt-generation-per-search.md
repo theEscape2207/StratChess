@@ -18,11 +18,14 @@ happens routinely inside lab-length games.
 - Advance the TT generation exactly once per `AIPerplex::Search()`, before helpers start.
 - Remove the per-depth advance from `iterative_deepening()`.
 - Update TT fixtures and comments that describe per-iteration ages.
+- Let a deeper same-phase same-key store displace the stored entry regardless of the PV bonus (D4).
 
 **This change will not:**
 
-- Change `PackedEntry` layout (16 bytes), TT capacity, replacement constants, same-key
-  tie-breakers, hash sizing or unrelated stats.
+- Change `PackedEntry` layout (16 bytes), TT capacity, replacement constants, hash sizing or
+  unrelated stats.
+- Adopt a more permissive same-key overwrite (e.g. Stockfish's "unless >3 plies shallower"); that is
+  a separate policy change needing its own measurement.
 - Widen the age field.
 
 ## Decisions
@@ -47,11 +50,22 @@ repacking alters capacity and needs its own validation) and saturating ages (nee
 
 The name states the new contract, so a future caller adding a per-depth bump sees it is wrong.
 
+### D4: A deeper same-key store wins before the ranking is consulted
+
+The issue listed same-key tie-breakers as a non-goal; review showed D1 cannot ship without this.
+`replacementScore` prices the PV bonus at two plies to rank *which position* to keep. On the same key
+it was also deciding *which result* to keep, so a PV entry at depth d declined a CUT/ALL store at
+d+1. Per-depth ages (-512) used to cancel the bonus between iterations and hid this; with one age
+per search it would hold for the whole search, discarding deeper results and hash moves exactly
+where the PV changes or aspiration fails. Chosen: same phase and greater depth wins outright.
+Rejected: dropping the PV bonus at `age_diff == 0` (also changes equal-depth outcomes), and a
+Stockfish-style lenient overwrite (larger policy change). Across searches nothing changes: an age
+gap already let a deeper incoming store win.
+
 ## Assumptions I cannot verify from the code
 
-- The Elo effect is unknown. The #544 capacity replay shows replacement changes materially
-  (declined same-key stores ~1.8% → ~5.4%, depth +0.05–0.10 ply), which is not a strength result.
-  Verified only by the CI strength lab against merge-base; owner approval required.
+- The Elo effect is unknown. Verified only by the CI strength lab against merge-base (owner-approved).
+  The capacity replay characterises replacement, not strength.
 
 ## Invariants
 
@@ -59,6 +73,7 @@ The name states the new contract, so a future caller adding a per-depth bump see
   interruption or thread count. Helpers never advance it.
 - `hashfull` / `EvictedCurrentSearch` count every entry written by this search and none from the
   immediately preceding one; the 255 → 0 boundary stays correct.
+- A same-phase same-key store never loses to a shallower stored entry.
 
 ## Validation
 
@@ -72,5 +87,6 @@ strength lab vs merge-base, owner-approved.
 | Decision / rationale | Lands in |
 |---|---|
 | One generation per search; residual 256-search wrap | source comment on `newSearch()` |
+| Deeper same-key store beats the PV bonus | source comment in `sameKeyStoreWins()` |
 | Per-search vs per-iteration rationale, lab result | `Docs/Changelog.md`, PR body |
 | `hashfull` covers one generation | `Docs/TestDesign.md` TT coverage line |

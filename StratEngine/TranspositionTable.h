@@ -457,7 +457,8 @@ class TranspositionTable {
 
 		// Raw depth, because the halving rounds several quiescence budgets onto one rank (1, 0
 		// and -1 all reach 0) and the PV bonus buys two plies. Neither makes the shallower
-		// claim the stronger one, and quiescence() admits an entry on raw depth alone.
+		// claim the stronger one, and quiescence() admits an entry on raw depth alone. The phases
+		// match here and a deeper store has already won, so only a shallower one is decided.
 		if (depth != stored.depth)
 			return depth > stored.depth;
 

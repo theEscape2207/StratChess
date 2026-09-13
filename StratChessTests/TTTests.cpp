@@ -649,21 +649,29 @@ TEST_CASE("TT - a deeper same-key store displaces a PV entry within one search",
 	// shallower search of one position beats a deeper one. Every depth of a search shares one
 	// age, so nothing else would let a node that left the PV, or failed high under aspiration,
 	// replace its own shallower PV entry and hash move until the next search.
-	auto stored_then = [](SearchPhase phase, int16_t incoming_depth) {
+	auto stored_then = [](SearchPhase phase, int16_t stored_depth, int16_t incoming_depth, Move incoming_move) {
 		TranspositionTable tt(0);
 		tt.newSearch();
-		tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, phase);
-		tt.store(KEY_A, 60, incoming_depth, 0, OTHER_MOVE, BoundType::LOWER, NodeType::CUT_NODE, phase);
+		tt.store(KEY_A, 500, stored_depth, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, phase);
+		tt.store(KEY_A, 60, incoming_depth, 0, incoming_move, BoundType::LOWER, NodeType::CUT_NODE, phase);
 		return tt.probe(KEY_A, 0).value();
 	};
 
-	const TTEntry deeper = stored_then(SearchPhase::MAIN, 9);
+	const TTEntry deeper = stored_then(SearchPhase::MAIN, 8, 9, OTHER_MOVE);
 	CHECK(deeper.value == 60);
 	CHECK(deeper.best_move == OTHER_MOVE);
-	CHECK(stored_then(SearchPhase::QUIESCENCE, 9).value == 60);
+	// A deeper store with no move (a null-move cutoff) still keeps the PV entry's move as its hint.
+	const TTEntry moveless = stored_then(SearchPhase::MAIN, 8, 9, no_move());
+	CHECK(moveless.value == 60);
+	CHECK(moveless.best_move == HASH_MOVE);
+
+	// Quiescence budgets, including the negative ones the halving rounds onto one rank.
+	CHECK(stored_then(SearchPhase::QUIESCENCE, 8, 9, no_move()).value == 60);
+	CHECK(stored_then(SearchPhase::QUIESCENCE, -1, 0, no_move()).value == 60);
+	CHECK(stored_then(SearchPhase::QUIESCENCE, -3, -2, no_move()).value == 60);
 
 	// Equal depth is not a deeper claim: the ranking and the exactness step still keep the PV score.
-	CHECK(stored_then(SearchPhase::MAIN, 8).value == 500);
+	CHECK(stored_then(SearchPhase::MAIN, 8, 8, OTHER_MOVE).value == 500);
 }
 
 TEST_CASE("TT - an evicting store with no move does not inherit the evicted entry's move", "[tt]")
