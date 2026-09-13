@@ -283,6 +283,8 @@ TEST_CASE("Search - node counters reset between searches", "[search][nodes]")
 
 // A depth-1 node's children are quiescence roots, which add no main node of their own, and a
 // window no move can fail high against searches every move. So its main count is its edge count.
+// Both cases assume nothing returns before the move loop at such a node; a depth-1 node-level
+// pruning step would break that assumption, not the counter.
 TEST_CASE("Search - a main node is a legal move, not a pseudo-legal one DoMove rejects", "[search][nodes]")
 {
 	// The e7 rook pins the e2 knight: six knight moves the generator emits and DoMove rejects,
@@ -295,6 +297,7 @@ TEST_CASE("Search - a main node is a legal move, not a pseudo-legal one DoMove r
 	constexpr int kHighAlpha = 5000;
 	fix.search_node(/*depth=*/1, /*ply=*/1, kHighAlpha, kHighAlpha + 1, /*is_pv_node=*/false);
 
+	REQUIRE(fix.frontier_skips() == 0);
 	CHECK(fix.mainnodes() == 4);
 }
 

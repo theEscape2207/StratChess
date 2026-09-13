@@ -29,7 +29,7 @@ struct ThreadData {
 	// would be a data race.
 	GameStates root_game_state = GameStates::STILL_PLAYING;
 
-	// Thread-local main-tree node counter owned by AIPerplex. Counts pvs() move edges only.
+	// Thread-local main-tree node counter owned by AIPerplex. Counts legal pvs() move edges searched.
 	// Keeping quiescence out is deliberate:
 	// assess_iteration_quality() and completion_ratio are calibrated against main-tree size,
 	// so folding it in here would change search behaviour, not just reporting.

@@ -283,8 +283,8 @@ class AIPerplex final {
 	// The two counters are in different units, which matters when reasoning about how far
 	// past the budget a node-limited search can run: nodes_since_check_ counts node
 	// *entries*, while the budget is compared against nodes_searched plus qnodes_searched
-	// (one per legal move edge searched, in each tree). So the stop lands at the first poll at or past the budget, not at
-	// the first multiple of 1024 of the budget's own counter.
+	// (one per legal move edge searched, in each tree). So the stop lands at the first poll
+	// at or past the budget, not at the first multiple of 1024 of the budget's own counter.
 	bool poll_search_limits(ThreadData& td);
 	// Lazy SMP helper thread entry point: plain iterative-deepening loop with
 	// no quality gates (no assess_iteration_quality, no emergency handling,
