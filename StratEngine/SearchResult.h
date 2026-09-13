@@ -2,6 +2,7 @@
 
 #include "Move.h"
 #include "GameState.h"
+#include "TTStats.h"
 #include <chrono>
 #include <cstdint>
 
@@ -60,4 +61,7 @@ struct SearchResult {
 	int64_t futility_probe_evals = 0;
 	// Reported, not just accumulated -- see the ThreadData counter this is summed from.
 	int64_t futility_probe_eval_sink = 0;
+
+	// TT probe/store counters, summed over every thread. All zero unless compiled in.
+	TTStats tt_stats{};
 };

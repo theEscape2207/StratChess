@@ -378,3 +378,29 @@ TEST_CASE("Search - the shipping build reports no futility-probe counters", "[se
 	CHECK(result.futility_probe_evals == 0);
 	CHECK(result.futility_probe_eval_sink == 0);
 }
+
+TEST_CASE("Search - TT stats are internally consistent", "[search][telemetry][tt]")
+{
+	// The test binary compiles the TT stats in, so a search here does the counting.
+	REQUIRE(kTTStatsCompiled);
+	AIPerlexTestFixture fix;
+	const SearchResult result = fix.result_to_depth(6);
+	REQUIRE_FALSE(result.best_move.is_null());
+	const TTStats& tt = result.tt_stats;
+
+	CHECK(tt.main_probes > 0);
+	CHECK(tt.main_hits > 0);
+	CHECK(tt.main_hits <= tt.main_probes);
+	CHECK(tt.main_cutoffs <= tt.main_hits);
+	CHECK(tt.qs_probes > 0);
+	CHECK(tt.qs_hits <= tt.qs_probes);
+	CHECK(tt.qs_cutoffs <= tt.qs_hits);
+	CHECK(tt.stores_filled > 0);
+	// Every search node probes before it can store, so stores cannot outnumber probes.
+	CHECK(tt.stores() <= tt.main_probes + tt.qs_probes);
+
+	// Per search, not per game: a depth-1 search on the same service reports only its own few probes.
+	const SearchResult shallow = fix.result_to_depth(1);
+	CHECK(shallow.tt_stats.main_probes > 0);
+	CHECK(shallow.tt_stats.main_probes < tt.main_probes);
+}

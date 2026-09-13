@@ -401,6 +401,16 @@ if(NOT STRAT_FUTILITY_PROBE STREQUAL "0")
     message(STATUS "Futility cost probe: LEVEL ${STRAT_FUTILITY_PROBE} (measurement build, not for play)")
 endif()
 
+# TT probe/store counters. Measurement only and node-identical; at 0 no counting code runs.
+# How to read them, and the workload that makes them meaningful: StratEngine/TTStats.h.
+#   cmake --preset windows-clang-cl -DSTRAT_TT_STATS=1
+set(STRAT_TT_STATS 0 CACHE STRING "TT probe/store counters: 0 off, 1 on")
+set_property(CACHE STRAT_TT_STATS PROPERTY STRINGS 0 1)
+if(NOT STRAT_TT_STATS STREQUAL "0")
+    target_compile_definitions(StratChessEvolved PRIVATE STRAT_TT_STATS=${STRAT_TT_STATS})
+    message(STATUS "TT stats: ON (measurement build)")
+endif()
+
 include(CheckIPOSupported)
 check_ipo_supported(RESULT STRAT_IPO_SUPPORTED OUTPUT STRAT_IPO_ERROR)
 if(STRAT_IPO_SUPPORTED)
@@ -419,8 +429,9 @@ strat_configure_target(StratChessTests)
 # tests have nothing to test unless it is compiled in, and they drive it through the runtime flag.
 # STRAT_SINGULAR_DEFAULT_ON is deliberately NOT set -- every other search test must keep seeing the
 # shipped configuration, so the singular tests enable it for themselves.
+# STRAT_TT_STATS is unconditional too, so the tests exercise the counting; it changes no search decision.
 target_compile_definitions(StratChessTests PRIVATE
-    STRAT_ENABLE_TEST_ACCESS STRAT_SINGULAR_EXTENSIONS=1)
+    STRAT_ENABLE_TEST_ACCESS STRAT_SINGULAR_EXTENSIONS=1 STRAT_TT_STATS=1)
 target_link_libraries(StratChessTests PRIVATE Catch2::Catch2WithMain)
 
 # The depfile override above sets CMake variables; this asserts what CMake generated from
