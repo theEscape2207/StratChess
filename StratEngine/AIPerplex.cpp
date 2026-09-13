@@ -286,6 +286,10 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 			control_.Stop();
 	}
 	const unsigned effective_depth = control_.EffectiveDepth();
+	const uint8_t search_start_age = _tt->currentAge();
+	// Establish depth one's age before helpers can store, so every entry produced
+	// by this search is newer than the snapshot hashfull uses to reject stale content.
+	_tt->newSearchIteration();
 
 	// Lazy SMP: spawn threads_ - 1 helper threads to warm the shared TT while
 	// the main search below runs on td_ (main-is-authoritative: helpers never
@@ -321,7 +325,8 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 		}
 	}
 
-	SearchResult result = iterative_deepening(td_, static_cast<int>(effective_depth), *_tt, search_observer);
+	SearchResult result =
+	    iterative_deepening(td_, static_cast<int>(effective_depth), *_tt, search_start_age, search_observer);
 	result.game_state = td_.root_game_state;
 
 	// Latch the abort signal so any still-running helpers collapse in O(depth)
@@ -352,6 +357,7 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	}
 	result.nodes_searched = total_nodes;
 	result.qnodes_searched = total_qnodes;
+	result.hashfull = _tt->hashfull(search_start_age);
 	result.singular_eligible = total_sing_eligible;
 	result.singular_verifications = total_sing_verifications;
 	result.singular_extensions = total_sing_extensions;
@@ -402,7 +408,7 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 }
 
 SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, TranspositionTable& tt,
-                                            const IterationObserver& observer)
+                                            uint8_t search_start_age, const IterationObserver& observer)
 {
 	SearchState state;
 	td.nodes_since_check_ = 0;     // reset node counter for this search
@@ -413,8 +419,10 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 
 	for (int depth = 1; depth <= max_depth; ++depth) {
 
-		// BEFORE ITERATION: Prepare for this depth's search
-		tt.newSearchIteration();
+		// BEFORE ITERATION: Prepare for this depth's search. Search() establishes
+		// depth one's age before launching helpers; later depths advance it here.
+		if (depth > 1)
+			tt.newSearchIteration();
 		td.age_history();
 		const int64_t nodes_at_start = td.nodes_searched;
 
@@ -472,7 +480,7 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 			state.search_was_stable = !metrics.move_changed;
 
 			log_completed_iteration(metrics, td.pv_table);
-			emit_iteration_info(td, state.depth_completed, state.best_score, observer);
+			emit_iteration_info(td, state.depth_completed, state.best_score, search_start_age, observer);
 
 			// Soft limit gate: stop after this depth if the allocated time budget
 			// is consumed.  Exception: if the best move just changed, allow one
@@ -496,7 +504,7 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 			state.search_was_stable = !metrics.move_changed;
 
 			log_acceptance(metrics);
-			emit_iteration_info(td, state.depth_completed, state.best_score, observer);
+			emit_iteration_info(td, state.depth_completed, state.best_score, search_start_age, observer);
 			continue_iteration = false;
 			break;
 
@@ -1834,7 +1842,8 @@ void AIPerplex::log_completed_iteration(const IterationMetrics& metrics, const P
 	               (metrics.move_changed && metrics.depth > 1) ? "(!)" : "");
 }
 
-void AIPerplex::emit_iteration_info(const ThreadData& td, int depth, int score, const IterationObserver& observer) const
+void AIPerplex::emit_iteration_info(const ThreadData& td, int depth, int score, uint8_t search_start_age,
+                                    const IterationObserver& observer) const
 {
 	// The PV of an accepted iteration, asserted before anything reads it: a line spliced out
 	// of two different subtrees replays illegally at the ply where the positions diverge.
@@ -1867,6 +1876,7 @@ void AIPerplex::emit_iteration_info(const ThreadData& td, int depth, int score, 
 	iter.depth = depth;
 	iter.score = score;
 	iter.nodes = td.nodes_searched + td.qnodes_searched;
+	iter.hashfull = _tt->hashfull(search_start_age);
 	iter.elapsed = control_.Elapsed();
 	iter.pv.assign(line.begin(), line.begin() + length);
 

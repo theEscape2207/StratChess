@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <vector>
 #include <atomic>
 #include <mutex>
@@ -252,6 +253,30 @@ class TranspositionTable {
 
 	void newSearchIteration() { current_age.fetch_add(1, std::memory_order_relaxed); }
 
+	uint8_t currentAge() const noexcept { return current_age.load(std::memory_order_relaxed); }
+
+	// UCI hashfull: permille of a fixed front-table sample written since this search
+	// began. Iterative-deepening ages stay distinct for replacement but all count here.
+	int hashfull(uint8_t search_start_age) const
+	{
+		constexpr size_t sample_size = 1000;
+		static_assert(sample_size % BUCKET_SIZE == 0);
+		const size_t buckets_to_sample = std::min(sample_size / BUCKET_SIZE, table.size());
+		const size_t entries_to_sample = buckets_to_sample * BUCKET_SIZE;
+		const int search_age_span = ageDistance(currentAge(), search_start_age);
+		size_t occupied = 0;
+
+		for (size_t idx = 0; idx < buckets_to_sample; ++idx) {
+			const std::shared_lock lock(bucket_locks[idx]);
+			for (const auto& entry : table[idx].entries) {
+				const int entry_age = ageDistance(entry.age, search_start_age);
+				occupied += entry.key != 0 && entry_age > 0 && entry_age <= search_age_span;
+			}
+		}
+
+		return static_cast<int>(occupied * 1000 / entries_to_sample);
+	}
+
 	std::optional<TTEntry> probe(std::uint64_t key, int current_ply) const
 	{
 		const size_t index = static_cast<size_t>(key) & index_mask;
@@ -435,9 +460,11 @@ class TranspositionTable {
 	// Compute entry score balancing depth, age, node type, and search phase
 	// Scoring used for replacement decisions. Higher is better.
 	// Provides a bonus for PV entries and a penalty for quiescence entries
+	static constexpr int ageDistance(int newer, int older) noexcept { return (newer - older) & 0xFF; }
+
 	int replacementScore(const TTEntry& entry, int age) const noexcept
 	{
-		return replacementScore(entry.depth, entry.phase, entry.node_type, (age - entry.age) & 0xFF);
+		return replacementScore(entry.depth, entry.phase, entry.node_type, ageDistance(age, entry.age));
 	}
 
 	// The same ranking for content that is not in the table yet, so store() can weigh an

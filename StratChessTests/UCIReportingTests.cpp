@@ -503,6 +503,7 @@ namespace {
 		int depth = 0;
 		std::string score;
 		int64_t nodes = 0;
+		int hashfull = -1;
 		int time_ms = 0;
 		std::vector<std::string> pv;
 	};
@@ -531,6 +532,8 @@ namespace {
 					info.score = kind + " " + value;
 				} else if (tok == "nodes") {
 					iss >> info.nodes;
+				} else if (tok == "hashfull") {
+					iss >> info.hashfull;
 				} else if (tok == "time") {
 					iss >> info.time_ms;
 				} else if (tok == "pv") {
@@ -606,6 +609,10 @@ TEST_CASE("cmd_go: 'go depth 4' emits per-iteration info lines with strictly inc
 		REQUIRE(info_lines[i].depth > info_lines[i - 1].depth);
 	}
 	REQUIRE(info_lines[0].depth == 1);
+	for (const auto& info : info_lines) {
+		CHECK(info.hashfull >= 0);
+		CHECK(info.hashfull <= 1000);
+	}
 
 	int bestmove_lines = 0;
 	for (const std::string& line : split_lines(output)) {
@@ -613,6 +620,28 @@ TEST_CASE("cmd_go: 'go depth 4' emits per-iteration info lines with strictly inc
 			++bestmove_lines;
 	}
 	REQUIRE(bestmove_lines == 1);
+}
+
+TEST_CASE("cmd_go: hashfull falls when the same workload uses a larger table", "[uci][hashfull]")
+{
+	auto final_hashfull = [](unsigned hash_mb) {
+		UciHandlerTestFixture fix;
+		CoutRedirect redirect;
+		fix.ucinewgame();
+		fix.setoption("setoption name Hash value " + std::to_string(hash_mb));
+		fix.position("position startpos");
+		fix.dispatch("go depth 10");
+		fix.join_search();
+
+		const auto info_lines = parse_info_depth_lines(redirect.str());
+		REQUIRE_FALSE(info_lines.empty());
+		return info_lines.back().hashfull;
+	};
+
+	const int small = final_hashfull(1);
+	const int large = final_hashfull(64);
+	CHECK(small > 0);
+	CHECK(large < small);
 }
 
 TEST_CASE("cmd_go: iteration and final info times share one monotonic origin", "[uci][timing]")

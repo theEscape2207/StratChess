@@ -472,8 +472,8 @@ void UciHandler::cmd_go(std::string_view line)
 
 	IterationObserver observer = [](const IterationInfo& iter) {
 		send("info depth " + std::to_string(iter.depth) + " score " + format_uci_score(iter.score) + " nodes " +
-		     std::to_string(iter.nodes) + " time " + std::to_string(iter.elapsed.count()) + " pv " +
-		     format_uci_pv(iter.pv));
+		     std::to_string(iter.nodes) + " hashfull " + std::to_string(iter.hashfull) + " time " +
+		     std::to_string(iter.elapsed.count()) + " pv " + format_uci_pv(iter.pv));
 	};
 
 	// Raised on this thread, before the search exists, so a command arriving
@@ -492,8 +492,8 @@ void UciHandler::cmd_go(std::string_view line)
 			// protocol means and what keeps the client's nps from charging quiescence work to
 			// the clock without counting it. See MEASUREMENT_CONTRACT for the unit.
 			send("info depth " + std::to_string(result.depth_completed) + " score " + score_str + " nodes " +
-			     std::to_string(result.nodes_searched + result.qnodes_searched) + " time " +
-			     std::to_string(result.elapsed.count()) + " pv " +
+			     std::to_string(result.nodes_searched + result.qnodes_searched) + " hashfull " +
+			     std::to_string(result.hashfull) + " time " + std::to_string(result.elapsed.count()) + " pv " +
 			     (best.is_null() ? "0000" : MoveFormatter::ToUCI(best)));
 
 			// The split, as an 'info string' so GUIs and match runners ignore it: without it a
