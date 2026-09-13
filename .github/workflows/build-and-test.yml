@@ -243,7 +243,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      CCACHE_MAXSIZE: 400M
+      CCACHE_MAXSIZE: 600M
     steps:
       - uses: actions/checkout@v7
 
