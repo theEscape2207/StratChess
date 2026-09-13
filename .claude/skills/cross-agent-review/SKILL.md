@@ -41,6 +41,11 @@ Either way, the artifact's author edits the artifact; the reviewer edits only th
    `file:line` evidence and proposes a concrete change.
 4. Report to the user: the review's path or comment URL, and the count per rank.
 
+**No clean merge verdict on a PR that still carries a plan at the top level of `.claude/plans/`**
+(other than `TEMPLATE.md`). Review happens with the plan in the PR, so its deletion — or move to
+`not-started/`, `in-progress/` or `retained/` — is the one commit after "clean" that nothing else
+checks. `Validate-PrePR.ps1` only warns.
+
 Done when every cited claim is verified, refuted or marked unverified, and every finding is ranked
 with evidence.
 

@@ -12,7 +12,8 @@
     job timeouts, and the -SelfTest of any changed script that carries one -- or of the
     script that covers it, for a dot-sourced library or a fixture that cannot carry one.
     On every tier, including the Docs and Tooling fast paths, it also checks that every
-    Build-tier script carries a -SelfTest at all.
+    Build-tier script carries a -SelfTest at all, and warns about any plan left in the
+    transient top level of .claude/plans/.
     clang-format alone short-circuits (issue #478): its fix is already known and
     cannot be changed by anything later, so a failure there exits immediately,
     before blame-ignore, the build, or any other gate runs. Every other check keeps
@@ -95,6 +96,15 @@ function Resolve-SelfTestFile {
 function Test-IsFastFailCheck {
     param([Parameter(Mandatory)][string]$CheckName)
     return $CheckName -eq 'clang-format'
+}
+
+# Pure: which tracked paths are plans still in the transient top level of .claude/plans/.
+# A plan there is right during design review and wrong at merge, and nothing else
+# notices the delete-or-move commit that should follow review -- so this only warns.
+function Get-TopLevelPlan {
+    param([Parameter(Mandatory)][AllowEmptyCollection()][string[]]$TrackedPath)
+    return @($TrackedPath | Where-Object {
+            $_ -match '^\.claude/plans/[^/]+\.md$' -and $_ -ne '.claude/plans/TEMPLATE.md' })
 }
 
 function Invoke-ChangedScriptSelfTest {
@@ -419,11 +429,32 @@ if ($SelfTest) {
     }
 
     Write-Host ''
+    $planCases = @(
+        @{ Name = 'FALSIFY: a top-level plan is reported'
+           Paths = @('.claude/plans/TEMPLATE.md', '.claude/plans/tt-stats.md'); Expect = 1 }
+        @{ Name = 'TEMPLATE.md and state directories are not reported'
+           Paths = @('.claude/plans/TEMPLATE.md', '.claude/plans/retained'); Expect = 0 }
+        @{ Name = 'a plan in a named state is not reported'
+           Paths = @('.claude/plans/retained/tsan-lazy-smp.md'); Expect = 0 }
+        @{ Name = 'no plans at all is clean'; Paths = @(); Expect = 0 }
+    )
+    foreach ($case in $planCases) {
+        $actual = @(Get-TopLevelPlan -TrackedPath $case.Paths).Count
+        if ($actual -eq $case.Expect) {
+            Write-Host "  PASS  $($case.Name)" -ForegroundColor Green
+        }
+        else {
+            $failed++
+            Write-Host ("  FAIL  {0}: got {1}, expected {2}" -f $case.Name, $actual, $case.Expect) -ForegroundColor Red
+        }
+    }
+
+    Write-Host ''
     if ($failed -gt 0) {
         Write-Host "$failed self-test case(s) FAILED." -ForegroundColor Red
         exit 1
     }
-    Write-Host "All $($cases.Count + $resolutions.Count + $fastFailCases.Count + 1) self-test cases passed." -ForegroundColor Green
+    Write-Host "All $($cases.Count + $resolutions.Count + $fastFailCases.Count + $planCases.Count + 1) self-test cases passed." -ForegroundColor Green
     exit 0
 }
 
@@ -466,6 +497,18 @@ if ($coverageViolations.Count -gt 0) {
     exit 1
 }
 Write-Host '  PASS  every Build-tier script carries a -SelfTest' -ForegroundColor Green
+
+# Whole-tree and warn-only, ahead of the fast paths: a plan-only diff is Docs tier.
+Write-Host "`n==> Top-level design documents" -ForegroundColor Cyan
+$topLevelPlans = @(Get-TopLevelPlan -TrackedPath @(& git -C $RepoRoot ls-tree --name-only HEAD .claude/plans/))
+if ($topLevelPlans.Count -gt 0) {
+    $topLevelPlans | ForEach-Object { Write-Host "  WARN  $_" -ForegroundColor Yellow }
+    Write-Host '        Fine during design review. Before merge, delete it once Harvest is complete, or' -ForegroundColor Yellow
+    Write-Host '        move it to not-started/, in-progress/ or retained/ (Docs/Workflow.md -> Plan states).' -ForegroundColor Yellow
+}
+else {
+    Write-Host '  PASS  none outside a named state' -ForegroundColor Green
+}
 
 if (-not $Force -and $change.Tier -eq 'Docs') {
     Write-Host 'Docs-only diff -- SKIPPING full build, extended tests, tactical suite and self-play.' -ForegroundColor Green
