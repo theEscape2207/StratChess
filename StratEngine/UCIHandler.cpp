@@ -163,14 +163,12 @@ namespace {
 	// leave it alone, because they do not change what the numbers mean.
 	//
 	//   1 — UCI 'nodes' is the main tree plus the quiescence tree (#312), both counted in
-	//       MOVE EDGES, so the two sum with nothing counted twice. It is NOT a complete
-	//       census of nodes visited, and the gaps are unmeasured: null-move edges (pvs()
-	//       ~line 509) and LMR/PV re-searches of an already-counted edge belong to neither
-	//       column, and the loops straddle DoMove() differently — pvs() counts a move
-	//       before it can be rejected as illegal, quiescence after. Aligning that last one
-	//       means moving pvs()'s increment, which changes search behaviour
-	//       (assess_iteration_quality) rather than reporting.
-	constexpr int MEASUREMENT_CONTRACT = 1;
+	//       MOVE EDGES, so the two sum with nothing counted twice. pvs() also counted moves
+	//       DoMove() rejects as illegal and moves frontier futility skips.
+	//   2 — Both trees count only legal move edges actually searched (#402). Still NOT a
+	//       complete census of nodes visited, and the gaps are unmeasured: null-move edges
+	//       and LMR/PV re-searches of an already-counted edge belong to neither column.
+	constexpr int MEASUREMENT_CONTRACT = 2;
 } // namespace
 
 void UciHandler::cmd_uci()

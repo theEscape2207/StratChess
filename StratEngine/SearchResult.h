@@ -44,8 +44,8 @@ struct SearchResult {
 	int64_t singular_verification_nodes = 0;
 
 	// Moves frontier futility skipped, summed over every thread. Zero unless the guard is on.
-	// Each one is still counted in nodes_searched, and the quiescence entry it avoided is in no
-	// counter, so this is the only number that shows how often the guard fired.
+	// Neither a skipped move nor the quiescence entry it avoided is in nodes_searched or
+	// qnodes_searched, so this is the only number that shows how often the guard fired.
 	int64_t frontier_futility_skips = 0;
 
 	// Futility cost probe (#498), summed over every thread. All zero unless the probe was

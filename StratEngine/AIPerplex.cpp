@@ -907,12 +907,9 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		const Move& move = moveList[scored_idx[si].second];
 
 		// The move a verification search is proving the alternatives against is not one of
-		// them. Skipped before nodes_searched so an exclusion search's node count reflects
-		// the moves it actually considered.
+		// them.
 		if (is_exclusion_frame && move == td.excluded_move[ply])
 			continue;
-
-		td.nodes_searched++;
 
 		// The pre-move half of the frontier guards, tested while td.board still holds this node,
 		// so the evaluation read is the parent's. Only a move passing every cheap term pays for it.
@@ -938,6 +935,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				frontier_skipped = true;
 				continue;
 			}
+
+			// One per legal move edge actually searched, as in quiescence(): a move DoMove
+			// rejects or a pruning guard skips above is not a node.
+			td.nodes_searched++;
 
 			if (move_number == 0) {
 				// The hash-move re-check is the other half of the eligibility test: the

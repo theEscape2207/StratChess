@@ -370,6 +370,9 @@ This is worth stating because the counters used to hide it. Until #312 `nodes_se
 bench suite at depth 12 — reached the nps denominator's time but never its numerator's count, which
 alone understated nps by 13.8%. Any node count or nps recorded before 2026-08-16 is main-tree only
 and is not comparable with one taken after; wall clock is unaffected and comparable throughout.
+Contract 2 (2026-09-13, #402) likewise drops moves `DoMove()` rejects and moves frontier futility
+skips from `main nodes` — 16–43% per bench position at depth 12, 27% overall; `qs nodes` and wall
+clock are unchanged, so compare node counts and nps only within one contract.
 Never *derive* a time-to-depth as `nodes / nps` across two runs: that error put two wrong figures
 into `Measurements/local.md`'s #237 rows, one of them sign-inverted.
 
