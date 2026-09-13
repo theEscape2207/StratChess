@@ -643,23 +643,27 @@ TEST_CASE("TT - a shallower same-key main store does not displace a deeper one",
 	CHECK(result->best_move == HASH_MOVE);
 }
 
-TEST_CASE("TT - on a same-key store the PV bonus is worth two plies of depth", "[tt]")
+TEST_CASE("TT - a deeper same-key store displaces a PV entry within one search", "[tt]")
 {
-	// A consequence of reusing one ranking for both paths, pinned because it is the case a
-	// reader gets wrong: the PV bonus is 512 and a ply is 256, so a deeper non-PV store has
-	// to be two plies deeper to outrank a PV entry -- at exactly two the two score the same
-	// 2560 and depth settles it. Declining the one-ply case costs a cutoff, never soundness,
-	// and one generation of age (-512) cancels the bonus exactly.
-	auto stored_then = [](int16_t incoming_depth) {
+	// The PV bonus (512, two plies) ranks which of two positions to keep; it is no claim that a
+	// shallower search of one position beats a deeper one. Every depth of a search shares one
+	// age, so nothing else would let a node that left the PV, or failed high under aspiration,
+	// replace its own shallower PV entry and hash move until the next search.
+	auto stored_then = [](SearchPhase phase, int16_t incoming_depth) {
 		TranspositionTable tt(0);
 		tt.newSearch();
-		tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
-		tt.store(KEY_A, 60, incoming_depth, 0, OTHER_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
-		return tt.probe(KEY_A, 0).value().value;
+		tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, phase);
+		tt.store(KEY_A, 60, incoming_depth, 0, OTHER_MOVE, BoundType::LOWER, NodeType::CUT_NODE, phase);
+		return tt.probe(KEY_A, 0).value();
 	};
 
-	CHECK(stored_then(9) == 500); // one ply deeper: declined
-	CHECK(stored_then(10) == 60); // two plies deeper: accepted
+	const TTEntry deeper = stored_then(SearchPhase::MAIN, 9);
+	CHECK(deeper.value == 60);
+	CHECK(deeper.best_move == OTHER_MOVE);
+	CHECK(stored_then(SearchPhase::QUIESCENCE, 9).value == 60);
+
+	// Equal depth is not a deeper claim: the ranking and the exactness step still keep the PV score.
+	CHECK(stored_then(SearchPhase::MAIN, 8).value == 500);
 }
 
 TEST_CASE("TT - an evicting store with no move does not inherit the evicted entry's move", "[tt]")

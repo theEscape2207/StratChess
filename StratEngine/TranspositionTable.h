@@ -430,10 +430,17 @@ class TranspositionTable {
 	// one slot, and it quantises in order to: a quiescence ply is worth half a main-search
 	// ply, the PV bonus is priced at two plies, and the bound is not an input at all. On the
 	// same key those collapsed distinctions are exactly what separates two claims about one
-	// position, so the ranking decides the general case and the raw fields settle its ties.
+	// position, so a deeper same-phase claim wins outright, the ranking decides the rest and the
+	// raw fields settle its ties.
 	bool sameKeyStoreWins(const TTEntry& stored, int16_t depth, SearchPhase phase, NodeType node_type, BoundType bound,
 	                      uint8_t age) const noexcept
 	{
+		// A deeper search of the same position in the same phase supersedes the stored one, PV
+		// or not. The PV bonus prices which position to keep, and every depth of a search shares
+		// one age, so without this a PV entry would block its own deeper result for the search.
+		if (phase == stored.phase && depth > stored.depth)
+			return true;
+
 		const int incoming_score = replacementScore(depth, phase, node_type, /*age_diff=*/0);
 		const int stored_score = replacementScore(stored, age);
 		if (incoming_score != stored_score)
