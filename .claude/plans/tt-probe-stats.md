@@ -64,6 +64,6 @@ the default build. No Elo match: no search decision changes.
 
 | Decision / rationale | Lands in |
 |---|---|
-| D1, D2 | source comments on `TTStoreOutcome` and `AIPerplex.h`'s gate |
+| D1, D2 | source comments in `TTStats.h`; D1's rejected options in `Docs/Changelog.md` |
 | how to read the counters, workload trap | `Docs/Engine-Readme.md` |
 | bench/equivalence result | PR body, `Docs/Changelog.md` |

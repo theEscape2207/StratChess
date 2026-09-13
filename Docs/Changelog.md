@@ -22,6 +22,26 @@ Newest first.
 
 ---
 
+## 2026-09-13 — TT probe/store counters behind `STRAT_TT_STATS` (#532)
+
+`hashfull` says how full the table is, not whether that occupancy earns anything. A build configured
+with `-DSTRAT_TT_STATS=1` now prints `info string ttstats` after each search: main and quiescence
+probes, hits and cutoffs, and stores by outcome — declined, filled, refreshed, and evictions split
+into entries written during this search versus an older one, using `hashfull`'s age window. Counters
+live per thread in `ThreadData` and are summed in `Search()`, following `STRAT_FUTILITY_PROBE`.
+
+`TranspositionTable::store()` now returns a `TTStoreOutcome` the call site records, since the table
+has no per-thread state; a parameter, `thread_local` or atomic counters were rejected. The default
+build ignores the value. The three-way TT cutoff test shared by `pvs()` and `quiescence()` became
+one helper. The test binary always compiles the counters in. `Docs/Engine-Readme.md` records how to
+read them and the workload trap: `bench` barely fills the table, so compare `Hash` sizes on a game or
+a long `go movetime`.
+
+Validation: `Compare-SearchEquivalence.ps1` against `origin/main` IDENTICAL for both the default and
+the stats build (90 lines, 6 positions, depth 12). `Run-Bench.ps1` depth 14, 4 interleaved rounds,
+aggregate nps: main 2.92–2.96M, default 2.99–3.09M, stats 2.93–3.14M — no slowdown; the default's
+lead is not claimed as a gain.
+
 ## 2026-09-12 — Compact transposition-table storage (#442)
 
 The four-way TT bucket drops from 96 to 64 bytes and is now `alignas(64)`, so a probe touches one

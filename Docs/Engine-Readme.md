@@ -546,6 +546,23 @@ every power of two from 1 to 1024 MB is an exact fit. **The 192 default is not o
 2^21 buckets using 128 MB — the same bucket count the old 96-byte layout got at that request, so
 identical capacity for 64 MB less memory. The 1536 cap is not one either, and allocates 1024 MB.
 
+**Probe statistics**: `hashfull` says how full the table is, not whether that occupancy earns
+anything. A build configured with `-DSTRAT_TT_STATS=1` prints one line after each search:
+
+```
+info string ttstats mainprobes .. mainhits .. maincutoffs .. qsprobes .. qshits .. qscutoffs ..
+                    stores .. declined .. filled .. refreshed .. evictstale .. evictcurrent ..
+```
+
+A hit is a key match; a cutoff is a hit the node returned on. `evictcurrent` counts stores that
+overwrote a different position written during this search — the pressure a larger table would
+relieve — and `evictstale` those that overwrote an older search's. The counters are compiled out of
+the default build, and a stats build stays node-identical to it.
+
+**Read them from a game-like workload.** `bench` searches each position from a cleared or barely
+filled table, so every `Hash` size reads low and near-identical — a false null. Use a self-play
+game, or one long `go movetime` from a middlegame position, and compare sizes on the same workload.
+
 ---
 
 ### 5. Move Ordering
