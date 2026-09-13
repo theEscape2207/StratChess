@@ -255,7 +255,10 @@ class TranspositionTable {
 		return stored_value;
 	}
 
-	void newSearchIteration() { current_age.fetch_add(1, std::memory_order_relaxed); }
+	// One generation per top-level search, never per depth: replacement charges each generation, so
+	// per-depth ages would penalise the search's own earlier depths. The 8-bit age still wraps after
+	// 256 searches without a clear(), when a surviving entry reads as fresh again.
+	void newSearch() { current_age.fetch_add(1, std::memory_order_relaxed); }
 
 	uint8_t currentAge() const noexcept { return current_age.load(std::memory_order_relaxed); }
 
@@ -269,8 +272,7 @@ class TranspositionTable {
 		return entry_distance > 0 && entry_distance <= search_age_span;
 	}
 
-	// UCI hashfull: permille of a fixed front-table sample written since this search
-	// began. Iterative-deepening ages stay distinct for replacement but all count here.
+	// UCI hashfull: permille of a fixed front-table sample written since this search began.
 	int hashfull(uint8_t search_start_age) const
 	{
 		constexpr size_t sample_size = 1000;

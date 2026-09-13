@@ -119,8 +119,8 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 - `entry_count` increments on new key, does not increment on overwrite
 - `pv_count` tracks `PV_NODE` entries correctly
 - `clear()` resets both counters to zero
-- `hashfull`: samples 1,000 entries, includes all iterative ages from the current search,
-  excludes stale content, and falls for the same workload when `Hash` is larger
+- `hashfull`: samples 1,000 entries, counts the current search's single generation (across the
+  255 → 0 wrap too), excludes the previous search's content, and falls for the same workload when `Hash` is larger
 
 ### Evaluation Tests (`[eval]`)
 

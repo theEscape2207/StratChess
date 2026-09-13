@@ -92,7 +92,7 @@ TEST_CASE("TT - packed entry defaults and table clear reset reserved metadata", 
 	CHECK(initial.age == 0);
 
 	TranspositionTable tt(0);
-	tt.newSearchIteration();
+	tt.newSearch();
 	tt.store(KEY_A, 123, 4, 0, Move(e2, e4, MoveFlags::QUIET), BoundType::UPPER, NodeType::PV_NODE,
 	         SearchPhase::QUIESCENCE);
 	REQUIRE(tt.clear());
@@ -117,42 +117,41 @@ TEST_CASE("TT - packed entry preserves every age and wraps from 255 to 0", "[tt]
 	}
 
 	TranspositionTable tt(0);
-	for (int iteration = 0; iteration < 255; ++iteration)
-		tt.newSearchIteration();
+	for (int search = 0; search < 255; ++search)
+		tt.newSearch();
 	tt.store(KEY_A, 1, 1, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
 	REQUIRE(tt.probe(KEY_A, 0).has_value());
 	CHECK(tt.probe(KEY_A, 0)->age == 255);
 
-	tt.newSearchIteration();
+	tt.newSearch();
 	tt.store(KEY_B, 2, 1, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
 	REQUIRE(tt.probe(KEY_B, 0).has_value());
 	CHECK(tt.probe(KEY_B, 0)->age == 0);
 }
 
-TEST_CASE("TT - hashfull samples every generation written during one search", "[tt]")
+TEST_CASE("TT - hashfull counts the current search's generation and not the previous one", "[tt]")
 {
-	TranspositionTable tt(1);
-	const uint8_t search_start_age = tt.currentAge();
-	CHECK(tt.hashfull(search_start_age) == 0);
+	// Fills one quarter of the fixed sample the way Search() brackets a search: snapshot the age,
+	// then advance it once. Bucket zero needs a nonzero key that still maps there.
+	const auto hashfull_after_search = [](int searches_before) {
+		TranspositionTable tt(1);
+		for (int i = 0; i < searches_before; ++i)
+			tt.newSearch();
+		const uint8_t search_start_age = tt.currentAge();
+		CHECK(tt.hashfull(search_start_age) == 0);
+		tt.newSearch();
+		for (uint64_t bucket = 0; bucket < 250; ++bucket)
+			do_store(tt, (bucket == 0) ? tt.bucket_count() : bucket, 1);
+		CHECK(tt.hashfull(search_start_age) == 250);
 
-	// Split one quarter of the fixed sample across two iterative-deepening ages.
-	// Bucket zero needs a nonzero key that still maps there.
-	for (uint64_t bucket = 0; bucket < 250; ++bucket) {
-		if (bucket == 0 || bucket == 125)
-			tt.newSearchIteration();
-		const uint64_t key = (bucket == 0) ? tt.bucket_count() : bucket;
-		do_store(tt, key, 1);
-	}
-	CHECK(tt.hashfull(search_start_age) == 250);
+		// The same entries are stale from the next search's starting age.
+		const uint8_t next_search_start_age = tt.currentAge();
+		tt.newSearch();
+		CHECK(tt.hashfull(next_search_start_age) == 0);
+	};
 
-	// A partially started next iteration does not hide the completed depths.
-	tt.newSearchIteration();
-	CHECK(tt.hashfull(search_start_age) == 250);
-
-	// The same entries are stale from the next search's starting age.
-	const uint8_t next_search_start_age = tt.currentAge();
-	tt.newSearchIteration();
-	CHECK(tt.hashfull(next_search_start_age) == 0);
+	SECTION("plain boundary") { hashfull_after_search(5); }
+	SECTION("search that wraps 255 -> 0") { hashfull_after_search(255); }
 }
 
 TEST_CASE("TT - store reports its outcome, splitting evictions at the search start", "[tt]")
@@ -166,7 +165,7 @@ TEST_CASE("TT - store reports its outcome, splitting evictions at the search sta
 	};
 
 	tt.setStatsSearchStartAge(tt.currentAge());
-	tt.newSearchIteration();
+	tt.newSearch();
 	CHECK(store_at_depth(1, 4) == TTStoreOutcome::Filled);
 	CHECK(store_at_depth(1, 6) == TTStoreOutcome::Refreshed);
 	CHECK(store_at_depth(1, 2) == TTStoreOutcome::Declined);
@@ -176,21 +175,21 @@ TEST_CASE("TT - store reports its outcome, splitting evictions at the search sta
 
 	// Everything in the bucket now predates the next search.
 	tt.setStatsSearchStartAge(tt.currentAge());
-	tt.newSearchIteration();
+	tt.newSearch();
 	CHECK(store_at_depth(6, 8) == TTStoreOutcome::Evicted);
 }
 
 TEST_CASE("TT - an age wrap does not change same-key replacement", "[tt]")
 {
-	// The ranking compares ages modulo 256. If that arithmetic were not modular, the iteration that
+	// The ranking compares ages modulo 256. If that arithmetic were not modular, the search that
 	// wraps 255 -> 0 would make the incumbent look fresher than the store landing on it. Run the same
 	// scenario at a plain boundary and at the wrap, and require the two to agree.
-	auto same_key_restore_wins = [](int iterations_before) {
+	auto same_key_restore_wins = [](int searches_before) {
 		TranspositionTable tt(0);
-		for (int i = 0; i < iterations_before; ++i)
-			tt.newSearchIteration();
+		for (int i = 0; i < searches_before; ++i)
+			tt.newSearch();
 		tt.store(KEY_A, 1, 4, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
-		tt.newSearchIteration();
+		tt.newSearch();
 		tt.store(KEY_A, 42, 4, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
 		const auto result = tt.probe(KEY_A, 0);
 		REQUIRE(result.has_value());
@@ -547,7 +546,7 @@ TEST_CASE("TT - an empty slot is filled before any occupied entry is evicted", "
 	TranspositionTable tt(0); // one bucket, so every key collides
 	REQUIRE(tt.bucket_count() == 1);
 
-	tt.newSearchIteration(); // matches the search: age is never 0 at store time
+	tt.newSearch(); // matches the search: age is never 0 at store time
 
 	// An exhausted quiescence entry: the most evictable thing the engine can produce.
 	tt.store(KEY_A, 10, /*depth=*/-5, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE);
@@ -571,7 +570,7 @@ TEST_CASE("TT - a quiescence store evicts the weakest main entry, not an arbitra
 	TranspositionTable tt(0);
 	REQUIRE(tt.bucket_count() == 1);
 
-	tt.newSearchIteration();
+	tt.newSearch();
 
 	const uint64_t deep = KEY_A;
 	const uint64_t middling = KEY_B;
@@ -610,7 +609,7 @@ TEST_CASE("TT - a same-key quiescence store does not displace a main entry", "[t
 	// they are too shallow to cut off, and refuses to mine a quiescence entry at all, so a
 	// quiescence store landing on a PV node's key erased its move without evicting anything.
 	TranspositionTable tt(0);
-	tt.newSearchIteration();
+	tt.newSearch();
 
 	tt.store(KEY_A, 500, 12, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
 	tt.store(KEY_A, 60, 15, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE);
@@ -630,7 +629,7 @@ TEST_CASE("TT - a same-key quiescence store does not displace a main entry", "[t
 TEST_CASE("TT - a shallower same-key main store does not displace a deeper one", "[tt]")
 {
 	TranspositionTable tt(0);
-	tt.newSearchIteration();
+	tt.newSearch();
 
 	tt.store(KEY_A, 500, 12, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
 	tt.store(KEY_A, 60, 4, 0, OTHER_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
@@ -653,7 +652,7 @@ TEST_CASE("TT - on a same-key store the PV bonus is worth two plies of depth", "
 	// and one generation of age (-512) cancels the bonus exactly.
 	auto stored_then = [](int16_t incoming_depth) {
 		TranspositionTable tt(0);
-		tt.newSearchIteration();
+		tt.newSearch();
 		tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
 		tt.store(KEY_A, 60, incoming_depth, 0, OTHER_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
 		return tt.probe(KEY_A, 0).value().value;
@@ -670,7 +669,7 @@ TEST_CASE("TT - an evicting store with no move does not inherit the evicted entr
 	// another's key, which no probe could tell apart from a real one.
 	TranspositionTable tt(0); // one bucket, so every key collides
 	REQUIRE(tt.bucket_count() == 1);
-	tt.newSearchIteration();
+	tt.newSearch();
 
 	// The weakest of the four, and the only one carrying a move.
 	tt.store(KEY_A, 10, 1, 0, HASH_MOVE, BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
@@ -716,7 +715,7 @@ TEST_CASE("TT - a same-key store at equal depth wins", "[tt]")
 	// terminal overwrite -- the re-search upgrades a bound to an exact score, which is the
 	// direction exactness allows. The terminal itself is pinned separately, below.
 	TranspositionTable tt(0);
-	tt.newSearchIteration();
+	tt.newSearch();
 
 	tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
 	tt.store(KEY_A, 60, 8, 0, OTHER_MOVE, BoundType::EXACT, NodeType::CUT_NODE, SearchPhase::MAIN);
@@ -736,7 +735,7 @@ TEST_CASE("TT - an accepted same-key store with no move keeps the stored hash mo
 	// hint produced for this same key, so carrying it forward costs nothing and keeps the
 	// node's ordering.
 	TranspositionTable tt(0);
-	tt.newSearchIteration();
+	tt.newSearch();
 
 	tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
 	tt.store(KEY_A, 60, 10, 0, no_move(), BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
@@ -751,7 +750,7 @@ TEST_CASE("TT - an accepted same-key store with no move keeps the stored hash mo
 TEST_CASE("TT - an accepted same-key store with a move replaces the stored one", "[tt]")
 {
 	TranspositionTable tt(0);
-	tt.newSearchIteration();
+	tt.newSearch();
 
 	tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
 	tt.store(KEY_A, 60, 10, 0, OTHER_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
@@ -764,7 +763,7 @@ TEST_CASE("TT - an accepted same-key store with a move replaces the stored one",
 TEST_CASE("TT - a declined same-key store leaves the counters alone", "[tt]")
 {
 	TranspositionTable tt(0);
-	tt.newSearchIteration();
+	tt.newSearch();
 
 	tt.store(KEY_A, 500, 12, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
 	REQUIRE(tt.count_entries() == 1);
@@ -779,14 +778,14 @@ TEST_CASE("TT - a declined same-key store leaves the counters alone", "[tt]")
 TEST_CASE("TT - a same-key store still wins once the stored entry is generations old", "[tt]")
 {
 	// Age is the axis allowed to override the phase ranking, on this path as on the eviction
-	// path: an entry from several iterations ago is stale, and a same-key store is the
+	// path: an entry from several searches ago is stale, and a same-key store is the
 	// strongest evidence there is that the position is being searched again now.
 	TranspositionTable tt(0);
-	tt.newSearchIteration();
+	tt.newSearch();
 
 	tt.store(KEY_A, 500, 4, 0, HASH_MOVE, BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
 	for (int i = 0; i < 8; ++i)
-		tt.newSearchIteration();
+		tt.newSearch();
 
 	tt.store(KEY_A, 60, 15, 0, no_move(), BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE);
 
@@ -845,7 +844,7 @@ TEST_CASE("TT - a shallower same-key PV store does not displace a deeper entry",
 	// PV and depth 10 non-PV both score 2560, so "at least as high" would hand the slot to the
 	// shallower claim. Depth decides a tie, in both directions.
 	TranspositionTable tt(0);
-	tt.newSearchIteration();
+	tt.newSearch();
 
 	tt.store(KEY_A, 500, 10, 0, HASH_MOVE, BoundType::EXACT, NodeType::CUT_NODE, SearchPhase::MAIN);
 	tt.store(KEY_A, 60, 8, 0, OTHER_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
@@ -867,7 +866,7 @@ TEST_CASE("TT - a shallower same-key quiescence store does not displace a deeper
 	// while in check, so every pairing of the three is a position the search can present.
 	auto kept_depth = [](int16_t stored_depth, int16_t incoming_depth) {
 		TranspositionTable tt(0);
-		tt.newSearchIteration();
+		tt.newSearch();
 		tt.store(KEY_A, 500, stored_depth, 0, HASH_MOVE, BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::QUIESCENCE);
 		tt.store(KEY_A, 60, incoming_depth, 0, OTHER_MOVE, BoundType::EXACT, NodeType::ALL_NODE,
 		         SearchPhase::QUIESCENCE);
@@ -887,7 +886,7 @@ TEST_CASE("TT - a same-key bound does not overwrite an exact score of the same d
 	// taking an exact entry's slot on freshness. probe() returns an exact score outright where
 	// a bound only narrows the window, so the trade is never worth making.
 	TranspositionTable tt(0);
-	tt.newSearchIteration();
+	tt.newSearch();
 
 	tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::EXACT, NodeType::CUT_NODE, SearchPhase::MAIN);
 	tt.store(KEY_A, 60, 8, 0, OTHER_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
@@ -905,12 +904,12 @@ TEST_CASE("TT - a same-key bound does not overwrite an exact score of the same d
 TEST_CASE("TT - a same-key store that nothing separates from the stored entry wins", "[tt]")
 {
 	// The terminal case, and the one every other same-key test now exits before reaching: the
-	// aspiration retries. newSearchIteration() runs once per depth, not once per attempt, so a
+	// aspiration retries. newSearch() runs once per search, not once per attempt, so a
 	// root that fails high twice stores the same depth, phase, node type and bound under the
 	// same age. Declining the second would freeze the entry on the first, narrower window's
 	// value for the rest of the iteration.
 	TranspositionTable tt(0);
-	tt.newSearchIteration();
+	tt.newSearch();
 
 	tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
 	tt.store(KEY_A, 60, 8, 0, OTHER_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
@@ -928,11 +927,11 @@ TEST_CASE("TT - a tie across phases leaves the main entry in the slot", "[tt]")
 	// depth 1 entry scores 256 - 1024, and a quiescence budget 10 marked PV_NODE scores
 	// 5 * 256 + 512 - 2560. Both -768, and quiescence() cannot serve pvs() a move.
 	TranspositionTable tt(0);
-	tt.newSearchIteration();
+	tt.newSearch();
 
 	tt.store(KEY_A, 500, 1, 0, HASH_MOVE, BoundType::EXACT, NodeType::ALL_NODE, SearchPhase::MAIN);
-	tt.newSearchIteration();
-	tt.newSearchIteration();
+	tt.newSearch();
+	tt.newSearch();
 
 	tt.store(KEY_A, 60, 10, 0, no_move(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::QUIESCENCE);
 
@@ -943,17 +942,17 @@ TEST_CASE("TT - a tie across phases leaves the main entry in the slot", "[tt]")
 	CHECK(result->best_move == HASH_MOVE);
 }
 
-TEST_CASE("TT - a same-key bound does not downgrade the previous iteration's exact score", "[tt]")
+TEST_CASE("TT - a same-key bound does not downgrade the previous search's exact score", "[tt]")
 {
 	// The reachable form of the exactness step, and the one trade this policy makes. In the
 	// main search an exact score means a PV node -- a null window cannot produce one -- so the
 	// PV bonus and one generation of age cancel exactly and the two meet at 2048. The previous
-	// iteration's exact value is kept for one more generation.
+	// search's exact value is kept for one more generation.
 	TranspositionTable tt(0);
-	tt.newSearchIteration();
+	tt.newSearch();
 
 	tt.store(KEY_A, 500, 8, 0, HASH_MOVE, BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
-	tt.newSearchIteration();
+	tt.newSearch();
 	tt.store(KEY_A, 60, 8, 0, OTHER_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
 
 	auto result = tt.probe(KEY_A, 0);
@@ -963,7 +962,7 @@ TEST_CASE("TT - a same-key bound does not downgrade the previous iteration's exa
 
 	// The stickiness is bounded to that one generation: at two the stored score falls to
 	// 2048 - 512 and the bound wins outright, on the score rather than on any tie-break.
-	tt.newSearchIteration();
+	tt.newSearch();
 	tt.store(KEY_A, 60, 8, 0, OTHER_MOVE, BoundType::LOWER, NodeType::CUT_NODE, SearchPhase::MAIN);
 
 	result = tt.probe(KEY_A, 0);
