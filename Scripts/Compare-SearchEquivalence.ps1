@@ -308,7 +308,7 @@ if ($SelfTest) {
         'info string position: ok'
         'info depth 1 score cp 24 nodes 21 hashfull 0 time 3 pv e2e4'
         'info depth 2 score cp 12 nodes 97 hashfull 14 time 5 pv e2e4 e7e5'
-        'info depth 2 score cp 12 nodes 140 time 9 pv e2e4 e7e5'
+        'info depth 2 score cp 12 nodes 140 hashfull 18 time 9 pv e2e4 e7e5'
         'info string treenodes main 100 qs 40'
         'bestmove e2e4'
     ) -join "`n"
