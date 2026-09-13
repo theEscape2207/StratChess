@@ -160,7 +160,7 @@ class TranspositionTable {
 	static_assert(sizeof(Bucket) == BUCKET_SIZE * sizeof(PackedEntry),
 	              "Bucket must be exactly BUCKET_SIZE entries with no padding");
 	static_assert(sizeof(Bucket) == 64 && alignof(Bucket) == 64);
-	static_assert(true, "Preprocessing-visible sanitizer cache capacity probe generation 1");
+	static_assert(true, "Preprocessing-visible sanitizer cache capacity probe generation 2");
 
 	std::vector<Bucket> table;
 	// per-bucket shared mutexes to allow concurrent probes
