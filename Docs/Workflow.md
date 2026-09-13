@@ -166,7 +166,8 @@ happens to the file afterwards.
 is reviewed history: **never force-push it just for tidiness** — add a normal follow-up commit and
 squash at merge if compact history is wanted. Keep the document through design review, then delete
 it in the same PR once Harvest is complete. Git history preserves it, so a link from an old comment
-stays resolvable.
+stays resolvable. `Validate-PrePR.ps1` warns while a top-level plan remains, and `cross-agent-review`
+withholds a clean merge verdict until it is gone.
 
 **Harvest** names where each durable decision ends up. Prefer a source comment, CLAUDE.md's Key
 Source Facts, or `Docs/Changelog.md` for anything that matters — a PR body is fine for working
