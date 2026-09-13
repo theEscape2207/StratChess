@@ -562,6 +562,7 @@ the default build, and a stats build stays node-identical to it.
 **Read them from a game-like workload.** `bench` searches each position from a cleared or barely
 filled table, so every `Hash` size reads low and near-identical — a false null. Use a self-play
 game, or one long `go movetime` from a middlegame position, and compare sizes on the same workload.
+`Scripts/measure_tt_capacity.py` does that: it replays strength-lab games at fixed nodes per size.
 
 ---
 

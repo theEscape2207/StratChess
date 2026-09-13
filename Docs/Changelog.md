@@ -22,6 +22,27 @@ Newest first.
 
 ---
 
+## 2026-09-13 — TT capacity sweep: `Scripts/measure_tt_capacity.py` (#442)
+
+Replays strength-lab PGN games through a `-DSTRAT_TT_STATS=1` build at several `Hash` sizes and
+prints the ttstats counters per size. Each game is searched by two processes, one per side, so table
+ageing matches play; every search is `go nodes N` at Threads=1, so machine load does not matter.
+
+First use, 20 games from run 34657777302 shard 1, 1.2M nodes per search (mean completed depth 13.5,
+against the lab PGN's 13.1), 2304 searches per size:
+
+| Hash | MiB | depth | hit% | cut% | evictcurrent/stores | evictstale/stores |
+|---|---|---|---|---|---|---|
+| 64 | 64 | 13.47 | 50.40 | 22.03 | 0.03% | 56.2% |
+| 192 | 128 | 13.49 | 50.79 | 22.25 | 0.01% | 42.7% |
+| 256 | 256 | 13.45 | 50.98 | 22.42 | 0.00% | 21.6% |
+| 512 | 512 | 13.44 | 50.92 | 22.36 | 0.00% | 5.8% |
+
+Capacity does not matter at the lab time control: from 128 to 256 MiB the cutoff rate moves 0.17
+points and depth not at all, and a single search never pressures the table. A larger table only
+keeps older searches' entries, which the cutoff rate shows are barely reused. That answers #442's
+capacity half without a lab run.
+
 ## 2026-09-13 — TT probe/store counters behind `STRAT_TT_STATS` (#532)
 
 `hashfull` says how full the table is, not whether that occupancy earns anything. A build configured
