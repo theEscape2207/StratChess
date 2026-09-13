@@ -244,7 +244,7 @@ jobs:
     timeout-minutes: 20
     env:
       CCACHE_MAXSIZE: 400M
-      CCACHE_LOGFILE: ${{ runner.temp }}/ccache-sanitize.log
+      CCACHE_LOGFILE: /tmp/ccache-sanitize.log
     steps:
       - uses: actions/checkout@v7
 
@@ -321,7 +321,7 @@ jobs:
         with:
           name: sanitize-cache-diagnostics-${{ github.run_id }}
           path: |
-            ${{ runner.temp }}/ccache-sanitize.log
+            /tmp/ccache-sanitize.log
             build/ninja-deps.txt
             build/ccache-config.txt
             build/ccache-stats-verbose.txt
