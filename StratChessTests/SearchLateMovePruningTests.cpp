@@ -381,6 +381,7 @@ TEST_CASE("Late move pruning: an aborted search unwinds to the root board, deter
 	const Move first_move = first.search_with_nodes(node_budget);
 
 	REQUIRE_FALSE(first_move.is_null());
+	REQUIRE(first.search_is_aborted());
 	REQUIRE(first.lmp_skips() > 0);
 	CHECK(first.search_board_restored());
 

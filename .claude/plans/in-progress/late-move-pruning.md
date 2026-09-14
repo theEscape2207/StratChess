@@ -310,6 +310,14 @@ Implementation departures (minor, within Scope, no Decision changed):
 - The two fail-low persistence cases turn reverse futility off, which would otherwise return before
   the move loop in that position.
 
+Pre-screen evidence (2026-09-14, clang-cl, base `30a5d46`): compiled-out engine IDENTICAL to main at
+depth 12 on the six built-in positions; every one of 17 guard mutations fails at least one `[lmp]`
+test; with the test binary built DEFAULT_ON, `[tactical]` and `[tactical_full]` pass, and the only
+other failures are the flag-default case and a reverse-futility case expecting a depth-2 UPPER store,
+both expected under D1/D3. `search-reviewer`: no blocking findings. Its screen note: `check_draws`
+does not see a quiet move that stalemates the opponent, so such a move can be skipped (frontier
+futility shares the gap); include one such position in the targeted quality set.
+
 Review reconciliation (2026-09-14): adopted the existing compile/runtime test-gate pattern,
 direct node-predicate tests, hash-guard falsification exception, frontier-style counter and abort
 handling. Clarified ancestor persistence, the timing sanity gate, targeted quality criteria and
