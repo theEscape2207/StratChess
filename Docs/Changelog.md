@@ -22,6 +22,18 @@ Newest first.
 
 ---
 
+## 2026-09-14 — Futility cost probe removed
+
+The #498 probe (`STRAT_FUTILITY_PROBE`, its 27 `ThreadData`/`SearchResult` counters, the aggregation and
+the `info string futilityprobe` line) is deleted. It existed to size futility pruning before a guard was
+written; both guards have shipped (#87) and nothing reads it. The shipping build compiled it out, so
+search is unchanged: `Compare-SearchEquivalence.ps1` identical on 6 positions at depth 12. Bench,
+5 alternating passes against `origin/main` `30a5d46`: median 2,490,571 vs 2,469,662 nps (+0.85%),
+inside run-to-run spread of 8-10%. First of three changes in
+`.claude/plans/search-telemetry-and-async-launch.md`.
+
+---
+
 ## 2026-09-14 — TT age advances once per search (#544)
 
 `TranspositionTable::newSearch()` (was `newSearchIteration()`) runs once in `AIPerplex::Search()`

@@ -5,8 +5,8 @@
 // replacement decision, so a stats build must stay node-identical to the shipping one.
 //
 // Set by CMake: -DSTRAT_TT_STATS=1. At 0 the engine executes no counting code; the counters remain
-// as cold members of ThreadData and SearchResult, for the reason given at STRAT_FUTILITY_PROBE in
-// AIPerplex.h. Every use is `if constexpr`, never #ifdef, so the disabled code stays type-checked.
+// as cold members of ThreadData and SearchResult. Every use is `if constexpr`, never #ifdef: a
+// discarded branch in non-template code is still type-checked, and that needs the members to exist.
 //
 // Read them from a workload that runs past the opening -- a self-play game or one long `go movetime`
 // from a middlegame. A per-position bench barely fills the table, so every Hash size reads alike.

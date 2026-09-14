@@ -48,20 +48,6 @@ struct SearchResult {
 	// qnodes_searched, so this is the only number that shows how often the guard fired.
 	int64_t frontier_futility_skips = 0;
 
-	// Futility cost probe (#498), summed over every thread. All zero unless the probe was
-	// compiled in, which is what keeps the shipped build's reporting silent. Field meanings are
-	// on the ThreadData counters they are summed from.
-	static constexpr int FUTILITY_PROBE_DEPTH_BUCKETS = 8;
-	static constexpr int FUTILITY_PROBE_FRONTIER_BANDS = 3;
-	int64_t futility_probe_nodes[FUTILITY_PROBE_DEPTH_BUCKETS]{};
-	int64_t futility_probe_null_cutoffs[FUTILITY_PROBE_DEPTH_BUCKETS]{};
-	int64_t futility_probe_quiet_moves[FUTILITY_PROBE_FRONTIER_BANDS]{};
-	int64_t futility_probe_lmr_overlap[FUTILITY_PROBE_FRONTIER_BANDS]{};
-	int64_t futility_probe_checking_moves[FUTILITY_PROBE_FRONTIER_BANDS]{};
-	int64_t futility_probe_evals = 0;
-	// Reported, not just accumulated -- see the ThreadData counter this is summed from.
-	int64_t futility_probe_eval_sink = 0;
-
 	// TT probe/store counters, summed over every thread. All zero unless compiled in.
 	TTStats tt_stats{};
 };
