@@ -318,6 +318,36 @@ both expected under D1/D3. `search-reviewer`: no blocking findings. Its screen n
 does not see a quiet move that stalemates the opponent, so such a move can be skipped (frontier
 futility shares the gap); include one such position in the targeted quality set.
 
+Local screen (2026-09-14, clang-cl Release, candidate `627c210` built `-DSTRAT_LATE_MOVE_PRUNING=ON`
+against the same commit built OFF, Threads=1, default Hash, Run-Bench built-in 8-position set):
+
+| Depth | Median paired wall time | Range | Candidate faster | Median ms base / cand | Nodes | nps |
+|---|---|---|---|---|---|---|
+| 12 | −29.0% | −33.6..−27.6% | 9/9 | 4017 / 2852 | −31.5% | −3.4% |
+| 14 | −18.7% | −24.2..−15.9% | 9/9 | 12380 / 10056 | −21.4% | −3.4% |
+
+Rounds interleaved, first build alternating per round and depth. Per position it is not uniform: at
+depth 14 `closed-mid` is +47% and `tactical-5` +12% slower, `rook-endgm` −60%. Best moves differ on
+two or three positions per depth, which is expected in different trees and not a verdict.
+
+Targeted set: 12 positions from the #544 strength-lab games (run 34788035846), sampled with a fixed
+seed, 4 each near-rule-50 (clock 70–98), sparse (≤8 men) and quiet-defense (mover −300..+100 cp).
+Kept only if Stockfish (depth 18, multipv 4) had a quiet best move ≥120 cp ahead of the runner-up
+and a depth-26 result that was not a forced mate. Accepted moves are those within 40 cp of the
+depth-26 best. Frozen before any StratChess run. At movetime 250 and 2000 ms, 5 fresh-process
+repeats per build: no candidate loss (flag rule: baseline ≥4/5 and candidate ≤2/5). 11 of 12
+positions were 5/5 for both builds at both budgets. One quiet-defense position (`d3d6`) was 0/5 for
+both, so it is a limitation, not a finding. The set is therefore weak evidence: nearly every
+position was easy for both builds.
+
+Stalemate position: not included. 3M random low-material positions gave none where a single quiet
+stalemating move is the only non-losing move (Stockfish, depth 26). At the root such a move is
+searched as a PV move, which LMP never prunes, so a root position would not exercise the gap anyway.
+The gap stays a documented limitation for the lab.
+
+Decision rule outcome: both depths save time and every correctness gate passed, so this goes to the
+owner for a lab decision. The screen does not estimate strength.
+
 Review reconciliation (2026-09-14): adopted the existing compile/runtime test-gate pattern,
 direct node-predicate tests, hash-guard falsification exception, frontier-style counter and abort
 handling. Clarified ancestor persistence, the timing sanity gate, targeted quality criteria and
