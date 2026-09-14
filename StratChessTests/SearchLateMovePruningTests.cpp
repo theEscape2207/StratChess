@@ -6,8 +6,8 @@
 // extra skips. The hash-move term is the exception: the hash move sorts first, so it can never be
 // late, and no case claims it.
 //
-// The test binary compiles the feature in with the runtime flag off. Every case sets the flag, so
-// each one names the configuration it asserts about.
+// The feature ships on. Every case still sets the flag, so each one names the configuration it
+// asserts about.
 
 #include <catch2/catch_test_macros.hpp>
 #include "SearchTestFixture.h"
@@ -85,11 +85,12 @@ namespace {
 // Eligibility
 // ============================================================================
 
-TEST_CASE("Late move pruning: the test binary starts with the runtime flag off", "[search][lmp]")
+TEST_CASE("Late move pruning: the runtime flag starts on, and off makes a node ineligible", "[search][lmp]")
 {
 	AIPerlexTestFixture fix(kBaselineFen);
+	CHECK(fix.late_move_pruning_enabled());
 
-	CHECK_FALSE(fix.late_move_pruning_enabled());
+	fix.set_late_move_pruning(false);
 	CHECK_FALSE(eligible(fix));
 }
 

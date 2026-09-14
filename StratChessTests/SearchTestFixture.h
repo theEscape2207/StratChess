@@ -246,8 +246,7 @@ class AIPerlexTestFixture {
 		return tally;
 	}
 
-	// --- Late move pruning pokes (#547) ---
-	// Compiled into the test binary with the runtime flag off; each test turns it on for itself.
+	// --- Late move pruning pokes ---
 	void set_late_move_pruning(bool enabled) const { ai->tuning_.late_move_pruning_enabled = enabled; }
 	bool late_move_pruning_enabled() const { return ai->tuning_.late_move_pruning_enabled; }
 	int64_t lmp_skips() const { return ai->td_.late_move_pruning_skips; }

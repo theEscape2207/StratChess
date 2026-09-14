@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-09-14 | a0e2a14 (depth-2 late move pruning, legal index 12, #547) | 30a5d46 | 19980 | 10+0.1 | **+16.48 +/- 3.50** | gain |
 | 2026-09-14 | 0722ee5 (TT generation advances once per search; deeper same-key store beats the PV bonus, #544) | 19ff12b | 19980 | 10+0.1 | **+1.11 +/- 3.48** | non-regression |
 | 2026-09-12 | ad7a422 (BUNDLED: compact TT + `Hash` default 192->256, #442) | c191d08 | 20000 | 18+0.18 | **+0.09 +/- 3.34** | no effect |
 | 2026-09-11 | d7458e3 (compact TT: 16-byte packed entries, aligned 64-byte buckets, equal-capacity case, #442) | b53d457 | 19980 | 10+0.1 | **+5.69 +/- 3.42** | gain |
@@ -34,6 +35,16 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-09-14 -- a0e2a14 (depth-2 late move pruning, legal index 12, #547) (19980 games)
+
+**The gate for the feature, and it ships.** 18 shards x 555 pairs, pooled Ptnml(0-2) [595, 2151, 3843, 2514, 887], score 52.37%, run `34885584175`, 3 h 06 min wall-clock, all 18 green. 95% interval **[+12.98, +19.98]**. 17 of 18 shards favour the candidate on score (49.91% to 54.91%).
+
+**The comparison rests on `cmake_defines`.** The PR compiled the feature out by default, so the run passed `-DSTRAT_LATE_MOVE_PRUNING=ON` to both builds. The reference `30a5d46` predates the option and CMake listed it as unused, so the reference ran without the feature. The same PR then removed the gate; the shipped clang-cl engine is byte-identical to the local ON build of the measured source.
+
+**Local screen before the run** (clang-cl, Threads=1, Run-Bench's 8 positions, 9 interleaved paired rounds): median wall time to fixed depth −29.0% at depth 12 and −18.7% at depth 14, faster in 9/9 rounds at each; nps −3.4% at both. Not uniform: at depth 14 `closed-mid` was +47% and `tactical-5` +12% slower. A 12-position quality set (near-rule-50, sparse, quiet-defense, accepted moves fixed by Stockfish depth 26) showed no candidate loss at 250 and 2000 ms, but 11 of 12 were easy for both builds, so it is weak evidence.
+
+**What it does not settle.** The depth (2) and legal-index threshold (12), held fixed so the result is attributable to the feature; index 8 was not measured. Nor the undetected quiet stalemating move, which LMP can skip -- no position exercising it was found.
 
 ### 2026-09-14 -- 0722ee5 (TT generation per search + deeper same-key wins, #544) (19980 games)
 

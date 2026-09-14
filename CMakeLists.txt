@@ -386,16 +386,6 @@ if(STRAT_SINGULAR_EXTENSIONS)
     message(STATUS "Singular extensions: COMPILED IN AND ENABLED (experimental build)")
 endif()
 
-# Depth-two late move pruning (#547) is experimental and OFF for the shipping engine, gated the same
-# way as singular extensions above and for the same reasons:
-#   cmake --preset windows-clang-cl -DSTRAT_LATE_MOVE_PRUNING=ON
-option(STRAT_LATE_MOVE_PRUNING "Compile in depth-two late move pruning (#547, experimental)" OFF)
-if(STRAT_LATE_MOVE_PRUNING)
-    target_compile_definitions(StratChessEvolved PRIVATE
-        STRAT_LATE_MOVE_PRUNING=1 STRAT_LATE_MOVE_PRUNING_DEFAULT_ON=1)
-    message(STATUS "Late move pruning: COMPILED IN AND ENABLED (experimental build)")
-endif()
-
 # Futility cost probe (#498, Stage 0 of #87). Measurement only -- it changes no search decision, so
 # every level must stay node-identical to the shipping build. Three levels, because the cost of
 # deciding and the cost of evaluating have to be separated:
@@ -439,10 +429,9 @@ strat_configure_target(StratChessTests)
 # tests have nothing to test unless it is compiled in, and they drive it through the runtime flag.
 # STRAT_SINGULAR_DEFAULT_ON is deliberately NOT set -- every other search test must keep seeing the
 # shipped configuration, so the singular tests enable it for themselves.
-# STRAT_LATE_MOVE_PRUNING follows the same rule: compiled in, runtime flag off by default.
 # STRAT_TT_STATS is unconditional too, so the tests exercise the counting; it changes no search decision.
 target_compile_definitions(StratChessTests PRIVATE
-    STRAT_ENABLE_TEST_ACCESS STRAT_SINGULAR_EXTENSIONS=1 STRAT_LATE_MOVE_PRUNING=1 STRAT_TT_STATS=1)
+    STRAT_ENABLE_TEST_ACCESS STRAT_SINGULAR_EXTENSIONS=1 STRAT_TT_STATS=1)
 target_link_libraries(StratChessTests PRIVATE Catch2::Catch2WithMain)
 
 # The depfile override above sets CMake variables; this asserts what CMake generated from

@@ -905,10 +905,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	const bool frontier_node = frontier_futility_eligible(depth, alpha, is_pv_node, in_check, is_exclusion_frame);
 	bool frontier_skipped = false;
 
-	// Late move pruning: at a depth-2 null-window node, a late quiet move is skipped outright. The
-	// compile gate leads so the shipping build folds every use below away.
-	const bool lmp_node = kLateMovePruningCompiled &&
-	                      late_move_pruning_eligible(depth, alpha, beta, is_pv_node, in_check, is_exclusion_frame);
+	// Late move pruning: at a depth-2 null-window node, a late quiet move is skipped outright.
+	const bool lmp_node = late_move_pruning_eligible(depth, alpha, beta, is_pv_node, in_check, is_exclusion_frame);
 	bool lmp_skipped = false;
 
 	// Iterate by sorted index — no rebuild of moveList needed
@@ -955,13 +953,11 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 			// The post-move half, for the same reasons as frontier futility's: no checking move and no
 			// immediate draw is skipped. A skip runs no child search, so it needs no abort read of its own.
-			if constexpr (kLateMovePruningCompiled) {
-				if (lmp_candidate && !td.check_draws(ply + 1) && !td.board.InCheck()) {
-					td.board.UndoMove(move);
-					td.late_move_pruning_skips++;
-					lmp_skipped = true;
-					continue;
-				}
+			if (lmp_candidate && !td.check_draws(ply + 1) && !td.board.InCheck()) {
+				td.board.UndoMove(move);
+				td.late_move_pruning_skips++;
+				lmp_skipped = true;
+				continue;
 			}
 
 			// One per legal move edge actually searched, as in quiescence(): a move DoMove
@@ -1139,10 +1135,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// because the searched subset proves no fail-soft value below alpha; no UPPER, because the bound
 	// would rest on moves never searched. This is a selective result, not a proof. A searched cutoff
 	// after a skip falls through and stores LOWER as usual. An aborted frame returned in the loop.
-	if constexpr (kLateMovePruningCompiled) {
-		if (lmp_skipped && best_value <= original_alpha)
-			return adjustScoreForGameState(td, moveFound, ply, original_alpha);
-	}
+	if (lmp_skipped && best_value <= original_alpha)
+		return adjustScoreForGameState(td, moveFound, ply, original_alpha);
 
 	// Classify node and store
 	BoundType bound;
