@@ -174,9 +174,31 @@ class AIPerlexTestFixture {
 	// TT: legal, not the first legal move in search order, not a capture or promotion, not a live
 	// killer at `ply`, not giving check, and not drawing on the spot. Tests hold the engine's skip
 	// count against it.
-	int count_frontier_candidates(int ply) const
+	int count_frontier_candidates(int ply) const { return tally_late_moves(board_, ply, 1).candidates; }
+
+	// What a count-based pruning guard sees at a node on an empty TT, walking the search order.
+	// "Late" means a legal index of at least min_legal_index; each late_* field counts late moves one
+	// exemption protects that no earlier-listed exemption already covers, so a test can require the
+	// exemption it is about to be exercised before holding the skip count against `candidates`.
+	struct LateMoveTally {
+		int candidates = 0;
+		int late_captures = 0;
+		int late_en_passant = 0; // also counted in late_captures
+		int late_promotions = 0;
+		int late_killers = 0;
+		int late_checks = 0;
+		int late_draws = 0;
+		// The candidate count if pseudo-legal moves DoMove rejects advanced the index.
+		int candidates_by_pseudo_index = 0;
+	};
+
+	LateMoveTally tally_late_moves(int ply, int min_legal_index) const
 	{
-		Board copy = board_;
+		return tally_late_moves(board_, ply, min_legal_index);
+	}
+
+	LateMoveTally tally_late_moves(Board copy, int ply, int min_legal_index) const
+	{
 		MoveList list;
 		MoveGenerator::ComputeLegalMoves(copy, list);
 
@@ -187,8 +209,8 @@ class AIPerlexTestFixture {
 		MoveSorter::ScoreMoves(list, n, copy, copy.GetCurrentColor(), Move::EmptyMove(), k0, k1, ai->td_.history,
 		                       scored);
 
-		int candidates = 0;
-		bool first_legal = true;
+		LateMoveTally tally;
+		int legal_index = 0;
 		for (int i = 0; i < n; ++i) {
 			const Move move = list[scored[i].second];
 			if (!copy.DoMove(move))
@@ -197,15 +219,60 @@ class AIPerlexTestFixture {
 			const bool draws = copy.is_repetition(ply + 1) || copy.halfmove_clock() >= HALFMOVE_CLOCK_LIMIT;
 			copy.UndoMove(move);
 
-			if (first_legal) {
-				first_legal = false;
+			const bool late = legal_index++ >= min_legal_index;
+			const bool late_by_pseudo = i >= min_legal_index;
+			const bool quiet = !MoveHelper::IsCapture(move) && !MoveHelper::IsPromote(move);
+			const bool candidate = quiet && move != k0 && move != k1 && !gives_check && !draws;
+			if (late_by_pseudo && candidate)
+				++tally.candidates_by_pseudo_index;
+			if (!late)
 				continue;
-			}
-			if (!MoveHelper::IsCapture(move) && !MoveHelper::IsPromote(move) && move != k0 && move != k1 &&
-			    !gives_check && !draws)
-				++candidates;
+
+			if (candidate)
+				++tally.candidates;
+			else if (MoveHelper::IsCapture(move)) {
+				++tally.late_captures;
+				if (MoveHelper::IsEnPassant(move))
+					++tally.late_en_passant;
+			} else if (MoveHelper::IsPromote(move))
+				++tally.late_promotions;
+			else if (move == k0 || move == k1)
+				++tally.late_killers;
+			else if (gives_check)
+				++tally.late_checks;
+			else
+				++tally.late_draws;
 		}
-		return candidates;
+		return tally;
+	}
+
+	// --- Late move pruning pokes ---
+	void set_late_move_pruning(bool enabled) const { ai->tuning_.late_move_pruning_enabled = enabled; }
+	bool late_move_pruning_enabled() const { return ai->tuning_.late_move_pruning_enabled; }
+	int64_t lmp_skips() const { return ai->td_.late_move_pruning_skips; }
+	bool late_move_pruning_eligible(int depth, int alpha, int beta, bool is_pv_node, bool in_check,
+	                                bool is_exclusion_frame) const
+	{
+		return ai->late_move_pruning_eligible(depth, alpha, beta, is_pv_node, in_check, is_exclusion_frame);
+	}
+
+	// The fixture's board after a UCI move list, carrying the repetition history the moves built.
+	Board board_after(std::initializer_list<const char*> moves) const
+	{
+		Board board = board_;
+		for (const char* uci : moves) {
+			const Move move = MoveFormatter::FromUCI(uci, board);
+			REQUIRE(board.DoMove(move));
+		}
+		return board;
+	}
+
+	// One pvs() node at the position a move list reaches, at the ply that list is long.
+	int search_node_after(std::initializer_list<const char*> moves, int depth, int alpha, int beta,
+	                      bool is_pv_node) const
+	{
+		ai->td_.board = board_after(moves);
+		return ai->pvs(ai->td_, depth, alpha, beta, static_cast<int>(moves.size()), is_pv_node, *ai->_tt);
 	}
 
 	// The same static evaluation the guard compares against beta, so a test can compute the exact

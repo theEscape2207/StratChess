@@ -83,6 +83,15 @@ whose violation is silent.
     true.
 - Null-move pruning is gated by `tuning_.null_move_enabled` via `should_try_null_move()` (covers
   zugzwang, mate-score contamination, consecutive nulls, PV/in-check, min-depth).
+- **Late move pruning returns entry alpha from a completed fail-low and stores nothing.** A depth-2
+  null-window frame that skipped a late quiet move and then failed low returns `original_alpha`,
+  fail-hard, and writes no TT entry — neither UPPER nor EXACT — because the bound would rest on moves
+  it never searched. It is a selective result, not a proof: it neither makes an ancestor exact nor
+  removes earlier entries, and an ancestor may still cut off on it and store normally. A *searched*
+  cutoff after a skip stores LOWER as usual; an aborted frame takes the unwind guard first. Skips
+  advance the legal-move index and need make/unmake, so checking moves and immediate repetition or
+  fifty-move draws are never skipped. A quiet move that stalemates the opponent is not detected and
+  can be skipped.
 - **Quiescence orders its two move lists differently**, via `AIPerplex::order_quiescence_moves()`.
   Out of check the list is captures and promotions and `SortMovesByValue` sorts it in place; in check
   it is every legal evasion and `MoveSorter::ScoreMoves` writes an order into a `scored_idx` array

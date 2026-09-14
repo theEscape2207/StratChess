@@ -99,6 +99,8 @@ struct ThreadData {
 
 	// Moves frontier futility skipped. A work counter like nodes_searched, so it survives an abort.
 	int64_t frontier_futility_skips = 0;
+	// Moves late move pruning skipped; the same kind of work counter.
+	int64_t late_move_pruning_skips = 0;
 
 	// --- Futility cost probe (#498) ---
 	// Also last, and for the same reason as the singular block above. Written only from inside
@@ -194,6 +196,7 @@ struct ThreadData {
 		nodes_searched = 0;
 		qnodes_searched = 0;
 		frontier_futility_skips = 0;
+		late_move_pruning_skips = 0;
 		nodes_since_check_ = 0;
 		pv_table = PVTable();
 		clear_killers();

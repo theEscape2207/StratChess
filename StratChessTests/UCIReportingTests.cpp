@@ -1101,3 +1101,35 @@ TEST_CASE("cmd_go: 'nodes' equals the reported main/quiescence split", "[uci][no
 	REQUIRE_FALSE(info_lines.empty());
 	CHECK(info_lines.back().nodes == main_nodes + qs_nodes);
 }
+
+TEST_CASE("cmd_go: 'lmp skips' is reported only when late move pruning skipped a move", "[uci][lmp]")
+{
+	// The timing screen and the strength lab read this exact spelling.
+	const std::regex lmp_line(R"(^info string lmp skips [1-9]\d*$)");
+	const bool enabled = GENERATE(true, false);
+
+	UciHandlerTestFixture fix;
+	fix.ucinewgame(); // constructs the search service the flag lives on
+	fix.set_late_move_pruning(enabled);
+	fix.position("position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+
+	std::string output;
+	{
+		CoutRedirect redirect;
+		fix.dispatch("go depth 6");
+		fix.join_search();
+		output = redirect.str();
+	}
+
+	int matching = 0;
+	int any_lmp = 0;
+	for (const std::string& line : split_lines(output)) {
+		if (std::regex_match(line, lmp_line))
+			++matching;
+		if (line.starts_with("info string lmp"))
+			++any_lmp;
+	}
+	CAPTURE(enabled);
+	CHECK(any_lmp == matching);
+	CHECK(matching == (enabled ? 1 : 0));
+}

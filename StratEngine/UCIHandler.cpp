@@ -515,6 +515,8 @@ void UciHandler::cmd_go(std::string_view line)
 			// running produces byte-identical output, as with the singular line above.
 			if (result.frontier_futility_skips != 0)
 				send("info string frontier skips " + std::to_string(result.frontier_futility_skips));
+			if (result.late_move_pruning_skips != 0)
+				send("info string lmp skips " + std::to_string(result.late_move_pruning_skips));
 
 			// Futility cost probe (#498). Compiled out entirely at probe level 0 -- the scan below
 			// would otherwise run once per search in the shipping build, which the feature's

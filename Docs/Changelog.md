@@ -22,6 +22,24 @@ Newest first.
 
 ---
 
+## 2026-09-15 — Depth-two late move pruning (#547)
+
+At a depth-2 non-PV null-window node (not in check, not an exclusion frame, window outside mate
+range), a quiet move from the 13th legal move onward is skipped. Captures, promotions, both killers,
+the hash move, checking moves and immediate repetition or fifty-move draws are never skipped; the
+check and draw exemptions need make/unmake, so the index counts legal moves, not quiet ones. A
+completed fail-low that skipped a move returns entry alpha and stores nothing, because an UPPER bound
+would rest on moves never searched; a searched cutoff still stores LOWER.
+`SearchTuning::late_move_pruning_enabled` turns it off for tests. Skips are reported as
+`info string lmp skips N`.
+
+Deliberately untuned: index 8 had more cutoff exposure in the triage trace and was not tried, and
+quiet-only counting or a history threshold would each be a separate experiment. Local screen: wall
+time to fixed depth −29.0% at depth 12, −18.7% at depth 14 (nps −3.4%). Strength lab against merge
+base `30a5d46`: **+16.48 ± 3.50 Elo** over 19,980 games, gain (`Measurements/ci-per-change.md`).
+
+---
+
 ## 2026-09-14 — TT age advances once per search (#544)
 
 `TranspositionTable::newSearch()` (was `newSearchIteration()`) runs once in `AIPerplex::Search()`
