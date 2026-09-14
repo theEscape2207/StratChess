@@ -47,6 +47,8 @@ struct SearchResult {
 	// Neither a skipped move nor the quiescence entry it avoided is in nodes_searched or
 	// qnodes_searched, so this is the only number that shows how often the guard fired.
 	int64_t frontier_futility_skips = 0;
+	// Moves late move pruning skipped, summed the same way and equally absent from the node counts.
+	int64_t late_move_pruning_skips = 0;
 
 	// TT probe/store counters, summed over every thread. All zero unless compiled in.
 	TTStats tt_stats{};

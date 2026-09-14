@@ -515,6 +515,8 @@ void UciHandler::cmd_go(std::string_view line)
 			// running produces byte-identical output, as with the singular line above.
 			if (result.frontier_futility_skips != 0)
 				send("info string frontier skips " + std::to_string(result.frontier_futility_skips));
+			if (result.late_move_pruning_skips != 0)
+				send("info string lmp skips " + std::to_string(result.late_move_pruning_skips));
 
 			// TT probe/store counters, compiled out unless STRAT_TT_STATS; see TTStats.h.
 			if constexpr (kTTStatsCompiled) {

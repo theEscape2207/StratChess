@@ -56,6 +56,12 @@ class UciHandlerTestFixture {
 		return handler.ai_->threads_;
 	}
 
+	void set_late_move_pruning(bool enabled) const
+	{
+		REQUIRE(handler.ai_ != nullptr);
+		handler.ai_->tuning_.late_move_pruning_enabled = enabled;
+	}
+
 	// Identity of the live ai_ instance, for proving cmd_ucinewgame() no
 	// longer rebuilds it.
 	const void* ai_identity() const { return handler.ai_.get(); }

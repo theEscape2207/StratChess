@@ -238,6 +238,8 @@ TEST_CASE("Reverse futility: cut children leave no killer or history behind", "[
 {
 	AIPerlexTestFixture fix(kBaselineFen);
 	fix.set_reverse_futility(true);
+	// Late move pruning would skip late moves at this depth-2 node and suppress the store asserted below.
+	fix.set_late_move_pruning(false);
 	fix.arm_clock();
 
 	REQUIRE_FALSE(fix.has_killer(1));

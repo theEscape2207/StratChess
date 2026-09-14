@@ -70,6 +70,11 @@ inline constexpr bool kSingularExtensionsCompiled = STRAT_SINGULAR_EXTENSIONS !=
 #	define STRAT_SINGULAR_DEFAULT_ON 0
 #endif
 
+// Late move pruning, deliberately not tunable: parent depth exactly two, and the zero-based legal
+// move index at which quiet moves become skippable (the thirteenth legal move).
+inline constexpr int kLateMovePruningDepth = 2;
+inline constexpr int kLateMovePruningMinLegalIndex = 12;
+
 // Hand-aligned: this is the one tuning surface shared by the concrete
 // service configuration and the search implementation.
 struct SearchTuning {
@@ -141,6 +146,10 @@ struct SearchTuning {
 	bool frontier_futility_enabled = true;
 	// Centipawns one quiet move may gain positionally, the room delta_pruning_margin also trusts.
 	int frontier_futility_margin = 200;
+
+	// Late move pruning at depth 2, on for the shipping engine. Not reachable over UCI; the flag
+	// exists so the tests can turn the guard off and search the same node normally.
+	bool late_move_pruning_enabled = true;
 };
 
 struct AIPerplexConfig {
@@ -293,6 +302,10 @@ class AIPerplex final {
 	// The node-level frontier-futility guards. The move-level ones live in the pvs() move loop,
 	// where the move, the live killers and the made move's check status are at hand.
 	bool frontier_futility_eligible(int depth, int alpha, bool is_pv_node, bool in_check,
+	                                bool is_exclusion_frame) const;
+	// The node-level late-move-pruning guards, runtime flag included. The legal-index and move-level
+	// guards live in the move loop.
+	bool late_move_pruning_eligible(int depth, int alpha, int beta, bool is_pv_node, bool in_check,
 	                                bool is_exclusion_frame) const;
 
 	// Logging helpers
