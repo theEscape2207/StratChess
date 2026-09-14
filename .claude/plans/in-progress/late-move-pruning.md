@@ -1,7 +1,7 @@
 # Depth-two late move pruning — Design
 
 **Issue:** [#547](https://github.com/theEscape2207/StratChess/issues/547)
-**Status:** Proposed design for controller handoff; no implementation or measurement authorized by this document.
+**Status:** In progress — owner approved implementation 2026-09-14; the local screen and any strength run still need owner approval.
 **Date:** 2026-09-14
 
 ## Goal
@@ -295,6 +295,20 @@ authorization for a PR publication, paid run, multi-hour local match or producti
 | Frozen candidate, baseline, commands, corpora and local results | Durable report under `Measurements/` using its recording conventions; issue/PR links |
 | Strength verdict and uncertainty, or reason for parking | Appropriate measurement ledger and `Docs/Changelog.md` if shipped; #547 outcome |
 | Any approved departure from this design | Update this table with the change and rationale before final review |
+| Minor implementation departures (below) | This table until harvest; PR body |
+
+Implementation departures (minor, within Scope, no Decision changed):
+
+- `info string lmp skips` is emitted over UCI when non-zero, mirroring frontier skips, so timed and lab
+  binaries expose the D4 counter without a harness change.
+- No depth-3 *node* test: its depth-2 children are eligible and skip legitimately. Depth 3 is covered by
+  the direct predicate test.
+- "Prior skips advance the index" has no count-based test: a frozen index at the threshold would skip
+  the same moves. It is structural (the index increments at `DoMove`, before the skip). Exempt moves
+  advancing the index is covered by the index-11/12 boundary case, where captures and promotions sort
+  ahead.
+- The two fail-low persistence cases turn reverse futility off, which would otherwise return before
+  the move loop in that position.
 
 Review reconciliation (2026-09-14): adopted the existing compile/runtime test-gate pattern,
 direct node-predicate tests, hash-guard falsification exception, frontier-style counter and abort

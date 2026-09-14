@@ -76,6 +76,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | Search telemetry (thread clamp, terminal verdicts, node counters) | `[search]` | `SearchTelemetryTests.cpp` |
 | Search/TT contract (terminal stores, probed-bound cutoffs) | `[search][tt]` | `SearchTTContractTests.cpp` |
 | Quiescence (delta pruning, in-check evasions, terminal states, ordering) | `[search][qsearch]` | `QuiescenceTests.cpp` |
+| Late move pruning (eligibility, legal index, exemptions, fail-low return and TT suppression, abort unwind) — every guard falsified by mutation | `[search][lmp]` | `SearchLateMovePruningTests.cpp` |
 | Move ordering (Sort) | `[sort]` | `SortTests.cpp` |
 | Static exchange evaluation | `[see]` | `SeeTests.cpp` |
 | Board DoMove/UndoMove completeness | `[board]` | `BoardTests.cpp` |

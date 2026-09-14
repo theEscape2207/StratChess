@@ -221,6 +221,7 @@ void AIPerplex::init_search(const Board& root)
 	td_.nodes_searched = 0;
 	td_.qnodes_searched = 0;
 	td_.frontier_futility_skips = 0;
+	td_.late_move_pruning_skips = 0;
 	td_.pv_table = PVTable{}; // fresh PV for this call
 	td_.root_game_state = GameStates::STILL_PLAYING;
 	// Per-call like the node counters: the reported trigger rate belongs to this search.
@@ -319,6 +320,7 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 			htd.nodes_searched = 0;
 			htd.qnodes_searched = 0;
 			htd.frontier_futility_skips = 0;
+			htd.late_move_pruning_skips = 0;
 			htd.clear_singular_telemetry();
 			if constexpr (kFutilityProbeCompiled)
 				htd.clear_futility_probe();
@@ -352,10 +354,12 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	int64_t total_sing_extensions = td_.singular_extensions;
 	int64_t total_sing_verify_nodes = td_.singular_verification_nodes;
 	int64_t total_frontier_skips = td_.frontier_futility_skips;
+	int64_t total_lmp_skips = td_.late_move_pruning_skips;
 	for (size_t i = 0; i + 1 < static_cast<size_t>(threads); ++i) {
 		total_nodes += helper_tds_[i]->nodes_searched;
 		total_qnodes += helper_tds_[i]->qnodes_searched;
 		total_frontier_skips += helper_tds_[i]->frontier_futility_skips;
+		total_lmp_skips += helper_tds_[i]->late_move_pruning_skips;
 		total_sing_eligible += helper_tds_[i]->singular_eligible;
 		total_sing_verifications += helper_tds_[i]->singular_verifications;
 		total_sing_extensions += helper_tds_[i]->singular_extensions;
@@ -369,6 +373,7 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	result.singular_extensions = total_sing_extensions;
 	result.singular_verification_nodes = total_sing_verify_nodes;
 	result.frontier_futility_skips = total_frontier_skips;
+	result.late_move_pruning_skips = total_lmp_skips;
 
 	// Futility probe (#498), summed exactly like the counters above. Compiled out with the probe
 	// itself, so the shipping build does not walk thread state to add up zeros.
@@ -900,6 +905,12 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	const bool frontier_node = frontier_futility_eligible(depth, alpha, is_pv_node, in_check, is_exclusion_frame);
 	bool frontier_skipped = false;
 
+	// Late move pruning: at a depth-2 null-window node, a late quiet move is skipped outright. The
+	// compile gate leads so the shipping build folds every use below away.
+	const bool lmp_node = kLateMovePruningCompiled &&
+	                      late_move_pruning_eligible(depth, alpha, beta, is_pv_node, in_check, is_exclusion_frame);
+	bool lmp_skipped = false;
+
 	// Iterate by sorted index — no rebuild of moveList needed
 	for (int si = 0; si < n; ++si) {
 		const Move& move = moveList[scored_idx[si].second];
@@ -919,6 +930,14 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		                                move != td.killers[ply][1] && move != hash_move &&
 		                                node_eval() + tuning_.frontier_futility_margin <= alpha;
 
+		// The pre-move half of the late-move guards. legal_moves_searched is the index this move takes
+		// if DoMove() accepts it: every legal move counts, exempt and skipped ones included, and a
+		// rejected pseudo-legal move does not. The hash move sorts first, so its exemption is defence
+		// in depth.
+		const bool lmp_candidate = lmp_node && legal_moves_searched >= kLateMovePruningMinLegalIndex &&
+		                           !MoveHelper::IsCapture(move) && !MoveHelper::IsPromote(move) &&
+		                           move != td.killers[ply][0] && move != td.killers[ply][1] && move != hash_move;
+
 		if (td.board.DoMove(move)) {
 			const int move_number = legal_moves_searched++; // 0 for the first legal move
 			int value;
@@ -932,6 +951,17 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				td.frontier_futility_skips++;
 				frontier_skipped = true;
 				continue;
+			}
+
+			// The post-move half, for the same reasons as frontier futility's: no checking move and no
+			// immediate draw is skipped. A skip runs no child search, so it needs no abort read of its own.
+			if constexpr (kLateMovePruningCompiled) {
+				if (lmp_candidate && !td.check_draws(ply + 1) && !td.board.InCheck()) {
+					td.board.UndoMove(move);
+					td.late_move_pruning_skips++;
+					lmp_skipped = true;
+					continue;
+				}
 			}
 
 			// One per legal move edge actually searched, as in quiescence(): a move DoMove
@@ -1103,6 +1133,15 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		                             static_cast<int16_t>(ply), Move::EmptyMove(), BoundType::EXACT,
 		                             is_pv_node ? NodeType::PV_NODE : NodeType::ALL_NODE, SearchPhase::MAIN));
 		return terminal_value;
+	}
+
+	// A completed fail-low that skipped a late move returns entry alpha and stores nothing. Fail-hard,
+	// because the searched subset proves no fail-soft value below alpha; no UPPER, because the bound
+	// would rest on moves never searched. This is a selective result, not a proof. A searched cutoff
+	// after a skip falls through and stores LOWER as usual. An aborted frame returned in the loop.
+	if constexpr (kLateMovePruningCompiled) {
+		if (lmp_skipped && best_value <= original_alpha)
+			return adjustScoreForGameState(td, moveFound, ply, original_alpha);
 	}
 
 	// Classify node and store
@@ -1742,6 +1781,24 @@ bool AIPerplex::frontier_futility_eligible(int depth, int alpha, bool is_pv_node
 		return false;
 	// The margin arithmetic is meaningless against a mate score.
 	return std::abs(alpha) < GameValues::Mate_Threshold;
+}
+
+bool AIPerplex::late_move_pruning_eligible(int depth, int alpha, int beta, bool is_pv_node, bool in_check,
+                                           bool is_exclusion_frame) const
+{
+	if (!tuning_.late_move_pruning_enabled)
+		return false;
+	// A verification search's fail-low grants a singular extension, so it must come from a search.
+	if (is_exclusion_frame)
+		return false;
+	if (is_pv_node || in_check)
+		return false;
+	if (depth != kLateMovePruningDepth)
+		return false;
+	// Required explicitly: the fail-low return assumes no score lies strictly inside the window.
+	if (beta != alpha + 1)
+		return false;
+	return std::abs(alpha) < GameValues::Mate_Threshold && std::abs(beta) < GameValues::Mate_Threshold;
 }
 
 bool AIPerplex::reverse_futility_eligible(int depth, int beta, bool is_pv_node, bool in_check, bool is_exclusion_frame,

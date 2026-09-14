@@ -70,6 +70,21 @@ inline constexpr bool kSingularExtensionsCompiled = STRAT_SINGULAR_EXTENSIONS !=
 #	define STRAT_SINGULAR_DEFAULT_ON 0
 #endif
 
+// Depth-two late move pruning (#547): compiled out of the shipping engine and gated exactly like
+// singular extensions above -- CMake option STRAT_LATE_MOVE_PRUNING, DEFAULT_ON for the experimental
+// engine only, compiled in with the runtime flag off for the test binary.
+#ifndef STRAT_LATE_MOVE_PRUNING
+#	define STRAT_LATE_MOVE_PRUNING 0
+#endif
+#ifndef STRAT_LATE_MOVE_PRUNING_DEFAULT_ON
+#	define STRAT_LATE_MOVE_PRUNING_DEFAULT_ON 0
+#endif
+inline constexpr bool kLateMovePruningCompiled = STRAT_LATE_MOVE_PRUNING != 0;
+// The one candidate under measurement, deliberately not tunable: parent depth exactly two, and the
+// zero-based legal move index at which quiet moves become skippable (the thirteenth legal move).
+inline constexpr int kLateMovePruningDepth = 2;
+inline constexpr int kLateMovePruningMinLegalIndex = 12;
+
 // Futility-pruning cost probe (#498, Stage 0 of #87). MEASUREMENT ONLY: it changes no search
 // decision, so a probe build must stay node-identical to the shipping one. It exists to answer
 // what a futility guard would cost before one is written, because pvs() computes no static
@@ -161,6 +176,10 @@ struct SearchTuning {
 	bool frontier_futility_enabled = true;
 	// Centipawns one quiet move may gain positionally, the room delta_pruning_margin also trusts.
 	int frontier_futility_margin = 200;
+
+	// Late move pruning. The runtime half of the gate, meaningful only in a build compiled with
+	// STRAT_LATE_MOVE_PRUNING; not reachable over UCI.
+	bool late_move_pruning_enabled = STRAT_LATE_MOVE_PRUNING_DEFAULT_ON != 0;
 };
 
 struct AIPerplexConfig {
@@ -313,6 +332,10 @@ class AIPerplex final {
 	// The node-level frontier-futility guards. The move-level ones live in the pvs() move loop,
 	// where the move, the live killers and the made move's check status are at hand.
 	bool frontier_futility_eligible(int depth, int alpha, bool is_pv_node, bool in_check,
+	                                bool is_exclusion_frame) const;
+	// The node-level late-move-pruning guards, runtime flag included. pvs() leads with the compile
+	// gate; the legal-index and move-level guards live in the move loop.
+	bool late_move_pruning_eligible(int depth, int alpha, int beta, bool is_pv_node, bool in_check,
 	                                bool is_exclusion_frame) const;
 
 	// Logging helpers
