@@ -90,7 +90,8 @@ whose violation is silent.
   neither makes an ancestor exact nor removes earlier entries, and an ancestor may still cut off on
   it and store normally. A *searched* cutoff after a skip stores LOWER as usual; an aborted frame
   takes the unwind guard first. Skips advance the legal-move index and need make/unmake, so checking
-  moves and immediate draws are never skipped.
+  moves and immediate repetition or fifty-move draws are never skipped. A quiet move that stalemates
+  the opponent is not detected and can be skipped.
 - **Quiescence orders its two move lists differently**, via `AIPerplex::order_quiescence_moves()`.
   Out of check the list is captures and promotions and `SortMovesByValue` sorts it in place; in check
   it is every legal evasion and `MoveSorter::ScoreMoves` writes an order into a `scored_idx` array
