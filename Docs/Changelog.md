@@ -30,7 +30,7 @@ written; both guards have shipped (#87) and nothing reads it. The shipping build
 search is unchanged: `Compare-SearchEquivalence.ps1` identical on 6 positions at depth 12. Bench,
 5 alternating passes against `origin/main` `30a5d46`: median 2,490,571 vs 2,469,662 nps (+0.85%),
 inside run-to-run spread of 8-10%. First of three changes in
-`.claude/plans/search-telemetry-and-async-launch.md`.
+`.claude/plans/in-progress/search-telemetry-and-async-launch.md`.
 
 ---
 
