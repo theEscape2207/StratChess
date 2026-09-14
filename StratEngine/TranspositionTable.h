@@ -255,7 +255,10 @@ class TranspositionTable {
 		return stored_value;
 	}
 
-	void newSearchIteration() { current_age.fetch_add(1, std::memory_order_relaxed); }
+	// One generation per top-level search, never per depth: replacement charges each generation, so
+	// per-depth ages would penalise the search's own earlier depths. The 8-bit age still wraps after
+	// 256 searches without a clear(), when a surviving entry reads as fresh again.
+	void newSearch() { current_age.fetch_add(1, std::memory_order_relaxed); }
 
 	uint8_t currentAge() const noexcept { return current_age.load(std::memory_order_relaxed); }
 
@@ -269,8 +272,7 @@ class TranspositionTable {
 		return entry_distance > 0 && entry_distance <= search_age_span;
 	}
 
-	// UCI hashfull: permille of a fixed front-table sample written since this search
-	// began. Iterative-deepening ages stay distinct for replacement but all count here.
+	// UCI hashfull: permille of a fixed front-table sample written since this search began.
 	int hashfull(uint8_t search_start_age) const
 	{
 		constexpr size_t sample_size = 1000;
@@ -428,10 +430,17 @@ class TranspositionTable {
 	// one slot, and it quantises in order to: a quiescence ply is worth half a main-search
 	// ply, the PV bonus is priced at two plies, and the bound is not an input at all. On the
 	// same key those collapsed distinctions are exactly what separates two claims about one
-	// position, so the ranking decides the general case and the raw fields settle its ties.
+	// position, so a deeper same-phase claim wins outright, the ranking decides the rest and the
+	// raw fields settle its ties.
 	bool sameKeyStoreWins(const TTEntry& stored, int16_t depth, SearchPhase phase, NodeType node_type, BoundType bound,
 	                      uint8_t age) const noexcept
 	{
+		// A deeper search of the same position in the same phase supersedes the stored one, PV
+		// or not. The PV bonus prices which position to keep, and every depth of a search shares
+		// one age, so without this a PV entry would block its own deeper result for the search.
+		if (phase == stored.phase && depth > stored.depth)
+			return true;
+
 		const int incoming_score = replacementScore(depth, phase, node_type, /*age_diff=*/0);
 		const int stored_score = replacementScore(stored, age);
 		if (incoming_score != stored_score)
@@ -448,7 +457,8 @@ class TranspositionTable {
 
 		// Raw depth, because the halving rounds several quiescence budgets onto one rank (1, 0
 		// and -1 all reach 0) and the PV bonus buys two plies. Neither makes the shallower
-		// claim the stronger one, and quiescence() admits an entry on raw depth alone.
+		// claim the stronger one, and quiescence() admits an entry on raw depth alone. The phases
+		// match here and a deeper store has already won, so only a shallower one is decided.
 		if (depth != stored.depth)
 			return depth > stored.depth;
 
@@ -456,9 +466,10 @@ class TranspositionTable {
 		// so exactness is not traded for freshness. In the main search an exact score means a
 		// PV node, since a null window cannot produce one, so the scores meet here only when
 		// one generation of age has cancelled the PV bonus: the trade is that the previous
-		// iteration's exact value outlives a same-depth bound by one generation, after which
-		// the ranking retires it on age. In quiescence the two meet within a generation, where
-		// the exact score is a stand-pat and the bound searched a capture that failed low.
+		// search's exact value outlives a same-depth bound for one more search, after which
+		// the ranking retires it on age; within a search the PV bonus decides before this step.
+		// In quiescence the two meet within a generation, where the exact score is a stand-pat
+		// and the bound searched a capture that failed low.
 		if ((bound == BoundType::EXACT) != (stored.bound == BoundType::EXACT))
 			return bound == BoundType::EXACT;
 

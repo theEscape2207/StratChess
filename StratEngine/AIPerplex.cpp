@@ -289,9 +289,9 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	}
 	const unsigned effective_depth = control_.EffectiveDepth();
 	const uint8_t search_start_age = _tt->currentAge();
-	// Establish depth one's age before helpers can store, so every entry produced
+	// Establish this search's age before helpers can store, so every entry produced
 	// by this search is newer than the snapshot hashfull uses to reject stale content.
-	_tt->newSearchIteration();
+	_tt->newSearch();
 	if constexpr (kTTStatsCompiled)
 		_tt->setStatsSearchStartAge(search_start_age);
 
@@ -430,10 +430,8 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 
 	for (int depth = 1; depth <= max_depth; ++depth) {
 
-		// BEFORE ITERATION: Prepare for this depth's search. Search() establishes
-		// depth one's age before launching helpers; later depths advance it here.
-		if (depth > 1)
-			tt.newSearchIteration();
+		// BEFORE ITERATION: Prepare for this depth's search. The TT age belongs to
+		// the whole search and was set by Search().
 		td.age_history();
 		const int64_t nodes_at_start = td.nodes_searched;
 

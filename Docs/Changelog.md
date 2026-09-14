@@ -22,6 +22,22 @@ Newest first.
 
 ---
 
+## 2026-09-14 — TT age advances once per search (#544)
+
+`TranspositionTable::newSearch()` (was `newSearchIteration()`) runs once in `AIPerplex::Search()`
+instead of once per iterative-deepening depth. The 8-bit age used to move ~14 per move and wrap every
+~18 own moves, so replacement treated older searches' entries as recent at random. It now wraps after
+256 searches without a `clear()`. With per-depth ages gone, the two-ply PV bonus would block a deeper
+same-key store for the whole search, so a same-phase store with greater depth now wins before the
+ranking is consulted.
+
+Declined stores rose from 1.90% to 5.84% of stores in a 20-game capacity replay. That is the existing
+policy applying within a search: quiescence results no longer displace main entries, and shallower
+results no longer displace deeper ones. Strength lab against merge base `19ff12b`: **+1.11 ± 3.48
+Elo** over 19,980 games, non-regression (`Measurements/ci-per-change.md`).
+
+---
+
 ## 2026-09-13 — Main nodes count only searched moves; measurement contract 2 (#402)
 
 `pvs()` incremented `nodes_searched` before `DoMove()`, so it counted pseudo-legal moves `DoMove()`

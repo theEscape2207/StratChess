@@ -287,6 +287,8 @@ class AIPerlexTestFixture {
 
 	bool has_tt_marker() const { return ai->_tt->probe(TT_MARKER_KEY, 0).has_value(); }
 
+	uint8_t tt_age() const { return ai->_tt->currentAge(); }
+
 	void start_new_game() const { ai->StartNewGame(); }
 
 	// --- root_game_state pokes, for proving init_search() resets the per-call carrier ---
