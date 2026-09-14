@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-09-14 | 0722ee5 (TT generation advances once per search; deeper same-key store beats the PV bonus, #544) | 19ff12b | 19980 | 10+0.1 | **+1.11 +/- 3.48** | non-regression |
 | 2026-09-12 | ad7a422 (BUNDLED: compact TT + `Hash` default 192->256, #442) | c191d08 | 20000 | 18+0.18 | **+0.09 +/- 3.34** | no effect |
 | 2026-09-11 | d7458e3 (compact TT: 16-byte packed entries, aligned 64-byte buckets, equal-capacity case, #442) | b53d457 | 19980 | 10+0.1 | **+5.69 +/- 3.42** | gain |
 | 2026-09-11 | 91de4e7 (depth-1 frontier futility, level 2, #504) | 0d9ae52 | 19980 | 10+0.1 | **+23.39 +/- 3.46** | gain |
@@ -33,6 +34,14 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-09-14 -- 0722ee5 (TT generation per search + deeper same-key wins, #544) (19980 games)
+
+**A correctness fix, gated for non-regression, and it passes.** 18 shards x 555 pairs, pooled Ptnml(0-2) [723, 2287, 3900, 2363, 717], score 50.16%, run `34788035846`, 3 h 06 min wall-clock, all 18 green. 95% interval [-2.37, +4.59], which bounds any regression below 2.5 Elo. 11 of 18 shards favour the candidate on score (48.20% to 52.34%), which is what a zero effect looks like.
+
+**Two changes in one candidate.** The age change dominates. A capacity replay split declined stores by cause and found the PV-bonus case that deeper-wins fixes in 0.01% of stores, so this row does not measure deeper-wins on its own.
+
+**What it does not settle.** The age still wraps after 256 searches without a `clear()`. Nothing at 10+0.1 exercises that, so the row says nothing about long games without `ucinewgame`.
 
 ### 2026-09-12 -- ad7a422 (BUNDLED: compact TT + `Hash` default 192->256, #442) (20000 games)
 
