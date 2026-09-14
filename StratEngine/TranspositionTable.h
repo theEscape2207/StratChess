@@ -288,6 +288,9 @@ class TranspositionTable {
 				occupied += entry.key != 0 && writtenThisSearch(entry.age, search_start_age, search_age_span);
 		}
 
+		// entries_to_sample is never 0: floor_pow2() guarantees table.size() >= 1, so
+		// buckets_to_sample >= 1 and the multiply by BUCKET_SIZE keeps it non-zero.
+		// NOLINTNEXTLINE(clang-analyzer-core.UndefinedBinaryOperatorResult)
 		return static_cast<int>(occupied * 1000 / entries_to_sample);
 	}
 
