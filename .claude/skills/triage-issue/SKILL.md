@@ -55,8 +55,8 @@ tuning knob, throwaway instrumentation, a disposable prototype, in that order:
 - **Speed:** the share of runtime spent on the path you would speed up is the ceiling.
 - **Capacity or size:** vary the existing knob on stock `main` and read the curve before repacking
   anything.
-- **Pruning:** count what a guard *would* prune without pruning it — `futility_probe_*` in
-  `AIPerplex.cpp`.
+- **Pruning:** count what a guard *would* prune without pruning it — #498's compile-gated probe
+  (deleted once answered; git history has it).
 - **Eval term:** how often it fires, and whether it correlates with result in existing lab PGNs.
 
 File it as its own `Spike:` issue (#398, #498, #529). State **before it runs**: the question, the
