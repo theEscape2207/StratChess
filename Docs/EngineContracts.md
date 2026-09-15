@@ -61,6 +61,14 @@ whose violation is silent.
   node-limit state. Every `Search(…, limits)` or `GetMove(limits)` call is self-contained — there
   is no pre-call ordering contract. UCI owns its concrete service directly for one session and passes
   a fresh observer per `go`; `ucinewgame` clears per-game state without rebuilding it.
+- **`StartAsync(root, limits, observer, on_done)` is UCI's launch path.** It stops and joins any
+  previous launch, then arms the stop handshake, copies the root and starts the thread; join-before-arm
+  is load-bearing, because an unwinding `Search()` would otherwise clear the fresh arm. A `Stop()` made
+  after it returns is never lost, even before `Search()` initialises. `IsSearching()` turns false
+  when `Search()` returns, before `on_done` runs, so a client that sends `position` the instant it reads
+  `bestmove` is accepted. `on_done` must not call `StartAsync`, `Wait`, `StopAndWait`, `SetHash`,
+  `SetThreads`, `StartNewGame` or destroy the service (Debug-asserted). Those methods come from one
+  controlling thread; only `Stop()` and `IsSearching()` are callable from any thread.
 - `Engine::compute_budget(remaining, increment, moves_to_go)` → `TimeBudget{soft, hard}` is pure.
 - Verbose logging is opt-in per call site — the `AIPerplex` constructor does not enable it.
 

@@ -616,7 +616,7 @@ TEST_CASE("cmd_setoption: refused while a search is running", "[uci][smp]")
 TEST_CASE("Both commands work normally once the search is over", "[uci]")
 {
 	// Neither stopped nor joined: a client sends 'position' the instant it reads bestmove, while
-	// the launch thread is still joinable, and the guard must already accept it (#245). The
+	// the launch thread is still joinable, and the guard must already accept it. The
 	// redirect is declared first so the fixture joins the launch thread before cout is restored.
 	CoutRedirect redirect;
 	UciHandlerTestFixture fix;
@@ -628,6 +628,8 @@ TEST_CASE("Both commands work normally once the search is over", "[uci]")
 	fix.position("position startpos moves e2e4");
 	REQUIRE(fix.board().GetCurrentColor() == BLACK);
 	REQUIRE(redirect.str().find("ignored") == std::string::npos);
+	// Joined before the perft capture swaps cout's buffer: send() may still be flushing bestmove.
+	fix.join_search();
 	REQUIRE(divide_total(capture_cout([&] { fix.perft("perft 1"); })) == 20);
 
 	fix.setoption("setoption name Threads value 3");

@@ -271,11 +271,13 @@ TEST_CASE("AIPerplex Stop does not abort the next direct Search", "[search][serv
 
 TEST_CASE("AIPerplex StartAsync: IsSearching() is false before the completion handler runs", "[search][service_api]")
 {
-	// A client sends 'position' the instant it reads bestmove, which the handler sends (#245).
+	// A client sends 'position' the instant it reads bestmove, which the handler sends. IsSearching()
+	// is read inside the handler deliberately: it only takes the stop mutex. The promise is declared
+	// before the service so a failed REQUIRE never leaves the handler writing a destroyed promise.
 	const Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-	AIPerplex ai(AIPerplexConfig{.hash_mb = 1, .verbose_logging = false});
 	std::promise<bool> searching_in_handler;
 	std::future<bool> observed = searching_in_handler.get_future();
+	AIPerplex ai(AIPerplexConfig{.hash_mb = 1, .verbose_logging = false});
 
 	ai.StartAsync(board, SearchLimits::fixed_depth(1), {},
 	              [&](const SearchResult&) { searching_in_handler.set_value(ai.IsSearching()); });

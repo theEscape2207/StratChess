@@ -456,7 +456,7 @@ void UciHandler::cmd_go(std::string_view line)
 
 	// IsSearching() is true once this returns, so a command arriving immediately after 'go' is
 	// refused, and false before the handler runs, so the 'position' a client sends the instant it
-	// reads bestmove is accepted (#245). The handler captures nothing: send() is static.
+	// reads bestmove is accepted. The handler captures nothing: send() is static.
 	ai_->StartAsync(board_, limits, std::move(observer), [](const SearchResult& result) {
 		const Move best = result.best_move;
 

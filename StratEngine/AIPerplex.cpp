@@ -195,7 +195,7 @@ void AIPerplex::StartAsync(const Board& root, const SearchLimits& limits, Iterat
 			    // No catch: an exception escaping Search() terminates, as a lost bestmove would be worse.
 			    const SearchResult result = Search(root_copy, limits, std::move(observer));
 			    // Search() has returned, so IsSearching() is already false here: a client reading the
-			    // bestmove that on_done sends can issue its next position at once (#245).
+			    // bestmove that on_done sends can issue its next position at once.
 			    if (on_done) {
 				    in_completion_handler_ = true;
 				    on_done(result);

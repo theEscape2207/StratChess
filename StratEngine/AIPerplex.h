@@ -44,8 +44,9 @@ struct IterationInfo {
 };
 
 using IterationObserver = std::function<void(const IterationInfo&)>;
-// Receives the finished search on the launch thread, after IsSearching() has turned false. It may
-// use only its argument: calling back into the service from it deadlocks or races.
+// Receives the finished search on the launch thread, after IsSearching() has turned false. It must
+// not call StartAsync, Wait, StopAndWait, SetHash, SetThreads or StartNewGame, or destroy the service
+// (Debug-asserted): a join from the launch thread throws, and the rest race the controlling thread.
 using CompletionHandler = std::function<void(const SearchResult&)>;
 
 inline constexpr unsigned DEFAULT_AIPERPLEX_HASH_MB = 192;
@@ -187,6 +188,8 @@ class AIPerplex final {
 	void StartNewGame();
 	void Stop() noexcept;
 
+	// StartAsync, StopAndWait and Wait come from one controlling thread; Stop() and IsSearching()
+	// from any.
 	// Runs Search() on a launch thread owned by this service and returns at once. Stops and joins
 	// any previous launch first; the root is copied, so the caller's board may change afterwards.
 	// A Stop() made after this returns stops the launched search, even before it initialises.
@@ -333,8 +336,8 @@ class AIPerplex final {
 	void arm_search_launch() noexcept;
 	void finish_search_launch() noexcept;
 
-	// Set on the launch thread while on_done runs. The entry points on_done must not call assert it
-	// is clear: a join from the launch thread throws, and a member read races the caller.
+	// Set on the launch thread while on_done runs; the entry points on_done must not call assert it
+	// is clear. Per thread, not per service, so it also flags a call into any other service.
 	static inline thread_local bool in_completion_handler_ = false;
 	static void assert_not_in_completion_handler() noexcept { assert(!in_completion_handler_); }
 
@@ -360,8 +363,8 @@ class AIPerplex final {
 	// Empty and untouched whenever threads_ == 1.
 	std::vector<std::unique_ptr<ThreadData>> helper_tds_;
 
-	// Declared after td_ and helper_tds_ so td_'s offset is unchanged and the launch thread is
-	// destroyed before the state it searches; the destructor still joins it explicitly.
+	// Declared after td_ and helper_tds_ so td_ stays ahead of the cold members and the launch thread
+	// is destroyed before the state it searches; the destructor still joins it explicitly.
 	std::jthread launch_thread_;
 #ifdef STRAT_ENABLE_TEST_ACCESS
 	// Called on the launch thread before Search(), so a test can deliver Stop() before the search
