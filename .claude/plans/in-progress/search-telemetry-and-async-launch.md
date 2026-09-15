@@ -51,28 +51,29 @@ that precedes them. None is meant to change a node, a move or measurable nps.
 
 ### D1: One struct per feature, held by one `SearchTelemetry` aggregate
 
-`SingularStats` (4 counters), `FrontierFutilityStats` (1), and the existing `TTStats` (11), each with
-`add(const T&)`. `SearchTelemetry { SingularStats singular; FrontierFutilityStats frontier; TTStats
-tt; }` offers `reset()`, `add(const SearchTelemetry&)` and the formatting of D3. `ThreadData` and
+`SingularStats` (4 counters), `FrontierFutilityStats` (1), `LateMovePruningStats` (1), and the
+existing `TTStats` (11), each with `add(const T&)`. `SearchTelemetry { SingularStats singular;
+FrontierFutilityStats frontier; LateMovePruningStats lmp; TTStats tt; }` offers `reset()`, `add(const SearchTelemetry&)` and the formatting of D3. `ThreadData` and
 `SearchResult` each hold one `SearchTelemetry telemetry`.
 
 `init_search()`, the helper setup loop, `reset_for_new_game()` and the post-join sum each become one
 call. Both the helper reset and the post-join sum stay bounded by the per-search `threads` snapshot
 (`i + 1 < threads`), never `helper_tds_.size()`: `helper_tds_` is not shrunk when Threads drops, so a
-range-for would add stale helpers' frontier skips. Rejected: per-feature structs used directly (still
+range-for would add stale helpers' frontier and LMP skips. Rejected: per-feature structs used directly (still
 four call sites per struct), and one flat struct (no `compiled` flag per feature, see D2).
 
-`frontier_futility_skips` moves in although it is live in the shipping build: it is a trigger count
-read by `Run-Bench.ps1`, not part of the node contract. Its reset stays per search and it still
-survives an abort.
+`frontier_futility_skips` and `late_move_pruning_skips` (#552) move in although both are live in the
+shipping build: they are trigger counts (frontier's is read by `Run-Bench.ps1`), not part of the node
+contract. Their resets stay per search and they still survive an abort.
 
-**Member order is a layout requirement:** singular, frontier, tt. With singular (32 B) first, the one
-live counter keeps today's offset in `ThreadData` exactly (see Performance).
+**Member order is a layout requirement:** singular, frontier, lmp, tt. With singular (32 B) first, both
+live counters keep today's offsets in `ThreadData` exactly (see Performance).
 
 ### D2: Each struct carries `static constexpr bool compiled`
 
 `SingularStats::compiled = kSingularExtensionsCompiled`, `TTStats::compiled = kTTStatsCompiled`,
-`FrontierFutilityStats::compiled = true`. The aggregate's `reset`/`add`/format do `if constexpr
+`FrontierFutilityStats::compiled = LateMovePruningStats::compiled = true` (LMP is live and always
+counted; #552 removed its compile gate before merge). The aggregate's `reset`/`add`/format do `if constexpr
 (T::compiled)` per member, so the gate appears once per feature instead of at every reset, sum and
 print site. Write sites in `pvs()`/`quiescence()` keep their existing gates unchanged.
 
@@ -86,17 +87,17 @@ Each struct appends zero or one payload (the text after `info string `) to a cal
 `UciHandler` adds the prefix and calls `send`. The counter names are an external contract —
 `Run-Bench.ps1:205` parses `frontier skips`, `Scripts/measure_tt_capacity.py` parses `ttstats` — so
 they live beside the counters they name. Print conditions move with them: singular prints when
-`eligible != 0`, frontier when `skips != 0`, TT stats whenever compiled. Order stays singular,
-frontier, ttstats.
+`eligible != 0`, frontier when `skips != 0`, lmp when `skips != 0`, TT stats whenever compiled. Order stays singular,
+frontier, lmp, ttstats.
 
 Rejected: formatting kept in `UciHandler` as one function per struct — a new counter would still
 touch two files, and the script-facing names would sit away from the counters.
 
 ### D4: Telemetry lives in the cold tail of `ThreadData`
 
-`telemetry` replaces the singular, frontier, probe and `tt_stats` members exactly where they are
+`telemetry` replaces the singular, frontier, lmp and `tt_stats` members exactly where they are
 today: after `excluded_move[MAX_PLY]`, after every hot member. No hot member's offset changes, and
-with D1's order neither does the frontier counter's.
+with D1's order neither do the frontier and LMP counters'.
 
 ### D5: `AIPerplex` owns the async search thread
 
@@ -203,9 +204,10 @@ No member `pvs()`/`quiescence()` touches changes offset. Expected: `pvs`/`quiesc
 identical apart from addresses.
 
 **PR 2 — regroup.**
-- *Per node:* the only telemetry write live in the shipping build is `++td.frontier_futility_skips`
-  (`AIPerplex.cpp:932`). It becomes `++td.telemetry.frontier.skips` — same base-plus-offset access,
-  **same offset** given D1's order. clang-cl builds without strict aliasing, so the nested path gives
+- *Per node:* the only telemetry writes live in the shipping build are `td.frontier_futility_skips++`
+  and `td.late_move_pruning_skips++` (`AIPerplex.cpp:877,886`). They become
+  `++td.telemetry.frontier.skips` / `++td.telemetry.lmp.skips` — same base-plus-offset access,
+  **same offsets** given D1's order. clang-cl builds without strict aliasing, so the nested path gives
   the optimiser nothing new. Expected: codegen identical.
 - *Per search:* reset and cross-thread sum are O(threads) and gated per feature; the shipping build
   does slightly less than today (D2). Formatting builds the same strings, once, after the clock stops.
@@ -248,7 +250,7 @@ the acceptance rule in Validation.
 - A `stop` sent after `StartAsync` returns, before the launch thread runs, stops that search.
 - `IsSearching()` is false before `on_done` runs, and so before `bestmove` is written (#245).
 - `td_`'s offset within `AIPerplex` and every `ThreadData` member offset up to and including the
-  frontier counter are unchanged.
+  frontier and LMP counters are unchanged.
 - Precondition, restated: no `Search()` or `StartAsync()` overlaps another on the same service.
 
 ## Validation
@@ -268,10 +270,10 @@ merge.
 | `Compare-SearchEquivalence.ps1 -After <exe>`, extended to keep every `info string` line | no node/move change; shipping-build output unchanged | all |
 | Disassembly diff of `pvs`/`quiescence` (`llvm-objdump --no-show-raw-insn --no-leading-addr`) | no codegen change | 1, 2 |
 | nps acceptance rule above | nps within noise | all |
-| Catch2 output pins for the stats-enabled test build | text of `singular`/`frontier`/`ttstats` lines | 2 |
+| Catch2 output pins for the stats-enabled test build | text of `singular`/`frontier`/`lmp`/`ttstats` lines | 2 |
 | Catch2: `StartAsync` at depth 1 with `on_done` recording `IsSearching()`, `REQUIRE` false; falsified once by swapping D6 steps 2 and 3 | #245 ordering | 3 |
 | Catch2: stop-before-initialisation on `AIPerplex` directly (see below) | lost stop fails within a deadline instead of hanging | 3 |
-| Catch2: search at Threads=3, then Threads=1; frontier count equals the main thread's | stale-helper over-count (D1 bound) | 2 |
+| Catch2: search at Threads=3, then Threads=1; frontier and LMP counts equal the main thread's | stale-helper over-count (D1 bound) | 2 |
 | Existing Catch2 UCI tests + reasoning from source; one local TSan attempt | handshake races (no automated race detector covers `stop`) | 3 |
 | `Measure-UciLatency.ps1 -Command 'go depth 1' -CompletionMarker bestmove -Repetitions 200` | per-`go` fixed overhead (≥ ~0.1 ms visible) | 3 |
 | `go movetime 200` (compliance) and `stop` probe with `-TimeoutMs 2000` | no lost stop, no ms-scale regression | 3 |
