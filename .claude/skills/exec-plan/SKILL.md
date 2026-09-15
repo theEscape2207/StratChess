@@ -5,8 +5,7 @@ description: Use when asked to carry out or resume an implementation plan that h
 
 # Execute an Approved Plan
 
-Treat the approved plan as the contract. When `superpowers:executing-plans` or
-`superpowers:subagent-driven-development` also matches, use this skill instead.
+Treat the approved plan as the contract.
 
 ## Establish the contract
 
