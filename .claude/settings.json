@@ -1,5 +1,9 @@
 {
   "enabledPlugins": {
     "superpowers@claude-plugins-official": false
+  },
+  "skillOverrides": {
+    "mattpocock-skills:writing-for-agents": "on",
+    "mattpocock-skills:diagnosing-bugs": "on"
   }
 }
