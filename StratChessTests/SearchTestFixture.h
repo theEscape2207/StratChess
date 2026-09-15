@@ -151,10 +151,10 @@ class AIPerlexTestFixture {
 	}
 
 	// --- Frontier futility pokes (#504) ---
-	// Compiled into the test binary with the runtime flag off; each test turns it on for itself.
+	// Ships enabled; each test still sets the flag, so it names the configuration it asserts about.
 	void set_frontier_futility(bool enabled) const { ai->tuning_.frontier_futility_enabled = enabled; }
 	int frontier_futility_margin() const { return ai->tuning_.frontier_futility_margin; }
-	int64_t frontier_skips() const { return ai->td_.frontier_futility_skips; }
+	int64_t frontier_skips() const { return ai->td_.telemetry.frontier.skips; }
 	// Whether the search board is back on the fixture's position after a search_node() call.
 	bool search_board_restored() const { return ai->td_.board.get_zobrist_hash() == board_.get_zobrist_hash(); }
 
@@ -249,7 +249,7 @@ class AIPerlexTestFixture {
 	// --- Late move pruning pokes ---
 	void set_late_move_pruning(bool enabled) const { ai->tuning_.late_move_pruning_enabled = enabled; }
 	bool late_move_pruning_enabled() const { return ai->tuning_.late_move_pruning_enabled; }
-	int64_t lmp_skips() const { return ai->td_.late_move_pruning_skips; }
+	int64_t lmp_skips() const { return ai->td_.telemetry.lmp.skips; }
 	bool late_move_pruning_eligible(int depth, int alpha, int beta, bool is_pv_node, bool in_check,
 	                                bool is_exclusion_frame) const
 	{
@@ -279,13 +279,13 @@ class AIPerlexTestFixture {
 	// margin boundary instead of guessing at one.
 	int static_eval() const { return ai->evaluator_.Evaluate(ai->td_.board); }
 
-	int64_t singular_eligible() const { return ai->td_.singular_eligible; }
-	int64_t singular_verifications() const { return ai->td_.singular_verifications; }
-	int64_t singular_extensions() const { return ai->td_.singular_extensions; }
+	int64_t singular_eligible() const { return ai->td_.telemetry.singular.eligible; }
+	int64_t singular_verifications() const { return ai->td_.telemetry.singular.verifications; }
+	int64_t singular_extensions() const { return ai->td_.telemetry.singular.extensions; }
 	// Main + quiescence edges spent inside verification searches, on the same scale as
 	// mainnodes() + qnodes(), so it can be subtracted from them.
-	int64_t singular_verification_nodes() const { return ai->td_.singular_verification_nodes; }
-	void clear_singular_telemetry() const { ai->td_.clear_singular_telemetry(); }
+	int64_t singular_verification_nodes() const { return ai->td_.telemetry.singular.verification_nodes; }
+	void clear_singular_telemetry() const { ai->td_.telemetry.singular = SingularStats{}; }
 
 	// A MAIN entry carrying a real best_move. store_main_entry() plants an empty one, which
 	// can never be a singular candidate — the gate requires a move to extend.
@@ -411,6 +411,25 @@ class AIPerlexTestFixture {
 		for (const auto& htd : ai->helper_tds_)
 			total += htd->qnodes_searched;
 		return total;
+	}
+
+	// Every allocated helper's telemetry, including helpers the current Threads setting leaves idle.
+	SearchTelemetry all_helper_telemetry() const
+	{
+		SearchTelemetry total;
+		for (const auto& htd : ai->helper_tds_)
+			total.add(htd->telemetry);
+		return total;
+	}
+
+	const SearchTelemetry& helper_telemetry(size_t index) const { return ai->helper_tds_.at(index)->telemetry; }
+
+	// A helper still holding an earlier search's telemetry, numbered as Search() numbers helpers.
+	void add_stale_helper(const SearchTelemetry& telemetry) const
+	{
+		add_fake_helper();
+		ai->helper_tds_.back()->thread_id = static_cast<int>(ai->helper_tds_.size());
+		ai->helper_tds_.back()->telemetry = telemetry;
 	}
 
 	// --- Quiescence ordering helpers (#320) ---

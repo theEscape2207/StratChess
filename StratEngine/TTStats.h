@@ -1,5 +1,8 @@
 #pragma once
 #include <cstdint>
+#include <string>
+#include <string_view>
+#include <utility>
 
 // Transposition-table probe/store counters. MEASUREMENT ONLY: they change no search or
 // replacement decision, so a stats build must stay node-identical to the shipping one.
@@ -28,6 +31,8 @@ enum class TTStoreOutcome : uint8_t {
 };
 
 struct TTStats {
+	static constexpr bool compiled = kTTStatsCompiled;
+
 	// A hit is a key match, whatever the entry's phase or depth; a cutoff is a hit that returned.
 	int64_t main_probes = 0;
 	int64_t main_hits = 0;
@@ -81,5 +86,21 @@ struct TTStats {
 		stores_refreshed += other.stores_refreshed;
 		evicted_stale += other.evicted_stale;
 		evicted_current += other.evicted_current;
+	}
+
+	// Emitted after every search whenever compiled. Scripts/measure_tt_capacity.py parses `ttstats`.
+	template <class Sink> void append_info(Sink&& sink) const
+	{
+		const std::pair<std::string_view, int64_t> fields[] = {
+		    {"mainprobes", main_probes},   {"mainhits", main_hits},
+		    {"maincutoffs", main_cutoffs}, {"qsprobes", qs_probes},
+		    {"qshits", qs_hits},           {"qscutoffs", qs_cutoffs},
+		    {"stores", stores()},          {"declined", stores_declined},
+		    {"filled", stores_filled},     {"refreshed", stores_refreshed},
+		    {"evictstale", evicted_stale}, {"evictcurrent", evicted_current}};
+		std::string line = "ttstats";
+		for (const auto& [name, value] : fields)
+			line.append(" ").append(name).append(" ").append(std::to_string(value));
+		sink(std::move(line));
 	}
 };

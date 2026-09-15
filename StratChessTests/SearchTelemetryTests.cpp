@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 // ============================================================================
 // SetThreads clamp tests
@@ -60,6 +61,106 @@ TEST_CASE("SMP - Search returns post-join aggregate telemetry at Threads > 1", "
 	// result.
 	CHECK(returned.nodes_searched == fix.mainnodes() + fix.helper_nodes());
 	CHECK(returned.qnodes_searched == fix.qnodes() + fix.helper_qnodes());
+}
+
+// Summed like the node counters: exactly the main thread plus every helper this search ran.
+TEST_CASE("SMP - Search returns post-join aggregate trigger counters at Threads > 1", "[smp][telemetry]")
+{
+	AIPerlexTestFixture fix("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", 6);
+
+	const SearchResult returned = fix.get_move_at_threads(3, 6);
+	REQUIRE_FALSE(returned.best_move.is_null());
+	REQUIRE(fix.helper_count() == 2);
+
+	const SearchTelemetry helpers = fix.all_helper_telemetry();
+	REQUIRE(fix.frontier_skips() > 0);
+	REQUIRE(fix.lmp_skips() > 0);
+	CHECK(returned.telemetry.frontier.skips == fix.frontier_skips() + helpers.frontier.skips);
+	CHECK(returned.telemetry.lmp.skips == fix.lmp_skips() + helpers.lmp.skips);
+}
+
+// helper_tds_ is not shrunk when Threads drops, so idle helpers still hold an earlier search's
+// counters. Both the reset and the sum must stop at the current Threads, not at every allocated
+// helper: at Threads=2 the first helper runs and the second stays stale.
+TEST_CASE("SMP - trigger counters exclude helpers the current Threads leaves idle", "[smp][telemetry]")
+{
+	AIPerlexTestFixture fix("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", 6);
+
+	constexpr int64_t kStale = 1'000'000'000;
+	SearchTelemetry stale;
+	stale.frontier.skips = kStale;
+	stale.lmp.skips = kStale;
+	fix.add_stale_helper(stale);
+	fix.add_stale_helper(stale);
+
+	const SearchResult returned = fix.get_move_at_threads(2, 6);
+	REQUIRE_FALSE(returned.best_move.is_null());
+	REQUIRE(fix.helper_count() == 2);
+
+	CHECK(fix.helper_telemetry(0).frontier.skips < kStale);
+	CHECK(fix.helper_telemetry(1).frontier.skips == kStale);
+	CHECK(fix.helper_telemetry(1).lmp.skips == kStale);
+	CHECK(returned.telemetry.frontier.skips == fix.frontier_skips() + fix.helper_telemetry(0).frontier.skips);
+	CHECK(returned.telemetry.lmp.skips == fix.lmp_skips() + fix.helper_telemetry(0).lmp.skips);
+}
+
+// Run-Bench.ps1 parses the frontier line and measure_tt_capacity.py the ttstats line.
+TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and order", "[search][telemetry]")
+{
+	// The test binary compiles both gated features in, so every payload is reachable here.
+	STATIC_REQUIRE(kSingularExtensionsCompiled);
+	STATIC_REQUIRE(kTTStatsCompiled);
+
+	const auto payloads_of = [](const SearchTelemetry& telemetry) {
+		std::vector<std::string> payloads;
+		telemetry.append_info([&payloads](const std::string& payload) { payloads.push_back(payload); });
+		return payloads;
+	};
+
+	SearchTelemetry fired;
+	fired.singular = {.eligible = 1, .verifications = 2, .extensions = 3, .verification_nodes = 4};
+	fired.frontier.skips = 5;
+	fired.lmp.skips = 6;
+	fired.tt = {.main_probes = 1,
+	            .main_hits = 2,
+	            .main_cutoffs = 3,
+	            .qs_probes = 4,
+	            .qs_hits = 5,
+	            .qs_cutoffs = 6,
+	            .stores_declined = 7,
+	            .stores_filled = 8,
+	            .stores_refreshed = 9,
+	            .evicted_stale = 10,
+	            .evicted_current = 11};
+
+	CHECK(payloads_of(fired) ==
+	      std::vector<std::string>{"singular eligible 1 verified 2 extended 3 verifynodes 4", "frontier skips 5",
+	                               "lmp skips 6",
+	                               "ttstats mainprobes 1 mainhits 2 maincutoffs 3 qsprobes 4 qshits 5 qscutoffs 6 "
+	                               "stores 45 declined 7 filled 8 refreshed 9 evictstale 10 evictcurrent 11"});
+
+	// Singular, frontier and lmp stay silent when they did not fire; ttstats prints whenever compiled.
+	const std::string zero_tt = "ttstats mainprobes 0 mainhits 0 maincutoffs 0 qsprobes 0 qshits 0 qscutoffs 0 "
+	                            "stores 0 declined 0 filled 0 refreshed 0 evictstale 0 evictcurrent 0";
+	CHECK(payloads_of(SearchTelemetry{}) == std::vector<std::string>{zero_tt});
+
+	// Each line keys off its own counter: one feature firing alone prints only its line.
+	SearchTelemetry frontier_only;
+	frontier_only.frontier.skips = 5;
+	CHECK(payloads_of(frontier_only) == std::vector<std::string>{"frontier skips 5", zero_tt});
+
+	SearchTelemetry lmp_only;
+	lmp_only.lmp.skips = 6;
+	CHECK(payloads_of(lmp_only) == std::vector<std::string>{"lmp skips 6", zero_tt});
+
+	// Singular prints on eligibility, even with no verification run.
+	SearchTelemetry singular_eligible_only;
+	singular_eligible_only.singular.eligible = 7;
+	CHECK(payloads_of(singular_eligible_only) ==
+	      std::vector<std::string>{"singular eligible 7 verified 0 extended 0 verifynodes 0", zero_tt});
+	SearchTelemetry singular_verified_only;
+	singular_verified_only.singular.verifications = 8;
+	CHECK(payloads_of(singular_verified_only) == std::vector<std::string>{zero_tt});
 }
 
 // Replacement charges a penalty per TT generation, so a per-depth advance would make earlier depths
@@ -420,7 +521,7 @@ TEST_CASE("Search - TT stats are internally consistent", "[search][telemetry][tt
 	AIPerlexTestFixture fix;
 	const SearchResult result = fix.result_to_depth(6);
 	REQUIRE_FALSE(result.best_move.is_null());
-	const TTStats& tt = result.tt_stats;
+	const TTStats& tt = result.telemetry.tt;
 
 	CHECK(tt.main_probes > 0);
 	CHECK(tt.main_hits > 0);
@@ -435,6 +536,6 @@ TEST_CASE("Search - TT stats are internally consistent", "[search][telemetry][tt
 
 	// Per search, not per game: a depth-1 search on the same service reports only its own few probes.
 	const SearchResult shallow = fix.result_to_depth(1);
-	CHECK(shallow.tt_stats.main_probes > 0);
-	CHECK(shallow.tt_stats.main_probes < tt.main_probes);
+	CHECK(shallow.telemetry.tt.main_probes > 0);
+	CHECK(shallow.telemetry.tt.main_probes < tt.main_probes);
 }

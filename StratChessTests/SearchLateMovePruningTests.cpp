@@ -403,5 +403,5 @@ TEST_CASE("Late move pruning: the search result reports the skip count", "[searc
 	const SearchResult result = fix.result_to_depth(5);
 
 	REQUIRE(fix.lmp_skips() > 0);
-	CHECK(result.late_move_pruning_skips == fix.lmp_skips());
+	CHECK(result.telemetry.lmp.skips == fix.lmp_skips());
 }

@@ -501,38 +501,8 @@ void UciHandler::cmd_go(std::string_view line)
 			send("info string treenodes main " + std::to_string(result.nodes_searched) + " qs " +
 			     std::to_string(result.qnodes_searched));
 
-			// Singular-extension trigger rate, for sizing the heuristic's cost against how
-			// often it fires. Emitted only when it fired at all, so a build with the feature
-			// disabled -- the shipped one -- produces byte-identical output to one without it.
-			if (result.singular_eligible != 0) {
-				send("info string singular eligible " + std::to_string(result.singular_eligible) + " verified " +
-				     std::to_string(result.singular_verifications) + " extended " +
-				     std::to_string(result.singular_extensions) + " verifynodes " +
-				     std::to_string(result.singular_verification_nodes));
-			}
-
-			// Frontier futility skips. Emitted only when the guard fired, so a build without it
-			// running produces byte-identical output, as with the singular line above.
-			if (result.frontier_futility_skips != 0)
-				send("info string frontier skips " + std::to_string(result.frontier_futility_skips));
-			if (result.late_move_pruning_skips != 0)
-				send("info string lmp skips " + std::to_string(result.late_move_pruning_skips));
-
-			// TT probe/store counters, compiled out unless STRAT_TT_STATS; see TTStats.h.
-			if constexpr (kTTStatsCompiled) {
-				const TTStats& tt = result.tt_stats;
-				const std::pair<std::string_view, int64_t> fields[] = {
-				    {"mainprobes", tt.main_probes},   {"mainhits", tt.main_hits},
-				    {"maincutoffs", tt.main_cutoffs}, {"qsprobes", tt.qs_probes},
-				    {"qshits", tt.qs_hits},           {"qscutoffs", tt.qs_cutoffs},
-				    {"stores", tt.stores()},          {"declined", tt.stores_declined},
-				    {"filled", tt.stores_filled},     {"refreshed", tt.stores_refreshed},
-				    {"evictstale", tt.evicted_stale}, {"evictcurrent", tt.evicted_current}};
-				std::string line = "info string ttstats";
-				for (const auto& [name, value] : fields)
-					line.append(" ").append(name).append(" ").append(std::to_string(value));
-				send(line);
-			}
+			// Trigger counters; each feature decides its own wording and whether it prints.
+			result.telemetry.append_info([](const std::string& payload) { send("info string " + payload); });
 
 			const std::string bm = best.is_null() ? "0000" : MoveFormatter::ToUCI(best);
 			// Cleared BEFORE bestmove goes out, not after. `bestmove` is the only

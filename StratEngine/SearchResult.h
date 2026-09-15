@@ -2,7 +2,7 @@
 
 #include "Move.h"
 #include "GameState.h"
-#include "TTStats.h"
+#include "SearchTelemetry.h"
 #include <chrono>
 #include <cstdint>
 
@@ -33,23 +33,7 @@ struct SearchResult {
 	bool search_was_stable = true;
 	std::chrono::milliseconds elapsed{0};
 
-	// Singular-extension trigger counts for this search, summed over every thread. All zero
-	// unless the feature is enabled, which is what lets the reporting side stay silent in the
-	// shipped configuration. They measure how often the heuristic fires, not whether it helped:
-	// only a match can answer that.
-	int64_t singular_eligible = 0;
-	int64_t singular_verifications = 0;
-	int64_t singular_extensions = 0;
-	// Node edges spent inside verification searches, measured rather than inferred.
-	int64_t singular_verification_nodes = 0;
-
-	// Moves frontier futility skipped, summed over every thread. Zero unless the guard is on.
-	// Neither a skipped move nor the quiescence entry it avoided is in nodes_searched or
-	// qnodes_searched, so this is the only number that shows how often the guard fired.
-	int64_t frontier_futility_skips = 0;
-	// Moves late move pruning skipped, summed the same way and equally absent from the node counts.
-	int64_t late_move_pruning_skips = 0;
-
-	// TT probe/store counters, summed over every thread. All zero unless compiled in.
-	TTStats tt_stats{};
+	// Trigger counters for this search, summed over every thread; see SearchTelemetry.h. They
+	// measure how often a heuristic fires, not whether it helped: only a match can answer that.
+	SearchTelemetry telemetry{};
 };

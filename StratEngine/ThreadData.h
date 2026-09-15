@@ -2,7 +2,7 @@
 #include "Board.h"
 #include "PVTable.h"
 #include "MoveHelper.h"
-#include "TTStats.h"
+#include "SearchTelemetry.h"
 #include <cassert>
 #include <cstdint>
 #include <cstring>
@@ -66,7 +66,7 @@ struct ThreadData {
 	// int32 gives plenty of headroom before the depth^2 increments overflow.
 	int32_t history[2][64][64];
 
-	// --- Singular extensions (#95) ---
+	// --- Cold tail: singular exclusion and telemetry ---
 	// Deliberately LAST. Everything above is touched on the hot path; these are not, and
 	// inserting them higher shifted the offsets of the members that are.
 
@@ -83,27 +83,9 @@ struct ThreadData {
 	// singular extensions off never touches the array.
 	Move excluded_move[MAX_PLY];
 
-	// Singular-extension telemetry. Only touched inside the eligibility-gated block, so a
-	// build with the feature disabled never writes them. Counts are per-thread and summed
-	// by the caller; they measure trigger rate, not correctness.
-	int64_t singular_eligible = 0;      // nodes passing the eligibility gate
-	int64_t singular_verifications = 0; // verification searches actually run
-	int64_t singular_extensions = 0;    // verifications that granted the extra ply
-
-	// Node edges consumed INSIDE verification searches, measured across each verification call
-	// rather than inferred. Without it, "verification is what costs" can only be argued by
-	// dividing the total node growth by the verification count and calling the quotient a
-	// per-verification cost -- which is an identity, not evidence, and cannot separate
-	// verification from the deeper subtrees the extensions themselves produce.
-	int64_t singular_verification_nodes = 0;
-
-	// Moves frontier futility skipped. A work counter like nodes_searched, so it survives an abort.
-	int64_t frontier_futility_skips = 0;
-	// Moves late move pruning skipped; the same kind of work counter.
-	int64_t late_move_pruning_skips = 0;
-
-	// TT probe/store counters. Written only inside kTTStatsCompiled blocks; see TTStats.h.
-	TTStats tt_stats{};
+	// Trigger counters, per thread; see SearchTelemetry.h. Reset per search, and they survive an
+	// abort like the node counters.
+	SearchTelemetry telemetry{};
 
 	ThreadData()
 	{
@@ -127,14 +109,6 @@ struct ThreadData {
 			m = Move::EmptyMove();
 	}
 
-	void clear_singular_telemetry() noexcept
-	{
-		singular_eligible = 0;
-		singular_verifications = 0;
-		singular_extensions = 0;
-		singular_verification_nodes = 0;
-	}
-
 	// Resets everything that must not leak into a new game. History is
 	// deliberately aged, never cleared, WITHIN a game (see the class comment
 	// above) -- this is what draws that line at the game boundary instead.
@@ -150,15 +124,12 @@ struct ThreadData {
 		board = Board();
 		nodes_searched = 0;
 		qnodes_searched = 0;
-		frontier_futility_skips = 0;
-		late_move_pruning_skips = 0;
+		telemetry.reset();
 		nodes_since_check_ = 0;
 		pv_table = PVTable();
 		clear_killers();
 		clear_null_move_flags();
 		clear_excluded_moves();
-		clear_singular_telemetry();
-		tt_stats = TTStats{};
 		clear_history();
 	}
 

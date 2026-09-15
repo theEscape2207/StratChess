@@ -15,10 +15,13 @@
     line is a weaker check: two builds can agree on the answer and disagree on how
     they reached it, and for a refactor the path is exactly what is under test.
 
-    The 'info string treenodes' split (issue #312) is compared as well when BOTH
-    builds emit it. A build predating #312 emits none, and that is reported rather
-    than counted as a difference — comparing against such a build is the normal
-    case for an old baseline.
+    Every 'info string' line the search emits is compared too — the node split and
+    the trigger counters (frontier, lmp, singular, ttstats) — so a change that
+    rewords, drops or adds one fails the gate. The 'info string treenodes' split
+    (issue #312) is the one exception, compared only when BOTH builds emit it. A
+    build predating #312 emits none, and that is reported rather than counted as a
+    difference — comparing against such a build is the normal case for an old
+    baseline.
 
     WHAT THIS CANNOT ANSWER. Where node counts change by design — an evaluation
     term, a move-ordering change — a difference here is the intended effect, not a
@@ -190,18 +193,23 @@ function ConvertTo-ComparableLines {
         'time' is stripped because it is wall clock and legitimately differs
         between two runs of the SAME binary. 'hashfull' is sampled telemetry and
         can differ without the search tree changing; every other field on these
-        lines is a property of the search. Everything else the engine prints — the 'uci'
-        banner, option echoes, position diagnostics — is dropped: it says nothing
-        about the tree that was searched.
+        lines is a property of the search.
+
+        Every 'info string' line from the first 'info depth' on is kept verbatim: those
+        are what `go` reports (node split, trigger counters), so a change that rewords,
+        drops or adds one is a difference. Everything before — the 'uci' banner, option
+        echoes, position diagnostics — is dropped: it says nothing about the search.
     #>
     param([Parameter(Mandatory)][AllowEmptyString()][string]$Output)
 
+    $inSearch = $false
     $kept = foreach ($raw in ($Output -split "`r?`n")) {
         $line = $raw.Trim()
-        if ($line -match '^info depth \d+' -or
-            $line -match '^bestmove ' -or
-            $line -match '^info string treenodes ') {
+        if ($line -match '^info depth \d+') { $inSearch = $true }
+        if ($line -match '^info depth \d+' -or $line -match '^bestmove ') {
             ($line -replace ' hashfull \d+', '') -replace ' time \d+', ''
+        } elseif ($inSearch -and $line -match '^info string ') {
+            $line
         }
     }
     return @($kept)
@@ -310,11 +318,22 @@ if ($SelfTest) {
         'info depth 2 score cp 12 nodes 97 hashfull 14 time 5 pv e2e4 e7e5'
         'info depth 2 score cp 12 nodes 140 hashfull 18 time 9 pv e2e4 e7e5'
         'info string treenodes main 100 qs 40'
+        'info string frontier skips 17'
         'bestmove e2e4'
     ) -join "`n"
 
     $lines = ConvertTo-ComparableLines -Output $sampleOut
-    Assert-Case 'keeps only info depth / treenodes / bestmove lines' ($lines.Count -eq 5) "got $($lines.Count)"
+    Assert-Case 'keeps info depth / search info string / bestmove lines only' ($lines.Count -eq 6) "got $($lines.Count)"
+    Assert-Case 'drops info string lines before the search' (@($lines | Where-Object { $_ -match 'position: ok' }).Count -eq 0)
+
+    # A counter line reworded, dropped or added is a difference -- the output invariant a
+    # telemetry refactor must hold.
+    $r = Compare-Transcript (ConvertTo-ComparableLines $sampleOut) (ConvertTo-ComparableLines ($sampleOut -replace 'frontier skips', 'frontier skipped'))
+    Assert-Case 'reworded counter line is caught' ((-not $r.Identical) -and $r.Index -eq 5) "diff at $($r.Index)"
+    $r = Compare-Transcript (ConvertTo-ComparableLines $sampleOut) (ConvertTo-ComparableLines ($sampleOut -replace "info string frontier skips 17`n", ''))
+    Assert-Case 'dropped counter line is caught' ((-not $r.Identical) -and $r.Index -eq 5) "diff at $($r.Index)"
+    $r = Compare-Transcript (ConvertTo-ComparableLines $sampleOut) (ConvertTo-ComparableLines ($sampleOut -replace 'bestmove e2e4', "info string lmp skips 3`nbestmove e2e4"))
+    Assert-Case 'added counter line is caught' ((-not $r.Identical) -and $r.Index -eq 6) "diff at $($r.Index)"
     Assert-Case 'strips time and hashfull fields' ($lines[0] -eq 'info depth 1 score cp 24 nodes 21 pv e2e4')
 
     # Both fields vary without changing the searched tree.
@@ -324,7 +343,7 @@ if ($SelfTest) {
 
     $r = Compare-Transcript (ConvertTo-ComparableLines $sampleOut) (ConvertTo-ComparableLines $sampleOut)
     Assert-Case 'identical output compares identical' $r.Identical
-    Assert-Case 'identical run reports the compared-line count' ($r.Compared -eq 5) "got $($r.Compared)"
+    Assert-Case 'identical run reports the compared-line count' ($r.Compared -eq 6) "got $($r.Compared)"
 
     # A divergence at an EARLY iteration with the same final answer — the case a
     # last-line-only probe misses, and the reason this script exists.
@@ -338,7 +357,7 @@ if ($SelfTest) {
 
     $bestDiff = $sampleOut -replace 'bestmove e2e4', 'bestmove d2d4'
     $r = Compare-Transcript (ConvertTo-ComparableLines $sampleOut) (ConvertTo-ComparableLines $bestDiff)
-    Assert-Case 'bestmove difference is caught' ((-not $r.Identical) -and $r.Index -eq 5) "diff at $($r.Index)"
+    Assert-Case 'bestmove difference is caught' ((-not $r.Identical) -and $r.Index -eq 6) "diff at $($r.Index)"
 
     # One side stopping an iteration earlier is a difference, not a shorter pass.
     $truncated = @(ConvertTo-ComparableLines $sampleOut)[0..2]
@@ -349,7 +368,7 @@ if ($SelfTest) {
     Assert-Case 'two empty transcripts compare identical' ($r.Identical -and $r.Compared -eq 0)
 
     $noSplit = Remove-NodeSplitLines (ConvertTo-ComparableLines $sampleOut)
-    Assert-Case 'node-split lines can be dropped' ($noSplit.Count -eq 4)
+    Assert-Case 'node-split lines can be dropped' ($noSplit.Count -eq 5)
 
     $completion = Test-FixedDepthTranscript -Lines (ConvertTo-ComparableLines $sampleOut) -SearchDepth 2
     Assert-Case 'fixed-depth transcript requires the requested depth and a bestmove' ($completion.ReachedDepth -and $completion.HasBestMove)
