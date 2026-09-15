@@ -6,6 +6,17 @@ mean the same thing by them.
 This is a glossary and nothing else — no thresholds, no ordering tiers, no implementation detail.
 Design decisions live in `.claude/plans/`, architecture in `CLAUDE.md`.
 
+## Search telemetry
+
+**Node counters** — `nodes_searched` and `qnodes_searched`: the measurement contract behind UCI
+`nodes` and nps. They steer the search (iteration quality checks read them) and must stay comparable
+across builds.
+
+**Search telemetry** — counts of how often a heuristic fired (singular extensions, frontier futility
+and late move pruning skips, TT statistics), reported as `info string` lines. They change no search
+decision, may be compiled out per feature, and their wording is parsed by scripts. A new counter
+belongs here, not beside the node counters.
+
 ## Move classification
 
 Chess terms in general use, recorded here because the categories overlap in ways that have already

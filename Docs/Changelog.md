@@ -22,6 +22,44 @@ Newest first.
 
 ---
 
+## 2026-09-15 — Async search launch moved into AIPerplex (#557)
+
+`AIPerplex` owns the UCI search thread: `StartAsync`, `StopAndWait`, `Wait`, `IsSearching`.
+`UciHandler` loses `search_thread_`, `searching_`, `configured_threads_`, `init_ai()`,
+`stop_and_join()` and `friend` access, and constructs the service eagerly. `StartAsync` stops, joins,
+arms the stop handshake, copies the root and starts; join-before-arm is load-bearing. `IsSearching()`
+turns false when `Search()` returns, before the completion handler sends the final `info` lines and
+`bestmove`, which keeps #245 fixed (`searching_` used to clear after those `info` lines, just before
+`bestmove`). The UCI test fixture uses a 1 MiB table; refusal tests run a real silent search. New
+service tests pin the completion order, a `Stop()` delivered before `Search()` initialises (launch
+barrier, 5 s deadline then `std::_Exit`) and the root copy; each was falsified.
+
+Search unchanged: `Compare-SearchEquivalence.ps1` identical on 6 positions at depth 12. Bench, 5
+alternating passes against `e464913`: −0.14% (spread 2.1-2.5%). `Measure-UciLatency.ps1` medians
+unchanged (`go depth 1` 0.73→0.68 ms, `stop` 0.52→0.47 ms). Local TSan (WSL, needs `setarch -R`)
+clean on `[uci]`/`[service_api]`/`[smp]`. `sanitize-linux` fast tests 77 s vs 51-82 s on main.
+No review findings rejected. Third of three changes in the search telemetry / async launch plan.
+
+---
+
+## 2026-09-15 — Search trigger counters regrouped into SearchTelemetry (#556)
+
+`StratEngine/SearchTelemetry.h` holds one struct per trigger counter (`SingularStats`,
+`FrontierFutilityStats`, `LateMovePruningStats`, plus `TTStats`), each with `static constexpr bool
+compiled`, `add` and its own `info string` payload; `ThreadData` and `SearchResult` each hold one
+`SearchTelemetry`. Reset, cross-thread sum and formatting are one call each. The sum is bounded by the
+per-search thread count, never `helper_tds_.size()`, which is not shrunk when Threads drops.
+`Compare-SearchEquivalence.ps1` now compares every `info string` line.
+
+Search and output unchanged (equivalence identical; `pvs`/`quiescence` disassembly identical after
+address normalisation; `ThreadData` offsets unchanged). As built, bench measured −3.90% (9 passes):
+code placement, not work — every hot function moved 144 bytes earlier, and with both builds linked by
+`/ORDER` to identical hot addresses the delta was +0.60%. Layout sensitivity is tracked in #555.
+Rejected review findings: an equivalence run on singular/ttstats variant builds (the Catch2 wording
+pin covers it); plan line references (they describe `origin/main`).
+
+---
+
 ## 2026-09-15 — Futility cost probe removed
 
 The #498 probe (`STRAT_FUTILITY_PROBE`, its 27 `ThreadData`/`SearchResult` counters, the aggregation and
@@ -29,8 +67,8 @@ the `info string futilityprobe` line) is deleted. It existed to size futility pr
 written; both guards have shipped (#87) and nothing reads it. The shipping build compiled it out, so
 search is unchanged: `Compare-SearchEquivalence.ps1` identical on 6 positions at depth 12. Bench,
 5 alternating passes against `origin/main` `e00fea6`: median 2,361,264 vs 2,371,886 nps (−0.45%),
-inside run-to-run spread of 3-5%. First of three changes in
-`.claude/plans/in-progress/search-telemetry-and-async-launch.md`.
+inside run-to-run spread of 3-5%. First of three changes in the search
+telemetry / async launch plan.
 
 ---
 
