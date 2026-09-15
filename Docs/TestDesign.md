@@ -523,12 +523,16 @@ there is no stored observer or last-result channel. The `eval` cases assert that
 breakdown sums to the same evaluator result, independently of the search service.
 
 Also covers the mid-search refusal: `position` and `setoption` are rejected while a search
-runs. The fixture sets the `searching_` flag directly rather than starting a real search — the
-contract under test is the guard's, not the scheduler's, and racing a live search would make the
-cases timing-dependent. One case exists specifically to pin *why* the flag is needed: a
-`search_thread_.joinable()` guard would look equivalent and would reject the `position` of every
-normal `go` → `bestmove` → `position` cycle, because a `std::thread` stays joinable after its
-function returns.
+runs. The refusal cases start a real infinite search that prints nothing
+(`start_silent_search()`), so the refusal is captured exactly and `std::cout` is never redirected
+under a writing thread. One case pins the #245 ordering end to end: after `go depth 1` it waits for
+`bestmove` with no `stop` and no join, and the next `position` must be accepted. The service-level
+counterparts in `SearchServiceTests.cpp` pin `IsSearching()` false inside the completion handler,
+and a `Stop()` delivered before the launch thread reaches `Search()` (held by a test-only launch
+barrier); a lost stop exits the binary after 5 s instead of hanging on a join.
+
+`UciHandlerTestFixture` builds its handler with a 1 MiB table; pass
+`UciHandler::DefaultSearchConfig()` to a case that needs the real default.
 
 ### `[fen]` — FEN parsing tests
 

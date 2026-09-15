@@ -14,6 +14,9 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <future>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -264,6 +267,48 @@ TEST_CASE("AIPerplex Stop does not abort the next direct Search", "[search][serv
 	const SearchResult next = ai.Search(board, SearchLimits::fixed_depth(2));
 	CHECK_FALSE(next.best_move.is_null());
 	CHECK(next.depth_completed == 2);
+}
+
+TEST_CASE("AIPerplex StartAsync: IsSearching() is false before the completion handler runs", "[search][service_api]")
+{
+	// A client sends 'position' the instant it reads bestmove, which the handler sends (#245).
+	const Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+	AIPerplex ai(AIPerplexConfig{.hash_mb = 1, .verbose_logging = false});
+	std::promise<bool> searching_in_handler;
+	std::future<bool> observed = searching_in_handler.get_future();
+
+	ai.StartAsync(board, SearchLimits::fixed_depth(1), {},
+	              [&](const SearchResult&) { searching_in_handler.set_value(ai.IsSearching()); });
+
+	REQUIRE(observed.wait_for(std::chrono::seconds(10)) == std::future_status::ready);
+	CHECK_FALSE(observed.get());
+	ai.Wait();
+}
+
+TEST_CASE("AIPerplex StartAsync: a Stop() before the search initialises is not lost", "[search][service_api]")
+{
+	// The barrier holds the launch thread before Search(), forcing the order instead of hoping the
+	// scheduler produces it. A lost stop leaves an infinite search running, and every later join
+	// would hang, so the deadline exits the process rather than failing an assertion.
+	const Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+	AIPerplex ai(AIPerplexConfig{.hash_mb = 1, .verbose_logging = false});
+	std::promise<void> release;
+	AIPerlexTestFixture::set_launch_barrier(ai, [released = release.get_future().share()] { released.wait(); });
+	std::promise<void> done;
+	std::future<void> finished = done.get_future();
+
+	SearchLimits limits = SearchLimits::infinite_search();
+	limits.depth = 50;
+	ai.StartAsync(board, limits, {}, [&](const SearchResult&) { done.set_value(); });
+	ai.Stop();
+	release.set_value();
+
+	if (finished.wait_for(std::chrono::seconds(5)) != std::future_status::ready) {
+		std::fputs("FAILED: a Stop() before initialisation was lost; the search is still running\n", stderr);
+		std::_Exit(1);
+	}
+	ai.Wait();
+	CHECK_FALSE(ai.IsSearching());
 }
 
 TEST_CASE("AIPerplex verbosity configuration is isolated per engine", "[search][service_api]")

@@ -179,37 +179,24 @@ TEST_CASE("cmd_position: replay longer than MAX_PLY does not overflow ply histor
 
 TEST_CASE("cmd_setoption: Threads value survives cmd_ucinewgame()", "[uci][smp]")
 {
-	// Regression: cmd_ucinewgame() calls init_ai(), which used to construct
-	// a brand-new AIPerplex whose threads_ always defaults to 1 — silently
-	// discarding any prior 'setoption name Threads value N'. Standard UCI
-	// usage is: client sends setoption once at session start, then sends
-	// ucinewgame before every game — so this made Threads effectively
-	// non-functional. Fixed via UciHandler::configured_threads_, restored
-	// on every init_ai() call.
+	// Standard UCI usage is setoption once at session start, then ucinewgame before every game,
+	// so a ucinewgame that reset the thread count would make Threads non-functional.
 	UciHandlerTestFixture fix;
-
-	// No ai_ yet (run() hasn't been called) — setoption must still record
-	// the value for the next init_ai(), not just apply it to a live ai_.
 	fix.setoption("setoption name Threads value 4");
 
-	fix.ucinewgame(); // rebuilds ai_ via init_ai()
+	fix.ucinewgame();
 
 	REQUIRE(fix.ai_threads() == 4);
 }
 
 TEST_CASE("cmd_setoption: Threads takes effect immediately on the live ai_", "[uci][smp]")
 {
-	// A client may send setoption mid-session without an intervening
-	// ucinewgame — the option must take effect right away, not only be
-	// queued for the next init_ai().
+	// A client may send setoption mid-session without an intervening ucinewgame.
 	UciHandlerTestFixture fix;
-	fix.ucinewgame(); // construct the initial ai_ (threads_ defaults to 1)
+	fix.ucinewgame();
 	REQUIRE(fix.ai_threads() == 1);
 
 	fix.setoption("setoption name Threads value 4");
-	REQUIRE(fix.ai_threads() == 4); // applied to the existing ai_
-
-	fix.ucinewgame(); // rebuild ai_ — must still restore 4, not reset to 1
 	REQUIRE(fix.ai_threads() == 4);
 }
 
@@ -220,7 +207,6 @@ TEST_CASE("cmd_setoption: Threads takes effect immediately on the live ai_", "[u
 TEST_CASE("cmd_ucinewgame: does not rebuild the AIPerplex instance", "[uci]")
 {
 	UciHandlerTestFixture fix;
-	fix.ucinewgame(); // first call still constructs ai_
 	const void* first = fix.ai_identity();
 
 	fix.ucinewgame();
@@ -251,7 +237,7 @@ TEST_CASE("cmd_uci: advertises the Hash default and policy bounds", "[uci][tt]")
 
 TEST_CASE("AIPerplex default Hash reports its packed geometry", "[uci][tt]")
 {
-	UciHandlerTestFixture fix;
+	UciHandlerTestFixture fix{UciHandler::DefaultSearchConfig()};
 	fix.ucinewgame();
 
 	REQUIRE(fix.ai_hash_requested_mb() == AIPerplex::DEFAULT_HASH_MB);
@@ -319,9 +305,9 @@ TEST_CASE("cmd_setoption: Hash replacement is refused while a search is running"
 	capture_cout([&] { fix.setoption("setoption name Hash value 6"); });
 	const void* configured = fix.tt_identity();
 
-	fix.set_searching(true);
+	fix.start_silent_search();
 	const std::string output = capture_cout([&] { fix.setoption("setoption name Hash value 12"); });
-	fix.set_searching(false);
+	fix.stop();
 
 	REQUIRE(output == "info string setoption: ignored, a search is in progress -- send 'stop' first\n");
 	REQUIRE(fix.tt_identity() == configured);
@@ -336,7 +322,7 @@ TEST_CASE("UCI: a high halfmove clock still yields a searched move", "[uci]")
 	INFO("halfmove clock: " << clock);
 
 	UciHandlerTestFixture fx;
-	fx.ucinewgame(); // constructs ai_, which run_search_directly needs
+	fx.ucinewgame();
 	fx.position("position fen r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - " + std::to_string(clock) +
 	            " 4");
 	REQUIRE(fx.board().halfmove_clock() == clock);
@@ -596,9 +582,9 @@ TEST_CASE("cmd_position: refused while a search is running, board untouched", "[
 	UciHandlerTestFixture fix;
 	fix.position("position startpos");
 
-	fix.set_searching(true);
+	fix.start_silent_search();
 	const std::string output = capture_cout([&] { fix.position("position fen 4k3/8/8/8/8/8/8/4K2R w K - 0 1"); });
-	fix.set_searching(false);
+	fix.stop();
 
 	REQUIRE(output.find("info string") != std::string::npos);
 	REQUIRE(output.find("position") != std::string::npos);
@@ -612,37 +598,36 @@ TEST_CASE("cmd_position: refused while a search is running, board untouched", "[
 TEST_CASE("cmd_setoption: refused while a search is running", "[uci][smp]")
 {
 	UciHandlerTestFixture fix;
-	fix.ucinewgame(); // construct the initial ai_
+	fix.ucinewgame();
 	fix.setoption("setoption name Threads value 2");
 	REQUIRE(fix.ai_threads() == 2);
 
-	fix.set_searching(true);
+	fix.start_silent_search();
 	const std::string output = capture_cout([&] { fix.setoption("setoption name Threads value 8"); });
-	fix.set_searching(false);
+	fix.stop();
 
 	REQUIRE(output.find("info string") != std::string::npos);
 
 	// SetThreads on a live AI is the dangerous half of the pair, so the guard
-	// must run before any state changes -- including the bookkeeping copy.
+	// must run before any state changes.
 	REQUIRE(fix.ai_threads() == 2);
-	REQUIRE(fix.configured_threads() == 2);
 }
 
 TEST_CASE("Both commands work normally once the search is over", "[uci]")
 {
-	// The guard must key off an explicit flag, not search_thread_.joinable():
-	// a std::thread stays joinable after its function returns, so a
-	// joinable()-based guard would refuse the 'position' of every normal
-	// go -> bestmove -> position cycle.
+	// Neither stopped nor joined: a client sends 'position' the instant it reads bestmove, while
+	// the launch thread is still joinable, and the guard must already accept it (#245). The
+	// redirect is declared first so the fixture joins the launch thread before cout is restored.
+	CoutRedirect redirect;
 	UciHandlerTestFixture fix;
-	fix.ucinewgame(); // construct the initial ai_
+	fix.ucinewgame();
 
-	fix.set_searching(true);
-	capture_cout([&] { fix.position("position startpos moves e2e4"); });
-	fix.set_searching(false);
+	fix.dispatch("go depth 1");
+	REQUIRE(redirect.wait_for("bestmove", std::chrono::seconds(10)));
 
-	capture_cout([&] { fix.position("position startpos moves e2e4"); });
+	fix.position("position startpos moves e2e4");
 	REQUIRE(fix.board().GetCurrentColor() == BLACK);
+	REQUIRE(redirect.str().find("ignored") == std::string::npos);
 	REQUIRE(divide_total(capture_cout([&] { fix.perft("perft 1"); })) == 20);
 
 	fix.setoption("setoption name Threads value 3");
@@ -676,33 +661,6 @@ TEST_CASE("dispatch: returns false for quit and true for everything else", "[uci
 	REQUIRE(fix.dispatch("not a uci command"));
 	REQUIRE(fix.dispatch("position startpos"));
 	REQUIRE_FALSE(fix.dispatch("quit"));
-}
-
-TEST_CASE("dispatch: 'go' before any ucinewgame constructs the AI instead of crashing", "[uci]")
-{
-	// Unreachable through run(), which calls init_ai() before reading a command -- but reachable
-	// through dispatch(), and what used to happen was an access violation on the search thread
-	// that took the whole test binary down with no failing assertion to point at it.
-	//
-	// 'stop' inside the captured scope is what makes this deterministic: it joins the search
-	// thread, so everything the thread prints has been printed before the capture ends.
-	UciHandlerTestFixture fix;
-
-	// A default-constructed Board is EMPTY, and cmd_position is what fills it -- searching without
-	// this trips assert(mask != 0) in Board::GetFirstPiece, which aborts a Debug build and is
-	// invisible in Release. That is a different defect from the one under test here (#279).
-	//
-	// cmd_position does not construct ai_, so the guard is still what this exercises; the
-	// assertion below is what keeps that true if init_ai() ever moves.
-	capture_cout([&] { fix.dispatch("position startpos"); });
-	REQUIRE(fix.ai_identity() == nullptr);
-
-	const std::string out = capture_cout([&] {
-		fix.dispatch("go depth 1");
-		fix.dispatch("stop");
-	});
-
-	REQUIRE(out.find("bestmove") != std::string::npos);
 }
 
 TEST_CASE("command log: nothing is written unless it is enabled", "[uci]")

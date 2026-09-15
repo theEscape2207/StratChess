@@ -129,26 +129,21 @@ bool UciHandler::EnableCommandLog(const std::string& filename)
 // Lifecycle
 // ---------------------------------------------------------------------------
 
-// eval_ default-constructs here rather than in init_ai(): Evaluator holds no
-// per-game state (see the Lazy SMP sharing contract comment in Eval.h), so
-// there is nothing for it to reset between games regardless of where it is
-// constructed.
-UciHandler::UciHandler() = default;
-
-UciHandler::~UciHandler() { stop_and_join(); }
-
-void UciHandler::init_ai()
+AIPerplexConfig UciHandler::DefaultSearchConfig()
 {
-	if (ai_)
-		return;
-
 	AIPerplexConfig config;
 	config.default_depth = UCI_DEFAULT_DEPTH;
 	config.default_time = std::chrono::seconds(15);
-	config.threads = configured_threads_;
 	config.verbose_logging = false;
-	ai_ = std::make_unique<AIPerplex>(config);
+	return config;
 }
+
+UciHandler::UciHandler() : UciHandler(DefaultSearchConfig()) {}
+
+UciHandler::UciHandler(const AIPerplexConfig& config) : ai_(std::make_unique<AIPerplex>(config)) {}
+
+// Joined here rather than left to ai_'s destructor, so no member is destroyed while a launch runs.
+UciHandler::~UciHandler() { ai_->StopAndWait(); }
 
 // ---------------------------------------------------------------------------
 // Command implementations
@@ -192,14 +187,8 @@ void UciHandler::cmd_isready() { send("readyok"); }
 
 void UciHandler::cmd_ucinewgame()
 {
-	stop_and_join();
-	// run() constructs ai_ once before the command loop starts, so this is
-	// normally already true. It can still be null here in a test fixture
-	// that calls cmd_ucinewgame() directly without run().
-	if (!ai_)
-		init_ai();
-	if (ai_)
-		ai_->StartNewGame();
+	ai_->StopAndWait();
+	ai_->StartNewGame();
 
 	// STARTING_FEN is a compile-time constant; a false return here would mean the constant itself
 	// is malformed, so it is asserted rather than handled.
@@ -432,15 +421,6 @@ void UciHandler::cmd_position(std::string_view line)
 
 void UciHandler::cmd_go(std::string_view line)
 {
-	stop_and_join();
-
-	// Same guard, and the same reason, as cmd_ucinewgame(): run() constructs ai_ before the command
-	// loop starts, so this is normally already true. It can still be null when dispatch() is driven
-	// directly, as the unit tests do -- and there the search thread below would dereference it,
-	// which crashes the test binary with no diagnostic rather than failing an assertion.
-	if (!ai_)
-		init_ai();
-
 	GoParams p = parse_go(line);
 	const bool white = (board_.GetCurrentColor() == WHITE);
 
@@ -474,59 +454,35 @@ void UciHandler::cmd_go(std::string_view line)
 		     std::to_string(iter.elapsed.count()) + " pv " + format_uci_pv(iter.pv));
 	};
 
-	// Raised on this thread, before the search exists, so a command arriving
-	// immediately after 'go' cannot observe a stale false.
-	ai_->arm_uci_search_launch();
-	searching_.store(true, std::memory_order_release);
-	try {
-		search_thread_ = std::thread([this, limits, observer = std::move(observer)]() mutable {
-			const SearchResult result = ai_->Search(board_, limits, std::move(observer));
-			const Move best = result.best_move;
+	// IsSearching() is true once this returns, so a command arriving immediately after 'go' is
+	// refused, and false before the handler runs, so the 'position' a client sends the instant it
+	// reads bestmove is accepted (#245). The handler captures nothing: send() is static.
+	ai_->StartAsync(board_, limits, std::move(observer), [](const SearchResult& result) {
+		const Move best = result.best_move;
 
-			const int cp = result.best_score;
-			const std::string score_str = format_uci_score(cp);
+		const int cp = result.best_score;
+		const std::string score_str = format_uci_score(cp);
 
-			// 'nodes' covers both trees rather than the main tree alone, which is what the
-			// protocol means and what keeps the client's nps from charging quiescence work to
-			// the clock without counting it. See MEASUREMENT_CONTRACT for the unit.
-			send("info depth " + std::to_string(result.depth_completed) + " score " + score_str + " nodes " +
-			     std::to_string(result.nodes_searched + result.qnodes_searched) + " hashfull " +
-			     std::to_string(result.hashfull) + " time " + std::to_string(result.elapsed.count()) + " pv " +
-			     (best.is_null() ? "0000" : MoveFormatter::ToUCI(best)));
+		// 'nodes' covers both trees rather than the main tree alone, which is what the
+		// protocol means and what keeps the client's nps from charging quiescence work to
+		// the clock without counting it. See MEASUREMENT_CONTRACT for the unit.
+		send("info depth " + std::to_string(result.depth_completed) + " score " + score_str + " nodes " +
+		     std::to_string(result.nodes_searched + result.qnodes_searched) + " hashfull " +
+		     std::to_string(result.hashfull) + " time " + std::to_string(result.elapsed.count()) + " pv " +
+		     (best.is_null() ? "0000" : MoveFormatter::ToUCI(best)));
 
-			// The split, as an 'info string' so GUIs and match runners ignore it: without it a
-			// change that relocates work between the trees looks like one that simply got slower
-			// (#312). The two must sum to 'nodes' above -- Run-Bench.ps1 refuses a run if they
-			// do not. 'main' not 'pv' because pvs() searches PV and non-PV nodes alike.
-			send("info string treenodes main " + std::to_string(result.nodes_searched) + " qs " +
-			     std::to_string(result.qnodes_searched));
+		// The split, as an 'info string' so GUIs and match runners ignore it: without it a
+		// change that relocates work between the trees looks like one that simply got slower
+		// (#312). The two must sum to 'nodes' above -- Run-Bench.ps1 refuses a run if they
+		// do not. 'main' not 'pv' because pvs() searches PV and non-PV nodes alike.
+		send("info string treenodes main " + std::to_string(result.nodes_searched) + " qs " +
+		     std::to_string(result.qnodes_searched));
 
-			// Trigger counters; each feature decides its own wording and whether it prints.
-			result.telemetry.append_info([](const std::string& payload) { send("info string " + payload); });
+		// Trigger counters; each feature decides its own wording and whether it prints.
+		result.telemetry.append_info([](const std::string& payload) { send("info string " + payload); });
 
-			const std::string bm = best.is_null() ? "0000" : MoveFormatter::ToUCI(best);
-			// Cleared BEFORE bestmove goes out, not after. `bestmove` is the only
-			// thing a client waits for, so it will send the next `position` the
-			// instant it reads that line -- and refuse_while_searching() silently
-			// refuses `position` while this flag is set, leaving board_ on the
-			// previous position. `go` is not refused, so the next search then runs
-			// on a stale board and returns a move that is illegal in the real one:
-			// typically the engine's own previous move, from a square it has already
-			// vacated. That forfeited two games in the 19,980-game run 31281221815
-			// (issue #245).
-			//
-			// Ordering it this way makes the window unreachable rather than narrow:
-			// by the time the client can possibly observe bestmove, the engine is
-			// already accepting commands. Search() has returned by here, so nothing
-			// below touches board_ and clearing early races with no search work.
-			searching_.store(false, std::memory_order_release);
-			send("bestmove " + bm);
-		});
-	} catch (...) {
-		searching_.store(false, std::memory_order_release);
-		ai_->finish_search_launch();
-		throw;
-	}
+		send("bestmove " + (best.is_null() ? std::string("0000") : MoveFormatter::ToUCI(best)));
+	});
 }
 
 // UCI has no error channel, so the refusal goes out as 'info string' -- the
@@ -540,7 +496,7 @@ void UciHandler::cmd_go(std::string_view line)
 // conforming GUI never sends these mid-search anyway.
 bool UciHandler::refuse_while_searching(std::string_view command)
 {
-	if (!searching_.load(std::memory_order_acquire)) {
+	if (!ai_->IsSearching()) {
 		return false;
 	}
 	send("info string " + std::string(command) + ": ignored, a search is in progress -- send 'stop' first");
@@ -551,11 +507,11 @@ bool UciHandler::refuse_while_searching(std::string_view command)
 // current position, in the divide format every UCI perft harness parses --
 // "e2e4: 600" per move, then the total.
 //
-// stop_and_join() first: Perft::divide walks the tree with DoMove/UndoMove on
-// board_, which a running search is reading.
+// Stops and joins first: Perft::divide writes std::cout without send()'s lock, and a search's
+// completion handler is still printing until the join.
 void UciHandler::cmd_perft(std::string_view line)
 {
-	stop_and_join();
+	ai_->StopAndWait();
 
 	// Depth is the last whitespace-separated token; anything unparseable, out of
 	// range, or missing is ignored in keeping with the UCI convention for
@@ -580,7 +536,8 @@ void UciHandler::cmd_perft(std::string_view line)
 	std::cout.flush();
 }
 
-void UciHandler::cmd_stop() { stop_and_join(); }
+// Joins, so bestmove is out when this returns.
+void UciHandler::cmd_stop() { ai_->StopAndWait(); }
 
 void UciHandler::cmd_setoption(std::string_view line)
 {
@@ -631,19 +588,11 @@ void UciHandler::cmd_setoption(std::string_view line)
 	}
 
 	if (name == "Threads") {
-		configured_threads_ = n;
-		if (ai_)
-			ai_->SetThreads(n);
+		ai_->SetThreads(n);
 		return;
 	}
 
-	// run() constructs ai_ before dispatching commands, and ai_ persists across
-	// ucinewgame. Hash therefore needs no configured shadow; a null ai_ exists
-	// only in direct test-only handler calls.
-	if (!ai_)
-		return;
-
-	// searching_ can clear before bestmove, but only after Search() has joined
+	// IsSearching() can clear before bestmove, but only after Search() has joined
 	// helper threads and returned, so an accepted replacement has no concurrent
 	// transposition-table reader.
 	const auto result = ai_->SetHash(n);
@@ -655,22 +604,6 @@ void UciHandler::cmd_setoption(std::string_view line)
 
 	send("info string hash " + std::to_string(result.entry_mb) + " MiB (" + std::to_string(result.bucket_count) +
 	     " buckets)");
-}
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
-void UciHandler::stop_and_join()
-{
-	if (ai_)
-		ai_->Stop();
-	if (search_thread_.joinable())
-		search_thread_.join();
-	// Belt and braces: the search clears this itself, but a thread that ended
-	// without reaching that point must not leave the engine refusing commands
-	// for the rest of the session.
-	searching_.store(false, std::memory_order_release);
 }
 
 UciHandler::GoParams UciHandler::parse_go(std::string_view line)
@@ -746,7 +679,6 @@ bool UciHandler::dispatch(std::string_view line)
 
 void UciHandler::run()
 {
-	init_ai();
 	std::string line;
 	while (std::getline(std::cin, line)) {
 		if (!dispatch(line))

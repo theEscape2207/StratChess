@@ -26,6 +26,18 @@
 // UCIHandler.h: friend class UciHandlerTestFixture;
 class UciHandlerTestFixture {
   public:
+	// A 1 MiB table: the default 192 MiB, value-initialised for every fixture, dominates the
+	// suite's run time under sanitizers. Pass UciHandler::DefaultSearchConfig() for the real size.
+	static AIPerplexConfig small_hash_config()
+	{
+		AIPerplexConfig config = UciHandler::DefaultSearchConfig();
+		config.hash_mb = 1;
+		return config;
+	}
+
+	UciHandlerTestFixture() : handler(small_hash_config()) {}
+	explicit UciHandlerTestFixture(const AIPerplexConfig& config) : handler(config) {}
+
 	UciHandler handler;
 
 	void position(const std::string& line) { handler.cmd_position(line); }
@@ -39,31 +51,24 @@ class UciHandlerTestFixture {
 	void uci() { handler.cmd_uci(); }
 	void eval() { handler.cmd_eval(); }
 
-	// Drives the mid-search guard without starting a real search: spawning one
-	// and racing it would make these cases timing-dependent, and what is under
-	// test is the guard's contract, not the scheduler. That the flag is
-	// genuinely set for a real search is covered end-to-end by piping the
-	// issue #178 reproduction through the built exe.
-	void set_searching(bool value) { handler.searching_.store(value); }
-	unsigned configured_threads() const { return handler.configured_threads_; }
+	// A real infinite search on the handler's board that prints nothing, so a test can capture a
+	// refusal exactly and never swaps std::cout's buffer under a writing thread. stop() ends it.
+	void start_silent_search()
+	{
+		SearchLimits limits = SearchLimits::infinite_search();
+		limits.depth = 50; // what cmd_go gives 'go infinite', so the depth cap never ends it
+		handler.ai_->StartAsync(handler.board_, limits, {}, {});
+		REQUIRE(handler.ai_->IsSearching());
+	}
+	void stop() { handler.ai_->StopAndWait(); }
 
 	// Reads threads_ off UCI's concretely-owned AIPerplex instance — proves
-	// the option reaches the search service rather than just the handler's
-	// configured_threads_ bookkeeping.
-	unsigned ai_threads() const
-	{
-		REQUIRE(handler.ai_ != nullptr);
-		return handler.ai_->threads_;
-	}
+	// the option reaches the search service.
+	unsigned ai_threads() const { return handler.ai_->threads_; }
 
-	void set_late_move_pruning(bool enabled) const
-	{
-		REQUIRE(handler.ai_ != nullptr);
-		handler.ai_->tuning_.late_move_pruning_enabled = enabled;
-	}
+	void set_late_move_pruning(bool enabled) const { handler.ai_->tuning_.late_move_pruning_enabled = enabled; }
 
-	// Identity of the live ai_ instance, for proving cmd_ucinewgame() no
-	// longer rebuilds it.
+	// Identity of the live ai_ instance, for proving cmd_ucinewgame() does not rebuild it.
 	const void* ai_identity() const { return handler.ai_.get(); }
 
 	static constexpr uint64_t TT_MARKER_KEY = 0x7fff'ffff'ffff'fffeULL;
@@ -105,23 +110,15 @@ class UciHandlerTestFixture {
 		return handler.ai_->_tt.get();
 	}
 
-	// cmd_go() runs the search on handler.search_thread_ and returns immediately;
-	// dispatch("go ...") in a test therefore needs an explicit synchronous wait for
-	// the thread to finish (and flush its output) before the captured cout buffer
-	// can be inspected. Direct join rather than handler.stop_and_join(): the tests
-	// using this drive a fixed-depth search that is expected to finish on its own,
-	// so there is nothing to signal -- only completion to wait for.
-	void join_search()
-	{
-		if (handler.search_thread_.joinable())
-			handler.search_thread_.join();
-	}
+	// cmd_go() returns as soon as the search is launched, so a test waits for the launch thread
+	// (and its output) before inspecting captured cout. Wait(), not StopAndWait(): these searches
+	// are fixed-depth and expected to finish on their own.
+	void join_search() { handler.ai_->Wait(); }
 
 	// Calls the concrete root-per-call service directly, bypassing cmd_go so no
 	// observer is supplied. The returned result is the authoritative telemetry.
 	SearchResult run_search_directly(int depth)
 	{
-		REQUIRE(handler.ai_ != nullptr);
 		return handler.ai_->Search(handler.board_, SearchLimits::fixed_depth(depth));
 	}
 };
