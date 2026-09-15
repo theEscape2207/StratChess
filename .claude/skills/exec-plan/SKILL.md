@@ -54,11 +54,12 @@ Delegate only a bounded subtask whose benefit (parallelism, specialization, chea
 context) exceeds the coordination cost; follow CLAUDE.md → Subagent Dispatch. The controller keeps
 contract interpretation, deviation decisions, checkpoint acceptance, integration and final
 Validation, and treats a subagent's completion as evidence to review, not acceptance. Give
-self-contained work a fresh prompt (Codex: set `fork_turns: "none"`).
+self-contained work a fresh prompt (Codex: `fork_turns: "none"`, or a positive turn count when
+history is needed; a full-history fork cannot override the model).
 
 - **Set the model explicitly** — an omitted one inherits the session's, usually the most expensive.
-  Mid tier is the floor for reviewers and prose-specified work; cheap models take 2–3× the turns.
-  Cheapest tier only for transcribing given code or a single-file mechanical fix.
+  Pick the cheapest tier likely to finish in one pass; raise it for ambiguity, integration or a
+  prior failure.
 - Batch small same-shape edits into one dispatch.
 - Hand over files, not pasted history; record the base SHA first and diff from it, never `HEAD~1`.
 - The subagent writes detail to a report file and returns at most ~5 lines: status

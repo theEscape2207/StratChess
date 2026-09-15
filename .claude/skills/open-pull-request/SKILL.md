@@ -28,7 +28,8 @@ body so it is auditable. Address findings before opening the PR.
 
 Brief a reviewer with the diff as a file (`git diff origin/main...HEAD > <scratchpad>/review.diff`)
 and the tests already run with their results. Brief neutrally; adjudicate every finding it raises.
-Warnings in test output are findings. Fix all findings in one pass.
+Warnings in test output are findings. Address all findings in one pass, recording why any is
+rejected.
 
 ## 2. Open it
 
