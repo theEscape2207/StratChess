@@ -56,6 +56,16 @@ contract interpretation, deviation decisions, checkpoint acceptance, integration
 Validation, and treats a subagent's completion as evidence to review, not acceptance. Give
 self-contained work a fresh prompt (Codex: set `fork_turns: "none"`).
 
+- **Set the model explicitly** — an omitted one inherits the session's, usually the most expensive.
+  Mid tier is the floor for reviewers and prose-specified work; cheap models take 2–3× the turns.
+  Cheapest tier only for transcribing given code or a single-file mechanical fix.
+- Batch small same-shape edits into one dispatch.
+- Hand over files, not pasted history; record the base SHA first and diff from it, never `HEAD~1`.
+- The subagent writes detail to a report file and returns at most ~5 lines: status
+  (DONE / DONE_WITH_CONCERNS / BLOCKED / NEEDS_CONTEXT), commits, one-line test summary, concerns.
+- Subagents never dispatch subagents, reviewers included.
+- Never re-dispatch a stuck subagent unchanged: change the context, the model, or the slice.
+
 ## Handle deviations
 
 Record every departure from the contract in the ledger with what changed, why, and its evidence.
@@ -75,7 +85,7 @@ deviation in Harvest.
 1. Complete remaining Validation, then report actual evidence, including failures and checks that
    could not run.
 2. Compare the final diff and behavior with every Scope item, Decision, Invariant, and verified
-   assumption.
+   assumption. Send findings from a final review to one fix dispatch, not one per finding.
 3. Complete Harvest before PR work.
 4. Delete the plan with its `.review.md` and `.progress.md`, unless told otherwise or something still
    cites it (`Docs/Workflow.md` → Plan states).
