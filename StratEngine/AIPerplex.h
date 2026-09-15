@@ -98,7 +98,7 @@ struct SearchTuning {
 	bool see_pruning_enabled = true;
 
 	// Singular extensions. The RUNTIME half of the gate — it only means anything in a build
-	// compiled with STRAT_SINGULAR_EXTENSIONS (see kSingularExtensionsCompiled above); the
+	// compiled with STRAT_SINGULAR_EXTENSIONS (see kSingularExtensionsCompiled in SearchTelemetry.h); the
 	// shipping engine has the whole feature compiled out and never reads these.
 	//
 	// It exists so a build that HAS the feature can still toggle it without recompiling, which
