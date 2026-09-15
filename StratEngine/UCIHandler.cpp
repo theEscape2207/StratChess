@@ -334,10 +334,9 @@ void UciHandler::cmd_eval()
 
 void UciHandler::cmd_position(std::string_view line)
 {
-	// The search reads the board through its own ThreadData copy, taken on the
-	// search thread after cmd_go returns -- so mutating board_ here can land
-	// before that copy and make the engine answer for a position the client
-	// never asked about, with no diagnostic.
+	// A running search holds its own copy of the root, so this could not corrupt it. Refused anyway:
+	// a position sent mid-search is a protocol violation, and accepting it silently would pair the
+	// pending bestmove with a board the client has already replaced.
 	if (refuse_while_searching("position")) {
 		return;
 	}

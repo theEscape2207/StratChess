@@ -313,6 +313,33 @@ TEST_CASE("AIPerplex StartAsync: a Stop() before the search initialises is not l
 	CHECK_FALSE(ai.IsSearching());
 }
 
+TEST_CASE("AIPerplex StartAsync: the launch searches a copy of the root, not the caller's board",
+          "[search][service_api]")
+{
+	// The caller's board is replaced while the barrier holds the launch thread, so a launch that kept
+	// a reference would search bare kings. No start-position move starts on e1; every bare-king
+	// move does, so the two move sets are disjoint.
+	Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+	const Board original = board;
+	std::promise<void> release;
+	std::promise<SearchResult> done;
+	std::future<SearchResult> finished = done.get_future();
+	AIPerplex ai(AIPerplexConfig{.hash_mb = 1, .verbose_logging = false});
+	AIPerlexTestFixture::set_launch_barrier(ai, [released = release.get_future().share()] { released.wait(); });
+
+	ai.StartAsync(board, SearchLimits::fixed_depth(2), {}, [&](const SearchResult& result) { done.set_value(result); });
+	CHECK(board.SetupFromFEN("4k3/8/8/8/8/8/8/4K3 w - - 0 1")); // CHECK: a throw here would never release
+	release.set_value();
+
+	REQUIRE(finished.wait_for(std::chrono::seconds(10)) == std::future_status::ready);
+	const Move best = finished.get().best_move;
+	ai.Wait();
+
+	MoveList legal;
+	MoveGenerator::ComputeLegalMoves(original, legal);
+	CHECK(std::find(legal.begin(), legal.end(), best) != legal.end());
+}
+
 TEST_CASE("AIPerplex verbosity configuration is isolated per engine", "[search][service_api]")
 {
 	AIPerplex quiet(AIPerplexConfig{.verbose_logging = false});
