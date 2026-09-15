@@ -405,3 +405,6 @@ CMakeUserPresets.json
 
 # Cross-agent review hand-off files (skill cross-agent-review), never committed
 *.review.md
+
+# Plan execution ledgers (skill exec-plan), never committed
+*.progress.md
