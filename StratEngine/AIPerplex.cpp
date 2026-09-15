@@ -220,14 +220,10 @@ void AIPerplex::init_search(const Board& root)
 	td_.board = root; // thread-local copy — the search runs on this
 	td_.nodes_searched = 0;
 	td_.qnodes_searched = 0;
-	td_.frontier_futility_skips = 0;
-	td_.late_move_pruning_skips = 0;
+	// Per-call like the node counters: the reported trigger rate belongs to this search.
+	td_.telemetry.reset();
 	td_.pv_table = PVTable{}; // fresh PV for this call
 	td_.root_game_state = GameStates::STILL_PLAYING;
-	// Per-call like the node counters: the reported trigger rate belongs to this search.
-	td_.clear_singular_telemetry();
-	if constexpr (kTTStatsCompiled)
-		td_.tt_stats = TTStats{};
 }
 
 // Lazy SMP helper thread entry point (plain iterative deepening, no quality
@@ -315,11 +311,7 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 			htd.clear_null_move_flags();
 			htd.nodes_searched = 0;
 			htd.qnodes_searched = 0;
-			htd.frontier_futility_skips = 0;
-			htd.late_move_pruning_skips = 0;
-			htd.clear_singular_telemetry();
-			if constexpr (kTTStatsCompiled)
-				htd.tt_stats = TTStats{};
+			htd.telemetry.reset();
 			htd.root_game_state = GameStates::STILL_PLAYING;
 			helpers.emplace_back([this, &htd, effective_depth, this_tt = _tt.get()] {
 				helper_loop(htd, static_cast<int>(effective_depth), *this_tt);
@@ -341,39 +333,19 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 
 	int64_t total_nodes = td_.nodes_searched;
 	int64_t total_qnodes = td_.qnodes_searched;
-	// Summed the same way as the node counters, and for the same reason: a helper thread's
-	// triggers are work this search did, whether or not its result was the one reported.
-	int64_t total_sing_eligible = td_.singular_eligible;
-	int64_t total_sing_verifications = td_.singular_verifications;
-	int64_t total_sing_extensions = td_.singular_extensions;
-	int64_t total_sing_verify_nodes = td_.singular_verification_nodes;
-	int64_t total_frontier_skips = td_.frontier_futility_skips;
-	int64_t total_lmp_skips = td_.late_move_pruning_skips;
+	// Telemetry is summed the same way as the node counters, and for the same reason: a helper
+	// thread's triggers are work this search did, whether or not its result was the one reported.
+	// Bounded by the threads snapshot, never helper_tds_.size(): helper_tds_ is not shrunk when
+	// Threads drops, and a stale helper still holds its last search's counters.
+	result.telemetry.add(td_.telemetry);
 	for (size_t i = 0; i + 1 < static_cast<size_t>(threads); ++i) {
 		total_nodes += helper_tds_[i]->nodes_searched;
 		total_qnodes += helper_tds_[i]->qnodes_searched;
-		total_frontier_skips += helper_tds_[i]->frontier_futility_skips;
-		total_lmp_skips += helper_tds_[i]->late_move_pruning_skips;
-		total_sing_eligible += helper_tds_[i]->singular_eligible;
-		total_sing_verifications += helper_tds_[i]->singular_verifications;
-		total_sing_extensions += helper_tds_[i]->singular_extensions;
-		total_sing_verify_nodes += helper_tds_[i]->singular_verification_nodes;
+		result.telemetry.add(helper_tds_[i]->telemetry);
 	}
 	result.nodes_searched = total_nodes;
 	result.qnodes_searched = total_qnodes;
 	result.hashfull = _tt->hashfull(search_start_age);
-	result.singular_eligible = total_sing_eligible;
-	result.singular_verifications = total_sing_verifications;
-	result.singular_extensions = total_sing_extensions;
-	result.singular_verification_nodes = total_sing_verify_nodes;
-	result.frontier_futility_skips = total_frontier_skips;
-	result.late_move_pruning_skips = total_lmp_skips;
-
-	if constexpr (kTTStatsCompiled) {
-		result.tt_stats.add(td_.tt_stats);
-		for (size_t i = 0; i + 1 < static_cast<size_t>(threads); ++i)
-			result.tt_stats.add(helper_tds_[i]->tt_stats);
-	}
 
 	result.elapsed = control_.Elapsed();
 	const Move bestMove = result.best_move;
@@ -548,7 +520,7 @@ namespace {
 	void record_tt_store(ThreadData& td, TTStoreOutcome outcome) noexcept
 	{
 		if constexpr (kTTStatsCompiled)
-			td.tt_stats.record(outcome);
+			td.telemetry.tt.record(outcome);
 	}
 } // namespace
 
@@ -631,10 +603,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// store side is suppressed for the same reason at the bottom of this function.
 	if (!is_exclusion_frame) {
 		if constexpr (kTTStatsCompiled)
-			++td.tt_stats.main_probes;
+			++td.telemetry.tt.main_probes;
 		if (auto entry = tt.probe(key, ply)) {
 			if constexpr (kTTStatsCompiled)
-				++td.tt_stats.main_hits;
+				++td.telemetry.tt.main_hits;
 			if (entry->phase ==
 			    SearchPhase::MAIN) { // Avoid the Quiescence nodes to affect main search - just to make sure
 				hash_move = entry->best_move;
@@ -653,7 +625,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				// cutoffs below are what the old alpha >= beta test resolved to under that window.
 				if (!is_pv_node && entry->depth >= depth && tt_entry_cuts_off(*entry, alpha, beta)) {
 					if constexpr (kTTStatsCompiled)
-						++td.tt_stats.main_cutoffs;
+						++td.telemetry.tt.main_cutoffs;
 					return entry->value;
 				}
 
@@ -785,8 +757,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		if (singular_eligible) {
 			// These two are incremented before the abort guard below, the same exemption the
 			// node counters take: they measure work attempted, not results kept.
-			// singular_extensions is deliberately below it, because that one IS a result.
-			td.singular_eligible++;
+			// The extensions counter is deliberately below it, because that one IS a result.
+			td.telemetry.singular.eligible++;
 
 			const int singular_beta = tt_value_for_singular - tuning_.singular_margin_factor * depth;
 			// Clamped, not asserted. A verification that fell through to quiescence() would be
@@ -797,7 +769,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			// silently produce garbage extension decisions.
 			const int verify_depth = std::max(1, (depth - 1) / 2);
 
-			td.singular_verifications++;
+			td.telemetry.singular.verifications++;
 
 			int verify_value;
 			{
@@ -805,7 +777,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				const int64_t nodes_before = td.nodes_searched + td.qnodes_searched;
 				const ExcludedMoveGuard guard(td, ply, hash_move);
 				verify_value = pvs(td, verify_depth, singular_beta - 1, singular_beta, ply, false, tt);
-				td.singular_verification_nodes += (td.nodes_searched + td.qnodes_searched) - nodes_before;
+				td.telemetry.singular.verification_nodes += (td.nodes_searched + td.qnodes_searched) - nodes_before;
 			}
 
 			// Unwind invariant: the verification was cut off mid-tree, so its result is not
@@ -817,7 +789,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			// Strict fail-low: no alternative reached the margin, so the hash move stands alone.
 			if (verify_value < singular_beta) {
 				singular_extension = 1;
-				td.singular_extensions++;
+				td.telemetry.singular.extensions++;
 			}
 		}
 	}
@@ -874,7 +846,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			// and the skip precedes every PV, killer and history write below.
 			if (frontier_candidate && !td.check_draws(ply + 1) && !td.board.InCheck()) {
 				td.board.UndoMove(move);
-				td.frontier_futility_skips++;
+				td.telemetry.frontier.skips++;
 				frontier_skipped = true;
 				continue;
 			}
@@ -883,7 +855,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			// immediate draw is skipped. A skip runs no child search, so it needs no abort read of its own.
 			if (lmp_candidate && !td.check_draws(ply + 1) && !td.board.InCheck()) {
 				td.board.UndoMove(move);
-				td.late_move_pruning_skips++;
+				td.telemetry.lmp.skips++;
 				lmp_skipped = true;
 				continue;
 			}
@@ -1243,10 +1215,10 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// move across a phase change, so an entry can hold a quiet move this capture-only generator
 	// would never produce; reading it here would turn that inheritance from inert into a defect.
 	if constexpr (kTTStatsCompiled)
-		++td.tt_stats.qs_probes;
+		++td.telemetry.tt.qs_probes;
 	if (auto entry = tt.probe(key, ply)) {
 		if constexpr (kTTStatsCompiled)
-			++td.tt_stats.qs_hits;
+			++td.telemetry.tt.qs_hits;
 		const bool usable =
 		    (entry->phase == SearchPhase::MAIN) ? (entry->depth >= 1) : (entry->depth >= qsearch_budget);
 		// Cutoff only: an entry is used when it already resolves this node against the caller's
@@ -1256,7 +1228,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 		// returning, and storing as EXACT, a value the caller never asked about.
 		if (usable && tt_entry_cuts_off(*entry, alpha, beta)) {
 			if constexpr (kTTStatsCompiled)
-				++td.tt_stats.qs_cutoffs;
+				++td.telemetry.tt.qs_cutoffs;
 			return entry->value;
 		}
 	}
