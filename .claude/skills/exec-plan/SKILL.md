@@ -1,6 +1,6 @@
 ---
 name: exec-plan
-description: Use when asked to carry out or resume an implementation plan that has already been approved; do not use to design or approve one.
+description: Use when carrying out or resuming an approved implementation plan or design document. Writing one → write-design-doc; reviewing one → cross-agent-review.
 ---
 
 # Execute an Approved Plan
@@ -24,12 +24,13 @@ Treat the approved plan as the contract.
 
 ## Track progress
 
-Keep a ledger beside the plan: `<plan>.md` → `<plan>.progress.md` (gitignored, never committed). Its
+Keep a ledger beside the plan: `<plan>.md` → `<plan>.progress.md` (gitignored). Its
 first line names the plan file. Append one entry per passed checkpoint: checkpoint, commit SHA,
 evidence, deviations.
 
 **Resuming** — after compaction or in a new session, rebuild state from the ledger and `git log`, not
 from memory. A checkpoint with a ledger entry and its commit is done; resume at the first without.
+A checkpoint commit with no entry: verify it against the checkpoint, append the entry, continue.
 
 ## Execute through checkpoints
 
@@ -84,8 +85,9 @@ deviation in Harvest.
 1. Complete remaining Validation, then report actual evidence, including failures and checks that
    could not run.
 2. Compare the final diff and behavior with every Scope item, Decision, Invariant, and verified
-   assumption. Send findings from a final review to one fix dispatch, not one per finding.
-3. Complete Harvest before PR work.
+   assumption.
+3. Complete Harvest before PR work: done when every Harvest row has a landed destination you can grep
+   for.
 4. Delete the plan with its `.review.md` and `.progress.md`, unless told otherwise or something still
    cites it (`Docs/Workflow.md` → Plan states).
 5. Report checkpoint outcomes, Validation, deviations, remaining risks, and lifecycle disposition.

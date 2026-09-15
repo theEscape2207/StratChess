@@ -27,8 +27,8 @@ carve-out exists for logging-only diffs — its six conditions are in `Docs/Work
 body so it is auditable. Address findings before opening the PR.
 
 Brief a reviewer with the diff as a file (`git diff origin/main...HEAD > <scratchpad>/review.diff`)
-and the tests already run with their results. Never pre-judge ("don't flag X"); let it raise the
-finding and adjudicate it. Warnings in test output are findings. Fix all findings in one pass.
+and the tests already run with their results. Brief neutrally; adjudicate every finding it raises.
+Warnings in test output are findings. Fix all findings in one pass.
 
 ## 2. Open it
 

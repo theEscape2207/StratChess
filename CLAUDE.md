@@ -177,14 +177,12 @@ Write `.claude/plans/<kebab-name>.md` before implementing when **either** the ch
 that could reasonably go more than one way *and* materially affects a contract, the architecture,
 correctness, strength, performance or maintenance cost, or it rests on an assumption you cannot
 verify from the code in front of you. File count is not the trigger: a ten-file mechanical rename
-needs nothing, a one-line change to `replacementScore()` needs one. Start from
-`.claude/plans/TEMPLATE.md` and **name the file after its content**.
+needs nothing, a one-line change to `replacementScore()` needs one. Writing one: skill
+`write-design-doc`.
 
-**Write for a future maintainer arriving cold**, and keep it proportional — a document longer than
-the diff it describes means either the change is riskier than it looks or the document is padding.
-**Durable decisions and rationale get committed; execution detail does not** — ordering, file-by-file
-edit lists and checklists belong in the scratchpad. Landing the doc, the Harvest section and the
-three conditions for deleting one: `Docs/Workflow.md` → Design document lifecycle.
+**The need only ratchets up**: a decision or unverifiable assumption surfacing mid-implementation
+means stop and write the document, however simple the change looked. A spike's output is an answer;
+keeping its code is a new change.
 
 ## Subagent Dispatch
 

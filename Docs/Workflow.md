@@ -159,8 +159,8 @@ judging what is worth changing, so the author must be free to reject a finding w
 
 ## Design document lifecycle
 
-When to write one at all, and how to pitch it, is in CLAUDE.md → Design Documents. This is what
-happens to the file afterwards.
+When to write one at all is in CLAUDE.md → Design Documents; how, in skill `write-design-doc` and
+`.claude/plans/TEMPLATE.md`. This is what happens to the file afterwards.
 
 **Land the doc in one logical commit before first publishing it for review.** After that the branch
 is reviewed history: **never force-push it just for tidiness** — add a normal follow-up commit and
