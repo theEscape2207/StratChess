@@ -5,12 +5,6 @@ SearchControl::SearchControl(unsigned default_depth, std::chrono::milliseconds d
     : default_depth_(default_depth), default_time_(default_time), effective_depth_(default_depth)
 {}
 
-void SearchControl::SetDefaults(unsigned depth, std::chrono::milliseconds time) noexcept
-{
-	default_depth_ = depth;
-	default_time_ = time;
-}
-
 void SearchControl::ApplyLimits(const SearchLimits& limits)
 {
 	const auto resolved = Engine::resolve_limits(limits, default_time_, default_depth_);

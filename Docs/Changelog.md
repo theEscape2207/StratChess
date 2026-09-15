@@ -25,7 +25,8 @@ Newest first.
 ## 2026-09-15 — Legacy player stack retired; player types renumbered (#559)
 
 Deleted `AIBasic`, `ABIterative`, `AIAgent`, `PlayerAiBase`, `PlayerAiIterBase`, `PlayerBase` and
-`Utils/Subscriber.h`. Production only ever ran `AIPerplex`, but the built-in fallback player type
+`Utils/Subscriber.h`, plus what only they used: `MoveSorter::SortMoves`/`SortMovesIter`,
+`SearchControl::SetDefaults` and the non-buildable `StratEngine/Archived/` snapshots. Production only ever ran `AIPerplex`, but the built-in fallback player type
 was still 3 (`AIAgent`). `IPlayer` loses `ENewPVLineMove`, which only the legacy agents fired and
 `Game` only logged. It now has three implementations: `HumanPlayer` (renamed from `PlayerHuman`),
 `SearchPlayer` and the test `ScriptedPlayer`.

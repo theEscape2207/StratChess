@@ -8,7 +8,6 @@
 class SearchControl final {
   public:
 	SearchControl(unsigned default_depth, std::chrono::milliseconds default_time) noexcept;
-	void SetDefaults(unsigned depth, std::chrono::milliseconds time) noexcept;
 	void ApplyLimits(const SearchLimits& limits);
 	void Stop() noexcept;
 	bool StopRequested() const noexcept;
@@ -20,8 +19,8 @@ class SearchControl final {
 
   private:
 	chess::TimeManager time_manager_;
-	unsigned default_depth_;
-	std::chrono::milliseconds default_time_;
+	const unsigned default_depth_;
+	const std::chrono::milliseconds default_time_;
 	unsigned effective_depth_{0};
 	std::optional<int64_t> node_limit_;
 };

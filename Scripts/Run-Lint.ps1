@@ -227,12 +227,12 @@ function Select-LintTargets {
     return @($candidates | Where-Object { $Changed -contains $_ })
 }
 
-# Tracked, non-archived C++ sources. The single source of truth for what this repository
+# Tracked C++ sources. The single source of truth for what this repository
 # contains, shared by target selection and the include graph so the two cannot drift.
 function Get-TrackedSources {
     param([Parameter(Mandatory)][string]$RepoDirectory)
     return @(git -C $RepoDirectory ls-files '*.cpp' '*.h' 2>$null |
-             Where-Object { $_ -and $_ -notmatch '(^|/)Archived/' })
+             Where-Object { $_ })
 }
 
 function Get-TargetFiles {
@@ -261,7 +261,7 @@ function Get-TargetFiles {
     # git ls-files omits a developer's new untracked source. Include existing
     # working-tree sources so local validation cannot report green without them.
     $workingSources = @($working | Where-Object {
-        $_ -match '\.(cpp|h)$' -and $_ -notmatch '(^|/)Archived/' -and
+        $_ -match '\.(cpp|h)$' -and
             (Test-Path -LiteralPath (Join-Path $RepoRoot $_) -PathType Leaf)
     })
 
@@ -788,7 +788,7 @@ function Invoke-BlameIgnoreCheck {
     $unlisted = @()
     foreach ($c in $commits) {
         $touched = @(git -C $RepoRoot show --name-only --format= $c 2>$null |
-            Where-Object { $_ -match '\.(cpp|h)$' -and $_ -notmatch '(^|/)Archived/' })
+            Where-Object { $_ -match '\.(cpp|h)$' })
         if ($touched.Count -lt $ReformatThreshold) { continue }
         if ($listed -contains $c) {
             Write-Host ("  listed    {0}  {1} source(s)" -f $c.Substring(0, 9), $touched.Count) -ForegroundColor DarkGray

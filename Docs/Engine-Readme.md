@@ -242,8 +242,6 @@ Move extracted and played
 | File | Description | Status |
 |------|-------------|--------|
 | `AIPerplex.cpp/h` | **Production algorithm**: PVS + TT + ID + Quiescence + Lazy SMP | ✅ Active |
-| `Archived/ABIterTrans.cpp/h` | Broken TT implementation | ❌ Archived — not built |
-| `Archived/AITrans.cpp/h` | Broken TT implementation | ❌ Archived — not built |
 
 ### Game Infrastructure
 
@@ -809,13 +807,6 @@ in both Debug and Release.
 - ⚠️ No counter-move history
 - ⚠️ No singular extensions
 - ⚠️ No tablebase support
-
-### Other Algorithms
-
-| Algorithm | Status | Purpose |
-|-----------|--------|---------|
-| **ABIterTrans** | ❌ Archived | Old TT bug; unavailable from `CreatePlayer()` |
-| **AITrans** | ❌ Archived | Old TT bug; unavailable from `CreatePlayer()` |
 
 ---
 

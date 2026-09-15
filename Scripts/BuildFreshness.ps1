@@ -47,7 +47,7 @@ function Test-ArtifactFreshness {
 
 # Every file the named artifact is actually built from. Docs, Scripts and .claude are
 # deliberately outside the set so editing a design document never reports a binary as
-# stale, and StratEngine/Archived is excluded because CMake never builds it.
+# stale.
 #
 # The two artifacts get different sets, matching CMakeLists.txt: both compile
 # StratEngine, but StratChessTests.exe adds StratChessTests/ and StratChessEvolved.exe
@@ -67,8 +67,7 @@ function Get-BuildRelevantSources {
 
     $sources = @()
     if ($roots) {
-        $sources += Get-ChildItem -Path $roots -Recurse -File -Include '*.cpp', '*.h', '*.hpp' |
-            Where-Object { $_.FullName -notmatch '\\StratEngine\\Archived\\' }
+        $sources += Get-ChildItem -Path $roots -Recurse -File -Include '*.cpp', '*.h', '*.hpp'
     }
     foreach ($name in @('CMakeLists.txt', 'CMakePresets.json')) {
         $path = Join-Path $Root $name

@@ -157,13 +157,9 @@ set_target_properties(Catch2 PROPERTIES
 # to keep in sync with two .vcxproj files, and a .cpp missing from a project is
 # a silent failure -- it passes by not running. CONFIGURE_DEPENDS re-runs the
 # glob when the directory contents change.
-#
-# Archived/ holds retired algorithms kept for reference and must never be built,
-# matching both .vcxproj files.
 # ---------------------------------------------------------------------------
 file(GLOB_RECURSE ENGINE_SOURCES CONFIGURE_DEPENDS
      ${CMAKE_SOURCE_DIR}/StratEngine/*.cpp)
-list(FILTER ENGINE_SOURCES EXCLUDE REGEX "/Archived/")
 
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
      ${CMAKE_SOURCE_DIR}/StratChessTests/*.cpp)
