@@ -146,7 +146,9 @@ AIPerplex::AIPerplex(AIPerplexConfig config)
 	}
 }
 
-void AIPerplex::arm_uci_search_launch() noexcept
+AIPerplex::~AIPerplex() { StopAndWait(); }
+
+void AIPerplex::arm_search_launch() noexcept
 {
 	const std::lock_guard<std::mutex> lock(stop_mutex_);
 	stop_pending_ = false;
@@ -170,10 +172,61 @@ void AIPerplex::finish_search_launch() noexcept
 	stop_pending_ = false;
 }
 
+bool AIPerplex::IsSearching() const noexcept
+{
+	const std::lock_guard<std::mutex> lock(stop_mutex_);
+	return search_launch_active_;
+}
+
+// Join before arm: the handshake flags are not per launch, so a previous Search() still unwinding
+// would clear a fresh arm through its launch_guard, losing a stop and misreporting IsSearching().
+void AIPerplex::StartAsync(const Board& root, const SearchLimits& limits, IterationObserver observer,
+                           CompletionHandler on_done)
+{
+	StopAndWait();
+	arm_search_launch();
+	try {
+		launch_thread_ = std::jthread(
+		    [this, root_copy = root, limits, observer = std::move(observer), on_done = std::move(on_done)]() mutable {
+#ifdef STRAT_ENABLE_TEST_ACCESS
+			    if (launch_barrier_)
+				    launch_barrier_();
+#endif
+			    // No catch: an exception escaping Search() terminates, as a lost bestmove would be worse.
+			    const SearchResult result = Search(root_copy, limits, std::move(observer));
+			    // Search() has returned, so IsSearching() is already false here: a client reading the
+			    // bestmove that on_done sends can issue its next position at once.
+			    if (on_done) {
+				    in_completion_handler_ = true;
+				    on_done(result);
+				    in_completion_handler_ = false;
+			    }
+		    });
+	} catch (...) {
+		// Otherwise the engine would refuse commands for the rest of the session.
+		finish_search_launch();
+		throw;
+	}
+}
+
+void AIPerplex::StopAndWait()
+{
+	Stop();
+	Wait();
+}
+
+void AIPerplex::Wait()
+{
+	assert_not_in_completion_handler();
+	if (launch_thread_.joinable())
+		launch_thread_.join();
+}
+
 // Callers must ensure no search is using _tt. Constructing the replacement
 // before assigning it retains the old table if allocation fails.
 AIPerplex::HashConfigurationResult AIPerplex::SetHash(unsigned mb) noexcept
 {
+	assert_not_in_completion_handler();
 	const unsigned requested = std::clamp(mb, MIN_HASH_MB, MAX_HASH_MB);
 	try {
 		auto replacement = std::make_unique<TranspositionTable>(requested);
@@ -200,6 +253,7 @@ AIPerplex::HashConfigurationResult AIPerplex::SetHash(unsigned mb) noexcept
 //                    -- recreating one changes nothing.
 void AIPerplex::StartNewGame()
 {
+	assert_not_in_completion_handler();
 	(void)_tt->clear();
 	td_.reset_for_new_game();
 	// Lazily resized in Search() (`if (helper_tds_.size() < threads - 1)`),
@@ -254,7 +308,7 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	{
 		const std::lock_guard<std::mutex> lock(stop_mutex_);
 		// Direct callers have no launch phase. They begin a fresh search here;
-		// UCI has already armed the same handshake before scheduling its thread.
+		// StartAsync() has already armed the same handshake before starting its thread.
 		if (!search_launch_active_) {
 			stop_pending_ = false;
 			search_launch_active_ = true;

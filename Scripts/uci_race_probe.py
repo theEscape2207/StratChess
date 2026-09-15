@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Probe the `bestmove` / `searching_` ordering in UciHandler (issue #245).
+"""Probe the `bestmove` / `IsSearching()` ordering in UciHandler (issue #245).
 
 Drives the engine exactly as a GUI does -- sends the next `position` + `go` the
 instant `bestmove` is read, with no delay -- and counts how often `position` is
@@ -19,15 +19,18 @@ Run it from `StratChessEvolved\\` so the engine finds game_settings.json.
 The fixed ordering makes the window unreachable, so this script reports zero on a
 correct build no matter how many iterations it runs -- which also means it cannot
 FAIL on a correct build, and cannot serve as a regression test on its own. To see
-the bug, widen the window in a scratch build by re-introducing the old ordering:
+the bug, widen the window in a scratch build by re-introducing the old ordering
+(the search still counted as running while `bestmove` goes out, then 50 ms more):
 
-    send("bestmove " + bm);
+    // AIPerplex::StartAsync's launch lambda, around on_done(result):
+    arm_search_launch();
+    on_done(result);
     std::this_thread::sleep_for(std::chrono::milliseconds(50));   // widen
-    searching_.store(false, std::memory_order_release);
+    finish_search_launch();
 
 Measured with that probe in place: **39 of 40** iterations refused, 38 of them
-returning the engine's own previous move. With the shipping order (`store` before
-`send`), the same probe yields **0 of 40**.
+returning the engine's own previous move. With the shipping order (`Search()` finished
+before `on_done`), the same probe yields **0 of 40**.
 """
 import argparse
 import queue

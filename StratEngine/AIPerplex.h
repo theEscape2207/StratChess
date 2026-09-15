@@ -8,11 +8,13 @@
 #include "SearchResult.h"
 #include "SearchControl.h"
 #include <algorithm>
+#include <cassert>
 #include <chrono>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <thread>
 #include <vector>
 
 // Snapshot of one accepted iterative-deepening iteration, handed to the
@@ -42,6 +44,10 @@ struct IterationInfo {
 };
 
 using IterationObserver = std::function<void(const IterationInfo&)>;
+// Receives the finished search on the launch thread, after IsSearching() has turned false. It must
+// not call StartAsync, Wait, StopAndWait, SetHash, SetThreads or StartNewGame, or destroy the service
+// (Debug-asserted): a join from the launch thread throws, and the rest race the controlling thread.
+using CompletionHandler = std::function<void(const SearchResult&)>;
 
 inline constexpr unsigned DEFAULT_AIPERPLEX_HASH_MB = 192;
 
@@ -103,7 +109,7 @@ struct SearchTuning {
 	//
 	// It exists so a build that HAS the feature can still toggle it without recompiling, which
 	// is what the tests and the follow-up's parameter sweep need. These knobs are NOT reachable
-	// over UCI — UciHandler::init_ai() builds its AIPerplexConfig from hardcoded values and
+	// over UCI — UciHandler's constructor builds its AIPerplexConfig from hardcoded values and
 	// never consults game_settings.json — so a UCI-driven harness sees only a build's defaults.
 	bool singular_extensions_enabled = STRAT_SINGULAR_DEFAULT_ON != 0;
 	// Minimum remaining depth before a node is worth a verification search. Also what keeps
@@ -165,7 +171,11 @@ class AIPerplex final {
 	// Configure the number of Lazy SMP search threads; clamps to [1, 32].
 	// Search() spawns threads_ - 1 helper std::jthreads sharing the
 	// transposition table with the main search.
-	void SetThreads(unsigned n) noexcept { threads_ = std::clamp(n, 1u, 32u); }
+	void SetThreads(unsigned n) noexcept
+	{
+		assert_not_in_completion_handler();
+		threads_ = std::clamp(n, 1u, 32u);
+	}
 	// MAX_HASH_MB = 1536 is a deliberate policy cap, not an exact fit: 64-byte buckets make the
 	// exact fits powers of two, so 1536 rounds down to 2^24 buckets and allocates 1024 MiB.
 	// Steady-state total is about 1152 MiB on Windows or 1920 MiB on Linux including locks;
@@ -177,7 +187,19 @@ class AIPerplex final {
 	HashConfigurationResult SetHash(unsigned mb) noexcept;
 	void StartNewGame();
 	void Stop() noexcept;
-	~AIPerplex() = default;
+
+	// StartAsync, StopAndWait and Wait come from one controlling thread; Stop() and IsSearching()
+	// from any.
+	// Runs Search() on a launch thread owned by this service and returns at once. Stops and joins
+	// any previous launch first; the root is copied, so the caller's board may change afterwards.
+	// A Stop() made after this returns stops the launched search, even before it initialises.
+	void StartAsync(const Board& root, const SearchLimits& limits, IterationObserver observer,
+	                CompletionHandler on_done);
+	void StopAndWait(); // Stop(), then join the launch thread
+	void Wait();        // join the launch thread without stopping it
+	// True from StartAsync() (or a direct Search()) until Search() returns; false before on_done.
+	bool IsSearching() const noexcept;
+	~AIPerplex();
 
 	// Force use of factory by preventing constructor, copy-construction & operator=
 	AIPerplex(const AIPerplex&) = delete;
@@ -309,18 +331,22 @@ class AIPerplex final {
 	// iterative_deepening(), after `state` is updated for that iteration.
 	void emit_iteration_info(const ThreadData& td, int depth, int score, uint8_t search_start_age,
 	                         const IterationObserver& observer) const;
-	// UCI-only half of the immediate go/stop launch handshake. Kept private so
-	// ordinary Search callers have one synchronous operation and no pre-call
-	// ordering contract.
-	void arm_uci_search_launch() noexcept;
+	// The immediate go/stop handshake. StartAsync() arms it before the launch thread exists, so a
+	// Stop() arriving before Search() initialises is kept rather than reset.
+	void arm_search_launch() noexcept;
 	void finish_search_launch() noexcept;
+
+	// Set on the launch thread while on_done runs; the entry points on_done must not call assert it
+	// is clear. Per thread, not per service, so it also flags a call into any other service.
+	static inline thread_local bool in_completion_handler_ = false;
+	static void assert_not_in_completion_handler() noexcept { assert(!in_completion_handler_); }
 
 	// MEMBER VARIABLES
 	std::unique_ptr<TranspositionTable> _tt; // persistent transposition table
 	Evaluator evaluator_;                    // stateless, safe to share unsynchronized across threads
 	SearchControl control_;                  // owned limits, timer and abort latch
 	SearchTuning tuning_;
-	std::mutex stop_mutex_;
+	mutable std::mutex stop_mutex_;
 	bool search_launch_active_{false};
 	bool stop_pending_{false};
 	uint64_t game_generation_{0};
@@ -336,6 +362,15 @@ class AIPerplex final {
 	// history/killers age across moves per helper the same way td_'s does.
 	// Empty and untouched whenever threads_ == 1.
 	std::vector<std::unique_ptr<ThreadData>> helper_tds_;
+
+	// Declared after td_ and helper_tds_ so td_ stays ahead of the cold members and the launch thread
+	// is destroyed before the state it searches; the destructor still joins it explicitly.
+	std::jthread launch_thread_;
+#ifdef STRAT_ENABLE_TEST_ACCESS
+	// Called on the launch thread before Search(), so a test can deliver Stop() before the search
+	// initialises instead of relying on scheduling.
+	std::function<void()> launch_barrier_;
+#endif
 
 	// Configured number of search threads (Lazy SMP). Clamped to [1, 32] by
 	// SetThreads(). threads_ == 1 (the default) takes the exact pre-SMP code
@@ -357,5 +392,4 @@ class AIPerplex final {
 	// verify the fix end to end, not just via UciHandler's own private state.
 	friend class UciHandlerTestFixture;
 #endif
-	friend class UciHandler;
 };

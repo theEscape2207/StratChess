@@ -1,18 +1,21 @@
 // UCIHandler.h — UCI protocol command loop for StratChess engine.
 #pragma once
-#include <atomic>
 #include <memory>
 #include <string>
-#include <thread>
 #include <spdlog/spdlog.h>
 #include "GameState.h"
 #include "Board.h"
 #include "Eval.h"
 
 class AIPerplex;
+struct AIPerplexConfig;
 class UciHandler {
   public:
 	UciHandler();
+	// The search service is built here, once, and persists across ucinewgame.
+	explicit UciHandler(const AIPerplexConfig& config);
+	// What UciHandler() uses; a caller adjusts a copy rather than restating the UCI defaults.
+	static AIPerplexConfig DefaultSearchConfig();
 	~UciHandler();
 	void run(); // blocking command loop; reads from stdin
 
@@ -60,9 +63,6 @@ class UciHandler {
 	/// feeding stdin.
 	bool dispatch(std::string_view line);
 
-	void stop_and_join(); // signal + join search thread
-	void init_ai();       // construct the AIPerplex instance (once; see cmd_ucinewgame())
-
 	/// Reports and returns true when a search is in flight, for the commands
 	/// that mutate state the search is reading. Named for the decision it
 	/// carries: those commands are refused, not queued and not honoured.
@@ -70,28 +70,9 @@ class UciHandler {
 
 	static void send(std::string_view msg); // writes line to stdout + flush
 
-	// Search receives board_ as a per-call root. Declaring it before the search
-	// thread keeps that root alive until the handler destructor joins the thread.
 	Board board_;
-
-	std::unique_ptr<AIPerplex> ai_;
-	Evaluator eval_; // stateless, safe to share unsynchronized across threads
-	std::thread search_thread_;
-
-	// Whether a search is actually running. search_thread_.joinable() cannot
-	// answer this: a std::thread stays joinable after its function returns,
-	// until someone joins it, and cmd_go only joins at the start of the NEXT
-	// search. Testing joinable() would therefore refuse the 'position' of every
-	// normal go -> bestmove -> position cycle.
-	std::atomic<bool> searching_{false};
-
-	// Last thread count from a client 'setoption name Threads value N'.
-	// Only needed for the case where 'setoption' arrives before ai_ exists
-	// (init_ai() applies it once, at construction) — once ai_ exists,
-	// 'setoption' also calls ai_->SetThreads() directly, and ai_ persists
-	// across cmd_ucinewgame() (see AIPerplex::StartNewGame()), so there is
-	// no later point where the live thread count needs restoring.
-	unsigned configured_threads_{1};
+	std::unique_ptr<AIPerplex> ai_; // never null
+	Evaluator eval_;                // stateless, safe to share unsynchronized across threads
 
 	// Null unless EnableCommandLog() succeeded. Owned here and nowhere else — it is deliberately
 	// not registered with spdlog (see Logger::CreateUciCommandLogger), so the file is closed when
