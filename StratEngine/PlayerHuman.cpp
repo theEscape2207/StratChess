@@ -22,8 +22,7 @@ SearchResult PlayerHuman::GetMove(const SearchLimits&)
 		// No legal moves left, bye!
 		spdlog::default_logger()->info("Human has no legal moves left");
 		if (board.InCheck()) {
-			this->_bestScore = -GameValues::Mate;
-			return {.best_score = _bestScore,
+			return {.best_score = -GameValues::Mate,
 			        .game_state = board.GetCurrentColor() == WHITE ? GameStates::BLACK_WON : GameStates::WHITE_WON};
 		}
 		// Remis: Godt hvis vi er bagud, men skidt hvis vi er foran

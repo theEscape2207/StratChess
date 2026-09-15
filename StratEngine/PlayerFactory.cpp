@@ -1,17 +1,15 @@
 #include "StdAfx.h"
 #include "PlayerFactory.h"
 
-#include "ABIterative.h"
-#include "AIAgent.h"
-#include "AIBasic.h"
 #include "Eval.h"
-#include "PlayerBase.h"
 #include "PlayerHuman.h"
 #include "SearchPlayer.h"
 
 #include <sstream>
 #include <spdlog/spdlog.h>
 #include <stdexcept>
+
+static_assert(Config::DEFAULT_PLAYER_TYPE == static_cast<unsigned>(PlayerType::Search));
 
 namespace {
 
@@ -51,53 +49,26 @@ namespace {
 
 std::unique_ptr<IPlayer> CreatePlayer(const Config::PlayerConfig& config, Board& board, PlayerCreationOptions options)
 {
-	const auto type = static_cast<PlayerBase::ePlayerTypes>(config.type);
-	if (config.search_tuning && type != PlayerBase::ePlayerTypes::AI_PERPLEX) {
-		spdlog::warn("search_tuning in game_settings.json is ignored for player type {} "
-		             "(only supported by AI_PERPLEX)",
-		             config.type);
+	const auto type = static_cast<PlayerType>(config.type);
+	if (type != PlayerType::Human && type != PlayerType::Search) {
+		std::ostringstream message;
+		message << "unknown player type " << config.type << "; valid: 0 (Human), 1 (Search)";
+		throw std::invalid_argument(message.str());
 	}
-	if (type == PlayerBase::ePlayerTypes::HUMAN)
+
+	if (type == PlayerType::Human) {
+		if (config.search_tuning)
+			spdlog::warn("search_tuning in game_settings.json is ignored for a Human player");
 		return std::make_unique<PlayerHuman>(board);
-
-	if (type == PlayerBase::ePlayerTypes::AI_PERPLEX) {
-		AIPerplexConfig search_config;
-		search_config.default_depth = config.depth;
-		search_config.threads = config.threads.value_or(1);
-		search_config.tuning = map_tuning(config.search_tuning);
-		search_config.verbose_logging = options.verbose_search_logging;
-
-		auto player = std::make_unique<SearchPlayer>(board, search_config, search_description(config.depth));
-		player->search_.StartNewGame();
-		return player;
 	}
 
-	std::unique_ptr<PlayerAiBase> player;
-	switch (type) {
-	case PlayerBase::ePlayerTypes::ALPHABETA:
-		player = std::make_unique<AIBasic>(board, config.depth);
-		break;
-	case PlayerBase::ePlayerTypes::ABITERATING:
-		player = std::make_unique<ABIterative>(board, config.depth);
-		break;
-	case PlayerBase::ePlayerTypes::AIAGENT:
-		player = std::make_unique<AIAgent>(board, config.depth);
-		break;
-	case PlayerBase::ePlayerTypes::AITRANS:
-		throw std::invalid_argument("AITrans is archived (TT bugs). Use AI_PERPLEX instead.");
-	case PlayerBase::ePlayerTypes::ABITERATIVE_TRANS:
-		throw std::invalid_argument("ABIterTrans is archived (TT bugs). Use AI_PERPLEX instead.");
-	case PlayerBase::ePlayerTypes::HUMAN:
-	case PlayerBase::ePlayerTypes::AI_PERPLEX:
-		break;
-	default:
-		throw std::invalid_argument("Unknown Player type");
-	}
+	AIPerplexConfig search_config;
+	search_config.default_depth = config.depth;
+	search_config.threads = config.threads.value_or(1);
+	search_config.tuning = map_tuning(config.search_tuning);
+	search_config.verbose_logging = options.verbose_search_logging;
 
-	if (!player)
-		throw std::invalid_argument("Unknown Player type");
-	if (config.threads)
-		player->SetThreads(*config.threads);
-	player->StartNewGame();
+	auto player = std::make_unique<SearchPlayer>(board, search_config, search_description(config.depth));
+	player->search_.StartNewGame();
 	return player;
 }

@@ -9,7 +9,6 @@
 #include "Board.h"
 #include "GameState.h"
 #include "MoveFactory.h"
-#include "PlayerBase.h"
 #include "SearchLimits.h"
 #include "TacticalTestHelpers.h"
 #include "defines.h"

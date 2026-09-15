@@ -14,16 +14,14 @@
 // resignation. It is never DRAW_50_MOVES: the fifty-move rule is a fact about the position
 // after the move is committed, which only the game controller can see.
 //
-// Legacy agents report their unsplit combined work in nodes_searched and leave
-// qnodes_searched at its default; the human player leaves both counters at their defaults.
+// The human player leaves both node counters at their defaults.
 struct SearchResult {
 	Move best_move = Move::EmptyMove();
 	int best_score = 0;
 	int depth_completed = 0;
 	GameStates game_state = GameStates::STILL_PLAYING;
 	// AIPerplex keeps the two trees apart here and callers sum them only where a
-	// total is reported. Legacy agents place their already-combined counter in
-	// nodes_searched and leave qnodes_searched at zero.
+	// total is reported.
 	// Construct with DESIGNATED initializers: a member inserted mid-struct shifts every
 	// positional initializer after it, and bool -> int64_t promotes rather than narrows,
 	// so /W4 /WX does not catch the shift.

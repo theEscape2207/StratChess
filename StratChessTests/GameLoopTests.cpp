@@ -329,7 +329,7 @@ TEST_CASE("Game: a mate score in the mover's result is reported as a mate, not a
 
 TEST_CASE("Game: perf stats retain six current-and-cumulative result fields", "[game_loop]")
 {
-	// Catches move stats that remain in PlayerAiBase, a Game loop that never accumulates returned
+	// Catches move stats kept player-side, a Game loop that never accumulates returned
 	// telemetry, and any regression to a per-player rather than combined-player total.
 	const SearchResult first{.best_move = MoveFactory::MakeMove(b2, b3, MoveType::QUIET),
 	                         .nodes_searched = 13,

@@ -72,8 +72,8 @@ TEST_CASE("Config: a well-formed document parses", "[config]")
 	// throwing for some unrelated reason.
 	TempConfig cfg(R"({
         "game": { "players": {
-            "white": { "type": 6, "search_limits": { "depth": 7 } },
-            "black": { "type": 6, "search_limits": { "depth": 3 } }
+            "white": { "type": 1, "search_limits": { "depth": 7 } },
+            "black": { "type": 1, "search_limits": { "depth": 3 } }
         } }
     })");
 
@@ -89,7 +89,7 @@ TEST_CASE("Config: every search_tuning key reaches SearchTuningConfig", "[config
 {
 	TempConfig cfg(R"({
         "game": { "players": {
-            "white": { "type": 6, "search_tuning": {
+            "white": { "type": 1, "search_tuning": {
                 "min_nodes_threshold": 17,
                 "min_completion_ratio": 0.21,
                 "min_pv_ratio": 0.45,
@@ -106,7 +106,7 @@ TEST_CASE("Config: every search_tuning key reaches SearchTuningConfig", "[config
                 "null_move_min_depth": 7,
                 "see_pruning_enabled": false
             } },
-            "black": { "type": 6 }
+            "black": { "type": 1 }
         } }
     })");
 
@@ -167,7 +167,7 @@ TEST_CASE("Config: a missing key is an error, not undefined behaviour", "[config
 	}
 	SECTION("no \"black\"")
 	{
-		TempConfig cfg(R"({ "game": { "players": { "white": { "type": 6 } } } })");
+		TempConfig cfg(R"({ "game": { "players": { "white": { "type": 1 } } } })");
 		Config reader = MakeReader();
 		REQUIRE_THROWS_AS(reader.ReadConfigFile(cfg.path(), board), nlohmann::json::out_of_range);
 	}
@@ -179,8 +179,8 @@ TEST_CASE("Config: a key of the wrong type is reported", "[config]")
 	// wrong type, which is the case issue #178 predicted and this pins.
 	TempConfig cfg(R"({
         "game": { "players": {
-            "white": { "type": 6, "search_limits": { "depth": "five" } },
-            "black": { "type": 6 }
+            "white": { "type": 1, "search_limits": { "depth": "five" } },
+            "black": { "type": 1 }
         } }
     })");
 
@@ -196,8 +196,8 @@ TEST_CASE("Config: comments are accepted", "[config]")
 	TempConfig cfg(R"({
         /* block comment */
         "game": { "players": {
-            "white": { "type": 6, "search_limits": { "depth": 5 } },
-            "black": { "type": 6 }
+            "white": { "type": 1, "search_limits": { "depth": 5 } },
+            "black": { "type": 1 }
         } }
     })");
 
@@ -229,8 +229,8 @@ TEST_CASE("Config: a FEN setup is applied to the board", "[config]")
             "setup": "FEN",
             "FEN": "r3k2r/8/8/4pP2/8/8/8/R3K2R w KQkq e6 7 12",
             "players": {
-                "white": { "type": 6 },
-                "black": { "type": 6 }
+                "white": { "type": 1 },
+                "black": { "type": 1 }
             }
         }
     })");
@@ -254,8 +254,8 @@ TEST_CASE("Config: a malformed FEN falls back to the default board", "[config]")
             "setup": "FEN",
             "FEN": "not-a-fen",
             "players": {
-                "white": { "type": 6 },
-                "black": { "type": 6 }
+                "white": { "type": 1 },
+                "black": { "type": 1 }
             }
         }
     })");

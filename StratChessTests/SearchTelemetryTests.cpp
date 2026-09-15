@@ -5,7 +5,6 @@
 
 #include "SearchTestFixture.h"
 #include <catch2/catch_test_macros.hpp>
-#include "AIAgent.h"
 #include "MoveFormatter.h"
 #include "defines.h"
 #include <chrono>
@@ -196,19 +195,6 @@ TEST_CASE("AIPerplex - a completed result reports non-negative elapsed time", "[
 	CHECK(result.elapsed >= std::chrono::milliseconds::zero());
 }
 
-TEST_CASE("AIAgent - a completed result reports its unsplit legacy node count", "[search]")
-{
-	// Catches MakeResult() leaving the legacy count at the SearchResult default, or incorrectly
-	// claiming that legacy nodes belong to the separately reported quiescence tree.
-	LegacyAiTestFixture fix("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-
-	const SearchResult result = fix.get_move(3);
-
-	REQUIRE(fix.search_count() > 0);
-	CHECK(result.nodes_searched == fix.search_count());
-	CHECK(result.qnodes_searched == 0);
-}
-
 // ============================================================================
 // Terminal results at the root
 // ============================================================================
@@ -309,41 +295,6 @@ TEST_CASE("AIPerplex - a search aborted inside its first root frame drops the pr
 	// The behaviour that depends on it: handle_empty_move_emergency() refuses to supply a move
 	// when the carrier names a finished game, so a stale WHITE_WON here costs the engine its move.
 	CHECK_FALSE(aborted.best_move.is_null());
-}
-
-TEST_CASE("AIAgent - ApplyLimits resets the root verdict before any node runs", "[search]")
-{
-	LegacyAiTestFixture fix("4k3/8/8/8/8/8/1R6/4K3 w - - 5 60");
-
-	fix.set_root_game_state(GameStates::BLACK_WON);
-	fix.call_apply_limits();
-
-	CHECK(fix.root_game_state() == GameStates::STILL_PLAYING);
-}
-
-TEST_CASE("AIAgent - StopSearch latches the composed control for the legacy search guard", "[search_control]")
-{
-	LegacyAiTestFixture fix("4k3/8/8/8/8/8/1R6/4K3 w - - 5 60");
-
-	fix.call_apply_limits();
-	fix.stop_search();
-
-	CHECK(fix.search_is_aborted());
-}
-
-TEST_CASE("AIAgent - a search aborted before its first root frame drops the previous verdict", "[search]")
-{
-	// One real search first, so m_Line is populated: GetBestMove() asserts on an empty line unless
-	// the root was adjudicated, and the aborted call below never reaches Search().
-	LegacyAiTestFixture fix("4k3/8/8/8/8/8/1R6/4K3 w - - 5 60");
-	REQUIRE(fix.get_move(4).game_state == GameStates::STILL_PLAYING);
-
-	// What a terminal call would have left behind.
-	fix.set_root_game_state(GameStates::WHITE_WON);
-
-	// Only game_state is checked: the leftover line makes the returned move two ply stale, which is
-	// a legacy quirk of seeding each search from the last one, not what is under test.
-	CHECK(fix.get_move_with_spent_clock().game_state == GameStates::STILL_PLAYING);
 }
 
 // ============================================================================

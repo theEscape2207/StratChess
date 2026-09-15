@@ -2,8 +2,6 @@
 #include "TacticalTestRunner.h"
 #include "../Board.h"
 #include "../AIPerplex.h"
-#include "../PlayerAI.h"
-#include "../PlayerBase.h"
 #include "../Eval.h"
 #include "../MoveFormatter.h"
 #include <chrono>

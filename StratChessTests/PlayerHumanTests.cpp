@@ -8,7 +8,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include "Board.h"
 #include "GameState.h"
-#include "PlayerBase.h"
 #include "PlayerFactory.h"
 #include "SearchLimits.h"
 #include "SearchResult.h"
@@ -21,7 +20,7 @@ namespace {
 	std::unique_ptr<IPlayer> human(Board& board)
 	{
 		Config::PlayerConfig config;
-		config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::HUMAN);
+		config.type = static_cast<unsigned>(PlayerType::Human);
 		return CreatePlayer(config, board);
 	}
 

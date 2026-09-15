@@ -111,7 +111,7 @@ void Config::ReadConfigFile(const std::string& filename, Board& board)
 		// built-in defaults is the failure mode that looks like the settings
 		// file was read and ignored.
 		std::cerr << "Cannot open " << filename << " -- continuing with built-in defaults (both players type "
-		          << DEFAULT_EVAL << ", depth " << DEFAULT_DEPTH << ", standard opening position)\n";
+		          << DEFAULT_PLAYER_TYPE << " (Search), depth " << DEFAULT_DEPTH << ", standard opening position)\n";
 		return;
 	}
 
@@ -151,10 +151,10 @@ namespace {
 		return limits;
 	}
 
-	Config::PlayerConfig ParsePlayerConfig(const json& p, int defaultDepth, int defaultEval)
+	Config::PlayerConfig ParsePlayerConfig(const json& p, int defaultDepth, unsigned defaultType)
 	{
 		Config::PlayerConfig cfg;
-		cfg.type = p.value("type", defaultEval);
+		cfg.type = p.value("type", defaultType);
 
 		if (p.contains("search_limits")) {
 			cfg.search_limits = ParseSearchLimitsBlock(p["search_limits"]);
@@ -183,7 +183,7 @@ namespace {
 		}
 		cfg.depth = static_cast<unsigned>(cfg.search_limits.depth.value_or(defaultDepth));
 
-		// Parse SearchTuning if present (only meaningful for AI_PERPLEX)
+		// Parse SearchTuning if present (only meaningful for PlayerType::Search)
 		if (p.contains("search_tuning")) {
 			const auto& st = p["search_tuning"];
 			Config::SearchTuningConfig t;
@@ -205,8 +205,7 @@ namespace {
 			cfg.search_tuning = t;
 		}
 
-		// Parse Lazy SMP thread count if present (optional; default is
-		// PlayerAiBase's own default of 1 when the key is absent).
+		// Parse Lazy SMP thread count if present (optional; the factory defaults to 1).
 		if (p.contains("threads")) {
 			cfg.threads = p["threads"].get<unsigned>();
 		}
@@ -220,8 +219,8 @@ void Config::SetupPlayerConfig(const json& config)
 	// with an absent key is UB, and every key on this path is absent in a
 	// settings file that is merely wrong rather than malformed.
 	const json& players = config.at("game").at("players");
-	white_ = ParsePlayerConfig(players.at("white"), DEFAULT_DEPTH, DEFAULT_EVAL);
-	black_ = ParsePlayerConfig(players.at("black"), DEFAULT_DEPTH, DEFAULT_EVAL);
+	white_ = ParsePlayerConfig(players.at("white"), DEFAULT_DEPTH, DEFAULT_PLAYER_TYPE);
+	black_ = ParsePlayerConfig(players.at("black"), DEFAULT_DEPTH, DEFAULT_PLAYER_TYPE);
 }
 
 Config::PlayerConfig Config::GetPlayerFromConfig(bool bWhite) const noexcept
