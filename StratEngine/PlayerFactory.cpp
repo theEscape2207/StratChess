@@ -2,7 +2,7 @@
 #include "PlayerFactory.h"
 
 #include "Eval.h"
-#include "PlayerHuman.h"
+#include "HumanPlayer.h"
 #include "SearchPlayer.h"
 
 #include <sstream>
@@ -59,7 +59,7 @@ std::unique_ptr<IPlayer> CreatePlayer(const Config::PlayerConfig& config, Board&
 	if (type == PlayerType::Human) {
 		if (config.search_tuning)
 			spdlog::warn("search_tuning in game_settings.json is ignored for a Human player");
-		return std::make_unique<PlayerHuman>(board);
+		return std::make_unique<HumanPlayer>(board);
 	}
 
 	AIPerplexConfig search_config;

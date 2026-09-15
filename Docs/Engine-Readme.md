@@ -118,7 +118,7 @@ AIPerplex ai(AIPerplexConfig{.default_depth = 20, .threads = 4, .tuning = tuning
                            ▼
 ┌───────────────────────────────────────────────────────────┐
 │ Game: IPlayer                                               │
-│ ├─ PlayerHuman                                              │
+│ ├─ HumanPlayer                                              │
 │ ├─ PlayerAiBase → legacy AIAgent / ABIterative / AIBasic    │
 │ └─ SearchPlayer { Board&, AIPerplex value }                 │
 └────────────────────────────┬──────────────────────────────┘
@@ -286,7 +286,7 @@ Move extracted and played
 | `PlayerFactory.cpp/h` | Config-aware player construction before type erasure |
 | `PlayerAI.cpp/h` | AI player base class (`PlayerAiBase`) |
 | `PlayerAiIterBase.h` | Iterative AI base (time management) |
-| `PlayerHuman.cpp/h` | Human player input handling |
+| `HumanPlayer.cpp/h` | Human player input handling |
 
 ### Utilities
 
@@ -623,7 +623,7 @@ performance rows; no player keeps cross-player accounting.
 
 `game_state` is never `DRAW_50_MOVES`: the fifty-move rule is a fact about the position after the
 move is committed, which only `Game::Run()` can see. Legacy agents place their unsplit combined
-work in `nodes_searched` and leave `qnodes_searched` at zero; `PlayerHuman` leaves both counters at
+work in `nodes_searched` and leave `qnodes_searched` at zero; `HumanPlayer` leaves both counters at
 their defaults.
 
 ---

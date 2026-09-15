@@ -93,7 +93,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | Full tactical suite (WAC/mate-in-N) | — | `StratChessEvolved.exe tactical test` |
 | Board instance independence (post-de-singleton) | `[board_instance]` | `BoardInstanceTests.cpp` |
 | Game loop outcome handling (`Game::Run`) | `[game]` | `GameLoopTests.cpp` |
-| Human player's non-interactive terminal paths | `[player_human]` | `PlayerHumanTests.cpp` |
+| Human player's non-interactive terminal paths | `[human_player]` | `HumanPlayerTests.cpp` |
 | External integer parsing (argv, JSON keys) | `[argparse]` | `ArgParseTests.cpp` |
 | Settings-file parsing and its failure modes | `[config]` | `ConfigTests.cpp` |
 
@@ -828,7 +828,7 @@ including the fifty-move transition and a resignation, deterministic. Test-creat
 
 A player reports a terminal result with a null `best_move` and `SearchResult::game_state`. Test both
 sides: `GameLoopTests.cpp` verifies `Game::Run()` consumes it (including the score channel), while
-`SearchTelemetryTests.cpp` and `PlayerHumanTests.cpp` verify each producer reports it correctly.
+`SearchTelemetryTests.cpp` and `HumanPlayerTests.cpp` verify each producer reports it correctly.
 
 The verdict is per-call, and only an **aborted** search can carry the previous call's verdict out: any
 search that completes a root frame overwrites it anyway. So the `[search]` cases that matter abort
