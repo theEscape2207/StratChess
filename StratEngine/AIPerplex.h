@@ -45,8 +45,6 @@ using IterationObserver = std::function<void(const IterationInfo&)>;
 
 inline constexpr unsigned DEFAULT_AIPERPLEX_HASH_MB = 192;
 
-// kSingularExtensionsCompiled lives in SearchTelemetry.h, beside the counters it gates.
-//
 // Whether a build that HAS singular extensions also starts with it on. Deliberately separate from
 // compiling it in, because the two targets want opposite answers:
 //   - the experimental engine defines both, since UCI cannot set the runtime flag and a build

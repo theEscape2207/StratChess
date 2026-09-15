@@ -151,7 +151,7 @@ class AIPerlexTestFixture {
 	}
 
 	// --- Frontier futility pokes (#504) ---
-	// Compiled into the test binary with the runtime flag off; each test turns it on for itself.
+	// Ships enabled; each test still sets the flag, so it names the configuration it asserts about.
 	void set_frontier_futility(bool enabled) const { ai->tuning_.frontier_futility_enabled = enabled; }
 	int frontier_futility_margin() const { return ai->tuning_.frontier_futility_margin; }
 	int64_t frontier_skips() const { return ai->td_.telemetry.frontier.skips; }
@@ -422,10 +422,13 @@ class AIPerlexTestFixture {
 		return total;
 	}
 
-	// A helper the current Threads setting leaves idle, still holding an earlier search's telemetry.
+	const SearchTelemetry& helper_telemetry(size_t index) const { return ai->helper_tds_.at(index)->telemetry; }
+
+	// A helper still holding an earlier search's telemetry, numbered as Search() numbers helpers.
 	void add_stale_helper(const SearchTelemetry& telemetry) const
 	{
 		add_fake_helper();
+		ai->helper_tds_.back()->thread_id = static_cast<int>(ai->helper_tds_.size());
 		ai->helper_tds_.back()->telemetry = telemetry;
 	}
 

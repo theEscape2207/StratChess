@@ -80,30 +80,36 @@ TEST_CASE("SMP - Search returns post-join aggregate trigger counters at Threads 
 }
 
 // helper_tds_ is not shrunk when Threads drops, so idle helpers still hold an earlier search's
-// counters. The sum must stop at the current Threads, not at every allocated helper.
+// counters. Both the reset and the sum must stop at the current Threads, not at every allocated
+// helper: at Threads=2 the first helper runs and the second stays stale.
 TEST_CASE("SMP - trigger counters exclude helpers the current Threads leaves idle", "[smp][telemetry]")
 {
 	AIPerlexTestFixture fix("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", 6);
 
+	constexpr int64_t kStale = 1'000'000'000;
 	SearchTelemetry stale;
-	stale.frontier.skips = 1'000'000'000;
-	stale.lmp.skips = 1'000'000'000;
+	stale.frontier.skips = kStale;
+	stale.lmp.skips = kStale;
 	fix.add_stale_helper(stale);
 	fix.add_stale_helper(stale);
 
-	const SearchResult single = fix.get_move_at_threads(1, 6);
-	REQUIRE_FALSE(single.best_move.is_null());
+	const SearchResult returned = fix.get_move_at_threads(2, 6);
+	REQUIRE_FALSE(returned.best_move.is_null());
+	REQUIRE(fix.helper_count() == 2);
 
-	CHECK(single.telemetry.frontier.skips == fix.frontier_skips());
-	CHECK(single.telemetry.lmp.skips == fix.lmp_skips());
+	CHECK(fix.helper_telemetry(0).frontier.skips < kStale);
+	CHECK(fix.helper_telemetry(1).frontier.skips == kStale);
+	CHECK(fix.helper_telemetry(1).lmp.skips == kStale);
+	CHECK(returned.telemetry.frontier.skips == fix.frontier_skips() + fix.helper_telemetry(0).frontier.skips);
+	CHECK(returned.telemetry.lmp.skips == fix.lmp_skips() + fix.helper_telemetry(0).lmp.skips);
 }
 
-// The wording is parsed by Run-Bench.ps1, measure_tt_capacity.py and the strength lab.
+// Run-Bench.ps1 parses the frontier line and measure_tt_capacity.py the ttstats line.
 TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and order", "[search][telemetry]")
 {
 	// The test binary compiles both gated features in, so every payload is reachable here.
-	REQUIRE(kSingularExtensionsCompiled);
-	REQUIRE(kTTStatsCompiled);
+	STATIC_REQUIRE(kSingularExtensionsCompiled);
+	STATIC_REQUIRE(kTTStatsCompiled);
 
 	const auto payloads_of = [](const SearchTelemetry& telemetry) {
 		std::vector<std::string> payloads;
@@ -134,9 +140,27 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 	                               "stores 45 declined 7 filled 8 refreshed 9 evictstale 10 evictcurrent 11"});
 
 	// Singular, frontier and lmp stay silent when they did not fire; ttstats prints whenever compiled.
-	CHECK(payloads_of(SearchTelemetry{}) ==
-	      std::vector<std::string>{"ttstats mainprobes 0 mainhits 0 maincutoffs 0 qsprobes 0 qshits 0 qscutoffs 0 "
-	                               "stores 0 declined 0 filled 0 refreshed 0 evictstale 0 evictcurrent 0"});
+	const std::string zero_tt = "ttstats mainprobes 0 mainhits 0 maincutoffs 0 qsprobes 0 qshits 0 qscutoffs 0 "
+	                            "stores 0 declined 0 filled 0 refreshed 0 evictstale 0 evictcurrent 0";
+	CHECK(payloads_of(SearchTelemetry{}) == std::vector<std::string>{zero_tt});
+
+	// Each line keys off its own counter: one feature firing alone prints only its line.
+	SearchTelemetry frontier_only;
+	frontier_only.frontier.skips = 5;
+	CHECK(payloads_of(frontier_only) == std::vector<std::string>{"frontier skips 5", zero_tt});
+
+	SearchTelemetry lmp_only;
+	lmp_only.lmp.skips = 6;
+	CHECK(payloads_of(lmp_only) == std::vector<std::string>{"lmp skips 6", zero_tt});
+
+	// Singular prints on eligibility, even with no verification run.
+	SearchTelemetry singular_eligible_only;
+	singular_eligible_only.singular.eligible = 7;
+	CHECK(payloads_of(singular_eligible_only) ==
+	      std::vector<std::string>{"singular eligible 7 verified 0 extended 0 verifynodes 0", zero_tt});
+	SearchTelemetry singular_verified_only;
+	singular_verified_only.singular.verifications = 8;
+	CHECK(payloads_of(singular_verified_only) == std::vector<std::string>{zero_tt});
 }
 
 // Replacement charges a penalty per TT generation, so a per-depth advance would make earlier depths

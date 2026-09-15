@@ -3,9 +3,9 @@
 #include <cstdint>
 #include <string>
 
-// Singular extensions (#95) are compiled out unless a build asks for them. The end state is
+// Singular extensions are compiled out unless a build asks for them. The end state is
 // unconditional-on or deleted, so the shipping engine must not carry the cost of carrying them
-// disabled: gating at runtime alone measured -1.33% nps for code that never executed.
+// disabled: a runtime gate alone costs measurable nps for code that never executes.
 //
 // Set by CMake: -DSTRAT_SINGULAR_EXTENSIONS=ON for an experimental engine build. The test target
 // always defines it, because the tests are what exercise the feature.
@@ -26,7 +26,7 @@ inline constexpr bool kSingularExtensionsCompiled = STRAT_SINGULAR_EXTENSIONS !=
 // compiled-out feature in one place. The write sites in pvs()/quiescence() keep their own gates.
 //
 // Each struct formats its own `info string` payload (the text after the prefix), emitted only when
-// it has something to say. The wording is parsed by scripts and the strength lab: never reword one.
+// it has something to say. Scripts and tests match the wording exactly: never reword one.
 
 struct SingularStats {
 	static constexpr bool compiled = kSingularExtensionsCompiled;
@@ -76,7 +76,7 @@ struct FrontierFutilityStats {
 };
 
 // Moves late move pruning skipped; the same kind of work counter, equally absent from the node
-// counts. The strength lab parses `lmp skips`.
+// counts.
 struct LateMovePruningStats {
 	static constexpr bool compiled = true;
 
