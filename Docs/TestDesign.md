@@ -359,7 +359,7 @@ Each item below is a standalone task. Do it when the corresponding feature is be
 **File**: `StratChessTests/SearchIterationTests.cpp`
 **Activation**: `STRAT_ENABLE_TEST_ACCESS`, applied to the `StratChessTests` target only by `CMakeLists.txt`.
 
-Shared infrastructure (`AIPerlexTestFixture`, `LegacyAiTestFixture`, `SearchPlayerTestFixture`) lives
+Shared infrastructure (`AIPerlexTestFixture`, `SearchPlayerTestFixture`) lives
 in `StratChessTests/SearchTestFixture.h`, included by every `[search]` file. Each fixture name must
 match a `friend` declaration in the engine header it reaches into, so none of them can be renamed.
 
@@ -549,8 +549,7 @@ Cases that exercise `FenBatch::ClassifyLine`, `FENParser::ParseFEN`/`ValidatePos
 limits, observer)` call uses its supplied Board, observers do not persist into later calls, and an
 earlier returned `SearchResult` remains usable after subsequent searches. New-game cases prove that
 `StartNewGame()` clears the TT and per-game history/killers while retaining configured tuning.
-Legacy aspiration coverage remains on the nonvirtual `PlayerBase::GetBestScore()` helper, so no
-generic player score capability is needed. Time/node abort checks stay deterministic where possible;
+Factory cases pin the two `PlayerType` values and the rejection of any other. Time/node abort checks stay deterministic where possible;
 clock-sensitive behavior is validated separately with timed UCI probes and fixed-depth equivalence.
 
 ### `[argparse]` — External integer parsing
@@ -833,6 +832,6 @@ sides: `GameLoopTests.cpp` verifies `Game::Run()` consumes it (including the sco
 The verdict is per-call, and only an **aborted** search can carry the previous call's verdict out: any
 search that completes a root frame overwrites it anyway. So the `[search]` cases that matter abort
 before the first root frame finishes — `AIPerplex` via a node limit on a position whose depth-1
-iteration costs more than one 1024-visit poll interval (asserted in the test, not assumed), `AIAgent`
-via a budget already spent on entry. A stale terminal verdict makes
-`handle_empty_move_emergency()` return no move at all, so both cases check `best_move` as well.
+iteration costs more than one 1024-visit poll interval (asserted in the test, not assumed). A stale
+terminal verdict makes `handle_empty_move_emergency()` return no move at all, so the case checks
+`best_move` as well.

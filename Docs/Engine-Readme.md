@@ -119,7 +119,6 @@ AIPerplex ai(AIPerplexConfig{.default_depth = 20, .threads = 4, .tuning = tuning
 ┌───────────────────────────────────────────────────────────┐
 │ Game: IPlayer                                               │
 │ ├─ HumanPlayer                                              │
-│ ├─ PlayerAiBase → legacy AIAgent / ABIterative / AIBasic    │
 │ └─ SearchPlayer { Board&, AIPerplex value }                 │
 └────────────────────────────┬──────────────────────────────┘
                              │ board per GetMove()
@@ -243,9 +242,6 @@ Move extracted and played
 | File | Description | Status |
 |------|-------------|--------|
 | `AIPerplex.cpp/h` | **Production algorithm**: PVS + TT + ID + Quiescence + Lazy SMP | ✅ Active |
-| `AIAgent.cpp/h` | Aspiration windows baseline | ✅ Active |
-| `ABIterative.cpp/h` | Simple iterative deepening | 🎭 Legacy (nostalgic) |
-| `AIBasic.cpp/h` | Basic alpha-beta | 🎭 Legacy (nostalgic) |
 | `Archived/ABIterTrans.cpp/h` | Broken TT implementation | ❌ Archived — not built |
 | `Archived/AITrans.cpp/h` | Broken TT implementation | ❌ Archived — not built |
 
@@ -282,10 +278,8 @@ Move extracted and played
 | File | Description |
 |------|-------------|
 | `IPlayer.h` | Player interface (AI and Human) |
-| `PlayerBase.cpp/h` | Shared player implementation and legacy helpers |
-| `PlayerFactory.cpp/h` | Config-aware player construction before type erasure |
-| `PlayerAI.cpp/h` | AI player base class (`PlayerAiBase`) |
-| `PlayerAiIterBase.h` | Iterative AI base (time management) |
+| `PlayerFactory.cpp/h` | `PlayerType` and config-aware player construction before type erasure |
+| `SearchPlayer.cpp/h` | `IPlayer` adapter binding a `Board&` to an `AIPerplex` |
 | `HumanPlayer.cpp/h` | Human player input handling |
 
 ### Utilities
@@ -622,8 +616,7 @@ result cache to read afterwards. `Game` owns the combined elapsed/node totals us
 performance rows; no player keeps cross-player accounting.
 
 `game_state` is never `DRAW_50_MOVES`: the fifty-move rule is a fact about the position after the
-move is committed, which only `Game::Run()` can see. Legacy agents place their unsplit combined
-work in `nodes_searched` and leave `qnodes_searched` at zero; `HumanPlayer` leaves both counters at
+move is committed, which only `Game::Run()` can see. `HumanPlayer` leaves both node counters at
 their defaults.
 
 ---
@@ -821,9 +814,6 @@ in both Debug and Release.
 
 | Algorithm | Status | Purpose |
 |-----------|--------|---------|
-| **AIAgent** | ✅ Active | Baseline for testing (aspiration windows) |
-| **ABIterative** | 🎭 Legacy | Historical reference (simple ID) |
-| **AIBasic** | 🎭 Legacy | Historical reference (basic alpha-beta) |
 | **ABIterTrans** | ❌ Archived | Old TT bug; unavailable from `CreatePlayer()` |
 | **AITrans** | ❌ Archived | Old TT bug; unavailable from `CreatePlayer()` |
 
