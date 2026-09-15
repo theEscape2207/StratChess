@@ -66,14 +66,6 @@ class MoveGenerator final {
 	static BITBOARD GetRookBitboard(const BITBOARD* bbBitBoards, eSquare from, eColor color) noexcept;
 	static BITBOARD GetBishopBitboard(const BITBOARD* bbBitBoards, eSquare from, eColor color) noexcept;
 
-	// TODO: SwapMoves is duplicated in MoveSorter
-	static void SwapMoves(MoveList& moveList, size_t first, size_t second) //-V2009
-	{
-		if (first == second) // no need to swap anything here :-)
-			return;
-		std::swap(moveList[first], moveList[second]);
-	}
-
 	static constexpr bool IsAnyBackRow(eSquare field) noexcept
 	{
 		return (Rank(field) == eRowNames::WHITE_BACK_ROW || Rank(field) == eRowNames::BLACK_BACK_ROW);

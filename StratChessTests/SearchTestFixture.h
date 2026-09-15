@@ -9,14 +9,12 @@
 #pragma once
 
 #include <catch2/catch_test_macros.hpp>
-#include "AIAgent.h"
 #include "AIPerplex.h"
 #include "Board.h"
 #include "MoveFormatter.h"
 #include "MoveGenerator.h"
 #include "MoveHelper.h"
 #include "PlayerFactory.h"
-#include "PlayerBase.h"
 #include "SearchPlayer.h"
 #include "Sort.h"
 #include "ThreadData.h"
@@ -641,49 +639,5 @@ class AIPerlexTestFixture {
 	static void set_launch_barrier(AIPerplex& ai, std::function<void()> barrier)
 	{
 		ai.launch_barrier_ = std::move(barrier);
-	}
-};
-
-// ============================================================================
-// Legacy-agent test fixture
-// ============================================================================
-// A minimal counterpart to AIPerlexTestFixture for the legacy (non-Lazy-SMP) agents, which
-// have no ThreadData and carry root_game_state_ directly on PlayerAiBase. Must be defined
-// here — the name must match the friend declaration inside PlayerAI.h:
-// friend class LegacyAiTestFixture;
-class LegacyAiTestFixture {
-  public:
-	// Must be declared (and thus constructed/destroyed) before ai_owner —
-	// ai_owner holds a Board& reference into it that must outlive it.
-	Board board_;
-	std::unique_ptr<IPlayer> ai_owner;
-	AIAgent* ai = nullptr;
-
-	explicit LegacyAiTestFixture(const std::string& fen, unsigned max_depth = 4) : board_(fen)
-	{
-		Config::PlayerConfig config;
-		config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::AIAGENT);
-		config.depth = max_depth;
-		ai_owner = CreatePlayer(config, board_);
-		ai = static_cast<AIAgent*>(ai_owner.get());
-	}
-
-	void set_root_game_state(GameStates s) const { ai->root_game_state_ = s; }
-	GameStates root_game_state() const { return ai->root_game_state_; }
-
-	// Calls the same reset point every legacy GetMove() calls before it does anything else.
-	void call_apply_limits() const { ai->ApplyLimits(SearchLimits::fixed_depth(1)); }
-	void stop_search() const { ai->StopSearch(); }
-	bool search_is_aborted() const { return ai->IsAborted(); }
-
-	SearchResult get_move(int depth) const { return ai->GetMove(SearchLimits::fixed_depth(depth)); }
-	int64_t search_count() const { return static_cast<int64_t>(ai->m_SearchCount); }
-
-	// A GetMove() whose budget is spent the moment it starts. The depth loop's StopRequested()
-	// gate sits in front of Search() with no node counter in the way, so the loop breaks before
-	// any root frame adjudicates -- the abort this agent can reach without racing a clock.
-	SearchResult get_move_with_spent_clock() const
-	{
-		return ai->GetMove(SearchLimits::fixed_time(std::chrono::milliseconds(0)));
 	}
 };

@@ -1,6 +1,7 @@
 #pragma once
 
-#include "PlayerBase.h"
+#include "defines.h"
+#include "IPlayer.h"
 
 #include <unordered_map>
 #include <sstream>
@@ -8,11 +9,12 @@
 class Move;
 class Board;
 
-class PlayerHuman final : public PlayerBase {
+class HumanPlayer final : public IPlayer {
   public:
 	/* IPlayer implementation */
 	SearchResult GetMove(const SearchLimits&) override;
 	const char* GetType() const noexcept override { return "Human"; }
+	bool IsHuman() const noexcept override { return true; }
 
 	std::string getDescription() const override
 	{
@@ -22,14 +24,14 @@ class PlayerHuman final : public PlayerBase {
 	}
 
 	/* End IPlayer implementation */
-	explicit PlayerHuman(Board& board) noexcept : board_(board) { isHuman_ = true; }
-	~PlayerHuman() final = default;
+	explicit HumanPlayer(Board& board) noexcept : board_(board) {}
+	~HumanPlayer() final = default;
 
 	// Force use of factory by preventing constructor, copy-construction & operator=
-	PlayerHuman(const PlayerHuman&) = delete;
-	PlayerHuman& operator=(const PlayerHuman&) = delete;
-	PlayerHuman(PlayerHuman&&) = delete;
-	PlayerHuman& operator=(PlayerHuman&&) = delete;
+	HumanPlayer(const HumanPlayer&) = delete;
+	HumanPlayer& operator=(const HumanPlayer&) = delete;
+	HumanPlayer(HumanPlayer&&) = delete;
+	HumanPlayer& operator=(HumanPlayer&&) = delete;
 
   private:
 	Board& board_;

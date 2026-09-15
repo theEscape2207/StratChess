@@ -20,7 +20,6 @@ class Game final {
 
 	void Init();
 	void LoadConfigFileSettings();
-	std::unique_ptr<IPlayer> SetPlayerParams(const Config::PlayerConfig& config);
 	void CreateGameMoveFile();
 
 	void PrintBoardAndMove(const Move& move) const;
@@ -46,27 +45,6 @@ class Game final {
 
 	static bool MoverProducedNoMove(const Move& move) noexcept { return move.is_null(); }
 
-	/*
-	* Event Methods
-	*/
-	// A New move has been committed to the current PVLine
-	// Currently we just print it to screen
-	//************************************
-	// Method:      onNewPVLineMove
-	// Description:
-	// FullName:    private Game::onNewPVLineMove
-	// Returns:     void -
-	// Parameter:   const void*  -
-	// Parameter:   const PVLine& newLine -
-	// Remark:
-	// ************************************
-	void onNewPVLineMove(const void* /*pSender*/, const PVLine& newLine)
-	{
-		std::stringstream sstream;
-		sstream << newLine;
-		spdlog::default_logger()->warn(sstream.str());
-	}
-
   public:
 	Game();
 	~Game();
@@ -80,8 +58,6 @@ class Game final {
 	// Deliberately narrow: it injects players and reads the outcome without changing
 	// production board ownership or the config-aware player factory path.
 	struct TestAccess;
-
-	void unsubscribePlayerEvents();
 
 	void Run();
 

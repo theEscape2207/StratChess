@@ -38,7 +38,7 @@ Live backlog is GitHub Issues (`theEscape2207/StratChess`) via `gh`, bodies alwa
 - **ccache is optional and worth installing** — `build.ps1` picks it up from PATH by itself and a
   repeat full build drops from ~45 s to ~12 s. `Docs/Workflow.md` → Compiler cache.
 - **Adding a `.cpp` needs no project edit.** `CMakeLists.txt` globs with `CONFIGURE_DEPENDS`; just
-  create the file. `StratEngine/Archived/` is excluded and never built.
+  create the file.
 
 ```powershell
 .\build.ps1                          # engine + tests (Release, clang-cl)

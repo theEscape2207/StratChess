@@ -42,32 +42,12 @@ Game::Game(const std::string& fen, std::unique_ptr<IPlayer> white, std::unique_p
 Game::~Game()
 {
 	try {
-		unsubscribePlayerEvents();
-
 		// Under VisualStudio, this must be called before main finishes to workaround a known VS issue
 		if (owns_logging_)
 			spdlog::drop_all();
 	} catch (const std::exception&) { // NOLINT(bugprone-empty-catch)
-		                              // Don't care if any deregistration fails, we're closing here -- a
-		                              // destructor must not let this propagate regardless
+		                              // A destructor must not let this propagate
 	}
-}
-
-//***************************************
-// Method:      unsubscribePlayerEvents
-// Description: Unsubscribes from all player events. Calling this in destructor to avoid dangling references.
-// FullName:    private Game::unsubscribePlayerEvents
-// Returns:     void -
-// Remark:
-//***************************************
-void Game::unsubscribePlayerEvents()
-{
-	// TODO: Calling clear() where unsubscribe() should be used, but we have no handles to unsubscribe with here.
-	// Deregister our delegates. Both players always exist when Init() built them; the test-seam
-	// constructor takes whatever it is handed, so neither is assumed.
-	for (auto& player : m_pPlayers)
-		if (player)
-			player->ENewPVLineMove.clear();
 }
 
 //***************************************
@@ -91,7 +71,7 @@ std::ostream& operator<<(std::ostream& os, const Game& game)
 // Method:      GetCurrentPlayer
 // Description:
 // FullName:    private Game::GetCurrentPlayer const
-// Returns:     PlayerBase& -
+// Returns:     IPlayer& -
 // Remark:
 //***************************************
 IPlayer& Game::GetCurrentPlayer() const noexcept { return *m_pPlayers[board_.GetCurrentColor()]; }
@@ -168,25 +148,15 @@ void Game::LoadConfigFileSettings()
 
 	// TODO: Setup board explicitly here
 	spdlog::default_logger()->debug("Creating players from Config File");
-	//TODO: We are creating stuff we do not need (e.g. eval engine as human and NewPVLineMove event as non-iterative AI)
 	const Config::PlayerConfig whiteConfig = reader.GetPlayerFromConfig(true);
-	m_pPlayers[WHITE] = SetPlayerParams(whiteConfig);
+	m_pPlayers[WHITE] = CreatePlayer(whiteConfig, board_, {.verbose_search_logging = true});
 	player_limits_[WHITE] = whiteConfig.search_limits;
 
 	// Create black player
 	const Config::PlayerConfig blackConfig = reader.GetPlayerFromConfig(false);
 
-	m_pPlayers[BLACK] = SetPlayerParams(blackConfig);
+	m_pPlayers[BLACK] = CreatePlayer(blackConfig, board_, {.verbose_search_logging = true});
 	player_limits_[BLACK] = blackConfig.search_limits;
-}
-
-std::unique_ptr<IPlayer> Game::SetPlayerParams(const Config::PlayerConfig& config)
-{
-	auto player = CreatePlayer(config, board_, {.verbose_search_logging = true});
-
-	// Register only after construction and initial lifecycle configuration are complete.
-	player->ENewPVLineMove.subscribe([this](const void* s, const PVLine& pvl) { onNewPVLineMove(s, pvl); });
-	return player;
 }
 
 //***************************************
@@ -252,9 +222,7 @@ void Game::Run()
 		if (!IsStillPlaying()) // Test om spillet er slut
 			break;
 
-		// A running game whose mover produced no move. PlayerAiBase::GetBestMove asserts against
-		// it, so in a Debug build this is unreachable; a limit in game_settings.json tight enough
-		// to stop a search before its first root move reaches it in Release. Stopping matters
+		// A running game whose mover produced no move. Stopping matters
 		// because the side to move is unchanged, so the loop would ask the same player for the
 		// same move forever.
 		if (MoverProducedNoMove(result.best_move)) {

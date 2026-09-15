@@ -22,6 +22,26 @@ Newest first.
 
 ---
 
+## 2026-09-15 — Legacy player stack retired; player types renumbered (#559)
+
+Deleted `AIBasic`, `ABIterative`, `AIAgent`, `PlayerAiBase`, `PlayerAiIterBase`, `PlayerBase` and
+`Utils/Subscriber.h`, plus what only they used: `MoveSorter::SortMoves`/`SortMovesIter`,
+`SearchControl::SetDefaults` and the non-buildable `StratEngine/Archived/` snapshots. Production only ever ran `AIPerplex`, but the built-in fallback player type
+was still 3 (`AIAgent`). `IPlayer` loses `ENewPVLineMove`, which only the legacy agents fired and
+`Game` only logged. It now has three implementations: `HumanPlayer` (renamed from `PlayerHuman`),
+`SearchPlayer` and the test `ScriptedPlayer`.
+
+**Breaking:** `PlayerType { Human = 0, Search = 1 }` in `PlayerFactory.h`, and the default is
+Search. Any other `"type"` value, including the former AIPerplex value 6, throws
+`unknown player type N; valid: 0 (Human), 1 (Search)` at game start. UCI, bench and match paths
+never read the player type. The legacy tests went too, after confirming AIPerplex tests already pin
+the root-verdict reset, the pre-root-frame abort and the stop latch.
+
+Search unchanged: `Compare-SearchEquivalence.ps1` identical on 6 positions at depth 12. Bench, 5
+alternating passes against `7689501`: +0.03% median paired delta (spread 2.4-2.5%).
+
+---
+
 ## 2026-09-15 — Async search launch moved into AIPerplex (#557)
 
 `AIPerplex` owns the UCI search thread: `StartAsync`, `StopAndWait`, `Wait`, `IsSearching`.

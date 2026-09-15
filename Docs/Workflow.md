@@ -270,8 +270,7 @@ sync: `master` drifts silently until someone notices it is ten commits behind.
   timed test, or `$proc.WaitForExit(msTimeout)` for a game expected to finish naturally.
 - Verbose logging is on by default in game mode; each move logs `GetMove complete: move=…, depth=…,
   time=…ms, nodes=…, stable=…` to stdout.
-- Use `"type": 6` for both sides to exercise AIPerplex. For changes to `PlayerAI`/`PlayerBase`,
-  also verify with `"type": 3` (AIAgent).
+- Use `"type": 1` (Search) for both sides to exercise AIPerplex.
 - `game_settings.json` accepts C-style `/* */` comments via nlohmann, but PowerShell's
   `ConvertFrom-Json` rejects them — write plain JSON when generating configs programmatically.
 

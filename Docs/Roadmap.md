@@ -32,7 +32,7 @@ completed work has moved to `Docs/Changelog.md`.
 ### Performance Metrics
 - **Nodes per second**: Track baseline, target +20% with optimizations
 - **Depth reached**: 15 seconds reaches depth 13-15 (with LMR; was 8-9 before)
-- **Win rate**: Maintain or improve vs AIAgent baseline
+- **Win rate**: Maintain or improve vs the current Elo reference
 
 ### Code Quality Metrics
 - **Test coverage**: Target 80% for search algorithms

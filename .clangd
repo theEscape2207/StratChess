@@ -2,10 +2,3 @@
 # preset, so the tree must be built once before clangd can resolve headers.
 CompileFlags:
   CompilationDatabase: build/windows-clang-cl
-
----
-# StratEngine/Archived/ is excluded from the build and has no compile commands.
-If:
-  PathMatch: .*/Archived/.*
-Diagnostics:
-  Suppress: '*'

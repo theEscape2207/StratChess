@@ -27,7 +27,7 @@
     pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\Validate-PrePR.ps1
 
 .NOTES
-    Prerequisite: game_settings.json must have "type": 6 for both players (AIPerplex vs AIPerplex).
+    Prerequisite: game_settings.json must have "type": 1 (Search) for both players.
     Must be invoked with -File, not dot-sourced -- a dot-sourced script runs in the
     caller's scope, where its variables collide and its exit ends the caller's session.
 #>

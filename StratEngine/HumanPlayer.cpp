@@ -3,7 +3,7 @@
 // PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 #include "StdAfx.h"
 #include "defines.h"
-#include "PlayerHuman.h"
+#include "HumanPlayer.h"
 #include <map>
 #include <regex>
 #include "Utils/StrHelper.h"
@@ -13,7 +13,7 @@
 
 // TODO: Add support for official input of castling moves (e.g. "0-0" or "0-0-0")
 // Right now its only possible through e1g1 (short) or e1-c1(long)
-SearchResult PlayerHuman::GetMove(const SearchLimits&)
+SearchResult HumanPlayer::GetMove(const SearchLimits&)
 {
 	Board& board = board_;
 	MoveList moveList;
@@ -22,8 +22,7 @@ SearchResult PlayerHuman::GetMove(const SearchLimits&)
 		// No legal moves left, bye!
 		spdlog::default_logger()->info("Human has no legal moves left");
 		if (board.InCheck()) {
-			this->_bestScore = -GameValues::Mate;
-			return {.best_score = _bestScore,
+			return {.best_score = -GameValues::Mate,
 			        .game_state = board.GetCurrentColor() == WHITE ? GameStates::BLACK_WON : GameStates::WHITE_WON};
 		}
 		// Remis: Godt hvis vi er bagud, men skidt hvis vi er foran
@@ -111,7 +110,7 @@ SearchResult PlayerHuman::GetMove(const SearchLimits&)
 
 // Validates the user input using Poco regex
 // Only lower case input - must be converted before
-bool PlayerHuman::ValidateInput(const std::string& strInput)
+bool HumanPlayer::ValidateInput(const std::string& strInput)
 {
 	// We are allowing the row as lower case and the col as a number with an optional '-' in between
 	// Also optional promotional choices i.e. Queen, Rook, Bishop or Knight
@@ -125,7 +124,7 @@ bool PlayerHuman::ValidateInput(const std::string& strInput)
 // Expects parameter input to be lower case
 // The returned Move has a generic type
 // Returns true if the user specified an allowed promotional character; sets promotedType in that case
-bool PlayerHuman::ParseInput(const std::string& input, Move& move, ePieceType& promotedType)
+bool HumanPlayer::ParseInput(const std::string& input, Move& move, ePieceType& promotedType)
 {
 	auto curIt = input.begin();
 	const auto end = input.end();
@@ -138,14 +137,14 @@ bool PlayerHuman::ParseInput(const std::string& input, Move& move, ePieceType& p
 		return false;
 
 	// What did he ask for? We must have it in our map! Otherwise should be stopped by regex earlier
-	const MapPieces::const_iterator cit = PlayerHuman::GetPromoteMap().find(*curIt);
+	const MapPieces::const_iterator cit = HumanPlayer::GetPromoteMap().find(*curIt);
 	promotedType = cit->second;
 	return true;
 }
 
 // Returns true if any legal move is found, and false otherwise
 // TODO: Remove illegal moves from ComputeLegalMoves?
-bool PlayerHuman::IsAnyLegalMoves(Board& board, MoveList& moveList)
+bool HumanPlayer::IsAnyLegalMoves(Board& board, MoveList& moveList)
 {
 	MoveGenerator::ComputeLegalMoves(board, moveList);
 

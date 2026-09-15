@@ -9,10 +9,11 @@ class Board;
 
 class Config final {
 	static const int DEFAULT_DEPTH = 4;
-	static const int DEFAULT_EVAL = 3;
 
   public:
-	// Mirrors AIPerplex::SearchTuning — only applied when player type is AI_PERPLEX
+	static constexpr unsigned DEFAULT_PLAYER_TYPE = 1; // PlayerType::Search, asserted in PlayerFactory.cpp
+
+	// Mirrors AIPerplex::SearchTuning — only applied when player type is PlayerType::Search
 	struct SearchTuningConfig {
 		int64_t min_nodes_threshold{1000};
 		double min_completion_ratio{0.10};
@@ -32,11 +33,11 @@ class Config final {
 	};
 
 	struct PlayerConfig {
-		unsigned type{DEFAULT_EVAL};
+		unsigned type{DEFAULT_PLAYER_TYPE};
 		unsigned depth{DEFAULT_DEPTH}; // default max depth mapped by CreatePlayer
 		SearchLimits
 		    search_limits; // per-move search constraints, parsed from "search_limits" (or legacy max_depth/time_limit)
-		std::optional<SearchTuningConfig> search_tuning; // only for AI_PERPLEX (type 6)
+		std::optional<SearchTuningConfig> search_tuning; // only for PlayerType::Search
 		std::optional<unsigned> threads; // Lazy SMP thread count; CreatePlayer clamps AIPerplex to [1,32]
 	};
 

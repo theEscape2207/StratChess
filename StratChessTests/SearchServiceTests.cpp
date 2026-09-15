@@ -4,12 +4,12 @@
 
 #include "SearchTestFixture.h"
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers.hpp> // REQUIRE_THROWS_WITH
 #include "AIPerplex.h"
 #include "Board.h"
 #include "MoveFactory.h"
 #include "PlayerFactory.h"
-#include "PlayerBase.h"
 #include "SearchPlayer.h"
 #include <algorithm>
 #include <atomic>
@@ -51,7 +51,7 @@ TEST_CASE("SearchPlayer searches the Board's current position on every move", "[
 {
 	Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 	Config::PlayerConfig config;
-	config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::AI_PERPLEX);
+	config.type = static_cast<unsigned>(PlayerType::Search);
 	config.depth = 1;
 	auto player = CreatePlayer(config, board, {.verbose_search_logging = false});
 
@@ -66,48 +66,41 @@ TEST_CASE("SearchPlayer searches the Board's current position on every move", "[
 	CHECK(board.IsLegalMove(second.best_move));
 }
 
-TEST_CASE("Player factory creates human and legacy players", "[player][factory]")
+TEST_CASE("Player factory creates human and search players", "[player][factory]")
 {
 	Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 
 	Config::PlayerConfig human_config;
-	human_config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::HUMAN);
+	human_config.type = static_cast<unsigned>(PlayerType::Human);
 	auto human = CreatePlayer(human_config, board);
 	CHECK(human->IsHuman());
 	CHECK(std::string(human->GetType()) == "Human");
 
-	Config::PlayerConfig legacy_config;
-	legacy_config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::AIAGENT);
-	legacy_config.depth = 1;
-	auto legacy = CreatePlayer(legacy_config, board);
-	const SearchResult result = legacy->GetMove(SearchLimits::fixed_depth(1));
-	CHECK_FALSE(legacy->IsHuman());
-	CHECK(std::string(legacy->GetType()) == "AI Agent");
-	CHECK_FALSE(result.best_move.is_null());
-	CHECK(board.IsLegalMove(result.best_move));
+	Config::PlayerConfig search_config;
+	search_config.type = static_cast<unsigned>(PlayerType::Search);
+	search_config.depth = 1;
+	auto search = CreatePlayer(search_config, board);
+	CHECK_FALSE(search->IsHuman());
+	CHECK(dynamic_cast<SearchPlayer*>(search.get()) != nullptr);
 }
 
-TEST_CASE("Player factory gives a legacy AI a usable evaluator with no evaluator field configured", "[player][factory]")
+TEST_CASE("Player factory rejects a type that is not a PlayerType and names the valid ones", "[player][factory]")
 {
-	// A PlayerConfig carrying no evaluator selection still produces a player whose search reaches a
-	// working evaluator: the evaluator is a value member, so there is no unconfigured state to hit.
-	Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+	// 6 is the former AIPerplex value, so a stale settings file must fail loudly rather than play.
+	const unsigned invalid_type = GENERATE(2u, 6u);
+	Board board;
 	Config::PlayerConfig config;
-	config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::AIAGENT);
-	config.depth = 1;
-	auto legacy = CreatePlayer(config, board);
+	config.type = invalid_type;
 
-	const SearchResult result = legacy->GetMove(SearchLimits::fixed_depth(1));
-
-	CHECK_FALSE(result.best_move.is_null());
-	CHECK(board.IsLegalMove(result.best_move));
+	REQUIRE_THROWS_WITH(CreatePlayer(config, board),
+	                    "unknown player type " + std::to_string(invalid_type) + "; valid: 0 (Human), 1 (Search)");
 }
 
 TEST_CASE("Player factory configures the default depth used by empty SearchLimits", "[player][search_player][factory]")
 {
 	Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 	Config::PlayerConfig config;
-	config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::AI_PERPLEX);
+	config.type = static_cast<unsigned>(PlayerType::Search);
 	config.depth = 2;
 	auto player = CreatePlayer(config, board);
 
@@ -117,19 +110,18 @@ TEST_CASE("Player factory configures the default depth used by empty SearchLimit
 	REQUIRE(result.depth_completed == 2);
 }
 
-TEST_CASE("Player factory warns when search tuning is supplied to a legacy AI", "[player][factory]")
+TEST_CASE("Player factory warns when search tuning is supplied to a human player", "[player][factory]")
 {
 	Board board;
 	Config::PlayerConfig config;
-	config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::AIAGENT);
-	config.depth = 1;
+	config.type = static_cast<unsigned>(PlayerType::Human);
 	config.search_tuning = Config::SearchTuningConfig{};
 
 	const ScopedFactoryLogCapture capture;
 	auto player = CreatePlayer(config, board);
 
 	REQUIRE(player != nullptr);
-	REQUIRE(capture.text().find("search_tuning in game_settings.json is ignored for player type 3") !=
+	REQUIRE(capture.text().find("search_tuning in game_settings.json is ignored for a Human player") !=
 	        std::string::npos);
 }
 
@@ -189,7 +181,7 @@ TEST_CASE("Player factory maps AIPerplex evaluator tuning threads and logging be
 {
 	Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 	Config::PlayerConfig config;
-	config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::AI_PERPLEX);
+	config.type = static_cast<unsigned>(PlayerType::Search);
 	config.depth = 2;
 	config.threads = 3;
 	config.search_tuning = Config::SearchTuningConfig{.min_nodes_threshold = 17,
@@ -236,7 +228,7 @@ TEST_CASE("Player factory starts the AIPerplex new-game lifecycle before returni
 {
 	Board board;
 	Config::PlayerConfig config;
-	config.type = static_cast<unsigned>(PlayerBase::ePlayerTypes::AI_PERPLEX);
+	config.type = static_cast<unsigned>(PlayerType::Search);
 	auto player = CreatePlayer(config, board);
 
 	CHECK(AIPerlexTestFixture::game_generation(SearchPlayerTestFixture::search(*player)) == 1);

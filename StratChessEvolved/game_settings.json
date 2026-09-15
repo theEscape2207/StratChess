@@ -1,16 +1,10 @@
 {
   "game": {
-    /* PlayerTypes:
-     HUMAN = 0,
-     ALPHABETA = 1,
-     ABITERATING = 2,
-     AIAGENT = 3,
-     AITRANS = 4 (ARCHIVED - had TT bugs, use AI_PERPLEX),
-     ABITERATIVE_TRANS = 5 (ARCHIVED - had TT bugs, use AI_PERPLEX)
-    */
+    /* type (PlayerType in StratEngine/PlayerFactory.h): 0 = Human, 1 = Search (AIPerplex).
+       Absent defaults to 1; any other value is rejected at game start. */
     "players": {
       "white": {
-        "type": 6,
+        "type": 1,
         /* search_limits: per-move search constraints, mirrors StratEngine/SearchLimits.h.
            All fields optional: depth (cap), movetime (ms, soft==hard budget),
            infinite (bool), clock { remaining, increment, moves_to_go } */
@@ -18,7 +12,7 @@
           "depth": 15,
           "movetime": 15000
         },
-        /* search_tuning: AIPerplex-specific parameters (ignored for other player types) */
+        /* search_tuning: Search player parameters (ignored for a Human player) */
         "search_tuning": {
           "min_nodes_threshold": 1000,
           "min_completion_ratio": 0.10,
@@ -44,7 +38,7 @@
         "threads": 1
       },
       "black": {
-        "type": 6,
+        "type": 1,
         "search_limits": {
           "depth": 15,
           "movetime": 15000

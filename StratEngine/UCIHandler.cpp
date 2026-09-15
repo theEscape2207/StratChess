@@ -4,7 +4,6 @@
 #include "StdAfx.h"
 #include "UCIHandler.h"
 #include "AIPerplex.h"
-#include "PlayerAI.h"
 #include "MoveFormatter.h"
 #include "MoveGenerator.h"
 #include "Board.h"
