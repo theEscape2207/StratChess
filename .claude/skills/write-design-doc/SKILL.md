@@ -12,6 +12,11 @@ description: Use when a change needs a design document (CLAUDE.md → Design Doc
 3. **Multi-PR designs:** state what each PR produces that a later one relies on — exact names,
    signatures, data formats. That contract is durable; the ordering is not.
 
+**The weight only ratchets up.** When implementation uncovers a decision that could go more than one
+way, or an assumption the code cannot verify, stop and write the document; never drop one mid-task
+because the change "turned out simple". A spike's output is an answer, not code: keeping its code is
+a new change that needs its own document or PR.
+
 ## Self-review before requesting review
 
 Run it yourself, fix inline, no subagent:
@@ -20,6 +25,7 @@ Run it yourself, fix inline, no subagent:
   Decisions, Invariants or Validation means the document is not ready.
 - **Coverage.** Every "will" item is carried by a Decision or Validation; every Invariant has
   Validation that closes it; every assumption states how it is verified.
+- **Ambiguity.** A Decision or Invariant that reads two ways gets one reading, stated.
 - **Consistency.** Names, types and paths match each other and the code as it stands on
   `origin/main`.
 - **Proportion.** Cut any section that is filler; a one-sentence section is complete.
