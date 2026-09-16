@@ -22,6 +22,26 @@ Newest first.
 
 ---
 
+## 2026-09-16 — Search tuning catalogue; validated game_settings.json tuning
+
+`SearchTuning` is now generated from one catalogue, `StratEngine/SearchTuning.def`: each entry
+declares a field's type, default, accepted domain, JSON binding, UCI name and build availability.
+`Config::SearchTuningConfig` and `PlayerFactory`'s field-by-field `map_tuning` are deleted — the
+config holds a `SearchTuning` directly — and `SearchTuningSchema` provides `Validate` and
+`ParseJson`. The generated struct keeps the previous members, order and layout (compile-time
+checked), so search reads the same fields.
+
+Compatibility change: `game_settings.json` tuning is now validated. A wrong type or an out-of-domain
+value (for example `min_pv_ratio` above 1, a zero depth threshold, or an aspiration delta whose
+doubling over the retries would overflow) stops the game with a message naming the key, where it
+was previously accepted or silently converted. `AIPerplex` validates at construction too. Seven
+keys join the JSON block: `singular_extensions_enabled` (true only in a build compiling the feature
+in), the three reverse futility settings, the two frontier futility settings and
+`late_move_pruning_enabled`. Defaults are unchanged. UCI exposure follows in a second change
+(`.claude/plans/in-progress/unified-search-tuning.md`).
+
+---
+
 ## 2026-09-15 — Legacy player stack retired; player types renumbered (#559)
 
 Deleted `AIBasic`, `ABIterative`, `AIAgent`, `PlayerAiBase`, `PlayerAiIterBase`, `PlayerBase` and

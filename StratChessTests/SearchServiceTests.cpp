@@ -115,7 +115,7 @@ TEST_CASE("Player factory warns when search tuning is supplied to a human player
 	Board board;
 	Config::PlayerConfig config;
 	config.type = static_cast<unsigned>(PlayerType::Human);
-	config.search_tuning = Config::SearchTuningConfig{};
+	config.search_tuning = SearchTuning{};
 
 	const ScopedFactoryLogCapture capture;
 	auto player = CreatePlayer(config, board);
@@ -184,21 +184,21 @@ TEST_CASE("Player factory maps AIPerplex evaluator tuning threads and logging be
 	config.type = static_cast<unsigned>(PlayerType::Search);
 	config.depth = 2;
 	config.threads = 3;
-	config.search_tuning = Config::SearchTuningConfig{.min_nodes_threshold = 17,
-	                                                  .min_completion_ratio = 0.21,
-	                                                  .min_pv_ratio = 0.45,
-	                                                  .score_draw_threshold = 23,
-	                                                  .delta_pruning_margin = 211,
-	                                                  .aspiration_initial_delta = 61,
-	                                                  .aspiration_max_retries = 7,
-	                                                  .aspiration_enabled = false,
-	                                                  .lmr_min_depth = 5,
-	                                                  .lmr_min_move_index = 6,
-	                                                  .lmr_enabled = false,
-	                                                  .null_move_enabled = false,
-	                                                  .null_move_reduction = 4,
-	                                                  .null_move_min_depth = 7,
-	                                                  .see_pruning_enabled = false};
+	config.search_tuning = SearchTuning{.min_nodes_threshold = 17,
+	                                    .min_completion_ratio = 0.21,
+	                                    .min_pv_ratio = 0.45,
+	                                    .score_draw_threshold = 23,
+	                                    .delta_pruning_margin = 211,
+	                                    .aspiration_initial_delta = 61,
+	                                    .aspiration_max_retries = 7,
+	                                    .aspiration_enabled = false,
+	                                    .lmr_min_depth = 5,
+	                                    .lmr_min_move_index = 6,
+	                                    .lmr_enabled = false,
+	                                    .null_move_enabled = false,
+	                                    .null_move_reduction = 4,
+	                                    .null_move_min_depth = 7,
+	                                    .see_pruning_enabled = false};
 
 	auto player = CreatePlayer(config, board, {.verbose_search_logging = true});
 	AIPerplex& search = SearchPlayerTestFixture::search(*player);

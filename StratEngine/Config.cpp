@@ -5,6 +5,7 @@
 #include "Config.h"
 #include "Board.h"
 #include "Game.h"
+#include "SearchTuningSchema.h"
 
 namespace {
 
@@ -185,24 +186,11 @@ namespace {
 
 		// Parse SearchTuning if present (only meaningful for PlayerType::Search)
 		if (p.contains("search_tuning")) {
-			const auto& st = p["search_tuning"];
-			Config::SearchTuningConfig t;
-			t.min_nodes_threshold = st.value("min_nodes_threshold", static_cast<int64_t>(1000));
-			t.min_completion_ratio = st.value("min_completion_ratio", 0.10);
-			t.min_pv_ratio = st.value("min_pv_ratio", 0.33);
-			t.score_draw_threshold = st.value("score_draw_threshold", 20);
-			t.delta_pruning_margin = st.value("delta_pruning_margin", 200);
-			t.aspiration_initial_delta = st.value("aspiration_initial_delta", 50);
-			t.aspiration_max_retries = st.value("aspiration_max_retries", 4);
-			t.aspiration_enabled = st.value("aspiration_enabled", true);
-			t.lmr_min_depth = st.value("lmr_min_depth", 3);
-			t.lmr_min_move_index = st.value("lmr_min_move_index", 3);
-			t.lmr_enabled = st.value("lmr_enabled", true);
-			t.null_move_enabled = st.value("null_move_enabled", true);
-			t.null_move_reduction = st.value("null_move_reduction", 3);
-			t.null_move_min_depth = st.value("null_move_min_depth", 3);
-			t.see_pruning_enabled = st.value("see_pruning_enabled", true);
-			cfg.search_tuning = t;
+			SearchTuning tuning;
+			if (const auto error = SearchTuningSchema::ParseJson(p.at("search_tuning"), tuning))
+				throw std::invalid_argument("game_settings.json: search_tuning." + error->field + ": " +
+				                            error->message);
+			cfg.search_tuning = tuning;
 		}
 
 		// Parse Lazy SMP thread count if present (optional; the factory defaults to 1).

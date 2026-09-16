@@ -96,6 +96,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | Human player's non-interactive terminal paths | `[human_player]` | `HumanPlayerTests.cpp` |
 | External integer parsing (argv, JSON keys) | `[argparse]` | `ArgParseTests.cpp` |
 | Settings-file parsing and its failure modes | `[config]` | `ConfigTests.cpp` |
+| Search tuning catalogue: layout, defaults, domains, JSON binding | `[tuning]` | `SearchTuningTests.cpp` |
 
 ---
 
@@ -560,6 +561,17 @@ clock-sensitive behavior is validated separately with timed UCI probes and fixed
 the rejections: `std::stoi` accepts trailing garbage (`"12abc"` → 12) and reports the rest by
 throwing, which is how `perft run abc` used to kill the process with no message at all (#178).
 Covers blank input, trailing text, embedded spaces, and one past each `int` boundary.
+
+### `[tuning]` — Search tuning catalogue
+
+**File**: `StratChessTests/SearchTuningTests.cpp`
+
+`SearchTuning` is generated from `SearchTuning.def`, so its expectations are written out by hand
+rather than read from the catalogue: a hand-kept baseline struct pins member types, order, size and
+alignment at compile time, and every default is a literal. The domain cases test each bounded field
+at both edges and one past, pin that comparison-only thresholds take any representable value, and
+check the aspiration window's joint bound at and beyond `INT_MAX - Search_Init`. Rejection must be
+atomic and name the field.
 
 ### `[config]` — Settings-file parsing
 

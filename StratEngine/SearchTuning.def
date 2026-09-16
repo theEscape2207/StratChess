@@ -1,0 +1,80 @@
+// SearchTuning.def -- the one catalogue of search tuning fields. No include guard: every includer
+// defines TUNING_FIELD, includes this file and undefines the macro again.
+//
+// TUNING_FIELD(type, member, default, lo, hi, json, uci_name, available)
+//   type, member, default  -- generate SearchTuning's member, in this order.
+//   lo, hi                 -- accepted domain, inclusive; Validate() rejects a value outside it.
+//   json                   -- whether game_settings.json's "search_tuning" block binds the member
+//                             under its own name.
+//   uci_name               -- UCI option name, or nullptr when UCI does not expose the member.
+//   available              -- false when the build compiles the feature out; a Boolean field
+//                             must then stay false.
+//
+// A new field of an existing type is one entry here plus its tests. Cross-field constraints
+// live in SearchTuningSchema.cpp. A one-character default change here is a SEARCH change.
+//
+// clang-format off
+
+TUNING_FIELD(int64_t, min_nodes_threshold,  1000, std::numeric_limits<int64_t>::lowest(), std::numeric_limits<int64_t>::max(), true, nullptr, true)
+TUNING_FIELD(double,  min_completion_ratio, 0.10, std::numeric_limits<double>::lowest(),  std::numeric_limits<double>::max(),  true, nullptr, true)
+TUNING_FIELD(double,  min_pv_ratio,         0.33, 0.0,                                    1.0,                                 true, nullptr, true)
+TUNING_FIELD(int,     score_draw_threshold, 20,   std::numeric_limits<int>::lowest(),     std::numeric_limits<int>::max(),     true, nullptr, true)
+
+// This covers the POSITIONAL swing only: the quiescence guard adds MoveHelper::DeltaGain, so the
+// captured material is already counted and must not be counted again here. King safety is what
+// consumes the room -- one capture beside a king moves shelter (24), king-file openness (11) or
+// storm (15), the isolated-pawn penalty (20, twice in the corner case) and the attack row (5-25),
+// so roughly 110 cp worst case at the middlegame endpoint against ~35 before those terms existed.
+// Still inside 200, with perhaps half the room there used to be: a king-safety retune upward
+// (#117) has to re-derive this rather than inherit it. Raising the margin is a SEARCH change
+// needing its own measurement. The upper bound keeps eval + gain + margin clear of int overflow.
+TUNING_FIELD(int,     delta_pruning_margin, 200,  0,     10000, true, nullptr, true)
+
+// Initial delta and retries are also bound jointly: the delta doubles once per retry.
+TUNING_FIELD(int,     aspiration_initial_delta, 50, 1, std::numeric_limits<int>::max(), true, nullptr, true)
+TUNING_FIELD(int,     aspiration_max_retries,   4,  0, std::numeric_limits<int>::max(), true, nullptr, true)
+TUNING_FIELD(bool,    aspiration_enabled,       true, false, true, true, nullptr, true)
+
+TUNING_FIELD(int,     lmr_min_depth,      3,    1,                                  std::numeric_limits<int>::max(), true, nullptr, true)
+TUNING_FIELD(int,     lmr_min_move_index, 3,    std::numeric_limits<int>::lowest(), std::numeric_limits<int>::max(), true, nullptr, true)
+TUNING_FIELD(bool,    lmr_enabled,        true, false,                              true,                            true, nullptr, true)
+
+TUNING_FIELD(bool,    null_move_enabled,   true, false, true,                            true, nullptr, true)
+TUNING_FIELD(int,     null_move_reduction, 3,    1,     std::numeric_limits<int>::max(), true, nullptr, true)
+TUNING_FIELD(int,     null_move_min_depth, 3,    1,     std::numeric_limits<int>::max(), true, nullptr, true)
+
+// Gates SEE pruning in quiescence only, never the SEE capture tiers in ScoreMoves, and turning it
+// off must leave the search node-identical. The !in_check guard at the pruning site is
+// correctness, not tuning, and is deliberately outside this flag.
+TUNING_FIELD(bool,    see_pruning_enabled, true, false, true, true, nullptr, true)
+
+// Singular extensions: the RUNTIME half of the gate. It only means anything in a build compiled
+// with STRAT_SINGULAR_EXTENSIONS (kSingularExtensionsCompiled); the shipping engine has the whole
+// feature compiled out and never reads these, so there it cannot be enabled.
+TUNING_FIELD(bool,    singular_extensions_enabled, STRAT_SINGULAR_DEFAULT_ON != 0, false, true, true, "SingularExtensions", kSingularExtensionsCompiled)
+// Minimum remaining depth before a node is worth a verification search. The call site clamps the
+// verification depth to at least one, so any positive threshold is safe.
+TUNING_FIELD(int,     singular_min_depth,       8, 1, std::numeric_limits<int>::max(), false, nullptr, true)
+// How much shallower than this node the transposition entry may be and still be trusted.
+TUNING_FIELD(int,     singular_tt_depth_margin, 3, 0, std::numeric_limits<int>::max(), false, nullptr, true)
+// Verification window offset, scaled by depth: a move is singular when every alternative fails
+// below tt_value - singular_margin_factor * depth. The upper bound keeps that product in range.
+TUNING_FIELD(int,     singular_margin_factor,   2, 0, 1000,                            false, nullptr, true)
+
+// Reverse futility pruning. Depth band shallow by default because that is where the surface is:
+// #498 found 95.4% of eligible frames at depths 1-3, so a wider band adds almost nothing while
+// trusting a static evaluation further from the leaves. The margin is centipawns of slack per
+// remaining ply, on g_iPieceValues' scale -- one pawn per ply.
+TUNING_FIELD(bool,    reverse_futility_enabled,   true, false, true,    true, "ReverseFutility",         true)
+TUNING_FIELD(int,     reverse_futility_max_depth, 3,    1,     MAX_PLY, true, "ReverseFutilityMaxDepth", true)
+TUNING_FIELD(int,     reverse_futility_margin,    100,  0,     1000,    true, "ReverseFutilityMargin",   true)
+
+// Frontier futility pruning at depth 1. The margin is centipawns one quiet move may gain
+// positionally, the room delta_pruning_margin also trusts.
+TUNING_FIELD(bool,    frontier_futility_enabled, true, false, true, true, "FrontierFutility",       true)
+TUNING_FIELD(int,     frontier_futility_margin,  200,  0,     1000, true, "FrontierFutilityMargin", true)
+
+// Late move pruning at depth 2; its depth and move index are constants in AIPerplex.h.
+TUNING_FIELD(bool,    late_move_pruning_enabled, true, false, true, true, "LateMovePruning", true)
+
+// clang-format on

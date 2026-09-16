@@ -7,6 +7,7 @@
 #include "ThreadData.h"
 #include "SearchResult.h"
 #include "SearchControl.h"
+#include "SearchTuning.h"
 #include <algorithm>
 #include <cassert>
 #include <chrono>
@@ -51,97 +52,10 @@ using CompletionHandler = std::function<void(const SearchResult&)>;
 
 inline constexpr unsigned DEFAULT_AIPERPLEX_HASH_MB = 192;
 
-// Whether a build that HAS singular extensions also starts with it on. Deliberately separate from
-// compiling it in, because the two targets want opposite answers:
-//   - the experimental engine defines both, since UCI cannot set the runtime flag and a build
-//     that compiled the feature in but left it off would measure nothing;
-//   - the test binary defines only the first, so every existing search test keeps exercising the
-//     SHIPPED configuration; the singular tests turn it on for themselves.
-#ifndef STRAT_SINGULAR_DEFAULT_ON
-#	define STRAT_SINGULAR_DEFAULT_ON 0
-#endif
-
 // Late move pruning, deliberately not tunable: parent depth exactly two, and the zero-based legal
 // move index at which quiet moves become skippable (the thirteenth legal move).
 inline constexpr int kLateMovePruningDepth = 2;
 inline constexpr int kLateMovePruningMinLegalIndex = 12;
-
-// Hand-aligned: this is the one tuning surface shared by the concrete
-// service configuration and the search implementation.
-struct SearchTuning {
-	int64_t min_nodes_threshold = 1000;
-	double min_completion_ratio = 0.10;
-	double min_pv_ratio = 0.33;
-	int score_draw_threshold = 20;
-
-	// This covers the POSITIONAL swing only: the quiescence guard adds
-	// MoveHelper::DeltaGain, so the captured material is already counted and
-	// must not be counted again here. King safety is what consumes the room --
-	// one capture beside a king moves shelter (24), king-file openness (11) or
-	// storm (15), the isolated-pawn penalty (20, twice in the corner case) and
-	// the attack row (5-25), so roughly 110 cp worst case at the middlegame
-	// endpoint against ~35 before those terms existed. Still inside 200, with
-	// perhaps half the room there used to be: a king-safety retune upward
-	// (#117) has to re-derive this rather than inherit it. Raising the margin
-	// is a SEARCH change needing its own measurement.
-	int delta_pruning_margin = 200;
-
-	int aspiration_initial_delta = 50;
-	int aspiration_max_retries = 4;
-	bool aspiration_enabled = true;
-
-	int lmr_min_depth = 3;
-	int lmr_min_move_index = 3;
-	bool lmr_enabled = true;
-
-	bool null_move_enabled = true;
-	int null_move_reduction = 3;
-	int null_move_min_depth = 3;
-
-	// Gates SEE pruning in quiescence only, never the SEE capture tiers in ScoreMoves, and turning
-	// it off must leave the search node-identical. The !in_check guard at the pruning site is
-	// correctness, not tuning, and is deliberately outside this flag.
-	bool see_pruning_enabled = true;
-
-	// Singular extensions. The RUNTIME half of the gate — it only means anything in a build
-	// compiled with STRAT_SINGULAR_EXTENSIONS (see kSingularExtensionsCompiled in SearchTelemetry.h); the
-	// shipping engine has the whole feature compiled out and never reads these.
-	//
-	// It exists so a build that HAS the feature can still toggle it without recompiling, which
-	// is what the tests and the follow-up's parameter sweep need. These knobs are NOT reachable
-	// over UCI — UciHandler's constructor builds its AIPerplexConfig from hardcoded values and
-	// never consults game_settings.json — so a UCI-driven harness sees only a build's defaults.
-	bool singular_extensions_enabled = STRAT_SINGULAR_DEFAULT_ON != 0;
-	// Minimum remaining depth before a node is worth a verification search. Also what keeps
-	// the verification depth positive — see the assert at the call site.
-	int singular_min_depth = 8;
-	// How much shallower than this node the transposition entry may be and still be trusted.
-	int singular_tt_depth_margin = 3;
-	// Verification window offset, scaled by depth: a move is singular when every alternative
-	// fails below tt_value - singular_margin_factor * depth.
-	int singular_margin_factor = 2;
-
-	// Reverse futility pruning, on for the shipping engine. Like the singular knobs it is not
-	// reachable over UCI; the flag exists so the tests can turn the guard off and search the same
-	// node normally.
-	bool reverse_futility_enabled = true;
-	// Depth band. Shallow because that is where the surface is: #498 found 95.4% of eligible
-	// frames at depths 1-3, so a wider band adds almost nothing while trusting a static
-	// evaluation further from the leaves.
-	int reverse_futility_max_depth = 3;
-	// Centipawns of slack per remaining ply, on g_iPieceValues' scale -- one pawn per ply.
-	int reverse_futility_margin = 100;
-
-	// Frontier futility pruning at depth 1, on for the shipping engine. Not reachable over UCI; the
-	// flag exists so the tests can turn the guard off and search the same node normally.
-	bool frontier_futility_enabled = true;
-	// Centipawns one quiet move may gain positionally, the room delta_pruning_margin also trusts.
-	int frontier_futility_margin = 200;
-
-	// Late move pruning at depth 2, on for the shipping engine. Not reachable over UCI; the flag
-	// exists so the tests can turn the guard off and search the same node normally.
-	bool late_move_pruning_enabled = true;
-};
 
 struct AIPerplexConfig {
 	unsigned default_depth{4};

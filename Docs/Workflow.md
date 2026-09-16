@@ -117,7 +117,7 @@ neither fixed-depth tests nor a self-play PASS would catch.
    `assess_iteration_quality`, `adjustScoreForGameState`, `should_stop_early`, or
    `should_try_null_move`.
 5. No numeric literal, comparison operator, or control-flow keyword changed anywhere in the file.
-6. `SearchTuning` in `AIPerplex.h` is untouched. A one-character constant change there is the
+6. `SearchTuning.def` is untouched. A one-character constant change there is the
    highest-Elo-density edit in the repo and the least alarming-looking diff in it — it never
    self-certifies.
 

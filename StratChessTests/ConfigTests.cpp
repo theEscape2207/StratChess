@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include "Config.h"
 #include "Board.h"
 
@@ -85,7 +86,7 @@ TEST_CASE("Config: a well-formed document parses", "[config]")
 	REQUIRE(reader.GetPlayerFromConfig(false).search_limits.depth == 3);
 }
 
-TEST_CASE("Config: every search_tuning key reaches SearchTuningConfig", "[config]")
+TEST_CASE("Config: every search_tuning key reaches SearchTuning", "[config]")
 {
 	TempConfig cfg(R"({
         "game": { "players": {
@@ -104,7 +105,14 @@ TEST_CASE("Config: every search_tuning key reaches SearchTuningConfig", "[config
                 "null_move_enabled": false,
                 "null_move_reduction": 4,
                 "null_move_min_depth": 7,
-                "see_pruning_enabled": false
+                "see_pruning_enabled": false,
+                "singular_extensions_enabled": true,
+                "reverse_futility_enabled": false,
+                "reverse_futility_max_depth": 5,
+                "reverse_futility_margin": 150,
+                "frontier_futility_enabled": false,
+                "frontier_futility_margin": 250,
+                "late_move_pruning_enabled": false
             } },
             "black": { "type": 1 }
         } }
@@ -131,9 +139,40 @@ TEST_CASE("Config: every search_tuning key reaches SearchTuningConfig", "[config
 	CHECK(tuning->null_move_reduction == 4);
 	CHECK(tuning->null_move_min_depth == 7);
 	CHECK_FALSE(tuning->see_pruning_enabled);
+	CHECK(tuning->singular_extensions_enabled);
+	CHECK_FALSE(tuning->reverse_futility_enabled);
+	CHECK(tuning->reverse_futility_max_depth == 5);
+	CHECK(tuning->reverse_futility_margin == 150);
+	CHECK_FALSE(tuning->frontier_futility_enabled);
+	CHECK(tuning->frontier_futility_margin == 250);
+	CHECK_FALSE(tuning->late_move_pruning_enabled);
 
 	// An absent block stays absent; the defaults then come from SearchTuning itself.
 	CHECK_FALSE(reader.GetPlayerFromConfig(false).search_tuning.has_value());
+}
+
+TEST_CASE("Config: an empty search_tuning block yields the defaults", "[config]")
+{
+	TempConfig cfg(
+	    R"({ "game": { "players": { "white": { "type": 1, "search_tuning": {} }, "black": { "type": 1 } } } })");
+
+	Board board;
+	Config reader = MakeReader();
+	REQUIRE_NOTHROW(reader.ReadConfigFile(cfg.path(), board));
+
+	REQUIRE(reader.GetPlayerFromConfig(true).search_tuning == SearchTuning{});
+}
+
+TEST_CASE("Config: an invalid search_tuning value is rejected naming the field", "[config]")
+{
+	TempConfig cfg(R"({ "game": { "players": {
+        "white": { "type": 1, "search_tuning": { "lmr_enabled": false, "reverse_futility_margin": 1001 } },
+        "black": { "type": 1 } } } })");
+
+	Board board;
+	Config reader = MakeReader();
+	REQUIRE_THROWS_WITH(reader.ReadConfigFile(cfg.path(), board),
+	                    Catch::Matchers::ContainsSubstring("search_tuning.reverse_futility_margin"));
 }
 
 TEST_CASE("Config: truncated JSON is reported, not silently accepted", "[config]")
