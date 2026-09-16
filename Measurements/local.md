@@ -44,6 +44,7 @@ comparable with a Linux CI row**: different compiler, different machine, differe
 | 2026-09-02 | candidate-b38d390 (#97 PR 2, half table scale) | f6e9cfb | 700 | 10+0.1 | 9.43 +/- 19.49 | inconclusive @ 700 |
 | 2026-09-03 | candidate-0b5f3fb (#97 PR 3: king attack pressure) | 9cdd52e (merge-base) | 2000 | 10+0.1 | 12.69 +/- 11.04 | inconclusive @ 2000 |
 | 2026-09-03 | candidate-62c12eb (#97 PR 3, Gain leg) | 9cdd52e (merge-base) | 2500 | 10+0.1 | 7.64 +/- 10.03 | inconclusive @ 2500 |
+| 2026-09-16 | candidate-4e02d0a | 4e02d0a | 20 | 10+0.1 | -52.51 +/- 159.22 | smoke |
 
 ## Row detail
 
