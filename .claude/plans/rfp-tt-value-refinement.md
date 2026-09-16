@@ -56,7 +56,7 @@ Rejected: a compile gate — end state for a search feature is a runtime bool or
 Cost: one predictable load-and-branch per MAIN non-cutoff hit and one compare at eligible RFP nodes.
 Measured by the gate-off bench in Validation, not assumed free.
 
-### D4: No rule-50 context guard; ship under #549's finding
+### D4: No rule-50 context guard; defer to #347
 
 Chosen: no halfmove-clock condition. The refinement consumes the same MAIN entries the TT cutoff
 already trusts unguarded; the widening is shallower entries, at depths 2–3, for a fail-hard cut that
@@ -64,8 +64,8 @@ stores nothing. #549 counted zero cutoffs near the boundary on the bench and on 
 replays (max clock 53). If #347 later lands a guard, it sits in the probe and covers this read too.
 Rejected: a local `halfmove_clock() + depth` guard — hot-path work against measured-zero exposure, and a
 second, divergent policy beside #347's.
-**Owner decision**: the 2026-09-13 triage made #347's accepted policy a production gate. This treats
-#549's park recommendation as that policy; review must confirm or reject it.
+**Owner decision (2026-09-17)**: accepted. #545 ships without a guard; any rule-50 guard belongs to a
+future #347 implementation, which would cover this read along with the TT cutoff.
 
 ## Assumptions I cannot verify from the code
 
