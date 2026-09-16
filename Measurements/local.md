@@ -199,3 +199,7 @@ Reference is the merge-base build passed as `-ReferenceExe` with `-ReferenceTag 
 The two numbers are not in tension. The lab row measures PRs 1-3 against the pre-series fork point; this row measures PR 3 alone against a merge base that already contains PRs 1 and 2. A feature worth +32.8 whose last component is worth under +10 is an ordinary shape.
 
 Reference is the merge-base build passed as `-ReferenceExe` with `-ReferenceTag 9cdd52e` so the label stays honest under **#309**; `EngineTesting\openings-large.pgn`, `Threads=1`, 192 MB hash, both sides clang-cl. The `+dirty` suffix in the raw candidate label is an untracked `bench/` directory holding the before/after binaries, not a modified tracked file
+
+### 2026-09-16 -- candidate-4e02d0a (20 games)
+
+**Plumbing smoke, not strength data.** Both sides are the same `4e02d0a` clang-cl binary with different UCI tuning options, so the -52.51 is noise between two option sets over 20 games. Candidate: `option.ReverseFutility=false option.LateMovePruning=false`. Reference: `option.ReverseFutilityMargin=150 option.FrontierFutilityMargin=250`. `Threads=1`, 192 MB hash, `EngineTesting\openings-large.pgn` sequential, concurrency 6; 5W/8L/7D, no errors. A separate 2-game fastchess trace (`-log level=trace engine=true`) with the same engine specs showed each engine receiving its `setoption` lines and echoing `info string <Name> <value>`.

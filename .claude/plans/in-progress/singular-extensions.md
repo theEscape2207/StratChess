@@ -114,7 +114,7 @@ compiles the code in; `STRAT_SINGULAR_DEFAULT_ON` starts it enabled.
 | Target | compiled in | default on | why |
 |---|---|---|---|
 | shipping engine | no | no | pays nothing |
-| experimental engine (`-DSTRAT_SINGULAR_EXTENSIONS=ON`) | yes | yes | UCI cannot set the runtime flag, so compiled-in-but-off would measure nothing |
+| experimental engine (`-DSTRAT_SINGULAR_EXTENSIONS=ON`) | yes | yes | a harness gets the feature without sending `setoption SingularExtensions` |
 | test binary | yes (always) | **no** | every other search test must keep exercising the SHIPPED configuration; the singular tests enable it for themselves |
 
 That third row is the one worth pausing on. The test binary compiles the feature in, so defaulting
@@ -479,7 +479,7 @@ above rather than left to contradict the code.
 | Why the feature is compiled out, and why two defines (D9) | source comment on the constant in `AIPerplex.h`, and the `option()` block in `CMakeLists.txt` |
 | That the test target compiles it in but leaves it off (D9) | source comment at `target_compile_definitions(StratChessTests ...)` |
 | That killers gate LMR, so verification writes can change later depths | source comment where the verification call sits |
-| `SearchTuning` is unreachable from a UCI search (D5) | `Docs/EngineContracts.md` — a cross-cutting fact that outlives this change |
+| Why the experimental build defaults the feature on although UCI can set it (D5) | source comment on the `STRAT_SINGULAR_DEFAULT_ON` block in `CMakeLists.txt` |
 | That the flag ships off and why | `Docs/Changelog.md`, and the PR body |
 | The backstop as a latent-bug fix independent of the feature | `Docs/Changelog.md` |
 | Trigger rate and bench cost figures | PR body and issue #95 — point-in-time, so not source comments |

@@ -838,6 +838,15 @@ TEST_CASE("cmd_setoption: an unknown option stays silent", "[uci][tuning]")
 	REQUIRE(fix.ai_tuning() == SearchTuning{});
 }
 
+TEST_CASE("cmd_setoption: the echo shows the value as applied, tabs trimmed", "[uci][tuning]")
+{
+	UciHandlerTestFixture fix;
+	fix.ucinewgame();
+	const std::string output = capture_cout([&] { fix.setoption("setoption name LateMovePruning value \tfalse\t"); });
+	REQUIRE(output == "info string LateMovePruning false\n");
+	REQUIRE_FALSE(fix.ai_tuning().late_move_pruning_enabled);
+}
+
 TEST_CASE("cmd_setoption: tuning is refused while a search is running", "[uci][tuning]")
 {
 	UciHandlerTestFixture fix;

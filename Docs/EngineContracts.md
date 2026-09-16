@@ -67,8 +67,8 @@ whose violation is silent.
   after it returns is never lost, even before `Search()` initialises. `IsSearching()` turns false
   when `Search()` returns, before `on_done` runs, so a client that sends `position` the instant it reads
   `bestmove` is accepted. `on_done` must not call `StartAsync`, `Wait`, `StopAndWait`, `SetHash`,
-  `SetThreads`, `SetTuning`, `StartNewGame` or destroy the service (Debug-asserted). Those methods come from one
-  controlling thread; only `Stop()` and `IsSearching()` are callable from any thread.
+  `SetThreads`, `SetTuning`, `StartNewGame` or destroy the service (Debug-asserted). Those methods
+  come from one controlling thread; only `Stop()` and `IsSearching()` are callable from any thread.
 - `Engine::compute_budget(remaining, increment, moves_to_go)` → `TimeBudget{soft, hard}` is pure.
 - Verbose logging is opt-in per call site — the `AIPerplex` constructor does not enable it.
 
@@ -130,7 +130,8 @@ whose violation is silent.
   (`SingularExtensions` only in a build compiling it in) and `setoption` applies one through
   `AIPerplex::SetTuning`, which validates the whole tuning and **clears the TT when the tuning
   changes** — stored scores came from the old pruning. It is idle-only like `SetHash`, so UCI refuses
-  it mid-search. An invalid value prints an `info string` and changes nothing, TT included; an
-  unknown name stays silent. `ucinewgame` keeps the tuning. Any field without a UCI name is still
+  it mid-search. An applied value is echoed as `info string <Name> <value>`, so a match's protocol
+  log shows what each engine ran; an invalid value prints an `info string` and changes nothing, TT
+  included; an unknown name stays silent. `ucinewgame` keeps the tuning. Any field without a UCI name is still
   reachable only through `game_settings.json` in `game` mode, or by rebuilding with a new default —
   and `Run-Bench.ps1`, `Compare-SearchEquivalence.ps1` and every match harness drive UCI.

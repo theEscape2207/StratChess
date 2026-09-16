@@ -554,10 +554,10 @@ void UciHandler::cmd_setoption(std::string_view line)
 	// commands in run()). Names are case-sensitive, matching the convention
 	// used by Stockfish and other engines.
 	const auto trim = [](std::string_view s) {
-		const size_t b = s.find_first_not_of(' ');
+		const size_t b = s.find_first_not_of(" \t");
 		if (b == std::string_view::npos)
 			return std::string_view{};
-		const size_t e = s.find_last_not_of(' ');
+		const size_t e = s.find_last_not_of(" \t");
 		return s.substr(b, e - b + 1);
 	};
 
