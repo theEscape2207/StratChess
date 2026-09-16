@@ -118,6 +118,14 @@ whose violation is silent.
   nlohmann, but PowerShell's `ConvertFrom-Json` does not.
 - Run the exe from `StratChessEvolved/` — both so `game_settings.json` resolves and so logs land in
   `StratChessEvolved/logs/`.
+- **`SearchTuning` is declared once, in `StratEngine/SearchTuning.def`.** Each entry carries the
+  field's type, default, accepted domain, JSON binding, UCI name and build availability; the struct,
+  `SearchTuningSchema::Validate` and the JSON reader are generated from it, and cross-field
+  constraints (the aspiration window's doubling) are written out in `SearchTuningSchema.cpp`. A new
+  field of an existing type is one entry plus its tests. Validation is all-or-nothing and applies at
+  `AIPerplex` construction as well as to `game_settings.json`, which rejects an out-of-domain value
+  naming the field; a compiled-out feature (singular extensions in the shipping build) may be set
+  false but never true.
 - **`SearchTuning` is unreachable from a UCI search.** `UciHandler`'s constructor builds its
   `AIPerplexConfig` from hardcoded values and never consults `game_settings.json` or
   `PlayerFactory`, and `cmd_setoption` recognises only `Threads` and `Hash`. The JSON

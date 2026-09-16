@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 #include "GameState.h" // For CastlingRights, eColor, eSquare
 #include "SearchLimits.h"
+#include "SearchTuning.h"
 #include <cstdint>
 
 class Board;
@@ -13,32 +14,13 @@ class Config final {
   public:
 	static constexpr unsigned DEFAULT_PLAYER_TYPE = 1; // PlayerType::Search, asserted in PlayerFactory.cpp
 
-	// Mirrors AIPerplex::SearchTuning — only applied when player type is PlayerType::Search
-	struct SearchTuningConfig {
-		int64_t min_nodes_threshold{1000};
-		double min_completion_ratio{0.10};
-		double min_pv_ratio{0.33};
-		int score_draw_threshold{20};
-		int delta_pruning_margin{200};
-		int aspiration_initial_delta{50};
-		int aspiration_max_retries{4};
-		bool aspiration_enabled{true};
-		int lmr_min_depth{3};
-		int lmr_min_move_index{3};
-		bool lmr_enabled{true};
-		bool null_move_enabled{true};
-		int null_move_reduction{3};
-		int null_move_min_depth{3};
-		bool see_pruning_enabled{true};
-	};
-
 	struct PlayerConfig {
 		unsigned type{DEFAULT_PLAYER_TYPE};
 		unsigned depth{DEFAULT_DEPTH}; // default max depth mapped by CreatePlayer
 		SearchLimits
 		    search_limits; // per-move search constraints, parsed from "search_limits" (or legacy max_depth/time_limit)
-		std::optional<SearchTuningConfig> search_tuning; // only for PlayerType::Search
-		std::optional<unsigned> threads; // Lazy SMP thread count; CreatePlayer clamps AIPerplex to [1,32]
+		std::optional<SearchTuning> search_tuning; // only for PlayerType::Search
+		std::optional<unsigned> threads;           // Lazy SMP thread count; CreatePlayer clamps AIPerplex to [1,32]
 	};
 
 	struct GameConfig {

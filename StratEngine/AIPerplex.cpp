@@ -6,6 +6,7 @@
 #include "MoveGenerator.h"
 #include "PVIntegrity.h"
 #include "See.h"
+#include "SearchTuningSchema.h"
 #include "Sort.h"
 #include "Utils/Logger.h"
 #include "defines.h"
@@ -135,6 +136,8 @@ AIPerplex::AIPerplex(AIPerplexConfig config)
     : control_(config.default_depth, config.default_time), tuning_(config.tuning),
       threads_(std::clamp(config.threads, 1u, 32u)), verbose_logging_(config.verbose_logging)
 {
+	if (const auto error = SearchTuningSchema::Validate(tuning_))
+		throw std::invalid_argument("SearchTuning." + error->field + ": " + error->message);
 	_tt = std::make_unique<TranspositionTable>(std::clamp(config.hash_mb, MIN_HASH_MB, MAX_HASH_MB));
 	try {
 		if (verbose_logging_) {

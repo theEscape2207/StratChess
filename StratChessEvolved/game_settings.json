@@ -12,7 +12,11 @@
           "depth": 15,
           "movetime": 15000
         },
-        /* search_tuning: Search player parameters (ignored for a Human player) */
+        /* search_tuning: Search player parameters (ignored for a Human player). Every key is
+           optional; StratEngine/SearchTuning.def lists all of them with their defaults and
+           accepted ranges, and a value of the wrong type or out of range stops the game with a
+           message naming the key. singular_extensions_enabled may be true only in a build that
+           compiles singular extensions in. */
         "search_tuning": {
           "min_nodes_threshold": 1000,
           "min_completion_ratio": 0.10,

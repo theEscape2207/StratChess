@@ -632,16 +632,8 @@ increment, moves_to_go)` → `TimeBudget{soft, hard}` is a pure function and is 
 
 ### SearchTuning
 
-**Location**: `AIPerplex.h`
-
-```cpp
-struct SearchTuning {
-    int64_t min_nodes_threshold = 1000;
-    double min_completion_ratio = 0.10;
-    double min_pv_ratio = 0.33;
-    int score_draw_threshold = 20;
-};
-```
+**Location**: `SearchTuning.h`, generated from the catalogue `SearchTuning.def` (fields, defaults,
+domains and bindings); validation and JSON parsing in `SearchTuningSchema.h`.
 
 **Purpose**: Runtime-tunable search parameters without recompilation.
 
