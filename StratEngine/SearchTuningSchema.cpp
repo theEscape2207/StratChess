@@ -197,10 +197,10 @@ namespace SearchTuningSchema {
 
 	std::optional<TuningError> ParseUci(std::string_view name, std::string_view value, SearchTuning& in_out)
 	{
-		const auto first = value.find_first_not_of(" 	");
+		const auto first = value.find_first_not_of(" \t");
 		const std::string_view text = first == std::string_view::npos
 		                                  ? std::string_view{}
-		                                  : value.substr(first, value.find_last_not_of(" 	") - first + 1);
+		                                  : value.substr(first, value.find_last_not_of(" \t") - first + 1);
 
 		SearchTuning candidate = in_out;
 #define TUNING_FIELD(type, member, default_value, lo, hi, json, uci_name, available)                                   \
