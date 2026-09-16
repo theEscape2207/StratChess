@@ -38,10 +38,14 @@ could exceed the alpha that licensed a skip (#545 triage). Stockfish keeps the s
 
 Chosen: no depth condition on the entry. #548 showed every flip comes from an entry shallower than the
 node: a non-mate `LOWER`/`EXACT` entry with `depth >= node depth` and a value `>= beta` already takes
-the TT cutoff above. A depth-qualified rule is therefore a no-op. The trust gap is bounded by the band:
-MAIN entries have depth ≥ 1 and the node depth ≤ `reverse_futility_max_depth` (3 by default), so the
-entry is at most two plies shallower by default. Raising `ReverseFutilityMaxDepth` over UCI widens
-that gap too; that is accepted as a tuning experiment's own responsibility.
+the TT cutoff above. A depth-qualified rule is therefore a no-op. The *label* gap is bounded by the
+band: MAIN entries have depth ≥ 1 and the node depth ≤ `reverse_futility_max_depth` (3 by default), so
+the entry is at most two plies shallower by default. The label is not the evidence: null move stores
+`LOWER` at the node's own depth from a child searched at `depth - 1 - R`, so the thinnest entries are
+null-move cuts that were quiescence searches after a pass. The TT cutoff already trusts those labels at
+equal depth; the refinement accepts them one or two labels lower, for a fail-hard cut that stores
+nothing. Raising `ReverseFutilityMaxDepth` over UCI widens the gap; that is the tuning experiment's own
+responsibility.
 Rejected: a `depth - k` margin field. With the default band it would only drop depth-1 entries at
 depth-3 nodes; no evidence says those are the bad ones, and a new tunable needs its own measurement.
 
@@ -70,7 +74,7 @@ future #347 implementation, which would cover this read along with the TT cutoff
 ## Assumptions I cannot verify from the code
 
 - **Headroom survives LMP.** #552 prunes late quiet moves at depth 2, where 67% of #548's flips were,
-  so −2.86% is an upper bound. Not verified. Settled by the re-screen in Validation; the #548 park rule
+  and shrank the tree ~29%, so −2.86% is no longer a forecast; direction unknown. Not verified. Settled by the re-screen in Validation; the #548 park rule
   applies (≥1% median wall clock, ≥7/9 rounds faster), and a miss closes #545 rather than proceeding.
 - **Fewer nodes at fixed depth converts to Elo.** Not verified and not inferable: the extra cuts rest
   on the least-trusted entries. Settled only by an owner-approved lab run.
@@ -91,19 +95,35 @@ future #347 implementation, which would cover this read along with the TT cutoff
 
 Engine tier, search behaviour change.
 
-1. **Tests** (`SearchFutilityTests.cpp`, falsified by breaking each guard): refinement cuts on `LOWER`
-   and `EXACT` above static eval; no cut from `UPPER`, wrong-direction, mate-range, `QUIESCENCE`-phase
-   entries, or with the flag off; frontier futility unaffected; exclusion frame unaffected. Catalogue
-   default/UCI parse cases in `SearchTuningTests.cpp`. Re-check `SearchTTContractTests.cpp` "a TT bound
-   inside the window does not change the value" still states the window contract, not RFP.
+1. **Tests** (`SearchFutilityTests.cpp`, falsified by breaking each guard). Every refining entry has
+   `depth < node depth` (e.g. depth 1 at a depth-2 or depth-3 node), or the TT cutoff takes it and the
+   test cannot fail:
+   - refinement cuts on shallower `LOWER` and `EXACT` above static eval; the same entry does not cut
+     with the flag off;
+   - a refined cut returns `== beta`, `mainnodes()` unchanged, and the probed entry is identical to the
+     seeded one (value, depth, bound);
+   - no cut from `UPPER`, from a `LOWER`/`EXACT` value `<=` static eval (equality included), from a
+     mate-range value, or from a `QUIESCENCE`-phase entry; exclusion frame unaffected;
+   - frontier futility unaffected: depth-1 non-PV node, `LOWER` entry with value in
+     `(static_eval, beta)`, a frontier skip and a child failing low; the returned value and stored
+     `UPPER` match flag off. This is a tripwire; the invariant rests on `rfp_eval` being a local.
+
+   Catalogue default/UCI parse cases in `SearchTuningTests.cpp`. Re-check `SearchTTContractTests.cpp`
+   "a TT bound inside the window does not change the value" still states the window contract, not RFP.
 2. **Equivalence, flag off:** land the field with default `false` first;
-   `Compare-SearchEquivalence.ps1` against the merge base → `IDENTICAL`. Paired bench of that build
-   vs merge base, 9 interleaved rounds: nps within noise (the runtime check's cost).
+   `Compare-SearchEquivalence.ps1` against the merge base → `IDENTICAL`. Paired bench vs merge base,
+   9 interleaved rounds, as the runtime check's attribution arm. `Compare-SearchEquivalence.ps1` takes
+   no engine options, so this covers the default-false build only; the shipped binary's
+   `setoption ReverseFutilityTtRefine false` path differs from it by the default alone.
 3. **Headroom re-screen:** flip the default to `true`; 9 interleaved `Run-Bench.ps1` depth-12 rounds
-   vs step 2's build, clang-cl, `Threads=1`. Report median/range wall clock and main/QS nodes. Park
-   rule as above.
-4. Full fast suite, `[tactical]` and `[tactical_full]` with the flag on; `search-reviewer`.
-5. **Elo:** a lab run vs merge base is required, but only after step 3 passes and the owner approves
+   vs the **merge base** (the net effect shipped, flag cost included), clang-cl, `Threads=1`. Report
+   median/range wall clock and main/QS nodes. Park rule as above.
+4. Full fast suite, `[tactical]` and `[tactical_full]`, `tactical stability 10` and
+   `tactical stability 20 tactical_test_cases.json 4` (the only `Threads>1` check: the refinement reads
+   other threads' entries) with the flag on; `search-reviewer`.
+5. **Only if the lab result is negative:** a throwaway diagnostic splits flips by entry source
+   (null-move vs searched `LOWER`) and by entry depth at depth-3 nodes, to pick the next knob.
+6. **Elo:** a lab run vs merge base is required, but only after step 3 passes and the owner approves
    the spend. No Elo claim from steps 2–3.
 
 ## Harvest
