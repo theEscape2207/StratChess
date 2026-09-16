@@ -3,7 +3,8 @@
 
 // Whether a build that HAS singular extensions also starts with it on. Deliberately separate from
 // compiling it in, because the two targets want opposite answers:
-//   - the experimental engine defines both, so a harness measuring it gets the feature by default;
+//   - the experimental engine defines both, so a harness measuring it gets the feature by default
+//     and turns it off with UCI's SingularExtensions option;
 //   - the test binary defines only the first, so every existing search test keeps exercising the
 //     SHIPPED configuration; the singular tests turn it on for themselves.
 #ifndef STRAT_SINGULAR_DEFAULT_ON

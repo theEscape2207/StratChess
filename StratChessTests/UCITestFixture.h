@@ -68,6 +68,12 @@ class UciHandlerTestFixture {
 
 	void set_late_move_pruning(bool enabled) const { handler.ai_->tuning_.late_move_pruning_enabled = enabled; }
 
+	const SearchTuning& ai_tuning() const { return handler.ai_->Tuning(); }
+	std::optional<SearchTuningSchema::TuningError> set_tuning(const SearchTuning& tuning) const
+	{
+		return handler.ai_->SetTuning(tuning);
+	}
+
 	// Identity of the live ai_ instance, for proving cmd_ucinewgame() does not rebuild it.
 	const void* ai_identity() const { return handler.ai_.get(); }
 

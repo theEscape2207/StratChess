@@ -241,6 +241,18 @@ AIPerplex::HashConfigurationResult AIPerplex::SetHash(unsigned mb) noexcept
 	}
 }
 
+std::optional<SearchTuningSchema::TuningError> AIPerplex::SetTuning(const SearchTuning& tuning)
+{
+	assert_not_in_completion_handler();
+	if (auto error = SearchTuningSchema::Validate(tuning))
+		return error;
+	if (tuning != tuning_) {
+		tuning_ = tuning;
+		(void)_tt->clear();
+	}
+	return std::nullopt;
+}
+
 // Resets every piece of per-game state so that a persisting AIPerplex is
 // equivalent to a freshly-constructed one, without paying for a rebuild.
 // What is deliberately NOT reset here:

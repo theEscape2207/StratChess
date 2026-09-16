@@ -96,7 +96,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | Human player's non-interactive terminal paths | `[human_player]` | `HumanPlayerTests.cpp` |
 | External integer parsing (argv, JSON keys) | `[argparse]` | `ArgParseTests.cpp` |
 | Settings-file parsing and its failure modes | `[config]` | `ConfigTests.cpp` |
-| Search tuning catalogue: layout, defaults, domains, JSON binding | `[tuning]` | `SearchTuningTests.cpp` |
+| Search tuning catalogue: layout, defaults, domains, JSON and UCI binding | `[tuning]` | `SearchTuningTests.cpp`, `UCITests.cpp` |
 
 ---
 
@@ -513,9 +513,9 @@ handlers (`cmd_position`, `cmd_setoption`, `cmd_ucinewgame`, `cmd_eval`) directl
 running `run()` loop or piped stdin.
 
 Covers `parse_go()` parameter parsing, `cmd_position` move replay (including the MAX_PLY
-overflow regression), `cmd_setoption`'s Threads persistence across `ucinewgame`, and Hash option
+overflow regression), `cmd_setoption`'s Threads persistence across `ucinewgame`, Hash option
 advertisement, allocation reporting, replacement, persistence, malformed-input and in-search
-refusal contracts.
+refusal contracts, and the tuning options (`[tuning]` below).
 
 The handler owns one concrete `AIPerplex` for its whole session. `ucinewgame` stops/joins any
 search, retains that service identity, and calls `StartNewGame()` to clear per-game TT and heuristics.
@@ -572,6 +572,13 @@ alignment at compile time, and every default is a literal. The domain cases test
 at both edges and one past, pin that comparison-only thresholds take any representable value, and
 check the aspiration window's joint bound at and beyond `INT_MAX - Search_Init`. Rejection must be
 atomic and name the field.
+
+The UCI half pins each option name to its member and the exact advertised lines, the value grammar
+(lowercase Booleans, unsigned decimals, overflow), and that unexposed names are unknown. The test
+target compiles singular extensions in, so it sees seven options; the shipping six cannot be
+observed from the test binary. `UCITests.cpp` covers the service side: a changed value clears a
+seeded TT marker while an invalid or same value keeps it, the setting survives `ucinewgame`, is
+refused mid-search, and reaches the next search on one and two threads (pruning counters).
 
 ### `[config]` — Settings-file parsing
 

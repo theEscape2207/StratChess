@@ -28,6 +28,8 @@
     Needs a reference that isolates the change, so build the merge base first:
     pwsh ... Run-EloMatch.ps1 -Sprt NonRegression -ReferenceExe <mb.exe> -ReferenceTag <commit>
     pwsh ... Run-EloMatch.ps1 -Sprt Gain -ReferenceExe <mb.exe> -ReferenceTag <commit>
+    Tuning experiment (one binary on both sides, one SearchTuning UCI option changed):
+    pwsh ... Run-EloMatch.ps1 -ReferenceExe <cand.exe> -ReferenceTag <commit> -CandidateOptions 'option.ReverseFutility=false'
 
 .NOTES
     Must be invoked with -File, not dot-sourced -- a dot-sourced script runs in the

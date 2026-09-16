@@ -1,6 +1,7 @@
 #include "StdAfx.h"
 #include "SearchTuningSchema.h"
 #include "SearchTelemetry.h"
+#include <charconv>
 #include <climits>
 #include <limits>
 #include <nlohmann/json.hpp>
@@ -12,6 +13,7 @@ namespace SearchTuningSchema {
 		using Code = TuningError::Code;
 
 		constexpr bool exposed_over_uci(const char* uci_name) { return uci_name != nullptr; }
+		constexpr std::string_view uci_name_of(const char* uci_name) { return uci_name ? uci_name : ""; }
 
 // Compile-time catalogue checks: every default lies in its domain, only a Boolean may be
 // unavailable and it must then default off, and UCI encodes only check and spin options.
@@ -103,6 +105,37 @@ namespace SearchTuningSchema {
 			return std::nullopt;
 		}
 
+		std::optional<TuningError> read_uci(std::string_view name, std::string_view text, bool& out)
+		{
+			if (text != "true" && text != "false")
+				return TuningError{Code::InvalidType, std::string(name), "expected true or false"};
+			out = text == "true";
+			return std::nullopt;
+		}
+
+		template <typename T>
+		    requires std::is_arithmetic_v<T>
+		std::optional<TuningError> read_uci(std::string_view name, std::string_view text, T& out)
+		{
+			if (text.empty() || text.find_first_not_of("0123456789") != std::string_view::npos)
+				return TuningError{Code::InvalidType, std::string(name), "expected an unsigned decimal integer"};
+			const auto [end, ec] = std::from_chars(text.data(), text.data() + text.size(), out);
+			if (ec == std::errc::result_out_of_range)
+				return TuningError{Code::OutOfRange, std::string(name),
+				                   std::format("{} does not fit the field's type", text)};
+			return std::nullopt;
+		}
+
+		std::string uci_option_line(const char* name, bool default_value, bool, bool)
+		{
+			return std::format("option name {} type check default {}", name, describe(default_value));
+		}
+
+		template <typename T> std::string uci_option_line(const char* name, T default_value, T lo, T hi)
+		{
+			return std::format("option name {} type spin default {} min {} max {}", name, default_value, lo, hi);
+		}
+
 		// search_with_aspiration() doubles the delta once per retry and adds it to a seed score bounded by
 		// Search_Init, so the widest window must stay representable.
 		std::optional<TuningError> check_aspiration(const SearchTuning& tuning)
@@ -160,6 +193,43 @@ namespace SearchTuningSchema {
 			return error;
 		in_out = candidate;
 		return std::nullopt;
+	}
+
+	std::optional<TuningError> ParseUci(std::string_view name, std::string_view value, SearchTuning& in_out)
+	{
+		const auto first = value.find_first_not_of(" \t");
+		const std::string_view text = first == std::string_view::npos
+		                                  ? std::string_view{}
+		                                  : value.substr(first, value.find_last_not_of(" \t") - first + 1);
+
+		SearchTuning candidate = in_out;
+#define TUNING_FIELD(type, member, default_value, lo, hi, json, uci_name, available)                                   \
+	if constexpr (exposed_over_uci(uci_name) && (available)) {                                                         \
+		if (name == uci_name_of(uci_name)) {                                                                           \
+			if (auto error = read_uci(name, text, candidate.member))                                                   \
+				return error;                                                                                          \
+			if (auto error = Validate(candidate))                                                                      \
+				return error;                                                                                          \
+			in_out = candidate;                                                                                        \
+			return std::nullopt;                                                                                       \
+		}                                                                                                              \
+	}
+#include "SearchTuning.def"
+#undef TUNING_FIELD
+
+		return TuningError{Code::UnknownSetting, std::string(name), "not a UCI tuning option in this build"};
+	}
+
+	std::vector<std::string> UciOptionLines()
+	{
+		const SearchTuning defaults{};
+		std::vector<std::string> lines;
+#define TUNING_FIELD(type, member, default_value, lo, hi, json, uci_name, available)                                   \
+	if constexpr (exposed_over_uci(uci_name) && (available))                                                           \
+		lines.push_back(uci_option_line(uci_name, defaults.member, static_cast<type>(lo), static_cast<type>(hi)));
+#include "SearchTuning.def"
+#undef TUNING_FIELD
+		return lines;
 	}
 
 } // namespace SearchTuningSchema

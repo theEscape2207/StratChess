@@ -375,8 +375,8 @@ strat_configure_target(StratChessEvolved)
 # The test target below always defines it -- the tests are what exercise the feature.
 option(STRAT_SINGULAR_EXTENSIONS "Compile in singular extensions (#95, experimental)" OFF)
 if(STRAT_SINGULAR_EXTENSIONS)
-    # Both defines here: UCI cannot set the runtime flag, so an engine that compiled the feature
-    # in but started with it off would measure nothing.
+    # Both defines here, so a harness measuring the experimental engine gets the feature without
+    # sending setoption name SingularExtensions.
     target_compile_definitions(StratChessEvolved PRIVATE
         STRAT_SINGULAR_EXTENSIONS=1 STRAT_SINGULAR_DEFAULT_ON=1)
     message(STATUS "Singular extensions: COMPILED IN AND ENABLED (experimental build)")

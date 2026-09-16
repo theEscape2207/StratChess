@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <random>
 #include <sstream>
 #include <string>
@@ -773,4 +774,147 @@ TEST_CASE("DefaultCommandLogPath: carries the process id", "[uci]")
 	const std::string pid = path.substr(digits_begin, path.size() - digits_begin - 4);
 	REQUIRE_FALSE(pid.empty());
 	REQUIRE(std::all_of(pid.begin(), pid.end(), [](char c) { return c >= '0' && c <= '9'; }));
+}
+
+// ---------------------------------------------------------------------------
+// cmd_setoption — SearchTuning options
+// ---------------------------------------------------------------------------
+
+TEST_CASE("cmd_uci: advertises the tuning options after Hash", "[uci][tuning]")
+{
+	UciHandlerTestFixture fix;
+	const std::string output = capture_cout([&] { fix.uci(); });
+
+	const auto hash = output.find("option name Hash ");
+	const auto rfp = output.find("option name ReverseFutility type check default true\n");
+	const auto uciok = output.find("uciok\n");
+	REQUIRE(hash != std::string::npos);
+	REQUIRE(rfp != std::string::npos);
+	REQUIRE(hash < rfp);
+	REQUIRE(rfp < uciok);
+	REQUIRE(output.find("option name LateMovePruning type check default true\n") != std::string::npos);
+}
+
+TEST_CASE("cmd_setoption: a changed tuning value is applied, reported and clears the TT", "[uci][tuning][tt]")
+{
+	UciHandlerTestFixture fix;
+	fix.ucinewgame();
+	fix.store_tt_marker();
+
+	const std::string same = capture_cout([&] { fix.setoption("setoption name ReverseFutilityMargin value 100"); });
+	REQUIRE(same == "info string ReverseFutilityMargin 100\n");
+	REQUIRE(fix.has_tt_marker());
+
+	const std::string changed = capture_cout([&] { fix.setoption("setoption name ReverseFutilityMargin value 150"); });
+	REQUIRE(changed == "info string ReverseFutilityMargin 150\n");
+	REQUIRE(fix.ai_tuning().reverse_futility_margin == 150);
+	REQUIRE_FALSE(fix.has_tt_marker());
+}
+
+TEST_CASE("cmd_setoption: an invalid tuning value is reported and changes nothing", "[uci][tuning][tt]")
+{
+	UciHandlerTestFixture fix;
+	fix.ucinewgame();
+	fix.store_tt_marker();
+
+	for (const char* line :
+	     {"setoption name ReverseFutilityMargin value 1001", "setoption name ReverseFutilityMargin value 12x",
+	      "setoption name LateMovePruning value 1", "setoption name LateMovePruning"}) {
+		const std::string output = capture_cout([&] { fix.setoption(line); });
+		CAPTURE(line);
+		REQUIRE(output.starts_with("info string "));
+		REQUIRE(output.find(" not applied: ") != std::string::npos);
+	}
+	REQUIRE(fix.ai_tuning() == SearchTuning{});
+	REQUIRE(fix.has_tt_marker());
+}
+
+TEST_CASE("cmd_setoption: an unknown option stays silent", "[uci][tuning]")
+{
+	UciHandlerTestFixture fix;
+	fix.ucinewgame();
+	const std::string output = capture_cout([&] { fix.setoption("setoption name reversefutility value false"); });
+	REQUIRE(output.empty());
+	REQUIRE(fix.ai_tuning() == SearchTuning{});
+}
+
+TEST_CASE("cmd_setoption: the echo shows the value as applied, tabs trimmed", "[uci][tuning]")
+{
+	UciHandlerTestFixture fix;
+	fix.ucinewgame();
+	const std::string output = capture_cout([&] { fix.setoption("setoption name LateMovePruning value \tfalse\t"); });
+	REQUIRE(output == "info string LateMovePruning false\n");
+	REQUIRE_FALSE(fix.ai_tuning().late_move_pruning_enabled);
+}
+
+TEST_CASE("cmd_setoption: tuning is refused while a search is running", "[uci][tuning]")
+{
+	UciHandlerTestFixture fix;
+	fix.ucinewgame();
+
+	fix.start_silent_search();
+	const std::string output = capture_cout([&] { fix.setoption("setoption name LateMovePruning value false"); });
+	fix.stop();
+
+	REQUIRE(output == "info string setoption: ignored, a search is in progress -- send 'stop' first\n");
+	REQUIRE(fix.ai_tuning().late_move_pruning_enabled);
+}
+
+TEST_CASE("cmd_setoption: tuning survives cmd_ucinewgame()", "[uci][tuning]")
+{
+	UciHandlerTestFixture fix;
+	capture_cout([&] { fix.setoption("setoption name FrontierFutilityMargin value 250"); });
+
+	fix.ucinewgame();
+
+	REQUIRE(fix.ai_tuning().frontier_futility_margin == 250);
+}
+
+TEST_CASE("cmd_setoption: SingularExtensions toggles both ways where compiled in", "[uci][tuning]")
+{
+	UciHandlerTestFixture fix;
+	fix.ucinewgame();
+	REQUIRE_FALSE(fix.ai_tuning().singular_extensions_enabled);
+
+	capture_cout([&] { fix.setoption("setoption name SingularExtensions value true"); });
+	REQUIRE(fix.ai_tuning().singular_extensions_enabled);
+	capture_cout([&] { fix.setoption("setoption name SingularExtensions value false"); });
+	REQUIRE_FALSE(fix.ai_tuning().singular_extensions_enabled);
+}
+
+TEST_CASE("AIPerplex::SetTuning rejects an invalid tuning without touching the TT", "[uci][tuning][service_api]")
+{
+	UciHandlerTestFixture fix;
+	fix.ucinewgame();
+	fix.store_tt_marker();
+
+	SearchTuning tuning;
+	tuning.min_completion_ratio = std::numeric_limits<double>::quiet_NaN();
+	const auto error = fix.set_tuning(tuning);
+
+	REQUIRE(error.has_value());
+	REQUIRE(error->field == "min_completion_ratio");
+	REQUIRE(fix.ai_tuning() == SearchTuning{});
+	REQUIRE(fix.has_tt_marker());
+}
+
+TEST_CASE("cmd_setoption: the next search reads the tuning on every thread", "[uci][tuning][smp]")
+{
+	const unsigned threads = GENERATE(1u, 2u);
+	CAPTURE(threads);
+	UciHandlerTestFixture fix;
+	fix.setoption("setoption name Threads value " + std::to_string(threads));
+	fix.ucinewgame();
+
+	const SearchResult pruned = fix.run_search_directly(6);
+	REQUIRE(pruned.telemetry.lmp.skips > 0);
+	REQUIRE(pruned.telemetry.frontier.skips > 0);
+
+	capture_cout([&] {
+		fix.setoption("setoption name LateMovePruning value false");
+		fix.setoption("setoption name FrontierFutility value false");
+	});
+	const SearchResult unpruned = fix.run_search_directly(6);
+	REQUIRE(unpruned.telemetry.lmp.skips == 0);
+	REQUIRE(unpruned.telemetry.frontier.skips == 0);
 }
