@@ -19,6 +19,10 @@ The goal is measured positive Elo — speed serves that, it is not the objective
 | Is it faster? | `Run-Bench.ps1` (nps) | seconds | a speed delta, not Elo |
 | Did I break something? | local **SPRT** `NonRegression` | 40 min – 1 h | a verdict, if the effect is big enough |
 
+**Regression check** for a change meant to leave search alone — equivalence plus a paired bench
+series against the merge base, and the baseline build that silently skews it:
+[`reference/regression-check.md`](reference/regression-check.md).
+
 **Showing a change gained something** — one instrument:
 
 | Question | Instrument | Cost | Gives you |
