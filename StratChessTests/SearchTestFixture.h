@@ -142,6 +142,10 @@ class AIPerlexTestFixture {
 	void set_reverse_futility(bool enabled) const { ai->tuning_.reverse_futility_enabled = enabled; }
 	void set_reverse_futility_max_depth(int depth) const { ai->tuning_.reverse_futility_max_depth = depth; }
 	void set_reverse_futility_margin(int margin) const { ai->tuning_.reverse_futility_margin = margin; }
+	void set_reverse_futility_tt_refine(bool enabled) const
+	{
+		ai->tuning_.reverse_futility_tt_refine_enabled = enabled;
+	}
 
 	// Every guard except the static evaluation, which is what pvs() calls before evaluating.
 	bool reverse_futility_eligible(int depth, int beta, bool is_pv_node, bool in_check, bool is_exclusion_frame) const

@@ -68,6 +68,9 @@ TUNING_FIELD(int,     singular_margin_factor,   2, 0, 1000,                     
 TUNING_FIELD(bool,    reverse_futility_enabled,   true, false, true,    true, "ReverseFutility",         true)
 TUNING_FIELD(int,     reverse_futility_max_depth, 3,    1,     MAX_PLY, true, "ReverseFutilityMaxDepth", true)
 TUNING_FIELD(int,     reverse_futility_margin,    100,  0,     1000,    true, "ReverseFutilityMargin",   true)
+// Reverse futility compares max(static evaluation, a non-mate LOWER or EXACT MAIN value this node's
+// probe found but could not cut on), trusting an entry of any stored depth.
+TUNING_FIELD(bool,    reverse_futility_tt_refine_enabled, false, false, true, true, "ReverseFutilityTtRefine", true)
 
 // Frontier futility pruning at depth 1. The margin is centipawns one quiet move may gain
 // positionally, the room delta_pruning_margin also trusts.

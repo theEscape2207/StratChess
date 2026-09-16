@@ -666,6 +666,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	bool tt_usable_for_singular = false;
 	int tt_value_for_singular = 0;
 
+	// A searched lower bound on this node that failed to cut off, for reverse futility to compare
+	// in place of a lower static evaluation. The sentinel never raises anything.
+	int tt_floor_for_reverse_futility = -GameValues::Search_Init;
+
 	// TT probe. Skipped entirely for a verification search: this key describes the position
 	// with every legal move available, and an exclusion search is asking about a strictly
 	// smaller move set. Taking a cutoff from it would answer the wrong question, and the
@@ -697,6 +701,12 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 						++td.telemetry.tt.main_cutoffs;
 					return entry->value;
 				}
+
+				// Any stored depth: an entry this deep with a value that clears the margin has already
+				// cut off above, so a depth condition would leave nothing to refine.
+				if (tuning_.reverse_futility_tt_refine_enabled && entry->bound != BoundType::UPPER &&
+				    std::abs(static_cast<int>(entry->value)) < GameValues::Mate_Threshold)
+					tt_floor_for_reverse_futility = entry->value;
 
 				// A singular candidate needs an entry that already claims this move is at
 				// least as good as its value (LOWER or EXACT), is not a mate score -- the
@@ -753,7 +763,11 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		// as exactly its alpha -- no improvement, hence no killer, history or PV write, and a
 		// null-move child returns beta - 1, one below the cutoff that would otherwise store a
 		// LOWER bound. A fail-soft return would break all of that at once.
-		if (node_eval() - tuning_.reverse_futility_margin * depth >= beta)
+		//
+		// A TT lower bound raises only this comparison, never static_eval: frontier futility's
+		// fail-low floor reports static_eval, and a raised one could exceed the alpha it skipped under.
+		const int rfp_eval = std::max(node_eval(), tt_floor_for_reverse_futility);
+		if (rfp_eval - tuning_.reverse_futility_margin * depth >= beta)
 			return beta;
 	}
 

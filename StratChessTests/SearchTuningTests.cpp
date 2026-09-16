@@ -47,6 +47,7 @@ namespace {
 		bool reverse_futility_enabled;
 		int reverse_futility_max_depth;
 		int reverse_futility_margin;
+		bool reverse_futility_tt_refine_enabled;
 		bool frontier_futility_enabled;
 		int frontier_futility_margin;
 		bool late_move_pruning_enabled;
@@ -77,6 +78,7 @@ namespace {
 	SAME_MEMBER(reverse_futility_enabled)
 	SAME_MEMBER(reverse_futility_max_depth)
 	SAME_MEMBER(reverse_futility_margin)
+	SAME_MEMBER(reverse_futility_tt_refine_enabled)
 	SAME_MEMBER(frontier_futility_enabled)
 	SAME_MEMBER(frontier_futility_margin)
 	SAME_MEMBER(late_move_pruning_enabled)
@@ -129,6 +131,7 @@ TEST_CASE("SearchTuning defaults are the shipped values", "[tuning]")
 	CHECK(tuning.reverse_futility_enabled);
 	CHECK(tuning.reverse_futility_max_depth == 3);
 	CHECK(tuning.reverse_futility_margin == 100);
+	CHECK_FALSE(tuning.reverse_futility_tt_refine_enabled);
 	CHECK(tuning.frontier_futility_enabled);
 	CHECK(tuning.frontier_futility_margin == 200);
 	CHECK(tuning.late_move_pruning_enabled);
@@ -346,6 +349,11 @@ TEST_CASE("SearchTuning UCI options set their own member", "[tuning][uci]")
 	CHECK(tuning == expected);
 
 	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("ReverseFutilityTtRefine", "true", tuning));
+	expected.reverse_futility_tt_refine_enabled = true;
+	CHECK(tuning == expected);
+
+	expected = SearchTuning{};
 	REQUIRE_FALSE(parse_uci("FrontierFutility", "false", tuning));
 	expected.frontier_futility_enabled = false;
 	CHECK(tuning == expected);
@@ -410,12 +418,13 @@ TEST_CASE("SearchTuning UCI ignores names it does not expose", "[tuning][uci]")
 
 TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
 {
-	// The test target compiles singular extensions in, so it advertises all seven.
+	// The test target compiles singular extensions in, so it advertises all eight.
 	const std::vector<std::string> expected{
 	    "option name SingularExtensions type check default false",
 	    "option name ReverseFutility type check default true",
 	    "option name ReverseFutilityMaxDepth type spin default 3 min 1 max 256",
 	    "option name ReverseFutilityMargin type spin default 100 min 0 max 1000",
+	    "option name ReverseFutilityTtRefine type check default false",
 	    "option name FrontierFutility type check default true",
 	    "option name FrontierFutilityMargin type spin default 200 min 0 max 1000",
 	    "option name LateMovePruning type check default true",

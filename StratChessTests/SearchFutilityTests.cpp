@@ -4,7 +4,8 @@
 // pass, so a failure names the guard that broke; removing any single guard from
 // reverse_futility_eligible() makes exactly one of them fail. The cutoff tests then drive a
 // whole pvs() node and check what the guard is allowed to do once it fires: return beta, search
-// no children, and store nothing.
+// no children, and store nothing. The refinement tests plant a TT entry the node's probe finds
+// but cannot cut on, and check which entries may raise the value the guard compares.
 //
 // The feature ships enabled. Cases still set the flag explicitly rather than leaning on the
 // default, so each one names the configuration it is asserting about.
@@ -284,4 +285,129 @@ TEST_CASE("Reverse futility: a static evaluation inside the margin does not cut"
 	fix.search_node(/*depth=*/1, /*ply=*/1, /*alpha=*/0, /*beta=*/1, /*is_pv_node=*/false);
 
 	CHECK(fix.mainnodes() > before);
+}
+
+// ============================================================================
+// Refinement by a transposition-table value
+// ============================================================================
+// Every refining entry is shallower than the node. An entry at least as deep with a value that
+// clears beta is taken by the TT cutoff before reverse futility runs, so it cannot test this.
+
+namespace {
+	struct RefineOutcome {
+		int beta;
+		int score;
+		bool searched;
+		std::optional<TTEntry> entry;
+	};
+
+	struct PlantedEntry {
+		int depth;
+		BoundType bound;
+		int value_over_beta;
+		SearchPhase phase = SearchPhase::MAIN;
+	};
+
+	// One non-PV node of kBaselineFen with a planted entry, at a beta just above its static
+	// evaluation so the unrefined guard never cuts.
+	RefineOutcome search_with_planted_entry(bool refine, int node_depth, const PlantedEntry& planted)
+	{
+		AIPerlexTestFixture fix(kBaselineFen);
+		fix.set_reverse_futility(true);
+		fix.set_reverse_futility_tt_refine(refine);
+		fix.arm_clock();
+
+		const int beta = fix.static_eval() + 1;
+		const auto value = static_cast<int16_t>(beta + planted.value_over_beta);
+		if (planted.phase == SearchPhase::MAIN)
+			fix.store_main_entry(value, static_cast<int16_t>(planted.depth), /*ply=*/1, planted.bound);
+		else
+			fix.store_qsearch_entry(value, static_cast<int16_t>(planted.depth), /*ply=*/1);
+
+		const int64_t before = fix.mainnodes();
+		const int score = fix.search_node(node_depth, /*ply=*/1, beta - 1, beta, /*is_pv_node=*/false);
+		return {beta, score, fix.mainnodes() > before, fix.probe_tt(/*ply=*/1)};
+	}
+} // namespace
+
+TEST_CASE("Reverse futility: a shallower LOWER or EXACT value clearing the margin cuts", "[search][futility]")
+{
+	for (const BoundType bound : {BoundType::LOWER, BoundType::EXACT}) {
+		for (const auto& [node_depth, entry_depth] : {std::pair{2, 1}, std::pair{3, 1}, std::pair{3, 2}}) {
+			CAPTURE(static_cast<int>(bound), node_depth, entry_depth);
+			const int margin = 100 * node_depth;
+
+			const auto on = search_with_planted_entry(true, node_depth, {entry_depth, bound, margin});
+			CHECK_FALSE(on.searched);
+			// Fail-hard, and the planted entry is untouched: the cut stores nothing.
+			CHECK(on.score == on.beta);
+			REQUIRE(on.entry.has_value());
+			CHECK(on.entry->value == on.beta + margin);
+			CHECK(on.entry->depth == entry_depth);
+			CHECK(on.entry->bound == bound);
+
+			CHECK(search_with_planted_entry(false, node_depth, {entry_depth, bound, margin}).searched);
+			CHECK(search_with_planted_entry(true, node_depth, {entry_depth, bound, margin - 1}).searched);
+		}
+	}
+}
+
+TEST_CASE("Reverse futility: UPPER, mate-range and quiescence entries never refine", "[search][futility]")
+{
+	CHECK(search_with_planted_entry(true, 2, {1, BoundType::UPPER, 500}).searched);
+	CHECK(search_with_planted_entry(true, 2, {2, BoundType::EXACT, 500, SearchPhase::QUIESCENCE}).searched);
+
+	// A mate score clears any margin, so only the mate-range guard keeps it out.
+	const int mate_over_beta = GameValues::Mate_Threshold - AIPerlexTestFixture(kBaselineFen).static_eval();
+	CHECK(search_with_planted_entry(true, 2, {1, BoundType::LOWER, mate_over_beta}).searched);
+}
+
+TEST_CASE("Reverse futility: a TT value at or below static evaluation does not stop a cut", "[search][futility]")
+{
+	// At equality, and low enough that comparing the TT value alone would not cut.
+	for (const bool equal : {true, false}) {
+		CAPTURE(equal);
+		AIPerlexTestFixture fix(kWinningFen);
+		fix.set_reverse_futility(true);
+		fix.set_reverse_futility_tt_refine(true);
+		fix.arm_clock();
+
+		constexpr int kBeta = 1;
+		const int eval = fix.static_eval();
+		REQUIRE(eval - 200 >= kBeta);
+		fix.store_main_entry(static_cast<int16_t>(equal ? eval : 100), /*depth=*/1, /*ply=*/1, BoundType::LOWER);
+
+		const int64_t before = fix.mainnodes();
+		CHECK(fix.search_node(/*depth=*/2, /*ply=*/1, kBeta - 1, kBeta, /*is_pv_node=*/false) == kBeta);
+		CHECK(fix.mainnodes() == before);
+	}
+}
+
+TEST_CASE("Reverse futility: a TT value never reaches frontier futility's fail-low floor", "[search][futility]")
+{
+	// A rook and a bishop up with nothing to capture, so a window above the static evaluation fails
+	// low and frontier futility skips quiet moves. Two non-pawn pieces, so reverse futility is eligible. The planted value lies between static evaluation and
+	// beta: it cannot cut, and if it leaked into static_eval the floor would clear alpha.
+	constexpr const char* kRookBishopUpFen = "7k/8/8/8/8/8/8/R3KB2 w - - 0 1";
+
+	const auto run = [](bool refine) {
+		AIPerlexTestFixture fix(kRookBishopUpFen);
+		fix.set_reverse_futility(true);
+		fix.set_reverse_futility_tt_refine(refine);
+		fix.set_frontier_futility(true);
+		fix.arm_clock();
+
+		const int alpha = fix.static_eval() + 250;
+		fix.store_main_entry(static_cast<int16_t>(alpha), /*depth=*/1, /*ply=*/1, BoundType::LOWER);
+		const int score = fix.search_node(/*depth=*/1, /*ply=*/1, alpha, alpha + 1, /*is_pv_node=*/false);
+		REQUIRE(fix.frontier_skips() > 0);
+		const auto entry = fix.probe_tt(/*ply=*/1);
+		REQUIRE(entry.has_value());
+		return std::tuple{score - alpha, entry->value - alpha, entry->bound};
+	};
+
+	const auto on = run(true);
+	CHECK(on == run(false));
+	CHECK(std::get<0>(on) <= 0);
+	CHECK(std::get<2>(on) == BoundType::UPPER);
 }
