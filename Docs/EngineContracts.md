@@ -67,7 +67,7 @@ whose violation is silent.
   after it returns is never lost, even before `Search()` initialises. `IsSearching()` turns false
   when `Search()` returns, before `on_done` runs, so a client that sends `position` the instant it reads
   `bestmove` is accepted. `on_done` must not call `StartAsync`, `Wait`, `StopAndWait`, `SetHash`,
-  `SetThreads`, `StartNewGame` or destroy the service (Debug-asserted). Those methods come from one
+  `SetThreads`, `SetTuning`, `StartNewGame` or destroy the service (Debug-asserted). Those methods come from one
   controlling thread; only `Stop()` and `IsSearching()` are callable from any thread.
 - `Engine::compute_budget(remaining, increment, moves_to_go)` → `TimeBudget{soft, hard}` is pure.
 - Verbose logging is opt-in per call site — the `AIPerplex` constructor does not enable it.
@@ -126,9 +126,11 @@ whose violation is silent.
   `AIPerplex` construction as well as to `game_settings.json`, which rejects an out-of-domain value
   naming the field; a compiled-out feature (singular extensions in the shipping build) may be set
   false but never true.
-- **`SearchTuning` is unreachable from a UCI search.** `UciHandler`'s constructor builds its
-  `AIPerplexConfig` from hardcoded values and never consults `game_settings.json` or
-  `PlayerFactory`, and `cmd_setoption` recognises only `Threads` and `Hash`. The JSON
-  `"search_tuning"` block reaches `AIPerplex` on the `game`-mode path alone. Since `Run-Bench.ps1`,
-  `Compare-SearchEquivalence.ps1` and every match harness drive the engine over UCI, a new tuning
-  knob is configurable **only by rebuilding with a different default** until something wires a route.
+- **UCI reaches `SearchTuning` only through the catalogue's UCI names.** `uci` advertises them
+  (`SingularExtensions` only in a build compiling it in) and `setoption` applies one through
+  `AIPerplex::SetTuning`, which validates the whole tuning and **clears the TT when the tuning
+  changes** — stored scores came from the old pruning. It is idle-only like `SetHash`, so UCI refuses
+  it mid-search. An invalid value prints an `info string` and changes nothing, TT included; an
+  unknown name stays silent. `ucinewgame` keeps the tuning. Any field without a UCI name is still
+  reachable only through `game_settings.json` in `game` mode, or by rebuilding with a new default —
+  and `Run-Bench.ps1`, `Compare-SearchEquivalence.ps1` and every match harness drive UCI.

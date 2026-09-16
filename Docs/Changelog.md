@@ -22,7 +22,7 @@ Newest first.
 
 ---
 
-## 2026-09-16 — Search tuning catalogue; validated game_settings.json tuning
+## 2026-09-16 — Search tuning catalogue; validated tuning; UCI tuning options
 
 `SearchTuning` is now generated from one catalogue, `StratEngine/SearchTuning.def`: each entry
 declares a field's type, default, accepted domain, JSON binding, UCI name and build availability.
@@ -37,8 +37,14 @@ doubling over the retries would overflow) stops the game with a message naming t
 was previously accepted or silently converted. `AIPerplex` validates at construction too. Seven
 keys join the JSON block: `singular_extensions_enabled` (true only in a build compiling the feature
 in), the three reverse futility settings, the two frontier futility settings and
-`late_move_pruning_enabled`. Defaults are unchanged. UCI exposure follows in a second change
-(`.claude/plans/in-progress/unified-search-tuning.md`).
+`late_move_pruning_enabled`. Defaults are unchanged.
+
+UCI now advertises and accepts those settings as `ReverseFutility`, `ReverseFutilityMaxDepth`,
+`ReverseFutilityMargin`, `FrontierFutility`, `FrontierFutilityMargin` and `LateMovePruning`, plus
+`SingularExtensions` in a build compiling it in, so a match can compare settings of one binary
+through `Run-EloMatch.ps1 -CandidateOptions`. The option lines and the parser come from the
+catalogue. `AIPerplex::SetTuning` applies a validated tuning while idle and clears the TT when it
+changes; an invalid value is reported with an `info string` and changes nothing.
 
 ---
 
