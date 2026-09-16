@@ -57,6 +57,7 @@ class UciHandler {
 	void cmd_perft(std::string_view line);
 	void cmd_stop();
 	void cmd_setoption(std::string_view line);
+	void set_tuning_option(std::string_view name, std::string_view value);
 
 	/// Routes one command line. Returns false for 'quit', which ends the loop.
 	/// Separate from run() so the routing — and the command log — are unit-testable without

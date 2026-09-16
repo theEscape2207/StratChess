@@ -11,7 +11,10 @@
 #include <limits>
 #include <nlohmann/json.hpp>
 #include <stdexcept>
+#include <string>
+#include <string_view>
 #include <type_traits>
+#include <vector>
 
 using SearchTuningSchema::TuningError;
 using Code = TuningError::Code;
@@ -301,4 +304,121 @@ TEST_CASE("AIPerplex rejects invalid tuning at construction", "[tuning][service_
 	REQUIRE_THROWS_AS(AIPerplex(AIPerplexConfig{.hash_mb = 1, .tuning = tuning}), std::invalid_argument);
 	REQUIRE_THROWS_WITH(AIPerplex(AIPerplexConfig{.hash_mb = 1, .tuning = tuning}),
 	                    Catch::Matchers::ContainsSubstring("min_pv_ratio"));
+}
+
+namespace {
+
+	// Applies one UCI option over the defaults and returns the error, if any.
+	std::optional<TuningError> parse_uci(std::string_view name, std::string_view value, SearchTuning& tuning)
+	{
+		tuning = SearchTuning{};
+		return SearchTuningSchema::ParseUci(name, value, tuning);
+	}
+
+	Code uci_rejection(std::string_view name, std::string_view value)
+	{
+		SearchTuning tuning;
+		const auto error = parse_uci(name, value, tuning);
+		REQUIRE(error.has_value());
+		CHECK(tuning == SearchTuning{});
+		return error->code;
+	}
+
+} // namespace
+
+TEST_CASE("SearchTuning UCI options set their own member", "[tuning][uci]")
+{
+	SearchTuning tuning;
+	SearchTuning expected;
+
+	REQUIRE_FALSE(parse_uci("ReverseFutility", "false", tuning));
+	expected.reverse_futility_enabled = false;
+	CHECK(tuning == expected);
+
+	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("ReverseFutilityMaxDepth", "8", tuning));
+	expected.reverse_futility_max_depth = 8;
+	CHECK(tuning == expected);
+
+	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("ReverseFutilityMargin", "150", tuning));
+	expected.reverse_futility_margin = 150;
+	CHECK(tuning == expected);
+
+	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("FrontierFutility", "false", tuning));
+	expected.frontier_futility_enabled = false;
+	CHECK(tuning == expected);
+
+	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("FrontierFutilityMargin", "250", tuning));
+	expected.frontier_futility_margin = 250;
+	CHECK(tuning == expected);
+
+	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("LateMovePruning", "false", tuning));
+	expected.late_move_pruning_enabled = false;
+	CHECK(tuning == expected);
+
+	// The test target compiles singular extensions in, defaulting off.
+	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("SingularExtensions", "true", tuning));
+	expected.singular_extensions_enabled = true;
+	CHECK(tuning == expected);
+}
+
+TEST_CASE("SearchTuning UCI values are lowercase Booleans and unsigned decimals", "[tuning][uci]")
+{
+	SearchTuning tuning;
+	REQUIRE_FALSE(parse_uci("ReverseFutility", " \tfalse ", tuning));
+	CHECK_FALSE(tuning.reverse_futility_enabled);
+
+	CHECK(uci_rejection("ReverseFutility", "False") == Code::InvalidType);
+	CHECK(uci_rejection("ReverseFutility", "0") == Code::InvalidType);
+	CHECK(uci_rejection("ReverseFutility", "") == Code::InvalidType);
+	CHECK(uci_rejection("ReverseFutility", "false x") == Code::InvalidType);
+
+	CHECK(uci_rejection("ReverseFutilityMargin", "") == Code::InvalidType);
+	CHECK(uci_rejection("ReverseFutilityMargin", "-1") == Code::InvalidType);
+	CHECK(uci_rejection("ReverseFutilityMargin", "+5") == Code::InvalidType);
+	CHECK(uci_rejection("ReverseFutilityMargin", "12x") == Code::InvalidType);
+	CHECK(uci_rejection("ReverseFutilityMargin", "1.5") == Code::InvalidType);
+	CHECK(uci_rejection("ReverseFutilityMargin", "1 2") == Code::InvalidType);
+	CHECK(uci_rejection("ReverseFutilityMargin", "99999999999999999999") == Code::OutOfRange);
+	CHECK(uci_rejection("ReverseFutilityMargin", "1001") == Code::OutOfRange);
+}
+
+TEST_CASE("SearchTuning UCI depth band spans the engine's ply capacity", "[tuning][uci]")
+{
+	SearchTuning tuning;
+	for (const int depth : {4, 8, MAX_PLY}) {
+		REQUIRE_FALSE(parse_uci("ReverseFutilityMaxDepth", std::to_string(depth), tuning));
+		CHECK(tuning.reverse_futility_max_depth == depth);
+	}
+	CHECK(uci_rejection("ReverseFutilityMaxDepth", "0") == Code::OutOfRange);
+	CHECK(uci_rejection("ReverseFutilityMaxDepth", std::to_string(MAX_PLY + 1)) == Code::OutOfRange);
+}
+
+TEST_CASE("SearchTuning UCI ignores names it does not expose", "[tuning][uci]")
+{
+	CHECK(uci_rejection("reversefutility", "false") == Code::UnknownSetting);
+	CHECK(uci_rejection("reverse_futility_enabled", "false") == Code::UnknownSetting);
+	CHECK(uci_rejection("DeltaPruningMargin", "100") == Code::UnknownSetting);
+	CHECK(uci_rejection("Hash", "16") == Code::UnknownSetting);
+	CHECK(uci_rejection("", "") == Code::UnknownSetting);
+}
+
+TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
+{
+	// The test target compiles singular extensions in, so it advertises all seven.
+	const std::vector<std::string> expected{
+	    "option name SingularExtensions type check default false",
+	    "option name ReverseFutility type check default true",
+	    "option name ReverseFutilityMaxDepth type spin default 3 min 1 max 256",
+	    "option name ReverseFutilityMargin type spin default 100 min 0 max 1000",
+	    "option name FrontierFutility type check default true",
+	    "option name FrontierFutilityMargin type spin default 200 min 0 max 1000",
+	    "option name LateMovePruning type check default true",
+	};
+	CHECK(SearchTuningSchema::UciOptionLines() == expected);
 }

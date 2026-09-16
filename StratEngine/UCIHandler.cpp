@@ -176,6 +176,8 @@ void UciHandler::cmd_uci()
 	// lock_bytes() is additional memory.
 	send("option name Hash type spin default " + std::to_string(AIPerplex::DEFAULT_HASH_MB) + " min " +
 	     std::to_string(AIPerplex::MIN_HASH_MB) + " max " + std::to_string(AIPerplex::MAX_HASH_MB));
+	for (const auto& option : SearchTuningSchema::UciOptionLines())
+		send(option);
 	// After uciok, not inside the block: the spec's reply to 'uci' is id + option + uciok,
 	// and an 'info' line among them is out of spec even though GUIs tolerate it.
 	send("uciok");
@@ -539,17 +541,18 @@ void UciHandler::cmd_stop() { ai_->StopAndWait(); }
 
 void UciHandler::cmd_setoption(std::string_view line)
 {
-	// Both supported options mutate a live AI, so they must not race a search.
+	// Every supported option mutates a live AI, so none may race a search.
 	if (refuse_while_searching("setoption")) {
 		return;
 	}
-	// Minimal UCI 'setoption' parser — recognizes exactly:
+	// Minimal UCI 'setoption' parser — recognizes:
 	//   setoption name Threads value N
 	//   setoption name Hash value N
-	// Any other option name, or a malformed/missing value, is silently
-	// ignored (standard UCI convention — same as unknown top-level commands
-	// in run()). Case-sensitive matches on "Threads" and "Hash", matching the
-	// convention used by Stockfish and other engines.
+	//   setoption name <tuning option> value V   (SearchTuning.def's UCI names)
+	// An unknown option name, or a malformed/missing Threads or Hash value, is
+	// silently ignored (standard UCI convention — same as unknown top-level
+	// commands in run()). Names are case-sensitive, matching the convention
+	// used by Stockfish and other engines.
 	const auto trim = [](std::string_view s) {
 		const size_t b = s.find_first_not_of(' ');
 		if (b == std::string_view::npos)
@@ -567,7 +570,12 @@ void UciHandler::cmd_setoption(std::string_view line)
 	    trim((value_pos != std::string_view::npos) ? line.substr(name_pos + 4, value_pos - (name_pos + 4))
 	                                               : line.substr(name_pos + 4));
 
-	if ((name != "Threads" && name != "Hash") || value_pos == std::string_view::npos)
+	if (name != "Threads" && name != "Hash") {
+		set_tuning_option(name,
+		                  value_pos == std::string_view::npos ? std::string_view{} : trim(line.substr(value_pos + 5)));
+		return;
+	}
+	if (value_pos == std::string_view::npos)
 		return;
 
 	const std::string_view value_str = trim(line.substr(value_pos + 5));
@@ -602,6 +610,22 @@ void UciHandler::cmd_setoption(std::string_view line)
 
 	send("info string hash " + std::to_string(result.entry_mb) + " MiB (" + std::to_string(result.bucket_count) +
 	     " buckets)");
+}
+
+// A recognised tuning option reports whether it was applied; any other name stays silent.
+void UciHandler::set_tuning_option(std::string_view name, std::string_view value)
+{
+	SearchTuning candidate = ai_->Tuning();
+	auto error = SearchTuningSchema::ParseUci(name, value, candidate);
+	if (!error)
+		error = ai_->SetTuning(candidate);
+	if (!error) {
+		send("info string " + std::string(name) + " " + std::string(value));
+		return;
+	}
+	if (error->code == SearchTuningSchema::TuningError::Code::UnknownSetting)
+		return;
+	send("info string " + std::string(name) + " not applied: " + error->message + "; previous value retained");
 }
 
 UciHandler::GoParams UciHandler::parse_go(std::string_view line)

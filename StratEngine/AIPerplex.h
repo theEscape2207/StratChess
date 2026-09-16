@@ -7,7 +7,7 @@
 #include "ThreadData.h"
 #include "SearchResult.h"
 #include "SearchControl.h"
-#include "SearchTuning.h"
+#include "SearchTuningSchema.h"
 #include <algorithm>
 #include <cassert>
 #include <chrono>
@@ -46,7 +46,7 @@ struct IterationInfo {
 
 using IterationObserver = std::function<void(const IterationInfo&)>;
 // Receives the finished search on the launch thread, after IsSearching() has turned false. It must
-// not call StartAsync, Wait, StopAndWait, SetHash, SetThreads or StartNewGame, or destroy the service
+// not call StartAsync, Wait, StopAndWait, SetHash, SetThreads, SetTuning or StartNewGame, or destroy the service
 // (Debug-asserted): a join from the launch thread throws, and the rest race the controlling thread.
 using CompletionHandler = std::function<void(const SearchResult&)>;
 
@@ -79,7 +79,7 @@ class AIPerplex final {
 	explicit AIPerplex(AIPerplexConfig config = {});
 	SearchResult Search(const Board& root, const SearchLimits& limits, IterationObserver observer = {});
 
-	// Configuration/lifecycle methods SetThreads(), SetHash(), and
+	// Configuration/lifecycle methods SetThreads(), SetHash(), SetTuning() and
 	// StartNewGame() must not overlap Search(). Stop() is the only method that
 	// may be called concurrently with Search().
 	// Configure the number of Lazy SMP search threads; clamps to [1, 32].
@@ -99,6 +99,11 @@ class AIPerplex final {
 	static constexpr unsigned MAX_HASH_MB = 1536;
 
 	HashConfigurationResult SetHash(unsigned mb) noexcept;
+	// Validates, then replaces the tuning; an invalid tuning leaves everything unchanged. A changed
+	// tuning clears the transposition table, whose scores the old pruning produced. StartNewGame()
+	// keeps the tuning.
+	std::optional<SearchTuningSchema::TuningError> SetTuning(const SearchTuning& tuning);
+	const SearchTuning& Tuning() const noexcept { return tuning_; }
 	void StartNewGame();
 	void Stop() noexcept;
 
