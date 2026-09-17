@@ -51,7 +51,10 @@ gh workflow run strength.yml --ref <branch> -f reference_ref=<merge-base|tag|sha
 ```
 
 `reference_ref` defaults to `merge-base`, which attributes the result to **this change alone**; a
-tag like `elo-reference-v2` measures cumulative strength instead. Shard count, pooling and the
+tag like `elo-reference-v2` measures cumulative strength instead. A feature that ships default-off is
+measured with `-f candidate_uci_options="Name=Value"` rather than a probe branch, so the binary that
+plays is the one that will merge; the run fails fast if the engine does not advertise that option,
+since it would otherwise ignore it silently and report a null result. Shard count, pooling and the
 failed-shard rule: [`reference/strength-lab.md`](reference/strength-lab.md).
 
 Locally, build the candidate first (`.\build.ps1 main`) — `Run-EloMatch.ps1` does not build it, and
