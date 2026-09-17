@@ -304,15 +304,16 @@ numbers are only trusted because the null test and the known-sign control were r
 in `Measurements/ci-calibration.md`.
 
 **Four jobs.** `setup` turns the requested game count into a shard plan and self-tests the pooling
-formula and the UCI-option checker before anything expensive runs. `build` compiles both engines and stages them with fastchess
-and the book as **one artifact**, so every shard provably plays the same two binaries against the
-same book. `match` is the shard matrix. `aggregate` pools them.
+formula and the UCI-option checker before anything expensive runs. `build` compiles both engines,
+checks the requested UCI options against them, and stages them with fastchess and the book
+as **one artifact**, so every shard provably plays the same two binaries against the same book.
+`match` is the shard matrix. `aggregate` pools them.
 
 | Input | Meaning |
 |---|---|
 | `reference_ref` | Reference side, default `merge-base` — the commit this ref forked from `main`, so the result is attributable to this change alone. A tag such as `elo-reference-v2` measures cumulative strength instead; the candidate's own SHA is a null test. Resolved and verified in `setup`, so a bad ref fails in seconds |
 | `cmake_defines` | Optional whitespace-separated `-DNAME=VALUE` arguments. The setup job rejects any other shape and reserves `CMAKE_*` so the fixed toolchain cannot be overridden; accepted arguments are applied identically to both builds and recorded in the run summary |
-| `candidate_uci_options` / `reference_uci_options` | Optional whitespace-separated `Name=Value` UCI options, set on that side only — how a default-off runtime option is measured without a probe branch. `build` checks each against that engine's own advertised option table and fails the run on an unknown name, a wrong type or an out-of-range value, because the engine ignores all three in silence and the batch would otherwise report a null result. `Threads` is reserved; both strings are recorded in the run summary |
+| `candidate_uci_options` / `reference_uci_options` | Optional whitespace-separated `Name=Value` UCI options, set on that side only — how a default-off runtime option is measured without a probe branch. `build` checks each against that engine's own advertised option table and fails the run on an unknown name, a wrong type or an out-of-range value, because the engine ignores all three in silence and the batch would otherwise report a null result. `Threads` is reserved, a repeated name is rejected, and a value equal to the engine's default warns. Spin values must be **unsigned decimal digits** — the engine's UCI parser refuses a sign or a plus whatever the advertised minimum says, so an option with a negative minimum is not settable over UCI until that parser learns to read one. Both strings are recorded in the run summary |
 | `games` | Total games across all shards, two per opening pair. Rounded down so each shard gets whole pairs |
 | `shards` | Parallel match jobs, default 18. 18×1110 games is ~3 h and leaves 2 of the 20 concurrent-job slots free, so a run no longer blocks every other PR; 20 consumes the whole allowance for the duration. Below ~16 a shard can exceed the 340-minute job timeout |
 | `candidate_tc` / `reference_tc` | Per-side time control. Halve the **base** for a handicap run — an increment under 0.1 s makes the engine play near-instantly at the bottom of its clock |
