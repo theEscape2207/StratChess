@@ -10,8 +10,9 @@ evaluates at or below 0. The Tier 1 move-quality scan of run `33215162562` puts 
 games (4,393) on threefold repetition, with 99.9% of them ending with both sides reporting under
 50 cp — the engine repeats in positions it believes are equal. Whether declining those draws is
 worth Elo is a playing-policy question, not a bug, and its sign is not obvious. This change adds the
-mechanism (a signed contempt offset on search-detected draw scores) and the instrument to settle it,
-shipping the offset disabled so the merge itself cannot change playing strength.
+mechanism — a signed contempt offset on search-detected draw scores — shipping it disabled, so the
+merge cannot change playing strength and the measurement becomes a separate, separately-funded
+decision.
 
 ## Scope
 
@@ -22,22 +23,29 @@ shipping the offset disabled so the merge itself cannot change playing strength.
 - Route the four search-detected draw endpoints through one helper, `draw_score(td)`:
   `pvs()`'s `check_draws` exit (`AIPerplex.cpp:652`), `quiescence()`'s `check_draws` exit
   (`:1258`), the stalemate return in `adjustScoreForGameState()` (`:1133`), and the bare-king
-  stalemate return and its TT store in `quiescence()` (`:1313-1317`).
-- Capture the root side to move per search and clear the transposition table when it flips while
-  contempt is non-zero (D3).
-- Measure the term in the CI strength lab against the merge base at `Contempt=20`, with the
-  ship/reject rule recorded below **before** the run.
+  stalemate return in `quiescence()` (`:1313-1317`). Two TT stores carry the resulting value: the
+  bare-king store at `:1314` and the terminal store at `:1079-1083`, which caches whatever
+  `adjustScoreForGameState()` returned. That pair is the complete list D3 argues over.
+- Generalise `assess_iteration_quality()`'s CASE 4 from `metrics.current_score == 0` to the
+  contempt-shifted draw band (D2), so the SCORE_DROP rejection keeps working at non-zero contempt.
+- Capture the root side to move per search and clear the transposition table whenever the contempt
+  context it was filled under no longer matches (D3).
 
 **This change will not:**
 
 - Change the abort and time-limit unwind returns (`:646`, `:649`, `:1224`, `:1227`). Those are
   fabricated values for a frame that searched nothing, not game results, and must stay neutral.
-- Change mate or stalemate *adjudication*, `Evaluator::Evaluate`'s scale-0 dead-drawn material
-  return (`Eval.cpp:1088`), or any evaluation term. Contempt belongs to the search's terminal
-  scores, not to static evaluation.
-- Decay contempt with game phase, material deficit or remaining time (D6).
-- Enable contempt by default. A default change is a separate, measurement-gated PR.
-- Resolve #347 (halfmove clock outside the TT identity) or run a weaker-opponent panel (D4, D5).
+- Change mate or stalemate *adjudication*, or any evaluation term. In particular
+  `Evaluator::Evaluate`'s scale-0 dead-drawn material return (`Eval.cpp:1088`) stays at 0, with a
+  consequence worth naming: at `Contempt=20` a repetition scores −20 while liquidating into a dead
+  K+B vs K scores 0, so the engine prefers the genuinely dead position to the repetition it is being
+  taught to avoid. That is the most likely way a flat contempt term misfires, and it is D5's first
+  hypothesis if the measurement comes back negative. Closing it means teaching contempt about
+  eval-detected draws, which is a larger change and needs the flat term measured first.
+- Decay contempt with game phase, material deficit or remaining time. Adding a decay before the flat
+  term has been measured moves two variables at once and answers neither question.
+- Enable contempt by default, or run the CI strength lab. Both belong to the default-flip decision
+  (D5), which is a separate PR and a separate spend.
 
 ## Decisions
 
@@ -49,7 +57,7 @@ the negamax perspective of the node that reports it. Getting this backwards make
 draws when it is losing, which is the exact failure mode #452 names.
 
 Ply parity (`ply % 2`) is the cheaper and more common formulation and was rejected: null-move
-pruning flips the side to move while *incrementing* ply (`AIPerplex.cpp:770-772`), so below a null
+pruning flips the side to move while *incrementing* ply (`AIPerplex.cpp:768-774`), so below a null
 move parity no longer tracks the side to move and the sign inverts for that whole subtree. Reading
 the board's colour costs one member read on a cold path — draw endpoints only, never per node — and
 is correct under null moves, singular verification frames (which re-enter at the parent's ply and
@@ -57,103 +65,158 @@ the parent's colour) and any future ply-shifting extension.
 
 `root_color_` is an `AIPerplex` member written in `Search()` before helper threads are spawned and
 read-only for the rest of the search, exactly as `tuning_` already is. Helpers seed from the same
-root board, so they share the value.
+root board, so they share the value. It is declared `eColor root_color_ = WHITE;` rather than left
+indeterminate, because `pvs()` is reachable without `Search()` in the test build
+(`SearchTestFixture.h:270-275` calls it directly); the sign tests therefore set it explicitly
+through a new `AIPerlexTestFixture::set_root_color()` poke, beside the existing
+`set_last_move_was_null()`, instead of asserting against a default.
 
-### D2: A runtime integer option defaulting to 0, not a compile gate
+### D2: A runtime integer option defaulting to 0, and one consumer generalised with it
 
 `contempt` is one `TUNING_FIELD` entry. `0` reproduces today's arithmetic exactly — the helper
-returns `GameValues::Draw` unchanged — which makes acceptance criterion 1 a compile-time-free
-identity rather than a second code path. A compile gate was rejected: the feature has no hot-path
-cost to gate away, and standing practice is that a compile gate is a temporary state whose end point
-is a default-true runtime flag or deletion. The domain `[-100, 100]` admits negative values, which
-are the natural way to *seek* draws (a defensive or losing-on-time posture) and cost nothing to
-allow; the value under test is `20`, mid-range of the typical 10–30 cp.
+returns `GameValues::Draw` unchanged — which makes the zero-contempt identity arithmetic rather than
+a second code path. A compile gate was rejected: the feature has no hot-path cost to gate away, and
+standing practice is that a compile gate is a temporary state whose end point is a default-true
+runtime flag or deletion. The domain `[-100, 100]` admits negative values, the natural way to *seek*
+draws, and costs nothing to allow.
 
-### D3: Clear the TT when the root colour flips, gated on contempt being non-zero
+One existing consumer depends on a drawn score being literally zero and would be silently defeated:
+`assess_iteration_quality()` CASE 4 (`AIPerplex.cpp:1560-1563`) rejects an iteration as SCORE_DROP
+when `metrics.current_score == 0` while the running best is above `score_draw_threshold`. It tests
+the literal, not `GameValues::Draw`, so a grep for the constant does not find it. At non-zero
+contempt an iteration that collapses into a repetition reports −contempt, the guard stops firing,
+and a suspicious iteration is accepted. The test becomes
+`std::abs(metrics.current_score) <= std::abs(tuning_.contempt)`, which is exactly `== 0` at the
+shipped default and so changes nothing there. Silently defeating the guard was rejected: it is a
+search-quality gate, and losing it is a behaviour change nobody asked for.
 
-A contempt-derived draw score propagates into parent entries, so a stored bound depends on which
-colour the search was favouring — context the Zobrist key does not carry. This is the root-
-perspective hole the triage flagged, and it is separate from #347's clock hole.
+### D3: Clear the TT whenever the contempt context the table was filled under changes
+
+A contempt-derived draw score propagates into parent entries through both stores named in Scope, so
+a stored bound depends on which colour the search was favouring and by how much — context the
+Zobrist key does not carry. This is the root-perspective hole the triage flagged, separate from
+#347's clock hole.
 
 In normal play the hole is unreachable: a UCI engine searches only its own moves, so the root colour
-is constant for a whole game and `StartNewGame()` clears the TT between games. It becomes reachable
-only when a caller searches alternating colours without `ucinewgame` — analysis, the tactical
-runner, tests. So: `Search()` compares the root colour against the previous search's; if they differ
-and `tuning_.contempt != 0`, it clears the TT before searching. `StartNewGame()` resets the stored
-colour to unset.
+is constant for a whole game and `StartNewGame()` clears the TT between games; in `game` mode each
+`SearchPlayer` owns its own `AIPerplex` and therefore its own table. It becomes reachable only when
+one service searches alternating colours, or under a changed contempt value, without `ucinewgame` —
+analysis, the tactical runner, tests.
 
-Rejected alternatives: encoding the root colour in the entry (no spare bits — #534 left
-`PackedEntry` at 16 bytes with 3 reserved metadata bits, and #347 already wants them); suppressing
-score reuse across perspectives (same storage problem, plus it costs cutoffs in the common case
-where the perspective never changes); accepting the pollution (bounded at 2×contempt, but it is an
-unforced silent wrong answer in exactly the analysis setting where a user would notice). The chosen
-option costs a TT clear per colour flip in analysis and *nothing at all* at the shipped default,
-where the guard is one integer comparison per search.
+So `Search()` keeps the `(root_color, contempt)` pair its table was filled under and clears the TT
+when the incoming pair differs. Keying on the pair rather than on a colour flip alone is deliberate:
+gating the clear on "contempt is currently non-zero" would let a search at 20 on a white root be
+followed by a `Contempt 0` search on a black root that consumes tinted entries — which would make
+the zero-contempt identity false inside that process — and would leave entries from an old magnitude
+in place after 20 → 60. `StartNewGame()` resets the stored pair to unset.
+
+Rejected alternatives: encoding the context in the entry (no spare bits — #534 left `PackedEntry` at
+16 bytes with 3 reserved metadata bits, and #347 already wants them); suppressing score reuse across
+contexts (same storage problem, plus it costs cutoffs in the common case where the context never
+changes); accepting the pollution (bounded at 2×contempt, but it is an unforced silent wrong answer
+in exactly the analysis setting where a user would notice). The chosen option costs a TT clear per
+context change in analysis and nothing at the shipped default, where the guard is two integer
+comparisons per `Search()`.
 
 ### D4: #347 is not a blocker and this change does not widen it
 
 The rule-50 draw score already depends on the halfmove clock and is already cached under a
 clock-independent key; #347 measured that error at 535 cp. Contempt changes the *value* of such an
-entry by at most `|contempt|` (≤ 100 cp by domain, 20 cp as tested) and introduces no new context
-into the key — the clock dependency is unchanged in kind and in reachability. #347 is parked with
-zero observed rejections (#549). Treating it as a hard blocker was therefore rejected; the
-interaction is recorded here and in the source comment on the helper.
+entry by at most `|contempt|` (≤ 100 cp by domain) and introduces no new context into the key — the
+clock dependency is unchanged in kind and in reachability. #347 is parked with zero observed
+rejections (#549). Treating it as a hard blocker was therefore rejected; the interaction is recorded
+here and on #347.
 
-### D5: Pre-registered ship/reject rule for the strength lab
+### D5: The lab run is not a merge gate; it is the default-flip decision, pre-registered here
 
-The lab plays the candidate against a near-equal merge base. Contempt is defined relative to the
-opponent's strength, so peer self-play is close to its worst case and may measure ~0 for a term that
-helps against a weaker field. Deciding the bar afterwards would make any outcome a pass, so it is
-fixed here. One run, `Contempt=20`, candidate vs. merge base, ~20,000 games, ~±4 Elo:
+**The merge of this PR is gated on correctness only** — unit tests, the equivalence run, the full
+suite. Nothing the lab could report would change what lands, because the shipped default is 0 either
+way. Saying so plainly is the point: a pre-registered table whose every cell reads "merge as-is" is
+not a decision rule, and spending ~3 h and 18 of 20 CI slots on a run that cannot change this PR is
+not justified by this PR.
+
+The run belongs to the follow-up question — *should the default be non-zero?* — and is pre-registered
+here so the bar exists before any numbers do:
+
+- **Configuration.** `strength.yml:411-412` hard-codes both engine command lines with only
+  `option.Threads=1`, and its one free input, `cmake_defines` (`:24-26`), is applied identically to
+  both builds. There is no way to set a runtime UCI option on the candidate alone. So the run is
+  dispatched from a throwaway probe branch whose `SearchTuning.def` default reads 20, against the
+  merge base as reference. The consequence is explicit: the measured binary is not the merged
+  binary, and differs from it in exactly one literal. A per-engine option passthrough in
+  `strength.yml` is the right permanent fix and gets its own issue rather than riding inside a
+  search change.
+- **Power.** One run, ~20,000 games, ~±4 Elo. Its lower bound clears 0 only for a true effect of
+  roughly +4 Elo or more. Peer self-play is close to the worst case for contempt — the term is
+  defined relative to the opponent's strength — so a null result is the expected outcome and is
+  informative only as "not worth enabling against a peer".
 
 | Outcome | Action |
 |---|---|
-| CI lower bound > 0 | Open a follow-up PR flipping the default to 20, citing this run. |
-| CI contains 0 | Merge as-is, default 0. Contempt is a neutral-in-peer-play style option; record the interval and close #452 on that basis. |
-| CI upper bound < 0 | Merge as-is, default 0, and record that contempt at 20 cp is measurably harmful in peer play. Do not test further magnitudes without new evidence. |
+| CI lower bound > 0 | Flip the default to 20 in the follow-up PR, citing the run. |
+| CI contains 0 | Leave the default at 0. Contempt is a neutral-in-peer-play style option; record the interval and close #452 on that basis. |
+| CI upper bound < 0 | Leave the default at 0 and record that contempt at 20 cp is measurably harmful in peer play. Check the `Eval.cpp:1088` interaction named in Scope as the first hypothesis before testing another magnitude. |
 
-A weaker-opponent panel is **not** required to merge this PR, because this PR makes no
-weaker-opponent claim. It would be required before anyone asserts "contempt gains Elo against weaker
-fields" — that is a separate experiment and a separate issue.
+A weaker-opponent panel is **not** required, because neither this PR nor the follow-up asserts a
+weaker-opponent gain. Such a claim needs its own experiment and its own issue.
 
 Acceptance criterion 4 of #452 ("the threefold share must move") is replaced, per the triage's item
-6, by a measured before/after: re-scan the candidate PGNs with the Tier 1 scan and report the
-threefold-repetition share and W/D/L against the same figures from the reference side of the same
-run. Activity is demonstrated by a difference, not by a threshold on 22.0%.
+6, by a measured comparison with a failure condition: the candidate's threefold share must differ
+from the reference side's of the same run by more than the binomial interval at that game count, and
+both intervals get reported. A bare "there is a difference" is unfalsifiable and would be satisfied
+by sampling noise.
 
-### D6: No phase, deficit or time-based decay
+### D6: Run under the standard adjudicator, and report the draw classes separately
 
-Decaying contempt toward 0 in the endgame or when far behind on material is standard in some
-engines and was rejected for now: there is no evidence in the scan for any particular decay shape,
-and adding one before the flat term has been measured moves two variables at once, answering
-neither. A flat term is the thing the single lab run can attribute.
+`strength.yml:416` and `Run-EloMatch.ps1:686` adjudicate a draw when **both** engines report
+|score| ≤ 10 cp for eight consecutive moves from move 40. At `Contempt=20` the candidate reports
+±20 in exactly the lines that adjudicator targets, so it stops firing on candidate games: the two
+sides of one match run under different effective rules, candidate games run longer against a
+wall-clock budget calibrated with adjudication firing, and the threefold share rises mechanically
+because games formerly cut at move 48 now reach a repetition.
+
+Changing the adjudicator is not available without editing the hard-coded command line, which is the
+same `strength.yml` change D5 defers. So the run uses the standard adjudicator, and the confound is
+made visible rather than hidden: the re-scan reports **adjudicated draws and rules draws (threefold,
+fifty-move, stalemate) separately for each side**, and the D5 threefold comparison is made on the
+rules-draw counts. Testing at a magnitude under the 10 cp bar was rejected — it would keep
+adjudication symmetric but measure a term too small to resolve at ±4 Elo, answering nothing. The
+wall-clock risk is real and is checked by the shard timing the run itself reports; a run that
+overruns is re-dispatched with fewer rounds rather than re-interpreted.
 
 ## Assumptions I cannot verify from the code
 
-- **The lab's ~±4 Elo interval at ~20,000 games holds for this run.** Taken from skill
-  `measure-strength` and past runs, not re-derived. Verified by the run's own reported interval; if
-  it comes back materially wider, the D5 table is applied to the interval actually measured, not to
-  the assumed one.
-- **`Contempt=20` is a sensible first magnitude.** Taken from the 10–30 cp range in #452, which
-  cites general engine practice rather than a repository measurement. Not verified, and not
-  verifiable without spending further lab runs on a magnitude sweep; the D5 table deliberately does
-  not treat a null result at 20 as a verdict on every magnitude.
-- **Nothing outside `AIPerplex` reads a drawn score and depends on it being exactly 0.** Checked by
-  grep for `GameValues::Draw` across `StratEngine` — the remaining uses are the abort returns this
-  change leaves alone and `Eval.cpp`'s scale-0 path, which is out of scope. Closed by the
-  zero-contempt equivalence run in Validation rather than by the grep alone.
+- **No consumer of the *reported* score depends on a draw being exactly 0, other than the one D2
+  fixes.** The grep that found `assess_iteration_quality()` was a grep for the literal, not for
+  `GameValues::Draw`, because the constant does not appear there. The enumeration, at
+  `contempt != 0`: `info score cp` (a number, no zero-special-casing — verified in
+  `UCIReportingTests.cpp` expectations); fastchess draw adjudication (D6 — it *does* depend on the
+  value, which is why D6 exists); `assess_iteration_quality()` CASE 4 (D2); `should_stop_early()`;
+  and the Tier 1 move-quality scan's score bands, whose "< 50 cp" convention in `Docs/MoveQuality.md`
+  is a threshold, not an equality, and so absorbs a 20 cp shift without changing class. Closed by
+  re-running that enumeration against the implementation at `Contempt=50`, not by the equivalence
+  run — at contempt 0 no consumer can observe a shifted score at all, so that run is the regression
+  guard for the shipped default and nothing more.
+- **The lab's ~±4 Elo interval at ~20,000 games holds.** Taken from skill `measure-strength` and past
+  runs, not re-derived. Verified by the run's own reported interval; the D5 table is applied to the
+  interval actually measured.
+- **`Contempt=20` is a sensible first magnitude.** Taken from the 10–30 cp range in #452, which cites
+  general engine practice rather than a repository measurement. Not verified and not verifiable
+  without spending further runs on a sweep; the D5 table therefore treats a null result at 20 as a
+  verdict on 20, not on every magnitude.
 
 ## Invariants
 
-1. With `contempt == 0`, the search is node-identical and move-identical to `origin/main` at
-   `Threads=1`. No new work runs on any per-node path at any contempt value: the helper is called
-   only at draw endpoints, and the D3 guard once per `Search()`.
+1. In a process where `contempt` has never been set non-zero, the search is node-identical and
+   move-identical to `origin/main` at `Threads=1`. No new work runs on any per-node path at any
+   contempt value: the helper is called only at draw endpoints, and the D3 guard once per `Search()`.
 2. A drawn score is negative for the side the engine is playing and positive for its opponent, at
    every node, including below a null move and inside a singular verification frame.
 3. Abort and time-limit unwind returns stay exactly `GameValues::Draw` at every contempt value.
-4. No TT entry produced under one root colour is consumed by a search under the other while
-   contempt is non-zero.
-5. `Validate()` rejects a contempt outside `[-100, 100]`; the UCI `Contempt` spin advertises that
+4. No TT entry produced under one `(root_color, contempt)` pair is consumed by a search under a
+   different pair.
+5. SCORE_DROP still rejects an iteration that collapses to a drawn score, at every contempt value.
+6. `Validate()` rejects a contempt outside `[-100, 100]`; the UCI `Contempt` spin advertises that
    domain.
 
 ## Validation
@@ -161,39 +224,41 @@ neither. A flat term is the thing the single lab run can attribute.
 Search tier. Evidence, in the order it is produced:
 
 - **Unit tests** (`StratChessTests/SearchContemptTests.cpp`, `[search][contempt]`), driving `pvs()`
-  through `AIPerlexTestFixture::search_node_after`:
-  - `contempt == 0` returns exactly `GameValues::Draw` at a repetition, at the fifty-move limit and
-    at a stalemate — invariant 1's local half.
-  - Both root colours, on a repetition position: the returned score is `-contempt` when the drawing
+  through `search_node_after` with `root_color_` set by the new fixture poke:
+  - Both root colours on a repetition position: the returned score is `-contempt` when the drawing
     node's side to move is the root colour and `+contempt` when it is not. Asserted at an even and
-    an odd ply, and once below a null move, so ply parity alone cannot pass the test — invariant 2.
+    an odd ply, and once below a null move, so a ply-parity implementation cannot pass — invariant 2.
+  - The same three shapes at the fifty-move limit and at a stalemate, so all four endpoints are
+    covered rather than the repetition one standing in for them.
+  - At `contempt = 0` each endpoint returns `GameValues::Draw`. This cannot fail for any sign helper
+    that negates, so it is not evidence for invariant 1 — it guards against the helper being handed a
+    non-zero offset at the default, and nothing more.
   - The abort path returns `GameValues::Draw` with `contempt = 50` set — invariant 3.
-  - The flip-clear fires exactly when D3 says: plant a marker entry, run `Search()` on a root of
-    the other colour with `contempt = 20`, and require the marker to be gone; repeat with
-    `contempt = 0` and require it to survive; repeat on a same-colour root and require it to
-    survive — invariant 4, and the inert-at-default half of invariant 1.
-  - `SearchTuningTests.cpp`: domain rejection at ±101 and acceptance at ±100; `UCITests.cpp`: the
-    `Contempt` option is advertised with the right type and bounds — invariant 5.
+  - A marker entry planted in the TT is gone after a `Search()` whose `(root_color, contempt)` pair
+    differs, and survives when it matches: colour flip at contempt 20, magnitude change 20 → 60
+    under one colour, and the 20-then-0 sequence A2 of the review names. Same-pair searches leave it
+    alone — invariant 4.
+  - SCORE_DROP fires on a drawn-score iteration at `contempt = 0` and at `contempt = 20`, in the
+    existing SCORE_DROP test family — invariant 5.
+  - `SearchTuningTests.cpp`: domain rejection at ±101, acceptance at ±100. `UCITests.cpp`: the
+    `Contempt` option is advertised with the right type and bounds — invariant 6.
 - **`Compare-SearchEquivalence.ps1 -After <worktree exe>`** at the default `Contempt=0` — identical
-  node counts and best moves against the merge-base build at `Threads=1`. This is the gate for
-  invariant 1 and closes the third assumption above.
-- **`Run-Bench.ps1`, alternating, candidate vs. merge base.** Not required by the standing rule —
-  the diff adds no per-node work (invariant 1) — but it is cheap and it is the only thing that would
-  catch an accidental hot-path read, e.g. if the D3 colour capture were placed inside `pvs()`
-  instead of `Search()`. Pass bar: nps within the run's own noise band.
+  node counts and best moves against the merge-base build at `Threads=1`. The regression guard for
+  invariant 1 at the shipped default. It cannot observe a shifted draw score and so closes nothing
+  about non-zero contempt.
+- **`Run-Bench.ps1`, alternating, candidate vs. merge base.** Not required by the standing rule — the
+  diff adds no per-node work — but cheap, and the only thing that would catch an accidental hot-path
+  read, e.g. the D3 capture landing inside `pvs()` instead of `Search()`. Pass bar: nps within the
+  run's own noise band.
 - **Full test suite** including `[slow]`, then `Validate-PrePR.ps1`.
-- **One CI strength-lab run** against the merge base at `Contempt=20`, judged by the D5 table, plus
-  the Tier 1 move-quality re-scan of the candidate PGNs described there. An Elo match *is* required
-  here: the whole point of the issue is that the sign of this policy is unknown, and no cheaper
-  instrument resolves single-digit Elo.
+- **No Elo match for this PR**, per D5: the shipped default makes the merge strength-neutral by
+  construction, and the equivalence run proves it. The pre-registered lab run in D5 and D6 belongs to
+  the default-flip decision and is a separate spend.
 
 ## Harvest
 
 | Decision / rationale | Lands in |
 |---|---|
 | Why the sign comes from the board's colour and not ply parity (null move breaks parity) | source comment on `draw_score()` |
-| Why abort/time-limit returns stay at neutral zero | source comment at the `draw_score()` call sites' neighbours in `pvs()`/`quiescence()` |
-| Root colour is TT context the key does not carry; the flip-clear is what closes it, and it is inert at contempt 0 | source comment on the guard in `Search()`, and `Docs/EngineContracts.md` → search internals |
-| Contempt does not widen #347, and why | comment on #347, so the parked issue records it |
-| The pre-registered D5 bar, the measured interval and the re-scan numbers | `Docs/Changelog.md`, the PR body, and a comment on #452 |
-| Whether the default should change | follow-up issue or PR, per the D5 table |
+| Root colour and magnitude are TT context the key does not carry; the pair-change clear is what closes it, it is inert at the default, and it does not widen #347 | source comment on the guard in `Search()`, `Docs/EngineContracts.md` → search internals, and a comment on #347 |
+| The D5/D6 pre-registered bar, and any measured interval and re-scan numbers it later produces | `Docs/Changelog.md`, the PR body, and a comment on #452 |
