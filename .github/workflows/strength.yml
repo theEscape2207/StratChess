@@ -24,6 +24,12 @@ on:
       cmake_defines:
         description: "Whitespace-separated -DNAME=VALUE arguments applied identically to both engine builds; CMAKE_* variables are reserved"
         default: ""
+      candidate_uci_options:
+        description: "Whitespace-separated Name=Value UCI options set on the CANDIDATE only, e.g. 'Contempt=20'. This is how a default-off runtime option is measured without a probe branch. Checked against the engine's advertised option table before any shard starts; Threads is reserved"
+        default: ""
+      reference_uci_options:
+        description: "The same for the REFERENCE side. Usually empty: a difference between the two sides is what is being measured, so setting both rarely means what it looks like"
+        default: ""
       games:
         description: "Total games across all shards (2 per opening pair; rounded down to fit the shards evenly)"
         default: "20000"
@@ -171,6 +177,12 @@ jobs:
       # costs the batch. Checked against real fastchess output; see the script.
       - name: Verify the pooling formula
         run: python3 .github/scripts/pool_pentanomial.py --self-test
+
+      # Same argument as the pooling self-test: the option checker is what stops
+      # a mistyped option name from producing a three-hour null result, so it is
+      # verified before the option string it will be given reaches an engine.
+      - name: Verify the UCI option checker
+        run: python3 .github/scripts/validate_uci_options.py --self-test
 
       - name: Plan the shards
         id: plan
@@ -323,6 +335,26 @@ jobs:
             echo "openings=$openings"
           } >> "$GITHUB_OUTPUT"
 
+      # An unknown option name, a malformed value and an out-of-domain value are
+      # all ignored in silence by UCI convention (UCIHandler.cpp:552-555), and
+      # fastchess forwards option.X=Y without knowing what the engine supports.
+      # So a typo here would configure the candidate exactly like its reference
+      # and spend three hours measuring nothing -- reported as a null result,
+      # which is indistinguishable from a real one. Checked against each engine's
+      # own advertised table, and against the staged binaries that will actually
+      # play rather than against this workflow's idea of them.
+      - name: Verify the requested UCI options
+        env:
+          CANDIDATE_UCI_OPTIONS: ${{ inputs.candidate_uci_options }}
+          REFERENCE_UCI_OPTIONS: ${{ inputs.reference_uci_options }}
+        run: |
+          set -euo pipefail
+          stage="$RUNNER_TEMP/stage"
+          python3 .github/scripts/validate_uci_options.py \
+            --engine "$stage/candidate" --label candidate --options "$CANDIDATE_UCI_OPTIONS"
+          python3 .github/scripts/validate_uci_options.py \
+            --engine "$stage/reference" --label reference --options "$REFERENCE_UCI_OPTIONS"
+
       # Both engines, fastchess and the book travel together as one artifact, so
       # a shard cannot end up with a mismatched pairing of them.
       - name: Upload the toolkit
@@ -368,6 +400,8 @@ jobs:
           CANDIDATE_TC: ${{ inputs.candidate_tc }}
           REFERENCE_TC: ${{ inputs.reference_tc }}
           MATCH_CONCURRENCY: ${{ inputs.concurrency }}
+          CANDIDATE_UCI_OPTIONS: ${{ inputs.candidate_uci_options }}
+          REFERENCE_UCI_OPTIONS: ${{ inputs.reference_uci_options }}
           CAND_NAME: ${{ needs.build.outputs.cand_name }}
           REF_NAME: ${{ needs.build.outputs.ref_name }}
         run: |
@@ -400,6 +434,21 @@ jobs:
             fi
           done
 
+          # Per-engine UCI options, already checked against each engine's own
+          # advertised table in `build`. Built as arrays so an empty request
+          # expands to nothing at all rather than to an empty argument, and so
+          # no value is ever re-split by the shell.
+          cand_opts=()
+          ref_opts=()
+          if [ -n "$CANDIDATE_UCI_OPTIONS" ]; then
+            read -r -a cand_kv <<< "$CANDIDATE_UCI_OPTIONS"
+            for kv in "${cand_kv[@]}"; do cand_opts+=("option.$kv"); done
+          fi
+          if [ -n "$REFERENCE_UCI_OPTIONS" ]; then
+            read -r -a ref_kv <<< "$REFERENCE_UCI_OPTIONS"
+            for kv in "${ref_kv[@]}"; do ref_opts+=("option.$kv"); done
+          fi
+
           # Adjudication settings are copied from Run-EloMatch.ps1 verbatim: the
           # two instruments must differ only in toolchain and hardware.
           # Threads=1 on both sides -- Lazy SMP scales with core count, and a
@@ -408,8 +457,8 @@ jobs:
           start_s=$SECONDS
           set +e
           "$tools/fastchess" \
-            -engine cmd="$tools/candidate" name="$CAND_NAME" dir=cand args=uci option.Threads=1 "tc=$CANDIDATE_TC" \
-            -engine cmd="$tools/reference" name="$REF_NAME" dir=ref args=uci option.Threads=1 "tc=$REFERENCE_TC" \
+            -engine cmd="$tools/candidate" name="$CAND_NAME" dir=cand args=uci option.Threads=1 ${cand_opts[@]+"${cand_opts[@]}"} "tc=$CANDIDATE_TC" \
+            -engine cmd="$tools/reference" name="$REF_NAME" dir=ref args=uci option.Threads=1 ${ref_opts[@]+"${ref_opts[@]}"} "tc=$REFERENCE_TC" \
             -each proto=uci \
             -rounds "$ROUNDS" -repeat -concurrency "$MATCH_CONCURRENCY" -recover \
             -openings file="$tools/$BOOK_FILE" format=epd order=sequential start="$start" \
@@ -570,6 +619,8 @@ jobs:
         env:
           CMAKE_DEFINES: ${{ inputs.cmake_defines }}
           CMAKE_DEFINES_VALIDATED: ${{ needs.setup.outputs.cmake_defines_validated }}
+          CANDIDATE_UCI_OPTIONS: ${{ inputs.candidate_uci_options }}
+          REFERENCE_UCI_OPTIONS: ${{ inputs.reference_uci_options }}
           BUILD_RESULT: ${{ needs.build.result }}
         run: |
           {
@@ -577,8 +628,8 @@ jobs:
             echo
             echo "| | |"
             echo "|---|---|"
-            echo "| Candidate | ${{ needs.build.outputs.cand_name }} @ \`${{ github.ref_name }}\`, tc=${{ inputs.candidate_tc }} |"
-            echo "| Reference | ${{ needs.build.outputs.ref_name }} (\`${{ inputs.reference_ref }}\` = \`${{ needs.setup.outputs.reference_sha }}\`), tc=${{ inputs.reference_tc }} |"
+            echo "| Candidate | ${{ needs.build.outputs.cand_name }} @ \`${{ github.ref_name }}\`, tc=${{ inputs.candidate_tc }}, options \`${CANDIDATE_UCI_OPTIONS:-none}\` |"
+            echo "| Reference | ${{ needs.build.outputs.ref_name }} (\`${{ inputs.reference_ref }}\` = \`${{ needs.setup.outputs.reference_sha }}\`), tc=${{ inputs.reference_tc }}, options \`${REFERENCE_UCI_OPTIONS:-none}\` |"
             echo "| Games | ${{ needs.setup.outputs.actual_games }} = ${{ inputs.shards }} shards x ${{ needs.setup.outputs.games_per_shard }}, concurrency ${{ inputs.concurrency }} per shard |"
             echo "| Book | \`$BOOK_FILE\` (${{ needs.build.outputs.openings }} openings) |"
             echo "| Toolchain | GCC on ubuntu-24.04, Release, Threads=1 |"
