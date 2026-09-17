@@ -18,7 +18,7 @@ decision.
 
 **This change will:**
 
-- Add one `SearchTuning` field, `contempt`, default `0`, domain `[-100, 100]`, exposed over UCI as
+- Add one `SearchTuning` field, `contempt`, default `0`, domain `[0, 100]`, exposed over UCI as
   `Contempt` and bindable from `game_settings.json`.
 - Route the four search-detected draw endpoints through one helper, `draw_score(td)`:
   `pvs()`'s `check_draws` exit (`AIPerplex.cpp:652`), `quiescence()`'s `check_draws` exit
@@ -77,8 +77,17 @@ through a new `AIPerlexTestFixture::set_root_color()` poke, beside the existing
 returns `GameValues::Draw` unchanged — which makes the zero-contempt identity arithmetic rather than
 a second code path. A compile gate was rejected: the feature has no hot-path cost to gate away, and
 standing practice is that a compile gate is a temporary state whose end point is a default-true
-runtime flag or deletion. The domain `[-100, 100]` admits negative values, the natural way to *seek*
-draws, and costs nothing to allow.
+runtime flag or deletion.
+
+The domain is `[0, 100]`, not the symmetric `[-100, 100]` an earlier draft assumed. Negative
+contempt — deliberately *seeking* draws, for a defensive posture — looked free to allow, and is not:
+`SearchTuningSchema::read_uci` rejects any character outside `0123456789` before parsing
+(`SearchTuningSchema.cpp:120`), answers `not applied`, and leaves the engine on its default. A
+negative value would therefore be settable from `game_settings.json` and silently ignored over UCI,
+which is the worse of the two possible failures. Widening the domain and teaching `read_uci` to
+parse a sign was rejected as scope: that parser is shared by every arithmetic tuning field, nothing
+has asked for draw-seeking, and the change is a separate issue with its own rationale if it ever
+does. The asymmetry is a deliberate YAGNI, not an oversight, and `Validate()` enforces it.
 
 One existing consumer depends on a drawn score being literally zero and would be silently defeated:
 `assess_iteration_quality()` CASE 4 (`AIPerplex.cpp:1560-1563`) rejects an iteration as SCORE_DROP
@@ -138,14 +147,12 @@ not justified by this PR.
 The run belongs to the follow-up question — *should the default be non-zero?* — and is pre-registered
 here so the bar exists before any numbers do:
 
-- **Configuration.** `strength.yml:411-412` hard-codes both engine command lines with only
-  `option.Threads=1`, and its one free input, `cmake_defines` (`:24-26`), is applied identically to
-  both builds. There is no way to set a runtime UCI option on the candidate alone. So the run is
-  dispatched from a throwaway probe branch whose `SearchTuning.def` default reads 20, against the
-  merge base as reference. The consequence is explicit: the measured binary is not the merged
-  binary, and differs from it in exactly one literal. A per-engine option passthrough in
-  `strength.yml` is the right permanent fix and gets its own issue rather than riding inside a
-  search change.
+- **Configuration.** `gh workflow run strength.yml --ref <branch> -f candidate_uci_options="Contempt=20"`,
+  against the merge base as reference. The lab gained per-engine UCI options in #564, so the binary
+  that plays is the one that merges — no probe branch, and nothing to say about a measured binary
+  differing from the shipped one. The dispatch fails fast if the engine does not advertise
+  `Contempt`, which also makes a run against a merge base that predates this change impossible to
+  start by accident.
 - **Power.** One run, ~20,000 games, ~±4 Elo. Its lower bound clears 0 only for a true effect of
   roughly +4 Elo or more. Peer self-play is close to the worst case for contempt — the term is
   defined relative to the opponent's strength — so a null result is the expected outcome and is
@@ -175,8 +182,9 @@ sides of one match run under different effective rules, candidate games run long
 wall-clock budget calibrated with adjudication firing, and the threefold share rises mechanically
 because games formerly cut at move 48 now reach a repetition.
 
-Changing the adjudicator is not available without editing the hard-coded command line, which is the
-same `strength.yml` change D5 defers. So the run uses the standard adjudicator, and the confound is
+#564 made the engine *options* dispatchable per side; it did not touch the adjudication flags, which
+are still hard-coded and deliberately identical to `Run-EloMatch.ps1` so the two instruments differ
+only in toolchain and hardware. So the run uses the standard adjudicator, and the confound is
 made visible rather than hidden: the re-scan reports **adjudicated draws and rules draws (threefold,
 fifty-move, stalemate) separately for each side**, and the D5 threefold comparison is made on the
 rules-draw counts. Testing at a magnitude under the 10 cp bar was rejected — it would keep
@@ -216,8 +224,8 @@ overruns is re-dispatched with fewer rounds rather than re-interpreted.
 4. No TT entry produced under one `(root_color, contempt)` pair is consumed by a search under a
    different pair.
 5. SCORE_DROP still rejects an iteration that collapses to a drawn score, at every contempt value.
-6. `Validate()` rejects a contempt outside `[-100, 100]`; the UCI `Contempt` spin advertises that
-   domain.
+6. `Validate()` rejects a contempt outside `[0, 100]`; the UCI `Contempt` spin advertises that
+   domain, and every value inside it is one the engine's UCI parser actually accepts.
 
 ## Validation
 
@@ -240,8 +248,10 @@ Search tier. Evidence, in the order it is produced:
     alone — invariant 4.
   - SCORE_DROP fires on a drawn-score iteration at `contempt = 0` and at `contempt = 20`, in the
     existing SCORE_DROP test family — invariant 5.
-  - `SearchTuningTests.cpp`: domain rejection at ±101, acceptance at ±100. `UCITests.cpp`: the
-    `Contempt` option is advertised with the right type and bounds — invariant 6.
+  - `SearchTuningTests.cpp`: domain rejection at `-1` and `101`, acceptance at `0` and `100`.
+    `UCITests.cpp`: the `Contempt` option is advertised with the right type and bounds, and a
+    `setoption name Contempt value -20` leaves the field untouched — the engine's own parser refuses
+    it, and the test pins that rather than leaving it to be discovered by a lab run — invariant 6.
 - **`Compare-SearchEquivalence.ps1 -After <worktree exe>`** at the default `Contempt=0` — identical
   node counts and best moves against the merge-base build at `Threads=1`. The regression guard for
   invariant 1 at the shipped default. It cannot observe a shifted draw score and so closes nothing
