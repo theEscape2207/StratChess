@@ -100,6 +100,17 @@ whose violation is silent.
   advance the legal-move index and need make/unmake, so checking moves and immediate repetition or
   fifty-move draws are never skipped. A quiet move that stalemates the opponent is not detected and
   can be skipped.
+- **A drawn score is context the Zobrist key does not carry.** With `contempt` non-zero, the score
+  of a *search-detected* draw — repetition, fifty-move, stalemate — depends on the root colour and on
+  the contempt value, and propagates into parent entries through the terminal store in `pvs()` and the
+  bare-king store in `quiescence()`. The key holds neither, so `Search()` keeps the
+  `(root_color, contempt)` pair its table was filled under and clears the table when the incoming pair
+  differs *and* either side of the change is non-zero. Both halves matter: only a contempt search can
+  tint an entry or misread an untinted one, so a process left at the shipped default of 0 must never
+  clear — that would be a behaviour change where nothing was ever tinted. The sign comes from
+  `td.board.GetCurrentColor()` against `root_color_`, never from ply parity, because a null move
+  increments ply while flipping the side to move. Abort and time-limit unwind values stay at
+  `GameValues::Draw`: they are fabricated, not game results.
 - **Quiescence orders its two move lists differently**, via `AIPerplex::order_quiescence_moves()`.
   Out of check the list is captures and promotions and `SortMovesByValue` sorts it in place; in check
   it is every legal evasion and `MoveSorter::ScoreMoves` writes an order into a `scored_idx` array
