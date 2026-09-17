@@ -44,13 +44,18 @@ namespace {
 		                             /*is_pv_node=*/false);
 	}
 
-	// Five quiet moves from FEN_CLOCK_99_BLACK take the halfmove clock past the limit. Also ply 5,
+	// Five quiet moves from FEN_CLOCK_99_BLACK take the halfmove clock from 99 to 104. Also ply 5,
 	// but the side to move is WHITE.
+	//
+	// The king WALKS rather than oscillating, and the rook's two squares are paired with different
+	// king squares, so no position recurs. check_draws() short-circuits `is_repetition(ply) ||
+	// clock >= limit` (ThreadData.h), so a shuffle that repeats would be adjudicated by the
+	// repetition branch and this helper would never exercise the clock at all.
 	int fifty_move_score(const AIPerlexTestFixture& fix, int contempt, eColor root_color)
 	{
 		fix.set_contempt(contempt);
 		fix.set_root_color(root_color);
-		return fix.search_node_after({"d6e6", "a1h1", "e6d6", "h1a1", "d6e6"}, /*depth=*/3, WIDE_ALPHA, WIDE_BETA,
+		return fix.search_node_after({"d6e6", "a1a2", "e6f6", "a2a1", "f6g6"}, /*depth=*/3, WIDE_ALPHA, WIDE_BETA,
 		                             /*is_pv_node=*/false);
 	}
 
@@ -142,18 +147,50 @@ TEST_CASE("Contempt - draw_score is a pure function of side to move and root col
 	REQUIRE(fix.draw_score() == GameValues::Draw);
 }
 
-TEST_CASE("Contempt - an aborted frame still unwinds with a neutral zero", "[search][contempt]")
+TEST_CASE("Contempt - the fifty-move helper really is adjudicated by the clock", "[search][contempt]")
 {
-	// The abort and time-limit returns are fabricated values for a frame that searched nothing,
-	// not game results. Contempt must not reach them: a parent discards the value at its unwind
-	// guard, and signing it would make an aborted search look like a lost one.
-	AIPerlexTestFixture fix(FEN_OSCILLATE_WHITE);
-	fix.set_contempt(50);
-	fix.set_root_color(WHITE);
-	fix.request_stop();
+	// Guards the helper above rather than the engine. check_draws() tests repetition first and
+	// short-circuits, so a move list that happened to repeat would make every "fifty-move"
+	// assertion in this file a second repetition assertion without saying so.
+	AIPerlexTestFixture fix(FEN_CLOCK_99_BLACK);
+	const Board reached = fix.board_after({"d6e6", "a1a2", "e6f6", "a2a1", "f6g6"});
 
-	REQUIRE(fix.search_node_after({"a1h1"}, /*depth=*/4, WIDE_ALPHA, WIDE_BETA, /*is_pv_node=*/false) ==
-	        GameValues::Draw);
+	REQUIRE(reached.halfmove_clock() >= HALFMOVE_CLOCK_LIMIT);
+	REQUIRE_FALSE(reached.is_repetition(5));
+	REQUIRE(reached.GetCurrentColor() == WHITE);
+}
+
+TEST_CASE("Contempt - fabricated unwind values stay neutral in both phases", "[search][contempt]")
+{
+	// The abort and time-limit returns are values for a frame that searched nothing, not game
+	// results. Contempt must not reach them: a parent discards the value at its unwind guard, and
+	// signing it would make an aborted search look like a lost one.
+	SECTION("the main search's abort return")
+	{
+		AIPerlexTestFixture fix(FEN_OSCILLATE_WHITE);
+		fix.set_contempt(50);
+		fix.set_root_color(WHITE);
+		fix.request_stop();
+
+		REQUIRE(fix.search_node_after({"a1h1"}, /*depth=*/4, WIDE_ALPHA, WIDE_BETA, /*is_pv_node=*/false) ==
+		        GameValues::Draw);
+	}
+
+	SECTION("quiescence's abort return")
+	{
+		// Its own case, because request_stop() latches IsAborted() and the main search returns at
+		// the first of the four fabricated exits — quiescence's two are on a different call path
+		// and a change routing them through draw_score() would not fail the section above.
+		AIPerlexTestFixture fix(FEN_OSCILLATE_WHITE);
+		fix.set_contempt(50);
+		fix.set_root_color(WHITE);
+
+		// quiesce_node_aborted(), not request_stop() + quiesce_node(): the latter arms the clock
+		// through ApplyLimits(), which clears the latch, and the node would return an ordinary
+		// evaluation while the test looked like it was asserting about the abort path.
+		REQUIRE(fix.quiesce_node_aborted(WIDE_ALPHA, WIDE_BETA, AIPerlexTestFixture::QSEARCH_BUDGET, /*ply=*/1) ==
+		        GameValues::Draw);
+	}
 }
 
 TEST_CASE("Contempt - the transposition table is cleared when the contempt context changes", "[search][contempt]")
@@ -265,10 +302,25 @@ TEST_CASE("Contempt - SCORE_DROP still rejects an iteration that collapses to a 
 		m.current_score = -20;
 		REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::SCORE_DROP);
 
-		m.current_score = 0;
+		// Everything else is a real evaluation and must survive. A band around zero would reject
+		// all of these, which at the top of the domain is a +-100 cp hole in iteration acceptance
+		// against a score_draw_threshold of 20 — a search-behaviour change proportional to the
+		// contempt setting, inside the measurement contempt exists for.
+		for (const int genuine : {0, 19, -19, -21, 5, -100}) {
+			m.current_score = genuine;
+			REQUIRE(fix.assess(m, s) != AIPerlexTestFixture::RejectionReason::SCORE_DROP);
+		}
+	}
+
+	SECTION("at contempt 100, the domain's top, only -100 is a drawn score")
+	{
+		fix.set_contempt(100);
+		m.current_score = -100;
 		REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::SCORE_DROP);
 
-		m.current_score = -21;
+		m.current_score = -99;
+		REQUIRE(fix.assess(m, s) != AIPerlexTestFixture::RejectionReason::SCORE_DROP);
+		m.current_score = 0;
 		REQUIRE(fix.assess(m, s) != AIPerlexTestFixture::RejectionReason::SCORE_DROP);
 	}
 }

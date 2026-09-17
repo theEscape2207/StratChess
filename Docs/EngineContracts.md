@@ -108,9 +108,22 @@ whose violation is silent.
   differs *and* either side of the change is non-zero. Both halves matter: only a contempt search can
   tint an entry or misread an untinted one, so a process left at the shipped default of 0 must never
   clear — that would be a behaviour change where nothing was ever tinted. The sign comes from
-  `td.board.GetCurrentColor()` against `root_color_`, never from ply parity, because a null move
-  increments ply while flipping the side to move. Abort and time-limit unwind values stay at
+  `td.board.GetCurrentColor()` against `root_color_`, which is the contract itself. Ply parity is
+  equivalent today — every construct that advances a ply also flips the side to move, null moves
+  included — but that is an unstated invariant of the search rather than a property of the draw
+  score, and parity would invert silently if it ever stopped holding. Abort and time-limit unwind
+  values stay at
   `GameValues::Draw`: they are fabricated, not game results.
+- **Contempt tints search-detected draws only, which inverts the ordering against eval-detected
+  ones.** `Evaluator::Evaluate` returns `GameValues::Draw` for the dead-drawn material class
+  (`endgame_scale == 0`, `Eval.cpp:1088`) and is deliberately untinted, so at `contempt > 0` a
+  liquidation into a provably dead ending scores `0` while a repetition at the same node scores
+  `-contempt` — the engine prefers the dead position to the repetition it is being taught to avoid.
+  This is the first hypothesis to check if contempt ever measures negative. Tinting the evaluation
+  path would put a root-colour comparison on the hot leaf path and needs its own nps measurement.
+  A second cost, also only at `contempt > 0`: the clear fires on every root-colour flip, so a GUI
+  analysing both sides, or the tactical runner sweeping colours, discards the table each search.
+  That is the guard working, not a TT bug.
 - **Quiescence orders its two move lists differently**, via `AIPerplex::order_quiescence_moves()`.
   Out of check the list is captures and promotions and `SortMovesByValue` sorts it in place; in check
   it is every legal evasion and `MoveSorter::ScoreMoves` writes an order into a `scored_idx` array

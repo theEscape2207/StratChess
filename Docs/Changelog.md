@@ -42,10 +42,13 @@ repetition in a position it believes equal instead of being indifferent between 
 playing on. Repetition, the fifty-move rule and both stalemate paths route through one
 `AIPerplex::draw_score()`; the fabricated values an aborted or time-limited frame unwinds with stay
 at `GameValues::Draw`, because they are not game results. The sign comes from the node's side to
-move against the root colour, never ply parity — a null move increments ply while flipping the side
-to move, so parity inverts below one. `assess_iteration_quality`'s SCORE_DROP test becomes a band
-around the drawn score rather than an equality against literal zero, which a non-zero contempt would
-have retired silently. `Search()` clears the TT when the `(root colour, contempt)` pair its contents
+move against the root colour rather than ply parity: the two are equivalent today, since every
+construct that advances a ply also flips the side to move, but that is an invariant of the search
+and not of the draw score, and parity would invert silently if it ever stopped holding.
+`assess_iteration_quality`'s SCORE_DROP test still compares for equality, now against `-contempt`
+instead of literal zero — the root's own drawn value, since the root's side to move is the root
+colour and a deeper draw arrives negated once per ply. A band around zero was the tempting shape and
+is wrong: it would also reject every genuine evaluation inside `(-contempt, +contempt)`. `Search()` clears the TT when the `(root colour, contempt)` pair its contents
 were produced under changes and either side of that change is non-zero.
 
 **Ships disabled**, and the default is not changed here: whether contempt is worth Elo in peer

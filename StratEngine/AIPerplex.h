@@ -180,9 +180,14 @@ class AIPerplex final {
 	// the negamax perspective of the node reporting it. Never the value an aborted or
 	// time-limited frame unwinds with: those are fabricated, and stay at GameValues::Draw.
 	//
-	// The sign comes from the board's side to move against the root colour, not from ply parity.
-	// A null move flips the side to move while incrementing ply, so below one, parity no longer
-	// tracks who is on move and the offset would invert for the whole subtree.
+	// The sign comes from the board's side to move against the root colour, which is the contract
+	// itself: a draw is bad for the side we are playing. Ply parity is equivalent TODAY — every
+	// construct that advances a ply also flips the side to move, null moves included
+	// (Board::DoNullMove calls change_player(), and pvs() recurses at ply + 1) — but that
+	// equivalence is an unstated invariant of the whole search, not a property of this function.
+	// Reading the board costs one member access on a cold path and cannot drift from the contract;
+	// parity would invert silently if any future construct ever advanced ply without flipping the
+	// side, or flipped without advancing.
 	int draw_score(const ThreadData& td) const noexcept;
 	// Budget a node entering quiescence from pvs() starts with. quiescence() spends it
 	// downwards and stops when it goes negative, so 16 ply levels run out of check; the value

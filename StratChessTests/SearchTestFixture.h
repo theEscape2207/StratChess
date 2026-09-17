@@ -541,6 +541,18 @@ class AIPerlexTestFixture {
 		return ai->quiescence(ai->td_, alpha, beta, qsearch_budget, ply, *ai->_tt);
 	}
 
+	// One quiescence() node on an ALREADY-ABORTED search. Separate from quiesce_node() because the
+	// ApplyLimits() call there clears the abort latch: a test that calls request_stop() first gets
+	// its stop silently undone and measures an ordinary evaluation instead of the abort path.
+	int quiesce_node_aborted(int alpha, int beta, int qsearch_budget, int ply) const
+	{
+		ai->control_.ApplyLimits(SearchLimits::fixed_time(std::chrono::milliseconds(60'000)));
+		ai->td_.board = board_;
+		ai->td_.nodes_since_check_ = 0;
+		ai->Stop();
+		return ai->quiescence(ai->td_, alpha, beta, qsearch_budget, ply, *ai->_tt);
+	}
+
 	// Enters quiescence the way the search does — through pvs() with no depth left — so the
 	// budget under test is the one pvs() hands out, not one the test chose. Passing the budget
 	// in directly would assert nothing about the unit it is expressed in.

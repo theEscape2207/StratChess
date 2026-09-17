@@ -249,6 +249,12 @@ std::optional<SearchTuningSchema::TuningError> AIPerplex::SetTuning(const Search
 	if (tuning != tuning_) {
 		tuning_ = tuning;
 		(void)_tt->clear();
+		// The table is empty, so the contempt context describing its contents is stale. Without
+		// this the next Search() would compare against a pair for entries that no longer exist and
+		// clear an already-empty table. This is also why a contempt MAGNITUDE change cannot reach
+		// Search() with a populated table by any supported route — the guard there covers it as
+		// defence in depth, not as the live path.
+		tt_contempt_context_.reset();
 	}
 	return std::nullopt;
 }
@@ -352,6 +358,11 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	// non-zero. Without that guard a process that never leaves the shipped default would start
 	// clearing the table on an ordinary colour change — which nothing did before this existed, and
 	// which would make the search at contempt 0 no longer node-identical to its history.
+	//
+	// The COLOUR half is the production-reachable one: SetTuning() already clears the table and the
+	// context on any tuning change, so a contempt magnitude can only change through a path that has
+	// just emptied the table. The pair carries the magnitude anyway, as defence in depth against a
+	// future path that mutates tuning without going through SetTuning().
 	root_color_ = root.GetCurrentColor();
 	const auto contempt_context = std::make_pair(root_color_, tuning_.contempt);
 	if (tt_contempt_context_ && *tt_contempt_context_ != contempt_context &&
@@ -1594,11 +1605,16 @@ AIPerplex::RejectionReason AIPerplex::assess_iteration_quality(const IterationMe
 
 	// CASE 4: Score dropped to a drawn value suspiciously.
 	//
-	// The test is a band, not an equality against zero, because contempt moves what a draw scores:
-	// a collapsed iteration reports -contempt at the root, not 0. At contempt 0 the band is exactly
-	// {0} and this is the equality it has always been. Comparing against the literal would let a
-	// non-zero contempt silently retire this rejection.
-	if (std::abs(metrics.current_score) <= std::abs(tuning_.contempt) && state.depth_completed > 0 &&
+	// Still an equality, just not against the literal zero: contempt moves what a draw scores, and
+	// the root's own drawn value is exactly -contempt. The root's side to move IS the root colour,
+	// so draw_score() returns -contempt there, and a draw found deeper arrives negated once per ply
+	// and reaches the root as -contempt too. At contempt 0 this is the historical `== 0`.
+	//
+	// Deliberately NOT a band around zero. |score| <= contempt would also reject every genuine
+	// evaluation inside (-contempt, +contempt) — at the domain's top that is a ±100 cp hole against
+	// a score_draw_threshold of 20, which would discard most interrupted iterations and contaminate
+	// the very measurement contempt exists for.
+	if (metrics.current_score == -tuning_.contempt && state.depth_completed > 0 &&
 	    std::abs(state.best_score) > tuning_.score_draw_threshold) {
 		return RejectionReason::SCORE_DROP;
 	}
@@ -1665,8 +1681,8 @@ void AIPerplex::log_rejection(int depth, RejectionReason reason, const Iteration
 		break;
 
 	case RejectionReason::SCORE_DROP:
-		s_logger->debug("Depth {:>2}: REJECTED[R4:SCORE_DROP] ({} → 0) - Using depth {}", depth, state.best_score,
-		                state.depth_completed);
+		s_logger->debug("Depth {:>2}: REJECTED[R4:SCORE_DROP] ({} → {}) - Using depth {}", depth, state.best_score,
+		                metrics.current_score, state.depth_completed);
 		break;
 
 	case RejectionReason::MOVE_CHANGED:
