@@ -793,6 +793,23 @@ TEST_CASE("cmd_uci: advertises the tuning options after Hash", "[uci][tuning]")
 	REQUIRE(hash < rfp);
 	REQUIRE(rfp < uciok);
 	REQUIRE(output.find("option name LateMovePruning type check default true\n") != std::string::npos);
+	REQUIRE(output.find("option name Contempt type spin default 0 min 0 max 100\n") != std::string::npos);
+}
+
+TEST_CASE("cmd_setoption: Contempt applies a positive value and refuses a signed one", "[uci][tuning][contempt]")
+{
+	UciHandlerTestFixture fix;
+
+	const std::string applied = capture_cout([&] { fix.setoption("setoption name Contempt value 20"); });
+	REQUIRE(applied == "info string Contempt 20\n");
+	REQUIRE(fix.ai_tuning().contempt == 20);
+
+	// The engine's UCI parser takes unsigned decimal digits only, so a negative contempt cannot be
+	// set this way at all. Pinned here rather than left to be discovered by a strength-lab run that
+	// would silently measure the default: the domain is [0, 100] for exactly this reason.
+	const std::string refused = capture_cout([&] { fix.setoption("setoption name Contempt value -20"); });
+	REQUIRE(refused.find("not applied") != std::string::npos);
+	REQUIRE(fix.ai_tuning().contempt == 20);
 }
 
 TEST_CASE("cmd_setoption: a changed tuning value is applied, reported and clears the TT", "[uci][tuning][tt]")

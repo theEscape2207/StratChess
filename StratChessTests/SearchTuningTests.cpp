@@ -50,6 +50,7 @@ namespace {
 		bool frontier_futility_enabled;
 		int frontier_futility_margin;
 		bool late_move_pruning_enabled;
+		int contempt;
 	};
 
 #define SAME_MEMBER(member)                                                                                            \
@@ -80,6 +81,7 @@ namespace {
 	SAME_MEMBER(frontier_futility_enabled)
 	SAME_MEMBER(frontier_futility_margin)
 	SAME_MEMBER(late_move_pruning_enabled)
+	SAME_MEMBER(contempt)
 #undef SAME_MEMBER
 	static_assert(sizeof(SearchTuning) == sizeof(BaselineTuning));
 	static_assert(alignof(SearchTuning) == alignof(BaselineTuning));
@@ -132,6 +134,7 @@ TEST_CASE("SearchTuning defaults are the shipped values", "[tuning]")
 	CHECK(tuning.frontier_futility_enabled);
 	CHECK(tuning.frontier_futility_margin == 200);
 	CHECK(tuning.late_move_pruning_enabled);
+	CHECK(tuning.contempt == 0);
 
 	CHECK_FALSE(SearchTuningSchema::Validate(tuning).has_value());
 }
@@ -360,6 +363,17 @@ TEST_CASE("SearchTuning UCI options set their own member", "[tuning][uci]")
 	expected.late_move_pruning_enabled = false;
 	CHECK(tuning == expected);
 
+	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("Contempt", "20", tuning));
+	expected.contempt = 20;
+	CHECK(tuning == expected);
+
+	// The domain stops at 0 on purpose, and read_uci() would refuse a sign anyway. Both ends of
+	// that are pinned here: the rejection is a type error, not a range error, because the value
+	// never reaches the range check.
+	CHECK(uci_rejection("Contempt", "-20") == Code::InvalidType);
+	CHECK(uci_rejection("Contempt", "101") == Code::OutOfRange);
+
 	// The test target compiles singular extensions in, defaulting off.
 	expected = SearchTuning{};
 	REQUIRE_FALSE(parse_uci("SingularExtensions", "true", tuning));
@@ -419,6 +433,9 @@ TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
 	    "option name FrontierFutility type check default true",
 	    "option name FrontierFutilityMargin type spin default 200 min 0 max 1000",
 	    "option name LateMovePruning type check default true",
+	    // No negative half: SearchTuningSchema's read_uci() accepts unsigned decimal digits only,
+	    // so an advertised negative minimum would be a value the engine then refuses to apply.
+	    "option name Contempt type spin default 0 min 0 max 100",
 	};
 	CHECK(SearchTuningSchema::UciOptionLines() == expected);
 }

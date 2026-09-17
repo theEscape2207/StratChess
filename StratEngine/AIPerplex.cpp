@@ -276,6 +276,9 @@ void AIPerplex::StartNewGame()
 	// correct thread_id reassigned -- on the next search, rather than
 	// reusing helpers whose killers/history carry over from the last game.
 	helper_tds_.clear();
+	// The table just went away, so the contempt context it was filled under has to go with it —
+	// otherwise the next search matches against a pair describing entries that no longer exist.
+	tt_contempt_context_.reset();
 	++game_generation_;
 }
 
@@ -337,6 +340,26 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	const auto stop_guard = ScopeExit([this]() noexcept { control_.Stop(); });
 
 	init_search(root);
+
+	// Establish this search's contempt context before anything can probe or store under it, and
+	// before helpers exist to read root_color_. A draw score signed for one root colour, or scaled
+	// by one contempt value, is not a valid bound for a search under another, and the Zobrist key
+	// records neither — so entries produced under a different pair are dropped rather than trusted.
+	//
+	// Both halves of the second test are load-bearing. Only a search with non-zero contempt can
+	// TINT an entry, and only one with non-zero contempt can MISREAD an untinted entry as if it
+	// were tinted, so a differing pair matters only when at least one side of the change is
+	// non-zero. Without that guard a process that never leaves the shipped default would start
+	// clearing the table on an ordinary colour change — which nothing did before this existed, and
+	// which would make the search at contempt 0 no longer node-identical to its history.
+	root_color_ = root.GetCurrentColor();
+	const auto contempt_context = std::make_pair(root_color_, tuning_.contempt);
+	if (tt_contempt_context_ && *tt_contempt_context_ != contempt_context &&
+	    (tt_contempt_context_->second != 0 || tuning_.contempt != 0)) {
+		(void)_tt->clear();
+	}
+	tt_contempt_context_ = contempt_context;
+
 	// Snapshot threads_ exactly once so helper allocation, spawning and
 	// aggregation use one internally consistent value. This is not race
 	// synchronization: callers must obey the documented precondition that
@@ -648,9 +671,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	if (poll_search_limits(td))
 		return GameValues::Draw;
 
-	// Test for 50 moves rule and threefold repetition
+	// Test for 50 moves rule and threefold repetition. Unlike the two abort exits above, this is
+	// a real game result, so it carries contempt.
 	if (td.check_draws(ply))
-		return GameValues::Draw;
+		return draw_score(td);
 
 	// Er vi naaet til bunden af traeet - evaluering?
 	//	See if static eval will cause a cutoff or raise alpha.
@@ -1116,6 +1140,15 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	return adjustScoreForGameState(td, moveFound, ply, best_value);
 }
 
+// Contempt makes a draw a small loss for the side the engine is playing, so it declines one in a
+// position it believes equal instead of being indifferent between repeating and playing on. At the
+// shipped default of 0 this returns GameValues::Draw and the arithmetic is the historical one.
+int AIPerplex::draw_score(const ThreadData& td) const noexcept
+{
+	return td.board.GetCurrentColor() == root_color_ ? GameValues::Draw - tuning_.contempt
+	                                                 : GameValues::Draw + tuning_.contempt;
+}
+
 int AIPerplex::adjustScoreForGameState(ThreadData& td, bool moveFound, int ply, int score)
 {
 	// Any legal moves found?
@@ -1130,7 +1163,7 @@ int AIPerplex::adjustScoreForGameState(ThreadData& td, bool moveFound, int ply, 
 		}
 		// Else No move and not in check - Pat!
 		td.update_game_state(ply, GameStates::DRAW_PAT);
-		return GameValues::Draw;
+		return draw_score(td);
 	}
 
 	td.update_game_state(ply, GameStates::STILL_PLAYING);
@@ -1256,7 +1289,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// itself be in check. So this is deliberately not gated on in_check — gating it would
 	// leave a genuine fifty-move draw scored by material.
 	if (td.check_draws(ply))
-		return GameValues::Draw;
+		return draw_score(td);
 
 	// Absolute backstop. With the draw check above, a real search should never reach this —
 	// but the recursion must terminate on its own rather than on an argument about what
@@ -1311,10 +1344,11 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// Exempt from the unwind invariant for the same reason as the checkmate store below: the score
 	// follows from the position alone, and no child was searched to produce it.
 	if (!in_check && is_bare_king(td.board) && has_no_legal_move(td.board)) {
-		record_tt_store(td, tt.store(key, static_cast<int16_t>(GameValues::Draw), static_cast<int16_t>(qsearch_budget),
+		const int stalemate_value = draw_score(td);
+		record_tt_store(td, tt.store(key, static_cast<int16_t>(stalemate_value), static_cast<int16_t>(qsearch_budget),
 		                             static_cast<int16_t>(ply), Move::EmptyMove(), BoundType::EXACT, NodeType::PV_NODE,
 		                             SearchPhase::QUIESCENCE));
-		return GameValues::Draw;
+		return stalemate_value;
 	}
 
 	// Stand-pat: the option of making no move at all. Out of check it is the node's baseline
@@ -1558,8 +1592,13 @@ AIPerplex::RejectionReason AIPerplex::assess_iteration_quality(const IterationMe
 		return RejectionReason::SHORT_PV;
 	}
 
-	// CASE 4: Score dropped to 0 suspiciously
-	if (metrics.current_score == 0 && state.depth_completed > 0 &&
+	// CASE 4: Score dropped to a drawn value suspiciously.
+	//
+	// The test is a band, not an equality against zero, because contempt moves what a draw scores:
+	// a collapsed iteration reports -contempt at the root, not 0. At contempt 0 the band is exactly
+	// {0} and this is the equality it has always been. Comparing against the literal would let a
+	// non-zero contempt silently retire this rejection.
+	if (std::abs(metrics.current_score) <= std::abs(tuning_.contempt) && state.depth_completed > 0 &&
 	    std::abs(state.best_score) > tuning_.score_draw_threshold) {
 		return RejectionReason::SCORE_DROP;
 	}

@@ -119,6 +119,14 @@ class AIPerlexTestFixture {
 	// TEST_CASE functions.
 	void set_last_move_was_null(int ply, bool value) const { ai->td_.last_move_was_null[ply] = value; }
 
+	// --- Contempt pokes (#452) ---
+	// Search() is what sets root_color_ in production, and the pvs() entry points below never go
+	// through it, so a sign test has to state the root colour it is asserting about rather than
+	// inherit the member's default.
+	void set_contempt(int centipawns) const { ai->tuning_.contempt = centipawns; }
+	void set_root_color(eColor color) const { ai->root_color_ = color; }
+	int draw_score() const { return ai->draw_score(ai->td_); }
+
 	// Reaches the private tuning_ member. Used by the poll-gate tests, which need a search whose
 	// cost does not move every time pruning improves.
 	void set_see_pruning(bool enabled) const { ai->tuning_.see_pruning_enabled = enabled; }
