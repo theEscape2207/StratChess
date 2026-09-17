@@ -424,7 +424,7 @@ TEST_CASE("SearchTuning UCI ignores names it does not expose", "[tuning][uci]")
 
 TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
 {
-	// The test target compiles singular extensions in, so it advertises all seven.
+	// The test target compiles singular extensions in, so it advertises all eight.
 	const std::vector<std::string> expected{
 	    "option name SingularExtensions type check default false",
 	    "option name ReverseFutility type check default true",

@@ -296,31 +296,40 @@ TEST_CASE("Contempt - SCORE_DROP still rejects an iteration that collapses to a 
 		REQUIRE(fix.assess(m, s) != AIPerlexTestFixture::RejectionReason::SCORE_DROP);
 	}
 
-	SECTION("at contempt 20, a collapse reports -20 and is still rejected")
+	SECTION("at contempt 20, BOTH drawn values are rejected and nothing between them is")
 	{
 		fix.set_contempt(20);
+
+		// The search-detected draw, tinted.
 		m.current_score = -20;
 		REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::SCORE_DROP);
 
-		// Everything else is a real evaluation and must survive. A band around zero would reject
-		// all of these, which at the top of the domain is a +-100 cp hole in iteration acceptance
-		// against a score_draw_threshold of 20 — a search-behaviour change proportional to the
-		// contempt setting, inside the measurement contempt exists for.
-		for (const int genuine : {0, 19, -19, -21, 5, -100}) {
+		// The eval-detected draw, untinted: Evaluate() returns GameValues::Draw for the dead-drawn
+		// material class and contempt never reaches it. Testing only the tinted value would drop
+		// this half of the gate at every non-zero contempt — an iteration whose PV liquidates into
+		// a provably dead ending would be accepted where it used to be rejected.
+		m.current_score = GameValues::Draw;
+		REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::SCORE_DROP);
+
+		// Everything strictly between them, and outside them, is a real evaluation and must
+		// survive. A band would reject all of these.
+		for (const int genuine : {19, -19, -1, -21, 5, -100}) {
 			m.current_score = genuine;
 			REQUIRE(fix.assess(m, s) != AIPerlexTestFixture::RejectionReason::SCORE_DROP);
 		}
 	}
 
-	SECTION("at contempt 100, the domain's top, only -100 is a drawn score")
+	SECTION("at contempt 100, the domain's top, the two drawn values are 0 and -100")
 	{
 		fix.set_contempt(100);
-		m.current_score = -100;
-		REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::SCORE_DROP);
+		for (const int drawn : {0, -100}) {
+			m.current_score = drawn;
+			REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::SCORE_DROP);
+		}
 
-		m.current_score = -99;
-		REQUIRE(fix.assess(m, s) != AIPerlexTestFixture::RejectionReason::SCORE_DROP);
-		m.current_score = 0;
-		REQUIRE(fix.assess(m, s) != AIPerlexTestFixture::RejectionReason::SCORE_DROP);
+		for (const int genuine : {-99, -1, 1, 100, -101}) {
+			m.current_score = genuine;
+			REQUIRE(fix.assess(m, s) != AIPerlexTestFixture::RejectionReason::SCORE_DROP);
+		}
 	}
 }

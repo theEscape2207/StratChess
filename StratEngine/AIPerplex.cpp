@@ -364,12 +364,6 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	// just emptied the table. The pair carries the magnitude anyway, as defence in depth against a
 	// future path that mutates tuning without going through SetTuning().
 	root_color_ = root.GetCurrentColor();
-	const auto contempt_context = std::make_pair(root_color_, tuning_.contempt);
-	if (tt_contempt_context_ && *tt_contempt_context_ != contempt_context &&
-	    (tt_contempt_context_->second != 0 || tuning_.contempt != 0)) {
-		(void)_tt->clear();
-	}
-	tt_contempt_context_ = contempt_context;
 
 	// Snapshot threads_ exactly once so helper allocation, spawning and
 	// aggregation use one internally consistent value. This is not race
@@ -383,6 +377,16 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 		if (stop_pending_)
 			control_.Stop();
 	}
+
+	// AFTER ApplyLimits, so the memset a large table costs is charged to this move's budget rather
+	// than spent before the clock starts. It only has to happen before anything probes or stores,
+	// and nothing between here and iterative_deepening() does.
+	const auto contempt_context = std::make_pair(root_color_, tuning_.contempt);
+	if (tt_contempt_context_ && *tt_contempt_context_ != contempt_context &&
+	    (tt_contempt_context_->second != 0 || tuning_.contempt != 0)) {
+		(void)_tt->clear();
+	}
+	tt_contempt_context_ = contempt_context;
 	const unsigned effective_depth = control_.EffectiveDepth();
 	const uint8_t search_start_age = _tt->currentAge();
 	// Establish this search's age before helpers can store, so every entry produced
@@ -1605,17 +1609,25 @@ AIPerplex::RejectionReason AIPerplex::assess_iteration_quality(const IterationMe
 
 	// CASE 4: Score dropped to a drawn value suspiciously.
 	//
-	// Still an equality, just not against the literal zero: contempt moves what a draw scores, and
-	// the root's own drawn value is exactly -contempt. The root's side to move IS the root colour,
-	// so draw_score() returns -contempt there, and a draw found deeper arrives negated once per ply
-	// and reaches the root as -contempt too. At contempt 0 this is the historical `== 0`.
+	// A root score is drawn if it is either of exactly TWO values, and the test enumerates both.
 	//
-	// Deliberately NOT a band around zero. |score| <= contempt would also reject every genuine
-	// evaluation inside (-contempt, +contempt) — at the domain's top that is a ±100 cp hole against
-	// a score_draw_threshold of 20, which would discard most interrupted iterations and contaminate
-	// the very measurement contempt exists for.
-	if (metrics.current_score == -tuning_.contempt && state.depth_completed > 0 &&
-	    std::abs(state.best_score) > tuning_.score_draw_threshold) {
+	//   GameValues::Draw          — an eval-detected draw. Evaluate() returns it untinted for the
+	//                               dead-drawn material class (Eval.cpp:1087), which contempt
+	//                               deliberately does not reach.
+	//   GameValues::Draw - contempt — a search-detected draw. The root's side to move IS the root
+	//                               colour, so draw_score() returns this there, and a draw found
+	//                               deeper arrives negated once per ply and reaches the root as the
+	//                               same value.
+	//
+	// At contempt 0 the two collapse into one and this is the historical `== 0`, byte for byte.
+	// Testing only the tinted value would silently drop the eval-draw half at any non-zero
+	// contempt; a band around zero — the other tempting shape — would instead reject every genuine
+	// evaluation between the two, a +-100 cp hole at the top of the domain against a
+	// score_draw_threshold of 20. Both failures land squarely inside the configuration contempt
+	// exists to measure.
+	const bool score_is_drawn =
+	    metrics.current_score == GameValues::Draw || metrics.current_score == GameValues::Draw - tuning_.contempt;
+	if (score_is_drawn && state.depth_completed > 0 && std::abs(state.best_score) > tuning_.score_draw_threshold) {
 		return RejectionReason::SCORE_DROP;
 	}
 

@@ -112,7 +112,8 @@ TEST_CASE("Config: every search_tuning key reaches SearchTuning", "[config]")
                 "reverse_futility_margin": 150,
                 "frontier_futility_enabled": false,
                 "frontier_futility_margin": 250,
-                "late_move_pruning_enabled": false
+                "late_move_pruning_enabled": false,
+                "contempt": 25
             } },
             "black": { "type": 1 }
         } }
@@ -146,6 +147,7 @@ TEST_CASE("Config: every search_tuning key reaches SearchTuning", "[config]")
 	CHECK_FALSE(tuning->frontier_futility_enabled);
 	CHECK(tuning->frontier_futility_margin == 250);
 	CHECK_FALSE(tuning->late_move_pruning_enabled);
+	CHECK(tuning->contempt == 25);
 
 	// An absent block stays absent; the defaults then come from SearchTuning itself.
 	CHECK_FALSE(reader.GetPlayerFromConfig(false).search_tuning.has_value());

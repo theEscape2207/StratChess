@@ -119,8 +119,13 @@ whose violation is silent.
   (`endgame_scale == 0`, `Eval.cpp:1088`) and is deliberately untinted, so at `contempt > 0` a
   liquidation into a provably dead ending scores `0` while a repetition at the same node scores
   `-contempt` — the engine prefers the dead position to the repetition it is being taught to avoid.
-  This is the first hypothesis to check if contempt ever measures negative. Tinting the evaluation
-  path would put a root-colour comparison on the hot leaf path and needs its own nps measurement.
+  Both are draws and the engine picks the one it can never come back from, so this is a gradient
+  pointing the wrong way, not merely an inconsistent score — it is the first hypothesis to check if
+  contempt ever measures negative. The obstacle to tinting it is not cost: the comparison would sit
+  inside the already-taken `endgame_scale == 0` early-out, not on the common leaf path.
+  `Evaluator::Evaluate(const Board&) const` simply has no access to the root colour, and the
+  evaluator is documented stateless and thread-shared, so tinting means plumbing search state into
+  it — its own change.
   A second cost, also only at `contempt > 0`: the clear fires on every root-colour flip, so a GUI
   analysing both sides, or the tactical runner sweeping colours, discards the table each search.
   That is the guard working, not a TT bug.
