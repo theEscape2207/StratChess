@@ -14,6 +14,7 @@
 //
 // Requires STRAT_ENABLE_TEST_ACCESS. See Docs/TestDesign.md.
 
+#include "EvalTestFixture.h"
 #include "SearchTestFixture.h"
 
 namespace {
@@ -200,7 +201,7 @@ TEST_CASE("Contempt - the drawn value reaches only what the evaluator settles as
 
 	// Set as a search would for a WHITE root at Contempt=20: a draw is a small loss for White and a
 	// small gain for Black, in each side's own point of view.
-	eval.SetDrawScores(/*white_to_move=*/-20, /*black_to_move=*/20);
+	EvaluatorTestFixture::SetDrawScores(eval, /*white_to_move=*/-20, /*black_to_move=*/20);
 
 	REQUIRE(eval.Evaluate(Board(FEN_DEAD_DRAWN_WHITE)) == -20);
 	REQUIRE(eval.Evaluate(Board(FEN_BARE_KINGS)) == -20);

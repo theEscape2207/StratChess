@@ -25,8 +25,10 @@ Newest first.
 ## 2026-09-18 — Contempt covers the draws the evaluator settles (#452)
 
 `Evaluate()`'s `endgame_scale == 0` early-out returns `dead_draw_score_[side to move]` instead of
-the constant `GameValues::Draw`, and `AIPerplex::Search()` sets that pair once through the new
-`Evaluator::SetDrawScores()`, beside `root_color_`. `draw_score_for(eColor)` is now the single place
+the constant `GameValues::Draw`, and `AIPerplex::Search()` sets that pair once through
+`publish_draw_scores()`, beside `root_color_`. `Evaluator::SetDrawScores()` is private with
+`AIPerplex` its only friend, so the compiler enforces the single-writer rule the thread-safety
+argument rests on instead of a comment asserting it. `draw_score_for(eColor)` is now the single place
 the contempt sign is expressed; `draw_score(const ThreadData&)` is a thin caller of it. A position
 whose scale is non-zero never reaches that line, so contempt cannot shift anything the evaluator
 does not already settle as drawn — tinting an evaluation that merely landed on zero would put a step
@@ -52,7 +54,8 @@ pairs, node counts identical every pair, **-0.12%** with the two ranges fully ov
 
 The price is that `Evaluator` is no longer literally stateless. `dead_draw_score_` is written only
 by `SetDrawScores()` before any helper thread exists and is read-only for the rest of the search,
-exactly as `AIPerplex::tuning_` is; calling it mid-search would be a data race and nothing does.
+exactly as `AIPerplex::tuning_` is; calling it mid-search would be a data race, which the access
+level now rules out.
 Every other `Evaluator` in the process — the UCI `eval` command's, the batch scorer's, every test's
 — is its own instance that nobody configures, so it still answers `GameValues::Draw`. The Lazy SMP
 sharing contract in `Eval.h` and `Docs/EngineContracts.md` now states the weakened form. A second

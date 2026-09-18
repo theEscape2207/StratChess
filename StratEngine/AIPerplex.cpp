@@ -375,7 +375,7 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	// known and no helper thread exists yet, and a guard on the per-evaluation path costs ~1% nps
 	// at the shipped default (see Eval.h). At contempt 0 both values are GameValues::Draw and the
 	// evaluator returns exactly what it always did.
-	evaluator_.SetDrawScores(draw_score_for(WHITE), draw_score_for(BLACK));
+	publish_draw_scores();
 
 	// Snapshot threads_ exactly once so helper allocation, spawning and
 	// aggregation use one internally consistent value. This is not race
@@ -1171,6 +1171,11 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 // position it believes equal instead of being indifferent between repeating and playing on. At the
 // shipped default of 0 this returns GameValues::Draw and the arithmetic is the historical one.
 int AIPerplex::draw_score(const ThreadData& td) const noexcept { return draw_score_for(td.board.GetCurrentColor()); }
+
+void AIPerplex::publish_draw_scores() noexcept
+{
+	evaluator_.SetDrawScores(draw_score_for(WHITE), draw_score_for(BLACK));
+}
 
 int AIPerplex::draw_score_for(eColor side_to_move) const noexcept
 {

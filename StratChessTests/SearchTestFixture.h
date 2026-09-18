@@ -137,10 +137,7 @@ class AIPerlexTestFixture {
 		ai->root_color_ = color;
 		sync_draw_scores();
 	}
-	void sync_draw_scores() const
-	{
-		ai->evaluator_.SetDrawScores(ai->draw_score_for(WHITE), ai->draw_score_for(BLACK));
-	}
+	void sync_draw_scores() const { ai->publish_draw_scores(); }
 	int draw_score() const { return ai->draw_score(ai->td_); }
 
 	// Reaches the private tuning_ member. Used by the poll-gate tests, which need a search whose

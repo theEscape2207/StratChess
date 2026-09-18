@@ -119,14 +119,15 @@ whose violation is silent.
   engine prefer the draw it can never come back from — a gradient pointing the wrong way, not
   merely an inconsistent score. `Evaluate()`'s `endgame_scale == 0` early-out returns
   `dead_draw_score_[side to move]` rather than the constant `GameValues::Draw`, and `Search()` sets
-  that pair once through `Evaluator::SetDrawScores()`, beside `root_color_`. A position whose scale
+  that pair once through `AIPerplex::publish_draw_scores()`, beside `root_color_`. A position whose scale
   is non-zero never reaches that line, so contempt cannot shift anything the evaluator does not
   already call drawn — tinting an evaluation that merely landed on zero would put a step in the
   middle of the scale.
 - **`Evaluator` is no longer literally stateless, and the weakened contract is what search relies
   on.** `dead_draw_score_` is written only by `SetDrawScores()` before any helper thread exists and
   is read-only for the rest of the search, exactly as `AIPerplex::tuning_` is. Calling it mid-search
-  would be a data race and nothing does. Every other `Evaluator` in the process — the UCI `eval`
+  would be a data race, so `Evaluator::SetDrawScores()` is **private with `AIPerplex` its only
+  friend** — the single-writer rule is enforced by the compiler rather than asserted in a comment. Every other `Evaluator` in the process — the UCI `eval`
   command's, the batch scorer's, every test's — is its own instance that nobody configures, so it
   keeps answering `GameValues::Draw`. Putting the value here rather than guarding each `Evaluate()`
   call was a cost decision, and it was measured: three different per-evaluation guards each cost

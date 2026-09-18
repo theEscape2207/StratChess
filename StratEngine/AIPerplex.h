@@ -193,6 +193,10 @@ class AIPerplex final {
 	// evaluator: there is no ThreadData to read a colour from at that point. The one place the
 	// contempt sign is expressed; draw_score() is a thin caller of it.
 	int draw_score_for(eColor side_to_move) const noexcept;
+	// Hands the evaluator the drawn value for each side to move. Search() is the only production
+	// caller and calls it before any helper thread exists, which is the whole of the argument that
+	// Evaluator stays safe to share unsynchronized — see the contract in Eval.h.
+	void publish_draw_scores() noexcept;
 	// Budget a node entering quiescence from pvs() starts with. quiescence() spends it
 	// downwards and stops when it goes negative, so 16 ply levels run out of check; the value
 	// it carries is always search still to come — the same unit pvs() uses for depth and both
