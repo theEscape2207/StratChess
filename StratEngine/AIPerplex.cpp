@@ -1044,7 +1044,9 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 					value = -pvs(td, depth - 1, -alpha - 1, -alpha, ply + 1, false, tt);
 				}
 
-				// Re-search with full window at PV node (unchanged from original)
+				// Re-search with full window at PV node. Unconditional on beta by design: it is
+				// what keeps a null-window cutoff, a non-PV mate entry among them, out of the
+				// score the root reports.
 				if (value > alpha && is_pv_node)
 					value = -pvs(td, depth - 1, -beta, -alpha, ply + 1, true, tt);
 			}
@@ -1353,13 +1355,22 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// best_move is deliberately not mined from either phase. store() inherits a same-key entry's
 	// move across a phase change, so an entry can hold a quiet move this capture-only generator
 	// would never produce; reading it here would turn that inheritance from inert into a defect.
+	//
+	// A mate score is refused, sound distance and all: every PV leaf lands here, and
+	// should_stop_early() ends iterative deepening on any mate score, so one served to a node that
+	// searched nothing becomes a claim the search never made. The price is a horizon node
+	// re-deriving a mate the table already held. A non-PV pvs() node still cuts off on one --
+	// deliberately, since its result is a bound inside a search, not a score the root reports.
+	// The value read here is ply-denormalised, so a mate further out than Mate - Mate_Threshold
+	// reads as an ordinary score; MAX_PLY keeps that out of reach.
 	if constexpr (kTTStatsCompiled)
 		++td.telemetry.tt.qs_probes;
 	if (auto entry = tt.probe(key, ply)) {
 		if constexpr (kTTStatsCompiled)
 			++td.telemetry.tt.qs_hits;
 		const bool usable =
-		    (entry->phase == SearchPhase::MAIN) ? (entry->depth >= 1) : (entry->depth >= qsearch_budget);
+		    (std::abs(static_cast<int>(entry->value)) < GameValues::Mate_Threshold) &&
+		    ((entry->phase == SearchPhase::MAIN) ? (entry->depth >= 1) : (entry->depth >= qsearch_budget));
 		// Cutoff only: an entry is used when it already resolves this node against the caller's
 		// window, and never to narrow alpha or beta. Narrowing is invisible to the classification
 		// at the bottom of this function, which measures best_value against the original_alpha
