@@ -115,16 +115,17 @@ TEST_CASE("Search - assess: pv too short yields SHORT_PV", "[search]")
 	REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::SHORT_PV);
 }
 
-TEST_CASE("Search - assess: score drops to 0 from large value yields SCORE_DROP", "[search]")
+TEST_CASE("Search - assess: a drawn score on an unchanged move is accepted", "[search]")
 {
+	// A completed root child that genuinely evaluates to a draw is a real result, not a symptom.
+	// The fabricated zero an aborted frame used to unwind with reaches the root with an empty
+	// move and is caught by CASE 1 instead.
 	AIPerlexTestFixture fix;
-	const Move any = AnyLegalMove();
 
-	// current_score == 0, previous was 300 (abs > score_draw_threshold=20) → SCORE_DROP
 	AIPerlexTestFixture::Metrics m{};
 	m.depth = 4;
-	m.current_move = any;
-	m.current_score = 0; // suspicious zero
+	m.current_move = AnyLegalMove();
+	m.current_score = 0;
 	m.nodes_searched = 5000;
 	m.pv_length = 3;
 	m.interrupted = true;
@@ -134,10 +135,10 @@ TEST_CASE("Search - assess: score drops to 0 from large value yields SCORE_DROP"
 
 	AIPerlexTestFixture::State s{};
 	s.depth_completed = 3;
-	s.best_score = 300; // abs > score_draw_threshold (20)
+	s.best_score = 300;
 	s.nodes_at_completed_depth = 5000;
 
-	REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::SCORE_DROP);
+	REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::NONE);
 }
 
 TEST_CASE("Search - assess: move changed on interrupt yields MOVE_CHANGED", "[search]")
