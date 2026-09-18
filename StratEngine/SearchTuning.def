@@ -77,4 +77,14 @@ TUNING_FIELD(int,     frontier_futility_margin,  200,  0,     1000, true, "Front
 // Late move pruning at depth 2; its depth and move index are constants in AIPerplex.h.
 TUNING_FIELD(bool,    late_move_pruning_enabled, true, false, true, true, "LateMovePruning", true)
 
+// Contempt: how many centipawns a draw is scored BELOW equality, for the side the engine is
+// playing. 0 restores the historical behaviour exactly, where every drawn score is GameValues::Draw
+// and the engine is indifferent between repeating and playing on in a position it believes equal.
+//
+// The domain has no negative half on purpose. Seeking draws would be the natural meaning of a
+// negative value, but SearchTuningSchema's read_uci() rejects any character outside [0-9] before
+// it parses, so a negative contempt would bind from game_settings.json and then be ignored in
+// silence over UCI. Widening it means teaching that shared parser to read a sign, its own change.
+TUNING_FIELD(int,     contempt, 0, 0, 100, true, "Contempt", true)
+
 // clang-format on

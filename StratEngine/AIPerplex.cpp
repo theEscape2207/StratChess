@@ -249,6 +249,12 @@ std::optional<SearchTuningSchema::TuningError> AIPerplex::SetTuning(const Search
 	if (tuning != tuning_) {
 		tuning_ = tuning;
 		(void)_tt->clear();
+		// The table is empty, so the contempt context describing its contents is stale. Without
+		// this the next Search() would compare against a pair for entries that no longer exist and
+		// clear an already-empty table. This is also why a contempt MAGNITUDE change cannot reach
+		// Search() with a populated table by any supported route — the guard there covers it as
+		// defence in depth, not as the live path.
+		tt_contempt_context_.reset();
 	}
 	return std::nullopt;
 }
@@ -276,6 +282,9 @@ void AIPerplex::StartNewGame()
 	// correct thread_id reassigned -- on the next search, rather than
 	// reusing helpers whose killers/history carry over from the last game.
 	helper_tds_.clear();
+	// The table just went away, so the contempt context it was filled under has to go with it —
+	// otherwise the next search matches against a pair describing entries that no longer exist.
+	tt_contempt_context_.reset();
 	++game_generation_;
 }
 
@@ -337,6 +346,25 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	const auto stop_guard = ScopeExit([this]() noexcept { control_.Stop(); });
 
 	init_search(root);
+
+	// Establish this search's contempt context before anything can probe or store under it, and
+	// before helpers exist to read root_color_. A draw score signed for one root colour, or scaled
+	// by one contempt value, is not a valid bound for a search under another, and the Zobrist key
+	// records neither — so entries produced under a different pair are dropped rather than trusted.
+	//
+	// Both halves of the second test are load-bearing. Only a search with non-zero contempt can
+	// TINT an entry, and only one with non-zero contempt can MISREAD an untinted entry as if it
+	// were tinted, so a differing pair matters only when at least one side of the change is
+	// non-zero. Without that guard a process that never leaves the shipped default would start
+	// clearing the table on an ordinary colour change — which nothing did before this existed, and
+	// which would make the search at contempt 0 no longer node-identical to its history.
+	//
+	// The COLOUR half is the production-reachable one: SetTuning() already clears the table and the
+	// context on any tuning change, so a contempt magnitude can only change through a path that has
+	// just emptied the table. The pair carries the magnitude anyway, as defence in depth against a
+	// future path that mutates tuning without going through SetTuning().
+	root_color_ = root.GetCurrentColor();
+
 	// Snapshot threads_ exactly once so helper allocation, spawning and
 	// aggregation use one internally consistent value. This is not race
 	// synchronization: callers must obey the documented precondition that
@@ -349,6 +377,16 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 		if (stop_pending_)
 			control_.Stop();
 	}
+
+	// AFTER ApplyLimits, so the memset a large table costs is charged to this move's budget rather
+	// than spent before the clock starts. It only has to happen before anything probes or stores,
+	// and nothing between here and iterative_deepening() does.
+	const auto contempt_context = std::make_pair(root_color_, tuning_.contempt);
+	if (tt_contempt_context_ && *tt_contempt_context_ != contempt_context &&
+	    (tt_contempt_context_->second != 0 || tuning_.contempt != 0)) {
+		(void)_tt->clear();
+	}
+	tt_contempt_context_ = contempt_context;
 	const unsigned effective_depth = control_.EffectiveDepth();
 	const uint8_t search_start_age = _tt->currentAge();
 	// Establish this search's age before helpers can store, so every entry produced
@@ -648,9 +686,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	if (poll_search_limits(td))
 		return GameValues::Draw;
 
-	// Test for 50 moves rule and threefold repetition
+	// Test for 50 moves rule and threefold repetition. Unlike the two abort exits above, this is
+	// a real game result, so it carries contempt.
 	if (td.check_draws(ply))
-		return GameValues::Draw;
+		return draw_score(td);
 
 	// Er vi naaet til bunden af traeet - evaluering?
 	//	See if static eval will cause a cutoff or raise alpha.
@@ -1116,6 +1155,15 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	return adjustScoreForGameState(td, moveFound, ply, best_value);
 }
 
+// Contempt makes a draw a small loss for the side the engine is playing, so it declines one in a
+// position it believes equal instead of being indifferent between repeating and playing on. At the
+// shipped default of 0 this returns GameValues::Draw and the arithmetic is the historical one.
+int AIPerplex::draw_score(const ThreadData& td) const noexcept
+{
+	return td.board.GetCurrentColor() == root_color_ ? GameValues::Draw - tuning_.contempt
+	                                                 : GameValues::Draw + tuning_.contempt;
+}
+
 int AIPerplex::adjustScoreForGameState(ThreadData& td, bool moveFound, int ply, int score)
 {
 	// Any legal moves found?
@@ -1130,7 +1178,7 @@ int AIPerplex::adjustScoreForGameState(ThreadData& td, bool moveFound, int ply, 
 		}
 		// Else No move and not in check - Pat!
 		td.update_game_state(ply, GameStates::DRAW_PAT);
-		return GameValues::Draw;
+		return draw_score(td);
 	}
 
 	td.update_game_state(ply, GameStates::STILL_PLAYING);
@@ -1256,7 +1304,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// itself be in check. So this is deliberately not gated on in_check — gating it would
 	// leave a genuine fifty-move draw scored by material.
 	if (td.check_draws(ply))
-		return GameValues::Draw;
+		return draw_score(td);
 
 	// Absolute backstop. With the draw check above, a real search should never reach this —
 	// but the recursion must terminate on its own rather than on an argument about what
@@ -1311,10 +1359,11 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// Exempt from the unwind invariant for the same reason as the checkmate store below: the score
 	// follows from the position alone, and no child was searched to produce it.
 	if (!in_check && is_bare_king(td.board) && has_no_legal_move(td.board)) {
-		record_tt_store(td, tt.store(key, static_cast<int16_t>(GameValues::Draw), static_cast<int16_t>(qsearch_budget),
+		const int stalemate_value = draw_score(td);
+		record_tt_store(td, tt.store(key, static_cast<int16_t>(stalemate_value), static_cast<int16_t>(qsearch_budget),
 		                             static_cast<int16_t>(ply), Move::EmptyMove(), BoundType::EXACT, NodeType::PV_NODE,
 		                             SearchPhase::QUIESCENCE));
-		return GameValues::Draw;
+		return stalemate_value;
 	}
 
 	// Stand-pat: the option of making no move at all. Out of check it is the node's baseline
@@ -1558,9 +1607,27 @@ AIPerplex::RejectionReason AIPerplex::assess_iteration_quality(const IterationMe
 		return RejectionReason::SHORT_PV;
 	}
 
-	// CASE 4: Score dropped to 0 suspiciously
-	if (metrics.current_score == 0 && state.depth_completed > 0 &&
-	    std::abs(state.best_score) > tuning_.score_draw_threshold) {
+	// CASE 4: Score dropped to a drawn value suspiciously.
+	//
+	// A root score is drawn if it is either of exactly TWO values, and the test enumerates both.
+	//
+	//   GameValues::Draw          — an eval-detected draw. Evaluate() returns it untinted for the
+	//                               dead-drawn material class (Eval.cpp:1087), which contempt
+	//                               deliberately does not reach.
+	//   GameValues::Draw - contempt — a search-detected draw. The root's side to move IS the root
+	//                               colour, so draw_score() returns this there, and a draw found
+	//                               deeper arrives negated once per ply and reaches the root as the
+	//                               same value.
+	//
+	// At contempt 0 the two collapse into one and this is the historical `== 0`, byte for byte.
+	// Testing only the tinted value would silently drop the eval-draw half at any non-zero
+	// contempt; a band around zero — the other tempting shape — would instead reject every genuine
+	// evaluation between the two, a +-100 cp hole at the top of the domain against a
+	// score_draw_threshold of 20. Both failures land squarely inside the configuration contempt
+	// exists to measure.
+	const bool score_is_drawn =
+	    metrics.current_score == GameValues::Draw || metrics.current_score == GameValues::Draw - tuning_.contempt;
+	if (score_is_drawn && state.depth_completed > 0 && std::abs(state.best_score) > tuning_.score_draw_threshold) {
 		return RejectionReason::SCORE_DROP;
 	}
 
@@ -1626,8 +1693,8 @@ void AIPerplex::log_rejection(int depth, RejectionReason reason, const Iteration
 		break;
 
 	case RejectionReason::SCORE_DROP:
-		s_logger->debug("Depth {:>2}: REJECTED[R4:SCORE_DROP] ({} → 0) - Using depth {}", depth, state.best_score,
-		                state.depth_completed);
+		s_logger->debug("Depth {:>2}: REJECTED[R4:SCORE_DROP] ({} → {}) - Using depth {}", depth, state.best_score,
+		                metrics.current_score, state.depth_completed);
 		break;
 
 	case RejectionReason::MOVE_CHANGED:

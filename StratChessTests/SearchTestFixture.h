@@ -119,6 +119,14 @@ class AIPerlexTestFixture {
 	// TEST_CASE functions.
 	void set_last_move_was_null(int ply, bool value) const { ai->td_.last_move_was_null[ply] = value; }
 
+	// --- Contempt pokes (#452) ---
+	// Search() is what sets root_color_ in production, and the pvs() entry points below never go
+	// through it, so a sign test has to state the root colour it is asserting about rather than
+	// inherit the member's default.
+	void set_contempt(int centipawns) const { ai->tuning_.contempt = centipawns; }
+	void set_root_color(eColor color) const { ai->root_color_ = color; }
+	int draw_score() const { return ai->draw_score(ai->td_); }
+
 	// Reaches the private tuning_ member. Used by the poll-gate tests, which need a search whose
 	// cost does not move every time pruning improves.
 	void set_see_pruning(bool enabled) const { ai->tuning_.see_pruning_enabled = enabled; }
@@ -530,6 +538,18 @@ class AIPerlexTestFixture {
 		ai->control_.ApplyLimits(SearchLimits::fixed_time(std::chrono::milliseconds(60'000)));
 		ai->td_.board = board_;
 		ai->td_.nodes_since_check_ = 0;
+		return ai->quiescence(ai->td_, alpha, beta, qsearch_budget, ply, *ai->_tt);
+	}
+
+	// One quiescence() node on an ALREADY-ABORTED search. Separate from quiesce_node() because the
+	// ApplyLimits() call there clears the abort latch: a test that calls request_stop() first gets
+	// its stop silently undone and measures an ordinary evaluation instead of the abort path.
+	int quiesce_node_aborted(int alpha, int beta, int qsearch_budget, int ply) const
+	{
+		ai->control_.ApplyLimits(SearchLimits::fixed_time(std::chrono::milliseconds(60'000)));
+		ai->td_.board = board_;
+		ai->td_.nodes_since_check_ = 0;
+		ai->Stop();
 		return ai->quiescence(ai->td_, alpha, beta, qsearch_budget, ply, *ai->_tt);
 	}
 

@@ -22,6 +22,43 @@ Newest first.
 
 ---
 
+## 2026-09-17 — Strength lab per-engine UCI options; contempt on drawn scores (#564, #452)
+
+The CI strength lab takes `candidate_uci_options` and `reference_uci_options`, whitespace-separated
+`Name=Value` pairs forwarded to that engine alone as fastchess `option.Name=Value`. A feature that
+ships default-off is now measured by dispatching it, so the binary that plays is the one that
+merges, where the only alternative had been a probe branch changing a default. Because the engine
+follows UCI convention and ignores an unknown name, a malformed value and an out-of-domain value
+alike in silence, `.github/scripts/validate_uci_options.py` asks each staged binary for its own
+option table in `build` and fails the run before any shard starts — a typo would otherwise configure
+the candidate exactly like its reference and spend three hours reporting a null result. `Threads` is
+reserved, a repeated name is rejected, a value equal to the engine's default warns, and spin values
+must be unsigned decimal digits, which is all `SearchTuningSchema`'s `read_uci` accepts. Both
+strings are recorded in the run summary beside the side they applied to.
+
+`SearchTuning` gains `contempt` (UCI `Contempt`, default 0, domain `[0, 100]`): how many centipawns
+below equality a *search-detected* draw scores for the side the engine is playing, so it declines a
+repetition in a position it believes equal instead of being indifferent between repeating and
+playing on. Repetition, the fifty-move rule and both stalemate paths route through one
+`AIPerplex::draw_score()`; the fabricated values an aborted or time-limited frame unwinds with stay
+at `GameValues::Draw`, because they are not game results. The sign comes from the node's side to
+move against the root colour rather than ply parity: the two are equivalent today, since every
+construct that advances a ply also flips the side to move, but that is an invariant of the search
+and not of the draw score, and parity would invert silently if it ever stopped holding.
+`assess_iteration_quality`'s SCORE_DROP test still compares for equality, now against `-contempt`
+instead of literal zero — the root's own drawn value, since the root's side to move is the root
+colour and a deeper draw arrives negated once per ply. A band around zero was the tempting shape and
+is wrong: it would also reject every genuine evaluation inside `(-contempt, +contempt)`. `Search()` clears the TT when the `(root colour, contempt)` pair its contents
+were produced under changes and either side of that change is non-zero.
+
+**Ships disabled**, and the default is not changed here: whether contempt is worth Elo in peer
+self-play is unknown and is the separate, pre-registered question the option now makes measurable.
+At the default the change is inert — `Compare-SearchEquivalence.ps1` reports IDENTICAL across six
+positions at depth 12 against the merge base, and an alternating depth-14 bench reproduces the node
+counts exactly with no nps difference outside the host's own noise.
+
+---
+
 ## 2026-09-16 — Search tuning catalogue; validated tuning; UCI tuning options
 
 `SearchTuning` is now generated from one catalogue, `StratEngine/SearchTuning.def`: each entry

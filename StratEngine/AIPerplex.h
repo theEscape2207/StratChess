@@ -175,6 +175,20 @@ class AIPerplex final {
 	int search_with_aspiration(ThreadData& td, int depth, int seed_score, TranspositionTable& tt);
 	int pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt);
 	int adjustScoreForGameState(ThreadData& td, bool moveFound, int ply, int best_value);
+
+	// The score of a draw this search DETECTED — repetition, the fifty-move rule, stalemate — in
+	// the negamax perspective of the node reporting it. Never the value an aborted or
+	// time-limited frame unwinds with: those are fabricated, and stay at GameValues::Draw.
+	//
+	// The sign comes from the board's side to move against the root colour, which is the contract
+	// itself: a draw is bad for the side we are playing. Ply parity is equivalent TODAY — every
+	// construct that advances a ply also flips the side to move, null moves included
+	// (Board::DoNullMove calls change_player(), and pvs() recurses at ply + 1) — but that
+	// equivalence is an unstated invariant of the whole search, not a property of this function.
+	// Reading the board costs one member access on a cold path and cannot drift from the contract;
+	// parity would invert silently if any future construct ever advanced ply without flipping the
+	// side, or flipped without advancing.
+	int draw_score(const ThreadData& td) const noexcept;
 	// Budget a node entering quiescence from pvs() starts with. quiescence() spends it
 	// downwards and stops when it goes negative, so 16 ply levels run out of check; the value
 	// it carries is always search still to come — the same unit pvs() uses for depth and both
@@ -269,6 +283,23 @@ class AIPerplex final {
 	bool search_launch_active_{false};
 	bool stop_pending_{false};
 	uint64_t game_generation_{0};
+
+	// The side to move at the root of the CURRENT search. Written in Search() before any helper
+	// thread starts and read-only for the rest of it, the same discipline tuning_ follows.
+	// Defaulted rather than left indeterminate because pvs() is reachable without Search() in the
+	// test build; a test that cares sets it explicitly.
+	eColor root_color_{WHITE};
+
+	// The (root colour, contempt) pair the transposition table's contents were produced under.
+	// A contempt-derived draw score propagates into parent entries, so a stored bound depends on
+	// which side the search was favouring and by how much — context the Zobrist key does not
+	// carry. Search() clears the table when the incoming pair differs. Empty until the first
+	// search of a game; StartNewGame() empties it again along with the table itself.
+	//
+	// Unreachable in normal play, where a UCI engine only ever searches its own moves and the
+	// root colour is constant for a whole game. It is analysis, the tactical runner and tests —
+	// one service searching both colours, or under a changed contempt — that can hit it.
+	std::optional<std::pair<eColor, int>> tt_contempt_context_;
 
 	// Per-thread search state (board copy, node counter, PV, killers, history, ...).
 	// Persistent member — history is aged between moves, never cleared — and the

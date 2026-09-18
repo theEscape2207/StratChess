@@ -100,6 +100,35 @@ whose violation is silent.
   advance the legal-move index and need make/unmake, so checking moves and immediate repetition or
   fifty-move draws are never skipped. A quiet move that stalemates the opponent is not detected and
   can be skipped.
+- **A drawn score is context the Zobrist key does not carry.** With `contempt` non-zero, the score
+  of a *search-detected* draw — repetition, fifty-move, stalemate — depends on the root colour and on
+  the contempt value, and propagates into parent entries through the terminal store in `pvs()` and the
+  bare-king store in `quiescence()`. The key holds neither, so `Search()` keeps the
+  `(root_color, contempt)` pair its table was filled under and clears the table when the incoming pair
+  differs *and* either side of the change is non-zero. Both halves matter: only a contempt search can
+  tint an entry or misread an untinted one, so a process left at the shipped default of 0 must never
+  clear — that would be a behaviour change where nothing was ever tinted. The sign comes from
+  `td.board.GetCurrentColor()` against `root_color_`, which is the contract itself. Ply parity is
+  equivalent today — every construct that advances a ply also flips the side to move, null moves
+  included — but that is an unstated invariant of the search rather than a property of the draw
+  score, and parity would invert silently if it ever stopped holding. Abort and time-limit unwind
+  values stay at
+  `GameValues::Draw`: they are fabricated, not game results.
+- **Contempt tints search-detected draws only, which inverts the ordering against eval-detected
+  ones.** `Evaluator::Evaluate` returns `GameValues::Draw` for the dead-drawn material class
+  (`endgame_scale == 0`, `Eval.cpp:1088`) and is deliberately untinted, so at `contempt > 0` a
+  liquidation into a provably dead ending scores `0` while a repetition at the same node scores
+  `-contempt` — the engine prefers the dead position to the repetition it is being taught to avoid.
+  Both are draws and the engine picks the one it can never come back from, so this is a gradient
+  pointing the wrong way, not merely an inconsistent score — it is the first hypothesis to check if
+  contempt ever measures negative. The obstacle to tinting it is not cost: the comparison would sit
+  inside the already-taken `endgame_scale == 0` early-out, not on the common leaf path.
+  `Evaluator::Evaluate(const Board&) const` simply has no access to the root colour, and the
+  evaluator is documented stateless and thread-shared, so tinting means plumbing search state into
+  it — its own change.
+  A second cost, also only at `contempt > 0`: the clear fires on every root-colour flip, so a GUI
+  analysing both sides, or the tactical runner sweeping colours, discards the table each search.
+  That is the guard working, not a TT bug.
 - **Quiescence orders its two move lists differently**, via `AIPerplex::order_quiescence_moves()`.
   Out of check the list is captures and promotions and `SortMovesByValue` sorts it in place; in check
   it is every legal evasion and `MoveSorter::ScoreMoves` writes an order into a `scored_idx` array
