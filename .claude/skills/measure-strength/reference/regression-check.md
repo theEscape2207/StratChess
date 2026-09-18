@@ -25,7 +25,13 @@ against the **merge base**:
 
 ## Reading it
 
-**Done** is a spread that sits at or above zero. A delta whose whole range is negative is a
-slowdown: find it before shipping. A small positive delta is layout noise and order bias (the
-baseline always runs first), so report it as "no slowdown", never as a speedup. Claiming a speedup
-is a different measurement: alternate the order, and see `Docs/Workflow.md` → Speed and nps.
+**Done** is a spread that sits at or above zero. A small positive delta is layout noise and order
+bias (the baseline always runs first), so report it as "no slowdown", never as a speedup. Claiming
+a speedup is a different measurement: alternate the order, and see `Docs/Workflow.md` → Speed and
+nps.
+
+**A negative delta is not automatically a slowdown.** If the change added no per-node work, code
+placement alone accounts for several percent — #556 read −3.90% over 9 pairs and was pure
+placement. Escalate rather than conclude: relink both builds with a shared `/ORDER` to identical
+hot addresses (recipe in #555) and re-run the series. Only a delta that survives that is a
+slowdown, and then find it before shipping.
