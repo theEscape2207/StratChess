@@ -42,11 +42,21 @@ Removing it cannot change the move the engine plays. CASE 5 `MOVE_CHANGED` was t
 a changed move was rejected either way; CASE 4's only unique branch was "drawn score **and** move
 unchanged", and `state.last_iteration_move` is written at exactly one site, alongside
 `state.best_move`, which makes `!move_changed` imply the two are the same move. `REJECT_AND_STOP`
-mutates no state. What the case did change was the *reported* `best_score` and `depth_completed`:
-it suppressed a true drawn score from a deeper interrupted iteration in favour of a staler
-optimistic one. Both fields feed only a log line and the final UCI `info`, never search, move
-choice or time management — but the strength lab adjudicates on reported score, so lab numbers
-straddling this change are not strictly comparable.
+mutates no state. What the case did change was the *reported* result: it suppressed a true drawn
+score from a deeper interrupted iteration in favour of a staler optimistic one. `best_score` and
+`depth_completed` feed only a log line and the final UCI `info`; `search_was_stable` feeds only
+logging; `nodes_at_completed_depth` is overwritten with the summed thread counters before any
+consumer sees it. None reaches search, move choice or time management, and `bestmove` is built
+from `best_move` alone.
+
+**That reported score is not inert under match conditions.** `Run-EloMatch.ps1` passes fastchess
+`-draw movenumber=40 movecount=8 score=10` and `-resign movecount=4 score=800`, and adjudication
+consumes exactly the score the engine reports. Reporting a true draw where the old code reported a
+stale decisive score can therefore change the *outcome of an adjudicated game*, in either
+direction — not merely a number in a log. It needs eight consecutive plies from both engines
+inside +/-10 after move 40, so it is rare, and the new behaviour is the more honest one; but it is
+a behaviour note, not only a comparability caveat, and lab results straddling this change should
+be read with it in mind.
 
 Validation: `Compare-SearchEquivalence.ps1 -BaselineRef origin/main` IDENTICAL across 6 positions
 at depth 12 — necessary but **not** sufficient, because a fixed-depth run has no clock, so

@@ -139,6 +139,11 @@ TEST_CASE("Search - assess: a drawn score on an unchanged move is accepted", "[s
 	s.nodes_at_completed_depth = 5000;
 
 	REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::NONE);
+
+	// The same drawn score with a CHANGED move is still rejected, by MOVE_CHANGED. Accepting the
+	// drawn score must not have shadowed the case that follows it.
+	m.move_changed = true;
+	REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::MOVE_CHANGED);
 }
 
 TEST_CASE("Search - assess: move changed on interrupt yields MOVE_CHANGED", "[search]")
@@ -162,7 +167,7 @@ TEST_CASE("Search - assess: move changed on interrupt yields MOVE_CHANGED", "[se
 	s.best_score = 90;
 	s.nodes_at_completed_depth = 5000;
 	s.last_iteration_move = Move{}; // not read by assess_iteration_quality;
-	                                // CASE 5 fires on metrics.move_changed == true
+	                                // CASE 4 fires on metrics.move_changed == true
 	                                // && state.depth_completed > 0
 
 	REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::MOVE_CHANGED);
