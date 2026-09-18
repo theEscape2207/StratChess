@@ -737,10 +737,9 @@ EvalContext Evaluator::BuildContext(const Board& board) noexcept
 	    .mopup_active = {mopupActive[WHITE], mopupActive[BLACK]},
 	    .endgame_scale = endgameScale,
 	    .castling_rights = board.castling_rights(),
-	    // Left zeroed for a dead-drawn material class: Evaluate() returns
-	    // GameValues::Draw for one without calling a single term, so generating
-	    // attacks would put the cost back on exactly the path that early-out
-	    // exists to make cheap.
+	    // Left zeroed for a dead-drawn material class: Evaluate() settles one
+	    // without calling a single term, so generating attacks would put the cost
+	    // back on exactly the path that early-out exists to make cheap.
 	    .attacks = (endgameScale != 0)
 	                   ? ComputePieceAggregates(boardsSpan, whitePawnAttacks, blackPawnAttacks, kingSquares)
 	                   : PieceAggregates{},
@@ -1076,6 +1075,12 @@ int Evaluator::RawWhitePov(const EvalContext& ctx) noexcept
 // FIXME:		 Evaluate does not know about Check Mate - this is strictly only an evaluation of the current position
 //				 - this means that we miss the first (and best, maybe even only?) opportunity to do check mate!
 //
+// IsDeadDrawn — the material-class half of Evaluate()'s early-out, on its own.
+//
+// Reads the bitboards directly rather than building an EvalContext: the scale is
+// the only field it needs, and the context costs a full attack pass.
+bool Evaluator::IsDeadDrawn(const Board& board) noexcept { return EndgameScale(board.GetBitBoards()) == 0; }
+
 int Evaluator::Evaluate(const Board& board) const noexcept
 {
 	const EvalContext ctx = BuildContext(board);
@@ -1084,6 +1089,9 @@ int Evaluator::Evaluate(const Board& board) const noexcept
 	// zero, so the terms are not computed at all. This is the path the engine
 	// takes through exactly the endings it now has to play out, which is where
 	// the saving is worth having.
+	//
+	// A caller that needs to tell this zero from an evaluation that merely landed
+	// on zero — search, to tint it with contempt — asks IsDeadDrawn() separately.
 	if (ctx.endgame_scale == 0)
 		return GameValues::Draw;
 

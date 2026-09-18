@@ -101,9 +101,9 @@ whose violation is silent.
   fifty-move draws are never skipped. A quiet move that stalemates the opponent is not detected and
   can be skipped.
 - **A drawn score is context the Zobrist key does not carry.** With `contempt` non-zero, the score
-  of a *search-detected* draw — repetition, fifty-move, stalemate — depends on the root colour and on
-  the contempt value, and propagates into parent entries through the terminal store in `pvs()` and the
-  bare-king store in `quiescence()`. The key holds neither, so `Search()` keeps the
+  of a draw — repetition, fifty-move, stalemate, or a dead-drawn material class — depends on the root
+  colour and on the contempt value, and propagates into parent entries through the terminal store in
+  `pvs()` and the bare-king store in `quiescence()`. The key holds neither, so `Search()` keeps the
   `(root_color, contempt)` pair its table was filled under and clears the table when the incoming pair
   differs *and* either side of the change is non-zero. Both halves matter: only a contempt search can
   tint an entry or misread an untinted one, so a process left at the shipped default of 0 must never
@@ -114,19 +114,23 @@ whose violation is silent.
   score, and parity would invert silently if it ever stopped holding. Abort and time-limit unwind
   values stay at
   `GameValues::Draw`: they are fabricated, not game results.
-- **Contempt tints search-detected draws only, which inverts the ordering against eval-detected
-  ones.** `Evaluator::Evaluate` returns `GameValues::Draw` for the dead-drawn material class
-  (`endgame_scale == 0`, `Eval.cpp:1088`) and is deliberately untinted, so at `contempt > 0` a
-  liquidation into a provably dead ending scores `0` while a repetition at the same node scores
-  `-contempt` — the engine prefers the dead position to the repetition it is being taught to avoid.
-  Both are draws and the engine picks the one it can never come back from, so this is a gradient
-  pointing the wrong way, not merely an inconsistent score — it is the first hypothesis to check if
-  contempt ever measures negative. The obstacle to tinting it is not cost: the comparison would sit
-  inside the already-taken `endgame_scale == 0` early-out, not on the common leaf path.
-  `Evaluator::Evaluate(const Board&) const` simply has no access to the root colour, and the
-  evaluator is documented stateless and thread-shared, so tinting means plumbing search state into
-  it — its own change.
-  A second cost, also only at `contempt > 0`: the clear fires on every root-colour flip, so a GUI
+- **Every draw the search can report carries contempt, including the dead-drawn material class.**
+  A liquidation into a provably dead ending and a repetition are both draws; tinting only one of
+  them would make the engine prefer the draw it can never come back from, a gradient pointing the
+  wrong way rather than merely an inconsistent score. `Evaluator::Evaluate` is untouched by
+  contempt and still answers `GameValues::Draw`; what tints it is `AIPerplex::static_evaluation()`,
+  the one site all five search-side evaluations go through, asking `Evaluator::IsDeadDrawn()`
+  whether a zero it just got back is that draw rather than an evaluation that happened to land on
+  zero. Tinting the latter would put a step in the middle of the evaluation scale. Keeping it a
+  second question rather than a parameter on `Evaluate` is deliberate and measured: threading a
+  value through would keep it live across `BuildContext()` inside the hottest function in the
+  engine, and cost ~1.5% nps at a default that never tints anything. **The guard is not free even
+  so** — `Contempt=0` returns the evaluation through a tail call but still pays one compare per
+  evaluation, measured at **-0.97% nps** (8 alternating depth-13 pairs, non-overlapping ranges).
+  That is a permanent cost on the shipping default in exchange for a confound removed from a
+  feature that is still switched off; if contempt is never enabled, the honest move is to delete
+  it rather than keep paying.
+  A cost, also only at `contempt > 0`: the clear fires on every root-colour flip, so a GUI
   analysing both sides, or the tactical runner sweeping colours, discards the table each search.
   That is the guard working, not a TT bug.
 - **Quiescence orders its two move lists differently**, via `AIPerplex::order_quiescence_moves()`.

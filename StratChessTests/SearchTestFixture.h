@@ -284,7 +284,7 @@ class AIPerlexTestFixture {
 
 	// The same static evaluation the guard compares against beta, so a test can compute the exact
 	// margin boundary instead of guessing at one.
-	int static_eval() const { return ai->evaluator_.Evaluate(ai->td_.board); }
+	int static_eval() const { return ai->static_evaluation(ai->td_); }
 
 	int64_t singular_eligible() const { return ai->td_.telemetry.singular.eligible; }
 	int64_t singular_verifications() const { return ai->td_.telemetry.singular.verifications; }

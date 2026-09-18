@@ -30,6 +30,15 @@ namespace {
 	// Black to move and stalemated: no legal move, not in check.
 	constexpr const char* FEN_STALEMATE_BLACK = "7k/5Q2/6K1/8/8/8/8/8 b - - 0 1";
 
+	// King and knight against a bare king: a dead-drawn material class, so EndgameScale() is 0 and
+	// Evaluate() settles the position without asking a single term. No capture and no promotion is
+	// available, so every leaf of a shallow search is the same material class.
+	constexpr const char* FEN_DEAD_DRAWN_WHITE = "8/8/8/3k4/8/8/3N4/3K4 w - - 0 1";
+
+	// A middlegame position nothing about the endgame scale touches, used to show the dead-draw
+	// value is confined to the class it names.
+	constexpr const char* FEN_SCALED_MIDDLEGAME = "r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4";
+
 	constexpr int WIDE_ALPHA = -30000;
 	constexpr int WIDE_BETA = 30000;
 
@@ -128,6 +137,54 @@ TEST_CASE("Contempt - the fifty-move rule and stalemate carry it too, not just r
 	stale_white.set_contempt(15);
 	stale_white.set_root_color(WHITE);
 	REQUIRE(stale_white.search_node_after({}, /*depth=*/2, WIDE_ALPHA, WIDE_BETA, /*is_pv_node=*/false) == 15);
+}
+
+TEST_CASE("Contempt - a dead-drawn material class carries it as well", "[search][contempt]")
+{
+	// The gradient this closes: a repetition scored -contempt while a liquidation into a provably
+	// dead ending scored 0 would make the engine PREFER the dead ending — both are draws, and it
+	// would be choosing the one it can never come back from.
+	//
+	// Depth 2 rather than 0: this asserts the value the search actually returns, which is what the
+	// gradient is made of, not just the evaluator's own arithmetic.
+	AIPerlexTestFixture dead_white(FEN_DEAD_DRAWN_WHITE);
+	dead_white.set_contempt(20);
+	dead_white.set_root_color(WHITE);
+	REQUIRE(dead_white.search_node_after({}, /*depth=*/2, WIDE_ALPHA, WIDE_BETA, /*is_pv_node=*/false) == -20);
+
+	// A fixture per root colour, for the reason the stalemate case above records: the tinted score
+	// is cached, and the guard that would drop it on a colour change lives in Search().
+	AIPerlexTestFixture dead_black(FEN_DEAD_DRAWN_WHITE);
+	dead_black.set_contempt(20);
+	dead_black.set_root_color(BLACK);
+	REQUIRE(dead_black.search_node_after({}, /*depth=*/2, WIDE_ALPHA, WIDE_BETA, /*is_pv_node=*/false) == 20);
+
+	AIPerlexTestFixture dead_default(FEN_DEAD_DRAWN_WHITE);
+	dead_default.set_contempt(0);
+	dead_default.set_root_color(WHITE);
+	REQUIRE(dead_default.search_node_after({}, /*depth=*/2, WIDE_ALPHA, WIDE_BETA, /*is_pv_node=*/false) ==
+	        GameValues::Draw);
+}
+
+TEST_CASE("Contempt - the tint reaches only the class IsDeadDrawn names", "[search][contempt]")
+{
+	const Evaluator eval;
+
+	// Evaluate() is untouched by contempt — the evaluator stays stateless and never learns which
+	// colour the engine plays. What search tints is the zero this predicate vouches for.
+	const Board dead(FEN_DEAD_DRAWN_WHITE);
+	REQUIRE(Evaluator::IsDeadDrawn(dead));
+	REQUIRE(eval.Evaluate(dead) == GameValues::Draw);
+
+	// A position with a non-zero scale is never tinted, whatever it evaluates to, so contempt
+	// cannot shift the evaluation of anything that is not dead drawn.
+	const Board scaled(FEN_SCALED_MIDDLEGAME);
+	REQUIRE_FALSE(Evaluator::IsDeadDrawn(scaled));
+
+	// The starting position and a bare-king ending, the two ends of the material range: the
+	// predicate is about the material class, not about the score.
+	REQUIRE_FALSE(Evaluator::IsDeadDrawn(Board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")));
+	REQUIRE(Evaluator::IsDeadDrawn(Board("8/8/4k3/8/8/4K3/8/8 w - - 0 1")));
 }
 
 TEST_CASE("Contempt - draw_score is a pure function of side to move and root colour", "[search][contempt]")

@@ -22,6 +22,54 @@ Newest first.
 
 ---
 
+## 2026-09-18 — Contempt covers the dead-drawn material class (#452)
+
+`Evaluator::Evaluate` is unchanged and still returns `GameValues::Draw` for the
+`endgame_scale == 0` early-out. What tints it is `AIPerplex::static_evaluation()`, the single site
+the five `Evaluate()` calls in `pvs()` and `quiescence()` now route through: it asks the new
+`Evaluator::IsDeadDrawn()` whether a zero it just got back is the dead-drawn material class rather
+than an evaluation that merely landed on zero, and returns `draw_score(td)` if it is. Tinting the
+latter would put a step in the middle of the evaluation scale.
+
+**The gradient this closes.** Contempt previously tinted search-detected draws only, so at
+`Contempt=20` a repetition scored `-20` while a liquidation into a provably dead ending scored `0`.
+Both are draws, and the engine preferred the one it can never come back from — a gradient pointing
+the wrong way, not merely an inconsistent score, and the named confound on the #452 lab bar. The
+pooled result of run `35309731763` was `+0.77 +/- 3.58` Elo over 19,980 games, inconclusive against
+that bar; the PGNs showed contempt changing the *score* of a detected draw in 99.3% of the
+candidate's threefold games without measurably changing how *often* one was reached. This removes
+the first thing that would have to be ruled out before reading that as the answer.
+
+Asking a second question rather than passing the value into `Evaluate` keeps `Evaluator` stateless
+and shareable across every Lazy SMP thread, which `Docs/EngineContracts.md` had recorded as the
+obstacle to doing this at all — but the reason it is shaped this way is cost, and that was measured
+rather than assumed. An `Evaluate(const Board&, int dead_draw_score)` overload keeps the value live
+across `BuildContext()` inside the hottest function in the engine and cost ~1.5% nps; a variant
+reading the flag from `ThreadData` instead of `tuning_` cost ~1.5% as well. The shape that survived
+returns through a tail call at `Contempt=0`, exactly as the five call sites used to.
+
+**It is still not free.** Eight alternating depth-13 bench pairs on a quiet host, ranges not
+overlapping: **-0.97% nps** (2,445,322 to 2,421,507 mean; wall clock 4.746-4.760 ms against
+4.785-4.821 ms), 8 pairs out of 8 in the same direction. That is one compare per evaluation, at
+quiescence frequency, paid permanently by a default configuration that never tints anything. It
+buys a confound removed from a measurement that has not been run yet; if contempt is never
+enabled, deleting the feature is the honest move rather than keeping the tax.
+
+`assess_iteration_quality`'s CASE 4 is unchanged in behaviour but
+its comment no longer claims an eval-detected draw arrives untinted: `GameValues::Draw` now reaches
+that test only as a genuine evaluation that happens to land on zero, which is the historical `== 0`
+the arm has always been.
+
+**Still ships disabled.** `Compare-SearchEquivalence.ps1` reports IDENTICAL across six positions at
+depth 12 against the merge base, and every bench pair above reproduces the node counts exactly, so
+at `Contempt=0` the search is node-for-node what it was and the nps figure is a like-for-like speed
+comparison. Two new `[contempt]` cases pin the change: one asserts the score the search returns for
+a king-and-knight position at `Contempt=20` is `-20` for a white root and `+20` for a black one, and
+one pins `IsDeadDrawn()` itself across the material range, so the tint cannot reach a position that
+is merely scored zero.
+
+---
+
 ## 2026-09-17 — Strength lab per-engine UCI options; contempt on drawn scores (#564, #452)
 
 The CI strength lab takes `candidate_uci_options` and `reference_uci_options`, whitespace-separated

@@ -82,9 +82,9 @@ enum eMobilePiece : std::uint8_t {
 // BuildContext.
 //
 // ALL ZERO when endgame_scale is 0 — no attacks are generated at all for a
-// dead-drawn material class, because Evaluate() returns GameValues::Draw for
-// one without asking any term anything. Only Breakdown() can observe the
-// difference, and only on a position whose total is Draw regardless.
+// dead-drawn material class, because Evaluate() settles one without asking any
+// term anything. Only Breakdown() can observe the difference, and only on a
+// position that is drawn regardless.
 struct PieceAggregates {
 	// Per type, the sum over that color's pieces of (safe squares reached minus
 	// MOBILITY_BASE_*) — exactly what eval_mobility multiplies by its per-type
@@ -795,6 +795,17 @@ class Evaluator {
 
   public:
 	int Evaluate(const Board& board) const noexcept;
+
+	// True for the material class Evaluate() settles as GameValues::Draw without
+	// computing a single term — drawn however the pieces stand.
+	//
+	// Public so search can ask whether a zero it just got back is that draw rather
+	// than an evaluation that happened to land on zero, which is what lets contempt
+	// tint it. Deliberately a second question and not a parameter on Evaluate():
+	// threading the value through would keep it live across BuildContext() inside
+	// the hottest function in the engine, which measured ~1.5% nps. The re-scan is
+	// paid only by a contempt search, and only on a position already scored zero.
+	static bool IsDeadDrawn(const Board& board) noexcept;
 
 	// Per-term introspection for the UCI 'eval' command. Reports what the four
 	// private term functions above contribute, per color, for one position;

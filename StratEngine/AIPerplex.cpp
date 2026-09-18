@@ -646,7 +646,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// another frame is building, and the clear is unconditional.
 	if (ply >= MAX_PLY - 1) {
 		td.pv_table.clear_ply(ply);
-		return evaluator_.Evaluate(td.board);
+		return static_evaluation(td);
 	}
 
 	// This frame is a singular verification search when the slot is set: it re-enters pvs()
@@ -771,7 +771,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	bool static_eval_known = false;
 	const auto node_eval = [&] {
 		if (!static_eval_known) {
-			static_eval = evaluator_.Evaluate(td.board);
+			static_eval = static_evaluation(td);
 			static_eval_known = true;
 		}
 		return static_eval;
@@ -1164,6 +1164,25 @@ int AIPerplex::draw_score(const ThreadData& td) const noexcept
 	                                                 : GameValues::Draw + tuning_.contempt;
 }
 
+int AIPerplex::static_evaluation(const ThreadData& td) const noexcept
+{
+	// The shipped default returns the evaluation through a tail call, exactly as the five call
+	// sites used to. That shape is deliberate and was measured: folding the two paths into one
+	// post-processed return costs the tail call at three of those sites and roughly doubles what
+	// this guard charges a search that has contempt switched off.
+	if (tuning_.contempt == 0)
+		return evaluator_.Evaluate(td.board);
+
+	// A flat zero is the cheap half of the question and nearly always answers it; only then is the
+	// material class re-scanned to tell a dead-drawn ending from an evaluation that merely landed
+	// on zero. Tinting the latter would put a step in the middle of the evaluation scale.
+	const int score = evaluator_.Evaluate(td.board);
+	if (score != GameValues::Draw || !Evaluator::IsDeadDrawn(td.board))
+		return score;
+
+	return draw_score(td);
+}
+
 int AIPerplex::adjustScoreForGameState(ThreadData& td, bool moveFound, int ply, int score)
 {
 	// Any legal moves found?
@@ -1285,7 +1304,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// the draw and backstop checks below, not material: a quiet evasion may itself give
 	// check, so two sides can go on checking each other without a capture between them.
 	if (qsearch_budget < 0 && !in_check) {
-		return evaluator_.Evaluate(td.board);
+		return static_evaluation(td);
 	}
 
 	// Repetition and fifty-move draws. pvs() checks these before it hands a node to
@@ -1311,7 +1330,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// positions can arise, and ply indexes fixed-size per-thread arrays elsewhere in the
 	// search. This is the one place a position is evaluated while still in check.
 	if (ply >= MAX_PLY - 1) {
-		return evaluator_.Evaluate(td.board);
+		return static_evaluation(td);
 	}
 
 	const int original_alpha = alpha;
@@ -1380,7 +1399,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	int stand_pat = 0;
 
 	if (!in_check) {
-		stand_pat = evaluator_.Evaluate(td.board);
+		stand_pat = static_evaluation(td);
 		if (stand_pat >= beta) {
 			// Store and cutoff
 			record_tt_store(td, tt.store(key, static_cast<int16_t>(beta), static_cast<int16_t>(qsearch_budget),
@@ -1611,20 +1630,18 @@ AIPerplex::RejectionReason AIPerplex::assess_iteration_quality(const IterationMe
 	//
 	// A root score is drawn if it is either of exactly TWO values, and the test enumerates both.
 	//
-	//   GameValues::Draw          — an eval-detected draw. Evaluate() returns it untinted for the
-	//                               dead-drawn material class (Eval.cpp:1087), which contempt
-	//                               deliberately does not reach.
-	//   GameValues::Draw - contempt — a search-detected draw. The root's side to move IS the root
-	//                               colour, so draw_score() returns this there, and a draw found
-	//                               deeper arrives negated once per ply and reaches the root as the
-	//                               same value.
+	//   GameValues::Draw - contempt — every draw the search reports. The root's side to move IS
+	//                               the root colour, so draw_score() returns this there, and a
+	//                               draw found deeper arrives negated once per ply and reaches the
+	//                               root as the same value. Since the dead-drawn material class is
+	//                               tinted too, no draw path produces anything else.
+	//   GameValues::Draw          — a genuine evaluation that happens to land on zero. This arm is
+	//                               the historical `== 0` test and is kept as such.
 	//
 	// At contempt 0 the two collapse into one and this is the historical `== 0`, byte for byte.
-	// Testing only the tinted value would silently drop the eval-draw half at any non-zero
-	// contempt; a band around zero — the other tempting shape — would instead reject every genuine
-	// evaluation between the two, a +-100 cp hole at the top of the domain against a
-	// score_draw_threshold of 20. Both failures land squarely inside the configuration contempt
-	// exists to measure.
+	// A band around zero — the tempting shape — would instead reject every genuine evaluation
+	// between the two, a +-100 cp hole at the top of the domain against a score_draw_threshold
+	// of 20, squarely inside the configuration contempt exists to measure.
 	const bool score_is_drawn =
 	    metrics.current_score == GameValues::Draw || metrics.current_score == GameValues::Draw - tuning_.contempt;
 	if (score_is_drawn && state.depth_completed > 0 && std::abs(state.best_score) > tuning_.score_draw_threshold) {
