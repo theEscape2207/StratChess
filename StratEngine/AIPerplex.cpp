@@ -1607,31 +1607,7 @@ AIPerplex::RejectionReason AIPerplex::assess_iteration_quality(const IterationMe
 		return RejectionReason::SHORT_PV;
 	}
 
-	// CASE 4: Score dropped to a drawn value suspiciously.
-	//
-	// A root score is drawn if it is either of exactly TWO values, and the test enumerates both.
-	//
-	//   GameValues::Draw          — an eval-detected draw. Evaluate() returns it untinted for the
-	//                               dead-drawn material class (Eval.cpp:1087), which contempt
-	//                               deliberately does not reach.
-	//   GameValues::Draw - contempt — a search-detected draw. The root's side to move IS the root
-	//                               colour, so draw_score() returns this there, and a draw found
-	//                               deeper arrives negated once per ply and reaches the root as the
-	//                               same value.
-	//
-	// At contempt 0 the two collapse into one and this is the historical `== 0`, byte for byte.
-	// Testing only the tinted value would silently drop the eval-draw half at any non-zero
-	// contempt; a band around zero — the other tempting shape — would instead reject every genuine
-	// evaluation between the two, a +-100 cp hole at the top of the domain against a
-	// score_draw_threshold of 20. Both failures land squarely inside the configuration contempt
-	// exists to measure.
-	const bool score_is_drawn =
-	    metrics.current_score == GameValues::Draw || metrics.current_score == GameValues::Draw - tuning_.contempt;
-	if (score_is_drawn && state.depth_completed > 0 && std::abs(state.best_score) > tuning_.score_draw_threshold) {
-		return RejectionReason::SCORE_DROP;
-	}
-
-	// CASE 5: Move changed on interrupt
+	// CASE 4: Move changed on interrupt
 	if (metrics.move_changed && state.depth_completed > 0) {
 		return RejectionReason::MOVE_CHANGED;
 	}
@@ -1692,13 +1668,8 @@ void AIPerplex::log_rejection(int depth, RejectionReason reason, const Iteration
 		                metrics.pv_length, depth, state.depth_completed);
 		break;
 
-	case RejectionReason::SCORE_DROP:
-		s_logger->debug("Depth {:>2}: REJECTED[R4:SCORE_DROP] ({} → {}) - Using depth {}", depth, state.best_score,
-		                metrics.current_score, state.depth_completed);
-		break;
-
 	case RejectionReason::MOVE_CHANGED:
-		s_logger->debug("Depth {:>2}: REJECTED[R5:MOVE_CHANGED] ({} → {}) - Using depth {}", depth,
+		s_logger->debug("Depth {:>2}: REJECTED[R4:MOVE_CHANGED] ({} → {}) - Using depth {}", depth,
 		                MoveFormatter::ToCoord(state.last_iteration_move), MoveFormatter::ToCoord(metrics.current_move),
 		                state.depth_completed);
 		break;

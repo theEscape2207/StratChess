@@ -18,7 +18,6 @@
 TUNING_FIELD(int64_t, min_nodes_threshold,  1000, std::numeric_limits<int64_t>::lowest(), std::numeric_limits<int64_t>::max(), true, nullptr, true)
 TUNING_FIELD(double,  min_completion_ratio, 0.10, std::numeric_limits<double>::lowest(),  std::numeric_limits<double>::max(),  true, nullptr, true)
 TUNING_FIELD(double,  min_pv_ratio,         0.33, 0.0,                                    1.0,                                 true, nullptr, true)
-TUNING_FIELD(int,     score_draw_threshold, 20,   std::numeric_limits<int>::lowest(),     std::numeric_limits<int>::max(),     true, nullptr, true)
 
 // This covers the POSITIONAL swing only: the quiescence guard adds MoveHelper::DeltaGain, so the
 // captured material is already counted and must not be counted again here. King safety is what

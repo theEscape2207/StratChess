@@ -449,9 +449,11 @@ TEST_CASE("Search - a pvs frame that aborts at entry leaves an empty pv row", "[
 	// anything: the entry exit returns a fabricated GameValues::Draw. A parent frame discards
 	// that at its own guard, but the root's caller is search_with_aspiration(), which hands it to
 	// iterative_deepening() as this iteration's score. Row 0 is what decides whether that score
-	// is believed — a populated row (here, a completed aspiration retry's line) makes
-	// metrics.current_move plausible and lets `score cp 0` through CASE 4 in a balanced position.
-	// Clearing the row before the exit is what turns it into the INCOMPLETE rejection instead.
+	// is believed — a populated row (here, a completed aspiration retry's line) would make
+	// metrics.current_move plausible and let the fabricated draw be accepted as a real result.
+	// Clearing the row before the exit is what turns it into the INCOMPLETE rejection instead,
+	// and it is now the ONLY thing that does: assess_iteration_quality() no longer carries a
+	// second test against drawn scores, so this clear is load-bearing on its own.
 	AIPerlexTestFixture fix;
 	fix.seed_pv_row(0, AnyLegalMove());
 	REQUIRE(fix.pv_length(0) == 1); // the earlier retry's line, still standing
