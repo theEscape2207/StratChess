@@ -24,18 +24,24 @@ Newest first.
 
 ## 2026-09-18 — Quiescence refuses a mate score as a TT cutoff (#571)
 
-`quiescence()` would take a cutoff from any usable entry, mate scores included, while `pvs()` has
-always refused one at an interior node. That was the source of the depth-1 mate claims in #571: a
-root iteration that searched one ply got a mate many moves out from a leaf's TT probe, and
+`quiescence()` would take a cutoff from any usable entry, mate scores included. That was the source
+of the depth-1 mate claims in #571: a root iteration that searched one ply hands every child
+straight to quiescence, so it got a mate many moves out from a leaf's TT probe, and
 `should_stop_early()` — which only ever asked whether the score was a mate — ended iterative
 deepening on it. The move played was then chosen by a one-ply search, so the mate distance was free
 to grow; over a 19,980-game lab corpus it grew in 432 of 2,078 conversions, and one K+R vs K was
 drawn by repetition.
 
-Adding the mate-range test to the entry's `usable` condition fixes it at the source, and
-`should_stop_early()` is unchanged: with no path left that serves an unproven mate, a mate score at
-the root is one the search found. The K+R vs K position from the lab game now converges by exactly
-one move per own-move and mates instead of repeating.
+Adding the mate-range test to the entry's `usable` condition fixes it at the source. The distance
+an entry carries is sound — the table normalises it on store and denormalises it on probe — so what
+is wrong is serving any mate to a node that searched nothing and writes no PV row.
+
+`pvs()` is deliberately left asymmetric: a non-PV node may still cut off on a mate entry. What
+keeps that off the root's reported score is the pair of PV properties, now noted at the re-search
+itself — a PV node takes no TT cutoff, and every alpha-improving move is re-searched full-window,
+unconditionally on beta. `should_stop_early()` is unchanged for the same reason: with quiescence
+guarded, a mate reaching the root is one the search found. The K+R vs K position from the lab game
+now converges by exactly one move per own-move and mates instead of repeating.
 
 Cost is nil — 129 nodes of 6.85M move in the bench (0.002%), and nps is unchanged across three
 paired runs — because the guard fires only where a mate score is already in the table.
