@@ -24,31 +24,38 @@ Newest first.
 
 ## 2026-09-18 — Quiescence refuses a mate score as a TT cutoff (#571)
 
-`quiescence()` would take a cutoff from any usable entry, mate scores included. That was the source
-of the depth-1 mate claims in #571: a root iteration that searched one ply hands every child
-straight to quiescence, so it got a mate many moves out from a leaf's TT probe, and
-`should_stop_early()` — which only ever asked whether the score was a mate — ended iterative
-deepening on it. The move played was then chosen by a one-ply search, so the mate distance was free
-to grow; over a 19,980-game lab corpus it grew in 432 of 2,078 conversions, and one K+R vs K was
-drawn by repetition.
+`quiescence()` would take a cutoff from any usable entry, mate scores included. Every PV leaf probes
+there, so any iteration could report a mate it had never searched — a depth-1 root, whose children
+all go straight to quiescence, is only the extreme case; #571's `M37/10` and `M31/9` rows came the
+same way. `should_stop_early()`, which only ever asked whether the score was a mate, then ended
+iterative deepening on it, and the move played had been chosen by that shallow search, so the mate
+distance was free to grow: over a 19,980-game lab corpus it grew in 432 of 2,078 conversions, and
+one K+R vs K was drawn by repetition.
 
-Adding the mate-range test to the entry's `usable` condition fixes it at the source. The distance
-an entry carries is sound — the table normalises it on store and denormalises it on probe — so what
-is wrong is serving any mate to a node that searched nothing and writes no PV row.
+Adding the mate-range test to the entry's `usable` condition fixes it at the probe. The distance an
+entry carries is sound — the table normalises it on store and denormalises it on probe — so what is
+refused is sound information, and that is the trade: a horizon node proven mated in the table now
+returns stand-pat and re-derives the mate instead of grafting it. The alternative #571 suggested —
+a minimum depth on the mate exit, or requiring the PV row to hold the mate — leaves the table
+information in place but fixes only the report, one consumer at a time, while the probe is where
+the unproven mate enters. Guarding the origin is why `should_stop_early()` needs no change: with
+quiescence guarded, a mate reaching the root is one the search found, and a depth guard there would
+only delay a correct exit.
 
-`pvs()` is deliberately left asymmetric: a non-PV node may still cut off on a mate entry. What
+`pvs()` is deliberately left asymmetric — a non-PV node may still cut off on a mate entry. What
 keeps that off the root's reported score is the pair of PV properties, now noted at the re-search
-itself — a PV node takes no TT cutoff, and every alpha-improving move is re-searched full-window,
-unconditionally on beta. `should_stop_early()` is unchanged for the same reason: with quiescence
-guarded, a mate reaching the root is one the search found. The K+R vs K position from the lab game
-now converges by exactly one move per own-move and mates instead of repeating.
+itself: a PV node takes no TT cutoff, and every alpha-improving move is re-searched full-window,
+unconditionally on beta. The K+R vs K position from the lab game now converges by exactly one move
+per own-move and mates instead of repeating.
 
-Cost is nil — 129 nodes of 6.85M move in the bench (0.002%), and nps is unchanged across three
-paired runs — because the guard fires only where a mate score is already in the table.
+Cost is not resolvable by measurement and is argued from the code: the test is a branch on an
+already-loaded field, on the TT-hit path only, and the bench moves 129 nodes of 6.85M (0.002%).
+Three paired `Run-Bench.ps1` runs show no nps effect, which at that sample size bounds it rather
+than proving it zero.
 
-Validation: `[tt]`/`[qsearch]` suites, with the new `Qsearch - a MAIN mate score does not cut off`
-case falsified against the unfixed engine; paired `Run-Bench.ps1`; UCI replay of the lab position
-before and after.
+Validation: `[tt]`/`[qsearch]` suites, with both new cases — one per sign of the mate score —
+falsified against the unfixed engine; paired `Run-Bench.ps1`; UCI replay of the lab position before
+and after. The corpus-wide 20.8% is not re-measured here.
 
 ---
 

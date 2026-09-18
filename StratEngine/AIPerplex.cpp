@@ -1044,10 +1044,9 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 					value = -pvs(td, depth - 1, -alpha - 1, -alpha, ply + 1, false, tt);
 				}
 
-				// Re-search with full window at PV node. Deliberately unconditional on beta: it is
-				// what keeps a null-window cutoff -- a mate entry from the transposition table
-				// among them -- from reaching the score the root reports, which the mate guard in
-				// quiescence() relies on.
+				// Re-search with full window at PV node. Unconditional on beta by design: it is
+				// what keeps a null-window cutoff, a non-PV mate entry among them, out of the
+				// score the root reports.
 				if (value > alpha && is_pv_node)
 					value = -pvs(td, depth - 1, -beta, -alpha, ply + 1, true, tt);
 			}
@@ -1357,16 +1356,13 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// move across a phase change, so an entry can hold a quiet move this capture-only generator
 	// would never produce; reading it here would turn that inheritance from inert into a defect.
 	//
-	// A mate score is refused outright. The distance itself is sound -- the table normalises it on
-	// store and denormalises it on probe -- but this node searches nothing and writes no PV row,
-	// so serving one hands the caller a mate it has no line for. A root iteration of depth 1 gives
-	// every child straight to quiescence, so that is exactly how a one-ply search came to report a
-	// mate many moves out, stop iterating on it, and play a move free to lengthen the mate.
-	//
-	// pvs() reaches the same end by a different route rather than by this rule: a PV node takes no
-	// TT cutoff at all, and every alpha-improving move is re-searched full-width below it. A non-PV
-	// pvs() node may still cut off on a mate entry, and that asymmetry is deliberate -- what it
-	// returns is a bound inside a search, not a score the root reports.
+	// A mate score is refused, sound distance and all: every PV leaf lands here, and
+	// should_stop_early() ends iterative deepening on any mate score, so one served to a node that
+	// searched nothing becomes a claim the search never made. The price is a horizon node
+	// re-deriving a mate the table already held. A non-PV pvs() node still cuts off on one --
+	// deliberately, since its result is a bound inside a search, not a score the root reports.
+	// The value read here is ply-denormalised, so a mate further out than Mate - Mate_Threshold
+	// reads as an ordinary score; MAX_PLY keeps that out of reach.
 	if constexpr (kTTStatsCompiled)
 		++td.telemetry.tt.qs_probes;
 	if (auto entry = tt.probe(key, ply)) {

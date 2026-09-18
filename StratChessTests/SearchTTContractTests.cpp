@@ -162,13 +162,9 @@ TEST_CASE("Qsearch - a MAIN bound at or beyond beta cuts off", "[search][tt][qse
 	      stored);
 }
 
-// A mate score is the one value quiescence() may not take a cutoff from: the node searches
-// nothing and writes no PV row, so serving one hands the caller a mate it has no line for — enough
-// for a depth-1 root, whose children all go straight to quiescence, to report a mate many moves
-// out and stop iterating on it. A non-PV pvs() node may still cut off on one; what protects the
-// root there is that a PV node takes no TT cutoff and re-searches every alpha-improving move.
-//
-// Both signs are covered: a claimed forced loss propagates exactly as a claimed win does.
+// A mate score is the one value quiescence() may not cut off on: every PV leaf probes here, and
+// should_stop_early() ends deepening on any mate score the root reports. Both signs are covered —
+// a claimed forced loss propagates exactly as a claimed win does.
 TEST_CASE("Qsearch - a MAIN mate score does not cut off", "[search][tt][qsearch]")
 {
 	const std::string fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
