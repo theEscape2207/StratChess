@@ -22,6 +22,30 @@ Newest first.
 
 ---
 
+## 2026-09-18 — Quiescence refuses a mate score as a TT cutoff (#571)
+
+`quiescence()` would take a cutoff from any usable entry, mate scores included, while `pvs()` has
+always refused one at an interior node. That was the source of the depth-1 mate claims in #571: a
+root iteration that searched one ply got a mate many moves out from a leaf's TT probe, and
+`should_stop_early()` — which only ever asked whether the score was a mate — ended iterative
+deepening on it. The move played was then chosen by a one-ply search, so the mate distance was free
+to grow; over a 19,980-game lab corpus it grew in 432 of 2,078 conversions, and one K+R vs K was
+drawn by repetition.
+
+Adding the mate-range test to the entry's `usable` condition fixes it at the source, and
+`should_stop_early()` is unchanged: with no path left that serves an unproven mate, a mate score at
+the root is one the search found. The K+R vs K position from the lab game now converges by exactly
+one move per own-move and mates instead of repeating.
+
+Cost is nil — 129 nodes of 6.85M move in the bench (0.002%), and nps is unchanged across three
+paired runs — because the guard fires only where a mate score is already in the table.
+
+Validation: `[tt]`/`[qsearch]` suites, with the new `Qsearch - a MAIN mate score does not cut off`
+case falsified against the unfixed engine; paired `Run-Bench.ps1`; UCI replay of the lab position
+before and after.
+
+---
+
 ## 2026-09-18 — Contempt covers the draws the evaluator settles (#452)
 
 `Evaluate()`'s `endgame_scale == 0` early-out returns `dead_draw_score_[side to move]` instead of

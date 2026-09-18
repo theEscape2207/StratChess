@@ -9,6 +9,7 @@
 #include "TranspositionTable.h"
 #include "defines.h"
 #include <cstdint>
+#include <cstdlib>
 #include <string>
 
 // ============================================================================
@@ -159,6 +160,31 @@ TEST_CASE("Qsearch - a MAIN bound at or beyond beta cuts off", "[search][tt][qse
 
 	CHECK(fix.quiesce_node(/*alpha=*/-50, /*beta=*/stored - 100, AIPerlexTestFixture::QSEARCH_BUDGET, /*ply=*/0) ==
 	      stored);
+}
+
+// A mate score is the one value quiescence() may not take a cutoff from, the same rule pvs()
+// applies at an interior node: the distance an entry carries belongs to the path that proved it,
+// and serving it here hands a shallow iteration a mate it has not searched — which is enough for a
+// depth-1 root to report a mate many moves out and stop iterating on it.
+TEST_CASE("Qsearch - a MAIN mate score does not cut off", "[search][tt][qsearch]")
+{
+	const std::string fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+
+	AIPerlexTestFixture clean(fen);
+	const int without_entry = clean.quiesce_node(/*alpha=*/-50, /*beta=*/50, AIPerlexTestFixture::QSEARCH_BUDGET,
+	                                             /*ply=*/0);
+
+	// Far beyond beta, so the only thing keeping it out of the return value is the mate guard.
+	constexpr int16_t stored = GameValues::Mate - 60;
+	REQUIRE(std::abs(static_cast<int>(stored)) >= GameValues::Mate_Threshold);
+
+	AIPerlexTestFixture seeded(fen);
+	seeded.store_main_entry(stored, /*depth=*/1, /*ply=*/0, BoundType::LOWER);
+	const int with_entry = seeded.quiesce_node(/*alpha=*/-50, /*beta=*/50, AIPerlexTestFixture::QSEARCH_BUDGET,
+	                                           /*ply=*/0);
+
+	CHECK(with_entry != stored);
+	CHECK(with_entry == without_entry);
 }
 
 // pvs() carries the same contract quiescence() does, and had the same defect: original_alpha

@@ -1353,13 +1353,19 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// best_move is deliberately not mined from either phase. store() inherits a same-key entry's
 	// move across a phase change, so an entry can hold a quiet move this capture-only generator
 	// would never produce; reading it here would turn that inheritance from inert into a defect.
+	//
+	// A mate score is refused outright, the same rule pvs() applies to an interior cutoff. Its
+	// distance belongs to the path that proved it, so serving it to a node that searched nothing
+	// hands the caller a mate it has no line for: a shallow root iteration then reports a mate
+	// many moves out, stops iterating on it, and plays a move that need not shorten anything.
 	if constexpr (kTTStatsCompiled)
 		++td.telemetry.tt.qs_probes;
 	if (auto entry = tt.probe(key, ply)) {
 		if constexpr (kTTStatsCompiled)
 			++td.telemetry.tt.qs_hits;
 		const bool usable =
-		    (entry->phase == SearchPhase::MAIN) ? (entry->depth >= 1) : (entry->depth >= qsearch_budget);
+		    (std::abs(static_cast<int>(entry->value)) < GameValues::Mate_Threshold) &&
+		    ((entry->phase == SearchPhase::MAIN) ? (entry->depth >= 1) : (entry->depth >= qsearch_budget));
 		// Cutoff only: an entry is used when it already resolves this node against the caller's
 		// window, and never to narrow alpha or beta. Narrowing is invisible to the classification
 		// at the bottom of this function, which measures best_value against the original_alpha
