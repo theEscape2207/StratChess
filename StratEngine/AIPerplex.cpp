@@ -269,9 +269,9 @@ std::optional<SearchTuningSchema::TuningError> AIPerplex::SetTuning(const Search
 //                   while constructing this service, then starts its first
 //                   game. Resetting tuning_ here would silently discard those
 //                   configured overrides.
-//   - the evaluator: Evaluator is documented stateless and thread-shared
-//                    (see the Lazy SMP sharing contract comment in Eval.h)
-//                    -- recreating one changes nothing.
+//   - the evaluator: its one member is the drawn score pair, which Search()
+//                    rewrites before every search, so nothing accumulates
+//                    across games (see the sharing contract in Eval.h).
 void AIPerplex::StartNewGame()
 {
 	assert_not_in_completion_handler();
