@@ -1075,12 +1075,6 @@ int Evaluator::RawWhitePov(const EvalContext& ctx) noexcept
 // FIXME:		 Evaluate does not know about Check Mate - this is strictly only an evaluation of the current position
 //				 - this means that we miss the first (and best, maybe even only?) opportunity to do check mate!
 //
-// IsDeadDrawn — the material-class half of Evaluate()'s early-out, on its own.
-//
-// Reads the bitboards directly rather than building an EvalContext: the scale is
-// the only field it needs, and the context costs a full attack pass.
-bool Evaluator::IsDeadDrawn(const Board& board) noexcept { return EndgameScale(board.GetBitBoards()) == 0; }
-
 int Evaluator::Evaluate(const Board& board) const noexcept
 {
 	const EvalContext ctx = BuildContext(board);
@@ -1090,10 +1084,13 @@ int Evaluator::Evaluate(const Board& board) const noexcept
 	// takes through exactly the endings it now has to play out, which is where
 	// the saving is worth having.
 	//
-	// A caller that needs to tell this zero from an evaluation that merely landed
-	// on zero — search, to tint it with contempt — asks IsDeadDrawn() separately.
+	// What a draw is worth here is SetDrawScores()' answer, not a constant: this is
+	// a draw the side to move is choosing, exactly as a repetition is, so a search
+	// running with contempt has set it below equality for the colour it is playing.
+	// A position whose scale is non-zero never reaches this line, so nothing that is
+	// not settled as drawn can be shifted.
 	if (ctx.endgame_scale == 0)
-		return GameValues::Draw;
+		return dead_draw_score_[board.GetCurrentColor()];
 
 	// The position's score, in White's point of view: the one value that is a
 	// property of the position rather than of whose turn it is.

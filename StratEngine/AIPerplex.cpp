@@ -365,6 +365,18 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	// future path that mutates tuning without going through SetTuning().
 	root_color_ = root.GetCurrentColor();
 
+	// A position the evaluator settles as drawn without computing a term is a draw the side to
+	// move is choosing, exactly as a repetition is, so it carries the same contempt. Tinting only
+	// the search-detected half would make the engine prefer a dead ending to a repetition — a
+	// draw it can never come back from — which is a gradient pointing the wrong way rather than
+	// merely an inconsistent score.
+	//
+	// Here, and not per evaluation, for two reasons: it is the last point at which root_color_ is
+	// known and no helper thread exists yet, and a guard on the per-evaluation path costs ~1% nps
+	// at the shipped default (see Eval.h). At contempt 0 both values are GameValues::Draw and the
+	// evaluator returns exactly what it always did.
+	evaluator_.SetDrawScores(draw_score_for(WHITE), draw_score_for(BLACK));
+
 	// Snapshot threads_ exactly once so helper allocation, spawning and
 	// aggregation use one internally consistent value. This is not race
 	// synchronization: callers must obey the documented precondition that
@@ -646,7 +658,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// another frame is building, and the clear is unconditional.
 	if (ply >= MAX_PLY - 1) {
 		td.pv_table.clear_ply(ply);
-		return static_evaluation(td);
+		return evaluator_.Evaluate(td.board);
 	}
 
 	// This frame is a singular verification search when the slot is set: it re-enters pvs()
@@ -771,7 +783,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	bool static_eval_known = false;
 	const auto node_eval = [&] {
 		if (!static_eval_known) {
-			static_eval = static_evaluation(td);
+			static_eval = evaluator_.Evaluate(td.board);
 			static_eval_known = true;
 		}
 		return static_eval;
@@ -1158,29 +1170,11 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 // Contempt makes a draw a small loss for the side the engine is playing, so it declines one in a
 // position it believes equal instead of being indifferent between repeating and playing on. At the
 // shipped default of 0 this returns GameValues::Draw and the arithmetic is the historical one.
-int AIPerplex::draw_score(const ThreadData& td) const noexcept
+int AIPerplex::draw_score(const ThreadData& td) const noexcept { return draw_score_for(td.board.GetCurrentColor()); }
+
+int AIPerplex::draw_score_for(eColor side_to_move) const noexcept
 {
-	return td.board.GetCurrentColor() == root_color_ ? GameValues::Draw - tuning_.contempt
-	                                                 : GameValues::Draw + tuning_.contempt;
-}
-
-int AIPerplex::static_evaluation(const ThreadData& td) const noexcept
-{
-	// The shipped default returns the evaluation through a tail call, exactly as the five call
-	// sites used to. That shape is deliberate and was measured: folding the two paths into one
-	// post-processed return costs the tail call at three of those sites and roughly doubles what
-	// this guard charges a search that has contempt switched off.
-	if (tuning_.contempt == 0)
-		return evaluator_.Evaluate(td.board);
-
-	// A flat zero is the cheap half of the question and nearly always answers it; only then is the
-	// material class re-scanned to tell a dead-drawn ending from an evaluation that merely landed
-	// on zero. Tinting the latter would put a step in the middle of the evaluation scale.
-	const int score = evaluator_.Evaluate(td.board);
-	if (score != GameValues::Draw || !Evaluator::IsDeadDrawn(td.board))
-		return score;
-
-	return draw_score(td);
+	return side_to_move == root_color_ ? GameValues::Draw - tuning_.contempt : GameValues::Draw + tuning_.contempt;
 }
 
 int AIPerplex::adjustScoreForGameState(ThreadData& td, bool moveFound, int ply, int score)
@@ -1304,7 +1298,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// the draw and backstop checks below, not material: a quiet evasion may itself give
 	// check, so two sides can go on checking each other without a capture between them.
 	if (qsearch_budget < 0 && !in_check) {
-		return static_evaluation(td);
+		return evaluator_.Evaluate(td.board);
 	}
 
 	// Repetition and fifty-move draws. pvs() checks these before it hands a node to
@@ -1330,7 +1324,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// positions can arise, and ply indexes fixed-size per-thread arrays elsewhere in the
 	// search. This is the one place a position is evaluated while still in check.
 	if (ply >= MAX_PLY - 1) {
-		return static_evaluation(td);
+		return evaluator_.Evaluate(td.board);
 	}
 
 	const int original_alpha = alpha;
@@ -1399,7 +1393,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	int stand_pat = 0;
 
 	if (!in_check) {
-		stand_pat = static_evaluation(td);
+		stand_pat = evaluator_.Evaluate(td.board);
 		if (stand_pat >= beta) {
 			// Store and cutoff
 			record_tt_store(td, tt.store(key, static_cast<int16_t>(beta), static_cast<int16_t>(qsearch_budget),
@@ -1635,8 +1629,11 @@ AIPerplex::RejectionReason AIPerplex::assess_iteration_quality(const IterationMe
 	//                               draw found deeper arrives negated once per ply and reaches the
 	//                               root as the same value. Since the dead-drawn material class is
 	//                               tinted too, no draw path produces anything else.
-	//   GameValues::Draw          — a genuine evaluation that happens to land on zero. This arm is
-	//                               the historical `== 0` test and is kept as such.
+	//   GameValues::Draw          — a genuine evaluation that happens to land on zero. No draw path
+	//                               produces this any more, so the arm is now a deliberate
+	//                               conservative false positive — the historical `== 0` test, kept
+	//                               because dropping it changes behaviour at contempt > 0 and
+	//                               nothing has measured that. It is NOT a draw detector.
 	//
 	// At contempt 0 the two collapse into one and this is the historical `== 0`, byte for byte.
 	// A band around zero — the tempting shape — would instead reject every genuine evaluation

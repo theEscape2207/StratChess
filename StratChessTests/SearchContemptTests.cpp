@@ -35,9 +35,23 @@ namespace {
 	// available, so every leaf of a shallow search is the same material class.
 	constexpr const char* FEN_DEAD_DRAWN_WHITE = "8/8/8/3k4/8/8/3N4/3K4 w - - 0 1";
 
-	// A middlegame position nothing about the endgame scale touches, used to show the dead-draw
-	// value is confined to the class it names.
-	constexpr const char* FEN_SCALED_MIDDLEGAME = "r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4";
+	// Bare kings: the unconditional end of the range.
+	constexpr const char* FEN_BARE_KINGS = "8/8/4k3/8/8/4K3/8/8 w - - 0 1";
+
+	// Two knights against a bare king. Scored drawn because mate cannot be FORCED, though it
+	// exists against imperfect defence — so this is a class the engine should still decline.
+	constexpr const char* FEN_TWO_KNIGHTS = "8/8/3k4/8/8/8/3NN3/3K4 w - - 0 1";
+
+	// Wrong-coloured bishop plus a rook pawn. The only class whose answer depends on PLACEMENT:
+	// drawn with the defending king on the promotion square, winning for White once it is evicted.
+	constexpr const char* FEN_WRONG_BISHOP_DRAWN = "7k/8/8/8/8/5B2/7P/6K1 w - - 0 1";
+	constexpr const char* FEN_WRONG_BISHOP_WON = "1k6/8/8/8/8/5B2/7P/6K1 w - - 0 1";
+
+	// A pawnless rook ending: a FRACTIONAL scale, neither 0 nor the maximum. Separates the
+	// early-out from a "drawish" test, which would tint this too.
+	constexpr const char* FEN_PAWNLESS_ROOK = "6b1/8/4k3/8/8/4K3/8/R7 w - - 0 1";
+
+	constexpr const char* FEN_START_POSITION = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 	constexpr int WIDE_ALPHA = -30000;
 	constexpr int WIDE_BETA = 30000;
@@ -139,11 +153,11 @@ TEST_CASE("Contempt - the fifty-move rule and stalemate carry it too, not just r
 	REQUIRE(stale_white.search_node_after({}, /*depth=*/2, WIDE_ALPHA, WIDE_BETA, /*is_pv_node=*/false) == 15);
 }
 
-TEST_CASE("Contempt - a dead-drawn material class carries it as well", "[search][contempt]")
+TEST_CASE("Contempt - a position the evaluator settles as drawn carries it as well", "[search][contempt]")
 {
-	// The gradient this closes: a repetition scored -contempt while a liquidation into a provably
-	// dead ending scored 0 would make the engine PREFER the dead ending — both are draws, and it
-	// would be choosing the one it can never come back from.
+	// The gradient this closes: a repetition scored -contempt while a liquidation into a dead
+	// ending scored 0 would make the engine PREFER the dead ending — both are draws, and it would
+	// be choosing the one it can never come back from.
 	//
 	// Depth 2 rather than 0: this asserts the value the search actually returns, which is what the
 	// gradient is made of, not just the evaluator's own arithmetic.
@@ -164,27 +178,52 @@ TEST_CASE("Contempt - a dead-drawn material class carries it as well", "[search]
 	dead_default.set_root_color(WHITE);
 	REQUIRE(dead_default.search_node_after({}, /*depth=*/2, WIDE_ALPHA, WIDE_BETA, /*is_pv_node=*/false) ==
 	        GameValues::Draw);
+
+	// The domain's top, where the tint is comparable to a real futility margin rather than well
+	// inside one.
+	AIPerlexTestFixture dead_max(FEN_DEAD_DRAWN_WHITE);
+	dead_max.set_contempt(100);
+	dead_max.set_root_color(WHITE);
+	REQUIRE(dead_max.search_node_after({}, /*depth=*/2, WIDE_ALPHA, WIDE_BETA, /*is_pv_node=*/false) == -100);
 }
 
-TEST_CASE("Contempt - the tint reaches only the class IsDeadDrawn names", "[search][contempt]")
+TEST_CASE("Contempt - the drawn value reaches only what the evaluator settles as drawn", "[search][contempt]")
 {
-	const Evaluator eval;
+	Evaluator eval;
 
-	// Evaluate() is untouched by contempt — the evaluator stays stateless and never learns which
-	// colour the engine plays. What search tints is the zero this predicate vouches for.
-	const Board dead(FEN_DEAD_DRAWN_WHITE);
-	REQUIRE(Evaluator::IsDeadDrawn(dead));
-	REQUIRE(eval.Evaluate(dead) == GameValues::Draw);
+	// Untouched by default: an Evaluator nobody configured answers GameValues::Draw, which is what
+	// keeps the UCI 'eval' command and every evaluator test reading the untinted score.
+	for (const char* fen : {FEN_DEAD_DRAWN_WHITE, FEN_BARE_KINGS, FEN_TWO_KNIGHTS, FEN_WRONG_BISHOP_DRAWN}) {
+		CAPTURE(fen);
+		REQUIRE(eval.Evaluate(Board(fen)) == GameValues::Draw);
+	}
 
-	// A position with a non-zero scale is never tinted, whatever it evaluates to, so contempt
-	// cannot shift the evaluation of anything that is not dead drawn.
-	const Board scaled(FEN_SCALED_MIDDLEGAME);
-	REQUIRE_FALSE(Evaluator::IsDeadDrawn(scaled));
+	// Set as a search would for a WHITE root at Contempt=20: a draw is a small loss for White and a
+	// small gain for Black, in each side's own point of view.
+	eval.SetDrawScores(/*white_to_move=*/-20, /*black_to_move=*/20);
 
-	// The starting position and a bare-king ending, the two ends of the material range: the
-	// predicate is about the material class, not about the score.
-	REQUIRE_FALSE(Evaluator::IsDeadDrawn(Board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")));
-	REQUIRE(Evaluator::IsDeadDrawn(Board("8/8/4k3/8/8/4K3/8/8 w - - 0 1")));
+	REQUIRE(eval.Evaluate(Board(FEN_DEAD_DRAWN_WHITE)) == -20);
+	REQUIRE(eval.Evaluate(Board(FEN_BARE_KINGS)) == -20);
+	// Two knights: mate exists but cannot be forced, so the evaluator scores the class drawn. It is
+	// tinted like any other draw — the engine should not steer INTO it.
+	REQUIRE(eval.Evaluate(Board(FEN_TWO_KNIGHTS)) == -20);
+
+	// The wrong-coloured-bishop fortress is the case that makes "dead-drawn MATERIAL class" the
+	// wrong description: the same material answers both ways depending on where the defending king
+	// stands. Drawn with the king on the promotion square...
+	REQUIRE(eval.Evaluate(Board(FEN_WRONG_BISHOP_DRAWN)) == -20);
+	// ...and not drawn once it is evicted, where White is winning and must not be tinted.
+	REQUIRE(eval.Evaluate(Board(FEN_WRONG_BISHOP_WON)) > 0);
+
+	// A position with a non-zero scale is never tinted whatever it evaluates to, so contempt cannot
+	// put a step in the middle of the evaluation scale. The starting position is symmetric and
+	// evaluates to exactly zero, which is the zero that must survive untouched.
+	const Board start(FEN_START_POSITION);
+	REQUIRE(eval.Evaluate(start) == GameValues::Draw);
+
+	// A fractional scale (0 < scale < MAX) is not drawn either — this separates the early-out from
+	// a "drawish" test, which would tint every pawnless rook ending.
+	REQUIRE(eval.Evaluate(Board(FEN_PAWNLESS_ROOK)) != -20);
 }
 
 TEST_CASE("Contempt - draw_score is a pure function of side to move and root colour", "[search][contempt]")

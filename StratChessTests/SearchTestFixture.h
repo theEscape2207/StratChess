@@ -123,8 +123,24 @@ class AIPerlexTestFixture {
 	// Search() is what sets root_color_ in production, and the pvs() entry points below never go
 	// through it, so a sign test has to state the root colour it is asserting about rather than
 	// inherit the member's default.
-	void set_contempt(int centipawns) const { ai->tuning_.contempt = centipawns; }
-	void set_root_color(eColor color) const { ai->root_color_ = color; }
+	//
+	// Both setters re-push the drawn evaluation values, which Search() is likewise the only
+	// production site for. Without that a dead-drawn leaf would keep answering the evaluator's
+	// default of GameValues::Draw and a contempt assertion about one would pass on a stale value.
+	void set_contempt(int centipawns) const
+	{
+		ai->tuning_.contempt = centipawns;
+		sync_draw_scores();
+	}
+	void set_root_color(eColor color) const
+	{
+		ai->root_color_ = color;
+		sync_draw_scores();
+	}
+	void sync_draw_scores() const
+	{
+		ai->evaluator_.SetDrawScores(ai->draw_score_for(WHITE), ai->draw_score_for(BLACK));
+	}
 	int draw_score() const { return ai->draw_score(ai->td_); }
 
 	// Reaches the private tuning_ member. Used by the poll-gate tests, which need a search whose
@@ -284,7 +300,7 @@ class AIPerlexTestFixture {
 
 	// The same static evaluation the guard compares against beta, so a test can compute the exact
 	// margin boundary instead of guessing at one.
-	int static_eval() const { return ai->static_evaluation(ai->td_); }
+	int static_eval() const { return ai->evaluator_.Evaluate(ai->td_.board); }
 
 	int64_t singular_eligible() const { return ai->td_.telemetry.singular.eligible; }
 	int64_t singular_verifications() const { return ai->td_.telemetry.singular.verifications; }

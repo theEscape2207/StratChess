@@ -22,51 +22,57 @@ Newest first.
 
 ---
 
-## 2026-09-18 — Contempt covers the dead-drawn material class (#452)
+## 2026-09-18 — Contempt covers the draws the evaluator settles (#452)
 
-`Evaluator::Evaluate` is unchanged and still returns `GameValues::Draw` for the
-`endgame_scale == 0` early-out. What tints it is `AIPerplex::static_evaluation()`, the single site
-the five `Evaluate()` calls in `pvs()` and `quiescence()` now route through: it asks the new
-`Evaluator::IsDeadDrawn()` whether a zero it just got back is the dead-drawn material class rather
-than an evaluation that merely landed on zero, and returns `draw_score(td)` if it is. Tinting the
-latter would put a step in the middle of the evaluation scale.
+`Evaluate()`'s `endgame_scale == 0` early-out returns `dead_draw_score_[side to move]` instead of
+the constant `GameValues::Draw`, and `AIPerplex::Search()` sets that pair once through the new
+`Evaluator::SetDrawScores()`, beside `root_color_`. `draw_score_for(eColor)` is now the single place
+the contempt sign is expressed; `draw_score(const ThreadData&)` is a thin caller of it. A position
+whose scale is non-zero never reaches that line, so contempt cannot shift anything the evaluator
+does not already settle as drawn — tinting an evaluation that merely landed on zero would put a step
+in the middle of the scale.
 
 **The gradient this closes.** Contempt previously tinted search-detected draws only, so at
-`Contempt=20` a repetition scored `-20` while a liquidation into a provably dead ending scored `0`.
-Both are draws, and the engine preferred the one it can never come back from — a gradient pointing
-the wrong way, not merely an inconsistent score, and the named confound on the #452 lab bar. The
-pooled result of run `35309731763` was `+0.77 +/- 3.58` Elo over 19,980 games, inconclusive against
-that bar; the PGNs showed contempt changing the *score* of a detected draw in 99.3% of the
-candidate's threefold games without measurably changing how *often* one was reached. This removes
-the first thing that would have to be ruled out before reading that as the answer.
+`Contempt=20` a repetition scored `-20` while a liquidation into a dead ending scored `0`. Both are
+draws, and the engine preferred the one it can never come back from — a gradient pointing the wrong
+way, and the named confound on the #452 lab bar. The pooled result of run `35309731763` was
+`+0.77 +/- 3.58` Elo over 19,980 games, inconclusive against that bar; the PGNs showed contempt
+changing the *score* of a detected draw in 99.3% of the candidate's threefold games without
+measurably changing how *often* one was reached. This removes the first thing that would have to be
+ruled out before reading that as the answer.
 
-Asking a second question rather than passing the value into `Evaluate` keeps `Evaluator` stateless
-and shareable across every Lazy SMP thread, which `Docs/EngineContracts.md` had recorded as the
-obstacle to doing this at all — but the reason it is shaped this way is cost, and that was measured
-rather than assumed. An `Evaluate(const Board&, int dead_draw_score)` overload keeps the value live
-across `BuildContext()` inside the hottest function in the engine and cost ~1.5% nps; a variant
-reading the flag from `ThreadData` instead of `tuning_` cost ~1.5% as well. The shape that survived
-returns through a tail call at `Contempt=0`, exactly as the five call sites used to.
+**Where the value lives was a cost decision, and it was measured.** Three shapes that ask the
+question per evaluation each cost about 1% nps at a default that tints nothing: a
+`Evaluate(const Board&, int)` overload (the value stays live across `BuildContext()` inside the
+hottest function in the engine), the same guard reading `ThreadData` instead of `tuning_`, and a
+search-side `IsDeadDrawn()` re-scan behind a `contempt == 0` test. Reading it on the
+`endgame_scale == 0` branch that was already being taken is free: eight alternating depth-13 bench
+pairs, node counts identical every pair, **-0.12%** with the two ranges fully overlapping
+(2,422,881-2,444,291 baseline against 2,421,366-2,442,235).
 
-**It is still not free.** Eight alternating depth-13 bench pairs on a quiet host, ranges not
-overlapping: **-0.97% nps** (2,445,322 to 2,421,507 mean; wall clock 4.746-4.760 ms against
-4.785-4.821 ms), 8 pairs out of 8 in the same direction. That is one compare per evaluation, at
-quiescence frequency, paid permanently by a default configuration that never tints anything. It
-buys a confound removed from a measurement that has not been run yet; if contempt is never
-enabled, deleting the feature is the honest move rather than keeping the tax.
+The price is that `Evaluator` is no longer literally stateless. `dead_draw_score_` is written only
+by `SetDrawScores()` before any helper thread exists and is read-only for the rest of the search,
+exactly as `AIPerplex::tuning_` is; calling it mid-search would be a data race and nothing does.
+Every other `Evaluator` in the process — the UCI `eval` command's, the batch scorer's, every test's
+— is its own instance that nobody configures, so it still answers `GameValues::Draw`. The Lazy SMP
+sharing contract in `Eval.h` and `Docs/EngineContracts.md` now states the weakened form. A second
+consequence recorded there: at `contempt > 0` a static evaluation is no longer a function of the
+position alone, since it depends on `root_color_`.
 
-`assess_iteration_quality`'s CASE 4 is unchanged in behaviour but
-its comment no longer claims an eval-detected draw arrives untinted: `GameValues::Draw` now reaches
-that test only as a genuine evaluation that happens to land on zero, which is the historical `== 0`
-the arm has always been.
+`assess_iteration_quality`'s CASE 4 is unchanged in behaviour, but its untinted arm has changed
+meaning — no draw path produces a bare `GameValues::Draw` at the root any more, so that arm is now a
+deliberate conservative false positive rather than a draw detector, and the comment says so. #567
+tracks whether the case should exist at all.
 
 **Still ships disabled.** `Compare-SearchEquivalence.ps1` reports IDENTICAL across six positions at
-depth 12 against the merge base, and every bench pair above reproduces the node counts exactly, so
-at `Contempt=0` the search is node-for-node what it was and the nps figure is a like-for-like speed
-comparison. Two new `[contempt]` cases pin the change: one asserts the score the search returns for
-a king-and-knight position at `Contempt=20` is `-20` for a white root and `+20` for a black one, and
-one pins `IsDeadDrawn()` itself across the material range, so the tint cannot reach a position that
-is merely scored zero.
+depth 12 against the merge base, so at `Contempt=0` the search is node-for-node what it was. Five
+new `[contempt]` assertions cover the classes `EndgameScale` calls drawn: bare kings, a lone minor,
+two knights (mate exists but cannot be forced, so the engine should still decline it) and the
+wrong-coloured-bishop fortress — which is why the code and docs say "a position the evaluator
+settles as drawn" rather than "material class": that last one is decided by the defending king's
+square, and the same material is a win for White once it is evicted. A fractional-scale pawnless
+rook ending pins that the test is `== 0` and not "drawish", and the starting position pins that a
+symmetric zero is never tinted.
 
 ---
 

@@ -101,8 +101,8 @@ whose violation is silent.
   fifty-move draws are never skipped. A quiet move that stalemates the opponent is not detected and
   can be skipped.
 - **A drawn score is context the Zobrist key does not carry.** With `contempt` non-zero, the score
-  of a draw — repetition, fifty-move, stalemate, or a dead-drawn material class — depends on the root
-  colour and on the contempt value, and propagates into parent entries through the terminal store in
+  of a draw — repetition, fifty-move, stalemate, or a position the evaluator settles as drawn —
+  depends on the root colour and on the contempt value, and propagates into parent entries through the terminal store in
   `pvs()` and the bare-king store in `quiescence()`. The key holds neither, so `Search()` keeps the
   `(root_color, contempt)` pair its table was filled under and clears the table when the incoming pair
   differs *and* either side of the change is non-zero. Both halves matter: only a contempt search can
@@ -114,22 +114,29 @@ whose violation is silent.
   score, and parity would invert silently if it ever stopped holding. Abort and time-limit unwind
   values stay at
   `GameValues::Draw`: they are fabricated, not game results.
-- **Every draw the search can report carries contempt, including the dead-drawn material class.**
-  A liquidation into a provably dead ending and a repetition are both draws; tinting only one of
-  them would make the engine prefer the draw it can never come back from, a gradient pointing the
-  wrong way rather than merely an inconsistent score. `Evaluator::Evaluate` is untouched by
-  contempt and still answers `GameValues::Draw`; what tints it is `AIPerplex::static_evaluation()`,
-  the one site all five search-side evaluations go through, asking `Evaluator::IsDeadDrawn()`
-  whether a zero it just got back is that draw rather than an evaluation that happened to land on
-  zero. Tinting the latter would put a step in the middle of the evaluation scale. Keeping it a
-  second question rather than a parameter on `Evaluate` is deliberate and measured: threading a
-  value through would keep it live across `BuildContext()` inside the hottest function in the
-  engine, and cost ~1.5% nps at a default that never tints anything. **The guard is not free even
-  so** — `Contempt=0` returns the evaluation through a tail call but still pays one compare per
-  evaluation, measured at **-0.97% nps** (8 alternating depth-13 pairs, non-overlapping ranges).
-  That is a permanent cost on the shipping default in exchange for a confound removed from a
-  feature that is still switched off; if contempt is never enabled, the honest move is to delete
-  it rather than keep paying.
+- **Every draw the search can report carries contempt, including the ones the evaluator settles.**
+  A liquidation into a dead ending and a repetition are both draws; tinting only one would make the
+  engine prefer the draw it can never come back from — a gradient pointing the wrong way, not
+  merely an inconsistent score. `Evaluate()`'s `endgame_scale == 0` early-out returns
+  `dead_draw_score_[side to move]` rather than the constant `GameValues::Draw`, and `Search()` sets
+  that pair once through `Evaluator::SetDrawScores()`, beside `root_color_`. A position whose scale
+  is non-zero never reaches that line, so contempt cannot shift anything the evaluator does not
+  already call drawn — tinting an evaluation that merely landed on zero would put a step in the
+  middle of the scale.
+- **`Evaluator` is no longer literally stateless, and the weakened contract is what search relies
+  on.** `dead_draw_score_` is written only by `SetDrawScores()` before any helper thread exists and
+  is read-only for the rest of the search, exactly as `AIPerplex::tuning_` is. Calling it mid-search
+  would be a data race and nothing does. Every other `Evaluator` in the process — the UCI `eval`
+  command's, the batch scorer's, every test's — is its own instance that nobody configures, so it
+  keeps answering `GameValues::Draw`. Putting the value here rather than guarding each `Evaluate()`
+  call was a cost decision, and it was measured: three different per-evaluation guards each cost
+  ~1% nps at a default that tints nothing, while reading it on a branch already being taken is free.
+- **At `contempt > 0` a static evaluation is no longer a function of the position alone** — it
+  depends on `root_color_`. Its consumers are reverse futility, frontier futility and the quiescence
+  stand-pat; all shift by at most `contempt`, none caches a static eval across a root-colour change,
+  and the TT stores scores rather than static evals. Recorded because "the evaluation depends only
+  on the board" was previously true engine-wide, which makes it the kind of assumption a later
+  change inherits without checking.
   A cost, also only at `contempt > 0`: the clear fires on every root-colour flip, so a GUI
   analysing both sides, or the tactical runner sweeping colours, discards the table each search.
   That is the guard working, not a TT bug.
