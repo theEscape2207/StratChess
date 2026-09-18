@@ -62,11 +62,6 @@ sharing contract in `Eval.h` and `Docs/EngineContracts.md` now states the weaken
 consequence recorded there: at `contempt > 0` a static evaluation is no longer a function of the
 position alone, since it depends on `root_color_`.
 
-`assess_iteration_quality`'s CASE 4 is unchanged in behaviour, but its untinted arm has changed
-meaning — no draw path produces a bare `GameValues::Draw` at the root any more, so that arm is now a
-deliberate conservative false positive rather than a draw detector, and the comment says so. #567
-tracks whether the case should exist at all.
-
 **Still ships disabled.** `Compare-SearchEquivalence.ps1` reports IDENTICAL across six positions at
 depth 12 against the merge base, so at `Contempt=0` the search is node-for-node what it was. Five
 new `[contempt]` assertions cover the classes `EndgameScale` calls drawn: bare kings, a lone minor,
@@ -85,6 +80,53 @@ insufficient-material draws at -0.20 in 853 of 871, against 0.00 in the previous
 composition moved sharply for it, with insufficient-material draws falling 1988 to 871 and threefold
 rising 3076 to 3685 over identical openings. The Elo did not move. Row and method:
 `Measurements/ci-per-change.md`.
+
+---
+
+## 2026-09-18 — Remove assess_iteration_quality CASE 4 (SCORE_DROP) (#567)
+
+`assess_iteration_quality()` loses its fourth case, the `RejectionReason::SCORE_DROP` test that
+rejected an interrupted iteration whose score had collapsed to a drawn value from a previously
+decisive one. The `SCORE_DROP` enumerator, its `log_rejection` arm and the now-orphaned
+`score_draw_threshold` tuning field go with it; `MOVE_CHANGED`'s log line renumbers R5 to R4. The
+field had no UCI name, so no advertised option table changes, and `game_settings.json` stops
+carrying a key nothing reads.
+
+**CASE 4's premise was retired by the #237 arc, not by this change.** It was written against a
+`pvs()` that returned a fabricated `score=0` on a timeout early in a new depth, where that
+invented zero could become the iteration's best score. `pvs()` now clears its PV row *before* both
+abort exits, so a fabricated draw reaches the root with an empty `current_move` and is caught by
+CASE 1 INCOMPLETE. What still reached CASE 4 was therefore a genuine drawn score — a completed
+root child that really does evaluate to a draw — which is a result, not a symptom.
+
+Removing it cannot change the move the engine plays. CASE 5 `MOVE_CHANGED` was tested after it, so
+a changed move was rejected either way; CASE 4's only unique branch was "drawn score **and** move
+unchanged", and `state.last_iteration_move` is written at exactly one site, alongside
+`state.best_move`, which makes `!move_changed` imply the two are the same move. `REJECT_AND_STOP`
+mutates no state. What the case did change was the *reported* result: it suppressed a true drawn
+score from a deeper interrupted iteration in favour of a staler optimistic one. `best_score` and
+`depth_completed` feed only a log line and the final UCI `info`; `search_was_stable` feeds only
+logging; `nodes_at_completed_depth` is overwritten with the summed thread counters before any
+consumer sees it. None reaches search, move choice or time management, and `bestmove` is built
+from `best_move` alone.
+
+**That reported score is not inert under match conditions.** `Run-EloMatch.ps1` passes fastchess
+`-draw movenumber=40 movecount=8 score=10` and `-resign movecount=4 score=800`, and adjudication
+consumes exactly the score the engine reports. Reporting a true draw where the old code reported a
+stale decisive score can therefore change the *outcome of an adjudicated game*, in either
+direction — not merely a number in a log. It needs eight consecutive plies from both engines
+inside +/-10 after move 40, so it is rare, and the new behaviour is the more honest one; but it is
+a behaviour note, not only a comparability caveat, and lab results straddling this change should
+be read with it in mind.
+
+Validation: `Compare-SearchEquivalence.ps1 -BaselineRef origin/main` IDENTICAL across 6 positions
+at depth 12 — necessary but **not** sufficient, because a fixed-depth run has no clock, so
+`metrics.interrupted` is never true and that run cannot observe this change at all. The check that
+can is a timed one: 6 positions at `go movetime 300`, three repeats per binary, played past the
+opening so the search meets a warm transposition table rather than a freshly cleared one. All six
+played the same move before and after, with no spread within either binary. The issue's proposed
+firing-rate probe was skipped deliberately: the argument above is a proof from the control flow,
+so a count of how often the case fired would not have changed the decision.
 
 ---
 

@@ -94,7 +94,6 @@ TEST_CASE("Config: every search_tuning key reaches SearchTuning", "[config]")
                 "min_nodes_threshold": 17,
                 "min_completion_ratio": 0.21,
                 "min_pv_ratio": 0.45,
-                "score_draw_threshold": 23,
                 "delta_pruning_margin": 211,
                 "aspiration_initial_delta": 61,
                 "aspiration_max_retries": 7,
@@ -128,7 +127,6 @@ TEST_CASE("Config: every search_tuning key reaches SearchTuning", "[config]")
 	CHECK(tuning->min_nodes_threshold == 17);
 	CHECK(tuning->min_completion_ratio == 0.21);
 	CHECK(tuning->min_pv_ratio == 0.45);
-	CHECK(tuning->score_draw_threshold == 23);
 	CHECK(tuning->delta_pruning_margin == 211);
 	CHECK(tuning->aspiration_initial_delta == 61);
 	CHECK(tuning->aspiration_max_retries == 7);

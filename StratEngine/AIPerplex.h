@@ -162,7 +162,7 @@ class AIPerplex final {
 		REJECT_AND_STOP      // Reject this depth, use previous
 	};
 
-	enum class RejectionReason { NONE, INCOMPLETE, TOO_FEW_NODES, SHORT_PV, SCORE_DROP, MOVE_CHANGED };
+	enum class RejectionReason { NONE, INCOMPLETE, TOO_FEW_NODES, SHORT_PV, MOVE_CHANGED };
 
 	// SEARCH METHODS
 	// --------------

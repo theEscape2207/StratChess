@@ -96,7 +96,6 @@ SearchTuning tuning{};
 tuning.min_nodes_threshold = 1000;      // Minimum nodes for valid search
 tuning.min_completion_ratio = 0.10;     // 10% of previous depth required
 tuning.min_pv_ratio = 0.33;             // PV must be 1/3 of depth
-tuning.score_draw_threshold = 20;       // Suspicious score=0 detection
 
 AIPerplex ai(AIPerplexConfig{.default_depth = 20, .threads = 4, .tuning = tuning});
 ```

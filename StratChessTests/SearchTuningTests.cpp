@@ -28,7 +28,6 @@ namespace {
 		int64_t min_nodes_threshold;
 		double min_completion_ratio;
 		double min_pv_ratio;
-		int score_draw_threshold;
 		int delta_pruning_margin;
 		int aspiration_initial_delta;
 		int aspiration_max_retries;
@@ -59,7 +58,6 @@ namespace {
 	SAME_MEMBER(min_nodes_threshold)
 	SAME_MEMBER(min_completion_ratio)
 	SAME_MEMBER(min_pv_ratio)
-	SAME_MEMBER(score_draw_threshold)
 	SAME_MEMBER(delta_pruning_margin)
 	SAME_MEMBER(aspiration_initial_delta)
 	SAME_MEMBER(aspiration_max_retries)
@@ -111,7 +109,6 @@ TEST_CASE("SearchTuning defaults are the shipped values", "[tuning]")
 	CHECK(tuning.min_nodes_threshold == 1000);
 	CHECK(tuning.min_completion_ratio == 0.10);
 	CHECK(tuning.min_pv_ratio == 0.33);
-	CHECK(tuning.score_draw_threshold == 20);
 	CHECK(tuning.delta_pruning_margin == 200);
 	CHECK(tuning.aspiration_initial_delta == 50);
 	CHECK(tuning.aspiration_max_retries == 4);
@@ -149,8 +146,8 @@ TEST_CASE("SearchTuning JSON requires each field's own type", "[tuning]")
 	CHECK(rejection("min_pv_ratio", "0.5") == Code::InvalidType);
 	CHECK(accepts("min_pv_ratio", 1)); // an integer is a valid number for a ratio
 
-	CHECK(rejection("score_draw_threshold", int64_t{INT_MAX} + 1) == Code::OutOfRange);
-	CHECK(rejection("score_draw_threshold", int64_t{INT_MIN} - 1) == Code::OutOfRange);
+	CHECK(rejection("lmr_min_move_index", int64_t{INT_MAX} + 1) == Code::OutOfRange);
+	CHECK(rejection("lmr_min_move_index", int64_t{INT_MIN} - 1) == Code::OutOfRange);
 	CHECK(rejection("min_nodes_threshold", std::numeric_limits<uint64_t>::max()) == Code::OutOfRange);
 	CHECK(accepts("min_nodes_threshold", std::numeric_limits<int64_t>::max()));
 
@@ -221,8 +218,6 @@ TEST_CASE("SearchTuning comparison-only thresholds take any representable value"
 	CHECK(accepts("min_nodes_threshold", -1));
 	CHECK(accepts("min_completion_ratio", -1.0));
 	CHECK(accepts("min_completion_ratio", 2.5));
-	CHECK(accepts("score_draw_threshold", -5));
-	CHECK(accepts("score_draw_threshold", 20000));
 	CHECK(accepts("lmr_min_move_index", -1));
 	CHECK(accepts("lmr_min_move_index", INT_MAX));
 }
