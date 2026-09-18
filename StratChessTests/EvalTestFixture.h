@@ -477,6 +477,14 @@ inline int BreakdownWhitePov(const EvalBreakdown& terms)
 // EvalContext from a Board and forwards to each term, so terms can be
 // asserted on directly instead of only inferred from whole-position deltas.
 struct EvaluatorTestFixture {
+	// SetDrawScores is private to AIPerplex, which is the point of it. A test that
+	// wants to see what a configured evaluator returns reaches it through this
+	// fixture rather than by widening the production interface.
+	static void SetDrawScores(Evaluator& eval, int white_to_move, int black_to_move)
+	{
+		eval.SetDrawScores(white_to_move, black_to_move);
+	}
+
 	static int Pawns(const Board& board, eColor color)
 	{
 		const EvalContext ctx = BuildContext(board);

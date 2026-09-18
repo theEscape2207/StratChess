@@ -14,6 +14,7 @@
 //
 // Requires STRAT_ENABLE_TEST_ACCESS. See Docs/TestDesign.md.
 
+#include "EvalTestFixture.h"
 #include "SearchTestFixture.h"
 
 namespace {
@@ -29,6 +30,29 @@ namespace {
 
 	// Black to move and stalemated: no legal move, not in check.
 	constexpr const char* FEN_STALEMATE_BLACK = "7k/5Q2/6K1/8/8/8/8/8 b - - 0 1";
+
+	// King and knight against a bare king: a dead-drawn material class, so EndgameScale() is 0 and
+	// Evaluate() settles the position without asking a single term. No capture and no promotion is
+	// available, so every leaf of a shallow search is the same material class.
+	constexpr const char* FEN_DEAD_DRAWN_WHITE = "8/8/8/3k4/8/8/3N4/3K4 w - - 0 1";
+
+	// Bare kings: the unconditional end of the range.
+	constexpr const char* FEN_BARE_KINGS = "8/8/4k3/8/8/4K3/8/8 w - - 0 1";
+
+	// Two knights against a bare king. Scored drawn because mate cannot be FORCED, though it
+	// exists against imperfect defence — so this is a class the engine should still decline.
+	constexpr const char* FEN_TWO_KNIGHTS = "8/8/3k4/8/8/8/3NN3/3K4 w - - 0 1";
+
+	// Wrong-coloured bishop plus a rook pawn. The only class whose answer depends on PLACEMENT:
+	// drawn with the defending king on the promotion square, winning for White once it is evicted.
+	constexpr const char* FEN_WRONG_BISHOP_DRAWN = "7k/8/8/8/8/5B2/7P/6K1 w - - 0 1";
+	constexpr const char* FEN_WRONG_BISHOP_WON = "1k6/8/8/8/8/5B2/7P/6K1 w - - 0 1";
+
+	// A pawnless rook ending: a FRACTIONAL scale, neither 0 nor the maximum. Separates the
+	// early-out from a "drawish" test, which would tint this too.
+	constexpr const char* FEN_PAWNLESS_ROOK = "6b1/8/4k3/8/8/4K3/8/R7 w - - 0 1";
+
+	constexpr const char* FEN_START_POSITION = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 	constexpr int WIDE_ALPHA = -30000;
 	constexpr int WIDE_BETA = 30000;
@@ -128,6 +152,96 @@ TEST_CASE("Contempt - the fifty-move rule and stalemate carry it too, not just r
 	stale_white.set_contempt(15);
 	stale_white.set_root_color(WHITE);
 	REQUIRE(stale_white.search_node_after({}, /*depth=*/2, WIDE_ALPHA, WIDE_BETA, /*is_pv_node=*/false) == 15);
+}
+
+TEST_CASE("Contempt - a position the evaluator settles as drawn carries it as well", "[search][contempt]")
+{
+	// The gradient this closes: a repetition scored -contempt while a liquidation into a dead
+	// ending scored 0 would make the engine PREFER the dead ending — both are draws, and it would
+	// be choosing the one it can never come back from.
+	//
+	// Depth 2 rather than 0: this asserts the value the search actually returns, which is what the
+	// gradient is made of, not just the evaluator's own arithmetic.
+	AIPerlexTestFixture dead_white(FEN_DEAD_DRAWN_WHITE);
+	dead_white.set_contempt(20);
+	dead_white.set_root_color(WHITE);
+	REQUIRE(dead_white.search_node_after({}, /*depth=*/2, WIDE_ALPHA, WIDE_BETA, /*is_pv_node=*/false) == -20);
+
+	// A fixture per root colour, for the reason the stalemate case above records: the tinted score
+	// is cached, and the guard that would drop it on a colour change lives in Search().
+	AIPerlexTestFixture dead_black(FEN_DEAD_DRAWN_WHITE);
+	dead_black.set_contempt(20);
+	dead_black.set_root_color(BLACK);
+	REQUIRE(dead_black.search_node_after({}, /*depth=*/2, WIDE_ALPHA, WIDE_BETA, /*is_pv_node=*/false) == 20);
+
+	AIPerlexTestFixture dead_default(FEN_DEAD_DRAWN_WHITE);
+	dead_default.set_contempt(0);
+	dead_default.set_root_color(WHITE);
+	REQUIRE(dead_default.search_node_after({}, /*depth=*/2, WIDE_ALPHA, WIDE_BETA, /*is_pv_node=*/false) ==
+	        GameValues::Draw);
+
+	// The domain's top, where the tint is comparable to a real futility margin rather than well
+	// inside one.
+	AIPerlexTestFixture dead_max(FEN_DEAD_DRAWN_WHITE);
+	dead_max.set_contempt(100);
+	dead_max.set_root_color(WHITE);
+	REQUIRE(dead_max.search_node_after({}, /*depth=*/2, WIDE_ALPHA, WIDE_BETA, /*is_pv_node=*/false) == -100);
+}
+
+TEST_CASE("Contempt - the drawn value reaches only what the evaluator settles as drawn", "[search][contempt]")
+{
+	Evaluator eval;
+
+	// Untouched by default: an Evaluator nobody configured answers GameValues::Draw, which is what
+	// keeps the UCI 'eval' command and every evaluator test reading the untinted score.
+	for (const char* fen : {FEN_DEAD_DRAWN_WHITE, FEN_BARE_KINGS, FEN_TWO_KNIGHTS, FEN_WRONG_BISHOP_DRAWN}) {
+		CAPTURE(fen);
+		REQUIRE(eval.Evaluate(Board(fen)) == GameValues::Draw);
+	}
+
+	// Set as a search would for a WHITE root at Contempt=20: a draw is a small loss for White and a
+	// small gain for Black, in each side's own point of view.
+	EvaluatorTestFixture::SetDrawScores(eval, /*white_to_move=*/-20, /*black_to_move=*/20);
+
+	REQUIRE(eval.Evaluate(Board(FEN_DEAD_DRAWN_WHITE)) == -20);
+	REQUIRE(eval.Evaluate(Board(FEN_BARE_KINGS)) == -20);
+	// Two knights: mate exists but cannot be forced, so the evaluator scores the class drawn. It is
+	// tinted like any other draw — the engine should not steer INTO it.
+	REQUIRE(eval.Evaluate(Board(FEN_TWO_KNIGHTS)) == -20);
+
+	// The wrong-coloured-bishop fortress is the case that makes "dead-drawn MATERIAL class" the
+	// wrong description: the same material answers both ways depending on where the defending king
+	// stands. Drawn with the king on the promotion square...
+	REQUIRE(eval.Evaluate(Board(FEN_WRONG_BISHOP_DRAWN)) == -20);
+	// ...and not drawn once it is evicted, where White is winning and must not be tinted.
+	REQUIRE(eval.Evaluate(Board(FEN_WRONG_BISHOP_WON)) > 0);
+
+	// A position with a non-zero scale is never tinted whatever it evaluates to, so contempt cannot
+	// put a step in the middle of the evaluation scale. The starting position is symmetric and
+	// evaluates to exactly zero, which is the zero that must survive untouched.
+	const Board start(FEN_START_POSITION);
+	REQUIRE(eval.Evaluate(start) == GameValues::Draw);
+
+	// A fractional scale (0 < scale < MAX) is not drawn either — this separates the early-out from
+	// a "drawish" test, which would tint every pawnless rook ending.
+	REQUIRE(eval.Evaluate(Board(FEN_PAWNLESS_ROOK)) != -20);
+}
+
+// The friend makes AIPerplex the only WRITER; it says nothing about when. The rest of the safety
+// argument is positional — publish_draw_scores() runs before any helper exists — and a full search
+// at Threads > 1 is the only thing that can fail if the call is ever moved below the spawn block.
+// The position matters: every leaf here reads dead_draw_score_, and the contempt is non-zero, so the
+// write is one tsan reports rather than a benign store of the value already in the array.
+TEST_CASE("Contempt - the drawn value is published before the helper threads start", "[search][contempt][smp]")
+{
+	AIPerlexTestFixture fix(FEN_DEAD_DRAWN_WHITE, 4);
+	fix.set_contempt(20);
+
+	const SearchResult result = fix.get_move_at_threads(4, 4);
+
+	// Search() sets the root colour itself, and every leaf of this search is the same drawn class,
+	// so the score is the tinted draw whichever thread produced it.
+	REQUIRE(result.best_score == -20);
 }
 
 TEST_CASE("Contempt - draw_score is a pure function of side to move and root colour", "[search][contempt]")

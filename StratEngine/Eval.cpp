@@ -737,10 +737,9 @@ EvalContext Evaluator::BuildContext(const Board& board) noexcept
 	    .mopup_active = {mopupActive[WHITE], mopupActive[BLACK]},
 	    .endgame_scale = endgameScale,
 	    .castling_rights = board.castling_rights(),
-	    // Left zeroed for a dead-drawn material class: Evaluate() returns
-	    // GameValues::Draw for one without calling a single term, so generating
-	    // attacks would put the cost back on exactly the path that early-out
-	    // exists to make cheap.
+	    // Left zeroed for a dead-drawn material class: Evaluate() settles one
+	    // without calling a single term, so generating attacks would put the cost
+	    // back on exactly the path that early-out exists to make cheap.
 	    .attacks = (endgameScale != 0)
 	                   ? ComputePieceAggregates(boardsSpan, whitePawnAttacks, blackPawnAttacks, kingSquares)
 	                   : PieceAggregates{},
@@ -869,8 +868,9 @@ PieceAggregates Evaluator::ComputePieceAggregates(std::span<const BITBOARD> boar
 // not enter, so the bar for a zero is that no defence loses, not that most draw.
 //
 // Deliberately an evaluation scale and not a draw rule in ThreadData::check_draws():
-// a scale of zero already yields GameValues::Draw at the leaf, while a search-side
-// rule would put a score that is not depth-bounded into the transposition table.
+// a scale of zero already settles the leaf as drawn — at whatever a draw is worth to
+// the side to move — while a search-side rule would put a score that is not
+// depth-bounded into the transposition table.
 //
 int Evaluator::EndgameScale(std::span<const BITBOARD> boards) noexcept
 {
@@ -1084,15 +1084,22 @@ int Evaluator::Evaluate(const Board& board) const noexcept
 	// zero, so the terms are not computed at all. This is the path the engine
 	// takes through exactly the endings it now has to play out, which is where
 	// the saving is worth having.
+	//
+	// What a draw is worth here is SetDrawScores()' answer, not a constant: this is
+	// a draw the side to move is choosing, exactly as a repetition is, so a search
+	// running with contempt has set it below equality for the colour it is playing.
+	// A position whose scale is non-zero never reaches this line, so nothing that is
+	// not settled as drawn can be shifted.
 	if (ctx.endgame_scale == 0)
-		return GameValues::Draw;
+		return dead_draw_score_[board.GetCurrentColor()];
 
 	// The position's score, in White's point of view: the one value that is a
 	// property of the position rather than of whose turn it is.
 	//
 	// The scale acts on the whole score, material included — in a class scored
 	// 0 the bishop is not worth 300 cp less, the position is drawn — so the
-	// result at scale 0 is exactly GameValues::Draw. Mate scores never reach
+	// result at scale 0 would be exactly GameValues::Draw, which is why the
+	// early-out above answers for it instead. Mate scores never reach
 	// here: this function only ever produces a static centipawn score, and
 	// search constructs mate values around it.
 	const int white_pov = ApplyEndgameScale(RawWhitePov(ctx), ctx.endgame_scale);

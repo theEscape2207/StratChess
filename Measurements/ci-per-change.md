@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-09-18 | e2ff7d2 with `Contempt=20` set over UCI on the candidate only, now tinting the draws the evaluator settles as well as those the search detects (#452) | e2ff7d2 (the same commit at its shipped default `Contempt=0`; the delta is a runtime option, not a code change) | 19980 | 10+0.1 | **-0.85 +/- 3.60** | no effect |
 | 2026-09-18 | c117c7a with `Contempt=20` set over UCI on the candidate only (#452) | c117c7a (the same commit at its shipped default `Contempt=0`; the delta is a runtime option, not a code change) | 19980 | 10+0.1 | **+0.77 +/- 3.58** | non-regression |
 | 2026-09-14 | a0e2a14 (depth-2 late move pruning, legal index 12, #547) | 30a5d46 | 19980 | 10+0.1 | **+16.48 +/- 3.50** | gain |
 | 2026-09-14 | 0722ee5 (TT generation advances once per search; deeper same-key store beats the PV bonus, #544) | 19ff12b | 19980 | 10+0.1 | **+1.11 +/- 3.48** | non-regression |
@@ -36,6 +37,18 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-09-18 -- e2ff7d2 with `Contempt=20` covering the evaluator's draws (#452) (19980 games)
+
+**The second contempt row, with the confound named in advance removed.** Both engines are `e2ff7d2`; the candidate was handed `Contempt=20` through `candidate_uci_options`. Read it as what the option is worth, not as what any commit is worth. 18 shards x 555 pairs, pooled Ptnml(0-2) [858, 2222, 3830, 2271, 809], score 49.88%, run `35336326192`, 3 h 16 min wall-clock, all 18 green. 95% interval [-4.45, +2.75]. Zero time losses, zero illegal moves.
+
+**Both halves of the mechanism demonstrably reached the engine.** Of the 3685 threefold games the candidate reported the draw at `-0.20` in 3641 (98.8%) against the reference's `0.00`; of the 871 insufficient-material games -- the class this change added -- it did so in 853 (97.9%), where the row below reported `0.00`. Fifty-move (723) and stalemate (17) are `-0.20` against `0.00` in every game.
+
+**The behaviour moved a long way and the Elo did not.** The two runs are comparable on class composition, which is unusual and holds only because the openings are identical: `order=sequential` with each shard's start computed from its index, the same book and the same 18 x 555 layout, against the same reference binary. Insufficient-material draws fell 1988 -> 871 (-56%), threefold rose 3076 -> 3685, fifty-move 554 -> 723 and adjudicated draws 1369 -> 1735, while total draws stayed flat at 7004 -> 7031 (35.1% -> 35.2%). The engine now declines the dead ending it used to liquidate into and plays on to a repetition or the clock instead. That is exactly what the change was for, and against a peer it is worth nothing.
+
+**Pre-registered outcome 2, for the second time**: the interval contains zero, so the default stays `Contempt=0`. The bar named `Eval.cpp:1088` as the most likely way a flat contempt term misfires; that gradient is now closed and the measurement did not move, so it was not what was holding contempt to zero. Untested still: the magnitude (20 cp, held fixed), the time control, and contempt against a weaker field -- the one setting in which the term is defined to pay.
+
+**One asymmetry to know before reading any contempt row.** The lab adjudicates a draw only while *both* engines report |score| <= 10 cp, and a tinted drawn score of -20 sits outside that band, so the candidate arm cannot contribute to a draw-adjudication streak where the reference arm can. This run widened that asymmetry to the eval-settled classes, which the row below still reported at `0.00`. It does not explain the composition shift above: blocking adjudication pushes *more* games through to a real insufficient-material finish, not 56% fewer, and adjudicated draws rose rather than fell. A mechanism-level post-pass of the same corpus is in [#452](https://github.com/theEscape2207/StratChess/issues/452#issuecomment-5731842936) -- its paired test, repeat rate restricted to games where exactly one engine peaked at >= +100 cp after move 20, puts the candidate 0.73 pp lower at z = -1.41: the intended direction, inside the noise.
 
 ### 2026-09-18 -- c117c7a with `Contempt=20` (#452) (19980 games)
 

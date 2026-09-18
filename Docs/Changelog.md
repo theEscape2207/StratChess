@@ -22,6 +22,67 @@ Newest first.
 
 ---
 
+## 2026-09-18 — Contempt covers the draws the evaluator settles (#452)
+
+`Evaluate()`'s `endgame_scale == 0` early-out returns `dead_draw_score_[side to move]` instead of
+the constant `GameValues::Draw`, and `AIPerplex::Search()` sets that pair once through
+`publish_draw_scores()`, beside `root_color_`. `Evaluator::SetDrawScores()` is private with
+`AIPerplex` its only friend, so the compiler enforces the single-writer rule the thread-safety
+argument rests on instead of a comment asserting it. `draw_score_for(eColor)` is now the single place
+the contempt sign is expressed; `draw_score(const ThreadData&)` is a thin caller of it. A position
+whose scale is non-zero never reaches that line, so contempt cannot shift anything the evaluator
+does not already settle as drawn — tinting an evaluation that merely landed on zero would put a step
+in the middle of the scale.
+
+**The gradient this closes.** Contempt previously tinted search-detected draws only, so at
+`Contempt=20` a repetition scored `-20` while a liquidation into a dead ending scored `0`. Both are
+draws, and the engine preferred the one it can never come back from — a gradient pointing the wrong
+way, and the named confound on the #452 lab bar. The pooled result of run `35309731763` was
+`+0.77 +/- 3.58` Elo over 19,980 games, inconclusive against that bar; the PGNs showed contempt
+changing the *score* of a detected draw in 99.3% of the candidate's threefold games without
+measurably changing how *often* one was reached. This removes the first thing that would have to be
+ruled out before reading that as the answer.
+
+**Where the value lives was a cost decision, and it was measured.** Three shapes that ask the
+question per evaluation each cost about 1% nps at a default that tints nothing: a
+`Evaluate(const Board&, int)` overload (the value stays live across `BuildContext()` inside the
+hottest function in the engine), the same guard reading `ThreadData` instead of `tuning_`, and a
+search-side `IsDeadDrawn()` re-scan behind a `contempt == 0` test. Reading it on the
+`endgame_scale == 0` branch that was already being taken is free: eight alternating depth-13 bench
+pairs, node counts identical every pair, **-0.12%** with the two ranges fully overlapping
+(2,422,881-2,444,291 baseline against 2,421,366-2,442,235).
+
+The price is that `Evaluator` is no longer literally stateless. `dead_draw_score_` is written only
+by `SetDrawScores()` before any helper thread exists and is read-only for the rest of the search,
+exactly as `AIPerplex::tuning_` is; calling it mid-search would be a data race, which the access
+level now rules out.
+Every other `Evaluator` in the process — the UCI `eval` command's, the batch scorer's, every test's
+— is its own instance that nobody configures, so it still answers `GameValues::Draw`. The Lazy SMP
+sharing contract in `Eval.h` and `Docs/EngineContracts.md` now states the weakened form. A second
+consequence recorded there: at `contempt > 0` a static evaluation is no longer a function of the
+position alone, since it depends on `root_color_`.
+
+**Still ships disabled.** `Compare-SearchEquivalence.ps1` reports IDENTICAL across six positions at
+depth 12 against the merge base, so at `Contempt=0` the search is node-for-node what it was. Five
+new `[contempt]` assertions cover the classes `EndgameScale` calls drawn: bare kings, a lone minor,
+two knights (mate exists but cannot be forced, so the engine should still decline it) and the
+wrong-coloured-bishop fortress — which is why the code and docs say "a position the evaluator
+settles as drawn" rather than "material class": that last one is decided by the defending king's
+square, and the same material is a win for White once it is evicted. A fractional-scale pawnless
+rook ending pins that the test is `== 0` and not "drawish", and the starting position pins that a
+symmetric zero is never tinted.
+
+**And it stays disabled.** The follow-up lab run measured `Contempt=20` at **-0.85 +/- 3.60** Elo
+over 19,980 games against the same commit at its default, an interval that contains zero, so the
+pre-registered outcome for #452 is unchanged. The gradient closed above was named in advance as the
+most likely way a flat contempt term misfires; it is gone — the candidate now scores
+insufficient-material draws at -0.20 in 853 of 871, against 0.00 in the previous run — and the class
+composition moved sharply for it, with insufficient-material draws falling 1988 to 871 and threefold
+rising 3076 to 3685 over identical openings. The Elo did not move. Row and method:
+`Measurements/ci-per-change.md`.
+
+---
+
 ## 2026-09-18 — Remove assess_iteration_quality CASE 4 (SCORE_DROP) (#567)
 
 `assess_iteration_quality()` loses its fourth case, the `RejectionReason::SCORE_DROP` test that

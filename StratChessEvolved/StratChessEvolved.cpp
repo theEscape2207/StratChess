@@ -224,9 +224,11 @@ namespace {
 	// The printed score is the RAW value Evaluator::Evaluate() returns:
 	// side-to-move-relative, no sign transformation. This preserves a single
 	// source of truth (the search calls the same Evaluate()), and it is exactly
-	// the value #127's byte-identity check needs to diff. A consumer that wants
-	// a White-relative score already has the side-to-move field parsed out of
-	// the FEN and can flip the sign itself.
+	// the value #127's byte-identity check needs to diff. This Evaluator is its
+	// own instance and nothing calls SetDrawScores() on it, so a drawn position
+	// prints GameValues::Draw here even where a contempt search would tint it.
+	// A consumer that wants a White-relative score already has the side-to-move
+	// field parsed out of the FEN and can flip the sign itself.
 	//
 	// stdout carries only "<fen>\t<score>" lines (no banner, no progress) so the
 	// output file is directly consumable; all diagnostics go to stderr.

@@ -73,7 +73,7 @@ class UciHandler {
 
 	Board board_;
 	std::unique_ptr<AIPerplex> ai_; // never null
-	Evaluator eval_;                // stateless, safe to share unsynchronized across threads
+	Evaluator eval_;                // never configured, so it reports untinted scores; see Eval.h
 
 	// Null unless EnableCommandLog() succeeded. Owned here and nowhere else — it is deliberately
 	// not registered with spdlog (see Logger::CreateUciCommandLogger), so the file is closed when

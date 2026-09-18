@@ -269,9 +269,9 @@ std::optional<SearchTuningSchema::TuningError> AIPerplex::SetTuning(const Search
 //                   while constructing this service, then starts its first
 //                   game. Resetting tuning_ here would silently discard those
 //                   configured overrides.
-//   - the evaluator: Evaluator is documented stateless and thread-shared
-//                    (see the Lazy SMP sharing contract comment in Eval.h)
-//                    -- recreating one changes nothing.
+//   - the evaluator: its one member is the drawn score pair, which Search()
+//                    rewrites before every search, so nothing accumulates
+//                    across games (see the sharing contract in Eval.h).
 void AIPerplex::StartNewGame()
 {
 	assert_not_in_completion_handler();
@@ -365,6 +365,18 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	// future path that mutates tuning without going through SetTuning().
 	root_color_ = root.GetCurrentColor();
 
+	// A position the evaluator settles as drawn without computing a term is a draw the side to
+	// move is choosing, exactly as a repetition is, so it carries the same contempt. Tinting only
+	// the search-detected half would make the engine prefer a dead ending to a repetition — a
+	// draw it can never come back from — which is a gradient pointing the wrong way rather than
+	// merely an inconsistent score.
+	//
+	// Here, and not per evaluation, for two reasons: it is the last point at which root_color_ is
+	// known and no helper thread exists yet, and a guard on the per-evaluation path costs ~1% nps
+	// at the shipped default (see Eval.h). At contempt 0 both values are GameValues::Draw and the
+	// evaluator returns exactly what it always did.
+	publish_draw_scores();
+
 	// Snapshot threads_ exactly once so helper allocation, spawning and
 	// aggregation use one internally consistent value. This is not race
 	// synchronization: callers must obey the documented precondition that
@@ -395,6 +407,10 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	if constexpr (kTTStatsCompiled)
 		_tt->setStatsSearchStartAge(search_start_age);
 
+	// Everything the helpers read unsynchronized must already be written HERE: root_color_, the
+	// tuning_ block and the evaluator's drawn scores. publish_draw_scores() above is the one that
+	// is easy to move by accident, and moving it below this block is a data race, not a stale read.
+	//
 	// Lazy SMP: spawn threads_ - 1 helper threads to warm the shared TT while
 	// the main search below runs on td_ (main-is-authoritative: helpers never
 	// report a move, only their node counts feed back in).
@@ -1158,10 +1174,16 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 // Contempt makes a draw a small loss for the side the engine is playing, so it declines one in a
 // position it believes equal instead of being indifferent between repeating and playing on. At the
 // shipped default of 0 this returns GameValues::Draw and the arithmetic is the historical one.
-int AIPerplex::draw_score(const ThreadData& td) const noexcept
+int AIPerplex::draw_score(const ThreadData& td) const noexcept { return draw_score_for(td.board.GetCurrentColor()); }
+
+void AIPerplex::publish_draw_scores() noexcept
 {
-	return td.board.GetCurrentColor() == root_color_ ? GameValues::Draw - tuning_.contempt
-	                                                 : GameValues::Draw + tuning_.contempt;
+	evaluator_.SetDrawScores(draw_score_for(WHITE), draw_score_for(BLACK));
+}
+
+int AIPerplex::draw_score_for(eColor side_to_move) const noexcept
+{
+	return side_to_move == root_color_ ? GameValues::Draw - tuning_.contempt : GameValues::Draw + tuning_.contempt;
 }
 
 int AIPerplex::adjustScoreForGameState(ThreadData& td, bool moveFound, int ply, int score)

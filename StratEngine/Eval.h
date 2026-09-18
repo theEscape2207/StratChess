@@ -82,9 +82,9 @@ enum eMobilePiece : std::uint8_t {
 // BuildContext.
 //
 // ALL ZERO when endgame_scale is 0 — no attacks are generated at all for a
-// dead-drawn material class, because Evaluate() returns GameValues::Draw for
-// one without asking any term anything. Only Breakdown() can observe the
-// difference, and only on a position whose total is Draw regardless.
+// dead-drawn material class, because Evaluate() settles one without asking any
+// term anything. Only Breakdown() can observe the difference, and only on a
+// position that is drawn regardless.
 struct PieceAggregates {
 	// Per type, the sum over that color's pieces of (safe squares reached minus
 	// MOBILITY_BASE_*) — exactly what eval_mobility multiplies by its per-type
@@ -251,18 +251,23 @@ struct KingPawnCover {
 	ScorePair files;
 };
 
-// Lazy SMP sharing contract: Evaluator holds no mutable state of any kind —
-// no data members beyond compile-time-constant enums/statics, and Evaluate()
-// is `const`, reading only its `const Board&` argument plus the read-only
-// global tables in defines.h (g_Eval_Bitboards, g_bbFileMask, g_bbFileUpMask,
-// g_bbFileDownMask — all `constexpr`/compile-time-initialized, no
-// lazy/runtime init). A single Evaluator instance is therefore safe to share,
-// unsynchronized, across every Lazy SMP helper thread's concurrent Evaluate()
-// calls — no per-thread clone is needed. EvalContext does not change this: it
-// is always a per-call stack local, never a member of Evaluator. The same
-// holds for Breakdown() and its EvalBreakdown result (issue #129 phase 2):
-// also `const`, also per-call stack locals — though it is a debug path that
-// no search thread calls.
+// Lazy SMP sharing contract: Evaluator holds no state that a search mutates.
+// Its one data member, dead_draw_score_, is written only by SetDrawScores()
+// before any helper thread exists and is read-only for the whole search, in
+// exactly the way AIPerplex::tuning_ already is. Everything else Evaluate()
+// reads is its `const Board&` argument plus the read-only global tables in
+// defines.h (g_Eval_Bitboards, g_bbFileMask, g_bbFileUpMask, g_bbFileDownMask
+// — all `constexpr`/compile-time-initialized, no lazy/runtime init), and
+// Evaluate() itself is `const`. A single Evaluator instance is therefore safe
+// to share, unsynchronized, across every Lazy SMP helper thread's concurrent
+// Evaluate() calls — no per-thread clone is needed. Calling SetDrawScores()
+// while a search is running would NOT be safe, so it is private to AIPerplex,
+// which calls it once in Search(), beside root_color_, before it snapshots the
+// thread count. That is the whole of the write side; there is no other.
+// EvalContext does not change any of this: it is always a per-call stack local,
+// never a member. The same holds for Breakdown() and
+// its EvalBreakdown result (issue #129 phase 2): also `const`, also per-call
+// stack locals — though it is a debug path that no search thread calls.
 class Evaluator {
   protected:
 	static inline int GetPositionalScore(eSquare squareType, ePiece piece) noexcept
@@ -796,6 +801,36 @@ class Evaluator {
   public:
 	int Evaluate(const Board& board) const noexcept;
 
+  private:
+	friend class AIPerplex;
+
+	// What Evaluate() returns for a position it settles as drawn without computing
+	// a single term, per side to move. Search sets both to contempt-tinted values so
+	// a dead ending is no more attractive than a repetition; every other caller
+	// leaves them at the GameValues::Draw they default to.
+	//
+	// Per side to move rather than one value because the score Evaluate() returns is
+	// side-to-move-relative, and a draw is a small loss for the side the engine is
+	// playing and a small gain for its opponent. The evaluator is told the two
+	// numbers and never learns which colour that is.
+	//
+	// PRIVATE, with AIPerplex the only writer, because the whole safety argument is
+	// "written before any helper thread exists and read-only thereafter" — and that
+	// is a property of the ONE call site in Search(), not of this function. Left
+	// public it would be an ordinary setter that any future caller could reach from
+	// anywhere, including mid-search, where it is a data race. The compiler enforces
+	// what would otherwise be a comment.
+	//
+	// It is deliberately read on the endgame_scale == 0 branch that was already
+	// being taken rather than tested per evaluation: a guard around every Evaluate()
+	// call, in any of three shapes, measured ~1% nps at a default that tints nothing.
+	void SetDrawScores(int white_to_move, int black_to_move) noexcept
+	{
+		dead_draw_score_[WHITE] = white_to_move;
+		dead_draw_score_[BLACK] = black_to_move;
+	}
+
+  public:
 	// Per-term introspection for the UCI 'eval' command. Reports what the four
 	// private term functions above contribute, per color, for one position;
 	// changes nothing and is never called from search.
@@ -818,4 +853,10 @@ class Evaluator {
 	// never in production.
 	friend struct EvaluatorTestFixture;
 #endif
+
+  private:
+	// The evaluator's only data member. Read on the endgame_scale == 0 branch of
+	// Evaluate(), written only by SetDrawScores() — see the sharing contract above
+	// for why that is still safe to share across Lazy SMP threads.
+	int dead_draw_score_[NUM_COLORS] = {GameValues::Draw, GameValues::Draw};
 };

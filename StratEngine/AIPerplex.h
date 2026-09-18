@@ -189,6 +189,14 @@ class AIPerplex final {
 	// parity would invert silently if any future construct ever advanced ply without flipping the
 	// side, or flipped without advancing.
 	int draw_score(const ThreadData& td) const noexcept;
+	// The same value for a side to move named directly, which is what Search() needs to hand the
+	// evaluator: there is no ThreadData to read a colour from at that point. The one place the
+	// contempt sign is expressed; draw_score() is a thin caller of it.
+	int draw_score_for(eColor side_to_move) const noexcept;
+	// Hands the evaluator the drawn value for each side to move. Search() is the only production
+	// caller and calls it before any helper thread exists, which is the whole of the argument that
+	// Evaluator stays safe to share unsynchronized — see the contract in Eval.h.
+	void publish_draw_scores() noexcept;
 	// Budget a node entering quiescence from pvs() starts with. quiescence() spends it
 	// downwards and stops when it goes negative, so 16 ply levels run out of check; the value
 	// it carries is always search still to come — the same unit pvs() uses for depth and both
@@ -276,7 +284,7 @@ class AIPerplex final {
 
 	// MEMBER VARIABLES
 	std::unique_ptr<TranspositionTable> _tt; // persistent transposition table
-	Evaluator evaluator_;                    // stateless, safe to share unsynchronized across threads
+	Evaluator evaluator_;                    // safe to share unsynchronized across threads; see Eval.h
 	SearchControl control_;                  // owned limits, timer and abort latch
 	SearchTuning tuning_;
 	mutable std::mutex stop_mutex_;
