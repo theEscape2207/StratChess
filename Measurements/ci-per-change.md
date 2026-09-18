@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-09-18 | c117c7a with `Contempt=20` set over UCI on the candidate only (#452) | c117c7a (the same commit at its shipped default `Contempt=0`; the delta is a runtime option, not a code change) | 19980 | 10+0.1 | **+0.77 +/- 3.58** | non-regression |
 | 2026-09-14 | a0e2a14 (depth-2 late move pruning, legal index 12, #547) | 30a5d46 | 19980 | 10+0.1 | **+16.48 +/- 3.50** | gain |
 | 2026-09-14 | 0722ee5 (TT generation advances once per search; deeper same-key store beats the PV bonus, #544) | 19ff12b | 19980 | 10+0.1 | **+1.11 +/- 3.48** | non-regression |
 | 2026-09-12 | ad7a422 (BUNDLED: compact TT + `Hash` default 192->256, #442) | c191d08 | 20000 | 18+0.18 | **+0.09 +/- 3.34** | no effect |
@@ -35,6 +36,16 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-09-18 -- c117c7a with `Contempt=20` (#452) (19980 games)
+
+**The only row here whose two sides are the same commit.** Both engines are `c117c7a`; the candidate was handed `Contempt=20` through `candidate_uci_options`, which is how a default-off runtime option is measured without a probe branch. Read it as what that option is worth, not as what any commit is worth -- and not against the other rows, which have real merge bases. 18 shards x 555 pairs, pooled Ptnml(0-2) [827, 2179, 3928, 2235, 821], score 50.11%, run `35309731763`, 3 h 17 min wall-clock, all 18 green. 95% interval [-2.81, +4.35]. Zero time losses, zero illegal moves, shard slices verified disjoint.
+
+**The option demonstrably reached the engine**, which matters because "no effect" and "never applied" pool to the same number. On the 3076 games ending in threefold repetition, the side playing the final repeating move reported the draw score at `-0.20` in 1496 of the candidate's 1506 (99.3%) and at `0.00` in 1558 of the reference's 1570 (99.2%).
+
+**Contempt re-priced the draw without changing how often one is reached.** 7004 draws (35.1%): 1369 adjudicated, 5635 by rule -- 3076 threefold, 1988 insufficient material, 554 fifty-move, 17 stalemate. Splitting the rules draws by which side played the final move, every Wilson interval covers 0.5: threefold 1506/3076 = 0.4896 [0.4720, 0.5073] (z = -1.15, the direction contempt predicts), insufficient material 1003/1988 = 0.5045 (z = +0.40), fifty-move 289/554 = 0.5217. So in the positions this engine repeats in, every alternative is already worse than -20 cp.
+
+**What it does not settle.** The value (20) and the time control, both held fixed. Nor the `Eval.cpp:1088` gradient named as a confound in advance: 1988 of the rules draws were insufficient-material, a class contempt does not tint at all, so at `Contempt=20` liquidating into a dead ending scores 0 against a repetition's -20. The candidate closed those 0.40 sigma more often, inside the noise -- consistent with the confound, and not evidence for it.
 
 ### 2026-09-14 -- a0e2a14 (depth-2 late move pruning, legal index 12, #547) (19980 games)
 
