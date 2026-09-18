@@ -97,7 +97,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | External integer parsing (argv, JSON keys) | `[argparse]` | `ArgParseTests.cpp` |
 | Settings-file parsing and its failure modes | `[config]` | `ConfigTests.cpp` |
 | Search tuning catalogue: layout, defaults, domains, JSON and UCI binding | `[tuning]` | `SearchTuningTests.cpp`, `UCITests.cpp` |
-| Contempt on drawn scores: sign against the root colour, the four draw endpoints, neutral abort values, TT context clearing | `[contempt]` | `SearchContemptTests.cpp` |
+| Contempt on drawn scores: sign against the root colour, the four draw endpoints, the classes the evaluator settles as drawn, the publish-before-spawn ordering, neutral abort values, TT context clearing | `[contempt]` | `SearchContemptTests.cpp` (a configured `Evaluator` is reachable only through `EvaluatorTestFixture::SetDrawScores`) |
 
 ---
 

@@ -407,6 +407,10 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	if constexpr (kTTStatsCompiled)
 		_tt->setStatsSearchStartAge(search_start_age);
 
+	// Everything the helpers read unsynchronized must already be written HERE: root_color_, the
+	// tuning_ block and the evaluator's drawn scores. publish_draw_scores() above is the one that
+	// is easy to move by accident, and moving it below this block is a data race, not a stale read.
+	//
 	// Lazy SMP: spawn threads_ - 1 helper threads to warm the shared TT while
 	// the main search below runs on td_ (main-is-authoritative: helpers never
 	// report a move, only their node counts feed back in).
@@ -1635,10 +1639,11 @@ AIPerplex::RejectionReason AIPerplex::assess_iteration_quality(const IterationMe
 	//                               root as the same value. Since the dead-drawn material class is
 	//                               tinted too, no draw path produces anything else.
 	//   GameValues::Draw          — a genuine evaluation that happens to land on zero. No draw path
-	//                               produces this any more, so the arm is now a deliberate
-	//                               conservative false positive — the historical `== 0` test, kept
-	//                               because dropping it changes behaviour at contempt > 0 and
-	//                               nothing has measured that. It is NOT a draw detector.
+	//                               produces this any more, so at contempt > 0 a false positive is
+	//                               the only thing this arm can be: it rejects a sound iteration
+	//                               that merely evaluated to zero. Kept because dropping it changes
+	//                               behaviour and nothing has measured that. It is NOT a draw
+	//                               detector.
 	//
 	// At contempt 0 the two collapse into one and this is the historical `== 0`, byte for byte.
 	// A band around zero — the tempting shape — would instead reject every genuine evaluation

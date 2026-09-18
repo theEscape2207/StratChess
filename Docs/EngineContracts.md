@@ -102,8 +102,8 @@ whose violation is silent.
   can be skipped.
 - **A drawn score is context the Zobrist key does not carry.** With `contempt` non-zero, the score
   of a draw — repetition, fifty-move, stalemate, or a position the evaluator settles as drawn —
-  depends on the root colour and on the contempt value, and propagates into parent entries through the terminal store in
-  `pvs()` and the bare-king store in `quiescence()`. The key holds neither, so `Search()` keeps the
+  depends on the root colour and on the contempt value, and propagates into parent entries through
+  the terminal store in `pvs()` and the bare-king store in `quiescence()`. The key holds neither, so `Search()` keeps the
   `(root_color, contempt)` pair its table was filled under and clears the table when the incoming pair
   differs *and* either side of the change is non-zero. Both halves matter: only a contempt search can
   tint an entry or misread an untinted one, so a process left at the shipped default of 0 must never
@@ -119,17 +119,20 @@ whose violation is silent.
   engine prefer the draw it can never come back from — a gradient pointing the wrong way, not
   merely an inconsistent score. `Evaluate()`'s `endgame_scale == 0` early-out returns
   `dead_draw_score_[side to move]` rather than the constant `GameValues::Draw`, and `Search()` sets
-  that pair once through `AIPerplex::publish_draw_scores()`, beside `root_color_`. A position whose scale
-  is non-zero never reaches that line, so contempt cannot shift anything the evaluator does not
+  that pair once through `AIPerplex::publish_draw_scores()`, beside `root_color_`. A position whose
+  scale is non-zero never reaches that line, so contempt cannot shift anything the evaluator does not
   already call drawn — tinting an evaluation that merely landed on zero would put a step in the
   middle of the scale.
 - **`Evaluator` is no longer literally stateless, and the weakened contract is what search relies
   on.** `dead_draw_score_` is written only by `SetDrawScores()` before any helper thread exists and
   is read-only for the rest of the search, exactly as `AIPerplex::tuning_` is. Calling it mid-search
   would be a data race, so `Evaluator::SetDrawScores()` is **private with `AIPerplex` its only
-  friend** — the single-writer rule is enforced by the compiler rather than asserted in a comment. Every other `Evaluator` in the process — the UCI `eval`
-  command's, the batch scorer's, every test's — is its own instance that nobody configures, so it
-  keeps answering `GameValues::Draw`. Putting the value here rather than guarding each `Evaluate()`
+  friend** — the single-writer rule is enforced by the compiler rather than asserted in a comment.
+  *When* it is written is positional and not: the call sits above the helper-spawn block in
+  `Search()`, where a comment says so and a `[contempt][smp]` test searches a drawn position at
+  `Threads > 1` so that moving it below is a race tsan reports. Every other `Evaluator` in the
+  process — the UCI `eval` command's, the batch scorer's, every test's — is its own instance that
+  nobody configures, so it keeps answering `GameValues::Draw`. Putting the value here rather than guarding each `Evaluate()`
   call was a cost decision, and it was measured: three different per-evaluation guards each cost
   ~1% nps at a default that tints nothing, while reading it on a branch already being taken is free.
 - **At `contempt > 0` a static evaluation is no longer a function of the position alone** — it

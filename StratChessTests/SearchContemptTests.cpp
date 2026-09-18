@@ -227,6 +227,23 @@ TEST_CASE("Contempt - the drawn value reaches only what the evaluator settles as
 	REQUIRE(eval.Evaluate(Board(FEN_PAWNLESS_ROOK)) != -20);
 }
 
+// The friend makes AIPerplex the only WRITER; it says nothing about when. The rest of the safety
+// argument is positional — publish_draw_scores() runs before any helper exists — and a full search
+// at Threads > 1 is the only thing that can fail if the call is ever moved below the spawn block.
+// The position matters: every leaf here reads dead_draw_score_, and the contempt is non-zero, so the
+// write is one tsan reports rather than a benign store of the value already in the array.
+TEST_CASE("Contempt - the drawn value is published before the helper threads start", "[search][contempt][smp]")
+{
+	AIPerlexTestFixture fix(FEN_DEAD_DRAWN_WHITE, 4);
+	fix.set_contempt(20);
+
+	const SearchResult result = fix.get_move_at_threads(4, 4);
+
+	// Search() sets the root colour itself, and every leaf of this search is the same drawn class,
+	// so the score is the tinted draw whichever thread produced it.
+	REQUIRE(result.best_score == -20);
+}
+
 TEST_CASE("Contempt - draw_score is a pure function of side to move and root colour", "[search][contempt]")
 {
 	// The helper on its own, with no search around it. Both boards are the starting position, so

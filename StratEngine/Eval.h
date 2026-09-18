@@ -263,8 +263,9 @@ struct KingPawnCover {
 // Evaluate() calls — no per-thread clone is needed. Calling SetDrawScores()
 // while a search is running would NOT be safe, so it is private to AIPerplex,
 // which calls it once in Search(), beside root_color_, before it snapshots the
-// thread count. That is the whole of the write side; there is no other. EvalContext does not change any of this: it is always a
-// per-call stack local, never a member. The same holds for Breakdown() and
+// thread count. That is the whole of the write side; there is no other.
+// EvalContext does not change any of this: it is always a per-call stack local,
+// never a member. The same holds for Breakdown() and
 // its EvalBreakdown result (issue #129 phase 2): also `const`, also per-call
 // stack locals — though it is a debug path that no search thread calls.
 class Evaluator {

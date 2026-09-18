@@ -868,8 +868,9 @@ PieceAggregates Evaluator::ComputePieceAggregates(std::span<const BITBOARD> boar
 // not enter, so the bar for a zero is that no defence loses, not that most draw.
 //
 // Deliberately an evaluation scale and not a draw rule in ThreadData::check_draws():
-// a scale of zero already yields GameValues::Draw at the leaf, while a search-side
-// rule would put a score that is not depth-bounded into the transposition table.
+// a scale of zero already settles the leaf as drawn — at whatever a draw is worth to
+// the side to move — while a search-side rule would put a score that is not
+// depth-bounded into the transposition table.
 //
 int Evaluator::EndgameScale(std::span<const BITBOARD> boards) noexcept
 {
@@ -1097,7 +1098,8 @@ int Evaluator::Evaluate(const Board& board) const noexcept
 	//
 	// The scale acts on the whole score, material included — in a class scored
 	// 0 the bishop is not worth 300 cp less, the position is drawn — so the
-	// result at scale 0 is exactly GameValues::Draw. Mate scores never reach
+	// result at scale 0 would be exactly GameValues::Draw, which is why the
+	// early-out above answers for it instead. Mate scores never reach
 	// here: this function only ever produces a static centipawn score, and
 	// search constructs mate values around it.
 	const int white_pov = ApplyEndgameScale(RawWhitePov(ctx), ctx.endgame_scale);
