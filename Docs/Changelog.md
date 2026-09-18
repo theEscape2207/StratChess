@@ -77,6 +77,15 @@ square, and the same material is a win for White once it is evicted. A fractiona
 rook ending pins that the test is `== 0` and not "drawish", and the starting position pins that a
 symmetric zero is never tinted.
 
+**And it stays disabled.** The follow-up lab run measured `Contempt=20` at **-0.85 +/- 3.60** Elo
+over 19,980 games against the same commit at its default, an interval that contains zero, so the
+pre-registered outcome for #452 is unchanged. The gradient closed above was named in advance as the
+most likely way a flat contempt term misfires; it is gone — the candidate now scores
+insufficient-material draws at -0.20 in 853 of 871, against 0.00 in the previous run — and the class
+composition moved sharply for it, with insufficient-material draws falling 1988 to 871 and threefold
+rising 3076 to 3685 over identical openings. The Elo did not move. Row and method:
+`Measurements/ci-per-change.md`.
+
 ---
 
 ## 2026-09-17 — Strength lab per-engine UCI options; contempt on drawn scores (#564, #452)
