@@ -88,45 +88,21 @@ rising 3076 to 3685 over identical openings. The Elo did not move. Row and metho
 `assess_iteration_quality()` loses its fourth case, the `RejectionReason::SCORE_DROP` test that
 rejected an interrupted iteration whose score had collapsed to a drawn value from a previously
 decisive one. The `SCORE_DROP` enumerator, its `log_rejection` arm and the now-orphaned
-`score_draw_threshold` tuning field go with it; `MOVE_CHANGED`'s log line renumbers R5 to R4. The
-field had no UCI name, so no advertised option table changes, and `game_settings.json` stops
-carrying a key nothing reads.
+`score_draw_threshold` tuning field go with it; `MOVE_CHANGED`'s log line renumbers R5 to R4.
 
-**CASE 4's premise was retired by the #237 arc, not by this change.** It was written against a
-`pvs()` that returned a fabricated `score=0` on a timeout early in a new depth, where that
-invented zero could become the iteration's best score. `pvs()` now clears its PV row *before* both
-abort exits, so a fabricated draw reaches the root with an empty `current_move` and is caught by
-CASE 1 INCOMPLETE. What still reached CASE 4 was therefore a genuine drawn score — a completed
-root child that really does evaluate to a draw — which is a result, not a symptom.
+Its premise was retired by the #237 arc, not here: `pvs()` now clears its PV row *before* both
+abort exits, so the fabricated `score=0` the case was written against reaches the root with an
+empty `current_move` and is caught by CASE 1 INCOMPLETE. What still reached CASE 4 was a genuine
+drawn score — a result, not a symptom. It could not change the move played, because `MOVE_CHANGED`
+was tested after it and `state.last_iteration_move` is written at one site alongside
+`state.best_move`, so its only unique branch was already playing that same move.
 
-Removing it cannot change the move the engine plays. CASE 5 `MOVE_CHANGED` was tested after it, so
-a changed move was rejected either way; CASE 4's only unique branch was "drawn score **and** move
-unchanged", and `state.last_iteration_move` is written at exactly one site, alongside
-`state.best_move`, which makes `!move_changed` imply the two are the same move. `REJECT_AND_STOP`
-mutates no state. What the case did change was the *reported* result: it suppressed a true drawn
-score from a deeper interrupted iteration in favour of a staler optimistic one. `best_score` and
-`depth_completed` feed only a log line and the final UCI `info`; `search_was_stable` feeds only
-logging; `nodes_at_completed_depth` is overwritten with the summed thread counters before any
-consumer sees it. None reaches search, move choice or time management, and `bestmove` is built
-from `best_move` alone.
-
-**That reported score is not inert under match conditions.** `Run-EloMatch.ps1` passes fastchess
-`-draw movenumber=40 movecount=8 score=10` and `-resign movecount=4 score=800`, and adjudication
-consumes exactly the score the engine reports. Reporting a true draw where the old code reported a
-stale decisive score can therefore change the *outcome of an adjudicated game*, in either
-direction — not merely a number in a log. It needs eight consecutive plies from both engines
-inside +/-10 after move 40, so it is rare, and the new behaviour is the more honest one; but it is
-a behaviour note, not only a comparability caveat, and lab results straddling this change should
-be read with it in mind.
-
-Validation: `Compare-SearchEquivalence.ps1 -BaselineRef origin/main` IDENTICAL across 6 positions
-at depth 12 — necessary but **not** sufficient, because a fixed-depth run has no clock, so
-`metrics.interrupted` is never true and that run cannot observe this change at all. The check that
-can is a timed one: 6 positions at `go movetime 300`, three repeats per binary, played past the
-opening so the search meets a warm transposition table rather than a freshly cleared one. All six
-played the same move before and after, with no spread within either binary. The issue's proposed
-firing-rate probe was skipped deliberately: the argument above is a proof from the control flow,
-so a count of how often the case fired would not have changed the decision.
+**The reported score is not inert under match conditions.** Adjudication consumes exactly the score
+the engine reports, so revealing a true draw where the old code reported a stale decisive one can
+change the outcome of an adjudicated game. A post-pass over the 19,980-game lab corpus
+(run `35336326192`) bounds this: reporting the drawn score at all 30,395 candidate sites would move
+**2 games**, one in each direction. Rare enough to ignore for Elo, worth knowing when reading a lab
+result that straddles this change.
 
 ---
 
