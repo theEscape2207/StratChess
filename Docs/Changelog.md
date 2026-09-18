@@ -22,6 +22,43 @@ Newest first.
 
 ---
 
+## 2026-09-18 — Remove assess_iteration_quality CASE 4 (SCORE_DROP) (#567)
+
+`assess_iteration_quality()` loses its fourth case, the `RejectionReason::SCORE_DROP` test that
+rejected an interrupted iteration whose score had collapsed to a drawn value from a previously
+decisive one. The `SCORE_DROP` enumerator, its `log_rejection` arm and the now-orphaned
+`score_draw_threshold` tuning field go with it; `MOVE_CHANGED`'s log line renumbers R5 to R4. The
+field had no UCI name, so no advertised option table changes, and `game_settings.json` stops
+carrying a key nothing reads.
+
+**CASE 4's premise was retired by the #237 arc, not by this change.** It was written against a
+`pvs()` that returned a fabricated `score=0` on a timeout early in a new depth, where that
+invented zero could become the iteration's best score. `pvs()` now clears its PV row *before* both
+abort exits, so a fabricated draw reaches the root with an empty `current_move` and is caught by
+CASE 1 INCOMPLETE. What still reached CASE 4 was therefore a genuine drawn score — a completed
+root child that really does evaluate to a draw — which is a result, not a symptom.
+
+Removing it cannot change the move the engine plays. CASE 5 `MOVE_CHANGED` was tested after it, so
+a changed move was rejected either way; CASE 4's only unique branch was "drawn score **and** move
+unchanged", and `state.last_iteration_move` is written at exactly one site, alongside
+`state.best_move`, which makes `!move_changed` imply the two are the same move. `REJECT_AND_STOP`
+mutates no state. What the case did change was the *reported* `best_score` and `depth_completed`:
+it suppressed a true drawn score from a deeper interrupted iteration in favour of a staler
+optimistic one. Both fields feed only a log line and the final UCI `info`, never search, move
+choice or time management — but the strength lab adjudicates on reported score, so lab numbers
+straddling this change are not strictly comparable.
+
+Validation: `Compare-SearchEquivalence.ps1 -BaselineRef origin/main` IDENTICAL across 6 positions
+at depth 12 — necessary but **not** sufficient, because a fixed-depth run has no clock, so
+`metrics.interrupted` is never true and that run cannot observe this change at all. The check that
+can is a timed one: 6 positions at `go movetime 300`, three repeats per binary, played past the
+opening so the search meets a warm transposition table rather than a freshly cleared one. All six
+played the same move before and after, with no spread within either binary. The issue's proposed
+firing-rate probe was skipped deliberately: the argument above is a proof from the control flow,
+so a count of how often the case fired would not have changed the decision.
+
+---
+
 ## 2026-09-17 — Strength lab per-engine UCI options; contempt on drawn scores (#564, #452)
 
 The CI strength lab takes `candidate_uci_options` and `reference_uci_options`, whitespace-separated
