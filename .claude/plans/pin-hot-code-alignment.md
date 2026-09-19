@@ -178,3 +178,4 @@ not swamp.
 | What the flag removes (mod-64 offsets) and what it leaves (cache set, page) | `Docs/Workflow.md:361-368`, amending the lead clause and appending one sentence beside the `/ORDER` escalation |
 | The measured cost and swing numbers, and that the aligned swings are bounds | issue #578 comment (already recorded), and the PR body |
 | The flag now pins hot-function alignment in the shipping build | `Docs/Changelog.md` |
+| That the flag lands on both `StratChessEvolved` and `StratChessTests`, and that its padding is a deterministic function of the IR | comment on #513, **after this PR merges** — that issue must establish a Release reproducibility basis over an image that now carries the padding |
