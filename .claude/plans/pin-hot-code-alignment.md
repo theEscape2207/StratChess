@@ -139,8 +139,12 @@ computes.
   branch at `CMakeLists.txt:286`.
 - `StratChessTests` also gains 64-byte function alignment and a comparable size increase. Harmless —
   nothing measures that binary's speed — but it is a consequence of the chosen insertion point.
-- `/Brepro` still holds: two clean builds of one commit produce the same bytes. Closed by inspection;
-  padding is deterministic and no validation step covers it.
+- Whatever reproducibility basis the Release build has, this change neither strengthens nor weakens
+  it. Alignment padding is a deterministic function of the IR, so it introduces no new nondeterminism
+  on either side of `/Brepro`'s two halves (`CMakeLists.txt:316-320`). This is deliberately *not*
+  phrased as "`/Brepro` still holds": per #513, `/Brepro`'s compile half is inert on the engine
+  target's ThinLTO objects and no Release reproducibility gate exists to hold — #381 established one
+  for Debug only. Closed by inspection; nothing here is in a position to validate it.
 
 ## Validation
 
