@@ -647,6 +647,24 @@ catch { $buildFailed = $true; Write-Host "Build threw: $_" -ForegroundColor Dark
 if ($LASTEXITCODE -ne 0) { $buildFailed = $true }
 $checkResults['Full build'] = if ($buildFailed) { 'FAIL' } else { 'PASS' }
 
+# --- Step 1a: hot-code alignment in the shipping image ---
+# Build tier only: -falign-functions=64 can only be lost through the build
+# configuration, and an Engine-tier diff cannot reach it. CI covers the case no diff
+# announces -- a toolchain upgrade that stops honouring the flag -- by running this
+# on every Build- and Engine-tier trigger.
+#
+# Reads the linker map CMakeLists.txt emits on every link, so it costs a file read
+# rather than the relink it would take to reconstruct one. Needs the build above.
+if (($Force -or $change.Tier -eq 'Build') -and -not $buildFailed) {
+    Write-Host "`n==> Hot-code alignment (issue #513)" -ForegroundColor Cyan
+    $alignmentScript = Join-Path $PSScriptRoot 'Test-CodeAlignment.ps1'
+    $alignmentFailed = $false
+    try   { & $alignmentScript }
+    catch { $alignmentFailed = $true; Write-Host "Alignment check threw: $_" -ForegroundColor DarkGray }
+    if ($LASTEXITCODE -ne 0) { $alignmentFailed = $true }
+    $checkResults['Hot-code alignment'] = if ($alignmentFailed) { 'FAIL' } else { 'PASS' }
+}
+
 # --- Step 1b: fast clang-tidy Gate ---
 # Run after the build so a fresh worktree has the shipping clang-cl compilation
 # database the shared local/CI runner requires.
