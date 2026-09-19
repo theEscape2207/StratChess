@@ -358,14 +358,17 @@ The aggregate compares like with like only where the existing equivalence check 
 of identical source, which by construction visit identical nodes. Even there it carries a second
 term.
 
-**Code placement moves nps, and nothing in the build pins it.** Two node-identical builds run at
-different speeds when unrelated code ahead of the hot path changes size, because the hot functions
-land on different cache lines, pages and branch-predictor slots. Measured on #556: a 144-byte shift
-of every hot function read **−3.90%** median over 9 pairs, and **+0.60%** once both builds were
-relinked with a shared `/ORDER` to identical hot addresses. The swing goes both ways, so it can
-invent a regression or hide a real one. A uniformly negative delta on a change that added no
+**Code placement moves nps, and the build pins only its 64-byte alignment.** Two node-identical
+builds run at different speeds when unrelated code ahead of the hot path changes size, because the
+hot functions land on different cache lines, pages and branch-predictor slots. Measured on #556: a
+144-byte shift of every hot function read **−3.90%** median over 9 pairs, and **+0.60%** once both
+builds were relinked with a shared `/ORDER` to identical hot addresses. The swing goes both ways, so
+it can invent a regression or hide a real one. A uniformly negative delta on a change that added no
 per-node work is therefore not by itself a slowdown — relink both builds with a shared `/ORDER` and
-re-measure before concluding. Whether to pin the layout permanently is open (#555).
+re-measure before concluding. `-falign-functions=64` in the clang-cl build removes the part of this
+that lives *within* a cache line — it bounded the residual swing at ~0.2% where an unaligned build
+read ~0.5-1% (#578) — but a size change still moves hot code across cache sets and pages, which is
+the larger half and why the `/ORDER` step stands. Whether to pin placement itself is open (#555).
 
 **Check which tree the nodes moved to before believing an nps change.** `Run-Bench.ps1` reports the
 main tree and the quiescence tree separately (`main nodes` / `qs nodes`) alongside the total. If the

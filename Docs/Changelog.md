@@ -22,6 +22,20 @@ Newest first.
 
 ---
 
+## 2026-09-19 — clang-cl pins hot-function alignment at 64 bytes (#578)
+
+`/clang:-falign-functions=64` in `strat_configure_target`'s clang-cl branch. Spike #578 measured it
+against stock `main`: no measurable nps cost (+0.94% median over 9 paired node-identical runs, a sign
+not separable from layout noise in either direction), and the layout swing under three cold-code
+perturbations bounded at ~0.2% where the unaligned build read ~0.5-1%. Price is a +1.6% image from
+the padding, on both `StratChessEvolved` and `StratChessTests`.
+
+Functions only. `-falign-loops` reaches the clang-cl frontend but leaves no trace in the IR, so under
+the shipping target's LTO — where codegen runs inside `lld-link` — it cannot take effect, while still
+applying to the non-LTO test binary that nothing measures. It removes only the part of #556's swing
+that lives within a cache line; a size change still moves hot code across cache sets and pages, so
+the `/ORDER` relink escalation stands and #555 stays open.
+
 ## 2026-09-18 — Quiescence refuses a mate score as a TT cutoff (#571)
 
 `quiescence()` would take a cutoff from any usable entry, mate scores included. Every PV leaf probes

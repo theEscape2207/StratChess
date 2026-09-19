@@ -284,10 +284,17 @@ function(strat_configure_target tgt)
             /constexpr:steps100000000
             /FI${compat_header})
     elseif(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+        # -falign-functions=64 starts every function on a cache line, so a cold-code
+        # size change no longer moves the hot path within its line -- the smaller half
+        # of the nps swing that makes two node-identical builds read differently. It
+        # survives LTO because it lands in the IR as `align 64` per definition; the
+        # loop-alignment spelling leaves no IR trace, so it would be inert here and
+        # live only on the non-LTO targets. Costs ~1.6% image, no measurable nps.
         target_compile_options(${tgt} PRIVATE
             -mavx2 -mbmi2
             /clang:-Wall /clang:-Wextra /WX /utf-8
             /clang:-fconstexpr-steps=100000000
+            /clang:-falign-functions=64
             /FI${compat_header})
     else()
         target_compile_options(${tgt} PRIVATE
