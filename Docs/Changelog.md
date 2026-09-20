@@ -22,6 +22,52 @@ Newest first.
 
 ---
 
+## 2026-09-20 — Move-quality method split from its data, and routed from the skill (#486, #584)
+
+`Docs/MoveQuality.md` was both the instrument and the ledger: 445 lines in which the method for
+reading a scan sat interleaved with the run tables of three particular runs, which are append-only
+and grow without bound. #448 separated data from method the same way for the Elo measurements,
+though it dissolved the method into the `measure-strength` skill and left nothing in `Docs/`; here
+the method stays put, on the `Docs/MoveQualityExport.md` precedent #486's triage identified. The
+numbers move to `Measurements/move-quality-tier1.md` and `move-quality-tier2.md`.
+
+The split is by durability rather than by tier, which turned out to be the cheap option rather than
+the expensive one. The operative test is mechanical: a finding that **pools both builds** of a run
+describes the engine and stays in `Docs/`; a finding that **compares the two builds** describes that
+run and moves to its `Row detail`. Eleven of the twelve pool, and only T5 compares, so only T5
+moved. Several of the eleven do rest on a single run's table, which bounds how much weight they
+carry without making them run-local. Finding 1 and the Tier 2 finding that retracts it therefore
+stay in the same file, so the retraction needed no engineering.
+
+Three rules were embedded inside the data and are now in `Method`, where they apply to every future
+run rather than to the run they happened to be written under: score bands in a class table are
+exclusive and the cumulative row is the one to quote; a clock bucket is what the mover had when it
+started thinking, not what was left afterwards; and the cross-build gap is an upper bound rather
+than an estimate of disagreement. The level-material rules — that `RvsR`/`OCB` name no stronger
+side and resolve colour from the entry score's sign, and that the rows stay pooled-only because a
+per-build split measures the builds' scales — moved with them.
+
+`Measurements/README.md` gains the two ledgers and a carve-out, because they do not fit the shape it
+prescribes: a move-quality run is a wide profile rather than a narrow row, and it carries no
+`Verdict` — a profile is a diagnosis, not a decision about shipping. What still binds is the
+`Row detail` obligation and the one-ledger rule, which is what carries the caveat that the
+level-material rows come from post-#128 runs and are not comparable ply-for-ply with the baseline's.
+
+#584 is the second half and the reason the first half was worth doing now: nothing under
+`.claude/skills/` mentioned the scan at all, so `measure-strength` — the skill that routes every
+piece of strength work — ended at a pooled Elo with no path to the tool that says where it came
+from. The only pointer was one sentence in `Docs/CI.md`, 376 lines in. The skill now carries a
+`Where the result came from` section and names the two new ledgers in `Recording`. Its frontmatter
+`description` is deliberately unchanged: widening it would alter when the skill triggers everywhere,
+and a reader who wants the scan has just measured something and is already inside it.
+
+Eight inbound references were repointed or confirmed. The two `ci-per-change.md` rows split, which
+the issue had treated as one case: the 2026-09-02 row cites raw corpus counts and now points at the
+Tier 1 ledger, while the 2026-09-01 row cites Finding 3 and still points at `Docs/`. The two scanner
+docstrings put this on the Tooling tier rather than the Docs tier, and both scripts are engine-inert,
+so the build and test legs correctly skip; `analyze_move_quality.py --self-test` passes and the real
+validation was resolving every link, anchor and cited path by script.
+
 ## 2026-09-20 — Reading the margin at which a UCI spin option changes bestmove (#575)
 
 `Scripts/bisect_uci_option.py` bisects a UCI spin option over a FEN corpus and reports, per

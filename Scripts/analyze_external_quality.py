@@ -12,8 +12,9 @@ the blunder threshold and the parser all come from analyze_move_quality.py, so
 the two tiers' tables describe the same rows and can be read side by side -- the
 `self` columns below reproduce Tier 1 on exactly the rows Tier 2 judged.
 
-Method notes, limits and the committed baselines live in Docs/MoveQuality.md;
-read that before acting on any number this prints.
+Method notes and limits live in Docs/MoveQuality.md; the measured runs live in
+Measurements/move-quality-tier2.md. Read both before acting on any number this
+prints.
 
 The oracle is not in the checkout. Put a Stockfish binary and its GPL-3 licence
 in EngineTesting/ beside fastchess.exe, the way the opening book and fastchess
