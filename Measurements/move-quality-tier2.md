@@ -38,6 +38,24 @@ in every phase. Both builds' rows come from the same games (each plays each open
 reversed), which is what makes a difference this small readable. Consistent with the run's +8.05 Elo
 without being evidence for it.
 
+**The opening bucket split by plies since book exit.** A re-score of shards 0, 1, 10 and 11 of this
+run at the same depth and settings — 4,437 games, 330,237 contested rows, `--by-book-exit`:
+
+| build | band | n | share of bucket | ext ACPL (95%) | ext blu% (95%) | agree% |
+|---|---|---|---|---|---|---|
+| candidate | 0-3 | 8,738 | 15.3% | 27.2 [26.3, 28.1] | 2.08 [1.80, 2.41] | 43.2 |
+| candidate | 4-9 | 12,468 | 21.8% | 33.2 [32.2, 34.2] | 3.95 [3.61, 4.32] | 42.1 |
+| candidate | 10+ | 36,037 | 63.0% | **45.7** [44.8, 46.7] | 8.07 [7.74, 8.42] | 40.9 |
+| reference | 0-3 | 8,747 | 15.2% | 27.8 [26.8, 28.8] | 2.42 [2.09, 2.77] | 43.8 |
+| reference | 4-9 | 12,496 | 21.8% | 34.1 [33.1, 35.1] | 4.07 [3.71, 4.44] | 41.7 |
+| reference | 10+ | 36,153 | 63.0% | **46.2** [45.3, 47.2] | 8.31 [7.98, 8.66] | 40.4 |
+
+**A four-shard sub-sample of this run, not a second run** — its phase table reproduces the one above
+(opening 40.1, middlegame 34.9, endgame 16.7 for the candidate), which is what licenses reading the
+two together. Every game's boundary is `setup_assumed`: the lab starts from an EPD position recorded
+as the setup FEN, so the band is plies since that position. The reading this supports is under
+[T2](../Docs/MoveQuality.md#findings-1).
+
 The engine-level readings from this run — that the self-reported rate understates the real one
 by 13× to 48×, that the profile is monotone and points the wrong way, that the blunder rates are
 the figures to quote, and that agreement measures narrowness — are properties of the instrument

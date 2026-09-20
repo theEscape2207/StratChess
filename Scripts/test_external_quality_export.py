@@ -1343,7 +1343,7 @@ class ExportRunTests(unittest.TestCase):
 
     def _analyse(self, oracle, *, export_path=None, source_run=None, root=None, batch=1,
                  jobs=1, limit=0, shards=0):
-        """Run analyse() over `root` against `oracle`; -> its three results."""
+        """Run analyse() over `root` against `oracle`; -> its results, as they come."""
         with unittest.mock.patch.object(aeq, "ProcessPoolExecutor", _InProcessPool), \
                 unittest.mock.patch.object(aeq, "_engine", lambda: oracle), \
                 unittest.mock.patch.object(aeq, "_log", lambda message: None):
@@ -1372,8 +1372,8 @@ class ExportRunTests(unittest.TestCase):
     # --- a successful scan --------------------------------------------------
 
     def test_a_successful_scan_reconciles(self):
-        cells, per_game, _worst = self._analyse(_SequencedOracle(self.SCORES),
-                                                export_path=self.out)
+        cells, per_game, _worst, _bands = self._analyse(_SequencedOracle(self.SCORES),
+                                                        export_path=self.out)
         manifest, blunders, complete = exp.read_artifact(self.out)
         self.assertEqual(manifest["type"], "manifest")
         self.assertEqual([row["row_id"] for row in blunders], ["0:0:0", "0:0:2", "0:0:5"])
@@ -1387,7 +1387,8 @@ class ExportRunTests(unittest.TestCase):
 
     def test_zero_eligible_rows_still_completes(self):
         self.pgn.write_text(self.QUIET_PGN, encoding="utf-8")
-        cells, _per_game, _worst = self._analyse(_SideToMoveOracle(), export_path=self.out)
+        cells, _per_game, _worst, _bands = self._analyse(_SideToMoveOracle(),
+                                                         export_path=self.out)
         self.assertEqual(cells, {})
         _manifest, blunders, complete = exp.read_artifact(self.out)
         self.assertEqual(blunders, [])
@@ -1503,8 +1504,8 @@ class ExportRunTests(unittest.TestCase):
         """
         real_report = aeq.report
 
-        def quiet(cells, per_game, worst, depth, samples, out=None):
-            real_report(cells, per_game, worst, depth, samples, out=io.StringIO())
+        def quiet(cells, per_game, worst, depth, samples, out=None, bands=None):
+            real_report(cells, per_game, worst, depth, samples, out=io.StringIO(), bands=bands)
 
         argv = ["analyze_external_quality.py", str(self.root), "--engine", str(self.pgn),
                 "--jobs", "1", "--samples", "10", *extra]
