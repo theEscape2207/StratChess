@@ -88,7 +88,7 @@ target the repo of their own `$PSScriptRoot`.
 | `Compare-SearchEquivalence.ps1 -After <exe>` | The gate for a change claiming to preserve behaviour |
 | `Measure-UciLatency.ps1 -Command <cmd>` | Protocol-level round-trip cost of one UCI command |
 | `Run-PerftCheck.ps1` | Move generation vs a 142,953-position corpus (~25 min) |
-| `Test-ReleaseReproducibility.ps1` | Two builds, byte-compared — after a build-configuration or toolchain change |
+| `Test-ReleaseReproducibility.ps1` | Builds byte-compared — after a build-configuration or toolchain change |
 | `New-Worktree.ps1 -Name <task>` | Start a task needing its own directory |
 | `New-TaskBranch.ps1 -Name <task>` | Start a task **in the current worktree** |
 | `Get-Worktrees.ps1` | Session start, or before resuming an idle worktree |

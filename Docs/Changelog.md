@@ -28,7 +28,9 @@ Two properties of the shipping image that were previously assumed are now assert
 
 **Release reproducibility.** `Scripts/Test-ReleaseReproducibility.ps1` builds twice into the same
 build directory and byte-compares this project's objects and both executables: `-Mode Determinism`
-(two uncached builds) and `-Mode Cache` (uncached, then served from a compiler cache). #381
+(two uncached builds) and `-Mode Cache` (an uncached reference, a cold build that populates a private
+cache, then one served from it — the reference is uncached because cold-cached against warm-cached
+compares a cache entry with the copy it was made from, and passes whatever the cache returns). #381
 established that comparison for Debug and left it a procedure; nothing implemented it, and Release
 had no basis at all. Measured over both modes at `0b170d3`: **102 of 102 artifacts byte-identical**.
 

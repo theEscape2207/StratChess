@@ -108,9 +108,11 @@ rebuilds in the same build directory** — `/Z7` embeds each object's path in it
 comparing differently-named build directories reports differences a rebuild in place never has.
 
 `Scripts/Test-ReleaseReproducibility.ps1` is that comparison, in both modes: `-Mode Determinism`
-(two cold builds) and `-Mode Cache` (cold then warm). It runs on demand — two full builds, and
-nothing invokes it automatically — so run it when a change touches the build configuration or the
-toolchain. **Release rests on a different basis from Debug's, not a weaker one:** the engine target
+(two cold builds) and `-Mode Cache` (an uncached reference, then a build served from a freshly
+populated cache — **the reference is uncached on purpose**, since comparing the cold cached build
+with the warm one compares a cache entry against the copy it was made from and holds whatever the
+cache returns). It runs on demand — two full builds, three under `-Mode Cache`, and nothing invokes
+it automatically — so run it when a change touches the build configuration or the toolchain. **Release rests on a different basis from Debug's, not a weaker one:** the engine target
 links with ThinLTO, where the compiler emits bitcode rather than COFF, so the compile-side `/Brepro`
 is inert there and identity comes from frontend determinism, while the linker-side `/Brepro` still
 settles the PE header. Both halves stay — the ~89 non-LTO compile edges do emit COFF and do need the

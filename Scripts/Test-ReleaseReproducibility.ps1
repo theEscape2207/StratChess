@@ -35,10 +35,14 @@
     Determinism -- two cold builds with the compiler cache disabled. Asserts the
                    toolchain itself is deterministic. This is the mode that answers
                    "is the Release image reproducible".
-    Cache       -- one cold build into a private cache, then a rebuild served from it.
-                   Asserts a cache hit reproduces what the compiler produced, which is
-                   the property Docs/CI.md's ccache gate rests on. Skipped when no
-                   compiler cache is installed.
+    Cache       -- three builds: an uncached reference, a cold build that populates a
+                   private cache, and a third served from it. The reference is what
+                   makes the mode mean anything. Comparing the cold cached build with
+                   the warm one compares a cache entry against the copy it was made
+                   from, which holds however wrong the cache is; against an uncached
+                   reference the comparison asserts the property Docs/CI.md's ccache
+                   gate rests on -- that building through the cache ships what the
+                   compiler alone produces. Skipped when no cache is installed.
 
 .PARAMETER Config
     Build configuration. Defaults to Release: the configuration that ships, and the
@@ -52,8 +56,9 @@
     pwsh -File Scripts/Test-ReleaseReproducibility.ps1 -Mode Cache
     pwsh -File Scripts/Test-ReleaseReproducibility.ps1 -SelfTest
 
-    Two full builds, so budget minutes rather than seconds. Run it when a change
-    touches the build configuration or the toolchain; nothing runs it automatically.
+    Two full builds, three in -Mode Cache, so budget minutes rather than seconds. Run
+    it when a change touches the build configuration or the toolchain; nothing runs it
+    automatically.
 #>
 
 [CmdletBinding(DefaultParameterSetName = 'Run')]
@@ -198,6 +203,35 @@ function Get-CacheHitCount {
     return $hits
 }
 
+function Get-BuildPlan {
+    <#
+      .SYNOPSIS
+        The ordered builds a mode runs, and which two of them are compared.
+      .DESCRIPTION
+        A function rather than two inline labels so the shape of each mode is
+        assertable without a toolchain. The one property worth protecting is Cache
+        mode's reference build: with the cache enabled for it, the comparison holds
+        whatever the cache returns, because the warm build is served the bytes the
+        cold one stored.
+    #>
+    param(
+        [Parameter(Mandatory)][ValidateSet('Determinism', 'Cache')][string]$Mode
+    )
+
+    if ($Mode -eq 'Cache') {
+        return @(
+            [pscustomobject]@{ Label = 'Build 1 of 3 (compiler cache disabled, the reference)'; CacheEnabled = $false; Compare = $true }
+            [pscustomobject]@{ Label = 'Build 2 of 3 (cold cache, populating it)'; CacheEnabled = $true; Compare = $false }
+            [pscustomobject]@{ Label = 'Build 3 of 3 (warm cache, served from it)'; CacheEnabled = $true; Compare = $true }
+        )
+    }
+
+    return @(
+        [pscustomobject]@{ Label = 'Build 1 of 2 (compiler cache disabled)'; CacheEnabled = $false; Compare = $true }
+        [pscustomobject]@{ Label = 'Build 2 of 2 (compiler cache disabled)'; CacheEnabled = $false; Compare = $true }
+    )
+}
+
 function Invoke-SelfTest {
     $script:selfTestFailures = 0
     Write-Host '==> Self-test' -ForegroundColor Cyan
@@ -286,6 +320,27 @@ function Invoke-SelfTest {
     Assert-Equal -Name 'a stats dump with no hit fields reports zero hits' `
         -Expected '0' -Actual "$(Get-CacheHitCount -StatsLine @('cleanups_performed	0', ''))"
 
+    # --- build plan ----------------------------------------------------------
+    $determinism = @(Get-BuildPlan -Mode Determinism)
+    Assert-Equal -Name 'Determinism runs two builds' -Expected '2' -Actual "$($determinism.Count)"
+    Assert-Equal -Name 'Determinism disables the cache for both' `
+        -Expected 'False,False' -Actual "$(($determinism | ForEach-Object { $_.CacheEnabled }) -join ',')"
+    Assert-Equal -Name 'Determinism compares both builds' `
+        -Expected '2' -Actual "$(@($determinism | Where-Object { $_.Compare }).Count)"
+
+    $cache = @(Get-BuildPlan -Mode Cache)
+    Assert-Equal -Name 'Cache runs three builds' -Expected '3' -Actual "$($cache.Count)"
+    # The finding this mode was rebuilt around: a cached reference compares a cache
+    # entry with the copy it was made from, which passes whatever the cache returns.
+    Assert-Equal -Name 'FALSIFY: Cache mode reference build is uncached' `
+        -Expected 'False' -Actual "$($cache[0].CacheEnabled)"
+    Assert-Equal -Name 'Cache mode populates, then serves, from the cache' `
+        -Expected 'True,True' -Actual "$(($cache[1..2] | ForEach-Object { $_.CacheEnabled }) -join ',')"
+    Assert-Equal -Name 'Cache mode compares the uncached reference against the warm build' `
+        -Expected 'True,False,True' -Actual "$(($cache | ForEach-Object { $_.Compare }) -join ',')"
+    Assert-Equal -Name 'every mode compares exactly two builds' `
+        -Expected '2' -Actual "$(@($cache | Where-Object { $_.Compare }).Count)"
+
     $failures = $script:selfTestFailures
     if ($failures -gt 0) {
         Write-Host "$failures self-test case(s) FAILED." -ForegroundColor Red
@@ -324,7 +379,7 @@ function Invoke-ScopedBuild {
       .SYNOPSIS
         Wipe the build directory, build both targets, and hash the scoped artifacts.
       .DESCRIPTION
-        The same directory both times, deliberately: /Z7 embeds each object's path in
+        The same directory every time, deliberately: /Z7 embeds each object's path in
         its debug$S record, so two differently-named build directories differ by
         construction and would report a failure no toolchain could fix.
     #>
@@ -381,14 +436,17 @@ function Invoke-ScopedBuild {
 
 Write-Host "==> Release reproducibility ($Mode, $Config)" -ForegroundColor Cyan
 Write-Host "  Build directory: $buildDir" -ForegroundColor DarkGray
-Write-Host '  Two full builds; this takes minutes.' -ForegroundColor DarkGray
+$plan = @(Get-BuildPlan -Mode $Mode)
+Write-Host "  $($plan.Count) full builds; this takes minutes." -ForegroundColor DarkGray
 
 try {
-    $firstLabel = if ($useCache) { 'Build 1 of 2 (cold cache, populating it)' } else { 'Build 1 of 2 (compiler cache disabled)' }
-    $secondLabel = if ($useCache) { 'Build 2 of 2 (warm cache, served from it)' } else { 'Build 2 of 2 (compiler cache disabled)' }
-
-    $firstHash = Invoke-ScopedBuild -Label $firstLabel -CacheEnabled $useCache
-    $secondHash = Invoke-ScopedBuild -Label $secondLabel -CacheEnabled $useCache
+    $comparable = [System.Collections.Generic.List[hashtable]]::new()
+    foreach ($step in $plan) {
+        $hash = Invoke-ScopedBuild -Label $step.Label -CacheEnabled $step.CacheEnabled
+        if ($step.Compare) { $comparable.Add($hash) }
+    }
+    $firstHash = $comparable[0]
+    $secondHash = $comparable[1]
 
     # Read before the cache directory is removed below.
     $cacheHits = 0
@@ -423,7 +481,7 @@ Write-Host ("  {0,-22} {1}" -f 'Differing', $verdict.Differing.Count) -Foregroun
 Write-Host ("  {0,-22} {1}" -f 'Present in one build', $verdict.Missing.Count) -ForegroundColor DarkGray
 
 if ($useCache) {
-    Write-Host ("  {0,-22} {1}" -f 'Cache hits (2nd build)', $cacheHits) -ForegroundColor DarkGray
+    Write-Host ("  {0,-22} {1}" -f 'Cache hits (warm)', $cacheHits) -ForegroundColor DarkGray
 }
 
 foreach ($item in @($verdict.Differing) + @($verdict.Missing)) {
@@ -434,7 +492,7 @@ foreach ($item in @($verdict.Differing) + @($verdict.Missing)) {
 # answer the Determinism question instead -- with a PASS that reads as this one.
 if ($useCache -and $cacheHits -eq 0) {
     Write-Host ''
-    Write-Host 'FAIL: the second build read nothing from the compiler cache, so this run did' -ForegroundColor Red
+    Write-Host 'FAIL: the warm build read nothing from the compiler cache, so this run did' -ForegroundColor Red
     Write-Host 'not compare a cached build against an uncached one. Check that build.ps1 still' -ForegroundColor Yellow
     Write-Host 'picks ccache up from PATH (Docs/Workflow.md -> Compiler cache).' -ForegroundColor Yellow
     exit 1
@@ -456,5 +514,5 @@ if (-not $verdict.Ok) {
 }
 
 Write-Host ''
-Write-Host "PASS: $($verdict.Compared) artifact(s) byte-identical across both builds." -ForegroundColor Green
+Write-Host "PASS: $($verdict.Compared) artifact(s) byte-identical across the compared builds." -ForegroundColor Green
 exit 0

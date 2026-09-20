@@ -314,10 +314,13 @@ is a green build (#513):
   Build tier and on the Windows Release CI leg. `-falign-functions=64` survives only while clang-cl
   keeps translating the spelling *and* link-time codegen keeps honouring `align 64`; without it the
   two land at `%64 = 16` and `48`, and the aligned share falls from 92.7% to 22.9%.
-- **Release reproducibility.** `Test-ReleaseReproducibility.ps1` builds twice and byte-compares this
-  project's objects and both executables — `-Mode Determinism` (two uncached builds) or `-Mode Cache`
-  (uncached, then served from a cache, which is the property the ccache gate rests on). Two full
-  builds, so nothing runs it automatically: run it after a build-configuration or toolchain change.
+- **Release reproducibility.** `Test-ReleaseReproducibility.ps1` builds repeatedly into one build
+  directory and byte-compares this project's objects and both executables — `-Mode Determinism` (two
+  uncached builds) or `-Mode Cache` (an uncached reference, a cold build that populates a private
+  cache, then one served from it, which is the property the ccache gate rests on). **Cache mode's
+  reference is uncached deliberately:** cold-cached against warm-cached compares a cache entry with
+  the copy it was made from and passes whatever the cache returns. Two full builds, three in Cache
+  mode, so nothing runs it automatically: run it after a build-configuration or toolchain change.
   Release rests on a different basis from #381's Debug one — under ThinLTO the compile-side `/Brepro`
   is inert and identity comes from frontend determinism, while the linker-side half settles the PE —
   and **the compile flag must stay** for the non-LTO compile edges that do emit COFF.
