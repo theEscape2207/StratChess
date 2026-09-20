@@ -658,6 +658,22 @@ for an in-repo-assets-only corpus, or see `--help` for `--pgn-dir`/`--every-n-pl
 `Scripts/test_build_corpus.py` invokes that real default-root path from a temporary working
 directory and requires at least one non-blank FEN, guarding against silently harvesting the wrong checkout level.
 
+**Option-margin tooling**: `Scripts/bisect_uci_option.py` bisects a UCI spin option over a corpus
+and reports, per position, the smallest value at which `bestmove` changes. The engine has neither
+MultiPV nor `searchmoves`, so that is the only way to read the margin between the move the search
+prefers and the runner-up, and it screens offline whether a candidate knob changes any decision at
+all before a lab batch is booked. It consumes `build_corpus.py`'s output directly as well as a
+`{"id", "fen", "expect"}` JSONL. Three failure modes it exists to encode, all of which produce a
+plausible wrong number rather than an error, are described in the script's own docstring: a bisect
+anchored only at the range maximum misses a position that flips and reverts, a baseline that does
+not reproduce the move being displaced measures a decision that never happened, and two consecutive
+searches at the same option value share a table unless `ucinewgame` is explicit. `--self-test`
+drives the real pipe against a scripted stub engine — `FakeUciEngine.ps1` covers driver
+misbehaviour, not an option-dependent `bestmove` — and covers monotone, non-monotone, unreachable,
+mate-excluded and baseline-mismatch positions plus both bracket ends; `--self-check` asserts that
+every corpus FEN is legal and every `expect` legal in it. `Scripts/test_bisect_uci_option.py` runs
+both from a temporary working directory, so neither needs an engine build.
+
 ### Full tactical suite in main executable
 
 **Files**: `StratEngine/Tests/TacticalTestRunner.h/cpp`, `Tests/tactical_test_cases.json`

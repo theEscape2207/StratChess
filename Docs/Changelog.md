@@ -22,6 +22,43 @@ Newest first.
 
 ---
 
+## 2026-09-20 — Reading the margin at which a UCI spin option changes bestmove (#575)
+
+`Scripts/bisect_uci_option.py` bisects a UCI spin option over a FEN corpus and reports, per
+position, the smallest value at which `bestmove` changes. #574 used that technique once, against
+`Contempt`, and retired in ~25 min of local CPU a question two 19,980-game lab runs (6 h, two null
+intervals) had failed to settle; its probe was written under a "do not keep the script" non-goal.
+This is the durable form, scoped to the genuinely novel part — the fixed-depth UCI driving, the
+python-chess replay and the misbehaving-engine double already existed.
+
+The engine advertises four spin options (`ReverseFutilityMaxDepth`, `ReverseFutilityMargin`,
+`FrontierFutilityMargin`, `Contempt`) and has neither MultiPV nor `searchmoves`, so bisecting the
+option is the only way to read the margin between the move the search prefers and the runner-up.
+The intended use is screening: whether a candidate knob changes any decision at all, offline and
+for free, before a lab batch is booked.
+
+Three traps are encoded because each produced a wrong number before it was caught. A bisect
+anchored only at the range maximum cannot see a position that flips at an interior value and
+reverts by the maximum, so quartile samples are probed before any position is called unreachable —
+on #574's corpus those were 9–12% of all flips, and a 250-position validation run here found two
+more against the shipping engine. A baseline that does not reproduce the move being displaced is
+reported as its own bucket rather than folded into the denominator. `ucinewgame` + `isready`
+precede every search: `AIPerplex::SetTuning()` clears the table on a tuning change but skips the
+clear when the value is unchanged, so two consecutive searches at the baseline value would
+otherwise share a table. Two silent-garbage modes abort the run instead of producing a row — a
+transcript that never reached the requested depth, and a `setoption` the engine did not
+acknowledge, the latter being what makes a null result trustworthy.
+
+A mate score is the one legitimate short transcript: the search ends where the mate is found, so
+those positions are excluded (#571) rather than rejected. That distinction was found by running
+against the real engine, not by the fixtures.
+
+Validated end to end at depth 10 over 250 corpus positions: two reported thresholds were
+reproduced exactly by hand with fresh engine processes (411, and a non-monotone 344 that reverts
+by 1000). `--self-test` covers the bisection against a scripted stub engine over the real pipe,
+`--self-check` the corpus invariants; `Scripts/test_bisect_uci_option.py` runs both without an
+engine build. Local CPU only — no CI minutes, no lab batch.
+
 ## 2026-09-19 — A stated basis for Release identity, and a tripwire under the alignment flag (#513)
 
 Two properties of the shipping image that were previously assumed are now asserted.
