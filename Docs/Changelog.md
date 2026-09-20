@@ -22,6 +22,30 @@ Newest first.
 
 ---
 
+## 2026-09-21 — The Tier 2 opening bucket is not a book-exit artifact (#590, #583)
+
+The lab's games start from an EPD book position at fullmove 9, so Tier 2's finding that the engine
+plays worst in the opening could have been an artifact of the rows just after book exit rather than
+a property of the engine. Spike #583 split every cell by plies since book exit and measured the
+reverse: opening ACPL rises 27.2 → 33.2 → 45.7 cp across the `0-3`, `4-9` and `10+` bands, on
+disjoint intervals in both builds, and `10+` — 63% of the bucket — sits ~11 cp above the middlegame.
+The rows nearest the book position are the cheapest in the report, so they were diluting T2 by
+roughly 5 cp rather than producing it. Four shards, 4,437 games, 330,237 contested rows, 23.5 minutes
+of local CPU.
+
+`--by-book-exit` is kept rather than deleted with the spike, because #481 scans a different
+population and will want the same split. Its counters live in a dict of their own rather than as a
+third element of the phase key: the shared-key version broke six tests that sum `cells`, and a row
+counted twice in a dict every consumer sums is a wrong number nothing catches — the same reasoning
+that removed #582's endpoint negation. The default report is byte-identical to its predecessor on a
+controlled 40-game comparison, band counts reconcile against phase counts per cell, and the self-test
+covers both band edges and the `unknown` case.
+
+The table is run data, so it goes under this run's row detail in
+`Measurements/move-quality-tier2.md` and `Docs/` takes only T2's exclusion — the split #588 applied.
+What the spike does not settle, and the finding now says: the band is distance from the corpus's
+fixed starting position, which is also time spent in the phase.
+
 ## 2026-09-21 — The Tier 2 path-dependence limit carries a measured size (#588, #582)
 
 `Docs/MoveQuality.md` asserted that Tier 2 scores are path-dependent inside a game and that

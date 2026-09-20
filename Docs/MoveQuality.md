@@ -52,6 +52,10 @@ an interrupted scan leaves a footer-less file that the reader rejects, and a fai
 leaves a usable one. The destination must not already exist; there is no resume. Schema, population
 and retry rules: [MoveQualityExport.md](MoveQualityExport.md).
 
+`--by-book-exit` splits every cell again by plies since book exit, with intervals on the opening
+bands, and answers whether a phase result is an artifact of where the corpus starts rather than of
+how the engine plays. It leaves the default report untouched.
+
 ### Cost
 
 The scan reports its own: every progress line is stamped with elapsed time, and each shard prints
@@ -274,6 +278,15 @@ filter-independent re-run that settles it. #484 added a lossless export for late
 it did not make that replay a search-versus-evaluation classifier. A move improving with additional
 search establishes budget sensitivity, while one that does not remains unresolved. Attribution needs
 separate evidence for a specific mechanism.
+
+The second mundane explanation is excluded by measurement. The corpus starts from a book position at
+fullmove 9, so the opening bucket could have been a costly fringe just after book exit. It is the
+reverse: split by plies since book exit, opening ACPL rises 27.2 → 33.2 → 45.7 across the `0-3`,
+`4-9` and `10+` bands on disjoint intervals, and `10+` — 63% of the bucket — sits ~11 cp above the
+middlegame. The rows nearest the book position are the cheapest in the report, so they dilute T2
+rather than produce it, and the finding is understated by roughly 5 cp. The table is in the
+[Tier 2 ledger](../Measurements/move-quality-tier2.md). What it does not settle: the band is distance
+from the corpus's fixed starting position, which is also time spent in the phase.
 
 **T3. Quote the blunder rates; the ACPL means carry a floor of unmeasured size.** External ACPL is 6×
 to 9× the `noise` column, but that column is a lower bound, so the ratio is an *upper* bound on the
