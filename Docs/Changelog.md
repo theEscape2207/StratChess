@@ -22,6 +22,23 @@ Newest first.
 
 ---
 
+## 2026-09-21 — The Tier 2 path-dependence limit carries a measured size (#588, #582)
+
+`Docs/MoveQuality.md` asserted that Tier 2 scores are path-dependent inside a game and that
+re-scoring a row in isolation "will not always reproduce it", with no size attached — a reader could
+not tell a rounding concern from a protocol constraint. Spike #582 measured it by halving a game's
+searches, sharing the one oracle result each repeated position's two readers want from opposite
+sides: external ACPL moved in 11 of 12 phase cells, mean +0.28 cp, and `reference|opening` moved
+past its published 95% half-width on both shards tested. Repeated runs are byte-identical, so the
+drift is the scoring protocol rather than sampling or machine load.
+
+The limit takes the numbers and a link — no table, and no ledger row. #585 had just split this file,
+and a per-run profile table belongs in `Measurements/move-quality-tier2.md`, one table per run and
+carrying no verdict, which is not a shape a protocol-bias figure fits: it describes the instrument
+rather than a run. #481 is the consumer. Its reproduction gate is binary, so a deterministic
+non-zero bias of any size rules out the single-pass scan it was considering, and the spike's
+prototype was deleted with its branch as filed.
+
 ## 2026-09-20 — Move-quality method split from its data, and routed from the skill (#486, #584)
 
 `Docs/MoveQuality.md` was both the instrument and the ledger: 445 lines in which the method for
