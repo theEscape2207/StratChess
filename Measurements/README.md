@@ -10,6 +10,8 @@ append-only records, mostly written by a script. How to *choose and run* an inst
 | [`ci-per-change.md`](ci-per-change.md) | same | what one change was worth against the commit it forked from |
 | [`ci-anchor.md`](ci-anchor.md) | same | cumulative strength against a fixed tag |
 | [`local.md`](local.md) | `Run-EloMatch.ps1`, clang-cl on Windows | mixed — each row names its own reference |
+| [`move-quality-tier1.md`](move-quality-tier1.md) | `analyze_move_quality.py` over lab PGNs | where one run's own judgement moved — by phase, piece, clock and material class |
+| [`move-quality-tier2.md`](move-quality-tier2.md) | `analyze_external_quality.py`, Stockfish oracle | the same rows re-judged from outside, which is the only view of what the engine cannot see |
 
 **A row is only ever read against other rows in its own ledger.** Different instruments and
 different references are not on a common scale, which is why these are separate files rather than
@@ -20,6 +22,15 @@ separate sections of one.
 Each ledger is a narrow table plus a `Row detail` section beneath it, in the same order. The table
 carries the mechanical facts; the prose section carries what a reader could not reconstruct from
 them.
+
+**The two move-quality ledgers are the exception to the shape and to the vocabulary.** A strength
+row is one number with an interval; a move-quality run is a wide profile — blunder rates by phase
+and by piece, observed score by reported band — so those two files carry a table per run rather
+than a row per run, and they carry **no `Verdict`**: a profile is a diagnosis, not a decision about
+shipping. Everything else here still binds, the `Row detail` obligation most of all, and so does the
+rule above it — a profile is read only against other profiles in the same file, never across the
+tiers, whose judges differ. Their instrument is
+[`../Docs/MoveQuality.md`](../Docs/MoveQuality.md).
 
 **Verdict is a closed vocabulary.** Anything else means the row has not been classified:
 

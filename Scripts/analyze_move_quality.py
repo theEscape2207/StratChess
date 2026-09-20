@@ -7,8 +7,9 @@ change helped and nothing about where. This reads the same PGNs and reports
 where the engine's own judgement moves, bucketed by game phase, build and
 remaining clock.
 
-Method notes, limits and the committed baseline live in Docs/MoveQuality.md; read
-that before acting on any number this prints.
+Method notes and limits live in Docs/MoveQuality.md; the measured runs live in
+Measurements/move-quality-tier1.md. Read both before acting on any number this
+prints.
 
 Fetch a run's corpus first (artifacts are retained 90 days):
 

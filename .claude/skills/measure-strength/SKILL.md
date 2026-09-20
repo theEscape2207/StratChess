@@ -95,6 +95,16 @@ measurement and is not one.
   when proposing one — as the cost it is, not as a reason to fall back on an instrument that will
   not answer.
 
+## Where the result came from
+
+The pooled Elo says *whether* a change helped and nothing about *where*. Every lab run also uploads
+a fully annotated PGN of every game it played, retained 90 days, and `Docs/MoveQuality.md` is the
+method for reading them: Tier 1 scores the engine's own annotations in about six seconds, Tier 2
+re-judges the same rows with an outside engine in about 95 minutes and is the only view of mistakes
+the engine does not know it made. The scan is diagnosis, not a gate — it names the phase, piece or
+material class that moved, which is what turns a null interval into the next question rather than a
+dead end. It is where #128, the largest measured eval defect, came from.
+
 ## The rule that silently invalidates everything
 
 **Never compare binaries from different compilers.** Both run, both look healthy; the compiler gap
@@ -133,6 +143,8 @@ a way that cannot later be un-misread.
 
 The ledgers are `Measurements/{ci-calibration,ci-per-change,ci-anchor,local}.md`, one per
 instrument-and-reference kind, and **a row is only ever read against others in its own file**.
+Move-quality profiles have two ledgers of their own, `Measurements/move-quality-{tier1,tier2}.md`,
+carrying a table per run instead of a verdict row — `Measurements/README.md` states that carve-out.
 `Run-EloMatch.ps1` appends to `local.md` automatically; CI-lab rows are written by hand. A batch
 reporting a time loss, illegal move or disconnect is discarded, never reported — a time loss most
 likely means the box was oversubscribed, which invalidates the batch rather than the one game.
