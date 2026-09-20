@@ -100,8 +100,7 @@ measurement and is not one.
 The pooled Elo says *whether* a change helped and nothing about *where*. Every lab run also uploads
 a fully annotated PGN of every game it played, and `Docs/MoveQuality.md` is the method for reading
 them — Tier 1 scores the engine's own annotations, Tier 2 re-judges the same rows with an outside
-engine and sees mistakes the engine does not know it made. The scan is diagnosis, not a gate; #436,
-#481 and #483 were each opened from something one found.
+engine and sees mistakes the engine does not know it made. The scan is diagnosis, not a gate.
 
 ## The rule that silently invalidates everything
 
