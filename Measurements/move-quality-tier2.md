@@ -6,9 +6,10 @@ loss formula, what `agree%` and `noise` do and do not mean, and the limits speci
 — is [`../Docs/MoveQuality.md`](../Docs/MoveQuality.md). This file holds only what each run
 measured.
 
-**These are profile tables, not verdict rows**, and they are not comparable against Tier 1's:
-the judge differs, which is the whole point of the tier. See the carve-out in
-[`README.md`](README.md).
+**These are profile tables, not verdict rows.** A Tier 1 profile of a *different* run is not
+comparable against these — different corpus, different judge. The licensed comparison is the `self`
+columns in the table below, which reproduce Tier 1 on exactly the rows the oracle judged. See the
+carve-out in [`README.md`](README.md).
 
 ---
 

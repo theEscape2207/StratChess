@@ -26,14 +26,17 @@ Newest first.
 
 `Docs/MoveQuality.md` was both the instrument and the ledger: 445 lines in which the method for
 reading a scan sat interleaved with the run tables of three particular runs, which are append-only
-and grow without bound. #448 made exactly this split for the Elo measurements. The method stays in
-`Docs/MoveQuality.md`; the numbers move to `Measurements/move-quality-tier1.md` and
-`move-quality-tier2.md`, one section per run.
+and grow without bound. #448 separated data from method the same way for the Elo measurements,
+though it dissolved the method into the `measure-strength` skill and left nothing in `Docs/`; here
+the method stays put, on the `Docs/MoveQualityExport.md` precedent #486's triage identified. The
+numbers move to `Measurements/move-quality-tier1.md` and `move-quality-tier2.md`.
 
 The split is by durability rather than by tier, which turned out to be the cheap option rather than
-the expensive one: of the twelve findings, eleven are properties of the engine or of the instrument
-and stay in `Docs/`, and one — T5, a comparison of the two builds in a single run — is run-local
-and becomes that run's `Row detail`. Finding 1 and the Tier 2 finding that retracts it therefore
+the expensive one. The operative test is mechanical: a finding that **pools both builds** of a run
+describes the engine and stays in `Docs/`; a finding that **compares the two builds** describes that
+run and moves to its `Row detail`. Eleven of the twelve pool, and only T5 compares, so only T5
+moved. Several of the eleven do rest on a single run's table, which bounds how much weight they
+carry without making them run-local. Finding 1 and the Tier 2 finding that retracts it therefore
 stay in the same file, so the retraction needed no engineering.
 
 Three rules were embedded inside the data and are now in `Method`, where they apply to every future

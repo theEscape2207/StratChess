@@ -103,7 +103,9 @@ method for reading them: Tier 1 scores the engine's own annotations in about six
 re-judges the same rows with an outside engine in about 95 minutes and is the only view of mistakes
 the engine does not know it made. The scan is diagnosis, not a gate — it names the phase, piece or
 material class that moved, which is what turns a null interval into the next question rather than a
-dead end. It is where #128, the largest measured eval defect, came from.
+dead end. #436, #481 and #483 were each opened from something a scan found, and it is what sized the
+classes behind #128, the largest measured eval defect — which the scan did not find, being a month
+older than the tool.
 
 ## The rule that silently invalidates everything
 

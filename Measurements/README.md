@@ -28,8 +28,9 @@ row is one number with an interval; a move-quality run is a wide profile — blu
 and by piece, observed score by reported band — so those two files carry a table per run rather
 than a row per run, and they carry **no `Verdict`**: a profile is a diagnosis, not a decision about
 shipping. Everything else here still binds, the `Row detail` obligation most of all, and so does the
-rule above it — a profile is read only against other profiles in the same file, never across the
-tiers, whose judges differ. Their instrument is
+rule above it — a Tier 1 profile is never read against a Tier 2 profile *of a different run*, whose
+corpus and judge both differ. The one licensed cross-tier comparison is the `self` columns inside a
+Tier 2 table, which score exactly the rows the oracle judged. Their instrument is
 [`../Docs/MoveQuality.md`](../Docs/MoveQuality.md).
 
 **Verdict is a closed vocabulary.** Anything else means the row has not been classified:

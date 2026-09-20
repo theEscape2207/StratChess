@@ -8,8 +8,10 @@ way to see mistakes the engine does not know it made.
 
 **This file is the instrument. The numbers are in `Measurements/`** —
 [`move-quality-tier1.md`](../Measurements/move-quality-tier1.md) for Tier 1 and
-[`move-quality-tier2.md`](../Measurements/move-quality-tier2.md) for Tier 2, append-only, one
-section per run. That is the split #448 made for the Elo measurements, applied here (#486).
+[`move-quality-tier2.md`](../Measurements/move-quality-tier2.md) for Tier 2, append-only. #448
+separated the Elo measurements the same way, though it dissolved the method into the
+`measure-strength` skill rather than leaving it in `Docs/`; here the method stays, on the
+[`MoveQualityExport.md`](MoveQualityExport.md) precedent (#486).
 
 | Need | Section |
 |---|---|
@@ -96,8 +98,10 @@ bootstraps by resampling whole games; where it prints `[lo, hi]`, that is the 95
 
 **Scores are mover-relative.** Each `{+1.22/11 0.415s}` is from the perspective of the side that just
 moved, the standard UCI convention. Under a White-relative reading every self-swing would be inverted
-for one side; `--self-check` fails loudly on a corpus that violates it, and on the baseline reports
-the losing side at **+22.26 cp** mean signed self-swing against the winning side's **−21.86 cp**.
+for one side; `--self-check` fails loudly on a corpus that violates it, and on the
+[baseline run](../Measurements/move-quality-tier1.md#run-33215162562--baseline)
+reports the losing side at **+22.26 cp** mean signed self-swing against the winning side's
+**−21.86 cp**.
 
 **Two measurements from one walk.** In a candidate-vs-reference match the two builds never score the
 same position, so both are available:
@@ -134,9 +138,9 @@ statistics but present in the movetext, so the length never double-counts a book
 **Score bands in a class table are exclusive.** `+100–249` excludes `≥ +250`; where the table
 carries a cumulative row, that is the one to quote for "the engine thought it was winning".
 
-**A clock bucket is what the mover had when it started thinking**, not what was left afterwards.
-The two differ for about 5% of moves, and the bucket is a property of the decision rather than of
-its aftermath.
+**A clock bucket is what the mover had when it started thinking**, not what was left afterwards. The
+two differ, so the bucket is a property of the decision rather than of its aftermath; how often they
+differ is a fact about a particular run and belongs in its ledger section.
 
 **This is an upper bound, not an estimate of disagreement.** The two scores are one ply apart: X
 reports the value of the position it hands over, Y reports its own value with its own search and
@@ -156,10 +160,9 @@ level-material games, all won by White, one entered at each sign.
 
 **Level-material rows stay pooled-only.** A per-build split of a level-material class measures the
 builds' scales, not their play: scaling compresses small scores toward zero, moving entries down the
-magnitude bands. The scaled run's `< +100` band splits **145 candidate / 216 reference** — 3.7
-standard errors, and it looks exactly like the change's intended effect. It is not. The skew sits
-entirely in the `|cp| 1–24` bucket the scale compresses; from `|cp| ≥ 25` up it is 150/142, and the
-control run, where neither build scaled the class, splits 202/166 the other way.
+magnitude bands, which looks exactly like a change's intended effect and is not. The measurement
+behind that rule, and the control run that settles it, are in the level-material
+[`Row detail`](../Measurements/move-quality-tier1.md#row-detail-1).
 
 ## Limits
 
@@ -167,10 +170,11 @@ control run, where neither build scaled the class, splits 202/166 the other way.
   same way produces no swing at all. [Tier 2](#tier-2-external-adjudication) measures that spot:
   Tier 1 sees between a thirteenth and a fiftieth of the blunders actually made, the fraction falling
   as the phase gets earlier. Read Tier 2 before treating any Tier 1 rate as a defect profile.
-- **The endgame is censored by adjudication.** 68% of the baseline run's games ended by adjudication
-  under `-draw movenumber=40 movecount=8 score=10` / `-resign movecount=4 score=800`. "Endgame"
-  means *the position at the moment of adjudication*, not played-out technique, and the calibration
-  table is meaningful only below ±800 — above that a win is very nearly definitional.
+- **The endgame is censored by adjudication.** 68% of the games in the
+  [baseline run](../Measurements/move-quality-tier1.md#run-33215162562--baseline) ended by
+  adjudication under `-draw movenumber=40 movecount=8 score=10` / `-resign movecount=4 score=800`.
+  "Endgame" means *the position at the moment of adjudication*, not played-out technique, and the
+  calibration table is meaningful only below ±800 — above that a win is very nearly definitional.
 - **The reported score comes from the search that chose the move** — TT hits, aspiration windows, LMR
   re-searches — so it is a self-consistent series, not an absolute yardstick.
 - **Both builds in a merge-base run are nearly identical**, so the cross-build gap measures the noise
@@ -180,9 +184,11 @@ control run, where neither build scaled the class, splits 202/166 the other way.
 
 ## Findings
 
-Properties of the engine and of the instrument, established from the runs in the
-[Tier 1 ledger](../Measurements/move-quality-tier1.md). A reading that holds only for one run
-stays with that run in the ledger.
+What the runs in the [Tier 1 ledger](../Measurements/move-quality-tier1.md) establish about the
+engine and about the scan. The dividing line against the ledgers is mechanical: a reading that
+**pools both builds** of a run is here, and a reading that **compares the two builds** belongs to
+that run and stays in its `Row detail`. Several of these rest on a single run's table — a limit on
+how much weight they carry, not a reason to move them.
 
 **1. ~~There is no general blunder weakness to find.~~ Retracted by
 [Tier 2](#tier-2-external-adjudication).** The claim rested on the engine grading its own homework.
@@ -229,9 +235,11 @@ win: 1,462 and 1,344 such games, all won.
 
 ## Tier 2: External adjudication
 
-The same rows, judged by Stockfish at depth 12 instead of by the engine that played them. Same
-corpus, parser, phase buckets and ±150 cp contested filter as Tier 1 — only the judge changes.
-The runs are in the [Tier 2 ledger](../Measurements/move-quality-tier2.md).
+The same rows, judged by Stockfish at depth 12 instead of by the engine that played them: one run's
+own PGNs, read with the same parser, phase buckets and ±150 cp contested filter Tier 1 applies to
+them — only the judge changes. That correspondence holds *within* a run; a Tier 2 run is not the
+same match as any run in the Tier 1 ledger. The runs are in the
+[Tier 2 ledger](../Measurements/move-quality-tier2.md).
 
 Loss for one move is `max(0, oracle(before) − oracle(after))` from the mover's point of view, clamped
 to ±1000 cp so a mate score cannot saturate a mean. `agree%` is how often the played move was the
@@ -247,12 +255,15 @@ rows carrying the entire signal. Read it as a floor. #483 would replace it: mean
 ### Findings
 
 **T1. The self-reported blunder rate understates the real one by 13× to 48×.** Endgame 2.83% against
-0.21%, middlegame 5.70% against 0.28%, opening 6.30% against 0.13%. This is the blind spot named in
-[Limits](#limits), measured rather than assumed, and it retracts [Finding 1](#findings).
+0.21%, middlegame 5.70% against 0.28%, opening 6.30% against 0.13% — the candidate build's rows; the
+reference build's give 11.9× to 53.6×, the same conclusion over a wider spread. This is the blind
+spot named in [Limits](#limits), measured rather than assumed, and it retracts
+[Finding 1](#findings).
 
 **T2. The profile is monotone, and it points the wrong way.** Self-ACPL is nearly constant across the
 phases (11.3 / 12.9 / 9.9); external ACPL climbs 16.9 → 33.9 → 40.3 from endgame to opening, and the
-blunder rate climbs with it. **The engine plays worst where it is most confident.** Tier 1 reads the
+blunder rate climbs with it — again the candidate rows, the reference within 0.6 cp of each.
+**The engine plays worst where it is most confident.** Tier 1 reads the
 opening as its *best* phase; the outside judge makes it the worst by both measures, on disjoint
 intervals.
 

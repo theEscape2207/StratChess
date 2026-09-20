@@ -8,11 +8,12 @@ column means, how it is regenerated and what it cannot see — is
 **These are profile tables, not verdict rows.** See the carve-out in [`README.md`](README.md):
 a move-quality run is a diagnosis, not a strength decision, so it carries no `Verdict`. The rule
 above it still binds — a profile is only ever read against other profiles in this file, and never
-against a Tier 2 profile, whose judge is a different engine.
+against a Tier 2 profile of a *different* run. The licensed cross-tier comparison is the `self`
+columns inside a Tier 2 table, which score exactly the rows the oracle judged.
 
 ---
 
-## Run 33215162562 — LMR depth clamp vs merge base
+## Run 33215162562 — baseline
 
 | | |
 |---|---|
@@ -62,8 +63,8 @@ Both sets of intervals are disjoint at the extremes — middlegame is 1.9× open
 so neither is flat, but both sit inside one narrow band, with heavy pieces at the top. Nothing here
 resembles the 34%-of-blunders king-move story the unrestricted scan tells.
 
-By the clock bucket the mover was in when it started thinking; the two differ for 5.0% of
-moves:
+By the clock bucket the mover was in when it started thinking rather than what was left afterwards;
+the two differ for 5.0% of moves:
 
 | Phase | > 8 s | 5–8 s | 2–5 s | < 2 s |
 |---|---|---|---|---|
@@ -124,14 +125,18 @@ moves and so silently required over 216 total plies for this fullmove-9 corpus. 
 same run with the setup offset included; the superseded value is not comparable to the 6.6% and 7.3%
 tracers, the corrected one is.
 
-**The endgame rows are censored by adjudication.** 68.0% of this run's games ended under
-`-draw movenumber=40 movecount=8 score=10` / `-resign movecount=4 score=800`, so "endgame" here
-means the position at the moment of adjudication rather than played-out technique, and the
-calibration table is meaningful only below ±800.
+**68.0% of this run's games ended by adjudication**, so its endgame rows read the position at the
+moment of adjudication rather than played-out technique. `Docs/MoveQuality.md` → Limits has what
+that costs.
 
-**Both builds differ only by the LMR depth clamp**, so the cross-build noise floor above measures
-the instrument rather than a disagreement about chess. A run whose builds differ in evaluation
-should exceed it.
+**Figures the tables above do not carry.** Findings 2, 3, 5, 6 and 7 in `Docs/MoveQuality.md` cite
+further cuts of this run's report that were never published as rows here: 26.8% of
+insufficient-material draws still had a pawn two plies earlier and 44.1% six plies earlier; 99.9% of
+repetition draws had both sides under 50 cp on their last move; 21% of contested middlegame
+decisions started with under 2 s on the clock; 1,462 and 1,344 games saw a build announce a forced
+mate, all won; and the pawn-poor endgame curve reaches 0.998 at +575, a band above the `+500–550`
+row. They come from the same scan of the same corpus, but nothing in this ledger reproduces them —
+regenerate the run to check one.
 
 ---
 
@@ -166,5 +171,12 @@ being already saturated at 0.500.
 from later, post-#128 runs and are **not comparable ply-for-ply with run 33215162562's tables**.
 Two independent corpora of 19,980 games each; the second carries the #436 scale on one side only.
 
-The [baseline run](#run-33215162562--lmr-depth-clamp-vs-merge-base) predates the level line, so its
-`OCB` `< +100` row still folds in that run's dead-level entries.
+**A per-build split measures the builds' scales, not their play.** Run `33568346899`'s `< +100` band
+splits **145 candidate / 216 reference** — 3.7 standard errors, and it looks exactly like the #436
+scale's intended effect. It is not: the skew sits entirely in the `|cp| 1–24` bucket the scale
+compresses, and from `|cp| ≥ 25` up it is 150/142. Run `33429454765`, where neither build scaled the
+class, splits 202/166 the other way. That is why the rows above are pooled rather than split.
+
+The [baseline run](#run-33215162562--baseline) predates the level line, so its
+dead-level `OCB` entries are not broken out at all: they sit in that run's unpublished `< +100`
+band rather than in any row above.
