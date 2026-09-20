@@ -98,14 +98,10 @@ measurement and is not one.
 ## Where the result came from
 
 The pooled Elo says *whether* a change helped and nothing about *where*. Every lab run also uploads
-a fully annotated PGN of every game it played, retained 90 days, and `Docs/MoveQuality.md` is the
-method for reading them: Tier 1 scores the engine's own annotations in about six seconds, Tier 2
-re-judges the same rows with an outside engine in about 95 minutes and is the only view of mistakes
-the engine does not know it made. The scan is diagnosis, not a gate — it names the phase, piece or
-material class that moved, which is what turns a null interval into the next question rather than a
-dead end. #436, #481 and #483 were each opened from something a scan found, and it is what sized the
-classes behind #128, the largest measured eval defect — which the scan did not find, being a month
-older than the tool.
+a fully annotated PGN of every game it played, and `Docs/MoveQuality.md` is the method for reading
+them — Tier 1 scores the engine's own annotations, Tier 2 re-judges the same rows with an outside
+engine and sees mistakes the engine does not know it made. The scan is diagnosis, not a gate; #436,
+#481 and #483 were each opened from something one found.
 
 ## The rule that silently invalidates everything
 
