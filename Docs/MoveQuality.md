@@ -301,6 +301,11 @@ T5 was a comparison of the two builds in one run, not a property of the engine, 
   `ucinewgame`, which clears the hash, so a game's numbers cannot depend on which games preceded it.
   Within a game nothing is cleared: the `after` search inherits the hash `before` warmed, and later
   rows inherit earlier ones. A row's loss is therefore a difference of two *correlated* searches, and
-  re-scoring a row in isolation will not always reproduce it.
+  re-scoring a row in isolation will not always reproduce it. Measured once, by halving a game's
+  searches: external ACPL moved in 11 of 12 phase cells, mean +0.28 cp, one cell past its published
+  95% half-width on both shards tested
+  ([#582](https://github.com/theEscape2207/StratChess/issues/582#issuecomment-5750971773)). Repeated
+  runs are byte-identical, so that size is a property of the scoring protocol: change how rows are
+  scored and the table moves, at unchanged rows, oracle and depth.
 - **The contested filter is the engine's own.** It selects on the mover's reported score, so it is
   not independent of the quantity being measured. T2's caveat is the concrete consequence.
