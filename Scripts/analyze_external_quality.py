@@ -345,6 +345,20 @@ def ply_since_book_exit(scan: GameScan, ply_index: int) -> int | None:
     return delta
 
 
+def band_of(ply_since: int | None) -> str:
+    """-> which book-exit band a row falls in.
+
+    The bands are the ones Docs/MoveQualityExport.md defines. `unknown` is a band
+    of its own rather than folded into the last one: a game whose book boundary
+    could not be read is not evidence about any distance from it.
+    """
+    if ply_since is None:
+        return "unknown"
+    if ply_since <= 3:
+        return "0-3"
+    return "4-9" if ply_since <= 9 else "10+"
+
+
 def mover_name(color: chess.Color) -> str:
     """-> "white" | "black"."""
     return "white" if color == chess.WHITE else "black"
@@ -375,11 +389,12 @@ def score_batch(games):
             _new_game()
             cache: dict[str, tuple] = {}
             cells: dict = defaultdict(new_cell)
+            bands: dict = defaultdict(new_cell)
             worst = []
             records: list | None = [] if _EXPORT else None
-            _score_rows(scan, cache, cells, worst, records)
+            _score_rows(scan, cache, cells, worst, records, bands)
             worst.sort(reverse=True)
-            results.append((dict(cells), worst[:5], records or []))
+            results.append((dict(cells), dict(bands), worst[:5], records or []))
     finally:
         _close_engine()
     return results
@@ -391,12 +406,13 @@ def _new_game() -> None:
     _GAME = object()
 
 
-def _score_rows(scan, cache, cells, worst, records=None) -> None:
+def _score_rows(scan, cache, cells, worst, records=None, bands=None) -> None:
     """Score one game's eligible rows, optionally collecting their export records.
 
     `records` is None when the export is off, and the arithmetic below is then
     exactly what it was before the export existed: same searches, same order,
     same counters. An exported row is a c[3] event, so the two can never disagree.
+    `bands` is the same counters again, split by plies since book exit.
     """
     for i in scan.eligible:
         ply, ply_next = scan.plies[i], scan.plies[i + 2]
@@ -409,19 +425,28 @@ def _score_rows(scan, cache, cells, worst, records=None) -> None:
         endpoint_before, best = cache[before]
         endpoint_after, _ = oracle_endpoint(chess.Board(after), mover)
         loss = exp.legacy_loss_cp(endpoint_before, endpoint_after)
-        c = cells[(ply.build, ply.bucket)]
-        c[0] += 1
-        c[1] += 1 if self_swing >= amq.BLUNDER_CP else 0
-        c[2] += abs(self_swing)
-        c[3] += 1 if loss >= amq.BLUNDER_CP else 0
-        c[4] += loss
-        if best is not None and best.uci() == ply.played_uci:
-            c[5] += 1
-            c[6] += loss
-        # Counted over every eligible row, exported or not, so it measures rows
-        # the clamp hid rather than rows the export happened to keep.
-        if exp.is_finite_clipping_miss(endpoint_before, endpoint_after):
-            c[7] += 1
+        agreed = best is not None and best.uci() == ply.played_uci
+        # This row's contribution, in new_cell() slot order. It goes to the phase
+        # cell always, and to the book-exit band cell as well when bands are being
+        # collected -- into a dict of their own, because every consumer of `cells`
+        # sums it, and a row counted twice there is a wrong number nothing catches.
+        delta = (1,
+                 1 if self_swing >= amq.BLUNDER_CP else 0,
+                 abs(self_swing),
+                 1 if loss >= amq.BLUNDER_CP else 0,
+                 loss,
+                 1 if agreed else 0,
+                 loss if agreed else 0,
+                 # Counted over every eligible row, exported or not, so it measures
+                 # rows the clamp hid, not rows the export happened to keep.
+                 1 if exp.is_finite_clipping_miss(endpoint_before, endpoint_after) else 0)
+        counters = [cells[(ply.build, ply.bucket)]]
+        if bands is not None:
+            counters.append(
+                bands[(ply.build, ply.bucket, band_of(ply_since_book_exit(scan, i)))])
+        for c in counters:
+            for slot, value in enumerate(delta):
+                c[slot] += value
         if loss >= REPORT_LOSS_CP and self_swing < amq.BLUNDER_CP:
             worst.append((loss, self_swing, ply.build, ply.bucket, before, ply.played_uci))
         if records is not None and exp.is_exported(endpoint_before, endpoint_after):
@@ -466,8 +491,10 @@ def mean(games, key, num, den=0):
     return total(games, key, num) / n if n else None
 
 
-def report(cells, per_game, worst, depth, samples, out=sys.stdout) -> None:
+def report(cells, per_game, worst, depth, samples, out=sys.stdout,
+           bands=None) -> None:
     w = out.write
+    keys = sorted(cells)
     rows = sum(c[0] for c in cells.values())
     w(f"\nOracle depth {depth}, {len(per_game)} games, {rows} contested rows, "
       f"{samples} bootstrap resamples\n\n")
@@ -475,7 +502,7 @@ def report(cells, per_game, worst, depth, samples, out=sys.stdout) -> None:
               f"{'ext ACPL':>11}{'ext blu%':>11}{'agree%':>9}{'noise':>8}\n")
     w(header)
     w("-" * (len(header) - 1) + "\n")
-    for key in sorted(cells):
+    for key in keys:
         n = cells[key][0]
         w(f"{key[0]:<22}{key[1]:<12}{n:>8}"
           f"{mean(per_game, key, 2):>11.1f}{rate(per_game, key, 1):>11.2f}"
@@ -488,17 +515,54 @@ def report(cells, per_game, worst, depth, samples, out=sys.stdout) -> None:
     # exactly like a hang.
     _log(f"resampling {len(per_game)} games x {samples} for intervals")
     w("\nExternal blunder rate, 95% interval (games resampled)\n")
-    for key in sorted(cells):
+    for key in keys:
         point, lo, hi = amq.bootstrap(per_game, lambda g, k=key: rate(g, k, 3), samples=samples)
         w(f"  {key[0]:<22}{key[1]:<12}{amq.ci(point, lo, hi, 2):>26}%\n")
     w("\nExternal ACPL, 95% interval (games resampled)\n")
-    for key in sorted(cells):
+    for key in keys:
         point, lo, hi = amq.bootstrap(per_game, lambda g, k=key: mean(g, k, 4), samples=samples)
         w(f"  {key[0]:<22}{key[1]:<12}{amq.ci(point, lo, hi, 1):>26}\n")
+
+    if bands is not None:
+        band_report(bands, samples, w)
 
     w(f"\nWorst rows the oracle faults and Tier 1 does not (loss >= {REPORT_LOSS_CP}cp)\n")
     for loss, swing, build, bucket, fen, played in sorted(worst, reverse=True)[:20]:
         w(f"  -{loss:>4}cp  self {swing:>+5}  {build} {bucket:<11} {played}  {fen}\n")
+
+
+def band_report(bands: dict, samples: int, w) -> None:
+    """The same rows split by how far out of book they were played.
+
+    Intervals are bootstrapped for the opening bands only. A book position is nine
+    full moves in, so the other two phases are almost entirely `10+`; their band
+    rows are printed for completeness and are not worth the minutes an interval
+    costs. The basis line is how each game's book boundary was read, which bounds
+    how much of the split rests on an assumption rather than a `{book}` annotation.
+    """
+    cells, per_game, basis = bands["cells"], bands["per_game"], bands["basis"]
+    w("\nRows by plies since book exit\n")
+    w("  book_exit_basis over scored games: "
+      + ", ".join(f"{name} {n}" for name, n in sorted(basis.items())) + "\n\n")
+    header = (f"{'build':<22}{'phase':<12}{'band':<9}{'n':>8}{'self ACPL':>11}"
+              f"{'ext ACPL':>11}{'ext blu%':>11}{'agree%':>9}\n")
+    w(header)
+    w("-" * (len(header) - 1) + "\n")
+    keys = sorted(cells)
+    for key in keys:
+        w(f"{key[0]:<22}{key[1]:<12}{key[2]:<9}{cells[key][0]:>8}"
+          f"{mean(per_game, key, 2):>11.1f}"
+          f"{mean(per_game, key, 4):>11.1f}{rate(per_game, key, 3):>11.2f}"
+          f"{rate(per_game, key, 5):>9.1f}\n")
+
+    opening = [key for key in keys if key[1] == "opening"]
+    _log(f"resampling {len(per_game)} games x {samples} for {len(opening)} opening bands")
+    w("\nOpening bands, 95% intervals (games resampled)\n")
+    for key in opening:
+        acpl = amq.bootstrap(per_game, lambda g, k=key: mean(g, k, 4), samples=samples)
+        blunder = amq.bootstrap(per_game, lambda g, k=key: rate(g, k, 3), samples=samples)
+        w(f"  {key[0]:<22}{key[2]:<9}ACPL {amq.ci(*acpl, 1):>22}"
+          f"    blu {amq.ci(*blunder, 2):>20}%\n")
 
 
 def batches(games, size: int):
@@ -585,10 +649,17 @@ def analyse(root: Path, engine_path: str, depth: int, jobs: int, limit: int, sha
     cells: dict = defaultdict(new_cell)
     per_game: list = []
     worst: list = []
+    # The same rows split by plies since book exit, kept clear of `cells` so that
+    # summing `cells` still counts every row exactly once. `basis` is how each
+    # scored game's book boundary was read -- free, off the parse rather than the
+    # oracle -- which says how much of the split rests on `setup_assumed`.
+    band_cells: dict = defaultdict(new_cell)
+    per_game_bands: list = []
+    basis: dict = defaultdict(int)
     files = sorted(root.rglob("*.pgn")) if root.is_dir() else [root]
     if not files:
         print(f"no .pgn under {root}", file=sys.stderr)
-        return None, None, None
+        return None, None, None, None
     # Shards are independent samples of the same match, so a prefix of them is a
     # smaller run of the same experiment, not a biased one.
     if shards:
@@ -609,12 +680,17 @@ def analyse(root: Path, engine_path: str, depth: int, jobs: int, limit: int, sha
             games = scan_games(path, n - 1)
             if limit:
                 games = games[:limit]
+            for scan in games:
+                basis[scan.book_exit_basis] += 1
             groups = batches(games, batch)
             _log(f"shard {n}/{len(files)} {path.parent.name}: {len(games)} games extracted, "
                  f"{len(groups)} batch(es)")
-            for part, part_worst, records in chain.from_iterable(ex.map(score_batch, groups)):
+            for part, part_bands, part_worst, records in chain.from_iterable(
+                    ex.map(score_batch, groups)):
                 merge_cells(cells, part)
                 per_game.append(part)
+                merge_cells(band_cells, part_bands)
+                per_game_bands.append(part_bands)
                 worst.extend(part_worst)
                 # Written and released as each result arrives: holding the corpus
                 # of records to write at the end would defeat the shard loop.
@@ -627,7 +703,9 @@ def analyse(root: Path, engine_path: str, depth: int, jobs: int, limit: int, sha
         # and an interrupted scan leaves a footer-less one.
         if writer is not None:
             writer.write_complete(_completion(cells, len(per_game)))
-    return dict(cells), per_game, worst
+    return dict(cells), per_game, worst, {"cells": dict(band_cells),
+                                          "per_game": per_game_bands,
+                                          "basis": dict(basis)}
 
 
 def self_test(out=sys.stdout) -> bool:
@@ -670,6 +748,12 @@ def self_test(out=sys.stdout) -> bool:
     check("row phases are Tier 1 buckets",
           bool(rows) and {r[1] for r in rows} <= {name for name, _low in amq.PHASE_BUCKETS},
           f"{sorted({r[1] for r in rows})}")
+
+    # Both band edges, in one check: an off-by-one here moves rows between the
+    # bands the whole book-exit question is read off.
+    banded = [band_of(d) for d in (0, 3, 4, 9, 10, None)]
+    check("book-exit bands split at 3/4 and 9/10",
+          banded == ["0-3", "0-3", "4-9", "4-9", "10+", "unknown"], f"{banded}")
 
     # Bootstrap plumbing: a corpus half of whose games blunder twice in four rows
     # and half not at all must recover 25%, over an interval that contains it and
@@ -760,6 +844,8 @@ def main() -> int:
                     help="games per oracle process (default 1; larger measured slower)")
     ap.add_argument("--samples", type=int, default=amq.BOOT_SAMPLES,
                     help="bootstrap resamples behind every interval")
+    ap.add_argument("--by-book-exit", action="store_true",
+                    help="also split every cell by plies since book exit (spike #583)")
     ap.add_argument("--json", help="also write the merged raw counters here")
     ap.add_argument("--worst-jsonl",
                     help="write the blunder-evidence export here (see Docs/MoveQualityExport.md)")
@@ -798,24 +884,27 @@ def main() -> int:
         return 2
     _log(f"oracle {engine_path} at depth {args.depth}, {args.jobs} worker(s)")
 
-    cells, per_game, worst = analyse(Path(args.root), engine_path, args.depth,
-                                     args.jobs, args.games, args.shards, args.batch,
-                                     export_path, args.source_run)
+    cells, per_game, worst, bands = analyse(Path(args.root), engine_path, args.depth,
+                                            args.jobs, args.games, args.shards, args.batch,
+                                            export_path, args.source_run)
     if cells is None:
         return 2
     if not cells:
         print("no contested rows found", file=sys.stderr)
         return 1
 
-    report(cells, per_game, worst, args.depth, args.samples)
+    report(cells, per_game, worst, args.depth, args.samples,
+           bands=bands if args.by_book_exit else None)
     # stdout is block-buffered when it is a file or a pipe, so an interpreter that
     # never reaches its own exit loses the whole report.
     sys.stdout.flush()
     if args.json:
-        Path(args.json).write_text(
-            json.dumps({"depth": args.depth, "games": len(per_game),
-                        "cells": {"|".join(k): v for k, v in cells.items()}}, indent=1),
-            encoding="utf-8")
+        payload = {"depth": args.depth, "games": len(per_game),
+                   "cells": {"|".join(k): v for k, v in cells.items()}}
+        if args.by_book_exit:
+            payload["bands"] = {"|".join(k): v for k, v in bands["cells"].items()}
+            payload["basis"] = bands["basis"]
+        Path(args.json).write_text(json.dumps(payload, indent=1), encoding="utf-8")
     _log("done")
     return 0
 
