@@ -306,6 +306,25 @@ different axis — *toolchain*, not bug class — and Linux cannot cover it by c
 
 So: Linux answers "is the code correct?", Windows answers "does the shipping toolchain build it?".
 
+**Two properties of the shipping image are asserted rather than assumed**, both because the failure
+is a green build (#513):
+
+- **Hot-code alignment.** `Test-CodeAlignment.ps1` reads the linker map `CMakeLists.txt` emits on
+  every link and requires `pvs` and `quiescence` at `%64 == 0`. It runs in `Validate-PrePR.ps1` on
+  Build tier and on the Windows Release CI leg. `-falign-functions=64` survives only while clang-cl
+  keeps translating the spelling *and* link-time codegen keeps honouring `align 64`; without it the
+  two land at `%64 = 16` and `48`, and the aligned share falls from 92.7% to 22.9%.
+- **Release reproducibility.** `Test-ReleaseReproducibility.ps1` builds repeatedly into one build
+  directory and byte-compares this project's objects and both executables — `-Mode Determinism` (two
+  uncached builds) or `-Mode Cache` (an uncached reference, a cold build that populates a private
+  cache, then one served from it, which is the property the ccache gate rests on). **Cache mode's
+  reference is uncached deliberately:** cold-cached against warm-cached compares a cache entry with
+  the copy it was made from and passes whatever the cache returns. Two full builds, three in Cache
+  mode, so nothing runs it automatically: run it after a build-configuration or toolchain change.
+  Release rests on a different basis from #381's Debug one — under ThinLTO the compile-side `/Brepro`
+  is inert and identity comes from frontend determinism, while the linker-side half settles the PE —
+  and **the compile flag must stay** for the non-LTO compile edges that do emit COFF.
+
 **TSan runs per-PR and has no suppression file — the empty suppression list is the finding.**
 `TranspositionTable` takes a `std::shared_mutex` per bucket, with atomics for the counters. A survey
 at `Threads=1/4/8` across six configurations plus the fast tier reported **zero races**, verified

@@ -531,7 +531,14 @@ function Invoke-CMakeBuild {
         # another ~78 MB per generation to the cache for a compiler nothing measures with.
         $compilerCache = if ($Compiler -eq 'clang-cl') { Get-SharedCompilerCache } else { $null }
         if ($compilerCache) {
-            $env:CCACHE_DIR = $compilerCache
+            # A caller that already chose a cache directory keeps it. The shared one is a
+            # default for interactive and hook builds, not a policy: overriding it
+            # unconditionally means a caller controlling cache state -- which is what
+            # Test-ReleaseReproducibility.ps1 -Mode Cache does -- silently measures the
+            # shared cache instead of the one it prepared.
+            if (-not $env:CCACHE_DIR) {
+                $env:CCACHE_DIR = $compilerCache
+            }
             # ~55 MB per generation of the two clang-cl presets, so 1G holds ~18 of them.
             $env:CCACHE_MAXSIZE = '1G'
             # Hash the compiler itself rather than trusting its mtime, which a rebuilt or

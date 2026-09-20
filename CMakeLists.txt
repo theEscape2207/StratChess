@@ -375,6 +375,25 @@ add_executable(StratChessEvolved
     ${CMAKE_SOURCE_DIR}/StratChessEvolved/StratChessEvolved.cpp)
 strat_configure_target(StratChessEvolved)
 
+# The linker map is the only record of where a function landed, which makes it the
+# only evidence that -falign-functions=64 reached the image: clang-cl accepts and
+# silently drops flags it mistranslates, and the alignment additionally depends on
+# link-time codegen honouring `align 64`. Both failures are silent -- a green build
+# and a correct engine, with layout variance quietly back to what #555 found.
+# Test-CodeAlignment.ps1 reads this file.
+#
+# Emitted on every link rather than reconstructed by a throwaway relink, because a
+# map from a differently-configured build proves nothing about the shipping one.
+# /MAP writes a side file only: the executable is byte-identical with it and
+# without, which Test-ReleaseReproducibility.ps1 keeps true.
+#
+# Engine target only -- the map exists to describe what ships.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
+   OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+    target_link_options(StratChessEvolved PRIVATE
+        /MAP:$<TARGET_FILE_DIR:StratChessEvolved>/StratChessEvolved.map)
+endif()
+
 # Singular extensions (#95) are experimental and OFF for the shipping engine: carrying them
 # compiled-but-disabled measured -1.33% nps, and the end state is unconditional-on or deleted,
 # so nothing should pay for them indefinitely. Turn on for an experimental build to measure:

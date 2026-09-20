@@ -506,6 +506,18 @@ jobs:
         if: steps.ccache.outputs.available == 'true'
         run: ccache --show-stats
 
+      # Release only: the shipping image is the one whose layout is ever measured,
+      # and this is the only job that builds it. Reads the linker map the build just
+      # emitted, so it costs a file read rather than a relink.
+      #
+      # Here as well as in Validate-PrePR.ps1, not instead of it, and on every trigger
+      # this job has rather than Build tier alone: the failure with no diff behind it
+      # is a toolchain upgrade that stops honouring `align 64`, and no local gate runs
+      # when nobody changed anything (#513).
+      - name: Hot-code alignment
+        if: matrix.config == 'Release'
+        run: pwsh -NoProfile -File Scripts/Test-CodeAlignment.ps1 -Config Release
+
       # Same '~[slow]' filter in both configs, deliberately: the two legs must
       # cover the same cases, since the point is that they disagree about which
       # of those cases fail, not about which run.

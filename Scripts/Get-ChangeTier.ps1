@@ -96,6 +96,14 @@ function Get-TierForPath {
     # covers guards added later, which would otherwise land at the wrong tier by
     # omission.
     if ($p -like '*Scripts/Test-Workflow*.ps1')             { return 'Build' }
+    # Asserts a property of the shipping image from inside the pre-PR run, so the same
+    # hazard applies: a bug here disarms the only check that -falign-functions=64
+    # survived to the binary, and the failure it guards is already silent (#513).
+    if ($p -like '*Scripts/Test-CodeAlignment.ps1')         { return 'Build' }
+    # Nothing invokes it automatically, but a bug in it reports a reproducible Release
+    # build that is not one -- a false PASS about the property, which is the same
+    # self-concealment. Build rather than Tooling for that reason alone.
+    if ($p -like '*Scripts/Test-ReleaseReproducibility.ps1') { return 'Build' }
     # Decides whether a build artifact counts as stale, and which binary a measurement
     # reads. Both reach Build anyway through the fail-closed default, but only as
     # "unrecognised", which costs every PR that touches them the Engine tier. The hazard
@@ -242,6 +250,8 @@ if ($SelfTest) {
         @{ Name = 'docs + cpp -> Engine';       Files = @('CLAUDE.md', 'StratEngine/Eval.cpp');                 Expect = 'Engine' }
         @{ Name = 'build.ps1 -> Build';         Files = @('build.ps1');                                          Expect = 'Build' }
         @{ Name = 'validator -> Build NOT Tooling'; Files = @('Scripts/Validate-PrePR.ps1');   Expect = 'Build' }
+        @{ Name = 'alignment check -> Build';   Files = @('Scripts/Test-CodeAlignment.ps1');   Expect = 'Build' }
+        @{ Name = 'reproducibility check -> Build'; Files = @('Scripts/Test-ReleaseReproducibility.ps1'); Expect = 'Build' }
     @{ Name = 'New-Worktree -> Tooling';    Files = @('Scripts/New-Worktree.ps1');    Expect = 'Tooling' }
     @{ Name = 'Remove-Worktree -> Tooling'; Files = @('Scripts/Remove-Worktree.ps1'); Expect = 'Tooling' }
     @{ Name = 'Get-Worktrees -> Tooling';   Files = @('Scripts/Get-Worktrees.ps1');   Expect = 'Tooling' }

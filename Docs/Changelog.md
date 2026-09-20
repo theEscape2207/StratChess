@@ -22,6 +22,47 @@ Newest first.
 
 ---
 
+## 2026-09-19 — A stated basis for Release identity, and a tripwire under the alignment flag (#513)
+
+Two properties of the shipping image that were previously assumed are now asserted.
+
+**Release reproducibility.** `Scripts/Test-ReleaseReproducibility.ps1` builds twice into the same
+build directory and byte-compares this project's objects and both executables: `-Mode Determinism`
+(two uncached builds) and `-Mode Cache` (an uncached reference, a cold build that populates a private
+cache, then one served from it — the reference is uncached because cold-cached against warm-cached
+compares a cache entry with the copy it was made from, and passes whatever the cache returns). #381
+established that comparison for Debug and left it a procedure; nothing implemented it, and Release
+had no basis at all. Measured over both modes at `0b170d3`: **102 of 102 artifacts byte-identical**.
+
+Release could not inherit Debug's basis. On the engine target `/Brepro`'s compile half is **inert** —
+under ThinLTO the compiler writes bitcode with a content hash, so there is no COFF `TimeDateStamp` to
+zero — and identity rests on frontend determinism, with the linker-side half settling the PE header.
+The compile flag stays regardless: the non-LTO compile edges do emit COFF and do need it. Out of
+scope deliberately, and named rather than pattern-excluded so a new unreproducible artifact fails:
+CMake's own configure probes (3 of the 105 files in the tree, reproducible in neither configuration)
+and the dependency `.lib`s, which are built outside the preset tree and never see `/Brepro`.
+
+`build.ps1` now only defaults `CCACHE_DIR` when the caller has not set one. Without that, a caller
+controlling cache state measures the shared cache instead of the one it prepared — which is how the
+first green `-Mode Cache` run was caught reporting zero cache hits.
+
+**Hot-code alignment.** `Scripts/Test-CodeAlignment.ps1` requires `pvs` and `quiescence` at
+`%64 == 0` in the shipping image, reading the linker map `CMakeLists.txt` now emits on every link of
+the engine target. `-falign-functions=64` (#578) appeared in the build file and in two documents and
+**nowhere in `Scripts/` or the tests**; it can be lost two silent ways — clang-cl dropping a spelling
+it stops translating (#84), or link-time codegen ceasing to honour `align 64` — each leaving a green
+build, a correct engine, and layout variance back where #555/#556 found it.
+
+Falsified against a real build rather than fixtures alone: with the flag removed the two functions
+land at `%64 = 16` and `48` and the aligned share falls from 92.7% to 22.9%, reproducing #578's
+figures from an independent parser, and the check exits 1.
+
+Emitting the map on every link rather than reconstructing it by a throwaway relink costs a file read
+instead of 7.9 s, and keeps the map a description of the build that shipped. The executable is
+byte-identical with `/MAP` and without — verified, and kept true by the reproducibility gate above.
+The check runs in `Validate-PrePR.ps1` on Build tier and on the Windows Release CI leg; it is in CI
+as well because the failure that needs no diff is a toolchain upgrade, which no local gate observes.
+
 ## 2026-09-19 — clang-cl pins hot-function alignment at 64 bytes (#578)
 
 `/clang:-falign-functions=64` in `strat_configure_target`'s clang-cl branch. Spike #578 measured it
