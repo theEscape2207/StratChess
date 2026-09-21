@@ -23,9 +23,9 @@ a bishop-colour-aware corner target for this one material class.
   replace the centre-distance component with a corner-distance component keyed on the bishop's square
   colour. The king-distance component is unchanged.
 - Add one weight constant, `MOPUP_KBN_CORNER_WEIGHT`, in `Eval.h` beside the existing mop-up weights.
-- Add term-level `[eval]` tests (correct corner beats wrong corner; the class is recognised exactly;
-  colour symmetry) and one `[slow]` conversion test that plays KBN vs K out with the production
-  search and requires a mate inside the fifty-move limit.
+- Add fast `[eval]` tests (colour polarity; the losing king's gradient across the board; the class is
+  recognised exactly; colour symmetry) and one `[slow]` conversion test that plays KBN vs K out with
+  the production search and requires a mate inside the fifty-move limit.
 - Add the conversion test and its rationale to `Docs/TestDesign.md`.
 
 **This change will not:**
@@ -48,10 +48,10 @@ For exactly B+N, `MOPUP_CMD_WEIGHT * CenterManhattanDistance(loserKingSq)` is dr
 component takes its place.
 
 Rejected: keeping both. `CenterManhattanDistance` is 6 at all four corners, so a wrong corner keeps a
-full centre-distance bonus while the corner component pays 0 there — a local maximum the search can
-settle into. With both at weight 10 and a dark-squared bishop, the Black king on a8 scores 60 while
-b7 scores 40: the term would still reward parking the king in the corner where no mate exists. A
-plain replacement makes the wrong corner worth the same as the centre, which is what it is worth.
+full centre-distance bonus while the corner component pays 0 there. With both at weight 10 and a
+dark-squared bishop, a Black king on a8 scores 60 — and so do a7 and b8, while b7 scores 40: a plateau
+with no improving move, which is why the search settles there. A plain replacement makes the wrong
+corner worth the same as the centre, which is what it is worth.
 
 Rejected: re-weighting `MOPUP_CMD_WEIGHT`/`MOPUP_KINGDIST_WEIGHT`. Neither knob can express bishop
 colour, and raising them drives the king to the wrong corner harder — this issue is the worked
@@ -63,6 +63,11 @@ With `file = File(sq)` and `row = Rank(sq)` (row 0 = rank 8, so a8 = (0,0), h1 =
 
 - light-squared bishop — mating corners a8 and h1: `AbsDiff(file + row, 7)`
 - dark-squared bishop — mating corners a1 and h8: `AbsDiff(file, row)`
+
+Bishop colour is `(winnerBishops & DARK_SQUARES) != 0ULL`, the same predicate `WrongBishopFortress`
+already asks (`Eval.cpp:979`) against the constant at `Eval.cpp:17` — same translation unit, nothing
+new. Naming it here is the point: the predicate is where an inverted mapping would be introduced, and
+inversion is the one error the symmetry test cannot see (see Validation).
 
 Each is exactly `7 - min(Manhattan distance to the two mating corners)`, so it peaks at 7 on the two
 correct corners, is 0 on the two wrong ones, and has a nonzero gradient off the losing diagonal
@@ -78,9 +83,11 @@ rest. This is the same shape Stockfish used for its KBNK specialisation.
 
 ### D3: `MOPUP_KBN_CORNER_WEIGHT = 10`, a new constant rather than a reuse of `MOPUP_CMD_WEIGHT`
 
-10 matches the weight of the component it replaces, so this class's mop-up score stays in the band it
-occupies today (0..70 against 0..60) instead of introducing a new magnitude into a term other things
-are calibrated against. A distinct name records that the two are not the same knob: a later
+10 matches the weight of the component it replaces: the replaced component goes 0..60 → 0..70, taking
+the term's total (it also carries `MOPUP_KINGDIST_WEIGHT * (7 - d)`, 0..28) from 0..88 to 0..98. That
+keeps the class an order of magnitude below any pruning or delta threshold, which is the property worth
+holding, rather than introducing a new magnitude into a term other things are calibrated against. A
+distinct name records that the two are not the same knob: a later
 centre-distance retune must not silently move the corner target.
 
 Rejected: a much larger weight in the style of Stockfish's KBNK function. That value sits inside a
@@ -116,12 +123,18 @@ written out rather than inferred.
 - **The bishop's square colour determines the mating corner, and KBN vs K is a forced mate within 50
   moves from every position.** Chess theory, not a repository fact. Verified by the conversion test in
   Validation, which mates from starting positions of both bishop colours.
-- **The two tablebase-confirmed positions from the issue are not usable as mate-in-N oracles.** Both
-  stand at halfmove clock 94 with DTZ 46 and 44, so under the fifty-move rule even perfect play draws
-  them; `cursed-win` says exactly that. The conversion test therefore starts from positions with a
-  zeroed clock, and those two FENs are kept as evidence only. This follows from the DTZ figures in the
-  issue and needs no further verification, but it contradicts the issue comment that offers them as
-  regression positions, so it is called out rather than left implicit.
+- **The two tablebase-confirmed positions from the issue are not usable as mate-in-N oracles at the
+  clock they were recorded on.** Both stand at halfmove clock 94, six plies from
+  `HALFMOVE_CLOCK_LIMIT = 100`, with DTZ magnitude 46 and 44 (the issue records them as `-46`/`-44`,
+  from the losing side to move). Six plies is short of either reading of the unit, so under the
+  fifty-move rule even perfect play draws them — which is what `cursed-win` means. This contradicts the
+  issue comment that offers them as regression positions, so it is called out rather than left
+  implicit.
+
+  What survives is the position, not the clock: **zeroing the halfmove clock in those same two FENs
+  turns them into the best conversion-test starts available**, because they are tablebase-confirmed
+  wins carrying an exact optimal-play ply budget that no hand-picked FEN has. They are used that way in
+  Validation.
 
 Nothing else here depends on behaviour outside this repository.
 
@@ -140,22 +153,40 @@ Nothing else here depends on behaviour outside this repository.
 
 Change tier: engine. `Validate-PrePR.ps1` scopes itself.
 
-- **Term-level `[eval]` tests.** One variable moved per case: with both kings and the knight fixed and
-  the losing king on a8, `Mopup()` is higher when the bishop stands on a light square than on a dark
-  one, and the reverse with the losing king on a1. Holding the kings still keeps the king-distance
-  component out of the comparison. Then: a K+Q vs K and a K+R vs K position keep their current values;
-  a K+B+N vs K+B position (gate closed by the material threshold) and a K+Q+B+N vs K position (queen
+- **Polarity, fast `[eval]`.** With both kings and the knight fixed and the losing king on a8,
+  `Mopup()` is higher with the bishop on a light square than on a dark one, and the reverse with the
+  losing king on a1. Holding the kings still keeps the king-distance component out of the comparison.
+  This pair is the only absolute oracle for the colour mapping: it fails if D2's predicate is inverted.
+- **Gradient, fast `[eval]`.** The polarity pair moves a variable no game moves — a bishop never
+  changes colour — so the behaviour actually being fixed needs its own fast case: bishop fixed on a
+  dark square, winner's king fixed, losing king walked a8 → b7 → d5 → a1, asserting the exact `Mopup()`
+  integer at each. Each expectation is `MOPUP_KBN_CORNER_WEIGHT * corner + MOPUP_KINGDIST_WEIGHT *
+  (7 - d)` computed for that square — the king-distance component moves with the losing king and is
+  part of the expected value, not something the case can hold still. It pins the corner sequence
+  0, 0, 0, 7 and with it D2's accepted floor: a wrongly cornered king scores what a centralised one
+  scores, deliberately. Without this case the only test of the gradient is `[slow]`, which
+  `run-tests` excludes.
+- **Class boundaries, fast `[eval]`.** A K+Q vs K and a K+R vs K position keep their current values; a
+  K+B+N vs K+B position (gate closed by the material threshold) and a K+Q+B+N vs K position (queen
   present) get no corner component.
 - **Colour symmetry.** A KBN FEN added to `kSymmetryFens` in `EvalTestFixture.h`; the existing mirror
-  test then covers the invariant above. This FEN is the one case in that list whose mirror changes the
-  bishop's square colour, which is exactly what a sign error in D2 would break.
-- **Conversion test, `[slow]`.** From four KBN vs K positions with halfmove clock 0 — both bishop
-  colours, and a defending king starting nearer the wrong corner than the right one — play the
-  position out with `AIPerplex` at a fixed depth and `Threads=1`, applying each returned best move,
-  and require `game_state` to report a mate before the halfmove clock reaches
-  `HALFMOVE_CLOCK_LIMIT`. This is the test that fails on `origin/main` and is the arbiter of whether
-  the term is strong enough (D3). Falsified the standard way: revert the corner component and watch it
-  fail.
+  test then covers the symmetry invariant. What the mirror discriminates is the *absence* of colour
+  keying — 7 against 0 across the mirror. It cannot catch a consistently inverted mapping, which is
+  symmetric and passes; the polarity pair above is what fixes that.
+- **Conversion test, `[slow]`.** Four KBN vs K starts, halfmove clock zeroed: the issue's two
+  tablebase-confirmed positions (`5k2/8/5KB1/8/8/1N6/8/8` and `2n5/8/8/8/8/5kb1/8/6K1`, DTZ magnitude
+  46 and 44 recorded in the test comment as the optimal-play budget the engine's fixed-depth play may
+  exceed), plus one per bishop colour with the defending king starting nearer the wrong corner than the
+  right one. Play each out with **one** `AIPerplex` at a fixed depth and `Threads=1` playing both
+  sides, applying each returned best move, and require `game_state` to report a mate before the
+  halfmove clock reaches `HALFMOVE_CLOCK_LIMIT`. Assert `game_state != GameStates::DRAW_PAT` as a
+  separately named failure: the term rewards both cornering the bare king and closing king distance, so
+  stalemate is a live outcome and it is a different finding with a different fix from a clock expiry.
+  The test comment states that the defender is the same engine and therefore not adversarial — the
+  tablebase-derived starts are what compensate for that.
+
+  This is the test that fails on `origin/main` and is the arbiter of whether the term is strong enough
+  (D3). Falsified the standard way: revert the corner component and watch it fail.
 
   The fixed depth is not a free parameter: it is the lowest that converts, measured during
   implementation and recorded in the test's comment together with its runtime. The order of recourse
@@ -163,10 +194,17 @@ Change tier: engine. `Validate-PrePR.ps1` scopes itself.
   `MOPUP_KBN_CORNER_WEIGHT` first (D3), then the test depth, and if neither converts, the corner
   target alone is not sufficient knowledge for this mate and that is the finding to report rather
   than a term to ship.
-- **Confinement.** `Compare-SearchEquivalence.ps1 -After <built exe>` over its default positions,
-  which all have pawns and cannot reach a pawnless B+N leaf at the script's depth: identical node
-  counts and best moves, showing the eval change is confined to the gated class. A node difference
-  there means the class test admits more than it should.
+- **Leak check.** `Compare-SearchEquivalence.ps1 -After <built exe> -BaselineRef origin/main` (the
+  script throws on `-After` alone, `Scripts/Compare-SearchEquivalence.ps1:559`) over its default
+  positions. All six carry pawns and cannot reach a pawnless B+N leaf at that depth, so identical node
+  counts and best moves are the expected result and the only thing the run can detect is an unintended
+  leak into positions with pawns. It is not a test of class over-admission.
+- **Invariant 1, the real instrument.** A second `Compare-SearchEquivalence.ps1` run with a
+  `-Positions` file of pawnless mop-up FENs — K+Q vs K, K+R vs K, K+Q+Q vs K, K+B+B vs K, K+N+N vs K,
+  K+B+N vs K+B, and one K+B+N vs K. Identical node counts and best moves on every line **except** the
+  last is what closes Invariant 1; a difference on any other line means the class test admits more than
+  it should, and no difference on the last means the term is not reaching the class at all. The
+  positions file lives in the session scratchpad and the result goes in the PR body.
 - **Bench pass.** `Run-Bench.ps1` before and after. The added work sits behind an early-out that the
   bench positions never pass, so the expectation is no nps change outside noise; a measured drop would
   mean the detection was compiled in front of the early-out.
@@ -179,11 +217,9 @@ Change tier: engine. `Validate-PrePR.ps1` scopes itself.
 
 | Decision / rationale | Lands in |
 |---|---|
-| Why the corner component replaces rather than adds to centre distance, with the wrong-corner local maximum (D1) | source comment in `eval_mopup` |
+| One block covering the replacement and its wrong-corner plateau (D1), the bare-loser check (D5) and why the class test sits behind the early-out (D4) | source comment in `eval_mopup` |
 | The `7 - Manhattan-to-nearer-correct-corner` identity behind the two absolute differences (D2) | source comment on the new helper in `Eval.h` |
 | Why the corner weight is a separate constant from `MOPUP_CMD_WEIGHT` (D3) | comment beside `MOPUP_KBN_CORNER_WEIGHT` in `Eval.h` |
-| Why the class test is inside `eval_mopup` and not in `BuildContext` (D4) | source comment in `eval_mopup` |
-| Why the bare-loser check is written out rather than derived from the material threshold (D5) | source comment in `eval_mopup` |
-| That the two `cursed-win` FENs are evidence, not mate-in-N oracles | comment on #572, and the conversion test's comment |
+| That the two `cursed-win` FENs are mate-in-N oracles only with the clock zeroed | comment on #572, and the conversion test's comment |
 | The conversion test and what it costs | `Docs/TestDesign.md` |
 | Outcome of the conversion test, before and after | PR body, `Docs/Changelog.md` |
