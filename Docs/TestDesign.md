@@ -379,9 +379,9 @@ and they are not oracles there. ~5 s at depth 12.
 stalemate, and at least four of the five must be mated. The corner target gives the search the right
 destination but not the manoeuvre, so one start still runs the clock out — and which one moves with any
 perturbation of the corner weight or the depth (measured: weight 10 / depth 12 fails the second start,
-weight 20 the third, depth 16 the fourth — the last for about 10 minutes against 5 seconds. A
-per-position gate would encode whichever start happens to convert today. A `WARN` fires while the fifth is unconverted, so closing that gap is visible without
-failing the suite.
+weight 20 the third, depth 16 the fourth — the last for about 10 minutes against 5 seconds). A
+per-position gate would encode whichever start happens to convert today. A `WARN` fires while the
+fifth is unconverted, so closing that gap is visible without failing the suite.
 
 **What it catches**: reverting the corner component in `eval_mopup` turns the tally from
 4 mated / 0 material lost into **0 mated / 2 material lost / 3 clock expiries** — both halves of #572,

@@ -680,7 +680,7 @@ TEST_CASE("Eval - eval_mopup: gated off for both colors below the decisive mater
 	REQUIRE(EvaluatorTestFixture::Mopup(board, BLACK) == 0);
 }
 
-// ── Bishop and knight against a bare king (issue #572) ────────────────────────
+// ── Bishop and knight against a bare king ─────────────────────────────────────
 //
 // Every expected integer below decomposes as
 //   MOPUP_KBN_CORNER_WEIGHT (10) * proximity-to-nearer-mating-corner

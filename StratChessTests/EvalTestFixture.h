@@ -71,11 +71,11 @@ static constexpr const char* FEN_MOPUP_DEFENDER_HAS_QUEEN = "k7/1q6/8/8/3Q4/8/8/
 static constexpr const char* FEN_MOPUP_MARGINAL_CORNER = "7k/8/8/8/5N2/8/8/b3K3 w - - 0 1";
 static constexpr const char* FEN_MOPUP_MARGINAL_CENTER = "8/8/2k5/8/5N2/8/8/b3K3 w - - 0 1";
 
-// Bishop and knight against a bare king (issue #572): the one mop-up class whose
-// mating corner depends on the bishop's square colour. Black Ka8 is a LIGHT corner
-// and the White bishop on d1 is light, so this is the class's rewarded case. Its
-// colour mirror flips both — White Ka1 dark, bishop d8 dark — which is what makes
-// it the one symmetry FEN that exercises the colour keying at all.
+// Bishop and knight against a bare king: the one mop-up class whose mating corner
+// depends on the bishop's square colour. Black Ka8 is a LIGHT corner and the White
+// bishop on d1 is light, so this is the class's rewarded case. Its colour mirror
+// flips both — White Ka1 dark, bishop d8 dark — which is what makes it the one
+// symmetry FEN that exercises the colour keying at all.
 static constexpr const char* FEN_MOPUP_KBN_LIGHT_BISHOP = "k7/8/2K5/8/8/5N2/8/3B4 w - - 0 1";
 
 // The two scaled pawnless rook classes (issue #128), White the stronger side:
@@ -365,11 +365,11 @@ static constexpr const char* kSymmetryFens[] = {
     FEN_ROOK_AND_MINOR_VS_ROOK,
     FEN_ROOK_VS_MINOR,
     FEN_ROOK_VS_ROOK,
-    // Issue #572: the mop-up corner target is keyed on the bishop's square colour
-    // for this class, and a colour mirror flips the bishop's colour along with the
-    // corners. What the mirror discriminates is the ABSENCE of that keying -- an
-    // inverted mapping is symmetric and passes here, which is why the polarity is
-    // pinned by an absolute case in EvalTermTests.cpp instead.
+    // The mop-up corner target is keyed on the bishop's square colour for this
+    // class, and a colour mirror flips the bishop's colour along with the corners.
+    // What the mirror discriminates is the ABSENCE of that keying -- an inverted
+    // mapping is symmetric and passes here, which is why the polarity is pinned by
+    // an absolute case in EvalTermTests.cpp instead.
     FEN_MOPUP_KBN_LIGHT_BISHOP,
     // Issue #97: the king-safety terms are direction-aware through a
     // defender-relative rank index, and every case above is either shield-

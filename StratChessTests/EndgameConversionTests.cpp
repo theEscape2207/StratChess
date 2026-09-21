@@ -1,24 +1,19 @@
 // EndgameConversionTests.cpp — can the engine actually finish a won basic mate?
 //
-// Every other endgame test asks what a term scores. This one plays the position
-// out and asks for the mate, which is the only instrument that can see the defect
-// issue #572 records: across a 19,980-game lab corpus, 42 games reached
-// K+B+N vs K and none of the 18 that were not adjudicated away ended in a mate.
-//
-// Bishop and knight mate only in a corner of the BISHOP's colour, and before
-// eval_mopup learned that, this suite reproduced BOTH halves of the issue from a
-// zeroed halfmove clock: none of the five starts below was ever mated, and two of
-// them ended in bare kings — the engine handed over the knight, then the bishop,
-// because near the fifty-move boundary every continuation is correctly drawn and
-// nothing preferred keeping the material.
+// Every other endgame test asks what a term scores. This one plays five
+// K+B+N vs K starts out with the production search on both sides and asks for the
+// mate, which is the only instrument that can see whether the conversion works at
+// all. Bishop and knight mate only in a corner of the BISHOP's colour, and a
+// search aimed at any other corner either runs the fifty-move clock out or hands
+// the mating material over: near that boundary every continuation is correctly
+// drawn, so nothing prefers keeping the pieces.
 //
 // Asserted in aggregate rather than per position, deliberately. The corner target
 // gives the search the right destination but not the manoeuvre, so one start in
 // five still runs the clock out, and WHICH one moves with any perturbation of the
-// corner weight or the search depth (measured: weight 10 / depth 12 fails the
-// second start, weight 20 fails the third, depth 16 fails the fourth). A
-// per-position gate would therefore encode whichever position happens to convert
-// today; these two properties are what the change actually establishes.
+// corner weight or the search depth. A per-position gate would therefore encode
+// whichever position happens to convert today. Docs/TestDesign.md carries the
+// perturbation measurements behind that choice.
 //
 // Slow by construction: five starts, up to a hundred fixed-depth searches each.
 // Include order follows TacticalFullTests.cpp: the Catch2 headers come first
@@ -36,16 +31,16 @@ namespace {
 		GameStates expected; // which side must deliver the mate
 	};
 
-	// The first two are the issue's tablebase-confirmed positions with the halfmove
-	// clock ZEROED. At the clock they were recorded on (94) the Lichess tablebase
-	// calls them `cursed-win` — won, but no longer inside the fifty-move rule — so
-	// there they are not oracles at all: six plies remain and the shortest win is 46
-	// and 44 plies away. Zeroed, the position is unchanged, the win is
-	// tablebase-confirmed, and those DTZ figures are an exact optimal-play budget.
+	// The first two are tablebase-confirmed wins with the halfmove clock ZEROED. At
+	// the clock they were recorded on (94) the Lichess tablebase calls them
+	// `cursed-win` — won, but no longer inside the fifty-move rule — so there they
+	// are not oracles at all: six plies remain and the shortest win is 46 and 44
+	// plies away. Zeroed, the position is unchanged, the win is tablebase-confirmed,
+	// and those DTZ figures are an exact optimal-play budget.
 	//
-	// The last three start the defending king in a corner of the WRONG colour, which
-	// is what the retired centre-distance component actively steered into: the king
-	// has to be walked the length of the board before it can be mated. The third is
+	// The last three start the defending king in a corner of the WRONG colour, the
+	// hardest case for a corner target: the king has to be walked the length of the
+	// board before it can be mated. The third is
 	// the second one's colour mirror, and the pair is the reason this test does not
 	// gate per position — the two are the same position up to reflection, and the
 	// search converts one or the other depending on tie-breaks.
@@ -57,9 +52,9 @@ namespace {
 	    {"dark bishop, king in a light corner", "k7/8/2K5/8/5B2/1N6/8/8 w - - 0 1", GameStates::WHITE_WON},
 	};
 
-	// Depth 12 converts four of the five in about 5 seconds. Depth 16 converts four as
-	// well — a different four — and measured about 10 minutes, so the deeper search
-	// buys nothing here and the cheaper one is what runs.
+	// Deep enough to convert once the king is cornered, cheap enough to keep the
+	// suite at a few seconds. Docs/TestDesign.md records what a deeper search does
+	// and does not buy here.
 	constexpr unsigned kConversionDepth = 12;
 
 	// King + bishop + knight: 10000 + 300 + 300 (g_iPieceValues). Anything less means
@@ -129,9 +124,10 @@ TEST_CASE("Endgame - bishop and knight convert against a bare king", "[endgame_c
 	REQUIRE(tally.mated + tally.materialLost + tally.clockExpired + tally.stalemated ==
 	        static_cast<int>(std::size(kConversionCases)));
 
-	// The mating material must survive. Two of these starts lost it before the
-	// corner target existed, and a tiebreak preferring material would have hidden
-	// the conversion failure rather than fixed it (#572).
+	// The mating material must survive. A search drifting toward the fifty-move
+	// boundary finds every continuation drawn and will part with a piece for nothing,
+	// which is a conversion failure — a tiebreak preferring material would hide it
+	// rather than fix it.
 	REQUIRE(tally.materialLost == 0);
 
 	// Stalemate is a different finding with a different fix from running the clock
@@ -139,9 +135,9 @@ TEST_CASE("Endgame - bishop and knight convert against a bare king", "[endgame_c
 	// distance, which is exactly how a winning side stalemates one.
 	REQUIRE(tally.stalemated == 0);
 
-	// The gate. Zero of five were mated before the corner target; four is what the
-	// term delivers, and one start still runs the clock out because the search has
-	// the destination but not the manoeuvre.
+	// The gate. Four of five is what the corner target delivers; the remaining start
+	// runs the clock out because the search has the destination but not the
+	// manoeuvre.
 	REQUIRE(tally.mated >= 4);
 
 	// Not a gate: the fifth start converting means the technique gap closed, which
