@@ -566,6 +566,22 @@ class Evaluator {
 	static const short MOPUP_KINGDIST_WEIGHT = 4;      // weight on (MOPUP_MAX_KING_DISTANCE - king-to-king distance)
 	static const short MOPUP_MAX_KING_DISTANCE = 7;    // max Chebyshev distance on an 8x8 board
 
+	// Bishop and knight mate only in a corner of the BISHOP's colour, so for that
+	// one class the centre-distance component above is replaced by this one. A
+	// separate name, not a reuse of MOPUP_CMD_WEIGHT, because the two are not the
+	// same knob: a centre-distance retune must not silently move the corner target.
+	// It matches that weight today, which keeps the term's total at 0..98 instead
+	// of introducing a new magnitude into a class other terms are calibrated
+	// against.
+	static const short MOPUP_KBN_CORNER_WEIGHT = 10;
+
+	// Two things that are the same number on an 8x8 board: the largest Manhattan
+	// distance from any square to the nearer of two diagonally opposite corners,
+	// and the file+rank sum along the diagonal joining the other two. One constant
+	// serves both because MatingCornerProximity() below is the difference of
+	// exactly those two quantities.
+	static const short MOPUP_MAX_CORNER_DISTANCE = 7;
+
 	// Game-phase weights per piece (issue #99). Summed over BOTH colors, so a
 	// full set of pieces gives 2*(2*1 + 2*1 + 2*2 + 1*4) = 24 = MAX_GAME_PHASE.
 	// Pawns and kings contribute nothing: pawns are present throughout and
@@ -650,6 +666,24 @@ class Evaluator {
 	static constexpr int Clamp(int value, int low, int high) noexcept
 	{
 		return (value < low) ? low : ((value > high) ? high : value);
+	}
+
+	// How close a square is to the nearer of the two corners a bishop of this
+	// colour can mate in: MOPUP_MAX_CORNER_DISTANCE minus the Manhattan distance to
+	// that corner, so 7 on a mating corner and 0 on the two corners where no mate
+	// exists. The identity is what makes the one absolute difference enough —
+	// min(s, 14 - s) == 7 - |s - 7| for s = file + rank, and min(7 + t, 7 - t) ==
+	// 7 - |t| for t = file - rank.
+	//
+	// A dark-squared bishop mates on a1/h8, where file and rank differ most; a
+	// light-squared one on a8/h1, where their sum is furthest from 7. Getting that
+	// pairing backwards drives the king to the corner where no mate exists, and a
+	// colour mirror cannot see it — the eval tests fix the polarity directly.
+	static constexpr int MatingCornerProximity(eSquare square, bool bishopIsDark) noexcept
+	{
+		const int file = File(square);
+		const int rank = Rank(square);
+		return bishopIsDark ? AbsDiff(file, rank) : AbsDiff(file + rank, MOPUP_MAX_CORNER_DISTANCE);
 	}
 
 	// The anchor of the king's safety zone: the king's own square pulled onto
