@@ -584,6 +584,53 @@ ScorePair Evaluator::eval_king_attack(const EvalContext& ctx, eColor color) noex
 	return ScorePair{-KingDangerPenalty(danger), 0};
 }
 
+// BishopKnightMateBishopIsDark — recognises the one mop-up class whose mating
+// corner is not a property of the board alone, and answers with the bishop's
+// square colour. Nullopt for every other class.
+//
+// Bishop and knight mate only in a corner of the BISHOP's colour, so the
+// centre-distance component of mop-up — correct wherever every corner mates —
+// steers half of these endings at a corner where no mate exists.
+//
+// Two things the caller relies on:
+//
+// It runs behind eval_mopup's mopup_active early-out, not in BuildContext, which is
+// why the popcounts are affordable: BuildContext runs on every evaluated node, and
+// almost none of them is a pawnless basic mate. That gate is load-bearing for
+// CORRECTNESS too, not only for cost — nothing below looks at pawns, so K+B+N+P vs K
+// would be recognised as a basic mate if the gate's pawnless condition ever
+// loosened. Hence the assert.
+//
+// The loser-is-bare test is redundant against today's numbers — B+N is 600, the
+// cheapest defending piece 300, so MOPUP_MATERIAL_THRESHOLD's 400 already closes
+// the gate on any defender holding one — but it is the condition the corner target
+// actually depends on, and deriving it from that threshold would make this term
+// wrong the day the threshold moves.
+namespace {
+	std::optional<bool> BishopKnightMateBishopIsDark(std::span<const BITBOARD> boards, eColor winner) noexcept
+	{
+		assert((boards[ePiece::WHITE_PAWN] | boards[ePiece::BLACK_PAWN]) == 0ULL &&
+		       "Eval: the bishop-and-knight corner target assumes the mop-up gate's pawnless condition");
+
+		const bool winnerIsWhite = (winner == WHITE);
+		const BITBOARD bishops = boards[winnerIsWhite ? ePiece::WHITE_BISHOP : ePiece::BLACK_BISHOP];
+		const BITBOARD knights = boards[winnerIsWhite ? ePiece::WHITE_KNIGHT : ePiece::BLACK_KNIGHT];
+
+		if (std::popcount(bishops) != 1 || std::popcount(knights) != 1)
+			return std::nullopt;
+		if ((boards[winnerIsWhite ? ePiece::WHITE_ROOK : ePiece::BLACK_ROOK] |
+		     boards[winnerIsWhite ? ePiece::WHITE_QUEEN : ePiece::BLACK_QUEEN]) != 0ULL)
+			return std::nullopt;
+
+		const BITBOARD loserPieces = boards[winnerIsWhite ? ePiece::ALL_BLACK_PIECES : ePiece::ALL_WHITE_PIECES];
+		const BITBOARD loserKing = boards[winnerIsWhite ? ePiece::BLACK_KING : ePiece::WHITE_KING];
+		if (loserPieces != loserKing)
+			return std::nullopt;
+
+		return (bishops & DARK_SQUARES) != 0ULL;
+	}
+} // namespace
+
 // eval_mopup — mop-up evaluation for one color (original term issue #70 /
 // epic #110). In decisively-won, pawnless endings, reward driving the losing
 // king to the edge/corner and closing the distance between the two kings —
@@ -606,8 +653,18 @@ ScorePair Evaluator::eval_mopup(const EvalContext& ctx, eColor color) noexcept
 	const eSquare winnerKingSq = ctx.king_sq[color];
 	const eSquare loserKingSq = ctx.king_sq[loser];
 
-	const int mopup = MOPUP_CMD_WEIGHT * CenterManhattanDistance(loserKingSq) +
-	                  MOPUP_KINGDIST_WEIGHT * (MOPUP_MAX_KING_DISTANCE - KingDistance(winnerKingSq, loserKingSq));
+	// For bishop and knight the corner component REPLACES the centre component
+	// rather than adding to it. Kept together, a corner of the wrong colour still
+	// collects the full centre-distance bonus — a Black king on a8 scores 60, and so
+	// do a7 and b8, while b7 scores 40 — a plateau with no improving move, which is
+	// where the search settles. Replaced, a wrong corner is worth what the centre is
+	// worth, which is what it is worth.
+	const std::optional<bool> bishopIsDark = BishopKnightMateBishopIsDark(ctx.boards, color);
+	const int cornering = bishopIsDark ? MOPUP_KBN_CORNER_WEIGHT * MatingCornerProximity(loserKingSq, *bishopIsDark)
+	                                   : MOPUP_CMD_WEIGHT * CenterManhattanDistance(loserKingSq);
+
+	const int mopup =
+	    cornering + MOPUP_KINGDIST_WEIGHT * (MOPUP_MAX_KING_DISTANCE - KingDistance(winnerKingSq, loserKingSq));
 
 	// Gated, not blended (D4): once the gate opens the term applies at full
 	// strength at both endpoints.

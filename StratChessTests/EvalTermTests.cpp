@@ -680,6 +680,105 @@ TEST_CASE("Eval - eval_mopup: gated off for both colors below the decisive mater
 	REQUIRE(EvaluatorTestFixture::Mopup(board, BLACK) == 0);
 }
 
+// ── Bishop and knight against a bare king ─────────────────────────────────────
+//
+// Every expected integer below decomposes as
+//   MOPUP_KBN_CORNER_WEIGHT (10) * proximity-to-nearer-mating-corner
+//     + MOPUP_KINGDIST_WEIGHT (4) * (7 - Chebyshev king distance)
+// for this class, and MOPUP_CMD_WEIGHT (10) * centre-Manhattan-distance in place
+// of the first product for every other class. They are written out rather than
+// recomputed from the constants so that a retune has to visit them.
+
+TEST_CASE("Eval - eval_mopup: bishop and knight aim at the corner of the bishop's colour", "[eval]")
+{
+	// One variable moves: the bishop's square colour. Both kings and the knight
+	// stand still, so the king-distance component (Kc6 to the cornered king, 2
+	// squares, 4 * 5 = 20) is identical in every position here and drops out of
+	// the comparison. This pair is the only absolute oracle for the colour
+	// mapping -- the symmetry mirror flips bishop colour and corner together and
+	// so cannot tell a correct mapping from a wholly inverted one.
+	SECTION("a LIGHT corner rewards a light-squared bishop")
+	{
+		Board lightBishop(FEN_MOPUP_KBN_LIGHT_BISHOP);        // Bd1, Black Ka8 (light)
+		Board darkBishop("k7/8/2K5/8/8/5N2/8/2B5 w - - 0 1"); // Bc1, same king placement
+
+		CHECK(EvaluatorTestFixture::Mopup(lightBishop, WHITE) == 90); // 10*7 + 20
+		CHECK(EvaluatorTestFixture::Mopup(darkBishop, WHITE) == 20);  // 10*0 + 20
+	}
+
+	SECTION("a DARK corner rewards a dark-squared bishop")
+	{
+		Board darkBishop("8/8/8/8/8/2K2N2/8/k1B5 w - - 0 1");  // Bc1, Black Ka1 (dark)
+		Board lightBishop("8/8/8/8/8/2K2N2/8/k2B4 w - - 0 1"); // Bd1, same king placement
+
+		CHECK(EvaluatorTestFixture::Mopup(darkBishop, WHITE) == 90);  // 10*7 + 20
+		CHECK(EvaluatorTestFixture::Mopup(lightBishop, WHITE) == 20); // 10*0 + 20
+	}
+}
+
+TEST_CASE("Eval - eval_mopup: the losing king's gradient runs to the bishop's corner", "[eval]")
+{
+	// The case above moves a variable no game moves -- a bishop never changes
+	// colour. What the search follows is the gradient over the LOSING king's
+	// square with the bishop fixed, which is this: a dark-squared bishop on c1,
+	// White Kf6 and Nh4 fixed, the Black king placed on a8, b7, d5 and a1.
+	//
+	// The corner proximities are 0, 0, 0, 7: a8 is a light corner and worth what
+	// the centre is worth, which is the deliberate floor of the metric -- only the
+	// king-distance component separates the first three. a1 is the mating corner.
+	Board wrongCorner("k7/8/5K2/8/7N/8/8/2B5 w - - 0 1");      // Ka8, king distance 5
+	Board nearWrongCorner("8/1k6/5K2/8/7N/8/8/2B5 w - - 0 1"); // Kb7, distance 4
+	Board centre("8/8/5K2/3k4/7N/8/8/2B5 w - - 0 1");          // Kd5, distance 2
+	Board rightCorner("8/8/5K2/8/7N/8/8/k1B5 w - - 0 1");      // Ka1, distance 5
+
+	CHECK(EvaluatorTestFixture::Mopup(wrongCorner, WHITE) == 8);      // 10*0 + 4*2
+	CHECK(EvaluatorTestFixture::Mopup(nearWrongCorner, WHITE) == 12); // 10*0 + 4*3
+	CHECK(EvaluatorTestFixture::Mopup(centre, WHITE) == 20);          // 10*0 + 4*5
+	CHECK(EvaluatorTestFixture::Mopup(rightCorner, WHITE) == 78);     // 10*7 + 4*2
+
+	// The point of the term: the mating corner must beat the wrong one from the
+	// same king distance, which the retired centre-distance component scored equal.
+	CHECK(EvaluatorTestFixture::Mopup(rightCorner, WHITE) > EvaluatorTestFixture::Mopup(wrongCorner, WHITE));
+
+	// BOTH corners of each colour, or a formula rewarding only one of the two would
+	// pass everything above. h8 is the dark bishop's second corner; the light form
+	// gets its own second corner and one non-corner point, so it is pinned by a
+	// gradient rather than by its endpoints alone.
+	Board darkCornerH8("7k/8/5K2/8/7N/8/8/2B5 w - - 0 1");      // Bc1 dark, Kh8 dark, distance 2
+	Board darkWrongCornerH1("8/8/5K2/8/7N/8/8/2B4k w - - 0 1"); // Bc1 dark, Kh1 LIGHT, distance 5
+	Board lightCornerH1("8/8/5K2/8/7N/8/8/3B3k w - - 0 1");     // Bd1 light, Kh1 light, distance 5
+	Board lightNonCorner("3k4/8/5K2/8/7N/8/8/3B4 w - - 0 1");   // Bd1 light, Kd8, distance 2
+
+	CHECK(EvaluatorTestFixture::Mopup(darkCornerH8, WHITE) == 90);     // 10*7 + 4*5
+	CHECK(EvaluatorTestFixture::Mopup(darkWrongCornerH1, WHITE) == 8); // 10*0 + 4*2
+	CHECK(EvaluatorTestFixture::Mopup(lightCornerH1, WHITE) == 78);    // 10*7 + 4*2
+	CHECK(EvaluatorTestFixture::Mopup(lightNonCorner, WHITE) == 60);   // 10*4 + 4*5
+}
+
+TEST_CASE("Eval - eval_mopup: only bishop-and-knight gets the corner target", "[eval]")
+{
+	// Every other mop-up class keeps centre distance. FEN_QUEEN_C6 and the rook
+	// position below both have the losing king on h8 (centre distance 6) and the
+	// winner's king 7 away, so both are 10*6 + 4*0.
+	Board queen(FEN_QUEEN_C6);
+	Board rook("7k/8/2R5/8/8/8/8/4K3 w - - 0 1");
+	CHECK(EvaluatorTestFixture::Mopup(queen, WHITE) == 60);
+	CHECK(EvaluatorTestFixture::Mopup(rook, WHITE) == 60);
+
+	// A queen alongside the bishop and knight is not this class. The discriminator
+	// is sharp in the other direction here: Black Ka8 is a LIGHT corner and the
+	// bishop is dark, so a leaking class test would score 20 where centre distance
+	// scores 80.
+	Board queenWithMinors("k7/8/2K5/8/8/5N2/8/2BQ4 w - - 0 1");
+	CHECK(EvaluatorTestFixture::Mopup(queenWithMinors, WHITE) == 80); // 10*6 + 4*5
+
+	// A defender holding a piece is not a basic mate, and the 300 cp lead closes
+	// the material gate before the class test is ever consulted.
+	Board defenderHasBishop("k7/8/2K5/8/8/5N2/8/2Bb4 w - - 0 1");
+	CHECK(EvaluatorTestFixture::Mopup(defenderHasBishop, WHITE) == 0);
+	CHECK(EvaluatorTestFixture::Mopup(defenderHasBishop, BLACK) == 0);
+}
+
 TEST_CASE("Eval - the per-term functions sum exactly to Evaluator::Evaluate()'s result", "[eval]")
 {
 	// Structural regression check: rebuilds Evaluate()'s side-to-move-relative

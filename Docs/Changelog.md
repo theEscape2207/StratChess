@@ -22,6 +22,46 @@ Newest first.
 
 ---
 
+## 2026-09-21 — Mop-up aims at the bishop's corner in KBN vs K (#572)
+
+`eval_mopup` rewarded driving the losing king toward **any** corner, which is correct for K+Q vs K
+and K+R vs K, where every corner mates. Bishop and knight mate only in a corner of the **bishop's**
+colour, so in half of all positions the one term that converts a won pawnless ending was steering at
+the corner where no mate exists. Across a 19,980-game lab corpus 42 games reached K+B+N vs K and none
+of the 18 that were not adjudicated away ended in a mate.
+
+For that class alone the centre-distance component is now **replaced** — not supplemented — by
+`MOPUP_KBN_CORNER_WEIGHT * MatingCornerProximity(...)`, one absolute difference that equals
+`7 - Manhattan distance to the nearer mating corner` (`AbsDiff(file + rank, 7)` for a light-squared
+bishop, `AbsDiff(file, rank)` for a dark one). Kept together, a wrong corner keeps its full
+centre-distance bonus: a8, a7 and b8 all score 60 while b7 scores 40, a plateau with no improving move.
+The class test runs behind the existing `mopup_active` early-out, so no node that is not already a
+mop-up pays for it; it requires the winner to hold exactly one bishop and one knight, no rook and no
+queen, and the loser to hold nothing but its king.
+
+New `[endgame_conversion][slow]` tier (`EndgameConversionTests.cpp`, ~5 s): five KBN vs K starts — two
+of them #572's tablebase-confirmed positions with the halfmove clock zeroed — played out by the
+production search on both sides at depth 12. Reverting the corner component turns the tally from
+**4 mated / 0 material lost** into **0 mated / 2 material lost / 3 clock expiries**: the old build
+hands over the knight at ply 99 and the bishop by ply 115, reproducing both halves of #572
+deterministically, including the material losses the issue had only inferred from game outcomes.
+
+**The conversion is improved, not solved, and the gate says so.** No corner weight or search depth
+converts all five starts — weight 10 / depth 12 fails the second, weight 20 the third, depth 16 the
+fourth, and cost about 10 minutes against 5 seconds — because the term supplies the destination, not the knight
+manoeuvre. So the test asserts in aggregate (no material loss, no stalemate, at least four of five
+mated) and `WARN`s while the fifth is unconverted, rather than gating on whichever start happens to
+convert today. The residual technique gap is #596; #572 closes with this.
+
+No Elo match: the evaluation changes only in pawnless B+N-versus-bare-king positions, 42 of 19,980 lab
+games and 24 of those adjudicated away, which no SPRT can resolve. Confinement instead —
+`Compare-SearchEquivalence.ps1 -BaselineRef origin/main` is IDENTICAL across its six default positions
+(102 compared lines), and over a pawnless mop-up set K+Q vs K, K+R vs K, K+Q+Q vs K, K+B+B vs K and
+K+N+N vs K are all node-identical while K+B+N vs K diverges at depth 1, as intended. K+B+N vs K+B also
+diverges, from depth 7 — its tree reaches the class once the defending bishop is captured, which is
+the term working rather than the gate leaking. Bench over three paired runs: 2.37 M nps against
+2.38 M, inside a ~3% per-build spread — no measurable cost, as expected behind the early-out.
+
 ## 2026-09-21 — Most of Tier 2's faulted moves are horizon, not a missing evaluation term (#481 step 3)
 
 The last open step of #481: when an outside judge faults a move, is the engine's own evaluation of
