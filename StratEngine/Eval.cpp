@@ -594,9 +594,12 @@ ScorePair Evaluator::eval_king_attack(const EvalContext& ctx, eColor color) noex
 //
 // Two things the caller relies on:
 //
-// It runs behind eval_mopup's mopup_active early-out, not in BuildContext, which
-// is why the popcounts are affordable: BuildContext runs on every evaluated node,
-// and almost none of them is a pawnless basic mate.
+// It runs behind eval_mopup's mopup_active early-out, not in BuildContext, which is
+// why the popcounts are affordable: BuildContext runs on every evaluated node, and
+// almost none of them is a pawnless basic mate. That gate is load-bearing for
+// CORRECTNESS too, not only for cost — nothing below looks at pawns, so K+B+N+P vs K
+// would be recognised as a basic mate if the gate's pawnless condition ever
+// loosened. Hence the assert.
 //
 // The loser-is-bare test is redundant against today's numbers — B+N is 600, the
 // cheapest defending piece 300, so MOPUP_MATERIAL_THRESHOLD's 400 already closes
@@ -606,6 +609,9 @@ ScorePair Evaluator::eval_king_attack(const EvalContext& ctx, eColor color) noex
 namespace {
 	std::optional<bool> BishopKnightMateBishopIsDark(std::span<const BITBOARD> boards, eColor winner) noexcept
 	{
+		assert((boards[ePiece::WHITE_PAWN] | boards[ePiece::BLACK_PAWN]) == 0ULL &&
+		       "Eval: the bishop-and-knight corner target assumes the mop-up gate's pawnless condition");
+
 		const bool winnerIsWhite = (winner == WHITE);
 		const BITBOARD bishops = boards[winnerIsWhite ? ePiece::WHITE_BISHOP : ePiece::BLACK_BISHOP];
 		const BITBOARD knights = boards[winnerIsWhite ? ePiece::WHITE_KNIGHT : ePiece::BLACK_KNIGHT];

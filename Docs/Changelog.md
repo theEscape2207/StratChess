@@ -48,7 +48,7 @@ deterministically, including the material losses the issue had only inferred fro
 
 **The conversion is improved, not solved, and the gate says so.** No corner weight or search depth
 converts all five starts — weight 10 / depth 12 fails the second, weight 20 the third, depth 16 the
-fourth for fifteen times the runtime — because the term supplies the destination, not the knight
+fourth, and cost about 10 minutes against 5 seconds — because the term supplies the destination, not the knight
 manoeuvre. So the test asserts in aggregate (no material loss, no stalemate, at least four of five
 mated) and `WARN`s while the fifth is unconverted, rather than gating on whichever start happens to
 convert today. The residual technique gap is #596; #572 closes with this.

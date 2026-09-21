@@ -57,9 +57,9 @@ namespace {
 	    {"dark bishop, king in a light corner", "k7/8/2K5/8/5B2/1N6/8/8 w - - 0 1", GameStates::WHITE_WON},
 	};
 
-	// Depth 12 converts four of the five in about 40 seconds. Depth 16 converts four
-	// as well — a different four — for fifteen times the runtime, so the deeper
-	// search buys nothing here and the cheaper one is what runs.
+	// Depth 12 converts four of the five in about 5 seconds. Depth 16 converts four as
+	// well — a different four — and measured about 10 minutes, so the deeper search
+	// buys nothing here and the cheaper one is what runs.
 	constexpr unsigned kConversionDepth = 12;
 
 	// King + bishop + knight: 10000 + 300 + 300 (g_iPieceValues). Anything less means
@@ -71,6 +71,10 @@ namespace {
 		int materialLost = 0;
 		int clockExpired = 0;
 		int stalemated = 0;
+		// Every other terminal verdict, the winning side being mated included. Kept
+		// as its own counter so the aggregate gate below cannot absorb one: with
+		// `mated >= 4` over five starts, an uncounted catastrophe would be invisible.
+		int other = 0;
 	};
 
 } // namespace
@@ -97,6 +101,8 @@ TEST_CASE("Endgame - bishop and knight convert against a bare king", "[endgame_c
 					++tally.mated;
 				else if (result.game_state == GameStates::DRAW_PAT)
 					++tally.stalemated;
+				else
+					++tally.other;
 				break;
 			}
 			REQUIRE(!result.best_move.is_null());
@@ -114,7 +120,14 @@ TEST_CASE("Endgame - bishop and knight convert against a bare king", "[endgame_c
 			++tally.clockExpired;
 	}
 
-	CAPTURE(tally.mated, tally.materialLost, tally.clockExpired, tally.stalemated);
+	CAPTURE(tally.mated, tally.materialLost, tally.clockExpired, tally.stalemated, tally.other);
+
+	// Every start must land in exactly one bucket, or an outcome nobody thought of —
+	// the winning side mated, a draw reported before the clock check — would pass the
+	// gate by not being counted at all.
+	REQUIRE(tally.other == 0);
+	REQUIRE(tally.mated + tally.materialLost + tally.clockExpired + tally.stalemated ==
+	        static_cast<int>(std::size(kConversionCases)));
 
 	// The mating material must survive. Two of these starts lost it before the
 	// corner target existed, and a tiebreak preferring material would have hidden

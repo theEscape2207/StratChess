@@ -570,9 +570,9 @@ class Evaluator {
 	// one class the centre-distance component above is replaced by this one. A
 	// separate name, not a reuse of MOPUP_CMD_WEIGHT, because the two are not the
 	// same knob: a centre-distance retune must not silently move the corner target.
-	// It matches that weight today, which keeps the term's total at 0..98 instead
-	// of introducing a new magnitude into a class other terms are calibrated
-	// against.
+	// It matches that weight today, which puts the term's total at 0..98 — the same
+	// magnitude class as the 0..88 it replaces, and an order of magnitude below every
+	// pruning and futility margin, which is the property worth holding.
 	static const short MOPUP_KBN_CORNER_WEIGHT = 10;
 
 	// Two things that are the same number on an 8x8 board: the largest Manhattan

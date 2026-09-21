@@ -739,6 +739,20 @@ TEST_CASE("Eval - eval_mopup: the losing king's gradient runs to the bishop's co
 	// The point of the term: the mating corner must beat the wrong one from the
 	// same king distance, which the retired centre-distance component scored equal.
 	CHECK(EvaluatorTestFixture::Mopup(rightCorner, WHITE) > EvaluatorTestFixture::Mopup(wrongCorner, WHITE));
+
+	// BOTH corners of each colour, or a formula rewarding only one of the two would
+	// pass everything above. h8 is the dark bishop's second corner; the light form
+	// gets its own second corner and one non-corner point, so it is pinned by a
+	// gradient rather than by its endpoints alone.
+	Board darkCornerH8("7k/8/5K2/8/7N/8/8/2B5 w - - 0 1");      // Bc1 dark, Kh8 dark, distance 2
+	Board darkWrongCornerH1("8/8/5K2/8/7N/8/8/2B4k w - - 0 1"); // Bc1 dark, Kh1 LIGHT, distance 5
+	Board lightCornerH1("8/8/5K2/8/7N/8/8/3B3k w - - 0 1");     // Bd1 light, Kh1 light, distance 5
+	Board lightNonCorner("3k4/8/5K2/8/7N/8/8/3B4 w - - 0 1");   // Bd1 light, Kd8, distance 2
+
+	CHECK(EvaluatorTestFixture::Mopup(darkCornerH8, WHITE) == 90);     // 10*7 + 4*5
+	CHECK(EvaluatorTestFixture::Mopup(darkWrongCornerH1, WHITE) == 8); // 10*0 + 4*2
+	CHECK(EvaluatorTestFixture::Mopup(lightCornerH1, WHITE) == 78);    // 10*7 + 4*2
+	CHECK(EvaluatorTestFixture::Mopup(lightNonCorner, WHITE) == 60);   // 10*4 + 4*5
 }
 
 TEST_CASE("Eval - eval_mopup: only bishop-and-knight gets the corner target", "[eval]")
@@ -751,9 +765,10 @@ TEST_CASE("Eval - eval_mopup: only bishop-and-knight gets the corner target", "[
 	CHECK(EvaluatorTestFixture::Mopup(queen, WHITE) == 60);
 	CHECK(EvaluatorTestFixture::Mopup(rook, WHITE) == 60);
 
-	// A queen alongside the bishop and knight is not this class: Black Ka8 is a
-	// light corner and the bishop is dark, so the corner target would score 90
-	// where centre distance scores 80.
+	// A queen alongside the bishop and knight is not this class. The discriminator
+	// is sharp in the other direction here: Black Ka8 is a LIGHT corner and the
+	// bishop is dark, so a leaking class test would score 20 where centre distance
+	// scores 80.
 	Board queenWithMinors("k7/8/2K5/8/8/5N2/8/2BQ4 w - - 0 1");
 	CHECK(EvaluatorTestFixture::Mopup(queenWithMinors, WHITE) == 80); // 10*6 + 4*5
 
