@@ -37,14 +37,26 @@ KR + minor vs KR scoring 0.645 at the same threshold. `EndgameScale()` and `Pawn
 Elo** over 19,980 games — an interval containing zero, which bounds any regression at about 1.5 Elo
 rather than demonstrating a gain.
 
+**Mate conversion (#571).** Found by reading the corpus rather than by a summary statistic: one game
+in it drew **K + R vs K** from a claimed forced mate. The generalisation is the real result — the
+same cause let the reported mate distance *grow* in 432 of 2,078 conversions (20.8%). `quiescence()`
+took a TT cutoff on any usable entry, mate scores included, so an iteration could report a mate it
+had never searched, and `should_stop_early()` ended iterative deepening on it. The fix is a
+mate-range test on the probe's `usable` condition in `StratEngine/AIPerplex.cpp`. Worth about
+**0.02 Elo** — one drawn game in 19,980, with `resign score=800` adjudication hiding the rest — and
+taken anyway, because a won K + R vs K that is not won is a correctness defect whatever it costs.
+
 **Opposite-coloured-bishop scaling, declined (#128).** Finding 4 measured pure OCB converting at
 0.881 at ≥ +250, close enough to the pawn-rich curve that scaling toward zero would more likely cost
-Elo than gain it. It was the obvious next term after the two above, and the scan is why it is not in
-the engine.
+Elo than gain it. It was the obvious next term after drawish material, and the scan is why it is not
+in the engine.
 
-Everything else the scans have produced is measurement: confounds excluded, instruments calibrated,
-and a defect profile — [T2](#findings-1) — that has not yet been converted into a change. That is a
-real cost and this section is where it stays visible.
+Of those three: one strength change whose measurement could not separate it from zero, one strength
+change the scan argued *against*, and one correctness fix worth almost no Elo that was taken anyway.
+That is the pattern so far — the delivered value has been in defects the lab's own adjudication hides
+from Elo, not in Elo. Everything else the scans have produced is measurement: confounds excluded,
+instruments calibrated, and a defect profile ([T2](#findings-1)) not yet converted into a change.
+That is a real cost, and this section is where it stays visible.
 
 ---
 

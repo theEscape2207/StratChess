@@ -45,8 +45,11 @@ removed** — Finding 1's struck-through retraction and Finding 3's "not the one
 simply state what is true, on the rule that a document records current knowledge and its history
 belongs in PR bodies and here. And a new **Outcomes** section records what the scans have changed in
 `StratEngine/`: drawish-material scaling (#128, +1.98 ± 3.48 Elo over 19,980 games, an interval
-containing zero) and the opposite-coloured-bishop scale factor the scan argued *against*. It is a
-short section by design, and deliberately uncomfortable while it stays short.
+containing zero), the mate-conversion fix (#571, ~0.02 Elo behind the lab's adjudication and taken
+regardless), and the opposite-coloured-bishop scale factor the scan argued *against*. The pattern it
+records is that the delivered value has so far been correctness the lab's adjudication hides from
+Elo, rather than Elo. It is a short section by design, and deliberately uncomfortable while it stays
+short.
 
 Two fixes the owner spotted in the same read: a reference to "this table" that no longer had a table
 after #588 moved the numbers to `Measurements/`, and the #483 forward reference above.
