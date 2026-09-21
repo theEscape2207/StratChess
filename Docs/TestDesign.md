@@ -71,6 +71,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | **Evaluation (Evaluator)** | `[eval]` | `EvalBasicTests.cpp`, `EvalSymmetryTests.cpp`, `EvalTermTests.cpp`, `EvalPawnAndTaperTests.cpp`, `EvalEndgameTests.cpp`, `EvalKingSafetyTests.cpp` |
 | **Search regression (tactical)** | `[tactical]` | `TacticalTests.cpp` |
 | **Search regression (slow tier)** | `[tactical_full][slow]` | `TacticalFullTests.cpp` |
+| **Basic-mate conversion (K+B+N vs K played out)** | `[endgame_conversion][slow]` | `EndgameConversionTests.cpp` |
 | Concrete search service, lifecycle and factory | `[search]` | `SearchServiceTests.cpp` |
 | Per-iteration decision helpers (assess, stop-early, null move) | `[search]` | `SearchIterationTests.cpp` |
 | Search telemetry (thread clamp, terminal verdicts, node counters) | `[search]` | `SearchTelemetryTests.cpp` |
@@ -324,6 +325,13 @@ change.
   toward the cornered loser must *raise* the score. Written before the fix and confirmed failing
   (approach cost 4 cp); it gains 4 cp after. The test also guards its own premise by asserting
   mop-up is actually active in both positions, so it cannot pass vacuously
+- **#572, bishop and knight**: for that class alone the corner target is keyed on the bishop's square
+  colour, so the coverage is a *polarity* case (bishop's colour the only variable, kings held still, so
+  the king-distance component drops out) plus a *gradient* case (bishop fixed, the losing king walked
+  a8 → b7 → d5 → a1 with the exact `Mopup()` integer asserted at each square). Both are needed: the
+  colour mirror in `kSymmetryFens` catches the absence of colour keying but not a wholly inverted
+  mapping, which is symmetric, and the gradient is the thing the search actually follows. Whether the
+  mate then gets delivered is [`[endgame_conversion][slow]`](#basic-mate-conversion-endgame_conversionslow)
 
 ### Tactical Tests (`[tactical]`)
 
@@ -349,6 +357,35 @@ then call `Search(board, limits).best_move`. Check `m.from()` and `m.to()`.
 **Current positions (25)**: 2 mate-in-1 back-rank mates + 23 winning captures across diverse piece types (queen, rook, bishop, knight) and board regions. Every position was individually verified against the engine at depth 6 before committing.
 
 **⚠ Technical debt — position diversity**: the initial 25 positions are dominated by simple hanging captures. Multi-move tactics (mate-in-2, forks, pins, discovered attacks) proved hard to construct with a *unique* best move at depth 6 for this engine's current tactical strength. As the engine improves, replace simpler captures with positions from the WAC-25 set or crafted M2 suites. The selection invariant (unique best move at the target depth, verified before committing) must be maintained.
+
+---
+
+### Basic-mate Conversion (`[endgame_conversion][slow]`)
+
+**File**: `StratChessTests/EndgameConversionTests.cpp`
+
+**Rationale**: the only test that asks whether the engine can *finish* a won ending. Every other
+endgame test asks what a term scores, and issue #572 is a defect no term-level assertion can see: the
+engine reached K+B+N vs K in 42 lab games and mated in none of them. This plays five starts out with
+the production search on both sides and counts outcomes.
+
+**Approach**: `make_tactical_engine(12)`, one engine for both sides, `board.DoMove(best_move)` until
+`SearchResult::game_state` reports a terminal or the halfmove clock reaches `HALFMOVE_CLOCK_LIMIT`.
+Two of the five starts are the tablebase-confirmed positions from #572 with the clock **zeroed** — at
+the clock they were recorded on they are `cursed-win`, so no engine can mate from them inside the rule
+and they are not oracles there. ~5 s at depth 12.
+
+**Asserted in aggregate, not per position**: no start may lose the bishop or knight, none may
+stalemate, and at least four of the five must be mated. The corner target gives the search the right
+destination but not the manoeuvre, so one start still runs the clock out — and which one moves with any
+perturbation of the corner weight or the depth (measured: weight 10 / depth 12 fails the second start,
+weight 20 the third, depth 16 the fourth). A per-position gate would encode whichever start happens to
+convert today. A `WARN` fires while the fifth is unconverted, so closing that gap is visible without
+failing the suite.
+
+**What it catches**: reverting the corner component in `eval_mopup` turns the tally from
+4 mated / 0 material lost into **0 mated / 2 material lost / 3 clock expiries** — both halves of #572,
+including the engine handing over the knight and then the bishop near the fifty-move boundary.
 
 ---
 
