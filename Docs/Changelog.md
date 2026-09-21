@@ -22,6 +22,38 @@ Newest first.
 
 ---
 
+## 2026-09-21 — Tier 2's phase profile survives a judge eight plies deeper (#483)
+
+Tier 2 judges the engine with Stockfish at depth 12, roughly the engine's own search depth, so a
+myopic judge scoring a myopic engine could have manufactured T2's phase ordering out of position
+width rather than play quality — and unlike the contested-filter confound #481 tracks, no change of
+population can detect it, because it is a property of the judge. Spike #483 re-scored a
+phase-stratified sample at depth 20: 12,000 rows, 2,000 per build and phase, 3,766 games, under a
+row-isolated protocol giving each depth its own `ucinewgame` so neither inherits the other's hash.
+
+Every phase gains +6.8 to +10.1 cp at the deeper judge. That is a level shift, not the
+phase-differential distortion the confound needed, and the ordering survives: endgame 22.3, middlegame
+42.2, opening 48.0 for the candidate. The opening-to-endgame gap is unmoved (26.1 → 25.8 cp). The
+opening-to-middlegame margin is not: it thins ~31% pooled (6.6 → 4.5 cp) and stops excluding zero for
+the reference build, so T2's monotone claim is now quoted as *non-endgame play costs roughly twice
+the endgame* rather than as the opening being worst specifically.
+
+Three findings changed in `Docs/MoveQuality.md`. T2 separates its three mundane explanations, two now
+excluded and one — the contested filter — still open, and drops the claim that #481's step 1 "settles
+it"; step 1 excludes the selection confound only. T3's "floor of unmeasured size" becomes a
+measurement: re-scoring moves a row's loss by 23.0 / 25.7 / 16.4 cp by phase, the size of the ACPL
+means themselves, part of it systematic rather than instability. The Limits section's unsourced
+"losses under ~30 cp are within its instability" becomes 13.6–21.3 cp among rows the shallower judge
+scored under 150 cp. T1 is strengthened in passing — blunder rates rise at depth 20 rather than
+dissolving — and T4 holds, the opening still agreeing less than the middlegame.
+
+Two things fell out that were not the question. Full row isolation reproduces the published cells to
+0.6 cp in the opening and middlegame and 2.3 cp in the endgame, bounding how much Tier 2 rests on the
+within-game hash chain #582 measured. And depth 12 costs 46 ms per search cold against the 2.44 ms it
+costs warm in the production protocol — a 19× gap that invalidated this spike's own pre-run estimate,
+caught by the pricing pilot before the run committed. 47 minutes end to end on a 24-core box, inside
+its 60-minute budget; the tooling was throwaway and is not kept.
+
 ## 2026-09-21 — The Tier 2 opening bucket is not a book-exit artifact (#590, #583)
 
 The lab's games start from an EPD book position at fullmove 9, so Tier 2's finding that the engine
