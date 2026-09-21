@@ -271,30 +271,50 @@ blunder rate climbs with it — again the candidate rows, the reference within 0
 opening as its *best* phase; the outside judge makes it the worst by both measures, on disjoint
 intervals.
 
-One mundane explanation must be excluded before any other: the ±150 cp contested filter selects on
-the engine's own score, and in the opening that score is least informative, so the filter admits
-nearly every opening move while filtering the endgame hard. #481 tracks it; step 1 there is the
-filter-independent re-run that settles it. #484 added a lossless export for later diagnostic replay;
-it did not make that replay a search-versus-evaluation classifier. A move improving with additional
-search establishes budget sensitivity, while one that does not remains unresolved. Attribution needs
-separate evidence for a specific mechanism.
+**How much of the ordering is safe to quote.** A stronger judge keeps the direction but not every
+margin. Re-scored at depth 20 on a phase-stratified sample, the opening-to-endgame gap is unmoved
+(26.1 → 25.8 cp for the candidate, 25.1 → 25.6 for the reference), while the opening-to-middlegame
+margin thins by about a third pooled (6.6 → 4.5 cp) and stops excluding zero in one build. So quote
+**non-endgame play costing roughly twice what the endgame costs**; do not rest anything on the
+opening being worse than the middlegame specifically.
 
-The second mundane explanation is excluded by measurement. The corpus starts from a book position at
-fullmove 9, so the opening bucket could have been a costly fringe just after book exit. It is the
-reverse: split by plies since book exit, opening ACPL rises 27.2 → 33.2 → 45.7 across the `0-3`,
-`4-9` and `10+` bands on disjoint intervals, and `10+` — 63% of the bucket — sits ~11 cp above the
-middlegame. The rows nearest the book position are the cheapest in the report, so they dilute T2
-rather than produce it, and the finding is understated by roughly 5 cp. The table is in the
-[Tier 2 ledger](../Measurements/move-quality-tier2.md). What it does not settle: the band is distance
-from the corpus's fixed starting position, which is also time spent in the phase.
+Three mundane explanations stand between this table and a statement about the engine. Two are now
+excluded by measurement.
 
-**T3. Quote the blunder rates; the ACPL means carry a floor of unmeasured size.** External ACPL is 6×
-to 9× the `noise` column, but that column is a lower bound, so the ratio is an *upper* bound on the
-signal-to-noise, not the reassurance it looks like. What does not depend on it: 6.3% of opening rows
-lose ≥ 150 cp as a difference of two same-depth searches, and no plausible depth-12 instability
-manufactures a 150 cp gap at that rate. The floor does behave as a floor should — 2.8 cp where
-positions are simple, 4.4–4.6 where they are not — which at least checks the oracle is not
-misconfigured.
+**Not the judge's own depth.** Depth 12 is roughly the engine's, so a myopic judge scoring a myopic
+engine could have manufactured the ordering out of position width alone. At depth 20 every phase
+gains between +6.8 and +10.1 cp — a level shift, not a phase-differential one — and the ordering
+survives intact.
+
+**Not book exit.** The corpus starts from a book position at fullmove 9, so the opening bucket could
+have been a costly fringe just after book exit. It is the reverse: split by plies since book exit,
+opening ACPL rises 27.2 → 33.2 → 45.7 across the `0-3`, `4-9` and `10+` bands on disjoint intervals,
+and `10+` — 63% of the bucket — sits ~11 cp above the middlegame. The rows nearest the book position
+are the cheapest in the report, so they dilute T2 rather than produce it, and the finding is
+understated by roughly 5 cp. What this does not settle: the band is distance from the corpus's fixed
+starting position, which is also time spent in the phase.
+
+**Still open — the contested filter.** The ±150 cp filter selects on the engine's own score, and in
+the opening that score is least informative, so the filter admits nearly every opening move while
+filtering the endgame hard. #481 tracks it. Step 1 there is the filter-independent re-run, and it
+excludes the *selection* confound specifically: it changes the population the rows are drawn from,
+never the judge. #484 added a lossless export for later diagnostic replay; it did not make that
+replay a search-versus-evaluation classifier. A move improving with additional search establishes
+budget sensitivity, while one that does not remains unresolved. Attribution needs separate evidence
+for a specific mechanism.
+
+Both excluded explanations, and the depth-20 table behind the first, are in the
+[Tier 2 ledger](../Measurements/move-quality-tier2.md).
+
+**T3. Quote the blunder rates; the ACPL means carry a floor the size of the means themselves.**
+External ACPL is 6× to 9× the `noise` column, but that column is conditional on agreement and so is a
+lower bound — the ratio is an *upper* bound on the signal-to-noise, not the reassurance it looks
+like. The unconditional floor is measured: re-scoring the same rows at depth 20 moves a row's loss by
+a mean of 23.0 / 25.7 / 16.4 cp across opening, middlegame and endgame. Part of that is systematic
+rather than instability — the deeper judge finds *more* loss in every phase — but no per-row loss is
+quotable at either depth. What does not depend on it: 6.3% of opening rows lose ≥ 150 cp as a
+difference of two same-depth searches, and at depth 20 that rate rises to 8.2% rather than
+dissolving.
 
 **T4. Agreement is under half, and does not track quality.** The played move is the oracle's first
 choice 41.7% of the time in the opening and 47.9% in the middlegame — the phase with the *worse* ACPL
@@ -305,8 +325,10 @@ T5 was a comparison of the two builds in one run, not a property of the engine, 
 
 ### Limits specific to Tier 2
 
-- **Depth 12 is a judge, not the truth** — roughly the engine's own search depth. Losses under ~30 cp
-  are within its instability; only the aggregate is meaningful.
+- **Depth 12 is a judge, not the truth** — roughly the engine's own search depth. Re-scoring rows at
+  depth 20 moves a row's loss by a mean of 13.6–21.3 cp among rows the shallower judge scored under
+  150 cp, and by far more above it, so only the aggregate is meaningful. The phase ordering itself
+  survives the deeper judge; see T2.
 - **The ±1000 cp clamp compresses the tail.** Most of the report's worst rows sit exactly at −1000,
   meaning "lost or mated", not "lost by ten pawns". Counts of clamped rows are interpretable; their
   mean is not.
@@ -319,6 +341,8 @@ T5 was a comparison of the two builds in one run, not a property of the engine, 
   95% half-width on both shards tested
   ([#582](https://github.com/theEscape2207/StratChess/issues/582#issuecomment-5750971773)). Repeated
   runs are byte-identical, so that size is a property of the scoring protocol: change how rows are
-  scored and the table moves, at unchanged rows, oracle and depth.
+  scored and the table moves, at unchanged rows, oracle and depth. The chain is nonetheless worth
+  little to the numbers: scoring rows in full isolation, with no inheritance at all, reproduces the
+  published cells to 0.6 cp in the opening and middlegame and 2.3 cp in the endgame.
 - **The contested filter is the engine's own.** It selects on the mover's reported score, so it is
   not independent of the quantity being measured. T2's caveat is the concrete consequence.
