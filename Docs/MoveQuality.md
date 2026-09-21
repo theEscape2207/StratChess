@@ -19,7 +19,32 @@ separated the Elo measurements the same way, though it dissolved the method into
 | what the numbers mean, and cannot see | [Method](#method) · [Limits](#limits) |
 | the numbers | [Tier 1 ledger](../Measurements/move-quality-tier1.md) · [Tier 2 ledger](../Measurements/move-quality-tier2.md) |
 | what they established | [Findings](#findings) · [Tier 2 findings](#findings-1) |
+| what reached the engine | [Outcomes](#outcomes) |
 | the exported blunder evidence | [MoveQualityExport.md](MoveQualityExport.md) |
+
+---
+
+## Outcomes
+
+What the scans have changed in `StratEngine/`. A finding earns a line here when it reaches the
+engine, not when it is published — so this section is meant to stay short, and to be uncomfortable
+when it stays short for too long.
+
+**Drawish-material scaling (#128).** Finding 3 measured 656 games — 3.3% of a 19,980-game run —
+ending K + minor vs K with the stronger side reporting ≥ +250, every one drawn, and pawnless
+KR + minor vs KR scoring 0.645 at the same threshold. `EndgameScale()` and `PawnlessRookScale()` in
+`StratEngine/Eval.cpp` are the result. Measured against the commit before any of it: **+1.98 ± 3.48
+Elo** over 19,980 games — an interval containing zero, which bounds any regression at about 1.5 Elo
+rather than demonstrating a gain.
+
+**Opposite-coloured-bishop scaling, declined (#128).** Finding 4 measured pure OCB converting at
+0.881 at ≥ +250, close enough to the pawn-rich curve that scaling toward zero would more likely cost
+Elo than gain it. It was the obvious next term after the two above, and the scan is why it is not in
+the engine.
+
+Everything else the scans have produced is measurement: confounds excluded, instruments calibrated,
+and a defect profile — [T2](#findings-1) — that has not yet been converted into a change. That is a
+real cost and this section is where it stays visible.
 
 ---
 
@@ -194,14 +219,13 @@ engine and about the scan. The dividing line against the ledgers is mechanical: 
 that run and stays in its `Row detail`. Several of these rest on a single run's table — a limit on
 how much weight they carry, not a reason to move them.
 
-**1. ~~There is no general blunder weakness to find.~~ Retracted by
-[Tier 2](#tier-2-external-adjudication).** The claim rested on the engine grading its own homework.
-
-What survives is a statement about self-knowledge, not about play: *of the mistakes the engine can
-see*, every rate sits between 0.15% and 0.30% by phase and by piece, ordered middlegame-worst and
+**1. The self-reported blunder rate measures self-knowledge, not play.** *Of the mistakes the engine
+can see*, every rate sits between 0.15% and 0.30% by phase and by piece, ordered middlegame-worst and
 heavy-pieces-worst, which is what a depth-limited search should look like. The unrestricted numbers
 say something else entirely — endgame 1.7%, king moves 34% of all blunders — and both are artifacts
-of already-lost positions where the swings cost nothing. Use the contested rows.
+of already-lost positions where the swings cost nothing. Use the contested rows, and read
+[Tier 2](#tier-2-external-adjudication) before treating any of it as a defect profile: the rate an
+outside judge measures is 13× to 48× higher.
 
 **2. The evaluation is well calibrated except when the pawns are gone.** With three pawns a side the
 three phases agree within noise, and the endgame is marginally *better* calibrated than the
@@ -209,7 +233,7 @@ middlegame at large scores. With two pawns or fewer the endgame curve collapses 
 monotonic — +300 converts at 0.764 while +250 converts at 0.789 and +575 at 0.998. Not a tapering or
 phase-calibration defect; the absence of drawish-material knowledge (#128).
 
-**3. The dips have names, and they are not the ones #128 predicted.** The +300–350 dip is dominated
+**3. The dips have names.** The +300–350 dip is dominated
 by **rook + minor vs rook**, a fortress the evaluator scores a full piece up: 262 games reach it with
 the stronger side reporting ≥ +250, and it scores 0.645. Rook vs minor at +100–249 is a dead draw in
 practice (0.509 over 58 games); across ≥ +100 it is 0.720 over 209, because the ≥ +250 half is often
@@ -253,16 +277,16 @@ be search instability rather than a mistake.
 **`noise` is a conditional residual, not the oracle's error bar.** The rows it averages are the ones
 the oracle already agreed with — the narrower positions, by [T4](#findings-1) — and narrow positions
 are the stable ones. It is a *lower bound* on the oracle's error and silent about the disagreement
-rows carrying the entire signal. Read it as a floor. #483 would replace it: mean
-`|loss(d) − loss(d+1)|` over a sample drawn regardless of agreement.
+rows carrying the entire signal. Read it as a floor. The unconditional figure is the one in
+[T3](#findings-1): re-scored at depth 20 over rows drawn regardless of agreement, a row's loss moves
+by 16.4 to 25.7 cp depending on the phase.
 
 ### Findings
 
 **T1. The self-reported blunder rate understates the real one by 13× to 48×.** Endgame 2.83% against
 0.21%, middlegame 5.70% against 0.28%, opening 6.30% against 0.13% — the candidate build's rows; the
 reference build's give 11.9× to 53.6×, the same conclusion over a wider spread. This is the blind
-spot named in [Limits](#limits), measured rather than assumed, and it retracts
-[Finding 1](#findings).
+spot named in [Limits](#limits), measured rather than assumed.
 
 **T2. The profile is monotone, and it points the wrong way.** Self-ACPL is nearly constant across the
 phases (11.3 / 12.9 / 9.9); external ACPL climbs 16.9 → 33.9 → 40.3 from endgame to opening, and the
@@ -271,40 +295,43 @@ blunder rate climbs with it — again the candidate rows, the reference within 0
 opening as its *best* phase; the outside judge makes it the worst by both measures, on disjoint
 intervals.
 
-**How much of the ordering is safe to quote.** A stronger judge keeps the direction but not every
-margin. Re-scored at depth 20 on a phase-stratified sample, the opening-to-endgame gap is unmoved
-(26.1 → 25.8 cp for the candidate, 25.1 → 25.6 for the reference), while the opening-to-middlegame
-margin thins by about a third pooled (6.6 → 4.5 cp) and stops excluding zero in one build. So quote
-**non-endgame play costing roughly twice what the endgame costs**; do not rest anything on the
-opening being worse than the middlegame specifically.
-
-Three mundane explanations stand between this table and a statement about the engine. Two are now
-excluded by measurement.
+Three mundane explanations could have produced that profile without the engine playing any worse in
+one phase than another. All three have been measured, and none of them does.
 
 **Not the judge's own depth.** Depth 12 is roughly the engine's, so a myopic judge scoring a myopic
 engine could have manufactured the ordering out of position width alone. At depth 20 every phase
-gains between +6.8 and +10.1 cp — a level shift, not a phase-differential one — and the ordering
-survives intact.
+gains between +6.8 and +10.1 cp — a level shift, not a phase-differential one. The opening-to-endgame
+gap is unmoved (26.1 → 25.8 cp for the candidate, 25.1 → 25.6 for the reference); the
+opening-to-middlegame margin thins by about a third pooled (6.6 → 4.5 cp) and stops excluding zero in
+one build.
 
 **Not book exit.** The corpus starts from a book position at fullmove 9, so the opening bucket could
 have been a costly fringe just after book exit. It is the reverse: split by plies since book exit,
 opening ACPL rises 27.2 → 33.2 → 45.7 across the `0-3`, `4-9` and `10+` bands on disjoint intervals,
 and `10+` — 63% of the bucket — sits ~11 cp above the middlegame. The rows nearest the book position
-are the cheapest in the report, so they dilute T2 rather than produce it, and the finding is
-understated by roughly 5 cp. What this does not settle: the band is distance from the corpus's fixed
-starting position, which is also time spent in the phase.
+are the cheapest in the report, so they dilute the profile rather than produce it. What this does not
+settle: the band is distance from the corpus's fixed starting position, which is also time spent in
+the phase.
 
-**Still open — the contested filter.** The ±150 cp filter selects on the engine's own score, and in
-the opening that score is least informative, so the filter admits nearly every opening move while
-filtering the endgame hard. #481 tracks it. Step 1 there is the filter-independent re-run, and it
-excludes the *selection* confound specifically: it changes the population the rows are drawn from,
-never the judge. #484 added a lossless export for later diagnostic replay; it did not make that
-replay a search-versus-evaluation classifier. A move improving with additional search establishes
-budget sensitivity, while one that does not remains unresolved. Attribution needs separate evidence
-for a specific mechanism.
+**Not the contested filter — but it inflates the margin.** The ±150 cp filter selects on the engine's
+own score, which is not independent of the quantity being measured, and it bites unevenly: it keeps
+94.8% of opening rows against 48.6% of endgame rows. Re-scoring every structurally eligible row with
+the filter lifted leaves the ordering intact, because the endgame rows the filter discards carry
+*more* loss than the ones it keeps, not less. The filter therefore understates the endgame and
+widens the gap — 24.0 cp filtered against 18.7 cp unfiltered, on the same rows.
 
-Both excluded explanations, and the depth-20 table behind the first, are in the
-[Tier 2 ledger](../Measurements/move-quality-tier2.md).
+**What is safe to quote.** The direction survives all three tests: non-endgame play costs more than
+the endgame, and it is not an artifact of the judge, the corpus or the filter. The magnitude does
+not survive all three — on an unfiltered population it is **1.7–1.9×**, against the ~2.5× the
+filtered cells imply. Rest nothing on the opening being worse than the *middlegame* specifically:
+that margin is 4.5 cp unfiltered and thins further at depth 20.
+
+The tables behind all three are in the [Tier 2 ledger](../Measurements/move-quality-tier2.md).
+
+**Attribution is a separate question, and the export does not answer it.** #484 added a lossless
+export for later diagnostic replay; it did not make that replay a search-versus-evaluation
+classifier. A move improving with additional search establishes budget sensitivity, while one that
+does not remains unresolved. Naming a mechanism needs separate evidence.
 
 **T3. Quote the blunder rates; the ACPL means carry a floor the size of the means themselves.**
 External ACPL is 6× to 9× the `noise` column, but that column is conditional on agreement and so is a
@@ -345,4 +372,7 @@ T5 was a comparison of the two builds in one run, not a property of the engine, 
   little to the numbers: scoring rows in full isolation, with no inheritance at all, reproduces the
   published cells to 0.6 cp in the opening and middlegame and 2.3 cp in the endgame.
 - **The contested filter is the engine's own.** It selects on the mover's reported score, so it is
-  not independent of the quantity being measured. T2's caveat is the concrete consequence.
+  not independent of the quantity being measured, and it keeps 94.8% of opening rows against 48.6% of
+  endgame rows. Measured over 249,552 structurally eligible rows, it widens the opening-to-endgame
+  gap by about a fifth without creating it (24.0 cp filtered, 18.7 unfiltered). A filtered cell is a
+  sound comparison between builds; it is not an absolute defect size.
