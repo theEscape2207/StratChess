@@ -22,6 +22,43 @@ Newest first.
 
 ---
 
+## 2026-09-21 — The contested filter inflates Tier 2's phase gap but does not create it (#481 step 1)
+
+The last of three mundane explanations for Tier 2's phase profile. The ±150 cp contested filter
+selects on the engine's own score, so it is not independent of the quantity being measured, and it
+bites unevenly by phase. Scoring every structurally eligible row of shards 0–1 with the filter lifted
+— **249,552 rows over 2,220 games in 11.8 minutes**, one population from which the engine-contested,
+oracle-contested and unfiltered views are all rebuilt — leaves the ordering intact. The filter keeps
+94.8% of opening rows against 48.6% of endgame rows, but the endgame rows it discards carry *more*
+loss than the ones it keeps, so it understates the endgame and widens the gap: `opening − endgame`
+is 24.0 cp filtered against 18.7 cp unfiltered. The durable claim narrows from the ~2.5× the
+published cells imply to **non-endgame play costing 1.7–1.9× the endgame**.
+
+`Measurements/move-quality-tier2.md` gains the three-rule table, the loss-by-score-band table behind
+the mechanism, and the engine-versus-oracle disagreement counts. `Docs/MoveQuality.md` takes the
+conclusions: the three explanations are now stated as settled rather than as two-of-three, the
+Tier 2 limit on the filter carries the measured size, and a stale forward reference to #483 in the
+`noise` paragraph is replaced by the figure #483 produced.
+
+Two further changes to `Docs/MoveQuality.md` at the project owner's request. **Inline corrections are
+removed** — Finding 1's struck-through retraction and Finding 3's "not the ones #128 predicted" now
+simply state what is true, on the rule that a document records current knowledge and its history
+belongs in PR bodies and here. And a new **Outcomes** section records what the scans have changed in
+`StratEngine/`: drawish-material scaling (#128, +1.98 ± 3.48 Elo over 19,980 games, an interval
+containing zero), the mate-conversion fix (#571, ~0.02 Elo behind the lab's adjudication and taken
+regardless), and the opposite-coloured-bishop scale factor the scan argued *against*. The pattern it
+records is that the delivered value has so far been correctness the lab's adjudication hides from
+Elo, rather than Elo. It is a short section by design, and deliberately uncomfortable while it stays
+short.
+
+Two fixes the owner spotted in the same read: a reference to "this table" that no longer had a table
+after #588 moved the numbers to `Measurements/`, and the #483 forward reference above.
+
+Spike artifacts are throwaway and stay in the session scratchpad; nothing from them is proposed for
+the repository.
+
+---
+
 ## 2026-09-21 — Tier 2's phase profile survives a judge eight plies deeper (#483)
 
 Tier 2 judges the engine with Stockfish at depth 12, roughly the engine's own search depth, so a

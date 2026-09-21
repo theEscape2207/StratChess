@@ -100,6 +100,54 @@ Cost, for anyone pricing a repeat: 2,599 s of wall time at `--jobs 12`, of which
 46 ms per search and depth 20 is 1.24 s per search. Row isolation makes every search cold, which is
 19× the 2.44 ms a warm depth-12 search costs in the production protocol.
 
+**The same rows under three selection rules.** Shards 0–1 of this run, production protocol, oracle
+depth 12, with the eligibility filter lifted to structural only — a numeric score on ply *i* and on
+the same mover's ply *i+2*, nothing else. **249,552 rows over 2,220 games**, every row recording the
+engine's score and both oracle endpoints, so all three views are rebuilt from one scored population
+rather than from three runs differing by sampling as well as by rule. The parse reproduces the
+contested counts of the four-shard sub-sample exactly (82,562 rows in shard 0), and the
+engine-contested view reproduces the published cells with every interval overlapping.
+
+Mean oracle loss in cp, candidate / reference, game-clustered intervals over 2,220 games:
+
+| selection rule | rows | opening | middlegame | endgame | opening − endgame |
+|---|---|---|---|---|---|
+| engine-contested, `\|engine_before\| ≤ 150` (published) | 166,461 | 39.9 / 40.4 | 34.7 / 34.5 | 15.8 / 16.3 | 24.0 / 24.2 |
+| oracle-contested, `\|oracle_before\| ≤ 150` | 133,244 | 32.4 / 33.4 | 25.9 / 25.4 | 11.4 / 11.8 | 21.0 / 21.6 |
+| unfiltered, structural only | 249,552 | 40.6 / 41.0 | 36.1 / 35.8 | 21.8 / 22.2 | 18.7 / 18.8 |
+
+Unfiltered `opening − endgame` is 18.7 [17.5, 20.1] and 18.8 [17.4, 20.2]; `opening − middlegame` is
+4.5 [3.3, 5.8] and 5.3 [4.0, 6.5].
+
+What the filter keeps, and what the rows it drops are worth — mean oracle loss by the band the
+engine's own score put the row in, both builds pooled:
+
+| phase | rows kept by the filter | 0–50 | 50–150 | 150–400 | 400–1000 | 1000+ |
+|---|---|---|---|---|---|---|
+| opening | 94.8% | 37.2 | 43.8 | 54.2 | 38.4 | 11.0 |
+| middlegame | 67.3% | 29.1 | 39.8 | 41.2 | 33.1 | 15.9 |
+| endgame | 48.6% | 11.2 | 19.6 | 29.8 | 24.6 | 25.6 |
+
+The filter barely touches the opening and discards more than half the endgame, and the endgame rows
+it discards carry more loss than the ones it keeps — so it understates the endgame and widens the
+gap rather than creating it. The oracle-contested row is a cross-check only: conditioning on one
+endpoint of the difference being measured truncates the distribution and biases loss downward, which
+is why its means are uniformly lower. The unfiltered row is the one selected by nothing.
+
+The engine and the oracle also disagree about which positions are level, asymmetrically by phase:
+
+| phase | both call it contested | engine only | oracle only | mean loss, engine-only rows |
+|---|---|---|---|---|
+| opening | 41,547 | 16,441 | 276 | 58.8 |
+| middlegame | 40,067 | 20,792 | 2,151 | 52.7 |
+| endgame | 40,287 | 7,327 | 8,916 | 48.0 |
+
+That last table compares searched scores at unequal depth and admits lost positions as well as won
+ones, so it is a prior rather than a finding;
+[#593](https://github.com/theEscape2207/StratChess/issues/593) is the instrument for it. Cost: 705 s
+at `--jobs 12`, 708 searches/s aggregate. The reading this supports is under
+[T2](../Docs/MoveQuality.md#findings-1).
+
 The engine-level readings from this run — that the self-reported rate understates the real one
 by 13× to 48×, that the profile is monotone and points the wrong way, that the blunder rates are
 the figures to quote, and that agreement measures narrowness — are properties of the instrument
