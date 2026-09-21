@@ -22,6 +22,51 @@ Newest first.
 
 ---
 
+## 2026-09-21 — Most of Tier 2's faulted moves are horizon, not a missing evaluation term (#481 step 3)
+
+The last open step of #481: when an outside judge faults a move, is the engine's own evaluation of
+the better move higher or lower than its evaluation of the move it played? Higher means the
+knowledge was there and the search did not deliver it; lower means the search worked and the
+evaluation is wrong.
+
+The instrument needs no engine change. Play each move, search the resulting position to the depth
+the engine reached in the game, negate, compare. The published re-scope had named PV membership for
+this, which does not separate the two categories — a move can be searched at full depth, scored
+slightly lower and never appear in a PV — and had assumed #484's export carried the engine's PV,
+which it does not; both were corrected on the issue before any compute was spent. `MultiPV` (#94,
+`wontfix`) and `searchmoves` were both checked and neither is needed: with a single root move there
+is no reduction relative to siblings, so a one-move root search and a search of the child at `D−1`
+return the same value.
+
+Each build was rebuilt from its own commit so the engine being asked is the one that played the
+move. Re-searching the played move reproduces the score written during the game to a **median of
+0.0 cp** — exact on 58% of rows, against a predeclared tolerance of 25 — which also puts the lab's
+GCC/Linux build and this clang-cl/Windows one at the same fixed-depth scores.
+
+On **4,129 rows** at game depth the verdict is flat: the engine prefers its own move 49.9% of the
+time, the oracle's 20.1%, median gap −11 cp where the judge sees 211. That reading is consistent
+with an evaluation that cannot separate them, and equally with a refutation beyond the horizon, so
+**1,200 rows were re-scored six plies deeper** — median depth 15, past the depth-12 judge that
+faulted them. **Half change class.** Search failure rises 20.4% → 53.5%, evaluation failure falls
+50.3% → 25.8%, and the effect scales with the size of the mistake: 47% at 150–250 cp against 78% at
+≥ 400 cp.
+
+So the dominant cause is depth, not a missing term — and root move ordering and pruning are excluded
+by construction, because this test forces the alternative to be searched. What survives is a named
+minority: **310 rows, 25.8%**, still rate the wrong move higher after outsearching their judge, by a
+median of 39 cp against a judged 196. That is the population an evaluation-error instrument should
+be pointed at, and it replaces the assumption #593 was resting on.
+
+Not quotable, and said so in both documents: the engine's gap stays an order of magnitude below the
+oracle's even six plies deeper, which looks like a badly scaled evaluation but conflates
+under-reporting with the fact that centipawns are not comparable between engines.
+
+Cost: 67 s + 68 s for the full population and 363 s + 383 s for the deep sample, `--jobs 12`. The
+throwaway scan scripts are not kept. `Docs/MoveQuality.md` gains **T5** and drops the paragraph
+saying attribution was unanswerable from the export; `Measurements/move-quality-tier2.md` gains the
+tables. A stale sentence demoting an earlier, removed T5 was deleted rather than rewritten — a
+document states what is true now.
+
 ## 2026-09-21 — The contested filter inflates Tier 2's phase gap but does not create it (#481 step 1)
 
 The last of three mundane explanations for Tier 2's phase profile. The ±150 cp contested filter

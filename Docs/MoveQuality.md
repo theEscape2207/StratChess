@@ -340,10 +340,7 @@ that margin is 4.5 cp unfiltered and thins further at depth 20.
 
 The tables behind all three are in the [Tier 2 ledger](../Measurements/move-quality-tier2.md).
 
-**Attribution is a separate question, and the export does not answer it.** #484 added a lossless
-export for later diagnostic replay; it did not make that replay a search-versus-evaluation
-classifier. A move improving with additional search establishes budget sensitivity, while one that
-does not remains unresolved. Naming a mechanism needs separate evidence.
+**Attribution is a separate question, and it is answered in [T5](#findings-1).**
 
 **T3. Quote the blunder rates; the ACPL means carry a floor the size of the means themselves.**
 External ACPL is 6× to 9× the `noise` column, but that column is conditional on agreement and so is a
@@ -359,8 +356,28 @@ dissolving.
 choice 41.7% of the time in the opening and 47.9% in the middlegame — the phase with the *worse* ACPL
 agrees *more*. Agreement measures how narrow the position is, not how well it was played.
 
-T5 was a comparison of the two builds in one run, not a property of the engine, and is the
-[Tier 2 ledger](../Measurements/move-quality-tier2.md)'s row detail.
+**T5. At the depth it plays at, the engine cannot separate these moves; six plies deeper it usually
+can.** Asking each build what it thinks of both moves — the one it played and the one the oracle
+preferred — at the depth it reached in the game leaves a flat verdict: on 4,129 faulted rows the
+engine rates its own move higher 49.9% of the time and the oracle's higher 20.1%, with a median gap
+of −11 cp where the judge sees 211. Re-searching 1,200 of those rows six plies deeper, to a median
+depth of 15 — past the depth-12 judge that faulted them — **flips half of them**: search failure
+rises from 20.4% to 53.5% and evaluation failure falls from 50.3% to 25.8%. The bigger the mistake
+the more it is a horizon effect, 47% at 150–250 cp against 78% at ≥ 400 cp, and the flip is no
+smaller in the games where the engine already searched deepest.
+
+So most of what the outside judge calls a bad move is a refutation the engine would find with more
+depth, not a term it is missing. Two things follow. **Root move ordering and pruning are not the
+story** — this test forces the alternative to be searched, so the values are the engine's real
+verdict on it, and at game depth that verdict is simply flat. And **the evaluation defects are a
+minority, but they are now a named population**: 310 rows, 25.8%, still rate the wrong move higher
+after outsearching their judge, by a median of 39 cp against a judged 196. Those are what an
+evaluation-error instrument should be pointed at.
+
+What this does not license: the engine's gap stays an order of magnitude below the oracle's even at
++6, which looks like a badly scaled evaluation but is not quotable as one — centipawns are not
+comparable between engines. The class split avoids that because both numbers come from the same
+engine.
 
 ### Limits specific to Tier 2
 

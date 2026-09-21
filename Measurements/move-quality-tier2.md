@@ -148,6 +148,77 @@ ones, so it is a prior rather than a finding;
 at `--jobs 12`, 708 searches/s aggregate. The reading this supports is under
 [T2](../Docs/MoveQuality.md#findings-1).
 
+**Search or evaluation, on the rows the judge faulted.** The 4,145 rows exported by #484
+(`legacy_loss_cp >= 150`), less the 15 where the oracle's preferred move *is* the played move —
+**4,129 comparisons**, zero errors. Each is asked of the build that played it, rebuilt from its own
+commit, at the depth that build reached in the game: the position after the played move and the
+position after the oracle's move are both searched to `engine_depth`, cold, and the two values
+compared from the mover's point of view. A dead band of ±10 cp is reported rather than assigned.
+`v_oracle > v_played` means the engine rated the move it did not play higher — the knowledge was
+present and the root search did not deliver it. `v_oracle < v_played` means it preferred its own
+move on the evidence it had.
+
+Re-searching the *played* move reproduces the score the engine wrote during the game to **a median
+of 0.0 cp** (mean 6.1 / 5.5, p90 14 / 13, exact on 58.3% / 57.8% of rows), against a predeclared
+tolerance of 25 cp. The lab plays GCC on Linux and this instrument is clang-cl on Windows, so that
+also measures the two toolchains against each other at fixed depth and finds no difference.
+
+| | rows | search failure % | tie % | evaluation failure % |
+|---|---|---|---|---|
+| all | 4,129 | 20.1 [18.9, 21.3] | 30.0 | 49.9 [48.2, 51.6] |
+| opening | 1,802 | 18.1 [16.3, 20.0] | 29.9 | 52.0 [49.4, 54.6] |
+| middlegame | 1,728 | 20.3 [18.4, 22.2] | 29.1 | 50.6 [48.2, 53.1] |
+| endgame | 599 | 25.4 [21.8, 29.3] | 32.9 | 41.7 [37.0, 46.5] |
+| loss 150–250 cp | 2,759 | 17.7 [16.2, 19.1] | 31.5 | 50.9 [48.8, 52.8] |
+| loss 250–400 cp | 1,051 | 23.2 [20.7, 25.8] | 28.4 | 48.3 [45.0, 51.6] |
+| loss ≥ 400 cp | 319 | 31.0 [25.8, 36.3] | 22.3 | 46.7 [40.6, 52.6] |
+| candidate | 2,057 | 20.9 [19.1, 22.7] | 29.8 | 49.3 [47.0, 51.6] |
+| reference | 2,072 | 19.4 [17.6, 21.0] | 30.2 | 50.5 [48.2, 52.7] |
+
+The ratio is not an artifact of the band: at ±0 cp it is 31.3 / 3.2 / 65.5, at ±5 cp 24.8 / 17.9 /
+57.3, at ±25 cp 11.8 / 55.9 / 32.2. The two builds agree throughout. Cost: 67 s and 68 s at
+`--jobs 12`, ~61 searches/s aggregate.
+
+**The same rows six plies deeper.** At the depth the games were played the engine's verdict on the
+two moves is flat — a median gap of −11 cp where the depth-12 oracle sees 211. That is consistent
+with an evaluation that cannot separate them, and equally with a refutation beyond the horizon, so a
+**1,200-row sample** (600 per build, drawn from the same global shuffle) was re-scored at
+`engine_depth + 6`, which puts the engine at a median depth of 15 — deeper than the judge that
+faulted the rows.
+
+| same 1,200 rows | median search depth | search failure % | tie % | evaluation failure % |
+|---|---|---|---|---|
+| as played | 9 | 20.4 [18.3, 22.7] | 29.2 | 50.3 [47.4, 53.1] |
+| plus 6 plies | 15 | 53.5 [50.5, 56.5] | 20.7 | 25.8 [23.2, 28.4] |
+
+**Half the rows change class (49.9%), and 35.3% move into search failure.** The effect is strongest
+where the mistakes are largest, and it is not confined to the games where the engine searched
+shallowest:
+
+| | rows | search % as played | search % at +6 |
+|---|---|---|---|
+| loss 150–250 cp | 796 | 18.1 [15.6, 20.8] | 47.1 [43.6, 50.6] |
+| loss 250–400 cp | 312 | 23.7 [19.2, 28.6] | 62.5 [57.0, 67.9] |
+| loss ≥ 400 cp | 92 | 29.3 [19.6, 39.1] | 78.3 [70.4, 86.7] |
+| opening | 507 | 18.9 [15.6, 22.4] | 49.7 [45.4, 54.1] |
+| middlegame | 502 | 20.5 [16.8, 24.2] | 55.8 [51.3, 60.6] |
+| endgame | 191 | 24.1 [17.6, 31.1] | 57.6 [50.8, 64.6] |
+| game depth ≤ 9 | 348 | 14.4 [10.7, 18.1] | 56.6 [51.5, 62.0] |
+| game depth 10–11 | 564 | 23.6 [20.0, 27.2] | 52.7 [48.4, 57.0] |
+| game depth ≥ 12 | 288 | 21.5 [16.8, 26.4] | 51.4 [45.5, 56.7] |
+
+**310 rows — 25.8% — still rate the wrong move higher after searching deeper than their judge.**
+Median judged loss 196 cp, median engine gap −39 cp in the wrong direction; 150 opening, 120
+middlegame, 40 endgame, both builds. That is the population with a genuine evaluation defect, held
+apart from the horizon cases rather than inferred. Cost: 363 s and 383 s at `--jobs 12`, ~3.2
+searches/s aggregate — six extra plies cost 19× per row.
+
+What this does **not** support: the engine's gap stays far below the oracle's even at +6 (median 14
+cp against 211), which looks like a scale under-reporting by an order of magnitude. Centipawns are
+not comparable across engines, so that ratio conflates under-reporting with different units and is
+not quotable. The class split is a within-engine comparison and does not have that problem. The
+reading this supports is under [T5](../Docs/MoveQuality.md#findings-1).
+
 The engine-level readings from this run — that the self-reported rate understates the real one
 by 13× to 48×, that the profile is monotone and points the wrong way, that the blunder rates are
 the figures to quote, and that agreement measures narrowness — are properties of the instrument
