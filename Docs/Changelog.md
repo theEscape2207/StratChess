@@ -22,6 +22,26 @@ Newest first.
 
 ---
 
+## 2026-09-22 — UCI protocol output routed through an injectable writer (#605)
+
+`UciWriter` (`StratEngine/UciWriter.h`) owns UCI's output: a line sink plus the mutex that
+serialises `send()`, replacing a static function that wrote `std::cout` under a function-local
+mutex. `UciHandler` takes one by `shared_ptr` at construction (`nullptr` ⇒ a stdout writer),
+captured by value into the `go` observer and completion callback so neither can outlive a destroyed
+writer regardless of destruction order; `Testing::Perft::divide` gained a sink parameter, closing a
+lock bypass where it wrote `std::cout` directly. `cmd_perft` still stops and joins any running
+search first — per-line atomicity does not stop a completion handler from interleaving lines into
+the divide transcript (PR #606).
+
+The two UCI test files' 85 `std::cout` redirection sites (`CoutRedirect`, `capture_cout`) are
+migrated to an injected `CaptureSink`, and both helpers are deleted: a test now reads output
+through the fixture's `capture()`/`output()`, never by swapping `std::cout`'s buffer while the
+search thread may still be writing to it. No protocol byte changed and no per-node work was added,
+so validation is the existing suite plus `Compare-SearchEquivalence.ps1` — no bench pass or Elo
+match.
+
+---
+
 ## 2026-09-22 — A position dataset for evaluation questions (#593)
 
 `Scripts/measure_eval_error.py` samples positions from the lab corpus with **no contested filter
