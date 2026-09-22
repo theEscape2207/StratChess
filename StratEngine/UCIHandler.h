@@ -6,14 +6,17 @@
 #include "GameState.h"
 #include "Board.h"
 #include "Eval.h"
+#include "SearchLimits.h"
+#include "UciWriter.h"
 
 class AIPerplex;
 struct AIPerplexConfig;
 class UciHandler {
   public:
 	UciHandler();
-	// The search service is built here, once, and persists across ucinewgame.
-	explicit UciHandler(const AIPerplexConfig& config);
+	// The search service is built here, once, and persists across ucinewgame. A null writer
+	// builds a stdout UciWriter; a caller passes one only to inject a different sink (tests).
+	explicit UciHandler(const AIPerplexConfig& config, std::shared_ptr<UciWriter> writer = nullptr);
 	// What UciHandler() uses; a caller adjusts a copy rather than restating the UCI defaults.
 	static AIPerplexConfig DefaultSearchConfig();
 	~UciHandler();
@@ -47,6 +50,10 @@ class UciHandler {
 	/// Pure function — no side effects; public for unit testing.
 	static GoParams parse_go(std::string_view line);
 
+	/// Translate parsed UCI parameters into the per-call constraints the search consumes.
+	/// Pure function — precedence and fallback policy are testable without launching a search.
+	static SearchLimits search_limits_for(const GoParams& params, eColor side_to_move) noexcept;
+
   private:
 	void cmd_uci();
 	void cmd_isready();
@@ -69,11 +76,12 @@ class UciHandler {
 	/// carries: those commands are refused, not queued and not honoured.
 	bool refuse_while_searching(std::string_view command);
 
-	static void send(std::string_view msg); // writes line to stdout + flush
+	void send(std::string_view msg) const; // forwards to writer_
 
 	Board board_;
-	std::unique_ptr<AIPerplex> ai_; // never null
-	Evaluator eval_;                // never configured, so it reports untinted scores; see Eval.h
+	std::unique_ptr<AIPerplex> ai_;     // never null
+	Evaluator eval_;                    // never configured, so it reports untinted scores; see Eval.h
+	std::shared_ptr<UciWriter> writer_; // never null
 
 	// Null unless EnableCommandLog() succeeded. Owned here and nowhere else — it is deliberately
 	// not registered with spdlog (see Logger::CreateUciCommandLogger), so the file is closed when

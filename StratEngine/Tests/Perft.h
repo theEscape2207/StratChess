@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <chrono>
+#include "../UciWriter.h"
 
 class Board;
 class Move;
@@ -48,8 +49,12 @@ namespace Testing {
 		// Perft with detailed statistics (captures, checks, etc.)
 		static PerftResult run_detailed(Board& board, int depth);
 
-		// Divide mode - shows move breakdown at root
-		static void divide(Board& board, int depth);
+		// Divide mode - shows move breakdown at root, one line per `out` call (the blank line before
+		// the total included).
+		static void divide(Board& board, int depth, const UciWriter::LineSink& out);
+
+		// For the non-UCI callers: one line to std::cout per call, no per-line flush.
+		static UciWriter::LineSink stdout_sink();
 
 		// Run standard test suite
 		static bool run_test_suite(bool extended, bool verbose = true);

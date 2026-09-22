@@ -13,7 +13,6 @@
 #include "Utils/Logger.h"
 #include <spdlog/spdlog.h>
 #include <iostream>
-#include <mutex>
 #include <sstream>
 #include <vector>
 #ifdef _WIN32
@@ -83,24 +82,7 @@ namespace {
 	}
 } // namespace
 
-void UciHandler::send(std::string_view msg)
-{
-	// One line per UCI protocol message is a hard requirement: a client reads
-	// stdout line by line, and a line torn between two threads' partial writes
-	// is a protocol violation a match runner resolves by forfeiting the game
-	// (issue #237 stage 0 finding). Before per-iteration `info` lines existed,
-	// the search thread only ever emitted two lines back-to-back at the very end
-	// of a search, leaving a narrow interleaving window; per-iteration output
-	// widens that window to the whole search, so the write+flush below is now
-	// serialised against every other send() call (the command loop's `isready`
-	// replies, `info string` refusals, etc.) via a function-local static mutex.
-	// Building the string happens on the caller's stack before this call, so it
-	// needs no synchronisation of its own -- only the shared stdout write does.
-	static std::mutex send_mutex;
-	const std::lock_guard<std::mutex> lock(send_mutex);
-	std::cout << msg << '\n';
-	std::cout.flush();
-}
+void UciHandler::send(std::string_view msg) const { writer_->send(msg); }
 
 namespace {
 	int current_process_id()
@@ -139,7 +121,9 @@ AIPerplexConfig UciHandler::DefaultSearchConfig()
 
 UciHandler::UciHandler() : UciHandler(DefaultSearchConfig()) {}
 
-UciHandler::UciHandler(const AIPerplexConfig& config) : ai_(std::make_unique<AIPerplex>(config)) {}
+UciHandler::UciHandler(const AIPerplexConfig& config, std::shared_ptr<UciWriter> writer)
+    : ai_(std::make_unique<AIPerplex>(config)), writer_(writer ? std::move(writer) : std::make_shared<UciWriter>())
+{}
 
 // Joined here rather than left to ai_'s destructor, so no member is destroyed while a launch runs.
 UciHandler::~UciHandler() { ai_->StopAndWait(); }
@@ -401,16 +385,13 @@ void UciHandler::cmd_position(std::string_view line)
 	}
 }
 
-void UciHandler::cmd_go(std::string_view line)
+SearchLimits UciHandler::search_limits_for(const GoParams& p, eColor side_to_move) noexcept
 {
-	GoParams p = parse_go(line);
-	const bool white = (board_.GetCurrentColor() == WHITE);
-
-	// Build the per-call constraints — cmd_go no longer mutates AI state.
 	SearchLimits limits;
 	if (p.movetime > 0) {
 		limits.movetime = std::chrono::milliseconds(p.movetime);
 	} else if (p.wtime > 0 || p.btime > 0) {
+		const bool white = (side_to_move == WHITE);
 		limits.clock = ClockInfo{std::chrono::milliseconds(white ? p.wtime : p.btime),
 		                         std::chrono::milliseconds(white ? p.winc : p.binc), p.movestogo};
 	} else if (!p.infinite && p.depth <= 0 && p.nodes <= 0) {
@@ -429,17 +410,24 @@ void UciHandler::cmd_go(std::string_view line)
 	limits.depth = (p.depth > 0)
 	                   ? std::optional<int>(p.depth)
 	                   : std::optional<int>((p.infinite || node_bounded) ? 50 : static_cast<int>(UCI_DEFAULT_DEPTH));
+	return limits;
+}
 
-	IterationObserver observer = [](const IterationInfo& iter) {
-		send("info depth " + std::to_string(iter.depth) + " score " + format_uci_score(iter.score) + " nodes " +
-		     std::to_string(iter.nodes) + " hashfull " + std::to_string(iter.hashfull) + " time " +
-		     std::to_string(iter.elapsed.count()) + " pv " + format_uci_pv(iter.pv));
+void UciHandler::cmd_go(std::string_view line)
+{
+	const SearchLimits limits = search_limits_for(parse_go(line), board_.GetCurrentColor());
+
+	IterationObserver observer = [writer = writer_](const IterationInfo& iter) {
+		writer->send("info depth " + std::to_string(iter.depth) + " score " + format_uci_score(iter.score) + " nodes " +
+		             std::to_string(iter.nodes) + " hashfull " + std::to_string(iter.hashfull) + " time " +
+		             std::to_string(iter.elapsed.count()) + " pv " + format_uci_pv(iter.pv));
 	};
 
 	// IsSearching() is true once this returns, so a command arriving immediately after 'go' is
 	// refused, and false before the handler runs, so the 'position' a client sends the instant it
-	// reads bestmove is accepted. The handler captures nothing: send() is static.
-	ai_->StartAsync(board_, limits, std::move(observer), [](const SearchResult& result) {
+	// reads bestmove is accepted. The callbacks hold the writer by shared_ptr, so their validity on
+	// the search thread does not depend on the handler's destruction order.
+	ai_->StartAsync(board_, limits, std::move(observer), [writer = writer_](const SearchResult& result) {
 		const Move best = result.best_move;
 
 		const int cp = result.best_score;
@@ -448,22 +436,22 @@ void UciHandler::cmd_go(std::string_view line)
 		// 'nodes' covers both trees rather than the main tree alone, which is what the
 		// protocol means and what keeps the client's nps from charging quiescence work to
 		// the clock without counting it. See MEASUREMENT_CONTRACT for the unit.
-		send("info depth " + std::to_string(result.depth_completed) + " score " + score_str + " nodes " +
-		     std::to_string(result.nodes_searched + result.qnodes_searched) + " hashfull " +
-		     std::to_string(result.hashfull) + " time " + std::to_string(result.elapsed.count()) + " pv " +
-		     (best.is_null() ? "0000" : MoveFormatter::ToUCI(best)));
+		writer->send("info depth " + std::to_string(result.depth_completed) + " score " + score_str + " nodes " +
+		             std::to_string(result.nodes_searched + result.qnodes_searched) + " hashfull " +
+		             std::to_string(result.hashfull) + " time " + std::to_string(result.elapsed.count()) + " pv " +
+		             (best.is_null() ? "0000" : MoveFormatter::ToUCI(best)));
 
 		// The split, as an 'info string' so GUIs and match runners ignore it: without it a
 		// change that relocates work between the trees looks like one that simply got slower
 		// (#312). The two must sum to 'nodes' above -- Run-Bench.ps1 refuses a run if they
 		// do not. 'main' not 'pv' because pvs() searches PV and non-PV nodes alike.
-		send("info string treenodes main " + std::to_string(result.nodes_searched) + " qs " +
-		     std::to_string(result.qnodes_searched));
+		writer->send("info string treenodes main " + std::to_string(result.nodes_searched) + " qs " +
+		             std::to_string(result.qnodes_searched));
 
 		// Trigger counters; each feature decides its own wording and whether it prints.
-		result.telemetry.append_info([](const std::string& payload) { send("info string " + payload); });
+		result.telemetry.append_info([&writer](const std::string& payload) { writer->send("info string " + payload); });
 
-		send("bestmove " + (best.is_null() ? std::string("0000") : MoveFormatter::ToUCI(best)));
+		writer->send("bestmove " + (best.is_null() ? std::string("0000") : MoveFormatter::ToUCI(best)));
 	});
 }
 
@@ -489,8 +477,9 @@ bool UciHandler::refuse_while_searching(std::string_view command)
 // current position, in the divide format every UCI perft harness parses --
 // "e2e4: 600" per move, then the total.
 //
-// Stops and joins first: Perft::divide writes std::cout without send()'s lock, and a search's
-// completion handler is still printing until the join.
+// Stops and joins first: a running search's completion handler would otherwise still be able to
+// interleave 'info'/'bestmove' lines into this multi-line divide transcript. Per-line atomicity
+// does not prevent that -- it only keeps each individual line whole.
 void UciHandler::cmd_perft(std::string_view line)
 {
 	ai_->StopAndWait();
@@ -514,8 +503,7 @@ void UciHandler::cmd_perft(std::string_view line)
 	if (depth < 0 || depth > PERFT_MAX_DEPTH)
 		return;
 
-	Testing::Perft::divide(board_, depth);
-	std::cout.flush();
+	Testing::Perft::divide(board_, depth, [this](std::string_view l) { send(l); });
 }
 
 // Joins, so bestmove is out when this returns.
