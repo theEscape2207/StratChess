@@ -37,7 +37,7 @@ class UciHandlerTestFixture {
 
 	UciHandlerTestFixture() : handler(small_hash_config()) {}
 	explicit UciHandlerTestFixture(const AIPerplexConfig& config) : handler(config) {}
-	// Injects a writer (e.g. a CaptureWriterSink) in place of the default stdout one.
+	// Injects a writer (see make_capture_writer) in place of the default stdout one.
 	UciHandlerTestFixture(const AIPerplexConfig& config, std::shared_ptr<UciWriter> writer)
 	    : handler(config, std::move(writer))
 	{}
@@ -133,9 +133,8 @@ class UciHandlerTestFixture {
 	}
 };
 
-// Thread-safe append-only line log for an injected UciWriter capture sink — the seam that
-// replaces redirecting std::cout for a test (#605). A capturing lambda holds a shared_ptr to
-// this, so it stays alive for as long as the UciWriter that owns the lambda does.
+// Thread-safe line log behind an injected UciWriter; reading it never touches std::cout. The
+// writer's sink holds a shared_ptr to it, so it lives as long as the writer does.
 class CaptureSink {
   public:
 	void append(std::string_view line)

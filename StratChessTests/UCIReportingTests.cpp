@@ -1113,24 +1113,24 @@ TEST_CASE("cmd_go: 'lmp skips' is reported only when late move pruning skipped a
 }
 
 // ---------------------------------------------------------------------------
-// UciWriter injection (#605) — lifetime and transcript-order invariants that only an injected
-// capture writer can observe; every test above this point still reads std::cout via CoutRedirect,
-// which these two deliberately do not.
+// UciWriter injection — these capture through an injected writer, never std::cout, so they can
+// run alongside a printing search.
 // ---------------------------------------------------------------------------
 
 TEST_CASE("UciWriter: a handler destroyed right after bestmove leaves a clean capture", "[uci][writer]")
 {
 	auto [writer, sink] = make_capture_writer();
 
-	auto fixture = std::make_unique<UciHandlerTestFixture>(UciHandlerTestFixture::small_hash_config(), writer);
+	// Handed over, not shared: once the fixture is gone only the search callbacks can own the writer.
+	auto fixture =
+	    std::make_unique<UciHandlerTestFixture>(UciHandlerTestFixture::small_hash_config(), std::move(writer));
 	fixture->position("position startpos");
 	fixture->dispatch("go depth 6");
 
 	REQUIRE(sink->wait_for_line("bestmove", std::chrono::seconds(10)));
 
-	// The completion callback holds its own shared_ptr to `writer`, so destroying the fixture
-	// here -- while the search thread may still be finishing that callback -- must not touch a
-	// dead writer or a dead sink (I5). A use-after-free here is what a sanitizer build catches.
+	// The search thread may still be inside the completion callback; a use-after-free of the
+	// writer here is what the sanitizer build catches.
 	fixture.reset();
 
 	int bestmove_count = 0;
@@ -1154,12 +1154,11 @@ TEST_CASE("UciWriter: perft stops a running search before writing its divide tra
 
 	REQUIRE(sink->wait_for_line("info depth", std::chrono::seconds(10)));
 
-	fix.perft("perft 2"); // cmd_perft: StopAndWait() first (D4), then the divide transcript
+	fix.perft("perft 2");
 
 	const std::vector<std::string> lines = sink->lines();
 
-	// Locate the divide block: its first line is the first one matching the move-divide wire
-	// format (#196); everything from there to the end belongs to it.
+	// The divide block runs from the first divide-format line to the end.
 	size_t divide_start = lines.size();
 	for (size_t i = 0; i < lines.size(); ++i) {
 		if (std::regex_match(lines[i], kDivideLine)) {
@@ -1180,9 +1179,7 @@ TEST_CASE("UciWriter: perft stops a running search before writing its divide tra
 	CHECK(bestmove_count == 1);
 	CHECK(bestmove_index < divide_start);
 
-	// No search output lands in or after the divide block -- the property StopAndWait() exists
-	// to preserve (D4): a running search's completion handler would otherwise be free to
-	// interleave 'info'/'bestmove' lines into this multi-line transcript.
+	// No search output lands inside the divide block: cmd_perft stops and joins the search first.
 	for (size_t i = divide_start; i < lines.size(); ++i) {
 		INFO("line " << i << ": " << lines[i]);
 		CHECK_FALSE(lines[i].starts_with("info "));

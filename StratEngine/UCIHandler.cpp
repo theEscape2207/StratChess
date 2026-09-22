@@ -443,9 +443,8 @@ void UciHandler::cmd_go(std::string_view line)
 
 	// IsSearching() is true once this returns, so a command arriving immediately after 'go' is
 	// refused, and false before the handler runs, so the 'position' a client sends the instant it
-	// reads bestmove is accepted. The observer and completion callbacks capture writer_ by value
-	// as a shared_ptr, so they hold the writer alive and can safely call send() from the search
-	// thread regardless of what order the handler and the callbacks are destroyed in.
+	// reads bestmove is accepted. The callbacks hold the writer by shared_ptr, so their validity on
+	// the search thread does not depend on the handler's destruction order.
 	ai_->StartAsync(board_, limits, std::move(observer), [writer = writer_](const SearchResult& result) {
 		const Move best = result.best_move;
 

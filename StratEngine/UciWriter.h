@@ -21,8 +21,8 @@ class UciWriter {
 
 	// One line per UCI protocol message is a hard requirement: a client reads stdout line by
 	// line, and a line torn between two threads' partial writes is a protocol violation a match
-	// runner resolves by forfeiting the game (issue #237 stage 0 finding). Every call is
-	// serialised against every other send() on this writer via a member mutex.
+	// runner resolves by forfeiting the game. Every call is serialised against every other send() on
+	// this writer.
 	void send(std::string_view line);
 
   private:
