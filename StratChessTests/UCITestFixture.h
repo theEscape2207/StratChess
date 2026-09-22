@@ -37,6 +37,10 @@ class UciHandlerTestFixture {
 
 	UciHandlerTestFixture() : handler(small_hash_config()) {}
 	explicit UciHandlerTestFixture(const AIPerplexConfig& config) : handler(config) {}
+	// Injects a writer (see make_capture_writer) in place of the default stdout one.
+	UciHandlerTestFixture(const AIPerplexConfig& config, std::shared_ptr<UciWriter> writer)
+	    : handler(config, std::move(writer))
+	{}
 
 	UciHandler handler;
 
@@ -128,6 +132,60 @@ class UciHandlerTestFixture {
 		return handler.ai_->Search(handler.board_, SearchLimits::fixed_depth(depth));
 	}
 };
+
+// Thread-safe line log behind an injected UciWriter; reading it never touches std::cout. The
+// writer's sink holds a shared_ptr to it, so it lives as long as the writer does.
+class CaptureSink {
+  public:
+	void append(std::string_view line)
+	{
+		{
+			std::scoped_lock lock(mutex_);
+			lines_.emplace_back(line);
+		}
+		cv_.notify_all();
+	}
+
+	// Blocks until some captured line contains `needle`, or the timeout elapses.
+	bool wait_for_line(std::string_view needle, std::chrono::milliseconds timeout) const
+	{
+		std::unique_lock lock(mutex_);
+		return cv_.wait_for(lock, timeout, [&] {
+			for (const std::string& line : lines_) {
+				if (line.find(needle) != std::string::npos)
+					return true;
+			}
+			return false;
+		});
+	}
+
+	// Snapshot of every line captured so far, in emission order.
+	std::vector<std::string> lines() const
+	{
+		std::scoped_lock lock(mutex_);
+		return lines_;
+	}
+
+  private:
+	mutable std::mutex mutex_;
+	mutable std::condition_variable cv_;
+	std::vector<std::string> lines_;
+};
+
+// A UciWriter that appends to a CaptureSink instead of writing std::cout, plus a handle to that
+// sink for the test to read. `sink` outlives `writer`'s destruction (it is a separate shared_ptr),
+// so a test can inspect the last captured lines after destroying the writer/handler.
+struct CaptureWriter {
+	std::shared_ptr<UciWriter> writer;
+	std::shared_ptr<CaptureSink> sink;
+};
+
+inline CaptureWriter make_capture_writer()
+{
+	auto sink = std::make_shared<CaptureSink>();
+	auto writer = std::make_shared<UciWriter>([sink](std::string_view line) { sink->append(line); });
+	return {std::move(writer), std::move(sink)};
+}
 
 // Builds a legal UCI move sequence of at least `min_plies` plies from the
 // starting position: knight shuffles (Ng1-f3-g1 / Ng8-f6-g8) with a

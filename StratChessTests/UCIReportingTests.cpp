@@ -12,6 +12,7 @@
 #include "MoveGenerator.h"
 #include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <regex>
 #include <sstream>
@@ -1109,4 +1110,95 @@ TEST_CASE("cmd_go: 'lmp skips' is reported only when late move pruning skipped a
 	CAPTURE(enabled);
 	CHECK(any_lmp == matching);
 	CHECK(matching == (enabled ? 1 : 0));
+}
+
+// ---------------------------------------------------------------------------
+// UciWriter injection — these capture through an injected writer, never std::cout, so they can
+// run alongside a printing search.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("UciWriter: a handler destroyed right after bestmove leaves a clean capture", "[uci][writer]")
+{
+	auto [writer, sink] = make_capture_writer();
+
+	// Handed over, not shared: once the fixture is gone only the search callbacks can own the writer.
+	auto fixture =
+	    std::make_unique<UciHandlerTestFixture>(UciHandlerTestFixture::small_hash_config(), std::move(writer));
+	fixture->position("position startpos");
+	fixture->dispatch("go depth 6");
+
+	REQUIRE(sink->wait_for_line("bestmove", std::chrono::seconds(10)));
+
+	// The search thread may still be inside the completion callback; a use-after-free of the
+	// writer here is what the sanitizer build catches.
+	fixture.reset();
+
+	int bestmove_count = 0;
+	std::string last_line;
+	for (const std::string& line : sink->lines()) {
+		if (line.starts_with("bestmove "))
+			++bestmove_count;
+		last_line = line;
+	}
+	CHECK(bestmove_count == 1);
+	CHECK(last_line.starts_with("bestmove "));
+}
+
+TEST_CASE("UciWriter: perft stops a running search before writing its divide transcript", "[uci][writer]")
+{
+	auto [writer, sink] = make_capture_writer();
+
+	UciHandlerTestFixture fix(UciHandlerTestFixture::small_hash_config(), writer);
+	fix.position("position startpos");
+	fix.dispatch("go infinite");
+
+	REQUIRE(sink->wait_for_line("info depth", std::chrono::seconds(10)));
+
+	fix.perft("perft 2");
+
+	const std::vector<std::string> lines = sink->lines();
+
+	// The divide block runs from the first divide-format line to the end.
+	size_t divide_start = lines.size();
+	for (size_t i = 0; i < lines.size(); ++i) {
+		if (std::regex_match(lines[i], kDivideLine)) {
+			divide_start = i;
+			break;
+		}
+	}
+	REQUIRE(divide_start < lines.size());
+
+	int bestmove_count = 0;
+	size_t bestmove_index = lines.size();
+	for (size_t i = 0; i < divide_start; ++i) {
+		if (lines[i].starts_with("bestmove ")) {
+			++bestmove_count;
+			bestmove_index = i;
+		}
+	}
+	CHECK(bestmove_count == 1);
+	CHECK(bestmove_index < divide_start);
+
+	// No search output lands inside the divide block: cmd_perft stops and joins the search first.
+	for (size_t i = divide_start; i < lines.size(); ++i) {
+		INFO("line " << i << ": " << lines[i]);
+		CHECK_FALSE(lines[i].starts_with("info "));
+		CHECK_FALSE(lines[i].starts_with("bestmove "));
+	}
+
+	const std::vector<std::string> divide_block(lines.begin() + static_cast<std::ptrdiff_t>(divide_start), lines.end());
+	REQUIRE(divide_block.size() == 22); // 20 root moves + "" + "Total nodes: N"
+
+	int move_lines = 0;
+	uint64_t total = 0;
+	for (size_t i = 0; i + 2 < divide_block.size(); ++i) {
+		std::smatch m;
+		REQUIRE(std::regex_match(divide_block[i], m, kDivideLine));
+		++move_lines;
+		total += std::stoull(m[2].str());
+	}
+	CHECK(move_lines == 20);
+	CHECK(divide_block[divide_block.size() - 2].empty());
+	CHECK(divide_block.back() == "Total nodes: " + std::to_string(total));
+	CHECK(total == 400);
 }
