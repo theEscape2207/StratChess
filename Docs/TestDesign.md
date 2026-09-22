@@ -711,6 +711,24 @@ mate-excluded and baseline-mismatch positions plus both bracket ends; `--self-ch
 every corpus FEN is legal and every `expect` legal in it. `Scripts/test_bisect_uci_option.py` runs
 both from a temporary working directory, so neither needs an engine build.
 
+**Evaluation dataset**: `Scripts/measure_eval_error.py` samples the lab corpus without a contested
+filter or loss conditioning and writes one JSONL row per position joining the engine's per-term
+`eval` breakdown, the engine's own search score and a depth-20 oracle score (#593). It produces a
+dataset, not a verdict — the questions are asked ad hoc against the rows, because the per-question
+cut has been different every time and a built-in report once turned a fragile statistic into a
+headline. Two traps it exists to encode, both of which yield a clean-looking wrong answer rather
+than an error: `eval` prints the net column and `white pov:` from White's point of view but
+`static eval:` from the side to move's, so joining the wrong line inverts every black-to-move row;
+and a `ProcessPoolExecutor` worker still holding a live UCI subprocess does not exit, which looks
+like a hang in the work rather than in teardown, so both engines are opened and closed inside the
+batch task. `parse_breakdown` asserts the net column, the printed sum and `white pov:` agree on
+every row, which is what makes a drift in the table's format fail on the first position instead of
+in the output. `--self-test` is pure Python and runs without an engine, an oracle or a corpus;
+`--engine-check` is the live check that the built engine still speaks the table, and asserts the
+mirror of a position scores its exact negation. `Scripts/test_measure_eval_error.py` covers what the
+self-test cannot reach without a file on disk — chiefly that the scan does **not** inherit Tier 1's
+contested filter, the property the whole dataset rests on.
+
 ### Full tactical suite in main executable
 
 **Files**: `StratEngine/Tests/TacticalTestRunner.h/cpp`, `Tests/tactical_test_cases.json`
