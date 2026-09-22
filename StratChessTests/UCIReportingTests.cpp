@@ -1032,7 +1032,7 @@ TEST_CASE("UciWriter: a handler destroyed right after bestmove leaves a clean ca
 	fixture->position("position startpos");
 	fixture->dispatch("go depth 6");
 
-	REQUIRE(sink->wait_for_line("bestmove", std::chrono::seconds(10)));
+	REQUIRE(sink->wait_for("bestmove", std::chrono::seconds(10)));
 
 	// The search thread may still be inside the completion callback; a use-after-free of the
 	// writer here is what the sanitizer build catches.
@@ -1057,7 +1057,7 @@ TEST_CASE("UciWriter: perft stops a running search before writing its divide tra
 	fix.position("position startpos");
 	fix.dispatch("go infinite");
 
-	REQUIRE(sink->wait_for_line("info depth", std::chrono::seconds(10)));
+	REQUIRE(sink->wait_for("info depth", std::chrono::seconds(10)));
 
 	fix.perft("perft 2");
 

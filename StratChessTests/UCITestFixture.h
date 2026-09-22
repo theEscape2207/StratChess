@@ -22,84 +22,65 @@
 #include <utility>
 #include <vector>
 
-// Thread-safe line log behind an injected UciWriter; reading it never touches std::cout. The
-// writer's sink holds a shared_ptr to it, so it lives as long as the writer does.
+// Thread-safe capture of everything written through an injected UciWriter; reading it never
+// touches std::cout. The writer's sink holds a shared_ptr to it, so it lives as long as the writer.
 class CaptureSink {
   public:
+	// Line and newline land as two separate writes, as they do on std::cout, so an unserialised
+	// writer can tear lines here just as it would on stdout.
 	void append(std::string_view line)
 	{
 		{
 			std::scoped_lock lock(mutex_);
-			lines_.emplace_back(line);
+			text_ += line;
+		}
+		{
+			std::scoped_lock lock(mutex_);
+			text_ += '\n';
 		}
 		cv_.notify_all();
 	}
 
-	// Blocks until some captured line contains `needle`, or the timeout elapses.
-	bool wait_for_line(std::string_view needle, std::chrono::milliseconds timeout) const
-	{
-		std::unique_lock lock(mutex_);
-		return cv_.wait_for(lock, timeout, [&] {
-			for (const std::string& line : lines_) {
-				if (line.find(needle) != std::string::npos)
-					return true;
-			}
-			return false;
-		});
-	}
-
-	// Snapshot of every line captured so far, in emission order.
-	std::vector<std::string> lines() const
-	{
-		std::scoped_lock lock(mutex_);
-		return lines_;
-	}
-
-	// Every captured line framed exactly as std::cout would have carried it -- each followed by
-	// '\n' -- so string comparisons written against the old CoutRedirect::str() keep working.
-	std::string str() const
-	{
-		std::scoped_lock lock(mutex_);
-		return join(lines_, 0);
-	}
-
-	// Blocks until the framed text (str()) contains `needle` anywhere, or the timeout elapses.
-	// Unlike wait_for_line, the needle may straddle a line boundary.
+	// Blocks until the captured text contains `needle`, or the timeout elapses.
 	bool wait_for(std::string_view needle, std::chrono::milliseconds timeout) const
 	{
 		std::unique_lock lock(mutex_);
-		return cv_.wait_for(lock, timeout, [&] { return join(lines_, 0).find(needle) != std::string::npos; });
+		return cv_.wait_for(lock, timeout, [&] { return text_.find(needle) != std::string::npos; });
 	}
 
-	// The number of lines captured so far. Pairs with str_since() to read back exactly what one
-	// action printed, without disturbing what came before or after it.
-	size_t mark() const
+	// Every line captured so far, in emission order, without newlines.
+	std::vector<std::string> lines() const
 	{
-		std::scoped_lock lock(mutex_);
-		return lines_.size();
-	}
-
-	// Every line appended since `mark`, framed the same way str() is.
-	std::string str_since(size_t mark) const
-	{
-		std::scoped_lock lock(mutex_);
-		return join(lines_, mark);
-	}
-
-  private:
-	static std::string join(const std::vector<std::string>& lines, size_t from)
-	{
-		std::string out;
-		for (size_t i = from; i < lines.size(); ++i) {
-			out += lines[i];
-			out += '\n';
-		}
+		std::vector<std::string> out;
+		std::istringstream iss{str()};
+		for (std::string line; std::getline(iss, line);)
+			out.push_back(line);
 		return out;
 	}
 
+	// The captured text exactly as std::cout would have carried it.
+	std::string str() const
+	{
+		std::scoped_lock lock(mutex_);
+		return text_;
+	}
+
+	// A position in the captured text; str_since() reads back exactly what one action printed.
+	size_t mark() const
+	{
+		std::scoped_lock lock(mutex_);
+		return text_.size();
+	}
+	std::string str_since(size_t mark) const
+	{
+		std::scoped_lock lock(mutex_);
+		return text_.substr(mark);
+	}
+
+  private:
 	mutable std::mutex mutex_;
 	mutable std::condition_variable cv_;
-	std::vector<std::string> lines_;
+	std::string text_;
 };
 
 // A UciWriter that appends to a CaptureSink instead of writing std::cout, plus a handle to that
@@ -229,30 +210,35 @@ class UciHandlerTestFixture {
 		return handler.ai_->Search(handler.board_, SearchLimits::fixed_depth(depth));
 	}
 
-	// Everything the handler has printed since the fixture was constructed, framed as std::cout
-	// would have carried it. Only meaningful for the default/config constructors -- a fixture built
-	// with its own injected writer has no output_ to read back.
-	std::string output() const { return output_->str(); }
+	// Everything the handler has printed since construction. A fixture built with its own injected
+	// writer has no capture of its own; its test reads the sink it injected.
+	std::string output() const { return captured().str(); }
 
 	// Blocks until output() contains `needle`, or the timeout elapses.
 	bool wait_for_output(std::string_view needle, std::chrono::milliseconds timeout) const
 	{
-		return output_->wait_for(needle, timeout);
+		return captured().wait_for(needle, timeout);
 	}
 
 	// Runs `action` and returns exactly what it printed, isolated from anything captured before or
-	// after it. Replaces the old pattern of scoping a CoutRedirect around one call.
+	// after it.
 	template <typename F> std::string capture(F&& action)
 	{
-		const size_t mark = output_->mark();
+		const size_t mark = captured().mark();
 		std::forward<F>(action)();
-		return output_->str_since(mark);
+		return captured().str_since(mark);
 	}
 
   private:
 	UciHandlerTestFixture(const AIPerplexConfig& config, CaptureWriter cw)
 	    : handler(config, std::move(cw.writer)), output_(std::move(cw.sink))
 	{}
+
+	const CaptureSink& captured() const
+	{
+		REQUIRE(output_ != nullptr);
+		return *output_;
+	}
 
 	std::shared_ptr<CaptureSink> output_;
 };
