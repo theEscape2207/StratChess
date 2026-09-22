@@ -22,6 +22,27 @@ Newest first.
 
 ---
 
+## 2026-09-22 — A position dataset for evaluation questions (#593)
+
+`Scripts/measure_eval_error.py` samples positions from the lab corpus with **no contested filter
+and no loss conditioning** — the one population Tier 1, Tier 2 and #481 cannot measure — and joins
+each to the engine's per-term `eval` breakdown, the engine's own search score, and a Stockfish
+depth-20 score. It writes one JSONL row per position and stops there; the questions are asked
+afterwards against that file.
+
+It carried a statistics and verdict layer to begin with. Every finding that survived review came
+from ad-hoc queries over the rows instead, and the built-in report produced a headline that had to
+be withdrawn, so the layer is gone. Per-term correlation in particular cannot find a *missing* term:
+a term that is absent has zero variance and is cleared by construction.
+
+Three engine findings came out of the first dataset, filed rather than recorded here: king safety is
+inert against its own design bound (#598), `EndgameScale` misses most drawn-despite-material endings
+(#599), and a class of evaluation error survives depth 20 and 16x the oracle's nodes (#600). The
+epic-level version — that no term has the dynamic range to separate a level position from a clearly
+better one — is on #110.
+
+No engine change and no Elo measurement.
+
 ## 2026-09-21 — Mop-up aims at the bishop's corner in KBN vs K (#572)
 
 `eval_mopup` rewarded driving the losing king toward **any** corner, which is correct for K+Q vs K
