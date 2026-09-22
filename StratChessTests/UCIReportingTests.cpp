@@ -12,6 +12,7 @@
 #include "MoveGenerator.h"
 #include <algorithm>
 #include <cstdint>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <regex>
@@ -49,10 +50,8 @@ static int extract_cp_score(const std::string& output, const std::string& label)
 TEST_CASE("cmd_eval: works before any position command, does not crash", "[uci]")
 {
 	UciHandlerTestFixture fix;
-	CoutRedirect redirect;
-	REQUIRE_NOTHROW(fix.eval());
+	const std::string out = fix.capture([&] { REQUIRE_NOTHROW(fix.eval()); });
 
-	const std::string out = redirect.str();
 	REQUIRE(out.find("static eval:") != std::string::npos);
 	REQUIRE(out.find("white pov:") != std::string::npos);
 }
@@ -68,9 +67,8 @@ TEST_CASE("cmd_eval: printed score matches Evaluator::Evaluate() directly (hones
 	UciHandlerTestFixture fix;
 	fix.position("position fen " + fen);
 
-	CoutRedirect redirect;
-	fix.eval();
-	const int printed = extract_cp_score(redirect.str(), "static eval:");
+	const std::string out = fix.capture([&] { fix.eval(); });
+	const int printed = extract_cp_score(out, "static eval:");
 
 	const Evaluator eval;
 	Board board(fen);
@@ -85,9 +83,7 @@ TEST_CASE("cmd_eval: output contains neither bestmove nor info", "[uci]")
 	UciHandlerTestFixture fix;
 	fix.position("position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
 
-	CoutRedirect redirect;
-	fix.eval();
-	const std::string out = redirect.str();
+	const std::string out = fix.capture([&] { fix.eval(); });
 
 	REQUIRE(out.find("bestmove") == std::string::npos);
 	REQUIRE(out.find("info") == std::string::npos);
@@ -103,9 +99,7 @@ TEST_CASE("cmd_eval: white-pov line matches the stated sign convention", "[uci]"
 	{
 		fix.position("position fen 4k3/8/8/8/8/8/8/R3K3 w - - 0 1"); // White up a rook
 
-		CoutRedirect redirect;
-		fix.eval();
-		const std::string out = redirect.str();
+		const std::string out = fix.capture([&] { fix.eval(); });
 
 		const int side_to_move_score = extract_cp_score(out, "static eval:");
 		const int white_pov = extract_cp_score(out, "white pov:");
@@ -118,9 +112,7 @@ TEST_CASE("cmd_eval: white-pov line matches the stated sign convention", "[uci]"
 	{
 		fix.position("position fen r3k3/8/8/8/8/8/8/4K3 b - - 0 1"); // Black up a rook
 
-		CoutRedirect redirect;
-		fix.eval();
-		const std::string out = redirect.str();
+		const std::string out = fix.capture([&] { fix.eval(); });
 
 		const int side_to_move_score = extract_cp_score(out, "static eval:");
 		const int white_pov = extract_cp_score(out, "white pov:");
@@ -259,9 +251,7 @@ TEST_CASE("cmd_eval: printed breakdown nets are white-minus-black and sum to the
 	UciHandlerTestFixture fix;
 	fix.position(std::string("position fen ") + fen);
 
-	CoutRedirect redirect;
-	fix.eval();
-	const std::string out = redirect.str();
+	const std::string out = fix.capture([&] { fix.eval(); });
 
 	int net_sum = 0;
 	for (const char* term : kBreakdownTerms) {
@@ -295,18 +285,14 @@ TEST_CASE("cmd_eval: breakdown reports the game phase the evaluator computed", "
 	{
 		fix.position("position startpos");
 
-		CoutRedirect redirect;
-		fix.eval();
-		REQUIRE(redirect.str().find("phase: 24/24") != std::string::npos);
+		REQUIRE(fix.capture([&] { fix.eval(); }).find("phase: 24/24") != std::string::npos);
 	}
 
 	SECTION("bare kings plus a queen is deep in the endgame")
 	{
 		fix.position("position fen 4k3/8/8/8/8/8/8/3QK3 w - - 0 1");
 
-		CoutRedirect redirect;
-		fix.eval();
-		REQUIRE(redirect.str().find("phase: 4/24") != std::string::npos);
+		REQUIRE(fix.capture([&] { fix.eval(); }).find("phase: 4/24") != std::string::npos);
 	}
 }
 
@@ -328,9 +314,7 @@ TEST_CASE("cmd_eval: a term that is active for exactly one side shows it in the 
 	UciHandlerTestFixture fix;
 	fix.position("position fen k7/8/8/8/8/8/8/3QK3 w - - 0 1");
 
-	CoutRedirect redirect;
-	fix.eval();
-	const EvalTermRow mopup = extract_term_row(redirect.str(), "mopup");
+	const EvalTermRow mopup = extract_term_row(fix.capture([&] { fix.eval(); }), "mopup");
 
 	REQUIRE(mopup.white > 0);
 	REQUIRE(mopup.black == 0);
@@ -351,12 +335,7 @@ TEST_CASE("cmd_perft: startpos depth 1 emits 20 harness-parseable divide lines",
 	UciHandlerTestFixture fix;
 	fix.position("position startpos");
 
-	std::string output;
-	{
-		CoutRedirect redirect;
-		fix.perft("perft 1");
-		output = redirect.str();
-	}
+	const std::string output = fix.capture([&] { fix.perft("perft 1"); });
 
 	const auto divides = parse_divide(output);
 	REQUIRE(divides.size() == 20);
@@ -372,12 +351,7 @@ TEST_CASE("cmd_perft: 'go perft' is not parsed as a search", "[uci][perft]")
 	UciHandlerTestFixture fix;
 	fix.position("position startpos");
 
-	std::string output;
-	{
-		CoutRedirect redirect;
-		fix.perft("go perft 2");
-		output = redirect.str();
-	}
+	const std::string output = fix.capture([&] { fix.perft("go perft 2"); });
 
 	REQUIRE(divide_total(output) == 400);
 	REQUIRE(output.find("bestmove") == std::string::npos);
@@ -388,12 +362,7 @@ TEST_CASE("cmd_perft: honours the position set by cmd_position", "[uci][perft]")
 	UciHandlerTestFixture fix;
 	fix.position("position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
 
-	std::string output;
-	{
-		CoutRedirect redirect;
-		fix.perft("perft 3");
-		output = redirect.str();
-	}
+	const std::string output = fix.capture([&] { fix.perft("perft 3"); });
 
 	REQUIRE(parse_divide(output).size() == 48);
 	REQUIRE(divide_total(output) == 97862);
@@ -405,12 +374,7 @@ TEST_CASE("cmd_perft: malformed depth is ignored, not guessed at", "[uci][perft]
 	fix.position("position startpos");
 
 	for (const auto* line : {"perft", "perft abc", "perft -1", "perft 11", "go perft"}) {
-		std::string output;
-		{
-			CoutRedirect redirect;
-			fix.perft(line);
-			output = redirect.str();
-		}
+		const std::string output = fix.capture([&] { fix.perft(line); });
 		INFO("input: " << line);
 		REQUIRE(parse_divide(output).empty());
 	}
@@ -421,19 +385,11 @@ TEST_CASE("cmd_perft: leaves the board unchanged", "[uci][perft]")
 	UciHandlerTestFixture fix;
 	fix.position("position startpos");
 
-	{
-		CoutRedirect redirect;
-		fix.perft("perft 3");
-	}
+	fix.perft("perft 3");
 
 	REQUIRE(fix.board().GetCurrentColor() == WHITE);
 
-	std::string output;
-	{
-		CoutRedirect redirect;
-		fix.perft("perft 1");
-		output = redirect.str();
-	}
+	const std::string output = fix.capture([&] { fix.perft("perft 1"); });
 	REQUIRE(divide_total(output) == 20);
 }
 
@@ -461,15 +417,12 @@ class CinRedirect {
 
 TEST_CASE("run(): dispatches 'go perft' to perft, not to the search", "[uci][perft]")
 {
-	UciHandler handler;
+	auto [writer, sink] = make_capture_writer();
+	UciHandler handler(UciHandler::DefaultSearchConfig(), writer);
 
-	std::string output;
-	{
-		CinRedirect input("position startpos\ngo perft 2\nquit\n");
-		CoutRedirect redirect;
-		handler.run();
-		output = redirect.str();
-	}
+	CinRedirect input("position startpos\ngo perft 2\nquit\n");
+	handler.run();
+	const std::string output = sink->str();
 
 	REQUIRE(divide_total(output) == 400);
 	REQUIRE(output.find("bestmove") == std::string::npos);
@@ -477,15 +430,12 @@ TEST_CASE("run(): dispatches 'go perft' to perft, not to the search", "[uci][per
 
 TEST_CASE("run(): a bare 'go' still searches after the perft branch was added", "[uci][perft]")
 {
-	UciHandler handler;
+	auto [writer, sink] = make_capture_writer();
+	UciHandler handler(UciHandler::DefaultSearchConfig(), writer);
 
-	std::string output;
-	{
-		CinRedirect input("position startpos\ngo depth 3\nquit\n");
-		CoutRedirect redirect;
-		handler.run();
-		output = redirect.str();
-	}
+	CinRedirect input("position startpos\ngo depth 3\nquit\n");
+	handler.run();
+	const std::string output = sink->str();
 
 	REQUIRE(output.find("bestmove") != std::string::npos);
 	REQUIRE(parse_divide(output).empty());
@@ -593,13 +543,10 @@ TEST_CASE("cmd_go: 'go depth 4' emits per-iteration info lines with strictly inc
 	UciHandlerTestFixture fix;
 	fix.position("position startpos");
 
-	std::string output;
-	{
-		CoutRedirect redirect;
+	const std::string output = fix.capture([&] {
 		fix.dispatch("go depth 4");
 		fix.join_search();
-		output = redirect.str();
-	}
+	});
 
 	const auto info_lines = parse_info_depth_lines(output);
 	// At least the 4 per-iteration lines (depths 1-4) plus the unchanged final
@@ -628,14 +575,15 @@ TEST_CASE("cmd_go: hashfull falls when the same workload uses a larger table", "
 {
 	auto final_hashfull = [](unsigned hash_mb) {
 		UciHandlerTestFixture fix;
-		CoutRedirect redirect;
-		fix.ucinewgame();
-		fix.setoption("setoption name Hash value " + std::to_string(hash_mb));
-		fix.position("position startpos");
-		fix.dispatch("go depth 10");
-		fix.join_search();
+		const std::string output = fix.capture([&] {
+			fix.ucinewgame();
+			fix.setoption("setoption name Hash value " + std::to_string(hash_mb));
+			fix.position("position startpos");
+			fix.dispatch("go depth 10");
+			fix.join_search();
+		});
 
-		const auto info_lines = parse_info_depth_lines(redirect.str());
+		const auto info_lines = parse_info_depth_lines(output);
 		REQUIRE_FALSE(info_lines.empty());
 		return info_lines.back().hashfull;
 	};
@@ -651,13 +599,10 @@ TEST_CASE("cmd_go: iteration and final info times share one monotonic origin", "
 	UciHandlerTestFixture fix;
 	fix.position("position startpos");
 
-	std::string output;
-	{
-		CoutRedirect redirect;
+	const std::string output = fix.capture([&] {
 		fix.dispatch("go depth 5");
 		fix.join_search();
-		output = redirect.str();
-	}
+	});
 
 	const auto info_lines = parse_info_depth_lines(output);
 	REQUIRE(info_lines.size() >= 2);
@@ -674,13 +619,10 @@ TEST_CASE("cmd_go: the last info line's pv and score agree with bestmove", "[uci
 	UciHandlerTestFixture fix;
 	fix.position("position startpos");
 
-	std::string output;
-	{
-		CoutRedirect redirect;
+	const std::string output = fix.capture([&] {
 		fix.dispatch("go depth 4");
 		fix.join_search();
-		output = redirect.str();
-	}
+	});
 
 	const auto info_lines = parse_info_depth_lines(output);
 	REQUIRE_FALSE(info_lines.empty());
@@ -699,13 +641,10 @@ TEST_CASE("cmd_go: 'go nodes N' stops on the node budget", "[uci]")
 	UciHandlerTestFixture fix;
 	fix.position("position startpos moves e2e4 e7e5 g1f3");
 
-	std::string output;
-	{
-		CoutRedirect redirect;
+	const std::string output = fix.capture([&] {
 		fix.dispatch("go nodes 20000");
 		fix.join_search();
-		output = redirect.str();
-	}
+	});
 
 	const auto info_lines = parse_info_depth_lines(output);
 	REQUIRE_FALSE(info_lines.empty());
@@ -722,13 +661,10 @@ TEST_CASE("cmd_go: 'go nodes 1' still returns a move", "[uci]")
 	UciHandlerTestFixture fix;
 	fix.position("position startpos moves e2e4 e7e5 g1f3");
 
-	std::string output;
-	{
-		CoutRedirect redirect;
+	const std::string output = fix.capture([&] {
 		fix.dispatch("go nodes 1");
 		fix.join_search();
-		output = redirect.str();
-	}
+	});
 
 	REQUIRE_FALSE(extract_bestmove(output).empty());
 }
@@ -750,13 +686,10 @@ TEST_CASE("cmd_go: a node-limited search never reports a spliced pv", "[uci]")
 	UciHandlerTestFixture fix;
 	fix.position("position startpos moves e2e4 e7e5 g1f3");
 
-	std::string output;
-	{
-		CoutRedirect redirect;
+	const std::string output = fix.capture([&] {
 		fix.dispatch("go nodes " + std::to_string(budget));
 		fix.join_search();
-		output = redirect.str();
-	}
+	});
 
 	const auto info_lines = parse_info_depth_lines(output);
 	REQUIRE_FALSE(info_lines.empty());
@@ -785,13 +718,10 @@ TEST_CASE("cmd_go: a node limit bounds a multi-threaded search too", "[uci][smp]
 	fix.setoption("setoption name Threads value 4");
 	fix.position("position startpos moves e2e4 e7e5 g1f3");
 
-	std::string output;
-	{
-		CoutRedirect redirect;
+	const std::string output = fix.capture([&] {
 		fix.dispatch("go nodes 20000");
 		fix.join_search();
-		output = redirect.str();
-	}
+	});
 
 	const auto info_lines = parse_info_depth_lines(output);
 	REQUIRE_FALSE(info_lines.empty());
@@ -807,13 +737,10 @@ TEST_CASE("cmd_go: at depth >= 3 the pv carries more than one move and replays l
 	UciHandlerTestFixture fix;
 	fix.position("position startpos");
 
-	std::string output;
-	{
-		CoutRedirect redirect;
+	const std::string output = fix.capture([&] {
 		fix.dispatch("go depth 4");
 		fix.join_search();
-		output = redirect.str();
-	}
+	});
 
 	const auto info_lines = parse_info_depth_lines(output);
 	REQUIRE(info_lines.size() >= 4);
@@ -838,13 +765,10 @@ TEST_CASE("cmd_go: a forced mate reports 'mate N', not 'cp', in the score field"
 	UciHandlerTestFixture fix;
 	fix.position("position fen 6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1");
 
-	std::string output;
-	{
-		CoutRedirect redirect;
+	const std::string output = fix.capture([&] {
 		fix.dispatch("go depth 4");
 		fix.join_search();
-		output = redirect.str();
-	}
+	});
 
 	const auto info_lines = parse_info_depth_lines(output);
 	REQUIRE_FALSE(info_lines.empty());
@@ -860,12 +784,7 @@ TEST_CASE("AIPerplex::Search: emits no per-iteration output without a per-call o
 	fix.ucinewgame();
 	fix.position("position startpos");
 
-	std::string output;
-	{
-		CoutRedirect redirect;
-		fix.run_search_directly(4);
-		output = redirect.str();
-	}
+	const std::string output = fix.capture([&] { fix.run_search_directly(4); });
 
 	REQUIRE(output.empty());
 }
@@ -880,13 +799,10 @@ TEST_CASE("cmd_go: 'go movetime 300' final info line's nodes are >= the last per
 	// Kiwipete: complex enough that 300ms will not reach UCI_DEFAULT_DEPTH (20).
 	fix.position("position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
 
-	std::string output;
-	{
-		CoutRedirect redirect;
+	const std::string output = fix.capture([&] {
 		fix.dispatch("go movetime 300");
 		fix.join_search();
-		output = redirect.str();
-	}
+	});
 
 	const auto info_lines = parse_info_depth_lines(output);
 	// At least one accepted per-iteration line plus the final summary line.
@@ -910,7 +826,7 @@ TEST_CASE("cmd_go: immediate stop cannot be lost before Search arms", "[uci][imm
 	UciHandlerTestFixture fix;
 	fix.position("position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
 
-	const std::string stopped_output = capture_cout([&] {
+	const std::string stopped_output = fix.capture([&] {
 		fix.dispatch("go infinite");
 		fix.dispatch("stop"); // immediate: may arrive before Search arms its control
 	});
@@ -924,7 +840,7 @@ TEST_CASE("cmd_go: immediate stop cannot be lost before Search arms", "[uci][imm
 
 	// A pending stop from the just-finished search must not poison the next
 	// command. This search has no stop command and must complete its fixed depth.
-	const std::string next_output = capture_cout([&] {
+	const std::string next_output = fix.capture([&] {
 		fix.dispatch("go depth 2");
 		fix.join_search();
 	});
@@ -943,19 +859,14 @@ TEST_CASE("cmd_go: stop during go infinite preserves output lines under concurre
 	fix.position("position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
 
 	constexpr int kIsReadyCount = 20;
-	bool info_observed = false;
-	std::string output;
-	{
-		CoutRedirect redirect;
-		fix.dispatch("go infinite");
-		info_observed = redirect.wait_for("info depth ", std::chrono::seconds(5));
-		if (info_observed) {
-			for (int i = 0; i < kIsReadyCount; ++i)
-				fix.dispatch("isready");
-		}
-		fix.dispatch("stop");
-		output = redirect.str();
+	fix.dispatch("go infinite");
+	const bool info_observed = fix.wait_for_output("info depth ", std::chrono::seconds(5));
+	if (info_observed) {
+		for (int i = 0; i < kIsReadyCount; ++i)
+			fix.dispatch("isready");
 	}
+	fix.dispatch("stop");
+	const std::string output = fix.output();
 
 	REQUIRE(info_observed);
 	const std::regex line_shape{R"(^(info|bestmove|readyok)\b)"};
@@ -981,7 +892,7 @@ TEST_CASE("cmd_go: back-to-back searches emit only their own per-call iterations
 	UciHandlerTestFixture fix;
 	fix.position("position startpos");
 
-	const std::string first_output = capture_cout([&] {
+	const std::string first_output = fix.capture([&] {
 		fix.dispatch("go depth 4");
 		fix.join_search();
 	});
@@ -990,7 +901,7 @@ TEST_CASE("cmd_go: back-to-back searches emit only their own per-call iterations
 	REQUIRE(first_search_info.front().depth == 1);
 	REQUIRE_FALSE(extract_bestmove(first_output).empty());
 
-	const std::string second_output = capture_cout([&] {
+	const std::string second_output = fix.capture([&] {
 		fix.dispatch("go depth 4");
 		fix.join_search();
 	});
@@ -1041,7 +952,7 @@ TEST_CASE("cmd_uci: the handshake advertises a measurement contract version", "[
 	// Run-Bench.ps1 reads absence as "pre-#312 build", so losing this line would not
 	// error out — it would silently relabel every future run as an old one.
 	UciHandlerTestFixture fix;
-	const std::string output = capture_cout([&] { fix.uci(); });
+	const std::string output = fix.capture([&] { fix.uci(); });
 
 	const std::regex contract_line(R"(^info string benchcontract [1-9]\d*$)");
 	bool matched = false;
@@ -1057,13 +968,10 @@ TEST_CASE("cmd_go: 'nodes' equals the reported main/quiescence split", "[uci][no
 	UciHandlerTestFixture fix;
 	fix.position("position startpos");
 
-	std::string output;
-	{
-		CoutRedirect redirect;
+	const std::string output = fix.capture([&] {
 		fix.dispatch("go depth 5");
 		fix.join_search();
-		output = redirect.str();
-	}
+	});
 
 	const auto split = parse_treenodes(output);
 	REQUIRE(split.has_value());
@@ -1091,13 +999,10 @@ TEST_CASE("cmd_go: 'lmp skips' is reported only when late move pruning skipped a
 	fix.set_late_move_pruning(enabled);
 	fix.position("position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
 
-	std::string output;
-	{
-		CoutRedirect redirect;
+	const std::string output = fix.capture([&] {
 		fix.dispatch("go depth 6");
 		fix.join_search();
-		output = redirect.str();
-	}
+	});
 
 	int matching = 0;
 	int any_lmp = 0;
