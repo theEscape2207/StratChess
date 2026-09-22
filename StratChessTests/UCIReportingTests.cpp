@@ -610,6 +610,7 @@ TEST_CASE("cmd_go: 'go depth 4' emits per-iteration info lines with strictly inc
 	}
 	REQUIRE(info_lines[0].depth == 1);
 	for (const auto& info : info_lines) {
+		CHECK(info.depth <= 4);
 		CHECK(info.hashfull >= 0);
 		CHECK(info.hashfull <= 1000);
 	}
