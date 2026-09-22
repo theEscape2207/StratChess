@@ -1,8 +1,8 @@
 #pragma once
 
 #include "PieceHelper.h"
-#include <array>
 #include <cstdint>
+#include <iterator>
 #include <span>
 #include "defines.h"
 
