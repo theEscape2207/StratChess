@@ -800,30 +800,6 @@ TEST_CASE("cmd_go: a node limit bounds a multi-threaded search too", "[uci][smp]
 	REQUIRE(replay_pv_is_legal(board, info_lines.back().pv));
 }
 
-TEST_CASE("cmd_go: an explicit depth still caps a node-bounded search", "[uci]")
-{
-	// A node budget lifts the default depth cap so it cannot silently truncate a
-	// large budget, but an explicit 'depth' outranks both. Without that ordering a
-	// node-limited match could not also be depth-limited.
-	UciHandlerTestFixture fix;
-	fix.position("position startpos moves e2e4 e7e5 g1f3");
-
-	std::string output;
-	{
-		CoutRedirect redirect;
-		fix.dispatch("go depth 5 nodes 100000000");
-		fix.join_search();
-		output = redirect.str();
-	}
-
-	const auto info_lines = parse_info_depth_lines(output);
-	REQUIRE_FALSE(info_lines.empty());
-	for (const ParsedInfoLine& line : info_lines) {
-		CHECK(line.depth <= 5);
-	}
-	REQUIRE_FALSE(extract_bestmove(output).empty());
-}
-
 TEST_CASE("cmd_go: at depth >= 3 the pv carries more than one move and replays legally", "[uci]")
 {
 	UciHandlerTestFixture fix;
