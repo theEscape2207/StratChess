@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PieceHelper.h"
+#include <array>
 #include <cstdint>
 #include <span>
 #include "defines.h"
@@ -170,14 +171,10 @@ struct EvalContext {
 	PieceAggregates attacks;
 };
 
-// EvalBreakdown — per-term introspection output for the UCI 'eval' command.
-// Produced by Evaluator::Breakdown(); read-only, never consulted by search.
-//
-// Every field is indexed by eColor, so a caller can show which side a term is
-// actually acting on rather than only the net effect — the per-color split is
-// usually the thing being debugged. The net contribution of a term is always
-// white-minus-black, matching how Evaluate() combines them.
-struct EvalBreakdown {
+// One edit here and one matching set() in Breakdown() add a term everywhere the
+// debugging breakdown is consumed. The catalogue checks below make an omitted,
+// duplicated, reordered or unnamed entry a compile error.
+enum class EvalTerm : std::uint8_t {
 	// Board::GetMaterialScore(color), copied verbatim from EvalContext — so
 	// king-inclusive (10000 cp per side; see EvalContext::material above).
 	// Left unadjusted deliberately: a king-stripped display figure would be a
@@ -185,34 +182,112 @@ struct EvalBreakdown {
 	// so a consumer showing net contributions never has to account for it. This
 	// is the documented home for that fact — which is why the UCI 'eval' output
 	// does not restate it on every call.
-	int material[NUM_COLORS];
-	int pawns[NUM_COLORS];        // eval_pawns
-	int rooks[NUM_COLORS];        // eval_rooks (incl. connected rooks)
-	int pst[NUM_COLORS];          // eval_pst
-	int mopup[NUM_COLORS];        // eval_mopup
-	int bishops[NUM_COLORS];      // eval_bishops
-	int castling[NUM_COLORS];     // eval_castling
-	int mobility[NUM_COLORS];     // eval_mobility
-	int outposts[NUM_COLORS];     // eval_outposts
-	int king_shelter[NUM_COLORS]; // eval_king_pawn_cover, shelter
-	int king_storm[NUM_COLORS];   // eval_king_pawn_cover, storm
-	int king_files[NUM_COLORS];   // eval_king_pawn_cover, file openness
-	int king_attack[NUM_COLORS];  // eval_king_attack
+	Material,
+	Pawns,       // eval_pawns
+	Rooks,       // eval_rooks (incl. connected rooks)
+	Pst,         // eval_pst
+	Mopup,       // eval_mopup
+	Bishops,     // eval_bishops
+	Castling,    // eval_castling
+	Mobility,    // eval_mobility
+	Outposts,    // eval_outposts
+	KingShelter, // eval_king_pawn_cover, shelter
+	KingStorm,   // eval_king_pawn_cover, storm
+	KingFiles,   // eval_king_pawn_cover, file openness
+	KingAttack,  // eval_king_attack
+	COUNT,
+};
+
+inline constexpr std::size_t NUM_EVAL_TERMS = static_cast<std::size_t>(EvalTerm::COUNT);
+
+struct EvalTermEntry {
+	EvalTerm term;
+	const char* name;
+};
+
+// Length is deduced so omission changes std::size(); entry i must describe term
+// i so insertion and reordering cannot silently attach values to wrong labels.
+inline constexpr EvalTermEntry EVAL_TERMS[] = {
+    {EvalTerm::Material, "material"},     {EvalTerm::Pawns, "pawns"},
+    {EvalTerm::Rooks, "rooks"},           {EvalTerm::Pst, "pst"},
+    {EvalTerm::Mopup, "mopup"},           {EvalTerm::Bishops, "bishops"},
+    {EvalTerm::Castling, "castling"},     {EvalTerm::Mobility, "mobility"},
+    {EvalTerm::Outposts, "outposts"},     {EvalTerm::KingShelter, "shelter"},
+    {EvalTerm::KingStorm, "storm"},       {EvalTerm::KingFiles, "kingfiles"},
+    {EvalTerm::KingAttack, "kingattack"},
+};
+
+static_assert(std::size(EVAL_TERMS) == NUM_EVAL_TERMS, "every EvalTerm needs a catalogue entry");
+static_assert(
+    [] {
+	    for (std::size_t i = 0; i < std::size(EVAL_TERMS); ++i) {
+		    if (static_cast<std::size_t>(EVAL_TERMS[i].term) != i)
+			    return false;
+		    if (EVAL_TERMS[i].name == nullptr || EVAL_TERMS[i].name[0] == '\0')
+			    return false;
+	    }
+	    return true;
+    }(),
+    "EVAL_TERMS must be in enum order with a non-empty name for each term");
+
+// EvalBreakdown — per-term introspection output for the UCI 'eval' command.
+// Produced by Evaluator::Breakdown(); read-only, never consulted by search.
+//
+// Every term is indexed by eColor, so a caller can show which side a term is
+// actually acting on rather than only the net effect — the per-color split is
+// usually the thing being debugged. The net contribution of a term is always
+// white-minus-black, matching how Evaluate() combines them.
+struct EvalBreakdown {
+	int terms_[NUM_EVAL_TERMS][NUM_COLORS]{};
+	// Value-independent completeness: a zero-valued term must still have been
+	// deliberately populated. Search never constructs this debugging struct.
+	std::uint16_t populated_{};
+	static_assert(NUM_EVAL_TERMS <= 16, "EvalBreakdown population mask is too narrow");
+
+	constexpr int at(EvalTerm term, eColor color) const noexcept
+	{
+		return terms_[static_cast<std::size_t>(term)][color];
+	}
+
+	constexpr int net(EvalTerm term) const noexcept { return at(term, WHITE) - at(term, BLACK); }
+
+	constexpr void set(EvalTerm term, int white, int black) noexcept
+	{
+		const std::size_t index = static_cast<std::size_t>(term);
+		terms_[index][WHITE] = white;
+		terms_[index][BLACK] = black;
+		populated_ = static_cast<std::uint16_t>(populated_ | (std::uint16_t{1} << index));
+	}
+
+	constexpr bool complete() const noexcept
+	{
+		return populated_ == static_cast<std::uint16_t>((std::uint32_t{1} << NUM_EVAL_TERMS) - 1U);
+	}
+
+	constexpr int white_pov() const noexcept
+	{
+		int sum = 0;
+		for (const EvalTermEntry& entry : EVAL_TERMS)
+			sum += net(entry.term);
+		return sum + endgame_adjustment;
+	}
+
 	// Included because it is not derivable from the rows: it sets where between
 	// the mg and eg endpoints every tapered term landed, and gates eval_mopup.
-	int phase;
+	int phase{};
 	// The endgame material scale that was applied, over ENDGAME_SCALE_MAX.
-	int endgame_scale;
+	int endgame_scale{};
 	// What that scale did to the score, white-POV: scaled minus unscaled, so a
 	// consumer adds it to the summed rows and lands on `total`. Reported as one
 	// net figure rather than spread across the per-color rows, which would make
-	// every row a number no part of the evaluator computes.
-	int endgame_adjustment;
+	// every row a number no part of the evaluator computes; it is deliberately
+	// not a catalogue entry for the same reason.
+	int endgame_adjustment{};
 	// Side-to-move-relative, exactly as Evaluate() returns it — this field is
 	// Evaluate()'s return value, not a re-derivation of it (D8). Material plus
-	// the four terms, summed white-minus-black, reproduces it up to the
+	// every catalogued term, summed white-minus-black, reproduces it up to the
 	// side-to-move sign; that identity is asserted in StratChessTests.
-	int total;
+	int total{};
 };
 
 // Extrema of one row of a king-safety weight table. They exist so

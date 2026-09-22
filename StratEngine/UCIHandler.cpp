@@ -280,37 +280,19 @@ void UciHandler::cmd_eval()
 		     pad_left("black", EVAL_VALUE_COL) + " |" + pad_left("net", EVAL_VALUE_COL));
 		send(rule);
 		// The material row is king-inclusive (10000 cp per side) because it is
-		// EvalContext::material verbatim — see that field's comment in Eval.h.
+		// EvalContext::material verbatim — see EvalTerm::Material in Eval.h.
 		// It cancels in the net column. Documented there rather than printed on
 		// every invocation: it is a fixed property of the evaluator, not
 		// information about the position being examined.
-		send(eval_term_row("material", terms.material[WHITE], terms.material[BLACK]));
-		send(eval_term_row("pawns", terms.pawns[WHITE], terms.pawns[BLACK]));
-		send(eval_term_row("rooks", terms.rooks[WHITE], terms.rooks[BLACK]));
-		send(eval_term_row("pst", terms.pst[WHITE], terms.pst[BLACK]));
-		send(eval_term_row("mopup", terms.mopup[WHITE], terms.mopup[BLACK]));
-		send(eval_term_row("bishops", terms.bishops[WHITE], terms.bishops[BLACK]));
-		send(eval_term_row("castling", terms.castling[WHITE], terms.castling[BLACK]));
-		send(eval_term_row("mobility", terms.mobility[WHITE], terms.mobility[BLACK]));
-		send(eval_term_row("outposts", terms.outposts[WHITE], terms.outposts[BLACK]));
-		send(eval_term_row("shelter", terms.king_shelter[WHITE], terms.king_shelter[BLACK]));
-		send(eval_term_row("storm", terms.king_storm[WHITE], terms.king_storm[BLACK]));
-		send(eval_term_row("kingfiles", terms.king_files[WHITE], terms.king_files[BLACK]));
-		send(eval_term_row("kingattack", terms.king_attack[WHITE], terms.king_attack[BLACK]));
+		for (const EvalTermEntry& entry : EVAL_TERMS)
+			send(eval_term_row(entry.name, terms.at(entry.term, WHITE), terms.at(entry.term, BLACK)));
 		send(eval_net_row("endgame", terms.endgame_adjustment));
 		send(rule);
 
 		// The sum of the net column. It must equal the 'white pov' line below;
 		// both are printed so a drift between the terms and Evaluate() is
 		// visible on inspection, and asserted on in StratChessTests (D9).
-		const int net_sum =
-		    (terms.material[WHITE] - terms.material[BLACK]) + (terms.pawns[WHITE] - terms.pawns[BLACK]) +
-		    (terms.rooks[WHITE] - terms.rooks[BLACK]) + (terms.pst[WHITE] - terms.pst[BLACK]) +
-		    (terms.mopup[WHITE] - terms.mopup[BLACK]) + (terms.bishops[WHITE] - terms.bishops[BLACK]) +
-		    (terms.castling[WHITE] - terms.castling[BLACK]) + (terms.mobility[WHITE] - terms.mobility[BLACK]) +
-		    (terms.outposts[WHITE] - terms.outposts[BLACK]) + (terms.king_shelter[WHITE] - terms.king_shelter[BLACK]) +
-		    (terms.king_storm[WHITE] - terms.king_storm[BLACK]) + (terms.king_files[WHITE] - terms.king_files[BLACK]) +
-		    (terms.king_attack[WHITE] - terms.king_attack[BLACK]) + terms.endgame_adjustment;
+		const int net_sum = terms.white_pov();
 		const std::string sum_label = "sum (white pov)";
 		send(sum_label + pad_left(std::to_string(net_sum), EVAL_TABLE_WIDTH - static_cast<int>(sum_label.size())));
 

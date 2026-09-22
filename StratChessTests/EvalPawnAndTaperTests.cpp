@@ -51,8 +51,8 @@ TEST_CASE("Eval - king centralization is worth more as the phase drops", "[eval]
 	// Subtract White's queen PST explicitly rather than relying on it being 0.
 	// It happens to be 0 on d1 today, but #117 is a PST-tuning issue: a queen
 	// table change would otherwise silently turn this into a test of the queen.
-	const int highKingOnly = high.pst[WHITE] - EvalProbe::GetPositionalScore(d1, WHITE_QUEEN);
-	const int lowKingOnly = low.pst[WHITE];
+	const int highKingOnly = high.at(EvalTerm::Pst, WHITE) - EvalProbe::GetPositionalScore(d1, WHITE_QUEEN);
+	const int lowKingOnly = low.at(EvalTerm::Pst, WHITE);
 	CAPTURE(high.phase, low.phase, highKingOnly, lowKingOnly);
 
 	REQUIRE(high.phase > low.phase);
@@ -96,8 +96,8 @@ TEST_CASE("Eval - crossing the old stage threshold no longer produces a cliff", 
 	// Net king-driven swing, isolated by removing the departing knight's own PST
 	// from the before-position (it is the only piece that leaves).
 	const int knightPst = EvalProbe::GetPositionalScore(b8, BLACK_KNIGHT);
-	const int netBefore = (b.pst[WHITE] - b.pst[BLACK]);
-	const int netAfter = (a.pst[WHITE] - a.pst[BLACK]);
+	const int netBefore = b.net(EvalTerm::Pst);
+	const int netAfter = a.net(EvalTerm::Pst);
 	const int swing = netAfter - (netBefore + knightPst);
 	const int swingAbs = (swing < 0) ? -swing : swing;
 	CAPTURE(netBefore, netAfter, knightPst, swing);
@@ -141,17 +141,17 @@ TEST_CASE("Eval - mop-up: walking the winning king toward the loser must raise t
 
 	// Guard the premise: if either position stopped being a gated mop-up
 	// position this test would pass vacuously.
-	CAPTURE(farBreakdown.phase, farBreakdown.mopup[WHITE], nearBreakdown.mopup[WHITE]);
-	REQUIRE(farBreakdown.mopup[WHITE] > 0);
-	REQUIRE(nearBreakdown.mopup[WHITE] > 0);
-	REQUIRE(nearBreakdown.mopup[WHITE] > farBreakdown.mopup[WHITE]);
+	CAPTURE(farBreakdown.phase, farBreakdown.at(EvalTerm::Mopup, WHITE), nearBreakdown.at(EvalTerm::Mopup, WHITE));
+	REQUIRE(farBreakdown.at(EvalTerm::Mopup, WHITE) > 0);
+	REQUIRE(nearBreakdown.at(EvalTerm::Mopup, WHITE) > 0);
+	REQUIRE(nearBreakdown.at(EvalTerm::Mopup, WHITE) > farBreakdown.at(EvalTerm::Mopup, WHITE));
 
 	// The actual property: White's total positional contribution must improve
 	// when its king closes in. Before the fix the king PST's centralization loss
 	// outweighs mop-up's approach bonus and this is negative.
-	const int farTotal = farBreakdown.pst[WHITE] + farBreakdown.mopup[WHITE];
-	const int nearTotal = nearBreakdown.pst[WHITE] + nearBreakdown.mopup[WHITE];
-	CAPTURE(farBreakdown.pst[WHITE], nearBreakdown.pst[WHITE], farTotal, nearTotal);
+	const int farTotal = farBreakdown.at(EvalTerm::Pst, WHITE) + farBreakdown.at(EvalTerm::Mopup, WHITE);
+	const int nearTotal = nearBreakdown.at(EvalTerm::Pst, WHITE) + nearBreakdown.at(EvalTerm::Mopup, WHITE);
+	CAPTURE(farBreakdown.at(EvalTerm::Pst, WHITE), nearBreakdown.at(EvalTerm::Pst, WHITE), farTotal, nearTotal);
 
 	REQUIRE(nearTotal > farTotal);
 }
