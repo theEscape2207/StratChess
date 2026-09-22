@@ -203,7 +203,7 @@ namespace {
 				std::cout << "Time:  " << result.duration.count() << " ms\n";
 				std::cout << "NPS:   " << result.nps() << "\n";
 			} else if (command == "divide") {
-				Testing::Perft::divide(board, depth);
+				Testing::Perft::divide(board, depth, Testing::Perft::stdout_sink());
 			} else if (command == "detailed") {
 				const auto result = Testing::Perft::run_detailed(board, depth);
 				result.print();

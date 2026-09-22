@@ -281,7 +281,7 @@ namespace Testing {
 		const auto start = std::chrono::high_resolution_clock::now();
 
 		if (divide_mode) {
-			divide(board, depth);
+			divide(board, depth, stdout_sink());
 		} else {
 			result.nodes = perft_recursive(board, depth);
 		}
@@ -307,10 +307,10 @@ namespace Testing {
 	}
 
 	// Divide mode - shows node count for each root move
-	void Perft::divide(Board& board, int depth)
+	void Perft::divide(Board& board, int depth, const UciWriter::LineSink& out)
 	{
 		if (depth == 0) {
-			std::cout << "Nodes: 1\n";
+			out("Nodes: 1");
 			return;
 		}
 
@@ -327,12 +327,19 @@ namespace Testing {
 			const uint64_t nodes = perft_recursive(board, depth - 1);
 			total_nodes += nodes;
 
-			std::cout << MoveFormatter::ToUCI(move) << ": " << nodes << "\n";
+			out(MoveFormatter::ToUCI(move) + ": " + std::to_string(nodes));
 
 			board.UndoMove(move);
 		}
 
-		std::cout << "\nTotal nodes: " << total_nodes << "\n";
+		out("");
+		out("Total nodes: " + std::to_string(total_nodes));
+	}
+
+	// std::cout write per line, matching this file's other non-UCI output: no per-line flush.
+	UciWriter::LineSink Perft::stdout_sink()
+	{
+		return [](std::string_view line) { std::cout << line << "\n"; };
 	}
 
 	// Print perft results
