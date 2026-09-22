@@ -419,16 +419,13 @@ void UciHandler::cmd_position(std::string_view line)
 	}
 }
 
-void UciHandler::cmd_go(std::string_view line)
+SearchLimits UciHandler::search_limits_for(const GoParams& p, eColor side_to_move) noexcept
 {
-	GoParams p = parse_go(line);
-	const bool white = (board_.GetCurrentColor() == WHITE);
-
-	// Build the per-call constraints — cmd_go no longer mutates AI state.
 	SearchLimits limits;
 	if (p.movetime > 0) {
 		limits.movetime = std::chrono::milliseconds(p.movetime);
 	} else if (p.wtime > 0 || p.btime > 0) {
+		const bool white = (side_to_move == WHITE);
 		limits.clock = ClockInfo{std::chrono::milliseconds(white ? p.wtime : p.btime),
 		                         std::chrono::milliseconds(white ? p.winc : p.binc), p.movestogo};
 	} else if (!p.infinite && p.depth <= 0 && p.nodes <= 0) {
@@ -447,6 +444,12 @@ void UciHandler::cmd_go(std::string_view line)
 	limits.depth = (p.depth > 0)
 	                   ? std::optional<int>(p.depth)
 	                   : std::optional<int>((p.infinite || node_bounded) ? 50 : static_cast<int>(UCI_DEFAULT_DEPTH));
+	return limits;
+}
+
+void UciHandler::cmd_go(std::string_view line)
+{
+	const SearchLimits limits = search_limits_for(parse_go(line), board_.GetCurrentColor());
 
 	IterationObserver observer = [](const IterationInfo& iter) {
 		send("info depth " + std::to_string(iter.depth) + " score " + format_uci_score(iter.score) + " nodes " +

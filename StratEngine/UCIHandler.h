@@ -6,6 +6,7 @@
 #include "GameState.h"
 #include "Board.h"
 #include "Eval.h"
+#include "SearchLimits.h"
 
 class AIPerplex;
 struct AIPerplexConfig;
@@ -46,6 +47,10 @@ class UciHandler {
 	/// Parse a UCI 'go' line into a GoParams struct.
 	/// Pure function — no side effects; public for unit testing.
 	static GoParams parse_go(std::string_view line);
+
+	/// Translate parsed UCI parameters into the per-call constraints the search consumes.
+	/// Pure function — precedence and fallback policy are testable without launching a search.
+	static SearchLimits search_limits_for(const GoParams& params, eColor side_to_move) noexcept;
 
   private:
 	void cmd_uci();

@@ -1,5 +1,5 @@
 // UCITests.cpp — Catch2 [uci] tests for the session/administrative commands:
-// parse_go() parameter parsing, cmd_position, cmd_setoption, cmd_ucinewgame,
+// parse_go() parameter parsing, search-limit translation, cmd_position, cmd_setoption, cmd_ucinewgame,
 // dispatch() and the received-command log. cmd_go/cmd_eval/cmd_perft (the
 // commands that run search and report on it) are in UCIReportingTests.cpp.
 
@@ -131,6 +131,66 @@ TEST_CASE("parse_go: params in non-standard order", "[uci]")
 	REQUIRE(p.winc == 1000);
 	REQUIRE(p.binc == 500);
 	REQUIRE(p.movestogo == 10);
+}
+
+// ---------------------------------------------------------------------------
+// search_limits_for — parsed UCI parameters to search policy
+// ---------------------------------------------------------------------------
+
+TEST_CASE("search_limits_for: time policy", "[uci]")
+{
+	const P params{.wtime = 60000, .btime = 30000, .winc = 1000, .binc = 500, .movestogo = 20};
+
+	SECTION("movetime takes precedence over clock")
+	{
+		P with_movetime = params;
+		with_movetime.movetime = 2500;
+		const SearchLimits limits = UciHandler::search_limits_for(with_movetime, WHITE);
+		REQUIRE(limits.movetime == std::chrono::milliseconds(2500));
+		REQUIRE_FALSE(limits.clock.has_value());
+	}
+
+	SECTION("clock follows the side to move")
+	{
+		const SearchLimits white = UciHandler::search_limits_for(params, WHITE);
+		const SearchLimits black = UciHandler::search_limits_for(params, BLACK);
+		REQUIRE(white.clock.has_value());
+		REQUIRE(black.clock.has_value());
+		REQUIRE(white.clock->remaining == std::chrono::milliseconds(60000));
+		REQUIRE(white.clock->increment == std::chrono::milliseconds(1000));
+		REQUIRE(black.clock->remaining == std::chrono::milliseconds(30000));
+		REQUIRE(black.clock->increment == std::chrono::milliseconds(500));
+		REQUIRE(black.clock->moves_to_go == 20);
+	}
+}
+
+TEST_CASE("search_limits_for: fallback and depth policy", "[uci]")
+{
+	SECTION("unconstrained go gets the safe fallback")
+	{
+		const SearchLimits limits = UciHandler::search_limits_for(P{}, WHITE);
+		REQUIRE(limits.movetime == std::chrono::seconds(10));
+		REQUIRE(limits.depth == 20);
+	}
+
+	SECTION("node and infinite searches get the generous depth cap")
+	{
+		const SearchLimits nodes = UciHandler::search_limits_for(P{.nodes = 20000}, WHITE);
+		const SearchLimits infinite = UciHandler::search_limits_for(P{.infinite = true}, WHITE);
+		REQUIRE(nodes.depth == 50);
+		REQUIRE(infinite.depth == 50);
+		REQUIRE_FALSE(nodes.movetime.has_value());
+		REQUIRE_FALSE(infinite.movetime.has_value());
+	}
+
+	SECTION("explicit depth overrides node and infinite caps")
+	{
+		const SearchLimits limits =
+		    UciHandler::search_limits_for(P{.depth = 12, .nodes = 20000, .infinite = true}, WHITE);
+		REQUIRE(limits.depth == 12);
+		REQUIRE(limits.nodes == 20000);
+		REQUIRE(limits.infinite);
+	}
 }
 
 // ---------------------------------------------------------------------------
