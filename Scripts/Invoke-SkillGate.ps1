@@ -3,10 +3,9 @@
     PreToolUse hook: interrupts the first edit per session to a file type that has a skill.
 
 .DESCRIPTION
-    A skill's description is matched against the task, not the file being edited, so
-    `write-powershell` and `writing-for-agents` were skipped in most sessions that edited their
-    files. This hook fires on the edit itself. The first edit to a matching file in a session is
-    denied with "load skill X, then retry"; the retry and every later edit pass.
+    A skill's description is matched against the task, not the file being edited. This hook fires
+    on the edit itself: the first edit to a matching file in a session is denied with "load skill
+    X, then retry"; the retry and every later edit pass.
 
     It interrupts; it does not prove a load. The marker records the denial, so a retry without
     loading the skill also passes. A positive load signal was rejected because Codex loads a skill
@@ -46,12 +45,13 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $markerRoot = Join-Path ([IO.Path]::GetTempPath()) 'stratchess-skill-gate'
 
-# Claude permission-rule patterns, used verbatim as the config's `if` rules. A single-segment
-# pattern matches the working directory only, hence the `**/` prefixes.
+# Claude permission-rule patterns, used verbatim as the config's `if` rules. They resolve against
+# the session's working directory, hence the `**/` prefixes: a session started in a subdirectory
+# or another worktree still matches.
 $script:SkillFileSets = [ordered]@{
     'write-powershell'   = @('**/*.ps1')
-    'writing-for-agents' = @('**/CLAUDE.md', '**/AGENTS.md', '.claude/skills/**', '.agents/skills/**',
-                             '.claude/agents/**', '.codex/agents/**')
+    'writing-for-agents' = @('**/CLAUDE.md', '**/AGENTS.md', '**/.claude/skills/**', '**/.agents/skills/**',
+                             '**/.claude/agents/**', '**/.codex/agents/**')
 }
 
 function ConvertTo-PathRegex {
@@ -157,11 +157,6 @@ function Get-GateOutput {
             })
         if ($due.Count -eq 0) { return '' }
 
-        # Markers are zero-byte; prune stale ones on the rare deny path only.
-        Get-ChildItem -LiteralPath $MarkerDir -File -ErrorAction SilentlyContinue |
-            Where-Object LastWriteTime -lt (Get-Date).AddDays(-2) |
-            Remove-Item -ErrorAction SilentlyContinue
-
         $asks = @(foreach ($skill in $due) { 'load skill `{0}` before editing {1}' -f $skill, $hits[$skill] })
         $reason = 'Skill gate: ' + ($asks -join '; ') +
             ', then retry this edit. The gate fires once per skill per session.'
@@ -201,6 +196,7 @@ if ($SelfTest) {
     $cases = @(
         @{ Name = 'Claude Edit, absolute .ps1 -> write-powershell';  Json = (New-HookJson 's1' 'Edit' @{ file_path = $ps1Abs });                                 Expect = @('write-powershell') }
         @{ Name = 'FALSIFY: same session again -> allowed';          Json = (New-HookJson 's1' 'Edit' @{ file_path = $ps1Abs });                                 Expect = @() }
+        @{ Name = 'Claude Write, new .ps1 -> write-powershell';      Json = (New-HookJson 's12' 'Write' @{ file_path = 'Scripts/New-Thing.ps1'; content = 'x' });  Expect = @('write-powershell') }
         @{ Name = 'Claude Write, new SKILL.md -> writing-for-agents'; Json = (New-HookJson 's2' 'Write' @{ file_path = '.claude/skills/new/SKILL.md'; content = 'x' }); Expect = @('writing-for-agents') }
         @{ Name = 'skill reference file -> writing-for-agents';      Json = (New-HookJson 's3' 'Edit' @{ file_path = '.claude/skills/write-powershell/reference/traps.md' }); Expect = @('writing-for-agents') }
         @{ Name = 'nested CLAUDE.md -> writing-for-agents';          Json = (New-HookJson 's4' 'Edit' @{ file_path = 'StratEngine/CLAUDE.md' });                 Expect = @('writing-for-agents') }

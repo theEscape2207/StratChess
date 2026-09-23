@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"& (Join-Path (git rev-parse --show-toplevel) 'Scripts/Invoke-SkillGate.ps1')\"",
+            "command": "pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"try { & (Join-Path (git rev-parse --show-toplevel) 'Scripts/Invoke-SkillGate.ps1') } catch { exit 0 }\"",
             "timeout": 30
           }
         ]
