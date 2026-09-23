@@ -36,9 +36,11 @@ Either way, the artifact's author edits the artifact; the reviewer edits only th
 2. Look for **provenance** (a number nobody measured, a default that has since changed) and **logical
    form** (a dichotomy that does not hold, a gate that cannot fail). Also look for **proportion**: a
    plan heavier than its diff, or a check that is true by construction.
-3. **On a pushed PR**, the author's `code-review` has already checked the diff against the standards
-   and the spec; its Review line says so. Audit its claims with four questions instead:
-   - **Dispositions:** does each rejection on the Review line hold, and does each `filed #n` exist?
+3. **On a pushed PR**, ask four questions:
+   - **Dispositions:** a PR outside the Docs tier carries a Review line: the author's `code-review`
+     has already checked the diff against the standards and the spec. Does each rejected finding
+     listed in Notes hold, and does each `filed #n` exist? A Docs-tier PR has no Review line;
+     review its changed documents by steps 1–2 instead.
    - **Drift:** does the diff match the approved design, or does the PR body's Notes name every
      change? A plan deleted after Harvest is in the branch's history (skill `open-pull-request` step
      1).

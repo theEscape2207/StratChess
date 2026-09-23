@@ -140,8 +140,9 @@ the PR or issue before merge. The user routes it, so a pushed PR is *awaiting re
 plans, and documents making provenance claims — these are where a bad premise is expensive and
 invisible to CI. Aim it hardest at the design doc's "assumptions I cannot verify from the code"
 section. **Skip** mechanical changes where CI is the real gate, and artifacts that have already
-converged. **A PR** goes only when it has a design doc or changes the engine binary: the author's
-`code-review` already covers its diff, so the round audits that review's claims instead.
+converged. **A PR** goes only when it has a design doc, changes the engine binary, is Build tier
+(the gates themselves), or changes a skill or CLAUDE.md (Docs tier, so no `code-review` covers it).
+Otherwise the author's `code-review`, which also lists removed behaviour, is the review.
 
 **Division of labour.** `code-review`, `eval-reviewer` and `search-reviewer` review the **diff**;
 the cross-agent reviewer reviews the **design doc**, and on a PR whether the diff still matches it.
