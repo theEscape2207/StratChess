@@ -16,8 +16,10 @@ size. Load skill `code-review` (Claude: `mattpocock-skills:code-review`, not the
 `/code-review`) and give it these inputs, so it never has to ask the user:
 
 - **Fixed point:** `origin/main`.
-- **Spec:** the issue the PR cites (`Closes`/`Refs #N`) plus any `.claude/plans/` document on the
-  branch. With neither, tell it "no spec available".
+- **Spec:** the issue the PR cites (`Closes`/`Refs #N`) plus any `.claude/plans/` document the
+  branch added, including one deleted after Harvest:
+  `git log --diff-filter=A --name-only origin/main..HEAD -- .claude/plans`, then `git show
+  <sha>:<path>`. With neither, tell it "no spec available".
 - **Standards sources:** `Docs/agents/simplify.md` and CLAUDE.md → Development Guidelines.
 - **Append to the Standards brief:** "Also apply question 4 of `Docs/agents/simplify.md` to each
   touched file in full, and no other file. Report it under a separate `Nearby debt` heading with
@@ -31,11 +33,11 @@ Every finding is fixed, rejected with a reason, or filed as an issue. Each nearb
 
 - **The change makes it worse** (copies the duplication, extends the workaround): a finding against
   this PR.
-- **Otherwise**, if you would accept a PR to fix it, file a new issue: search open issues first
-  (`gh issue list --search`), and give `file:line` and this PR in the body. Label it `needs-triage`
-  plus `Cleanup` (stale or dead code) or `category:refactor` (duplication), and `priority:low`
-  unless it risks a wrong result.
-  Drop anything smaller. Never fix it in this PR.
+- **Otherwise**, if you would accept a PR to fix it, file a new issue
+  (`Docs/agents/issue-tracker.md`): search open issues first (`gh issue list --search`), and give
+  `file:line` and the branch in the body. The Review line's `filed #n` (step 3) links the PR to it once the PR exists. Label it
+  `needs-triage` plus `Cleanup` (stale or dead code) or `category:refactor` (duplication), and
+  `priority:low` unless it risks a wrong result. Drop anything smaller. Never fix it in this PR.
 
 ### Specialised reviewers
 
