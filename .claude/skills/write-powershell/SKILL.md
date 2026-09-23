@@ -6,196 +6,43 @@ description: Write or change a PowerShell script in this repo — the language t
   returns the wrong type, or when adding a self-test.
 ---
 
-PowerShell is ~7,500 lines here, second only to C++. Every recurring defect in it has been a
-**language-semantics trap that fails silently**, not a logic error. The measured behaviours below
-are what the reviews keep finding; each one is a real bug this repo has shipped.
+Every recurring defect in this repo's PowerShell has been a **language-semantics trap that fails
+silently**, not a logic error, and each rule below is one that shipped as a bug. Scripts require
+**PowerShell 7** (`pwsh`).
 
-Scripts require **PowerShell 7** (`pwsh`). Windows PowerShell 5 (`powershell`) fails on the syntax
-used throughout.
+## Rules
 
-## 1. A collection of one is not a collection
+Measured behaviour, examples and the bug each rule came from: `reference/traps.md`, same numbering.
 
-`return` unrolls. Measured on 7.6.5:
+1. **Wrap the call site: `$files = @(Get-TargetFiles)`.** `return` unrolls a one-element array to
+   its element and an empty one to `$null`, so `.Count` throws under StrictMode. `return , $array`
+   is the wrong fix: it breaks the two-element case.
+2. **Name locals apart from every parameter** — `$tracked`, not `$all` beside `-All`. Names are
+   case-insensitive, and a local shadows the parameter for every read in that function.
+3. **Round explicitly:** `[math]::Truncate()`, `Floor()` or `Ceiling()`. `[int]` rounds
+   half-to-even (`[int]2.5` is 2).
+4. **Pipe every unassigned native call inside a function to `Out-Host`.** `git`, `pwsh` or engine
+   stdout otherwise becomes part of the return value.
+5. **`[AllowEmptyCollection()]` beside `Mandatory`** whenever an empty set is a legitimate input.
+   `Mandatory` alone rejects `@()`.
+6. **Invoke a script in-process (`& $path`) when its contract is an object.** `& pwsh -File` returns
+   strings. `Get-ChangeTier.ps1` is the one that matters.
+7. **Resolve the repository from `$PSScriptRoot`, and run your own worktree's copy.** It is the
+   defining file's directory, even when dot-sourced, and the empty string only for fileless code, so
+   a `$null` guard is dead.
+8. **Dot-source only a shared library, kept flat in `Scripts/`.** A dot-sourced script shares your
+   scope and its `exit` ends your session. The self-test census does not recurse into
+   subdirectories.
+9. **Read stdin through `[System.IO.StreamReader]::new([Console]::OpenStandardInput())`.**
+   `[Console]::In.ReadLineAsync()` blocks on the calling thread, so a timed poll never times out.
 
-| Written in the function | What the caller receives | `.Count` under StrictMode |
-|---|---|---|
-| `return @('only')` | `String` | **throws** |
-| `return @()` | `$null` | **throws** |
-| `return @('a','b')` | `Object[]` | 2 |
+## Self-tests
 
-**Fix at the call site, always: `$files = @(Get-TargetFiles)`.** That makes all three cases an array
-of the right length.
-
-Do **not** "fix" it with the comma operator. `return , $array` yields a one-element `Object[]`
-wrapping the original, and `@()` does not flatten it: a two-element result arrives as `Count = 1`
-with `[0]` being the inner array. It only looks correct in the one-element case that prompted it.
-
-This shipped as #394 — `$files.Count` threw on any change touching exactly one file, so the lint
-gate crashed on precisely the smallest PRs.
-
-## 2. Variable names are case-insensitive, so a local shadows a parameter
-
-`$all` and `$All` are one name. A function-local assignment does not write to the script parameter —
-it creates a local that **shadows it for every read inside that function**:
-
-```powershell
-param([switch]$All)                 # script scope, stays $false
-
-function Get-TargetFiles {
-    $all = @('a.cpp', 'b.cpp')      # intended as a local
-    if ($All) { return $all }       # reads the local: non-empty array is truthy -> taken
-}
-```
-
-The switch itself is never modified (`$script:All` is still `$false` afterwards), which is why this
-survives inspection. It shipped as #387: whole-tree lint became unconditional, so changed-file
-scoping never engaged and CI lint became the critical path.
-
-**Name every local so it cannot collide with a parameter of the enclosing script or function** —
-`$tracked`, not `$all`. `Set-StrictMode` does not catch this; nothing does.
-
-## 3. `[int]` rounds half-to-even
-
-Not truncation, and not the "round half up" people assume:
-
-| Expression | Result |
-|---|---|
-| `[int]2.5` | **2** |
-| `[int]3.5` | **4** |
-| `[int]2.7` | 3 |
-| `[math]::Truncate(2.7)` | 2 |
-
-Use `[math]::Truncate()`, `[math]::Floor()` or `[math]::Ceiling()` and say which you mean. This
-matters wherever a count is derived from a ratio — worker counts, sample sizes, timeouts.
-
-## 4. A function returns native-command stdout too
-
-Anything a function writes to the success stream is part of its return value, including the stdout
-of `git`, `pwsh` or the engine:
-
-```powershell
-function Get-Verdict {
-    & git rev-parse --abbrev-ref HEAD    # leaks into the return value
-    return 'VERDICT'
-}
-$v = Get-Verdict                          # -> @('worktree-x', 'VERDICT'), Count = 2
-```
-
-**Pipe every unassigned native call inside a function to `Out-Host`** (or assign it, or `| Out-Null`).
-`Write-Host` is already safe — it does not write to the success stream.
-
-## 5. `Mandatory` is what rejects an empty collection
-
-A plain `[string[]]$Files` accepts `@()` happily. Adding `[Parameter(Mandatory)]` makes it throw
-*"Cannot bind argument to parameter 'Files' because it is an empty array"*:
-
-```powershell
-param([Parameter(Mandatory)][AllowEmptyCollection()][string[]]$ChangedFiles)
-```
-
-An empty diff is an ordinary answer, not a caller error. Add `[AllowEmptyCollection()]` whenever an
-empty set is a legitimate input — the other half of #387.
-
-## 6. Script boundaries: what crosses and what does not
-
-**`& pwsh -File script.ps1` returns strings, not objects.** Process boundaries serialise through
-stdout. A script whose contract is an object must be invoked in-process:
-
-```powershell
-$tier = & pwsh -File $t   # String    -> $tier.Tier throws
-$tier = & $t              # PSCustomObject -> $tier.Tier is 'Docs'
-```
-
-`Get-ChangeTier.ps1` is the one that matters: it returns a `PSCustomObject`, so callers dot-invoke.
-
-**`$PSScriptRoot` is the defining file's own directory, in every case that has a file.** Dot-sourcing
-does not change it — a dot-sourced library sees *its own* directory, not the caller's, both at file
-scope and inside the functions it defines. It is the **empty string** (never `$null`) only for code
-with no backing file: `pwsh -Command '...'`, a bare script block, `Invoke-Expression`. So a
-`if ($null -eq $PSScriptRoot)` guard is dead code.
-
-Because scripts resolve the repository from their own `$PSScriptRoot`, **always invoke the copy in
-your own worktree** — a sibling worktree's copy operates on that worktree's repo and will report a
-confident, wrong answer.
-
-```
-pwsh -ExecutionPolicy Bypass -File C:\...\<your-worktree>\Scripts\<name>.ps1
-```
-
-The reason to prefer `-File` over dot-sourcing is scope, not paths: a dot-sourced script runs in the
-caller's scope, so its variables and functions collide with yours and its `exit` terminates *your*
-session. Dot-source only a deliberate shared library. There are two — `BuildFreshness.ps1`
-(`build.ps1`, `Get-BuildArtifact.ps1`) and `UciDriver.ps1` (`Compare-SearchEquivalence.ps1`,
-`Run-Bench.ps1`) — both taken via `Join-Path $PSScriptRoot`.
-
-Keep a new one **flat in `Scripts/`**, not in a subdirectory. The Build-tier self-test census is
-`Get-ChildItem Scripts -Filter *.ps1` with no `-Recurse`, so a library one level down is never asked
-whether it needs a `-SelfTest` — it does not fail that check, it escapes it.
-
-## 7. `[Console]::In.ReadLineAsync()` is not asynchronous
-
-`Console.In` is a *synchronized* `TextReader`, and its async methods run the read on the
-calling thread and hand back an already-completed task. So a timed poll silently becomes an
-untimed one:
-
-```powershell
-$t = [Console]::In.ReadLineAsync()
-$t.Wait(300)      # blocks until a line arrives, however long that takes
-```
-
-Read from the handle instead — a plain `StreamReader` is genuinely async:
-
-```powershell
-$stdin = [System.IO.StreamReader]::new([Console]::OpenStandardInput())
-```
-
-`FakeUciEngine.ps1` needs this to model an engine noticing a stop mid-search. The
-`$proc.StandardOutput` of a redirected child process is already a plain `StreamReader`, so
-`UciDriver.ps1` is unaffected.
-
-## 8. The `-SelfTest` convention
-
-Scripts carry a `-SelfTest` switch. `Validate-PrePR.ps1` discovers them by parameter introspection
-and runs the self-test of any script your change touches, so a new one is picked up with no
-registration step. Keep them **pure and toolchain-free** — that property is why the pre-commit hook
-can run them. `Test-UciDriver.ps1` is the one exception, and it spawns `pwsh`, never a compiler.
-
-Two rules are enforced rather than suggested:
-
-- **Every Build-tier script must have one.** Those scripts gate validation itself, so a bug in one
-  can exempt a change from the checks and then decline to report it. `Validate-PrePR.ps1` fails on a
-  Build-tier script without a `-SelfTest`, on every tier including the Docs and Tooling fast paths.
-  A dot-sourced library that has no `param()` block to hang a switch on needs an entry in
-  `$SelfTestCoverers` naming the script that covers it. That entry is read twice: it exempts the
-  library from this rule, and it is what makes a change to the library run the coverer's
-  `-SelfTest` rather than nothing. The coverer named by an entry is itself checked to exist and
-  carry a `-SelfTest`, whatever tier the covered file is — otherwise the entry quietly covers
-  nothing the moment the coverer loses the switch. Do **not** give the library
-  a `$SelfTest` parameter instead — dot-sourcing runs in the caller's scope, so it would overwrite
-  the caller's own switch and turn that script's `-SelfTest` into a silent no-op.
-- **The whole set runs nightly**, via `Validate-PrePR.ps1 -AllSelfTests`. The PR gate only reaches
-  the scripts a diff touched, so a script broken from elsewhere would otherwise stay broken until
-  someone next edited it.
-
-The dominant idiom is a table of cases plus one comparison loop, not assertion helpers:
-
-```powershell
-if ($SelfTest) {
-    $cases = @(
-        @{ Name = 'validator -> Build NOT Tooling'; Files = @('Scripts/Validate-PrePR.ps1'); Expect = 'Build' }
-        @{ Name = 'docs + cpp -> Engine';           Files = @('CLAUDE.md', 'Eval.cpp');      Expect = 'Engine' }
-    )
-    ...
-}
-```
-
-Two rules for the cases themselves:
-
-- **Include the falsification case.** A test that only asserts the success path proves nothing —
-  `build.ps1`'s freshness cases assert that a stale artifact *fails and names the file that made it
-  stale*, which is the situation the check exists for.
-- **Use a fixture repository over mocks** when the behaviour is git-shaped. #394's bug was a wrong
-  *type* with right *content*; only spawning the script against a real fixture caught it.
+Every Build-tier script carries a `-SelfTest`, and `Validate-PrePR.ps1` fails without one. Keep
+self-tests pure and toolchain-free: a table of cases plus one comparison loop, including the
+falsification case, against a fixture repository when the behaviour is git-shaped. A dot-sourced
+library gets a `$SelfTestCoverers` entry, not a parameter. Adding a script, a library or a case:
+read `reference/self-test.md` first.
 
 ## Editing a `.ps1` from an agent shell
 
@@ -207,5 +54,5 @@ executing:
 [System.Management.Automation.Language.Parser]::ParseInput($c, [ref]$t, [ref]$errors)
 ```
 
-Never wrap a script in `cmd.exe /c "..."` — it swallows output, so a failing script looks like a
+Invoke with `pwsh -File`; `cmd.exe /c "..."` swallows output, so a failing script looks like a
 silent no-op.
