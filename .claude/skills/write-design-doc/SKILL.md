@@ -22,6 +22,9 @@ Run it yourself, fix inline, no subagent:
 - **Ambiguity.** A Decision or Invariant that reads two ways gets one reading, stated.
 - **Consistency.** Names, types and paths match each other and the code as it stands on
   `origin/main`.
+- **Simplify.** Every Decision is needed now, not for a later change. Name the nearby debt the
+  change touches (duplicated, dead or stale code), and check the plan does not add to it. The same
+  lens reviews the diff: `Docs/agents/simplify.md`.
 
 Then land the document in one commit (`Docs/Workflow.md` → Design document lifecycle), route it to
 review (skill `cross-agent-review`) and, once approved, execute it (skill `exec-plan`).

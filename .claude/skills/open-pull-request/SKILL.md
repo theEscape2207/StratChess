@@ -1,13 +1,48 @@
 ---
 name: open-pull-request
-description: Open or update a PR on this repo — reviewer dispatch, New-PullRequest.ps1, PR body
-  conventions and post-merge cleanup. Use when finishing a branch, opening/updating a PR, pushing
-  review follow-ups, or cleaning up after a merge.
+description: Open or update a PR on this repo — code review, reviewer dispatch, New-PullRequest.ps1,
+  PR body conventions and post-merge cleanup. Use when finishing a branch, opening/updating a PR,
+  pushing review follow-ups, or cleaning up after a merge.
 ---
 
-## 1. Dispatch a specialised reviewer first
+## 1. Review first
 
-The one thing the script cannot do for you. Check the diff and dispatch if it touches the domain:
+The one thing the script cannot do for you. Address every finding before step 2.
+
+### Code review: every PR outside the Docs tier
+
+`Scripts/Get-ChangeTier.ps1` prints the tier. Every tier except Docs gets this review, whatever its
+size. Load skill `code-review` (Claude: `mattpocock-skills:code-review`, not the built-in
+`/code-review`) and give it these inputs, so it never has to ask the user:
+
+- **Fixed point:** `origin/main`.
+- **Spec:** the issue the PR cites (`Closes`/`Refs #N`) plus any `.claude/plans/` document the
+  branch added, including one deleted after Harvest:
+  `git log --diff-filter=A --name-only origin/main..HEAD -- .claude/plans`, then `git show
+  <sha>:<path>`. With neither, tell it "no spec available".
+- **Standards sources:** `Docs/agents/simplify.md` and CLAUDE.md → Development Guidelines.
+- **Append to the Standards brief:** "Also apply question 4 of `Docs/agents/simplify.md` to each
+  touched file in full, and no other file. Report it under a separate `Nearby debt` heading with
+  `file:line`; these items are not findings."
+
+Run each axis in its own subagent, in parallel or one after the other, on the session's model: a
+cheaper tier missed planted nearby debt that the session model found. An agent that cannot spawn
+subagents runs both in its own context, and the Review line (step 3) records `inline`.
+
+Every finding is fixed, rejected with a reason, or filed as an issue. Each nearby-debt item:
+
+- **The change makes it worse** (copies the duplication, extends the workaround): a finding against
+  this PR.
+- **Otherwise**, if you would accept a PR to fix it, file a new issue
+  (`Docs/agents/issue-tracker.md`): search open issues first (`gh issue list --search`), and give
+  `file:line` and the branch in the body. The Review line's `filed #n` (step 3) links the PR to it
+  once the PR exists. Label it `needs-triage` plus `Cleanup` (stale or dead code) or
+  `category:refactor` (duplication), and `priority:low` unless it risks a wrong result. Drop
+  anything smaller. Never fix it in this PR.
+
+### Specialised reviewers
+
+Check the diff and dispatch if it touches the domain:
 
 ```
 git diff --name-only origin/main...HEAD
@@ -24,7 +59,7 @@ git diff --name-only origin/main...HEAD
 **Default is to dispatch**; the script only reminds, it never blocks. A narrow self-certification
 carve-out exists for logging-only diffs — its six conditions are in `Docs/Workflow.md` → When
 `search-reviewer` may be skipped. Read them before claiming a skip, and state the skip in the PR
-body so it is auditable. Address findings before opening the PR.
+body so it is auditable.
 
 Brief a reviewer with the diff as a file (`git diff origin/main...HEAD > <scratchpad>/review.diff`)
 and the tests already run with their results. Brief neutrally; adjudicate every finding it raises.
@@ -64,6 +99,9 @@ bypasses `.github/pull_request_template.md`, so supply the structure yourself.
   line in its Test plan: the instrument and its result (equivalence identical, a bench nps delta, an
   SPRT or lab Elo), the run still pending, or why none applies. Load skill `measure-strength` to pick
   the instrument, and to check one you already ran: its rules catch silently invalid results.
+- **A PR outside the Docs tier** carries a **Review** line in its Test plan:
+  `Review: code-review, Standards n / Spec m: x fixed, y rejected (reasons), filed #a #b`. Write
+  `Spec: skipped (no spec)` when no spec was given, and `inline` when both axes ran in one context.
 - Include motivation, design reasoning and expected impact for anything non-trivial. Keep it short;
   detail goes in chat.
 - Update the body when a follow-up commit fulfils a "will do X later" note in it.
