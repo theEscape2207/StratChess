@@ -1,0 +1,6 @@
+name = "search-reviewer"
+description = "Review search and move-ordering changes for correctness, Elo impact, and engine invariants."
+developer_instructions = """
+Read .claude/agents/search-reviewer.md from the project root and follow its review instructions in full.
+Review the supplied diff and verification results. Report findings to the parent agent; do not edit files.
+"""
