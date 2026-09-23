@@ -818,9 +818,10 @@ wrong here.
 - **Release hides out-of-bounds reads.** `std::countr_zero(0)` returns 64 and indexes past the
   array without a sound. For a change to indexing, bitboard→square conversion or a documented
   precondition, run the affected tags from `.\build.ps1 tests -Config Debug` before pushing.
-- **Every entry point.** The engine has seven `main()` branches; every automated check drives only
-  UCI, and Catch2 never calls `main()`. After a change to startup, configuration or argument parsing,
-  launch `game`, `perft`, `tactical`, `eval` and `test-fen` once each.
+- **Every entry point.** The engine has seven `main()` branches, and Catch2 never calls `main()`.
+  Automated checks start four: `uci` (bench, equivalence, matches), `tactical` and `game` (`Validate-PrePR.ps1`), and
+  `perft` (Release CI). `unittest` only prints where the tests moved. After a change to startup,
+  configuration or argument parsing, launch the other two, `eval` and `test-fen`, once each.
 - **Horizon before eval.** A wrong move at game depth may be a refutation beyond the horizon.
   Re-search at depth + 6 before blaming evaluation.
 - **An independent oracle for legality.** Perft for move generation (`Run-PerftCheck.ps1`), and
