@@ -12,6 +12,7 @@ This file holds the rules that change what you do. Detail is pointed at, not dup
 | what each CI workflow runs, and when | `Docs/CI.md` |
 | coverage map + how to write a test | `Docs/TestDesign.md` |
 | measuring Elo or nps | skill `measure-strength` |
+| analysing games or positions for engine behaviour | skill `analyze-games` |
 | recording a measurement, or reading past ones | `Measurements/README.md` |
 | opening or updating a PR | skill `open-pull-request` |
 | writing or changing a PowerShell script | skill `write-powershell` |

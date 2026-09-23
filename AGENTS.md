@@ -8,6 +8,8 @@ Before doing repository work, read `CLAUDE.md` completely. Its project rules are
   cleaning up after a merge: use skill `open-pull-request` before the first related action.
 - Measuring Elo, nps, search equivalence, or a performance regression: use skill
   `measure-strength`.
+- Analysing strength-lab games or a position corpus for engine behaviour, or scoping such a sweep:
+  use skill `analyze-games` before the first query.
 - Creating or changing PowerShell under `Scripts/`, `build.ps1`, or `.githooks/`: use skill
   `write-powershell`.
 - Triaging, refining, scoping, labelling, or recommending closure of a GitHub issue: use skill
