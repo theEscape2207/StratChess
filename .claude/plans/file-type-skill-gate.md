@@ -31,12 +31,13 @@ Validation uses the same definitions.
 - register it in `.claude/settings.json` and `.codex/hooks.json`;
 - add a self-test that feeds the script recorded hook inputs, and checks that the Claude config
   covers the script's file sets;
-- classify both new scripts as Tooling in `Scripts/Get-ChangeTier.ps1`.
+- classify both new scripts as Tooling in `Scripts/Get-ChangeTier.ps1`, each with a `-SelfTest`
+  case.
 
 **This change will not:**
 
-- prove that the skill was loaded, or followed. The gate interrupts the first matching edit and names
-  the skill (D1); the re-audit measures whether loads follow;
+- prove that the skill was loaded, or followed. The gate interrupts the first matching edit and
+  names the skill (D1); the re-audit measures whether loads follow;
 - cover edits made through a shell (`sed`, a heredoc, `Set-Content`) or through MCP tools such as
   lean-ctx's `ctx_patch`. The routing lines in `CLAUDE.md` and `AGENTS.md` still cover those. D4 has
   the opt-in for `ctx_patch`;
@@ -162,9 +163,10 @@ No Elo or nps measurement: nothing reaches the engine binary.
   - a missing session id;
   - malformed JSON.
 
-  Checks: the decision is correct, the reason names the right skill, and the parallel pair yields
-  exactly one denial. It also checks that `.claude/settings.json` covers every file-set pattern for
-  both tools.
+  Checks: the decision is correct, the reason names the right skill, and the parallel pair
+  yields exactly one denial. It also checks that `.claude/settings.json` covers every file-set
+  pattern for both tools.
+- **Classifier:** `Get-ChangeTier.ps1 -SelfTest` passes with the two new Tooling cases.
 - **Live, Claude:** one session that does the following:
   - `Write`s a new `.ps1` under `Scripts/`;
   - `Edit`s an existing `.ps1`;
