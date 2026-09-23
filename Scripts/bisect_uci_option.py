@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read the margin at which a UCI spin option changes `bestmove` (issue #575).
+"""Read the margin at which a UCI spin option changes `bestmove`.
 
 For each position in a corpus, bisect a spin option over a range and report the smallest value
 at which the engine's chosen move differs from its choice at the range minimum. That value is
@@ -91,8 +91,8 @@ class SearchResult:
 class Engine:
     """One UCI process, driven at fixed depth with a cleared table before every search."""
 
-    def __init__(self, exe):
-        self.proc = subprocess.Popen([exe, 'uci'], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+    def __init__(self, argv):
+        self.proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                      stderr=subprocess.DEVNULL, text=True, bufsize=1)
         self.options = {}
         self.send('uci')
@@ -256,8 +256,8 @@ def analyse_position(engine, entry, option, lo, hi, depth):
     row['baseline_cp'] = base.cp
 
     # A mate score ends the search at the depth that found it, so the move it reports was not
-    # weighed against alternatives (issue #571). Excluded before `expect` is consulted: such a
-    # position cannot answer the question either way.
+    # weighed against alternatives. Excluded before `expect` is consulted: such a position cannot
+    # answer the question either way.
     if base.mate is not None:
         row['status'] = EXCLUDED_MATE
     elif entry['expect'] and base.move != entry['expect']:
@@ -336,7 +336,7 @@ def run(corpus, exe, option, lo, hi, depth, workers, progress=None):
 
     def engine_for_thread():
         if getattr(local, 'engine', None) is None:
-            local.engine = Engine(exe)
+            local.engine = Engine([exe, 'uci'])
             kind, opt_lo, opt_hi = local.engine.options.get(option, (None, None, None))
             if kind != 'spin':
                 raise EngineError(f'{option} is not a spin option'
@@ -489,20 +489,6 @@ def _stub_exe(tmp, spec, log):
     return [sys.executable, str(script), str(spec_path), str(log)]
 
 
-class _StubEngine(Engine):
-    """Engine over the scripted stub: the same driver, launched without the `uci` argument."""
-
-    def __init__(self, argv):
-        self.proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                     stderr=subprocess.DEVNULL, text=True, bufsize=1)
-        self.options = {}
-        self.send('uci')
-        self.wait_for('uciok', self._collect_option)
-        self.send('setoption name Threads value 1')
-        self.send('isready')
-        self.wait_for('readyok')
-
-
 def self_test(out=sys.stdout):
     """Fixture checks for the bisection, the traps and the corpus reader."""
     failures = []
@@ -542,7 +528,7 @@ def self_test(out=sys.stdout):
 
     with tempfile.TemporaryDirectory() as tmp:
         log = Path(tmp) / 'stub.json'
-        engine = _StubEngine(_stub_exe(tmp, spec, log))
+        engine = Engine(_stub_exe(tmp, spec, log))
         try:
             rows = {entry['id']: analyse_position(engine, entry, 'Contempt', 0, 100, 4)
                     for entry in corpus}
@@ -578,7 +564,7 @@ def self_test(out=sys.stdout):
     spec['positions'] = edge_positions
     with tempfile.TemporaryDirectory() as tmp:
         log = Path(tmp) / 'stub.json'
-        engine = _StubEngine(_stub_exe(tmp, spec, log))
+        engine = Engine(_stub_exe(tmp, spec, log))
         try:
             edges = {
                 'min': analyse_position(engine, {'id': 'min', 'fen': START, 'expect': None},
@@ -608,7 +594,7 @@ def self_test(out=sys.stdout):
     # The two silent-garbage modes must raise, not produce a row.
     spec['positions'] = {START: {'moves': [[0, 'a2a3']], 'aborted': True}}
     with tempfile.TemporaryDirectory() as tmp:
-        engine = _StubEngine(_stub_exe(tmp, spec, Path(tmp) / 'stub.json'))
+        engine = Engine(_stub_exe(tmp, spec, Path(tmp) / 'stub.json'))
         try:
             analyse_position(engine, {'id': 'a', 'fen': START, 'expect': None},
                              'Contempt', 0, 100, 4)
@@ -621,7 +607,7 @@ def self_test(out=sys.stdout):
     spec['positions'] = {START: {'moves': [[0, 'a2a3']]}}
     spec['silent_options'] = ['Contempt']
     with tempfile.TemporaryDirectory() as tmp:
-        engine = _StubEngine(_stub_exe(tmp, spec, Path(tmp) / 'stub.json'))
+        engine = Engine(_stub_exe(tmp, spec, Path(tmp) / 'stub.json'))
         try:
             analyse_position(engine, {'id': 'a', 'fen': START, 'expect': None},
                              'Contempt', 0, 100, 4)
@@ -714,7 +700,7 @@ def main():
     if args.range:
         lo, hi = args.range
     else:
-        probe = Engine(exe)
+        probe = Engine([exe, 'uci'])
         try:
             kind, lo, hi = probe.options.get(args.option, (None, None, None))
             if kind != 'spin' or lo is None:
