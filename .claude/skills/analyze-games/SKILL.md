@@ -29,8 +29,8 @@ id, game count) and the expected output — "candidate engine issues, each a fin
 ## 2. Get the data
 
 Read `reference/instruments.md` before the first query: which script answers which question,
-where corpora already sit, and the traps that invert a headline. Persist the joined rows (JSONL or
-CSV in your scratch directory) and query them ad hoc — each question needs its own cut.
+where corpora already sit, and the traps that invert a headline. Persist the joined rows in
+`StratChessSupport\` and query them ad hoc — each question needs its own cut.
 
 ## 3. One pass, then the checkpoint
 

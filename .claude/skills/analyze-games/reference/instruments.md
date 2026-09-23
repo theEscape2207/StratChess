@@ -6,10 +6,10 @@ Every strength-lab run uploads 18 shards of annotated PGN (~20,000 games, ~70 MB
 fastchess writes each side's own report into the move comment, `{score/depth time}`, from the
 mover's perspective. Download command: `Docs/MoveQuality.md` → Regenerating.
 
-Earlier Claude sessions usually still hold copies under
-`%LOCALAPPDATA%\Temp\claude\<project>\<session-id>\scratchpad\pgn*` — search there first; it is the
-only copy of a run past retention. It is a temp directory, so copy shards somewhere durable before a
-long run depends on them.
+Downloaded corpora and the datasets derived from them live in `StratChessSupport\`, beside the main
+checkout. Its `README.md` indexes the folders and each folder's README its naming convention: look
+there before downloading — it is the only copy of a run past retention — and add a row for anything
+you store.
 
 ## Which script answers which question
 
