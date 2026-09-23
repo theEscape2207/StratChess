@@ -320,7 +320,7 @@ TEST_CASE("Eval - Breakdown(): the endgame row accounts for the whole scale", "[
 	REQUIRE(terms.endgame_scale == 0);
 	REQUIRE(terms.endgame_adjustment != 0);
 
-	const int whitePov = BreakdownWhitePov(terms);
+	const int whitePov = terms.white_pov();
 
 	REQUIRE(terms.total == whitePov);
 }

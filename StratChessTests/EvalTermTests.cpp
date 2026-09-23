@@ -831,6 +831,14 @@ TEST_CASE("Eval - the per-term functions sum exactly to Evaluator::Evaluate()'s 
 // other than what Evaluate() sums, which no amount of self-consistent output
 // would reveal.
 
+TEST_CASE("Eval - Breakdown(): every catalogued term is populated", "[eval]")
+{
+	Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+	const Evaluator eval;
+
+	REQUIRE(eval.Breakdown(board).complete());
+}
+
 TEST_CASE("Eval - Breakdown(): every row equals the term function it reports", "[eval]")
 {
 	const char* fen = GENERATE(from_range(kSymmetryFens));
@@ -843,14 +851,14 @@ TEST_CASE("Eval - Breakdown(): every row equals the term function it reports", "
 
 	for (const eColor color : {WHITE, BLACK}) {
 		CAPTURE(static_cast<int>(color));
-		REQUIRE(terms.material[color] == board.GetMaterialScore(color));
-		REQUIRE(terms.pawns[color] == EvaluatorTestFixture::Pawns(board, color));
-		REQUIRE(terms.rooks[color] == EvaluatorTestFixture::Rooks(board, color));
-		REQUIRE(terms.pst[color] == EvaluatorTestFixture::Pst(board, color));
-		REQUIRE(terms.mopup[color] == EvaluatorTestFixture::Mopup(board, color));
-		REQUIRE(terms.bishops[color] == EvaluatorTestFixture::Bishops(board, color));
-		REQUIRE(terms.castling[color] == EvaluatorTestFixture::Castling(board, color));
-		REQUIRE(terms.outposts[color] == EvaluatorTestFixture::Outposts(board, color));
+		REQUIRE(terms.at(EvalTerm::Material, color) == board.GetMaterialScore(color));
+		REQUIRE(terms.at(EvalTerm::Pawns, color) == EvaluatorTestFixture::Pawns(board, color));
+		REQUIRE(terms.at(EvalTerm::Rooks, color) == EvaluatorTestFixture::Rooks(board, color));
+		REQUIRE(terms.at(EvalTerm::Pst, color) == EvaluatorTestFixture::Pst(board, color));
+		REQUIRE(terms.at(EvalTerm::Mopup, color) == EvaluatorTestFixture::Mopup(board, color));
+		REQUIRE(terms.at(EvalTerm::Bishops, color) == EvaluatorTestFixture::Bishops(board, color));
+		REQUIRE(terms.at(EvalTerm::Castling, color) == EvaluatorTestFixture::Castling(board, color));
+		REQUIRE(terms.at(EvalTerm::Outposts, color) == EvaluatorTestFixture::Outposts(board, color));
 	}
 }
 
@@ -878,7 +886,7 @@ TEST_CASE("Eval - Breakdown(): total agrees with Evaluate(), and the rows reprod
 
 	REQUIRE(terms.total == eval.Evaluate(board));
 
-	const int whitePov = BreakdownWhitePov(terms);
+	const int whitePov = terms.white_pov();
 
 	const int expectedTotal = (board.GetCurrentColor() == WHITE) ? whitePov : -whitePov;
 	REQUIRE(terms.total == expectedTotal);

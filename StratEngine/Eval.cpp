@@ -1197,27 +1197,28 @@ EvalBreakdown Evaluator::Breakdown(const Board& board) const noexcept
 	// term actually contributes to `total`, not its mg or eg endpoint. That is
 	// what keeps the printed table summing to the score (the #129 honesty
 	// invariant); the endpoints are visible in the term functions themselves.
+	EvalBreakdown out{};
 	// clang-format off
-	// One row per term, white and black columns aligned, so the table can be read
-	// against the printed breakdown it produces.
-	return EvalBreakdown{
-		.material = { ctx.material[WHITE], ctx.material[BLACK] },
-		.pawns    = { BlendPhase(eval_pawns(ctx, WHITE), ctx.phase), BlendPhase(eval_pawns(ctx, BLACK), ctx.phase) },
-		.rooks    = { BlendPhase(eval_rooks(ctx, WHITE), ctx.phase), BlendPhase(eval_rooks(ctx, BLACK), ctx.phase) },
-		.pst      = { BlendPhase(eval_pst(ctx, WHITE),   ctx.phase), BlendPhase(eval_pst(ctx, BLACK),   ctx.phase) },
-		.mopup    = { BlendPhase(eval_mopup(ctx, WHITE), ctx.phase), BlendPhase(eval_mopup(ctx, BLACK), ctx.phase) },
-		.bishops  = { BlendPhase(eval_bishops(ctx, WHITE), ctx.phase), BlendPhase(eval_bishops(ctx, BLACK), ctx.phase) },
-		.castling = { BlendPhase(eval_castling(ctx, WHITE), ctx.phase), BlendPhase(eval_castling(ctx, BLACK), ctx.phase) },
-		.mobility = { BlendPhase(eval_mobility(ctx, WHITE), ctx.phase), BlendPhase(eval_mobility(ctx, BLACK), ctx.phase) },
-		.outposts = { BlendPhase(eval_outposts(ctx, WHITE), ctx.phase), BlendPhase(eval_outposts(ctx, BLACK), ctx.phase) },
-		.king_shelter = { BlendPhase(coverWhite.shelter, ctx.phase), BlendPhase(coverBlack.shelter, ctx.phase) },
-		.king_storm   = { BlendPhase(coverWhite.storm,   ctx.phase), BlendPhase(coverBlack.storm,   ctx.phase) },
-		.king_files   = { BlendPhase(coverWhite.files,   ctx.phase), BlendPhase(coverBlack.files,   ctx.phase) },
-		.king_attack  = { BlendPhase(eval_king_attack(ctx, WHITE), ctx.phase), BlendPhase(eval_king_attack(ctx, BLACK), ctx.phase) },
-		.phase    = ctx.phase,
-		.endgame_scale      = ctx.endgame_scale,
-		.endgame_adjustment = adjustment,
-		.total    = Evaluate(board),
-	};
+	// Each set() names its term so order cannot silently associate a value with
+	// the wrong catalogue row. The presence mask catches any omitted call.
+	out.set(EvalTerm::Material,    ctx.material[WHITE], ctx.material[BLACK]);
+	out.set(EvalTerm::Pawns,       BlendPhase(eval_pawns(ctx, WHITE), ctx.phase), BlendPhase(eval_pawns(ctx, BLACK), ctx.phase));
+	out.set(EvalTerm::Rooks,       BlendPhase(eval_rooks(ctx, WHITE), ctx.phase), BlendPhase(eval_rooks(ctx, BLACK), ctx.phase));
+	out.set(EvalTerm::Pst,         BlendPhase(eval_pst(ctx, WHITE), ctx.phase), BlendPhase(eval_pst(ctx, BLACK), ctx.phase));
+	out.set(EvalTerm::Mopup,       BlendPhase(eval_mopup(ctx, WHITE), ctx.phase), BlendPhase(eval_mopup(ctx, BLACK), ctx.phase));
+	out.set(EvalTerm::Bishops,     BlendPhase(eval_bishops(ctx, WHITE), ctx.phase), BlendPhase(eval_bishops(ctx, BLACK), ctx.phase));
+	out.set(EvalTerm::Castling,    BlendPhase(eval_castling(ctx, WHITE), ctx.phase), BlendPhase(eval_castling(ctx, BLACK), ctx.phase));
+	out.set(EvalTerm::Mobility,    BlendPhase(eval_mobility(ctx, WHITE), ctx.phase), BlendPhase(eval_mobility(ctx, BLACK), ctx.phase));
+	out.set(EvalTerm::Outposts,    BlendPhase(eval_outposts(ctx, WHITE), ctx.phase), BlendPhase(eval_outposts(ctx, BLACK), ctx.phase));
+	out.set(EvalTerm::KingShelter, BlendPhase(coverWhite.shelter, ctx.phase), BlendPhase(coverBlack.shelter, ctx.phase));
+	out.set(EvalTerm::KingStorm,   BlendPhase(coverWhite.storm, ctx.phase), BlendPhase(coverBlack.storm, ctx.phase));
+	out.set(EvalTerm::KingFiles,   BlendPhase(coverWhite.files, ctx.phase), BlendPhase(coverBlack.files, ctx.phase));
+	out.set(EvalTerm::KingAttack,  BlendPhase(eval_king_attack(ctx, WHITE), ctx.phase), BlendPhase(eval_king_attack(ctx, BLACK), ctx.phase));
 	// clang-format on
+	out.phase = ctx.phase;
+	out.endgame_scale = ctx.endgame_scale;
+	out.endgame_adjustment = adjustment;
+	out.total = Evaluate(board);
+
+	return out;
 }

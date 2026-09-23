@@ -470,21 +470,6 @@ inline std::string MirrorFen(std::string_view fen)
 	return MirrorPlacement(placement) + ' ' + (active == "w" ? "b" : "w") + ' ' + MirrorCastling(castling) + ' ' +
 	       MirrorEnPassant(ep) + ' ' + halfmove + ' ' + fullmove;
 }
-// The reconstruction identity every breakdown must satisfy: the per-term net
-// columns plus the endgame adjustment equal the white-POV score. Written once
-// here rather than per test, so a new term is added to it in exactly one place
-// and cannot be silently omitted from a test that would then still pass.
-inline int BreakdownWhitePov(const EvalBreakdown& terms)
-{
-	return (terms.material[WHITE] - terms.material[BLACK]) + (terms.pawns[WHITE] - terms.pawns[BLACK]) +
-	       (terms.rooks[WHITE] - terms.rooks[BLACK]) + (terms.pst[WHITE] - terms.pst[BLACK]) +
-	       (terms.mopup[WHITE] - terms.mopup[BLACK]) + (terms.bishops[WHITE] - terms.bishops[BLACK]) +
-	       (terms.castling[WHITE] - terms.castling[BLACK]) + (terms.mobility[WHITE] - terms.mobility[BLACK]) +
-	       (terms.outposts[WHITE] - terms.outposts[BLACK]) + (terms.king_shelter[WHITE] - terms.king_shelter[BLACK]) +
-	       (terms.king_storm[WHITE] - terms.king_storm[BLACK]) + (terms.king_files[WHITE] - terms.king_files[BLACK]) +
-	       (terms.king_attack[WHITE] - terms.king_attack[BLACK]) + terms.endgame_adjustment;
-}
-
 // EvaluatorTestFixture is a friend of Evaluator (STRAT_ENABLE_TEST_ACCESS,
 // same mechanism as AIPerplex/UciHandler's fixtures) that builds an
 // EvalContext from a Board and forwards to each term, so terms can be

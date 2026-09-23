@@ -213,21 +213,8 @@ static int extract_sum_white_pov(const std::string& output)
 	return std::stoi(value);
 }
 
-// Every term the breakdown prints, in table order. Material is a row like any
-// other: it is the largest single contribution and a sign error there would be
-// the easiest one to miss.
-// Every row the breakdown prints. The list must stay complete: the sum check
-// below compares these nets against the printed total, so a missing row makes
-// the invariant vacuous rather than failing loudly -- it passed for a while
-// with `bishops` and `castling` absent only because both were zero in the
-// positions tested here.
-//
 // The endgame row is absent here on purpose: it is net-only and is added to the
 // sum through extract_endgame_net above.
-static const char* const kBreakdownTerms[] = {"material", "pawns",     "rooks",     "pst",      "mopup",
-                                              "bishops",  "castling",  "mobility",  "outposts", "shelter",
-                                              "storm",    "kingfiles", "kingattack"};
-
 TEST_CASE("cmd_eval: printed breakdown nets are white-minus-black and sum to the evaluator's score", "[uci]")
 {
 	// The phase 2 honesty invariant (D9). Three separate claims, each of which
@@ -254,9 +241,9 @@ TEST_CASE("cmd_eval: printed breakdown nets are white-minus-black and sum to the
 	const std::string out = fix.capture([&] { fix.eval(); });
 
 	int net_sum = 0;
-	for (const char* term : kBreakdownTerms) {
-		CAPTURE(term);
-		const EvalTermRow row = extract_term_row(out, term);
+	for (const EvalTermEntry& entry : EVAL_TERMS) {
+		CAPTURE(entry.name);
+		const EvalTermRow row = extract_term_row(out, entry.name);
 		REQUIRE(row.net == row.white - row.black);
 		net_sum += row.net;
 	}
