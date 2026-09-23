@@ -60,7 +60,8 @@ with evidence.
 3. Edit the artifact, then report to the user: counts per disposition, and any rejected Blocking
    finding by name.
 
-Done when every finding carries a disposition.
+Done when every finding carries a disposition. For a design doc or plan with no Blocking finding
+left open, execution is next: load skill `exec-plan` before the first edit.
 
 ## Lifecycle
 
