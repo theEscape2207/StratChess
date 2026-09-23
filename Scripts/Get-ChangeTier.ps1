@@ -258,7 +258,8 @@ if ($SelfTest) {
     @{ Name = 'Remove-Worktree -> Tooling'; Files = @('Scripts/Remove-Worktree.ps1'); Expect = 'Tooling' }
     @{ Name = 'Get-Worktrees -> Tooling';   Files = @('Scripts/Get-Worktrees.ps1');   Expect = 'Tooling' }
         @{ Name = 'Get-PrChecks -> Tooling';    Files = @('Scripts/Get-PrChecks.ps1');   Expect = 'Tooling' }
-        @{ Name = 'skill gate hook -> Tooling'; Files = @('Scripts/Invoke-SkillGate.ps1'); Expect = 'Tooling' }    # The in-place counterparts to New-Worktree/Remove-Worktree: same reasoning, same tier.
+        @{ Name = 'skill gate hook -> Tooling'; Files = @('Scripts/Invoke-SkillGate.ps1'); Expect = 'Tooling' }
+    # The in-place counterparts to New-Worktree/Remove-Worktree: same reasoning, same tier.
     @{ Name = 'New-TaskBranch -> Tooling';       Files = @('Scripts/New-TaskBranch.ps1');       Expect = 'Tooling' }
     @{ Name = 'Remove-MergedBranches -> Tooling'; Files = @('Scripts/Remove-MergedBranches.ps1'); Expect = 'Tooling' }
     # The PR driver gates validation, so it must never take the Tooling shortcut.
