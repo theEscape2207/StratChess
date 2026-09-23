@@ -654,6 +654,19 @@ and re-run with `-Force`.
 `Get-Worktrees.ps1` also reports directories under `.claude\worktrees` that are absent from
 `git worktree list` — the residue of a half-succeeded removal, which no other cleanup path can see.
 
+For a Codex-managed worktree, use the registered checkout path printed by `Get-Worktrees.ps1`:
+
+```powershell
+pwsh -ExecutionPolicy Bypass -File <main-checkout>\Scripts\Remove-Worktree.ps1 -Path <registered-worktree-path> -SyncMaster
+```
+
+`-Name` also accepts the parent directory name above the repository checkout when it is unique.
+Codex may assign that directory an ID unrelated to the task or branch name. The parent can retain
+Codex metadata after Git removes the checkout; leave that parent to Codex. In a disposable
+Codex-managed removal, the task stayed accessible and the checkout was not recreated, but its
+worktree attachment still pointed at the removed path. Check Git's registry before trying to
+reuse such an attachment.
+
 ---
 
 ## Reproducing a sanitizer finding

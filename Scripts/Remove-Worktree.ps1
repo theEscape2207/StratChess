@@ -31,11 +31,16 @@
     Deletes the remote branch only if it exists. Optionally syncs `master` afterwards.
 
 .PARAMETER Name
-    Worktree directory name under `.claude/worktrees/`, e.g. 'eval-mobility-term'.
+    Worktree directory name under .claude/worktrees, or the Codex-managed parent
+    directory name above the repository checkout. Ambiguous names require -Path.
+
+.PARAMETER Path
+    Exact registered worktree path. Use when the directory layout is unfamiliar or
+    several worktrees have the same name. The main checkout is refused.
 
 .PARAMETER Branch
-    Explicitly name the branch to delete. Needed only when the worktree is detached and
-    the sibling-branch match is ambiguous (or named unconventionally).
+    Explicitly name the branch to delete for a detached worktree. A branch different
+    from the checked-out branch is refused before cleanup.
 
 .PARAMETER Force
     Delete even if the branch is not merged into origin/main. Also passes --force to
@@ -60,6 +65,7 @@
 
 .HOW TO INVOKE (from bash, cmd, or PowerShell) -- run from the MAIN checkout
     pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\Remove-Worktree.ps1 -Name eval-mobility-term -SyncMaster
+    pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\Remove-Worktree.ps1 -Path C:\...\.codex\worktrees\foo\StratChessEvolved -SyncMaster
 
     An agent session whose shell is pinned inside the worktree being removed and cannot
     cd elsewhere should add -FromInside.
@@ -69,28 +75,262 @@
     caller's scope, where its variables collide and its exit ends the caller's session.
 #>
 
-[CmdletBinding()]
+[CmdletBinding(DefaultParameterSetName = 'ByName')]
 param(
-    [Parameter(Mandatory = $true)]
+    [Parameter(Mandatory = $true, ParameterSetName = 'ByName')]
     [string]$Name,
+
+    [Parameter(Mandatory = $true, ParameterSetName = 'ByPath')]
+    [string]$Path,
 
     [string]$Branch,
     [switch]$Force,
     [switch]$KeepRemote,
     [switch]$SyncMaster,
-    [switch]$FromInside
+    [switch]$FromInside,
+    [Parameter(Mandatory = $true, ParameterSetName = 'SelfTest')]
+    [switch]$SelfTest
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Normalize-WorktreePath {
+    param([Parameter(Mandatory)][string]$Value)
+    return [IO.Path]::GetFullPath($Value).TrimEnd([char[]]@('\', '/')).Replace('/', '\')
+}
+
+function Resolve-WorktreeTarget {
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Entries,
+        [Parameter(Mandatory)][string]$Main,
+        [string]$RequestedName,
+        [string]$RequestedPath,
+        [string]$RequestedBranch
+    )
+
+    $mainPath = Normalize-WorktreePath $Main
+    $claudeRoot = Normalize-WorktreePath (Join-Path $mainPath '.claude\worktrees')
+    $repoName = Split-Path $mainPath -Leaf
+    $matches = @()
+
+    if ($RequestedPath) {
+        $exactPath = Normalize-WorktreePath $RequestedPath
+        if ($exactPath -ieq $mainPath) {
+            return [pscustomobject]@{ Error = 'The main checkout cannot be removed.'; Candidates = @() }
+        }
+        $matches = @($Entries | Where-Object { (Normalize-WorktreePath $_.Path) -ieq $exactPath })
+        if ($matches.Count -eq 0) {
+            return [pscustomobject]@{ Error = "Path is not a registered worktree of this repository: $exactPath"; Candidates = @() }
+        }
+    } else {
+        if ($RequestedName -in @('.', '..') -or
+            $RequestedName.IndexOfAny([IO.Path]::GetInvalidFileNameChars()) -ge 0) {
+            return [pscustomobject]@{ Error = 'Name must be one directory name.'; Candidates = @() }
+        }
+        foreach ($entry in $Entries) {
+            $entryPath = Normalize-WorktreePath $entry.Path
+            if ($entryPath -ieq $mainPath) { continue }
+            $parentPath = Split-Path $entryPath -Parent
+            $leaf = Split-Path $entryPath -Leaf
+            $claudeMatch = $parentPath -ieq $claudeRoot -and $leaf -ieq $RequestedName
+            $codexMatch = $leaf -ieq $repoName -and (Split-Path $parentPath -Leaf) -ieq $RequestedName
+            if ($claudeMatch -or $codexMatch) { $matches += $entry }
+        }
+        if ($matches.Count -gt 1) {
+            return [pscustomobject]@{ Error = "Several worktrees match '$RequestedName'; use -Path."; Candidates = @($matches.Path) }
+        }
+        if ($matches.Count -eq 0) {
+            $orphanPath = Join-Path $claudeRoot $RequestedName
+            if (-not (Test-Path -LiteralPath $orphanPath)) {
+                return [pscustomobject]@{ Error = "No worktree matches '$RequestedName'."; Candidates = @($Entries.Path) }
+            }
+            $matches = @([pscustomobject]@{ Path = $orphanPath; Branch = $null; Detached = $true; Registered = $false })
+        }
+    }
+
+    $target = $matches[0]
+    $targetPath = Normalize-WorktreePath $target.Path
+    $targetParent = Split-Path $targetPath -Parent
+    $targetLeaf = Split-Path $targetPath -Leaf
+    $targetName = if ($targetParent -ieq $claudeRoot) {
+        $targetLeaf
+    } elseif ($targetLeaf -ieq $repoName) {
+        Split-Path $targetParent -Leaf
+    } else {
+        $null
+    }
+    $checkedOutBranch = $target.Branch
+    if ($RequestedBranch -and $checkedOutBranch -and $RequestedBranch -ine $checkedOutBranch) {
+        return [pscustomobject]@{ Error = "Branch '$RequestedBranch' conflicts with checked-out branch '$checkedOutBranch'."; Candidates = @() }
+    }
+    $resolvedBranch = if ($checkedOutBranch) { $checkedOutBranch } else { $RequestedBranch }
+    return [pscustomobject]@{
+        Error = $null
+        Path = $targetPath
+        Name = $targetName
+        Branch = $resolvedBranch
+        Registered = if ($target.PSObject.Properties['Registered']) { $target.Registered } else { $true }
+        Candidates = @()
+    }
+}
+
+function Read-WorktreeRegistry {
+    param([Parameter(Mandatory)][string]$Main)
+    $entries = @()
+    $entryPath = $null
+    $entryBranch = $null
+    $entryDetached = $false
+    foreach ($line in (& git -C $Main worktree list --porcelain)) {
+        if ($line -like 'worktree *') {
+            if ($entryPath) { $entries += [pscustomobject]@{ Path = $entryPath; Branch = $entryBranch; Detached = $entryDetached } }
+            $entryPath = $line.Substring(9)
+            $entryBranch = $null
+            $entryDetached = $false
+        } elseif ($line -like 'branch *') {
+            $entryBranch = $line.Substring(7) -replace '^refs/heads/', ''
+        } elseif ($line -eq 'detached') {
+            $entryDetached = $true
+        }
+    }
+    if ($entryPath) { $entries += [pscustomobject]@{ Path = $entryPath; Branch = $entryBranch; Detached = $entryDetached } }
+    return $entries
+}
+
 # Must be initialised: StrictMode makes reading an undefined variable a terminating error.
 $script:DirLeftBehind = $false
+
+if ($SelfTest) {
+    $testRoot = Join-Path ([IO.Path]::GetTempPath()) ("remove-worktree-test-" + [guid]::NewGuid().ToString('N'))
+    $testRoot = [IO.Path]::GetFullPath($testRoot)
+    $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+    if (-not $testRoot.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Self-test root is outside the temp directory: $testRoot"
+    }
+    try {
+        $syntheticMain = Join-Path $testRoot 'synthetic/repo'
+        $claudePath = Join-Path $syntheticMain '.claude/worktrees/foo'
+        $codexPath = Join-Path $testRoot 'managed/foo/repo'
+        $mainEntry = [pscustomobject]@{ Path = $syntheticMain; Branch = 'main'; Detached = $false }
+        $claudeEntry = [pscustomobject]@{ Path = $claudePath; Branch = 'claude/foo'; Detached = $false }
+        $codexEntry = [pscustomobject]@{ Path = $codexPath; Branch = 'codex/foo'; Detached = $false }
+        $detachedEntry = [pscustomobject]@{ Path = $codexPath; Branch = $null; Detached = $true }
+        $cases = @(
+            @{ Label = 'Claude name'; Entries = @($mainEntry, $claudeEntry); Name = 'foo'; Path = $null; Branch = $null; Expected = $claudePath; Error = $false }
+            @{ Label = 'Codex name'; Entries = @($mainEntry, $codexEntry); Name = 'foo'; Path = $null; Branch = $null; Expected = $codexPath; Error = $false }
+            @{ Label = 'ambiguous name'; Entries = @($mainEntry, $claudeEntry, $codexEntry); Name = 'foo'; Path = $null; Branch = $null; Expected = $null; Error = $true }
+            @{ Label = 'path case and separators'; Entries = @($mainEntry, $codexEntry); Name = $null; Path = $codexPath.ToUpperInvariant().Replace('\', '/'); Branch = $null; Expected = $codexPath; Error = $false }
+            @{ Label = 'main checkout'; Entries = @($mainEntry); Name = $null; Path = $syntheticMain; Branch = $null; Expected = $null; Error = $true }
+            @{ Label = 'unregistered path'; Entries = @($mainEntry); Name = $null; Path = $codexPath; Branch = $null; Expected = $null; Error = $true }
+            @{ Label = 'unknown name'; Entries = @($mainEntry); Name = 'missing'; Path = $null; Branch = $null; Expected = $null; Error = $true }
+            @{ Label = 'detached override'; Entries = @($mainEntry, $detachedEntry); Name = 'foo'; Path = $null; Branch = 'codex/foo'; Expected = $codexPath; Error = $false }
+            @{ Label = 'conflicting override'; Entries = @($mainEntry, $codexEntry); Name = 'foo'; Path = $null; Branch = 'other'; Expected = $null; Error = $true }
+            @{ Label = 'name traversal'; Entries = @($mainEntry); Name = '..'; Path = $null; Branch = $null; Expected = $null; Error = $true }
+        )
+        foreach ($case in $cases) {
+            $actual = Resolve-WorktreeTarget -Entries $case.Entries -Main $syntheticMain -RequestedName $case.Name -RequestedPath $case.Path -RequestedBranch $case.Branch
+            if ([bool]$actual.Error -ne $case.Error) { throw "Resolver case '$($case.Label)' returned: $($actual.Error)" }
+            if (-not $case.Error -and (Normalize-WorktreePath $actual.Path) -ine (Normalize-WorktreePath $case.Expected)) {
+                throw "Resolver case '$($case.Label)' chose $($actual.Path), expected $($case.Expected)"
+            }
+            if ($case.Label -eq 'detached override' -and $actual.Branch -ne 'codex/foo') {
+                throw 'Detached branch override was lost.'
+            }
+        }
+
+        foreach ($layout in @('Codex', 'Claude')) {
+            $fixtureRoot = Join-Path $testRoot $layout
+            $fixtureMain = Join-Path $fixtureRoot 'repo'
+            $originPath = Join-Path $fixtureRoot 'origin.git'
+            $worktreePath = if ($layout -eq 'Codex') {
+                Join-Path $fixtureRoot 'managed/foo/repo'
+            } else {
+                Join-Path $fixtureMain '.claude/worktrees/foo'
+            }
+            $null = New-Item -ItemType Directory -Path $fixtureRoot -Force
+            & git init --bare $originPath | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "Could not create $layout bare origin." }
+            & git init -b main $fixtureMain | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "Could not create $layout main checkout." }
+            & git -C $fixtureMain config user.name 'Fixture User' | Out-Null
+            & git -C $fixtureMain config user.email 'fixture@example.invalid' | Out-Null
+            Set-Content -LiteralPath (Join-Path $fixtureMain 'fixture.txt') -Value 'initial'
+            & git -C $fixtureMain add fixture.txt | Out-Null
+            & git -C $fixtureMain commit -m initial | Out-Null
+            & git -C $fixtureMain remote add origin $originPath | Out-Null
+            & git -C $fixtureMain push -u origin main | Out-Null
+            & git -C $fixtureMain worktree add -b codex/foo $worktreePath main | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "Could not create $layout worktree." }
+            Set-Content -LiteralPath (Join-Path $worktreePath 'fixture.txt') -Value 'merged'
+            & git -C $worktreePath add fixture.txt | Out-Null
+            & git -C $worktreePath commit -m merged | Out-Null
+            Push-Location $fixtureMain
+            try {
+                & pwsh -ExecutionPolicy Bypass -File $PSCommandPath -Name foo 2>&1 | Out-Null
+                if ($LASTEXITCODE -eq 0) { throw "$layout unmerged worktree was removed." }
+            } finally {
+                Pop-Location
+            }
+            if (-not (Test-Path -LiteralPath $worktreePath)) { throw "$layout unmerged checkout vanished." }
+            & git -C $fixtureMain merge --ff-only codex/foo | Out-Null
+            & git -C $fixtureMain push origin main codex/foo | Out-Null
+            Set-Content -LiteralPath (Join-Path $worktreePath 'dirty.tmp') -Value 'keep'
+            Push-Location $fixtureMain
+            try {
+                & pwsh -ExecutionPolicy Bypass -File $PSCommandPath -Name foo 2>&1 | Out-Null
+                if ($LASTEXITCODE -eq 0) { throw "$layout dirty worktree was removed." }
+            } finally {
+                Pop-Location
+            }
+            if (-not (Test-Path -LiteralPath $worktreePath)) { throw "$layout dirty checkout vanished." }
+            Remove-Item -LiteralPath (Join-Path $worktreePath 'dirty.tmp')
+            Push-Location $fixtureMain
+            try {
+                & pwsh -ExecutionPolicy Bypass -File $PSCommandPath -Name foo | Out-Null
+                if ($LASTEXITCODE -ne 0) { throw "$layout fixture cleanup failed." }
+            } finally {
+                Pop-Location
+            }
+            if (Test-Path -LiteralPath $worktreePath) { throw "$layout worktree directory remains." }
+            $registered = & git -C $fixtureMain worktree list --porcelain
+            if ($registered -match [regex]::Escape($worktreePath)) { throw "$layout worktree remains registered." }
+            & git -C $fixtureMain show-ref --verify --quiet refs/heads/codex/foo
+            if ($LASTEXITCODE -eq 0) { throw "$layout local branch remains." }
+            $remoteBranch = & git -C $fixtureMain ls-remote --heads origin codex/foo
+            if ($remoteBranch) { throw "$layout remote branch remains." }
+        }
+        Write-Host "PASS: Remove-Worktree resolver and fixture self-test." -ForegroundColor Green
+    } catch {
+        Write-Host "FAIL: Remove-Worktree self-test: $_" -ForegroundColor Red
+        exit 1
+    } finally {
+        if (Test-Path -LiteralPath $testRoot) {
+            Remove-Item -LiteralPath $testRoot -Recurse -Force
+        }
+    }
+    exit 0
+}
 
 $commonDir = & git rev-parse --path-format=absolute --git-common-dir 2>&1
 if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: not inside a git repository." -ForegroundColor Red; exit 1 }
 $MainCheckout = Split-Path $commonDir -Parent
-$TargetPath   = Join-Path (Join-Path $MainCheckout '.claude\worktrees') $Name
+$registryEntries = @(Read-WorktreeRegistry -Main $MainCheckout)
+$resolved = Resolve-WorktreeTarget -Entries $registryEntries -Main $MainCheckout -RequestedName $Name -RequestedPath $Path -RequestedBranch $Branch
+if ($resolved.Error) {
+    if ($Path -and (Test-Path -LiteralPath (Join-Path $Path '.git'))) {
+        $otherCommon = & git -C $Path rev-parse --path-format=absolute --git-common-dir 2>$null
+        if ($LASTEXITCODE -eq 0 -and
+            (Normalize-WorktreePath $otherCommon) -ine (Normalize-WorktreePath (Join-Path $MainCheckout '.git'))) {
+            $resolved.Error = "Path belongs to another repository: $Path"
+        }
+    }
+    Write-Host "FAIL: $($resolved.Error)" -ForegroundColor Red
+    foreach ($candidate in $resolved.Candidates) { Write-Host "  $candidate" -ForegroundColor Yellow }
+    exit 1
+}
+$TargetPath = $resolved.Path
+$targetName = $resolved.Name
+$resolvedBranch = $resolved.Branch
 
 # Trap 1: refuse to remove the worktree we are standing in, unless the caller has
 # confirmed via -FromInside that it cannot cd elsewhere (an agent session pinned to
@@ -98,7 +338,8 @@ $TargetPath   = Join-Path (Join-Path $MainCheckout '.claude\worktrees') $Name
 # $MainCheckout via -C, never cwd, and Trap 5 already tolerates the directory itself
 # surviving the removal.
 $here = (Get-Location).Path
-$insideTarget = $here -eq $TargetPath -or $here.StartsWith($TargetPath + [IO.Path]::DirectorySeparatorChar)
+$insideTarget = $here -eq $TargetPath -or
+    $here.StartsWith($TargetPath + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)
 if ($insideTarget -and -not $FromInside) {
     Write-Host "FAIL: you are inside the worktree being removed." -ForegroundColor Red
     Write-Host "      git cannot delete its own working directory -- it would deregister the" -ForegroundColor Yellow
@@ -120,24 +361,8 @@ if (-not (Test-Path $TargetPath)) {
     Write-Host "NOTE: no directory at $TargetPath -- will still try branch cleanup." -ForegroundColor Yellow
 }
 
-# Resolve the branch this worktree has checked out.
-$branch = $null
-$wtLines = & git -C $MainCheckout worktree list --porcelain
-$currentPath = $null
-foreach ($line in $wtLines) {
-    if ($line -like 'worktree *')  { $currentPath = $line.Substring(9) }
-    elseif ($line -like 'branch *' -and $currentPath) {
-        $normalized = $currentPath -replace '/', '\'
-        if ($normalized -eq $TargetPath) { $branch = $line.Substring(7) -replace '^refs/heads/', '' }
-    }
-}
-
-if (-not $branch -and $Branch) {
-    # Explicit override always wins.
-    $branch = $Branch
-    Write-Host "`n==> Worktree '$Name' -> branch '$branch' (from -Branch)" -ForegroundColor Cyan
-}
-elseif (-not $branch) {
+# Resolve a detached worktree's sibling branch when the caller did not supply one.
+if (-not $resolvedBranch -and $targetName -and $resolved.Registered) {
     # Trap 4: a DETACHED worktree with a sibling branch at the same commit.
     #
     # Claude Code's auto-mode worktrees land in this shape: the worktree is detached,
@@ -156,12 +381,12 @@ elseif (-not $branch) {
         foreach ($b in (& git -C $MainCheckout branch --format='%(refname:short)' --points-at $headSha)) {
             $b = $b.Trim()
             if (-not $b -or $b -eq 'master' -or $b -eq 'main') { continue }
-            if ($b -eq $Name -or $b -like "*/$Name") { $candidates += $b }
+            if ($b -eq $targetName -or $b -like "*/$targetName") { $candidates += $b }
         }
 
         if ($candidates.Count -eq 1) {
-            $branch = $candidates[0]
-            Write-Host "`n==> Worktree '$Name' is detached; found sibling branch '$branch' at the same commit." -ForegroundColor Cyan
+            $resolvedBranch = $candidates[0]
+            Write-Host "`n==> Worktree '$targetName' is detached; found sibling branch '$resolvedBranch' at the same commit." -ForegroundColor Cyan
         }
         elseif ($candidates.Count -gt 1) {
             Write-Host "`nNOTE: detached worktree with several matching branches -- not guessing." -ForegroundColor Yellow
@@ -173,22 +398,22 @@ elseif (-not $branch) {
         }
     }
 }
-else {
-    Write-Host "`n==> Worktree '$Name' -> branch '$branch'" -ForegroundColor Cyan
+elseif ($resolvedBranch) {
+    Write-Host "`n==> Worktree '$TargetPath' -> branch '$resolvedBranch'" -ForegroundColor Cyan
 }
 
 # Trap 2: verify merged, by ancestry -- not by branch name.
-if ($branch -and -not $Force) {
+if ($resolvedBranch -and -not $Force) {
     & git -C $MainCheckout fetch origin main | Out-Null
-    & git -C $MainCheckout merge-base --is-ancestor $branch origin/main
+    & git -C $MainCheckout merge-base --is-ancestor $resolvedBranch origin/main
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "`nFAIL: '$branch' is not an ancestor of origin/main -- refusing to delete." -ForegroundColor Red
+        Write-Host "`nFAIL: '$resolvedBranch' is not an ancestor of origin/main -- refusing to delete." -ForegroundColor Red
         Write-Host "      If the PR was SQUASH-merged this is expected; confirm the content landed:" -ForegroundColor Yellow
-        Write-Host "        git diff origin/main $branch --stat     # empty => safe to -Force" -ForegroundColor Yellow
+        Write-Host "        git diff origin/main $resolvedBranch --stat     # empty => safe to -Force" -ForegroundColor Yellow
         Write-Host "      Then re-run with -Force." -ForegroundColor Yellow
         exit 1
     }
-    Write-Host "PASS: '$branch' is contained in origin/main." -ForegroundColor Green
+    Write-Host "PASS: '$resolvedBranch' is contained in origin/main." -ForegroundColor Green
 }
 
 # Trap 3: locked worktrees refuse removal with an unhelpful message.
@@ -200,6 +425,13 @@ if (Test-Path $TargetPath) {
     if ($Force) { $rmArgs += '--force' }
     & git -C $MainCheckout @rmArgs
     if ($LASTEXITCODE -ne 0) {
+        $remaining = @(Read-WorktreeRegistry -Main $MainCheckout | Where-Object {
+            (Normalize-WorktreePath $_.Path) -ieq $TargetPath
+        })
+        if ($remaining.Count -gt 0) {
+            Write-Host "FAIL: worktree is still registered; branch cleanup is unsafe." -ForegroundColor Red
+            exit 1
+        }
         # Trap 5: on Windows, git routinely deletes every file but cannot rmdir the
         # folder itself when any process holds a handle on it (a shell sitting in it,
         # Visual Studio, an indexer). That is a cosmetic leftover, NOT a reason to stop:
@@ -214,17 +446,22 @@ if (Test-Path $TargetPath) {
 }
 & git -C $MainCheckout worktree prune | Out-Null
 
-if ($branch) {
+if ($resolvedBranch) {
     Write-Host "`n==> Deleting local branch" -ForegroundColor Cyan
-    & git -C $MainCheckout branch -D $branch
-    if ($LASTEXITCODE -eq 0) { Write-Host "PASS: local branch deleted." -ForegroundColor Green }
+    & git -C $MainCheckout branch -D $resolvedBranch
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "FAIL: local branch was not deleted; remote branch is unchanged." -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "PASS: local branch deleted." -ForegroundColor Green
 
     if (-not $KeepRemote) {
         Write-Host "`n==> Deleting remote branch" -ForegroundColor Cyan
-        $remoteRef = & git -C $MainCheckout ls-remote --heads origin $branch
+        $remoteRef = & git -C $MainCheckout ls-remote --heads origin $resolvedBranch
         if ($remoteRef) {
-            & git -C $MainCheckout push origin --delete $branch
-            if ($LASTEXITCODE -eq 0) { Write-Host "PASS: remote branch deleted." -ForegroundColor Green }
+            & git -C $MainCheckout push origin --delete $resolvedBranch
+            if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: remote branch was not deleted." -ForegroundColor Red; exit 1 }
+            Write-Host "PASS: remote branch deleted." -ForegroundColor Green
         } else {
             Write-Host "Remote branch already gone." -ForegroundColor Green
         }
