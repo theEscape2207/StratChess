@@ -23,7 +23,8 @@ size. Load skill `code-review` (Claude: `mattpocock-skills:code-review`, not the
 - **Standards sources:** `Docs/agents/simplify.md` and CLAUDE.md → Development Guidelines.
 - **Append to the Standards brief:** "Also apply question 4 of `Docs/agents/simplify.md` to each
   touched file in full, and no other file. Report it under a separate `Nearby debt` heading with
-  `file:line`; these items are not findings."
+  `file:line`; these items are not findings. List each behaviour the diff removes (a recovery path,
+  a guard, a message) and whether anything still needs it."
 
 Run each axis in its own subagent, in parallel or one after the other, on the session's model: a
 cheaper tier missed planted nearby debt that the session model found. An agent that cannot spawn
@@ -100,8 +101,9 @@ bypasses `.github/pull_request_template.md`, so supply the structure yourself.
   SPRT or lab Elo), the run still pending, or why none applies. Load skill `measure-strength` to pick
   the instrument, and to check one you already ran: its rules catch silently invalid results.
 - **A PR outside the Docs tier** carries a **Review** line in its Test plan:
-  `Review: code-review, Standards n / Spec m: x fixed, y rejected (reasons), filed #a #b`. Write
+  `Review: code-review, Standards n / Spec m: x fixed, y rejected, filed #a #b`. Write
   `Spec: skipped (no spec)` when no spec was given, and `inline` when both axes ran in one context.
+  Notes lists each rejected finding on its own line: the finding in a few words, then the reason.
 - Include motivation, design reasoning and expected impact for anything non-trivial. Keep it short;
   detail goes in chat.
 - Update the body when a follow-up commit fulfils a "will do X later" note in it.
