@@ -15,8 +15,8 @@ Before doing repository work, read `CLAUDE.md` completely. Its project rules are
 - Triaging, refining, scoping, labelling, or recommending closure of a GitHub issue: use skill
   `triage-issue` before the first related action.
 - Writing a design document before implementing: use skill `write-design-doc`.
-- Writing a test, or diagnosing a bug or slowdown: read `Docs/TestDesign.md` → Testing and
-  debugging traps first.
+- Writing a test first, or diagnosing a bug or slowdown: use skill `tdd` or `diagnosing-bugs`,
+  then read `Docs/TestDesign.md` → Testing and debugging traps.
 - Reviewing another agent's artifact, or answering a review of yours: use skill
   `cross-agent-review` before the first related action.
 - Reading or editing GitHub issues outside triage: read the applicable files under `Docs/agents/`
