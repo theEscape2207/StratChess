@@ -47,8 +47,14 @@ The review uses mattpocock's `code-review` against `origin/main`. It runs two pa
 checks the diff against the repo's standards, the other against the issue or design doc it came from.
 - **One copy for both agents:** Claude loads it from the plugin (1.2.3), Codex from
   `.agents/skills/code-review` (#616). The two copies differ only in line endings.
-- **Hands-off:** the controller supplies the fixed point and the spec (the linked issue plus any
-  `.claude/plans/` document), so the skill never has to ask the user.
+- **Hands-off:** the controller supplies the fixed point and the spec, so the skill never has to ask
+  the user. The spec is the issue the PR body or commits cite (`Closes`/`Refs #N`) plus any
+  `.claude/plans/` document on the branch. When there is neither, the controller tells the skill
+  "no spec available". The Spec agent is then skipped, and the Review line says `Spec: skipped (no
+  spec)`. The skill's step 2 would otherwise ask the user where the spec is.
+- **Execution:** each axis runs in its own subagent, in parallel or one after the other. If an agent
+  cannot spawn subagents, it runs both axes in its own context. That loses the isolation between the
+  axes, so the Review line records it as `inline`.
 
 Rejected:
 - **Claude `/code-review` and Codex `/review`:** each runs in one agent only, which is the
@@ -63,7 +69,7 @@ Rejected:
 `code-review` takes the repo's standards as input, and the repo's rule wins over its baseline. The
 lens goes in `Docs/agents/simplify.md`, beside the files mattpocock's skills already read. The
 controller passes that file and CLAUDE.md → Development Guidelines as the standards sources. The
-lens asks four questions of each hunk:
+lens asks four questions; questions 1–3 are asked of each hunk:
 
 1. **Comments:** does a comment restate the code, refer to a task or to history, or run past two
    lines without recording a tripwire? (The rule is CLAUDE.md's; this checks against it.)
@@ -76,6 +82,12 @@ lens asks four questions of each hunk:
    library?
 4. **Nearby debt:** in the functions and files the diff touches, what is already duplicated, dead or
    stale, or kept alive only by a workaround? This is reported separately from findings (D3).
+
+The skill's Standards brief matches against the diff only. To cover question 4, the controller adds
+one instruction to that brief: scan the whole of every function the diff changes, and the rest of
+each touched file, but no other files. Report what that scan finds under a separate `Nearby debt`
+heading, with `file:line` evidence. These items are not findings. The rest of the two-axis review is
+unchanged.
 
 Rejected: a third parallel axis. It would need our own copy of `code-review` kept in step with
 upstream, and a standards file gets the same result without one.
@@ -116,12 +128,12 @@ to the same lens file.
 
 ## Assumptions I cannot verify from the code
 
-- **Codex runs `code-review`'s parallel subagents.** Codex supports subagents (#612), but whether it
+- **Codex runs each axis in its own subagent.** Codex supports subagents (#612), but whether it
   spawns them from this skill has not been verified. It will be settled by the first Codex PR under
-  the new step. If Codex runs the two axes one after the other instead, the review still works; it
-  just loses the context isolation between them.
-- **A diff-scoped subagent will read the surrounding code when the lens asks it to.** Not verified.
-  This is what the retrospective run below checks.
+  the new step, whose Review line records the execution mode (D1). Parallel or one after the other
+  is fine. An `inline` run is a degraded review and gets a follow-up issue.
+- **The Standards agent follows the nearby-debt instruction (D2).** Not verified. The planted
+  fixture below checks it.
 - **The findings are worth what they cost.** #387 found lint to be the lowest-value gate here, and a
   noisy review would add that cost to every PR. Not verified. The retrospective runs and the pilot
   settle it; the Validation table below gives the stop rule.
@@ -132,8 +144,8 @@ to the same lens file.
 - Every finding gets a disposition, and every PR outside the Docs tier has a Review line.
 - Nearby debt is either a finding against the PR (D3) or a new issue. It is never an unrecorded fix
   in the same PR.
-- The skill runs without asking the user anything: the fixed point is `origin/main` and the spec is
-  supplied.
+- The skill runs without asking the user anything. The fixed point is `origin/main`, and the spec
+  is either supplied or declared absent.
 
 ## Validation
 
@@ -141,12 +153,12 @@ Docs tier: the change touches only skill and Markdown files, so no build, Elo or
 
 | Risk | Evidence that closes it |
 |---|---|
-| The lens finds nothing real | Before landing: run the review on merged #607 (Engine) and #581 (Tooling). Findings get dispositions against the merged code, and nearby debt is listed but not filed. At least one finding per PR that we would act on. |
-| The lens never looks past the hunk | The same runs: at least one nearby-debt item cites a line outside the diff. |
-| Noise | Pilot on the next five PRs outside the Docs tier: 50% or more of the findings must be fixed or filed, otherwise trim the lens or drop the step. |
-| The skill stops to ask the user | The retrospective runs complete without a prompt. |
-| Codex cannot run it | First Codex PR: the Review line is present and the subagents ran. |
-| Cost | Record the tokens each retrospective run used, and put the figure in the PR body. |
+| The lens misses what it should find | **Planted fixture:** a throwaway branch off `origin/main` with two commits. Commit A plants pre-existing debt: a dead helper and a stale comment in a touched file. Commit B makes a small change that plants one example for each of lens questions 1–3: a restating comment, a parameter only ever given one value, and a copy of an existing helper. The review runs from A, so only B is the diff. Expected: B's three plants come back as findings, and A's two come back under Nearby debt with `file:line`. Any other finding is judged on merit. |
+| The lens never looks past the hunk | The same fixture: A's plants lie outside the diff, so recovering them is the evidence. |
+| The lens is noisy on real code | **Retrospective runs** on merged #607 (Engine) and #581 (Tooling). Each finding is judged on merit, with no minimum count. The judgements and token cost go in the PR body. |
+| The no-spec path stops to ask | The fixture run gets no spec: it completes without a prompt and records `Spec: skipped (no spec)`. |
+| Noise over time | Pilot on the next five PRs outside the Docs tier: 50% or more of the findings must be fixed or filed, otherwise trim the lens or drop the step. |
+| Codex cannot run it | First Codex PR: the Review line is present and records the execution mode (subagents, or `inline`). |
 
 ## Harvest
 
