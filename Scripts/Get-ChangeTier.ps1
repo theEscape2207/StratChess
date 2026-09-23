@@ -98,23 +98,23 @@ function Get-TierForPath {
     if ($p -like '*Scripts/Test-Workflow*.ps1')             { return 'Build' }
     # Asserts a property of the shipping image from inside the pre-PR run, so the same
     # hazard applies: a bug here disarms the only check that -falign-functions=64
-    # survived to the binary, and the failure it guards is already silent (#513).
+    # survived to the binary, and the failure it guards is already silent.
     if ($p -like '*Scripts/Test-CodeAlignment.ps1')         { return 'Build' }
     # Nothing invokes it automatically, but a bug in it reports a reproducible Release
     # build that is not one -- a false PASS about the property, which is the same
     # self-concealment. Build rather than Tooling for that reason alone.
     if ($p -like '*Scripts/Test-ReleaseReproducibility.ps1') { return 'Build' }
     # Decides whether a build artifact counts as stale, and which binary a measurement
-    # reads. Both reach Build anyway through the fail-closed default, but only as
-    # "unrecognised", which costs every PR that touches them the Engine tier. The hazard
-    # is the familiar one and it is why they are Build rather than Tooling: a bug in
+    # reads. Left to the fail-closed default they would be Engine, which costs every PR
+    # that touches them the Engine tier. The hazard is the familiar one and it is why
+    # they are Build rather than Tooling: a bug in
     # either lets a validation or a measurement run against the wrong binary while
     # reporting success.
     if ($p -like '*Scripts/BuildFreshness.ps1')             { return 'Build' }
     if ($p -like '*Scripts/Get-BuildArtifact.ps1')          { return 'Build' }
-    # Lint configuration decides what CI enforces about every source file. It reaches
-    # Build tier anyway through the fail-closed default, but only as "unrecognised";
-    # naming it makes the classification deliberate and the self-test able to assert it.
+    # Lint configuration decides what CI enforces about every source file. Named rather
+    # than left to the fail-closed default, which would call it Engine; naming it also
+    # lets the self-test assert it.
     if ($p -eq '.clang-format' -or $p -eq '.clang-tidy' -or
         $p -eq '.clang-tidy-deep' -or $p -like '*/.clang-tidy') { return 'Build' }
     if ($p -eq '.git-blame-ignore-revs')                     { return 'Build' }
@@ -271,8 +271,7 @@ if ($SelfTest) {
         @{ Name = 'tidy DB normalizer -> Build'; Files = @('Scripts/New-TidyCompileDatabase.ps1'); Expect = 'Build' }
         @{ Name = 'timeout guard -> Build';     Files = @('Scripts/Test-WorkflowTimeouts.ps1');  Expect = 'Build' }
         @{ Name = 'ccache path guard -> Build'; Files = @('Scripts/Test-WorkflowCcachePaths.ps1'); Expect = 'Build' }
-        # Both decided which binary a build or a measurement reads while classified only by
-        # the fail-closed default. Named now, so the classification is a decision.
+        # Both decide which binary a build or a measurement reads; named, not fail-closed.
         @{ Name = 'freshness lib -> Build';     Files = @('Scripts/BuildFreshness.ps1');        Expect = 'Build' }
         @{ Name = 'artifact picker -> Build';   Files = @('Scripts/Get-BuildArtifact.ps1');     Expect = 'Build' }
         @{ Name = 'blame-ignore -> Build';      Files = @('.git-blame-ignore-revs');                             Expect = 'Build' }
@@ -290,9 +289,9 @@ if ($SelfTest) {
         @{ Name = 'header -> Engine';           Files = @('StratEngine/Eval.h');                                 Expect = 'Engine' }
         @{ Name = 'backslash paths normalise';  Files = @('Scripts\Run-EloMatch.ps1');         Expect = 'Tooling' }
         @{ Name = 'empty diff';                 Files = @();                                                     Expect = 'Docs' }
-        # Real PRs this issue was filed over.
-        @{ Name = 'PR #123 (CLAUDE.md only)';   Files = @('CLAUDE.md');                                          Expect = 'Docs' }
-        @{ Name = 'PR #133 (SPRT)';             Files = @('Scripts/Run-EloMatch.ps1', 'Measurements/local.md', 'CLAUDE.md', 'Docs/Changelog.md', '.claude/plans/elomatch-sprt-support.md'); Expect = 'Tooling' }
+        # Whole change sets.
+        @{ Name = 'CLAUDE.md only -> Docs';     Files = @('CLAUDE.md');                                          Expect = 'Docs' }
+        @{ Name = 'SPRT change set -> Tooling'; Files = @('Scripts/Run-EloMatch.ps1', 'Measurements/local.md', 'CLAUDE.md', 'Docs/Changelog.md', '.claude/plans/elomatch-sprt-support.md'); Expect = 'Tooling' }
     )
 
     $failed = 0
