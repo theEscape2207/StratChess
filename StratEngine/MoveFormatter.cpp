@@ -10,7 +10,6 @@
 namespace {
 
 	// Returns the algebraic coordinate for a square (e.g., e2, a8, h1).
-	// Mirrors the internal GetBoardCoord helper in Move.cpp.
 	[[nodiscard]] std::string SquareToCoord(eSquare sq)
 	{
 		std::string s(1, static_cast<char>(File(sq) + 'a'));
@@ -172,28 +171,17 @@ std::string MoveFormatter::ToVerbose(const Move& move, const Board& board)
 	case MoveType::PROMOTION_KNIGHT:
 	case MoveType::PROMOTION_BISHOP:
 	case MoveType::PROMOTION_ROOK:
-	case MoveType::PROMOTION_QUEEN: {
-		// movPiece is the promoted piece; recover the pawn color for the subject
-		const eColor color = PieceHelper::Color(movPiece);
-		const ePiece pawn = PieceHelper::AsPawn(color);
-		result = std::string(PieceHelper::FullName(pawn)) + " promotes to " + PieceTypeName(movPiece) + " on " + to;
-		break;
-	}
-
+	case MoveType::PROMOTION_QUEEN:
 	case MoveType::PROMOTION_KNIGHT_CAPTURE:
 	case MoveType::PROMOTION_BISHOP_CAPTURE:
 	case MoveType::PROMOTION_ROOK_CAPTURE:
 	case MoveType::PROMOTION_QUEEN_CAPTURE: {
-		const eColor color = PieceHelper::Color(movPiece);
-		const ePiece pawn = PieceHelper::AsPawn(color);
-		result = std::string(PieceHelper::FullName(pawn)) + " captures and promotes to " + PieceTypeName(movPiece) +
-		         " on " + to;
+		// movPiece is the promoted piece; recover the pawn color for the subject
+		const ePiece pawn = PieceHelper::AsPawn(PieceHelper::Color(movPiece));
+		const char* verb = (move.flags() & MoveFlags::CAPTURE_BIT) ? " captures and promotes to " : " promotes to ";
+		result = std::string(PieceHelper::FullName(pawn)) + verb + PieceTypeName(movPiece) + " on " + to;
 		break;
 	}
-
-	default:
-		result = std::string(PieceHelper::FullName(movPiece)) + " moves " + from + " to " + to;
-		break;
 	}
 
 	if (board.InCheck())
@@ -207,8 +195,7 @@ std::string MoveFormatter::ToVerbose(const Move& move, const Board& board)
 // ---------------------------------------------------------------------------
 // No board context required. Produces standard UCI coordinate notation.
 // Examples: "e2e4", "c5d6", "b7b8q", "b7a8n", "e1g1", "e1c1"
-// Lowercase promotion suffix for all 8 promotion MoveType variants (including
-// capture-promotions that the old Perft::move_to_string omitted).
+// Lowercase promotion suffix for all 8 promotion MoveType variants, capture-promotions included.
 std::string MoveFormatter::ToUCI(const Move& move)
 {
 	assert(!move.is_null());
@@ -255,7 +242,7 @@ Move MoveFormatter::FromUCI(std::string_view uci, const Board& board)
 	// Internal layout: rank 8 = row 0, rank 1 = row 7; file a = col 0.
 	// The characters are validated, not just the length: this parses whatever a
 	// GUI sends. "zzzz" would otherwise compute file 25, rank -66 and index the
-	// mailbox at -503 (#200).
+	// mailbox at -503.
 	const auto parse_sq = [](char file_ch, char rank_ch) -> eSquare {
 		if (file_ch < 'a' || file_ch > 'h' || rank_ch < '1' || rank_ch > '8')
 			return NO_SQUARE;
