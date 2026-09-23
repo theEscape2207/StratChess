@@ -19,11 +19,12 @@ size. Load skill `code-review` (Claude: `mattpocock-skills:code-review`, not the
 - **Spec:** the issue the PR cites (`Closes`/`Refs #N`) plus any `.claude/plans/` document on the
   branch. With neither, tell it "no spec available".
 - **Standards sources:** `Docs/agents/simplify.md` and CLAUDE.md → Development Guidelines.
-- **Append to the Standards brief:** "Also apply question 4 of `Docs/agents/simplify.md`: scan
-  every function the diff changes and the rest of each touched file, no other file. Report it under
-  a separate `Nearby debt` heading with `file:line`; these items are not findings."
+- **Append to the Standards brief:** "Also apply question 4 of `Docs/agents/simplify.md` to each
+  touched file in full, and no other file. Report it under a separate `Nearby debt` heading with
+  `file:line`; these items are not findings."
 
-Run each axis in its own subagent, in parallel or one after the other. An agent that cannot spawn
+Run each axis in its own subagent, in parallel or one after the other, on the session's model: a
+cheaper tier missed planted nearby debt that the session model found. An agent that cannot spawn
 subagents runs both in its own context, and the Review line (step 3) records `inline`.
 
 Every finding is fixed, rejected with a reason, or filed as an issue. Each nearby-debt item:

@@ -18,9 +18,13 @@ call.
 
 ## Nearby debt
 
-4. Scan the whole of every function the diff changes and the rest of each touched file, and no other
-   file, for code that is already duplicated, dead or stale, or kept alive only by a workaround.
-   Report it under a separate `Nearby debt` heading with `file:line`. It is not a finding, unless
+4. Read each touched file in full, and no other file. Check every function in it and every comment:
+   - **dead:** a function with no caller (search the repo for callers);
+   - **stale:** a comment the code contradicts, or one naming a task, a PR or an earlier version;
+   - **duplicated:** code that repeats another function in the file or an existing helper;
+   - **workaround:** code kept alive only to route around another defect.
+
+   Report each under a separate `Nearby debt` heading with `file:line`. It is not a finding, unless
    the change makes it worse: copies the duplication, extends the workaround.
 
 What the author does with each finding and debt item: skill `open-pull-request` step 1.
