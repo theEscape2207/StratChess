@@ -60,6 +60,10 @@ bypasses `.github/pull_request_template.md`, so supply the structure yourself.
 - State **which approved design decisions changed during implementation, and why** — the specialised
   reviewers read the diff while the cross-agent reviewer reads the design doc, and nothing else
   checks that the two still agree.
+- **A PR that changes the engine binary** (Engine tier, or a compiler flag) carries a **Measurement**
+  line in its Test plan: the instrument and its result (equivalence identical, a bench nps delta, an
+  SPRT or lab Elo), the run still pending, or why none applies. Load skill `measure-strength` to pick
+  the instrument, and to check one you already ran: its rules catch silently invalid results.
 - Include motivation, design reasoning and expected impact for anything non-trivial. Keep it short;
   detail goes in chat.
 - Update the body when a follow-up commit fulfils a "will do X later" note in it.
