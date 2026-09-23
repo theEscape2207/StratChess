@@ -5,6 +5,11 @@
 .DESCRIPTION
     Post-merge cleanup, which CLAUDE.md treats as part of finishing a task rather than an
     optional extra. Handles the traps that make doing it by hand unpleasant:
+    Resolves the target against Git's worktree registry, accepting a registered checkout
+    in either Claude's or Codex's directory layout. An unregistered directory is accepted
+    by -Name only under .claude/worktrees. A name with no registered worktree or Claude
+    directory is refused, even with -Branch; use Remove-MergedBranches.ps1 to clean up
+    a branch after its worktree and directory are both gone.
 
     1. **Never run from inside the worktree being removed.** `git worktree remove` cannot
        delete its own working directory: it deregisters the worktree but leaves an
@@ -36,11 +41,14 @@
 
 .PARAMETER Path
     Exact registered worktree path. Use when the directory layout is unfamiliar or
-    several worktrees have the same name. The main checkout is refused.
+    several worktrees have the same name. The main checkout is refused. A checkout
+    outside both known layouts has no inferred sibling branch; pass -Branch to
+    delete one.
 
 .PARAMETER Branch
     Explicitly name the branch to delete for a detached worktree. A branch different
-    from the checked-out branch is refused before cleanup.
+    from the checked-out branch is refused before cleanup. For an unregistered
+    Claude directory, pass -Branch if its former branch also needs deletion.
 
 .PARAMETER Force
     Delete even if the branch is not merged into origin/main. Also passes --force to
@@ -66,7 +74,7 @@
     After a PR merges. Equivalent to the `commit-commands:clean_gone` skill for a single
     known worktree.
 
-.HOW TO INVOKE (from bash, cmd, or PowerShell) -- run from the MAIN checkout
+.HOW TO INVOKE (from bash, cmd, or PowerShell) -- use the script in this repository
     pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\Remove-Worktree.ps1 -Name eval-mobility-term -SyncMaster
     pwsh -ExecutionPolicy Bypass -File C:\...\Scripts\Remove-Worktree.ps1 -Path C:\...\.codex\worktrees\foo\StratChessEvolved -SyncMaster
 
@@ -74,6 +82,8 @@
     cd elsewhere should add -FromInside.
 
 .NOTES
+    The script's own checkout identifies the repository; the caller's working directory
+    only matters for the inside-target guard.
     Must be invoked with -File, not dot-sourced -- a dot-sourced script runs in the
     caller's scope, where its variables collide and its exit ends the caller's session.
 #>
@@ -115,15 +125,15 @@ function Resolve-WorktreeTarget {
     $mainPath = Normalize-WorktreePath $Main
     $claudeRoot = Normalize-WorktreePath (Join-Path $mainPath '.claude\worktrees')
     $repoName = Split-Path $mainPath -Leaf
-    $matches = @()
+    $matchingEntries = @()
 
     if ($RequestedPath) {
         $exactPath = Normalize-WorktreePath $RequestedPath
         if ($exactPath -ieq $mainPath) {
             return [pscustomobject]@{ Error = 'The main checkout cannot be removed.'; Candidates = @() }
         }
-        $matches = @($Entries | Where-Object { (Normalize-WorktreePath $_.Path) -ieq $exactPath })
-        if ($matches.Count -eq 0) {
+        $matchingEntries = @($Entries | Where-Object { (Normalize-WorktreePath $_.Path) -ieq $exactPath })
+        if ($matchingEntries.Count -eq 0) {
             return [pscustomobject]@{ Error = "Path is not a registered worktree of this repository: $exactPath"; Candidates = @() }
         }
     } else {
@@ -138,24 +148,24 @@ function Resolve-WorktreeTarget {
             $leaf = Split-Path $entryPath -Leaf
             $claudeMatch = $parentPath -ieq $claudeRoot -and $leaf -ieq $RequestedName
             $codexMatch = $leaf -ieq $repoName -and (Split-Path $parentPath -Leaf) -ieq $RequestedName
-            if ($claudeMatch -or $codexMatch) { $matches += $entry }
+            if ($claudeMatch -or $codexMatch) { $matchingEntries += $entry }
         }
-        if ($matches.Count -gt 1) {
-            return [pscustomobject]@{ Error = "Several worktrees match '$RequestedName'; use -Path."; Candidates = @($matches.Path) }
+        if ($matchingEntries.Count -gt 1) {
+            return [pscustomobject]@{ Error = "Several worktrees match '$RequestedName'; use -Path."; Candidates = @($matchingEntries.Path) }
         }
-        if ($matches.Count -eq 0) {
+        if ($matchingEntries.Count -eq 0) {
             $orphanPath = Join-Path $claudeRoot $RequestedName
             if (-not (Test-Path -LiteralPath $orphanPath)) {
                 return [pscustomobject]@{ Error = "No worktree matches '$RequestedName'."; Candidates = @($Entries.Path) }
             }
-            $matches = @([pscustomobject]@{ Path = $orphanPath; Branch = $null; Detached = $true; Registered = $false })
+            $matchingEntries = @([pscustomobject]@{ Path = $orphanPath; Branch = $null; Detached = $true; Registered = $false })
         }
     }
 
-    $target = $matches[0]
-    $targetPath = Normalize-WorktreePath $target.Path
-    $targetParent = Split-Path $targetPath -Parent
-    $targetLeaf = Split-Path $targetPath -Leaf
+    $target = $matchingEntries[0]
+    $selectedPath = Normalize-WorktreePath $target.Path
+    $targetParent = Split-Path $selectedPath -Parent
+    $targetLeaf = Split-Path $selectedPath -Leaf
     $targetName = if ($targetParent -ieq $claudeRoot) {
         $targetLeaf
     } elseif ($targetLeaf -ieq $repoName) {
@@ -164,16 +174,18 @@ function Resolve-WorktreeTarget {
         $null
     }
     $checkedOutBranch = $target.Branch
-    if ($RequestedBranch -and $checkedOutBranch -and $RequestedBranch -ine $checkedOutBranch) {
+    if ($RequestedBranch -and $checkedOutBranch -and $RequestedBranch -cne $checkedOutBranch) {
         return [pscustomobject]@{ Error = "Branch '$RequestedBranch' conflicts with checked-out branch '$checkedOutBranch'."; Candidates = @() }
     }
     $resolvedBranch = if ($checkedOutBranch) { $checkedOutBranch } else { $RequestedBranch }
+    $registeredTarget = $true
+    if ($target.PSObject.Properties['Registered']) { $registeredTarget = $target.Registered }
     return [pscustomobject]@{
         Error = $null
-        Path = $targetPath
+        Path = $selectedPath
         Name = $targetName
         Branch = $resolvedBranch
-        Registered = if ($target.PSObject.Properties['Registered']) { $target.Registered } else { $true }
+        Registered = $registeredTarget
         Candidates = @()
     }
 }
@@ -219,15 +231,16 @@ if ($SelfTest) {
         $codexEntry = [pscustomobject]@{ Path = $codexPath; Branch = 'codex/foo'; Detached = $false }
         $detachedEntry = [pscustomobject]@{ Path = $codexPath; Branch = $null; Detached = $true }
         $cases = @(
-            @{ Label = 'Claude name'; Entries = @($mainEntry, $claudeEntry); Name = 'foo'; Path = $null; Branch = $null; Expected = $claudePath; Error = $false }
-            @{ Label = 'Codex name'; Entries = @($mainEntry, $codexEntry); Name = 'foo'; Path = $null; Branch = $null; Expected = $codexPath; Error = $false }
+            @{ Label = 'Claude name'; Entries = @($mainEntry, $claudeEntry); Name = 'foo'; Path = $null; Branch = $null; Expected = $claudePath; ExpectedBranch = 'claude/foo'; Error = $false }
+            @{ Label = 'Codex name'; Entries = @($mainEntry, $codexEntry); Name = 'foo'; Path = $null; Branch = $null; Expected = $codexPath; ExpectedBranch = 'codex/foo'; Error = $false }
             @{ Label = 'ambiguous name'; Entries = @($mainEntry, $claudeEntry, $codexEntry); Name = 'foo'; Path = $null; Branch = $null; Expected = $null; Error = $true }
-            @{ Label = 'path case and separators'; Entries = @($mainEntry, $codexEntry); Name = $null; Path = $codexPath.ToUpperInvariant().Replace('\', '/'); Branch = $null; Expected = $codexPath; Error = $false }
+            @{ Label = 'path case and separators'; Entries = @($mainEntry, $codexEntry); Name = $null; Path = $codexPath.ToUpperInvariant().Replace('\', '/'); Branch = $null; Expected = $codexPath; ExpectedBranch = 'codex/foo'; Error = $false }
             @{ Label = 'main checkout'; Entries = @($mainEntry); Name = $null; Path = $syntheticMain; Branch = $null; Expected = $null; Error = $true }
             @{ Label = 'unregistered path'; Entries = @($mainEntry); Name = $null; Path = $codexPath; Branch = $null; Expected = $null; Error = $true }
             @{ Label = 'unknown name'; Entries = @($mainEntry); Name = 'missing'; Path = $null; Branch = $null; Expected = $null; Error = $true }
-            @{ Label = 'detached override'; Entries = @($mainEntry, $detachedEntry); Name = 'foo'; Path = $null; Branch = 'codex/foo'; Expected = $codexPath; Error = $false }
+            @{ Label = 'detached override'; Entries = @($mainEntry, $detachedEntry); Name = 'foo'; Path = $null; Branch = 'codex/foo'; Expected = $codexPath; ExpectedBranch = 'codex/foo'; Error = $false }
             @{ Label = 'conflicting override'; Entries = @($mainEntry, $codexEntry); Name = 'foo'; Path = $null; Branch = 'other'; Expected = $null; Error = $true }
+            @{ Label = 'branch case conflict'; Entries = @($mainEntry, $codexEntry); Name = 'foo'; Path = $null; Branch = 'Codex/foo'; Expected = $null; Error = $true }
             @{ Label = 'name traversal'; Entries = @($mainEntry); Name = '..'; Path = $null; Branch = $null; Expected = $null; Error = $true }
         )
         foreach ($case in $cases) {
@@ -236,8 +249,8 @@ if ($SelfTest) {
             if (-not $case.Error -and (Normalize-WorktreePath $actual.Path) -ine (Normalize-WorktreePath $case.Expected)) {
                 throw "Resolver case '$($case.Label)' chose $($actual.Path), expected $($case.Expected)"
             }
-            if ($case.Label -eq 'detached override' -and $actual.Branch -ne 'codex/foo') {
-                throw 'Detached branch override was lost.'
+            if (-not $case.Error -and $actual.Branch -cne $case.ExpectedBranch) {
+                throw "Resolver case '$($case.Label)' chose branch '$($actual.Branch)', expected '$($case.ExpectedBranch)'."
             }
         }
 
@@ -257,16 +270,24 @@ if ($SelfTest) {
             if ($LASTEXITCODE -ne 0) { throw "Could not create $layout main checkout." }
             $otherRepo = Join-Path $fixtureRoot 'other'
             & git init -b main $otherRepo | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "Could not create $layout other repository." }
+            $otherNested = Join-Path $otherRepo 'nested'
+            $null = New-Item -ItemType Directory -Path $otherNested -Force
+            $null = New-Item -ItemType Directory -Path (Join-Path $fixtureMain 'Scripts') -Force
+            $fixtureScript = Join-Path $fixtureMain 'Scripts/Remove-Worktree.ps1'
+            Copy-Item -LiteralPath $PSCommandPath -Destination $fixtureScript
+            Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Sync-Master.ps1') -Destination (Join-Path $fixtureMain 'Scripts/Sync-Master.ps1')
             & git -C $fixtureMain config user.name 'Fixture User' | Out-Null
             & git -C $fixtureMain config user.email 'fixture@example.invalid' | Out-Null
             Set-Content -LiteralPath (Join-Path $fixtureMain 'fixture.txt') -Value 'initial'
-            & git -C $fixtureMain add fixture.txt | Out-Null
+            & git -C $fixtureMain add fixture.txt Scripts/Remove-Worktree.ps1 Scripts/Sync-Master.ps1 | Out-Null
             & git -C $fixtureMain commit -m initial | Out-Null
+            & git -C $fixtureMain branch master | Out-Null
             & git -C $fixtureMain remote add origin $originPath | Out-Null
             & git -C $fixtureMain push -u origin main | Out-Null
-            Push-Location $fixtureMain
+            Push-Location $otherNested
             try {
-                $otherResult = @(& pwsh -ExecutionPolicy Bypass -File $PSCommandPath -Path $otherRepo 2>&1)
+                $otherResult = @(& pwsh -ExecutionPolicy Bypass -File $fixtureScript -Path $otherNested 2>&1)
                 if ($LASTEXITCODE -eq 0 -or ($otherResult -join ' ') -notlike '*belongs to another repository*') {
                     throw "$layout other-repository path was not diagnosed."
                 }
@@ -280,9 +301,9 @@ if ($SelfTest) {
             & git -C $worktreePath commit -m merged | Out-Null
             Push-Location $fixtureMain
             try {
-                & pwsh -ExecutionPolicy Bypass -File $PSCommandPath -Name foo -Branch other 2>&1 | Out-Null
+                & pwsh -ExecutionPolicy Bypass -File $fixtureScript -Name foo -Branch other 2>&1 | Out-Null
                 if ($LASTEXITCODE -eq 0) { throw "$layout conflicting branch was accepted." }
-                & pwsh -ExecutionPolicy Bypass -File $PSCommandPath -Name foo 2>&1 | Out-Null
+                & pwsh -ExecutionPolicy Bypass -File $fixtureScript -Name foo 2>&1 | Out-Null
                 if ($LASTEXITCODE -eq 0) { throw "$layout unmerged worktree was removed." }
             } finally {
                 Pop-Location
@@ -293,27 +314,41 @@ if ($SelfTest) {
             Set-Content -LiteralPath (Join-Path $worktreePath 'dirty.tmp') -Value 'keep'
             Push-Location $fixtureMain
             try {
-                & pwsh -ExecutionPolicy Bypass -File $PSCommandPath -Name foo 2>&1 | Out-Null
+                & pwsh -ExecutionPolicy Bypass -File $fixtureScript -Name foo 2>&1 | Out-Null
                 if ($LASTEXITCODE -eq 0) { throw "$layout dirty worktree was removed." }
             } finally {
                 Pop-Location
             }
             if (-not (Test-Path -LiteralPath $worktreePath)) { throw "$layout dirty checkout vanished." }
             Remove-Item -LiteralPath (Join-Path $worktreePath 'dirty.tmp')
-            Push-Location $fixtureMain
+            & git -C $fixtureMain worktree lock $worktreePath
+            if ($LASTEXITCODE -ne 0) { throw "Could not lock $layout worktree." }
+            $cleanupFrom = if ($layout -eq 'Claude') { $worktreePath } else { $fixtureMain }
+            Push-Location $cleanupFrom
             try {
-                & pwsh -ExecutionPolicy Bypass -File $PSCommandPath -Name foo | Out-Null
+                if ($layout -eq 'Claude') {
+                    & pwsh -ExecutionPolicy Bypass -File $fixtureScript -Name foo -FromInside -SyncMaster | Out-Null
+                } else {
+                    & pwsh -ExecutionPolicy Bypass -File $fixtureScript -Path $worktreePath | Out-Null
+                }
                 if ($LASTEXITCODE -ne 0) { throw "$layout fixture cleanup failed." }
             } finally {
                 Pop-Location
             }
-            if (Test-Path -LiteralPath $worktreePath) { throw "$layout worktree directory remains." }
+            if ($layout -eq 'Codex' -and (Test-Path -LiteralPath $worktreePath)) {
+                throw "$layout worktree directory remains."
+            }
             $registered = & git -C $fixtureMain worktree list --porcelain
             if ($registered -match [regex]::Escape($worktreePath)) { throw "$layout worktree remains registered." }
             & git -C $fixtureMain show-ref --verify --quiet refs/heads/codex/foo
             if ($LASTEXITCODE -eq 0) { throw "$layout local branch remains." }
             $remoteBranch = & git -C $fixtureMain ls-remote --heads origin codex/foo
             if ($remoteBranch) { throw "$layout remote branch remains." }
+            if ($layout -eq 'Claude') {
+                $mainHead = & git -C $fixtureMain rev-parse main
+                $masterHead = & git -C $fixtureMain rev-parse master
+                if ($mainHead -ne $masterHead) { throw "$layout -SyncMaster did not update master." }
+            }
         }
         Write-Host "PASS: Remove-Worktree resolver and fixture self-test." -ForegroundColor Green
     } catch {
@@ -327,20 +362,22 @@ if ($SelfTest) {
     exit 0
 }
 
-$commonDir = & git rev-parse --path-format=absolute --git-common-dir 2>&1
+$scriptRepoRoot = Split-Path $PSScriptRoot -Parent
+$commonDir = & git -C $scriptRepoRoot rev-parse --path-format=absolute --git-common-dir 2>&1
 if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: not inside a git repository." -ForegroundColor Red; exit 1 }
 $MainCheckout = Split-Path $commonDir -Parent
 $registryEntries = @(Read-WorktreeRegistry -Main $MainCheckout)
 $resolved = Resolve-WorktreeTarget -Entries $registryEntries -Main $MainCheckout -RequestedName $Name -RequestedPath $Path -RequestedBranch $Branch
 if ($resolved.Error) {
-    if ($Path -and (Test-Path -LiteralPath (Join-Path $Path '.git'))) {
+    $diagnostic = $resolved.Error
+    if ($Path -and (Test-Path -LiteralPath $Path)) {
         $otherCommon = & git -C $Path rev-parse --path-format=absolute --git-common-dir 2>$null
         if ($LASTEXITCODE -eq 0 -and
-            (Normalize-WorktreePath $otherCommon) -ine (Normalize-WorktreePath (Join-Path $MainCheckout '.git'))) {
-            $resolved.Error = "Path belongs to another repository: $Path"
+            (Normalize-WorktreePath $otherCommon) -ine (Normalize-WorktreePath $commonDir)) {
+            $diagnostic = "Path belongs to another repository: $Path"
         }
     }
-    Write-Host "FAIL: $($resolved.Error)" -ForegroundColor Red
+    Write-Host "FAIL: $diagnostic" -ForegroundColor Red
     foreach ($candidate in $resolved.Candidates) { Write-Host "  $candidate" -ForegroundColor Yellow }
     exit 1
 }
@@ -388,7 +425,7 @@ if (-not $resolvedBranch -and $targetName -and $resolved.Registered) {
     # unnoticed for a week.
     #
     # Matched conservatively: the branch must point at this worktree's HEAD *and* be
-    # named either <Name> or <something>/<Name>. A branch that merely happens to share
+    # named either <targetName> or <something>/<targetName>. A branch that merely happens to share
     # the commit (master, main, or an unrelated branch sitting at the same merge) is
     # never picked up -- being at the same commit is not evidence of being related.
     $headSha = & git -C $TargetPath rev-parse HEAD 2>$null
@@ -412,6 +449,14 @@ if (-not $resolvedBranch -and $targetName -and $resolved.Registered) {
         else {
             Write-Host "`nNOTE: detached worktree, no matching branch -- removing the directory only." -ForegroundColor Yellow
         }
+    }
+}
+elseif (-not $resolvedBranch) {
+    Write-Host "NOTE: no branch inferred for this target; skipping sibling-branch cleanup." -ForegroundColor Yellow
+    if (-not $resolved.Registered) {
+        Write-Host "      The worktree is unregistered, so its former HEAD cannot be checked. Pass -Branch to delete its branch." -ForegroundColor Yellow
+    } elseif (-not $targetName) {
+        Write-Host "      This path is outside the known layouts. Pass -Branch to delete a detached sibling branch." -ForegroundColor Yellow
     }
 }
 elseif ($resolvedBranch) {

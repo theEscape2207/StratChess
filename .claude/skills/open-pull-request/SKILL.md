@@ -96,5 +96,5 @@ pwsh -ExecutionPolicy Bypass -File <abs>\Scripts\Remove-Worktree.ps1 -Path <regi
 pwsh -ExecutionPolicy Bypass -File <abs>\Scripts\Remove-MergedBranches.ps1 -SyncMaster
 ```
 
-Both verify the merge before deleting. Squash-merges and locked directories need care:
+The cleanup scripts verify the merge before deleting. Squash-merges and locked directories need care:
 `Docs/Workflow.md` → Worktree removal gotchas.
