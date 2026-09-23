@@ -131,6 +131,19 @@ Never teach the script to suppress the reminder — escalating it is fine.
 
 ---
 
+## Skill gate hook
+
+`Scripts/Invoke-SkillGate.ps1` runs before every file edit, in both Claude and Codex.
+- **What it does:** the first edit per session to a `.ps1`, a skill or `CLAUDE.md`/`AGENTS.md` is
+  denied, with the reason naming the skill to load.
+- **Why:** skill descriptions match the task, not the file, so both skills were skipped in most
+  such sessions.
+
+Codex runs it only once the project's `.codex/` layer is trusted. The script's help covers the
+gaps (shell edits, the `ctx_patch` opt-in).
+
+---
+
 ## Cross-agent review
 
 Separate from the specialised reviewers: a second agent reviews selected artifacts and comments on
