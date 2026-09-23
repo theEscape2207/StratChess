@@ -32,7 +32,12 @@ Read `reference/instruments.md` before the first query: which script answers whi
 where corpora already sit, and the traps that invert a headline. Persist the joined rows in
 `StratChessSupport\` and query them ad hoc — each question needs its own cut.
 
-## 3. One pass, then the checkpoint
+## 3. Pilot, one pass, then the checkpoint
+
+**Pilot on one shard first.** Run the whole pipeline end to end on a single shard: self-checks
+pass, the reference's traps are checked, and the output has the shape that answers the card.
+Repairs happen here, where a re-run costs minutes. Then run the full pass; a long one is fine —
+start it in the background and check in, rather than holding the session open.
 
 Run the cheapest cut that can confirm or kill the card. At its end, list candidate findings:
 
@@ -43,8 +48,9 @@ Run the cheapest cut that can confirm or kill the card. At its end, list candida
   "no engine change". A negative result is a finished analysis.
 
 **Repair, don't refine.** When the instrument gives a *wrong* answer — a failed self-check, a
-selection bias, a trap from the reference — repair it and re-run the same pass; the budget still
-holds. When it gives a correct answer that is not yet a finding, it stays as it is: a tighter error
+selection bias, a trap from the reference — repair it and re-run the same pass, once. A second
+wrong answer from the full pass ends the analysis: report what failed and file the repair as a
+tooling issue. Re-cuts of persisted rows never count against this. When it gives a correct answer that is not yet a finding, it stays as it is: a tighter error
 bar, a statistics layer or a new report does not move the card. A capability it lacks entirely is a
 one-paragraph tooling issue for the owner. A review that shows a statistic is wrong gets a repair;
 a review that asks more of a statistic no finding rests on gets that statistic removed.
@@ -56,7 +62,8 @@ One issue per candidate change, body per `triage-issue` → Make the Why concret
 - the chess statement and the code, `file:line`;
 - reproducing FENs — aim for three; a rare but reproducible defect files with the one it has;
 - the magnitude — how many games or positions of the corpus, and what it costs — labelled
-  measured, bounded or unknown;
+  measured, bounded or unknown, with its population and denominator (which filter, how many rows
+  it kept of how many);
 - the change it points to, and the measurement that would validate it (proposed, never started:
   the budget is the owner's — `measure-strength`);
 - supporting statistics in a collapsed `<details>` block.

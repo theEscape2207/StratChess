@@ -25,9 +25,13 @@ Flags live in each script's `--help`.
 
 ## Traps that invert a headline
 
-- **Contested rows.** Read positions the mover scored within ±150 cp. Unrestricted, already-lost
-  positions dominate: the endgame looks 6× more blunder-prone and king moves look like a third of
-  all blunders.
+- **The contested filter is for blunder rates.** Counting blunders, restrict to positions the mover
+  scored within ±150 cp — unrestricted, already-lost positions dominate: the endgame looks 6× more
+  blunder-prone and king moves look like a third of all blunders. Comparing loss magnitude across
+  classes, or measuring eval error, leave it off: it selects on the engine's own score and keeps
+  94.8% of opening rows against 48.6% of endgame rows, widening the opening–endgame gap from 18.7
+  to 24.0 cp (`Docs/MoveQuality.md` → Tier 2 findings). `measure_eval_error.py` applies none by
+  design.
 - **Self-check first.** `analyze_move_quality.py --self-check` and `--self-test` before trusting a run.
 - **Exclusive bands.** Material-class score bands do not nest; quote the cumulative row.
 - **Horizon before eval.** A comparison at the engine's own depth cannot tell an evaluation that
