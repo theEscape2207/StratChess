@@ -89,9 +89,12 @@ should have to ask for:
 # per-task worktree
 pwsh -ExecutionPolicy Bypass -File <abs>\Scripts\Remove-Worktree.ps1 -Name <task> -SyncMaster [-FromInside]
 
+# Codex-managed worktree (use the registered path shown by Get-Worktrees.ps1)
+pwsh -ExecutionPolicy Bypass -File <abs>\Scripts\Remove-Worktree.ps1 -Path <registered-worktree-path> -SyncMaster
+
 # working in place
 pwsh -ExecutionPolicy Bypass -File <abs>\Scripts\Remove-MergedBranches.ps1 -SyncMaster
 ```
 
-Both verify the merge before deleting. Squash-merges and locked directories need care:
+The cleanup scripts verify the merge before deleting. Squash-merges and locked directories need care:
 `Docs/Workflow.md` → Worktree removal gotchas.

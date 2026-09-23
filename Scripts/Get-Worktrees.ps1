@@ -226,12 +226,20 @@ foreach ($line in (& git -C $MainCheckout worktree list --porcelain)) {
 }
 if ($path) { $entries += [pscustomobject]@{ Path = $path; Branch = $branch; Detached = $detached } }
 
+$wtRoot = Join-Path $MainCheckout '.claude\worktrees'
+$repoLeaf = Split-Path $MainCheckout -Leaf
 foreach ($e in $entries) {
-    $label = Split-Path $e.Path -Leaf
+    $leaf = Split-Path $e.Path -Leaf
+    $parent = Split-Path $e.Path -Parent
+    $mainCheckout = ($e.Path -replace '/', '\') -eq $MainCheckout
+    $claudeLayout = ($parent -replace '/', '\') -eq $wtRoot
+    $codexLayout = -not $mainCheckout -and -not $claudeLayout -and $leaf -eq $repoLeaf
+    $label = if ($codexLayout) { Split-Path $parent -Leaf } else { $leaf }
     $name  = if ($e.Detached) { "(detached HEAD)" } else { $e.Branch }
 
     Write-Host ("-" * 78)
     Write-Host ("{0}" -f $label) -ForegroundColor Cyan
+    Write-Host ("  path   : {0}" -f $e.Path)
     Write-Host ("  branch : {0}" -f $name)
 
     $ref = if ($e.Detached) { (& git -C $e.Path rev-parse HEAD) } else { $e.Branch }
@@ -247,7 +255,7 @@ foreach ($e in $entries) {
 
         if ($ahead -eq 0 -and $behind -gt 0 -and -not $e.Detached -and $e.Branch -ne 'master') {
             Write-Host "  status : fully merged -- safe to remove" -ForegroundColor Green
-            Write-Host ("           Remove-Worktree.ps1 -Name {0} -SyncMaster" -f $label) -ForegroundColor DarkGray
+            Write-Host ("           Remove-Worktree.ps1 -Path `"{0}`" -SyncMaster" -f $e.Path) -ForegroundColor DarkGray
         }
         if ($behind -gt 0 -and $ahead -gt 0) {
             Write-Host "  status : BEHIND main -- merge origin/main before doing more work" -ForegroundColor Yellow
@@ -278,7 +286,6 @@ Write-Host ("-" * 78)
 # deletes the files but cannot rmdir a folder another process holds open -- and older
 # removals dropped the registration while leaving a full source tree behind. Both leave
 # residue that no cleanup path can see, so scan the folder itself.
-$wtRoot = Join-Path $MainCheckout '.claude\worktrees'
 if (Test-Path $wtRoot) {
     $registered = @($entries | ForEach-Object { ($_.Path -replace '/', '\').TrimEnd('\') })
     $orphans = @(
