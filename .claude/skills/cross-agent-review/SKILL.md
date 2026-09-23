@@ -36,10 +36,20 @@ Either way, the artifact's author edits the artifact; the reviewer edits only th
 2. Look for **provenance** (a number nobody measured, a default that has since changed) and **logical
    form** (a dichotomy that does not hold, a gate that cannot fail). Also look for **proportion**: a
    plan heavier than its diff, or a check that is true by construction.
-3. Write the review: a header (reviewer model, date, reviewed revision, baseline commit, scope), one line naming what
-   you verified as correct, then numbered findings under the three ranks. Each finding cites
-   `file:line` evidence and proposes a concrete change.
-4. Report to the user: the review's path or comment URL, and the count per rank.
+3. **On a pushed PR**, the author's `code-review` has already checked the diff against the standards
+   and the spec; its Review line says so. Audit its claims with four questions instead:
+   - **Dispositions:** does each rejection on the Review line hold, and does each `filed #n` exist?
+   - **Drift:** does the diff match the approved design, or does the PR body's Notes name every
+     change? A plan deleted after Harvest is in the branch's history (skill `open-pull-request` step
+     1).
+   - **Evidence:** does the Test plan or Measurement line prove what the PR claims, or can a check
+     not fail?
+   - **Removed behaviour:** what did the diff delete (a recovery path, a guard, a message), and does
+     anything still need it?
+4. Write the review: a header (reviewer model, date, reviewed revision, baseline commit, scope), one
+   line naming what you verified as correct, then numbered findings under the three ranks. Each
+   finding cites `file:line` evidence and proposes a concrete change.
+5. Report to the user: the review's path or comment URL, and the count per rank.
 
 **No clean merge verdict on a PR that still carries a plan at the top level of `.claude/plans/`**
 (other than `TEMPLATE.md`). Review happens with the plan in the PR, so its deletion — or move to

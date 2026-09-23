@@ -140,13 +140,14 @@ the PR or issue before merge. The user routes it, so a pushed PR is *awaiting re
 plans, and documents making provenance claims — these are where a bad premise is expensive and
 invisible to CI. Aim it hardest at the design doc's "assumptions I cannot verify from the code"
 section. **Skip** mechanical changes where CI is the real gate, and artifacts that have already
-converged.
+converged. **A PR** goes only when it has a design doc or changes the engine binary: the author's
+`code-review` already covers its diff, so the round audits that review's claims instead.
 
-**Division of labour.** `eval-reviewer` / `search-reviewer` review the **diff**; the cross-agent
-reviewer reviews the **design doc**. Putting both on one artifact is where cost blows up for little
-added signal. That split leaves a seam — nobody checks the diff still matches the design — which is
-why CLAUDE.md requires the PR body to state which approved decisions changed during implementation.
-The Harvest table is the natural place to notice it.
+**Division of labour.** `code-review`, `eval-reviewer` and `search-reviewer` review the **diff**;
+the cross-agent reviewer reviews the **design doc**, and on a PR whether the diff still matches it.
+Putting both on one artifact is where cost blows up for little added signal. That is why the PR body
+states which approved decisions changed during implementation, and the Harvest table is the natural
+place to notice them.
 
 **How to run a round** — the `*.review.md` channel, ranks, dispositions, lifecycle — is skill
 `cross-agent-review`, so a fresh reviewer session loads it by trigger rather than by finding this
