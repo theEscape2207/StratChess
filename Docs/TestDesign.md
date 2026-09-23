@@ -806,6 +806,32 @@ When a bug is found and fixed:
 
 ---
 
+## Testing and debugging traps
+
+The general method is mattpocock's `tdd` and `diagnosing-bugs` skills; these are the places it goes
+wrong here.
+
+- **Watch the new test fail.** Revert the fix, rebuild, and see it go red before claiming it guards
+  anything. Mutate a real condition — `/W4 /WX` rejects `if (false)` around a block. A test that
+  enters below the code under test (a fixture passing the value in by hand) passes against the
+  broken code too; enter through the production path.
+- **Release hides out-of-bounds reads.** `std::countr_zero(0)` returns 64 and indexes past the
+  array without a sound. For a change to indexing, bitboard→square conversion or a documented
+  precondition, run the affected tags from `.\build.ps1 tests -Config Debug` before pushing.
+- **Every entry point.** The engine has seven `main()` branches; every automated check drives only
+  UCI, and Catch2 never calls `main()`. After a change to startup, configuration or argument parsing,
+  launch `game`, `perft`, `tactical`, `eval` and `test-fen` once each.
+- **Horizon before eval.** A wrong move at game depth may be a refutation beyond the horizon.
+  Re-search at depth + 6 before blaming evaluation.
+- **An independent oracle for legality.** Perft for move generation (`Run-PerftCheck.ps1`), and
+  python-chess for FEN and move legality.
+- **Split before attributing.** Split a counter by cause before explaining its rise, and move one
+  variable per experiment.
+- **`run-tests` builds only the test binary.** A stale engine gets a warning, not a rebuild; build
+  `main` before a UCI-level reproduction.
+
+---
+
 ## Writing tests — mechanics
 
 ### Running the suite
