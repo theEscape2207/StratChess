@@ -59,6 +59,9 @@
     via -C, so this is safe -- only the final directory deletion is skipped, same
     as the existing Trap 5 handling for a locked directory.
 
+.PARAMETER SelfTest
+    Run resolver cases and local Git fixture cleanups, then exit.
+
 .WHEN TO USE
     After a PR merges. Equivalent to the `commit-commands:clean_gone` skill for a single
     known worktree.
@@ -252,6 +255,8 @@ if ($SelfTest) {
             if ($LASTEXITCODE -ne 0) { throw "Could not create $layout bare origin." }
             & git init -b main $fixtureMain | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "Could not create $layout main checkout." }
+            $otherRepo = Join-Path $fixtureRoot 'other'
+            & git init -b main $otherRepo | Out-Null
             & git -C $fixtureMain config user.name 'Fixture User' | Out-Null
             & git -C $fixtureMain config user.email 'fixture@example.invalid' | Out-Null
             Set-Content -LiteralPath (Join-Path $fixtureMain 'fixture.txt') -Value 'initial'
@@ -259,6 +264,15 @@ if ($SelfTest) {
             & git -C $fixtureMain commit -m initial | Out-Null
             & git -C $fixtureMain remote add origin $originPath | Out-Null
             & git -C $fixtureMain push -u origin main | Out-Null
+            Push-Location $fixtureMain
+            try {
+                $otherResult = @(& pwsh -ExecutionPolicy Bypass -File $PSCommandPath -Path $otherRepo 2>&1)
+                if ($LASTEXITCODE -eq 0 -or ($otherResult -join ' ') -notlike '*belongs to another repository*') {
+                    throw "$layout other-repository path was not diagnosed."
+                }
+            } finally {
+                Pop-Location
+            }
             & git -C $fixtureMain worktree add -b codex/foo $worktreePath main | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "Could not create $layout worktree." }
             Set-Content -LiteralPath (Join-Path $worktreePath 'fixture.txt') -Value 'merged'
@@ -266,6 +280,8 @@ if ($SelfTest) {
             & git -C $worktreePath commit -m merged | Out-Null
             Push-Location $fixtureMain
             try {
+                & pwsh -ExecutionPolicy Bypass -File $PSCommandPath -Name foo -Branch other 2>&1 | Out-Null
+                if ($LASTEXITCODE -eq 0) { throw "$layout conflicting branch was accepted." }
                 & pwsh -ExecutionPolicy Bypass -File $PSCommandPath -Name foo 2>&1 | Out-Null
                 if ($LASTEXITCODE -eq 0) { throw "$layout unmerged worktree was removed." }
             } finally {
