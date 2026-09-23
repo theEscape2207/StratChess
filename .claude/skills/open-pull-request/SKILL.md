@@ -32,7 +32,9 @@ Every finding is fixed, rejected with a reason, or filed as an issue. Each nearb
 - **The change makes it worse** (copies the duplication, extends the workaround): a finding against
   this PR.
 - **Otherwise**, if you would accept a PR to fix it, file a new issue: search open issues first
-  (`gh issue list --search`), label `needs-triage`, and give `file:line` and this PR in the body.
+  (`gh issue list --search`), and give `file:line` and this PR in the body. Label it `needs-triage`
+  plus `Cleanup` (stale or dead code) or `category:refactor` (duplication), and `priority:low`
+  unless it risks a wrong result.
   Drop anything smaller. Never fix it in this PR.
 
 ### Specialised reviewers
