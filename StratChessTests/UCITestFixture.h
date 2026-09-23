@@ -1,6 +1,7 @@
 // UCITestFixture.h — shared test infrastructure for the UCI test files (UCITests.cpp,
-// UCIReportingTests.cpp): the STRAT_ENABLE_TEST_ACCESS fixture, stdout/stdin capture, and the
-// perft divide-line parser used as a board-state oracle by tests outside cmd_perft itself.
+// UCIReportingTests.cpp): the STRAT_ENABLE_TEST_ACCESS fixture, its injected-writer output
+// capture, and the perft divide-line parser used as a board-state oracle by tests outside
+// cmd_perft itself.
 
 #pragma once
 
@@ -12,7 +13,6 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
-#include <iostream>
 #include <iterator>
 #include <mutex>
 #include <regex>
@@ -21,6 +21,82 @@
 #include <string_view>
 #include <utility>
 #include <vector>
+
+// Thread-safe capture of everything written through an injected UciWriter; reading it never
+// touches std::cout. The writer's sink holds a shared_ptr to it, so it lives as long as the writer.
+class CaptureSink {
+  public:
+	// Line and newline land as two separate writes, as they do on std::cout, so an unserialised
+	// writer can tear lines here just as it would on stdout.
+	void append(std::string_view line)
+	{
+		{
+			std::scoped_lock lock(mutex_);
+			text_ += line;
+		}
+		{
+			std::scoped_lock lock(mutex_);
+			text_ += '\n';
+		}
+		cv_.notify_all();
+	}
+
+	// Blocks until the captured text contains `needle`, or the timeout elapses.
+	bool wait_for(std::string_view needle, std::chrono::milliseconds timeout) const
+	{
+		std::unique_lock lock(mutex_);
+		return cv_.wait_for(lock, timeout, [&] { return text_.find(needle) != std::string::npos; });
+	}
+
+	// Every line captured so far, in emission order, without newlines.
+	std::vector<std::string> lines() const
+	{
+		std::vector<std::string> out;
+		std::istringstream iss{str()};
+		for (std::string line; std::getline(iss, line);)
+			out.push_back(line);
+		return out;
+	}
+
+	// The captured text exactly as std::cout would have carried it.
+	std::string str() const
+	{
+		std::scoped_lock lock(mutex_);
+		return text_;
+	}
+
+	// A position in the captured text; str_since() reads back exactly what one action printed.
+	size_t mark() const
+	{
+		std::scoped_lock lock(mutex_);
+		return text_.size();
+	}
+	std::string str_since(size_t mark) const
+	{
+		std::scoped_lock lock(mutex_);
+		return text_.substr(mark);
+	}
+
+  private:
+	mutable std::mutex mutex_;
+	mutable std::condition_variable cv_;
+	std::string text_;
+};
+
+// A UciWriter that appends to a CaptureSink instead of writing std::cout, plus a handle to that
+// sink for the test to read. `sink` outlives `writer`'s destruction (it is a separate shared_ptr),
+// so a test can inspect the last captured lines after destroying the writer/handler.
+struct CaptureWriter {
+	std::shared_ptr<UciWriter> writer;
+	std::shared_ptr<CaptureSink> sink;
+};
+
+inline CaptureWriter make_capture_writer()
+{
+	auto sink = std::make_shared<CaptureSink>();
+	auto writer = std::make_shared<UciWriter>([sink](std::string_view line) { sink->append(line); });
+	return {std::move(writer), std::move(sink)};
+}
 
 // Must be defined here — the name must match the friend declaration inside
 // UCIHandler.h: friend class UciHandlerTestFixture;
@@ -35,9 +111,11 @@ class UciHandlerTestFixture {
 		return config;
 	}
 
-	UciHandlerTestFixture() : handler(small_hash_config()) {}
-	explicit UciHandlerTestFixture(const AIPerplexConfig& config) : handler(config) {}
-	// Injects a writer (see make_capture_writer) in place of the default stdout one.
+	UciHandlerTestFixture() : UciHandlerTestFixture(small_hash_config()) {}
+	explicit UciHandlerTestFixture(const AIPerplexConfig& config) : UciHandlerTestFixture(config, make_capture_writer())
+	{}
+	// Injects a writer (see make_capture_writer) in place of the fixture's own default capture
+	// writer -- for the [writer] tests, which manage the sink themselves outside the fixture.
 	UciHandlerTestFixture(const AIPerplexConfig& config, std::shared_ptr<UciWriter> writer)
 	    : handler(config, std::move(writer))
 	{}
@@ -55,8 +133,8 @@ class UciHandlerTestFixture {
 	void uci() { handler.cmd_uci(); }
 	void eval() { handler.cmd_eval(); }
 
-	// A real infinite search on the handler's board that prints nothing, so a test can capture a
-	// refusal exactly and never swaps std::cout's buffer under a writing thread. stop() ends it.
+	// A real infinite search on the handler's board with no observer wired, so it prints nothing
+	// and a test can capture a refusal's output exactly. stop() ends it.
 	void start_silent_search()
 	{
 		SearchLimits limits = SearchLimits::infinite_search();
@@ -121,7 +199,7 @@ class UciHandlerTestFixture {
 	}
 
 	// cmd_go() returns as soon as the search is launched, so a test waits for the launch thread
-	// (and its output) before inspecting captured cout. Wait(), not StopAndWait(): these searches
+	// (and its output) before inspecting captured output. Wait(), not StopAndWait(): these searches
 	// are fixed-depth and expected to finish on their own.
 	void join_search() { handler.ai_->Wait(); }
 
@@ -131,61 +209,39 @@ class UciHandlerTestFixture {
 	{
 		return handler.ai_->Search(handler.board_, SearchLimits::fixed_depth(depth));
 	}
-};
 
-// Thread-safe line log behind an injected UciWriter; reading it never touches std::cout. The
-// writer's sink holds a shared_ptr to it, so it lives as long as the writer does.
-class CaptureSink {
-  public:
-	void append(std::string_view line)
+	// Everything the handler has printed since construction. A fixture built with its own injected
+	// writer has no capture of its own; its test reads the sink it injected.
+	std::string output() const { return captured().str(); }
+
+	// Blocks until output() contains `needle`, or the timeout elapses.
+	bool wait_for_output(std::string_view needle, std::chrono::milliseconds timeout) const
 	{
-		{
-			std::scoped_lock lock(mutex_);
-			lines_.emplace_back(line);
-		}
-		cv_.notify_all();
+		return captured().wait_for(needle, timeout);
 	}
 
-	// Blocks until some captured line contains `needle`, or the timeout elapses.
-	bool wait_for_line(std::string_view needle, std::chrono::milliseconds timeout) const
+	// Runs `action` and returns exactly what it printed, isolated from anything captured before or
+	// after it.
+	template <typename F> std::string capture(F&& action)
 	{
-		std::unique_lock lock(mutex_);
-		return cv_.wait_for(lock, timeout, [&] {
-			for (const std::string& line : lines_) {
-				if (line.find(needle) != std::string::npos)
-					return true;
-			}
-			return false;
-		});
-	}
-
-	// Snapshot of every line captured so far, in emission order.
-	std::vector<std::string> lines() const
-	{
-		std::scoped_lock lock(mutex_);
-		return lines_;
+		const size_t mark = captured().mark();
+		std::forward<F>(action)();
+		return captured().str_since(mark);
 	}
 
   private:
-	mutable std::mutex mutex_;
-	mutable std::condition_variable cv_;
-	std::vector<std::string> lines_;
-};
+	UciHandlerTestFixture(const AIPerplexConfig& config, CaptureWriter cw)
+	    : handler(config, std::move(cw.writer)), output_(std::move(cw.sink))
+	{}
 
-// A UciWriter that appends to a CaptureSink instead of writing std::cout, plus a handle to that
-// sink for the test to read. `sink` outlives `writer`'s destruction (it is a separate shared_ptr),
-// so a test can inspect the last captured lines after destroying the writer/handler.
-struct CaptureWriter {
-	std::shared_ptr<UciWriter> writer;
-	std::shared_ptr<CaptureSink> sink;
-};
+	const CaptureSink& captured() const
+	{
+		REQUIRE(output_ != nullptr);
+		return *output_;
+	}
 
-inline CaptureWriter make_capture_writer()
-{
-	auto sink = std::make_shared<CaptureSink>();
-	auto writer = std::make_shared<UciWriter>([sink](std::string_view line) { sink->append(line); });
-	return {std::move(writer), std::move(sink)};
-}
+	std::shared_ptr<CaptureSink> output_;
+};
 
 // Builds a legal UCI move sequence of at least `min_plies` plies from the
 // starting position: knight shuffles (Ng1-f3-g1 / Ng8-f6-g8) with a
@@ -214,91 +270,6 @@ inline std::string long_game_moves(int min_plies)
 	}
 	moves.pop_back(); // trailing space
 	return moves;
-}
-
-// Redirects std::cout into an in-memory buffer for the lifetime of the
-// object; restores the original streambuf on destruction (including when
-// unwinding past a failed REQUIRE), so a single assertion failure can never
-// leave std::cout silently rewired for the rest of the test binary.
-class SynchronizedStringBuf final : public std::streambuf {
-  public:
-	std::string str() const
-	{
-		std::scoped_lock lock(mutex_);
-		return contents_;
-	}
-
-	bool wait_for(std::string_view needle, std::chrono::milliseconds timeout) const
-	{
-		std::unique_lock lock(mutex_);
-		return output_ready_.wait_for(lock, timeout, [&] { return contents_.find(needle) != std::string::npos; });
-	}
-
-  protected:
-	std::streamsize xsputn(const char* text, std::streamsize count) override
-	{
-		{
-			std::scoped_lock lock(mutex_);
-			contents_.append(text, static_cast<std::size_t>(count));
-		}
-		output_ready_.notify_all();
-		return count;
-	}
-
-	int_type overflow(int_type character) override
-	{
-		if (traits_type::eq_int_type(character, traits_type::eof()))
-			return traits_type::not_eof(character);
-		{
-			std::scoped_lock lock(mutex_);
-			contents_.push_back(traits_type::to_char_type(character));
-		}
-		output_ready_.notify_all();
-		return character;
-	}
-
-  private:
-	mutable std::mutex mutex_;
-	mutable std::condition_variable output_ready_;
-	std::string contents_;
-};
-
-class CoutRedirect {
-  public:
-	CoutRedirect() : old_(std::cout.rdbuf(&buffer_)) {}
-	~CoutRedirect()
-	{
-		try {
-			std::cout.rdbuf(old_);
-		} catch (...) { // NOLINT(bugprone-empty-catch) - restoring cout in a destructor
-		}
-	}
-
-	CoutRedirect(const CoutRedirect&) = delete;
-	CoutRedirect& operator=(const CoutRedirect&) = delete;
-
-	std::string str() const { return buffer_.str(); }
-	bool wait_for(std::string_view needle, std::chrono::milliseconds timeout) const
-	{
-		return buffer_.wait_for(needle, timeout);
-	}
-
-  private:
-	SynchronizedStringBuf buffer_;
-	std::streambuf* old_;
-};
-
-// Runs `action` with std::cout captured and returns what it printed.
-//
-// A named helper rather than a brace scope around a CoutRedirect: the capture
-// covers exactly one call, and the result is an expression rather than an
-// out-of-scope variable assigned inside braces. Tests that capture a whole
-// function body keep using CoutRedirect directly, which is equally fine.
-template <typename F> static std::string capture_cout(F&& action)
-{
-	CoutRedirect redirect;
-	std::forward<F>(action)();
-	return redirect.str();
 }
 
 // The divide-line wire format external harnesses parse:

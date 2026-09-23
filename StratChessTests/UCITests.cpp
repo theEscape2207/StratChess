@@ -291,7 +291,7 @@ TEST_CASE("cmd_ucinewgame: a TT entry does not survive into the next game", "[uc
 TEST_CASE("cmd_uci: advertises the Hash default and policy bounds", "[uci][tt]")
 {
 	UciHandlerTestFixture fix;
-	const std::string output = capture_cout([&] { fix.uci(); });
+	const std::string output = fix.capture([&] { fix.uci(); });
 
 	REQUIRE(output.find("option name Hash type spin default 192 min 1 max 1536\n") != std::string::npos);
 }
@@ -313,7 +313,7 @@ TEST_CASE("cmd_setoption: Hash replaces and reports the live table, then survive
 	const void* original = fix.tt_identity();
 	fix.store_tt_marker();
 
-	const std::string output = capture_cout([&] { fix.setoption("setoption name Hash value 6"); });
+	const std::string output = fix.capture([&] { fix.setoption("setoption name Hash value 6"); });
 
 	REQUIRE(output == "info string hash 4 MiB (65536 buckets)\n");
 	REQUIRE(fix.tt_identity() != original);
@@ -334,13 +334,13 @@ TEST_CASE("cmd_setoption: Hash reports round-down and the clamped minimum", "[uc
 	UciHandlerTestFixture fix;
 	fix.ucinewgame();
 
-	const std::string rounded = capture_cout([&] { fix.setoption("setoption name Hash value 5"); });
+	const std::string rounded = fix.capture([&] { fix.setoption("setoption name Hash value 5"); });
 	REQUIRE(rounded == "info string hash 4 MiB (65536 buckets)\n");
 	REQUIRE(fix.ai_hash_requested_mb() == 5);
 	REQUIRE(fix.ai_hash_memory_mb() == 4);
 	REQUIRE(fix.ai_hash_bucket_count() == 65536u);
 
-	const std::string minimum = capture_cout([&] { fix.setoption("setoption name Hash value 0"); });
+	const std::string minimum = fix.capture([&] { fix.setoption("setoption name Hash value 0"); });
 	REQUIRE(minimum == "info string hash 1 MiB (16384 buckets)\n");
 	REQUIRE(fix.ai_hash_requested_mb() == 1);
 	REQUIRE(fix.ai_hash_memory_mb() == 1);
@@ -353,7 +353,7 @@ TEST_CASE("cmd_setoption: malformed Hash leaves the live table unchanged", "[uci
 	fix.ucinewgame();
 	const void* original = fix.tt_identity();
 
-	const std::string output = capture_cout([&] { fix.setoption("setoption name Hash value nope"); });
+	const std::string output = fix.capture([&] { fix.setoption("setoption name Hash value nope"); });
 
 	REQUIRE(output.empty());
 	REQUIRE(fix.tt_identity() == original);
@@ -363,11 +363,11 @@ TEST_CASE("cmd_setoption: Hash replacement is refused while a search is running"
 {
 	UciHandlerTestFixture fix;
 	fix.ucinewgame();
-	capture_cout([&] { fix.setoption("setoption name Hash value 6"); });
+	fix.setoption("setoption name Hash value 6");
 	const void* configured = fix.tt_identity();
 
 	fix.start_silent_search();
-	const std::string output = capture_cout([&] { fix.setoption("setoption name Hash value 12"); });
+	const std::string output = fix.capture([&] { fix.setoption("setoption name Hash value 12"); });
 	fix.stop();
 
 	REQUIRE(output == "info string setoption: ignored, a search is in progress -- send 'stop' first\n");
@@ -407,7 +407,7 @@ TEST_CASE("cmd_position: malformed FEN resets to the start position and reports 
 	REQUIRE(fx.board().GetPiece(e4) == WHITE_PAWN);
 	REQUIRE(fx.board().GetCurrentColor() == BLACK);
 
-	const std::string output = capture_cout([&] { fx.position("position fen this-is-not-a-fen"); });
+	const std::string output = fx.capture([&] { fx.position("position fen this-is-not-a-fen"); });
 
 	// The e2e4 position is gone: keeping it would make the engine answer for a
 	// position the caller never sent, and the answer would depend on session
@@ -429,7 +429,7 @@ TEST_CASE("cmd_position: FEN missing the side-to-move field is declined", "[uci]
 
 	const std::string before = fx.board().ExtractFEN();
 
-	capture_cout([&] { fx.position("position fen 6k1/5ppp/8/8/8/8/5PPP/R5K1"); });
+	fx.position("position fen 6k1/5ppp/8/8/8/8/5PPP/R5K1");
 
 	CHECK(fx.board().ExtractFEN() == before);
 	CHECK(fx.board().GetCurrentColor() == WHITE);
@@ -444,7 +444,7 @@ TEST_CASE("cmd_position: malformed FEN does not replay its move list", "[uci]")
 
 	const std::string before = fx.board().ExtractFEN();
 
-	capture_cout([&] { fx.position("position fen 6k1/5ppp/8/8/8/8/5PPP/R5K1 moves e2e4 e7e5"); });
+	fx.position("position fen 6k1/5ppp/8/8/8/8/5PPP/R5K1 moves e2e4 e7e5");
 
 	CHECK(fx.board().ExtractFEN() == before);
 	CHECK(fx.board().GetPiece(e2) == WHITE_PAWN);
@@ -454,7 +454,7 @@ TEST_CASE("cmd_position: malformed FEN does not replay its move list", "[uci]")
 TEST_CASE("cmd_position: an illegal move rejects the entire replay", "[uci]")
 {
 	UciHandlerTestFixture fx;
-	const std::string output = capture_cout([&] { fx.position("position startpos moves e2e4 e7e8"); });
+	const std::string output = fx.capture([&] { fx.position("position startpos moves e2e4 e7e8"); });
 
 	// e7e8 is coordinate-shaped but illegal: it targets Black's own king. The valid
 	// prefix must not remain applied when a later token invalidates the whole replay.
@@ -470,7 +470,7 @@ TEST_CASE("cmd_position: an oversized move token rejects the entire replay", "[u
 	UciHandlerTestFixture fx;
 	// "e2e4xx" is a well-formed 4-char prefix with trailing garbage — FromUCI must
 	// reject the whole token rather than silently parsing just the prefix.
-	const std::string output = capture_cout([&] { fx.position("position startpos moves e2e4xx"); });
+	const std::string output = fx.capture([&] { fx.position("position startpos moves e2e4xx"); });
 
 	CHECK(output.find("illegal move 'e2e4xx'") != std::string::npos);
 	CHECK(fx.board().GetPiece(e2) == WHITE_PAWN);
@@ -481,7 +481,7 @@ TEST_CASE("cmd_position: legal promotion replay preserves the requested piece", 
 {
 	UciHandlerTestFixture fx;
 	const std::string output =
-	    capture_cout([&] { fx.position("position fen 4k3/1P6/8/8/8/8/8/4K3 w - - 0 1 moves b7b8n"); });
+	    fx.capture([&] { fx.position("position fen 4k3/1P6/8/8/8/8/8/4K3 w - - 0 1 moves b7b8n"); });
 
 	CHECK(output.find("illegal move") == std::string::npos);
 	CHECK(fx.board().GetPiece(b7) == NO_PIECE);
@@ -497,7 +497,7 @@ TEST_CASE("cmd_position: a move list longer than MAX_UCI_REPLAY_PLIES is refused
 	UciHandlerTestFixture fx;
 
 	const std::string tooLong = long_game_moves(static_cast<int>(MAX_UCI_REPLAY_PLIES) + 4);
-	const std::string output = capture_cout([&] { fx.position("position startpos moves " + tooLong); });
+	const std::string output = fx.capture([&] { fx.position("position startpos moves " + tooLong); });
 
 	CHECK(output.find("move list too long") != std::string::npos);
 	CHECK(fx.board().GetPiece(e2) == WHITE_PAWN);
@@ -511,7 +511,7 @@ TEST_CASE("cmd_position: a move list longer than MAX_UCI_REPLAY_PLIES is refused
 TEST_CASE("cmd_position: en-passant square on a non-3/6 rank is repaired, not rejected", "[uci]")
 {
 	UciHandlerTestFixture fx;
-	const std::string output = capture_cout([&] { fx.position("position fen 4k3/8/8/8/8/8/8/4K3 w - d5 0 1"); });
+	const std::string output = fx.capture([&] { fx.position("position fen 4k3/8/8/8/8/8/8/4K3 w - d5 0 1"); });
 
 	CHECK(fx.board().GetPiece(e1) == WHITE_KING);
 	CHECK(fx.board().GetPiece(e8) == BLACK_KING);
@@ -526,7 +526,7 @@ TEST_CASE("cmd_position: en-passant square on a non-3/6 rank is repaired, not re
 TEST_CASE("cmd_position: en-passant square inconsistent with side to move is repaired and reported", "[uci]")
 {
 	UciHandlerTestFixture fx;
-	const std::string output = capture_cout([&] { fx.position("position fen 4k3/8/8/8/8/8/8/4K3 w - a3 0 1"); });
+	const std::string output = fx.capture([&] { fx.position("position fen 4k3/8/8/8/8/8/8/4K3 w - a3 0 1"); });
 
 	CHECK(fx.board().ep_square() == NO_SQUARE);
 	CHECK(output.find("rank inconsistent") != std::string::npos);
@@ -536,7 +536,7 @@ TEST_CASE("cmd_position: en-passant square inconsistent with side to move is rep
 TEST_CASE("cmd_position: en-passant square with no pawn to capture is repaired and reported", "[uci]")
 {
 	UciHandlerTestFixture fx;
-	const std::string output = capture_cout([&] { fx.position("position fen 4k3/8/8/8/8/8/8/4K3 b - e3 0 1"); });
+	const std::string output = fx.capture([&] { fx.position("position fen 4k3/8/8/8/8/8/8/4K3 b - e3 0 1"); });
 
 	CHECK(fx.board().ep_square() == NO_SQUARE);
 	CHECK(output.find("no pawn") != std::string::npos);
@@ -547,7 +547,7 @@ TEST_CASE("cmd_position: en-passant square with no pawn to capture is repaired a
 TEST_CASE("cmd_position: a legal en-passant square is preserved, not cleared", "[uci]")
 {
 	UciHandlerTestFixture fx;
-	const std::string output = capture_cout([&] { fx.position("position fen 8/8/8/3Pp3/8/8/8/4K2k w - e6 0 1"); });
+	const std::string output = fx.capture([&] { fx.position("position fen 8/8/8/3Pp3/8/8/8/4K2k w - e6 0 1"); });
 
 	CHECK(fx.board().ep_square() == e6);
 	CHECK(output.find("info string") == std::string::npos);
@@ -564,7 +564,7 @@ TEST_CASE("cmd_position: a legal en-passant square is preserved, not cleared", "
 TEST_CASE("cmd_position: castling repair is reported via UCI (spdlog is off there)", "[uci]")
 {
 	UciHandlerTestFixture fx;
-	const std::string output = capture_cout([&] { fx.position("position fen 4k3/8/8/8/4P3/8/8/3K4 w Q e6 0 1"); });
+	const std::string output = fx.capture([&] { fx.position("position fen 4k3/8/8/8/4P3/8/8/3K4 w Q e6 0 1"); });
 
 	CHECK(fx.board().castling_rights() == CastlingRights::NONE);
 	CHECK(fx.board().ep_square() == NO_SQUARE);
@@ -579,7 +579,7 @@ TEST_CASE("cmd_position: an illegal position is declined", "[uci]")
 
 	const std::string before = fx.board().ExtractFEN();
 
-	capture_cout([&] { fx.position("position fen 4k3/8/8/8/8/5b2/8/4RK2 w - - 0 1"); });
+	fx.position("position fen 4k3/8/8/8/8/5b2/8/4RK2 w - - 0 1");
 
 	CHECK(fx.board().ExtractFEN() == before);
 }
@@ -606,8 +606,8 @@ TEST_CASE("cmd_position: a rejected FEN gives the same board whatever preceded i
 	auto perft_after = [](const std::string& prior) {
 		UciHandlerTestFixture fix;
 		fix.position(prior);
-		capture_cout([&] { fix.position(std::string("position fen ") + kRejectedFen); });
-		return divide_total(capture_cout([&] { fix.perft("perft 1"); }));
+		fix.position(std::string("position fen ") + kRejectedFen);
+		return divide_total(fix.capture([&] { fix.perft("perft 1"); }));
 	};
 
 	const auto after_startpos = perft_after("position startpos");
@@ -622,13 +622,13 @@ TEST_CASE("cmd_position: an unparseable move rejects the entire replay and repor
 {
 	UciHandlerTestFixture fix;
 
-	const std::string output = capture_cout([&] { fix.position("position startpos moves e2e4 zzzz e7e5"); });
+	const std::string output = fix.capture([&] { fix.position("position startpos moves e2e4 zzzz e7e5"); });
 
 	REQUIRE(output.find("info string") != std::string::npos);
 	REQUIRE(output.find("zzzz") != std::string::npos);
 
 	// The valid prefix is not committed when a later token invalidates the replay.
-	REQUIRE(divide_total(capture_cout([&] { fix.perft("perft 1"); })) == 20);
+	REQUIRE(divide_total(fix.capture([&] { fix.perft("perft 1"); })) == 20);
 	REQUIRE(fix.board().GetCurrentColor() == WHITE);
 	REQUIRE(fix.board().GetPiece(e2) == WHITE_PAWN);
 	REQUIRE(fix.board().GetPiece(e4) == NO_PIECE);
@@ -644,7 +644,7 @@ TEST_CASE("cmd_position: refused while a search is running, board untouched", "[
 	fix.position("position startpos");
 
 	fix.start_silent_search();
-	const std::string output = capture_cout([&] { fix.position("position fen 4k3/8/8/8/8/8/8/4K2R w K - 0 1"); });
+	const std::string output = fix.capture([&] { fix.position("position fen 4k3/8/8/8/8/8/8/4K2R w K - 0 1"); });
 	fix.stop();
 
 	REQUIRE(output.find("info string") != std::string::npos);
@@ -652,7 +652,7 @@ TEST_CASE("cmd_position: refused while a search is running, board untouched", "[
 
 	// The refusal must be a refusal: a partially applied position would be
 	// worse than either honouring or rejecting the command outright.
-	REQUIRE(divide_total(capture_cout([&] { fix.perft("perft 1"); })) == 20);
+	REQUIRE(divide_total(fix.capture([&] { fix.perft("perft 1"); })) == 20);
 	REQUIRE(fix.board().GetCurrentColor() == WHITE);
 }
 
@@ -664,7 +664,7 @@ TEST_CASE("cmd_setoption: refused while a search is running", "[uci][smp]")
 	REQUIRE(fix.ai_threads() == 2);
 
 	fix.start_silent_search();
-	const std::string output = capture_cout([&] { fix.setoption("setoption name Threads value 8"); });
+	const std::string output = fix.capture([&] { fix.setoption("setoption name Threads value 8"); });
 	fix.stop();
 
 	REQUIRE(output.find("info string") != std::string::npos);
@@ -677,21 +677,18 @@ TEST_CASE("cmd_setoption: refused while a search is running", "[uci][smp]")
 TEST_CASE("Both commands work normally once the search is over", "[uci]")
 {
 	// Neither stopped nor joined: a client sends 'position' the instant it reads bestmove, while
-	// the launch thread is still joinable, and the guard must already accept it. The
-	// redirect is declared first so the fixture joins the launch thread before cout is restored.
-	CoutRedirect redirect;
+	// the launch thread is still joinable, and the guard must already accept it.
 	UciHandlerTestFixture fix;
 	fix.ucinewgame();
 
 	fix.dispatch("go depth 1");
-	REQUIRE(redirect.wait_for("bestmove", std::chrono::seconds(10)));
+	REQUIRE(fix.wait_for_output("bestmove", std::chrono::seconds(10)));
 
 	fix.position("position startpos moves e2e4");
 	REQUIRE(fix.board().GetCurrentColor() == BLACK);
-	REQUIRE(redirect.str().find("ignored") == std::string::npos);
-	// Joined before the perft capture swaps cout's buffer: send() may still be flushing bestmove.
+	REQUIRE(fix.output().find("ignored") == std::string::npos);
 	fix.join_search();
-	REQUIRE(divide_total(capture_cout([&] { fix.perft("perft 1"); })) == 20);
+	REQUIRE(divide_total(fix.capture([&] { fix.perft("perft 1"); })) == 20);
 
 	fix.setoption("setoption name Threads value 3");
 	REQUIRE(fix.ai_threads() == 3);
@@ -720,7 +717,7 @@ TEST_CASE("dispatch: returns false for quit and true for everything else", "[uci
 {
 	UciHandlerTestFixture fix;
 
-	REQUIRE(capture_cout([&] { REQUIRE(fix.dispatch("isready")); }) == "readyok\n");
+	REQUIRE(fix.capture([&] { REQUIRE(fix.dispatch("isready")); }) == "readyok\n");
 	REQUIRE(fix.dispatch("not a uci command"));
 	REQUIRE(fix.dispatch("position startpos"));
 	REQUIRE_FALSE(fix.dispatch("quit"));
@@ -735,7 +732,7 @@ TEST_CASE("command log: nothing is written unless it is enabled", "[uci]")
 	const auto before = std::filesystem::current_path() / "logs";
 	const bool logs_existed = std::filesystem::exists(before);
 
-	capture_cout([&] { fix.dispatch("isready"); });
+	fix.dispatch("isready");
 
 	if (!logs_existed) {
 		REQUIRE_FALSE(std::filesystem::exists(before));
@@ -750,14 +747,12 @@ TEST_CASE("command log: records every received command, including ignored ones",
 		UciHandlerTestFixture fix;
 		REQUIRE(fix.handler.EnableCommandLog(path.string()));
 
-		capture_cout([&] {
-			fix.dispatch("isready");
-			// Silently ignored by the command loop, and still logged: "the GUI
-			// sent something the engine did not act on" is exactly the question
-			// this answers.
-			fix.dispatch("ponderhit");
-			fix.dispatch("position startpos moves e2e4");
-		});
+		fix.dispatch("isready");
+		// Silently ignored by the command loop, and still logged: "the GUI
+		// sent something the engine did not act on" is exactly the question
+		// this answers.
+		fix.dispatch("ponderhit");
+		fix.dispatch("position startpos moves e2e4");
 	} // handler destroyed -> sink released
 
 	const std::string contents = read_file(path);
@@ -781,11 +776,11 @@ TEST_CASE("command log: two handlers log to their own files", "[uci]")
 	{
 		UciHandlerTestFixture first;
 		REQUIRE(first.handler.EnableCommandLog(first_path.string()));
-		capture_cout([&] { first.dispatch("isready"); });
+		first.dispatch("isready");
 
 		UciHandlerTestFixture second;
 		REQUIRE(second.handler.EnableCommandLog(second_path.string()));
-		capture_cout([&] { second.dispatch("ucinewgame"); });
+		second.dispatch("ucinewgame");
 	}
 
 	const std::string first_contents = read_file(first_path);
@@ -843,7 +838,7 @@ TEST_CASE("DefaultCommandLogPath: carries the process id", "[uci]")
 TEST_CASE("cmd_uci: advertises the tuning options after Hash", "[uci][tuning]")
 {
 	UciHandlerTestFixture fix;
-	const std::string output = capture_cout([&] { fix.uci(); });
+	const std::string output = fix.capture([&] { fix.uci(); });
 
 	const auto hash = output.find("option name Hash ");
 	const auto rfp = output.find("option name ReverseFutility type check default true\n");
@@ -860,14 +855,14 @@ TEST_CASE("cmd_setoption: Contempt applies a positive value and refuses a signed
 {
 	UciHandlerTestFixture fix;
 
-	const std::string applied = capture_cout([&] { fix.setoption("setoption name Contempt value 20"); });
+	const std::string applied = fix.capture([&] { fix.setoption("setoption name Contempt value 20"); });
 	REQUIRE(applied == "info string Contempt 20\n");
 	REQUIRE(fix.ai_tuning().contempt == 20);
 
 	// The engine's UCI parser takes unsigned decimal digits only, so a negative contempt cannot be
 	// set this way at all. Pinned here rather than left to be discovered by a strength-lab run that
 	// would silently measure the default: the domain is [0, 100] for exactly this reason.
-	const std::string refused = capture_cout([&] { fix.setoption("setoption name Contempt value -20"); });
+	const std::string refused = fix.capture([&] { fix.setoption("setoption name Contempt value -20"); });
 	REQUIRE(refused.find("not applied") != std::string::npos);
 	REQUIRE(fix.ai_tuning().contempt == 20);
 }
@@ -878,11 +873,11 @@ TEST_CASE("cmd_setoption: a changed tuning value is applied, reported and clears
 	fix.ucinewgame();
 	fix.store_tt_marker();
 
-	const std::string same = capture_cout([&] { fix.setoption("setoption name ReverseFutilityMargin value 100"); });
+	const std::string same = fix.capture([&] { fix.setoption("setoption name ReverseFutilityMargin value 100"); });
 	REQUIRE(same == "info string ReverseFutilityMargin 100\n");
 	REQUIRE(fix.has_tt_marker());
 
-	const std::string changed = capture_cout([&] { fix.setoption("setoption name ReverseFutilityMargin value 150"); });
+	const std::string changed = fix.capture([&] { fix.setoption("setoption name ReverseFutilityMargin value 150"); });
 	REQUIRE(changed == "info string ReverseFutilityMargin 150\n");
 	REQUIRE(fix.ai_tuning().reverse_futility_margin == 150);
 	REQUIRE_FALSE(fix.has_tt_marker());
@@ -897,7 +892,7 @@ TEST_CASE("cmd_setoption: an invalid tuning value is reported and changes nothin
 	for (const char* line :
 	     {"setoption name ReverseFutilityMargin value 1001", "setoption name ReverseFutilityMargin value 12x",
 	      "setoption name LateMovePruning value 1", "setoption name LateMovePruning"}) {
-		const std::string output = capture_cout([&] { fix.setoption(line); });
+		const std::string output = fix.capture([&] { fix.setoption(line); });
 		CAPTURE(line);
 		REQUIRE(output.starts_with("info string "));
 		REQUIRE(output.find(" not applied: ") != std::string::npos);
@@ -910,7 +905,7 @@ TEST_CASE("cmd_setoption: an unknown option stays silent", "[uci][tuning]")
 {
 	UciHandlerTestFixture fix;
 	fix.ucinewgame();
-	const std::string output = capture_cout([&] { fix.setoption("setoption name reversefutility value false"); });
+	const std::string output = fix.capture([&] { fix.setoption("setoption name reversefutility value false"); });
 	REQUIRE(output.empty());
 	REQUIRE(fix.ai_tuning() == SearchTuning{});
 }
@@ -919,7 +914,7 @@ TEST_CASE("cmd_setoption: the echo shows the value as applied, tabs trimmed", "[
 {
 	UciHandlerTestFixture fix;
 	fix.ucinewgame();
-	const std::string output = capture_cout([&] { fix.setoption("setoption name LateMovePruning value \tfalse\t"); });
+	const std::string output = fix.capture([&] { fix.setoption("setoption name LateMovePruning value \tfalse\t"); });
 	REQUIRE(output == "info string LateMovePruning false\n");
 	REQUIRE_FALSE(fix.ai_tuning().late_move_pruning_enabled);
 }
@@ -930,7 +925,7 @@ TEST_CASE("cmd_setoption: tuning is refused while a search is running", "[uci][t
 	fix.ucinewgame();
 
 	fix.start_silent_search();
-	const std::string output = capture_cout([&] { fix.setoption("setoption name LateMovePruning value false"); });
+	const std::string output = fix.capture([&] { fix.setoption("setoption name LateMovePruning value false"); });
 	fix.stop();
 
 	REQUIRE(output == "info string setoption: ignored, a search is in progress -- send 'stop' first\n");
@@ -940,7 +935,7 @@ TEST_CASE("cmd_setoption: tuning is refused while a search is running", "[uci][t
 TEST_CASE("cmd_setoption: tuning survives cmd_ucinewgame()", "[uci][tuning]")
 {
 	UciHandlerTestFixture fix;
-	capture_cout([&] { fix.setoption("setoption name FrontierFutilityMargin value 250"); });
+	fix.setoption("setoption name FrontierFutilityMargin value 250");
 
 	fix.ucinewgame();
 
@@ -953,9 +948,9 @@ TEST_CASE("cmd_setoption: SingularExtensions toggles both ways where compiled in
 	fix.ucinewgame();
 	REQUIRE_FALSE(fix.ai_tuning().singular_extensions_enabled);
 
-	capture_cout([&] { fix.setoption("setoption name SingularExtensions value true"); });
+	fix.setoption("setoption name SingularExtensions value true");
 	REQUIRE(fix.ai_tuning().singular_extensions_enabled);
-	capture_cout([&] { fix.setoption("setoption name SingularExtensions value false"); });
+	fix.setoption("setoption name SingularExtensions value false");
 	REQUIRE_FALSE(fix.ai_tuning().singular_extensions_enabled);
 }
 
@@ -987,10 +982,8 @@ TEST_CASE("cmd_setoption: the next search reads the tuning on every thread", "[u
 	REQUIRE(pruned.telemetry.lmp.skips > 0);
 	REQUIRE(pruned.telemetry.frontier.skips > 0);
 
-	capture_cout([&] {
-		fix.setoption("setoption name LateMovePruning value false");
-		fix.setoption("setoption name FrontierFutility value false");
-	});
+	fix.setoption("setoption name LateMovePruning value false");
+	fix.setoption("setoption name FrontierFutility value false");
 	const SearchResult unpruned = fix.run_search_directly(6);
 	REQUIRE(unpruned.telemetry.lmp.skips == 0);
 	REQUIRE(unpruned.telemetry.frontier.skips == 0);

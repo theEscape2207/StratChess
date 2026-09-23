@@ -544,11 +544,17 @@ attack bitboard is correct in isolation.
 **Files**: `StratChessTests/UCITests.cpp` (session/administrative commands: `parse_go`,
 `cmd_position`, `cmd_setoption`, `cmd_ucinewgame`, `dispatch`, the command log) and
 `StratChessTests/UCIReportingTests.cpp` (commands that run search and report on it: `cmd_go`,
-`cmd_eval`, `cmd_perft`). Shared infrastructure (`UciHandlerTestFixture`, stdout/stdin capture,
-the perft divide-line parser) lives in `StratChessTests/UCITestFixture.h`, included by both.
+`cmd_eval`, `cmd_perft`). Shared infrastructure (`UciHandlerTestFixture`, its injected-writer
+output capture, the perft divide-line parser) lives in `StratChessTests/UCITestFixture.h`,
+included by both.
 **Access**: `UciHandlerTestFixture` (`STRAT_ENABLE_TEST_ACCESS`) drives private command
 handlers (`cmd_position`, `cmd_setoption`, `cmd_ucinewgame`, `cmd_eval`) directly, without a
 running `run()` loop or piped stdin.
+
+A test reads UCI output through the fixture's `output()`/`capture()`, backed by a `UciWriter`
+injected at construction, never by redirecting `std::cout`: a search runs on its own thread, and
+swapping `std::cout`'s buffer while that thread is still writing to it is a data race. `CinRedirect`
+(stdin) is unaffected and stays local to `UCIReportingTests.cpp`.
 
 Covers `parse_go()` parameter parsing, `cmd_position` move replay (including the MAX_PLY
 overflow regression), `cmd_setoption`'s Threads persistence across `ucinewgame`, Hash option
@@ -562,9 +568,9 @@ there is no stored observer or last-result channel. The `eval` cases assert that
 breakdown sums to the same evaluator result, independently of the search service.
 
 Also covers the mid-search refusal: `position` and `setoption` are rejected while a search
-runs. The refusal cases start a real infinite search that prints nothing
-(`start_silent_search()`), so the refusal is captured exactly and `std::cout` is never redirected
-under a writing thread. One case pins the #245 ordering end to end: after `go depth 1` it waits for
+runs. The refusal cases start a real infinite search with no observer wired
+(`start_silent_search()`), so it prints nothing and the refusal's output can be captured exactly.
+One case pins the #245 ordering end to end: after `go depth 1` it waits for
 `bestmove` with no `stop` and no join, and the next `position` must be accepted. The service-level
 counterparts in `SearchServiceTests.cpp` pin `IsSearching()` false inside the completion handler,
 and a `Stop()` delivered before the launch thread reaches `Search()` (held by a test-only launch
