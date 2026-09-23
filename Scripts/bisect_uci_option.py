@@ -480,8 +480,8 @@ AFTER_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1'
 AFTER_E4_E5 = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2'
 
 
-def _stub_exe(tmp, spec, log):
-    """Write the scripted engine and its spec, and return an argv-style executable path."""
+def _stub_argv(tmp, spec, log):
+    """Write the scripted engine and its spec, and return the argv that launches it."""
     script = Path(tmp) / 'stub_engine.py'
     script.write_text(STUB_ENGINE, encoding='utf-8')
     spec_path = Path(tmp) / 'spec.json'
@@ -528,7 +528,7 @@ def self_test(out=sys.stdout):
 
     with tempfile.TemporaryDirectory() as tmp:
         log = Path(tmp) / 'stub.json'
-        engine = Engine(_stub_exe(tmp, spec, log))
+        engine = Engine(_stub_argv(tmp, spec, log))
         try:
             rows = {entry['id']: analyse_position(engine, entry, 'Contempt', 0, 100, 4)
                     for entry in corpus}
@@ -564,7 +564,7 @@ def self_test(out=sys.stdout):
     spec['positions'] = edge_positions
     with tempfile.TemporaryDirectory() as tmp:
         log = Path(tmp) / 'stub.json'
-        engine = Engine(_stub_exe(tmp, spec, log))
+        engine = Engine(_stub_argv(tmp, spec, log))
         try:
             edges = {
                 'min': analyse_position(engine, {'id': 'min', 'fen': START, 'expect': None},
@@ -594,7 +594,7 @@ def self_test(out=sys.stdout):
     # The two silent-garbage modes must raise, not produce a row.
     spec['positions'] = {START: {'moves': [[0, 'a2a3']], 'aborted': True}}
     with tempfile.TemporaryDirectory() as tmp:
-        engine = Engine(_stub_exe(tmp, spec, Path(tmp) / 'stub.json'))
+        engine = Engine(_stub_argv(tmp, spec, Path(tmp) / 'stub.json'))
         try:
             analyse_position(engine, {'id': 'a', 'fen': START, 'expect': None},
                              'Contempt', 0, 100, 4)
@@ -607,7 +607,7 @@ def self_test(out=sys.stdout):
     spec['positions'] = {START: {'moves': [[0, 'a2a3']]}}
     spec['silent_options'] = ['Contempt']
     with tempfile.TemporaryDirectory() as tmp:
-        engine = Engine(_stub_exe(tmp, spec, Path(tmp) / 'stub.json'))
+        engine = Engine(_stub_argv(tmp, spec, Path(tmp) / 'stub.json'))
         try:
             analyse_position(engine, {'id': 'a', 'fen': START, 'expect': None},
                              'Contempt', 0, 100, 4)

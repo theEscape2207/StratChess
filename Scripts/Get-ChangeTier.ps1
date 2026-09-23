@@ -107,9 +107,8 @@ function Get-TierForPath {
     # Decides whether a build artifact counts as stale, and which binary a measurement
     # reads. Left to the fail-closed default they would be Engine, which costs every PR
     # that touches them the Engine tier. The hazard is the familiar one and it is why
-    # they are Build rather than Tooling: a bug in
-    # either lets a validation or a measurement run against the wrong binary while
-    # reporting success.
+    # they are Build rather than Tooling: a bug in either lets a validation or a
+    # measurement run against the wrong binary while reporting success.
     if ($p -like '*Scripts/BuildFreshness.ps1')             { return 'Build' }
     if ($p -like '*Scripts/Get-BuildArtifact.ps1')          { return 'Build' }
     # Lint configuration decides what CI enforces about every source file. Named rather

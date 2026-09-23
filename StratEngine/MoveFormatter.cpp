@@ -179,7 +179,7 @@ std::string MoveFormatter::ToVerbose(const Move& move, const Board& board)
 		// movPiece is the promoted piece; recover the pawn color for the subject
 		const ePiece pawn = PieceHelper::AsPawn(PieceHelper::Color(movPiece));
 		const char* verb = (move.flags() & MoveFlags::CAPTURE_BIT) ? " captures and promotes to " : " promotes to ";
-		result = std::string(PieceHelper::FullName(pawn)) + verb + PieceTypeName(movPiece) + " on " + to;
+		result = PieceHelper::FullName(pawn) + verb + PieceTypeName(movPiece) + " on " + to;
 		break;
 	}
 	}
