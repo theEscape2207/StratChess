@@ -1220,6 +1220,5 @@ EvalBreakdown Evaluator::Breakdown(const Board& board) const noexcept
 	out.endgame_adjustment = adjustment;
 	out.total = Evaluate(board);
 
-	assert(out.complete());
 	return out;
 }

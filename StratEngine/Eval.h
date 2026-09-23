@@ -238,10 +238,6 @@ static_assert(
 // usually the thing being debugged. The net contribution of a term is always
 // white-minus-black, matching how Evaluate() combines them.
 struct EvalBreakdown {
-	int terms_[NUM_EVAL_TERMS][NUM_COLORS]{};
-	// Value-independent completeness: a zero-valued term must still have been
-	// deliberately populated. Search never constructs this debugging struct.
-	std::uint16_t populated_{};
 	static_assert(NUM_EVAL_TERMS <= 16, "EvalBreakdown population mask is too narrow");
 
 	constexpr int at(EvalTerm term, eColor color) const noexcept
@@ -288,6 +284,12 @@ struct EvalBreakdown {
 	// every catalogued term, summed white-minus-black, reproduces it up to the
 	// side-to-move sign; that identity is asserted in StratChessTests.
 	int total{};
+
+  private:
+	int terms_[NUM_EVAL_TERMS][NUM_COLORS]{};
+	// Value-independent completeness: a zero-valued term must still have been
+	// deliberately populated. Search never constructs this debugging struct.
+	std::uint16_t populated_{};
 };
 
 // Extrema of one row of a king-safety weight table. They exist so

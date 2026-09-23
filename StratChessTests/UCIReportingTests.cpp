@@ -221,13 +221,6 @@ static int extract_sum_white_pov(const std::string& output)
 	return std::stoi(value);
 }
 
-// Every term the breakdown prints, in table order. Material is a row like any
-// other: it is the largest single contribution and a sign error there would be
-// the easiest one to miss.
-// This test once had its own term-name list and passed with `bishops` and
-// `castling` absent only because both were zero in the positions tested. It now
-// iterates the same structurally complete catalogue as the printer.
-//
 // The endgame row is absent here on purpose: it is net-only and is added to the
 // sum through extract_endgame_net above.
 TEST_CASE("cmd_eval: printed breakdown nets are white-minus-black and sum to the evaluator's score", "[uci]")
