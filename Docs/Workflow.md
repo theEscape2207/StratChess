@@ -136,7 +136,7 @@ Never teach the script to suppress the reminder — escalating it is fine.
 `Scripts/Invoke-SkillGate.ps1` denies the first edit per session to a `.ps1`, a skill or
 `CLAUDE.md`/`AGENTS.md`, naming the skill to load. Skill descriptions match the task, not the file,
 so these skills were mostly skipped. Codex runs it only once the project's `.codex/` layer and
-the hook definition are both trusted; not yet verified live (#631).
+the hook definition are both trusted.
 
 ---
 

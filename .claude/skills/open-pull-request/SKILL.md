@@ -34,12 +34,10 @@ Every finding is fixed, rejected with a reason, or filed as an issue. Each nearb
 
 - **The change makes it worse** (copies the duplication, extends the workaround): a finding against
   this PR.
-- **Otherwise**, if you would accept a PR to fix it, file a new issue
-  (`Docs/agents/issue-tracker.md`): search open issues first (`gh issue list --search`), and give
-  `file:line` and the branch in the body. The Review line's `filed #n` (step 3) links the PR to it
-  once the PR exists. Label it `needs-triage` plus `Cleanup` (stale or dead code) or
-  `category:refactor` (duplication), and `priority:low` unless it risks a wrong result. Drop
-  anything smaller. Never fix it in this PR.
+- **A stale comment or dead code:** fix it in this PR, in its own commit. The fix changes no
+  behaviour and stays inside files the PR already touches.
+- **Otherwise** (duplication, a workaround): drop it. Periodic smell sweeps cover it, so file no
+  issue.
 
 ### Specialised reviewers
 
