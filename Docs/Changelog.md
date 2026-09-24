@@ -22,6 +22,24 @@ Newest first.
 
 ---
 
+## 2026-09-24 — Search profile counters: move ordering and LMR (#637)
+
+A build configured with `-DSTRAT_SEARCH_PROFILE=1` prints two more lines after each search:
+`info string ordering` (fail-high index bins, the late cut's move type, hash-move presence, and the
+nodes spent before a late cut, by depth band) and `info string lmr` (reductions, re-searches,
+confirmations, and the nodes inside each). The shipping build compiles the counting out; every write
+site is `if constexpr`. `Compare-SearchEquivalence.ps1` compares the two lines only when both builds
+print them, so a profile build checks against a default one.
+
+Validation: default build and profile build both node-identical (equivalence IDENTICAL against
+`origin/main`, and default against profile). A profile build at depth 16 on the 8 `Run-Bench`
+positions reproduces #636's baseline table to every printed decimal. nps: 5 kept paired `Run-Bench`
+series against the merge base read −0.32% (sd 0.34); `pvs` and `quiescence` are unchanged in size
+and moved 192 bytes, and relinked to identical hot addresses with a shared `/ORDER` the delta read
++0.09% (sd 0.82). No slowdown. First of two PRs for #637 items 3-7; items 4-7 follow.
+
+---
+
 ## 2026-09-24 — Aspiration window telemetry (#637)
 
 Every build now prints `info string aspiration iterations .. faillow .. failhigh .. fullwindow ..
