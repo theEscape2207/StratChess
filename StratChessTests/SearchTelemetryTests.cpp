@@ -135,11 +135,11 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 	            .evicted_stale = 10,
 	            .evicted_current = 11};
 
+	const std::string fired_tt = "ttstats mainprobes 1 mainhits 2 maincutoffs 3 qsprobes 4 qshits 5 qscutoffs 6 "
+	                             "stores 45 declined 7 filled 8 refreshed 9 evictstale 10 evictcurrent 11";
 	CHECK(payloads_of(fired) ==
 	      std::vector<std::string>{"singular eligible 1 verified 2 extended 3 verifynodes 4", "frontier skips 5",
-	                               "lmp skips 6",
-	                               "ttstats mainprobes 1 mainhits 2 maincutoffs 3 qsprobes 4 qshits 5 qscutoffs 6 "
-	                               "stores 45 declined 7 filled 8 refreshed 9 evictstale 10 evictcurrent 11",
+	                               "lmp skips 6", fired_tt,
 	                               "aspiration iterations 1 faillow 2 failhigh 3 fullwindow 4 failnodes 5"});
 
 	// Singular, frontier and lmp stay silent when they did not fire; ttstats prints whenever compiled.
