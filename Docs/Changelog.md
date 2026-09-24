@@ -22,6 +22,25 @@ Newest first.
 
 ---
 
+## 2026-09-25 — Search profile comparison script (#637)
+
+`Scripts/Compare-SearchProfile.ps1 -Before -After` runs two `-DSTRAT_SEARCH_PROFILE=1` builds over
+the same positions at a fixed depth (default 16), `Threads=1`, one process per position. It prints
+before, after and delta for every #637 measure: nodes per iteration and effective branching factor,
+aspiration, ordering, LMR, node types, null move, pruning, quiescence and best-move stability. Each
+table is printed pooled, for the endgame and non-endgame groups (non-pawn material at most 13 per
+side), and per position. It refuses a default build, a build without all six profile lines, and a
+malformed line, naming the side and position. The built-in position set moved from `Run-Bench.ps1`
+into `Scripts/BenchPositions.ps1`, which both scripts read.
+
+Validation: a profile build compared with itself at depth 16 printed zero deltas on every row, and
+its pooled rows reproduce #636's baseline (first-move cuts 93.1%, latenodes 33.0%, researchnodes
+11.2%) and the first node-type baseline (cut frames 90.9%, null cutoffs 35.7%, 0.94 qs nodes per
+root). Both orders of a default/profile pair are refused. `Run-Bench.ps1` rows are unchanged by the
+move. Closes #637.
+
+---
+
 ## 2026-09-24 — Search profile counters: node types, null move, pruning, quiescence (#637)
 
 A `-DSTRAT_SEARCH_PROFILE=1` build prints four more lines after each search. `info string nodetypes`
