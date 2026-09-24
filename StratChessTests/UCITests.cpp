@@ -21,6 +21,12 @@
 
 using P = UciHandler::GoParams;
 
+TEST_CASE("UciHandler: a fresh handler starts at the standard position", "[uci]")
+{
+	UciHandlerTestFixture fix;
+	REQUIRE(fix.board().ExtractFEN() == "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+}
+
 // ---------------------------------------------------------------------------
 // parse_go — standard clock params
 // ---------------------------------------------------------------------------

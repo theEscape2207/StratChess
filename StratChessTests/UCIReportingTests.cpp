@@ -47,13 +47,16 @@ static int extract_cp_score(const std::string& output, const std::string& label)
 	return std::stoi(anchored.substr(value_start, value_end - value_start));
 }
 
-TEST_CASE("cmd_eval: works before any position command, does not crash", "[uci]")
+TEST_CASE("cmd_eval: before position matches the starting position evaluator score", "[uci]")
 {
+	const std::string starting_fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 	UciHandlerTestFixture fix;
-	const std::string out = fix.capture([&] { REQUIRE_NOTHROW(fix.eval()); });
 
-	REQUIRE(out.find("static eval:") != std::string::npos);
-	REQUIRE(out.find("white pov:") != std::string::npos);
+	const std::string out = fix.capture([&] { fix.eval(); });
+
+	const Evaluator eval;
+	const Board starting_board(starting_fen);
+	REQUIRE(extract_cp_score(out, "static eval:") == eval.Evaluate(starting_board));
 }
 
 TEST_CASE("cmd_eval: printed score matches Evaluator::Evaluate() directly (honesty invariant)", "[uci]")
@@ -524,6 +527,20 @@ namespace {
 	}
 
 } // namespace
+
+TEST_CASE("cmd_go: before position, 'go depth 1' completes with a legal starting move", "[uci]")
+{
+	UciHandlerTestFixture fix;
+
+	const std::string output = fix.capture([&] {
+		fix.dispatch("go depth 1");
+		fix.join_search();
+	});
+
+	const std::string bestmove = extract_bestmove(output);
+	REQUIRE_FALSE(bestmove.empty());
+	REQUIRE(replay_pv_is_legal(Board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"), {bestmove}));
+}
 
 TEST_CASE("cmd_go: 'go depth 4' emits per-iteration info lines with strictly increasing depth", "[uci]")
 {

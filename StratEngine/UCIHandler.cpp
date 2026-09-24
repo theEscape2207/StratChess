@@ -123,7 +123,10 @@ UciHandler::UciHandler() : UciHandler(DefaultSearchConfig()) {}
 
 UciHandler::UciHandler(const AIPerplexConfig& config, std::shared_ptr<UciWriter> writer)
     : ai_(std::make_unique<AIPerplex>(config)), writer_(writer ? std::move(writer) : std::make_shared<UciWriter>())
-{}
+{
+	[[maybe_unused]] const bool ok = board_.SetupFromFEN(std::string(STARTING_FEN));
+	assert(ok && "STARTING_FEN failed to parse");
+}
 
 // Joined here rather than left to ai_'s destructor, so no member is destroyed while a launch runs.
 UciHandler::~UciHandler() { ai_->StopAndWait(); }
