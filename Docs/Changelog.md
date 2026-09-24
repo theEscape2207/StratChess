@@ -28,13 +28,13 @@ A `-DSTRAT_SEARCH_PROFILE=1` build prints four more lines after each search. `in
 counts frames by depth band and expected Knuth-Moore type, tracked per ply, plus expected-cut frames
 that failed low. `info string nullmove` counts attempts, cutoffs, completed failures and the nodes
 inside them. `info string pruning` gives reverse-futility cutoffs by depth and frontier floors that
-bound. `info string qsearch` gives main-search leaves, delta and SEE skips, and the deepest ply.
+bound. `info string qsearch` gives main-search leaves, delta and SEE skips, and the maximum quiescence depth.
 `Compare-SearchEquivalence.ps1` compares them only when both builds print them.
 
 First baseline, depth 16 on the 8 `Run-Bench` positions (59.8M nodes): 1.4% of expected-cut frames
 fail low; null move cuts on 35.7% of 1.43M attempts, and failed attempts hold 24.4% of all nodes;
 reverse futility fires only at depths 1-3; 2,945 floor binds against 13.04M frontier skips; 0.94
-quiescence nodes per leaf, deepest ply 20.
+quiescence nodes per leaf, maximum quiescence depth 20.
 
 Validation: node-identical, default against `origin/main` and profile against default. nps, 5 kept
 paired `Run-Bench` series: +0.04% (sd 0.39, range −0.46% to +0.46%); relinked with a shared
