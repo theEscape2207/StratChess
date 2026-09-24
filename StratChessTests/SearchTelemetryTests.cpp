@@ -501,8 +501,8 @@ TEST_CASE("Search - a pvs frame that aborts at entry leaves an empty pv row", "[
 	// is believed — a populated row (here, a completed aspiration retry's line) would make
 	// metrics.current_move plausible and let the fabricated draw be accepted as a real result.
 	// Clearing the row before the exit is what turns it into the INCOMPLETE rejection instead,
-	// and it is now the ONLY thing that does: assess_iteration_quality() no longer carries a
-	// second test against drawn scores, so this clear is load-bearing on its own.
+	// and it is the only thing that does: assess_iteration_quality() carries no
+	// test against drawn scores, so this clear is load-bearing on its own.
 	AIPerlexTestFixture fix;
 	fix.seed_pv_row(0, AnyLegalMove());
 	REQUIRE(fix.pv_length(0) == 1); // the earlier retry's line, still standing

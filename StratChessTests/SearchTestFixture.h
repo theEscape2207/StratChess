@@ -119,7 +119,7 @@ class AIPerlexTestFixture {
 	// TEST_CASE functions.
 	void set_last_move_was_null(int ply, bool value) const { ai->td_.last_move_was_null[ply] = value; }
 
-	// --- Contempt pokes (#452) ---
+	// --- Contempt pokes ---
 	// Search() is what sets root_color_ in production, and the pvs() entry points below never go
 	// through it, so a sign test has to state the root colour it is asserting about rather than
 	// inherit the member's default.
@@ -149,7 +149,7 @@ class AIPerlexTestFixture {
 	// is private. Used by the [smp] clamp tests below.
 	unsigned threads() const { return ai->threads_; }
 
-	// --- Singular-extension pokes (#95) ---
+	// --- Singular-extension pokes ---
 	// The feature ships disabled, so every test that exercises it has to turn it on first;
 	// the eligibility-boundary tests then move one knob at a time off a known-good baseline.
 	void set_singular_enabled(bool enabled) const { ai->tuning_.singular_extensions_enabled = enabled; }
@@ -157,7 +157,7 @@ class AIPerlexTestFixture {
 	void set_singular_tt_depth_margin(int margin) const { ai->tuning_.singular_tt_depth_margin = margin; }
 	void set_singular_margin_factor(int factor) const { ai->tuning_.singular_margin_factor = factor; }
 
-	// --- Reverse futility pokes (#87) ---
+	// --- Reverse futility pokes ---
 	// The feature ships enabled. Its tests still set the flag explicitly, so each one names the
 	// configuration it asserts about, and then move one guard at a time off a known-good baseline.
 	void set_reverse_futility(bool enabled) const { ai->tuning_.reverse_futility_enabled = enabled; }
@@ -170,7 +170,7 @@ class AIPerlexTestFixture {
 		return ai->reverse_futility_eligible(depth, beta, is_pv_node, in_check, is_exclusion_frame, zugzwang_safe());
 	}
 
-	// --- Frontier futility pokes (#504) ---
+	// --- Frontier futility pokes ---
 	// Ships enabled; each test still sets the flag, so it names the configuration it asserts about.
 	void set_frontier_futility(bool enabled) const { ai->tuning_.frontier_futility_enabled = enabled; }
 	int frontier_futility_margin() const { return ai->tuning_.frontier_futility_margin; }
@@ -457,7 +457,7 @@ class AIPerlexTestFixture {
 		ai->helper_tds_.back()->telemetry = telemetry;
 	}
 
-	// --- Quiescence ordering helpers (#320) ---
+	// --- Quiescence ordering helpers ---
 
 	// The order quiescence would search this position's moves in, as UCI strings. Calls the
 	// same private helper the node itself calls, so reverting that helper's in-check branch
