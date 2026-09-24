@@ -111,6 +111,7 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 	// The test binary compiles both gated features in, so every payload is reachable here.
 	STATIC_REQUIRE(kSingularExtensionsCompiled);
 	STATIC_REQUIRE(kTTStatsCompiled);
+	STATIC_REQUIRE(kSearchProfileCompiled);
 
 	const auto payloads_of = [](const SearchTelemetry& telemetry) {
 		std::vector<std::string> payloads;
@@ -134,13 +135,24 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 	            .stores_refreshed = 9,
 	            .evicted_stale = 10,
 	            .evicted_current = 11};
+	fired.ordering = {.cuts = 1,
+	                  .index = {2, 3, 4, 5, 6},
+	                  .late_cut = {7, 8, 9, 10},
+	                  .hash_nodes = 11,
+	                  .hash_cuts = 12,
+	                  .late_nodes = 13,
+	                  .late_bands = {14, 15, 16}};
+	fired.lmr = {.reduced = 1, .reduced_nodes = 2, .researched = 3, .confirmed = 4, .research_nodes = 5};
 
 	const std::string fired_tt = "ttstats mainprobes 1 mainhits 2 maincutoffs 3 qsprobes 4 qshits 5 qscutoffs 6 "
 	                             "stores 45 declined 7 filled 8 refreshed 9 evictstale 10 evictcurrent 11";
+	const std::string fired_ordering = "ordering cuts 1 index 2/3/4/5/6 latecut 7/8/9/10 hashnodes 11 hashcuts 12 "
+	                                   "latenodes 13 latebands 14/15/16";
 	CHECK(payloads_of(fired) ==
-	      std::vector<std::string>{"singular eligible 1 verified 2 extended 3 verifynodes 4", "frontier skips 5",
-	                               "lmp skips 6", fired_tt,
-	                               "aspiration iterations 1 faillow 2 failhigh 3 fullwindow 4 failnodes 5"});
+	      std::vector<std::string>{
+	          "singular eligible 1 verified 2 extended 3 verifynodes 4", "frontier skips 5", "lmp skips 6", fired_tt,
+	          "aspiration iterations 1 faillow 2 failhigh 3 fullwindow 4 failnodes 5", fired_ordering,
+	          "lmr reduced 1 reducednodes 2 researched 3 confirmed 4 researchnodes 5"});
 
 	// Singular, frontier and lmp stay silent when they did not fire; ttstats prints whenever compiled.
 	const std::string zero_tt = "ttstats mainprobes 0 mainhits 0 maincutoffs 0 qsprobes 0 qshits 0 qscutoffs 0 "
@@ -173,6 +185,79 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 	SearchTelemetry aspiration_fail_only;
 	aspiration_fail_only.aspiration.fail_lows = 1;
 	CHECK(payloads_of(aspiration_fail_only) == std::vector<std::string>{zero_tt});
+
+	// The profile lines key off cuts and reduced searches.
+	SearchTelemetry ordering_only;
+	ordering_only.ordering.cuts = 1;
+	const std::string cuts_only_ordering = "ordering cuts 1 index 0/0/0/0/0 latecut 0/0/0/0 hashnodes 0 hashcuts 0 "
+	                                       "latenodes 0 latebands 0/0/0";
+	CHECK(payloads_of(ordering_only) == std::vector<std::string>{zero_tt, cuts_only_ordering});
+	SearchTelemetry ordering_uncut;
+	ordering_uncut.ordering.index = {1, 1, 1, 1, 1};
+	ordering_uncut.ordering.late_nodes = 1;
+	CHECK(payloads_of(ordering_uncut) == std::vector<std::string>{zero_tt});
+
+	SearchTelemetry lmr_only;
+	lmr_only.lmr.reduced = 2;
+	CHECK(payloads_of(lmr_only) ==
+	      std::vector<std::string>{zero_tt, "lmr reduced 2 reducednodes 0 researched 0 confirmed 0 researchnodes 0"});
+	SearchTelemetry lmr_unreduced;
+	lmr_unreduced.lmr.researched = 3;
+	CHECK(payloads_of(lmr_unreduced) == std::vector<std::string>{zero_tt});
+}
+
+// The profile counters' bookkeeping identities, on a search large enough to fill every bin.
+TEST_CASE("SearchTelemetry - ordering and LMR profile counters are consistent", "[search][telemetry]")
+{
+	STATIC_REQUIRE(kSearchProfileCompiled);
+	AIPerlexTestFixture fix(KIWIPETE_FEN, 8);
+
+	const SearchResult result = fix.get_move_at_threads(1, 8);
+	REQUIRE(result.depth_completed == 8);
+	const int64_t nodes = result.nodes_searched + result.qnodes_searched;
+	const OrderingStats& ord = result.telemetry.ordering;
+	const LmrStats& lmr = result.telemetry.lmr;
+
+	const auto sum = [](const auto& bins) {
+		int64_t total = 0;
+		for (const int64_t bin : bins)
+			total += bin;
+		return total;
+	};
+
+	REQUIRE(ord.cuts > 0);
+	for (const int64_t bin : ord.index)
+		CHECK(bin > 0);
+	CHECK(sum(ord.index) == ord.cuts);
+	CHECK(sum(ord.late_cut) == ord.cuts - ord.index[0]);
+	CHECK(ord.hash_cuts > 0);
+	CHECK(ord.hash_cuts <= ord.hash_nodes);
+	CHECK(ord.hash_nodes <= ord.cuts);
+	CHECK(sum(ord.late_bands) == ord.late_nodes);
+	CHECK(ord.late_nodes > 0);
+	CHECK(ord.late_nodes <= nodes);
+
+	REQUIRE(lmr.reduced > 0);
+	CHECK(lmr.researched > 0);
+	CHECK(lmr.confirmed <= lmr.researched);
+	CHECK(lmr.researched <= lmr.reduced);
+	CHECK(lmr.reduced_nodes > 0);
+	CHECK(lmr.reduced_nodes <= nodes);
+	CHECK(lmr.research_nodes <= nodes);
+}
+
+// A node limit aborts mid-tree, with reduced searches on the stack; each nesting depth must still
+// unwind to zero, or the next outermost search's nodes would go uncounted.
+TEST_CASE("SearchTelemetry - an aborted search leaves the LMR nesting depths balanced", "[search][telemetry]")
+{
+	STATIC_REQUIRE(kSearchProfileCompiled);
+	AIPerlexTestFixture fix(KIWIPETE_FEN, 12);
+
+	REQUIRE_FALSE(fix.search_with_nodes(200'000).is_null());
+	REQUIRE(fix.search_is_aborted());
+	REQUIRE(fix.lmr_profile().reduced > 0);
+	CHECK(fix.lmr_profile().reduced_nesting == 0);
+	CHECK(fix.lmr_profile().research_nesting == 0);
 }
 
 // Every iteration after the first is aspirated at Threads=1; depth 1 has no seed score.

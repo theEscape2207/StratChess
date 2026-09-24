@@ -275,6 +275,7 @@ class AIPerlexTestFixture {
 	void set_late_move_pruning(bool enabled) const { ai->tuning_.late_move_pruning_enabled = enabled; }
 	bool late_move_pruning_enabled() const { return ai->tuning_.late_move_pruning_enabled; }
 	int64_t lmp_skips() const { return ai->td_.telemetry.lmp.skips; }
+	const LmrStats& lmr_profile() const { return ai->td_.telemetry.lmr; }
 	bool late_move_pruning_eligible(int depth, int alpha, int beta, bool is_pv_node, bool in_check,
 	                                bool is_exclusion_frame) const
 	{
