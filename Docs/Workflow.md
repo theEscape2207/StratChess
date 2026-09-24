@@ -362,7 +362,7 @@ plus an SPRT is the route.
 
 The measurement builds, `-DSTRAT_TT_STATS=1` and `-DSTRAT_SEARCH_PROFILE=1`, must be node-identical to
 the default build of the same commit. Check one with `-Before <default exe> -After <measurement exe>`:
-the script compares the search profile's `ordering` and `lmr` lines only when both builds print them.
+the script compares the search profile's lines only when both builds print them.
 
 **The perftcheck corpus stays a local instrument and is not a CI leg.** The sweep of all 142,953
 positions found **zero disagreements on legally reachable input** (and flagged 73 illegal), so as a

@@ -728,8 +728,14 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 	// Er vi naaet til bunden af traeet - evaluering?
 	//	See if static eval will cause a cutoff or raise alpha.
-	if (depth <= 0)
+	if (depth <= 0) {
+		if constexpr (kSearchProfileCompiled)
+			td.telemetry.qsearch.roots++;
 		return quiescence(td, alpha, beta, QSEARCH_BUDGET, ply, tt);
+	}
+
+	if constexpr (kSearchProfileCompiled)
+		td.telemetry.nodetypes.record_frame(ply, is_pv_node, depth);
 
 	const auto key = td.board.get_zobrist_hash();
 	const int original_alpha = alpha;
@@ -827,8 +833,11 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		// as exactly its alpha -- no improvement, hence no killer, history or PV write, and a
 		// null-move child returns beta - 1, one below the cutoff that would otherwise store a
 		// LOWER bound. A fail-soft return would break all of that at once.
-		if (node_eval() - tuning_.reverse_futility_margin * depth >= beta)
+		if (node_eval() - tuning_.reverse_futility_margin * depth >= beta) {
+			if constexpr (kSearchProfileCompiled)
+				td.telemetry.pruning.record_rfp(depth);
 			return beta;
+		}
 	}
 
 	// Declared before the null-move search so the unwind guard below it has the same value
@@ -841,6 +850,19 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// consecutive-null, PV/in-check/depth) so it can be unit tested directly.
 	if (should_try_null_move(td, depth, beta, ply, is_pv_node, in_check, zugzwang_safe)) {
 		const int R = tuning_.null_move_reduction;
+
+		// Search profile: the pass's child is expected to fail low, and a failed attempt's nodes exclude
+		// those already counted by failed attempts nested inside it.
+		auto& null_stats = td.telemetry.nullmove;
+		int64_t null_start = 0;
+		int64_t null_start_fail = 0;
+		if constexpr (kSearchProfileCompiled) {
+			null_stats.tried++;
+			null_start = td.nodes_searched + td.qnodes_searched;
+			null_start_fail = null_stats.fail_nodes;
+			td.telemetry.nodetypes.expect_null_child(ply);
+		}
+
 		td.last_move_was_null[ply + 1] = true;
 		td.board.DoNullMove();
 		const int null_score = -pvs(td, depth - 1 - R, -beta, -beta + 1, ply + 1, false, tt);
@@ -853,11 +875,16 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			return best_value;
 
 		if (null_score >= beta) {
+			if constexpr (kSearchProfileCompiled)
+				null_stats.cutoffs++;
 			record_tt_store(td, tt.store(key, static_cast<int16_t>(null_score), static_cast<int16_t>(depth),
 			                             static_cast<int16_t>(ply), Move::EmptyMove(), BoundType::LOWER,
 			                             NodeType::CUT_NODE, SearchPhase::MAIN));
 			return null_score;
 		}
+
+		if constexpr (kSearchProfileCompiled)
+			null_stats.record_failed(td.nodes_searched + td.qnodes_searched - null_start, null_start_fail);
 	}
 
 	MoveList moveList;
@@ -919,6 +946,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				// Both trees, because a verification's cost includes the quiescence it reaches.
 				const int64_t nodes_before = td.nodes_searched + td.qnodes_searched;
 				const ExcludedMoveGuard guard(td, ply, hash_move);
+				// Search profile: the verification shares this ply's slot, and is expected to fail low.
+				const VerificationNodeTypeGuard type_guard(td, ply);
 				verify_value = pvs(td, verify_depth, singular_beta - 1, singular_beta, ply, false, tt);
 				td.telemetry.singular.verification_nodes += (td.nodes_searched + td.qnodes_searched) - nodes_before;
 			}
@@ -1013,6 +1042,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			if constexpr (kSearchProfileCompiled) {
 				profile_move_nodes = td.nodes_searched + td.qnodes_searched;
 				profile_move_late = td.telemetry.ordering.late_nodes;
+				// The child's expected Knuth-Moore type, one write shared by all of this move's searches.
+				td.telemetry.nodetypes.expect_move_child(ply, is_pv_node, move_number);
 			}
 
 			// One per legal move edge actually searched, as in quiescence(): a move DoMove
@@ -1162,8 +1193,13 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// transposition hit whose stored value lies past the child's bound.
 	// Still <= alpha, so the bound stays UPPER. Like null move's stored bound it comes from a
 	// selective search and is not reproducible: a skipped move may later be a killer and searched.
-	if (frontier_skipped)
-		best_value = std::max(best_value, static_eval + tuning_.frontier_futility_margin);
+	if (frontier_skipped) {
+		const int frontier_floor = static_eval + tuning_.frontier_futility_margin;
+		if constexpr (kSearchProfileCompiled)
+			if (frontier_floor > best_value)
+				td.telemetry.pruning.floor_binds++;
+		best_value = std::max(best_value, frontier_floor);
+	}
 
 	// Terminal node: no legal move could be played, so this position is checkmate or
 	// stalemate and best_value is still the -Search_Init sentinel. Resolve the true
@@ -1199,14 +1235,19 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// because the searched subset proves no fail-soft value below alpha; no UPPER, because the bound
 	// would rest on moves never searched. This is a selective result, not a proof. A searched cutoff
 	// after a skip falls through and stores LOWER as usual. An aborted frame returned in the loop.
-	if (lmp_skipped && best_value <= original_alpha)
+	if (lmp_skipped && best_value <= original_alpha) {
+		if constexpr (kSearchProfileCompiled)
+			td.telemetry.nodetypes.record_fail_low(ply, is_pv_node, depth);
 		return adjustScoreForGameState(td, moveFound, ply, original_alpha);
+	}
 
 	// Classify node and store
 	BoundType bound;
 	NodeType node_type;
 
 	if (best_value <= original_alpha) {
+		if constexpr (kSearchProfileCompiled)
+			td.telemetry.nodetypes.record_fail_low(ply, is_pv_node, depth);
 		bound = BoundType::UPPER;
 		node_type = NodeType::ALL_NODE;
 	} else if (best_value >= beta) {
@@ -1352,6 +1393,10 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 
 	if (poll_search_limits(td))
 		return GameValues::Draw;
+
+	if constexpr (kSearchProfileCompiled)
+		td.telemetry.qsearch.max_depth =
+		    std::max(td.telemetry.qsearch.max_depth, static_cast<int64_t>(QSEARCH_BUDGET - qsearch_budget));
 
 	// A side to move in check may not decline to move, so this node cannot be settled by a
 	// static evaluation: no stand-pat, and every legal evasion must be searched, not just
@@ -1518,8 +1563,11 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 		    stand_pat +
 		            MoveHelper::DeltaGain(move, td.board.GetEffectiveMovPiece(move), td.board.GetCapturedPiece(move)) +
 		            tuning_.delta_pruning_margin <
-		        alpha)
+		        alpha) {
+			if constexpr (kSearchProfileCompiled)
+				td.telemetry.qsearch.delta++;
 			continue;
+		}
 
 		// Drop captures that lose material by static exchange. Three guards, all load-bearing:
 		// `material_bounds_hold` carries the `!in_check` test, and it must
@@ -1534,8 +1582,11 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 		// only drawing resource. That case predates the scale factors: the exact-draw classes
 		// alone are enough to produce it.
 		if (material_bounds_hold && tuning_.see_pruning_enabled && MoveHelper::IsCapture(move) &&
-		    !See::see_ge(td.board, move, 0))
+		    !See::see_ge(td.board, move, 0)) {
+			if constexpr (kSearchProfileCompiled)
+				td.telemetry.qsearch.see++;
 			continue;
+		}
 
 		if (!td.board.DoMove(move))
 			continue;

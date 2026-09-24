@@ -22,7 +22,8 @@
     difference:
       - 'treenodes', the node split. A build predating it emits none,
         the normal case for an old baseline.
-      - 'ordering' and 'lmr', the STRAT_SEARCH_PROFILE lines. A profile build then
+      - 'ordering', 'lmr', 'nodetypes', 'nullmove', 'pruning' and 'qsearch', the
+        STRAT_SEARCH_PROFILE lines. A profile build then
         compares against a default build of the same commit, which proves node
         identity only; the tests pin those lines' wording.
 
@@ -219,7 +220,7 @@ function ConvertTo-ComparableLines {
 }
 
 # 'info string' keys compared only when both builds emit them; see the help above.
-$OptionalInfoKeys = @('treenodes', 'ordering', 'lmr')
+$OptionalInfoKeys = @('treenodes', 'ordering', 'lmr', 'nodetypes', 'nullmove', 'pruning', 'qsearch')
 
 function Test-HasInfoString {
     param(
@@ -393,8 +394,9 @@ if ($SelfTest) {
     Assert-Case 'ordering lines can be dropped' ($noOrdering.Count -eq 8 -and (Test-HasInfoString $noOrdering 'lmr')) "got $($noOrdering.Count)"
     $noLmr = @(Remove-InfoStringLines $profiled 'lmr')
     Assert-Case 'lmr removal keeps other keys' ($noLmr.Count -eq 8 -and (Test-HasInfoString $noLmr 'lmrx')) "got $($noLmr.Count)"
-    Assert-Case 'optional keys cover the profile lines' (@(@('treenodes', 'ordering', 'lmr') | Where-Object { $_ -notin $OptionalInfoKeys }).Count -eq 0)
-    Assert-Case 'a default transcript has no profile line' (-not (Test-HasInfoString (ConvertTo-ComparableLines $sampleOut) 'ordering'))
+    $profileKeys = @('ordering', 'lmr', 'nodetypes', 'nullmove', 'pruning', 'qsearch')
+    Assert-Case 'optional keys cover the profile lines' (@(@('treenodes') + $profileKeys | Where-Object { $_ -notin $OptionalInfoKeys }).Count -eq 0)
+    Assert-Case 'a default transcript has no profile line' (@($profileKeys | Where-Object { Test-HasInfoString (ConvertTo-ComparableLines $sampleOut) $_ }).Count -eq 0)
 
     $completion = Test-FixedDepthTranscript -Lines (ConvertTo-ComparableLines $sampleOut) -SearchDepth 2
     Assert-Case 'fixed-depth transcript requires the requested depth and a bestmove' ($completion.ReachedDepth -and $completion.HasBestMove)
