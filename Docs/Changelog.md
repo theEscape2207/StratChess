@@ -29,8 +29,8 @@ the same positions at a fixed depth (default 16), `Threads=1`, one process per p
 before, after and delta for every #637 measure: nodes per iteration and effective branching factor,
 aspiration, ordering, LMR, node types, null move, pruning, quiescence and best-move stability. Each
 table is printed pooled, for the endgame and non-endgame groups (non-pawn material at most 13 per
-side), and per position. It refuses a default build, a build without all six profile lines, and a
-malformed line, naming the side and position. The built-in position set moved from `Run-Bench.ps1`
+side), and per position. It refuses a transcript missing a required profile line (a default build or an
+older one), and a malformed line, naming the side and position. The built-in position set moved from `Run-Bench.ps1`
 into `Scripts/BenchPositions.ps1`, which both scripts read.
 
 Validation: a profile build compared with itself at depth 16 printed zero deltas on every row, and

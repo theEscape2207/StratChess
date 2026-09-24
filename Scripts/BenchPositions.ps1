@@ -12,7 +12,7 @@
 Set-StrictMode -Version Latest
 
 # Opening, middlegame and endgame, chosen so no position is trivial at depth 12. Every FEN carries
-# its side-to-move field (bug #46).
+# its side-to-move field, or the engine plays the wrong side.
 $DefaultPositions = @(
     @{ Name = 'startpos';    Fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1' }
     @{ Name = 'kiwipete';    Fen = 'r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1' }

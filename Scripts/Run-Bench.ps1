@@ -313,6 +313,9 @@ if ($SelfTest) {
     try {
         Assert-Case 'no -Positions uses the built-in set' `
             (@(Resolve-Positions -Path '').Count -eq $DefaultPositions.Count)
+        # Pinned: every recorded table quotes this hash, so a change to the set or the hash must show.
+        Assert-Case 'the built-in set hashes to its recorded value' `
+            ((Get-PositionSetHash -List $DefaultPositions) -eq 'e4ccd88f9d24')
 
         $multi = Join-Path $tmp 'multi.txt'
         Set-Content $multi @(

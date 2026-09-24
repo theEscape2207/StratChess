@@ -31,9 +31,10 @@
     piece-endgm; pooled numbers can hide opposite effects in the two groups.
 
     Refusals, per side and position, naming both:
-      - A missing required line: treenodes, ordering, nodetypes, qsearch. Each always prints in a
-        completed profile search at depth >= 5, so its absence means a default build, or one
-        older than the six-line profile contract. That is refused, not read as zeros.
+      - A missing required line: treenodes, ordering, nodetypes, qsearch. treenodes prints in
+        every build; the other three in every completed profile search with a search tree (cuts,
+        a PV frame, a quiescence hand-off). Their absence means a default build, one older than
+        the profile contract, or a terminal position. That is refused, not read as zeros.
       - A malformed line: every present line must match its exact field list and histogram
         lengths. The wording is a contract (Docs/Engine-Readme.md).
       - A search that did not reach -Depth or print bestmove.
@@ -118,7 +119,7 @@ function Get-LinePattern {
 function ConvertFrom-ProfileTranscript {
     <#
         One engine transcript into counters, iterations and bestmove. Throws, naming side,
-        position and line, on anything D4 of the design refuses.
+        position and line, on a missing required line, a malformed line or an unfinished search.
     #>
     param(
         [Parameter(Mandatory)][AllowEmptyString()][string]$Output,
@@ -160,8 +161,9 @@ function ConvertFrom-ProfileTranscript {
         $values = @{}
         if ($present.Count -eq 0) {
             if ($ProfileSchema[$key].Required) {
-                throw ("$($where): no 'info string $key' line. A completed profile search always prints it, so this" +
-                       " is a default build or one older than the profile contract.")
+                throw ("$($where): no 'info string $key' line. A completed profile search prints it whenever the" +
+                       " position has a search tree, so this is a default build, one older than the profile" +
+                       " contract, or a terminal position.")
             }
             foreach ($f in $fields.GetEnumerator()) {
                 $values[$f.Key] = if ($f.Value -eq 1) { [int64]0 } else { [int64[]]::new($f.Value) }
@@ -287,6 +289,9 @@ function Get-ScopeRows {
     Add-Row 'PV frames, % of frames' 'rate' (Pct $pvF $frames)
     Add-Row 'cut frames, % of frames' 'rate' (Pct $cutF $frames)
     Add-Row 'all frames, % of frames' 'rate' (Pct $allF $frames)
+    foreach ($type in @('PV', 'cut', 'all')) {
+        for ($i = 0; $i -lt 3; $i++) { Add-Row "$type frames depth $($bands[$i]), % of frames" 'rate' (Pct $nt[$type][$i] $frames) }
+    }
     Add-Row 'cutfaillow, % of cut frames' 'rate' (Pct (($nt.cutfaillow | Measure-Object -Sum).Sum) $cutF)
     for ($i = 0; $i -lt 3; $i++) { Add-Row "cutfaillow depth $($bands[$i]), % of cut" 'rate' (Pct $nt.cutfaillow[$i] $nt.cut[$i]) }
 
@@ -463,8 +468,8 @@ if ($SelfTest) {
     }
     $default = $kiwi -replace "info string (ordering|lmr|nodetypes|nullmove|pruning|qsearch) [^\n]*\n", ''
     Assert-Case 'FALSIFY: a default-build transcript is refused' (Test-Refuses -Match "no 'info string ordering' line" { Parse $default })
-    $pr2a = $kiwi -replace "info string (nodetypes|nullmove|pruning|qsearch) [^\n]*\n", ''
-    Assert-Case 'FALSIFY: a transcript from before the four-line addition is refused' (Test-Refuses -Match "no 'info string nodetypes' line" { Parse $pr2a })
+    $orderingOnly = $kiwi -replace "info string (nodetypes|nullmove|pruning|qsearch) [^\n]*\n", ''
+    Assert-Case 'FALSIFY: a build printing only ordering and lmr is refused' (Test-Refuses -Match "no 'info string nodetypes' line" { Parse $orderingOnly })
     Assert-Case 'FALSIFY: a short histogram is refused' (Test-Refuses -Match 'malformed line' { Parse ($kiwi -replace 'latebands 12329/3074/0', 'latebands 12329/3074') })
     Assert-Case 'FALSIFY: a malformed optional line is refused' (Test-Refuses -Match 'malformed line' { Parse ($kiwi -replace 'failed 2560', 'fails 2560') })
     Assert-Case 'FALSIFY: an unfinished search is refused' (Test-Refuses -Match 'did not complete depth 9' { ConvertFrom-ProfileTranscript -Output $kiwi -SearchDepth 9 -Side 'before' -Position 'x' })
