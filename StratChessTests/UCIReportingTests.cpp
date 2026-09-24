@@ -617,9 +617,7 @@ TEST_CASE("cmd_go: iteration and final info times share one monotonic origin", "
 
 TEST_CASE("cmd_go: the last info line's pv and score agree with bestmove", "[uci]")
 {
-	// This is the guarantee item 6 (issue #237 stage 0) exists for: the final
-	// info line and 'bestmove' are built from the same shared score formatter
-	// and the same SearchResult, so they cannot drift from each other.
+	// The final info line and bestmove use the same SearchResult.
 	UciHandlerTestFixture fix;
 	fix.position("position startpos");
 
@@ -675,16 +673,8 @@ TEST_CASE("cmd_go: 'go nodes 1' still returns a move", "[uci]")
 
 TEST_CASE("cmd_go: a node-limited search never reports a spliced pv", "[uci]")
 {
-	// #310: fastchess rejected moves in our pv lines at about 0.24 per game. The cause was
-	// an aborted frame going on to splice an earlier sibling's line onto its own move, so
-	// from the ply where the two positions diverge the line describes a different board.
-	//
-	// The node limit is what makes that reproducible: at Threads=1 the abort lands on the
-	// same node every run. 10'000 from this position is where it was reproduced before the
-	// unwind guard — depth 5 reported "pv d7d5 e4d5 d5e4 ...", a black move from a square
-	// that by then holds a white pawn. The neighbouring budgets are not free coverage of a
-	// second defect; they are the same check at other abort points, which is where a future
-	// regression would just as likely land.
+	// Fixed node budgets make the abort point repeatable at Threads=1.
+	// Check several abort points because each may expose an invalid spliced PV.
 	const int budget = GENERATE(5'000, 10'000, 20'000, 50'000);
 
 	UciHandlerTestFixture fix;

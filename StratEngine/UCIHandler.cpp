@@ -51,9 +51,7 @@ namespace {
 		return Move{};
 	}
 
-	// Shared by the per-iteration info lines and the final info/bestmove line
-	// (item 6, issue #237 stage 0): both must format a raw centipawn score the
-	// same way, so the last per-iteration line can never drift from bestmove.
+	// Per-iteration and final info lines share score formatting so they cannot disagree.
 	std::string format_uci_score(int cp)
 	{
 		const bool is_mate = std::abs(cp) >= GameValues::Mate_Threshold;
@@ -65,9 +63,7 @@ namespace {
 		return "cp " + std::to_string(cp);
 	}
 
-	// Space-separated UCI move list for a full PV. Only the per-iteration lines
-	// use this — the final info line keeps its single-move `pv` field unchanged
-	// (item 8: the final line's contract does not change in this stage).
+	// Per-iteration lines show the full PV; the final info line reports one move.
 	std::string format_uci_pv(const std::vector<Move>& pv)
 	{
 		if (pv.empty())
@@ -185,7 +181,7 @@ void UciHandler::cmd_ucinewgame()
 }
 
 namespace {
-	// Column layout for the per-term breakdown table (issue #129 phase 2). The
+	// Column layout for the per-term breakdown table. The
 	// widths are shared by the header, the rules and every row so the columns line
 	// up, and are named here rather than repeated as literals in each format call.
 	constexpr int EVAL_TERM_COL = 11; // term name, left-aligned
@@ -241,16 +237,8 @@ namespace {
 // White-POV line removes any need to mentally flip the sign when Black is to
 // move.
 //
-// Above them, phase 2 prints the concrete Evaluator per-term breakdown
-// (D10). UCI owns that evaluator directly, so its debugging surface needs no
-// base-interface extension or runtime cast.
-//
-// When the breakdown is available, the totals below are taken from its `total`
-// field — which is Evaluate()'s own return value (D8) — rather than from a
-// second Evaluate() call here. That is what makes the printed table and the
-// printed total provably the same evaluation of the same position, and not
-// merely two evaluations that happen to agree. Without a breakdown the command
-// falls back to calling Evaluate() directly, degrading to phase 1's output.
+// The total and term table come from one Evaluator::Breakdown() call, so the
+// printed score and rows describe the same evaluation of the same position.
 void UciHandler::cmd_eval()
 {
 	const bool white_to_move = (board_.GetCurrentColor() == WHITE);

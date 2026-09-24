@@ -205,15 +205,8 @@ TEST_CASE("search_limits_for: fallback and depth policy", "[uci]")
 
 TEST_CASE("cmd_position: replay longer than MAX_PLY does not overflow ply history", "[uci]")
 {
-	// Regression (found by the first fastchess smoke match, 2026-07-03):
-	// Board's undo-history arrays are std::array<..., MAX_PLY=256> indexed by
-	// currentPly_, and cmd_position originally called ResetSearchDepth() only
-	// AFTER the whole replay loop. A game longer than 256 plies therefore
-	// wrote out of bounds DURING the replay — access violation in Release
-	// (game 8 of the smoke match crashed at ply 265), assert in Debug.
-	// The fix resets per replayed move, same as Game.cpp does per committed
-	// move. In Release the pre-fix corruption is silent UB, so this test's
-	// hard teeth are the Debug assert + the ground-truth state comparison.
+	// Every replayed move resets search depth before the next move can index
+	// the MAX_PLY-sized undo history. Compare the full resulting board state.
 	const std::string moves = long_game_moves(300);
 
 	UciHandlerTestFixture fix;
@@ -424,10 +417,8 @@ TEST_CASE("cmd_position: malformed FEN resets to the start position and reports 
 	CHECK(output.find("info string") != std::string::npos);
 }
 
-// Issue #46: a FEN with the side-to-move field omitted. Since #143 added the field-count floor the
-// parser rejects it outright, so the engine can no longer silently decide it is Black's move. The
-// board is reset to the start position (#200); here the prior position was already the start
-// position, so "reset" and "unchanged" coincide.
+// A FEN without the side-to-move field is rejected and resets the board to
+// the starting position, which this test also uses as its prior position.
 TEST_CASE("cmd_position: FEN missing the side-to-move field is declined", "[uci]")
 {
 	UciHandlerTestFixture fx;
@@ -511,9 +502,7 @@ TEST_CASE("cmd_position: a move list longer than MAX_UCI_REPLAY_PLIES is refused
 	CHECK(fx.board().GetCurrentColor() == WHITE);
 }
 
-// Previously the most destructive response (whole FEN rejected) was reserved for the
-// least-destructive-looking input: an en-passant square whose rank isn't 3 or 6 at all.
-// Now it is repaired like every other inconsistent ep square, and the position is kept.
+// An en-passant square on the wrong rank is repaired while the position stays loaded.
 TEST_CASE("cmd_position: en-passant square on a non-3/6 rank is repaired, not rejected", "[uci]")
 {
 	UciHandlerTestFixture fx;
@@ -526,9 +515,8 @@ TEST_CASE("cmd_position: en-passant square on a non-3/6 rank is repaired, not re
 	CHECK(output.find("info string position:") != std::string::npos);
 }
 
-// This repair already happened before #221; what was missing is that spdlog is off in UCI
-// mode, so the client had no way to see it. a3 is right-rank-shaped but wrong for White to
-// move (needs rank 6, not 3).
+// UCI reports metadata repairs through info string because spdlog is off.
+// a3 has a plausible rank but is wrong for White to move (which needs rank 6).
 TEST_CASE("cmd_position: en-passant square inconsistent with side to move is repaired and reported", "[uci]")
 {
 	UciHandlerTestFixture fx;
@@ -619,7 +607,7 @@ TEST_CASE("cmd_position: a rejected FEN gives the same board whatever preceded i
 	const auto after_startpos = perft_after("position startpos");
 	const auto after_kiwipete = perft_after(std::string("position fen ") + kKiwipeteFen);
 
-	// Before #200 these were 20 and 48: the engine reported on the stale board.
+	// The rejected FEN must reset both prior positions to the same board.
 	REQUIRE(after_startpos == after_kiwipete);
 	REQUIRE(after_startpos == 20);
 }
