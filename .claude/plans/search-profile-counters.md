@@ -19,9 +19,10 @@ of the shipping build, and node-identical when compiled in.
 
 - Add the compile flag `STRAT_SEARCH_PROFILE`, default 0, which follows the `STRAT_TT_STATS`
   contract (D2).
-- Add items 3-7 as five `info string` payloads with fixed wording (D3). They ship in two PRs (D1).
+- Add the five items 3-7 as six `info string` payloads with fixed wording (D3). They ship in two
+  PRs (D1).
 - Teach `Compare-SearchEquivalence.ps1` to compare a profile build against a default build (D5).
-- Document the flag and its lines in `Docs/Engine-Readme.md`, next to `ttstats`.
+- Document the flag and its lines (D7).
 
 **This change will not:**
 
@@ -49,7 +50,7 @@ of the shipping build, and node-identical when compiled in.
   can be checked against measured numbers: #636's baseline table (Validation).
 - **PR 2b** adds items 4-7 on the flag PR 2a lands.
 
-Settling all five formats here freezes the contract PR 3 parses once. The split keeps each diff small
+Settling all six formats here freezes the contract PR 3 parses once. The split keeps each diff small
 enough to review.
 
 Rejected:
@@ -74,8 +75,9 @@ type-checked, which needs the members to exist. `TTStats` already makes this tra
 Rejected: an empty stand-in type with `[[no_unique_address]]` when the flag is off. The discarded
 write sites would then fail to type-check.
 
-The layout risk is closed by measurement, not argument. The memory note records 144 bytes of cold
-code moving nps by 3.9%. See Validation.
+The layout risk is closed by measurement, not argument. #555/#556 measured a −3.90% median nps
+swing (9 of 9 pairs slower) from a 144-byte change in cold code, on a node-identical search. See
+Validation.
 
 ### D3: Output contract (PR 3 parses this)
 
@@ -164,6 +166,15 @@ expected type (D6).
 A profile build compared with a default build of the same commit then reads IDENTICAL. It lands in
 PR 2a, and 2b only extends the list.
 
+That comparison proves node identity only: it passes even if a profile line is missing or
+malformed. The wording is pinned separately by an exact payload test per struct, which also checks
+that the line is silent when its first field is zero, as `SearchTelemetryTests.cpp` already does for
+the existing lines.
+
+**For PR 3:** the comparison script's zero-delta self-check runs a profile build against itself. A
+default-versus-profile pair is what the script must refuse, and it serves only the node-identity
+gate here. #637's acceptance wording is updated to say this.
+
 Rejected: stripping the lines by hand outside the script, as #638 did. #637's acceptance names the
 script as the gate, and a check done by hand is not repeatable.
 
@@ -183,10 +194,25 @@ recursive `pvs()` call, and the root iteration writes `expected[0] = PV`. The ru
 | CUT node, later moves | CUT |
 | ALL node, every move | CUT |
 | Null-move child | ALL |
-| Singular verification frame | ALL |
+| Singular verification frame | ALL (below) |
+
+A verification search re-enters `pvs()` at its parent's ply, not `ply + 1`, so a write before the
+call would land on the parent's own slot. A scoped guard, the same shape as `ExcludedMoveGuard`, saves
+`expected[ply]`, sets it to ALL for the verification, and restores it on scope exit. That covers the
+abort return too. The guard compiles to nothing when the flag is off.
 
 Rejected: a `cut_node` parameter on `pvs()`. It changes the shipping signature and codegen for a
 measurement-only feature, and the node-identity gate would not catch that cost.
+
+### D7: Documentation, by PR
+
+- **2a:**
+  - `Docs/Engine-Readme.md` documents the flag and the `ordering` and `lmr` lines, next to `ttstats`.
+  - `Docs/TestDesign.md` points to the invariant and payload tests.
+  - `Docs/Workflow.md` names the flag beside `STRAT_TT_STATS`.
+- **2b:** `Docs/Engine-Readme.md` documents the other four lines.
+- **PR 3:** `Docs/Workflow.md` and the `measure-strength` skill point to the comparison script and
+  say when to use it. The script does not exist before then.
 
 ## Assumptions I cannot verify from the code
 
@@ -233,8 +259,12 @@ All of these hold per search, at `Threads=1`.
 
 Engine tier, per PR.
 
-**Tests:** a fixed kiwipete search at `Threads=1` asserts every invariant its PR adds. Each assertion
-is falsified once.
+**Tests:**
+- A fixed kiwipete search at `Threads=1` asserts every invariant its PR adds.
+- An exact payload test covers each line its PR adds, and its silence when empty (D5).
+- 2b only: a test of the verification guard. `expected[ply]` reads ALL inside the guard's scope and
+  its prior value after.
+- Each assertion is falsified once.
 
 **Equivalence:**
 - Default build: `Compare-SearchEquivalence.ps1 -BaselineRef origin/main` reports IDENTICAL.
@@ -243,9 +273,15 @@ is falsified once.
 **Port correctness (2a only):** a profile build at depth 16 on the 8 `Run-Bench` positions
 reproduces #636's pooled table to its printed decimals.
 
-**nps, default build:** interleaved wall clock at depth 14, `Threads=1`, 9 rounds against the merge
-base. The median must fall within the round spread #638 measured on this instrument (−1.39% to
-+1.04%), with identical nodes.
+**nps, default build:** the paired `Run-Bench.ps1` series in `measure-strength` →
+`reference/regression-check.md`.
+- The baseline is the merge base, built with its own `build.ps1 main` in a detached worktree.
+- 6 pairs on the 8 default positions at `-Depth 12`. The first pair is discarded.
+- Node counts match per position in every pair.
+- **Done** is a per-pair aggregate delta whose spread sits at or above zero.
+- A negative spread is escalated as that reference says, with a shared `/ORDER` relink (#555), and
+  not concluded from.
+- The report gives the mean, standard deviation and range of the kept pairs.
 
 **No Elo run:** no search decision changes, and node identity proves it.
 
@@ -257,4 +293,6 @@ base. The median must fall within the round spread #638 measured on this instrum
 | Output contract, bin edges, the "do not sum" and "max, not sum" rules (D3, D4) | struct comments; `Docs/Engine-Readme.md` |
 | Nesting-exclusive method (D4) and expected-type rules (D6) | source comments at the `pvs()` write sites |
 | Both-emit comparison rule (D5) | `Compare-SearchEquivalence.ps1` help |
+| PR 3's self-check pair (D5) | #637 acceptance |
+| Where each doc pointer lives (D7) | the named docs |
 | Reproduced baseline (2a), first items 4-7 baseline (2b), nps results | PR bodies; `Docs/Changelog.md` |
