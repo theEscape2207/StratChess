@@ -143,16 +143,24 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 	                  .late_nodes = 13,
 	                  .late_bands = {14, 15, 16}};
 	fired.lmr = {.reduced = 1, .reduced_nodes = 2, .researched = 3, .confirmed = 4, .research_nodes = 5};
+	fired.nodetypes.frames = {{{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}};
+	fired.nodetypes.cut_fail_low = {10, 11, 12};
+	fired.nullmove = {.tried = 1, .cutoffs = 2, .failed = 3, .fail_nodes = 4};
+	fired.pruning = {.rfp = {1, 2, 3, 4, 5, 6}, .floor_binds = 7};
+	fired.qsearch = {.roots = 1, .delta = 2, .see = 3, .max_depth = 4};
 
 	const std::string fired_tt = "ttstats mainprobes 1 mainhits 2 maincutoffs 3 qsprobes 4 qshits 5 qscutoffs 6 "
 	                             "stores 45 declined 7 filled 8 refreshed 9 evictstale 10 evictcurrent 11";
 	const std::string fired_ordering = "ordering cuts 1 index 2/3/4/5/6 latecut 7/8/9/10 hashnodes 11 hashcuts 12 "
 	                                   "latenodes 13 latebands 14/15/16";
+	const std::string fired_nodetypes = "nodetypes pv 1/2/3 cut 4/5/6 all 7/8/9 cutfaillow 10/11/12";
 	CHECK(payloads_of(fired) ==
 	      std::vector<std::string>{
 	          "singular eligible 1 verified 2 extended 3 verifynodes 4", "frontier skips 5", "lmp skips 6", fired_tt,
 	          "aspiration iterations 1 faillow 2 failhigh 3 fullwindow 4 failnodes 5", fired_ordering,
-	          "lmr reduced 1 reducednodes 2 researched 3 confirmed 4 researchnodes 5"});
+	          "lmr reduced 1 reducednodes 2 researched 3 confirmed 4 researchnodes 5", fired_nodetypes,
+	          "nullmove tried 1 cutoffs 2 failed 3 failnodes 4", "pruning rfp 1/2/3/4/5/6 floorbinds 7",
+	          "qsearch roots 1 delta 2 see 3 maxdepth 4"});
 
 	// Singular, frontier and lmp stay silent when they did not fire; ttstats prints whenever compiled.
 	const std::string zero_tt = "ttstats mainprobes 0 mainhits 0 maincutoffs 0 qsprobes 0 qshits 0 qscutoffs 0 "
@@ -204,6 +212,53 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 	SearchTelemetry lmr_unreduced;
 	lmr_unreduced.lmr.researched = 3;
 	CHECK(payloads_of(lmr_unreduced) == std::vector<std::string>{zero_tt});
+
+	// ... node types on any PV frame, null move on attempts, pruning on either pruner, quiescence on
+	// roots.
+	SearchTelemetry pv_only;
+	pv_only.nodetypes.frames[NodeTypeStats::Pv] = {0, 0, 1};
+	CHECK(payloads_of(pv_only) ==
+	      std::vector<std::string>{zero_tt, "nodetypes pv 0/0/1 cut 0/0/0 all 0/0/0 cutfaillow 0/0/0"});
+	SearchTelemetry no_pv;
+	no_pv.nodetypes.frames[NodeTypeStats::Cut] = {1, 1, 1};
+	no_pv.nodetypes.frames[NodeTypeStats::All] = {1, 1, 1};
+	no_pv.nodetypes.cut_fail_low = {1, 1, 1};
+	CHECK(payloads_of(no_pv) == std::vector<std::string>{zero_tt});
+
+	SearchTelemetry nullmove_only;
+	nullmove_only.nullmove.tried = 2;
+	CHECK(payloads_of(nullmove_only) ==
+	      std::vector<std::string>{zero_tt, "nullmove tried 2 cutoffs 0 failed 0 failnodes 0"});
+	SearchTelemetry nullmove_untried;
+	nullmove_untried.nullmove = {.tried = 0, .cutoffs = 1, .failed = 1, .fail_nodes = 1};
+	CHECK(payloads_of(nullmove_untried) == std::vector<std::string>{zero_tt});
+
+	SearchTelemetry rfp_only;
+	rfp_only.pruning.rfp[5] = 3;
+	CHECK(payloads_of(rfp_only) == std::vector<std::string>{zero_tt, "pruning rfp 0/0/0/0/0/3 floorbinds 0"});
+	SearchTelemetry floor_only;
+	floor_only.pruning.floor_binds = 4;
+	CHECK(payloads_of(floor_only) == std::vector<std::string>{zero_tt, "pruning rfp 0/0/0/0/0/0 floorbinds 4"});
+
+	SearchTelemetry qsearch_only;
+	qsearch_only.qsearch.roots = 5;
+	CHECK(payloads_of(qsearch_only) == std::vector<std::string>{zero_tt, "qsearch roots 5 delta 0 see 0 maxdepth 0"});
+	SearchTelemetry qsearch_rootless;
+	qsearch_rootless.qsearch = {.roots = 0, .delta = 1, .see = 1, .max_depth = 1};
+	CHECK(payloads_of(qsearch_rootless) == std::vector<std::string>{zero_tt});
+}
+
+// maxdepth is a high-water mark: threads combine by max, while every other field adds.
+TEST_CASE("SearchTelemetry - quiescence maxdepth combines by max", "[search][telemetry]")
+{
+	QSearchStats total{.roots = 1, .delta = 2, .see = 3, .max_depth = 9};
+	total.add({.roots = 10, .delta = 20, .see = 30, .max_depth = 4});
+	CHECK(total.roots == 11);
+	CHECK(total.delta == 22);
+	CHECK(total.see == 33);
+	CHECK(total.max_depth == 9);
+	total.add({.roots = 0, .delta = 0, .see = 0, .max_depth = 12});
+	CHECK(total.max_depth == 12);
 }
 
 // The profile counters' bookkeeping identities, on a search large enough to fill every bin.
@@ -258,6 +313,112 @@ TEST_CASE("SearchTelemetry - an aborted search leaves the LMR nesting depths bal
 	REQUIRE(fix.lmr_profile().reduced > 0);
 	CHECK(fix.lmr_profile().reduced_nesting == 0);
 	CHECK(fix.lmr_profile().research_nesting == 0);
+}
+
+TEST_CASE("SearchTelemetry - node type, null move, pruning and quiescence profile counters are consistent",
+          "[search][telemetry]")
+{
+	STATIC_REQUIRE(kSearchProfileCompiled);
+	AIPerlexTestFixture fix(KIWIPETE_FEN, 8);
+
+	const SearchResult result = fix.get_move_at_threads(1, 8);
+	REQUIRE(result.depth_completed == 8);
+	const int64_t nodes = result.nodes_searched + result.qnodes_searched;
+	const NodeTypeStats& types = result.telemetry.nodetypes;
+	const NullMoveStats& null_move = result.telemetry.nullmove;
+	const PruningStats& pruning = result.telemetry.pruning;
+	const QSearchStats& qsearch = result.telemetry.qsearch;
+
+	int64_t cut_frames = 0;
+	int64_t cut_fail_lows = 0;
+	for (size_t band = 0; band < 3; ++band) {
+		CHECK(types.frames[NodeTypeStats::Pv][band] > 0);
+		CHECK(types.cut_fail_low[band] <= types.frames[NodeTypeStats::Cut][band]);
+		cut_frames += types.frames[NodeTypeStats::Cut][band];
+		cut_fail_lows += types.cut_fail_low[band];
+	}
+	// The shallowest all-node of a depth-8 search is at ply 2, depth 6 or less.
+	CHECK(types.frames[NodeTypeStats::All][0] > 0);
+	// Plausibility, not bookkeeping: with a usable move order most expected-cut frames do cut.
+	CHECK(cut_fail_lows > 0);
+	CHECK(cut_fail_lows * 2 < cut_frames);
+
+	REQUIRE(null_move.tried > 0);
+	CHECK(null_move.cutoffs > 0);
+	CHECK(null_move.failed > 0);
+	CHECK(null_move.cutoffs + null_move.failed <= null_move.tried);
+	CHECK(null_move.fail_nodes > 0);
+	CHECK(null_move.fail_nodes <= nodes);
+
+	CHECK(pruning.rfp[0] > 0);
+
+	CHECK(qsearch.roots > 0);
+	CHECK(qsearch.delta > 0);
+	CHECK(qsearch.see > 0);
+	CHECK(qsearch.max_depth > 0);
+	CHECK(qsearch.max_depth <= MAX_PLY);
+}
+
+// Floors rarely bind; this endgame is a search where some do.
+TEST_CASE("SearchTelemetry - frontier floor binds are a subset of frontier skips", "[search][telemetry]")
+{
+	STATIC_REQUIRE(kSearchProfileCompiled);
+	AIPerlexTestFixture fix("2r3k1/pp3pp1/4p2p/3n4/3P4/P1NBP3/1P3PPP/2R3K1 w - - 0 1", 10);
+
+	const SearchResult result = fix.get_move_at_threads(1, 10);
+	REQUIRE(result.depth_completed == 10);
+	REQUIRE(result.telemetry.pruning.floor_binds > 0);
+	CHECK(result.telemetry.pruning.floor_binds <= result.telemetry.frontier.skips);
+}
+
+// The Knuth-Moore rules, and cutfaillow's type filter, frame by frame.
+TEST_CASE("SearchTelemetry - expected node types follow Knuth-Moore", "[search][telemetry]")
+{
+	NodeTypeStats types;
+	using enum NodeTypeStats::Expected;
+
+	// A PV frame is PV whatever its slot says; its null-window moves are expected to cut.
+	types.expected[1] = All;
+	CHECK(types.type_of(1, /*is_pv_node=*/true) == Pv);
+	types.expect_move_child(1, true, 0);
+	CHECK(types.expected[2] == Cut);
+	types.expect_move_child(1, true, 3);
+	CHECK(types.expected[2] == Cut);
+
+	// A cut node's first move is expected to fail low, its later moves to cut.
+	types.expected[1] = Cut;
+	types.expect_move_child(1, false, 0);
+	CHECK(types.expected[2] == All);
+	types.expect_move_child(1, false, 1);
+	CHECK(types.expected[2] == Cut);
+
+	// Every move of an all-node is expected to cut.
+	types.expected[1] = All;
+	types.expect_move_child(1, false, 0);
+	CHECK(types.expected[2] == Cut);
+
+	// Only expected-cut frames count a fail-low.
+	types.record_fail_low(1, false, 4);
+	types.record_fail_low(1, true, 4);
+	CHECK(types.cut_fail_low == std::array<int64_t, 3>{});
+	types.expected[1] = Cut;
+	types.record_fail_low(1, false, 4);
+	CHECK(types.cut_fail_low == std::array<int64_t, 3>{0, 1, 0});
+}
+
+// A verification search shares its parent's ply, so the guard must hand the parent its own type back.
+TEST_CASE("SearchTelemetry - the verification guard marks its ply all-node and restores it", "[search][telemetry]")
+{
+	STATIC_REQUIRE(kSearchProfileCompiled);
+	AIPerlexTestFixture fix(KIWIPETE_FEN);
+	auto& expected = fix.thread_data().telemetry.nodetypes.expected;
+
+	expected[3] = NodeTypeStats::Cut;
+	{
+		const VerificationNodeTypeGuard guard(fix.thread_data(), 3);
+		CHECK(expected[3] == NodeTypeStats::All);
+	}
+	CHECK(expected[3] == NodeTypeStats::Cut);
 }
 
 // Every iteration after the first is aspirated at Threads=1; depth 1 has no seed score.

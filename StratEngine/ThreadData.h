@@ -222,3 +222,32 @@ class ExcludedMoveGuard {
 	int ply_;
 	Move previous_;
 };
+
+// Marks a singular verification search as an expected all-node for the search profile, and restores
+// the parent's type on every exit: the verification re-enters pvs() at its parent's ply, so it shares
+// the parent's slot. Does nothing unless the profile is compiled.
+class VerificationNodeTypeGuard {
+  public:
+	VerificationNodeTypeGuard(ThreadData& td, int ply) noexcept : td_(td), ply_(static_cast<size_t>(ply))
+	{
+		if constexpr (kSearchProfileCompiled) {
+			previous_ = td_.telemetry.nodetypes.expected[ply_];
+			td_.telemetry.nodetypes.expected[ply_] = NodeTypeStats::All;
+		}
+	}
+	~VerificationNodeTypeGuard() noexcept
+	{
+		if constexpr (kSearchProfileCompiled)
+			td_.telemetry.nodetypes.expected[ply_] = previous_;
+	}
+
+	VerificationNodeTypeGuard(const VerificationNodeTypeGuard&) = delete;
+	VerificationNodeTypeGuard& operator=(const VerificationNodeTypeGuard&) = delete;
+	VerificationNodeTypeGuard(VerificationNodeTypeGuard&&) = delete;
+	VerificationNodeTypeGuard& operator=(VerificationNodeTypeGuard&&) = delete;
+
+  private:
+	ThreadData& td_;
+	size_t ply_;
+	NodeTypeStats::Expected previous_ = NodeTypeStats::Pv;
+};
