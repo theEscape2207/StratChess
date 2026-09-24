@@ -91,6 +91,53 @@ struct LateMovePruningStats {
 	}
 };
 
+// PROBE (move-ordering quality, throwaway): where in the legal move order a pvs() fail-high came from.
+struct OrderingProbeStats {
+	int64_t cuts = 0;          // fail-high nodes, ply > 0
+	int64_t idx[5] = {};       // cutoff legal index 0, 1, 2, 3-5, 6+
+	int64_t idx_sum = 0;
+	int64_t first_type[4] = {}; // index-0 cut by: hash, capture, killer, other quiet
+	int64_t late_type[4] = {};  // index>0 cut by: hash, capture, killer, other quiet
+	int64_t band_cuts[3] = {};  // depth 1-2, 3-6, 7+
+	int64_t band_first[3] = {};
+	int64_t hash_nodes = 0;     // fail-high nodes that had a hash move
+	int64_t hash_first = 0;     // ... where the hash move made the cut
+	int64_t fail_low = 0;       // nodes that searched moves and did not cut
+
+	void add(const OrderingProbeStats& o) noexcept
+	{
+		cuts += o.cuts;
+		idx_sum += o.idx_sum;
+		hash_nodes += o.hash_nodes;
+		hash_first += o.hash_first;
+		fail_low += o.fail_low;
+		for (int i = 0; i < 5; ++i)
+			idx[i] += o.idx[i];
+		for (int i = 0; i < 4; ++i) {
+			first_type[i] += o.first_type[i];
+			late_type[i] += o.late_type[i];
+		}
+		for (int i = 0; i < 3; ++i) {
+			band_cuts[i] += o.band_cuts[i];
+			band_first[i] += o.band_first[i];
+		}
+	}
+
+	template <class Sink> void append_info(Sink&& sink) const
+	{
+		auto j = [](const int64_t* a, int n) {
+			std::string s;
+			for (int i = 0; i < n; ++i)
+				s += (i ? "/" : "") + std::to_string(a[i]);
+			return s;
+		};
+		sink("ordprobe cuts " + std::to_string(cuts) + " idx " + j(idx, 5) + " idxsum " + std::to_string(idx_sum) +
+		     " first " + j(first_type, 4) + " late " + j(late_type, 4) + " bandcuts " + j(band_cuts, 3) +
+		     " bandfirst " + j(band_first, 3) + " hashnodes " + std::to_string(hash_nodes) + " hashfirst " +
+		     std::to_string(hash_first) + " faillow " + std::to_string(fail_low));
+	}
+};
+
 struct SearchTelemetry {
 	// Member order is a layout requirement: with singular first, the two counters live in the
 	// shipping build keep the offsets in ThreadData they had as loose members.
@@ -98,6 +145,7 @@ struct SearchTelemetry {
 	FrontierFutilityStats frontier{};
 	LateMovePruningStats lmp{};
 	TTStats tt{};
+	OrderingProbeStats ord{};
 
 	void reset() noexcept
 	{
@@ -109,6 +157,7 @@ struct SearchTelemetry {
 			lmp = LateMovePruningStats{};
 		if constexpr (TTStats::compiled)
 			tt = TTStats{};
+		ord = OrderingProbeStats{};
 	}
 
 	void add(const SearchTelemetry& other) noexcept
@@ -121,6 +170,7 @@ struct SearchTelemetry {
 			lmp.add(other.lmp);
 		if constexpr (TTStats::compiled)
 			tt.add(other.tt);
+		ord.add(other.ord);
 	}
 
 	// Calls sink(std::string) once per payload, in the order UCI reports them.
@@ -134,5 +184,6 @@ struct SearchTelemetry {
 			lmp.append_info(sink);
 		if constexpr (TTStats::compiled)
 			tt.append_info(sink);
+		ord.append_info(sink);
 	}
 };
