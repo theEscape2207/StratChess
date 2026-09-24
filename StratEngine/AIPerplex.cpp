@@ -928,16 +928,12 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// static evaluation stands a margin below alpha. Node-level guards here, move-level ones below.
 	const bool frontier_node = frontier_futility_eligible(depth, alpha, is_pv_node, in_check, is_exclusion_frame);
 	bool frontier_skipped = false;
+	// SPIKE (#634 step 4): per-depth margin, 300 cp at depth 2.
+	const int frontier_margin = tuning_.frontier_futility_margin + 100 * (depth - 1);
 
 	// Late move pruning: at a depth-2 null-window node, a late quiet move is skipped outright.
 	const bool lmp_node = late_move_pruning_eligible(depth, alpha, beta, is_pv_node, in_check, is_exclusion_frame);
 	bool lmp_skipped = false;
-
-	// PROBE (#634 step 0): the depth-1 node guards, applied at depth 2.
-	const bool xfut_node = tuning_.frontier_futility_enabled && !is_exclusion_frame && !is_pv_node && !in_check &&
-	                       depth == 2 && std::abs(alpha) < GameValues::Mate_Threshold;
-	if (xfut_node)
-		td.telemetry.xfut.d2_nodes++;
 
 	// Iterate by sorted index — no rebuild of moveList needed
 	for (int si = 0; si < n; ++si) {
@@ -956,7 +952,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		const bool frontier_candidate = frontier_node && legal_moves_searched >= 1 && !MoveHelper::IsCapture(move) &&
 		                                !MoveHelper::IsPromote(move) && move != td.killers[ply][0] &&
 		                                move != td.killers[ply][1] && move != hash_move &&
-		                                node_eval() + tuning_.frontier_futility_margin <= alpha;
+		                                node_eval() + frontier_margin <= alpha;
 
 		// The pre-move half of the late-move guards. legal_moves_searched is the index this move takes
 		// if DoMove() accepts it: every legal move counts, exempt and skipped ones included, and a
@@ -965,10 +961,6 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		const bool lmp_candidate = lmp_node && legal_moves_searched >= kLateMovePruningMinLegalIndex &&
 		                           !MoveHelper::IsCapture(move) && !MoveHelper::IsPromote(move) &&
 		                           move != td.killers[ply][0] && move != td.killers[ply][1] && move != hash_move;
-
-		const bool xfut_pre = xfut_node && legal_moves_searched >= 1 && !MoveHelper::IsCapture(move) &&
-		                      !MoveHelper::IsPromote(move) && move != td.killers[ply][0] &&
-		                      move != td.killers[ply][1] && move != hash_move && node_eval() + 300 <= alpha;
 
 		if (td.board.DoMove(move)) {
 			const int move_number = legal_moves_searched++; // 0 for the first legal move
@@ -991,20 +983,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				td.board.UndoMove(move);
 				td.telemetry.lmp.skips++;
 				lmp_skipped = true;
-				if (xfut_pre)
-					td.telemetry.xfut.lmp_cov++;
 				continue;
-			}
-
-			auto& xf = td.telemetry.xfut;
-			const bool xfut_cand = xfut_pre && !td.check_draws(ply + 1) && !td.board.InCheck();
-			const bool xfut_outer = xfut_cand && xf.nesting == 0;
-			const int xfut_alpha = alpha;
-			const int64_t xfut_before = td.nodes_searched + td.qnodes_searched;
-			if (xfut_cand) {
-				xf.cand++;
-				xf.cand_idx[move_number <= 3 ? 0 : move_number <= 7 ? 1 : 2]++;
-				xf.nesting++;
 			}
 
 			// One per legal move edge actually searched, as in quiescence(): a move DoMove
@@ -1076,14 +1055,6 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 			td.board.UndoMove(move);
 
-			if (xfut_cand) {
-				xf.nesting--;
-				if (xfut_outer)
-					xf.subtree += (td.nodes_searched + td.qnodes_searched) - xfut_before;
-				if (value > xfut_alpha)
-					xf.beat_alpha++;
-			}
-
 			// Unwind invariant: an aborted frame mutates nothing. `value` came from a search
 			// that was cut off mid-tree, so everything below — the transposition store, the
 			// PV row, the killer and history updates — would record a result no search ever
@@ -1139,7 +1110,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// Still <= alpha, so the bound stays UPPER. Like null move's stored bound it comes from a
 	// selective search and is not reproducible: a skipped move may later be a killer and searched.
 	if (frontier_skipped)
-		best_value = std::max(best_value, static_eval + tuning_.frontier_futility_margin);
+		best_value = std::max(best_value, static_eval + frontier_margin);
 
 	// Terminal node: no legal move could be played, so this position is checkmate or
 	// stalemate and best_value is still the -Search_Init sentinel. Resolve the true
@@ -1825,7 +1796,7 @@ bool AIPerplex::frontier_futility_eligible(int depth, int alpha, bool is_pv_node
 		return false;
 	if (is_pv_node || in_check)
 		return false;
-	if (depth > 1)
+	if (depth > 2)
 		return false;
 	// The margin arithmetic is meaningless against a mate score.
 	return std::abs(alpha) < GameValues::Mate_Threshold;
