@@ -144,10 +144,12 @@ function Get-TierForPath {
     # one that does affect the build — fail-closed means new files land in
     # Engine until someone deliberately classifies them.
     # PowerShell helpers, alphabetically. New-PullRequest.ps1 is deliberately absent:
-    # it gates whether validation runs and has its own Build rule above. UciDriver.ps1 is
-    # engine-inert despite being dot-sourced by two measurement helpers. The branch/worktree
+    # it gates whether validation runs and has its own Build rule above. UciDriver.ps1 and
+    # BenchPositions.ps1 are engine-inert despite being dot-sourced by measurement helpers. The branch/worktree
     # helpers and Get-PrChecks.ps1 are likewise advisory and gate nothing.
+    if ($p -like '*Scripts/BenchPositions.ps1')             { return 'Tooling' }
     if ($p -like '*Scripts/Compare-SearchEquivalence.ps1')  { return 'Tooling' }
+    if ($p -like '*Scripts/Compare-SearchProfile.ps1')      { return 'Tooling' }
     if ($p -like '*Scripts/Get-PrChecks.ps1')               { return 'Tooling' }
     if ($p -like '*Scripts/Get-Worktrees.ps1')              { return 'Tooling' }
     # An agent-session hook: it gates edits in a session, never a build or a validation.
@@ -234,6 +236,8 @@ if ($SelfTest) {
         @{ Name = 'FAIL CLOSED: skill dir';     Files = @('.claude/skills/measure-strength/');                   Expect = 'Engine' }
         @{ Name = 'equivalence tool -> Tooling'; Files = @('Scripts/Compare-SearchEquivalence.ps1'); Expect = 'Tooling' }
         @{ Name = 'bench tool -> Tooling';      Files = @('Scripts/Run-Bench.ps1');          Expect = 'Tooling' }
+        @{ Name = 'bench positions -> Tooling'; Files = @('Scripts/BenchPositions.ps1');     Expect = 'Tooling' }
+        @{ Name = 'profile compare -> Tooling'; Files = @('Scripts/Compare-SearchProfile.ps1'); Expect = 'Tooling' }
         @{ Name = 'tooling only';               Files = @('Scripts/Run-EloMatch.ps1');        Expect = 'Tooling' }
         @{ Name = 'perftcheck tool -> Tooling'; Files = @('Scripts/Run-PerftCheck.ps1');     Expect = 'Tooling' }
         @{ Name = 'docs + tooling -> Tooling';  Files = @('CLAUDE.md', 'Scripts/Run-Tests.ps1'); Expect = 'Tooling' }
