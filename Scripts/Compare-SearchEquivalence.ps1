@@ -17,11 +17,14 @@
 
     Every 'info string' line the search emits is compared too — the node split and
     the trigger counters (frontier, lmp, singular, ttstats, aspiration) — so a change that
-    rewords, drops or adds one fails the gate. The 'info string treenodes' split
-    (issue #312) is the one exception, compared only when BOTH builds emit it. A
-    build predating #312 emits none, and that is reported rather than counted as a
-    difference — comparing against such a build is the normal case for an old
-    baseline.
+    rewords, drops or adds one fails the gate. The exceptions are compared only when
+    BOTH builds emit them, and a one-sided line is reported rather than counted as a
+    difference:
+      - 'treenodes', the node split (issue #312). A build predating it emits none,
+        the normal case for an old baseline.
+      - 'ordering' and 'lmr', the STRAT_SEARCH_PROFILE lines. A profile build then
+        compares against a default build of the same commit, which proves node
+        identity only; the tests pin those lines' wording.
 
     WHAT THIS CANNOT ANSWER. Where node counts change by design — an evaluation
     term, a move-ordering change — a difference here is the intended effect, not a
@@ -215,9 +218,23 @@ function ConvertTo-ComparableLines {
     return @($kept)
 }
 
-function Remove-NodeSplitLines {
-    param([Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Lines)
-    return @($Lines | Where-Object { $_ -notmatch '^info string treenodes ' })
+# 'info string' keys compared only when both builds emit them; see the help above.
+$OptionalInfoKeys = @('treenodes', 'ordering', 'lmr')
+
+function Test-HasInfoString {
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Lines,
+        [Parameter(Mandatory)][string]$Key
+    )
+    return @($Lines | Where-Object { $_ -match "^info string $Key " }).Count -gt 0
+}
+
+function Remove-InfoStringLines {
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Lines,
+        [Parameter(Mandatory)][string]$Key
+    )
+    return @($Lines | Where-Object { $_ -notmatch "^info string $Key " })
 }
 
 function Test-FixedDepthTranscript {
@@ -367,8 +384,17 @@ if ($SelfTest) {
     $r = Compare-Transcript @() @()
     Assert-Case 'two empty transcripts compare identical' ($r.Identical -and $r.Compared -eq 0)
 
-    $noSplit = Remove-NodeSplitLines (ConvertTo-ComparableLines $sampleOut)
+    $noSplit = @(Remove-InfoStringLines (ConvertTo-ComparableLines $sampleOut) 'treenodes')
     Assert-Case 'node-split lines can be dropped' ($noSplit.Count -eq 5)
+
+    # A profile line is dropped by its own key only; a key is not a prefix of a longer one.
+    $profiled = ConvertTo-ComparableLines ($sampleOut -replace 'bestmove e2e4', "info string ordering cuts 3 index 3/0/0/0/0`ninfo string lmr reduced 2 researched 0`ninfo string lmrx 1`nbestmove e2e4")
+    $noOrdering = @(Remove-InfoStringLines $profiled 'ordering')
+    Assert-Case 'ordering lines can be dropped' ($noOrdering.Count -eq 8 -and (Test-HasInfoString $noOrdering 'lmr')) "got $($noOrdering.Count)"
+    $noLmr = @(Remove-InfoStringLines $profiled 'lmr')
+    Assert-Case 'lmr removal keeps other keys' ($noLmr.Count -eq 8 -and (Test-HasInfoString $noLmr 'lmrx')) "got $($noLmr.Count)"
+    Assert-Case 'optional keys cover the profile lines' (@(@('treenodes', 'ordering', 'lmr') | Where-Object { $_ -notin $OptionalInfoKeys }).Count -eq 0)
+    Assert-Case 'a default transcript has no profile line' (-not (Test-HasInfoString (ConvertTo-ComparableLines $sampleOut) 'ordering'))
 
     $completion = Test-FixedDepthTranscript -Lines (ConvertTo-ComparableLines $sampleOut) -SearchDepth 2
     Assert-Case 'fixed-depth transcript requires the requested depth and a bestmove' ($completion.ReachedDepth -and $completion.HasBestMove)
@@ -615,20 +641,20 @@ Write-Host ''
 
 $totalCompared = 0
 $differing     = [System.Collections.Generic.List[object]]::new()
-$splitDropped  = $false
+$droppedKeys   = [System.Collections.Generic.SortedSet[string]]::new()
 
 foreach ($p in $positionList) {
     $b = Invoke-FixedDepthSearch -ExePath $beforePath -WorkDir $workDir -Spec $p.Spec -SearchDepth $Depth
     $a = Invoke-FixedDepthSearch -ExePath $afterPath  -WorkDir $workDir -Spec $p.Spec -SearchDepth $Depth
 
-    # One build predating #312 emits no node split. Dropping it from both sides is
-    # the honest comparison; counting its absence as a divergence is not.
-    $bHasSplit = @($b | Where-Object { $_ -match '^info string treenodes ' }).Count -gt 0
-    $aHasSplit = @($a | Where-Object { $_ -match '^info string treenodes ' }).Count -gt 0
-    if ($bHasSplit -ne $aHasSplit) {
-        $b = Remove-NodeSplitLines $b
-        $a = Remove-NodeSplitLines $a
-        $splitDropped = $true
+    # A line only one build emits is dropped from both sides: its absence says nothing
+    # about the searched tree.
+    foreach ($key in $OptionalInfoKeys) {
+        if ((Test-HasInfoString $b $key) -ne (Test-HasInfoString $a $key)) {
+            $b = @(Remove-InfoStringLines $b $key)
+            $a = @(Remove-InfoStringLines $a $key)
+            $droppedKeys.Add($key) | Out-Null
+        }
     }
 
     $r = Compare-Transcript -BeforeLines $b -AfterLines $a
@@ -646,9 +672,9 @@ foreach ($p in $positionList) {
 }
 
 Write-Host ''
-if ($splitDropped) {
-    Write-Host "NOTE    : one build emits no 'info string treenodes' split (predates #312); it was" -ForegroundColor Yellow
-    Write-Host "          excluded from both sides rather than counted as a difference."            -ForegroundColor Yellow
+if ($droppedKeys.Count -gt 0) {
+    Write-Host ("NOTE    : only one build emits 'info string' $($droppedKeys -join ', '); excluded from both" +
+                " sides rather than counted as a difference.") -ForegroundColor Yellow
 }
 
 if ($differing.Count -eq 0) {
