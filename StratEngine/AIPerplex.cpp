@@ -1095,7 +1095,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 						}
 					}
 				} else {
-					// Normal null-window search (unchanged)
+					// Null-window search at full depth
 					value = -pvs(td, depth - 1, -alpha - 1, -alpha, ply + 1, false, tt);
 				}
 
@@ -1142,9 +1142,6 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 					if (is_pv_node && !is_exclusion_frame) {
 						td.pv_table.update(ply, move);
 					}
-					// Update history for non-capture moves
-					//if (!move.is_capture()) {
-					//	data.move_ordering.update_history(move, depth, false);
 				}
 			}
 
