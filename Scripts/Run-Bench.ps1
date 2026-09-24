@@ -122,8 +122,8 @@ function ConvertTo-BenchResult {
         [Parameter(Mandatory)][string]$Fen
     )
 
-    # The engine emits one summary info line, then bestmove. Take the LAST info
-    # line so this keeps working if per-iteration output is ever added.
+    # The engine emits one info line per iteration, then a summary line and bestmove.
+    # Take the LAST info line: the summary.
     $info = [regex]::Matches($Output, 'info depth \d+.*?nodes (\d+)(?: hashfull \d+)? time (\d+)')
     $best = [regex]::Match($Output, 'bestmove (\S+)')
 
@@ -208,8 +208,6 @@ function Invoke-Search {
         "go depth $SearchDepth"
     )
 
-    # Generous ceiling: a deep search on a complex position is legitimately slow,
-    # and killing it early would silently corrupt the aggregate.
     $out = Invoke-UciSearchToBestMove -ExePath $ExePath -WorkDir $WorkDir -Commands $commands `
                                       -SearchDepth $SearchDepth -Description $Fen
 
@@ -361,10 +359,9 @@ if ($SelfTest) {
 if (-not $Exe) { throw "-Exe is required (the engine binary to benchmark)." }
 
 $exePath = (Resolve-Path $Exe).Path
-if (-not (Test-Path $exePath)) { throw "Engine not found: $Exe" }
 
 # Run from the engine's own directory so it finds game_settings.json and writes
-# logs/ where it expects (CLAUDE.md).
+# logs/ where it expects.
 $workDir = Split-Path -Parent $exePath
 
 # Named $positionList, not $positions: PowerShell variable names are
