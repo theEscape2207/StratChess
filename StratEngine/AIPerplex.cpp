@@ -46,7 +46,7 @@ namespace {
 
 	// Both quiescence pruners -- delta and SEE -- assume the evaluation is ADDITIVE IN
 	// MATERIAL: that a child's value is this node's score plus the material the move wins.
-	// The endgame scale (issue #128) is a MULTIPLIER on the whole score, so a capture that
+	// The endgame scale is a MULTIPLIER on the whole score, so a capture that
 	// enters or leaves a scaled class moves the child by a fraction of the position's value
 	// instead, in either direction. Both pruners then discard moves they have no bound for.
 	//
@@ -777,7 +777,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// once per guard. The two preconditions lead only as an ordering optimisation, so a PV node or
 	// one in check never pays for the popcount; both guards still test them for themselves. A node
 	// that clears those two but bails on a later guard -- an exclusion frame, a mate-range beta, a
-	// null-move child -- now pays a popcount it used to short-circuit past.
+	// null-move child -- still pays the popcount.
 	const bool zugzwang_safe = !is_pv_node && !in_check && has_two_non_pawn_pieces(td.board);
 
 	// This node's static evaluation, computed at most once and shared by both futility guards.
@@ -793,7 +793,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		return static_eval;
 	};
 
-	// Reverse futility pruning (#87). A shallow non-PV node whose static evaluation already stands
+	// Reverse futility pruning. A shallow non-PV node whose static evaluation already stands
 	// a margin above beta is reported as a fail-high without being searched. It sits exactly where
 	// the probe above measured this surface, and for the same reasons: a node the transposition
 	// table already resolved never reaches here, and in_check is free by now. The eligibility test
@@ -1218,7 +1218,7 @@ int AIPerplex::adjustScoreForGameState(ThreadData& td, bool moveFound, int ply, 
 // In check the list is every legal evasion, so that same sort would score each quiet evasion as
 // -piece/16 and sink the heaviest quiet to the bottom. The king is the heaviest piece that can move
 // and a king evasion is very often the only legal reply, so the move most likely to be best was
-// searched last (#320). ScoreMoves — the scorer pvs() already uses — scores quiet moves by history
+// searched last. ScoreMoves — the scorer pvs() already uses — scores quiet moves by history
 // instead, so a king evasion rises on measured merit rather than by fiat.
 //
 // ScoreMoves reports an order rather than permuting, so the scratch arrays that turn it into one
@@ -1467,7 +1467,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 			continue;
 
 		// Drop captures that lose material by static exchange. Three guards, all load-bearing:
-		// `material_bounds_hold` carries the `!in_check` this used to test directly, and it must
+		// `material_bounds_hold` carries the `!in_check` test, and it must
 		// stay outside the tuning flag: in check the list is every legal evasion and an empty
 		// survivor set reads as checkmate below — pruning one fabricates a mate score.
 		// `IsCapture()` keeps capture-promotions, which see_ge scores as losing on a defended square
@@ -1573,6 +1573,8 @@ int AIPerplex::search_with_aspiration(ThreadData& td, int depth, int seed_score,
 	int alpha = std::max(seed_score - delta, -GameValues::Search_Init);
 	int beta = std::min(seed_score + delta, static_cast<int>(GameValues::Search_Init));
 	int score = seed_score; // safe fallback if interrupted before the first pvs() call
+	AspirationStats& stats = td.telemetry.aspiration;
+	++stats.iterations;
 
 	for (int retry = 0;; ++retry) {
 		if (control_.StopRequested()) {
@@ -1582,6 +1584,7 @@ int AIPerplex::search_with_aspiration(ThreadData& td, int depth, int seed_score,
 			return score;
 		}
 
+		const int64_t nodes_before = td.nodes_searched + td.qnodes_searched;
 		score = pvs(td, depth, alpha, beta, 0, true, tt);
 
 		if (control_.StopRequested())
@@ -1591,19 +1594,25 @@ int AIPerplex::search_with_aspiration(ThreadData& td, int depth, int seed_score,
 		if (score > alpha && score < beta)
 			return score;
 
+		const bool fail_low = score <= alpha;
+		++(fail_low ? stats.fail_lows : stats.fail_highs);
+		stats.fail_nodes += td.nodes_searched + td.qnodes_searched - nodes_before;
+
 		// Safety fallback: open full window after max retries
 		if (retry >= tuning_.aspiration_max_retries) {
 			if (td.thread_id == 0)
 				log_aspiration_full_window(depth, tuning_.aspiration_max_retries);
-			if (!control_.StopRequested())
+			if (!control_.StopRequested()) {
+				++stats.full_windows;
 				score = pvs(td, depth, -GameValues::Search_Init, GameValues::Search_Init, 0, true, tt);
+			}
 			return score;
 		}
 
 		// Widen on the failing side; double delta for the next potential miss.
 		// Log after updating so the message shows the new window being tried.
 		delta *= 2;
-		if (score <= alpha) {
+		if (fail_low) {
 			alpha = std::max(seed_score - delta, -static_cast<int>(GameValues::Search_Init));
 			if (td.thread_id == 0)
 				log_aspiration_retry(depth, retry + 1, score, alpha, beta, true);
@@ -1777,7 +1786,7 @@ bool AIPerplex::should_try_null_move(const ThreadData& td, int depth, int beta, 
 	// Zugzwang guard: refuse to "pass" for a side with fewer than two
 	// non-pawn pieces — the null-move assumption ("a free pass is never
 	// better than moving") is false in king+pawn endgames AND in
-	// single-piece endgames won by domination/zugzwang (issue #66: KQ vs KR,
+	// single-piece endgames won by domination/zugzwang (KQ vs KR,
 	// where the lone rook loses only because its side must move).
 	return zugzwang_safe;
 }
