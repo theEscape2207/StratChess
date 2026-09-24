@@ -328,6 +328,15 @@ def report(summary, option, lo, hi, depth, out=sys.stdout):
     print(f'  {line}', file=out)
 
 
+def spin_option_bounds(engine, option):
+    kind, lo, hi = engine.options.get(option, (None, None, None))
+    if kind != 'spin':
+        raise EngineError(f'{option} is not a spin option'
+                          + (f' (the engine advertises it as {kind})' if kind else
+                             ' -- the engine does not advertise it at all'))
+    return lo, hi
+
+
 def run(corpus, exe, option, lo, hi, depth, workers, progress=None):
     """Analyse every position, one engine process per worker thread."""
     local = threading.local()
@@ -337,15 +346,11 @@ def run(corpus, exe, option, lo, hi, depth, workers, progress=None):
     def engine_for_thread():
         if getattr(local, 'engine', None) is None:
             local.engine = Engine([exe, 'uci'])
-            kind, opt_lo, opt_hi = local.engine.options.get(option, (None, None, None))
-            if kind != 'spin':
-                raise EngineError(f'{option} is not a spin option'
-                                  + (f' (the engine advertises it as {kind})' if kind else
-                                     ' -- the engine does not advertise it at all'))
-            if opt_lo is not None and (lo < opt_lo or hi > opt_hi):
-                raise EngineError(f'--range {lo} {hi} leaves {option}\'s advertised {opt_lo}..{opt_hi}')
             with guard:
                 engines.append(local.engine)
+            opt_lo, opt_hi = spin_option_bounds(local.engine, option)
+            if opt_lo is not None and (lo < opt_lo or hi > opt_hi):
+                raise EngineError(f'--range {lo} {hi} leaves {option}\'s advertised {opt_lo}..{opt_hi}')
         return local.engine
 
     def task(entry):
@@ -364,6 +369,17 @@ def run(corpus, exe, option, lo, hi, depth, workers, progress=None):
     return rows
 
 
+def make_checker(out):
+    failures = []
+
+    def check(name, passed, detail):
+        print(f'  [{"PASS" if passed else "FAIL"}] {name}: {detail}', file=out)
+        if not passed:
+            failures.append(name)
+
+    return check, failures
+
+
 def self_check(corpus, out=sys.stdout):
     """Assert the corpus invariants: every FEN legal, and every `expect` legal in it."""
     try:
@@ -372,12 +388,7 @@ def self_check(corpus, out=sys.stdout):
         print(f'--self-check requires the python-chess package (import failed: {exc})', file=out)
         return False
 
-    ok = True
-
-    def check(name, passed, detail):
-        nonlocal ok
-        ok = ok and passed
-        print(f'  [{"PASS" if passed else "FAIL"}] {name}: {detail}', file=out)
+    check, failures = make_checker(out)
 
     bad_fens, bad_moves, expects = [], [], 0
     for entry in corpus:
@@ -405,7 +416,7 @@ def self_check(corpus, out=sys.stdout):
     check('every expect legal in its FEN', not bad_moves,
           f'{expects} supplied, {len(bad_moves)} rejected'
           + (f' (first: {bad_moves[0]})' if bad_moves else ''))
-    return ok
+    return not failures
 
 
 # A scripted engine for --self-test: it answers from a table keyed on the option value, so the
@@ -491,12 +502,7 @@ def _stub_argv(tmp, spec, log):
 
 def self_test(out=sys.stdout):
     """Fixture checks for the bisection, the traps and the corpus reader."""
-    failures = []
-
-    def check(name, passed, detail):
-        print(f'  [{"PASS" if passed else "FAIL"}] {name}: {detail}', file=out)
-        if not passed:
-            failures.append(name)
+    check, failures = make_checker(out)
 
     # Pure bisection, with no engine in the way: the bracket ends are where an off-by-one hides.
     for flip_value in (1, 40, 99, 100):
@@ -643,10 +649,11 @@ def self_test(out=sys.stdout):
     check('percentiles bracket the sample', percentile([10, 60], 0.0) == 10
           and percentile([10, 60], 1.0) == 60, 'min 10, max 60')
 
-    check('self-check accepts a legal corpus and rejects an illegal one',
-          self_check([{'id': 1, 'fen': START, 'expect': 'e2e4'}], out=open(os.devnull, 'w'))
-          and not self_check([{'id': 1, 'fen': START, 'expect': 'e2e5'}], out=open(os.devnull, 'w')),
-          'a legal FEN with an illegal expect must fail')
+    with open(os.devnull, 'w') as sink:
+        check('self-check accepts a legal corpus and rejects an illegal one',
+              self_check([{'id': 1, 'fen': START, 'expect': 'e2e4'}], out=sink)
+              and not self_check([{'id': 1, 'fen': START, 'expect': 'e2e5'}], out=sink),
+              'a legal FEN with an illegal expect must fail')
     return not failures
 
 
@@ -702,8 +709,11 @@ def main():
     else:
         probe = Engine([exe, 'uci'])
         try:
-            kind, lo, hi = probe.options.get(args.option, (None, None, None))
-            if kind != 'spin' or lo is None:
+            try:
+                lo, hi = spin_option_bounds(probe, args.option)
+            except EngineError:
+                lo = None
+            if lo is None:
                 parser.error(f'{args.option} is not a spin option this engine advertises; '
                              'pass --range explicitly if it is')
         finally:
