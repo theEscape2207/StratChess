@@ -851,8 +851,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	if (should_try_null_move(td, depth, beta, ply, is_pv_node, in_check, zugzwang_safe)) {
 		const int R = tuning_.null_move_reduction;
 
-		// Search profile: the pass's child is expected to fail low. Its failed-search nodes exclude
-		// those already counted by failed null searches nested inside it.
+		// Search profile: the pass's child is expected to fail low, and a failed attempt's nodes exclude
+		// those already counted by failed attempts nested inside it.
 		auto& null_stats = td.telemetry.nullmove;
 		int64_t null_start = 0;
 		int64_t null_start_fail = 0;
@@ -860,7 +860,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			null_stats.tried++;
 			null_start = td.nodes_searched + td.qnodes_searched;
 			null_start_fail = null_stats.fail_nodes;
-			td.telemetry.nodetypes.expected[static_cast<size_t>(ply) + 1] = NodeTypeStats::All;
+			td.telemetry.nodetypes.expect_null_child(ply);
 		}
 
 		td.last_move_was_null[ply + 1] = true;
@@ -883,11 +883,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			return null_score;
 		}
 
-		if constexpr (kSearchProfileCompiled) {
-			null_stats.failed++;
-			null_stats.fail_nodes +=
-			    (td.nodes_searched + td.qnodes_searched - null_start) - (null_stats.fail_nodes - null_start_fail);
-		}
+		if constexpr (kSearchProfileCompiled)
+			null_stats.record_failed(td.nodes_searched + td.qnodes_searched - null_start, null_start_fail);
 	}
 
 	MoveList moveList;
@@ -949,6 +946,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				// Both trees, because a verification's cost includes the quiescence it reaches.
 				const int64_t nodes_before = td.nodes_searched + td.qnodes_searched;
 				const ExcludedMoveGuard guard(td, ply, hash_move);
+				// Search profile: the verification shares this ply's slot, and is expected to fail low.
 				const VerificationNodeTypeGuard type_guard(td, ply);
 				verify_value = pvs(td, verify_depth, singular_beta - 1, singular_beta, ply, false, tt);
 				td.telemetry.singular.verification_nodes += (td.nodes_searched + td.qnodes_searched) - nodes_before;
@@ -1044,6 +1042,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			if constexpr (kSearchProfileCompiled) {
 				profile_move_nodes = td.nodes_searched + td.qnodes_searched;
 				profile_move_late = td.telemetry.ordering.late_nodes;
+				// The child's expected Knuth-Moore type, one write shared by all of this move's searches.
 				td.telemetry.nodetypes.expect_move_child(ply, is_pv_node, move_number);
 			}
 

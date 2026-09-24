@@ -22,9 +22,9 @@
 #endif
 inline constexpr bool kSingularExtensionsCompiled = STRAT_SINGULAR_EXTENSIONS != 0;
 
-// Per-node search profile counters: move ordering, LMR, node types, null move, pruning, quiescence. MEASUREMENT ONLY, so a profile build
-// stays node-identical to the shipping one, and Compare-SearchEquivalence.ps1 compares their lines
-// only when both builds print them.
+// Per-node search profile counters: move ordering, LMR, node types, null move, pruning, quiescence.
+// MEASUREMENT ONLY, so a profile build stays node-identical to the shipping one, and
+// Compare-SearchEquivalence.ps1 compares their lines only when both builds print them.
 //
 // Set by CMake: -DSTRAT_SEARCH_PROFILE=1. The test target always defines it. At 0 the engine runs no
 // counting code; the members remain as cold bytes at the tail of ThreadData, because every write
@@ -154,6 +154,7 @@ template <size_t N> void add_bins(std::array<int64_t, N>& bins, const std::array
 }
 
 // Depth bands shared by every banded profile field: depth 1-2, 3-6, 7+.
+inline constexpr size_t kDepthBands = 3;
 constexpr size_t depth_band(int depth) noexcept { return depth <= 2 ? 0 : depth <= 6 ? 1 : 2; }
 
 // Where in the legal move order a pvs() fail-high came from. A cut is a fail-high node at ply > 0,
@@ -173,7 +174,7 @@ struct OrderingStats {
 	// Nodes (both trees) spent on the moves searched before a late cut. Nesting-exclusive: a late-cut
 	// node inside another's earlier moves is counted once, by the outer one.
 	int64_t late_nodes = 0;
-	std::array<int64_t, 3> late_bands{}; // late_nodes by the cut node's depth_band()
+	std::array<int64_t, kDepthBands> late_bands{}; // late_nodes by the cut node's depth_band()
 
 	void record_cut(int move_number, CutMove type, int depth, bool had_hash_move, int64_t spent_before) noexcept
 	{
@@ -246,15 +247,15 @@ struct LmrStats {
 	}
 };
 
-// pvs() frames that reach the transposition-table probe, by expected Knuth-Moore type and depth_band().
+// pvs() frames past the quiescence hand-off, by expected Knuth-Moore type and depth_band().
 // A frame's type is PV when it is searched as one, else what its parent expected (see pvs()).
 struct NodeTypeStats {
 	static constexpr bool compiled = kSearchProfileCompiled;
 
 	enum Expected : uint8_t { Pv, Cut, All };
 
-	std::array<std::array<int64_t, 3>, 3> frames{}; // by Expected, then band
-	std::array<int64_t, 3> cut_fail_low{};          // expected-cut frames that searched moves and failed low
+	std::array<std::array<int64_t, kDepthBands>, 3> frames{}; // by Expected, then band
+	std::array<int64_t, kDepthBands> cut_fail_low{};          // expected-cut frames that searched moves and failed low
 
 	// Per thread, never summed: the type each ply's parent expects of it. Only non-PV frames read it.
 	std::array<Expected, MAX_PLY> expected{};
@@ -282,6 +283,9 @@ struct NodeTypeStats {
 		expected[static_cast<size_t>(ply) + 1] = move_number == 0 && type_of(ply, is_pv_node) == Cut ? All : Cut;
 	}
 
+	// The pass's child is expected to fail low.
+	void expect_null_child(int ply) noexcept { expected[static_cast<size_t>(ply) + 1] = All; }
+
 	void add(const NodeTypeStats& other) noexcept
 	{
 		for (size_t type = 0; type < frames.size(); ++type)
@@ -291,7 +295,7 @@ struct NodeTypeStats {
 
 	template <class Sink> void append_info(Sink&& sink) const
 	{
-		if (frames[Pv] != std::array<int64_t, 3>{})
+		if (frames[Pv] != std::array<int64_t, kDepthBands>{})
 			sink("nodetypes pv " + join_bins(frames[Pv]) + " cut " + join_bins(frames[Cut]) + " all " +
 			     join_bins(frames[All]) + " cutfaillow " + join_bins(cut_fail_low));
 	}
@@ -306,6 +310,14 @@ struct NullMoveStats {
 	int64_t cutoffs = 0;
 	int64_t failed = 0; // completed below beta
 	int64_t fail_nodes = 0;
+
+	// spent is the attempt's node span; fail_nodes_before, fail_nodes when it began. Nested failures
+	// already added their own nodes, so only the rest of the span is new.
+	void record_failed(int64_t spent, int64_t fail_nodes_before) noexcept
+	{
+		failed++;
+		fail_nodes += spent - (fail_nodes - fail_nodes_before);
+	}
 
 	void add(const NullMoveStats& other) noexcept
 	{
@@ -347,9 +359,10 @@ struct PruningStats {
 	}
 };
 
-// Quiescence: roots are pvs() calls handed over at depth <= 0; delta and see are moves each pruner
-// skipped; maxdepth is the deepest quiescence ply reached, which in-check chains can take past the
-// budget. maxdepth combines across threads by max, not sum.
+// Quiescence: roots are pvs() calls handed over at depth <= 0; delta and see are pseudo-legal moves
+// each pruner skipped; maxdepth is the deepest quiescence frame entered. The frame one past the budget
+// only evaluates, so maxdepth exceeds QSEARCH_BUDGET + 1 only through in-check chains. maxdepth
+// combines across threads by max, not sum.
 struct QSearchStats {
 	static constexpr bool compiled = kSearchProfileCompiled;
 

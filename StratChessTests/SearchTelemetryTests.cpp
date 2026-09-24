@@ -331,7 +331,7 @@ TEST_CASE("SearchTelemetry - node type, null move, pruning and quiescence profil
 
 	int64_t cut_frames = 0;
 	int64_t cut_fail_lows = 0;
-	for (size_t band = 0; band < 3; ++band) {
+	for (size_t band = 0; band < kDepthBands; ++band) {
 		CHECK(types.frames[NodeTypeStats::Pv][band] > 0);
 		CHECK(types.cut_fail_low[band] <= types.frames[NodeTypeStats::Cut][band]);
 		cut_frames += types.frames[NodeTypeStats::Cut][band];

@@ -570,7 +570,7 @@ game, or one long `go movetime` from a middlegame position, and compare sizes on
 
 **Search profile**: a build configured with `-DSTRAT_SEARCH_PROFILE=1` prints per-node counters for
 move ordering, LMR, node types, null move, pruning and quiescence after each search, each line only
-when its first field is non-zero:
+when its first field is non-zero (`pruning`: when either field is):
 
 ```
 info string ordering cuts N index I0/I1/I2/I3to5/I6plus latecut H/C/K/Q hashnodes N hashcuts N latenodes N latebands B/B/B
@@ -592,7 +592,7 @@ info string qsearch roots N delta N see N maxdepth N
   those that still beat alpha.
 - `reducednodes` and `researchnodes` count the nodes inside the outermost search of each kind. A
   reduced search inside a re-search counts in both, so the two must not be summed.
-- `nodetypes` counts `pvs()` frames that reach the transposition-table probe, by depth band and by
+- `nodetypes` counts `pvs()` frames past the quiescence hand-off, by depth band and by
   expected Knuth-Moore type: PV when searched as one, otherwise what the parent expected (a cut
   node's first move and a null-move child fail low, every other null-window move cuts; a singular
   verification is all-node). `cutfaillow` counts expected-cut frames that searched moves and failed
@@ -601,10 +601,11 @@ info string qsearch roots N delta N see N maxdepth N
   below it, so an aborted attempt is in `tried` only. `failnodes` counts the nodes inside failed
   attempts, a nested failure once.
 - `rfp` counts reverse-futility cutoffs by the node's depth; the last bin is open. `floorbinds`
-  counts frontier fail-low floors that raised a node's best value.
-- `roots` counts main-search leaves handed to quiescence; `delta` and `see` count moves each pruner
-  skipped. `maxdepth` is the deepest quiescence ply reached, past the budget in check. It combines
-  across threads by max, not sum.
+  counts frontier fail-low floors that raised a node's best value. A node without two non-pawn
+  pieces is frontier-pruned but never reverse-futility pruned, so the line prints on either field.
+- `roots` counts main-search leaves handed to quiescence; `delta` and `see` count pseudo-legal moves
+  each pruner skipped. `maxdepth` is the deepest quiescence frame entered; above the budget plus one
+  only through checks. It combines across threads by max, not sum.
 
 The counters are compiled out of the default build, and a profile build stays node-identical to it.
 The wording is a parsed contract: never reword a line.

@@ -229,6 +229,7 @@ class VerificationNodeTypeGuard {
   public:
 	VerificationNodeTypeGuard(ThreadData& td, int ply) noexcept : td_(td), ply_(static_cast<size_t>(ply))
 	{
+		assert(ply >= 0 && ply < MAX_PLY);
 		if constexpr (kSearchProfileCompiled) {
 			previous_ = td_.telemetry.nodetypes.expected[ply_];
 			td_.telemetry.nodetypes.expected[ply_] = NodeTypeStats::All;
