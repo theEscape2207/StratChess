@@ -22,6 +22,18 @@ Newest first.
 
 ---
 
+## 2026-09-24 — Aspiration window telemetry (#637)
+
+Every build now prints `info string aspiration iterations .. faillow .. failhigh .. fullwindow ..
+failnodes ..` after each search: windows entered, fails by side, full-window fallbacks started, and
+both trees' nodes spent in windows that failed. Counted once per window, so always compiled;
+node-identical to the previous build, nps unchanged within noise. #637's other per-iteration items
+(nodes per iteration, best-move stability) need no counter: at `Threads=1` they are read from the
+`info depth` lines. First part of #637; the per-node profile counters and the comparison script
+follow.
+
+---
+
 ## 2026-09-22 â€” UCI protocol output routed through an injectable writer (#605)
 
 `UciWriter` (`StratEngine/UciWriter.h`) owns UCI's output: a line sink plus the mutex that
