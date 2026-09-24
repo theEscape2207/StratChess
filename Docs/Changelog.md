@@ -22,7 +22,7 @@ Newest first.
 
 ---
 
-## 2026-09-24 — Aspiration window telemetry (#637)
+## 2026-09-24 â€” Aspiration window telemetry (#637)
 
 Every build now prints `info string aspiration iterations .. faillow .. failhigh .. fullwindow ..
 failnodes ..` after each search: windows entered, fails by side, full-window fallbacks started, and
