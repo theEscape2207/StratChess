@@ -2,5 +2,28 @@
   "enabledPlugins": {
     "superpowers@claude-plugins-official": false,
     "mattpocock-skills@claude-plugins-official": true
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          { "type": "command", "if": "Edit(**/*.ps1)", "timeout": 30, "command": "pwsh", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/Scripts/Invoke-SkillGate.ps1"] },
+          { "type": "command", "if": "Write(**/*.ps1)", "timeout": 30, "command": "pwsh", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/Scripts/Invoke-SkillGate.ps1"] },
+          { "type": "command", "if": "Edit(**/CLAUDE.md)", "timeout": 30, "command": "pwsh", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/Scripts/Invoke-SkillGate.ps1"] },
+          { "type": "command", "if": "Write(**/CLAUDE.md)", "timeout": 30, "command": "pwsh", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/Scripts/Invoke-SkillGate.ps1"] },
+          { "type": "command", "if": "Edit(**/AGENTS.md)", "timeout": 30, "command": "pwsh", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/Scripts/Invoke-SkillGate.ps1"] },
+          { "type": "command", "if": "Write(**/AGENTS.md)", "timeout": 30, "command": "pwsh", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/Scripts/Invoke-SkillGate.ps1"] },
+          { "type": "command", "if": "Edit(**/.claude/skills/**)", "timeout": 30, "command": "pwsh", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/Scripts/Invoke-SkillGate.ps1"] },
+          { "type": "command", "if": "Write(**/.claude/skills/**)", "timeout": 30, "command": "pwsh", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/Scripts/Invoke-SkillGate.ps1"] },
+          { "type": "command", "if": "Edit(**/.agents/skills/**)", "timeout": 30, "command": "pwsh", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/Scripts/Invoke-SkillGate.ps1"] },
+          { "type": "command", "if": "Write(**/.agents/skills/**)", "timeout": 30, "command": "pwsh", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/Scripts/Invoke-SkillGate.ps1"] },
+          { "type": "command", "if": "Edit(**/.claude/agents/**)", "timeout": 30, "command": "pwsh", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/Scripts/Invoke-SkillGate.ps1"] },
+          { "type": "command", "if": "Write(**/.claude/agents/**)", "timeout": 30, "command": "pwsh", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/Scripts/Invoke-SkillGate.ps1"] },
+          { "type": "command", "if": "Edit(**/.codex/agents/**)", "timeout": 30, "command": "pwsh", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/Scripts/Invoke-SkillGate.ps1"] },
+          { "type": "command", "if": "Write(**/.codex/agents/**)", "timeout": 30, "command": "pwsh", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/Scripts/Invoke-SkillGate.ps1"] }
+        ]
+      }
+    ]
   }
 }

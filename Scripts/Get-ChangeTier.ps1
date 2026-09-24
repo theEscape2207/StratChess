@@ -152,6 +152,8 @@ function Get-TierForPath {
     if ($p -like '*Scripts/Compare-SearchEquivalence.ps1')  { return 'Tooling' }
     if ($p -like '*Scripts/Get-PrChecks.ps1')               { return 'Tooling' }
     if ($p -like '*Scripts/Get-Worktrees.ps1')              { return 'Tooling' }
+    # An agent-session hook: it gates edits in a session, never a build or a validation.
+    if ($p -like '*Scripts/Invoke-SkillGate.ps1')           { return 'Tooling' }
     if ($p -like '*Scripts/Measure-UciLatency.ps1')         { return 'Tooling' }
     if ($p -like '*Scripts/New-TaskBranch.ps1')             { return 'Tooling' }
     if ($p -like '*Scripts/New-Worktree.ps1')               { return 'Tooling' }
@@ -255,6 +257,7 @@ if ($SelfTest) {
     @{ Name = 'Remove-Worktree -> Tooling'; Files = @('Scripts/Remove-Worktree.ps1'); Expect = 'Tooling' }
     @{ Name = 'Get-Worktrees -> Tooling';   Files = @('Scripts/Get-Worktrees.ps1');   Expect = 'Tooling' }
         @{ Name = 'Get-PrChecks -> Tooling';    Files = @('Scripts/Get-PrChecks.ps1');   Expect = 'Tooling' }
+        @{ Name = 'skill gate hook -> Tooling'; Files = @('Scripts/Invoke-SkillGate.ps1'); Expect = 'Tooling' }
     # The in-place counterparts to New-Worktree/Remove-Worktree: same reasoning, same tier.
     @{ Name = 'New-TaskBranch -> Tooling';       Files = @('Scripts/New-TaskBranch.ps1');       Expect = 'Tooling' }
     @{ Name = 'Remove-MergedBranches -> Tooling'; Files = @('Scripts/Remove-MergedBranches.ps1'); Expect = 'Tooling' }
@@ -284,6 +287,7 @@ if ($SelfTest) {
         @{ Name = 'FAIL CLOSED: unknown ext';   Files = @('foo/bar.xyz');                                        Expect = 'Engine' }
         @{ Name = 'FAIL CLOSED: new script';    Files = @('Scripts/Brand-New.ps1');            Expect = 'Engine' }
         @{ Name = 'FAIL CLOSED: unlisted python script'; Files = @('Scripts/some_new_tool.py'); Expect = 'Engine' }
+        @{ Name = 'FAIL CLOSED: hook configs';  Files = @('.claude/settings.json', '.codex/hooks.json'); Expect = 'Engine' }
         @{ Name = 'json -> Engine';             Files = @('StratChessEvolved/game_settings.json');               Expect = 'Engine' }
         @{ Name = 'header -> Engine';           Files = @('StratEngine/Eval.h');                                 Expect = 'Engine' }
         @{ Name = 'backslash paths normalise';  Files = @('Scripts\Run-EloMatch.ps1');         Expect = 'Tooling' }

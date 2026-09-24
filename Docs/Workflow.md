@@ -47,7 +47,7 @@ Four things are non-negotiable and are the reason most of this file exists:
 | Tier | Matches | What runs |
 |---|---|---|
 | `Docs` | `*.md`, `Docs/**`, `.claude/plans/**`, `.claude/skills/**.md`, `.claude/agents/**.md` | Nothing — the pre-commit hook's fast tests already cover it |
-| `Tooling` | `Scripts\Run-EloMatch.ps1`, `Run-Tests.ps1`, `Sync-Master.ps1`, `verify_mate_key.py`, `build_corpus.py`, `New-Worktree.ps1`, `Remove-Worktree.ps1`, `Get-Worktrees.ps1` | PowerShell syntax parse only — never compiled, never invoked by the engine |
+| `Tooling` | the engine-inert helper scripts `Get-ChangeTier.ps1` enumerates by name | PowerShell syntax parse only — never compiled, never invoked by the engine |
 | `Build` | `build.ps1`, `Scripts\Validate-*.ps1`, `New-PullRequest.ps1`, `Get-ChangeTier.ps1`, `Run-Lint.ps1`, `.githooks/**`, `.github/**`, `CMakeLists.txt`, `*.cmake`, `CMakePresets.json`, `.clang-format`, `.clang-tidy`, `.git-blame-ignore-revs` | Full: build + extended `[slow]` tests + tactical suite + self-play, preceded by the clang-format check |
 | `Engine` | `*.cpp`, `*.h`, `*.json`, **and anything unrecognised** | Full |
 
@@ -128,6 +128,15 @@ That makes the skip an auditable claim rather than a silent omission.
 automatically. The asymmetry is the point: a false positive costs one subagent dispatch, a false
 negative merges an unreviewed search change that surfaces weeks later in an Elo match, if at all.
 Never teach the script to suppress the reminder — escalating it is fine.
+
+---
+
+## Skill gate hook
+
+`Scripts/Invoke-SkillGate.ps1` denies the first edit per session to a `.ps1`, a skill or
+`CLAUDE.md`/`AGENTS.md`, naming the skill to load. Skill descriptions match the task, not the file,
+so these skills were mostly skipped. Codex runs it only once the project's `.codex/` layer and
+the hook definition are both trusted; not yet verified live (#631).
 
 ---
 
