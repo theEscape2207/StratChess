@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+static constexpr const char* KIWIPETE_FEN = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+
 // ============================================================================
 // SetThreads clamp tests
 // ============================================================================
@@ -65,7 +67,7 @@ TEST_CASE("SMP - Search returns post-join aggregate telemetry at Threads > 1", "
 // Summed like the node counters: exactly the main thread plus every helper this search ran.
 TEST_CASE("SMP - Search returns post-join aggregate trigger counters at Threads > 1", "[smp][telemetry]")
 {
-	AIPerlexTestFixture fix("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", 6);
+	AIPerlexTestFixture fix(KIWIPETE_FEN, 6);
 
 	const SearchResult returned = fix.get_move_at_threads(3, 6);
 	REQUIRE_FALSE(returned.best_move.is_null());
@@ -83,7 +85,7 @@ TEST_CASE("SMP - Search returns post-join aggregate trigger counters at Threads 
 // helper: at Threads=2 the first helper runs and the second stays stale.
 TEST_CASE("SMP - trigger counters exclude helpers the current Threads leaves idle", "[smp][telemetry]")
 {
-	AIPerlexTestFixture fix("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", 6);
+	AIPerlexTestFixture fix(KIWIPETE_FEN, 6);
 
 	constexpr int64_t kStale = 1'000'000'000;
 	SearchTelemetry stale;
@@ -176,7 +178,7 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 // Every iteration after the first is aspirated at Threads=1; depth 1 has no seed score.
 TEST_CASE("SearchTelemetry - aspiration counts one iteration per aspirated depth", "[search][telemetry]")
 {
-	AIPerlexTestFixture fix("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", 7);
+	AIPerlexTestFixture fix(KIWIPETE_FEN, 7);
 
 	const SearchResult result = fix.get_move_at_threads(1, 7);
 	REQUIRE(result.depth_completed == 7);
@@ -195,7 +197,7 @@ TEST_CASE("SearchTelemetry - aspiration counts one iteration per aspirated depth
 // the full window, so each counter is exercised and they must agree.
 TEST_CASE("SearchTelemetry - aspiration fails are counted with their nodes", "[search][telemetry]")
 {
-	AIPerlexTestFixture fix("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", 7);
+	AIPerlexTestFixture fix(KIWIPETE_FEN, 7);
 	fix.set_aspiration_initial_delta(1);
 	fix.set_aspiration_max_retries(0);
 
@@ -310,7 +312,7 @@ static int64_t poll_ticks_at_depth(const std::string& fen, int depth)
 // and no legal position in the repository's corpora is dearer. The flag is irrelevant to what they
 // assert -- they are about the verdict carrier, not about pruning -- so pinning it stops a search
 // that gets cheaper from silently converting these into tests of something else.
-static constexpr const char* BUSY_FEN = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+static constexpr const char* BUSY_FEN = KIWIPETE_FEN;
 static constexpr int64_t POLL_INTERVAL = 1024; // poll_search_limits(): (++nodes_since_check_ & 1023)
 
 TEST_CASE("AIPerplex - init_search resets the root verdict before any node runs", "[search]")
@@ -352,7 +354,7 @@ TEST_CASE("AIPerplex - a search aborted inside its first root frame drops the pr
 
 TEST_CASE("Search - quiescence nodes are counted separately from main-tree nodes", "[search][nodes]")
 {
-	AIPerlexTestFixture fix("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+	AIPerlexTestFixture fix(KIWIPETE_FEN);
 
 	const SearchResult result = fix.result_to_depth(6);
 	REQUIRE_FALSE(result.best_move.is_null());
@@ -370,7 +372,7 @@ TEST_CASE("Search - quiescence nodes are counted separately from main-tree nodes
 
 TEST_CASE("Search - node counters reset between searches", "[search][nodes]")
 {
-	AIPerlexTestFixture fix("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+	AIPerlexTestFixture fix(KIWIPETE_FEN);
 
 	REQUIRE_FALSE(fix.search_to_depth(5).is_null());
 	const int64_t first_main = fix.mainnodes();
@@ -397,7 +399,7 @@ TEST_CASE("Search - node counters reset between searches", "[search][nodes]")
 	// The exact-equality form of the same property, with the table taken out of it:
 	// an independent fixture is a fresh AI and a fresh TT, so a correctly reset
 	// counter must reproduce the first search's count exactly.
-	AIPerlexTestFixture fresh("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+	AIPerlexTestFixture fresh(KIWIPETE_FEN);
 	REQUIRE_FALSE(fresh.search_to_depth(5).is_null());
 	CHECK(fresh.mainnodes() == first_main);
 	CHECK(fresh.qnodes() == first_q);

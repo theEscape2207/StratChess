@@ -93,14 +93,14 @@ struct LateMovePruningStats {
 
 // Aspiration windows. Written once per window rather than per node, so always compiled. A fail is a
 // pvs() call that completed with a score outside its window; failnodes are the nodes, both trees,
-// spent in those calls: the re-search cost the window added.
+// spent in those calls. The full-window fallback's own nodes are not in it.
 struct AspirationStats {
 	static constexpr bool compiled = true;
 
-	int64_t iterations = 0; // iterations searched with an aspiration window
+	int64_t iterations = 0; // iterations entered with an aspiration window, aborted ones included
 	int64_t fail_lows = 0;
 	int64_t fail_highs = 0;
-	int64_t full_windows = 0; // retries exhausted, so the iteration ran again with the full window
+	int64_t full_windows = 0; // retries exhausted, and the full-window search started
 	int64_t fail_nodes = 0;
 
 	void add(const AspirationStats& other) noexcept
@@ -140,7 +140,8 @@ struct SearchTelemetry {
 			lmp = LateMovePruningStats{};
 		if constexpr (TTStats::compiled)
 			tt = TTStats{};
-		aspiration = AspirationStats{};
+		if constexpr (AspirationStats::compiled)
+			aspiration = AspirationStats{};
 	}
 
 	void add(const SearchTelemetry& other) noexcept
@@ -153,7 +154,8 @@ struct SearchTelemetry {
 			lmp.add(other.lmp);
 		if constexpr (TTStats::compiled)
 			tt.add(other.tt);
-		aspiration.add(other.aspiration);
+		if constexpr (AspirationStats::compiled)
+			aspiration.add(other.aspiration);
 	}
 
 	// Calls sink(std::string) once per payload, in the order UCI reports them.
@@ -167,6 +169,7 @@ struct SearchTelemetry {
 			lmp.append_info(sink);
 		if constexpr (TTStats::compiled)
 			tt.append_info(sink);
-		aspiration.append_info(sink);
+		if constexpr (AspirationStats::compiled)
+			aspiration.append_info(sink);
 	}
 };

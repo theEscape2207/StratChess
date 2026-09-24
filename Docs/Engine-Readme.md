@@ -381,9 +381,12 @@ Every build reports the windows' cost once per search, summed over threads:
 info string aspiration iterations .. faillow .. failhigh .. fullwindow .. failnodes ..
 ```
 
-`failnodes` counts both trees' nodes spent in windows that failed, which is the re-search cost. Nodes
-per iteration and best-move changes need no counter. At `Threads=1`, read them from the
-`info depth` lines: each carries the cumulative node count, the score and the PV.
+`failnodes` counts both trees' nodes spent in windows that failed. It excludes the full-window
+fallback's own nodes. Helper threads count too, and they aspirate every depth including depth 1
+around a seed of 0, so compare these figures only at `Threads=1`. Nodes per iteration and best-move
+changes need no counter. At `Threads=1`, read them from the `info depth` lines, each of which
+carries the cumulative node count, the score and the PV. The final line's total, less the last
+iteration's, is a rejected trailing iteration's cost.
 
 **Algorithm**:
 ```

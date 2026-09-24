@@ -1594,23 +1594,25 @@ int AIPerplex::search_with_aspiration(ThreadData& td, int depth, int seed_score,
 		if (score > alpha && score < beta)
 			return score;
 
-		++(score <= alpha ? stats.fail_lows : stats.fail_highs);
+		const bool fail_low = score <= alpha;
+		++(fail_low ? stats.fail_lows : stats.fail_highs);
 		stats.fail_nodes += td.nodes_searched + td.qnodes_searched - nodes_before;
 
 		// Safety fallback: open full window after max retries
 		if (retry >= tuning_.aspiration_max_retries) {
-			++stats.full_windows;
 			if (td.thread_id == 0)
 				log_aspiration_full_window(depth, tuning_.aspiration_max_retries);
-			if (!control_.StopRequested())
+			if (!control_.StopRequested()) {
+				++stats.full_windows;
 				score = pvs(td, depth, -GameValues::Search_Init, GameValues::Search_Init, 0, true, tt);
+			}
 			return score;
 		}
 
 		// Widen on the failing side; double delta for the next potential miss.
 		// Log after updating so the message shows the new window being tried.
 		delta *= 2;
-		if (score <= alpha) {
+		if (fail_low) {
 			alpha = std::max(seed_score - delta, -static_cast<int>(GameValues::Search_Init));
 			if (td.thread_id == 0)
 				log_aspiration_retry(depth, retry + 1, score, alpha, beta, true);
