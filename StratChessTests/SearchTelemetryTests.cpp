@@ -120,6 +120,7 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 	fired.singular = {.eligible = 1, .verifications = 2, .extensions = 3, .verification_nodes = 4};
 	fired.frontier.skips = 5;
 	fired.lmp.skips = 6;
+	fired.aspiration = {.iterations = 1, .fail_lows = 2, .fail_highs = 3, .full_windows = 4, .fail_nodes = 5};
 	fired.tt = {.main_probes = 1,
 	            .main_hits = 2,
 	            .main_cutoffs = 3,
@@ -136,7 +137,8 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 	      std::vector<std::string>{"singular eligible 1 verified 2 extended 3 verifynodes 4", "frontier skips 5",
 	                               "lmp skips 6",
 	                               "ttstats mainprobes 1 mainhits 2 maincutoffs 3 qsprobes 4 qshits 5 qscutoffs 6 "
-	                               "stores 45 declined 7 filled 8 refreshed 9 evictstale 10 evictcurrent 11"});
+	                               "stores 45 declined 7 filled 8 refreshed 9 evictstale 10 evictcurrent 11",
+	                               "aspiration iterations 1 faillow 2 failhigh 3 fullwindow 4 failnodes 5"});
 
 	// Singular, frontier and lmp stay silent when they did not fire; ttstats prints whenever compiled.
 	const std::string zero_tt = "ttstats mainprobes 0 mainhits 0 maincutoffs 0 qsprobes 0 qshits 0 qscutoffs 0 "
@@ -160,6 +162,51 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 	SearchTelemetry singular_verified_only;
 	singular_verified_only.singular.verifications = 8;
 	CHECK(payloads_of(singular_verified_only) == std::vector<std::string>{zero_tt});
+
+	// Aspiration prints on an aspirated iteration, even one that never failed its window.
+	SearchTelemetry aspiration_only;
+	aspiration_only.aspiration.iterations = 9;
+	CHECK(payloads_of(aspiration_only) ==
+	      std::vector<std::string>{zero_tt, "aspiration iterations 9 faillow 0 failhigh 0 fullwindow 0 failnodes 0"});
+	SearchTelemetry aspiration_fail_only;
+	aspiration_fail_only.aspiration.fail_lows = 1;
+	CHECK(payloads_of(aspiration_fail_only) == std::vector<std::string>{zero_tt});
+}
+
+// Every iteration after the first is aspirated at Threads=1; depth 1 has no seed score.
+TEST_CASE("SearchTelemetry - aspiration counts one iteration per aspirated depth", "[search][telemetry]")
+{
+	AIPerlexTestFixture fix("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", 7);
+
+	const SearchResult result = fix.get_move_at_threads(1, 7);
+	REQUIRE(result.depth_completed == 7);
+	const AspirationStats& stats = result.telemetry.aspiration;
+	CHECK(stats.iterations == 6);
+	CHECK(stats.full_windows <= stats.fail_lows + stats.fail_highs);
+	CHECK(stats.fail_nodes <= result.nodes_searched + result.qnodes_searched);
+
+	fix.set_aspiration(false);
+	const SearchResult full = fix.get_move_at_threads(1, 7);
+	CHECK(full.telemetry.aspiration.iterations == 0);
+	CHECK(full.telemetry.aspiration.fail_nodes == 0);
+}
+
+// A 1 cp window with no retries fails on almost every iteration, and every fail falls straight to
+// the full window, so each counter is exercised and they must agree.
+TEST_CASE("SearchTelemetry - aspiration fails are counted with their nodes", "[search][telemetry]")
+{
+	AIPerlexTestFixture fix("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", 7);
+	fix.set_aspiration_initial_delta(1);
+	fix.set_aspiration_max_retries(0);
+
+	const SearchResult result = fix.get_move_at_threads(1, 7);
+	REQUIRE(result.depth_completed == 7);
+	const AspirationStats& stats = result.telemetry.aspiration;
+	CHECK(stats.iterations == 6);
+	CHECK(stats.fail_lows + stats.fail_highs > 0);
+	CHECK(stats.full_windows == stats.fail_lows + stats.fail_highs);
+	CHECK(stats.fail_nodes > 0);
+	CHECK(stats.fail_nodes < result.nodes_searched + result.qnodes_searched);
 }
 
 // Replacement charges a penalty per TT generation, so a per-depth advance would make earlier depths

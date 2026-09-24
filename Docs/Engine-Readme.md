@@ -375,6 +375,16 @@ pvs(depth, alpha, beta, ply, is_pv_node):
 
 **Description**: Searches depth 1, 2, 3... until time runs out, with sophisticated interrupted search handling. Each iteration is searched inside an aspiration window centred on the previous iteration's score, widening on fail-high or fail-low.
 
+Every build reports the windows' cost once per search, summed over threads:
+
+```
+info string aspiration iterations .. faillow .. failhigh .. fullwindow .. failnodes ..
+```
+
+`failnodes` counts both trees' nodes spent in windows that failed, which is the re-search cost. Nodes
+per iteration and best-move changes need no counter. At `Threads=1`, read them from the
+`info depth` lines: each carries the cumulative node count, the score and the PV.
+
 **Algorithm**:
 ```
 iterative_deepening(max_depth):

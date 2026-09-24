@@ -1573,6 +1573,8 @@ int AIPerplex::search_with_aspiration(ThreadData& td, int depth, int seed_score,
 	int alpha = std::max(seed_score - delta, -GameValues::Search_Init);
 	int beta = std::min(seed_score + delta, static_cast<int>(GameValues::Search_Init));
 	int score = seed_score; // safe fallback if interrupted before the first pvs() call
+	AspirationStats& stats = td.telemetry.aspiration;
+	++stats.iterations;
 
 	for (int retry = 0;; ++retry) {
 		if (control_.StopRequested()) {
@@ -1582,6 +1584,7 @@ int AIPerplex::search_with_aspiration(ThreadData& td, int depth, int seed_score,
 			return score;
 		}
 
+		const int64_t nodes_before = td.nodes_searched + td.qnodes_searched;
 		score = pvs(td, depth, alpha, beta, 0, true, tt);
 
 		if (control_.StopRequested())
@@ -1591,8 +1594,12 @@ int AIPerplex::search_with_aspiration(ThreadData& td, int depth, int seed_score,
 		if (score > alpha && score < beta)
 			return score;
 
+		++(score <= alpha ? stats.fail_lows : stats.fail_highs);
+		stats.fail_nodes += td.nodes_searched + td.qnodes_searched - nodes_before;
+
 		// Safety fallback: open full window after max retries
 		if (retry >= tuning_.aspiration_max_retries) {
+			++stats.full_windows;
 			if (td.thread_id == 0)
 				log_aspiration_full_window(depth, tuning_.aspiration_max_retries);
 			if (!control_.StopRequested())

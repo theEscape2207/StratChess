@@ -16,7 +16,7 @@
     they reached it, and for a refactor the path is exactly what is under test.
 
     Every 'info string' line the search emits is compared too — the node split and
-    the trigger counters (frontier, lmp, singular, ttstats) — so a change that
+    the trigger counters (frontier, lmp, singular, ttstats, aspiration) — so a change that
     rewords, drops or adds one fails the gate. The 'info string treenodes' split
     (issue #312) is the one exception, compared only when BOTH builds emit it. A
     build predating #312 emits none, and that is reported rather than counted as a

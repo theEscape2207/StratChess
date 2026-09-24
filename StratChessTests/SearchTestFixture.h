@@ -266,6 +266,11 @@ class AIPerlexTestFixture {
 		return tally;
 	}
 
+	// --- Aspiration window pokes ---
+	void set_aspiration(bool enabled) const { ai->tuning_.aspiration_enabled = enabled; }
+	void set_aspiration_initial_delta(int delta) const { ai->tuning_.aspiration_initial_delta = delta; }
+	void set_aspiration_max_retries(int retries) const { ai->tuning_.aspiration_max_retries = retries; }
+
 	// --- Late move pruning pokes ---
 	void set_late_move_pruning(bool enabled) const { ai->tuning_.late_move_pruning_enabled = enabled; }
 	bool late_move_pruning_enabled() const { return ai->tuning_.late_move_pruning_enabled; }
