@@ -646,13 +646,14 @@ namespace {
 			td.telemetry.tt.record(outcome);
 	}
 
-	// Profiles a fail-high; the root's are not cuts. spent_before is the nesting-exclusive node count
-	// of the moves searched before the cutting one.
+	// Profiles a fail-high. Neither the root's nor a singular verification frame's is a cut: the
+	// verification searches a reduced move set at its parent's ply. spent_before is the
+	// nesting-exclusive node count of the moves searched before the cutting one.
 	void record_ordering_cut(ThreadData& td, Move move, Move hash_move, int move_number, int depth, int ply,
-	                         int64_t spent_before) noexcept
+	                         bool is_exclusion_frame, int64_t spent_before) noexcept
 	{
-		if constexpr (OrderingStats::compiled) {
-			if (ply == 0)
+		if constexpr (kSearchProfileCompiled) {
+			if (ply == 0 || is_exclusion_frame)
 				return;
 			using enum OrderingStats::CutMove;
 			const OrderingStats::CutMove type = move == hash_move ? HashMove
@@ -1067,29 +1068,29 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 					// nesting depth drops straight after its call, before any abort return.
 					auto& lmr_stats = td.telemetry.lmr;
 					const int64_t reduced_start = td.nodes_searched + td.qnodes_searched;
-					if constexpr (LmrStats::compiled) {
+					if constexpr (kSearchProfileCompiled) {
 						lmr_stats.reduced++;
 						lmr_stats.reduced_nesting++;
 					}
 
 					// Reduced-depth null-window search
 					value = -pvs(td, depth - 1 - R, -alpha - 1, -alpha, ply + 1, false, tt);
-					if constexpr (LmrStats::compiled)
+					if constexpr (kSearchProfileCompiled)
 						if (--lmr_stats.reduced_nesting == 0)
 							lmr_stats.reduced_nodes += td.nodes_searched + td.qnodes_searched - reduced_start;
 
 					// Re-search at full depth-1 null window if the reduced result beats alpha
 					if (value > alpha && !control_.StopRequested()) {
 						const int64_t research_start = td.nodes_searched + td.qnodes_searched;
-						if constexpr (LmrStats::compiled) {
+						if constexpr (kSearchProfileCompiled) {
 							lmr_stats.researched++;
 							lmr_stats.research_nesting++;
 						}
 						value = -pvs(td, depth - 1, -alpha - 1, -alpha, ply + 1, false, tt);
-						if constexpr (LmrStats::compiled) {
+						if constexpr (kSearchProfileCompiled) {
 							if (--lmr_stats.research_nesting == 0)
 								lmr_stats.research_nodes += td.nodes_searched + td.qnodes_searched - research_start;
-							if (value > alpha)
+							if (value > alpha && !control_.IsAborted())
 								lmr_stats.confirmed++;
 						}
 					}
@@ -1117,9 +1118,9 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			// children that did complete, which is a valid lower bound for this node and is
 			// what the root reports for an interrupted iteration.
 			//
-			// The node counters are the one deliberate exception: they are incremented before
-			// this point and stay incremented, because they measure work done, not results
-			// kept.
+			// The node counters are the deliberate exception, with the search profile's work
+			// counters: they are incremented before this point and stay incremented, because
+			// they measure work done, not results kept.
 			if (control_.IsAborted())
 				return best_value;
 
@@ -1148,7 +1149,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			}
 
 			if (beta <= alpha) {
-				record_ordering_cut(td, move, hash_move, move_number, depth, ply,
+				record_ordering_cut(td, move, hash_move, move_number, depth, ply, is_exclusion_frame,
 				                    (profile_move_nodes - profile_loop_nodes) -
 				                        (profile_move_late - profile_loop_late));
 				td.store_killer(ply, move);

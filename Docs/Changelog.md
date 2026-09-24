@@ -34,9 +34,9 @@ print them, so a profile build checks against a default one.
 Validation: default build and profile build both node-identical (equivalence IDENTICAL against
 `origin/main`, and default against profile). A profile build at depth 16 on the 8 `Run-Bench`
 positions reproduces #636's baseline table to every printed decimal. nps: 5 kept paired `Run-Bench`
-series against the merge base read −0.32% (sd 0.34); `pvs` and `quiescence` are unchanged in size
-and moved 192 bytes, and relinked to identical hot addresses with a shared `/ORDER` the delta read
-+0.09% (sd 0.82). No slowdown. First of two PRs for #637 items 3-7; items 4-7 follow.
+series against the merge base read −0.32% (sd 0.34, range −0.76% to +0.07%). `pvs` and
+`quiescence` are unchanged in size and moved 192 bytes; relinked to identical hot addresses with a
+shared `/ORDER`, the delta read +0.09% (sd 0.82, range −1.13% to +0.89%). No slowdown. First of two PRs for #637 items 3-7; items 4-7 follow.
 
 ---
 

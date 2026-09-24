@@ -20,7 +20,7 @@
     rewords, drops or adds one fails the gate. The exceptions are compared only when
     BOTH builds emit them, and a one-sided line is reported rather than counted as a
     difference:
-      - 'treenodes', the node split (issue #312). A build predating it emits none,
+      - 'treenodes', the node split. A build predating it emits none,
         the normal case for an old baseline.
       - 'ordering' and 'lmr', the STRAT_SEARCH_PROFILE lines. A profile build then
         compares against a default build of the same commit, which proves node

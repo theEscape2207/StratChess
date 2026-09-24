@@ -246,6 +246,20 @@ TEST_CASE("SearchTelemetry - ordering and LMR profile counters are consistent", 
 	CHECK(lmr.research_nodes <= nodes);
 }
 
+// A node limit aborts mid-tree, with reduced searches on the stack; each nesting depth must still
+// unwind to zero, or the next outermost search's nodes would go uncounted.
+TEST_CASE("SearchTelemetry - an aborted search leaves the LMR nesting depths balanced", "[search][telemetry]")
+{
+	STATIC_REQUIRE(kSearchProfileCompiled);
+	AIPerlexTestFixture fix(KIWIPETE_FEN, 12);
+
+	REQUIRE_FALSE(fix.search_with_nodes(200'000).is_null());
+	REQUIRE(fix.search_is_aborted());
+	REQUIRE(fix.lmr_profile().reduced > 0);
+	CHECK(fix.lmr_profile().reduced_nesting == 0);
+	CHECK(fix.lmr_profile().research_nesting == 0);
+}
+
 // Every iteration after the first is aspirated at Threads=1; depth 1 has no seed score.
 TEST_CASE("SearchTelemetry - aspiration counts one iteration per aspirated depth", "[search][telemetry]")
 {

@@ -144,10 +144,18 @@ template <size_t N> std::string join_bins(const std::array<int64_t, N>& bins)
 	return s;
 }
 
+// Adds a histogram bin by bin.
+template <size_t N> void add_bins(std::array<int64_t, N>& bins, const std::array<int64_t, N>& other) noexcept
+{
+	for (size_t i = 0; i < N; ++i)
+		bins[i] += other[i];
+}
+
 // Depth bands shared by every banded profile field: depth 1-2, 3-6, 7+.
 constexpr size_t depth_band(int depth) noexcept { return depth <= 2 ? 0 : depth <= 6 ? 1 : 2; }
 
-// Where in the legal move order a pvs() fail-high came from. A cut is a fail-high node at ply > 0.
+// Where in the legal move order a pvs() fail-high came from. A cut is a fail-high node at ply > 0,
+// singular verification frames excluded.
 struct OrderingStats {
 	static constexpr bool compiled = kSearchProfileCompiled;
 
@@ -184,15 +192,12 @@ struct OrderingStats {
 	void add(const OrderingStats& other) noexcept
 	{
 		cuts += other.cuts;
-		for (size_t i = 0; i < index.size(); ++i)
-			index[i] += other.index[i];
-		for (size_t i = 0; i < late_cut.size(); ++i)
-			late_cut[i] += other.late_cut[i];
+		add_bins(index, other.index);
+		add_bins(late_cut, other.late_cut);
 		hash_nodes += other.hash_nodes;
 		hash_cuts += other.hash_cuts;
 		late_nodes += other.late_nodes;
-		for (size_t i = 0; i < late_bands.size(); ++i)
-			late_bands[i] += other.late_bands[i];
+		add_bins(late_bands, other.late_bands);
 	}
 
 	template <class Sink> void append_info(Sink&& sink) const
@@ -214,7 +219,7 @@ struct LmrStats {
 	int64_t reduced = 0;
 	int64_t reduced_nodes = 0;
 	int64_t researched = 0; // reduced searches that beat alpha and ran again at full depth
-	int64_t confirmed = 0;  // ... whose re-search still beat alpha
+	int64_t confirmed = 0;  // ... whose completed re-search still beat alpha
 	int64_t research_nodes = 0;
 
 	// Live nesting depth of each kind; per thread, never summed.

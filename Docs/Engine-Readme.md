@@ -576,7 +576,7 @@ info string ordering cuts N index I0/I1/I2/I3to5/I6plus latecut H/C/K/Q hashnode
 info string lmr reduced N reducednodes N researched N confirmed N researchnodes N
 ```
 
-- `cuts` are `pvs()` fail-highs below the root. `index` bins the cutting move's legal index.
+- `cuts` are `pvs()` fail-highs below the root, singular verification frames excluded. `index` bins the cutting move's legal index.
 - `latecut` classifies cuts at index > 0 by the cutting move: hash move, else capture or promotion,
   else killer, else quiet.
 - `hashnodes` counts cut nodes that had a hash move, and `hashcuts` those where it made the cut.
@@ -589,7 +589,7 @@ info string lmr reduced N reducednodes N researched N confirmed N researchnodes 
   reduced search inside a re-search counts in both, so the two must not be summed.
 
 The counters are compiled out of the default build, and a profile build stays node-identical to it.
-Scripts match the wording exactly.
+The wording is a parsed contract: never reword a line.
 
 ---
 
