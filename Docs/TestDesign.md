@@ -74,7 +74,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | **Basic-mate conversion (K+B+N vs K played out)** | `[endgame_conversion][slow]` | `EndgameConversionTests.cpp` |
 | Concrete search service, lifecycle and factory | `[search]` | `SearchServiceTests.cpp` |
 | Per-iteration decision helpers (assess, stop-early, null move) | `[search]` | `SearchIterationTests.cpp` |
-| Search telemetry (thread clamp, terminal verdicts, node counters, aspiration windows, `info string` payload wording, search profile invariants — each falsified by mutation) | `[search]` | `SearchTelemetryTests.cpp` |
+| Search telemetry (thread clamp, terminal verdicts, node counters, aspiration windows, `info string` payload wording, search profile invariants and verification node-type guard — each falsified by mutation) | `[search]` | `SearchTelemetryTests.cpp` |
 | Search/TT contract (terminal stores, probed-bound cutoffs, mate scores refused as cutoffs) | `[search][tt]` | `SearchTTContractTests.cpp` |
 | Quiescence (delta pruning, in-check evasions, terminal states, ordering) | `[search][qsearch]` | `QuiescenceTests.cpp` |
 | Late move pruning (eligibility, legal index, exemptions, fail-low return and TT suppression, abort unwind) — every non-redundant guard falsified by mutation; the UCI `lmp skips` line is `[uci][lmp]` in `UCIReportingTests.cpp` | `[search][lmp]` | `SearchLateMovePruningTests.cpp` |
