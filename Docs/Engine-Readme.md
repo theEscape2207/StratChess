@@ -568,6 +568,29 @@ filled table, so every `Hash` size reads low and near-identical — a false null
 game, or one long `go movetime` from a middlegame position, and compare sizes on the same workload.
 `Scripts/measure_tt_capacity.py` does that: it replays strength-lab games at fixed nodes per size.
 
+**Search profile**: a build configured with `-DSTRAT_SEARCH_PROFILE=1` prints per-node counters for
+move ordering and LMR after each search, each line only when its first field is non-zero:
+
+```
+info string ordering cuts N index I0/I1/I2/I3to5/I6plus latecut H/C/K/Q hashnodes N hashcuts N latenodes N latebands B/B/B
+info string lmr reduced N reducednodes N researched N confirmed N researchnodes N
+```
+
+- `cuts` are `pvs()` fail-highs below the root. `index` bins the cutting move's legal index.
+- `latecut` classifies cuts at index > 0 by the cutting move: hash move, else capture or promotion,
+  else killer, else quiet.
+- `hashnodes` counts cut nodes that had a hash move, and `hashcuts` those where it made the cut.
+- `latenodes` counts the nodes, both trees, spent on the moves searched before a late cut.
+  `latebands` splits it by the cut node's depth: 1-2, 3-6, 7+. A late cut nested inside another's
+  earlier moves is counted once.
+- `researched` counts reduced searches that beat alpha and ran again at full depth; `confirmed`,
+  those that still beat alpha.
+- `reducednodes` and `researchnodes` count the nodes inside the outermost search of each kind. A
+  reduced search inside a re-search counts in both, so the two must not be summed.
+
+The counters are compiled out of the default build, and a profile build stays node-identical to it.
+Scripts match the wording exactly.
+
 ---
 
 ### 5. Move Ordering
