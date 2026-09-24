@@ -59,12 +59,12 @@ sums, as #636 computed it. `maxdepth` pools by max. All values are per search at
 | Item | Rows |
 |---|---|
 | totals | nodes; qs share of nodes |
-| 1 iterations | EBF (below); nodes in the final iteration |
-| 2 aspiration | fail-lows, fail-highs, full-window fallbacks; failnodes as % of nodes |
+| 1 iterations | EBF (below); then one row per iteration `d`: its nodes `n(d)` and its ratio `n(d)/n(d−1)` |
+| 2 aspiration | aspirated iterations, fail-lows, fail-highs, full-window fallbacks; failnodes as % of nodes |
 | 3 ordering | cuts; first-move rate; index 1 / 2 / 3-5 / 6+ as % of cuts; latecut hash / capture / killer / quiet as % of late cuts; hashnodes as % of cuts; hashcuts as % of hashnodes; latenodes and each latebands bin as % of nodes |
 | 3 LMR | reduced; reducednodes as % of nodes; researched as % of reduced; researchnodes as % of nodes; confirmed as % of researched |
 | 4 node types | PV / cut / all frames as % of frames; cutfaillow as % of cut frames, per band |
-| 5 null move | tried; cutoffs as % of tried; failnodes as % of nodes |
+| 5 null move | tried; cutoffs and failed as % of tried; failnodes as % of nodes |
 | 6 pruning | rfp per depth bin; floorbinds; frontier skips; lmp skips |
 | 7 quiescence | roots; qs nodes per root; delta; see; maxdepth |
 | 8 stability | best-move changes; settled iteration; mean score swing |
@@ -83,16 +83,28 @@ sums, as #636 computed it. `maxdepth` pools by max. All values are per search at
   would read 3.
 - **Score swing** is the mean `|score(d) − score(d−1)|` in centipawns over consecutive iterations.
   A pair involving a mate score is excluded.
-- **Delta:** relative % for counts, percentage points (`pp`) for rates. A zero base prints `n/a`.
-- **Silence:** an absent line reads as zeros. This is the engine's "print when the first field is
-  non-zero" rule, and `pruning` prints on either field.
+- **Delta**, by the kind of row:
+  - Counts, node totals and `n(d)`: relative %.
+  - Rates (every "as % of" row): percentage points (`pp`).
+  - EBF, `n(d)/n(d−1)`, qs nodes per root, `maxdepth`, settled iteration and score swing: absolute
+    difference, in the row's own unit.
+  - A zero base for a relative delta prints `n/a`.
+- **Silence:** an absent line reads as zeros only where the engine's print rule allows silence on a
+  completed search. That applies to `aspiration`, `lmr`, `nullmove`, `pruning`, `frontier skips` and
+  `lmp skips`, which each print when their first field is non-zero (`pruning` on either field). D4
+  lists the lines that must be present.
 
 ### D4: What is refused
 
-- **A side with no profile build.** A side is a profile build when at least one position prints
-  `info string ordering`. Every profile search at depth ≥ 2 has cuts, so a missing line on every
-  position means the flag is off. It is checked per side, and the error names the side. #637
-  requires the refusal rather than silent zeros.
+- **A transcript that breaks the profile schema**, checked per side and per position. The error
+  names the side, the position and the line.
+  - **Required lines:** `treenodes`, `ordering`, `nodetypes` and `qsearch`. A completed profile
+    search at depth ≥ 5 always has cuts, a PV frame and a quiescence hand-off, so each always
+    prints. A missing required line means the flag is off, or a build older than the six-line
+    contract; a PR 2a build lacks `nodetypes` and `qsearch`. #637 requires the refusal rather than
+    silent zeros.
+  - **Malformed lines:** any present line, required or optional, must match its exact field list,
+    histogram lengths included. A reworded or truncated line is refused, not read as zero.
 - **An unfinished search.** The side does not reach `-Depth` or print `bestmove`. This uses
   `Invoke-UciSearchToBestMove`'s and Run-Bench's existing strictness.
 - **Not refused: the same binary on both sides.** That pair is the zero-delta check #637's
@@ -129,15 +141,18 @@ no four ratios and the D4 detection has no cuts to see.
 - A profile build compared with itself prints a zero delta on every row.
 - The pooled rows of that run reproduce #636's baseline and 2b's first baseline to their printed
   decimals.
-- Either order of a default/profile pair is refused, with the non-profile side named.
+- Either order of a default/profile pair is refused, with the non-profile side named. So is a
+  transcript missing a required line or carrying a malformed one.
 - `Run-Bench.ps1` output is unchanged by the library move.
 
 ## Validation
 
 Tooling tier.
 
-- **`-SelfTest`**, on synthetic transcripts: every line parses; an absent line reads as zeros; a
-  non-profile side is refused (falsified); `maxdepth` pools by max; EBF, settled iteration and
+- **`-SelfTest`**, on synthetic transcripts: every line parses; an absent optional line reads as
+  zeros; a missing required line (each of the four), a PR 2a-shaped transcript and a malformed line
+  are each refused (falsified); `maxdepth` pools by max; per-iteration rows, `iterations` and
+  `failed` are read; EBF, settled iteration and
   swing are computed on a hand-worked case; the summary line is not counted as an iteration; the
   material classifier is checked on all 8 built-in FENs plus a queen endgame; the delta formats
   cover counts, rates and a zero base.
