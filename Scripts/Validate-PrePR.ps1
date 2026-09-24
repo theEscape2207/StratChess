@@ -188,6 +188,10 @@ $script:SelfTestCoverers = @{
     'Scripts/UciDriver.ps1'      = 'Scripts/Test-UciDriver.ps1'
     'Scripts/FakeUciEngine.ps1'  = 'Scripts/Test-UciDriver.ps1'
     'Scripts/FakeUciEngine.cmd'  = 'Scripts/Test-UciDriver.ps1'
+
+    # The benchmark position set, dot-sourced by Run-Bench.ps1 and Compare-SearchProfile.ps1.
+    # Run-Bench.ps1 -SelfTest asserts its file parsing.
+    'Scripts/BenchPositions.ps1' = 'Scripts/Run-Bench.ps1'
 }
 
 # Pure: takes the facts, returns the violations. The walk that produces the facts is

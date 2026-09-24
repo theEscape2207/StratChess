@@ -108,44 +108,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# Built-in set: opening, middlegame and endgame, chosen so no position is trivial
-# at the default depth. Every FEN carries its side-to-move field (bug #46).
-$DefaultPositions = @(
-    @{ Name = 'startpos';    Fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1' }
-    @{ Name = 'kiwipete';    Fen = 'r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1' }
-    @{ Name = 'rook-endgm';  Fen = '2r3k1/1p3pp1/p3p2p/8/2PR4/1P3P2/P4KPP/8 w - - 0 1' }
-    @{ Name = 'tactical-4';  Fen = 'r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1' }
-    @{ Name = 'tactical-5';  Fen = 'rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8' }
-    @{ Name = 'open-mid';    Fen = 'r1bqkb1r/pp3ppp/2n1pn2/2pp4/3P1B2/2PBPN2/PP3PPP/RN1QK2R w KQkq - 0 7' }
-    @{ Name = 'closed-mid';  Fen = 'r1bq1rk1/pp2ppbp/2np1np1/8/2PNP3/2N1B3/PP2BPPP/R2QK2R w KQ - 0 9' }
-    @{ Name = 'piece-endgm'; Fen = '2r3k1/pp3pp1/4p2p/3n4/3P4/P1NBP3/1P3PPP/2R3K1 w - - 0 1' }
-)
-
-# Note on position choice: sparse pawn endgames are deliberately absent. They are
-# nearly solved by the time the search reaches these depths, so they finish in
-# tens of milliseconds and contribute almost nothing to either side of the
-# aggregate nps ratio — they measure timer resolution rather than the engine.
-
-function Resolve-Positions {
-    param([string]$Path)
-
-    if (-not $Path) { return $DefaultPositions }
-
-    if (-not (Test-Path $Path)) {
-        throw "Positions file not found: $Path"
-    }
-
-    $i = 0
-    $list = foreach ($line in Get-Content $Path) {
-        $fen = $line.Trim()
-        if (-not $fen -or $fen.StartsWith('#')) { continue }
-        $i++
-        @{ Name = "pos-$i"; Fen = $fen }
-    }
-
-    if (-not $list) { throw "No FENs found in $Path" }
-    return $list
-}
+# $DefaultPositions and Resolve-Positions: shared with Compare-SearchProfile.ps1, so both read one set.
+. (Join-Path $PSScriptRoot 'BenchPositions.ps1')
 
 function ConvertTo-BenchResult {
     <#
@@ -158,8 +122,8 @@ function ConvertTo-BenchResult {
         [Parameter(Mandatory)][string]$Fen
     )
 
-    # The engine emits one summary info line, then bestmove. Take the LAST info
-    # line so this keeps working if per-iteration output is ever added.
+    # The engine emits one info line per iteration, then a summary line and bestmove.
+    # Take the LAST info line: the summary.
     $info = [regex]::Matches($Output, 'info depth \d+.*?nodes (\d+)(?: hashfull \d+)? time (\d+)')
     $best = [regex]::Match($Output, 'bestmove (\S+)')
 
@@ -244,8 +208,6 @@ function Invoke-Search {
         "go depth $SearchDepth"
     )
 
-    # Generous ceiling: a deep search on a complex position is legitimately slow,
-    # and killing it early would silently corrupt the aggregate.
     $out = Invoke-UciSearchToBestMove -ExePath $ExePath -WorkDir $WorkDir -Commands $commands `
                                       -SearchDepth $SearchDepth -Description $Fen
 
@@ -349,6 +311,9 @@ if ($SelfTest) {
     try {
         Assert-Case 'no -Positions uses the built-in set' `
             (@(Resolve-Positions -Path '').Count -eq $DefaultPositions.Count)
+        # Pinned: every recorded table quotes this hash, so a change to the set or the hash must show.
+        Assert-Case 'the built-in set hashes to its recorded value' `
+            ((Get-PositionSetHash -List $DefaultPositions) -eq 'e4ccd88f9d24')
 
         $multi = Join-Path $tmp 'multi.txt'
         Set-Content $multi @(
@@ -394,10 +359,9 @@ if ($SelfTest) {
 if (-not $Exe) { throw "-Exe is required (the engine binary to benchmark)." }
 
 $exePath = (Resolve-Path $Exe).Path
-if (-not (Test-Path $exePath)) { throw "Engine not found: $Exe" }
 
 # Run from the engine's own directory so it finds game_settings.json and writes
-# logs/ where it expects (CLAUDE.md).
+# logs/ where it expects.
 $workDir = Split-Path -Parent $exePath
 
 # Named $positionList, not $positions: PowerShell variable names are
@@ -408,13 +372,7 @@ $positionList = @(Resolve-Positions -Path $Positions)
 # Everything deciding whether two runs may be compared, on one line, so it survives
 # being pasted into a doc. The position hash is the part with no other signal:
 # editing the suite silently invalidates every recorded table.
-$posHash = & {
-    $sha    = [System.Security.Cryptography.SHA256]::Create()
-    $joined = ($positionList | ForEach-Object { $_.Fen }) -join "`n"
-    $bytes  = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($joined))
-    $sha.Dispose()
-    (( $bytes | ForEach-Object { $_.ToString('x2') } ) -join '').Substring(0, 12)
-}
+$posHash = Get-PositionSetHash -List $positionList
 $exeHash = (Get-FileHash -Path $exePath -Algorithm SHA256).Hash.Substring(0, 12).ToLower()
 
 Write-Host ""
