@@ -7,9 +7,8 @@
 #include <cstdint>
 #include <cstring>
 
-// Per-thread search state for AIPerplex, extracted so that a future Lazy SMP
-// helper thread is just "construct another ThreadData, call the same search
-// functions".
+// Per-thread search state for AIPerplex: each Lazy SMP helper thread owns one and runs the same
+// search functions on it.
 //
 // Deliberately NOT in here:
 //   - TranspositionTable  — shared across threads by design; passed explicitly
@@ -49,7 +48,7 @@ struct ThreadData {
 	// Thread-local principal variation.
 	PVTable pv_table;
 
-	// For debugging/logging once helper threads exist; main thread is 0.
+	// 0 for the main thread; only it polls the clock and logs.
 	int thread_id = 0;
 
 	// Killer move heuristic: two quiet moves per ply that caused a beta cutoff.
@@ -110,8 +109,8 @@ struct ThreadData {
 	}
 
 	// Resets everything that must not leak into a new game. History is
-	// deliberately aged, never cleared, WITHIN a game (see the class comment
-	// above) -- this is what draws that line at the game boundary instead.
+	// deliberately aged, never cleared, WITHIN a game (see age_history())
+	// -- this is what draws that line at the game boundary instead.
 	// Killers and null-move flags are already cleared at the start of every
 	// move by iterative_deepening(), so clearing them again here is only for
 	// the (harmless) case of something reading them before the new game's
