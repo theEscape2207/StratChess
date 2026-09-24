@@ -146,13 +146,13 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 
 	const std::string fired_tt = "ttstats mainprobes 1 mainhits 2 maincutoffs 3 qsprobes 4 qshits 5 qscutoffs 6 "
 	                             "stores 45 declined 7 filled 8 refreshed 9 evictstale 10 evictcurrent 11";
+	const std::string fired_ordering = "ordering cuts 1 index 2/3/4/5/6 latecut 7/8/9/10 hashnodes 11 hashcuts 12 "
+	                                   "latenodes 13 latebands 14/15/16";
 	CHECK(payloads_of(fired) ==
-	      std::vector<std::string>{"singular eligible 1 verified 2 extended 3 verifynodes 4", "frontier skips 5",
-	                               "lmp skips 6", fired_tt,
-	                               "aspiration iterations 1 faillow 2 failhigh 3 fullwindow 4 failnodes 5",
-	                               "ordering cuts 1 index 2/3/4/5/6 latecut 7/8/9/10 hashnodes 11 hashcuts 12 "
-	                               "latenodes 13 latebands 14/15/16",
-	                               "lmr reduced 1 reducednodes 2 researched 3 confirmed 4 researchnodes 5"});
+	      std::vector<std::string>{
+	          "singular eligible 1 verified 2 extended 3 verifynodes 4", "frontier skips 5", "lmp skips 6", fired_tt,
+	          "aspiration iterations 1 faillow 2 failhigh 3 fullwindow 4 failnodes 5", fired_ordering,
+	          "lmr reduced 1 reducednodes 2 researched 3 confirmed 4 researchnodes 5"});
 
 	// Singular, frontier and lmp stay silent when they did not fire; ttstats prints whenever compiled.
 	const std::string zero_tt = "ttstats mainprobes 0 mainhits 0 maincutoffs 0 qsprobes 0 qshits 0 qscutoffs 0 "
@@ -189,9 +189,9 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 	// The profile lines key off cuts and reduced searches.
 	SearchTelemetry ordering_only;
 	ordering_only.ordering.cuts = 1;
-	CHECK(payloads_of(ordering_only) ==
-	      std::vector<std::string>{zero_tt, "ordering cuts 1 index 0/0/0/0/0 latecut 0/0/0/0 hashnodes 0 hashcuts 0 "
-	                                        "latenodes 0 latebands 0/0/0"});
+	const std::string cuts_only_ordering = "ordering cuts 1 index 0/0/0/0/0 latecut 0/0/0/0 hashnodes 0 hashcuts 0 "
+	                                       "latenodes 0 latebands 0/0/0";
+	CHECK(payloads_of(ordering_only) == std::vector<std::string>{zero_tt, cuts_only_ordering});
 	SearchTelemetry ordering_uncut;
 	ordering_uncut.ordering.index = {1, 1, 1, 1, 1};
 	ordering_uncut.ordering.late_nodes = 1;
