@@ -22,6 +22,27 @@ Newest first.
 
 ---
 
+## 2026-09-24 — Search profile counters: node types, null move, pruning, quiescence (#637)
+
+A `-DSTRAT_SEARCH_PROFILE=1` build prints four more lines after each search. `info string nodetypes`
+counts frames by depth band and expected Knuth-Moore type, tracked per ply, plus expected-cut frames
+that failed low. `info string nullmove` counts attempts, cutoffs, completed failures and the nodes
+inside them. `info string pruning` gives reverse-futility cutoffs by depth and frontier floors that
+bound. `info string qsearch` gives main-search leaves, delta and SEE skips, and the deepest ply.
+`Compare-SearchEquivalence.ps1` compares them only when both builds print them.
+
+First baseline, depth 16 on the 8 `Run-Bench` positions (59.8M nodes): 1.4% of expected-cut frames
+fail low; null move cuts on 35.7% of 1.43M attempts, and failed attempts hold 24.4% of all nodes;
+reverse futility fires only at depths 1-3; 2,945 floor binds against 13.04M frontier skips; 0.94
+quiescence nodes per leaf, deepest ply 20.
+
+Validation: node-identical, default against `origin/main` and profile against default. nps, 5 kept
+paired `Run-Bench` series: +0.04% (sd 0.39, range −0.46% to +0.46%); relinked with a shared
+`/ORDER`, +0.53% (sd 0.51, range −0.31% to +1.05%), with `pvs` and `quiescence` at the merge base's
+size and address. No slowdown. Second of two PRs for #637 items 3-7.
+
+---
+
 ## 2026-09-24 — Search profile counters: move ordering and LMR (#637)
 
 A build configured with `-DSTRAT_SEARCH_PROFILE=1` prints two more lines after each search:
