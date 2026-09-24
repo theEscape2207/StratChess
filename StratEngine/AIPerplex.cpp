@@ -933,6 +933,11 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	const bool lmp_node = late_move_pruning_eligible(depth, alpha, beta, is_pv_node, in_check, is_exclusion_frame);
 	bool lmp_skipped = false;
 	bool ord_cut = false; // PROBE
+	auto& ordp = td.telemetry.ord;
+	const int64_t ord_loop_nodes0 = td.nodes_searched + td.qnodes_searched;
+	const int64_t ord_loop_waste0 = ordp.waste;
+	int64_t ord_move_nodes0 = 0;
+	int64_t ord_move_waste0 = 0;
 
 	// Iterate by sorted index — no rebuild of moveList needed
 	for (int si = 0; si < n; ++si) {
@@ -985,6 +990,9 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				continue;
 			}
 
+			ord_move_nodes0 = td.nodes_searched + td.qnodes_searched;
+			ord_move_waste0 = ordp.waste;
+
 			// One per legal move edge actually searched, as in quiescence(): a move DoMove
 			// rejects or a pruning guard skips above is not a node.
 			td.nodes_searched++;
@@ -1035,11 +1043,26 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 					assert(depth - 1 - R >= 1 || tuning_.lmr_min_depth < 3);
 
 					// Reduced-depth null-window search
-					value = -pvs(td, depth - 1 - R, -alpha - 1, -alpha, ply + 1, false, tt);
+					{
+						const int64_t n0 = td.nodes_searched + td.qnodes_searched;
+						ordp.lmr++;
+						ordp.lmr_nesting++;
+						value = -pvs(td, depth - 1 - R, -alpha - 1, -alpha, ply + 1, false, tt);
+						if (--ordp.lmr_nesting == 0)
+							ordp.lmr_nodes += td.nodes_searched + td.qnodes_searched - n0;
+					}
 
 					// Re-search at full depth-1 null window if the reduced result beats alpha
-					if (value > alpha && !control_.StopRequested())
+					if (value > alpha && !control_.StopRequested()) {
+						const int64_t n0 = td.nodes_searched + td.qnodes_searched;
+						ordp.lmr_research++;
+						ordp.research_nesting++;
 						value = -pvs(td, depth - 1, -alpha - 1, -alpha, ply + 1, false, tt);
+						if (--ordp.research_nesting == 0)
+							ordp.research_nodes += td.nodes_searched + td.qnodes_searched - n0;
+						if (value > alpha)
+							ordp.lmr_confirmed++;
+					}
 				} else {
 					// Normal null-window search (unchanged)
 					value = -pvs(td, depth - 1, -alpha - 1, -alpha, ply + 1, false, tt);
@@ -1115,6 +1138,11 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 							o.hash_first++;
 					}
 					ord_cut = true;
+					if (move_number > 0) {
+						const int64_t w = (ord_move_nodes0 - ord_loop_nodes0) - (ord_move_waste0 - ord_loop_waste0);
+						o.waste += w;
+						o.waste_band[band] += w;
+					}
 				}
 				td.store_killer(ply, move);
 				td.update_history(side, move, depth);

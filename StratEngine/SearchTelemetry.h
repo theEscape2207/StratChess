@@ -103,9 +103,26 @@ struct OrderingProbeStats {
 	int64_t hash_nodes = 0;     // fail-high nodes that had a hash move
 	int64_t hash_first = 0;     // ... where the hash move made the cut
 	int64_t fail_low = 0;       // nodes that searched moves and did not cut
+	int64_t waste = 0;          // nodes spent before the cutting move at late-cut nodes, nesting-exclusive
+	int64_t waste_band[3] = {}; // ... by the cut node's depth band
+	int64_t lmr = 0;            // reduced searches
+	int64_t lmr_nodes = 0;      // nodes inside reduced searches, outermost only
+	int64_t lmr_research = 0;   // reduced searches that beat alpha and were re-searched
+	int64_t lmr_confirmed = 0;  // ... whose full-depth re-search still beat alpha
+	int64_t research_nodes = 0; // nodes inside those re-searches, outermost only
+	int lmr_nesting = 0;        // not summed
+	int research_nesting = 0;   // not summed
 
 	void add(const OrderingProbeStats& o) noexcept
 	{
+		waste += o.waste;
+		for (int i = 0; i < 3; ++i)
+			waste_band[i] += o.waste_band[i];
+		lmr += o.lmr;
+		lmr_nodes += o.lmr_nodes;
+		lmr_research += o.lmr_research;
+		lmr_confirmed += o.lmr_confirmed;
+		research_nodes += o.research_nodes;
 		cuts += o.cuts;
 		idx_sum += o.idx_sum;
 		hash_nodes += o.hash_nodes;
@@ -134,7 +151,10 @@ struct OrderingProbeStats {
 		sink("ordprobe cuts " + std::to_string(cuts) + " idx " + j(idx, 5) + " idxsum " + std::to_string(idx_sum) +
 		     " first " + j(first_type, 4) + " late " + j(late_type, 4) + " bandcuts " + j(band_cuts, 3) +
 		     " bandfirst " + j(band_first, 3) + " hashnodes " + std::to_string(hash_nodes) + " hashfirst " +
-		     std::to_string(hash_first) + " faillow " + std::to_string(fail_low));
+		     std::to_string(hash_first) + " faillow " + std::to_string(fail_low) + " waste " + std::to_string(waste) +
+		     " wasteband " + j(waste_band, 3) + " lmr " + std::to_string(lmr) + " lmrnodes " +
+		     std::to_string(lmr_nodes) + " research " + std::to_string(lmr_research) + " confirmed " +
+		     std::to_string(lmr_confirmed) + " researchnodes " + std::to_string(research_nodes));
 	}
 };
 
