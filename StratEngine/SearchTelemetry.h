@@ -1,5 +1,7 @@
 #pragma once
 #include "TTStats.h"
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -17,6 +19,18 @@
 #	define STRAT_SINGULAR_EXTENSIONS 0
 #endif
 inline constexpr bool kSingularExtensionsCompiled = STRAT_SINGULAR_EXTENSIONS != 0;
+
+// Per-node search profile counters: move ordering and LMR. MEASUREMENT ONLY, so a profile build
+// stays node-identical to the shipping one, and Compare-SearchEquivalence.ps1 compares their lines
+// only when both builds print them.
+//
+// Set by CMake: -DSTRAT_SEARCH_PROFILE=1. The test target always defines it. At 0 the engine runs no
+// counting code; the members remain as cold bytes at the tail of ThreadData, because every write
+// site is `if constexpr`, never #ifdef, and a discarded branch is still type-checked.
+#ifndef STRAT_SEARCH_PROFILE
+#	define STRAT_SEARCH_PROFILE 0
+#endif
+inline constexpr bool kSearchProfileCompiled = STRAT_SEARCH_PROFILE != 0;
 
 // Search telemetry: how often each heuristic fired, per thread, reset per search and summed across
 // threads by AIPerplex::Search(). Not the node counters: nodes_searched/qnodes_searched are the
@@ -121,6 +135,110 @@ struct AspirationStats {
 	}
 };
 
+// One slash-separated histogram token, "a/b/c". The bin count is part of each key's contract.
+template <size_t N> std::string join_bins(const std::array<int64_t, N>& bins)
+{
+	std::string s = std::to_string(bins[0]);
+	for (size_t i = 1; i < N; ++i)
+		s += "/" + std::to_string(bins[i]);
+	return s;
+}
+
+// Depth bands shared by every banded profile field: depth 1-2, 3-6, 7+.
+constexpr size_t depth_band(int depth) noexcept { return depth <= 2 ? 0 : depth <= 6 ? 1 : 2; }
+
+// Where in the legal move order a pvs() fail-high came from. A cut is a fail-high node at ply > 0.
+struct OrderingStats {
+	static constexpr bool compiled = kSearchProfileCompiled;
+
+	// What made a late cut (index > 0), tested in this order.
+	enum CutMove : uint8_t { HashMove, CaptureOrPromotion, Killer, Quiet };
+
+	int64_t cuts = 0;
+	std::array<int64_t, 5> index{};    // legal index of the cutting move: 0, 1, 2, 3-5, 6+
+	std::array<int64_t, 4> late_cut{}; // by CutMove
+	int64_t hash_nodes = 0;            // cut nodes that had a hash move
+	int64_t hash_cuts = 0;             // ... where the hash move made the cut
+
+	// Nodes (both trees) spent on the moves searched before a late cut. Nesting-exclusive: a late-cut
+	// node inside another's earlier moves is counted once, by the outer one.
+	int64_t late_nodes = 0;
+	std::array<int64_t, 3> late_bands{}; // late_nodes by the cut node's depth_band()
+
+	void record_cut(int move_number, CutMove type, int depth, bool had_hash_move, int64_t spent_before) noexcept
+	{
+		cuts++;
+		index[move_number <= 2 ? static_cast<size_t>(move_number) : move_number <= 5 ? 3 : 4]++;
+		if (had_hash_move) {
+			hash_nodes++;
+			if (type == HashMove)
+				hash_cuts++;
+		}
+		if (move_number > 0) {
+			late_cut[type]++;
+			late_nodes += spent_before;
+			late_bands[depth_band(depth)] += spent_before;
+		}
+	}
+
+	void add(const OrderingStats& other) noexcept
+	{
+		cuts += other.cuts;
+		for (size_t i = 0; i < index.size(); ++i)
+			index[i] += other.index[i];
+		for (size_t i = 0; i < late_cut.size(); ++i)
+			late_cut[i] += other.late_cut[i];
+		hash_nodes += other.hash_nodes;
+		hash_cuts += other.hash_cuts;
+		late_nodes += other.late_nodes;
+		for (size_t i = 0; i < late_bands.size(); ++i)
+			late_bands[i] += other.late_bands[i];
+	}
+
+	template <class Sink> void append_info(Sink&& sink) const
+	{
+		if (cuts != 0)
+			sink("ordering cuts " + std::to_string(cuts) + " index " + join_bins(index) + " latecut " +
+			     join_bins(late_cut) + " hashnodes " + std::to_string(hash_nodes) + " hashcuts " +
+			     std::to_string(hash_cuts) + " latenodes " + std::to_string(late_nodes) + " latebands " +
+			     join_bins(late_bands));
+	}
+};
+
+// LMR-reduced searches and their full-depth re-searches. Node totals (both trees) count only the
+// outermost search of each kind, so each is exclusive within its kind. A reduced search inside a
+// re-search counts in both: never sum reducednodes and researchnodes.
+struct LmrStats {
+	static constexpr bool compiled = kSearchProfileCompiled;
+
+	int64_t reduced = 0;
+	int64_t reduced_nodes = 0;
+	int64_t researched = 0; // reduced searches that beat alpha and ran again at full depth
+	int64_t confirmed = 0;  // ... whose re-search still beat alpha
+	int64_t research_nodes = 0;
+
+	// Live nesting depth of each kind; per thread, never summed.
+	int reduced_nesting = 0;
+	int research_nesting = 0;
+
+	void add(const LmrStats& other) noexcept
+	{
+		reduced += other.reduced;
+		reduced_nodes += other.reduced_nodes;
+		researched += other.researched;
+		confirmed += other.confirmed;
+		research_nodes += other.research_nodes;
+	}
+
+	template <class Sink> void append_info(Sink&& sink) const
+	{
+		if (reduced != 0)
+			sink("lmr reduced " + std::to_string(reduced) + " reducednodes " + std::to_string(reduced_nodes) +
+			     " researched " + std::to_string(researched) + " confirmed " + std::to_string(confirmed) +
+			     " researchnodes " + std::to_string(research_nodes));
+	}
+};
+
 struct SearchTelemetry {
 	// Member order is a layout requirement: with singular first, the two counters live in the
 	// shipping build keep the offsets in ThreadData they had as loose members. New members go last.
@@ -129,6 +247,8 @@ struct SearchTelemetry {
 	LateMovePruningStats lmp{};
 	TTStats tt{};
 	AspirationStats aspiration{};
+	OrderingStats ordering{};
+	LmrStats lmr{};
 
 	void reset() noexcept
 	{
@@ -142,6 +262,10 @@ struct SearchTelemetry {
 			tt = TTStats{};
 		if constexpr (AspirationStats::compiled)
 			aspiration = AspirationStats{};
+		if constexpr (OrderingStats::compiled)
+			ordering = OrderingStats{};
+		if constexpr (LmrStats::compiled)
+			lmr = LmrStats{};
 	}
 
 	void add(const SearchTelemetry& other) noexcept
@@ -156,6 +280,10 @@ struct SearchTelemetry {
 			tt.add(other.tt);
 		if constexpr (AspirationStats::compiled)
 			aspiration.add(other.aspiration);
+		if constexpr (OrderingStats::compiled)
+			ordering.add(other.ordering);
+		if constexpr (LmrStats::compiled)
+			lmr.add(other.lmr);
 	}
 
 	// Calls sink(std::string) once per payload, in the order UCI reports them.
@@ -171,5 +299,9 @@ struct SearchTelemetry {
 			tt.append_info(sink);
 		if constexpr (AspirationStats::compiled)
 			aspiration.append_info(sink);
+		if constexpr (OrderingStats::compiled)
+			ordering.append_info(sink);
+		if constexpr (LmrStats::compiled)
+			lmr.append_info(sink);
 	}
 };

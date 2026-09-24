@@ -645,6 +645,24 @@ namespace {
 		if constexpr (kTTStatsCompiled)
 			td.telemetry.tt.record(outcome);
 	}
+
+	// Profiles a fail-high; the root's are not cuts. spent_before is the nesting-exclusive node count
+	// of the moves searched before the cutting one.
+	void record_ordering_cut(ThreadData& td, Move move, Move hash_move, int move_number, int depth, int ply,
+	                         int64_t spent_before) noexcept
+	{
+		if constexpr (OrderingStats::compiled) {
+			if (ply == 0)
+				return;
+			using enum OrderingStats::CutMove;
+			const OrderingStats::CutMove type = move == hash_move ? HashMove
+			                                    : MoveHelper::IsCapture(move) || MoveHelper::IsPromote(move)
+			                                        ? CaptureOrPromotion
+			                                    : move == td.killers[ply][0] || move == td.killers[ply][1] ? Killer
+			                                                                                               : Quiet;
+			td.telemetry.ordering.record_cut(move_number, type, depth, !hash_move.is_null(), spent_before);
+		}
+	}
 } // namespace
 
 int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt)
@@ -933,6 +951,13 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	const bool lmp_node = late_move_pruning_eligible(depth, alpha, beta, is_pv_node, in_check, is_exclusion_frame);
 	bool lmp_skipped = false;
 
+	// Search profile: a late cut's cost is the nodes spent since the loop began up to the cutting
+	// move, minus the late-cut nodes already counted by nodes nested in that span.
+	const int64_t profile_loop_nodes = td.nodes_searched + td.qnodes_searched;
+	const int64_t profile_loop_late = td.telemetry.ordering.late_nodes;
+	int64_t profile_move_nodes = 0;
+	int64_t profile_move_late = 0;
+
 	// Iterate by sorted index — no rebuild of moveList needed
 	for (int si = 0; si < n; ++si) {
 		const Move& move = moveList[scored_idx[si].second];
@@ -984,6 +1009,11 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				continue;
 			}
 
+			if constexpr (kSearchProfileCompiled) {
+				profile_move_nodes = td.nodes_searched + td.qnodes_searched;
+				profile_move_late = td.telemetry.ordering.late_nodes;
+			}
+
 			// One per legal move edge actually searched, as in quiescence(): a move DoMove
 			// rejects or a pruning guard skips above is not a node.
 			td.nodes_searched++;
@@ -1033,12 +1063,36 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 					// clang-format on
 					assert(depth - 1 - R >= 1 || tuning_.lmr_min_depth < 3);
 
+					// Search profile: node totals count the outermost search of each kind only. Each
+					// nesting depth drops straight after its call, before any abort return.
+					auto& lmr_stats = td.telemetry.lmr;
+					const int64_t reduced_start = td.nodes_searched + td.qnodes_searched;
+					if constexpr (LmrStats::compiled) {
+						lmr_stats.reduced++;
+						lmr_stats.reduced_nesting++;
+					}
+
 					// Reduced-depth null-window search
 					value = -pvs(td, depth - 1 - R, -alpha - 1, -alpha, ply + 1, false, tt);
+					if constexpr (LmrStats::compiled)
+						if (--lmr_stats.reduced_nesting == 0)
+							lmr_stats.reduced_nodes += td.nodes_searched + td.qnodes_searched - reduced_start;
 
 					// Re-search at full depth-1 null window if the reduced result beats alpha
-					if (value > alpha && !control_.StopRequested())
+					if (value > alpha && !control_.StopRequested()) {
+						const int64_t research_start = td.nodes_searched + td.qnodes_searched;
+						if constexpr (LmrStats::compiled) {
+							lmr_stats.researched++;
+							lmr_stats.research_nesting++;
+						}
 						value = -pvs(td, depth - 1, -alpha - 1, -alpha, ply + 1, false, tt);
+						if constexpr (LmrStats::compiled) {
+							if (--lmr_stats.research_nesting == 0)
+								lmr_stats.research_nodes += td.nodes_searched + td.qnodes_searched - research_start;
+							if (value > alpha)
+								lmr_stats.confirmed++;
+						}
+					}
 				} else {
 					// Normal null-window search (unchanged)
 					value = -pvs(td, depth - 1, -alpha - 1, -alpha, ply + 1, false, tt);
@@ -1094,6 +1148,9 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			}
 
 			if (beta <= alpha) {
+				record_ordering_cut(td, move, hash_move, move_number, depth, ply,
+				                    (profile_move_nodes - profile_loop_nodes) -
+				                        (profile_move_late - profile_loop_late));
 				td.store_killer(ply, move);
 				td.update_history(side, move, depth);
 				break;
