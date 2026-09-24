@@ -36,6 +36,11 @@ inconclusive to 11 decisive locally, against 9 of 9 decisive in the lab
 local SPRT first if you like, as a 40-minute smoke test, but plan the lab run as the gate from the
 start rather than arriving at it after two inconclusive sessions.
 
+**Explaining a result** (why a search change moved nps or Elo, or what a #636 child is judged by):
+`Compare-SearchProfile.ps1 -Before -After` on two `-DSTRAT_SEARCH_PROFILE=1` builds. It prints
+ordering, LMR, node types, pruning, quiescence, iterations and stability, pooled and by endgame
+group. It gives direction, never a verdict: gate on wall clock and Elo as above.
+
 A **local fixed batch** (500 games, ~40 min, ±25 Elo) is supported but is not the default: a third
 of the lab's wall-clock for a fraction of its precision, so it mostly buys inconclusive runs. Reach
 for it when the lab is unavailable. Its point estimate is not a measurement — "+8 ±26" recorded as
