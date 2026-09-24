@@ -91,6 +91,39 @@ struct LateMovePruningStats {
 	}
 };
 
+// PROBE (#634 step 0, throwaway): moves a depth-2 frontier guard at 300 cp would skip. Counting only;
+// the search is unchanged.
+struct ExtFutProbeStats {
+	static constexpr bool compiled = true;
+
+	int64_t d2_nodes = 0;      // depth-2 nodes passing the node-level guards
+	int64_t cand = 0;          // candidates LMP does not cover, i.e. actually searched
+	int64_t cand_idx[3] = {};  // ... by legal index 1-3, 4-7, 8-11
+	int64_t lmp_cov = 0;       // candidates LMP skips anyway
+	int64_t beat_alpha = 0;    // searched candidates whose value exceeded alpha
+	int64_t subtree = 0;       // main + qs nodes spent under searched candidates, outermost only
+	int nesting = 0;           // not summed
+
+	void add(const ExtFutProbeStats& o) noexcept
+	{
+		d2_nodes += o.d2_nodes;
+		cand += o.cand;
+		for (int i = 0; i < 3; ++i)
+			cand_idx[i] += o.cand_idx[i];
+		lmp_cov += o.lmp_cov;
+		beat_alpha += o.beat_alpha;
+		subtree += o.subtree;
+	}
+
+	template <class Sink> void append_info(Sink&& sink) const
+	{
+		sink("xfut d2nodes " + std::to_string(d2_nodes) + " cand " + std::to_string(cand) + " idx " +
+		     std::to_string(cand_idx[0]) + "/" + std::to_string(cand_idx[1]) + "/" + std::to_string(cand_idx[2]) +
+		     " lmpcov " + std::to_string(lmp_cov) + " beat " + std::to_string(beat_alpha) + " subtree " +
+		     std::to_string(subtree));
+	}
+};
+
 struct SearchTelemetry {
 	// Member order is a layout requirement: with singular first, the two counters live in the
 	// shipping build keep the offsets in ThreadData they had as loose members.
@@ -98,6 +131,7 @@ struct SearchTelemetry {
 	FrontierFutilityStats frontier{};
 	LateMovePruningStats lmp{};
 	TTStats tt{};
+	ExtFutProbeStats xfut{};
 
 	void reset() noexcept
 	{
@@ -109,6 +143,7 @@ struct SearchTelemetry {
 			lmp = LateMovePruningStats{};
 		if constexpr (TTStats::compiled)
 			tt = TTStats{};
+		xfut = ExtFutProbeStats{};
 	}
 
 	void add(const SearchTelemetry& other) noexcept
@@ -121,6 +156,7 @@ struct SearchTelemetry {
 			lmp.add(other.lmp);
 		if constexpr (TTStats::compiled)
 			tt.add(other.tt);
+		xfut.add(other.xfut);
 	}
 
 	// Calls sink(std::string) once per payload, in the order UCI reports them.
@@ -134,5 +170,6 @@ struct SearchTelemetry {
 			lmp.append_info(sink);
 		if constexpr (TTStats::compiled)
 			tt.append_info(sink);
+		xfut.append_info(sink);
 	}
 };

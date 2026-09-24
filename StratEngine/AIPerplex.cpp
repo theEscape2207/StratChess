@@ -933,6 +933,12 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	const bool lmp_node = late_move_pruning_eligible(depth, alpha, beta, is_pv_node, in_check, is_exclusion_frame);
 	bool lmp_skipped = false;
 
+	// PROBE (#634 step 0): the depth-1 node guards, applied at depth 2.
+	const bool xfut_node = tuning_.frontier_futility_enabled && !is_exclusion_frame && !is_pv_node && !in_check &&
+	                       depth == 2 && std::abs(alpha) < GameValues::Mate_Threshold;
+	if (xfut_node)
+		td.telemetry.xfut.d2_nodes++;
+
 	// Iterate by sorted index — no rebuild of moveList needed
 	for (int si = 0; si < n; ++si) {
 		const Move& move = moveList[scored_idx[si].second];
@@ -960,6 +966,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		                           !MoveHelper::IsCapture(move) && !MoveHelper::IsPromote(move) &&
 		                           move != td.killers[ply][0] && move != td.killers[ply][1] && move != hash_move;
 
+		const bool xfut_pre = xfut_node && legal_moves_searched >= 1 && !MoveHelper::IsCapture(move) &&
+		                      !MoveHelper::IsPromote(move) && move != td.killers[ply][0] &&
+		                      move != td.killers[ply][1] && move != hash_move && node_eval() + 300 <= alpha;
+
 		if (td.board.DoMove(move)) {
 			const int move_number = legal_moves_searched++; // 0 for the first legal move
 			int value;
@@ -981,7 +991,20 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				td.board.UndoMove(move);
 				td.telemetry.lmp.skips++;
 				lmp_skipped = true;
+				if (xfut_pre)
+					td.telemetry.xfut.lmp_cov++;
 				continue;
+			}
+
+			auto& xf = td.telemetry.xfut;
+			const bool xfut_cand = xfut_pre && !td.check_draws(ply + 1) && !td.board.InCheck();
+			const bool xfut_outer = xfut_cand && xf.nesting == 0;
+			const int xfut_alpha = alpha;
+			const int64_t xfut_before = td.nodes_searched + td.qnodes_searched;
+			if (xfut_cand) {
+				xf.cand++;
+				xf.cand_idx[move_number <= 3 ? 0 : move_number <= 7 ? 1 : 2]++;
+				xf.nesting++;
 			}
 
 			// One per legal move edge actually searched, as in quiescence(): a move DoMove
@@ -1052,6 +1075,14 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			}
 
 			td.board.UndoMove(move);
+
+			if (xfut_cand) {
+				xf.nesting--;
+				if (xfut_outer)
+					xf.subtree += (td.nodes_searched + td.qnodes_searched) - xfut_before;
+				if (value > xfut_alpha)
+					xf.beat_alpha++;
+			}
 
 			// Unwind invariant: an aborted frame mutates nothing. `value` came from a search
 			// that was cut off mid-tree, so everything below — the transposition store, the
