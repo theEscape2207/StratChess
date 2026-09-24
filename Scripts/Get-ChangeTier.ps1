@@ -17,7 +17,7 @@
                -> a PowerShell syntax parse. A full build cannot catch anything here.
 
       Build    build.ps1, the Validate-* scripts, this script, .githooks/**,
-               .github/**, project/props files
+               .github/**, CMake files
                -> full validation, no shortcut.
 
       Engine   everything else — *.cpp, *.h, *.json, AND anything unrecognised
@@ -119,8 +119,6 @@ function Get-TierForPath {
     if ($p -eq '.git-blame-ignore-revs')                     { return 'Build' }
     if ($p -like '.githooks/*')                              { return 'Build' }
     if ($p -like '.github/*')                                { return 'Build' }
-    if ($p -like '*.vcxproj' -or $p -like '*.vcxproj.*')     { return 'Build' }
-    if ($p -like '*.props' -or $p -like '*.sln')             { return 'Build' }
     if ($p -like 'CMakeLists.txt' -or $p -like '*/CMakeLists.txt') { return 'Build' }
     if ($p -like '*.cmake')                                  { return 'Build' }
     # Presets carry the compiler, generator and cache variables, so a change here
@@ -166,7 +164,7 @@ function Get-TierForPath {
     if ($p -like '*Scripts/Sync-Master.ps1')                { return 'Tooling' }
     if ($p -like '*Scripts/UciDriver.ps1')                  { return 'Tooling' }
     # The driver's test and the fake engine it drives. Test-UciDriver.ps1 gates nothing:
-    # it is the covered script, not a validator, and Validate-PrePR.ps1 reaches it.
+    # it covers UciDriver.ps1, but is not a validator, and Validate-PrePR.ps1 reaches it.
     if ($p -like '*Scripts/Test-UciDriver.ps1')             { return 'Tooling' }
     if ($p -like '*Scripts/FakeUciEngine.ps1')              { return 'Tooling' }
     if ($p -like '*Scripts/FakeUciEngine.cmd')              { return 'Tooling' }
@@ -176,8 +174,10 @@ function Get-TierForPath {
     # they compile nothing and the engine never invokes them.
     if ($p -like '*Scripts/analyze_external_quality.py')     { return 'Tooling' }
     if ($p -like '*Scripts/analyze_move_quality.py')         { return 'Tooling' }
+    if ($p -like '*Scripts/bisect_uci_option.py')             { return 'Tooling' }
     if ($p -like '*Scripts/build_corpus.py')                 { return 'Tooling' }
     if ($p -like '*Scripts/external_quality_export.py')      { return 'Tooling' }
+    if ($p -like '*Scripts/test_bisect_uci_option.py')       { return 'Tooling' }
     if ($p -like '*Scripts/test_build_corpus.py')            { return 'Tooling' }
     if ($p -like '*Scripts/test_external_quality_export.py') { return 'Tooling' }
     if ($p -like '*Scripts/uci_race_probe.py')               { return 'Tooling' }
@@ -242,6 +242,8 @@ if ($SelfTest) {
         @{ Name = 'fake engine -> Tooling';     Files = @('Scripts/FakeUciEngine.ps1');       Expect = 'Tooling' }
         @{ Name = 'fake engine shim -> Tooling'; Files = @('Scripts/FakeUciEngine.cmd');      Expect = 'Tooling' }
         @{ Name = 'corpus tool -> Tooling';     Files = @('Scripts/build_corpus.py');         Expect = 'Tooling' }
+        @{ Name = 'bisect tool -> Tooling';     Files = @('Scripts/bisect_uci_option.py');    Expect = 'Tooling' }
+        @{ Name = 'bisect test -> Tooling';     Files = @('Scripts/test_bisect_uci_option.py'); Expect = 'Tooling' }
         @{ Name = 'corpus test -> Tooling';     Files = @('Scripts/test_build_corpus.py');    Expect = 'Tooling' }
         @{ Name = 'race probe -> Tooling';      Files = @('Scripts/uci_race_probe.py');       Expect = 'Tooling' }
         @{ Name = 'external quality analyzer -> Tooling'; Files = @('Scripts/analyze_external_quality.py'); Expect = 'Tooling' }
@@ -280,7 +282,6 @@ if ($SelfTest) {
         @{ Name = 'workflow -> Build';          Files = @('.github/workflows/build-and-test.yml');               Expect = 'Build' }
         @{ Name = 'nightly workflow -> Build';  Files = @('.github/workflows/nightly.yml');                      Expect = 'Build' }
         @{ Name = 'hook -> Build';              Files = @('.githooks/pre-commit');                               Expect = 'Build' }
-        @{ Name = 'vcxproj -> Build';           Files = @('StratChessTests/StratChessTests.vcxproj');            Expect = 'Build' }
         @{ Name = 'CMakeLists -> Build';        Files = @('CMakeLists.txt');                                     Expect = 'Build' }
         @{ Name = 'cmake module -> Build';      Files = @('cmake/Toolchain.cmake');                              Expect = 'Build' }
         @{ Name = 'CMakePresets -> Build';      Files = @('CMakePresets.json');                                  Expect = 'Build' }
