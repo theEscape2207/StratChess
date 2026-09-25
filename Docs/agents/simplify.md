@@ -27,4 +27,14 @@ call.
    Report each under a separate `Nearby debt` heading with `file:line`. It is not a finding, unless
    the change makes it worse: copies the duplication, extends the workaround.
 
+## Intended patterns
+
+Before reporting an item, check it against this list and drop it on a match. Each was rejected with
+the same reason on two PRs; add a pattern when that happens again.
+
+- **`SearchTelemetry`'s per-struct `reset`/`add`/`append_info` edits.** Not Shotgun Surgery unless
+  the change adds a new kind of edit.
+- **A self-test's expected list that repeats the script's list.** It is the oracle: the test fails
+  when a key is dropped from the script.
+
 What the author does with each finding and debt item: skill `open-pull-request` step 1.

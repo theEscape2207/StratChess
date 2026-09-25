@@ -16,7 +16,8 @@ against the **merge base**:
    from any other build path is a different binary: the equivalence cache's baseline read 7.7%
    slower than a `build.ps1` build of the same commit.
 2. **Run pairs back to back**, baseline then candidate, 6 pairs, each with `-Csv`. Leave the
-   machine otherwise idle.
+   machine otherwise idle: finish the code review first. Review subagents running beside a series
+   read one pair −14% (#640).
 3. **Discard the first pair** as warm-up; it read ~3 points off the rest.
 4. **Check node counts match per position in every pair.** A mismatch means behaviour changed, and
    the pair's nps is meaningless.

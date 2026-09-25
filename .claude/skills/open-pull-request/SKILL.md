@@ -30,7 +30,9 @@ Run each axis in its own subagent, in parallel or one after the other, on the se
 cheaper tier missed planted nearby debt that the session model found. An agent that cannot spawn
 subagents runs both in its own context, and the Review line (step 3) records `inline`.
 
-Every finding is fixed, rejected with a reason, or filed as an issue. Each nearby-debt item:
+Every finding is fixed, rejected with a reason, or filed as an issue. A Spec finding rejected by
+reading the spec differently edits the spec (the issue or plan) to state that reading, in the same
+PR. Each nearby-debt item:
 
 - **The change makes it worse** (copies the duplication, extends the workaround): a finding against
   this PR.
@@ -99,8 +101,10 @@ bypasses `.github/pull_request_template.md`, so supply the structure yourself.
   SPRT or lab Elo), the run still pending, or why none applies. Load skill `measure-strength` to pick
   the instrument, and to check one you already ran: its rules catch silently invalid results.
 - **A PR outside the Docs tier** carries a **Review** line in its Test plan:
-  `Review: code-review, Standards n / Spec m: x fixed, y rejected, filed #a #b`. Write
-  `Spec: skipped (no spec)` when no spec was given, and `inline` when both axes ran in one context.
+  `Review: code-review, Standards n / Spec m: x fixed, y rejected, filed #a #b; cost tk tokens,
+  s min`. The cost sums both axes' subagent reports; it feeds the value-versus-cost call on this
+  review, so write `cost unknown` rather than estimate. Write `Spec: skipped (no spec)` when no spec
+  was given, and `inline` when both axes ran in one context.
   Notes lists each rejected finding on its own line: the finding in a few words, then the reason.
 - Include motivation, design reasoning and expected impact for anything non-trivial. Keep it short;
   detail goes in chat.
