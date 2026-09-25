@@ -105,10 +105,6 @@ namespace {
 		// Use spdlog directly via Engine::Logger utilities
 		if (!Engine::Logger::GetLogger("AIPerplex")) {
 			try {
-				// create an async logger specifically for AIPerplex diagnostics - small thread pool (queue size 8192, 1 backing thread)
-				//spdlog::init_thread_pool(8192, 1);
-				//auto tp = spdlog::thread_pool();
-
 				// add both console and file sinks (file sink keeps a record for diagnostics)
 				const auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
 				console_sink->set_level(spdlog::level::info);
@@ -117,10 +113,8 @@ namespace {
 				file_sink->set_level(spdlog::level::debug);
 				file_sink->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
 
-				s_logger = std::make_shared<spdlog::logger>( // was spdlog:async_logger
-				    "AIPerplex", spdlog::sinks_init_list{console_sink, file_sink});
-				//tp,
-				//spdlog::async_overflow_policy::block);
+				s_logger =
+				    std::make_shared<spdlog::logger>("AIPerplex", spdlog::sinks_init_list{console_sink, file_sink});
 
 				spdlog::register_logger(s_logger);
 				s_logger->set_level(spdlog::level::debug);
@@ -2076,7 +2070,7 @@ void AIPerplex::emit_iteration_info(const ThreadData& td, int depth, int score, 
 
 	// The reported figure is the main-search-thread's cumulative count of both trees as
 	// of this accepted iteration. It does not generally equal the final info/bestmove
-	// line's total (AIPerplex.cpp Search(), ~line 256): a rejected trailing
+	// line's total from Search(): a rejected trailing
 	// iteration (REJECT_AND_STOP, see iterative_deepening()) still adds its
 	// nodes to those counters before assess_iteration_quality() throws the
 	// iteration away, so the final line's count is typically strictly greater
