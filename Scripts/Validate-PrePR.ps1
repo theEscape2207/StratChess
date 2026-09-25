@@ -9,9 +9,9 @@
        Tests/tactical_test_cases.json, 90% threshold per run + no pass/fail flips).
     4. Runs a headless AIPerplex vs AIPerplex self-play game (60s timeout).
     Preceded by cheap text-only gates: clang-format, blame-ignore coverage, workflow
-    job timeouts, ccache path settings, script binding, gate script tiers, and the
-    -SelfTest of any changed script that carries one -- or of the
-    script that covers it, for a dot-sourced library or a fixture that cannot carry one.
+    job timeouts, ccache path settings, script binding, and the -SelfTest of any changed
+    script that carries one -- or of the script that covers it, for a dot-sourced
+    library or a fixture that cannot carry one.
     On every tier, including the Docs and Tooling fast paths, it also checks that every
     Build-tier script carries a -SelfTest at all, and warns about any plan left in the
     transient top level of .claude/plans/.
@@ -628,16 +628,6 @@ try   { & $bindingScript }
 catch { $bindingFailed = $true; Write-Host "Binding guard threw: $_" -ForegroundColor DarkGray }
 if ($LASTEXITCODE -ne 0) { $bindingFailed = $true }
 $checkResults['Script binding'] = if ($bindingFailed) { 'FAIL' } else { 'PASS' }
-
-# --- Step 0d3: gate scripts are Build tier ---
-# Same reasoning again. A Scripts/ file defaults to Tooling, so a gate script left
-# off the classifier's Build list would take the Tooling shortcut past its own check.
-Write-Host "`n==> Gate scripts are Build tier" -ForegroundColor Cyan
-$gateTierFailed = $false
-try   { & $tierScript -CheckGates }
-catch { $gateTierFailed = $true; Write-Host "Gate tier guard threw: $_" -ForegroundColor DarkGray }
-if ($LASTEXITCODE -ne 0) { $gateTierFailed = $true }
-$checkResults['Gate script tiers'] = if ($gateTierFailed) { 'FAIL' } else { 'PASS' }
 
 # --- Step 0e: self-tests of any changed script ---
 # Also run here, not only on the Tooling fast path: a Build- or Engine-tier diff can

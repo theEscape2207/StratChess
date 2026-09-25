@@ -27,19 +27,15 @@ Docs regardless of content (#185). Pushes therefore diff against `github.event.b
 `main` held before the push. If that ref is unreachable — a force push, or the all-zeros SHA on
 branch creation — `Get-ChangeTier.ps1` fails closed to Engine tier. Leave that path alone.
 
-`classify` also runs four guards, each failing the run when:
+`classify` also runs three guards, each failing the run when:
 
 - `Test-WorkflowTimeouts.ps1`: a job in any workflow omits `timeout-minutes`;
 - `Test-WorkflowCcachePaths.ps1`: a workflow or composite action sets ccache's `base_dir` or
   `hash_dir` (see below);
-- `Test-ScriptBinding.ps1`: a script with a `param()` block lacks `[CmdletBinding()]`;
-- `Get-ChangeTier.ps1 -CheckGates`: a workflow, a hook or a Build-tier script invokes a `Scripts/`
-  file that is not Build tier.
+- `Test-ScriptBinding.ps1`: a script with a `param()` block lacks `[CmdletBinding()]`.
 
 They live here because `classify` is the only job with no tier condition. `Validate-PrePR.ps1` runs
-the same scripts on Build and Engine tiers, so the answer is reachable before pushing. A `Scripts/`
-file defaults to Tooling unless the classifier's Build list names it
-([Validation tiers](Workflow.md#validation-tiers)), which is the gap `-CheckGates` closes.
+the same scripts on Build and Engine tiers, so the answer is reachable before pushing.
 
 Consequence for the deps cache: `main` now only builds on Build/Engine merges, and `actions/cache`
 is branch-scoped so a PR can only restore a cache saved there. This is safe because the key is static
