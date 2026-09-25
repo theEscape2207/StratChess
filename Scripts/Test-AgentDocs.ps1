@@ -164,7 +164,7 @@ function Get-AgentDocFailure {
             }
             if ($isAgent) {
                 $token = $span -replace '(\(\)|::.*)$'
-                if ($token -cmatch '^[A-Za-z_]\w*$' -and $token -cmatch '[a-z][A-Z]|^[gm]_|^[A-Z][A-Z0-9]*_[A-Z0-9_]+$') {
+                if ($token -cmatch '^[A-Za-z_]\w*$' -and $token -cmatch '^(?=.*[a-z]).+[A-Z]|^[gm]_|^[A-Z][A-Z0-9]*_[A-Z0-9_]+$') {
                     $counts['Identifiers']++
                     if (-not $sourceWords.Contains($token)) { Add-Failure $doc $s.Line 'identifier' $span }
                 }
@@ -214,7 +214,7 @@ if ($SelfTest) {
         @{ Name = 'agent unreachable from CLAUDE.md';   Change = @{ '.claude/skills/alpha/SKILL.md' = New-Doc 'alpha' '`beta`, `reference/notes.md`'; 'AGENTS.md' = 'Use `alpha` and `rev`.' }; Expect = @('route') }
         @{ Name = 'unresolved path from root';          Change = @{ 'AGENTS.md' = 'Use `alpha`; read `Docs/Gone.md`.' }; Expect = @('path') }
         @{ Name = 'unresolved path beside the doc';     Change = @{ '.claude/skills/alpha/SKILL.md' = New-Doc 'alpha' '`beta`, `rev`, `reference/gone.md`' }; Expect = @('path') }
-        @{ Name = 'identifiers absent from source';     Change = @{ '.claude/agents/rev.md' = New-Doc 'rev' '`PlayState`, `iMinScore`, `gameStage`' }; Expect = @('identifier', 'identifier', 'identifier') }
+        @{ Name = 'identifiers absent from source';     Change = @{ '.claude/agents/rev.md' = New-Doc 'rev' '`PlayState`, `iMinScore`, `gameStage`, `PVNode`' }; Expect = @('identifier') * 4 }
         @{ Name = 'no identifier spans fails closed';   Change = @{ '.claude/agents/rev.md' = New-Doc 'rev' 'Nothing to cite.' }; Expect = @('empty') }
         @{ Name = 'empty tree fails closed';            Change = $emptied; Expect = @('empty') * 5 }
     )
