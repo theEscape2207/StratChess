@@ -68,9 +68,8 @@ jobs:
           echo "expected=${{ matrix.expected }} actual=$actual"
           test "$actual" = "${{ matrix.expected }}"
 
-  # The [slow] tier, which is three test cases: two deep tactical searches and the
-  # null-move guards. 250 test cases in the fast tier against 253 here -- it is a
-  # thin tier, not a second suite, so treat a green run as weak evidence.
+  # The [slow] tier: a handful of deep tactical, null-move and endgame-conversion
+  # cases. It is a thin tier, not a second suite, so treat a green run as weak evidence.
   # Self-contained: no test reads anything from Tests/.
   extended-tests:
     runs-on: ubuntu-24.04

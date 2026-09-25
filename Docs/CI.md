@@ -313,8 +313,8 @@ already crossed, and perft allocates nothing per node, so a longer run stresses 
 generation is exercised by **breadth**, which is what `perft test` provides. Do not re-propose depth
 without a reason that survives those numbers.
 
-**The `[slow]` tier is thin.** The fast tier is 250 test cases; everything is 253 — two deep tactical
-searches and the null-move guards. `extended-tests` and `sanitize-extended` are worth their (free)
+**The `[slow]` tier is thin**: a handful of deep tactical, null-move and endgame-conversion cases
+beside the whole fast tier. `extended-tests` and `sanitize-extended` are worth their (free)
 minutes, but a green run there is weak evidence, and "extended tier" oversells what exists. Growing
 it is #156's territory, not the schedule's.
 
