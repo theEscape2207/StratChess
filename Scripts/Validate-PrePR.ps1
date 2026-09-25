@@ -54,7 +54,7 @@ param(
 )
 
 Set-StrictMode -Version Latest
-# Do NOT set $ErrorActionPreference = 'Stop' — this script runs all three checks before
+# Do NOT set $ErrorActionPreference = 'Stop' — this script runs every check before
 # exiting so the summary table is always printed. Each step checks $LASTEXITCODE directly.
 
 $RepoRoot    = Split-Path $PSScriptRoot -Parent
@@ -91,9 +91,9 @@ function Resolve-SelfTestFile {
 # Pure: which cheap gates short-circuit rather than join $checkResults. Reserved
 # for a check that is cheap, deterministic, auto-fixable, and whose remedy cannot
 # be changed by any later result -- clang-format is the only one that currently
-# qualifies (issue #478). Blame-ignore, workflow timeouts and script binding stay
-# aggregated: each can still call for judgement (-AllowUnlistedReformat, which
-# workflow to fix) that a later result could add to.
+# qualifies (issue #478). Blame-ignore and the text guards stay aggregated: each can
+# still call for judgement (-AllowUnlistedReformat, which workflow to fix) that a
+# later result could add to.
 function Test-IsFastFailCheck {
     param([Parameter(Mandatory)][string]$CheckName)
     return $CheckName -eq 'clang-format'
@@ -264,7 +264,7 @@ function Get-ScriptSelfTestFact {
             }
         }
 
-        # In-process, so this is 23 script invocations rather than 23 child processes,
+        # In-process, so one invocation per script rather than one child process each,
         # and it reuses the classifier instead of restating its rules here.
         $facts += [pscustomobject]@{
             Path        = $rel
@@ -653,8 +653,8 @@ $checkResults['Script self-tests'] = if ($scriptCheck.Failed) { 'FAIL' } else { 
 # --- Step 1: Full parallel build ---
 Write-Host "`n==> Full build (main + tests in parallel)" -ForegroundColor Cyan
 # build.ps1 sets $ErrorActionPreference='Stop' internally and calls Write-Error on failure,
-# which propagates a terminating error to this script via &. Wrap in try/catch so all three
-# checks always run. Track failure via $buildFailed rather than $LASTEXITCODE — when the
+# which propagates a terminating error to this script via &. Wrap in try/catch so every
+# check always runs. Track failure via $buildFailed rather than $LASTEXITCODE — when the
 # terminating error is caught, $LASTEXITCODE reflects the last native process (cmake/ninja), not
 # build.ps1's exit code, so it can't be relied on for the PASS/FAIL decision.
 $buildFailed = $false
@@ -746,8 +746,7 @@ try {
     # Require at least 2 completed moves (one per side) — confirms the search engine
     # is functioning. With time_limit:15000ms per move, a 60s timeout window yields
     # ~3-4 moves; the game will not complete naturally in that window, so we do not
-    # require game-termination (checkmate/stalemate/draw). Explicit parentheses guard
-    # against PowerShell's left-to-right -and/-or precedence.
+    # require game-termination (checkmate/stalemate/draw).
     if ($moveCount -ge 2) {
         Write-Host "PASS: $moveCount move(s) logged; engine is functional." -ForegroundColor Green
         $checkResults['Self-play'] = 'PASS'
