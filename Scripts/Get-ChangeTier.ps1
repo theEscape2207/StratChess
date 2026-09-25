@@ -8,12 +8,13 @@
 
     Tiers, weakest to strictest (a mixed diff always takes the STRICTEST tier present):
 
-      Docs     *.md, Docs/**, .claude/plans/**,
-               .claude/skills/**.md, .claude/agents/**.md
+      Docs     *.md, Docs/**, .claude/plans/**, .claude/skills/**.md,
+               .claude/agents/**.md and their Codex counterparts, LICENSE.txt,
+               skills-lock.json
                -> nothing beyond the pre-commit hook's fast tests.
 
-      Tooling  measurement/helper scripts that are never compiled and never invoked
-               by the engine (Run-EloMatch, Run-Tests, Sync-Master, verify_mate_key)
+      Tooling  every *.ps1, *.py and *.cmd directly in Scripts/ that the Build list
+               does not name, and .clangd: never compiled, never invoked by the engine
                -> a PowerShell syntax parse. A full build cannot catch anything here.
 
       Build    build.ps1, the Validate-* scripts, this script, .githooks/**,
@@ -27,6 +28,7 @@
 
       1. FAIL CLOSED. The default rule is Engine. There is deliberately no
          "else -> cheap" branch: an unfamiliar path must cost time, never skip.
+         Scripts/ is the one exception: a new gate script must join the Build list.
       2. NO SELF-EXEMPTION. The validation machinery itself (Validate-*.ps1, this
          file, build.ps1) is Build tier. If a change to them could take its own
          shortcut, a classifier bug would be self-concealing — it would disable
@@ -90,11 +92,8 @@ function Get-TierForPath {
     if ($p -like '*Scripts/Run-Lint.ps1')                   { return 'Build' }
     if ($p -like '*Scripts/New-TidyCompileDatabase.ps1')    { return 'Build' }
     # The workflow guards, which enforce properties of CI from inside CI. Same hazard
-    # once more: a bug here disarms a guard silently. Named rather than left to the
-    # fail-closed default, which would call them Engine -- stricter than scripts that
-    # compile nothing and are never invoked by the engine deserve. The prefix match
-    # covers guards added later, which would otherwise land at the wrong tier by
-    # omission.
+    # once more: a bug here disarms a guard silently. The prefix match covers guards
+    # added later, which would otherwise default to Tooling.
     if ($p -like '*Scripts/Test-Workflow*.ps1')             { return 'Build' }
     # Asserts a property of the shipping image from inside the pre-PR run, so the same
     # hazard applies: a bug here disarms the only check that -falign-functions=64
@@ -104,11 +103,12 @@ function Get-TierForPath {
     # build that is not one -- a false PASS about the property, which is the same
     # self-concealment. Build rather than Tooling for that reason alone.
     if ($p -like '*Scripts/Test-ReleaseReproducibility.ps1') { return 'Build' }
+    # A guard that CI's classify job and Validate-PrePR.ps1 run on every change.
+    if ($p -like '*Scripts/Test-ScriptBinding.ps1')         { return 'Build' }
     # Decides whether a build artifact counts as stale, and which binary a measurement
-    # reads. Left to the fail-closed default they would be Engine, which costs every PR
-    # that touches them the Engine tier. The hazard is the familiar one and it is why
-    # they are Build rather than Tooling: a bug in either lets a validation or a
-    # measurement run against the wrong binary while reporting success.
+    # reads. The hazard is the familiar one and it is why they are Build rather than
+    # Tooling: a bug in either lets a validation or a measurement run against the wrong
+    # binary while reporting success.
     if ($p -like '*Scripts/BuildFreshness.ps1')             { return 'Build' }
     if ($p -like '*Scripts/Get-BuildArtifact.ps1')          { return 'Build' }
     # Lint configuration decides what CI enforces about every source file. Named rather
@@ -133,57 +133,26 @@ function Get-TierForPath {
     # can hold executable content, and that stays with the fail-closed default.
     if ($p -like '.claude/skills/*.md')                      { return 'Docs' }
     if ($p -like '.claude/agents/*.md')                      { return 'Docs' }
+    # Their Codex counterparts. The vendored skills' metadata and lock file describe
+    # skills; any other file in a skill directory stays with the fail-closed default.
+    if ($p -like '.agents/skills/*/agents/openai.yaml')      { return 'Docs' }
+    if ($p -like '.codex/agents/*.toml')                     { return 'Docs' }
+    if ($p -eq 'skills-lock.json')                           { return 'Docs' }
+    # Prose that nothing builds or runs.
+    if ($p -eq 'LICENSE.txt')                                { return 'Docs' }
     # Plans are prose whatever the extension, so this one is not '*.md'-scoped.
     if ($p -like '.claude/plans/*')                          { return 'Docs' }
     if ($p -like '*.md')                                     { return 'Docs' }
     if ($p -like 'Docs/*')                                   { return 'Docs' }
 
-    # --- Tooling: engine-inert helper scripts ---------------------------------
-    # Enumerated explicitly rather than matched as 'Scripts/*.ps1'. A wildcard
-    # here would silently absorb any NEW script added to that folder, including
-    # one that does affect the build — fail-closed means new files land in
-    # Engine until someone deliberately classifies them.
-    # PowerShell helpers, alphabetically. New-PullRequest.ps1 is deliberately absent:
-    # it gates whether validation runs and has its own Build rule above. UciDriver.ps1 and
-    # BenchPositions.ps1 are engine-inert despite being dot-sourced by measurement helpers. The branch/worktree
-    # helpers and Get-PrChecks.ps1 are likewise advisory and gate nothing.
-    if ($p -like '*Scripts/BenchPositions.ps1')             { return 'Tooling' }
-    if ($p -like '*Scripts/Compare-SearchEquivalence.ps1')  { return 'Tooling' }
-    if ($p -like '*Scripts/Compare-SearchProfile.ps1')      { return 'Tooling' }
-    if ($p -like '*Scripts/Get-PrChecks.ps1')               { return 'Tooling' }
-    if ($p -like '*Scripts/Get-Worktrees.ps1')              { return 'Tooling' }
-    # An agent-session hook: it gates edits in a session, never a build or a validation.
-    if ($p -like '*Scripts/Invoke-SkillGate.ps1')           { return 'Tooling' }
-    if ($p -like '*Scripts/Measure-UciLatency.ps1')         { return 'Tooling' }
-    if ($p -like '*Scripts/New-TaskBranch.ps1')             { return 'Tooling' }
-    if ($p -like '*Scripts/New-Worktree.ps1')               { return 'Tooling' }
-    if ($p -like '*Scripts/Remove-MergedBranches.ps1')      { return 'Tooling' }
-    if ($p -like '*Scripts/Remove-Worktree.ps1')            { return 'Tooling' }
-    if ($p -like '*Scripts/Run-Bench.ps1')                  { return 'Tooling' }
-    if ($p -like '*Scripts/Run-EloMatch.ps1')               { return 'Tooling' }
-    if ($p -like '*Scripts/Run-PerftCheck.ps1')             { return 'Tooling' }
-    if ($p -like '*Scripts/Run-Tests.ps1')                  { return 'Tooling' }
-    if ($p -like '*Scripts/Sync-Master.ps1')                { return 'Tooling' }
-    if ($p -like '*Scripts/UciDriver.ps1')                  { return 'Tooling' }
-    # The driver's test and the fake engine it drives. Test-UciDriver.ps1 gates nothing:
-    # it covers UciDriver.ps1, but is not a validator, and Validate-PrePR.ps1 reaches it.
-    if ($p -like '*Scripts/Test-UciDriver.ps1')             { return 'Tooling' }
-    if ($p -like '*Scripts/FakeUciEngine.ps1')              { return 'Tooling' }
-    if ($p -like '*Scripts/FakeUciEngine.cmd')              { return 'Tooling' }
-
-    # Python helpers, alphabetically.
-    # The move-quality analyzers and their export helper are engine-inert PGN readers:
-    # they compile nothing and the engine never invokes them.
-    if ($p -like '*Scripts/analyze_external_quality.py')     { return 'Tooling' }
-    if ($p -like '*Scripts/analyze_move_quality.py')         { return 'Tooling' }
-    if ($p -like '*Scripts/bisect_uci_option.py')             { return 'Tooling' }
-    if ($p -like '*Scripts/build_corpus.py')                 { return 'Tooling' }
-    if ($p -like '*Scripts/external_quality_export.py')      { return 'Tooling' }
-    if ($p -like '*Scripts/test_bisect_uci_option.py')       { return 'Tooling' }
-    if ($p -like '*Scripts/test_build_corpus.py')            { return 'Tooling' }
-    if ($p -like '*Scripts/test_external_quality_export.py') { return 'Tooling' }
-    if ($p -like '*Scripts/uci_race_probe.py')               { return 'Tooling' }
-    if ($p -like '*Scripts/verify_mate_key.py')              { return 'Tooling' }
+    # --- Tooling: helper scripts -----------------------------------------------
+    # A script directly in Scripts/ is Tooling unless the Build list above names it,
+    # so a new script that a gate runs belongs on that list. Subdirectories stay with
+    # the fail-closed default.
+    if ($p -like 'Scripts/*' -and $p -notlike 'Scripts/*/*' -and
+        ($p -like '*.ps1' -or $p -like '*.py' -or $p -like '*.cmd')) { return 'Tooling' }
+    # Configures the editor's language server; no build reads it.
+    if ($p -eq '.clangd')                                    { return 'Tooling' }
 
     # --- Fail closed ----------------------------------------------------------
     # Everything else, INCLUDING anything unrecognised. Do not add an
@@ -234,39 +203,16 @@ if ($SelfTest) {
         @{ Name = 'agent definition -> Docs';   Files = @('.claude/agents/eval-reviewer.md');                    Expect = 'Docs' }
         @{ Name = 'FAIL CLOSED: skill script';  Files = @('.claude/skills/measure-strength/helper.ps1');         Expect = 'Engine' }
         @{ Name = 'FAIL CLOSED: skill dir';     Files = @('.claude/skills/measure-strength/');                   Expect = 'Engine' }
-        @{ Name = 'equivalence tool -> Tooling'; Files = @('Scripts/Compare-SearchEquivalence.ps1'); Expect = 'Tooling' }
-        @{ Name = 'bench tool -> Tooling';      Files = @('Scripts/Run-Bench.ps1');          Expect = 'Tooling' }
-        @{ Name = 'bench positions -> Tooling'; Files = @('Scripts/BenchPositions.ps1');     Expect = 'Tooling' }
-        @{ Name = 'profile compare -> Tooling'; Files = @('Scripts/Compare-SearchProfile.ps1'); Expect = 'Tooling' }
         @{ Name = 'tooling only';               Files = @('Scripts/Run-EloMatch.ps1');        Expect = 'Tooling' }
-        @{ Name = 'perftcheck tool -> Tooling'; Files = @('Scripts/Run-PerftCheck.ps1');     Expect = 'Tooling' }
         @{ Name = 'docs + tooling -> Tooling';  Files = @('CLAUDE.md', 'Scripts/Run-Tests.ps1'); Expect = 'Tooling' }
         @{ Name = 'UCI driver lib -> Tooling';  Files = @('Scripts/UciDriver.ps1');           Expect = 'Tooling' }
-        @{ Name = 'UCI driver test -> Tooling'; Files = @('Scripts/Test-UciDriver.ps1');      Expect = 'Tooling' }
-        @{ Name = 'fake engine -> Tooling';     Files = @('Scripts/FakeUciEngine.ps1');       Expect = 'Tooling' }
         @{ Name = 'fake engine shim -> Tooling'; Files = @('Scripts/FakeUciEngine.cmd');      Expect = 'Tooling' }
         @{ Name = 'corpus tool -> Tooling';     Files = @('Scripts/build_corpus.py');         Expect = 'Tooling' }
-        @{ Name = 'bisect tool -> Tooling';     Files = @('Scripts/bisect_uci_option.py');    Expect = 'Tooling' }
-        @{ Name = 'bisect test -> Tooling';     Files = @('Scripts/test_bisect_uci_option.py'); Expect = 'Tooling' }
-        @{ Name = 'corpus test -> Tooling';     Files = @('Scripts/test_build_corpus.py');    Expect = 'Tooling' }
-        @{ Name = 'race probe -> Tooling';      Files = @('Scripts/uci_race_probe.py');       Expect = 'Tooling' }
-        @{ Name = 'external quality analyzer -> Tooling'; Files = @('Scripts/analyze_external_quality.py'); Expect = 'Tooling' }
-        @{ Name = 'move quality analyzer -> Tooling';     Files = @('Scripts/analyze_move_quality.py');     Expect = 'Tooling' }
-        @{ Name = 'quality export -> Tooling';            Files = @('Scripts/external_quality_export.py'); Expect = 'Tooling' }
-        @{ Name = 'quality export test -> Tooling';       Files = @('Scripts/test_external_quality_export.py'); Expect = 'Tooling' }
         @{ Name = 'docs + cpp -> Engine';       Files = @('CLAUDE.md', 'StratEngine/Eval.cpp');                 Expect = 'Engine' }
         @{ Name = 'build.ps1 -> Build';         Files = @('build.ps1');                                          Expect = 'Build' }
         @{ Name = 'validator -> Build NOT Tooling'; Files = @('Scripts/Validate-PrePR.ps1');   Expect = 'Build' }
         @{ Name = 'alignment check -> Build';   Files = @('Scripts/Test-CodeAlignment.ps1');   Expect = 'Build' }
         @{ Name = 'reproducibility check -> Build'; Files = @('Scripts/Test-ReleaseReproducibility.ps1'); Expect = 'Build' }
-    @{ Name = 'New-Worktree -> Tooling';    Files = @('Scripts/New-Worktree.ps1');    Expect = 'Tooling' }
-    @{ Name = 'Remove-Worktree -> Tooling'; Files = @('Scripts/Remove-Worktree.ps1'); Expect = 'Tooling' }
-    @{ Name = 'Get-Worktrees -> Tooling';   Files = @('Scripts/Get-Worktrees.ps1');   Expect = 'Tooling' }
-        @{ Name = 'Get-PrChecks -> Tooling';    Files = @('Scripts/Get-PrChecks.ps1');   Expect = 'Tooling' }
-        @{ Name = 'skill gate hook -> Tooling'; Files = @('Scripts/Invoke-SkillGate.ps1'); Expect = 'Tooling' }
-    # The in-place counterparts to New-Worktree/Remove-Worktree: same reasoning, same tier.
-    @{ Name = 'New-TaskBranch -> Tooling';       Files = @('Scripts/New-TaskBranch.ps1');       Expect = 'Tooling' }
-    @{ Name = 'Remove-MergedBranches -> Tooling'; Files = @('Scripts/Remove-MergedBranches.ps1'); Expect = 'Tooling' }
     # The PR driver gates validation, so it must never take the Tooling shortcut.
     @{ Name = 'New-PullRequest -> Build NOT Tooling'; Files = @('Scripts/New-PullRequest.ps1'); Expect = 'Build' }
         @{ Name = 'classifier -> Build';        Files = @('Scripts/Get-ChangeTier.ps1');       Expect = 'Build' }
@@ -279,7 +225,7 @@ if ($SelfTest) {
         @{ Name = 'tidy DB normalizer -> Build'; Files = @('Scripts/New-TidyCompileDatabase.ps1'); Expect = 'Build' }
         @{ Name = 'timeout guard -> Build';     Files = @('Scripts/Test-WorkflowTimeouts.ps1');  Expect = 'Build' }
         @{ Name = 'ccache path guard -> Build'; Files = @('Scripts/Test-WorkflowCcachePaths.ps1'); Expect = 'Build' }
-        # Both decide which binary a build or a measurement reads; named, not fail-closed.
+        # Both decide which binary a build or a measurement reads; named, not Tooling.
         @{ Name = 'freshness lib -> Build';     Files = @('Scripts/BuildFreshness.ps1');        Expect = 'Build' }
         @{ Name = 'artifact picker -> Build';   Files = @('Scripts/Get-BuildArtifact.ps1');     Expect = 'Build' }
         @{ Name = 'blame-ignore -> Build';      Files = @('.git-blame-ignore-revs');                             Expect = 'Build' }
@@ -290,8 +236,18 @@ if ($SelfTest) {
         @{ Name = 'cmake module -> Build';      Files = @('cmake/Toolchain.cmake');                              Expect = 'Build' }
         @{ Name = 'CMakePresets -> Build';      Files = @('CMakePresets.json');                                  Expect = 'Build' }
         @{ Name = 'FAIL CLOSED: unknown ext';   Files = @('foo/bar.xyz');                                        Expect = 'Engine' }
-        @{ Name = 'FAIL CLOSED: new script';    Files = @('Scripts/Brand-New.ps1');            Expect = 'Engine' }
-        @{ Name = 'FAIL CLOSED: unlisted python script'; Files = @('Scripts/some_new_tool.py'); Expect = 'Engine' }
+        # Scripts/ defaults to Tooling; only the Build list above overrides it.
+        @{ Name = 'new script -> Tooling';      Files = @('Scripts/Brand-New.ps1');            Expect = 'Tooling' }
+        @{ Name = 'new python script -> Tooling'; Files = @('Scripts/some_new_tool.py');       Expect = 'Tooling' }
+        @{ Name = 'Scripts/*.md -> Docs';       Files = @('Scripts/README.md');                Expect = 'Docs' }
+        @{ Name = 'FAIL CLOSED: nested script'; Files = @('Scripts/sub/tool.ps1');             Expect = 'Engine' }
+        @{ Name = 'FAIL CLOSED: other ext';     Files = @('Scripts/notes.txt');                Expect = 'Engine' }
+        @{ Name = 'binding guard -> Build';     Files = @('Scripts/Test-ScriptBinding.ps1');   Expect = 'Build' }
+        @{ Name = 'Codex skill meta -> Docs';   Files = @('.agents/skills/grill-me/agents/openai.yaml'); Expect = 'Docs' }
+        @{ Name = 'Codex agent -> Docs';        Files = @('.codex/agents/eval-reviewer.toml');  Expect = 'Docs' }
+        @{ Name = 'FAIL CLOSED: skill template'; Files = @('.agents/skills/diagnosing-bugs/scripts/hitl-loop.template.sh'); Expect = 'Engine' }
+        @{ Name = 'licence + skills lock -> Docs'; Files = @('LICENSE.txt', 'skills-lock.json'); Expect = 'Docs' }
+        @{ Name = 'clangd config -> Tooling';   Files = @('.clangd');                          Expect = 'Tooling' }
         @{ Name = 'FAIL CLOSED: hook configs';  Files = @('.claude/settings.json', '.codex/hooks.json'); Expect = 'Engine' }
         @{ Name = 'json -> Engine';             Files = @('StratChessEvolved/game_settings.json');               Expect = 'Engine' }
         @{ Name = 'header -> Engine';           Files = @('StratEngine/Eval.h');                                 Expect = 'Engine' }

@@ -44,25 +44,23 @@ Four things are non-negotiable and are the reason most of this file exists:
 `Scripts\Get-ChangeTier.ps1` is the single source of truth and is shared with CI
 (`.github/workflows/build-and-test.yml`), so the two cannot drift.
 
-| Tier | Matches | What runs |
+| Tier | Covers | What runs |
 |---|---|---|
-| `Docs` | `*.md`, `Docs/**`, `.claude/plans/**`, `.claude/skills/**.md`, `.claude/agents/**.md` | Nothing — the pre-commit hook's fast tests already cover it |
-| `Tooling` | the engine-inert helper scripts `Get-ChangeTier.ps1` enumerates by name | PowerShell syntax parse only — never compiled, never invoked by the engine |
-| `Build` | `build.ps1`, `Scripts\Validate-*.ps1`, `New-PullRequest.ps1`, `Get-ChangeTier.ps1`, `Run-Lint.ps1`, `.githooks/**`, `.github/**`, `CMakeLists.txt`, `*.cmake`, `CMakePresets.json`, `.clang-format`, `.clang-tidy`, `.git-blame-ignore-revs` | Full: build + extended `[slow]` tests + tactical suite + self-play, preceded by the clang-format check |
-| `Engine` | `*.cpp`, `*.h`, `*.json`, **and anything unrecognised** | Full |
+| `Docs` | prose, and skill and agent definitions | Nothing — the pre-commit hook's fast tests already cover it |
+| `Tooling` | helper scripts in `Scripts\` | Syntax parse and the changed scripts' `-SelfTest` |
+| `Build` | the build and validation machinery | Full, preceded by the clang-format check |
+| `Engine` | engine sources and data, **and anything unrecognised** | Full: build + extended `[slow]` tests + tactical suite + self-play |
 
-A mixed diff takes the **strictest** tier present. Two properties are deliberate and asserted by
-`Get-ChangeTier.ps1 -SelfTest`: it **fails closed** (an unrecognised path gets the full run, never a
-skip), and the validation machinery is itself `Build` tier — a change to `Validate-*.ps1` or to the
-classifier can never take its own shortcut, since a classifier bug would otherwise be
-self-concealing. `-Force` runs every gate regardless.
+The exact rules are in the script. A mixed diff takes the **strictest** tier present, and `-Force`
+runs every gate regardless.
 
-Background: PR #56 (a one-line `CLAUDE.md` fix) and PR #133 (a measurement-script change) both paid
-a full build + extended-test + self-play cycle for a guaranteed pass — issue #124.
+**Adding a file** needs a classifier edit in two cases:
 
-`Run-Lint.ps1` is `Build` and not `Tooling` despite sitting beside the engine-inert helper scripts:
-`Validate-PrePR.ps1` calls its format check, so a bug in it could suppress a gate and then decline to
-validate the change that suppressed it — the same self-concealment hazard as the classifier itself.
+- **A script that a workflow, a hook or a validator runs** goes on the Build list. Every other script
+  directly in `Scripts\` is Tooling by default, and a gate script left there would take the Tooling
+  shortcut past its own check.
+- **A new kind of file** anywhere else is Engine until classified. That default is deliberate: an
+  unfamiliar path must cost time, never skip a gate.
 
 **`git blame` skips the reformat commits only if configured.** `build.ps1` sets
 `blame.ignoreRevsFile` on first run, alongside the `core.hooksPath` line, so any clone or worktree
