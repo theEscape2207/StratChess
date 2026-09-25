@@ -278,8 +278,8 @@ Runner image is pinned to `windows-2025-vs2026`, not `windows-latest`, so the to
 when it is changed deliberately — see `.claude/plans/retained/full-build-test-ci-github-actions.md`.
 
 `check-starting-fen.yml` is path-filtered to `StratChessEvolved/game_settings.json` and does not run
-otherwise. `pr-closed-cleanup.yml` fires once per closed PR — deleting the head branch if it merged,
-and the caches scoped to its ref either way. Both gate nothing.
+otherwise. `pr-closed-cleanup.yml` fires once per closed PR — deleting same-repository head branches
+and caches scoped to the PR ref whether the PR merged or was cancelled. Both gate nothing.
 
 Self-play stays local-only (`Validate-PrePR.ps1`); its timeout-based nondeterminism is not worth CI
 flakiness. The `[slow]` Catch2 tier runs in `extended-tests` and `sanitize-extended` nightly jobs.
