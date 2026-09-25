@@ -83,7 +83,8 @@ claims. Follow `Docs/agents/issue-tracker.md` rather than restating its mutation
 
 For a kept issue, make the finding cover current evidence; impact and magnitude; scope, non-goals,
 dependencies, and unresolved choices; reviewable slices; acceptance criteria; and the readiness gate.
-State whether `CLAUDE.md`'s design-document trigger applies before implementation, and why.
+State whether `CLAUDE.md`'s design-document trigger applies before implementation, and why. Estimate
+the cost as `.claude/plans/TEMPLATE.md` → Cost describes, including its minimal-fix waiver.
 
 For closure, link the duplicate, resolving change, superseding design, failed premise, or cost/benefit
 reason and state residual risk. Do not close unless the user explicitly asked for closure.
