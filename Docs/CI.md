@@ -300,6 +300,7 @@ flakiness. The `[slow]` Catch2 tier runs in `extended-tests` and `sanitize-exten
 | `lint-tree` | Failing clang-format and fast Gate over the whole tree, covering what the per-PR job's one-unit-per-header cover does not reach |
 | `lint-deep-linux` | Failing Deep profile over normalized shipping sources with Linux Clang |
 | `lint-deep-windows` | Failing Deep profile over normalized shipping sources with Windows clang-cl, and `Validate-PrePR.ps1 -AllSelfTests` — every script self-test, against the PR gate's "only the ones the diff touched" |
+| `agent-docs` | `Test-AgentDocs.ps1`: citations in skills, subagents, `CLAUDE.md` and `AGENTS.md` that no longer resolve. Not in PrePR |
 
 `perft run <depth> [fen]` prints a count but does not verify it, so the workflow does the comparison.
 Runners measure **~22.5 Mnps** (startpos depth 7 in 140 s, Kiwipete depth 6 in 364 s — 2.2× slower
@@ -312,8 +313,8 @@ already crossed, and perft allocates nothing per node, so a longer run stresses 
 generation is exercised by **breadth**, which is what `perft test` provides. Do not re-propose depth
 without a reason that survives those numbers.
 
-**The `[slow]` tier is thin.** The fast tier is 250 test cases; everything is 253 — two deep tactical
-searches and the null-move guards. `extended-tests` and `sanitize-extended` are worth their (free)
+**The `[slow]` tier is thin**: a handful of deep tactical, null-move and endgame-conversion cases
+beside the whole fast tier. `extended-tests` and `sanitize-extended` are worth their (free)
 minutes, but a green run there is weak evidence, and "extended tier" oversells what exists. Growing
 it is #156's territory, not the schedule's.
 
