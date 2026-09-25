@@ -90,7 +90,6 @@ function Get-AgentDocFailure {
     $docs = @($paths | Where-Object { $_ -match '^(\.claude/skills/.+\.md|\.claude/agents/[^/]+\.md|CLAUDE\.md|AGENTS\.md)$' })
     $counts = [ordered]@{ Docs = $docs.Count; Skills = $skills.Count; Agents = $agents.Count; Paths = 0; Identifiers = 0 }
 
-    # Frontmatter.
     $frontmatterFiles = @($skills | ForEach-Object { ".claude/skills/$_/SKILL.md" }) + $adapters +
         @($agents | ForEach-Object { ".claude/agents/$_.md" })
     foreach ($f in $frontmatterFiles) {
@@ -100,10 +99,11 @@ function Get-AgentDocFailure {
         $head = $Matches[1]
         $name = if ($head -match '(?m)^name:[ \t]*["'']?([^"''\n]*?)["'']?[ \t]*$') { $Matches[1] } else { '' }
         if ($name -cne $expected) { Add-Failure $f 1 'name' "name: $name" }
-        if ($head -notmatch '(?m)^description:[ \t]*(\S|\n[ \t]+\S)') { Add-Failure $f 1 'description' 'description:' }
+        # The value runs on over indented lines; quotes and YAML block markers alone are empty.
+        $description = if ($head -match '(?m)^description:(.*(\n[ \t]+.*)*)') { $Matches[1] -replace '[\s"''|>-]' } else { '' }
+        if (-not $description) { Add-Failure $f 1 'description' 'description:' }
     }
 
-    # Codex parity: adapters, agent tomls, then routes.
     foreach ($n in $skills) {
         $adapter = ".agents/skills/$n/SKILL.md"
         if (-not $tracked.Contains($adapter) -or -not $Files[$adapter].Contains(".claude/skills/$n/SKILL.md")) {
@@ -114,7 +114,9 @@ function Get-AgentDocFailure {
         foreach ($m in [regex]::Matches($Files[$a], '(\.\./)*\.claude/skills/[^\s`''")\]]+')) {
             $cited = $m.Value -replace '[.,;:]+$'
             $target = if ($cited.StartsWith('../')) { Join-RepoPath ($a -replace '/[^/]+$') $cited } else { $cited }
-            if (-not ($tracked.Contains($target) -or $dirs.Contains($target.TrimEnd('/')))) { Add-Failure $a 0 'adapter' $cited }
+            if (-not ($tracked.Contains($target) -or $dirs.Contains($target.TrimEnd('/')))) {
+                Add-Failure $a ($Files[$a].Substring(0, $m.Index) -split "`n").Count 'adapter' $cited
+            }
         }
     }
     foreach ($n in @($agents + $tomls | Sort-Object -Unique)) {
@@ -140,7 +142,6 @@ function Get-AgentDocFailure {
         }
     }
 
-    # Paths and identifiers.
     $sourceWords = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
     foreach ($p in $paths) {
         if ($p -match '\.(cpp|h)$') { $sourceWords.UnionWith([string[]][regex]::Split($Files[$p], '\W+')) }
@@ -157,7 +158,7 @@ function Get-AgentDocFailure {
                     $target = ($span -replace '(:\d+(-\d+)?|#.*)$').TrimEnd('/')
                     $fromDoc = Join-RepoPath $docDir $target
                     $found = $tracked.Contains($target) -or $dirs.Contains($target) -or
-                        $tracked.Contains($fromDoc) -or $dirs.Contains($fromDoc) -or (& $IsIgnored $target)
+                        $tracked.Contains($fromDoc) -or $dirs.Contains($fromDoc) -or (& $IsIgnored $target) -or (& $IsIgnored $fromDoc)
                     if (-not $found) { Add-Failure $doc $s.Line 'path' $span }
                 }
             }
@@ -181,7 +182,7 @@ function Get-AgentDocFailure {
 if ($SelfTest) {
     function New-Doc($Name, $Body) { "---`nname: $Name`ndescription: Fixture.`n---`n$Body" }
     $base = @{
-        'CLAUDE.md'                               = 'Use `alpha`; read `Docs/Guide.md#setup`, `Docs/Guide.md:12`, `Docs/local/run.log`. Not paths: `origin/main`, `/code-review`, `-Name a/b`, `Docs/<n>.md`, `https://x.y/z`.'
+        'CLAUDE.md'                               = 'Use `alpha`; read `Docs/Guide.md#setup`, `Docs/Guide.md:12`, `Docs/Guide.md:3-9`, `Docs/local/run.log`. Not paths: `origin/main`, `/code-review`, `-Name a/b`, `Docs/<n>.md`, `Docs/*.md`, `Docs/{a,b}.md`, `Docs/x…`, `Docs/...`, `https://x.y/z`.'
         'AGENTS.md'                               = 'Use skill `alpha`.'
         'Docs/Guide.md'                           = ''
         '.claude/skills/alpha/SKILL.md'           = New-Doc 'alpha' 'Load `beta`, dispatch `rev`, see `reference/notes.md`.'
@@ -190,9 +191,9 @@ if ($SelfTest) {
         '.agents/skills/alpha/SKILL.md'           = New-Doc 'alpha' 'Read `../../../.claude/skills/alpha/SKILL.md`.'
         '.agents/skills/beta/SKILL.md'            = New-Doc 'beta' 'Read `../../../.claude/skills/beta/SKILL.md`.'
         '.agents/skills/tdd/SKILL.md'             = New-Doc 'tdd' 'A vendored skill with no project counterpart.'
-        '.claude/agents/rev.md'                   = New-Doc 'rev' 'Check `g_iValue`, `PlayScore::Eval()` and `MAX_PLY`.'
+        '.claude/agents/rev.md'                   = New-Doc 'rev' 'Check `g_iValue`, `m_iDepth`, `PlayScore::Eval()` and `MAX_PLY`.'
         '.codex/agents/rev.toml'                  = "name = `"rev`"`ninstructions = `"Read .claude/agents/rev.md`""
-        'Src/Eval.cpp'                            = 'int g_iValue; struct PlayScore {}; constexpr int MAX_PLY = 64;'
+        'Src/Eval.cpp'                            = 'int g_iValue; struct PlayScore { int m_iDepth; }; constexpr int MAX_PLY = 64;'
     }
     $emptied = @{}
     foreach ($k in $base.Keys) { $emptied[$k] = $null }
@@ -201,13 +202,16 @@ if ($SelfTest) {
         @{ Name = 'no frontmatter';                     Change = @{ '.claude/skills/beta/SKILL.md' = 'Nothing.' }; Expect = @('frontmatter') }
         @{ Name = 'name differs from directory';        Change = @{ '.agents/skills/beta/SKILL.md' = New-Doc 'bta' '`../../../.claude/skills/beta/SKILL.md`' }; Expect = @('name') }
         @{ Name = 'empty description';                  Change = @{ '.claude/agents/rev.md' = "---`nname: rev`ndescription:`n---`n``g_iValue``" }; Expect = @('description') }
+        @{ Name = 'quoted empty description';           Change = @{ '.claude/agents/rev.md' = "---`nname: rev`ndescription: `"`"`n---`n``g_iValue``" }; Expect = @('description') }
         @{ Name = 'folded description passes';          Change = @{ '.claude/agents/rev.md' = "---`nname: rev`ndescription:`n  Folded.`n---`n``g_iValue``" }; Expect = @() }
         @{ Name = 'missing adapter';                    Change = @{ '.agents/skills/beta/SKILL.md' = $null }; Expect = @('adapter') }
+        @{ Name = 'adapter not citing its skill';       Change = @{ '.agents/skills/beta/SKILL.md' = New-Doc 'beta' 'Nothing.' }; Expect = @('adapter') }
         @{ Name = 'dangling adapter';                   Change = @{ '.agents/skills/gone/SKILL.md' = New-Doc 'gone' '`../../../.claude/skills/gone/SKILL.md`' }; Expect = @('adapter') }
         @{ Name = 'agent without Codex toml';           Change = @{ '.codex/agents/rev.toml' = $null }; Expect = @('codex-agent') }
         @{ Name = 'Codex toml without agent';           Change = @{ '.codex/agents/old.toml' = "name = `"old`"`n.claude/agents/old.md" }; Expect = @('codex-agent') }
         @{ Name = 'toml names another agent';           Change = @{ '.codex/agents/rev.toml' = "name = `"re`"`n.claude/agents/rev.md" }; Expect = @('codex-agent') }
         @{ Name = 'skill unreachable from AGENTS.md';   Change = @{ 'AGENTS.md' = 'Use `beta` and `rev`.' }; Expect = @('route') }
+        @{ Name = 'agent unreachable from CLAUDE.md';   Change = @{ '.claude/skills/alpha/SKILL.md' = New-Doc 'alpha' '`beta`, `reference/notes.md`'; 'AGENTS.md' = 'Use `alpha` and `rev`.' }; Expect = @('route') }
         @{ Name = 'unresolved path from root';          Change = @{ 'AGENTS.md' = 'Use `alpha`; read `Docs/Gone.md`.' }; Expect = @('path') }
         @{ Name = 'unresolved path beside the doc';     Change = @{ '.claude/skills/alpha/SKILL.md' = New-Doc 'alpha' '`beta`, `rev`, `reference/gone.md`' }; Expect = @('path') }
         @{ Name = 'identifiers absent from source';     Change = @{ '.claude/agents/rev.md' = New-Doc 'rev' '`PlayState`, `iMinScore`, `gameStage`' }; Expect = @('identifier', 'identifier', 'identifier') }
@@ -242,11 +246,12 @@ foreach ($p in $listing) {
 }
 $result = Get-AgentDocFailure -Files $tree -IsIgnored {
     param($p)
-    git -C $Root check-ignore -q -- $p
+    git -C $Root check-ignore -q -- $p | Out-Host
     $LASTEXITCODE -eq 0
 }
 foreach ($f in $result.Failures) {
-    Write-Host "$($f.File):$($f.Line): $($f.Rule): $($f.Span)" -ForegroundColor Red
+    $where = if ($f.Line) { "$($f.File):$($f.Line)" } else { $f.File }
+    Write-Host "${where}: $($f.Rule): $($f.Span)" -ForegroundColor Red
 }
 $c = $result.Counts
 $seconds = $clock.Elapsed.TotalSeconds.ToString('F1', [cultureinfo]::InvariantCulture)

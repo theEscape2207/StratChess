@@ -355,21 +355,13 @@ jobs:
       - name: Report
         shell: bash
         run: |
-          echo "deep perft:        ${{ needs.deep-perft.result }}"
-          echo "extended tests:    ${{ needs.extended-tests.result }}"
-          echo "sanitize+stdlib:   ${{ needs.sanitize-extended.result }}"
-          echo "tactical x100:     ${{ needs.tactical-stability.result }}"
-          echo "whole-tree lint:   ${{ needs.lint-tree.result }}"
-          echo "deep lint Linux:   ${{ needs.lint-deep-linux.result }}"
-          echo "deep lint Windows: ${{ needs.lint-deep-windows.result }}"
-          echo "agent docs:        ${{ needs.agent-docs.result }}"
-
           fail=0
           # 'cancelled' is named separately from a plain failure because a job killed
           # by timeout-minutes reports exactly that, indistinguishable from a manual
           # cancel. Either way the leg produced no answer about main, which is a
           # different thing from having produced a bad one. Both still fail the run.
           check() {
+            printf '%-18s %s\n' "$1:" "$2"
             case "$2" in
               success)   ;;
               cancelled) echo "NOTE: $1 was cancelled or hit its time bound -- no verdict from this leg."; fail=1 ;;
