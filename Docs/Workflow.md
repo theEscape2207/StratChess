@@ -46,9 +46,9 @@ Four things are non-negotiable and are the reason most of this file exists:
 
 | Tier | Matches | What runs |
 |---|---|---|
-| `Docs` | `*.md`, `Docs/**`, `.claude/plans/**`, `.claude/skills/**.md`, `.claude/agents/**.md` | Nothing — the pre-commit hook's fast tests already cover it |
-| `Tooling` | the engine-inert helper scripts `Get-ChangeTier.ps1` enumerates by name | PowerShell syntax parse only — never compiled, never invoked by the engine |
-| `Build` | `build.ps1`, `Scripts\Validate-*.ps1`, `New-PullRequest.ps1`, `Get-ChangeTier.ps1`, `Run-Lint.ps1`, `.githooks/**`, `.github/**`, `CMakeLists.txt`, `*.cmake`, `CMakePresets.json`, `.clang-format`, `.clang-tidy`, `.git-blame-ignore-revs` | Full: build + extended `[slow]` tests + tactical suite + self-play, preceded by the clang-format check |
+| `Docs` | `*.md`, `Docs/**`, `.claude/plans/**`, skill and agent definitions (Claude and Codex) | Nothing — the pre-commit hook's fast tests already cover it |
+| `Tooling` | every `*.ps1`, `*.py` and `*.cmd` directly in `Scripts\` that the Build list does not name | PowerShell syntax parse only — never compiled, never invoked by the engine |
+| `Build` | `build.ps1`, the gate scripts `Get-ChangeTier.ps1` names (`Validate-*.ps1`, `New-PullRequest.ps1`, the classifier, `Run-Lint.ps1`, …), `.githooks/**`, `.github/**`, `CMakeLists.txt`, `*.cmake`, `CMakePresets.json`, `.clang-format`, `.clang-tidy`, `.git-blame-ignore-revs` | Full: build + extended `[slow]` tests + tactical suite + self-play, preceded by the clang-format check |
 | `Engine` | `*.cpp`, `*.h`, `*.json`, **and anything unrecognised** | Full |
 
 A mixed diff takes the **strictest** tier present. Two properties are deliberate and asserted by
@@ -56,6 +56,12 @@ A mixed diff takes the **strictest** tier present. Two properties are deliberate
 skip), and the validation machinery is itself `Build` tier — a change to `Validate-*.ps1` or to the
 classifier can never take its own shortcut, since a classifier bug would otherwise be
 self-concealing. `-Force` runs every gate regardless.
+
+`Scripts\` is the one place the default is cheap, because enumerating Tooling scripts by name was
+forgotten more often than not. What keeps a new gate script from slipping into Tooling is
+`Get-ChangeTier.ps1 -CheckGates`, run by CI's `classify` job and `Validate-PrePR.ps1`: every
+`Scripts\` file a workflow, a hook or a Build-tier script invokes must be on the Build list. It cannot
+see a script that nothing invokes, such as `Test-ReleaseReproducibility.ps1`; add those by judgement.
 
 Background: PR #56 (a one-line `CLAUDE.md` fix) and PR #133 (a measurement-script change) both paid
 a full build + extended-test + self-play cycle for a guaranteed pass — issue #124.

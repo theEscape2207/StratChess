@@ -82,6 +82,17 @@ jobs:
           pwsh -NoProfile -File Scripts/Test-ScriptBinding.ps1
           exit $LASTEXITCODE
 
+      # Same placement, same reason. A Scripts/ file is Tooling unless the classifier's
+      # Build list names it, so a gate script left off that list would skip the full
+      # run that exercises it. This fails when a workflow, a hook or a Build-tier
+      # script invokes such a script.
+      - name: Check gate scripts are Build tier
+        run: |
+          pwsh -NoProfile -File Scripts/Get-ChangeTier.ps1 -SelfTest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pwsh -NoProfile -File Scripts/Get-ChangeTier.ps1 -CheckGates
+          exit $LASTEXITCODE
+
       - name: Classify changed files
         id: tier
         env:

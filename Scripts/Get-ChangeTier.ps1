@@ -8,12 +8,12 @@
 
     Tiers, weakest to strictest (a mixed diff always takes the STRICTEST tier present):
 
-      Docs     *.md, Docs/**, .claude/plans/**,
-               .claude/skills/**.md, .claude/agents/**.md
+      Docs     *.md, Docs/**, .claude/plans/**, .claude/skills/**.md,
+               .claude/agents/**.md and their Codex counterparts
                -> nothing beyond the pre-commit hook's fast tests.
 
-      Tooling  measurement/helper scripts that are never compiled and never invoked
-               by the engine (Run-EloMatch, Run-Tests, Sync-Master, verify_mate_key)
+      Tooling  every *.ps1, *.py and *.cmd directly in Scripts/ that the Build list
+               does not name: never compiled, never invoked by the engine
                -> a PowerShell syntax parse. A full build cannot catch anything here.
 
       Build    build.ps1, the Validate-* scripts, this script, .githooks/**,
@@ -27,6 +27,8 @@
 
       1. FAIL CLOSED. The default rule is Engine. There is deliberately no
          "else -> cheap" branch: an unfamiliar path must cost time, never skip.
+         Scripts/ is the one exception, and -CheckGates is what makes it safe:
+         every script a gate invokes must be on the Build list.
       2. NO SELF-EXEMPTION. The validation machinery itself (Validate-*.ps1, this
          file, build.ps1) is Build tier. If a change to them could take its own
          shortcut, a classifier bug would be self-concealing — it would disable
@@ -42,12 +44,17 @@
 .PARAMETER SelfTest
     Run the assertion table and exit. Exits 1 on any failure.
 
+.PARAMETER CheckGates
+    Fail when a workflow, a git hook or a Build-tier script invokes a Scripts/ file
+    that is not Build tier. Exits 1 on any such invocation, or when it finds none.
+
 .OUTPUTS
     PSCustomObject with Tier, DecidingFile, ChangedFiles, IsFull.
 
 .HOW TO INVOKE
     pwsh -ExecutionPolicy Bypass -File Scripts\Get-ChangeTier.ps1
     pwsh -ExecutionPolicy Bypass -File Scripts\Get-ChangeTier.ps1 -SelfTest
+    pwsh -ExecutionPolicy Bypass -File Scripts\Get-ChangeTier.ps1 -CheckGates
 
 .NOTES
     Must be invoked with -File, not dot-sourced -- a dot-sourced script runs in the
@@ -58,7 +65,8 @@
 param(
     [string]$BaseRef = 'origin/main',
     [string[]]$Paths,
-    [switch]$SelfTest
+    [switch]$SelfTest,
+    [switch]$CheckGates
 )
 
 Set-StrictMode -Version Latest
@@ -104,6 +112,8 @@ function Get-TierForPath {
     # build that is not one -- a false PASS about the property, which is the same
     # self-concealment. Build rather than Tooling for that reason alone.
     if ($p -like '*Scripts/Test-ReleaseReproducibility.ps1') { return 'Build' }
+    # A guard that CI's classify job and Validate-PrePR.ps1 run on every change.
+    if ($p -like '*Scripts/Test-ScriptBinding.ps1')         { return 'Build' }
     # Decides whether a build artifact counts as stale, and which binary a measurement
     # reads. Left to the fail-closed default they would be Engine, which costs every PR
     # that touches them the Engine tier. The hazard is the familiar one and it is why
@@ -133,57 +143,24 @@ function Get-TierForPath {
     # can hold executable content, and that stays with the fail-closed default.
     if ($p -like '.claude/skills/*.md')                      { return 'Docs' }
     if ($p -like '.claude/agents/*.md')                      { return 'Docs' }
+    # Their Codex counterparts. The vendored skills' metadata and lock file describe
+    # skills; any other file in a skill directory stays with the fail-closed default.
+    if ($p -like '.agents/skills/*/agents/openai.yaml')      { return 'Docs' }
+    if ($p -like '.codex/agents/*.toml')                     { return 'Docs' }
+    if ($p -eq 'skills-lock.json' -or $p -eq 'LICENSE.txt')  { return 'Docs' }
     # Plans are prose whatever the extension, so this one is not '*.md'-scoped.
     if ($p -like '.claude/plans/*')                          { return 'Docs' }
     if ($p -like '*.md')                                     { return 'Docs' }
     if ($p -like 'Docs/*')                                   { return 'Docs' }
 
-    # --- Tooling: engine-inert helper scripts ---------------------------------
-    # Enumerated explicitly rather than matched as 'Scripts/*.ps1'. A wildcard
-    # here would silently absorb any NEW script added to that folder, including
-    # one that does affect the build — fail-closed means new files land in
-    # Engine until someone deliberately classifies them.
-    # PowerShell helpers, alphabetically. New-PullRequest.ps1 is deliberately absent:
-    # it gates whether validation runs and has its own Build rule above. UciDriver.ps1 and
-    # BenchPositions.ps1 are engine-inert despite being dot-sourced by measurement helpers. The branch/worktree
-    # helpers and Get-PrChecks.ps1 are likewise advisory and gate nothing.
-    if ($p -like '*Scripts/BenchPositions.ps1')             { return 'Tooling' }
-    if ($p -like '*Scripts/Compare-SearchEquivalence.ps1')  { return 'Tooling' }
-    if ($p -like '*Scripts/Compare-SearchProfile.ps1')      { return 'Tooling' }
-    if ($p -like '*Scripts/Get-PrChecks.ps1')               { return 'Tooling' }
-    if ($p -like '*Scripts/Get-Worktrees.ps1')              { return 'Tooling' }
-    # An agent-session hook: it gates edits in a session, never a build or a validation.
-    if ($p -like '*Scripts/Invoke-SkillGate.ps1')           { return 'Tooling' }
-    if ($p -like '*Scripts/Measure-UciLatency.ps1')         { return 'Tooling' }
-    if ($p -like '*Scripts/New-TaskBranch.ps1')             { return 'Tooling' }
-    if ($p -like '*Scripts/New-Worktree.ps1')               { return 'Tooling' }
-    if ($p -like '*Scripts/Remove-MergedBranches.ps1')      { return 'Tooling' }
-    if ($p -like '*Scripts/Remove-Worktree.ps1')            { return 'Tooling' }
-    if ($p -like '*Scripts/Run-Bench.ps1')                  { return 'Tooling' }
-    if ($p -like '*Scripts/Run-EloMatch.ps1')               { return 'Tooling' }
-    if ($p -like '*Scripts/Run-PerftCheck.ps1')             { return 'Tooling' }
-    if ($p -like '*Scripts/Run-Tests.ps1')                  { return 'Tooling' }
-    if ($p -like '*Scripts/Sync-Master.ps1')                { return 'Tooling' }
-    if ($p -like '*Scripts/UciDriver.ps1')                  { return 'Tooling' }
-    # The driver's test and the fake engine it drives. Test-UciDriver.ps1 gates nothing:
-    # it covers UciDriver.ps1, but is not a validator, and Validate-PrePR.ps1 reaches it.
-    if ($p -like '*Scripts/Test-UciDriver.ps1')             { return 'Tooling' }
-    if ($p -like '*Scripts/FakeUciEngine.ps1')              { return 'Tooling' }
-    if ($p -like '*Scripts/FakeUciEngine.cmd')              { return 'Tooling' }
-
-    # Python helpers, alphabetically.
-    # The move-quality analyzers and their export helper are engine-inert PGN readers:
-    # they compile nothing and the engine never invokes them.
-    if ($p -like '*Scripts/analyze_external_quality.py')     { return 'Tooling' }
-    if ($p -like '*Scripts/analyze_move_quality.py')         { return 'Tooling' }
-    if ($p -like '*Scripts/bisect_uci_option.py')             { return 'Tooling' }
-    if ($p -like '*Scripts/build_corpus.py')                 { return 'Tooling' }
-    if ($p -like '*Scripts/external_quality_export.py')      { return 'Tooling' }
-    if ($p -like '*Scripts/test_bisect_uci_option.py')       { return 'Tooling' }
-    if ($p -like '*Scripts/test_build_corpus.py')            { return 'Tooling' }
-    if ($p -like '*Scripts/test_external_quality_export.py') { return 'Tooling' }
-    if ($p -like '*Scripts/uci_race_probe.py')               { return 'Tooling' }
-    if ($p -like '*Scripts/verify_mate_key.py')              { return 'Tooling' }
+    # --- Tooling: helper scripts -----------------------------------------------
+    # A script directly in Scripts/ is Tooling unless the Build list above names it.
+    # A new gate script left off that list fails -CheckGates, which is why this default
+    # is safe here and nowhere else. Subdirectories stay with the fail-closed default.
+    if ($p -like 'Scripts/*' -and $p -notlike 'Scripts/*/*' -and
+        ($p -like '*.ps1' -or $p -like '*.py' -or $p -like '*.cmd')) { return 'Tooling' }
+    # Configures the editor's language server; no build reads it.
+    if ($p -eq '.clangd')                                    { return 'Tooling' }
 
     # --- Fail closed ----------------------------------------------------------
     # Everything else, INCLUDING anything unrecognised. Do not add an
@@ -222,6 +199,64 @@ function Get-ChangeTier {
     }
 }
 
+# A printed hint, not an invocation: New-PullRequest.ps1 prints the Get-PrChecks.ps1
+# command for the user to run next.
+$script:GateExempt = @('Get-PrChecks.ps1')
+
+function Get-InvokedScript {
+    # The Scripts/ file names a gate's text invokes, in the shapes the gates use:
+    # Join-Path ... '<name>', -File <path>, & <path> and . <path>. Comment lines and
+    # PowerShell help blocks are skipped, so a mention is not an invocation.
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Text)
+
+    $name = '(?:Scripts[\\/])?(?<n>[\w-]+\.(?:ps1|py|cmd))'
+    $shapes = @(
+        "Join-Path\s+\S+\s+['`"]$name"
+        "-File\s+['`"]?\S*?$name"
+        "(?:^|[\s(])[&.]\s+['`"(]?\.?[\\/]?$name"
+    )
+    $inHelp = $false
+    $lineNo = 0
+    foreach ($line in $Text -split "`n") {
+        $lineNo++
+        $trimmed = $line.Trim()
+        if ($trimmed.StartsWith('<#')) { $inHelp = $true }
+        if ($inHelp) {
+            if ($trimmed.Contains('#>')) { $inHelp = $false }
+            continue
+        }
+        if ($trimmed.StartsWith('#')) { continue }
+        foreach ($shape in $shapes) {
+            foreach ($m in [regex]::Matches($line, $shape)) {
+                [PSCustomObject]@{ Line = $lineNo; Name = $m.Groups['n'].Value }
+            }
+        }
+    }
+}
+
+function Find-UnlistedGateScript {
+    # Every invocation, in any gate, of a tracked Scripts/ file that is not Build tier
+    # and not exempt. Gates maps a gate's path to its text; Scripts lists the file
+    # names tracked directly in Scripts/.
+    param(
+        [Parameter(Mandatory)][hashtable]$Gates,
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Scripts
+    )
+
+    $invocations = 0
+    $unlisted = foreach ($gate in $Gates.Keys | Sort-Object) {
+        foreach ($call in @(Get-InvokedScript -Text $Gates[$gate])) {
+            if ($call.Name -notin $Scripts) { continue }
+            $invocations++
+            $tier = Get-TierForPath -Path "Scripts/$($call.Name)"
+            if ($tier -ne 'Build' -and $call.Name -notin $script:GateExempt) {
+                '{0}:{1} invokes Scripts/{2}, which is {3} tier' -f $gate, $call.Line, $call.Name, $tier
+            }
+        }
+    }
+    [PSCustomObject]@{ Invocations = $invocations; Unlisted = @($unlisted) }
+}
+
 # ---------------------------------------------------------------------------
 # Self-test
 # ---------------------------------------------------------------------------
@@ -234,39 +269,16 @@ if ($SelfTest) {
         @{ Name = 'agent definition -> Docs';   Files = @('.claude/agents/eval-reviewer.md');                    Expect = 'Docs' }
         @{ Name = 'FAIL CLOSED: skill script';  Files = @('.claude/skills/measure-strength/helper.ps1');         Expect = 'Engine' }
         @{ Name = 'FAIL CLOSED: skill dir';     Files = @('.claude/skills/measure-strength/');                   Expect = 'Engine' }
-        @{ Name = 'equivalence tool -> Tooling'; Files = @('Scripts/Compare-SearchEquivalence.ps1'); Expect = 'Tooling' }
-        @{ Name = 'bench tool -> Tooling';      Files = @('Scripts/Run-Bench.ps1');          Expect = 'Tooling' }
-        @{ Name = 'bench positions -> Tooling'; Files = @('Scripts/BenchPositions.ps1');     Expect = 'Tooling' }
-        @{ Name = 'profile compare -> Tooling'; Files = @('Scripts/Compare-SearchProfile.ps1'); Expect = 'Tooling' }
         @{ Name = 'tooling only';               Files = @('Scripts/Run-EloMatch.ps1');        Expect = 'Tooling' }
-        @{ Name = 'perftcheck tool -> Tooling'; Files = @('Scripts/Run-PerftCheck.ps1');     Expect = 'Tooling' }
         @{ Name = 'docs + tooling -> Tooling';  Files = @('CLAUDE.md', 'Scripts/Run-Tests.ps1'); Expect = 'Tooling' }
         @{ Name = 'UCI driver lib -> Tooling';  Files = @('Scripts/UciDriver.ps1');           Expect = 'Tooling' }
-        @{ Name = 'UCI driver test -> Tooling'; Files = @('Scripts/Test-UciDriver.ps1');      Expect = 'Tooling' }
-        @{ Name = 'fake engine -> Tooling';     Files = @('Scripts/FakeUciEngine.ps1');       Expect = 'Tooling' }
         @{ Name = 'fake engine shim -> Tooling'; Files = @('Scripts/FakeUciEngine.cmd');      Expect = 'Tooling' }
         @{ Name = 'corpus tool -> Tooling';     Files = @('Scripts/build_corpus.py');         Expect = 'Tooling' }
-        @{ Name = 'bisect tool -> Tooling';     Files = @('Scripts/bisect_uci_option.py');    Expect = 'Tooling' }
-        @{ Name = 'bisect test -> Tooling';     Files = @('Scripts/test_bisect_uci_option.py'); Expect = 'Tooling' }
-        @{ Name = 'corpus test -> Tooling';     Files = @('Scripts/test_build_corpus.py');    Expect = 'Tooling' }
-        @{ Name = 'race probe -> Tooling';      Files = @('Scripts/uci_race_probe.py');       Expect = 'Tooling' }
-        @{ Name = 'external quality analyzer -> Tooling'; Files = @('Scripts/analyze_external_quality.py'); Expect = 'Tooling' }
-        @{ Name = 'move quality analyzer -> Tooling';     Files = @('Scripts/analyze_move_quality.py');     Expect = 'Tooling' }
-        @{ Name = 'quality export -> Tooling';            Files = @('Scripts/external_quality_export.py'); Expect = 'Tooling' }
-        @{ Name = 'quality export test -> Tooling';       Files = @('Scripts/test_external_quality_export.py'); Expect = 'Tooling' }
         @{ Name = 'docs + cpp -> Engine';       Files = @('CLAUDE.md', 'StratEngine/Eval.cpp');                 Expect = 'Engine' }
         @{ Name = 'build.ps1 -> Build';         Files = @('build.ps1');                                          Expect = 'Build' }
         @{ Name = 'validator -> Build NOT Tooling'; Files = @('Scripts/Validate-PrePR.ps1');   Expect = 'Build' }
         @{ Name = 'alignment check -> Build';   Files = @('Scripts/Test-CodeAlignment.ps1');   Expect = 'Build' }
         @{ Name = 'reproducibility check -> Build'; Files = @('Scripts/Test-ReleaseReproducibility.ps1'); Expect = 'Build' }
-    @{ Name = 'New-Worktree -> Tooling';    Files = @('Scripts/New-Worktree.ps1');    Expect = 'Tooling' }
-    @{ Name = 'Remove-Worktree -> Tooling'; Files = @('Scripts/Remove-Worktree.ps1'); Expect = 'Tooling' }
-    @{ Name = 'Get-Worktrees -> Tooling';   Files = @('Scripts/Get-Worktrees.ps1');   Expect = 'Tooling' }
-        @{ Name = 'Get-PrChecks -> Tooling';    Files = @('Scripts/Get-PrChecks.ps1');   Expect = 'Tooling' }
-        @{ Name = 'skill gate hook -> Tooling'; Files = @('Scripts/Invoke-SkillGate.ps1'); Expect = 'Tooling' }
-    # The in-place counterparts to New-Worktree/Remove-Worktree: same reasoning, same tier.
-    @{ Name = 'New-TaskBranch -> Tooling';       Files = @('Scripts/New-TaskBranch.ps1');       Expect = 'Tooling' }
-    @{ Name = 'Remove-MergedBranches -> Tooling'; Files = @('Scripts/Remove-MergedBranches.ps1'); Expect = 'Tooling' }
     # The PR driver gates validation, so it must never take the Tooling shortcut.
     @{ Name = 'New-PullRequest -> Build NOT Tooling'; Files = @('Scripts/New-PullRequest.ps1'); Expect = 'Build' }
         @{ Name = 'classifier -> Build';        Files = @('Scripts/Get-ChangeTier.ps1');       Expect = 'Build' }
@@ -290,8 +302,17 @@ if ($SelfTest) {
         @{ Name = 'cmake module -> Build';      Files = @('cmake/Toolchain.cmake');                              Expect = 'Build' }
         @{ Name = 'CMakePresets -> Build';      Files = @('CMakePresets.json');                                  Expect = 'Build' }
         @{ Name = 'FAIL CLOSED: unknown ext';   Files = @('foo/bar.xyz');                                        Expect = 'Engine' }
-        @{ Name = 'FAIL CLOSED: new script';    Files = @('Scripts/Brand-New.ps1');            Expect = 'Engine' }
-        @{ Name = 'FAIL CLOSED: unlisted python script'; Files = @('Scripts/some_new_tool.py'); Expect = 'Engine' }
+        # Scripts/ defaults to Tooling; -CheckGates keeps the Build list complete.
+        @{ Name = 'new script -> Tooling';      Files = @('Scripts/Brand-New.ps1');            Expect = 'Tooling' }
+        @{ Name = 'new python script -> Tooling'; Files = @('Scripts/some_new_tool.py');       Expect = 'Tooling' }
+        @{ Name = 'FAIL CLOSED: nested script'; Files = @('Scripts/sub/tool.ps1');             Expect = 'Engine' }
+        @{ Name = 'FAIL CLOSED: other ext';     Files = @('Scripts/notes.txt');                Expect = 'Engine' }
+        @{ Name = 'binding guard -> Build';     Files = @('Scripts/Test-ScriptBinding.ps1');   Expect = 'Build' }
+        @{ Name = 'Codex skill meta -> Docs';   Files = @('.agents/skills/grill-me/agents/openai.yaml'); Expect = 'Docs' }
+        @{ Name = 'Codex agent -> Docs';        Files = @('.codex/agents/eval-reviewer.toml');  Expect = 'Docs' }
+        @{ Name = 'FAIL CLOSED: skill template'; Files = @('.agents/skills/diagnosing-bugs/scripts/hitl-loop.template.sh'); Expect = 'Engine' }
+        @{ Name = 'licence + skills lock -> Docs'; Files = @('LICENSE.txt', 'skills-lock.json'); Expect = 'Docs' }
+        @{ Name = 'clangd config -> Tooling';   Files = @('.clangd');                          Expect = 'Tooling' }
         @{ Name = 'FAIL CLOSED: hook configs';  Files = @('.claude/settings.json', '.codex/hooks.json'); Expect = 'Engine' }
         @{ Name = 'json -> Engine';             Files = @('StratChessEvolved/game_settings.json');               Expect = 'Engine' }
         @{ Name = 'header -> Engine';           Files = @('StratEngine/Eval.h');                                 Expect = 'Engine' }
@@ -302,9 +323,33 @@ if ($SelfTest) {
         @{ Name = 'SPRT change set -> Tooling'; Files = @('Scripts/Run-EloMatch.ps1', 'Measurements/local.md', 'CLAUDE.md', 'Docs/Changelog.md', '.claude/plans/elomatch-sprt-support.md'); Expect = 'Tooling' }
     )
 
+    # The gate guard: Got is 'invocations/unlisted names', so a case pins both how many
+    # calls it saw and which ones it flagged. The flagged names are untracked, so
+    # -CheckGates, which also reads this file, does not flag these fixtures.
+    $scripts = @('Run-Lint.ps1', 'Get-PrChecks.ps1', 'New-Gate.ps1', 'Fake-Tool.ps1')
+    $gateCases = @(
+        @{ Name = 'gate: Join-Path call';       Text = "`$s = Join-Path `$PSScriptRoot 'Run-Lint.ps1'"; Expect = '1/' }
+        @{ Name = 'gate: -File call';           Text = 'pwsh -NoProfile -File Scripts/Run-Lint.ps1 -SelfTest'; Expect = '1/' }
+        @{ Name = 'gate: call operator';        Text = '$c = & .\Scripts\Run-Lint.ps1 -Check Format'; Expect = '1/' }
+        @{ Name = 'gate: dot-source';           Text = ". (Join-Path `$RepoRoot 'Scripts\Run-Lint.ps1')"; Expect = '1/' }
+        @{ Name = 'gate: comment is no call';   Text = '# pwsh -File Scripts/Run-Lint.ps1'; Expect = '0/' }
+        @{ Name = 'gate: help is no call';      Text = "<#`n    pwsh -File Scripts/Run-Lint.ps1`n#>"; Expect = '0/' }
+        @{ Name = 'gate: mention is no call';   Text = "Write-Host 'see Run-Lint.ps1'"; Expect = '0/' }
+        @{ Name = 'gate: untracked name';       Text = "Join-Path `$RepoRoot 'build.ps1'"; Expect = '0/' }
+        @{ Name = 'gate: exempt hint';          Text = "Join-Path `$PSScriptRoot 'Get-PrChecks.ps1'"; Expect = '1/' }
+        # Falsification: a new gate script left off the Build list.
+        @{ Name = 'gate: unlisted gate FLAGGED'; Text = 'pwsh -File Scripts/New-Gate.ps1'; Expect = '1/New-Gate.ps1' }
+        @{ Name = 'gate: Tooling call FLAGGED'; Text = "& (Join-Path `$PSScriptRoot 'Fake-Tool.ps1')"; Expect = '1/Fake-Tool.ps1' }
+    )
+    foreach ($g in $gateCases) {
+        $r = Find-UnlistedGateScript -Gates @{ 'gate.ps1' = $g.Text } -Scripts $scripts
+        $flagged = @($r.Unlisted | ForEach-Object { ($_ -split 'Scripts/')[1].Split(',')[0] }) -join ','
+        $cases += @{ Name = $g.Name; Got = "$($r.Invocations)/$flagged"; Expect = $g.Expect }
+    }
+
     $failed = 0
     foreach ($c in $cases) {
-        $got = (Get-ChangeTier -Files $c.Files).Tier
+        $got = if ($c.ContainsKey('Got')) { $c.Got } else { (Get-ChangeTier -Files $c.Files).Tier }
         if ($got -eq $c.Expect) {
             Write-Host ("  PASS  {0,-34} -> {1}" -f $c.Name, $got) -ForegroundColor Green
         } else {
@@ -315,6 +360,33 @@ if ($SelfTest) {
     Write-Host ''
     if ($failed -gt 0) { Write-Host "$failed self-test case(s) FAILED." -ForegroundColor Red; exit 1 }
     Write-Host "All $($cases.Count) self-test cases passed." -ForegroundColor Green
+    exit 0
+}
+
+# ---------------------------------------------------------------------------
+# Gate guard
+# ---------------------------------------------------------------------------
+if ($CheckGates) {
+    $RepoRoot = Split-Path $PSScriptRoot -Parent
+    $tracked = @(git -C $RepoRoot ls-files)
+    if ($LASTEXITCODE -ne 0 -or $tracked.Count -eq 0) { Write-Host 'CheckGates: git ls-files failed.' -ForegroundColor Red; exit 1 }
+    $scriptNames = @($tracked | Where-Object { $_ -like 'Scripts/*' -and $_ -notlike 'Scripts/*/*' } |
+        ForEach-Object { $_.Substring('Scripts/'.Length) })
+    $gates = @{}
+    foreach ($f in $tracked) {
+        $isGate = $f -like '.githooks/*' -or $f -like '.github/workflows/*' -or
+            ($f -like '*.ps1' -and (Get-TierForPath -Path $f) -eq 'Build')
+        if ($isGate) { $gates[$f] = Get-Content -Raw -LiteralPath (Join-Path $RepoRoot $f) }
+    }
+    $r = Find-UnlistedGateScript -Gates $gates -Scripts $scriptNames
+    # A scan that finds nothing has stopped reading the gates, not proved them clean.
+    if ($r.Invocations -eq 0) { Write-Host "CheckGates: no script invocations found in $($gates.Count) gate files." -ForegroundColor Red; exit 1 }
+    foreach ($u in $r.Unlisted) { Write-Host "  FAIL  $u" -ForegroundColor Red }
+    if ($r.Unlisted.Count -gt 0) {
+        Write-Host 'Add each to the Build list in Get-ChangeTier.ps1, or to $GateExempt if it is not a call.' -ForegroundColor Yellow
+        exit 1
+    }
+    Write-Host "Gate scripts: $($r.Invocations) invocations in $($gates.Count) gate files, all Build tier." -ForegroundColor Green
     exit 0
 }
 

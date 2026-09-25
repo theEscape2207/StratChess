@@ -627,6 +627,17 @@ catch { $bindingFailed = $true; Write-Host "Binding guard threw: $_" -Foreground
 if ($LASTEXITCODE -ne 0) { $bindingFailed = $true }
 $checkResults['Script binding'] = if ($bindingFailed) { 'FAIL' } else { 'PASS' }
 
+# --- Step 0d3: gate scripts are Build tier ---
+# Same reasoning again. A Scripts/ file defaults to Tooling, so a gate script left
+# off the classifier's Build list would take the Tooling shortcut past its own check.
+Write-Host "`n==> Gate scripts are Build tier" -ForegroundColor Cyan
+$gateTierScript = Join-Path $PSScriptRoot 'Get-ChangeTier.ps1'
+$gateTierFailed = $false
+try   { & $gateTierScript -CheckGates }
+catch { $gateTierFailed = $true; Write-Host "Gate tier guard threw: $_" -ForegroundColor DarkGray }
+if ($LASTEXITCODE -ne 0) { $gateTierFailed = $true }
+$checkResults['Gate script tiers'] = if ($gateTierFailed) { 'FAIL' } else { 'PASS' }
+
 # --- Step 0e: self-tests of any changed script ---
 # Also run here, not only on the Tooling fast path: a Build- or Engine-tier diff can
 # perfectly well change a script that carries tests, and skipping them because the
