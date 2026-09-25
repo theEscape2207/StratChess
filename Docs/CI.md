@@ -36,8 +36,10 @@ branch creation — `Get-ChangeTier.ps1` fails closed to Engine tier. Leave that
 - `Get-ChangeTier.ps1 -CheckGates`: a workflow, a hook or a Build-tier script invokes a `Scripts/`
   file that is not Build tier.
 
-They live here because `classify` is the only job with no tier condition, and `Validate-PrePR.ps1`
-runs the same scripts so the answer is reachable before pushing.
+They live here because `classify` is the only job with no tier condition. `Validate-PrePR.ps1` runs
+the same scripts on Build and Engine tiers, so the answer is reachable before pushing. A `Scripts/`
+file defaults to Tooling unless the classifier's Build list names it
+([Validation tiers](Workflow.md#validation-tiers)), which is the gap `-CheckGates` closes.
 
 Consequence for the deps cache: `main` now only builds on Build/Engine merges, and `actions/cache`
 is branch-scoped so a PR can only restore a cache saved there. This is safe because the key is static

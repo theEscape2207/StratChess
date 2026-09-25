@@ -9,7 +9,8 @@
        Tests/tactical_test_cases.json, 90% threshold per run + no pass/fail flips).
     4. Runs a headless AIPerplex vs AIPerplex self-play game (60s timeout).
     Preceded by cheap text-only gates: clang-format, blame-ignore coverage, workflow
-    job timeouts, and the -SelfTest of any changed script that carries one -- or of the
+    job timeouts, ccache path settings, script binding, gate script tiers, and the
+    -SelfTest of any changed script that carries one -- or of the
     script that covers it, for a dot-sourced library or a fixture that cannot carry one.
     On every tier, including the Docs and Tooling fast paths, it also checks that every
     Build-tier script carries a -SelfTest at all, and warns about any plan left in the
@@ -171,8 +172,8 @@ function Invoke-ChangedScriptSelfTest {
 # rather than derived from a structural rule. The obvious structural rule -- "no
 # param() block means it is a dot-sourced library" -- is wrong here:
 # Validate-PreCommit.ps1 and Sync-Master.ps1 have no param() block either and are
-# ordinary top-level scripts. Fail closed, as Get-ChangeTier.ps1's own allowlist does:
-# a new library fails this check until someone classifies it deliberately.
+# ordinary top-level scripts. Fail closed: a new library fails this check until
+# someone classifies it deliberately.
 #
 # The map is read twice: as the exemption list for the Build-tier rule below, and by
 # Invoke-ChangedScriptSelfTest, which runs the coverer when the changed file has no
@@ -473,7 +474,8 @@ $gameExe = & (Join-Path $PSScriptRoot 'Get-BuildArtifact.ps1') -AllowMissing
 # running them anyway burns minutes for a guaranteed pass. Get-ChangeTier.ps1 is
 # the single source of truth for this decision, shared with CI
 # (.github/workflows/build-and-test.yml) so the two definitions cannot drift.
-# It fails closed: anything unrecognised classifies as Engine and gets the full run.
+# It fails closed: anything unrecognised outside Scripts/ classifies as Engine and
+# gets the full run.
 $tierScript = Join-Path $PSScriptRoot 'Get-ChangeTier.ps1'
 $change = & $tierScript -BaseRef $BaseRef
 
@@ -631,9 +633,8 @@ $checkResults['Script binding'] = if ($bindingFailed) { 'FAIL' } else { 'PASS' }
 # Same reasoning again. A Scripts/ file defaults to Tooling, so a gate script left
 # off the classifier's Build list would take the Tooling shortcut past its own check.
 Write-Host "`n==> Gate scripts are Build tier" -ForegroundColor Cyan
-$gateTierScript = Join-Path $PSScriptRoot 'Get-ChangeTier.ps1'
 $gateTierFailed = $false
-try   { & $gateTierScript -CheckGates }
+try   { & $tierScript -CheckGates }
 catch { $gateTierFailed = $true; Write-Host "Gate tier guard threw: $_" -ForegroundColor DarkGray }
 if ($LASTEXITCODE -ne 0) { $gateTierFailed = $true }
 $checkResults['Gate script tiers'] = if ($gateTierFailed) { 'FAIL' } else { 'PASS' }

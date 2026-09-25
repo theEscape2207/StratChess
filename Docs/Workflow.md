@@ -46,14 +46,14 @@ Four things are non-negotiable and are the reason most of this file exists:
 
 | Tier | Matches | What runs |
 |---|---|---|
-| `Docs` | `*.md`, `Docs/**`, `.claude/plans/**`, skill and agent definitions (Claude and Codex) | Nothing — the pre-commit hook's fast tests already cover it |
-| `Tooling` | every `*.ps1`, `*.py` and `*.cmd` directly in `Scripts\` that the Build list does not name | PowerShell syntax parse only — never compiled, never invoked by the engine |
+| `Docs` | `*.md`, `Docs/**`, `.claude/plans/**`, skill and agent definitions (Claude and Codex), `LICENSE.txt`, `skills-lock.json` | Nothing — the pre-commit hook's fast tests already cover it |
+| `Tooling` | every `*.ps1`, `*.py` and `*.cmd` directly in `Scripts\` that the Build list does not name, and `.clangd` | PowerShell syntax parse and the changed scripts' `-SelfTest` — never compiled, never invoked by the engine |
 | `Build` | `build.ps1`, the gate scripts `Get-ChangeTier.ps1` names (`Validate-*.ps1`, `New-PullRequest.ps1`, the classifier, `Run-Lint.ps1`, …), `.githooks/**`, `.github/**`, `CMakeLists.txt`, `*.cmake`, `CMakePresets.json`, `.clang-format`, `.clang-tidy`, `.git-blame-ignore-revs` | Full: build + extended `[slow]` tests + tactical suite + self-play, preceded by the clang-format check |
 | `Engine` | `*.cpp`, `*.h`, `*.json`, **and anything unrecognised** | Full |
 
 A mixed diff takes the **strictest** tier present. Two properties are deliberate and asserted by
-`Get-ChangeTier.ps1 -SelfTest`: it **fails closed** (an unrecognised path gets the full run, never a
-skip), and the validation machinery is itself `Build` tier — a change to `Validate-*.ps1` or to the
+`Get-ChangeTier.ps1 -SelfTest`: it **fails closed** (an unrecognised path outside `Scripts\` gets the
+full run, never a skip), and the validation machinery is itself `Build` tier — a change to `Validate-*.ps1` or to the
 classifier can never take its own shortcut, since a classifier bug would otherwise be
 self-concealing. `-Force` runs every gate regardless.
 
