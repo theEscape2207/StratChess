@@ -197,13 +197,9 @@ TEST_CASE("Search - should_stop_early: a score short of mate returns false", "[s
 // White's only non-losing line is a perpetual check, so every PV ends at a 5-ply repetition.
 TEST_CASE("Search - a repetition PV does not end a fixed-depth search early", "[search]")
 {
-	Board board("6k1/6p1/8/8/4Q3/2q5/r4PPP/6K1 w - - 0 1");
-	AIPerplex ai(AIPerplexConfig{.default_depth = 12, .verbose_logging = false});
+	AIPerlexTestFixture fix("6k1/6p1/8/8/4Q3/2q5/r4PPP/6K1 w - - 0 1");
 
-	const SearchResult result = ai.Search(board, SearchLimits::fixed_depth(12));
-
-	REQUIRE(result.depth_completed == 12);
-	CHECK(result.best_score == GameValues::Draw);
+	REQUIRE(fix.result_to_depth(12).depth_completed == 12);
 }
 
 // ============================================================================

@@ -92,6 +92,12 @@ Confirmed by the owner 2026-09-27.
   - Falsify it: on the unchanged code it stops at 11.
 - **Engine tier:** `Validate-PrePR.ps1`, which runs the build, extended tests, the tactical suite and
   self-play. Then `search-reviewer`, and the cross-agent review.
+- **UCI:** `go depth 16` on the perpetual completes depth 16 and emits `bestmove`. Before the fix it
+  stopped at depth 11.
+- **No local timed comparison.** The triage asked for a comparison of timed searches with equal
+  budgets. It is dropped, for two reasons. It would only restate the mechanism: the old rule stops
+  early and the new one does not. And a timing probe needs a quiet machine, which it doesn't have
+  while #653 runs. The lab measures timed play directly, and its PGNs show the time used per move.
 - **Equivalence:** fixed-depth node equivalence is expected to differ and is not a gate.
 - **Strength:** the CI strength lab against `f58f052`, about 3 h and 18 of 20 CI slots. It runs only
   on the owner's go, and is judged by D2.
@@ -109,4 +115,4 @@ Confirmed by the owner 2026-09-27.
 |---|---|
 | Why the PV-length stop was removed, with the perpetual repro | `Docs/Changelog.md`, PR body |
 | Lab result and the D2 verdict | `Docs/Changelog.md`, PR body |
-| Deepening stops only on a mate score or a limit | `Docs/Engine-Readme.md` flow line |
+| The early-termination check is the mate score alone (limits are checked separately) | `Docs/Engine-Readme.md` flow line and pseudocode |

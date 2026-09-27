@@ -235,7 +235,7 @@ class AIPerplex final {
 	// --------------
 	// Quality assessment
 	RejectionReason assess_iteration_quality(const IterationMetrics& metrics, const SearchState& state) const;
-	bool should_stop_early(int depth, int score) const;                   // Early termination checks
+	bool should_stop_early(int depth, int score) const;                   // True on a mate score
 	bool handle_empty_move_emergency(ThreadData& td, SearchState& state); // Emergency handling
 	// The zugzwang floor null-move pruning and reverse futility share: below two non-pawn pieces,
 	// "the side to move is not obliged to worsen its position" stops being true, and both
