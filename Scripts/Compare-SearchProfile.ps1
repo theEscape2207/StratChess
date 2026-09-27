@@ -44,8 +44,8 @@
     The optional lines aspiration, lmr, nullmove, pruning, frontier skips and lmp skips print only
     when their first field is non-zero ('pruning' on either field), so their absence reads as zero.
 
-    Not refused: the same binary on both sides (the zero-delta self-check), or differing node
-    counts, which are what this measures. Node identity is Compare-SearchEquivalence's job.
+    Not refused: the same binary on both sides (the self-check: zero delta without -Seeds, the
+    live noise floor with it), or differing node counts, which are what this measures. Node identity is Compare-SearchEquivalence's job.
 
 .PARAMETER Before
     The baseline profile build (configured with -DSTRAT_SEARCH_PROFILE=1).
@@ -62,8 +62,9 @@
     set (Scripts/BenchPositions.ps1).
 
 .PARAMETER Seeds
-    Run each position N times per side, under tie-break seeds 1..N (STRAT_PROFILE_TIEBREAK_SEED),
-    and print a Screen block: the per-position mean-log delta of late-cut work and nodes, averaged
+    Run each position N times per side under tie-break seeds (STRAT_PROFILE_TIEBREAK_SEED):
+    1..N before, N+1..2N after. The sides share no seed, the design the noise floor was calibrated
+    on. Then print a Screen block: the per-position mean-log delta of late-cut work and nodes, averaged
     over positions, with +-2 standard errors taken from the seed spread. The tables then pool every
     seed's run. Default 0: one run per side in generation order, whose delta carries that one
     tree's chaos and no error bar. N >= 2 is needed for the error bar. A build without the hook
@@ -599,16 +600,18 @@ foreach ($p in $positionList) {
     foreach ($seed in $seedList) {
         foreach ($s in $sides.GetEnumerator()) {
             $commands = @('uci', 'isready', 'setoption name Threads value 1', "position fen $($p.Fen)", "go depth $Depth")
+            # Disjoint seeds per side (after: N+1..2N), the design the Screen band is calibrated on.
             # The engine reads the seed once at startup; the child process inherits this environment.
-            $env:STRAT_PROFILE_TIEBREAK_SEED = if ($seed -gt 0) { "$seed" } else { $null }
+            $sideSeed = if ($seed -gt 0 -and $s.Key -eq 'after') { $seed + $Seeds } else { $seed }
+            $env:STRAT_PROFILE_TIEBREAK_SEED = if ($sideSeed -gt 0) { "$sideSeed" } else { $null }
             try {
                 $out = Invoke-UciSearchToBestMove -ExePath $s.Value -WorkDir $workDir -Commands $commands `
                                                   -SearchDepth $Depth -Description $p.Fen
             } finally {
                 $env:STRAT_PROFILE_TIEBREAK_SEED = $callerSeed
             }
-            if ($seed -gt 0 -and -not (Test-SeedApplied -Output $out -Seed $seed)) {
-                throw "$($s.Key) build, position $($p.Name): no 'info string tiebreak seed $seed' line. The build predates the tie-break hook, so -Seeds would compare one tree per side $Seeds times over."
+            if ($sideSeed -gt 0 -and -not (Test-SeedApplied -Output $out -Seed $sideSeed)) {
+                throw "$($s.Key) build, position $($p.Name): no 'info string tiebreak seed $sideSeed' line. The build predates the tie-break hook, so -Seeds would compare one tree per side $Seeds times over."
             }
             $rec = ConvertFrom-ProfileTranscript -Output $out -SearchDepth $Depth -Side $s.Key -Position $p.Name
             $rec | Add-Member -NotePropertyName Name -NotePropertyValue $p.Name

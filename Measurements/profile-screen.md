@@ -31,9 +31,16 @@ positions costs about 16 min at depth 12 and about 2 h at depth 16.
 
 ### Row detail
 
-- **What resolves a 5-10% change.** `-Seeds 8 -Depth 12` on this set resolves 5% in late-cut work
-  and 2-3% in nodes. `-Seeds 4` resolves 10% but not 5% in late-cut work. One run per side
-  resolves neither.
+- **What the rule catches.** The rule flags a change when it falls outside ±2 SE. Injecting a
+  real effect into the after side of the null splits gives these catch rates for late-cut work:
+
+  | Setting | 10% change | 5% change | no change (false alarms) |
+  |---|---|---|---|
+  | `-Seeds 8 -Depth 12` | 100% | 77% | 6% |
+  | `-Seeds 4` | 94-96% | 44-49% | 6-7% |
+
+  So a 10% ordering effect is reliably caught at either setting. A 5% effect needs K=8 and is
+  still missed about 1 time in 4.
 - **Per position, the noise is large.** At the median, one seed change moves a position's
   late-cut work by 0.34 (d12) or 0.38 (d16) in log sd, and its nodes by 0.21 or 0.25. The table
   under Per-position noise lists every position. The 4 endgames have a median of 0.39 at d12 and

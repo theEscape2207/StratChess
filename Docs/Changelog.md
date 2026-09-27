@@ -30,8 +30,9 @@ checked on 38 positions at depths 12 and 16. `Compare-SearchProfile.ps1 -Seeds N
 under seeds 1..N and prints a Screen block: the mean per-position log delta of late-cut work and of
 nodes, with ±2 standard errors taken from the seed spread. `Tests/profile-screen.fen` holds 120
 calibrated positions. `Measurements/profile-screen.md` records the result. One run per side is
-noise at about ±11-23% of late-cut work. Eight seeds per side at depth 12 resolve ±3.6% late-cut
-work and ±2.1% nodes, in about 16 minutes. Amplifiers: root best-move changes and LMR re-searches
+noise at about ±11-23% of late-cut work. With eight seeds per side at depth 12 (disjoint seeds,
+about 16 minutes), the noise threshold is ±3.6% late-cut work and ±2.1% nodes. At that setting a
+real 10% change is caught every time and a 5% change 77% of the time. Amplifiers: root best-move changes and LMR re-searches
 (inherent), and the #652 short-PV stop, which neutral seeds trigger (a discontinuity).
 
 ## 2026-09-25 — Search profile comparison script (#637)
