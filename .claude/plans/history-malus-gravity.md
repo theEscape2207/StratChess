@@ -138,8 +138,26 @@ only, and quiet scores in `[-16384, 16384]` stay below every other tier (losing 
     within bounds.
   - Each assertion is falsified once by reverting its piece.
 - **Tree direction:** `Compare-SearchProfile.ps1 -Before <merge base> -After <candidate>`, both
-  `STRAT_SEARCH_PROFILE=1` builds. Expected: nodes before the cutting move fall from about 33%, and
-  the history share of late cuts drops. This is direction only, not a verdict.
+  `STRAT_SEARCH_PROFILE=1` builds, at depths 12 and 16. The built-in 8 positions are the minimum;
+  use a ~50-FEN `-Positions` file as well. The expectations below are fixed before the first run.
+  This is direction only, not a verdict.
+
+  | Stage | Row | Expected | A miss means |
+  |---|---|---|---|
+  | Mechanism | `latenodes, % of nodes` (baseline ~33%) | down | the change does not work; stop |
+  | Mechanism | `latenodes depth 3-6` and `depth 7+` | down | the gain is only in the cheap bands |
+  | Mechanism | `first-move cuts, % of cuts`; index shift toward 1 | up | ordering did not improve |
+  | Mechanism | `late cut quiet, % of late` | down | the malus misses its target |
+  | Tree | `nodes`; `EBF, last 4 iterations`; late `iteration d / d-1` | down | no depth payoff |
+  | Side effect | `researched, % of reduced`; `researchnodes, % of nodes` | down | good quiets pushed late into LMR |
+  | Side effect | `cutfaillow, % of cut frames` | down or flat | expected-cut nodes fail more |
+  | Side effect | null-move, RFP and qs rows | flat | a second-order effect to explain first |
+  | Accuracy | `best-move changes`; `settled iteration, mean`; `score swing` | flat or better | the tree shrank by searching worse |
+
+  Read each row per position as well as pooled: a row counts as moved when most positions agree in
+  sign (for example 7 of 8), in both the endgame and non-endgame groups, and at both depths. A pass
+  here licenses the gate below; it does not replace it (#634 passed its screens and lost on wall
+  clock).
 - **Speed:** `Run-Bench.ps1` nps, paired against the merge base. The per-node cost is one store per
   quiet searched, plus a loop at cutoffs.
 - **Gate (#522 method):** interleaved fixed-depth wall clock, `Threads=1`, against the exact merge
