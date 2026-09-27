@@ -420,7 +420,7 @@ iterative_deepening(max_depth):
                 REJECT_AND_STOP  # Use previous depth
         
         # Check for early termination
-        if mate_found or forced_line:
+        if mate_found:
             STOP
     
     return SearchResult(state.best_move, state.best_score, ...)
