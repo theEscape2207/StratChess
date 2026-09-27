@@ -56,6 +56,12 @@ the `IsAborted()` guard passes. The malus is applied at the cutoff, which is aft
 aborted frame writes nothing. Killers and a quiet hash move that failed are penalized too: their
 entry matters as soon as they stop being a killer or the hash move.
 
+A singular verification frame that cuts applies the malus like any other node, as it already
+applied the bonus. It is left ungated: the parent's order is fixed before the verification runs, the
+malus is small at the reduced verification depth, and the shipping build compiles singular
+extensions out. Gating it on `!is_exclusion_frame` belongs with the next singular-extension
+measurement.
+
 ### D3: Gravity update, bonus clamped to `HISTORY_MAX`
 
 `entry += delta - entry * |delta| / HISTORY_MAX`, where `delta = +bonus` or `-bonus` and
