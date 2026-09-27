@@ -50,10 +50,6 @@ namespace {
 	}
 } // namespace
 
-// Her sorteres de gode slag frem for de mindre gode
-// Dvs ikke at ofre sin dronning for at faa den #%&!! bonde ;-)
-// Bemaerk: start er default 0
-// TODO: Why dont the callers supply iterators instead?
 void MoveSorter::SortMovesByValue(MoveList& moveList, size_t count, const Board& board, size_t start)
 {
 	// The range really must be captures and promotions only — see the declaration.
@@ -61,8 +57,8 @@ void MoveSorter::SortMovesByValue(MoveList& moveList, size_t count, const Board&
 	                   [](const Move& m) { return MoveHelper::IsCapture(m) || MoveHelper::IsPromote(m); }));
 
 	// Sort captures by MVV-LVA: captured piece value minus (moving piece value / 16).
-	// board supplies the moving piece (Phase 3) and captured piece (Phase 4) for each move.
-	if (count >= 2) // Mindst 2 for at sortere
+	// board supplies the moving and the captured piece of each move.
+	if (count >= 2)
 		std::sort(moveList.begin() + static_cast<int>(start), moveList.begin() + static_cast<int>(start + count),
 		          [&board](const Move& a, const Move& b) {
 			          return MoveHelper::Value(a, board.GetEffectiveMovPiece(a), board.GetCapturedPiece(a)) >
@@ -75,8 +71,8 @@ void MoveSorter::SortMovesByValue(MoveList& moveList, size_t count, const Board&
 // offered at one node per ply per iteration, and at those nodes it names the move the
 // transposition table already names — the entry at a PV node is that node's own store from the
 // previous iteration, which is where the hint would come from too. Where the table has nothing
-// to offer there, it is because the entry was overwritten, not because the hint knew better
-// (#335), and the fix belongs in the table.
+// to offer there, it is because the entry was overwritten, not because the hint knew better,
+// and the fix belongs in the table.
 //
 // This applies to interior PV nodes. Ordering the ROOT's moves by the previous iteration's
 // scores is a separate question with a different answer available to it, and nothing here
