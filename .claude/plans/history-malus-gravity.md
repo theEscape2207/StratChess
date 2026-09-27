@@ -51,8 +51,8 @@ behaviour-changing diff, not a separate equivalence step.
 Penalized moves are those that reached `pvs()` for the child. That excludes moves rejected by
 `DoMove()`, moves skipped by frontier futility or LMP, and the excluded move in a singular
 verification frame. A skipped move was judged, not tried, and penalizing it would feed a pruning
-decision back into ordering. A move enters the list after the child search returns and the
-`IsAborted()` guard passes. The malus is applied at the cutoff, which is after the guard, so an
+decision back into ordering. A move is marked searched (D6) after the child search returns and
+the `IsAborted()` guard passes. The malus is applied at the cutoff, which is after the guard, so an
 aborted frame writes nothing. Killers and a quiet hash move that failed are penalized too: their
 entry matters as soon as they stop being a killer or the hash move.
 
@@ -82,12 +82,15 @@ has a measured result to compare against.
 identical. For negative scores `>>= 1` rounds toward minus infinity, so -1 would never decay. `/ 2`
 decays both signs toward zero.
 
-### D6: A fixed 64-entry list of quiets tried, per `pvs()` frame
+### D6: A searched-index bitmap per `pvs()` frame, walked at a quiet cutoff
 
-`Move quiets_tried[64]` plus a count, on the stack (128 bytes). Quiets beyond the 64th go
-unpenalized: they are the lowest-ordered moves of an unusually wide node, and dropping their malus
-changes nothing that matters. Rejected: `MAX_MOVES` (218) entries, which adds 436 bytes per frame
-across a 256-ply recursion to cover a case that does not occur in practice.
+`std::bitset<MoveList::MAX_MOVES> searched` (32 bytes on the stack). Bit `si` is set when the
+move at sorted index `si` completes its child search. At a quiet cutoff at index `si`, the loop
+walks indices `[0, si)` and penalizes each move whose bit is set and which is quiet. This covers
+every searched quiet, with no cap. The per-move cost is one bit set, and the walk runs only at
+cutoffs. Rejected: a fixed 64-entry `Move` list (128 bytes). It silently drops quiets beyond the
+64th, and nothing in the code bounds that count. Rejected: a `MAX_MOVES`-entry `Move` list,
+which is 436 bytes per frame for the same information.
 
 ### D7: No runtime switch
 
@@ -102,6 +105,10 @@ deleted). If the gate fails, the change is not merged.
 the test fixture's `seed_history()` and `poke_history()` keep working unchanged. A new
 `penalize_history(side, move, depth)` applies the malus. Both call one private
 `apply_history(int32_t& entry, int32_t delta)` that holds the formula.
+
+The D1/D2 selection is one `ThreadData` method, so tests can drive it without a search tree:
+`penalize_searched_quiets(side, moveList, scored_idx, searched, cut_index, depth)`. `pvs()` calls
+it only when the cutting move is quiet, next to `update_history()`, after the abort guard.
 
 ## Assumptions I cannot verify from the code
 
@@ -134,32 +141,44 @@ only, and quiet scores in `[-16384, 16384]` stay below every other tier (losing 
     `-HISTORY_MAX`.
   - A malus lowers the entry.
   - Aging takes -1 to 0.
-  - After a fixed search, at least one entry is negative (the malus is wired in) and every entry is
-    within bounds.
+  - `penalize_searched_quiets()` on a real position's sorted move list, with a hand-set `searched`
+    bitmap. It penalizes exactly the quiets whose bit is set below `cut_index`. It leaves unchanged
+    a quiet whose bit is clear (pruned or illegal), a capture, a promotion, and every move at or
+    after `cut_index`.
+  - After a fixed search, every entry is within bounds and at least one is negative. This is a
+    wiring check only, since the selection is proven by the case above.
   - Each assertion is falsified once by reverting its piece.
 - **Tree direction:** `Compare-SearchProfile.ps1 -Before <merge base> -After <candidate>`, both
-  `STRAT_SEARCH_PROFILE=1` builds, at depths 12 and 16. The built-in 8 positions are the minimum;
-  use a ~50-FEN `-Positions` file as well. The expectations below are fixed before the first run.
-  This is direction only, not a verdict.
+  `STRAT_SEARCH_PROFILE=1` builds, at depths 12 and 16, on the built-in 8 positions and a ~50-FEN
+  `-Positions` file. Fixed before the first run:
 
-  | Stage | Row | Expected | A miss means |
-  |---|---|---|---|
-  | Mechanism | `latenodes, % of nodes` (baseline ~33%) | down | the change does not work; stop |
-  | Mechanism | `latenodes depth 3-6` and `depth 7+` | down | the gain is only in the cheap bands |
-  | Mechanism | `first-move cuts, % of cuts`; index shift toward 1 | up | ordering did not improve |
-  | Mechanism | `late cut quiet, % of late` | down | the malus misses its target |
-  | Tree | `nodes`; `EBF, last 4 iterations`; late `iteration d / d-1` | down | no depth payoff |
-  | Side effect | `researched, % of reduced`; `researchnodes, % of nodes` | down | good quiets pushed late into LMR |
-  | Side effect | `cutfaillow, % of cut frames` | down or flat | expected-cut nodes fail more |
-  | Side effect | null-move, RFP and qs rows | flat | a second-order effect to explain first |
-  | Accuracy | `best-move changes`; `settled iteration, mean`; `score swing` | flat or better | the tree shrank by searching worse |
+  **One stop criterion: absolute late-cut work,** `latenodes, % of nodes` × `nodes`, pooled. If it
+  does not fall at both depths on both position sets, the wall-clock gate is not run. The
+  mechanism exists to cut exactly that work. If it does not fall, the change is not doing its job,
+  and a wall-clock gain would have to come from something else. It is an absolute count, so a
+  shrinking tree cannot fake it the way a ratio can.
 
-  Read each row per position as well as pooled: a row counts as moved when most positions agree in
-  sign (for example 7 of 8), in both the endgame and non-endgame groups, and at both depths. A pass
-  here licenses the gate below; it does not replace it (#634 passed its screens and lost on wall
-  clock).
-- **Speed:** `Run-Bench.ps1` nps, paired against the merge base. The per-node cost is one store per
-  quiet searched, plus a loop at cutoffs.
+  **Everything else is diagnostic.** A row moving against the expectation below triggers an
+  investigation, recorded in the PR, not a verdict. These rows are ratios with moving denominators,
+  and #634 showed that tree proxies mispredict.
+
+  | Row | Expected | Investigate if against, because |
+  |---|---|---|
+  | late-cut work, depth 3-6 and 7+ (absolute, as above) | down | the gain is only in the cheap bands |
+  | `first-move cuts, % of cuts`; index histogram | toward index 0-1 | ordering did not improve where it cuts |
+  | late-cut type mix | quiet share down | read with the absolute counts: a rising share can mean capture cuts fell faster |
+  | `nodes`; `EBF, last 4 iterations`; late `iteration d / d-1` | down | the saved work did not buy depth |
+  | `researched, % of reduced`; `researchnodes, % of nodes` | down | good quiets pushed late into LMR |
+  | `cutfaillow, % of cut frames` | down or flat | expected-cut nodes fail more |
+  | null-move, RFP and qs rows | flat | a second-order effect to explain before the gate |
+  | `best-move changes`; `settled iteration, mean`; `score swing` | flat | the search's own iteration-to-iteration stability changed. This is not move quality against the baseline, which only the strength lab measures |
+
+  **Per-position reading:** a row counts as moved in a group when a strict majority of that group's
+  positions move in the expected sign. A zero delta counts as not moving. Groups are endgame and
+  non-endgame. A group with fewer than 3 positions (the built-in set has 2 endgames) is reported
+  but not judged. The same rule applies to the ~50-FEN set.
+- **Speed:** `Run-Bench.ps1` nps, paired against the merge base. The per-node cost is one bit set
+  per searched move, plus a walk at quiet cutoffs.
 - **Gate (#522 method):** interleaved fixed-depth wall clock, `Threads=1`, against the exact merge
   base. Passes at median <= -3% with >= 8/9 rounds faster.
 - **Strength:** a CI strength-lab run against `merge-base`, on the owner's decision (~3 h, 18 of 20
