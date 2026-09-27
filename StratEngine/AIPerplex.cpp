@@ -564,7 +564,7 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 				extra_depth_used = true; // grant extension exactly once
 			}
 
-			continue_iteration = !should_stop_early(depth, metrics.current_score, metrics.pv_length);
+			continue_iteration = !should_stop_early(depth, metrics.current_score);
 			break;
 
 		case IterationDecision::ACCEPT_AND_STOP:
@@ -1831,20 +1831,13 @@ void AIPerplex::log_acceptance(const IterationMetrics& metrics) const
 	               metrics.nodes_searched, metrics.current_score, metrics.pv_length);
 }
 
-bool AIPerplex::should_stop_early(int depth, int score, int pv_length) const
+// A short PV is no stop signal: a PV ends at any terminal node, an in-search repetition included,
+// so its length does not show that the line is forced.
+bool AIPerplex::should_stop_early(int depth, int score) const
 {
-	// Mate found
 	if (std::abs(score) >= GameValues::Mate_Threshold) {
 		if (verbose_logging_ && s_logger) {
 			s_logger->info("Mate found at depth {}, stopping iteration", depth);
-		}
-		return true;
-	}
-
-	// Forced line (PV much shorter than depth)
-	if (depth > 1 && pv_length > 0 && pv_length < (depth - depth / 2)) {
-		if (verbose_logging_ && s_logger) {
-			s_logger->info("Short PV ({} vs depth {}) indicates forced line, stopping", pv_length, depth);
 		}
 		return true;
 	}

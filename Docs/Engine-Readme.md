@@ -220,7 +220,7 @@ Iterative Deepening Loop (depth 1 → max_depth)
     ├─→ Decision: Accept/Reject/Continue
     │
     └─→ Early Termination Check
-        (mate found or forced line)
+        (mate found)
     ↓
 Join helpers, aggregate node counts
     ↓

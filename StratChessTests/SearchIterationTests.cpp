@@ -1,7 +1,7 @@
 // SearchIterationTests.cpp — Catch2 tests for the per-iteration decision helpers inside
 // AIPerplex:
 //   assess_iteration_quality()    — 6 cases, one per RejectionReason branch
-//   should_stop_early()           — 2 cases (mate score, forced-line short-circuit)
+//   should_stop_early()           — 2 cases (mate score, short of mate) plus a repetition-PV search
 //   handle_empty_move_emergency() — 3 cases (mate path, emergency path, stale PV row)
 //   should_try_null_move()        — 11 cases, one per guard branch (disabled, PV, in-check,
 //                                   depth, mate-score, zugzwang, single-piece zugzwang,
@@ -181,23 +181,29 @@ TEST_CASE("Search - should_stop_early: mate score returns true", "[search]")
 {
 	AIPerlexTestFixture fix;
 	// GameValues::Mate_Threshold == 29900; mate score is >= this
-	REQUIRE(fix.stop_early(5, GameValues::Mate_Threshold, 4) == true);
-	REQUIRE(fix.stop_early(5, GameValues::Mate_Threshold + 100, 4) == true);
-	REQUIRE(fix.stop_early(5, -(GameValues::Mate_Threshold), 4) == true);
+	REQUIRE(fix.stop_early(5, GameValues::Mate_Threshold) == true);
+	REQUIRE(fix.stop_early(5, GameValues::Mate_Threshold + 100) == true);
+	REQUIRE(fix.stop_early(5, -(GameValues::Mate_Threshold)) == true);
 }
 
-TEST_CASE("Search - should_stop_early: short PV relative to depth returns true", "[search]")
+TEST_CASE("Search - should_stop_early: a score short of mate returns false", "[search]")
 {
 	AIPerlexTestFixture fix;
-	// Condition: depth > 1 && pv_length > 0 && pv_length < (depth - depth/2)
-	// depth=6, pv_length=2 → 2 < (6-3)=3 → true
-	REQUIRE(fix.stop_early(6, 100, 2) == true);
-	// depth=4, pv_length=1 → 1 < (4-2)=2 → true
-	REQUIRE(fix.stop_early(4, 100, 1) == true);
-	// depth=4, pv_length=2 → 2 == (4-2)=2, not < → false
-	REQUIRE(fix.stop_early(4, 100, 2) == false);
-	// depth=1: condition requires depth > 1 → false
-	REQUIRE(fix.stop_early(1, 100, 0) == false);
+	REQUIRE(fix.stop_early(12, GameValues::Draw) == false);
+	REQUIRE(fix.stop_early(12, GameValues::Mate_Threshold - 1) == false);
+	REQUIRE(fix.stop_early(12, -(GameValues::Mate_Threshold - 1)) == false);
+}
+
+// White's only non-losing line is a perpetual check, so every PV ends at a 5-ply repetition.
+TEST_CASE("Search - a repetition PV does not end a fixed-depth search early", "[search]")
+{
+	Board board("6k1/6p1/8/8/4Q3/2q5/r4PPP/6K1 w - - 0 1");
+	AIPerplex ai(AIPerplexConfig{.default_depth = 12, .verbose_logging = false});
+
+	const SearchResult result = ai.Search(board, SearchLimits::fixed_depth(12));
+
+	REQUIRE(result.depth_completed == 12);
+	CHECK(result.best_score == GameValues::Draw);
 }
 
 // ============================================================================

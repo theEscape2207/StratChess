@@ -98,7 +98,7 @@ class AIPerlexTestFixture {
 
 	RejectionReason assess(const Metrics& m, const State& s) const { return ai->assess_iteration_quality(m, s); }
 
-	bool stop_early(int depth, int score, int pv_len) const { return ai->should_stop_early(depth, score, pv_len); }
+	bool stop_early(int depth, int score) const { return ai->should_stop_early(depth, score); }
 
 	// The PV written by the emergency path now lives in ai->td_.pv_table.
 	bool emergency(State& s) const { return ai->handle_empty_move_emergency(ai->td_, s); }

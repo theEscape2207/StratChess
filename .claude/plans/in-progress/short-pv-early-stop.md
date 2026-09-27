@@ -61,7 +61,7 @@ The fix restores a stated contract (`go depth N` reaches N), so it does not have
 - **If it is a significant loss:** park, and report which moves lost time. The replacement would then
   be a terminal-aware rule, designed from that data.
 
-*Owner to confirm.*
+Confirmed by the owner 2026-09-27.
 
 ## Assumptions I cannot verify from the code
 
@@ -83,9 +83,9 @@ The fix restores a stated contract (`go depth N` reaches N), so it does not have
 
 ## Validation
 
-- **Unit tests:**
-  - `stop_early(12, 0, 4)` and `stop_early(6, 100, 2)` both return false.
-  - The mate cases stay.
+- **Unit tests:** `should_stop_early()` loses its `pv_length` parameter, since it is unused under
+  `/W4 /WX`. A short-PV unit case would then pass by construction, so it becomes a boundary case
+  instead: `Mate_Threshold - 1` of either sign does not stop. The mate cases stay.
 - **Search test:**
   - `Search()` on the perpetual FEN with `SearchLimits::fixed_depth(12)` must report
     `depth_completed == 12`.
