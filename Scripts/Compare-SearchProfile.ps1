@@ -10,7 +10,8 @@
     and Compare-SearchEquivalence (identity) do not.
     A search is deterministic, but a delta is still a sample: any change to move order reshapes
     the tree, and a neutral reordering of tied moves alone moves one position's late-cut work by
-    tens of percent (Measurements/profile-screen.md). Without -Seeds, a delta has no error bar; with it, the Screen block gives one.
+    tens of percent (Measurements/profile-screen.md). Without -Seeds, a delta has no error bar;
+    with it, the Screen block gives one.
 
     Pooling: every counter is summed over the scope's positions first, then each ratio is taken,
     so a pooled rate is a ratio of sums. 'maxdepth' pools by max, the settled iteration by mean.
@@ -413,15 +414,12 @@ function Get-ScreenEstimate {
         $b = @($BeforeRecords | Where-Object { $_.Name -eq $name } | ForEach-Object { [double](& $Metric $_) })
         $a = @($AfterRecords | Where-Object { $_.Name -eq $name } | ForEach-Object { [double](& $Metric $_) })
         if (@($b + $a | Where-Object { $_ -le 0 }).Count -gt 0 -or $a.Count -eq 0) { $skipped++; continue }
-        $lb = @($b | ForEach-Object { [math]::Log($_) })
-        $la = @($a | ForEach-Object { [math]::Log($_) })
-        $mb = ($lb | Measure-Object -Average).Average
-        $ma = ($la | Measure-Object -Average).Average
-        $diffs.Add($ma - $mb)
-        if ($lb.Count -lt 2 -or $la.Count -lt 2) { $withVariance = $false; continue }
-        $vb = (($lb | ForEach-Object { ($_ - $mb) * ($_ - $mb) } | Measure-Object -Sum).Sum) / ($lb.Count - 1)
-        $va = (($la | ForEach-Object { ($_ - $ma) * ($_ - $ma) } | Measure-Object -Sum).Sum) / ($la.Count - 1)
-        $variance += $vb / $lb.Count + $va / $la.Count
+        # Sample standard deviation (n - 1); the variance of a side's mean is its square over n.
+        $sb = $b | ForEach-Object { [math]::Log($_) } | Measure-Object -Average -StandardDeviation
+        $sa = $a | ForEach-Object { [math]::Log($_) } | Measure-Object -Average -StandardDeviation
+        $diffs.Add($sa.Average - $sb.Average)
+        if ($sb.Count -lt 2 -or $sa.Count -lt 2) { $withVariance = $false; continue }
+        $variance += $sb.StandardDeviation * $sb.StandardDeviation / $sb.Count + $sa.StandardDeviation * $sa.StandardDeviation / $sa.Count
     }
     $n = $diffs.Count
     return [pscustomobject]@{
@@ -596,6 +594,7 @@ $seedList = if ($Seeds -gt 0) { @(1..$Seeds) } else { @(0) }
 Write-Host "Depth   : $Depth    Threads: 1    Set: $setName sha $(Get-PositionSetHash -List $positionList)    Positions: $($positionList.Count)    Seeds: $Seeds"
 
 $records = @{ before = [System.Collections.Generic.List[object]]::new(); after = [System.Collections.Generic.List[object]]::new() }
+$callerSeed = $env:STRAT_PROFILE_TIEBREAK_SEED
 foreach ($p in $positionList) {
     foreach ($seed in $seedList) {
         foreach ($s in $sides.GetEnumerator()) {
@@ -606,7 +605,7 @@ foreach ($p in $positionList) {
                 $out = Invoke-UciSearchToBestMove -ExePath $s.Value -WorkDir $workDir -Commands $commands `
                                                   -SearchDepth $Depth -Description $p.Fen
             } finally {
-                $env:STRAT_PROFILE_TIEBREAK_SEED = $null
+                $env:STRAT_PROFILE_TIEBREAK_SEED = $callerSeed
             }
             if ($seed -gt 0 -and -not (Test-SeedApplied -Output $out -Seed $seed)) {
                 throw "$($s.Key) build, position $($p.Name): no 'info string tiebreak seed $seed' line. The build predates the tie-break hook, so -Seeds would compare one tree per side $Seeds times over."

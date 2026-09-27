@@ -1,8 +1,8 @@
 #pragma once
 
-// Constructs MSVC provides that GCC and Clang do not. This is the only place in
-// the codebase where a compiler is named conditionally; everything else stays
-// compiler-neutral and relies on these definitions.
+// Constructs whose spelling differs between MSVC and GCC/Clang. This is the only
+// place in the codebase where a compiler is named conditionally; everything else
+// stays compiler-neutral and relies on these definitions.
 
 #include <cstdlib>
 #include <optional>

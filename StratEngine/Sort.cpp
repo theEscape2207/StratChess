@@ -119,21 +119,16 @@ void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const Board& board,
 		out_scored_idx[i] = {s, i};
 	}
 
-	if constexpr (kSearchProfileCompiled) {
-		if (const uint32_t seed = kProfileTieBreakSeed; seed != 0) {
-			std::sort(out_scored_idx.begin(), out_scored_idx.begin() + n, [&](const auto& a, const auto& b) {
-				if (a.first != b.first)
-					return a.first > b.first;
-				return tie_break_key(moveList[a.second], seed) < tie_break_key(moveList[b.second], seed);
-			});
-			return;
-		}
-	}
-
 	// Ties break on generation order. std::sort is not stable, and equal scores are common — an
 	// in-check quiescence node with a cold history table scores every quiet evasion 0 — so without
 	// this the whole tied block is permuted arbitrarily, and differently across stdlib versions.
-	std::sort(out_scored_idx.begin(), out_scored_idx.begin() + n, [](const auto& a, const auto& b) {
-		return a.first != b.first ? a.first > b.first : a.second < b.second;
+	// A profile build's tie-break seed replaces generation order; the shipping build folds it to 0.
+	const uint32_t seed = kSearchProfileCompiled ? kProfileTieBreakSeed : 0;
+	std::sort(out_scored_idx.begin(), out_scored_idx.begin() + n, [&](const auto& a, const auto& b) {
+		if (a.first != b.first)
+			return a.first > b.first;
+		if (seed != 0)
+			return tie_break_key(moveList[a.second], seed) < tie_break_key(moveList[b.second], seed);
+		return a.second < b.second;
 	});
 }

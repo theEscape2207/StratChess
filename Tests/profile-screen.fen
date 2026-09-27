@@ -1,4 +1,4 @@
-# Profile-screen set for Scripts/Compare-SearchProfile.ps1 -Positions: 117 end positions of
+# Profile-screen set for Scripts/Compare-SearchProfile.ps1 -Positions: 116 end positions of
 # Tests/openings/openings-250.pgn and 4 rook or queen endings. Positions whose short-PV early stop
 # fired under a neutral tie-break seed are left out. Calibration: Measurements/profile-screen.md.
 rn1qk2r/pb1pbppp/1p2pn2/8/Q1P5/5NP1/PP2PPBP/RNB2RK1 w kq - 2 9
