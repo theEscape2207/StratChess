@@ -6,7 +6,49 @@
 
 #include "Board.h"
 #include "MoveHelper.h"
+#include "SearchTelemetry.h"
 #include "See.h"
+
+#include <charconv>
+#include <cstdio>
+
+namespace {
+	// Profile builds only: STRAT_PROFILE_TIEBREAK_SEED=N (1..2^32-1) breaks ScoreMoves' ties by a seeded
+	// hash of the move instead of generation order — a neutral ordering perturbation that measures how
+	// much a profile screen moves with no real ordering change. Read once, before main().
+	uint32_t read_profile_tie_break_seed()
+	{
+		uint32_t seed = 0;
+		if constexpr (kSearchProfileCompiled) {
+			const auto text = StratGetEnv("STRAT_PROFILE_TIEBREAK_SEED");
+			if (!text || text->empty())
+				return 0;
+			const auto [end, ec] = std::from_chars(text->data(), text->data() + text->size(), seed);
+			if (ec != std::errc{} || end != text->data() + text->size()) {
+				std::fprintf(stderr, "STRAT_PROFILE_TIEBREAK_SEED must be an unsigned 32-bit integer, got '%s'\n",
+				             text->c_str());
+				std::exit(EXIT_FAILURE);
+			}
+			if (seed != 0)
+				std::printf("info string tiebreak seed %u\n", seed);
+		}
+		return seed;
+	}
+
+	const uint32_t kProfileTieBreakSeed = read_profile_tie_break_seed();
+
+	// Bijective in the move's 16 bits for a fixed seed, so distinct moves never tie.
+	uint32_t tie_break_key(const Move& mv, uint32_t seed)
+	{
+		uint32_t x = static_cast<uint32_t>(mv.from() | (mv.to() << 6) | (mv.flags() << 12)) * 0x9E3779B1u ^ seed;
+		x ^= x >> 16;
+		x *= 0x85EBCA6Bu;
+		x ^= x >> 13;
+		x *= 0xC2B2AE35u;
+		x ^= x >> 16;
+		return x;
+	}
+} // namespace
 
 // Her sorteres de gode slag frem for de mindre gode
 // Dvs ikke at ofre sin dronning for at faa den #%&!! bonde ;-)
@@ -75,6 +117,17 @@ void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const Board& board,
 			s = history[static_cast<int>(side)][mv.from()][mv.to()];
 		}
 		out_scored_idx[i] = {s, i};
+	}
+
+	if constexpr (kSearchProfileCompiled) {
+		if (const uint32_t seed = kProfileTieBreakSeed; seed != 0) {
+			std::sort(out_scored_idx.begin(), out_scored_idx.begin() + n, [&](const auto& a, const auto& b) {
+				if (a.first != b.first)
+					return a.first > b.first;
+				return tie_break_key(moveList[a.second], seed) < tie_break_key(moveList[b.second], seed);
+			});
+			return;
+		}
 	}
 
 	// Ties break on generation order. std::sort is not stable, and equal scores are common — an
