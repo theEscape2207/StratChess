@@ -3,7 +3,7 @@
 //   assess_iteration_quality()    — 6 cases, one per RejectionReason branch
 //   should_stop_early()           — 2 cases (mate score, short of mate) plus a repetition-PV search
 //   handle_empty_move_emergency() — 3 cases (mate path, emergency path, stale PV row)
-//   should_try_null_move()        — 11 cases, one per guard branch (disabled, PV, in-check,
+//   should_try_null_move()        — 10 cases, one per guard branch (disabled, PV, in-check,
 //                                   depth, mate-score, zugzwang, single-piece zugzwang,
 //                                   two-piece eligible, consecutive-null, otherwise-eligible)
 
@@ -118,8 +118,8 @@ TEST_CASE("Search - assess: pv too short yields SHORT_PV", "[search]")
 TEST_CASE("Search - assess: a drawn score on an unchanged move is accepted", "[search]")
 {
 	// A completed root child that genuinely evaluates to a draw is a real result, not a symptom.
-	// The fabricated zero an aborted frame used to unwind with reaches the root with an empty
-	// move and is caught by CASE 1 instead.
+	// The fabricated zero an aborted frame unwinds with reaches the root with an empty move and
+	// is caught by CASE 1 instead.
 	AIPerlexTestFixture fix;
 
 	AIPerlexTestFixture::Metrics m{};
@@ -239,8 +239,7 @@ TEST_CASE("Search - handle_empty_move_emergency: a stale row 1 is not spliced on
 {
 	// PVTable::update copies row ply + 1 onto the end of row ply, and row 1 at this point holds
 	// whatever subtree last reached ply 1 — a different position. Without clearing it first the
-	// emergency move is published with a tail that describes nothing, which is #310's defect
-	// arriving by another route.
+	// emergency move is published with a tail that describes nothing.
 	AIPerlexTestFixture fix;
 	fix.seed_pv_row(1, AnyLegalMove());
 	REQUIRE(fix.pv_length(1) == 1); // the stale row the emergency path must not read
