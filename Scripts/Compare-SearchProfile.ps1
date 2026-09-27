@@ -4,11 +4,14 @@
     reductions, pruning, quiescence, iterations and best-move stability, side by side.
 
 .DESCRIPTION
-    Runs each position once per build at a fixed depth, Threads=1, in a fresh engine process, and
-    prints a before / after / delta table per scope: Pooled, Endgame, Non-endgame, then each
-    position. It answers "how did the tree change", which Run-Bench (time) and
-    Compare-SearchEquivalence (identity) do not. It does not judge significance: at Threads=1 a
-    search is deterministic, so each delta is one exact difference, not a sample.
+    Runs each position once per build (or once per seed, -Seeds) at a fixed depth, Threads=1, in a
+    fresh engine process, and prints a before / after / delta table per scope: Pooled, Endgame,
+    Non-endgame, then each position. It answers "how did the tree change", which Run-Bench (time)
+    and Compare-SearchEquivalence (identity) do not.
+    A search is deterministic, but a delta is still a sample: any change to move order reshapes
+    the tree, and a neutral reordering of tied moves alone moves one position's late-cut work by
+    tens of percent (Measurements/profile-screen.md). Without -Seeds, a delta has no error bar;
+    with it, the Screen block gives one.
 
     Pooling: every counter is summed over the scope's positions first, then each ratio is taken,
     so a pooled rate is a ratio of sums. 'maxdepth' pools by max, the settled iteration by mean.
@@ -41,8 +44,8 @@
     The optional lines aspiration, lmr, nullmove, pruning, frontier skips and lmp skips print only
     when their first field is non-zero ('pruning' on either field), so their absence reads as zero.
 
-    Not refused: the same binary on both sides (the zero-delta self-check), or differing node
-    counts, which are what this measures. Node identity is Compare-SearchEquivalence's job.
+    Not refused: the same binary on both sides (the self-check: zero delta without -Seeds, the
+    live noise floor with it), or differing node counts, which are what this measures. Node identity is Compare-SearchEquivalence's job.
 
 .PARAMETER Before
     The baseline profile build (configured with -DSTRAT_SEARCH_PROFILE=1).
@@ -57,6 +60,15 @@
 .PARAMETER Positions
     Optional file of FENs, one per line, as Run-Bench.ps1 takes. Defaults to Run-Bench's built-in
     set (Scripts/BenchPositions.ps1).
+
+.PARAMETER Seeds
+    Run each position N times per side under tie-break seeds (STRAT_PROFILE_TIEBREAK_SEED):
+    1..N before, N+1..2N after. The sides share no seed, the design the noise floor was calibrated
+    on. Then print a Screen block: the per-position mean-log delta of late-cut work and nodes, averaged
+    over positions, with +-2 standard errors taken from the seed spread. The tables then pool every
+    seed's run. Default 0: one run per side in generation order, whose delta carries that one
+    tree's chaos and no error bar. N >= 2 is needed for the error bar. A build without the hook
+    is refused. Noise floor and sizing: Measurements/profile-screen.md.
 
 .PARAMETER SelfTest
     Assert parsing, refusals, pooling, derived rows, grouping and delta formats on synthetic
@@ -78,6 +90,9 @@ param(
     [int]$Depth = 16,
 
     [string]$Positions = '',
+
+    [ValidateRange(0, 64)]
+    [int]$Seeds = 0,
 
     [switch]$SelfTest
 )
@@ -379,6 +394,49 @@ function Test-Endgame {
     return ($white -le 13 -and $black -le 13)
 }
 
+function Get-ScreenEstimate {
+    <#
+        Mean over positions of mean-log(after) - mean-log(before), each side's mean taken over its
+        seeds, and 2 standard errors from the per-position seed variances, positions treated as
+        independent. TwoSe is $null with fewer than 2 runs per side. A position with a zero value
+        on any run has no log and is skipped, and counted.
+    #>
+    param(
+        [Parameter(Mandatory)][object[]]$BeforeRecords,
+        [Parameter(Mandatory)][object[]]$AfterRecords,
+        [Parameter(Mandatory)][scriptblock]$Metric
+    )
+
+    $diffs = [System.Collections.Generic.List[double]]::new()
+    $variance = 0.0
+    $withVariance = $true
+    $skipped = 0
+    foreach ($name in @($BeforeRecords | ForEach-Object { $_.Name } | Select-Object -Unique)) {
+        $b = @($BeforeRecords | Where-Object { $_.Name -eq $name } | ForEach-Object { [double](& $Metric $_) })
+        $a = @($AfterRecords | Where-Object { $_.Name -eq $name } | ForEach-Object { [double](& $Metric $_) })
+        if (@($b + $a | Where-Object { $_ -le 0 }).Count -gt 0 -or $a.Count -eq 0) { $skipped++; continue }
+        # Sample standard deviation (n - 1); the variance of a side's mean is its square over n.
+        $sb = $b | ForEach-Object { [math]::Log($_) } | Measure-Object -Average -StandardDeviation
+        $sa = $a | ForEach-Object { [math]::Log($_) } | Measure-Object -Average -StandardDeviation
+        $diffs.Add($sa.Average - $sb.Average)
+        if ($sb.Count -lt 2 -or $sa.Count -lt 2) { $withVariance = $false; continue }
+        $variance += $sb.StandardDeviation * $sb.StandardDeviation / $sb.Count + $sa.StandardDeviation * $sa.StandardDeviation / $sa.Count
+    }
+    $n = $diffs.Count
+    return [pscustomobject]@{
+        MeanLog   = if ($n -gt 0) { ($diffs | Measure-Object -Average).Average } else { $null }
+        TwoSe     = if ($n -gt 0 -and $withVariance) { 2 * [math]::Sqrt($variance) / $n } else { $null }
+        Positions = $n
+        Skipped   = $skipped
+    }
+}
+
+function Test-SeedApplied {
+    <# A build older than the tie-break hook ignores the variable and searches generation order. #>
+    param([Parameter(Mandatory)][string]$Output, [Parameter(Mandatory)][int]$Seed)
+    return $Output -match "(?m)^info string tiebreak seed $Seed\r?$"
+}
+
 # ---------------------------------------------------------------------------
 # Self-test
 # ---------------------------------------------------------------------------
@@ -490,6 +548,20 @@ if ($SelfTest) {
     Assert-Case 'a queen ending is an endgame' (Test-Endgame '6k1/5ppp/8/8/8/8/5PPP/3Q2K1 w - - 0 1')
     Assert-Case 'queen and rook is not' (-not (Test-Endgame '3r2k1/5ppp/8/8/8/8/5PPP/3QR1K1 w - - 0 1'))
 
+    # Screen estimate: per-position mean-log deltas, averaged; 2 SE from the seed variances.
+    function Runs([string]$Name, [double[]]$Values) { $Values | ForEach-Object { [pscustomobject]@{ Name = $Name; V = $_ } } }
+    $v = { param($r) $r.V }
+    $e = Get-ScreenEstimate -BeforeRecords @((Runs 'x' 100, 100) + (Runs 'y' 100, 100)) -AfterRecords @((Runs 'x' 200, 200) + (Runs 'y' 100, 100)) -Metric $v
+    Assert-Case 'screen delta averages per-position log ratios' ([math]::Abs($e.MeanLog - [math]::Log(2) / 2) -lt 1e-12 -and $e.TwoSe -eq 0 -and $e.Positions -eq 2)
+    $e = Get-ScreenEstimate -BeforeRecords @(Runs 'x' 1, ([math]::E)) -AfterRecords @(Runs 'x' 1, 1) -Metric $v
+    Assert-Case 'screen 2 SE comes from each side''s seed variance' ([math]::Abs($e.MeanLog + 0.5) -lt 1e-12 -and [math]::Abs($e.TwoSe - 1.0) -lt 1e-12) "got $($e.MeanLog) $($e.TwoSe)"
+    $e = Get-ScreenEstimate -BeforeRecords @(Runs 'x' 100) -AfterRecords @(Runs 'x' 150) -Metric $v
+    Assert-Case 'one run per side has no error bar' ($null -eq $e.TwoSe -and [math]::Abs($e.MeanLog - [math]::Log(1.5)) -lt 1e-12)
+    $e = Get-ScreenEstimate -BeforeRecords @((Runs 'x' 0, 5) + (Runs 'y' 5, 5)) -AfterRecords @((Runs 'x' 5, 5) + (Runs 'y' 5, 5)) -Metric $v
+    Assert-Case 'a zero value skips its position' ($e.Skipped -eq 1 -and $e.Positions -eq 1)
+    Assert-Case 'the seed echo is accepted' (Test-SeedApplied -Output "info string tiebreak seed 3`nbestmove e2e4" -Seed 3)
+    Assert-Case 'FALSIFY: a build that ignores the seed is caught' (-not (Test-SeedApplied -Output "info string tiebreak seed 13`nbestmove e2e4" -Seed 3))
+
     Write-Host ''
     if ($failures -gt 0) {
         Write-Host "$failures self-test case(s) FAILED." -ForegroundColor Red
@@ -519,20 +591,53 @@ foreach ($s in $sides.GetEnumerator()) {
     Write-Host ('{0,-8}: {1}  (sha {2})' -f $s.Key, $s.Value, $hash)
 }
 $setName = if ($Positions) { Split-Path -Leaf $Positions } else { 'builtin' }
-Write-Host "Depth   : $Depth    Threads: 1    Set: $setName sha $(Get-PositionSetHash -List $positionList)    Positions: $($positionList.Count)"
+$seedList = if ($Seeds -gt 0) { @(1..$Seeds) } else { @(0) }
+Write-Host "Depth   : $Depth    Threads: 1    Set: $setName sha $(Get-PositionSetHash -List $positionList)    Positions: $($positionList.Count)    Seeds: $Seeds"
 
 $records = @{ before = [System.Collections.Generic.List[object]]::new(); after = [System.Collections.Generic.List[object]]::new() }
+$callerSeed = $env:STRAT_PROFILE_TIEBREAK_SEED
 foreach ($p in $positionList) {
-    foreach ($s in $sides.GetEnumerator()) {
-        $commands = @('uci', 'isready', 'setoption name Threads value 1', "position fen $($p.Fen)", "go depth $Depth")
-        $out = Invoke-UciSearchToBestMove -ExePath $s.Value -WorkDir $workDir -Commands $commands `
-                                          -SearchDepth $Depth -Description $p.Fen
-        $rec = ConvertFrom-ProfileTranscript -Output $out -SearchDepth $Depth -Side $s.Key -Position $p.Name
-        $rec | Add-Member -NotePropertyName Name -NotePropertyValue $p.Name
-        $rec | Add-Member -NotePropertyName Endgame -NotePropertyValue (Test-Endgame $p.Fen)
-        $records[$s.Key].Add($rec)
+    foreach ($seed in $seedList) {
+        foreach ($s in $sides.GetEnumerator()) {
+            $commands = @('uci', 'isready', 'setoption name Threads value 1', "position fen $($p.Fen)", "go depth $Depth")
+            # Disjoint seeds per side (after: N+1..2N), the design the Screen band is calibrated on.
+            # The engine reads the seed once at startup; the child process inherits this environment.
+            $sideSeed = if ($seed -gt 0 -and $s.Key -eq 'after') { $seed + $Seeds } else { $seed }
+            $env:STRAT_PROFILE_TIEBREAK_SEED = if ($sideSeed -gt 0) { "$sideSeed" } else { $null }
+            try {
+                $out = Invoke-UciSearchToBestMove -ExePath $s.Value -WorkDir $workDir -Commands $commands `
+                                                  -SearchDepth $Depth -Description $p.Fen
+            } finally {
+                $env:STRAT_PROFILE_TIEBREAK_SEED = $callerSeed
+            }
+            if ($sideSeed -gt 0 -and -not (Test-SeedApplied -Output $out -Seed $sideSeed)) {
+                throw "$($s.Key) build, position $($p.Name): no 'info string tiebreak seed $sideSeed' line. The build predates the tie-break hook, so -Seeds would compare one tree per side $Seeds times over."
+            }
+            $rec = ConvertFrom-ProfileTranscript -Output $out -SearchDepth $Depth -Side $s.Key -Position $p.Name
+            $rec | Add-Member -NotePropertyName Name -NotePropertyValue $p.Name
+            $rec | Add-Member -NotePropertyName Endgame -NotePropertyValue (Test-Endgame $p.Fen)
+            $records[$s.Key].Add($rec)
+        }
     }
     Write-Host "  searched $($p.Name)" -ForegroundColor DarkGray
+}
+
+$screen = [ordered]@{
+    'late-cut work (latenodes)' = { param($r) $r.Counters.ordering.latenodes }
+    'nodes'                     = { param($r) $r.Counters.treenodes.main + $r.Counters.treenodes.qs }
+}
+Write-Host ''
+Write-Host "== Screen: mean over positions of the per-position log ratio, seeds averaged per side"
+Write-Host ('{0,-40} {1,10} {2,10} {3,10}' -f 'measure', 'delta', '+-2 SE', 'positions')
+foreach ($m in $screen.GetEnumerator()) {
+    $est = Get-ScreenEstimate -BeforeRecords $records.before.ToArray() -AfterRecords $records.after.ToArray() -Metric $m.Value
+    $delta = if ($null -ne $est.MeanLog) { Format-Invariant '{0:+0.0;-0.0;0.0}%' (100 * ([math]::Exp($est.MeanLog) - 1)) } else { 'n/a' }
+    $band = if ($null -ne $est.TwoSe) { Format-Invariant '{0:0.0}%' (100 * ([math]::Exp($est.TwoSe) - 1)) } else { 'none' }
+    $count = if ($est.Skipped -gt 0) { "$($est.Positions) ($($est.Skipped) skipped)" } else { "$($est.Positions)" }
+    Write-Host ('{0,-40} {1,10} {2,10} {3,10}' -f $m.Key, $delta, $band, $count)
+}
+if ($Seeds -lt 2) {
+    Write-Host 'No error bar: one tree per side. Measurements/profile-screen.md gives the noise floor; use -Seeds 4 or more.' -ForegroundColor Yellow
 }
 
 $scopes = [System.Collections.Generic.List[object]]::new()
@@ -548,7 +653,7 @@ foreach ($scope in $scopes) {
     $b = @($records.before | Where-Object $scope.Filter)
     if ($b.Count -eq 0) { continue }
     $a = @($records.after | Where-Object $scope.Filter)
-    $names = ($b | ForEach-Object { $_.Name }) -join ', '
+    $names = ($b | ForEach-Object { $_.Name } | Select-Object -Unique) -join ', '
     $title = if ($scope.Title -in @('Pooled', 'Endgame', 'Non-endgame')) { "$($scope.Title) ($names)" } else { $scope.Title }
     Format-ScopeTable -Title $title -BeforeRows (Get-ScopeRows $b) -AfterRows (Get-ScopeRows $a) | Write-Host
 }

@@ -41,7 +41,10 @@ Elo result, or what a #636 child is judged by): `Compare-SearchProfile.ps1 -Befo
 `-DSTRAT_SEARCH_PROFILE=1` builds. It prints ordering, LMR, node types, pruning, quiescence,
 iterations and stability, pooled and by endgame group. It measures no time: a speed change with an
 unchanged tree is `Run-Bench.ps1` or a sampling profiler's question. It gives direction, never a
-verdict: gate on wall clock and Elo as above.
+verdict: gate on wall clock and Elo as above. Screen with
+`-Seeds 8 -Depth 12 -Positions Tests/profile-screen.fen` (~16 min; catches a 10% late-cut change reliably, a 5% one about 3 times in 4) and
+read the Screen block's ±2 SE. One run per side carries tree noise larger than a typical ordering
+effect (`Measurements/profile-screen.md`).
 
 A **local fixed batch** (500 games, ~40 min, ±25 Elo) is supported but is not the default: a third
 of the lab's wall-clock for a fraction of its precision, so it mostly buys inconclusive runs. Reach

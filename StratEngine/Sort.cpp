@@ -6,12 +6,50 @@
 
 #include "Board.h"
 #include "MoveHelper.h"
+#include "SearchTelemetry.h"
 #include "See.h"
 
-// Her sorteres de gode slag frem for de mindre gode
-// Dvs ikke at ofre sin dronning for at faa den #%&!! bonde ;-)
-// Bemaerk: start er default 0
-// TODO: Why dont the callers supply iterators instead?
+#include <charconv>
+#include <cstdio>
+
+namespace {
+	// Profile builds only: STRAT_PROFILE_TIEBREAK_SEED=N (1..2^32-1) breaks ScoreMoves' ties by a seeded
+	// hash of the move instead of generation order — a neutral ordering perturbation that measures how
+	// much a profile screen moves with no real ordering change. Read once, before main().
+	uint32_t read_profile_tie_break_seed()
+	{
+		uint32_t seed = 0;
+		if constexpr (kSearchProfileCompiled) {
+			const auto text = StratGetEnv("STRAT_PROFILE_TIEBREAK_SEED");
+			if (!text || text->empty())
+				return 0;
+			const auto [end, ec] = std::from_chars(text->data(), text->data() + text->size(), seed);
+			if (ec != std::errc{} || end != text->data() + text->size()) {
+				std::fprintf(stderr, "STRAT_PROFILE_TIEBREAK_SEED must be an unsigned 32-bit integer, got '%s'\n",
+				             text->c_str());
+				std::exit(EXIT_FAILURE);
+			}
+			if (seed != 0)
+				std::printf("info string tiebreak seed %u\n", seed);
+		}
+		return seed;
+	}
+
+	const uint32_t kProfileTieBreakSeed = read_profile_tie_break_seed();
+
+	// Bijective in the move's 16 bits for a fixed seed, so distinct moves never tie.
+	uint32_t tie_break_key(const Move& mv, uint32_t seed)
+	{
+		uint32_t x = static_cast<uint32_t>(mv.from() | (mv.to() << 6) | (mv.flags() << 12)) * 0x9E3779B1u ^ seed;
+		x ^= x >> 16;
+		x *= 0x85EBCA6Bu;
+		x ^= x >> 13;
+		x *= 0xC2B2AE35u;
+		x ^= x >> 16;
+		return x;
+	}
+} // namespace
+
 void MoveSorter::SortMovesByValue(MoveList& moveList, size_t count, const Board& board, size_t start)
 {
 	// The range really must be captures and promotions only — see the declaration.
@@ -19,8 +57,8 @@ void MoveSorter::SortMovesByValue(MoveList& moveList, size_t count, const Board&
 	                   [](const Move& m) { return MoveHelper::IsCapture(m) || MoveHelper::IsPromote(m); }));
 
 	// Sort captures by MVV-LVA: captured piece value minus (moving piece value / 16).
-	// board supplies the moving piece (Phase 3) and captured piece (Phase 4) for each move.
-	if (count >= 2) // Mindst 2 for at sortere
+	// board supplies the moving and the captured piece of each move.
+	if (count >= 2)
 		std::sort(moveList.begin() + static_cast<int>(start), moveList.begin() + static_cast<int>(start + count),
 		          [&board](const Move& a, const Move& b) {
 			          return MoveHelper::Value(a, board.GetEffectiveMovPiece(a), board.GetCapturedPiece(a)) >
@@ -33,8 +71,8 @@ void MoveSorter::SortMovesByValue(MoveList& moveList, size_t count, const Board&
 // offered at one node per ply per iteration, and at those nodes it names the move the
 // transposition table already names — the entry at a PV node is that node's own store from the
 // previous iteration, which is where the hint would come from too. Where the table has nothing
-// to offer there, it is because the entry was overwritten, not because the hint knew better
-// (#335), and the fix belongs in the table.
+// to offer there, it is because the entry was overwritten, not because the hint knew better,
+// and the fix belongs in the table.
 //
 // This applies to interior PV nodes. Ordering the ROOT's moves by the previous iteration's
 // scores is a separate question with a different answer available to it, and nothing here
@@ -80,7 +118,13 @@ void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const Board& board,
 	// Ties break on generation order. std::sort is not stable, and equal scores are common — an
 	// in-check quiescence node with a cold history table scores every quiet evasion 0 — so without
 	// this the whole tied block is permuted arbitrarily, and differently across stdlib versions.
-	std::sort(out_scored_idx.begin(), out_scored_idx.begin() + n, [](const auto& a, const auto& b) {
-		return a.first != b.first ? a.first > b.first : a.second < b.second;
+	// A profile build's tie-break seed replaces generation order; the shipping build folds it to 0.
+	const uint32_t seed = kSearchProfileCompiled ? kProfileTieBreakSeed : 0;
+	std::sort(out_scored_idx.begin(), out_scored_idx.begin() + n, [&](const auto& a, const auto& b) {
+		if (a.first != b.first)
+			return a.first > b.first;
+		if (seed != 0)
+			return tie_break_key(moveList[a.second], seed) < tie_break_key(moveList[b.second], seed);
+		return a.second < b.second;
 	});
 }
