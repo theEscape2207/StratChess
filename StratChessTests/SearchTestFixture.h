@@ -402,6 +402,15 @@ class AIPerlexTestFixture {
 						return false;
 		return true;
 	}
+	std::pair<int32_t, int32_t> history_range() const
+	{
+		std::pair<int32_t, int32_t> range{0, 0};
+		for (const auto& side : ai->td_.history)
+			for (const auto& from : side)
+				for (int32_t score : from)
+					range = {std::min(range.first, score), std::max(range.second, score)};
+		return range;
+	}
 
 	void poke_killer(int ply) const { ai->td_.store_killer(ply, AnyLegalMove()); }
 	bool has_killer(int ply) const { return !ai->td_.killers[ply][0].is_null(); }
