@@ -22,6 +22,18 @@ Newest first.
 
 ---
 
+## 2026-09-28 — Profile-screen noise calibration (#653)
+
+Profile builds read `STRAT_PROFILE_TIEBREAK_SEED`, which breaks `ScoreMoves` ties by a seeded hash
+of the move. It is a neutral ordering perturbation. Unset or 0 leaves the build node-identical,
+checked on 38 positions at depths 12 and 16. `Compare-SearchProfile.ps1 -Seeds N` runs each side
+under seeds 1..N and prints a Screen block: the mean per-position log delta of late-cut work and of
+nodes, with ±2 standard errors taken from the seed spread. `Tests/profile-screen.fen` holds 120
+calibrated positions. `Measurements/profile-screen.md` records the result. One run per side is
+noise at about ±11-23% of late-cut work. Eight seeds per side at depth 12 resolve ±3.6% late-cut
+work and ±2.1% nodes, in about 16 minutes. Amplifiers: root best-move changes and LMR re-searches
+(inherent), and the #652 short-PV stop, which neutral seeds trigger (a discontinuity).
+
 ## 2026-09-25 — Search profile comparison script (#637)
 
 `Scripts/Compare-SearchProfile.ps1 -Before -After` runs two `-DSTRAT_SEARCH_PROFILE=1` builds over

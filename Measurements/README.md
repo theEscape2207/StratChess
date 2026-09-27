@@ -12,6 +12,7 @@ append-only records, mostly written by a script. How to *choose and run* an inst
 | [`local.md`](local.md) | `Run-EloMatch.ps1`, clang-cl on Windows | mixed — each row names its own reference |
 | [`move-quality-tier1.md`](move-quality-tier1.md) | `analyze_move_quality.py` over lab PGNs | where one run's own judgement moved — by phase, piece, clock and material class |
 | [`move-quality-tier2.md`](move-quality-tier2.md) | `analyze_external_quality.py`, Stockfish oracle | the same rows re-judged from outside, which is the only view of what the engine cannot see |
+| [`profile-screen.md`](profile-screen.md) | `Compare-SearchProfile.ps1` under neutral tie-break seeds | the noise band a profile-screen delta must clear; a table per calibration, no `Verdict` |
 
 **A row is only ever read against other rows in its own ledger.** Different instruments and
 different references are not on a common scale, which is why these are separate files rather than
