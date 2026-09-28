@@ -43,7 +43,7 @@ Same order as the table above. A row with nothing to add beyond its verdict has 
 
 **A correctness fix, judged by a rule agreed before the run: keep unless the interval lies wholly below 0.** 18 shards x 555 pairs, pooled Ptnml(0-2) [675, 2339, 3900, 2297, 779], score 50.42%, run `36354288096`, 3 h 11 min wall-clock, all 18 green. 95% interval [-0.59, +6.37], which bounds any regression below 0.6 Elo. 12 of 18 shards favour the candidate on score, 5 the reference, 1 exactly even (49.10% to 51.94%). Zero time losses, zero illegal moves.
 
-**The removed rule demonstrably stopped firing.** A move scored 0.00 in under a quarter of the side's median time, from move 5 on, was 2.10% of the reference's moves (22847 of 1085500, median depth 9) and 0.36% of the candidate's (3860 of 1085618, median depth 20). At a median depth of 20 the candidate's remainder reached depth cheaply rather than stopping early.
+**The fast-draw proxy fell.** The PGNs record neither PV length nor why a search stopped, and a fast 0.00 move has other causes, so this supports the mechanism rather than observing it. A move scored 0.00 in under a quarter of the side's median time, from move 5 on, was 2.10% of the reference's moves (22847 of 1085500, median depth 9) and 0.36% of the candidate's (3860 of 1085618, median depth 20). The candidate's remainder, at a median depth of 20, is consistent with reaching depth cheaply rather than stopping early.
 
 **What it does not settle.** Whether the time spent searching dead positions to the soft limit could be better spent elsewhere; that is a time-allocation question.
 
