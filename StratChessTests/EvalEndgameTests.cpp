@@ -217,7 +217,7 @@ TEST_CASE("Eval - the scaled rook classes are stated as exact counts", "[eval]")
 	}
 }
 
-// ── Opposite-coloured bishops (issue #599) ────────────────────────────────────
+// ── Opposite-coloured bishops ─────────────────────────────────────────────────
 //
 // One bishop each on opposite colours, with one or two pawns against none. The
 // complements are each one change away from a scaled case and keep full value.
@@ -255,7 +255,7 @@ TEST_CASE("Eval - opposite-coloured bishops with a pawnless defender are scaled"
 	}
 }
 
-TEST_CASE("Eval - the opposite-bishop class is stated as exact counts", "[eval]")
+TEST_CASE("Eval - one change takes a position out of the opposite-bishop class", "[eval]")
 {
 	const char* fen = GENERATE("8/8/4k3/8/3P4/2B5/8/4K1b1 w - - 0 1",  // same-coloured bishops
 	                           "8/5p2/4k3/8/3P4/2B4b/8/4K3 w - - 0 1", // the defender holds a pawn
@@ -367,15 +367,22 @@ TEST_CASE("Eval - Breakdown(): the endgame row accounts for the whole scale", "[
 	// The #129 honesty invariant extended to the scale: the rows plus the
 	// adjustment must still reproduce `total` exactly. Asserted on a zero and a
 	// fractional scale, where the adjustment is the largest number in the table.
-	const char* fen = GENERATE("8/8/8/3k4/8/8/3N4/3K4 w - - 0 1", FEN_OPPOSITE_BISHOPS_TWO_PAWNS);
-	CAPTURE(fen);
-	Board board(fen);
+	struct ScaledCase {
+		const char* fen;
+		int scale;
+	};
+
+	const ScaledCase scaled =
+	    GENERATE(ScaledCase{"8/8/8/3k4/8/8/3N4/3K4 w - - 0 1", 0},
+	             ScaledCase{FEN_OPPOSITE_BISHOPS_TWO_PAWNS, EvaluatorTestFixture::OppositeBishopsTwoPawnsScale});
+	CAPTURE(scaled.fen);
+	Board board(scaled.fen);
 
 	const Evaluator eval;
 
 	const EvalBreakdown terms = eval.Breakdown(board);
 
-	REQUIRE(terms.endgame_scale < ENDGAME_SCALE_MAX);
+	REQUIRE(terms.endgame_scale == scaled.scale);
 	REQUIRE(terms.endgame_adjustment != 0);
 
 	const int whitePov = terms.white_pov();

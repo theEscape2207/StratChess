@@ -722,7 +722,7 @@ class Evaluator {
 	// pruning both assume it cannot do. AIPerplex::quiescence() disables both
 	// near a scaled class, keyed on piece count rather than on the class list.
 	//
-	// That keying rests on a property of the classes below, which is stated here
+	// That keying rests on a property of every fractional class below, which is stated here
 	// because this is where it would be broken: EVERY SCALED CLASS LEAVES ITS
 	// SMALLER SIDE AT MOST TWO MEN. Recognising one whose smaller side holds
 	// three or more silently defeats MATERIAL_PRUNING_MIN_PIECES, and that
@@ -735,7 +735,8 @@ class Evaluator {
 	// Opposite-coloured bishops, one each, with one or two pawns against none.
 	// One pawn is a draw unless the defence is out of play; two split passers
 	// can overload the bishop, so they keep more. Strength parameters like the
-	// rook classes above, and the defender's K+B is two men, inside that bound.
+	// rook classes above. The defender's K+B is two men, exactly on that bound,
+	// which is why a defender pawn keeps a position out of the class.
 	static const short OPPOSITE_BISHOPS_ONE_PAWN_SCALE = 4;
 	static const short OPPOSITE_BISHOPS_TWO_PAWNS_SCALE = 8;
 
@@ -854,12 +855,12 @@ class Evaluator {
 	// Recognises material configurations that are worth less than they weigh.
 	// Returns a numerator over ENDGAME_SCALE_MAX; 0 is a dead draw.
 	//
-	// Piece counts decide every class but one. It is not a tablebase (#101) and
-	// does not judge pawn races; the wrong-coloured-bishop fortress is the sole
-	// place a square, rather than a count, is what makes the position drawn.
+	// Piece counts decide every class but two. It is not a tablebase (#101) and
+	// does not judge pawn races; the wrong-coloured-bishop fortress also reads the
+	// defending king's square, and opposite-coloured bishops their square colours.
 	static int EndgameScale(std::span<const BITBOARD> boards) noexcept;
 
-	// The pawns-on-the-board branch of the classifier.
+	// The pawns-on-the-board branch of the classifier for a bare defending king.
 	static int WrongBishopFortress(std::span<const BITBOARD> boards) noexcept;
 
 	// The pawns-on-the-board branch when each side holds a bishop.

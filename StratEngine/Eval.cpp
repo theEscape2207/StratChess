@@ -950,7 +950,7 @@ int Evaluator::EndgameScale(std::span<const BITBOARD> boards) noexcept
 			return ENDGAME_SCALE_MAX;
 
 		// The fortress needs a bare defending king, so a bishop on each side can
-		// only be the opposite-bishop class.
+		// only be a candidate for the opposite-bishop class.
 		if (boards[ePiece::WHITE_BISHOP] != 0ULL && boards[ePiece::BLACK_BISHOP] != 0ULL)
 			return OppositeBishopsScale(boards);
 
