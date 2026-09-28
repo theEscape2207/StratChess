@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-09-28 | e11a58a (deepening stops early only on a mate score, not on a short PV, #652) | f58f052 | 19980 | 10+0.1 | **+2.89 +/- 3.48** | non-regression |
 | 2026-09-18 | e2ff7d2 with `Contempt=20` set over UCI on the candidate only, now tinting the draws the evaluator settles as well as those the search detects (#452) | e2ff7d2 (the same commit at its shipped default `Contempt=0`; the delta is a runtime option, not a code change) | 19980 | 10+0.1 | **-0.85 +/- 3.60** | no effect |
 | 2026-09-18 | c117c7a with `Contempt=20` set over UCI on the candidate only (#452) | c117c7a (the same commit at its shipped default `Contempt=0`; the delta is a runtime option, not a code change) | 19980 | 10+0.1 | **+0.77 +/- 3.58** | non-regression |
 | 2026-09-14 | a0e2a14 (depth-2 late move pruning, legal index 12, #547) | 30a5d46 | 19980 | 10+0.1 | **+16.48 +/- 3.50** | gain |
@@ -37,6 +38,14 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-09-28 -- e11a58a (deepening stops early only on a mate score, #652) (19980 games)
+
+**A correctness fix, judged by a rule agreed before the run: keep unless the interval lies wholly below 0.** 18 shards x 555 pairs, pooled Ptnml(0-2) [675, 2339, 3900, 2297, 779], score 50.42%, run `36354288096`, 3 h 11 min wall-clock, all 18 green. 95% interval [-0.59, +6.37], which bounds any regression below 0.6 Elo. 12 of 18 shards favour the candidate on score, 5 the reference, 1 exactly even (49.10% to 51.94%). Zero time losses, zero illegal moves.
+
+**The fast-draw proxy fell.** The PGNs record neither PV length nor why a search stopped, and a fast 0.00 move has other causes, so this supports the mechanism rather than observing it. A move scored 0.00 in under a quarter of the side's median time, from move 5 on, was 2.10% of the reference's moves (22847 of 1085500, median depth 9) and 0.36% of the candidate's (3860 of 1085618, median depth 20). The candidate's remainder, at a median depth of 20, is consistent with reaching depth cheaply rather than stopping early.
+
+**What it does not settle.** Whether the time spent searching dead positions to the soft limit could be better spent elsewhere; that is a time-allocation question.
 
 ### 2026-09-18 -- e2ff7d2 with `Contempt=20` covering the evaluator's draws (#452) (19980 games)
 

@@ -98,9 +98,9 @@ class AIPerlexTestFixture {
 
 	RejectionReason assess(const Metrics& m, const State& s) const { return ai->assess_iteration_quality(m, s); }
 
-	bool stop_early(int depth, int score, int pv_len) const { return ai->should_stop_early(depth, score, pv_len); }
+	bool stop_early(int depth, int score) const { return ai->should_stop_early(depth, score); }
 
-	// The PV written by the emergency path now lives in ai->td_.pv_table.
+	// The PV written by the emergency path lives in ai->td_.pv_table.
 	bool emergency(State& s) const { return ai->handle_empty_move_emergency(ai->td_, s); }
 
 	// pvs() establishes the zugzwang floor once per node and hands it to both pruning guards, so
@@ -430,7 +430,7 @@ class AIPerlexTestFixture {
 	void add_fake_helper() const { ai->helper_tds_.push_back(std::make_unique<ThreadData>()); }
 	size_t helper_count() const { return ai->helper_tds_.size(); }
 
-	// The helper threads' own counters, for checking GetMove()'s post-join aggregation exactly
+	// The helper threads' own counters, for checking Search()'s post-join aggregation exactly
 	// rather than by inequality — a helper that never got scheduled contributes a legitimate 0.
 	int64_t helper_nodes() const
 	{
@@ -505,8 +505,8 @@ class AIPerlexTestFixture {
 		REQUIRE_FALSE(move.is_null());
 	}
 
-	// One complete GetMove() at a chosen thread count — the only way to observe the aggregation
-	// GetMove() performs after joining its helpers.
+	// One complete Search() at a chosen thread count — the only way to observe the aggregation
+	// Search() performs after joining its helpers.
 	SearchResult get_move_at_threads(unsigned threads, int depth) const
 	{
 		ai->SetThreads(threads);

@@ -22,6 +22,38 @@ Newest first.
 
 ---
 
+## 2026-09-28 — Deepening no longer stops on a short PV (#652)
+
+`should_stop_early()` stopped iterative deepening whenever the root PV was shorter than
+`depth - depth/2`, reading that as a forced line. A PV also ends at any terminal node, an in-search
+twofold repetition included, so the rule fired on repetition lines. For example, `go depth 16` on the
+perpetual check `6k1/6p1/8/8/4Q3/2q5/r4PPP/6K1 w` stopped at depth 11. In timed play it fired after
+the soft-limit gate too. In the lab PGNs, 1-3% of all moves were 0.00 moves played in under a quarter
+of the side's median time, at a median depth of 9 against 12 for the rest. That is a proxy: the PGNs
+carry no PV length. Now only a mate score, or a limit, ends deepening. Rejected alternatives:
+excluding draw scores (contempt shifts them, and a 0 score is not proof of a repetition) and tagging
+why a PV ended (machinery to keep a rule with an unproven premise). `assess_iteration_quality()`'s
+short-PV rejection of interrupted iterations is unchanged.
+
+Validation: a new search test on the perpetual failed before the fix (depth 11 of 12) and passes after
+it. Engine-tier pre-PR gate passed. Measurement: strength lab against `f58f052`, **+2.89 +/- 3.48
+Elo** (19980 games), non-regression; kept under the pre-agreed rule (keep unless the 95% interval
+lies wholly below 0). In the same games, fast 0.00 moves fell from 2.10% of the reference's moves
+(median depth 9) to 0.36% of the candidate's (median depth 20).
+
+## 2026-09-28 — Profile-screen noise calibration (#653)
+
+Profile builds read `STRAT_PROFILE_TIEBREAK_SEED`, which breaks `ScoreMoves` ties by a seeded hash
+of the move. It is a neutral ordering perturbation. Unset or 0 leaves the build node-identical,
+checked on 38 positions at depths 12 and 16. `Compare-SearchProfile.ps1 -Seeds N` runs each side
+under seeds 1..N and prints a Screen block: the mean per-position log delta of late-cut work and of
+nodes, with ±2 standard errors taken from the seed spread. `Tests/profile-screen.fen` holds 120
+calibrated positions. `Measurements/profile-screen.md` records the result. One run per side is
+noise at about ±11-23% of late-cut work. With eight seeds per side at depth 12 (disjoint seeds,
+about 16 minutes), the noise threshold is ±3.6% late-cut work and ±2.1% nodes. At that setting a
+real 10% change is caught every time and a 5% change 77% of the time. Amplifiers: root best-move changes and LMR re-searches
+(inherent), and the #652 short-PV stop, which neutral seeds trigger (a discontinuity).
+
 ## 2026-09-25 — Search profile comparison script (#637)
 
 `Scripts/Compare-SearchProfile.ps1 -Before -After` runs two `-DSTRAT_SEARCH_PROFILE=1` builds over

@@ -220,7 +220,7 @@ Iterative Deepening Loop (depth 1 → max_depth)
     ├─→ Decision: Accept/Reject/Continue
     │
     └─→ Early Termination Check
-        (mate found or forced line)
+        (mate found)
     ↓
 Join helpers, aggregate node counts
     ↓
@@ -420,7 +420,7 @@ iterative_deepening(max_depth):
                 REJECT_AND_STOP  # Use previous depth
         
         # Check for early termination
-        if mate_found or forced_line:
+        if mate_found:
             STOP
     
     return SearchResult(state.best_move, state.best_score, ...)
@@ -431,8 +431,7 @@ iterative_deepening(max_depth):
 2. **Barely searched**: < 1000 nodes
 3. **Too few nodes**: < 10% of previous depth
 4. **Short PV**: < 33% of depth
-5. **Suspicious score=0**: Previous score wasn't near 0
-6. **Move changed**: Different move on interrupt
+5. **Move changed**: Different move on interrupt
 
 **Key Innovation**: Multi-metric validation prevents accepting incomplete searches while not rejecting valid results in tactical positions.
 
@@ -609,6 +608,13 @@ info string qsearch roots N delta N see N maxdepth N
 
 The counters are compiled out of the default build, and a profile build stays node-identical to it.
 The wording is a parsed contract: never reword a line.
+
+A profile build also reads `STRAT_PROFILE_TIEBREAK_SEED` once at startup. A non-zero seed breaks
+`ScoreMoves` score ties by a seeded hash of the move instead of generation order, and the engine
+prints `info string tiebreak seed N` before anything else; a value that is not an unsigned 32-bit
+integer exits with a diagnostic. It is a neutral reordering, the noise source that
+`Compare-SearchProfile.ps1 -Seeds` averages over. Unset or 0 leaves the build node-identical. The
+test binary is a profile build too, so a seed left set in the shell reorders every search test.
 
 ---
 
