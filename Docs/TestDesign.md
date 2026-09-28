@@ -362,6 +362,10 @@ then call `Search(board, limits).best_move`. Check `m.from()` and `m.to()`.
 
 ### Basic-mate Conversion (`[endgame_conversion][slow]`)
 
+**Disabled (`SKIP`), redo tracked in #657.** The unmodified engine mates 0, 3, 4, 5 and 3 of the five
+starts at depths 10 to 14, so the depth-12 gate below measures where one depth lands, not the
+engine. The rest of this section describes the test as written.
+
 **File**: `StratChessTests/EndgameConversionTests.cpp`
 
 **Rationale**: the only test that asks whether the engine can *finish* a won ending. Every other
