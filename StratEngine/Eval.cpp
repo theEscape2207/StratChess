@@ -915,7 +915,8 @@ PieceAggregates Evaluator::ComputePieceAggregates(std::span<const BITBOARD> boar
 //	EndgameScale() :
 //	Description: Classifies the position's material and returns what fraction of
 //	             the assembled score it is worth, over ENDGAME_SCALE_MAX.
-//	Returns:	 0 for material that cannot win at all, ENDGAME_SCALE_MAX otherwise.
+//	Returns:	 0 for material that cannot win at all, a fraction for the drawish
+//	             classes, ENDGAME_SCALE_MAX otherwise.
 //
 // Classes drawn by material alone are scaled to zero; the pawnless rook endings
 // and opposite-coloured bishops with one or two pawns against none are drawish
@@ -938,8 +939,8 @@ int Evaluator::EndgameScale(std::span<const BITBOARD> boards) noexcept
 		return ENDGAME_SCALE_MAX;
 
 	// A pawn promotes, so no piece count can call a position holding one drawn.
-	// The single exception is the wrong-coloured-bishop fortress, and that class
-	// has nothing on the board but kings, one bishop and rook pawns — so the
+	// The exceptions are the wrong-coloured-bishop fortress and the opposite-
+	// bishop class, and both hold nothing but kings, bishops and pawns — so the
 	// inner test sends every position still holding a knight or a rook out of
 	// here. Together with the queen test above these ORs are the exit for nearly
 	// every position the engine evaluates, and nothing has been counted yet.
