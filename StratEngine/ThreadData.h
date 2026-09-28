@@ -57,7 +57,7 @@ struct ThreadData {
 	// 0 for the main thread; only it polls the clock and logs.
 	int thread_id = 0;
 
-	// Killer move heuristic: two quiet moves per ply that caused a beta cutoff.
+	// Killer move heuristic: two non-capture moves per ply that caused a beta cutoff.
 	Move killers[MAX_PLY][MAX_KILLERS];
 
 	// Null-move consecutive-pass guard: last_move_was_null[ply] is true when
@@ -140,7 +140,7 @@ struct ThreadData {
 
 	void store_killer(int ply, const Move& move) noexcept
 	{
-		// Only quiet moves are stored as killers
+		// Captures are not stored as killers
 		if (MoveHelper::IsCapture(move))
 			return;
 		// Avoid storing the same move twice in slot 0
