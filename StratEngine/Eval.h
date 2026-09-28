@@ -732,6 +732,13 @@ class Evaluator {
 	static const short ROOK_VS_MINOR_SCALE = 12;
 	static const short ROOK_VS_ROOK_SCALE = 4;
 
+	// Opposite-coloured bishops, one each, with one or two pawns against none.
+	// One pawn is a draw unless the defence is out of play; two split passers
+	// can overload the bishop, so they keep more. Strength parameters like the
+	// rook classes above, and the defender's K+B is two men, inside that bound.
+	static const short OPPOSITE_BISHOPS_ONE_PAWN_SCALE = 4;
+	static const short OPPOSITE_BISHOPS_TWO_PAWNS_SCALE = 8;
+
 	// Distance helpers for mop-up scoring — plain grid math, orientation-independent
 	// (works the same whether the square belongs to White or Black).
 	static constexpr int CenterAxisDistance(int coord) noexcept { return (coord <= 3) ? (3 - coord) : (coord - 4); }
@@ -854,6 +861,9 @@ class Evaluator {
 
 	// The pawns-on-the-board branch of the classifier.
 	static int WrongBishopFortress(std::span<const BITBOARD> boards) noexcept;
+
+	// The pawns-on-the-board branch when each side holds a bishop.
+	static int OppositeBishopsScale(std::span<const BITBOARD> boards) noexcept;
 
 	// The pawnless-with-rooks branch of the classifier. Split out because it is
 	// the one branch that has to count both sides' pieces, and inlining it into

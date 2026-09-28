@@ -250,6 +250,9 @@ nonzero score in one of those classes *is* the defect.
 - Rook against rook is level material, so it is the one scaled class with no stronger side and no
   material floor: its case asserts that the unscaled score is nonzero to begin with, since a position
   scoring zero cannot tell a scale from a clamp
+- Opposite-coloured bishops with one or two pawns against none (#599) are asserted at the exact
+  scaled value, four ways, over a nonzero unscaled score. The complements: same-coloured bishops,
+  a defender pawn, three pawns, an added knight and a second bishop each keep full value
 - The #129 honesty invariant extended: on a scaled position, the printed rows plus the endgame
   adjustment still reproduce `total` exactly
 

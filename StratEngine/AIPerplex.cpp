@@ -53,7 +53,8 @@ namespace {
 	// The guard counts the men on the SIDE THAT HAS FEWER -- not material, which can disagree,
 	// and not the men on the board -- because that is what every scaled class constrains. Each
 	// strips one side to a king plus at most one man: a bare king for the drawn classes and
-	// for the wrong-bishop fortress, king and one man for the three scaled rook endings. So every
+	// for the wrong-bishop fortress, king and one man for the three scaled rook endings and for
+	// opposite-coloured bishops, whose defender may hold no pawn. So every
 	// scaled position has min(white, black) <= 2, one capture removes at most one man, and
 	// every parent of one therefore has min <= 3. Four is the first safe value, and it covers
 	// entering and leaving alike.
