@@ -36,8 +36,10 @@ why a PV ended (machinery to keep a rule with an unproven premise). `assess_iter
 short-PV rejection of interrupted iterations is unchanged.
 
 Validation: a new search test on the perpetual failed before the fix (depth 11 of 12) and passes after
-it. Engine-tier pre-PR gate passed. Measurement: strength lab against `f58f052`, pending; the change
-is kept unless the 95% interval lies wholly below 0.
+it. Engine-tier pre-PR gate passed. Measurement: strength lab against `f58f052`, **+2.89 +/- 3.48
+Elo** (19980 games), non-regression; kept under the pre-agreed rule (keep unless the 95% interval
+lies wholly below 0). In the same games, fast 0.00 moves fell from 2.10% of the reference's moves
+(median depth 9) to 0.36% of the candidate's (median depth 20).
 
 ## 2026-09-25 — Search profile comparison script (#637)
 
