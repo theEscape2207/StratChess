@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-09-28 | dc19de5 (history malus for searched quiets and gravity-bounded updates, #651; the tree of the shipped merge) | 5205819 | 19980 | 10+0.1 | **+13.20 +/- 3.61** | gain |
 | 2026-09-28 | e11a58a (deepening stops early only on a mate score, not on a short PV, #652) | f58f052 | 19980 | 10+0.1 | **+2.89 +/- 3.48** | non-regression |
 | 2026-09-18 | e2ff7d2 with `Contempt=20` set over UCI on the candidate only, now tinting the draws the evaluator settles as well as those the search detects (#452) | e2ff7d2 (the same commit at its shipped default `Contempt=0`; the delta is a runtime option, not a code change) | 19980 | 10+0.1 | **-0.85 +/- 3.60** | no effect |
 | 2026-09-18 | c117c7a with `Contempt=20` set over UCI on the candidate only (#452) | c117c7a (the same commit at its shipped default `Contempt=0`; the delta is a runtime option, not a code change) | 19980 | 10+0.1 | **+0.77 +/- 3.58** | non-regression |
@@ -38,6 +39,14 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-09-28 -- dc19de5 (history malus and gravity, #651) (19980 games)
+
+**A gain that the tree and wall-clock screens did not predict, decided by the lab.** 18 shards x 555 pairs, pooled Ptnml(0-2) [720, 2135, 3734, 2468, 933], score 51.90%, run `36426547304`, 3 h 10 min wall-clock, all 18 green. 95% interval [+9.6, +16.8]. 17 of 18 shards favour the candidate on score and one is exactly even (50.00% to 53.29%). Zero time losses, zero illegal moves, zero disconnects. The candidate is this branch merged into `main` `5205819`; the shipped merge commit has the same tree.
+
+**Read it against the screens.** At depth 12 on the 200-position `Tests/profile-screen.fen`, nodes fell 2.2% +/- 1.6% and late-cut work 4.0% +/- 2.7%; at depth 16 neither moved significantly. Speed per node fell 2.5% +/- 0.3%, so wall clock at fixed depth was about neutral, and the design's gate (median at least 3% faster in 8 of 9 rounds) failed on the built-in 8 (total +5.7%, faster in 0 of 9). The gate was waived by agreement, with the lab deciding. The share of cutoffs made by the first move tried did not change (89.0% to 88.9%), so **the run does not say why the change gains**: the ordering mechanism the design named is not visible in the first-move rate, and late-cut work rose by 1.8% at remaining depth 7 and deeper at depth 16.
+
+**Not separated:** gravity, the malus and the aging change ship together, so the row credits the combination. A gravity-only or malus-only run would each need its own dispatch.
 
 ### 2026-09-28 -- e11a58a (deepening stops early only on a mate score, #652) (19980 games)
 
