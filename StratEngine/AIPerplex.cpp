@@ -1177,8 +1177,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				                    (profile_move_nodes - profile_loop_nodes) -
 				                        (profile_move_late - profile_loop_late));
 				td.store_killer(ply, move);
-				// Only a quiet cutter penalizes the quiets before it: when a capture cuts, their failure
-				// says little about the quiets themselves.
+				// Only a quiet cutter penalizes the searched quiets before it: when a capture or promotion
+				// cuts, their failure says little about the quiets themselves.
 				if (ThreadData::is_quiet(move))
 					td.penalize_searched_quiets(side, moveList, scored_idx, searched, si, depth);
 				td.update_history(side, move, depth);
