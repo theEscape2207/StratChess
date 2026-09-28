@@ -120,7 +120,7 @@ class AIPerplex final {
 	bool IsSearching() const noexcept;
 	~AIPerplex();
 
-	// Force use of factory by preventing constructor, copy-construction & operator=
+	// Not copyable
 	AIPerplex(const AIPerplex&) = delete;
 	AIPerplex& operator=(const AIPerplex&) = delete;
 	AIPerplex(AIPerplex&&) = delete;
@@ -235,7 +235,7 @@ class AIPerplex final {
 	// --------------
 	// Quality assessment
 	RejectionReason assess_iteration_quality(const IterationMetrics& metrics, const SearchState& state) const;
-	bool should_stop_early(int depth, int score, int pv_length) const;    // Early termination checks
+	bool should_stop_early(int depth, int score) const;                   // True on a mate score
 	bool handle_empty_move_emergency(ThreadData& td, SearchState& state); // Emergency handling
 	// The zugzwang floor null-move pruning and reverse futility share: below two non-pawn pieces,
 	// "the side to move is not obliged to worsen its position" stops being true, and both
@@ -310,9 +310,8 @@ class AIPerplex final {
 	std::optional<std::pair<eColor, int>> tt_contempt_context_;
 
 	// Per-thread search state (board copy, node counter, PV, killers, history, ...).
-	// Persistent member — history is aged between moves, never cleared — and the
-	// single instance used by the (currently single-threaded) search. Lazy SMP
-	// helper threads will each get their own. See ThreadData.h.
+	// Persistent member — history is aged between moves, never cleared — used by the
+	// main search thread; Lazy SMP helpers each own one in helper_tds_. See ThreadData.h.
 	ThreadData td_;
 
 	// Lazy SMP helper threads' per-thread state, one per helper (threads_ - 1
@@ -342,7 +341,7 @@ class AIPerplex final {
 #ifdef STRAT_ENABLE_TEST_ACCESS
 	// Enable fine-grained unit tests for private search helpers.
 	// Activated by defining STRAT_ENABLE_TEST_ACCESS in the test project
-	// preprocessor settings (StratChessTests.vcxproj) — never in production.
+	// build (CMakeLists.txt) — never in production.
 	// See Docs/TestDesign.md §"AIPerplex Test Access" and §Phase 1 [search] tests.
 	friend class AIPerlexTestFixture;
 	// Grants UCIHandler's test fixture (StratChessTests/UCITests.cpp) access

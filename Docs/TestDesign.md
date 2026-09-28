@@ -405,7 +405,7 @@ match a `friend` declaration in the engine header it reaches into, so none of th
 Tests for private helper methods exposed via `AIPerlexTestFixture` (friend class):
 
 - `assess_iteration_quality()`: 6 cases — one per `RejectionReason` branch (INCOMPLETE×2, TOO_FEW_NODES, SHORT_PV, MOVE_CHANGED), plus the drawn-score-on-unchanged-move case that must be ACCEPTED
-- `should_stop_early()`: 2 cases — mate score path; short-PV forced-line path
+- `should_stop_early()`: 2 cases — mate score stops; a score short of mate does not. A fixed-depth search on a perpetual check pins that a repetition PV does not end deepening
 - `handle_empty_move_emergency()`: 2 cases — mate-detected path (returns false); true-emergency path on a real starting-position board (returns true, sets legal move)
 
 ### `[sort]` — Move ordering tests

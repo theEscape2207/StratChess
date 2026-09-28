@@ -34,8 +34,8 @@ namespace {
 	// s_logger itself and ensure_logger_initialized()'s lazy-init (a plain
 	// `if (s_logger) return;` check, not a magic static) are NOT safe to race:
 	// initialization only ever happens from the constructor during
-	// single-threaded AIPerplex setup before any search (or future
-	// helper thread) starts. Helper threads run the same search_with_aspiration()
+	// single-threaded AIPerplex setup before any search or
+	// helper thread starts. Helper threads run the same search_with_aspiration()
 	// code path as the main thread and reach the same log_* call sites, but
 	// those calls are gated on `td.thread_id == 0` (see search_with_aspiration()
 	// below), so only the main thread ever actually logs; s_logger remains
@@ -282,8 +282,6 @@ void AIPerplex::StartNewGame()
 	++game_generation_;
 }
 
-// PVS Iterative transpositional alpha beta search
-// Transposition tables
 // Resets td_'s per-search state. Move-ordering state (killers, history) is
 // handled inside iterative_deepening(); history deliberately survives across
 // moves (aged, never cleared).
@@ -410,7 +408,7 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	// report a move, only their node counts feed back in).
 	// threads_ == 1 (the default) leaves this block entirely unreached:
 	// `helpers` stays a default-constructed empty vector and helper_tds_ is
-	// never touched — byte-identical to the pre-SMP single-threaded code path.
+	// never touched.
 	if (threads > 1) {
 		if (helper_tds_.size() < threads - 1) {
 			const size_t old = helper_tds_.size();
@@ -564,7 +562,7 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 				extra_depth_used = true; // grant extension exactly once
 			}
 
-			continue_iteration = !should_stop_early(depth, metrics.current_score, metrics.pv_length);
+			continue_iteration = !should_stop_early(depth, metrics.current_score);
 			break;
 
 		case IterationDecision::ACCEPT_AND_STOP:
@@ -586,7 +584,7 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 		}
 
 		if (!continue_iteration) {
-			break; // Exit iteration_deepening
+			break; // Exit iterative deepening
 		}
 	}
 
@@ -720,8 +718,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	if (td.check_draws(ply))
 		return draw_score(td);
 
-	// Er vi naaet til bunden af traeet - evaluering?
-	//	See if static eval will cause a cutoff or raise alpha.
+	// Horizon reached: quiescence resolves the node.
 	if (depth <= 0) {
 		if constexpr (kSearchProfileCompiled)
 			td.telemetry.qsearch.roots++;
@@ -1534,7 +1531,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	}
 	order_quiescence_moves(td, moveList, in_check, ply);
 
-	// Tjek om der er lovlige brugbare traek her
+	// Whether any legal move was searched here
 	bool moveFound = false;
 	Move best_move = Move::EmptyMove();
 
@@ -1831,20 +1828,13 @@ void AIPerplex::log_acceptance(const IterationMetrics& metrics) const
 	               metrics.nodes_searched, metrics.current_score, metrics.pv_length);
 }
 
-bool AIPerplex::should_stop_early(int depth, int score, int pv_length) const
+// A short PV is no stop signal: a PV ends at any terminal node, an in-search repetition included,
+// so its length does not show that the line is forced.
+bool AIPerplex::should_stop_early(int depth, int score) const
 {
-	// Mate found
 	if (std::abs(score) >= GameValues::Mate_Threshold) {
 		if (verbose_logging_ && s_logger) {
 			s_logger->info("Mate found at depth {}, stopping iteration", depth);
-		}
-		return true;
-	}
-
-	// Forced line (PV much shorter than depth)
-	if (depth > 1 && pv_length > 0 && pv_length < (depth - depth / 2)) {
-		if (verbose_logging_ && s_logger) {
-			s_logger->info("Short PV ({} vs depth {}) indicates forced line, stopping", pv_length, depth);
 		}
 		return true;
 	}
