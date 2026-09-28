@@ -22,6 +22,12 @@ Newest first.
 
 ---
 
+## 2026-09-28 — KBN conversion test disabled (#657)
+
+`[endgame_conversion][slow]` gated on depth 12 alone, and the unmodified engine mates 0, 3, 4, 5 and 3
+of its five starts at depths 10 to 14, so the gate measured where one depth lands. The case now
+`SKIP`s with a pointer to #657, which tracks the redo.
+
 ## 2026-09-28 — Profile screen grown to 200 positions and recalibrated
 
 `Tests/profile-screen.fen` now holds 200 positions: the 4 book positions left out for tripping the

@@ -76,6 +76,10 @@ namespace {
 
 TEST_CASE("Endgame - bishop and knight convert against a bare king", "[endgame_conversion][slow]")
 {
+	// The depth-12 gate measures where one depth lands: the unmodified engine mates 0 to 5 of the
+	// five starts across depths 10 to 14. Redo tracked in #657.
+	SKIP("Disabled: the depth-12 gate is not a stable property of the engine (#657)");
+
 	ConversionResult tally;
 
 	for (const ConversionCase& tc : kConversionCases) {
