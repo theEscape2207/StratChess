@@ -979,6 +979,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	int64_t profile_move_nodes = 0;
 	int64_t profile_move_late = 0;
 
+	// The moves whose child search completed, by sorted index: the quiets among them take a history
+	// malus when a later quiet cuts.
+	ThreadData::SearchedMoves searched;
+
 	// Iterate by sorted index — no rebuild of moveList needed
 	for (int si = 0; si < n; ++si) {
 		const Move& move = moveList[scored_idx[si].second];
@@ -1147,6 +1151,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				return best_value;
 
 			moveFound = true;
+			searched.set(static_cast<size_t>(si));
 
 			if (value > best_value) {
 				best_value = value;
@@ -1172,6 +1177,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				                    (profile_move_nodes - profile_loop_nodes) -
 				                        (profile_move_late - profile_loop_late));
 				td.store_killer(ply, move);
+				// Only a quiet cutter penalizes the searched quiets before it: when a capture or promotion
+				// cuts, their failure says little about the quiets themselves.
+				if (ThreadData::is_quiet(move))
+					td.penalize_searched_quiets(side, moveList, scored_idx, searched, si, depth);
 				td.update_history(side, move, depth);
 				break;
 			}

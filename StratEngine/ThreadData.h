@@ -3,6 +3,9 @@
 #include "PVTable.h"
 #include "MoveHelper.h"
 #include "SearchTelemetry.h"
+#include <algorithm>
+#include <array>
+#include <bitset>
 #include <cassert>
 #include <cstdint>
 #include <cstring>
@@ -17,6 +20,9 @@
 struct ThreadData {
 	static constexpr int MAX_KILLERS = 2;
 	static constexpr int32_t HISTORY_MAX = 16'384;
+
+	// Bit i: the move at sorted index i of a pvs() frame completed its child search.
+	using SearchedMoves = std::bitset<MoveList::MAX_MOVES>;
 
 	// Thread-local board copy — the search runs on this, not on the game board.
 	// Copy-assigned from the Search() root at the start of every search.
@@ -51,7 +57,7 @@ struct ThreadData {
 	// 0 for the main thread; only it polls the clock and logs.
 	int thread_id = 0;
 
-	// Killer move heuristic: two quiet moves per ply that caused a beta cutoff.
+	// Killer move heuristic: two non-capture moves per ply that caused a beta cutoff.
 	Move killers[MAX_PLY][MAX_KILLERS];
 
 	// Null-move consecutive-pass guard: last_move_was_null[ply] is true when
@@ -60,9 +66,9 @@ struct ThreadData {
 	// each null-move attempt completes (see AIPerplex::pvs()).
 	bool last_move_was_null[MAX_PLY]{};
 
-	// History heuristic: accumulated score for quiet moves that caused beta cutoffs,
-	// indexed by [side-to-move][from-square][to-square].
-	// int32 gives plenty of headroom before the depth^2 increments overflow.
+	// History heuristic for quiet moves, indexed by [side-to-move][from-square][to-square]: raised
+	// for a quiet move that cut, lowered for the quiets searched before it. Can be negative, and
+	// |entry| <= HISTORY_MAX always holds (see apply_history()).
 	int32_t history[2][64][64];
 
 	// --- Cold tail: singular exclusion and telemetry ---
@@ -134,7 +140,7 @@ struct ThreadData {
 
 	void store_killer(int ply, const Move& move) noexcept
 	{
-		// Only quiet moves are stored as killers
+		// Captures are not stored as killers
 		if (MoveHelper::IsCapture(move))
 			return;
 		// Avoid storing the same move twice in slot 0
@@ -151,24 +157,44 @@ struct ThreadData {
 	{
 		// Halve all scores between iterative-deepening depths so that older
 		// cutoff information fades rather than being discarded entirely.
-		// Scores from deeper searches stay proportionally larger.
+		// Scores from deeper searches stay proportionally larger. Division, not a shift: >> rounds
+		// toward minus infinity, so a -1 would never decay.
 		for (auto& side : history)
 			for (auto& from : side)
 				for (auto& score : from)
-					score >>= 1;
+					score /= 2;
 	}
 
+	static bool is_quiet(const Move& move) noexcept
+	{
+		return !MoveHelper::IsCapture(move) && !MoveHelper::IsPromote(move);
+	}
+
+	// Bonus for a quiet move that caused a beta cutoff; other moves are ignored.
 	void update_history(eColor side, const Move& move, int depth) noexcept
 	{
-		// Only quiet moves contribute to the history table
-		if (MoveHelper::IsCapture(move))
-			return;
-		// Bonus scales with depth^2 so deep cutoffs outweigh shallow ones
-		int32_t& entry = history[side][move.from()][move.to()];
-		entry += depth * depth;
-		// Cap to avoid int32 overflow after many iterations
-		if (entry > HISTORY_MAX)
-			entry = HISTORY_MAX;
+		if (is_quiet(move))
+			apply_history(history[side][move.from()][move.to()], history_bonus(depth));
+	}
+
+	// Malus for a quiet move that was searched and failed to cut; other moves are ignored.
+	void penalize_history(eColor side, const Move& move, int depth) noexcept
+	{
+		if (is_quiet(move))
+			apply_history(history[side][move.from()][move.to()], -history_bonus(depth));
+	}
+
+	// At a cutoff by the quiet move at sorted index cut_index, penalizes every quiet move sorted
+	// before it that completed its child search. A move skipped by pruning, rejected as illegal
+	// or excluded has no bit set: it was judged, not tried.
+	void penalize_searched_quiets(eColor side, const MoveList& moveList,
+	                              const std::array<std::pair<int, int>, MoveList::MAX_MOVES>& scored_idx,
+	                              const SearchedMoves& searched, int cut_index, int depth) noexcept
+	{
+		assert(cut_index >= 0 && cut_index < static_cast<int>(MoveList::MAX_MOVES));
+		for (int i = 0; i < cut_index; ++i)
+			if (searched[static_cast<size_t>(i)])
+				penalize_history(side, moveList[scored_idx[static_cast<size_t>(i)].second], depth);
 	}
 
 	// Threefold repetition and the fifty-move rule (thread-local board). Neither applies at
@@ -186,6 +212,20 @@ struct ThreadData {
 	{
 		if (ply == 0)
 			root_game_state = newState;
+	}
+
+  private:
+	// depth^2, so deep cutoffs outweigh shallow ones. Clamped so that |delta| <= HISTORY_MAX, which
+	// apply_history()'s bound rests on, whatever depth search reaches.
+	static int32_t history_bonus(int depth) noexcept { return std::min(depth * depth, HISTORY_MAX); }
+
+	// Gravity update: an entry near the bound moves less, so the table keeps ranking good moves
+	// instead of saturating at a cap. With |delta| and |entry| <= HISTORY_MAX the result stays in
+	// [-HISTORY_MAX, HISTORY_MAX], and entry * |delta| <= 2^28 cannot overflow.
+	static void apply_history(int32_t& entry, int32_t delta) noexcept
+	{
+		assert(delta >= -HISTORY_MAX && delta <= HISTORY_MAX);
+		entry += delta - entry * (delta < 0 ? -delta : delta) / HISTORY_MAX;
 	}
 };
 

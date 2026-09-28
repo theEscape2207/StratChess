@@ -1,7 +1,5 @@
 // SearchTestFixture.h — shared test infrastructure for the [search] test files
-// (SearchServiceTests.cpp, SearchIterationTests.cpp, SearchTelemetryTests.cpp,
-// SearchTTContractTests.cpp, QuiescenceTests.cpp): the STRAT_ENABLE_TEST_ACCESS fixtures and
-// the legal-move helper they share.
+// files: the STRAT_ENABLE_TEST_ACCESS fixtures and the legal-move helper they share.
 //
 // Requires STRAT_ENABLE_TEST_ACCESS in the test project preprocessor definitions.
 // See Docs/TestDesign.md §"AIPerplex Test Access" for the mechanism.
@@ -393,14 +391,15 @@ class AIPerlexTestFixture {
 	// --- Per-game state pokes, for proving StartNewGame() resets them ---
 
 	void poke_history() const { ai->td_.update_history(WHITE, AnyLegalMove(), 4); }
-	bool history_is_clear() const
+	bool history_is_clear() const { return history_range() == std::pair<int32_t, int32_t>{0, 0}; }
+	std::pair<int32_t, int32_t> history_range() const
 	{
+		std::pair<int32_t, int32_t> range{0, 0};
 		for (const auto& side : ai->td_.history)
 			for (const auto& from : side)
 				for (int32_t score : from)
-					if (score != 0)
-						return false;
-		return true;
+					range = {std::min(range.first, score), std::max(range.second, score)};
+		return range;
 	}
 
 	void poke_killer(int ply) const { ai->td_.store_killer(ply, AnyLegalMove()); }

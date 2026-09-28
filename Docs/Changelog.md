@@ -22,6 +22,23 @@ Newest first.
 
 ---
 
+## 2026-09-28 — History malus and gravity-bounded updates (#651)
+
+`ThreadData::history` only rewarded: a quiet move that cut gained depth² up to a clamp, and quiets
+searched before it lost nothing, so the table counted cuts rather than cuts per try and saturated at
+`HISTORY_MAX`. Now a quiet cutoff also penalizes every quiet searched before it at that node
+(a per-frame bitmap of moves whose child search completed, so pruned, illegal and excluded moves take
+no malus). Both updates use a gravity step, `entry += delta - entry * |delta| / HISTORY_MAX`, which
+keeps `|entry| <= HISTORY_MAX` without a clamp. Aging divides by 2, so negative entries decay too. A
+quiet promotion that cuts no longer gets a bonus, which had landed on a rook or queen's entry for the
+same squares. No runtime switch: bonus size, `HISTORY_MAX` and the aging cadence are unchanged.
+
+Validation: 6 tests in `SearchHistoryTests.cpp`, each falsified by mutation; `search-reviewer` LGTM;
+Engine-tier pre-PR gate passed. Measurement: strength lab against `5205819`,
+**+13.20 +/- 3.61 Elo** (19980 games), gain. On the 200-position screen at depth 12, nodes fell 2.2%
+and speed per node fell 2.5%, so fixed-depth wall clock was about neutral. The lab, not the tree,
+carries the case: the first-move cutoff rate did not move, and why the change gains is not established.
+
 ## 2026-09-28 — KBN conversion test disabled (#657)
 
 `[endgame_conversion][slow]` gated on depth 12 alone, and the unmodified engine mates 0, 3, 4, 5 and 3
