@@ -22,6 +22,16 @@ Newest first.
 
 ---
 
+## 2026-09-28 — Profile screen grown to 200 positions and recalibrated
+
+`Tests/profile-screen.fen` now holds 200 positions: the 4 book positions left out for tripping the
+short-PV stop that #652 removed, 56 more from the 8moves_v3 book and 20 strength-lab endgames (24
+endgames in all, up from 4). On the old positions, #652 changed 1 of 3,872 seeded searches, so the
+earlier band was never inflated by it. The larger set narrows the default screen
+(`-Seeds 8 -Depth 12`, about 24 min) to ±2.3% late-cut work and ±1.4% nodes, from ±3.6% and ±2.1%.
+A 5% late-cut change is now caught 97% of the time, up from 77%. `Measurements/profile-screen.md`
+records the calibration.
+
 ## 2026-09-28 — Deepening no longer stops on a short PV (#652)
 
 `should_stop_early()` stopped iterative deepening whenever the root PV was shorter than

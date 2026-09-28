@@ -42,7 +42,7 @@ Elo result, or what a #636 child is judged by): `Compare-SearchProfile.ps1 -Befo
 iterations and stability, pooled and by endgame group. It measures no time: a speed change with an
 unchanged tree is `Run-Bench.ps1` or a sampling profiler's question. It gives direction, never a
 verdict: gate on wall clock and Elo as above. Screen with
-`-Seeds 8 -Depth 12 -Positions Tests/profile-screen.fen` (~16 min; catches a 10% late-cut change reliably, a 5% one about 3 times in 4) and
+`-Seeds 8 -Depth 12 -Positions Tests/profile-screen.fen` (~24 min; catches a 5% late-cut change 97% of the time, a 3% one about 3 times in 5) and
 read the Screen block's ±2 SE. One run per side carries tree noise larger than a typical ordering
 effect (`Measurements/profile-screen.md`).
 
