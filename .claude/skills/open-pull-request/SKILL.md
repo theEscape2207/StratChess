@@ -93,9 +93,8 @@ bypasses `.github/pull_request_template.md`, so supply the structure yourself.
 
 - Auto-close needs GitHub's exact keywords: `Closes #N` / `Fixes #N` / `Resolves #N`. "closing #N" is
   prose and leaves the issue open.
-- State **which approved design decisions changed during implementation, and why** — the specialised
-  reviewers read the diff while the cross-agent reviewer reads the design doc, and nothing else
-  checks that the two still agree.
+- State **which approved design decisions changed during implementation, and why** — the design
+  review approved the doc, not the diff, and this is where the user sees what moved.
 - **A PR that changes the engine binary** (Engine tier, or a compiler flag) carries a **Measurement**
   line in its Test plan: the instrument and its result (equivalence identical, a bench nps delta, an
   SPRT or lab Elo), the run still pending, or why none applies. Load skill `measure-strength` to pick
@@ -118,9 +117,8 @@ full Engine tier locally and in CI. Collect the round's findings, address them t
 
 Check green with `Get-PrChecks.ps1 [-Pr n] [-Wait]` (exit 0 green / 1 failed / 2 running).
 
-A **cross-agent review** — a second agent reviewing the design doc and commenting on the PR before
-merge — is routed by the user, not dispatched from here. So report a pushed PR as **awaiting
-review**, not done. Answering it: skill `cross-agent-review`.
+A pushed PR gets no cross-agent round; step 1 is its review. Report it as **awaiting merge**
+once checks are green: the user merges.
 
 ## 5. After it merges
 

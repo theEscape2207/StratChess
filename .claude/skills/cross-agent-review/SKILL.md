@@ -14,7 +14,7 @@ Cross-agent review.
 - **A file in a worktree** (a draft design doc or plan): the review is `<artifact>.review.md` beside
   it — `foo.md` → `foo.review.md`. One review covering several files takes the primary file's name.
   `*.review.md` is gitignored: never committed.
-- **An issue or a pushed PR**: a comment, through `--body-file`.
+- **An issue**: a comment, through `--body-file`.
 
 Either way, the artifact's author edits the artifact; the reviewer edits only the review.
 
@@ -30,34 +30,17 @@ Either way, the artifact's author edits the artifact; the reviewer edits only th
 
 1. Read the artifact, its originating issue with comments, and every source file, script and doc it
    cites. Read the artifact and anything it adds or changes at the **reviewed revision** — the
-   author's worktree or the PR head — and existing code at the **baseline**, `origin/main` or the
+   author's worktree or the issue body — and existing code at the **baseline**, `origin/main` or the
    commit the artifact names. Cover every bullet of the design doc's Review focus, every entry of its
    "Assumptions I cannot verify from the code", and every number: re-derive it, or find who
    measured it.
 2. Look for **provenance** (a number nobody measured, a default that has since changed) and **logical
    form** (a dichotomy that does not hold, a gate that cannot fail). Also look for **proportion**: a
    plan heavier than its diff, or a check that is true by construction.
-3. **On a pushed PR**, ask four questions:
-   - **Dispositions:** a PR outside the Docs tier carries a Review line: the author's `code-review`
-     has already checked the diff against the standards and the spec. Does each rejected finding
-     listed in Notes hold, and does each `filed #n` exist? A Docs-tier PR has no Review line;
-     review its changed documents by steps 1–2 instead.
-   - **Drift:** does the diff match the approved design, or does the PR body's Notes name every
-     change? A plan deleted after Harvest is in the branch's history (skill `open-pull-request` step
-     1).
-   - **Evidence:** does the Test plan or Measurement line prove what the PR claims, or can a check
-     not fail?
-   - **Removed behaviour:** what did the diff delete (a recovery path, a guard, a message), and does
-     anything still need it?
-4. Write the review: a header (reviewer model, date, reviewed revision, baseline commit, scope), one
+3. Write the review: a header (reviewer model, date, reviewed revision, baseline commit, scope), one
    line naming what you verified as correct, then numbered findings under the three ranks. Each
    finding cites `file:line` evidence and proposes a concrete change.
-5. Report to the user: the review's path or comment URL, and the count per rank.
-
-**No clean merge verdict on a PR that still carries a plan at the top level of `.claude/plans/`**
-(other than `TEMPLATE.md`). Review happens with the plan in the PR, so its deletion — or move to
-`not-started/`, `in-progress/` or `retained/` — is the one commit after "clean" that nothing else
-checks. `Validate-PrePR.ps1` only warns.
+4. Report to the user: the review's path or comment URL, and the count per rank.
 
 Done when every cited claim is verified, refuted or marked unverified, and every finding is ranked
 with evidence.

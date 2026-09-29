@@ -27,7 +27,7 @@ silently skipping that gate (this happened on PR #148), and `gh pr create` also 
 
 Two consequences worth stating for any skill that finishes a piece of work:
 
-- A pushed PR is **awaiting cross-agent review**, not done. See `Docs/Workflow.md` → Cross-agent review.
+- A pushed PR is **awaiting merge**, not done: the user merges it.
 - Auto-closing an issue needs GitHub's exact keywords in the PR body — `Closes #N` / `Fixes #N` /
   `Resolves #N`. Prose like "closing #N" does not close anything.
 

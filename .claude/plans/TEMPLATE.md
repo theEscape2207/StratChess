@@ -89,8 +89,7 @@ Rough buckets are enough:
 
 - **Size:** lines changed (under 50, 50–200, over 200) and files touched.
 - **Blast radius:** the tier, and which gates, skills or docs change.
-- **Review:** the code review (170–270k tokens and 3–5 min per run in the #624 pilot) and whether the
-  PR goes to the cross-agent round.
+- **Review:** the code review (170–270k tokens and 3–5 min per run in the #624 pilot).
 - **Optional parts, each priced alone:** a guard, an extra check, a nice-to-have. Give its size and
   the risk it covers, so it can be dropped at approval.
 
