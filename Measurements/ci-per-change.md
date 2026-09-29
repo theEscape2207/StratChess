@@ -11,6 +11,8 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-09-30 | 17cf5a3 (continuation history, 1-ply and 2-ply rows feeding quiet ordering, #664) | 481aa97 | 19980 | 10+0.1 | **+6.90 +/- 3.60** | gain |
+| 2026-09-29 | 3cff801 (PROBE: continuation history with 1-ply rows only, #664; the branch is deleted, rebuild as 17cf5a3 with `continuation_history_plies` 1) | 481aa97 | 19980 | 10+0.1 | **+0.78 +/- 3.58** | non-regression |
 | 2026-09-29 | 455352e (opposite-coloured bishops with 1-2 pawns against none scaled to 4/16 and 8/16, #599; engine code unchanged since the run, comments aside) | 0c01b00 | 19980 | 10+0.1 | **+1.23 +/- 3.54** | non-regression |
 | 2026-09-28 | dc19de5 (history malus for searched quiets and gravity-bounded updates, #651; engine code unchanged since the run, comments aside) | 5205819 | 19980 | 10+0.1 | **+13.20 +/- 3.61** | gain |
 | 2026-09-28 | e11a58a (deepening stops early only on a mate score, not on a short PV, #652) | f58f052 | 19980 | 10+0.1 | **+2.89 +/- 3.48** | non-regression |
@@ -40,6 +42,16 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-09-30 -- 17cf5a3 (continuation history, 2 plies, #664) (19980 games)
+
+**A gain the screen did not predict, decided by the lab.** 18 shards x 555 pairs, pooled Ptnml(0-2) [771, 2204, 3733, 2421, 861], score 50.99%, run `36599205249`, 3 h 11 min wall-clock, all 18 green, so zero time losses, illegal moves and disconnects. 95% interval [+3.3, +10.5]. Engine sources are unchanged since the run.
+
+**Read it against the screens.** At depth 12 on the 200-position `Tests/profile-screen.fen`, late-cut work fell 1.9% +/- 2.7% and nodes 0.5% +/- 1.6%: neither significant. Over the same 200 positions at depth 14, fixed-depth time rose 6.2% +/- 4.9% and nodes 2.7% +/- 4.8%. On the 8 `Run-Bench.ps1` positions at depth 14 it was 5.2% faster, in 9 of 9 rounds, at 4.1% lower nps. None of the three points toward +7 Elo; the gain is likely in move choice rather than depth per second, which no screen here measures.
+
+### 2026-09-29 -- 3cff801 (continuation history, 1 ply only, #664 probe) (19980 games)
+
+**The one-ply variant, run in parallel to settle it without waiting on a screen.** The probe differed from the 2-ply candidate only in the default of `continuation_history_plies`, so its branch was deleted: to rebuild it, set that field to 1 on `17cf5a3`. Pooled Ptnml(0-2) [787, 2346, 3694, 2361, 802], score 50.11%, run `36575158853`, 3 h 12 min wall-clock, all 18 green. 95% interval [-2.8, +4.4]. Its depth-12 screen was the stronger of the two (late-cut work -2.8% +/- 2.6%, nodes -1.0% +/- 1.6%), and its 200-position depth-14 time was +1.3% +/- 4.7%. **The screen ranked the two variants the wrong way round.**
 
 ### 2026-09-29 -- 455352e (opposite-coloured bishop scale, #599) (19980 games)
 

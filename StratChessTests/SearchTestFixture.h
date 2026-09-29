@@ -1,5 +1,5 @@
-// SearchTestFixture.h — shared test infrastructure for the [search] test files
-// files: the STRAT_ENABLE_TEST_ACCESS fixtures and the legal-move helper they share.
+// SearchTestFixture.h — shared test infrastructure for the [search] test files:
+// the STRAT_ENABLE_TEST_ACCESS fixtures and the legal-move helper they share.
 //
 // Requires STRAT_ENABLE_TEST_ACCESS in the test project preprocessor definitions.
 // See Docs/TestDesign.md §"AIPerplex Test Access" for the mechanism.
@@ -401,6 +401,17 @@ class AIPerlexTestFixture {
 					range = {std::min(range.first, score), std::max(range.second, score)};
 		return range;
 	}
+
+	void set_continuation_history_plies(int plies) const { ai->tuning_.continuation_history_plies = plies; }
+	std::pair<int16_t, int16_t> continuation_range() const
+	{
+		std::pair<int16_t, int16_t> range{0, 0};
+		for (const auto& row : *ai->td_.cont_history)
+			for (int16_t score : row)
+				range = {std::min(range.first, score), std::max(range.second, score)};
+		return range;
+	}
+	uint16_t& cont_key(int ply) const { return ai->td_.cont_key[ply]; }
 
 	void poke_killer(int ply) const { ai->td_.store_killer(ply, AnyLegalMove()); }
 	bool has_killer(int ply) const { return !ai->td_.killers[ply][0].is_null(); }

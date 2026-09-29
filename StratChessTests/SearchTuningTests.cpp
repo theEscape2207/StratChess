@@ -49,6 +49,7 @@ namespace {
 		bool frontier_futility_enabled;
 		int frontier_futility_margin;
 		bool late_move_pruning_enabled;
+		int continuation_history_plies;
 		int contempt;
 	};
 
@@ -79,6 +80,7 @@ namespace {
 	SAME_MEMBER(frontier_futility_enabled)
 	SAME_MEMBER(frontier_futility_margin)
 	SAME_MEMBER(late_move_pruning_enabled)
+	SAME_MEMBER(continuation_history_plies)
 	SAME_MEMBER(contempt)
 #undef SAME_MEMBER
 	static_assert(sizeof(SearchTuning) == sizeof(BaselineTuning));
@@ -131,6 +133,7 @@ TEST_CASE("SearchTuning defaults are the shipped values", "[tuning]")
 	CHECK(tuning.frontier_futility_enabled);
 	CHECK(tuning.frontier_futility_margin == 200);
 	CHECK(tuning.late_move_pruning_enabled);
+	CHECK(tuning.continuation_history_plies == 2);
 	CHECK(tuning.contempt == 0);
 
 	CHECK_FALSE(SearchTuningSchema::Validate(tuning).has_value());
@@ -374,6 +377,14 @@ TEST_CASE("SearchTuning UCI options set their own member", "[tuning][uci]")
 	REQUIRE_FALSE(parse_uci("SingularExtensions", "true", tuning));
 	expected.singular_extensions_enabled = true;
 	CHECK(tuning == expected);
+}
+
+TEST_CASE("SearchTuning continuation history plies range from 0 to 2", "[tuning]")
+{
+	for (const int plies : {0, 1, 2})
+		CHECK(accepts("continuation_history_plies", plies));
+	CHECK(rejection("continuation_history_plies", -1) == Code::OutOfRange);
+	CHECK(rejection("continuation_history_plies", 3) == Code::OutOfRange);
 }
 
 TEST_CASE("SearchTuning UCI values are lowercase Booleans and unsigned decimals", "[tuning][uci]")
