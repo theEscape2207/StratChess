@@ -15,7 +15,8 @@ quiet scores on the moves that led to the node.
 ## Review focus
 
 - **nps cost against node savings.** Each quiet scored reads two entries from a 1.5 KB row (D1, D2),
-  and A1 alone cost 2.5% nps. Whether the change pays is decided on wall clock, not on nodes.
+  and A1 alone cost 2.5% nps. Whether the change pays is decided by the lab. The wall clock informs
+  that call (D7).
 - **D6, ageing once per search.** The butterfly table decays every iteration and this table does
   not, so their sum shifts toward continuation entries as the search deepens.
 - **D3, the key writes.** They have to be correct across null moves, pruning skips and singular
@@ -103,22 +104,39 @@ cutting move has already been undone.
 
 ### D6: Aged once per search, not per iteration
 
-The butterfly table is halved before every iteration (`age_history()`, 8,192 entries). Halving 1.18
-MB before every iteration would cost a memory pass that dominates the shallow iterations. The
+The butterfly table is halved before every iteration (`age_history()`, 8,192 entries). The
 continuation table is halved once per search instead, per thread: beside `td.clear_killers()` in
 `iterative_deepening()`, and beside `htd.clear_killers()` for helpers. It is cleared in
-`reset_for_new_game()`. Rejected: never ageing. Stockfish does not age, but here the butterfly table
-decays within a search while the continuation table would not, and the sum would drift toward
-stale continuation entries from earlier moves of the game.
+`reset_for_new_game()`.
 
-### D7: The shipped default is chosen by the gate
+Rejected: per-iteration ageing. A 1.18 MB pass before every iteration is *estimated* to cost more
+than the shallow iterations themselves. That estimate is unmeasured, and this document does not rely
+on it to rule the option out. The choice rests on keeping the design simple and cheap by
+construction. Rejected: never ageing. Stockfish does not age, but here the butterfly table decays
+within a search while the continuation table would not, and the sum would drift toward stale
+entries from earlier moves of the game.
+
+**A deliberate tradeoff:** within one search the butterfly entries halve every iteration and the
+continuation entries do not. So as depth rises, the sum weights continuation history more heavily.
+This is accepted, not designed for. It is a candidate for the out-of-scope weight tuning.
+
+### D7: The screen picks lab candidates, and the lab decides
 
 `continuation_history_plies` is `int`, range 0..2, JSON-bound, not exposed over UCI. At 0,
 `ScoreMoves` gets no rows and nothing updates the table. Only the `cont_key` writes remain, and they
-do not affect the search. The default is 2, unless the 1-ply build passes the wall-clock gate and the
-2-ply build does not, in which case it is 1. The lab runs only on the chosen default. If neither
-passes, the change is parked and not merged. The field stays after merge as the kill switch, like
-`lmr_enabled`. It is not a compile gate to be removed later.
+do not affect the search. The field stays after merge as the kill switch, like `lmr_enabled`. It is
+not a compile gate to be removed later.
+
+- **Stop criterion:** a variant is a lab candidate when its late-cut work falls by more than the
+  screen's ±2 SE at depth 12 or depth 16. If neither variant clears it, the change is parked with no
+  lab run.
+- **Default:** 2-ply, unless the 1-ply build is faster than the 2-ply build in at least 7 of the 9
+  interleaved wall-clock rounds. The lab runs only on the chosen default.
+- **The wall-clock gate informs the lab request; it does not block it.** A1 (#651) failed that gate
+  and still gained +13.2 ± 3.6 Elo. The gate's result goes to the owner with the lab request.
+- **Keep or park:** if the lab runs, its result decides. Merge when the Elo estimate minus its error
+  bar is above 0, and park otherwise. If the owner declines the lab, merge only on a passed
+  wall-clock gate.
 
 ## Assumptions I cannot verify from the code
 
@@ -127,9 +145,10 @@ passes, the change is parked and not merged. The field stays after merge as the 
 - **Equal weights are a sensible starting point.** Taken from common engine practice, not measured
   here. Tuning is out of scope. The screen shows whether the unweighted sum helps at all.
 - **The nps cost is tolerable.** Each quiet scored adds two reads from a 1.5 KB row. A1 alone cost
-  2.5% nps. Not known until `Run-Bench.ps1`. The wall-clock gate is what decides.
-- **Per-search ageing is better than none.** Not screened separately. Revisit only if the screen is
-  flat.
+  2.5% nps. Not known until `Run-Bench.ps1`. The wall-clock gate measures it, and the lab weighs it
+  (D7).
+- **Per-search ageing beats the alternatives.** Neither the per-iteration cost (D6) nor the Elo
+  effect of the weight drift is measured. Revisit only if the screen does not clear.
 
 ## Invariants
 
@@ -159,13 +178,16 @@ Engine tier: a search behaviour change.
 - **Equivalence:** a build with the default temporarily set to 0, run through
   `Compare-SearchEquivalence.ps1` against the merge base, gives identical nodes and best moves.
 - **Screen:** `Compare-SearchProfile.ps1` on `Tests/profile-screen.fen`, depths 12 and 16, 8 seeds,
-  against the merge base, for the 1-ply and the 2-ply builds. Pre-registered expectation: late-cut
-  work falls by more than the #653 noise floor, and the killer share of late cuts falls.
+  against the merge base, for the 1-ply and the 2-ply builds. The stop criterion is late-cut work
+  (D7). The killer share of late cuts is expected to fall, but it is diagnostic only: a share moves
+  when the population of cut nodes changes, and the screen's ±2 SE does not cover it.
 - **Speed:** `Run-Bench.ps1` nps, clang-cl Release.
-- **Gate (#636):** interleaved fixed-depth wall clock, `Threads=1`, against the merge base: median
-  <= -3% and faster in >= 8 of 9 rounds, plus the 200-position set.
+- **Wall clock (#636 gate):** interleaved fixed-depth, `Threads=1`: the merge base, the 1-ply build
+  and the 2-ply build in the same rounds. Pass: median <= -3% and faster in >= 8 of 9 rounds, plus
+  the 200-position set. The result is reported to the owner, and it decides only when the lab is
+  declined (D7).
 - **Strength:** a CI strength-lab run of the chosen default against the merge base, on the owner's
-  decision.
+  decision. When it runs, it decides keep or park (D7).
 - **Review:** dispatch `search-reviewer` on the diff.
 
 ## Cost
