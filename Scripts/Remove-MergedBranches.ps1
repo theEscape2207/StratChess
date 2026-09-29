@@ -104,6 +104,13 @@ foreach ($branch in (& git for-each-ref refs/heads --format='%(refname:short)'))
     else                     { $kept += "$branch (delete failed)" }
 }
 
+# Left in place rather than acted on: moving someone's HEAD unasked is surprising. The first run
+# after New-TaskBranch.ps1 deletes it, so it needs no action from anyone.
+if ($currentBranch -and $currentBranch -notin @('master', 'main')) {
+    & git merge-base --is-ancestor $currentBranch origin/main
+    if ($LASTEXITCODE -eq 0) { $kept += "$currentBranch (checked out; a later run removes it)" }
+}
+
 Write-Host "`n--- Merged into origin/main ---" -ForegroundColor Cyan
 if ($deleted.Count -eq 0) { Write-Host "  none" }
 else { $deleted | ForEach-Object { Write-Host "  deleted: $_" -ForegroundColor Green } }
@@ -111,17 +118,6 @@ else { $deleted | ForEach-Object { Write-Host "  deleted: $_" -ForegroundColor G
 if ($kept.Count -gt 0) {
     Write-Host "`n--- Kept ---" -ForegroundColor Cyan
     $kept | ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow }
-}
-
-# Reported rather than acted on: moving someone's HEAD unasked is surprising, and
-# New-TaskBranch.ps1 is the thing that moves you off it.
-if ($currentBranch -and $currentBranch -notin @('master', 'main')) {
-    & git merge-base --is-ancestor $currentBranch origin/main
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "`nNOTE: the branch you are on ('$currentBranch') is also merged." -ForegroundColor Yellow
-        Write-Host "      Start the next task with New-TaskBranch.ps1, which moves you off it," -ForegroundColor Yellow
-        Write-Host "      then re-run this to clean it up." -ForegroundColor Yellow
-    }
 }
 
 if ($SyncMaster) {
