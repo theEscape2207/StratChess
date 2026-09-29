@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
     PreToolUse hook: interrupts the first edit per session to a file type that has a skill, unless
-    that skill was already loaded.
+    that skill was already loaded. As a PostToolUse hook on Claude Code's Skill tool it records the load.
 
 .DESCRIPTION
     A skill's description is matched against the task, not the file being edited. This hook fires
@@ -19,6 +19,7 @@
 
     Reads the hook JSON on stdin from either host:
       Claude Code  Edit/Write          tool_input.file_path
+      Claude Code  Skill (PostToolUse) tool_input.skill, "<plugin>:<skill>" for a plugin skill
       Codex        apply_patch         tool_input.command (every "*** ... File:" line)
       lean-ctx     ctx_patch           tool_input.path, tool_input.ops[].path
 
@@ -199,7 +200,8 @@ if ($SelfTest) {
 
     function New-HookJson {
         param([string]$Session, [string]$Tool, [hashtable]$ToolInput)
-        $hook = [ordered]@{ hook_event_name = 'PreToolUse'; cwd = $repoRoot; tool_name = $Tool; tool_input = $ToolInput }
+        $hookEvent = if ($Tool -eq 'Skill') { 'PostToolUse' } else { 'PreToolUse' }
+        $hook = [ordered]@{ hook_event_name = $hookEvent; cwd = $repoRoot; tool_name = $Tool; tool_input = $ToolInput }
         if ($Session) { $hook.session_id = $Session }
         return ($hook | ConvertTo-Json -Depth 5)
     }
@@ -225,7 +227,7 @@ if ($SelfTest) {
         @{ Name = 'unwritable marker dir -> allowed';                Json = (New-HookJson 's11' 'Edit' @{ file_path = $ps1Abs }); MarkerDir = $ps1Abs;             Expect = @() }
         @{ Name = 'Skill load write-powershell -> allowed';          Json = (New-HookJson 's13' 'Skill' @{ skill = 'write-powershell' });                        Expect = @() }
         @{ Name = 'FALSIFY: .ps1 edit after the load -> allowed';    Json = (New-HookJson 's13' 'Edit' @{ file_path = $ps1Abs });                                 Expect = @() }
-        @{ Name = 'plugin-prefixed load writing-for-agents';         Json = (New-HookJson 's14' 'Skill' @{ skill = 'some-plugin:writing-for-agents' });          Expect = @() }
+        @{ Name = 'plugin-prefixed load -> allowed';                 Json = (New-HookJson 's14' 'Skill' @{ skill = 'some-plugin:writing-for-agents' });          Expect = @() }
         @{ Name = 'CLAUDE.md edit after the plugin load -> allowed'; Json = (New-HookJson 's14' 'Edit' @{ file_path = 'CLAUDE.md' });                            Expect = @() }
         @{ Name = 'unrelated skill load -> gate stays armed';        Json = (New-HookJson 's15' 'Skill' @{ skill = 'tdd' });                                     Expect = @() }
         @{ Name = '.ps1 edit after unrelated load -> write-powershell'; Json = (New-HookJson 's15' 'Edit' @{ file_path = $ps1Abs });                             Expect = @('write-powershell') }
