@@ -46,13 +46,17 @@ mate-range test on the probe's `usable` condition in `StratEngine/AIPerplex.cpp`
 **0.02 Elo** — one drawn game in 19,980, with `resign score=800` adjudication hiding the rest — and
 taken anyway, because a won K + R vs K that is not won is a correctness defect whatever it costs.
 
-**Opposite-coloured-bishop scaling, declined (#128).** Finding 4 measured pure OCB converting at
-0.881 at ≥ +250, close enough to the pawn-rich curve that scaling toward zero would more likely cost
-Elo than gain it. It was the obvious next term after drawish material, and the scan is why it is not
-in the engine.
+**Opposite-coloured-bishop scaling, narrowed (#128, #599).** Finding 4 measured pure OCB converting
+at 0.881 at ≥ +250, and the scale was declined as a whole. A later cut by pawn count (#618) found the
+exception: with two pawns against none, the engine traded won positions into an ending the oracle
+calls level. `OppositeBishopsScale()` in `StratEngine/Eval.cpp` scales that narrow class, one or two
+pawns against a pawnless defender. It measured **+1.23 ± 3.54 Elo**, a non-regression. In the lab
+games, the candidate as the side with the pawns reached the ending in 4 games against the reference's
+35. OCB with more pawns stays unscaled, as Finding 4 argued.
 
-Of those three: one strength change whose measurement could not separate it from zero, one strength
-change the scan argued *against*, and one correctness fix worth almost no Elo that was taken anyway.
+Of those three: two strength changes whose measurements could not separate them from zero, one of
+them narrowed from a change the scan first argued *against*, and one correctness fix worth almost no
+Elo that was taken anyway.
 That is the pattern so far — the delivered value has been in defects the lab's own adjudication hides
 from Elo, not in Elo. Everything else the scans have produced is measurement: confounds excluded,
 instruments calibrated, and a defect profile ([T2](#findings-1)) not yet converted into a change.

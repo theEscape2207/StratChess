@@ -22,6 +22,33 @@ Newest first.
 
 ---
 
+## 2026-09-29 — Opposite-coloured bishops with one or two pawns against none are scaled (#599)
+
+`EndgameScale()` gave full value to K+B+P(s) vs K+B with the bishops on opposite colours. #618 found
+lab games where the engine traded a won position into this ending. At depth 18 it scored the ending
++227 to +402, where the oracle scores it about 0.
+
+`OppositeBishopsScale()` now scales it: 4/16 with one pawn, 8/16 with two. It applies only when there
+is one bishop each on opposite colours, no other pieces, and the pawns are all on one side. The
+defender must be pawnless: K+B is two men, which keeps the bound that quiescence's delta and SEE
+guard (`MATERIAL_PRUNING_MIN_PIECES`) relies on. OCB with more pawns, a defender pawn, or an extra
+piece stays unscaled; #660 found no repeatable wrong move there. Both constants are judgement values,
+not tuned.
+
+Validation:
+- `[eval]` tests check the class four ways at its exact value, plus five complements. Reverting the
+  classifier fails the class tests.
+- The bench shows identical nodes and no measurable nps change.
+- Decision replay at depth 18: the 4 in-scope #618 opportunities are recovered, 3 of them by the
+  scale. All 17 won in-scope games keep a winning move.
+- Reviews: eval-reviewer LGTM; design reviewed cross-agent.
+
+Measurement: strength lab against `0c01b00`, **+1.23 +/- 3.54 Elo** (19980 games), non-regression.
+In those games the candidate, as the side with the pawns, reached the ending 4 times, never by its
+own move. The reference reached it 35 times and drew 21. Detail: `Measurements/ci-per-change.md`.
+
+---
+
 ## 2026-09-28 — History malus and gravity-bounded updates (#651)
 
 `ThreadData::history` only rewarded: a quiet move that cut gained depth² up to a clamp, and quiets
