@@ -133,8 +133,9 @@ Never teach the script to suppress the reminder — escalating it is fine.
 
 `Scripts/Invoke-SkillGate.ps1` denies the first edit per session to a `.ps1`, a skill or
 `CLAUDE.md`/`AGENTS.md`, naming the skill to load. Skill descriptions match the task, not the file,
-so these skills were mostly skipped. Codex runs it only once the project's `.codex/` layer and
-the hook definition are both trusted.
+so these skills were mostly skipped. In Claude Code, loading the skill first disarms the gate, so a
+compliant session is never interrupted; Codex raises no load event and always gets the one denial.
+Codex runs it only once the project's `.codex/` layer and the hook definition are both trusted.
 
 ---
 
