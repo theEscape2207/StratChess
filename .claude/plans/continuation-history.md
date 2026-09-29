@@ -120,20 +120,22 @@ entries from earlier moves of the game.
 continuation entries do not. So as depth rises, the sum weights continuation history more heavily.
 This is accepted, not designed for. It is a candidate for the out-of-scope weight tuning.
 
-### D7: The screen picks lab candidates, and the lab decides
+### D7: The lab decides; the screen and the wall clock inform it
 
 `continuation_history_plies` is `int`, range 0..2, JSON-bound, not exposed over UCI. At 0,
 `ScoreMoves` gets no rows and nothing updates the table. Only the `cont_key` writes remain, and they
 do not affect the search. The field stays after merge as the kill switch, like `lmr_enabled`. It is
 not a compile gate to be removed later.
 
-- **Stop criterion:** a variant is a lab candidate when its late-cut work falls by more than the
-  screen's ±2 SE at depth 12 or depth 16. If neither variant clears it, the change is parked with no
-  lab run.
-- **Default:** 2-ply, unless the 1-ply build is faster than the 2-ply build in at least 7 of the 9
-  interleaved wall-clock rounds. The lab runs only on the chosen default.
-- **The wall-clock gate informs the lab request; it does not block it.** A1 (#651) failed that gate
-  and still gained +13.2 ± 3.6 Elo. The gate's result goes to the owner with the lab request.
+- **Nothing before the lab gates it.** The depth-12 screen (~25 min) and the wall clock go to the
+  owner with the lab request, and the owner decides whether the lab runs. A1 (#651) had an
+  inconclusive screen and failed the wall-clock gate, and still gained +13.2 ± 3.6 Elo. A screen
+  measures one mechanism, late-cut work, while Elo also moves through LMR and pruning decisions, and
+  no screen result has yet been checked against a lab result. A depth-16 screen (~3 h) costs as much
+  as the lab, so it is insight only and never on the critical path.
+- **Which variant goes to the lab:** the owner's call, from the screen and the wall clock. The
+  1-ply variant went first, in parallel with the 2-ply depth-16 screen, because it cleared the
+  depth-12 screen (-2.8% ± 2.6% late-cut work) and 2-ply did not (-1.9% ± 2.7%).
 - **Keep or park:** if the lab runs, its result decides. Merge when the Elo estimate minus its error
   bar is above 0, and park otherwise. If the owner declines the lab, merge only on a passed
   wall-clock gate.
@@ -178,9 +180,11 @@ Engine tier: a search behaviour change.
 - **Equivalence:** a build with the default temporarily set to 0, run through
   `Compare-SearchEquivalence.ps1` against the merge base, gives identical nodes and best moves.
 - **Screen:** `Compare-SearchProfile.ps1` on `Tests/profile-screen.fen`, depths 12 and 16, 8 seeds,
-  against the merge base, for the 1-ply and the 2-ply builds. The stop criterion is late-cut work
-  (D7). The killer share of late cuts is expected to fall, but it is diagnostic only: a share moves
-  when the population of cut nodes changes, and the screen's ±2 SE does not cover it.
+  against the merge base, for the 1-ply and the 2-ply builds. Late-cut work is the headline, and it
+  informs the lab request (D7). The killer share of late cuts is expected to fall, but it is
+  diagnostic only: a share moves when the population of cut nodes changes, and the screen's ±2 SE
+  does not cover it. The screen result is recorded beside the lab result, so the screen's predictive
+  value can be judged across changes.
 - **Speed:** `Run-Bench.ps1` nps, clang-cl Release.
 - **Wall clock (#636 gate):** interleaved fixed-depth, `Threads=1`: the merge base, the 1-ply build
   and the 2-ply build in the same rounds. Pass: median <= -3% and faster in >= 8 of 9 rounds, plus
