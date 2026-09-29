@@ -217,6 +217,62 @@ TEST_CASE("Eval - the scaled rook classes are stated as exact counts", "[eval]")
 	}
 }
 
+// ── Opposite-coloured bishops ─────────────────────────────────────────────────
+//
+// One bishop each on opposite colours, with one or two pawns against none. The
+// complements are each one change away from a scaled case and keep full value.
+
+TEST_CASE("Eval - opposite-coloured bishops with a pawnless defender are scaled", "[eval]")
+{
+	struct ScaledCase {
+		const char* fen;
+		int scale;
+	};
+
+	const ScaledCase scaled =
+	    GENERATE(ScaledCase{FEN_OPPOSITE_BISHOPS_ONE_PAWN, EvaluatorTestFixture::OppositeBishopsOnePawnScale},
+	             ScaledCase{FEN_OPPOSITE_BISHOPS_TWO_PAWNS, EvaluatorTestFixture::OppositeBishopsTwoPawnsScale});
+	CAPTURE(scaled.fen, scaled.scale);
+
+	const Evaluator eval;
+
+	for (const std::string& colored : {std::string(scaled.fen), MirrorFen(scaled.fen)}) {
+		for (const char stm : {'w', 'b'}) {
+			std::string position = colored;
+			position[position.find(' ') + 1] = stm;
+			CAPTURE(position);
+			Board board(position);
+
+			REQUIRE(eval.Breakdown(board).endgame_scale == scaled.scale);
+
+			// A zero unscaled score cannot tell a scale from a clamp.
+			const int raw = EvaluatorTestFixture::RawWhitePov(board);
+			REQUIRE(raw != 0);
+
+			const int whitePov = raw * scaled.scale / ENDGAME_SCALE_MAX;
+			REQUIRE(eval.Evaluate(board) == ((stm == 'w') ? whitePov : -whitePov));
+		}
+	}
+}
+
+TEST_CASE("Eval - one change takes a position out of the opposite-bishop class", "[eval]")
+{
+	const char* fen = GENERATE("8/8/4k3/8/3P4/2B5/8/4K1b1 w - - 0 1",  // same-coloured bishops
+	                           "8/5p2/4k3/8/3P4/2B4b/8/4K3 w - - 0 1", // the defender holds a pawn
+	                           "8/8/4k3/8/P2P3P/2B4b/8/4K3 w - - 0 1", // three pawns
+	                           "8/8/4k3/8/3P4/2B4b/8/4K1N1 w - - 0 1", // an added knight
+	                           "8/8/4k3/8/3P4/2BB3b/8/4K3 w - - 0 1"); // two bishops against one
+	CAPTURE(fen);
+
+	const Evaluator eval;
+
+	for (const std::string& colored : {std::string(fen), MirrorFen(fen)}) {
+		CAPTURE(colored);
+		Board board(colored);
+		REQUIRE(eval.Breakdown(board).endgame_scale == ENDGAME_SCALE_MAX);
+	}
+}
+
 // ── Wrong-coloured-bishop fortress (issue #128) ──────────────────────────────
 //
 // The one class the classifier decides from a square rather than from a count,
@@ -309,15 +365,24 @@ TEST_CASE("Eval - a kingless board reaches the terms that guard against it", "[e
 TEST_CASE("Eval - Breakdown(): the endgame row accounts for the whole scale", "[eval]")
 {
 	// The #129 honesty invariant extended to the scale: the rows plus the
-	// adjustment must still reproduce `total` exactly. Asserted on a scaled
-	// position, where the adjustment is the largest number in the table.
-	Board board("8/8/8/3k4/8/8/3N4/3K4 w - - 0 1");
+	// adjustment must still reproduce `total` exactly. Asserted on a zero and a
+	// fractional scale, where the adjustment is the largest number in the table.
+	struct ScaledCase {
+		const char* fen;
+		int scale;
+	};
+
+	const ScaledCase scaled =
+	    GENERATE(ScaledCase{"8/8/8/3k4/8/8/3N4/3K4 w - - 0 1", 0},
+	             ScaledCase{FEN_OPPOSITE_BISHOPS_TWO_PAWNS, EvaluatorTestFixture::OppositeBishopsTwoPawnsScale});
+	CAPTURE(scaled.fen);
+	Board board(scaled.fen);
 
 	const Evaluator eval;
 
 	const EvalBreakdown terms = eval.Breakdown(board);
 
-	REQUIRE(terms.endgame_scale == 0);
+	REQUIRE(terms.endgame_scale == scaled.scale);
 	REQUIRE(terms.endgame_adjustment != 0);
 
 	const int whitePov = terms.white_pov();

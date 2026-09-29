@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-09-29 | 455352e (opposite-coloured bishops with 1-2 pawns against none scaled to 4/16 and 8/16, #599; engine code unchanged since the run, comments aside) | 0c01b00 | 19980 | 10+0.1 | **+1.23 +/- 3.54** | non-regression |
 | 2026-09-28 | dc19de5 (history malus for searched quiets and gravity-bounded updates, #651; engine code unchanged since the run, comments aside) | 5205819 | 19980 | 10+0.1 | **+13.20 +/- 3.61** | gain |
 | 2026-09-28 | e11a58a (deepening stops early only on a mate score, not on a short PV, #652) | f58f052 | 19980 | 10+0.1 | **+2.89 +/- 3.48** | non-regression |
 | 2026-09-18 | e2ff7d2 with `Contempt=20` set over UCI on the candidate only, now tinting the draws the evaluator settles as well as those the search detects (#452) | e2ff7d2 (the same commit at its shipped default `Contempt=0`; the delta is a runtime option, not a code change) | 19980 | 10+0.1 | **-0.85 +/- 3.60** | no effect |
@@ -39,6 +40,31 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-09-29 -- 455352e (opposite-coloured bishop scale, #599) (19980 games)
+
+**The expected outcome for a change that touches a few dozen games in 20,000.** The lab was never going
+to show a gain, so it was run to bound a regression; the decision evidence is the replay and the
+mechanism read below. 18 shards x 555 pairs, pooled Ptnml(0-2) [776, 2239, 3907, 2274, 794], score
+50.18%, run `36495197163`, 3 h 12 min wall-clock, all 18 green. 95% interval [-2.31, +4.77]. 10 of 18
+shards favour the candidate on score, 8 the reference (48.15% to 52.75%). Zero time losses, illegal
+moves or disconnects.
+
+**The mechanism is visible in the games.** Counting each game once, at its first entry into K+B+1-2P
+vs K+B on opposite colours (`EvalDatasets/2026-09-28_drawish-move-choice-618/lab599.py`):
+
+- **Candidate as the side with the pawns: 4 games.** All had one pawn, and none was entered by the
+  candidate's own move.
+- **Reference as the side with the pawns: 35 games, 21 of them drawn.** 20 of the 35 were two pawns
+  against none at >= 100 cp, and the reference entered 13 of the 35 itself.
+
+The scale works from both chairs: it steers the attacker away from the ending, and it steers the
+defender toward it.
+
+**Replay, before the run.** At depth 18, all 4 in-scope #618 decisions now choose the move the oracle
+prefers (>= 150 cp, and >= 150 cp better than the entering move). The scale decides 3 of them; the
+baseline already avoids the 4th at that depth. All 17 won in-scope games keep a winning move: 14
+are unchanged, and 3 change in both builds alike.
 
 ### 2026-09-28 -- dc19de5 (history malus and gravity, #651) (19980 games)
 

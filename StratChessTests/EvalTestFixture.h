@@ -89,6 +89,11 @@ static constexpr const char* FEN_ROOK_VS_MINOR = "4k2n/8/8/8/8/8/3R4/4K3 w - - 0
 // scoring zero could not tell a scale from a clamp.
 static constexpr const char* FEN_ROOK_VS_ROOK = "r3k3/3R4/8/8/8/8/8/4K3 w - - 0 1";
 
+// Opposite-coloured bishops, White holding the pawns and Black none: dark Bc3
+// against light Bh3. Nothing attacks either king.
+static constexpr const char* FEN_OPPOSITE_BISHOPS_ONE_PAWN = "8/8/4k3/8/3P4/2B4b/8/4K3 w - - 0 1";
+static constexpr const char* FEN_OPPOSITE_BISHOPS_TWO_PAWNS = "8/8/4k3/8/P2P4/2B4b/8/4K3 w - - 0 1";
+
 // King safety (issue #97). Every case below keeps a queen on each side so the
 // phase is nonzero — all four king-safety contributions are middlegame-only and
 // blend to exactly 0 at phase 0, which would make a bare-king case vacuous.
@@ -365,6 +370,7 @@ static constexpr const char* kSymmetryFens[] = {
     FEN_ROOK_AND_MINOR_VS_ROOK,
     FEN_ROOK_VS_MINOR,
     FEN_ROOK_VS_ROOK,
+    FEN_OPPOSITE_BISHOPS_TWO_PAWNS,
     // The mop-up corner target is keyed on the bishop's square colour for this
     // class, and a colour mirror flips the bishop's colour along with the corners.
     // What the mirror discriminates is the ABSENCE of that keying -- an inverted
@@ -579,6 +585,8 @@ struct EvaluatorTestFixture {
 	static constexpr int RookAndMinorVsRookScale = Evaluator::ROOK_AND_MINOR_VS_ROOK_SCALE;
 	static constexpr int RookVsMinorScale = Evaluator::ROOK_VS_MINOR_SCALE;
 	static constexpr int RookVsRookScale = Evaluator::ROOK_VS_ROOK_SCALE;
+	static constexpr int OppositeBishopsOnePawnScale = Evaluator::OPPOSITE_BISHOPS_ONE_PAWN_SCALE;
+	static constexpr int OppositeBishopsTwoPawnsScale = Evaluator::OPPOSITE_BISHOPS_TWO_PAWNS_SCALE;
 
 	// The score before any endgame scale — what Evaluate() would have returned
 	// without the classifier. Lets a scaled case assert the discount reached the

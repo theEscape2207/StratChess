@@ -915,14 +915,16 @@ PieceAggregates Evaluator::ComputePieceAggregates(std::span<const BITBOARD> boar
 //	EndgameScale() :
 //	Description: Classifies the position's material and returns what fraction of
 //	             the assembled score it is worth, over ENDGAME_SCALE_MAX.
-//	Returns:	 0 for material that cannot win at all, ENDGAME_SCALE_MAX otherwise.
+//	Returns:	 0 for material that cannot win at all, a fraction for the drawish
+//	             classes, ENDGAME_SCALE_MAX otherwise.
 //
 // Classes drawn by material alone are scaled to zero; the pawnless rook endings
-// are drawish rather than drawn and get a fraction. Everything else — including
-// opposite-coloured bishops, which convert often enough that discounting them
-// costs strength, and minor against minor, which nothing has measured — is left
-// at full value. A class wrongly scaled to zero is a won ending the search will
-// not enter, so the bar for a zero is that no defence loses, not that most draw.
+// and opposite-coloured bishops with one or two pawns against none are drawish
+// rather than drawn and get a fraction. Everything else — including opposite-
+// coloured bishops with more pawns, which convert often enough that discounting
+// them costs strength, and minor against minor — is left at full value. A class
+// wrongly scaled to zero is a won ending the search will not enter, so the bar
+// for a zero is that no defence loses, not that most draw.
 //
 // Deliberately an evaluation scale and not a draw rule in ThreadData::check_draws():
 // a scale of zero already settles the leaf as drawn — at whatever a draw is worth to
@@ -937,8 +939,8 @@ int Evaluator::EndgameScale(std::span<const BITBOARD> boards) noexcept
 		return ENDGAME_SCALE_MAX;
 
 	// A pawn promotes, so no piece count can call a position holding one drawn.
-	// The single exception is the wrong-coloured-bishop fortress, and that class
-	// has nothing on the board but kings, one bishop and rook pawns — so the
+	// The exceptions are the wrong-coloured-bishop fortress and the opposite-
+	// bishop class, and both hold nothing but kings, bishops and pawns — so the
 	// inner test sends every position still holding a knight or a rook out of
 	// here. Together with the queen test above these ORs are the exit for nearly
 	// every position the engine evaluates, and nothing has been counted yet.
@@ -946,6 +948,11 @@ int Evaluator::EndgameScale(std::span<const BITBOARD> boards) noexcept
 		if ((boards[ePiece::WHITE_KNIGHT] | boards[ePiece::BLACK_KNIGHT] | boards[ePiece::WHITE_ROOK] |
 		     boards[ePiece::BLACK_ROOK]) != 0ULL)
 			return ENDGAME_SCALE_MAX;
+
+		// The fortress needs a bare defending king, so a bishop on each side can
+		// only be a candidate for the opposite-bishop class.
+		if (boards[ePiece::WHITE_BISHOP] != 0ULL && boards[ePiece::BLACK_BISHOP] != 0ULL)
+			return OppositeBishopsScale(boards);
 
 		return WrongBishopFortress(boards);
 	}
@@ -1045,6 +1052,42 @@ int Evaluator::WrongBishopFortress(std::span<const BITBOARD> boards) noexcept
 		return ENDGAME_SCALE_MAX; // Kingless board — see EvalContext::king_sq.
 
 	return (KingDistance(Board::GetFirstPiece(defenderKing), promoSquare) <= 1) ? 0 : ENDGAME_SCALE_MAX;
+}
+
+//
+//	OppositeBishopsScale() :
+//	Description: The pawns-on-the-board branch of EndgameScale() for a bishop on
+//	             each side, reached only once queens, knights and rooks are
+//	             known absent.
+//	Returns:	 A fractional scale for one bishop each on opposite colours with
+//	             one or two pawns on one side only, ENDGAME_SCALE_MAX otherwise.
+//
+// The defender must be pawnless: K+B is two men, the bound every scaled class
+// keeps for quiescence pruning (see the scale constants in Eval.h). The side
+// holding the pawns is the attacker whichever colour it is.
+//
+int Evaluator::OppositeBishopsScale(std::span<const BITBOARD> boards) noexcept
+{
+	const BITBOARD whiteBishops = boards[ePiece::WHITE_BISHOP];
+	const BITBOARD blackBishops = boards[ePiece::BLACK_BISHOP];
+	if (std::popcount(whiteBishops) != 1 || std::popcount(blackBishops) != 1)
+		return ENDGAME_SCALE_MAX;
+	if (((whiteBishops & DARK_SQUARES) != 0ULL) == ((blackBishops & DARK_SQUARES) != 0ULL))
+		return ENDGAME_SCALE_MAX;
+
+	const int whitePawns = std::popcount(boards[ePiece::WHITE_PAWN]);
+	const int blackPawns = std::popcount(boards[ePiece::BLACK_PAWN]);
+	if (whitePawns != 0 && blackPawns != 0)
+		return ENDGAME_SCALE_MAX;
+
+	switch (whitePawns + blackPawns) {
+	case 1:
+		return OPPOSITE_BISHOPS_ONE_PAWN_SCALE;
+	case 2:
+		return OPPOSITE_BISHOPS_TWO_PAWNS_SCALE;
+	default:
+		return ENDGAME_SCALE_MAX;
+	}
 }
 
 //
