@@ -260,7 +260,7 @@ running the script.
 proves is contained in `origin/main` — **names are never evidence**. `git branch -d` is not a
 substitute: it asks whether a branch merged into the *current* branch, a different question. It skips
 `master`, `main`, the branch you are on, and anything checked out in another worktree; if the branch
-you are on is itself merged it says so rather than moving your HEAD.
+you are on is itself merged it lists it under Kept rather than moving your HEAD.
 
 **`Sync-Master.ps1` runs from anywhere.** `master` can be checked out in only one worktree, so the
 script finds that worktree and syncs there rather than requiring you to be standing in it. When that

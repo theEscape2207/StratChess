@@ -58,8 +58,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # $null (not "HEAD") when detached, so the current-branch comparisons below never
-# match a real branch name and the merged-branch NOTE is skipped -- there is nothing
-# to move off of.
+# match a real branch name.
 $currentBranch = & git symbolic-ref -q --short HEAD 2>$null
 if ($LASTEXITCODE -ne 0) { $currentBranch = $null }
 
@@ -82,7 +81,6 @@ foreach ($branch in (& git for-each-ref refs/heads --format='%(refname:short)'))
     $branch = $branch.Trim()
     if (-not $branch) { continue }
     if ($branch -in @('master', 'main')) { continue }
-    if ($branch -eq $currentBranch)      { continue }
     if ($branch -in $checkedOutElsewhere) {
         $kept += "$branch (checked out in another worktree)"
         continue
@@ -90,7 +88,14 @@ foreach ($branch in (& git for-each-ref refs/heads --format='%(refname:short)'))
 
     & git merge-base --is-ancestor $branch origin/main
     if ($LASTEXITCODE -ne 0) {
-        $kept += "$branch (not merged into origin/main)"
+        if ($branch -ne $currentBranch) { $kept += "$branch (not merged into origin/main)" }
+        continue
+    }
+
+    # Left in place rather than moving HEAD unasked; once New-TaskBranch.ps1 moves off it, the next
+    # run deletes it.
+    if ($branch -eq $currentBranch) {
+        $kept += "$branch (checked out; a later run removes it)"
         continue
     }
 
@@ -102,13 +107,6 @@ foreach ($branch in (& git for-each-ref refs/heads --format='%(refname:short)'))
     & git branch -D $branch *> $null
     if ($LASTEXITCODE -eq 0) { $deleted += $branch }
     else                     { $kept += "$branch (delete failed)" }
-}
-
-# Left in place rather than acted on: moving someone's HEAD unasked is surprising. The first run
-# after New-TaskBranch.ps1 deletes it, so it needs no action from anyone.
-if ($currentBranch -and $currentBranch -notin @('master', 'main')) {
-    & git merge-base --is-ancestor $currentBranch origin/main
-    if ($LASTEXITCODE -eq 0) { $kept += "$currentBranch (checked out; a later run removes it)" }
 }
 
 Write-Host "`n--- Merged into origin/main ---" -ForegroundColor Cyan
