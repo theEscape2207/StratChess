@@ -76,7 +76,8 @@ Rejected: a row pointer per ply. It is 8 bytes instead of 2, and still needs a s
 
 A quiet that is neither the hash move nor a killer scores
 `history[side][from][to] + cont1[col] + cont2[col]`. An absent row contributes 0. The sum is bounded
-by 3 × 16,384 = 49,152, far below the killer tier (800,000), so the tier structure is unchanged.
+by 3 × 16,384 = 49,152, far below the lowest tier above quiets (losing captures, 700,000), so the
+tier structure is unchanged.
 `ScoreMoves` takes the two rows as `const int16_t*` (`nullptr` when absent), so `Sort.h` does not
 learn about `ThreadData`. Rejected: weighting the tables (for example 2× on the 1-ply entry). It is a
 tuning question, and it is out of scope.
@@ -87,7 +88,9 @@ At a beta cutoff by a quiet, the cutting move gets `+history_bonus(depth)` and e
 searched quiet gets `-history_bonus(depth)`, in every present row, through the same gravity update.
 `apply_history` becomes a template over the entry type, with its arithmetic in `int32_t`, so
 `|entry| <= HISTORY_MAX` holds for `int16_t` for the same reason it holds today. The update sites stay
-`update_history` and `penalize_searched_quiets`, which gain the two row indices.
+`update_history` and `penalize_searched_quiets`, which gain the two row indices. Each move's column
+piece is read from `td.board`, which at both sites holds the node's own position again, because the
+cutting move has already been undone.
 
 ### D6: Aged once per search, not per iteration
 
@@ -105,7 +108,8 @@ stale continuation entries from earlier moves of the game.
 `ScoreMoves` gets no rows and nothing updates the table. Only the `cont_key` writes remain, and they
 do not affect the search. The default is 2, unless the 1-ply build passes the wall-clock gate and the
 2-ply build does not, in which case it is 1. The lab runs only on the chosen default. If neither
-passes, the change is parked and not merged.
+passes, the change is parked and not merged. The field stays after merge as the kill switch, like
+`lmr_enabled`. It is not a compile gate to be removed later.
 
 ## Assumptions I cannot verify from the code
 
@@ -137,6 +141,12 @@ Engine tier: a search behaviour change.
   `ScoreMoves` ranks a quiet with a large continuation entry above one with a larger butterfly entry
   alone; a null move leaves no 1-ply row for its child; at `plies = 0` a search leaves the table
   all-zero.
+- **Asserts and static checks:** `static_assert(3 * HISTORY_MAX < 700'000)`, which keeps the quiet
+  sum below every other tier. Debug asserts that a row is read only through a key that is not
+  `kNoContinuation`, and that every index is below 768. The Linux Debug and sanitizer CI leg runs
+  them over the whole suite.
+- **Abort invariant:** the continuation updates are added inside the existing `beta <= alpha` block,
+  which is below the `IsAborted()` return. `search-reviewer` checks that no new write lands above it.
 - **Equivalence:** a build with the default temporarily set to 0, run through
   `Compare-SearchEquivalence.ps1` against the merge base, gives identical nodes and best moves.
 - **Screen:** `Compare-SearchProfile.ps1` on `Tests/profile-screen.fen`, depths 12 and 16, 8 seeds,
