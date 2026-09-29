@@ -12,6 +12,15 @@ cuts come from a killer or a history-ordered quiet. A1 (#651) made the butterfly
 by how often they cut when tried, and gained +13.2 Elo. The next standard step is to condition
 quiet scores on the moves that led to the node.
 
+## Review focus
+
+- **nps cost against node savings.** Each quiet scored reads two entries from a 1.5 KB row (D1, D2),
+  and A1 alone cost 2.5% nps. Whether the change pays is decided on wall clock, not on nodes.
+- **D6, ageing once per search.** The butterfly table decays every iteration and this table does
+  not, so their sum shifts toward continuation entries as the search deepens.
+- **D3, the key writes.** They have to be correct across null moves, pruning skips and singular
+  re-entry at the same ply.
+
 ## Scope
 
 **This change will:**
