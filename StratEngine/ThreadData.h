@@ -53,10 +53,9 @@ struct ThreadData {
 	// the main tree — and are reported both together (UCI 'nodes') and apart (Run-Bench.ps1).
 	int64_t qnodes_searched = 0;
 
-	// Node-based SearchControl polling counter. Reset alongside nodes_searched. Under Lazy SMP each helper thread
-	// increments its own copy — no cross-thread contention — but only thread 0 ever
-	// calls the wall-clock check (see pvs()/quiescence(): gated on thread_id == 0).
-	// Helper threads rely solely on the cheap atomic IsAborted() read instead.
+	// Node-based SearchControl polling counter. Reset alongside nodes_searched. Only thread 0 counts
+	// and calls the wall-clock check (poll_search_limits(), gated on thread_id == 0); helper threads
+	// rely solely on the cheap atomic IsAborted() read instead.
 	int64_t nodes_since_check_ = 0;
 
 	// Thread-local principal variation.
