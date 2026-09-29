@@ -308,6 +308,8 @@ void AIPerplex::init_search(const Board& root)
 // thread's search result is authoritative.
 void AIPerplex::helper_loop(ThreadData& td, int max_depth, TranspositionTable& tt)
 {
+	// On the helper's own thread, so the helpers age their continuation tables in parallel.
+	td.begin_search(tuning_.continuation_history_plies > 0);
 	int seed_score = 0;
 	for (int depth = 1; depth <= max_depth; ++depth) {
 		if (control_.IsAborted())
@@ -423,11 +425,6 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 		for (size_t i = 0; i < threads - 1; ++i) {
 			ThreadData& htd = *helper_tds_[i];
 			htd.board = root; // same seed as td_.board
-			htd.clear_killers();
-			htd.clear_null_move_flags();
-			htd.clear_continuation_keys();
-			if (tuning_.continuation_history_plies > 0)
-				htd.age_continuation_history();
 			htd.nodes_searched = 0;
 			htd.qnodes_searched = 0;
 			htd.telemetry.reset();
@@ -489,11 +486,7 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 	td.nodes_since_check_ = 0;     // reset node counter for this search
 	bool extra_depth_used = false; // soft-limit extension granted at most once per search
 
-	td.clear_killers(); // Clear killer moves at the start of the search
-	td.clear_null_move_flags();
-	td.clear_continuation_keys();
-	if (tuning_.continuation_history_plies > 0)
-		td.age_continuation_history();
+	td.begin_search(tuning_.continuation_history_plies > 0);
 
 	for (int depth = 1; depth <= max_depth; ++depth) {
 
@@ -862,6 +855,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		}
 
 		td.last_move_was_null[ply + 1] = true;
+		// Scratch for the child about to be searched, overwritten before any other reader, so like
+		// last_move_was_null it may be written above the abort guard.
 		td.cont_key[ply + 1] = ThreadData::kNoContinuation;
 		td.board.DoNullMove();
 		const int null_score = -pvs(td, depth - 1 - R, -beta, -beta + 1, ply + 1, false, tt);
@@ -898,7 +893,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 
 	const ContinuationRows cont_rows = td.continuation_rows(ply, tuning_.continuation_history_plies);
 	MoveSorter::ScoreMoves(moveList, n, td.board, side, hash_move, td.killers[ply][0], td.killers[ply][1], td.history,
-	                       scored_idx, cont_rows.one_ply, cont_rows.two_ply);
+	                       scored_idx, cont_rows);
 
 	// Singular extension: if the transposition table's move is much better than every
 	// alternative, search it one ply deeper. The verification runs HERE, before the move
@@ -1044,7 +1039,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			}
 
 			// The board holds the child, so the piece on the destination is the one that moved: the
-			// promoted piece for a promotion, the king for castling.
+			// promoted piece for a promotion, the king for castling. Scratch like the null move's key.
 			td.cont_key[ply + 1] = static_cast<uint16_t>(continuation_index(td.board.GetPiece(move.to()), move.to()));
 
 			if constexpr (kSearchProfileCompiled) {

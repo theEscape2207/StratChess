@@ -12,12 +12,6 @@
 #include <cstring>
 #include <memory>
 
-// The continuation-history rows a pvs() node reads and updates, nullptr when absent.
-struct ContinuationRows {
-	int16_t* one_ply = nullptr;
-	int16_t* two_ply = nullptr;
-};
-
 // Per-thread search state for AIPerplex: each Lazy SMP helper thread owns one and runs the same
 // search functions on it.
 //
@@ -33,7 +27,7 @@ struct ThreadData {
 	static_assert(HISTORY_MAX <= INT16_MAX, "continuation entries are int16_t");
 
 	static constexpr uint16_t kNoContinuation = 0xFFFF;
-	using ContinuationHistory = std::array<std::array<int16_t, kContinuationSize>, kContinuationSize>;
+	using ContinuationHistory = std::array<std::array<int16_t, kPieceSquares>, kPieceSquares>;
 
 	// Bit i: the move at sorted index i of a pvs() frame completed its child search.
 	using SearchedMoves = std::bitset<MoveList::MAX_MOVES>;
@@ -86,9 +80,9 @@ struct ThreadData {
 	int32_t history[2][64][64];
 
 	// cont_key[p] is continuation_index() of the move that led to ply p, or kNoContinuation after a
-	// null move and at the root. Written by pvs() only for a move it actually searches, so a node
-	// at ply reads the opponent's last move at cont_key[ply] and its own previous one at
-	// cont_key[ply - 1].
+	// null move and at the root, whose game move's piece is not recorded. Written by pvs() only for a
+	// move it actually searches, so a node at ply reads the opponent's last move at cont_key[ply] and
+	// its own previous one at cont_key[ply - 1].
 	uint16_t cont_key[MAX_PLY];
 
 	// Continuation history: [row: a previous move][column: a quiet], same update rule and bound as
@@ -193,6 +187,16 @@ struct ThreadData {
 					score /= 2;
 	}
 
+	// Per-search reset of the ply-indexed state, with the continuation table's once-per-search ageing.
+	void begin_search(bool age_continuation) noexcept
+	{
+		clear_killers();
+		clear_null_move_flags();
+		clear_continuation_keys();
+		if (age_continuation)
+			age_continuation_history();
+	}
+
 	void clear_continuation_keys() noexcept { std::fill(std::begin(cont_key), std::end(cont_key), kNoContinuation); }
 
 	void clear_continuation_history() noexcept
@@ -292,17 +296,16 @@ struct ThreadData {
 
 	int16_t* continuation_row(uint16_t key) noexcept
 	{
-		assert(key < kContinuationSize);
+		assert(key < kPieceSquares);
 		return (*cont_history)[key].data();
 	}
 
 	void apply_quiet_delta(eColor side, const Move& move, int32_t delta, ContinuationRows rows) noexcept
 	{
 		apply_history(history[side][move.from()][move.to()], delta);
-		if (rows.one_ply == nullptr && rows.two_ply == nullptr)
+		if (rows.empty())
 			return;
-		const int col = continuation_index(board.GetPiece(move.from()), move.to());
-		assert(col >= 0 && col < kContinuationSize);
+		const int col = MoveSorter::QuietContinuationColumn(board, move);
 		if (rows.one_ply != nullptr)
 			apply_history(rows.one_ply[col], delta);
 		if (rows.two_ply != nullptr)

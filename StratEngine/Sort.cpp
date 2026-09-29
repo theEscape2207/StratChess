@@ -79,8 +79,7 @@ void MoveSorter::SortMovesByValue(MoveList& moveList, size_t count, const Board&
 // forecloses it.
 void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const Board& board, eColor side, const Move& hash_move,
                             const Move& killer0, const Move& killer1, const int32_t (&history)[2][64][64],
-                            std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx,
-                            const int16_t* cont_one_ply, const int16_t* cont_two_ply)
+                            std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx, ContinuationRows cont)
 {
 	assert(n >= 0 && n <= static_cast<int>(MoveList::MAX_MOVES));
 
@@ -114,14 +113,13 @@ void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const Board& board,
 			assert(static_cast<int>(side) >= 0 && static_cast<int>(side) < 2);
 			s = history[static_cast<int>(side)][mv.from()][mv.to()];
 			// Each entry is bounded by HISTORY_MAX, so the sum stays below kLosingCaptureTier; ThreadData
-			// asserts that. A quiet's moving piece is the one on its from-square.
-			if (cont_one_ply != nullptr || cont_two_ply != nullptr) {
-				const int col = continuation_index(board.GetPiece(mv.from()), mv.to());
-				assert(col >= 0 && col < kContinuationSize);
-				if (cont_one_ply != nullptr)
-					s += cont_one_ply[col];
-				if (cont_two_ply != nullptr)
-					s += cont_two_ply[col];
+			// asserts that.
+			if (!cont.empty()) {
+				const int col = QuietContinuationColumn(board, mv);
+				if (cont.one_ply != nullptr)
+					s += cont.one_ply[col];
+				if (cont.two_ply != nullptr)
+					s += cont.two_ply[col];
 			}
 		}
 		out_scored_idx[i] = {s, i};
@@ -139,4 +137,12 @@ void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const Board& board,
 			return tie_break_key(moveList[a.second], seed) < tie_break_key(moveList[b.second], seed);
 		return a.second < b.second;
 	});
+}
+
+// A quiet's moving piece is the one on its from-square.
+int MoveSorter::QuietContinuationColumn(const Board& board, const Move& quiet) noexcept
+{
+	const int col = continuation_index(board.GetPiece(quiet.from()), quiet.to());
+	assert(col >= 0 && col < kPieceSquares);
+	return col;
 }

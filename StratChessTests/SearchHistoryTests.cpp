@@ -1,5 +1,5 @@
-// SearchHistoryTests.cpp — the quiet history table's update rule: gravity-bounded bonus and malus,
-// aging, and which moves a quiet cutoff penalizes.
+// SearchHistoryTests.cpp — the quiet history and continuation history tables: gravity-bounded bonus
+// and malus, aging, which moves a quiet cutoff penalizes, and how continuation rows are keyed and read.
 
 #include <catch2/catch_test_macros.hpp>
 #include "SearchTestFixture.h"
@@ -189,7 +189,7 @@ TEST_CASE("Continuation history - a large entry outranks a larger history entry 
 	CHECK(first() == by_history);
 
 	MoveSorter::ScoreMoves(moveList, n, board, WHITE, Move::EmptyMove(), Move::EmptyMove(), Move::EmptyMove(),
-	                       td->history, scored_idx, rows.one_ply, rows.two_ply);
+	                       td->history, scored_idx, rows);
 	CHECK(first() == by_continuation);
 }
 
