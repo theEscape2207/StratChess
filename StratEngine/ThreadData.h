@@ -137,7 +137,7 @@ struct ThreadData {
 	// deliberately aged, never cleared, WITHIN a game (see age_history())
 	// -- this is what draws that line at the game boundary instead.
 	// Killers and null-move flags are already cleared at the start of every
-	// move by iterative_deepening(), so clearing them again here is only for
+	// search by begin_search(), so clearing them again here is only for
 	// the (harmless) case of something reading them before the new game's
 	// first search runs. `board` is reset too even though every Search()
 	// copy-assigns it fresh from the supplied root before searching: it
