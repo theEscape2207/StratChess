@@ -22,6 +22,30 @@ Newest first.
 
 ---
 
+## 2026-09-30 — Continuation history orders quiet moves (#664)
+
+Quiet moves were ordered by the butterfly `history[side][from][to]` table alone, which knows nothing
+of the position's recent moves. Each thread now also keeps a continuation-history table indexed by
+(piece, to-square) of the previous move and of the move two plies back, against the (piece,
+to-square) of the quiet. A quiet scores its butterfly entry plus both continuation entries; the sum
+stays below the killer tier. The table takes the same gravity bonus and malus as the butterfly
+table, is aged by halving once per search, and lives on the heap (1.1 MB per thread). A null move
+writes a sentinel key, so the child reads no continuation row.
+
+`continuation_history_plies` (JSON tuning only, default 2) sets how many rows are read and written;
+0 is node-identical to the previous engine.
+
+Validation:
+- `Compare-SearchEquivalence.ps1` at `continuation_history_plies=0` against `origin/main`: IDENTICAL.
+- Four `[search]` tests: the gravity bound, a continuation entry outranking a larger butterfly
+  entry, the null-move sentinel, and no table writes at 0.
+- CI strength lab, 19,980 games at 10+0.1 against merge base `481aa97`: **+6.90 ± 3.60 Elo** (2
+  plies). One ply alone measured +0.78 ± 3.58.
+- Neither the depth-12 profile screen nor the fixed-depth wall clock predicted that. At depth 12 on
+  `Tests/profile-screen.fen`, late-cut work fell 1.9% ± 2.7% (2 plies). Over the same 200 positions
+  at depth 14, 2 plies took 6.2% ± 4.9% longer; on the 8 bench positions it was 5.2% faster in 9 of
+  9 rounds.
+
 ## 2026-09-29 — Opposite-coloured bishops with one or two pawns against none are scaled (#599)
 
 `EndgameScale()` gave full value to K+B+P(s) vs K+B with the bishops on opposite colours. #618 found
