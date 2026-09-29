@@ -26,9 +26,22 @@ Run it yourself, fix inline, no subagent:
   change touches (duplicated, dead or stale code), and check the plan does not add to it. The same
   lens reviews the diff: `Docs/agents/simplify.md`.
 
-The self-review is done when every check above has run and its result is in the report that hands
-the document to the user: one line that it ran, plus only the findings that changed a decision,
-scope, cost or risk. The user has not read the document yet; per-fix detail stays in it.
-
 Then land the document in one commit (`Docs/Workflow.md` → Design document lifecycle), route it to
 review (skill `cross-agent-review`) and, once approved, execute it (skill `exec-plan`).
+
+## Hand-off
+
+The user passes your hand-off verbatim to a reviewer in another worktree, so it has to locate the
+document with no git lookup. The self-review is done when every check above has run and this block
+reports it:
+
+```
+**Design doc for review: #<n> <title>**
+- **What:** <one line: the change and its main risk>
+- **Where:** <absolute path to the document>, branch `<branch>` (local | pushed), commit `<sha>`
+- **Baseline:** `origin/main` `<sha>`
+- **Self-review:** ran; <only findings that changed a decision, scope, cost or risk, else "none changed a decision">
+```
+
+What the reviewer should aim at goes in the document's Review focus section, not in this block. The
+user has not read the document yet; per-fix detail stays in it.

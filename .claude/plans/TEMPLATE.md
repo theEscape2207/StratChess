@@ -25,6 +25,12 @@
 
 One paragraph: what changes and why it is worth doing. State the problem, not the solution.
 
+## Review focus
+
+One to three bullets, with the riskiest first: the decision most likely to be wrong, and the risk
+that decides whether the change pays. Cite each by its D-number or its Assumption. The reviewer starts
+here.
+
 ## Scope
 
 **This change will:**
@@ -52,7 +58,7 @@ without its alternative reads as an assumption.
 
 ## Assumptions I cannot verify from the code
 
-The section a reviewer should read first. Anything depending on behaviour outside this repository —
+A reviewer reads it right after Review focus. Anything depending on behaviour outside this repository —
 another tool, a GUI, a client, the OS, the toolchain — plus anything taken on trust from a document
 rather than checked.
 
