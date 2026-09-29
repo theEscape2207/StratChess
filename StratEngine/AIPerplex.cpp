@@ -425,6 +425,9 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 			htd.board = root; // same seed as td_.board
 			htd.clear_killers();
 			htd.clear_null_move_flags();
+			htd.clear_continuation_keys();
+			if (tuning_.continuation_history_plies > 0)
+				htd.age_continuation_history();
 			htd.nodes_searched = 0;
 			htd.qnodes_searched = 0;
 			htd.telemetry.reset();
@@ -488,6 +491,9 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 
 	td.clear_killers(); // Clear killer moves at the start of the search
 	td.clear_null_move_flags();
+	td.clear_continuation_keys();
+	if (tuning_.continuation_history_plies > 0)
+		td.age_continuation_history();
 
 	for (int depth = 1; depth <= max_depth; ++depth) {
 
@@ -856,6 +862,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		}
 
 		td.last_move_was_null[ply + 1] = true;
+		td.cont_key[ply + 1] = ThreadData::kNoContinuation;
 		td.board.DoNullMove();
 		const int null_score = -pvs(td, depth - 1 - R, -beta, -beta + 1, ply + 1, false, tt);
 		td.board.UndoNullMove();
@@ -889,8 +896,9 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	const int n = static_cast<int>(moveList.size());
 	const eColor side = td.board.GetCurrentColor();
 
+	const ContinuationRows cont_rows = td.continuation_rows(ply, tuning_.continuation_history_plies);
 	MoveSorter::ScoreMoves(moveList, n, td.board, side, hash_move, td.killers[ply][0], td.killers[ply][1], td.history,
-	                       scored_idx);
+	                       scored_idx, cont_rows.one_ply, cont_rows.two_ply);
 
 	// Singular extension: if the transposition table's move is much better than every
 	// alternative, search it one ply deeper. The verification runs HERE, before the move
@@ -1034,6 +1042,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				lmp_skipped = true;
 				continue;
 			}
+
+			// The board holds the child, so the piece on the destination is the one that moved: the
+			// promoted piece for a promotion, the king for castling.
+			td.cont_key[ply + 1] = static_cast<uint16_t>(continuation_index(td.board.GetPiece(move.to()), move.to()));
 
 			if constexpr (kSearchProfileCompiled) {
 				profile_move_nodes = td.nodes_searched + td.qnodes_searched;
@@ -1181,8 +1193,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				// Only a quiet cutter penalizes the searched quiets before it: when a capture or promotion
 				// cuts, their failure says little about the quiets themselves.
 				if (ThreadData::is_quiet(move))
-					td.penalize_searched_quiets(side, moveList, scored_idx, searched, si, depth);
-				td.update_history(side, move, depth);
+					td.penalize_searched_quiets(side, moveList, scored_idx, searched, si, depth, cont_rows);
+				td.update_history(side, move, depth, cont_rows);
 				break;
 			}
 		}

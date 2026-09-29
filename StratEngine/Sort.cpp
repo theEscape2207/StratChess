@@ -79,7 +79,8 @@ void MoveSorter::SortMovesByValue(MoveList& moveList, size_t count, const Board&
 // forecloses it.
 void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const Board& board, eColor side, const Move& hash_move,
                             const Move& killer0, const Move& killer1, const int32_t (&history)[2][64][64],
-                            std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx)
+                            std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx,
+                            const int16_t* cont_one_ply, const int16_t* cont_two_ply)
 {
 	assert(n >= 0 && n <= static_cast<int>(MoveList::MAX_MOVES));
 
@@ -103,7 +104,8 @@ void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const Board& board,
 			// promotion gain, so under-promotions stay below a queen promotion unaided.
 			const int mvv_lva = MoveHelper::Value(mv, board.GetEffectiveMovPiece(mv), board.GetCapturedPiece(mv));
 
-			s = (!MoveHelper::IsCapture(mv) || See::see_ge(board, mv, 0)) ? 1'000'000 + mvv_lva : 700'000 + mvv_lva;
+			s = (!MoveHelper::IsCapture(mv) || See::see_ge(board, mv, 0)) ? 1'000'000 + mvv_lva
+			                                                              : kLosingCaptureTier + mvv_lva;
 		} else if (mv == killer0) {
 			s = 900'000;
 		} else if (mv == killer1) {
@@ -111,6 +113,16 @@ void MoveSorter::ScoreMoves(const MoveList& moveList, int n, const Board& board,
 		} else {
 			assert(static_cast<int>(side) >= 0 && static_cast<int>(side) < 2);
 			s = history[static_cast<int>(side)][mv.from()][mv.to()];
+			// Each entry is bounded by HISTORY_MAX, so the sum stays below kLosingCaptureTier; ThreadData
+			// asserts that. A quiet's moving piece is the one on its from-square.
+			if (cont_one_ply != nullptr || cont_two_ply != nullptr) {
+				const int col = continuation_index(board.GetPiece(mv.from()), mv.to());
+				assert(col >= 0 && col < kContinuationSize);
+				if (cont_one_ply != nullptr)
+					s += cont_one_ply[col];
+				if (cont_two_ply != nullptr)
+					s += cont_two_ply[col];
+			}
 		}
 		out_scored_idx[i] = {s, i};
 	}

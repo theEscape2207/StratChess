@@ -402,6 +402,17 @@ class AIPerlexTestFixture {
 		return range;
 	}
 
+	void set_continuation_history_plies(int plies) const { ai->tuning_.continuation_history_plies = plies; }
+	std::pair<int16_t, int16_t> continuation_range() const
+	{
+		std::pair<int16_t, int16_t> range{0, 0};
+		for (const auto& row : *ai->td_.cont_history)
+			for (int16_t score : row)
+				range = {std::min(range.first, score), std::max(range.second, score)};
+		return range;
+	}
+	uint16_t& cont_key(int ply) const { return ai->td_.cont_key[ply]; }
+
 	void poke_killer(int ply) const { ai->td_.store_killer(ply, AnyLegalMove()); }
 	bool has_killer(int ply) const { return !ai->td_.killers[ply][0].is_null(); }
 

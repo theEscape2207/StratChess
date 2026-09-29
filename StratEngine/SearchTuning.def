@@ -76,6 +76,11 @@ TUNING_FIELD(int,     frontier_futility_margin,  200,  0,     1000, true, "Front
 // Late move pruning at depth 2; its depth and move index are constants in AIPerplex.h.
 TUNING_FIELD(bool,    late_move_pruning_enabled, true, false, true, true, "LateMovePruning", true)
 
+// How many previous moves condition quiet ordering through continuation history: 1 is the
+// opponent's last move, 2 adds our own before it. 0 reads and updates no table, which leaves the
+// search node-identical to one without it; it is the kill switch.
+TUNING_FIELD(int,     continuation_history_plies, 2, 0, 2, true, nullptr, true)
+
 // Contempt: how many centipawns a draw is scored BELOW equality, for the side the engine is
 // playing. 0 restores the historical behaviour exactly, where every drawn score is GameValues::Draw
 // and the engine is indifferent between repeating and playing on in a position it believes equal.

@@ -3,12 +3,20 @@
 #include "PVTable.h"
 #include "MoveHelper.h"
 #include "SearchTelemetry.h"
+#include "Sort.h"
 #include <algorithm>
 #include <array>
 #include <bitset>
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <memory>
+
+// The continuation-history rows a pvs() node reads and updates, nullptr when absent.
+struct ContinuationRows {
+	int16_t* one_ply = nullptr;
+	int16_t* two_ply = nullptr;
+};
 
 // Per-thread search state for AIPerplex: each Lazy SMP helper thread owns one and runs the same
 // search functions on it.
@@ -20,6 +28,12 @@
 struct ThreadData {
 	static constexpr int MAX_KILLERS = 2;
 	static constexpr int32_t HISTORY_MAX = 16'384;
+	// A quiet's score sums its history entry and two continuation entries.
+	static_assert(3 * HISTORY_MAX < MoveSorter::kLosingCaptureTier, "quiet scores must stay below every other tier");
+	static_assert(HISTORY_MAX <= INT16_MAX, "continuation entries are int16_t");
+
+	static constexpr uint16_t kNoContinuation = 0xFFFF;
+	using ContinuationHistory = std::array<std::array<int16_t, kContinuationSize>, kContinuationSize>;
 
 	// Bit i: the move at sorted index i of a pvs() frame completed its child search.
 	using SearchedMoves = std::bitset<MoveList::MAX_MOVES>;
@@ -71,6 +85,17 @@ struct ThreadData {
 	// |entry| <= HISTORY_MAX always holds (see apply_history()).
 	int32_t history[2][64][64];
 
+	// cont_key[p] is continuation_index() of the move that led to ply p, or kNoContinuation after a
+	// null move and at the root. Written by pvs() only for a move it actually searches, so a node
+	// at ply reads the opponent's last move at cont_key[ply] and its own previous one at
+	// cont_key[ply - 1].
+	uint16_t cont_key[MAX_PLY];
+
+	// Continuation history: [row: a previous move][column: a quiet], same update rule and bound as
+	// history. On the heap because 1.18 MB inline would overflow the stack of an AIPerplex
+	// constructed as a local, as tests do. make_unique value-initialises it to zero.
+	std::unique_ptr<ContinuationHistory> cont_history = std::make_unique<ContinuationHistory>();
+
 	// --- Cold tail: singular exclusion and telemetry ---
 	// Deliberately LAST. Everything above is touched on the hot path; these are not, and
 	// inserting them higher shifted the offsets of the members that are.
@@ -97,6 +122,7 @@ struct ThreadData {
 		clear_killers();
 		clear_excluded_moves();
 		clear_history();
+		clear_continuation_keys();
 	}
 
 	void clear_killers() noexcept
@@ -136,6 +162,8 @@ struct ThreadData {
 		clear_null_move_flags();
 		clear_excluded_moves();
 		clear_history();
+		clear_continuation_history();
+		clear_continuation_keys();
 	}
 
 	void store_killer(int ply, const Move& move) noexcept
@@ -165,23 +193,54 @@ struct ThreadData {
 					score /= 2;
 	}
 
+	void clear_continuation_keys() noexcept { std::fill(std::begin(cont_key), std::end(cont_key), kNoContinuation); }
+
+	void clear_continuation_history() noexcept
+	{
+		for (auto& row : *cont_history)
+			row.fill(0);
+	}
+
+	// Halved once per search, not before every iteration like history: a pass over 1.18 MB per
+	// iteration is judged too costly. So within one search the sum weights this table more heavily
+	// as depth rises, a tradeoff accepted rather than designed for.
+	void age_continuation_history() noexcept
+	{
+		for (auto& row : *cont_history)
+			for (auto& score : row)
+				score = static_cast<int16_t>(score / 2);
+	}
+
+	// The rows for a node at ply, reading `plies` of them (0..2).
+	ContinuationRows continuation_rows(int ply, int plies) noexcept
+	{
+		assert(ply >= 0 && ply < MAX_PLY && plies >= 0 && plies <= 2);
+		ContinuationRows rows;
+		if (plies >= 1 && cont_key[ply] != kNoContinuation)
+			rows.one_ply = continuation_row(cont_key[ply]);
+		if (plies >= 2 && ply >= 1 && cont_key[ply - 1] != kNoContinuation)
+			rows.two_ply = continuation_row(cont_key[ply - 1]);
+		return rows;
+	}
+
 	static bool is_quiet(const Move& move) noexcept
 	{
 		return !MoveHelper::IsCapture(move) && !MoveHelper::IsPromote(move);
 	}
 
-	// Bonus for a quiet move that caused a beta cutoff; other moves are ignored.
-	void update_history(eColor side, const Move& move, int depth) noexcept
+	// Bonus for a quiet move that caused a beta cutoff; other moves are ignored. board must hold the
+	// position the move is played from whenever a continuation row is given.
+	void update_history(eColor side, const Move& move, int depth, ContinuationRows rows = {}) noexcept
 	{
 		if (is_quiet(move))
-			apply_history(history[side][move.from()][move.to()], history_bonus(depth));
+			apply_quiet_delta(side, move, history_bonus(depth), rows);
 	}
 
 	// Malus for a quiet move that was searched and failed to cut; other moves are ignored.
-	void penalize_history(eColor side, const Move& move, int depth) noexcept
+	void penalize_history(eColor side, const Move& move, int depth, ContinuationRows rows = {}) noexcept
 	{
 		if (is_quiet(move))
-			apply_history(history[side][move.from()][move.to()], -history_bonus(depth));
+			apply_quiet_delta(side, move, -history_bonus(depth), rows);
 	}
 
 	// At a cutoff by the quiet move at sorted index cut_index, penalizes every quiet move sorted
@@ -189,12 +248,13 @@ struct ThreadData {
 	// or excluded has no bit set: it was judged, not tried.
 	void penalize_searched_quiets(eColor side, const MoveList& moveList,
 	                              const std::array<std::pair<int, int>, MoveList::MAX_MOVES>& scored_idx,
-	                              const SearchedMoves& searched, int cut_index, int depth) noexcept
+	                              const SearchedMoves& searched, int cut_index, int depth,
+	                              ContinuationRows rows = {}) noexcept
 	{
 		assert(cut_index >= 0 && cut_index < static_cast<int>(MoveList::MAX_MOVES));
 		for (int i = 0; i < cut_index; ++i)
 			if (searched[static_cast<size_t>(i)])
-				penalize_history(side, moveList[scored_idx[static_cast<size_t>(i)].second], depth);
+				penalize_history(side, moveList[scored_idx[static_cast<size_t>(i)].second], depth, rows);
 	}
 
 	// Threefold repetition and the fifty-move rule (thread-local board). Neither applies at
@@ -221,11 +281,32 @@ struct ThreadData {
 
 	// Gravity update: an entry near the bound moves less, so the table keeps ranking good moves
 	// instead of saturating at a cap. With |delta| and |entry| <= HISTORY_MAX the result stays in
-	// [-HISTORY_MAX, HISTORY_MAX], and entry * |delta| <= 2^28 cannot overflow.
-	static void apply_history(int32_t& entry, int32_t delta) noexcept
+	// [-HISTORY_MAX, HISTORY_MAX], and entry * |delta| <= 2^28 cannot overflow in int32_t, whatever
+	// the entry's own type.
+	template <typename Entry> static void apply_history(Entry& entry, int32_t delta) noexcept
 	{
 		assert(delta >= -HISTORY_MAX && delta <= HISTORY_MAX);
-		entry += delta - entry * (delta < 0 ? -delta : delta) / HISTORY_MAX;
+		const int32_t value = entry;
+		entry = static_cast<Entry>(value + delta - value * (delta < 0 ? -delta : delta) / HISTORY_MAX);
+	}
+
+	int16_t* continuation_row(uint16_t key) noexcept
+	{
+		assert(key < kContinuationSize);
+		return (*cont_history)[key].data();
+	}
+
+	void apply_quiet_delta(eColor side, const Move& move, int32_t delta, ContinuationRows rows) noexcept
+	{
+		apply_history(history[side][move.from()][move.to()], delta);
+		if (rows.one_ply == nullptr && rows.two_ply == nullptr)
+			return;
+		const int col = continuation_index(board.GetPiece(move.from()), move.to());
+		assert(col >= 0 && col < kContinuationSize);
+		if (rows.one_ply != nullptr)
+			apply_history(rows.one_ply[col], delta);
+		if (rows.two_ply != nullptr)
+			apply_history(rows.two_ply[col], delta);
 	}
 };
 

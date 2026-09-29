@@ -135,3 +135,99 @@ TEST_CASE("History - a real search leaves penalized entries, all within bounds",
 	CHECK(lo >= -kMax);
 	CHECK(hi <= kMax);
 }
+
+TEST_CASE("Continuation history - gravity keeps int16_t entries within HISTORY_MAX", "[search][history]")
+{
+	auto td = std::make_unique<ThreadData>();
+	td->board = Board("4k3/8/8/8/8/8/8/R3K3 w - - 0 1");
+	const Move quiet = MoveFormatter::FromUCI("a1a5", td->board);
+	td->cont_key[1] = static_cast<uint16_t>(continuation_index(BLACK_KING, e8));
+	td->cont_key[0] = static_cast<uint16_t>(continuation_index(WHITE_ROOK, a5));
+	const ContinuationRows rows = td->continuation_rows(1, 2);
+	REQUIRE(rows.one_ply != nullptr);
+	REQUIRE(rows.two_ply != nullptr);
+	const int col = continuation_index(WHITE_ROOK, a5);
+
+	for (const int depth : {3, 127, 200}) {
+		td->clear_continuation_history();
+		for (int i = 0; i < 2'000; ++i) {
+			td->update_history(WHITE, quiet, depth, rows);
+			REQUIRE(rows.one_ply[col] <= kMax);
+			REQUIRE(rows.two_ply[col] <= kMax);
+		}
+		CHECK(rows.one_ply[col] > kMax / 2);
+		for (int i = 0; i < 2'000; ++i) {
+			td->penalize_history(WHITE, quiet, depth, rows);
+			REQUIRE(rows.one_ply[col] >= -kMax);
+			REQUIRE(rows.two_ply[col] >= -kMax);
+		}
+		CHECK(rows.one_ply[col] < 0);
+	}
+}
+
+TEST_CASE("Continuation history - a large entry outranks a larger history entry alone", "[search][history]")
+{
+	auto td = std::make_unique<ThreadData>();
+	const Board board("4k3/8/8/8/8/8/8/R3K3 w - - 0 1");
+	const Move by_history = MoveFormatter::FromUCI("a1a5", board);
+	const Move by_continuation = MoveFormatter::FromUCI("e1d2", board);
+	td->history[WHITE][by_history.from()][by_history.to()] = 1'000;
+	td->history[WHITE][by_continuation.from()][by_continuation.to()] = 0;
+	td->cont_key[1] = static_cast<uint16_t>(continuation_index(BLACK_KING, e8));
+	const ContinuationRows rows = td->continuation_rows(1, 1);
+	REQUIRE(rows.one_ply != nullptr);
+	rows.one_ply[continuation_index(WHITE_KING, d2)] = 2'000;
+
+	MoveList moveList;
+	MoveGenerator::ComputeLegalMoves(board, moveList);
+	const int n = static_cast<int>(moveList.size());
+	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
+	const auto first = [&] { return moveList[scored_idx[0].second]; };
+
+	MoveSorter::ScoreMoves(moveList, n, board, WHITE, Move::EmptyMove(), Move::EmptyMove(), Move::EmptyMove(),
+	                       td->history, scored_idx);
+	CHECK(first() == by_history);
+
+	MoveSorter::ScoreMoves(moveList, n, board, WHITE, Move::EmptyMove(), Move::EmptyMove(), Move::EmptyMove(),
+	                       td->history, scored_idx, rows.one_ply, rows.two_ply);
+	CHECK(first() == by_continuation);
+}
+
+TEST_CASE("Continuation history - a null move leaves its child no one-ply row", "[search][history]")
+{
+	// White is a queen and rook up, so the null move's reply cannot reach beta and it cuts.
+	AIPerlexTestFixture fix("4k3/pppp4/8/8/8/8/PPPP4/RQ2K3 w - - 0 1");
+	fix.arm_clock();
+	constexpr int ply = 2;
+	fix.cont_key(ply) = static_cast<uint16_t>(continuation_index(BLACK_PAWN, a6));
+	fix.cont_key(ply + 1) = static_cast<uint16_t>(continuation_index(WHITE_KING, d1));
+
+	// Depth 5 is above the reverse futility band, so the null move is what cuts.
+	fix.search_node(5, ply, -1'001, -1'000, /*is_pv_node=*/false);
+
+	// Only the null move stores an entry with no move.
+	const auto entry = fix.probe_tt(ply);
+	REQUIRE(entry.has_value());
+	CHECK(entry->best_move == Move::EmptyMove());
+	CHECK(fix.cont_key(ply + 1) == ThreadData::kNoContinuation);
+}
+
+TEST_CASE("Continuation history - a search at zero plies leaves the table untouched", "[search][history]")
+{
+	constexpr const char* fen = "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4";
+	AIPerlexTestFixture off(fen);
+	off.set_continuation_history_plies(0);
+	off.get_move_at_threads(1, 6);
+	CHECK(off.continuation_range() == std::pair<int16_t, int16_t>{0, 0});
+
+	// The same search with the table on does write it, all within bounds. A fresh fixture, because a
+	// repeat search on a warm transposition table reaches almost no cutoffs.
+	AIPerlexTestFixture on(fen);
+	on.set_continuation_history_plies(2);
+	on.get_move_at_threads(1, 6);
+	const auto [lo, hi] = on.continuation_range();
+	CHECK(lo < 0);
+	CHECK(hi > 0);
+	CHECK(lo >= -kMax);
+	CHECK(hi <= kMax);
+}
