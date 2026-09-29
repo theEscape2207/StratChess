@@ -146,8 +146,7 @@ the PR or issue before merge. The user routes it, so a pushed PR is *awaiting re
 
 **What to send.** Issues and specs before work starts, design docs, measurement and validation
 plans, and documents making provenance claims — these are where a bad premise is expensive and
-invisible to CI. Aim it hardest at the design doc's "assumptions I cannot verify from the code"
-section. **Skip** mechanical changes where CI is the real gate, and artifacts that have already
+invisible to CI. **Skip** mechanical changes where CI is the real gate, and artifacts that have already
 converged. **A PR** goes when an approved design decision changed during implementation, when it
 changes the engine binary, or when it is Build tier (the gates themselves). A pure tooling or docs
 PR, skills and CLAUDE.md included, goes only when something else warrants it: on those, rounds found
