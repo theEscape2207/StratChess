@@ -24,6 +24,14 @@
           { "type": "command", "if": "Write(**/.codex/agents/**)", "timeout": 30, "command": "pwsh", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/Scripts/Invoke-SkillGate.ps1"] }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Skill",
+        "hooks": [
+          { "type": "command", "timeout": 30, "command": "pwsh", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/Scripts/Invoke-SkillGate.ps1"] }
+        ]
+      }
     ]
   }
 }

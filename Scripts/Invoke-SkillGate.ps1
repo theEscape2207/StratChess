@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
-    PreToolUse hook: interrupts the first edit per session to a file type that has a skill.
+    PreToolUse hook: interrupts the first edit per session to a file type that has a skill, unless
+    that skill was already loaded. As a PostToolUse hook on Claude Code's Skill tool it records the load.
 
 .DESCRIPTION
     A skill's description is matched against the task, not the file being edited. This hook fires
@@ -8,14 +9,17 @@
     X, then retry"; the retry and every later edit pass.
 
     It interrupts; it does not prove a load. The marker records the denial, so a retry without
-    loading the skill also passes. A positive load signal was rejected because Codex loads a skill
-    by reading its file, which raises no event, and a missed signal would block every edit.
+    loading the skill also passes. A load signal is used only to pre-create the marker: Claude
+    Code's Skill tool runs this script as a PostToolUse hook, so an edit after the load is never
+    denied. Codex loads a skill by reading its file, which raises no event, so it keeps the one
+    denial; a missed signal falls back to the same, never to blocking every edit.
 
     Fails open: a missing session id, unparseable input, an unwritable marker or any error allows
     the edit. The marker is created with CreateNew, so concurrent edits yield one denial.
 
     Reads the hook JSON on stdin from either host:
       Claude Code  Edit/Write          tool_input.file_path
+      Claude Code  Skill (PostToolUse) tool_input.skill, "<plugin>:<skill>" for a plugin skill
       Codex        apply_patch         tool_input.command (every "*** ... File:" line)
       lean-ctx     ctx_patch           tool_input.path, tool_input.ops[].path
 
@@ -137,6 +141,17 @@ function Get-GateOutput {
         $session = Get-Field $hook 'session_id'
         $toolInput = Get-Field $hook 'tool_input'
         if (-not ($session -is [string] -and $session) -or $null -eq $toolInput) { return '' }
+        # A loaded skill disarms its gate. Plugin skills arrive as "<plugin>:<skill>".
+        if ((Get-Field $hook 'tool_name') -eq 'Skill') {
+            $loaded = Get-Field $toolInput 'skill'
+            if ($loaded -is [string] -and $loaded) {
+                $loaded = ($loaded -split ':')[-1]
+                if ($script:SkillFileSets.Contains($loaded)) {
+                    $null = New-GateMarker -Directory $MarkerDir -Session $session -Skill $loaded
+                }
+            }
+            return ''
+        }
         $cwd = Get-Field $hook 'cwd'
         if (-not ($cwd -is [string] -and $cwd)) { $cwd = $Root }
 
@@ -185,7 +200,8 @@ if ($SelfTest) {
 
     function New-HookJson {
         param([string]$Session, [string]$Tool, [hashtable]$ToolInput)
-        $hook = [ordered]@{ hook_event_name = 'PreToolUse'; cwd = $repoRoot; tool_name = $Tool; tool_input = $ToolInput }
+        $hookEvent = if ($Tool -eq 'Skill') { 'PostToolUse' } else { 'PreToolUse' }
+        $hook = [ordered]@{ hook_event_name = $hookEvent; cwd = $repoRoot; tool_name = $Tool; tool_input = $ToolInput }
         if ($Session) { $hook.session_id = $Session }
         return ($hook | ConvertTo-Json -Depth 5)
     }
@@ -209,6 +225,12 @@ if ($SelfTest) {
         @{ Name = 'no session id -> allowed';                        Json = (New-HookJson '' 'Edit' @{ file_path = $ps1Abs });                                   Expect = @() }
         @{ Name = 'malformed JSON -> allowed';                       Json = '{not json';                                                                          Expect = @() }
         @{ Name = 'unwritable marker dir -> allowed';                Json = (New-HookJson 's11' 'Edit' @{ file_path = $ps1Abs }); MarkerDir = $ps1Abs;             Expect = @() }
+        @{ Name = 'Skill load write-powershell -> allowed';          Json = (New-HookJson 's13' 'Skill' @{ skill = 'write-powershell' });                        Expect = @() }
+        @{ Name = 'FALSIFY: .ps1 edit after the load -> allowed';    Json = (New-HookJson 's13' 'Edit' @{ file_path = $ps1Abs });                                 Expect = @() }
+        @{ Name = 'plugin-prefixed load -> allowed';                 Json = (New-HookJson 's14' 'Skill' @{ skill = 'some-plugin:writing-for-agents' });          Expect = @() }
+        @{ Name = 'CLAUDE.md edit after the plugin load -> allowed'; Json = (New-HookJson 's14' 'Edit' @{ file_path = 'CLAUDE.md' });                            Expect = @() }
+        @{ Name = 'unrelated skill load -> gate stays armed';        Json = (New-HookJson 's15' 'Skill' @{ skill = 'tdd' });                                     Expect = @() }
+        @{ Name = '.ps1 edit after unrelated load -> write-powershell'; Json = (New-HookJson 's15' 'Edit' @{ file_path = $ps1Abs });                             Expect = @('write-powershell') }
     )
 
     foreach ($c in $cases) {
@@ -257,6 +279,13 @@ if ($SelfTest) {
         $failed++
     }
 
+    $loadHooked = @(foreach ($group in @($claude.hooks.PostToolUse)) {
+            if ($group.matcher -eq 'Skill') {
+                @($group.hooks) | Where-Object { (@($_.args) -join ' ') -like '*Invoke-SkillGate.ps1*' }
+            }
+        })
+    if ($loadHooked.Count -eq 1) { Write-Host '  PASS  .claude/settings.json runs the gate after Skill' }
+    else { Write-Host "  FAIL  .claude/settings.json: $($loadHooked.Count) gate hooks after Skill, expected 1"; $failed++ }
     $codex = Get-Content -LiteralPath (Join-Path $repoRoot '.codex/hooks.json') -Raw | ConvertFrom-Json
     $codexHooked = @(foreach ($group in @($codex.hooks.PreToolUse)) {
             if ($group.matcher -eq 'apply_patch') {
