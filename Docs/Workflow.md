@@ -141,23 +141,21 @@ Codex runs it only once the project's `.codex/` layer and the hook definition ar
 
 ## Cross-agent review
 
-Separate from the specialised reviewers: a second agent reviews selected artifacts and comments on
-the PR or issue before merge. The user routes it, so a pushed PR is *awaiting review*, not done.
+Separate from the specialised reviewers: a second agent reviews selected artifacts before work
+starts. The user routes it.
 
 **What to send.** Issues and specs before work starts, design docs, measurement and validation
 plans, and documents making provenance claims — these are where a bad premise is expensive and
 invisible to CI. **Skip** mechanical changes where CI is the real gate, and artifacts that have already
-converged. **A PR** goes when an approved design decision changed during implementation, when it
-changes the engine binary, or when it is Build tier (the gates themselves). A pure tooling or docs
-PR, skills and CLAUDE.md included, goes only when something else warrants it: on those, rounds found
-only wording (#624). Otherwise the author's `code-review`, which also lists removed behaviour, is the
-review.
+converged. **PRs are not sent.** The author's `code-review`, which also checks the diff against the
+design doc and lists removed behaviour, plus the specialised reviewers and CI are the PR's review. A
+PR round found only wording on tooling and docs PRs (#624), and nothing on an engine PR that had
+already been through those reviews and a strength lab (#667).
 
 **Division of labour.** `code-review`, `eval-reviewer` and `search-reviewer` review the **diff**;
-the cross-agent reviewer reviews the **design doc**, and on a PR whether the diff still matches it.
-Putting both on one artifact is where cost blows up for little added signal. That is why the PR body
-states which approved decisions changed during implementation, and the Harvest table is the natural
-place to notice them.
+the cross-agent reviewer reviews the **design doc**. Putting both on one artifact is where cost
+blows up for little added signal. The PR body states which approved decisions changed during
+implementation, and the Harvest table is the natural place to notice them.
 
 **How to run a round** — the `*.review.md` channel, ranks, dispositions, lifecycle — is skill
 `cross-agent-review`, so a fresh reviewer session loads it by trigger rather than by finding this
@@ -177,8 +175,7 @@ When to write one at all is in CLAUDE.md → Design Documents; how, in skill `wr
 is reviewed history: **never force-push it just for tidiness** — add a normal follow-up commit and
 squash at merge if compact history is wanted. Keep the document through design review, then delete
 it in the same PR once Harvest is complete. Git history preserves it, so a link from an old comment
-stays resolvable. `Validate-PrePR.ps1` warns while a top-level plan remains, and `cross-agent-review`
-withholds a clean merge verdict until it is gone.
+stays resolvable. `Validate-PrePR.ps1` warns while a top-level plan remains.
 
 **Harvest** names where each durable decision ends up. Prefer a source comment, CLAUDE.md's Key
 Source Facts, or `Docs/Changelog.md` for anything that matters — a PR body is fine for working
