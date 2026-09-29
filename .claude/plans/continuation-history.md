@@ -186,10 +186,11 @@ Engine tier: a search behaviour change.
   does not cover it. The screen result is recorded beside the lab result, so the screen's predictive
   value can be judged across changes.
 - **Speed:** `Run-Bench.ps1` nps, clang-cl Release.
-- **Wall clock (#636 gate):** interleaved fixed-depth, `Threads=1`: the merge base, the 1-ply build
-  and the 2-ply build in the same rounds. Pass: median <= -3% and faster in >= 8 of 9 rounds, plus
-  the 200-position set. The result is reported to the owner, and it decides only when the lab is
-  declined (D7).
+- **Wall clock (#636 gate):** fixed depth 14, `Threads=1`, one pass over the 200 positions of
+  `Tests/profile-screen.fen`, with the merge base, the 1-ply build and the 2-ply build rotated per
+  10-position chunk. Pass: a mean per-position time change of -3% or better whose +2 SE bound is
+  below zero. The result is reported to the owner, and it decides only when the lab is declined
+  (D7).
 - **Strength:** a CI strength-lab run of the chosen default against the merge base, on the owner's
   decision. When it runs, it decides keep or park (D7).
 - **Review:** dispatch `search-reviewer` on the diff.
