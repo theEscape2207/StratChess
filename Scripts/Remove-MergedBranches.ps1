@@ -58,8 +58,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # $null (not "HEAD") when detached, so the current-branch comparisons below never
-# match a real branch name and the merged-branch NOTE is skipped -- there is nothing
-# to move off of.
+# match a real branch name.
 $currentBranch = & git symbolic-ref -q --short HEAD 2>$null
 if ($LASTEXITCODE -ne 0) { $currentBranch = $null }
 
@@ -82,7 +81,6 @@ foreach ($branch in (& git for-each-ref refs/heads --format='%(refname:short)'))
     $branch = $branch.Trim()
     if (-not $branch) { continue }
     if ($branch -in @('master', 'main')) { continue }
-    if ($branch -eq $currentBranch)      { continue }
     if ($branch -in $checkedOutElsewhere) {
         $kept += "$branch (checked out in another worktree)"
         continue
@@ -90,7 +88,14 @@ foreach ($branch in (& git for-each-ref refs/heads --format='%(refname:short)'))
 
     & git merge-base --is-ancestor $branch origin/main
     if ($LASTEXITCODE -ne 0) {
-        $kept += "$branch (not merged into origin/main)"
+        if ($branch -ne $currentBranch) { $kept += "$branch (not merged into origin/main)" }
+        continue
+    }
+
+    # Left in place rather than moving HEAD unasked; once New-TaskBranch.ps1 moves off it, the next
+    # run deletes it.
+    if ($branch -eq $currentBranch) {
+        $kept += "$branch (checked out; a later run removes it)"
         continue
     }
 
@@ -111,17 +116,6 @@ else { $deleted | ForEach-Object { Write-Host "  deleted: $_" -ForegroundColor G
 if ($kept.Count -gt 0) {
     Write-Host "`n--- Kept ---" -ForegroundColor Cyan
     $kept | ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow }
-}
-
-# Reported rather than acted on: moving someone's HEAD unasked is surprising, and
-# New-TaskBranch.ps1 is the thing that moves you off it.
-if ($currentBranch -and $currentBranch -notin @('master', 'main')) {
-    & git merge-base --is-ancestor $currentBranch origin/main
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "`nNOTE: the branch you are on ('$currentBranch') is also merged." -ForegroundColor Yellow
-        Write-Host "      Start the next task with New-TaskBranch.ps1, which moves you off it," -ForegroundColor Yellow
-        Write-Host "      then re-run this to clean it up." -ForegroundColor Yellow
-    }
 }
 
 if ($SyncMaster) {
