@@ -239,6 +239,8 @@ jobs:
     # the Engine tier: a Build-tier change to CMakeLists.txt is exactly what can
     # break the sanitizer wiring, and two conditions would eventually drift.
     if: needs.classify.outputs.is_full == 'true'
+    # Stays on ubuntu-24.04 (THP `always`) for speed: under 26.04's `madvise` the TT
+    # faults in 4 KiB pages, and ASan's allocator ignores the glibc huge-page tunable.
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -324,7 +326,7 @@ jobs:
     # Same condition as build-linux and sanitize-linux, for the same reason: a
     # Build-tier change to CMakeLists.txt is what breaks sanitizer wiring.
     if: needs.classify.outputs.is_full == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     env:
       CCACHE_MAXSIZE: 400M
@@ -344,7 +346,7 @@ jobs:
         id: ccache
         uses: ./.github/actions/setup-ccache
         with:
-          key: ccache-linux-tsan
+          key: ccache-linux-gcc15-tsan
 
       # STRAT_SANITIZE_RECOVER stays at its OFF default: a report must abort the
       # process and fail the job, not print and exit 0.
@@ -381,7 +383,7 @@ jobs:
         if: steps.ccache.outputs.available == 'true'
         run: ccache --show-stats
 
-      # setarch -R disables ASLR. Ubuntu 24.04 raises vm.mmap_rnd_bits beyond what
+      # setarch -R disables ASLR. The runner kernel sets vm.mmap_rnd_bits beyond what
       # TSan's shadow mapping tolerates, and without this the process dies with
       # "FATAL: ThreadSanitizer: unexpected memory mapping" before main -- which
       # reports zero races while running none of the search.
