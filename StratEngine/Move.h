@@ -107,7 +107,7 @@ namespace MoveFlags {
 	constexpr uint8_t PROMOTION_BIT = 0x8; // bit 3: move is a promotion
 } // namespace MoveFlags
 
-// Move list with small buffer optimization
+// Fixed-capacity move list
 class MoveList {
   public:
 	static constexpr size_t MAX_MOVES = 218; // Maximum legal moves in any position
@@ -142,6 +142,5 @@ class MoveList {
 };
 
 // Principal variation line
-// Keeps the best variant in the vector
 using PVLine = std::deque<Move>;
 std::ostream& operator<<(std::ostream&, const PVLine&);

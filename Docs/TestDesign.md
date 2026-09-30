@@ -449,12 +449,11 @@ committed — no Python dependency in the suite.
 ### `[board]` — DoMove/UndoMove completeness
 
 **File**: `StratChessTests/BoardTests.cpp`. `BoardMoveTests.cpp` (`[board_moves]`), `BoardStateTests.cpp`
-(`[board_state]`) and `BoardApiTests.cpp` (`[board_api]`) extend it with full move-type, GameInfo
+(`[board_state]`) and `BoardApiTests.cpp` (`[board_api]`) extend it with full move-type, position
 state, and API coverage.
 
 - En passant DoMove/UndoMove: captured pawn restored correctly
 - Castling DoMove/UndoMove: rook and king both moved and restored
-- Promotion move generation: white pawn b7→b8 generates `MoveType::PROMOTION_QUEEN`; capture-promotion c7xb8 generates queen promo with `PieceHelper::IsActual(m.Content)` true (these Move-field checks were in the retired `MoveGeneratorPromotionTests.h` and are not covered by perft)
 - Promotion DoMove/UndoMove: pawn replaced by promoted piece, restored on undo
 - Zobrist hash: `get_zobrist_hash()` identical before and after a DoMove/UndoMove cycle
 
@@ -506,8 +505,8 @@ assertion in `AIPerplex::emit_iteration_info`, tested directly because the asser
 a search where the input that produced it is no longer reachable. Both halves of legality need their
 own case: `ComputeLegalMoves` is pseudo-legal, so membership in it does not rule out leaving one's own
 king in check, and `DoMove` executes any from/to/flags triple it is handed, so playing a move does not
-prove the position offered it. The flag cases are not padding — `Move` equality ignores flags, so a
-membership test written with `==` passes every one of them.
+prove the position offered it. The flag cases pin exact `Move` equality: membership checks must
+reject a move whose capture or promotion flags differ from the generated move.
 
 Two `[search][pv]` cases cover the abort paths the end-to-end UCI test cannot force
 deterministically, both through `AIPerlexTestFixture`:
@@ -809,7 +808,7 @@ only on external evidence, never because this engine also scores a move highly.
 When a bug is found and fixed:
 1. Create a minimal reproduction FEN
 2. Add a `TEST_CASE` that would have caught it (repetition, perft, eval, or tactical)
-3. Include the bug report in the test comment (like the existing BUG-1 through BUG-4 in `RepetitionTests.cpp`)
+3. Describe the protected invariant in the test; keep bug history in the issue or PR body
 4. Commit test and fix together
 
 ---
