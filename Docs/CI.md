@@ -74,8 +74,9 @@ proof it worked is the **stats steps reporting skipped**, since they are the onl
 `available` reaching the caller. A test that breaks the download URL must bust the `ccache-bin-…`
 cache key too, or the binary restores, the download is never attempted, and the test passes vacuously.
 
-Each caching job keeps its own entry (`ccache-linux-release`, `-debug`, `-asan-ubsan-stdlibdebug`,
-`-tsan`, `ccache-windows-clang-cl-release`, `-debug`) at `CCACHE_MAXSIZE=400M`. `actions/cache`
+Each caching job keeps its own entry (`ccache-linux-gcc15-release`, `-debug`,
+`ccache-linux-asan-ubsan-stdlibdebug`, `ccache-linux-tsan`, `ccache-windows-clang-cl-release`,
+`-debug`) at `CCACHE_MAXSIZE=400M`. `actions/cache`
 entries are immutable, so **every run writes six new ones** and the store carries a generation per
 run until LRU trims it — an order of magnitude more than one generation, against a budget shared with
 the FetchContent deps cache. That sharing was the risk this change was gated on: churn evicting a
@@ -151,13 +152,13 @@ with GCC. It then runs the fast tier, and on the **Release leg only**, **`perft 
 automated gate at all. The Catch2 `[perft]` tests cover only seven hardcoded cases (startpos d1-4,
 Kiwipete d1-3).
 
-`build-linux` runs on `ubuntu-26.04` with its default GCC 15; the other Linux jobs stay on
-`ubuntu-24.04` (GCC 13) until #476 moves them. A moved job's ccache key gains `-gcc15`, so a GCC 13
-and a GCC 15 job never share, and overwrite, one cache.
-
 Release-only because perft is compute-bound: the suite takes **30 s** optimised, and the Debug leg
 reached 4 of 131 positions in six minutes — roughly three hours extrapolated. Never put a perft suite
 on a Debug leg.
+
+`build-linux` runs on `ubuntu-26.04` with its default GCC 15; the other Linux jobs stay on
+`ubuntu-24.04` (GCC 13) until #476 moves them. A moved job's ccache key gains `-gcc15`, so a GCC 13
+and a GCC 15 job never share, and overwrite, one cache.
 
 **`sanitize-linux`** builds the test binary with `-fsanitize=address,undefined` and
 `STRAT_STDLIB_DEBUG=ON` — libstdc++ debug mode, i.e. checked iterators and container preconditions,

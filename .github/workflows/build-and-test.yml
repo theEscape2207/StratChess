@@ -15,8 +15,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Every Linux job below pins ubuntu-24.04 or ubuntu-26.04; both images ship Ninja
-# and CMake on PATH -- `-G Ninja` needs no install step. Do not add one: it puts an Ubuntu apt
+# Every Linux job below pins ubuntu-24.04 or ubuntu-26.04; both ship Ninja and
+# CMake on PATH -- `-G Ninja` needs no install step. Do not add one: it puts an Ubuntu apt
 # mirror on the critical path of every job, and a stalled mirror hangs `apt-get
 # update` indefinitely. A job on a different image must confirm this first.
 #
