@@ -102,7 +102,7 @@ TEST_CASE("FENParser::ParseFEN: 5-field FEN keeps the halfmove clock, defaults f
 	CHECK(state.fullMoveCounter == 1);
 }
 
-TEST_CASE("FENParser::ParseFEN: 6-field FEN is unaffected by the relaxation", "[fen]")
+TEST_CASE("FENParser::ParseFEN: 6-field FEN keeps both counters", "[fen]")
 {
 	FENParser::FENGameState state;
 	std::vector<std::tuple<ePiece, eSquare>> pieces;
