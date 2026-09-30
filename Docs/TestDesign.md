@@ -796,9 +796,8 @@ only on external evidence, never because this engine also scores a move highly.
 - TT tests use a fresh `TranspositionTable(1)` (1 MB) per test — never the AIPerplex-internal TT.
 - Every test engine gets a 1 MiB table (`.hash_mb = 1`, `UciHandlerTestFixture::small_hash_config()`,
   `PlayerCreationOptions::hash_mb`): zero-filling the default table per engine dominates suite time,
-  most of all under sanitizers and on Linux hosts whose transparent huge pages are `madvise`. Only a
-  test of the default size itself uses `UciHandler::DefaultSearchConfig()`; tests of other sizes set
-  them with `setoption name Hash`.
+  most of all under sanitizers. Only a test of the default size itself uses
+  `UciHandler::DefaultSearchConfig()`; tests of other sizes set them with `setoption name Hash`.
 
 ---
 

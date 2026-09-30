@@ -22,6 +22,27 @@ Newest first.
 
 ---
 
+## 2026-09-30 — The TT advises transparent huge pages on Linux (#676)
+
+On a Linux host whose THP mode is `madvise` (ubuntu-26.04 runners, WSL, most current distributions)
+the TT and its lock array, 240 MiB at the default request on libstdc++, were backed by 4 KiB pages.
+`TranspositionTable` now allocates both through `HugePageAllocator`: on Linux an allocation of at
+least 2 MiB is 2 MiB-aligned and advised `MADV_HUGEPAGE`; smaller ones, such as the 1 MiB test
+tables, are not rounded up. Other platforms keep the previous storage types: large pages on Windows
+need a privilege no account has by default (#684), and the shared types benched 1.6% slower on the
+shipping build with identical nodes (#685).
+
+WSL Ubuntu-26.04, GCC 15.2, default hash: engine construction 83 → 21 ms; bench nps at depth 12
++3.5% with one binary toggling the advice, +6.9% median against `origin/main` (10 alternating rounds
+each, ranges disjoint); `tactical stability 10` 36 → 8 s. Node counts and best moves identical.
+On ubuntu-26.04 runners the Nightly `tactical-stability` step fell from 470–477 s to 116 s.
+
+Rejected: `MAP_HUGETLB`, which needs a reserved hugetlbfs pool that no default host has, and
+`GLIBC_TUNABLES=glibc.malloc.hugetlb=1`, per-process configuration every runner and user would have
+to set. Under the common `defrag=madvise` the first touch of an advised region may compact memory
+synchronously, so a fragmented host can see a slower table build; that cost falls at construction or
+`setoption Hash`, never during search.
+
 ## 2026-09-30 — Continuation history orders quiet moves (#664)
 
 Quiet moves were ordered by the butterfly `history[side][from][to]` table alone, which knows nothing

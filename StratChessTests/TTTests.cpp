@@ -4,12 +4,16 @@
 // Covers store/probe round-trips, same-key overwrite, mate-score normalization,
 // clear(), and the atomic diagnostic counters (entry_count, pv_count).
 //
-// See Docs/TestDesign.md §Phase 0 for the rationale.
+// See Docs/TestDesign.md for the rationale.
 
 #include <catch2/catch_test_macros.hpp>
 #include "TranspositionTable.h"
 #include "AIPerplex.h" // DEFAULT_HASH_MB, for the equal-capacity invariant only
 #include "defines.h"
+
+#if defined(__linux__)
+#	include <malloc.h>
+#endif
 
 class TranspositionTableTestFixture {
   public:
@@ -440,8 +444,8 @@ TEST_CASE("TT - bucket_count_for matches the packed geometry across the UCI rang
 	REQUIRE(same_capacity == 513);
 	REQUIRE(doubled_capacity == 1024);
 
-	// The invariant the whole change rests on: at the shipped default the packed layout keeps the
-	// 96-byte layout's bucket count, so search behaviour is unchanged there.
+	// At the shipped default the packed layout keeps the 96-byte layout's bucket count, so the default
+	// search has the capacity it was tuned with.
 	CHECK(TranspositionTable::bucket_count_for(AIPerplex::DEFAULT_HASH_MB) == 2097152u);
 	CHECK(TranspositionTable::bucket_count_for(AIPerplex::DEFAULT_HASH_MB) ==
 	      floor_pow2((size_t{AIPerplex::DEFAULT_HASH_MB} * MIB) / 96));
@@ -596,9 +600,8 @@ TEST_CASE("TT - a quiescence store evicts the weakest main entry, not an arbitra
 // A store for a key already in the bucket is scored against the entry it would replace,
 // by the same ranking that decides evictions, and a tie in that ranking is settled on the
 // raw phase, depth and bound it quantises away. These pin what that buys: the two ways a
-// same-key store used to destroy a main entry's hash move, measured at 21 of 197 PV nodes
-// per #319, the ties the ranking alone would resolve the wrong way, and the cases that
-// must still overwrite.
+// same-key store could destroy a main entry's hash move, the ties the ranking alone would
+// resolve the wrong way, and the cases that must still overwrite.
 
 static const Move HASH_MOVE = Move(e2, e4, MoveFlags::QUIET);
 static const Move OTHER_MOVE = Move(g1, f3, MoveFlags::QUIET);
@@ -982,3 +985,22 @@ TEST_CASE("TT - a same-key bound does not downgrade the previous search's exact 
 	CHECK(result->bound == BoundType::LOWER);
 	CHECK(result->value == 60);
 }
+
+// ── Huge-page storage (Linux) ─────────────────────────────────────────────────
+
+#if defined(__linux__)
+TEST_CASE("TT - table memory is huge-page aligned from 2 MiB and not rounded up below it", "[tt]")
+{
+	constexpr size_t huge_page = size_t{2} << 20;
+	for (const size_t bytes : {size_t{64}, huge_page / 2, huge_page, 3 * huge_page}) {
+		void* memory = allocate_table_memory(bytes, 64);
+		const auto address = reinterpret_cast<uintptr_t>(memory);
+		CHECK(address % 64 == 0);
+		if (bytes >= huge_page)
+			CHECK(address % huge_page == 0);
+		else
+			CHECK(malloc_usable_size(memory) < huge_page);
+		free_table_memory(memory);
+	}
+}
+#endif

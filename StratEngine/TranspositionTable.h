@@ -14,6 +14,28 @@
 #include "Move.h"
 #include "TTStats.h"
 
+#if defined(__linux__)
+// Storage for the table and its locks; on libstdc++ the locks are nearly as large as the entries, and
+// every probe touches both. An allocation of at least one 2 MiB huge page is aligned to it and advised
+// MADV_HUGEPAGE: under THP `madvise`, the default on most current hosts, it would otherwise fault in
+// and TLB-miss 4 KiB at a time. Smaller ones are not rounded up, which would double a small table's
+// zero-fill. Throws std::bad_alloc.
+void* allocate_table_memory(std::size_t bytes, std::size_t alignment);
+void free_table_memory(void* memory) noexcept;
+
+template <class T> struct HugePageAllocator {
+	using value_type = T;
+
+	HugePageAllocator() = default;
+	template <class U> constexpr HugePageAllocator(const HugePageAllocator<U>&) noexcept {}
+
+	T* allocate(std::size_t n) { return static_cast<T*>(allocate_table_memory(n * sizeof(T), alignof(T))); }
+	void deallocate(T* p, std::size_t) noexcept { free_table_memory(p); }
+
+	template <class U> constexpr bool operator==(const HugePageAllocator<U>&) const noexcept { return true; }
+};
+#endif
+
 enum class BoundType : uint8_t { EXACT = 0, LOWER = 1, UPPER = 2 };
 
 // Node types
@@ -31,7 +53,7 @@ enum class NodeType : uint8_t {
 // QUIESCENCE: quiescence search
 enum class SearchPhase : uint8_t { MAIN, QUIESCENCE };
 
-// Transposotion Table Entries
+// Transposition Table Entries
 // Stores key, value, depth, best move, bound type, node type, age
 // Uses 64-bit keys and 16-bit values/depths for compactness
 // Age is used for replacement strategy
@@ -161,9 +183,16 @@ class TranspositionTable {
 	              "Bucket must be exactly BUCKET_SIZE entries with no padding");
 	static_assert(sizeof(Bucket) == 64 && alignof(Bucket) == 64);
 
-	std::vector<Bucket> table;
+#if defined(__linux__)
+	std::vector<Bucket, HugePageAllocator<Bucket>> table;
 	// per-bucket shared mutexes to allow concurrent probes
+	mutable std::vector<std::shared_mutex, HugePageAllocator<std::shared_mutex>> bucket_locks;
+#else
+	// Plain storage: Windows huge pages need a privilege, and the allocator-backed types above cost nps
+	// in the shipping build even though they allocate identically there.
+	std::vector<Bucket> table;
 	std::unique_ptr<std::shared_mutex[]> bucket_locks;
+#endif
 	size_t index_mask{0};
 
 	std::atomic<uint8_t> current_age{0};
@@ -178,6 +207,15 @@ class TranspositionTable {
 	// atomic counters for O(1) diagnostics (avoid scanning entire table)
 	std::atomic<size_t> entry_count{0};
 	std::atomic<size_t> pv_count{0};
+
+	static decltype(bucket_locks) make_bucket_locks(size_t buckets)
+	{
+#if defined(__linux__)
+		return decltype(bucket_locks)(buckets);
+#else
+		return std::make_unique<std::shared_mutex[]>(buckets);
+#endif
+	}
 
 	// helper: round down to nearest power of two >=1
 	static constexpr size_t floor_pow2(size_t v)
@@ -204,20 +242,16 @@ class TranspositionTable {
 	//
 	// The cost is that the allocation is generally smaller than the request, by
 	// up to half. The engine's 192 MiB request rounds down to 2^21 buckets, so
-	// 128 MiB of entries -- the same bucket count the 96-byte layout got at that
-	// request, which is why the two are capacity-equivalent at the default.
+	// 128 MiB of entries.
 	// The constructor's 256 MiB default below fits exactly and so yields 2^22
 	// buckets, double the engine's; only tests use it, since AIPerplex always
 	// passes a size explicitly.
 	// memory_mb() reports what was actually allocated for exactly this reason.
-	explicit TranspositionTable(size_t mb = 256) : requested_mb(mb)
+	explicit TranspositionTable(size_t mb = 256)
+	    : table(bucket_count_for(mb)), bucket_locks(make_bucket_locks(table.size())), index_mask(table.size() - 1),
+	      requested_mb(mb)
 	{
-		// use power-of-two bucket count for fast mask indexing
-		const size_t buckets = bucket_count_for(mb);
-		table.resize(buckets);
 		assert(reinterpret_cast<uintptr_t>(table.data()) % alignof(Bucket) == 0);
-		bucket_locks = std::make_unique<std::shared_mutex[]>(buckets);
-		index_mask = buckets - 1;
 
 		entry_count.store(0, std::memory_order_relaxed);
 		pv_count.store(0, std::memory_order_relaxed);
@@ -491,11 +525,11 @@ class TranspositionTable {
 		return static_cast<int>(quiescenceBudget * scale);
 	}
 
+	static constexpr int ageDistance(int newer, int older) noexcept { return (newer - older) & 0xFF; }
+
 	// Compute entry score balancing depth, age, node type, and search phase
 	// Scoring used for replacement decisions. Higher is better.
 	// Provides a bonus for PV entries and a penalty for quiescence entries
-	static constexpr int ageDistance(int newer, int older) noexcept { return (newer - older) & 0xFF; }
-
 	int replacementScore(const TTEntry& entry, int age) const noexcept
 	{
 		return replacementScore(entry.depth, entry.phase, entry.node_type, ageDistance(age, entry.age));
@@ -523,33 +557,6 @@ class TranspositionTable {
 		const int phase_bonus = (phase == SearchPhase::MAIN) ? 0 : -2560;
 		return adjusted_depth * 256 + pv_bonus + phase_bonus - age_diff * 512;
 	}
-
-	/*size_t count_entries() const {
-        size_t count = 0;
-        size_t buckets = table.size();
-        for (size_t idx = 0; idx < buckets; ++idx) {
-            std::shared_lock lock(bucket_locks[idx]);
-            for (const auto& entry : table[idx].entries) {
-                if (entry.key != 0)
-                    ++count;
-            }
-        }
-        return count;
-    }
-
-    size_t count_pv_nodes() const {
-        size_t count = 0;
-        size_t buckets = table.size();
-        for (size_t idx = 0; idx < buckets; ++idx) {
-            std::shared_lock lock(bucket_locks[idx]);
-            for (const auto& entry : table[idx].entries) {
-                if (entry.key != 0 && entry.node_type == NodeType::PV_NODE) {
-                    ++count;
-                }
-            }
-        }
-        return count;
-    }*/
 
 	// O(1) diagnostics using atomics: cheap to call from hot paths
 	size_t count_entries() const noexcept { return entry_count.load(std::memory_order_relaxed); }
