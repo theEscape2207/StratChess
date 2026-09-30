@@ -609,19 +609,6 @@ jobs:
             -BuildDirectory build -ClangTidy $tidy -Jobs 4
           exit $LASTEXITCODE
 
-      - name: PROBE whole-tree format and Gate on the image's LLVM
-        shell: pwsh
-        run: |
-          & "clang-format-$env:LLVM_MAJOR" --version
-          & "clang-tidy-$env:LLVM_MAJOR" --version
-          $format = (Get-Command "clang-format-$env:LLVM_MAJOR").Source
-          pwsh -NoProfile -File Scripts/Run-Lint.ps1 -Check Format -All -ClangFormat $format
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $tidy = (Get-Command "clang-tidy-$env:LLVM_MAJOR").Source
-          pwsh -NoProfile -File Scripts/Run-Lint.ps1 -Check Tidy -Profile Gate -All `
-            -BuildDirectory build -ClangTidy $tidy -Jobs 4
-          exit $LASTEXITCODE
-
   # The single always-present check, and the name must not change.
   #
   # This is the required status check on main: a red run blocks the merge.
