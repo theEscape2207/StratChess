@@ -392,6 +392,21 @@ TEST_CASE("TT - repeated clear reports no work after the table is empty", "[tt]"
 // that acceptable: the diagnostic must describe the allocation rather than the
 // request, and the allocation must never exceed the request.
 
+TEST_CASE("TT - table memory honours the requested alignment, and a huge page's on Linux", "[tt]")
+{
+	constexpr size_t huge_page = size_t{2} << 20;
+	for (const size_t bytes : {size_t{64}, huge_page / 2, huge_page, 3 * huge_page}) {
+		void* memory = allocate_table_memory(bytes, 64);
+		const auto address = reinterpret_cast<uintptr_t>(memory);
+		CHECK(address % 64 == 0);
+#if defined(__linux__)
+		if (bytes >= huge_page)
+			CHECK(address % huge_page == 0);
+#endif
+		free_table_memory(memory, 64);
+	}
+}
+
 TEST_CASE("TT - memory_mb reports the non-exact allocation, not the request", "[tt]")
 {
 	// 192 MiB / 64-byte buckets = 3145728, floored to 2^21 = 2097152 buckets,
