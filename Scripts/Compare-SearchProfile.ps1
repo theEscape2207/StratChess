@@ -605,7 +605,7 @@ foreach ($p in $positionList) {
             $env:STRAT_PROFILE_TIEBREAK_SEED = if ($sideSeed -gt 0) { "$sideSeed" } else { $null }
             try {
                 $out = Invoke-UciFixedDepthSearch -ExePath $s.Value -WorkDir $workDir -Position "fen $($p.Fen)" `
-                                                  -SearchDepth $Depth -Threads 1 -Description $p.Fen
+                                                  -SearchDepth $Depth -Threads 1 -Description "$($s.Key) build, position $($p.Name)"
             } finally {
                 $env:STRAT_PROFILE_TIEBREAK_SEED = $callerSeed
             }

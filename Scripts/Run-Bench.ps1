@@ -117,8 +117,7 @@ function ConvertTo-BenchResult {
         -SelfTest can assert both the parsing and the refusals without an engine.
     #>
     param(
-        [Parameter(Mandatory)][AllowEmptyString()][string]$Output,
-        [Parameter(Mandatory)][int]$SearchDepth,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Output,
         [Parameter(Mandatory)][string]$Fen
     )
 
@@ -197,7 +196,7 @@ function Invoke-Search {
     $out = Invoke-UciFixedDepthSearch -ExePath $ExePath -WorkDir $WorkDir -Position "fen $Fen" `
                                       -SearchDepth $SearchDepth -Threads $ThreadCount -Description $Fen
 
-    ConvertTo-BenchResult -Output $out -SearchDepth $SearchDepth -Fen $Fen
+    ConvertTo-BenchResult -Output $out -Fen $Fen
 }
 
 # ---------------------------------------------------------------------------
@@ -239,7 +238,7 @@ if ($SelfTest) {
         'bestmove e2e4'
     ) -join "`n"
 
-    $r = ConvertTo-BenchResult -Output $contract1 -SearchDepth 2 -Fen 'startpos'
+    $r = ConvertTo-BenchResult -Output $contract1 -Fen 'startpos'
     Assert-Case 'nodes, time, best move and contract are parsed' `
         ($r.Nodes -eq 140 -and $r.Ms -eq 9 -and $r.Best -eq 'e2e4' -and $r.Contract -eq 1) `
         "got nodes $($r.Nodes) ms $($r.Ms) best $($r.Best) contract $($r.Contract)"
@@ -248,7 +247,7 @@ if ($SelfTest) {
     Assert-Case 'no frontier skips line means zero skips' ($r.FrontierSkips -eq 0) "got $($r.FrontierSkips)"
 
     $withSkips = $contract1 -replace 'bestmove e2e4', "info string frontier skips 17`nbestmove e2e4"
-    $r = ConvertTo-BenchResult -Output $withSkips -SearchDepth 2 -Fen 'startpos'
+    $r = ConvertTo-BenchResult -Output $withSkips -Fen 'startpos'
     Assert-Case 'frontier skips are parsed' ($r.FrontierSkips -eq 17) "got $($r.FrontierSkips)"
 
     # A build predating #312: no contract line, no split. Reported as unknown, not zero,
@@ -258,7 +257,7 @@ if ($SelfTest) {
         'info depth 2 score cp 12 nodes 140 time 9 pv e2e4 e7e5'
         'bestmove e2e4'
     ) -join "`n"
-    $r = ConvertTo-BenchResult -Output $contract0 -SearchDepth 2 -Fen 'startpos'
+    $r = ConvertTo-BenchResult -Output $contract0 -Fen 'startpos'
     Assert-Case 'a pre-#312 build reports the split as unknown' `
         ($null -eq $r.MainNodes -and $null -eq $r.QsNodes -and $r.Contract -eq 0)
 
@@ -269,7 +268,7 @@ if ($SelfTest) {
         'info string treenodes main 110 qs 40'
         'bestmove e2e4'
     ) -join "`n"
-    $r = ConvertTo-BenchResult -Output $twoFinals -SearchDepth 2 -Fen 'startpos'
+    $r = ConvertTo-BenchResult -Output $twoFinals -Fen 'startpos'
     Assert-Case 'the LAST info and split lines are the reported result' `
         ($r.Nodes -eq 150 -and $r.MainNodes -eq 110) "got nodes $($r.Nodes) main $($r.MainNodes)"
 
@@ -277,13 +276,13 @@ if ($SelfTest) {
     # averaged into an aggregate and reported as a measurement.
     Assert-Case 'FALSIFY: contract 1 without a treenodes line is refused' `
         (Test-Refuses -Match "no 'info string treenodes' line" `
-            { ConvertTo-BenchResult -Output ($contract1 -replace 'info string treenodes main 100 qs 40\r?\n', '') -SearchDepth 2 -Fen 'x' })
+            { ConvertTo-BenchResult -Output ($contract1 -replace 'info string treenodes main 100 qs 40\r?\n', '') -Fen 'x' })
     Assert-Case 'FALSIFY: a split that does not sum to the total is refused' `
         (Test-Refuses -Match 'does not sum to the reported total' `
-            { ConvertTo-BenchResult -Output ($contract1 -replace 'qs 40', 'qs 39') -SearchDepth 2 -Fen 'x' })
+            { ConvertTo-BenchResult -Output ($contract1 -replace 'qs 40', 'qs 39') -Fen 'x' })
     Assert-Case 'FALSIFY: output with no info line is refused, by name' `
         (Test-Refuses -Match 'No parseable' `
-            { ConvertTo-BenchResult -Output 'uciok' -SearchDepth 2 -Fen 'x' })
+            { ConvertTo-BenchResult -Output 'uciok' -Fen 'x' })
 
     # Position resolution, against real files -- the parsing is file-shaped.
     $tmp = Join-Path ([System.IO.Path]::GetTempPath()) "run-bench-selftest-$([guid]::NewGuid().ToString('N'))"

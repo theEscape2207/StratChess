@@ -17,9 +17,6 @@
 
     Modes, each named after the driver path it is there to reach:
 
-    Every mode echoes each setoption, position and go line as 'info string got <line>', and
-    every search reports depths 1 and 2 only, so a deeper request ends short.
-
       ok                     Answer normally. Aborts without a bestmove if anything
                              arrives on stdin during the search, which is how a real
                              engine treats a stop -- and what makes the queued-quit
@@ -30,6 +27,9 @@
       stderr-flood           Fill the stderr pipe before answering, so a driver that
                              does not drain it deadlocks.
       ignore-quit            Answer normally, then never exit.
+
+    Every mode echoes each command it reads as 'info string got <line>', and every search
+    reports depths 1 and 2 only, so a deeper request ends short.
 
 .NOTES
     Every wait is bounded by a self-imposed lifetime, STRAT_FAKE_UCI_LIFETIME_MS,
@@ -128,10 +128,10 @@ while ((Get-Date) -lt $deadline) {
     }
 
     # Echo the request, so the driver's command construction is visible in the transcript.
-    if ($next.Line -match '^(setoption|position|go)\b') { Write-EngineLine "info string got $($next.Line)" }
+    Write-EngineLine "info string got $($next.Line)"
 
     switch -Regex ($next.Line) {
-        '^uci$'{ Write-EngineLine 'id name FakeUciEngine'; Write-EngineLine 'uciok' }
+        '^uci$'      { Write-EngineLine 'id name FakeUciEngine'; Write-EngineLine 'uciok' }
         '^isready$'  { Write-EngineLine 'readyok' }
         '^go\b'      { Invoke-Go }
         '^quit$'     {
