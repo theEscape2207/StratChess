@@ -76,7 +76,7 @@ cache key too, or the binary restores, the download is never attempted, and the 
 
 Each caching job keeps its own entry (`ccache-linux-gcc15-release`, `-debug`,
 `ccache-linux-asan-ubsan-stdlibdebug`, `ccache-linux-tsan`, `ccache-windows-clang-cl-release`,
-`-debug`) at `CCACHE_MAXSIZE=400M`. `actions/cache`
+`-debug`) at `CCACHE_MAXSIZE=400M` (`sanitize-linux`: 600M). `actions/cache`
 entries are immutable, so **every run writes six new ones** and the store carries a generation per
 run until LRU trims it — an order of magnitude more than one generation, against a budget shared with
 the FetchContent deps cache. That sharing was the risk this change was gated on: churn evicting a
