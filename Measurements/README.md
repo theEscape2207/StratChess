@@ -6,7 +6,7 @@ append-only records, mostly written by a script. How to *choose and run* an inst
 
 | Ledger | Instrument | What one row says |
 |---|---|---|
-| [`ci-calibration.md`](ci-calibration.md) | `strength.yml`, GCC on `ubuntu-24.04` | how the harness behaves — nothing about the engine |
+| [`ci-calibration.md`](ci-calibration.md) | `strength.yml`, GCC 15 on `ubuntu-26.04` | how the harness behaves — nothing about the engine |
 | [`ci-per-change.md`](ci-per-change.md) | same | what one change was worth against the commit it forked from |
 | [`ci-anchor.md`](ci-anchor.md) | same | cumulative strength against a fixed tag |
 | [`local.md`](local.md) | `Run-EloMatch.ps1`, clang-cl on Windows | mixed — each row names its own reference |
@@ -108,6 +108,12 @@ measurable bias. The two batches individually hit opposite ±2σ edges, which is
 per-batch noise. That run used `elo-reference-v1`, but it measures the *instrument* rather than the
 anchor, so it carries over to v2 unchanged. The Linux instrument's own calibration is
 [`ci-calibration.md`](ci-calibration.md).
+
+**The Linux instrument changed toolchain after 2026-09-30:** every `ci-*` row up to that date was
+built by GCC 13 on `ubuntu-24.04`, every later one by GCC 15 on `ubuntu-26.04` (#476). Both sides of
+a row are always built by one toolchain, so each row stays sound on its own. A compiler shifts the
+two sides' speed by different amounts, though, so a `ci-anchor.md` row is not read against one from
+the other side of that date without saying so.
 
 **Moving the match runner forward** is gated on the new binary's output rather than on its
 changelog, because every automated use of fastchess is text-scraping that output. The procedure and

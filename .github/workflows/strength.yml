@@ -74,7 +74,7 @@ env:
   BOOK_URL: https://raw.githubusercontent.com/official-stockfish/books/04738d057446e749cb071d58bac39df7f13efb47/UHO_4060_v3.epd.zip
   BOOK_FILE: UHO_4060_v3.epd
 
-# Every Linux job below pins ubuntu-24.04, whose image ships Ninja and CMake on
+# Every Linux job below pins ubuntu-26.04, whose image ships Ninja and CMake on
 # PATH -- `-G Ninja` needs no install step. Do not add one: it puts an Ubuntu apt
 # mirror on the critical path of every job, and a stalled mirror hangs `apt-get
 # update` indefinitely. A job on a different image must confirm this first.
@@ -90,7 +90,7 @@ jobs:
   # build.
   # ---------------------------------------------------------------------------
   setup:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     outputs:
       shard_list: ${{ steps.plan.outputs.shard_list }}
@@ -229,7 +229,7 @@ jobs:
   # ---------------------------------------------------------------------------
   build:
     needs: setup
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     outputs:
       cand_name: ${{ steps.stage.outputs.cand_name }}
@@ -371,7 +371,7 @@ jobs:
   # ---------------------------------------------------------------------------
   match:
     needs: [setup, build]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     # A 1110-game shard at 10+0.1 with concurrency 3 runs ~172 min. This leaves
     # headroom without touching the 6 h job cap.
     timeout-minutes: 340
@@ -533,7 +533,7 @@ jobs:
   aggregate:
     needs: [setup, build, match]
     if: always()
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     # Scoped to this job, which is the only one that writes anything back. The
     # other jobs keep the default read-only token.
@@ -632,7 +632,7 @@ jobs:
             echo "| Reference | ${{ needs.build.outputs.ref_name }} (\`${{ inputs.reference_ref }}\` = \`${{ needs.setup.outputs.reference_sha }}\`), tc=${{ inputs.reference_tc }}, options \`${REFERENCE_UCI_OPTIONS:-none}\` |"
             echo "| Games | ${{ needs.setup.outputs.actual_games }} = ${{ inputs.shards }} shards x ${{ needs.setup.outputs.games_per_shard }}, concurrency ${{ inputs.concurrency }} per shard |"
             echo "| Book | \`$BOOK_FILE\` (${{ needs.build.outputs.openings }} openings) |"
-            echo "| Toolchain | GCC on ubuntu-24.04, Release, Threads=1 |"
+            echo "| Toolchain | GCC 15 on ubuntu-26.04, Release, Threads=1 |"
             if [ "$CMAKE_DEFINES_VALIDATED" != "true" ]; then
               echo "| CMake defines | Not accepted by setup; no engine was built |"
             elif [ "$BUILD_RESULT" = "success" ]; then
