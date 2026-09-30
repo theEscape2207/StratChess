@@ -14,12 +14,13 @@
 #include "Move.h"
 #include "TTStats.h"
 
-// Storage for the table and its locks. On Linux an allocation of at least one 2 MiB huge page is
-// aligned to it and advised MADV_HUGEPAGE: under THP `madvise`, the default on most current hosts, it
-// would otherwise fault in and TLB-miss 4 KiB at a time. Smaller ones are not rounded up, which would
-// double a small table's zero-fill. Throws std::bad_alloc.
+#if defined(__linux__)
+// Storage for the table and its locks. An allocation of at least one 2 MiB huge page is aligned to it
+// and advised MADV_HUGEPAGE: under THP `madvise`, the default on most current hosts, it would
+// otherwise fault in and TLB-miss 4 KiB at a time. Smaller ones are not rounded up, which would double
+// a small table's zero-fill. Throws std::bad_alloc.
 void* allocate_table_memory(std::size_t bytes, std::size_t alignment);
-void free_table_memory(void* memory, std::size_t alignment) noexcept;
+void free_table_memory(void* memory) noexcept;
 
 template <class T> struct HugePageAllocator {
 	using value_type = T;
@@ -28,10 +29,11 @@ template <class T> struct HugePageAllocator {
 	template <class U> constexpr HugePageAllocator(const HugePageAllocator<U>&) noexcept {}
 
 	T* allocate(std::size_t n) { return static_cast<T*>(allocate_table_memory(n * sizeof(T), alignof(T))); }
-	void deallocate(T* p, std::size_t) noexcept { free_table_memory(p, alignof(T)); }
+	void deallocate(T* p, std::size_t) noexcept { free_table_memory(p); }
 
 	template <class U> constexpr bool operator==(const HugePageAllocator<U>&) const noexcept { return true; }
 };
+#endif
 
 enum class BoundType : uint8_t { EXACT = 0, LOWER = 1, UPPER = 2 };
 
@@ -180,9 +182,16 @@ class TranspositionTable {
 	              "Bucket must be exactly BUCKET_SIZE entries with no padding");
 	static_assert(sizeof(Bucket) == 64 && alignof(Bucket) == 64);
 
-	std::vector<Bucket, HugePageAllocator<Bucket>> table;
 	// per-bucket shared mutexes to allow concurrent probes
+#if defined(__linux__)
+	std::vector<Bucket, HugePageAllocator<Bucket>> table;
 	mutable std::vector<std::shared_mutex, HugePageAllocator<std::shared_mutex>> bucket_locks;
+#else
+	// Huge pages need a privilege here. The Linux storage types, allocating identically, cost nps in the
+	// shipping build, so these stay as they were.
+	std::vector<Bucket> table;
+	std::unique_ptr<std::shared_mutex[]> bucket_locks;
+#endif
 	size_t index_mask{0};
 
 	std::atomic<uint8_t> current_age{0};
@@ -197,6 +206,15 @@ class TranspositionTable {
 	// atomic counters for O(1) diagnostics (avoid scanning entire table)
 	std::atomic<size_t> entry_count{0};
 	std::atomic<size_t> pv_count{0};
+
+	static decltype(bucket_locks) make_bucket_locks(size_t buckets)
+	{
+#if defined(__linux__)
+		return decltype(bucket_locks)(buckets);
+#else
+		return std::make_unique<std::shared_mutex[]>(buckets);
+#endif
+	}
 
 	// helper: round down to nearest power of two >=1
 	static constexpr size_t floor_pow2(size_t v)
@@ -230,7 +248,8 @@ class TranspositionTable {
 	// passes a size explicitly.
 	// memory_mb() reports what was actually allocated for exactly this reason.
 	explicit TranspositionTable(size_t mb = 256)
-	    : table(bucket_count_for(mb)), bucket_locks(table.size()), index_mask(table.size() - 1), requested_mb(mb)
+	    : table(bucket_count_for(mb)), bucket_locks(make_bucket_locks(table.size())), index_mask(table.size() - 1),
+	      requested_mb(mb)
 	{
 		assert(reinterpret_cast<uintptr_t>(table.data()) % alignof(Bucket) == 0);
 
