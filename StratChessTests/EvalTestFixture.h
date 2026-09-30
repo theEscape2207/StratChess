@@ -476,10 +476,8 @@ inline std::string MirrorFen(std::string_view fen)
 	return MirrorPlacement(placement) + ' ' + (active == "w" ? "b" : "w") + ' ' + MirrorCastling(castling) + ' ' +
 	       MirrorEnPassant(ep) + ' ' + halfmove + ' ' + fullmove;
 }
-// EvaluatorTestFixture is a friend of Evaluator (STRAT_ENABLE_TEST_ACCESS,
-// same mechanism as AIPerplex/UciHandler's fixtures) that builds an
-// EvalContext from a Board and forwards to each term, so terms can be
-// asserted on directly instead of only inferred from whole-position deltas.
+// Blended term probes use the public Breakdown; friendship supports raw endpoints,
+// attack aggregates, private helpers/constants and draw-score configuration.
 struct EvaluatorTestFixture {
 	// SetDrawScores is private to AIPerplex, which is the point of it. A test that
 	// wants to see what a configured evaluator returns reaches it through this
@@ -491,59 +489,45 @@ struct EvaluatorTestFixture {
 
 	static int Pawns(const Board& board, eColor color)
 	{
-		const EvalContext ctx = BuildContext(board);
-		return BlendPhase(Evaluator::eval_pawns(ctx, color), ctx.phase);
+		return Evaluator{}.Breakdown(board).at(EvalTerm::Pawns, color);
 	}
 	static int Rooks(const Board& board, eColor color)
 	{
-		const EvalContext ctx = BuildContext(board);
-		return BlendPhase(Evaluator::eval_rooks(ctx, color), ctx.phase);
+		return Evaluator{}.Breakdown(board).at(EvalTerm::Rooks, color);
 	}
-	static int Pst(const Board& board, eColor color)
-	{
-		const EvalContext ctx = BuildContext(board);
-		return BlendPhase(Evaluator::eval_pst(ctx, color), ctx.phase);
-	}
+	static int Pst(const Board& board, eColor color) { return Evaluator{}.Breakdown(board).at(EvalTerm::Pst, color); }
 	static int Mopup(const Board& board, eColor color)
 	{
-		const EvalContext ctx = BuildContext(board);
-		return BlendPhase(Evaluator::eval_mopup(ctx, color), ctx.phase);
+		return Evaluator{}.Breakdown(board).at(EvalTerm::Mopup, color);
 	}
 	static int Bishops(const Board& board, eColor color)
 	{
-		const EvalContext ctx = BuildContext(board);
-		return BlendPhase(Evaluator::eval_bishops(ctx, color), ctx.phase);
+		return Evaluator{}.Breakdown(board).at(EvalTerm::Bishops, color);
 	}
 	static int Mobility(const Board& board, eColor color)
 	{
-		const EvalContext ctx = BuildContext(board);
-		return BlendPhase(Evaluator::eval_mobility(ctx, color), ctx.phase);
+		return Evaluator{}.Breakdown(board).at(EvalTerm::Mobility, color);
 	}
 	static int Outposts(const Board& board, eColor color)
 	{
-		const EvalContext ctx = BuildContext(board);
-		return BlendPhase(Evaluator::eval_outposts(ctx, color), ctx.phase);
+		return Evaluator{}.Breakdown(board).at(EvalTerm::Outposts, color);
 	}
 	static int Castling(const Board& board, eColor color)
 	{
-		const EvalContext ctx = BuildContext(board);
-		return BlendPhase(Evaluator::eval_castling(ctx, color), ctx.phase);
+		return Evaluator{}.Breakdown(board).at(EvalTerm::Castling, color);
 	}
 
 	static int KingShelter(const Board& board, eColor color)
 	{
-		const EvalContext ctx = BuildContext(board);
-		return BlendPhase(Evaluator::eval_king_pawn_cover(ctx, color).shelter, ctx.phase);
+		return Evaluator{}.Breakdown(board).at(EvalTerm::KingShelter, color);
 	}
 	static int KingStorm(const Board& board, eColor color)
 	{
-		const EvalContext ctx = BuildContext(board);
-		return BlendPhase(Evaluator::eval_king_pawn_cover(ctx, color).storm, ctx.phase);
+		return Evaluator{}.Breakdown(board).at(EvalTerm::KingStorm, color);
 	}
 	static int KingFiles(const Board& board, eColor color)
 	{
-		const EvalContext ctx = BuildContext(board);
-		return BlendPhase(Evaluator::eval_king_pawn_cover(ctx, color).files, ctx.phase);
+		return Evaluator{}.Breakdown(board).at(EvalTerm::KingFiles, color);
 	}
 	// Unblended, so a test can assert the eg endpoints are 0 rather than infer
 	// it from a low-phase position.
@@ -553,8 +537,7 @@ struct EvaluatorTestFixture {
 	}
 	static int KingAttack(const Board& board, eColor color)
 	{
-		const EvalContext ctx = BuildContext(board);
-		return BlendPhase(Evaluator::eval_king_attack(ctx, color), ctx.phase);
+		return Evaluator{}.Breakdown(board).at(EvalTerm::KingAttack, color);
 	}
 	// Unblended, so a case can compare two positions of different phase, or
 	// assert the eg endpoint is 0 rather than infer it from a low-phase board.

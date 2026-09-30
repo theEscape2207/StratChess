@@ -161,12 +161,8 @@ assertion or an `EvaluatorTestFixture` static for a single term.
 - Color symmetry: the #126 knight-on-file and pawn-on-file positions added to the `MirrorFen`
   whole-position symmetry cases above, since the two new masks are the most likely place for a
   color asymmetry to be introduced
-- Term-level tests (issue #127 restructure): `Evaluator::Evaluate()` now builds an
-  `EvalContext` and sums four private per-term functions (`eval_pawns`, `eval_rooks`, `eval_pst`,
-  `eval_mopup`), each `(const EvalContext&, eColor) -> int`. `EvaluatorTestFixture` (a
-  `STRAT_ENABLE_TEST_ACCESS` friend, same mechanism as the AIPerplex/UciHandler fixtures) builds
-  an `EvalContext` from a `Board` and forwards to each term, so terms are asserted on directly
-  instead of only inferred from whole-position deltas:
+- Term-level tests: `EvaluatorTestFixture` reads twelve blended per-colour contributions through
+  `Evaluator::Breakdown().at(term, color)`, retaining each test's term-specific assertions:
   - `eval_pawns`: a normal (non-isolated, non-doubled) structure scores exactly 0; the doubled
     a-file pair (`FEN_WHITE_DOUBLED`) scores exactly `-(DOUBLED_PAWN_PENALTY + 2*ISOLATED_PAWN_PENALTY)`
   - `eval_rooks`: a 7th-rank rook on a fully open file scores exactly `ROOK_ON_7TH_BONUS + OPEN_FILE`;
@@ -931,6 +927,17 @@ counts as move-generation discrepancies is exactly the mistake #200 had to corre
 failures over 19 distinct positions, **every one carrying the rejected-FEN fingerprint**, 23.4 min.
 On every legally reachable position in the corpus at depths 1–4, `MoveGenerator` matches the oracle
 exactly. Full detail and the failure classification: #198.
+
+## Evaluator Test Access
+
+The blended fixture probes map directly to `EvalTerm::Pawns`, `Rooks`, `Pst`, `Mopup`, `Bishops`,
+`Mobility`, `Outposts`, `Castling`, `KingShelter`, `KingStorm`, `KingFiles` and `KingAttack`.
+The public breakdown uses the production phase blending for each colour; test call sites stay intact.
+
+`EvaluatorTestFixture` retains conditional friendship for observations absent from `Breakdown()`:
+raw `ScorePair` endpoints and `KingPawnCover`, attack aggregates, king-zone/distance/danger helpers,
+private constants, unscaled white-POV score and draw-score configuration. Its private context helper
+and phase probe remain available for those internal tests; the friend declaration count is unchanged.
 
 ## AIPerplex Test Access
 

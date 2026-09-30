@@ -968,11 +968,8 @@ class Evaluator {
 	EvalBreakdown Breakdown(const Board& board) const noexcept;
 
 #ifdef STRAT_ENABLE_TEST_ACCESS
-	// Enables term-level unit tests (StratChessTests/EvalTestFixture.h) to call
-	// the private eval_* functions directly now that they exist as separately
-	// callable units. Same mechanism as AIPerplex/UciHandler's test fixtures.
-	// Activated only by StratChessTests.vcxproj's preprocessor definitions —
-	// never in production.
+	// Retains raw-term, helper and draw-score test access beyond the public Breakdown.
+	// Activated by STRAT_ENABLE_TEST_ACCESS in the CMake test target, never in production.
 	friend struct EvaluatorTestFixture;
 #endif
 
