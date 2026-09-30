@@ -75,7 +75,7 @@ proof it worked is the **stats steps reporting skipped**, since they are the onl
 cache key too, or the binary restores, the download is never attempted, and the test passes vacuously.
 
 Each caching job keeps its own entry (`ccache-linux-gcc15-release`, `-debug`,
-`ccache-linux-asan-ubsan-stdlibdebug`, `ccache-linux-tsan`, `ccache-windows-clang-cl-release`,
+`ccache-linux-gcc15-asan-ubsan-stdlibdebug`, `ccache-linux-gcc15-tsan`, `ccache-windows-clang-cl-release`,
 `-debug`) at `CCACHE_MAXSIZE=400M` (`sanitize-linux`: 600M). `actions/cache`
 entries are immutable, so **every run writes six new ones** and the store carries a generation per
 run until LRU trims it — an order of magnitude more than one generation, against a budget shared with
@@ -156,9 +156,9 @@ Release-only because perft is compute-bound: the suite takes **30 s** optimised,
 reached 4 of 131 positions in six minutes — roughly three hours extrapolated. Never put a perft suite
 on a Debug leg.
 
-`build-linux` runs on `ubuntu-26.04` with its default GCC 15; the other Linux jobs stay on
-`ubuntu-24.04` (GCC 13) until #476 moves them. A moved job's ccache key gains `-gcc15`, so a GCC 13
-and a GCC 15 job never share, and overwrite, one cache.
+`build-linux`, `sanitize-linux` and `tsan-linux` run on `ubuntu-26.04` with its default GCC 15; the
+other Linux jobs stay on `ubuntu-24.04` (GCC 13) until #476 moves them. A moved job's ccache key
+gains `-gcc15`, so a GCC 13 and a GCC 15 job never share, and overwrite, one cache.
 
 **`sanitize-linux`** builds the test binary with `-fsanitize=address,undefined` and
 `STRAT_STDLIB_DEBUG=ON` — libstdc++ debug mode, i.e. checked iterators and container preconditions,
@@ -192,7 +192,7 @@ current critical path, and slow every full-tier PR. `sanitize-linux` already run
 
 Two mechanics that are easy to get wrong, both of which produce a *falsely clean* run:
 `setarch $(uname -m) -R` disables ASLR, without which TSan dies with `unexpected memory mapping`
-before `main` on Ubuntu 24.04 and reports nothing; and the driver waits for `uciok`/`readyok`/
+before `main` on the runner kernel and reports nothing; and the driver waits for `uciok`/`readyok`/
 `bestmove` rather than piping commands, which would otherwise arrive mid-search and be refused by the
 UCI guards. TSan cannot be combined with ASan, hence a separate job. Survey, positive control, cost
 and contention analysis: `.claude/plans/retained/tsan-lazy-smp.md`.
