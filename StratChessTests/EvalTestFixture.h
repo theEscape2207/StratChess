@@ -1,9 +1,8 @@
 #pragma once
 // EvalTestFixture.h — shared helpers for Evaluator tests
 //
-// Validates the direction and relative magnitude of evaluation scores.
-// Exact centipawn values are intentionally NOT tested — positional tables
-// and future evaluation changes would make exact-value tests fragile.
+// Covers directional, relative, and exact evaluation behavior where each is
+// useful, including exact values for stable term contracts.
 //
 // Pattern: Board board(fen); then Evaluator().Evaluate(board)
 //
@@ -44,12 +43,12 @@ static constexpr const char* FEN_WHITE_DOUBLED = "4k3/pp6/8/8/8/P7/P7/4K3 w - - 
 static constexpr const char* FEN_WHITE_NORMAL = "4k3/pp6/8/8/8/1P6/P7/4K3 w - - 0 1";
 
 // Endgame: White Ke1 + Re7 (rook on 7th rank). Black Kg8.
-// Reduced material triggers ENDGAME stage; rook-on-7th bonus should apply.
+// Reduced material gives a low phase; the rook-on-7th bonus should apply.
 // White to move. The black king stands off the e-file, so the rook does not
 // attack it — legal. No pawns of either colour, so the e-file counts as open.
 static constexpr const char* FEN_ROOK_ON_7TH = "6k1/4R3/8/8/8/8/8/4K3 w - - 0 1";
 
-// Mop-up evaluation (issue #70 / epic #110): White King+Queen vs Black King+Rook,
+// Mop-up evaluation: White King+Queen vs Black King+Rook,
 // pawnless, decisive material lead (900 - 500 = 400 cp). Black king cornered (a8)
 // vs centered (c6) — everything else identical. White to move.
 static constexpr const char* FEN_MOPUP_LOSER_KING_CORNER = "k6r/8/8/8/3Q4/8/8/4K3 w - - 0 1";
@@ -60,9 +59,8 @@ static constexpr const char* FEN_MOPUP_LOSER_KING_CENTER = "7r/8/2k5/8/3Q4/8/8/4
 static constexpr const char* FEN_MOPUP_LOSER_KING_CORNER_WITH_PAWNS = "k6r/p7/8/8/3Q4/8/P7/4K3 w - - 0 1";
 static constexpr const char* FEN_MOPUP_LOSER_KING_CENTER_WITH_PAWNS = "7r/p7/2k5/8/3Q4/8/P7/4K3 w - - 0 1";
 
-// The defender-force gate (issue #118 item 5): a defending QUEEN, whose phase of
-// 4 passed the retired phase-keyed gate. Same pawnless, decisive-lead shape as
-// the cases above, so only the defender's force distinguishes it.
+// The defender-force gate: a defending queen, with the same pawnless,
+// decisive-lead shape as above, so only the defender's force distinguishes it.
 static constexpr const char* FEN_MOPUP_DEFENDER_HAS_QUEEN = "k7/1q6/8/8/3Q4/8/8/4K2R w - - 0 1";
 
 // White King+Knight vs Black King+Bishop, pawnless, materially EQUAL (300 - 300 = 0).
@@ -78,13 +76,13 @@ static constexpr const char* FEN_MOPUP_MARGINAL_CENTER = "8/8/2k5/8/5N2/8/8/b3K3
 // symmetry FEN that exercises the colour keying at all.
 static constexpr const char* FEN_MOPUP_KBN_LIGHT_BISHOP = "k7/8/2K5/8/8/5N2/8/3B4 w - - 0 1";
 
-// The two scaled pawnless rook classes (issue #128), White the stronger side:
+// The two scaled pawnless rook classes, White the stronger side:
 // K+R+N vs K+R and K+R vs K+N. Nothing attacks either king in either.
 static constexpr const char* FEN_ROOK_AND_MINOR_VS_ROOK = "4k2r/8/8/8/8/5N2/3R4/4K3 w - - 0 1";
 static constexpr const char* FEN_ROOK_VS_MINOR = "4k2n/8/8/8/8/8/3R4/4K3 w - - 0 1";
 
 // Level material, so the class has no stronger side and the whole score is
-// positional (#436). White's rook is on the 7th and Black's is passive on its
+// positional. White's rook is on the 7th and Black's is passive on its
 // own back rank, which is what makes the unscaled score non-zero — a position
 // scoring zero could not tell a scale from a clamp.
 static constexpr const char* FEN_ROOK_VS_ROOK = "r3k3/3R4/8/8/8/8/8/4K3 w - - 0 1";
@@ -94,15 +92,14 @@ static constexpr const char* FEN_ROOK_VS_ROOK = "r3k3/3R4/8/8/8/8/8/4K3 w - - 0 
 static constexpr const char* FEN_OPPOSITE_BISHOPS_ONE_PAWN = "8/8/4k3/8/3P4/2B4b/8/4K3 w - - 0 1";
 static constexpr const char* FEN_OPPOSITE_BISHOPS_TWO_PAWNS = "8/8/4k3/8/P2P4/2B4b/8/4K3 w - - 0 1";
 
-// King safety (issue #97). Every case below keeps a queen on each side so the
-// phase is nonzero — all four king-safety contributions are middlegame-only and
+// King safety. Every case below keeps a queen on each side so the
+// phase is nonzero — all catalogued king-safety contributions are middlegame-only and
 // blend to exactly 0 at phase 0, which would make a bare-king case vacuous.
 //
 // The frame is White Qd1 against Black Qd8/Kg8, so only the White king and the
 // pawns distinguish one case from the next. The queens sit on the d-file rather
 // than the a-file because a queen on a1 attacks h8 along the long diagonal,
-// which makes any case wanting a king in that corner an illegal position — and
-// Board falls back to the starting position for one rather than failing loudly.
+// which would put the king in check. The frame keeps both positions legal.
 
 // Shield states, all three with the same three White pawns on the board so the
 // comparison is of placement only: on their starting squares, pushed one rank,
@@ -129,12 +126,12 @@ static constexpr const char* FEN_KING_STORM_BEHIND = "3q2k1/8/8/8/6K1/6p1/8/3Q4 
 static constexpr const char* FEN_KING_STORM_BLOCKED = "3q2k1/8/8/8/8/6p1/6P1/3Q2K1 w - - 0 1";
 static constexpr const char* FEN_KING_STORM_UNBLOCKED = "3q2k1/8/8/8/8/6p1/5P2/3Q2K1 w - - 0 1";
 
-// King-file openness (D5), isolated on the g-file. White has no g-pawn in the
+// King-file openness, isolated on the g-file. White has no g-pawn in the
 // half-open and open cases, and Black's g-pawn is the only difference between
 // them. That pawn IS inside White's storm scan and does index the storm table —
 // the row it lands in is zero today, which is why the king-files row is the only
 // thing that moves. The test asserts that zero rather than assuming it, so a
-// #117 retune breaks it loudly instead of silently ending the isolation.
+// changed storm contribution cannot silently end the isolation.
 static constexpr const char* FEN_KING_FILE_CLOSED = "3q2k1/5ppp/8/8/8/8/5PPP/3Q2K1 w - - 0 1";
 static constexpr const char* FEN_KING_FILE_HALF_OPEN = "3q2k1/5ppp/8/8/8/8/4PP1P/3Q2K1 w - - 0 1";
 static constexpr const char* FEN_KING_FILE_OPEN = "3q2k1/4pp1p/8/8/8/8/4PP1P/3Q2K1 w - - 0 1";
@@ -174,25 +171,18 @@ static constexpr const char* FEN_KING_ATTACK_BUCKET_QUEEN = "3q2k1/5ppp/8/Q7/8/8
 // openness. The declared bound has to hold here or it is not a bound.
 static constexpr const char* FEN_KING_SAFETY_WORST = "3q2k1/8/8/8/8/5ppp/1PPP4/3Q2K1 w - - 0 1";
 
-// Color-symmetry regression cases (issue #125) — see MirrorFen below.
+// Color-symmetry cases; see MirrorFen below.
 
-// White queen on c6: the case that exposes the pre-fix getEvalBoard defect.
-// getEvalBoard(BLACK, sq) used (63 - sq), a 180-degree rotation that mirrors
-// files as well as ranks, instead of a vertical flip (sq ^ 56). Before this fix
-// the queen PST was not file-symmetric (c6 = 4, f6 = 3), so a White queen on c6
-// and its color-mirror (a Black queen on c3) scored 1 cp apart. Black king
-// on h8 is not attacked: c6's rank/file/diagonals reach a6-h6, c1-c8, a8, b7,
-// d7, e8, d5, e4, f3, g2, h1, b5, a4 — not h8. White to move.
+// White queen on c6 exercises the file-asymmetric queen PST; its color-mirror
+// places a Black queen on c3. The Black king on h8 is not attacked: c6's
+// rank, file and diagonals reach a6-h6, c1-c8, a8, b7, d7, e8, d5, e4, f3,
+// g2, h1, b5 and a4, but not h8. White to move.
 //
-// It is not attacked, but it IS zone-attacked: c6's rank reaches f6, g6 and h6,
-// three squares of Kh8's king zone. So this position drives eval_king_attack too,
-// which is what makes the whole-position symmetry case non-vacuous for that term.
+// It is zone-attacked: c6's rank reaches f6, g6 and h6, three squares of Kh8's
+// king zone, so this position also exercises eval_king_attack.
 //
-// This is the ONLY whole-position case below that discriminates: the others
-// contain no queen at all, or (FEN_MOPUP_LOSER_KING_CORNER) a queen whose
-// rotated and flipped images happen to hold the same value. The direct
-// getEvalBoard tests are the real guard — do not delete them as "redundant
-// with the position tests".
+// This is the only whole-position case below that discriminates the
+// file-asymmetric lookup; direct getEvalBoard tests cover the mapping itself.
 static constexpr const char* FEN_QUEEN_C6 = "7k/8/2Q5/8/8/8/8/4K3 w - - 0 1";
 
 // Middlegame with rooks on open/half-open files: both sides have 11800
@@ -201,12 +191,11 @@ static constexpr const char* FEN_QUEEN_C6 = "7k/8/2Q5/8/8/8/8/4K3 w - - 0 1";
 // flat, so only the endgame endpoint bleeding through the taper is nonzero.
 static constexpr const char* FEN_MIDDLEGAME_ROOKS = "2rr2k1/pp3ppp/5n2/8/8/2N5/PP3PPP/3RR1K1 w - - 0 1";
 
-// Endgame with pawns: 10100 material each side trips the ENDGAME stage (and so
-// the endgame king PST), while the pawns on the board keep the pawnless mop-up
-// branch gated off.
+// Low phase with pawns: the endgame king PST contributes, while pawns keep the
+// pawnless mop-up branch gated off.
 static constexpr const char* FEN_ENDGAME_KING_PST = "8/5p2/4k3/8/8/2K5/3P4/8 w - - 0 1";
 
-// Rook open-file definition (issue #126). White Re1 + Kf1, Black Kg8 + one
+// Rook open-file definition. White Re1 + Kf1, Black Kg8 + one
 // minor/pawn on the rook's file (e) or one file off (d). The knight's PST
 // value is identical on d5/e5 (10), and the pawn's PST value is identical on
 // d5/e5 (14), so within each pair the ONLY eval difference is the open-file
@@ -216,18 +205,17 @@ static constexpr const char* FEN_ROOK_OPEN_FILE_KNIGHT_OFF = "6k1/8/8/3n4/8/8/8/
 static constexpr const char* FEN_ROOK_OPEN_FILE_PAWN_ON = "6k1/8/8/4p3/8/8/8/4RK2 w - - 0 1";
 static constexpr const char* FEN_ROOK_OPEN_FILE_PAWN_OFF = "6k1/8/8/3p4/8/8/8/4RK2 w - - 0 1";
 
-// Rook open-file, own-pawn-behind decision (D5, issue #126). Same fixed White
+// Rook open-file, own-pawn-behind decision. Same fixed White
 // pawn on e4 in both; the rook sits behind it (e6) or ahead of it (e2).
 static constexpr const char* FEN_ROOK_OWN_PAWN_BEHIND = "6k1/8/4R3/8/4P3/8/8/6K1 w - - 0 1";
 static constexpr const char* FEN_ROOK_OWN_PAWN_AHEAD = "6k1/8/8/8/4P3/8/4R3/6K1 w - - 0 1";
 
-// D5, controlled pair: rook fixed on e6 in both, White pawn on d4 (off the
+// Controlled pair: rook fixed on e6 in both, White pawn on d4 (off the
 // rook's file) vs e4 (on it, behind the rook). The White pawn's PST value is
 // identical on d4 and e4 (14), both pawns are isolated, and neither file holds
 // an enemy pawn — so if an own pawn behind the rook leaves the file fully OPEN
-// (D5 as implemented), these two must score exactly EQUAL. Widening the
-// own-pawn test to the whole file would break that equality by 15 cp, which is
-// what makes this pair, unlike the >-assertion above, actually pin D5.
+// under this open-file definition, these two must score exactly EQUAL. Counting
+// an own pawn anywhere on the file would break that equality by 15 cp.
 static constexpr const char* FEN_ROOK_OWN_PAWN_OFF_FILE = "6k1/8/4R3/8/3P4/8/8/6K1 w - - 0 1";
 static constexpr const char* FEN_ROOK_OWN_PAWN_BEHIND_SAME_ROOK = "6k1/8/4R3/8/4P3/8/8/6K1 w - - 0 1";
 
@@ -238,7 +226,7 @@ struct EvalProbe final : Evaluator {
 	using Evaluator::getEvalBoard;
 	using Evaluator::GetPositionalScore;
 };
-// Castling asymmetry (issue #115). Neither side has rights left; White's king
+// Castling asymmetry. Neither side has rights left; White's king
 // is tucked on g1 while Black's sits on e8, so eval_castling pays White and
 // penalises Black. Mirroring swaps the position and the side to move together,
 // so the score stays EQUAL as above; what this case pins is that the term's
@@ -248,28 +236,28 @@ struct EvalProbe final : Evaluator {
 // is not in check.
 static constexpr const char* FEN_CASTLED_VS_CENTRAL_KING = "4k3/8/8/8/8/8/8/5RK1 w - - 0 1";
 
-// Bishop-pair asymmetry (issue #111). White holds bishops on both square
+// Bishop-pair asymmetry. White holds bishops on both square
 // colours (c1 dark, f1 light); Black has a single bishop on g7 — so the pair
 // bonus applies to exactly one side, which is what makes the mirror
 // discriminating. Legal: neither king is attacked.
 static constexpr const char* FEN_BISHOP_PAIR_VS_SINGLE = "4k3/6b1/8/8/8/8/8/2B1KB2 w - - 0 1";
 
-// Passed pawns on OPPOSITE EDGE FILES, at deliberately different advancement
-// (issue #116). Both properties matter: opposite edges mean a mask that wrapped
+// Passed pawns on OPPOSITE EDGE FILES, at deliberately different advancement.
+// Both properties matter: opposite edges mean a mask that wrapped
 // around the a/h boundary shows up in a whole-position score rather than only in
 // the mask unit tests, and unequal advancement means a broken per-colour
 // `advanced` index cannot cancel between the two sides. Legal: kings on e8/e1,
 // neither attacked.
 static constexpr const char* FEN_EDGE_FILE_PASSERS = "4k3/8/8/p7/8/7P/8/4K3 w - - 0 1";
 
-// Blockaded passer (issue #116). White's e7 pawn has the black king squarely on
+// Blockaded passer. White's e7 pawn has the black king squarely on
 // its stop square, so the blockade discount applies to exactly one side. This is
 // the only place `eval_pawns` reads a non-pawn bitboard (`ctx.occupied[enemy]`),
 // and it is per-colour, so without this the mirror battery never exercises it.
 // Legal: the kings are not adjacent and neither is in check.
 static constexpr const char* FEN_BLOCKADED_PASSER = "4k3/4P3/8/8/8/8/8/4K3 w - - 0 1";
 
-// Minor-piece outposts (issue #112). One frame throughout: White Ke1 and a
+// Minor-piece outposts. One frame throughout: White Ke1 and a
 // knight on d5 supported by a pawn on c4, Black Ke8 with two idle pawns on a7
 // and h7 that are on neither adjacent file. Each case below changes exactly one
 // thing about that frame, so the outpost term is the only thing that can move.
@@ -349,8 +337,8 @@ static constexpr const char* kSymmetryFens[] = {
     // Covers the WHITE_7TH_ROW = 1 / BLACK_7TH_ROW = 6 pairing, the only
     // direction-aware constant pair otherwise unexercised by a symmetry case.
     FEN_ROOK_ON_7TH,
-    // Issue #126 coverage: enemy knight sharing the rook's file (open-file
-    // fix) and enemy pawn sharing it (half-open guard) — the two positions
+    // Enemy knight sharing the rook's file and enemy pawn sharing it exercise
+    // the open-file and half-open classifications — the two positions
     // most likely to have a color-asymmetric open-file classification.
     FEN_ROOK_OPEN_FILE_KNIGHT_ON,
     FEN_ROOK_OPEN_FILE_PAWN_ON,
@@ -359,12 +347,12 @@ static constexpr const char* kSymmetryFens[] = {
     // pair, so without these two neither term is discriminated by a mirror.
     FEN_CASTLED_VS_CENTRAL_KING,
     FEN_BISHOP_PAIR_VS_SINGLE,
-    // Issue #116: the passer term is direction-aware through a new mask pair and
+    // The passer term is direction-aware through a mask pair and
     // a per-colour rank index, and no other FEN here puts a passer on an edge
     // file, which is where a wraparound asymmetry would hide.
     FEN_EDGE_FILE_PASSERS,
     FEN_BLOCKADED_PASSER,
-    // Issue #128: the only entries whose score passes through a FRACTIONAL
+    // These entries pass through a fractional
     // endgame scale. The exact-draw classes are zero on both sides of the
     // mirror and so cannot discriminate a sign error in the scaling arithmetic.
     FEN_ROOK_AND_MINOR_VS_ROOK,
@@ -377,13 +365,13 @@ static constexpr const char* kSymmetryFens[] = {
     // mapping is symmetric and passes here, which is why the polarity is pinned by
     // an absolute case in EvalTermTests.cpp instead.
     FEN_MOPUP_KBN_LIGHT_BISHOP,
-    // Issue #97: the king-safety terms are direction-aware through a
+    // The king-safety terms are direction-aware through a
     // defender-relative rank index, and every case above is either shield-
     // symmetric or at phase 0, where all four contributions are 0 anyway.
     FEN_KING_SHIELD_PUSHED,
     FEN_KING_STORM_BLOCKED,
     FEN_KING_FILE_HALF_OPEN,
-    // Issue #112: the outpost term is direction-aware through the passed-pawn
+    // The outpost term is direction-aware through the passed-pawn
     // span it borrows, and no other FEN here has a pawn-supported minor on an
     // advanced square -- so without this the term is inactive in every mirror
     // and breakdown case, and merely running them would prove nothing about it.
@@ -585,11 +573,6 @@ struct EvaluatorTestFixture {
 		return Evaluator::eval_castling(BuildContext(board), color);
 	}
 
-	static ScorePair MobilityPair(const Board& board, eColor color)
-	{
-		return Evaluator::eval_mobility(BuildContext(board), color);
-	}
-
 	static ScorePair OutpostsPair(const Board& board, eColor color)
 	{
 		return Evaluator::eval_outposts(BuildContext(board), color);
@@ -621,10 +604,7 @@ struct EvaluatorTestFixture {
 	static int OutpostBishop(int relativeRank) { return Evaluator::OUTPOST_BISHOP[relativeRank]; }
 
   private:
-	// Forwards to Evaluator::BuildContext — the production construction
-	// site (Eval.cpp) — rather than reimplementing it here. Issue #99 will
-	// eventually replace the `11500` phase threshold BuildContext uses
-	// internally; having only one construction site means that change can't
-	// leave this fixture silently testing the old threshold.
+	// Forwards to Evaluator::BuildContext so tests use the production context
+	// construction path.
 	static EvalContext BuildContext(const Board& board) { return Evaluator::BuildContext(board); }
 };

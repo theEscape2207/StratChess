@@ -210,17 +210,16 @@ assertion or an `EvaluatorTestFixture` static for a single term.
     lookup asserts in Debug and reads out of bounds in Release — where the suite would pass anyway.
     Reachable in shipping code because `UciHandler::board_` is default-constructed and never set to
     the start position, so a UCI `eval` issued before any `position` command lands here.
-  - Structural check: the four terms plus raw material, summed the same way `Evaluate()` sums
+  - Structural check: all catalogued terms plus raw material, summed the same way `Evaluate()` sums
     them, reproduce `Evaluate()`'s result exactly across every whole-position FEN used by the
     color-symmetry cases above
-  - `Evaluator::Breakdown()` (issue #129 phase 2 — the public production path the UCI `eval`
-    command reads): every row equals the corresponding `EvaluatorTestFixture` term call, and
-    `material` equals `Board::GetMaterialScore`, across the same FEN set. Tied to the already-
-    tested terms rather than asserted in isolation — the failure mode worth guarding is
-    `Breakdown()` reporting something other than what `Evaluate()` sums, which self-consistent
-    output would never reveal
-  - `Breakdown().total` agrees with `Evaluate()`, *and* the rows reproduce it: material plus the
-    four terms, summed white-minus-black, up to the side-to-move sign — the latter is what makes
+  - `Evaluator::Breakdown()` (the public production path the UCI `eval` command reads): selected
+    rows are checked against fixture wrappers, and `material` against `Board::GetMaterialScore`.
+    Those wrappers and breakdown rows now use the same production path, so this checks wiring.
+    Independent exact-term assertions, pairwise inequalities, and raw endpoint checks provide
+    the separate expectations that catch term regressions.
+  - `Breakdown().total` agrees with `Evaluate()`, *and* the rows reproduce it: material plus all
+    catalogued terms, summed white-minus-black, up to the side-to-move sign — the latter is what makes
     the printed net column trustworthy. D8's stronger claim (that `total` *is* `Evaluate()`'s
     return value, not a correct re-derivation of its sign flip) is structural and enforced by the
     code, not by these assertions; what they catch is a re-derivation that is *wrong*

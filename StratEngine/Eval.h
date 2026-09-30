@@ -17,10 +17,8 @@ class Board;
 // Evaluate(), which blends each term and sums the results (see the comment
 // there for why per-term rather than once over the accumulated pair).
 //
-// Deliberately piece-COUNT based, not material-sum based: a material sum
-// conflates "few pieces left" with "one side is winning", which is the same
-// confusion as the pre-#99 `min(material) <= 11500` stage threshold it
-// replaces. Phase is a property of the position, not of who is ahead.
+// Phase is based on piece counts, so it reflects remaining force rather than
+// which side is ahead.
 inline constexpr int MAX_GAME_PHASE = 24;
 
 // Denominator of the endgame material scale: a score is worth
@@ -49,12 +47,8 @@ struct ScorePair {
 // phase == MAX_GAME_PHASE yields mg, phase == 0 yields eg — an off-by-one here
 // is the classic tapering bug, so both endpoints are asserted in EvalTests.
 //
-// Truncation toward zero is odd-symmetric ((-n)/d == -(n/d)), so it introduces
-// no sign-dependent bias and does not by itself threaten the #125 mirror
-// property — blending the white-minus-black difference would preserve that
-// too. Per-color blending is chosen for a different reason: it is what makes
-// the per-term rows #129 prints the literal addends of the score, see
-// Evaluate().
+// Truncation toward zero is odd-symmetric ((-n)/d == -(n/d)). Terms are
+// blended per color so breakdown rows show the addends used by Evaluate().
 constexpr int BlendPhase(const ScorePair& s, int phase) noexcept
 {
 	return (s.mg * phase + s.eg * (MAX_GAME_PHASE - phase)) / MAX_GAME_PHASE;
@@ -76,11 +70,9 @@ enum eMobilePiece : std::uint8_t {
 
 // What one pass over the knights, bishops, rooks and queens reduces to.
 // Produced by Evaluator::ComputePieceAggregates() and carried in EvalContext
-// below, so no term has to generate an attack set a previous one already had.
+// below, so term functions can reuse the generated attack sets.
 //
-// Counts, never weighted scores: the term functions own the weights, which is
-// what keeps them pure and lets issue #117 retune without touching
-// BuildContext.
+// Counts, never weighted scores: term functions own their weights.
 //
 // ALL ZERO when endgame_scale is 0 — no attacks are generated at all for a
 // dead-drawn material class, because Evaluate() settles one without asking any
@@ -93,7 +85,7 @@ struct PieceAggregates {
 	// not covered by an enemy pawn.
 	int mobility_count[NUM_COLORS][NUM_MOBILE_PIECES];
 	// Pairs of that color's rooks that see each other along a rank or file with
-	// nothing between (issue #114), counted in the same loop that generates the
+	// nothing between, counted in the same loop that generates the
 	// rook attacks so eval_rooks does not regenerate them.
 	int connected_rook_pairs[NUM_COLORS];
 	// Per type, how many of that color's pieces attack at least one square of
@@ -118,42 +110,30 @@ struct EvalContext {
 	std::span<const BITBOARD> boards; // Board::GetBitBoards(), indexed by ePiece
 	BITBOARD pawns[NUM_COLORS];       // boards[WHITE_PAWN] / boards[BLACK_PAWN]
 	// boards[ALL_WHITE_PIECES] / boards[ALL_BLACK_PIECES]. Read by eval_mobility
-	// to mask off squares occupied by the side's own pieces (issue #98).
+	// to mask off squares occupied by the side's own pieces.
 	BITBOARD occupied[NUM_COLORS];
 	// Squares each color's pawns attack. Derived here rather than read from
 	// Board, using the same file-masked shifts MoveGenerator::GeneratePawnCaptures
 	// uses, so the two cannot disagree about what an edge-file pawn covers.
-	// eval_mobility subtracts the ENEMY set: a square an enemy pawn guards is not
-	// one a piece can usefully occupy. Issue #116 (backwards pawns) will want
-	// these too, which is why they live in the context rather than in one term.
+	// eval_mobility subtracts the enemy set because guarded squares are unsafe.
 	BITBOARD pawn_attacks[NUM_COLORS];
-	// NO_SQUARE for a color with no king on the board. That only happens for a
-	// default-constructed or failed-parse Board — MoveGenerator.cpp asserts
-	// both kings exist before any search runs, so every position the search
-	// evaluates has both. Consumers must check for NO_SQUARE before using this
-	// square: Board::GetFirstPiece's assert(mask != 0) precondition is a
-	// Release no-op, so calling it on an empty king bitboard silently reads
-	// past the end of g_Eval_Bitboards rather than trapping. See eval_pst and
-	// eval_mopup, and the kingless-board regression test in EvalBasicTests.cpp.
+	// NO_SQUARE for a color with no king. Consumers must check before using this
+	// square: Board::GetFirstPiece's assert(mask != 0) is a Release no-op, so
+	// calling it on an empty king bitboard silently reads past g_Eval_Bitboards.
 	eSquare king_sq[NUM_COLORS];
 	// Board::GetMaterialScore(color) — includes the king at 10000 cp
 	// (g_iPieceValues, defines.h). That inclusion cancels in Evaluate()'s
 	// final white-minus-black difference, so it is left as-is rather than
 	// "fixed" here.
 	int material[NUM_COLORS];
-	// Game phase in [0, MAX_GAME_PHASE] from non-king, non-pawn piece counts
-	// (issue #99). Replaced the old MIDDLEGAME/ENDGAME `stage`, which keyed on
-	// min(material) <= 11500 — a threshold that was king-value-inclusive (hence
-	// the otherwise inexplicable 11500 = 10000 + 1500) and took min() over both
-	// sides, so a player still holding a queen switched to endgame king scoring
-	// as soon as its OPPONENT was stripped down.
+	// Game phase in [0, MAX_GAME_PHASE] from non-king, non-pawn piece counts.
 	int phase;
 	// True for the side that is mopping up, false for both otherwise —
-	// i.e. pawnless, decisive material lead, low phase, both kings present.
-	// Computed once in BuildContext so eval_mopup and eval_pst cannot
+	// i.e. pawnless, both kings present, a decisive lead, and no defending queen.
+	// Computed in BuildContext so eval_mopup and eval_pst cannot
 	// disagree about whether a position is a mop-up: eval_pst suppresses the
-	// winner's king PST exactly when eval_mopup is paying for king placement
-	// (issue #118 item 4). Two readers of one gate, not two copies of it.
+	// winner's king PST whenever eval_mopup pays for king placement. Both terms
+	// use this shared condition.
 	bool mopup_active[NUM_COLORS];
 	// How much of the assembled score this position's material is worth, as a
 	// numerator over ENDGAME_SCALE_MAX. Computed here for the same reason
@@ -317,7 +297,7 @@ template <std::size_t N> constexpr int EvalRowMax(const short (&row)[N]) noexcep
 	return highest;
 }
 
-// Everything one scan over the king's three files produces (issue #97).
+// Scores derived from the three files around a king.
 // Separate ScorePairs rather than a sum: each is its own breakdown row and each
 // is separately ablatable, because a regression in a mis-scaled shield table,
 // one in an over-weighted storm table and one in an open-file penalty that
@@ -343,8 +323,8 @@ struct KingPawnCover {
 // thread count. That is the whole of the write side; there is no other.
 // EvalContext does not change any of this: it is always a per-call stack local,
 // never a member. The same holds for Breakdown() and
-// its EvalBreakdown result (issue #129 phase 2): also `const`, also per-call
-// stack locals — though it is a debug path that no search thread calls.
+// its EvalBreakdown result: also `const`, also per-call stack locals — though
+// it is a debug path that no search thread calls.
 class Evaluator {
   protected:
 	static inline int GetPositionalScore(eSquare squareType, ePiece piece) noexcept
@@ -358,12 +338,8 @@ class Evaluator {
 	// layout in defines.h (a8 = 0 ... h1 = 63), XOR-ing with 56 (0b111000)
 	// flips the three rank bits and leaves the three file bits untouched.
 	//
-	// The previous implementation used `63 - square` (equivalently
-	// `square ^ 63`), a 180-degree rotation: it flips the file bits too, not
-	// just the rank bits. That distinction is invisible for a file-symmetric
-	// PST (rotation and vertical flip agree there) but wrong the moment a
-	// table is file-asymmetric — the queen-PST regression this caused is
-	// guarded by test coverage in `StratChessTests/EvalSymmetryTests.cpp`.
+	// This vertical flip preserves the file while mapping Black's square to the
+	// corresponding square in tables written from White's point of view.
 	static constexpr inline int getEvalBoard(ePiece piece, eSquare square) noexcept
 	{
 		return (PieceHelper::Color(piece) == eColor::BLACK) ? (square ^ 56) : square;
@@ -373,54 +349,43 @@ class Evaluator {
 	// Bonuses and penalties for eval
 	static const short DOUBLED_PAWN_PENALTY = 10;
 	static const short ISOLATED_PAWN_PENALTY = 20;
-	// Backwards pawn (issue #116). BOTH clauses are required: the pawn is behind
-	// every friendly pawn on its adjacent files, AND its stop square is attacked
-	// by an enemy pawn without being defended by a friendly one. A pawn meeting
-	// only one is not backwards -- "backwards pawn" has several incompatible
-	// definitions in the literature and an unstated one cannot be tuned.
-	//
-	// Deliberately small. A mis-specified structural penalty is a rounding error
-	// at 5 cp and a strategic distortion at 30.
+	// Backwards pawn: behind every friendly pawn on adjacent files, with its stop
+	// square attacked by an enemy pawn and undefended by a friendly pawn.
 	static const short BACKWARDS_PAWN_PENALTY = 5;
-	// Passed pawn (issue #116): no enemy pawn on its own or either adjacent file
+	// Passed pawn: no enemy pawn on its own or either adjacent file
 	// ahead of it (g_bbPassedMask*, defines.h). The base bonus is scaled by rank
 	// and by phase -- see PASSED_PAWN_RANK_SCALE and the eg endpoint below.
 	static const short PASSED_PAWN_BONUS = 20;
-	// Passers are worth more as the endgame approaches: fewer pieces to blockade
-	// or round them up, and the king can escort. The source TODO this term
-	// replaces asked for exactly this phase dependence.
+	// Passers are worth more as the endgame approaches: fewer pieces can blockade
+	// or round them up, and the king can escort.
 	static const short PASSED_PAWN_BONUS_EG = 45;
 	static const short ROOK_ON_7TH_BONUS = 20;
 	static const short HALF_OPEN_FILE = 10;
 	static const short OPEN_FILE = 15;
 
-	// Bishop pair (issue #111). Worth more as the board opens, hence the higher
+	// Bishop pair. Worth more as the board opens, hence the higher
 	// endgame endpoint. Requires bishops on OPPOSITE square colours, not merely
 	// two bishops -- the term exists because the pair covers both colours.
 	static const short BISHOP_PAIR_BONUS_MG = 30;
 	static const short BISHOP_PAIR_BONUS_EG = 45;
 
-	// Connected rooks (issue #114): same rank or file with nothing between,
+	// Connected rooks: same rank or file with nothing between,
 	// scored per connected pair. Halved in the endgame, where ROOK_ON_7TH_BONUS
 	// already pays for the rook activity that matters most there.
 	static const short CONNECTED_ROOKS_BONUS_MG = 15;
 	static const short CONNECTED_ROOKS_BONUS_EG = 8;
 
-	// Castling (issue #115). Middlegame-only: in an endgame the king belongs in
+	// Castling. Middlegame-only: in an endgame the king belongs in
 	// the centre, and the endgame king PST already says so -- a flat bonus here
 	// would fight it. Derived from castling rights plus king placement, never
 	// from move history.
 	static const short CASTLING_DONE_BONUS = 25;
 	static const short CASTLING_LOST_PENALTY = 20;
 
-	// Mobility (issues #98, #113): value of one reachable square, per piece
+	// Mobility: value of one reachable square, per piece
 	// type. Weighted per type because an extra square is worth much less to a
 	// queen -- which already has many -- than to a knight, and phase-split
 	// because a rook's mobility matters more once files open in the endgame.
-	//
-	// These are literature-standard magnitudes, deliberately NOT hand-tuned:
-	// #117 (automated Texel-style tuning) owns the values, and this term is
-	// unusually sensitive to them.
 	//
 	// The knight is worth MORE per square than the bishop, which looks backwards
 	// until the counts are included: a bishop sees 7-13 squares to a knight's
@@ -432,8 +397,7 @@ class Evaluator {
 	// Mobility overlaps the PSTs, which already reward central placement. The
 	// overlap is not marginal: a knight's mobility swing is comparable to its
 	// entire PST range, so this roughly doubles the centralization gradient for
-	// minors. That may be an improvement, but it is a real change in emphasis
-	// rather than a small addition, and it is a #117 retuning input.
+	// minors, so mobility contributes a distinct centralization signal.
 	// Per-rank multiplier for the passed-pawn bonus, in 1/16ths, indexed by how
 	// far the pawn has advanced from its side's point of view: [1] is its
 	// starting rank, [6] is one step from promotion. A passer on the 7th is worth
@@ -442,21 +406,14 @@ class Evaluator {
 	// a pawn, present so the table is indexable by any rank without a bounds test
 	// in the hot path.
 	//
-	// Kept separate from PASSED_PAWN_BONUS rather than folded into it so issue
-	// #117 can tune shape and magnitude independently.
+	// Kept separate from PASSED_PAWN_BONUS so shape and magnitude remain
+	// independently adjustable.
 	//
-	// HALVED from the first measured version, which gave 20/45 cp on the starting
-	// rank up to 80/180 at the 7th and measured **-11.52 +/- 4.36 Elo** over 19,980
-	// games (run 31300861562). The shape was left alone; only the magnitude moved,
-	// so that result and this one differ in one variable. Now roughly 10/22 cp on
-	// the starting rank up to 40/90 at the 7th.
 	static constexpr short PASSED_PAWN_RANK_SCALE[8] = {8, 8, 10, 14, 20, 28, 32, 32};
 
 	// A passer whose stop square is occupied by an enemy piece is not running
 	// anywhere: it has to be dislodged first, and the blockader is usually well
-	// placed. Scored at this fraction (in 1/16ths) of the normal bonus. The first
-	// measured version had no blockade awareness at all and paid a 7th-rank passer
-	// its full value with the enemy king parked in front of it.
+	// placed. Scored at this fraction (in 1/16ths) of the normal bonus.
 	static constexpr short PASSED_PAWN_BLOCKADED_SCALE = 8; // half
 
 	// Minor-piece outposts: a knight or bishop standing on a square
@@ -472,8 +429,7 @@ class Evaluator {
 	// more on holding an advanced square nothing can chase it off; a bishop acts at
 	// range from wherever it stands.
 	//
-	// Phase-neutral and UNTUNED: a first-cut hypothesis, deliberately without a
-	// second mg/eg axis, so one experiment moves one thing. #117 owns the values.
+	// Phase-neutral; the rank tables express the relative value of each outpost.
 	static constexpr short OUTPOST_KNIGHT[9] = {0, 0, 0, 0, 15, 20, 25, 0, 0};
 	static constexpr short OUTPOST_BISHOP[9] = {0, 0, 0, 0, 8, 12, 16, 0, 0};
 
@@ -490,23 +446,14 @@ class Evaluator {
 	// than against zero, so the term is roughly zero-mean and a cramped piece is
 	// penalised instead of merely under-rewarded.
 	//
-	// Without this the count is strictly positive, so every piece carries a
-	// permanent bonus that only cancels while material is symmetric -- the term
-	// would silently act as a piece-value adjustment across trades, and #117
-	// would inherit mobility entangled with material rather than as an
-	// independent positional term. Costs nothing at runtime.
-	//
-	// It also keeps mobility from overwhelming eval_mopup: with absolute counts
-	// a KBNvK winner scored +47 of mobility against mop-up's 12, an unsuppressed
-	// centralization pull four times the term meant to be steering. Relative
-	// counts put it at -4. Same failure mode eval_pst had to solve for the
-	// king PST (issue #118 item 4).
+	// Subtracting a typical count keeps the term near zero for ordinary mobility
+	// and makes cramped pieces a penalty rather than an absent bonus.
 	static const short MOBILITY_BASE_KNIGHT = 4;
 	static const short MOBILITY_BASE_BISHOP = 7;
 	static const short MOBILITY_BASE_ROOK = 7;
 	static const short MOBILITY_BASE_QUEEN = 14;
 
-	// King shelter and pawn storm (issue #97). One scan over the king's own
+	// King shelter and pawn storm. One scan over the king's own
 	// file and its two neighbours produces both, so both are indexed the same
 	// way:
 	//
@@ -525,27 +472,16 @@ class Evaluator {
 	// INDEX 0 MEANS "NO SUCH PAWN ON THIS FILE", in both tables. It is
 	// unambiguous because no pawn can stand on rank 1 or rank 8, so a real pawn
 	// always indexes 2..7. Index [1] is the only unreachable entry -- [7] is a
-	// real bucket (a White pawn on g7 in front of Kg1 reaches it), so a tuner
-	// must not treat its zero as free padding.
+	// real bucket (a White pawn on g7 in front of Kg1 reaches it), so it is not
+	// unused padding.
 	//
 	// SHELTER is a bonus (a missing shield pawn is the negative entry at index
 	// 0); STORM is a penalty magnitude, subtracted by the term. A storm pawn
 	// directly blocked by our own shield pawn -- our nearest pawn on that file
 	// standing at exactly r' - 1 -- is halved.
 	//
-	// Literature-standard shapes at half the usual magnitude, deliberately NOT
-	// fitted here: issue #117 (Texel-style tuning) owns the values.
-	//
-	// What sets the level: shelter, king-file openness and ISOLATED_PAWN_PENALTY
-	// all fire on one missing shield pawn without knowing about each other, so at
-	// full magnitude that pawn was priced close to twice over. What sets the
-	// uniformity: rescaling every table by the same factor keeps the intra-term
-	// shape, including shelter-to-storm ratio. KING_STORM is NOT part of that
-	// overlap -- a storm pawn is the enemy's, so the isolated penalty cannot see
-	// it, and an enemy pawn on the file makes it half-open rather than open, which
-	// cancels rather than compounds. Halving shelter alone would leave storm the
-	// louder half, inverting the usual ordering. Odd entries round up, so the far
-	// ranks are marginally louder than an exact halving.
+	// Shelter, king-file openness and ISOLATED_PAWN_PENALTY can all respond to a
+	// missing shield pawn. The table magnitudes account for that overlap.
 	// clang-format off
 	static constexpr short KING_SHELTER[2][8] = {
 	    // r:   -   1    2    3    4   5   6   7
@@ -559,16 +495,16 @@ class Evaluator {
 	};
 	// clang-format on
 
-	// King-file openness (issue #97), indexed by the same [d] as the tables
+	// King-file openness, indexed by the same [d] as the tables
 	// above. Half-open means WE have no pawn anywhere on the file; open means
 	// neither side has. Whole-file and pawns-only, which is deliberately NOT
 	// eval_rooks' forward-span-for-own-pawns asymmetry: what this prices is a
 	// lane an enemy rook can use, and that is a whole-file property. See
-	// eval_king_files.
+	// eval_king_pawn_cover.
 	static constexpr short KING_FILE_HALF_OPEN[2] = {6, 3};
 	static constexpr short KING_FILE_OPEN[2] = {11, 6};
 
-	// Attack pressure on the king zone (issue #97). Weights per attacking piece
+	// Attack pressure on the king zone. Weights per attacking piece
 	// type, indexed by the same dense eMobilePiece index as the aggregates, plus
 	// one weight per attacked zone square. Those two are the whole of the danger
 	// count; the counts come from ComputePieceAggregates and the curve they feed
@@ -583,12 +519,8 @@ class Evaluator {
 	// clang-format on
 	static constexpr short KING_ZONE_SQUARE_WEIGHT = 1;
 
-	// The quadratic's divisor and its ceiling. The CAP is what keeps this term
-	// commensurate with the pawn-cover tables above rather than dwarfing them:
-	// literature danger ceilings sit at 300-500 on their own, which beside a
-	// halved shelter table would make shelter a tiebreaker in the attack term's
-	// shadow and leave the ablation measuring the wrong thing. At this size a
-	// fully committed attack is worth about what a shattered shield is.
+	// The quadratic's divisor and ceiling keep this term commensurate with the
+	// pawn-cover contributions.
 	static constexpr int KING_DANGER_DIVISOR = 16;
 	static constexpr int KING_DANGER_CAP = 120;
 	// An arithmetic bound on the squaring, not a tuning knob: the cap above
@@ -635,7 +567,7 @@ class Evaluator {
 	// wrong, not a claim that the term cannot decide a game.
 	static_assert(KING_SAFETY_MAX_PENALTY < 300, "King safety outweighs a piece per colour -- rescale the tables");
 
-	// Mop-up evaluation (won pawnless endgames) — see issue #70 / epic #110.
+	// Mop-up evaluation for won pawnless endgames.
 	// Gated on: pawnless + decisive material lead. Rewards pushing the losing
 	// king to the edge/corner and closing the distance between the two kings.
 	static const short MOPUP_MATERIAL_THRESHOLD = 400; // min material lead (cp) before mop-up applies
@@ -647,9 +579,8 @@ class Evaluator {
 	// one class the centre-distance component above is replaced by this one. A
 	// separate name, not a reuse of MOPUP_CMD_WEIGHT, because the two are not the
 	// same knob: a centre-distance retune must not silently move the corner target.
-	// It matches that weight today, which puts the term's total at 0..98 — the same
-	// magnitude class as the 0..88 it replaces, and an order of magnitude below every
-	// pruning and futility margin, which is the property worth holding.
+	// It matches that weight, and the score remains bounded below pruning and
+	// futility margins.
 	static const short MOPUP_KBN_CORNER_WEIGHT = 10;
 
 	// Two things that are the same number on an 8x8 board: the largest Manhattan
@@ -659,7 +590,7 @@ class Evaluator {
 	// exactly those two quantities.
 	static const short MOPUP_MAX_CORNER_DISTANCE = 7;
 
-	// Game-phase weights per piece (issue #99). Summed over BOTH colors, so a
+	// Game-phase weights per piece. Summed over BOTH colors, so a
 	// full set of pieces gives 2*(2*1 + 2*1 + 2*2 + 1*4) = 24 = MAX_GAME_PHASE.
 	// Pawns and kings contribute nothing: pawns are present throughout and
 	// kings always, so neither carries information about how far the game has
@@ -669,29 +600,21 @@ class Evaluator {
 	static const short PHASE_ROOK = 2;
 	static const short PHASE_QUEEN = 4;
 
-	// Mop-up stays a hard gate rather than a blended term (D4): it is a
+	// Mop-up is a hard gate rather than a blended term: it is a
 	// special case for pawnless decisive endings, not a smoothly-scaling
 	// positional idea, and fading it in at half strength mid-game would be
 	// meaningless.
 	//
-	// The gate asks what force the DEFENDER still has, not how much of it there
-	// is (issue #118 item 5). A phase budget could not express that: a lone
-	// queen is phase 4 and passed the old `loser phase <= 6` gate, so Q+R vs Q
-	// was paid for chasing a king that was never going to be cornered. The
-	// defender may therefore hold anything but a queen, which is the one piece
-	// that can check the winner's king away from the corner indefinitely and
-	// leave the plan permanently unfinished. Everything mop-up exists for still
-	// qualifies, KQQ vs K included, however much material the winner has.
+	// The gate excludes a defending queen because it can check the winner's king
+	// away from the corner indefinitely and prevent the mop-up plan from finishing.
+	// The phase value alone cannot express this condition: a lone queen has phase 4.
+	// The defender may hold other material, and KQQ vs K still qualifies regardless
+	// of how much material the winning side has.
 	//
-	// Widening this to "no queen and no rook" is a mistake worth recording,
-	// because the second-order effect runs the other way: eval_pst suppresses
-	// the winner's king PST exactly when mop-up is active (item 4), so removing
-	// a class from the gate does not withdraw a bonus, it re-enables a
-	// CENTRALIZING king table. On K+Q vs K+R that turns a reward for walking
-	// toward the cornered king into a penalty — the item 4 defect, reinstated
-	// for a family of endings won by exactly that walk.
+	// Mop-up suppresses the winner's king PST while it rewards moving toward the
+	// cornered king, avoiding a conflicting centralization bonus.
 
-	// Pawnless rook endings (#128), as numerators over ENDGAME_SCALE_MAX.
+	// Pawnless rook endings, as numerators over ENDGAME_SCALE_MAX.
 	//
 	// Unlike the classes scaled to zero, none of these is drawn by material:
 	// they are drawn by tendency, which is why they are scaled rather than
@@ -841,8 +764,8 @@ class Evaluator {
 	//
 	// Consolidated here rather than left in eval_mobility because more than one
 	// term needs the same attack sets: mobility counts them, eval_rooks needs
-	// the rook attacks for connected rooks (issue #114), and king safety
-	// (issue #97) needs all of them. Generating them per term costs one PEXT
+	// the rook attacks for connected rooks, and king safety needs all of them.
+	// Generating them per term costs one PEXT
 	// lookup per slider per consumer.
 	//
 	// Takes the bitboards it reads rather than the half-built EvalContext, and
@@ -855,7 +778,7 @@ class Evaluator {
 	// Recognises material configurations that are worth less than they weigh.
 	// Returns a numerator over ENDGAME_SCALE_MAX; 0 is a dead draw.
 	//
-	// Piece counts decide every class but two. It is not a tablebase (#101) and
+	// Piece counts decide every class but two. It is not a tablebase and
 	// does not judge pawn races; the wrong-coloured-bishop fortress also reads the
 	// defending king's square, and opposite-coloured bishops their square colours.
 	static int EndgameScale(std::span<const BITBOARD> boards) noexcept;
@@ -885,7 +808,7 @@ class Evaluator {
 	// Material plus every blended term, summed white-minus-black and unscaled.
 	static int RawWhitePov(const EvalContext& ctx) noexcept;
 
-	// Per-term evaluation functions (issue #127 restructure). Each returns
+	// Per-term evaluation functions. Each returns
 	// only the named term's contribution for one color; Evaluate() sums the
 	// terms itself, so no term touches a shared accumulator and no term reads
 	// state another term writes — each is a pure function of EvalContext.
@@ -943,9 +866,8 @@ class Evaluator {
 	// anywhere, including mid-search, where it is a data race. The compiler enforces
 	// what would otherwise be a comment.
 	//
-	// It is deliberately read on the endgame_scale == 0 branch that was already
-	// being taken rather than tested per evaluation: a guard around every Evaluate()
-	// call, in any of three shapes, measured ~1% nps at a default that tints nothing.
+	// It is read on the existing endgame_scale == 0 branch, avoiding a check on
+	// every evaluation.
 	void SetDrawScores(int white_to_move, int black_to_move) noexcept
 	{
 		dead_draw_score_[WHITE] = white_to_move;
@@ -953,8 +875,8 @@ class Evaluator {
 	}
 
   public:
-	// Per-term introspection for the UCI 'eval' command. Reports what the four
-	// private term functions above contribute, per color, for one position;
+	// Per-term introspection for the UCI 'eval' command. Reports what the
+	// catalogued term functions above contribute, per color, for one position;
 	// changes nothing and is never called from search.
 	//
 	// This is the only member made public for the breakdown: BuildContext and
