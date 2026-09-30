@@ -67,6 +67,11 @@ and the tests already run with their results. Brief neutrally; adjudicate every 
 Warnings in test output are findings. Address all findings in one pass, recording why any is
 rejected.
 
+**A reviewer that fails to run** (it cannot reach a tool, or errors before reviewing) gets one retry
+with the cause fixed in its brief. After a second failure, review that axis inline and record
+`inline`. Check on a running reviewer at most every 15–20 minutes: each check re-reads the
+controller's whole context.
+
 ## 2. Open it
 
 ```

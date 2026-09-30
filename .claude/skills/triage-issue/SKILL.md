@@ -82,7 +82,8 @@ When a rewrite is explicitly authorized, preserve useful original context while 
 claims. Follow `Docs/agents/issue-tracker.md` rather than restating its mutation commands.
 
 For a kept issue, make the finding cover current evidence; impact and magnitude; scope, non-goals,
-dependencies, and unresolved choices; reviewable slices; acceptance criteria; and the readiness gate.
+dependencies, and unresolved choices; reviewable slices, each startable in a fresh session from the
+issue alone; acceptance criteria; and the readiness gate.
 State whether `CLAUDE.md`'s design-document trigger applies before implementation, and why. Estimate
 the cost as `.claude/plans/TEMPLATE.md` → Cost describes, including its minimal-fix waiver.
 
