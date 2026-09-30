@@ -279,7 +279,7 @@ inline std::string long_game_moves(int min_plies)
 }
 
 // The divide-line wire format external harnesses parse:
-// ^\s*([a-h][1-8][a-h][1-8][rnbqRNBQ]?)\s*[:\s]\s*(\d+)$ (#196).
+// ^\s*([a-h][1-8][a-h][1-8][rnbqRNBQ]?)\s*[:\s]\s*(\d+)$.
 inline const std::regex kDivideLine{R"(^\s*([a-h][1-8][a-h][1-8][rnbqRNBQ]?)\s*[:\s]\s*(\d+)$)"};
 
 // Every (move, nodes) pair the harness regex accepts out of `output`.

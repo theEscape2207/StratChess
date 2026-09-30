@@ -142,9 +142,7 @@ class AIPerlexTestFixture {
 	// cost does not move every time pruning improves.
 	void set_see_pruning(bool enabled) const { ai->tuning_.see_pruning_enabled = enabled; }
 
-	// Reads the private threads_ member — set (clamped) via the public
-	// SetThreads() override; needs friend access because threads_ itself
-	// is private. Used by the [smp] clamp tests below.
+	// Reads the actual thread configuration for the [smp] clamp tests.
 	unsigned threads() const { return ai->threads_; }
 
 	// --- Singular-extension pokes ---
@@ -352,10 +350,8 @@ class AIPerlexTestFixture {
 	// Runs one pvs() node as a verification search would see it: the exclusion slot set for
 	// the duration of the call, through the same guard the search uses.
 	//
-	// Turns the feature on, because pvs() tests the enable flag before it reads the exclusion
-	// slot at all (a cold-array read on every node is worth 3.4% nps, and a disabled build can
-	// never have an exclusion frame). So an exclusion frame is only reachable with the flag
-	// set, and a test that left it off would be driving a state the search cannot produce.
+	// Enables singular extensions: pvs() reads the exclusion slot only when the feature is enabled,
+	// so leaving it disabled would drive a state the search cannot produce.
 	int search_node_excluding(int depth, int ply, std::string_view uci, int alpha, int beta) const
 	{
 		set_singular_enabled(true);

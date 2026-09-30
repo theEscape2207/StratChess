@@ -330,8 +330,8 @@ class AIPerplex final {
 #endif
 
 	// Configured number of search threads (Lazy SMP). Clamped to [1, 32] by
-	// SetThreads(). threads_ == 1 (the default) takes the exact pre-SMP code
-	// path in Search() — no helper_tds_ construction, no thread spawn.
+	// SetThreads(). threads_ == 1 (the default) runs Search() without
+	// helper_tds_ construction or thread spawning.
 	unsigned threads_{1};
 
 	// Per-service logging policy. The shared logger is only a sink; every
