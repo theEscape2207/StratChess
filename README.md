@@ -37,7 +37,7 @@ the developer environment itself, so a plain shell works:
 .\build.ps1 run-tests           # build and run the fast test tier
 ```
 
-**Linux** — requires GCC 13 or newer (for `std::format`) and Ninja:
+**Linux** — GCC 15, which CI builds and tests with (older versions are not checked), and Ninja:
 
 ```bash
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
