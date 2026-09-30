@@ -43,7 +43,8 @@ and 0 without.
 **This change will not:**
 
 - use Windows large pages. They need `SeLockMemoryPrivilege`, which a normal user account lacks, and
-  Windows has no transparent equivalent. The shipping Windows build keeps its current allocation.
+  Windows has no transparent equivalent. The shipping Windows build keeps its current allocation;
+  #684 tracks an opt-in.
 - use `MAP_HUGETLB` / hugetlbfs. It needs a reserved pool that no default host has.
 - add a UCI option or environment switch for it. The spike's toggle is removed.
 - move `strength.yml` to 26.04. That is #476 step 4, next.

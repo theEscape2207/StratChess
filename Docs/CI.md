@@ -159,9 +159,8 @@ on a Debug leg.
 Every Linux job in `build-and-test.yml` and `nightly.yml` runs on `ubuntu-26.04`, the GCC ones with
 its default GCC 15; the strength-lab jobs stay on `ubuntu-24.04` until #476 moves them. A moved
 job's ccache key gains `-gcc15`, so a GCC 13 and a GCC 15 job never share, and overwrite, one cache.
-26.04 runs transparent huge pages in `madvise` mode, not 24.04's `always`, so a large TT faults in
-4 KiB pages; test engines use a 1 MiB table (`Docs/TestDesign.md` → Test Isolation Rules), which
-keeps that cost off the gate.
+26.04 runs transparent huge pages in `madvise` mode, not 24.04's `always`; the engine advises its
+TT allocation itself, so a full-size table gets huge pages on either image.
 
 **`sanitize-linux`** builds the test binary with `-fsanitize=address,undefined` and
 `STRAT_STDLIB_DEBUG=ON` — libstdc++ debug mode, i.e. checked iterators and container preconditions,

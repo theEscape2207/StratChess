@@ -22,6 +22,19 @@ Newest first.
 
 ---
 
+## 2026-09-30 — The TT advises transparent huge pages on Linux (#676)
+
+On a Linux host whose THP mode is `madvise` (ubuntu-26.04 runners, WSL, most current distributions)
+the TT and its lock array, 240 MiB at the default request on libstdc++, were backed by 4 KiB pages.
+`TranspositionTable` now allocates both through `HugePageAllocator`: on Linux an allocation of at
+least 2 MiB is 2 MiB-aligned and advised `MADV_HUGEPAGE`; smaller ones, such as the 1 MiB test
+tables, are not rounded up. Windows is unchanged; large pages there need a privilege no account has
+by default (#684).
+
+WSL Ubuntu-26.04, GCC 15.2, default hash: engine construction 84 → 19 ms; bench nps at depth 12
++3.5% with one binary toggling the advice (10 alternating rounds, ranges disjoint), +6.8% median
+against `origin/main`; `tactical stability 10` 37.6 → 7.9 s. Node counts and best moves identical.
+
 ## 2026-09-30 — Continuation history orders quiet moves (#664)
 
 Quiet moves were ordered by the butterfly `history[side][from][to]` table alone, which knows nothing
