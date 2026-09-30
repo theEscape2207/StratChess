@@ -4,6 +4,7 @@
 #include "IPlayer.h"
 
 #include <memory>
+#include <optional>
 
 class Board;
 
@@ -15,6 +16,7 @@ enum class PlayerType : unsigned {
 
 struct PlayerCreationOptions {
 	bool verbose_search_logging{false};
+	std::optional<unsigned> hash_mb{}; // unset: the engine's default table size
 };
 
 // Throws std::invalid_argument for a type that is not a PlayerType.

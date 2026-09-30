@@ -15,13 +15,14 @@ struct TacticalCase {
 };
 
 // Create a fresh concrete AIPerplex configured for tactical test use. The board is
-// deliberately supplied to Search() rather than retained by the engine.
+// deliberately supplied to Search() rather than retained by the engine. A 1 MiB table
+// (TestDesign.md → Test Isolation Rules).
 inline std::unique_ptr<AIPerplex> make_tactical_engine(unsigned depth, bool null_move_enabled = true)
 {
 	SearchTuning tuning;
 	tuning.null_move_enabled = null_move_enabled;
 	auto ai = std::make_unique<AIPerplex>(
-	    AIPerplexConfig{.default_depth = depth, .tuning = tuning, .verbose_logging = false});
+	    AIPerplexConfig{.default_depth = depth, .hash_mb = 1, .tuning = tuning, .verbose_logging = false});
 	ai->StartNewGame();
 	return ai;
 }

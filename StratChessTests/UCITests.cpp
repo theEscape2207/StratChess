@@ -297,6 +297,7 @@ TEST_CASE("cmd_uci: advertises the Hash default and policy bounds", "[uci][tt]")
 
 TEST_CASE("AIPerplex default Hash reports its packed geometry", "[uci][tt]")
 {
+	// The real default table: this test pins its geometry.
 	UciHandlerTestFixture fix{UciHandler::DefaultSearchConfig()};
 	fix.ucinewgame();
 
