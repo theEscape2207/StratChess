@@ -62,7 +62,7 @@ in Release. That 20 s is most of the 17 s median gap in job total. So the lever 
 execution in Debug, not the compile; ccache already caches the compile, and there is no
 Release-specific attribution left to chase.
 
-ccache is not on the `ubuntu-24.04` image and is installed from the upstream release archive rather
+ccache is not on the Ubuntu runner images and is installed from the upstream release archive rather
 than apt — an apt mirror on the critical path of every Linux job is what the standing decision above
 rules out. Both platforms install from the same composite action, so one bump moves every
 configuration. **A bump carries both pinned SHA-256 values forward** — never drop a hash to make an
@@ -150,6 +150,10 @@ with GCC. It then runs the fast tier, and on the **Release leg only**, **`perft 
 131-position / 655-check suite behind `Tests/perft_test_cases.json`, which previously ran in no
 automated gate at all. The Catch2 `[perft]` tests cover only seven hardcoded cases (startpos d1-4,
 Kiwipete d1-3).
+
+`build-linux` runs on `ubuntu-26.04` with its default GCC 15; the other Linux jobs stay on
+`ubuntu-24.04` (GCC 13) until #476 moves them. A moved job's ccache key gains `-gcc15`, so a GCC 13
+and a GCC 15 job never share, and overwrite, one cache.
 
 Release-only because perft is compute-bound: the suite takes **30 s** optimised, and the Debug leg
 reached 4 of 131 positions in six minutes — roughly three hours extrapolated. Never put a perft suite
