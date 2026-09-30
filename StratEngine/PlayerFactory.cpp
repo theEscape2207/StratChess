@@ -43,7 +43,5 @@ std::unique_ptr<IPlayer> CreatePlayer(const Config::PlayerConfig& config, Board&
 	search_config.tuning = config.search_tuning.value_or(SearchTuning{});
 	search_config.verbose_logging = options.verbose_search_logging;
 
-	auto player = std::make_unique<SearchPlayer>(board, search_config, search_description(config.depth));
-	player->search_.StartNewGame();
-	return player;
+	return std::make_unique<SearchPlayer>(board, search_config, search_description(config.depth));
 }
