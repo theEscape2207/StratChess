@@ -130,10 +130,6 @@ function ConvertTo-BenchResult {
     if ($info.Count -eq 0) {
         throw "No parseable 'info ... nodes N time T' line for FEN: $Fen`nEngine output:`n$Output"
     }
-    if (@($info | Where-Object { $_.Value -match "^info depth $SearchDepth\b" }).Count -eq 0 -or -not $best.Success) {
-        throw ("Fixed-depth search did not complete depth $SearchDepth for FEN: $Fen" +
-               "`nEngine output:`n$Output")
-    }
 
     # Main-tree/quiescence split (issue #312). Engines built before that change do not
     # emit it, and comparing against such a build is the normal case for a before/after
@@ -181,9 +177,7 @@ function ConvertTo-BenchResult {
     }
 }
 
-# Invoke-UciSearchToBestMove lives in the shared library because
-# Compare-SearchEquivalence.ps1 drives the engine the same way; a fix to the shutdown
-# sequence has to reach both.
+# The shared driver owns the request, the completion check and the shutdown sequence.
 . (Join-Path $PSScriptRoot 'UciDriver.ps1')
 
 function Invoke-Search {
@@ -200,16 +194,8 @@ function Invoke-Search {
         [int]$ThreadCount
     )
 
-    $commands = @(
-        'uci'
-        'isready'
-        "setoption name Threads value $ThreadCount"
-        "position fen $Fen"
-        "go depth $SearchDepth"
-    )
-
-    $out = Invoke-UciSearchToBestMove -ExePath $ExePath -WorkDir $WorkDir -Commands $commands `
-                                      -SearchDepth $SearchDepth -Description $Fen
+    $out = Invoke-UciFixedDepthSearch -ExePath $ExePath -WorkDir $WorkDir -Position "fen $Fen" `
+                                      -SearchDepth $SearchDepth -Threads $ThreadCount -Description $Fen
 
     ConvertTo-BenchResult -Output $out -SearchDepth $SearchDepth -Fen $Fen
 }
@@ -295,12 +281,6 @@ if ($SelfTest) {
     Assert-Case 'FALSIFY: a split that does not sum to the total is refused' `
         (Test-Refuses -Match 'does not sum to the reported total' `
             { ConvertTo-BenchResult -Output ($contract1 -replace 'qs 40', 'qs 39') -SearchDepth 2 -Fen 'x' })
-    Assert-Case 'FALSIFY: not reaching the requested depth is refused' `
-        (Test-Refuses -Match 'did not complete depth 3' `
-            { ConvertTo-BenchResult -Output $contract1 -SearchDepth 3 -Fen 'x' })
-    Assert-Case 'FALSIFY: a missing bestmove is refused' `
-        (Test-Refuses -Match 'did not complete depth 2' `
-            { ConvertTo-BenchResult -Output ($contract1 -replace 'bestmove e2e4', '') -SearchDepth 2 -Fen 'x' })
     Assert-Case 'FALSIFY: output with no info line is refused, by name' `
         (Test-Refuses -Match 'No parseable' `
             { ConvertTo-BenchResult -Output 'uciok' -SearchDepth 2 -Fen 'x' })

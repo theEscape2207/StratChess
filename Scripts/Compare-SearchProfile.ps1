@@ -599,14 +599,13 @@ $callerSeed = $env:STRAT_PROFILE_TIEBREAK_SEED
 foreach ($p in $positionList) {
     foreach ($seed in $seedList) {
         foreach ($s in $sides.GetEnumerator()) {
-            $commands = @('uci', 'isready', 'setoption name Threads value 1', "position fen $($p.Fen)", "go depth $Depth")
             # Disjoint seeds per side (after: N+1..2N), the design the Screen band is calibrated on.
             # The engine reads the seed once at startup; the child process inherits this environment.
             $sideSeed = if ($seed -gt 0 -and $s.Key -eq 'after') { $seed + $Seeds } else { $seed }
             $env:STRAT_PROFILE_TIEBREAK_SEED = if ($sideSeed -gt 0) { "$sideSeed" } else { $null }
             try {
-                $out = Invoke-UciSearchToBestMove -ExePath $s.Value -WorkDir $workDir -Commands $commands `
-                                                  -SearchDepth $Depth -Description $p.Fen
+                $out = Invoke-UciFixedDepthSearch -ExePath $s.Value -WorkDir $workDir -Position "fen $($p.Fen)" `
+                                                  -SearchDepth $Depth -Threads 1 -Description $p.Fen
             } finally {
                 $env:STRAT_PROFILE_TIEBREAK_SEED = $callerSeed
             }

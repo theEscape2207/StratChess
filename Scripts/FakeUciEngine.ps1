@@ -4,7 +4,7 @@
     misbehaves on demand so the driver's failure paths can be tested without a build.
 
 .DESCRIPTION
-    Launched through FakeUciEngine.cmd, never directly: Invoke-UciSearchToBestMove sets
+    Launched through FakeUciEngine.cmd, never directly: the driver sets
     ProcessStartInfo.FileName to the path it is given and the arguments to a fixed 'uci',
     and .NET refuses a .ps1 as an executable ("not a valid application for this OS
     platform"). A .cmd shim is accepted, ignores the inherited 'uci' argument, and costs
@@ -16,6 +16,9 @@
     environment, so the caller just sets the variable before invoking the driver.
 
     Modes, each named after the driver path it is there to reach:
+
+    Every mode echoes each setoption, position and go line as 'info string got <line>', and
+    every search reports depths 1 and 2 only, so a deeper request ends short.
 
       ok                     Answer normally. Aborts without a bestmove if anything
                              arrives on stdin during the search, which is how a real
@@ -124,8 +127,11 @@ while ((Get-Date) -lt $deadline) {
         continue
     }
 
+    # Echo the request, so the driver's command construction is visible in the transcript.
+    if ($next.Line -match '^(setoption|position|go)\b') { Write-EngineLine "info string got $($next.Line)" }
+
     switch -Regex ($next.Line) {
-        '^uci$'      { Write-EngineLine 'id name FakeUciEngine'; Write-EngineLine 'uciok' }
+        '^uci$'{ Write-EngineLine 'id name FakeUciEngine'; Write-EngineLine 'uciok' }
         '^isready$'  { Write-EngineLine 'readyok' }
         '^go\b'      { Invoke-Go }
         '^quit$'     {

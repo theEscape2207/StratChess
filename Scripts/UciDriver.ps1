@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
-    Shared fixed-depth UCI driver, dot-sourced by Compare-SearchEquivalence.ps1 and
-    Run-Bench.ps1 so the two cannot drift in how they drive and shut down an engine.
+    Shared fixed-depth UCI driver, dot-sourced by Run-Bench.ps1,
+    Compare-SearchEquivalence.ps1 and Compare-SearchProfile.ps1 so they cannot drift in
+    how they request a search, decide it completed, and shut an engine down.
 
 .NOTES
     No param() block: this is a library, not a script. Dot-source it as
@@ -117,4 +118,54 @@ function Invoke-UciSearchToBestMove {
         }
         $proc.Dispose()
     }
+}
+
+function Test-UciFixedDepthComplete {
+    <#
+        True when a transcript completed the requested depth with a best move. An early
+        bestmove -- a search stopped, aborted or ended short -- is not a measurement.
+    #>
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Output,
+        [Parameter(Mandatory)][int]$SearchDepth
+    )
+
+    $lines = @($Output -split "`r?`n" | ForEach-Object { $_.Trim() })
+    $reachedDepth = @($lines | Where-Object { $_ -match "^info depth $SearchDepth\b" }).Count -gt 0
+    $hasBestMove  = @($lines | Where-Object { $_ -match '^bestmove \S+' }).Count -gt 0
+    return $reachedDepth -and $hasBestMove
+}
+
+function Invoke-UciFixedDepthSearch {
+    <#
+        One fixed-depth search in a fresh engine process, so no transposition-table state
+        carries over between positions. Returns the raw transcript, and throws unless the
+        engine completed -SearchDepth with a best move; interpreting the transcript is the
+        caller's job.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$ExePath,
+        [Parameter(Mandatory)][string]$WorkDir,
+        # Everything after 'position ': 'startpos', 'fen <fen>', either with 'moves ...'.
+        [Parameter(Mandatory)][string]$Position,
+        [Parameter(Mandatory)][ValidateRange(1, 1000)][int]$SearchDepth,
+        [Parameter(Mandatory)][ValidateRange(1, 1024)][int]$Threads,
+        [Parameter(Mandatory)][string]$Description,
+        [ValidateRange(1, 3600000)][int]$TimeoutMs = 600000
+    )
+
+    $commands = @(
+        'uci'
+        'isready'
+        "setoption name Threads value $Threads"
+        "position $Position"
+        "go depth $SearchDepth"
+    )
+    $out = Invoke-UciSearchToBestMove -ExePath $ExePath -WorkDir $WorkDir -Commands $commands `
+        -SearchDepth $SearchDepth -Description $Description -TimeoutMs $TimeoutMs
+
+    if (-not (Test-UciFixedDepthComplete -Output $out -SearchDepth $SearchDepth)) {
+        throw "Fixed-depth search did not complete depth $($SearchDepth): $Description`nEngine output:`n$out"
+    }
+    return $out
 }
