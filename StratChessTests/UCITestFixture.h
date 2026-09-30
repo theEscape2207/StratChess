@@ -8,6 +8,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include "UCIHandler.h"
 #include "AIPerplex.h"
+#include "SearchTestFixture.h"
 #include "Board.h"
 #include "TranspositionTable.h"
 #include <chrono>
@@ -146,9 +147,14 @@ class UciHandlerTestFixture {
 
 	// Reads threads_ off UCI's concretely-owned AIPerplex instance — proves
 	// the option reaches the search service.
-	unsigned ai_threads() const { return handler.ai_->threads_; }
+	unsigned ai_threads() const { return AIPerlexTestFixture::configured_threads(*handler.ai_); }
 
-	void set_late_move_pruning(bool enabled) const { handler.ai_->tuning_.late_move_pruning_enabled = enabled; }
+	void set_late_move_pruning(bool enabled) const
+	{
+		auto tuning = ai_tuning();
+		tuning.late_move_pruning_enabled = enabled;
+		REQUIRE_FALSE(set_tuning(tuning).has_value());
+	}
 
 	const SearchTuning& ai_tuning() const { return handler.ai_->Tuning(); }
 	std::optional<SearchTuningSchema::TuningError> set_tuning(const SearchTuning& tuning) const
@@ -164,38 +170,38 @@ class UciHandlerTestFixture {
 	void store_tt_marker() const
 	{
 		REQUIRE(handler.ai_ != nullptr);
-		handler.ai_->_tt->store(TT_MARKER_KEY, 123, 1, 0, Move::EmptyMove(), BoundType::EXACT, NodeType::PV_NODE,
-		                        SearchPhase::MAIN);
+		AIPerlexTestFixture::tt(*handler.ai_)
+		    .store(TT_MARKER_KEY, 123, 1, 0, Move::EmptyMove(), BoundType::EXACT, NodeType::PV_NODE, SearchPhase::MAIN);
 	}
 
 	bool has_tt_marker() const
 	{
 		REQUIRE(handler.ai_ != nullptr);
-		return handler.ai_->_tt->probe(TT_MARKER_KEY, 0).has_value();
+		return AIPerlexTestFixture::tt(*handler.ai_).probe(TT_MARKER_KEY, 0).has_value();
 	}
 
 	size_t ai_hash_requested_mb() const
 	{
 		REQUIRE(handler.ai_ != nullptr);
-		return handler.ai_->_tt->requested_memory_mb();
+		return AIPerlexTestFixture::tt(*handler.ai_).requested_memory_mb();
 	}
 
 	size_t ai_hash_memory_mb() const
 	{
 		REQUIRE(handler.ai_ != nullptr);
-		return handler.ai_->_tt->memory_mb();
+		return AIPerlexTestFixture::tt(*handler.ai_).memory_mb();
 	}
 
 	size_t ai_hash_bucket_count() const
 	{
 		REQUIRE(handler.ai_ != nullptr);
-		return handler.ai_->_tt->bucket_count();
+		return AIPerlexTestFixture::tt(*handler.ai_).bucket_count();
 	}
 
 	const void* tt_identity() const
 	{
 		REQUIRE(handler.ai_ != nullptr);
-		return handler.ai_->_tt.get();
+		return &AIPerlexTestFixture::tt(*handler.ai_);
 	}
 
 	// cmd_go() returns as soon as the search is launched, so a test waits for the launch thread

@@ -558,6 +558,9 @@ included by both.
 handlers (`cmd_position`, `cmd_setoption`, `cmd_ucinewgame`, `cmd_eval`) directly, without a
 running `run()` loop or piped stdin.
 
+Its TT and configured-thread probes delegate to `AIPerlexTestFixture` on the handler's live
+search service. Tuning changes use `SetTuning()`; the UCI fixture has no separate search friendship.
+
 A test reads UCI output through the fixture's `output()`/`capture()`, backed by a `UciWriter`
 injected at construction, never by redirecting `std::cout`: a search runs on its own thread, and
 swapping `std::cout`'s buffer while that thread is still writing to it is a data race. `CinRedirect`

@@ -684,6 +684,7 @@ class AIPerlexTestFixture {
 	static bool verbose_logging(const AIPerplex& ai) { return ai.verbose_logging_; }
 	static const SearchTuning& tuning(const AIPerplex& ai) { return ai.tuning_; }
 	static unsigned configured_threads(const AIPerplex& ai) { return ai.threads_; }
+	static TranspositionTable& tt(AIPerplex& ai) { return *ai._tt; }
 	static uint64_t game_generation(const AIPerplex& ai) { return ai.game_generation_; }
 	static void set_launch_barrier(AIPerplex& ai, std::function<void()> barrier)
 	{
