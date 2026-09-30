@@ -149,3 +149,4 @@ step 4.
 | `mutable` lock vector (D2) | self-evident idiom, no comment |
 | spike and final bench numbers, tactical-stability before/after | `Docs/Changelog.md`, PR body, #676 |
 | engine now advises huge pages, so THP mode no longer matters for the full-size table | `Docs/CI.md` THP paragraph |
+| **Changed in implementation: D5.** The shared storage types cost 1.6% Windows nps with identical nodes (disjoint ranges, 6 rounds). Reverting only the lock array recovered half. So non-Linux builds keep `main`'s `std::vector<Bucket>` and `std::unique_ptr<std::shared_mutex[]>` behind `#if defined(__linux__)`, and the allocator is Linux-only; Windows then benched +0.2%. The cause is open in #685. | source comment on the `#else` members, PR body, #685 |

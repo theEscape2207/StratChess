@@ -28,8 +28,9 @@ On a Linux host whose THP mode is `madvise` (ubuntu-26.04 runners, WSL, most cur
 the TT and its lock array, 240 MiB at the default request on libstdc++, were backed by 4 KiB pages.
 `TranspositionTable` now allocates both through `HugePageAllocator`: on Linux an allocation of at
 least 2 MiB is 2 MiB-aligned and advised `MADV_HUGEPAGE`; smaller ones, such as the 1 MiB test
-tables, are not rounded up. Windows is unchanged; large pages there need a privilege no account has
-by default (#684).
+tables, are not rounded up. Other platforms keep the previous storage types: large pages on Windows
+need a privilege no account has by default (#684), and the shared types benched 1.6% slower on the
+shipping build with identical nodes (#685).
 
 WSL Ubuntu-26.04, GCC 15.2, default hash: engine construction 84 → 19 ms; bench nps at depth 12
 +3.5% with one binary toggling the advice (10 alternating rounds, ranges disjoint), +6.8% median
