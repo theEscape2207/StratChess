@@ -131,11 +131,13 @@ namespace {
 		void flush_() override {}
 	};
 
-	// Restores the default logger's sink list on every scope exit.
+	// Counts sink failures instead of letting spdlog print them to stderr; restores the default
+	// logger's sinks and error handler on every scope exit.
 	class ScopedThrowingSink {
 	  public:
 		ScopedThrowingSink() : sink_(std::make_shared<ThrowingSink>())
 		{
+			spdlog::default_logger()->set_error_handler([this](const std::string&) { ++failures_; });
 			spdlog::default_logger()->sinks().push_back(sink_);
 		}
 		~ScopedThrowingSink()
@@ -143,14 +145,18 @@ namespace {
 			try {
 				auto& sinks = spdlog::default_logger()->sinks();
 				sinks.erase(std::remove(sinks.begin(), sinks.end(), sink_), sinks.end());
+				spdlog::default_logger()->set_error_handler(nullptr);
 			} catch (...) { // NOLINT(bugprone-empty-catch) - cleanup in a destructor
 			}
 		}
 		ScopedThrowingSink(const ScopedThrowingSink&) = delete;
 		ScopedThrowingSink& operator=(const ScopedThrowingSink&) = delete;
 
+		int failures() const noexcept { return failures_; }
+
 	  private:
 		std::shared_ptr<ThrowingSink> sink_;
+		int failures_ = 0;
 	};
 } // namespace
 
@@ -174,6 +180,7 @@ TEST_CASE("FENParser::ValidatePositionAgainstFENMetadata: every correction still
 	{
 		ScopedThrowingSink throwing;
 		REQUIRE_NOTHROW(ok = FENParser::ValidatePositionAgainstFENMetadata(board, state));
+		CHECK(throwing.failures() > 0); // logging really did throw
 	}
 
 	CHECK(ok);
