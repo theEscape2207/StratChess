@@ -197,13 +197,6 @@ jobs:
       - name: Run fast tests
         run: ./build/StratChessTests '~[slow]'
 
-      - name: THP probe (temporary)
-        run: |
-          uname -r
-          cat /sys/kernel/mm/transparent_hugepage/enabled /sys/kernel/mm/transparent_hugepage/defrag
-          time ./build/StratChessTests '~[slow]' > /dev/null
-          time GLIBC_TUNABLES=glibc.malloc.hugetlb=1 ./build/StratChessTests '~[slow]' > /dev/null
-
       # The Catch2 tier hard-codes seven cases (startpos d1-4, Kiwipete d1-3).
       # This is the 131-position suite behind Tests/perft_test_cases.json, 655
       # node-count checks, and it ran in no automated gate before. Perft is
@@ -313,11 +306,6 @@ jobs:
       # densest exercise of move generation in the suite.
       - name: Run fast tests
         run: ./build/StratChessTests '~[slow]'
-
-      - name: THP probe (temporary)
-        run: |
-          cat /sys/kernel/mm/transparent_hugepage/enabled
-          time ./build/StratChessTests '~[slow]' > /dev/null
 
   # TSan covers the one thing ASan cannot: a data race in the Lazy SMP helpers
   # that has not yet corrupted anything. It is a separate job because TSan and
@@ -570,11 +558,6 @@ jobs:
       # clang-format output was verified byte-identical between 22.1.3 (VS) and
       # 22.1.8 (apt.llvm.org) across all 93 sources, which is what makes the
       # blocking format check safe.
-      - name: THP probe (temporary)
-        run: |
-          uname -r
-          cat /sys/kernel/mm/transparent_hugepage/enabled /sys/kernel/mm/transparent_hugepage/defrag
-
       - name: Install LLVM ${{ env.LLVM_MAJOR }}
         # The only step here that depends on an apt mirror. Bounded so a
         # stalled mirror fails the step instead of hanging to the job ceiling.
