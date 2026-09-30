@@ -508,7 +508,7 @@ Two `[search][pv]` cases cover the abort paths the end-to-end UCI test cannot fo
 deterministically, both through `AIPerlexTestFixture`:
 
 - **A `pvs()` frame that aborts at entry leaves an empty row 0** (`SearchTelemetryTests.cpp`). Seed
-  row 0 (standing in for a completed aspiration retry), latch the abort with `StopSearch()`, run one
+  row 0 (standing in for a completed aspiration retry), latch the abort with `Stop()`, run one
   node. The entry exit returns a fabricated `GameValues::Draw`, and an empty row is what makes
   `iterative_deepening()` reject it as INCOMPLETE instead of reporting `score cp 0`.
 - **A stale row 1 is not spliced onto the emergency move** (`SearchIterationTests.cpp`).
@@ -553,6 +553,9 @@ included by both.
 **Access**: `UciHandlerTestFixture` (`STRAT_ENABLE_TEST_ACCESS`) drives private command
 handlers (`cmd_position`, `cmd_setoption`, `cmd_ucinewgame`, `cmd_eval`) directly, without a
 running `run()` loop or piped stdin.
+
+Its TT and configured-thread probes delegate to `AIPerlexTestFixture` on the handler's live
+search service. Tuning changes use `SetTuning()`; the UCI fixture has no separate search friendship.
 
 A test reads UCI output through the fixture's `output()`/`capture()`, backed by a `UciWriter`
 injected at construction, never by redirecting `std::cout`: a search runs on its own thread, and
@@ -795,7 +798,7 @@ only on external evidence, never because this engine also scores a move highly.
 
 - Each `TEST_CASE` constructs its own local `Board` (via the FEN constructor, or the default constructor + `SetupFromFEN`) — no shared global board state between tests.
 - TT tests use a fresh `TranspositionTable(1)` (1 MB) per test — never the AIPerplex-internal TT.
-- Tactical tests create a fresh `AIPerplex` per test — this allocates a 256 MB TT, which is acceptable on development machines (virtual memory is lazy-paged).
+- Tactical tests create a fresh `AIPerplex` per test with the default Hash configuration (192 MiB requested).
 
 ---
 
