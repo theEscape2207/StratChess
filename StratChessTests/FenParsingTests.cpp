@@ -137,8 +137,8 @@ namespace {
 	  public:
 		ScopedThrowingSink() : sink_(std::make_shared<ThrowingSink>())
 		{
-			spdlog::default_logger()->set_error_handler([this](const std::string&) { ++failures_; });
 			spdlog::default_logger()->sinks().push_back(sink_);
+			spdlog::default_logger()->set_error_handler([this](const std::string&) { ++failures_; });
 		}
 		~ScopedThrowingSink()
 		{
