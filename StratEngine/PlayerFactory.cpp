@@ -42,8 +42,7 @@ std::unique_ptr<IPlayer> CreatePlayer(const Config::PlayerConfig& config, Board&
 	search_config.threads = config.threads.value_or(1);
 	search_config.tuning = config.search_tuning.value_or(SearchTuning{});
 	search_config.verbose_logging = options.verbose_search_logging;
-	if (options.hash_mb)
-		search_config.hash_mb = *options.hash_mb;
+	search_config.hash_mb = options.hash_mb.value_or(search_config.hash_mb);
 
 	return std::make_unique<SearchPlayer>(board, search_config, search_description(config.depth));
 }

@@ -118,7 +118,7 @@ TEST_CASE("Player factory warns when search tuning is supplied to a human player
 	config.search_tuning = SearchTuning{};
 
 	const ScopedFactoryLogCapture capture;
-	auto player = CreatePlayer(config, board, {.hash_mb = 1});
+	auto player = CreatePlayer(config, board);
 
 	REQUIRE(player != nullptr);
 	REQUIRE(capture.text().find("search_tuning in game_settings.json is ignored for a Human player") !=
@@ -381,7 +381,7 @@ TEST_CASE("Search - StartNewGame resets td_ history and killers", "[search]")
 
 TEST_CASE("Search - StartNewGame clears helper_tds_", "[search][smp]")
 {
-	// Lazy SMP helpers are reused across searches within a game (GetMove()
+	// Lazy SMP helpers are reused across searches within a game (Search()
 	// only grows helper_tds_, never shrinks it) — StartNewGame() must clear
 	// the vector so the next search reconstructs them fresh instead of
 	// carrying killers/history over from the previous game.
@@ -396,7 +396,7 @@ TEST_CASE("Search - StartNewGame clears helper_tds_", "[search][smp]")
 
 TEST_CASE("Search - StartNewGame does not reset tuning_", "[search]")
 {
-	// Regression: Game::SetPlayerParams() applies game_settings.json's
+	// Regression: CreatePlayer() applies game_settings.json's
 	// search_tuning overrides and then unconditionally calls StartNewGame()
 	// on the same object -- if StartNewGame() reset tuning_, every configured
 	// override would be silently discarded before the first move is searched.

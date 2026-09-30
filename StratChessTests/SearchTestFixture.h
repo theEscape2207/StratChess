@@ -89,7 +89,7 @@ class AIPerlexTestFixture {
 		// Defaults to 4, a don't-care for the many [search] tests that never call
 		// Search(); the node-limit tests below raise it so the node poll — not the
 		// depth cap — is what stops the search.
-		// A 1 MiB table: zero-filling the default 192 MiB for every fixture dominates suite time.
+		// A 1 MiB table (TestDesign.md → Test Isolation Rules).
 		ai_owner = std::make_unique<AIPerplex>(
 		    AIPerplexConfig{.default_depth = max_depth, .hash_mb = 1, .verbose_logging = false});
 		ai = ai_owner.get();

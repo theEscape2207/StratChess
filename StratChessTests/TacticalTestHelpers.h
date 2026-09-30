@@ -15,8 +15,8 @@ struct TacticalCase {
 };
 
 // Create a fresh concrete AIPerplex configured for tactical test use. The board is
-// deliberately supplied to Search() rather than retained by the engine. A 1 MiB table, because
-// zero-filling the default 192 MiB per engine dominates suite time.
+// deliberately supplied to Search() rather than retained by the engine. A 1 MiB table
+// (TestDesign.md → Test Isolation Rules).
 inline std::unique_ptr<AIPerplex> make_tactical_engine(unsigned depth, bool null_move_enabled = true)
 {
 	SearchTuning tuning;
