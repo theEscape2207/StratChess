@@ -156,8 +156,9 @@ Release-only because perft is compute-bound: the suite takes **30 s** optimised,
 reached 4 of 131 positions in six minutes — roughly three hours extrapolated. Never put a perft suite
 on a Debug leg.
 
-`build-linux`, `sanitize-linux` and `tsan-linux` run on `ubuntu-26.04` with its default GCC 15; the
-other Linux jobs stay on `ubuntu-24.04` until #476 moves them. A moved job's ccache key gains
+Every Linux job in `build-and-test.yml` runs on `ubuntu-26.04`, the GCC ones with its default
+GCC 15; the Nightly and strength-lab jobs stay on `ubuntu-24.04` until #476 moves them. A moved job's
+ccache key gains
 `-gcc15`, so a GCC 13 and a GCC 15 job never share, and overwrite, one cache. 26.04 runs transparent
 huge pages in `madvise` mode, not 24.04's `always`, so a large TT faults in 4 KiB pages; test engines
 use a 1 MiB table (`Docs/TestDesign.md` → Test Isolation Rules), which keeps that cost off the gate.
@@ -250,12 +251,13 @@ own. CMake compiles every Engine source for both `StratChessEvolved` and `StratC
 normalizer retains the **shipping** command, so lint sees Release engine flags rather than test ones,
 and fails on an ambiguous or missing candidate.
 
-**LLVM is pinned to major 22**, installed from apt.llvm.org rather than using the image's
-`clang-tidy-18`. The check inventory differs between clang-tidy majors, so an unpinned runner
-silently gains and loses checks when the image moves. Major 22 is what Visual Studio 18 ships, so
-developers already have it; the CI patch level is 22.1.8 against the VS toolchain's 22.1.3, and
-clang-format output was verified byte-identical between them across the source tree — which is what
-makes a blocking format check safe. `Run-Lint.ps1` warns when the local major differs.
+**LLVM is pinned to major 22**, called as `clang-tidy-22`/`clang-format-22`. `lint-linux` takes
+them from the `ubuntu-26.04` image, which also ships 20 and 21; the Nightly lint jobs, still on
+24.04, install them from apt.llvm.org. The check inventory differs between clang-tidy majors, so an
+unpinned runner silently gains and loses checks when the image moves. Major 22 is what Visual
+Studio 18 ships, so developers already have it; clang-format output was verified byte-identical
+across the source tree between the VS toolchain's 22.1.3 and the CI patch levels (22.1.2 on the
+image, 22.1.8 from apt.llvm.org) — which is what makes a blocking format check safe. `Run-Lint.ps1` warns when the local major differs.
 
 The lint database is configured with **clang, not the default GCC**, and this is load-bearing rather
 than cosmetic. `strat_configure_target` emits `-fconstexpr-ops-limit=` for GCC and
