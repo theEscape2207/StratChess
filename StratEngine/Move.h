@@ -18,9 +18,6 @@
 class Move final {
 	static constexpr uint16_t EMPTY_MOVE = 0xFFFF;
 
-	// Prints content to stream - Implemented in .cpp
-	friend std::ostream& operator<<(std::ostream&, const Move& move);
-
   public:
 	// Copy constructor
 	constexpr Move(const Move& rhs) noexcept = default;
@@ -84,6 +81,8 @@ class Move final {
 };
 // End Class Move
 
+std::ostream& operator<<(std::ostream&, const Move&);
+
 // Move is a pure 16-bit value: bits 0-5 = from, 6-11 = to, 12-15 = flags.
 static_assert(sizeof(Move) == 2, "Move must be exactly 2 bytes");
 
@@ -108,7 +107,7 @@ namespace MoveFlags {
 	constexpr uint8_t PROMOTION_BIT = 0x8; // bit 3: move is a promotion
 } // namespace MoveFlags
 
-// Move list with small buffer optimization
+// Fixed-capacity move list
 class MoveList {
   public:
 	static constexpr size_t MAX_MOVES = 218; // Maximum legal moves in any position
@@ -143,6 +142,5 @@ class MoveList {
 };
 
 // Principal variation line
-// Keeps the best variant in the vector
 using PVLine = std::deque<Move>;
 std::ostream& operator<<(std::ostream&, const PVLine&);

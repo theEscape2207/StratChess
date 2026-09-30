@@ -10,8 +10,6 @@
 #include <vector>
 
 class Board final {
-	friend std::ostream& operator<<(std::ostream&, const Board&);
-
   public:
 	Board();
 
@@ -138,17 +136,13 @@ class Board final {
 		return static_cast<eSquare>(63 - std::countl_zero(mask));
 	}
 
-	// --- Test setup helpers (prefer SetupFromFEN for new tests) ---
-
   private:
 	using TBitboards = std::array<BITBOARD, ALL_BITBOARDS>;
 	using sqPieces = std::tuple<ePiece, eSquare>;
 	using squareCol = std::vector<sqPieces>;
 
-	// One ply's reversible state. Two tenses on purpose: every field is the state *before* the
-	// move, except captured_piece, which describes the move itself — the same split the four
-	// arrays this replaces already had. zobrist_hash, last_irreversible_ply and captured_piece
-	// are meaningful only in a history entry; the live state_ carries the position fields.
+	// One ply's reversible state: every field precedes the move except captured_piece.
+	// zobrist_hash, last_irreversible_ply and captured_piece are meaningful only in history entries.
 	// Field order is chosen for size: the members sum to 24, so the static_assert below is what
 	// proves no padding was inserted.
 	struct PositionState {
@@ -275,6 +269,8 @@ class Board final {
 
 	uint64_t zobrist_hash_{0};
 };
+
+std::ostream& operator<<(std::ostream&, const Board&);
 
 // ============================================================================
 // Zobrist key tables for castling, en-passant and side-to-move

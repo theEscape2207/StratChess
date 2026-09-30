@@ -3,7 +3,9 @@
 
 SearchPlayer::SearchPlayer(Board& board, AIPerplexConfig config, std::string description)
     : board_(board), search_(config), description_(std::move(description))
-{}
+{
+	search_.StartNewGame();
+}
 
 SearchResult SearchPlayer::GetMove(const SearchLimits& limits) { return search_.Search(board_, limits); }
 

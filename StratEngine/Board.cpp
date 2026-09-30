@@ -29,13 +29,9 @@ namespace zobrist {
 		// guard at all — they are `inline constexpr`, fully resolved at
 		// compile time with no runtime initialization step whatsoever.
 		static const bool once = [] {
-			// non-deterministic seed for production use (uncomment for true randomness, but beware non-reproducible hashes across runs)
-			// std::random_device rd;
-			// std::mt19937 rng(rd());
 			// Deterministic seed for reproducibility -- not security-sensitive, so deliberate.
 			std::mt19937_64 rng(0x123456789ABCDEF0ULL); // NOLINT(bugprone-random-generator-seed)
 
-			//std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
 			// Fills piece_keys with random 64-bit values for piece-placement Zobrist hashing.
 			for (int piece = ePiece::WHITE_PAWN; piece < ALL_PIECETYPES; ++piece) {
 				for (int square = 0; square < ALL_SQUARES; ++square) {
@@ -302,8 +298,7 @@ std::span<const BITBOARD> Board::GetBitBoards() const noexcept { return std::spa
 
 bool Board::DoMove(const Move& m)
 {
-	// Defense in depth: currentPly_ should never reach MAX_PLY now that
-	// ResetSearchDepth() decouples it from total game length (issue #53).
+	// Unmatched moves must fit the ply-history array; committed moves reset the search depth.
 	assert(currentPly_ < MAX_PLY);
 
 	// capturedPiece must be computed before IsValid (which uses it) and before any board changes.
@@ -750,16 +745,8 @@ std::ostream& operator<<(std::ostream& os, const Board& board)
 		os << ONE_ROW - rank << " ";
 
 		for (unsigned int file = 0; file < numFiles; ++file) {
-			const BITBOARD squareMask = g_bbMask[(rank << 3) + file];
-
-			std::size_t piece = 0;
-			while ((piece < ALL_PIECETYPES) && ((squareMask & board.bitboards_[piece]) == 0))
-				++piece;
-
-			if (piece >= ALL_PIECETYPES)
-				piece = ALL_PIECETYPES;
-
-			os << " " << g_cPieceNames[piece];
+			const std::size_t piece = board.GetPiece(static_cast<eSquare>((rank << 3) + file));
+			os << " " << g_cPieceNames[piece == NO_PIECE ? ALL_PIECETYPES : piece];
 		}
 		os << '\n';
 	}
@@ -839,17 +826,14 @@ void Board::update_zobrist_side() noexcept { zobrist_hash_ ^= zobrist::side_key;
 // position stack uniformly.
 void Board::DoNullMove()
 {
-	// Defense in depth: currentPly_ should never reach MAX_PLY now that
-	// ResetSearchDepth() decouples it from total game length (issue #53).
+	// Unmatched moves must fit the ply-history array; committed moves reset the search depth.
 	assert(currentPly_ < MAX_PLY);
 
 	// Record snapshot for undo
 	snapshot_state(ePiece::NO_PIECE);
 
-	// A null move forfeits any pending en-passant right, exactly like any
-	// other non-double-push move does in DoMove() (see GetEnPassantSquare
-	// usage there) — otherwise a stale EP square would illegally survive
-	// one extra ply inside the null-move subtree.
+	// A null move forfeits any pending en-passant right so it cannot survive
+	// an extra ply inside the null-move subtree.
 	if (state_.ep_square != NO_SQUARE) {
 		update_zobrist_ep(state_.ep_square, NO_SQUARE);
 		state_.ep_square = NO_SQUARE;
