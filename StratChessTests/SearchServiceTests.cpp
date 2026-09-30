@@ -53,7 +53,7 @@ TEST_CASE("SearchPlayer searches the Board's current position on every move", "[
 	Config::PlayerConfig config;
 	config.type = static_cast<unsigned>(PlayerType::Search);
 	config.depth = 1;
-	auto player = CreatePlayer(config, board, {.verbose_search_logging = false});
+	auto player = CreatePlayer(config, board, {.verbose_search_logging = false, .hash_mb = 1});
 
 	const SearchResult first = player->GetMove(SearchLimits::fixed_depth(1));
 	const Move e2e4 = MoveFactory::MakeMove(e2, e4, MoveType::DOUBLE_PAWN_PUSH);
@@ -79,7 +79,7 @@ TEST_CASE("Player factory creates human and search players", "[player][factory]"
 	Config::PlayerConfig search_config;
 	search_config.type = static_cast<unsigned>(PlayerType::Search);
 	search_config.depth = 1;
-	auto search = CreatePlayer(search_config, board);
+	auto search = CreatePlayer(search_config, board, {.hash_mb = 1});
 	CHECK_FALSE(search->IsHuman());
 	CHECK(dynamic_cast<SearchPlayer*>(search.get()) != nullptr);
 }
@@ -102,7 +102,7 @@ TEST_CASE("Player factory configures the default depth used by empty SearchLimit
 	Config::PlayerConfig config;
 	config.type = static_cast<unsigned>(PlayerType::Search);
 	config.depth = 2;
-	auto player = CreatePlayer(config, board);
+	auto player = CreatePlayer(config, board, {.hash_mb = 1});
 
 	const SearchResult result = player->GetMove(SearchLimits{});
 
@@ -118,7 +118,7 @@ TEST_CASE("Player factory warns when search tuning is supplied to a human player
 	config.search_tuning = SearchTuning{};
 
 	const ScopedFactoryLogCapture capture;
-	auto player = CreatePlayer(config, board);
+	auto player = CreatePlayer(config, board, {.hash_mb = 1});
 
 	REQUIRE(player != nullptr);
 	REQUIRE(capture.text().find("search_tuning in game_settings.json is ignored for a Human player") !=
@@ -130,7 +130,7 @@ TEST_CASE("AIPerplex Search uses the board supplied for each call and does not r
 {
 	Board first_board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 	Board second_board("6k1/5ppp/8/8/8/4R3/5PPP/6K1 w - - 0 1");
-	AIPerplex ai(AIPerplexConfig{.default_depth = 2, .verbose_logging = false});
+	AIPerplex ai(AIPerplexConfig{.default_depth = 2, .hash_mb = 1, .verbose_logging = false});
 
 	int first_observations = 0;
 	const auto first =
@@ -159,7 +159,7 @@ TEST_CASE("AIPerplex Search uses the board supplied for each call and does not r
 TEST_CASE("AIPerplex clears launch state when an iteration observer throws", "[search][service_api]")
 {
 	Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-	AIPerplex ai(AIPerplexConfig{.default_depth = 2, .threads = 2, .verbose_logging = false});
+	AIPerplex ai(AIPerplexConfig{.default_depth = 2, .hash_mb = 1, .threads = 2, .verbose_logging = false});
 
 	const auto failed_search_started = std::chrono::steady_clock::now();
 	REQUIRE_THROWS_AS(ai.Search(board, SearchLimits::fixed_depth(50),
@@ -199,7 +199,7 @@ TEST_CASE("Player factory maps AIPerplex evaluator tuning threads and logging be
 	                                    .null_move_min_depth = 7,
 	                                    .see_pruning_enabled = false};
 
-	auto player = CreatePlayer(config, board, {.verbose_search_logging = true});
+	auto player = CreatePlayer(config, board, {.verbose_search_logging = true, .hash_mb = 1});
 	AIPerplex& search = SearchPlayerTestFixture::search(*player);
 	const SearchTuning& tuning = AIPerlexTestFixture::tuning(search);
 
@@ -227,7 +227,7 @@ TEST_CASE("Player factory starts the AIPerplex new-game lifecycle before returni
 	Board board;
 	Config::PlayerConfig config;
 	config.type = static_cast<unsigned>(PlayerType::Search);
-	auto player = CreatePlayer(config, board);
+	auto player = CreatePlayer(config, board, {.hash_mb = 1});
 
 	CHECK(AIPerlexTestFixture::game_generation(SearchPlayerTestFixture::search(*player)) == 1);
 }
@@ -235,7 +235,7 @@ TEST_CASE("Player factory starts the AIPerplex new-game lifecycle before returni
 TEST_CASE("AIPerplex Stop does not abort the next direct Search", "[search][service_api]")
 {
 	Board board("rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2");
-	AIPerplex ai(AIPerplexConfig{.default_depth = 50, .verbose_logging = false});
+	AIPerplex ai(AIPerplexConfig{.default_depth = 50, .hash_mb = 1, .verbose_logging = false});
 	std::atomic<bool> accepted_iteration{false};
 	SearchResult stopped_result;
 
@@ -332,10 +332,10 @@ TEST_CASE("AIPerplex StartAsync: the launch searches a copy of the root, not the
 
 TEST_CASE("AIPerplex verbosity configuration is isolated per engine", "[search][service_api]")
 {
-	AIPerplex quiet(AIPerplexConfig{.verbose_logging = false});
+	AIPerplex quiet(AIPerplexConfig{.hash_mb = 1, .verbose_logging = false});
 	REQUIRE_FALSE(AIPerlexTestFixture::verbose_logging(quiet));
 
-	AIPerplex verbose(AIPerplexConfig{.verbose_logging = true});
+	AIPerplex verbose(AIPerplexConfig{.hash_mb = 1, .verbose_logging = true});
 	CHECK_FALSE(AIPerlexTestFixture::verbose_logging(quiet));
 	CHECK(AIPerlexTestFixture::verbose_logging(verbose));
 }
