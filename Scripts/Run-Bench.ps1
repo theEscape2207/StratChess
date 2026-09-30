@@ -117,7 +117,7 @@ function ConvertTo-BenchResult {
         -SelfTest can assert both the parsing and the refusals without an engine.
     #>
     param(
-        [Parameter(Mandatory)][AllowEmptyString()][string]$Output,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Output,
         [Parameter(Mandatory)][string]$Fen
     )
 
