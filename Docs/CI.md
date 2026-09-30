@@ -157,10 +157,10 @@ reached 4 of 131 positions in six minutes — roughly three hours extrapolated. 
 on a Debug leg.
 
 `build-linux` and `tsan-linux` run on `ubuntu-26.04` with its default GCC 15; the other Linux jobs
-stay on `ubuntu-24.04` (GCC 13) until #476 moves them. A moved job's ccache key gains `-gcc15`, so a
-GCC 13 and a GCC 15 job never share, and overwrite, one cache. `sanitize-linux` waits on #676:
+stay on `ubuntu-24.04` until #476 moves them. A moved job's ccache key gains `-gcc15`, so a GCC 13
+and a GCC 15 job never share, and overwrite, one cache. `sanitize-linux` stays on 24.04 until #676:
 26.04 runs transparent huge pages in `madvise` mode, not 24.04's `always`, so the TT faults in 4 KiB
-pages and the job, the gate's slowest, runs about 20 s longer.
+pages and the job runs about 20 s longer.
 
 **`sanitize-linux`** builds the test binary with `-fsanitize=address,undefined` and
 `STRAT_STDLIB_DEBUG=ON` — libstdc++ debug mode, i.e. checked iterators and container preconditions,

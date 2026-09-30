@@ -21,7 +21,7 @@ Usage:
     tsan_smp_drive.py <engine-binary> [--timeout SECONDS]
 
 The engine is invoked as `<binary> uci`. Run it under `setarch $(uname -m) -R`
-on Linux: Ubuntu 24.04's `vm.mmap_rnd_bits` exceeds what TSan's shadow mapping
+on Linux: the runner kernel's `vm.mmap_rnd_bits` exceeds what TSan's shadow mapping
 tolerates, and the process dies with "unexpected memory mapping" before `main`,
 reporting zero races on the way out.
 """

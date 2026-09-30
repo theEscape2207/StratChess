@@ -239,8 +239,8 @@ jobs:
     # the Engine tier: a Build-tier change to CMakeLists.txt is exactly what can
     # break the sanitizer wiring, and two conditions would eventually drift.
     if: needs.classify.outputs.is_full == 'true'
-    # Stays on ubuntu-24.04 (THP `always`): under 26.04's `madvise` the TT faults in
-    # 4 KiB pages, and ASan's allocator ignores the glibc huge-page tunable.
+    # Stays on ubuntu-24.04 (THP `always`) for speed: under 26.04's `madvise` the TT
+    # faults in 4 KiB pages, and ASan's allocator ignores the glibc huge-page tunable.
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
