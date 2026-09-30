@@ -4,7 +4,7 @@ description: >
   object cache, on Linux or Windows. Never fails the calling job: on any error it reports
   available=false, and the caller is required to drop the compiler launcher.
 
-# ccache is not part of the ubuntu-24.04 image -- the runner-images manifest lists Ninja
+# ccache is not part of the Ubuntu runner images -- the runner-images manifests list Ninja
 # and CMake, not ccache -- so build-and-test.yml's standing decision that `-G Ninja` needs
 # no install step does not cover it. The obvious fix, an apt install, runs straight into
 # that same decision: it would put an Ubuntu apt mirror on the critical path of every Linux

@@ -581,9 +581,6 @@ counterparts in `SearchServiceTests.cpp` pin `IsSearching()` false inside the co
 and a `Stop()` delivered before the launch thread reaches `Search()` (held by a test-only launch
 barrier); a lost stop exits the binary after 5 s instead of hanging on a join.
 
-`UciHandlerTestFixture` builds its handler with a 1 MiB table; pass
-`UciHandler::DefaultSearchConfig()` to a case that needs the real default.
-
 ### `[fen]` — FEN parsing tests
 
 **File**: `StratChessTests/FenParsingTests.cpp`
@@ -797,7 +794,11 @@ only on external evidence, never because this engine also scores a move highly.
 
 - Each `TEST_CASE` constructs its own local `Board` (via the FEN constructor, or the default constructor + `SetupFromFEN`) — no shared global board state between tests.
 - TT tests use a fresh `TranspositionTable(1)` (1 MB) per test — never the AIPerplex-internal TT.
-- Tactical tests create a fresh `AIPerplex` per test with the default Hash configuration (192 MiB requested).
+- Every test engine gets a 1 MiB table (`.hash_mb = 1`, `UciHandlerTestFixture::small_hash_config()`,
+  `PlayerCreationOptions::hash_mb`): zero-filling the default table per engine dominates suite time,
+  most of all under sanitizers and on Linux hosts whose transparent huge pages are `madvise`. Only a
+  test of the default size itself uses `UciHandler::DefaultSearchConfig()`; tests of other sizes set
+  them with `setoption name Hash`.
 
 ---
 

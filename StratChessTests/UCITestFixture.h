@@ -103,8 +103,8 @@ inline CaptureWriter make_capture_writer()
 // UCIHandler.h: friend class UciHandlerTestFixture;
 class UciHandlerTestFixture {
   public:
-	// A 1 MiB table: the default 192 MiB, value-initialised for every fixture, dominates the
-	// suite's run time under sanitizers. Pass UciHandler::DefaultSearchConfig() for the real size.
+	// A 1 MiB table (TestDesign.md → Test Isolation Rules). Pass UciHandler::DefaultSearchConfig()
+	// for the real size.
 	static AIPerplexConfig small_hash_config()
 	{
 		AIPerplexConfig config = UciHandler::DefaultSearchConfig();

@@ -408,7 +408,7 @@ class CinRedirect {
 TEST_CASE("run(): dispatches 'go perft' to perft, not to the search", "[uci][perft]")
 {
 	auto [writer, sink] = make_capture_writer();
-	UciHandler handler(UciHandler::DefaultSearchConfig(), writer);
+	UciHandler handler(UciHandlerTestFixture::small_hash_config(), writer);
 
 	CinRedirect input("position startpos\ngo perft 2\nquit\n");
 	handler.run();
@@ -421,7 +421,7 @@ TEST_CASE("run(): dispatches 'go perft' to perft, not to the search", "[uci][per
 TEST_CASE("run(): a bare 'go' still searches after the perft branch was added", "[uci][perft]")
 {
 	auto [writer, sink] = make_capture_writer();
-	UciHandler handler(UciHandler::DefaultSearchConfig(), writer);
+	UciHandler handler(UciHandlerTestFixture::small_hash_config(), writer);
 
 	CinRedirect input("position startpos\ngo depth 3\nquit\n");
 	handler.run();

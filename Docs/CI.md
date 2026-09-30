@@ -62,7 +62,7 @@ in Release. That 20 s is most of the 17 s median gap in job total. So the lever 
 execution in Debug, not the compile; ccache already caches the compile, and there is no
 Release-specific attribution left to chase.
 
-ccache is not on the `ubuntu-24.04` image and is installed from the upstream release archive rather
+ccache is not on the Ubuntu runner images and is installed from the upstream release archive rather
 than apt — an apt mirror on the critical path of every Linux job is what the standing decision above
 rules out. Both platforms install from the same composite action, so one bump moves every
 configuration. **A bump carries both pinned SHA-256 values forward** — never drop a hash to make an
@@ -74,8 +74,9 @@ proof it worked is the **stats steps reporting skipped**, since they are the onl
 `available` reaching the caller. A test that breaks the download URL must bust the `ccache-bin-…`
 cache key too, or the binary restores, the download is never attempted, and the test passes vacuously.
 
-Each caching job keeps its own entry (`ccache-linux-release`, `-debug`, `-asan-ubsan-stdlibdebug`,
-`-tsan`, `ccache-windows-clang-cl-release`, `-debug`) at `CCACHE_MAXSIZE=400M`. `actions/cache`
+Each caching job keeps its own entry (`ccache-linux-gcc15-release`, `-debug`,
+`ccache-linux-gcc15-asan-ubsan-stdlibdebug`, `ccache-linux-gcc15-tsan`, `ccache-windows-clang-cl-release`,
+`-debug`) at `CCACHE_MAXSIZE=400M` (`sanitize-linux`: 600M). `actions/cache`
 entries are immutable, so **every run writes six new ones** and the store carries a generation per
 run until LRU trims it — an order of magnitude more than one generation, against a budget shared with
 the FetchContent deps cache. That sharing was the risk this change was gated on: churn evicting a
@@ -155,6 +156,12 @@ Release-only because perft is compute-bound: the suite takes **30 s** optimised,
 reached 4 of 131 positions in six minutes — roughly three hours extrapolated. Never put a perft suite
 on a Debug leg.
 
+`build-linux`, `sanitize-linux` and `tsan-linux` run on `ubuntu-26.04` with its default GCC 15; the
+other Linux jobs stay on `ubuntu-24.04` until #476 moves them. A moved job's ccache key gains
+`-gcc15`, so a GCC 13 and a GCC 15 job never share, and overwrite, one cache. 26.04 runs transparent
+huge pages in `madvise` mode, not 24.04's `always`, so a large TT faults in 4 KiB pages; test engines
+use a 1 MiB table (`Docs/TestDesign.md` → Test Isolation Rules), which keeps that cost off the gate.
+
 **`sanitize-linux`** builds the test binary with `-fsanitize=address,undefined` and
 `STRAT_STDLIB_DEBUG=ON` — libstdc++ debug mode, i.e. checked iterators and container preconditions,
 which `_GLIBCXX_ASSERTIONS` (bounds only) misses and MSVC covers with `_ITERATOR_DEBUG_LEVEL=2` — and
@@ -187,7 +194,7 @@ current critical path, and slow every full-tier PR. `sanitize-linux` already run
 
 Two mechanics that are easy to get wrong, both of which produce a *falsely clean* run:
 `setarch $(uname -m) -R` disables ASLR, without which TSan dies with `unexpected memory mapping`
-before `main` on Ubuntu 24.04 and reports nothing; and the driver waits for `uciok`/`readyok`/
+before `main` on the runner kernel and reports nothing; and the driver waits for `uciok`/`readyok`/
 `bestmove` rather than piping commands, which would otherwise arrive mid-search and be refused by the
 UCI guards. TSan cannot be combined with ASan, hence a separate job. Survey, positive control, cost
 and contention analysis: `.claude/plans/retained/tsan-lazy-smp.md`.

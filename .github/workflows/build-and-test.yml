@@ -15,8 +15,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Every Linux job below pins ubuntu-24.04, whose image ships Ninja and CMake on
-# PATH -- `-G Ninja` needs no install step. Do not add one: it puts an Ubuntu apt
+# Every Linux job below pins ubuntu-24.04 or ubuntu-26.04; both ship Ninja and
+# CMake on PATH -- `-G Ninja` needs no install step. Do not add one: it puts an Ubuntu apt
 # mirror on the critical path of every job, and a stalled mirror hangs `apt-get
 # update` indefinitely. A job on a different image must confirm this first.
 #
@@ -114,9 +114,9 @@ jobs:
     # or Tooling merge to main runs nothing, because by definition nothing it
     # contains can affect the build.
     if: needs.classify.outputs.is_full == 'true'
-    # Pinned to the exact image (not the moving ubuntu-latest label) — the code
-    # needs GCC >= 13 for std::format, matching the Windows job's pinning approach.
-    runs-on: ubuntu-24.04
+    # Pinned to the exact image (not the moving ubuntu-latest label) so its default
+    # GCC 15 changes only deliberately, matching the Windows job's pinning approach.
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     # Release and Debug are not redundant -- the same asymmetry documented for the
     # Windows job in issue #146 is compiler-independent. Debug keeps assert() and
@@ -127,9 +127,8 @@ jobs:
       fail-fast: false
       matrix:
         config: [Release, Debug]
-    # Per-configuration ccache cap (D3 below); 400M x 4 configurations across the
-    # whole workflow totals about 1.6 GB against the repository-wide 10 GB cache
-    # budget.
+    # Per-configuration ccache cap; the six entries across the workflow total about
+    # 2.6 GB against the repository-wide 10 GB cache budget.
     env:
       CCACHE_MAXSIZE: 400M
     steps:
@@ -153,7 +152,7 @@ jobs:
         id: ccache
         uses: ./.github/actions/setup-ccache
         with:
-          key: ccache-linux-${{ matrix.config == 'Release' && 'release' || 'debug' }}
+          key: ccache-linux-gcc15-${{ matrix.config == 'Release' && 'release' || 'debug' }}
 
       # The launcher flag is appended only when the install step above succeeded.
       # `-DCMAKE_CXX_COMPILER_LAUNCHER=ccache` configures happily even when ccache
@@ -240,7 +239,7 @@ jobs:
     # the Engine tier: a Build-tier change to CMakeLists.txt is exactly what can
     # break the sanitizer wiring, and two conditions would eventually drift.
     if: needs.classify.outputs.is_full == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     env:
       CCACHE_MAXSIZE: 600M
@@ -262,7 +261,7 @@ jobs:
         id: ccache
         uses: ./.github/actions/setup-ccache
         with:
-          key: ccache-linux-asan-ubsan-stdlibdebug
+          key: ccache-linux-gcc15-asan-ubsan-stdlibdebug
 
       # STRAT_SANITIZE_RECOVER is left at its OFF default on purpose: sanitizers
       # report and continue otherwise, which exits 0 and would turn this job green
@@ -325,7 +324,7 @@ jobs:
     # Same condition as build-linux and sanitize-linux, for the same reason: a
     # Build-tier change to CMakeLists.txt is what breaks sanitizer wiring.
     if: needs.classify.outputs.is_full == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     env:
       CCACHE_MAXSIZE: 400M
@@ -345,7 +344,7 @@ jobs:
         id: ccache
         uses: ./.github/actions/setup-ccache
         with:
-          key: ccache-linux-tsan
+          key: ccache-linux-gcc15-tsan
 
       # STRAT_SANITIZE_RECOVER stays at its OFF default: a report must abort the
       # process and fail the job, not print and exit 0.
@@ -382,7 +381,7 @@ jobs:
         if: steps.ccache.outputs.available == 'true'
         run: ccache --show-stats
 
-      # setarch -R disables ASLR. Ubuntu 24.04 raises vm.mmap_rnd_bits beyond what
+      # setarch -R disables ASLR. The runner kernel sets vm.mmap_rnd_bits beyond what
       # TSan's shadow mapping tolerates, and without this the process dies with
       # "FATAL: ThreadSanitizer: unexpected memory mapping" before main -- which
       # reports zero races while running none of the search.
@@ -435,8 +434,8 @@ jobs:
     defaults:
       run:
         shell: pwsh
-    # Matches the per-configuration cap the Linux jobs use. Both legs cache, so the six
-    # entries across the workflow total about 2.4 GB against the repository-wide 10 GB
+    # Matches the per-configuration cap most Linux jobs use. Both legs cache, so the six
+    # entries across the workflow total about 2.6 GB against the repository-wide 10 GB
     # budget shared with the FetchContent caches.
     env:
       CCACHE_MAXSIZE: 400M

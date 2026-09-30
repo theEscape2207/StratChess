@@ -238,24 +238,6 @@ function Remove-InfoStringLines {
     return @($Lines | Where-Object { $_ -notmatch "^info string $Key " })
 }
 
-function Test-FixedDepthTranscript {
-    <#
-        A fixed-depth measurement is valid only if the engine actually reached
-        that depth and completed it with a best move.  In particular, a
-        transcript from a search aborted by an eagerly queued `quit` must not
-        compare as an apparently successful empty run.
-    #>
-    param(
-        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Lines,
-        [Parameter(Mandatory)][int]$SearchDepth
-    )
-
-    return [pscustomobject]@{
-        ReachedDepth = @($Lines | Where-Object { $_ -match "^info depth $SearchDepth\b" }).Count -gt 0
-        HasBestMove  = @($Lines | Where-Object { $_ -match '^bestmove \S+' }).Count -gt 0
-    }
-}
-
 function Compare-Transcript {
     <#
         Two normalised transcripts. Returns the FIRST difference, because that is
@@ -398,15 +380,6 @@ if ($SelfTest) {
     Assert-Case 'optional keys cover the profile lines' (@(@('treenodes') + $profileKeys | Where-Object { $_ -notin $OptionalInfoKeys }).Count -eq 0)
     Assert-Case 'a default transcript has no profile line' (@($profileKeys | Where-Object { Test-HasInfoString (ConvertTo-ComparableLines $sampleOut) $_ }).Count -eq 0)
 
-    $completion = Test-FixedDepthTranscript -Lines (ConvertTo-ComparableLines $sampleOut) -SearchDepth 2
-    Assert-Case 'fixed-depth transcript requires the requested depth and a bestmove' ($completion.ReachedDepth -and $completion.HasBestMove)
-    $aborted = ConvertTo-ComparableLines "info depth 0 score cp 0 nodes 0 time 0 pv a2a4`nbestmove a2a4"
-    $completion = Test-FixedDepthTranscript -Lines $aborted -SearchDepth 2
-    Assert-Case 'aborted transcript cannot satisfy a fixed-depth search' ((-not $completion.ReachedDepth) -and $completion.HasBestMove)
-    $missingBestMove = ConvertTo-ComparableLines 'info depth 2 score cp 24 nodes 97 time 5 pv e2e4 e7e5'
-    $completion = Test-FixedDepthTranscript -Lines $missingBestMove -SearchDepth 2
-    Assert-Case 'requested depth without bestmove is incomplete' ($completion.ReachedDepth -and (-not $completion.HasBestMove))
-
     Assert-Case 'FEN line becomes a fen spec' ((ConvertTo-PositionSpec '8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1') -eq 'fen 8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1')
     Assert-Case 'startpos passes through'      ((ConvertTo-PositionSpec 'startpos') -eq 'startpos')
     Assert-Case 'move list passes through'     ((ConvertTo-PositionSpec 'startpos moves e2e4 e7e5') -eq 'startpos moves e2e4 e7e5')
@@ -431,16 +404,10 @@ if ($SelfTest) {
 # Engine driving
 # ---------------------------------------------------------------------------
 
-# Invoke-UciSearchToBestMove lives in the shared library because Run-Bench.ps1 drives
-# the engine the same way; a fix to the shutdown sequence has to reach both.
+# The shared driver owns the request, the completion check and the shutdown sequence.
 . (Join-Path $PSScriptRoot 'UciDriver.ps1')
 
 function Invoke-FixedDepthSearch {
-    <#
-        One position in a FRESH engine process, so no transposition-table state
-        carries over from the previous position and each result depends only on
-        the binary and the position.
-    #>
     param(
         [Parameter(Mandatory)][string]$ExePath,
         [Parameter(Mandatory)][string]$WorkDir,
@@ -448,29 +415,9 @@ function Invoke-FixedDepthSearch {
         [Parameter(Mandatory)][int]$SearchDepth
     )
 
-    $commands = @(
-        'uci'
-        'isready'
-        "setoption name Threads value $ThreadCount"
-        "position $Spec"
-        "go depth $SearchDepth"
-    )
-
-    $out = Invoke-UciSearchToBestMove -ExePath $ExePath -WorkDir $WorkDir -Commands $commands `
-                                      -SearchDepth $SearchDepth -Description $Spec
-
-    $lines = ConvertTo-ComparableLines -Output $out
-    if ($lines.Count -eq 0) {
-        throw "No 'info depth' or 'bestmove' output from $ExePath for position: $Spec`nEngine output:`n$out"
-    }
-
-    $completion = Test-FixedDepthTranscript -Lines $lines -SearchDepth $SearchDepth
-    if (-not $completion.ReachedDepth -or -not $completion.HasBestMove) {
-        throw ("Fixed-depth search did not complete depth $SearchDepth for position: $Spec" +
-               "`nReached requested depth: $($completion.ReachedDepth); emitted bestmove: $($completion.HasBestMove)." +
-               "`nEngine output:`n$out")
-    }
-    return $lines
+    $out = Invoke-UciFixedDepthSearch -ExePath $ExePath -WorkDir $WorkDir -Position $Spec `
+                                      -SearchDepth $SearchDepth -Threads $ThreadCount -Description $Spec
+    return ConvertTo-ComparableLines -Output $out
 }
 
 function Resolve-PositionList {
