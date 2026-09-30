@@ -872,7 +872,17 @@ $name = [IO.Path]::GetFileNameWithoutExtension($source)
 $markerRoot = $env:STRAT_TIDY_TEST_MARKERS
 $active = Join-Path $markerRoot ("{0}-{1}.active" -f $name, $PID)
 Set-Content -LiteralPath $active -Value $name
-$activeCount = @(Get-ChildItem -LiteralPath $markerRoot -Filter '*.active').Count
+# With a barrier set, wait for a partner rather than race pwsh startup against the sleep below.
+$barrier = [int]$env:STRAT_TIDY_TEST_BARRIER
+$peak = Join-Path $markerRoot 'overlap.peak'
+$deadline = [DateTime]::UtcNow.AddSeconds(10)
+while ($true) {
+    $activeCount = @(Get-ChildItem -LiteralPath $markerRoot -Filter '*.active').Count
+    if ($activeCount -ge $barrier -or (Test-Path -LiteralPath $peak) -or
+        [DateTime]::UtcNow -gt $deadline) { break }
+    Start-Sleep -Milliseconds 25
+}
+if ($barrier -gt 0 -and $activeCount -ge $barrier) { New-Item -ItemType File -Path $peak -Force | Out-Null }
 Set-Content -LiteralPath (Join-Path $markerRoot "$name.count") -Value $activeCount
 if ($name -like '*slow*') { Start-Sleep -Milliseconds 800 }
 elseif ($name -like '*mid*') { Start-Sleep -Milliseconds 650 }
@@ -1053,8 +1063,13 @@ exit 0
             (Join-Path $root 'a-fast.cpp'),
             (Join-Path $root 'b-mid.cpp')
         )
-        $parallel = Invoke-TidyWorkers -Exe $pwsh -ArgumentPrefix $prefix `
-            -DatabaseDirectory $root -Sources $sources -WorkerCount 2
+        $env:STRAT_TIDY_TEST_BARRIER = '2'
+        try {
+            $parallel = Invoke-TidyWorkers -Exe $pwsh -ArgumentPrefix $prefix `
+                -DatabaseDirectory $root -Sources $sources -WorkerCount 2
+        } finally {
+            $env:STRAT_TIDY_TEST_BARRIER = $null
+        }
         Assert-Equal 'parallel run returns every result' 3 $parallel.Results.Count
         Assert-Equal 'results are deterministic by source' 'a-fast.cpp,b-mid.cpp,c-slow.cpp' `
             (($parallel.Results | ForEach-Object { [IO.Path]::GetFileName($_.Source) }) -join ',')

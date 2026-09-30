@@ -12,10 +12,10 @@ concurrency:
   group: nightly
   cancel-in-progress: false
 
-# Every Linux job below pins ubuntu-24.04, whose image ships Ninja and CMake on
-# PATH -- `-G Ninja` needs no install step. Do not add one: it puts an Ubuntu apt
-# mirror on the critical path of every job, and a stalled mirror hangs `apt-get
-# update` indefinitely. A job on a different image must confirm this first.
+# Every Linux job below pins ubuntu-26.04, which ships Ninja, CMake and LLVM 22
+# on PATH -- no job needs an install step. Do not add one: it puts an apt mirror
+# on the critical path of every job, and a stalled mirror hangs `apt-get update`
+# indefinitely. A job on a different image must confirm this first.
 #
 # Every job sets timeout-minutes. The GitHub default is 6 hours, which a hung
 # network step burns in full before anyone sees a verdict. The values are well
@@ -29,7 +29,7 @@ jobs:
   # ~2.8 min, so both fit one job even several times slower on a runner. They are
   # separate matrix legs to report independently, not to make them fit.
   deep-perft:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -72,7 +72,7 @@ jobs:
   # cases. It is a thin tier, not a second suite, so treat a green run as weak evidence.
   # Self-contained: no test reads anything from Tests/.
   extended-tests:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -99,7 +99,7 @@ jobs:
   # The same instrumentation the per-PR sanitize-linux job runs -- ASan+UBSan plus
   # libstdc++ debug mode -- extended to the [slow] tier it excludes.
   sanitize-extended:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -130,7 +130,7 @@ jobs:
   # Must run from Tests/: the runner resolves tactical_test_cases.json relative to
   # the working directory.
   tactical-stability:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -157,23 +157,12 @@ jobs:
   # Whole-tree format and fast Gate checks, reaching what the PR job's
   # one-unit-per-header cover does not.
   lint-tree:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     env:
       LLVM_MAJOR: "22"
     steps:
       - uses: actions/checkout@v7
-
-      - name: Install LLVM ${{ env.LLVM_MAJOR }}
-        # The only step here that depends on an apt mirror. Bounded so a
-        # stalled mirror fails the step instead of hanging to the job ceiling.
-        timeout-minutes: 10
-        run: |
-          set -euo pipefail
-          wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
-          chmod +x /tmp/llvm.sh
-          sudo /tmp/llvm.sh "$LLVM_MAJOR"
-          sudo apt-get install -y "clang-tidy-$LLVM_MAJOR" "clang-format-$LLVM_MAJOR"
 
       - name: Cache FetchContent dependencies
         uses: actions/cache@v6
@@ -218,23 +207,12 @@ jobs:
 
   # Analyzer-heavy checks stay off the required PR path and fail Nightly instead.
   lint-deep-linux:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     env:
       LLVM_MAJOR: "22"
     steps:
       - uses: actions/checkout@v7
-
-      - name: Install LLVM ${{ env.LLVM_MAJOR }}
-        # The only step here that depends on an apt mirror. Bounded so a
-        # stalled mirror fails the step instead of hanging to the job ceiling.
-        timeout-minutes: 10
-        run: |
-          set -euo pipefail
-          wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
-          chmod +x /tmp/llvm.sh
-          sudo /tmp/llvm.sh "$LLVM_MAJOR"
-          sudo apt-get install -y "clang-tidy-$LLVM_MAJOR"
 
       - name: Cache FetchContent dependencies
         uses: actions/cache@v6
@@ -334,7 +312,7 @@ jobs:
   # Citations in skills, subagents, CLAUDE.md and AGENTS.md that no longer resolve.
   # Pure PowerShell over the checkout, so it costs seconds.
   agent-docs:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
