@@ -79,8 +79,9 @@ duplicates what the vector already does.
 
 ### D3: huge pages only for allocations of at least 2 MiB
 
-Below 2 MiB the allocator uses the plain aligned path: `operator new` with `align_val_t`, as the
-vector does today. The size is rounded up to a 2 MiB multiple only on the huge-page path.
+Below 2 MiB the allocator uses `aligned_alloc` at the type's own alignment (at least
+`sizeof(void*)`), with the size rounded up only to that alignment. The size is rounded up to a 2 MiB
+multiple only on the huge-page path.
 
 Test engines use a 1 MiB table (#679). Rounded up and advised, the first touch would fault a whole
 2 MiB page and zero it: twice today's work for every test engine.
@@ -92,11 +93,14 @@ Test engines use a 1 MiB table (#679). Rounded up and advised, the first touch w
 - A failing `madvise` is ignored, because the advice is advisory. The table is then 4 KiB-backed,
   as it is today.
 
-### D5: non-Linux platforms unchanged in behaviour
+### D5: non-Linux platforms keep the current storage types
 
-On Windows (and any other non-Linux build) `allocate()` is aligned `operator new`, exactly what
-`std::vector<Bucket>` does for the over-aligned `Bucket` today. The only shipping-binary change is
-the lock container type (D2).
+The allocator, D2's lock vector and the new test are Linux-only. Other builds keep
+`std::vector<Bucket>` and `std::unique_ptr<std::shared_mutex[]>` behind `#if defined(__linux__)`.
+
+Rejected: one code path, with the allocator falling back to aligned `operator new` off Linux. It
+allocates identically, but it benched 1.6% slower on the shipping Windows build with identical nodes;
+the cause is open in #685.
 
 ## Assumptions I cannot verify from the code
 

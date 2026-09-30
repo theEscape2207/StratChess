@@ -32,9 +32,9 @@ tables, are not rounded up. Other platforms keep the previous storage types: lar
 need a privilege no account has by default (#684), and the shared types benched 1.6% slower on the
 shipping build with identical nodes (#685).
 
-WSL Ubuntu-26.04, GCC 15.2, default hash: engine construction 84 → 19 ms; bench nps at depth 12
-+3.5% with one binary toggling the advice (10 alternating rounds, ranges disjoint), +6.8% median
-against `origin/main`; `tactical stability 10` 37.6 → 7.9 s. Node counts and best moves identical.
+WSL Ubuntu-26.04, GCC 15.2, default hash: engine construction 83 → 21 ms; bench nps at depth 12
++3.5% with one binary toggling the advice, +6.9% median against `origin/main` (10 alternating rounds
+each, ranges disjoint); `tactical stability 10` 36 → 8 s. Node counts and best moves identical.
 
 ## 2026-09-30 — Continuation history orders quiet moves (#664)
 

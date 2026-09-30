@@ -11,6 +11,10 @@
 #include "AIPerplex.h" // DEFAULT_HASH_MB, for the equal-capacity invariant only
 #include "defines.h"
 
+#if defined(__linux__)
+#	include <malloc.h>
+#endif
+
 class TranspositionTableTestFixture {
   public:
 	using Entry = TranspositionTable::PackedEntry;
@@ -391,21 +395,6 @@ TEST_CASE("TT - repeated clear reports no work after the table is empty", "[tt]"
 // smaller than the megabytes requested. These pin the two properties that make
 // that acceptable: the diagnostic must describe the allocation rather than the
 // request, and the allocation must never exceed the request.
-
-#if defined(__linux__)
-TEST_CASE("TT - table memory honours the requested alignment, and a huge page's from 2 MiB", "[tt]")
-{
-	constexpr size_t huge_page = size_t{2} << 20;
-	for (const size_t bytes : {size_t{64}, huge_page / 2, huge_page, 3 * huge_page}) {
-		void* memory = allocate_table_memory(bytes, 64);
-		const auto address = reinterpret_cast<uintptr_t>(memory);
-		CHECK(address % 64 == 0);
-		if (bytes >= huge_page)
-			CHECK(address % huge_page == 0);
-		free_table_memory(memory);
-	}
-}
-#endif
 
 TEST_CASE("TT - memory_mb reports the non-exact allocation, not the request", "[tt]")
 {
@@ -997,3 +986,22 @@ TEST_CASE("TT - a same-key bound does not downgrade the previous search's exact 
 	CHECK(result->bound == BoundType::LOWER);
 	CHECK(result->value == 60);
 }
+
+// ── Huge-page storage (Linux) ─────────────────────────────────────────────────
+
+#if defined(__linux__)
+TEST_CASE("TT - table memory is huge-page aligned from 2 MiB and not rounded up below it", "[tt]")
+{
+	constexpr size_t huge_page = size_t{2} << 20;
+	for (const size_t bytes : {size_t{64}, huge_page / 2, huge_page, 3 * huge_page}) {
+		void* memory = allocate_table_memory(bytes, 64);
+		const auto address = reinterpret_cast<uintptr_t>(memory);
+		CHECK(address % 64 == 0);
+		if (bytes >= huge_page)
+			CHECK(address % huge_page == 0);
+		else
+			CHECK(malloc_usable_size(memory) < huge_page);
+		free_table_memory(memory);
+	}
+}
+#endif

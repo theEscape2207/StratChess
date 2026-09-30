@@ -15,10 +15,11 @@
 #include "TTStats.h"
 
 #if defined(__linux__)
-// Storage for the table and its locks. An allocation of at least one 2 MiB huge page is aligned to it
-// and advised MADV_HUGEPAGE: under THP `madvise`, the default on most current hosts, it would
-// otherwise fault in and TLB-miss 4 KiB at a time. Smaller ones are not rounded up, which would double
-// a small table's zero-fill. Throws std::bad_alloc.
+// Storage for the table and its locks; on libstdc++ the locks are nearly as large as the entries, and
+// every probe touches both. An allocation of at least one 2 MiB huge page is aligned to it and advised
+// MADV_HUGEPAGE: under THP `madvise`, the default on most current hosts, it would otherwise fault in
+// and TLB-miss 4 KiB at a time. Smaller ones are not rounded up, which would double a small table's
+// zero-fill. Throws std::bad_alloc.
 void* allocate_table_memory(std::size_t bytes, std::size_t alignment);
 void free_table_memory(void* memory) noexcept;
 
@@ -182,13 +183,13 @@ class TranspositionTable {
 	              "Bucket must be exactly BUCKET_SIZE entries with no padding");
 	static_assert(sizeof(Bucket) == 64 && alignof(Bucket) == 64);
 
-	// per-bucket shared mutexes to allow concurrent probes
 #if defined(__linux__)
 	std::vector<Bucket, HugePageAllocator<Bucket>> table;
+	// per-bucket shared mutexes to allow concurrent probes
 	mutable std::vector<std::shared_mutex, HugePageAllocator<std::shared_mutex>> bucket_locks;
 #else
-	// Huge pages need a privilege here. The Linux storage types, allocating identically, cost nps in the
-	// shipping build, so these stay as they were.
+	// Plain storage: Windows huge pages need a privilege, and the allocator-backed types above cost nps
+	// in the shipping build even though they allocate identically there.
 	std::vector<Bucket> table;
 	std::unique_ptr<std::shared_mutex[]> bucket_locks;
 #endif
