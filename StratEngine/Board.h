@@ -10,8 +10,6 @@
 #include <vector>
 
 class Board final {
-	friend std::ostream& operator<<(std::ostream&, const Board&);
-
   public:
 	Board();
 
@@ -275,6 +273,8 @@ class Board final {
 
 	uint64_t zobrist_hash_{0};
 };
+
+std::ostream& operator<<(std::ostream&, const Board&);
 
 // ============================================================================
 // Zobrist key tables for castling, en-passant and side-to-move

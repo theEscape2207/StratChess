@@ -18,9 +18,6 @@
 class Move final {
 	static constexpr uint16_t EMPTY_MOVE = 0xFFFF;
 
-	// Prints content to stream - Implemented in .cpp
-	friend std::ostream& operator<<(std::ostream&, const Move& move);
-
   public:
 	// Copy constructor
 	constexpr Move(const Move& rhs) noexcept = default;
@@ -83,6 +80,8 @@ class Move final {
 	}
 };
 // End Class Move
+
+std::ostream& operator<<(std::ostream&, const Move&);
 
 // Move is a pure 16-bit value: bits 0-5 = from, 6-11 = to, 12-15 = flags.
 static_assert(sizeof(Move) == 2, "Move must be exactly 2 bytes");

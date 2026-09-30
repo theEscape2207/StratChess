@@ -750,16 +750,8 @@ std::ostream& operator<<(std::ostream& os, const Board& board)
 		os << ONE_ROW - rank << " ";
 
 		for (unsigned int file = 0; file < numFiles; ++file) {
-			const BITBOARD squareMask = g_bbMask[(rank << 3) + file];
-
-			std::size_t piece = 0;
-			while ((piece < ALL_PIECETYPES) && ((squareMask & board.bitboards_[piece]) == 0))
-				++piece;
-
-			if (piece >= ALL_PIECETYPES)
-				piece = ALL_PIECETYPES;
-
-			os << " " << g_cPieceNames[piece];
+			const std::size_t piece = board.GetPiece(static_cast<eSquare>((rank << 3) + file));
+			os << " " << g_cPieceNames[piece == NO_PIECE ? ALL_PIECETYPES : piece];
 		}
 		os << '\n';
 	}
