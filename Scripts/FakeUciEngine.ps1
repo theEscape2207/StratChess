@@ -4,7 +4,7 @@
     misbehaves on demand so the driver's failure paths can be tested without a build.
 
 .DESCRIPTION
-    Launched through FakeUciEngine.cmd, never directly: Invoke-UciSearchToBestMove sets
+    Launched through FakeUciEngine.cmd, never directly: the driver sets
     ProcessStartInfo.FileName to the path it is given and the arguments to a fixed 'uci',
     and .NET refuses a .ps1 as an executable ("not a valid application for this OS
     platform"). A .cmd shim is accepted, ignores the inherited 'uci' argument, and costs
@@ -27,6 +27,9 @@
       stderr-flood           Fill the stderr pipe before answering, so a driver that
                              does not drain it deadlocks.
       ignore-quit            Answer normally, then never exit.
+
+    Every mode echoes each command it reads as 'info string got <line>', and every search
+    reports depths 1 and 2 only, so a deeper request ends short.
 
 .NOTES
     Every wait is bounded by a self-imposed lifetime, STRAT_FAKE_UCI_LIFETIME_MS,
@@ -123,6 +126,9 @@ while ((Get-Date) -lt $deadline) {
         if ($null -eq $next.Line) { break }   # stdin closed
         continue
     }
+
+    # Echo the request, so the driver's command construction is visible in the transcript.
+    Write-EngineLine "info string got $($next.Line)"
 
     switch -Regex ($next.Line) {
         '^uci$'      { Write-EngineLine 'id name FakeUciEngine'; Write-EngineLine 'uciok' }

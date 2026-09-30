@@ -4,16 +4,16 @@
     engine so its failure paths are reachable without a build.
 
 .DESCRIPTION
-    UciDriver.ps1 is dot-sourced by Compare-SearchEquivalence.ps1 and Run-Bench.ps1 and
+    UciDriver.ps1 is dot-sourced by Run-Bench.ps1 and both Compare-Search*.ps1 scripts, and
     has no param() block to hang a -SelfTest switch on, so its cases live here.
-    Validate-PrePR.ps1 runs this script when either file changes, via its
-    $SelfTestCoverers map.
+    Validate-PrePR.ps1 runs this script when the driver or the fake engine changes, via
+    its $SelfTestCoverers map.
 
     Two halves. The first drives the real driver against each misbehaviour and asserts
     the diagnostic it produces. The second mutates a copy of the driver -- deleting the
-    stderr drain, deleting the end-of-output break, batching `quit` behind `go` -- and
-    asserts each case then FAILS, because a test that only ever passes proves nothing
-    about what it is watching for. Every mutation first asserts that the text it means
+    stderr drain, the end-of-output break or the completion check, batching `quit`
+    behind `go` -- and asserts the matching case then goes wrong, because a test that
+    only ever passes proves nothing about what it is watching for. Every mutation first asserts that the text it means
     to replace is still present, so a later refactor breaks the test loudly instead of
     quietly making it vacuous.
 
@@ -55,10 +55,12 @@ function Invoke-DriverCase {
     param(
         [Parameter(Mandatory)][string]$Driver,
         [Parameter(Mandatory)][string]$Mode,
-        [Parameter(Mandatory)][int]$TimeoutMs
+        [Parameter(Mandatory)][int]$TimeoutMs,
+        # $null for the depth the fake engine completes.
+        [AllowNull()][object]$Depth
     )
 
-    . $Driver   # defines Invoke-UciSearchToBestMove in this function's scope
+    . $Driver   # defines the driver's functions in this function's scope
 
     $env:STRAT_FAKE_UCI_MODE = $Mode
     # The fixture outlives the kill (the driver kills cmd.exe, not the pwsh under it)
@@ -68,8 +70,8 @@ function Invoke-DriverCase {
 
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
     try {
-        $out = Invoke-UciSearchToBestMove -ExePath $FakeEngine -WorkDir $PSScriptRoot `
-            -Commands @('uci', 'position startpos', 'go depth 2') -SearchDepth 2 `
+        $out = Invoke-UciFixedDepthSearch -ExePath $FakeEngine -WorkDir $PSScriptRoot `
+            -Position 'startpos moves e2e4' -SearchDepth ($Depth ?? 2) -Threads 3 `
             -Description "fake engine, mode $Mode" -TimeoutMs $TimeoutMs
         return [pscustomobject]@{ Threw = $false; Message = [string]$out; ElapsedMs = $timer.ElapsedMilliseconds }
     } catch {
@@ -131,20 +133,41 @@ $cases = @(
        Mode = 'stderr-flood';         TimeoutMs = 20000; Throws = $false; Expect = 'bestmove e2e4' }
     @{ Name = 'an engine that ignores quit is timed out after bestmove'
        Mode = 'ignore-quit';          TimeoutMs = 3000;  Throws = $true;  Expect = 'did not exit within 3s after bestmove' }
+    @{ Name = 'the request is uci, isready, threads, position, depth, in order'
+       Mode = 'ok';                   TimeoutMs = 20000; Throws = $false
+       Expect = '(?s)got uci\r?\n.*got isready\r?\n.*got setoption name Threads value 3\r?\n.*got position startpos moves e2e4\r?\n.*got go depth 2\r?\n' }
+    @{ Name = 'bestmove before the requested depth is refused'
+       Mode = 'ok'; Depth = 3;        TimeoutMs = 20000; Throws = $true;  Expect = 'did not complete depth 3' }
 )
 
 foreach ($case in $cases) {
-    $r = Invoke-DriverCase -Driver $DriverPath -Mode $case.Mode -TimeoutMs $case.TimeoutMs
+    $r = Invoke-DriverCase -Driver $DriverPath -Mode $case.Mode -TimeoutMs $case.TimeoutMs -Depth $case['Depth']
     Assert-Case $case.Name `
         (($r.Threw -eq $case.Throws) -and ($r.Message -match $case.Expect)) `
         "threw=$($r.Threw) message=$($r.Message -replace '\s+', ' ')"
 
     if ($case.Throws) {
-        Assert-Case "$($case.Mode): the failure carries the engine transcript" `
+        Assert-Case "$($case.Name): the failure carries the engine transcript" `
             (($r.Message -match 'Engine stderr:') -and ($r.Message -match 'Engine output:'))
-        Assert-Case "$($case.Mode): -TimeoutMs is honoured, not the 600s default" `
+        Assert-Case "$($case.Name): -TimeoutMs is honoured, not the 600s default" `
             ($r.ElapsedMs -lt ($case.TimeoutMs + 15000)) "took $($r.ElapsedMs) ms"
     }
+}
+
+# The completion rule on its own, for transcripts the fake engine never produces.
+. $DriverPath
+$completion = @(
+    @{ Name = 'CRLF transcript with the depth and a bestmove is complete'
+       Output = "info depth 1 pv a2a3`r`ninfo depth 2 pv a2a3`r`nbestmove a2a3`r`n"; Complete = $true }
+    @{ Name = 'a deeper-only depth line does not satisfy the requested depth'
+       Output = "info depth 20 pv a2a3`nbestmove a2a3"; Complete = $false }
+    @{ Name = 'the requested depth without a bestmove is incomplete'
+       Output = 'info depth 2 pv a2a3'; Complete = $false }
+    @{ Name = 'an aborted depth-0 search is incomplete'
+       Output = "info depth 0 score cp 0 nodes 0 time 0 pv a2a4`nbestmove a2a4"; Complete = $false }
+)
+foreach ($c in $completion) {
+    Assert-Case $c.Name ((Test-UciFixedDepthComplete -Output $c.Output -SearchDepth 2) -eq $c.Complete)
 }
 
 # ---------------------------------------------------------------------------
@@ -167,9 +190,15 @@ $mutations = @(
 
     @{ Name = 'FALSIFY: quit batched behind go loses the pending-stop race'
        Tag  = 'queuedquit'
-       Find = 'foreach ($command in $Commands) {'
-       Repl = 'foreach ($command in (@($Commands) + @(''quit''))) {'
+       Find = 'foreach ($command in $commands) {'
+       Repl = 'foreach ($command in (@($commands) + @(''quit''))) {'
        Mode = 'ok'; TimeoutMs = 20000; Expect = 'exited before bestmove' }
+
+    @{ Name = 'FALSIFY: without the completion check, a short search is returned as a result'
+       Tag  = 'nocompletion'
+       Find = 'if (-not (Test-UciFixedDepthComplete -Output $transcript -SearchDepth $SearchDepth)) {'
+       Repl = 'if ($false) {'
+       Mode = 'ok'; Depth = 3; TimeoutMs = 20000; Expect = 'bestmove e2e4'; Returns = $true }
 )
 
 foreach ($m in $mutations) {
@@ -179,8 +208,10 @@ foreach ($m in $mutations) {
         continue
     }
     try {
-        $r = Invoke-DriverCase -Driver $mutant -Mode $m.Mode -TimeoutMs $m.TimeoutMs
-        Assert-Case $m.Name ($r.Threw -and ($r.Message -match $m.Expect)) `
+        $r = Invoke-DriverCase -Driver $mutant -Mode $m.Mode -TimeoutMs $m.TimeoutMs -Depth $m['Depth']
+        # Most mutants break loudly; a missing check instead lets a bad result through.
+        $broke = if ($m.ContainsKey('Returns')) { -not $r.Threw } else { $r.Threw }
+        Assert-Case $m.Name ($broke -and ($r.Message -match $m.Expect)) `
             "threw=$($r.Threw) message=$($r.Message -replace '\s+', ' ')"
     } finally {
         Remove-Item -LiteralPath $mutant -Force -ErrorAction SilentlyContinue
