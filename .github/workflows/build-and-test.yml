@@ -194,6 +194,11 @@ jobs:
       # Same '~[slow]' filter as the Windows job, deliberately: the legs must
       # cover the same cases. The fast tier is self-contained -- no Catch2 test
       # reads Tests/*.json -- so the working directory does not matter here.
+      - name: THP always (probe)
+        run: |
+          echo always | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
+          cat /sys/kernel/mm/transparent_hugepage/enabled /sys/kernel/mm/transparent_hugepage/defrag
+
       - name: Run fast tests
         run: ./build/StratChessTests '~[slow]'
 
@@ -239,7 +244,7 @@ jobs:
     # the Engine tier: a Build-tier change to CMakeLists.txt is exactly what can
     # break the sanitizer wiring, and two conditions would eventually drift.
     if: needs.classify.outputs.is_full == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     env:
       CCACHE_MAXSIZE: 600M
@@ -261,7 +266,7 @@ jobs:
         id: ccache
         uses: ./.github/actions/setup-ccache
         with:
-          key: ccache-linux-asan-ubsan-stdlibdebug
+          key: ccache-linux-gcc15-asan-ubsan-stdlibdebug
 
       # STRAT_SANITIZE_RECOVER is left at its OFF default on purpose: sanitizers
       # report and continue otherwise, which exits 0 and would turn this job green
@@ -304,6 +309,11 @@ jobs:
       # Same '~[slow]' filter as every other leg. The fast tier already runs perft
       # to depth 4 from the start position and depth 3 from Kiwipete, which is the
       # densest exercise of move generation in the suite.
+      - name: THP always (probe)
+        run: |
+          echo always | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
+          cat /sys/kernel/mm/transparent_hugepage/enabled /sys/kernel/mm/transparent_hugepage/defrag
+
       - name: Run fast tests
         run: ./build/StratChessTests '~[slow]'
 
