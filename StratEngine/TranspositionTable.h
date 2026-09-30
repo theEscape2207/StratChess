@@ -53,7 +53,7 @@ enum class NodeType : uint8_t {
 // QUIESCENCE: quiescence search
 enum class SearchPhase : uint8_t { MAIN, QUIESCENCE };
 
-// Transposotion Table Entries
+// Transposition Table Entries
 // Stores key, value, depth, best move, bound type, node type, age
 // Uses 64-bit keys and 16-bit values/depths for compactness
 // Age is used for replacement strategy
@@ -242,8 +242,7 @@ class TranspositionTable {
 	//
 	// The cost is that the allocation is generally smaller than the request, by
 	// up to half. The engine's 192 MiB request rounds down to 2^21 buckets, so
-	// 128 MiB of entries -- the same bucket count the 96-byte layout got at that
-	// request, which is why the two are capacity-equivalent at the default.
+	// 128 MiB of entries.
 	// The constructor's 256 MiB default below fits exactly and so yields 2^22
 	// buckets, double the engine's; only tests use it, since AIPerplex always
 	// passes a size explicitly.
@@ -526,11 +525,11 @@ class TranspositionTable {
 		return static_cast<int>(quiescenceBudget * scale);
 	}
 
+	static constexpr int ageDistance(int newer, int older) noexcept { return (newer - older) & 0xFF; }
+
 	// Compute entry score balancing depth, age, node type, and search phase
 	// Scoring used for replacement decisions. Higher is better.
 	// Provides a bonus for PV entries and a penalty for quiescence entries
-	static constexpr int ageDistance(int newer, int older) noexcept { return (newer - older) & 0xFF; }
-
 	int replacementScore(const TTEntry& entry, int age) const noexcept
 	{
 		return replacementScore(entry.depth, entry.phase, entry.node_type, ageDistance(age, entry.age));
@@ -558,33 +557,6 @@ class TranspositionTable {
 		const int phase_bonus = (phase == SearchPhase::MAIN) ? 0 : -2560;
 		return adjusted_depth * 256 + pv_bonus + phase_bonus - age_diff * 512;
 	}
-
-	/*size_t count_entries() const {
-        size_t count = 0;
-        size_t buckets = table.size();
-        for (size_t idx = 0; idx < buckets; ++idx) {
-            std::shared_lock lock(bucket_locks[idx]);
-            for (const auto& entry : table[idx].entries) {
-                if (entry.key != 0)
-                    ++count;
-            }
-        }
-        return count;
-    }
-
-    size_t count_pv_nodes() const {
-        size_t count = 0;
-        size_t buckets = table.size();
-        for (size_t idx = 0; idx < buckets; ++idx) {
-            std::shared_lock lock(bucket_locks[idx]);
-            for (const auto& entry : table[idx].entries) {
-                if (entry.key != 0 && entry.node_type == NodeType::PV_NODE) {
-                    ++count;
-                }
-            }
-        }
-        return count;
-    }*/
 
 	// O(1) diagnostics using atomics: cheap to call from hot paths
 	size_t count_entries() const noexcept { return entry_count.load(std::memory_order_relaxed); }

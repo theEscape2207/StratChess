@@ -4,7 +4,7 @@
 // Covers store/probe round-trips, same-key overwrite, mate-score normalization,
 // clear(), and the atomic diagnostic counters (entry_count, pv_count).
 //
-// See Docs/TestDesign.md §Phase 0 for the rationale.
+// See Docs/TestDesign.md for the rationale.
 
 #include <catch2/catch_test_macros.hpp>
 #include "TranspositionTable.h"
@@ -444,8 +444,8 @@ TEST_CASE("TT - bucket_count_for matches the packed geometry across the UCI rang
 	REQUIRE(same_capacity == 513);
 	REQUIRE(doubled_capacity == 1024);
 
-	// The invariant the whole change rests on: at the shipped default the packed layout keeps the
-	// 96-byte layout's bucket count, so search behaviour is unchanged there.
+	// At the shipped default the packed layout keeps the 96-byte layout's bucket count, so the default
+	// search has the capacity it was tuned with.
 	CHECK(TranspositionTable::bucket_count_for(AIPerplex::DEFAULT_HASH_MB) == 2097152u);
 	CHECK(TranspositionTable::bucket_count_for(AIPerplex::DEFAULT_HASH_MB) ==
 	      floor_pow2((size_t{AIPerplex::DEFAULT_HASH_MB} * MIB) / 96));
@@ -600,9 +600,8 @@ TEST_CASE("TT - a quiescence store evicts the weakest main entry, not an arbitra
 // A store for a key already in the bucket is scored against the entry it would replace,
 // by the same ranking that decides evictions, and a tie in that ranking is settled on the
 // raw phase, depth and bound it quantises away. These pin what that buys: the two ways a
-// same-key store used to destroy a main entry's hash move, measured at 21 of 197 PV nodes
-// per #319, the ties the ranking alone would resolve the wrong way, and the cases that
-// must still overwrite.
+// same-key store could destroy a main entry's hash move, the ties the ranking alone would
+// resolve the wrong way, and the cases that must still overwrite.
 
 static const Move HASH_MOVE = Move(e2, e4, MoveFlags::QUIET);
 static const Move OTHER_MOVE = Move(g1, f3, MoveFlags::QUIET);

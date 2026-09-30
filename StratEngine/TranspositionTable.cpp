@@ -1,7 +1,5 @@
 #include "TranspositionTable.h"
 
-#include "Move.h"
-
 #if defined(__linux__)
 #	include <cstdlib>
 #	include <new>
@@ -24,20 +22,3 @@ void* allocate_table_memory(std::size_t bytes, std::size_t alignment)
 
 void free_table_memory(void* memory) noexcept { std::free(memory); }
 #endif
-
-//std::ostream& operator<<(std::ostream& os, const PVTable& line)
-//{
-//	//assert(!line.empty());
-//
-//	os << "Depth " << line.get_length(0) << ": ";		// TODO: Ekstra check her ? //-V128
-//
-//	for (int i = 0; i < line.get_length(0) && i < 10; ++i)
-//	{
-//		auto move = line.get_line(0)[i];
-//		os << MoveFormatter::ToCoord(move).c_str();		// write out coordinate notation
-//
-//		if (move != *(line.rbegin()))	// last real Move
-//			os << ", ";					// Add seperation marker
-//	}
-//	return os;
-//}
