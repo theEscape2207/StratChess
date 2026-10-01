@@ -3,7 +3,8 @@
 **Owner**: Thees
 **Related**: `Docs/Roadmap.md` — consult before adding tests for a new area
 
-Read only the section your task needs: find its line with `grep -n '^## ' Docs/TestDesign.md`.
+Read only the section your task needs: search this file for the `## ` heading below, then read that
+line range.
 
 | Need | Section |
 |---|---|

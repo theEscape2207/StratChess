@@ -62,9 +62,10 @@ carve-out exists for logging-only diffs — its six conditions are in `Docs/Work
 body so it is auditable.
 
 Brief a reviewer with the diff as a file and the tests already run with their results. Write review
-files as UTF-8 into the worktree's `build/`, which git ignores and the tests just created: a path
-outside the worktree can be unreadable to a reviewer's tools, and Windows PowerShell's `>` writes
-UTF-16, which reads as binary. `git diff origin/main...HEAD --output=build/review.diff` does both. Brief neutrally; adjudicate every finding it raises.
+files as UTF-8 into the worktree's `build/`, which git ignores: a path outside the worktree can be
+unreadable to a reviewer's tools, and Windows PowerShell's `>` writes UTF-16, which reads as binary.
+Create `build/` if it is missing (a Docs or Tooling change never builds), then
+`git diff origin/main...HEAD --output=build/review.diff` does both. Brief neutrally; adjudicate every finding it raises.
 Warnings in test output are findings. Address all findings in one pass, recording why any is
 rejected.
 
