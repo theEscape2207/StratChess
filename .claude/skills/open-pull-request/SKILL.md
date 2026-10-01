@@ -21,9 +21,8 @@ size. Load skill `code-review` (Claude: `mattpocock-skills:code-review`, not the
   `git log --diff-filter=A --name-only origin/main..HEAD -- .claude/plans`, then `git show
   <sha>:<path>`. With neither, tell it "no spec available".
 - **Standards sources:** `Docs/agents/simplify.md` and CLAUDE.md → Development Guidelines.
-- **Append to the Standards brief:** "Also apply question 4 of `Docs/agents/simplify.md` to each
-  touched file in full, and no other file. Report it under a separate `Nearby debt` heading with
-  `file:line`; these items are not findings. List each behaviour the diff removes (a recovery path,
+- **Append to the Standards brief:** "Also apply question 4 of `Docs/agents/simplify.md`. Report it
+  under a separate `Nearby debt` heading with `file:line`; these items are not findings. List each behaviour the diff removes (a recovery path,
   a guard, a message) and whether anything still needs it."
 
 Run each axis in its own subagent, in parallel or one after the other, on the session's model: a
@@ -62,8 +61,11 @@ carve-out exists for logging-only diffs — its six conditions are in `Docs/Work
 `search-reviewer` may be skipped. Read them before claiming a skip, and state the skip in the PR
 body so it is auditable.
 
-Brief a reviewer with the diff as a file (`git diff origin/main...HEAD > <scratchpad>/review.diff`)
-and the tests already run with their results. Brief neutrally; adjudicate every finding it raises.
+Brief a reviewer with the diff as a file and the tests already run with their results. Write review
+files as UTF-8 into the worktree's `build/`, which git ignores: a path outside the worktree can be
+unreadable to a reviewer's tools, and Windows PowerShell's `>` writes UTF-16, which reads as binary.
+Create `build/` if it is missing (a Docs or Tooling change never builds), then
+`git diff origin/main...HEAD --output=build/review.diff` does both. Brief neutrally; adjudicate every finding it raises.
 Warnings in test output are findings. Address all findings in one pass, recording why any is
 rejected.
 

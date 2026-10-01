@@ -158,8 +158,9 @@ PRs stay script-mediated — `New-PullRequest.ps1`, never `gh pr create` or a ba
   another task, or a **task branch in the current worktree** (`New-TaskBranch.ps1`) for a run of
   small sequential PRs. In-place is sequential only — one worktree holds one branch.
 - **One slice per session.** When an issue is split into several PRs, end the session at each
-  slice's PR and hand off a one-line start prompt; the next slice starts fresh from the issue or
-  plan. Every request re-reads the whole context, so earlier slices are paid for on every call.
+  slice's PR and hand off a one-line start prompt carrying the PR's CI state and any cleanup still
+  due; the next slice starts fresh from the issue or plan. Every request re-reads the whole context,
+  so earlier slices are paid for on every call.
 - Local `master` is a personal scratch branch — safe to commit to, safe to let drift. Never fork a
   worktree from it. `origin/master` is retired; nothing should reference it.
 - Keep PRs small and logically scoped. Keep commit messages short — detail goes in the PR body or

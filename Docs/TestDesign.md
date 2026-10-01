@@ -3,6 +3,20 @@
 **Owner**: Thees
 **Related**: `Docs/Roadmap.md` — consult before adding tests for a new area
 
+Read only the section your task needs: search this file for the `## ` heading below, then read that
+line range.
+
+| Need | Section |
+|---|---|
+| which tag and file cover a component | Coverage Map |
+| what an existing suite asserts | Existing component coverage, Component-specific coverage |
+| fast tier vs `[slow]` | Test Tiers |
+| writing a regression test for a fixed bug | Regression Protocol, Test Isolation Rules |
+| a test or bug that behaves strangely | Testing and debugging traps |
+| running the suite, FEN positions, constructing `AIPerplex`, perft | Writing tests — mechanics |
+| reaching private engine state from a test | Evaluator / AIPerplex / Game Loop Test Access |
+| what a finished game must report | The terminal-result contract |
+
 ---
 
 ## Philosophy
