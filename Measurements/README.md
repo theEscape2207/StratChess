@@ -42,7 +42,7 @@ Tier 2 table, which score exactly the rows the oracle judged. Their instrument i
 | `non-regression` | an accepted H1 on a `NonRegression` SPRT, or an interval tight enough to bound any regression |
 | `regression` | an interval excluding zero on the negative side |
 | `inconclusive @ N` | the run hit its N-game cap without crossing a bound |
-| `calibration` | both sides are the same binary — carries no strength information |
+| `calibration` | both sides build the same engine source — carries no strength information |
 | `smoke` | too few games to resolve anything; run to prove the plumbing works |
 | `discarded` | see the discard rules below |
 
@@ -109,11 +109,12 @@ per-batch noise. That run used `elo-reference-v1`, but it measures the *instrume
 anchor, so it carries over to v2 unchanged. The Linux instrument's own calibration is
 [`ci-calibration.md`](ci-calibration.md).
 
-**The Linux instrument changed toolchain after 2026-09-30:** every `ci-*` row up to that date was
-built by GCC 13 on `ubuntu-24.04`, every later one by GCC 15 on `ubuntu-26.04` (#476). Both sides of
-a row are always built by one toolchain, so each row stays sound on its own. A compiler shifts the
-two sides' speed by different amounts, though, so a `ci-anchor.md` row is not read against one from
-the other side of that date without saying so.
+**The Linux instrument changed toolchain with #476:** a run uses the `strength.yml` of the branch
+it was dispatched on, so a branch forked before that change merged still builds with GCC 13 on
+`ubuntu-24.04`, and one forked after with GCC 15 on `ubuntu-26.04`. The run summary's
+`Toolchain` line names which. Both sides of a row are always built by one toolchain, so each row
+stays sound on its own. A compiler shifts the two sides' speed by different amounts, though, so a
+`ci-anchor.md` row is not read against one built by the other toolchain without saying so.
 
 **Moving the match runner forward** is gated on the new binary's output rather than on its
 changelog, because every automated use of fastchess is text-scraping that output. The procedure and
