@@ -32,14 +32,9 @@ Live backlog is GitHub Issues (`theEscape2207/StratChess`) via `gh`, bodies alwa
 - **Warnings are errors everywhere** — `/W4 /WX` on MSVC and clang-cl, `-Wall -Wextra -Werror` on
   GCC, in both Debug and Release. Approved suppressions: `[[maybe_unused]]` for params used only in
   `assert()`; `static_cast<>` for intentional narrowing. Never `#pragma warning(disable)` in source.
-- Dependencies (spdlog, nlohmann/json, Catch2) are fetched and pinned by `FetchContent` into
-  `build/_deps`, shared by every preset. Nothing to install, no sibling checkout to keep in step. A
-  fresh worktree's first build needs network (~1 min).
 - `StratEngine/StdAfx.h` is the shared common-include header (no build precompiles it) — add
   frequently-used STL headers there, alphabetically inside the `#pragma warning push/pop` block, not
   in individual `.cpp` files.
-- **ccache is optional and worth installing** — `build.ps1` picks it up from PATH by itself and a
-  repeat full build drops from ~45 s to ~12 s. `Docs/Workflow.md` → Compiler cache.
 - **Adding a `.cpp` needs no project edit.** `CMakeLists.txt` globs with `CONFIGURE_DEPENDS`; just
   create the file.
 
@@ -52,20 +47,15 @@ Live backlog is GitHub Issues (`theEscape2207/StratChess`) via `gh`, bodies alwa
 .\build.ps1 main -Compiler msvc      # MSVC instead of clang-cl
 ```
 
-The `.\` form above is the interactive one; from an agent shell invoke it the same way as everything
-in `Scripts/` — `pwsh -ExecutionPolicy Bypass -File <abs>\build.ps1 <target>`.
+From an agent shell: `pwsh -ExecutionPolicy Bypass -File <abs>\build.ps1 <target>`. It imports the
+VS environment via `vswhere` itself — never hard-code a VS path.
 
-`build.ps1` imports the VS developer environment itself via `vswhere`, so it works from a plain
-shell, a git hook or an agent session — never hard-code a VS path. It also sets `core.hooksPath` to
-`.githooks` on first run, so every worktree gets the tracked hook.
+**clang-cl is what ships**; MSVC is the second toolchain, for debugging and because it honours flags
+clang-cl silently drops. **Never measure with an MSVC build** — the compiler gap shows up as a
+phantom regression.
 
-**clang-cl is what ships**; MSVC is the supported second toolchain, for interactive debugging, as the
-one-word fallback if an install lacks the VS Clang component, and because it honours flags clang-cl
-accepts and silently drops. **Never measure with an MSVC build** — the compiler gap shows up as a
-phantom regression. `Get-BuildArtifact.ps1` defaults to the shipping build for that reason.
-
-Visual Studio setup, `/clang:` flag traps, the shared deps cache and raw CMake: `Docs/Workflow.md`
-→ Part 3.
+Visual Studio setup, `/clang:` flag traps, dependencies, the compiler cache and raw CMake:
+`Docs/Workflow.md` → Part 3.
 
 ## Scripts
 
@@ -167,6 +157,10 @@ PRs stay script-mediated — `New-PullRequest.ps1`, never `gh pr create` or a ba
   that: a **per-task worktree** (`New-Worktree.ps1`) when work must be parked or run alongside
   another task, or a **task branch in the current worktree** (`New-TaskBranch.ps1`) for a run of
   small sequential PRs. In-place is sequential only — one worktree holds one branch.
+- **One slice per session.** When an issue is split into several PRs, end the session at each
+  slice's PR and hand off a one-line start prompt carrying the PR's CI state and any cleanup still
+  due; the next slice starts fresh from the issue or plan. Every request re-reads the whole context,
+  so earlier slices are paid for on every call.
 - Local `master` is a personal scratch branch — safe to commit to, safe to let drift. Never fork a
   worktree from it. `origin/master` is retired; nothing should reference it.
 - Keep PRs small and logically scoped. Keep commit messages short — detail goes in the PR body or
@@ -200,9 +194,8 @@ keeping its code is a new change.
 
 ## Shell Notes
 
-- The `Bash` tool is Git Bash, not PowerShell. PS7 syntax (`$var`, backtick escapes,
-  `Where-Object`/`Select-String`, multi-line strings) fails silently when inlined into bash. Write
-  non-trivial PowerShell to a `.ps1` file and run it with `pwsh -ExecutionPolicy Bypass -File`.
+- PS7 syntax inlined into the Git Bash tool fails silently. Write non-trivial PowerShell to a
+  `.ps1` file and run it with `pwsh -ExecutionPolicy Bypass -File`.
 - **Editing `.ps1` files**: multi-line `sed`/bash substitutions mangle backslashes and
   line-continuation backticks — use a small Python script written to a temp file. Validate without
   executing: `[System.Management.Automation.Language.Parser]::ParseInput($c, [ref]$t, [ref]$errors)`.

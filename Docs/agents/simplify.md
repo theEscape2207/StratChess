@@ -18,7 +18,8 @@ call.
 
 ## Nearby debt
 
-4. Read each touched file in full, and no other file. Check every function in it and every comment:
+4. Read each function the diff changes, in full, and every comment in a touched file that describes
+   code the diff changes. Debt elsewhere in the file belongs to a later sweep. Check each one:
    - **dead:** a function with no caller (search the repo for callers);
    - **stale:** a comment the code contradicts, or one naming a task, a PR or an earlier version;
    - **duplicated:** code that repeats another function in the file or an existing helper;
