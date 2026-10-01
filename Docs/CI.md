@@ -156,9 +156,9 @@ Release-only because perft is compute-bound: the suite takes **30 s** optimised,
 reached 4 of 131 positions in six minutes — roughly three hours extrapolated. Never put a perft suite
 on a Debug leg.
 
-Every Linux job in `build-and-test.yml` and `nightly.yml` runs on `ubuntu-26.04`, the GCC ones with
-its default GCC 15; the strength-lab jobs stay on `ubuntu-24.04` until #476 moves them. A moved
-job's ccache key gains `-gcc15`, so a GCC 13 and a GCC 15 job never share, and overwrite, one cache.
+Every Linux job in `build-and-test.yml`, `nightly.yml` and `strength.yml` runs on `ubuntu-26.04`,
+the GCC ones with its default GCC 15. The ccache keys carry `-gcc15`, so a job on another GCC major
+never shares, and overwrites, one cache.
 26.04 runs transparent huge pages in `madvise` mode, not 24.04's `always`; the engine advises its
 TT allocation itself, so a full-size table gets huge pages on either image.
 

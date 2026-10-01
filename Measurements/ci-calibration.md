@@ -13,6 +13,7 @@ recorded and read. Why its rows are never comparable with the local ledger: [`RE
 | 2026-08-05 | c2a9f78 | c2a9f78 (same commit) | 1000 | 10+0.1 | -3.47 +/- 18.21 | calibration |
 | 2026-08-06 | 0e0fc94 | 0e0fc94 (same commit) | 20000 | 10+0.1 | **-2.17 +/- 4.18** | calibration |
 | 2026-08-06 | c52d1a6 | c52d1a6 (same commit) | 19980 | 10+0.1 | **-1.51 +/- 4.15** | calibration |
+| 2026-10-01 | 05fc0d5 | 7f72225 (same engine source) | 28400 | 10+0.1 | **+0.38 +/- 2.95** | calibration |
 
 ## Row detail
 
@@ -33,3 +34,7 @@ Same order as the table above. A row with nothing to add beyond its verdict has 
 ### 2026-08-06 — c52d1a6 (19980 games)
 
 **Shard-count experiment (#217 Experiment A) — PASS. Measures the instrument, not the engine.** 18 shards x 555 pairs, pooled Ptnml(0-2) [1461, 1649, 3828, 1620, 1432], score 49.78%, 3 h 04 min wall-clock. Run to decide whether dropping from 20 shards to 18 costs anything, since 20 consumes the entire 20-job concurrency allowance and blocks every other PR's required check for the duration. **The interval is the result: ±4.15 against the 20-shard row's ±4.18.** At ~10,000 pairs a spread estimate is itself known to about ±0.03, so a 0.03 difference is one standard error — the two are indistinguishable, and the split costs no resolution. Point estimate contains the guaranteed zero, [-5.66, +2.64]. **Cost is 17 minutes** (3 h 04 against 2 h 47), matching the estimate in #217. **Zero time losses** across all 18 shards at concurrency 3. Shard slices verified disjoint (18 opening positions, 18 unique). Comparable with the row above: shard count changes how many runners are used, not the CPU each engine gets, so the effective time control is unchanged — unlike a change to per-shard concurrency, which would not be comparable. Measured while an unrelated Build-tier PR ran on the two freed slots: its first job started 5 s after dispatch and the run finished in 10 min against a 4.5-5 min uncontended baseline, i.e. a delay rather than a block
+
+### 2026-10-01 — 05fc0d5 (28400 games)
+
+**Toolchain-change null test (#476) — PASS. First row on GCC 15 / `ubuntu-26.04`; every row above is GCC 13 / `ubuntu-24.04`.** 20 shards x 710 pairs, pooled Ptnml(0-2) [1095, 3157, 5699, 3120, 1129], score 50.05%, 4 h 03 min wall-clock (shards 235-240 min). The candidate only moves the lab's runners and docs, so both sides build the same engine source and the true difference is zero by construction; [-2.57, +3.33] contains it. Resolution matches the 24.04 instrument as it stood just before (run 36599205249: ±3.60 at 19,980 games, ±3.03 scaled to this count); the wider August rows predate the current setup. Shard slices verified disjoint (20 opening positions, 20 unique). **Zero time losses**: every shard's fatal-pattern check passed. Run 36782774432
