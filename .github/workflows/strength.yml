@@ -14,7 +14,7 @@ name: Strength lab
 # worse than none, because its output looks exactly like a measurement. It gets
 # calibrated against a null test and a known-sign control before anything
 # triggers it automatically. Calibration runs are recorded in
-# .claude/plans/retained/public-repo-and-strength-lab.md and Measurements/README.md.
+# Measurements/ci-calibration.md.
 on:
   workflow_dispatch:
     inputs:
@@ -659,8 +659,8 @@ jobs:
       #
       # A dispatch always runs on a branch of this repository, so any pull
       # request found here is same-repo and the token can comment on it. The
-      # fork restriction that would otherwise need `pull_request_target` (see
-      # invariant 6) cannot arise on this trigger.
+      # fork restriction that would otherwise need `pull_request_target`, which
+      # no workflow here uses, cannot arise on this trigger.
       #
       # Exactly one open pull request, or nothing: none and the run was not for
       # a review, several and the right thread is a guess. Either way the job
