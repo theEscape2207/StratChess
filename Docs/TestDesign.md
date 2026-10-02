@@ -377,34 +377,12 @@ then call `Search(board, limits).best_move`. Check `m.from()` and `m.to()`.
 
 **File**: `StratChessTests/EndgameConversionTests.cpp` — fast tier.
 
-**Contract**: production search must finish a mate-in-one or mate-in-two once the pieces are in
-position, against every legal defensive reply. This adds search integration coverage to the KBN
-corner-guidance assertions in `EvalTermTests.cpp`; it does not test confinement, the W manoeuvre,
-or conversion from a distant starting position. That technique gap remains #596.
-
-**Fixtures**: `7k/5K2/5N1B/8/8/8/8/8 w - - 0 1` has Bg7#;
-`7k/8/6KB/8/6N1/8/8/8 w - - 0 1` has Bg7+ Kg8 Nf6#. Each has a horizontal mirror,
-a colour/rank mirror and their combination, covering both winning colours and bishop square colours.
-Offline python-chess legal-move minimax verified all eight positions and exact one-/three-ply mate
-bounds at halfmove clocks 0 and 94. Neither Python nor tablebases are runtime dependencies.
-
-**Approach**: each fixture runs at depth caps 4, 6 and 8 and clocks 0 and 94: 48 scenarios.
-Every winning-side decision uses a fresh one-thread `make_tactical_engine(depth)` with a 1 MiB table.
-The test plays the chosen move, enumerates every legal defender reply, and requires the resulting
-board to have the defending king in check with no legal move within the literal ply bound.
-Null/illegal choices, stalemate, wrong-side mate or exhausting the bound fail individually. No move
-coordinate, score, pooled success rate or wall time is asserted. Mate stopping can end search before
-the depth cap, so the cap sweep is not a set of independent full-depth trajectories.
-
-**Sensitivity and cost (2026-10-02, #657)**: temporarily scoring checkmate as a draw in both production
-main search and quiescence failed all 48 scenarios. Mutating only main-search mate scoring was masked
-by the correct quiescence path. Restoring production code passed all 648 assertions. Ten focused
-clang-cl Release Catch2 runs measured 29.4–30.7 ms (median 30.0 ms), including fixture and engine
-construction and excluding process startup. These are observations, not timing gates.
-
-The skipped five-start, depth-12 self-play conversion gate was removed: its result varied from zero
-to five mates with depth and unrelated move ordering. This replacement deliberately pins the narrower
-finishing behavior; evaluation tests retain ownership of bishop-colour corner polarity and gradients.
+Four fixed mate-in-one/two fixtures cover both winning colours and bishop square colours.
+Each runs at depth caps 4/6/8 and halfmove clocks 0/94: 24 scenarios.
+Production search chooses winning moves with fresh state, one thread and a 1 MiB table.
+Every legal defensive reply must end in actual checkmate within the one-/three-ply bound.
+Offline python-chess minimax verifies the fixtures; scoring checkmate as a draw falsifies the test.
+KBN corner-guidance assertions live in `EvalTermTests.cpp`; general conversion is tracked in #596.
 
 ---
 

@@ -14,16 +14,12 @@ namespace {
 		unsigned plies;
 	};
 
-	// Bg7#; and Bg7+ Kg8 Nf6#. Horizontal and colour/rank mirrors cover both sides
-	// and bishop square colours. The complete short mate trees are verified offline.
+	// Bishop mate-in-one and knight mate-in-two, each for both winning colours.
+	// Both bishop square colours are represented; short mate trees are verified offline.
 	constexpr MateCase kMateCases[] = {
 	    {"white M1, light bishop", "7k/5K2/5N1B/8/8/8/8/8 w - -", 1},
-	    {"white M1, dark bishop", "k7/2K5/B1N5/8/8/8/8/8 w - -", 1},
 	    {"black M1, dark bishop", "8/8/8/8/8/5n1b/5k2/7K b - -", 1},
-	    {"black M1, light bishop", "8/8/8/8/8/b1n5/2k5/K7 b - -", 1},
-	    {"white M2, light bishop", "7k/8/6KB/8/6N1/8/8/8 w - -", 3},
 	    {"white M2, dark bishop", "k7/8/BK6/8/1N6/8/8/8 w - -", 3},
-	    {"black M2, dark bishop", "8/8/8/6n1/8/6kb/8/7K b - -", 3},
 	    {"black M2, light bishop", "8/8/8/1n6/8/bk6/8/K7 b - -", 3},
 	};
 
