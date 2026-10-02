@@ -54,7 +54,7 @@ namespace {
 		if (board.GetCurrentColor() == winner) {
 			// Fresh state makes every decision independent of previous fixtures and branches.
 			auto ai = make_tactical_engine(depth);
-			const SearchResult result = ai->Search(board, SearchLimits::fixed_depth(depth));
+			const SearchResult result = ai->Search(board, SearchLimits::fixed_depth(static_cast<int>(depth)));
 			REQUIRE(result.game_state == GameStates::STILL_PLAYING);
 			REQUIRE(!result.best_move.is_null());
 			INFO("chosen move: " << MoveFormatter::ToUCI(result.best_move));
