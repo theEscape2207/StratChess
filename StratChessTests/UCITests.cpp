@@ -949,6 +949,20 @@ TEST_CASE("cmd_setoption: SingularExtensions toggles both ways where compiled in
 	REQUIRE_FALSE(fix.ai_tuning().singular_extensions_enabled);
 }
 
+TEST_CASE("cmd_setoption: singular knobs reach the search where compiled in", "[uci][tuning]")
+{
+	UciHandlerTestFixture fix;
+	fix.ucinewgame();
+
+	fix.setoption("setoption name SingularMinDepth value 10");
+	fix.setoption("setoption name SingularTtDepthMargin value 1");
+	fix.setoption("setoption name SingularMarginFactor value 5");
+
+	REQUIRE(fix.ai_tuning().singular_min_depth == 10);
+	REQUIRE(fix.ai_tuning().singular_tt_depth_margin == 1);
+	REQUIRE(fix.ai_tuning().singular_margin_factor == 5);
+}
+
 TEST_CASE("AIPerplex::SetTuning rejects an invalid tuning without touching the TT", "[uci][tuning][service_api]")
 {
 	UciHandlerTestFixture fix;
