@@ -7,8 +7,8 @@
 //   json                   -- whether game_settings.json's "search_tuning" block binds the member
 //                             under its own name.
 //   uci_name               -- UCI option name, or nullptr when UCI does not expose the member.
-//   available              -- false when the build compiles the feature out; a Boolean field
-//                             must then stay false.
+//   available              -- false when the build compiles the feature out: the field must then
+//                             hold its default, UCI does not expose it, and a Boolean defaults off.
 //
 // A new field of an existing type is one entry here plus its tests. Cross-field constraints
 // live in SearchTuningSchema.cpp. A one-character default change here is a SEARCH change.
@@ -49,16 +49,16 @@ TUNING_FIELD(bool,    see_pruning_enabled, true, false, true, true, nullptr, tru
 
 // Singular extensions: the RUNTIME half of the gate. It only means anything in a build compiled
 // with STRAT_SINGULAR_EXTENSIONS (kSingularExtensionsCompiled); the shipping engine has the whole
-// feature compiled out and never reads these, so there it cannot be enabled.
+// feature compiled out and never reads these, so there it cannot be enabled or tuned.
 TUNING_FIELD(bool,    singular_extensions_enabled, STRAT_SINGULAR_DEFAULT_ON != 0, false, true, true, "SingularExtensions", kSingularExtensionsCompiled)
 // Minimum remaining depth before a node is worth a verification search. The call site clamps the
 // verification depth to at least one, so any positive threshold is safe.
-TUNING_FIELD(int,     singular_min_depth,       8, 1, std::numeric_limits<int>::max(), false, nullptr, true)
+TUNING_FIELD(int,     singular_min_depth,       8, 1, MAX_PLY, false, "SingularMinDepth",      kSingularExtensionsCompiled)
 // How much shallower than this node the transposition entry may be and still be trusted.
-TUNING_FIELD(int,     singular_tt_depth_margin, 3, 0, std::numeric_limits<int>::max(), false, nullptr, true)
+TUNING_FIELD(int,     singular_tt_depth_margin, 3, 0, MAX_PLY, false, "SingularTtDepthMargin", kSingularExtensionsCompiled)
 // Verification window offset, scaled by depth: a move is singular when every alternative fails
 // below tt_value - singular_margin_factor * depth. The upper bound keeps that product in range.
-TUNING_FIELD(int,     singular_margin_factor,   2, 0, 1000,                            false, nullptr, true)
+TUNING_FIELD(int,     singular_margin_factor,   2, 0, 1000,    false, "SingularMarginFactor",  kSingularExtensionsCompiled)
 
 // Reverse futility pruning. Depth band shallow by default because that is where the surface is:
 // #498 found 95.4% of eligible frames at depths 1-3, so a wider band adds almost nothing while

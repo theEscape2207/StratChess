@@ -36,7 +36,7 @@ namespace SearchTuningSchema {
 	// The complete "option name ..." line of every exposed, available field, in catalogue order.
 	std::vector<std::string> UciOptionLines();
 
-	// A Boolean feature the build compiled out may be set false but never true.
-	std::optional<TuningError> CheckAvailable(const char* field, bool available, bool value);
+	// A field of a feature the build compiled out may hold its default but never change from it.
+	std::optional<TuningError> CheckAvailable(const char* field, bool available, bool changed);
 
 } // namespace SearchTuningSchema
