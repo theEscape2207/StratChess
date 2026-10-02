@@ -28,6 +28,9 @@ changes and corrupt results are refused. Full binary hashes, ordered position oc
 disjoint seed schedules identify the experiment, while a process-held lock prevents concurrent use.
 Temporary writes and private engine working directories are cleaned after success/failure and on
 resume. Completed checkpoints remain until the user records the measurement and deletes the run.
+Refusals before experiment acceptance omit misleading resume advice, and unrelated directories are
+rejected before creating a lock. Named helpers separate the contract, manifest, checkpoint validation
+and search/commit steps; executable pinning and default run retention are documented in command help.
 
 Recovery self-tests cover interruption, exact missing-request replay, numerical report identity,
 configuration/corruption refusals and cleanup. A current-source clang-cl profile smoke run retained

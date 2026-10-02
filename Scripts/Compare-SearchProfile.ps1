@@ -495,6 +495,98 @@ function ConvertTo-ProfileRecord {
     return $record
 }
 
+function Assert-ProfileDirectory {
+    param([string]$Directory)
+
+    if (-not (Test-Path -LiteralPath $Directory) -or (Test-Path -LiteralPath (Join-Path $Directory 'manifest.json'))) { return }
+    $foreign = @(Get-ChildItem -LiteralPath $Directory -Force | Where-Object { $_.Name -cnotin @('.run.lock', 'manifest.json.tmp') })
+    if ($foreign.Count -gt 0) { throw "Run directory '$Directory' is not an empty experiment and has no manifest. Use a new directory." }
+}
+
+function New-ProfileContract {
+    param([System.Collections.IDictionary]$BinaryHashes, [object[]]$PositionList, [int]$SearchDepth, [int]$SeedCount)
+
+    $seedList = if ($SeedCount -gt 0) { @(1..$SeedCount) } else { @(0) }
+    $contract = [ordered]@{
+        Version = 1; RequestContract = 1; Binaries = $BinaryHashes; Depth = $SearchDepth; Threads = 1; Seeds = $SeedCount
+        BeforeSeeds = $seedList
+        AfterSeeds = @($seedList | ForEach-Object { if ($_ -gt 0) { $_ + $SeedCount } else { 0 } })
+        Positions = @($PositionList | ForEach-Object { [ordered]@{ Name = $_.Name; Fen = $_.Fen } })
+    }
+    $contractJson = $contract | ConvertTo-Json -Depth 12 -Compress
+    return [pscustomobject]@{
+        Contract = $contract
+        Json = $contractJson
+        RunHash = Get-ProfileTextHash $contractJson
+        SeedList = $seedList
+    }
+}
+
+function Open-ProfileManifest {
+    param([string]$Directory, [object]$ContractData, [System.Collections.IDictionary]$BinaryPaths, [ref]$CleanupAllowed)
+
+    $manifestPath = Join-Path $Directory 'manifest.json'
+    $exists = Test-Path -LiteralPath $manifestPath
+    if ($exists) {
+        try {
+            $manifest = [System.IO.File]::ReadAllText($manifestPath) | ConvertFrom-Json
+            if (($manifest.Contract | ConvertTo-Json -Depth 12 -Compress) -cne $ContractData.Json) { throw 'Configuration differs.' }
+        } catch { throw "Invalid or incompatible manifest '$manifestPath': $($_.Exception.Message) Use a new run directory for a changed experiment." }
+    } else {
+        # Recheck under ownership so a changed directory is never adopted as an experiment.
+        Assert-ProfileDirectory -Directory $Directory
+    }
+    $CleanupAllowed.Value = $true
+    Remove-ProfileTransient -Directory $Directory
+    if (-not $exists) {
+        Write-ProfileCheckpoint -Path $manifestPath -Value ([ordered]@{ Contract = $ContractData.Contract; BinaryPaths = $BinaryPaths })
+    }
+}
+
+function Read-ProfileCheckpoint {
+    param([string]$Path, [string]$RunHash, [object]$Request)
+
+    try {
+        $saved = [System.IO.File]::ReadAllText($Path) | ConvertFrom-Json
+        if ($saved.RunHash -cne $RunHash -or
+            $saved.Index -ne $Request.Index -or
+            $saved.Side -cne $Request.Side -or
+            $saved.Seed -ne $Request.Seed -or
+            $saved.TranscriptHash -cne (Get-ProfileTextHash $saved.Transcript)) {
+            throw 'Checkpoint identity or transcript digest differs.'
+        }
+        return ConvertTo-ProfileRecord -Transcript $saved.Transcript -SearchDepth $Request.Depth `
+            -Side $Request.Side -Position $Request -ActualSeed $Request.Seed
+    } catch { throw "Invalid checkpoint '$Path': $($_.Exception.Message) Remove only this file to recompute its search, or use a new run directory." }
+}
+
+function Assert-ProfileBinaryUnchanged {
+    param([object]$Request, [string]$BinaryHash)
+
+    if (-not $IsWindows -and (Get-FileHash -LiteralPath $Request.ExePath).Hash.ToLowerInvariant() -cne $BinaryHash) {
+        throw "$($Request.Side) binary changed during the run. Use a new run directory."
+    }
+}
+
+function Invoke-ProfileSearch {
+    param([string]$Path, [string]$RunHash, [object]$Request, [string]$BinaryHash, [scriptblock]$Search)
+
+    Assert-ProfileBinaryUnchanged -Request $Request -BinaryHash $BinaryHash
+    $priorSeed = $env:STRAT_PROFILE_TIEBREAK_SEED
+    try {
+        $env:STRAT_PROFILE_TIEBREAK_SEED = if ($Request.Seed -gt 0) { "$($Request.Seed)" } else { $null }
+        $output = & $Search $Request
+    } finally { $env:STRAT_PROFILE_TIEBREAK_SEED = $priorSeed }
+    Assert-ProfileBinaryUnchanged -Request $Request -BinaryHash $BinaryHash
+    $record = ConvertTo-ProfileRecord -Transcript $output -SearchDepth $Request.Depth `
+        -Side $Request.Side -Position $Request -ActualSeed $Request.Seed
+    Write-ProfileCheckpoint -Path $Path -Value ([ordered]@{
+        RunHash = $RunHash; Index = $Request.Index; Side = $Request.Side; Seed = $Request.Seed
+        TranscriptHash = (Get-ProfileTextHash $output); Transcript = $output
+    })
+    return $record
+}
+
 function Invoke-ProfileRun {
     param(
         [Parameter(Mandatory)][System.Collections.IDictionary]$BinaryPaths,
@@ -513,10 +605,7 @@ function Invoke-ProfileRun {
     $runPath = if ($Directory) { [System.IO.Path]::GetFullPath($Directory) } else {
         Join-Path (Split-Path -Parent $PSScriptRoot) ('build/profile-runs/' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N'))
     }
-    if ((Test-Path -LiteralPath $runPath) -and -not (Test-Path -LiteralPath (Join-Path $runPath 'manifest.json'))) {
-        $foreign = @(Get-ChildItem -LiteralPath $runPath -Force | Where-Object { $_.Name -cnotin @('.run.lock', 'manifest.json.tmp') })
-        if ($foreign.Count -gt 0) { throw "Run directory '$runPath' is not an empty experiment and has no manifest. Use a new directory." }
-    }
+    Assert-ProfileDirectory -Directory $runPath
     New-Item -ItemType Directory -Force -Path $runPath | Out-Null
     function Quote-Argument([string]$Argument) { "'" + $Argument.Replace("'", "''") + "'" }
     $resume = "pwsh -NoProfile -ExecutionPolicy Bypass -File $(Quote-Argument $PSCommandPath)" +
@@ -544,30 +633,8 @@ function Invoke-ProfileRun {
                 [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
             $hashes[$side] = (Get-FileHash -InputStream $inputs[$side] -Algorithm SHA256).Hash.ToLowerInvariant()
         }
-        $seedList = if ($SeedCount -gt 0) { @(1..$SeedCount) } else { @(0) }
-        $contract = [ordered]@{
-            Version = 1; RequestContract = 1; Binaries = $hashes; Depth = $SearchDepth; Threads = 1; Seeds = $SeedCount
-            BeforeSeeds = $seedList
-            AfterSeeds = @($seedList | ForEach-Object { if ($_ -gt 0) { $_ + $SeedCount } else { 0 } })
-            Positions = @($PositionList | ForEach-Object { [ordered]@{ Name = $_.Name; Fen = $_.Fen } })
-        }
-        $contractJson = $contract | ConvertTo-Json -Depth 12 -Compress
-        $runHash = Get-ProfileTextHash $contractJson
-        $manifestPath = Join-Path $runPath 'manifest.json'
-        if (Test-Path -LiteralPath $manifestPath) {
-            try {
-                $manifest = [System.IO.File]::ReadAllText($manifestPath) | ConvertFrom-Json
-                if (($manifest.Contract | ConvertTo-Json -Depth 12 -Compress) -cne $contractJson) { throw 'Configuration differs.' }
-            } catch { throw "Invalid or incompatible manifest '$manifestPath': $($_.Exception.Message) Use a new run directory for a changed experiment." }
-            $canClean = $true
-        } else {
-            $foreign = @(Get-ChildItem -LiteralPath $runPath -Force | Where-Object { $_.Name -cnotin @('.run.lock', 'manifest.json.tmp') })
-            if ($foreign.Count -gt 0) { throw "Run directory '$runPath' is not an empty experiment and has no manifest. Use a new directory." }
-            $canClean = $true
-            Remove-ProfileTransient -Directory $runPath
-            Write-ProfileCheckpoint -Path $manifestPath -Value ([ordered]@{ Contract = $contract; BinaryPaths = $BinaryPaths })
-        }
-        Remove-ProfileTransient -Directory $runPath
+        $contractData = New-ProfileContract -BinaryHashes $hashes -PositionList $PositionList -SearchDepth $SearchDepth -SeedCount $SeedCount
+        Open-ProfileManifest -Directory $runPath -ContractData $contractData -BinaryPaths $BinaryPaths -CleanupAllowed ([ref]$canClean)
         $workDir = Join-Path $runPath ('.profile-work-' + [guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $workDir | Out-Null
         $resultLists = @{ before = [System.Collections.Generic.List[object]]::new(); after = [System.Collections.Generic.List[object]]::new() }
@@ -576,33 +643,29 @@ function Invoke-ProfileRun {
         $searched = 0
         for ($index = 0; $index -lt $PositionList.Count; $index++) {
             $position = $PositionList[$index]
-            foreach ($seed in $seedList) {
+            foreach ($seed in $contractData.SeedList) {
                 foreach ($side in @('before', 'after')) {
                     $actualSeed = if ($seed -gt 0 -and $side -eq 'after') { $seed + $SeedCount } else { $seed }
                     $checkpointPath = Join-Path $runPath ('{0:D6}-{1}-{2}.json' -f $index, $side, $actualSeed)
+                    $checkpointArgs = @{
+                        Path = $checkpointPath
+                        RunHash = $contractData.RunHash
+                        Request = [pscustomobject]@{
+                            ExePath = $BinaryPaths[$side]
+                            WorkDir = $workDir
+                            Fen = $position.Fen
+                            Depth = $SearchDepth
+                            Side = $side
+                            Name = $position.Name
+                            Index = $index
+                            Seed = $actualSeed
+                        }
+                    }
                     if (Test-Path -LiteralPath $checkpointPath) {
-                        try {
-                            $saved = [System.IO.File]::ReadAllText($checkpointPath) | ConvertFrom-Json
-                            if ($saved.RunHash -cne $runHash -or $saved.Index -ne $index -or $saved.Side -cne $side -or $saved.Seed -ne $actualSeed -or
-                                $saved.TranscriptHash -cne (Get-ProfileTextHash $saved.Transcript)) { throw 'Checkpoint identity or transcript digest differs.' }
-                            $record = ConvertTo-ProfileRecord -Transcript $saved.Transcript -SearchDepth $SearchDepth -Side $side -Position $position -ActualSeed $actualSeed
-                        } catch { throw "Invalid checkpoint '$checkpointPath': $($_.Exception.Message) Remove only this file to recompute its search, or use a new run directory." }
+                        $record = Read-ProfileCheckpoint @checkpointArgs
                         $reused++
                     } else {
-                        if (-not $IsWindows -and (Get-FileHash -LiteralPath $BinaryPaths[$side]).Hash.ToLowerInvariant() -cne $hashes[$side]) {
-                            throw "$side binary changed during the run. Use a new run directory."
-                        }
-                        $env:STRAT_PROFILE_TIEBREAK_SEED = if ($actualSeed -gt 0) { "$actualSeed" } else { $null }
-                        $request = [pscustomobject]@{ ExePath = $BinaryPaths[$side]; WorkDir = $workDir; Fen = $position.Fen; Depth = $SearchDepth; Side = $side; Name = $position.Name; Index = $index; Seed = $actualSeed }
-                        try { $output = & $Search $request } finally { $env:STRAT_PROFILE_TIEBREAK_SEED = $callerSeed }
-                        if (-not $IsWindows -and (Get-FileHash -LiteralPath $BinaryPaths[$side]).Hash.ToLowerInvariant() -cne $hashes[$side]) {
-                            throw "$side binary changed during the search. Use a new run directory."
-                        }
-                        $record = ConvertTo-ProfileRecord -Transcript $output -SearchDepth $SearchDepth -Side $side -Position $position -ActualSeed $actualSeed
-                        Write-ProfileCheckpoint -Path $checkpointPath -Value ([ordered]@{
-                            RunHash = $runHash; Index = $index; Side = $side; Seed = $actualSeed
-                            TranscriptHash = (Get-ProfileTextHash $output); Transcript = $output
-                        })
+                        $record = Invoke-ProfileSearch @checkpointArgs -BinaryHash $hashes[$side] -Search $Search
                         $searched++
                     }
                     $resultLists[$side].Add($record)
@@ -886,7 +949,7 @@ if ($SelfTest) {
         $fault.Bad = ''
 
         $ownedLock = [System.IO.File]::Open((Join-Path $resumeDirectory '.run.lock'), [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
-        try { Assert-Case 'FALSIFY: concurrent directory ownership is refused' (Test-Refuses -Match 'Cannot own run directory' { Invoke-Fixture $resumeDirectory }) }
+        try { Assert-Case 'FALSIFY: concurrent ownership is refused without a misleading resume command' (Test-Refuses -Match '(?s)^(?!.*Resume:).*Cannot own run directory' { Invoke-Fixture $resumeDirectory }) }
         finally { $ownedLock.Dispose() }
         $null = Invoke-Fixture $resumeDirectory
         Assert-Case 'ownership is released even after failures and refusals' ($calls.Count -eq 2)
@@ -895,6 +958,13 @@ if ($SelfTest) {
             try { Assert-Case 'Windows binary pin blocks replacement' (Test-Refuses -Match '.*' { [System.IO.File]::WriteAllText($fixtureBinary, 'replacement') }) }
             finally { $pinned.Dispose() }
         }
+        $initializingDir = Join-Path $fixtureRoot 'interrupted initialization'
+        New-Item -ItemType Directory -Path $initializingDir | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $initializingDir '.run.lock'), '')
+        [System.IO.File]::WriteAllText((Join-Path $initializingDir 'manifest.json.tmp'), '{')
+        $calls.Clear()
+        $null = Invoke-Fixture $initializingDir -N 0 -Set @($fixturePositions[0])
+        Assert-Case 'interrupted manifest initialization removes its temporary and starts a complete run' ($calls.Count -eq 2 -and (Test-Path -LiteralPath (Join-Path $initializingDir 'manifest.json')) -and -not (Test-Path -LiteralPath (Join-Path $initializingDir 'manifest.json.tmp')))
         $foreignDir = Join-Path $fixtureRoot 'unrelated'
         New-Item -ItemType Directory -Path $foreignDir | Out-Null
         [System.IO.File]::WriteAllText((Join-Path $foreignDir 'keep.txt'), 'keep')
