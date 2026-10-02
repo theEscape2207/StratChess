@@ -208,8 +208,10 @@ void Game::Run()
 		// The fifty-move rule is a fact about the position the board now holds, so it is
 		// adjudicated here rather than by a search that never visits that position. It can
 		// only turn a still-running game into a draw: a mate, a stalemate or a resignation
-		// already reported by the mover takes precedence and is never overwritten.
-		if (committed && game_state_ == GameStates::STILL_PLAYING && board_.halfmove_clock() >= HALFMOVE_CLOCK_LIMIT)
+		// already reported by the mover takes precedence and is never overwritten. So does a mate
+		// delivered by this move, which the mover's root search does not report.
+		if (committed && game_state_ == GameStates::STILL_PLAYING && board_.halfmove_clock() >= HALFMOVE_CLOCK_LIMIT &&
+		    !board_.IsCheckmated())
 			game_state_ = GameStates::DRAW_50_MOVES;
 
 		// Prints out the current score message for AI players (score or "Mate in x moves")
