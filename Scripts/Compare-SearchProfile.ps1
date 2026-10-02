@@ -81,6 +81,8 @@
     Completed checkpoints are retained after success and failure; delete the directory manually
     once the measurement is recorded and recovery is no longer needed. Temporary writes and private
     engine working directories are cleaned automatically; the empty lock file can safely remain.
+    Default runs collect under build/profile-runs/ in this worktree and are removed with it.
+    On Windows both executables are held open for the entire run; copy them before rebuilding in place.
 
 .EXAMPLE
     Compare-SearchProfile.ps1 -Before .\base-profile.exe -After .\cand-profile.exe
@@ -511,6 +513,10 @@ function Invoke-ProfileRun {
     $runPath = if ($Directory) { [System.IO.Path]::GetFullPath($Directory) } else {
         Join-Path (Split-Path -Parent $PSScriptRoot) ('build/profile-runs/' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N'))
     }
+    if ((Test-Path -LiteralPath $runPath) -and -not (Test-Path -LiteralPath (Join-Path $runPath 'manifest.json'))) {
+        $foreign = @(Get-ChildItem -LiteralPath $runPath -Force | Where-Object { $_.Name -cnotin @('.run.lock', 'manifest.json.tmp') })
+        if ($foreign.Count -gt 0) { throw "Run directory '$runPath' is not an empty experiment and has no manifest. Use a new directory." }
+    }
     New-Item -ItemType Directory -Force -Path $runPath | Out-Null
     function Quote-Argument([string]$Argument) { "'" + $Argument.Replace("'", "''") + "'" }
     $resume = "pwsh -NoProfile -ExecutionPolicy Bypass -File $(Quote-Argument $PSCommandPath)" +
@@ -522,6 +528,7 @@ function Invoke-ProfileRun {
 
     $ownership = $null
     $canClean = $false
+    $resumable = $false
     $inputs = @{}
     $callerSeed = $env:STRAT_PROFILE_TIEBREAK_SEED
     try {
@@ -564,6 +571,7 @@ function Invoke-ProfileRun {
         $workDir = Join-Path $runPath ('.profile-work-' + [guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $workDir | Out-Null
         $resultLists = @{ before = [System.Collections.Generic.List[object]]::new(); after = [System.Collections.Generic.List[object]]::new() }
+        $resumable = $true
         $reused = 0
         $searched = 0
         for ($index = 0; $index -lt $PositionList.Count; $index++) {
@@ -605,6 +613,7 @@ function Invoke-ProfileRun {
         Write-Host "Searches: $searched new, $reused reused. Checkpoints retained; delete '$runPath' once recorded and no longer needed."
         return $resultLists
     } catch {
+        if (-not $resumable) { throw }
         throw "$($_.Exception.Message)`nCompleted checkpoints remain in '$runPath'.`nResume: $resume"
     } finally {
         $env:STRAT_PROFILE_TIEBREAK_SEED = $callerSeed
@@ -838,6 +847,9 @@ if ($SelfTest) {
         foreach ($case in $mismatchCases) {
             Assert-Case "FALSIFY: $($case.Name) cannot reuse an experiment" (Test-Refuses -Match 'incompatible manifest' { Invoke-Fixture $resumeDirectory -N $case.N -Set $case.Set -D $case.D })
         }
+        $refusal = ''
+        try { $null = Invoke-Fixture $resumeDirectory -D 9 } catch { $refusal = $_.Exception.Message }
+        Assert-Case 'incompatible manifest refusal offers a new directory without a resume command' ($refusal -match 'incompatible manifest' -and $refusal -match 'new run directory' -and $refusal -notmatch 'Resume:')
         $relocatedBinary = Join-Path $fixtureRoot 'relocated.bin'
         Copy-Item -LiteralPath $fixtureBinary -Destination $relocatedBinary
         $null = Invoke-Fixture $resumeDirectory -Paths ([ordered]@{ before = $relocatedBinary; after = $relocatedBinary })
@@ -886,7 +898,10 @@ if ($SelfTest) {
         $foreignDir = Join-Path $fixtureRoot 'unrelated'
         New-Item -ItemType Directory -Path $foreignDir | Out-Null
         [System.IO.File]::WriteAllText((Join-Path $foreignDir 'keep.txt'), 'keep')
-        Assert-Case 'FALSIFY: a nonempty unrelated directory is refused without data cleanup' ((Test-Refuses -Match 'has no manifest' { Invoke-Fixture $foreignDir }) -and (Test-Path -LiteralPath (Join-Path $foreignDir 'keep.txt')))
+        $refusal = ''
+        try { $null = Invoke-Fixture $foreignDir } catch { $refusal = $_.Exception.Message }
+        Assert-Case 'FALSIFY: a nonempty unrelated directory is refused without data cleanup' ($refusal -match 'has no manifest' -and (Test-Path -LiteralPath (Join-Path $foreignDir 'keep.txt')))
+        Assert-Case 'foreign-directory refusal leaves no lock or misleading resume command' (-not (Test-Path -LiteralPath (Join-Path $foreignDir '.run.lock')) -and $refusal -notmatch 'Resume:')
     } finally {
         $env:STRAT_PROFILE_TIEBREAK_SEED = $priorSeed
         $fixtureAbsolute = [System.IO.Path]::GetFullPath($fixtureRoot)
