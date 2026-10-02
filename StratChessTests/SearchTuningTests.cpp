@@ -292,8 +292,10 @@ TEST_CASE("SearchTuning keeps a compiled-out feature at its defaults", "[tuning]
 	REQUIRE(error.has_value());
 	CHECK(error->code == Code::Unavailable);
 	CHECK(error->field == "feature");
+}
 
-	// Every build compiles singular extensions in, so disabling and tuning them is valid.
+TEST_CASE("SearchTuning accepts disabling and tuning singular extensions", "[tuning]")
+{
 	CHECK(accepts("singular_extensions_enabled", false));
 	CHECK(accepts("singular_min_depth", 10));
 	CHECK(accepts("singular_tt_depth_margin", 0));

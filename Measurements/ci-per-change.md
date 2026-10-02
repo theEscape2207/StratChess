@@ -46,7 +46,7 @@ Same order as the table above. A row with nothing to add beyond its verdict has 
 
 ### 2026-10-02 -- 48a31ad (singular extensions on vs off, #95) (19980 games)
 
-**The gate for the feature, and it ships default-on.** 18 shards x 555 pairs, pooled Ptnml(0-2) [636, 2023, 3753, 2546, 1032], score 53.29%, run `37020636422`, 3 h 15 min wall-clock, all 18 green. 95% interval **[+19.3, +26.5]**. Both sides ran the one experimental binary with the option set explicitly on each, so the delta is the feature alone. Its fixed-depth cost of about +50% did not carry over to timed games: that cost model put break-even at 35-85 Elo.
+**The gate for the feature, and it ships default-on.** 18 shards x 555 pairs, pooled Ptnml(0-2) [636, 2023, 3753, 2546, 1032], score 53.29%, run `37020636422`, 3 h 15 min wall-clock, all 18 green. 95% interval **[+19.3, +26.5]**. Both sides ran the one experimental binary, the candidate with the feature on and the reference with `SingularExtensions=false`, so the delta is the feature alone. Its fixed-depth cost of about +50% did not carry over to timed games: that cost model put break-even at 35-85 Elo.
 
 ### 2026-09-30 -- 17cf5a3 (continuation history, 2 plies, #664) (19980 games)
 

@@ -373,8 +373,8 @@ struct QSearchStats {
 };
 
 struct SearchTelemetry {
-	// Member order is a layout requirement: with singular first, the frontier and lmp counters keep
-	// the offsets in ThreadData they had as loose members. New members go last.
+	// Member order is a layout requirement: new members go last, so the offsets of the counters
+	// the search writes on every node stay where they are.
 	SingularStats singular{};
 	FrontierFutilityStats frontier{};
 	LateMovePruningStats lmp{};

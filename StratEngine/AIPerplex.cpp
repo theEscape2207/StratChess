@@ -681,7 +681,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// Everything else the exclusion state suppresses is guarded further down.
 	//
 	// The runtime flag is tested FIRST so a search with the feature off never reads excluded_move[]:
-	// that array is otherwise cold, and only the enabled feature can create an exclusion frame.
+	// only the enabled feature can create an exclusion frame.
 	const bool is_exclusion_frame = tuning_.singular_extensions_enabled && td.excluded_move[ply] != Move::EmptyMove();
 
 	// A verification search is a null-window probe by construction; a PV exclusion frame would
