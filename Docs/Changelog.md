@@ -20,6 +20,21 @@ and couldn't be matched with confidence — those remain in the undated pocket b
 
 Newest first.
 
+## Unreleased — Profile screen checkpoint/resume (#666, first slice)
+
+`Compare-SearchProfile.ps1` checkpoints each validated search in a persistent run directory and
+prints a copyable `-RunDirectory` resume command. Complete reruns reuse all searches; configuration
+changes and corrupt results are refused. Full binary hashes, ordered position occurrences and
+disjoint seed schedules identify the experiment, while a process-held lock prevents concurrent use.
+Temporary writes and private engine working directories are cleaned after success/failure and on
+resume. Completed checkpoints remain until the user records the measurement and deletes the run.
+
+Recovery self-tests cover interruption, exact missing-request replay, numerical report identity,
+configuration/corruption refusals and cleanup. A current-source clang-cl profile smoke run retained
+3 of 32 searches, resumed exactly 29, and reproduced every original numerical report; a completed
+rerun reused all 32. The manifest and transcripts occupied 78,385 bytes at depth 8. Windows binary
+pinning and cross-process run ownership were verified. The idle-sleep guard is a subsequent slice.
+
 ---
 
 ## 2026-09-30 — The TT advises transparent huge pages on Linux (#676)

@@ -74,6 +74,14 @@
     Assert parsing, refusals, pooling, derived rows, grouping and delta formats on synthetic
     transcripts, and exit. Runs no engine.
 
+.PARAMETER RunDirectory
+    Persistent experiment directory. Omit to create a unique build/profile-runs directory in this
+    worktree; supply the printed directory to resume. Configuration changes require a new directory.
+    Only complete, validated searches are reused. Corrupt results are refused, naming their path.
+    Completed checkpoints are retained after success and failure; delete the directory manually
+    once the measurement is recorded and recovery is no longer needed. Temporary writes and private
+    engine working directories are cleaned automatically; the empty lock file can safely remain.
+
 .EXAMPLE
     Compare-SearchProfile.ps1 -Before .\base-profile.exe -After .\cand-profile.exe
 
@@ -94,6 +102,8 @@ param(
     [ValidateRange(0, 64)]
     [int]$Seeds = 0,
 
+    [string]$RunDirectory = '',
+
     [switch]$SelfTest
 )
 
@@ -101,6 +111,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'BenchPositions.ps1')
+. (Join-Path $PSScriptRoot 'UciDriver.ps1')
 
 # Field lists of every parsed 'info string' line, in print order. A number is a scalar; a
 # histogram has that many slash-separated bins. Keys and wording are the engine's output contract.
@@ -437,6 +448,176 @@ function Test-SeedApplied {
     return $Output -match "(?m)^info string tiebreak seed $Seed\r?$"
 }
 
+function Get-ProfileTextHash([string]$Text) {
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return [System.BitConverter]::ToString($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Text))).Replace('-', '').ToLowerInvariant()
+    } finally { $sha.Dispose() }
+}
+
+function Write-ProfileCheckpoint {
+    param([string]$Path, [object]$Value)
+
+    $temporary = "$Path.tmp"
+    [System.IO.File]::WriteAllText($temporary, ($Value | ConvertTo-Json -Depth 12), [System.Text.UTF8Encoding]::new($false))
+    # The sibling temporary is never a completed search; publish only after closing it.
+    [System.IO.File]::Move($temporary, $Path)
+}
+
+function Remove-ProfileTransient {
+    param([string]$Directory)
+
+    $prefix = [System.IO.Path]::GetFullPath($Directory) + [System.IO.Path]::DirectorySeparatorChar
+    foreach ($entry in @(Get-ChildItem -LiteralPath $Directory -Force)) {
+        $disposable = if ($entry.PSIsContainer) {
+            $entry.Name -cmatch '^\.profile-work-[a-f0-9]{32}$'
+        } else {
+            $entry.Name -ceq 'manifest.json.tmp' -or $entry.Name -cmatch '^\d{6}-(before|after)-\d+\.json\.tmp$'
+        }
+        if (-not $disposable -or ($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) { continue }
+        $target = [System.IO.Path]::GetFullPath($entry.FullName)
+        if (-not $target.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) { throw "Cleanup path is outside run directory: $target" }
+        Remove-Item -LiteralPath $target -Recurse -Force
+    }
+}
+
+function ConvertTo-ProfileRecord {
+    param([string]$Transcript, [int]$SearchDepth, [string]$Side, [object]$Position, [int]$ActualSeed)
+
+    if ($ActualSeed -gt 0 -and -not (Test-SeedApplied -Output $Transcript -Seed $ActualSeed)) {
+        throw "$Side build, position $($Position.Name): no 'info string tiebreak seed $ActualSeed' line. The build predates the tie-break hook, so -Seeds would repeat one tree."
+    }
+    $record = ConvertFrom-ProfileTranscript -Output $Transcript -SearchDepth $SearchDepth -Side $Side -Position $Position.Name
+    $record | Add-Member -NotePropertyName Name -NotePropertyValue $Position.Name
+    $record | Add-Member -NotePropertyName Endgame -NotePropertyValue (Test-Endgame $Position.Fen)
+    return $record
+}
+
+function Invoke-ProfileRun {
+    param(
+        [Parameter(Mandatory)][System.Collections.IDictionary]$BinaryPaths,
+        [Parameter(Mandatory)][object[]]$PositionList,
+        [int]$SearchDepth,
+        [int]$SeedCount,
+        [string]$Directory = '',
+        [string]$PositionsPath = '',
+        [scriptblock]$Search = {
+            param($Request)
+            Invoke-UciFixedDepthSearch -ExePath $Request.ExePath -WorkDir $Request.WorkDir -Position "fen $($Request.Fen)" `
+                -SearchDepth $Request.Depth -Threads 1 -Description "$($Request.Side) build, position $($Request.Name)"
+        }
+    )
+
+    $runPath = if ($Directory) { [System.IO.Path]::GetFullPath($Directory) } else {
+        Join-Path (Split-Path -Parent $PSScriptRoot) ('build/profile-runs/' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N'))
+    }
+    New-Item -ItemType Directory -Force -Path $runPath | Out-Null
+    function Quote-Argument([string]$Argument) { "'" + $Argument.Replace("'", "''") + "'" }
+    $resume = "pwsh -NoProfile -ExecutionPolicy Bypass -File $(Quote-Argument $PSCommandPath)" +
+        " -Before $(Quote-Argument $BinaryPaths.before) -After $(Quote-Argument $BinaryPaths.after)" +
+        " -Depth $SearchDepth -Seeds $SeedCount -RunDirectory $(Quote-Argument $runPath)"
+    if ($PositionsPath) { $resume += " -Positions $(Quote-Argument ([System.IO.Path]::GetFullPath($PositionsPath)))" }
+    Write-Host "Run directory: $runPath"
+    Write-Host "Resume: $resume"
+
+    $ownership = $null
+    $canClean = $false
+    $inputs = @{}
+    $callerSeed = $env:STRAT_PROFILE_TIEBREAK_SEED
+    try {
+        try {
+            $ownership = [System.IO.File]::Open((Join-Path $runPath '.run.lock'), [System.IO.FileMode]::OpenOrCreate,
+                [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+        } catch { throw "Cannot own run directory '$runPath' (another invocation may be using it): $($_.Exception.Message)" }
+
+        $hashes = [ordered]@{}
+        foreach ($side in @('before', 'after')) {
+            # Pin executable bytes on Windows without rehashing the binary for every search.
+            $inputs[$side] = [System.IO.File]::Open($BinaryPaths[$side], [System.IO.FileMode]::Open,
+                [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
+            $hashes[$side] = (Get-FileHash -InputStream $inputs[$side] -Algorithm SHA256).Hash.ToLowerInvariant()
+        }
+        $seedList = if ($SeedCount -gt 0) { @(1..$SeedCount) } else { @(0) }
+        $contract = [ordered]@{
+            Version = 1; RequestContract = 1; Binaries = $hashes; Depth = $SearchDepth; Threads = 1; Seeds = $SeedCount
+            BeforeSeeds = $seedList
+            AfterSeeds = @($seedList | ForEach-Object { if ($_ -gt 0) { $_ + $SeedCount } else { 0 } })
+            Positions = @($PositionList | ForEach-Object { [ordered]@{ Name = $_.Name; Fen = $_.Fen } })
+        }
+        $contractJson = $contract | ConvertTo-Json -Depth 12 -Compress
+        $runHash = Get-ProfileTextHash $contractJson
+        $manifestPath = Join-Path $runPath 'manifest.json'
+        if (Test-Path -LiteralPath $manifestPath) {
+            try {
+                $manifest = [System.IO.File]::ReadAllText($manifestPath) | ConvertFrom-Json
+                if (($manifest.Contract | ConvertTo-Json -Depth 12 -Compress) -cne $contractJson) { throw 'Configuration differs.' }
+            } catch { throw "Invalid or incompatible manifest '$manifestPath': $($_.Exception.Message) Use a new run directory for a changed experiment." }
+            $canClean = $true
+        } else {
+            $foreign = @(Get-ChildItem -LiteralPath $runPath -Force | Where-Object { $_.Name -cnotin @('.run.lock', 'manifest.json.tmp') })
+            if ($foreign.Count -gt 0) { throw "Run directory '$runPath' is not an empty experiment and has no manifest. Use a new directory." }
+            $canClean = $true
+            Remove-ProfileTransient -Directory $runPath
+            Write-ProfileCheckpoint -Path $manifestPath -Value ([ordered]@{ Contract = $contract; BinaryPaths = $BinaryPaths })
+        }
+        Remove-ProfileTransient -Directory $runPath
+        $workDir = Join-Path $runPath ('.profile-work-' + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $workDir | Out-Null
+        $resultLists = @{ before = [System.Collections.Generic.List[object]]::new(); after = [System.Collections.Generic.List[object]]::new() }
+        $reused = 0
+        $searched = 0
+        for ($index = 0; $index -lt $PositionList.Count; $index++) {
+            $position = $PositionList[$index]
+            foreach ($seed in $seedList) {
+                foreach ($side in @('before', 'after')) {
+                    $actualSeed = if ($seed -gt 0 -and $side -eq 'after') { $seed + $SeedCount } else { $seed }
+                    $checkpointPath = Join-Path $runPath ('{0:D6}-{1}-{2}.json' -f $index, $side, $actualSeed)
+                    if (Test-Path -LiteralPath $checkpointPath) {
+                        try {
+                            $saved = [System.IO.File]::ReadAllText($checkpointPath) | ConvertFrom-Json
+                            if ($saved.RunHash -cne $runHash -or $saved.Index -ne $index -or $saved.Side -cne $side -or $saved.Seed -ne $actualSeed -or
+                                $saved.TranscriptHash -cne (Get-ProfileTextHash $saved.Transcript)) { throw 'Checkpoint identity or transcript digest differs.' }
+                            $record = ConvertTo-ProfileRecord -Transcript $saved.Transcript -SearchDepth $SearchDepth -Side $side -Position $position -ActualSeed $actualSeed
+                        } catch { throw "Invalid checkpoint '$checkpointPath': $($_.Exception.Message) Remove only this file to recompute its search, or use a new run directory." }
+                        $reused++
+                    } else {
+                        if (-not $IsWindows -and (Get-FileHash -LiteralPath $BinaryPaths[$side]).Hash.ToLowerInvariant() -cne $hashes[$side]) {
+                            throw "$side binary changed during the run. Use a new run directory."
+                        }
+                        $env:STRAT_PROFILE_TIEBREAK_SEED = if ($actualSeed -gt 0) { "$actualSeed" } else { $null }
+                        $request = [pscustomobject]@{ ExePath = $BinaryPaths[$side]; WorkDir = $workDir; Fen = $position.Fen; Depth = $SearchDepth; Side = $side; Name = $position.Name; Index = $index; Seed = $actualSeed }
+                        try { $output = & $Search $request } finally { $env:STRAT_PROFILE_TIEBREAK_SEED = $callerSeed }
+                        if (-not $IsWindows -and (Get-FileHash -LiteralPath $BinaryPaths[$side]).Hash.ToLowerInvariant() -cne $hashes[$side]) {
+                            throw "$side binary changed during the search. Use a new run directory."
+                        }
+                        $record = ConvertTo-ProfileRecord -Transcript $output -SearchDepth $SearchDepth -Side $side -Position $position -ActualSeed $actualSeed
+                        Write-ProfileCheckpoint -Path $checkpointPath -Value ([ordered]@{
+                            RunHash = $runHash; Index = $index; Side = $side; Seed = $actualSeed
+                            TranscriptHash = (Get-ProfileTextHash $output); Transcript = $output
+                        })
+                        $searched++
+                    }
+                    $resultLists[$side].Add($record)
+                }
+            }
+            Write-Host "  completed $($position.Name)" -ForegroundColor DarkGray
+        }
+        Write-Host "Searches: $searched new, $reused reused. Checkpoints retained; delete '$runPath' once recorded and no longer needed."
+        return $resultLists
+    } catch {
+        throw "$($_.Exception.Message)`nCompleted checkpoints remain in '$runPath'.`nResume: $resume"
+    } finally {
+        $env:STRAT_PROFILE_TIEBREAK_SEED = $callerSeed
+        foreach ($inputFile in $inputs.Values) { $inputFile.Dispose() }
+        if ($null -ne $ownership) {
+            try {
+                if ($canClean) { Remove-ProfileTransient -Directory $runPath }
+            } catch { Write-Warning "Temporary cleanup failed in '$runPath': $($_.Exception.Message)" }
+            finally { $ownership.Dispose() }
+        }
+    }
+}
+
 # ---------------------------------------------------------------------------
 # Self-test
 # ---------------------------------------------------------------------------
@@ -562,6 +743,156 @@ if ($SelfTest) {
     Assert-Case 'the seed echo is accepted' (Test-SeedApplied -Output "info string tiebreak seed 3`nbestmove e2e4" -Seed 3)
     Assert-Case 'FALSIFY: a build that ignores the seed is caught' (-not (Test-SeedApplied -Output "info string tiebreak seed 13`nbestmove e2e4" -Seed 3))
 
+    # Exercise the production scheduler through its search boundary, without an engine.
+    $fixtureRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('StratProfile-test-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $fixtureRoot | Out-Null
+    $priorSeed = $env:STRAT_PROFILE_TIEBREAK_SEED
+    try {
+        $fixtureBinary = Join-Path $fixtureRoot 'profile input.bin'
+        [System.IO.File]::WriteAllText($fixtureBinary, 'fake engine bytes')
+        $fixtureSides = [ordered]@{ before = $fixtureBinary; after = $fixtureBinary }
+        $fixturePositions = @(
+            @{ Name = 'p1'; Fen = $DefaultPositions[0].Fen }
+            @{ Name = 'p2'; Fen = $DefaultPositions[0].Fen }
+            @{ Name = 'p3'; Fen = $DefaultPositions[2].Fen }
+        )
+        $calls = [System.Collections.Generic.List[string]]::new()
+        $fault = @{ At = 4; Bad = '' }
+        $fakeSearch = {
+            param($Request)
+            $calls.Add("$($Request.Index)/$($Request.Side)/$($Request.Seed)")
+            $expectedSeed = if ($Request.Seed -gt 0) { "$($Request.Seed)" } else { $null }
+            if ($env:STRAT_PROFILE_TIEBREAK_SEED -ne $expectedSeed) { throw 'Wrong seed environment at search boundary.' }
+            [System.IO.File]::WriteAllText((Join-Path $Request.WorkDir 'engine.log'), 'disposable')
+            if ($calls.Count -eq $fault.At) { throw 'injected search failure' }
+            $echo = if ($Request.Seed -gt 0) { "info string tiebreak seed $($Request.Seed)`n" } else { '' }
+            $text = $echo + ($kiwi -replace 'latenodes 15403', "latenodes $(15403 + $Request.Seed)")
+            if ($fault.Bad -eq 'seed') { return $kiwi }
+            if ($fault.Bad -eq 'unfinished') { return ($text -replace 'bestmove d5e6', '') }
+            return $text
+        }
+        function Invoke-Fixture([string]$Path, [int]$N = 2, [object[]]$Set = $fixturePositions, [int]$D = 8, $Paths = $fixtureSides) {
+            Invoke-ProfileRun -BinaryPaths $Paths -PositionList $Set -SearchDepth $D -SeedCount $N -Directory $Path -Search $fakeSearch 6>$null
+        }
+        $resumeDirectory = Join-Path $fixtureRoot 'resume run'
+        $env:STRAT_PROFILE_TIEBREAK_SEED = '99'
+        Assert-Case 'interruption names its run and resume command' (Test-Refuses -Match "injected search failure[\s\S]*Resume:.*-RunDirectory" { Invoke-Fixture $resumeDirectory })
+        Assert-Case 'interruption commits only preceding successful exchanges' (@(Get-ChildItem -LiteralPath $resumeDirectory -Filter '*.json').Count -eq 4)
+        Assert-Case 'failure restores the caller seed' ($env:STRAT_PROFILE_TIEBREAK_SEED -eq '99')
+        Assert-Case 'failure cleans engine work and temporary files' (@(Get-ChildItem -LiteralPath $resumeDirectory -Force | Where-Object { $_.Name -like '.profile-work-*' -or $_.Name -like '*.tmp' }).Count -eq 0)
+
+        $fault.At = -1
+        $calls.Clear()
+        [System.IO.File]::WriteAllText((Join-Path $resumeDirectory 'notes.tmp'), 'keep')
+        $sentinelDir = Join-Path $resumeDirectory '.profile-work-not-a-guid'
+        New-Item -ItemType Directory -Path $sentinelDir | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $sentinelDir 'keep.txt'), 'keep')
+        [System.IO.File]::WriteAllText((Join-Path $resumeDirectory '000001-after-4.json.tmp'), 'interrupted write')
+        $staleWork = Join-Path $resumeDirectory ('.profile-work-' + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $staleWork | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $staleWork 'engine.log'), 'stale')
+        $resumedRecords = Invoke-Fixture $resumeDirectory
+        Assert-Case 'resume launches exactly missing requests in original order' (($calls -join ',') -eq '0/after/4,1/before/1,1/after/3,1/before/2,1/after/4,2/before/1,2/after/3,2/before/2,2/after/4')
+        Assert-Case 'same binary and duplicate FEN occurrences retain separate records' ($resumedRecords.before.Count -eq 6 -and $resumedRecords.after.Count -eq 6 -and ($resumedRecords.before.Name -join ',') -eq 'p1,p1,p2,p2,p3,p3')
+        Assert-Case 'cleanup removes stale owned work and writes' (-not (Test-Path -LiteralPath $staleWork) -and -not (Test-Path -LiteralPath (Join-Path $resumeDirectory '000001-after-4.json.tmp')))
+        Assert-Case 'cleanup preserves unrelated files and directories' (([System.IO.File]::ReadAllText((Join-Path $resumeDirectory 'notes.tmp'))) -eq 'keep' -and (Test-Path -LiteralPath (Join-Path $sentinelDir 'keep.txt')))
+        Assert-Case 'successful cleanup retains all results, manifest and inert lock' (@(Get-ChildItem -LiteralPath $resumeDirectory -Filter '*.json').Count -eq 13 -and (Test-Path -LiteralPath (Join-Path $resumeDirectory '.run.lock')))
+        $calls.Clear()
+        $cachedRecords = Invoke-Fixture $resumeDirectory
+        Assert-Case 'completed rerun launches no searches' ($calls.Count -eq 0)
+        $freshRecords = Invoke-Fixture (Join-Path $fixtureRoot 'fresh run')
+        function Report-Snapshot($Records) {
+            foreach ($label in @('Pooled', 'Endgame', 'Non-endgame', 'p1', 'p2', 'p3')) {
+                $selected = @{ before = @(); after = @() }
+                foreach ($side in @('before', 'after')) {
+                    $selected[$side] = @($Records[$side] | Where-Object {
+                        $item = $_
+                        switch ($label) {
+                            Pooled { $true }
+                            Endgame { $item.Endgame }
+                            Non-endgame { -not $item.Endgame }
+                            default { $item.Name -eq $label }
+                        }
+                    })
+                }
+                if ($selected.before.Count -gt 0) {
+                    Format-ScopeTable -Title $label -BeforeRows (Get-ScopeRows $selected.before) -AfterRows (Get-ScopeRows $selected.after)
+                }
+            }
+            foreach ($metric in @({ param($r) $r.Counters.ordering.latenodes }, { param($r) $r.Counters.treenodes.main + $r.Counters.treenodes.qs })) {
+                Get-ScreenEstimate -BeforeRecords $Records.before.ToArray() -AfterRecords $Records.after.ToArray() -Metric $metric | ConvertTo-Json -Compress
+            }
+        }
+        Assert-Case 'all numerical tables and Screen estimates survive resume' (((Report-Snapshot $freshRecords) -join "`n") -ceq ((Report-Snapshot $resumedRecords) -join "`n") -and ((Report-Snapshot $freshRecords) -join "`n") -ceq ((Report-Snapshot $cachedRecords) -join "`n"))
+
+        $calls.Clear()
+        $mismatchCases = @(
+            @{ Name = 'changed depth'; Set = $fixturePositions; N = 2; D = 9 }
+            @{ Name = 'changed seed count'; Set = $fixturePositions; N = 3; D = 8 }
+            @{ Name = 'reordered occurrences'; Set = @($fixturePositions[1], $fixturePositions[0], $fixturePositions[2]); N = 2; D = 8 }
+            @{ Name = 'changed FEN'; Set = @(@{ Name = 'p1'; Fen = $DefaultPositions[1].Fen }, $fixturePositions[1], $fixturePositions[2]); N = 2; D = 8 }
+        )
+        foreach ($case in $mismatchCases) {
+            Assert-Case "FALSIFY: $($case.Name) cannot reuse an experiment" (Test-Refuses -Match 'incompatible manifest' { Invoke-Fixture $resumeDirectory -N $case.N -Set $case.Set -D $case.D })
+        }
+        $relocatedBinary = Join-Path $fixtureRoot 'relocated.bin'
+        Copy-Item -LiteralPath $fixtureBinary -Destination $relocatedBinary
+        $null = Invoke-Fixture $resumeDirectory -Paths ([ordered]@{ before = $relocatedBinary; after = $relocatedBinary })
+        Assert-Case 'identical relocated binaries reuse the completed run' ($calls.Count -eq 0)
+        [System.IO.File]::WriteAllText($fixtureBinary, 'changed bytes')
+        Assert-Case 'FALSIFY: replaced binary bytes at the same path are refused' (Test-Refuses -Match 'incompatible manifest' { Invoke-Fixture $resumeDirectory })
+        [System.IO.File]::WriteAllText($fixtureBinary, 'fake engine bytes')
+        Assert-Case 'all incompatible runs launch zero searches' ($calls.Count -eq 0)
+
+        $singleDirectory = Join-Path $fixtureRoot 'single zero seed'
+        $singleRecords = Invoke-Fixture $singleDirectory -N 0 -Set @($fixturePositions[0])
+        Assert-Case 'one position with Seeds=0 launches one request per side' (($calls -join ',') -eq '0/before/0,0/after/0' -and $singleRecords.before.Count -eq 1 -and $singleRecords.after.Count -eq 1)
+        $calls.Clear()
+        $null = Invoke-Fixture $singleDirectory -N 0 -Set @($fixturePositions[0])
+        Assert-Case 'single-position generation-order results resume' ($calls.Count -eq 0)
+
+        $badPath = Join-Path $resumeDirectory '000000-before-1.json'
+        $original = [System.IO.File]::ReadAllText($badPath)
+        $corruptionCases = @(
+            @{ Name = 'truncated JSON'; Text = '{' }
+            @{ Name = 'wrong digest'; Text = ($original -replace '"TranscriptHash": "[a-f0-9]+"', '"TranscriptHash": "bad"') }
+            @{ Name = 'wrong identity'; Text = ($original -replace '"Side": "before"', '"Side": "after"') }
+        )
+        foreach ($case in $corruptionCases) {
+            [System.IO.File]::WriteAllText($badPath, $case.Text)
+            Assert-Case "FALSIFY: $($case.Name) is refused with a recompute path" (Test-Refuses -Match 'Invalid checkpoint.*000000-before-1.json[\s\S]*Remove only this file' { Invoke-Fixture $resumeDirectory })
+        }
+        [System.IO.File]::WriteAllText($badPath, $original)
+        foreach ($invalid in @('seed', 'unfinished')) {
+            $fault.Bad = $invalid
+            $badDirectory = Join-Path $fixtureRoot "bad-$invalid"
+            Assert-Case "FALSIFY: invalid fresh $invalid transcript is never committed" ((Test-Refuses -Match 'Resume:' { Invoke-Fixture $badDirectory }) -and @(Get-ChildItem -LiteralPath $badDirectory -Filter '*.json').Count -eq 1)
+        }
+        $fault.Bad = ''
+
+        $ownedLock = [System.IO.File]::Open((Join-Path $resumeDirectory '.run.lock'), [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+        try { Assert-Case 'FALSIFY: concurrent directory ownership is refused' (Test-Refuses -Match 'Cannot own run directory' { Invoke-Fixture $resumeDirectory }) }
+        finally { $ownedLock.Dispose() }
+        $null = Invoke-Fixture $resumeDirectory
+        Assert-Case 'ownership is released even after failures and refusals' ($calls.Count -eq 2)
+        # Those two requests are the invalid fresh transcripts; cached recovery adds none.
+        if ($IsWindows) {
+            $pinned = [System.IO.File]::Open($fixtureBinary, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
+            try { Assert-Case 'Windows binary pin blocks replacement' (Test-Refuses -Match '.*' { [System.IO.File]::WriteAllText($fixtureBinary, 'replacement') }) }
+            finally { $pinned.Dispose() }
+        }
+        $foreignDir = Join-Path $fixtureRoot 'unrelated'
+        New-Item -ItemType Directory -Path $foreignDir | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $foreignDir 'keep.txt'), 'keep')
+        Assert-Case 'FALSIFY: a nonempty unrelated directory is refused without data cleanup' ((Test-Refuses -Match 'has no manifest' { Invoke-Fixture $foreignDir }) -and (Test-Path -LiteralPath (Join-Path $foreignDir 'keep.txt')))
+    } finally {
+        $env:STRAT_PROFILE_TIEBREAK_SEED = $priorSeed
+        $fixtureAbsolute = [System.IO.Path]::GetFullPath($fixtureRoot)
+        $temporaryPrefix = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath()).TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+        if (-not $fixtureAbsolute.StartsWith($temporaryPrefix, [System.StringComparison]::OrdinalIgnoreCase) -or (Split-Path -Leaf $fixtureAbsolute) -notmatch '^StratProfile-test-[a-f0-9]{32}$') { throw 'Unsafe self-test cleanup path.' }
+        Remove-Item -LiteralPath $fixtureAbsolute -Recurse -Force
+    }
+
     Write-Host ''
     if ($failures -gt 0) {
         Write-Host "$failures self-test case(s) FAILED." -ForegroundColor Red
@@ -577,13 +908,8 @@ if ($SelfTest) {
 
 if (-not $Before -or -not $After) { throw '-Before and -After are required (two STRAT_SEARCH_PROFILE builds; the same one twice is the self-check).' }
 
-. (Join-Path $PSScriptRoot 'UciDriver.ps1')
-
 $sides = [ordered]@{ before = (Resolve-Path $Before).Path; after = (Resolve-Path $After).Path }
 $positionList = @(Resolve-Positions -Path $Positions)
-
-$workDir = Join-Path ([System.IO.Path]::GetTempPath()) 'StratChessProfile-run'
-New-Item -ItemType Directory -Force -Path $workDir | Out-Null
 
 Write-Host ''
 foreach ($s in $sides.GetEnumerator()) {
@@ -591,35 +917,10 @@ foreach ($s in $sides.GetEnumerator()) {
     Write-Host ('{0,-8}: {1}  (sha {2})' -f $s.Key, $s.Value, $hash)
 }
 $setName = if ($Positions) { Split-Path -Leaf $Positions } else { 'builtin' }
-$seedList = if ($Seeds -gt 0) { @(1..$Seeds) } else { @(0) }
 Write-Host "Depth   : $Depth    Threads: 1    Set: $setName sha $(Get-PositionSetHash -List $positionList)    Positions: $($positionList.Count)    Seeds: $Seeds"
 
-$records = @{ before = [System.Collections.Generic.List[object]]::new(); after = [System.Collections.Generic.List[object]]::new() }
-$callerSeed = $env:STRAT_PROFILE_TIEBREAK_SEED
-foreach ($p in $positionList) {
-    foreach ($seed in $seedList) {
-        foreach ($s in $sides.GetEnumerator()) {
-            # Disjoint seeds per side (after: N+1..2N), the design the Screen band is calibrated on.
-            # The engine reads the seed once at startup; the child process inherits this environment.
-            $sideSeed = if ($seed -gt 0 -and $s.Key -eq 'after') { $seed + $Seeds } else { $seed }
-            $env:STRAT_PROFILE_TIEBREAK_SEED = if ($sideSeed -gt 0) { "$sideSeed" } else { $null }
-            try {
-                $out = Invoke-UciFixedDepthSearch -ExePath $s.Value -WorkDir $workDir -Position "fen $($p.Fen)" `
-                                                  -SearchDepth $Depth -Threads 1 -Description "$($s.Key) build, position $($p.Name)"
-            } finally {
-                $env:STRAT_PROFILE_TIEBREAK_SEED = $callerSeed
-            }
-            if ($sideSeed -gt 0 -and -not (Test-SeedApplied -Output $out -Seed $sideSeed)) {
-                throw "$($s.Key) build, position $($p.Name): no 'info string tiebreak seed $sideSeed' line. The build predates the tie-break hook, so -Seeds would compare one tree per side $Seeds times over."
-            }
-            $rec = ConvertFrom-ProfileTranscript -Output $out -SearchDepth $Depth -Side $s.Key -Position $p.Name
-            $rec | Add-Member -NotePropertyName Name -NotePropertyValue $p.Name
-            $rec | Add-Member -NotePropertyName Endgame -NotePropertyValue (Test-Endgame $p.Fen)
-            $records[$s.Key].Add($rec)
-        }
-    }
-    Write-Host "  searched $($p.Name)" -ForegroundColor DarkGray
-}
+$records = Invoke-ProfileRun -BinaryPaths $sides -PositionList $positionList -SearchDepth $Depth -SeedCount $Seeds `
+    -Directory $RunDirectory -PositionsPath $Positions
 
 $screen = [ordered]@{
     'late-cut work (latenodes)' = { param($r) $r.Counters.ordering.latenodes }
