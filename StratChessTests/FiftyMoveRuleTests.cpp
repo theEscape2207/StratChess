@@ -183,3 +183,32 @@ TEST_CASE("The move that reaches the fifty-move threshold is returned, not withh
 	REQUIRE(replay.DoMove(result.best_move));
 	CHECK(replay.halfmove_clock() == HALFMOVE_CLOCK_LIMIT);
 }
+
+// ============================================================================
+// Checkmate outranks the fifty-move rule
+// ============================================================================
+
+// A mate whose final move takes the clock to the limit is still a mate. Both mates use quiet
+// moves only, so each finishes exactly on halfmove 100; clock 0 is the control.
+TEST_CASE("Search finds a mate that lands on the fifty-move threshold", "[fifty_move]")
+{
+	struct MateCase {
+		const char* label;
+		const char* position; // FEN through the en-passant field
+		int clock; // the mate lands on HALFMOVE_CLOCK_LIMIT
+		int mate_plies;
+	};
+	const MateCase tc = GENERATE(values<MateCase>({
+	    {"mate in one, Bg7#", "7k/5K2/5N1B/8/8/8/8/8 w - -", 99, 1},
+	    {"bishop and knight mate in two", "k7/8/BK6/8/1N6/8/8/8 w - -", 97, 3},
+	}));
+	const int clock = GENERATE_COPY(0, tc.clock);
+	CAPTURE(tc.label, clock);
+
+	Board board(std::string(tc.position) + " " + std::to_string(clock) + " 60");
+	auto ai = make_tactical_engine(6);
+
+	const SearchResult result = ai->Search(board, SearchLimits::fixed_depth(6));
+
+	CHECK(result.best_score == GameValues::Mate - tc.mate_plies);
+}
