@@ -284,7 +284,7 @@ TEST_CASE("SearchTuning bounds the aspiration window jointly", "[tuning]")
 	CHECK(rejection("aspiration_max_retries", -1) == Code::OutOfRange);
 }
 
-TEST_CASE("SearchTuning keeps a compiled-out feature off", "[tuning]")
+TEST_CASE("SearchTuning keeps a compiled-out feature at its defaults", "[tuning]")
 {
 	using SearchTuningSchema::CheckAvailable;
 	CHECK_FALSE(CheckAvailable("feature", false, false).has_value());
@@ -294,8 +294,11 @@ TEST_CASE("SearchTuning keeps a compiled-out feature off", "[tuning]")
 	CHECK(error->code == Code::Unavailable);
 	CHECK(error->field == "feature");
 
-	// The test target compiles singular extensions in, so enabling them is valid here.
+	// The test target compiles singular extensions in, so enabling and tuning them is valid here.
 	CHECK(accepts("singular_extensions_enabled", true));
+	CHECK(accepts("singular_min_depth", 10));
+	CHECK(accepts("singular_tt_depth_margin", 0));
+	CHECK(accepts("singular_margin_factor", 4));
 }
 
 TEST_CASE("AIPerplex rejects invalid tuning at construction", "[tuning][service_api]")
@@ -377,6 +380,29 @@ TEST_CASE("SearchTuning UCI options set their own member", "[tuning][uci]")
 	REQUIRE_FALSE(parse_uci("SingularExtensions", "true", tuning));
 	expected.singular_extensions_enabled = true;
 	CHECK(tuning == expected);
+
+	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("SingularMinDepth", "10", tuning));
+	expected.singular_min_depth = 10;
+	CHECK(tuning == expected);
+
+	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("SingularTtDepthMargin", "1", tuning));
+	expected.singular_tt_depth_margin = 1;
+	CHECK(tuning == expected);
+
+	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("SingularMarginFactor", "5", tuning));
+	expected.singular_margin_factor = 5;
+	CHECK(tuning == expected);
+}
+
+TEST_CASE("SearchTuning UCI singular knobs reject values outside their domain", "[tuning][uci]")
+{
+	CHECK(uci_rejection("SingularMinDepth", "0") == Code::OutOfRange);
+	CHECK(uci_rejection("SingularMinDepth", std::to_string(MAX_PLY + 1)) == Code::OutOfRange);
+	CHECK(uci_rejection("SingularTtDepthMargin", std::to_string(MAX_PLY + 1)) == Code::OutOfRange);
+	CHECK(uci_rejection("SingularMarginFactor", "1001") == Code::OutOfRange);
 }
 
 TEST_CASE("SearchTuning continuation history plies range from 0 to 2", "[tuning]")
@@ -430,9 +456,12 @@ TEST_CASE("SearchTuning UCI ignores names it does not expose", "[tuning][uci]")
 
 TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
 {
-	// The test target compiles singular extensions in, so it advertises all eight.
+	// The test target compiles singular extensions in, so it advertises all eleven.
 	const std::vector<std::string> expected{
 	    "option name SingularExtensions type check default false",
+	    "option name SingularMinDepth type spin default 8 min 1 max 256",
+	    "option name SingularTtDepthMargin type spin default 3 min 0 max 256",
+	    "option name SingularMarginFactor type spin default 2 min 0 max 1000",
 	    "option name ReverseFutility type check default true",
 	    "option name ReverseFutilityMaxDepth type spin default 3 min 1 max 256",
 	    "option name ReverseFutilityMargin type spin default 100 min 0 max 1000",

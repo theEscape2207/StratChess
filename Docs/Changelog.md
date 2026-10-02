@@ -20,6 +20,20 @@ and couldn't be matched with confidence — those remain in the undated pocket b
 
 Newest first.
 
+## Unreleased — Singular tuning knobs over UCI (#699)
+
+A build compiling singular extensions in now advertises `SingularMinDepth` (1–256),
+`SingularTtDepthMargin` (0–256) and `SingularMarginFactor` (0–1000) beside `SingularExtensions`, so
+the strength lab can compare settings of one binary through `candidate_uci_options` without a
+rebuild per point. The shipping build advertises none of them and refuses them as unknown.
+
+To allow that, "unavailable" in `SearchTuning.def` now means "holds its default" for any field, not
+only "a Boolean held off": `Validate` rejects an unavailable field that differs from its default, and
+an unavailable Boolean must still default off. Both depth knobs' domains narrowed from `INT_MAX` to
+`MAX_PLY`. The shipping build is node-identical to the merge base.
+
+---
+
 ## Unreleased — Profile screen checkpoint/resume (#666, first slice)
 
 `Compare-SearchProfile.ps1` checkpoints each validated search in a persistent run directory and

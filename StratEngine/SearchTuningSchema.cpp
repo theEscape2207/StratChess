@@ -15,13 +15,13 @@ namespace SearchTuningSchema {
 		constexpr bool exposed_over_uci(const char* uci_name) { return uci_name != nullptr; }
 		constexpr std::string_view uci_name_of(const char* uci_name) { return uci_name ? uci_name : ""; }
 
-// Compile-time catalogue checks: every default lies in its domain, only a Boolean may be
-// unavailable and it must then default off, and UCI encodes only check and spin options.
+// Compile-time catalogue checks: every default lies in its domain, an unavailable Boolean defaults
+// off, and UCI encodes only check and spin options.
 #define TUNING_FIELD(type, member, default_value, lo, hi, json, uci_name, available)                                   \
 	static_assert(static_cast<type>(lo) <= SearchTuning{}.member && SearchTuning{}.member <= static_cast<type>(hi),    \
 	              "SearchTuning.def: default of " #member " is outside its domain");                                   \
-	static_assert((available) || (std::is_same_v<type, bool> && !SearchTuning{}.member),                               \
-	              "SearchTuning.def: only a Boolean defaulting off may be unavailable: " #member);                     \
+	static_assert((available) || !std::is_same_v<type, bool> || !SearchTuning{}.member,                                \
+	              "SearchTuning.def: an unavailable Boolean must default off: " #member);                              \
 	static_assert(!exposed_over_uci(uci_name) || std::is_same_v<type, bool> || std::is_same_v<type, int>,              \
 	              "SearchTuning.def: UCI exposes only bool and int fields: " #member);
 #include "SearchTuning.def"
@@ -155,9 +155,9 @@ namespace SearchTuningSchema {
 
 	} // namespace
 
-	std::optional<TuningError> CheckAvailable(const char* field, bool available, bool value)
+	std::optional<TuningError> CheckAvailable(const char* field, bool available, bool changed)
 	{
-		if (available || !value)
+		if (available || !changed)
 			return std::nullopt;
 		return TuningError{Code::Unavailable, field, "this build compiles the feature out"};
 	}
@@ -167,7 +167,7 @@ namespace SearchTuningSchema {
 #define TUNING_FIELD(type, member, default_value, lo, hi, json, uci_name, available)                                   \
 	if (auto error = check_domain<type>(#member, tuning.member, static_cast<type>(lo), static_cast<type>(hi)))         \
 		return error;                                                                                                  \
-	if (auto error = CheckAvailable(#member, available, tuning.member != static_cast<type>(0)))                        \
+	if (auto error = CheckAvailable(#member, available, tuning.member != SearchTuning{}.member))                       \
 		return error;
 #include "SearchTuning.def"
 #undef TUNING_FIELD
