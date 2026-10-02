@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-02 | 48a31ad built with `-DSTRAT_SINGULAR_EXTENSIONS=ON`, singular extensions on (min depth 8, TT depth margin 3, margin factor 2, #95) | 48a31ad (the same binary with `SingularExtensions=false`; the delta is a runtime option, not a code change) | 19980 | 10+0.1 | **+22.90 +/- 3.60** | gain |
 | 2026-09-30 | 17cf5a3 (continuation history, 1-ply and 2-ply rows feeding quiet ordering, #664) | 481aa97 | 19980 | 10+0.1 | **+6.90 +/- 3.60** | gain |
 | 2026-09-29 | 3cff801 (PROBE: continuation history with 1-ply rows only, #664; the branch is deleted, rebuild as 17cf5a3 with `continuation_history_plies` 1) | 481aa97 | 19980 | 10+0.1 | **+0.78 +/- 3.58** | non-regression |
 | 2026-09-29 | 455352e (opposite-coloured bishops with 1-2 pawns against none scaled to 4/16 and 8/16, #599; engine code unchanged since the run, comments aside) | 0c01b00 | 19980 | 10+0.1 | **+1.23 +/- 3.54** | non-regression |
@@ -42,6 +43,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-02 -- 48a31ad (singular extensions on vs off, #95) (19980 games)
+
+**The gate for the feature, and it ships default-on.** 18 shards x 555 pairs, pooled Ptnml(0-2) [636, 2023, 3753, 2546, 1032], score 53.29%, run `37020636422`, 3 h 15 min wall-clock, all 18 green. 95% interval **[+19.3, +26.5]**. Both sides ran the one experimental binary with the option set explicitly on each, so the delta is the feature alone. Its fixed-depth cost of about +50% did not carry over to timed games: that cost model put break-even at 35-85 Elo.
 
 ### 2026-09-30 -- 17cf5a3 (continuation history, 2 plies, #664) (19980 games)
 

@@ -108,8 +108,7 @@ TEST_CASE("SMP - trigger counters exclude helpers the current Threads leaves idl
 // Run-Bench.ps1 parses the frontier line and measure_tt_capacity.py the ttstats line.
 TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and order", "[search][telemetry]")
 {
-	// The test binary compiles both gated features in, so every payload is reachable here.
-	STATIC_REQUIRE(kSingularExtensionsCompiled);
+	// The test binary compiles both measurement builds' counters in, so every payload is reachable here.
 	STATIC_REQUIRE(kTTStatsCompiled);
 	STATIC_REQUIRE(kSearchProfileCompiled);
 

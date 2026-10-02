@@ -7,21 +7,6 @@
 #include <cstdint>
 #include <string>
 
-// Singular extensions are compiled out unless a build asks for them. The end state is
-// unconditional-on or deleted, so the shipping engine must not carry the cost of carrying them
-// disabled: a runtime gate alone costs measurable nps for code that never executes.
-//
-// Set by CMake: -DSTRAT_SINGULAR_EXTENSIONS=ON for an experimental engine build. The test target
-// always defines it, because the tests are what exercise the feature.
-//
-// Every use is `if constexpr` or the first term of a conjunction, never #ifdef. The discarded
-// branch of an `if constexpr` in a non-template context is still parsed and type-checked, so the
-// disabled code cannot rot -- which is the usual objection to preprocessor branches in a hot path.
-#ifndef STRAT_SINGULAR_EXTENSIONS
-#	define STRAT_SINGULAR_EXTENSIONS 0
-#endif
-inline constexpr bool kSingularExtensionsCompiled = STRAT_SINGULAR_EXTENSIONS != 0;
-
 // Per-node search profile counters: move ordering, LMR, node types, null move, pruning, quiescence.
 // MEASUREMENT ONLY, so a profile build stays node-identical to the shipping one, and
 // Compare-SearchEquivalence.ps1 compares their lines only when both builds print them.
@@ -45,7 +30,7 @@ inline constexpr bool kSearchProfileCompiled = STRAT_SEARCH_PROFILE != 0;
 // it has something to say. Scripts and tests match the wording exactly: never reword one.
 
 struct SingularStats {
-	static constexpr bool compiled = kSingularExtensionsCompiled;
+	static constexpr bool compiled = true;
 
 	int64_t eligible = 0;      // nodes passing the eligibility gate
 	int64_t verifications = 0; // verification searches actually run
@@ -388,8 +373,8 @@ struct QSearchStats {
 };
 
 struct SearchTelemetry {
-	// Member order is a layout requirement: with singular first, the two counters live in the
-	// shipping build keep the offsets in ThreadData they had as loose members. New members go last.
+	// Member order is a layout requirement: with singular first, the frontier and lmp counters keep
+	// the offsets in ThreadData they had as loose members. New members go last.
 	SingularStats singular{};
 	FrontierFutilityStats frontier{};
 	LateMovePruningStats lmp{};

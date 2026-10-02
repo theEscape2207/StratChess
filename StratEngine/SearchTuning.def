@@ -47,18 +47,16 @@ TUNING_FIELD(int,     null_move_min_depth, 3,    1,     std::numeric_limits<int>
 // correctness, not tuning, and is deliberately outside this flag.
 TUNING_FIELD(bool,    see_pruning_enabled, true, false, true, true, nullptr, true)
 
-// Singular extensions: the RUNTIME half of the gate. It only means anything in a build compiled
-// with STRAT_SINGULAR_EXTENSIONS (kSingularExtensionsCompiled); the shipping engine has the whole
-// feature compiled out and never reads these, so there it cannot be enabled or tuned.
-TUNING_FIELD(bool,    singular_extensions_enabled, STRAT_SINGULAR_DEFAULT_ON != 0, false, true, true, "SingularExtensions", kSingularExtensionsCompiled)
+// Singular extensions: a hash move every alternative fails well below is searched one ply deeper.
+TUNING_FIELD(bool,    singular_extensions_enabled, true, false, true, true, "SingularExtensions", true)
 // Minimum remaining depth before a node is worth a verification search. The call site clamps the
 // verification depth to at least one, so any positive threshold is safe.
-TUNING_FIELD(int,     singular_min_depth,       8, 1, MAX_PLY, false, "SingularMinDepth",      kSingularExtensionsCompiled)
+TUNING_FIELD(int,     singular_min_depth,       8, 1, MAX_PLY, false, "SingularMinDepth",      true)
 // How much shallower than this node the transposition entry may be and still be trusted.
-TUNING_FIELD(int,     singular_tt_depth_margin, 3, 0, MAX_PLY, false, "SingularTtDepthMargin", kSingularExtensionsCompiled)
+TUNING_FIELD(int,     singular_tt_depth_margin, 3, 0, MAX_PLY, false, "SingularTtDepthMargin", true)
 // Verification window offset, scaled by depth: a move is singular when every alternative fails
 // below tt_value - singular_margin_factor * depth. The upper bound keeps that product in range.
-TUNING_FIELD(int,     singular_margin_factor,   2, 0, 1000,    false, "SingularMarginFactor",  kSingularExtensionsCompiled)
+TUNING_FIELD(int,     singular_margin_factor,   2, 0, 1000,    false, "SingularMarginFactor",  true)
 
 // Reverse futility pruning. Depth band shallow by default because that is where the surface is:
 // #498 found 95.4% of eligible frames at depths 1-3, so a wider band adds almost nothing while

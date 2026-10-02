@@ -100,11 +100,11 @@ TEST_CASE("Singular: the extension reaches the child search", "[search][singular
 	CHECK(work_outside_verification(extended) > work_outside_verification(plain));
 }
 
-TEST_CASE("Singular: disabled by default", "[search][singular]")
+TEST_CASE("Singular: the runtime flag turns it off", "[search][singular]")
 {
 	AIPerlexTestFixture fix(kBaselineFen);
 	arm_baseline(fix);
-	fix.set_singular_enabled(false); // the shipped configuration
+	fix.set_singular_enabled(false);
 
 	fix.search_node(kDepth, /*ply=*/1);
 

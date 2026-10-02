@@ -937,19 +937,19 @@ TEST_CASE("cmd_setoption: tuning survives cmd_ucinewgame()", "[uci][tuning]")
 	REQUIRE(fix.ai_tuning().frontier_futility_margin == 250);
 }
 
-TEST_CASE("cmd_setoption: SingularExtensions toggles both ways where compiled in", "[uci][tuning]")
+TEST_CASE("cmd_setoption: SingularExtensions toggles both ways", "[uci][tuning]")
 {
 	UciHandlerTestFixture fix;
 	fix.ucinewgame();
-	REQUIRE_FALSE(fix.ai_tuning().singular_extensions_enabled);
-
-	fix.setoption("setoption name SingularExtensions value true");
 	REQUIRE(fix.ai_tuning().singular_extensions_enabled);
+
 	fix.setoption("setoption name SingularExtensions value false");
 	REQUIRE_FALSE(fix.ai_tuning().singular_extensions_enabled);
+	fix.setoption("setoption name SingularExtensions value true");
+	REQUIRE(fix.ai_tuning().singular_extensions_enabled);
 }
 
-TEST_CASE("cmd_setoption: singular knobs reach the search where compiled in", "[uci][tuning]")
+TEST_CASE("cmd_setoption: singular knobs reach the search", "[uci][tuning]")
 {
 	UciHandlerTestFixture fix;
 	fix.ucinewgame();
