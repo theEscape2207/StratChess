@@ -201,6 +201,32 @@ TEST_CASE("Game: the move that takes the halfmove clock to the limit ends the ga
 	CHECK(Game::TestAccess::GameBoard(*game).halfmove_clock() == HALFMOVE_CLOCK_LIMIT);
 }
 
+TEST_CASE("Game: a mate that takes the halfmove clock to the limit is not drawn", "[game]")
+{
+	// Checkmate outranks the fifty-move rule. The mover's search sees only its own root, so it
+	// reports STILL_PLAYING; the mated side's search is what reports the win.
+	const SearchResult mating_move{.best_move = MoveFactory::MakeMove(h6, g7, MoveType::QUIET)};
+	auto game = Game::TestAccess::Make("7k/5K2/5N1B/8/8/8/8/8 w - - 99 60", scripted({mating_move}),
+	                                   scripted({SearchResult{.game_state = GameStates::WHITE_WON}}));
+
+	game->Run();
+
+	CHECK(Game::TestAccess::State(*game) == GameStates::WHITE_WON);
+	CHECK(Game::TestAccess::GameBoard(*game).halfmove_clock() == HALFMOVE_CLOCK_LIMIT);
+}
+
+TEST_CASE("Game: a check that is not mate on the limit is still drawn", "[game]")
+{
+	// The control for the case above: only checkmate is exempt, not check.
+	const SearchResult rook_check{.best_move = MoveFactory::MakeMove(b2, b8, MoveType::QUIET)};
+	auto game = Game::TestAccess::Make(KR_VS_K_CLOCK_99, scripted({rook_check}), silent());
+
+	game->Run();
+
+	REQUIRE(Game::TestAccess::GameBoard(*game).InCheck());
+	CHECK(Game::TestAccess::State(*game) == GameStates::DRAW_50_MOVES);
+}
+
 TEST_CASE("Game: a clock below the limit keeps the game running", "[game]")
 {
 	// The control for the case above. Without it, a Run() that drew unconditionally would pass.

@@ -631,6 +631,15 @@ bool Board::InCheck() const noexcept
 	return Bits::isAnyBitSet(bb, bitboards_.at(static_cast<BITBOARD>(KING) + sideToMove_));
 }
 
+bool Board::IsCheckmated()
+{
+	if (!InCheck())
+		return false;
+	MoveList moves;
+	MoveGenerator::ComputeLegalMoves(*this, moves);
+	return std::none_of(moves.begin(), moves.end(), [this](const Move& move) { return IsLegalMove(move); });
+}
+
 // Returns true if the king of the side NOT to move is under attack — the mirror of InCheck(), and
 // an illegal position rather than a legal one. Kings on adjacent squares are covered too, since
 // GetAttackBoard includes king attacks.

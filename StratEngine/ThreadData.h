@@ -262,12 +262,13 @@ struct ThreadData {
 
 	// Threefold repetition and the fifty-move rule (thread-local board). Neither applies at
 	// the root: the caller asked for a move, not an adjudication, and a draw returned there
-	// leaves the search with nothing to report but the emergency move.
-	bool check_draws(int ply) const noexcept
+	// leaves the search with nothing to report but the emergency move. Checkmate outranks the
+	// fifty-move rule; the node's own move loop then scores the mate.
+	bool check_draws(int ply)
 	{
 		if (ply == 0)
 			return false;
-		return board.is_repetition(ply) || board.halfmove_clock() >= HALFMOVE_CLOCK_LIMIT;
+		return board.is_repetition(ply) || (board.halfmove_clock() >= HALFMOVE_CLOCK_LIMIT && !board.IsCheckmated());
 	}
 
 	// Updates the game state adjudicated at the root of the search tree.
