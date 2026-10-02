@@ -86,7 +86,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | **Evaluation (Evaluator)** | `[eval]` | `EvalBasicTests.cpp`, `EvalSymmetryTests.cpp`, `EvalTermTests.cpp`, `EvalPawnAndTaperTests.cpp`, `EvalEndgameTests.cpp`, `EvalKingSafetyTests.cpp` |
 | **Search regression (tactical)** | `[tactical]` | `TacticalTests.cpp` |
 | **Search regression (slow tier)** | `[tactical_full][slow]` | `TacticalFullTests.cpp` |
-| **Basic-mate conversion (K+B+N vs K played out)** | `[endgame_conversion][slow]` | `EndgameConversionTests.cpp` |
+| **Short K+B+N mate finishes against every legal reply** | `[endgame_conversion][search]` | `EndgameConversionTests.cpp` |
 | Concrete search service, lifecycle and factory | `[search]` | `SearchServiceTests.cpp` |
 | Per-iteration decision helpers (assess, stop-early, null move) | `[search]` | `SearchIterationTests.cpp` |
 | Search telemetry (thread clamp, terminal verdicts, node counters, aspiration windows, `info string` payload wording, search profile invariants and verification node-type guard — each falsified by mutation; `Compare-SearchProfile.ps1 -SelfTest` pins the profile lines' parsed schema) | `[search]` | `SearchTelemetryTests.cpp` |
@@ -373,36 +373,38 @@ then call `Search(board, limits).best_move`. Check `m.from()` and `m.to()`.
 
 ---
 
-### Basic-mate Conversion (`[endgame_conversion][slow]`)
+### Short KBN Mate Finishes (`[endgame_conversion][search]`)
 
-**Disabled (`SKIP`), redo tracked in #657.** The unmodified engine mates 0, 3, 4, 5 and 3 of the five
-starts at depths 10 to 14, so the depth-12 gate below measures where one depth lands, not the
-engine. The rest of this section describes the test as written.
+**File**: `StratChessTests/EndgameConversionTests.cpp` — fast tier.
 
-**File**: `StratChessTests/EndgameConversionTests.cpp`
+**Contract**: production search must finish a mate-in-one or mate-in-two once the pieces are in
+position, against every legal defensive reply. This adds search integration coverage to the KBN
+corner-guidance assertions in `EvalTermTests.cpp`; it does not test confinement, the W manoeuvre,
+or conversion from a distant starting position. That technique gap remains #596.
 
-**Rationale**: the only test that asks whether the engine can *finish* a won ending. Every other
-endgame test asks what a term scores, and issue #572 is a defect no term-level assertion can see: the
-engine reached K+B+N vs K in 42 lab games and mated in none of them. This plays five starts out with
-the production search on both sides and counts outcomes.
+**Fixtures**: `7k/5K2/5N1B/8/8/8/8/8 w - - 0 1` has Bg7#;
+`7k/8/6KB/8/6N1/8/8/8 w - - 0 1` has Bg7+ Kg8 Nf6#. Each has a horizontal mirror,
+a colour/rank mirror and their combination, covering both winning colours and bishop square colours.
+Offline python-chess legal-move minimax verified all eight positions and exact one-/three-ply mate
+bounds at halfmove clocks 0 and 94. Neither Python nor tablebases are runtime dependencies.
 
-**Approach**: `make_tactical_engine(12)`, one engine for both sides, `board.DoMove(best_move)` until
-`SearchResult::game_state` reports a terminal or the halfmove clock reaches `HALFMOVE_CLOCK_LIMIT`.
-Two of the five starts are the tablebase-confirmed positions from #572 with the clock **zeroed** — at
-the clock they were recorded on they are `cursed-win`, so no engine can mate from them inside the rule
-and they are not oracles there. ~5 s at depth 12.
+**Approach**: each fixture runs at depth caps 4, 6 and 8 and clocks 0 and 94: 48 scenarios.
+Every winning-side decision uses a fresh one-thread `make_tactical_engine(depth)` with a 1 MiB table.
+The test plays the chosen move, enumerates every legal defender reply, and requires the resulting
+board to have the defending king in check with no legal move within the literal ply bound.
+Null/illegal choices, stalemate, wrong-side mate or exhausting the bound fail individually. No move
+coordinate, score, pooled success rate or wall time is asserted. Mate stopping can end search before
+the depth cap, so the cap sweep is not a set of independent full-depth trajectories.
 
-**Asserted in aggregate, not per position**: no start may lose the bishop or knight, none may
-stalemate, and at least four of the five must be mated. The corner target gives the search the right
-destination but not the manoeuvre, so one start still runs the clock out — and which one moves with any
-perturbation of the corner weight or the depth (measured: weight 10 / depth 12 fails the second start,
-weight 20 the third, depth 16 the fourth — the last for about 10 minutes against 5 seconds). A
-per-position gate would encode whichever start happens to convert today. A `WARN` fires while the
-fifth is unconverted, so closing that gap is visible without failing the suite.
+**Sensitivity and cost (2026-10-02, #657)**: temporarily scoring checkmate as a draw in both production
+main search and quiescence failed all 48 scenarios. Mutating only main-search mate scoring was masked
+by the correct quiescence path. Restoring production code passed all 648 assertions. Ten focused
+clang-cl Release Catch2 runs measured 29.4–30.7 ms (median 30.0 ms), including fixture and engine
+construction and excluding process startup. These are observations, not timing gates.
 
-**What it catches**: reverting the corner component in `eval_mopup` turns the tally from
-4 mated / 0 material lost into **0 mated / 2 material lost / 3 clock expiries** — both halves of #572,
-including the engine handing over the knight and then the bishop near the fifty-move boundary.
+The skipped five-start, depth-12 self-play conversion gate was removed: its result varied from zero
+to five mates with depth and unrelated move ordering. This replacement deliberately pins the narrower
+finishing behavior; evaluation tests retain ownership of bishop-colour corner polarity and gradients.
 
 ---
 
