@@ -4,10 +4,10 @@
     reductions, pruning, quiescence, iterations and best-move stability, side by side.
 
 .DESCRIPTION
-    Runs each position once per build (or once per seed, -Seeds) at a fixed depth, Threads=1, in a
-    fresh engine process, and prints a before / after / delta table per scope: Pooled, Endgame,
-    Non-endgame, then each position. It answers "how did the tree change", which Run-Bench (time)
-    and Compare-SearchEquivalence (identity) do not.
+    Reuses complete validated checkpoints and runs missing searches once per build (or once per
+    seed, -Seeds) at a fixed depth, Threads=1, in a fresh engine process. Prints a before / after /
+    delta table per scope: Pooled, Endgame, Non-endgame, then each position. It answers "how did the
+    tree change", which Run-Bench (time) and Compare-SearchEquivalence (identity) do not.
     A search is deterministic, but a delta is still a sample: any change to move order reshapes
     the tree, and a neutral reordering of tied moves alone moves one position's late-cut work by
     tens of percent (Measurements/profile-screen.md). Without -Seeds, a delta has no error bar;
@@ -467,7 +467,7 @@ function Write-ProfileCheckpoint {
 function Remove-ProfileTransient {
     param([string]$Directory)
 
-    $prefix = [System.IO.Path]::GetFullPath($Directory) + [System.IO.Path]::DirectorySeparatorChar
+    $prefix = [System.IO.Path]::GetFullPath($Directory).TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
     foreach ($entry in @(Get-ChildItem -LiteralPath $Directory -Force)) {
         $disposable = if ($entry.PSIsContainer) {
             $entry.Name -cmatch '^\.profile-work-[a-f0-9]{32}$'
@@ -800,6 +800,9 @@ if ($SelfTest) {
         $calls.Clear()
         $cachedRecords = Invoke-Fixture $resumeDirectory
         Assert-Case 'completed rerun launches no searches' ($calls.Count -eq 0)
+        $null = Invoke-Fixture ($resumeDirectory + [System.IO.Path]::DirectorySeparatorChar)
+        $null = Invoke-Fixture ($resumeDirectory + [System.IO.Path]::DirectorySeparatorChar)
+        Assert-Case 'trailing-separator run paths resume and clean transient state' ($calls.Count -eq 0 -and @(Get-ChildItem -LiteralPath $resumeDirectory -Force | Where-Object { $_.Name -cmatch '^\.profile-work-[a-f0-9]{32}$' }).Count -eq 0)
         $freshRecords = Invoke-Fixture (Join-Path $fixtureRoot 'fresh run')
         function Report-Snapshot($Records) {
             foreach ($label in @('Pooled', 'Endgame', 'Non-endgame', 'p1', 'p2', 'p3')) {
@@ -875,7 +878,6 @@ if ($SelfTest) {
         finally { $ownedLock.Dispose() }
         $null = Invoke-Fixture $resumeDirectory
         Assert-Case 'ownership is released even after failures and refusals' ($calls.Count -eq 2)
-        # Those two requests are the invalid fresh transcripts; cached recovery adds none.
         if ($IsWindows) {
             $pinned = [System.IO.File]::Open($fixtureBinary, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
             try { Assert-Case 'Windows binary pin blocks replacement' (Test-Refuses -Match '.*' { [System.IO.File]::WriteAllText($fixtureBinary, 'replacement') }) }
