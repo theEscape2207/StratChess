@@ -17,10 +17,10 @@ namespace {
 	// Bishop mate-in-one and knight mate-in-two, each for both winning colours.
 	// Both bishop square colours are represented; short mate trees are verified offline.
 	constexpr MateCase kMateCases[] = {
-	    {"white M1, light bishop", "7k/5K2/5N1B/8/8/8/8/8 w - -", 1},
-	    {"black M1, dark bishop", "8/8/8/8/8/5n1b/5k2/7K b - -", 1},
-	    {"white M2, dark bishop", "k7/8/BK6/8/1N6/8/8/8 w - -", 3},
-	    {"black M2, light bishop", "8/8/8/1n6/8/bk6/8/K7 b - -", 3},
+	    {"white M1, dark bishop", "7k/5K2/5N1B/8/8/8/8/8 w - -", 1},
+	    {"black M1, light bishop", "8/8/8/8/8/5n1b/5k2/7K b - -", 1},
+	    {"white M2, light bishop", "k7/8/BK6/8/1N6/8/8/8 w - -", 3},
+	    {"black M2, dark bishop", "8/8/8/1n6/8/bk6/8/K7 b - -", 3},
 	};
 
 	MoveList legal_moves(Board& board)
