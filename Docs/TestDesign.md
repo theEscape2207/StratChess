@@ -86,7 +86,6 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | **Evaluation (Evaluator)** | `[eval]` | `EvalBasicTests.cpp`, `EvalSymmetryTests.cpp`, `EvalTermTests.cpp`, `EvalPawnAndTaperTests.cpp`, `EvalEndgameTests.cpp`, `EvalKingSafetyTests.cpp` |
 | **Search regression (tactical)** | `[tactical]` | `TacticalTests.cpp` |
 | **Search regression (slow tier)** | `[tactical_full][slow]` | `TacticalFullTests.cpp` |
-| **Short K+B+N mate finishes against every legal reply** | `[endgame_conversion][search]` | `EndgameConversionTests.cpp` |
 | Concrete search service, lifecycle and factory | `[search]` | `SearchServiceTests.cpp` |
 | Per-iteration decision helpers (assess, stop-early, null move) | `[search]` | `SearchIterationTests.cpp` |
 | Search telemetry (thread clamp, terminal verdicts, node counters, aspiration windows, `info string` payload wording, search profile invariants and verification node-type guard — each falsified by mutation; `Compare-SearchProfile.ps1 -SelfTest` pins the profile lines' parsed schema) | `[search]` | `SearchTelemetryTests.cpp` |
@@ -343,8 +342,7 @@ change.
   the king-distance component drops out) plus a *gradient* case (bishop fixed, the losing king walked
   a8 → b7 → d5 → a1 with the exact `Mopup()` integer asserted at each square). Both are needed: the
   colour mirror in `kSymmetryFens` catches the absence of colour keying but not a wholly inverted
-  mapping, which is symmetric, and the gradient is the thing the search actually follows. Whether the
-  mate then gets delivered is [`[endgame_conversion][slow]`](#basic-mate-conversion-endgame_conversionslow)
+  mapping, which is symmetric, and the gradient is the thing the search actually follows.
 
 ### Tactical Tests (`[tactical]`)
 
@@ -370,19 +368,6 @@ then call `Search(board, limits).best_move`. Check `m.from()` and `m.to()`.
 **Current positions (25)**: 2 mate-in-1 back-rank mates + 23 winning captures across diverse piece types (queen, rook, bishop, knight) and board regions. Every position was individually verified against the engine at depth 6 before committing.
 
 **⚠ Technical debt — position diversity**: the initial 25 positions are dominated by simple hanging captures. Multi-move tactics (mate-in-2, forks, pins, discovered attacks) proved hard to construct with a *unique* best move at depth 6 for this engine's current tactical strength. As the engine improves, replace simpler captures with positions from the WAC-25 set or crafted M2 suites. The selection invariant (unique best move at the target depth, verified before committing) must be maintained.
-
----
-
-### Short KBN Mate Finishes (`[endgame_conversion][search]`)
-
-**File**: `StratChessTests/EndgameConversionTests.cpp` — fast tier.
-
-Four fixed mate-in-one/two fixtures cover both winning colours and bishop square colours.
-Each runs at depth caps 4/6/8 and halfmove clocks 0/94: 24 scenarios.
-Production search chooses winning moves with fresh state, one thread and a 1 MiB table.
-Every legal defensive reply must end in actual checkmate within the one-/three-ply bound.
-Offline python-chess minimax verifies the fixtures; scoring checkmate as a draw falsifies the test.
-KBN corner-guidance assertions live in `EvalTermTests.cpp`; general conversion is tracked in #596.
 
 ---
 
