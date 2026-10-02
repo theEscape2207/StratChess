@@ -65,8 +65,9 @@ class Board final {
 	// king in check".
 	bool InCheck() const noexcept;
 
-	// True if the side to move is in check and has no legal move. Makes and unmakes moves.
-	bool IsCheckmated();
+	// True if the side to move is in check and has no legal move. Makes and unmakes moves. Out of
+	// line so its MoveList stays off the frame of every search node that calls check_draws().
+	STRAT_NOINLINE bool IsCheckmated();
 
 	// True if the king of the side NOT to move is attacked. Unlike InCheck() this is not a legal
 	// state: the waiting side would have had to leave its king en prise, so a position where it

@@ -195,7 +195,7 @@ TEST_CASE("Search finds a mate that lands on the fifty-move threshold", "[fifty_
 	struct MateCase {
 		const char* label;
 		const char* position; // FEN through the en-passant field
-		int clock; // the mate lands on HALFMOVE_CLOCK_LIMIT
+		int clock;            // the mate lands on HALFMOVE_CLOCK_LIMIT
 		int mate_plies;
 	};
 	const MateCase tc = GENERATE(values<MateCase>({
