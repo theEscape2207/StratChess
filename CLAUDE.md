@@ -1,6 +1,6 @@
 # CLAUDE.md – StratChessEvolved
 
-A modern C++20 chess engine focused on improving playing strength (Elo) while maintaining clarity,
+A modern C++23 chess engine focused on improving playing strength (Elo) while maintaining clarity,
 efficiency, and robustness.
 
 This file holds the rules that change what you do. Detail is pointed at, not duplicated:
@@ -29,7 +29,7 @@ Live backlog is GitHub Issues (`theEscape2207/StratChess`) via `gh`, bodies alwa
 
 ## Build
 
-- **Only `x64` builds work** — the x86/Win32 configuration is not maintained for C++20.
+- **Only `x64` builds work** — the x86/Win32 configuration is not maintained for C++23.
 - **Warnings are errors everywhere** — `/W4 /WX` on MSVC and clang-cl, `-Wall -Wextra -Werror` on
   GCC, in both Debug and Release. Approved suppressions: `[[maybe_unused]]` for params used only in
   `assert()`; `static_cast<>` for intentional narrowing. Never `#pragma warning(disable)` in source.
@@ -132,7 +132,7 @@ Three tripwires are repeated here because violating them fails *silently*:
 
 ## Development Guidelines
 
-- C++20; favour `constexpr`, RAII, move semantics, strong types.
+- C++23; favour `constexpr`, RAII, move semantics, strong types.
 - Current external dependencies are `spdlog`, `nlohmann/json` and `Catch2`. **No new external
   dependency without explicit approval from the project owner** — ask, with a rationale.
 - All changes must be thread-safe, especially around the transposition table.

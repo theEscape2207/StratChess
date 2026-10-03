@@ -9,7 +9,7 @@ this map does not replace their detailed contracts.
 
 ## 1. System and consumers
 
-The product is a C++20 chess engine with a UCI interface, an interactive game mode and diagnostic
+The product is a C++23 chess engine with a UCI interface, an interactive game mode and diagnostic
 CLI modes. The system context below includes the development feedback loop.
 
 ```mermaid

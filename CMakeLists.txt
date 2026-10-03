@@ -30,7 +30,7 @@ if(NOT strat_target_arch MATCHES "^(x86_64|amd64)$")
         "it. See issue #165.")
 endif()
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)          # matches MSVC ConformanceMode=true
 
