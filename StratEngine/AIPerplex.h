@@ -15,6 +15,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <vector>
 
@@ -82,13 +83,14 @@ class AIPerplex final {
 	// Configuration/lifecycle methods SetThreads(), SetHash(), SetTuning() and
 	// StartNewGame() must not overlap Search(). Stop() is the only method that
 	// may be called concurrently with Search().
-	// Configure the number of Lazy SMP search threads; clamps to [1, 32].
+	// Configure the number of Lazy SMP search threads; clamps to [1, MAX_THREADS].
 	// Search() spawns threads_ - 1 helper std::jthreads sharing the
 	// transposition table with the main search.
+	static constexpr unsigned MAX_THREADS = 32;
 	void SetThreads(unsigned n) noexcept
 	{
 		assert_not_in_completion_handler();
-		threads_ = std::clamp(n, 1u, 32u);
+		threads_ = std::clamp(n, 1u, MAX_THREADS);
 	}
 	// MAX_HASH_MB = 1536 is a deliberate policy cap, not an exact fit: 64-byte buckets make the
 	// exact fits powers of two, so 1536 rounds down to 2^24 buckets and allocates 1024 MiB.
@@ -120,7 +122,7 @@ class AIPerplex final {
 	bool IsSearching() const noexcept;
 	~AIPerplex();
 
-	// Not copyable
+	// Neither copyable nor movable: the launch thread captures `this`.
 	AIPerplex(const AIPerplex&) = delete;
 	AIPerplex& operator=(const AIPerplex&) = delete;
 	AIPerplex(AIPerplex&&) = delete;
@@ -143,17 +145,12 @@ class AIPerplex final {
 	};
 
 	struct SearchState {
-		Move best_move;
-		int best_score;
-		int depth_completed;
-		int64_t nodes_at_completed_depth;
-		Move last_iteration_move;
-		bool search_was_stable;
-
-		SearchState()
-		    : best_move(Move::EmptyMove()), best_score(0), depth_completed(0), nodes_at_completed_depth(0),
-		      last_iteration_move(Move::EmptyMove()), search_was_stable(true)
-		{}
+		Move best_move = Move::EmptyMove();
+		int best_score = 0;
+		int depth_completed = 0;
+		int64_t nodes_at_completed_depth = 0;
+		Move last_iteration_move = Move::EmptyMove();
+		bool search_was_stable = true;
 	};
 
 	enum class IterationDecision {
@@ -174,14 +171,14 @@ class AIPerplex final {
 	                                 const IterationObserver& observer = {});
 	int search_with_aspiration(ThreadData& td, int depth, int seed_score, TranspositionTable& tt);
 	int pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt);
-	int adjustScoreForGameState(ThreadData& td, bool moveFound, int ply, int best_value);
+	int adjust_score_for_game_state(ThreadData& td, bool move_found, int ply, int score);
 
 	// The score of a draw this search DETECTED — repetition, the fifty-move rule, stalemate — in
 	// the negamax perspective of the node reporting it. Never the value an aborted or
 	// time-limited frame unwinds with: those are fabricated, and stay at GameValues::Draw.
 	//
 	// The sign comes from the board's side to move against the root colour, which is the contract
-	// itself: a draw is bad for the side we are playing. Ply parity is equivalent TODAY — every
+	// itself: a draw is bad for the side we are playing. Ply parity is equivalent — every
 	// construct that advances a ply also flips the side to move, null moves included
 	// (Board::DoNullMove calls change_player(), and pvs() recurses at ply + 1) — but that
 	// equivalence is an unstated invariant of the whole search, not a property of this function.
@@ -209,7 +206,7 @@ class AIPerplex final {
 
 	// Orders a quiescence node's moves in place. The two phases order on different criteria and
 	// keep their scratch buffers off the caller's frame — see the definition.
-	void order_quiescence_moves(ThreadData& td, MoveList& moveList, bool in_check, int ply) const;
+	void order_quiescence_moves(ThreadData& td, MoveList& move_list, bool in_check, int ply) const;
 
 	// The per-node limit poll shared by pvs() and quiescence(): true means this search must
 	// stop now. Only thread 0 polls, and only every 1024 node entries, so the chrono::now()
@@ -218,7 +215,7 @@ class AIPerplex final {
 	// IsAborted() fast path at the top of both functions answers for free.
 	//
 	// The two counters are in different units, which matters when reasoning about how far
-	// past the budget a node-limited search can run: nodes_since_check_ counts node
+	// past the budget a node-limited search can run: nodes_since_check counts node
 	// *entries*, while the budget is compared against nodes_searched plus qnodes_searched
 	// (one per legal move edge searched, in each tree). So the stop lands at the first poll
 	// at or past the budget, not at the first multiple of 1024 of the budget's own counter.
@@ -261,8 +258,8 @@ class AIPerplex final {
 	void log_rejection(int depth, RejectionReason reason, const IterationMetrics& metrics,
 	                   const SearchState& state) const;
 	void log_acceptance(const IterationMetrics& metrics) const;
-	void log_search_complete(const AIPerplex::SearchState& state, const PVTable& pv_table) const;
-	void log_completed_iteration(const AIPerplex::IterationMetrics& metrics, const PVTable& pv_table) const;
+	void log_search_complete(const SearchState& state, const PVTable& pv_table) const;
+	void log_completed_iteration(const IterationMetrics& metrics, const PVTable& pv_table) const;
 	void log_aspiration_retry(int depth, int retry, int score, int alpha, int beta, bool fail_low) const;
 	void log_aspiration_full_window(int depth, int max_retries) const;
 
@@ -283,7 +280,7 @@ class AIPerplex final {
 	static void assert_not_in_completion_handler() noexcept { assert(!in_completion_handler_); }
 
 	// MEMBER VARIABLES
-	std::unique_ptr<TranspositionTable> _tt; // persistent transposition table
+	std::unique_ptr<TranspositionTable> tt_; // persistent transposition table
 	Evaluator evaluator_;                    // safe to share unsynchronized across threads; see Eval.h
 	SearchControl control_;                  // owned limits, timer and abort latch
 	SearchTuning tuning_;
@@ -329,7 +326,7 @@ class AIPerplex final {
 	std::function<void()> launch_barrier_;
 #endif
 
-	// Configured number of search threads (Lazy SMP). Clamped to [1, 32] by
+	// Configured number of search threads (Lazy SMP). Clamped to [1, MAX_THREADS] by
 	// SetThreads(). threads_ == 1 (the default) runs Search() without
 	// helper_tds_ construction or thread spawning.
 	unsigned threads_{1};

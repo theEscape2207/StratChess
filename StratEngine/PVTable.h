@@ -1,19 +1,13 @@
 #pragma once
 #include "Move.h"
+#include "defines.h"
+#include <algorithm>
+#include <array>
 
 // Triangular PV Table for principal variation caching
 class PVTable {
   public:
 	static constexpr int MAX_PV_LENGTH = 128;
-	static constexpr int MAX_PLY = 256;
-
-	PVTable() noexcept
-	{
-		for (auto& line : pv_lines_) {
-			line.fill(Move());
-		}
-		pv_lengths_.fill(0);
-	}
 
 	void clear_ply(int ply) noexcept
 	{
@@ -47,6 +41,6 @@ class PVTable {
 	[[nodiscard]] int get_length(int ply) const noexcept { return (ply < MAX_PLY) ? pv_lengths_[ply] : 0; }
 
   private:
-	std::array<std::array<Move, MAX_PV_LENGTH>, MAX_PLY> pv_lines_;
-	std::array<int, MAX_PLY> pv_lengths_;
+	std::array<std::array<Move, MAX_PV_LENGTH>, MAX_PLY> pv_lines_{};
+	std::array<int, MAX_PLY> pv_lengths_{};
 };

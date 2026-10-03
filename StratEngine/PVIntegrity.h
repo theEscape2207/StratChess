@@ -15,9 +15,8 @@ class Board;
 // MoveGenerator::ComputeLegalMoves is pseudo-legal — it does not test check — while Board::DoMove
 // returns false only when the move leaves its own king in check, and otherwise executes whatever
 // from/to/flags triple it is handed, including a geometrically impossible one. So membership in
-// the generated list is tested first, and only then the move is played. Membership compares flags
-// explicitly, because Move equality ignores them and would accept a PV move naming a different
-// promotion piece.
+// the generated list is tested first, and only then the move is played. Move equality is exact,
+// flags included, so a PV move naming a different promotion piece is not a member.
 //
 // `root` is taken by const reference and copied internally: replaying mutates a board, and the
 // caller's is the live search position.
