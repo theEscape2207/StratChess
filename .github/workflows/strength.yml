@@ -415,7 +415,8 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # One job per shard. Each plays a disjoint, contiguous slice of the book, so
-  # the shards together are exactly the batch a single job would have played.
+  # the shards of one arm together are exactly the batch a single job would
+  # have played.
   # ---------------------------------------------------------------------------
   match:
     needs: [setup, build]
@@ -587,7 +588,7 @@ jobs:
           if-no-files-found: warn
 
   # ---------------------------------------------------------------------------
-  # Pool the shards into one figure. Runs even when a shard failed, so the
+  # Pool the shards into one figure per arm. Runs even when a shard failed, so the
   # summary explains the discard rather than leaving a red X with no reason.
   # ---------------------------------------------------------------------------
   aggregate:
