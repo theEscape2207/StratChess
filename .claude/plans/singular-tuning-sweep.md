@@ -14,7 +14,7 @@ that screens several settings at once, and a full-precision run only for a setti
 
 ## Review focus
 
-- **D2: screening at ±6 Elo per arm.** The likely effect of tuning is single-digit Elo, so the
+- **D2: screening at ±5.4 Elo per arm.** The likely effect of tuning is single-digit Elo, so the
   screen may return "nothing distinguishable" for every arm. Check that the decision rule (D4) still
   turns that outcome into a decision rather than another run.
 - **D1: the workflow change.** Assigning arms per shard touches the instrument every Elo claim in
@@ -72,11 +72,16 @@ touching the calibrated path for.
 **Rejected: sequential single-candidate runs.** No workflow change, but ~3 h per point. Three arms
 plus a confirmation would take four runs instead of two.
 
-### D2: Screen first, then confirm: K=3 arms × 6 shards, default 20k games
+### D2: Screen first, then confirm: K=3 arms × 6 shards, 26,640 games (~4 h)
 
-18 shards / 3 arms gives ~6,660 games per arm, so about **±6.2 Elo per arm** (√3 × the ±3.6 of a
-full run). An arm-vs-arm difference is about ±8.8. K=3 is the largest arm count that keeps each arm
-able to see a ~6-Elo effect; K=6 (±8.8 per arm) could only find cliffs.
+The owner approved ~4 h for the screen. `games=26640` gives 1,480 games per shard (~229 min, inside
+the 340-min job timeout) and 8,880 per arm, so about **±5.4 Elo per arm**. That is the ±3.6 of a
+20k-game run scaled by √(20,000 / 8,880). An arm-vs-arm difference is about ±7.6. At the default
+20k, each arm would get ±6.2: the extra hour narrows the bars by ~13%, because precision grows only
+with √games.
+
+K=3 is the largest arm count that keeps each arm able to see a ~5-Elo effect. K=6 (±7.6 per arm)
+could only find cliffs. K=2 (±4.4) would buy precision by dropping a question (D3).
 
 The multi-arm run does not create information: total games are fixed. It trades precision for
 breadth. That pays off here because most settings are expected to be flat or worse, and a coarse
@@ -109,7 +114,7 @@ same axis (factor 0 for A, factor 6 for B, min depth 12 for C).
 
 ### D4: Decision rule, fixed before the screen
 
-Read each arm's screen estimate *e* against the default (SE ≈ 3.2 Elo):
+Read each arm's screen estimate *e* against the default (SE ≈ 2.8 Elo):
 
 - **Confirm** the best arm with a full 20k single-candidate run if *e* ≥ +3 (about 1 SE). Change the
   default only if the confirmation's interval excludes zero. The screen estimate itself is never
@@ -188,7 +193,7 @@ The Elo verdicts come from the screen and the optional confirmation, recorded in
   a few lines each. Three files.
 - **Blast radius:** Tooling tier. Only the lab workflow changes, and it is dispatch-only.
 - **Review:** one code review run.
-- **Lab time:** the screen is one ~3 h run (18 of 20 CI slots). A confirmation, if D4 calls for
+- **Lab time:** the screen is one ~4 h run (18 of 20 CI slots). A confirmation, if D4 calls for
   one, is another ~3 h.
 - **Optional: the depth-from-PGN readout.** A scratchpad script of ~30 lines, no commit. It covers
   the "why" of a result, not the verdict. Drop it if the screen is flat.
