@@ -236,9 +236,9 @@ run as that tier prescribes. No engine source changes in this PR.
 - **Smoke dispatch without arms:** `games=36 shards=6`. Its fastchess command lines and pooled report
   are diffed against the same dispatch on `origin/main`, with run IDs, times and results
   normalized. They must otherwise match.
-- **Negative dispatches:** 18 shards with 4 arms, both inputs set, a malformed offset and an offset
-  that exhausts the book must each fail in `setup`. An option the engine does not advertise must
-  fail in `build`.
+- **Negative dispatches:** 18 shards with 4 arms, both inputs set and a malformed offset must each
+  fail in `setup`. An offset that exhausts the book and an option the engine does not advertise
+  must fail in `build`, where the book and the binary first exist.
 
 That `setoption` reaches the search is already pinned by `UCITests.cpp` (#700).
 
