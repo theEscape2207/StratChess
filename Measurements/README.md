@@ -31,6 +31,12 @@ options and run reference. Mark invalid/cancelled attempts as discarded with a r
 confirmation names the screen that selected it and its opening range. Use the existing ledger
 appropriate to the instrument/reference; no separate decision-record template is needed.
 
+For each new CI lab row, link the retained **resolved comparison** in the run's summary or
+`strength-<run>-comparison` artifact from its row detail. It records both sides' advertised
+defaults plus validated overrides, every arm, build identity and time controls. Those are intended
+settings, not runtime acknowledgement that `setoption` was applied. The next eligible experiment
+uses this convention; historical rows do not need a new run.
+
 **The two move-quality ledgers are the exception to the shape and to the vocabulary.** A strength
 row is one number with an interval; a move-quality run is a wide profile — blunder rates by phase
 and by piece, observed score by reported band — so those two files carry a table per run rather

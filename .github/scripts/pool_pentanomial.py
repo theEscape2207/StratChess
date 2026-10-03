@@ -16,12 +16,17 @@ removes a whole class of parsing disagreement.
 
 Validate with --self-test, which checks the formula reproduces the Elo and the
 interval that fastchess itself reported on real matches from this project.
+With --expect-pairs-per-shard N, every log must contain exactly N pairs before
+any report is printed. Omit it only for historical standalone pooling.
 """
 
 import argparse
 import math
+import os
 import re
+import subprocess
 import sys
+import tempfile
 
 # Score per game for each pentanomial category: a pair is worth 2 points, so a
 # pair scoring 0/0.5/1/1.5/2 corresponds to a per-game score of 0/0.25/0.5/0.75/1.
@@ -30,7 +35,7 @@ CATEGORY_SCORES = (0.0, 0.25, 0.5, 0.75, 1.0)
 # fastchess reports 95% intervals.
 Z_95 = 1.959963984540054
 
-PTNML_RE = re.compile(r"Ptnml\(0-2\):\s*\[([0-9,\s]+)\]")
+PTNML_RE = re.compile(r"Ptnml\(0-2\):[^\S\r\n]*([^\r\n]*)")
 ELO_RE = re.compile(r"^\s*Elo:\s*(-?[0-9.]+)\s*\+/-\s*([0-9.]+)", re.MULTILINE)
 
 
@@ -69,26 +74,37 @@ def pool(counts):
 
 
 def parse_counts(text):
-    """Last Ptnml line in a log, as five ints. None if absent."""
+    """Last Ptnml line in a log, as five ints. None if absent or malformed."""
     matches = PTNML_RE.findall(text)
     if not matches:
         return None
-    counts = [int(n) for n in matches[-1].split(",")]
-    if len(counts) != 5:
+    # fastchess may append its WL/DD ratio after the bracketed counts.
+    match = re.match(r"\[\s*([0-9]+(?:\s*,\s*[0-9]+){4})\s*\]", matches[-1])
+    if not match:
         return None
-    return counts
+    return [int(n) for n in match.group(1).split(",")]
 
 
-def read_shard(path):
+def read_shard(path, expected_pairs=None):
     with open(path, "r", encoding="utf-8", errors="replace") as handle:
         text = handle.read()
     counts = parse_counts(text)
     if counts is None:
-        raise SystemExit(
+        raise ValueError(
             f"{path}: no Ptnml(0-2) line found. The shard did not finish, or the "
             f"fastchess output format changed -- refusing to pool a partial batch."
         )
+    if expected_pairs is not None and sum(counts) != expected_pairs:
+        raise ValueError(f"{path}: expected {expected_pairs} pairs, got {sum(counts)}; "
+                         "refusing to pool an incomplete or excess-count shard")
     return counts
+
+
+def positive_int(text):
+    value = int(text)
+    if value <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return value
 
 
 # Real (counts, elo, half_width) triples printed by the pinned fastchess build on
@@ -119,6 +135,56 @@ def self_test():
             f"{str(counts):<28} {elo:>9.2f} {want_elo:>9.2f} {err:>9.2f} {want_err:>9.2f}"
             f"  {'ok' if good else 'MISMATCH'}"
         )
+    with tempfile.TemporaryDirectory() as root:
+        logs = [os.path.join(root, f"shard-{i}.log") for i in range(2)]
+
+        def run_case(name, counts, flags, success, payload=None, missing=False):
+            nonlocal ok
+            for path, row in zip(logs, counts):
+                with open(path, "w", encoding="utf-8") as handle:
+                    handle.write(payload if payload is not None
+                                 else f"Ptnml(0-2): [{', '.join(map(str, row))}]\n")
+            if missing:
+                os.remove(logs[-1])
+            result = subprocess.run([sys.executable, os.path.abspath(__file__), *flags, *logs],
+                                    capture_output=True, text=True, check=False)
+            good = ((result.returncode == 0) == success
+                    and ("**Pooled:" in result.stdout) == success
+                    and (success or not result.stdout)
+                    and "Traceback" not in result.stderr)
+            ok &= good
+            print(f"{'ok' if good else 'FAIL'} {name}")
+
+        flags = ["--expect-shards", "2", "--expect-pairs-per-shard", "15"]
+        run_case("CLI complete shards preserve pooled formula", [[3, 4, 3, 3, 2]] * 2,
+                 flags, True)
+        run_case("CLI parseable short shard refused", [[3, 4, 3, 3, 1], [3, 4, 3, 3, 2]],
+                 flags, False)
+        run_case("CLI excess pairs refused", [[3, 4, 3, 3, 3], [3, 4, 3, 3, 2]],
+                 flags, False)
+        run_case("CLI compensating counts refused before any report",
+                 [[3, 4, 3, 3, 1], [3, 4, 3, 3, 3]], flags, False)
+        run_case("CLI standalone historical counts remain optional",
+                 [[3, 4, 3, 3, 1], [3, 4, 3, 3, 3]], ["--expect-shards", "2"], True)
+        run_case("CLI malformed final counts fail cleanly", [[0, 0, 15, 0, 0]] * 2,
+                 flags, False, payload="Ptnml(0-2): [0, 0, 15, 0, 0]\nPtnml(0-2): [0, , 15, 0, 0]\n")
+        run_case("CLI missing counts fail cleanly", [[0, 0, 15, 0, 0]] * 2,
+                 flags, False, payload="interrupted match\n")
+        run_case("CLI missing log fails cleanly before output", [[0, 0, 15, 0, 0]] * 2,
+                 flags, False, missing=True)
+        for count in ("0", "-1"):
+            run_case(f"CLI nonpositive pair count {count} refused", [[0, 0, 15, 0, 0]] * 2,
+                     ["--expect-pairs-per-shard", count], False)
+        for invalid in ("Ptnml(0-2): [1, 2, 3, 4]\n",
+                        "Ptnml(0-2): [1, 2, , 4, 5]\n",
+                        "Ptnml(0-2): [1, 2, 3, 4, 5\n"):
+            good = parse_counts("Ptnml(0-2): [1, 2, 3, 4, 5]\n" + invalid) is None
+            ok &= good
+            print(f"{'ok' if good else 'FAIL'} malformed final counts refused")
+        good = parse_counts("Ptnml(0-2): [53, 151, 289, 179, 68], WL/DD Ratio: 1.58\n") == [
+            53, 151, 289, 179, 68]
+        ok &= good
+        print(f"{'ok' if good else 'FAIL'} appended fastchess ratio accepted")
     print("\nself-test:", "PASS" if ok else "FAIL")
     return 0 if ok else 1
 
@@ -130,6 +196,8 @@ def main():
                         help="check the formula against known fastchess output")
     parser.add_argument("--expect-shards", type=int, default=0,
                         help="refuse to pool unless exactly this many logs are given")
+    parser.add_argument("--expect-pairs-per-shard", type=positive_int,
+                        help="require this many pairs in every log before printing any report")
     args = parser.parse_args()
 
     if args.self_test:
@@ -147,15 +215,19 @@ def main():
             f"Refusing to pool a partial batch."
         )
 
-    total = [0, 0, 0, 0, 0]
+    try:
+        shard_counts = [read_shard(path, args.expect_pairs_per_shard) for path in args.logs]
+        total = [sum(column) for column in zip(*shard_counts)]
+        elo, err, pairs, score = pool(total)
+    except (OSError, ValueError) as error:
+        print(f"::error::{error}", file=sys.stderr)
+        return 1
+
     print("| Shard | Pairs | Ptnml(0-2) |")
     print("|---|---|---|")
-    for path in args.logs:
-        counts = read_shard(path)
-        total = [t + c for t, c in zip(total, counts)]
+    for path, counts in zip(args.logs, shard_counts):
         print(f"| `{path}` | {sum(counts)} | {counts} |")
 
-    elo, err, pairs, score = pool(total)
     print()
     print(f"**Pooled: {elo:+.2f} +/- {err:.2f} Elo** "
           f"({pairs} pairs = {2 * pairs} games, score {100 * score:.2f}%)")
