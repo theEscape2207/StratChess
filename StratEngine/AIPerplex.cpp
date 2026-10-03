@@ -482,9 +482,10 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, TranspositionTable& tt,
                                             uint8_t search_start_age, const IterationObserver& observer)
 {
-	SearchState state;
-	td.nodes_since_check_ = 0;     // reset node counter for this search
-	bool extra_depth_used = false; // soft-limit extension granted at most once per search
+	Engine::IterationState state;
+	const Engine::IterationThresholds thresholds{tuning_.min_nodes_threshold, tuning_.min_completion_ratio,
+	                                             tuning_.min_pv_ratio};
+	td.nodes_since_check_ = 0; // reset node counter for this search
 
 	td.begin_search(tuning_.continuation_history_plies > 0);
 
@@ -504,88 +505,43 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 			currentBestScore = search_with_aspiration(td, depth, state.best_score, tt);
 		}
 
-		// Gather metrics
-		IterationMetrics metrics;
-		metrics.depth = depth;
-		metrics.current_move = td.pv_table.get_pv_move(0);
-		metrics.current_score = currentBestScore;
-		metrics.nodes_searched = td.nodes_searched - nodes_at_start;
-		metrics.pv_length = td.pv_table.get_length(0);
-		metrics.interrupted = control_.StopRequested(); // clock, node budget or UCI stop
-		metrics.move_changed = (metrics.current_move != state.last_iteration_move);
-		metrics.score_delta = currentBestScore - state.best_score;
-		// node counts never realistically approach 2^53 (int64_t->double precision loss)
-		metrics.completion_ratio =
-		    (state.nodes_at_completed_depth > 0)
-		        ? static_cast<double>(metrics.nodes_searched) / static_cast<double>(state.nodes_at_completed_depth)
-		        : 1.0;
-
-		// Debug logging (detailed diagnostics)
+		const Engine::IterationSample sample{depth,
+		                                     td.pv_table.get_pv_move(0),
+		                                     currentBestScore,
+		                                     td.nodes_searched - nodes_at_start,
+		                                     td.pv_table.get_length(0),
+		                                     control_.StopRequested()};
+		const auto assessment = Engine::assess_iteration(sample, state, thresholds);
+		const auto& metrics = assessment.metrics;
 		log_iteration_eval(metrics, td.pv_table);
 
-		// Decide what to do
-		IterationDecision decision;
-		RejectionReason rejection_reason = RejectionReason::NONE;
-
-		if (!metrics.interrupted) {
-			decision = IterationDecision::ACCEPT_AND_CONTINUE; // Depth completed
-		} else {
-			// Interrupted - assess quality
-			rejection_reason = assess_iteration_quality(metrics, state);
-			decision = (rejection_reason != RejectionReason::NONE) ? IterationDecision::REJECT_AND_STOP
-			                                                       : IterationDecision::ACCEPT_AND_STOP;
-		}
-
-		// Execute decision
-		bool continue_iteration = false;
-
-		switch (decision) {
-		case IterationDecision::ACCEPT_AND_CONTINUE:
-			state.best_move = metrics.current_move;
-			state.best_score = metrics.current_score;
-			state.depth_completed = depth;
-			state.nodes_at_completed_depth = metrics.nodes_searched;
-			state.last_iteration_move = metrics.current_move;
-			state.search_was_stable = !metrics.move_changed;
-
+		bool continue_search = false;
+		switch (assessment.decision) {
+		case Engine::IterationDisposition::COMPLETED: {
+			state = assessment.next_state;
 			log_completed_iteration(metrics, td.pv_table);
 			emit_iteration_info(td, state.depth_completed, state.best_score, search_start_age, observer);
 
-			// Soft limit gate: stop after this depth if the allocated time budget
-			// is consumed.  Exception: if the best move just changed, allow one
-			// more depth to verify the new move (the hard limit will cut it off).
-			if (control_.ShouldStopIteration()) {
-				if (!metrics.move_changed || extra_depth_used) {
-					continue_iteration = false;
-					break;
-				}
-				extra_depth_used = true; // grant extension exactly once
-			}
-
-			continue_iteration = !should_stop_early(depth, metrics.current_score);
+			// The observer can consume time or request Stop(); sample the soft limit after it.
+			const auto continuation = Engine::continue_iteration(assessment, control_.ShouldStopIteration());
+			state = continuation.next_state;
+			continue_search = continuation.stop_reason == Engine::IterationStopReason::NONE;
+			if (continuation.stop_reason == Engine::IterationStopReason::MATE && verbose_logging_ && s_logger)
+				s_logger->info("Mate found at depth {}, stopping iteration", depth);
 			break;
-
-		case IterationDecision::ACCEPT_AND_STOP:
-			state.best_move = metrics.current_move;
-			state.best_score = metrics.current_score;
-			state.depth_completed = depth;
-			state.nodes_at_completed_depth = metrics.nodes_searched;
-			state.search_was_stable = !metrics.move_changed;
-
+		}
+		case Engine::IterationDisposition::ACCEPTED_INTERRUPTED:
+			state = assessment.next_state;
 			log_acceptance(metrics);
 			emit_iteration_info(td, state.depth_completed, state.best_score, search_start_age, observer);
-			continue_iteration = false;
 			break;
-
-		case IterationDecision::REJECT_AND_STOP:
-			log_rejection(depth, rejection_reason, metrics, state);
-			continue_iteration = false;
+		case Engine::IterationDisposition::REJECTED:
+			log_rejection(depth, assessment.reason, metrics, state);
 			break;
 		}
 
-		if (!continue_iteration) {
-			break; // Exit iterative deepening
-		}
+		if (!continue_search)
+			break;
 	}
 
 	// Handle empty move emergency
@@ -1450,7 +1406,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// would never produce; reading it here would turn that inheritance from inert into a defect.
 	//
 	// A mate score is refused, sound distance and all: every PV leaf lands here, and
-	// should_stop_early() ends iterative deepening on any mate score, so one served to a node that
+	// iteration continuation stops on a mate score, so one served to a node that
 	// searched nothing becomes a claim the search never made. The price is a horizon node
 	// re-deriving a mate the table already held. A non-PV pvs() node still cuts off on one --
 	// deliberately, since its result is a bound inside a search, not a score the root reports.
@@ -1728,36 +1684,7 @@ int AIPerplex::search_with_aspiration(ThreadData& td, int depth, int seed_score,
 // ============================================================================
 // Killer/history/null-flag maintenance lives on ThreadData (ThreadData.h).
 
-AIPerplex::RejectionReason AIPerplex::assess_iteration_quality(const IterationMetrics& metrics,
-                                                               const SearchState& state) const
-{
-	// CASE 1: Obviously incomplete
-	if (metrics.current_move.is_null() || metrics.nodes_searched < tuning_.min_nodes_threshold) {
-		return RejectionReason::INCOMPLETE;
-	}
-
-	// CASE 2: Too few nodes compared to previous depth
-	if (state.depth_completed > 0 && state.nodes_at_completed_depth > 0 &&
-	    metrics.completion_ratio < tuning_.min_completion_ratio) {
-		return RejectionReason::TOO_FEW_NODES;
-	}
-
-	// CASE 3: PV too short
-	if (metrics.pv_length < std::max(1, static_cast<int>(metrics.depth * tuning_.min_pv_ratio)) &&
-	    state.depth_completed > 0) {
-		return RejectionReason::SHORT_PV;
-	}
-
-	// CASE 4: Move changed on interrupt
-	if (metrics.move_changed && state.depth_completed > 0) {
-		return RejectionReason::MOVE_CHANGED;
-	}
-
-	// All checks passed
-	return RejectionReason::NONE;
-}
-
-void AIPerplex::log_iteration_eval(const IterationMetrics& metrics, const PVTable& pv_table) const
+void AIPerplex::log_iteration_eval(const Engine::IterationMetrics& metrics, const PVTable& pv_table) const
 {
 	if (!verbose_logging_ || !s_logger)
 		return;
@@ -1786,30 +1713,30 @@ void AIPerplex::log_iteration_eval(const IterationMetrics& metrics, const PVTabl
 	                metrics.interrupted ? "Y" : "N", metrics.move_changed ? "Y" : "N", pv_line);
 }
 
-void AIPerplex::log_rejection(int depth, RejectionReason reason, const IterationMetrics& metrics,
-                              const SearchState& state) const
+void AIPerplex::log_rejection(int depth, Engine::RejectionReason reason, const Engine::IterationMetrics& metrics,
+                              const Engine::IterationState& state) const
 {
 	if (!verbose_logging_ || !s_logger)
 		return;
 
 	switch (reason) {
-	case RejectionReason::INCOMPLETE:
+	case Engine::RejectionReason::INCOMPLETE:
 		s_logger->debug("Depth {:>2}: REJECTED[R1:INCOMPLETE] (nodes={}, move={}) - Using depth {}", depth,
 		                metrics.nodes_searched, metrics.current_move.is_null() ? "EMPTY" : "ok", state.depth_completed);
 		break;
 
-	case RejectionReason::TOO_FEW_NODES:
+	case Engine::RejectionReason::TOO_FEW_NODES:
 		s_logger->debug("Depth {:>2}: REJECTED[R2:TOO_FEW_NODES] ({} = {:.0f}% of D{}) - using depth {}", depth,
 		                metrics.nodes_searched, metrics.completion_ratio * 100, state.depth_completed,
 		                state.depth_completed);
 		break;
 
-	case RejectionReason::SHORT_PV:
+	case Engine::RejectionReason::SHORT_PV:
 		s_logger->debug("Depth {:>2}: REJECTED[R3:SHORT_PV] (pv={} vs depth={}) - using depth {}", depth,
 		                metrics.pv_length, depth, state.depth_completed);
 		break;
 
-	case RejectionReason::MOVE_CHANGED:
+	case Engine::RejectionReason::MOVE_CHANGED:
 		s_logger->debug("Depth {:>2}: REJECTED[R4:MOVE_CHANGED] ({} → {}) - Using depth {}", depth,
 		                MoveFormatter::ToCoord(state.last_iteration_move), MoveFormatter::ToCoord(metrics.current_move),
 		                state.depth_completed);
@@ -1820,7 +1747,7 @@ void AIPerplex::log_rejection(int depth, RejectionReason reason, const Iteration
 	}
 }
 
-void AIPerplex::log_acceptance(const IterationMetrics& metrics) const
+void AIPerplex::log_acceptance(const Engine::IterationMetrics& metrics) const
 {
 	if (!verbose_logging_ || !s_logger)
 		return;
@@ -1828,20 +1755,6 @@ void AIPerplex::log_acceptance(const IterationMetrics& metrics) const
 	// Noteworthy so Info
 	s_logger->info("Depth {:>2}: ACCEPTED[INTERRUPTED] (nodes={}, score={}, pv={})", metrics.depth,
 	               metrics.nodes_searched, metrics.current_score, metrics.pv_length);
-}
-
-// A short PV is no stop signal: a PV ends at any terminal node, an in-search repetition included,
-// so its length does not show that the line is forced.
-bool AIPerplex::should_stop_early(int depth, int score) const
-{
-	if (std::abs(score) >= GameValues::Mate_Threshold) {
-		if (verbose_logging_ && s_logger) {
-			s_logger->info("Mate found at depth {}, stopping iteration", depth);
-		}
-		return true;
-	}
-
-	return false;
 }
 
 bool AIPerplex::has_two_non_pawn_pieces(const Board& board)
@@ -1942,7 +1855,7 @@ bool AIPerplex::reverse_futility_eligible(int depth, int beta, bool is_pv_node, 
 	return zugzwang_safe;
 }
 
-bool AIPerplex::handle_empty_move_emergency(ThreadData& td, SearchState& state)
+bool AIPerplex::handle_empty_move_emergency(ThreadData& td, Engine::IterationState& state)
 {
 	auto& log = *spdlog::default_logger();
 
@@ -2007,7 +1920,7 @@ bool AIPerplex::handle_empty_move_emergency(ThreadData& td, SearchState& state)
 	return true;
 }
 
-void AIPerplex::log_search_complete(const SearchState& state, const PVTable& pv_table) const
+void AIPerplex::log_search_complete(const Engine::IterationState& state, const PVTable& pv_table) const
 {
 	if (!verbose_logging_ || !s_logger)
 		return;
@@ -2021,7 +1934,7 @@ void AIPerplex::log_search_complete(const SearchState& state, const PVTable& pv_
 	               state.search_was_stable ? "yes" : "NO");
 }
 
-void AIPerplex::log_completed_iteration(const IterationMetrics& metrics, const PVTable& pv_table) const
+void AIPerplex::log_completed_iteration(const Engine::IterationMetrics& metrics, const PVTable& pv_table) const
 {
 	if (!verbose_logging_ || !s_logger)
 		return;
@@ -2062,8 +1975,8 @@ void AIPerplex::emit_iteration_info(const ThreadData& td, int depth, int score, 
 	// The reported figure is the main-search-thread's cumulative count of both trees as
 	// of this accepted iteration. It does not generally equal the final info/bestmove
 	// line's total from Search(): a rejected trailing
-	// iteration (REJECT_AND_STOP, see iterative_deepening()) still adds its
-	// nodes to those counters before assess_iteration_quality() throws the
+	// iteration (REJECTED, see iterative_deepening()) still adds its
+	// nodes to those counters before IterationPolicy throws the
 	// iteration away, so the final line's count is typically strictly greater
 	// than this figure at Threads=1; under Lazy SMP the final total also sums
 	// helper threads' nodes, which are invisible here. Not synchronising with

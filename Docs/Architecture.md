@@ -1,6 +1,6 @@
 # Architecture: current system
 
-Last verified: 2026-10-03.
+Last verified: 2026-10-04.
 
 Start here for responsibilities and execution. Read [CONTEXT](../CONTEXT.md) for domain
 definitions, [EngineContracts](EngineContracts.md) before changing behaviour, and
@@ -61,6 +61,7 @@ tools box is a collection of consumers: perft does not invoke evaluation or the 
 | `MoveGenerator` | Candidate moves and attack geometry | [Generation contract](../StratEngine/MoveGenerator.h). |
 | `MoveSorter` / `See` | Ordering and static exchange judgement | Consume board and ordering state; ordering interacts with selective search. |
 | `AIPerplex` | Root search, async lifecycle, iterative deepening, recursive search, result assembly | Owns TT, evaluator, search control, tuning and worker state. One controlling thread owns lifecycle/configuration calls. |
+| `IterationPolicy` | Main-thread iteration acceptance, retained-result updates and continuation | Two pure value transitions; no Board, TT, clock or callback access. The driver supplies observations and owns side effects. |
 | `ThreadData` | Per-worker position, PV, counters, history and recursion scratch | Includes several lifetimes: per-node, per-search and state retained between moves. Not a purely temporary search record. |
 | `SearchControl` | Resolve/apply limits, stop latch, time and node checks | Shared stop condition; main worker polls limits. |
 | `TranspositionTable` | Cache searched scores/bounds and ordering hints | Packed entries, four per aligned bucket, separate per-bucket locks; receives keys, not Boards. |
@@ -104,8 +105,8 @@ the implementation and [search contracts](EngineContracts.md#search-internals).
 
 | Mechanism | Implementation entry | Control / related state |
 |---|---|---|
-| Iteration acceptance and continuation | `assess_iteration_quality`, iterative-deepening loop | `min_nodes_threshold`, `min_completion_ratio`, `min_pv_ratio`; retained search result |
-| Time, node and early-stop decisions | `SearchControl`, `should_stop_early`, iterative-deepening loop | Per-search limits, abort latch and iteration observations |
+| Iteration acceptance and continuation | [IterationPolicy](../StratEngine/IterationPolicy.h): `Engine::assess_iteration`, `Engine::continue_iteration` | `min_nodes_threshold`, `min_completion_ratio`, `min_pv_ratio`; retained result and one-extension state |
+| Time and node observations | `SearchControl`, iterative-deepening loop | Per-search limits and abort latch; soft-limit sample acquired after the iteration observer |
 | Aspiration windows | `search_with_aspiration` | `aspiration_*` |
 | PVS and TT cutoffs | `pvs` | Window/node type, TT bound and depth, exclusion-frame restrictions |
 | Reverse futility | `reverse_futility_eligible`, `pvs` | `reverse_futility_*` |
@@ -129,6 +130,7 @@ the implementation and [search contracts](EngineContracts.md#search-internals).
 | Excluded move, continuation keys, null-move flags | Worker recursion state | Ply-indexed scratch. Singular verification re-enters at the same ply and must restore the surrounding frame's state. |
 | TT entries | Shared table | Concurrent probes/stores use bucket locks. Whole-table lifecycle operations have additional caller constraints. |
 | Limits and abort latch | SearchControl | One search; stop can be requested concurrently. |
+| Retained iteration result and soft-limit extension | Local `Engine::IterationState` in main iterative deepening | One search; passed through the policy's value transitions. Helpers do not use it. |
 | Iteration observer and completion callback | One search/launch | Observations are snapshots. Completion runs after search has finished, on the launch thread. |
 | Final SearchResult | Returned value owned by caller | Assembled after helper joins; later searches cannot overwrite it. |
 

@@ -20,6 +20,27 @@ and couldn't be matched with confidence — those remain in the undated pocket b
 
 Newest first.
 
+## Unreleased — Value-only iteration policy (#706)
+
+`IterationPolicy` owns main-thread iteration acceptance, raw-metric derivation, retained-result
+updates and soft-limit/mate continuation through two pure value transitions. `AIPerplex` keeps
+search execution, clock acquisition, observer/logging side effects and emergency/SMP ownership;
+soft-limit sampling still follows observer publication.
+
+Eight policy tests previously constructed a Board, engine, 1 MiB TT, evaluator and worker state and
+used friend access; quality tests supplied derived comparison/ratio fields themselves. Focused
+tests now enter the production policy with encoded moves and scalar observations. Previously
+untested move-change/node-ratio derivation, retained-state transitions and the one-extension rule
+have independent expectations. Four representative mutations (second extension, move/ratio
+derivation and interrupted last-move update) each fail those tests. No review-time or suite-time
+saving is claimed. A public observer-stop test preserves depth-1 move/score/depth and rejects later
+publication; clock ordering remains a source-review/header contract without clock injection.
+
+Single-thread search equivalence against `ec14213` is exact across 114 compared lines, six positions
+at depth 12. The change makes no direct strength claim and requires no Elo run.
+
+---
+
 ## Unreleased — Singular extensions on by default (#95)
 
 Singular extensions ship enabled: lab +22.90 ± 3.60 Elo (run 37020636422, `Measurements/ci-per-change.md`).

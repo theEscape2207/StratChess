@@ -1,7 +1,5 @@
-// SearchIterationTests.cpp — Catch2 tests for the per-iteration decision helpers inside
-// AIPerplex:
-//   assess_iteration_quality()    — 6 cases, one per RejectionReason branch
-//   should_stop_early()           — 2 cases (mate score, short of mate) plus a repetition-PV search
+// SearchIterationTests.cpp — Catch2 tests for search iteration integration and private helpers:
+//   fixed-depth repetition PV search
 //   handle_empty_move_emergency() — 3 cases (mate path, emergency path, stale PV row)
 //   should_try_null_move()        — 10 cases, one per guard branch (disabled, PV, in-check,
 //                                   depth, mate-score, zugzwang, single-piece zugzwang,
@@ -13,185 +11,26 @@
 #include "PVTable.h"
 #include "defines.h"
 
-// ============================================================================
-// assess_iteration_quality tests
-// ============================================================================
-
-TEST_CASE("Search - assess: null current_move yields INCOMPLETE", "[search]")
+TEST_CASE("Search keeps the accepted depth-one result when its observer stops the search", "[search][service_api]")
 {
-	AIPerlexTestFixture fix;
+	const Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+	AIPerplex ai(AIPerplexConfig{.default_depth = 4, .hash_mb = 1, .verbose_logging = false});
+	int observations = 0;
+	IterationInfo accepted;
+	const SearchResult result = ai.Search(board, SearchLimits::fixed_depth(4), [&](const IterationInfo& info) {
+		++observations;
+		if (info.depth == 1) {
+			accepted = info;
+			ai.Stop();
+		}
+	});
 
-	AIPerlexTestFixture::Metrics m{};
-	m.depth = 4;
-	m.current_move = Move{}; // null — triggers CASE 1
-	m.current_score = 100;
-	m.nodes_searched = 5000;
-	m.pv_length = 2;
-	m.interrupted = true;
-	m.move_changed = false;
-	m.score_delta = 10;
-	m.completion_ratio = 0.5;
-
-	AIPerlexTestFixture::State s{};
-	s.depth_completed = 0;
-	s.best_score = 100;
-	s.nodes_at_completed_depth = 0;
-
-	REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::INCOMPLETE);
-}
-
-TEST_CASE("Search - assess: too few nodes yields INCOMPLETE", "[search]")
-{
-	AIPerlexTestFixture fix;
-	const Move any = AnyLegalMove();
-
-	AIPerlexTestFixture::Metrics m{};
-	m.depth = 4;
-	m.current_move = any;
-	m.current_score = 100;
-	m.nodes_searched = 10; // below min_nodes_threshold (default 1000) — CASE 1
-	m.pv_length = 2;
-	m.interrupted = true;
-	m.move_changed = false;
-	m.score_delta = 10;
-	m.completion_ratio = 0.5;
-
-	AIPerlexTestFixture::State s{};
-	s.depth_completed = 0;
-	s.best_score = 100;
-	s.nodes_at_completed_depth = 0;
-
-	REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::INCOMPLETE);
-}
-
-TEST_CASE("Search - assess: low completion ratio yields TOO_FEW_NODES", "[search]")
-{
-	AIPerlexTestFixture fix;
-	const Move any = AnyLegalMove();
-
-	// Pass CASE 1 (move ok, nodes ok) but fail CASE 2 (completion ratio)
-	AIPerlexTestFixture::Metrics m{};
-	m.depth = 4;
-	m.current_move = any;
-	m.current_score = 100;
-	m.nodes_searched = 5000;
-	m.pv_length = 2;
-	m.interrupted = true;
-	m.move_changed = false;
-	m.score_delta = 10;
-	m.completion_ratio = 0.01; // below min_completion_ratio (default 0.10)
-
-	AIPerlexTestFixture::State s{};
-	s.depth_completed = 3; // > 0: previous depth exists
-	s.best_score = 100;
-	s.nodes_at_completed_depth = 5000; // > 0: denominator present
-
-	REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::TOO_FEW_NODES);
-}
-
-TEST_CASE("Search - assess: pv too short yields SHORT_PV", "[search]")
-{
-	AIPerlexTestFixture fix;
-	const Move any = AnyLegalMove();
-
-	// depth=9, min_pv_ratio=0.33 → min required pv = max(1, int(9*0.33)) = max(1, 2) = 2
-	// pv_length=1 < 2 → SHORT_PV
-	AIPerlexTestFixture::Metrics m{};
-	m.depth = 9;
-	m.current_move = any;
-	m.current_score = 100;
-	m.nodes_searched = 5000;
-	m.pv_length = 1; // too short (< 2)
-	m.interrupted = true;
-	m.move_changed = false;
-	m.score_delta = 10;
-	m.completion_ratio = 0.5; // passes CASE 2
-
-	AIPerlexTestFixture::State s{};
-	s.depth_completed = 8;
-	s.best_score = 100;
-	s.nodes_at_completed_depth = 5000;
-
-	REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::SHORT_PV);
-}
-
-TEST_CASE("Search - assess: a drawn score on an unchanged move is accepted", "[search]")
-{
-	// A completed root child that genuinely evaluates to a draw is a real result, not a symptom.
-	// The fabricated zero an aborted frame unwinds with reaches the root with an empty move and
-	// is caught by CASE 1 instead.
-	AIPerlexTestFixture fix;
-
-	AIPerlexTestFixture::Metrics m{};
-	m.depth = 4;
-	m.current_move = AnyLegalMove();
-	m.current_score = 0;
-	m.nodes_searched = 5000;
-	m.pv_length = 3;
-	m.interrupted = true;
-	m.move_changed = false;
-	m.score_delta = -300;
-	m.completion_ratio = 0.5;
-
-	AIPerlexTestFixture::State s{};
-	s.depth_completed = 3;
-	s.best_score = 300;
-	s.nodes_at_completed_depth = 5000;
-
-	REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::NONE);
-
-	// The same drawn score with a CHANGED move is still rejected, by MOVE_CHANGED. Accepting the
-	// drawn score must not have shadowed the case that follows it.
-	m.move_changed = true;
-	REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::MOVE_CHANGED);
-}
-
-TEST_CASE("Search - assess: move changed on interrupt yields MOVE_CHANGED", "[search]")
-{
-	AIPerlexTestFixture fix;
-	const Move any = AnyLegalMove();
-
-	AIPerlexTestFixture::Metrics m{};
-	m.depth = 4;
-	m.current_move = any;
-	m.current_score = 100;
-	m.nodes_searched = 5000;
-	m.pv_length = 3;
-	m.interrupted = true;
-	m.move_changed = true; // different from last iteration
-	m.score_delta = 10;
-	m.completion_ratio = 0.5;
-
-	AIPerlexTestFixture::State s{};
-	s.depth_completed = 3;
-	s.best_score = 90;
-	s.nodes_at_completed_depth = 5000;
-	s.last_iteration_move = Move{}; // not read by assess_iteration_quality;
-	                                // CASE 4 fires on metrics.move_changed == true
-	                                // && state.depth_completed > 0
-
-	REQUIRE(fix.assess(m, s) == AIPerlexTestFixture::RejectionReason::MOVE_CHANGED);
-}
-
-// ============================================================================
-// should_stop_early tests
-// ============================================================================
-
-TEST_CASE("Search - should_stop_early: mate score returns true", "[search]")
-{
-	AIPerlexTestFixture fix;
-	// GameValues::Mate_Threshold == 29900; mate score is >= this
-	REQUIRE(fix.stop_early(5, GameValues::Mate_Threshold) == true);
-	REQUIRE(fix.stop_early(5, GameValues::Mate_Threshold + 100) == true);
-	REQUIRE(fix.stop_early(5, -(GameValues::Mate_Threshold)) == true);
-}
-
-TEST_CASE("Search - should_stop_early: a score short of mate returns false", "[search]")
-{
-	AIPerlexTestFixture fix;
-	REQUIRE(fix.stop_early(12, GameValues::Draw) == false);
-	REQUIRE(fix.stop_early(12, GameValues::Mate_Threshold - 1) == false);
-	REQUIRE(fix.stop_early(12, -(GameValues::Mate_Threshold - 1)) == false);
+	REQUIRE(observations == 1);
+	REQUIRE(accepted.depth == 1);
+	REQUIRE_FALSE(accepted.pv.empty());
+	CHECK(result.best_move == accepted.pv.front());
+	CHECK(result.best_score == accepted.score);
+	CHECK(result.depth_completed == accepted.depth);
 }
 
 // White's only non-losing line is a perpetual check, so every PV ends at a 5-ply repetition.

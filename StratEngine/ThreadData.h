@@ -44,7 +44,7 @@ struct ThreadData {
 
 	// Thread-local main-tree node counter owned by AIPerplex. Counts legal pvs() move edges searched.
 	// Keeping quiescence out is deliberate:
-	// assess_iteration_quality() and completion_ratio are calibrated against main-tree size,
+	// IterationPolicy's acceptance checks and completion_ratio use main-tree size,
 	// so folding it in here would change search behaviour, not just reporting.
 	int64_t nodes_searched = 0;
 

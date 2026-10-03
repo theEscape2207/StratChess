@@ -74,6 +74,22 @@ whose violation is silent.
 
 ## Search internals
 
+- **`IterationPolicy` owns the main-thread acceptance and continuation decisions.** It receives raw
+  iteration observations, prior retained state and three explicit tuning thresholds. Main-tree node
+  deltas exclude quiescence; the completion ratio is delta/prior nodes or `1.0` without a positive
+  denominator. Completed observations bypass quality checks. Interrupted checks run in order:
+  empty move/insufficient nodes, insufficient ratio, short PV (`max(1, int(depth * ratio))`), changed
+  move. Rejection preserves all state; either acceptance updates the retained result, but only
+  completed acceptance updates `last_iteration_move`. `REJECTED` holds iff rejection reason is not
+  `NONE`. The policy has no engine, Board, TT, clock or callback dependency.
+- **Continuation samples the soft limit after the accepted iteration observer.** `AIPerplex`
+  applies the assessed state, logs and publishes the observer, then samples `ShouldStopIteration()`
+  and passes the completed assessment to `Engine::continue_iteration` exactly once. A callback can
+  consume time or request stop. At the soft limit an unchanged move or used extension stops before
+  any mate check; otherwise the changed move consumes the one extension, even if mate then stops.
+  Depth/PV length do not trigger early stop. This state is local to one main-thread search; helpers
+  use their existing loop. The callback/clock ordering is enforced by source review and the header
+  contract; the observer-stop integration test only pins retained results and no later publication.
 - **An aborted frame keeps no results.** The guard is **per move iteration, not per recursive call**:
   `pvs()` may run a reduced null-window search, a full-depth re-search and a PV re-search for a
   single move before reaching `UndoMove` and the one `IsAborted()` check that follows it. The

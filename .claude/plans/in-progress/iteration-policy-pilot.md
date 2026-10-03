@@ -4,8 +4,8 @@
 
 **Baseline:** `origin/main` `ec142137517855d62a6eba1318d065bf2a9ed651` (includes #710)
 
-**Status:** cross-agent design review complete; all five non-blocking findings accepted. Production
-edits await owner approval of scenario, contract and cost.
+**Status:** approved by the owner on 2026-10-04; implementation in progress. All five non-blocking
+review findings accepted.
 
 ## Goal
 
