@@ -704,8 +704,9 @@ Approved external dependencies are spdlog and nlohmann/json only; Catch2 is test
 ### Compiler Requirements
 
 - **clang-cl** — the shipping compiler
-- **MSVC** 2022 — development and debugging only (never for measurement)
-- **GCC** 12+ — Linux CI, Debug + sanitizers
+- **MSVC** (Visual Studio 2026, as on the CI image) — development and debugging only (never for
+  measurement)
+- **GCC** 15 — Linux CI, Release and Debug + sanitizers; older versions are not checked
 
 Only `x64` builds are maintained. Warnings are errors everywhere (`/W4 /WX`, `-Wall -Wextra -Werror`)
 in both Debug and Release.
