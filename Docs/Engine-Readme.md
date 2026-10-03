@@ -144,7 +144,7 @@ and search lifecycle.
 | File | Description |
 |------|-------------|
 | `TranspositionTable.h/cpp` | Hash table for position caching (192 MB requested by default) |
-| `ThreadData.h` | Per-search state: board copy, PV, killers, history, counters |
+| `ThreadData.h` | Per-worker state: board copy, PV, killers, history, counters; lifetimes in [Architecture](Architecture.md#3-state-ownership-and-lifetimes) |
 | `SearchLimits.h` | Per-call search constraints (clock / movetime / depth / infinite) |
 | `PVTable.h` | Principal variation storage |
 
@@ -241,7 +241,7 @@ pvs(depth, alpha, beta, ply, is_pv_node):
 - **Re-search**: Only re-search with full window when null-window fails high
 - **PV tracking**: Updates principal variation when alpha improves
 - **TT integration**: Probes before search, stores after
-- **Move ordering**: PV move > Hash move > Captures > Killers > History
+- **Move ordering**: see [Move Ordering](#5-move-ordering) for the current tiers
 - **Null-move pruning**: Gated by `should_try_null_move()` — covers zugzwang, mate-score contamination, consecutive nulls, PV/in-check and a minimum depth
 - **Late Move Reductions**: Later quiet moves searched at reduced depth, re-searched on fail-high
 
