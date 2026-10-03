@@ -243,7 +243,12 @@ jobs:
           OPENING_OFFSET: ${{ inputs.opening_offset }}
         run: |
           set -euo pipefail
-          case "$OPENING_OFFSET" in ''|*[!0-9]*) echo "::error::opening_offset must be a non-negative integer"; exit 1;; esac
+          # No leading zero, which bash arithmetic reads as octal, and short
+          # enough that no later sum can overflow.
+          if [[ ! "$OPENING_OFFSET" =~ ^(0|[1-9][0-9]{0,8})$ ]]; then
+            echo "::error::opening_offset must be a non-negative integer without leading zeros"
+            exit 1
+          fi
           if [ -n "$CANDIDATE_ARMS" ] && [ -n "$CANDIDATE_UCI_OPTIONS" ]; then
             echo "::error::Set candidate_arms or candidate_uci_options, not both."
             exit 1
@@ -355,7 +360,7 @@ jobs:
           # the whole batch: shards x rounds openings are consumed, each yielding
           # one colour-swapped pair. Past the end fastchess wraps and replays,
           # which narrows an error bar without adding information to it.
-          # The offset skips openings, so the batch's last one is offset + needed.
+          # The offset skips openings, so the batch ends at opening offset + R*S.
           needed=$(( OPENING_OFFSET + ROUNDS_PER_SHARD * SHARDS ))
           echo "Book: $BOOK_FILE ($openings openings); batch consumes up to opening $needed"
           if [ "$needed" -gt "$openings" ]; then
@@ -387,10 +392,14 @@ jobs:
           stage="$RUNNER_TEMP/stage"
           python3 .github/scripts/validate_uci_options.py \
             --engine "$stage/candidate" --label candidate --options "$CANDIDATE_UCI_OPTIONS"
-          while IFS=$'\t' read -r arm options; do
-            python3 .github/scripts/validate_uci_options.py \
-              --engine "$stage/candidate" --label "candidate arm $arm" --options "$options"
-          done < <(python3 .github/scripts/plan_arms.py list --arms "$CANDIDATE_ARMS")
+          # Command substitution, so a router refusal fails the step.
+          arm_list=$(python3 .github/scripts/plan_arms.py list --arms "$CANDIDATE_ARMS")
+          if [ -n "$arm_list" ]; then
+            while IFS=$'\t' read -r arm options; do
+              python3 .github/scripts/validate_uci_options.py \
+                --engine "$stage/candidate" --label "candidate arm $arm" --options "$options"
+            done <<< "$arm_list"
+          fi
           python3 .github/scripts/validate_uci_options.py \
             --engine "$stage/reference" --label reference --options "$REFERENCE_UCI_OPTIONS"
 

@@ -189,7 +189,7 @@ def main():
         else:
             print("\n".join(logs_for_arm(arms, args.shards, args.arm, args.logs)))
     except PlanError as error:
-        print(f"::error::{error}", file=sys.stderr)
+        print(f"::error::{error}")
         return 1
     return 0
 
