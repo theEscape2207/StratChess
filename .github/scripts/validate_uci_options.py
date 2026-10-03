@@ -1,5 +1,4 @@
-"""Check that per-engine UCI options the strength lab was dispatched with will
-actually take effect.
+"""Validate intended per-engine UCI options against the advertised domains.
 
 The engine follows the usual UCI convention and ignores an unknown `setoption`
 name, a malformed value and an out-of-domain value alike, in silence
@@ -25,8 +24,8 @@ Usage:
     validate_uci_options.py --engine <binary> --label candidate --options "A=1 B=true"
     validate_uci_options.py --self-test
 
-An empty option string is valid and checks nothing. The engine is asked for its
-table with `uci`, so this costs one process start per side.
+An empty option string still queries and validates the advertised table. Resolution
+includes defaults and harness-owned Threads=1; it does not read settings back.
 """
 
 import argparse
@@ -35,8 +34,8 @@ import subprocess
 import sys
 
 # "option name X type spin default D min L max H" / "... type check default true"
-_SPIN = re.compile(r"^option name (\S+) type spin default (-?\d+) min (-?\d+) max (-?\d+)\s*$")
-_CHECK = re.compile(r"^option name (\S+) type check default (true|false)\s*$")
+_SPIN = re.compile(r"^option name ([A-Za-z][A-Za-z0-9_]*) type spin default (-?[0-9]+) min (-?[0-9]+) max (-?[0-9]+)\s*$")
+_CHECK = re.compile(r"^option name ([A-Za-z][A-Za-z0-9_]*) type check default (true|false)\s*$")
 
 # What SearchTuningSchema::read_uci accepts for an arithmetic field: it rejects
 # any character outside this set before parsing (SearchTuningSchema.cpp:120), so
@@ -51,22 +50,30 @@ RESERVED = ("Threads",)
 
 
 def parse_option_table(uci_output):
-    """{name: (kind, lo, hi, default)} from an engine's `uci` reply; lo/hi are None for a check."""
+    """Return spin/check domains; reject ambiguous or unsupported advertisements."""
     table = {}
     for line in uci_output.splitlines():
         line = line.strip()
         spin = _SPIN.match(line)
-        if spin:
-            table[spin.group(1)] = ("spin", int(spin.group(3)), int(spin.group(4)), spin.group(2))
-            continue
         check = _CHECK.match(line)
-        if check:
-            table[check.group(1)] = ("check", None, None, check.group(2))
+        if spin or check:
+            name = (spin or check).group(1)
+            if name in table:
+                raise ValueError(f"duplicate advertised option '{name}'")
+            if spin:
+                lo, hi, default = int(spin.group(3)), int(spin.group(4)), int(spin.group(2))
+                if not lo <= default <= hi:
+                    raise ValueError(f"advertised option '{name}' has invalid bounds/default")
+                table[name] = ("spin", lo, hi, spin.group(2))
+            else:
+                table[name] = ("check", None, None, check.group(2))
+        elif line == "option" or line.startswith("option ") or line.startswith("option\t"):
+            raise ValueError(f"malformed or unsupported advertised option: {line}")
     return table
 
 
 def validate(options, table, label):
-    """Returns (problems, warnings). An empty problems list means every option will take effect."""
+    """Return (problems, warnings) about syntax/domains, not runtime application."""
     problems = []
     warnings = []
     seen = set()
@@ -105,12 +112,33 @@ def validate(options, table, label):
             if not lo <= number <= hi:
                 problems.append(f"{label}: '{name}'={number} is outside the engine's advertised range [{lo}, {hi}]")
                 continue
-        if value == default:
+        if normalize_value(kind, value) == normalize_value(kind, default):
             # Not an error: a deliberate no-op is how the plumbing is smoke-tested. But an
             # accidental one configures the candidate identically to its reference and spends the
             # whole batch on a null result, which is the same outcome as a typo.
             warnings.append(f"{label}: '{name}'={value} is already the engine's default, so it changes nothing")
     return problems, warnings
+
+
+def normalize_value(kind, value):
+    return int(value) if kind == "spin" else value == "true"
+
+
+def resolve_options(options, table, label):
+    """Return (resolved map or None, problems, warnings), including forced Threads."""
+    problems, warnings = validate(options, table, label)
+    threads = table.get("Threads")
+    if not threads or threads[0] != "spin" or not threads[1] <= 1 <= threads[2]:
+        problems.append(f"{label}: the advertised Threads domain must admit harness-owned Threads=1")
+    if problems:
+        return None, problems, warnings
+    resolved = {name: normalize_value(kind, default)
+                for name, (kind, _lo, _hi, default) in table.items()}
+    for token in options.split():
+        name, value = token.split("=", 1)
+        resolved[name] = normalize_value(table[name][0], value)
+    resolved["Threads"] = 1
+    return resolved, [], warnings
 
 
 def engine_option_table(engine, label):
@@ -124,11 +152,21 @@ def engine_option_table(engine, label):
             timeout=30,
             check=False,
         )
-    except (OSError, subprocess.SubprocessError) as problem:
+    except (OSError, UnicodeError, subprocess.SubprocessError) as problem:
         # A missing, non-executable or hung binary is an engine problem; without this it would
         # surface as a Python traceback with no annotation and read as a defect in this script.
         return {}, f"{label}: could not query {engine}: {problem}"
-    return parse_option_table(result.stdout), None
+    if result.returncode:
+        return {}, f"{label}: UCI query exited with status {result.returncode}"
+    if "uciok" not in (line.strip() for line in result.stdout.splitlines()):
+        return {}, f"{label}: UCI query did not return a complete uciok reply"
+    try:
+        table = parse_option_table(result.stdout)
+    except ValueError as problem:
+        return {}, f"{label}: {problem}"
+    if not table:
+        return {}, f"{label}: the engine advertised no options at all"
+    return table, None
 
 
 SELF_TEST_UCI = """id name StratChessEvolved
@@ -161,6 +199,7 @@ def self_test():
         ("Contempt", ["is not Name=Value"], [], "a bare name"),
         ("Contempt=20 Contempt=40", ["set more than once"], [], "a duplicate name, decided by argument order"),
         ("Contempt=0", [], ["is already the engine's default"], "a spin value equal to the default warns"),
+        ("Hash=064", [], ["is already the engine's default"], "normalized zero-padded defaults warn"),
         ("ReverseFutility=true", [], ["is already the engine's default"], "a check value equal to the default warns"),
         ("Contempt=101", ["outside"], [], "an out-of-range value does not also warn about the default"),
     ]
@@ -186,7 +225,39 @@ def self_test():
         failures += 1
         print(f"FAIL: the parser lost a spin option's bounds or default: {table['Contempt']}")
 
-    print(f"\n{len(cases) + 2} checks, {failures} failed")
+    extra_checks = 0
+
+    def expect(description, condition):
+        nonlocal failures, extra_checks
+        extra_checks += 1
+        print(f"{'ok' if condition else 'FAIL'}: {description}")
+        if not condition:
+            failures += 1
+
+    for output, description in (
+        (SELF_TEST_UCI + "option name Hash type spin default 64 min 1 max 4096\n", "duplicate advertised names fail"),
+        ("option name Book type string default none\n", "unsupported advertised types fail"),
+        ("option name Hash type spin default 4 min 5 max 10\n", "out-of-domain defaults fail"),
+        ("option name Bad Name type check default true\n", "unsupported advertised names fail"),
+        ("option name Hash type spin default nope min 1 max 5\n", "malformed advertised values fail"),
+    ):
+        try:
+            parse_option_table(output)
+        except ValueError:
+            expect(description, True)
+        else:
+            expect(description, False)
+    resolved, errors, _ = resolve_options("Hash=064", table, "candidate")
+    expect("resolution includes normalized defaults and forced Threads",
+           not errors and resolved == {"Threads": 1, "Hash": 64, "Contempt": 0, "ReverseFutility": True})
+    resolved, errors, _ = resolve_options("", dict(table, Threads=("spin", 1, 32, "4")), "candidate")
+    expect("harness Threads overrides the advertised default", not errors and resolved["Threads"] == 1)
+    resolved, errors, _ = resolve_options("Hash=0", table, "candidate")
+    expect("invalid overrides produce no resolved map", resolved is None and bool(errors))
+    threads_table = dict(table, Threads=("spin", 2, 32, "2"))
+    resolved, errors, _ = resolve_options("", threads_table, "candidate")
+    expect("resolution refuses an invalid harness-owned Threads domain", resolved is None and bool(errors))
+    print(f"\n{len(cases) + 2 + extra_checks} checks, {failures} failed")
     return 1 if failures else 0
 
 
@@ -203,10 +274,6 @@ def main():
 
     if not args.engine:
         parser.error("--engine is required unless --self-test is given")
-
-    if not args.options.strip():
-        print(f"{args.label}: no UCI options requested")
-        return 0
 
     table, error = engine_option_table(args.engine, args.label)
     if error:
