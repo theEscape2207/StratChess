@@ -4,7 +4,7 @@ Project glossary. Terms whose boundaries matter, defined once so code, comments,
 mean the same thing by them.
 
 This is a glossary and nothing else — no thresholds, no ordering tiers, no implementation detail.
-Design decisions live in `.claude/plans/`, architecture in `CLAUDE.md`.
+Design decisions live in `.claude/plans/`, architecture in [Docs/Architecture.md](Docs/Architecture.md).
 
 ## Search telemetry
 
@@ -33,6 +33,9 @@ wrong.
 Promotions and checks are *noisy* moves in the general literature and are neither captures nor quiet
 in that scheme. The engine does not use that classification; it treats a promotion as its own case
 where one is needed.
+
+**History-eligible quiet** — a move that neither captures nor promotes. A checking move can still
+belong to this category.
 
 ### In check
 

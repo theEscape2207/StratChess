@@ -24,6 +24,13 @@ Each ledger is a narrow table plus a `Row detail` section beneath it, in the sam
 carries the mechanical facts; the prose section carries what a reader could not reconstruct from
 them.
 
+For new experiments, use existing issue/design notes to record the question, role (diagnostic,
+screen or confirmation), stopping rule and agreed budget **before dispatch**. Link that declaration
+from the row detail, and retain every tried arm, including weak or inconclusive ones, with its
+options and run reference. Mark invalid/cancelled attempts as discarded with a reason. A fresh
+confirmation names the screen that selected it and its opening range. Use the existing ledger
+appropriate to the instrument/reference; no separate decision-record template is needed.
+
 **The two move-quality ledgers are the exception to the shape and to the vocabulary.** A strength
 row is one number with an interval; a move-quality run is a wide profile — blunder rates by phase
 and by piece, observed score by reported band — so those two files carry a table per run rather
@@ -42,7 +49,7 @@ Tier 2 table, which score exactly the rows the oracle judged. Their instrument i
 | `non-regression` | an accepted H1 on a `NonRegression` SPRT, or an interval tight enough to bound any regression |
 | `regression` | an interval excluding zero on the negative side |
 | `inconclusive @ N` | the run hit its N-game cap without crossing a bound |
-| `calibration` | both sides build the same engine source — carries no strength information |
+| `calibration` | an intentional harness check (null or known-sign control), not a candidate-strength claim; same source with different options can instead be a strength comparison |
 | `smoke` | too few games to resolve anything; run to prove the plumbing works |
 | `discarded` | see the discard rules below |
 

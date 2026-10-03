@@ -7,6 +7,7 @@ This file holds the rules that change what you do. Detail is pointed at, not dup
 
 | Need | Read |
 |---|---|
+| module ownership, state lifetimes, search lifecycle | `Docs/Architecture.md` |
 | non-obvious API contracts before an engine edit | `Docs/EngineContracts.md` |
 | validation tiers, standing decisions, worktree gotchas | `Docs/Workflow.md` |
 | what each CI workflow runs, and when | `Docs/CI.md` |
