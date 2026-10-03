@@ -24,15 +24,18 @@ After 1. e4:
 rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1
 */
 
-// Convert unexpected parser exceptions into the existing error channel.
+// Convert unexpected parser exceptions into the error channel.
 // NOLINTNEXTLINE(bugprone-exception-escape)
-std::optional<std::string> FENParser::ParseFEN(const std::string& fen, FENGameState& outState,
-                                               std::vector<std::tuple<ePiece, eSquare>>& outPieces) noexcept
+std::expected<FENParser::ParsedFEN, std::string> FENParser::ParseFEN(const std::string& fen) noexcept
 {
 	try {
-		return ParseFENImpl(fen, outState, outPieces);
+		ParsedFEN parsed;
+		if (auto err = ParseFENImpl(fen, parsed.state, parsed.pieces)) {
+			return std::unexpected(std::move(*err));
+		}
+		return parsed;
 	} catch (...) {
-		return std::string("internal error parsing FEN");
+		return std::unexpected(std::string("internal error parsing FEN"));
 	}
 }
 

@@ -4,6 +4,7 @@
 #include "GameState.h"
 #include "Config.h"
 #include <cstdint>
+#include <expected>
 #include <string>
 #include <vector>
 #include <tuple>
@@ -28,10 +29,13 @@ class FENParser final {
 		int fullMoveCounter{1};
 	};
 
-	// Primary interface - parse FEN into standalone structures
-	// This is what Board::SetupFromFEN() should call
-	static std::optional<std::string> ParseFEN(const std::string& fen, FENGameState& outState,
-	                                           std::vector<std::tuple<ePiece, eSquare>>& outPieces) noexcept;
+	struct ParsedFEN {
+		FENGameState state;
+		std::vector<std::tuple<ePiece, eSquare>> pieces;
+	};
+
+	// Primary interface - parse FEN into standalone structures, or the reason it is malformed.
+	[[nodiscard]] static std::expected<ParsedFEN, std::string> ParseFEN(const std::string& fen) noexcept;
 
 	// Validate FEN metadata against actual board state, repairing (clearing) and reporting any
 	// inconsistency rather than rejecting the position. outWarnings, when non-null, receives one

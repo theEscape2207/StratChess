@@ -80,47 +80,40 @@ TEST_CASE("FenBatch::ClassifyLine: EPD operations are still rejected", "[fen]")
 
 TEST_CASE("FENParser::ParseFEN: 4-field FEN defaults halfmove to 0 and fullmove to 1", "[fen]")
 {
-	FENParser::FENGameState state;
-	std::vector<std::tuple<ePiece, eSquare>> pieces;
-	auto err = FENParser::ParseFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -", state, pieces);
+	const auto parsed = FENParser::ParseFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -");
 
-	REQUIRE_FALSE(err.has_value());
-	CHECK(state.sideToMove == eColor::WHITE);
-	CHECK(state.halfMoveClock == 0);
-	CHECK(state.fullMoveCounter == 1);
+	REQUIRE(parsed.has_value());
+	CHECK(parsed->state.sideToMove == eColor::WHITE);
+	CHECK(parsed->state.halfMoveClock == 0);
+	CHECK(parsed->state.fullMoveCounter == 1);
+	CHECK(parsed->pieces.size() == 32);
 }
 
 TEST_CASE("FENParser::ParseFEN: 5-field FEN keeps the halfmove clock, defaults fullmove to 1", "[fen]")
 {
-	FENParser::FENGameState state;
-	std::vector<std::tuple<ePiece, eSquare>> pieces;
-	auto err = FENParser::ParseFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 7", state, pieces);
+	const auto parsed = FENParser::ParseFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 7");
 
-	REQUIRE_FALSE(err.has_value());
-	CHECK(state.sideToMove == eColor::BLACK);
-	CHECK(state.halfMoveClock == 7);
-	CHECK(state.fullMoveCounter == 1);
+	REQUIRE(parsed.has_value());
+	CHECK(parsed->state.sideToMove == eColor::BLACK);
+	CHECK(parsed->state.halfMoveClock == 7);
+	CHECK(parsed->state.fullMoveCounter == 1);
 }
 
 TEST_CASE("FENParser::ParseFEN: 6-field FEN keeps both counters", "[fen]")
 {
-	FENParser::FENGameState state;
-	std::vector<std::tuple<ePiece, eSquare>> pieces;
-	auto err = FENParser::ParseFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 12 34", state, pieces);
+	const auto parsed = FENParser::ParseFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 12 34");
 
-	REQUIRE_FALSE(err.has_value());
-	CHECK(state.halfMoveClock == 12);
-	CHECK(state.fullMoveCounter == 34);
+	REQUIRE(parsed.has_value());
+	CHECK(parsed->state.halfMoveClock == 12);
+	CHECK(parsed->state.fullMoveCounter == 34);
 }
 
 TEST_CASE("FENParser::ParseFEN: fewer than 4 fields reports the field-count error", "[fen]")
 {
-	FENParser::FENGameState state;
-	std::vector<std::tuple<ePiece, eSquare>> pieces;
-	auto err = FENParser::ParseFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq", state, pieces);
+	const auto parsed = FENParser::ParseFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq");
 
-	REQUIRE(err.has_value());
-	CHECK(err->find("too few fields") != std::string::npos);
+	REQUIRE_FALSE(parsed.has_value());
+	CHECK(parsed.error() == "too few fields in FEN");
 }
 
 namespace {
@@ -170,9 +163,9 @@ TEST_CASE("FENParser::ValidatePositionAgainstFENMetadata: every correction still
 	Board board;
 	REQUIRE(board.SetupFromFEN(fen));
 
-	FENParser::FENGameState state;
-	std::vector<std::tuple<ePiece, eSquare>> pieces;
-	REQUIRE_FALSE(FENParser::ParseFEN(fen, state, pieces));
+	auto parsed = FENParser::ParseFEN(fen);
+	REQUIRE(parsed.has_value());
+	FENParser::FENGameState& state = parsed->state;
 	REQUIRE(state.castlingRights == CastlingRights::WHITE_QUEENSIDE);
 	REQUIRE(state.epSquare == e6);
 
