@@ -17,12 +17,6 @@ class Board final {
 	// constructor, and every caller passes a literal, so a malformed one is a bug in the caller.
 	// In Release the board is left empty, matching SetupFromFEN's contract below.
 	explicit Board(const std::string& fen);
-	~Board() = default;
-
-	Board(const Board&) = default;
-	Board& operator=(const Board&) = default;
-	Board(Board&&) = default;
-	Board& operator=(Board&&) = default;
 
 	// --- Position setup ---
 	void SetDefaultBoard();
@@ -55,7 +49,7 @@ class Board final {
 	// last permanently-committed position. Call after any move that will never
 	// be undone (a real game move, or a UCI position replay) — state_history_
 	// only needs to span search recursion, not game length.
-	size_t GetSearchDepth() const noexcept { return currentPly_; }
+	size_t GetSearchDepth() const noexcept { return current_ply_; }
 	void ResetSearchDepth() noexcept;
 
 	// --- Position queries ---
@@ -83,10 +77,15 @@ class Board final {
 	// For CAPTURE / PROMOTION_*_CAPTURE: the piece on move.to().
 	// For EP_CAPTURE: the opposite-side pawn (not on move.to()).
 	// For all other move types: NO_PIECE.
-	ePiece GetCapturedPiece(const Move& m) const noexcept;
+	ePiece GetCapturedPiece(const Move& m) const noexcept
+	{
+		if (!MoveHelper::IsCapture(m))
+			return ePiece::NO_PIECE;
+		return (m.flags() == MoveFlags::EP_CAPTURE) ? PieceHelper::OppositePawn(side_to_move_) : mailbox_[m.to()];
+	}
 
 	// Returns true if any square covered by mask is occupied
-	bool IsOccupied(BITBOARD mask) const noexcept { return Bits::isAnyBitSet(bitboards_.at(ALL_PIECES), mask); }
+	bool IsOccupied(BITBOARD mask) const noexcept { return Bits::isAnyBitSet(bitboards_[ALL_PIECES], mask); }
 
 	bool IsLegalMove(const Move& move)
 	{
@@ -99,10 +98,14 @@ class Board final {
 	bool is_repetition(int ply) const;
 
 	// --- State accessors ---
-	eColor GetCurrentColor() const noexcept { return sideToMove_; }
+	eColor GetCurrentColor() const noexcept { return side_to_move_; }
 
-	ePiece GetPiece(eSquare square) const noexcept { return mailbox_.at(square); }
-	ePiece GetPiece(int square) const noexcept { return mailbox_.at(static_cast<eSquare>(square)); }
+	ePiece GetPiece(eSquare square) const noexcept
+	{
+		assert(square < ALL_SQUARES);
+		return mailbox_[square];
+	}
+	ePiece GetPiece(int square) const noexcept { return GetPiece(static_cast<eSquare>(square)); }
 
 	int GetMaterialScore(eColor color) const noexcept { return material_score_[color]; }
 
@@ -142,8 +145,8 @@ class Board final {
 
   private:
 	using TBitboards = std::array<BITBOARD, ALL_BITBOARDS>;
-	using sqPieces = std::tuple<ePiece, eSquare>;
-	using squareCol = std::vector<sqPieces>;
+	using PiecePlacement = std::tuple<ePiece, eSquare>;
+	using PiecePlacements = std::vector<PiecePlacement>;
 
 	// One ply's reversible state: every field precedes the move except captured_piece.
 	// zobrist_hash, last_irreversible_ply and captured_piece are meaningful only in history entries.
@@ -159,17 +162,17 @@ class Board final {
 		uint8_t castling_rights{CastlingRights::ALL};
 		ePiece captured_piece{ePiece::NO_PIECE};
 	};
-	static_assert(sizeof(PositionState) == 24, "PositionState must stay padding-free; see Board.h");
+	static_assert(sizeof(PositionState) == 24, "PositionState must stay padding-free");
 
 	// --- Internal position setup ---
-	void setup_board(const squareCol&);
+	void setup_board(const PiecePlacements&);
 	void clear_board();
 	bool setup_from_fen_impl(const std::string& fen, std::vector<std::string>* repairs);
 
 	// True if the position these pieces describe can legally be on the board with `sideToMove` to
 	// move. Evaluated on a scratch board, so it is safe to ask before committing anything: a caller
 	// that rejects a position must leave the current one untouched.
-	static bool position_is_legal(const squareCol& pieces, eColor sideToMove);
+	static bool position_is_legal(const PiecePlacements& pieces, eColor side_to_move);
 
 	// --- Low-level piece manipulation (bitboard + mailbox, no material update) ---
 	// Note: these also update zobrist_hash_ as a side-effect.
@@ -194,25 +197,15 @@ class Board final {
 		mailbox_[square] = piece;
 	}
 
-	ePiece get_captured_piece(const Move& move) const noexcept
-	{
-		if (!MoveHelper::IsCapture(move))
-			return ePiece::NO_PIECE;
-		return (move.flags() == MoveFlags::EP_CAPTURE)
-		           ? PieceHelper::OppositePawn(sideToMove_)
-		           : // EP capture is a pawn, but the captured piece is not on the destination square
-		           mailbox_[move.to()];
-	}
-
 	// --- Bitboard helpers ---
-	bool clear_bitboard_square(TBitboards::size_type iBoard, eSquare square)
+	bool clear_bitboard_square(TBitboards::size_type index, eSquare square) noexcept
 	{
-		return BitBoardHelper::clear_bits(bitboards_[iBoard], g_bbMask[square]);
+		return BitBoardHelper::clear_bits(bitboards_[index], g_bbMask[square]);
 	}
 
-	void set_bitboard_square(TBitboards::size_type iPiece, eSquare square) noexcept
+	void set_bitboard_square(TBitboards::size_type index, eSquare square) noexcept
 	{
-		BitBoardHelper::set_bits(bitboards_[iPiece], g_bbMask[square]);
+		BitBoardHelper::set_bits(bitboards_[index], g_bbMask[square]);
 	}
 
 	// Returns the bitboard array index for a piece type + color combination
@@ -227,12 +220,12 @@ class Board final {
 	void update_zobrist_side() noexcept;
 	void change_player() noexcept
 	{
-		sideToMove_ = (sideToMove_ == eColor::WHITE) ? eColor::BLACK : eColor::WHITE;
+		side_to_move_ = (side_to_move_ == eColor::WHITE) ? eColor::BLACK : eColor::WHITE;
 		update_zobrist_side();
 	}
 
 	// --- Repetition tracking ---
-	void update_threefold_rep(const Move&, ePiece movPiece);
+	void update_threefold_rep(const Move&, ePiece mov_piece);
 	void push_position();
 	void pop_position();
 	void reset_repetition_history();
@@ -243,12 +236,12 @@ class Board final {
 
 	// ---- Member variables ----
 
-	eColor sideToMove_{eColor::WHITE};
+	eColor side_to_move_{eColor::WHITE};
 
 	std::array<ePiece, ALL_SQUARES> mailbox_{};
 	TBitboards bitboards_{{0}};
 
-	size_t currentPly_{0};
+	size_t current_ply_{0};
 
 	// Repetition tracking
 	std::vector<uint64_t> position_history_;
@@ -260,16 +253,16 @@ class Board final {
 	PositionState state_{};
 	std::array<PositionState, MAX_PLY> state_history_{};
 
-	void snapshot_state(ePiece capturedPiece) noexcept
+	void snapshot_state(ePiece captured_piece) noexcept
 	{
-		PositionState& saved = state_history_[currentPly_];
+		PositionState& saved = state_history_[current_ply_];
 		saved = state_;
 		saved.zobrist_hash = zobrist_hash_;
 		saved.last_irreversible_ply = static_cast<uint32_t>(last_irreversible_ply_);
-		saved.captured_piece = capturedPiece;
+		saved.captured_piece = captured_piece;
 	}
 
-	void restore_state() noexcept { state_ = state_history_[currentPly_]; }
+	void restore_state() noexcept { state_ = state_history_[current_ply_]; }
 
 	uint64_t zobrist_hash_{0};
 };

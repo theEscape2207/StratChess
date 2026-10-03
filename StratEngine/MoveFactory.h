@@ -9,7 +9,7 @@
 //   Whether a move captures is encoded in the MoveType flag (CAPTURE_BIT, bit 2).
 namespace MoveFactory {
 
-	// General make-move helper. Only the move type matters now — no captured piece stored.
+	// General make-move helper; the move type carries everything the Move stores.
 	inline Move MakeMove(eSquare from, eSquare to, MoveType moveType = MoveType::QUIET) noexcept
 	{
 		return Move(from, to, moveType);
@@ -21,7 +21,7 @@ namespace MoveFactory {
 	// from the board (Board::GetCapturedPiece) when needed for sorting or undo.
 	inline Move MakeCapture(eSquare from, eSquare to) noexcept { return Move(from, to, MoveType::CAPTURE); }
 
-	// promotedPiece is still needed to derive the correct MoveType flag.
+	// promotedPiece selects the MoveType flag.
 	// isCapture=true selects the PROMOTION_*_CAPTURE variant (bits 3+2 both set).
 	inline Move MakePromotion(eSquare from, eSquare to, ePiece promotedPiece, bool isCapture = false) noexcept
 	{
