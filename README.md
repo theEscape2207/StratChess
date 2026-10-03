@@ -1,6 +1,6 @@
 # StratChess Evolved
 
-A UCI chess engine written in modern C++20, focused on playing strength while keeping the code
+A UCI chess engine written in modern C++23, focused on playing strength while keeping the code
 clear enough to keep changing.
 
 ## Features
