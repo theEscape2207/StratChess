@@ -2,7 +2,7 @@
 
 **Issue:** [#705](https://github.com/theEscape2207/StratChess/issues/705)
 **Baseline:** `origin/main`, `ee45484be904c1560f795d79b77195508df9a53d`.
-**State:** self-reviewed; awaiting owner-routed design review before implementation.
+**State:** reviewed by Claude Opus 5.5; all seven findings accepted; approved for execution.
 
 ## Goal
 
@@ -58,6 +58,9 @@ do not create a difference. Existing typo/range/unsigned-decimal/duplicate/
 reserved-option checks remain. Correct the validator's current overstatement
 that success proves every option takes effect.
 
+Reject arms with equal resolved maps even when calibration is declared: they
+spend budget on the same condition against the same reference.
+
 Reject comparing raw override strings: an empty reference and an explicit
 default-on candidate can describe the same settings.
 
@@ -69,6 +72,8 @@ comparison and report, and permits an identical arm. It does not bypass option,
 query, routing or completion validation. A mixed run with an identical arm must
 declare calibration for the run; the report still classifies every arm's actual
 differences separately so differing arms are not described as null.
+The flag is required only for an identical arm; a known-sign control with
+different time controls is already permitted and the flag only labels it.
 
 For each arm, refuse when all three hold and calibration was not declared:
 
@@ -87,6 +92,8 @@ This catches a docs-only revision difference without inventing semantic
 equivalence for arbitrary code changes. A failure to obtain identity evidence
 fails preflight. Different inputs/binaries are a permitted code comparison,
 not proof of different chess behaviour.
+Shared CMake definitions and forced Threads=1 are recorded but cannot distinguish
+the sides under today's workflow. Future per-side definitions must join the rule.
 
 Accept time controls in the documented lab form `seconds+increment`, with
 finite decimal base > 0 and increment >= 0, normalized using Decimal. Thus
@@ -96,7 +103,9 @@ different condition. Leave the existing low-increment warning intact.
 
 Remove the setup warning equating a matching commit with a null experiment:
 the complete comparison now owns that decision. Reject the simpler same-SHA
-rule because #702 deliberately compares options on one binary.
+rule because #702 run 37125713346 compares candidate a922cee with reference
+4dafbdd: unequal revisions whose engine/build input entries are equal, with
+deliberately different options. Preserve that case as an equal-input fixture.
 
 ### D3: Retain a readable intended comparison, with its verification limit
 
@@ -138,9 +147,12 @@ Verify every PGN game's White/Black names against the expected staged candidate 
 are valid. Missing names or another arm's names fail. Locate the games tagged
 `Round "1"` and verify both FENs' four position fields against the pinned EPD
 book entry assigned by
-`opening_offset + shard * rounds_per_shard` (zero-based). Download the existing
-toolkit's book for this check. Require the two round-one games with opposite
-colours. Keep the existing distinct-start-FEN check as an additional invariant,
+`opening_offset + shard * rounds_per_shard` (zero-based over nonblank EPD lines).
+Upload the book alone with the comparison artifact at 90-day shard retention;
+the aggregate must not depend on the one-day toolkit's lifetime. Require exactly
+2N games with rounds 1..N each appearing twice, with opposite colours, where
+N is rounds_per_shard. Check both round-one games against the assigned position.
+Keep the existing distinct-start-FEN check as an additional invariant,
 using round one rather than file order; move its ownership into the verifier
 to avoid parallel shell/Python checks. Concurrency writes completed games out
 of round order, so the first physical PGN game need not use the assigned start.
@@ -179,7 +191,8 @@ these changes apply only to future dispatches containing this implementation.
   `37125713346`, artifact `strength-37125713346-shard-0`, using its toolkit book.
   The PGN has `candidate-a922cee-armA` / `reference-4dafbdd` White/Black names,
   1,480 games and rounds 1–740. Its first completed game is round 2, whose
-  position matches book entry 13,322; both round-one games match entry 13,321.
+  position matches one-based nonblank EPD entry 13,322; both round-one games
+  match one-based entry 13,321 (zero-based 13,320).
   This changed D4 to use round tags, not physical order. Preserve these minimal
   headers as fixtures during implementation. Future runner formats are not
   assumed compatible: missing/ambiguous required headers fail validation.
@@ -213,7 +226,8 @@ assertion. These passes demonstrate existing coverage, not coverage of the gaps.
 Fixtures must close the invariants above: default-on candidate versus empty
 reference fails; reordered/redundant/zero-padded overrides cannot evade it;
 real option differences, code/build-input differences and unequal time controls
-pass; declared null and known-sign calibrations pass; old option tables and
+pass; declared null and known-sign calibrations pass; resolved duplicate arms
+fail even during calibration; old option tables and
 failed queries retain validation semantics; and every multi-arm setting appears
 in retained output with its limitation. Test equal source inputs with unequal
 binary bytes, equal binaries at unequal revisions and docs-only revisions.
@@ -222,7 +236,8 @@ For completion/routing, test complete single/multi-arm batches, a truncated but
 parseable log, an excess-count log, counts that offset each other, missing and
 duplicate indices, swapped-arm PGNs, wrong assigned round-one FEN, missing or
 duplicated round-one games, out-of-order completed PGNs, and absent
-comparison evidence. Complete cases preserve known pooled Elo/error bars;
+comparison evidence. Require PGN/log agreement with a complete log and short PGN
+fixture. Complete cases preserve known pooled Elo/error bars;
 invalid cases publish no pooled figure. Exercise the actual CLI arguments used
 by the workflow so omission of planned counts is observable.
 
@@ -256,6 +271,6 @@ it adds no engine per-node work.
 
 Self-review changed D4's start check to use round-one tags after retained PGN
 evidence disproved the first-physical-game assumption. No approved decisions
-have changed: implementation has not started. Delete this
+have changed beyond the seven accepted review refinements. Delete this
 plan in the implementation PR only after review dispositions and Harvest are
 complete and no inbound reference requires retaining it.
