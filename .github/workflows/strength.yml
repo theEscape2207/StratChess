@@ -200,6 +200,9 @@ jobs:
       - name: Verify the arm router
         run: python3 .github/scripts/plan_arms.py --self-test
 
+      - name: Verify workflow integrity boundaries
+        run: python3 .github/scripts/test_strength_workflow.py --self-test
+
       - name: Plan the shards
         id: plan
         env:
@@ -393,6 +396,9 @@ jobs:
         run: |
           set -euo pipefail
           stage="$RUNNER_TEMP/stage"
+          evidence="$RUNNER_TEMP/evidence"
+          mkdir -p "$evidence"
+          cp "$stage/$BOOK_FILE" "$evidence/$BOOK_FILE"
           calibration_args=()
           if [ "$CALIBRATION" = "true" ]; then calibration_args+=(--calibration); fi
           python3 .github/scripts/compare_lab_configs.py \
@@ -401,13 +407,13 @@ jobs:
             --candidate-options "$CANDIDATE_UCI_OPTIONS" --reference-options "$REFERENCE_UCI_OPTIONS" \
             --arms "$CANDIDATE_ARMS" --candidate-tc "$CANDIDATE_TC" --reference-tc "$REFERENCE_TC" \
             --cmake-defines="$CMAKE_DEFINES" --toolchain "GCC 15 on ubuntu-26.04, Release" \
-            "${calibration_args[@]}" --output "$RUNNER_TEMP/comparison.md"
+            "${calibration_args[@]}" --output "$evidence/comparison.md"
 
       - name: Retain the intended comparison in the build summary
         if: always()
         run: |
-          if [ -f "$RUNNER_TEMP/comparison.md" ]; then
-            cat "$RUNNER_TEMP/comparison.md" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "$RUNNER_TEMP/evidence/comparison.md" ]; then
+            cat "$RUNNER_TEMP/evidence/comparison.md" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       # The aggregate may be rerun after the one-day executable toolkit expires.
@@ -416,9 +422,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: strength-${{ github.run_id }}-comparison
-          path: |
-            ${{ runner.temp }}/comparison.md
-            ${{ runner.temp }}/stage/${{ env.BOOK_FILE }}
+          path: ${{ runner.temp }}/evidence
           if-no-files-found: warn
           retention-days: 90
 

@@ -344,8 +344,12 @@ formula, comparison preflight and shard verifier before anything expensive runs.
 both engines, resolves the intended comparison, and stages them with fastchess and the book
 as **one artifact**, so every shard provably plays the same two binaries against the same book.
 `match` is the shard matrix. `aggregate` verifies the whole batch before pooling any arm.
-The normal PR gate also runs these four Python self-tests in its Linux Release leg, so harness
-failures can be checked without dispatching a strength match.
+The normal PR gate also runs these Python self-tests and workflow boundary fixtures in its Linux
+Release leg, so harness failures can be checked without dispatching a strength match.
+
+`.github/scripts/test_strength_workflow.py` runs the workflow's Bash blocks against complete and
+incomplete fixture batches and models directory-upload relative paths. This protects the evidence
+layout as well as the Python helpers: a misplaced retained book must fail locally before a match.
 
 | Input | Meaning |
 |---|---|

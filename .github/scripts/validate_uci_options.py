@@ -141,7 +141,7 @@ def resolve_options(options, table, label):
 
 
 def engine_option_table(engine, label):
-    """(table, error). A non-None error means the engine could not be asked."""
+    """(table, error). A non-None error means query or advertisement validation failed."""
     try:
         result = subprocess.run(
             [engine, "uci"],
