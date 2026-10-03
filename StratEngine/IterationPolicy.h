@@ -45,8 +45,8 @@ namespace Engine {
 		double completion_ratio;
 	};
 
-	enum class IterationDisposition { COMPLETED, ACCEPTED_INTERRUPTED, REJECTED };
-	enum class RejectionReason { NONE, INCOMPLETE, TOO_FEW_NODES, SHORT_PV, MOVE_CHANGED };
+	enum class IterationDisposition : uint8_t { COMPLETED, ACCEPTED_INTERRUPTED, REJECTED };
+	enum class RejectionReason : uint8_t { NONE, INCOMPLETE, TOO_FEW_NODES, SHORT_PV, MOVE_CHANGED };
 
 	struct IterationAssessment {
 		IterationDisposition decision;
@@ -55,7 +55,7 @@ namespace Engine {
 		IterationState next_state;
 	};
 
-	enum class IterationStopReason { NONE, SOFT_LIMIT, MATE };
+	enum class IterationStopReason : uint8_t { NONE, SOFT_LIMIT, MATE };
 
 	struct IterationContinuation {
 		IterationStopReason stop_reason;
