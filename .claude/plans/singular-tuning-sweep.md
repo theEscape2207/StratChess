@@ -203,6 +203,6 @@ The Elo verdicts come from the screen and the optional confirmation, recorded in
 | Decision / rationale | Lands in |
 |---|---|
 | `candidate_arms` semantics, shard interleaving, whole-run discard rule | `strength.yml` comments, `Docs/CI.md` → Strength lab input table |
-| When to use a multi-arm screen, and the ±6.2/arm precision | `measure-strength/reference/strength-lab.md` |
+| When to use a multi-arm screen, and per-arm precision (scales with √(games per arm)) | `measure-strength/reference/strength-lab.md` |
 | Screen and confirmation results | `Measurements/ci-per-change.md`, #702 comment |
 | A changed default, if any | `SearchTuning.def`, `Docs/Changelog.md` |
