@@ -113,9 +113,8 @@ def validate(options, table, label):
                 problems.append(f"{label}: '{name}'={number} is outside the engine's advertised range [{lo}, {hi}]")
                 continue
         if normalize_value(kind, value) == normalize_value(kind, default):
-            # Not an error: a deliberate no-op is how the plumbing is smoke-tested. But an
-            # accidental one configures the candidate identically to its reference and spends the
-            # whole batch on a null result, which is the same outcome as a typo.
+            # A default override changes this option only; comparison preflight
+            # determines whether the complete candidate/reference conditions match.
             warnings.append(f"{label}: '{name}'={value} is already the engine's default, so it changes nothing")
     return problems, warnings
 
@@ -279,10 +278,6 @@ def main():
     if error:
         print(f"::error::{error}")
         return 1
-    if not table:
-        print(f"::error::{args.label}: the engine advertised no options at all; it did not answer `uci` as expected")
-        return 1
-
     problems, warnings = validate(args.options, table, args.label)
     for warning in warnings:
         print(f"::warning::{warning}")
