@@ -148,15 +148,13 @@ bool Board::SetupFromFEN(const std::string& fen, std::vector<std::string>& repai
 
 bool Board::setup_from_fen_impl(const std::string& fen, std::vector<std::string>* repairs)
 {
-	FENParser::FENGameState state;
-	std::vector<std::tuple<ePiece, eSquare>> pieces;
-
 	// Nothing below this point runs on a parse error, so the board keeps its previous contents.
-	auto parseError = FENParser::ParseFEN(fen, state, pieces);
-	if (parseError) {
-		spdlog::default_logger()->error("FEN parse error: {}", *parseError);
+	auto parsed = FENParser::ParseFEN(fen);
+	if (!parsed) {
+		spdlog::default_logger()->error("FEN parse error: {}", parsed.error());
 		return false;
 	}
+	auto& [state, pieces] = *parsed;
 
 	// Checked before anything is applied, so a rejected FEN leaves this board as it was.
 	if (!position_is_legal(pieces, state.sideToMove)) {
