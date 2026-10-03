@@ -146,6 +146,10 @@ the default only if that run's interval excludes zero. A screen estimate is neve
 gain, because the best of several noisy arms is biased upward. If no arm reaches +3, skip the
 confirmation, keep the defaults, record both screens and close #702.
 
+**Every run plays its own openings:** screen 1 uses `opening_offset=0`, screen 2 uses 13,320 and
+the confirmation uses 26,640. A confirmation on the screen's openings would reuse the opening
+draw that may have helped its arm win the selection, so it would not be independent of it.
+
 **Reject** any arm whose upper bound is below zero. It is never carried into screen 2.
 
 ### D5: Rejected: SPSA or another continuous tuner
