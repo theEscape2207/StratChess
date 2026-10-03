@@ -33,6 +33,10 @@ on:
       candidate_arms:
         description: "Multi-arm screen: ';'-separated candidate option sets, each in candidate_uci_options syntax. Shard i plays arm i mod K, and each arm is pooled on its own shards against the shared reference. shards must be a multiple of K; cannot be combined with candidate_uci_options"
         default: ""
+      calibration:
+        description: "Declare an intentional harness calibration. Required for an identical comparison; labels a known-sign control without bypassing option or completion checks"
+        type: boolean
+        default: false
       opening_offset:
         description: "Book openings to skip before shard 0's slice. Give each run of a multi-run experiment its own range, so a confirmation never replays the openings a screen selected on"
         default: "0"
@@ -156,9 +160,6 @@ jobs:
               echo "::error::No merge base between this ref and origin/main."
               exit 1
             fi
-            if [ "$resolved" = "$(git rev-parse HEAD)" ]; then
-              echo "::warning::The merge base is this very commit, so both sides are identical. This run is a null test, not a measurement of a change."
-            fi
           else
             resolved="$REFERENCE_REF"
           fi
@@ -190,6 +191,9 @@ jobs:
       # verified before the option string it will be given reaches an engine.
       - name: Verify the UCI option checker
         run: python3 .github/scripts/validate_uci_options.py --self-test
+
+      - name: Verify comparison integrity
+        run: python3 .github/scripts/compare_lab_configs.py --self-test
 
       # Routing a log to the wrong arm would credit one setting with another's
       # games and still print a plausible table, so the router is checked first.
@@ -374,34 +378,49 @@ jobs:
             echo "openings=$openings"
           } >> "$GITHUB_OUTPUT"
 
-      # An unknown option name, a malformed value and an out-of-domain value are
-      # all ignored in silence by UCI convention (UCIHandler.cpp:552-555), and
-      # fastchess forwards option.X=Y without knowing what the engine supports.
-      # So a typo here would configure the candidate exactly like its reference
-      # and spend three hours measuring nothing -- reported as a null result,
-      # which is indistinguishable from a real one. Checked against each engine's
-      # own advertised table, and against the staged binaries that will actually
-      # play rather than against this workflow's idea of them.
-      - name: Verify the requested UCI options
+      # Resolve defaults even with empty overrides, against the staged binaries
+      # that will play. Refuse unintended identical conditions before any shard.
+      - name: Verify the resolved comparison
         env:
           CANDIDATE_UCI_OPTIONS: ${{ inputs.candidate_uci_options }}
           REFERENCE_UCI_OPTIONS: ${{ inputs.reference_uci_options }}
           CANDIDATE_ARMS: ${{ inputs.candidate_arms }}
+          REFERENCE_SHA: ${{ needs.setup.outputs.reference_sha }}
+          CANDIDATE_TC: ${{ inputs.candidate_tc }}
+          REFERENCE_TC: ${{ inputs.reference_tc }}
+          CMAKE_DEFINES: ${{ inputs.cmake_defines }}
+          CALIBRATION: ${{ inputs.calibration }}
         run: |
           set -euo pipefail
           stage="$RUNNER_TEMP/stage"
-          python3 .github/scripts/validate_uci_options.py \
-            --engine "$stage/candidate" --label candidate --options "$CANDIDATE_UCI_OPTIONS"
-          # Command substitution, so a router refusal fails the step.
-          arm_list=$(python3 .github/scripts/plan_arms.py list --arms "$CANDIDATE_ARMS")
-          if [ -n "$arm_list" ]; then
-            while IFS=$'\t' read -r arm options; do
-              python3 .github/scripts/validate_uci_options.py \
-                --engine "$stage/candidate" --label "candidate arm $arm" --options "$options"
-            done <<< "$arm_list"
+          calibration_args=()
+          if [ "$CALIBRATION" = "true" ]; then calibration_args+=(--calibration); fi
+          python3 .github/scripts/compare_lab_configs.py \
+            --candidate "$stage/candidate" --reference "$stage/reference" \
+            --candidate-revision "$GITHUB_SHA" --reference-revision "$REFERENCE_SHA" \
+            --candidate-options "$CANDIDATE_UCI_OPTIONS" --reference-options "$REFERENCE_UCI_OPTIONS" \
+            --arms "$CANDIDATE_ARMS" --candidate-tc "$CANDIDATE_TC" --reference-tc "$REFERENCE_TC" \
+            --cmake-defines="$CMAKE_DEFINES" --toolchain "GCC 15 on ubuntu-26.04, Release" \
+            "${calibration_args[@]}" --output "$RUNNER_TEMP/comparison.md"
+
+      - name: Retain the intended comparison in the build summary
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/comparison.md" ]; then
+            cat "$RUNNER_TEMP/comparison.md" >> "$GITHUB_STEP_SUMMARY"
           fi
-          python3 .github/scripts/validate_uci_options.py \
-            --engine "$stage/reference" --label reference --options "$REFERENCE_UCI_OPTIONS"
+
+      # The aggregate may be rerun after the one-day executable toolkit expires.
+      - name: Upload comparison and opening evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: strength-${{ github.run_id }}-comparison
+          path: |
+            ${{ runner.temp }}/comparison.md
+            ${{ runner.temp }}/stage/${{ env.BOOK_FILE }}
+          if-no-files-found: warn
+          retention-days: 90
 
       # Both engines, fastchess and the book travel together as one artifact, so
       # a shard cannot end up with a mismatched pairing of them.
@@ -586,6 +605,7 @@ jobs:
             ${{ runner.temp }}/match/match.pgn
             ${{ runner.temp }}/match/match.log
           if-no-files-found: warn
+          retention-days: 90
 
   # ---------------------------------------------------------------------------
   # Pool the shards into one figure per arm. Runs even when a shard failed, so the
@@ -628,72 +648,59 @@ jobs:
           pattern: strength-${{ github.run_id }}-shard-*
           path: shards
 
-      - name: Verify the slices are disjoint
+      - name: Download comparison and opening evidence
+        uses: actions/download-artifact@v8
+        with:
+          name: strength-${{ github.run_id }}-comparison
+          path: evidence
+
+      - name: Verify the complete batch
         env:
           SHARDS: ${{ inputs.shards }}
+          ROUNDS: ${{ needs.setup.outputs.rounds_per_shard }}
+          CANDIDATE_ARMS: ${{ inputs.candidate_arms }}
+          OPENING_OFFSET: ${{ inputs.opening_offset }}
+          CAND_NAME: ${{ needs.build.outputs.cand_name }}
+          REF_NAME: ${{ needs.build.outputs.ref_name }}
         run: |
           set -euo pipefail
-          # Each shard should open on a different book position. A repeated
-          # first FEN means two shards were handed the same slice, which would
-          # double-count games and silently narrow the pooled interval.
-          : > /tmp/first_fens.txt
-          for pgn in shards/*/match.pgn; do
-            fen=$(grep -m1 -oP '(?<=^\[FEN ")[^"]+' "$pgn" || true)
-            if [ -z "$fen" ]; then
-              # Not a cosmetic gap: without FEN tags this check silently passes
-              # on every future run, so treat it as a broken check rather than a
-              # missing nicety.
-              echo "::error::$pgn has no [FEN] tag, so slice disjointness cannot be verified."
-              exit 1
-            fi
-            echo "$fen" >> /tmp/first_fens.txt
-          done
-          sort -o /tmp/first_fens.txt /tmp/first_fens.txt
-
-          total=$(wc -l < /tmp/first_fens.txt)
-          unique=$(sort -u /tmp/first_fens.txt | wc -l)
-          echo "Shard opening positions: $total total, $unique unique"
-          if [ "$total" -ne "$unique" ]; then
-            echo "::error::Shards share an opening position -- the book slices overlap."
-            uniq -d /tmp/first_fens.txt
-            exit 1
-          fi
-          if [ "$total" -ne "$SHARDS" ]; then
-            echo "::error::Expected $SHARDS shard PGNs, found $total."
-            exit 1
-          fi
+          test -s evidence/comparison.md
+          python3 .github/scripts/plan_arms.py verify \
+            --arms "$CANDIDATE_ARMS" --shards "$SHARDS" --rounds-per-shard "$ROUNDS" \
+            --opening-offset "$OPENING_OFFSET" --candidate-name "$CAND_NAME" --reference-name "$REF_NAME" \
+            --book "evidence/$BOOK_FILE" --shard-root shards
 
       - name: Pool the result
         id: pool
         env:
           SHARDS: ${{ inputs.shards }}
+          ROUNDS: ${{ needs.setup.outputs.rounds_per_shard }}
           CANDIDATE_ARMS: ${{ inputs.candidate_arms }}
         run: |
           set -euo pipefail
+          # Publish only after every pool succeeds; a partial arm table is invalid.
           if [ -z "$CANDIDATE_ARMS" ]; then
             python3 .github/scripts/pool_pentanomial.py \
-              --expect-shards "$SHARDS" \
-              shards/*/match.log | tee /tmp/pooled.md
-            exit 0
-          fi
-
-          # One pool per arm, over that arm's shards only. Command substitution
-          # rather than process substitution, so a router refusal fails the step.
-          arm_list=$(python3 .github/scripts/plan_arms.py list --arms "$CANDIDATE_ARMS")
-          arm_count=$(printf '%s\n' "$arm_list" | wc -l)
-          : > /tmp/pooled.md
-          while IFS=$'\t' read -r arm options; do
-            arm_logs=$(python3 .github/scripts/plan_arms.py logs \
-              --arms "$CANDIDATE_ARMS" --shards "$SHARDS" --arm "$arm" shards/*/match.log)
-            mapfile -t logs <<< "$arm_logs"
-            {
-              echo "### Arm $arm: \`$options\`"
-              echo
+              --expect-shards "$SHARDS" --expect-pairs-per-shard "$ROUNDS" \
+              shards/*/match.log > /tmp/pooled.pending.md
+          else
+            arm_list=$(python3 .github/scripts/plan_arms.py list --arms "$CANDIDATE_ARMS")
+            arm_count=$(printf '%s\n' "$arm_list" | wc -l)
+            : > /tmp/pooled.pending.md
+            while IFS=$'\t' read -r arm options; do
+              arm_logs=$(python3 .github/scripts/plan_arms.py logs \
+                --arms "$CANDIDATE_ARMS" --shards "$SHARDS" --arm "$arm" shards/*/match.log)
+              mapfile -t logs <<< "$arm_logs"
+              echo "### Arm $arm: \`$options\`" >> /tmp/pooled.pending.md
+              echo >> /tmp/pooled.pending.md
               python3 .github/scripts/pool_pentanomial.py \
-                --expect-shards $(( SHARDS / arm_count )) "${logs[@]}"
-              echo
-            } | tee -a /tmp/pooled.md
-          done <<< "$arm_list"
+                --expect-shards $(( SHARDS / arm_count )) --expect-pairs-per-shard "$ROUNDS" \
+                "${logs[@]}" >> /tmp/pooled.pending.md
+              echo >> /tmp/pooled.pending.md
+            done <<< "$arm_list"
+          fi
+          mv /tmp/pooled.pending.md /tmp/pooled.md
+          cat /tmp/pooled.md
 
       # Built once into a file and used twice, so the pull-request comment and
       # the job summary cannot drift apart.
@@ -708,9 +715,14 @@ jobs:
           OPENING_OFFSET: ${{ inputs.opening_offset }}
           ACTUAL_GAMES: ${{ needs.setup.outputs.actual_games }}
           BUILD_RESULT: ${{ needs.build.result }}
+          POOL_RESULT: ${{ steps.pool.outcome }}
         run: |
           {
-            echo "## Strength lab"
+            if [ "$POOL_RESULT" = "success" ]; then
+              echo "## Strength lab"
+            else
+              echo "## Strength lab — DISCARDED"
+            fi
             echo
             echo "| | |"
             echo "|---|---|"
@@ -734,7 +746,17 @@ jobs:
               echo "| CMake defines | \`${CMAKE_DEFINES:-none}\` (accepted; both builds did not complete) |"
             fi
             echo
-            cat /tmp/pooled.md
+            if [ -s evidence/comparison.md ]; then
+              cat evidence/comparison.md
+              echo
+            else
+              echo "Comparison evidence is unavailable; see the build summary."
+            fi
+            if [ "$POOL_RESULT" = "success" ]; then
+              cat /tmp/pooled.md
+            else
+              echo "The batch did not pass all integrity checks. No pooled figure is reported."
+            fi
             echo
             echo "Error bar is pentanomial: pooled over colour-swapped PAIRS, which are the"
             echo "independent unit. Pooling raw W/L/D would understate the variance."
