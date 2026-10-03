@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PieceHelper.h"
+#include <algorithm>
 #include <cstdint>
 #include <iterator>
 #include <span>
@@ -260,7 +261,7 @@ struct EvalBreakdown {
 	// not a catalogue entry for the same reason.
 	int endgame_adjustment{};
 	// Side-to-move-relative, exactly as Evaluate() returns it — this field is
-	// Evaluate()'s return value, not a re-derivation of it (D8). Material plus
+	// Evaluate()'s return value, not a re-derivation of it. Material plus
 	// every catalogued term, summed white-minus-black, reproduces it up to the
 	// side-to-move sign; that identity is asserted in StratChessTests.
 	int total{};
@@ -271,31 +272,6 @@ struct EvalBreakdown {
 	// deliberately populated. Search never constructs this debugging struct.
 	std::uint16_t populated_{};
 };
-
-// Extrema of one row of a king-safety weight table. They exist so
-// Evaluator::KING_SAFETY_MAX_PENALTY can be derived from the tables at
-// compile time instead of restated beside them: a retune that pushes a table
-// past the declared bound then fails to build. Free functions rather than
-// members because a static_assert inside the class body cannot call a member
-// function of the class it is still defining. Templated on the row length so
-// the same pair serves the 8-entry rank tables and the 4-entry attack weights.
-template <std::size_t N> constexpr int EvalRowMin(const short (&row)[N]) noexcept
-{
-	int lowest = row[0];
-	for (const short value : row)
-		if (value < lowest)
-			lowest = value;
-	return lowest;
-}
-
-template <std::size_t N> constexpr int EvalRowMax(const short (&row)[N]) noexcept
-{
-	int highest = row[0];
-	for (const short value : row)
-		if (value > highest)
-			highest = value;
-	return highest;
-}
 
 // Scores derived from the three files around a king.
 // Separate ScorePairs rather than a sum: each is its own breakdown row and each
@@ -327,9 +303,9 @@ struct KingPawnCover {
 // it is a debug path that no search thread calls.
 class Evaluator {
   protected:
-	static inline int GetPositionalScore(eSquare squareType, ePiece piece) noexcept
+	static int GetPositionalScore(eSquare square, ePiece piece) noexcept
 	{
-		return g_Eval_Bitboards[piece >> 1][getEvalBoard(piece, squareType)];
+		return g_Eval_Bitboards[piece >> 1][getEvalBoard(piece, square)];
 	}
 	// Maps a piece's board square to its PST lookup index. White uses the
 	// square directly; Black needs a vertical mirror (rank r <-> rank 9 - r,
@@ -337,67 +313,48 @@ class Evaluator {
 	// point of view. `square ^ 56` is that vertical flip: given the board
 	// layout in defines.h (a8 = 0 ... h1 = 63), XOR-ing with 56 (0b111000)
 	// flips the three rank bits and leaves the three file bits untouched.
-	//
-	// This vertical flip preserves the file while mapping Black's square to the
-	// corresponding square in tables written from White's point of view.
-	static constexpr inline int getEvalBoard(ePiece piece, eSquare square) noexcept
+	static constexpr int getEvalBoard(ePiece piece, eSquare square) noexcept
 	{
 		return (PieceHelper::Color(piece) == eColor::BLACK) ? (square ^ 56) : square;
 	}
 
   private:
 	// Bonuses and penalties for eval
-	static const short DOUBLED_PAWN_PENALTY = 10;
-	static const short ISOLATED_PAWN_PENALTY = 20;
+	static constexpr short DOUBLED_PAWN_PENALTY = 10;
+	static constexpr short ISOLATED_PAWN_PENALTY = 20;
 	// Backwards pawn: behind every friendly pawn on adjacent files, with its stop
 	// square attacked by an enemy pawn and undefended by a friendly pawn.
-	static const short BACKWARDS_PAWN_PENALTY = 5;
+	static constexpr short BACKWARDS_PAWN_PENALTY = 5;
 	// Passed pawn: no enemy pawn on its own or either adjacent file
 	// ahead of it (g_bbPassedMask*, defines.h). The base bonus is scaled by rank
 	// and by phase -- see PASSED_PAWN_RANK_SCALE and the eg endpoint below.
-	static const short PASSED_PAWN_BONUS = 20;
+	static constexpr short PASSED_PAWN_BONUS = 20;
 	// Passers are worth more as the endgame approaches: fewer pieces can blockade
 	// or round them up, and the king can escort.
-	static const short PASSED_PAWN_BONUS_EG = 45;
-	static const short ROOK_ON_7TH_BONUS = 20;
-	static const short HALF_OPEN_FILE = 10;
-	static const short OPEN_FILE = 15;
+	static constexpr short PASSED_PAWN_BONUS_EG = 45;
+	static constexpr short ROOK_ON_7TH_BONUS = 20;
+	static constexpr short HALF_OPEN_FILE = 10;
+	static constexpr short OPEN_FILE = 15;
 
 	// Bishop pair. Worth more as the board opens, hence the higher
 	// endgame endpoint. Requires bishops on OPPOSITE square colours, not merely
 	// two bishops -- the term exists because the pair covers both colours.
-	static const short BISHOP_PAIR_BONUS_MG = 30;
-	static const short BISHOP_PAIR_BONUS_EG = 45;
+	static constexpr short BISHOP_PAIR_BONUS_MG = 30;
+	static constexpr short BISHOP_PAIR_BONUS_EG = 45;
 
 	// Connected rooks: same rank or file with nothing between,
 	// scored per connected pair. Halved in the endgame, where ROOK_ON_7TH_BONUS
 	// already pays for the rook activity that matters most there.
-	static const short CONNECTED_ROOKS_BONUS_MG = 15;
-	static const short CONNECTED_ROOKS_BONUS_EG = 8;
+	static constexpr short CONNECTED_ROOKS_BONUS_MG = 15;
+	static constexpr short CONNECTED_ROOKS_BONUS_EG = 8;
 
 	// Castling. Middlegame-only: in an endgame the king belongs in
 	// the centre, and the endgame king PST already says so -- a flat bonus here
 	// would fight it. Derived from castling rights plus king placement, never
 	// from move history.
-	static const short CASTLING_DONE_BONUS = 25;
-	static const short CASTLING_LOST_PENALTY = 20;
+	static constexpr short CASTLING_DONE_BONUS = 25;
+	static constexpr short CASTLING_LOST_PENALTY = 20;
 
-	// Mobility: value of one reachable square, per piece
-	// type. Weighted per type because an extra square is worth much less to a
-	// queen -- which already has many -- than to a knight, and phase-split
-	// because a rook's mobility matters more once files open in the endgame.
-	//
-	// The knight is worth MORE per square than the bishop, which looks backwards
-	// until the counts are included: a bishop sees 7-13 squares to a knight's
-	// 2-8, so equal per-square weights would hand the bishop roughly 2.5x the
-	// total. g_iPieceValues rates both minors at 300, so that would be an
-	// undeclared bishop premium stacking on BISHOP_PAIR_BONUS -- a material
-	// change arriving as a side effect of a mobility weight.
-	//
-	// Mobility overlaps the PSTs, which already reward central placement. The
-	// overlap is not marginal: a knight's mobility swing is comparable to its
-	// entire PST range, so this roughly doubles the centralization gradient for
-	// minors, so mobility contributes a distinct centralization signal.
 	// Per-rank multiplier for the passed-pawn bonus, in 1/16ths, indexed by how
 	// far the pawn has advanced from its side's point of view: [1] is its
 	// starting rank, [6] is one step from promotion. A passer on the 7th is worth
@@ -408,7 +365,6 @@ class Evaluator {
 	//
 	// Kept separate from PASSED_PAWN_BONUS so shape and magnitude remain
 	// independently adjustable.
-	//
 	static constexpr short PASSED_PAWN_RANK_SCALE[8] = {8, 8, 10, 14, 20, 28, 32, 32};
 
 	// A passer whose stop square is occupied by an enemy piece is not running
@@ -433,25 +389,38 @@ class Evaluator {
 	static constexpr short OUTPOST_KNIGHT[9] = {0, 0, 0, 0, 15, 20, 25, 0, 0};
 	static constexpr short OUTPOST_BISHOP[9] = {0, 0, 0, 0, 8, 12, 16, 0, 0};
 
-	static const short MOBILITY_KNIGHT_MG = 4;
-	static const short MOBILITY_KNIGHT_EG = 4;
-	static const short MOBILITY_BISHOP_MG = 3;
-	static const short MOBILITY_BISHOP_EG = 3;
-	static const short MOBILITY_ROOK_MG = 2;
-	static const short MOBILITY_ROOK_EG = 4;
-	static const short MOBILITY_QUEEN_MG = 1;
-	static const short MOBILITY_QUEEN_EG = 2;
+	// Mobility: value of one reachable square, per piece
+	// type. Weighted per type because an extra square is worth much less to a
+	// queen -- which already has many -- than to a knight, and phase-split
+	// because a rook's mobility matters more once files open in the endgame.
+	//
+	// The knight is worth MORE per square than the bishop, which looks backwards
+	// until the counts are included: a bishop sees 7-13 squares to a knight's
+	// 2-8, so equal per-square weights would hand the bishop roughly 2.5x the
+	// total. g_iPieceValues rates both minors at 300, so that would be an
+	// undeclared bishop premium stacking on BISHOP_PAIR_BONUS -- a material
+	// change arriving as a side effect of a mobility weight.
+	//
+	// Mobility overlaps the PSTs, which already reward central placement. The
+	// overlap is not marginal: a knight's mobility swing is comparable to its
+	// entire PST range, so this roughly doubles the centralization gradient for
+	// minors.
+	static constexpr short MOBILITY_KNIGHT_MG = 4;
+	static constexpr short MOBILITY_KNIGHT_EG = 4;
+	static constexpr short MOBILITY_BISHOP_MG = 3;
+	static constexpr short MOBILITY_BISHOP_EG = 3;
+	static constexpr short MOBILITY_ROOK_MG = 2;
+	static constexpr short MOBILITY_ROOK_EG = 4;
+	static constexpr short MOBILITY_QUEEN_MG = 1;
+	static constexpr short MOBILITY_QUEEN_EG = 2;
 
 	// Square counts are measured against a typical count per piece type rather
 	// than against zero, so the term is roughly zero-mean and a cramped piece is
 	// penalised instead of merely under-rewarded.
-	//
-	// Subtracting a typical count keeps the term near zero for ordinary mobility
-	// and makes cramped pieces a penalty rather than an absent bonus.
-	static const short MOBILITY_BASE_KNIGHT = 4;
-	static const short MOBILITY_BASE_BISHOP = 7;
-	static const short MOBILITY_BASE_ROOK = 7;
-	static const short MOBILITY_BASE_QUEEN = 14;
+	static constexpr short MOBILITY_BASE_KNIGHT = 4;
+	static constexpr short MOBILITY_BASE_BISHOP = 7;
+	static constexpr short MOBILITY_BASE_ROOK = 7;
+	static constexpr short MOBILITY_BASE_QUEEN = 14;
 
 	// King shelter and pawn storm. One scan over the king's own
 	// file and its two neighbours produces both, so both are indexed the same
@@ -531,7 +500,7 @@ class Evaluator {
 	static_assert(KING_DANGER_MAX < 46341, "KING_DANGER_MAX squared must fit in an int");
 	static_assert(KING_DANGER_MAX * KING_DANGER_MAX / KING_DANGER_DIVISOR >= KING_DANGER_CAP,
 	              "The clamp binds before the cap -- the cap is then unreachable and not the ceiling");
-	static_assert(EvalRowMin(KING_ATTACK_WEIGHT) >= 0 && KING_ZONE_SQUARE_WEIGHT >= 0,
+	static_assert(std::ranges::min(KING_ATTACK_WEIGHT) >= 0 && KING_ZONE_SQUARE_WEIGHT >= 0,
 	              "A negative danger weight makes the penalty non-monotone in the attack it measures");
 
 	// The largest magnitude one colour's combined king-safety contribution can
@@ -544,21 +513,23 @@ class Evaluator {
 	// outgrows the declared bound fails to compile. EvalTermTests asserts the
 	// same bound over the eval corpus, which is what catches a bound that is
 	// arithmetically right and wrong about which entries are reachable.
-	static constexpr int KING_PAWN_COVER_WORST = -(EvalRowMin(KING_SHELTER[0]) + 2 * EvalRowMin(KING_SHELTER[1])) +
-	                                             (EvalRowMax(KING_STORM[0]) + 2 * EvalRowMax(KING_STORM[1])) +
-	                                             (KING_FILE_OPEN[0] + 2 * KING_FILE_OPEN[1]);
+	static constexpr int KING_PAWN_COVER_WORST =
+	    -(std::ranges::min(KING_SHELTER[0]) + 2 * std::ranges::min(KING_SHELTER[1])) +
+	    (std::ranges::max(KING_STORM[0]) + 2 * std::ranges::max(KING_STORM[1])) +
+	    (KING_FILE_OPEN[0] + 2 * KING_FILE_OPEN[1]);
 	static constexpr int KING_SAFETY_WORST_PENALTY = KING_PAWN_COVER_WORST + KING_DANGER_CAP;
-	static constexpr int KING_SAFETY_BEST_BONUS = EvalRowMax(KING_SHELTER[0]) + 2 * EvalRowMax(KING_SHELTER[1]);
-	static constexpr int KING_SAFETY_MAX_PENALTY =
-	    (KING_SAFETY_WORST_PENALTY > KING_SAFETY_BEST_BONUS) ? KING_SAFETY_WORST_PENALTY : KING_SAFETY_BEST_BONUS;
+	static constexpr int KING_SAFETY_BEST_BONUS =
+	    std::ranges::max(KING_SHELTER[0]) + 2 * std::ranges::max(KING_SHELTER[1]);
+	static constexpr int KING_SAFETY_MAX_PENALTY = std::max(KING_SAFETY_WORST_PENALTY, KING_SAFETY_BEST_BONUS);
 
 	// KING_SAFETY_MAX_PENALTY bounds the positive direction by the shelter
 	// extremum alone, which is only correct while the storm and king-file entries
 	// are penalty MAGNITUDES. A negative one among them would turn that sub-term
 	// into a bonus and step outside the declared bound without failing anything
 	// below, so the sign is asserted rather than assumed.
-	static_assert(EvalRowMin(KING_STORM[0]) >= 0 && EvalRowMin(KING_STORM[1]) >= 0 && KING_FILE_OPEN[0] >= 0 &&
-	                  KING_FILE_OPEN[1] >= 0 && KING_FILE_HALF_OPEN[0] >= 0 && KING_FILE_HALF_OPEN[1] >= 0,
+	static_assert(std::ranges::min(KING_STORM[0]) >= 0 && std::ranges::min(KING_STORM[1]) >= 0 &&
+	                  KING_FILE_OPEN[0] >= 0 && KING_FILE_OPEN[1] >= 0 && KING_FILE_HALF_OPEN[0] >= 0 &&
+	                  KING_FILE_HALF_OPEN[1] >= 0,
 	              "Storm and king-file entries are penalty magnitudes -- a negative one breaks the bound below");
 
 	// One colour's swing is bounded here; the swing BETWEEN the two sides is
@@ -570,36 +541,7 @@ class Evaluator {
 	// Mop-up evaluation for won pawnless endgames.
 	// Gated on: pawnless + decisive material lead. Rewards pushing the losing
 	// king to the edge/corner and closing the distance between the two kings.
-	static const short MOPUP_MATERIAL_THRESHOLD = 400; // min material lead (cp) before mop-up applies
-	static const short MOPUP_CMD_WEIGHT = 10;          // weight on losing king's center-manhattan-distance
-	static const short MOPUP_KINGDIST_WEIGHT = 4;      // weight on (MOPUP_MAX_KING_DISTANCE - king-to-king distance)
-	static const short MOPUP_MAX_KING_DISTANCE = 7;    // max Chebyshev distance on an 8x8 board
-
-	// Bishop and knight mate only in a corner of the BISHOP's colour, so for that
-	// one class the centre-distance component above is replaced by this one. A
-	// separate name, not a reuse of MOPUP_CMD_WEIGHT, because the two are not the
-	// same knob: a centre-distance retune must not silently move the corner target.
-	// It matches that weight, and the score remains bounded below pruning and
-	// futility margins.
-	static const short MOPUP_KBN_CORNER_WEIGHT = 10;
-
-	// Two things that are the same number on an 8x8 board: the largest Manhattan
-	// distance from any square to the nearer of two diagonally opposite corners,
-	// and the file+rank sum along the diagonal joining the other two. One constant
-	// serves both because MatingCornerProximity() below is the difference of
-	// exactly those two quantities.
-	static const short MOPUP_MAX_CORNER_DISTANCE = 7;
-
-	// Game-phase weights per piece. Summed over BOTH colors, so a
-	// full set of pieces gives 2*(2*1 + 2*1 + 2*2 + 1*4) = 24 = MAX_GAME_PHASE.
-	// Pawns and kings contribute nothing: pawns are present throughout and
-	// kings always, so neither carries information about how far the game has
-	// progressed.
-	static const short PHASE_KNIGHT = 1;
-	static const short PHASE_BISHOP = 1;
-	static const short PHASE_ROOK = 2;
-	static const short PHASE_QUEEN = 4;
-
+	//
 	// Mop-up is a hard gate rather than a blended term: it is a
 	// special case for pawnless decisive endings, not a smoothly-scaling
 	// positional idea, and fading it in at half strength mid-game would be
@@ -613,6 +555,35 @@ class Evaluator {
 	//
 	// Mop-up suppresses the winner's king PST while it rewards moving toward the
 	// cornered king, avoiding a conflicting centralization bonus.
+	static constexpr short MOPUP_MATERIAL_THRESHOLD = 400; // min material lead (cp) before mop-up applies
+	static constexpr short MOPUP_CMD_WEIGHT = 10;          // weight on losing king's center-manhattan-distance
+	static constexpr short MOPUP_KINGDIST_WEIGHT = 4;   // weight on (MOPUP_MAX_KING_DISTANCE - king-to-king distance)
+	static constexpr short MOPUP_MAX_KING_DISTANCE = 7; // max Chebyshev distance on an 8x8 board
+
+	// Bishop and knight mate only in a corner of the BISHOP's colour, so for that
+	// one class the centre-distance component above is replaced by this one. A
+	// separate name, not a reuse of MOPUP_CMD_WEIGHT, because the two are not the
+	// same knob: a centre-distance retune must not silently move the corner target.
+	// It matches that weight, and the score remains bounded below pruning and
+	// futility margins.
+	static constexpr short MOPUP_KBN_CORNER_WEIGHT = 10;
+
+	// Two things that are the same number on an 8x8 board: the largest Manhattan
+	// distance from any square to the nearer of two diagonally opposite corners,
+	// and the file+rank sum along the diagonal joining the other two. One constant
+	// serves both because MatingCornerProximity() below is the difference of
+	// exactly those two quantities.
+	static constexpr short MOPUP_MAX_CORNER_DISTANCE = 7;
+
+	// Game-phase weights per piece. Summed over BOTH colors, so a
+	// full set of pieces gives 2*(2*1 + 2*1 + 2*2 + 1*4) = 24 = MAX_GAME_PHASE.
+	// Pawns and kings contribute nothing: pawns are present throughout and
+	// kings always, so neither carries information about how far the game has
+	// progressed.
+	static constexpr short PHASE_KNIGHT = 1;
+	static constexpr short PHASE_BISHOP = 1;
+	static constexpr short PHASE_ROOK = 2;
+	static constexpr short PHASE_QUEEN = 4;
 
 	// Pawnless rook endings, as numerators over ENDGAME_SCALE_MAX.
 	//
@@ -651,17 +622,17 @@ class Evaluator {
 	// three or more silently defeats MATERIAL_PRUNING_MIN_PIECES, and that
 	// threshold must be raised in the same change. Rook against rook sits exactly
 	// on that bound at two men a side, so there is no headroom left in it.
-	static const short ROOK_AND_MINOR_VS_ROOK_SCALE = 4;
-	static const short ROOK_VS_MINOR_SCALE = 12;
-	static const short ROOK_VS_ROOK_SCALE = 4;
+	static constexpr short ROOK_AND_MINOR_VS_ROOK_SCALE = 4;
+	static constexpr short ROOK_VS_MINOR_SCALE = 12;
+	static constexpr short ROOK_VS_ROOK_SCALE = 4;
 
 	// Opposite-coloured bishops, one each, with one or two pawns against none.
 	// One pawn is a draw unless the defence is out of play; two split passers
 	// can overload the bishop, so they keep more. Strength parameters like the
 	// rook classes above. The defender's K+B is two men, exactly on that bound,
 	// which is why a defender pawn keeps a position out of the class.
-	static const short OPPOSITE_BISHOPS_ONE_PAWN_SCALE = 4;
-	static const short OPPOSITE_BISHOPS_TWO_PAWNS_SCALE = 8;
+	static constexpr short OPPOSITE_BISHOPS_ONE_PAWN_SCALE = 4;
+	static constexpr short OPPOSITE_BISHOPS_TWO_PAWNS_SCALE = 8;
 
 	// Distance helpers for mop-up scoring — plain grid math, orientation-independent
 	// (works the same whether the square belongs to White or Black).
@@ -671,10 +642,6 @@ class Evaluator {
 		return CenterAxisDistance(File(square)) + CenterAxisDistance(Rank(square));
 	}
 	static constexpr int AbsDiff(int a, int b) noexcept { return (a > b) ? (a - b) : (b - a); }
-	static constexpr int Clamp(int value, int low, int high) noexcept
-	{
-		return (value < low) ? low : ((value > high) ? high : value);
-	}
 
 	// How close a square is to the nearer of the two corners a bishop of this
 	// colour can mate in: MOPUP_MAX_CORNER_DISTANCE minus the Manhattan distance to
@@ -708,7 +675,7 @@ class Evaluator {
 	// which is the point.
 	static constexpr eSquare KingZoneAnchor(eSquare kingSq) noexcept
 	{
-		return static_cast<eSquare>(Clamp(Rank(kingSq), 1, 6) * ONE_ROW + Clamp(File(kingSq), 1, 6));
+		return static_cast<eSquare>(std::clamp(Rank(kingSq), 1, 6) * ONE_ROW + std::clamp(File(kingSq), 1, 6));
 	}
 
 	// The king's safety zone: the 3x3 block around that anchor, plus the same
@@ -749,7 +716,7 @@ class Evaluator {
 	{
 		const int fileDiff = AbsDiff(File(a), File(b));
 		const int rankDiff = AbsDiff(Rank(a), Rank(b));
-		return (fileDiff > rankDiff) ? fileDiff : rankDiff;
+		return std::max(fileDiff, rankDiff);
 	}
 
 	// Builds the EvalContext Evaluate() and every term function read from —
@@ -762,11 +729,10 @@ class Evaluator {
 	// Generates every non-pawn piece's attack set once and reduces it to counts.
 	// Called by BuildContext, and only when endgame_scale is nonzero.
 	//
-	// Consolidated here rather than left in eval_mobility because more than one
-	// term needs the same attack sets: mobility counts them, eval_rooks needs
-	// the rook attacks for connected rooks, and king safety needs all of them.
-	// Generating them per term costs one PEXT
-	// lookup per slider per consumer.
+	// One pass because more than one term needs the same attack sets: mobility
+	// counts them, eval_rooks needs the rook attacks for connected rooks, and king
+	// safety needs all of them. Generating them per term costs one PEXT lookup
+	// per slider per consumer.
 	//
 	// Takes the bitboards it reads rather than the half-built EvalContext, and
 	// returns its result rather than writing through a reference: that is what
@@ -839,8 +805,8 @@ class Evaluator {
 	// squared straight back into a penalty.
 	static constexpr int KingDangerPenalty(int danger) noexcept
 	{
-		const int clamped = Clamp(danger, 0, KING_DANGER_MAX);
-		return Clamp(clamped * clamped / KING_DANGER_DIVISOR, 0, KING_DANGER_CAP);
+		const int clamped = std::clamp(danger, 0, KING_DANGER_MAX);
+		return std::clamp(clamped * clamped / KING_DANGER_DIVISOR, 0, KING_DANGER_CAP);
 	}
 
   public:
@@ -884,7 +850,7 @@ class Evaluator {
 	//
 	// The rows come from the same BuildContext + eval_* calls Evaluate() makes
 	// — never a parallel computation — and `total` is Evaluate()'s own return
-	// value rather than a restatement of its side-to-move sign flip (D8). That
+	// value rather than a restatement of its side-to-move sign flip. That
 	// costs a second BuildContext per call, which is free on a path invoked
 	// once per interactive command.
 	EvalBreakdown Breakdown(const Board& board) const noexcept;

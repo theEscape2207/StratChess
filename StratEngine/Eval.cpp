@@ -10,10 +10,8 @@
 #include <bit> // std::popcount
 
 // Square 0 is a8, a LIGHT square, and bit 0 of this mask is clear -- so the mask
-// holds the DARK squares. Named for what it actually contains: eval_bishops' pair
-// test is invariant under swapping the two, but the wrong-coloured-bishop
-// fortress asks which colour a specific square is, and a mislabelled constant
-// would put the fortress in the wrong corner.
+// holds the DARK squares. The wrong-coloured-bishop fortress asks which colour a
+// specific square is, so a mislabelled constant would put it in the wrong corner.
 static constexpr BITBOARD DARK_SQUARES = 0x55AA55AA55AA55AAULL;
 
 /////////////////////////////////////////////////////////
@@ -26,7 +24,7 @@ static constexpr BITBOARD DARK_SQUARES = 0x55AA55AA55AA55AAULL;
 //
 // The passer bonus is the only tapered part: it is worth more as the endgame
 // approaches, so this function returns unequal mg/eg endpoints. Everything else
-// here is phase-neutral (issue #116).
+// here is phase-neutral.
 ScorePair Evaluator::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 {
 	// Doubled, isolated and backwards are phase-neutral and accumulate here;
@@ -57,17 +55,13 @@ ScorePair Evaluator::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 			return (idx >= 0 && idx < ALL_SQUARES) ? (1ULL << idx) : 0ULL;
 		};
 
-		if (color == WHITE) {
-			// Hvis der er en hvid bonde over denne i samme kolonne gives en straf
-			if (ownPawns & g_bbFileUpMask[square])
-				score -= DOUBLED_PAWN_PENALTY;
-		} else {
-			// Hvis der er en sort bonde under denne i samme kolonne gives en straf
-			if (Bits::isAnyBitSet(ownPawns, g_bbFileDownMask[square]))
-				score -= DOUBLED_PAWN_PENALTY;
-		}
+		// Doubled: a friendly pawn ahead on the same file. Only the rear pawn of the
+		// pair pays, so each extra pawn on a file costs one penalty.
+		const BITBOARD ownFileAhead = (color == WHITE) ? g_bbFileUpMask[square] : g_bbFileDownMask[square];
+		if (ownPawns & ownFileAhead)
+			score -= DOUBLED_PAWN_PENALTY;
 
-		// Hvis der ikke er en bonde i en af raekkerne ved siden af gives en straf
+		// Isolated: no friendly pawn on either adjacent file.
 		if ((file == eFileNames::LEFT_FILE || !(ownPawns & g_bbFileMask[file - 1])) &&
 		    (file == eFileNames::RIGHT_FILE || !(ownPawns & g_bbFileMask[file + 1])))
 			score -= ISOLATED_PAWN_PENALTY;
@@ -75,13 +69,12 @@ ScorePair Evaluator::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 		// Passed: no enemy pawn anywhere in the three-file span ahead, so nothing
 		// can block it or capture it on its way to promotion. Scaled by how far it
 		// has advanced and tapered toward the endgame, where a passer is worth
-		// most (issue #116).
+		// most.
 		//
 		// A friendly pawn of its own on the same file ahead disqualifies it too:
 		// the rear pawn of a doubled pair can never advance past its own partner,
 		// so paying it a full passer bonus would score a pawn that is going nowhere.
 		// Only the front pawn of such a pair is passed.
-		const BITBOARD ownFileAhead = (color == WHITE) ? g_bbFileUpMask[square] : g_bbFileDownMask[square];
 		if (!(enemyPawns & forwardSpan) && !(ownPawns & ownFileAhead)) {
 			const int advanced = (color == WHITE) ? (7 - row) : row;
 			int scale = PASSED_PAWN_RANK_SCALE[advanced];
@@ -131,26 +124,21 @@ ScorePair Evaluator::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 	return ScorePair{score + passedMg, score + passedEg};
 }
 
-// eval_rooks — 7th-rank and half-open/open-file bonuses for one color's
-// rooks. Loops that color's own rook bitboard directly; per-rook logic is
-// unchanged from the switch cases it replaces.
+// eval_rooks — 7th-rank, half-open/open-file and connected-rook bonuses for
+// one color's rooks.
 //
-// "Open" means no PAWNS of either colour on the file (issue #126 / PR #137)
-// — not "no enemy pieces at all". An enemy piece sharing the file is usually
-// a target for the rook, not a reason to demote the bonus. Preserving this
-// (the fixed form, not the pre-#137 all_black/all_white check) is required.
+// "Open" means no PAWNS of either colour on the file — not "no enemy pieces at
+// all". An enemy piece sharing the file is usually a target for the rook, not a
+// reason to demote the bonus.
 //
 // Note the two file tests use different scopes: the own-pawn test is
 // FORWARD-ONLY (g_bbFileUpMask/g_bbFileDownMask), the enemy-pawn test is
 // WHOLE-FILE (g_bbFileMask). So an own pawn behind the rook still leaves the
 // file open, while an enemy pawn behind it does not. That asymmetry is
-// inherited, not principled — kept deliberately, because widening the
-// own-pawn test would change far more positions than issue #126's actual
-// fix. The open question of whether to widen it is recorded on issue #116,
-// not settled here.
+// inherited, not principled; widening the own-pawn test is an untested
+// strength change, not a cleanup.
 //
-// Connected rooks (issue #114) are scored here too: same rank or file with
-// nothing between, per connected pair.
+// Connected rooks: same rank or file with nothing between, per connected pair.
 ScorePair Evaluator::eval_rooks(const EvalContext& ctx, eColor color) noexcept
 {
 	int score = 0;         // phase-independent: open/half-open file bonuses
@@ -169,18 +157,15 @@ ScorePair Evaluator::eval_rooks(const EvalContext& ctx, eColor color) noexcept
 		const int rank = Rank(square);
 		const int file = File(square);
 
-		// Bonus hvis taarnet er i syvende raekke sent i spillet.
-		// Endgame-weighted rather than hard-gated on stage (D3, issue #99):
-		// contributes 0 at the mg endpoint and ROOK_ON_7TH_BONUS at eg, which
-		// reproduces the old "endgame only" intent continuously instead of as a
-		// step. Whether a 7th-rank rook really deserves to be endgame-only is
-		// dubious chess — it is often strongest in the middlegame against pawns
-		// still on their starting squares — but re-weighting it is a tuning
-		// decision for #117, deliberately not made here.
+		// Rook on the 7th rank: 0 at the mg endpoint and ROOK_ON_7TH_BONUS at eg.
+		// Whether a 7th-rank rook really deserves to be endgame-only is dubious
+		// chess — it is often strongest in the middlegame against pawns still on
+		// their starting squares — but re-weighting it is a tuning decision for
+		// #117, deliberately not made here.
 		if (rank == seventhRank)
 			seventhRankEg += ROOK_ON_7TH_BONUS;
 
-		// Bonus hvis der er aabne raekker til taarnet
+		// Half-open and open files.
 		const BITBOARD ownForwardMask = (color == WHITE) ? g_bbFileUpMask[square] : g_bbFileDownMask[square];
 		if (!(ownPawns & ownForwardMask)) {
 			score += HALF_OPEN_FILE;
@@ -196,7 +181,7 @@ ScorePair Evaluator::eval_rooks(const EvalContext& ctx, eColor color) noexcept
 	                 score + seventhRankEg + connectedPairs * CONNECTED_ROOKS_BONUS_EG};
 }
 
-// eval_bishops -- bishop pair bonus for one color (issue #111).
+// eval_bishops -- bishop pair bonus for one color.
 //
 // Requires bishops on OPPOSITE square colours rather than merely two bishops.
 // The term exists because the pair covers both colours; two same-coloured
@@ -216,7 +201,7 @@ ScorePair Evaluator::eval_bishops(const EvalContext& ctx, eColor color) noexcept
 	return ScorePair{BISHOP_PAIR_BONUS_MG, BISHOP_PAIR_BONUS_EG};
 }
 
-// eval_outposts -- knights and bishops on secure advanced squares (issue #112).
+// eval_outposts -- knights and bishops on secure advanced squares.
 //
 // A minor scores when three things hold at once: it stands on relative rank 4-6,
 // a friendly pawn defends the square it occupies, and no enemy pawn remains on an
@@ -267,7 +252,7 @@ ScorePair Evaluator::eval_outposts(const EvalContext& ctx, eColor color) noexcep
 	return ScorePair{score, score};
 }
 
-// eval_castling -- king-shelter proxy for one color (issue #115).
+// eval_castling -- king-shelter proxy for one color.
 //
 // Derived from castling RIGHTS plus king placement, never from move history.
 // Whether a side actually castled is not recoverable from a FEN, so a term
@@ -317,17 +302,12 @@ ScorePair Evaluator::eval_castling(const EvalContext& ctx, eColor color) noexcep
 	return ScorePair{-CASTLING_LOST_PENALTY, 0}; // d,e -- central
 }
 
-// eval_pst — piece-square-table contribution for one color's pieces:
-// per-piece-type bitboard loops, replacing an earlier mailbox-lookup
-// version. Every non-king piece type gets its own bitboard loop, so
-// GetPositionalScore is called with a statically-known piece — no
-// board.GetPiece(square) mailbox lookup per square. The king is excluded
-// from those loops: g_Eval_Bitboards[5] (middlegame) and [6] (endgame) are
-// its mg and eg endpoints, blended by phase rather than selected (issue #99),
-// so it still receives exactly one PST contribution — just an interpolated
-// one. Reordering these per-type loops relative to each other, or relative
-// to the old single mailbox loop, cannot change the sum: plain int addition
-// over the same multiset of per-square PST values.
+// eval_pst — piece-square-table contribution for one color's pieces. Every
+// non-king piece type gets its own bitboard loop, so GetPositionalScore is
+// called with a statically-known piece and no mailbox lookup. The king is
+// excluded from those loops: g_Eval_Bitboards[5] (middlegame) and [6]
+// (endgame) are its mg and eg endpoints, blended by phase rather than
+// selected, so it still receives exactly one PST contribution.
 ScorePair Evaluator::eval_pst(const EvalContext& ctx, eColor color) noexcept
 {
 	int score = 0;
@@ -357,24 +337,18 @@ ScorePair Evaluator::eval_pst(const EvalContext& ctx, eColor color) noexcept
 	}
 
 	// King PST: its own tapered pair, not the generic table above.
-	// TODO: Add bonus for castling-done!! (carried over verbatim from the
-	// pre-#127 switch; still open).
 	//
-	// Guard against a missing king: ctx.king_sq[color] is NO_SQUARE for a
-	// color with no king on the board (default-constructed or failed-parse
-	// Board only — see the EvalContext::king_sq comment in Eval.h). The old
-	// switch-based Evaluate() never reached this code for a kingless board at
-	// all, because the outer loop iterated ALL_PIECES and a truly empty board
-	// has none; skipping here reproduces that "no king PST contribution"
-	// outcome instead of indexing g_Eval_Bitboards with GetFirstPiece(0),
-	// which is undefined (Debug: assert trips; Release: reads out of bounds).
-	// The king is the first genuinely tapered term (D3, issue #99). The two
-	// tables are an (mg, eg) pair — g_Eval_Bitboards[5] is flat, so middlegame
-	// king placement is left to the king-safety terms, and [6] wants the king
-	// centralized — and they are blended rather than selected discontinuously,
-	// which removes a cliff a single capture could cross mid-search.
-	// Suppressed entirely while this color is mopping up (issue #118 item 4).
-	// Otherwise the endgame king table charges the winner
+	// A kingless board (default-constructed or failed-parse only — see
+	// EvalContext::king_sq in Eval.h) contributes nothing, rather than indexing
+	// g_Eval_Bitboards with an out-of-range square.
+	//
+	// The two tables are an (mg, eg) pair — g_Eval_Bitboards[5] is flat, so
+	// middlegame king placement is left to the king-safety terms, and [6] wants
+	// the king centralized — and they are blended rather than selected
+	// discontinuously, which removes a cliff a single capture could cross.
+	//
+	// Suppressed entirely while this color is mopping up. Otherwise the endgame
+	// king table charges the winner
 	// 10 cp per step of centralization given up to walk toward the cornered
 	// loser, against the 4 cp per step mop-up pays for closing in — so
 	// approaching scored NEGATIVE overall, and mop-up only softened a
@@ -395,8 +369,7 @@ ScorePair Evaluator::eval_pst(const EvalContext& ctx, eColor color) noexcept
 	return ScorePair{score + kingMg, score + kingEg};
 }
 
-// eval_mobility -- how many squares this color's pieces can move to (issues
-// #98 and #113).
+// eval_mobility -- how many squares this color's pieces can move to.
 //
 // PSEUDO-LEGAL, not legal: filtering for check-legality would need move
 // generation per piece per node, and Evaluate() runs at quiescence frequency.
@@ -411,9 +384,9 @@ ScorePair Evaluator::eval_pst(const EvalContext& ctx, eColor color) noexcept
 // what matters is that every piece type uses the same one, which is why the mask
 // is built once in ComputePieceAggregates rather than per type.
 //
-// The king is deliberately absent: king mobility is a king-safety signal and
-// belongs with issue #97, where it can be weighed against attacker counts rather
-// than paid as a flat per-square bonus.
+// The king is deliberately absent: king mobility is a king-safety signal, weighed
+// against attacker counts by the king-safety terms rather than paid as a flat
+// per-square bonus.
 //
 // Counts are taken RELATIVE to a typical count per piece type (MOBILITY_BASE_*),
 // so a cramped piece scores negative rather than merely small. An absolute count
@@ -449,7 +422,7 @@ namespace {
 
 // eval_king_pawn_cover -- everything one scan over the king's three files
 // produces: the shelter in front of it, the enemy pawns coming at it, and the
-// open lanes beside it (issue #97).
+// open lanes beside it.
 //
 // The king's file is the CLAMPED one (KingZoneAnchor), so a king in the corner
 // is scored on the same three files as one on the adjacent file, and all three
@@ -457,9 +430,9 @@ namespace {
 //
 // One function rather than three because the file loop, the clamped file and
 // the shield rank are shared -- the shield rank IS the blocked-storm test, and
-// splitting the scan measured about 2% of nps for nothing. The three results
-// stay separate all the way to their own breakdown rows, which is what the
-// ablation in PR 4 needs; only the loop is shared.
+// splitting the scan costs nps for nothing. The three results stay separate all
+// the way to their own breakdown rows, so each can be ablated on its own; only
+// the loop is shared.
 //
 // Middlegame-only, like every king-safety contribution: with the pieces gone
 // there is nothing left to attack through a hole in the shield, and the endgame
@@ -535,8 +508,8 @@ KingPawnCover Evaluator::eval_king_pawn_cover(const EvalContext& ctx, eColor col
 		//
 		// Its overlap with the shelter table -- "no own pawn on this file"
 		// scores in both -- is real and deliberate. It stays a separately
-		// ablatable row precisely so PR 4 can measure whether it earns its place
-		// on top of shelter rather than assume it.
+		// ablatable row so whether it earns its place on top of shelter can be
+		// measured rather than assumed.
 		if (!ownOnFile)
 			files -= enemyOnFile ? KING_FILE_HALF_OPEN[distance] : KING_FILE_OPEN[distance];
 	}
@@ -545,7 +518,7 @@ KingPawnCover Evaluator::eval_king_pawn_cover(const EvalContext& ctx, eColor col
 }
 
 // eval_king_attack -- what the enemy pieces bearing down on this colour's king
-// are worth, as a penalty (issue #97).
+// are worth, as a penalty.
 //
 // Quadratic in a weighted danger count, capped, rather than a hand-written
 // danger table: non-linear by construction, which is the property the term
@@ -572,7 +545,7 @@ ScorePair Evaluator::eval_king_attack(const EvalContext& ctx, eColor color) noex
 		return ScorePair{};
 
 	// A dead-drawn material class needs no guard of its own: BuildContext leaves
-	// every aggregate at 0 there (D2), and zero attackers on zero zone squares is
+	// every aggregate at 0 there, and zero attackers on zero zone squares is
 	// a danger of 0, which is the right answer rather than a coincidence.
 	const eColor enemy = (color == WHITE) ? BLACK : WHITE;
 	const int* const attackers = ctx.attacks.zone_attackers[enemy];
@@ -631,19 +604,16 @@ namespace {
 	}
 } // namespace
 
-// eval_mopup — mop-up evaluation for one color (original term issue #70 /
-// epic #110). In decisively-won, pawnless endings, reward driving the losing
-// king to the edge/corner and closing the distance between the two kings —
-// the win may lie beyond the search horizon otherwise. Only the winning
-// color receives a nonzero contribution; the losing color, and both colors
-// when the gating conditions aren't met, get 0 — matching the original
-// bonusScore[winner]-only update this replaces.
+// eval_mopup — mop-up evaluation for one color. In decisively-won, pawnless
+// endings, reward driving the losing king to the edge/corner and closing the
+// distance between the two kings — the win may lie beyond the search horizon
+// otherwise. Only the winning color receives a nonzero contribution.
 ScorePair Evaluator::eval_mopup(const EvalContext& ctx, eColor color) noexcept
 {
 	// The gate — pawnless, decisive material lead, both kings on the board, and
 	// the loser stripped down — is evaluated once in BuildContext, and only the leading color is
 	// marked active. eval_pst reads the same flag to suppress that color's king
-	// PST (issue #118 item 4), so the two terms cannot disagree about whether a
+	// PST, so the two terms cannot disagree about whether a
 	// position is a mop-up. A kingless board is excluded there, so the king
 	// squares read below are known valid.
 	if (!ctx.mopup_active[color])
@@ -666,18 +636,14 @@ ScorePair Evaluator::eval_mopup(const EvalContext& ctx, eColor color) noexcept
 	const int mopup =
 	    cornering + MOPUP_KINGDIST_WEIGHT * (MOPUP_MAX_KING_DISTANCE - KingDistance(winnerKingSq, loserKingSq));
 
-	// Gated, not blended (D4): once the gate opens the term applies at full
+	// Gated, not blended: once the gate opens the term applies at full
 	// strength at both endpoints.
 	return ScorePair{mopup, mopup};
 }
 
-// BuildContext — the one construction site for EvalContext. Both
-// Evaluate() below and the term-level test fixture
-// (StratChessTests/EvalTestFixture.h's EvaluatorTestFixture) call this, so
-// phase detection and every other context field can only be computed one
-// way — no risk of the test fixture silently drifting onto a stale copy of
-// the `11500` threshold or similar (see issue #99, which will eventually
-// replace that threshold).
+// BuildContext — the one construction site for EvalContext. Both Evaluate()
+// and the term-level test fixture (EvaluatorTestFixture) call this, so phase
+// detection and every other context field can only be computed one way.
 EvalContext Evaluator::BuildContext(const Board& board) noexcept
 {
 	const int matScoreWhite = board.GetMaterialScore(WHITE);
@@ -686,15 +652,8 @@ EvalContext Evaluator::BuildContext(const Board& board) noexcept
 	const auto boardsSpan = board.GetBitBoards();
 
 #ifndef NDEBUG
-	// Debug-only bitboard/mailbox consistency tripwire. The pre-#127 switch
-	// had `default: assert(!"What! A new type of piece...")` in its per-square
-	// mailbox loop, tripping if board.GetPiece() ever returned something
-	// outside the twelve real piece values while iterating ALL_PIECES. The
-	// per-type bitboard loops this restructure introduced (eval_pawns,
-	// eval_rooks, eval_pst) no longer route through that mailbox lookup at
-	// all, so there is no per-square switch left for that trap to live in.
-	// This reproduces the same intent at the one place all of them now read
-	// from: the union of the twelve per-piece-type bitboards must equal
+	// Debug-only bitboard consistency tripwire, at the one place every term
+	// reads from: the union of the twelve per-piece-type bitboards must equal
 	// ALL_PIECES, or a bitboard has drifted out of sync with what the board
 	// thinks is occupied.
 	{
@@ -704,9 +663,8 @@ EvalContext Evaluator::BuildContext(const Board& board) noexcept
 		assert(unionOfTypes == boardsSpan[ALL_PIECES] &&
 		       "Eval: per-type piece bitboards do not reconstruct ALL_PIECES");
 
-		// The per-COLOR occupancy is a separate pair of bitboards, and until
-		// eval_mobility (#98) no Eval term read them -- so the check above never
-		// covered them. Mobility masks against occupied[], so a drift there
+		// The per-COLOR occupancy is a separate pair of bitboards the check above
+		// does not cover. Mobility masks against occupied[], so a drift there
 		// silently mis-scores every position rather than tripping anything.
 		assert((boardsSpan[ePiece::ALL_WHITE_PIECES] | boardsSpan[ePiece::ALL_BLACK_PIECES]) ==
 		           boardsSpan[ALL_PIECES] &&
@@ -724,7 +682,7 @@ EvalContext Evaluator::BuildContext(const Board& board) noexcept
 	const eSquare blackKingSq =
 	    (boardsSpan[ePiece::BLACK_KING] != 0ULL) ? Board::GetFirstPiece(boardsSpan[ePiece::BLACK_KING]) : NO_SQUARE;
 
-	// Game phase from non-king, non-pawn piece counts (issue #99). Summed over
+	// Game phase from non-king, non-pawn piece counts. Summed over
 	// both colors and clamped: promotions can push the raw sum past
 	// MAX_GAME_PHASE (three queens on one side is 12 from queens alone), and an
 	// unclamped phase would extrapolate outside the interpolation range instead
@@ -738,10 +696,10 @@ EvalContext Evaluator::BuildContext(const Board& board) noexcept
 	                       PHASE_ROOK * std::popcount(boardsSpan[ePiece::BLACK_ROOK]) +
 	                       PHASE_QUEEN * std::popcount(boardsSpan[ePiece::BLACK_QUEEN]);
 	const int rawPhase = phaseWhite + phaseBlack;
-	const int gamePhase = (rawPhase > MAX_GAME_PHASE) ? MAX_GAME_PHASE : rawPhase;
+	const int gamePhase = std::min(rawPhase, MAX_GAME_PHASE);
 
 	// Mop-up gate, evaluated here rather than inside eval_mopup so eval_pst can
-	// consult the same answer (issue #118 item 4): pawnless, both kings present,
+	// consult the same answer: pawnless, both kings present,
 	// a decisive material lead, and the LOSER holding no queen. Only the leader
 	// is active. The defender's force is the condition, not its phase — see the
 	// comment above MOPUP_MATERIAL_THRESHOLD in Eval.h.
@@ -754,8 +712,7 @@ EvalContext Evaluator::BuildContext(const Board& board) noexcept
 	if (boardsSpan[ePiece::WHITE_PAWN] == 0ULL && boardsSpan[ePiece::BLACK_PAWN] == 0ULL && whiteKingSq != NO_SQUARE &&
 	    blackKingSq != NO_SQUARE) {
 		const int matDiff = matScoreWhite - matScoreBlack;
-		const int absMatDiff = (matDiff >= 0) ? matDiff : -matDiff;
-		if (absMatDiff >= MOPUP_MATERIAL_THRESHOLD) {
+		if (std::abs(matDiff) >= MOPUP_MATERIAL_THRESHOLD) {
 			const eColor winner = (matDiff > 0) ? WHITE : BLACK;
 			const BITBOARD loserQueens = boardsSpan[(winner == WHITE) ? ePiece::BLACK_QUEEN : ePiece::WHITE_QUEEN];
 			if (loserQueens == 0ULL)
@@ -803,14 +760,10 @@ EvalContext Evaluator::BuildContext(const Board& board) noexcept
 	};
 }
 
-// ComputePieceAggregates — one attack generation pass, reduced to counts.
-//
-// Everything here was previously computed inside eval_mobility, plus the
-// connected-rook count eval_rooks derived from a second RookAttacks() call on
-// the same square. The reduction is exact rather than approximate: mobility
-// weights are per piece TYPE, so summing (count - base) across a type's pieces
-// here and multiplying once in the term gives the same integer as multiplying
-// per piece did.
+// ComputePieceAggregates — one attack generation pass, reduced to the counts
+// mobility, connected rooks and king attack read. The reduction is exact:
+// mobility weights are per piece TYPE, so summing (count - base) across a
+// type's pieces and multiplying once gives the same integer as per piece.
 PieceAggregates Evaluator::ComputePieceAggregates(std::span<const BITBOARD> boards, BITBOARD whitePawnAttacks,
                                                   BITBOARD blackPawnAttacks,
                                                   const eSquare (&kingSq)[NUM_COLORS]) noexcept
@@ -877,7 +830,7 @@ PieceAggregates Evaluator::ComputePieceAggregates(std::span<const BITBOARD> boar
 			zoneSquares += zoneHits;
 			aggregates.zone_attackers[color][MOB_ROOK] += (zoneHits != 0) ? 1 : 0;
 
-			// Connected rooks (issue #114): the attack set already accounts for
+			// Connected rooks: the attack set already accounts for
 			// blockers, so seeing another rook in it means nothing stands
 			// between. `rooks` has every earlier rook cleared, so testing only
 			// the later ones counts each PAIR exactly once -- no halving needed.
@@ -1144,15 +1097,14 @@ int Evaluator::RawWhitePov(const EvalContext& ctx) noexcept
 	// deliberate choice. Integer division truncates, so BlendPhase(a) +
 	// BlendPhase(b) and BlendPhase(a + b) can differ by up to
 	// one centipawn per term. Blending once is marginally more accurate, but it
-	// makes the per-term breakdown #129 prints unable to sum to the score it
-	// reports — and that reconstructibility is an asserted invariant, not a
+	// makes the per-term breakdown unable to sum to the score it reports — and that reconstructibility is an asserted invariant, not a
 	// nicety. Only terms with mg != eg can truncate at all — eval_mopup sets both
 	// endpoints equal, so it blends exactly, and eval_pawns does too whenever the
 	// side has no passed pawn — which bounds the cost at one centipawn per
 	// tapered term.
 	// Deterministic, and far below anything this engine can measure; a
 	// breakdown whose rows do not add up is a debugging tool that lies.
-	int blended[2] = {0, 0};
+	int blended[NUM_COLORS] = {0, 0};
 	for (const eColor c : {WHITE, BLACK}) {
 		// Three rows out of one scan, blended separately so each stays the
 		// literal addend its breakdown row reports.
@@ -1171,19 +1123,16 @@ int Evaluator::RawWhitePov(const EvalContext& ctx) noexcept
 
 //
 //	Evaluate() :
-//	Description: Sums up the material value from both colors. Adds additional bonuses according to heuristics
-//	Returns:	 The value of the player in turn subtracted the oppositions value
-// FIXME:		 Evaluate does not know about Check Mate - this is strictly only an evaluation of the current position
-//				 - this means that we miss the first (and best, maybe even only?) opportunity to do check mate!
+//	Description: Static evaluation: material plus every blended term, scaled for
+//	             drawish material. Mate and stalemate are the search's business.
+//	Returns:	 The score from the side to move's point of view.
 //
 int Evaluator::Evaluate(const Board& board) const noexcept
 {
 	const EvalContext ctx = BuildContext(board);
 
 	// Nothing positional can move a score that is about to be multiplied by
-	// zero, so the terms are not computed at all. This is the path the engine
-	// takes through exactly the endings it now has to play out, which is where
-	// the saving is worth having.
+	// zero, so the terms are not computed at all.
 	//
 	// What a draw is worth here is SetDrawScores()' answer, not a constant: this is
 	// a draw the side to move is choosing, exactly as a repetition is, so a search
@@ -1210,8 +1159,7 @@ int Evaluator::Evaluate(const Board& board) const noexcept
 
 //
 //	Breakdown() :
-//	Description: Per-term introspection for the UCI 'eval' command (issue #129
-//	             phase 2). Reports each term's contribution per color for one
+//	Description: Per-term introspection for the UCI 'eval' command. Reports each term's contribution per color for one
 //	             position. Read-only — no score changes, and search never calls
 //	             this.
 //	Returns:	 An EvalBreakdown whose rows come from the same BuildContext and
@@ -1238,8 +1186,7 @@ EvalBreakdown Evaluator::Breakdown(const Board& board) const noexcept
 
 	// Rows are reported BLENDED at this position's phase — i.e. the number each
 	// term actually contributes to `total`, not its mg or eg endpoint. That is
-	// what keeps the printed table summing to the score (the #129 honesty
-	// invariant); the endpoints are visible in the term functions themselves.
+	// what keeps the printed table summing to the score; the endpoints are visible in the term functions themselves.
 	EvalBreakdown out{};
 	// clang-format off
 	// Each set() names its term so order cannot silently associate a value with
