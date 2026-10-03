@@ -12,4 +12,8 @@ colour-swapped pairs. Full input table and internals: `Docs/CI.md` → Strength 
 - **A failed shard discards the whole batch**, not just itself: the survivors are the ones that
   happened to avoid whatever went wrong, so pooling them would be a biased subset wearing a full
   batch's error bar.
+- **Screening several settings in one run:** `candidate_arms` splits the shards among K option sets,
+  each pooled alone at about √K times the full run's error bar. Confirm the winner in a
+  single-candidate run with its own `opening_offset`. The best of K noisy arms reads high, so the
+  screen figure is never the claimed gain.
 - Results go in `Measurements/ci-per-change.md` or `ci-anchor.md`.

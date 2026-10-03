@@ -30,6 +30,12 @@ on:
       reference_uci_options:
         description: "The same for the REFERENCE side. Usually empty: a difference between the two sides is what is being measured, so setting both rarely means what it looks like"
         default: ""
+      candidate_arms:
+        description: "Multi-arm screen: ';'-separated candidate option sets, each in candidate_uci_options syntax. Shard i plays arm i mod K, and each arm is pooled on its own shards against the shared reference. shards must be a multiple of K; cannot be combined with candidate_uci_options"
+        default: ""
+      opening_offset:
+        description: "Book openings to skip before shard 0's slice. Give each run of a multi-run experiment its own range, so a confirmation never replays the openings a screen selected on"
+        default: "0"
       games:
         description: "Total games across all shards (2 per opening pair; rounded down to fit the shards evenly)"
         default: "20000"
@@ -98,6 +104,7 @@ jobs:
       games_per_shard: ${{ steps.plan.outputs.games_per_shard }}
       actual_games: ${{ steps.plan.outputs.actual_games }}
       reference_sha: ${{ steps.reference.outputs.reference_sha }}
+      shard_arms: ${{ steps.arms.outputs.shard_arms }}
       cmake_defines_validated: ${{ steps.defines.outputs.validated }}
     steps:
       # fetch-depth: 0 because the reference is resolved and verified here: a
@@ -184,6 +191,11 @@ jobs:
       - name: Verify the UCI option checker
         run: python3 .github/scripts/validate_uci_options.py --self-test
 
+      # Routing a log to the wrong arm would credit one setting with another's
+      # games and still print a plausible table, so the router is checked first.
+      - name: Verify the arm router
+        run: python3 .github/scripts/plan_arms.py --self-test
+
       - name: Plan the shards
         id: plan
         env:
@@ -219,6 +231,26 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
           echo "Plan: $SHARDS shards x $games_per_shard games = $actual_games games"
+
+      # Shape only: whether the engine advertises each arm's options is checked
+      # in `build`, against the binary that will play.
+      - name: Plan the arms
+        id: arms
+        env:
+          SHARDS: ${{ inputs.shards }}
+          CANDIDATE_ARMS: ${{ inputs.candidate_arms }}
+          CANDIDATE_UCI_OPTIONS: ${{ inputs.candidate_uci_options }}
+          OPENING_OFFSET: ${{ inputs.opening_offset }}
+        run: |
+          set -euo pipefail
+          case "$OPENING_OFFSET" in ''|*[!0-9]*) echo "::error::opening_offset must be a non-negative integer"; exit 1;; esac
+          if [ -n "$CANDIDATE_ARMS" ] && [ -n "$CANDIDATE_UCI_OPTIONS" ]; then
+            echo "::error::Set candidate_arms or candidate_uci_options, not both."
+            exit 1
+          fi
+          shard_arms=$(python3 .github/scripts/plan_arms.py matrix --arms "$CANDIDATE_ARMS" --shards "$SHARDS")
+          echo "shard_arms=$shard_arms" >> "$GITHUB_OUTPUT"
+          python3 .github/scripts/plan_arms.py list --arms "$CANDIDATE_ARMS"
 
   # ---------------------------------------------------------------------------
   # Build both engines and stage the harness ONCE. Across 18 shards this saves
@@ -305,6 +337,7 @@ jobs:
         env:
           ROUNDS_PER_SHARD: ${{ needs.setup.outputs.rounds_per_shard }}
           SHARDS: ${{ inputs.shards }}
+          OPENING_OFFSET: ${{ inputs.opening_offset }}
         run: |
           set -euo pipefail
           stage="$RUNNER_TEMP/stage"
@@ -322,10 +355,11 @@ jobs:
           # the whole batch: shards x rounds openings are consumed, each yielding
           # one colour-swapped pair. Past the end fastchess wraps and replays,
           # which narrows an error bar without adding information to it.
-          needed=$(( ROUNDS_PER_SHARD * SHARDS ))
-          echo "Book: $BOOK_FILE ($openings openings); batch consumes $needed"
+          # The offset skips openings, so the batch's last one is offset + needed.
+          needed=$(( OPENING_OFFSET + ROUNDS_PER_SHARD * SHARDS ))
+          echo "Book: $BOOK_FILE ($openings openings); batch consumes up to opening $needed"
           if [ "$needed" -gt "$openings" ]; then
-            echo "::error::Batch needs $needed openings but the book has $openings. Shards would overlap and replay games."
+            echo "::error::Batch needs openings up to $needed but the book has $openings. Shards would overlap and replay games."
             exit 1
           fi
 
@@ -347,11 +381,16 @@ jobs:
         env:
           CANDIDATE_UCI_OPTIONS: ${{ inputs.candidate_uci_options }}
           REFERENCE_UCI_OPTIONS: ${{ inputs.reference_uci_options }}
+          CANDIDATE_ARMS: ${{ inputs.candidate_arms }}
         run: |
           set -euo pipefail
           stage="$RUNNER_TEMP/stage"
           python3 .github/scripts/validate_uci_options.py \
             --engine "$stage/candidate" --label candidate --options "$CANDIDATE_UCI_OPTIONS"
+          while IFS=$'\t' read -r arm options; do
+            python3 .github/scripts/validate_uci_options.py \
+              --engine "$stage/candidate" --label "candidate arm $arm" --options "$options"
+          done < <(python3 .github/scripts/plan_arms.py list --arms "$CANDIDATE_ARMS")
           python3 .github/scripts/validate_uci_options.py \
             --engine "$stage/reference" --label reference --options "$REFERENCE_UCI_OPTIONS"
 
@@ -402,6 +441,9 @@ jobs:
           MATCH_CONCURRENCY: ${{ inputs.concurrency }}
           CANDIDATE_UCI_OPTIONS: ${{ inputs.candidate_uci_options }}
           REFERENCE_UCI_OPTIONS: ${{ inputs.reference_uci_options }}
+          ARM_LABEL: ${{ fromJSON(needs.setup.outputs.shard_arms)[matrix.shard].label }}
+          ARM_OPTIONS: ${{ fromJSON(needs.setup.outputs.shard_arms)[matrix.shard].options }}
+          OPENING_OFFSET: ${{ inputs.opening_offset }}
           CAND_NAME: ${{ needs.build.outputs.cand_name }}
           REF_NAME: ${{ needs.build.outputs.ref_name }}
         run: |
@@ -417,9 +459,18 @@ jobs:
           # Disjointness is arithmetic, not file surgery: with order=sequential,
           # shard i starting at i*ROUNDS+1 and playing ROUNDS pairs consumes
           # openings [i*R+1, (i+1)*R], which cannot overlap another shard's.
-          # start= is 1-based.
-          start=$(( SHARD * ROUNDS + 1 ))
+          # start= is 1-based. The offset moves the whole batch, keeping it
+          # disjoint from another run's.
+          start=$(( OPENING_OFFSET + SHARD * ROUNDS + 1 ))
           echo "Shard $SHARD: $ROUNDS pairs from opening $start"
+
+          # In a multi-arm run this shard plays one arm, named in the engine
+          # name so the log and PGN headers identify it.
+          if [ -n "$ARM_LABEL" ]; then
+            CANDIDATE_UCI_OPTIONS=$ARM_OPTIONS
+            CAND_NAME="$CAND_NAME-arm$ARM_LABEL"
+            echo "Shard $SHARD: arm $ARM_LABEL, options $ARM_OPTIONS"
+          fi
 
           # compute_budget() bounds a move by the clock (issue #204), but an
           # increment under 100 ms still leaves the engine playing near-instant
@@ -606,11 +657,33 @@ jobs:
         id: pool
         env:
           SHARDS: ${{ inputs.shards }}
+          CANDIDATE_ARMS: ${{ inputs.candidate_arms }}
         run: |
           set -euo pipefail
-          python3 .github/scripts/pool_pentanomial.py \
-            --expect-shards "$SHARDS" \
-            shards/*/match.log | tee /tmp/pooled.md
+          if [ -z "$CANDIDATE_ARMS" ]; then
+            python3 .github/scripts/pool_pentanomial.py \
+              --expect-shards "$SHARDS" \
+              shards/*/match.log | tee /tmp/pooled.md
+            exit 0
+          fi
+
+          # One pool per arm, over that arm's shards only. Command substitution
+          # rather than process substitution, so a router refusal fails the step.
+          arm_list=$(python3 .github/scripts/plan_arms.py list --arms "$CANDIDATE_ARMS")
+          arm_count=$(printf '%s\n' "$arm_list" | wc -l)
+          : > /tmp/pooled.md
+          while IFS=$'\t' read -r arm options; do
+            arm_logs=$(python3 .github/scripts/plan_arms.py logs \
+              --arms "$CANDIDATE_ARMS" --shards "$SHARDS" --arm "$arm" shards/*/match.log)
+            mapfile -t logs <<< "$arm_logs"
+            {
+              echo "### Arm $arm: \`$options\`"
+              echo
+              python3 .github/scripts/pool_pentanomial.py \
+                --expect-shards $(( SHARDS / arm_count )) "${logs[@]}"
+              echo
+            } | tee -a /tmp/pooled.md
+          done <<< "$arm_list"
 
       # Built once into a file and used twice, so the pull-request comment and
       # the job summary cannot drift apart.
@@ -621,6 +694,9 @@ jobs:
           CMAKE_DEFINES_VALIDATED: ${{ needs.setup.outputs.cmake_defines_validated }}
           CANDIDATE_UCI_OPTIONS: ${{ inputs.candidate_uci_options }}
           REFERENCE_UCI_OPTIONS: ${{ inputs.reference_uci_options }}
+          CANDIDATE_ARMS: ${{ inputs.candidate_arms }}
+          OPENING_OFFSET: ${{ inputs.opening_offset }}
+          ACTUAL_GAMES: ${{ needs.setup.outputs.actual_games }}
           BUILD_RESULT: ${{ needs.build.result }}
         run: |
           {
@@ -628,10 +704,17 @@ jobs:
             echo
             echo "| | |"
             echo "|---|---|"
-            echo "| Candidate | ${{ needs.build.outputs.cand_name }} @ \`${{ github.ref_name }}\`, tc=${{ inputs.candidate_tc }}, options \`${CANDIDATE_UCI_OPTIONS:-none}\` |"
+            if [ -n "$CANDIDATE_ARMS" ]; then
+              echo "| Candidate | ${{ needs.build.outputs.cand_name }} @ \`${{ github.ref_name }}\`, tc=${{ inputs.candidate_tc }}, options per arm (below) |"
+            else
+              echo "| Candidate | ${{ needs.build.outputs.cand_name }} @ \`${{ github.ref_name }}\`, tc=${{ inputs.candidate_tc }}, options \`${CANDIDATE_UCI_OPTIONS:-none}\` |"
+            fi
             echo "| Reference | ${{ needs.build.outputs.ref_name }} (\`${{ inputs.reference_ref }}\` = \`${{ needs.setup.outputs.reference_sha }}\`), tc=${{ inputs.reference_tc }}, options \`${REFERENCE_UCI_OPTIONS:-none}\` |"
             echo "| Games | ${{ needs.setup.outputs.actual_games }} = ${{ inputs.shards }} shards x ${{ needs.setup.outputs.games_per_shard }}, concurrency ${{ inputs.concurrency }} per shard |"
             echo "| Book | \`$BOOK_FILE\` (${{ needs.build.outputs.openings }} openings) |"
+            if [ "$OPENING_OFFSET" != "0" ] && [ -n "$ACTUAL_GAMES" ]; then
+              echo "| Openings | $(( OPENING_OFFSET + 1 ))–$(( OPENING_OFFSET + ACTUAL_GAMES / 2 )) (offset $OPENING_OFFSET) |"
+            fi
             echo "| Toolchain | GCC 15 on ubuntu-26.04, Release, Threads=1 |"
             if [ "$CMAKE_DEFINES_VALIDATED" != "true" ]; then
               echo "| CMake defines | Not accepted by setup; no engine was built |"
