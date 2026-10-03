@@ -1,7 +1,7 @@
 # StratChess Engine Documentation
 
 **Version**: 3.0 (August 2026)  
-**Language**: C++20  
+**Language**: C++23  
 **Primary Algorithm**: AIPerplex (PVS + Transposition Tables + Iterative Deepening + Lazy SMP)
 
 ---
@@ -687,11 +687,11 @@ nothing to install.
 | **spdlog** | Async logging infrastructure | MIT |
 | **nlohmann/json** | `game_settings.json`, test corpora | MIT |
 | **Catch2 v3** | Unit test framework (amalgamated) | BSL-1.0 |
-| **C++ Standard Library** | C++20 | - |
+| **C++ Standard Library** | C++23 | - |
 
 Approved external dependencies are spdlog and nlohmann/json only; Catch2 is test-only.
 
-### C++20 Features Used
+### Modern C++ Features Used
 
 - **Designated initializers**: `SearchResult{.best_move = move, ...}`
 - **Three-way comparison** (`<=>`)
@@ -850,7 +850,7 @@ The live backlog is GitHub Issues; `Docs/Roadmap.md` carries the larger themes.
 ## Contributing
 
 ### Code Style
-- C++20 modern style
+- C++23 modern style
 - 4-space indentation (tabs in legacy code)
 - Descriptive variable names
 - Comments describe the code as it stands — not what it replaced, and not point-in-time measurements

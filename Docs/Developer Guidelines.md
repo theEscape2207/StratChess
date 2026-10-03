@@ -1,6 +1,6 @@
 ﻿# Developer Guidelines – Modern C++ Chess Engine
 ## Context
-This project focuses on developing a modern chess engine using C++20. The aim is to improve playing strength (ELO) 
+This project focuses on developing a modern chess engine using C++23. The aim is to improve playing strength (ELO) 
 while maintaining clarity, efficiency, and robustness in design and implementation.
 
 ## Objectives
