@@ -11,6 +11,9 @@ shards only, so an arm is just a smaller batch against the shared reference.
   plan_arms.py list   --arms STR              one "LABEL<TAB>OPTIONS" line per arm
   plan_arms.py logs   --arms STR --shards N --arm LABEL LOG...
                                               the logs of LABEL's shards, one per line
+  plan_arms.py verify --arms STR --shards N --rounds-per-shard N --opening-offset N
+                     --candidate-name STR --reference-name STR --book PATH --shard-root PATH
+                                              validate the whole batch before pooling
 
 An empty --arms is the single-candidate run: matrix gives every shard an empty
 label, and list prints nothing.
@@ -24,6 +27,7 @@ import json
 import os
 import re
 import string
+import subprocess
 import sys
 import tempfile
 
@@ -31,6 +35,8 @@ import pool_pentanomial
 
 OPTION_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*=\S+$")
 SHARD_LOG_RE = re.compile(r"shard-(\d+)[/\\]match\.log$")
+ARTIFACT_RE = re.compile(r"strength-([1-9][0-9]*)-shard-(0|[1-9][0-9]*)$")
+TAG_RE = re.compile(r'\[([A-Za-z][A-Za-z0-9_]*)\s+"((?:[^"\\]|\\["\\])*)"\]')
 
 
 class PlanError(Exception):
@@ -102,6 +108,133 @@ def logs_for_arm(arms, shards, wanted, logs):
     return [by_shard[s] for s in range(shards) if label(s % len(arms)) == wanted]
 
 
+def read_pgn_headers(path):
+    """Read fastchess header blocks without interpreting moves or completion order."""
+    games = []
+    headers = {}
+    in_moves = False
+    with open(path, encoding="utf-8") as handle:
+        for number, line in enumerate(handle, 1):
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("["):
+                if in_moves:
+                    games.append(headers)
+                    headers = {}
+                    in_moves = False
+                match = TAG_RE.fullmatch(line)
+                if not match:
+                    raise PlanError(f"{path}:{number}: malformed PGN header")
+                name, value = match.groups()
+                if name in headers:
+                    raise PlanError(f"{path}:{number}: duplicate PGN header {name}")
+                headers[name] = re.sub(r'\\(["\\])', r'\1', value)
+            else:
+                if not headers:
+                    raise PlanError(f"{path}:{number}: PGN moves without headers")
+                in_moves = True
+    if headers:
+        games.append(headers)
+    return games
+
+
+def position_fields(text, source):
+    fields = text.split()
+    if len(fields) < 4:
+        raise PlanError(f"{source}: missing four FEN/EPD position fields")
+    return tuple(fields[:4])
+
+
+def verify_batch(arms, shards, rounds, offset, candidate, reference, book, root):
+    """Assert artifact, routing, assigned-start and completion consistency for every shard.
+
+    Only round one's opening assignment is checked; this does not establish move
+    legality, every opening's assignment, or tamper-proof artifact provenance.
+    """
+    if shards <= 0 or rounds <= 0 or offset < 0:
+        raise PlanError("shards and rounds-per-shard must be positive; opening-offset nonnegative")
+    if not candidate or not reference or candidate == reference:
+        raise PlanError("distinct nonempty candidate-name and reference-name are required")
+    routing = matrix(arms, shards)
+    by_shard = {}
+    run_ids = set()
+    for directory, _, _ in os.walk(root):
+        if directory == root:
+            continue
+        name = os.path.basename(directory)
+        if "shard-" not in name:
+            continue
+        match = ARTIFACT_RE.fullmatch(name)
+        if not match:
+            raise PlanError(f"{directory}: noncanonical shard artifact directory")
+        run_id, index = match.groups()
+        shard = int(index)
+        if shard >= shards or shard in by_shard:
+            raise PlanError(f"{directory}: shard {shard} is out of range or seen twice")
+        run_ids.add(run_id)
+        by_shard[shard] = directory
+    missing = sorted(set(range(shards)) - set(by_shard))
+    if missing:
+        raise PlanError(f"no artifact for shard(s) {missing}; refusing a partial batch")
+    if len(run_ids) != 1:
+        raise PlanError("shard artifacts belong to different runs")
+
+    needed = {offset + shard * rounds for shard in range(shards)}
+    starts = {}
+    with open(book, encoding="utf-8") as handle:
+        index = 0
+        for line in handle:
+            if not line.strip():
+                continue
+            if index in needed:
+                starts[index] = position_fields(line, f"{book}: nonblank entry {index}")
+            index += 1
+    if needed - set(starts):
+        raise PlanError(f"{book}: missing assigned nonblank EPD entries {sorted(needed - set(starts))}")
+
+    seen_starts = set()
+    for shard in range(shards):
+        directory = by_shard[shard]
+        log = os.path.join(directory, "match.log")
+        pgn = os.path.join(directory, "match.pgn")
+        if not os.path.isfile(log) or not os.path.isfile(pgn):
+            raise PlanError(f"{directory}: both match.log and match.pgn are required")
+        pool_pentanomial.read_shard(log, rounds)
+        games = read_pgn_headers(pgn)
+        if len(games) != 2 * rounds:
+            raise PlanError(f"{pgn}: expected {2 * rounds} games, got {len(games)}")
+        arm = routing[shard]["label"]
+        expected_candidate = candidate + (f"-arm{arm}" if arm else "")
+        expected_colours = {(expected_candidate, reference), (reference, expected_candidate)}
+        by_round = {}
+        for game in games:
+            colours = (game.get("White"), game.get("Black"))
+            if colours not in expected_colours:
+                raise PlanError(f"{pgn}: expected {expected_candidate} versus {reference}, got {colours}")
+            round_text = game.get("Round", "")
+            if not re.fullmatch(r"[1-9][0-9]*", round_text):
+                raise PlanError(f"{pgn}: missing or invalid Round header {round_text!r}")
+            round_number = int(round_text)
+            if round_number > rounds:
+                raise PlanError(f"{pgn}: round {round_number} outside 1..{rounds}")
+            by_round.setdefault(round_number, []).append(game)
+        if set(by_round) != set(range(1, rounds + 1)):
+            raise PlanError(f"{pgn}: missing round(s) {sorted(set(range(1, rounds + 1)) - set(by_round))}")
+        for round_number, pair in by_round.items():
+            if len(pair) != 2 or {(game["White"], game["Black"]) for game in pair} != expected_colours:
+                raise PlanError(f"{pgn}: round {round_number} requires two opposite-colour games")
+        assigned = starts[offset + shard * rounds]
+        for game in by_round[1]:
+            actual = position_fields(game.get("FEN", ""), f"{pgn}: round 1")
+            if actual != assigned:
+                raise PlanError(f"{pgn}: round 1 FEN differs from assigned nonblank EPD entry "
+                                f"{offset + shard * rounds}")
+        if assigned in seen_starts:
+            raise PlanError(f"{pgn}: round 1 FEN repeats another shard's start")
+        seen_starts.add(assigned)
+
+
 def self_test():
     failures = []
 
@@ -159,6 +292,119 @@ def self_test():
         raises("doubled shard log refused", lambda: logs_for_arm(arms, 6, "A", logs + logs[:1]))
         raises("unknown arm refused", lambda: logs_for_arm(arms, 6, "D", logs))
 
+    # Minimal pinned fastchess headers: a completed round 2 precedes round 1.
+    first_fen = "rnbqkb1r/1p3p1p/p3pnp1/8/2PP4/5N2/P3BPPP/RNBQK2R w KQkq - 0 9"
+    second_fen = "rnbqk2r/pp4pp/2pbp1n1/3p1p2/3P4/2PBPNB1/PP3PPP/RN1QK2R w KQkq - 0 9"
+    third_fen = "8/8/8/8/8/4k3/8/4K3 w - - 0 1"
+    candidate, reference = "candidate-a922cee", "reference-4dafbdd"
+
+    def game(round_number, white, black, fen):
+        return (f'[Event "Fastchess Tournament"]\n[Round "{round_number}"]\n'
+                f'[White "{white}"]\n[Black "{black}"]\n[Result "1-0"]\n'
+                f'[SetUp "1"]\n[FEN "{fen}"]\n\n1-0\n\n')
+
+    def cli_case(name, arm_text="", replacements=(), additions=None, removed=(),
+                 overrides=(), omitted=(), success=False):
+        with tempfile.TemporaryDirectory() as root:
+            shard_root = os.path.join(root, "shards")
+            book = os.path.join(root, "openings.epd")
+            # Blank lines do not advance the zero-based EPD index; FEN clocks are ignored.
+            with open(book, "w", encoding="utf-8") as handle:
+                handle.write(f"{third_fen}\n\n{' '.join(first_fen.split()[:4])} id \"start\";\n"
+                             f"{second_fen}\n\n{third_fen}\n{second_fen}\n")
+            files = {}
+            for shard, start in enumerate((first_fen, third_fen)):
+                arm = ("-arm" + label(shard)) if arm_text else ""
+                engine = candidate + arm
+                prefix = f"strength-37125713346-shard-{shard}/"
+                files[prefix + "match.log"] = "Ptnml(0-2): [0, 0, 2, 0, 0]\n"
+                files[prefix + "match.pgn"] = (game(2, engine, reference, second_fen)
+                                               + game(1, engine, reference, start)
+                                               + game(2, reference, engine, second_fen)
+                                               + game(1, reference, engine, start))
+            for path, old, new in replacements:
+                files[path] = files[path].replace(old, new)
+            if additions:
+                for destination, source in additions.items():
+                    files[destination] = files[source]
+            for path in removed:
+                del files[path]
+            for path, text in files.items():
+                target = os.path.join(shard_root, path)
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                with open(target, "w", encoding="utf-8") as handle:
+                    handle.write(text)
+            command = [sys.executable, os.path.abspath(__file__), "verify", "--arms", arm_text,
+                       "--shards", "2", "--rounds-per-shard", "2", "--opening-offset", "1",
+                       "--candidate-name", candidate, "--reference-name", reference,
+                       "--book", book, "--shard-root", shard_root, *overrides]
+            for flag in omitted:
+                index = command.index(flag)
+                del command[index:index + 2]
+            result = subprocess.run(command, capture_output=True, text=True, check=False)
+            expect(name, (result.returncode == 0) == success
+                   and ("Verified" in result.stdout) == success
+                   and "Traceback" not in result.stderr)
+
+    log0 = "strength-37125713346-shard-0/match.log"
+    pgn0 = "strength-37125713346-shard-0/match.pgn"
+    log1 = "strength-37125713346-shard-1/match.log"
+    pgn1 = "strength-37125713346-shard-1/match.pgn"
+    cli_case("CLI single candidate, blank EPD lines and out-of-order rounds", success=True)
+    cli_case("CLI multi-arm round routing", "X=1;X=2", success=True)
+    cli_case("CLI swapped arm PGN refused", "X=1;X=2",
+             [(pgn1, "-armB", "-armA")])
+    cli_case("CLI short parseable log refused", replacements=[(log0, "[0, 0, 2", "[0, 0, 1")])
+    cli_case("CLI excess log refused", replacements=[(log1, "[0, 0, 2", "[0, 0, 3")])
+    cli_case("CLI compensating pair counts refused",
+             replacements=[(log0, "[0, 0, 2", "[0, 0, 1"), (log1, "[0, 0, 2", "[0, 0, 3")])
+    cli_case("CLI complete log with short PGN refused", replacements=[
+        (pgn0, game(1, reference, candidate, first_fen), "")])
+    cli_case("CLI missing round one refused", replacements=[(pgn0, '[Round "1"]', '[Round "2"]')])
+    cli_case("CLI excess round one refused", replacements=[
+        (pgn0, '[Round "2"]', '[Round "1"]')])
+    cli_case("CLI round outside range refused", replacements=[(pgn0, '[Round "2"]', '[Round "3"]')])
+    cli_case("CLI same-colour pair refused", replacements=[
+        (pgn0, game(1, reference, candidate, first_fen), game(1, candidate, reference, first_fen))])
+    cli_case("CLI both round-one FENs checked", replacements=[
+        (pgn0, game(1, reference, candidate, first_fen), game(1, reference, candidate, second_fen))])
+    cli_case("CLI missing player name refused", replacements=[
+        (pgn0, f'[White "{candidate}"]\n', "")])
+    cli_case("CLI duplicate header refused", replacements=[
+        (pgn0, '[Round "1"]', '[Round "1"]\n[Round "1"]')])
+    cli_case("CLI malformed header refused", replacements=[
+        (pgn0, '[Round "1"]', '[Round 1]')])
+    cli_case("CLI missing FEN refused", replacements=[(pgn0, f'[FEN "{first_fen}"]\n', "")])
+    cli_case("CLI missing PGN refused", removed=[pgn1])
+    cli_case("CLI missing log refused", removed=[log1])
+    cli_case("CLI missing artifact index refused", removed=[log1, pgn1])
+    for prefix, name in (("nested/strength-37125713346-shard-0", "duplicate artifact index"),
+                         ("strength-37125713346-shard-2", "unexpected artifact index"),
+                         ("strength-37125713346-shard-00", "noncanonical artifact index")):
+        cli_case(f"CLI {name} refused", additions={prefix + "/match.log": log0,
+                                                  prefix + "/match.pgn": pgn0})
+    cli_case("CLI incorrect opening offset refused", overrides=["--opening-offset", "0"])
+    cli_case("CLI absent assigned EPD entry refused", overrides=["--opening-offset", "100"])
+    cli_case("CLI omitted planned pair count refused", omitted=["--rounds-per-shard"])
+    cli_case("CLI omitted book refused", omitted=["--book"])
+    for flag, value in (("--rounds-per-shard", "0"), ("--shards", "0"), ("--opening-offset", "-1")):
+        cli_case(f"CLI invalid {flag} refused", overrides=[flag, value])
+
+    with tempfile.TemporaryDirectory() as root:
+        book = os.path.join(root, "book.epd")
+        with open(book, "w", encoding="utf-8") as handle:
+            handle.write((first_fen + "\n") * 2)
+        for shard in range(2):
+            directory = os.path.join(root, f"strength-1-shard-{shard}")
+            os.makedirs(directory)
+            with open(os.path.join(directory, "match.log"), "w", encoding="utf-8") as handle:
+                handle.write("Ptnml(0-2): [0, 0, 1, 0, 0]\n")
+            with open(os.path.join(directory, "match.pgn"), "w", encoding="utf-8") as handle:
+                handle.write(game(1, candidate, reference, first_fen)
+                             + game(1, reference, candidate, first_fen))
+        raises("assigned start FENs must be distinct", lambda: verify_batch(
+            [], 2, 1, 0, candidate, reference, book, root))
+
     print("\nself-test:", "FAIL" if failures else "PASS")
     return 1 if failures else 0
 
@@ -166,11 +412,17 @@ def self_test():
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", nargs="?", choices=["matrix", "list", "logs"])
+    parser.add_argument("command", nargs="?", choices=["matrix", "list", "logs", "verify"])
     parser.add_argument("logs", nargs="*", help="shard logs, for the logs command")
     parser.add_argument("--arms", default="")
     parser.add_argument("--shards", type=int, default=0)
     parser.add_argument("--arm", default="")
+    parser.add_argument("--rounds-per-shard", type=pool_pentanomial.positive_int)
+    parser.add_argument("--opening-offset", type=int)
+    parser.add_argument("--candidate-name")
+    parser.add_argument("--reference-name")
+    parser.add_argument("--book")
+    parser.add_argument("--shard-root")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
 
@@ -186,9 +438,19 @@ def main():
         elif args.command == "list":
             for index, arm in enumerate(arms):
                 print(f"{label(index)}\t{arm}")
-        else:
+        elif args.command == "logs":
             print("\n".join(logs_for_arm(arms, args.shards, args.arm, args.logs)))
-    except PlanError as error:
+        else:
+            required = ("rounds_per_shard", "opening_offset", "candidate_name", "reference_name",
+                        "book", "shard_root")
+            missing = ["--" + name.replace("_", "-") for name in required
+                       if getattr(args, name) is None]
+            if missing:
+                raise PlanError("verify requires " + ", ".join(missing))
+            verify_batch(arms, args.shards, args.rounds_per_shard, args.opening_offset,
+                         args.candidate_name, args.reference_name, args.book, args.shard_root)
+            print(f"Verified {args.shards} shards with {args.rounds_per_shard} pairs each.")
+    except (PlanError, OSError, ValueError) as error:
         # stderr, so the annotation survives the workflow capturing stdout with $(...).
         print(f"::error::{error}", file=sys.stderr)
         return 1
