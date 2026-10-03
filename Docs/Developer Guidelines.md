@@ -31,8 +31,9 @@ while maintaining clarity, efficiency, and robustness in design and implementati
   * Catch2 (unit testing)
 - Do not introduce new dependencies unless justified and reviewed through design documentation.
 
-Engine features and data structures: `Docs/Engine-Readme.md`. Non-obvious API contracts:
-`Docs/EngineContracts.md`.
+Module ownership, state lifetimes and search lifecycle: [Architecture](Architecture.md).
+Engine features and data structures: [Engine-Readme](Engine-Readme.md). Non-obvious API contracts:
+[EngineContracts](EngineContracts.md).
 
 ## Development Constraints
 - Must maintain or improve search accuracy and ELO; any regression must be explicitly justified.

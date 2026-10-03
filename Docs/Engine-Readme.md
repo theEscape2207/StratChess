@@ -104,130 +104,8 @@ AIPerplex ai(AIPerplexConfig{.default_depth = 20, .threads = 4, .tuning = tuning
 
 ## Architecture
 
-### High-Level Design
-
-```
-┌──────────────────────────┐   ┌──────────────────────────┐
-│   UCI Front End          │   │   Interactive Game Loop  │
-│   (UCIHandler.cpp/h)     │   │   (Game.cpp/h)           │
-│   stdin/stdout protocol  │   │   console play           │
-└───────────┬──────────────┘   └───────────┬──────────────┘
-            │                              │
-            └──────────────┬───────────────┘
-                           ▼
-┌───────────────────────────────────────────────────────────┐
-│ Game: IPlayer                                               │
-│ ├─ HumanPlayer                                              │
-│ └─ SearchPlayer { Board&, AIPerplex value }                 │
-└────────────────────────────┬──────────────────────────────┘
-                             │ board per GetMove()
-                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│ AIPerplex concrete search service                            │
-│ UCI owns one directly; Game reaches one through SearchPlayer │
-└─────────────────────────────────────────────────────────────┘
-                                                           │
-┌──────────────────────────────────────────────────────────┴──┐
-│                   Search Components                         │
-│  ┌────────────────────────────────────────────────────────┐ │
-│  │  Lazy SMP (threads > 1)                                │ │
-│  │  ├─ N-1 helper threads, each with its own ThreadData   │ │
-│  │  ├─ Shared transposition table                         │ │
-│  │  └─ Main thread authoritative — helpers report nothing │ │
-│  └─────────────┬──────────────────────────────────────────┘ │
-│                ▼                                            │
-│  ┌────────────────────────────────────────────────────────┐ │
-│  │  Iterative Deepening + Aspiration Windows              │ │
-│  │  ├─ Depth 1, 2, 3... up to max_depth                   │ │
-│  │  └─ Timeout handling with quality assessment           │ │
-│  └─────────────┬──────────────────────────────────────────┘ │
-│                ▼                                            │
-│  ┌────────────────────────────────────────────────────────┐ │
-│  │  Principal Variation Search (PVS)                      │ │
-│  │  ├─ Alpha-Beta pruning                                 │ │
-│  │  ├─ Null-window search for non-PV nodes                │ │
-│  │  ├─ Null-move pruning / Late Move Reductions           │ │
-│  │  ├─ Re-search on fail-high                             │ │
-│  │  └─ Transposition table probe/store                    │ │
-│  └─────────────┬──────────────────────────────────────────┘ │
-│                ▼                                            │
-│  ┌────────────────────────────────────────────────────────┐ │
-│  │  Quiescence Search                                     │ │
-│  │  ├─ Stand-pat evaluation                               │ │
-│  │  ├─ Capture-only search                                │ │
-│  │  ├─ MVV-LVA move ordering                              │ │
-│  │  └─ Depth limit                                        │ │
-│  └────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-                  │
-                  ▼
-┌──────────────────────────────────────────────────────────────┐
-│                   Support Infrastructure                     │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐        │
-│  │ Board        │  │ Move         │  │ Evaluator    │        │
-│  │ Bitboards    │  │ Generator    │  │ Material +   │        │
-│  │ Zobrist Hash │  │ PEXT magics  │  │ Position     │        │
-│  └──────────────┘  └──────────────┘  └──────────────┘        │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐        │
-│  │ Transposition│  │ PV Table     │  │ Move         │        │
-│  │ Table        │  │ Principal    │  │ Ordering     │        │
-│  │ shared, 256MB│  │ Variation    │  │ MVV-LVA +    │        │
-│  │              │  │              │  │ killers/hist │        │
-│  └──────────────┘  └──────────────┘  └──────────────┘        │
-└──────────────────────────────────────────────────────────────┘
-```
-
-### Threading model
-
-`AIPerplex::SetThreads(N)` selects Lazy SMP width; the shipping default is 1, and at 1 no helper
-threads are spawned at all — that path is byte-identical to the pre-SMP single-threaded code.
-
-Above 1, `Search()` spawns `N-1` `std::jthread` helpers for the duration of the call. Each helper
-owns its own `ThreadData` (its own `Board` copy, PV, killers, history and node counter) and shares
-only the transposition table and the atomic abort flag. Helpers never report a move: only the main
-thread's result is authoritative. They exist to warm the shared TT.
-
-Over UCI the width is set with `setoption name Threads value N`; in game mode it comes from the
-`"threads"` key in `game_settings.json`.
-
-### Data Flow
-
-```
-Search(root, limits, observer) Entry
-    ↓
-Initialize ThreadData (board copy, PV, counters)
-    ↓
-Spawn N-1 Lazy SMP helpers (if threads > 1)
-    ↓
-Iterative Deepening Loop (depth 1 → max_depth)
-    │
-    ├─→ Execute PVS at current depth (aspiration window)
-    │       ↓
-    │   Generate Moves → Sort by value → Search each
-    │       ↓
-    │   Recursive PVS calls (decreasing depth)
-    │       ↓
-    │   Bottom of tree → Quiescence Search
-    │       ↓
-    │   Evaluate position
-    │
-    ├─→ Gather Iteration Metrics
-    │   (nodes, score, move, PV length, interrupted?)
-    │
-    ├─→ Assess Quality
-    │   (if interrupted: check completeness)
-    │
-    ├─→ Decision: Accept/Reject/Continue
-    │
-    └─→ Early Termination Check
-        (mate found)
-    ↓
-Join helpers, aggregate node counts
-    ↓
-Return SearchResult
-    ↓
-Move extracted and played
-```
+See [Architecture](Architecture.md) for the system map, module responsibilities, state ownership
+and search lifecycle.
 
 ---
 
@@ -499,7 +377,8 @@ quiescence(alpha, beta, budget):
   checks plus the absolute ply backstop bound the recursion instead
 - **TT caching**: Stores quiescence results separately from main search, keyed on remaining budget
 
-**Future Enhancement**: Delta pruning and SEE-based pruning (skip captures that can't improve alpha)
+Delta and SEE-based pruning are implemented with guards in `AIPerplex::quiescence`;
+see [search contracts](EngineContracts.md#search-internals) for their constraints.
 
 ---
 
@@ -620,16 +499,16 @@ test binary is a profile build too, so a seed left set in the shell reorders eve
 
 ### 5. Move Ordering
 
-**Current Implementation**: `AIPerplex::pvs()` (inline sorting) and `Sort.cpp/h`
+**Current Implementation**: `MoveSorter::ScoreMoves` in `Sort.cpp/h`, called by search.
 
 **Order of Priority**:
-1. **PV move** (from previous iteration)
-2. **Hash move** (from TT)
-3. **Captures** (by MVV-LVA)
-4. **Killer moves** (2 per ply, from `ThreadData`)
-5. **History heuristic** (aged, survives across moves)
+1. **Hash move** (from TT)
+2. **Non-losing captures and promotions** (MVV-LVA within the tier)
+3. **Killer moves** (2 per ply, from `ThreadData`)
+4. **Losing captures** (MVV-LVA within the tier)
+5. **Quiet moves** (history plus available continuation-history rows)
 
-**Future Enhancement**: Extract to a `MoveSorter` class; counter-move history; SEE-based capture ordering
+See [Sort.h](../StratEngine/Sort.h) for the ordering interface and tie-break rules.
 
 ---
 
@@ -745,8 +624,8 @@ Bits 12-15: Move type (quiet, capture, castle, promotion, etc.)
 - The moving and captured pieces are **not** stored. Use `Board::GetEffectiveMovPiece(m)` (pre-move
   only) and `Board::GetCapturedPiece(m)`; after `DoMove`, identify the moved piece with
   `board.GetPiece(m.to())`.
-- Equality compares from/to only and **ignores flags** — two moves differing only in promotion piece
-  compare equal.
+- Equality compares the whole encoded value, including flags; see the
+  [Move contract](EngineContracts.md#moves).
 - `is_null()` tests for the empty move.
 - Formatting lives entirely in `MoveFormatter` (`ToCoord`, `ToShort`, `ToUCI`, `ToVerbose`,
   `FromUCI`), not on `Move` itself.
@@ -933,12 +812,6 @@ kind of change.
 ## Future Enhancements
 
 The live backlog is GitHub Issues; `Docs/Roadmap.md` carries the larger themes.
-
-**Search**:
-- Delta pruning and SEE-based pruning in quiescence
-- Counter-move history
-- Singular extensions
-- Extract move ordering to a `MoveSorter` class
 
 **Evaluation**:
 - The evaluation-improvement epic and its sub-issues

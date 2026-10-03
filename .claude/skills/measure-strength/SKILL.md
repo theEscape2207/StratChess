@@ -36,6 +36,12 @@ inconclusive to 11 decisive locally, against 9 of 9 decisive in the lab
 local SPRT first if you like, as a 40-minute smoke test, but plan the lab run as the gate from the
 start rather than arriving at it after two inconclusive sessions.
 
+Once a strength candidate passes correctness and the comparison is valid, prioritise its deciding
+lab run within the agreed budget. Optional cost attribution can run alongside or afterward; it
+must not become a prerequisite for measuring strength. Record capacity/budget/priority deferrals
+as unmeasured, not as strength failures. Before dispatch, record the experiment role and stopping
+rule in existing task records; `Measurements/README.md` defines how the result links back to them.
+
 **Explaining a result** (how a search change reshaped the tree, which helps read its wall-clock or
 Elo result, or what a #636 child is judged by): `Compare-SearchProfile.ps1 -Before -After` on two
 `-DSTRAT_SEARCH_PROFILE=1` builds. It prints ordering, LMR, node types, pruning, quiescence,

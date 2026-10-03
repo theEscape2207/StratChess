@@ -7,7 +7,8 @@ colour-swapped pairs. Full input table and internals: `Docs/CI.md` → Strength 
 - `--ref` supplies the **workflow file** as well as the candidate source, so dispatching against an
   old commit runs that commit's harness too.
 - `reference_ref` beyond the `merge-base` default: a tag like `elo-reference-v2` measures cumulative
-  strength; the candidate's own SHA is a null test.
+  strength; the candidate's own SHA is a null test only when build configuration, effective options
+  and playing conditions also match.
 - **One run at a time, repository-wide**, occupying 18 of 20 concurrent job slots for ~3 h.
 - **A failed shard discards the whole batch**, not just itself: the survivors are the ones that
   happened to avoid whatever went wrong, so pooling them would be a biased subset wearing a full

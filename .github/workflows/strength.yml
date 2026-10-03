@@ -19,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       reference_ref:
-        description: "Reference side. 'merge-base' measures this ref against where it forked from main, so the result is attributable to this change alone. A tag such as elo-reference-v2 measures cumulative strength instead; the candidate's own SHA is a null test"
+        description: "Reference side. 'merge-base' measures this ref against where it forked from main, so the result is attributable to this change alone. A tag such as elo-reference-v2 measures cumulative strength instead; the candidate's own SHA is a null test only when build configuration, effective options and playing conditions also match"
         default: merge-base
       cmake_defines:
         description: "Whitespace-separated -DNAME=VALUE arguments applied identically to both engine builds; CMAKE_* variables are reserved"
