@@ -189,7 +189,8 @@ def main():
         else:
             print("\n".join(logs_for_arm(arms, args.shards, args.arm, args.logs)))
     except PlanError as error:
-        print(f"::error::{error}")
+        # stderr, so the annotation survives the workflow capturing stdout with $(...).
+        print(f"::error::{error}", file=sys.stderr)
         return 1
     return 0
 
