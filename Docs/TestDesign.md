@@ -599,9 +599,9 @@ check the aspiration window's joint bound at and beyond `INT_MAX - Search_Init`.
 atomic and name the field.
 
 The UCI half pins each option name to its member and the exact advertised lines, the value grammar
-(lowercase Booleans, unsigned decimals, overflow), and that unexposed names are unknown. The test
-target compiles singular extensions in, so it sees seven options; the shipping six cannot be
-observed from the test binary. `UCITests.cpp` covers the service side: a changed value clears a
+(lowercase Booleans, unsigned decimals, overflow), and that unexposed names are unknown. Every
+build advertises the same options, so the test binary sees what ships. `UCITests.cpp` covers the
+service side: a changed value clears a
 seeded TT marker while an invalid or same value keeps it, the setting survives `ucinewgame`, is
 refused mid-search, and reaches the next search on one and two threads (pruning counters).
 

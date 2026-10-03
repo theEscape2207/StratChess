@@ -168,10 +168,10 @@ whose violation is silent.
   constraints (the aspiration window's doubling) are written out in `SearchTuningSchema.cpp`. A new
   field of an existing type is one entry plus its tests. Validation is all-or-nothing and applies at
   `AIPerplex` construction as well as to `game_settings.json`, which rejects an out-of-domain value
-  naming the field; a compiled-out feature's fields (singular extensions in the shipping build) may
-  hold their defaults but never change, so its switch may be set false but never true.
+  naming the field; a field the catalogue marks unavailable (a compiled-out feature) may hold its
+  default but never change, so such a feature's switch may be set false but never true.
 - **UCI reaches `SearchTuning` only through the catalogue's UCI names.** `uci` advertises them
-  (the four `Singular*` options only in a build compiling it in) and `setoption` applies one through
+  (the same set in every build) and `setoption` applies one through
   `AIPerplex::SetTuning`, which validates the whole tuning and **clears the TT when the tuning
   changes** — stored scores came from the old pruning. It is idle-only like `SetHash`, so UCI refuses
   it mid-search. An applied value is echoed as `info string <Name> <value>`, so a match's protocol

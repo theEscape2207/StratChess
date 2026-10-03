@@ -105,7 +105,7 @@ TEST_CASE("Config: every search_tuning key reaches SearchTuning", "[config]")
                 "null_move_reduction": 4,
                 "null_move_min_depth": 7,
                 "see_pruning_enabled": false,
-                "singular_extensions_enabled": true,
+                "singular_extensions_enabled": false,
                 "reverse_futility_enabled": false,
                 "reverse_futility_max_depth": 5,
                 "reverse_futility_margin": 150,
@@ -138,7 +138,7 @@ TEST_CASE("Config: every search_tuning key reaches SearchTuning", "[config]")
 	CHECK(tuning->null_move_reduction == 4);
 	CHECK(tuning->null_move_min_depth == 7);
 	CHECK_FALSE(tuning->see_pruning_enabled);
-	CHECK(tuning->singular_extensions_enabled);
+	CHECK_FALSE(tuning->singular_extensions_enabled);
 	CHECK_FALSE(tuning->reverse_futility_enabled);
 	CHECK(tuning->reverse_futility_max_depth == 5);
 	CHECK(tuning->reverse_futility_margin == 150);

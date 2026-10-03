@@ -122,8 +122,7 @@ TEST_CASE("SearchTuning defaults are the shipped values", "[tuning]")
 	CHECK(tuning.null_move_reduction == 3);
 	CHECK(tuning.null_move_min_depth == 3);
 	CHECK(tuning.see_pruning_enabled);
-	// The test target compiles singular extensions in but leaves them off by default.
-	CHECK_FALSE(tuning.singular_extensions_enabled);
+	CHECK(tuning.singular_extensions_enabled);
 	CHECK(tuning.singular_min_depth == 8);
 	CHECK(tuning.singular_tt_depth_margin == 3);
 	CHECK(tuning.singular_margin_factor == 2);
@@ -293,9 +292,11 @@ TEST_CASE("SearchTuning keeps a compiled-out feature at its defaults", "[tuning]
 	REQUIRE(error.has_value());
 	CHECK(error->code == Code::Unavailable);
 	CHECK(error->field == "feature");
+}
 
-	// The test target compiles singular extensions in, so enabling and tuning them is valid here.
-	CHECK(accepts("singular_extensions_enabled", true));
+TEST_CASE("SearchTuning accepts disabling and tuning singular extensions", "[tuning]")
+{
+	CHECK(accepts("singular_extensions_enabled", false));
 	CHECK(accepts("singular_min_depth", 10));
 	CHECK(accepts("singular_tt_depth_margin", 0));
 	CHECK(accepts("singular_margin_factor", 4));
@@ -375,10 +376,9 @@ TEST_CASE("SearchTuning UCI options set their own member", "[tuning][uci]")
 	CHECK(uci_rejection("Contempt", "-20") == Code::InvalidType);
 	CHECK(uci_rejection("Contempt", "101") == Code::OutOfRange);
 
-	// The test target compiles singular extensions in, defaulting off.
 	expected = SearchTuning{};
-	REQUIRE_FALSE(parse_uci("SingularExtensions", "true", tuning));
-	expected.singular_extensions_enabled = true;
+	REQUIRE_FALSE(parse_uci("SingularExtensions", "false", tuning));
+	expected.singular_extensions_enabled = false;
 	CHECK(tuning == expected);
 
 	expected = SearchTuning{};
@@ -456,9 +456,8 @@ TEST_CASE("SearchTuning UCI ignores names it does not expose", "[tuning][uci]")
 
 TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
 {
-	// The test target compiles singular extensions in, so it advertises every option.
 	const std::vector<std::string> expected{
-	    "option name SingularExtensions type check default false",
+	    "option name SingularExtensions type check default true",
 	    "option name SingularMinDepth type spin default 8 min 1 max 256",
 	    "option name SingularTtDepthMargin type spin default 3 min 0 max 256",
 	    "option name SingularMarginFactor type spin default 2 min 0 max 1000",

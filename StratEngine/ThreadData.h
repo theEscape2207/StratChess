@@ -102,8 +102,8 @@ struct ThreadData {
 	// or store the transposition table, clear the PV row, try a null move, or adjudicate a
 	// moveless position as mate. Set and restored by ExcludedMoveGuard, never by hand.
 	//
-	// Cold by construction: pvs() tests the enable flag before indexing this, so a build with
-	// singular extensions off never touches the array.
+	// pvs() tests the enable flag before indexing this, so a search with singular extensions off
+	// never touches the array.
 	Move excluded_move[MAX_PLY];
 
 	// Trigger counters, per thread; see SearchTelemetry.h. Reset per search, and they survive an

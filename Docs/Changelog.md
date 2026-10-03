@@ -20,6 +20,17 @@ and couldn't be matched with confidence — those remain in the undated pocket b
 
 Newest first.
 
+## Unreleased — Singular extensions on by default (#95)
+
+Singular extensions ship enabled: lab +22.90 ± 3.60 Elo (run 37020636422, `Measurements/ci-per-change.md`).
+The `STRAT_SINGULAR_EXTENSIONS` CMake option, the `STRAT_SINGULAR_DEFAULT_ON` define and
+`kSingularExtensionsCompiled` are gone; `singular_extensions_enabled` is a plain runtime Boolean
+defaulting true. Every build now advertises `SingularExtensions` (default true) and the three
+`Singular*` tuning knobs over UCI. The search tests now run the shipped configuration, singular
+extensions included.
+
+---
+
 ## Unreleased — Singular tuning knobs over UCI (#699)
 
 A build compiling singular extensions in now advertises `SingularMinDepth` (1–256),
