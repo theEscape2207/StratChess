@@ -35,7 +35,6 @@ class FENParser final {
 	};
 
 	// Primary interface - parse FEN into standalone structures, or the reason it is malformed.
-	// This is what Board::SetupFromFEN() should call
 	[[nodiscard]] static std::expected<ParsedFEN, std::string> ParseFEN(const std::string& fen) noexcept;
 
 	// Validate FEN metadata against actual board state, repairing (clearing) and reporting any
