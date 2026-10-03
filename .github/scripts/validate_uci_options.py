@@ -113,8 +113,8 @@ def validate(options, table, label):
                 problems.append(f"{label}: '{name}'={number} is outside the engine's advertised range [{lo}, {hi}]")
                 continue
         if normalize_value(kind, value) == normalize_value(kind, default):
-            # A default override changes this option only; comparison preflight
-            # determines whether the complete candidate/reference conditions match.
+            # A redundant default override changes no resolved setting.
+            # Comparison preflight decides whether the complete conditions match.
             warnings.append(f"{label}: '{name}'={value} is already the engine's default, so it changes nothing")
     return problems, warnings
 
