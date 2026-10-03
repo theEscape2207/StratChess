@@ -1361,10 +1361,8 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 		return evaluator_.Evaluate(td.board);
 	}
 
-	// Repetition and fifty-move draws. pvs() checks these before it hands a node to
-	// quiescence, so historically quiescence could reach neither: every move it could make
-	// was a capture or a pawn move, which resets the fifty-move counter and makes repetition
-	// impossible. Generating quiet evasions breaks both halves of that.
+	// Quiet check evasions can repeat a position or reach the fifty-move limit inside quiescence,
+	// even though pvs() checked draws before entering it.
 	//
 	// Repetition becomes reachable because a quiet evasion may itself give check, so two
 	// sides can go on checking each other with no capture between them — material never
@@ -1401,9 +1399,8 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	// is therefore a valid bound here. The depth >= 1 test asserts that invariant locally rather
 	// than importing it from pvs().
 	//
-	// best_move is deliberately not mined from either phase. store() inherits a same-key entry's
-	// move across a phase change, so an entry can hold a quiet move this capture-only generator
-	// would never produce; reading it here would turn that inheritance from inert into a defect.
+	// best_move is deliberately not mined from either phase: store() may inherit a quiet move
+	// from a MAIN entry, which is absent from quiescence's out-of-check capture/promotion list.
 	//
 	// A mate score is refused, sound distance and all: every PV leaf lands here, and
 	// iteration continuation stops on a mate score, so one served to a node that
