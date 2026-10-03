@@ -21,8 +21,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
-#include <tuple>
-#include <vector>
+#include <utility>
 
 namespace FenBatch {
 
@@ -49,10 +48,8 @@ namespace FenBatch {
 			return {LineKind::Skip, {}}; // comment
 		}
 
-		FENParser::FENGameState state;
-		std::vector<std::tuple<ePiece, eSquare>> pieces;
-		if (auto err = FENParser::ParseFEN(std::string(line), state, pieces)) {
-			return {LineKind::Malformed, *err};
+		if (auto parsed = FENParser::ParseFEN(std::string(line)); !parsed) {
+			return {LineKind::Malformed, std::move(parsed.error())};
 		}
 
 		return {LineKind::Valid, {}};
