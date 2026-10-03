@@ -4,7 +4,8 @@
 
 **Baseline:** `origin/main` `ec142137517855d62a6eba1318d065bf2a9ed651` (includes #710)
 
-**Status:** selection/design checkpoint; production edits await owner approval and cross-agent review.
+**Status:** cross-agent design review complete; all five non-blocking findings accepted. Production
+edits await owner approval of scenario, contract and cost.
 
 ## Goal
 
@@ -64,13 +65,14 @@ Only these two operations implement decisions; both are allocation-free and `noe
 IterationAssessment assess_iteration(const IterationSample& sample,
                                      const IterationState& previous,
                                      const IterationThresholds& thresholds) noexcept;
-IterationContinuation continue_iteration(const IterationMetrics& completed,
-                                         const IterationState& accepted,
+IterationContinuation continue_iteration(const IterationAssessment& completed,
                                          bool soft_limit_reached) noexcept;
 ```
 
-`continue_iteration` is called once only for a completed acceptance, with that assessment's
-metrics/state. Document and Debug-assert `!completed.interrupted`; no runtime validation layer.
+`continue_iteration` is called once only for a completed acceptance, with that assessment. It reads
+`completed.metrics.move_changed` and the accepted score/extension state in `completed.next_state`.
+Document and Debug-assert `completed.decision == IterationDisposition::COMPLETED`; this checks the
+precondition rather than enforcing it through the type system. No runtime validation layer.
 The driver holds one local `IterationState` per search, explicitly passes it and assigns returned
 state. No policy object, hidden clock, callback, pending state or inter-search cache is needed.
 Emergency handling may subsequently amend this local state as today.
@@ -89,6 +91,8 @@ Either acceptance copies move, score, depth, main-tree node delta and `!move_cha
 into retained state. Only completed acceptance updates `last_iteration_move`. Rejection preserves
 every retained field. Assessment never changes `extra_depth_used`. Interrupted acceptance and
 rejection stop without a continuation call; rejection emits no iteration observer snapshot.
+The header contract states `decision == REJECTED` if and only if `reason != NONE`; both acceptance
+dispositions carry `NONE`. Direct tests assert this invariant for every disposition/reason case.
 
 ### D3: Preserve the post-observer continuation transition
 
@@ -97,6 +101,8 @@ assess, log diagnostic metrics, apply accepted state, log acceptance/completion,
 then acquire `ShouldStopIteration()` and call `continue_iteration` for completed acceptance only.
 Computing a pure assessment before diagnostic logging introduces no side effect or clock read;
 diagnostic logging still precedes state application and acceptance/rejection output.
+Rename the driver's existing local `bool continue_iteration` to `bool continue_search` so it does
+not hide the policy function; qualify the policy call as `Engine::continue_iteration`.
 
 If the soft limit is reached and either the move is unchanged or the extension was already used,
 return `SOFT_LIMIT` without checking mate. Otherwise a reached soft limit consumes the one extension,
@@ -124,9 +130,12 @@ sample, then an interrupted sample with the same encoded move and score zero; as
 acceptance and returned state. Change only the second move to assert `MOVE_CHANGED`. The same
 test crosses the interface production uses and derives the comparison/ratio inside the module.
 
-Record actual before/after setup and dependencies in the issue/PR. Acceptance is eight migrated
-tests requiring no engine, Board, TT, clock or friend access, plus direct sequence coverage for
-continuation. Do not claim a measured reduction in review time or suite time. Remove stale helper
+Record actual before/after setup and dependencies in the issue/PR. The eight migrated tests require
+no engine, Board, TT, clock or friend access: those are interface properties, not an independent
+benefit measurement. Record the pilot benefit as "untested rules now tested": the one-extension
+rule, `move_changed`/`completion_ratio` derivation and retained-state transitions. Independent
+expectations in those tests and the shipping bench can falsify the pilot's coverage/cost verdict.
+Do not claim a measured reduction in review time or suite time. Remove stale helper
 coverage comments in the touched test file and consolidate the duplicated acceptance-state writes
 inside the module; leave unrelated fixture/pruning cleanup alone.
 
@@ -159,7 +168,8 @@ Maintainability benefit is a falsifiable pilot outcome, not an assumed time-savi
 - Direct table/sequence tests pin each rejection and precedence when multiple checks fail; equality
   at node/ratio/PV thresholds and the next failing value; absent/zero denominator; no prior depth;
   completed observations bypassing all quality checks; drawn-score acceptance; move flag differences;
-  accepted/rejected retained state; positive/negative mate boundaries and scores just inside them.
+  accepted/rejected retained state; disposition/rejection-reason consistency; positive/negative
+  mate boundaries and scores just inside them.
 - Continuation sequences cover changed/unchanged moves before and after the soft limit, one extension
   only, fresh-state reset, soft-limit precedence over mate and extension consumption on mate. Use
   explicit test thresholds; production maps the three tuning values once per main-thread search.
@@ -167,8 +177,11 @@ Maintainability benefit is a falsifiable pilot outcome, not an assumed time-savi
   selection, stale aspiration PV rejection, emergency fallback, repetition PV depth, observer
   snapshots and immediate-stop/lifecycle/aggregation coverage. Add a deterministic public search
   case from the starting position at a depth-4 cap, with an observer calling `Stop()` after depth 1,
-  asserting its accepted move/score/depth survive and no later depth is published; keep this distinct
-  from value-only policy tests.
+  asserting its accepted move/score/depth survive and a stop inside the observer publishes no later
+  depth; keep this distinct from value-only policy tests. This case does not prove observer-before-
+  soft-limit clock sampling: that order is guarded by source review and the `IterationPolicy.h`
+  contract. A callback consuming the soft budget is not tested without clock injection, which
+  remains outside scope.
 - Run required pre-commit and Engine-tier pre-PR validation (build, extended tests, tactical stability
   and self-play), the repository code review and `search-reviewer`. Keep Linux Debug/sanitizer CI
   and shipping Windows CI enabled through the repository workflow.
@@ -198,7 +211,7 @@ plus `search-reviewer`; actual token/time cost is unknown until run. No optional
 | D1 responsibility, inputs and main-thread lifetime | `Docs/Architecture.md` module/ownership tables |
 | D2 arithmetic, state distinctions; D3 callback/clock ordering | `IterationPolicy.h` contract and `Docs/EngineContracts.md` |
 | D4 direct test surface and retained integration protection | `Docs/TestDesign.md` and focused tests |
-| Pilot before/after result; D5 equivalence and runtime outcome | #706 / PR body and `Docs/Changelog.md` |
+| Pilot before/after: previously untested extension rule, metric derivation and retained-state transitions now tested; D5 equivalence and runtime outcome | #706 / PR body and `Docs/Changelog.md` |
 
 Record any approved decision changed during implementation here with its reason. Once harvested,
 remove the plan in the implementation PR if no inbound references or deliberate spec role remain;
