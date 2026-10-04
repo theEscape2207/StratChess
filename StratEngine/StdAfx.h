@@ -23,8 +23,9 @@
 #include <cassert>
 #include <cctype>
 #include <cstdint>
+#include <cstdlib>
 #include <format>
-#include <fstream>     // For udskrivning til fil
+#include <fstream>
 #include <immintrin.h> // _pext_u64 for Magic.h — requires /arch:AVX2 (BMI2), see Magic.h
 #include <functional>
 #include <iostream> // cout

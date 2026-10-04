@@ -9,6 +9,7 @@
 #include <bitset>
 #include <cassert>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 
@@ -37,7 +38,7 @@ struct ThreadData {
 	Board board;
 
 	// Game outcome adjudicated at this thread's root (ply 0). Thread-local rather than a
-	// single AIPerplex-level member because adjustScoreForGameState() runs on every Lazy
+	// single AIPerplex-level member because adjust_score_for_game_state() runs on every Lazy
 	// SMP helper thread, each writing its own root at ply 0 concurrently — a shared member
 	// would be a data race.
 	GameStates root_game_state = GameStates::STILL_PLAYING;
@@ -56,7 +57,7 @@ struct ThreadData {
 	// Node-based SearchControl polling counter. Reset alongside nodes_searched. Only thread 0 counts
 	// and calls the wall-clock check (poll_search_limits(), gated on thread_id == 0); helper threads
 	// rely solely on the cheap atomic IsAborted() read instead.
-	int64_t nodes_since_check_ = 0;
+	int64_t nodes_since_check = 0;
 
 	// Thread-local principal variation.
 	PVTable pv_table;
@@ -91,7 +92,7 @@ struct ThreadData {
 
 	// --- Cold tail: singular exclusion and telemetry ---
 	// Deliberately LAST. Everything above is touched on the hot path; these are not, and
-	// inserting them higher shifted the offsets of the members that are.
+	// inserting them higher shifts the offsets of the members that are.
 
 	// excluded_move[ply] is the move a verification search at this ply must pretend does not
 	// exist. Empty for every ordinary node, which is what every guard in pvs() tests against.
@@ -149,7 +150,7 @@ struct ThreadData {
 		nodes_searched = 0;
 		qnodes_searched = 0;
 		telemetry.reset();
-		nodes_since_check_ = 0;
+		nodes_since_check = 0;
 		pv_table = PVTable();
 		clear_killers();
 		clear_null_move_flags();
@@ -249,7 +250,7 @@ struct ThreadData {
 	// At a cutoff by the quiet move at sorted index cut_index, penalizes every quiet move sorted
 	// before it that completed its child search. A move skipped by pruning, rejected as illegal
 	// or excluded has no bit set: it was judged, not tried.
-	void penalize_searched_quiets(eColor side, const MoveList& moveList,
+	void penalize_searched_quiets(eColor side, const MoveList& move_list,
 	                              const std::array<std::pair<int, int>, MoveList::MAX_MOVES>& scored_idx,
 	                              const SearchedMoves& searched, int cut_index, int depth,
 	                              ContinuationRows rows = {}) noexcept
@@ -257,7 +258,7 @@ struct ThreadData {
 		assert(cut_index >= 0 && cut_index < static_cast<int>(MoveList::MAX_MOVES));
 		for (int i = 0; i < cut_index; ++i)
 			if (searched[static_cast<size_t>(i)])
-				penalize_history(side, moveList[scored_idx[static_cast<size_t>(i)].second], depth, rows);
+				penalize_history(side, move_list[scored_idx[static_cast<size_t>(i)].second], depth, rows);
 	}
 
 	// Threefold repetition and the fifty-move rule (thread-local board). Neither applies at
@@ -272,10 +273,10 @@ struct ThreadData {
 	}
 
 	// Updates the game state adjudicated at the root of the search tree.
-	void update_game_state(size_t ply, GameStates newState)
+	void update_game_state(size_t ply, GameStates new_state)
 	{
 		if (ply == 0)
-			root_game_state = newState;
+			root_game_state = new_state;
 	}
 
   private:
@@ -291,7 +292,7 @@ struct ThreadData {
 	{
 		assert(delta >= -HISTORY_MAX && delta <= HISTORY_MAX);
 		const int32_t value = entry;
-		entry = static_cast<Entry>(value + delta - value * (delta < 0 ? -delta : delta) / HISTORY_MAX);
+		entry = static_cast<Entry>(value + delta - value * std::abs(delta) / HISTORY_MAX);
 	}
 
 	int16_t* continuation_row(uint16_t key) noexcept

@@ -112,7 +112,7 @@ neither fixed-depth tests nor a self-play PASS would catch.
    `InCheck()` — never call it after a failed or unpaired `DoMove`; use the board-free `ToCoord` in
    search diagnostics.)
 4. No changed line lies inside `pvs`, `quiescence`, `search_with_aspiration`, `iterative_deepening`,
-   `assess_iteration_quality`, `adjustScoreForGameState`, `should_stop_early`, or
+   `assess_iteration_quality`, `adjust_score_for_game_state`, `should_stop_early`, or
    `should_try_null_move`.
 5. No numeric literal, comparison operator, or control-flow keyword changed anywhere in the file.
 6. `SearchTuning.def` is untouched. A one-character constant change there is the

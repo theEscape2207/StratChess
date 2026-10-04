@@ -18,16 +18,9 @@ namespace zobrist {
 
 	void initialize() noexcept
 	{
-		// Fills the global key tables exactly once (thread-safe magic static).
-		// Every Board instance must see identical keys, or zobrist hashes computed
-		// from different Board objects (e.g. thread-local boards under Lazy SMP)
-		// would disagree for the same position. This is the only lazy/runtime
-		// init in the attack/Zobrist table set; a C++11 function-local static
-		// initializer is guaranteed thread-safe by the standard, so concurrent
-		// Board construction from multiple helper threads is race-free. See
-		// Magic.h for the sliding-piece attack tables, which need no such
-		// guard at all — they are `inline constexpr`, fully resolved at
-		// compile time with no runtime initialization step whatsoever.
+		// Fills the global key tables exactly once. Every Board must see identical keys, or
+		// hashes from different boards (e.g. Lazy SMP thread copies) would disagree for the same
+		// position; the function-local static makes concurrent Board construction race-free.
 		static const bool once = [] {
 			// Deterministic seed for reproducibility -- not security-sensitive, so deliberate.
 			std::mt19937_64 rng(0x123456789ABCDEF0ULL); // NOLINT(bugprone-random-generator-seed)
@@ -39,11 +32,11 @@ namespace zobrist {
 				}
 			}
 
-			for (size_t i = 0; i < 16; ++i)
-				castling_keys[i] = rng();
+			for (auto& key : castling_keys)
+				key = rng();
 
-			for (size_t sq = 0; sq < NUM_SQUARES; ++sq)
-				ep_keys[sq] = rng();
+			for (auto& key : ep_keys)
+				key = rng();
 
 			side_key = rng();
 			return true;
@@ -69,10 +62,10 @@ void Board::clear_board()
 	bitboards_.fill(0);
 	mailbox_.fill(ePiece::NO_PIECE);
 
-	sideToMove_ = WHITE;
+	side_to_move_ = WHITE;
 	state_ = PositionState{};
 	reset_repetition_history();
-	currentPly_ = 0;
+	current_ply_ = 0;
 
 	state_history_.fill(PositionState{});
 	material_score_[WHITE] = material_score_[BLACK] = 0;
@@ -113,12 +106,12 @@ void Board::remove_piece(eSquare square, ePiece piece)
 
 // Sets up the board from a collection of (piece, square) pairs.
 // Clears the board first; does not set castling rights or en-passant (use SetupFromFEN).
-void Board::setup_board(const squareCol& col)
+void Board::setup_board(const PiecePlacements& pieces)
 {
 	clear_board();
 
-	for (const auto& sqPiece : col)
-		add_piece_to_board(std::get<0>(sqPiece), std::get<1>(sqPiece));
+	for (const auto& [piece, square] : pieces)
+		add_piece_to_board(piece, square);
 
 	spdlog::default_logger()->debug("Custom board set up");
 }
@@ -126,14 +119,14 @@ void Board::setup_board(const squareCol& col)
 // The one rule so far: the side not to move may not be in check, since reaching such a position would
 // have required leaving a king en prise. Kings on adjacent squares fail it too, because GetAttackBoard
 // includes king attacks. Any further rule belongs here, and only needs the scratch board below.
-bool Board::position_is_legal(const squareCol& pieces, eColor sideToMove)
+bool Board::position_is_legal(const PiecePlacements& pieces, eColor side_to_move)
 {
 	// A scratch board, because attack generation needs a populated one and the caller's board may not
 	// be modified until the position is known to be legal. Placement and side to move are all the
 	// query reads; castling rights and en-passant cannot make a king attacked.
 	Board probe;
 	probe.setup_board(pieces);
-	probe.sideToMove_ = sideToMove;
+	probe.side_to_move_ = side_to_move;
 
 	return !probe.WaitingSideInCheck();
 }
@@ -165,7 +158,7 @@ bool Board::setup_from_fen_impl(const std::string& fen, std::vector<std::string>
 
 	setup_board(pieces);
 
-	sideToMove_ = state.sideToMove;
+	side_to_move_ = state.sideToMove;
 	state_.ep_square = state.epSquare;
 	state_.castling_rights = state.castlingRights;
 	state_.halfmove_clock = static_cast<uint16_t>(state.halfMoveClock);
@@ -220,7 +213,7 @@ std::string Board::ExtractFEN() const
 
 	// 2. Active color
 	fen += ' ';
-	fen += (sideToMove_ == WHITE) ? 'w' : 'b';
+	fen += (side_to_move_ == WHITE) ? 'w' : 'b';
 
 	// 3. Castling availability
 	fen += ' ';
@@ -297,10 +290,10 @@ std::span<const BITBOARD> Board::GetBitBoards() const noexcept { return std::spa
 bool Board::DoMove(const Move& m)
 {
 	// Unmatched moves must fit the ply-history array; committed moves reset the search depth.
-	assert(currentPly_ < MAX_PLY);
+	assert(current_ply_ < MAX_PLY);
 
 	// capturedPiece must be computed before IsValid (which uses it) and before any board changes.
-	const auto capturedPiece = get_captured_piece(m);
+	const auto capturedPiece = GetCapturedPiece(m);
 
 	const ePiece movPiece = GetEffectiveMovPiece(m);
 	assert(MoveHelper::IsValid(m, movPiece, capturedPiece));
@@ -334,7 +327,7 @@ bool Board::DoMove(const Move& m)
 		assert(MoveHelper::IsPawnMove(movPiece));
 		assert(MoveHelper::IsCapture(m) && PieceHelper::IsPawn(capturedPiece));
 		// Captured pawn sits one rank behind the destination square
-		const eSquare epCapturedPawnSquare = SquareHelper::PreviousRow(to, sideToMove_);
+		const eSquare epCapturedPawnSquare = SquareHelper::PreviousRow(to, side_to_move_);
 		remove_piece_from_board(capturedPiece, epCapturedPawnSquare);
 		move_piece(movPiece, from, to);
 		break;
@@ -365,8 +358,9 @@ bool Board::DoMove(const Move& m)
 			assert(PieceHelper::IsNoPiece(GetPiece(from - 1)));
 			assert(PieceHelper::IsNoPiece(GetPiece(from - 2)));
 			assert(PieceHelper::IsNoPiece(GetPiece(from - 3)));
-			assert(PieceHelper::IsOfPiece(GetPiece(from - 4), PieceHelper::AsPiece(ROOK, sideToMove_)));
-			move_piece(PieceHelper::AsPiece(ROOK, sideToMove_), SquareHelper::Calc(to, -2), SquareHelper::Calc(to, +1));
+			assert(PieceHelper::IsOfPiece(GetPiece(from - 4), PieceHelper::AsPiece(ROOK, side_to_move_)));
+			move_piece(PieceHelper::AsPiece(ROOK, side_to_move_), SquareHelper::Calc(to, -2),
+			           SquareHelper::Calc(to, +1));
 			break;
 		default:
 			assert(!"Invalid castling 'to' square");
@@ -384,8 +378,9 @@ bool Board::DoMove(const Move& m)
 		case g8:
 			assert(PieceHelper::IsNoPiece(GetPiece(from + 1)));
 			assert(PieceHelper::IsNoPiece(GetPiece(from + 2)));
-			assert(PieceHelper::IsOfPiece(GetPiece(from + 3), PieceHelper::AsPiece(ROOK, sideToMove_)));
-			move_piece(PieceHelper::AsPiece(ROOK, sideToMove_), SquareHelper::Calc(to, +1), SquareHelper::Calc(to, -1));
+			assert(PieceHelper::IsOfPiece(GetPiece(from + 3), PieceHelper::AsPiece(ROOK, side_to_move_)));
+			move_piece(PieceHelper::AsPiece(ROOK, side_to_move_), SquareHelper::Calc(to, +1),
+			           SquareHelper::Calc(to, -1));
 			break;
 		default:
 			assert(!"Invalid castling 'to' square");
@@ -403,7 +398,7 @@ bool Board::DoMove(const Move& m)
 	const uint8_t oldCastlingRights = state_.castling_rights;
 
 	if (PieceHelper::IsKing(movPiece)) {
-		if (sideToMove_ == eColor::WHITE)
+		if (side_to_move_ == eColor::WHITE)
 			state_.castling_rights &= ~CastlingRights::WHITE_BOTH;
 		else
 			state_.castling_rights &= ~CastlingRights::BLACK_BOTH;
@@ -449,12 +444,12 @@ bool Board::DoMove(const Move& m)
 
 	update_threefold_rep(m, movPiece);
 
-	if (sideToMove_ == eColor::BLACK) {
+	if (side_to_move_ == eColor::BLACK) {
 		assert(state_.fullmove_count < UINT16_MAX); // a game this long is a bug, not an input
 		state_.fullmove_count++;
 	}
 
-	currentPly_++;
+	current_ply_++;
 
 	// Roll back if the move leaves our own king in check
 	if (InCheck()) {
@@ -470,29 +465,29 @@ bool Board::DoMove(const Move& m)
 }
 
 // Call after a move that will never be undone (a real game move, or a UCI
-// position replay). currentPly_ then only ever has to span the depth of an
+// position replay). current_ply_ then only ever has to span the depth of an
 // in-flight search excursion, never the length of the whole game.
-void Board::ResetSearchDepth() noexcept { currentPly_ = 0; }
+void Board::ResetSearchDepth() noexcept { current_ply_ = 0; }
 
 // Mirror of DoMove(). Assumes the current player is the one who did NOT make the move.
 void Board::UndoMove(const Move& m)
 {
-	currentPly_--;
+	current_ply_--;
 
 	// The moving piece is currently on m.to() (placed there by DoMove); read before any state changes.
 	const ePiece movingPiece = GetPiece(m.to());
 	// capturedPiece is needed for IsValid and for restoring the board; read from history now.
-	const auto capturedPiece = state_history_[currentPly_].captured_piece;
+	const auto capturedPiece = state_history_[current_ply_].captured_piece;
 	assert(MoveHelper::IsValid(m, movingPiece, capturedPiece));
 	assert(GetCurrentColor() != PieceHelper::Color(movingPiece));
 
 	// Restore saved state
-	last_irreversible_ply_ = state_history_[currentPly_].last_irreversible_ply;
+	last_irreversible_ply_ = state_history_[current_ply_].last_irreversible_ply;
 	restore_state();
 	const auto from = m.from();
 	const auto to = m.to();
 
-	sideToMove_ = (sideToMove_ == eColor::WHITE) ? eColor::BLACK : eColor::WHITE;
+	side_to_move_ = (side_to_move_ == eColor::WHITE) ? eColor::BLACK : eColor::WHITE;
 
 	pop_position();
 
@@ -509,7 +504,7 @@ void Board::UndoMove(const Move& m)
 		break;
 
 	case MoveType::DOUBLE_PAWN_PUSH:
-		assert(sideToMove_ == PieceHelper::Color(movingPiece));
+		assert(side_to_move_ == PieceHelper::Color(movingPiece));
 		assert(!PieceHelper::IsActual(capturedPiece));
 		assert(MoveHelper::IsPawnMove(movingPiece));
 		move_piece(movingPiece, to, from);
@@ -520,10 +515,7 @@ void Board::UndoMove(const Move& m)
 		assert(MoveHelper::IsCapture(m) && PieceHelper::IsPawn(capturedPiece));
 		move_piece(movingPiece, to, from);
 		// Restore captured pawn on the square it was taken from (behind the destination)
-		if (sideToMove_ == WHITE)
-			add_piece_to_board(ePiece::BLACK_PAWN, SquareHelper::Calc(to, +ONE_ROW));
-		else
-			add_piece_to_board(ePiece::WHITE_PAWN, SquareHelper::Calc(to, -ONE_ROW));
+		add_piece_to_board(capturedPiece, SquareHelper::PreviousRow(to, side_to_move_));
 		break;
 
 	case MoveType::PROMOTION_KNIGHT:
@@ -553,7 +545,8 @@ void Board::UndoMove(const Move& m)
 			assert(PieceHelper::IsNoPiece(GetPiece(from)));
 			assert(PieceHelper::IsNoPiece(GetPiece(to - 1)));
 			assert(PieceHelper::IsNoPiece(GetPiece(to - 2)));
-			move_piece(PieceHelper::AsPiece(ROOK, sideToMove_), SquareHelper::Calc(to, +1), SquareHelper::Calc(to, -2));
+			move_piece(PieceHelper::AsPiece(ROOK, side_to_move_), SquareHelper::Calc(to, +1),
+			           SquareHelper::Calc(to, -2));
 			break;
 		default:
 			assert(!"Invalid castling 'to' square");
@@ -571,7 +564,8 @@ void Board::UndoMove(const Move& m)
 		case g8:
 			assert(PieceHelper::IsNoPiece(GetPiece(from)));
 			assert(PieceHelper::IsNoPiece(GetPiece(to + 1)));
-			move_piece(PieceHelper::AsPiece(ROOK, sideToMove_), SquareHelper::Calc(to, -1), SquareHelper::Calc(to, +1));
+			move_piece(PieceHelper::AsPiece(ROOK, side_to_move_), SquareHelper::Calc(to, -1),
+			           SquareHelper::Calc(to, +1));
 			break;
 		default:
 			assert(!"Invalid castling 'to' square");
@@ -587,7 +581,7 @@ void Board::UndoMove(const Move& m)
 	// Restore hash last: move_piece/add_piece_to_board/remove_piece_from_board all XOR into
 	// zobrist_hash_ as a side-effect, so overwrite with the pre-move snapshot to get the
 	// correct hash back.
-	zobrist_hash_ = state_history_[currentPly_].zobrist_hash;
+	zobrist_hash_ = state_history_[current_ply_].zobrist_hash;
 }
 
 // Returns the effective moving piece for a move that has NOT yet been applied.
@@ -617,16 +611,13 @@ ePiece Board::GetEffectiveMovPiece(const Move& m) const noexcept
 	}
 }
 
-// Public wrapper around get_captured_piece — used by Sort and external callers.
-ePiece Board::GetCapturedPiece(const Move& m) const noexcept { return get_captured_piece(m); }
-
 // Returns true if the king of the side to move is under attack.
 bool Board::InCheck() const noexcept
 {
 	// Generate attacks for the opponent to see if our king is under attack
-	const eColor byColor = (sideToMove_ == WHITE ? BLACK : WHITE);
+	const eColor byColor = (side_to_move_ == WHITE ? BLACK : WHITE);
 	const BITBOARD bb = MoveGenerator::GetAttackBoard(*this, byColor);
-	return Bits::isAnyBitSet(bb, bitboards_.at(static_cast<BITBOARD>(KING) + sideToMove_));
+	return Bits::isAnyBitSet(bb, bitboards_[bitboard_index(KING, side_to_move_)]);
 }
 
 bool Board::IsCheckmated()
@@ -643,9 +634,9 @@ bool Board::IsCheckmated()
 // GetAttackBoard includes king attacks.
 bool Board::WaitingSideInCheck() const noexcept
 {
-	const eColor waiting = (sideToMove_ == WHITE ? BLACK : WHITE);
-	const BITBOARD bb = MoveGenerator::GetAttackBoard(*this, sideToMove_);
-	return Bits::isAnyBitSet(bb, bitboards_.at(static_cast<BITBOARD>(KING) + waiting));
+	const eColor waiting = (side_to_move_ == WHITE ? BLACK : WHITE);
+	const BITBOARD bb = MoveGenerator::GetAttackBoard(*this, side_to_move_);
+	return Bits::isAnyBitSet(bb, bitboards_[bitboard_index(KING, waiting)]);
 }
 
 // Adds a piece and maintains material score.
@@ -674,10 +665,10 @@ void Board::move_piece(ePiece piece, eSquare from, eSquare to)
 // ============================================================================
 
 // Marks a move as irreversible (pawn move or capture) and updates the fifty-move counter.
-// movPiece is the promoted piece for a promotion, so the explicit flag carries the pawn move.
-void Board::update_threefold_rep(const Move& m, ePiece movPiece)
+// mov_piece is the promoted piece for a promotion, so the explicit flag carries the pawn move.
+void Board::update_threefold_rep(const Move& m, ePiece mov_piece)
 {
-	if (MoveHelper::IsPawnMove(movPiece) || MoveHelper::IsCapture(m) || MoveHelper::IsPromote(m)) {
+	if (MoveHelper::IsPawnMove(mov_piece) || MoveHelper::IsCapture(m) || MoveHelper::IsPromote(m)) {
 		last_irreversible_ply_ = position_history_.size();
 		state_.halfmove_clock = 0;
 	} else {
@@ -686,7 +677,7 @@ void Board::update_threefold_rep(const Move& m, ePiece movPiece)
 	}
 }
 
-// Verifies that bitboards_.at(ALL_PIECES) equals the OR of all individual piece bitboards.
+// Verifies that bitboards_[ALL_PIECES] equals the OR of all individual piece bitboards.
 // On failure, emits a detailed diagnostic via the default spdlog logger (error level).
 bool Board::test_bitboards() const
 {
@@ -749,7 +740,7 @@ std::ostream& operator<<(std::ostream& os, const Board& board)
 	constexpr std::size_t numFiles = 8;
 
 	for (unsigned int rank = 0; rank < numRanks; ++rank) {
-		os << ONE_ROW - rank << " ";
+		os << numRanks - rank << " ";
 
 		for (unsigned int file = 0; file < numFiles; ++file) {
 			const std::size_t piece = board.GetPiece(static_cast<eSquare>((rank << 3) + file));
@@ -762,14 +753,12 @@ std::ostream& operator<<(std::ostream& os, const Board& board)
 	return os;
 }
 
-/**
- * Returns true if the current position is a repetition draw.
- *
- * Twofold repetition (position seen once before) counts as a draw when both
- * occurrences are within the current search tree. Threefold repetition always
- * counts as a draw regardless. Only same-side-to-move positions are compared
- * (stepping by 2). Search stops at the last irreversible move.
- */
+// Returns true if the current position is a repetition draw.
+//
+// Twofold repetition (position seen once before) counts as a draw when both
+// occurrences are within the current search tree. Threefold repetition always
+// counts as a draw regardless. Only same-side-to-move positions are compared
+// (stepping by 2). Search stops at the last irreversible move.
 bool Board::is_repetition(int ply) const
 {
 	int repetitions = 0;
@@ -787,10 +776,7 @@ bool Board::is_repetition(int ply) const
 			// to it is a repetition the side to move can force, so it counts too.
 			const bool both_in_search = (ply > 0) && (i + 1 >= history_size - static_cast<size_t>(ply));
 
-			if (both_in_search && repetitions >= 1)
-				return true;
-
-			if (repetitions >= 2)
+			if (both_in_search || repetitions >= 2)
 				return true;
 		}
 	}
@@ -834,9 +820,8 @@ void Board::update_zobrist_side() noexcept { zobrist_hash_ ^= zobrist::side_key;
 void Board::DoNullMove()
 {
 	// Unmatched moves must fit the ply-history array; committed moves reset the search depth.
-	assert(currentPly_ < MAX_PLY);
+	assert(current_ply_ < MAX_PLY);
 
-	// Record snapshot for undo
 	snapshot_state(ePiece::NO_PIECE);
 
 	// A null move forfeits any pending en-passant right so it cannot survive
@@ -846,31 +831,28 @@ void Board::DoNullMove()
 		state_.ep_square = NO_SQUARE;
 	}
 
-	if (sideToMove_ == eColor::BLACK) {
+	if (side_to_move_ == eColor::BLACK) {
 		assert(state_.fullmove_count < UINT16_MAX); // a game this long is a bug, not an input
 		state_.fullmove_count++;
 	}
 
-	currentPly_++;
+	current_ply_++;
 
-	// Switch side and update zobrist via change_player
 	change_player();
 	push_position();
 }
 
 void Board::UndoNullMove()
 {
-	// Mirror UndoMove's ply handling: decrement currentPly_, restore saved state
-	currentPly_--;
+	// Mirror of UndoMove's ply handling.
+	current_ply_--;
 
-	last_irreversible_ply_ = state_history_[currentPly_].last_irreversible_ply;
+	last_irreversible_ply_ = state_history_[current_ply_].last_irreversible_ply;
 	restore_state();
 
-	// Restore side-to-move (toggle)
-	sideToMove_ = (sideToMove_ == eColor::WHITE) ? eColor::BLACK : eColor::WHITE;
+	side_to_move_ = (side_to_move_ == eColor::WHITE) ? eColor::BLACK : eColor::WHITE;
 
 	pop_position();
 
-	// Restore zobrist hash from history
-	zobrist_hash_ = state_history_[currentPly_].zobrist_hash;
+	zobrist_hash_ = state_history_[current_ply_].zobrist_hash;
 }

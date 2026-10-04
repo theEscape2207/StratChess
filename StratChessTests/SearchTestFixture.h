@@ -285,7 +285,7 @@ class AIPerlexTestFixture {
 	                      bool is_pv_node) const
 	{
 		ai->td_.board = board_after(moves);
-		return ai->pvs(ai->td_, depth, alpha, beta, static_cast<int>(moves.size()), is_pv_node, *ai->_tt);
+		return ai->pvs(ai->td_, depth, alpha, beta, static_cast<int>(moves.size()), is_pv_node, *ai->tt_);
 	}
 
 	// The same static evaluation the guard compares against beta, so a test can compute the exact
@@ -306,7 +306,7 @@ class AIPerlexTestFixture {
 	{
 		const Move move = MoveFormatter::FromUCI(uci, board_);
 		REQUIRE_FALSE(move.is_null());
-		ai->_tt->store(board_.get_zobrist_hash(), value, depth, static_cast<int16_t>(ply), move, bound,
+		ai->tt_->store(board_.get_zobrist_hash(), value, depth, static_cast<int16_t>(ply), move, bound,
 		               NodeType::CUT_NODE, SearchPhase::MAIN);
 	}
 
@@ -348,24 +348,24 @@ class AIPerlexTestFixture {
 		set_singular_enabled(true);
 		ai->control_.ApplyLimits(SearchLimits::fixed_time(std::chrono::milliseconds(60'000)));
 		ai->td_.board = board_;
-		ai->td_.nodes_since_check_ = 0;
+		ai->td_.nodes_since_check = 0;
 
 		const Move excluded = MoveFormatter::FromUCI(uci, board_);
 		REQUIRE_FALSE(excluded.is_null());
 
 		const ExcludedMoveGuard guard(ai->td_, ply, excluded);
-		return ai->pvs(ai->td_, depth, alpha, beta, ply, /*is_pv_node=*/false, *ai->_tt);
+		return ai->pvs(ai->td_, depth, alpha, beta, ply, /*is_pv_node=*/false, *ai->tt_);
 	}
 
 	void store_tt_marker() const
 	{
-		ai->_tt->store(TT_MARKER_KEY, 123, 1, 0, Move::EmptyMove(), BoundType::EXACT, NodeType::PV_NODE,
+		ai->tt_->store(TT_MARKER_KEY, 123, 1, 0, Move::EmptyMove(), BoundType::EXACT, NodeType::PV_NODE,
 		               SearchPhase::MAIN);
 	}
 
-	bool has_tt_marker() const { return ai->_tt->probe(TT_MARKER_KEY, 0).has_value(); }
+	bool has_tt_marker() const { return ai->tt_->probe(TT_MARKER_KEY, 0).has_value(); }
 
-	uint8_t tt_age() const { return ai->_tt->currentAge(); }
+	uint8_t tt_age() const { return ai->tt_->currentAge(); }
 
 	void start_new_game() const { ai->StartNewGame(); }
 
@@ -529,7 +529,7 @@ class AIPerlexTestFixture {
 	                bool is_pv_node = true) const
 	{
 		ai->td_.board = board_;
-		return ai->pvs(ai->td_, depth, alpha, beta, ply, is_pv_node, *ai->_tt);
+		return ai->pvs(ai->td_, depth, alpha, beta, ply, is_pv_node, *ai->tt_);
 	}
 
 	// Starts the clock the per-node poll reads, for a search_node() call deep enough to reach
@@ -539,12 +539,12 @@ class AIPerlexTestFixture {
 	void arm_clock() const
 	{
 		ai->control_.ApplyLimits(SearchLimits::fixed_time(std::chrono::milliseconds(60'000)));
-		ai->td_.nodes_since_check_ = 0;
+		ai->td_.nodes_since_check = 0;
 	}
 
-	std::optional<TTEntry> probe_tt(int ply) const { return ai->_tt->probe(board_.get_zobrist_hash(), ply); }
+	std::optional<TTEntry> probe_tt(int ply) const { return ai->tt_->probe(board_.get_zobrist_hash(), ply); }
 
-	std::optional<TTEntry> probe_tt(uint64_t key, int ply) const { return ai->_tt->probe(key, ply); }
+	std::optional<TTEntry> probe_tt(uint64_t key, int ply) const { return ai->tt_->probe(key, ply); }
 
 	// Runs one quiescence() node on the fixture's board. The timer is armed because
 	// quiescence polls the wall clock every 1024 nodes and a default-constructed
@@ -553,8 +553,8 @@ class AIPerlexTestFixture {
 	{
 		ai->control_.ApplyLimits(SearchLimits::fixed_time(std::chrono::milliseconds(60'000)));
 		ai->td_.board = board_;
-		ai->td_.nodes_since_check_ = 0;
-		return ai->quiescence(ai->td_, alpha, beta, qsearch_budget, ply, *ai->_tt);
+		ai->td_.nodes_since_check = 0;
+		return ai->quiescence(ai->td_, alpha, beta, qsearch_budget, ply, *ai->tt_);
 	}
 
 	// One quiescence() node on an ALREADY-ABORTED search. Separate from quiesce_node() because the
@@ -564,9 +564,9 @@ class AIPerlexTestFixture {
 	{
 		ai->control_.ApplyLimits(SearchLimits::fixed_time(std::chrono::milliseconds(60'000)));
 		ai->td_.board = board_;
-		ai->td_.nodes_since_check_ = 0;
+		ai->td_.nodes_since_check = 0;
 		ai->Stop();
-		return ai->quiescence(ai->td_, alpha, beta, qsearch_budget, ply, *ai->_tt);
+		return ai->quiescence(ai->td_, alpha, beta, qsearch_budget, ply, *ai->tt_);
 	}
 
 	// Enters quiescence the way the search does — through pvs() with no depth left — so the
@@ -576,15 +576,15 @@ class AIPerlexTestFixture {
 	{
 		ai->control_.ApplyLimits(SearchLimits::fixed_time(std::chrono::milliseconds(60'000)));
 		ai->td_.board = board_;
-		ai->td_.nodes_since_check_ = 0;
-		return ai->pvs(ai->td_, /*depth=*/0, alpha, beta, ply, /*is_pv_node=*/true, *ai->_tt);
+		ai->td_.nodes_since_check = 0;
+		return ai->pvs(ai->td_, /*depth=*/0, alpha, beta, ply, /*is_pv_node=*/true, *ai->tt_);
 	}
 
 	// Plants a quiescence entry for the fixture's board with a chosen remaining budget, so a
 	// test can prove which budgets a later probe is willing to reuse.
 	void store_qsearch_entry(int16_t value, int16_t qsearch_budget, int ply) const
 	{
-		ai->_tt->store(board_.get_zobrist_hash(), value, qsearch_budget, static_cast<int16_t>(ply), Move::EmptyMove(),
+		ai->tt_->store(board_.get_zobrist_hash(), value, qsearch_budget, static_cast<int16_t>(ply), Move::EmptyMove(),
 		               BoundType::EXACT, NodeType::PV_NODE, SearchPhase::QUIESCENCE);
 	}
 
@@ -592,7 +592,7 @@ class AIPerlexTestFixture {
 	// and will not do with a main-search bound for the position in front of it.
 	void store_main_entry(int16_t value, int16_t depth, int ply, BoundType bound) const
 	{
-		ai->_tt->store(board_.get_zobrist_hash(), value, depth, static_cast<int16_t>(ply), Move::EmptyMove(), bound,
+		ai->tt_->store(board_.get_zobrist_hash(), value, depth, static_cast<int16_t>(ply), Move::EmptyMove(), bound,
 		               NodeType::CUT_NODE, SearchPhase::MAIN);
 	}
 
@@ -603,7 +603,7 @@ class AIPerlexTestFixture {
 	{
 		ai->control_.ApplyLimits(SearchLimits::fixed_time(std::chrono::milliseconds(60'000)));
 		ai->td_.board = board_;
-		ai->td_.nodes_since_check_ = 0;
+		ai->td_.nodes_since_check = 0;
 
 		int ply = 0;
 		for (const char* uci : moves) {
@@ -611,7 +611,7 @@ class AIPerlexTestFixture {
 			REQUIRE(ai->td_.board.DoMove(move));
 			++ply;
 		}
-		return ai->quiescence(ai->td_, alpha, beta, AIPerplex::QSEARCH_BUDGET, ply, *ai->_tt);
+		return ai->quiescence(ai->td_, alpha, beta, AIPerplex::QSEARCH_BUDGET, ply, *ai->tt_);
 	}
 
 	int64_t qnodes() const { return ai->td_.qnodes_searched; }
@@ -666,12 +666,12 @@ class AIPerlexTestFixture {
 	// Entries the poll gate counted for the last search: pvs() and quiescence() entries together,
 	// which is not nodes_searched + qnodes_searched (those increment past several early returns).
 	// iterative_deepening() zeroes it, so this is a per-search figure.
-	int64_t poll_ticks() const { return ai->td_.nodes_since_check_; }
+	int64_t poll_ticks() const { return ai->td_.nodes_since_check; }
 
 	static bool verbose_logging(const AIPerplex& ai) { return ai.verbose_logging_; }
 	static const SearchTuning& tuning(const AIPerplex& ai) { return ai.tuning_; }
 	static unsigned configured_threads(const AIPerplex& ai) { return ai.threads_; }
-	static TranspositionTable& tt(AIPerplex& ai) { return *ai._tt; }
+	static TranspositionTable& tt(AIPerplex& ai) { return *ai.tt_; }
 	static uint64_t game_generation(const AIPerplex& ai) { return ai.game_generation_; }
 	static void set_launch_barrier(AIPerplex& ai, std::function<void()> barrier)
 	{

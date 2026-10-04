@@ -8,29 +8,15 @@
 
 #pragma once
 
-// remove annoying level 4 warnings
-#if defined(_MSC_VER)
-#	pragma warning(push)
-#	pragma warning(disable : 4505) // Unreferenced local function has been removed
-#endif
+#include "defines.h"
 
 namespace SquareHelper {
-	/*
-	*	methods
-	*/
-	// Calculate the new eSquare position
-	static inline constexpr eSquare Calc(eSquare square, int offset) noexcept
-	{
-		return static_cast<eSquare>(square + offset);
-	}
+	// The square `offset` indices away.
+	constexpr eSquare Calc(eSquare square, int offset) noexcept { return static_cast<eSquare>(square + offset); }
 
-	// Helper for finding the previous row eSquare position depending on color
-	static inline constexpr eSquare PreviousRow(eSquare To, eColor color) noexcept
+	// The square one rank behind `to` from `color`'s point of view.
+	constexpr eSquare PreviousRow(eSquare to, eColor color) noexcept
 	{
-		return (color == eColor::WHITE ? SquareHelper::Calc(To, +ONE_ROW) : SquareHelper::Calc(To, -ONE_ROW));
+		return (color == eColor::WHITE ? SquareHelper::Calc(to, +ONE_ROW) : SquareHelper::Calc(to, -ONE_ROW));
 	}
 } // namespace SquareHelper
-
-#if defined(_MSC_VER)
-#	pragma warning(pop)
-#endif

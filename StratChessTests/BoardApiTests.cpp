@@ -144,7 +144,7 @@ TEST_CASE("Board::ExtractFEN preserves fullmove number (34)", "[board_api]")
 	CHECK(fen.substr(fen.rfind(' ') + 1) == "34");
 }
 
-// ── ResetSearchDepth (issue #53: currentPly_ overflow across long games) ──────
+// ── ResetSearchDepth (current_ply_ must not grow across long games) ──────
 
 TEST_CASE("Board::ResetSearchDepth zeroes undo-stack depth after each committed move, regardless of total moves played",
           "[board_api]")
@@ -157,7 +157,7 @@ TEST_CASE("Board::ResetSearchDepth zeroes undo-stack depth after each committed 
 	for (int cycle = 0; cycle < kCycles; ++cycle) {
 		REQUIRE(board.DoMove(MoveFactory::MakeQuiet(a1, a2)));
 		// Depth reflects only this single commit, never the cumulative move
-		// count — proves currentPly_ does not accumulate across the game.
+		// count — proves current_ply_ does not accumulate across the game.
 		REQUIRE(board.GetSearchDepth() == 1);
 		board.ResetSearchDepth();
 
@@ -195,8 +195,8 @@ TEST_CASE(
 	}
 
 	// Now simulate search recursion on top of that (reset) baseline: 50 nested
-	// DoMove pushes without intervening undo. In the old scheme, currentPly_
-	// would already sit at ~260 here, so this would overflow MAX_PLY=256.
+	// DoMove pushes without intervening undo. Without the per-commit reset,
+	// current_ply_ would already sit at ~260 here and overflow MAX_PLY=256.
 	const std::array<Move, 4> cycle = {MoveFactory::MakeQuiet(a1, a2), MoveFactory::MakeQuiet(d6, d7),
 	                                   MoveFactory::MakeQuiet(a2, a1), MoveFactory::MakeQuiet(d7, d6)};
 

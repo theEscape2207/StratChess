@@ -152,7 +152,7 @@ void UciHandler::cmd_uci()
 {
 	send("id name StratChess");
 	send("id author Thees");
-	send("option name Threads type spin default 1 min 1 max 32");
+	send("option name Threads type spin default 1 min 1 max " + std::to_string(AIPerplex::MAX_THREADS));
 	// Hash budgets TT entry bytes. Arbitrary values round down to a power-of-two
 	// bucket count; the exact fits are the powers of two from 1 to 1024, which
 	// the 192 default and the 1536 cap are not. The separately queryable

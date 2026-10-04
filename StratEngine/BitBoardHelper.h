@@ -14,7 +14,7 @@
 
 namespace BitBoardHelper {
 	/// @brief Prints a bitboard as an 8x8 grid of 0s and 1s.
-	///        LSB (a1) is bottom-left, MSB (h8) is top-right.
+	///        Bit 0 (a8) prints top-left and bit 63 (h1) bottom-right.
 	///        Intended for debugging only.
 	inline void print_bitboard(std::ostream& out, BITBOARD bb) noexcept
 	{
@@ -33,8 +33,7 @@ namespace BitBoardHelper {
 	/// @returns true if bits were successfully cleared, false if mask had no overlap.
 	inline bool clear_bits(BITBOARD& board, BITBOARD mask) noexcept
 	{
-		if (!Bits::isAnyBitSet(board, mask)) // Verify intersection of board and mask is non-empty
-		{
+		if (!Bits::isAnyBitSet(board, mask)) {
 #if !defined(NDEBUG)
 			print_bitboard(std::cerr, board);
 			print_bitboard(std::cerr, mask);
@@ -55,4 +54,4 @@ namespace BitBoardHelper {
 		board = Bits::setBits(board, mask);
 	}
 
-}; //namespace BitBoardHelper
+} // namespace BitBoardHelper

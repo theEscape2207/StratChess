@@ -109,7 +109,7 @@ namespace {
 				// add both console and file sinks (file sink keeps a record for diagnostics)
 				const auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
 				console_sink->set_level(spdlog::level::info);
-				console_sink->set_pattern(("%T.%e %^%l%$: %v"));
+				console_sink->set_pattern("%T.%e %^%l%$: %v");
 				const auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("logs/aiperplex.log", true);
 				file_sink->set_level(spdlog::level::debug);
 				file_sink->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
@@ -129,11 +129,11 @@ namespace {
 
 AIPerplex::AIPerplex(AIPerplexConfig config)
     : control_(config.default_depth, config.default_time), tuning_(config.tuning),
-      threads_(std::clamp(config.threads, 1u, 32u)), verbose_logging_(config.verbose_logging)
+      threads_(std::clamp(config.threads, 1u, MAX_THREADS)), verbose_logging_(config.verbose_logging)
 {
 	if (const auto error = SearchTuningSchema::Validate(tuning_))
 		throw std::invalid_argument("SearchTuning." + error->field + ": " + error->message);
-	_tt = std::make_unique<TranspositionTable>(std::clamp(config.hash_mb, MIN_HASH_MB, MAX_HASH_MB));
+	tt_ = std::make_unique<TranspositionTable>(std::clamp(config.hash_mb, MIN_HASH_MB, MAX_HASH_MB));
 	try {
 		if (verbose_logging_) {
 			ensure_logger_initialized();
@@ -220,7 +220,7 @@ void AIPerplex::Wait()
 		launch_thread_.join();
 }
 
-// Callers must ensure no search is using _tt. Constructing the replacement
+// Callers must ensure no search is using tt_. Constructing the replacement
 // before assigning it retains the old table if allocation fails.
 AIPerplex::HashConfigurationResult AIPerplex::SetHash(unsigned mb) noexcept
 {
@@ -229,7 +229,7 @@ AIPerplex::HashConfigurationResult AIPerplex::SetHash(unsigned mb) noexcept
 	try {
 		auto replacement = std::make_unique<TranspositionTable>(requested);
 		const HashConfigurationResult result{true, requested, replacement->memory_mb(), replacement->bucket_count()};
-		_tt = std::move(replacement);
+		tt_ = std::move(replacement);
 		return result;
 	} catch (const std::bad_alloc&) {
 		return {false, requested, 0, 0};
@@ -243,7 +243,7 @@ std::optional<SearchTuningSchema::TuningError> AIPerplex::SetTuning(const Search
 		return error;
 	if (tuning != tuning_) {
 		tuning_ = tuning;
-		(void)_tt->clear();
+		(void)tt_->clear();
 		// The table is empty, so the contempt context describing its contents is stale. Without
 		// this the next Search() would compare against a pair for entries that no longer exist and
 		// clear an already-empty table. This is also why a contempt MAGNITUDE change cannot reach
@@ -257,8 +257,7 @@ std::optional<SearchTuningSchema::TuningError> AIPerplex::SetTuning(const Search
 // Resets every piece of per-game state so that a persisting AIPerplex is
 // equivalent to a freshly-constructed one, without paying for a rebuild.
 // What is deliberately NOT reset here:
-//   - threads_    : never discarded by anything now that ai_ persists across
-//                   games, so there is nothing to restore.
+//   - threads_    : caller configuration, not per-game state.
 //   - tuning_     : caller configuration, not accumulated search state --
 //                   CreatePlayer() applies game_settings.json's search_tuning
 //                   while constructing this service, then starts its first
@@ -270,7 +269,7 @@ std::optional<SearchTuningSchema::TuningError> AIPerplex::SetTuning(const Search
 void AIPerplex::StartNewGame()
 {
 	assert_not_in_completion_handler();
-	(void)_tt->clear();
+	(void)tt_->clear();
 	td_.reset_for_new_game();
 	// Lazily resized in Search() (`if (helper_tds_.size() < threads - 1)`),
 	// so clearing it forces fresh ThreadData construction -- with the
@@ -350,9 +349,8 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	// Both halves of the second test are load-bearing. Only a search with non-zero contempt can
 	// TINT an entry, and only one with non-zero contempt can MISREAD an untinted entry as if it
 	// were tinted, so a differing pair matters only when at least one side of the change is
-	// non-zero. Without that guard a process that never leaves the shipped default would start
-	// clearing the table on an ordinary colour change — which nothing did before this existed, and
-	// which would make the search at contempt 0 no longer node-identical to its history.
+	// non-zero. Without that guard a process that never leaves the shipped default would clear
+	// the table on an ordinary colour change, discarding entries no contempt could have tinted.
 	//
 	// The COLOUR half is the production-reachable one: SetTuning() already clears the table and the
 	// context on any tuning change, so a contempt magnitude can only change through a path that has
@@ -367,9 +365,8 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	// merely an inconsistent score.
 	//
 	// Here, and not per evaluation, for two reasons: it is the last point at which root_color_ is
-	// known and no helper thread exists yet, and a guard on the per-evaluation path costs ~1% nps
-	// at the shipped default (see Eval.h). At contempt 0 both values are GameValues::Draw and the
-	// evaluator returns exactly what it always did.
+	// known and no helper thread exists yet, and a guard on the per-evaluation path costs nps
+	// at the shipped default. At contempt 0 both values are GameValues::Draw.
 	publish_draw_scores();
 
 	// Snapshot threads_ exactly once so helper allocation, spawning and
@@ -391,16 +388,16 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	const auto contempt_context = std::make_pair(root_color_, tuning_.contempt);
 	if (tt_contempt_context_ && *tt_contempt_context_ != contempt_context &&
 	    (tt_contempt_context_->second != 0 || tuning_.contempt != 0)) {
-		(void)_tt->clear();
+		(void)tt_->clear();
 	}
 	tt_contempt_context_ = contempt_context;
 	const unsigned effective_depth = control_.EffectiveDepth();
-	const uint8_t search_start_age = _tt->currentAge();
+	const uint8_t search_start_age = tt_->currentAge();
 	// Establish this search's age before helpers can store, so every entry produced
 	// by this search is newer than the snapshot hashfull uses to reject stale content.
-	_tt->newSearch();
+	tt_->newSearch();
 	if constexpr (kTTStatsCompiled)
-		_tt->setStatsSearchStartAge(search_start_age);
+		tt_->setStatsSearchStartAge(search_start_age);
 
 	// Everything the helpers read unsynchronized must already be written HERE: root_color_, the
 	// tuning_ block and the evaluator's drawn scores. publish_draw_scores() above is the one that
@@ -429,14 +426,14 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 			htd.qnodes_searched = 0;
 			htd.telemetry.reset();
 			htd.root_game_state = GameStates::STILL_PLAYING;
-			helpers.emplace_back([this, &htd, effective_depth, this_tt = _tt.get()] {
+			helpers.emplace_back([this, &htd, effective_depth, this_tt = tt_.get()] {
 				helper_loop(htd, static_cast<int>(effective_depth), *this_tt);
 			});
 		}
 	}
 
 	SearchResult result =
-	    iterative_deepening(td_, static_cast<int>(effective_depth), *_tt, search_start_age, search_observer);
+	    iterative_deepening(td_, static_cast<int>(effective_depth), *tt_, search_start_age, search_observer);
 	result.game_state = td_.root_game_state;
 
 	// Latch the abort signal so any still-running helpers collapse in O(depth)
@@ -461,19 +458,19 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 	}
 	result.nodes_searched = total_nodes;
 	result.qnodes_searched = total_qnodes;
-	result.hashfull = _tt->hashfull(search_start_age);
+	result.hashfull = tt_->hashfull(search_start_age);
 
 	result.elapsed = control_.Elapsed();
-	const Move bestMove = result.best_move;
+	const Move best_move = result.best_move;
 
 	// Game over at the root: no move to play, and result.game_state carries why.
-	if (bestMove.is_null())
+	if (best_move.is_null())
 		return result;
 
 	// Success logging
 	if (verbose_logging_ && s_logger) {
 		s_logger->info("GetMove complete: move={}, score={}, depth={}, time={}ms, nodes={}, stable={}",
-		               MoveFormatter::ToCoord(bestMove), result.best_score, result.depth_completed,
+		               MoveFormatter::ToCoord(best_move), result.best_score, result.depth_completed,
 		               result.elapsed.count(), total_nodes, result.search_was_stable ? "yes" : "NO");
 	}
 	return result;
@@ -485,7 +482,7 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 	Engine::IterationState state;
 	const Engine::IterationThresholds thresholds{tuning_.min_nodes_threshold, tuning_.min_completion_ratio,
 	                                             tuning_.min_pv_ratio};
-	td.nodes_since_check_ = 0; // reset node counter for this search
+	td.nodes_since_check = 0; // reset node counter for this search
 
 	td.begin_search(tuning_.continuation_history_plies > 0);
 
@@ -497,17 +494,17 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 		const int64_t nodes_at_start = td.nodes_searched;
 
 		// EXECUTE SEARCH: This might get interrupted by timeout
-		int currentBestScore;
+		int current_best_score;
 		if (state.depth_completed == 0 || !tuning_.aspiration_enabled) {
 			// Depth 1 or kill-switch: always full window (no reliable seed yet)
-			currentBestScore = pvs(td, depth, -GameValues::Search_Init, GameValues::Search_Init, 0, true, tt);
+			current_best_score = pvs(td, depth, -GameValues::Search_Init, GameValues::Search_Init, 0, true, tt);
 		} else {
-			currentBestScore = search_with_aspiration(td, depth, state.best_score, tt);
+			current_best_score = search_with_aspiration(td, depth, state.best_score, tt);
 		}
 
 		const Engine::IterationSample sample{depth,
 		                                     td.pv_table.get_pv_move(0),
-		                                     currentBestScore,
+		                                     current_best_score,
 		                                     td.nodes_searched - nodes_at_start,
 		                                     td.pv_table.get_length(0),
 		                                     control_.StopRequested()};
@@ -544,22 +541,10 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 			break;
 	}
 
-	// Handle empty move emergency
-	if (state.best_move.is_null()) {
-		if (!handle_empty_move_emergency(td, state)) {
-			// Game over - return what we have
-			return SearchResult{.best_move = state.best_move,
-			                    .best_score = state.best_score,
-			                    .depth_completed = state.depth_completed,
-			                    .nodes_searched = state.nodes_at_completed_depth,
-			                    .search_was_stable = state.search_was_stable};
-		}
-	}
-
-	// Final logging
-	if (state.depth_completed > 0) {
+	// No accepted move: either the game is over at the root, or an emergency move is found.
+	const bool has_move = !state.best_move.is_null() || handle_empty_move_emergency(td, state);
+	if (has_move && state.depth_completed > 0)
 		log_search_complete(state, td.pv_table);
-	}
 	return SearchResult{.best_move = state.best_move,
 	                    .best_score = state.best_score,
 	                    .depth_completed = state.depth_completed,
@@ -569,11 +554,11 @@ SearchResult AIPerplex::iterative_deepening(ThreadData& td, int max_depth, Trans
 
 bool AIPerplex::poll_search_limits(ThreadData& td)
 {
-	// Helpers never even reach the ++, so their nodes_since_check_ stays at 0 for the whole
+	// Helpers never even reach the ++, so their nodes_since_check stays at 0 for the whole
 	// search. They do still call StopRequested() elsewhere — search_with_aspiration() at
 	// every retry boundary, and pvs()'s LMR re-search guard — so this gate bounds how often
 	// the clock is read, not which threads read it.
-	if (td.thread_id != 0 || (++td.nodes_since_check_ & 1023) != 0)
+	if (td.thread_id != 0 || (++td.nodes_since_check & 1023) != 0)
 		return false;
 
 	return control_.StopRequested() || control_.NodeLimitReached(td.nodes_searched + td.qnodes_searched);
@@ -617,12 +602,10 @@ namespace {
 int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt)
 {
 	// Absolute backstop, first because it is what bounds every ply-indexed access below --
-	// including the excluded_move[ply] read the PV clear is now guarded on. Until singular
-	// extensions existed, depth fell by at least one on every recursive call and terminated
-	// the recursion long before ply could reach here; an extension searches a child at the
-	// parent's depth, so that argument is gone and the recursion has to bound itself. The
-	// limit is MAX_PLY - 1 rather than MAX_PLY because the null-move attempt below writes
-	// last_move_was_null[ply + 1].
+	// including the excluded_move[ply] read the PV clear is guarded on. A singular extension
+	// searches a child at the parent's depth, so depth alone does not terminate the recursion
+	// and ply has to bound it. The limit is MAX_PLY - 1 rather than MAX_PLY because the
+	// null-move attempt below writes last_move_was_null[ply + 1].
 	//
 	// A verification search can never reach this: it runs at its parent's ply, and that
 	// parent returned from this same test before it could launch one. So there is no row
@@ -651,8 +634,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// it as this iteration's score alongside a still-populated row 0 from an earlier aspiration
 	// retry. An empty row makes metrics.current_move empty, which is the INCOMPLETE rejection
 	// the machinery already has — the same signal search_with_aspiration() publishes explicitly
-	// when it is interrupted before entering pvs() at all. Nothing else changes: on a normal
-	// entry the clear happens exactly where it did.
+	// when it is interrupted before entering pvs() at all.
 	if (!is_exclusion_frame)
 		td.pv_table.clear_ply(ply);
 
@@ -699,8 +681,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		if (auto entry = tt.probe(key, ply)) {
 			if constexpr (kTTStatsCompiled)
 				++td.telemetry.tt.main_hits;
-			if (entry->phase ==
-			    SearchPhase::MAIN) { // Avoid the Quiescence nodes to affect main search - just to make sure
+			// Quiescence entries carry a different depth unit and are not trusted here.
+			if (entry->phase == SearchPhase::MAIN) {
 				hash_move = entry->best_move;
 
 				// Critical: Don't use TT cutoffs at PV nodes.
@@ -713,8 +695,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				// caller never asked about.
 				//
 				// It costs nothing: every call site that passes is_pv_node = false also passes a
-				// null window, so beta == alpha + 1 here and neither bound had room to move. The
-				// cutoffs below are what the old alpha >= beta test resolved to under that window.
+				// null window, so beta == alpha + 1 here and neither bound had room to move.
 				if (!is_pv_node && entry->depth >= depth && tt_entry_cuts_off(*entry, alpha, beta)) {
 					if constexpr (kTTStatsCompiled)
 						++td.telemetry.tt.main_cutoffs;
@@ -828,18 +809,18 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			null_stats.record_failed(td.nodes_searched + td.qnodes_searched - null_start, null_start_fail);
 	}
 
-	MoveList moveList;
-	MoveGenerator::ComputeLegalMoves(td.board, moveList);
+	MoveList move_list;
+	MoveGenerator::ComputeLegalMoves(td.board, move_list);
 
 	Move best_move;
 
 	// Stack-allocated scored index array — zero heap allocation per call.
 	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	const int n = static_cast<int>(moveList.size());
+	const int n = static_cast<int>(move_list.size());
 	const eColor side = td.board.GetCurrentColor();
 
 	const ContinuationRows cont_rows = td.continuation_rows(ply, tuning_.continuation_history_plies);
-	MoveSorter::ScoreMoves(moveList, n, td.board, side, hash_move, td.killers[ply][0], td.killers[ply][1], td.history,
+	MoveSorter::ScoreMoves(move_list, n, td.board, side, hash_move, td.killers[ply][0], td.killers[ply][1], td.history,
 	                       scored_idx, cont_rows);
 
 	// Singular extension: if the transposition table's move is much better than every
@@ -859,7 +840,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// future change to what an exclusion frame is allowed to read.
 	const bool singular_eligible = tuning_.singular_extensions_enabled && ply > 0 && !in_check && !is_exclusion_frame &&
 	                               depth >= tuning_.singular_min_depth && tt_usable_for_singular && n > 0 &&
-	                               moveList[scored_idx[0].second] == hash_move;
+	                               move_list[scored_idx[0].second] == hash_move;
 
 	if (singular_eligible) {
 		// These two are incremented before the abort guard below, the same exemption the
@@ -902,7 +883,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		}
 	}
 
-	bool moveFound = false;
+	bool move_found = false;
 
 	// LMR's "late" means late among the LEGAL moves. si cannot answer that: the list is
 	// pseudo-legal, so illegal moves sorted ahead of a legal one would inflate its index.
@@ -928,9 +909,9 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// malus when a later quiet cuts.
 	ThreadData::SearchedMoves searched;
 
-	// Iterate by sorted index — no rebuild of moveList needed
+	// Iterate by sorted index — no rebuild of move_list needed
 	for (int si = 0; si < n; ++si) {
-		const Move& move = moveList[scored_idx[si].second];
+		const Move& move = move_list[scored_idx[si].second];
 
 		// The move a verification search is proving the alternatives against is not one of
 		// them.
@@ -1005,24 +986,24 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			} else {
 				assert(move_number >= 1); // this branch, not the tunable gate, is what keeps sqrt() >= 0
 
-				const bool isCapture = MoveHelper::IsCapture(move);
-				const bool isPromotion = MoveHelper::IsPromote(move);
+				const bool is_capture = MoveHelper::IsCapture(move);
+				const bool is_promotion = MoveHelper::IsPromote(move);
 				// Read live, so a killer stored by a singular verification search at this same
 				// ply lands here: it exempts the move from LMR and changes the DEPTH this node
 				// searches it at. That is why an enabled build is not "the same tree plus one
 				// ply". It cannot make a result wrong -- the killer is a genuine refutation in
 				// this position, and the value still comes from a real search at whatever depth
 				// it ends up using -- and it is deterministic at Threads=1.
-				const bool isKiller = (move == td.killers[ply][0] || move == td.killers[ply][1]);
+				const bool is_killer = (move == td.killers[ply][0] || move == td.killers[ply][1]);
 
 				// The board still holds the position after DoMove, so the InCheck() below asks whether
 				// this move GIVES check. It is last in the chain because it builds a whole-side attack
 				// board, and every earlier term disqualifies far more moves than it admits.
-				const bool applyLMR = tuning_.lmr_enabled && !is_pv_node && !in_check && !isCapture && !isPromotion &&
-				                      !isKiller && move_number >= tuning_.lmr_min_move_index &&
-				                      depth >= tuning_.lmr_min_depth && !td.board.InCheck();
+				const bool apply_lmr = tuning_.lmr_enabled && !is_pv_node && !in_check && !is_capture &&
+				                       !is_promotion && !is_killer && move_number >= tuning_.lmr_min_move_index &&
+				                       depth >= tuning_.lmr_min_depth && !td.board.InCheck();
 
-				if (applyLMR) {
+				if (apply_lmr) {
 					// sqrt formula: scales naturally with depth and move index. The upper bound
 					// keeps one main-tree ply below the reduced search at every depth LMR is
 					// gated on, and carries its own max(1, ...) so R stays >= 1 — R == 0 would
@@ -1099,7 +1080,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 			if (control_.IsAborted())
 				return best_value;
 
-			moveFound = true;
+			move_found = true;
 			searched.set(static_cast<size_t>(si));
 
 			if (value > best_value) {
@@ -1129,7 +1110,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				// Only a quiet cutter penalizes the searched quiets before it: when a capture or promotion
 				// cuts, their failure says little about the quiets themselves.
 				if (ThreadData::is_quiet(move))
-					td.penalize_searched_quiets(side, moveList, scored_idx, searched, si, depth, cont_rows);
+					td.penalize_searched_quiets(side, move_list, scored_idx, searched, si, depth, cont_rows);
 				td.update_history(side, move, depth, cont_rows);
 				break;
 			}
@@ -1157,10 +1138,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// The score is exact and depth-independent, so it is stored as EXACT with an
 	// empty move; tt.store() normalises the mate distance by ply.
 	//
-	// Exempt from the unwind invariant above: !moveFound means no child search ran at all,
+	// Exempt from the unwind invariant above: !move_found means no child search ran at all,
 	// so this value derives from InCheck() and ply alone and is as true after an abort as
 	// before one. The guard in the loop cannot have been passed on the way here.
-	if (!moveFound) {
+	if (!move_found) {
 		// Under exclusion, "no move" means "no move OTHER than the excluded one", which is
 		// not checkmate or stalemate -- the position has a legal move, this search was
 		// forbidden to play it. Adjudicating here would be a lie about the real position,
@@ -1168,12 +1149,12 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		// the answer the caller wants: no alternative reached the margin, so the excluded
 		// move is singular.
 		// original_alpha, not alpha: they are equal here (alpha only moves inside the
-		// moveFound branch, three levels down) but saying so explicitly keeps this correct if
+		// move_found branch, three levels down) but saying so explicitly keeps this correct if
 		// that update is ever hoisted. It is the singular_beta - 1 the verification asked for.
 		if (is_exclusion_frame)
 			return original_alpha;
 
-		const int terminal_value = adjustScoreForGameState(td, moveFound, ply, best_value);
+		const int terminal_value = adjust_score_for_game_state(td, move_found, ply, best_value);
 		record_tt_store(td, tt.store(key, static_cast<int16_t>(terminal_value), static_cast<int16_t>(depth),
 		                             static_cast<int16_t>(ply), Move::EmptyMove(), BoundType::EXACT,
 		                             is_pv_node ? NodeType::PV_NODE : NodeType::ALL_NODE, SearchPhase::MAIN));
@@ -1187,7 +1168,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	if (lmp_skipped && best_value <= original_alpha) {
 		if constexpr (kSearchProfileCompiled)
 			td.telemetry.nodetypes.record_fail_low(ply, is_pv_node, depth);
-		return adjustScoreForGameState(td, moveFound, ply, original_alpha);
+		return adjust_score_for_game_state(td, move_found, ply, original_alpha);
 	}
 
 	// Classify node and store
@@ -1215,12 +1196,12 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 		                             static_cast<int16_t>(ply), best_move, bound, node_type, SearchPhase::MAIN));
 	}
 
-	return adjustScoreForGameState(td, moveFound, ply, best_value);
+	return adjust_score_for_game_state(td, move_found, ply, best_value);
 }
 
 // Contempt makes a draw a small loss for the side the engine is playing, so it declines one in a
 // position it believes equal instead of being indifferent between repeating and playing on. At the
-// shipped default of 0 this returns GameValues::Draw and the arithmetic is the historical one.
+// shipped default of 0 this returns GameValues::Draw.
 int AIPerplex::draw_score(const ThreadData& td) const noexcept { return draw_score_for(td.board.GetCurrentColor()); }
 
 void AIPerplex::publish_draw_scores() noexcept
@@ -1233,19 +1214,16 @@ int AIPerplex::draw_score_for(eColor side_to_move) const noexcept
 	return side_to_move == root_color_ ? GameValues::Draw - tuning_.contempt : GameValues::Draw + tuning_.contempt;
 }
 
-int AIPerplex::adjustScoreForGameState(ThreadData& td, bool moveFound, int ply, int score)
+int AIPerplex::adjust_score_for_game_state(ThreadData& td, bool move_found, int ply, int score)
 {
-	// Any legal moves found?
-	if (!moveFound) {
-		// Nope - so we are either mate or remis here !
+	// No legal move: checkmate or stalemate.
+	if (!move_found) {
 		if (td.board.InCheck()) {
-			// Oops - we are mate!!
 			td.update_game_state(ply,
 			                     td.board.GetCurrentColor() == WHITE ? GameStates::BLACK_WON : GameStates::WHITE_WON);
-			// Checkmate - prefer shorter mates
+			// Scored by ply so shorter mates are preferred.
 			return -GameValues::Mate + ply;
 		}
-		// Else No move and not in check - Pat!
 		td.update_game_state(ply, GameStates::DRAW_PAT);
 		return draw_score(td);
 	}
@@ -1279,22 +1257,22 @@ int AIPerplex::adjustScoreForGameState(ThreadData& td, bool moveFound, int ply, 
 // Killers and history are read, never written. A quiescence cutoff is measured against a far
 // shallower window than the main search's, so feeding it back would let qsearch noise steer tables
 // pvs() owns.
-void AIPerplex::order_quiescence_moves(ThreadData& td, MoveList& moveList, bool in_check, int ply) const
+void AIPerplex::order_quiescence_moves(ThreadData& td, MoveList& move_list, bool in_check, int ply) const
 {
 	if (!in_check) {
-		MoveSorter::SortMovesByValue(moveList, moveList.size(), td.board);
+		MoveSorter::SortMovesByValue(move_list, move_list.size(), td.board);
 		return;
 	}
 
-	const int move_count = static_cast<int>(moveList.size());
+	const int move_count = static_cast<int>(move_list.size());
 	std::array<std::pair<int, int>, MoveList::MAX_MOVES> scored_idx;
-	MoveSorter::ScoreMoves(moveList, move_count, td.board, td.board.GetCurrentColor(), Move::EmptyMove(),
+	MoveSorter::ScoreMoves(move_list, move_count, td.board, td.board.GetCurrentColor(), Move::EmptyMove(),
 	                       td.killers[ply][0], td.killers[ply][1], td.history, scored_idx);
 
 	MoveList ordered;
 	for (int i = 0; i < move_count; ++i)
-		ordered.push(moveList[static_cast<size_t>(scored_idx[static_cast<size_t>(i)].second)]);
-	moveList = ordered;
+		ordered.push(move_list[static_cast<size_t>(scored_idx[static_cast<size_t>(i)].second)]);
+	move_list = ordered;
 }
 
 namespace {
@@ -1302,16 +1280,16 @@ namespace {
 	// The gate on the exact test below, and the only half a quiet node pays for. Material is
 	// maintained incrementally, so a side worth exactly its king is one load and a compare; the
 	// same question asked of the occupancy bitboard is not, because reaching the bitboards is an
-	// out-of-line call. On a hot path entered millions of times per second that spelling is worth
-	// about 2% of nps, which is more than this whole probe is worth.
+	// out-of-line call. On a hot path entered millions of times per second that spelling costs
+	// measurable nps, more than this whole probe is worth.
 	bool is_bare_king(const Board& board)
 	{
 		return board.GetMaterialScore(board.GetCurrentColor()) == PieceHelper::Value(ePiece::WHITE_KING);
 	}
 
 	// Deliberately out of line. It owns a MoveList, and inlining puts those 400-odd bytes on the
-	// frame of every quiescence node rather than the few that are a bare king -- the other half of
-	// the 2% above. Behind the gate the list is at most eight king steps.
+	// frame of every quiescence node rather than the few that are a bare king. Behind the gate the
+	// list is at most eight king steps.
 	STRAT_NOINLINE bool has_no_legal_move(Board& board)
 	{
 		// Out of check this is stalemate; in check it would be checkmate, and the two verdicts are a
@@ -1361,8 +1339,8 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 		return evaluator_.Evaluate(td.board);
 	}
 
-	// Quiet check evasions can repeat a position or reach the fifty-move limit inside quiescence,
-	// even though pvs() checked draws before entering it.
+	// Repetition and fifty-move draws. A capture or pawn move resets the fifty-move counter and
+	// makes repetition impossible, but quiescence also generates quiet evasions, which reach both.
 	//
 	// Repetition becomes reachable because a quiet evasion may itself give check, so two
 	// sides can go on checking each other with no capture between them — material never
@@ -1473,21 +1451,21 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 			alpha = stand_pat;
 	}
 
-	MoveList moveList;
+	MoveList move_list;
 	if (in_check) {
 		// Every evasion counts, including quiet blocks and king walks, so a capture-only
 		// generator cannot answer this node. The list is pseudo-legal; DoMove() below rejects
 		// the moves that leave the king in check, which is what makes an empty survivor set
 		// mean checkmate.
-		MoveGenerator::ComputeLegalMoves(td.board, moveList);
+		MoveGenerator::ComputeLegalMoves(td.board, move_list);
 	} else {
 		// Generate only capture moves and promotions
-		MoveGenerator::ComputeCaptures(td.board, moveList);
+		MoveGenerator::ComputeCaptures(td.board, move_list);
 	}
-	order_quiescence_moves(td, moveList, in_check, ply);
+	order_quiescence_moves(td, move_list, in_check, ply);
 
 	// Whether any legal move was searched here
-	bool moveFound = false;
+	bool move_found = false;
 	Move best_move = Move::EmptyMove();
 
 	// Neither pruner has a valid bound near an endgame-scaled class, in either direction --
@@ -1503,7 +1481,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 		                std::popcount(qboards[ePiece::ALL_BLACK_PIECES])) >= MATERIAL_PRUNING_MIN_PIECES;
 	}();
 
-	for (const auto& move : moveList) {
+	for (const auto& move : move_list) {
 		// Promotions stay: their tactical value is not bounded by immediate material gain.
 		if (material_bounds_hold && !MoveHelper::IsPromote(move) &&
 		    stand_pat +
@@ -1525,8 +1503,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 		// The rest of `material_bounds_hold` is there for the same reason delta pruning carries it:
 		// SEE is a pure-material test, so near a scaled class it discards exactly the sacrifices
 		// whose value IS the class change -- RxN into a drawn K vs K+N reads as -180 and is the
-		// only drawing resource. That case predates the scale factors: the exact-draw classes
-		// alone are enough to produce it.
+		// only drawing resource.
 		if (material_bounds_hold && tuning_.see_pruning_enabled && MoveHelper::IsCapture(move) &&
 		    !See::see_ge(td.board, move, 0)) {
 			if constexpr (kSearchProfileCompiled)
@@ -1551,7 +1528,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 		if (control_.IsAborted())
 			return best_value;
 
-		moveFound = true;
+		move_found = true;
 
 		if (score >= beta) {
 			record_tt_store(td, tt.store(key, static_cast<int16_t>(beta), static_cast<int16_t>(qsearch_budget),
@@ -1573,8 +1550,8 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	//
 	// Exempt from the unwind invariant for the same reason as pvs()'s terminal store: no
 	// child of this node was searched, so the score follows from InCheck() and ply alone.
-	// An abort during the loop returns above rather than arriving here with !moveFound.
-	if (in_check && !moveFound) {
+	// An abort during the loop returns above rather than arriving here with !move_found.
+	if (in_check && !move_found) {
 		const int mate_value = -GameValues::Mate + ply;
 		record_tt_store(td, tt.store(key, static_cast<int16_t>(mate_value), static_cast<int16_t>(qsearch_budget),
 		                             static_cast<int16_t>(ply), Move::EmptyMove(), BoundType::EXACT, NodeType::PV_NODE,
@@ -1590,7 +1567,7 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 	NodeType node_type;
 	BoundType bound;
 
-	if (!moveFound) {
+	if (!move_found) {
 		// ALL_NODE regardless of whether stand_pat improved alpha. "No move found" also covers
 		// "every move was pruned", where the score is exact for the tree quiescence searches but
 		// only a lower bound against an unpruned one. Left EXACT: the alternative weakens every
@@ -1759,8 +1736,8 @@ bool AIPerplex::has_two_non_pawn_pieces(const Board& board)
 	const eColor side = board.GetCurrentColor();
 	const auto boards = board.GetBitBoards();
 	const BITBOARD non_pawn_material =
-	    boards[static_cast<BITBOARD>(KNIGHT) + side] | boards[static_cast<BITBOARD>(BISHOP) + side] |
-	    boards[static_cast<BITBOARD>(ROOK) + side] | boards[static_cast<BITBOARD>(QUEEN) + side];
+	    boards[static_cast<size_t>(KNIGHT) + side] | boards[static_cast<size_t>(BISHOP) + side] |
+	    boards[static_cast<size_t>(ROOK) + side] | boards[static_cast<size_t>(QUEEN) + side];
 	return std::popcount(non_pawn_material) >= 2;
 }
 
@@ -1878,43 +1855,23 @@ bool AIPerplex::handle_empty_move_emergency(ThreadData& td, Engine::IterationSta
 	// unwind guard removes from the search itself.
 	td.pv_table.clear_ply(1);
 
+	// The list is pseudo-legal, so DoMove() decides which move is playable.
 	MoveList emergency_moves;
 	MoveGenerator::ComputeLegalMoves(td.board, emergency_moves);
+	for (const auto& move : emergency_moves) {
+		if (!td.board.DoMove(move))
+			continue;
+		td.board.UndoMove(move);
+		state.best_move = move;
+		state.best_score = 0;
+		td.pv_table.update(0, move);
 
-	if (emergency_moves.empty()) {
-		log.critical("No legal moves - game is over");
-		return false;
+		log.critical("Using emergency move: {}", MoveFormatter::ToCoord(move));
+		return true;
 	}
 
-	// Verify first move is legal
-	if (!td.board.DoMove(emergency_moves[0])) {
-		log.critical("First pseudolegal move {} is illegal!", MoveFormatter::ToCoord(emergency_moves[0]));
-
-		// Try others
-		for (const auto& move : emergency_moves) {
-			if (td.board.DoMove(move)) {
-				td.board.UndoMove(move);
-				state.best_move = move;
-				state.best_score = 0;
-				td.pv_table.update(0, move);
-
-				log.critical("Using legal emergency move: {}", MoveFormatter::ToCoord(move));
-				return true;
-			}
-		}
-
-		log.critical("No legal moves found - ComputeLegalMoves is broken!");
-		return false;
-	}
-
-	// First move is legal
-	td.board.UndoMove(emergency_moves[0]);
-	state.best_move = emergency_moves[0];
-	state.best_score = 0;
-	td.pv_table.update(0, emergency_moves[0]);
-
-	log.critical("Using emergency move: {}", MoveFormatter::ToCoord(emergency_moves[0]));
-	return true;
+	log.critical("No legal moves - game is over");
+	return false;
 }
 
 void AIPerplex::log_search_complete(const Engine::IterationState& state, const PVTable& pv_table) const
@@ -1969,16 +1926,8 @@ void AIPerplex::emit_iteration_info(const ThreadData& td, int depth, int score, 
 	if (!observer)
 		return;
 
-	// The reported figure is the main-search-thread's cumulative count of both trees as
-	// of this accepted iteration. It does not generally equal the final info/bestmove
-	// line's total from Search(): a rejected trailing
-	// iteration (REJECTED, see iterative_deepening()) still adds its
-	// nodes to those counters before IterationPolicy throws the
-	// iteration away, so the final line's count is typically strictly greater
-	// than this figure at Threads=1; under Lazy SMP the final total also sums
-	// helper threads' nodes, which are invisible here. Not synchronising with
-	// helpers on every accepted depth is intentional: this is a progress
-	// indicator, not a decision input.
+	// Main-thread cumulative nodes; see IterationInfo for why this need not equal Search()'s
+	// final total. A progress indicator, not a decision input.
 	const int length = td.pv_table.get_length(0);
 	const auto& line = td.pv_table.get_line(0);
 
@@ -1986,7 +1935,7 @@ void AIPerplex::emit_iteration_info(const ThreadData& td, int depth, int score, 
 	iter.depth = depth;
 	iter.score = score;
 	iter.nodes = td.nodes_searched + td.qnodes_searched;
-	iter.hashfull = _tt->hashfull(search_start_age);
+	iter.hashfull = tt_->hashfull(search_start_age);
 	iter.elapsed = control_.Elapsed();
 	iter.pv.assign(line.begin(), line.begin() + length);
 

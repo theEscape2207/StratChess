@@ -1,5 +1,6 @@
 #pragma once
 #include <algorithm>
+#include <bit>
 #include <vector>
 #include <atomic>
 #include <mutex>
@@ -38,51 +39,31 @@ template <class T> struct HugePageAllocator {
 
 enum class BoundType : uint8_t { EXACT = 0, LOWER = 1, UPPER = 2 };
 
-// Node types
-// PV_NODE: principal variation node
-// CUT_NODE: beta cutoff expected
-// ALL_NODE: all moves must be searched
 enum class NodeType : uint8_t {
 	PV_NODE = 0,  // Principal variation node
 	CUT_NODE = 1, // Beta cutoff expected
 	ALL_NODE = 2  // All moves must be searched
 };
 
-// Search phases
-// MAIN: regular search
-// QUIESCENCE: quiescence search
+// Which search produced an entry: pvs() (MAIN) or quiescence().
 enum class SearchPhase : uint8_t { MAIN, QUIESCENCE };
 
-// Transposition Table Entries
-// Stores key, value, depth, best move, bound type, node type, age
-// Uses 64-bit keys and 16-bit values/depths for compactness
-// Age is used for replacement strategy
-// NodeType is stored to improve replacement decisions
-// Best move is stored for move ordering
+// A decoded transposition-table entry, as probe() returns it. Node type and age feed the
+// replacement ranking; the best move is a move-ordering hint.
 struct TTEntry {
-	std::uint64_t key;
-	int16_t value;
-	int16_t depth; // Search remaining when the entry was produced: main-search depth, or
-	               // quiescence budget. Larger always means more search, in both phases.
-	SearchPhase phase;
-	BoundType bound;
-	NodeType node_type; // Track node type for better replacement
-	uint8_t age;
+	std::uint64_t key = 0;
+	int16_t value = 0;
+	int16_t depth = 0; // Search remaining when the entry was produced: main-search depth, or
+	                   // quiescence budget. Larger always means more search, in both phases.
+	SearchPhase phase = SearchPhase::MAIN;
+	BoundType bound = BoundType::EXACT;
+	NodeType node_type = NodeType::ALL_NODE;
+	uint8_t age = 0;
 	Move best_move;
-
-	TTEntry()
-	    : key(0), value(0), depth(0), phase(SearchPhase::MAIN), bound(BoundType::EXACT), node_type(NodeType::ALL_NODE),
-	      age(0), best_move()
-	{}
 };
 
-// Transposition Table class
-// Thread-safe with per-bucket locks for concurrent access
-// Uses a simple replacement strategy based on depth and age
-// Supports normalization of mate scores for correct distance handling
-// Provides O(1) diagnostics via atomic counters
-// clear() is protected by a global mutex
-// Probes use shared locks for concurrent reads
+// Thread-safe through per-bucket shared locks (probes share, stores exclude); clear() also takes a
+// table-wide mutex. Mate scores are stored ply-normalised. Entry counts are O(1) atomic counters.
 class TranspositionTable {
 #ifdef STRAT_ENABLE_TEST_ACCESS
 	friend class TranspositionTableTestFixture;
@@ -217,16 +198,8 @@ class TranspositionTable {
 #endif
 	}
 
-	// helper: round down to nearest power of two >=1
-	static constexpr size_t floor_pow2(size_t v)
-	{
-		if (v == 0)
-			return 1;
-		size_t p = 1;
-		while ((p << 1) <= v)
-			p <<= 1;
-		return p;
-	}
+	// Rounds down to a power of two, and never below one.
+	static constexpr size_t floor_pow2(size_t v) noexcept { return std::max<size_t>(1, std::bit_floor(v)); }
 
   public:
 	static constexpr size_t bucket_count_for(size_t mb) noexcept
@@ -257,10 +230,10 @@ class TranspositionTable {
 		pv_count.store(0, std::memory_order_relaxed);
 	}
 	// Helper to check if value is a mate score
-	bool is_mate_score(int value) const
+	bool is_mate_score(int value) const noexcept
 	{
 		assert(value < GameValues::Mate + 100);
-		return std::abs(value) >= (GameValues::Mate_Threshold);
+		return std::abs(value) >= GameValues::Mate_Threshold;
 	}
 
 	// Storage: normalize mate scores. Mate +/- MAX_PLY fits in int16_t.
@@ -280,10 +253,10 @@ class TranspositionTable {
 	int16_t denormalize_from_storage(int16_t stored_value, int ply) const noexcept
 	{
 		if (stored_value >= GameValues::Mate_Threshold) {
-			// Store mate-in-N rather than absolute mate value
+			// Winning mate: back to a distance from this node
 			return static_cast<int16_t>(stored_value - ply);
 		} else if (stored_value <= -GameValues::Mate_Threshold) {
-			// Add ply
+			// Losing mate: add ply
 			return static_cast<int16_t>(stored_value + ply);
 		}
 		return stored_value;
@@ -359,7 +332,7 @@ class TranspositionTable {
 		const std::unique_lock lock(bucket_locks[index]);
 
 		const uint8_t age = current_age.load(std::memory_order_relaxed);
-		size_t replaceIndex = 0;
+		size_t replace_index = 0;
 		int worst_score = std::numeric_limits<int>::max();
 		bool found_empty = false;
 		bool same_key = false;
@@ -370,7 +343,7 @@ class TranspositionTable {
 			if (entry.key == key) {
 				// Exact same position: this slot is the only candidate, but whether the
 				// incoming entry earns it is still a replacement decision -- see below.
-				replaceIndex = i;
+				replace_index = i;
 				same_key = true;
 				break;
 			}
@@ -382,7 +355,7 @@ class TranspositionTable {
 			if (entry.key == 0) {
 				if (!found_empty) {
 					found_empty = true;
-					replaceIndex = i;
+					replace_index = i;
 				}
 				continue;
 			}
@@ -393,10 +366,10 @@ class TranspositionTable {
 			const int score = replacementScore(entry.unpack(), age);
 			if (score < worst_score) {
 				worst_score = score;
-				replaceIndex = i;
+				replace_index = i;
 			}
 		}
-		auto& entry = bucket.entries[replaceIndex];
+		auto& entry = bucket.entries[replace_index];
 
 		if (same_key) {
 			// Both sides describe the same position, so the ranking that decides evictions
@@ -519,18 +492,13 @@ class TranspositionTable {
 	// replacementScore() can rank both phases with one arithmetic. A quiescence ply resolves
 	// far less than a main-search ply, hence the discount; both units count search still to
 	// come, so more is better on either side of the comparison.
-	int quiescenceEquivalentDepth(int quiescenceBudget) const noexcept
-	{
-		constexpr double scale = 0.5; // tuned constant
-		return static_cast<int>(quiescenceBudget * scale);
-	}
+	static constexpr int quiescenceEquivalentDepth(int quiescenceBudget) noexcept { return quiescenceBudget / 2; }
 
 	static constexpr int ageDistance(int newer, int older) noexcept { return (newer - older) & 0xFF; }
 
-	// Compute entry score balancing depth, age, node type, and search phase
-	// Scoring used for replacement decisions. Higher is better.
-	// Provides a bonus for PV entries and a penalty for quiescence entries
-	int replacementScore(const TTEntry& entry, int age) const noexcept
+	// Retention rank for replacement decisions, higher is better: depth, plus a PV bonus, minus a
+	// quiescence penalty and an age penalty.
+	static constexpr int replacementScore(const TTEntry& entry, int age) noexcept
 	{
 		return replacementScore(entry.depth, entry.phase, entry.node_type, ageDistance(age, entry.age));
 	}
@@ -538,7 +506,7 @@ class TranspositionTable {
 	// The same ranking for content that is not in the table yet, so store() can weigh an
 	// incoming entry against the one it would replace. An entry being written always carries
 	// the current age, hence an age difference of zero.
-	int replacementScore(int16_t depth, SearchPhase phase, NodeType node_type, int age_diff) const noexcept
+	static constexpr int replacementScore(int16_t depth, SearchPhase phase, NodeType node_type, int age_diff) noexcept
 	{
 		// PV nodes are more valuable to keep
 		const int pv_bonus = (node_type == NodeType::PV_NODE) ? 512 : 0;

@@ -558,7 +558,7 @@ static int64_t poll_ticks_at_depth(const std::string& fen, int depth)
 // assert -- they are about the verdict carrier, not about pruning -- so pinning it stops a search
 // that gets cheaper from silently converting these into tests of something else.
 static constexpr const char* BUSY_FEN = KIWIPETE_FEN;
-static constexpr int64_t POLL_INTERVAL = 1024; // poll_search_limits(): (++nodes_since_check_ & 1023)
+static constexpr int64_t POLL_INTERVAL = 1024; // poll_search_limits(): (++nodes_since_check & 1023)
 
 TEST_CASE("AIPerplex - init_search resets the root verdict before any node runs", "[search]")
 {
