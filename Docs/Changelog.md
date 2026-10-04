@@ -20,6 +20,26 @@ and couldn't be matched with confidence — those remain in the undated pocket b
 
 Newest first.
 
+## Unreleased — Shared-/ORDER relink script (#717)
+
+`Scripts/New-OrderedBuildPair.ps1` replaces #555's hand recipe for the relink that confirms a
+`Compare-Bench.ps1` Speedup and escalates a Slowdown or Unresolved verdict. It reruns each built
+tree's own link command (from `ninja -t commands`) into an output directory, and first proves the
+relink faithful: the plain relink must be byte-identical to the tree's shipping exe. Engine functions
+are then paired across the two maps, with anonymous-namespace hashes normalised and exception
+funclets folded into their parent's size. The equal-size ones are pinned in baseline order, and
+resized hot functions are placed right after them. The script fails unless `pvs` and `quiescence`
+start at identical addresses. The tree's shipping exe, map and PDB are never written.
+
+`Get-MapCodeSymbol` moved from `Test-CodeAlignment.ps1` into the shared `Scripts/LinkerMap.ps1`, and
+now also reads the object column.
+
+Validated on an A/A pair (`d48b066` in two worktrees: 2,775 of 2,775 pinned functions matched, 18 s)
+and on #711 against its base `ff6f5cc`, whose change resized `pvs`. There, 1,203 of 1,203 pinned
+functions matched and both hot functions started at the same address. `Compare-Bench.ps1` accepted
+the ordered pair as node-identical. Pinning funclet names, as a first draft did, left 911 of 2,682
+entries misplaced: `/order` moves sections, and funclet numbers differ between trees.
+
 ## Unreleased — Paired nps comparison script (#715)
 
 `Scripts/Compare-Bench.ps1` replaces the hand-run paired `Run-Bench.ps1` series of the
