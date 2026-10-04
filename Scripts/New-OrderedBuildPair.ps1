@@ -138,7 +138,7 @@ function Get-UniqueEngineSymbol {
     return $byKey
 }
 
-function Get-PinnedFunction {
+function Get-OrderEntry {
     <#
       .SYNOPSIS
         The functions both order files list: paired by key, equal in size, in baseline address
@@ -320,7 +320,7 @@ function Invoke-SelfTest {
         (New-Symbol '_crt_fn' 0x1600 'msvcrt:file_mode.obj')
         (New-Symbol '_crt_tail' 0x1640 'msvcrt:file_mode.obj')
     )
-    $pinned = @(Get-PinnedFunction -BaselinePlaced @(Get-SymbolPlacement -Symbol $baseline) -CandidatePlaced @(Get-SymbolPlacement -Symbol $candidate))
+    $pinned = @(Get-OrderEntry -BaselinePlaced @(Get-SymbolPlacement -Symbol $baseline) -CandidatePlaced @(Get-SymbolPlacement -Symbol $candidate))
     # pvs 0x400 both; changed 0x40 vs 0xc0; anon 0x40 both; qs 0x80 vs 0x100. pvs and anon pin; qs trails.
     Assert-Equal 'pins equal-size pairs in baseline order, then resized hot functions; drops the rest' `
         (($pinned | ForEach-Object { "$($_.BaselineName):$($_.Resized)" }) -join ',') "${pvs}:False,?anon@?A0x11111111@@YAXXZ:False,${qs}:True"
@@ -409,10 +409,21 @@ function Get-TreeLink {
         BuildDir    = $buildDir
         ShippingExe = $exe
         ShippingSha = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash
+        Shipping    = Get-ShippingFingerprint -BuildDir $buildDir
         Commit      = [string]$commit
         Dirty       = $dirty
         LinkCommand = Get-LinkCommand -NinjaLine $ninjaLines[-1]
     }
+}
+
+function Get-ShippingFingerprint {
+    <# Hashes of the tree's shipping exe, map and PDB, which a run must leave untouched. #>
+    param([Parameter(Mandatory)][string]$BuildDir)
+    $parts = foreach ($extension in 'exe', 'map', 'pdb') {
+        $path = Join-Path $BuildDir "StratChessEvolved.$extension"
+        if (Test-Path -LiteralPath $path -PathType Leaf) { "$extension=$((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash)" }
+    }
+    return ($parts -join ';')
 }
 
 function Invoke-Relink {
@@ -474,12 +485,14 @@ foreach ($arm in $arms.Keys) {
     Write-Host "  $arm  $($tree.Commit.Substring(0, 12))  byte-identical to the shipping exe" -ForegroundColor DarkGray
 }
 
-$pinned = @(Get-PinnedFunction -BaselinePlaced $placed['baseline'] -CandidatePlaced $placed['candidate'])
+$pinned = @(Get-OrderEntry -BaselinePlaced $placed['baseline'] -CandidatePlaced $placed['candidate'])
 if ($pinned.Count -eq 0) { throw 'No engine function pairs across the two maps; nothing to pin.' }
 
+$candidateKey = Get-UniqueEngineSymbol -Placed $placed['candidate']
+$pairedCount = @((Get-UniqueEngineSymbol -Placed $placed['baseline']).Keys | Where-Object { $candidateKey.ContainsKey($_) }).Count
 $resizedHot = @($pinned | Where-Object { $_.Resized })
 $resizedNote = if ($resizedHot.Count -gt 0) { "; resized hot, placed next: $(($resizedHot | ForEach-Object { $_.BaselineName.Split('@')[0..1] -join '@' }) -join ', ')" } else { '' }
-Write-Host "==> Relinking with a shared order ($($pinned.Count - $resizedHot.Count) equal-size functions pinned$resizedNote)" -ForegroundColor Cyan
+Write-Host "==> Relinking with a shared order ($($pinned.Count - $resizedHot.Count) of $pairedCount paired functions equal in size and pinned$resizedNote)" -ForegroundColor Cyan
 $ordered = @{}
 foreach ($arm in $arms.Keys) {
     $armDir = Join-Path $outPath $arm
@@ -491,8 +504,8 @@ foreach ($arm in $arms.Keys) {
 }
 
 foreach ($arm in $arms.Keys) {
-    if ((Get-FileHash -LiteralPath $arms[$arm].ShippingExe -Algorithm SHA256).Hash -ne $arms[$arm].ShippingSha) {
-        throw "The $arm shipping exe changed during the run: $($arms[$arm].ShippingExe)"
+    if ((Get-ShippingFingerprint -BuildDir $arms[$arm].BuildDir) -ne $arms[$arm].Shipping) {
+        throw "The $arm shipping exe, map or PDB changed during the run: $($arms[$arm].BuildDir)"
     }
 }
 
@@ -505,12 +518,16 @@ foreach ($hot in $verdict.HotFunction) {
         continue
     }
     $sizes = foreach ($arm in $arms.Keys) {
-        $entry = $placed[$arm] | Where-Object { $_.Name.StartsWith($hot.MangledPrefix, [System.StringComparison]::Ordinal) } | Select-Object -First 1
+        $entry = Find-MapHotSymbol -Symbol $placed[$arm] -MangledPrefix $hot.MangledPrefix
         if ($entry) { "$arm $($entry.Size) bytes" } else { "$arm absent" }
     }
     Write-Host ('  FAIL  {0}: baseline 0x{1:x}, candidate 0x{2:x} (as built: {3})' -f $hot.Label, $hot.BaselineAddress, $hot.CandidateAddress, ($sizes -join ', ')) -ForegroundColor Red
 }
 Write-Host "  $($verdict.MatchedCount) of $($verdict.PinnedCount) pinned functions at identical addresses" -ForegroundColor DarkGray
+if ($verdict.MatchedCount -lt $verdict.PinnedCount) {
+    # A size is the gap to the next function, so a neighbour with another alignment can hide a real difference.
+    Write-Host '  WARN  some pinned functions moved: an equal gap did not mean an equal size' -ForegroundColor Yellow
+}
 
 $metadata = [ordered]@{
     baseline     = [ordered]@{ tree = $arms['baseline'].Root; commit = $arms['baseline'].Commit; dirty = $arms['baseline'].Dirty }
