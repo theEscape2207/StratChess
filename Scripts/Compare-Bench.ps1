@@ -27,17 +27,19 @@
     With -Control, the verdict compares the candidate against the mean of both baseline arms.
 
     Verdict, from the 95% interval of the verdict comparison, checked in this order:
-      Speedup      lower bound > 0, only with -Control and only while the A/A interval spans
-                   zero; otherwise the machine itself drifted. Pending until a rerun after
-                   relinking both builds with a shared /ORDER agrees: placement alone moves
-                   node-identical builds by several percent either way.
+      Speedup      lower bound > 0, only with -Control and only while the whole A/A interval
+                   lies within +-0.5%: a control that is wide or offset cannot show the
+                   machine was quiet. Pending until a rerun after relinking both builds with a
+                   shared /ORDER agrees: placement alone moves node-identical builds by several
+                   percent either way.
       No slowdown  lower bound >= -0.5%; a small cost inside that tolerance still passes, and
                    the printed interval shows it.
       Slowdown     upper bound < 0.
       Unresolved   anything else. Rerun with -Control or relink both builds with a shared
                    /ORDER (measure-strength regression-check). Do not add rounds to the same
                    series until it passes.
-    Any other positive delta is placement noise, not a speedup. No verdict is an Elo claim.
+    Any other positive delta is unconfirmed: timing noise and placement are not ruled out.
+    No verdict is an Elo claim.
 
     Build both executables the same way (measure-strength regression-check). Run on a quiet
     machine: finish builds and reviews first, because spare cores do not mean the machine is
@@ -203,9 +205,10 @@ function Get-Interval {
 }
 
 function Get-Verdict {
-    <# $AaInterval is the control-vs-baseline interval, or $null without -Control: no speedup without it. #>
+    <# $AaInterval is the control-vs-baseline interval, or $null without -Control: no speedup without it.
+       Overlapping zero is not enough: the A/A interval must sit inside the tolerance band on both sides. #>
     param([Parameter(Mandatory)][object]$Interval, [Parameter(Mandatory)][double]$TolerancePct, [object]$AaInterval = $null)
-    $quietMachine = $null -ne $AaInterval -and $AaInterval.Low -le 0 -and $AaInterval.High -ge 0
+    $quietMachine = $null -ne $AaInterval -and $AaInterval.Low -ge -$TolerancePct -and $AaInterval.High -le $TolerancePct
     if ($Interval.Low -gt 0 -and $quietMachine) { return 'Speedup' }
     if ($Interval.Low -ge -$TolerancePct) { return 'No slowdown' }
     if ($Interval.High -lt 0) { return 'Slowdown' }
@@ -316,7 +319,7 @@ function Format-Report {
     $out.Add("VERDICT: $($Result.Verdict)  (from '$($Result.VerdictBasis)'; tolerance -$TolerancePct%)")
     switch ($Result.Verdict) {
         'Speedup'     { $out.Add('PENDING: relink both builds with a shared /ORDER and rerun with -Control; claim it only if Speedup holds there too. Not Elo.') }
-        'No slowdown' { $out.Add('A positive delta here is placement noise. A speedup claim needs -Control and a Speedup verdict. Not Elo.') }
+        'No slowdown' { $out.Add('A positive delta here is no confirmed speedup: timing noise and placement are not ruled out. A speedup claim needs -Control and a Speedup verdict. Not Elo.') }
         'Slowdown'    { $out.Add('Relink both builds with a shared /ORDER before treating it as real (measure-strength regression-check).') }
         'Unresolved'  { $out.Add('Rerun with -Control, or relink with a shared /ORDER. Do not extend this series until it passes.') }
     }
@@ -356,8 +359,9 @@ if ($SelfTest) {
     }
 
     function New-Series {
-        <# Runs following the real schedule; $Speed maps arm -> nps multiplier, $Round0 the warm-up baseline's. #>
-        param([string[]]$Arms, [int]$RoundCount, [hashtable]$Speed, [hashtable]$Jitter = @{}, [double]$Round0 = 1.0)
+        <# Runs following the real schedule; $Speed maps arm -> nps multiplier, $Round0 the warm-up baseline's.
+           $Jitter maps round -> a multiplier common to all arms; $ArmJitter maps round -> @{ arm = multiplier }. #>
+        param([string[]]$Arms, [int]$RoundCount, [hashtable]$Speed, [hashtable]$Jitter = @{}, [hashtable]$ArmJitter = @{}, [double]$Round0 = 1.0)
         $series = [System.Collections.Generic.List[object]]::new()
         $slot = 0
         foreach ($arm in $Arms) {
@@ -369,6 +373,7 @@ if ($SelfTest) {
             $slot = 0
             foreach ($arm in $schedule[$r - 1]) {
                 $j = if ($Jitter.ContainsKey($r)) { $Jitter[$r] } else { 1.0 }
+                if ($ArmJitter.ContainsKey($r) -and $ArmJitter[$r].ContainsKey($arm)) { $j *= $ArmJitter[$r][$arm] }
                 $ms = 100000 / ($Speed[$arm] * $j)
                 $series.Add([pscustomobject]@{ Round = $r; Slot = $slot++; Arm = $arm; Rows = (New-Rows -MsA $ms -MsB $ms) })
             }
@@ -404,11 +409,15 @@ if ($SelfTest) {
     Assert-Case 'even-count median averages the middle pair' ((Get-Interval -Values @(4, 1, 3, 2)).Median -eq 2.5)
 
     $flatAa = [pscustomobject]@{ Low = -0.3; High = 0.4 }
-    $driftAa = [pscustomobject]@{ Low = 0.2; High = 0.9 }
+    $driftAa = [pscustomobject]@{ Low = 0.6; High = 0.9 }
+    $wideAa = [pscustomobject]@{ Low = -20; High = 20 }
+    $preciseAa = [pscustomobject]@{ Low = 0.001; High = 0.002 }
     foreach ($case in @(
             @{ Low = 0.2; High = 1.0; Aa = $flatAa; Expect = 'Speedup' }
             @{ Low = 0.2; High = 1.0; Aa = $null; Expect = 'No slowdown' }
             @{ Low = 0.2; High = 1.0; Aa = $driftAa; Expect = 'No slowdown' }
+            @{ Low = 0.2; High = 1.0; Aa = $wideAa; Expect = 'No slowdown' }
+            @{ Low = 0.2; High = 1.0; Aa = $preciseAa; Expect = 'Speedup' }
             @{ Low = -0.1; High = 1.0; Aa = $flatAa; Expect = 'No slowdown' }
             @{ Low = -0.3; High = 0.4; Expect = 'No slowdown' }
             @{ Low = -0.45; High = -0.1; Expect = 'No slowdown' }
@@ -447,6 +456,25 @@ if ($SelfTest) {
     $runs = New-Series -Arms @('baseline', 'candidate') -RoundCount 12 -Speed @{ baseline = 1.0; candidate = 1.03 } -Jitter $jitter
     $res = Get-Comparison -Runs $runs -TolerancePct 0.5
     Assert-Case 'the same speedup without -Control is only No slowdown' ($res.Verdict -eq 'No slowdown') "got $($res.Verdict)"
+
+    # Differential noise: per-arm timing that does not cancel in the ratios.
+    $opposed = @{}
+    for ($r = 1; $r -le 12; $r++) {
+        $m = if ($r % 2) { 1.1 } else { 0.9 }
+        $opposed[$r] = @{ baseline = $m; control = 2.0 - $m }
+    }
+    $runs = New-Series -Arms @('baseline', 'candidate', 'control') -RoundCount 12 -Speed @{ baseline = 1.0; candidate = 1.01; control = 1.0 } -ArmJitter $opposed
+    $res = Get-Comparison -Runs $runs -TolerancePct 0.5
+    $aa = $res.Comparisons['control vs baseline (A/A)']
+    Assert-Case 'FALSIFY: a wide control whose arms cancel in the mean blocks Speedup' `
+        ($res.Verdict -ne 'Speedup' -and $aa.High - $aa.Low -gt 10) "got $($res.Verdict), A/A [$($aa.Low), $($aa.High)]"
+    $noisy = @{}
+    for ($r = 1; $r -le 12; $r++) { $noisy[$r] = @{ candidate = $(if ($r % 2) { 1.03 } else { 0.97 }) } }
+    $runs = New-Series -Arms @('baseline', 'candidate') -RoundCount 12 -Speed @{ baseline = 1.0; candidate = 1.0 } -ArmJitter $noisy
+    $res = Get-Comparison -Runs $runs -TolerancePct 0.5
+    $iv = $res.Comparisons['candidate vs baseline']
+    Assert-Case 'a noisy candidate with no true change is Unresolved' `
+        ($res.Verdict -eq 'Unresolved' -and $iv.Low -lt -0.5 -and $iv.High -gt 0) "got $($res.Verdict) [$($iv.Low), $($iv.High)]"
     $runs = New-Series -Arms @('baseline', 'candidate', 'control') -RoundCount 12 -Speed @{ baseline = 1.0; candidate = 1.0; control = 1.0 } -Jitter $jitter
     $res = Get-Comparison -Runs $runs -TolerancePct 0.5
     Assert-Case 'the report renders every section' `

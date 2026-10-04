@@ -24,12 +24,13 @@ against the **merge base**:
 
 ## Reading it
 
-**No slowdown** is done. Report a positive delta as "no slowdown", never as a speedup: it is
-placement noise.
+**No slowdown** is done. Report a positive delta as "no slowdown", never as a speedup: timing noise
+and placement have not been ruled out.
 
 **Claiming a speedup** — when faster nps is the change's success criterion — needs the
 **Speedup** verdict twice: once from a `-Control` series, and again after relinking both builds with
-a shared `/ORDER` (recipe in #555). The script only issues Speedup while the A/A control reads flat.
+a shared `/ORDER` (recipe in #555). The script only issues Speedup while the whole A/A interval lies within ±0.5%; a wide control is
+not a quiet one.
 This covers node-identical changes only. A change that reshapes the tree is judged on wall clock and
 Elo, and the script rejects it.
 

@@ -34,11 +34,12 @@ verdict comes from a 95% Student-t interval over per-round aggregate deltas:
 - **No slowdown** when the lower bound is ≥ −0.5%.
 - **Slowdown** when the upper bound is < 0.
 - **Unresolved** otherwise.
-- **Speedup** when the lower bound is > 0, only with `-Control` and only while the A/A interval
-  spans zero. It is pending until a rerun after a shared-`/ORDER` relink agrees.
+- **Speedup** when the lower bound is > 0, only with `-Control` and only while the whole A/A
+  interval lies within ±0.5%. It is pending until a rerun after a shared-`/ORDER` relink agrees.
 
 The `-SelfTest` covers schedule balance, warm-up exclusion, aggregation, the interval, the verdict
-and every rejection, falsified against a mutated warm-up filter and an unguarded Speedup check. No engine change.
+and every rejection, including per-arm noise that cancels in the baseline mean, falsified against a mutated warm-up
+filter and an unguarded Speedup check. No engine change.
 
 ## Unreleased — Value-only iteration policy (#706)
 
