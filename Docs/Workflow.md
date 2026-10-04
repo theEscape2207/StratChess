@@ -14,6 +14,7 @@ what you do; this file holds the background you consult when something is unexpe
 | start a task, or clean one up afterwards | [Two ways to run a task](#two-ways-to-run-a-task) |
 | run an AI-vs-AI game by hand | [Self-play validation](#self-play-validation) |
 | know whether I may spend 1% of nps | [Speed and nps](#speed-and-nps) |
+| find where the CPU time goes | [Profiling: where the time goes](#profiling-where-the-time-goes) |
 | prove a refactor changed nothing | [What validates what](#what-validates-what) |
 | judge whether a hardening or mitigation is worth it | [Threat model](#threat-model) |
 | know why Linux and Windows validate different things | [What validates what](#what-validates-what) |
@@ -483,6 +484,61 @@ One caveat worth carrying: the +40.28 Elo result implies ~133 Elo per doubling a
 ~60, and the recorded explanation is the time control — speed is amplified at 10+0.1, where the
 engine is often one iteration short. The 1.7 Elo/1% figure is therefore an upper bound tied to how
 strength is measured here, not a universal constant.
+
+### Profiling: where the time goes
+
+`Run-Bench` says *that* time changed. A sampling profiler says *where* it goes, and that sets the
+ceiling: no speedup of an area can buy more than that area's share of runtime. Write down the shares
+you expect before you look, or the profile cannot surprise you (#719). Both recipes drive the
+`Run-Bench` positions over UCI at `Threads=1` and fixed depth. The driver must read stdout until
+`bestmove`, because a piped `go` returns immediately.
+
+**Linux (WSL Ubuntu-26.04, GCC 15, the strength lab's build).** Build Release with
+`-DCMAKE_CXX_FLAGS=-g` from a `git archive` of the commit extracted onto the WSL file system. A
+build over `/mnt/c` fails in `FetchContent`, and a worktree's `.git` file is unreadable from WSL.
+Then:
+
+```bash
+perf record -F 1000 -e cycles:u --call-graph dwarf -o perf.data -- ./build/StratChessEvolved
+perf report -i perf.data --stdio --no-children -g none --sort sym      # or sym,srcfile
+```
+
+`perf` is `/usr/bin/perf` (package `linux-perf`). `perf_event_paranoid` is 2, so sample user space
+only (`:u`); the engine spends nothing in the kernel.
+
+**Windows (clang-cl, what ships). No elevation needed.** Release writes no PDB, and a
+public-symbols-only one misattributes: LTO internalises `pvs`, `quiescence` and the TT functions, so
+their samples land on whatever public symbol precedes them. Configure a separate tree from a VS
+developer environment:
+
+```powershell
+cmake --preset windows-clang-cl -B build/prof-clang-cl `
+    "-DCMAKE_CXX_FLAGS=/DWIN32 /D_WINDOWS /EHsc /Z7" `
+    "-DCMAKE_EXE_LINKER_FLAGS_RELEASE=/DEBUG /OPT:REF /OPT:ICF"
+cmake --build build/prof-clang-cl --target StratChessEvolved
+```
+
+`/OPT:REF /OPT:ICF` restate what `/DEBUG` would otherwise turn off, so the image matches Release
+(same size, same node counts). Then start the engine under the driver and attach the VS collector
+(`<VS>\Team Tools\DiagnosticsHub\Collector`) before sending `go`:
+
+```powershell
+VSDiagnostics.exe start 71 /attach:<pid> /loadConfig:<Collector>\AgentConfigs\CpuUsageBase.json
+# ... search runs ...
+VSDiagnostics.exe stop 71 /output:run.diagsession
+VSDiagnostics.exe expandDiagSession run.diagsession          # yields an .etl
+$env:_NT_SYMBOL_PATH = "<build dir>;srv*<cache>*https://msdl.microsoft.com/download/symbols"
+xperf -i <etl> -symbols -a profile -detail                    # per-function self weight
+```
+
+The session id must be 0-255. The Microsoft symbol server is what resolves `ntdll` (the `SRWLock`
+calls). Collection costs about 30% nps even at 1 kHz, so treat shares as approximate.
+
+**Reading the two side by side.** The platforms differ in more than codegen. libstdc++'s
+`std::shared_mutex` is a 56-byte `pthread_rwlock_t` and MSVC's an 8-byte `SRWLOCK` — the TT locks
+measured 32.9% of CPU on Linux against 9.4% on Windows — and clang-cl inlines the TT probe into
+`pvs`/`quiescence`, so its cache miss shows up as search time. Windows is authoritative for
+anything that ships; the Linux profile is the strength lab's.
 
 ## Threat model
 

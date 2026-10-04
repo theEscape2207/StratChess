@@ -15,6 +15,17 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-04: CPU profiling recipe (#719)
+
+`Docs/Workflow.md` → Profiling: where the time goes. Linux uses `perf` in WSL Ubuntu-26.04 with GCC
+and `-g`. Windows uses `VSDiagnostics` (no elevation) plus `xperf` on a clang-cl tree built with
+`/Z7`. That tree is needed because a public-symbols-only PDB misattributes the samples of
+LTO-internalised functions.
+
+The first profiles found two areas out of range:
+- the TT's per-bucket `shared_mutex`, at 32.9% of CPU on Linux and 9.4% on Windows (#250);
+- move ordering's full `std::sort`, at 15.9% on Windows (#725).
+
 ## 2026-10-04: SEE pruning margin knob (#398, slice 1)
 
 `SearchTuning::see_pruning_margin` (UCI `SeePruningMargin`, default 0, domain `[0, 900]`): quiescence
