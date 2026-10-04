@@ -11,6 +11,13 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-04 | 4dafbdd with `SingularMinDepth=6 SingularMarginFactor=1` over UCI, CONFIRMATION on openings 26,641+ (#702) | 4dafbdd (the same commit at the shipped singular defaults, min depth 8 and margin factor 2; the delta is a runtime option) | 19980 | 10+0.1 | **+20.07 +/- 3.58** | gain |
+| 2026-10-03 | SCREEN 2 arm C: min depth 6, factor 1 (#702) | 4dafbdd (the same commit at the shipped singular defaults, min depth 8 and margin factor 2; the delta is a runtime option) | 8880 | 10+0.1 | **+19.51 +/- 5.38** | screen, leader |
+| 2026-10-03 | SCREEN 2 arm B: min depth 8, factor 0 (#702) | 4dafbdd (the same commit at the shipped singular defaults, min depth 8 and margin factor 2; the delta is a runtime option) | 8880 | 10+0.1 | **+8.61 +/- 5.43** | screen |
+| 2026-10-03 | SCREEN 2 arm A: min depth 8, factor 1 (#702) | 4dafbdd (the same commit at the shipped singular defaults, min depth 8 and margin factor 2; the delta is a runtime option) | 8880 | 10+0.1 | **+7.00 +/- 5.27** | screen |
+| 2026-10-03 | SCREEN 1 arm C: min depth 10, factor 2 (#702) | 4dafbdd (the same commit at the shipped singular defaults, min depth 8 and margin factor 2; the delta is a runtime option) | 8880 | 10+0.1 | **-8.37 +/- 5.53** | screen, rejected |
+| 2026-10-03 | SCREEN 1 arm B: min depth 8, factor 4 (#702) | 4dafbdd (the same commit at the shipped singular defaults, min depth 8 and margin factor 2; the delta is a runtime option) | 8880 | 10+0.1 | **-10.45 +/- 5.45** | screen, rejected |
+| 2026-10-03 | SCREEN 1 arm A: min depth 8, factor 1 (#702) | 4dafbdd (the same commit at the shipped singular defaults, min depth 8 and margin factor 2; the delta is a runtime option) | 8880 | 10+0.1 | **+9.12 +/- 5.44** | screen, leader |
 | 2026-10-02 | 48a31ad built with `-DSTRAT_SINGULAR_EXTENSIONS=ON`, singular extensions on (min depth 8, TT depth margin 3, margin factor 2, #95) | 48a31ad (the same binary with `SingularExtensions=false`; the delta is a runtime option, not a code change) | 19980 | 10+0.1 | **+22.90 +/- 3.60** | gain |
 | 2026-09-30 | 17cf5a3 (continuation history, 1-ply and 2-ply rows feeding quiet ordering, #664) | 481aa97 | 19980 | 10+0.1 | **+6.90 +/- 3.60** | gain |
 | 2026-09-29 | 3cff801 (PROBE: continuation history with 1-ply rows only, #664; the branch is deleted, rebuild as 17cf5a3 with `continuation_history_plies` 1) | 481aa97 | 19980 | 10+0.1 | **+0.78 +/- 3.58** | non-regression |
@@ -44,6 +51,13 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
 
+### 2026-10-04 -- 4dafbdd, singular min depth 6 and margin factor 1 (#702) (19980 games)
+
+**The default change, confirmed on openings no screen played.** 18 shards x 555 pairs, pooled Ptnml(0-2) [634, 2083, 3742, 2558, 973], score 52.89%, run `37154126192`, opening offset 26,640. 95% interval **[+16.5, +23.7]**. Both sides ran one binary; only the four `Singular*` options differed. The screen's +19.5 for this arm was a best-of-three value, yet the held-out run reproduced it, so the winner's curse was small here.
+
+### 2026-10-03 -- singular tuning screens (#702) (8880 games per arm)
+
+**Two three-arm screens; exploratory, chosen arm confirmed above.** Runs `37109041385` (openings 1+) and `37125713346` (offset 13,320); each arm took 6 of 18 shards against the shared reference. Arm Ptnml(0-2), screen 1: A [350, 963, 1621, 1116, 390], B [423, 1046, 1697, 923, 351], C [424, 1071, 1605, 975, 365]; screen 2: A [317, 970, 1724, 1075, 354], B [342, 968, 1664, 1060, 406], C [277, 955, 1638, 1133, 437]. Arm A (factor 1) ran in both: pooled +8.1 +/- 3.8. Raising min depth (10) or factor (4) lost; lowering min depth to 6 gained beyond factor 1 alone. Min depth below 6 is unmeasured.
 ### 2026-10-02 -- 48a31ad (singular extensions on vs off, #95) (19980 games)
 
 **The gate for the feature, and it ships default-on.** 18 shards x 555 pairs, pooled Ptnml(0-2) [636, 2023, 3753, 2546, 1032], score 53.29%, run `37020636422`, 3 h 15 min wall-clock, all 18 green. 95% interval **[+19.3, +26.5]**. Both sides ran the one experimental binary, the candidate with the feature on and the reference with `SingularExtensions=false`, so the delta is the feature alone. Its fixed-depth cost of about +50% did not carry over to timed games: that cost model put break-even at 35-85 Elo.
