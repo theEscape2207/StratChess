@@ -36,8 +36,8 @@ derivation and interrupted last-move update) each fail those tests. No review-ti
 saving is claimed. A public observer-stop test preserves depth-1 move/score/depth and rejects later
 publication; clock ordering remains a source-review/header contract without clock injection.
 
-Single-thread search equivalence against `ec14213` is exact across 114 compared lines, six positions
-at depth 12. Shipping clang-cl benchmarks used eight positions at depth 13, `Threads=1`, six
+Before syncing #712, single-thread search equivalence against `ec14213` was exact across 114 compared
+lines, six positions at depth 12. Shipping clang-cl benchmarks used eight positions at depth 13, `Threads=1`, six
 baseline-then-candidate pairs per series and discarded the first pair. All per-position main/qs/total
 nodes and best moves matched. The kept aggregate nps deltas averaged -0.88% (sample SD 2.38 percentage
 points; range -4.96% to +1.04%). Following the code-placement attribution recipe in #555, temporary
@@ -47,6 +47,13 @@ survive placement attribution; no slowdown is demonstrated, and neither series e
 gain. Canonical shipping settings and both executables were restored byte-for-byte. Depth 12 was
 discarded for falling below the 200 ms timing floor. The change makes no direct strength claim and
 requires no Elo run.
+
+After syncing #712, equivalence against `ff6f5cc` again matched all 114 lines. The same six-pair
+shipping benchmark averaged +1.18% (SD 1.72 points; range -0.40% to +3.52%). Matched-order relinks
+averaged -0.54% (SD 1.93 points; range -3.82% to +1.23%); pinning both engines to logical processor
+2 averaged -0.40% (SD 0.69 points; range -1.23% to +0.26%). All position-level nodes and moves
+matched throughout. These spreads straddle zero: the current-baseline performance gate remains
+inconclusive, rather than a demonstrated gain or regression. The PR stays draft pending resolution.
 
 ---
 
