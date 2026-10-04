@@ -18,8 +18,8 @@ against the **merge base**:
 2. **Quiet the machine.** Finish builds and the code review first, and tell the owner a timing
    window is starting. Review subagents running beside a series read one pair −14% (#640).
 3. **Run** `Compare-Bench.ps1 -Baseline <exe> -Candidate <exe> -BaselineCommit <sha>
-   -CandidateCommit <sha>`: 12 rounds of alternating order, about 5 min. Fix `-Rounds` before it starts. Its `-?` covers the schedule, the rejections and
-   the verdict rule.
+   -CandidateCommit <sha>`: 12 rounds of alternating order, about 5 min. Fix `-Rounds` before it
+   starts. Its `-?` covers the schedule, the rejections and the verdict rule.
 4. **Report its verdict** with the interval line and the output directory's `metadata.json`.
 
 ## Reading it
