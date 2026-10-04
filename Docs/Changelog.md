@@ -37,7 +37,16 @@ saving is claimed. A public observer-stop test preserves depth-1 move/score/dept
 publication; clock ordering remains a source-review/header contract without clock injection.
 
 Single-thread search equivalence against `ec14213` is exact across 114 compared lines, six positions
-at depth 12. The change makes no direct strength claim and requires no Elo run.
+at depth 12. Shipping clang-cl benchmarks used eight positions at depth 13, `Threads=1`, six
+baseline-then-candidate pairs per series and discarded the first pair. All per-position main/qs/total
+nodes and best moves matched. The kept aggregate nps deltas averaged -0.88% (sample SD 2.38 percentage
+points; range -4.96% to +1.04%). Following the code-placement attribution recipe in #555, temporary
+matched-order relinks gave identical PVS, quiescence, TT-store, SEE and move-ordering addresses;
+the repeat averaged +2.34% (SD 1.09 points; range +0.84% to +3.50%). The negative result did not
+survive placement attribution; no slowdown is demonstrated, and neither series establishes a speed
+gain. Canonical shipping settings and both executables were restored byte-for-byte. Depth 12 was
+discarded for falling below the 200 ms timing floor. The change makes no direct strength claim and
+requires no Elo run.
 
 ---
 
