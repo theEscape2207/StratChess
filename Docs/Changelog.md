@@ -28,16 +28,17 @@ tree's own link command (from `ninja -t commands`) into an output directory, and
 relink faithful: the plain relink must be byte-identical to the tree's shipping exe. Engine functions
 are then paired across the two maps, with anonymous-namespace hashes normalised and exception
 funclets folded into their parent's size. The equal-size ones are pinned in baseline order, and
-resized hot functions are placed right after them. The script fails unless `pvs` and `quiescence`
-start at identical addresses. The tree's shipping exe, map and PDB are never written.
+resized hot functions are placed right after them. The script fails unless every pinned function,
+`pvs` and `quiescence` start at identical addresses. `metadata.json` records the paired, pinned and
+matched counts and which hot functions trailed as resized. The tree's shipping exe, map and PDB are never written.
 
 `Get-MapCodeSymbol` moved from `Test-CodeAlignment.ps1` into the shared `Scripts/LinkerMap.ps1`, and
 now also reads the object column.
 
-Validated on an A/A pair (`d48b066` in two worktrees: 2,775 of 2,775 pinned functions matched, 18 s)
-and on #711 against its base `ff6f5cc`, whose change resized `pvs`. There, 1,203 of 1,203 pinned
-functions matched and both hot functions started at the same address. `Compare-Bench.ps1` accepted
-the ordered pair as node-identical. Pinning funclet names, as a first draft did, left 911 of 2,682
+Validated on an A/A pair (`d48b066` in two worktrees: 1,211 of 1,211 paired functions pinned and matched, 18 s)
+and on #711 against its base `ff6f5cc`, whose change resized `pvs`. There, 1,203 of 1,217 paired
+functions were pinned, all of them matched, and both hot functions started at the same address.
+`Compare-Bench.ps1` accepted both ordered pairs as node-identical. Pinning funclet names, as a first draft did, left 911 of 2,682
 entries misplaced: `/order` moves sections, and funclet numbers differ between trees.
 
 ## Unreleased — Paired nps comparison script (#715)

@@ -23,9 +23,9 @@
       4. lists the hot functions whose own size changed right after them. The first one
          follows an identical prefix, so it still starts at the same address in both. Every
          other function goes after these.
-      5. relinks with /order and checks the result. AIPerplex::pvs and AIPerplex::quiescence
-         must start at identical addresses in both, or the script fails. That happens when the
-         change resized both: only the first can follow the identical prefix.
+      5. relinks with /order and checks the result. Every pinned function, AIPerplex::pvs and
+         AIPerplex::quiescence must start at identical addresses in both, or the script fails.
+         A change that resized both hot functions fails: only the first can follow the prefix.
 
     The tree's shipping exe, map and PDB are never written; the script checks the exe's hash
     afterwards. The ordered exes are for comparison only, never a shipped layout.
@@ -241,17 +241,21 @@ function Test-OrderedPlacement {
     foreach ($entry in $CandidateSymbol) { $candidateAddress[$entry.Name] = $entry.Address }
 
     $equalSize = @($Pinned | Where-Object { -not $_.Resized })
-    $matched = @($equalSize | Where-Object {
-            $baselineAddress.ContainsKey($_.BaselineName) -and $candidateAddress.ContainsKey($_.CandidateName) -and
-            $baselineAddress[$_.BaselineName] -eq $candidateAddress[$_.CandidateName]
-        }).Count
+    $moved = @($equalSize | Where-Object {
+            -not ($baselineAddress.ContainsKey($_.BaselineName) -and $candidateAddress.ContainsKey($_.CandidateName) -and
+                $baselineAddress[$_.BaselineName] -eq $candidateAddress[$_.CandidateName])
+        })
+    $matched = $equalSize.Count - $moved.Count
 
-    # Empty maps are a failure, never a vacuous pass: the hot lookups above fail on them too.
-    $ok = ($BaselineSymbol.Count -gt 0) -and ($CandidateSymbol.Count -gt 0) -and -not ($hotList | Where-Object { -not $_.Ok })
+    # Empty maps are a failure, never a vacuous pass: the hot lookups above fail on them too. A moved
+    # pinned function fails as well: everything after it shifts, hot callees included.
+    $ok = ($BaselineSymbol.Count -gt 0) -and ($CandidateSymbol.Count -gt 0) -and ($matched -eq $equalSize.Count) -and
+        -not ($hotList | Where-Object { -not $_.Ok })
     return [pscustomobject]@{
         HotFunction  = $hotList
         PinnedCount  = $equalSize.Count
         MatchedCount = $matched
+        FirstMoved   = if ($moved.Count -gt 0) { $moved[0].BaselineName } else { $null }
         Ok           = [bool]$ok
     }
 }
@@ -348,6 +352,9 @@ function Invoke-SelfTest {
     $shifted = @((New-Symbol $pvs 0x1000), (New-Symbol $qs 0x1440), (New-Symbol '?anon@?A0x22222222@@YAXXZ' 0x1500))
     Assert-Equal 'FALSIFY: quiescence at a different address fails' `
         (Test-OrderedPlacement -BaselineSymbol $orderedBaseline -CandidateSymbol $shifted -Pinned $pinned).Ok $false
+    $laterShifted = @((New-Symbol $pvs 0x1000), (New-Symbol $qs 0x1400), (New-Symbol '?anon@?A0x22222222@@YAXXZ' 0x1540))
+    Assert-Equal 'FALSIFY: a pinned function moved after matched hot functions fails' `
+        (Test-OrderedPlacement -BaselineSymbol $orderedBaseline -CandidateSymbol $laterShifted -Pinned $pinned).Ok $false
     Assert-Equal 'FALSIFY: a hot function missing from one map fails' `
         (Test-OrderedPlacement -BaselineSymbol $orderedBaseline -CandidateSymbol @((New-Symbol $pvs 0x1000)) -Pinned $pinned).Ok $false
     Assert-Equal 'FALSIFY: empty maps fail, never pass vacuously' `
@@ -523,17 +530,21 @@ foreach ($hot in $verdict.HotFunction) {
     }
     Write-Host ('  FAIL  {0}: baseline 0x{1:x}, candidate 0x{2:x} (as built: {3})' -f $hot.Label, $hot.BaselineAddress, $hot.CandidateAddress, ($sizes -join ', ')) -ForegroundColor Red
 }
-Write-Host "  $($verdict.MatchedCount) of $($verdict.PinnedCount) pinned functions at identical addresses" -ForegroundColor DarkGray
-if ($verdict.MatchedCount -lt $verdict.PinnedCount) {
+if ($verdict.MatchedCount -eq $verdict.PinnedCount) {
+    Write-Host "  PASS  $($verdict.MatchedCount) of $($verdict.PinnedCount) pinned functions at identical addresses" -ForegroundColor Green
+}
+else {
     # A size is the gap to the next function, so a neighbour with another alignment can hide a real difference.
-    Write-Host '  WARN  some pinned functions moved: an equal gap did not mean an equal size' -ForegroundColor Yellow
+    Write-Host "  FAIL  $($verdict.MatchedCount) of $($verdict.PinnedCount) pinned functions at identical addresses; first moved: $($verdict.FirstMoved)" -ForegroundColor Red
 }
 
 $metadata = [ordered]@{
     baseline     = [ordered]@{ tree = $arms['baseline'].Root; commit = $arms['baseline'].Commit; dirty = $arms['baseline'].Dirty }
     candidate    = [ordered]@{ tree = $arms['candidate'].Root; commit = $arms['candidate'].Commit; dirty = $arms['candidate'].Dirty }
+    pairedCount  = $pairedCount
     pinnedCount  = $verdict.PinnedCount
     matchedCount = $verdict.MatchedCount
+    resizedHot   = @($resizedHot | ForEach-Object { $_.BaselineName })
     hotFunction  = @($verdict.HotFunction | ForEach-Object {
             [ordered]@{ label = $_.Label; baselineAddress = $_.BaselineAddress; candidateAddress = $_.CandidateAddress; ok = $_.Ok } })
     ok           = $verdict.Ok
@@ -542,8 +553,9 @@ $metadata | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $outPa
 
 if (-not $verdict.Ok) {
     Write-Host ''
-    Write-Host 'Placement NOT equalised. When the change resizes several hot functions, only the' -ForegroundColor Red
-    Write-Host 'first can start at a shared address, so this pair cannot rule placement out.' -ForegroundColor Red
+    Write-Host 'Placement NOT equalised, so this pair cannot rule placement out. When the change' -ForegroundColor Red
+    Write-Host 'resizes several hot functions, only the first can start at a shared address; a moved' -ForegroundColor Red
+    Write-Host 'pinned function means an equal gap in the as-built map hid a size difference.' -ForegroundColor Red
     exit 1
 }
 
