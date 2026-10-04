@@ -329,9 +329,9 @@ TEST_CASE("Singular: the exclusion slot is restored when the search aborts", "[s
 
 TEST_CASE("Singular: a low min-depth still runs a real verification search", "[search][singular]")
 {
-	// singular_min_depth is a mutable tuning field and the follow-up is a parameter sweep, so the
+	// singular_min_depth is a mutable tuning field that may be set low, so the
 	// verification depth is clamped rather than left to the default's value plus a Debug assert.
-	// This pins the reachable half: the gate still fires at the lowest depth a sweep might set,
+	// This pins the reachable half: the gate still fires at the lowest depth it can be set to,
 	// and the search completes. The clamp ITSELF is not falsifiable from here -- see the note
 	// below the tests.
 	AIPerlexTestFixture fix(kBaselineFen);
