@@ -58,6 +58,7 @@ Same order as the table above. A row with nothing to add beyond its verdict has 
 ### 2026-10-03 -- singular tuning screens (#702) (8880 games per arm)
 
 **Two three-arm screens; exploratory, chosen arm confirmed above.** Runs `37109041385` (openings 1+) and `37125713346` (offset 13,320); each arm took 6 of 18 shards against the shared reference. Arm Ptnml(0-2), screen 1: A [350, 963, 1621, 1116, 390], B [423, 1046, 1697, 923, 351], C [424, 1071, 1605, 975, 365]; screen 2: A [317, 970, 1724, 1075, 354], B [342, 968, 1664, 1060, 406], C [277, 955, 1638, 1133, 437]. Arm A (factor 1) ran in both: pooled +8.1 +/- 3.8. Raising min depth (10) or factor (4) lost; lowering min depth to 6 gained beyond factor 1 alone. Min depth below 6 is unmeasured.
+
 ### 2026-10-02 -- 48a31ad (singular extensions on vs off, #95) (19980 games)
 
 **The gate for the feature, and it ships default-on.** 18 shards x 555 pairs, pooled Ptnml(0-2) [636, 2023, 3753, 2546, 1032], score 53.29%, run `37020636422`, 3 h 15 min wall-clock, all 18 green. 95% interval **[+19.3, +26.5]**. Both sides ran the one experimental binary, the candidate with the feature on and the reference with `SingularExtensions=false`, so the delta is the feature alone. Its fixed-depth cost of about +50% did not carry over to timed games: that cost model put break-even at 35-85 Elo.

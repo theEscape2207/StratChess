@@ -17,7 +17,7 @@ namespace {
 	constexpr const char* kBaselineFen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
 
 	// The gates below are all depth-independent, so these searches run shallower than the
-	// shipped singular_min_depth of 6 and arm() lowers the gate to match. Depth is this
+	// shipped singular_min_depth and arm() lowers the gate to match. Depth is this
 	// file's whole cost, and it is the fast tier's most expensive tag — more so under the
 	// sanitizers that gate correctness.
 	constexpr int kDepth = 4;

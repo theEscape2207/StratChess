@@ -27,6 +27,7 @@ Elo on held-out openings (run 37154126192), picked from two multi-arm screens
 (`Measurements/ci-per-change.md`). `SingularTtDepthMargin` stays 3.
 
 ---
+
 ## Unreleased — Singular extensions on by default (#95)
 
 Singular extensions ship enabled: lab +22.90 ± 3.60 Elo (run 37020636422, `Measurements/ci-per-change.md`).
