@@ -469,7 +469,7 @@ SearchResult AIPerplex::Search(const Board& root, const SearchLimits& limits, It
 
 	// Success logging
 	if (verbose_logging_ && s_logger) {
-		s_logger->info("Search() complete: move={}, score={}, depth={}, time={}ms, nodes={}, stable={}",
+		s_logger->info("GetMove complete: move={}, score={}, depth={}, time={}ms, nodes={}, stable={}",
 		               MoveFormatter::ToCoord(best_move), result.best_score, result.depth_completed,
 		               result.elapsed.count(), total_nodes, result.search_was_stable ? "yes" : "NO");
 	}
