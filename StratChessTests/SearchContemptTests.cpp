@@ -135,7 +135,7 @@ TEST_CASE("Contempt - the fifty-move rule and stalemate carry it too, not just r
 	REQUIRE(fifty_move_score(clock, 15, WHITE) == -15);
 	REQUIRE(fifty_move_score(clock, 15, BLACK) == 15);
 
-	// Stalemate at ply 0, BLACK to move, reported through adjustScoreForGameState() and cached by
+	// Stalemate at ply 0, BLACK to move, reported through adjust_score_for_game_state() and cached by
 	// the terminal store beside it.
 	//
 	// A FIXTURE PER ROOT COLOUR, deliberately. That store caches a contempt-tinted EXACT entry, and

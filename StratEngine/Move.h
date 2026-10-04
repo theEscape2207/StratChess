@@ -1,7 +1,8 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
-#include <deque> // For PVLine
+#include <iosfwd>
 #include "PieceHelper.h"
 
 // Move representation (16-bit encoding)
@@ -19,9 +20,6 @@ class Move final {
 	static constexpr uint16_t EMPTY_MOVE = 0xFFFF;
 
   public:
-	// Copy constructor
-	constexpr Move(const Move& rhs) noexcept = default;
-
 	constexpr Move() noexcept : data(EMPTY_MOVE) {}
 	constexpr explicit Move(uint16_t d) noexcept : data(d) {}
 	constexpr Move(eSquare from, eSquare to, uint8_t flags = 0) noexcept
@@ -36,35 +34,21 @@ class Move final {
 
 	[[nodiscard]] constexpr bool is_null() const noexcept { return data == EMPTY_MOVE; }
 
-	// Move constructor - use compiler-generated/defaulted implementation so the
-	// object can be copied as a whole (avoids repeated bitfield RMW ops).
-	Move(Move&& other) noexcept = default;
-
-	// Move assignment operator - defaulted to enable efficient copy of the
-	// underlying storage instead of per-field assignments.
-	Move& operator=(Move&& other) noexcept = default;
-
-	Move(eSquare from, eSquare to, MoveType type) noexcept
+	constexpr Move(eSquare from, eSquare to, MoveType type) noexcept
 	    : data(static_cast<uint16_t>(from | (to << 6) | static_cast<uint8_t>(type) << 12))
 	{}
-
-	~Move() noexcept = default;
-
-	// Copy assignment operator
-	Move& operator=(const Move& rhs) noexcept = default;
 
 	constexpr void SetMove(eSquare from, eSquare to, MoveType moveType) noexcept
 	{
 		data = static_cast<uint16_t>(from | (to << 6) | static_cast<uint8_t>(moveType) << 12);
 	}
 
-	bool operator==(const Move& rhs) const noexcept { return IsSameAs(rhs); }
+	// Exact: compares the raw encoding, flags included.
+	constexpr bool operator==(const Move& rhs) const noexcept { return IsSameAs(rhs); }
 
-	bool operator!=(const Move& rhs) const noexcept { return !IsSameAs(rhs); }
+	constexpr bool IsSameAs(const Move& rhs) const noexcept { return data == rhs.data; }
 
-	bool IsSameAs(const Move& rhs) const noexcept { return data == rhs.data; }
-
-	void Clear() noexcept { data = EMPTY_MOVE; }
+	constexpr void Clear() noexcept { data = EMPTY_MOVE; }
 
 	// Move presentation lives in MoveFormatter (ToCoord / ToShort / ToUCI / ToVerbose).
 	// Move is a pure 2-byte value; it deliberately owns no formatting.
@@ -79,14 +63,13 @@ class Move final {
 		return move;
 	}
 };
-// End Class Move
 
 std::ostream& operator<<(std::ostream&, const Move&);
 
 // Move is a pure 16-bit value: bits 0-5 = from, 6-11 = to, 12-15 = flags.
 static_assert(sizeof(Move) == 2, "Move must be exactly 2 bytes");
 
-// Move flags — mirror of MoveType enum for constexpr use in get_captured_piece and factory helpers.
+// Move flags — mirror of MoveType enum for constexpr use in Board::GetCapturedPiece and factory helpers.
 namespace MoveFlags {
 	constexpr uint8_t QUIET = 0;
 	constexpr uint8_t DOUBLE_PAWN_PUSH = 1;
@@ -112,8 +95,6 @@ class MoveList {
   public:
 	static constexpr size_t MAX_MOVES = 218; // Maximum legal moves in any position
 
-	MoveList() noexcept : size_(0) {}
-
 	void push(Move move) noexcept
 	{
 		if (size_ < MAX_MOVES) {
@@ -138,9 +119,5 @@ class MoveList {
 
   private:
 	std::array<Move, MAX_MOVES> moves_;
-	size_t size_;
+	size_t size_ = 0;
 };
-
-// Principal variation line
-using PVLine = std::deque<Move>;
-std::ostream& operator<<(std::ostream&, const PVLine&);

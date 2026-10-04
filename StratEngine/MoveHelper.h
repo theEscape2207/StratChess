@@ -21,69 +21,31 @@ namespace MoveHelper {
 	// values on purpose: every switch on the result falls through to its own default, which is the
 	// behaviour MoveFieldTests freezes for ToCoord. Converting this to a checked cast or asserting
 	// the range would break that contract, so the analyzer finding is suppressed rather than fixed.
-	[[nodiscard]] static inline MoveType AsType(const Move& move) noexcept
+	[[nodiscard]] inline MoveType AsType(const Move& move) noexcept
 	{
 		// NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
 		return static_cast<MoveType>(move.flags());
 	}
 
-	/*
-	*	Moving-piece predicates — the moving piece is not stored in Move; callers supply it explicitly.
-	*/
+	// Is the moving piece a pawn? The moving piece is not stored in Move; callers supply it.
+	[[nodiscard]] inline bool IsPawnMove(ePiece movPiece) noexcept { return PieceHelper::IsPawn(movPiece); }
 
-	// Is this piece moving from this square?
-	[[nodiscard]] static inline bool IsPieceMovingFrom(const Move& move, ePiece movPiece, ePiece type,
-	                                                   eSquare square) noexcept
-	{
-		return (PieceHelper::IsOfPiece(movPiece, type) && (move.from() == square));
-	}
-
-	// Is this piece captured at this square?
-	// content: the captured piece (obtain via Board::GetCapturedPiece before DoMove).
-	[[nodiscard]] static inline bool IsPieceCapturedAt(const Move& move, ePiece content, ePiece type,
-	                                                   eSquare square) noexcept
-	{
-		return (PieceHelper::IsOfPiece(content, type) && (move.to() == square));
-	}
-
-	// Is the moving piece a pawn?
-	[[nodiscard]] static inline bool IsPawnMove(ePiece movPiece) noexcept { return PieceHelper::IsPawn(movPiece); }
-
-	/*
-	*	Move type methods
-	*/
-
-	//************************************
-	// Method:      IsCapture
-	// Returns:     true if the move captures a piece (CAPTURE, EP_CAPTURE, or any PROMOTION_*_CAPTURE).
-	// Determined purely from flag bit 2 (CAPTURE_BIT).
-	//************************************
-	[[nodiscard]] static inline bool IsCapture(const Move& move) noexcept
+	// True if the move captures a piece (CAPTURE, EP_CAPTURE, or any PROMOTION_*_CAPTURE), read
+	// purely from flag bit 2 (CAPTURE_BIT).
+	[[nodiscard]] inline bool IsCapture(const Move& move) noexcept
 	{
 		return (move.flags() & MoveFlags::CAPTURE_BIT) != 0;
 	}
 
-	//************************************
-	// Method:      IsPromote
-	// Returns:     true for all promotion types (quiet and capture), i.e. flag bit 3 set.
-	//************************************
-	[[nodiscard]] static inline bool IsPromote(const Move& move) noexcept
+	// True for all promotion types (quiet and capture), i.e. flag bit 3 set.
+	[[nodiscard]] inline bool IsPromote(const Move& move) noexcept
 	{
 		return (move.flags() & MoveFlags::PROMOTION_BIT) != 0;
 	}
 
-	[[nodiscard]] static inline bool IsEnPassant(const Move& move) noexcept
-	{
-		return AsType(move) == MoveType::EP_CAPTURE;
-	}
+	[[nodiscard]] inline bool IsEnPassant(const Move& move) noexcept { return AsType(move) == MoveType::EP_CAPTURE; }
 
-	[[nodiscard]] static inline bool IsCastling(const Move& move) noexcept
-	{
-		const MoveType type = AsType(move);
-		return (type == MoveType::QUEEN_CASTLE) || (type == MoveType::KING_CASTLE);
-	}
-
-	[[nodiscard]] static inline eSquare GetEnPassantSquare(const Move& move, ePiece movPiece) noexcept
+	[[nodiscard]] inline eSquare GetEnPassantSquare(const Move& move, ePiece movPiece) noexcept
 	{
 		if (AsType(move) != MoveType::DOUBLE_PAWN_PUSH)
 			return NO_SQUARE;
@@ -91,13 +53,11 @@ namespace MoveHelper {
 		                                              : SquareHelper::Calc(move.to(), -ONE_ROW));
 	}
 
-	[[nodiscard]] static inline bool is_null(const Move& move) noexcept { return move.is_null(); }
-
 	// content: the captured piece (obtain via Board::GetCapturedPiece before DoMove).
-	// Used only inside assert() (Board.cpp:301, Board.cpp:473), so it is unreferenced in Release.
-	[[nodiscard]] [[maybe_unused]] static bool IsValid(const Move& move, ePiece movPiece, ePiece content) noexcept
+	// Used only inside Board's make/unmake asserts.
+	[[nodiscard]] inline bool IsValid(const Move& move, ePiece movPiece, ePiece content) noexcept
 	{
-		if (is_null(move))
+		if (move.is_null())
 			return false;
 		if (move.to() == move.from())
 			return false;
@@ -110,7 +70,7 @@ namespace MoveHelper {
 			return false;
 		switch (type) {
 		case MoveType::DOUBLE_PAWN_PUSH:
-			assert(!PieceHelper::IsActual(content)); // ingen slag
+			assert(!PieceHelper::IsActual(content));
 			assert(IsPawnMove(movPiece));
 			break;
 		case MoveType::EP_CAPTURE:
@@ -122,7 +82,7 @@ namespace MoveHelper {
 			case g1: // Short castling
 			case g8:
 				break;
-			default: // Unknown castling ? ;-)
+			default:
 				assert(!"Invalid castling 'to'-field");
 				break;
 			}
@@ -133,12 +93,12 @@ namespace MoveHelper {
 			case c1: // Long castling
 			case c8:
 				break;
-			default: // Unknown castling ? ;-)
+			default:
 				assert(!"Invalid castling 'to'-field");
 				break;
 			}
 			break;
-		case MoveType::QUIET: // Default case
+		case MoveType::QUIET:
 		case MoveType::CAPTURE:
 		case MoveType::PROMOTION_KNIGHT:
 		case MoveType::PROMOTION_BISHOP:
@@ -160,23 +120,22 @@ namespace MoveHelper {
 	// Formula: Captured piece value + (Promotion value diff) - Moving piece/16
 	// Rationale: ranks pawn-takes-bishop above queen-takes-bishop; a quiet pawn move scores lower
 	// than a quiet rook move (negative, scaled by 1/16 of piece value).
-	[[nodiscard]] static inline int Value(const Move& move, ePiece movPiece, ePiece content) noexcept
+	[[nodiscard]] inline int Value(const Move& move, ePiece movPiece, ePiece content) noexcept
 	{
 		int captureScore = 0;
 		const auto movingPieceScore = PieceHelper::Value(movPiece) >> 4;
-		const auto type = static_cast<MoveType>(move.flags());
-		switch (type) {
+		switch (AsType(move)) {
 		case MoveType::QUIET:
 		case MoveType::DOUBLE_PAWN_PUSH:
 		case MoveType::QUEEN_CASTLE:
 		case MoveType::KING_CASTLE:
-			return (movingPieceScore * -1); // TODO: Check what value this provides castling? Not used atm
+			return -movingPieceScore;
 		case MoveType::CAPTURE:
 		case MoveType::EP_CAPTURE:
 			captureScore = PieceHelper::Value(content);
 			// The king's LVA weight is capped at a queen's rather than taken from its 10000 cp
-			// notional value, which scored KxR at 500 - 625 = -125 and filed the best move in the
-			// position below every quiet one (#320). It is capped, not dropped: a legal king capture
+			// notional value, which would score KxR at 500 - 625 = -125 and file the best move in
+			// the position below every quiet one. It is capped, not dropped: a legal king capture
 			// is unopposed and would deserve the victim outright, but move generation is
 			// pseudo-legal, so this is also reached for king captures DoMove will reject. Capping
 			// keeps a king capture among the winning captures and behind an equally valuable one by
@@ -201,7 +160,7 @@ namespace MoveHelper {
 	}
 
 	// Optimistic material-gain bound; unlike Value(), it never subtracts the attacker.
-	[[nodiscard]] static inline int DeltaGain(const Move& move, ePiece movPiece, ePiece content) noexcept
+	[[nodiscard]] inline int DeltaGain(const Move& move, ePiece movPiece, ePiece content) noexcept
 	{
 		int gain = PieceHelper::IsActual(content) ? PieceHelper::Value(content) : 0;
 		if (IsPromote(move))

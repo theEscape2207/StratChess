@@ -23,9 +23,8 @@ TUNING_FIELD(double,  min_pv_ratio,         0.33, 0.0,                          
 // captured material is already counted and must not be counted again here. King safety is what
 // consumes the room -- one capture beside a king moves shelter (24), king-file openness (11) or
 // storm (15), the isolated-pawn penalty (20, twice in the corner case) and the attack row (5-25),
-// so roughly 110 cp worst case at the middlegame endpoint against ~35 before those terms existed.
-// Still inside 200, with perhaps half the room there used to be: a king-safety retune upward
-// (#117) has to re-derive this rather than inherit it. Raising the margin is a SEARCH change
+// so roughly 110 cp worst case at the middlegame endpoint. Still inside 200, but a king-safety
+// retune upward (#117) has to re-derive this rather than inherit it. Raising the margin is a SEARCH change
 // needing its own measurement. The upper bound keeps eval + gain + margin clear of int overflow.
 TUNING_FIELD(int,     delta_pruning_margin, 200,  0,     10000, true, nullptr, true)
 
@@ -59,8 +58,8 @@ TUNING_FIELD(int,     singular_tt_depth_margin, 3, 0, MAX_PLY, false, "SingularT
 TUNING_FIELD(int,     singular_margin_factor,   1, 0, 1000,    false, "SingularMarginFactor",  true)
 
 // Reverse futility pruning. Depth band shallow by default because that is where the surface is:
-// #498 found 95.4% of eligible frames at depths 1-3, so a wider band adds almost nothing while
-// trusting a static evaluation further from the leaves. The margin is centipawns of slack per
+// nearly all eligible frames sit at depths 1-3, so a wider band adds almost nothing while trusting
+// a static evaluation further from the leaves. The margin is centipawns of slack per
 // remaining ply, on g_iPieceValues' scale -- one pawn per ply.
 TUNING_FIELD(bool,    reverse_futility_enabled,   true, false, true,    true, "ReverseFutility",         true)
 TUNING_FIELD(int,     reverse_futility_max_depth, 3,    1,     MAX_PLY, true, "ReverseFutilityMaxDepth", true)
@@ -80,7 +79,7 @@ TUNING_FIELD(bool,    late_move_pruning_enabled, true, false, true, true, "LateM
 TUNING_FIELD(int,     continuation_history_plies, 2, 0, 2, true, nullptr, true)
 
 // Contempt: how many centipawns a draw is scored BELOW equality, for the side the engine is
-// playing. 0 restores the historical behaviour exactly, where every drawn score is GameValues::Draw
+// playing. At 0 every drawn score is GameValues::Draw
 // and the engine is indifferent between repeating and playing on in a position it believes equal.
 //
 // The domain has no negative half on purpose. Seeking draws would be the natural meaning of a
