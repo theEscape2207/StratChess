@@ -11,6 +11,8 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-04 | 55e68c4, SCREEN arm B: `SeePruningMargin=200` (#398) | 55e68c4 (at the shipped default `SeePruningMargin=0`; both sides are one binary, so the delta is a runtime option) | 9990 | 10+0.1 | **-17.19 +/- 5.19** | screen, rejected |
+| 2026-10-04 | 55e68c4, SCREEN arm A: `SeePruningMargin=100` (#398) | 55e68c4 (at the shipped default `SeePruningMargin=0`; both sides are one binary, so the delta is a runtime option) | 9990 | 10+0.1 | **-1.25 +/- 5.05** | screen, rejected |
 | 2026-10-04 | ff6f5cc, SCREEN arm C: min depth 6, the null control (#713) | ff6f5cc (at the shipped singular defaults, min depth 6 and margin factor 1; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **+0.39 +/- 5.35** | calibration |
 | 2026-10-04 | ff6f5cc, SCREEN arm B: min depth 5 (#713) | ff6f5cc (at the shipped singular defaults, min depth 6 and margin factor 1; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **-1.92 +/- 5.42** | inconclusive @ 8880 |
 | 2026-10-04 | ff6f5cc, SCREEN arm A: min depth 4 (#713) | ff6f5cc (at the shipped singular defaults, min depth 6 and margin factor 1; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **+1.13 +/- 5.31** | inconclusive @ 8880 |
@@ -54,6 +56,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-04 -- SEE pruning margin screen (#398) (9990 games per arm)
+
+**Margin 0 stays; no confirmation run.** Run `37216973769`, openings 1-9,990; each arm took 9 of 18 shards against the shipped default. Arm Ptnml(0-2): A [407, 1162, 1869, 1174, 383], B [508, 1261, 1809, 1051, 366]. The [slice plan in #398](https://github.com/theEscape2207/StratChess/issues/398) set the rule before dispatch: advance at most the best arm, and only on a gain. Arm B is a measured loss; arm A's interval spans zero. Both margins let more losing captures through quiescence (+11% and +55% qsearch nodes at depth 12, `Docs/Changelog.md`), and the extra tree bought nothing at this time control.
 
 ### 2026-10-04 -- singular min depth screen (#713) (8880 games per arm)
 
