@@ -146,6 +146,11 @@ def position_fields(text, source):
     return tuple(fields[:4])
 
 
+def same_start(actual, assigned):
+    # fastchess writes '-' for a book en-passant square that no legal capture can use.
+    return actual[:3] == assigned[:3] and actual[3] in (assigned[3], "-")
+
+
 def verify_batch(arms, shards, rounds, offset, candidate, reference, book, root):
     """Assert artifact, routing, assigned-start and completion consistency for every shard.
 
@@ -227,7 +232,7 @@ def verify_batch(arms, shards, rounds, offset, candidate, reference, book, root)
         assigned = starts[offset + shard * rounds]
         for game in by_round[1]:
             actual = position_fields(game.get("FEN", ""), f"{pgn}: round 1")
-            if actual != assigned:
+            if not same_start(actual, assigned):
                 raise PlanError(f"{pgn}: round 1 FEN differs from assigned nonblank EPD entry "
                                 f"{offset + shard * rounds}")
         if assigned in seen_starts:
@@ -404,6 +409,30 @@ def self_test():
                              + game(1, reference, candidate, first_fen))
         raises("assigned start FENs must be distinct", lambda: verify_batch(
             [], 2, 1, 0, candidate, reference, book, root))
+
+    # The book's en-passant square has no legal capture; fastchess writes '-'.
+    book_ep = "rnb1k2r/ppq2pbp/2pp1np1/4p3/P1BPP3/2N2N1P/1PPB1PP1/R2QK2R w KQkq e6 0 9"
+
+    def ep_case(pgn_ep):
+        with tempfile.TemporaryDirectory() as root:
+            book = os.path.join(root, "book.epd")
+            with open(book, "w", encoding="utf-8") as handle:
+                handle.write(book_ep + "\n")
+            directory = os.path.join(root, "strength-1-shard-0")
+            os.makedirs(directory)
+            with open(os.path.join(directory, "match.log"), "w", encoding="utf-8") as handle:
+                handle.write("Ptnml(0-2): [0, 0, 1, 0, 0]\n")
+            fen = book_ep.replace(" e6 ", f" {pgn_ep} ")
+            with open(os.path.join(directory, "match.pgn"), "w", encoding="utf-8") as handle:
+                handle.write(game(1, candidate, reference, fen) + game(1, reference, candidate, fen))
+            verify_batch([], 1, 1, 0, candidate, reference, book, root)
+
+    try:
+        ep_case("-")
+        expect("unusable book en-passant square written as '-' accepted", True)
+    except PlanError:
+        expect("unusable book en-passant square written as '-' accepted", False)
+    raises("different en-passant square refused", lambda: ep_case("d6"))
 
     print("\nself-test:", "FAIL" if failures else "PASS")
     return 1 if failures else 0
