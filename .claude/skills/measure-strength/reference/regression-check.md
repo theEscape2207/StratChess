@@ -7,7 +7,7 @@ against the **merge base**:
 1. **Behaviour** — `Compare-SearchEquivalence.ps1 -After <candidate> -BaselineRef origin/main`.
    Node counts, best moves and every `info string` line must match. It builds and caches its own
    baseline. That exe answers equality only; leave it out of the speed run.
-2. **Speed** — a paired `Run-Bench.ps1` series, below.
+2. **Speed** — `Compare-Bench.ps1`, below.
 
 ## The paired bench series
 
@@ -15,24 +15,31 @@ against the **merge base**:
    worktree (`git worktree add --detach <path> <sha>`) and run its own `build.ps1 main`. An exe
    from any other build path is a different binary: the equivalence cache's baseline read 7.7%
    slower than a `build.ps1` build of the same commit.
-2. **Run pairs back to back**, baseline then candidate, 6 pairs, each with `-Csv`. Leave the
-   machine otherwise idle: finish the code review first. Review subagents running beside a series
-   read one pair −14% (#640).
-3. **Discard the first pair** as warm-up; it read ~3 points off the rest.
-4. **Check node counts match per position in every pair.** A mismatch means behaviour changed, and
-   the pair's nps is meaningless.
-5. **Report the per-pair aggregate nps delta**: mean, standard deviation and range over the kept
-   pairs.
+2. **Quiet the machine.** Finish builds and the code review first, and tell the owner a timing
+   window is starting. Review subagents running beside a series read one pair −14% (#640).
+3. **Run** `Compare-Bench.ps1 -Baseline <exe> -Candidate <exe> -BaselineCommit <sha>
+   -CandidateCommit <sha>`: 12 rounds of alternating order, about 5 min. Fix `-Rounds` before it
+   starts. Its `-?` covers the schedule, the rejections and the verdict rule.
+4. **Report its verdict** with the interval line and the output directory's `metadata.json`.
 
 ## Reading it
 
-**Done** is a spread that sits at or above zero. A small positive delta is layout noise and order
-bias (the baseline always runs first), so report it as "no slowdown", never as a speedup. Claiming
-a speedup is a different measurement: alternate the order, and see `Docs/Workflow.md` → Speed and
-nps.
+**No slowdown** is done. Report a positive delta as "no slowdown", never as a speedup: timing noise
+and placement have not been ruled out.
 
-**A negative delta is not automatically a slowdown.** If the change added no per-node work, code
+**Claiming a speedup** — when faster nps is the change's success criterion — needs the
+**Speedup** verdict twice: once from a `-Control` series, and again after relinking both builds with
+a shared `/ORDER` (recipe in #555). The script only issues Speedup while the whole A/A interval lies within ±0.5%; a wide control is
+not a quiet one.
+This covers node-identical changes only. A change that reshapes the tree is judged on wall clock and
+Elo, and the script rejects it.
+
+**Unresolved or Slowdown is not yet a slowdown.** If the change added no per-node work, code
 placement alone accounts for several percent — #556 read −3.90% over 9 pairs and was pure
-placement. Escalate rather than conclude: relink both builds with a shared `/ORDER` to identical
-hot addresses (recipe in #555) and re-run the series. Only a delta that survives that is a
-slowdown, and then find it before shipping.
+placement. Escalate in order, each a new series with its round count fixed up front:
+
+1. `-Control -Rounds 60 -Affinity 4`, about 35 min: an identical baseline copy measures the
+   machine's own noise. Six short pairs that read inconclusive have resolved this way.
+2. Relink both builds with a shared `/ORDER` to identical hot addresses (recipe in #555) and re-run.
+
+Only a delta that survives the relink is a slowdown, and then find it before shipping.

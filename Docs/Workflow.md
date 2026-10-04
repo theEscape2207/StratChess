@@ -434,7 +434,7 @@ migration measured +23.32% nps → +40.28 Elo at 10+0.1 — roughly **1% nps ≈
 
 | Effect size | Instrument |
 |---|---|
-| Under ~5% nps | `Run-Bench.ps1`. An Elo match cannot resolve it at any affordable game count |
+| Under ~5% nps, node-identical | `Compare-Bench.ps1`; `-Control` for a speedup claim. An Elo match cannot resolve it at any affordable game count |
 | A strength change | `Run-EloMatch.ps1` locally, or the CI strength lab |
 
 Trying to Elo-measure a 1% speed change is not diligence; it is a match that cannot answer the
