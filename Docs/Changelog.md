@@ -20,6 +20,24 @@ and couldn't be matched with confidence — those remain in the undated pocket b
 
 Newest first.
 
+## Unreleased — Paired nps comparison script (#715)
+
+`Scripts/Compare-Bench.ps1` replaces the hand-run paired `Run-Bench.ps1` series of the
+measure-strength regression check. Agents had written nine one-off harnesses for it between
+2026-09-14 and 2026-10-04, each with a different order and pass rule. The script runs a discarded
+warm-up round, then a fixed number of rounds with balanced run order. Two arms alternate, and
+`-Control` rotates all six orders of three arms, adding a byte-identical baseline copy.
+`-Affinity` is optional. It keeps raw CSVs and `metadata.json`, and rejects the comparison on
+any difference in nodes, best move or positions, or on a search under the time floor. The
+verdict comes from a 95% Student-t interval over per-round aggregate deltas:
+
+- **No slowdown** when the lower bound is ≥ −0.5%.
+- **Slowdown** when the upper bound is < 0.
+- **Unresolved** otherwise.
+
+The `-SelfTest` covers schedule balance, warm-up exclusion, aggregation, the interval, the verdict
+and every rejection, falsified against a mutated warm-up filter. No engine change.
+
 ## Unreleased — Value-only iteration policy (#706)
 
 `IterationPolicy` owns main-thread iteration acceptance, raw-metric derivation, retained-result
