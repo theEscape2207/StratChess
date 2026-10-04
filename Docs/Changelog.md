@@ -30,10 +30,13 @@ knob exists so the strength lab can screen margins 100 and 200 from one binary; 
 here. Tests pin the boundary at SEE -100 and -200 (kept at the margin, pruned one centipawn under)
 and the +200 floor on a capture-promotion's SEE, which is why no margin needs a promotion guard.
 
-Frequency probe (profile build, 8 bench positions, depth 12, Threads=1): margin 100 grows total
-nodes 5.9% and qsearch nodes 11%, margin 200 by 19.7% and 55%; SEE prunes per qsearch node fall
-from 0.43 to 0.40 and 0.21. Best move changed on 2 positions at 100 and 2 at 200. Node counts
-bound cost only; strength needs the lab.
+Frequency probe (profile build, 8 bench positions, depth 12, Threads=1), margins 0 / 100 / 200:
+total nodes 13.57M / 14.37M / 16.24M, qsearch nodes 4.12M / 4.58M / 6.39M, SEE prunes 1.76M /
+1.83M / 1.33M, fixed-depth wall time 6.4 / 6.8 / 7.5 s at unchanged nps (2.11M / 2.13M / 2.16M).
+The trees differ, so the restored share is read as prunes per qsearch node: 0.43 / 0.40 / 0.21, a
+6% drop at 100 and 51% at 200 — far above the 5% park threshold, so the lab screen goes ahead.
+Best move changed on 2 positions at 100 and 2 at 200. Node counts bound cost only; strength needs
+the lab.
 
 ## Unreleased — Paired nps comparison script (#715)
 

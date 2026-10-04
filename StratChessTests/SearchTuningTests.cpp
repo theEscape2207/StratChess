@@ -384,6 +384,7 @@ TEST_CASE("SearchTuning UCI options set their own member", "[tuning][uci]")
 	expected.see_pruning_margin = 200;
 	CHECK(tuning == expected);
 	CHECK(uci_rejection("SeePruningMargin", "901") == Code::OutOfRange);
+	CHECK(uci_rejection("SeePruningMargin", "-100") == Code::InvalidType);
 
 	expected = SearchTuning{};
 	REQUIRE_FALSE(parse_uci("SingularExtensions", "false", tuning));

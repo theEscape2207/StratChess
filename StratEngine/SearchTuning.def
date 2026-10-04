@@ -47,7 +47,8 @@ TUNING_FIELD(int,     null_move_min_depth, 3,    1,     std::numeric_limits<int>
 TUNING_FIELD(bool,    see_pruning_enabled, true, false, true, true, nullptr, true)
 // Centipawns of exchange loss a quiescence capture may carry and still be searched: SEE pruning
 // drops captures with SEE < -margin. Non-negative because read_uci() refuses a sign. SEE values
-// lie on a 100 cp lattice, so only multiples of 100 change the search.
+// lie on a 100 cp lattice, so only multiples of 100 change the search; the worst capture is -800, so
+// 800 and above disables SEE pruning.
 TUNING_FIELD(int,     see_pruning_margin,  0,    0,     900,  true, "SeePruningMargin", true)
 
 // Singular extensions: a hash move every alternative fails well below is searched one ply deeper.

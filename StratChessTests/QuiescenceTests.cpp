@@ -220,9 +220,9 @@ TEST_CASE("Qsearch - SEE does not discard a sacrifice into a drawn class", "[sea
 // ============================================================================
 // SEE pruning margin
 // ============================================================================
-// Each position has exactly one capture, with a hand-computed SEE of -margin, and a full window so
-// delta pruning cannot fire. A capture kept is searched and counted; a pruned one leaves the node
-// with no searched edge at all.
+// Each position has exactly one capture, with a hand-computed SEE of -margin. Delta pruning cannot
+// fire: alpha only rises to the stand-pat, and the capture wins material. A capture kept is searched
+// and counted; a pruned one leaves the node with no searched edge at all.
 
 namespace {
 	int64_t qnodes_at_see_margin(const char* fen, int margin)
@@ -249,6 +249,17 @@ TEST_CASE("Qsearch - SEE pruning keeps a capture losing exactly the margin", "[s
 		const char* fen = "6k1/5ppp/2p5/3n4/8/8/5PPP/3R2K1 w - - 0 1";
 		CHECK(qnodes_at_see_margin(fen, 200) > 0);
 		CHECK(qnodes_at_see_margin(fen, 199) == 0);
+	}
+}
+
+TEST_CASE("Qsearch - SEE pruning never drops a capture-promotion", "[search][qsearch]")
+{
+	// b7xa8 is the only move: Bb8 blocks the push, and Ra2 retakes on a8. Every promotion piece
+	// still clears SEE +200, so the node searches at least one edge at any margin.
+	const char* fen = "nb6/1P3ppk/8/8/8/8/r4PPP/4K3 w - - 0 1";
+	for (const int margin : {0, 100, 200}) {
+		INFO("margin = " << margin);
+		CHECK(qnodes_at_see_margin(fen, margin) > 0);
 	}
 }
 
