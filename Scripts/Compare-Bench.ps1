@@ -29,15 +29,15 @@
     Verdict, from the 95% interval of the verdict comparison, checked in this order:
       Speedup      lower bound > 0, only with -Control and only while the whole A/A interval
                    lies within +-0.5%: a control that is wide or offset cannot show the
-                   machine was quiet. Pending until a rerun after relinking both builds with a
-                   shared /ORDER agrees: placement alone moves node-identical builds by several
-                   percent either way.
+                   machine was quiet. Pending until a rerun on a New-OrderedBuildPair.ps1 pair
+                   (shared /ORDER) agrees: placement alone moves node-identical builds by
+                   several percent either way.
       No slowdown  lower bound >= -0.5%; a small cost inside that tolerance still passes, and
                    the printed interval shows it.
       Slowdown     upper bound < 0.
-      Unresolved   anything else. Rerun with -Control or relink both builds with a shared
-                   /ORDER (measure-strength regression-check). Do not add rounds to the same
-                   series until it passes.
+      Unresolved   anything else. Rerun with -Control or relink both builds with
+                   New-OrderedBuildPair.ps1 (measure-strength regression-check). Do not add
+                   rounds to the same series until it passes.
     Any other positive delta is unconfirmed: timing noise and placement are not ruled out.
     No verdict is an Elo claim.
 
@@ -318,10 +318,10 @@ function Format-Report {
     $out.Add('')
     $out.Add("VERDICT: $($Result.Verdict)  (from '$($Result.VerdictBasis)'; tolerance -$TolerancePct%)")
     switch ($Result.Verdict) {
-        'Speedup'     { $out.Add('PENDING: relink both builds with a shared /ORDER and rerun with -Control; claim it only if Speedup holds there too. Not Elo.') }
+        'Speedup'     { $out.Add('PENDING: relink both builds with New-OrderedBuildPair.ps1 and rerun with -Control; claim it only if Speedup holds there too. Not Elo.') }
         'No slowdown' { $out.Add('A positive delta here is no confirmed speedup: timing noise and placement are not ruled out. A speedup claim needs -Control and a Speedup verdict. Not Elo.') }
-        'Slowdown'    { $out.Add('Relink both builds with a shared /ORDER before treating it as real (measure-strength regression-check).') }
-        'Unresolved'  { $out.Add('Rerun with -Control, or relink with a shared /ORDER. Do not extend this series until it passes.') }
+        'Slowdown'    { $out.Add('Relink both builds with New-OrderedBuildPair.ps1 before treating it as real (measure-strength regression-check).') }
+        'Unresolved'  { $out.Add('Rerun with -Control, or relink with New-OrderedBuildPair.ps1. Do not extend this series until it passes.') }
     }
     return $out
 }

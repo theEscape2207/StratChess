@@ -69,51 +69,13 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# The two functions the whole exercise is about. Matched on the mangled name's
-# prefix, never with -like: '?' is a single-character wildcard in a PowerShell
-# wildcard pattern, so '?pvs@AIPerplex@@*' would also match names that merely begin
-# with some character followed by 'pvs@'. The exception-handling funclets the
-# compiler emits -- '?dtor$254@?0??pvs@AIPerplex@@...' -- contain the hot function's
-# mangled name as a substring and are not it; a StartsWith test excludes them, and
-# the self-test below asserts that it does.
-$script:HotFunction = @(
-    [pscustomobject]@{ Label = 'AIPerplex::pvs';        MangledPrefix = '?pvs@AIPerplex@@' }
-    [pscustomobject]@{ Label = 'AIPerplex::quiescence'; MangledPrefix = '?quiescence@AIPerplex@@' }
-)
+# Get-MapCodeSymbol, Find-MapHotSymbol and the hot-function list. The self-test below covers them.
+. (Join-Path $PSScriptRoot 'LinkerMap.ps1')
 
 # Share below which the run warns. Not a failure threshold: the share moves with the
 # code. Measured 92.7% with the flag, 22.9% without, so anything under this is far
 # closer to "flag gone" than to ordinary drift.
 $script:ShareWarnBelow = 0.60
-
-# A publics-by-value row: ' 0001:00009700  ?pvs@... 000000014000a700  <obj>'. Segment
-# 0001 is .text in this link; the third field is the loaded address, which is what
-# alignment is a property of.
-$script:SymbolRowPattern = '^\s*(?<seg>[0-9a-fA-F]{4}):(?<off>[0-9a-fA-F]{8})\s+(?<name>\S+)\s+(?<addr>[0-9a-fA-F]{16})\s'
-
-function Get-MapCodeSymbol {
-    <#
-      .SYNOPSIS
-        One record per code symbol in the map: mangled Name and loaded Address.
-    #>
-    param(
-        [Parameter(Mandatory)][AllowEmptyCollection()][AllowEmptyString()][string[]]$Line
-    )
-
-    $symbols = [System.Collections.Generic.List[object]]::new()
-    foreach ($text in $Line) {
-        $match = [regex]::Match($text, $script:SymbolRowPattern)
-        if (-not $match.Success) { continue }
-        if ($match.Groups['seg'].Value -ne '0001') { continue }
-
-        $symbols.Add([pscustomobject]@{
-            Name    = $match.Groups['name'].Value
-            Address = [System.Convert]::ToUInt64($match.Groups['addr'].Value, 16)
-        })
-    }
-
-    return $symbols
-}
 
 function Test-MapAlignment {
     <#
@@ -127,14 +89,13 @@ function Test-MapAlignment {
 
     $symbols = @(Get-MapCodeSymbol -Line $Line)
 
-    $hotResults = foreach ($hot in $script:HotFunction) {
-        # StartsWith, not -like: see the note on $script:HotFunction.
-        $found = @($symbols | Where-Object { $_.Name.StartsWith($hot.MangledPrefix, [System.StringComparison]::Ordinal) })
-        if ($found.Count -eq 0) {
+    $hotResults = foreach ($hot in $script:MapHotFunction) {
+        $found = Find-MapHotSymbol -Symbol $symbols -MangledPrefix $hot.MangledPrefix
+        if ($null -eq $found) {
             [pscustomobject]@{ Label = $hot.Label; Found = $false; Modulo = $null; Ok = $false }
         }
         else {
-            $modulo = [int]($found[0].Address % 64)
+            $modulo = [int]($found.Address % 64)
             [pscustomobject]@{ Label = $hot.Label; Found = $true; Modulo = $modulo; Ok = ($modulo -eq 0) }
         }
     }
@@ -277,6 +238,19 @@ function Invoke-SelfTest {
     }
     else {
         Write-Host "  FAIL  aligned share: expected 0.667, got $($shareVerdict.Share)" -ForegroundColor Red
+        $script:selfTestFailures++
+    }
+
+    # New-OrderedBuildPair.ps1 tells engine code from runtime-library code by the object column.
+    $objects = @(Get-MapCodeSymbol -Line @(
+            (New-SymbolRow -Name $pvs -Address 0x14000a700)
+            ' 0001:000d0e10       _get_startup_file_mode     00000001400d1e10     msvcrt:file_mode.obj'
+        ) | ForEach-Object { $_.Object })
+    if (($objects -join '|') -eq 'StratChessEvolved.exe.lto.AIPerplex.cpp.obj|msvcrt:file_mode.obj') {
+        Write-Host '  PASS  the object column is read whole' -ForegroundColor Green
+    }
+    else {
+        Write-Host "  FAIL  object column: got '$($objects -join '|')'" -ForegroundColor Red
         $script:selfTestFailures++
     }
 

@@ -11,6 +11,9 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-04 | ff6f5cc, SCREEN arm C: min depth 6, the null control (#713) | ff6f5cc (at the shipped singular defaults, min depth 6 and margin factor 1; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **+0.39 +/- 5.35** | calibration |
+| 2026-10-04 | ff6f5cc, SCREEN arm B: min depth 5 (#713) | ff6f5cc (at the shipped singular defaults, min depth 6 and margin factor 1; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **-1.92 +/- 5.42** | inconclusive @ 8880 |
+| 2026-10-04 | ff6f5cc, SCREEN arm A: min depth 4 (#713) | ff6f5cc (at the shipped singular defaults, min depth 6 and margin factor 1; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **+1.13 +/- 5.31** | inconclusive @ 8880 |
 | 2026-10-04 | ee45484 (engine source identical to 4dafbdd) with `SingularMinDepth=6 SingularMarginFactor=1` over UCI, CONFIRMATION on openings 26,641-36,630 (#702) | 4dafbdd (at the shipped singular defaults, min depth 8 and margin factor 2; the engine source is identical on both sides, so the delta is a runtime option) | 19980 | 10+0.1 | **+20.07 +/- 3.58** | gain |
 | 2026-10-03 | a922cee (engine source identical to 4dafbdd), SCREEN 2 arm C: min depth 6, factor 1 (#702) | 4dafbdd (at the shipped singular defaults, min depth 8 and margin factor 2; the engine source is identical on both sides, so the delta is a runtime option) | 8880 | 10+0.1 | **+19.51 +/- 5.38** | screen, leader |
 | 2026-10-03 | a922cee, SCREEN 2 arm B: min depth 8, factor 0 (#702) | 4dafbdd (at the shipped singular defaults, min depth 8 and margin factor 2; the engine source is identical on both sides, so the delta is a runtime option) | 8880 | 10+0.1 | **+8.61 +/- 5.43** | screen |
@@ -51,6 +54,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-04 -- singular min depth screen (#713) (8880 games per arm)
+
+**Min depth 6 stays; no confirmation run.** Run `37196251742`, openings 36,631-49,950, after every range #702 used; each arm took 6 of 18 shards against the shipped defaults. Arm Ptnml(0-2): A [325, 1068, 1644, 1059, 344], B [374, 1042, 1639, 1029, 356], C [338, 1057, 1658, 1031, 356]. The [declaration in #713](https://github.com/theEscape2207/StratChess/issues/713) set the rule before dispatch: confirm the leader only if it beat arm C by at least +3. Arm A led C by +0.7. The run's `aggregate` job rejected a valid shard on an en-passant field, so it wrote no comparison summary. These figures were pooled locally from the run's shard artifacts with `pool_pentanomial.py`, after the shard check passed on all 18. The resolved options are in the [run's](https://github.com/theEscape2207/StratChess/actions/runs/37196251742) `strength-37196251742-comparison` artifact. Discarded: run `37188130009`, which stopped at build before any game because arm C matched the reference without `calibration` declared.
 
 ### 2026-10-04 -- 4dafbdd, singular min depth 6 and margin factor 1 (#702) (19980 games)
 

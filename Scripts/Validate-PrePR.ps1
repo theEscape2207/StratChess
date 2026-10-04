@@ -193,6 +193,10 @@ $script:SelfTestCoverers = @{
     # The benchmark position set, dot-sourced by Run-Bench.ps1 and Compare-SearchProfile.ps1.
     # Run-Bench.ps1 -SelfTest asserts its file parsing.
     'Scripts/BenchPositions.ps1' = 'Scripts/Run-Bench.ps1'
+
+    # The linker-map reader, dot-sourced by Test-CodeAlignment.ps1 and New-OrderedBuildPair.ps1.
+    # Test-CodeAlignment.ps1 -SelfTest asserts its row parsing.
+    'Scripts/LinkerMap.ps1'      = 'Scripts/Test-CodeAlignment.ps1'
 }
 
 # Pure: takes the facts, returns the violations. The walk that produces the facts is
