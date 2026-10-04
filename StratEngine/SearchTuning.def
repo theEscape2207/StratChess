@@ -79,7 +79,7 @@ TUNING_FIELD(bool,    late_move_pruning_enabled, true, false, true, true, "LateM
 TUNING_FIELD(int,     continuation_history_plies, 2, 0, 2, true, nullptr, true)
 
 // Contempt: how many centipawns a draw is scored BELOW equality, for the side the engine is
-// playing. 0 restores the historical behaviour exactly, where every drawn score is GameValues::Draw
+// playing. At 0 every drawn score is GameValues::Draw
 // and the engine is indifferent between repeating and playing on in a position it believes equal.
 //
 // The domain has no negative half on purpose. Seeking draws would be the natural meaning of a

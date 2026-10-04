@@ -1,7 +1,6 @@
 #pragma once
 
 #include <array>
-#include <cassert>
 #include <cstdint>
 #include <iosfwd>
 #include "PieceHelper.h"
@@ -98,7 +97,6 @@ class MoveList {
 
 	void push(Move move) noexcept
 	{
-		assert(size_ < MAX_MOVES);
 		if (size_ < MAX_MOVES) {
 			moves_[size_++] = move;
 		}

@@ -383,8 +383,9 @@ BITBOARD MoveGenerator::AttackersTo(const BITBOARD* bbBitBoards, eSquare square,
 	       (BishopAttacks(square, occupancy) & bishopsAndQueens) | (RookAttacks(square, occupancy) & rooksAndQueens);
 }
 
-// Every square `attackByColor` attacks, own pieces excluded; says nothing about which piece
-// attacks a given square (AttackersTo does). Includes the en-passant square when a pawn can take it.
+// Every square `attackByColor` attacks (own pieces excluded except under pawn diagonals); says
+// nothing about which piece attacks a given square (AttackersTo does). Includes the en-passant
+// square when a pawn can take it.
 BITBOARD MoveGenerator::GetAttackBoard(const Board& board, eColor attackByColor) noexcept
 {
 	const auto boards = board.GetBitBoards();

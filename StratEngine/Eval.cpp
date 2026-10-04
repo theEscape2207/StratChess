@@ -135,8 +135,8 @@ ScorePair Evaluator::eval_pawns(const EvalContext& ctx, eColor color) noexcept
 // FORWARD-ONLY (g_bbFileUpMask/g_bbFileDownMask), the enemy-pawn test is
 // WHOLE-FILE (g_bbFileMask). So an own pawn behind the rook still leaves the
 // file open, while an enemy pawn behind it does not. That asymmetry is
-// inherited, not principled; widening the own-pawn test is an untested
-// strength change, not a cleanup.
+// inherited, not principled; widening the own-pawn test changes the
+// evaluation and needs measuring like any other strength change.
 //
 // Connected rooks: same rank or file with nothing between, per connected pair.
 ScorePair Evaluator::eval_rooks(const EvalContext& ctx, eColor color) noexcept
@@ -384,9 +384,8 @@ ScorePair Evaluator::eval_pst(const EvalContext& ctx, eColor color) noexcept
 // what matters is that every piece type uses the same one, which is why the mask
 // is built once in ComputePieceAggregates rather than per type.
 //
-// The king is deliberately absent: king mobility is a king-safety signal, weighed
-// against attacker counts by the king-safety terms rather than paid as a flat
-// per-square bonus.
+// The king is deliberately absent: king mobility is a king-safety signal, not a
+// flat per-square bonus, and no term scores it.
 //
 // Counts are taken RELATIVE to a typical count per piece type (MOBILITY_BASE_*),
 // so a cramped piece scores negative rather than merely small. An absolute count
@@ -1095,13 +1094,13 @@ int Evaluator::RawWhitePov(const EvalContext& ctx) noexcept
 	//
 	// Blended PER TERM rather than once over the accumulated pair -- a
 	// deliberate choice. Integer division truncates, so BlendPhase(a) +
-	// BlendPhase(b) and BlendPhase(a + b) can differ by up to
-	// one centipawn per term. Blending once is marginally more accurate, but it
-	// makes the per-term breakdown unable to sum to the score it reports — and that reconstructibility is an asserted invariant, not a
-	// nicety. Only terms with mg != eg can truncate at all — eval_mopup sets both
-	// endpoints equal, so it blends exactly, and eval_pawns does too whenever the
-	// side has no passed pawn — which bounds the cost at one centipawn per
-	// tapered term.
+	// BlendPhase(b) and BlendPhase(a + b) can differ by up to one centipawn per
+	// term. Blending once is marginally more accurate, but it makes the per-term
+	// breakdown unable to sum to the score it reports — and that
+	// reconstructibility is an asserted invariant, not a nicety. Only terms with
+	// mg != eg can truncate at all — eval_mopup sets both endpoints equal, so it
+	// blends exactly, and eval_pawns does too whenever the side has no passed
+	// pawn — which bounds the cost at one centipawn per tapered term.
 	// Deterministic, and far below anything this engine can measure; a
 	// breakdown whose rows do not add up is a debugging tool that lies.
 	int blended[NUM_COLORS] = {0, 0};
@@ -1159,9 +1158,9 @@ int Evaluator::Evaluate(const Board& board) const noexcept
 
 //
 //	Breakdown() :
-//	Description: Per-term introspection for the UCI 'eval' command. Reports each term's contribution per color for one
-//	             position. Read-only — no score changes, and search never calls
-//	             this.
+//	Description: Per-term introspection for the UCI 'eval' command. Reports
+//	             each term's contribution per color for one position.
+//	             Read-only — no score changes, and search never calls this.
 //	Returns:	 An EvalBreakdown whose rows come from the same BuildContext and
 //	             the same term functions Evaluate() above calls.
 //
@@ -1186,7 +1185,8 @@ EvalBreakdown Evaluator::Breakdown(const Board& board) const noexcept
 
 	// Rows are reported BLENDED at this position's phase — i.e. the number each
 	// term actually contributes to `total`, not its mg or eg endpoint. That is
-	// what keeps the printed table summing to the score; the endpoints are visible in the term functions themselves.
+	// what keeps the printed table summing to the score; the endpoints are
+	// visible in the term functions themselves.
 	EvalBreakdown out{};
 	// clang-format off
 	// Each set() names its term so order cannot silently associate a value with

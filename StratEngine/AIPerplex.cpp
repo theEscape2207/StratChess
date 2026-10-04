@@ -648,8 +648,8 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 	// Absolute backstop, first because it is what bounds every ply-indexed access below --
 	// including the excluded_move[ply] read the PV clear is guarded on. A singular extension
 	// searches a child at the parent's depth, so depth alone does not terminate the recursion
-	// and ply has to bound it. The limit is MAX_PLY - 1 rather than MAX_PLY because the null-move attempt below writes
-	// last_move_was_null[ply + 1].
+	// and ply has to bound it. The limit is MAX_PLY - 1 rather than MAX_PLY because the
+	// null-move attempt below writes last_move_was_null[ply + 1].
 	//
 	// A verification search can never reach this: it runs at its parent's ply, and that
 	// parent returned from this same test before it could launch one. So there is no row
@@ -1332,7 +1332,8 @@ namespace {
 	}
 
 	// Deliberately out of line. It owns a MoveList, and inlining puts those 400-odd bytes on the
-	// frame of every quiescence node rather than the few that are a bare king. Behind the gate the list is at most eight king steps.
+	// frame of every quiescence node rather than the few that are a bare king. Behind the gate the
+	// list is at most eight king steps.
 	STRAT_NOINLINE bool has_no_legal_move(Board& board)
 	{
 		// Out of check this is stalemate; in check it would be checkmate, and the two verdicts are a

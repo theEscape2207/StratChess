@@ -83,10 +83,10 @@ class AIPerplex final {
 	// Configuration/lifecycle methods SetThreads(), SetHash(), SetTuning() and
 	// StartNewGame() must not overlap Search(). Stop() is the only method that
 	// may be called concurrently with Search().
+	static constexpr unsigned MAX_THREADS = 32;
 	// Configure the number of Lazy SMP search threads; clamps to [1, MAX_THREADS].
 	// Search() spawns threads_ - 1 helper std::jthreads sharing the
 	// transposition table with the main search.
-	static constexpr unsigned MAX_THREADS = 32;
 	void SetThreads(unsigned n) noexcept
 	{
 		assert_not_in_completion_handler();
