@@ -147,7 +147,8 @@ def position_fields(text, source):
 
 
 def same_start(actual, assigned):
-    # fastchess writes '-' for a book en-passant square that no legal capture can use.
+    # fastchess writes '-' for a book en-passant square no legal capture can use; any book square
+    # is accepted as '-', since legality is not checked here.
     return actual[:3] == assigned[:3] and actual[3] in (assigned[3], "-")
 
 
@@ -255,6 +256,14 @@ def self_test():
             expect(name, True)
         else:
             expect(name, False)
+
+    def passes(name, fn):
+        try:
+            fn()
+        except PlanError:
+            expect(name, False)
+        else:
+            expect(name, True)
 
     arms = parse_arms("SingularMarginFactor=1 ;SingularMarginFactor=4; SingularMinDepth=10")
     expect("three arms parsed", arms == ["SingularMarginFactor=1", "SingularMarginFactor=4",
@@ -427,11 +436,7 @@ def self_test():
                 handle.write(game(1, candidate, reference, fen) + game(1, reference, candidate, fen))
             verify_batch([], 1, 1, 0, candidate, reference, book, root)
 
-    try:
-        ep_case("-")
-        expect("unusable book en-passant square written as '-' accepted", True)
-    except PlanError:
-        expect("unusable book en-passant square written as '-' accepted", False)
+    passes("unusable book en-passant square written as '-' accepted", lambda: ep_case("-"))
     raises("different en-passant square refused", lambda: ep_case("d6"))
 
     print("\nself-test:", "FAIL" if failures else "PASS")
