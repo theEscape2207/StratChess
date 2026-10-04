@@ -52,8 +52,33 @@ After syncing #712, equivalence against `ff6f5cc` again matched all 114 lines. T
 shipping benchmark averaged +1.18% (SD 1.72 points; range -0.40% to +3.52%). Matched-order relinks
 averaged -0.54% (SD 1.93 points; range -3.82% to +1.23%); pinning both engines to logical processor
 2 averaged -0.40% (SD 0.69 points; range -1.23% to +0.26%). All position-level nodes and moves
-matched throughout. These spreads straddle zero: the current-baseline performance gate remains
-inconclusive, rather than a demonstrated gain or regression. The PR stays draft pending resolution.
+matched throughout. These short-series spreads straddled zero and initially left the performance
+gate inconclusive.
+
+Claude's follow-up review and controlled shipping-binary measurement, supplied by the owner on
+2026-10-04, closes that gate with **no slowdown**. It compared baseline `ff6f5cc`, candidate
+`71a6e76` and a byte-identical baseline copy over 60 rounds at depth 13 on all eight bench
+positions, pinned to logical processor 2. Round 1 was discarded; order rotated through all six
+permutations. Claude verified fresh builds were byte-identical to the earlier measured binaries,
+and every run retained identical position-level node counts and best moves.
+
+| Comparison | Mean nps delta | 95% CI | Median |
+|---|---:|---:|---:|
+| Candidate vs baseline | +0.43% | [-0.01%, +0.88%] | +0.13% |
+| Candidate vs baseline copy | +0.24% | [+0.06%, +0.42%] | +0.21% |
+| Baseline copy vs baseline (control) | +0.19% | [-0.19%, +0.57%] | -0.02% |
+| Candidate vs average of both baselines | +0.33% | [+0.06%, +0.60%] | — |
+
+All eight positions were nonnegative (+0.06% to +0.76%); run slot had no observed effect, and
+medians agreed with the means despite one noisy baseline round. Interpret the small positive
+delta as placement noise, with no speedup or Elo claim. Claude found no correctness issues;
+the owner accepted this evidence and requested marking the PR ready. The CSVs remain in Claude's
+session scratchpad under `bench/`; these statistics are attributed to that report.
+
+The subsequent #711 cleanup was integrated, preserving its naming and emergency handling with
+the unchanged policy transitions. Fresh shipping equivalence against `6ef0884` matched all 114
+lines across six positions at depth 12, `Threads=1`. The timing result above predates that sync;
+the sync was checked for correctness without starting another timing series.
 
 ---
 
