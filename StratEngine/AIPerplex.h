@@ -2,6 +2,7 @@
 #include "defines.h"
 #include "Eval.h"
 #include "Move.h"
+#include "IterationPolicy.h"
 #include "TranspositionTable.h"
 #include "PVTable.h"
 #include "ThreadData.h"
@@ -24,10 +25,10 @@
 // CUMULATIVE main-search-thread node count at the end of this accepted
 // iteration, both trees summed (td.nodes_searched + td.qnodes_searched) — the
 // standard UCI convention for a per-iteration "nodes so far" figure, not the
-// per-iteration delta IterationMetrics tracks. It is NOT guaranteed to equal the final
+// per-iteration delta IterationPolicy tracks. It is NOT guaranteed to equal the final
 // info/bestmove line's node count: on a clocked search the loop typically
 // starts one more iteration, gets interrupted, and has that iteration
-// rejected by assess_iteration_quality() (REJECT_AND_STOP emits nothing —
+// rejected by IterationPolicy (REJECTED emits nothing —
 // see iterative_deepening()), but the rejected iteration's nodes are already
 // in both counters by the time Search() reports the final total, so
 // that total is typically strictly greater than this field at Threads=1.
@@ -129,38 +130,6 @@ class AIPerplex final {
 	AIPerplex& operator=(AIPerplex&&) = delete;
 
   private:
-	// INTERNAL STRUCTURES
-	struct IterationMetrics {
-		int depth;
-		Move current_move;
-		int current_score;
-		int64_t nodes_searched;
-		int pv_length;
-		bool interrupted;
-		bool move_changed;
-
-		// Computed values
-		int score_delta;
-		double completion_ratio;
-	};
-
-	struct SearchState {
-		Move best_move = Move::EmptyMove();
-		int best_score = 0;
-		int depth_completed = 0;
-		int64_t nodes_at_completed_depth = 0;
-		Move last_iteration_move = Move::EmptyMove();
-		bool search_was_stable = true;
-	};
-
-	enum class IterationDecision {
-		ACCEPT_AND_CONTINUE, // Use this depth, keep going
-		ACCEPT_AND_STOP,     // Use this depth, stop iteration
-		REJECT_AND_STOP      // Reject this depth, use previous
-	};
-
-	enum class RejectionReason { NONE, INCOMPLETE, TOO_FEW_NODES, SHORT_PV, MOVE_CHANGED };
-
 	// SEARCH METHODS
 	// --------------
 	// ThreadData is always the first parameter: the search runs entirely on the
@@ -221,7 +190,7 @@ class AIPerplex final {
 	// at or past the budget, not at the first multiple of 1024 of the budget's own counter.
 	bool poll_search_limits(ThreadData& td);
 	// Lazy SMP helper thread entry point: plain iterative-deepening loop with
-	// no quality gates (no assess_iteration_quality, no emergency handling,
+	// no iteration policy or emergency handling,
 	// no game-state/root propagation, no logging). Result is discarded —
 	// the helper's only contribution is the TT entries it writes along the
 	// way and its node count (aggregated by Search() after join). Exits on
@@ -230,10 +199,7 @@ class AIPerplex final {
 
 	// HELPER METHODS
 	// --------------
-	// Quality assessment
-	RejectionReason assess_iteration_quality(const IterationMetrics& metrics, const SearchState& state) const;
-	bool should_stop_early(int depth, int score) const;                   // True on a mate score
-	bool handle_empty_move_emergency(ThreadData& td, SearchState& state); // Emergency handling
+	bool handle_empty_move_emergency(ThreadData& td, Engine::IterationState& state);
 	// The zugzwang floor null-move pruning and reverse futility share: below two non-pawn pieces,
 	// "the side to move is not obliged to worsen its position" stops being true, and both
 	// heuristics rest on it. pvs() establishes it once per node and hands it to both guards.
@@ -254,12 +220,12 @@ class AIPerplex final {
 	                                bool is_exclusion_frame) const;
 
 	// Logging helpers
-	void log_iteration_eval(const IterationMetrics& metrics, const PVTable& pv_table) const;
-	void log_rejection(int depth, RejectionReason reason, const IterationMetrics& metrics,
-	                   const SearchState& state) const;
-	void log_acceptance(const IterationMetrics& metrics) const;
-	void log_search_complete(const SearchState& state, const PVTable& pv_table) const;
-	void log_completed_iteration(const IterationMetrics& metrics, const PVTable& pv_table) const;
+	void log_iteration_eval(const Engine::IterationMetrics& metrics, const PVTable& pv_table) const;
+	void log_rejection(int depth, Engine::RejectionReason reason, const Engine::IterationMetrics& metrics,
+	                   const Engine::IterationState& state) const;
+	void log_acceptance(const Engine::IterationMetrics& metrics) const;
+	void log_search_complete(const Engine::IterationState& state, const PVTable& pv_table) const;
+	void log_completed_iteration(const Engine::IterationMetrics& metrics, const PVTable& pv_table) const;
 	void log_aspiration_retry(int depth, int retry, int score, int alpha, int beta, bool fail_low) const;
 	void log_aspiration_full_window(int depth, int max_retries) const;
 

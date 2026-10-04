@@ -87,7 +87,8 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | **Search regression (tactical)** | `[tactical]` | `TacticalTests.cpp` |
 | **Search regression (slow tier)** | `[tactical_full][slow]` | `TacticalFullTests.cpp` |
 | Concrete search service, lifecycle and factory | `[search]` | `SearchServiceTests.cpp` |
-| Per-iteration decision helpers (assess, stop-early, null move) | `[search]` | `SearchIterationTests.cpp` |
+| Iteration policy (acceptance, metric derivation, retained state, soft-limit extension, mate stop) | `[search][iteration_policy]` | `IterationPolicyTests.cpp` |
+| Iteration integration, emergency fallback and null-move guards | `[search]` | `SearchIterationTests.cpp` |
 | Search telemetry (thread clamp, terminal verdicts, node counters, aspiration windows, `info string` payload wording, search profile invariants and verification node-type guard — each falsified by mutation; `Compare-SearchProfile.ps1 -SelfTest` pins the profile lines' parsed schema) | `[search]` | `SearchTelemetryTests.cpp` |
 | Search/TT contract (terminal stores, probed-bound cutoffs, mate scores refused as cutoffs) | `[search][tt]` | `SearchTTContractTests.cpp` |
 | Quiescence (delta pruning, in-check evasions, terminal states, ordering) | `[search][qsearch]` | `QuiescenceTests.cpp` |
@@ -377,18 +378,25 @@ Each item below is a standalone task. Do it when the corresponding feature is be
 
 ### `[search]` — AIPerplex helper unit tests
 
-**File**: `StratChessTests/SearchIterationTests.cpp`
+**Files**: `StratChessTests/IterationPolicyTests.cpp`, `StratChessTests/SearchIterationTests.cpp`
 **Activation**: `STRAT_ENABLE_TEST_ACCESS`, applied to the `StratChessTests` target only by `CMakeLists.txt`.
 
 Shared infrastructure (`AIPerlexTestFixture`, `SearchPlayerTestFixture`) lives
 in `StratChessTests/SearchTestFixture.h`, included by every `[search]` file. Each fixture name must
 match a `friend` declaration in the engine header it reaches into, so none of them can be renamed.
 
-Tests for private helper methods exposed via `AIPerlexTestFixture` (friend class):
+`IterationPolicyTests.cpp` enters the production value interface directly, with encoded moves and
+explicit thresholds. It requires no engine, Board, TT, clock or friend access. Independent expected
+values cover ordered rejection/threshold boundaries, derived move changes and node ratios,
+retained-state transitions, the one soft-limit extension, mate boundaries and soft-limit precedence.
+Sequence tests create prior state through the same assessment used in production.
 
-- `assess_iteration_quality()`: 6 cases — one per `RejectionReason` branch (INCOMPLETE×2, TOO_FEW_NODES, SHORT_PV, MOVE_CHANGED), plus the drawn-score-on-unchanged-move case that must be ACCEPTED
-- `should_stop_early()`: 2 cases — mate score stops; a score short of mate does not. A fixed-depth search on a perpetual check pins that a repetition PV does not end deepening
-- `handle_empty_move_emergency()`: 2 cases — mate-detected path (returns false); true-emergency path on a real starting-position board (returns true, sets legal move)
+`SearchIterationTests.cpp` retains emergency fallback and null-move guard tests through the fixture,
+plus public fixed-depth repetition-PV coverage. A public starting-position search stops inside its
+depth-1 observer and asserts retained move/score/depth and no later snapshot. This test does not
+prove observer-before-soft-limit clock sampling: that order is a source-review/header contract,
+without clock injection. Public node-budget abort, aspiration/PV, lifecycle, UCI and SMP tests remain
+independent protection for production scheduling and result selection.
 
 ### `[sort]` — Move ordering tests
 

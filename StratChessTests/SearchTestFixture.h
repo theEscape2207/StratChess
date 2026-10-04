@@ -44,8 +44,7 @@ class SearchPlayerTestFixture {
 // Helper
 // ============================================================================
 // Returns any legal move from the starting position.
-// Used to produce a guaranteed non-null Move for the assess tests, and by the
-// fixture's own per-game-state pokes below.
+// Used by the fixture's per-game-state pokes below.
 inline Move AnyLegalMove()
 {
 	Board board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
@@ -61,9 +60,6 @@ inline Move AnyLegalMove()
 // Must be defined here — the name must match the friend declaration inside
 // AIPerplex.h: friend class AIPerlexTestFixture;
 //
-// Public type aliases re-export the private AIPerplex nested types so that
-// TEST_CASE functions outside the class can write e.g.
-//   AIPerlexTestFixture::RejectionReason::INCOMPLETE
 class AIPerlexTestFixture {
   public:
 	static constexpr uint64_t TT_MARKER_KEY = 0x7fff'ffff'ffff'ffffULL;
@@ -72,10 +68,7 @@ class AIPerlexTestFixture {
 	// private and the TEST_CASE functions below are not friends.
 	static constexpr int QSEARCH_BUDGET = AIPerplex::QSEARCH_BUDGET;
 
-	// Re-export private types for test use
-	using RejectionReason = AIPerplex::RejectionReason;
-	using Metrics = AIPerplex::IterationMetrics;
-	using State = AIPerplex::SearchState;
+	using State = Engine::IterationState;
 
 	Board board_;
 	std::unique_ptr<AIPerplex> ai_owner;
@@ -95,10 +88,6 @@ class AIPerlexTestFixture {
 		ai = ai_owner.get();
 		ai->td_.board = board_;
 	}
-
-	RejectionReason assess(const Metrics& m, const State& s) const { return ai->assess_iteration_quality(m, s); }
-
-	bool stop_early(int depth, int score) const { return ai->should_stop_early(depth, score); }
 
 	// The PV written by the emergency path lives in ai->td_.pv_table.
 	bool emergency(State& s) const { return ai->handle_empty_move_emergency(ai->td_, s); }
