@@ -132,6 +132,7 @@ class AIPerlexTestFixture {
 	// Reaches the private tuning_ member. Used by the poll-gate tests, which need a search whose
 	// cost does not move every time pruning improves.
 	void set_see_pruning(bool enabled) const { ai->tuning_.see_pruning_enabled = enabled; }
+	void set_see_pruning_margin(int margin) const { ai->tuning_.see_pruning_margin = margin; }
 
 	// Reads the actual thread configuration for the [smp] clamp tests.
 	unsigned threads() const { return ai->threads_; }

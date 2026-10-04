@@ -91,7 +91,7 @@ The `[tactical_full]` suite is tagged `[slow]` and excluded from the default `~[
 | Iteration integration, emergency fallback and null-move guards | `[search]` | `SearchIterationTests.cpp` |
 | Search telemetry (thread clamp, terminal verdicts, node counters, aspiration windows, `info string` payload wording, search profile invariants and verification node-type guard — each falsified by mutation; `Compare-SearchProfile.ps1 -SelfTest` pins the profile lines' parsed schema) | `[search]` | `SearchTelemetryTests.cpp` |
 | Search/TT contract (terminal stores, probed-bound cutoffs, mate scores refused as cutoffs) | `[search][tt]` | `SearchTTContractTests.cpp` |
-| Quiescence (delta pruning, in-check evasions, terminal states, ordering) | `[search][qsearch]` | `QuiescenceTests.cpp` |
+| Quiescence (delta pruning, SEE pruning margin, in-check evasions, terminal states, ordering) | `[search][qsearch]` | `QuiescenceTests.cpp` |
 | Late move pruning (eligibility, legal index, exemptions, fail-low return and TT suppression, abort unwind) — every non-redundant guard falsified by mutation; the UCI `lmp skips` line is `[uci][lmp]` in `UCIReportingTests.cpp` | `[search][lmp]` | `SearchLateMovePruningTests.cpp` |
 | Move ordering (Sort) | `[sort]` | `SortTests.cpp` |
 | Static exchange evaluation | `[see]` | `SeeTests.cpp` |

@@ -1493,19 +1493,20 @@ int AIPerplex::quiescence(ThreadData& td, int alpha, int beta, int qsearch_budge
 			continue;
 		}
 
-		// Drop captures that lose material by static exchange. Three guards, all load-bearing:
+		// Drop captures that lose more than the margin by static exchange. Three guards, all load-bearing:
 		// `material_bounds_hold` carries the `!in_check` test, and it must
 		// stay outside the tuning flag: in check the list is every legal evasion and an empty
 		// survivor set reads as checkmate below — pruning one fabricates a mate score.
-		// `IsCapture()` keeps capture-promotions, which see_ge scores as losing on a defended square
-		// though the pawn was promoting anyway. And SEE ignores pins, so a pruned move carries no
+		// `IsCapture()` exempts non-capturing promotions, which see_ge scores as losing on a defended
+		// square though the pawn was promoting anyway; a capture-promotion's SEE is at least +200, so
+		// no margin makes one prunable. And SEE ignores pins, so a pruned move carries no
 		// proof it cannot beat alpha, unlike a delta-pruned one; see the store note below.
 		// The rest of `material_bounds_hold` is there for the same reason delta pruning carries it:
 		// SEE is a pure-material test, so near a scaled class it discards exactly the sacrifices
 		// whose value IS the class change -- RxN into a drawn K vs K+N reads as -180 and is the
 		// only drawing resource.
 		if (material_bounds_hold && tuning_.see_pruning_enabled && MoveHelper::IsCapture(move) &&
-		    !See::see_ge(td.board, move, 0)) {
+		    !See::see_ge(td.board, move, -tuning_.see_pruning_margin)) {
 			if constexpr (kSearchProfileCompiled)
 				td.telemetry.qsearch.see++;
 			continue;

@@ -140,3 +140,21 @@ TEST_CASE("See - a promotion is credited once, at the root of the swap list", "[
 
 	RequireSeeExactly(board, *it, 500 + 800 - 900);
 }
+
+TEST_CASE("See - a capture-promotion is never worse than +200", "[see]")
+{
+	// The floor quiescence relies on: no SEE pruning margin can make a capture-promotion prunable.
+	// The promoted piece is credited and then lost, so what remains is the victim less the pawn, and
+	// the cheapest back-rank victim is a minor. b7xa8=N takes a knight and Rh8xa8 retakes:
+	// +300 (knight) + 200 (promotion gain) - 300 (the new knight) = +200.
+	const Board board("n6r/1P6/8/8/8/8/8/4K2k w - - 0 1");
+
+	MoveList list;
+	MoveGenerator::ComputeLegalMoves(board, list);
+	const auto it = std::find_if(list.begin(), list.end(), [](const Move& m) {
+		return m.from() == b7 && m.to() == a8 && MoveHelper::AsType(m) == MoveType::PROMOTION_KNIGHT_CAPTURE;
+	});
+	REQUIRE(it != list.end());
+
+	RequireSeeExactly(board, *it, 300 + 200 - 300);
+}

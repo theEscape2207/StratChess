@@ -39,6 +39,7 @@ namespace {
 		int null_move_reduction;
 		int null_move_min_depth;
 		bool see_pruning_enabled;
+		int see_pruning_margin;
 		bool singular_extensions_enabled;
 		int singular_min_depth;
 		int singular_tt_depth_margin;
@@ -70,6 +71,7 @@ namespace {
 	SAME_MEMBER(null_move_reduction)
 	SAME_MEMBER(null_move_min_depth)
 	SAME_MEMBER(see_pruning_enabled)
+	SAME_MEMBER(see_pruning_margin)
 	SAME_MEMBER(singular_extensions_enabled)
 	SAME_MEMBER(singular_min_depth)
 	SAME_MEMBER(singular_tt_depth_margin)
@@ -122,6 +124,7 @@ TEST_CASE("SearchTuning defaults are the shipped values", "[tuning]")
 	CHECK(tuning.null_move_reduction == 3);
 	CHECK(tuning.null_move_min_depth == 3);
 	CHECK(tuning.see_pruning_enabled);
+	CHECK(tuning.see_pruning_margin == 0);
 	CHECK(tuning.singular_extensions_enabled);
 	CHECK(tuning.singular_min_depth == 6);
 	CHECK(tuning.singular_tt_depth_margin == 3);
@@ -377,6 +380,13 @@ TEST_CASE("SearchTuning UCI options set their own member", "[tuning][uci]")
 	CHECK(uci_rejection("Contempt", "101") == Code::OutOfRange);
 
 	expected = SearchTuning{};
+	REQUIRE_FALSE(parse_uci("SeePruningMargin", "200", tuning));
+	expected.see_pruning_margin = 200;
+	CHECK(tuning == expected);
+	CHECK(uci_rejection("SeePruningMargin", "901") == Code::OutOfRange);
+	CHECK(uci_rejection("SeePruningMargin", "-100") == Code::InvalidType);
+
+	expected = SearchTuning{};
 	REQUIRE_FALSE(parse_uci("SingularExtensions", "false", tuning));
 	expected.singular_extensions_enabled = false;
 	CHECK(tuning == expected);
@@ -457,6 +467,7 @@ TEST_CASE("SearchTuning UCI ignores names it does not expose", "[tuning][uci]")
 TEST_CASE("SearchTuning UCI option lines", "[tuning][uci]")
 {
 	const std::vector<std::string> expected{
+	    "option name SeePruningMargin type spin default 0 min 0 max 900",
 	    "option name SingularExtensions type check default true",
 	    "option name SingularMinDepth type spin default 6 min 1 max 256",
 	    "option name SingularTtDepthMargin type spin default 3 min 0 max 256",

@@ -115,7 +115,7 @@ the implementation and [search contracts](EngineContracts.md#search-internals).
 | Frontier futility | `frontier_futility_eligible`, `pvs` | `frontier_futility_*` |
 | Late move pruning | `late_move_pruning_eligible`, `pvs` | `late_move_pruning_enabled`; thresholds in [AIPerplex.h](../StratEngine/AIPerplex.h) |
 | Late move reduction | `pvs` reduced search and re-search | `lmr_*`; move classification and ordering |
-| Quiescence delta / SEE pruning | `quiescence` | `delta_pruning_margin`, `see_pruning_enabled`; material and check guards |
+| Quiescence delta / SEE pruning | `quiescence` | `delta_pruning_margin`, `see_pruning_enabled`, `see_pruning_margin`; material and check guards |
 | Move ordering and history | [MoveSorter::ScoreMoves](../StratEngine/Sort.h), `order_quiescence_moves`, [ThreadData](../StratEngine/ThreadData.h) | Hash move, SEE tiers, killers, history; `continuation_history_plies` |
 
 ## 3. State ownership and lifetimes
