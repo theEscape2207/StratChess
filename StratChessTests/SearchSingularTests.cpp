@@ -17,7 +17,7 @@ namespace {
 	constexpr const char* kBaselineFen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
 
 	// The gates below are all depth-independent, so these searches run shallower than the
-	// shipped singular_min_depth of 8 and arm() lowers the gate to match. Depth is this
+	// shipped singular_min_depth and arm() lowers the gate to match. Depth is this
 	// file's whole cost, and it is the fast tier's most expensive tag — more so under the
 	// sanitizers that gate correctness.
 	constexpr int kDepth = 4;
@@ -329,9 +329,9 @@ TEST_CASE("Singular: the exclusion slot is restored when the search aborts", "[s
 
 TEST_CASE("Singular: a low min-depth still runs a real verification search", "[search][singular]")
 {
-	// singular_min_depth is a mutable tuning field and the follow-up is a parameter sweep, so the
+	// singular_min_depth is a mutable tuning field that may be set low, so the
 	// verification depth is clamped rather than left to the default's value plus a Debug assert.
-	// This pins the reachable half: the gate still fires at the lowest depth a sweep might set,
+	// This pins the reachable half: the gate still fires at the lowest depth it can be set to,
 	// and the search completes. The clamp ITSELF is not falsifiable from here -- see the note
 	// below the tests.
 	AIPerlexTestFixture fix(kBaselineFen);

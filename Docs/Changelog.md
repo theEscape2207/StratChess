@@ -20,6 +20,14 @@ and couldn't be matched with confidence — those remain in the undated pocket b
 
 Newest first.
 
+## Unreleased — Singular extension defaults retuned (#702)
+
+`SingularMinDepth` defaults to 6 (was 8) and `SingularMarginFactor` to 1 (was 2): lab +20.07 ± 3.58
+Elo on held-out openings (run 37154126192), picked from two multi-arm screens
+(`Measurements/ci-per-change.md`). `SingularTtDepthMargin` stays 3.
+
+---
+
 ## Unreleased — Singular extensions on by default (#95)
 
 Singular extensions ship enabled: lab +22.90 ± 3.60 Elo (run 37020636422, `Measurements/ci-per-change.md`).
