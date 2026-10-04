@@ -28,9 +28,10 @@ against the **merge base**:
 and placement have not been ruled out.
 
 **Claiming a speedup** — when faster nps is the change's success criterion — needs the
-**Speedup** verdict twice: once from a `-Control` series, and again after relinking both builds with
-a shared `/ORDER` (recipe in #555). The script only issues Speedup while the whole A/A interval lies within ±0.5%; a wide control is
-not a quiet one.
+**Speedup** verdict twice: once from a `-Control` series, and again on the placement-equalised pair
+that `New-OrderedBuildPair.ps1 -BaselineTree <dir> -CandidateTree <dir>` relinks from both built
+trees. The script only issues Speedup while the whole A/A interval lies within ±0.5%; a wide control
+is not a quiet one.
 This covers node-identical changes only. A change that reshapes the tree is judged on wall clock and
 Elo, and the script rejects it.
 
@@ -40,6 +41,7 @@ placement. Escalate in order, each a new series with its round count fixed up fr
 
 1. `-Control -Rounds 60 -Affinity 4`, about 35 min: an identical baseline copy measures the
    machine's own noise. Six short pairs that read inconclusive have resolved this way.
-2. Relink both builds with a shared `/ORDER` to identical hot addresses (recipe in #555) and re-run.
+2. `New-OrderedBuildPair.ps1` on both trees, then re-run on the pair it prints. It fails rather
+   than return a pair whose `pvs` and `quiescence` addresses differ.
 
 Only a delta that survives the relink is a slowdown, and then find it before shipping.
