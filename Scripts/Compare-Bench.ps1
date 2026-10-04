@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
     Paired nps comparison of two engine builds: a balanced, validated Run-Bench series with a
-    verdict of No slowdown, Slowdown or Unresolved.
+    verdict of Speedup, No slowdown, Slowdown or Unresolved.
 
 .DESCRIPTION
     Runs Run-Bench.ps1 over the same positions for each arm, once per arm per round, in a
@@ -27,13 +27,17 @@
     With -Control, the verdict compares the candidate against the mean of both baseline arms.
 
     Verdict, from the 95% interval of the verdict comparison, checked in this order:
+      Speedup      lower bound > 0, only with -Control and only while the A/A interval spans
+                   zero; otherwise the machine itself drifted. Pending until a rerun after
+                   relinking both builds with a shared /ORDER agrees: placement alone moves
+                   node-identical builds by several percent either way.
       No slowdown  lower bound >= -0.5%; a small cost inside that tolerance still passes, and
                    the printed interval shows it.
       Slowdown     upper bound < 0.
       Unresolved   anything else. Rerun with -Control or relink both builds with a shared
                    /ORDER (measure-strength regression-check). Do not add rounds to the same
                    series until it passes.
-    A positive delta is placement noise, never a speedup or an Elo gain.
+    Any other positive delta is placement noise, not a speedup. No verdict is an Elo claim.
 
     Build both executables the same way (measure-strength regression-check). Run on a quiet
     machine: finish builds and reviews first, because spare cores do not mean the machine is
@@ -199,7 +203,10 @@ function Get-Interval {
 }
 
 function Get-Verdict {
-    param([Parameter(Mandatory)][object]$Interval, [Parameter(Mandatory)][double]$TolerancePct)
+    <# $AaInterval is the control-vs-baseline interval, or $null without -Control: no speedup without it. #>
+    param([Parameter(Mandatory)][object]$Interval, [Parameter(Mandatory)][double]$TolerancePct, [object]$AaInterval = $null)
+    $quietMachine = $null -ne $AaInterval -and $AaInterval.Low -le 0 -and $AaInterval.High -ge 0
+    if ($Interval.Low -gt 0 -and $quietMachine) { return 'Speedup' }
     if ($Interval.Low -ge -$TolerancePct) { return 'No slowdown' }
     if ($Interval.High -lt 0) { return 'Slowdown' }
     return 'Unresolved'
@@ -266,12 +273,13 @@ function Get-Comparison {
     }
 
     $verdictInterval = $comparisons[$verdictName]
+    $aaInterval = if ($hasControl) { $comparisons['control vs baseline (A/A)'] } else { $null }
     return [pscustomobject]@{
         Rounds       = $byRound.Count
         Comparisons  = $comparisons
         VerdictBasis = $verdictName
         RoundDeltas  = $roundDeltas
-        Verdict      = Get-Verdict -Interval $verdictInterval -TolerancePct $TolerancePct
+        Verdict      = Get-Verdict -Interval $verdictInterval -TolerancePct $TolerancePct -AaInterval $aaInterval
         PerPosition  = $perPosition
         Slots        = $slots
     }
@@ -307,7 +315,8 @@ function Format-Report {
     $out.Add('')
     $out.Add("VERDICT: $($Result.Verdict)  (from '$($Result.VerdictBasis)'; tolerance -$TolerancePct%)")
     switch ($Result.Verdict) {
-        'No slowdown' { $out.Add('A positive delta is placement noise, not a speedup and not Elo.') }
+        'Speedup'     { $out.Add('PENDING: relink both builds with a shared /ORDER and rerun with -Control; claim it only if Speedup holds there too. Not Elo.') }
+        'No slowdown' { $out.Add('A positive delta here is placement noise. A speedup claim needs -Control and a Speedup verdict. Not Elo.') }
         'Slowdown'    { $out.Add('Relink both builds with a shared /ORDER before treating it as real (measure-strength regression-check).') }
         'Unresolved'  { $out.Add('Rerun with -Control, or relink with a shared /ORDER. Do not extend this series until it passes.') }
     }
@@ -394,13 +403,21 @@ if ($SelfTest) {
         "got mean $($iv.Mean) sd $($iv.Sd) high $($iv.High) median $($iv.Median)"
     Assert-Case 'even-count median averages the middle pair' ((Get-Interval -Values @(4, 1, 3, 2)).Median -eq 2.5)
 
+    $flatAa = [pscustomobject]@{ Low = -0.3; High = 0.4 }
+    $driftAa = [pscustomobject]@{ Low = 0.2; High = 0.9 }
     foreach ($case in @(
+            @{ Low = 0.2; High = 1.0; Aa = $flatAa; Expect = 'Speedup' }
+            @{ Low = 0.2; High = 1.0; Aa = $null; Expect = 'No slowdown' }
+            @{ Low = 0.2; High = 1.0; Aa = $driftAa; Expect = 'No slowdown' }
+            @{ Low = -0.1; High = 1.0; Aa = $flatAa; Expect = 'No slowdown' }
             @{ Low = -0.3; High = 0.4; Expect = 'No slowdown' }
             @{ Low = -0.45; High = -0.1; Expect = 'No slowdown' }
             @{ Low = -1.5; High = -0.2; Expect = 'Slowdown' }
             @{ Low = -1.0; High = 0.5; Expect = 'Unresolved' })) {
-        $got = Get-Verdict -Interval ([pscustomobject]@{ Low = $case.Low; High = $case.High }) -TolerancePct 0.5
-        Assert-Case "verdict [$($case.Low), $($case.High)] -> $($case.Expect)" ($got -eq $case.Expect) "got $got"
+        $aa = if ($case.ContainsKey('Aa')) { $case.Aa } else { $null }
+        $got = Get-Verdict -Interval ([pscustomobject]@{ Low = $case.Low; High = $case.High }) -TolerancePct 0.5 -AaInterval $aa
+        $aaLabel = if ($null -eq $aa) { 'no control' } else { "A/A [$($aa.Low), $($aa.High)]" }
+        Assert-Case "verdict [$($case.Low), $($case.High)], $aaLabel -> $($case.Expect)" ($got -eq $case.Expect) "got $got"
     }
 
     # End to end over synthetic runs, with jitter so the interval has width.
@@ -422,6 +439,16 @@ if ($SelfTest) {
     Assert-Case 'with a control the verdict is judged against mean(baseline, control)' `
         ($res.VerdictBasis -eq 'candidate vs mean(baseline, control)' -and $res.Comparisons.Contains('control vs baseline (A/A)') -and
          $res.PerPosition.Count -eq 2 -and $res.Slots.Count -eq 3)
+    $runs = New-Series -Arms @('baseline', 'candidate', 'control') -RoundCount 12 -Speed @{ baseline = 1.0; candidate = 1.03; control = 1.0 } -Jitter $jitter
+    $res = Get-Comparison -Runs $runs -TolerancePct 0.5
+    Assert-Case 'a 3% faster candidate with a quiet control is a pending Speedup' `
+        ($res.Verdict -eq 'Speedup' -and @(Format-Report -Result $res -TolerancePct 0.5 | Where-Object { $_ -match '^PENDING: relink' }).Count -eq 1) `
+        "got $($res.Verdict)"
+    $runs = New-Series -Arms @('baseline', 'candidate') -RoundCount 12 -Speed @{ baseline = 1.0; candidate = 1.03 } -Jitter $jitter
+    $res = Get-Comparison -Runs $runs -TolerancePct 0.5
+    Assert-Case 'the same speedup without -Control is only No slowdown' ($res.Verdict -eq 'No slowdown') "got $($res.Verdict)"
+    $runs = New-Series -Arms @('baseline', 'candidate', 'control') -RoundCount 12 -Speed @{ baseline = 1.0; candidate = 1.0; control = 1.0 } -Jitter $jitter
+    $res = Get-Comparison -Runs $runs -TolerancePct 0.5
     Assert-Case 'the report renders every section' `
         (@(Format-Report -Result $res -TolerancePct 0.5 | Where-Object { $_ -match 'VERDICT: No slowdown|Per position|Per-round deltas|slot 2' }).Count -eq 4)
 

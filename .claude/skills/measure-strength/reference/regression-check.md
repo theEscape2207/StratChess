@@ -25,8 +25,13 @@ against the **merge base**:
 ## Reading it
 
 **No slowdown** is done. Report a positive delta as "no slowdown", never as a speedup: it is
-placement noise. Claiming a speedup is a different measurement — see `Docs/Workflow.md` → Speed and
-nps.
+placement noise.
+
+**Claiming a speedup** — when faster nps is the change's success criterion — needs the
+**Speedup** verdict twice: once from a `-Control` series, and again after relinking both builds with
+a shared `/ORDER` (recipe in #555). The script only issues Speedup while the A/A control reads flat.
+This covers node-identical changes only. A change that reshapes the tree is judged on wall clock and
+Elo, and the script rejects it.
 
 **Unresolved or Slowdown is not yet a slowdown.** If the change added no per-node work, code
 placement alone accounts for several percent — #556 read −3.90% over 9 pairs and was pure
