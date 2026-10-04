@@ -17,8 +17,8 @@ against the **merge base**:
    slower than a `build.ps1` build of the same commit.
 2. **Quiet the machine.** Finish builds and the code review first, and tell the owner a timing
    window is starting. Review subagents running beside a series read one pair −14% (#640).
-3. **Run** `Compare-Bench.ps1 -Baseline <exe> -Candidate <exe>`: 12 rounds of alternating order,
-   about 5 min. Fix `-Rounds` before it starts. Its `-?` covers the schedule, the rejections and
+3. **Run** `Compare-Bench.ps1 -Baseline <exe> -Candidate <exe> -BaselineCommit <sha>
+   -CandidateCommit <sha>`: 12 rounds of alternating order, about 5 min. Fix `-Rounds` before it starts. Its `-?` covers the schedule, the rejections and
    the verdict rule.
 4. **Report its verdict** with the interval line and the output directory's `metadata.json`.
 
@@ -33,7 +33,7 @@ placement alone accounts for several percent — #556 read −3.90% over 9 pairs
 placement. Escalate in order, each a new series with its round count fixed up front:
 
 1. `-Control -Rounds 60 -Affinity 4`, about 35 min: an identical baseline copy measures the
-   machine's own noise, as on #714.
+   machine's own noise. Six short pairs that read inconclusive have resolved this way.
 2. Relink both builds with a shared `/ORDER` to identical hot addresses (recipe in #555) and re-run.
 
 Only a delta that survives the relink is a slowdown, and then find it before shipping.

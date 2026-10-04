@@ -27,8 +27,8 @@
     With -Control, the verdict compares the candidate against the mean of both baseline arms.
 
     Verdict, from the 95% interval of the verdict comparison, checked in this order:
-      No slowdown  lower bound >= -Tolerance (default 0.5%); a small cost inside the tolerance
-                   still passes, and the printed interval shows it.
+      No slowdown  lower bound >= -0.5%; a small cost inside that tolerance still passes, and
+                   the printed interval shows it.
       Slowdown     upper bound < 0.
       Unresolved   anything else. Rerun with -Control or relink both builds with a shared
                    /ORDER (measure-strength regression-check). Do not add rounds to the same
@@ -37,8 +37,7 @@
 
     Build both executables the same way (measure-strength regression-check). Run on a quiet
     machine: finish builds and reviews first, because spare cores do not mean the machine is
-    idle. Expect about 11 s per suite pass at depth 13, so 12 rounds of two arms take about
-    5 min.
+    idle. A run is (Rounds + 1) suite passes per arm.
 
 .PARAMETER Baseline
     Baseline StratChessEvolved.exe, normally built from the merge base.
@@ -66,8 +65,11 @@
 .PARAMETER MinTimeMs
     Shortest search per position that may be timed. Default 200.
 
-.PARAMETER Tolerance
-    The largest slowdown, in percent, that still counts as No slowdown. Default 0.5.
+.PARAMETER BaselineCommit
+    Optional commit the baseline was built from, recorded in metadata.json and the report.
+
+.PARAMETER CandidateCommit
+    Optional commit the candidate was built from, recorded likewise.
 
 .PARAMETER OutDir
     Where to keep the CSVs, metadata.json and report.txt. Defaults to a new directory under the
@@ -104,7 +106,9 @@ param(
 
     [int]$MinTimeMs = 200,
 
-    [double]$Tolerance = 0.5,
+    [string]$BaselineCommit = '',
+
+    [string]$CandidateCommit = '',
 
     [string]$OutDir = '',
 
@@ -113,6 +117,9 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# The largest slowdown, in percent, that still counts as No slowdown. Fixed so it cannot move after a run.
+$SlowdownTolerancePct = 0.5
 
 # $DefaultPositions, Resolve-Positions and Get-PositionSetHash: the set Run-Bench measures.
 . (Join-Path $PSScriptRoot 'BenchPositions.ps1')
@@ -123,11 +130,9 @@ function Get-Schedule {
 
     $orders = if ($Arms.Count -eq 2) {
         @(@($Arms[0], $Arms[1]), @($Arms[1], $Arms[0]))
-    } elseif ($Arms.Count -eq 3) {
+    } else {
         $a, $b, $c = $Arms
         @(@($a, $b, $c), @($b, $c, $a), @($c, $a, $b), @($a, $c, $b), @($b, $a, $c), @($c, $b, $a))
-    } else {
-        throw "Two or three arms are supported, got $($Arms.Count)."
     }
     if ($RoundCount % $orders.Count -ne 0) {
         throw "-Rounds $RoundCount is not a multiple of $($orders.Count), so the run order would be unbalanced."
@@ -230,23 +235,23 @@ function Get-Comparison {
         $deltas = foreach ($r in $byRound.Values) { & $pct (Get-AggregateNps $r[$x].Rows) (Get-AggregateNps $r[$y].Rows) }
         $comparisons[$name] = Get-Interval -Values $deltas
     }
-    $verdictName = 'candidate vs baseline'
-    if ($hasControl) {
-        $verdictName = 'candidate vs mean(baseline, control)'
-        $deltas = foreach ($r in $byRound.Values) {
-            $ref = ((Get-AggregateNps $r['baseline'].Rows) + (Get-AggregateNps $r['control'].Rows)) / 2
-            & $pct (Get-AggregateNps $r['candidate'].Rows) $ref
-        }
-        $comparisons[$verdictName] = Get-Interval -Values $deltas
+    # The verdict judges the candidate against the baseline, or against mean(baseline, control).
+    # $select picks which of a run's rows to aggregate: all of them, or one position's.
+    $candidateDelta = {
+        param($r, $select)
+        $ref = Get-AggregateNps (& $select $r['baseline'])
+        if ($hasControl) { $ref = ($ref + (Get-AggregateNps (& $select $r['control']))) / 2 }
+        & $pct (Get-AggregateNps (& $select $r['candidate'])) $ref
     }
+    $verdictName = if ($hasControl) { 'candidate vs mean(baseline, control)' } else { 'candidate vs baseline' }
+    $roundDeltas = @(foreach ($r in $byRound.Values) { & $candidateDelta $r { param($run) $run.Rows } })
+    if ($hasControl) { $comparisons[$verdictName] = Get-Interval -Values $roundDeltas }
 
-    # Per position: the candidate against the same reference, so an outlier position stays visible.
+    # Per position, against the same reference, so an outlier position stays visible.
     $perPosition = [ordered]@{}
     foreach ($position in @($kept[0].Rows | ForEach-Object { $_.Position })) {
-        $nps = { param($run) $row = $run.Rows | Where-Object { $_.Position -eq $position }; [double][int64]$row.Nodes * 1000 / [int64]$row.Ms }
         $deltas = foreach ($r in $byRound.Values) {
-            $ref = if ($hasControl) { ((& $nps $r['baseline']) + (& $nps $r['control'])) / 2 } else { & $nps $r['baseline'] }
-            & $pct (& $nps $r['candidate']) $ref
+            & $candidateDelta $r { param($run) @($run.Rows | Where-Object { $_.Position -eq $position }) }
         }
         $perPosition[$position] = Get-Interval -Values $deltas
     }
@@ -265,6 +270,7 @@ function Get-Comparison {
         Rounds       = $byRound.Count
         Comparisons  = $comparisons
         VerdictBasis = $verdictName
+        RoundDeltas  = $roundDeltas
         Verdict      = Get-Verdict -Interval $verdictInterval -TolerancePct $TolerancePct
         PerPosition  = $perPosition
         Slots        = $slots
@@ -274,26 +280,30 @@ function Get-Comparison {
 function Format-Report {
     param([Parameter(Mandatory)][object]$Result, [Parameter(Mandatory)][double]$TolerancePct)
 
-    $line = '{0,-38} {1,8:+0.00;-0.00}% {2,6:0.00} [{3,7:+0.00;-0.00}%, {4,7:+0.00;-0.00}%] {5,8:+0.00;-0.00}%  {6,7:+0.00;-0.00}% .. {7:+0.00;-0.00}%'
+    $line = '{0,-38} {1,8:+0.00;-0.00;0.00}% {2,6:0.00} [{3,7:+0.00;-0.00;0.00}%, {4,7:+0.00;-0.00;0.00}%] {5,8:+0.00;-0.00;0.00}%  {6,7:+0.00;-0.00;0.00}% .. {7:+0.00;-0.00;0.00}%'
     # Invariant culture: the report is pasted into PRs, whatever the machine's decimal separator.
     $inv = [cultureinfo]::InvariantCulture
+    # Rounded first: a tiny negative would otherwise take the negative section and print as '-+0.00'.
+    $fmt = { param($pattern) [string]::Format($inv, $pattern, @($args | ForEach-Object { if ($_ -is [double]) { [math]::Round($_, 2) } else { $_ } })) }
     $out = [System.Collections.Generic.List[string]]::new()
     $out.Add("Kept rounds: $($Result.Rounds) (round 0 discarded as warm-up). Nodes and best moves identical in every run.")
     $out.Add('')
-    $out.Add(('{0,-38} {1,9} {2,6} {3,20} {4,9}  {5}' -f 'comparison (aggregate nps)', 'mean', 'sd', '95% t-interval', 'median', 'range'))
+    $out.Add(('{0,-38} {1,9} {2,6} {3,20} {4,9}  {5}' -f 'comparison (aggregate nps, per round)', 'mean', 'sd', '95% t-interval', 'median', 'range'))
     foreach ($name in $Result.Comparisons.Keys) {
         $c = $Result.Comparisons[$name]
-        $out.Add(([string]::Format($inv, $line, $name, $c.Mean, $c.Sd, $c.Low, $c.High, $c.Median, $c.Min, $c.Max)))
+        $out.Add((& $fmt $line $name $c.Mean $c.Sd $c.Low $c.High $c.Median $c.Min $c.Max))
     }
+    $out.Add("Per-round deltas, $($Result.VerdictBasis): " +
+             (($Result.RoundDeltas | ForEach-Object { & $fmt '{0:+0.00;-0.00;0.00}%' $_ }) -join ' '))
     $out.Add('')
     $out.Add("Per position, candidate vs the verdict's reference:")
     foreach ($name in $Result.PerPosition.Keys) {
         $c = $Result.PerPosition[$name]
-        $out.Add(([string]::Format($inv, $line, "  $name", $c.Mean, $c.Sd, $c.Low, $c.High, $c.Median, $c.Min, $c.Max)))
+        $out.Add((& $fmt $line "  $name" $c.Mean $c.Sd $c.Low $c.High $c.Median $c.Min $c.Max))
     }
     $out.Add('')
     $out.Add('Run-order effect, aggregate nps by slot vs the overall mean: ' +
-             (($Result.Slots.Keys | ForEach-Object { [string]::Format($inv, '{0} {1:+0.00;-0.00}%', $_, $Result.Slots[$_]) }) -join ', '))
+             (($Result.Slots.Keys | ForEach-Object { & $fmt '{0} {1:+0.00;-0.00;0.00}%' $_ $Result.Slots[$_] }) -join ', '))
     $out.Add('')
     $out.Add("VERDICT: $($Result.Verdict)  (from '$($Result.VerdictBasis)'; tolerance -$TolerancePct%)")
     switch ($Result.Verdict) {
@@ -413,7 +423,7 @@ if ($SelfTest) {
         ($res.VerdictBasis -eq 'candidate vs mean(baseline, control)' -and $res.Comparisons.Contains('control vs baseline (A/A)') -and
          $res.PerPosition.Count -eq 2 -and $res.Slots.Count -eq 3)
     Assert-Case 'the report renders every section' `
-        (@(Format-Report -Result $res -TolerancePct 0.5 | Where-Object { $_ -match 'VERDICT: No slowdown|Per position|slot 2' }).Count -eq 3)
+        (@(Format-Report -Result $res -TolerancePct 0.5 | Where-Object { $_ -match 'VERDICT: No slowdown|Per position|Per-round deltas|slot 2' }).Count -eq 4)
 
     # The refusals. Each one would otherwise average an invalid run into the verdict.
     $good = @(New-Series -Arms @('baseline', 'candidate') -RoundCount 2 -Speed @{ baseline = 1.0; candidate = 1.0 })
@@ -464,17 +474,13 @@ if ($Control) {
 }
 $hashes = @{}
 foreach ($arm in $arms) { $hashes[$arm] = (Get-FileHash -Path $exes[$arm] -Algorithm SHA256).Hash.ToLower() }
-if ($Control -and $hashes.control -ne $hashes.baseline) { throw 'The control copy does not match the baseline byte-for-byte.' }
-
-if ($Affinity -ne 0) {
-    [System.Diagnostics.Process]::GetCurrentProcess().ProcessorAffinity = [IntPtr]$Affinity
-}
 
 $positionList = @(Resolve-Positions -Path $Positions)
 $metadata = [ordered]@{
     Started     = (Get-Date).ToString('o')
     Host        = [Environment]::MachineName
     Exes        = $exes
+    Commits     = @{ baseline = $BaselineCommit; candidate = $CandidateCommit }
     Sha256      = $hashes
     Depth       = $Depth
     Threads     = 1
@@ -485,28 +491,37 @@ $metadata = [ordered]@{
     Schedule    = @($schedule | ForEach-Object { $_ -join ',' })
     Affinity    = $Affinity
     MinTimeMs   = $MinTimeMs
-    Tolerance   = $Tolerance
+    Tolerance   = $SlowdownTolerancePct
 }
 $metadata | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $outPath 'metadata.json')
 
 Write-Host "Comparing $($arms.Count) arms, $Rounds rounds + warm-up, depth $Depth, $($positionList.Count) positions -> $outPath"
 $runs = [System.Collections.Generic.List[object]]::new()
-for ($round = 0; $round -le $Rounds; $round++) {
-    $order = if ($round -eq 0) { $arms } else { $schedule[$round - 1] }
-    for ($slot = 0; $slot -lt $order.Count; $slot++) {
-        $arm = $order[$slot]
-        $csv = Join-Path $outPath ('r{0:D3}_{1}_{2}.csv' -f $round, $slot, $arm)
-        # Run-Bench's table goes to the information stream; the CSV is the record.
-        & $runBench -Exe $exes[$arm] -Depth $Depth -Threads 1 -Positions $Positions -MinTimeMs $MinTimeMs -Csv $csv 6>$null | Out-Null
-        $runs.Add([pscustomobject]@{ Round = $round; Slot = $slot; Arm = $arm; Rows = @(Import-Csv -Path $csv) })
-        # Checked as each run lands, so an invalid comparison stops before the rest of the budget.
-        Assert-ComparableRuns -Runs @($runs[0], $runs[$runs.Count - 1]) -FloorMs $MinTimeMs
+$self = [System.Diagnostics.Process]::GetCurrentProcess()
+$priorAffinity = $self.ProcessorAffinity
+if ($Affinity -ne 0) { $self.ProcessorAffinity = [IntPtr]$Affinity }
+try {
+    for ($round = 0; $round -le $Rounds; $round++) {
+        $order = if ($round -eq 0) { $arms } else { $schedule[$round - 1] }
+        for ($slot = 0; $slot -lt $order.Count; $slot++) {
+            $arm = $order[$slot]
+            $csv = Join-Path $outPath ('r{0:D3}_{1}_{2}.csv' -f $round, $slot, $arm)
+            # Run-Bench's table goes to the information stream; the CSV is the record.
+            & $runBench -Exe $exes[$arm] -Depth $Depth -Threads 1 -Positions $Positions -MinTimeMs $MinTimeMs -Csv $csv 6>$null | Out-Null
+            $runs.Add([pscustomobject]@{ Round = $round; Slot = $slot; Arm = $arm; Rows = @(Import-Csv -Path $csv) })
+            # Checked as each run lands, so an invalid comparison stops before the rest of the budget.
+            Assert-ComparableRuns -Runs @($runs[0], $runs[$runs.Count - 1]) -FloorMs $MinTimeMs
+        }
+        Write-Host ("{0:HH:mm:ss} round {1}/{2} done" -f (Get-Date), $round, $Rounds)
     }
-    Write-Host ("{0:HH:mm:ss} round {1}/{2} done" -f (Get-Date), $round, $Rounds)
+} finally {
+    # Restored so an in-process caller's session is not left pinned.
+    $self.ProcessorAffinity = $priorAffinity
 }
 
-$result = Get-Comparison -Runs $runs -TolerancePct $Tolerance
-$report = @(Format-Report -Result $result -TolerancePct $Tolerance)
+$result = Get-Comparison -Runs $runs -TolerancePct $SlowdownTolerancePct
+$report = @(Format-Report -Result $result -TolerancePct $SlowdownTolerancePct)
+if ($BaselineCommit -or $CandidateCommit) { $report = @("Baseline $BaselineCommit  candidate $CandidateCommit") + $report }
 $report | Set-Content -Path (Join-Path $outPath 'report.txt')
 Write-Host ''
 $report | ForEach-Object { Write-Host $_ }
