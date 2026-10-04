@@ -92,6 +92,10 @@ happened on PR #148). Same rule for creation — never `gh pr create`.
 If a build-freshness check fails right after a `CMakeLists.txt` edit or a merge, delete both exes and
 rebuild before retrying — it is a known false positive.
 
+**Changelog:** follow `Docs/Changelog.md`'s heading convention, using today's Copenhagen date
+provisionally instead of `Unreleased`. After merge, verify the date against
+`gh pr view <number> --json mergedAt` and correct it if needed.
+
 ## 3. PR body
 
 Written manually as **Summary / Test plan / Notes** — `--body-file` only, never inline `--body`

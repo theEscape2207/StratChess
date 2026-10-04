@@ -8,19 +8,14 @@ solo/AI-assisted dev workflow, rather than the terse end-user-facing style the o
 convention assumes. `Deprecated`/`Security` are dropped — they essentially never apply to
 engine internals.
 
-This is the permanent historical record migrated from `Docs/Roadmap.md`'s old
-`## ✅ Completed Work` section (see PR #105); `Roadmap.md` itself now holds only active
-principles, pointing to GitHub Issues for the live backlog.
+Dates are PR merge dates, verified against `gh pr list`/`gh pr view`. A handful of
+entries couldn't be matched with confidence — those remain in the undated pocket below.
 
-Dates are PR merge dates, verified against `gh pr list`/`gh pr view` — the original
-Roadmap.md's dates and PR citations had several errors (wrong PR numbers, entries filed
-under the wrong month) that surfaced during this migration; see the entries themselves
-for what was corrected. A handful of entries have no PR reference in the original text
-and couldn't be matched with confidence — those remain in the undated pocket below.
+Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
+retaining the issue reference and any slice qualifier where applicable. Convert
+GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
-Newest first.
-
-## 2026-10-04 — SEE pruning margin knob (#398, slice 1)
+## 2026-10-04: SEE pruning margin knob (#398, slice 1)
 
 `SearchTuning::see_pruning_margin` (UCI `SeePruningMargin`, default 0, domain `[0, 900]`): quiescence
 SEE pruning now drops captures with `SEE < -margin`. Non-negative because `read_uci()` refuses a
@@ -38,7 +33,7 @@ The trees differ, so the restored share is read as prunes per qsearch node: 0.43
 Best move changed on 2 positions at 100 and 2 at 200. Node counts bound cost only; strength needs
 the lab.
 
-## Unreleased — Shared-/ORDER relink script (#717)
+## 2026-10-04: Shared-/ORDER relink script (#717)
 
 `Scripts/New-OrderedBuildPair.ps1` replaces #555's hand recipe for the relink that confirms a
 `Compare-Bench.ps1` Speedup and escalates a Slowdown or Unresolved verdict. It reruns each built
@@ -59,7 +54,7 @@ functions were pinned, all of them matched, and both hot functions started at th
 `Compare-Bench.ps1` accepted both ordered pairs as node-identical. Pinning funclet names, as a first draft did, left 911 of 2,682
 entries misplaced: `/order` moves sections, and funclet numbers differ between trees.
 
-## Unreleased — Paired nps comparison script (#715)
+## 2026-10-04: Paired nps comparison script (#715)
 
 `Scripts/Compare-Bench.ps1` replaces the hand-run paired `Run-Bench.ps1` series of the
 measure-strength regression check. Agents had written nine one-off harnesses for it between
@@ -80,7 +75,7 @@ The `-SelfTest` covers schedule balance, warm-up exclusion, aggregation, the int
 and every rejection, including per-arm noise that cancels in the baseline mean, falsified against a mutated warm-up
 filter and an unguarded Speedup check. No engine change.
 
-## Unreleased — Value-only iteration policy (#706)
+## 2026-10-04: Value-only iteration policy (#706)
 
 `IterationPolicy` owns main-thread iteration acceptance, raw-metric derivation, retained-result
 updates and soft-limit/mate continuation through two pure value transitions. `AIPerplex` keeps
@@ -142,7 +137,7 @@ the sync was checked for correctness without starting another timing series.
 
 ---
 
-## Unreleased — Singular extension defaults retuned (#702)
+## 2026-10-04: Singular extension defaults retuned (#702)
 
 `SingularMinDepth` defaults to 6 (was 8) and `SingularMarginFactor` to 1 (was 2): lab +20.07 ± 3.58
 Elo on held-out openings (run 37154126192), picked from two multi-arm screens
@@ -150,7 +145,7 @@ Elo on held-out openings (run 37154126192), picked from two multi-arm screens
 
 ---
 
-## Unreleased — Singular extensions on by default (#95)
+## 2026-10-03: Singular extensions on by default (#95)
 
 Singular extensions ship enabled: lab +22.90 ± 3.60 Elo (run 37020636422, `Measurements/ci-per-change.md`).
 The `STRAT_SINGULAR_EXTENSIONS` CMake option, the `STRAT_SINGULAR_DEFAULT_ON` define and
@@ -161,7 +156,7 @@ extensions included.
 
 ---
 
-## Unreleased — Singular tuning knobs over UCI (#699)
+## 2026-10-02: Singular tuning knobs over UCI (#699)
 
 A build compiling singular extensions in now advertises `SingularMinDepth` (1–256),
 `SingularTtDepthMargin` (0–256) and `SingularMarginFactor` (0–1000) beside `SingularExtensions`, so
@@ -175,7 +170,7 @@ an unavailable Boolean must still default off. Both depth knobs' domains narrowe
 
 ---
 
-## Unreleased — Profile screen checkpoint/resume (#666, first slice)
+## 2026-10-02: Profile screen checkpoint/resume (#666, first slice)
 
 `Compare-SearchProfile.ps1` checkpoints each validated search in a persistent run directory and
 prints a copyable `-RunDirectory` resume command. Complete reruns reuse all searches; configuration
@@ -195,7 +190,7 @@ pinning and cross-process run ownership were verified. The idle-sleep guard is a
 
 ---
 
-## 2026-09-30 — The TT advises transparent huge pages on Linux (#676)
+## 2026-09-30: The TT advises transparent huge pages on Linux (#676)
 
 On a Linux host whose THP mode is `madvise` (ubuntu-26.04 runners, WSL, most current distributions)
 the TT and its lock array, 240 MiB at the default request on libstdc++, were backed by 4 KiB pages.
@@ -216,7 +211,7 @@ to set. Under the common `defrag=madvise` the first touch of an advised region m
 synchronously, so a fragmented host can see a slower table build; that cost falls at construction or
 `setoption Hash`, never during search.
 
-## 2026-09-30 — Continuation history orders quiet moves (#664)
+## 2026-09-30: Continuation history orders quiet moves (#664)
 
 Quiet moves were ordered by the butterfly `history[side][from][to]` table alone, which knows nothing
 of the position's recent moves. Each thread now also keeps a continuation-history table indexed by
@@ -240,7 +235,7 @@ Validation:
   at depth 14, 2 plies took 6.2% ± 4.9% longer; on the 8 bench positions it was 5.2% faster in 9 of
   9 rounds.
 
-## 2026-09-29 — Opposite-coloured bishops with one or two pawns against none are scaled (#599)
+## 2026-09-29: Opposite-coloured bishops with one or two pawns against none are scaled (#599)
 
 `EndgameScale()` gave full value to K+B+P(s) vs K+B with the bishops on opposite colours. #618 found
 lab games where the engine traded a won position into this ending. At depth 18 it scored the ending
@@ -267,7 +262,7 @@ own move. The reference reached it 35 times and drew 21. Detail: `Measurements/c
 
 ---
 
-## 2026-09-28 — History malus and gravity-bounded updates (#651)
+## 2026-09-28: History malus and gravity-bounded updates (#651)
 
 `ThreadData::history` only rewarded: a quiet move that cut gained depth² up to a clamp, and quiets
 searched before it lost nothing, so the table counted cuts rather than cuts per try and saturated at
@@ -284,13 +279,13 @@ Engine-tier pre-PR gate passed. Measurement: strength lab against `5205819`,
 and speed per node fell 2.5%, so fixed-depth wall clock was about neutral. The lab, not the tree,
 carries the case: the first-move cutoff rate did not move, and why the change gains is not established.
 
-## 2026-09-28 — KBN conversion test disabled (#657)
+## 2026-09-28: KBN conversion test disabled (#657)
 
 `[endgame_conversion][slow]` gated on depth 12 alone, and the unmodified engine mates 0, 3, 4, 5 and 3
 of its five starts at depths 10 to 14, so the gate measured where one depth lands. The case now
 `SKIP`s with a pointer to #657, which tracks the redo.
 
-## 2026-09-28 — Profile screen grown to 200 positions and recalibrated
+## 2026-09-28: Profile screen grown to 200 positions and recalibrated
 
 `Tests/profile-screen.fen` now holds 200 positions: the 4 book positions left out for tripping the
 short-PV stop that #652 removed, 56 more from the 8moves_v3 book and 20 strength-lab endgames (24
@@ -300,7 +295,7 @@ earlier band was never inflated by it. The larger set narrows the default screen
 A 5% late-cut change is now caught 97% of the time, up from 77%. `Measurements/profile-screen.md`
 records the calibration.
 
-## 2026-09-28 — Deepening no longer stops on a short PV (#652)
+## 2026-09-28: Deepening no longer stops on a short PV (#652)
 
 `should_stop_early()` stopped iterative deepening whenever the root PV was shorter than
 `depth - depth/2`, reading that as a forced line. A PV also ends at any terminal node, an in-search
@@ -319,7 +314,7 @@ Elo** (19980 games), non-regression; kept under the pre-agreed rule (keep unless
 lies wholly below 0). In the same games, fast 0.00 moves fell from 2.10% of the reference's moves
 (median depth 9) to 0.36% of the candidate's (median depth 20).
 
-## 2026-09-28 — Profile-screen noise calibration (#653)
+## 2026-09-28: Profile-screen noise calibration (#653)
 
 Profile builds read `STRAT_PROFILE_TIEBREAK_SEED`, which breaks `ScoreMoves` ties by a seeded hash
 of the move. It is a neutral ordering perturbation. Unset or 0 leaves the build node-identical,
@@ -332,7 +327,7 @@ about 16 minutes), the noise threshold is ±3.6% late-cut work and ±2.1% nodes.
 real 10% change is caught every time and a 5% change 77% of the time. Amplifiers: root best-move changes and LMR re-searches
 (inherent), and the #652 short-PV stop, which neutral seeds trigger (a discontinuity).
 
-## 2026-09-25 — Search profile comparison script (#637)
+## 2026-09-25: Search profile comparison script (#637)
 
 `Scripts/Compare-SearchProfile.ps1 -Before -After` runs two `-DSTRAT_SEARCH_PROFILE=1` builds over
 the same positions at a fixed depth (default 16), `Threads=1`, one process per position. It prints
@@ -351,7 +346,7 @@ move. Closes #637.
 
 ---
 
-## 2026-09-24 — Search profile counters: node types, null move, pruning, quiescence (#637)
+## 2026-09-24: Search profile counters: node types, null move, pruning, quiescence (#637)
 
 A `-DSTRAT_SEARCH_PROFILE=1` build prints four more lines after each search. `info string nodetypes`
 counts frames by depth band and expected Knuth-Moore type, tracked per ply, plus expected-cut frames
@@ -372,7 +367,7 @@ size and address. No slowdown. Second of two PRs for #637 items 3-7.
 
 ---
 
-## 2026-09-24 — Search profile counters: move ordering and LMR (#637)
+## 2026-09-24: Search profile counters: move ordering and LMR (#637)
 
 A build configured with `-DSTRAT_SEARCH_PROFILE=1` prints two more lines after each search:
 `info string ordering` (fail-high index bins, the late cut's move type, hash-move presence, and the
@@ -390,7 +385,7 @@ shared `/ORDER`, the delta read +0.09% (sd 0.82, range −1.13% to +0.89%). No s
 
 ---
 
-## 2026-09-24 — Aspiration window telemetry (#637)
+## 2026-09-24: Aspiration window telemetry (#637)
 
 Every build now prints `info string aspiration iterations .. faillow .. failhigh .. fullwindow ..
 failnodes ..` after each search: windows entered, fails by side, full-window fallbacks started, and
@@ -402,7 +397,7 @@ follow.
 
 ---
 
-## 2026-09-22 — UCI protocol output routed through an injectable writer (#605)
+## 2026-09-22: UCI protocol output routed through an injectable writer (#605)
 
 `UciWriter` (`StratEngine/UciWriter.h`) owns UCI's output: a line sink plus the mutex that
 serialises `send()`, replacing a static function that wrote `std::cout` under a function-local
@@ -422,7 +417,7 @@ match.
 
 ---
 
-## 2026-09-22 — A position dataset for evaluation questions (#593)
+## 2026-09-22: A position dataset for evaluation questions (#593)
 
 `Scripts/measure_eval_error.py` samples positions from the lab corpus with **no contested filter
 and no loss conditioning** — the one population Tier 1, Tier 2 and #481 cannot measure — and joins
@@ -443,7 +438,7 @@ better one — is on #110.
 
 No engine change and no Elo measurement.
 
-## 2026-09-21 — Mop-up aims at the bishop's corner in KBN vs K (#572)
+## 2026-09-21: Mop-up aims at the bishop's corner in KBN vs K (#572)
 
 `eval_mopup` rewarded driving the losing king toward **any** corner, which is correct for K+Q vs K
 and K+R vs K, where every corner mates. Bishop and knight mate only in a corner of the **bishop's**
@@ -483,7 +478,7 @@ diverges, from depth 7 — its tree reaches the class once the defending bishop 
 the term working rather than the gate leaking. Bench over three paired runs: 2.37 M nps against
 2.38 M, inside a ~3% per-build spread — no measurable cost, as expected behind the early-out.
 
-## 2026-09-21 — Most of Tier 2's faulted moves are horizon, not a missing evaluation term (#481 step 3)
+## 2026-09-21: Most of Tier 2's faulted moves are horizon, not a missing evaluation term (#481 step 3)
 
 The last open step of #481: when an outside judge faults a move, is the engine's own evaluation of
 the better move higher or lower than its evaluation of the move it played? Higher means the
@@ -528,7 +523,7 @@ saying attribution was unanswerable from the export; `Measurements/move-quality-
 tables. A stale sentence demoting an earlier, removed T5 was deleted rather than rewritten — a
 document states what is true now.
 
-## 2026-09-21 — The contested filter inflates Tier 2's phase gap but does not create it (#481 step 1)
+## 2026-09-21: The contested filter inflates Tier 2's phase gap but does not create it (#481 step 1)
 
 The last of three mundane explanations for Tier 2's phase profile. The ±150 cp contested filter
 selects on the engine's own score, so it is not independent of the quantity being measured, and it
@@ -565,7 +560,7 @@ the repository.
 
 ---
 
-## 2026-09-21 — Tier 2's phase profile survives a judge eight plies deeper (#483)
+## 2026-09-21: Tier 2's phase profile survives a judge eight plies deeper (#483)
 
 Tier 2 judges the engine with Stockfish at depth 12, roughly the engine's own search depth, so a
 myopic judge scoring a myopic engine could have manufactured T2's phase ordering out of position
@@ -597,7 +592,7 @@ costs warm in the production protocol — a 19× gap that invalidated this spike
 caught by the pricing pilot before the run committed. 47 minutes end to end on a 24-core box, inside
 its 60-minute budget; the tooling was throwaway and is not kept.
 
-## 2026-09-21 — The Tier 2 opening bucket is not a book-exit artifact (#590, #583)
+## 2026-09-21: The Tier 2 opening bucket is not a book-exit artifact (#590, #583)
 
 The lab's games start from an EPD book position at fullmove 9, so Tier 2's finding that the engine
 plays worst in the opening could have been an artifact of the rows just after book exit rather than
@@ -621,7 +616,7 @@ The table is run data, so it goes under this run's row detail in
 What the spike does not settle, and the finding now says: the band is distance from the corpus's
 fixed starting position, which is also time spent in the phase.
 
-## 2026-09-21 — The Tier 2 path-dependence limit carries a measured size (#588, #582)
+## 2026-09-21: The Tier 2 path-dependence limit carries a measured size (#588, #582)
 
 `Docs/MoveQuality.md` asserted that Tier 2 scores are path-dependent inside a game and that
 re-scoring a row in isolation "will not always reproduce it", with no size attached — a reader could
@@ -638,7 +633,7 @@ rather than a run. #481 is the consumer. Its reproduction gate is binary, so a d
 non-zero bias of any size rules out the single-pass scan it was considering, and the spike's
 prototype was deleted with its branch as filed.
 
-## 2026-09-20 — Move-quality method split from its data, and routed from the skill (#486, #584)
+## 2026-09-20: Move-quality method split from its data, and routed from the skill (#486, #584)
 
 `Docs/MoveQuality.md` was both the instrument and the ledger: 445 lines in which the method for
 reading a scan sat interleaved with the run tables of three particular runs, which are append-only
@@ -684,7 +679,7 @@ docstrings put this on the Tooling tier rather than the Docs tier, and both scri
 so the build and test legs correctly skip; `analyze_move_quality.py --self-test` passes and the real
 validation was resolving every link, anchor and cited path by script.
 
-## 2026-09-20 — Reading the margin at which a UCI spin option changes bestmove (#575)
+## 2026-09-20: Reading the margin at which a UCI spin option changes bestmove (#575)
 
 `Scripts/bisect_uci_option.py` bisects a UCI spin option over a FEN corpus and reports, per
 position, the smallest value at which `bestmove` changes. #574 used that technique once, against
@@ -721,7 +716,7 @@ by 1000). `--self-test` covers the bisection against a scripted stub engine over
 `--self-check` the corpus invariants; `Scripts/test_bisect_uci_option.py` runs both without an
 engine build. Local CPU only — no CI minutes, no lab batch.
 
-## 2026-09-19 — A stated basis for Release identity, and a tripwire under the alignment flag (#513)
+## 2026-09-19: A stated basis for Release identity, and a tripwire under the alignment flag (#513)
 
 Two properties of the shipping image that were previously assumed are now asserted.
 
@@ -762,7 +757,7 @@ byte-identical with `/MAP` and without — verified, and kept true by the reprod
 The check runs in `Validate-PrePR.ps1` on Build tier and on the Windows Release CI leg; it is in CI
 as well because the failure that needs no diff is a toolchain upgrade, which no local gate observes.
 
-## 2026-09-19 — clang-cl pins hot-function alignment at 64 bytes (#578)
+## 2026-09-19: clang-cl pins hot-function alignment at 64 bytes (#578)
 
 `/clang:-falign-functions=64` in `strat_configure_target`'s clang-cl branch. Spike #578 measured it
 against stock `main`: no measurable nps cost (+0.94% median over 9 paired node-identical runs, a sign
@@ -776,7 +771,7 @@ applying to the non-LTO test binary that nothing measures. It removes only the p
 that lives within a cache line; a size change still moves hot code across cache sets and pages, so
 the `/ORDER` relink escalation stands and #555 stays open.
 
-## 2026-09-18 — Quiescence refuses a mate score as a TT cutoff (#571)
+## 2026-09-18: Quiescence refuses a mate score as a TT cutoff (#571)
 
 `quiescence()` would take a cutoff from any usable entry, mate scores included. Every PV leaf probes
 there, so any iteration could report a mate it had never searched — a depth-1 root, whose children
@@ -813,7 +808,7 @@ and after. The corpus-wide 20.8% is not re-measured here.
 
 ---
 
-## 2026-09-18 — Contempt covers the draws the evaluator settles (#452)
+## 2026-09-18: Contempt covers the draws the evaluator settles (#452)
 
 `Evaluate()`'s `endgame_scale == 0` early-out returns `dead_draw_score_[side to move]` instead of
 the constant `GameValues::Draw`, and `AIPerplex::Search()` sets that pair once through
@@ -874,7 +869,7 @@ rising 3076 to 3685 over identical openings. The Elo did not move. Row and metho
 
 ---
 
-## 2026-09-18 — Remove assess_iteration_quality CASE 4 (SCORE_DROP) (#567)
+## 2026-09-18: Remove assess_iteration_quality CASE 4 (SCORE_DROP) (#567)
 
 `assess_iteration_quality()` loses its fourth case, the `RejectionReason::SCORE_DROP` test that
 rejected an interrupted iteration whose score had collapsed to a drawn value from a previously
@@ -897,7 +892,7 @@ result that straddles this change.
 
 ---
 
-## 2026-09-17 — Strength lab per-engine UCI options; contempt on drawn scores (#564, #452)
+## 2026-09-17: Strength lab per-engine UCI options; contempt on drawn scores (#564, #452)
 
 The CI strength lab takes `candidate_uci_options` and `reference_uci_options`, whitespace-separated
 `Name=Value` pairs forwarded to that engine alone as fastchess `option.Name=Value`. A feature that
@@ -934,7 +929,7 @@ counts exactly with no nps difference outside the host's own noise.
 
 ---
 
-## 2026-09-16 — Search tuning catalogue; validated tuning; UCI tuning options
+## 2026-09-16: Search tuning catalogue; validated tuning; UCI tuning options
 
 `SearchTuning` is now generated from one catalogue, `StratEngine/SearchTuning.def`: each entry
 declares a field's type, default, accepted domain, JSON binding, UCI name and build availability.
@@ -960,7 +955,7 @@ changes; an invalid value is reported with an `info string` and changes nothing.
 
 ---
 
-## 2026-09-15 — Legacy player stack retired; player types renumbered (#559)
+## 2026-09-15: Legacy player stack retired; player types renumbered (#559)
 
 Deleted `AIBasic`, `ABIterative`, `AIAgent`, `PlayerAiBase`, `PlayerAiIterBase`, `PlayerBase` and
 `Utils/Subscriber.h`, plus what only they used: `MoveSorter::SortMoves`/`SortMovesIter`,
@@ -980,7 +975,7 @@ alternating passes against `7689501`: +0.03% median paired delta (spread 2.4-2.5
 
 ---
 
-## 2026-09-15 — Async search launch moved into AIPerplex (#557)
+## 2026-09-15: Async search launch moved into AIPerplex (#557)
 
 `AIPerplex` owns the UCI search thread: `StartAsync`, `StopAndWait`, `Wait`, `IsSearching`.
 `UciHandler` loses `search_thread_`, `searching_`, `configured_threads_`, `init_ai()`,
@@ -1000,7 +995,7 @@ No review findings rejected. Third of three changes in the search telemetry / as
 
 ---
 
-## 2026-09-15 — Search trigger counters regrouped into SearchTelemetry (#556)
+## 2026-09-15: Search trigger counters regrouped into SearchTelemetry (#556)
 
 `StratEngine/SearchTelemetry.h` holds one struct per trigger counter (`SingularStats`,
 `FrontierFutilityStats`, `LateMovePruningStats`, plus `TTStats`), each with `static constexpr bool
@@ -1018,7 +1013,7 @@ pin covers it); plan line references (they describe `origin/main`).
 
 ---
 
-## 2026-09-15 — Futility cost probe removed
+## 2026-09-15: Futility cost probe removed
 
 The #498 probe (`STRAT_FUTILITY_PROBE`, its 27 `ThreadData`/`SearchResult` counters, the aggregation and
 the `info string futilityprobe` line) is deleted. It existed to size futility pruning before a guard was
@@ -1030,7 +1025,7 @@ telemetry / async launch plan.
 
 ---
 
-## 2026-09-15 — Depth-two late move pruning (#547)
+## 2026-09-15: Depth-two late move pruning (#547)
 
 At a depth-2 non-PV null-window node (not in check, not an exclusion frame, window outside mate
 range), a quiet move from the 13th legal move onward is skipped. Captures, promotions, both killers,
@@ -1048,7 +1043,7 @@ base `30a5d46`: **+16.48 ± 3.50 Elo** over 19,980 games, gain (`Measurements/ci
 
 ---
 
-## 2026-09-14 — TT age advances once per search (#544)
+## 2026-09-14: TT age advances once per search (#544)
 
 `TranspositionTable::newSearch()` (was `newSearchIteration()`) runs once in `AIPerplex::Search()`
 instead of once per iterative-deepening depth. The 8-bit age used to move ~14 per move and wrap every
@@ -1064,7 +1059,7 @@ Elo** over 19,980 games, non-regression (`Measurements/ci-per-change.md`).
 
 ---
 
-## 2026-09-13 — Main nodes count only searched moves; measurement contract 2 (#402)
+## 2026-09-13: Main nodes count only searched moves; measurement contract 2 (#402)
 
 `pvs()` incremented `nodes_searched` before `DoMove()`, so it counted pseudo-legal moves `DoMove()`
 rejects and moves frontier futility skips; `quiescence()` counted only legal searched edges. The
@@ -1081,7 +1076,7 @@ interrupted searches can stop at a different point.
 
 ---
 
-## 2026-09-13 — TT capacity sweep: `Scripts/measure_tt_capacity.py` (#442)
+## 2026-09-13: TT capacity sweep: `Scripts/measure_tt_capacity.py` (#442)
 
 Replays strength-lab PGN games through a `-DSTRAT_TT_STATS=1` build at several `Hash` sizes and
 prints the ttstats counters per size. Each game is searched by two processes, one per side, so table
@@ -1102,7 +1097,7 @@ points and depth not at all, and a single search never pressures the table. A la
 keeps older searches' entries, which the cutoff rate shows are barely reused. That answers #442's
 capacity half without a lab run.
 
-## 2026-09-13 — TT probe/store counters behind `STRAT_TT_STATS` (#532)
+## 2026-09-13: TT probe/store counters behind `STRAT_TT_STATS` (#532)
 
 `hashfull` says how full the table is, not whether that occupancy earns anything. A build configured
 with `-DSTRAT_TT_STATS=1` now prints `info string ttstats` after each search: main and quiescence
@@ -1122,7 +1117,7 @@ the stats build (90 lines, 6 positions, depth 12). `Run-Bench.ps1` depth 14, 4 i
 aggregate nps: main 2.92–2.96M, default 2.99–3.09M, stats 2.93–3.14M — no slowdown; the default's
 lead is not claimed as a gain.
 
-## 2026-09-12 — Compact transposition-table storage (#442)
+## 2026-09-12: Compact transposition-table storage (#442)
 
 The four-way TT bucket drops from 96 to 64 bytes and is now `alignas(64)`, so a probe touches one
 cache line instead of two or three. Storage becomes a private 16-byte `PackedEntry` — key 8, value 2,
@@ -1148,7 +1143,7 @@ no second run was bought. A separate run bundling the layout with `Hash=256` cam
 **+0.09 +/- 3.34** and isolates nothing; both rows are in `Measurements/ci-per-change.md`. Whether
 extra capacity is worth anything is left to the probe counters of #532, not to more games.
 
-## 2026-09-11 — Frontier futility pruning at depth 1 ships (#504)
+## 2026-09-11: Frontier futility pruning at depth 1 ships (#504)
 
 At a depth-1 non-PV node, a quiet later move is now skipped when the parent's static evaluation plus
 200 cp still does not reach alpha. This is #87's Stage 2, the move-level alpha-side counterpart of
@@ -1217,7 +1212,7 @@ failing run and no flip.
 
 ---
 
-## 2026-09-11 — Strength runs accept shared, validated CMake defines (#505)
+## 2026-09-11: Strength runs accept shared, validated CMake defines (#505)
 
 The manually dispatched strength lab now accepts whitespace-separated `-DNAME=VALUE` arguments,
 validates them before any build, and passes the same argument array to the candidate and reference
@@ -1229,7 +1224,7 @@ applied to both engines.
 
 ---
 
-## 2026-09-10 — clang-cl dependency records survive a ccache hit again (#519)
+## 2026-09-10: clang-cl dependency records survive a ccache hit again (#519)
 
 The defect #510 found is fixed. When ccache sits in front of clang-cl under Ninja, `CMakeLists.txt`
 now sets `CMAKE_DEPFILE_FLAGS_CXX=/showIncludes` and `CMAKE_CXX_DEPFILE_FORMAT=msvc` — the path CMake
@@ -1258,7 +1253,7 @@ numbers. Residual risk and the three removal conditions:
 
 ---
 
-## 2026-09-10 — ccache `base_dir` probed and rejected; a hit erases Ninja's dependency record (#510)
+## 2026-09-10: ccache `base_dir` probed and rejected; a hit erases Ninja's dependency record (#510)
 
 `base_dir` is not adopted, and the probe that settled it turned up a larger defect in the wiring
 #515 had just landed. Both are recorded in `Docs/Workflow.md` → Compiler cache; the defect is #519.
@@ -1290,7 +1285,7 @@ exist. `Docs/CI.md` records separately that CI is unaffected (#514).
 
 ---
 
-## 2026-09-10 — ccache fronts the local clang-cl build, with a self-repairing launcher lifecycle (#515)
+## 2026-09-10: ccache fronts the local clang-cl build, with a self-repairing launcher lifecycle (#515)
 
 `build.ps1` now compiles the clang-cl presets through ccache when it is installed. Measured on a full
 `all` build of this branch: **44.1 s** with ccache off PATH, **12.5 s** on a wiped tree against a warm
@@ -1356,7 +1351,7 @@ lives in `build.ps1` comments, in `Docs/Workflow.md` → Compiler cache, or in t
 
 ---
 
-## 2026-09-09 — Reverse futility follow-ups: one zugzwang floor, two fail-hard regression tests (#87)
+## 2026-09-09: Reverse futility follow-ups: one zugzwang floor, two fail-hard regression tests (#87)
 
 The two `search-reviewer` observations deliberately held out of the shipping PR, so that the binary
 which merged was byte-for-byte the one the strength lab measured.
@@ -1387,7 +1382,7 @@ free move — is recorded in the measurement row as something the lab run does n
 
 ---
 
-## 2026-09-09 — Reverse futility pruning ships (#87)
+## 2026-09-09: Reverse futility pruning ships (#87)
 
 The CI strength lab measured the feature at **+44.62 +/- 3.66 Elo** against its merge base `12d5e19`
 — 19,980 games at 10+0.1, GCC/Linux both sides, `Threads=1`, run `34288048348`, all 18 shards
@@ -1418,7 +1413,7 @@ strictly less than what the lab measured, which is why neither was adopted here:
 is the measured one. Which positions and depths the guard costs, and whether a different margin buys
 them back without giving up the gain, is its own investigation.
 
-## 2026-09-08 — Reverse futility pruning, behind its own gate (#87 Stage 1)
+## 2026-09-08: Reverse futility pruning, behind its own gate (#87 Stage 1)
 
 A shallow non-PV node whose static evaluation stands a margin above beta is now reported as a
 fail-high without being searched. Stage 0 (#498) said the surface was worth the evaluation it costs;
@@ -1459,7 +1454,7 @@ depth of 5, which is a mate-category failure and therefore fatal to the suite. T
 verified when it was written. See the entry above for what the failure actually is and how it was
 resolved.
 
-## 2026-09-08 — Futility cost probe (#498)
+## 2026-09-08: Futility cost probe (#498)
 
 Stage 0 of #87. `pvs()` computes no static evaluation on an ordinary node, so every futility variant
 would have to add one, and that cost is first-order enough to decide whether the feature is worth
@@ -1497,7 +1492,7 @@ The measurement is per-round paired, not build-by-build. This box drifts several
 minutes, and an earlier build-by-build pass put a slow period entirely on one build, which reads as
 that build's cost.
 
-## 2026-09-08 — Tier 2 blunder evidence export (#484)
+## 2026-09-08: Tier 2 blunder evidence export (#484)
 
 `Scripts/analyze_external_quality.py --worst-jsonl PATH` writes every row it counts as an oracle
 blunder as a JSONL record, instead of only the twenty the report prints. The point is attribution:
@@ -1533,7 +1528,7 @@ Landed as five packages (A0–A4) against a design retained in `.claude/plans/re
 sampling and replay stages it also scopes. 136 Python tests; verified against the real oracle for
 export-on/off parity.
 
-## 2026-09-07 — MoveQuality.md: record the oracle-reuse result, and trim (#414 follow-up)
+## 2026-09-07: MoveQuality.md: record the oracle-reuse result, and trim (#414 follow-up)
 
 Adds the third oracle-lifetime architecture to the cost section and shortens the document by 76
 lines, from 502 to 426, without dropping a number.
@@ -1553,7 +1548,7 @@ level-material addendum's two runs share a table instead of repeating their pros
 calibration tables become one; and Finding 1's retraction stops restating what Tier 2's T1 and T2
 already say. Every measurement, interval and issue reference is preserved.
 
-## 2026-09-07 — Tier 2: external-engine ACPL adjudication of strength-lab PGNs (#414)
+## 2026-09-07: Tier 2: external-engine ACPL adjudication of strength-lab PGNs (#414)
 
 `Scripts/analyze_external_quality.py` replays a strength-lab corpus under an outside engine
 (Stockfish 19 at depth 12, kept in `EngineTesting/` outside the checkout because it is GPL-3) and
@@ -1584,7 +1579,7 @@ engine plays worst where its own annotations say it is strongest. Numbers, inter
 Tier 2-specific limits are in `Docs/MoveQuality.md`; #481 tracks the opening result and the
 selection-effect confound that has to be excluded before acting on it.
 
-## 2026-09-06 — Singular tests searched deeper than they assert (#479)
+## 2026-09-06: Singular tests searched deeper than they assert (#479)
 
 `SearchSingularTests.cpp` ran its eligibility cases at depth 8, which is what `singular_min_depth`
 ships as — not what any of them asserts. Every one of those gates is depth-independent, and the
@@ -1610,7 +1605,7 @@ pre-existing rather than caused by the shallower search:
   are wanted; only the pair can be tested. Noted at the test, as with the three hardening changes
   already documented there.
 
-## 2026-09-06 — Singular extensions, compiled out of the shipping engine (#95)
+## 2026-09-06: Singular extensions, compiled out of the shipping engine (#95)
 
 `AIPerplex::pvs()` can search a transposition-table move one ply deeper when a reduced-depth
 verification search proves every alternative fails below a depth-scaled margin. **The feature is
@@ -1661,7 +1656,7 @@ now carries one at `ply >= MAX_PLY - 1` (matching `quiescence()`'s), placed firs
 `excluded_move[ply]` read — `pvs()` writes `last_move_was_null[ply + 1]`, which is what sets the
 limit at `MAX_PLY - 1`. `Docs/EngineContracts.md` gains the fact that `SearchTuning` is unreachable
 over UCI, which is why the two configurations are two builds rather than a setoption.
-## 2026-09-06 — Retained-plan state named (#400)
+## 2026-09-06: Retained-plan state named (#400)
 
 `.claude/plans/retained/` holds plans kept because something still cites them:
 `tsan-lazy-smp.md`, `public-repo-and-strength-lab.md`, `elo-baseline-measurement.md`,
@@ -1684,7 +1679,7 @@ tree, D5's unverified assumption that the self-test set would pass on Linux, is 
 
 ---
 
-## 2026-09-05 — Minor-piece outposts (#112)
+## 2026-09-05: Minor-piece outposts (#112)
 
 `Evaluator::eval_outposts` pays a knight or bishop for standing on a square a friendly pawn defends
 that no enemy pawn on an adjacent file can still advance to attack. Nothing else in the evaluator
@@ -1728,7 +1723,7 @@ knight/bishop split and the `mg == eg` choice are unmeasured and left to #117.
 
 Part of the #110 eval epic.
 
-## 2026-09-05 — Collapse evaluator selection to one concrete evaluator (#457)
+## 2026-09-05: Collapse evaluator selection to one concrete evaluator (#457)
 
 `EvalManager` (the `EvalTypes` enum, its factory) and the unused `EvalSimple` evaluator are gone;
 `EvalComplex` is renamed `Evaluator`, a standalone, non-`final` concrete class holding the same
@@ -1752,7 +1747,7 @@ per-iteration output and best moves at `Threads=1`.
 
 ---
 
-## 2026-09-04 — Stalemate at the quiescence horizon (#234)
+## 2026-09-04: Stalemate at the quiescence horizon (#234)
 
 Out of check, quiescence generates captures only, so an empty move list said nothing about legality
 and a stalemate at the horizon kept the static score of a position that is a draw. In KQ vs K at
@@ -1766,7 +1761,7 @@ each worth about 2% of nps. As landed the bench is unchanged over 16 paired runs
 
 ---
 
-## 2026-09-03 — King safety: shelter, storm, king-file openness and attack pressure (#97)
+## 2026-09-03: King safety: shelter, storm, king-file openness and attack pressure (#97)
 
 Four middlegame-only terms, landed as four PRs. PR 1 (#453) moved the non-pawn attack generation into
 one pass reduced to counts in `EvalContext::attacks`, behaviour-preserving and exactly equivalent.
@@ -1795,7 +1790,7 @@ scores the same shelter as a castled Kg1 with f2/g2/h2), so it was not dropped o
 remains open is tracked in #460 — the three-term overlap on one shield pawn, and the two ablation
 configurations no run covered.
 
-## 2026-09-02 — A fake engine for `UciDriver.ps1`, and self-tests that reach a covered file
+## 2026-09-02: A fake engine for `UciDriver.ps1`, and self-tests that reach a covered file
 
 `Invoke-UciSearchToBestMove` is the only code in `Scripts/` that talks to a live engine, and a
 successful bench pass exercised exactly one of its paths: the happy one. The 600 s ceilings, the
@@ -1827,7 +1822,7 @@ another script covers this one, and the claim is now verified whatever the cover
 check had been reachable only for Build-tier entries, so a Tooling coverer losing its `-SelfTest`
 would have removed coverage without a word.
 
-## 2026-09-02 — Pawnless rook against rook is a scaled class
+## 2026-09-02: Pawnless rook against rook is a scaled class
 
 `EndgameScale()` walked past pawnless K+R vs K+R: with one rook each and no minors,
 `PawnlessRookScale()` fell through to `ENDGAME_SCALE_MAX`. Material is level in that class, so the
@@ -1854,7 +1849,7 @@ along with White's colour advantage. `Docs/MoveQuality.md` carries the numbers a
 their replication on run `33568346899`, and why a level class's rows stay pooled-only even so: split
 by build they measure the builds' scales rather than their play. Closes #436.
 
-## 2026-09-01 — Elo ledgers move to `Measurements/`, one file per table
+## 2026-09-01: Elo ledgers move to `Measurements/`, one file per table
 
 `Docs/EloLog.md` held four tables whose only structural separation was a heading, and every row
 buried its data — games, LLR, bounds, book, verdict — inside a paragraph that then restated the
@@ -1880,7 +1875,7 @@ alongside the recording convention; its interpretation and sizing material folds
 two `reference/` files. `Docs/MatchRunnerUpgrade.md` stays in `Docs/` — it is a chore procedure a
 person follows, not a record — with its links repointed. Closes #227, closes #437.
 
-## 2026-09-01 — The match harness classifies fastchess diagnostics by wording
+## 2026-09-01: The match harness classifies fastchess diagnostics by wording
 
 Both harnesses scanned the match log for the keywords `illegal|disconnect|stall|loses on time`,
 minus a negative filter for `Illegal PV move`. Two defects followed. The tolerated class was named
@@ -1905,7 +1900,7 @@ cannot be checked by a run that happens not to emit them. `Docs/MatchRunnerUpgra
 four output checks a version bump is gated on and the traps found running them; `EloMeasurement.md`
 carries a pointer to it rather than the procedure, which is read far more often than it applies.
 
-## 2026-09-01 — fastchess pinned to v1.8.2-alpha
+## 2026-09-01: fastchess pinned to v1.8.2-alpha
 
 The match runner moves from v1.8.0-alpha (Jan 2026) to v1.8.2-alpha, in the strength-lab workflow
 and in the local `EngineTesting\fastchess.exe` the `Docs/EloMeasurement.md` setup record pins.
@@ -1929,7 +1924,7 @@ PV is tolerated, an illegal move played is a hard failure, on both versions alik
 
 ---
 
-## 2026-08-31 — Scaled rook endings, the wrong-bishop fortress and the mop-up gate (#128, part 2)
+## 2026-08-31: Scaled rook endings, the wrong-bishop fortress and the mop-up gate (#128, part 2)
 
 The rest of #128, on top of the exact-draw classes below.
 
@@ -2049,7 +2044,7 @@ two rook factors, the narrowed mop-up gate and the disabled quiescence pruners t
 and the row bounds any regression at about 1.5 Elo. The gain the 3.3%-of-games figure suggests does
 not appear at this time control: a correct score at a leaf is worth what the search does with it.
 
-## 2026-08-31 — Score material that cannot mate as a draw (#128, part 1)
+## 2026-08-31: Score material that cannot mate as a draw (#128, part 1)
 
 `EvalComplex` had no concept of drawish material: a bare minor against a lone king scored ~+300 and
 two knights ~+580. `EndgameScale()` (`StratEngine/Eval.cpp`) classifies the position from per-color
@@ -2096,7 +2091,7 @@ not on either side's pieces, so its per-color columns print dashes.
   not evidence: a constant scale lets the compiler fold the entire scale application away, so the
   probe measured a build with both halves gone.
 
-## 2026-08-30 — Prune PR-scoped caches when the PR closes (#427)
+## 2026-08-30: Prune PR-scoped caches when the PR closes (#427)
 
 `delete-merged-branch.yml` renamed to `pr-closed-cleanup.yml` and given a second job. Nothing
 referenced the old filename.
@@ -2126,7 +2121,7 @@ The job runs on every close, not merges only: PR #422 was closed unmerged and st
 
 ---
 
-## 2026-08-30 — ccache close-out: kill criterion read, degradation path tested (#385)
+## 2026-08-30: ccache close-out: kill criterion read, degradation path tested (#385)
 
 Closes #92 and #377. No functional change — this is the evidence the ccache work was justified, plus
 the one fallback path that had never run.
@@ -2167,7 +2162,7 @@ the one fallback path that had never run.
   `.github/`, `Docs/CI.md`, `Docs/Changelog.md` and #281 first; #380 and #383 superseded the
   Release-only and not-byte-reproducible rows, and `Docs/CI.md` carries the superseding facts.
 
-## 2026-08-29 — LMR depth clamp keeps one main-tree ply
+## 2026-08-29: LMR depth clamp keeps one main-tree ply
 
 ### Changed
 
@@ -2182,7 +2177,7 @@ the one fallback path that had never run.
 - Worth **+9.64 +/- 3.63 Elo** over the merge base (19,980 games, 10+0.1, run `33215162562`);
   `Docs/EloLog.md` carries the row. Closes #363.
 
-## 2026-08-28 — SEE pruning in quiescence
+## 2026-08-28: SEE pruning in quiescence
 
 ### Added
 
@@ -2232,7 +2227,7 @@ could not beat alpha. On `4k3/8/4p3/3n4/8/8/8/3RK3 w - - 0 1` the recapturing pa
 `Rxd5` wins a piece, but SEE scores it losing and quiescence skips it — costing one ply of horizon,
 recovered by the main search at the next depth.
 
-## 2026-08-27 — SEE-based capture ordering
+## 2026-08-27: SEE-based capture ordering
 
 ### Added
 
@@ -2292,7 +2287,7 @@ generated move.
 
 ---
 
-## 2026-08-27 — quiescence orders evasions by history, not by piece weight
+## 2026-08-27: quiescence orders evasions by history, not by piece weight
 
 ### Fixed
 
@@ -2363,7 +2358,7 @@ Design: `.claude/plans/in-progress/quiescence-move-ordering-and-see.md`. First o
 follows with SEE ordering and SEE pruning.
 
 ---
-## 2026-08-27 — LMR reduces by legal moves searched, not by list index
+## 2026-08-27: LMR reduces by legal moves searched, not by list index
 
 ### Fixed
 
@@ -2388,7 +2383,7 @@ follows with SEE ordering and SEE pruning.
 
 ---
 
-## 2026-08-26 — pvs() uses a TT bound only to cut off
+## 2026-08-26: pvs() uses a TT bound only to cut off
 
 ### Fixed
 
@@ -2412,7 +2407,7 @@ follows with SEE ordering and SEE pruning.
 
 ---
 
-## 2026-08-26 — the lint Gate analyses changed headers
+## 2026-08-26: the lint Gate analyses changed headers
 
 ### Added
 
@@ -2445,7 +2440,7 @@ follows with SEE ordering and SEE pruning.
 
 ---
 
-## 2026-08-25 — quiescence may use MAIN TT entries (#337, PR #392)
+## 2026-08-25: quiescence may use MAIN TT entries (#337, PR #392)
 
 ### Changed
 
@@ -2477,7 +2472,7 @@ follows with SEE ordering and SEE pruning.
 
 ---
 
-## 2026-08-24 — ccache on the Windows Debug build; `/Z7` (#380)
+## 2026-08-24: ccache on the Windows Debug build; `/Z7` (#380)
 
 ### Changed
 
@@ -2513,7 +2508,7 @@ follows with SEE ordering and SEE pruning.
 
 ---
 
-## 2026-08-24 — The Windows build is reproducible (#381)
+## 2026-08-24: The Windows build is reproducible (#381)
 
 ### Added
 
@@ -2554,7 +2549,7 @@ follows with SEE ordering and SEE pruning.
 
 ---
 
-## 2026-08-24 — ccache on the Windows Release build (#377)
+## 2026-08-24: ccache on the Windows Release build (#377)
 
 ### Added
 
@@ -2603,7 +2598,7 @@ follows with SEE ordering and SEE pruning.
 
 ---
 
-## 2026-08-24 — Catch2 builds as unity units, recovering #371's Windows build cost (#372)
+## 2026-08-24: Catch2 builds as unity units, recovering #371's Windows build cost (#372)
 
 ### Changed
 
@@ -2632,7 +2627,7 @@ follows with SEE ordering and SEE pruning.
 
 ---
 
-## 2026-08-24 — ccache on the Linux CI builds (#92)
+## 2026-08-24: ccache on the Linux CI builds (#92)
 
 ### Added
 
@@ -2672,7 +2667,7 @@ follows with SEE ordering and SEE pruning.
   "~90 s" estimate; it was costed against `build-linux (Release)` as sole critical path, which #372
   showed it is not.
 
-## 2026-08-23 — Dependencies consumed as CMake imported targets (#166)
+## 2026-08-23: Dependencies consumed as CMake imported targets (#166)
 
 ### Changed
 
@@ -2716,7 +2711,7 @@ follows with SEE ordering and SEE pruning.
 
 ---
 
-## 2026-08-23 — Dependency version bumps (#366, #367)
+## 2026-08-23: Dependency version bumps (#366, #367)
 
 ### Changed
 
@@ -2733,7 +2728,7 @@ follows with SEE ordering and SEE pruning.
 - Target-consumption migration (`spdlog::spdlog_header_only` etc., issue #166) landed as a separate
   follow-up PR — see the entry above.
 
-## 2026-08-21 — Concrete production-search boundary (#256)
+## 2026-08-21: Concrete production-search boundary (#256)
 
 ### Changed
 
@@ -2767,7 +2762,7 @@ follows with SEE ordering and SEE pruning.
 
 ---
 
-## 2026-08-21 — One reversible position record; the outcome leaves the board (#348 stage 2)
+## 2026-08-21: One reversible position record; the outcome leaves the board (#348 stage 2)
 
 Design: `.claude/plans/gameinfo-position-record-split.md`.
 
@@ -2797,7 +2792,7 @@ Design: `.claude/plans/gameinfo-position-record-split.md`.
 
 ---
 
-## 2026-08-20 — Board is the single authority for position metadata (#348 stage 1)
+## 2026-08-20: Board is the single authority for position metadata (#348 stage 1)
 
 Design: `.claude/plans/gameinfo-board-single-authority.md`.
 
@@ -2856,7 +2851,7 @@ into. Re-scopes #292: the per-node copy is gone, `gameInfoHistory_` remains.
 
 ---
 
-## 2026-08-17 — A same-key TT store now obeys the replacement policy (#319)
+## 2026-08-17: A same-key TT store now obeys the replacement policy (#319)
 
 ### Fixed
 
@@ -2930,7 +2925,7 @@ because the PV itself gets longer once the ordering holds.
   `elo-reference-v2`: `Run-EloMatch.ps1` refuses `-Sprt` against the fixed anchor, which would measure
   the sum of every change since it. Both rows, and why they differ, in `Docs/EloLog.md`.
 
-## 2026-08-17 — The previous-iteration PV ordering tier was dead, and is removed (#299, #310)
+## 2026-08-17: The previous-iteration PV ordering tier was dead, and is removed (#299, #310)
 
 ### Removed
 
@@ -2986,7 +2981,7 @@ per-position luck, and eight positions cannot resolve it in either direction.
 - **No Elo match**, and this is the case the equivalence check exists to replace rather than
   supplement: bit-identical output leaves no strength question to ask.
 
-## 2026-08-17 — A script for the fixed-depth equivalence check (#330)
+## 2026-08-17: A script for the fixed-depth equivalence check (#330)
 
 ### Added
 
@@ -3019,7 +3014,7 @@ per-position luck, and eight positions cannot resolve it in either direction.
 - `-AllowSameBinary` against one binary reports identical, so the harness contributes no noise of its
   own.
 
-## 2026-08-17 — An aborted search frame mutates nothing (#299, #310)
+## 2026-08-17: An aborted search frame mutates nothing (#299, #310)
 
 ### Fixed
 
@@ -3113,7 +3108,7 @@ per-position luck, and eight positions cannot resolve it in either direction.
   decisions: `.claude/plans/abort-unwind-and-pv-integrity.md` (D1-D5, with D4 amended by this
   review), retired once discharged — read it at the commit that deleted it.
 
-## 2026-08-17 — Node limit (`go nodes`) as a deterministic abort seam (#326)
+## 2026-08-17: Node limit (`go nodes`) as a deterministic abort seam (#326)
 
 ### Added
 
@@ -3163,7 +3158,7 @@ until #299's fix lands, and must not be used to generate reference data before t
   `.claude/plans/abort-unwind-and-pv-integrity.md` (D8), retired once discharged — read it at the
   commit that deleted it.
 
-## 2026-08-17 — `build.ps1` reports a stale artifact instead of leaving it to be measured
+## 2026-08-17: `build.ps1` reports a stale artifact instead of leaving it to be measured
 
 ### Added
 
@@ -3195,7 +3190,7 @@ until #299's fix lands, and must not be used to generate reference data before t
   (`Measure-UciLatency.ps1`, and the documented `Run-Bench.ps1 -Exe (Get-BuildArtifact.ps1)` form) are
   **not** covered yet; that guard is filed separately.
 
-## 2026-08-14 — Tactical suite: assert equivalent continuations, not just the key move (#237)
+## 2026-08-14: Tactical suite: assert equivalent continuations, not just the key move (#237)
 
 ### Changed
 
@@ -3219,7 +3214,7 @@ until #299's fix lands, and must not be used to generate reference data before t
 
 ---
 
-## 2026-08-13 — Enforced clang-tidy Gate and Nightly Deep (#284)
+## 2026-08-13: Enforced clang-tidy Gate and Nightly Deep (#284)
 
 ### Changed
 
@@ -3234,7 +3229,7 @@ until #299's fix lands, and must not be used to generate reference data before t
 
 ---
 
-## 2026-08-11 — Build tooling: clang-format and clang-tidy lint gate (#175)
+## 2026-08-11: Build tooling: clang-format and clang-tidy lint gate (#175)
 
 ### Added
 
@@ -3276,7 +3271,7 @@ each) and identical best moves at depth 12, `Threads=1`, before versus after.
 
 ---
 
-## 2026-08-11 — Configurable UCI transposition-table memory (#254)
+## 2026-08-11: Configurable UCI transposition-table memory (#254)
 
 ### Added
 
@@ -3301,7 +3296,7 @@ not search-clock time.
 
 ---
 
-## 2026-08-11 — Tooling: reusable UCI latency probe, and a log of received commands (#269)
+## 2026-08-11: Tooling: reusable UCI latency probe, and a log of received commands (#269)
 
 ### Added
 
@@ -3333,7 +3328,7 @@ the command loop, off the search path.
 
 ---
 
-## 2026-08-09 — Fix: the engine could play an illegal move after `bestmove` (#245)
+## 2026-08-09: Fix: the engine could play an illegal move after `bestmove` (#245)
 
 ### Fixed
 
@@ -3366,7 +3361,7 @@ artifact.
 
 ---
 
-## 2026-08-09 — Retune the passer bonus after a measured regression (#116)
+## 2026-08-09: Retune the passer bonus after a measured regression (#116)
 
 ### Changed
 
@@ -3397,7 +3392,7 @@ its speed cost, is the only instrument that settles this.
 
 ---
 
-## 2026-08-09 — Passed-pawn bonus and backwards-pawn penalty (#116)
+## 2026-08-09: Passed-pawn bonus and backwards-pawn penalty (#116)
 
 ### Added
 
@@ -3445,7 +3440,7 @@ within each build.
 
 ---
 
-## 2026-08-08 — ThreadSanitizer for the Lazy SMP helpers (#184)
+## 2026-08-08: ThreadSanitizer for the Lazy SMP helpers (#184)
 
 ### Added
 
@@ -3488,7 +3483,7 @@ when the binary still carried the injected race. The job's first green run took 
 
 ---
 
-## 2026-08-08 — `Run-PerftCheck.ps1`, and the corpus sweep recorded (#196)
+## 2026-08-08: `Run-PerftCheck.ps1`, and the corpus sweep recorded (#196)
 
 ### Added
 
@@ -3523,7 +3518,7 @@ exit 1). A live 3,000-case run exercised the run path.
 
 ---
 
-## 2026-08-08 — `Run-EloMatch.ps1` refuses an SPRT against the fixed anchor (#159)
+## 2026-08-08: `Run-EloMatch.ps1` refuses an SPRT against the fixed anchor (#159)
 
 ### Changed
 
@@ -3548,7 +3543,7 @@ Validation: `Tooling` tier, plus the four argument paths exercised directly — 
 
 ---
 
-## 2026-08-07 — Mobility evaluation for knight, bishop, rook and queen (#98, #113)
+## 2026-08-07: Mobility evaluation for knight, bishop, rook and queen (#98, #113)
 
 ### Added
 
@@ -3611,7 +3606,7 @@ had not been updated for the new row.
 
 ---
 
-## 2026-08-07 — Tactical suite is green again: QFORK-001 out, seven depth-verified positions in (#235)
+## 2026-08-07: Tactical suite is green again: QFORK-001 out, seven depth-verified positions in (#235)
 
 ### Removed
 
@@ -3644,7 +3639,7 @@ they were caught before being committed rather than a month afterwards.
 
 ---
 
-## 2026-08-06 — Strength lab defaults to 18 shards, so a run stops blocking CI (#217 Experiment A)
+## 2026-08-06: Strength lab defaults to 18 shards, so a run stops blocking CI (#217 Experiment A)
 
 ### Changed
 
@@ -3679,7 +3674,7 @@ slots.
 
 ---
 
-## 2026-08-06 — CI split out; standing decisions written down (#209 follow-up)
+## 2026-08-06: CI split out; standing decisions written down (#209 follow-up)
 
 ### Changed
 
@@ -3713,7 +3708,7 @@ default, verified present, cost nothing to keep, and stay.
 
 ---
 
-## 2026-08-06 — External input reports and exits cleanly (#178)
+## 2026-08-06: External input reports and exits cleanly (#178)
 
 ### Fixed
 
@@ -3756,7 +3751,7 @@ the guard inert. Enabling it needs a measurement, not a bugfix. Design:
 
 ---
 
-## 2026-08-06 — Strength lab runs sharded, pooled pentanomially (M5)
+## 2026-08-06: Strength lab runs sharded, pooled pentanomially (M5)
 
 ### Changed
 
@@ -3802,7 +3797,7 @@ The allowlist now covers `.github/scripts/`. Design:
 
 ---
 
-## 2026-08-05 — Time budget is bounded by the clock (#204)
+## 2026-08-05: Time budget is bounded by the clock (#204)
 
 ### Fixed
 
@@ -3832,7 +3827,7 @@ the evidence that normal play did not move. Design: `.claude/plans/time-budget-c
 
 ---
 
-## 2026-08-05 — `Get-BuildArtifact.ps1` fails on a missing binary by default
+## 2026-08-05: `Get-BuildArtifact.ps1` fails on a missing binary by default
 
 ### Changed
 
@@ -3853,7 +3848,7 @@ something that is not there.
 
 ---
 
-## 2026-08-05 — A rejected FEN no longer leaves the previous position on the board
+## 2026-08-05: A rejected FEN no longer leaves the previous position on the board
 
 Closes #200.
 
@@ -3885,7 +3880,7 @@ belongs to the UCI layer, which is what owns the session.
 
 ---
 
-## 2026-08-05 — Opening book is selectable, and book exhaustion is now visible
+## 2026-08-05: Opening book is selectable, and book exhaustion is now visible
 
 M3 of `.claude/plans/retained/public-repo-and-strength-lab.md`.
 
@@ -3907,7 +3902,7 @@ measured on different books are not directly comparable.
 
 ---
 
-## 2026-08-04 — UCI `go perft` command
+## 2026-08-04: UCI `go perft` command
 
 ### Added
 
@@ -3930,7 +3925,7 @@ that ordering specifically — the other tests call `cmd_perft` directly and wou
 
 ---
 
-## 2026-08-04 — Perft suite enters the PR gate; CPW positions 4, 5 and 6 added
+## 2026-08-04: Perft suite enters the PR gate; CPW positions 4, 5 and 6 added
 
 ### Added
 
@@ -3958,7 +3953,7 @@ perft allocates nothing per node. Reasoning recorded in `Docs/Workflow.md`.
 
 ---
 
-## 2026-08-04 — Nightly correctness workflow
+## 2026-08-04: Nightly correctness workflow
 
 M2 of `.claude/plans/retained/public-repo-and-strength-lab.md`. `nightly.yml` runs at 03:00 UTC and on
 `workflow_dispatch`; it gates nothing.
@@ -3985,7 +3980,7 @@ Growing it belongs to #156.
 
 ---
 
-## 2026-08-04 — Repository made public; CI un-gated and promoted to a merge gate
+## 2026-08-04: Repository made public; CI un-gated and promoted to a merge gate
 
 Milestone M1 of `.claude/plans/retained/public-repo-and-strength-lab.md`. Public standard runners are free and
 required status checks are available, so the rationing the private repository needed is reversed.
@@ -4018,7 +4013,7 @@ byte-identical, so `Docs/EloLog.md` remains valid as measured.
 
 ---
 
-## 2026-08-04 — Tier-gate the push trigger; narrow the `windows-ci` rule (issues #185, #187)
+## 2026-08-04: Tier-gate the push trigger; narrow the `windows-ci` rule (issues #185, #187)
 
 ### Fixed
 - **`classify` can now read a push.** It diffed `origin/main...HEAD`, which on a push to `main` is
@@ -4049,7 +4044,7 @@ byte-identical, so `Docs/EloLog.md` remains valid as measured.
 
 ---
 
-## 2026-08-04 — ASan/UBSan in CI (issue #179)
+## 2026-08-04: ASan/UBSan in CI (issue #179)
 
 ### Added
 - **`sanitize-linux` CI job** — builds `StratChessTests` with `-fsanitize=address,undefined` in Debug
@@ -4083,7 +4078,7 @@ byte-identical, so `Docs/EloLog.md` remains valid as measured.
 
 ---
 
-## 2026-07-30 — Reject illegal FENs: waiting side in check (issue #45)
+## 2026-07-30: Reject illegal FENs: waiting side in check (issue #45)
 
 ### Added
 - **`Board::WaitingSideInCheck()`** — the mirror of `InCheck()`: true when the king of the side *not*
@@ -4140,7 +4135,7 @@ plus the `Tests/*.json` suites) through the loader:
 
 ---
 
-## 2026-07-30 — `SetupFromFEN` error channel (issues #155, #46)
+## 2026-07-30: `SetupFromFEN` error channel (issues #155, #46)
 
 ### Changed
 - **`Board::SetupFromFEN` returns `[[nodiscard]] bool`** instead of `void`. On failure it logs the
@@ -4176,7 +4171,7 @@ plus the `Tests/*.json` suites) through the loader:
 
 ---
 
-## 2026-07-29 — Bishop pair, connected rooks, castling (issues #111, #114, #115)
+## 2026-07-29: Bishop pair, connected rooks, castling (issues #111, #114, #115)
 
 ### Added
 - **Bishop pair** (`eval_bishops`) — requires bishops on **opposite square colours**, not a count of
@@ -4222,7 +4217,7 @@ which is what an evaluation improvement is supposed to look like.
 
 ---
 
-## 2026-07-29 — FEN halfmove/fullmove fields made genuinely optional (issue #143)
+## 2026-07-29: FEN halfmove/fullmove fields made genuinely optional (issue #143)
 
 ### Fixed
 - `FENParser::ParseFEN`'s regex ended in `\d+\s+\d+\s*$`, mandating all six FEN fields, while the
@@ -4248,7 +4243,7 @@ which is what an evaluation improvement is supposed to look like.
 
 ---
 
-## 2026-07-29 — Tapered Evaluation (issue #99, carries #118 item 4)
+## 2026-07-29: Tapered Evaluation (issue #99, carries #118 item 4)
 
 ### Changed
 - Evaluation is now interpolated between a midgame and an endgame score instead of hard-switching
@@ -4304,7 +4299,7 @@ before implementation.
 
 ---
 
-## 2026-07-27 — Static-Eval Per-Term Breakdown (issue #129 phase 2)
+## 2026-07-27: Static-Eval Per-Term Breakdown (issue #129 phase 2)
 
 ### Added
 - `EvalBreakdown` (`StratEngine/Eval.h`) and `EvalComplex::Breakdown()` (`StratEngine/Eval.cpp`):
@@ -4349,7 +4344,7 @@ See `.claude/plans/uci-eval-command-term-breakdown.md` (D7–D10) for the full r
 
 ---
 
-## 2026-07-27 — EvalContext Restructure (issue #127)
+## 2026-07-27: EvalContext Restructure (issue #127)
 
 ### Changed
 - `EvalComplex::Evaluate()` (`StratEngine/Eval.cpp`) reshaped from one ~130-line function built
@@ -4425,7 +4420,7 @@ See `.claude/plans/uci-eval-command-term-breakdown.md` (D7–D10) for the full r
 
 Plan: `.claude/plans/eval-context-restructure.md`.
 
-## 2026-07-27 — UCI `eval` Command + Batch FEN Scoring, Phase 1 (issue #129)
+## 2026-07-27: UCI `eval` Command + Batch FEN Scoring, Phase 1 (issue #129)
 
 ### Added
 - UCI `eval` command (`UciHandler::cmd_eval()`, `StratEngine/UCIHandler.cpp/h`): prints the
@@ -4469,7 +4464,7 @@ Plan: `.claude/plans/eval-context-restructure.md`.
 
 Plan: `.claude/plans/uci-eval-command-term-breakdown.md`.
 
-## 2026-07-27 — Rook Open-File Definition Fix (issue #126)
+## 2026-07-27: Rook Open-File Definition Fix (issue #126)
 
 ### Fixed
 - `EvalComplex::Evaluate` (`StratEngine/Eval.cpp`) tested the rook's open-file bonus against
@@ -4508,7 +4503,7 @@ and deciding it either way would need a far larger budget than a correctness fix
   D5). The knight-on-file and pawn-on-file positions were also added to the #125 color-symmetry
   case list.
 
-## 2026-07-26 — Eval Color Symmetry Fix (issue #125)
+## 2026-07-26: Eval Color Symmetry Fix (issue #125)
 
 ### Fixed
 - `EvalManager::getEvalBoard` (`StratEngine/Eval.h`) mapped a Black piece's square with
@@ -4536,7 +4531,7 @@ color-symmetry tests plus a clean extended-test run are the stronger evidence he
   `EvalProbe` subclass, plus whole-position color-symmetry cases (`Evaluate(fen) ==
   Evaluate(MirrorFen(fen))`, both evaluators) using a new file-local FEN color-mirror helper.
 
-## 2026-07-26 — Validation Scoped to the Diff (issue #124)
+## 2026-07-26: Validation Scoped to the Diff (issue #124)
 
 ### Added
 - `Scripts\Get-ChangeTier.ps1` — classifies a diff into `Docs` / `Tooling` / `Build` / `Engine`,
@@ -4579,7 +4574,7 @@ compiled and never invoked by the engine.
 
 ---
 
-## 2026-07-26 — SPRT Support in Run-EloMatch.ps1 (issue #130)
+## 2026-07-26: SPRT Support in Run-EloMatch.ps1 (issue #130)
 
 ### Added
 - `Scripts\Run-EloMatch.ps1` gains `-Sprt` (`NonRegression` / `Gain` / `Custom`), plus `-Elo0`,
@@ -4615,7 +4610,7 @@ replaces the completed #119 at the head of that epic.
 
 ---
 
-## 2026-07-26 — ELO Match Concurrency Default Raised to 6
+## 2026-07-26: ELO Match Concurrency Default Raised to 6
 
 ### Changed
 - `Scripts\Run-EloMatch.ps1`'s `-Concurrency` default raised from 4 to 6 for the current dev
@@ -4625,7 +4620,7 @@ replaces the completed #119 at the head of that epic.
   while still meaningfully cutting wall-clock time per match. Documented in `Docs/EloLog.md`'s
   pinned measurement setup table alongside the Machine row it depends on.
 
-## 2026-07-26 — ELO Match Resume Support (issue #119)
+## 2026-07-26: ELO Match Resume Support (issue #119)
 
 ### Added
 - `-ResumeDir`/`-AutosaveInterval` parameters on `Scripts\Run-EloMatch.ps1`, letting an
@@ -4637,7 +4632,7 @@ replaces the completed #119 at the head of that epic.
 - Validated: a real kill-and-resume test (interrupted after 2/20 games, resumed via `-ResumeDir`)
   correctly continued from game 3 with no replay/duplication, finishing at exactly 20/20
 
-## 2026-07-26 — Mop-Up Evaluation for Won Pawnless Endgames (issue #70)
+## 2026-07-26: Mop-Up Evaluation for Won Pawnless Endgames (issue #70)
 
 ### Added
 - Mop-up evaluation term in `EvalComplex::Evaluate` giving the engine a gradient toward
@@ -4650,7 +4645,7 @@ replaces the completed #119 at the head of that epic.
   see `Docs/TestDesign.md`); 1 self-play game to checkmate (move 217), no crash; ELO
   +15.94 ± 27.62 over 491/500 games (partial batch, see `Docs/EloLog.md`)
 
-## 2026-07-23 — Lazy SMP Parallel Search (PR #109)
+## 2026-07-23: Lazy SMP Parallel Search (PR #109)
 
 ### Added
 - Multi-threaded search for `AIPerplex`: `GetMove()` at `threads_ > 1` spawns
@@ -4733,7 +4728,7 @@ threads arg.
   players' `"threads"` from 1 to the measured-best value (4, per this measurement) to
   actually play with Lazy SMP enabled
 
-## 2026-07-04 — Roadmap → GitHub Issues migration (PR #105)
+## 2026-07-04: Roadmap → GitHub Issues migration (PR #105)
 
 ### Changed
 - Active backlog (all open Roadmap items) migrated to GitHub Issues under a new label
@@ -4747,7 +4742,7 @@ threads arg.
   that lived in now-deleted sections (Near-Term Sequence outcome, GetMove SearchLimits
   refactor) were promoted to changelog entries first
 
-## 2026-07-04 — GetMove SearchLimits Refactor (PR #80)
+## 2026-07-04: GetMove SearchLimits Refactor (PR #80)
 
 ### Changed
 - Every `GetMove()` call now takes an explicit `const SearchLimits&`
@@ -4774,7 +4769,7 @@ AIAgent self-play regression (base classes changed), full `Validate-PrePR.ps1` g
 smoke tests across all `go` modes. Plan: `.claude/plans/getmove-searchlimits-refactor.md`.
 **Unblocks**: Lazy SMP — no remaining refactoring blockers.
 
-## 2026-07-03 — ELO Baseline Measurement (PR #75)
+## 2026-07-03: ELO Baseline Measurement (PR #75)
 
 ### Added
 - `Scripts\Run-EloMatch.ps1`: one-command differential strength measurement — candidate
@@ -4794,7 +4789,7 @@ Sanity baseline: identical builds (SHA256-verified) pooled −1.4 ELO over 2×50
 instrument bias; measured per-batch noise ±25 ELO at this draw ratio. Plan:
 `.claude/plans/retained/elo-baseline-measurement.md`; full setup/interpretation: `Docs/EloLog.md`.
 
-## 2026-07-03 — Extract ThreadData Structure (PR #74)
+## 2026-07-03: Extract ThreadData Structure (PR #74)
 
 ### Changed
 - All per-search mutable state used by `AIPerplex` now lives in a single `ThreadData`
@@ -4815,7 +4810,7 @@ fixed-depth self-play game vs. pre-refactor baseline; deep perft 640/640; all Ca
 tiers + exe tactical suite 31/31. Plan: `.claude/plans/extract-threaddata-structure.md`.
 **Unblocks**: Lazy SMP, and the "with ThreadData extraction" C++23 slice (`std::mdspan`).
 
-## 2026-07-02 — Near-Term Sequence before Lazy SMP (PR #71, #72)
+## 2026-07-02: Near-Term Sequence before Lazy SMP (PR #71, #72)
 
 ### Changed
 - Ordering agreed after the issue #66 post-mortem (PR #71): (1) tactical suite
@@ -4832,7 +4827,7 @@ tiers + exe tactical suite 31/31. Plan: `.claude/plans/extract-threaddata-struct
 - BT2630/ECM-GCP tactical suite additions deferred until deeper search (SEE/futility
   pruning); endgame tablebase positions scheduled alongside future eval progress work
 
-## 2026-07-02 — NMP Single-Piece Zugzwang Guard (PR #69, issue #66)
+## 2026-07-02: NMP Single-Piece Zugzwang Guard (PR #69, issue #66)
 
 ### Fixed
 - QFORK-001 (`8/8/8/3r4/4k3/8/8/3QK3 w`, KQ vs KR) regressed to 7/8 on the exe tactical
@@ -4846,7 +4841,7 @@ tiers + exe tactical suite 31/31. Plan: `.claude/plans/extract-threaddata-struct
 
 Plan: `.claude/plans/nmp-single-piece-zugzwang-guard.md`.
 
-## 2026-07-02 — De-Singleton Board (PR #67)
+## 2026-07-02: De-Singleton Board (PR #67)
 
 ### Changed
 - `Board::Instance()` singleton accessor removed entirely; `Board` is now an ordinary
@@ -4867,7 +4862,7 @@ identical vs. pre-refactor baseline through both `PlayerAI`/`PlayerBase` hierarc
 Plan: `.claude/plans/de-singleton-board.md` (7 phases). **Unblocks**: Extract ThreadData
 Structure, and the "with De-Singleton Board" C++23 item (`std::expected`).
 
-## 2026-06-20 — Decouple `Board::currentPly_` from Game Length (PR #57, issue #53)
+## 2026-06-20: Decouple `Board::currentPly_` from Game Length (PR #57, issue #53)
 
 ### Fixed
 - `currentPly_` indexes four fixed `MAX_PLY=256` ply-history arrays but was never reset
@@ -4878,7 +4873,7 @@ Structure, and the "with De-Singleton Board" C++23 item (`std::expected`).
   `currentPly_` only ever spans in-flight search recursion depth, never game length
 - `assert(currentPly_ < MAX_PLY)` guard added in `DoMove`/`UndoMove` as defense in depth
 
-## 2026-06-20 — Null-Move Pruning (PR #55)
+## 2026-06-20: Null-Move Pruning (PR #55)
 
 ### Added
 - `tuning_.null_move_enabled` defaults to `true`; guard helper `should_try_null_move()`
@@ -4892,7 +4887,7 @@ Structure, and the "with De-Singleton Board" C++23 item (`std::expected`).
 
 Plan: `.claude/plans/null-move-pruning.md`.
 
-## 2026-03-14 — UCI Protocol (PR #42)
+## 2026-03-14: UCI Protocol (PR #42)
 
 ### Added
 - `UCIHandler` class: synchronous command loop with search on `std::thread`. Commands:
@@ -4915,7 +4910,7 @@ Plan: `.claude/plans/null-move-pruning.md`.
 Validated: pipe-based functional smoke test; `go movetime 5000` completes in ~5.3s;
 tested in CuteChess GUI (human vs. engine and engine vs. engine).
 
-## 2026-03-12 — Time Management: Clock-Aware Soft/Hard Limits (PR #41)
+## 2026-03-12: Time Management: Clock-Aware Soft/Hard Limits (PR #41)
 
 ### Added
 - `Engine::compute_budget(remaining, increment, moves_to_go)` free function in
@@ -4934,7 +4929,7 @@ tested in CuteChess GUI (human vs. engine and engine vs. engine).
 
 Plan: `.claude/plans/time-management-clock-aware.md`.
 
-## 2026-03-10 — Late Move Reductions + Move Sorting Extraction (PR #38)
+## 2026-03-10: Late Move Reductions + Move Sorting Extraction (PR #38)
 
 ### Added
 - **Late Move Reductions**: sqrt formula
@@ -4950,7 +4945,7 @@ Plan: `.claude/plans/time-management-clock-aware.md`.
   short-circuit for fast killer detection. 5 `[sort]` test cases, 14 assertions.
   Plan: `.claude/plans/move-scoring-extraction-and-sort-tests.md`.
 
-## 2026-03-08 — spdlog Level Gate + outLegalMoves Removal (PR #34)
+## 2026-03-08: spdlog Level Gate + outLegalMoves Removal (PR #34)
 
 ### Changed
 - 3-line per-call logging boilerplate in `AIPerplex` replaced with a spdlog level gate
@@ -4961,7 +4956,7 @@ Plan: `.claude/plans/time-management-clock-aware.md`.
 
 Plan: `.claude/plans/logging-spdlog-gate-and-outlegalmoves-removal.md`.
 
-## 2026-03-07 — Aspiration Windows, C++20 Adoption, PCH Expansion, SearchTuning exposure (PR #29, #30, #31, #32)
+## 2026-03-07: Aspiration Windows, C++20 Adoption, PCH Expansion, SearchTuning exposure (PR #29, #30, #31, #32)
 
 ### Added
 - **Aspiration Windows in Iterative Deepening** (PR #30): narrow alpha/beta window
@@ -4983,7 +4978,7 @@ Plan: `.claude/plans/logging-spdlog-gate-and-outlegalmoves-removal.md`.
 - **Expand PCH Coverage in StdAfx.h** (PR #29): 9 STL headers added; redundant per-TU
   includes removed from 7 source files. Zero warnings enforced (`/WX`).
 
-## 2026-03-04 — Introduce MoveFormatter (PR #26)
+## 2026-03-04: Introduce MoveFormatter (PR #26)
 
 ### Added
 - Stateless class centralizing move presentation in
@@ -4998,7 +4993,7 @@ Plan: `.claude/plans/logging-spdlog-gate-and-outlegalmoves-removal.md`.
 the "Migrate Move::Output() callers" issue). `ToSAN` omitted, deferred until PGN export
 is needed. Plan: `.claude/plans/move-formatter.md`.
 
-## 2026-03-03 — Move class → 16-bit layout, Phases 3-4 (PR #24)
+## 2026-03-03: Move class → 16-bit layout, Phases 3-4 (PR #24)
 
 ### Changed
 - **Phase 3**: Removed `MovPiece` field — `Board::GetEffectiveMovPiece()` added;
@@ -5012,7 +5007,7 @@ is needed. Plan: `.claude/plans/move-formatter.md`.
 
 `BoardTests.cpp` added (6 `[board]` test cases); all 47 tests pass.
 
-## 2026-03-01 — Phase 0 Test Coverage (PR #18)
+## 2026-03-01: Phase 0 Test Coverage (PR #18)
 
 ### Added
 - `[tt]` — TranspositionTable unit tests (store/probe, mate normalization, replacement,
@@ -5024,13 +5019,13 @@ is needed. Plan: `.claude/plans/move-formatter.md`.
 - `STRAT_ENABLE_TEST_ACCESS` friend stub added to `AIPerplex.h` for future Phase 1
   search tests
 
-## 2026-03-01 — Restrict Board Piece-Setup API to Private (PR #21, commit 8bef567)
+## 2026-03-01: Restrict Board Piece-Setup API to Private (PR #21, commit 8bef567)
 
 ### Changed
 - `ClearBoard`, `SetInitialColor`, and `AddPieceToBoard` moved to `private:` — no longer
   called from test code after PR #20; `SetupFromFEN` is the sole public board-setup API
 
-## 2026-02-28 — Move class Phases 1-2 + Catch2 v3 migration (PR #12, #16)
+## 2026-02-28: Move class Phases 1-2 + Catch2 v3 migration (PR #12, #16)
 
 ### Changed
 - **Move class → 16-bit layout, Phases 1-2** (PR #12): removed `Move::IsCheck` field
@@ -5041,7 +5036,7 @@ is needed. Plan: `.claude/plans/move-formatter.md`.
   `PerftTests.cpp`; retired `TestFramework.h`, `Unittests.h`, `Perft_unittests.h`; tags
   `[repetition]`, `[moves]`, `[perft]`
 
-## 2026-02-27 — Delta Pruning in Quiescence (PR #11)
+## 2026-02-27: Delta Pruning in Quiescence (PR #11)
 
 ### Added
 - `tuning_.delta_pruning_margin = 200` added to `SearchTuning`; guard skips captures
@@ -5049,13 +5044,13 @@ is needed. Plan: `.claude/plans/move-formatter.md`.
 
 Consistently deeper search — mate at depth 14 observed where it wasn't reached before.
 
-## 2026-02-25 — Archive Broken Algorithms (PR #9)
+## 2026-02-25: Archive Broken Algorithms (PR #9)
 
 ### Removed
 - `ABIterTrans.cpp/h` and `AITrans.cpp/h` moved to `StratEngine/Archived/`,
   `Archived/README.md` explains historical context, both removed from the build
 
-## 2026-02-22 — Threefold / Twofold Repetition Correctness
+## 2026-02-22: Threefold / Twofold Repetition Correctness
 
 ### Fixed
 - `push_position()` now called after `ChangePlayer()` in both `DoMove()` branches
@@ -5064,7 +5059,7 @@ Consistently deeper search — mate at depth 14 observed where it wasn't reached
 - Castling rights and en-passant square changes now included in Zobrist hash;
   `zobrist_hash_` widened from `unsigned int` to `uint64_t`
 
-## 2026-02-20 — Killer Moves + History Heuristic (PR #6)
+## 2026-02-20: Killer Moves + History Heuristic (PR #6)
 
 ### Added
 - Fully implemented in `AIPerplex`: `killers_[MAX_PLY][MAX_KILLERS]`,
@@ -5074,7 +5069,7 @@ Consistently deeper search — mate at depth 14 observed where it wasn't reached
   overflow); scoring integrated inline in `pvs()` (relocation to `MoveSorter` handled
   separately, see 2026-03-10)
 
-## 2026-02-19 — Perft Testing Framework (commit 0798a951)
+## 2026-02-19: Perft Testing Framework (commit 0798a951)
 
 ### Added
 - `StratEngine/Tests/Perft.h/cpp` + `PerftRunner.cpp`; `Tests/perft_test_cases.json`
@@ -5086,7 +5081,7 @@ Consistently deeper search — mate at depth 14 observed where it wasn't reached
 
 Direct commit, predates PR-based workflow (before PR #1) — not part of any pull request.
 
-## 2026-02-11 — Search Algorithm Fixes + iterative_deepening Refactor
+## 2026-02-11: Search Algorithm Fixes + iterative_deepening Refactor
 
 ### Fixed
 - Iterative deepening timeout move selection bug
