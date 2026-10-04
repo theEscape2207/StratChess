@@ -217,6 +217,41 @@ TEST_CASE("Qsearch - SEE does not discard a sacrifice into a drawn class", "[sea
 	CHECK(score >= 0);
 }
 
+// ============================================================================
+// SEE pruning margin
+// ============================================================================
+// Each position has exactly one capture, with a hand-computed SEE of -margin, and a full window so
+// delta pruning cannot fire. A capture kept is searched and counted; a pruned one leaves the node
+// with no searched edge at all.
+
+namespace {
+	int64_t qnodes_at_see_margin(const char* fen, int margin)
+	{
+		AIPerlexTestFixture fix(fen);
+		REQUIRE_FALSE(fix.board_.InCheck());
+		fix.set_see_pruning_margin(margin);
+		fix.quiesce_node(-GameValues::Search_Init, GameValues::Search_Init, AIPerlexTestFixture::QSEARCH_BUDGET,
+		                 /*ply=*/0);
+		return fix.qnodes();
+	}
+} // namespace
+
+TEST_CASE("Qsearch - SEE pruning keeps a capture losing exactly the margin", "[search][qsearch]")
+{
+	SECTION("SEE -100: Rxd5 exd5 Qxd5, the queen x-raying through the rook")
+	{
+		const char* fen = "6k1/5ppp/4p3/3n4/8/3R4/3Q1PPP/6K1 w - - 0 1";
+		CHECK(qnodes_at_see_margin(fen, 100) > 0);
+		CHECK(qnodes_at_see_margin(fen, 99) == 0);
+	}
+	SECTION("SEE -200: Rxd5 cxd5, the exchange lost")
+	{
+		const char* fen = "6k1/5ppp/2p5/3n4/8/8/5PPP/3R2K1 w - - 0 1";
+		CHECK(qnodes_at_see_margin(fen, 200) > 0);
+		CHECK(qnodes_at_see_margin(fen, 199) == 0);
+	}
+}
+
 TEST_CASE("MoveHelper - DeltaGain bounds the material a move can win", "[search][qsearch]")
 {
 	Board board("7k/8/8/8/r7/8/3p4/3KR3 w - - 0 1");

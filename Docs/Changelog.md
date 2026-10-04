@@ -20,6 +20,21 @@ and couldn't be matched with confidence — those remain in the undated pocket b
 
 Newest first.
 
+## Unreleased — SEE pruning margin knob (#398, slice 1)
+
+`SearchTuning::see_pruning_margin` (UCI `SeePruningMargin`, default 0, domain `[0, 900]`): quiescence
+SEE pruning now drops captures with `SEE < -margin`. Non-negative because `read_uci()` refuses a
+sign; a negative `threshold` field would have bound from JSON and been ignored over UCI. Default 0 is
+node-identical to the previous build (`Compare-SearchEquivalence.ps1`, 6 positions, depth 12). The
+knob exists so the strength lab can screen margins 100 and 200 from one binary; no default changes
+here. Tests pin the boundary at SEE -100 and -200 (kept at the margin, pruned one centipawn under)
+and the +200 floor on a capture-promotion's SEE, which is why no margin needs a promotion guard.
+
+Frequency probe (profile build, 8 bench positions, depth 12, Threads=1): margin 100 grows total
+nodes 5.9% and qsearch nodes 11%, margin 200 by 19.7% and 55%; SEE prunes per qsearch node fall
+from 0.43 to 0.40 and 0.21. Best move changed on 2 positions at 100 and 2 at 200. Node counts
+bound cost only; strength needs the lab.
+
 ## Unreleased — Paired nps comparison script (#715)
 
 `Scripts/Compare-Bench.ps1` replaces the hand-run paired `Run-Bench.ps1` series of the
