@@ -11,6 +11,9 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-04 | ff6f5cc, SCREEN arm C: min depth 6, the null control (#713) | ff6f5cc (at the shipped singular defaults, min depth 6 and margin factor 1; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **+0.39 +/- 5.35** | screen, control |
+| 2026-10-04 | ff6f5cc, SCREEN arm B: min depth 5 (#713) | ff6f5cc (at the shipped singular defaults, min depth 6 and margin factor 1; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **-1.92 +/- 5.42** | screen, rejected |
+| 2026-10-04 | ff6f5cc, SCREEN arm A: min depth 4 (#713) | ff6f5cc (at the shipped singular defaults, min depth 6 and margin factor 1; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **+1.13 +/- 5.31** | screen, rejected |
 | 2026-10-04 | ee45484 (engine source identical to 4dafbdd) with `SingularMinDepth=6 SingularMarginFactor=1` over UCI, CONFIRMATION on openings 26,641-36,630 (#702) | 4dafbdd (at the shipped singular defaults, min depth 8 and margin factor 2; the engine source is identical on both sides, so the delta is a runtime option) | 19980 | 10+0.1 | **+20.07 +/- 3.58** | gain |
 | 2026-10-03 | a922cee (engine source identical to 4dafbdd), SCREEN 2 arm C: min depth 6, factor 1 (#702) | 4dafbdd (at the shipped singular defaults, min depth 8 and margin factor 2; the engine source is identical on both sides, so the delta is a runtime option) | 8880 | 10+0.1 | **+19.51 +/- 5.38** | screen, leader |
 | 2026-10-03 | a922cee, SCREEN 2 arm B: min depth 8, factor 0 (#702) | 4dafbdd (at the shipped singular defaults, min depth 8 and margin factor 2; the engine source is identical on both sides, so the delta is a runtime option) | 8880 | 10+0.1 | **+8.61 +/- 5.43** | screen |
@@ -52,13 +55,17 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
 
+### 2026-10-04 -- singular min depth screen (#713) (8880 games per arm)
+
+**Min depth 6 stays; no confirmation run.** Run `37196251742`, openings 36,631-49,950, after every range #702 used; each arm took 6 of 18 shards against the shipped defaults. Arm Ptnml(0-2): A [325, 1068, 1644, 1059, 344], B [374, 1042, 1639, 1029, 356], C [338, 1057, 1658, 1031, 356]. The rule set beforehand was to confirm the leader only if it beat arm C by at least +3; arm A led C by +0.7. The run's `aggregate` job rejected a valid shard on an en-passant field, so these figures were pooled locally from the run's shard artifacts with `pool_pentanomial.py`, after the shard check passed on all 18.
+
 ### 2026-10-04 -- 4dafbdd, singular min depth 6 and margin factor 1 (#702) (19980 games)
 
 **The default change, confirmed on openings no screen played.** 18 shards x 555 pairs, pooled Ptnml(0-2) [634, 2083, 3742, 2558, 973], score 52.89%, run `37154126192`, opening offset 26,640. 95% interval **[+16.5, +23.7]**. Both sides set all four `Singular*` options; only `SingularMinDepth` and `SingularMarginFactor` differed. The screen's +19.5 for this arm was a best-of-three value, yet the held-out run reproduced it, so the winner's curse was small here.
 
 ### 2026-10-03 -- singular tuning screens (#702) (8880 games per arm)
 
-**Two three-arm screens; exploratory, chosen arm confirmed above.** Runs `37109041385` (openings 1-13,320) and `37125713346` (13,321-26,640); with the confirmation's 26,641-36,630 the three ranges are disjoint; each arm took 6 of 18 shards against the shared reference. Arm Ptnml(0-2), screen 1: A [350, 963, 1621, 1116, 390], B [423, 1046, 1697, 923, 351], C [424, 1071, 1605, 975, 365]; screen 2: A [317, 970, 1724, 1075, 354], B [342, 968, 1664, 1060, 406], C [277, 955, 1638, 1133, 437]. Arm A (factor 1) ran in both: pooled +8.1 +/- 3.8. Raising min depth (10) or factor (4) lost; lowering min depth to 6 gained beyond factor 1 alone. Min depth below 6 is unmeasured.
+**Two three-arm screens; exploratory, chosen arm confirmed above.** Runs `37109041385` (openings 1-13,320) and `37125713346` (13,321-26,640); with the confirmation's 26,641-36,630 the three ranges are disjoint; each arm took 6 of 18 shards against the shared reference. Arm Ptnml(0-2), screen 1: A [350, 963, 1621, 1116, 390], B [423, 1046, 1697, 923, 351], C [424, 1071, 1605, 975, 365]; screen 2: A [317, 970, 1724, 1075, 354], B [342, 968, 1664, 1060, 406], C [277, 955, 1638, 1133, 437]. Arm A (factor 1) ran in both: pooled +8.1 +/- 3.8. Raising min depth (10) or factor (4) lost; lowering min depth to 6 gained beyond factor 1 alone. Min depth below 6: see the #713 screen above.
 
 ### 2026-10-02 -- 48a31ad (singular extensions on vs off, #95) (19980 games)
 
