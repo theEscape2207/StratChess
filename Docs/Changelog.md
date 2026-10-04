@@ -20,7 +20,7 @@ and couldn't be matched with confidence — those remain in the undated pocket b
 
 Newest first.
 
-## Unreleased — SEE pruning margin knob (#398, slice 1)
+## 2026-10-04 — SEE pruning margin knob (#398, slice 1)
 
 `SearchTuning::see_pruning_margin` (UCI `SeePruningMargin`, default 0, domain `[0, 900]`): quiescence
 SEE pruning now drops captures with `SEE < -margin`. Non-negative because `read_uci()` refuses a
