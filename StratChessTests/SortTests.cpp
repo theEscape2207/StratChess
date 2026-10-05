@@ -382,6 +382,25 @@ TEST_CASE("SortMovesByValue - higher values first, equal values in generation or
 	                                                Capture(e2, e7), Capture(e1, f7)});
 }
 
+TEST_CASE("SortMovesByValue - promotions and en passant", "[sort]")
+{
+	// Promotions rank by promotion gain plus any victim; en passant ties with an ordinary PxP.
+	const Board board("r3k3/1P4P1/8/3pP3/2P5/8/8/4K3 w - d6 0 1");
+	const Move ep(e5, d6, MoveType::EP_CAPTURE);
+	const Move to_knight(g7, g8, MoveType::PROMOTION_KNIGHT);
+	const Move pawn_takes_pawn = Capture(c4, d5);
+	const Move takes_rook_to_queen(b7, a8, MoveType::PROMOTION_QUEEN_CAPTURE);
+	const Move to_queen(g7, g8, MoveType::PROMOTION_QUEEN);
+
+	MoveList moveList;
+	for (const Move m : {ep, to_knight, pawn_takes_pawn, takes_rook_to_queen, to_queen})
+		moveList.push(m);
+
+	MoveSorter::SortMovesByValue(moveList, board);
+
+	REQUIRE(ToVector(moveList) == std::vector<Move>{takes_rook_to_queen, to_queen, to_knight, ep, pawn_takes_pawn});
+}
+
 TEST_CASE("SortMovesByValue - ties keep generation order beyond the small-sort threshold", "[sort]")
 {
 	// libstdc++ switches std::sort to unstable partitioning above 16 elements, MSVC STL above 32.

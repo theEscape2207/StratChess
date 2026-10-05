@@ -63,8 +63,8 @@ void MoveSorter::SortMovesByValue(MoveList& moveList, const Board& board)
 		values[i] = MoveHelper::Value(moveList[i], board.GetEffectiveMovPiece(moveList[i]),
 		                              board.GetCapturedPiece(moveList[i]));
 
-	// A stable insertion sort, not std::sort: equal values are common, and std::sort leaves their order
-	// to the standard library, so libstdc++ and MSVC STL builds searched different trees.
+	// A stable insertion sort: equal values are common, and std::sort leaves their order to the standard
+	// library, which differs between libstdc++ and MSVC STL. std::stable_sort may heap-allocate per node.
 	for (size_t i = 1; i < n; ++i) {
 		const Move move = moveList[i];
 		const int value = values[i];

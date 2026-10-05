@@ -161,7 +161,8 @@ whose violation is silent.
   analysing both sides, or the tactical runner sweeping colours, discards the table each search.
   That is the guard working, not a TT bug.
 - **Quiescence orders its two move lists differently**, via `AIPerplex::order_quiescence_moves()`.
-  Out of check the list is captures and promotions and `SortMovesByValue` sorts it in place; in check
+  Out of check the list is captures and promotions and `SortMovesByValue` sorts it in place, keeping
+  generation order among equal values so every standard library searches the same tree; in check
   it is every legal evasion and `MoveSorter::ScoreMoves` writes an order into a `scored_idx` array
   instead, so quiet evasions are ranked by history rather than by `-piece/16` (#320). Quiescence
   passes `Move::EmptyMove()` as the hash move in both phases and must keep doing so.
