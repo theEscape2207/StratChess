@@ -135,6 +135,11 @@ for the "before" side, which is the merge base.
   least 2%. Arms must differ from each other by at least a factor of 1.5 in ordinary reach. If an arm
   falls below 2%, halve its divisor and probe again.
 - Record each arm's counts and rates in the PR before the lab is dispatched.
+- **Outcome (2026-10-05).** The base sits at the cap for 99.0% of reductions, and "more" never acts
+  at practical divisors. Late quiets carry small ordering scores, so the starting guesses reached
+  0.0005-0.14%. After halving, the selected arms are **512 (2.24% reach), 256 (3.42%) and 64
+  (5.81%)**. 128 (4.59%) is not 1.5x from 256. At these divisors the ordinary quotient is no longer
+  bounded to a few plies: any score of at least the divisor reduces less, down to R = 1.
 
 ### D6: The reduction as a pure function
 

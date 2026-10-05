@@ -18,7 +18,8 @@ namespace {
 	// The widest ordinary quiet score: butterfly history plus two continuation rows.
 	constexpr int kOrdinaryMax = 3 * ThreadData::HISTORY_MAX;
 	constexpr int kKillerScore = 900'000;
-	constexpr int kArmDivisors[] = {4096, 8192, 16384};
+	// The divisors the strength lab screens.
+	constexpr int kArmDivisors[] = {64, 256, 512};
 } // namespace
 
 TEST_CASE("LMR: divisor 0 is the base formula, whatever the score", "[search][lmr]")
