@@ -7,7 +7,7 @@
 #include "MoveFormatter.h"
 #include "MoveGenerator.h"
 #include "Board.h"
-#include "Tests/Perft.h"
+#include "Tools/Perft.h"
 #include "Eval.h"
 #include "defines.h"
 #include "Utils/Logger.h"
