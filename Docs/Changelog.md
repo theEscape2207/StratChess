@@ -15,6 +15,32 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-05: Lazy move ordering in pvs() (#725)
+
+`pvs()` now brings only its first move into order before searching it
+(`MoveSorter::ScoreMovesBestFirst`, one linear pass), and sorts the rest (`OrderRemaining`) only when
+the loop reaches the second move. `ScoreMoves` keeps its full sort for in-check quiescence. All three
+share one scoring loop and one comparator, so every node searches the same moves in the same order.
+
+- **Why:** in a throwaway probe at `2a6062b` (8 bench positions, depth 13), 70.5% of scored `pvs()`
+  nodes searched at most one move, and 17.0% searched all of them. On a comparison-count proxy,
+  "pick one, then sort the rest" costs 0.475× a full sort; pure selection 0.91×; picking 2 or 3
+  first is no better. The probe's diff, driver and raw output are in the design doc's appendix at
+  `f1c6f98` (`.claude/plans/pvs-lazy-move-ordering.md`).
+- **Unchanged search.** `Compare-SearchEquivalence.ps1` against `2a6062b` was identical (6 positions,
+  depth 12), as was a pair of `-DSTRAT_SEARCH_PROFILE=1` builds under `STRAT_PROFILE_TIEBREAK_SEED=7`.
+  GCC 15 and clang-cl candidates gave identical nodes and best moves on the 8 bench positions at
+  depth 13.
+- **Speed:** `Compare-Bench.ps1 -Control` gave a Speedup verdict twice. On the `build.ps1` pair it
+  was +7.40% nps [+7.22%, +7.57%] (A/A −0.11%). On the `New-OrderedBuildPair.ps1` pair, over 60 rounds,
+  it was +7.19% [+7.13%, +7.26%] (A/A −0.34%). Every position gained, from +2.65% (tactical-4) to
+  +9.18%. No Elo run: the tree is node-identical, so only speed can move strength.
+- **Profile (#725 comment):** the `std::sort` symbol fell from 15.3% to 7.5% of Windows samples and
+  move ordering from 22.6% to 15.8%; on Linux GCC 15 ordering fell from 21.4% to 14.0%.
+- **Not done:** lazy ordering in in-check quiescence (0.82× proxy on a fifth of the sort work, and the
+  score array would have to live across the first child's recursion). Deferring the scoring itself
+  (staged generation) would change scores, since the first child writes history and killers.
+
 ## 2026-10-05: Quiescence capture ties keep generation order (#727)
 
 `MoveSorter::SortMovesByValue` now sorts with a stable insertion sort over precomputed MVV-LVA

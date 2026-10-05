@@ -172,6 +172,11 @@ whose violation is silent.
   within each. Moving the losing tier below the quiets is the tempting change and costs tens of
   percent in nodes: captures are never LMR-reduced, so it only lowers the move number of every quiet
   it steps over.
+- **`pvs()` orders its move list lazily.** `MoveSorter::ScoreMovesBestFirst` orders only
+  `scored_idx[0]`; the loop calls `OrderRemaining(…, 1, n)` at the top of its body when `si == 1`,
+  before any `continue`. Until then nothing may read `scored_idx[i]` for `i ≥ 1` — a new reader before
+  the loop, or above that call, sees an unordered tail and changes the tree silently. Every entry
+  point shares one comparator, so the order equals `ScoreMoves`' full sort.
 
 ## Configuration
 

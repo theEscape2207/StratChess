@@ -504,7 +504,9 @@ test binary is a profile build too, so a seed left set in the shell reorders eve
 
 ### 5. Move Ordering
 
-**Current Implementation**: `MoveSorter::ScoreMoves` in `Sort.cpp/h`, called by search.
+**Current Implementation**: `MoveSorter` in `Sort.cpp/h`. `pvs()` orders lazily: `ScoreMovesBestFirst`
+puts only the first move in order, and `OrderRemaining` sorts the rest when the loop reaches them.
+In-check quiescence uses `ScoreMoves`, which sorts the whole list. The order is the same either way.
 
 **Order of Priority**:
 1. **Hash move** (from TT)
