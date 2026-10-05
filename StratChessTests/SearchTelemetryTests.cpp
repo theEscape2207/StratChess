@@ -141,7 +141,15 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 	                  .hash_cuts = 12,
 	                  .late_nodes = 13,
 	                  .late_bands = {14, 15, 16}};
-	fired.lmr = {.reduced = 1, .reduced_nodes = 2, .researched = 3, .confirmed = 4, .research_nodes = 5};
+	fired.lmr = {.reduced = 1,
+	             .reduced_nodes = 2,
+	             .researched = 3,
+	             .confirmed = 4,
+	             .research_nodes = 5,
+	             .capped = 6,
+	             .adjusted_less = 7,
+	             .adjusted_more = 8,
+	             .killer_adjusted = 9};
 	fired.nodetypes.frames = {{{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}};
 	fired.nodetypes.cut_fail_low = {10, 11, 12};
 	fired.nullmove = {.tried = 1, .cutoffs = 2, .failed = 3, .fail_nodes = 4};
@@ -157,7 +165,8 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 	      std::vector<std::string>{
 	          "singular eligible 1 verified 2 extended 3 verifynodes 4", "frontier skips 5", "lmp skips 6", fired_tt,
 	          "aspiration iterations 1 faillow 2 failhigh 3 fullwindow 4 failnodes 5", fired_ordering,
-	          "lmr reduced 1 reducednodes 2 researched 3 confirmed 4 researchnodes 5", fired_nodetypes,
+	          "lmr reduced 1 reducednodes 2 researched 3 confirmed 4 researchnodes 5",
+	          "lmrhistory capped 6 less 7 more 8 killer 9", fired_nodetypes,
 	          "nullmove tried 1 cutoffs 2 failed 3 failnodes 4", "pruning rfp 1/2/3/4/5/6 floorbinds 7",
 	          "qsearch roots 1 delta 2 see 3 maxdepth 4"});
 
@@ -207,9 +216,11 @@ TEST_CASE("SearchTelemetry - info string payloads keep their parsed wording and 
 	SearchTelemetry lmr_only;
 	lmr_only.lmr.reduced = 2;
 	CHECK(payloads_of(lmr_only) ==
-	      std::vector<std::string>{zero_tt, "lmr reduced 2 reducednodes 0 researched 0 confirmed 0 researchnodes 0"});
+	      std::vector<std::string>{zero_tt, "lmr reduced 2 reducednodes 0 researched 0 confirmed 0 researchnodes 0",
+	                               "lmrhistory capped 0 less 0 more 0 killer 0"});
 	SearchTelemetry lmr_unreduced;
 	lmr_unreduced.lmr.researched = 3;
+	lmr_unreduced.lmr.capped = 4;
 	CHECK(payloads_of(lmr_unreduced) == std::vector<std::string>{zero_tt});
 
 	// ... node types on any PV frame, null move on attempts, pruning on either pruner, quiescence on

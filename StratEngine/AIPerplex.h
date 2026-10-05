@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cassert>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -58,6 +59,34 @@ inline constexpr unsigned DEFAULT_AIPERPLEX_HASH_MB = 192;
 // move index at which quiet moves become skippable (the thirteenth legal move).
 inline constexpr int kLateMovePruningDepth = 2;
 inline constexpr int kLateMovePruningMinLegalIndex = 12;
+
+// The LMR reduction for a quiet at move_number (>= 1) searched from depth. The base scales with
+// sqrt(depth) * sqrt(move index); the cap keeps one main-tree ply below the reduced search, and its
+// own max(1, ...) keeps R >= 1 (R == 0 would make the re-search an identical repeat).
+//
+// A nonzero history_divisor shifts R by the move's ordering score / history_divisor, positive
+// reducing less. It is applied AFTER the cap: the raw product usually overshoots the cap by several
+// plies, so an adjustment applied before it would be swallowed. A negative score can raise R only
+// where the base sits below the cap. A divisor small against the +-3 * HISTORY_MAX score range, the
+// default among them, makes this nearly a sign switch: a score of history_divisor * (cap - 1) already
+// gives R = 1. A displaced killer's killer-tier score follows the same formula, so it gets R = 1 too.
+inline int lmr_reduction(int depth, int move_number, int ordering_score, int history_divisor) noexcept
+{
+	assert(move_number >= 1 && history_divisor >= 0);
+	const int cap = std::max(1, depth - 2);
+	// clang-format off
+	// Hand-wrapped so the sqrt(depth) * sqrt(move index) product and the cap stay visible as
+	// separate steps.
+	const int base = std::min(
+		std::max(1, static_cast<int>(
+			std::sqrt(static_cast<double>(depth - 1)) *
+			std::sqrt(static_cast<double>(move_number - 1)))),
+		cap);
+	// clang-format on
+	if (history_divisor == 0)
+		return base;
+	return std::clamp(base - ordering_score / history_divisor, 1, cap);
+}
 
 struct AIPerplexConfig {
 	unsigned default_depth{4};

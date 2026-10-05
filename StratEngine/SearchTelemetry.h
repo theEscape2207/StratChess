@@ -209,6 +209,13 @@ struct LmrStats {
 	int64_t researched = 0; // reduced searches that beat alpha and ran again at full depth
 	int64_t confirmed = 0;  // ... whose completed re-search still beat alpha
 	int64_t research_nodes = 0;
+	// The history adjustment's reach, over `reduced`: the base reduction at its cap, and an ordinary
+	// score (within 3 * HISTORY_MAX) moving R down or up. killer_adjusted is a displaced killer's
+	// killer-tier score moving R, kept apart so it cannot pass for ordinary reach.
+	int64_t capped = 0;
+	int64_t adjusted_less = 0;
+	int64_t adjusted_more = 0;
+	int64_t killer_adjusted = 0;
 
 	// Live nesting depth of each kind; per thread, never summed.
 	int reduced_nesting = 0;
@@ -221,14 +228,22 @@ struct LmrStats {
 		researched += other.researched;
 		confirmed += other.confirmed;
 		research_nodes += other.research_nodes;
+		capped += other.capped;
+		adjusted_less += other.adjusted_less;
+		adjusted_more += other.adjusted_more;
+		killer_adjusted += other.killer_adjusted;
 	}
 
 	template <class Sink> void append_info(Sink&& sink) const
 	{
-		if (reduced != 0)
-			sink("lmr reduced " + std::to_string(reduced) + " reducednodes " + std::to_string(reduced_nodes) +
-			     " researched " + std::to_string(researched) + " confirmed " + std::to_string(confirmed) +
-			     " researchnodes " + std::to_string(research_nodes));
+		if (reduced == 0)
+			return;
+		sink("lmr reduced " + std::to_string(reduced) + " reducednodes " + std::to_string(reduced_nodes) +
+		     " researched " + std::to_string(researched) + " confirmed " + std::to_string(confirmed) +
+		     " researchnodes " + std::to_string(research_nodes));
+		// A separate line keeps the lmr line's field list fixed for the parsers that read it.
+		sink("lmrhistory capped " + std::to_string(capped) + " less " + std::to_string(adjusted_less) + " more " +
+		     std::to_string(adjusted_more) + " killer " + std::to_string(killer_adjusted));
 	}
 };
 

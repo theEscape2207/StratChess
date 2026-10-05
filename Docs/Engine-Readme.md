@@ -453,6 +453,7 @@ when its first field is non-zero (`pruning`: when either field is):
 ```
 info string ordering cuts N index I0/I1/I2/I3to5/I6plus latecut H/C/K/Q hashnodes N hashcuts N latenodes N latebands B/B/B
 info string lmr reduced N reducednodes N researched N confirmed N researchnodes N
+info string lmrhistory capped N less N more N killer N
 info string nodetypes pv B/B/B cut B/B/B all B/B/B cutfaillow B/B/B
 info string nullmove tried N cutoffs N failed N failnodes N
 info string pruning rfp D1/D2/D3/D4/D5/D6plus floorbinds N
@@ -470,6 +471,10 @@ info string qsearch roots N delta N see N maxdepth N
   those that still beat alpha.
 - `reducednodes` and `researchnodes` count the nodes inside the outermost search of each kind. A
   reduced search inside a re-search counts in both, so the two must not be summed.
+- `lmrhistory` prints whenever `lmr` does, and its counts are over `reduced`. `capped` counts
+  reductions whose base sat at the `depth - 2` cap. `less` and `more` count ordinary quiet scores that
+  moved R through `LmrHistoryDivisor`. `killer` counts a displaced killer's killer-tier score moving R.
+  `Compare-SearchProfile.ps1` reports a side without the line as n/a, not 0.
 - `nodetypes` counts `pvs()` frames past the quiescence hand-off, by depth band and by
   expected Knuth-Moore type: PV when searched as one, otherwise what the parent expected (a cut
   node's first move and a null-move child fail low, every other null-window move cuts; a singular
