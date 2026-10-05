@@ -1267,7 +1267,7 @@ int AIPerplex::adjust_score_for_game_state(ThreadData& td, bool move_found, int 
 void AIPerplex::order_quiescence_moves(ThreadData& td, MoveList& move_list, bool in_check, int ply) const
 {
 	if (!in_check) {
-		MoveSorter::SortMovesByValue(move_list, move_list.size(), td.board);
+		MoveSorter::SortMovesByValue(move_list, td.board);
 		return;
 	}
 

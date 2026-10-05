@@ -15,6 +15,21 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-05: Quiescence capture ties keep generation order (#727)
+
+`MoveSorter::SortMovesByValue` now sorts with a stable insertion sort over precomputed MVV-LVA
+values, instead of `std::sort`, and its unused `count`/`start` parameters are gone. `std::sort` left
+equal values in an order its standard library chose: libstdc++ is stable only up to 16 elements, and
+MSVC STL up to 32. A capture list of 17–32 moves could therefore search differently on Linux GCC
+and on Windows clang-cl.
+
+- **Cause confirmed at `cbfce87`.** Kiwipete at depth 13 was 8,666,705 nodes on Windows clang-cl and
+  8,666,711 on GCC 15. With this change applied, GCC 15 gave 8,666,705, and all 8 bench positions
+  matched Windows.
+- **Shipping search unchanged.** `Compare-SearchEquivalence.ps1` against the merge base on Windows
+  (depth 13, 6 positions) was identical. On the 8 bench positions at depth 13, node counts and best
+  moves were identical across Windows main and candidate, GCC 13, and GCC 15.
+
 ## 2026-10-05: History-adjusted LMR reductions (#730)
 
 A late quiet's LMR reduction now shifts by its ordering score (butterfly plus 1- and 2-ply

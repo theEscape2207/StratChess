@@ -1,4 +1,4 @@
-// SortTests.cpp — Catch2 tests for MoveSorter::ScoreMoves() priority ordering
+// SortTests.cpp — Catch2 tests for MoveSorter::ScoreMoves() priority ordering and SortMovesByValue()
 //
 // Tests that moves are scored in the expected priority order:
 //   hash move > SEE >= 0 captures and all promotions > killer0 > killer1 > SEE < 0 captures
@@ -17,6 +17,7 @@
 #include "See.h"
 #include "defines.h"
 #include <climits>
+#include <vector>
 
 // Rook endgame: White Ra1, Ke1 vs Black Ra2, Ke8.
 // Ra1xa2 is the only capture; all other legal white moves are quiet.
@@ -340,4 +341,88 @@ TEST_CASE("Sort - Quiet move with positive history scores exactly that history v
 	MoveSorter::ScoreMoves(moveList, n, board, WHITE, null_move, killer0, killer1, history, scored_idx);
 
 	REQUIRE(FindScore(scored_idx, moveList, n, quiet_move) == 42);
+}
+
+// SortMovesByValue reads only the moving and the captured piece, so these lists pair pieces freely
+// rather than by legal geometry: that is what makes a tied list longer than any library's small-sort
+// path constructible.
+static constexpr const char* FEN_TIES = "4k3/nnpppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1";
+
+static Move Capture(eSquare from, eSquare to) { return Move(from, to, MoveType::CAPTURE); }
+
+static std::vector<Move> ToVector(const MoveList& moveList) { return {moveList.begin(), moveList.end()}; }
+
+TEST_CASE("SortMovesByValue - empty and single-move lists", "[sort]")
+{
+	const Board board(FEN_TIES);
+
+	MoveList empty;
+	MoveSorter::SortMovesByValue(empty, board);
+	REQUIRE(empty.empty());
+
+	MoveList single;
+	single.push(Capture(a2, c7));
+	MoveSorter::SortMovesByValue(single, board);
+	REQUIRE(ToVector(single) == std::vector<Move>{Capture(a2, c7)});
+}
+
+TEST_CASE("SortMovesByValue - higher values first, equal values in generation order", "[sort]")
+{
+	const Board board(FEN_TIES);
+
+	// KxP < PxP < PxN.
+	MoveList moveList;
+	for (const Move m :
+	     {Capture(e1, f7), Capture(a2, c7), Capture(b2, a7), Capture(c2, d7), Capture(d2, b7), Capture(e2, e7)})
+		moveList.push(m);
+
+	MoveSorter::SortMovesByValue(moveList, board);
+
+	REQUIRE(ToVector(moveList) == std::vector<Move>{Capture(b2, a7), Capture(d2, b7), Capture(a2, c7), Capture(c2, d7),
+	                                                Capture(e2, e7), Capture(e1, f7)});
+}
+
+TEST_CASE("SortMovesByValue - promotions and en passant", "[sort]")
+{
+	// Promotions rank by promotion gain plus any victim; en passant ties with an ordinary PxP.
+	const Board board("r3k3/1P4P1/8/3pP3/2P5/8/8/4K3 w - d6 0 1");
+	const Move ep(e5, d6, MoveType::EP_CAPTURE);
+	const Move to_knight(g7, g8, MoveType::PROMOTION_KNIGHT);
+	const Move pawn_takes_pawn = Capture(c4, d5);
+	const Move takes_rook_to_queen(b7, a8, MoveType::PROMOTION_QUEEN_CAPTURE);
+	const Move to_queen(g7, g8, MoveType::PROMOTION_QUEEN);
+
+	MoveList moveList;
+	for (const Move m : {ep, to_knight, pawn_takes_pawn, takes_rook_to_queen, to_queen})
+		moveList.push(m);
+
+	MoveSorter::SortMovesByValue(moveList, board);
+
+	REQUIRE(ToVector(moveList) == std::vector<Move>{takes_rook_to_queen, to_queen, to_knight, ep, pawn_takes_pawn});
+}
+
+TEST_CASE("SortMovesByValue - ties keep generation order beyond the small-sort threshold", "[sort]")
+{
+	// libstdc++ switches std::sort to unstable partitioning above 16 elements, MSVC STL above 32.
+	// Interleaving two values makes that partitioning move tied elements past each other.
+	const Board board(FEN_TIES);
+	const eSquare attackers[] = {a2, b2, c2, d2, e2, f2, g2, h2};
+	const eSquare victims[] = {c7, a7, d7, b7, e7, f7, g7, h7}; // a7 and b7 are knights
+
+	MoveList moveList;
+	std::vector<Move> knight_captures;
+	std::vector<Move> pawn_captures;
+	for (const eSquare from : attackers) {
+		for (const eSquare to : victims) {
+			moveList.push(Capture(from, to));
+			(to == a7 || to == b7 ? knight_captures : pawn_captures).push_back(Capture(from, to));
+		}
+	}
+	REQUIRE(moveList.size() == 64);
+
+	std::vector<Move> expected = knight_captures;
+	expected.insert(expected.end(), pawn_captures.begin(), pawn_captures.end());
+
+	MoveSorter::SortMovesByValue(moveList, board);
+	REQUIRE(ToVector(moveList) == expected);
 }

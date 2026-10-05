@@ -18,11 +18,11 @@ struct ContinuationRows {
 
 class MoveSorter final {
   public:
-	// Sorts [start, start + count) by MVV-LVA. The caller must have partitioned that range to
+	// Sorts the list by MVV-LVA, descending; equal values keep generation order. The list must
 	// contain only captures and promotions — MoveHelper::Value() scores a quiet move as
-	// -piece/16, so a quiet in the range sorts below every capture and the heaviest quiet
-	// sorts last. Asserted, because passing a mixed list is silent in Release.
-	static void SortMovesByValue(MoveList& moveList, size_t count, const Board& board, size_t start = 0);
+	// -piece/16, so a quiet sorts below every capture and the heaviest quiet sorts last.
+	// Asserted, because passing a mixed list is silent in Release.
+	static void SortMovesByValue(MoveList& moveList, const Board& board);
 	// The lowest tier above the quiets: a losing capture scores this plus its MVV-LVA value.
 	static constexpr int kLosingCaptureTier = 700'000;
 
