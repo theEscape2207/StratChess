@@ -50,20 +50,32 @@ namespace {
 	}
 } // namespace
 
-void MoveSorter::SortMovesByValue(MoveList& moveList, size_t count, const Board& board, size_t start)
+void MoveSorter::SortMovesByValue(MoveList& moveList, const Board& board)
 {
-	// The range really must be captures and promotions only — see the declaration.
-	assert(std::all_of(moveList.begin() + static_cast<int>(start), moveList.begin() + static_cast<int>(start + count),
+	// The list really must be captures and promotions only — see the declaration.
+	assert(std::all_of(moveList.begin(), moveList.end(),
 	                   [](const Move& m) { return MoveHelper::IsCapture(m) || MoveHelper::IsPromote(m); }));
 
-	// Sort captures by MVV-LVA: captured piece value minus (moving piece value / 16).
-	// board supplies the moving and the captured piece of each move.
-	if (count >= 2)
-		std::sort(moveList.begin() + static_cast<int>(start), moveList.begin() + static_cast<int>(start + count),
-		          [&board](const Move& a, const Move& b) {
-			          return MoveHelper::Value(a, board.GetEffectiveMovPiece(a), board.GetCapturedPiece(a)) >
-			                 MoveHelper::Value(b, board.GetEffectiveMovPiece(b), board.GetCapturedPiece(b));
-		          });
+	// MVV-LVA: captured piece value minus (moving piece value / 16).
+	const size_t n = moveList.size();
+	std::array<int, MoveList::MAX_MOVES> values;
+	for (size_t i = 0; i < n; ++i)
+		values[i] = MoveHelper::Value(moveList[i], board.GetEffectiveMovPiece(moveList[i]),
+		                              board.GetCapturedPiece(moveList[i]));
+
+	// A stable insertion sort, not std::sort: equal values are common, and std::sort leaves their order
+	// to the standard library, so libstdc++ and MSVC STL builds searched different trees.
+	for (size_t i = 1; i < n; ++i) {
+		const Move move = moveList[i];
+		const int value = values[i];
+		size_t j = i;
+		for (; j > 0 && values[j - 1] < value; --j) {
+			moveList[j] = moveList[j - 1];
+			values[j] = values[j - 1];
+		}
+		moveList[j] = move;
+		values[j] = value;
+	}
 }
 
 // The hash move is the top tier. There is deliberately no separate tier above it for the
