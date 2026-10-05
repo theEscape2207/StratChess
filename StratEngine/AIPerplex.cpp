@@ -1002,7 +1002,7 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				// Full window search for first move
 				value = -pvs(td, child_depth, -beta, -alpha, ply + 1, is_pv_node, tt);
 			} else {
-				assert(move_number >= 1); // this branch, not the tunable gate, is what keeps sqrt() >= 0
+				assert(move_number >= 1); // this branch, not the tunable gate, meets lmr_reduction()'s precondition
 
 				const bool is_capture = MoveHelper::IsCapture(move);
 				const bool is_promotion = MoveHelper::IsPromote(move);
