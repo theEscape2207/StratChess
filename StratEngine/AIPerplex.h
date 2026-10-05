@@ -67,8 +67,9 @@ inline constexpr int kLateMovePruningMinLegalIndex = 12;
 // A nonzero history_divisor shifts R by the move's ordering score / history_divisor, positive
 // reducing less. It is applied AFTER the cap: the raw product usually overshoots the cap by several
 // plies, so an adjustment applied before it would be swallowed. A negative score can raise R only
-// where the base sits below the cap. A move scored as a killer and displaced before it reached LMR
-// carries a killer-tier score and follows the same formula, which at practical divisors gives R = 1.
+// where the base sits below the cap. A divisor small against the +-3 * HISTORY_MAX score range, the
+// default among them, makes this nearly a sign switch: a score of history_divisor * (cap - 1) already
+// gives R = 1. A displaced killer's killer-tier score follows the same formula, so it gets R = 1 too.
 inline int lmr_reduction(int depth, int move_number, int ordering_score, int history_divisor) noexcept
 {
 	assert(move_number >= 1 && history_divisor >= 0);

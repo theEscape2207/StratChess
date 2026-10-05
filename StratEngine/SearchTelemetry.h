@@ -241,7 +241,7 @@ struct LmrStats {
 		sink("lmr reduced " + std::to_string(reduced) + " reducednodes " + std::to_string(reduced_nodes) +
 		     " researched " + std::to_string(researched) + " confirmed " + std::to_string(confirmed) +
 		     " researchnodes " + std::to_string(research_nodes));
-		// Its own line, so a build that predates it still parses the lmr line above.
+		// A separate line keeps the lmr line's field list fixed for the parsers that read it.
 		sink("lmrhistory capped " + std::to_string(capped) + " less " + std::to_string(adjusted_less) + " more " +
 		     std::to_string(adjusted_more) + " killer " + std::to_string(killer_adjusted));
 	}

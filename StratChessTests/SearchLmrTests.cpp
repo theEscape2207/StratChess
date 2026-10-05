@@ -7,7 +7,7 @@
 #include "SearchTestFixture.h"
 
 namespace {
-	// The formula before the history adjustment existed, restated independently.
+	// The base formula alone, restated independently of lmr_reduction().
 	int base_reduction(int depth, int move_number)
 	{
 		const int raw = static_cast<int>(std::sqrt(static_cast<double>(depth - 1)) *
@@ -18,8 +18,8 @@ namespace {
 	// The widest ordinary quiet score: butterfly history plus two continuation rows.
 	constexpr int kOrdinaryMax = 3 * ThreadData::HISTORY_MAX;
 	constexpr int kKillerScore = 900'000;
-	// The divisors the strength lab screens.
-	constexpr int kArmDivisors[] = {64, 256, 512};
+	// Divisors small against the ordinary score range, the default among them.
+	constexpr int kSmallDivisors[] = {64, 256, 512};
 } // namespace
 
 TEST_CASE("LMR: divisor 0 is the base formula, whatever the score", "[search][lmr]")
@@ -34,7 +34,7 @@ TEST_CASE("LMR: the adjustment never leaves [1, depth - 2]", "[search][lmr]")
 {
 	for (int depth = 3; depth <= 40; ++depth)
 		for (int move = 1; move <= 64; ++move)
-			for (const int divisor : {1, 4096, 8192, 16384, 1'000'000})
+			for (const int divisor : {1, 64, 4096, 8192, 16384, 1'000'000})
 				for (const int score : {-kOrdinaryMax, -1, 0, 1, kOrdinaryMax, kKillerScore}) {
 					const int r = lmr_reduction(depth, move, score, divisor);
 					REQUIRE(r >= 1);
@@ -42,7 +42,7 @@ TEST_CASE("LMR: the adjustment never leaves [1, depth - 2]", "[search][lmr]")
 				}
 }
 
-TEST_CASE("LMR: below depth 3 R stays 1, as before", "[search][lmr]")
+TEST_CASE("LMR: below depth 3 R is always 1", "[search][lmr]")
 {
 	for (const int depth : {1, 2})
 		for (const int score : {-kOrdinaryMax, 0, kOrdinaryMax})
@@ -76,11 +76,24 @@ TEST_CASE("LMR: the quotient truncates toward zero in both directions", "[search
 	CHECK(lmr_reduction(10, 3, d, d) == 3);
 	CHECK(lmr_reduction(10, 3, -(d - 1), d) == 4);
 	CHECK(lmr_reduction(10, 3, -d, d) == 5);
+	// Divisor 1 shifts by the whole score, within the bounds.
+	CHECK(lmr_reduction(10, 3, 2, 1) == 2);
+	CHECK(lmr_reduction(10, 3, -3, 1) == 7);
 }
 
-TEST_CASE("LMR: a displaced killer's score reduces it least at the arm divisors", "[search][lmr]")
+TEST_CASE("LMR: a small divisor acts almost as a sign switch", "[search][lmr]")
 {
-	for (const int divisor : kArmDivisors)
+	// d = 10, m = 20: base 8 at the cap. At divisor 64 a score of 64 * (cap - 1) is already R = 1.
+	REQUIRE(base_reduction(10, 20) == 8);
+	CHECK(lmr_reduction(10, 20, 63, 64) == 8);
+	CHECK(lmr_reduction(10, 20, 64, 64) == 7);
+	CHECK(lmr_reduction(10, 20, 7 * 64, 64) == 1);
+	CHECK(lmr_reduction(10, 20, kOrdinaryMax, 64) == 1);
+}
+
+TEST_CASE("LMR: a displaced killer's score reduces it least at small divisors", "[search][lmr]")
+{
+	for (const int divisor : kSmallDivisors)
 		for (int depth = 3; depth <= 40; ++depth)
 			REQUIRE(lmr_reduction(depth, 20, kKillerScore, divisor) == 1);
 	// At the largest divisor the quotient is 0 and the base stands.
