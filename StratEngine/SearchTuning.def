@@ -36,6 +36,10 @@ TUNING_FIELD(bool,    aspiration_enabled,       true, false, true, true, nullptr
 TUNING_FIELD(int,     lmr_min_depth,      3,    1,                                  std::numeric_limits<int>::max(), true, nullptr, true)
 TUNING_FIELD(int,     lmr_min_move_index, 3,    std::numeric_limits<int>::lowest(), std::numeric_limits<int>::max(), true, nullptr, true)
 TUNING_FIELD(bool,    lmr_enabled,        true, false,                              true,                            true, nullptr, true)
+// A reduced quiet's R shifts by its ordering score / divisor (see lmr_reduction()). Division
+// truncates toward zero, so a score smaller than the divisor leaves R alone. 0 disables the shift and
+// leaves the search node-identical to one without it.
+TUNING_FIELD(int,     lmr_history_divisor, 0,   0,                                  1'000'000,                       true, "LmrHistoryDivisor", true)
 
 TUNING_FIELD(bool,    null_move_enabled,   true, false, true,                            true, nullptr, true)
 TUNING_FIELD(int,     null_move_reduction, 3,    1,     std::numeric_limits<int>::max(), true, nullptr, true)

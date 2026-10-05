@@ -391,6 +391,7 @@ class AIPerlexTestFixture {
 	}
 
 	void set_continuation_history_plies(int plies) const { ai->tuning_.continuation_history_plies = plies; }
+	void set_lmr_history_divisor(int divisor) const { ai->tuning_.lmr_history_divisor = divisor; }
 	std::pair<int16_t, int16_t> continuation_range() const
 	{
 		std::pair<int16_t, int16_t> range{0, 0};

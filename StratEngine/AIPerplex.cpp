@@ -597,6 +597,24 @@ namespace {
 			td.telemetry.ordering.record_cut(move_number, type, depth, !hash_move.is_null(), spent_before);
 		}
 	}
+
+	// Profiles how the history adjustment moved one reduction R away from its base.
+	void record_lmr_reach(LmrStats& stats, int depth, int move_number, int ordering_score, int r) noexcept
+	{
+		if constexpr (kSearchProfileCompiled) {
+			const int base = lmr_reduction(depth, move_number, ordering_score, 0);
+			if (base == std::max(1, depth - 2))
+				stats.capped++;
+			if (r == base)
+				return;
+			if (std::abs(ordering_score) > 3 * ThreadData::HISTORY_MAX)
+				stats.killer_adjusted++;
+			else if (r < base)
+				stats.adjusted_less++;
+			else
+				stats.adjusted_more++;
+		}
+	}
 } // namespace
 
 int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool is_pv_node, TranspositionTable& tt)
@@ -1004,21 +1022,10 @@ int AIPerplex::pvs(ThreadData& td, int depth, int alpha, int beta, int ply, bool
 				                       depth >= tuning_.lmr_min_depth && !td.board.InCheck();
 
 				if (apply_lmr) {
-					// sqrt formula: scales naturally with depth and move index. The upper bound
-					// keeps one main-tree ply below the reduced search at every depth LMR is
-					// gated on, and carries its own max(1, ...) so R stays >= 1 — R == 0 would
-					// make the re-search below an identical repeat — if lmr_min_depth is ever
-					// lowered to 2.
-					// clang-format off
-					// Hand-wrapped so the sqrt(depth) * sqrt(move index) product and the
-					// upper bound stay visible as separate steps.
-					const int R = std::min(
-						std::max(1, static_cast<int>(
-							std::sqrt(static_cast<double>(depth - 1)) *
-							std::sqrt(static_cast<double>(move_number - 1)))),
-						std::max(1, depth - 2));
-					// clang-format on
+					// scored_idx still holds the score ScoreMoves gave this move before the loop.
+					const int R = lmr_reduction(depth, move_number, scored_idx[si].first, tuning_.lmr_history_divisor);
 					assert(depth - 1 - R >= 1 || tuning_.lmr_min_depth < 3);
+					record_lmr_reach(td.telemetry.lmr, depth, move_number, scored_idx[si].first, R);
 
 					// Search profile: node totals count the outermost search of each kind only. Each
 					// nesting depth drops straight after its call, before any abort return.
