@@ -726,7 +726,7 @@ contested filter, the property the whole dataset rests on.
 
 ### Full tactical suite in main executable
 
-**Files**: `StratEngine/Tests/TacticalTestRunner.h/cpp`, `Tests/tactical_test_cases.json`
+**Files**: `StratEngine/Tools/TacticalTestRunner.h/cpp`, `Tests/tactical_test_cases.json`
 **Invocation**: run from `Tests/` directory: `StratChessEvolved.exe tactical test`
 (defaults to `tactical_test_cases.json`) or pass a staging filename. The JSON is the source of truth
 for the current cases and expected moves; do not duplicate its count or contents here.
@@ -886,7 +886,7 @@ cd Tests
 ../build/windows-clang-cl/StratChessEvolved.exe perft test
 ```
 
-Sources: `StratEngine/Tests/Perft.h/cpp` + `Tests/perft_test_cases.json`.
+Sources: `StratEngine/Tools/Perft.h/cpp` + `Tests/perft_test_cases.json`.
 
 ### Corpus move-generation sweep (perftcheck)
 

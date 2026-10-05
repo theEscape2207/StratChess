@@ -153,9 +153,8 @@ set_target_properties(Catch2 PROPERTIES
 # ---------------------------------------------------------------------------
 # Engine sources
 #
-# Globbed rather than listed: a hand-maintained list here would be a third copy
-# to keep in sync with two .vcxproj files, and a .cpp missing from a project is
-# a silent failure -- it passes by not running. CONFIGURE_DEPENDS re-runs the
+# Globbed rather than listed: a .cpp missing from a hand-maintained list is a
+# silent failure -- it passes by not running. CONFIGURE_DEPENDS re-runs the
 # glob when the directory contents change.
 # ---------------------------------------------------------------------------
 file(GLOB_RECURSE ENGINE_SOURCES CONFIGURE_DEPENDS

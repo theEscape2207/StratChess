@@ -629,7 +629,7 @@ findings, any one of which would be enough:
   tree's absolute paths into `/Z7` CodeView records.
 - **Its `/FI` rewrite is wrong for clang-cl.** ccache rewrites the forced include relative to the
   source file's directory; clang-cl resolves it against the working directory and `-I` paths. The
-  translation units under `StratEngine/Tests/` and `StratEngine/Utils/` get `/FI..\Compat.h`, which
+  translation units under `StratEngine/Tools/` and `StratEngine/Utils/` get `/FI..\Compat.h`, which
   resolves to nothing, so 6 of 30 fail preprocessing and are never cached at all.
 - **It does not extend to the dependency record.** ccache 4.14 ties its `/showIncludes` path
   rewriting to its MSVC compiler type, and clang-cl is classified separately — so a replayed hit can
