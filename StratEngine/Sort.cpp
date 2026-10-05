@@ -53,11 +53,14 @@ namespace {
 void MoveSorter::SortMovesByValue(MoveList& moveList, const Board& board)
 {
 	// The list really must be captures and promotions only — see the declaration.
-	assert(std::all_of(moveList.begin(), moveList.end(),
-	                   [](const Move& m) { return MoveHelper::IsCapture(m) || MoveHelper::IsPromote(m); }));
+	assert(std::ranges::all_of(moveList,
+	                           [](const Move& m) { return MoveHelper::IsCapture(m) || MoveHelper::IsPromote(m); }));
+
+	const size_t n = moveList.size();
+	if (n < 2)
+		return;
 
 	// MVV-LVA: captured piece value minus (moving piece value / 16).
-	const size_t n = moveList.size();
 	std::array<int, MoveList::MAX_MOVES> values;
 	for (size_t i = 0; i < n; ++i)
 		values[i] = MoveHelper::Value(moveList[i], board.GetEffectiveMovPiece(moveList[i]),
