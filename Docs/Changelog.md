@@ -15,6 +15,28 @@ Newest first. Entry headings use `## yyyy-mm-dd: <title> (#<issue number>)`,
 retaining the issue reference and any slice qualifier where applicable. Convert
 GitHub's `mergedAt` to Europe/Copenhagen for the date.
 
+## 2026-10-05: History-adjusted LMR reductions (#730)
+
+A late quiet's LMR reduction now shifts by its ordering score (butterfly plus 1- and 2-ply
+continuation history) divided by `SearchTuning::lmr_history_divisor` (UCI `LmrHistoryDivisor`,
+default **64**, 0 = off). The shift is applied after the `depth - 2` cap and clamped to `[1, cap]`,
+in the new pure `lmr_reduction()` in `AIPerplex.h`. Default 0 was node-identical to the merge base
+(`Compare-SearchEquivalence.ps1`, 6 positions, depth 12). The profile build prints a new
+`lmrhistory` line, and `Compare-SearchProfile.ps1` reports it, showing a build without the line as
+n/a.
+
+- **Reach probe (depth 12, 200 positions, one seed).** The base reduction sits on its cap for 99.0%
+  of reductions, and late quiets carry small scores. The first guesses, 4,096 to 16,384, reached
+  0.0005-0.14% of reductions, so the lab arms were 512, 256 and 64 (2.2%, 3.4% and 5.8%).
+- **Lab, three arms against the merge base** (run `37289918389`, 6,660 games each): 512 +2.5 ± 6.2,
+  256 +3.6 ± 6.3, **64 +10.2 ± 6.3**. 64 is best of three, and its interval is not corrected for
+  that selection.
+- **Screens at 64.** At depth 12 with 8 seeds, nodes rose 23.7% ± 1.9% and late-cut work 23.9% ±
+  2.9%. The adjustment reduced less on 5.7% of reductions and practically never reduced more. At
+  fixed depth 14 the wall clock was 1.65× ± 0.13 per position. The extra tree cost time at fixed
+  depth but gained in timed games, as with singular extensions.
+- 64 was the strongest and smallest divisor tested, so smaller divisors are unmeasured.
+
 ## 2026-10-04: CPU profiling recipe (#719)
 
 `Docs/Workflow.md` → Profiling: where the time goes. Linux uses `perf` in WSL Ubuntu-26.04 with GCC

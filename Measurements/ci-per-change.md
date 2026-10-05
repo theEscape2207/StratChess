@@ -11,6 +11,9 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-05 | 9ab1759, arm C: `LmrHistoryDivisor=64`, shipped as the default (#730; best of three, uncorrected) | 2201b87 | 6660 | 10+0.1 | **+10.23 +/- 6.25** | gain |
+| 2026-10-05 | 9ab1759, arm B: `LmrHistoryDivisor=256` (#730) | 2201b87 | 6660 | 10+0.1 | **+3.60 +/- 6.31** | inconclusive @ 6660 |
+| 2026-10-05 | 9ab1759, arm A: `LmrHistoryDivisor=512` (#730) | 2201b87 | 6660 | 10+0.1 | **+2.50 +/- 6.21** | inconclusive @ 6660 |
 | 2026-10-05 | 08bc34c, SCREEN arm C: `ReverseFutilityMargin=200` (#502) | 08bc34c (at the shipped default `ReverseFutilityMargin=100`, band <= 3; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **-8.65 +/- 5.45** | screen, rejected |
 | 2026-10-05 | 08bc34c, SCREEN arm B: `ReverseFutilityMargin=150` (#502) | 08bc34c (at the shipped default `ReverseFutilityMargin=100`, band <= 3; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **-2.23 +/- 5.36** | inconclusive @ 8880 |
 | 2026-10-05 | 08bc34c, SCREEN arm A: `ReverseFutilityMargin=75` (#502) | 08bc34c (at the shipped default `ReverseFutilityMargin=100`, band <= 3; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **+1.13 +/- 5.32** | inconclusive @ 8880 |
@@ -59,6 +62,12 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-05 -- history-adjusted LMR, three divisor arms (#730) (6660 games per arm)
+
+**Arm C shipped without a confirmation run, under a rule set before dispatch: take the best arm if its Elo minus its error bar is above 0, uncorrected for selection.** Run `37289918389`, openings 1-9,990, 3 h 15 min; each arm took 6 of 18 shards against the merge base. All 18 shards are green, and their logs show 19,980 games with zero time losses, illegal moves or disconnects. The comparison artifact resolved each arm's value, and the shard logs name it (`Shard 2: arm C, options LmrHistoryDivisor=64`). Arm Ptnml(0-2): A [268, 751, 1242, 803, 266], B [264, 791, 1175, 812, 288], C [252, 709, 1267, 795, 307]. C's interval is [+4.0, +16.5]. Because C is the best of three, that interval sits high; no held-out run has tested how far.
+
+**Screens at 64, beside the lab.** The 8-seed depth-12 profile screen on `Tests/profile-screen.fen` puts nodes at +23.7% ± 1.9% and late-cut work at +23.9% ± 2.9%. The adjustment reduced less on 5.7% of reductions and practically never reduced more; 99.1% of base reductions sat on their cap. Fixed-depth 14 wall clock over the same 200 positions, in chunks of 10 with the order alternated: after/before **1.65 ± 0.13** (mean per-position ratio, 2 SE), 422 s → 637 s in total. Like singular extensions, the bigger fixed-depth tree did not cost Elo in timed games. Divisors below 64 are unmeasured.
 
 ### 2026-10-05 -- reverse futility margin screen (#502) (8880 games per arm)
 
