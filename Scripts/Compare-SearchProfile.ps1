@@ -43,6 +43,8 @@
       - A search that did not reach -Depth or print bestmove.
     The optional lines aspiration, lmr, nullmove, pruning, frontier skips and lmp skips print only
     when their first field is non-zero ('pruning' on either field), so their absence reads as zero.
+    'lmrhistory' prints whenever 'lmr' does, so its absence means a build older than it: its rows
+    then show '-' and their deltas n/a, never a zero reach.
 
     Not refused: the same binary on both sides (the self-check: zero delta without -Seeds, the
     live noise floor with it), or differing node counts, which are what this measures. Node identity is Compare-SearchEquivalence's job.
@@ -124,6 +126,8 @@ $ProfileSchema = [ordered]@{
     aspiration = @{ Required = $false; Fields = [ordered]@{ iterations = 1; faillow = 1; failhigh = 1; fullwindow = 1; failnodes = 1 } }
     ordering   = @{ Required = $true;  Fields = [ordered]@{ cuts = 1; index = 5; latecut = 4; hashnodes = 1; hashcuts = 1; latenodes = 1; latebands = 3 } }
     lmr        = @{ Required = $false; Fields = [ordered]@{ reduced = 1; reducednodes = 1; researched = 1; confirmed = 1; researchnodes = 1 } }
+    # AbsentIsUnknown: an older build never printed the line, so absence is no reading, not zero.
+    lmrhistory = @{ Required = $false; AbsentIsUnknown = $true; Fields = [ordered]@{ capped = 1; less = 1; more = 1; killer = 1 } }
     nodetypes  = @{ Required = $true;  Fields = [ordered]@{ pv = 3; cut = 3; all = 3; cutfaillow = 3 } }
     nullmove   = @{ Required = $false; Fields = [ordered]@{ tried = 1; cutoffs = 1; failed = 1; failnodes = 1 } }
     pruning    = @{ Required = $false; Fields = [ordered]@{ rfp = 6; floorbinds = 1 } }
@@ -193,6 +197,10 @@ function ConvertFrom-ProfileTranscript {
                        " position has a search tree, so this is a default build, one older than the profile" +
                        " contract, or a terminal position.")
             }
+            if ($ProfileSchema[$key]['AbsentIsUnknown']) {
+                $counters[$key] = $null
+                continue
+            }
             foreach ($f in $fields.GetEnumerator()) {
                 $values[$f.Key] = if ($f.Value -eq 1) { [int64]0 } else { [int64[]]::new($f.Value) }
             }
@@ -244,6 +252,11 @@ function Get-ScopeRows {
 
     $sum = @{}
     foreach ($key in $ProfileSchema.Keys) {
+        # One record without the line leaves the whole scope unknown for it.
+        if (@($Records | Where-Object { $null -eq $_.Counters[$key] }).Count -gt 0) {
+            $sum[$key] = $null
+            continue
+        }
         $sum[$key] = @{}
         foreach ($f in $ProfileSchema[$key].Fields.GetEnumerator()) {
             if ($f.Value -eq 1) {
@@ -308,6 +321,12 @@ function Get-ScopeRows {
     Add-Row 'researched, % of reduced' 'rate' (Pct $l.researched $l.reduced)
     Add-Row 'researchnodes, % of nodes' 'rate' (Pct $l.researchnodes $nodes)
     Add-Row 'confirmed, % of researched' 'rate' (Pct $l.confirmed $l.researched)
+    $lh = $sum.lmrhistory
+    Add-Row 'lmr capped, % of reduced' 'rate' $(if ($null -ne $lh) { Pct $lh.capped $l.reduced } else { $null })
+    Add-Row 'history reach, % of reduced' 'rate' $(if ($null -ne $lh) { Pct ($lh.less + $lh.more) $l.reduced } else { $null })
+    Add-Row 'history less, % of reduced' 'rate' $(if ($null -ne $lh) { Pct $lh.less $l.reduced } else { $null })
+    Add-Row 'history more, % of reduced' 'rate' $(if ($null -ne $lh) { Pct $lh.more $l.reduced } else { $null })
+    Add-Row 'killer-score adjusted, % of reduced' 'rate' $(if ($null -ne $lh) { Pct $lh.killer $l.reduced } else { $null })
 
     $pvF  = ($nt.pv  | Measure-Object -Sum).Sum
     $cutF = ($nt.cut | Measure-Object -Sum).Sum
@@ -731,6 +750,7 @@ if ($SelfTest) {
         'info string aspiration iterations 7 faillow 1 failhigh 0 fullwindow 0 failnodes 1813'
         'info string ordering cuts 7713 index 7412/126/103/52/20 latecut 0/260/21/20 hashnodes 3249 hashcuts 3229 latenodes 15403 latebands 12329/3074/0'
         'info string lmr reduced 26106 reducednodes 8560 researched 1 confirmed 1 researchnodes 78'
+        'info string lmrhistory capped 20000 less 300 more 100 killer 5'
         'info string nodetypes pv 28/25/3 cut 41779/4324/47 all 3653/951/0 cutfaillow 179/11/0'
         'info string nullmove tried 3729 cutoffs 1169 failed 2560 failnodes 36257'
         'info string pruning rfp 33663/2017/1250/0/0/0 floorbinds 0'
@@ -764,6 +784,16 @@ if ($SelfTest) {
     $silent = $kiwi -replace "info string (nullmove|pruning|lmr|aspiration|frontier|lmp) [^\n]*\n", ''
     $rows = Get-ScopeRows @(Parse $silent)
     Assert-Case 'absent optional lines read as zeros' ((Row $rows 'null move tried') -eq 0 -and (Row $rows 'lmr reduced') -eq 0 -and (Row $rows 'lmp skips') -eq 0 -and $null -eq (Row $rows 'null cutoffs, % of tried'))
+
+    # lmrhistory: rates over reduced; absent is unknown, not zero, and poisons a pooled scope.
+    $rows = Get-ScopeRows @($r)
+    Assert-Case 'lmrhistory rates are over reduced' ([math]::Abs((Row $rows 'history reach, % of reduced') - 100.0 * 400 / 26106) -lt 1e-9 -and [math]::Abs((Row $rows 'lmr capped, % of reduced') - 100.0 * 20000 / 26106) -lt 1e-9 -and [math]::Abs((Row $rows 'killer-score adjusted, % of reduced') - 100.0 * 5 / 26106) -lt 1e-9)
+    $older = $kiwi -replace "info string lmrhistory [^\n]*\n", ''
+    $rows = Get-ScopeRows @(Parse $older)
+    Assert-Case 'FALSIFY: an absent lmrhistory line is unknown, not zero' ($null -eq (Row $rows 'history reach, % of reduced') -and $null -eq (Row $rows 'lmr capped, % of reduced') -and (Row $rows 'lmr reduced') -eq 26106)
+    $rows = Get-ScopeRows @((Parse $kiwi), (Parse $older))
+    Assert-Case 'one record without lmrhistory leaves the pooled rows unknown' ($null -eq (Row $rows 'history reach, % of reduced'))
+    Assert-Case 'FALSIFY: a malformed lmrhistory line is refused' (Test-Refuses -Match 'malformed line' { Parse ($kiwi -replace 'killer 5', 'killers 5') })
 
     # Pooling: sums, except maxdepth by max.
     $other = $kiwi -replace 'maxdepth 17', 'maxdepth 9' -replace 'roots 36849', 'roots 1'
