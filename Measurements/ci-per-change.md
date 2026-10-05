@@ -11,6 +11,8 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-05 | 08bc34c, SCREEN arm B: `ReverseFutilityMaxDepth=5` (#502) | 08bc34c (at the shipped default `ReverseFutilityMaxDepth=3`, margin 100; both sides are one binary, so the delta is a runtime option) | 9990 | 10+0.1 | **+3.23 +/- 5.00** | inconclusive @ 9990 |
+| 2026-10-05 | 08bc34c, SCREEN arm A: `ReverseFutilityMaxDepth=1` (#502) | 08bc34c (at the shipped default `ReverseFutilityMaxDepth=3`, margin 100; both sides are one binary, so the delta is a runtime option) | 9990 | 10+0.1 | **-9.29 +/- 5.04** | screen, rejected |
 | 2026-10-05 | 08bc34c, SCREEN arm C: `ReverseFutilityMargin=200` (#502) | 08bc34c (at the shipped default `ReverseFutilityMargin=100`, band <= 3; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **-8.65 +/- 5.45** | screen, rejected |
 | 2026-10-05 | 08bc34c, SCREEN arm B: `ReverseFutilityMargin=150` (#502) | 08bc34c (at the shipped default `ReverseFutilityMargin=100`, band <= 3; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **-2.23 +/- 5.36** | inconclusive @ 8880 |
 | 2026-10-05 | 08bc34c, SCREEN arm A: `ReverseFutilityMargin=75` (#502) | 08bc34c (at the shipped default `ReverseFutilityMargin=100`, band <= 3; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **+1.13 +/- 5.32** | inconclusive @ 8880 |
@@ -59,6 +61,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-05 -- reverse futility band screen (#502) (9990 games per arm)
+
+**Band <= 3 stays; no confirmation run; #502 closed with no parameter change.** Run `37269554261`, openings 63,271-73,260, after the margin screen's range; each arm took 9 of 18 shards against the shipped default, at margin 100. Arm Ptnml(0-2): A [443, 1201, 1867, 1148, 336], B [372, 1138, 1900, 1195, 390]. Same rule as the margin screen: confirm only an interval excluding zero on the positive side. Arm A is a measured loss. Arm B's interval spans zero; a held-out confirmation with even odds of clearing zero would take about 24,000 games, which was judged not worth a gain of at most about 3 Elo. Re-screen band 4-5 once an improving flag changes the pruning condition.
 
 ### 2026-10-05 -- reverse futility margin screen (#502) (8880 games per arm)
 
