@@ -35,10 +35,28 @@ class MoveSorter final {
 	                       const Move& killer0, const Move& killer1, const int32_t (&history)[2][64][64],
 	                       std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx,
 	                       ContinuationRows cont = {});
+	// As ScoreMoves, but only out_scored_idx[0] is in order; [1, n) is unordered until OrderRemaining.
+	// For n <= 1 the result is already fully ordered.
+	static void ScoreMovesBestFirst(const MoveList& moveList, int n, const Board& board, eColor side,
+	                                const Move& hash_move, const Move& killer0, const Move& killer1,
+	                                const int32_t (&history)[2][64][64],
+	                                std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx,
+	                                ContinuationRows cont = {});
+	// Puts [first, n) in ScoreMoves' order. Requires 0 <= first and n <= MAX_MOVES; does nothing when
+	// fewer than two entries remain (n - first < 2), so OrderRemaining(.., 1, 0) is a no-op.
+	// moveList supplies the profile tie-break key.
+	static void OrderRemaining(const MoveList& moveList,
+	                           std::array<std::pair<int, int>, MoveList::MAX_MOVES>& scored_idx, int first, int n);
 	// A quiet move's continuation-history column. board holds the position it is played from.
 	static int QuietContinuationColumn(const Board& board, const Move& quiet) noexcept;
 	~MoveSorter() = default;
 
   private:
 	MoveSorter() = default; // Enforce static method calls
+
+	// The scoring every ScoreMoves entry point shares: (score, original_index) pairs in generation order.
+	static void ScoreUnordered(const MoveList& moveList, int n, const Board& board, eColor side, const Move& hash_move,
+	                           const Move& killer0, const Move& killer1, const int32_t (&history)[2][64][64],
+	                           std::array<std::pair<int, int>, MoveList::MAX_MOVES>& out_scored_idx,
+	                           ContinuationRows cont);
 };
