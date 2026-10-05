@@ -11,6 +11,9 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-05 | 08bc34c, SCREEN arm C: `ReverseFutilityMargin=200` (#502) | 08bc34c (at the shipped default `ReverseFutilityMargin=100`, band <= 3; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **-8.65 +/- 5.45** | screen, rejected |
+| 2026-10-05 | 08bc34c, SCREEN arm B: `ReverseFutilityMargin=150` (#502) | 08bc34c (at the shipped default `ReverseFutilityMargin=100`, band <= 3; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **-2.23 +/- 5.36** | inconclusive @ 8880 |
+| 2026-10-05 | 08bc34c, SCREEN arm A: `ReverseFutilityMargin=75` (#502) | 08bc34c (at the shipped default `ReverseFutilityMargin=100`, band <= 3; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **+1.13 +/- 5.32** | inconclusive @ 8880 |
 | 2026-10-04 | 55e68c4, SCREEN arm B: `SeePruningMargin=200` (#398) | 55e68c4 (at the shipped default `SeePruningMargin=0`; both sides are one binary, so the delta is a runtime option) | 9990 | 10+0.1 | **-17.19 +/- 5.19** | screen, rejected |
 | 2026-10-04 | 55e68c4, SCREEN arm A: `SeePruningMargin=100` (#398) | 55e68c4 (at the shipped default `SeePruningMargin=0`; both sides are one binary, so the delta is a runtime option) | 9990 | 10+0.1 | **-1.25 +/- 5.05** | screen, rejected |
 | 2026-10-04 | ff6f5cc, SCREEN arm C: min depth 6, the null control (#713) | ff6f5cc (at the shipped singular defaults, min depth 6 and margin factor 1; both sides are one binary, so the delta is a runtime option) | 8880 | 10+0.1 | **+0.39 +/- 5.35** | calibration |
@@ -56,6 +59,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-05 -- reverse futility margin screen (#502) (8880 games per arm)
+
+**Margin 100 stays; no confirmation run.** Run `37237805089`, openings 49,951-63,270, after every range #702, #713 and #398 used; each arm took 6 of 18 shards against the shipped default. Arm Ptnml(0-2): A [350, 1002, 1696, 1053, 339], B [359, 1049, 1667, 1020, 345], C [408, 1081, 1605, 1016, 330]. The [triage in #502](https://github.com/theEscape2207/StratChess/issues/502) set the rule before dispatch: confirm the best arm only if its interval excludes zero on the positive side. None does. Arm C is a measured loss, although 200 is the smallest tested margin at which WAC-001 passes at depths 4-5: the tactical-suite gain does not carry to games.
 
 ### 2026-10-04 -- SEE pruning margin screen (#398) (9990 games per arm)
 
