@@ -1,6 +1,5 @@
 // RepetitionTests.cpp — Catch2 test suite for Board::is_repetition()
 //
-// Migrated from StratEngine/Tests/RepetitionTests.h.
 // Each TEST_CASE calls SetupFromFEN() for Board isolation.
 //
 // Historical bugs verified fixed (see RepetitionTests.h header for details):

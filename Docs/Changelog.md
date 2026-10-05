@@ -37,6 +37,12 @@ n/a.
   depth but gained in timed games, as with singular extensions.
 - 64 was the strongest and smallest divisor tested, so smaller divisors are unmeasured.
 
+## 2026-10-05: `StratEngine/Tests/` renamed to `StratEngine/Tools/` (#251)
+
+The directory holds production code — `Perft` behind UCI `go perft` and the CLI `perft` mode,
+`TacticalTestRunner` behind the CLI `tactical` mode — not tests. The CMake glob comment no longer
+cites the retired `.vcxproj` files. The Release engine binary is byte-identical before and after.
+
 ## 2026-10-04: CPU profiling recipe (#719)
 
 `Docs/Workflow.md` → Profiling: where the time goes. Linux uses `perf` in WSL Ubuntu-26.04 with GCC

@@ -5,7 +5,7 @@
 // required threshold AND zero failures in any category starting with "mate".
 
 #include <catch2/catch_test_macros.hpp>
-#include "Tests/TacticalTestRunner.h"
+#include "Tools/TacticalTestRunner.h"
 
 using Testing::TacticalResult;
 using Testing::TacticalTestRunner;

@@ -5,8 +5,8 @@
 #include "Game.h"
 #include "Board.h"
 #include "UCIHandler.h"
-#include <Tests/Perft.h>
-#include <Tests/TacticalTestRunner.h>
+#include <Tools/Perft.h>
+#include <Tools/TacticalTestRunner.h>
 #include "Eval.h"
 #include "Utils/ArgParse.h"
 #include "Utils/FenBatch.h"

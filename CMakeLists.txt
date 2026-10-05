@@ -153,9 +153,8 @@ set_target_properties(Catch2 PROPERTIES
 # ---------------------------------------------------------------------------
 # Engine sources
 #
-# Globbed rather than listed: a hand-maintained list here would be a third copy
-# to keep in sync with two .vcxproj files, and a .cpp missing from a project is
-# a silent failure -- it passes by not running. CONFIGURE_DEPENDS re-runs the
+# Globbed rather than listed: a .cpp missing from a hand-maintained list is a
+# silent failure -- it passes by not running. CONFIGURE_DEPENDS re-runs the
 # glob when the directory contents change.
 # ---------------------------------------------------------------------------
 file(GLOB_RECURSE ENGINE_SOURCES CONFIGURE_DEPENDS
@@ -167,8 +166,7 @@ file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
 # ---------------------------------------------------------------------------
 # Shared compile settings
 #
-# -mavx2 -mbmi2 matches AdvancedVectorExtensions2; Magic.h's _pext_u64 needs BMI2.
-# -Werror matches the Level4 + /WX gate MSBuild has always had.
+# -mavx2 -mbmi2: Magic.h's _pext_u64 needs BMI2.
 # ---------------------------------------------------------------------------
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)   # std::jthread — Lazy SMP helpers in AIPerplex::GetMove
@@ -360,15 +358,12 @@ endfunction()
 # ---------------------------------------------------------------------------
 # Targets
 #
-# The engine is compiled into both executables, mirroring the .vcxproj layout.
-# Extracting it as a static library is issue #83: it changes link topology and
-# owes its own nps measurement, so Phase 0 deliberately leaves topology alone.
+# The engine is compiled into both executables. The test target compiles it with
+# its own defines, so the two sets of objects differ and cannot be shared.
 #
-# Release links the engine with LTO, matching the WholeProgramOptimization the
-# .vcxproj Release configurations have always set -- without it a CMake-built
-# binary is not comparable to the MSBuild one. The test binary is deliberately
-# left out: it is checked for correctness, not speed, so LTO would only cost
-# build time.
+# Release links the engine with LTO; losing it costs cross-TU inlining silently.
+# The test binary is deliberately left out: it is checked for correctness, not
+# speed, so LTO would only cost build time.
 # ---------------------------------------------------------------------------
 add_executable(StratChessEvolved
     ${ENGINE_SOURCES}
