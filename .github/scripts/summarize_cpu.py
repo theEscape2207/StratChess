@@ -13,18 +13,28 @@ Usage:
 """
 
 import argparse
+from collections import namedtuple
 from pathlib import Path
+from statistics import fmean
+import subprocess
 import sys
 import tempfile
 
 COLUMNS = ("elapsed_s", "busy_pct", "steal_pct", "per_cpu_busy_pct", "load_1m")
 
 
+Shard = namedtuple("Shard", "busy steal load per_cpu")
+
+
+def column_means(rows):
+    return [fmean(column) for column in zip(*rows)]
+
+
 def read_shard(path):
-    """Return (busy, steal, load, sorted per-vCPU) means, or None without samples."""
+    """Return the shard's mean Shard, per-vCPU sorted busiest first, or None without samples."""
     try:
         lines = Path(path).read_text(encoding="utf-8").splitlines()
-    except OSError:
+    except (OSError, ValueError):
         return None
     if not lines or tuple(lines[0].split("\t")) != COLUMNS:
         return None
@@ -33,35 +43,33 @@ def read_shard(path):
         fields = line.split("\t")
         try:
             per_cpu = sorted((float(value) for value in fields[3].split(",")), reverse=True)
-            rows.append((float(fields[1]), float(fields[2]), float(fields[4]), per_cpu))
+            rows.append(Shard(float(fields[1]), float(fields[2]), float(fields[4]), per_cpu))
         except (IndexError, ValueError):
             continue
-    if not rows or len({len(row[3]) for row in rows}) != 1:
+    # A row cut short when the sampler was killed must not discard the shard.
+    rows = [row for row in rows if rows and len(row.per_cpu) == len(rows[0].per_cpu)]
+    if not rows:
         return None
-    count = len(rows)
-    per_cpu = [sum(row[3][index] for row in rows) / count for index in range(len(rows[0][3]))]
-    return (sum(row[0] for row in rows) / count, sum(row[1] for row in rows) / count,
-            sum(row[2] for row in rows) / count, per_cpu)
+    busy, steal, load = column_means((row.busy, row.steal, row.load) for row in rows)
+    return Shard(busy, steal, load, column_means(row.per_cpu for row in rows))
 
 
 def summarize(paths):
     shards = [shard for shard in (read_shard(path) for path in paths) if shard]
     lines = ["### Runner CPU use", "",
-             f"Sampled once a minute on {len(shards)} of {len(paths)} shards. Busy excludes idle, "
-             "iowait and steal; steal is vCPU time the hypervisor gave to another guest.", ""]
+             f"Sampled on {len(shards)} of {len(paths)} shards. Busy excludes idle, iowait and steal; "
+             "steal is vCPU time the hypervisor gave to another guest.", ""]
     if not shards:
         return "\n".join(lines + ["No CPU samples were retained."]) + "\n"
     lines += ["| | Mean | Min shard | Max shard |", "|---|---|---|---|"]
-    for title, index, unit in (("Busy, all vCPUs", 0, "%"), ("Steal", 1, "%"), ("Load average (1 min)", 2, "")):
-        values = [shard[index] for shard in shards]
-        lines.append(f"| {title} | {sum(values) / len(values):.1f}{unit} | "
-                     f"{min(values):.1f}{unit} | {max(values):.1f}{unit} |")
-    widths = {len(shard[3]) for shard in shards}
-    if len(widths) == 1:
-        per_cpu = [sum(shard[3][index] for shard in shards) / len(shards) for index in range(widths.pop())]
+    for title, field, unit in (("Busy, all vCPUs", "busy", "%"), ("Steal", "steal", "%"),
+                               ("Load average (1 min)", "load", "")):
+        values = [getattr(shard, field) for shard in shards]
+        lines.append(f"| {title} | {fmean(values):.1f}{unit} | {min(values):.1f}{unit} | {max(values):.1f}{unit} |")
+    if len({len(shard.per_cpu) for shard in shards}) == 1:
+        per_cpu = column_means(shard.per_cpu for shard in shards)
         lines += ["", "Per-vCPU busy, busiest first: " + " / ".join(f"{value:.0f}%" for value in per_cpu) + "."]
     return "\n".join(lines) + "\n"
-
 
 def self_test():
     failures = 0
@@ -85,6 +93,11 @@ def self_test():
         expect("a header-only file has no samples", read_shard(root / "empty.tsv") is None)
         expect("an unrecognised file has no samples", read_shard(root / "junk.tsv") is None)
         expect("a missing file has no samples", read_shard(root / "missing.tsv") is None)
+        (root / "binary.tsv").write_bytes(header.encode() + b"\xff\xfe\n")
+        expect("an undecodable file has no samples, not an exception", read_shard(root / "binary.tsv") is None)
+        (root / "cut.tsv").write_text(header + "60\t70.0\t1.0\t90,80,60,50\t3.00\n120\t80.0\t3.0\t40,100\t3.40\n",
+                                      encoding="utf-8")
+        expect("a row cut short skips that row, not the shard", read_shard(root / "cut.tsv").busy == 70.0)
         report = summarize([root / name for name in ("a.tsv", "b.tsv", "empty.tsv", "missing.tsv")])
         expect("only shards with samples are counted", "on 2 of 4 shards" in report)
         expect("busy is the mean of shard means, with the range", "| Busy, all vCPUs | 67.5% | 60.0% | 75.0% |" in report)
@@ -92,6 +105,9 @@ def self_test():
         expect("per-vCPU spread is pooled across shards", "78% / 73% / 63% / 53%" in report)
         expect("no samples at all is reported, not fatal",
                "No CPU samples were retained." in summarize([root / "empty.tsv"]))
+        result = subprocess.run([sys.executable, __file__, str(root / "shards/*/")],
+                                capture_output=True, text=True, timeout=30, check=False)
+        expect("an unmatched glob counts no shards", result.returncode == 0 and "on 0 of 0 shards" in result.stdout)
     return 1 if failures else 0
 
 
@@ -102,7 +118,9 @@ def main():
     args = parser.parse_args()
     if args.self_test:
         return self_test()
-    sys.stdout.write(summarize([Path(shard) / "cpu.tsv" for shard in args.shards]))
+    # An unmatched shell glob arrives literally; it is no shard.
+    shards = [Path(shard) for shard in args.shards if Path(shard).is_dir()]
+    sys.stdout.write(summarize([shard / "cpu.tsv" for shard in shards]))
     return 0
 
 

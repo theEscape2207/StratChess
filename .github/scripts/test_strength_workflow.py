@@ -64,7 +64,9 @@ def self_test():
         print(f'PASS: Bash syntax for {len(shell_blocks)} strength workflow blocks')
         # A broken sampler fails nothing in a real run; it just leaves the evidence empty.
         samples = root / 'cpu.tsv'
-        sampler = subprocess.Popen([bash, (repo / '.github/scripts/cpu_sampler.sh').as_posix(), '1', samples.as_posix()])
+        # Windows kill leaves the sampler's children writing into the removed directory; discard that noise.
+        sampler = subprocess.Popen([bash, (repo / '.github/scripts/cpu_sampler.sh').as_posix(), '1', samples.as_posix()],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
             deadline = time.monotonic() + 15
             while time.monotonic() < deadline and len(samples.read_text().splitlines() if samples.exists() else []) < 2:

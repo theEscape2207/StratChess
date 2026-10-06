@@ -565,15 +565,17 @@ jobs:
             for kv in "${ref_kv[@]}"; do ref_opts+=("option.$kv"); done
           fi
 
+          cd "$work"
+          # Evidence of how busy the runner was; the aggregate summarises it.
+          # Detached from the step's output, which an orphaned sleep would hold open.
+          bash "$tools/cpu_sampler.sh" 60 cpu.tsv > /dev/null 2>&1 &
+          sampler_pid=$!
+          trap 'kill "$sampler_pid" 2>/dev/null || true' EXIT
+
           # Adjudication settings are copied from Run-EloMatch.ps1 verbatim: the
           # two instruments must differ only in toolchain and hardware.
           # The same Threads on both sides -- Lazy SMP scales with core count, so
           # unequal counts measure the hardware split, not the change.
-          cd "$work"
-          # Evidence of how busy the runner was; the aggregate summarises it.
-          bash "$tools/cpu_sampler.sh" 60 cpu.tsv &
-          sampler_pid=$!
-          trap 'kill "$sampler_pid" 2>/dev/null || true' EXIT
           start_s=$SECONDS
           set +e
           "$tools/fastchess" \
@@ -683,7 +685,10 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           exit 1
 
+      # Even for a refused batch: its shards' CPU samples are what explain a
+      # time loss. Nothing after the refusal pools them.
       - name: Download every shard
+        if: always()
         uses: actions/download-artifact@v8
         with:
           pattern: strength-${{ github.run_id }}-shard-*
@@ -803,7 +808,7 @@ jobs:
             echo "Error bar is pentanomial: pooled over colour-swapped PAIRS, which are the"
             echo "independent unit. Pooling raw W/L/D would understate the variance."
             echo
-            python3 .github/scripts/summarize_cpu.py shards/*/
+            python3 .github/scripts/summarize_cpu.py shards/*/ || echo "Runner CPU summary unavailable."
             echo
             echo "[Run ${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
           } > /tmp/report.md
