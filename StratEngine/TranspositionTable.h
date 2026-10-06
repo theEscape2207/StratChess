@@ -1,5 +1,6 @@
 #pragma once
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <vector>
 #include <atomic>
@@ -9,15 +10,13 @@
 #include <optional>
 #include <cstdint>
 #include <cstddef>
-#include <memory>
 #include <type_traits>
 #include <cassert>
 #include "Move.h"
 #include "TTStats.h"
 
 #if defined(__linux__)
-// Storage for the table and its locks; on libstdc++ the locks are nearly as large as the entries, and
-// every probe touches both. An allocation of at least one 2 MiB huge page is aligned to it and advised
+// Storage for the table. An allocation of at least one 2 MiB huge page is aligned to it and advised
 // MADV_HUGEPAGE: under THP `madvise`, the default on most current hosts, it would otherwise fault in
 // and TLB-miss 4 KiB at a time. Smaller ones are not rounded up, which would double a small table's
 // zero-fill. Throws std::bad_alloc.
@@ -62,8 +61,9 @@ struct TTEntry {
 	Move best_move;
 };
 
-// Thread-safe through per-bucket shared locks (probes share, stores exclude); clear() also takes a
-// table-wide mutex. Mate scores are stored ply-normalised. Entry counts are O(1) atomic counters.
+// Lock-free: probes and stores never block, and every entry access is atomic (see Slot). clear()
+// takes a table-wide mutex and needs that nothing stores concurrently. Mate scores are stored
+// ply-normalised.
 class TranspositionTable {
 #ifdef STRAT_ENABLE_TEST_ACCESS
 	friend class TranspositionTableTestFixture;
@@ -156,23 +156,61 @@ class TranspositionTable {
 	              offsetof(PackedEntry, depth) == 10 && offsetof(PackedEntry, best_move) == 12 &&
 	              offsetof(PackedEntry, metadata) == 14 && offsetof(PackedEntry, age) == 15);
 
+	static_assert(std::is_trivially_copyable_v<PackedEntry>, "a Slot converts with std::bit_cast");
+	static_assert(std::atomic<std::uint64_t>::is_always_lock_free);
+
+	// One entry as two relaxed atomic words: the key XOR the payload, and the payload, where the
+	// payload is everything after the key. A probe accepts the slot only if the words decode to its
+	// key. Nothing is published through an entry, so per-word atomicity is all that is needed.
+	//
+	// Two stores into one slot can interleave and leave one word from each, transiently or until the
+	// slot is next written. Such a pair decodes to neither key but to a pseudo-key, which under the
+	// random-Zobrist model matches a probe no more often than any stored key does: it costs a lost
+	// entry and keeps the ordinary collision rate. That rests on a model, not a measurement.
+	struct Slot {
+		std::atomic<std::uint64_t> key_xor_data{encode(PackedEntry{})[0]};
+		std::atomic<std::uint64_t> data{encode(PackedEntry{})[1]};
+	};
+
+	static_assert(sizeof(Slot) == sizeof(PackedEntry));
+
 	struct alignas(64) Bucket {
-		PackedEntry entries[BUCKET_SIZE];
+		Slot slots[BUCKET_SIZE];
 	};
 
 	static_assert(sizeof(Bucket) == BUCKET_SIZE * sizeof(PackedEntry),
 	              "Bucket must be exactly BUCKET_SIZE entries with no padding");
 	static_assert(sizeof(Bucket) == 64 && alignof(Bucket) == 64);
 
+	// Word 0 is the key on either endianness, because the key is a whole uint64_t at offset 0.
+	static constexpr std::array<std::uint64_t, 2> encode(const PackedEntry& entry) noexcept
+	{
+		auto words = std::bit_cast<std::array<std::uint64_t, 2>>(entry);
+		words[0] ^= words[1];
+		return words;
+	}
+
+	static PackedEntry load(const Slot& slot) noexcept
+	{
+		std::array<std::uint64_t, 2> words{slot.key_xor_data.load(std::memory_order_relaxed),
+		                                   slot.data.load(std::memory_order_relaxed)};
+		words[0] ^= words[1];
+		return std::bit_cast<PackedEntry>(words);
+	}
+
+	static void publish(Slot& slot, const PackedEntry& entry) noexcept
+	{
+		const auto words = encode(entry);
+		slot.key_xor_data.store(words[0], std::memory_order_relaxed);
+		slot.data.store(words[1], std::memory_order_relaxed);
+	}
+
 #if defined(__linux__)
 	std::vector<Bucket, HugePageAllocator<Bucket>> table;
-	// per-bucket shared mutexes to allow concurrent probes
-	mutable std::vector<std::shared_mutex, HugePageAllocator<std::shared_mutex>> bucket_locks;
 #else
-	// Plain storage: Windows huge pages need a privilege, and the allocator-backed types above cost nps
-	// in the shipping build even though they allocate identically there.
+	// Plain storage: Windows huge pages need a privilege, and the allocator-backed type above costs nps
+	// in the shipping build even though it allocates identically there.
 	std::vector<Bucket> table;
-	std::unique_ptr<std::shared_mutex[]> bucket_locks;
 #endif
 	size_t index_mask{0};
 
@@ -185,18 +223,9 @@ class TranspositionTable {
 	// it -- it is NOT what was allocated. See memory_mb().
 	size_t requested_mb;
 
-	// atomic counters for O(1) diagnostics (avoid scanning entire table)
-	std::atomic<size_t> entry_count{0};
-	std::atomic<size_t> pv_count{0};
-
-	static decltype(bucket_locks) make_bucket_locks(size_t buckets)
-	{
-#if defined(__linux__)
-		return decltype(bucket_locks)(buckets);
-#else
-		return std::make_unique<std::shared_mutex[]>(buckets);
-#endif
-	}
+	// Set by the first completed store after construction or clear(), so clear() can skip a table
+	// holding nothing. Exact entry counts would need each store's read-decide-write to be atomic.
+	std::atomic<bool> written_since_clear{false};
 
 	// Rounds down to a power of two, and never below one.
 	static constexpr size_t floor_pow2(size_t v) noexcept { return std::max<size_t>(1, std::bit_floor(v)); }
@@ -221,13 +250,9 @@ class TranspositionTable {
 	// passes a size explicitly.
 	// memory_mb() reports what was actually allocated for exactly this reason.
 	explicit TranspositionTable(size_t mb = 256)
-	    : table(bucket_count_for(mb)), bucket_locks(make_bucket_locks(table.size())), index_mask(table.size() - 1),
-	      requested_mb(mb)
+	    : table(bucket_count_for(mb)), index_mask(table.size() - 1), requested_mb(mb)
 	{
 		assert(reinterpret_cast<uintptr_t>(table.data()) % alignof(Bucket) == 0);
-
-		entry_count.store(0, std::memory_order_relaxed);
-		pv_count.store(0, std::memory_order_relaxed);
 	}
 	// Helper to check if value is a mate score
 	bool is_mate_score(int value) const noexcept
@@ -290,9 +315,10 @@ class TranspositionTable {
 		size_t occupied = 0;
 
 		for (size_t idx = 0; idx < buckets_to_sample; ++idx) {
-			const std::shared_lock lock(bucket_locks[idx]);
-			for (const auto& entry : table[idx].entries)
+			for (const auto& slot : table[idx].slots) {
+				const PackedEntry entry = load(slot);
 				occupied += entry.key != 0 && writtenThisSearch(entry.age, search_start_age, search_age_span);
+			}
 		}
 
 		// entries_to_sample is never 0: floor_pow2() guarantees table.size() >= 1, so
@@ -301,15 +327,15 @@ class TranspositionTable {
 		return static_cast<int>(occupied * 1000 / entries_to_sample);
 	}
 
+	// A returned entry may belong to another position, through a key collision or a slot mixed by
+	// racing stores, so its best move is only a hint to match against generated moves.
 	std::optional<TTEntry> probe(std::uint64_t key, int current_ply) const
 	{
 		const size_t index = static_cast<size_t>(key) & index_mask;
 		const auto& bucket = table[index];
 
-		// shared lock permits many concurrent probes
-		const std::shared_lock lock(bucket_locks[index]);
-
-		for (const auto& entry : bucket.entries) {
+		for (const auto& slot : bucket.slots) {
+			const PackedEntry entry = load(slot);
 			if (entry.key == key) {
 				TTEntry result = entry.unpack();
 				// Denormalize mate scores for current ply
@@ -322,23 +348,24 @@ class TranspositionTable {
 		return std::nullopt;
 	}
 
+	// Decides on one snapshot of each slot. Under Lazy SMP two stores can pick the same slot and lose
+	// an entry, or interleave and leave a mixed slot (see Slot); at one thread every snapshot is exact.
 	TTStoreOutcome store(std::uint64_t key, int16_t value, int16_t depth, int16_t ply, Move best_move, BoundType bound,
 	                     NodeType node_type, SearchPhase phase)
 	{
 		const size_t index = static_cast<size_t>(key) & index_mask;
 		auto& bucket = table[index];
 
-		// exclusive lock per-bucket
-		const std::unique_lock lock(bucket_locks[index]);
-
 		const uint8_t age = current_age.load(std::memory_order_relaxed);
+		std::array<PackedEntry, BUCKET_SIZE> snapshots;
 		size_t replace_index = 0;
 		int worst_score = std::numeric_limits<int>::max();
 		bool found_empty = false;
 		bool same_key = false;
 
 		for (size_t i = 0; i < BUCKET_SIZE; ++i) {
-			const auto& entry = bucket.entries[i];
+			snapshots[i] = load(bucket.slots[i]);
+			const auto& entry = snapshots[i];
 
 			if (entry.key == key) {
 				// Exact same position: this slot is the only candidate, but whether the
@@ -369,7 +396,7 @@ class TranspositionTable {
 				replace_index = i;
 			}
 		}
-		auto& entry = bucket.entries[replace_index];
+		PackedEntry entry = snapshots[replace_index];
 
 		if (same_key) {
 			// Both sides describe the same position, so the ranking that decides evictions
@@ -398,9 +425,7 @@ class TranspositionTable {
 				best_move = entry.best_move;
 		}
 
-		// Track counts: was entry empty? was it PV before?
 		const bool was_empty = (entry.key == 0);
-		const NodeType old_node = entry.node_type();
 		TTStoreOutcome outcome =
 		    same_key ? TTStoreOutcome::Refreshed : (was_empty ? TTStoreOutcome::Filled : TTStoreOutcome::Evicted);
 		if constexpr (kTTStatsCompiled) {
@@ -417,20 +442,11 @@ class TranspositionTable {
 		entry.set_node_type(node_type);
 		entry.age = age;
 		entry.set_phase(phase);
+		publish(bucket.slots[replace_index], entry);
 
-		// update atomic counters (relaxed is sufficient under bucket lock)
-		if (was_empty) {
-			entry_count.fetch_add(1, std::memory_order_relaxed);
-			if (node_type == NodeType::PV_NODE)
-				pv_count.fetch_add(1, std::memory_order_relaxed);
-		} else {
-			// not empty: adjust pv_count if node_type changed
-			if (old_node == NodeType::PV_NODE && node_type != NodeType::PV_NODE) {
-				pv_count.fetch_sub(1, std::memory_order_relaxed);
-			} else if (old_node != NodeType::PV_NODE && node_type == NodeType::PV_NODE) {
-				pv_count.fetch_add(1, std::memory_order_relaxed);
-			}
-		}
+		// Load first, so after the first store the flag's cache line is only read.
+		if (!written_since_clear.load(std::memory_order_relaxed))
+			written_since_clear.store(true, std::memory_order_relaxed);
 		return outcome;
 	}
 
@@ -526,33 +542,24 @@ class TranspositionTable {
 		return adjusted_depth * 256 + pv_bonus + phase_bonus - age_diff * 512;
 	}
 
-	// O(1) diagnostics using atomics: cheap to call from hot paths
-	size_t count_entries() const noexcept { return entry_count.load(std::memory_order_relaxed); }
-
-	size_t count_pv_nodes() const noexcept { return pv_count.load(std::memory_order_relaxed); }
-
-	// Lifecycle operation: callers must ensure no search can store concurrently.
-	// tt_mutex serializes clear calls; store() intentionally takes only bucket locks.
+	// Lifecycle operation: callers must ensure no search can store concurrently, which is what makes
+	// written_since_clear exact here. tt_mutex serializes clear calls; store() takes no lock.
 	// Returns whether stored entries were removed.
 	bool clear()
 	{
 		const std::scoped_lock g(tt_mutex);
-		if (entry_count.load(std::memory_order_relaxed) == 0) {
+		if (!written_since_clear.load(std::memory_order_relaxed)) {
 			// With no entries, current_age need not be reset: replacementScore()
 			// compares only age differences, and the next entry adopts this age.
 			return false;
 		}
 
-		const size_t buckets = table.size();
-		for (size_t idx = 0; idx < buckets; ++idx) {
-			const std::unique_lock lock(bucket_locks[idx]);
-			for (auto& entry : table[idx].entries) {
-				entry = PackedEntry{};
-			}
+		for (auto& bucket : table) {
+			for (auto& slot : bucket.slots)
+				publish(slot, PackedEntry{});
 		}
 		current_age.store(0, std::memory_order_relaxed);
-		entry_count.store(0, std::memory_order_relaxed);
-		pv_count.store(0, std::memory_order_relaxed);
+		written_since_clear.store(false, std::memory_order_relaxed);
 		return true;
 	}
 
@@ -563,18 +570,8 @@ class TranspositionTable {
 	// allocated because the two differ -- see the constructor comment.
 	size_t requested_memory_mb() const noexcept { return requested_mb; }
 
-	// Bytes holding TT entries.
+	// Bytes holding TT entries, which is everything the table allocates.
 	size_t entry_bytes() const noexcept { return table.size() * sizeof(Bucket); }
-
-	// Bytes held by the parallel lock array, which cannot hold entries. Sharply
-	// platform-dependent: sizeof(std::shared_mutex) is 8 on the MSVC STL
-	// (SRWLOCK-based) but 56 on libstdc++ (pthread_rwlock_t), so this is a few
-	// percent on the shipping Windows build and over half again the entry
-	// memory on Linux.
-	size_t lock_bytes() const noexcept { return table.size() * sizeof(std::shared_mutex); }
-
-	// Everything the table allocates, entries plus locks.
-	size_t allocated_bytes() const noexcept { return entry_bytes() + lock_bytes(); }
 
 	// Megabytes actually allocated for entries -- NOT the constructor argument.
 	// Reporting the request here instead would make the table's single memory
