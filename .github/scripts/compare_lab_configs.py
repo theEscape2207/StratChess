@@ -139,13 +139,13 @@ def compare(args):
     reference = sides["reference"]
     if reference["table"]:
         reference["settings"], errors, notices = resolve_options(
-            args.reference_options, reference["table"], "reference")
+            args.reference_options, reference["table"], "reference", args.threads)
         problems.extend(errors)
         warnings.extend(notices)
     for arm in arms:
         if sides["candidate"]["table"]:
             arm["settings"], errors, notices = resolve_options(
-                arm["options"], sides["candidate"]["table"], f"arm {arm['label']}")
+                arm["options"], sides["candidate"]["table"], f"arm {arm['label']}", args.threads)
             problems.extend(errors)
             warnings.extend(notices)
     for index, arm in enumerate(arms):
@@ -175,7 +175,7 @@ def compare(args):
              f"Calibration declared: **{'yes' if args.calibration else 'no'}**.", "",
              f"Shared CMake definitions: `{markdown(args.cmake_defines or '(none)')}`.",
              f"Shared toolchain / Release recipe: `{markdown(args.toolchain)}`.",
-             "Definitions and harness-owned Threads=1 are shared and cannot distinguish the sides.", "",
+             f"Definitions and harness-owned Threads={args.threads} are shared and cannot distinguish the sides.", "",
              "| Evidence | Candidate | Reference |", "|---|---|---|"]
     for title, key in (("Revision", "revision"), ("Binary SHA-256", "hash")):
         lines.append(f"| {title} | {markdown(sides['candidate'].get(key, 'unavailable'))} | "
@@ -248,6 +248,7 @@ def main():
     parser.add_argument("--candidate-tc", default="10+0.1")
     parser.add_argument("--reference-tc", default="10+0.1")
     parser.add_argument("--toolchain", default="clang-cl Release")
+    parser.add_argument("--threads", type=int, default=1)
     parser.add_argument("--calibration", action="store_true")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
@@ -392,6 +393,10 @@ def self_test():
         run("mixed calibration classifies each arm separately", True,
             ("identical intended conditions", "resolved options differ"), arms="Hash=64;Hash=65", calibration=True)
         run("ambiguous candidate and arms rejected", False, ("may not both be supplied",), arms="Hash=65", candidate_options="Hash=66")
+        run("harness-owned Threads reaches both resolved sides", True,
+            ("harness-owned Threads=4", "| Threads | 4 |"), candidate_options="Hash=65", threads=4)
+        run("harness-owned Threads outside the advertised domain fails closed", False,
+            ("must admit harness-owned Threads=33",), candidate_options="Hash=65", threads=33)
 
         older = SELF_TEST_UCI.replace("option name ReverseFutility type check default true\n", "")
         (root / "reference.uci").write_text(older, encoding="utf-8")
