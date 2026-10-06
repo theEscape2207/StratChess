@@ -11,6 +11,7 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 
 | Date | Candidate | Merge base | Games | TC | Elo +/- err | Verdict |
 |---|---|---|---|---|---|---|
+| 2026-10-06 | c82dc6e (main after #748, the lock-free transposition table, #747) at `Threads=4` on both sides, concurrency 1 | 79c3217 (at `Threads=4`) | 6624 | 10+0.1 | **+25.06 +/- 6.23** | gain |
 | 2026-10-06 | 994e288, lock-free transposition table (#747; the lab builds GCC, where the locks cost 32.9% of CPU against 9.4% on the shipping clang-cl) | 79c3217 | 19980 | 10+0.1 | **+18.31 +/- 3.54** | gain |
 | 2026-10-06 | 16c938c, CONFIRM `LmrHistoryDivisor=16` (#735; selected by the 32/16/1 screen below, fresh openings 19,981-32,328) | 16c938c (at the shipped default `LmrHistoryDivisor=64`; both sides are one binary, so the delta is a runtime option) | 24696 | 10+0.1 | **+2.98 +/- 3.23** | inconclusive @ 24696 |
 | 2026-10-06 | d1d6f9c, SCREEN arm B: `LmrHistoryDivisor=16` (#735; best of three, uncorrected; not confirmed, see the CONFIRM row) | d1d6f9c (at the shipped default `LmrHistoryDivisor=64`; both sides are one binary, so the delta is a runtime option) | 6660 | 10+0.1 | **+6.99 +/- 6.16** | gain |
@@ -69,6 +70,10 @@ cumulative progress use [`ci-anchor.md`](ci-anchor.md), which is what it exists 
 ## Row detail
 
 Same order as the table above. A row with nothing to add beyond its verdict has no section here.
+
+### 2026-10-06 -- c82dc6e, lock-free transposition table at Threads=4 (#747) (6624 games)
+
+**Item 11 of #747's validation, gating nothing; the plan's question was how the change reads with Lazy SMP contending for the table.** [Run `37518249596`](https://github.com/theEscape2207/StratChess/actions/runs/37518249596), 3 h 17 min wall-clock, 18 shards x 184 pairs, both sides `Threads=4` with one game per runner; resolved settings in the run's `strength-37518249596-comparison` artifact. Pooled Ptnml(0-2) [199, 681, 1213, 882, 337], score 53.60%, 95% interval [+18.8, +31.3]; 18 of 18 shards favour the candidate by score. All 18 shards are green, with zero time losses, illegal moves or disconnects. **The runners' 4 vCPU are 2 physical cores with SMT**, so each engine's 4 threads share 2 cores: runner CPU sampled on all 18 shards read 99.4% busy (99.3-99.5), 0.0% steal, 1-minute load 5.0 (4.9-5.0). Not read against the `Threads=1` row below (+18.31 +/- 3.54): thread count and game count both differ, and the intervals overlap.
 
 ### 2026-10-06 -- LMR history divisor 16, confirmation (#735) (24696 games)
 
