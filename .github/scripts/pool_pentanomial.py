@@ -18,6 +18,8 @@ Validate with --self-test, which checks the formula reproduces the Elo and the
 interval that fastchess itself reported on real matches from this project.
 With --expect-pairs-per-shard N, every log must contain exactly N pairs before
 any report is printed. Omit it only for historical standalone pooling.
+--summary-tsv appends each pool's headline as a row, and --render-summary turns
+those rows into one table across a run's arms.
 """
 
 import argparse
