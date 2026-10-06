@@ -67,12 +67,16 @@ function Get-BuildRelevantSources {
 
     $sources = @()
     if ($roots) {
-        $sources += Get-ChildItem -Path $roots -Recurse -File -Include '*.cpp', '*.h', '*.hpp'
+        $sources += Get-ChildItem -Path $roots -Recurse -File -Include '*.cpp', '*.h', '*.hpp' |
+            ForEach-Object { [pscustomobject]@{ Path = $_.FullName; WriteTime = $_.LastWriteTime; RegeneratesBuild = $false } }
     }
     foreach ($name in @('CMakeLists.txt', 'CMakePresets.json')) {
         $path = Join-Path $Root $name
-        if (Test-Path $path) { $sources += Get-Item $path }
+        if (Test-Path $path) {
+            $item = Get-Item $path
+            $sources += [pscustomobject]@{ Path = $item.FullName; WriteTime = $item.LastWriteTime; RegeneratesBuild = ($name -eq 'CMakeLists.txt') }
+        }
     }
 
-    return $sources | ForEach-Object { [pscustomobject]@{ Path = $_.FullName; WriteTime = $_.LastWriteTime } }
+    return $sources
 }
