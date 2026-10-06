@@ -254,7 +254,7 @@ unchanged, and `tt_mutex` still serialises concurrent `clear()` calls.
 
 Engine tier, search-change validation: it changes synchronisation on the hottest shared structure.
 **PR readiness and merge readiness are separate.** The implementation PR opens once items 1–5 pass.
-Merging also waits for items 6–8. Items 9–12 are indicative only: their results are reported, but none
+Merging also waits for items 6–8. Items 9–11 are indicative only: their results are reported, but none
 of them blocks the merge or is read as a pass or fail.
 
 `<mb>` below is the PR branch's merge-base with `origin/main` at measurement time, recorded in the PR.
@@ -333,15 +333,6 @@ of them blocks the merge or is read as a pass or fail.
     PR that adds a `threads` input applied to both sides, with per-shard concurrency cut to fit the
     4-vCPU runners (`Threads=4` → concurrency 1). At about a third of the default game rate, 3 h gives
     about 6.6k games, roughly ±6 Elo.
-12. **Where the time goes next (not a gate).** The change has two aims: remove the bottleneck, and
-    learn what to improve after it. So re-profile once it lands.
-    - Windows: `Measure-CpuProfile.ps1 -Before <mb> -After <branch>`. It gives per-area shares, with
-      the baseline's run-to-run spread as the noise floor.
-    - Linux: the #719 `perf` recipe in `Docs/Workflow.md` → Profiling, on both builds.
-    - Report the before/after area table. The lock share should go to about zero; the question is
-      which area now leads. #719 had move ordering second, at about 23–24%. Each area that now looks
-      worth attacking becomes its own triage issue, citing the table.
-
 ## Cost
 
 - **Size:** author's estimate is 50–200 lines, about half of them deletions, in `TranspositionTable.h`
@@ -356,8 +347,6 @@ of them blocks the merge or is read as a pass or fail.
   - Item 10, the `Threads=4` bench: about 20 min.
   - Item 11, the multi-thread lab run: a small `strength.yml` tooling PR, then about 3 h of lab
     time.
-  - Item 12, the re-profile: about 30 min per platform.
-
 ## Harvest
 
 | Decision / rationale | Lands in |
