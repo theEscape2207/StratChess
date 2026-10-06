@@ -75,7 +75,13 @@ def self_test():
                'BUILD_RESULT': 'success', 'CANDIDATE_UCI_OPTIONS': '', 'REFERENCE_UCI_OPTIONS': ''}
         env.update(RUNNER_TEMP=(root / 'runner').as_posix(), CALIBRATION='false',
                    REFERENCE_SHA='reference-fixture', GITHUB_SHA='candidate-fixture',
-                   CANDIDATE_ARMS='', CANDIDATE_TC='10+0.1', REFERENCE_TC='10+0.1')
+                   CANDIDATE_ARMS='', CANDIDATE_TC='10+0.1', REFERENCE_TC='10+0.1', THREADS='4')
+        budget = {'RUNNER_VCPUS': '4'}
+        for threads, concurrency, expected in [('1', '3', 0), ('4', '1', 0), ('2', '2', 0),
+                                               ('4', '3', 1), ('1', '5', 1), ('0', '1', 1), ('04', '1', 1)]:
+            run(root, 'Check the per-shard CPU budget',
+                dict(budget, THREADS=threads, MATCH_CONCURRENCY=concurrency), expected=expected)
+        print('PASS: threads x concurrency is refused past the runner vCPU budget')
         # Module self-tests exercise the real CLI. Here the stub captures shell
         # forwarding/output placement while the actual preparation/copy commands run.
         stub = '''python3() {
@@ -92,6 +98,8 @@ def self_test():
         }
     '''
         run(root, 'Verify the resolved comparison', env, command_wrapper=stub)
+        preflight_args = (root / 'runner/preflight-args.txt').read_text().splitlines()
+        assert preflight_args[preflight_args.index('--threads') + 1] == '4', 'threads input not forwarded to preflight'
         run(root, 'Retain the intended comparison in the build summary', env)
         assert 'Retained intended fixture comparison' in summary.read_text()
         upload_step = workflow.split('      - name: Upload comparison and opening evidence\n')[1].split('      - name:')[0]
@@ -131,7 +139,7 @@ def self_test():
             env['POOL_RESULT'] = 'failure'
             run(root, 'Report', env)
             report = (root / 'outputs/report.md').read_text(encoding='utf-8')
-            assert 'DISCARDED' in report and '**Pooled:' not in report
+            assert 'DISCARDED' in report and '**Pooled:' not in report and 'Threads=4 |' in report
             print('PASS: failure summary contains no partial Elo')
         (root / 'evidence/comparison.md').unlink()
         run(root, 'Verify the complete batch', env, expected=1)
