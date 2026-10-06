@@ -39,6 +39,9 @@ be kept exact, and only tests read them. `clear()`'s early-out reads a `written_
 - **Tests:** deterministic mixed-pair tests and a `[tt][smp]` four-thread stress test. Both fail with
   the XOR removed, and the TT tests are TSan-clean on GCC 15.
 - **Tactical stability, `Threads=4`:** 36/36 in all 10 runs, the same as before.
+- **Strength lab, `Threads=1`:** +18.31 +/- 3.54 Elo over 19,980 games against 79c3217. The lab
+  builds GCC, where the locks cost about 3× the CPU share they do on clang-cl, so the shipping gain
+  is smaller.
 
 ## 2026-10-06: Measure-CpuProfile.ps1, a before/after CPU profile of two refs (#740)
 
